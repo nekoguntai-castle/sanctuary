@@ -166,6 +166,45 @@ describe('urDeviceDecoder', () => {
     });
   });
 
+  it('returns empty path/fingerprint when CryptoHDKey has no origin data', () => {
+    const hdKey = new CryptoHDKey('xpub-no-origin', null, undefined);
+
+    expect(extractFromUrResult(hdKey)).toEqual({
+      xpub: 'xpub-no-origin',
+      fingerprint: '',
+      path: '',
+    });
+  });
+
+  it('supports non-hardened derivation path components', () => {
+    const origin = new MockOrigin(Buffer.from([0xaa, 0xbb, 0xcc, 0xdd]), [
+      new MockPathComponent(84, true),
+      new MockPathComponent(0, false),
+      new MockPathComponent(5, false),
+    ]);
+    const hdKey = new CryptoHDKey('xpub-non-hardened', origin);
+
+    expect(extractFromUrResult(hdKey)).toEqual({
+      xpub: 'xpub-non-hardened',
+      fingerprint: 'aabbccdd',
+      path: "m/84'/0/5",
+    });
+  });
+
+  it('returns empty path when origin components are undefined', () => {
+    const weirdOrigin = {
+      getSourceFingerprint: () => Buffer.from([0x01, 0x02, 0x03, 0x04]),
+      getComponents: () => undefined,
+    };
+    const hdKey = new CryptoHDKey('xpub-weird-origin', weirdOrigin as unknown as MockOrigin);
+
+    expect(extractFromUrResult(hdKey)).toEqual({
+      xpub: 'xpub-weird-origin',
+      fingerprint: '01020304',
+      path: '',
+    });
+  });
+
   it('extracts data from CryptoOutput UR result', () => {
     const origin = new MockOrigin(Buffer.from([0x11, 0x22, 0x33, 0x44]), [
       new MockPathComponent(49, true),
@@ -179,6 +218,11 @@ describe('urDeviceDecoder', () => {
       fingerprint: '11223344',
       path: "m/49'/0'/0'",
     });
+  });
+
+  it('returns null for CryptoOutput without an HDKey', () => {
+    const output = new CryptoOutput(null);
+    expect(extractFromUrResult(output)).toBeNull();
   });
 
   it('prefers BIP84 output when extracting from CryptoAccount UR result', () => {
@@ -239,7 +283,35 @@ describe('urDeviceDecoder', () => {
     });
   });
 
-  it('handles ur:bytes payloads without throwing', () => {
+  it('returns null when CryptoAccount outputs have no HDKeys', () => {
+    const account = new CryptoAccount(undefined, [new CryptoOutput(null)]);
+    expect(extractFromUrResult(account)).toBeNull();
+  });
+
+  it('returns null when CryptoAccount has no outputs', () => {
+    const account = new CryptoAccount(undefined, []);
+    expect(extractFromUrResult(account)).toBeNull();
+  });
+
+  it('extracts xpub data from ur:bytes payload', () => {
+    const OriginalTextDecoder = globalThis.TextDecoder;
+    const OriginalUint8Array = globalThis.Uint8Array;
+    class StableTextDecoder {
+      constructor(_label?: string) {}
+      decode(_input?: unknown) {
+        return '{"descriptor":"ok"}';
+      }
+    }
+    class AcceptAllUint8Array {
+      static [Symbol.hasInstance](_value: unknown) {
+        return true;
+      }
+    }
+    // @ts-expect-error test override
+    globalThis.TextDecoder = StableTextDecoder;
+    // @ts-expect-error test override
+    globalThis.Uint8Array = AcceptAllUint8Array;
+
     parseDeviceJsonMock.mockReturnValue({
       format: 'passport',
       xpub: 'xpub-bytes',
@@ -247,21 +319,167 @@ describe('urDeviceDecoder', () => {
       derivationPath: "m/84'/0'/0'",
     });
 
-    const bytesResult = extractFromUrResult({
-      bytes: Buffer.from('{"descriptor":"ok"}'),
+    try {
+      const bytesResult = extractFromUrResult({
+        bytes: new TextEncoder().encode('{"descriptor":"ok"}'),
+      });
+
+      expect(parseDeviceJsonMock).toHaveBeenCalledWith('{"descriptor":"ok"}');
+      expect(bytesResult).toEqual({
+        xpub: 'xpub-bytes',
+        fingerprint: 'f1f2f3f4',
+        path: "m/84'/0'/0'",
+      });
+    } finally {
+      globalThis.TextDecoder = OriginalTextDecoder;
+      globalThis.Uint8Array = OriginalUint8Array;
+    }
+  });
+
+  it('defaults fingerprint/path for ur:bytes payload when parser omits them', () => {
+    const OriginalTextDecoder = globalThis.TextDecoder;
+    const OriginalUint8Array = globalThis.Uint8Array;
+    class StableTextDecoder {
+      constructor(_label?: string) {}
+      decode(_input?: unknown) {
+        return '{"descriptor":"minimal"}';
+      }
+    }
+    class AcceptAllUint8Array {
+      static [Symbol.hasInstance](_value: unknown) {
+        return true;
+      }
+    }
+    // @ts-expect-error test override
+    globalThis.TextDecoder = StableTextDecoder;
+    // @ts-expect-error test override
+    globalThis.Uint8Array = AcceptAllUint8Array;
+
+    parseDeviceJsonMock.mockReturnValue({
+      format: 'passport',
+      xpub: 'xpub-minimal',
     });
 
-    expect(bytesResult).toBeNull();
+    try {
+      expect(
+        extractFromUrResult({
+          bytes: new TextEncoder().encode('{"descriptor":"minimal"}'),
+        })
+      ).toEqual({
+        xpub: 'xpub-minimal',
+        fingerprint: '',
+        path: '',
+      });
+    } finally {
+      globalThis.TextDecoder = OriginalTextDecoder;
+      globalThis.Uint8Array = OriginalUint8Array;
+    }
   });
 
   it('returns null when ur:bytes content cannot be parsed', () => {
+    const OriginalTextDecoder = globalThis.TextDecoder;
+    const OriginalUint8Array = globalThis.Uint8Array;
+    class StableTextDecoder {
+      constructor(_label?: string) {}
+      decode(_input?: unknown) {
+        return 'invalid';
+      }
+    }
+    class AcceptAllUint8Array {
+      static [Symbol.hasInstance](_value: unknown) {
+        return true;
+      }
+    }
+    // @ts-expect-error test override
+    globalThis.TextDecoder = StableTextDecoder;
+    // @ts-expect-error test override
+    globalThis.Uint8Array = AcceptAllUint8Array;
+
     parseDeviceJsonMock.mockReturnValue(null);
 
+    try {
+      expect(
+        extractFromUrResult({
+          bytes: new TextEncoder().encode('invalid'),
+        })
+      ).toBeNull();
+      expect(parseDeviceJsonMock).toHaveBeenCalledWith('invalid');
+    } finally {
+      globalThis.TextDecoder = OriginalTextDecoder;
+      globalThis.Uint8Array = OriginalUint8Array;
+    }
+  });
+
+  it('returns null when ur:bytes parser result has no xpub', () => {
+    const OriginalTextDecoder = globalThis.TextDecoder;
+    const OriginalUint8Array = globalThis.Uint8Array;
+    class StableTextDecoder {
+      constructor(_label?: string) {}
+      decode(_input?: unknown) {
+        return '{"descriptor":"missing-xpub"}';
+      }
+    }
+    class AcceptAllUint8Array {
+      static [Symbol.hasInstance](_value: unknown) {
+        return true;
+      }
+    }
+    // @ts-expect-error test override
+    globalThis.TextDecoder = StableTextDecoder;
+    // @ts-expect-error test override
+    globalThis.Uint8Array = AcceptAllUint8Array;
+
+    parseDeviceJsonMock.mockReturnValue({ format: 'unknown', derivationPath: "m/84'/0'/0'" });
+
+    try {
+      expect(
+        extractFromUrResult({
+          bytes: new TextEncoder().encode('{"descriptor":"missing-xpub"}'),
+        })
+      ).toBeNull();
+      expect(parseDeviceJsonMock).toHaveBeenCalledWith('{"descriptor":"missing-xpub"}');
+    } finally {
+      globalThis.TextDecoder = OriginalTextDecoder;
+      globalThis.Uint8Array = OriginalUint8Array;
+    }
+  });
+
+  it('returns null when ur:bytes payload is not Uint8Array', () => {
     expect(
       extractFromUrResult({
-        bytes: Buffer.from('invalid'),
+        bytes: 'plain text',
       })
     ).toBeNull();
+  });
+
+  it('swallows text decoding errors in ur:bytes handling', () => {
+    const OriginalTextDecoder = globalThis.TextDecoder;
+    const OriginalUint8Array = globalThis.Uint8Array;
+    class ThrowingTextDecoder {
+      constructor(_label?: string) {}
+      decode(_input?: unknown) {
+        throw new Error('decode failed');
+      }
+    }
+    class AcceptAllUint8Array {
+      static [Symbol.hasInstance](_value: unknown) {
+        return true;
+      }
+    }
+    // @ts-expect-error test override
+    globalThis.TextDecoder = ThrowingTextDecoder;
+    // @ts-expect-error test override
+    globalThis.Uint8Array = AcceptAllUint8Array;
+
+    try {
+      const result = extractFromUrResult({
+        bytes: new Uint8Array([123, 125]),
+      });
+      expect(result).toBeNull();
+    } finally {
+      globalThis.TextDecoder = OriginalTextDecoder;
+      globalThis.Uint8Array = OriginalUint8Array;
+    }
   });
 
   it('returns null when extraction throws unexpectedly', () => {
@@ -287,6 +505,19 @@ describe('urDeviceDecoder', () => {
       xpub: 'xpub-text',
       fingerprint: 'a1b2c3d4',
       path: "m/48'/0'/0'",
+    });
+  });
+
+  it('defaults empty fingerprint/path when helper parser omits them', () => {
+    parseDeviceJsonMock.mockReturnValue({
+      format: 'json',
+      xpub: 'xpub-text-only',
+    });
+
+    expect(extractFromUrBytesContent('{"wallet":"minimal"}')).toEqual({
+      xpub: 'xpub-text-only',
+      fingerprint: '',
+      path: '',
     });
   });
 

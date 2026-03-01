@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PriceChart, AnimatedPrice } from '../../../components/Dashboard/PriceChart';
 
@@ -66,5 +66,51 @@ describe('AnimatedPrice', () => {
   it('shows formatted value when present', () => {
     render(<AnimatedPrice value={12345} symbol="$" />);
     expect(screen.getByText('$12,345')).toBeInTheDocument();
+  });
+
+  it('animates upward price changes and completes to final value', () => {
+    const callbacks: FrameRequestCallback[] = [];
+    const rafSpy = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {
+      callbacks.push(cb);
+      return callbacks.length;
+    });
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+
+    const { rerender } = render(<AnimatedPrice value={100} symbol="$" />);
+    rerender(<AnimatedPrice value={200} symbol="$" />);
+
+    const start = performance.now();
+    act(() => {
+      callbacks[0]?.(start);
+    });
+    expect(screen.getByText('↑')).toBeInTheDocument();
+
+    act(() => {
+      callbacks[1]?.(start + 1000);
+    });
+    expect(screen.queryByText('↑')).not.toBeInTheDocument();
+    expect(screen.getByText('$200')).toBeInTheDocument();
+    expect(rafSpy).toHaveBeenCalled();
+  });
+
+  it('animates downward price changes and cancels animation on unmount', () => {
+    const callbacks: FrameRequestCallback[] = [];
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {
+      callbacks.push(cb);
+      return callbacks.length;
+    });
+    const cancelSpy = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+
+    const { rerender, unmount } = render(<AnimatedPrice value={200} symbol="$" />);
+    rerender(<AnimatedPrice value={100} symbol="$" />);
+
+    const start = performance.now();
+    act(() => {
+      callbacks[0]?.(start);
+    });
+    expect(screen.getByText('↓')).toBeInTheDocument();
+
+    unmount();
+    expect(cancelSpy).toHaveBeenCalled();
   });
 });

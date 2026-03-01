@@ -245,8 +245,13 @@ export async function ensureMinimumConnections(
   recordServerFailure: (serverId: string, errorType: 'timeout' | 'error' | 'disconnect') => void,
   recordHealthCheckResult: (serverId: string, success: boolean, latencyMs?: number, error?: string) => void,
   updateServerHealthInDb: (serverId: string, isHealthy: boolean, failCount?: number, errorMessage?: string) => Promise<void>,
+  createConnectionForServer?: (server: ServerConfig) => Promise<PooledConnection>,
 ): Promise<void> {
   if (isShuttingDown || !config.enabled) return;
+
+  const connectToServer =
+    createConnectionForServer ??
+    ((server: ServerConfig) => createConnection(connections, config, proxyConfig, server, onError));
 
   // Count connections per server
   const serverConnectionCounts = new Map<string, number>();
@@ -266,7 +271,7 @@ export async function ensureMinimumConnections(
     if (count === 0) {
       log.info(`Server ${server.label} has no connections, creating one...`);
       try {
-        await createConnection(connections, config, proxyConfig, server, onError);
+        await connectToServer(server);
         log.info(`Created connection to ${server.label}`);
 
         // Connection succeeded - mark server as healthy
@@ -325,6 +330,7 @@ export async function handleConnectionError(
   emitSubscriptionReconnected: (client: ElectrumClient) => void,
   onError: (c: PooledConnection) => void,
   selectServer: () => ServerConfig | null,
+  createConnectionForServer?: (server: ServerConfig | null) => Promise<PooledConnection>,
 ): Promise<void> {
   if (conn.isDedicated) {
     await reconnectConnection(conn, config, connections, subscriptionConnectionId, emitSubscriptionReconnected);
@@ -341,7 +347,12 @@ export async function handleConnectionError(
     // Ensure minimum connections (at least 1 per server)
     if (connections.size < effectiveMinConnections && !isShuttingDown) {
       const server = selectServer();
-      createConnection(connections, config, proxyConfig, server, onError).catch((err) => {
+      const connect =
+        createConnectionForServer ??
+        ((targetServer: ServerConfig | null) =>
+          createConnection(connections, config, proxyConfig, targetServer, onError));
+
+      connect(server).catch((err) => {
         log.error('Failed to create replacement connection', { error: getErrorMessage(err) });
       });
     }

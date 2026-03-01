@@ -80,6 +80,42 @@ describe('useWalletSync', () => {
     expect(result.current.syncing).toBe(false);
   });
 
+  it('refreshes data when sync result is non-success without an explicit error', async () => {
+    vi.mocked(syncApi.syncWallet).mockResolvedValue({ success: false } as never);
+
+    const { result } = renderHook(() =>
+      useWalletSync({
+        walletId: 'wallet-1',
+        onDataRefresh,
+      })
+    );
+
+    await act(async () => {
+      await result.current.handleSync();
+    });
+
+    expect(onDataRefresh).toHaveBeenCalled();
+    expect(handleError).not.toHaveBeenCalled();
+  });
+
+  it('still refreshes when sync returns an explicit API error payload', async () => {
+    vi.mocked(syncApi.syncWallet).mockResolvedValue({ success: false, error: 'backend timeout' } as never);
+
+    const { result } = renderHook(() =>
+      useWalletSync({
+        walletId: 'wallet-1',
+        onDataRefresh,
+      })
+    );
+
+    await act(async () => {
+      await result.current.handleSync();
+    });
+
+    expect(onDataRefresh).toHaveBeenCalled();
+    expect(handleError).not.toHaveBeenCalled();
+  });
+
   it('aborts full resync when user cancels confirmation', async () => {
     (globalThis as typeof globalThis & { confirm: (msg?: string) => boolean }).confirm = vi.fn(() => false);
 
@@ -112,6 +148,24 @@ describe('useWalletSync', () => {
     expect(syncApi.resyncWallet).toHaveBeenCalledWith('wallet-1');
     expect(showSuccess).toHaveBeenCalledWith('queued', 'Resync Queued');
     expect(onDataRefresh).toHaveBeenCalled();
+    expect(result.current.syncing).toBe(false);
+  });
+
+  it('handles full resync failures through error handler', async () => {
+    vi.mocked(syncApi.resyncWallet).mockRejectedValue(new Error('resync failed'));
+
+    const { result } = renderHook(() =>
+      useWalletSync({
+        walletId: 'wallet-1',
+        onDataRefresh,
+      })
+    );
+
+    await act(async () => {
+      await result.current.handleFullResync();
+    });
+
+    expect(handleError).toHaveBeenCalledWith(expect.any(Error), 'Resync Failed');
     expect(result.current.syncing).toBe(false);
   });
 
@@ -152,5 +206,70 @@ describe('useWalletSync', () => {
 
     expect(handleError).toHaveBeenCalledWith(expect.any(Error), 'Repair Failed');
     expect(result.current.repairing).toBe(false);
+  });
+
+  it('handles thrown repair failures through error handler', async () => {
+    vi.mocked(walletsApi.repairWallet).mockRejectedValue(new Error('repair exploded'));
+
+    const { result } = renderHook(() =>
+      useWalletSync({
+        walletId: 'wallet-1',
+        onDataRefresh,
+      })
+    );
+
+    await act(async () => {
+      await result.current.handleRepairWallet();
+    });
+
+    expect(handleError).toHaveBeenCalledWith(expect.any(Error), 'Repair Failed');
+    expect(result.current.repairing).toBe(false);
+  });
+
+  it('returns early from sync actions when walletId is missing', async () => {
+    const { result } = renderHook(() =>
+      useWalletSync({
+        walletId: undefined,
+        onDataRefresh,
+      })
+    );
+
+    await act(async () => {
+      await result.current.handleSync();
+      await result.current.handleFullResync();
+      await result.current.handleRepairWallet();
+    });
+
+    expect(syncApi.syncWallet).not.toHaveBeenCalled();
+    expect(syncApi.resyncWallet).not.toHaveBeenCalled();
+    expect(walletsApi.repairWallet).not.toHaveBeenCalled();
+    expect(onDataRefresh).not.toHaveBeenCalled();
+  });
+
+  it('exposes state setters for syncing and retry info', () => {
+    const { result } = renderHook(() =>
+      useWalletSync({
+        walletId: 'wallet-1',
+        onDataRefresh,
+      })
+    );
+
+    act(() => {
+      result.current.setSyncing(true);
+      result.current.setSyncRetryInfo({
+        active: true,
+        currentRetry: 2,
+        maxRetries: 5,
+        retryInSeconds: 8,
+      });
+    });
+
+    expect(result.current.syncing).toBe(true);
+    expect(result.current.syncRetryInfo).toEqual({
+      active: true,
+      currentRetry: 2,
+      maxRetries: 5,
+      retryInSeconds: 8,
+    });
   });
 });

@@ -87,8 +87,11 @@ export async function performConnectionHealthChecks(
   handleConnectionError: (conn: PooledConnection) => Promise<void>,
 ): Promise<Map<string, { success: number; fail: number; latencyMs?: number }>> {
   const serverHealthResults = new Map<string, { success: number; fail: number; latencyMs?: number }>();
+  // Snapshot entries so connection map mutations during health handling
+  // do not affect this cycle's per-server aggregation.
+  const connectionsToCheck = Array.from(connections.entries());
 
-  for (const [id, conn] of connections) {
+  for (const [id, conn] of connectionsToCheck) {
     if (conn.state === 'idle' || (conn.state === 'active' && conn.isDedicated)) {
       // Initialize server tracking
       if (!serverHealthResults.has(conn.serverId)) {

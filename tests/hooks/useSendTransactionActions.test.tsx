@@ -5,6 +5,7 @@ import type { TransactionState } from '../../contexts/send/types';
 import * as transactionsApi from '../../src/api/transactions';
 import * as draftsApi from '../../src/api/drafts';
 import * as payjoinApi from '../../src/api/payjoin';
+import { ApiError } from '../../src/api/client';
 import { queryClient } from '../../providers/QueryProvider';
 import { downloadBinary } from '../../utils/download';
 
@@ -334,6 +335,85 @@ describe('useSendTransactionActions', () => {
 
     expect(result.current.payjoinStatus).toBe('failed');
     expect(result.current.unsignedPsbt).toBe('cHNidP8BAA==');
+  });
+
+  it('marks payjoin as failed when payjoin responds with success=false', async () => {
+    vi.mocked(payjoinApi.attemptPayjoin).mockResolvedValue({
+      success: false,
+      error: 'merchant rejected payjoin',
+    } as any);
+
+    const state = createState({
+      outputs: [{ address: 'bc1qrecipient', amount: '10000', sendMax: false }],
+      payjoinUrl: 'https://merchant.example/payjoin',
+    });
+
+    const { result } = renderHook(() =>
+      useSendTransactionActions({
+        walletId: 'wallet-1',
+        wallet: baseWallet,
+        state,
+      })
+    );
+
+    await act(async () => {
+      await result.current.createTransaction();
+    });
+
+    expect(result.current.payjoinStatus).toBe('failed');
+    expect(result.current.unsignedPsbt).toBe('cHNidP8BAA==');
+  });
+
+  it('surfaces ApiError message when transaction creation fails', async () => {
+    vi.mocked(transactionsApi.createTransaction).mockRejectedValueOnce(
+      new ApiError('insufficient funds', 400)
+    );
+    const state = createState({
+      outputs: [{ address: 'bc1qrecipient', amount: '10000', sendMax: false }],
+    });
+
+    const { result } = renderHook(() =>
+      useSendTransactionActions({
+        walletId: 'wallet-1',
+        wallet: baseWallet,
+        state,
+      })
+    );
+
+    let tx = {} as any;
+    await act(async () => {
+      tx = await result.current.createTransaction();
+    });
+
+    expect(tx).toBeNull();
+    await waitFor(() => {
+      expect(result.current.error).toBe('insufficient funds');
+    });
+  });
+
+  it('uses fallback error when transaction creation fails with non-ApiError', async () => {
+    vi.mocked(transactionsApi.createTransaction).mockRejectedValueOnce(new Error('db down'));
+    const state = createState({
+      outputs: [{ address: 'bc1qrecipient', amount: '10000', sendMax: false }],
+    });
+
+    const { result } = renderHook(() =>
+      useSendTransactionActions({
+        walletId: 'wallet-1',
+        wallet: baseWallet,
+        state,
+      })
+    );
+
+    let tx = {} as any;
+    await act(async () => {
+      tx = await result.current.createTransaction();
+    });
+
+    expect(tx).toBeNull();
+    await waitFor(() => {
+      expect(result.current.error).toBe('Failed to create transaction');
+    });
   });
 
   it('returns an error when hardware signing is attempted without connection', async () => {

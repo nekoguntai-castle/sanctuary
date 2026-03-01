@@ -41,6 +41,8 @@ vi.mock('../../../src/utils/encryption', () => ({
 }));
 
 import { BackupService, SanctuaryBackup, BackupMeta } from '../../../src/services/backupService';
+import { camelToSnakeCase } from '../../../src/services/backupService/serialization';
+import { migrateBackup } from '../../../src/services/backupService/migration';
 import * as encryption from '../../../src/utils/encryption';
 
 describe('BackupService', () => {
@@ -2284,12 +2286,10 @@ describe('Backup Validation Edge Cases', () => {
 
 describe('BackupService internal helpers', () => {
   it('should pluralize snake_case words ending in y', () => {
-    const service = new BackupService();
-    expect((service as any).camelToSnakeCase('category')).toBe('categories');
+    expect(camelToSnakeCase('category')).toBe('categories');
   });
 
   it('should skip migrations when backup start version is already at/above migration targets', () => {
-    const service = new BackupService();
     const backup: SanctuaryBackup = {
       meta: {
         version: '1.0.0',
@@ -2323,7 +2323,7 @@ describe('BackupService internal helpers', () => {
       },
     };
 
-    const migrated = (service as any).migrateBackup(backup, 6) as SanctuaryBackup;
+    const migrated = migrateBackup(backup, 6) as SanctuaryBackup;
     expect(migrated.meta.schemaVersion).toBe(6);
   });
 

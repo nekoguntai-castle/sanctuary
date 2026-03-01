@@ -64,7 +64,7 @@ describe('useWalletSharing', () => {
     group: null,
   };
 
-  const renderSharingHook = () =>
+  const renderSharingHook = (overrides: Partial<Parameters<typeof useWalletSharing>[0]> = {}) =>
     renderHook(() =>
       useWalletSharing({
         walletId: 'wallet-1',
@@ -75,6 +75,7 @@ describe('useWalletSharing', () => {
         onDataRefresh,
         setWalletShareInfo,
         setWallet,
+        ...overrides,
       })
     );
 
@@ -138,6 +139,80 @@ describe('useWalletSharing', () => {
     expect(result.current.selectedGroupToAdd).toBe('');
   });
 
+  it('updates and removes group access', async () => {
+    const { result } = renderSharingHook({
+      walletShareInfo: {
+        users: [],
+        group: { id: 'group-9', name: 'Operators' },
+      } as any,
+    });
+
+    await act(async () => {
+      await result.current.updateGroupRole('viewer');
+    });
+    expect(walletsApi.shareWalletWithGroup).toHaveBeenCalledWith('wallet-1', {
+      groupId: 'group-9',
+      role: 'viewer',
+    });
+
+    await act(async () => {
+      await result.current.removeGroup();
+    });
+    expect(walletsApi.shareWalletWithGroup).toHaveBeenCalledWith('wallet-1', { groupId: null });
+  });
+
+  it('no-ops guarded operations when required wallet context is missing', async () => {
+    const { result } = renderSharingHook({
+      walletId: undefined,
+      wallet: null,
+      walletShareInfo: null,
+    });
+
+    await act(async () => {
+      result.current.setSelectedGroupToAdd('group-1');
+      await result.current.addGroup();
+      await result.current.updateGroupRole('viewer');
+      await result.current.removeGroup();
+      await result.current.handleShareWithUser('user-2');
+      await result.current.handleRemoveUserAccess('user-2');
+      await result.current.handleTransferComplete();
+    });
+
+    expect(walletsApi.shareWalletWithGroup).not.toHaveBeenCalled();
+    expect(walletsApi.shareWalletWithUser).not.toHaveBeenCalled();
+    expect(walletsApi.removeUserFromWallet).not.toHaveBeenCalled();
+    expect(walletsApi.getWallet).not.toHaveBeenCalled();
+  });
+
+  it('reports group operation failures via error handler', async () => {
+    vi.mocked(walletsApi.shareWalletWithGroup).mockRejectedValue(new Error('group failed'));
+
+    const { result } = renderSharingHook({
+      walletShareInfo: {
+        users: [],
+        group: { id: 'group-1', name: 'Shared' },
+      } as any,
+    });
+
+    act(() => {
+      result.current.setSelectedGroupToAdd('group-1');
+    });
+    await act(async () => {
+      await result.current.addGroup();
+    });
+    expect(handleError).toHaveBeenCalledWith(expect.any(Error), 'Share Failed');
+
+    await act(async () => {
+      await result.current.updateGroupRole('signer');
+    });
+    expect(handleError).toHaveBeenCalledWith(expect.any(Error), 'Update Role Failed');
+
+    await act(async () => {
+      await result.current.removeGroup();
+    });
+    expect(handleError).toHaveBeenCalledWith(expect.any(Error), 'Remove Group Failed');
+  });
+
   it('shares with user and opens device share prompt when needed', async () => {
     vi.mocked(walletsApi.getWalletShareInfo).mockResolvedValue({
       users: [{ id: 'user-2', username: 'alice' }],
@@ -159,6 +234,45 @@ describe('useWalletSharing', () => {
     });
     expect(result.current.deviceSharePrompt.show).toBe(true);
     expect(result.current.deviceSharePrompt.targetUsername).toBe('alice');
+  });
+
+  it('resolves share target username from search results, then falls back to default text', async () => {
+    vi.mocked(authApi.searchUsers).mockResolvedValue([{ id: 'user-9', username: 'bob' }] as never);
+    vi.mocked(walletsApi.getWalletShareInfo).mockResolvedValue({ users: [], group: null } as never);
+    vi.mocked(walletsApi.shareWalletWithUser).mockResolvedValue({
+      devicesToShare: [{ id: 'device-1', label: 'Coldcard' }],
+    } as never);
+
+    const { result, rerender } = renderSharingHook();
+
+    await act(async () => {
+      await result.current.handleSearchUsers('bo');
+    });
+    await act(async () => {
+      await result.current.handleShareWithUser('user-9');
+    });
+    expect(result.current.deviceSharePrompt.targetUsername).toBe('bob');
+
+    vi.mocked(walletsApi.shareWalletWithUser).mockResolvedValue({
+      devicesToShare: [{ id: 'device-2', label: 'Passport' }],
+    } as never);
+    await act(async () => {
+      await result.current.handleShareWithUser('missing-user');
+    });
+    expect(result.current.deviceSharePrompt.targetUsername).toBe('this user');
+
+    rerender();
+  });
+
+  it('reports share-with-user failures', async () => {
+    vi.mocked(walletsApi.shareWalletWithUser).mockRejectedValue(new Error('share user failed'));
+    const { result } = renderSharingHook();
+
+    await act(async () => {
+      await result.current.handleShareWithUser('user-2');
+    });
+
+    expect(handleError).toHaveBeenCalledWith(expect.any(Error), 'Share Failed');
   });
 
   it('shares prompted devices and reports partial success', async () => {
@@ -215,6 +329,57 @@ describe('useWalletSharing', () => {
     expect(handleError).toHaveBeenCalledWith(expect.any(Error), 'Device Share Failed');
   });
 
+  it('no-ops device sharing when prompt is hidden and supports dismissing the prompt', async () => {
+    const { result } = renderSharingHook();
+
+    await act(async () => {
+      await result.current.handleShareDevicesWithUser();
+    });
+    expect(devicesApi.shareDeviceWithUser).not.toHaveBeenCalled();
+
+    vi.mocked(walletsApi.getWalletShareInfo).mockResolvedValue({
+      users: [{ id: 'user-2', username: 'alice' }],
+      group: null,
+    } as never);
+    vi.mocked(walletsApi.shareWalletWithUser).mockResolvedValue({
+      devicesToShare: [{ id: 'device-1' }],
+    } as never);
+
+    await act(async () => {
+      await result.current.handleShareWithUser('user-2');
+    });
+    expect(result.current.deviceSharePrompt.show).toBe(true);
+
+    act(() => {
+      result.current.dismissDeviceSharePrompt();
+    });
+    expect(result.current.deviceSharePrompt.show).toBe(false);
+  });
+
+  it('handles unexpected device-share errors from Promise.allSettled', async () => {
+    vi.mocked(walletsApi.getWalletShareInfo).mockResolvedValue({
+      users: [{ id: 'user-2', username: 'alice' }],
+      group: null,
+    } as never);
+    vi.mocked(walletsApi.shareWalletWithUser).mockResolvedValue({
+      devicesToShare: [{ id: 'device-1' }],
+    } as never);
+    vi.mocked(devicesApi.shareDeviceWithUser).mockImplementation(() => {
+      throw new Error('sync failure');
+    });
+
+    const { result } = renderSharingHook();
+    await act(async () => {
+      await result.current.handleShareWithUser('user-2');
+    });
+    expect(result.current.deviceSharePrompt.show).toBe(true);
+    await act(async () => {
+      await result.current.handleShareDevicesWithUser();
+    });
+
+    expect(handleError).toHaveBeenCalledWith(expect.any(Error), 'Device Share Failed');
+  });
+
   it('removes user access and refreshes share info', async () => {
     const { result } = renderSharingHook();
 
@@ -224,6 +389,28 @@ describe('useWalletSharing', () => {
 
     expect(walletsApi.removeUserFromWallet).toHaveBeenCalledWith('wallet-1', 'user-2');
     expect(walletsApi.getWalletShareInfo).toHaveBeenCalledWith('wallet-1');
+  });
+
+  it('reports remove-user failures', async () => {
+    vi.mocked(walletsApi.removeUserFromWallet).mockRejectedValue(new Error('remove failed'));
+    const { result } = renderSharingHook();
+
+    await act(async () => {
+      await result.current.handleRemoveUserAccess('user-2');
+    });
+    expect(handleError).toHaveBeenCalledWith(expect.any(Error), 'Remove User Failed');
+  });
+
+  it('reports user search failures and clears loading state', async () => {
+    vi.mocked(authApi.searchUsers).mockRejectedValue(new Error('search failed'));
+    const { result } = renderSharingHook();
+
+    await act(async () => {
+      await result.current.handleSearchUsers('ab');
+    });
+
+    expect(handleError).toHaveBeenCalledWith(expect.any(Error), 'Failed to Search Users');
+    expect(result.current.searchingUsers).toBe(false);
   });
 
   it('reloads wallet and share info after transfer completion', async () => {
@@ -236,5 +423,16 @@ describe('useWalletSharing', () => {
     expect(walletsApi.getWallet).toHaveBeenCalledWith('wallet-1');
     expect(setWallet).toHaveBeenCalledWith({ id: 'wallet-1', name: 'Reloaded' });
     expect(walletsApi.getWalletShareInfo).toHaveBeenCalledWith('wallet-1');
+  });
+
+  it('swallows transfer reload failures without invoking shared error handler', async () => {
+    vi.mocked(walletsApi.getWallet).mockRejectedValue(new Error('reload failed'));
+    const { result } = renderSharingHook();
+
+    await act(async () => {
+      await result.current.handleTransferComplete();
+    });
+
+    expect(handleError).not.toHaveBeenCalledWith(expect.any(Error), 'Transfer Failed');
   });
 });

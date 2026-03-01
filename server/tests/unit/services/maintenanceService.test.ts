@@ -89,6 +89,36 @@ vi.mock('child_process', () => {
 
 import { maintenanceService } from '../../../src/services/maintenanceService';
 
+// Import standalone functions from sub-modules for direct-call tests.
+// These are the real implementations using mocked dependencies (db, auditService, etc.).
+import {
+  cleanupAuditLogs,
+  cleanupPriceData,
+  cleanupFeeEstimates,
+  cleanupExpiredDrafts,
+  cleanupExpiredTransfers,
+  cleanupExpiredRefreshTokens,
+} from '../../../src/services/maintenance/dataCleanup';
+import {
+  runWeeklyMaintenance,
+  runMonthlyMaintenance,
+  cleanupOrphanedDrafts,
+} from '../../../src/services/maintenance/databaseMaintenance';
+import { checkDiskUsage } from '../../../src/services/maintenance/diskMonitoring';
+
+// Dummy config to pass to functions that require MaintenanceServiceConfig
+const testConfig = {
+  auditLogRetentionDays: 90,
+  priceDataRetentionDays: 30,
+  feeEstimateRetentionDays: 7,
+  dailyCleanupInterval: 1000,
+  hourlyCleanupInterval: 500,
+  initialDelayMs: 200,
+  weeklyMaintenanceInterval: 7 * 24 * 60 * 60 * 1000,
+  monthlyMaintenanceInterval: 30 * 24 * 60 * 60 * 1000,
+  diskWarningThresholdPercent: 80,
+};
+
 describe('maintenanceService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -188,19 +218,20 @@ describe('maintenanceService', () => {
   });
 
   it('runDailyCleanups logs and continues when tasks reject', async () => {
-    vi.spyOn(maintenanceService, 'cleanupAuditLogs').mockRejectedValueOnce(new Error('audit failed'));
-    vi.spyOn(maintenanceService, 'cleanupPriceData').mockResolvedValueOnce(1);
-    vi.spyOn(maintenanceService, 'cleanupFeeEstimates').mockRejectedValueOnce(new Error('fees failed'));
-    vi.spyOn(maintenanceService, 'cleanupExpiredRefreshTokens').mockResolvedValueOnce(2);
-    vi.spyOn(maintenanceService, 'checkDiskUsage').mockRejectedValueOnce(new Error('disk failed'));
+    // Make underlying mocks reject/resolve to control each cleanup task
+    mockAuditService.cleanup.mockRejectedValueOnce(new Error('audit failed'));
+    mockDb.priceData.deleteMany.mockResolvedValueOnce({ count: 1 });
+    mockDb.feeEstimate.deleteMany.mockRejectedValueOnce(new Error('fees failed'));
+    mockDb.refreshToken.deleteMany.mockResolvedValueOnce({ count: 2 });
+    // checkDiskUsage swallows errors internally, so it won't reject in allSettled
 
     await expect(maintenanceService.runDailyCleanups()).resolves.toBeUndefined();
     expect(mockLog.error).toHaveBeenCalled();
   });
 
   it('runHourlyCleanups logs and continues when tasks reject', async () => {
-    vi.spyOn(maintenanceService, 'cleanupExpiredDrafts').mockRejectedValueOnce(new Error('draft failed'));
-    vi.spyOn(maintenanceService, 'cleanupExpiredTransfers').mockResolvedValueOnce(1);
+    mockDb.draftTransaction.deleteMany.mockRejectedValueOnce(new Error('draft failed'));
+    mockExpireOldTransfers.mockResolvedValueOnce(1);
 
     await expect(maintenanceService.runHourlyCleanups()).resolves.toBeUndefined();
     expect(mockLog.error).toHaveBeenCalled();
@@ -208,62 +239,62 @@ describe('maintenanceService', () => {
 
   it('cleanupAuditLogs returns deleted count and logs failures', async () => {
     mockAuditService.cleanup.mockResolvedValueOnce(5);
-    await expect(maintenanceService.cleanupAuditLogs()).resolves.toBe(5);
+    await expect(cleanupAuditLogs(testConfig)).resolves.toBe(5);
 
     mockAuditService.cleanup.mockRejectedValueOnce(new Error('cleanup boom'));
-    await expect(maintenanceService.cleanupAuditLogs()).rejects.toThrow('cleanup boom');
+    await expect(cleanupAuditLogs(testConfig)).rejects.toThrow('cleanup boom');
   });
 
   it('cleanupPriceData and cleanupFeeEstimates handle success and error', async () => {
     mockDb.priceData.deleteMany.mockResolvedValueOnce({ count: 3 });
-    await expect(maintenanceService.cleanupPriceData()).resolves.toBe(3);
+    await expect(cleanupPriceData(testConfig)).resolves.toBe(3);
 
     mockDb.feeEstimate.deleteMany.mockResolvedValueOnce({ count: 2 });
-    await expect(maintenanceService.cleanupFeeEstimates()).resolves.toBe(2);
+    await expect(cleanupFeeEstimates(testConfig)).resolves.toBe(2);
 
     mockDb.priceData.deleteMany.mockRejectedValueOnce(new Error('price fail'));
-    await expect(maintenanceService.cleanupPriceData()).rejects.toThrow('price fail');
+    await expect(cleanupPriceData(testConfig)).rejects.toThrow('price fail');
 
     mockDb.feeEstimate.deleteMany.mockRejectedValueOnce(new Error('fee fail'));
-    await expect(maintenanceService.cleanupFeeEstimates()).rejects.toThrow('fee fail');
+    await expect(cleanupFeeEstimates(testConfig)).rejects.toThrow('fee fail');
   });
 
   it('cleanupExpiredDrafts logs audit events when deletions occur', async () => {
     mockDb.draftTransaction.deleteMany.mockResolvedValueOnce({ count: 4 });
 
-    await expect(maintenanceService.cleanupExpiredDrafts()).resolves.toBe(4);
+    await expect(cleanupExpiredDrafts()).resolves.toBe(4);
     expect(mockAuditService.log).toHaveBeenCalledWith(expect.objectContaining({
       action: 'maintenance.draft_cleanup',
       success: true,
     }));
 
     mockDb.draftTransaction.deleteMany.mockRejectedValueOnce(new Error('draft db fail'));
-    await expect(maintenanceService.cleanupExpiredDrafts()).rejects.toThrow('draft db fail');
+    await expect(cleanupExpiredDrafts()).rejects.toThrow('draft db fail');
   });
 
   it('cleanupExpiredTransfers logs audit events and propagates failures', async () => {
     mockExpireOldTransfers.mockResolvedValueOnce(6);
-    await expect(maintenanceService.cleanupExpiredTransfers()).resolves.toBe(6);
+    await expect(cleanupExpiredTransfers()).resolves.toBe(6);
     expect(mockAuditService.log).toHaveBeenCalledWith(expect.objectContaining({
       action: 'maintenance.transfer_expiry',
     }));
 
     mockExpireOldTransfers.mockRejectedValueOnce(new Error('transfer fail'));
-    await expect(maintenanceService.cleanupExpiredTransfers()).rejects.toThrow('transfer fail');
+    await expect(cleanupExpiredTransfers()).rejects.toThrow('transfer fail');
   });
 
   it('cleanupExpiredRefreshTokens and cleanupOrphanedDrafts handle both paths', async () => {
     mockDb.refreshToken.deleteMany.mockResolvedValueOnce({ count: 7 });
-    await expect(maintenanceService.cleanupExpiredRefreshTokens()).resolves.toBe(7);
+    await expect(cleanupExpiredRefreshTokens()).resolves.toBe(7);
 
     mockDb.$executeRaw.mockResolvedValueOnce(9);
-    await expect(maintenanceService.cleanupOrphanedDrafts()).resolves.toBe(9);
+    await expect(cleanupOrphanedDrafts()).resolves.toBe(9);
 
     mockDb.refreshToken.deleteMany.mockRejectedValueOnce(new Error('token fail'));
-    await expect(maintenanceService.cleanupExpiredRefreshTokens()).rejects.toThrow('token fail');
+    await expect(cleanupExpiredRefreshTokens()).rejects.toThrow('token fail');
 
     mockDb.$executeRaw.mockRejectedValueOnce(new Error('orphan fail'));
-    await expect(maintenanceService.cleanupOrphanedDrafts()).rejects.toThrow('orphan fail');
+    await expect(cleanupOrphanedDrafts()).rejects.toThrow('orphan fail');
   });
 
   it('cleanup methods return zero without completion logs when nothing is deleted', async () => {
@@ -273,16 +304,16 @@ describe('maintenanceService', () => {
     mockDb.refreshToken.deleteMany.mockResolvedValueOnce({ count: 0 });
     mockDb.$executeRaw.mockResolvedValueOnce(0);
 
-    await expect(maintenanceService.cleanupAuditLogs()).resolves.toBe(0);
-    await expect(maintenanceService.cleanupPriceData()).resolves.toBe(0);
-    await expect(maintenanceService.cleanupFeeEstimates()).resolves.toBe(0);
-    await expect(maintenanceService.cleanupExpiredRefreshTokens()).resolves.toBe(0);
-    await expect(maintenanceService.cleanupOrphanedDrafts()).resolves.toBe(0);
+    await expect(cleanupAuditLogs(testConfig)).resolves.toBe(0);
+    await expect(cleanupPriceData(testConfig)).resolves.toBe(0);
+    await expect(cleanupFeeEstimates(testConfig)).resolves.toBe(0);
+    await expect(cleanupExpiredRefreshTokens()).resolves.toBe(0);
+    await expect(cleanupOrphanedDrafts()).resolves.toBe(0);
   });
 
   it('checkDiskUsage exits early when docker is unavailable', async () => {
     mockExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
-    await expect(maintenanceService.checkDiskUsage()).resolves.toBeUndefined();
+    await expect(checkDiskUsage(testConfig)).resolves.toBeUndefined();
   });
 
   it('checkDiskUsage warns and audits when threshold is exceeded', async () => {
@@ -293,7 +324,7 @@ describe('maintenanceService', () => {
       .mockResolvedValueOnce({ stdout: '[{"Mountpoint":"/var/lib/docker/volumes/v2"}]', stderr: '' }) // inspect vol2
       .mockResolvedValueOnce({ stdout: '/dev/sda1 100G 20G 80G 20% /var/lib/docker/volumes/v2\n', stderr: '' }); // df vol2
 
-    await maintenanceService.checkDiskUsage();
+    await checkDiskUsage(testConfig);
 
     expect(mockAuditService.log).toHaveBeenCalledWith(expect.objectContaining({
       action: 'maintenance.disk_warning',
@@ -306,10 +337,10 @@ describe('maintenanceService', () => {
       .mockResolvedValueOnce({ stdout: 'Docker version 24.0.0', stderr: '' })
       .mockRejectedValueOnce(new Error('volume missing'))
       .mockRejectedValueOnce(new Error('volume missing'));
-    await expect(maintenanceService.checkDiskUsage()).resolves.toBeUndefined();
+    await expect(checkDiskUsage(testConfig)).resolves.toBeUndefined();
 
     mockExecAsync.mockRejectedValueOnce(new Error('docker command failed'));
-    await expect(maintenanceService.checkDiskUsage()).resolves.toBeUndefined();
+    await expect(checkDiskUsage(testConfig)).resolves.toBeUndefined();
   });
 
   it('checkDiskUsage handles empty inspect output and short df output safely', async () => {
@@ -319,7 +350,7 @@ describe('maintenanceService', () => {
       .mockResolvedValueOnce({ stdout: '[{"Mountpoint":"/var/lib/docker/volumes/v2"}]', stderr: '' }) // inspect vol2
       .mockResolvedValueOnce({ stdout: '/dev/sda1 100G 95G\n', stderr: '' }); // df vol2 (insufficient fields)
 
-    await expect(maintenanceService.checkDiskUsage()).resolves.toBeUndefined();
+    await expect(checkDiskUsage(testConfig)).resolves.toBeUndefined();
     expect(mockAuditService.log).not.toHaveBeenCalledWith(expect.objectContaining({
       action: 'maintenance.disk_warning',
     }));
@@ -327,23 +358,30 @@ describe('maintenanceService', () => {
 
   it('checkDiskUsage handles unexpected outer exceptions', async () => {
     mockExecAsync.mockResolvedValueOnce(undefined as any);
-    await expect(maintenanceService.checkDiskUsage()).resolves.toBeUndefined();
+    await expect(checkDiskUsage(testConfig)).resolves.toBeUndefined();
     expect(mockLog.warn).toHaveBeenCalledWith('Disk usage check failed', expect.any(Object));
   });
 
   it('weekly maintenance check runs only when interval elapsed', async () => {
-    const runWeeklySpy = vi.spyOn(maintenanceService, 'runWeeklyMaintenance').mockResolvedValue(undefined);
-
     await maintenanceService.checkAndRunWeeklyMaintenance();
-    expect(runWeeklySpy).toHaveBeenCalledTimes(1);
+    expect(mockDb.$executeRaw).toHaveBeenCalled();
+
+    vi.clearAllMocks();
+    mockDb.$executeRaw.mockResolvedValue(0);
+    mockAuditService.log.mockResolvedValue(undefined);
 
     (maintenanceService as any).lastWeeklyRun = new Date();
     await maintenanceService.checkAndRunWeeklyMaintenance();
-    expect(runWeeklySpy).toHaveBeenCalledTimes(1);
+    // Should not have called $executeRaw again since interval hasn't elapsed
+    expect(mockDb.$executeRaw).not.toHaveBeenCalled();
+
+    vi.clearAllMocks();
+    mockDb.$executeRaw.mockResolvedValue(0);
+    mockAuditService.log.mockResolvedValue(undefined);
 
     (maintenanceService as any).lastWeeklyRun = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
     await maintenanceService.checkAndRunWeeklyMaintenance();
-    expect(runWeeklySpy).toHaveBeenCalledTimes(2);
+    expect(mockDb.$executeRaw).toHaveBeenCalled();
   });
 
   it('runWeeklyMaintenance executes SQL sequence and records success', async () => {
@@ -355,7 +393,7 @@ describe('maintenanceService', () => {
       .mockResolvedValueOnce(0)
       .mockResolvedValueOnce(0);
 
-    await expect(maintenanceService.runWeeklyMaintenance()).resolves.toBeUndefined();
+    await expect(runWeeklyMaintenance()).resolves.toBeUndefined();
     expect(mockDb.$executeRaw).toHaveBeenCalledTimes(6);
     expect(mockAuditService.log).toHaveBeenCalledWith(expect.objectContaining({
       action: 'maintenance.weekly_db_maintenance',
@@ -369,7 +407,7 @@ describe('maintenanceService', () => {
       .mockRejectedValueOnce(new Error('vacuum failed')) // vacuum analyze
       .mockResolvedValueOnce(0); // reset timeout in finally
 
-    await expect(maintenanceService.runWeeklyMaintenance()).rejects.toThrow('vacuum failed');
+    await expect(runWeeklyMaintenance()).rejects.toThrow('vacuum failed');
     expect(mockAuditService.log).toHaveBeenCalledWith(expect.objectContaining({
       action: 'maintenance.weekly_db_maintenance',
       success: false,
@@ -377,33 +415,43 @@ describe('maintenanceService', () => {
   });
 
   it('monthly maintenance check runs only when interval elapsed', async () => {
-    const runMonthlySpy = vi.spyOn(maintenanceService, 'runMonthlyMaintenance').mockResolvedValue(undefined);
+    mockDb.$executeRaw.mockResolvedValue(0); // for cleanupOrphanedDrafts inside runMonthlyMaintenance
 
     await maintenanceService.checkAndRunMonthlyMaintenance();
-    expect(runMonthlySpy).toHaveBeenCalledTimes(1);
+    expect(mockDb.pushDevice.deleteMany).toHaveBeenCalled();
+
+    vi.clearAllMocks();
+    mockDb.pushDevice.deleteMany.mockResolvedValue({ count: 0 });
+    mockDb.$executeRaw.mockResolvedValue(0);
+    mockAuditService.log.mockResolvedValue(undefined);
 
     (maintenanceService as any).lastMonthlyRun = new Date();
     await maintenanceService.checkAndRunMonthlyMaintenance();
-    expect(runMonthlySpy).toHaveBeenCalledTimes(1);
+    // Should not have called pushDevice.deleteMany again since interval hasn't elapsed
+    expect(mockDb.pushDevice.deleteMany).not.toHaveBeenCalled();
+
+    vi.clearAllMocks();
+    mockDb.pushDevice.deleteMany.mockResolvedValue({ count: 0 });
+    mockDb.$executeRaw.mockResolvedValue(0);
+    mockAuditService.log.mockResolvedValue(undefined);
 
     (maintenanceService as any).lastMonthlyRun = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000);
     await maintenanceService.checkAndRunMonthlyMaintenance();
-    expect(runMonthlySpy).toHaveBeenCalledTimes(2);
+    expect(mockDb.pushDevice.deleteMany).toHaveBeenCalled();
   });
 
   it('runMonthlyMaintenance handles success and failure', async () => {
     mockDb.pushDevice.deleteMany.mockResolvedValueOnce({ count: 2 });
-    const orphanSpy = vi.spyOn(maintenanceService, 'cleanupOrphanedDrafts').mockResolvedValueOnce(3);
+    mockDb.$executeRaw.mockResolvedValueOnce(3); // cleanupOrphanedDrafts
 
-    await expect(maintenanceService.runMonthlyMaintenance()).resolves.toBeUndefined();
-    expect(orphanSpy).toHaveBeenCalledTimes(1);
+    await expect(runMonthlyMaintenance()).resolves.toBeUndefined();
     expect(mockAuditService.log).toHaveBeenCalledWith(expect.objectContaining({
       action: 'maintenance.monthly_stale_cleanup',
       success: true,
     }));
 
     mockDb.pushDevice.deleteMany.mockRejectedValueOnce(new Error('monthly failed'));
-    await expect(maintenanceService.runMonthlyMaintenance()).rejects.toThrow('monthly failed');
+    await expect(runMonthlyMaintenance()).rejects.toThrow('monthly failed');
     expect(mockAuditService.log).toHaveBeenCalledWith(expect.objectContaining({
       action: 'maintenance.monthly_stale_cleanup',
       success: false,
@@ -412,9 +460,9 @@ describe('maintenanceService', () => {
 
   it('runMonthlyMaintenance succeeds when stale push device cleanup finds nothing', async () => {
     mockDb.pushDevice.deleteMany.mockResolvedValueOnce({ count: 0 });
-    vi.spyOn(maintenanceService, 'cleanupOrphanedDrafts').mockResolvedValueOnce(0);
+    mockDb.$executeRaw.mockResolvedValueOnce(0); // cleanupOrphanedDrafts
 
-    await expect(maintenanceService.runMonthlyMaintenance()).resolves.toBeUndefined();
+    await expect(runMonthlyMaintenance()).resolves.toBeUndefined();
     expect(mockAuditService.log).toHaveBeenCalledWith(expect.objectContaining({
       action: 'maintenance.monthly_stale_cleanup',
       success: true,
@@ -441,13 +489,25 @@ describe('maintenanceService', () => {
 
   it('triggerCleanup dispatches all supported tasks and errors on unknown task', async () => {
     vi.spyOn(maintenanceService, 'runAllCleanups').mockResolvedValue(undefined);
-    vi.spyOn(maintenanceService, 'cleanupAuditLogs').mockResolvedValue(1);
-    vi.spyOn(maintenanceService, 'cleanupPriceData').mockResolvedValue(2);
-    vi.spyOn(maintenanceService, 'cleanupFeeEstimates').mockResolvedValue(3);
-    vi.spyOn(maintenanceService, 'cleanupExpiredDrafts').mockResolvedValue(4);
-    vi.spyOn(maintenanceService, 'cleanupExpiredTransfers').mockResolvedValue(5);
-    vi.spyOn(maintenanceService, 'runWeeklyMaintenance').mockResolvedValue(undefined);
-    vi.spyOn(maintenanceService, 'runMonthlyMaintenance').mockResolvedValue(undefined);
+
+    // Set up mocks for each cleanup task called via triggerCleanup
+    mockAuditService.cleanup.mockResolvedValueOnce(1); // audit
+    mockDb.priceData.deleteMany.mockResolvedValueOnce({ count: 2 }); // price
+    mockDb.feeEstimate.deleteMany.mockResolvedValueOnce({ count: 3 }); // fees
+    mockDb.draftTransaction.deleteMany.mockResolvedValueOnce({ count: 4 }); // drafts
+    mockExpireOldTransfers.mockResolvedValueOnce(5); // transfers
+    // weekly: 6 $executeRaw calls
+    mockDb.$executeRaw
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0);
+    // monthly: pushDevice.deleteMany + $executeRaw for orphaned drafts
+    mockDb.pushDevice.deleteMany.mockResolvedValueOnce({ count: 0 });
+    mockDb.$executeRaw
+      .mockResolvedValueOnce(0); // cleanupOrphanedDrafts inside runMonthlyMaintenance
 
     await expect(maintenanceService.triggerCleanup('all')).resolves.toBe(0);
     await expect(maintenanceService.triggerCleanup('audit')).resolves.toBe(1);

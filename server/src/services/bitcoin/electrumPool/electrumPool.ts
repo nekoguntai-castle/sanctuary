@@ -413,13 +413,13 @@ export class ElectrumPool extends EventEmitter {
 
     // Start idle connection cleanup (only in pool mode)
     this.idleCheckInterval = setInterval(
-      () => cleanupIdleConnections(this.connections, this.config.idleTimeoutMs, this.getEffectiveMinConnections()),
+      () => this.cleanupIdleConnections(),
       this.config.idleTimeoutMs / 2
     );
 
     // Start keepalive interval (ping idle connections to prevent server-side timeouts)
     this.keepaliveInterval = setInterval(
-      () => sendKeepalives(this.connections, this.isShuttingDown),
+      () => this.sendKeepalives(),
       this.config.keepaliveIntervalMs
     );
 
@@ -501,13 +501,7 @@ export class ElectrumPool extends EventEmitter {
       if (!conn || !conn.client.isConnected()) {
         // Reconnect if needed
         if (conn) {
-          await reconnectConnection(
-            conn,
-            this.config,
-            this.connections,
-            this.subscriptionConnectionId,
-            (client) => this.emit('subscriptionReconnected', client),
-          );
+          await this.reconnectConnection(conn);
         } else {
           await this.createConnection();
         }
@@ -519,7 +513,7 @@ export class ElectrumPool extends EventEmitter {
     const timeoutMs = options.timeoutMs ?? this.config.acquisitionTimeoutMs;
 
     // Try to get an idle connection
-    const conn = findIdleConnection(this.connections);
+    const conn = this.findIdleConnection();
     if (conn) {
       return this.activateConnection(conn, options.purpose, startTime);
     }
@@ -573,13 +567,7 @@ export class ElectrumPool extends EventEmitter {
       let conn = this.connections.values().next().value as PooledConnection | undefined;
       if (!conn || !conn.client.isConnected()) {
         if (conn) {
-          await reconnectConnection(
-            conn,
-            this.config,
-            this.connections,
-            this.subscriptionConnectionId,
-            (client) => this.emit('subscriptionReconnected', client),
-          );
+          await this.reconnectConnection(conn);
         } else {
           await this.createConnection();
         }
@@ -599,7 +587,7 @@ export class ElectrumPool extends EventEmitter {
     }
 
     // Create or designate a subscription connection
-    let conn = findIdleConnection(this.connections);
+    let conn = this.findIdleConnection();
     if (!conn && this.connections.size < this.getEffectiveMaxConnections()) {
       conn = await this.createConnection();
     }
@@ -785,7 +773,7 @@ export class ElectrumPool extends EventEmitter {
   private processWaitingQueue(): void {
     processWaitingQueue(
       this.waitingQueue,
-      () => findIdleConnection(this.connections),
+      () => this.findIdleConnection(),
       (conn, purpose, startTime) => this.activateConnection(conn, purpose, startTime),
     );
   }
@@ -798,13 +786,7 @@ export class ElectrumPool extends EventEmitter {
       this.connections,
       this.network,
       this.stats,
-      (conn) => reconnectConnection(
-        conn,
-        this.config,
-        this.connections,
-        this.subscriptionConnectionId,
-        (client) => this.emit('subscriptionReconnected', client),
-      ),
+      (conn) => this.reconnectConnection(conn),
       (conn) => this.handleConnectionError(conn),
     );
 
@@ -900,6 +882,7 @@ export class ElectrumPool extends EventEmitter {
         recordHealthCheckResult(this.serverStats, serverId, success, latencyMs, error),
       (serverId, isHealthy, failCount, errorMessage) =>
         updateServerHealthInDb(serverId, isHealthy, failCount, errorMessage),
+      (server) => this.createConnection(server),
     );
   }
 
@@ -907,6 +890,11 @@ export class ElectrumPool extends EventEmitter {
    * Handle a connection error
    */
   private async handleConnectionError(conn: PooledConnection): Promise<void> {
+    if (conn.isDedicated) {
+      await this.reconnectConnection(conn);
+      return;
+    }
+
     await handleConnectionError(
       conn,
       this.connections,
@@ -918,6 +906,41 @@ export class ElectrumPool extends EventEmitter {
       (client) => this.emit('subscriptionReconnected', client),
       (c) => this.handleConnectionError(c),
       () => this.selectServer(),
+      (server) => this.createConnection(server ?? undefined),
     );
+  }
+
+  /**
+   * Wrapper for testability and internal reuse.
+   */
+  private findIdleConnection(): PooledConnection | null {
+    return findIdleConnection(this.connections);
+  }
+
+  /**
+   * Wrapper for testability and internal reuse.
+   */
+  private async reconnectConnection(conn: PooledConnection): Promise<void> {
+    await reconnectConnection(
+      conn,
+      this.config,
+      this.connections,
+      this.subscriptionConnectionId,
+      (client) => this.emit('subscriptionReconnected', client),
+    );
+  }
+
+  /**
+   * Wrapper for testability and interval scheduling.
+   */
+  private cleanupIdleConnections(): void {
+    cleanupIdleConnections(this.connections, this.config.idleTimeoutMs, this.getEffectiveMinConnections());
+  }
+
+  /**
+   * Wrapper for testability and interval scheduling.
+   */
+  private async sendKeepalives(): Promise<void> {
+    await sendKeepalives(this.connections, this.isShuttingDown);
   }
 }

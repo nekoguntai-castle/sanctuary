@@ -110,9 +110,9 @@ export async function populateMissingTransactionFields(walletId: string): Promis
   );
 
   // PHASE 2: Process transactions and collect updates
-  const { pendingUpdates, updated, stats } = processTransactionUpdates(
+  const { pendingUpdates, updated, stats } = await processTransactionUpdates(
     walletId, transactions, txDetailsCache, prevTxCache, txHeightFromHistory,
-    walletAddresses, walletAddressLookup, walletAddressSet, currentHeight
+    walletAddresses, walletAddressLookup, walletAddressSet, currentHeight, network
   );
 
   // Log field population summary
@@ -387,7 +387,7 @@ interface PendingUpdate {
  * This is the main field population logic that examines each transaction
  * and determines what fields need to be filled in.
  */
-function processTransactionUpdates(
+async function processTransactionUpdates(
   walletId: string,
   transactions: Array<{
     id: string;
@@ -407,8 +407,9 @@ function processTransactionUpdates(
   walletAddresses: Array<{ id: string; address: string }>,
   walletAddressLookup: Map<string, string>,
   walletAddressSet: Set<string>,
-  currentHeight: number
-): { pendingUpdates: PendingUpdate[]; updated: number; stats: PopulationStats } {
+  currentHeight: number,
+  network: 'mainnet' | 'testnet' | 'signet' | 'regtest'
+): Promise<{ pendingUpdates: PendingUpdate[]; updated: number; stats: PopulationStats }> {
   const pendingUpdates: PendingUpdate[] = [];
   let updated = 0;
 
@@ -451,6 +452,16 @@ function processTransactionUpdates(
 
       // Populate blockTime if missing
       populateBlockTime(tx, txDetails, updates, stats);
+
+      // Derive blockTime from block header if txDetails.time was not available
+      if (tx.blockTime === null && !updates.blockTime && (tx.blockHeight || updates.blockHeight)) {
+        const height = (updates.blockHeight || tx.blockHeight) as number;
+        const blockTime = await getBlockTimestamp(height, network);
+        if (blockTime) {
+          updates.blockTime = blockTime;
+          stats.blockTimesPopulated++;
+        }
+      }
 
       const inputs = txDetails.vin || [];
       const outputs = txDetails.vout || [];
@@ -538,7 +549,7 @@ function populateBlockTime(
     updates.blockTime = new Date(txDetails.time * 1000);
     stats.blockTimesPopulated++;
   }
-  // Note: async getBlockTimestamp is handled in the caller for blockTime from block header
+  // Note: async getBlockTimestamp fallback is handled in processTransactionUpdates
 }
 
 /**

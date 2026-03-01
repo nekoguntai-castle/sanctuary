@@ -58,6 +58,96 @@ describe('useAITransactionFilter', () => {
     expect(result.current.filteredTransactions[0].txid).toBe('txid-1');
   });
 
+  it('returns original transactions when filter type is not transactions', () => {
+    const { result } = renderHook(() => useAITransactionFilter({ transactions: transactions as any }));
+
+    act(() => {
+      result.current.setAiQueryFilter({
+        type: 'wallets' as any,
+        sort: { field: 'amount', order: 'desc' },
+      });
+    });
+
+    expect(result.current.filteredTransactions.map((tx) => tx.txid)).toEqual(['txid-1', 'txid-2', 'txid-3']);
+  });
+
+  it('maps tx types (received/sent/other) when filtering by type', () => {
+    const { result } = renderHook(() => useAITransactionFilter({ transactions: transactions as any }));
+
+    act(() => {
+      result.current.setAiQueryFilter({
+        type: 'transactions',
+        filter: { type: 'send' },
+      });
+    });
+    expect(result.current.filteredTransactions.map((tx) => tx.txid)).toEqual(['txid-2']);
+
+    act(() => {
+      result.current.setAiQueryFilter({
+        type: 'transactions',
+        filter: { type: 'consolidation' as any },
+      });
+    });
+    expect(result.current.filteredTransactions.map((tx) => tx.txid)).toEqual(['txid-3']);
+  });
+
+  it('handles label filter when labels are missing and matches case-insensitively', () => {
+    const withMissingLabels = [
+      ...transactions,
+      {
+        id: 'tx-4',
+        txid: 'txid-4',
+        type: 'received',
+        amount: 2_000,
+        confirmations: 0,
+        timestamp: 1_700_000_300,
+      },
+    ];
+    const { result } = renderHook(() =>
+      useAITransactionFilter({ transactions: withMissingLabels as any })
+    );
+
+    act(() => {
+      result.current.setAiQueryFilter({
+        type: 'transactions',
+        filter: { label: 'GRO' },
+      });
+    });
+
+    expect(result.current.filteredTransactions.map((tx) => tx.txid)).toEqual(['txid-2']);
+  });
+
+  it.each([
+    { amountFilter: { '>': 50_000 }, expected: ['txid-3'] },
+    { amountFilter: { '<': 13_000 }, expected: ['txid-2'] },
+    { amountFilter: { '>=': 90_000 }, expected: ['txid-3'] },
+    { amountFilter: { '<=': 12_000 }, expected: ['txid-2'] },
+  ])('supports amount operator filter $amountFilter', ({ amountFilter, expected }) => {
+    const { result } = renderHook(() => useAITransactionFilter({ transactions: transactions as any }));
+
+    act(() => {
+      result.current.setAiQueryFilter({
+        type: 'transactions',
+        filter: { amount: amountFilter },
+      });
+    });
+
+    expect(result.current.filteredTransactions.map((tx) => tx.txid)).toEqual(expected);
+  });
+
+  it('filters by exact confirmations value and excludes non-matching transactions', () => {
+    const { result } = renderHook(() => useAITransactionFilter({ transactions: transactions as any }));
+
+    act(() => {
+      result.current.setAiQueryFilter({
+        type: 'transactions',
+        filter: { confirmations: 0 },
+      });
+    });
+
+    expect(result.current.filteredTransactions.map((tx) => tx.txid)).toEqual(['txid-2']);
+  });
+
   it('applies sort and limit', () => {
     const { result } = renderHook(() => useAITransactionFilter({ transactions: transactions as any }));
 
@@ -71,6 +161,56 @@ describe('useAITransactionFilter', () => {
 
     expect(result.current.filteredTransactions).toHaveLength(2);
     expect(result.current.filteredTransactions.map((tx) => tx.txid)).toEqual(['txid-3', 'txid-1']);
+  });
+
+  it('sorts by date/timestamp and confirmations with asc/desc branches', () => {
+    const { result } = renderHook(() => useAITransactionFilter({ transactions: transactions as any }));
+
+    act(() => {
+      result.current.setAiQueryFilter({
+        type: 'transactions',
+        sort: { field: 'date', order: 'asc' },
+      });
+    });
+    expect(result.current.filteredTransactions.map((tx) => tx.txid)).toEqual(['txid-1', 'txid-2', 'txid-3']);
+
+    act(() => {
+      result.current.setAiQueryFilter({
+        type: 'transactions',
+        sort: { field: 'timestamp', order: 'desc' },
+      });
+    });
+    expect(result.current.filteredTransactions.map((tx) => tx.txid)).toEqual(['txid-3', 'txid-2', 'txid-1']);
+
+    act(() => {
+      result.current.setAiQueryFilter({
+        type: 'transactions',
+        sort: { field: 'confirmations', order: 'asc' },
+      });
+    });
+    expect(result.current.filteredTransactions.map((tx) => tx.txid)).toEqual(['txid-2', 'txid-1', 'txid-3']);
+  });
+
+  it('does not apply limit when limit is zero or negative', () => {
+    const { result } = renderHook(() => useAITransactionFilter({ transactions: transactions as any }));
+
+    act(() => {
+      result.current.setAiQueryFilter({
+        type: 'transactions',
+        sort: { field: 'amount', order: 'desc' },
+        limit: 0,
+      });
+    });
+    expect(result.current.filteredTransactions).toHaveLength(3);
+
+    act(() => {
+      result.current.setAiQueryFilter({
+        type: 'transactions',
+        sort: { field: 'amount', order: 'desc' },
+        limit: -2,
+      });
+    });
+    expect(result.current.filteredTransactions).toHaveLength(3);
   });
 
   it('calculates all supported aggregations', () => {
@@ -119,6 +259,21 @@ describe('useAITransactionFilter', () => {
       });
     });
 
+    expect(result.current.aiAggregationResult).toBeNull();
+  });
+
+  it('returns null aggregation when filtered transactions are empty', () => {
+    const { result } = renderHook(() => useAITransactionFilter({ transactions: transactions as any }));
+
+    act(() => {
+      result.current.setAiQueryFilter({
+        type: 'transactions',
+        filter: { label: 'does-not-exist' },
+        aggregation: 'sum',
+      });
+    });
+
+    expect(result.current.filteredTransactions).toHaveLength(0);
     expect(result.current.aiAggregationResult).toBeNull();
   });
 });

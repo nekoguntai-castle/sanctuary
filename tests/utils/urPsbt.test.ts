@@ -132,6 +132,22 @@ describe('urPsbt', () => {
       const frames = encodePsbtToUrFrames(psbtBase64, 10);
       expect(frames.length).toBeGreaterThan(1);
     });
+
+    it('throws wrapped message when encoding fails with an Error', () => {
+      vi.spyOn(MockCryptoPSBT.prototype, 'toCBOR').mockImplementationOnce(() => {
+        throw new Error('cbor failed');
+      });
+
+      expect(() => encodePsbtToUrFrames(psbtBase64, 100)).toThrow('Failed to encode PSBT: cbor failed');
+    });
+
+    it('throws unknown message when encoding fails with a non-Error', () => {
+      vi.spyOn(MockCryptoPSBT.prototype, 'toCBOR').mockImplementationOnce(() => {
+        throw 'boom';
+      });
+
+      expect(() => encodePsbtToUrFrames(psbtBase64, 100)).toThrow('Failed to encode PSBT: Unknown error');
+    });
   });
 
   describe('getPsbtFragmentCount', () => {
@@ -166,9 +182,56 @@ describe('urPsbt', () => {
       const result = feedDecoderPart(decoder, 'ur:part:1');
       expect(result.error).toBe('bad data');
     });
+
+    it('falls back to default decoder error message when resultError is empty', () => {
+      const decoder = createPsbtDecoder() as MockURDecoder;
+      decoder.isError = () => true;
+      decoder.resultError = () => '';
+
+      const result = feedDecoderPart(decoder, 'ur:part:1');
+      expect(result.error).toBe('Decoding error');
+    });
+
+    it('returns thrown Error message from decoder.receivePart', () => {
+      const decoder = createPsbtDecoder() as MockURDecoder;
+      decoder.receivePart = () => {
+        throw new Error('bad scan');
+      };
+
+      const result = feedDecoderPart(decoder, 'ur:part:1');
+      expect(result).toEqual({ complete: false, progress: 0, error: 'bad scan' });
+    });
+
+    it('returns fallback message when decoder.receivePart throws a non-Error', () => {
+      const decoder = createPsbtDecoder() as MockURDecoder;
+      decoder.receivePart = () => {
+        throw 'bad scan';
+      };
+
+      const result = feedDecoderPart(decoder, 'ur:part:1');
+      expect(result).toEqual({ complete: false, progress: 0, error: 'Failed to process QR code' });
+    });
   });
 
   describe('getDecodedPsbt', () => {
+    it('throws decoder resultError when decode is not successful', () => {
+      const decoder = createPsbtDecoder() as MockURDecoder;
+      decoder.complete = true;
+      decoder.success = false;
+      decoder.error = 'bad decode';
+
+      expect(() => getDecodedPsbt(decoder as unknown as MockURDecoder)).toThrow('bad decode');
+    });
+
+    it('falls back to default decode message when decode is not successful without resultError', () => {
+      const decoder = createPsbtDecoder() as MockURDecoder;
+      decoder.complete = true;
+      decoder.success = false;
+      decoder.error = null;
+
+      expect(() => getDecodedPsbt(decoder as unknown as MockURDecoder)).toThrow('Decoding failed');
+    });
+
     it('decodes raw crypto-psbt bytes', () => {
       const decoder = createPsbtDecoder() as MockURDecoder;
       const raw = Buffer.from([0x70, 0x73, 0x62, 0x74, 0x01]);
@@ -189,6 +252,59 @@ describe('urPsbt', () => {
 
       const decoded = getDecodedPsbt(decoder as unknown as MockURDecoder);
       expect(decoded).toBe(Buffer.from([1, 2, 3, 4]).toString('base64'));
+    });
+
+    it('falls back to CryptoPSBT wrapper for non-magic Uint8Array payloads', () => {
+      const decoder = createPsbtDecoder() as MockURDecoder;
+      const raw = new Uint8Array([0x11, 0x22, 0x33, 0x44]);
+      decoder.complete = true;
+      decoder.success = true;
+      decoder.ur = new MockUR(raw, 'crypto-psbt');
+
+      const decoded = getDecodedPsbt(decoder as unknown as MockURDecoder);
+      expect(decoded).toBe(Buffer.from(raw).toString('base64'));
+    });
+
+    it('extracts raw data property when CryptoPSBT wrapper decode fails', () => {
+      const decoder = createPsbtDecoder() as MockURDecoder;
+      const rawPsbt = new Uint8Array([0x70, 0x73, 0x62, 0x74, 0x0a]);
+      decoder.complete = true;
+      decoder.success = true;
+      decoder.ur = new MockUR({ data: rawPsbt }, 'crypto-psbt');
+      MockCryptoPSBT.fromCBOR.mockImplementationOnce(() => {
+        throw new Error('wrapper failed');
+      });
+
+      const decoded = getDecodedPsbt(decoder as unknown as MockURDecoder);
+      expect(decoded).toBe(Buffer.from(rawPsbt).toString('base64'));
+    });
+
+    it('rethrows wrapped error when wrapper fails and raw extraction is not PSBT', () => {
+      const decoder = createPsbtDecoder() as MockURDecoder;
+      decoder.complete = true;
+      decoder.success = true;
+      decoder.ur = new MockUR({ data: new Uint8Array([1, 2, 3, 4]) }, 'crypto-psbt');
+      MockCryptoPSBT.fromCBOR.mockImplementationOnce(() => {
+        throw new Error('wrapper failed');
+      });
+
+      expect(() => getDecodedPsbt(decoder as unknown as MockURDecoder)).toThrow(
+        'Failed to decode PSBT: wrapper failed'
+      );
+    });
+
+    it('rethrows wrapped error when wrapper fails and cbor object has no data property', () => {
+      const decoder = createPsbtDecoder() as MockURDecoder;
+      decoder.complete = true;
+      decoder.success = true;
+      decoder.ur = new MockUR({ notData: new Uint8Array([1, 2]) }, 'crypto-psbt');
+      MockCryptoPSBT.fromCBOR.mockImplementationOnce(() => {
+        throw new Error('wrapper failed');
+      });
+
+      expect(() => getDecodedPsbt(decoder as unknown as MockURDecoder)).toThrow(
+        'Failed to decode PSBT: wrapper failed'
+      );
     });
 
     it('decodes bytes UR with raw psbt magic', () => {
@@ -217,6 +333,30 @@ describe('urPsbt', () => {
       const decoder = createPsbtDecoder() as MockURDecoder;
       decoder.complete = false;
       expect(() => getDecodedPsbt(decoder as unknown as MockURDecoder)).toThrow('Decoder is not complete');
+    });
+
+    it('throws wrapped error for unsupported UR type', () => {
+      const decoder = createPsbtDecoder() as MockURDecoder;
+      decoder.complete = true;
+      decoder.success = true;
+      decoder.ur = new MockUR(new Uint8Array([1, 2]), 'crypto-hdkey');
+
+      expect(() => getDecodedPsbt(decoder as unknown as MockURDecoder)).toThrow(
+        'Failed to decode PSBT: Unsupported UR type: crypto-hdkey'
+      );
+    });
+
+    it('throws unknown wrapped error when a non-Error is thrown during decode', () => {
+      const decoder = createPsbtDecoder() as MockURDecoder;
+      decoder.complete = true;
+      decoder.success = true;
+      decoder.resultUR = () => {
+        throw 'boom';
+      };
+
+      expect(() => getDecodedPsbt(decoder as unknown as MockURDecoder)).toThrow(
+        'Failed to decode PSBT: Unknown error'
+      );
     });
   });
 

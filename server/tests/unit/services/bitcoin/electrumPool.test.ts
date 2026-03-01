@@ -23,6 +23,8 @@ import {
   shutdownElectrumPool,
 } from '../../../../src/services/bitcoin/electrumPool';
 import { db as prismaDb } from '../../../../src/repositories/db';
+import { recordHealthCheckResult, updateServerHealthInDb, sendKeepalives } from '../../../../src/services/bitcoin/electrumPool/healthChecker';
+import { reconnectConnection, cleanupIdleConnections, findIdleConnection } from '../../../../src/services/bitcoin/electrumPool/connectionManager';
 
 // Mock the ElectrumClient as a class
 vi.mock('../../../../src/services/bitcoin/electrum', () => {
@@ -1026,14 +1028,14 @@ describe('ElectrumPool', () => {
 
       (pool as any).connections.set('conn-a', connA);
       (pool as any).connections.set('conn-b', connB);
-      (pool as any).subscriptionConnectionId = 'conn-a';
+      (pool as any).subscriptionConnectionId.value = 'conn-a';
 
       pool.disconnectServerConnections('server-1');
 
       expect((pool as any).connections.has('conn-a')).toBe(false);
       expect((pool as any).connections.has('conn-b')).toBe(true);
       expect(connA.client.disconnect).toHaveBeenCalledTimes(1);
-      expect((pool as any).subscriptionConnectionId).toBeNull();
+      expect((pool as any).subscriptionConnectionId.value).toBeNull();
     });
 
     it('disconnectServerConnections tolerates per-connection disconnect errors', () => {
@@ -1185,7 +1187,7 @@ describe('ElectrumPool', () => {
       (prismaDb as any).electrumServer.update.mockRejectedValueOnce(new Error('db write failed'));
 
       await expect(
-        (pool as any).updateServerHealthInDb('server-1', false, 3, 'health failed')
+        updateServerHealthInDb('server-1', false, 3, 'health failed')
       ).resolves.toBeUndefined();
     });
 
@@ -1193,7 +1195,7 @@ describe('ElectrumPool', () => {
       pool = createPool();
 
       await expect(
-        (pool as any).updateServerHealthInDb('server-1', true, undefined, 'ignored')
+        updateServerHealthInDb('server-1', true, undefined, 'ignored')
       ).resolves.toBeUndefined();
 
       expect((prismaDb as any).electrumServer.update).toHaveBeenCalledWith(
@@ -1447,14 +1449,14 @@ describe('ElectrumPool', () => {
         client: { isConnected: vi.fn().mockReturnValue(false) },
       });
       (pool as any).connections.set(dead.id, dead);
-      (pool as any).subscriptionConnectionId = dead.id;
+      (pool as any).subscriptionConnectionId.value = dead.id;
       const created = makeConn({ id: 'new-sub', state: 'idle' });
       vi.spyOn(pool as any, 'createConnection').mockResolvedValue(created);
       vi.spyOn(pool as any, 'findIdleConnection').mockReturnValue(null);
 
       const client = await pool.getSubscriptionConnection();
       expect(client).toBe(created.client);
-      expect((pool as any).subscriptionConnectionId).toBe(created.id);
+      expect((pool as any).subscriptionConnectionId.value).toBe(created.id);
       expect(created.isDedicated).toBe(true);
     });
 
@@ -1485,14 +1487,14 @@ describe('ElectrumPool', () => {
       };
 
       (pool as any).connections.set(conn.id, conn);
-      (pool as any).subscriptionConnectionId = conn.id;
+      (pool as any).subscriptionConnectionId.value = conn.id;
 
       const reconnectPromise = (pool as any).reconnectConnection(conn);
       await vi.runAllTimersAsync();
       await reconnectPromise;
 
       expect((pool as any).connections.has(conn.id)).toBe(false);
-      expect((pool as any).subscriptionConnectionId).toBeNull();
+      expect((pool as any).subscriptionConnectionId.value).toBeNull();
       expect(conn.state).toBe('closed');
       vi.useRealTimers();
     });
@@ -1775,7 +1777,7 @@ describe('ElectrumPool', () => {
       const client = await pool.getSubscriptionConnection();
       expect(createSpy).toHaveBeenCalledTimes(1);
       expect(client).toBe(created.client);
-      expect((pool as any).subscriptionConnectionId).toBe(created.id);
+      expect((pool as any).subscriptionConnectionId.value).toBe(created.id);
     });
 
     it('single-mode handle withClient returns callback result', async () => {
@@ -2249,14 +2251,18 @@ describe('ElectrumPool', () => {
       });
       (pool as any).connections.set(failingA.id, failingA);
       (pool as any).connections.set(failingB.id, failingB);
-      const recordHealthSpy = vi.spyOn(pool as any, 'recordHealthCheckResult');
+      // Clear any existing health history so we can count new entries
+      const statsBeforeFail = (pool as any).serverStats.get('s1');
+      if (statsBeforeFail) statsBeforeFail.healthHistory = [];
       vi.spyOn(pool as any, 'ensureMinimumConnections').mockResolvedValue(undefined);
       vi.spyOn(pool as any, 'exportMetrics').mockImplementation(() => undefined);
 
       await (pool as any).performHealthChecks();
 
-      const failCalls = recordHealthSpy.mock.calls.filter((call) => call[1] === false);
-      expect(failCalls.length).toBe(1);
+      // Only one failure record should be added per server per cycle (not one per connection)
+      const statsAfterFail = (pool as any).serverStats.get('s1');
+      const failEntries = statsAfterFail.healthHistory.filter((h: any) => !h.success);
+      expect(failEntries.length).toBe(1);
     });
 
     it('performHealthChecks skips active non-dedicated connections and records first success once per server', async () => {
@@ -2291,15 +2297,19 @@ describe('ElectrumPool', () => {
       (pool as any).connections.set(skippedActive.id, skippedActive);
       (pool as any).connections.set(idleA.id, idleA);
       (pool as any).connections.set(idleB.id, idleB);
-      const recordHealthSpy = vi.spyOn(pool as any, 'recordHealthCheckResult');
+      // Clear any existing health history so we can count new entries
+      const statsBeforeSuccess = (pool as any).serverStats.get('s1');
+      if (statsBeforeSuccess) statsBeforeSuccess.healthHistory = [];
       vi.spyOn(pool as any, 'ensureMinimumConnections').mockResolvedValue(undefined);
       vi.spyOn(pool as any, 'exportMetrics').mockImplementation(() => undefined);
 
       await (pool as any).performHealthChecks();
 
       expect(skippedActive.client.getBlockHeight).not.toHaveBeenCalled();
-      const successCalls = recordHealthSpy.mock.calls.filter((call) => call[1] === true);
-      expect(successCalls.length).toBe(1);
+      // Only one success record should be added per server per cycle
+      const statsAfterSuccess = (pool as any).serverStats.get('s1');
+      const successEntries = statsAfterSuccess.healthHistory.filter((h: any) => h.success);
+      expect(successEntries.length).toBe(1);
     });
 
     it('performHealthChecks skips server stat updates when stats entry is missing', async () => {
@@ -2376,7 +2386,7 @@ describe('ElectrumPool', () => {
       pool.setServers([{ id: 's1', label: 'S1', host: 'a', port: 1, useSsl: true, priority: 0, enabled: true }]);
 
       for (let i = 0; i < 30; i++) {
-        (pool as any).recordHealthCheckResult('s1', i % 2 === 0, i, `err-${i}`);
+        recordHealthCheckResult((pool as any).serverStats, 's1', i % 2 === 0, i, `err-${i}`);
       }
 
       const state = pool.getServerBackoffState('s1');
@@ -2390,7 +2400,7 @@ describe('ElectrumPool', () => {
 
       expect(() => pool.recordServerFailure('missing-server')).not.toThrow();
       expect(() => pool.recordServerSuccess('missing-server')).not.toThrow();
-      expect(() => (pool as any).recordHealthCheckResult('missing-server', true, 1)).not.toThrow();
+      expect(() => recordHealthCheckResult((pool as any).serverStats, 'missing-server', true, 1)).not.toThrow();
     });
 
     it('exportMetrics reads pool and circuit stats', () => {

@@ -100,5 +100,12 @@ export function normalizeIncomingAccounts(
     return { accounts: [{ purpose, scriptType, derivationPath, xpub }] };
   }
 
+  // Legacy xpub-only payload without derivationPath: proceed with no derived accounts.
+  // The caller's early guard already rejects payloads missing both xpub and accounts,
+  // so reaching here means xpub is present but derivationPath is absent.
+  if (xpub) {
+    return { accounts: [] };
+  }
+
   return { error: 'Either xpub or accounts array is required' };
 }
