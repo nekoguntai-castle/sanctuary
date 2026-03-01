@@ -1,177 +1,23 @@
 /**
- * Wallet Service
+ * Wallet Service - CRUD Orchestrator
  *
- * Business logic for wallet management operations
+ * Core wallet lifecycle operations (create, read, update, delete).
+ * Coordinates between address generation, access control, and descriptor building.
  */
 
-import { db as prisma } from '../repositories/db';
-import * as descriptorBuilder from './bitcoin/descriptorBuilder';
-import * as addressDerivation from './bitcoin/addressDerivation';
-import { createLogger } from '../utils/logger';
-import { INITIAL_ADDRESS_COUNT } from '../constants';
-import { hookRegistry, Operations } from './hooks';
-import { NotFoundError, ForbiddenError, InvalidInputError, ConflictError, WalletNotFoundError, DeviceNotFoundError } from '../errors';
-import { getErrorMessage } from '../utils/errors';
+import { db as prisma } from '../../repositories/db';
+import * as descriptorBuilder from '../bitcoin/descriptorBuilder';
+import { createLogger } from '../../utils/logger';
+import { hookRegistry, Operations } from '../hooks';
+import { ForbiddenError, InvalidInputError, ConflictError, WalletNotFoundError, DeviceNotFoundError } from '../../errors';
+import { getErrorMessage } from '../../utils/errors';
+import { generateInitialAddresses } from './addressGeneration';
+import type { WalletRole, CreateWalletInput, WalletWithBalance } from './types';
 
 const log = createLogger('WALLET');
 
 // Roles that can edit wallet data (labels, etc.)
 const EDIT_ROLES = ['owner', 'signer'];
-
-/**
- * Generate initial receive and change addresses for a wallet descriptor.
- * Returns address records ready for bulk insert.
- */
-function generateInitialAddresses(
-  walletId: string,
-  descriptor: string,
-  network: 'mainnet' | 'testnet' | 'regtest'
-): Array<{ walletId: string; address: string; derivationPath: string; index: number; used: boolean }> {
-  const addresses = [];
-  for (const change of [false, true]) {
-    for (let i = 0; i < INITIAL_ADDRESS_COUNT; i++) {
-      const { address, derivationPath } = addressDerivation.deriveAddressFromDescriptor(
-        descriptor,
-        i,
-        { network, change }
-      );
-      addresses.push({ walletId, address, derivationPath, index: i, used: false });
-    }
-  }
-  return addresses;
-}
-
-/**
- * Result of checking wallet access with edit permission
- */
-export interface WalletAccessCheckResult {
-  hasAccess: boolean;
-  canEdit: boolean;
-  role: WalletRole;
-}
-
-// ========================================
-// WALLET ACCESS HELPERS
-// ========================================
-
-export type WalletRole = 'owner' | 'signer' | 'viewer' | null;
-
-/**
- * Get user's role for a specific wallet
- * Returns the highest privilege role if user has multiple access paths
- */
-export async function getUserWalletRole(walletId: string, userId: string): Promise<WalletRole> {
-  // Check direct user access first
-  const walletUser = await prisma.walletUser.findFirst({
-    where: { walletId, userId },
-  });
-
-  if (walletUser) {
-    return walletUser.role as WalletRole;
-  }
-
-  // Check group access
-  const wallet = await prisma.wallet.findFirst({
-    where: {
-      id: walletId,
-      group: { members: { some: { userId } } },
-    },
-    select: { groupRole: true },
-  });
-
-  if (wallet) {
-    return wallet.groupRole as WalletRole;
-  }
-
-  return null;
-}
-
-/**
- * Check if user has any access to wallet (for read operations)
- */
-export async function checkWalletAccess(walletId: string, userId: string): Promise<boolean> {
-  const role = await getUserWalletRole(walletId, userId);
-  return role !== null;
-}
-
-/**
- * Check if user has edit access to wallet (owner or signer roles)
- * Use this for operations that modify labels, memos, etc.
- */
-export async function checkWalletEditAccess(walletId: string, userId: string): Promise<boolean> {
-  const role = await getUserWalletRole(walletId, userId);
-  return role !== null && EDIT_ROLES.includes(role);
-}
-
-/**
- * Check if user is wallet owner
- * Use this for operations like sharing, deleting wallet
- */
-export async function checkWalletOwnerAccess(walletId: string, userId: string): Promise<boolean> {
-  const role = await getUserWalletRole(walletId, userId);
-  return role === 'owner';
-}
-
-/**
- * Check wallet access and edit permission in a single query
- * Use this to avoid N+1 queries when checking both access and edit permission
- *
- * Returns: { hasAccess, canEdit, role }
- * - hasAccess: true if user can view the wallet
- * - canEdit: true if user can modify the wallet (owner or signer)
- * - role: the user's role ('owner' | 'signer' | 'viewer' | null)
- */
-export async function checkWalletAccessWithRole(walletId: string, userId: string): Promise<WalletAccessCheckResult> {
-  const role = await getUserWalletRole(walletId, userId);
-  return {
-    hasAccess: role !== null,
-    canEdit: role !== null && EDIT_ROLES.includes(role),
-    role,
-  };
-}
-
-interface CreateWalletInput {
-  name: string;
-  type: 'single_sig' | 'multi_sig';
-  scriptType: 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy';
-  network?: 'mainnet' | 'testnet' | 'regtest';
-  quorum?: number;
-  totalSigners?: number;
-  descriptor?: string;
-  fingerprint?: string;
-  groupId?: string;
-  deviceIds?: string[]; // New: array of device IDs to include
-}
-
-interface WalletWithBalance {
-  id: string;
-  name: string;
-  type: string;
-  scriptType: string;
-  network: string;
-  quorum?: number | null;
-  totalSigners?: number | null;
-  descriptor?: string | null;
-  fingerprint?: string | null;
-  createdAt: Date;
-  balance: number;
-  deviceCount: number;
-  addressCount: number;
-  // Sync metadata
-  lastSyncedAt?: Date | null;
-  lastSyncStatus?: string | null;
-  syncInProgress?: boolean;
-  // Sharing info
-  isShared: boolean;
-  sharedWith?: {
-    groupName?: string | null;
-    userCount: number;
-  };
-  // User's role for this wallet (owner, signer, viewer)
-  userRole?: WalletRole;
-  // Whether user can edit (owner or signer)
-  canEdit?: boolean;
-}
 
 /**
  * Create a new wallet
@@ -434,7 +280,7 @@ export async function getUserWallets(userId: string): Promise<WalletWithBalance[
       userRole = directAccess.role as WalletRole;
     } else if (hasGroup) {
       // User has access via group, use the wallet's groupRole
-      userRole = (wallet as any).groupRole as WalletRole || 'viewer';
+      userRole = (wallet as unknown as { groupRole: string }).groupRole as WalletRole || 'viewer';
     }
 
     const canEdit = userRole === 'owner' || userRole === 'signer';
@@ -660,12 +506,12 @@ export async function deleteWallet(walletId: string, userId: string): Promise<vo
   }
 
   // Unsubscribe from address notifications to prevent memory leak
-  const { getSyncService } = await import('./syncService');
+  const { getSyncService } = await import('../syncService');
   const syncService = getSyncService();
   await syncService.unsubscribeWalletAddresses(walletId);
 
   // Also clean up notification service subscriptions
-  const { notificationService } = await import('../websocket/notifications');
+  const { notificationService } = await import('../../websocket/notifications');
   await notificationService.unsubscribeWalletAddresses(walletId);
 
   await prisma.wallet.delete({
@@ -780,73 +626,6 @@ export async function addDeviceToWallet(
       });
     }
   }
-}
-
-/**
- * Generate new receiving address for wallet
- */
-export async function generateAddress(
-  walletId: string,
-  userId: string
-): Promise<string> {
-  const wallet = await prisma.wallet.findFirst({
-    where: {
-      id: walletId,
-      users: { some: { userId } },
-    },
-    include: {
-      addresses: {
-        orderBy: { index: 'desc' },
-        take: 1,
-      },
-    },
-  });
-
-  if (!wallet) {
-    throw new WalletNotFoundError(walletId);
-  }
-
-  // Get next index
-  const nextIndex = wallet.addresses.length > 0 ? wallet.addresses[0].index + 1 : 0;
-
-  // Check if wallet has descriptor or xpub
-  if (!wallet.descriptor) {
-    throw new InvalidInputError(
-      'Wallet does not have a descriptor. Cannot derive addresses. ' +
-      'Please import wallet with xpub or descriptor.'
-    );
-  }
-
-  // Derive address from descriptor
-  const addressDerivation = await import('./bitcoin/addressDerivation');
-  const { address, derivationPath } = addressDerivation.deriveAddressFromDescriptor(
-    wallet.descriptor,
-    nextIndex,
-    {
-      network: wallet.network as 'mainnet' | 'testnet' | 'regtest',
-      change: false, // External/receive address
-    }
-  );
-
-  // Save to database
-  await prisma.address.create({
-    data: {
-      walletId,
-      address,
-      derivationPath,
-      index: nextIndex,
-      used: false,
-    },
-  });
-
-  // Execute after hooks for audit logging
-  hookRegistry.executeAfter(Operations.ADDRESS_GENERATE, { walletId }, {
-    userId,
-    result: address,
-    success: true,
-  }).catch(err => log.warn('After hook failed', { error: err }));
-
-  return address;
 }
 
 /**
