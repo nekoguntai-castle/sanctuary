@@ -8,33 +8,22 @@
 import React, { useEffect, useRef, useCallback, useMemo, useState } from 'react';
 import {
   Plus,
-  ChevronDown,
-  ChevronUp,
-  Check,
-  Lock,
   AlertCircle,
-  Clock,
-  Coins,
-  Zap,
-  Settings2,
-  FileText,
   AlertTriangle,
 } from 'lucide-react';
-import { Button } from '../../ui/Button';
-import { OutputRow } from '../OutputRow';
-import { FeeSelector } from '../FeeSelector';
-import { AdvancedOptions } from '../AdvancedOptions';
-import { WizardNavigation } from '../WizardNavigation';
-import { useSendTransaction } from '../../../contexts/send';
-import { useCurrency } from '../../../contexts/CurrencyContext';
-import { parseBip21Uri } from '../../../utils/bip21Parser';
-import { validateAddress, addressMatchesNetwork } from '../../../utils/validateAddress';
-import { calculateUTXOAge, getAgeCategoryColor } from '../../../utils/utxoAge';
-import { analyzeSpendPrivacy, getWalletPrivacy, type SpendPrivacyAnalysis, type UtxoPrivacyInfo } from '../../../src/api/transactions';
-import SpendPrivacyCard from '../../SpendPrivacyCard';
-import { PrivacyBadge } from '../../PrivacyBadge';
-import { createLogger } from '../../../utils/logger';
-import type { UTXO } from '../../../types';
+import { Button } from '../../../ui/Button';
+import { OutputRow } from '../../OutputRow';
+import { WizardNavigation } from '../../WizardNavigation';
+import { useSendTransaction } from '../../../../contexts/send';
+import { useCurrency } from '../../../../contexts/CurrencyContext';
+import { parseBip21Uri } from '../../../../utils/bip21Parser';
+import { validateAddress, addressMatchesNetwork } from '../../../../utils/validateAddress';
+import { analyzeSpendPrivacy, getWalletPrivacy, type SpendPrivacyAnalysis, type UtxoPrivacyInfo } from '../../../../src/api/transactions';
+import { createLogger } from '../../../../utils/logger';
+import type { UTXO } from '../../../../types';
+import { CoinControlPanel } from './CoinControlPanel';
+import { FeePanel } from './FeePanel';
+import { AdvancedOptionsPanel } from './AdvancedOptionsPanel';
 
 const log = createLogger('OutputsStep');
 
@@ -332,11 +321,6 @@ export function OutputsStep() {
     }
   }, [coinControlExpanded, state.showCoinControl, toggleCoinControl]);
 
-  // Check if a UTXO is selected
-  const isSelected = (utxo: UTXO) => {
-    return state.selectedUTXOs.has(`${utxo.txid}:${utxo.vout}`);
-  };
-
   // Advanced options handlers
   const handleRbfChange = useCallback((enabled: boolean) => {
     dispatch({ type: 'SET_RBF_ENABLED', enabled });
@@ -353,100 +337,6 @@ export function OutputsStep() {
   const handleDecoyCountChange = useCallback((count: number) => {
     dispatch({ type: 'SET_DECOY_COUNT', count });
   }, [dispatch]);
-
-  // Render single UTXO row
-  const renderUtxo = (utxo: UTXO, selectable: boolean = true) => {
-    const utxoId = `${utxo.txid}:${utxo.vout}`;
-    const selected = isSelected(utxo);
-
-    return (
-      <div
-        key={utxoId}
-        onClick={() => selectable && toggleUtxo(utxoId)}
-        className={`
-          p-3 rounded-lg border transition-all
-          ${selectable ? 'cursor-pointer hover:shadow-sm' : 'cursor-not-allowed opacity-50'}
-          ${selected
-            ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
-            : 'border-sanctuary-200 dark:border-sanctuary-700 hover:border-sanctuary-300'
-          }
-        `}
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            {selectable && (
-              <div
-                className={`
-                  w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0
-                  ${selected
-                    ? 'border-primary-500 bg-primary-500'
-                    : 'border-sanctuary-300 dark:border-sanctuary-600'
-                  }
-                `}
-              >
-                {selected && <Check className="w-2.5 h-2.5 text-white" />}
-              </div>
-            )}
-            {!selectable && utxo.frozen && (
-              <Lock className="w-3.5 h-3.5 text-sanctuary-400" />
-            )}
-
-            <div className="min-w-0">
-              <div className="font-mono text-xs text-sanctuary-900 dark:text-sanctuary-100 truncate">
-                {utxo.address.slice(0, 8)}...{utxo.address.slice(-6)}
-              </div>
-              <div className="text-[10px] text-sanctuary-500 flex items-center gap-1.5">
-                {utxo.confirmations < 6 ? (
-                  <span className="text-amber-500 flex items-center gap-0.5">
-                    <AlertCircle className="w-2.5 h-2.5" />
-                    {utxo.confirmations} conf
-                  </span>
-                ) : (
-                  (() => {
-                    const age = calculateUTXOAge({ confirmations: utxo.confirmations, date: utxo.date });
-                    return (
-                      <span className={`flex items-center gap-0.5 ${getAgeCategoryColor(age.category)}`}>
-                        <Clock className="w-2.5 h-2.5" />
-                        {age.shortText}
-                      </span>
-                    );
-                  })()
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 flex-shrink-0">
-            {/* Privacy Badge */}
-            {(() => {
-              const privacyInfo = utxoPrivacyMap.get(utxoId);
-              if (privacyInfo?.score) {
-                return (
-                  <PrivacyBadge
-                    grade={privacyInfo.score.grade}
-                    score={privacyInfo.score.score}
-                    size="sm"
-                  />
-                );
-              }
-              return null;
-            })()}
-
-            <div className="text-right">
-              <div className="font-medium text-sm text-sanctuary-900 dark:text-sanctuary-100">
-                {format(utxo.amount)}
-              </div>
-              {formatFiat(utxo.amount) && (
-                <div className="text-[10px] text-sanctuary-500">
-                  {formatFiat(utxo.amount)}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
 
   return (
     <div className="space-y-5">
@@ -583,188 +473,51 @@ export function OutputsStep() {
       {/* Collapsible Panels */}
       <div className="space-y-2">
         {/* Coin Control Panel */}
-        <div className="surface-secondary rounded-xl border border-sanctuary-200 dark:border-sanctuary-700 overflow-hidden">
-          <button
-            onClick={handleToggleCoinControl}
-            className="w-full px-4 py-3 flex items-center justify-between hover:bg-sanctuary-100 dark:hover:bg-sanctuary-800 transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <Coins className="w-4 h-4 text-sanctuary-500" />
-              <span className="text-sm font-medium text-sanctuary-900 dark:text-sanctuary-100">
-                Coin Control
-              </span>
-              {state.showCoinControl && state.selectedUTXOs.size > 0 && (
-                <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300">
-                  {state.selectedUTXOs.size} UTXOs
-                </span>
-              )}
-            </div>
-            {coinControlExpanded ? (
-              <ChevronUp className="w-4 h-4 text-sanctuary-400" />
-            ) : (
-              <ChevronDown className="w-4 h-4 text-sanctuary-400" />
-            )}
-          </button>
-
-          {coinControlExpanded && (
-            <div className="px-4 pb-4 space-y-3 border-t border-sanctuary-200 dark:border-sanctuary-700 pt-3">
-              <div className="flex gap-2">
-                <Button variant="secondary" size="sm" onClick={selectAllUtxos}>
-                  Select All
-                </Button>
-                <Button variant="secondary" size="sm" onClick={clearUtxoSelection}>
-                  Clear
-                </Button>
-                {!state.showCoinControl && (
-                  <Button variant="primary" size="sm" onClick={toggleCoinControl}>
-                    Enable
-                  </Button>
-                )}
-              </div>
-
-              {state.showCoinControl && remainingNeeded > 0 && (
-                <div className="flex items-center gap-1 text-sm text-amber-600 dark:text-amber-400 p-2 rounded-lg bg-amber-50 dark:bg-amber-900/20">
-                  <AlertCircle className="w-3.5 h-3.5" />
-                  Need {format(remainingNeeded)} more to cover transaction
-                </div>
-              )}
-
-              <div className="space-y-2 max-h-[200px] overflow-y-auto">
-                {available.length === 0 ? (
-                  <div className="text-center py-4 text-sanctuary-500 text-sm">
-                    No spendable UTXOs
-                  </div>
-                ) : (
-                  available.map(utxo => renderUtxo(utxo, true))
-                )}
-              </div>
-
-              {/* Privacy Analysis Card */}
-              {privacyAnalysis && state.selectedUTXOs.size >= 1 && (
-                <SpendPrivacyCard analysis={privacyAnalysis} className="mt-3" />
-              )}
-
-              {/* Manually Frozen UTXOs (red) */}
-              {manuallyFrozen.length > 0 && (
-                <div className="pt-2 border-t border-sanctuary-200 dark:border-sanctuary-700">
-                  <h4 className="text-xs font-medium text-rose-500 flex items-center gap-1 mb-2">
-                    <Lock className="w-3 h-3" />
-                    Frozen ({manuallyFrozen.length})
-                  </h4>
-                  <div className="space-y-2 opacity-60">
-                    {manuallyFrozen.slice(0, 2).map(utxo => renderUtxo(utxo, false))}
-                    {manuallyFrozen.length > 2 && (
-                      <div className="text-xs text-sanctuary-500 text-center">
-                        +{manuallyFrozen.length - 2} more
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Draft-Locked UTXOs (blue) */}
-              {draftLocked.length > 0 && (
-                <div className="pt-2 border-t border-sanctuary-200 dark:border-sanctuary-700">
-                  <h4 className="text-xs font-medium text-blue-500 flex items-center gap-1 mb-2">
-                    <FileText className="w-3 h-3" />
-                    Locked by Drafts ({draftLocked.length})
-                  </h4>
-                  <div className="space-y-2 opacity-60">
-                    {draftLocked.slice(0, 2).map(utxo => renderUtxo(utxo, false))}
-                    {draftLocked.length > 2 && (
-                      <div className="text-xs text-sanctuary-500 text-center">
-                        +{draftLocked.length - 2} more
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+        <CoinControlPanel
+          expanded={coinControlExpanded}
+          showCoinControl={state.showCoinControl}
+          selectedUTXOs={state.selectedUTXOs}
+          available={available}
+          manuallyFrozen={manuallyFrozen}
+          draftLocked={draftLocked}
+          remainingNeeded={remainingNeeded}
+          privacyAnalysis={privacyAnalysis}
+          utxoPrivacyMap={utxoPrivacyMap}
+          onTogglePanel={handleToggleCoinControl}
+          onSelectAll={selectAllUtxos}
+          onClearSelection={clearUtxoSelection}
+          onToggleCoinControl={toggleCoinControl}
+          onToggleUtxo={toggleUtxo}
+          format={format}
+          formatFiat={formatFiat}
+        />
 
         {/* Fee Panel */}
-        <div className="surface-secondary rounded-xl border border-sanctuary-200 dark:border-sanctuary-700 overflow-hidden">
-          <button
-            onClick={() => setFeeExpanded(!feeExpanded)}
-            className="w-full px-4 py-3 flex items-center justify-between hover:bg-sanctuary-100 dark:hover:bg-sanctuary-800 transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <Zap className="w-4 h-4 text-sanctuary-500" />
-              <span className="text-sm font-medium text-sanctuary-900 dark:text-sanctuary-100">
-                Network Fee
-              </span>
-              <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-sanctuary-200 dark:bg-sanctuary-700 text-sanctuary-700 dark:text-sanctuary-300">
-                {state.feeRate} sat/vB • {format(estimatedFee)}
-              </span>
-            </div>
-            {feeExpanded ? (
-              <ChevronUp className="w-4 h-4 text-sanctuary-400" />
-            ) : (
-              <ChevronDown className="w-4 h-4 text-sanctuary-400" />
-            )}
-          </button>
-
-          {feeExpanded && (
-            <div className="px-4 pb-4 border-t border-sanctuary-200 dark:border-sanctuary-700 pt-3">
-              <FeeSelector
-                feeRate={state.feeRate}
-                setFeeRate={setFeeRate}
-                fees={fees}
-                mempoolBlocks={mempoolBlocks}
-                queuedBlocksSummary={queuedBlocksSummary}
-              />
-            </div>
-          )}
-        </div>
+        <FeePanel
+          expanded={feeExpanded}
+          feeRate={state.feeRate}
+          estimatedFee={estimatedFee}
+          fees={fees}
+          mempoolBlocks={mempoolBlocks}
+          queuedBlocksSummary={queuedBlocksSummary}
+          onToggle={() => setFeeExpanded(!feeExpanded)}
+          onSetFeeRate={setFeeRate}
+          format={format}
+        />
 
         {/* Advanced Options Panel */}
-        <div className="surface-secondary rounded-xl border border-sanctuary-200 dark:border-sanctuary-700 overflow-hidden">
-          <button
-            onClick={() => setAdvancedExpanded(!advancedExpanded)}
-            className="w-full px-4 py-3 flex items-center justify-between hover:bg-sanctuary-100 dark:hover:bg-sanctuary-800 transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <Settings2 className="w-4 h-4 text-sanctuary-500" />
-              <span className="text-sm font-medium text-sanctuary-900 dark:text-sanctuary-100">
-                Advanced Options
-              </span>
-              {(state.rbfEnabled || state.useDecoys || state.subtractFees) && (
-                <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-sanctuary-200 dark:bg-sanctuary-700 text-sanctuary-700 dark:text-sanctuary-300">
-                  {[
-                    state.rbfEnabled && 'RBF',
-                    state.useDecoys && 'Decoys',
-                    state.subtractFees && 'Subtract',
-                  ].filter(Boolean).join(', ')}
-                </span>
-              )}
-            </div>
-            {advancedExpanded ? (
-              <ChevronUp className="w-4 h-4 text-sanctuary-400" />
-            ) : (
-              <ChevronDown className="w-4 h-4 text-sanctuary-400" />
-            )}
-          </button>
-
-          {advancedExpanded && (
-            <div className="px-4 pb-4 border-t border-sanctuary-200 dark:border-sanctuary-700 pt-3">
-              <AdvancedOptions
-                showAdvanced={true}
-                setShowAdvanced={() => {}}
-                enableRBF={state.rbfEnabled}
-                setEnableRBF={handleRbfChange}
-                subtractFeesFromAmount={state.subtractFees}
-                setSubtractFeesFromAmount={handleSubtractFeesChange}
-                enableDecoyOutputs={state.useDecoys}
-                setEnableDecoyOutputs={handleDecoysChange}
-                decoyCount={state.decoyCount}
-                setDecoyCount={handleDecoyCountChange}
-                disabled={false}
-                hideHeader={true}
-              />
-            </div>
-          )}
-        </div>
+        <AdvancedOptionsPanel
+          expanded={advancedExpanded}
+          rbfEnabled={state.rbfEnabled}
+          useDecoys={state.useDecoys}
+          subtractFees={state.subtractFees}
+          decoyCount={state.decoyCount}
+          onToggle={() => setAdvancedExpanded(!advancedExpanded)}
+          onRbfChange={handleRbfChange}
+          onSubtractFeesChange={handleSubtractFeesChange}
+          onDecoysChange={handleDecoysChange}
+          onDecoyCountChange={handleDecoyCountChange}
+        />
       </div>
 
       {/* Navigation */}
