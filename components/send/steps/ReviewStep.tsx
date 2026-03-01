@@ -6,60 +6,21 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Send,
-  Save,
-  Check,
-  AlertTriangle,
-  Shield,
-  Layers,
-  ChevronLeft,
-  FileDown,
-  Upload,
-  Loader2,
-  CheckCircle2,
-  Usb,
-  QrCode,
-} from 'lucide-react';
-import { QRSigningModal } from '../../qr';
-import { Button } from '../../ui/Button';
-import { TransactionFlowPreview, FlowInput, FlowOutput } from '../../TransactionFlowPreview';
 import { useSendTransaction } from '../../../contexts/send';
 import { useCurrency } from '../../../contexts/CurrencyContext';
-import { FiatDisplay } from '../../FiatDisplay';
 import { createLogger } from '../../../utils/logger';
-import { STEP_LABELS } from '../../../contexts/send/types';
 import { lookupAddresses, type AddressLookupResult } from '../../../src/api/bitcoin';
-import type { WizardStep } from '../../../contexts/send/types';
 import type { TransactionData } from '../../../hooks/useSendTransactionActions';
 import { isMultisigType } from '../../../types';
 import type { Device } from '../../../types';
+import type { FlowInput, FlowOutput } from '../../TransactionFlowPreview';
+import { TransactionSummary } from './review/TransactionSummary';
+import { SigningFlow } from './review/SigningFlow';
+import { UsbSigning } from './review/UsbSigning';
+import { QrSigning } from './review/QrSigning';
+import { DraftActions } from './review/DraftActions';
 
 const log = createLogger('ReviewStep');
-
-// Device connection capabilities
-type ConnectionMethod = 'usb' | 'airgap' | 'qr';
-
-interface DeviceCapabilities {
-  methods: ConnectionMethod[];
-  labels: Record<ConnectionMethod, string>;
-}
-
-const getDeviceCapabilities = (deviceType: string): DeviceCapabilities => {
-  const normalizedType = deviceType.toLowerCase();
-
-  if (normalizedType.includes('coldcard')) {
-    // ColdCard does not support USB signing - only air-gapped PSBT file signing
-    return { methods: ['airgap'], labels: { usb: '', airgap: 'PSBT File', qr: '' } };
-  }
-  if (normalizedType.includes('ledger') || normalizedType.includes('trezor') || normalizedType.includes('bitbox') || normalizedType.includes('jade')) {
-    return { methods: ['usb'], labels: { usb: 'USB', airgap: '', qr: '' } };
-  }
-  if (normalizedType.includes('passport') || normalizedType.includes('foundation') || normalizedType.includes('keystone') || normalizedType.includes('seedsigner')) {
-    return { methods: ['qr', 'airgap'], labels: { usb: '', airgap: 'PSBT File', qr: 'QR Code' } };
-  }
-  return { methods: ['usb', 'airgap'], labels: { usb: 'USB', airgap: 'PSBT File', qr: '' } };
-};
 
 export interface ReviewStepProps {
   // Handlers from parent
@@ -275,11 +236,6 @@ export function ReviewStep({
     }
   }, [state.transactionType]);
 
-  // Edit section handler
-  const handleEdit = (step: WizardStep) => {
-    goToStep(step);
-  };
-
   // Check if multi-sig
   const isMultiSig = isMultisigType(wallet.type);
 
@@ -353,572 +309,81 @@ export function ReviewStep({
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="text-center mb-6">
-        <h2 className="text-xl font-semibold text-sanctuary-900 dark:text-sanctuary-100">
-          {isDraftMode ? 'Resume Draft' : 'Review Transaction'}
-        </h2>
-        <p className="text-sm text-sanctuary-500 mt-1">
-          {isDraftMode
-            ? 'Sign and broadcast this saved transaction'
-            : 'Please verify all details before signing'
-          }
-        </p>
-        {isDraftMode && (
-          <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 text-xs font-medium">
-            <Save className="w-3 h-3" />
-            Saved Draft - Parameters Locked
-          </div>
-        )}
-      </div>
-
-      {/* Transaction Flow Visualization */}
-      {flowData.inputs.length > 0 && flowData.outputs.length > 0 && (
-        <TransactionFlowPreview
-          inputs={flowData.inputs}
-          outputs={flowData.outputs}
-          fee={flowData.fee}
-          feeRate={state.feeRate}
-          totalInput={flowData.totalInput}
-          totalOutput={flowData.totalOutput}
-          isEstimate={!txData}
-        />
-      )}
-
-      {/* Transaction Summary Card */}
-      <div className="surface-elevated rounded-2xl border border-sanctuary-200 dark:border-sanctuary-800 overflow-hidden">
-        {/* Type Badge */}
-        <div className="px-4 py-3 surface-secondary border-b border-sanctuary-200 dark:border-sanctuary-700 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-primary-100 dark:bg-primary-900/30">
-              {state.transactionType === 'consolidation' ? (
-                <Layers className="w-4 h-4 text-primary-600 dark:text-primary-400" />
-              ) : (
-                <Send className="w-4 h-4 text-primary-600 dark:text-primary-400" />
-              )}
-            </div>
-            <span className="font-medium text-sanctuary-900 dark:text-sanctuary-100">
-              {txTypeLabel}
-            </span>
-          </div>
-          {!isDraftMode && (
-            <button
-              onClick={() => handleEdit('type')}
-              className="text-xs text-primary-600 hover:text-primary-700"
-            >
-              Change
-            </button>
-          )}
-        </div>
-
-        {/* Recipients Section */}
-        <div className="p-4 border-b border-sanctuary-200 dark:border-sanctuary-700">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-medium text-sanctuary-500">
-              {state.outputs.length === 1 ? 'Recipient' : `Recipients (${state.outputs.length})`}
-            </h3>
-            {!isDraftMode && (
-              <button
-                onClick={() => handleEdit('outputs')}
-                className="text-xs text-primary-600 hover:text-primary-700"
-              >
-                Edit
-              </button>
-            )}
-          </div>
-
-          <div className="space-y-3">
-            {state.outputs.map((output, index) => (
-              <div
-                key={index}
-                className="flex items-center justify-between p-3 rounded-lg surface-secondary"
-              >
-                <div className="flex-1 min-w-0 mr-4">
-                  <div className="font-mono text-sm text-sanctuary-900 dark:text-sanctuary-100 truncate">
-                    {output.address || '(no address)'}
-                  </div>
-                  {state.payjoinUrl && index === 0 && (
-                    <div className="flex items-center gap-1 mt-1 text-xs text-zen-indigo">
-                      <Shield className="w-3 h-3" />
-                      Payjoin {payjoinStatus === 'success' ? 'active' : payjoinStatus === 'failed' ? '(fallback)' : 'enabled'}
-                    </div>
-                  )}
-                </div>
-                <div className="text-right flex-shrink-0">
-                  <div className="font-semibold text-sanctuary-900 dark:text-sanctuary-100">
-                    {output.sendMax ? 'MAX' : format(parseInt(output.amount, 10) || 0)}
-                  </div>
-                  {!output.sendMax && (
-                    <FiatDisplay
-                      sats={parseInt(output.amount, 10) || 0}
-                      size="xs"
-                      showApprox
-                    />
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Amounts Section */}
-        <div className="p-4 space-y-3">
-          {/* Total Send */}
-          <div className="flex justify-between items-center">
-            <span className="text-sm text-sanctuary-500">Total Sending</span>
-            <div className="text-right">
-              <div className="font-semibold text-sanctuary-900 dark:text-sanctuary-100">
-                {state.outputs.some(o => o.sendMax)
-                  ? format(selectedTotal - estimatedFee)
-                  : format(totalOutputAmount)
-                }
-              </div>
-              <FiatDisplay
-                sats={state.outputs.some(o => o.sendMax) ? selectedTotal - estimatedFee : totalOutputAmount}
-                size="xs"
-                showApprox
-                mode="subtle"
-              />
-            </div>
-          </div>
-
-          {/* Fee */}
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-sanctuary-500">Network Fee</span>
-              {!isDraftMode && (
-                <button
-                  onClick={() => handleEdit('outputs')}
-                  className="text-xs text-primary-600 hover:text-primary-700"
-                >
-                  Edit
-                </button>
-              )}
-            </div>
-            <div className="text-right">
-              <div className="font-semibold text-sanctuary-900 dark:text-sanctuary-100">
-                {format(txData?.fee || estimatedFee)}
-              </div>
-              <div className="flex items-center gap-1.5 justify-end text-xs text-sanctuary-500">
-                <span>{state.feeRate} sat/vB</span>
-                <FiatDisplay sats={txData?.fee || estimatedFee} size="xs" mode="subtle" />
-              </div>
-            </div>
-          </div>
-
-          {/* Change (if any) */}
-          {changeAmount > 0 && (
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-sanctuary-500">Change</span>
-              <div className="text-right">
-                <div className="font-semibold text-sanctuary-900 dark:text-sanctuary-100">
-                  {format(changeAmount)}
-                </div>
-                <FiatDisplay sats={changeAmount} size="xs" showApprox mode="subtle" />
-              </div>
-            </div>
-          )}
-
-          {/* Divider */}
-          <div className="border-t border-sanctuary-200 dark:border-sanctuary-700 pt-3">
-            <div className="flex justify-between items-center">
-              <span className="font-medium text-sanctuary-900 dark:text-sanctuary-100">
-                Total (including fee)
-              </span>
-              <div className="text-right">
-                <div className="text-lg font-bold text-sanctuary-900 dark:text-sanctuary-100">
-                  {state.outputs.some(o => o.sendMax)
-                    ? format(selectedTotal)
-                    : format(totalOutputAmount + (txData?.fee || estimatedFee))
-                  }
-                </div>
-                <FiatDisplay
-                  sats={state.outputs.some(o => o.sendMax)
-                    ? selectedTotal
-                    : totalOutputAmount + (txData?.fee || estimatedFee)
-                  }
-                  size="sm"
-                  showApprox
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Options Summary */}
-      <div className="surface-secondary rounded-xl p-4 space-y-2">
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-sanctuary-500">RBF (Replace-By-Fee)</span>
-          <span className="text-sanctuary-900 dark:text-sanctuary-100">
-            {state.rbfEnabled ? 'Enabled' : 'Disabled'}
-          </span>
-        </div>
-        {state.useDecoys && (
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-sanctuary-500">Decoy Outputs</span>
-            <span className="text-sanctuary-900 dark:text-sanctuary-100">
-              {state.decoyCount} decoys
-            </span>
-          </div>
-        )}
-        {state.showCoinControl && (
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-sanctuary-500">Coin Control</span>
-            <span className="text-sanctuary-900 dark:text-sanctuary-100">
-              {state.selectedUTXOs.size} UTXO{state.selectedUTXOs.size !== 1 ? 's' : ''} selected
-            </span>
-          </div>
-        )}
-      </div>
+      <TransactionSummary
+        state={state}
+        flowData={flowData}
+        txData={txData}
+        payjoinStatus={payjoinStatus}
+        changeAmount={changeAmount}
+        selectedTotal={selectedTotal}
+        estimatedFee={estimatedFee}
+        totalOutputAmount={totalOutputAmount}
+        txTypeLabel={txTypeLabel}
+        isDraftMode={isDraftMode}
+        format={format}
+        goToStep={goToStep}
+      />
 
       {/* Multi-sig Signing Panel */}
       {isMultiSig && devices.length > 0 && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-medium text-sanctuary-900 dark:text-sanctuary-100">
-              Signatures Required
-            </h3>
-            <span className="text-sm text-sanctuary-500">
-              {signedDevices.size} of {requiredSignatures}
-            </span>
-          </div>
-
-          {devices.map((device) => {
-            const hasSigned = signedDevices.has(device.id);
-            const capabilities = getDeviceCapabilities(device.type);
-
-            return (
-              <div
-                key={device.id}
-                className={`rounded-xl border transition-all ${
-                  hasSigned
-                    ? 'bg-green-50 dark:bg-green-500/10 border-green-200 dark:border-green-500/20'
-                    : 'surface-muted border-sanctuary-200 dark:border-sanctuary-800'
-                }`}
-              >
-                <div className="flex items-center justify-between p-3">
-                  <div className="flex items-center space-x-3">
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                      hasSigned
-                        ? 'bg-green-100 dark:bg-green-500/20'
-                        : 'bg-sanctuary-200 dark:bg-sanctuary-800'
-                    }`}>
-                      {hasSigned ? (
-                        <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" />
-                      ) : (
-                        <Usb className="w-5 h-5 text-sanctuary-600 dark:text-sanctuary-400" />
-                      )}
-                    </div>
-                    <div>
-                      <p className={`text-sm font-medium ${
-                        hasSigned
-                          ? 'text-green-900 dark:text-green-100'
-                          : 'text-sanctuary-900 dark:text-sanctuary-100'
-                      }`}>
-                        {device.label}
-                      </p>
-                      <p className="text-xs text-sanctuary-500">
-                        {device.type} • <span className="font-mono">{device.fingerprint}</span>
-                      </p>
-                    </div>
-                  </div>
-                  {hasSigned ? (
-                    <span className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-green-700 dark:text-green-300 bg-green-100 dark:bg-green-500/20 rounded-lg">
-                      <Check className="w-3 h-3 mr-1" />
-                      Signed
-                    </span>
-                  ) : (
-                    <div className="flex gap-2">
-                      {capabilities.methods.includes('usb') && (
-                        <button
-                          onClick={async () => {
-                            if (onSignWithDevice) {
-                              setSigningDeviceId(device.id);
-                              try {
-                                await onSignWithDevice(device);
-                              } finally {
-                                setSigningDeviceId(null);
-                              }
-                            } else {
-                              onMarkDeviceSigned?.(device.id);
-                            }
-                          }}
-                          disabled={signingDeviceId === device.id || signing}
-                          className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 dark:bg-sanctuary-700 dark:text-sanctuary-100 dark:hover:bg-sanctuary-600 dark:border dark:border-sanctuary-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
-                        >
-                          {signingDeviceId === device.id ? (
-                            <Loader2 className="w-3 h-3 mr-1.5 animate-spin" />
-                          ) : (
-                            <Usb className="w-3 h-3 mr-1.5" />
-                          )}
-                          {signingDeviceId === device.id ? 'Signing...' : 'USB'}
-                        </button>
-                      )}
-                      {capabilities.methods.includes('qr') && unsignedPsbt && (
-                        <button
-                          onClick={() => setQrSigningDevice(device)}
-                          className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 dark:bg-sanctuary-700 dark:text-sanctuary-100 dark:hover:bg-sanctuary-600 dark:border dark:border-sanctuary-600 rounded-lg transition-colors"
-                        >
-                          <QrCode className="w-3 h-3 mr-1.5" />
-                          QR Code
-                        </button>
-                      )}
-                      {capabilities.methods.includes('airgap') && (
-                        <>
-                          <button
-                            onClick={onDownloadPsbt}
-                            className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-sanctuary-700 dark:text-sanctuary-300 bg-white dark:bg-sanctuary-800 hover:bg-sanctuary-100 dark:hover:bg-sanctuary-700 border border-sanctuary-200 dark:border-sanctuary-600 rounded-lg transition-colors"
-                            title="Download PSBT to sign on device"
-                          >
-                            <FileDown className="w-3 h-3 mr-1.5" />
-                            Download
-                          </button>
-                          <label className="cursor-pointer">
-                            <input
-                              ref={(el) => { deviceFileInputRefs.current[device.id] = el; }}
-                              type="file"
-                              accept=".psbt,.txt"
-                              className="hidden"
-                              onChange={(e) => handleDeviceFileUpload(e, device.id)}
-                            />
-                            <span
-                              className={`inline-flex items-center px-3 py-1.5 text-xs font-medium text-sanctuary-700 dark:text-sanctuary-300 bg-white dark:bg-sanctuary-800 hover:bg-sanctuary-100 dark:hover:bg-sanctuary-700 border border-sanctuary-200 dark:border-sanctuary-600 rounded-lg transition-colors ${
-                                uploadingDeviceId === device.id ? 'opacity-50 cursor-wait' : ''
-                              }`}
-                              title="Upload signed PSBT from device"
-                            >
-                              {uploadingDeviceId === device.id ? (
-                                <Loader2 className="w-3 h-3 mr-1.5 animate-spin" />
-                              ) : (
-                                <Upload className="w-3 h-3 mr-1.5" />
-                              )}
-                              Upload
-                            </span>
-                          </label>
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <SigningFlow
+          devices={devices}
+          signedDevices={signedDevices}
+          requiredSignatures={requiredSignatures}
+          unsignedPsbt={unsignedPsbt}
+          signingDeviceId={signingDeviceId}
+          uploadingDeviceId={uploadingDeviceId}
+          signing={signing}
+          onSignWithDevice={onSignWithDevice}
+          onMarkDeviceSigned={onMarkDeviceSigned}
+          onDownloadPsbt={onDownloadPsbt}
+          onDeviceFileUpload={handleDeviceFileUpload}
+          setSigningDeviceId={setSigningDeviceId}
+          setQrSigningDevice={setQrSigningDevice}
+          deviceFileInputRefs={deviceFileInputRefs}
+        />
       )}
 
       {/* Signing panel for single-sig */}
-      {!isMultiSig && (txData || unsignedPsbt) && (() => {
-        const hasAirgapDevice = devices.some(d => getDeviceCapabilities(d.type).methods.includes('airgap'));
-        const hasQrDevice = devices.some(d => getDeviceCapabilities(d.type).methods.includes('qr'));
-        return (
-        <div className="surface-secondary rounded-xl p-4 space-y-3">
-          <h3 className="text-sm font-medium text-sanctuary-900 dark:text-sanctuary-100">
-            Sign Transaction
-          </h3>
-          <p className="text-xs text-sanctuary-500">
-            {hasAirgapDevice || hasQrDevice
-              ? 'Sign with your hardware wallet via USB, QR code, or PSBT file.'
-              : 'Sign with your hardware wallet via USB.'}
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {/* USB signing for single-sig - show button for each USB-capable device */}
-            {devices.filter(d => {
-              const caps = getDeviceCapabilities(d.type);
-              return caps.methods.includes('usb');
-            }).map(device => (
-              <Button
-                key={device.id}
-                variant="primary"
-                size="sm"
-                onClick={async () => {
-                  if (onSignWithDevice) {
-                    setSigningDeviceId(device.id);
-                    try {
-                      await onSignWithDevice(device);
-                    } finally {
-                      setSigningDeviceId(null);
-                    }
-                  }
-                }}
-                disabled={signingDeviceId === device.id || signing}
-              >
-                {signingDeviceId === device.id ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Usb className="w-4 h-4 mr-2" />
-                )}
-                {signingDeviceId === device.id ? 'Signing...' : `USB (${device.label})`}
-              </Button>
-            ))}
-            {/* QR signing for single-sig - show button for each QR-capable device */}
-            {devices.filter(d => {
-              const caps = getDeviceCapabilities(d.type);
-              return caps.methods.includes('qr');
-            }).map(device => (
-              <Button
-                key={`qr-${device.id}`}
-                variant="primary"
-                size="sm"
-                onClick={() => setQrSigningDevice(device)}
-                disabled={!unsignedPsbt}
-              >
-                <QrCode className="w-4 h-4 mr-2" />
-                QR Sign ({device.label})
-              </Button>
-            ))}
-            {/* PSBT file download/upload - only show if at least one device supports airgap */}
-            {devices.some(d => {
-              const caps = getDeviceCapabilities(d.type);
-              return caps.methods.includes('airgap');
-            }) && (
-              <>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={onDownloadPsbt}
-                >
-                  <FileDown className="w-4 h-4 mr-2" />
-                  Download PSBT
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <Upload className="w-4 h-4 mr-2" />
-                  Upload Signed
-                </Button>
-              </>
-            )}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".psbt,.txt"
-              className="hidden"
-              onChange={handleFileUpload}
-            />
-          </div>
-          {signedDevices.has('psbt-signed') && (
-            <div className="flex items-center gap-2 text-green-600 dark:text-green-400 text-sm">
-              <CheckCircle2 className="w-4 h-4" />
-              Signed PSBT uploaded
-            </div>
-          )}
-        </div>
-        );
-      })()}
-
-      {/* Validation Warnings */}
-      {!isReadyToSign && (
-        <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
-          <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-          <div className="text-sm text-amber-800 dark:text-amber-200">
-            Please complete all required fields before signing.
-          </div>
-        </div>
-      )}
-
-      {/* Action Buttons */}
-      <div className="space-y-3 pt-4 border-t border-sanctuary-200 dark:border-sanctuary-700">
-        {/* Primary Action */}
-        <div className="flex gap-3">
-          {!isDraftMode && (
-            <Button
-              variant="secondary"
-              onClick={prevStep}
-              className="flex-shrink-0"
-            >
-              <ChevronLeft className="w-4 h-4 mr-1" />
-              Back
-            </Button>
-          )}
-
-          {isMultiSig ? (
-            // Multi-sig: Show broadcast if enough signatures
-            canBroadcast ? (
-              <Button
-                variant="primary"
-                onClick={onBroadcastSigned}
-                disabled={!canBroadcast}
-                isLoading={broadcasting}
-                className="flex-1"
-              >
-                <Send className="w-4 h-4 mr-2" />
-                Broadcast Transaction
-              </Button>
-            ) : (
-              <Button
-                variant="primary"
-                onClick={onSign}
-                disabled={!isReadyToSign || !txData}
-                isLoading={signing || broadcasting}
-                className="flex-1"
-              >
-                {!txData ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Preparing...
-                  </>
-                ) : (
-                  <>
-                    <Shield className="w-4 h-4 mr-2" />
-                    Sign Transaction
-                  </>
-                )}
-              </Button>
-            )
-          ) : (
-            // Single-sig: Sign & Broadcast
-            <Button
-              variant="primary"
-              onClick={onBroadcast}
-              disabled={!isReadyToSign}
-              isLoading={signing || broadcasting}
-              className="flex-1"
-            >
-              {canBroadcast ? (
-                <>
-                  <Send className="w-4 h-4 mr-2" />
-                  Broadcast
-                </>
-              ) : (
-                <>
-                  <Send className="w-4 h-4 mr-2" />
-                  Sign & Broadcast
-                </>
-              )}
-            </Button>
-          )}
-        </div>
-
-        {/* Save Draft Button */}
-        {onSaveDraft && (
-          <Button
-            variant="secondary"
-            onClick={onSaveDraft}
-            isLoading={savingDraft}
-            className="w-full"
-          >
-            <Save className="w-4 h-4 mr-2" />
-            Save as Draft
-          </Button>
-        )}
-      </div>
-
-      {/* QR Signing Modal */}
-      {qrSigningDevice && unsignedPsbt && (
-        <QRSigningModal
-          isOpen={true}
-          onClose={() => setQrSigningDevice(null)}
-          psbtBase64={unsignedPsbt}
-          deviceLabel={qrSigningDevice.label}
-          onSignedPsbt={(signedPsbt) => {
-            onProcessQrSignedPsbt?.(signedPsbt, qrSigningDevice.id);
-            setQrSigningDevice(null);
-          }}
+      {!isMultiSig && (txData || unsignedPsbt) && (
+        <UsbSigning
+          devices={devices}
+          signedDevices={signedDevices}
+          unsignedPsbt={unsignedPsbt}
+          signingDeviceId={signingDeviceId}
+          signing={signing}
+          onSignWithDevice={onSignWithDevice}
+          onDownloadPsbt={onDownloadPsbt}
+          onFileUpload={handleFileUpload}
+          setSigningDeviceId={setSigningDeviceId}
+          setQrSigningDevice={setQrSigningDevice}
+          fileInputRef={fileInputRef}
         />
       )}
+
+      <DraftActions
+        isMultiSig={isMultiSig}
+        isDraftMode={isDraftMode}
+        isReadyToSign={isReadyToSign}
+        canBroadcast={!!canBroadcast}
+        txData={txData}
+        signing={signing}
+        broadcasting={broadcasting}
+        savingDraft={savingDraft}
+        onSign={onSign}
+        onBroadcast={onBroadcast}
+        onSaveDraft={onSaveDraft}
+        onBroadcastSigned={onBroadcastSigned}
+        prevStep={prevStep}
+      />
+
+      {/* QR Signing Modal */}
+      <QrSigning
+        qrSigningDevice={qrSigningDevice}
+        unsignedPsbt={unsignedPsbt}
+        onProcessQrSignedPsbt={onProcessQrSignedPsbt}
+        setQrSigningDevice={setQrSigningDevice}
+      />
     </div>
   );
 }
