@@ -9,55 +9,17 @@ import { requireDeviceAccess } from '../../middleware/deviceAccess';
 import { db as prisma } from '../../repositories/db';
 import { getUserAccessibleDevices } from '../../services/deviceAccess';
 import { createLogger } from '../../utils/logger';
+import {
+  type DeviceAccountInput,
+  compareAccounts,
+  normalizeIncomingAccounts,
+} from './accountConflicts';
 
 const router = Router();
 const log = createLogger('DEVICES:CRUD');
 
-/**
- * Account type for multi-account device registration
- */
-export interface DeviceAccountInput {
-  purpose: 'single_sig' | 'multisig';
-  scriptType: 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy';
-  derivationPath: string;
-  xpub: string;
-}
-
-/**
- * Compare incoming accounts with existing accounts
- * Returns categorized accounts: new, matching, and conflicting
- */
-function compareAccounts(
-  existingAccounts: Array<{ derivationPath: string; xpub: string; purpose: string; scriptType: string }>,
-  incomingAccounts: DeviceAccountInput[]
-): {
-  newAccounts: DeviceAccountInput[];
-  matchingAccounts: DeviceAccountInput[];
-  conflictingAccounts: Array<{ incoming: DeviceAccountInput; existing: { derivationPath: string; xpub: string } }>;
-} {
-  const newAccounts: DeviceAccountInput[] = [];
-  const matchingAccounts: DeviceAccountInput[] = [];
-  const conflictingAccounts: Array<{ incoming: DeviceAccountInput; existing: { derivationPath: string; xpub: string } }> = [];
-
-  for (const incoming of incomingAccounts) {
-    const existing = existingAccounts.find(e => e.derivationPath === incoming.derivationPath);
-    if (!existing) {
-      // New account - path doesn't exist
-      newAccounts.push(incoming);
-    } else if (existing.xpub === incoming.xpub) {
-      // Matching account - same path and xpub
-      matchingAccounts.push(incoming);
-    } else {
-      // Conflicting account - same path but different xpub
-      conflictingAccounts.push({
-        incoming,
-        existing: { derivationPath: existing.derivationPath, xpub: existing.xpub },
-      });
-    }
-  }
-
-  return { newAccounts, matchingAccounts, conflictingAccounts };
-}
+// Re-export for backward compatibility
+export type { DeviceAccountInput } from './accountConflicts';
 
 /**
  * GET /api/v1/devices
@@ -119,39 +81,14 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     // Normalize incoming accounts
-    let incomingAccounts: DeviceAccountInput[] = [];
-    if (accounts && accounts.length > 0) {
-      for (const account of accounts as DeviceAccountInput[]) {
-        if (!account.purpose || !account.scriptType || !account.derivationPath || !account.xpub) {
-          return res.status(400).json({
-            error: 'Bad Request',
-            message: 'Each account must have purpose, scriptType, derivationPath, and xpub',
-          });
-        }
-        if (!['single_sig', 'multisig'].includes(account.purpose)) {
-          return res.status(400).json({
-            error: 'Bad Request',
-            message: 'Account purpose must be "single_sig" or "multisig"',
-          });
-        }
-        if (!['native_segwit', 'nested_segwit', 'taproot', 'legacy'].includes(account.scriptType)) {
-          return res.status(400).json({
-            error: 'Bad Request',
-            message: 'Account scriptType must be one of: native_segwit, nested_segwit, taproot, legacy',
-          });
-        }
-        incomingAccounts.push(account);
-      }
-    } else if (xpub && derivationPath) {
-      // Convert legacy single account to accounts array format
-      const purpose = derivationPath.startsWith("m/48'") ? 'multisig' : 'single_sig';
-      let scriptType: 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy' = 'native_segwit';
-      if (derivationPath.startsWith("m/86'")) scriptType = 'taproot';
-      else if (derivationPath.startsWith("m/49'")) scriptType = 'nested_segwit';
-      else if (derivationPath.startsWith("m/44'")) scriptType = 'legacy';
-
-      incomingAccounts = [{ purpose, scriptType, derivationPath, xpub }];
+    const normalized = normalizeIncomingAccounts(accounts, xpub, derivationPath);
+    if ('error' in normalized) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: normalized.error,
+      });
     }
+    const incomingAccounts = normalized.accounts;
 
     // Check if device already exists
     const existingDevice = await prisma.device.findUnique({
@@ -402,7 +339,7 @@ router.patch('/:id', requireDeviceAccess('owner'), async (req: Request, res: Res
     const { label, derivationPath, type, modelSlug } = req.body;
 
     // Build update data
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
     if (label !== undefined) updateData.label = label;
     if (derivationPath !== undefined) updateData.derivationPath = derivationPath;
     if (type !== undefined) updateData.type = type;
