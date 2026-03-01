@@ -1,8 +1,4 @@
-/**
- * DeviceDetail Components
- *
- * Extracted components from DeviceDetail.tsx for better maintainability.
- */
+export { DeviceDetail } from './DeviceDetail';
 
 export { ManualAccountForm } from './ManualAccountForm';
 export type { ManualAccountData } from './ManualAccountForm';
