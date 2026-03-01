@@ -1,24 +1,25 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { Wallet, WalletType } from '../types';
-import * as walletsApi from '../src/api/wallets';
-import * as transactionsApi from '../src/api/transactions';
-import * as labelsApi from '../src/api/labels';
-import { useBitcoinStatus } from '../hooks/queries/useBitcoin';
-import { useErrorHandler } from '../hooks/useErrorHandler';
-import { TransactionExportModal } from './TransactionExportModal';
-import { TransferOwnershipModal } from './TransferOwnershipModal';
-import { useAIStatus } from '../hooks/useAIStatus';
-import { Button } from './ui/Button';
+import { Wallet, WalletType } from '../../types';
+import * as walletsApi from '../../src/api/wallets';
+import * as transactionsApi from '../../src/api/transactions';
+import * as labelsApi from '../../src/api/labels';
+import { useBitcoinStatus } from '../../hooks/queries/useBitcoin';
+import { useErrorHandler } from '../../hooks/useErrorHandler';
+import { TransactionExportModal } from '../TransactionExportModal';
+import { TransferOwnershipModal } from '../TransferOwnershipModal';
+import { useAIStatus } from '../../hooks/useAIStatus';
+import { Button } from '../ui/Button';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
-import { useUser } from '../contexts/UserContext';
-import { useWalletLogs } from '../hooks/useWebSocket';
-import { useAppNotifications } from '../contexts/AppNotificationContext';
-import { createLogger } from '../utils/logger';
-import { logError } from '../utils/errorHandler';
-import { LogTab } from './WalletDetail/LogTab';
-import { WalletHeader } from './WalletDetail/WalletHeader';
-import { DeleteModal, ReceiveModal, ExportModal, AddressQRModal, DeviceSharePromptModal } from './WalletDetail/modals';
+import { useUser } from '../../contexts/UserContext';
+import { useWalletLogs } from '../../hooks/useWebSocket';
+import { useAppNotifications } from '../../contexts/AppNotificationContext';
+import { createLogger } from '../../utils/logger';
+import { logError } from '../../utils/errorHandler';
+import { LogTab } from './LogTab';
+import { WalletHeader } from './WalletHeader';
+import { DeleteModal, ReceiveModal, ExportModal, AddressQRModal, DeviceSharePromptModal } from './modals';
+import { TabBar } from './TabBar';
 import {
   TransactionsTab,
   UTXOTab,
@@ -27,14 +28,16 @@ import {
   StatsTab,
   AccessTab,
   SettingsTab,
-} from './WalletDetail/tabs';
+} from './tabs';
 
 // Custom hooks extracted from this component
-import { useWalletData } from './WalletDetail/hooks/useWalletData';
-import { useWalletSync } from './WalletDetail/hooks/useWalletSync';
-import { useWalletSharing } from './WalletDetail/hooks/useWalletSharing';
-import { useAITransactionFilter } from './WalletDetail/hooks/useAITransactionFilter';
-import { useWalletWebSocket } from './WalletDetail/hooks/useWalletWebSocket';
+import { useWalletData } from './hooks/useWalletData';
+import { useWalletSync } from './hooks/useWalletSync';
+import { useWalletSharing } from './hooks/useWalletSharing';
+import { useAITransactionFilter } from './hooks/useAITransactionFilter';
+import { useWalletWebSocket } from './hooks/useWalletWebSocket';
+
+import type { TabType } from './types';
 
 const log = createLogger('WalletDetail');
 
@@ -120,7 +123,7 @@ export const WalletDetail: React.FC = () => {
 
   // Check for activeTab in navigation state (e.g., from notification panel)
   const initialTab = (location.state as any)?.activeTab || 'tx';
-  const [activeTab, setActiveTab] = useState<'tx' | 'utxo' | 'addresses' | 'drafts' | 'stats' | 'access' | 'settings' | 'log'>(initialTab);
+  const [activeTab, setActiveTab] = useState<TabType>(initialTab);
   const [addressSubTab, setAddressSubTab] = useState<'receive' | 'change'>('receive');
   const [accessSubTab, setAccessSubTab] = useState<'ownership' | 'sharing' | 'transfers'>('ownership');
   const [settingsSubTab, setSettingsSubTab] = useState<'general' | 'devices' | 'notifications' | 'advanced'>('general');
@@ -158,7 +161,7 @@ export const WalletDetail: React.FC = () => {
 
   // Address Label Editing State
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
-  const [availableLabels, setAvailableLabels] = useState<import('../types').Label[]>([]);
+  const [availableLabels, setAvailableLabels] = useState<import('../../types').Label[]>([]);
   const [selectedLabelIds, setSelectedLabelIds] = useState<string[]>([]);
   const [savingAddressLabels, setSavingAddressLabels] = useState(false);
 
@@ -218,7 +221,7 @@ export const WalletDetail: React.FC = () => {
   };
 
   // Address label editing functions
-  const handleEditAddressLabels = async (addr: import('../types').Address) => {
+  const handleEditAddressLabels = async (addr: import('../../types').Address) => {
     if (!addr.id || !id) return;
     setEditingAddressId(addr.id);
     setSelectedLabelIds(addr.labels?.map(l => l.id) || []);
@@ -397,28 +400,12 @@ export const WalletDetail: React.FC = () => {
       />
 
       {/* Tabs */}
-      <div className="border-b border-sanctuary-200 dark:border-sanctuary-800 overflow-x-auto scrollbar-hide">
-        <nav className="-mb-px flex space-x-8" aria-label="Tabs">
-          {['tx', 'utxo', 'addresses', ...(wallet.userRole !== 'viewer' ? ['drafts'] : []), 'stats', ...(wallet.userRole === 'owner' ? ['access'] : []), 'settings', 'log'].map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab as any)}
-              className={`${
-                activeTab === tab
-                  ? 'border-primary-600 dark:border-primary-400 text-primary-700 dark:text-primary-300'
-                  : 'border-transparent text-sanctuary-500 hover:text-sanctuary-700 hover:border-sanctuary-300'
-              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm capitalize transition-colors relative`}
-            >
-              {tab === 'tx' ? 'Transactions' : tab === 'utxo' ? 'UTXOs' : tab}
-              {tab === 'drafts' && draftsCount > 0 && (
-                <span className="absolute -top-0.5 -right-3 flex h-4 w-4 items-center justify-center rounded-full bg-rose-400 dark:bg-rose-500 text-[10px] font-bold text-white">
-                  {draftsCount > 9 ? '9+' : draftsCount}
-                </span>
-              )}
-            </button>
-          ))}
-        </nav>
-      </div>
+      <TabBar
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        userRole={wallet.userRole || 'viewer'}
+        draftsCount={draftsCount}
+      />
 
       {/* Content Area */}
       <div className="min-h-[400px]">

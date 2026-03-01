@@ -35,5 +35,8 @@ export {
 // Modal Components
 export { DeviceSharePromptModal } from './modals';
 
-// Re-export the main component from parent directory for backwards compatibility
-// The main WalletDetail.tsx will gradually import from here
+// Main Component
+export { WalletDetail } from './WalletDetail';
+
+// Tab Bar
+export { TabBar } from './TabBar';
