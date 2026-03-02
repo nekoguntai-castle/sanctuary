@@ -80,6 +80,8 @@ Server will start on `http://localhost:3001`
 - `npm run dev` - Start development server with hot reload
 - `npm run build` - Build TypeScript to JavaScript
 - `npm start` - Start production server
+- `npm run test:mutation:critical` - Run critical-path mutation testing (address derivation, PSBT, auth/access control)
+- `npm run test:mutation:critical:gate` - Run critical mutation tests and enforce baseline gate
 - `npm run prisma:generate` - Generate Prisma client
 - `npm run prisma:migrate` - Run database migrations
 - `npm run prisma:studio` - Open Prisma Studio (database GUI)

@@ -29,6 +29,8 @@
     "test:fast": "vitest run --changed",
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
     "test:mutation": "stryker run",
+    "test:mutation:critical": "stryker run stryker.critical.config.mjs",
+    "test:mutation:critical:gate": "npm run test:mutation:critical && node scripts/mutation/check-critical-mutation-gate.mjs",
     "check:prisma-imports": "tsx scripts/check-prisma-imports.ts",
     "prepare": "cd .. && husky server/.husky",
     "prisma:generate": "prisma generate",

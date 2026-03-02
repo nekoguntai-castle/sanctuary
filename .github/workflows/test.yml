@@ -50,6 +50,8 @@ jobs:
       frontend_files: ${{ steps.filter.outputs.frontend_files }}
       backend_changed: ${{ steps.filter.outputs.backend }}
       backend_files: ${{ steps.filter.outputs.backend_files }}
+      critical_mutation_changed: ${{ steps.filter.outputs.critical_mutation }}
+      critical_mutation_files: ${{ steps.filter.outputs.critical_mutation_files }}
       gateway_changed: ${{ steps.filter.outputs.gateway }}
       gateway_files: ${{ steps.filter.outputs.gateway_files }}
       e2e_changed: ${{ steps.filter.outputs.e2e }}
@@ -82,6 +84,22 @@ jobs:
               - 'package*.json'
             backend:
               - 'server/**'
+            critical_mutation:
+              - 'server/src/services/bitcoin/addressDerivation.ts'
+              - 'server/src/services/bitcoin/addressDerivation/**'
+              - 'server/src/services/bitcoin/psbtValidation.ts'
+              - 'server/src/services/bitcoin/psbtInfo.ts'
+              - 'server/src/middleware/auth.ts'
+              - 'server/src/services/accessControl.ts'
+              - 'server/tests/unit/services/bitcoin/addressDerivation.verified.test.ts'
+              - 'server/tests/unit/services/bitcoin/psbt.verified.test.ts'
+              - 'server/tests/unit/services/bitcoin/psbtValidation.test.ts'
+              - 'server/tests/unit/services/bitcoin/psbtInfo.test.ts'
+              - 'server/tests/unit/middleware/auth.test.ts'
+              - 'server/tests/unit/services/accessControl.test.ts'
+              - 'server/stryker.critical.config.mjs'
+              - 'server/scripts/mutation/**'
+              - '.github/mutation-baseline.json'
             gateway:
               - 'gateway/**'
             e2e:
@@ -200,6 +218,40 @@ jobs:
           ENCRYPTION_KEY: test-encryption-key-32-chars-long!
           NODE_ENV: test
         run: npx vitest related --run --passWithNoTests ${{ needs.detect-changes.outputs.backend_files }}
+
+  quick-critical-mutation:
+    name: Quick Critical Mutation Gate
+    if: github.event_name == 'pull_request' && needs.detect-changes.outputs.critical_mutation_changed == 'true'
+    runs-on: ubuntu-latest
+    needs: [detect-changes]
+    defaults:
+      run:
+        working-directory: server
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run critical mutation gate
+        run: npm run test:mutation:critical:gate
+
+      - name: Upload critical mutation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: critical-mutation-report-pr
+          path: server/reports/mutation/
+          retention-days: 14
 
   quick-gateway-tests:
     name: Quick Gateway Tests
@@ -403,6 +455,39 @@ jobs:
           path: gateway/coverage/
           retention-days: 14
 
+  full-critical-mutation:
+    name: Full Critical Mutation Gate
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run critical mutation gate
+        run: npm run test:mutation:critical:gate
+
+      - name: Upload critical mutation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: critical-mutation-report
+          path: server/reports/mutation/
+          retention-days: 14
+
   full-e2e-tests:
     name: Full E2E Tests
     if: github.event_name != 'pull_request'
@@ -552,7 +637,7 @@ jobs:
     name: Full Test Summary
     if: always() && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-    needs: [full-backend-tests, full-frontend-tests, full-gateway-tests, full-build-check]
+    needs: [full-backend-tests, full-frontend-tests, full-gateway-tests, full-critical-mutation, full-build-check]
 
     steps:
       - name: Download backend coverage
@@ -572,6 +657,12 @@ jobs:
         with:
           name: gateway-coverage
           path: gateway-results/
+
+      - name: Download critical mutation report
+        uses: actions/download-artifact@v4
+        with:
+          name: critical-mutation-report
+          path: mutation-results/
 
       - name: Generate summary
         run: |
@@ -627,4 +718,11 @@ jobs:
             echo "### Build Check: Passed" >> $GITHUB_STEP_SUMMARY
           else
             echo "### Build Check: Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ needs.full-critical-mutation.result }}" = "success" ]; then
+            echo "### Critical Mutation Gate: Passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### Critical Mutation Gate: Failed" >> $GITHUB_STEP_SUMMARY
           fi

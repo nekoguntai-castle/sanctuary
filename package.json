@@ -25,7 +25,8 @@
     "test:e2e:headed": "playwright test --headed",
     "test:hygiene": "node scripts/test-hygiene.mjs",
     "test:mutation": "stryker run",
-    "test:mutation:backend": "cd server && npx stryker run"
+    "test:mutation:backend": "cd server && npx stryker run",
+    "test:mutation:critical:backend": "cd server && npm run test:mutation:critical:gate"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

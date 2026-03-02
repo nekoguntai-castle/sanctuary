@@ -1,0 +1,7 @@
+{
+  "serverCritical": {
+    "rawScoreMin": 52,
+    "weightedScoreMin": 48,
+    "notes": "Initialized from local baseline run on 2026-03-02 (raw 53.2, weighted 49.03)."
+  }
+}
