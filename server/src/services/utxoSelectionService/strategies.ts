@@ -1,7 +1,7 @@
 /**
- * UTXO Selection Service
+ * UTXO Selection Strategies
  *
- * Provides different strategies for selecting UTXOs for transactions:
+ * Pure functions implementing different UTXO selection algorithms:
  * - Privacy: Minimize address linkage, prefer already-linked UTXOs
  * - Efficiency: Minimize transaction fees (fewest inputs)
  * - Oldest First: Use oldest UTXOs first (reduce UTXO set age)
@@ -9,115 +9,13 @@
  * - Smallest First: Use smallest UTXOs (consolidation mode)
  */
 
-import { db as prisma } from '../repositories/db';
-import { createLogger } from '../utils/logger';
-import { INPUT_VBYTES, DEFAULT_INPUT_VBYTES, OUTPUT_VBYTES, OVERHEAD_VBYTES } from './bitcoin/constants';
-
-const log = createLogger('UTXO-SELECTION');
-
-// UTXO selection strategy type (duplicated from frontend types for Docker build isolation)
-export type SelectionStrategy =
-  | 'privacy'
-  | 'efficiency'
-  | 'oldest_first'
-  | 'largest_first'
-  | 'smallest_first';
-
-export interface SelectedUtxo {
-  id: string;
-  txid: string;
-  vout: number;
-  address: string;
-  amount: bigint;
-  confirmations: number;
-  blockHeight?: number;
-}
-
-export interface SelectionResult {
-  selected: SelectedUtxo[];
-  totalAmount: bigint;
-  estimatedFee: bigint;
-  changeAmount: bigint;
-  inputCount: number;
-  strategy: SelectionStrategy;
-  warnings: string[];
-  privacyImpact?: {
-    linkedAddresses: number;
-    score: number;
-  };
-}
-
-export interface SelectionOptions {
-  walletId: string;
-  targetAmount: bigint;
-  feeRate: number;
-  strategy: SelectionStrategy;
-  excludeFrozen?: boolean;
-  excludeUnconfirmed?: boolean;
-  excludeUtxoIds?: string[];
-  scriptType?: string;
-}
-
-/**
- * Get available UTXOs for selection
- */
-async function getAvailableUtxos(
-  walletId: string,
-  options: {
-    excludeFrozen?: boolean;
-    excludeUnconfirmed?: boolean;
-    excludeUtxoIds?: string[];
-  }
-): Promise<SelectedUtxo[]> {
-  const where: Record<string, unknown> = {
-    walletId,
-    spent: false,
-  };
-
-  if (options.excludeFrozen !== false) {
-    where.frozen = false;
-  }
-
-  if (options.excludeUnconfirmed) {
-    where.confirmations = { gt: 0 };
-  }
-
-  if (options.excludeUtxoIds?.length) {
-    where.id = { notIn: options.excludeUtxoIds };
-  }
-
-  // Also exclude UTXOs locked by drafts
-  where.draftLock = null;
-
-  const utxos = await prisma.uTXO.findMany({
-    where,
-    select: {
-      id: true,
-      txid: true,
-      vout: true,
-      address: true,
-      amount: true,
-      confirmations: true,
-      blockHeight: true,
-    },
-    orderBy: { amount: 'desc' },
-  });
-
-  return utxos.map(u => ({
-    id: u.id,
-    txid: u.txid,
-    vout: u.vout,
-    address: u.address,
-    amount: u.amount,
-    confirmations: u.confirmations,
-    blockHeight: u.blockHeight ?? undefined,
-  }));
-}
+import { INPUT_VBYTES, DEFAULT_INPUT_VBYTES, OUTPUT_VBYTES, OVERHEAD_VBYTES } from '../bitcoin/constants';
+import type { SelectedUtxo, SelectionResult } from './types';
 
 /**
  * Calculate transaction fee based on inputs and outputs
  */
-function calculateFee(
+export function calculateFee(
   inputCount: number,
   outputCount: number,
   feeRate: number,
@@ -132,7 +30,7 @@ function calculateFee(
  * Privacy-focused selection
  * Prefers UTXOs that are already linked (same txid) to minimize new linkages
  */
-function selectForPrivacy(
+export function selectForPrivacy(
   utxos: SelectedUtxo[],
   targetAmount: bigint,
   feeRate: number,
@@ -218,7 +116,7 @@ function selectForPrivacy(
  * Efficiency-focused selection (minimize fees)
  * Uses largest UTXOs first to minimize input count
  */
-function selectForEfficiency(
+export function selectForEfficiency(
   utxos: SelectedUtxo[],
   targetAmount: bigint,
   feeRate: number,
@@ -266,7 +164,7 @@ function selectForEfficiency(
  * Oldest First selection
  * Uses oldest UTXOs first to reduce UTXO set age
  */
-function selectOldestFirst(
+export function selectOldestFirst(
   utxos: SelectedUtxo[],
   targetAmount: bigint,
   feeRate: number,
@@ -316,7 +214,7 @@ function selectOldestFirst(
  * Largest First selection
  * Uses largest UTXOs first (same as efficiency)
  */
-function selectLargestFirst(
+export function selectLargestFirst(
   utxos: SelectedUtxo[],
   targetAmount: bigint,
   feeRate: number,
@@ -330,7 +228,7 @@ function selectLargestFirst(
  * Smallest First selection (consolidation mode)
  * Uses smallest UTXOs first to consolidate dust
  */
-function selectSmallestFirst(
+export function selectSmallestFirst(
   utxos: SelectedUtxo[],
   targetAmount: bigint,
   feeRate: number,
@@ -377,130 +275,5 @@ function selectSmallestFirst(
       linkedAddresses: addressesSeen.size,
       score: Math.max(0, 100 - (addressesSeen.size - 1) * 20),
     },
-  };
-}
-
-/**
- * Select UTXOs using the specified strategy
- */
-export async function selectUtxos(options: SelectionOptions): Promise<SelectionResult> {
-  const {
-    walletId,
-    targetAmount,
-    feeRate,
-    strategy,
-    excludeFrozen = true,
-    excludeUnconfirmed = false,
-    excludeUtxoIds = [],
-    scriptType = 'native_segwit',
-  } = options;
-
-  // Validate that targetAmount is positive
-  if (targetAmount <= BigInt(0)) {
-    throw new Error('targetAmount must be a positive BigInt');
-  }
-
-  log.debug(`Selecting UTXOs for wallet ${walletId}`, {
-    targetAmount: targetAmount.toString(),
-    feeRate,
-    strategy,
-  });
-
-  const utxos = await getAvailableUtxos(walletId, {
-    excludeFrozen,
-    excludeUnconfirmed,
-    excludeUtxoIds,
-  });
-
-  if (utxos.length === 0) {
-    return {
-      selected: [],
-      totalAmount: BigInt(0),
-      estimatedFee: BigInt(0),
-      changeAmount: BigInt(0),
-      inputCount: 0,
-      strategy,
-      warnings: ['No available UTXOs'],
-    };
-  }
-
-  switch (strategy) {
-    case 'privacy':
-      return selectForPrivacy(utxos, targetAmount, feeRate, scriptType);
-    case 'efficiency':
-      return selectForEfficiency(utxos, targetAmount, feeRate, scriptType);
-    case 'oldest_first':
-      return selectOldestFirst(utxos, targetAmount, feeRate, scriptType);
-    case 'largest_first':
-      return selectLargestFirst(utxos, targetAmount, feeRate, scriptType);
-    case 'smallest_first':
-      return selectSmallestFirst(utxos, targetAmount, feeRate, scriptType);
-  }
-}
-
-/**
- * Compare different selection strategies for a given amount
- */
-export async function compareStrategies(
-  walletId: string,
-  targetAmount: bigint,
-  feeRate: number,
-  scriptType: string = 'native_segwit'
-): Promise<Record<SelectionStrategy, SelectionResult>> {
-  const strategies: SelectionStrategy[] = [
-    'privacy',
-    'efficiency',
-    'oldest_first',
-    'largest_first',
-    'smallest_first',
-  ];
-
-  const results: Record<string, SelectionResult> = {};
-
-  for (const strategy of strategies) {
-    results[strategy] = await selectUtxos({
-      walletId,
-      targetAmount,
-      feeRate,
-      strategy,
-      scriptType,
-    });
-  }
-
-  return results as Record<SelectionStrategy, SelectionResult>;
-}
-
-/**
- * Get recommended strategy based on context
- */
-export function getRecommendedStrategy(
-  utxoCount: number,
-  feeRate: number,
-  prioritizePrivacy: boolean = false
-): { strategy: SelectionStrategy; reason: string } {
-  if (prioritizePrivacy) {
-    return {
-      strategy: 'privacy',
-      reason: 'Minimizes address linkage for better privacy',
-    };
-  }
-
-  if (feeRate > 50) {
-    return {
-      strategy: 'efficiency',
-      reason: 'High fee environment - minimizing input count saves fees',
-    };
-  }
-
-  if (feeRate < 5 && utxoCount > 20) {
-    return {
-      strategy: 'smallest_first',
-      reason: 'Low fee environment - good time to consolidate small UTXOs',
-    };
-  }
-
-  return {
-    strategy: 'efficiency',
-    reason: 'Default: minimizes transaction fees',
   };
 }

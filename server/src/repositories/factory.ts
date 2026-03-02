@@ -14,134 +14,33 @@
  *   const wallet = await testRepos.wallet.findById(id);
  */
 
-import type { PrismaClient, Wallet, Transaction, Address, UTXO, User, Label } from '@prisma/client';
+import type { PrismaClient, Wallet } from '@prisma/client';
 import prisma from '../models/prisma';
 import { buildWalletAccessWhere } from './accessControl';
+import { createLabelRepository } from './labelRepositoryFactory';
+import type {
+  PrismaClientLike,
+  WalletRepositoryInterface,
+  TransactionRepositoryInterface,
+  AddressRepositoryInterface,
+  UtxoRepositoryInterface,
+  UserRepositoryInterface,
+  RepositoryFactory,
+} from './factoryInterfaces';
 
-// Type for the minimal Prisma client interface needed by repositories
-export type PrismaClientLike = Pick<
-  PrismaClient,
-  'wallet' | 'transaction' | 'address' | 'uTXO' | 'user' | 'walletUser' | 'groupMember' | 'label' | 'transactionLabel' | 'addressLabel' | '$transaction'
->;
-
-/**
- * Wallet Repository Interface
- */
-export interface WalletRepositoryInterface {
-  findById(walletId: string): Promise<Wallet | null>;
-  findByIdWithAccess(walletId: string, userId: string): Promise<Wallet | null>;
-  findByUserId(userId: string): Promise<Wallet[]>;
-  hasAccess(walletId: string, userId: string): Promise<boolean>;
-  getName(walletId: string): Promise<string | null>;
-  update(walletId: string, data: Partial<Wallet>): Promise<Wallet>;
-}
-
-/**
- * Transaction Repository Interface
- */
-export interface TransactionRepositoryInterface {
-  findByWalletId(walletId: string, options?: { skip?: number; take?: number }): Promise<Transaction[]>;
-  findByTxid(txid: string, walletId: string): Promise<Transaction | null>;
-  countByWalletId(walletId: string): Promise<number>;
-  deleteByWalletId(walletId: string): Promise<number>;
-}
-
-/**
- * Address Repository Interface
- */
-export interface AddressRepositoryInterface {
-  findByWalletId(walletId: string, options?: { used?: boolean }): Promise<Address[]>;
-  findNextUnused(walletId: string): Promise<Address | null>;
-  markAsUsed(addressId: string): Promise<Address>;
-  resetUsedFlags(walletId: string): Promise<number>;
-}
-
-/**
- * UTXO Repository Interface
- */
-export interface UtxoRepositoryInterface {
-  findByWalletId(walletId: string, options?: { spent?: boolean }): Promise<UTXO[]>;
-  findUnspent(walletId: string): Promise<UTXO[]>;
-  getUnspentBalance(walletId: string): Promise<bigint>;
-  deleteByWalletId(walletId: string): Promise<number>;
-}
-
-/**
- * User Repository Interface
- */
-export interface UserRepositoryInterface {
-  findById(id: string): Promise<User | null>;
-  findByEmail(email: string): Promise<User | null>;
-  exists(id: string): Promise<boolean>;
-}
-
-/**
- * Label with usage counts
- */
-export interface LabelWithCounts extends Label {
-  transactionCount: number;
-  addressCount: number;
-}
-
-/**
- * Label with full associations
- */
-export interface LabelWithAssociations extends Label {
-  transactions: Array<{
-    id: string;
-    txid: string;
-    type: string;
-    amount: bigint;
-    confirmations: number;
-    blockTime: Date | null;
-  }>;
-  addresses: Array<{
-    id: string;
-    address: string;
-    derivationPath: string;
-    index: number;
-    used: boolean;
-  }>;
-}
-
-/**
- * Label Repository Interface
- */
-export interface LabelRepositoryInterface {
-  // Label CRUD
-  findByWalletId(walletId: string): Promise<LabelWithCounts[]>;
-  findById(labelId: string): Promise<Label | null>;
-  findByIdInWallet(labelId: string, walletId: string): Promise<Label | null>;
-  findByIdWithAssociations(labelId: string, walletId: string): Promise<LabelWithAssociations | null>;
-  findByNameInWallet(walletId: string, name: string): Promise<Label | null>;
-  isNameTakenByOther(walletId: string, name: string, excludeLabelId: string): Promise<boolean>;
-  findManyByIdsInWallet(labelIds: string[], walletId: string): Promise<Label[]>;
-  create(data: { walletId: string; name: string; color?: string; description?: string | null }): Promise<Label>;
-  update(labelId: string, data: { name?: string; color?: string; description?: string | null }): Promise<Label>;
-  remove(labelId: string): Promise<void>;
-  // Transaction label operations
-  getLabelsForTransaction(transactionId: string): Promise<Label[]>;
-  addLabelsToTransaction(transactionId: string, labelIds: string[]): Promise<void>;
-  replaceTransactionLabels(transactionId: string, labelIds: string[]): Promise<void>;
-  removeLabelFromTransaction(transactionId: string, labelId: string): Promise<void>;
-  // Address label operations
-  getLabelsForAddress(addressId: string): Promise<Label[]>;
-  addLabelsToAddress(addressId: string, labelIds: string[]): Promise<void>;
-  replaceAddressLabels(addressId: string, labelIds: string[]): Promise<void>;
-  removeLabelFromAddress(addressId: string, labelId: string): Promise<void>;
-}
-
-/**
- * Combined Repository Interface
- */
-export interface RepositoryFactory {
-  wallet: WalletRepositoryInterface;
-  transaction: TransactionRepositoryInterface;
-  address: AddressRepositoryInterface;
-  utxo: UtxoRepositoryInterface;
-  user: UserRepositoryInterface;
-  label: LabelRepositoryInterface;
-}
+// Re-export all types from factoryInterfaces for backwards compatibility
+export type {
+  PrismaClientLike,
+  WalletRepositoryInterface,
+  TransactionRepositoryInterface,
+  AddressRepositoryInterface,
+  UtxoRepositoryInterface,
+  UserRepositoryInterface,
+  LabelRepositoryInterface,
+  LabelWithCounts,
+  LabelWithAssociations,
+  RepositoryFactory,
+} from './factoryInterfaces';
 
 
 /**
@@ -313,184 +212,6 @@ function createUserRepository(client: PrismaClientLike): UserRepositoryInterface
     async exists(id: string) {
       const count = await client.user.count({ where: { id } });
       return count > 0;
-    },
-  };
-}
-
-/**
- * Create label repository with injectable client
- */
-function createLabelRepository(client: PrismaClientLike): LabelRepositoryInterface {
-  return {
-    async findByWalletId(walletId: string) {
-      const labels = await client.label.findMany({
-        where: { walletId },
-        include: {
-          _count: {
-            select: {
-              transactionLabels: true,
-              addressLabels: true,
-            },
-          },
-        },
-        orderBy: { name: 'asc' },
-      });
-      return labels.map(label => ({
-        ...label,
-        transactionCount: label._count.transactionLabels,
-        addressCount: label._count.addressLabels,
-      }));
-    },
-
-    async findById(labelId: string) {
-      return client.label.findUnique({ where: { id: labelId } });
-    },
-
-    async findByIdInWallet(labelId: string, walletId: string) {
-      return client.label.findFirst({ where: { id: labelId, walletId } });
-    },
-
-    async findByIdWithAssociations(labelId: string, walletId: string) {
-      const label = await client.label.findFirst({
-        where: { id: labelId, walletId },
-        include: {
-          transactionLabels: {
-            include: {
-              transaction: {
-                select: {
-                  id: true,
-                  txid: true,
-                  type: true,
-                  amount: true,
-                  confirmations: true,
-                  blockTime: true,
-                },
-              },
-            },
-          },
-          addressLabels: {
-            include: {
-              address: {
-                select: {
-                  id: true,
-                  address: true,
-                  derivationPath: true,
-                  index: true,
-                  used: true,
-                },
-              },
-            },
-          },
-        },
-      });
-
-      if (!label) return null;
-
-      return {
-        ...label,
-        transactions: label.transactionLabels.map(tl => tl.transaction),
-        addresses: label.addressLabels.map(al => al.address),
-      };
-    },
-
-    async findByNameInWallet(walletId: string, name: string) {
-      return client.label.findFirst({ where: { walletId, name } });
-    },
-
-    async isNameTakenByOther(walletId: string, name: string, excludeLabelId: string) {
-      const label = await client.label.findFirst({
-        where: { walletId, name, id: { not: excludeLabelId } },
-        select: { id: true },
-      });
-      return label !== null;
-    },
-
-    async findManyByIdsInWallet(labelIds: string[], walletId: string) {
-      return client.label.findMany({
-        where: { id: { in: labelIds }, walletId },
-      });
-    },
-
-    async create(data) {
-      return client.label.create({
-        data: {
-          walletId: data.walletId,
-          name: data.name.trim(),
-          color: data.color || '#6366f1',
-          description: data.description || null,
-        },
-      });
-    },
-
-    async update(labelId: string, data) {
-      return client.label.update({
-        where: { id: labelId },
-        data: {
-          ...(data.name !== undefined && { name: data.name.trim() }),
-          ...(data.color !== undefined && { color: data.color }),
-          ...(data.description !== undefined && { description: data.description }),
-        },
-      });
-    },
-
-    async remove(labelId: string) {
-      await client.label.delete({ where: { id: labelId } });
-    },
-
-    async getLabelsForTransaction(transactionId: string) {
-      const associations = await client.transactionLabel.findMany({
-        where: { transactionId },
-        include: { label: true },
-      });
-      return associations.map(a => a.label);
-    },
-
-    async addLabelsToTransaction(transactionId: string, labelIds: string[]) {
-      await client.transactionLabel.createMany({
-        data: labelIds.map(labelId => ({ transactionId, labelId })),
-        skipDuplicates: true,
-      });
-    },
-
-    async replaceTransactionLabels(transactionId: string, labelIds: string[]) {
-      await client.$transaction([
-        client.transactionLabel.deleteMany({ where: { transactionId } }),
-        client.transactionLabel.createMany({
-          data: labelIds.map(labelId => ({ transactionId, labelId })),
-        }),
-      ]);
-    },
-
-    async removeLabelFromTransaction(transactionId: string, labelId: string) {
-      await client.transactionLabel.deleteMany({ where: { transactionId, labelId } });
-    },
-
-    async getLabelsForAddress(addressId: string) {
-      const associations = await client.addressLabel.findMany({
-        where: { addressId },
-        include: { label: true },
-      });
-      return associations.map(a => a.label);
-    },
-
-    async addLabelsToAddress(addressId: string, labelIds: string[]) {
-      await client.addressLabel.createMany({
-        data: labelIds.map(labelId => ({ addressId, labelId })),
-        skipDuplicates: true,
-      });
-    },
-
-    async replaceAddressLabels(addressId: string, labelIds: string[]) {
-      await client.$transaction([
-        client.addressLabel.deleteMany({ where: { addressId } }),
-        client.addressLabel.createMany({
-          data: labelIds.map(labelId => ({ addressId, labelId })),
-        }),
-      ]);
-    },
-
-    async removeLabelFromAddress(addressId: string, labelId: string) {
-      await client.addressLabel.deleteMany({ where: { addressId, labelId } });
     },
   };
 }

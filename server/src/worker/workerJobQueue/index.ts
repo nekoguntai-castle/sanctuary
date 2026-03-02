@@ -13,51 +13,16 @@
  */
 
 import { Queue, Worker, Job, QueueEvents, type ConnectionOptions, type JobsOptions } from 'bullmq';
-import { getRedisClient, isRedisConnected } from '../infrastructure';
-import {
-  acquireLock,
-  extendLock,
-  releaseLock,
-  type DistributedLock,
-} from '../infrastructure/distributedLock';
-import { createLogger } from '../utils/logger';
-import { deadLetterQueue, type DeadLetterCategory } from '../services/deadLetterQueue';
-import type { WorkerJobHandler } from './jobs/types';
+import { getRedisClient, isRedisConnected } from '../../infrastructure';
+import { createLogger } from '../../utils/logger';
+import type { WorkerJobHandler } from '../jobs/types';
+import type { WorkerJobQueueConfig, QueueInstance, RegisteredHandler } from './types';
+import { setupWorkerEventHandlers } from './eventHandlers';
+import { processJobWithLock } from './jobProcessor';
+
+export type { WorkerJobQueueConfig } from './types';
 
 const log = createLogger('WorkerQueue');
-
-// =============================================================================
-// Types
-// =============================================================================
-
-export interface WorkerJobQueueConfig {
-  /** Worker concurrency per queue (default: 3) */
-  concurrency: number;
-  /** Queue names to create */
-  queues: string[];
-  /** Redis key prefix (default: 'sanctuary:worker') */
-  prefix?: string;
-  /** Default job options */
-  defaultJobOptions?: JobsOptions;
-}
-
-interface QueueInstance {
-  queue: Queue;
-  worker: Worker;
-  events: QueueEvents;
-}
-
-interface RegisteredHandler {
-  handler: (job: Job) => Promise<unknown>;
-  lockOptions?: {
-    lockKey: (data: unknown) => string;
-    lockTtlMs?: number;
-  };
-}
-
-// =============================================================================
-// Worker Job Queue Implementation
-// =============================================================================
 
 export class WorkerJobQueue {
   private queues: Map<string, QueueInstance> = new Map();
@@ -121,14 +86,12 @@ export class WorkerJobQueue {
       throw new Error('Connection not established');
     }
 
-    // Create queue
     const queue = new Queue(queueName, {
       connection: this.connection,
       prefix: this.config.prefix,
       defaultJobOptions: this.config.defaultJobOptions,
     });
 
-    // Create worker that processes jobs
     const worker = new Worker(
       queueName,
       async (job) => this.processJob(queueName, job),
@@ -139,76 +102,20 @@ export class WorkerJobQueue {
       }
     );
 
-    // Create queue events for monitoring
     const events = new QueueEvents(queueName, {
       connection: this.connection,
       prefix: this.config.prefix,
     });
 
     // Set up event handlers
-    this.setupEventHandlers(queueName, worker);
+    setupWorkerEventHandlers(queueName, worker);
 
     this.queues.set(queueName, { queue, worker, events });
     log.debug(`Created queue: ${queueName}`);
   }
 
   /**
-   * Set up event handlers for a worker
-   */
-  private setupEventHandlers(queueName: string, worker: Worker): void {
-    worker.on('completed', (job) => {
-      log.debug(`Job completed: ${queueName}:${job.name}`, {
-        jobId: job.id,
-        duration: job.finishedOn && job.processedOn
-          ? job.finishedOn - job.processedOn
-          : undefined,
-      });
-    });
-
-    worker.on('failed', (job, error) => {
-      const maxAttempts = job?.opts?.attempts ?? 1;
-      const attemptsMade = job?.attemptsMade ?? 0;
-      const isExhausted = attemptsMade >= maxAttempts;
-
-      log.error(`Job failed: ${queueName}:${job?.name}`, {
-        jobId: job?.id,
-        error: error.message,
-        attemptsMade,
-        maxAttempts,
-        exhausted: isExhausted,
-      });
-
-      // Route exhausted jobs to dead letter queue for visibility and manual retry
-      if (isExhausted && job) {
-        const dlqCategory = this.queueToDlqCategory(queueName);
-        deadLetterQueue.add(
-          dlqCategory,
-          `${queueName}:${job.name}`,
-          { jobId: job.id, jobName: job.name, queue: queueName, data: job.data },
-          error,
-          attemptsMade,
-          { queueName, jobId: job.id },
-        ).catch(dlqError => {
-          log.debug('Failed to record exhausted job in DLQ', { error: String(dlqError) });
-        });
-      }
-    });
-
-    worker.on('error', (error) => {
-      log.error(`Worker error on queue ${queueName}`, { error: error.message });
-    });
-
-    worker.on('stalled', (jobId) => {
-      log.warn(`Job stalled: ${queueName}:${jobId}`);
-    });
-  }
-
-  /**
-   * Process a job with optional distributed locking.
-   *
-   * When a distributed lock is configured, the lock is refreshed periodically.
-   * If the lock is lost (Redis blip, TTL expiry), the job is aborted and will
-   * be retried by BullMQ, preventing two workers from running the same job.
+   * Process a job - delegates to processJobWithLock
    */
   private async processJob(queueName: string, job: Job): Promise<unknown> {
     const handlerKey = `${queueName}:${job.name}`;
@@ -218,99 +125,7 @@ export class WorkerJobQueue {
       throw new Error(`No handler registered for ${handlerKey}`);
     }
 
-    let lock: DistributedLock | null = null;
-    let lockRefreshTimer: NodeJS.Timeout | null = null;
-    // When the lock is lost, this callback rejects the handler promise
-    let onLockLost: (() => void) | null = null;
-
-    const stopLockRefresh = () => {
-      if (lockRefreshTimer) {
-        clearInterval(lockRefreshTimer);
-        lockRefreshTimer = null;
-      }
-    };
-
-    const startLockRefresh = (lockTtlMs: number) => {
-      // Refresh well before expiry to prevent lock loss during long-running jobs.
-      const refreshIntervalMs = Math.max(1000, Math.floor(lockTtlMs / 3));
-
-      lockRefreshTimer = setInterval(async () => {
-        if (!lock) {
-          return;
-        }
-
-        const currentLockKey = lock.key;
-
-        try {
-          const refreshed = await extendLock(lock, lockTtlMs);
-          if (refreshed) {
-            lock = refreshed;
-            return;
-          }
-
-          log.warn(`Lost distributed lock, aborting job: ${handlerKey}`, {
-            jobId: job.id,
-            lockKey: currentLockKey,
-          });
-          lock = null; // Prevent release in finally block
-          stopLockRefresh();
-          onLockLost?.();
-        } catch (error) {
-          log.warn(`Failed to refresh distributed lock, aborting job: ${handlerKey}`, {
-            jobId: job.id,
-            lockKey: currentLockKey,
-            error: error instanceof Error ? error.message : String(error),
-          });
-          lock = null;
-          stopLockRefresh();
-          onLockLost?.();
-        }
-      }, refreshIntervalMs);
-
-      lockRefreshTimer.unref?.();
-    };
-
-    try {
-      // Acquire lock if configured
-      if (registered.lockOptions) {
-        const lockKey = registered.lockOptions.lockKey(job.data);
-        const lockTtlMs = registered.lockOptions.lockTtlMs ?? 5 * 60 * 1000; // 5 min default
-
-        lock = await acquireLock(lockKey, { ttlMs: lockTtlMs });
-
-        if (!lock) {
-          log.debug(`Skipping job - lock held: ${handlerKey}`, {
-            jobId: job.id,
-            lockKey,
-          });
-          // Return without error - another worker is handling this
-          return { skipped: true, reason: 'lock_held' };
-        }
-
-        startLockRefresh(lockTtlMs);
-
-        // Race the handler against lock loss
-        const lockLostPromise = new Promise<never>((_, reject) => {
-          onLockLost = () => reject(new Error(`Lock lost for ${handlerKey} (job ${job.id}). Job will be retried.`));
-        });
-
-        return await Promise.race([
-          registered.handler(job),
-          lockLostPromise,
-        ]);
-      }
-
-      // No lock configured — just run the handler
-      return await registered.handler(job);
-    } finally {
-      stopLockRefresh();
-      onLockLost = null; // Prevent stale rejection after handler completes
-
-      // Always release lock if we still hold one
-      if (lock) {
-        await releaseLock(lock);
-      }
-    }
+    return processJobWithLock(handlerKey, registered, job);
   }
 
   /**
@@ -495,19 +310,6 @@ export class WorkerJobQueue {
    */
   getRegisteredJobs(): string[] {
     return Array.from(this.handlers.keys());
-  }
-
-  /**
-   * Map queue name to DLQ category
-   */
-  private queueToDlqCategory(queueName: string): DeadLetterCategory {
-    switch (queueName) {
-      case 'sync': return 'sync';
-      case 'notifications': return 'notification';
-      case 'maintenance': return 'other';
-      case 'confirmations': return 'sync';
-      default: return 'other';
-    }
   }
 
   /**

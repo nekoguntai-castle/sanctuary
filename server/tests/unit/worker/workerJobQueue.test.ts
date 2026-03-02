@@ -109,6 +109,7 @@ vi.mock('../../../src/services/deadLetterQueue', () => ({
 }));
 
 import { WorkerJobQueue } from '../../../src/worker/workerJobQueue';
+import { setupWorkerEventHandlers, queueToDlqCategory } from '../../../src/worker/workerJobQueue/eventHandlers';
 import type { WorkerJobHandler } from '../../../src/worker/jobs/types';
 import { acquireLock, extendLock, releaseLock } from '../../../src/infrastructure/distributedLock';
 
@@ -394,7 +395,7 @@ describe('WorkerJobQueue', () => {
         }),
       };
 
-      (queue as any).setupEventHandlers('sync', fakeWorker as any);
+      setupWorkerEventHandlers('sync', fakeWorker as any);
 
       handlers.completed?.({
         id: 'job-1',
@@ -447,7 +448,7 @@ describe('WorkerJobQueue', () => {
         }),
       };
 
-      (queue as any).setupEventHandlers('sync', fakeWorker as any);
+      setupWorkerEventHandlers('sync', fakeWorker as any);
 
       handlers.completed?.({
         id: 'job-no-timing',
@@ -468,7 +469,7 @@ describe('WorkerJobQueue', () => {
         }),
       };
 
-      (queue as any).setupEventHandlers('sync', fakeWorker as any);
+      setupWorkerEventHandlers('sync', fakeWorker as any);
 
       handlers.failed?.(
         {
@@ -810,11 +811,11 @@ describe('WorkerJobQueue', () => {
     });
 
     it('covers queue-to-DLQ category mapping and concurrent shutdown promise reuse', async () => {
-      expect((queue as any).queueToDlqCategory('sync')).toBe('sync');
-      expect((queue as any).queueToDlqCategory('notifications')).toBe('notification');
-      expect((queue as any).queueToDlqCategory('maintenance')).toBe('other');
-      expect((queue as any).queueToDlqCategory('confirmations')).toBe('sync');
-      expect((queue as any).queueToDlqCategory('other-queue')).toBe('other');
+      expect(queueToDlqCategory('sync')).toBe('sync');
+      expect(queueToDlqCategory('notifications')).toBe('notification');
+      expect(queueToDlqCategory('maintenance')).toBe('other');
+      expect(queueToDlqCategory('confirmations')).toBe('sync');
+      expect(queueToDlqCategory('other-queue')).toBe('other');
 
       await queue.initialize();
       const first = queue.shutdown();

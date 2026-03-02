@@ -1,8 +1,8 @@
 /**
- * Proxy Routes
+ * Proxy Route Whitelist
  *
- * This is the heart of the gateway's security model. Only routes explicitly
- * listed in ALLOWED_ROUTES are proxied to the backend. Everything else is blocked.
+ * Only routes explicitly listed here are proxied to the backend.
+ * Everything else is blocked.
  *
  * ## Why Whitelist Instead of Blacklist?
  *
@@ -10,20 +10,6 @@
  * - New endpoints aren't accidentally exposed
  * - Admin/sensitive routes are blocked by default
  * - We explicitly choose what mobile apps can access
- *
- * ## How It Works
- *
- * 1. Request comes in from mobile app
- * 2. `checkWhitelist` middleware checks if route matches ALLOWED_ROUTES
- * 3. If not matched, return 403 Forbidden
- * 4. If matched, proxy to backend with extra headers
- *
- * ## Proxy Headers
- *
- * The proxy adds these headers to backend requests:
- * - `X-Gateway-Request: true` - Identifies request as coming from gateway
- * - `X-Gateway-User-Id` - Authenticated user's ID
- * - `X-Gateway-Username` - Authenticated user's username
  *
  * ## Adding New Routes
  *
@@ -41,24 +27,9 @@
  * - Internal gateway endpoints
  */
 
-import { Router, Request, Response } from 'express';
-import { createProxyMiddleware, fixRequestBody, Options } from 'http-proxy-middleware';
-import { config } from '../config';
-import { authenticate, AuthenticatedRequest } from '../middleware/auth';
-import {
-  defaultRateLimiter,
-  transactionCreateRateLimiter,
-  broadcastRateLimiter,
-  deviceRegistrationRateLimiter,
-  addressGenerationRateLimiter,
-} from '../middleware/rateLimit';
-import { validateRequest } from '../middleware/validateRequest';
-import { requireMobilePermission } from '../middleware/mobilePermission';
-import { createLogger } from '../utils/logger';
-import { logSecurityEvent } from '../middleware/requestLogger';
-
-const log = createLogger('PROXY');
-const router = Router();
+import { Request, Response } from 'express';
+import { AuthenticatedRequest } from '../../middleware/auth';
+import { logSecurityEvent } from '../../middleware/requestLogger';
 
 /**
  * Whitelist of allowed API routes
@@ -68,7 +39,7 @@ const router = Router();
  * SECURITY: Only add routes that are safe for mobile app access.
  * Admin routes and sensitive operations should NOT be exposed.
  */
-const ALLOWED_ROUTES: Array<{ method: string; pattern: RegExp }> = [
+export const ALLOWED_ROUTES: Array<{ method: string; pattern: RegExp }> = [
   // Authentication
   { method: 'POST', pattern: /^\/api\/v1\/auth\/login$/ },
   { method: 'POST', pattern: /^\/api\/v1\/auth\/refresh$/ },
@@ -158,9 +129,6 @@ export function isAllowedRoute(method: string, path: string): boolean {
   );
 }
 
-// Export for testing
-export { ALLOWED_ROUTES };
-
 /**
  * Middleware to check if route is whitelisted
  *
@@ -196,179 +164,3 @@ export function checkWhitelist(req: Request, res: Response, next: () => void): v
 
   next();
 }
-
-/**
- * Proxy configuration
- */
-const proxyOptions: Options = {
-  target: config.backendUrl,
-  changeOrigin: true,
-  logLevel: 'silent',
-  onProxyReq: (proxyReq, req) => {
-    // Fix for body parsing: when express.json() parses the body,
-    // the raw stream is consumed. This re-attaches the parsed body
-    // to the proxy request so it can be forwarded to the backend.
-    fixRequestBody(proxyReq, req as Request);
-
-    const authReq = req as AuthenticatedRequest;
-
-    // Forward user info to backend
-    if (authReq.user) {
-      proxyReq.setHeader('X-Gateway-User-Id', authReq.user.userId);
-      proxyReq.setHeader('X-Gateway-Username', authReq.user.username);
-    }
-
-    // Mark request as coming from gateway
-    proxyReq.setHeader('X-Gateway-Request', 'true');
-
-    log.debug('Proxying request', {
-      method: req.method,
-      path: req.path,
-      userId: authReq.user?.userId,
-    });
-  },
-  onProxyRes: (proxyRes, req) => {
-    log.debug('Proxy response', {
-      method: req.method,
-      path: req.path,
-      status: proxyRes.statusCode,
-    });
-  },
-  onError: (err, req, res) => {
-    log.error('Proxy error', { error: err.message, path: req.path });
-    (res as Response).status(502).json({
-      error: 'Bad Gateway',
-      message: 'Unable to reach backend service',
-    });
-  },
-};
-
-// Create proxy middleware
-const proxy = createProxyMiddleware(proxyOptions);
-
-// Public routes (no auth required)
-router.post('/api/v1/auth/login', checkWhitelist, validateRequest, proxy);
-router.post('/api/v1/auth/refresh', checkWhitelist, validateRequest, proxy);
-router.post('/api/v1/auth/2fa/verify', checkWhitelist, validateRequest, proxy);
-
-// =============================================================================
-// Protected routes with mobile permission checks
-// =============================================================================
-
-// Transaction operations
-router.post(
-  '/api/v1/wallets/:id/transactions/create',
-  authenticate,
-  transactionCreateRateLimiter,
-  checkWhitelist,
-  requireMobilePermission('createTransaction'),
-  validateRequest,
-  proxy
-);
-
-router.post(
-  '/api/v1/wallets/:id/transactions/estimate',
-  authenticate,
-  transactionCreateRateLimiter,
-  checkWhitelist,
-  requireMobilePermission('createTransaction'),
-  validateRequest,
-  proxy
-);
-
-router.post(
-  '/api/v1/wallets/:id/transactions/broadcast',
-  authenticate,
-  broadcastRateLimiter,
-  checkWhitelist,
-  requireMobilePermission('broadcast'),
-  validateRequest,
-  proxy
-);
-
-// PSBT operations
-router.post(
-  '/api/v1/wallets/:id/psbt/create',
-  authenticate,
-  transactionCreateRateLimiter,
-  checkWhitelist,
-  requireMobilePermission('createTransaction'),
-  validateRequest,
-  proxy
-);
-
-router.post(
-  '/api/v1/wallets/:id/psbt/broadcast',
-  authenticate,
-  broadcastRateLimiter,
-  checkWhitelist,
-  requireMobilePermission('broadcast'),
-  validateRequest,
-  proxy
-);
-
-// Address generation
-router.post(
-  '/api/v1/wallets/:id/addresses/generate',
-  authenticate,
-  addressGenerationRateLimiter,
-  checkWhitelist,
-  requireMobilePermission('generateAddress'),
-  validateRequest,
-  proxy
-);
-
-// Label management (create - has walletId in path)
-router.post(
-  '/api/v1/wallets/:id/labels',
-  authenticate,
-  defaultRateLimiter,
-  checkWhitelist,
-  requireMobilePermission('manageLabels'),
-  validateRequest,
-  proxy
-);
-
-// Note: PATCH/DELETE /api/v1/labels/:id routes don't have walletId in path.
-// Permission checking for these is handled by the backend after looking up
-// which wallet the label belongs to.
-
-// Note: Device management routes (/api/v1/devices) are user-scoped, not wallet-scoped,
-// so they don't use mobile permission middleware. Access control is handled by the
-// backend based on user authentication.
-
-// Push notification device registration (strict rate limit)
-router.post(
-  '/api/v1/push/register',
-  authenticate,
-  deviceRegistrationRateLimiter,
-  checkWhitelist,
-  validateRequest,
-  proxy
-);
-
-// Draft signing (multisig)
-router.post(
-  '/api/v1/wallets/:id/drafts/:draftId/sign',
-  authenticate,
-  defaultRateLimiter,
-  checkWhitelist,
-  requireMobilePermission('signPsbt'),
-  validateRequest,
-  proxy
-);
-
-// =============================================================================
-// Protected routes (general - no special permission checks)
-// =============================================================================
-
-router.use(
-  '/api/v1',
-  authenticate,
-  defaultRateLimiter,
-  checkWhitelist,
-  validateRequest,
-  proxy
-);
-
-export default router;
