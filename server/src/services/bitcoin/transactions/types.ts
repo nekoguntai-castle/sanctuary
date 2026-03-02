@@ -5,6 +5,12 @@
  */
 
 import * as bitcoin from 'bitcoinjs-lib';
+import { db as prisma } from '../../../repositories/db';
+
+/**
+ * Prisma transaction client type for use in nested $transaction blocks.
+ */
+export type PrismaTxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 
 /**
  * Input metadata for transaction storage
@@ -85,6 +91,22 @@ export interface CreateBatchTransactionResult {
 export interface BroadcastResult {
   txid: string;
   broadcasted: boolean;
+}
+
+/**
+ * Internal UTXO selection result shape used by createTransaction.
+ */
+export interface UtxoSelection {
+  utxos: Array<{
+    txid: string;
+    vout: number;
+    amount: number;
+    address: string;
+    scriptPubKey: string;
+  }>;
+  totalAmount: number;
+  estimatedFee: number;
+  changeAmount: number;
 }
 
 /**

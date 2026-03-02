@@ -15,6 +15,7 @@ export type {
   BroadcastResult,
   WalletSigningInfo,
   PendingOutput,
+  UtxoSelection,
 } from './types';
 
 // Transaction creation

@@ -1,9 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { Wallet, WalletType } from '../../types';
-import * as walletsApi from '../../src/api/wallets';
+import { WalletType } from '../../types';
 import * as transactionsApi from '../../src/api/transactions';
-import * as labelsApi from '../../src/api/labels';
 import { useBitcoinStatus } from '../../hooks/queries/useBitcoin';
 import { useErrorHandler } from '../../hooks/useErrorHandler';
 import { TransactionExportModal } from '../TransactionExportModal';
@@ -36,8 +34,12 @@ import { useWalletSync } from './hooks/useWalletSync';
 import { useWalletSharing } from './hooks/useWalletSharing';
 import { useAITransactionFilter } from './hooks/useAITransactionFilter';
 import { useWalletWebSocket } from './hooks/useWalletWebSocket';
+import { useAddressLabels } from './hooks/useAddressLabels';
+import { useUtxoActions } from './hooks/useUtxoActions';
+import { useWalletMutations } from './hooks/useWalletMutations';
 
 import type { TabType } from './types';
+import * as walletsApi from '../../src/api/wallets';
 
 const log = createLogger('WalletDetail');
 
@@ -117,6 +119,51 @@ export const WalletDetail: React.FC = () => {
     setWallet,
   });
 
+  // Address label editing
+  const {
+    editingAddressId,
+    availableLabels,
+    selectedLabelIds,
+    savingAddressLabels,
+    handleEditAddressLabels,
+    handleSaveAddressLabels,
+    handleToggleAddressLabel,
+    handleCancelEditLabels,
+  } = useAddressLabels({
+    walletId: id,
+    setAddresses,
+    handleError,
+  });
+
+  // UTXO freeze/select/send actions
+  const {
+    selectedUtxos,
+    handleToggleFreeze,
+    handleToggleSelect,
+    handleSendSelected,
+  } = useUtxoActions({
+    walletId: id,
+    utxos,
+    setUTXOs,
+    setUtxoStats,
+    handleError,
+    navigate,
+  });
+
+  // Wallet name editing and update
+  const {
+    isEditingName,
+    setIsEditingName,
+    editedName,
+    setEditedName,
+    handleUpdateWallet,
+  } = useWalletMutations({
+    wallet,
+    walletId: id,
+    setWallet,
+    handleError,
+  });
+
   // ---------------------------------------------------------------------------
   // Local UI state (not extracted - stays in component)
   // ---------------------------------------------------------------------------
@@ -149,21 +196,8 @@ export const WalletDetail: React.FC = () => {
   // Transfer Ownership Modal State
   const [showTransferModal, setShowTransferModal] = useState(false);
 
-  // Selection State for UTXOs
-  const [selectedUtxos, setSelectedUtxos] = useState<Set<string>>(new Set());
-
-  // Wallet Name Editing State
-  const [isEditingName, setIsEditingName] = useState(false);
-  const [editedName, setEditedName] = useState('');
-
   // Address QR Modal State
   const [qrModalAddress, setQrModalAddress] = useState<string | null>(null);
-
-  // Address Label Editing State
-  const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
-  const [availableLabels, setAvailableLabels] = useState<import('../../types').Label[]>([]);
-  const [selectedLabelIds, setSelectedLabelIds] = useState<string[]>([]);
-  const [savingAddressLabels, setSavingAddressLabels] = useState(false);
 
   // Receive Modal State
   const [showReceive, setShowReceive] = useState(false);
@@ -184,11 +218,6 @@ export const WalletDetail: React.FC = () => {
     setSyncRetryInfo,
     fetchData,
   });
-
-  // Reset UTXO selection when wallet changes
-  useEffect(() => {
-    setSelectedUtxos(new Set());
-  }, [id]);
 
   // Load UTXO stats when stats tab is first opened
   useEffect(() => {
@@ -220,126 +249,10 @@ export const WalletDetail: React.FC = () => {
     }
   };
 
-  // Address label editing functions
-  const handleEditAddressLabels = async (addr: import('../../types').Address) => {
-    if (!addr.id || !id) return;
-    setEditingAddressId(addr.id);
-    setSelectedLabelIds(addr.labels?.map(l => l.id) || []);
-    try {
-      const labels = await labelsApi.getLabels(id);
-      setAvailableLabels(labels);
-    } catch (err) {
-      logError(log, err, 'Failed to load labels');
-      handleError(err, 'Failed to Load Labels');
-    }
-  };
-
-  const handleSaveAddressLabels = async () => {
-    if (!editingAddressId) return;
-    try {
-      setSavingAddressLabels(true);
-      await labelsApi.setAddressLabels(editingAddressId, selectedLabelIds);
-      // Update the address's labels locally
-      const updatedLabels = availableLabels.filter(l => selectedLabelIds.includes(l.id));
-      setAddresses(current =>
-        current.map(addr =>
-          addr.id === editingAddressId ? { ...addr, labels: updatedLabels } : addr
-        )
-      );
-      setEditingAddressId(null);
-    } catch (err) {
-      logError(log, err, 'Failed to save address labels');
-      handleError(err, 'Failed to Save Labels');
-    } finally {
-      setSavingAddressLabels(false);
-    }
-  };
-
-  const handleToggleAddressLabel = (labelId: string) => {
-    setSelectedLabelIds(prev =>
-      prev.includes(labelId)
-        ? prev.filter(id => id !== labelId)
-        : [...prev, labelId]
-    );
-  };
-
   // Refresh data callback for when labels are changed
   const handleLabelsChange = () => {
     if (id) {
       fetchData(true);
-    }
-  };
-
-  const handleToggleFreeze = async (txid: string, vout: number) => {
-    // Find the UTXO to toggle
-    const utxo = utxos.find(u => u.txid === txid && u.vout === vout);
-    if (!utxo || !utxo.id) {
-      log.error('UTXO not found or missing ID');
-      return;
-    }
-
-    const newFrozenState = !utxo.frozen;
-
-    // Optimistic update
-    setUTXOs(current =>
-      current.map(u =>
-        (u.txid === txid && u.vout === vout) ? { ...u, frozen: newFrozenState } : u
-      )
-    );
-    setUtxoStats(current =>
-      current.map(u =>
-        (u.txid === txid && u.vout === vout) ? { ...u, frozen: newFrozenState } : u
-      )
-    );
-
-    try {
-      await transactionsApi.freezeUTXO(utxo.id, newFrozenState);
-    } catch (err) {
-      logError(log, err, 'Failed to freeze UTXO');
-      handleError(err, 'Failed to Freeze UTXO');
-      // Revert optimistic update on error
-      setUTXOs(current =>
-        current.map(u =>
-          (u.txid === txid && u.vout === vout) ? { ...u, frozen: !newFrozenState } : u
-        )
-      );
-      setUtxoStats(current =>
-        current.map(u =>
-          (u.txid === txid && u.vout === vout) ? { ...u, frozen: !newFrozenState } : u
-        )
-      );
-    }
-  };
-
-  const handleToggleSelect = (id: string) => {
-    const next = new Set(selectedUtxos);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setSelectedUtxos(next);
-  };
-
-  const handleSendSelected = () => {
-    navigate(`/wallets/${id}/send`, { state: { preSelected: Array.from(selectedUtxos) } });
-  };
-
-  const handleUpdateWallet = async (updatedData: Partial<Wallet>) => {
-    if (!wallet || !id) return;
-
-    try {
-      // Optimistic update
-      const updatedWallet = { ...wallet, ...updatedData };
-      setWallet(updatedWallet);
-
-      // Update via API (only name and descriptor are updateable)
-      await walletsApi.updateWallet(id, {
-        name: updatedData.name,
-        descriptor: updatedData.descriptor,
-      });
-    } catch (err) {
-      log.error('Failed to update wallet', { error: err });
-      // Revert optimistic update on error
-      setWallet(wallet);
-      handleError(err, 'Update Failed');
     }
   };
 
@@ -471,7 +384,7 @@ export const WalletDetail: React.FC = () => {
             onSaveAddressLabels={handleSaveAddressLabels}
             onToggleAddressLabel={handleToggleAddressLabel}
             savingAddressLabels={savingAddressLabels}
-            onCancelEditLabels={() => setEditingAddressId(null)}
+            onCancelEditLabels={handleCancelEditLabels}
             onShowQrModal={setQrModalAddress}
             explorerUrl={explorerUrl}
           />

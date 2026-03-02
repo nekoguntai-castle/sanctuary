@@ -200,7 +200,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           {devices.length > 0 ? (
             <ul className="divide-y divide-sanctuary-100 dark:divide-sanctuary-800">
               {devices.map(d => {
-                const hasAccountMismatch = (d as any).accountMissing;
+                const hasAccountMismatch = d.accountMissing;
                 return (
                   <li
                     key={d.id}

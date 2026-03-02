@@ -9,16 +9,17 @@
 import net from 'net';
 import tls from 'tls';
 import { EventEmitter } from 'events';
-import config, { getConfig } from '../../../config';
+import config from '../../../config';
 import { db as prisma } from '../../../repositories/db';
 import { createLogger } from '../../../utils/logger';
-import { getErrorMessage } from '../../../utils/errors';
 import { createConnection, wrapSocketInTls, applySocketOptimizations } from './connection';
-import { parseResponseBuffer, isNotification, processResponse, createRequestMessage, createBatchMessage, rejectAllPendingRequests } from './protocol';
+import { createRequestMessage, createBatchMessage, rejectAllPendingRequests } from './protocol';
+import { getDefaultTimeouts } from './clientConfig';
+import { handleIncomingData, handleNotification as handleNotificationFn } from './dataHandler';
+import * as publicApi from './publicApi';
 import * as methods from './methods';
 import type {
   ElectrumConfig,
-  ElectrumResponse,
   ProxyConfig,
   TransactionDetails,
   BitcoinNetwork,
@@ -26,23 +27,6 @@ import type {
 } from './types';
 
 const log = createLogger('ELECTRUM');
-
-// Get electrum client configuration from centralized config
-function getElectrumClientConfig() {
-  const cfg = getConfig();
-  return cfg.electrumClient;
-}
-
-// Timeout defaults are loaded from config but cached for performance
-function getDefaultTimeouts() {
-  const cfg = getElectrumClientConfig();
-  return {
-    requestTimeoutMs: cfg.requestTimeoutMs,
-    batchRequestTimeoutMs: cfg.batchRequestTimeoutMs,
-    connectionTimeoutMs: cfg.connectionTimeoutMs,
-    torTimeoutMultiplier: cfg.torTimeoutMultiplier,
-  };
-}
 
 class ElectrumClient extends EventEmitter {
   private socket: net.Socket | tls.TLSSocket | null = null;
@@ -233,9 +217,7 @@ class ElectrumClient extends EventEmitter {
             }
 
             // Set up event handlers on the socket
-            this.socket!.on('data', (data) => {
-              this.handleData(data);
-            });
+            this.socket!.on('data', (data) => this.handleData(data));
 
             this.socket!.on('error', (error) => {
               log.error('Socket error', { error });
@@ -289,8 +271,6 @@ class ElectrumClient extends EventEmitter {
 
   // ===========================================================================
   // INTERNAL HELPERS (delegated to methods module)
-  // These private methods preserve the original class interface so that
-  // existing tests using `(client as any).methodName()` continue to work.
   // ===========================================================================
 
   /**
@@ -319,55 +299,21 @@ class ElectrumClient extends EventEmitter {
   // ===========================================================================
 
   /**
-   * Handle incoming data from server
+   * Handle incoming socket data - delegates to standalone handleIncomingData
    */
   private handleData(data: Buffer): void {
-    const { responses, remainingBuffer } = parseResponseBuffer(this.buffer, data.toString());
-    this.buffer = remainingBuffer;
-
-    for (const response of responses) {
-      if (isNotification(response)) {
-        this.handleNotification(response);
-      } else {
-        processResponse(response, this.pendingRequests);
-      }
-    }
+    this.buffer = handleIncomingData(
+      this.buffer, data, this.pendingRequests, this, this.scriptHashToAddress
+    );
   }
 
   /**
-   * Handle subscription notifications from server
+   * Handle a subscription notification - delegates to standalone handleNotification
    */
-  private handleNotification(notification: ElectrumResponse): void {
-    const { method, params } = notification;
-
-    if (method === 'blockchain.headers.subscribe') {
-      const blockHeader = params?.[0] as { height: number; hex: string } | undefined;
-      if (blockHeader) {
-        log.info(`[NOTIFICATION] New block at height ${blockHeader.height}`);
-        this.emit('newBlock', {
-          height: blockHeader.height,
-          hex: blockHeader.hex,
-        });
-      }
-    } else if (method === 'blockchain.scripthash.subscribe') {
-      const scriptHash = params?.[0] as string | undefined;
-      const status = params?.[1] as string | undefined;
-
-      if (scriptHash) {
-        const address = this.scriptHashToAddress.get(scriptHash);
-        log.info(`[NOTIFICATION] Address activity: ${address || scriptHash} (status: ${status?.slice(0, 8)}...)`);
-        this.emit('addressActivity', {
-          scriptHash,
-          address,
-          status,
-        });
-      }
-    } else {
-      log.debug(`[NOTIFICATION] Unknown notification: ${method}`);
-    }
+  private handleNotification(notification: import('./types').ElectrumResponse): void {
+    handleNotificationFn(notification, this, this.scriptHashToAddress);
   }
 
-  // ===========================================================================
   // REQUEST/RESPONSE PRIMITIVES
   // ===========================================================================
 
@@ -382,7 +328,6 @@ class ElectrumClient extends EventEmitter {
     return new Promise((resolve, reject) => {
       const id = ++this.requestId;
 
-      // Timeout after configured duration
       const timeoutId = setTimeout(() => {
         if (this.pendingRequests.has(id)) {
           this.pendingRequests.delete(id);
@@ -440,255 +385,132 @@ class ElectrumClient extends EventEmitter {
   }
 
   // ===========================================================================
-  // PUBLIC API - delegates to methods module
+  // PUBLIC API - delegates to publicApi module
   // ===========================================================================
 
-  /**
-   * Get server version (cached - can only be called once per connection)
-   */
   async getServerVersion(): Promise<{ server: string; protocol: string }> {
     if (this.serverVersion) {
       return this.serverVersion;
     }
-    this.serverVersion = await methods.getServerVersion(
+    this.serverVersion = await publicApi.getServerVersion(
       (method, params) => this.request(method, params)
     );
     return this.serverVersion;
   }
 
-  /**
-   * Ping the server to keep connection alive
-   */
   async ping(): Promise<null> {
-    return methods.ping((method, params) => this.request(method, params));
+    return publicApi.ping((method, params) => this.request(method, params));
   }
 
-  /**
-   * Get address balance
-   */
   async getAddressBalance(address: string): Promise<{ confirmed: number; unconfirmed: number }> {
-    return methods.getAddressBalance(
-      (method, params) => this.request(method, params),
-      address,
-      this.network
+    return publicApi.getAddressBalance(
+      (method, params) => this.request(method, params), address, this.network
     );
   }
 
-  /**
-   * Get address transaction history
-   */
   async getAddressHistory(address: string): Promise<Array<{ tx_hash: string; height: number }>> {
-    return methods.getAddressHistory(
-      (method, params) => this.request(method, params),
-      address,
-      this.network
+    return publicApi.getAddressHistory(
+      (method, params) => this.request(method, params), address, this.network
     );
   }
 
-  /**
-   * Get address unspent outputs (UTXOs)
-   */
   async getAddressUTXOs(address: string): Promise<Array<{
-    tx_hash: string;
-    tx_pos: number;
-    height: number;
-    value: number;
+    tx_hash: string; tx_pos: number; height: number; value: number;
   }>> {
-    return methods.getAddressUTXOs(
-      (method, params) => this.request(method, params),
-      address,
-      this.network
+    return publicApi.getAddressUTXOs(
+      (method, params) => this.request(method, params), address, this.network
     );
   }
 
-  /**
-   * Get transaction details
-   */
   async getTransaction(txid: string, _verbose: boolean = false): Promise<TransactionDetails> {
-    return methods.getTransaction(
-      (method, params) => this.request(method, params),
-      txid,
-      this.network
+    return publicApi.getTransaction(
+      (method, params) => this.request(method, params), txid, this.network
     );
   }
 
-  /**
-   * Broadcast transaction
-   */
   async broadcastTransaction(rawTx: string): Promise<string> {
-    return methods.broadcastTransaction(
-      (method, params) => this.request(method, params),
-      rawTx
+    return publicApi.broadcastTransaction(
+      (method, params) => this.request(method, params), rawTx
     );
   }
 
-  /**
-   * Get fee estimate (in satoshis per byte)
-   */
   async estimateFee(blocks: number = 6): Promise<number> {
-    return methods.estimateFee(
-      (method, params) => this.request(method, params),
-      blocks
+    return publicApi.estimateFee(
+      (method, params) => this.request(method, params), blocks
     );
   }
 
-  /**
-   * Subscribe to address changes
-   */
   async subscribeAddress(address: string): Promise<string | null> {
-    return methods.subscribeAddress(
+    return publicApi.subscribeAddress(
       (method, params) => this.request(method, params),
-      address,
-      this.network,
-      this.scriptHashToAddress
+      address, this.network, this.scriptHashToAddress
     );
   }
 
-  /**
-   * Unsubscribe from address changes (clears local tracking only)
-   */
   unsubscribeAddress(address: string): void {
-    methods.unsubscribeAddress(address, this.network, this.scriptHashToAddress);
+    publicApi.unsubscribeAddress(address, this.network, this.scriptHashToAddress);
   }
 
-  /**
-   * Batch: Subscribe to multiple addresses in a single RPC batch
-   */
   async subscribeAddressBatch(addresses: string[]): Promise<Map<string, string | null>> {
-    return methods.subscribeAddressBatch(
+    return publicApi.subscribeAddressBatch(
       (reqs) => this.batchRequest(reqs),
-      addresses,
-      this.network,
-      this.scriptHashToAddress
+      addresses, this.network, this.scriptHashToAddress
     );
   }
 
-  /**
-   * Subscribe to new block headers
-   */
   async subscribeHeaders(): Promise<{ height: number; hex: string }> {
     this.subscribedHeaders = true;
-    return methods.subscribeHeaders(
+    return publicApi.subscribeHeaders(
       (method, params) => this.request(method, params)
     );
   }
 
-  /**
-   * Check if subscribed to headers
-   */
   isSubscribedToHeaders(): boolean {
     return this.subscribedHeaders;
   }
 
-  /**
-   * Get all subscribed addresses
-   */
   getSubscribedAddresses(): string[] {
     return Array.from(this.scriptHashToAddress.values());
   }
 
-  /**
-   * Get block header
-   */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Electrum returns varying formats per server implementation
   async getBlockHeader(height: number): Promise<any> {
-    return methods.getBlockHeader(
-      (method, params) => this.request(method, params),
-      height
+    return publicApi.getBlockHeader(
+      (method, params) => this.request(method, params), height
     );
   }
 
-  /**
-   * Get current block height
-   */
   async getBlockHeight(): Promise<number> {
-    return methods.getBlockHeight(
+    return publicApi.getBlockHeight(
       (method, params) => this.request(method, params)
     );
   }
 
-  /**
-   * Test if server supports verbose transaction responses
-   */
   async testVerboseSupport(testTxid?: string): Promise<boolean> {
-    return methods.testVerboseSupport(
-      (method, params) => this.request(method, params),
-      testTxid
+    return publicApi.testVerboseSupport(
+      (method, params) => this.request(method, params), testTxid
     );
   }
 
-  /**
-   * Batch: Get transaction history for multiple addresses
-   */
   async getAddressHistoryBatch(addresses: string[]): Promise<Map<string, Array<{ tx_hash: string; height: number }>>> {
-    return methods.getAddressHistoryBatch(
-      (reqs) => this.batchRequest(reqs),
-      addresses,
-      this.network
+    return publicApi.getAddressHistoryBatch(
+      (reqs) => this.batchRequest(reqs), addresses, this.network
     );
   }
 
-  /**
-   * Batch: Get UTXOs for multiple addresses
-   */
   async getAddressUTXOsBatch(addresses: string[]): Promise<Map<string, Array<{ tx_hash: string; tx_pos: number; height: number; value: number }>>> {
-    return methods.getAddressUTXOsBatch(
-      (reqs) => this.batchRequest(reqs),
-      addresses,
-      this.network
+    return publicApi.getAddressUTXOsBatch(
+      (reqs) => this.batchRequest(reqs), addresses, this.network
     );
   }
 
-  /**
-   * Batch: Get multiple transactions in a single RPC batch.
-   * Returns a Map of txid -> transaction data.
-   *
-   * Note: This method is implemented inline (rather than delegating to methods module)
-   * because it calls this.decodeRawTransaction, which tests spy on via (client as any).
-   */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- matches NodeClientInterface signature
   async getTransactionsBatch(txids: string[], _verbose: boolean = true): Promise<Map<string, any>> {
-    if (txids.length === 0) return new Map();
-
-    // Always use non-verbose mode since Blockstream (and other electrs) doesn't support verbose
-    const useVerbose = false;
-
-    const requests = txids.map(txid => ({
-      method: 'blockchain.transaction.get',
-      params: [txid, useVerbose] as unknown[],
-    }));
-
-    // Execute batch with retry for timeouts
-    let results!: unknown[];
-    const MAX_RETRIES = 2;
-
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-      try {
-        results = await this.batchRequest(requests);
-        // Decode raw transactions since we're using non-verbose mode
-        results = results.map(rawTx => this.decodeRawTransaction(rawTx as string));
-        break;
-      } catch (error) {
-        if (getErrorMessage(error).includes('timeout')) {
-          log.warn(`Batch transaction fetch timeout, attempt ${attempt + 1}/${MAX_RETRIES + 1}`);
-          if (attempt < MAX_RETRIES) {
-            await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
-            continue;
-          }
-        }
-        throw error;
-      }
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- matches NodeClientInterface signature
-    const resultMap = new Map<string, any>();
-    for (let i = 0; i < txids.length; i++) {
-      if (results[i]) {
-        resultMap.set(txids[i], results[i]);
-      }
-    }
-
-    return resultMap;
+    return publicApi.getTransactionsBatch(
+      (reqs) => this.batchRequest(reqs),
+      (rawTx) => this.decodeRawTransaction(rawTx),
+      txids
+    );
   }
 }
 

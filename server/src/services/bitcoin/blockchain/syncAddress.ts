@@ -1,64 +1,39 @@
 /**
- * Blockchain Service
+ * Sync Address
  *
- * High-level service for interacting with the Bitcoin blockchain.
- * Handles address monitoring, transaction fetching, and UTXO management.
+ * Fetches transactions and UTXOs for a single address from the blockchain
+ * and updates the database. Used during wallet sync.
  */
 
-import { getNodeClient } from './nodeClient';
-import { getElectrumPool } from './electrumPool';
-import type { TransactionDetails, TransactionOutput, TransactionInput } from './electrum';
-import { db as prisma } from '../../repositories/db';
-import { validateAddress, parseTransaction, getNetwork } from './utils';
-import { createLogger } from '../../utils/logger';
-import { getErrorMessage } from '../../utils/errors';
-import { walletLog } from '../../websocket/notifications';
-
-// Import modular utilities
-import {
-  getCachedBlockHeight,
-  setCachedBlockHeight,
-  getBlockHeight,
-  getBlockTimestamp,
-  type Network,
-} from './utils/blockHeight';
-import { recalculateWalletBalances, correctMisclassifiedConsolidations } from './utils/balanceCalculation';
-import { ensureGapLimit } from './sync/addressDiscovery';
-import {
-  updateTransactionConfirmations,
-  populateMissingTransactionFields,
-  type ConfirmationUpdate,
-  type PopulateFieldsResult,
-} from './sync/confirmations';
-
-// Sync pipeline
-import { executeSyncPipeline, defaultSyncPhases, type SyncResult } from './sync';
-
-// Re-export for backward compatibility
-export {
-  getCachedBlockHeight,
-  setCachedBlockHeight,
-  getBlockHeight,
-  recalculateWalletBalances,
-  correctMisclassifiedConsolidations,
-  ensureGapLimit,
-  updateTransactionConfirmations,
-  populateMissingTransactionFields,
-  type ConfirmationUpdate,
-  type PopulateFieldsResult,
-  type Network,
-};
+import { getNodeClient } from '../nodeClient';
+import type { TransactionOutput, TransactionInput } from '../electrum';
+import { db as prisma } from '../../../repositories/db';
+import { createLogger } from '../../../utils/logger';
+import { getBlockHeight, getBlockTimestamp } from '../utils/blockHeight';
+import type { SyncAddressResult } from './types';
 
 const log = createLogger('BLOCKCHAIN');
+
+/**
+ * Calculate confirmations for a transaction (internal helper)
+ * @param blockHeight - Block height of the transaction
+ * @param network - Bitcoin network (defaults to mainnet for backwards compatibility)
+ */
+export async function getConfirmations(blockHeight: number, network: 'mainnet' | 'testnet' | 'signet' | 'regtest' = 'mainnet'): Promise<number> {
+  try {
+    const currentHeight = await getBlockHeight(network);
+    return Math.max(0, currentHeight - blockHeight + 1);
+  } catch (error) {
+    log.error('[BLOCKCHAIN] Failed to get confirmations', { error: String(error), network });
+    return 0;
+  }
+}
 
 /**
  * Sync address with blockchain
  * Fetches transactions and UTXOs for an address and updates database
  */
-export async function syncAddress(addressId: string): Promise<{
-  transactions: number;
-  utxos: number;
-}> {
+export async function syncAddress(addressId: string): Promise<SyncAddressResult> {
   const addressRecord = await prisma.address.findUnique({
     where: { id: addressId },
     include: { wallet: true },
@@ -125,7 +100,6 @@ export async function syncAddress(addressId: string): Promise<{
     }
 
     // BATCH OPTIMIZATION: Pre-fetch all existing transactions for this wallet to avoid N+1 queries
-    // Instead of 3 individual findFirst queries per history item, do one batch query upfront
     const existingWalletTxs = await prisma.transaction.findMany({
       where: {
         walletId: addressRecord.walletId,
@@ -156,25 +130,21 @@ export async function syncAddress(addressId: string): Promise<{
       );
 
       // Check if this address sent funds (is in inputs)
-      // Need to check previous outputs referenced by inputs
       let isSent = false;
       let totalSentFromWallet = 0;
-      let hasCompleteInputData = true; // Track if we have all input values for fee calculation
+      let hasCompleteInputData = true;
 
       for (const input of inputs) {
-        // Skip coinbase inputs
         if (input.coinbase) continue;
 
         let inputAddr: string | undefined;
         let inputValue: number | undefined;
 
-        // Check if input has prevout info (verbose mode from server)
         if (input.prevout && input.prevout.scriptPubKey) {
           inputAddr = input.prevout.scriptPubKey.address ||
             (input.prevout.scriptPubKey.addresses && input.prevout.scriptPubKey.addresses[0]);
           inputValue = input.prevout.value;
         } else if (input.txid && input.vout !== undefined) {
-          // Use cached previous transaction lookup (O(1) map lookup instead of network request)
           const prevTx = txDetailsMap.get(input.txid);
           if (prevTx && prevTx.vout && prevTx.vout[input.vout]) {
             const prevOutput = prevTx.vout[input.vout];
@@ -189,7 +159,6 @@ export async function syncAddress(addressId: string): Promise<{
           if (inputValue !== undefined && inputValue > 0) {
             totalSentFromWallet += Math.round(inputValue * 100000000);
           } else {
-            // Missing input value - can't calculate accurate fee
             hasCompleteInputData = false;
           }
         }
@@ -200,12 +169,10 @@ export async function syncAddress(addressId: string): Promise<{
       if (txDetails.time) {
         blockTime = new Date(txDetails.time * 1000);
       } else if (item.height > 0) {
-        // Derive timestamp from block header
         blockTime = await getBlockTimestamp(item.height);
       }
 
       if (isReceived) {
-        // Check if we already recorded this as a received tx (O(1) lookup from batch query)
         const existingReceivedTx = existingTxLookup.has(`${item.tx_hash}:received`);
 
         if (!existingReceivedTx) {
@@ -213,7 +180,6 @@ export async function syncAddress(addressId: string): Promise<{
             .filter((out) => outputMatchesAddress(out, addressRecord.address))
             .reduce((sum, out) => sum + Math.round(out.value * 100000000), 0);
 
-          // Create receive transaction record
           await prisma.transaction.create({
             data: {
               txid: item.tx_hash,
@@ -231,10 +197,7 @@ export async function syncAddress(addressId: string): Promise<{
         }
       }
 
-      // Record sent transaction if our wallet addresses were in inputs
-      // This detects when we're spending from this wallet (even if we also receive change)
       if (isSent) {
-        // Calculate outputs to external addresses and back to wallet (change)
         let totalToExternal = 0;
         let totalToWallet = 0;
         for (const out of outputs) {
@@ -248,17 +211,13 @@ export async function syncAddress(addressId: string): Promise<{
           }
         }
 
-        // Calculate fee: inputs - all outputs (only valid if we have complete input data)
         const fee = hasCompleteInputData ? totalSentFromWallet - totalToExternal - totalToWallet : null;
-        // Ensure fee is never negative (sanity check)
         const validFee = fee !== null && fee >= 0 ? fee : null;
 
         if (totalToExternal > 0) {
-          // Regular send to external address (O(1) lookup from batch query)
           const existingSentTx = existingTxLookup.has(`${item.tx_hash}:sent`);
 
           if (!existingSentTx) {
-            // Amount is negative (funds leaving wallet = amount sent + fee)
             const sentAmount = -(totalToExternal + (validFee ?? 0));
             await prisma.transaction.create({
               data: {
@@ -277,12 +236,9 @@ export async function syncAddress(addressId: string): Promise<{
             transactionCount++;
           }
         } else if (totalToWallet > 0) {
-          // Consolidation - all outputs go back to wallet (O(1) lookup from batch query)
           const existingConsolidationTx = existingTxLookup.has(`${item.tx_hash}:consolidation`);
 
           if (!existingConsolidationTx) {
-            // Amount is negative fee (only fee is lost in consolidation)
-            // If fee is unknown, amount is 0 (will be recalculated on resync with verbose data)
             await prisma.transaction.create({
               data: {
                 txid: item.tx_hash,
@@ -347,7 +303,6 @@ export async function syncAddress(addressId: string): Promise<{
       const key = `${utxo.tx_hash}:${utxo.tx_pos}`;
       if (existingUtxoSet.has(key)) continue;
 
-      // Use cached transaction details (O(1) lookup)
       const txDetails = txDetailsMap.get(utxo.tx_hash);
       if (!txDetails || !txDetails.vout || !txDetails.vout[utxo.tx_pos]) continue;
 
@@ -387,7 +342,6 @@ export async function syncAddress(addressId: string): Promise<{
     // Store transaction inputs/outputs for newly created transactions (batch optimized)
     if (transactionCount > 0) {
       try {
-        // Get transactions created in this sync that don't have I/O stored
         const txsWithoutIO = await prisma.transaction.findMany({
           where: {
             walletId: addressRecord.walletId,
@@ -399,11 +353,9 @@ export async function syncAddress(addressId: string): Promise<{
         });
 
         if (txsWithoutIO.length > 0) {
-          // Batch fetch all transaction details
           const txidsToFetch = txsWithoutIO.map(tx => tx.txid);
           const txDetailsMap = await client.getTransactionsBatch(txidsToFetch, true);
 
-          // Collect all inputs and outputs for batch insert
           const txInputsToCreate: Array<{
             transactionId: string;
             inputIndex: number;
@@ -430,7 +382,6 @@ export async function syncAddress(addressId: string): Promise<{
             const inputs = txDetails.vin || [];
             const outputs = txDetails.vout || [];
 
-            // Collect inputs
             for (let inputIdx = 0; inputIdx < inputs.length; inputIdx++) {
               const input = inputs[inputIdx];
               if (input.coinbase) continue;
@@ -460,7 +411,6 @@ export async function syncAddress(addressId: string): Promise<{
               }
             }
 
-            // Collect outputs
             for (let outputIdx = 0; outputIdx < outputs.length; outputIdx++) {
               const output = outputs[outputIdx];
               const outputAddress = output.scriptPubKey?.address ||
@@ -492,7 +442,6 @@ export async function syncAddress(addressId: string): Promise<{
             }
           }
 
-          // Batch insert inputs and outputs
           if (txInputsToCreate.length > 0) {
             await prisma.transactionInput.createMany({
               data: txInputsToCreate,
@@ -521,219 +470,5 @@ export async function syncAddress(addressId: string): Promise<{
   } catch (error) {
     log.error('[BLOCKCHAIN] Sync address error', { error: String(error) });
     throw error;
-  }
-}
-
-/**
- * Sync all addresses for a wallet using the modular sync pipeline
- *
- * The sync pipeline processes wallet synchronization in discrete phases:
- * 1. RBF Cleanup - Mark replaced pending transactions
- * 2. Fetch Histories - Get transaction history for all addresses
- * 3. Check Existing - Filter out already-processed transactions
- * 4. Process Transactions - Fetch details, classify, and insert
- * 5. Fetch UTXOs - Get unspent outputs for all addresses
- * 6. Reconcile UTXOs - Mark spent UTXOs, update confirmations
- * 7. Insert UTXOs - Add new UTXOs to database
- * 8. Update Addresses - Mark addresses with history as "used"
- * 9. Gap Limit - Generate new addresses if needed
- * 10. Fix Consolidations - Correct misclassified consolidation transactions
- */
-export async function syncWallet(walletId: string): Promise<{
-  addresses: number;
-  transactions: number;
-  utxos: number;
-}> {
-  const result = await executeSyncPipeline(walletId, defaultSyncPhases);
-
-  // Handle recursive sync for gap limit expansion
-  if (result.stats.newAddressesGenerated > 0) {
-    // Check if the new addresses have transactions (handled in gapLimit phase)
-    // The pipeline sets newAddressesGenerated, which may require a recursive sync
-    const wallet = await prisma.wallet.findUnique({ where: { id: walletId } });
-    if (wallet) {
-      const network = (wallet.network as 'mainnet' | 'testnet' | 'signet' | 'regtest') || 'mainnet';
-      const client = await getNodeClient(network);
-
-      const newAddresses = await prisma.address.findMany({
-        where: {
-          walletId,
-          used: false,
-        },
-        orderBy: { createdAt: 'desc' },
-        take: result.stats.newAddressesGenerated,
-      });
-
-      if (newAddresses.length > 0) {
-        try {
-          const newHistoryResults = await client.getAddressHistoryBatch(newAddresses.map(a => a.address));
-
-          let foundTransactions = false;
-          for (const [, history] of newHistoryResults) {
-            if (history.length > 0) {
-              foundTransactions = true;
-              break;
-            }
-          }
-
-          if (foundTransactions) {
-            walletLog(walletId, 'info', 'BLOCKCHAIN', 'Found transactions on new addresses, re-syncing...');
-            const recursiveResult = await syncWallet(walletId);
-            return {
-              addresses: result.addresses + recursiveResult.addresses,
-              transactions: result.transactions + recursiveResult.transactions,
-              utxos: result.utxos + recursiveResult.utxos,
-            };
-          }
-        } catch (error) {
-          log.warn(`[BLOCKCHAIN] Failed to scan new addresses: ${error}`);
-        }
-      }
-    }
-  }
-
-  return {
-    addresses: result.addresses,
-    transactions: result.transactions,
-    utxos: result.utxos,
-  };
-}
-
-/**
- * Calculate confirmations for a transaction (internal helper)
- * @param blockHeight - Block height of the transaction
- * @param network - Bitcoin network (defaults to mainnet for backwards compatibility)
- */
-async function getConfirmations(blockHeight: number, network: 'mainnet' | 'testnet' | 'signet' | 'regtest' = 'mainnet'): Promise<number> {
-  try {
-    const currentHeight = await getBlockHeight(network);
-    return Math.max(0, currentHeight - blockHeight + 1);
-  } catch (error) {
-    log.error('[BLOCKCHAIN] Failed to get confirmations', { error: String(error), network });
-    return 0;
-  }
-}
-
-/**
- * Broadcast a transaction to the network
- */
-export async function broadcastTransaction(rawTx: string): Promise<{
-  txid: string;
-  broadcasted: boolean;
-}> {
-  const client = await getNodeClient();
-
-
-  try {
-    const txid = await client.broadcastTransaction(rawTx);
-    return {
-      txid,
-      broadcasted: true,
-    };
-  } catch (error) {
-    throw new Error(`Failed to broadcast transaction: ${getErrorMessage(error, 'Unknown error')}`);
-  }
-}
-
-/**
- * Get fee estimates for different confirmation targets
- */
-export async function getFeeEstimates(): Promise<{
-  fastest: number;   // ~1 block
-  halfHour: number;  // ~3 blocks
-  hour: number;      // ~6 blocks
-  economy: number;   // ~12 blocks
-}> {
-  const client = await getNodeClient();
-
-
-  try {
-    const [fastest, halfHour, hour, economy] = await Promise.all([
-      client.estimateFee(1),
-      client.estimateFee(3),
-      client.estimateFee(6),
-      client.estimateFee(12),
-    ]);
-
-    return {
-      fastest: Math.max(1, fastest),
-      halfHour: Math.max(1, halfHour),
-      hour: Math.max(1, hour),
-      economy: Math.max(1, economy),
-    };
-  } catch (error) {
-    log.error('[BLOCKCHAIN] Failed to get fee estimates', { error: String(error) });
-    // Return sensible defaults if fee estimation fails
-    return {
-      fastest: 20,
-      halfHour: 15,
-      hour: 10,
-      economy: 5,
-    };
-  }
-}
-
-/**
- * Get transaction details from blockchain
- */
-export async function getTransactionDetails(txid: string): Promise<TransactionDetails> {
-  const client = await getNodeClient();
-
-
-  return client.getTransaction(txid, true);
-}
-
-/**
- * Monitor address for new transactions
- * Subscribe to address and get notifications
- */
-export async function monitorAddress(address: string): Promise<string | null> {
-  const client = await getNodeClient();
-
-
-  return client.subscribeAddress(address);
-}
-
-/**
- * Validate and check if address is used
- */
-export async function checkAddress(
-  address: string,
-  network: 'mainnet' | 'testnet' | 'regtest' = 'mainnet'
-): Promise<{
-  valid: boolean;
-  error?: string;
-  balance?: number;
-  transactionCount?: number;
-}> {
-  // First validate format
-  const validation = validateAddress(address, network);
-  if (!validation.valid) {
-    return validation;
-  }
-
-  // Check blockchain
-  const client = await getNodeClient();
-
-  try {
-    if (!client.isConnected()) {
-      await client.connect();
-    }
-
-    const [balance, history] = await Promise.all([
-      client.getAddressBalance(address),
-      client.getAddressHistory(address),
-    ]);
-
-    return {
-      valid: true,
-      balance: balance.confirmed + balance.unconfirmed,
-      transactionCount: history.length,
-    };
-  } catch (error) {
-    return {
-      valid: true, // Address format is valid even if we can't check blockchain
-      error: 'Could not check address on blockchain',
-    };
   }
 }

@@ -508,6 +508,8 @@ export interface Device {
       scriptType?: string;
     };
   }>;
+  // Wallet-specific metadata (set by formatDevicesForWallet)
+  accountMissing?: boolean;
   // Sharing info (present when fetching accessible devices)
   isOwner?: boolean;
   userRole?: DeviceRole;
