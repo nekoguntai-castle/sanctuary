@@ -9,7 +9,9 @@ import { authenticate, requireAdmin } from '../../middleware/auth';
 import { createLogger } from '../../utils/logger';
 import { cache } from '../../services/cache';
 import { deadLetterQueue, type DeadLetterCategory } from '../../services/deadLetterQueue';
+import { getSyncService } from '../../services/syncService';
 import { getWebSocketServer, getRateLimitEvents } from '../../websocket/server';
+import { getErrorMessage } from '../../utils/errors';
 import * as docker from '../../utils/docker';
 
 const router = Router();
@@ -225,6 +227,76 @@ router.delete('/dlq/:id', authenticate, requireAdmin, async (req: Request, res: 
     res.status(500).json({
       error: 'Internal Server Error',
       message: 'Failed to delete dead letter entry',
+    });
+  }
+});
+
+/**
+ * POST /api/v1/admin/dlq/:id/retry
+ * Re-attempt a dead letter entry by dispatching it to the appropriate subsystem
+ */
+router.post('/dlq/:id/retry', authenticate, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const entry = await deadLetterQueue.dequeueForRetry(req.params.id);
+    if (!entry) {
+      return res.status(404).json({
+        error: 'Not Found',
+        message: 'Dead letter entry not found',
+      });
+    }
+
+    let retryResult: { success: boolean; message: string };
+    try {
+      switch (entry.category) {
+        case 'sync': {
+          const walletId = entry.payload.walletId as string | undefined;
+          if (walletId) {
+            getSyncService().queueSync(walletId, 'normal');
+            retryResult = { success: true, message: `Queued wallet sync for ${walletId}` };
+          } else {
+            retryResult = { success: false, message: 'Missing walletId in payload' };
+          }
+          break;
+        }
+        default:
+          retryResult = { success: false, message: `Retry not implemented for category: ${entry.category}` };
+      }
+    } catch (error) {
+      // Re-add to DLQ on dispatch failure with incremented attempt count
+      await deadLetterQueue.add(
+        entry.category,
+        entry.operation,
+        entry.payload,
+        error instanceof Error ? error : String(error),
+        entry.attempts + 1,
+        entry.metadata,
+      );
+      log.error('DLQ retry dispatch failed, re-added to queue', {
+        id: entry.id,
+        category: entry.category,
+        error: getErrorMessage(error),
+      });
+      return res.status(500).json({
+        error: 'Internal Server Error',
+        message: 'Retry dispatch failed — entry re-added to DLQ',
+      });
+    }
+
+    log.info('DLQ retry attempted', {
+      id: entry.id,
+      category: entry.category,
+      ...retryResult,
+      admin: req.user?.username,
+    });
+    res.json({
+      entry: { id: entry.id, category: entry.category, operation: entry.operation },
+      retry: retryResult,
+    });
+  } catch (error) {
+    log.error('DLQ retry failed', { error: getErrorMessage(error) });
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to retry dead letter entry',
     });
   }
 });

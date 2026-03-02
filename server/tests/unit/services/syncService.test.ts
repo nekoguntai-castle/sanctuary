@@ -25,6 +25,7 @@ const {
   mockAcquireLock,
   mockExtendLock,
   mockReleaseLock,
+  mockWithLock,
   mockGetWorkerHealthStatus,
 } = vi.hoisted(() => ({
   mockPrismaClient: {
@@ -76,6 +77,10 @@ const {
   mockAcquireLock: vi.fn<any>(),
   mockExtendLock: vi.fn<any>(),
   mockReleaseLock: vi.fn<any>(),
+  mockWithLock: vi.fn<any>().mockImplementation(async (_key: string, _ttl: number, fn: () => Promise<unknown>) => {
+    const result = await fn();
+    return { success: true, result };
+  }),
   mockGetWorkerHealthStatus: vi.fn<any>().mockReturnValue({ healthy: false }),
 }));
 
@@ -148,6 +153,7 @@ vi.mock('../../../src/infrastructure', () => ({
   acquireLock: mockAcquireLock,
   extendLock: mockExtendLock,
   releaseLock: mockReleaseLock,
+  withLock: mockWithLock,
 }));
 
 // Mock dead letter queue

@@ -192,6 +192,18 @@ class DeadLetterQueue {
   }
 
   /**
+   * Remove an entry and return it for retry.
+   * The caller is responsible for re-dispatching the operation.
+   */
+  async dequeueForRetry(id: string): Promise<DeadLetterEntry | null> {
+    const entry = this.entries.get(id);
+    if (!entry) return null;
+    this.entries.delete(id);
+    await this.removeFromRedis(id);
+    return entry;
+  }
+
+  /**
    * Remove an entry (e.g., after successful manual retry)
    */
   async remove(id: string): Promise<boolean> {

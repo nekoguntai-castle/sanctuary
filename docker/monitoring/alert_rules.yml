@@ -116,6 +116,20 @@ groups:
           summary: "Low cache hit rate"
           description: "Cache hit rate is {{ $value | humanizePercentage }}"
 
+  - name: sanctuary.sync
+    interval: 30s
+    rules:
+      # Sync service fell back to in-process polling (worker unhealthy)
+      - alert: SyncInProcessFallback
+        expr: |
+          increase(sanctuary_sync_polling_mode_transitions_total{to="in-process"}[10m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Sync service running in-process fallback mode"
+          description: "Worker appears unhealthy — API server is handling polling directly. Check worker health."
+
   - name: sanctuary.websocket
     interval: 30s
     rules:

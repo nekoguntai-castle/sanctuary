@@ -20,7 +20,7 @@ import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { getConfig } from '../../config';
 import { eventService } from '../eventService';
-import { releaseLock } from '../../infrastructure';
+import { releaseLock, withLock } from '../../infrastructure';
 import { getWorkerHealthStatus } from '../workerHealth';
 import { syncPollingModeTransitions } from '../../observability/metrics';
 import type { SyncState, SyncResult, SyncHealthMetrics, PollingMode } from './types';
@@ -159,8 +159,15 @@ class SyncService {
     // Periodic reconciliation of addressToWalletMap (every hour)
     // Rebuilds map from database to clean up entries for deleted wallets
     // Always runs — worker has no in-memory address map
+    // Uses distributed lock so only one API instance runs reconciliation at a time
     this.reconciliationInterval = setInterval(() => {
-      this.reconcileAddressToWalletMap().catch(err => {
+      withLock('sync:reconciliation', 5 * 60 * 1000, async () => {
+        await this.reconcileAddressToWalletMap();
+      }).then(result => {
+        if (!result.success) {
+          log.debug('[SYNC] Reconciliation skipped — another instance holds the lock');
+        }
+      }).catch(err => {
         log.error('[SYNC] Address map reconciliation failed', { error: getErrorMessage(err) });
       });
     }, 60 * 60 * 1000); // 1 hour

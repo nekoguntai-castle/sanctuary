@@ -13,8 +13,11 @@ const {
   mockDlqGetAll,
   mockDlqRemove,
   mockDlqClearCategory,
+  mockDlqDequeueForRetry,
+  mockDlqAdd,
   mockGetWebSocketServer,
   mockGetRateLimitEvents,
+  mockQueueSync,
 } = vi.hoisted(() => ({
   mockIsDockerProxyAvailable: vi.fn(),
   mockGetTorStatus: vi.fn(),
@@ -26,8 +29,11 @@ const {
   mockDlqGetAll: vi.fn(),
   mockDlqRemove: vi.fn(),
   mockDlqClearCategory: vi.fn(),
+  mockDlqDequeueForRetry: vi.fn(),
+  mockDlqAdd: vi.fn(),
   mockGetWebSocketServer: vi.fn(),
   mockGetRateLimitEvents: vi.fn(),
+  mockQueueSync: vi.fn(),
 }));
 
 vi.mock('../../../src/middleware/auth', () => ({
@@ -51,7 +57,15 @@ vi.mock('../../../src/services/deadLetterQueue', () => ({
     getAll: mockDlqGetAll,
     remove: mockDlqRemove,
     clearCategory: mockDlqClearCategory,
+    dequeueForRetry: mockDlqDequeueForRetry,
+    add: mockDlqAdd,
   },
+}));
+
+vi.mock('../../../src/services/syncService', () => ({
+  getSyncService: () => ({
+    queueSync: mockQueueSync,
+  }),
 }));
 
 vi.mock('../../../src/websocket/server', () => ({
@@ -302,6 +316,113 @@ describe('Admin Infrastructure Routes', () => {
     const errored = await request(app).delete('/api/v1/admin/dlq/boom');
     expect(errored.status).toBe(500);
     expect(errored.body.message).toBe('Failed to delete dead letter entry');
+  });
+
+  it('retries a sync DLQ entry and queues wallet sync', async () => {
+    mockDlqDequeueForRetry.mockResolvedValue({
+      id: 'sync-123',
+      category: 'sync',
+      operation: 'wallet_sync',
+      payload: { walletId: 'wallet-1' },
+      error: 'timeout',
+      attempts: 3,
+      firstFailedAt: new Date(),
+      lastFailedAt: new Date(),
+    });
+
+    const response = await request(app).post('/api/v1/admin/dlq/sync-123/retry');
+
+    expect(response.status).toBe(200);
+    expect(response.body.entry).toEqual({
+      id: 'sync-123',
+      category: 'sync',
+      operation: 'wallet_sync',
+    });
+    expect(response.body.retry).toEqual({
+      success: true,
+      message: 'Queued wallet sync for wallet-1',
+    });
+    expect(mockQueueSync).toHaveBeenCalledWith('wallet-1', 'normal');
+  });
+
+  it('returns 404 when retrying a non-existent DLQ entry', async () => {
+    mockDlqDequeueForRetry.mockResolvedValue(null);
+
+    const response = await request(app).post('/api/v1/admin/dlq/missing/retry');
+
+    expect(response.status).toBe(404);
+    expect(response.body.message).toBe('Dead letter entry not found');
+  });
+
+  it('returns not-implemented message for unsupported DLQ categories', async () => {
+    mockDlqDequeueForRetry.mockResolvedValue({
+      id: 'push-456',
+      category: 'push',
+      operation: 'push_notification',
+      payload: { userId: 'u1' },
+      error: 'timeout',
+      attempts: 1,
+      firstFailedAt: new Date(),
+      lastFailedAt: new Date(),
+    });
+
+    const response = await request(app).post('/api/v1/admin/dlq/push-456/retry');
+
+    expect(response.status).toBe(200);
+    expect(response.body.retry).toEqual({
+      success: false,
+      message: 'Retry not implemented for category: push',
+    });
+  });
+
+  it('returns failure for sync entry missing walletId', async () => {
+    mockDlqDequeueForRetry.mockResolvedValue({
+      id: 'sync-789',
+      category: 'sync',
+      operation: 'wallet_sync',
+      payload: {},
+      error: 'timeout',
+      attempts: 1,
+      firstFailedAt: new Date(),
+      lastFailedAt: new Date(),
+    });
+
+    const response = await request(app).post('/api/v1/admin/dlq/sync-789/retry');
+
+    expect(response.status).toBe(200);
+    expect(response.body.retry.success).toBe(false);
+    expect(response.body.retry.message).toBe('Missing walletId in payload');
+  });
+
+  it('re-adds entry to DLQ when retry dispatch throws', async () => {
+    mockDlqDequeueForRetry.mockResolvedValue({
+      id: 'sync-err',
+      category: 'sync',
+      operation: 'wallet_sync',
+      payload: { walletId: 'wallet-2' },
+      error: 'original error',
+      attempts: 2,
+      firstFailedAt: new Date(),
+      lastFailedAt: new Date(),
+      metadata: { walletId: 'wallet-2' },
+    });
+    mockQueueSync.mockImplementation(() => {
+      throw new Error('queue full');
+    });
+    mockDlqAdd.mockResolvedValue('sync-err-re');
+
+    const response = await request(app).post('/api/v1/admin/dlq/sync-err/retry');
+
+    expect(response.status).toBe(500);
+    expect(response.body.message).toBe('Retry dispatch failed — entry re-added to DLQ');
+    expect(mockDlqAdd).toHaveBeenCalledWith(
+      'sync',
+      'wallet_sync',
+      { walletId: 'wallet-2' },
+      expect.any(Error),
+      3,
+      { walletId: 'wallet-2' },
+    );
   });
 
   it('clears dead letter categories with validation and error handling', async () => {
