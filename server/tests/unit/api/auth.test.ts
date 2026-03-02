@@ -267,7 +267,9 @@ describe('Authentication', () => {
     let optionalAuth: any;
 
     beforeAll(async () => {
-      const authModule = await import('../../../src/middleware/auth');
+      const authModule = await vi.importActual<typeof import('../../../src/middleware/auth')>(
+        '../../../src/middleware/auth'
+      );
       authenticate = authModule.authenticate;
       requireAdmin = authModule.requireAdmin;
       optionalAuth = authModule.optionalAuth;
@@ -275,7 +277,7 @@ describe('Authentication', () => {
 
     describe('authenticate', () => {
       // Note: These tests use the mock middleware so they test the mock behavior, not real JWT parsing
-      it.skip('should authenticate valid token and attach user to request', async () => {
+      it('should authenticate valid token and attach user to request', async () => {
         const payload = {
           userId: 'user-123',
           username: 'testuser',
@@ -296,7 +298,7 @@ describe('Authentication', () => {
         expect((req as any).user.userId).toBe(payload.userId);
       });
 
-      it.skip('should reject request with no token', async () => {
+      it('should reject request with no token', async () => {
         const req = createMockRequest({});
         const { res, getResponse } = createMockResponse();
         const next = createMockNext();
@@ -309,7 +311,7 @@ describe('Authentication', () => {
         expect(next).not.toHaveBeenCalled();
       });
 
-      it.skip('should reject request with expired token', async () => {
+      it('should reject request with expired token', async () => {
         const expiredToken = generateExpiredToken({
           userId: 'user-123',
           username: 'testuser',
@@ -374,7 +376,7 @@ describe('Authentication', () => {
 
     describe('optionalAuth', () => {
       // Note: This test uses the mock middleware which doesn't actually parse tokens
-      it.skip('should attach user when valid token provided', async () => {
+      it('should attach user when valid token provided', async () => {
         const payload = {
           userId: 'user-123',
           username: 'testuser',
@@ -1489,7 +1491,7 @@ describe('Auth API Routes', () => {
     });
 
     // Skip these tests because they hit the rate limiter threshold from previous tests
-    it.skip('should allow unverified user when verification not required', async () => {
+    it('should allow unverified user when verification not required', async () => {
       const correctPassword = 'CorrectPassword123!';
       const hashedPassword = await hashPassword(correctPassword);
 
@@ -1515,7 +1517,7 @@ describe('Auth API Routes', () => {
     });
 
     // Skip this test because it hits the rate limiter threshold from previous tests
-    it.skip('should include emailVerified in successful login response', async () => {
+    it('should include emailVerified in successful login response', async () => {
       const correctPassword = 'CorrectPassword123!';
       const hashedPassword = await hashPassword(correctPassword);
 
@@ -1540,7 +1542,7 @@ describe('Auth API Routes', () => {
     });
 
     // Skip this test because it hits the rate limiter threshold from previous tests
-    it.skip('should handle database errors gracefully', async () => {
+    it('should handle database errors gracefully', async () => {
       mockPrismaClient.user.findUnique.mockRejectedValue(new Error('Database error'));
 
       const response = await request(app)
@@ -1628,7 +1630,7 @@ describe('Auth API Routes', () => {
     });
 
     // Skip these tests because they hit the rate limiter threshold from previous tests
-    it.skip('should successfully change password', async () => {
+    it('should successfully change password', async () => {
       const correctPassword = 'CorrectOldPassword123!';
       const hashedPassword = await hashPassword(correctPassword);
 
@@ -1653,7 +1655,7 @@ describe('Auth API Routes', () => {
     });
 
     // Skip this test because it hits the rate limiter threshold from previous tests
-    it.skip('should handle database errors gracefully', async () => {
+    it('should handle database errors gracefully', async () => {
       mockPrismaClient.user.findUnique.mockRejectedValue(new Error('Database error'));
 
       const response = await request(app)

@@ -486,14 +486,6 @@ describe('Bitcoin API', () => {
     });
 
     describe('GET /bitcoin/block/:height', () => {
-      // Note: This test requires proper electrum singleton mock setup which is complex
-      // The route uses getElectrumClient() singleton directly, making isolated testing difficult
-      it.skip('should return block header for valid height', async () => {
-        const response = await request(app).get('/bitcoin/block/850000');
-        expect(response.status).toBe(200);
-        expect(response.body).toHaveProperty('hash');
-      });
-
       it('should return 400 for invalid height', async () => {
         const response = await request(app).get('/bitcoin/block/invalid');
 
