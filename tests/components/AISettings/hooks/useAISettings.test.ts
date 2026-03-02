@@ -65,5 +65,70 @@ describe('useAISettings', () => {
     });
 
     expect(result.current.detectMessage).toBe('Ollama not found. Is it running?');
+
+    act(() => {
+      result.current.setShowModelDropdown(true);
+      result.current.handleSelectModel('llama3.2:latest');
+    });
+
+    expect(result.current.aiModel).toBe('llama3.2:latest');
+    expect(result.current.showModelDropdown).toBe(false);
+  });
+
+  it('executes save/detect timeout callbacks to clear transient messages', async () => {
+    const originalSetTimeout = globalThis.setTimeout;
+    const timeoutCallbacks = new Map<number, Array<() => void>>();
+    const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout').mockImplementation(
+      ((callback: TimerHandler, delay?: number, ...args: unknown[]) => {
+        if (
+          typeof callback === 'function' &&
+          (delay === 3000 || delay === 5000)
+        ) {
+          const callbacks = timeoutCallbacks.get(delay) ?? [];
+          callbacks.push(() => callback(...args));
+          timeoutCallbacks.set(delay, callbacks);
+          return 0 as unknown as ReturnType<typeof setTimeout>;
+        }
+
+        return originalSetTimeout(callback, delay, ...args);
+      }) as typeof setTimeout
+    );
+
+    vi.mocked(aiApi.detectOllama).mockResolvedValueOnce({ found: false } as never);
+
+    try {
+      const { result } = renderHook(() => useAISettings());
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+      });
+
+      await act(async () => {
+        await result.current.handleSaveConfig();
+      });
+
+      expect(result.current.saveSuccess).toBe(true);
+      expect(timeoutCallbacks.get(3000)?.length).toBeGreaterThan(0);
+
+      act(() => {
+        timeoutCallbacks.get(3000)?.forEach((cb) => cb());
+      });
+
+      expect(result.current.saveSuccess).toBe(false);
+
+      await act(async () => {
+        await result.current.handleDetectOllama();
+      });
+
+      expect(result.current.detectMessage).toBe('Ollama not found. Is it running?');
+      expect(timeoutCallbacks.get(5000)?.length).toBeGreaterThan(0);
+
+      act(() => {
+        timeoutCallbacks.get(5000)?.forEach((cb) => cb());
+      });
+
+      expect(result.current.detectMessage).toBe('');
+    } finally {
+      setTimeoutSpy.mockRestore();
+    }
   });
 });

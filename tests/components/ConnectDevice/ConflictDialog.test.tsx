@@ -98,5 +98,40 @@ describe('ConflictDialog', () => {
     expect(screen.getByRole('button', { name: /Merging/i })).toBeDisabled();
     expect(screen.getByText('Merge failed')).toBeInTheDocument();
   });
-});
 
+  it('renders singular/plural copy branches for existing, matching, and conflicting account counts', () => {
+    render(
+      <ConflictDialog
+        conflictData={createConflictData({
+          existingDevice: {
+            id: 'device-1',
+            type: 'ledger',
+            label: 'My Ledger',
+            fingerprint: 'f00dbabe',
+            accounts: [{}],
+          },
+          comparison: {
+            newAccounts: [],
+            matchingAccounts: [
+              { derivationPath: "m/84'/0'/2'" },
+              { derivationPath: "m/84'/0'/3'" },
+            ],
+            conflictingAccounts: [
+              { incoming: { derivationPath: "m/84'/0'/4'" } },
+              { incoming: { derivationPath: "m/84'/0'/5'" } },
+            ],
+          },
+        })}
+        merging={false}
+        error={null}
+        onMerge={vi.fn()}
+        onViewExisting={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('1 account registered')).toBeInTheDocument();
+    expect(screen.getByText(/2 Accounts Already Exist/i)).toBeInTheDocument();
+    expect(screen.getByText(/2 Conflicting Accounts/i)).toBeInTheDocument();
+  });
+});

@@ -104,6 +104,17 @@ describe('FeeSelector', () => {
       expect(setFeeRate).toHaveBeenCalledWith(10);
     });
 
+    it('falls back to 1 sat/vB when preset fee is unavailable', async () => {
+      const user = userEvent.setup();
+      const setFeeRate = vi.fn();
+      render(<FeeSelector {...defaultProps} setFeeRate={setFeeRate} fees={null} />);
+
+      const highPriorityButton = screen.getByText('High Priority').closest('button');
+      await user.click(highPriorityButton!);
+
+      expect(setFeeRate).toHaveBeenCalledWith(1);
+    });
+
     it('calls setFeeRate when changing custom input', async () => {
       const user = userEvent.setup();
       const setFeeRate = vi.fn();

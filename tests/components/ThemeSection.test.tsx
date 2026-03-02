@@ -120,7 +120,7 @@ describe('AppearanceTab (ThemeSection)', () => {
 
     const snowfallTile = getBackgroundTileButton('Snowfall').closest('div');
     const snowfallFavorite = snowfallTile?.querySelector('button[title="Add to favorites"]');
-    expect(snowfallFavorite).toBeTruthy();
+    expect(snowfallFavorite).not.toBeNull();
     await user.click(snowfallFavorite as HTMLButtonElement);
     expect(mockUpdatePreferences).toHaveBeenCalledWith({ favoriteBackgrounds: ['snowfall'] });
   });
@@ -142,7 +142,7 @@ describe('AppearanceTab (ThemeSection)', () => {
     expect(screen.getByText('No backgrounds match "does-not-exist"')).toBeInTheDocument();
 
     const clearSearchButton = search.parentElement?.querySelector('button');
-    expect(clearSearchButton).toBeTruthy();
+    expect(clearSearchButton).not.toBeNull();
     await user.click(clearSearchButton as HTMLButtonElement);
     expect(search).toHaveValue('');
   });
@@ -176,6 +176,22 @@ describe('AppearanceTab (ThemeSection)', () => {
     expect(mockUpdatePreferences).toHaveBeenCalledWith({ background: 'minimal' });
   });
 
+  it('toggles seasonal expansion using the chevron button control', async () => {
+    const user = userEvent.setup();
+    renderWithUser();
+
+    const chevronToggle = Array.from(document.querySelectorAll('button.p-1')).find((button) =>
+      button.querySelector('svg.lucide-chevron-down')
+    ) as HTMLButtonElement | undefined;
+
+    expect(chevronToggle).toBeInstanceOf(HTMLButtonElement);
+    await user.click(chevronToggle as HTMLButtonElement);
+    expect(screen.getByText(/Current Season:/)).toBeInTheDocument();
+
+    await user.click(chevronToggle as HTMLButtonElement);
+    expect(screen.queryByText(/Current Season:/)).not.toBeInTheDocument();
+  });
+
   it('updates dark mode, contrast level, and pattern visibility', async () => {
     const user = userEvent.setup();
     renderWithUser({ darkMode: false, contrastLevel: 2, patternOpacity: 0 });
@@ -185,7 +201,7 @@ describe('AppearanceTab (ThemeSection)', () => {
 
     const darkModeRow = screen.getByText('Dark Mode').closest('div')?.parentElement;
     const darkModeToggle = darkModeRow?.querySelector('button');
-    expect(darkModeToggle).toBeTruthy();
+    expect(darkModeToggle).not.toBeNull();
     await user.click(darkModeToggle as HTMLButtonElement);
     expect(mockUpdatePreferences).toHaveBeenCalledWith({ darkMode: true });
 

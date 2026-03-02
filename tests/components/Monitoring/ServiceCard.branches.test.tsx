@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ServiceCard } from '../../../components/Monitoring/ServiceCard';
 
@@ -25,6 +25,17 @@ describe('Monitoring ServiceCard branch coverage', () => {
 
   it('covers password copy states, timeout replacement, and cleanup on unmount', async () => {
     const clearTimeoutSpy = vi.spyOn(global, 'clearTimeout');
+    const timeoutCallbacks: Array<() => void> = [];
+    const realSetTimeout = globalThis.setTimeout;
+    const setTimeoutSpy = vi
+      .spyOn(globalThis, 'setTimeout')
+      .mockImplementation(((cb: TimerHandler, ms?: number) => {
+        if (typeof cb === 'function' && ms === 2000) {
+          timeoutCallbacks.push(cb as () => void);
+          return 1 as unknown as ReturnType<typeof setTimeout>;
+        }
+        return realSetTimeout(cb, ms);
+      }) as typeof setTimeout);
 
     const { unmount } = render(
       <ServiceCard
@@ -55,8 +66,16 @@ describe('Monitoring ServiceCard branch coverage', () => {
     fireEvent.click(screen.getByTitle('Copied!'));
     expect(clearTimeoutSpy).toHaveBeenCalled();
 
+    expect(timeoutCallbacks.length).toBeGreaterThan(0);
+    act(() => {
+      timeoutCallbacks.forEach((callback) => callback());
+    });
+    expect(screen.getByTitle('Copy password')).toBeInTheDocument();
+
     unmount();
     expect(clearTimeoutSpy).toHaveBeenCalled();
+    setTimeoutSpy.mockRestore();
+    clearTimeoutSpy.mockRestore();
   });
 
   it('covers no-op copy path when credentials.password is empty', () => {

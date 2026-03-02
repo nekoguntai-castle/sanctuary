@@ -298,6 +298,25 @@ describe('useNotificationSound', () => {
       expect(config.enabled).toBe(true);
       expect(config.sound).toBe('bell');
     });
+
+    it('should fall back to chime when legacy soundType is missing', () => {
+      (useUser as Mock).mockReturnValue({
+        user: {
+          preferences: {
+            notificationSounds: {
+              enabled: true,
+              confirmationChime: true,
+            },
+          },
+        },
+      });
+
+      const { result } = renderHook(() => useNotificationSound());
+      const config = result.current.getEventConfig('confirmation');
+
+      expect(config.enabled).toBe(true);
+      expect(config.sound).toBe('chime');
+    });
   });
 
   describe('playSound', () => {
@@ -330,6 +349,24 @@ describe('useNotificationSound', () => {
       });
 
       // Should use 50 as default (50/100 = 0.5 volume)
+      expect(audioContextCreated).toBe(true);
+    });
+
+    it('should use webkitAudioContext when AudioContext is unavailable', () => {
+      (globalThis as any).AudioContext = undefined;
+      const MockWebkitAudioContext = function (this: any) {
+        audioContextCreated = true;
+        Object.assign(this, mockAudioContext);
+        return this;
+      } as any;
+      (globalThis as any).webkitAudioContext = MockWebkitAudioContext;
+
+      const { result } = renderHook(() => useNotificationSound());
+
+      act(() => {
+        result.current.playSound('chime');
+      });
+
       expect(audioContextCreated).toBe(true);
     });
 
@@ -410,6 +447,27 @@ describe('useNotificationSound', () => {
             notificationSounds: {
               enabled: true,
               volume: 100,
+              confirmation: { enabled: true, sound: 'chime' },
+            },
+          },
+        },
+      });
+
+      const { result } = renderHook(() => useNotificationSound());
+
+      act(() => {
+        result.current.playEventSound('confirmation');
+      });
+
+      expect(audioContextCreated).toBe(true);
+    });
+
+    it('should use fallback event volume when preference volume is missing', () => {
+      (useUser as Mock).mockReturnValue({
+        user: {
+          preferences: {
+            notificationSounds: {
+              enabled: true,
               confirmation: { enabled: true, sound: 'chime' },
             },
           },

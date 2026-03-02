@@ -400,6 +400,10 @@ describe('Remaining API Modules', () => {
       await adminBackupApi.getAuditLogs();
       expect(mockGet).toHaveBeenCalledWith('/admin/audit-logs');
 
+      // success omitted should not append success query param
+      await adminBackupApi.getAuditLogs({ userId: 'u-omitted-success' });
+      expect(mockGet).toHaveBeenCalledWith('/admin/audit-logs?userId=u-omitted-success');
+
       // success=false should still be included; limit/offset=0 should be omitted by truthy checks
       await adminBackupApi.getAuditLogs({
         success: false,

@@ -49,6 +49,9 @@ describe('SingletonConfig branch coverage', () => {
   it('covers port parsing fallback, protocol toggles, and preset updates', () => {
     const { onUpdateConfig } = renderConfig();
 
+    const hostInput = screen.getByRole('textbox');
+    fireEvent.change(hostInput, { target: { value: 'next.example.com' } });
+
     const portInput = screen.getByRole('spinbutton');
     fireEvent.change(portInput, { target: { value: '60001' } });
     fireEvent.change(portInput, { target: { value: '0' } });
@@ -57,6 +60,7 @@ describe('SingletonConfig branch coverage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'TCP' }));
     fireEvent.click(screen.getByRole('button', { name: 'Preset B' }));
 
+    expect(onUpdateConfig).toHaveBeenCalledWith('singletonHost', 'next.example.com');
     expect(onUpdateConfig).toHaveBeenCalledWith('singletonPort', 60001);
     expect(onUpdateConfig).toHaveBeenCalledWith('singletonPort', 50002);
     expect(onUpdateConfig).toHaveBeenCalledWith('singletonSsl', true);

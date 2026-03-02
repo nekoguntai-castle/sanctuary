@@ -253,6 +253,11 @@ describe('stepValidation', () => {
       const state = createMockState();
       expect(isStepValid('review', state)).toBe(true);
     });
+
+    it('returns false for unsupported step keys', () => {
+      const state = createMockState();
+      expect(isStepValid('unsupported' as WizardStep, state)).toBe(false);
+    });
   });
 
   describe('canProceedToNextStep', () => {

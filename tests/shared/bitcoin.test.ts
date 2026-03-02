@@ -14,6 +14,9 @@ import {
   detectAddressType,
   isMainnetAddress,
   isTestnetAddress,
+  normalizeDerivationPath,
+  formatPathForDescriptor,
+  extractChangeAndAddressIndex,
   SATS_PER_BTC,
 } from '@shared/utils/bitcoin';
 
@@ -270,6 +273,34 @@ describe('Shared Bitcoin Utilities', () => {
     it('should return false for invalid addresses', () => {
       expect(isTestnetAddress('invalid')).toBe(false);
       expect(isTestnetAddress('')).toBe(false);
+    });
+  });
+
+  describe('derivation path helpers', () => {
+    it('normalizes derivation path prefixes and hardening notation', () => {
+      expect(normalizeDerivationPath("m/48h/0H/0h/2H")).toBe("m/48'/0'/0'/2'");
+      expect(normalizeDerivationPath("84h/0H/0h")).toBe("m/84'/0'/0'");
+      expect(normalizeDerivationPath("m/84'/0'/0'")).toBe("m/84'/0'/0'");
+    });
+
+    it('formats derivation paths for descriptor notation', () => {
+      expect(formatPathForDescriptor("m/48'/0'/0'/2'")).toBe('48h/0h/0h/2h');
+      expect(formatPathForDescriptor("84'/0'/0'")).toBe('84h/0h/0h');
+    });
+
+    it('extracts change/index and falls back to zero when path parts are missing', () => {
+      expect(extractChangeAndAddressIndex("m/48'/0'/0'/2'/0/5")).toEqual({
+        changeIdx: 0,
+        addressIdx: 5,
+      });
+      expect(extractChangeAndAddressIndex("m/84'/0'/0'/7")).toEqual({
+        changeIdx: 0,
+        addressIdx: 7,
+      });
+      expect(extractChangeAndAddressIndex('m/')).toEqual({
+        changeIdx: 0,
+        addressIdx: 0,
+      });
     });
   });
 });

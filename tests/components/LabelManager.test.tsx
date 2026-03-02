@@ -272,6 +272,21 @@ describe('LabelManager', () => {
       expect(screen.getByDisplayValue('Exchange deposits')).toBeInTheDocument();
     });
 
+    it('should default description to empty when editing a label without description', async () => {
+      render(<LabelManager walletId={walletId} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Savings')).toBeInTheDocument();
+      });
+
+      const editButtons = screen.getAllByTitle('Edit label');
+      fireEvent.click(editButtons[1]);
+
+      expect(screen.getByText('Edit Label')).toBeInTheDocument();
+      const descriptionInput = screen.getByPlaceholderText('Optional description for this label') as HTMLInputElement;
+      expect(descriptionInput.value).toBe('');
+    });
+
     it('should update label on save', async () => {
       mockUpdateLabel.mockResolvedValue({
         ...mockLabels[0],
@@ -301,6 +316,35 @@ describe('LabelManager', () => {
       });
 
       expect(mockOnLabelsChange).toHaveBeenCalled();
+    });
+
+    it('should send undefined description when edit description is whitespace', async () => {
+      mockUpdateLabel.mockResolvedValue({
+        ...mockLabels[0],
+        description: undefined,
+      });
+
+      render(<LabelManager walletId={walletId} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Exchange')).toBeInTheDocument();
+      });
+
+      const editButtons = screen.getAllByTitle('Edit label');
+      fireEvent.click(editButtons[0]);
+
+      const descriptionInput = screen.getByDisplayValue('Exchange deposits');
+      fireEvent.change(descriptionInput, { target: { value: '   ' } });
+
+      fireEvent.click(screen.getByText('Save Changes'));
+
+      await waitFor(() => {
+        expect(mockUpdateLabel).toHaveBeenCalledWith(walletId, 'label-1', {
+          name: 'Exchange',
+          color: '#6366f1',
+          description: undefined,
+        });
+      });
     });
   });
 
@@ -459,6 +503,31 @@ describe('LabelManager', () => {
           description: 'A description',
         });
       });
+    });
+
+    it('should keep the form open when save fails and avoid onLabelsChange', async () => {
+      mockCreateLabel.mockRejectedValue(new Error('Save failed'));
+
+      render(<LabelManager walletId={walletId} onLabelsChange={mockOnLabelsChange} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('New Label')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByText('New Label'));
+
+      const nameInput = screen.getByPlaceholderText('e.g., Exchange, Donation, Business');
+      fireEvent.change(nameInput, { target: { value: 'Failed Label' } });
+
+      fireEvent.click(screen.getByText('Create Label'));
+
+      await waitFor(() => {
+        expect(screen.getByText('Save failed')).toBeInTheDocument();
+      });
+
+      expect(screen.getByText('Create New Label')).toBeInTheDocument();
+      expect(mockOnLabelsChange).not.toHaveBeenCalled();
+      expect(mockGetLabels).toHaveBeenCalledTimes(1);
     });
   });
 

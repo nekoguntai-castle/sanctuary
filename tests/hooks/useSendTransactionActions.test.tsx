@@ -285,6 +285,69 @@ describe('useSendTransactionActions', () => {
     });
   });
 
+  it('maps sendMax outputs to amount=0 and includes selected UTXO ids in batch payload', async () => {
+    const state = createState({
+      outputs: [
+        { address: 'bc1qmax', amount: '', sendMax: true },
+        { address: 'bc1qfixed', amount: '2500', sendMax: false },
+      ],
+      selectedUTXOs: new Set(['u1', 'u2']),
+      feeRate: 3,
+      rbfEnabled: true,
+    });
+
+    const { result } = renderHook(() =>
+      useSendTransactionActions({
+        walletId: 'wallet-1',
+        wallet: baseWallet,
+        state,
+      })
+    );
+
+    await act(async () => {
+      await result.current.createTransaction();
+    });
+
+    expect(vi.mocked(transactionsApi.createBatchTransaction)).toHaveBeenCalledWith('wallet-1', {
+      outputs: [
+        { address: 'bc1qmax', amount: 0, sendMax: true },
+        { address: 'bc1qfixed', amount: 2500, sendMax: false },
+      ],
+      feeRate: 3,
+      selectedUtxoIds: ['u1', 'u2'],
+      enableRBF: true,
+    });
+  });
+
+  it('falls back to parsed output amount when effectiveAmount is missing in single-output response', async () => {
+    vi.mocked(transactionsApi.createTransaction).mockResolvedValueOnce({
+      ...baseTxData,
+      effectiveAmount: 0,
+    } as any);
+
+    const state = createState({
+      outputs: [{ address: 'bc1qrecipient', amount: '12345', sendMax: false }],
+    });
+
+    const { result } = renderHook(() =>
+      useSendTransactionActions({
+        walletId: 'wallet-1',
+        wallet: baseWallet,
+        state,
+      })
+    );
+
+    let tx: any = null;
+    await act(async () => {
+      tx = await result.current.createTransaction();
+    });
+
+    expect(tx.outputs[0]).toEqual({
+      address: 'bc1qrecipient',
+      amount: 12345,
+    });
+  });
+
   it('attempts payjoin and updates status on success', async () => {
     vi.mocked(payjoinApi.attemptPayjoin).mockResolvedValue({
       success: true,
@@ -335,6 +398,35 @@ describe('useSendTransactionActions', () => {
 
     expect(result.current.payjoinStatus).toBe('failed');
     expect(result.current.unsignedPsbt).toBe('cHNidP8BAA==');
+  });
+
+  it('uses mainnet fallback when wallet network is missing for payjoin attempts', async () => {
+    const walletWithoutNetwork = {
+      ...baseWallet,
+      network: undefined,
+    };
+    const state = createState({
+      outputs: [{ address: 'bc1qrecipient', amount: '10000', sendMax: false }],
+      payjoinUrl: 'https://merchant.example/payjoin',
+    });
+
+    const { result } = renderHook(() =>
+      useSendTransactionActions({
+        walletId: 'wallet-1',
+        wallet: walletWithoutNetwork as any,
+        state,
+      })
+    );
+
+    await act(async () => {
+      await result.current.createTransaction();
+    });
+
+    expect(vi.mocked(payjoinApi.attemptPayjoin)).toHaveBeenCalledWith(
+      'cHNidP8BAA==',
+      'https://merchant.example/payjoin',
+      'mainnet'
+    );
   });
 
   it('marks payjoin as failed when payjoin responds with success=false', async () => {

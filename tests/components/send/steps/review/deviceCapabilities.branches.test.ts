@@ -23,4 +23,21 @@ describe('deviceCapabilities branch coverage', () => {
       labels: { usb: '', airgap: 'PSBT File', qr: 'QR Code' },
     });
   });
+
+  it('covers coldcard, usb-only, and default fallback branches', () => {
+    expect(getDeviceCapabilities('Coldcard Mk4')).toEqual({
+      methods: ['airgap'],
+      labels: { usb: '', airgap: 'PSBT File', qr: '' },
+    });
+
+    expect(getDeviceCapabilities('Ledger Nano X')).toEqual({
+      methods: ['usb'],
+      labels: { usb: 'USB', airgap: '', qr: '' },
+    });
+
+    expect(getDeviceCapabilities('Unknown Device')).toEqual({
+      methods: ['usb', 'airgap'],
+      labels: { usb: 'USB', airgap: 'PSBT File', qr: '' },
+    });
+  });
 });

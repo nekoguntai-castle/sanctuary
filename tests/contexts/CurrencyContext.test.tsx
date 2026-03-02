@@ -42,6 +42,22 @@ vi.mock('../../src/api/auth', () => ({
   updatePreferences: vi.fn(),
 }));
 
+const authenticatedUser = {
+  id: 'user-1',
+  username: 'testuser',
+  email: 'test@example.com',
+  isAdmin: false,
+  preferences: {
+    darkMode: true,
+    unit: 'sats' as const,
+    fiatCurrency: 'USD' as const,
+    showFiat: false,
+    theme: 'sanctuary' as const,
+    background: 'minimal' as const,
+    priceProvider: 'auto',
+  },
+};
+
 // Test component that exposes context values
 function TestConsumer() {
   const currency = useCurrency();
@@ -52,6 +68,7 @@ function TestConsumer() {
       <span data-testid="fiat-currency">{currency.fiatCurrency}</span>
       <span data-testid="unit">{currency.unit}</span>
       <span data-testid="btc-price">{currency.btcPrice ?? 'null'}</span>
+      <span data-testid="price-change">{currency.priceChange24h ?? 'null'}</span>
       <span data-testid="price-loading">{currency.priceLoading.toString()}</span>
       <span data-testid="price-error">{currency.priceError ?? 'null'}</span>
       <span data-testid="currency-symbol">{currency.currencySymbol}</span>
@@ -62,6 +79,7 @@ function TestConsumer() {
       <button data-testid="toggle-fiat" onClick={currency.toggleShowFiat}>Toggle Fiat</button>
       <button data-testid="set-eur" onClick={() => currency.setFiatCurrency('EUR')}>Set EUR</button>
       <button data-testid="set-btc" onClick={() => currency.setUnit('btc')}>Set BTC</button>
+      <button data-testid="set-provider" onClick={() => currency.setPriceProvider('kraken')}>Set Provider</button>
       <button data-testid="refresh-price" onClick={currency.refreshPrice}>Refresh</button>
     </div>
   );
@@ -159,6 +177,21 @@ describe('CurrencyContext', () => {
 
       expect(screen.getByTestId('btc-price')).toHaveTextContent('null');
     });
+
+    it('normalizes missing 24h change to null', async () => {
+      vi.mocked(priceApi.getPrice).mockResolvedValue({
+        price: 50000,
+        change24h: undefined as unknown as number,
+        timestamp: new Date().toISOString(),
+      });
+
+      renderWithProviders(<TestConsumer />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('btc-price')).toHaveTextContent('50000');
+        expect(screen.getByTestId('price-change')).toHaveTextContent('null');
+      });
+    });
   });
 
   describe('Currency formatting', () => {
@@ -217,6 +250,27 @@ describe('CurrencyContext', () => {
 
       expect(screen.getByTestId('formatted-fiat')).toHaveTextContent('-----');
     });
+
+    it('formats fiat price helper for null and numeric values', async () => {
+      const TestFiatPriceFormatter = () => {
+        const { formatFiatPrice } = useCurrency();
+        return (
+          <div>
+            <span data-testid="fiat-price-null">{formatFiatPrice(null)}</span>
+            <span data-testid="fiat-price-value">{formatFiatPrice(1234.5)}</span>
+          </div>
+        );
+      };
+
+      renderWithProviders(<TestFiatPriceFormatter />);
+
+      await waitFor(() => {
+        expect(priceApi.getPrice).toHaveBeenCalled();
+      });
+
+      expect(screen.getByTestId('fiat-price-null')).toHaveTextContent('-----');
+      expect(screen.getByTestId('fiat-price-value')).toHaveTextContent('$1,234.50');
+    });
   });
 
   describe('Currency settings', () => {
@@ -269,6 +323,49 @@ describe('CurrencyContext', () => {
 
       await waitFor(() => {
         expect(priceApi.getPrice).toHaveBeenCalledWith('EUR', true);
+      });
+    });
+
+    it('changes local price provider', async () => {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      renderWithProviders(<TestConsumer />);
+
+      expect(screen.getByTestId('price-provider')).toHaveTextContent('auto');
+
+      await user.click(screen.getByTestId('set-provider'));
+
+      expect(screen.getByTestId('price-provider')).toHaveTextContent('kraken');
+    });
+
+    it('updates user preferences when authenticated', async () => {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+
+      vi.mocked(authApi.isAuthenticated).mockReturnValue(true);
+      vi.mocked(authApi.getCurrentUser).mockResolvedValue(authenticatedUser as any);
+      vi.mocked(authApi.updatePreferences).mockImplementation(async (prefs: any) => ({
+        ...authenticatedUser,
+        preferences: {
+          ...authenticatedUser.preferences,
+          ...prefs,
+        },
+      }));
+
+      renderWithProviders(<TestConsumer />);
+
+      await waitFor(() => {
+        expect(authApi.getCurrentUser).toHaveBeenCalled();
+      });
+
+      await user.click(screen.getByTestId('set-eur'));
+      await user.click(screen.getByTestId('set-btc'));
+      await user.click(screen.getByTestId('set-provider'));
+      await user.click(screen.getByTestId('toggle-fiat'));
+
+      await waitFor(() => {
+        expect(authApi.updatePreferences).toHaveBeenCalledWith(expect.objectContaining({ fiatCurrency: 'EUR' }));
+        expect(authApi.updatePreferences).toHaveBeenCalledWith(expect.objectContaining({ unit: 'btc' }));
+        expect(authApi.updatePreferences).toHaveBeenCalledWith(expect.objectContaining({ priceProvider: 'kraken' }));
+        expect(authApi.updatePreferences).toHaveBeenCalledWith(expect.objectContaining({ showFiat: true }));
       });
     });
   });

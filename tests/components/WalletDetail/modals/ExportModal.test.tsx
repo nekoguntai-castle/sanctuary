@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 
@@ -93,7 +93,10 @@ vi.mock('../../../../utils/logger', () => ({
 }));
 
 // Import after mocks
-import { ExportModal } from '../../../../components/WalletDetail/modals/ExportModal';
+import {
+  ExportModal,
+  generateMultisigConfigText,
+} from '../../../../components/WalletDetail/modals/ExportModal';
 
 describe('ExportModal', () => {
   const singleSigProps = {
@@ -197,6 +200,26 @@ describe('ExportModal', () => {
       expect(screen.getByText('280px')).toBeInTheDocument();
     });
 
+    it('updates QR size label and QR component size when slider value changes', () => {
+      render(<ExportModal {...singleSigProps} />);
+
+      const slider = screen.getByRole('slider');
+      fireEvent.change(slider, { target: { value: '320' } });
+
+      expect(screen.getByText('320px')).toBeInTheDocument();
+      expect(screen.getByTestId('qr-code')).toHaveAttribute('data-size', '320');
+    });
+
+    it('can switch away from and back to QR tab', async () => {
+      const user = userEvent.setup();
+      render(<ExportModal {...singleSigProps} />);
+
+      await user.click(screen.getByText('JSON File'));
+      await user.click(screen.getByText('QR Code'));
+
+      expect(screen.getByTestId('qr-code')).toBeInTheDocument();
+    });
+
     it('should show scan message for single sig', () => {
       render(<ExportModal {...singleSigProps} />);
 
@@ -242,6 +265,18 @@ describe('ExportModal', () => {
       ).toBeInTheDocument();
     });
 
+    it('switches back to Passport format after selecting descriptor', async () => {
+      const user = userEvent.setup();
+      render(<ExportModal {...multisigProps} />);
+
+      await user.click(screen.getByText('Raw Descriptor'));
+      await user.click(screen.getByText('Passport/Coldcard'));
+
+      expect(
+        screen.getByText('Coldcard/Passport compatible format')
+      ).toBeInTheDocument();
+    });
+
     it('should generate Passport config text with device info', () => {
       render(<ExportModal {...multisigProps} />);
 
@@ -252,6 +287,65 @@ describe('ExportModal', () => {
       expect(value).toContain('Name: Multisig Vault');
       expect(value).toContain('Policy: 2 of 3');
       expect(value).toContain('Format: P2WSH');
+    });
+
+    it('shows descriptor fallback note when multisig has no devices in passport mode', () => {
+      render(
+        <ExportModal
+          {...multisigProps}
+          devices={[]}
+          descriptor="wsh(sortedmulti(2,[fp]xpub))#desc"
+        />
+      );
+
+      const qrCode = screen.getByTestId('qr-code');
+      expect(qrCode).toHaveAttribute('data-value', 'wsh(sortedmulti(2,[fp]xpub))#desc');
+      expect(
+        screen.getByText('Note: No devices found. Using raw descriptor format instead.')
+      ).toBeInTheDocument();
+    });
+
+    it('falls back to default format text for unknown script type and missing device fields', () => {
+      render(
+        <ExportModal
+          {...multisigProps}
+          scriptType="unknown_script"
+          devices={[
+            { fingerprint: 'c0ffee01' },
+            { fingerprint: 'aabbccdd' },
+          ]}
+        />
+      );
+
+      const qrCode = screen.getByTestId('qr-code');
+      const value = qrCode.getAttribute('data-value') || '';
+      expect(value).toContain('Format: P2WSH');
+      expect(value).toContain('Derivation:');
+      expect(value).toContain('AABBCCDD:');
+      expect(value).toContain('C0FFEE01:');
+    });
+
+    it('uses default signer count and script type when multisig total/signing config is missing', () => {
+      render(
+        <ExportModal
+          {...multisigProps}
+          scriptType={undefined}
+          totalSigners={undefined}
+          devices={[{ fingerprint: 'deadbeef', derivationPath: "m/48'/0'/0'/2'", xpub: 'xpubz' }]}
+        />
+      );
+
+      const qrCode = screen.getByTestId('qr-code');
+      const value = qrCode.getAttribute('data-value') || '';
+      expect(value).toContain('Policy: 2 of 3');
+      expect(value).toContain('Format: P2WSH');
+    });
+
+    it('generateMultisigConfigText omits derivation section when no devices are provided', () => {
+      const text = generateMultisigConfigText('No Device Wallet', 2, 3, 'native_segwit', []);
+      expect(text).toContain('Name: No Device Wallet');
+      expect(text).toContain('Policy: 2 of 3');
+      expect(text).not.toContain('Derivation:');
     });
   });
 
@@ -356,6 +450,22 @@ describe('ExportModal', () => {
 
       expect(screen.getByText('Copied!')).toBeInTheDocument();
     });
+
+    it('uses empty descriptor fallback for textarea/copy state when descriptor is missing', async () => {
+      const user = userEvent.setup();
+      mockIsCopied.mockImplementation((value: string) => value === '');
+
+      render(<ExportModal {...singleSigProps} descriptor={undefined} />);
+
+      await user.click(screen.getByText('Descriptor'));
+
+      const textarea = screen.getByRole('textbox');
+      expect(textarea).toHaveValue('');
+      expect(screen.getByText('Copied!')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: /copied/i }));
+      expect(mockCopy).toHaveBeenCalledWith('');
+    });
   });
 
   describe('Labels Tab', () => {
@@ -389,6 +499,21 @@ describe('ExportModal', () => {
       await user.click(screen.getByRole('button', { name: /download labels/i }));
 
       expect(mockExportLabelsBip329).toHaveBeenCalledWith('wallet-123', 'My Wallet');
+    });
+
+    it('should call onError when labels export fails', async () => {
+      const user = userEvent.setup();
+      const onError = vi.fn();
+      mockExportLabelsBip329.mockRejectedValue(new Error('labels failed'));
+
+      render(<ExportModal {...singleSigProps} onError={onError} />);
+
+      await user.click(screen.getByText('Labels'));
+      await user.click(screen.getByRole('button', { name: /download labels/i }));
+
+      await waitFor(() => {
+        expect(onError).toHaveBeenCalledWith(expect.any(Error), 'Export Labels Failed');
+      });
     });
   });
 
@@ -482,9 +607,46 @@ describe('ExportModal', () => {
       );
     });
 
+    it('calls onError when exporting a device format fails', async () => {
+      const user = userEvent.setup();
+      const onError = vi.fn();
+      mockExportWalletFormat.mockRejectedValue(new Error('device format failed'));
+
+      render(<ExportModal {...multisigProps} onError={onError} />);
+
+      const deviceTab = getDeviceTab();
+      await user.click(deviceTab!);
+
+      await waitFor(() => {
+        expect(screen.getByText('Coldcard')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole('button', { name: /coldcard.*\.txt/i }));
+
+      await waitFor(() => {
+        expect(onError).toHaveBeenCalledWith(expect.any(Error), 'Export Failed');
+      });
+    });
+
     it('should show empty state when no formats available', async () => {
       const user = userEvent.setup();
       mockGetExportFormats.mockResolvedValue([]);
+
+      render(<ExportModal {...multisigProps} />);
+
+      const deviceTab = getDeviceTab();
+      await user.click(deviceTab!);
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(/no device export formats available/i)
+        ).toBeInTheDocument();
+      });
+    });
+
+    it('falls back to empty device format list when fetching formats fails', async () => {
+      const user = userEvent.setup();
+      mockGetExportFormats.mockRejectedValue(new Error('formats unavailable'));
 
       render(<ExportModal {...multisigProps} />);
 

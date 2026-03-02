@@ -77,6 +77,21 @@ describe('ExternalServicesSection', () => {
     });
   });
 
+  it('uses an empty string input value when explorerUrl is unset', () => {
+    render(
+      <ExternalServicesSection
+        nodeConfig={createNodeConfig({ explorerUrl: undefined })}
+        onConfigChange={vi.fn()}
+        expanded
+        onToggle={vi.fn()}
+        summary="External config"
+      />
+    );
+
+    const [explorerInput] = screen.getAllByRole('textbox');
+    expect(explorerInput).toHaveValue('');
+  });
+
   it('switches fee source and updates fee URL/estimator fields', async () => {
     const user = userEvent.setup();
     const onConfigChange = vi.fn();
@@ -127,5 +142,24 @@ describe('ExternalServicesSection', () => {
       ...withMempool,
       feeEstimatorUrl: '',
     });
+  });
+
+  it('falls back estimator select value when mempoolEstimator is unset', () => {
+    const nodeConfig = createNodeConfig({
+      feeEstimatorUrl: 'https://fees.custom',
+      mempoolEstimator: undefined,
+    });
+
+    render(
+      <ExternalServicesSection
+        nodeConfig={nodeConfig}
+        onConfigChange={vi.fn()}
+        expanded
+        onToggle={vi.fn()}
+        summary="Fee source test"
+      />
+    );
+
+    expect(screen.getByRole('combobox')).toHaveValue('mempool_space');
   });
 });

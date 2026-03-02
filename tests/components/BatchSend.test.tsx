@@ -93,6 +93,24 @@ const createWrapper = (walletId: string = 'test-wallet-123') => {
   );
 };
 
+const createWrapperWithoutId = () => {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+    },
+  });
+
+  return ({ children }: { children: React.ReactNode }) => (
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={['/wallets/batch']}>
+        <Routes>
+          <Route path="/wallets/batch" element={children} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>
+  );
+};
+
 describe('BatchSend Component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -172,10 +190,13 @@ describe('BatchSend Component', () => {
 
     const addressInput = screen.getByPlaceholderText(/bc1q/i);
     const amountInput = screen.getByPlaceholderText('0');
+    const labelInput = screen.getByPlaceholderText('Label (optional)');
 
+    await user.type(labelInput, 'Payroll');
     await user.type(addressInput, 'bc1qtest123456789');
     await user.type(amountInput, '10000');
 
+    expect(labelInput).toHaveValue('Payroll');
     expect(addressInput).toHaveValue('bc1qtest123456789');
     expect(amountInput).toHaveValue(10000);
   });
@@ -379,4 +400,103 @@ describe('BatchSend Component - Multiple Recipients', () => {
     addressInputs = screen.getAllByPlaceholderText(/bc1q/i);
     expect(addressInputs).toHaveLength(3);
   });
+});
+
+describe('BatchSend Component - Branch Coverage', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('removeRecipientById keeps a single recipient unchanged', async () => {
+    const { removeRecipientById } = await import('../../components/BatchSend');
+
+    const recipients = [{ id: 'r1', address: 'bc1qsingle', amount: '10', label: 'one' }];
+    expect(removeRecipientById(recipients as any, 'r1')).toEqual(recipients);
+  });
+
+  it('removeRecipientById removes matching recipient when multiple exist', async () => {
+    const { removeRecipientById } = await import('../../components/BatchSend');
+
+    const recipients = [
+      { id: 'r1', address: 'bc1qa', amount: '10', label: 'a' },
+      { id: 'r2', address: 'bc1qb', amount: '20', label: 'b' },
+    ];
+    expect(removeRecipientById(recipients as any, 'r1')).toEqual([recipients[1]]);
+  });
+
+  it('keeps other recipients unchanged when updating one recipient', async () => {
+    const { BatchSend } = await import('../../components/BatchSend');
+    const user = userEvent.setup();
+
+    render(<BatchSend />, { wrapper: createWrapper() });
+
+    await user.click(screen.getByText(/add recipient/i));
+    const addressInputs = screen.getAllByPlaceholderText(/bc1q/i);
+
+    await user.type(addressInputs[0], 'bc1qfirstrecipient0001');
+    expect(addressInputs[0]).toHaveValue('bc1qfirstrecipient0001');
+    expect(addressInputs[1]).toHaveValue('');
+  });
+
+  it('returns early when wallet id is missing', async () => {
+    const { BatchSend } = await import('../../components/BatchSend');
+    const user = userEvent.setup();
+
+    render(<BatchSend />, { wrapper: createWrapperWithoutId() });
+
+    await user.type(screen.getByPlaceholderText(/bc1q/i), 'bc1qtest123456789012345');
+    await user.type(screen.getByPlaceholderText('0'), '10000');
+    await user.click(screen.getByText(/create batch transaction/i));
+
+    expect(mockCreateBatchTransaction).not.toHaveBeenCalled();
+    expect(screen.queryByText(/please add at least one valid recipient/i)).not.toBeInTheDocument();
+  });
+
+  it('shows API error message when batch creation fails', async () => {
+    mockCreateBatchTransaction.mockRejectedValue(new Error('Backend failed'));
+    const { BatchSend } = await import('../../components/BatchSend');
+    const user = userEvent.setup();
+
+    render(<BatchSend />, { wrapper: createWrapper() });
+
+    await user.type(screen.getByPlaceholderText(/bc1q/i), 'bc1qtest123456789012345');
+    await user.type(screen.getByPlaceholderText('0'), '10000');
+    await user.click(screen.getByText(/create batch transaction/i));
+
+    await waitFor(() => {
+      expect(screen.getByText('Backend failed')).toBeInTheDocument();
+    });
+  });
+
+  it('uses fallback API error text when thrown error has no message', async () => {
+    mockCreateBatchTransaction.mockRejectedValue({ message: '' });
+    const { BatchSend } = await import('../../components/BatchSend');
+    const user = userEvent.setup();
+
+    render(<BatchSend />, { wrapper: createWrapper() });
+
+    await user.type(screen.getByPlaceholderText(/bc1q/i), 'bc1qtest123456789012345');
+    await user.type(screen.getByPlaceholderText('0'), '10000');
+    await user.click(screen.getByText(/create batch transaction/i));
+
+    await waitFor(() => {
+      expect(screen.getByText('Failed to create batch transaction')).toBeInTheDocument();
+    });
+  });
+
+  it('updates fee rate from numeric input and falls back to zero for blank input', async () => {
+    const { BatchSend } = await import('../../components/BatchSend');
+    const user = userEvent.setup();
+
+    render(<BatchSend />, { wrapper: createWrapper() });
+
+    const feeInput = screen.getByDisplayValue('10');
+    await user.clear(feeInput);
+    await user.type(feeInput, '12.5');
+    expect(screen.getByDisplayValue('12.5')).toBeInTheDocument();
+
+    await user.clear(screen.getByDisplayValue('12.5'));
+    expect(screen.getByDisplayValue('0')).toBeInTheDocument();
+  });
+
 });

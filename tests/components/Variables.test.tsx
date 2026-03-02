@@ -172,6 +172,19 @@ describe('Variables', () => {
       expect(inputs[1]).toHaveValue(10);
     });
 
+    it('falls back deep confirmation threshold to 1 for empty input', async () => {
+      render(<Variables />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Deep Confirmation Threshold')).toBeInTheDocument();
+      });
+
+      const inputs = screen.getAllByRole('spinbutton');
+      fireEvent.change(inputs[1], { target: { value: '' } });
+
+      expect(inputs[1]).toHaveValue(1);
+    });
+
     it('updates dust threshold on input change', async () => {
       render(<Variables />);
 
@@ -209,6 +222,19 @@ describe('Variables', () => {
       fireEvent.change(inputs[2], { target: { value: '-10' } });
 
       expect(inputs[2]).toHaveValue(1);
+    });
+
+    it('falls back dust threshold to default when input is empty', async () => {
+      render(<Variables />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Dust Threshold')).toBeInTheDocument();
+      });
+
+      const inputs = screen.getAllByRole('spinbutton');
+      fireEvent.change(inputs[2], { target: { value: '' } });
+
+      expect(inputs[2]).toHaveValue(546);
     });
   });
 
@@ -294,6 +320,34 @@ describe('Variables', () => {
       });
 
       expect(screen.queryByText('Settings saved successfully')).not.toBeInTheDocument();
+
+      vi.useRealTimers();
+    });
+
+    it('clears existing success timeout when saving again before timeout expires', async () => {
+      vi.useFakeTimers();
+      const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
+
+      render(<Variables />);
+
+      await act(async () => {
+        await vi.runAllTimersAsync();
+      });
+
+      const saveButton = screen.getByRole('button', { name: 'Save Changes' });
+      fireEvent.click(saveButton);
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      fireEvent.click(saveButton);
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(clearTimeoutSpy).toHaveBeenCalled();
 
       vi.useRealTimers();
     });

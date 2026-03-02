@@ -245,6 +245,10 @@ describe('Core API Modules', () => {
         conflict: conflictPayload,
       });
 
+      const conflictWithoutPayload = { status: 409, message: 'Conflict without payload' };
+      mockPost.mockRejectedValueOnce(conflictWithoutPayload);
+      await expect(devicesApi.createDeviceWithConflictHandling(createPayload)).rejects.toEqual(conflictWithoutPayload);
+
       const otherError = new Error('boom');
       mockPost.mockRejectedValueOnce(otherError);
       await expect(devicesApi.createDeviceWithConflictHandling(createPayload)).rejects.toThrow('boom');
@@ -359,4 +363,3 @@ describe('Core API Modules', () => {
     });
   });
 });
-

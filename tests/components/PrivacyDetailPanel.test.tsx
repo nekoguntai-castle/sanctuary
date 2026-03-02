@@ -297,6 +297,22 @@ describe('PrivacyDetailPanel', () => {
 
       expect(onClose).toHaveBeenCalled();
     });
+
+    it('does not close when a non-Escape key is pressed', async () => {
+      const onClose = vi.fn();
+      render(<PrivacyDetailPanel {...defaultProps} onClose={onClose} />);
+
+      await act(async () => {
+        vi.advanceTimersByTime(50);
+      });
+
+      fireEvent.keyDown(document, { key: 'Enter' });
+      act(() => {
+        vi.advanceTimersByTime(250);
+      });
+
+      expect(onClose).not.toHaveBeenCalled();
+    });
   });
 
   describe('learn more section', () => {
@@ -395,6 +411,25 @@ describe('PrivacyDetailPanel', () => {
       });
 
       expect(screen.getByText('Original description')).toBeInTheDocument();
+    });
+
+    it('shows + prefix for positive factor impacts', async () => {
+      const positiveFactorInfo: UtxoPrivacyInfo = {
+        score: {
+          score: 85,
+          grade: 'good',
+          factors: [{ factor: 'benefitFactor', impact: 5, description: 'Improved privacy signal' }],
+          warnings: [],
+        },
+      };
+
+      render(<PrivacyDetailPanel {...defaultProps} privacyInfo={positiveFactorInfo} />);
+
+      await act(async () => {
+        vi.advanceTimersByTime(50);
+      });
+
+      expect(screen.getByText('+5')).toBeInTheDocument();
     });
   });
 });

@@ -100,6 +100,16 @@ function renderQrScanStep(options: RenderOptions = {}) {
 }
 
 describe('QrScanStep', () => {
+  const getScannerProps = () => {
+    expect(scannerProps).toEqual(
+      expect.objectContaining({
+        onScan: expect.any(Function),
+        onError: expect.any(Function),
+      }),
+    );
+    return scannerProps as NonNullable<typeof scannerProps>;
+  };
+
   beforeEach(() => {
     scannerProps = null;
     secureContext = true;
@@ -123,50 +133,63 @@ describe('QrScanStep', () => {
 
   it('maps camera errors to user-friendly messages', () => {
     const props = renderQrScanStep({ cameraActive: true });
-    expect(scannerProps).toBeTruthy();
+    const qrScanner = getScannerProps();
 
     const deniedError = Object.assign(new Error('denied'), { name: 'NotAllowedError' });
-    scannerProps!.onError(deniedError);
+    qrScanner.onError(deniedError);
     expect(props.setCameraActive).toHaveBeenCalledWith(false);
     expect(props.setCameraError).toHaveBeenCalledWith(
       'Camera access denied. Please allow camera permissions and try again.',
     );
 
     const notFoundError = Object.assign(new Error('missing'), { name: 'NotFoundError' });
-    scannerProps!.onError(notFoundError);
+    qrScanner.onError(notFoundError);
     expect(props.setCameraError).toHaveBeenCalledWith('No camera found on this device.');
 
-    scannerProps!.onError('unexpected');
+    qrScanner.onError('unexpected');
     expect(props.setCameraError).toHaveBeenCalledWith(
       'Failed to access camera. Make sure you are using HTTPS.',
     );
+
+    qrScanner.onError(new Error('camera exploded'));
+    expect(props.setCameraError).toHaveBeenCalledWith('Camera error: camera exploded');
+  });
+
+  it('ignores empty scan payloads', () => {
+    const props = renderQrScanStep({ cameraActive: true });
+    const qrScanner = getScannerProps();
+
+    qrScanner.onScan([]);
+    expect(props.setCameraActive).not.toHaveBeenCalledWith(false);
+    expect(props.setImportData).not.toHaveBeenCalled();
+    expect(props.setValidationError).not.toHaveBeenCalled();
   });
 
   it('parses direct JSON and descriptor scans', () => {
     const props = renderQrScanStep({ cameraActive: true });
-    expect(scannerProps).toBeTruthy();
+    const qrScanner = getScannerProps();
 
     const jsonContent = '{"type":"single_sig","scriptType":"native_segwit"}';
-    scannerProps!.onScan([{ rawValue: jsonContent }]);
+    qrScanner.onScan([{ rawValue: jsonContent }]);
     expect(props.setCameraActive).toHaveBeenCalledWith(false);
     expect(props.setImportData).toHaveBeenCalledWith(jsonContent);
     expect(props.setQrScanned).toHaveBeenCalledWith(true);
 
     vi.clearAllMocks();
     const descriptor = 'wpkh([a1b2c3d4/84h/0h/0h]xpub123/0/*)';
-    scannerProps!.onScan([{ rawValue: descriptor }]);
+    qrScanner.onScan([{ rawValue: descriptor }]);
     expect(props.setImportData).toHaveBeenCalledWith(descriptor);
     expect(props.setQrScanned).toHaveBeenCalledWith(true);
   });
 
   it('reports invalid and unknown non-UR scan payloads', () => {
     const props = renderQrScanStep({ cameraActive: true });
-    expect(scannerProps).toBeTruthy();
+    const qrScanner = getScannerProps();
 
-    scannerProps!.onScan([{ rawValue: '{invalid' }]);
+    qrScanner.onScan([{ rawValue: '{invalid' }]);
     expect(props.setValidationError).toHaveBeenCalledWith('Invalid JSON in QR code');
 
-    scannerProps!.onScan([{ rawValue: 'plain text payload' }]);
+    qrScanner.onScan([{ rawValue: 'plain text payload' }]);
     expect(props.setValidationError).toHaveBeenCalledWith(
       'QR code format not recognized. Please use a wallet export QR code.',
     );
@@ -174,11 +197,16 @@ describe('QrScanStep', () => {
 
   it('handles unsupported UR types', () => {
     const props = renderQrScanStep({ cameraActive: true });
-    expect(scannerProps).toBeTruthy();
+    const qrScanner = getScannerProps();
 
-    scannerProps!.onScan([{ rawValue: 'ur:crypto-hdkey/abcd' }]);
+    qrScanner.onScan([{ rawValue: 'ur:crypto-hdkey/abcd' }]);
     expect(props.setValidationError).toHaveBeenCalledWith(
       'Unsupported UR type: crypto-hdkey. Please export as JSON or output descriptor.',
+    );
+
+    qrScanner.onScan([{ rawValue: 'ur:/malformed' }]);
+    expect(props.setValidationError).toHaveBeenCalledWith(
+      'Unsupported UR type: unknown. Please export as JSON or output descriptor.',
     );
   });
 
@@ -187,13 +215,28 @@ describe('QrScanStep', () => {
     mockDecoderInstance.isComplete.mockReturnValue(false);
 
     const props = renderQrScanStep({ cameraActive: true });
-    expect(scannerProps).toBeTruthy();
+    const qrScanner = getScannerProps();
 
-    scannerProps!.onScan([{ rawValue: 'ur:bytes/part-1' }]);
+    qrScanner.onScan([{ rawValue: 'ur:bytes/part-1' }]);
 
     expect(mockDecoderFactory).toHaveBeenCalledTimes(1);
     expect(props.setUrProgress).toHaveBeenCalledWith(42);
     expect(props.setCameraActive).not.toHaveBeenCalledWith(false);
+  });
+
+  it('reuses existing bytes decoder when present', () => {
+    mockDecoderInstance.estimatedPercentComplete.mockReturnValue(0.4);
+    mockDecoderInstance.isComplete.mockReturnValue(false);
+
+    const props = renderQrScanStep({ cameraActive: true });
+    const qrScanner = getScannerProps();
+
+    props.bytesDecoderRef.current = mockDecoderInstance as any;
+    mockDecoderFactory.mockClear();
+    qrScanner.onScan([{ rawValue: 'ur:bytes/part-2' }]);
+
+    expect(mockDecoderFactory).not.toHaveBeenCalled();
+    expect(mockDecoderInstance.receivePart).toHaveBeenCalledWith('ur:bytes/part-2');
   });
 
   it('completes ur:bytes scan and decodes imported data', () => {
@@ -205,9 +248,9 @@ describe('QrScanStep', () => {
     });
 
     const props = renderQrScanStep({ cameraActive: true });
-    expect(scannerProps).toBeTruthy();
+    const qrScanner = getScannerProps();
 
-    scannerProps!.onScan([{ rawValue: 'ur:bytes/complete' }]);
+    qrScanner.onScan([{ rawValue: 'ur:bytes/complete' }]);
 
     expect(props.setCameraActive).toHaveBeenCalledWith(false);
     expect(props.setImportData).toHaveBeenCalledWith('{"type":"single_sig"}');
@@ -224,13 +267,41 @@ describe('QrScanStep', () => {
     mockDecoderInstance.resultError.mockReturnValue('bad checksum');
 
     const props = renderQrScanStep({ cameraActive: true });
-    expect(scannerProps).toBeTruthy();
+    const qrScanner = getScannerProps();
 
-    scannerProps!.onScan([{ rawValue: 'ur:bytes/fail' }]);
+    qrScanner.onScan([{ rawValue: 'ur:bytes/fail' }]);
 
     expect(props.setValidationError).toHaveBeenCalledWith(
       'UR decode failed: bad checksum',
     );
+    expect(props.setCameraActive).toHaveBeenCalledWith(false);
+    expect(props.bytesDecoderRef.current).toBeNull();
+  });
+
+  it('uses fallback error text when ur:bytes decoder has no error message', () => {
+    mockDecoderInstance.estimatedPercentComplete.mockReturnValue(1);
+    mockDecoderInstance.isComplete.mockReturnValue(true);
+    mockDecoderInstance.isSuccess.mockReturnValue(false);
+    mockDecoderInstance.resultError.mockReturnValue(null);
+
+    const props = renderQrScanStep({ cameraActive: true });
+    const qrScanner = getScannerProps();
+
+    qrScanner.onScan([{ rawValue: 'ur:bytes/fail-no-message' }]);
+    expect(props.setValidationError).toHaveBeenCalledWith('UR decode failed: unknown error');
+    expect(props.setCameraActive).toHaveBeenCalledWith(false);
+  });
+
+  it('handles non-Error UR decode throws with generic message', () => {
+    mockDecoderInstance.receivePart.mockImplementation(() => {
+      throw 'decoder panic';
+    });
+
+    const props = renderQrScanStep({ cameraActive: true });
+    const qrScanner = getScannerProps();
+
+    qrScanner.onScan([{ rawValue: 'ur:bytes/throws-string' }]);
+    expect(props.setValidationError).toHaveBeenCalledWith('Failed to decode QR code');
     expect(props.setCameraActive).toHaveBeenCalledWith(false);
     expect(props.bytesDecoderRef.current).toBeNull();
   });
@@ -251,5 +322,15 @@ describe('QrScanStep', () => {
     await user.click(screen.getByRole('button', { name: 'Try Again' }));
     expect(retryProps.setCameraActive).toHaveBeenCalledWith(true);
     expect(retryProps.setCameraError).toHaveBeenCalledWith(null);
+  });
+
+  it('renders success and validation states from props', () => {
+    renderQrScanStep({
+      qrScanned: true,
+      validationError: 'Validation failed',
+    });
+
+    expect(screen.getByText('QR Code Scanned Successfully')).toBeInTheDocument();
+    expect(screen.getByText('Validation failed')).toBeInTheDocument();
   });
 });

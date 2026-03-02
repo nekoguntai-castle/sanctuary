@@ -94,15 +94,13 @@ describe('AuditLogs', () => {
       expect(document.querySelector('.animate-spin')).toBeInTheDocument();
     });
 
-    // Skip: Race condition with async loading - the username renders but timing is inconsistent
-    it.skip('displays audit logs after loading', async () => {
+    it('displays audit logs after loading', async () => {
       render(<AuditLogs />);
 
       await waitFor(() => {
-        expect(screen.getByText('admin')).toBeInTheDocument();
+        expect(screen.getAllByText('admin').length).toBeGreaterThan(0);
       });
 
-      // Check testuser appears
       expect(screen.getByText('testuser')).toBeInTheDocument();
     });
   });
@@ -184,6 +182,43 @@ describe('AuditLogs', () => {
           expect.objectContaining({ username: 'admin' })
         );
       });
+    });
+
+    it('applies category/action/status filters without username', async () => {
+      const user = userEvent.setup();
+      render(<AuditLogs />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Filters')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText('Filters'));
+
+      const categorySelect = screen.getByDisplayValue('All categories');
+      await user.selectOptions(categorySelect, 'wallet');
+
+      const actionInput = screen.getByPlaceholderText('Filter by action...');
+      await user.type(actionInput, 'wallet.create');
+
+      const statusSelect = screen.getByDisplayValue('All');
+      await user.selectOptions(statusSelect, 'true');
+
+      await user.click(screen.getByText('Apply Filters'));
+
+      await waitFor(() => {
+        expect(adminApi.getAuditLogs).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            category: 'wallet',
+            action: 'wallet.create',
+            success: true,
+            limit: 25,
+            offset: 0,
+          })
+        );
+      });
+
+      const latestQuery = vi.mocked(adminApi.getAuditLogs).mock.calls.at(-1)?.[0] as Record<string, unknown>;
+      expect(latestQuery).not.toHaveProperty('username');
     });
 
     it('clears filters', async () => {
@@ -270,15 +305,13 @@ describe('AuditLogs', () => {
       });
     });
 
-    // Skip: Race condition with async loading
-    it.skip('does not show pagination with few items', async () => {
+    it('does not show pagination with few items', async () => {
       render(<AuditLogs />);
 
       await waitFor(() => {
-        expect(screen.getByText('admin')).toBeInTheDocument();
+        expect(screen.getAllByText('admin').length).toBeGreaterThan(0);
       });
 
-      // With only 3 items, no pagination should show
       expect(screen.queryByText(/Page 1 of/)).not.toBeInTheDocument();
     });
   });
@@ -336,22 +369,18 @@ describe('AuditLogs', () => {
     });
   });
 
-  // Skip: Log detail modal tests require complex async data + row selection
-  // Better tested via E2E tests
-  describe.skip('log detail modal', () => {
+  describe('log detail modal', () => {
     it('opens detail modal when clicking log row', async () => {
       const user = userEvent.setup();
       render(<AuditLogs />);
 
       await waitFor(() => {
-        expect(screen.getByText('admin')).toBeInTheDocument();
+        expect(screen.getAllByText('admin').length).toBeGreaterThan(0);
       });
 
-      // Click on a log row - find the row with admin username
-      const logRows = document.querySelectorAll('tr[class*="cursor-pointer"]');
-      await user.click(logRows[0]);
+      const firstLogRow = screen.getAllByRole('row')[1];
+      await user.click(firstLogRow);
 
-      // Modal should open with details
       await waitFor(() => {
         expect(screen.getByText('Audit Log Details')).toBeInTheDocument();
       });
@@ -362,29 +391,24 @@ describe('AuditLogs', () => {
       render(<AuditLogs />);
 
       await waitFor(() => {
-        expect(screen.getByText('admin')).toBeInTheDocument();
+        expect(screen.getAllByText('admin').length).toBeGreaterThan(0);
       });
 
-      // Open modal
-      const logRows = document.querySelectorAll('tr[class*="cursor-pointer"]');
-      await user.click(logRows[0]);
+      const firstLogRow = screen.getAllByRole('row')[1];
+      await user.click(firstLogRow);
 
       await waitFor(() => {
         expect(screen.getByText('Audit Log Details')).toBeInTheDocument();
       });
 
-      // Close modal
-      const closeButtons = document.querySelectorAll('button');
-      const closeButton = Array.from(closeButtons).find(btn =>
-        btn.querySelector('svg.lucide-x') || btn.closest('.sticky')
-      );
-      if (closeButton) {
-        await user.click(closeButton);
+      const modalHeader = screen.getByText('Audit Log Details').closest('.sticky');
+      const closeButton = modalHeader?.querySelector('button');
+      expect(closeButton).not.toBeNull();
+      await user.click(closeButton as HTMLButtonElement);
 
-        await waitFor(() => {
-          expect(screen.queryByText('Audit Log Details')).not.toBeInTheDocument();
-        });
-      }
+      await waitFor(() => {
+        expect(screen.queryByText('Audit Log Details')).not.toBeInTheDocument();
+      });
     });
   });
 });

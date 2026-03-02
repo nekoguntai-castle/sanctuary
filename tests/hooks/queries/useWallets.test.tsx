@@ -141,6 +141,17 @@ describe('aggregated transaction hooks', () => {
     expect(mockGetRecentTransactions).not.toHaveBeenCalled();
   });
 
+  it('manual refetch on recent transactions with empty walletIds returns empty without API calls', async () => {
+    const { result } = renderHook(() => useRecentTransactions([], 5), { wrapper: createWrapper(queryClient) });
+
+    await act(async () => {
+      const refetchResult = await result.current.refetch();
+      expect(refetchResult.data).toEqual([]);
+    });
+
+    expect(mockGetRecentTransactions).not.toHaveBeenCalled();
+  });
+
   it('fetches recent transactions when walletIds exist', async () => {
     mockGetRecentTransactions.mockResolvedValue([{ txid: 'tx1', amount: 123 } as any]);
 
@@ -155,6 +166,17 @@ describe('aggregated transaction hooks', () => {
     const { result } = renderHook(() => usePendingTransactions([]), { wrapper: createWrapper(queryClient) });
 
     expect(result.current.data).toEqual([]);
+    expect(mockGetPendingTransactions).not.toHaveBeenCalled();
+  });
+
+  it('manual refetch on pending transactions with empty walletIds returns empty without API calls', async () => {
+    const { result } = renderHook(() => usePendingTransactions([]), { wrapper: createWrapper(queryClient) });
+
+    await act(async () => {
+      const refetchResult = await result.current.refetch();
+      expect(refetchResult.data).toEqual([]);
+    });
+
     expect(mockGetPendingTransactions).not.toHaveBeenCalled();
   });
 
@@ -218,8 +240,21 @@ describe('wallet cache helper hooks', () => {
     const detailAfterFinish = queryClient.getQueryData(walletKeys.detail('w1')) as any;
     expect(listAfterFinish[0].syncInProgress).toBe(false);
     expect(detailAfterFinish.syncInProgress).toBe(false);
-    expect(listAfterFinish[0].lastSyncedAt).toBeTruthy();
-    expect(detailAfterFinish.lastSyncedAt).toBeTruthy();
+    expect(listAfterFinish[0].lastSyncedAt).toEqual(expect.any(String));
+    expect(detailAfterFinish.lastSyncedAt).toEqual(expect.any(String));
+    expect(new Date(listAfterFinish[0].lastSyncedAt).toString()).not.toBe('Invalid Date');
+    expect(new Date(detailAfterFinish.lastSyncedAt).toString()).not.toBe('Invalid Date');
+  });
+
+  it('no-ops sync status cache updates when list/detail caches are missing', () => {
+    const setQueryDataSpy = vi.spyOn(queryClient, 'setQueryData');
+    const { result } = renderHook(() => useUpdateWalletSyncStatus(), { wrapper: createWrapper(queryClient) });
+
+    act(() => result.current('missing-wallet', true, 'syncing'));
+
+    expect(setQueryDataSpy).toHaveBeenCalledTimes(2);
+    expect(queryClient.getQueryData(walletKeys.lists())).toBeUndefined();
+    expect(queryClient.getQueryData(walletKeys.detail('missing-wallet'))).toBeUndefined();
   });
 });
 
@@ -238,6 +273,23 @@ describe('useBalanceHistory', () => {
       { name: 'Start', value: 1000 },
       { name: 'Now', value: 1000 },
     ]);
+    expect(mockGetBalanceHistory).not.toHaveBeenCalled();
+  });
+
+  it('keeps empty-wallet balance history query fetch guarded from API calls', async () => {
+    renderHook(() => useBalanceHistory([], 1000, '1W'), { wrapper: createWrapper(queryClient) });
+
+    const query = queryClient.getQueryCache().find({
+      queryKey: ['balanceHistory', '', '1W', 1000],
+    });
+    expect(query).not.toBeUndefined();
+    expect(query?.queryKey).toEqual(['balanceHistory', '', '1W', 1000]);
+
+    await act(async () => {
+      await (query as any).fetch();
+    });
+
+    expect(queryClient.getQueryData(['balanceHistory', '', '1W', 1000])).toEqual([]);
     expect(mockGetBalanceHistory).not.toHaveBeenCalled();
   });
 

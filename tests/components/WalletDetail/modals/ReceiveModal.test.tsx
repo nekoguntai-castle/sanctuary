@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import type { Address } from '../../../../types';
@@ -88,7 +88,7 @@ vi.mock('../../../../hooks/useCopyToClipboard', () => ({
 
 // Mock payjoin API
 vi.mock('../../../../src/api/payjoin', () => ({
-  generatePayjoinUri: vi.fn().mockResolvedValue({
+  getPayjoinUri: vi.fn().mockResolvedValue({
     uri: 'bitcoin:bc1qtest?pj=https://payjoin.example.com',
   }),
 }));
@@ -105,6 +105,7 @@ vi.mock('../../../../utils/logger', () => ({
 
 // Import after mocks
 import { ReceiveModal } from '../../../../components/WalletDetail/modals/ReceiveModal';
+import * as payjoinApi from '../../../../src/api/payjoin';
 
 // Test data
 const mockAddresses: Address[] = [
@@ -256,6 +257,63 @@ describe('ReceiveModal', () => {
         'bc1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3qccfmv3'
       );
     });
+
+    it('resets selected address to first unused when selection is cleared', async () => {
+      const user = userEvent.setup();
+      render(<ReceiveModal {...defaultProps} />);
+
+      const selector = screen.getByRole('combobox');
+      await user.selectOptions(selector, 'addr-2');
+      fireEvent.change(selector, { target: { value: '' } });
+
+      expect(screen.getByTestId('qr-code')).toHaveAttribute(
+        'data-value',
+        'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4'
+      );
+    });
+
+    it('handles unknown selected address ids by falling back to first unused address', async () => {
+      render(<ReceiveModal {...defaultProps} />);
+
+      fireEvent.change(screen.getByRole('combobox'), { target: { value: 'unknown-id' } });
+
+      expect(screen.getByTestId('qr-code')).toHaveAttribute(
+        'data-value',
+        'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4'
+      );
+    });
+
+    it('falls back to first unused address when previously selected address disappears', async () => {
+      const user = userEvent.setup();
+      const { rerender } = render(<ReceiveModal {...defaultProps} />);
+
+      await user.selectOptions(screen.getByRole('combobox'), 'addr-2');
+      expect(screen.getByTestId('qr-code')).toHaveAttribute(
+        'data-value',
+        'bc1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3qccfmv3'
+      );
+
+      rerender(
+        <ReceiveModal
+          {...defaultProps}
+          addresses={[
+            mockAddresses[0],
+            {
+              id: 'addr-9',
+              address: 'bc1qnewaddress999',
+              index: 9,
+              isChange: false,
+              used: false,
+            },
+          ]}
+        />
+      );
+
+      expect(screen.getByTestId('qr-code')).toHaveAttribute(
+        'data-value',
+        'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4'
+      );
+    });
   });
 
   describe('Close Functionality', () => {
@@ -403,6 +461,47 @@ describe('ReceiveModal', () => {
           screen.getByText(/share this uri with a payjoin-capable wallet/i)
         ).toBeInTheDocument();
       });
+    });
+
+    it('generates a Payjoin URI with parsed amount input', async () => {
+      const user = userEvent.setup();
+      const getPayjoinUriMock = vi.mocked(payjoinApi.getPayjoinUri);
+      getPayjoinUriMock.mockResolvedValue({
+        uri: 'bitcoin:bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4?pj=https://payjoin.example.com',
+      });
+
+      render(<ReceiveModal {...defaultProps} />);
+
+      await user.click(screen.getByTestId('payjoin-toggle'));
+      await user.type(screen.getByPlaceholderText('0.00000000'), '0.12345678');
+
+      await waitFor(() => {
+        expect(getPayjoinUriMock).toHaveBeenCalled();
+      });
+
+      const lastCall = getPayjoinUriMock.mock.calls.at(-1);
+      expect(lastCall).toEqual([
+        'addr-1',
+        { amount: 12345678 },
+      ]);
+    });
+
+    it('falls back to receive address when Payjoin URI generation fails', async () => {
+      const user = userEvent.setup();
+      const getPayjoinUriMock = vi.mocked(payjoinApi.getPayjoinUri);
+      getPayjoinUriMock.mockRejectedValueOnce(new Error('payjoin unavailable'));
+
+      render(<ReceiveModal {...defaultProps} />);
+      await user.click(screen.getByTestId('payjoin-toggle'));
+
+      await waitFor(() => {
+        expect(getPayjoinUriMock).toHaveBeenCalled();
+      });
+
+      expect(screen.getByTestId('qr-code')).toHaveAttribute(
+        'data-value',
+        'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4'
+      );
     });
   });
 

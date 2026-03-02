@@ -135,6 +135,17 @@ describe('PrivacyBadge', () => {
       expect(handleClick).toHaveBeenCalledTimes(1);
     });
 
+    it('does not call onClick on non-activation key', () => {
+      const handleClick = vi.fn();
+      const { container } = render(
+        <PrivacyBadge score={85} grade="excellent" onClick={handleClick} />
+      );
+
+      fireEvent.keyDown(container.firstChild as Element, { key: 'Escape' });
+
+      expect(handleClick).not.toHaveBeenCalled();
+    });
+
     it('shows click hint in title when clickable', () => {
       const handleClick = vi.fn();
       render(<PrivacyBadge score={85} grade="excellent" onClick={handleClick} />);

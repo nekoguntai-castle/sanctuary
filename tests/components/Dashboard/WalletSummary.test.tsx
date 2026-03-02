@@ -74,4 +74,29 @@ describe('WalletSummary', () => {
     await user.click(screen.getByText('Alpha'));
     expect(mockNavigate).toHaveBeenCalledWith('/wallets/w1');
   });
+
+  it('uses zero-percent distribution fallback and success title fallback when totals/sync timestamp are missing', () => {
+    const wallets = [
+      {
+        id: 'w-zero',
+        name: 'ZeroPercent',
+        type: 'single_sig',
+        balance: 12345,
+        lastSyncStatus: 'success',
+        lastSyncedAt: undefined,
+      },
+    ] as any[];
+
+    const { container } = render(
+      <WalletSummary
+        selectedNetwork="mainnet"
+        filteredWallets={wallets as any}
+        totalBalance={0}
+      />
+    );
+
+    const segment = container.querySelector('[title="ZeroPercent: 0.0%"]') as HTMLElement;
+    expect(segment).toHaveStyle({ width: '0%' });
+    expect(screen.getByTitle('Synced')).toBeInTheDocument();
+  });
 });

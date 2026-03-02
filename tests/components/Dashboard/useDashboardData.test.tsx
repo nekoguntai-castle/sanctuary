@@ -440,6 +440,35 @@ describe('useDashboardData', () => {
     });
   });
 
+  it('covers nullish query fallbacks, hidden visibility branch, and wsDisconnected reconnect branch', async () => {
+    walletsData = null as any;
+    recentTxData = null as any;
+    pendingTxData = null as any;
+    wsConnected = false;
+
+    const { result } = renderHook(() => useDashboardData());
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.wallets).toEqual([]);
+    expect(result.current.filteredWallets).toEqual([]);
+    expect(result.current.recentTx).toEqual([]);
+    expect(result.current.pendingTxs).toEqual([]);
+
+    const invalidateCountBeforeVisibility = mockInvalidateAllWallets.mock.calls.length;
+    act(() => {
+      Object.defineProperty(document, 'visibilityState', {
+        configurable: true,
+        value: 'hidden',
+      });
+      document.dispatchEvent(new Event('visibilitychange'));
+      vi.advanceTimersByTime(600);
+    });
+    expect(mockInvalidateAllWallets.mock.calls.length).toBe(invalidateCountBeforeVisibility);
+  });
+
   it('handles websocket transaction/balance/block/confirmation/sync events', async () => {
     const { result } = renderHook(() => useDashboardData());
     await act(async () => {
@@ -584,5 +613,123 @@ describe('useDashboardData', () => {
     expect(mockUpdateWalletSyncStatus.mock.calls.length).toBe(syncCallCount);
 
     expect(mockInvalidateAllWallets).toHaveBeenCalled();
+  });
+
+  it('covers websocket/event fallback branches and fee-zero transaction mapping', async () => {
+    recentTxData = [
+      {
+        id: 'tx-fee-zero',
+        txid: 'fee-zero',
+        walletId: 'w-main-low',
+        amount: 1000,
+        fee: 0,
+        confirmations: 0,
+        type: 'sent',
+      },
+    ];
+
+    const { result } = renderHook(() => useDashboardData());
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.recentTx[0].fee).toBeUndefined();
+
+    act(() => {
+      wsEventHandlers.transaction?.({
+        data: {
+          type: 'sent',
+          // amount + confirmations intentionally omitted for nullish fallbacks
+        },
+      });
+    });
+    expect(mockAddNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'transaction',
+        title: 'Bitcoin Sent',
+      })
+    );
+    expect(mockPlayEventSound).toHaveBeenCalledWith('send');
+
+    const soundCountBeforeUnknownType = mockPlayEventSound.mock.calls.length;
+    act(() => {
+      wsEventHandlers.transaction?.({
+        data: {
+          type: 'self_transfer',
+          amount: 500,
+        },
+      });
+    });
+    expect(mockPlayEventSound.mock.calls.length).toBe(soundCountBeforeUnknownType);
+
+    act(() => {
+      wsEventHandlers.balance?.({ data: {} });
+    });
+    expect(mockInvalidateAllWallets).toHaveBeenCalled();
+
+    act(() => {
+      wsEventHandlers.balance?.({
+        data: { change: -20000 },
+      });
+    });
+    expect(mockAddNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'balance',
+        message: expect.stringContaining('-'),
+      })
+    );
+
+    act(() => {
+      wsEventHandlers.block?.({
+        data: {
+          height: 900101,
+          // transactionCount intentionally omitted for fallback
+        },
+      });
+    });
+    expect(mockAddNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'block',
+        message: expect.stringContaining('0 transactions'),
+      })
+    );
+
+    act(() => {
+      wsEventHandlers.confirmation?.({
+        data: {
+          previousConfirmations: 0,
+          confirmations: 1,
+        },
+      });
+    });
+    expect(mockAddNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'confirmation',
+        message: '1 confirmation reached',
+      })
+    );
+
+    const notifyCountBeforeNoConfirm = mockAddNotification.mock.calls.length;
+    act(() => {
+      wsEventHandlers.confirmation?.({
+        data: {
+          previousConfirmations: 0,
+          // confirmations omitted => fallback to 0
+        },
+      });
+    });
+    expect(mockAddNotification.mock.calls.length).toBe(notifyCountBeforeNoConfirm);
+
+    act(() => {
+      wsEventHandlers.sync?.({
+        data: {
+          walletId: 'w-main-high',
+          status: 'partial',
+          // inProgress omitted => fallback false
+        },
+      });
+    });
+    expect(mockUpdateWalletSyncStatus).toHaveBeenCalledWith('w-main-high', false, 'partial');
   });
 });

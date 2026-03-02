@@ -442,6 +442,52 @@ describe('LedgerAdapter', () => {
     await expect(adapter.signPSBT({ psbt: 'x', inputPaths: [] })).rejects.toThrow('Failed to sign transaction: unexpected');
   });
 
+  it('handles non-Error failures and no-op disconnect fallback paths', async () => {
+    const connectNonError = new LedgerAdapter();
+    mockTransportCreate.mockRejectedValueOnce({ reason: 'plain-object' } as any);
+    await expect(connectNonError.connect()).rejects.toThrow('Failed to connect: Unknown error');
+
+    const adapter = new LedgerAdapter();
+    await expect(adapter.disconnect()).resolves.toBeUndefined();
+
+    (adapter as any).connection = {
+      app: {
+        getWalletXpub: (...args: unknown[]) => mockGetWalletXpub(...args),
+        getWalletPublicKey: (...args: unknown[]) => mockGetWalletPublicKey(...args),
+      },
+      appClient: {
+        getMasterFingerprint: (...args: unknown[]) => mockGetMasterFingerprint(...args),
+        getExtendedPubkey: vi.fn(),
+        signPsbt: vi.fn(),
+      },
+      transport: { close: vi.fn() },
+      device: makeUsbDevice(),
+    };
+    (adapter as any).connectedDevice = {
+      id: 'ledger-1',
+      type: 'ledger',
+      name: 'Ledger',
+      model: 'Ledger',
+      connected: true,
+      fingerprint: '',
+    };
+
+    mockGetWalletXpub.mockRejectedValueOnce('xpub-non-error' as any);
+    await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow('Failed to get xpub: Unknown error');
+
+    mockGetWalletPublicKey.mockRejectedValueOnce(42 as any);
+    await expect(adapter.verifyAddress("m/84'/0'/0'/0/0", 'bc1qabc')).rejects.toThrow(
+      'Failed to verify address: Unknown error'
+    );
+
+    mockPsbtFromBase64.mockImplementationOnce(() => {
+      throw 'sign-non-error';
+    });
+    await expect(adapter.signPSBT({ psbt: 'x', inputPaths: [] })).rejects.toThrow(
+      'Failed to sign transaction: Unknown error'
+    );
+  });
+
   it('signs and finalizes a PSBT using mocked Ledger responses', async () => {
     const adapter = new LedgerAdapter();
     const mockGetExtendedPubkey = vi.fn().mockResolvedValue('xpub-abc');
@@ -579,5 +625,75 @@ describe('LedgerAdapter', () => {
     });
     expect(mockGetExtendedPubkey).toHaveBeenLastCalledWith("m/84'/0'/0'");
     expect(result).toEqual({ psbt: 'psbt-default', signatures: 0 });
+  });
+
+  it('covers remaining signPsbt branches for missing psbt length, empty input path, and fingerprint updates', async () => {
+    const adapter = new LedgerAdapter();
+    const mockGetExtendedPubkey = vi.fn().mockResolvedValue('xpub-branches');
+    const mockSignPsbt = vi.fn().mockResolvedValue([]);
+    (adapter as any).connection = {
+      app: {},
+      appClient: {
+        getMasterFingerprint: (...args: unknown[]) => mockGetMasterFingerprint(...args),
+        getExtendedPubkey: (...args: unknown[]) => mockGetExtendedPubkey(...args),
+        signPsbt: (...args: unknown[]) => mockSignPsbt(...args),
+      },
+      transport: { close: vi.fn() },
+      device: makeUsbDevice(),
+    };
+    mockGetMasterFingerprint.mockResolvedValue('aabbccdd');
+
+    mockPsbtFromBase64.mockImplementationOnce(() => {
+      throw new Error('invalid psbt');
+    });
+    await expect(adapter.signPSBT({ inputPaths: [] } as any)).rejects.toThrow(
+      'Failed to sign transaction: invalid psbt'
+    );
+
+    const emptyPathPsbt = {
+      data: {
+        inputs: [{
+          bip32Derivation: [{
+            path: '',
+            masterFingerprint: Buffer.from('aabbccdd', 'hex'),
+            pubkey: Buffer.from(`02${'11'.repeat(32)}`, 'hex'),
+          }],
+        }],
+      },
+      toBase64: vi.fn(() => 'psbt-empty-path'),
+      updateInput: vi.fn(),
+      finalizeAllInputs: vi.fn(),
+    };
+    mockPsbtFromBase64
+      .mockReturnValueOnce(emptyPathPsbt)
+      .mockReturnValueOnce(emptyPathPsbt);
+    await adapter.signPSBT({
+      psbt: 'empty-path',
+      inputPaths: ["m/84'/0'/0'/0/9"],
+    });
+    expect(mockGetExtendedPubkey).toHaveBeenCalledWith("m/84'/0'/0'");
+
+    const mismatchPsbt = {
+      data: {
+        inputs: [{
+          bip32Derivation: [{
+            path: "m/84'/0'/0'/0/0",
+            masterFingerprint: Buffer.from('01020304', 'hex'),
+            pubkey: Buffer.from(`02${'22'.repeat(32)}`, 'hex'),
+          }],
+        }],
+      },
+      toBase64: vi.fn(() => 'psbt-mismatch'),
+      updateInput: vi.fn(),
+      finalizeAllInputs: vi.fn(),
+    };
+    mockPsbtFromBase64
+      .mockReturnValueOnce(mismatchPsbt)
+      .mockReturnValueOnce(mismatchPsbt);
+    await adapter.signPSBT({
+      psbt: 'mismatch',
+      inputPaths: ["m/84'/0'/0'/0/0"],
+    });
+    expect(mismatchPsbt.data.inputs[0].bip32Derivation[0].masterFingerprint.toString('hex')).toBe('aabbccdd');
   });
 });

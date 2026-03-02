@@ -193,6 +193,20 @@ describe('AILabelSuggestion', () => {
       });
     });
 
+    it('keeps suggestion visible when Use This is clicked without accept callback', async () => {
+      mockSuggestLabel.mockResolvedValue({ suggestion: 'No callback suggestion' });
+
+      render(<AILabelSuggestion transaction={mockTransaction} />);
+
+      fireEvent.click(screen.getByText('Suggest with AI'));
+      await waitFor(() => {
+        expect(screen.getByText('No callback suggestion')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByText('Use This'));
+      expect(screen.getByText('No callback suggestion')).toBeInTheDocument();
+    });
+
     it('should clear suggestion when Dismiss is clicked', async () => {
       mockSuggestLabel.mockResolvedValue({ suggestion: 'Transfer' });
 
@@ -235,6 +249,30 @@ describe('AILabelSuggestion', () => {
 
       await waitFor(() => {
         expect(screen.getByText(/Too many requests/)).toBeInTheDocument();
+      });
+    });
+
+    it('should display timeout-specific error', async () => {
+      mockSuggestLabel.mockRejectedValue(new Error('request timed out'));
+
+      render(<AILabelSuggestion transaction={mockTransaction} />);
+
+      fireEvent.click(screen.getByText('Suggest with AI'));
+
+      await waitFor(() => {
+        expect(screen.getByText(/Request timed out/)).toBeInTheDocument();
+      });
+    });
+
+    it('should display network-specific error', async () => {
+      mockSuggestLabel.mockRejectedValue(new Error('network unavailable'));
+
+      render(<AILabelSuggestion transaction={mockTransaction} />);
+
+      fireEvent.click(screen.getByText('Suggest with AI'));
+
+      await waitFor(() => {
+        expect(screen.getByText(/Network error/)).toBeInTheDocument();
       });
     });
 

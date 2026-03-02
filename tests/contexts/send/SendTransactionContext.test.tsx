@@ -89,20 +89,60 @@ function TestConsumer({ onMount }: { onMount?: (ctx: ReturnType<typeof useSendTr
       <span data-testid="show-coin-control">{ctx.state.showCoinControl.toString()}</span>
       <span data-testid="selected-utxos-count">{ctx.state.selectedUTXOs.size}</span>
       <span data-testid="first-output-sendmax">{ctx.state.outputs[0]?.sendMax?.toString() || 'false'}</span>
+      <span data-testid="first-output-address">{ctx.state.outputs[0]?.address || ''}</span>
+      <span data-testid="first-output-amount">{ctx.state.outputs[0]?.amount || ''}</span>
+      <span data-testid="subtract-fees">{ctx.state.subtractFees.toString()}</span>
+      <span data-testid="use-decoys">{ctx.state.useDecoys.toString()}</span>
+      <span data-testid="decoy-count">{ctx.state.decoyCount}</span>
+      <span data-testid="can-jump-outputs">{ctx.canJumpTo('outputs').toString()}</span>
       <span data-testid="is-send-max">{ctx.isSendMax.toString()}</span>
       <span data-testid="is-type-step-complete">{ctx.isStepComplete('type').toString()}</span>
       <button data-testid="next" onClick={ctx.nextStep}>Next</button>
       <button data-testid="prev" onClick={ctx.prevStep}>Prev</button>
+      <button data-testid="go-to-type" onClick={() => ctx.goToStep('type')}>Go To Type</button>
+      <button data-testid="go-to-outputs" onClick={() => ctx.goToStep('outputs')}>Go To Outputs</button>
       <button data-testid="set-standard" onClick={() => ctx.setTransactionType('standard')}>Standard</button>
       <button data-testid="set-consolidation" onClick={() => ctx.setTransactionType('consolidation')}>Consolidation</button>
       <button data-testid="add-output" onClick={ctx.addOutput}>Add Output</button>
       <button data-testid="remove-output" onClick={() => ctx.removeOutput(0)}>Remove Output</button>
+      <button data-testid="set-output-address" onClick={() => ctx.updateOutputAddress(0, 'bc1qupdated')}>Set Address</button>
+      <button data-testid="set-output-amount" onClick={() => ctx.updateOutputAmount(0, '12345', '0.00012345')}>Set Amount</button>
+      <button data-testid="toggle-send-max" onClick={() => ctx.toggleSendMax(0)}>Toggle Send Max</button>
+      <button data-testid="set-fee-rate" onClick={() => ctx.setFeeRate(42)}>Set Fee Rate</button>
       <button data-testid="toggle-rbf" onClick={ctx.toggleRbf}>Toggle RBF</button>
+      <button data-testid="toggle-subtract-fees" onClick={ctx.toggleSubtractFees}>Toggle Subtract Fees</button>
+      <button data-testid="toggle-decoys" onClick={ctx.toggleDecoys}>Toggle Decoys</button>
+      <button data-testid="set-decoy-count" onClick={() => ctx.setDecoyCount(5)}>Set Decoy Count</button>
       <button data-testid="toggle-coin-control" onClick={ctx.toggleCoinControl}>Toggle Coin Control</button>
+      <button data-testid="toggle-utxo" onClick={() => ctx.toggleUtxo('tx1:0')}>Toggle UTXO</button>
       <button data-testid="select-all" onClick={ctx.selectAllUtxos}>Select All UTXOs</button>
       <button data-testid="clear-selection" onClick={ctx.clearUtxoSelection}>Clear Selection</button>
+      <button
+        data-testid="load-draft"
+        onClick={() =>
+          ctx.loadDraft({
+            transactionType: 'standard',
+            outputs: [{ address: 'bc1qdraft', amount: '777', sendMax: false }],
+            feeRate: 9,
+          })
+        }
+      >
+        Load Draft
+      </button>
       <button data-testid="reset" onClick={ctx.reset}>Reset</button>
     </div>
+  );
+}
+
+function DispatchOnlyConsumer() {
+  const dispatch = useSendTransactionDispatch();
+  return (
+    <button
+      data-testid="dispatch-standard"
+      onClick={() => dispatch({ type: 'SET_TRANSACTION_TYPE', txType: 'standard' })}
+    >
+      Dispatch Standard
+    </button>
   );
 }
 
@@ -140,6 +180,12 @@ describe('SendTransactionContext', () => {
       renderWithProvider(<TestConsumer />);
 
       expect(screen.getByTestId('fee-rate')).toHaveTextContent('25');
+    });
+
+    it('falls back to fee rate 1 when fee estimates are unavailable', () => {
+      renderWithProvider(<TestConsumer />, { fees: null });
+
+      expect(screen.getByTestId('fee-rate')).toHaveTextContent('1');
     });
 
     it('calculates selected total from spendable UTXOs', () => {
@@ -216,6 +262,17 @@ describe('SendTransactionContext', () => {
 
       await user.click(screen.getByTestId('prev'));
       expect(screen.getByTestId('current-step')).toHaveTextContent('type');
+    });
+
+    it('blocks next-step progression from outputs when no spendable UTXOs are available', async () => {
+      const user = userEvent.setup();
+      renderWithProvider(<TestConsumer />, { utxos: [] });
+
+      await user.click(screen.getByTestId('set-standard'));
+      await user.click(screen.getByTestId('next'));
+
+      expect(screen.getByTestId('current-step')).toHaveTextContent('outputs');
+      expect(screen.getByTestId('can-go-next')).toHaveTextContent('false');
     });
   });
 
@@ -382,6 +439,19 @@ describe('SendTransactionContext', () => {
 
       consoleSpy.mockRestore();
     });
+
+    it('returns dispatch function when used inside provider', async () => {
+      const user = userEvent.setup();
+      renderWithProvider(
+        <>
+          <TestConsumer />
+          <DispatchOnlyConsumer />
+        </>
+      );
+
+      await user.click(screen.getByTestId('dispatch-standard'));
+      expect(screen.getByTestId('tx-type')).toHaveTextContent('standard');
+    });
   });
 
   describe('useSendTransaction hook', () => {
@@ -489,6 +559,53 @@ describe('SendTransactionContext', () => {
       // Estimated fee should use custom calculation
       expect(contextValue?.estimatedFee).toBe(1000);
       expect(customCalculateFee).toHaveBeenCalled();
+    });
+  });
+
+  describe('Additional callbacks', () => {
+    it('covers navigation and convenience action wrappers', async () => {
+      const user = userEvent.setup();
+      renderWithProvider(<TestConsumer />);
+
+      expect(screen.getByTestId('can-jump-outputs')).toHaveTextContent('false');
+      await user.click(screen.getByTestId('go-to-outputs'));
+      expect(screen.getByTestId('current-step')).toHaveTextContent('type');
+
+      await user.click(screen.getByTestId('set-standard'));
+      await user.click(screen.getByTestId('next'));
+      expect(screen.getByTestId('can-jump-outputs')).toHaveTextContent('true');
+      await user.click(screen.getByTestId('go-to-type'));
+      expect(screen.getByTestId('current-step')).toHaveTextContent('type');
+
+      await user.click(screen.getByTestId('set-output-address'));
+      expect(screen.getByTestId('first-output-address')).toHaveTextContent('bc1qupdated');
+
+      await user.click(screen.getByTestId('set-output-amount'));
+      expect(screen.getByTestId('first-output-amount')).toHaveTextContent('12345');
+
+      await user.click(screen.getByTestId('toggle-send-max'));
+      expect(screen.getByTestId('first-output-sendmax')).toHaveTextContent('true');
+
+      await user.click(screen.getByTestId('set-fee-rate'));
+      expect(screen.getByTestId('fee-rate')).toHaveTextContent('42');
+
+      await user.click(screen.getByTestId('toggle-subtract-fees'));
+      expect(screen.getByTestId('subtract-fees')).toHaveTextContent('true');
+
+      await user.click(screen.getByTestId('toggle-decoys'));
+      expect(screen.getByTestId('use-decoys')).toHaveTextContent('true');
+
+      await user.click(screen.getByTestId('set-decoy-count'));
+      expect(screen.getByTestId('decoy-count')).toHaveTextContent('5');
+
+      await user.click(screen.getByTestId('toggle-utxo'));
+      expect(screen.getByTestId('selected-utxos-count')).toHaveTextContent('1');
+      expect(screen.getByTestId('show-coin-control')).toHaveTextContent('true');
+
+      await user.click(screen.getByTestId('load-draft'));
+      expect(screen.getByTestId('fee-rate')).toHaveTextContent('9');
+      expect(screen.getByTestId('first-output-address')).toHaveTextContent('bc1qdraft');
+      expect(screen.getByTestId('first-output-amount')).toHaveTextContent('777');
     });
   });
 });

@@ -71,6 +71,7 @@ vi.mock('../../../components/send/SendTransactionWizard', () => ({
       <span data-testid="wizard-initial-step">{props.initialState?.currentStep ?? ''}</span>
       <span data-testid="wizard-draft-id">{props.initialState?.draftId ?? ''}</span>
       <span data-testid="wizard-draft-fee">{props.draftTxData?.fee ?? ''}</span>
+      <span data-testid="wizard-calculated-fee">{props.calculateFee ? props.calculateFee(2, 3, 5) : ''}</span>
       <button data-testid="wizard-cancel" onClick={props.onCancel}>Cancel</button>
     </div>
   ),
@@ -214,6 +215,14 @@ describe('SendTransactionPage', () => {
         expect(screen.getByTestId('wizard-utxo-count')).toHaveTextContent('2');
       });
     });
+
+    it('passes fee calculation callback to wizard', async () => {
+      renderPage();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('wizard-calculated-fee')).toHaveTextContent('1200');
+      });
+    });
   });
 
   describe('error handling', () => {
@@ -236,6 +245,21 @@ describe('SendTransactionPage', () => {
       await waitFor(() => {
         expect(screen.getByText(/go back/i)).toBeInTheDocument();
       });
+    });
+
+    it('navigates back when clicking go back on error', async () => {
+      const user = await import('@testing-library/user-event');
+      vi.mocked(walletsApi.getWallet).mockRejectedValue(new Error('Network error'));
+
+      renderPage();
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /go back/i })).toBeInTheDocument();
+      });
+
+      await user.default.setup().click(screen.getByRole('button', { name: /go back/i }));
+
+      expect(mockNavigate).toHaveBeenCalledWith('/wallets/wallet-1');
     });
   });
 

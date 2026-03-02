@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AccessControlTab } from '../../../components/SystemSettings/AccessControlTab';
 import * as adminApi from '../../../src/api/admin';
 
@@ -35,6 +35,17 @@ describe('AccessControlTab branch coverage', () => {
 
   it('covers successful toggles, saving state class, timeout replacement, and cleanup', async () => {
     const clearTimeoutSpy = vi.spyOn(global, 'clearTimeout');
+    const timeoutCallbacks: Array<() => void> = [];
+    const realSetTimeout = globalThis.setTimeout;
+    const setTimeoutSpy = vi
+      .spyOn(globalThis, 'setTimeout')
+      .mockImplementation(((cb: TimerHandler, ms?: number) => {
+        if (typeof cb === 'function' && ms === 3000) {
+          timeoutCallbacks.push(cb as () => void);
+          return 1 as unknown as ReturnType<typeof setTimeout>;
+        }
+        return realSetTimeout(cb, ms);
+      }) as typeof setTimeout);
 
     vi.mocked(adminApi.getSystemSettings).mockResolvedValue({ registrationEnabled: false } as never);
 
@@ -69,6 +80,12 @@ describe('AccessControlTab branch coverage', () => {
       expect(screen.getByText('Settings saved successfully')).toBeInTheDocument();
       expect(screen.getByText(/Public registration is enabled/)).toBeInTheDocument();
     });
+    expect(timeoutCallbacks.length).toBeGreaterThan(0);
+
+    act(() => {
+      timeoutCallbacks.forEach((callback) => callback());
+    });
+    expect(screen.queryByText('Settings saved successfully')).not.toBeInTheDocument();
 
     fireEvent.click(getToggleButton());
 
@@ -82,6 +99,7 @@ describe('AccessControlTab branch coverage', () => {
 
     // cleanup path clears active success timeout on unmount
     expect(clearTimeoutSpy.mock.calls.length).toBeGreaterThan(1);
+    setTimeoutSpy.mockRestore();
   });
 
   it('covers runSave null path and save error rendering', async () => {

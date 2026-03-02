@@ -259,4 +259,82 @@ describe('Dashboard render branches', () => {
     expect(screen.queryByTestId('trending-up')).not.toBeInTheDocument();
     expect(screen.queryByTestId('trending-down')).not.toBeInTheDocument();
   });
+
+  it('renders mainnet null price change placeholder and pool initializing state', () => {
+    mocks.dashboardData = makeDashboardState({
+      isMainnet: true,
+      selectedNetwork: 'mainnet',
+      priceChange24h: null,
+      bitcoinStatus: {
+        connected: true,
+        blockHeight: 900000,
+        pool: {
+          enabled: true,
+          stats: undefined,
+        },
+      },
+      nodeStatus: 'connected',
+    });
+    render(<Dashboard />);
+
+    expect(screen.getByText('---')).toBeInTheDocument();
+    expect(screen.queryByTestId('trending-up')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('trending-down')).not.toBeInTheDocument();
+    expect(screen.getByText('initializing...')).toBeInTheDocument();
+  });
+
+  it('renders server health edge states and singular/plural connection labels', () => {
+    mocks.dashboardData = makeDashboardState({
+      bitcoinStatus: {
+        connected: true,
+        blockHeight: 900000,
+        pool: {
+          enabled: true,
+          stats: {
+            activeConnections: 1,
+            totalConnections: 3,
+            servers: [
+              {
+                serverId: 'srv-null-check',
+                label: 'Unchecked',
+                connectionCount: 1,
+                healthyConnections: 0,
+                isHealthy: false,
+                lastHealthCheck: null,
+              },
+              {
+                serverId: 'srv-unhealthy',
+                label: 'Unhealthy',
+                connectionCount: 2,
+                healthyConnections: 0,
+                isHealthy: false,
+                lastHealthCheck: '2026-02-15T12:00:00.000Z',
+              },
+            ],
+          },
+        },
+      },
+    });
+    render(<Dashboard />);
+
+    expect(screen.getByText('Unchecked')).toBeInTheDocument();
+    expect(screen.getByText('Unhealthy')).toBeInTheDocument();
+    expect(screen.getByText('(1 conn)')).toBeInTheDocument();
+    expect(screen.getByText('(2 conns)')).toBeInTheDocument();
+  });
+
+  it('renders signet placeholder copy and symbol', () => {
+    mocks.dashboardData = makeDashboardState({
+      isMainnet: false,
+      selectedNetwork: 'signet',
+      versionInfo: null,
+      bitcoinStatus: undefined,
+      nodeStatus: 'unknown',
+    });
+    render(<Dashboard />);
+
+    expect(screen.getByText('sBTC')).toBeInTheDocument();
+    expect(screen.getByText('Signet coins have no market value')).toBeInTheDocument();
+    expect(screen.getByText('Signet node not configured')).toBeInTheDocument();
+  });
 });

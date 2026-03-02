@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { ApiError } from '../../src/api/client';
@@ -266,6 +266,33 @@ describe('Account Component - Password Actions', () => {
     expect(currentPassword.value).toBe('');
     expect(newPassword.value).toBe('');
     expect(confirmPassword.value).toBe('');
+  });
+
+  it('clears password success banner after timeout', async () => {
+    const timeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+    mockChangePassword.mockResolvedValueOnce(undefined);
+    const user = userEvent.setup();
+    await renderAccount();
+
+    const [currentPassword, newPassword, confirmPassword] = getPasswordInputs();
+    await user.type(currentPassword, 'current-pass');
+    await user.type(newPassword, 'new-pass-123');
+    await user.type(confirmPassword, 'new-pass-123');
+    await user.click(screen.getByRole('button', { name: /change password/i }));
+
+    expect(await screen.findByText('Password changed successfully')).toBeInTheDocument();
+
+    const timeoutCallbacks = timeoutSpy.mock.calls
+      .filter(([, delay]) => delay === 3000)
+      .map(([callback]) => callback)
+      .filter((callback): callback is () => void => typeof callback === 'function');
+
+    act(() => {
+      timeoutCallbacks.forEach((callback) => callback());
+    });
+
+    expect(screen.queryByText('Password changed successfully')).not.toBeInTheDocument();
+    timeoutSpy.mockRestore();
   });
 
   it('shows API error message when password change fails with ApiError', async () => {

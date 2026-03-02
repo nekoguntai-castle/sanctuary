@@ -351,6 +351,48 @@ describe('useWebSocket', () => {
       expect(mockUnsubscribeBatch).toHaveBeenCalledTimes(1);
     });
 
+    it('should batch subscribe channels for multiple wallets', () => {
+      const { result } = renderHook(() => useWebSocket());
+
+      act(() => {
+        result.current.subscribeWallets(['wallet-a', 'wallet-b']);
+      });
+
+      expect(mockSubscribeBatch).toHaveBeenCalledWith([
+        'wallet:wallet-a',
+        'wallet:wallet-a:transaction',
+        'wallet:wallet-a:balance',
+        'wallet:wallet-a:confirmation',
+        'wallet:wallet-a:sync',
+        'wallet:wallet-b',
+        'wallet:wallet-b:transaction',
+        'wallet:wallet-b:balance',
+        'wallet:wallet-b:confirmation',
+        'wallet:wallet-b:sync',
+      ]);
+    });
+
+    it('should batch unsubscribe channels for multiple wallets', () => {
+      const { result } = renderHook(() => useWebSocket());
+
+      act(() => {
+        result.current.unsubscribeWallets(['wallet-a', 'wallet-b']);
+      });
+
+      expect(mockUnsubscribeBatch).toHaveBeenCalledWith([
+        'wallet:wallet-a',
+        'wallet:wallet-a:transaction',
+        'wallet:wallet-a:balance',
+        'wallet:wallet-a:confirmation',
+        'wallet:wallet-a:sync',
+        'wallet:wallet-b',
+        'wallet:wallet-b:transaction',
+        'wallet:wallet-b:balance',
+        'wallet:wallet-b:confirmation',
+        'wallet:wallet-b:sync',
+      ]);
+    });
+
     it('should maintain stable subscribe callback reference', () => {
       const { result, rerender } = renderHook(() => useWebSocket());
 
@@ -644,6 +686,26 @@ describe('useWalletEvents', () => {
     });
   });
 
+  it('should ignore sync events when onSync callback is missing', async () => {
+    const onTransaction = vi.fn();
+    const callbacks = { onTransaction };
+
+    renderHook(() => useWalletEvents('wallet-no-sync', callbacks));
+
+    const syncEvent = {
+      event: 'sync',
+      data: { progress: 0.25, status: 'syncing' },
+    };
+
+    act(() => {
+      eventCallbacks.get('sync')?.forEach(cb => cb(syncEvent));
+    });
+
+    await waitFor(() => {
+      expect(onTransaction).not.toHaveBeenCalled();
+    });
+  });
+
   it('should use latest callbacks without resubscribing', async () => {
     const onTransaction1 = vi.fn();
     const onTransaction2 = vi.fn();
@@ -815,6 +877,39 @@ describe('useWalletLogs', () => {
     });
   });
 
+  it('should ignore duplicate log ids that were already loaded from history', async () => {
+    mockGetWalletLogs.mockResolvedValueOnce([
+      {
+        id: 'existing-log',
+        timestamp: '2025-01-01T00:00:00Z',
+        level: 'info',
+        module: 'wallet',
+        message: 'From history',
+      },
+    ] as any);
+
+    const { result } = await renderWalletLogs('wallet-dup');
+
+    act(() => {
+      eventCallbacks.get('log')?.forEach(cb =>
+        cb({
+          event: 'log',
+          channel: 'wallet:wallet-dup:log',
+          data: {
+            id: 'existing-log',
+            timestamp: '2025-01-01T00:01:00Z',
+            level: 'warn',
+            module: 'wallet',
+            message: 'Duplicate',
+          },
+        })
+      );
+    });
+
+    expect(result.current.logs).toHaveLength(1);
+    expect(result.current.logs[0].id).toBe('existing-log');
+  });
+
   it('should ignore log events from other wallets', async () => {
     const { result } = await renderWalletLogs('wallet-abc');
 
@@ -964,6 +1059,45 @@ describe('useWalletLogs', () => {
     const { result } = await renderWalletLogs('wallet-stu');
 
     // This just checks that the hook renders without error
+    expect(result.current.logs).toEqual([]);
+  });
+
+  it('should skip history state updates when request resolves after unmount', async () => {
+    let resolveLogs!: (value: any[]) => void;
+    const pendingLogs = new Promise<any[]>((resolve) => {
+      resolveLogs = resolve;
+    });
+    mockGetWalletLogs.mockReturnValueOnce(pendingLogs);
+
+    const { unmount } = renderHook(() => useWalletLogs('wallet-cancelled'));
+    unmount();
+
+    await act(async () => {
+      resolveLogs([
+        {
+          id: 'late-log',
+          timestamp: '2025-01-01T00:00:00Z',
+          level: 'info',
+          module: 'wallet',
+          message: 'late',
+        },
+      ]);
+      await Promise.resolve();
+    });
+
+    expect(mockGetWalletLogs).toHaveBeenCalledWith('wallet-cancelled');
+  });
+
+  it('should handle historical log fetch failures without crashing', async () => {
+    mockGetWalletLogs.mockRejectedValueOnce(new Error('history failed'));
+
+    const { result } = renderHook(() => useWalletLogs('wallet-failed-history'));
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(mockGetWalletLogs).toHaveBeenCalledWith('wallet-failed-history');
     expect(result.current.logs).toEqual([]);
   });
 });

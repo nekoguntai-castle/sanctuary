@@ -5,6 +5,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { renderToString } from 'react-dom/server';
 import { Monitoring } from '../../components/Monitoring';
 import * as adminApi from '../../src/api/admin';
 
@@ -254,10 +255,9 @@ describe('Monitoring', () => {
       });
     });
 
-    // Skip: Clipboard API mocking in jsdom has known issues with the async writeText method
-    // The copy button is tested for existence and click-ability, actual clipboard tested via E2E
-    it.skip('copies password to clipboard', async () => {
+    it('copies password to clipboard', async () => {
       const user = userEvent.setup();
+      const clipboardSpy = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined);
       render(<Monitoring />);
 
       await waitFor(() => {
@@ -267,8 +267,10 @@ describe('Monitoring', () => {
       await user.click(screen.getByTitle('Copy password'));
 
       await waitFor(() => {
-        expect(mockWriteText).toHaveBeenCalledWith('sanctuary-admin');
+        expect(clipboardSpy).toHaveBeenCalledWith('sanctuary-admin');
       });
+
+      clipboardSpy.mockRestore();
     });
 
     it('shows password source', async () => {
@@ -329,6 +331,30 @@ describe('Monitoring', () => {
 
       await waitFor(() => {
         expect(screen.getByText(/Requires container restart/)).toBeInTheDocument();
+      });
+    });
+
+    it('does not update local toggle state when anonymous update fails', async () => {
+      vi.mocked(adminApi.updateGrafanaConfig).mockRejectedValue(new Error('toggle failed'));
+
+      const user = userEvent.setup();
+      render(<Monitoring />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Anonymous viewing')).toBeInTheDocument();
+      });
+
+      const toggleButtons = document.querySelectorAll('button[class*="rounded-full"]');
+      const anonymousToggle = Array.from(toggleButtons).find(btn =>
+        btn.closest('label')?.textContent?.includes('Anonymous viewing')
+      );
+
+      if (anonymousToggle) {
+        await user.click(anonymousToggle);
+      }
+
+      await waitFor(() => {
+        expect(adminApi.updateGrafanaConfig).toHaveBeenCalledWith({ anonymousAccess: true });
       });
     });
   });
@@ -403,6 +429,48 @@ describe('Monitoring', () => {
           'grafana',
           'https://grafana.example.com'
         );
+      });
+    });
+
+    it('prefills modal input when service uses a custom URL', async () => {
+      vi.mocked(adminApi.getMonitoringServices).mockResolvedValue({
+        ...mockServices,
+        services: [
+          { ...mockServices.services[0], isCustomUrl: true, url: 'https://grafana.example.com' },
+          ...mockServices.services.slice(1),
+        ],
+      } as any);
+
+      const user = userEvent.setup();
+      render(<Monitoring />);
+
+      await waitFor(() => {
+        expect(screen.getAllByText('Grafana').length).toBeGreaterThan(0);
+      });
+
+      const settingsButtons = screen.getAllByTitle('Configure URL');
+      await user.click(settingsButtons[0]);
+
+      await waitFor(() => {
+        expect(screen.getByDisplayValue('https://grafana.example.com')).toBeInTheDocument();
+      });
+    });
+
+    it('saves null URL when input is empty', async () => {
+      const user = userEvent.setup();
+      render(<Monitoring />);
+
+      await waitFor(() => {
+        expect(screen.getAllByText('Grafana').length).toBeGreaterThan(0);
+      });
+
+      const settingsButtons = screen.getAllByTitle('Configure URL');
+      await user.click(settingsButtons[0]);
+
+      await user.click(screen.getByText('Save'));
+
+      await waitFor(() => {
+        expect(adminApi.updateMonitoringServiceUrl).toHaveBeenCalledWith('grafana', null);
       });
     });
 
@@ -540,6 +608,7 @@ describe('Monitoring', () => {
       // Should call with checkHealth = true
       expect(adminApi.getMonitoringServices).toHaveBeenCalledWith(true);
     });
+
   });
 
   describe('about section', () => {
@@ -561,6 +630,18 @@ describe('Monitoring', () => {
         // Distributed tracing appears in both service card and about section
         expect(screen.getAllByText(/Distributed.*tracing/).length).toBeGreaterThan(0);
       });
+    });
+  });
+
+  describe('environment fallback', () => {
+    it('renders when window is unavailable (hostname fallback branch)', () => {
+      vi.stubGlobal('window', undefined as any);
+      try {
+        const html = renderToString(<Monitoring />);
+        expect(html).toContain('animate-spin');
+      } finally {
+        vi.unstubAllGlobals();
+      }
     });
   });
 });

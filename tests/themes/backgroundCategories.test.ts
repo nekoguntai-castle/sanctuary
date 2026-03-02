@@ -146,6 +146,11 @@ describe('Background Categories', () => {
       const categories = getCategoriesForBackground('minimal');
       expect(Array.isArray(categories)).toBe(true);
     });
+
+    it('should return empty array for unknown background IDs', () => {
+      const categories = getCategoriesForBackground('__unknown__' as BackgroundOption);
+      expect(categories).toEqual([]);
+    });
   });
 
   describe('searchBackgrounds', () => {

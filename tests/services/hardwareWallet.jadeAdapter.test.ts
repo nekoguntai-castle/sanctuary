@@ -196,6 +196,16 @@ describe('JadeAdapter', () => {
       'Serial port closed unexpectedly'
     );
 
+    const adapterNoValue = new JadeAdapter();
+    const readNoValueThenClosed = vi
+      .fn()
+      .mockResolvedValueOnce({ done: false, value: undefined })
+      .mockResolvedValueOnce({ done: true, value: undefined });
+    (adapterNoValue as any).connection = makeConnection({ read: readNoValueThenClosed });
+    await expect((adapterNoValue as any).readResponse('msg', 100)).rejects.toThrow(
+      'Serial port closed unexpectedly'
+    );
+
     const adapterTimeout = new JadeAdapter();
     (adapterTimeout as any).connection = makeConnection();
     await expect((adapterTimeout as any).readResponse('msg', 0)).rejects.toThrow(
@@ -246,6 +256,23 @@ describe('JadeAdapter', () => {
 
     mockSerialRequestPort.mockRejectedValueOnce(new Error('strange failure'));
     await expect(new JadeAdapter().connect()).rejects.toThrow('Failed to connect: strange failure');
+
+    mockSerialRequestPort.mockRejectedValueOnce({ code: 'unknown' });
+    await expect(new JadeAdapter().connect()).rejects.toThrow('Failed to connect: Unknown error');
+  });
+
+  it('connects to standard Jade and falls back model to Jade when board type is missing', async () => {
+    const adapter = new JadeAdapter();
+    mockSerialRequestPort.mockResolvedValueOnce(makePort(0x10c4, 0xea60));
+    vi.spyOn(adapter as any, 'sendRpc').mockResolvedValueOnce({
+      JADE_VERSION: '1.2.3',
+      BOARD_TYPE: '',
+      JADE_FEATURES: 'camera',
+    });
+
+    const device = await adapter.connect();
+    expect(device.name).toBe('Jade 1.2.3');
+    expect(device.model).toBe('Jade');
   });
 
   it('disconnects and clears state even if close fails', async () => {
@@ -284,6 +311,7 @@ describe('JadeAdapter', () => {
     await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow('No device connected');
     await expect(adapter.verifyAddress("m/84'/0'/0'/0/0", 'bc1qxyz')).rejects.toThrow('No device connected');
     await expect(adapter.signPSBT({ psbt: 'abc', inputPaths: [] })).rejects.toThrow('No device connected');
+    await expect((adapter as any).signPSBT(undefined)).rejects.toThrow('No device connected');
   });
 
   it('gets xpub and maps cancellation/default errors', async () => {
@@ -311,6 +339,9 @@ describe('JadeAdapter', () => {
 
     sendRpcSpy.mockRejectedValueOnce(new Error('rpc failure'));
     await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow('Failed to get xpub: rpc failure');
+
+    sendRpcSpy.mockRejectedValueOnce({ code: 'rpc-failure' });
+    await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow('Failed to get xpub: Unknown error');
   });
 
   it('verifies address variants and handles user cancel', async () => {
@@ -343,12 +374,26 @@ describe('JadeAdapter', () => {
       expect.objectContaining({ variant: 'pkh(k)' })
     );
 
+    await expect(adapter.verifyAddress("m/84h/1h/0h/0/0", 'tb1qxyz')).resolves.toBe(true);
+    expect(sendRpcSpy).toHaveBeenLastCalledWith(
+      'get_receive_address',
+      expect.objectContaining({
+        network: 'testnet',
+        variant: 'wpkh(k)',
+      })
+    );
+
     sendRpcSpy.mockRejectedValueOnce(new Error('User cancelled'));
     await expect(adapter.verifyAddress("m/84'/0'/0'/0/0", 'bc1qxyz')).resolves.toBe(false);
 
     sendRpcSpy.mockRejectedValueOnce(new Error('device error'));
     await expect(adapter.verifyAddress("m/84'/0'/0'/0/0", 'bc1qxyz')).rejects.toThrow(
       'Failed to verify address: device error'
+    );
+
+    sendRpcSpy.mockRejectedValueOnce({ code: 'device-error' });
+    await expect(adapter.verifyAddress("m/84'/0'/0'/0/0", 'bc1qxyz')).rejects.toThrow(
+      'Failed to verify address: Unknown error'
     );
   });
 
@@ -388,6 +433,11 @@ describe('JadeAdapter', () => {
     sendRpcSpy.mockRejectedValueOnce(new Error('unexpected fail'));
     await expect(adapter.signPSBT({ psbt: 'x', inputPaths: [] })).rejects.toThrow(
       'Failed to sign transaction: unexpected fail'
+    );
+
+    sendRpcSpy.mockRejectedValueOnce({ code: 'unknown-error' });
+    await expect(adapter.signPSBT({ psbt: 'x', inputPaths: [] })).rejects.toThrow(
+      'Failed to sign transaction: Unknown error'
     );
   });
 });

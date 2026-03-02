@@ -1,13 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const originalMetaEnv = {
-  VITE_LOG_LEVEL: (import.meta as any).env?.VITE_LOG_LEVEL,
-  DEV: (import.meta as any).env?.DEV,
-};
-
-const setImportMetaEnv = (patch: Record<string, unknown>) => {
-  Object.entries(patch).forEach(([key, value]) => {
-    (import.meta as any).env[key] = value;
+const setLoggerEnvOverride = (env?: Record<string, unknown>) => {
+  if (!env) {
+    delete (globalThis as any).__SANCTUARY_LOGGER_ENV__;
+    return;
+  }
+  Object.defineProperty(globalThis, '__SANCTUARY_LOGGER_ENV__', {
+    value: env,
+    configurable: true,
+    writable: true,
   });
 };
 
@@ -44,27 +45,24 @@ const importFreshLoggerWithoutWindow = async () => {
 
 describe('logger branch coverage', () => {
   afterEach(() => {
-    setImportMetaEnv({
-      VITE_LOG_LEVEL: originalMetaEnv.VITE_LOG_LEVEL,
-      DEV: originalMetaEnv.DEV,
-    });
+    setLoggerEnvOverride();
     delete (globalThis as any).__setLogLevel;
     delete (globalThis as any).__getLogLevel;
     delete (globalThis as any).__LogLevel;
     vi.restoreAllMocks();
   });
 
-  it('initializes with a usable default log level', async () => {
-    setImportMetaEnv({ VITE_LOG_LEVEL: undefined });
-
+  it('uses env log level when configured to a valid value', async () => {
+    setLoggerEnvOverride({ VITE_LOG_LEVEL: 'warn', DEV: true });
     const loggerModule = await importFreshLogger();
 
-    expect(loggerModule.isLevelEnabled(loggerModule.LogLevel.DEBUG)).toBe(true);
-    expect(loggerModule.getLogLevel()).toBeTypeOf('string');
+    expect(loggerModule.getLogLevel()).toBe('warn');
+    expect(loggerModule.isLevelEnabled(loggerModule.LogLevel.INFO)).toBe(false);
+    expect(loggerModule.isLevelEnabled(loggerModule.LogLevel.WARN)).toBe(true);
   });
 
   it('covers string parsing branches and getLogLevel fallback', async () => {
-    setImportMetaEnv({ VITE_LOG_LEVEL: 'info' });
+    setLoggerEnvOverride({ VITE_LOG_LEVEL: 'info', DEV: true });
 
     const loggerModule = await importFreshLogger();
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -80,8 +78,26 @@ describe('logger branch coverage', () => {
     entriesSpy.mockRestore();
   });
 
+  it('falls back to debug in development when env level is invalid', async () => {
+    setLoggerEnvOverride({ VITE_LOG_LEVEL: 'not-a-level', DEV: true });
+
+    const loggerModule = await importFreshLogger();
+
+    expect(loggerModule.getLogLevel()).toBe('debug');
+    expect(loggerModule.isLevelEnabled(loggerModule.LogLevel.DEBUG)).toBe(true);
+  });
+
+  it('falls back to warn in production when env level is missing', async () => {
+    setLoggerEnvOverride({ DEV: false });
+
+    const loggerModule = await importFreshLogger();
+
+    expect(loggerModule.getLogLevel()).toBe('warn');
+    expect(loggerModule.isLevelEnabled(loggerModule.LogLevel.INFO)).toBe(false);
+  });
+
   it('does not attach window helpers when window is unavailable', async () => {
-    setImportMetaEnv({ VITE_LOG_LEVEL: undefined });
+    setLoggerEnvOverride();
     delete (globalThis as any).__setLogLevel;
     delete (globalThis as any).__getLogLevel;
 
@@ -89,6 +105,13 @@ describe('logger branch coverage', () => {
 
     expect((globalThis as any).__setLogLevel).toBeUndefined();
     expect((globalThis as any).__getLogLevel).toBeUndefined();
+    expect(loggerModule.getLogLevel()).toBeTypeOf('string');
+  });
+
+  it('initializes with a usable default log level when no override is provided', async () => {
+    setLoggerEnvOverride();
+    const loggerModule = await importFreshLogger();
+
     expect(loggerModule.getLogLevel()).toBeTypeOf('string');
   });
 });

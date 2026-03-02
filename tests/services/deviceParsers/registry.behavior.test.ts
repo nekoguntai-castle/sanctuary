@@ -104,6 +104,40 @@ describe('DeviceParserRegistry class behavior', () => {
     expect(registry.detect({})).toBeNull();
   });
 
+  it('stringifies non-Error values thrown by canParse and parse', () => {
+    const registry = new DeviceParserRegistry();
+    const detectorThrower = makeParser(
+      'detector-throw',
+      20,
+      () => {
+        throw 'detector-string';
+      }
+    );
+    const parseThrower = makeParser(
+      'parse-throw',
+      10,
+      () => ({ detected: true, confidence: 100 }),
+      () => {
+        throw 'parse-string';
+      }
+    );
+
+    registry.register(detectorThrower);
+    registry.register(parseThrower);
+
+    expect(registry.detect({ foo: 'bar' })?.id).toBe('parse-throw');
+    expect(mockWarn).toHaveBeenCalledWith(
+      'Parser canParse threw error',
+      expect.objectContaining({ parser: 'detector-throw', error: 'detector-string' })
+    );
+
+    expect(registry.parse({ foo: 'bar' })).toBeNull();
+    expect(mockWarn).toHaveBeenCalledWith(
+      'Parser threw error during parse',
+      expect.objectContaining({ parser: 'parse-throw', error: 'parse-string' })
+    );
+  });
+
   it('returns detectAll sorted by confidence and fallback values for thrown detectors', () => {
     const registry = new DeviceParserRegistry();
     const parserA = makeParser('a', 1, () => ({ detected: true, confidence: 40 }));
@@ -141,6 +175,13 @@ describe('DeviceParserRegistry class behavior', () => {
     const registry = new DeviceParserRegistry();
     expect(registry.parse({ raw: true }, 'missing')).toBeNull();
     expect(mockWarn).toHaveBeenCalled();
+  });
+
+  it('returns null on parse() with no detected parser when debug is disabled', () => {
+    const registry = new DeviceParserRegistry();
+    registry.register(makeParser('none', 1, () => ({ detected: false, confidence: 0 })));
+
+    expect(registry.parse({})).toBeNull();
   });
 
   it('auto-detects parser on parse() and handles missing/throwing parsers', () => {

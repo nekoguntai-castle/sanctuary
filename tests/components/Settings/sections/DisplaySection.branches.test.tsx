@@ -63,5 +63,8 @@ describe('DisplaySection branch coverage', () => {
 
     expect(toggle.className).toContain('bg-sanctuary-300');
     expect(screen.getByText('Display JPY value alongside Bitcoin amounts.')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Sats'));
+    expect(mockSetUnit).toHaveBeenCalledWith('sats');
   });
 });

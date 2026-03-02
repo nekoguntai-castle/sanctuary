@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import React from 'react';
 
 import { OutputRow, OutputRowProps } from '../../../components/send/OutputRow';
@@ -13,8 +13,15 @@ vi.mock('../../../contexts/CurrencyContext', () => ({
 }));
 
 // Mock the QR Scanner component
+const scannerState = vi.hoisted(() => ({
+  props: null as any,
+}));
+
 vi.mock('@yudiel/react-qr-scanner', () => ({
-  Scanner: vi.fn(() => <div data-testid="qr-scanner">Mock Scanner</div>),
+  Scanner: vi.fn((props: any) => {
+    scannerState.props = props;
+    return <div data-testid="qr-scanner">Mock Scanner</div>;
+  }),
 }));
 
 describe('OutputRow', () => {
@@ -206,6 +213,18 @@ describe('OutputRow', () => {
       expect(mockOnAddressChange).toHaveBeenCalledWith(0, 'bc1qreceive2');
     });
 
+    it('applies disabled styling to consolidation dropdown', () => {
+      renderRow({
+        isConsolidation: true,
+        walletAddresses,
+        disabled: true,
+      });
+
+      const select = screen.getByRole('combobox');
+      expect(select.className).toContain('opacity-60');
+      expect(select).toBeDisabled();
+    });
+
     it('should not show dropdown for non-first output in consolidation', () => {
       renderRow({
         isConsolidation: true,
@@ -278,6 +297,29 @@ describe('OutputRow', () => {
       const input = screen.getByPlaceholderText('0') as HTMLInputElement;
       expect(input.inputMode).toBe('numeric');
     });
+
+    it('only triggers amount updates for valid input pattern per unit', () => {
+      const btcView = renderRow({ unit: 'btc' });
+      const btcInput = screen.getByPlaceholderText('0');
+
+      fireEvent.change(btcInput, { target: { value: '1.234' } });
+      expect(mockOnAmountChange).toHaveBeenLastCalledWith(0, '1.234', '1.234');
+
+      mockOnAmountChange.mockClear();
+      fireEvent.change(btcInput, { target: { value: '1.23a' } });
+      expect(mockOnAmountChange).not.toHaveBeenCalled();
+
+      btcView.unmount();
+      renderRow({ unit: 'sats' });
+      const satsInput = screen.getByPlaceholderText('0');
+
+      fireEvent.change(satsInput, { target: { value: '1200' } });
+      expect(mockOnAmountChange).toHaveBeenCalledWith(0, '1200', '1200');
+
+      mockOnAmountChange.mockClear();
+      fireEvent.change(satsInput, { target: { value: '12.5' } });
+      expect(mockOnAmountChange).not.toHaveBeenCalled();
+    });
   });
 
   describe('Send Max toggle', () => {
@@ -319,6 +361,14 @@ describe('OutputRow', () => {
       renderRow({ output, maxAmount: 100000 });
 
       expect(mockFormatAmount).toHaveBeenCalledWith(100000);
+    });
+
+    it('exits MAX mode when inline MAX badge is clicked', () => {
+      const output = { ...defaultOutput, sendMax: true };
+      renderRow({ output });
+
+      fireEvent.click(screen.getByTitle('Click to exit MAX mode'));
+      expect(mockOnToggleSendMax).toHaveBeenCalledWith(0);
     });
 
     it('should hide MAX button when disabled', () => {
@@ -418,6 +468,79 @@ describe('OutputRow', () => {
       });
 
       expect(screen.queryByText('Scan a Bitcoin address or BIP21 payment URI')).not.toBeInTheDocument();
+    });
+
+    it('starts camera and processes successful scan payloads', () => {
+      renderRow({
+        showScanner: true,
+        scanningOutputIndex: 0,
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Start Camera' }));
+      expect(screen.getByTestId('qr-scanner')).toBeInTheDocument();
+
+      act(() => {
+        scannerState.props.onScan([{ rawValue: 'bc1qscannedvalue' }]);
+      });
+
+      expect(mockOnAddressChange).toHaveBeenCalledWith(0, 'bc1qscannedvalue');
+      expect(mockOnScanQR).toHaveBeenCalledWith(0);
+    });
+
+    it('ignores empty scanner results and blank QR payloads', () => {
+      renderRow({
+        showScanner: true,
+        scanningOutputIndex: 0,
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Start Camera' }));
+
+      act(() => {
+        scannerState.props.onScan([]);
+      });
+      act(() => {
+        scannerState.props.onScan([{ rawValue: '' }]);
+      });
+
+      expect(mockOnAddressChange).not.toHaveBeenCalled();
+    });
+
+    it('shows camera error variants and supports retry', () => {
+      renderRow({
+        showScanner: true,
+        scanningOutputIndex: 0,
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Start Camera' }));
+
+      act(() => {
+        scannerState.props.onError({ name: 'NotAllowedError', message: 'denied' });
+      });
+      expect(
+        screen.getByText('Camera access denied. Please allow camera permissions and try again.')
+      ).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Try Again' }));
+      act(() => {
+        scannerState.props.onError({ name: 'NotFoundError', message: 'missing' });
+      });
+      expect(screen.getByText('No camera found on this device.')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Try Again' }));
+      act(() => {
+        scannerState.props.onError({ name: 'UnknownError', message: 'boom' });
+      });
+      expect(screen.getByText('Camera error: boom')).toBeInTheDocument();
+    });
+
+    it('stops scanner from initial prompt cancel action', () => {
+      renderRow({
+        showScanner: true,
+        scanningOutputIndex: 0,
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      expect(mockOnScanQR).toHaveBeenCalledWith(0);
     });
   });
 

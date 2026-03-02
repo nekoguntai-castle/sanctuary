@@ -111,6 +111,17 @@ describe('HardwareImport', () => {
     expect(props.setXpubData).toHaveBeenCalledWith(null);
   });
 
+  it('re-selects ledger and clears connection/xpub when secure context is available', async () => {
+    const user = userEvent.setup();
+    const props = renderHardwareImport({ hardwareDeviceType: 'trezor' });
+
+    await user.click(screen.getByRole('button', { name: /Ledger/i }));
+
+    expect(props.setHardwareDeviceType).toHaveBeenCalledWith('ledger');
+    expect(props.setDeviceConnected).toHaveBeenCalledWith(false);
+    expect(props.setXpubData).toHaveBeenCalledWith(null);
+  });
+
   it('shows trezor notice when trezor is selected', () => {
     renderHardwareImport({ hardwareDeviceType: 'trezor' });
 
@@ -137,6 +148,32 @@ describe('HardwareImport', () => {
     expect(props.setIsConnecting).toHaveBeenLastCalledWith(false);
   });
 
+  it('uses trezor fallback label when connected device has no name', async () => {
+    const user = userEvent.setup();
+    mockConnect.mockResolvedValue({});
+    const props = renderHardwareImport({ hardwareDeviceType: 'trezor' });
+
+    await user.click(screen.getByRole('button', { name: 'Connect Device' }));
+
+    await waitFor(() => {
+      expect(mockConnect).toHaveBeenCalledWith('trezor');
+    });
+    expect(props.setDeviceLabel).toHaveBeenCalledWith('Trezor Device');
+  });
+
+  it('uses connected device name when provided', async () => {
+    const user = userEvent.setup();
+    mockConnect.mockResolvedValue({ name: 'Trezor Safe 5' });
+    const props = renderHardwareImport({ hardwareDeviceType: 'trezor' });
+
+    await user.click(screen.getByRole('button', { name: 'Connect Device' }));
+
+    await waitFor(() => {
+      expect(mockConnect).toHaveBeenCalledWith('trezor');
+    });
+    expect(props.setDeviceLabel).toHaveBeenCalledWith('Trezor Safe 5');
+  });
+
   it('shows connect and fetch errors from hardware service', async () => {
     const user = userEvent.setup();
     mockConnect.mockRejectedValueOnce(new Error('Device not found'));
@@ -152,6 +189,30 @@ describe('HardwareImport', () => {
     await user.click(screen.getByRole('button', { name: 'Fetch Xpub from Device' }));
     await waitFor(() => {
       expect(fetchProps.setHardwareError).toHaveBeenCalledWith('Failed to fetch xpub');
+    });
+  });
+
+  it('handles non-Error connect failures with fallback message', async () => {
+    const user = userEvent.setup();
+    mockConnect.mockRejectedValueOnce('nope');
+    const props = renderHardwareImport({ hardwareDeviceType: 'ledger' });
+
+    await user.click(screen.getByRole('button', { name: 'Connect Device' }));
+
+    await waitFor(() => {
+      expect(props.setHardwareError).toHaveBeenCalledWith('Failed to connect device');
+    });
+  });
+
+  it('handles Error-based xpub fetch failures by surfacing error message', async () => {
+    const user = userEvent.setup();
+    mockGetXpub.mockRejectedValueOnce(new Error('xpub fetch failed'));
+    const props = renderHardwareImport({ deviceConnected: true });
+
+    await user.click(screen.getByRole('button', { name: 'Fetch Xpub from Device' }));
+
+    await waitFor(() => {
+      expect(props.setHardwareError).toHaveBeenCalledWith('xpub fetch failed');
     });
   });
 
@@ -173,6 +234,9 @@ describe('HardwareImport', () => {
 
     const accountInput = screen.getByRole('spinbutton');
     fireEvent.change(accountInput, { target: { value: '-5' } });
+    expect(props.setAccountIndex).toHaveBeenCalledWith(0);
+
+    fireEvent.change(accountInput, { target: { value: '' } });
     expect(props.setAccountIndex).toHaveBeenCalledWith(0);
   });
 
@@ -233,5 +297,47 @@ describe('HardwareImport', () => {
     expect(screen.getByText('ffffeeee')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Fetch Again' })).toBeInTheDocument();
     expect(screen.getByText('Hardware unavailable')).toBeInTheDocument();
+  });
+
+  it('shows fetching state label while xpub retrieval is in progress', () => {
+    renderHardwareImport({
+      deviceConnected: true,
+      isFetchingXpub: true,
+    });
+
+    expect(screen.getByRole('button', { name: /fetching from device/i })).toBeDisabled();
+  });
+
+  it('shows connecting state label while device connection is in progress', () => {
+    renderHardwareImport({
+      isConnecting: true,
+    });
+
+    expect(screen.getByRole('button', { name: /connecting/i })).toBeDisabled();
+  });
+
+  it('renders unsupported ledger style branch when trezor is selected in insecure context', () => {
+    mockIsSecureContext.mockReturnValue(false);
+    renderHardwareImport({ hardwareDeviceType: 'trezor' });
+
+    const ledgerButton = screen.getByRole('button', { name: /Ledger/i });
+    expect(ledgerButton).toHaveClass('opacity-50');
+    expect(ledgerButton).toHaveClass('cursor-not-allowed');
+  });
+
+  it('guards against ledger selection when forced click bypasses disabled state', () => {
+    mockIsSecureContext.mockReturnValue(false);
+    const props = renderHardwareImport({ hardwareDeviceType: 'trezor' });
+
+    const ledgerButton = screen.getByRole('button', { name: /Ledger/i });
+    expect(ledgerButton).toBeDisabled();
+
+    // Exercise the internal no-op branch when insecure context blocks ledger selection.
+    ledgerButton.removeAttribute('disabled');
+    fireEvent.click(ledgerButton);
+
+    expect(props.setHardwareDeviceType).not.toHaveBeenCalled();
+    expect(props.setDeviceConnected).not.toHaveBeenCalled();
+    expect(props.setXpubData).not.toHaveBeenCalled();
   });
 });

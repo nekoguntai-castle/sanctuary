@@ -204,6 +204,24 @@ describe('UserContext', () => {
       });
     });
 
+    it('uses fallback login error message for non-ApiError failures', async () => {
+      const user = userEvent.setup();
+      vi.mocked(authApi.login).mockRejectedValue(new Error('network timeout'));
+
+      render(<UserProvider><TestConsumer /></UserProvider>);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('loading')).toHaveTextContent('false');
+      });
+
+      await user.click(screen.getByTestId('login'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('error')).toHaveTextContent('Login failed');
+        expect(screen.getByTestId('authenticated')).toHaveTextContent('false');
+      });
+    });
+
     it('triggers 2FA flow when required', async () => {
       const user = userEvent.setup();
       vi.mocked(authApi.login).mockResolvedValue({ tempToken: 'temp-token-123' });
@@ -284,6 +302,32 @@ describe('UserContext', () => {
       });
     });
 
+    it('uses fallback message when 2FA verification throws non-ApiError', async () => {
+      const user = userEvent.setup();
+
+      vi.mocked(authApi.login).mockResolvedValue({ tempToken: 'temp-token-123' });
+      vi.mocked(authApi.requires2FA).mockReturnValue(true);
+
+      render(<UserProvider><TestConsumer /></UserProvider>);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('loading')).toHaveTextContent('false');
+      });
+
+      await user.click(screen.getByTestId('login'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('2fa-pending')).toHaveTextContent('yes');
+      });
+
+      vi.mocked(twoFactorApi.verify2FA).mockRejectedValue(new Error('backend unavailable'));
+      await user.click(screen.getByTestId('verify-2fa'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('error')).toHaveTextContent('Invalid verification code');
+      });
+    });
+
     it('cancels 2FA flow', async () => {
       const user = userEvent.setup();
 
@@ -359,6 +403,23 @@ describe('UserContext', () => {
         expect(screen.getByTestId('error')).toHaveTextContent('Username taken');
       });
     });
+
+    it('uses fallback registration error message for non-ApiError failures', async () => {
+      const user = userEvent.setup();
+      vi.mocked(authApi.register).mockRejectedValue(new Error('registration service down'));
+
+      render(<UserProvider><TestConsumer /></UserProvider>);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('loading')).toHaveTextContent('false');
+      });
+
+      await user.click(screen.getByTestId('register'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('error')).toHaveTextContent('Registration failed');
+      });
+    });
   });
 
   describe('Logout', () => {
@@ -417,6 +478,71 @@ describe('UserContext', () => {
         expect(authApi.updatePreferences).toHaveBeenCalledWith(
           expect.objectContaining({ darkMode: false })
         );
+      });
+    });
+
+    it('does not call updatePreferences when no authenticated user is loaded', async () => {
+      const user = userEvent.setup();
+      vi.mocked(authApi.isAuthenticated).mockReturnValue(false);
+
+      render(<UserProvider><TestConsumer /></UserProvider>);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('loading')).toHaveTextContent('false');
+      });
+
+      await user.click(screen.getByTestId('update-prefs'));
+
+      expect(authApi.updatePreferences).not.toHaveBeenCalled();
+      expect(screen.getByTestId('user')).toHaveTextContent('null');
+    });
+
+    it('reverts optimistic preference update and uses ApiError message on failure', async () => {
+      const user = userEvent.setup();
+      vi.mocked(authApi.login).mockResolvedValue({ user: mockUser });
+      vi.mocked(authApi.requires2FA).mockReturnValue(false);
+      vi.mocked(authApi.updatePreferences).mockRejectedValue(new ApiError('Preference save failed', 500));
+
+      render(<UserProvider><TestConsumer /></UserProvider>);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('loading')).toHaveTextContent('false');
+      });
+
+      await user.click(screen.getByTestId('login'));
+      await waitFor(() => {
+        expect(screen.getByTestId('authenticated')).toHaveTextContent('true');
+      });
+
+      await user.click(screen.getByTestId('update-prefs'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('error')).toHaveTextContent('Preference save failed');
+      });
+      expect(screen.getByTestId('user')).toHaveTextContent('testuser');
+    });
+
+    it('uses fallback preference update error for non-ApiError failures', async () => {
+      const user = userEvent.setup();
+      vi.mocked(authApi.login).mockResolvedValue({ user: mockUser });
+      vi.mocked(authApi.requires2FA).mockReturnValue(false);
+      vi.mocked(authApi.updatePreferences).mockRejectedValue(new Error('network down'));
+
+      render(<UserProvider><TestConsumer /></UserProvider>);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('loading')).toHaveTextContent('false');
+      });
+
+      await user.click(screen.getByTestId('login'));
+      await waitFor(() => {
+        expect(screen.getByTestId('authenticated')).toHaveTextContent('true');
+      });
+
+      await user.click(screen.getByTestId('update-prefs'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('error')).toHaveTextContent('Failed to update preferences');
       });
     });
   });

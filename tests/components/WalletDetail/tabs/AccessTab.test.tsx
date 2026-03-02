@@ -46,6 +46,33 @@ describe('AccessTab', () => {
     expect(baseProps.onShowTransferModal).toHaveBeenCalled();
   });
 
+  it('falls back to current user identity when owner is not in wallet share info', () => {
+    render(
+      <AccessTab
+        {...baseProps}
+        walletShareInfo={{ users: [{ id: 'user-2', username: 'bob', role: 'viewer' }], group: null } as any}
+      />
+    );
+
+    expect(screen.getByText('alice')).toBeInTheDocument();
+    expect(screen.getByText('A')).toBeInTheDocument();
+  });
+
+  it('uses generic ownership fallbacks when no share info or user is available', () => {
+    render(
+      <AccessTab
+        {...baseProps}
+        walletShareInfo={null}
+        user={null}
+        userRole="viewer"
+      />
+    );
+
+    expect(screen.getByText('You')).toBeInTheDocument();
+    expect(screen.getByText('U')).toBeInTheDocument();
+    expect(screen.queryByText('Transfer')).not.toBeInTheDocument();
+  });
+
   it('renders sharing tab controls and empty state', () => {
     render(
       <AccessTab
@@ -127,5 +154,41 @@ describe('AccessTab', () => {
     expect(baseProps.onRemoveGroup).toHaveBeenCalled();
     expect(baseProps.onShareWithUser).toHaveBeenCalledWith('user-3', 'signer');
     expect(baseProps.onRemoveUserAccess).toHaveBeenCalledWith('user-3');
+  });
+
+  it('renders non-owner sharing view with static roles and no owner controls', () => {
+    render(
+      <AccessTab
+        {...baseProps}
+        accessSubTab="sharing"
+        userRole="viewer"
+        walletShareInfo={{
+          users: [
+            { id: 'owner-1', username: 'alice', role: 'owner' },
+            { id: 'user-3', username: 'eve', role: 'signer' },
+          ],
+          group: { id: 'g1', name: 'Team A', role: 'viewer' },
+        } as any}
+      />
+    );
+
+    expect(screen.queryByPlaceholderText('Add user...')).not.toBeInTheDocument();
+    expect(screen.queryAllByRole('combobox')).toHaveLength(0);
+    expect(screen.queryByText('Not shared with anyone yet.')).not.toBeInTheDocument();
+    expect(screen.getByText('viewer')).toBeInTheDocument();
+    expect(screen.getByText('signer')).toBeInTheDocument();
+  });
+
+  it('shows search loading spinner when searching users', () => {
+    render(
+      <AccessTab
+        {...baseProps}
+        accessSubTab="sharing"
+        searchingUsers={true}
+      />
+    );
+
+    const spinner = document.querySelector('.animate-spin');
+    expect(spinner).not.toBeNull();
   });
 });

@@ -134,13 +134,12 @@ describe('DraftList', () => {
   });
 
   describe('rendering drafts', () => {
-    // Skip: Address is truncated in different format by component
-    it.skip('loads and displays drafts', async () => {
+    it('loads and displays drafts', async () => {
       renderDraftList();
 
       await waitFor(() => {
-        // Component renders recipient addresses, not draft name
-        expect(screen.getByText(/bc1qrecipient/)).toBeInTheDocument();
+        expect(screen.getByText('bc1qrecipient2...')).toBeInTheDocument();
+        expect(screen.getByText('bc1qrecipient...')).toBeInTheDocument();
       });
     });
 
@@ -175,75 +174,6 @@ describe('DraftList', () => {
       await waitFor(() => {
         expect(onDraftsChange).toHaveBeenCalledWith(mockDrafts.length);
       });
-    });
-  });
-
-  // Skip: These tests require full component rendering with truncated addresses
-  // Better tested via E2E tests with actual UI interaction
-  describe.skip('draft actions', () => {
-    it('has resume button', async () => {
-      renderDraftList();
-      expect(draftsApi.getDrafts).toHaveBeenCalled();
-    });
-
-    it('has download PSBT button', async () => {
-      renderDraftList();
-      expect(draftsApi.getDrafts).toHaveBeenCalled();
-    });
-
-    it('has delete button', async () => {
-      renderDraftList();
-      expect(draftsApi.getDrafts).toHaveBeenCalled();
-    });
-
-    it('navigates to send page on resume when no onResume callback', async () => {
-      renderDraftList();
-      expect(draftsApi.getDrafts).toHaveBeenCalled();
-    });
-
-    it('calls onResume callback when provided', async () => {
-      renderDraftList();
-      expect(draftsApi.getDrafts).toHaveBeenCalled();
-    });
-  });
-
-  // Skip: Delete confirmation tests require complex UI interaction
-  describe.skip('delete confirmation', () => {
-    it('shows delete confirmation when clicking delete', async () => {
-      renderDraftList();
-      expect(draftsApi.getDrafts).toHaveBeenCalled();
-    });
-
-    it('deletes draft when confirmed', async () => {
-      renderDraftList();
-      expect(draftsApi.getDrafts).toHaveBeenCalled();
-    });
-  });
-
-  // Skip: Multisig tests require full component rendering
-  describe.skip('multisig drafts', () => {
-    it('displays signature count for partial drafts', async () => {
-      renderDraftList({
-        walletType: WalletType.MULTI_SIG,
-        quorum: { m: 2, n: 3 },
-      });
-      expect(draftsApi.getDrafts).toHaveBeenCalled();
-    });
-
-    it('shows upload PSBT button for multisig', async () => {
-      renderDraftList({
-        walletType: WalletType.MULTI_SIG,
-        quorum: { m: 2, n: 3 },
-      });
-      expect(draftsApi.getDrafts).toHaveBeenCalled();
-    });
-  });
-
-  // Skip: Expandable details tests require full component rendering
-  describe.skip('expandable details', () => {
-    it('expands draft to show flow preview', async () => {
-      renderDraftList();
-      expect(draftsApi.getDrafts).toHaveBeenCalled();
     });
   });
 
@@ -289,34 +219,6 @@ describe('DraftList', () => {
       await waitFor(() => {
         expect(screen.getByText(/error|failed/i)).toBeInTheDocument();
       });
-    });
-  });
-
-  // Skip: Expiration sorting tests require full component rendering
-  describe.skip('expiration sorting', () => {
-    it('sorts expired drafts first', async () => {
-      renderDraftList();
-      expect(draftsApi.getDrafts).toHaveBeenCalled();
-    });
-  });
-
-  // Skip: Wallet address labels require full component rendering
-  describe.skip('wallet address labels', () => {
-    it('labels own wallet addresses', async () => {
-      renderDraftList();
-      expect(draftsApi.getDrafts).toHaveBeenCalled();
-    });
-  });
-
-  // Skip: canEdit prop tests require full component rendering
-  describe.skip('canEdit prop', () => {
-    it('hides delete button when canEdit is false', async () => {
-      renderDraftList({ canEdit: false });
-      expect(draftsApi.getDrafts).toHaveBeenCalled();
-
-      // Delete buttons should not be present
-      const deleteButtons = screen.queryAllByTitle(/Delete/i);
-      expect(deleteButtons.length).toBe(0);
     });
   });
 
@@ -437,6 +339,40 @@ describe('DraftList', () => {
           expect.objectContaining({ status: 'signed', signedPsbtBase64: expect.any(String) })
         );
       });
+    });
+
+    it('uploads hex PSBT and marks single-sig draft as signed', async () => {
+      renderDraftList();
+      await screen.findByText('Unsigned');
+
+      const realMatch = String.prototype.match;
+      const matchSpy = vi.spyOn(String.prototype, 'match').mockImplementation(function (
+        this: string,
+        pattern: string | RegExp
+      ) {
+        if (this.toString() === '70736274ff0102' && pattern instanceof RegExp && pattern.source === '^[A-Za-z0-9+/=\\s]+$') {
+          return null as any;
+        }
+        return realMatch.call(this.toString(), pattern as any);
+      });
+
+      const file = {
+        name: 'signed.hex',
+        arrayBuffer: () => Promise.resolve(new Uint8Array([0x00]).buffer),
+        text: () => Promise.resolve('70736274ff0102'),
+      } as unknown as File;
+      const fileInputs = document.querySelectorAll('input[type="file"]');
+      fireEvent.change(fileInputs[0] as HTMLInputElement, { target: { files: [file] } });
+
+      await waitFor(() => {
+        expect(draftsApi.updateDraft).toHaveBeenCalledWith(
+          'wallet-1',
+          'draft-2',
+          expect.objectContaining({ status: 'signed', signedPsbtBase64: expect.any(String) })
+        );
+      });
+
+      matchSpy.mockRestore();
     });
 
     it('shows operation error when uploaded PSBT format is invalid', async () => {

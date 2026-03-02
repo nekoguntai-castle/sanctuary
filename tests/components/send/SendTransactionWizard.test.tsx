@@ -48,6 +48,11 @@ vi.mock('../../../components/send/steps', () => ({
       {props.onBroadcast && <button data-testid="broadcast-btn" onClick={props.onBroadcast}>Broadcast</button>}
       {props.onSign && <button data-testid="sign-btn" onClick={props.onSign}>Sign</button>}
       {props.onSaveDraft && <button data-testid="save-draft-btn" onClick={props.onSaveDraft}>Save Draft</button>}
+      {props.onBroadcastSigned && (
+        <button data-testid="broadcast-signed-btn" onClick={props.onBroadcastSigned}>
+          Broadcast Signed
+        </button>
+      )}
     </div>
   ),
 }));
@@ -324,6 +329,29 @@ describe('SendTransactionWizard', () => {
 
       expect(screen.getByTestId('save-draft-btn')).toBeInTheDocument();
     });
+
+    it('calls saveDraft when save draft button is clicked', async () => {
+      const user = userEvent.setup();
+      const saveDraft = vi.fn();
+      vi.mocked(useSendTransactionActionsHook.useSendTransactionActions).mockReturnValue({
+        ...defaultActionsValue,
+        saveDraft,
+      } as any);
+
+      vi.mocked(SendContext.useSendTransaction).mockReturnValue({
+        ...defaultContextValue,
+        currentStep: 'review',
+        state: {
+          ...defaultContextValue.state,
+          isDraftMode: false,
+        },
+        isReadyToSign: true,
+      } as any);
+
+      renderWizard();
+      await user.click(screen.getByTestId('save-draft-btn'));
+      expect(saveDraft).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('auto-create transaction', () => {
@@ -368,6 +396,27 @@ describe('SendTransactionWizard', () => {
 
       // Should not auto-create in draft mode
       expect(createTransaction).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('review callbacks', () => {
+    it('calls broadcastTransaction from onBroadcastSigned callback', async () => {
+      const user = userEvent.setup();
+      const broadcastTransaction = vi.fn();
+      vi.mocked(useSendTransactionActionsHook.useSendTransactionActions).mockReturnValue({
+        ...defaultActionsValue,
+        broadcastTransaction,
+      } as any);
+
+      vi.mocked(SendContext.useSendTransaction).mockReturnValue({
+        ...defaultContextValue,
+        currentStep: 'review',
+        isReadyToSign: true,
+      } as any);
+
+      renderWizard();
+      await user.click(screen.getByTestId('broadcast-signed-btn'));
+      expect(broadcastTransaction).toHaveBeenCalledTimes(1);
     });
   });
 

@@ -25,6 +25,7 @@ describe('deviceConnection utilities', () => {
   });
 
   it('does not auto-harden non-standard purpose paths', () => {
+    expect(normalizeDerivationPath('m')).toBe('m/m');
     expect(normalizeDerivationPath('m/100/0/0')).toBe('m/100/0/0');
     expect(normalizeDerivationPath('')).toBe('');
   });

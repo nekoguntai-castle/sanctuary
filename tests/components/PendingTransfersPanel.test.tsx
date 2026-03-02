@@ -235,6 +235,18 @@ describe('PendingTransfersPanel', () => {
         expect(screen.getByRole('button', { name: /Confirm Transfer/i })).toBeInTheDocument();
       });
     });
+
+    it('opens cancel modal from ready-to-confirm card cancel button', async () => {
+      render(<PendingTransfersPanel {...defaultProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /Confirm Transfer/i })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /^Cancel$/i }));
+
+      expect(screen.getByText('Cancel Transfer?')).toBeInTheDocument();
+    });
   });
 
   describe('accept action', () => {

@@ -48,6 +48,18 @@ describe('WalletCells', () => {
     expect(screen.getByTestId('wallet-icon')).toBeInTheDocument();
   });
 
+  it('renders name cell for single-sig wallets', () => {
+    const renderers = createWalletCellRenderers({
+      format: (sats) => `${sats} sats`,
+      formatFiat: () => null,
+      showFiat: false,
+    });
+
+    render(<renderers.name item={{ ...baseWallet, type: 'single_sig' }} column={baseColumn} />);
+    expect(screen.getByText('Primary Wallet')).toBeInTheDocument();
+    expect(screen.getByTestId('wallet-icon')).toBeInTheDocument();
+  });
+
   it('renders type cell with multisig badge and shared indicator', () => {
     const renderers = createWalletCellRenderers({
       format: (sats) => `${sats} sats`,
@@ -65,6 +77,24 @@ describe('WalletCells', () => {
     expect(screen.getByText('2 of 3')).toBeInTheDocument();
     expect(screen.getByText('Shared')).toBeInTheDocument();
     expect(screen.getByTestId('users-icon')).toBeInTheDocument();
+  });
+
+  it('renders type cell single-sig branch without shared badge', () => {
+    const renderers = createWalletCellRenderers({
+      format: (sats) => `${sats} sats`,
+      formatFiat: () => null,
+      showFiat: false,
+    });
+
+    render(
+      <renderers.type
+        item={{ ...baseWallet, type: 'single_sig', isShared: false }}
+        column={baseColumn}
+      />
+    );
+
+    expect(screen.getByText('Single Sig')).toBeInTheDocument();
+    expect(screen.queryByText('Shared')).not.toBeInTheDocument();
   });
 
   it('renders devices count correctly', () => {
@@ -104,6 +134,18 @@ describe('WalletCells', () => {
 
     rerender(<renderers.sync item={{ ...baseWallet, lastSyncStatus: undefined }} column={baseColumn} />);
     expect(screen.getByText('Pending')).toBeInTheDocument();
+  });
+
+  it('renders synced state for successful sync status', () => {
+    const renderers = createWalletCellRenderers({
+      format: (sats) => `${sats} sats`,
+      formatFiat: () => null,
+      showFiat: false,
+    });
+
+    render(<renderers.sync item={{ ...baseWallet, lastSyncStatus: 'success' }} column={baseColumn} />);
+    expect(screen.getByText('Synced')).toBeInTheDocument();
+    expect(screen.getByTestId('check-icon')).toBeInTheDocument();
   });
 
   it('renders pending icons when pending data exists', () => {
@@ -152,5 +194,27 @@ describe('WalletCells', () => {
     expect(screen.getByText('(-5000 sats)')).toBeInTheDocument();
     expect(screen.getByText('$1.00')).toBeInTheDocument();
     expect(screen.getByText('($-0.05)')).toBeInTheDocument();
+  });
+
+  it('renders positive pending net with plus sign for BTC and fiat', () => {
+    const renderers = createWalletCellRenderers({
+      format: (sats) => `${sats} sats`,
+      formatFiat: (sats) => `$${(sats / 100000).toFixed(2)}`,
+      showFiat: true,
+    });
+
+    render(
+      <renderers.balance
+        item={{
+          ...baseWallet,
+          pendingData: { net: 5000, count: 1, hasIncoming: true, hasOutgoing: false },
+        }}
+        column={baseColumn}
+      />
+    );
+
+    expect(screen.getByText('(+5000 sats)')).toBeInTheDocument();
+    expect(screen.getByText('$1.00')).toBeInTheDocument();
+    expect(screen.getByText('(+$0.05)')).toBeInTheDocument();
   });
 });

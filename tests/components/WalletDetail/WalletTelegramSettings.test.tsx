@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { WalletTelegramSettings } from '../../../components/WalletDetail/WalletTelegramSettings';
 import { ApiError } from '../../../src/api/client';
@@ -183,5 +183,76 @@ describe('WalletTelegramSettings', () => {
     await user.click(walletToggle);
 
     expect(await screen.findByText('Failed to update settings')).toBeInTheDocument();
+  });
+
+  it('covers remaining notification toggles and success-timeout reset', async () => {
+    const user = userEvent.setup();
+    const timeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+
+    vi.mocked(useUser).mockReturnValue({
+      user: {
+        id: 'u1',
+        preferences: {
+          telegram: {
+            botToken: 'token',
+            chatId: 'chat-id',
+            enabled: true,
+          },
+        },
+      },
+      isLoading: false,
+    } as never);
+
+    vi.mocked(walletsApi.getWalletTelegramSettings).mockResolvedValue({
+      enabled: true,
+      notifyReceived: true,
+      notifySent: true,
+      notifyConsolidation: true,
+      notifyDraft: true,
+    });
+
+    render(<WalletTelegramSettings walletId={walletId} />);
+
+    const receivedCheckbox = await screen.findByLabelText('Bitcoin received');
+    const consolidationCheckbox = screen.getByLabelText('Consolidation transactions');
+    const draftCheckbox = screen.getByLabelText('Draft transactions (awaiting signature)');
+
+    await user.click(receivedCheckbox);
+    await waitFor(() => {
+      expect(walletsApi.updateWalletTelegramSettings).toHaveBeenCalledWith(
+        walletId,
+        expect.objectContaining({ notifyReceived: false })
+      );
+    });
+
+    await user.click(consolidationCheckbox);
+    await waitFor(() => {
+      expect(walletsApi.updateWalletTelegramSettings).toHaveBeenCalledWith(
+        walletId,
+        expect.objectContaining({ notifyConsolidation: false })
+      );
+    });
+
+    await user.click(draftCheckbox);
+    await waitFor(() => {
+      expect(walletsApi.updateWalletTelegramSettings).toHaveBeenCalledWith(
+        walletId,
+        expect.objectContaining({ notifyDraft: false })
+      );
+    });
+
+    expect(screen.getByText('Saved!')).toBeInTheDocument();
+
+    const timeoutCallbacks = timeoutSpy.mock.calls
+      .filter(([, delay]) => delay === 2000)
+      .map(([callback]) => callback)
+      .filter((callback): callback is () => void => typeof callback === 'function');
+
+    act(() => {
+      timeoutCallbacks.forEach((callback) => callback());
+    });
+
+    expect(screen.queryByText('Saved!')).not.toBeInTheDocument();
+    timeoutSpy.mockRestore();
   });
 });

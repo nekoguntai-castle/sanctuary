@@ -56,10 +56,11 @@ vi.mock('../../components/NetworkSyncActions', () => ({
 }));
 
 vi.mock('../../components/ui/ConfigurableTable', () => ({
-  ConfigurableTable: ({ data, sortBy, sortOrder, onSort, onRowClick }: any) => (
+  ConfigurableTable: ({ data, sortBy, sortOrder, onSort, onRowClick, keyExtractor }: any) => (
     <div data-testid="configurable-table">
       <span data-testid="table-sort">{`${sortBy}-${sortOrder}`}</span>
       <span data-testid="table-order">{data.map((w: any) => w.id).join(',')}</span>
+      <span data-testid="table-keys">{data.map((w: any) => keyExtractor(w)).join(',')}</span>
       <button onClick={() => onSort('name')}>sort-name</button>
       <button onClick={() => onSort('type')}>sort-type</button>
       <button onClick={() => onRowClick(data[0])}>row-click</button>
@@ -336,6 +337,39 @@ describe('WalletList branch coverage', () => {
     setUserPrefs({ sortBy: 'network', sortOrder: 'asc' });
     renderWalletList();
     expect(screen.getByTestId('wallet-order')).toHaveTextContent('w1,w2,w3');
+  });
+
+  it('executes network sort nullish fallbacks when network getters return undefined during sort', () => {
+    setUserPrefs({ sortBy: 'network', sortOrder: 'asc' });
+
+    const makeNetworkFlipWallet = (id: string) => {
+      let reads = 0;
+      const wallet = {
+        ...wallets.find(w => w.id === id)!,
+        id,
+      } as any;
+      Object.defineProperty(wallet, 'network', {
+        configurable: true,
+        get() {
+          reads += 1;
+          // First read is used by filtering; subsequent reads happen during sorting.
+          return reads === 1 ? 'mainnet' : undefined;
+        },
+      });
+      return wallet;
+    };
+
+    vi.mocked(useWalletsHook.useWallets).mockReturnValue({
+      data: [
+        makeNetworkFlipWallet('u1'),
+        makeNetworkFlipWallet('u2'),
+      ],
+      isLoading: false,
+      error: null,
+    } as any);
+
+    renderWalletList();
+    expect(screen.getByTestId('wallet-order')).toHaveTextContent('u1,u2');
   });
 
   it('executes balance sort and descending order branch', () => {

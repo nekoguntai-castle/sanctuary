@@ -85,6 +85,7 @@ describe('HardwareWalletService', () => {
 
     expect(service.isSupported('ledger')).toBe(true);
     expect(service.isSupported('trezor')).toBe(false);
+    expect(service.isSupported('coldcard')).toBe(false);
     expect(service.isSupported()).toBe(true);
   });
 
@@ -110,12 +111,33 @@ describe('HardwareWalletService', () => {
     expect(devices).toEqual([device]);
   });
 
+  it('skips adapters that do not implement getAuthorizedDevices', async () => {
+    const service = new HardwareWalletService();
+    const { adapter, device } = createMockAdapter('ledger');
+    const { adapter: noListAdapter } = createMockAdapter('trezor');
+    noListAdapter.getAuthorizedDevices = undefined;
+    service.registerAdapter(adapter);
+    service.registerAdapter(noListAdapter);
+
+    const devices = await service.getDevices();
+    expect(devices).toEqual([device]);
+  });
+
   it('throws when connect() has no type and multiple adapters', async () => {
     const service = new HardwareWalletService();
     service.registerAdapter(createMockAdapter('ledger').adapter);
     service.registerAdapter(createMockAdapter('trezor').adapter);
 
     await expect(service.connect()).rejects.toThrow('Device type must be specified');
+  });
+
+  it('connects to the only registered adapter when no type is provided', async () => {
+    const service = new HardwareWalletService();
+    const { adapter, device } = createMockAdapter('ledger');
+    service.registerAdapter(adapter);
+
+    await expect(service.connect()).resolves.toEqual(device);
+    expect(adapter.connect).toHaveBeenCalledTimes(1);
   });
 
   it('throws when connecting to missing or unsupported adapter', async () => {
@@ -169,11 +191,31 @@ describe('HardwareWalletService', () => {
     expect(service.isConnected()).toBe(false);
   });
 
+  it('disconnect is a no-op when there is no active adapter', async () => {
+    const service = new HardwareWalletService();
+    await expect(service.disconnect()).resolves.toBeUndefined();
+  });
+
   it('requires a connected device for xpub/sign/verify operations', async () => {
     const service = new HardwareWalletService();
     await expect(service.getXpub("m/84'/0'/0'")).rejects.toThrow('No device connected');
     await expect(service.signPSBT({ psbt: 'psbt', inputPaths: [] })).rejects.toThrow('No device connected');
     await expect(service.verifyAddress("m/84'/0'/0'/0/0", 'bc1q...')).rejects.toThrow('No device connected');
+  });
+
+  it('delegates getXpub to active adapter when connected', async () => {
+    const service = new HardwareWalletService();
+    const { adapter } = createMockAdapter('ledger');
+    service.registerAdapter(adapter);
+    await service.connect('ledger');
+
+    const result = await service.getXpub("m/84'/0'/0'");
+    expect(result).toEqual({
+      xpub: 'xpub-ledger',
+      fingerprint: 'f1f1f1f1',
+      path: "m/84'/0'/0'",
+    });
+    expect(adapter.getXpub).toHaveBeenCalledWith("m/84'/0'/0'");
   });
 
   it('throws verifyAddress error when adapter does not support verification', async () => {
@@ -184,6 +226,23 @@ describe('HardwareWalletService', () => {
     await service.connect('ledger');
 
     await expect(service.verifyAddress("m/84'/0'/0'/0/0", 'bc1q...')).rejects.toThrow('does not support address verification');
+  });
+
+  it('delegates verifyAddress when adapter supports verification', async () => {
+    const service = new HardwareWalletService();
+    const { adapter } = createMockAdapter('ledger', {
+      verifyAddress: vi.fn(async () => true),
+    });
+    service.registerAdapter(adapter);
+    await service.connect('ledger');
+
+    await expect(service.verifyAddress("m/84'/0'/0'/0/1", 'bc1qxyz')).resolves.toBe(true);
+    expect(adapter.verifyAddress).toHaveBeenCalledWith("m/84'/0'/0'/0/1", 'bc1qxyz');
+  });
+
+  it('throws when getAllXpubs is called without a connected device', async () => {
+    const service = new HardwareWalletService();
+    await expect(service.getAllXpubs()).rejects.toThrow('No device connected');
   });
 
   it('fetches all xpubs with progress and skips unsupported paths', async () => {
@@ -301,4 +360,3 @@ describe('HardwareWalletService', () => {
     expect(service.getRegisteredAdapters()).toHaveLength(0);
   });
 });
-

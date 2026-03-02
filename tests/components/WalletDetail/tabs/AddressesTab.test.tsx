@@ -327,4 +327,82 @@ describe('AddressesTab', () => {
     fireEvent.click(screen.getByText('Receive'));
     expect(baseProps.onAddressSubTabChange).toHaveBeenCalledWith('receive');
   });
+
+  it('shows empty table message when selected sub-tab has no addresses', () => {
+    const addresses = [
+      {
+        id: 'addr-receive-only',
+        address: 'bc1qreceiveonly0000000000000000000000000000',
+        derivationPath: "m/84'/0'/0'/0/0",
+        index: 0,
+        used: false,
+        balance: 0,
+        labels: [],
+      },
+    ];
+
+    render(
+      <AddressesTab
+        {...baseProps}
+        addresses={addresses as any}
+        descriptor="wpkh(...)"
+        addressSubTab="change"
+      />
+    );
+
+    expect(screen.getByText(/No change addresses used yet/)).toBeInTheDocument();
+  });
+
+  it('renders label badges when labels array is present', () => {
+    const addresses = [
+      {
+        id: 'addr-labeled',
+        address: 'bc1qlabeled000000000000000000000000000000000',
+        derivationPath: "m/84'/0'/0'/0/1",
+        index: 1,
+        used: false,
+        balance: 0,
+        labels: [{ id: 'label-1', name: 'Hot', color: '#ff0000' }],
+      },
+    ];
+
+    render(
+      <AddressesTab
+        {...baseProps}
+        addresses={addresses as any}
+        descriptor="wpkh(...)"
+      />
+    );
+
+    expect(screen.getByText('Hot')).toBeInTheDocument();
+  });
+
+  it('falls back to mainnet explorer and address-count summary when network and summary are missing', () => {
+    const address = 'bc1qfallback00000000000000000000000000000000';
+    const addresses = [
+      {
+        id: 'addr-fallback',
+        address,
+        derivationPath: "m/84'/0'/0'/0/0",
+        index: 0,
+        used: false,
+        balance: 0,
+        labels: [],
+      },
+    ];
+
+    render(
+      <AddressesTab
+        {...baseProps}
+        addresses={addresses as any}
+        descriptor="wpkh(...)"
+        addressSummary={null}
+        network=""
+      />
+    );
+
+    const explorerLink = screen.getByTitle('View on block explorer');
+    expect(explorerLink).toHaveAttribute('href', `https://mempool.space/address/${address}`);
+    expect(screen.getByText('Showing 1 of 1 addresses')).toBeInTheDocument();
+  });
 });

@@ -36,9 +36,16 @@ vi.mock('../../components/PrivacyBadge', () => ({
 }));
 
 vi.mock('../../components/PrivacyDetailPanel', () => ({
-  PrivacyDetailPanel: ({ utxo }: { utxo: { txid: string; vout: number } }) => (
+  PrivacyDetailPanel: ({
+    utxo,
+    onClose,
+  }: {
+    utxo: { txid: string; vout: number };
+    onClose?: () => void;
+  }) => (
     <div data-testid="privacy-detail">
       {utxo.txid}:{utxo.vout}
+      <button onClick={onClose}>close-privacy</button>
     </div>
   ),
 }));
@@ -71,7 +78,6 @@ describe('UTXOList branch coverage', () => {
             frozen: false,
             spent: false,
             scriptType: 'unknown_script' as any,
-            date: new Date().toISOString(),
           },
         ]}
         totalCount={3}
@@ -97,6 +103,35 @@ describe('UTXOList branch coverage', () => {
     await waitFor(() => {
       expect(bitcoinApi.getStatus).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it('invokes address and tx explorer link click handlers without toggling selection', () => {
+    const onToggleSelect = vi.fn();
+
+    render(
+      <UTXOList
+        utxos={[
+          {
+            txid: 'tx-link',
+            vout: 1,
+            address: 'bc1qlink',
+            amount: 10000,
+            confirmations: 12,
+            frozen: false,
+            spent: false,
+            scriptType: 'native_segwit' as any,
+          },
+        ] as any}
+        onToggleFreeze={vi.fn()}
+        selectable
+        selectedUtxos={new Set()}
+        onToggleSelect={onToggleSelect}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('link', { name: /bc1qlink/i }));
+    fireEvent.click(screen.getByRole('link', { name: /txid:tx-link/i }));
+    expect(onToggleSelect).not.toHaveBeenCalled();
   });
 
   it('covers age color buckets, plural dust banner, and disabled select guards', () => {
@@ -246,6 +281,41 @@ describe('UTXOList branch coverage', () => {
 
     fireEvent.click(screen.getByTestId('privacy-badge-61'));
     expect(screen.getByTestId('privacy-detail')).toHaveTextContent('with-privacy:0');
+    fireEvent.click(screen.getByText('close-privacy'));
+    expect(screen.queryByTestId('privacy-detail')).not.toBeInTheDocument();
+
+    rerender(
+      <UTXOList
+        utxos={utxos as any}
+        onToggleFreeze={vi.fn()}
+        showPrivacy
+        privacyData={[
+          {
+            txid: 'with-privacy',
+            vout: 0,
+            score: { score: 61, grade: 'good' },
+          },
+        ] as any}
+      />
+    );
+    fireEvent.click(screen.getByTestId('privacy-badge-61'));
+    expect(screen.getByTestId('privacy-detail')).toHaveTextContent('with-privacy:0');
+
+    rerender(
+      <UTXOList
+        utxos={[] as any}
+        onToggleFreeze={vi.fn()}
+        showPrivacy
+        privacyData={[
+          {
+            txid: 'with-privacy',
+            vout: 0,
+            score: { score: 61, grade: 'good' },
+          },
+        ] as any}
+      />
+    );
+    expect(screen.queryByTestId('privacy-detail')).not.toBeInTheDocument();
 
     rerender(
       <UTXOList
@@ -275,5 +345,45 @@ describe('UTXOList branch coverage', () => {
       />
     );
     expect(screen.getByText('Avoid merging UTXOs')).toBeInTheDocument();
+
+    rerender(
+      <UTXOList
+        utxos={utxos as any}
+        onToggleFreeze={vi.fn()}
+        showPrivacy
+        privacySummary={{
+          averageScore: 93,
+          grade: 'excellent',
+          recommendations: [],
+        } as any}
+      />
+    );
+    expect(screen.getByText(/Wallet Privacy Score: 93/)).toBeInTheDocument();
+    expect(screen.getByText('excellent')).toBeInTheDocument();
+  });
+
+  it('covers explorer URL fetch failure path', async () => {
+    vi.mocked(bitcoinApi.getStatus).mockRejectedValueOnce(new Error('status failed'));
+
+    render(
+      <UTXOList
+        utxos={[
+          {
+            txid: 'status-fail',
+            vout: 0,
+            address: 'bc1qstatus',
+            amount: 1000,
+            confirmations: 1,
+            frozen: false,
+            spent: false,
+          },
+        ] as any}
+        onToggleFreeze={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(bitcoinApi.getStatus).toHaveBeenCalled();
+    });
   });
 });

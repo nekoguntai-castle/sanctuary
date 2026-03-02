@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 
@@ -135,6 +135,42 @@ describe('AIQueryInput', () => {
       });
 
       await userEvent.type(input, 'test query');
+
+      await waitFor(() => {
+        expect(screen.queryByText('Try asking...')).not.toBeInTheDocument();
+      });
+    });
+
+    it('should hide examples shortly after input blur', async () => {
+      const originalSetTimeout = globalThis.setTimeout;
+      const timeoutCallbacks: Array<() => void> = [];
+      const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout').mockImplementation(
+        ((callback: TimerHandler, delay?: number, ...args: unknown[]) => {
+          if (delay === 200 && typeof callback === 'function') {
+            timeoutCallbacks.push(() => callback(...args));
+            return 0 as unknown as ReturnType<typeof setTimeout>;
+          }
+
+          return originalSetTimeout(callback, delay, ...args);
+        }) as typeof setTimeout
+      );
+
+      render(<AIQueryInput walletId={testWalletId} />);
+
+      const input = screen.getByPlaceholderText('Ask about your transactions...');
+      fireEvent.focus(input);
+
+      await waitFor(() => {
+        expect(screen.getByText('Try asking...')).toBeInTheDocument();
+      });
+
+      fireEvent.blur(input);
+      expect(setTimeoutSpy).toHaveBeenCalled();
+      expect(timeoutCallbacks).toHaveLength(1);
+
+      act(() => {
+        timeoutCallbacks[0]();
+      });
 
       await waitFor(() => {
         expect(screen.queryByText('Try asking...')).not.toBeInTheDocument();

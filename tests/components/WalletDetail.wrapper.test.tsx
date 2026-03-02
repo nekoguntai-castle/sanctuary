@@ -21,6 +21,8 @@ const mocks = vi.hoisted(() => ({
   aiFilterState: {} as any,
   walletLogsState: {} as any,
   walletWebSocketState: vi.fn(),
+  walletSyncHookArgs: undefined as any,
+  walletSharingHookArgs: undefined as any,
   loadAddresses: vi.fn(),
   loadAddressSummary: vi.fn(),
   loadUtxosForStats: vi.fn(),
@@ -97,11 +99,17 @@ vi.mock('../../components/WalletDetail/hooks/useWalletData', () => ({
 }));
 
 vi.mock('../../components/WalletDetail/hooks/useWalletSync', () => ({
-  useWalletSync: () => mocks.walletSyncState,
+  useWalletSync: (args: any) => {
+    mocks.walletSyncHookArgs = args;
+    return mocks.walletSyncState;
+  },
 }));
 
 vi.mock('../../components/WalletDetail/hooks/useWalletSharing', () => ({
-  useWalletSharing: () => mocks.walletSharingState,
+  useWalletSharing: (args: any) => {
+    mocks.walletSharingHookArgs = args;
+    return mocks.walletSharingState;
+  },
 }));
 
 vi.mock('../../components/WalletDetail/hooks/useAITransactionFilter', () => ({
@@ -146,6 +154,7 @@ vi.mock('../../components/WalletDetail/tabs', () => ({
   ),
   UTXOTab: (props: any) => (
     <div data-testid="utxo-tab">
+      <span data-testid="utxo-network">{props.network}</span>
       <button onClick={() => props.onToggleFreeze('tx-1', 0)}>utxo-freeze</button>
       <button onClick={() => props.onToggleFreeze('missing', 1)}>utxo-freeze-missing</button>
       <button onClick={() => props.onToggleSelect('utxo-1')}>utxo-select</button>
@@ -155,6 +164,8 @@ vi.mock('../../components/WalletDetail/tabs', () => ({
   ),
   AddressesTab: (props: any) => (
     <div data-testid="addresses-tab">
+      <span data-testid="addr-descriptor">{String(props.descriptor)}</span>
+      <span data-testid="addr-network">{props.network}</span>
       <button onClick={props.onLoadMoreAddresses}>addr-load-more</button>
       <button onClick={props.onGenerateMoreAddresses}>addr-generate</button>
       <button
@@ -175,13 +186,21 @@ vi.mock('../../components/WalletDetail/tabs', () => ({
   ),
   DraftsTab: (props: any) => (
     <div data-testid="drafts-tab">
+      <span data-testid="drafts-role">{props.userRole}</span>
+      <span data-testid="drafts-type">{props.walletType}</span>
       <button onClick={() => props.onDraftsChange(2)}>drafts-add</button>
+      <button onClick={() => props.onDraftsChange(1)}>drafts-single</button>
       <button onClick={() => props.onDraftsChange(0)}>drafts-clear</button>
     </div>
   ),
-  StatsTab: () => <div data-testid="stats-tab" />,
+  StatsTab: (props: any) => (
+    <div data-testid="stats-tab">
+      <span data-testid="stats-utxo-id">{props.utxos?.[0]?.id || 'none'}</span>
+    </div>
+  ),
   AccessTab: (props: any) => (
     <div data-testid="access-tab">
+      <span data-testid="access-role">{props.userRole}</span>
       <button onClick={props.onShowTransferModal}>access-transfer</button>
     </div>
   ),
@@ -206,6 +225,7 @@ vi.mock('../../components/WalletDetail/modals', () => ({
   ),
   ReceiveModal: (props: any) => (
     <div data-testid="receive-modal">
+      <span data-testid="receive-network">{props.network}</span>
       <button onClick={props.onClose}>receive-close</button>
       <button onClick={props.onNavigateToSettings}>receive-settings</button>
     </div>
@@ -414,6 +434,8 @@ describe('WalletDetail wrapper behaviors', () => {
     mocks.walletDataState = createWalletData();
     mocks.walletSyncState = createSyncState();
     mocks.walletSharingState = createSharingState();
+    mocks.walletSyncHookArgs = undefined;
+    mocks.walletSharingHookArgs = undefined;
     mocks.aiFilterState = {
       aiQueryFilter: null,
       setAiQueryFilter: vi.fn(),
@@ -579,6 +601,11 @@ describe('WalletDetail wrapper behaviors', () => {
     await user.click(screen.getByRole('button', { name: /access/i }));
     await user.click(screen.getByRole('button', { name: 'access-transfer' }));
     expect(screen.getByTestId('transfer-modal')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'transfer-close' }));
+    expect(screen.queryByTestId('transfer-modal')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'access-transfer' }));
+    expect(screen.getByTestId('transfer-modal')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'transfer-confirm' }));
     expect(mocks.transferComplete).toHaveBeenCalled();
 
@@ -592,6 +619,16 @@ describe('WalletDetail wrapper behaviors', () => {
     await user.click(screen.getByRole('button', { name: 'settings-repair' }));
     expect(mocks.repairHandler).toHaveBeenCalled();
 
+    await user.click(screen.getByRole('button', { name: 'settings-export' }));
+    expect(screen.getByTestId('export-modal')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'export-close' }));
+    expect(screen.queryByTestId('export-modal')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'settings-delete' }));
+    expect(screen.getByTestId('delete-modal')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'delete-close' }));
+    expect(screen.queryByTestId('delete-modal')).not.toBeInTheDocument();
+
     await user.click(screen.getByRole('button', { name: 'settings-delete' }));
     expect(screen.getByTestId('delete-modal')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'delete-confirm' }));
@@ -604,6 +641,7 @@ describe('WalletDetail wrapper behaviors', () => {
   it('handles failures and guarded no-op branches', async () => {
     const user = userEvent.setup();
     vi.mocked(transactionsApi.freezeUTXO).mockRejectedValueOnce(new Error('freeze failed'));
+    vi.mocked(transactionsApi.generateAddresses).mockRejectedValueOnce(new Error('generate failed'));
     vi.mocked(walletsApi.updateWallet).mockRejectedValueOnce(new Error('update failed'));
     vi.mocked(walletsApi.deleteWallet).mockRejectedValueOnce(new Error('delete failed'));
 
@@ -616,6 +654,10 @@ describe('WalletDetail wrapper behaviors', () => {
     await user.click(screen.getByRole('button', { name: /addresses/i }));
     await user.click(screen.getByRole('button', { name: 'addr-load-more' }));
     expect(mocks.loadAddresses).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'addr-generate' }));
+    await waitFor(() => {
+      expect(mocks.handleError).toHaveBeenCalledWith(expect.any(Error), 'Failed to Generate Addresses');
+    });
 
     await user.click(screen.getByRole('button', { name: /utxos/i }));
     await user.click(screen.getByRole('button', { name: 'utxo-freeze-missing' }));
@@ -652,5 +694,98 @@ describe('WalletDetail wrapper behaviors', () => {
     await user.click(screen.getByRole('button', { name: /settings/i }));
     await user.click(screen.getByRole('button', { name: 'settings-update' }));
     expect(walletsApi.updateWallet).not.toHaveBeenCalled();
+  });
+
+  it('covers remaining WalletDetail fallback and guard branches', async () => {
+    const user = userEvent.setup();
+    const walletWithFallbacks = {
+      ...createWalletData().wallet,
+      type: WalletType.MULTI_SIG,
+      network: undefined,
+      descriptor: undefined,
+      userRole: undefined,
+    };
+
+    mocks.locationState = { activeTab: 'stats' };
+    mocks.walletDataState = createWalletData({
+      wallet: walletWithFallbacks,
+      utxoStats: [],
+      loadingUtxoStats: true,
+    });
+
+    const { rerender } = render(<WalletDetail />);
+    expect(screen.getByTestId('stats-tab')).toBeInTheDocument();
+    expect(mocks.loadUtxosForStats).not.toHaveBeenCalled();
+
+    mocks.walletDataState = createWalletData({
+      wallet: walletWithFallbacks,
+      utxoStats: [{ id: 'stats-utxo', txid: 'stats-tx', vout: 1, amount: 2000 }],
+      loadingUtxoStats: false,
+    });
+    rerender(<WalletDetail />);
+    expect(screen.getByTestId('stats-utxo-id')).toHaveTextContent('stats-utxo');
+
+    mocks.locationState = { activeTab: 'addresses' };
+    rerender(<WalletDetail />);
+    expect(screen.getByTestId('addr-descriptor')).toHaveTextContent('null');
+    expect(screen.getByTestId('addr-network')).toHaveTextContent('mainnet');
+
+    await user.click(screen.getByRole('button', { name: /transactions/i }));
+    await user.click(screen.getByRole('button', { name: 'tx-labels-change' }));
+    expect(mocks.fetchData).toHaveBeenCalledWith(true);
+
+    await user.click(screen.getByRole('button', { name: 'header-receive' }));
+    expect(screen.getByTestId('receive-network')).toHaveTextContent('mainnet');
+    await user.click(screen.getByRole('button', { name: 'receive-close' }));
+
+    await user.click(screen.getByRole('button', { name: /utxos/i }));
+    expect(screen.getByTestId('utxo-network')).toHaveTextContent('mainnet');
+
+    mocks.locationState = { activeTab: 'drafts' };
+    rerender(<WalletDetail />);
+    expect(screen.getByTestId('drafts-role')).toHaveTextContent('viewer');
+    expect(screen.getByTestId('drafts-type')).toHaveTextContent(WalletType.MULTI_SIG);
+    await user.click(screen.getByRole('button', { name: 'drafts-single' }));
+    expect(mocks.addAppNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ title: '1 pending draft' })
+    );
+
+    mocks.locationState = { activeTab: 'access' };
+    rerender(<WalletDetail />);
+    expect(screen.getByTestId('access-role')).toHaveTextContent('viewer');
+
+    mocks.locationState = { activeTab: 'log' };
+    rerender(<WalletDetail />);
+    expect(screen.getByTestId('log-tab')).toBeInTheDocument();
+
+    mocks.fetchData.mockClear();
+    mocks.routeId = undefined;
+    mocks.locationState = { activeTab: 'tx' };
+    rerender(<WalletDetail />);
+    await user.click(screen.getByRole('button', { name: 'tx-labels-change' }));
+    expect(mocks.fetchData).not.toHaveBeenCalled();
+
+    mocks.locationState = { activeTab: 'settings' };
+    rerender(<WalletDetail />);
+    await user.click(screen.getByRole('button', { name: 'settings-delete' }));
+    await user.click(screen.getByRole('button', { name: 'delete-confirm' }));
+    expect(walletsApi.deleteWallet).not.toHaveBeenCalled();
+  });
+
+  it('runs hook onDataRefresh callbacks wired into sync and sharing hooks', async () => {
+    render(<WalletDetail />);
+
+    expect(mocks.walletSyncHookArgs?.onDataRefresh).toEqual(expect.any(Function));
+    expect(mocks.walletSharingHookArgs?.onDataRefresh).toEqual(expect.any(Function));
+
+    mocks.fetchData.mockClear();
+
+    await mocks.walletSyncHookArgs.onDataRefresh();
+    expect(mocks.fetchData).toHaveBeenCalledWith(true);
+
+    mocks.fetchData.mockClear();
+
+    await mocks.walletSharingHookArgs.onDataRefresh();
+    expect(mocks.fetchData).toHaveBeenCalledWith(true);
   });
 });

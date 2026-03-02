@@ -8,6 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
+import { getRegistrationStatus } from '../../src/api/auth';
 
 // Mock the UserContext
 const mockLogin = vi.fn();
@@ -187,6 +188,41 @@ describe('Login Component', () => {
     });
   });
 
+  it('should treat 401 health response as connected', async () => {
+    mockFetch.mockResolvedValue({ ok: false, status: 401 });
+    const { Login } = await import('../../components/Login');
+
+    await renderLogin(Login);
+
+    await waitFor(() => {
+      expect(screen.getByText(/connected/i)).toBeInTheDocument();
+    });
+  });
+
+  it('should show API error for non-401 unsuccessful responses', async () => {
+    mockFetch.mockResolvedValue({ ok: false, status: 500 });
+    const { Login } = await import('../../components/Login');
+
+    await renderLogin(Login);
+
+    await waitFor(() => {
+      expect(screen.getByText(/error/i)).toBeInTheDocument();
+    });
+  });
+
+  it('should disable registration when registration status lookup fails', async () => {
+    mockFetch.mockResolvedValue({ ok: true, status: 200 });
+    vi.mocked(getRegistrationStatus).mockRejectedValueOnce(new Error('reg status failed'));
+    const { Login } = await import('../../components/Login');
+
+    await renderLogin(Login);
+
+    await waitFor(() => {
+      expect(screen.queryByText(/don't have an account\? register/i)).not.toBeInTheDocument();
+      expect(screen.getByText(/contact administrator for account access/i)).toBeInTheDocument();
+    });
+  });
+
   it('should display API error status on fetch failure', async () => {
     mockFetch.mockRejectedValue(new Error('Network error'));
     const { Login } = await import('../../components/Login');
@@ -217,6 +253,79 @@ describe('Login Component', () => {
     // Fields should be cleared
     expect(usernameInput.value).toBe('');
     expect(passwordInput.value).toBe('');
+  });
+
+  it('should register without email as undefined', async () => {
+    const { Login } = await import('../../components/Login');
+    const user = userEvent.setup();
+
+    await renderLogin(Login);
+
+    const toggleButton = await screen.findByText(/don't have an account\? register/i);
+    await user.click(toggleButton);
+
+    const usernameInput = screen.getByLabelText(/username/i);
+    const passwordInput = screen.getByLabelText(/password/i);
+    const submitButton = screen.getByRole('button', { name: /create account/i });
+
+    await user.type(usernameInput, 'newuser');
+    await user.type(passwordInput, 'newpassword123');
+    await user.click(submitButton);
+
+    expect(mockRegister).toHaveBeenCalledWith('newuser', 'newpassword123', undefined);
+  });
+
+  it('applies dark class when system prefers dark mode', async () => {
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn().mockImplementation(query => ({
+        matches: true,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    });
+
+    const { Login } = await import('../../components/Login');
+    await renderLogin(Login);
+
+    expect(document.documentElement.classList.contains('dark')).toBe(true);
+  });
+
+  it('updates theme when system color-scheme change event fires', async () => {
+    let changeHandler: ((e: MediaQueryListEvent) => void) | null = null;
+
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn().mockImplementation(query => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn((event: string, handler: EventListenerOrEventListenerObject) => {
+          if (event === 'change' && typeof handler === 'function') {
+            changeHandler = handler as (e: MediaQueryListEvent) => void;
+          }
+        }),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    });
+
+    const { Login } = await import('../../components/Login');
+    await renderLogin(Login);
+
+    expect(document.documentElement.classList.contains('dark')).toBe(false);
+    changeHandler?.({ matches: true } as MediaQueryListEvent);
+    expect(document.documentElement.classList.contains('dark')).toBe(true);
+
+    changeHandler?.({ matches: false } as MediaQueryListEvent);
+    expect(document.documentElement.classList.contains('dark')).toBe(false);
   });
 });
 
@@ -356,5 +465,90 @@ describe('Login Component - Error Display', () => {
     await renderLogin(Login);
 
     expect(screen.getByText('Invalid credentials')).toBeInTheDocument();
+  });
+});
+
+describe('Login Component - Loading branches', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockFetch.mockResolvedValue({ ok: true });
+
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn().mockImplementation(query => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    });
+  });
+
+  it('covers loading branch on login submit button', async () => {
+    vi.doMock('../../contexts/UserContext', () => ({
+      useUser: () => ({
+        login: mockLogin,
+        register: mockRegister,
+        verify2FA: mockVerify2FA,
+        cancel2FA: mockCancel2FA,
+        twoFactorPending: null,
+        isLoading: true,
+        error: null,
+        clearError: mockClearError,
+      }),
+    }));
+
+    vi.resetModules();
+    const { Login } = await import('../../components/Login');
+    await renderLogin(Login);
+
+    expect(screen.getByRole('button', { name: /loading/i })).toBeDisabled();
+  });
+
+  it('covers loading and error branches on 2FA screen', async () => {
+    vi.doMock('../../contexts/UserContext', () => ({
+      useUser: () => ({
+        login: mockLogin,
+        register: mockRegister,
+        verify2FA: mockVerify2FA,
+        cancel2FA: mockCancel2FA,
+        twoFactorPending: { tempToken: 'test-token' },
+        isLoading: true,
+        error: 'Invalid code',
+        clearError: mockClearError,
+      }),
+    }));
+
+    vi.resetModules();
+    const { Login } = await import('../../components/Login');
+    await renderLogin(Login);
+
+    expect(screen.getByText('Invalid code')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /loading/i })).toBeDisabled();
+  });
+
+  it('covers loading branch while register mode is active', async () => {
+    vi.doMock('../../contexts/UserContext', () => ({
+      useUser: () => ({
+        login: mockLogin,
+        register: mockRegister,
+        verify2FA: mockVerify2FA,
+        cancel2FA: mockCancel2FA,
+        twoFactorPending: null,
+        isLoading: true,
+        error: null,
+        clearError: mockClearError,
+      }),
+    }));
+
+    vi.resetModules();
+    const { Login } = await import('../../components/Login');
+    const user = userEvent.setup();
+    await renderLogin(Login);
+
+    await user.click(screen.getByText(/don't have an account\? register/i));
+    expect(screen.getByText(/create your digital sanctuary/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /loading/i })).toBeDisabled();
   });
 });

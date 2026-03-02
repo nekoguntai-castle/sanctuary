@@ -1,17 +1,23 @@
 import React from 'react';
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { TransactionFlowPreview } from '../../components/TransactionFlowPreview';
+
+const mockFormatFiat = vi.hoisted(() => vi.fn((sats: number) => `$${(sats / 100000).toFixed(2)}`));
 
 vi.mock('../../contexts/CurrencyContext', () => ({
   useCurrency: () => ({
     format: (sats: number) => `${sats} sats`,
-    formatFiat: (sats: number) => `$${(sats / 100000).toFixed(2)}`,
+    formatFiat: mockFormatFiat,
     showFiat: true,
   }),
 }));
 
 describe('TransactionFlowPreview', () => {
+  beforeEach(() => {
+    mockFormatFiat.mockImplementation((sats: number) => `$${(sats / 100000).toFixed(2)}`);
+  });
+
   it('returns null when no inputs and outputs', () => {
     const { container } = render(
       <TransactionFlowPreview
@@ -58,5 +64,54 @@ describe('TransactionFlowPreview', () => {
     expect(screen.getByText('change')).toBeInTheDocument();
     expect(screen.getByText('Change')).toBeInTheDocument();
     expect(screen.getByText('~48000 sats')).toBeInTheDocument();
+  });
+
+  it('renders no-input placeholder and hides fiat values when fiat formatter returns null', () => {
+    mockFormatFiat.mockReturnValue(null);
+
+    render(
+      <TransactionFlowPreview
+        inputs={[]}
+        outputs={[{ address: 'bc1qoutputonly', amount: 12000 }]}
+        fee={0}
+        feeRate={1}
+        totalInput={12000}
+        totalOutput={12000}
+      />
+    );
+
+    expect(screen.getByText('No inputs')).toBeInTheDocument();
+    expect(screen.queryByText('$0.12')).not.toBeInTheDocument();
+  });
+
+  it('renders no-outputs placeholder when outputs are empty and fee is zero', () => {
+    render(
+      <TransactionFlowPreview
+        inputs={[{ txid: 'tx-empty-out', vout: 1, address: 'bc1qinputonly', amount: 15000 }]}
+        outputs={[]}
+        fee={0}
+        feeRate={1}
+        totalInput={15000}
+        totalOutput={0}
+      />
+    );
+
+    expect(screen.getByText('No outputs')).toBeInTheDocument();
+  });
+
+  it('does not render no-outputs placeholder when fee exists', () => {
+    render(
+      <TransactionFlowPreview
+        inputs={[{ txid: 'tx-fee', vout: 0, address: 'bc1qinputfee', amount: 18000 }]}
+        outputs={[]}
+        fee={500}
+        feeRate={2}
+        totalInput={18000}
+        totalOutput={17500}
+      />
+    );
+
+    expect(screen.getByText('Fee (2 sat/vB)')).toBeInTheDocument();
+    expect(screen.queryByText('No outputs')).not.toBeInTheDocument();
   });
 });

@@ -105,8 +105,12 @@ describe('NotificationSoundSettings branch coverage', () => {
     expect(mockState.playSound).not.toHaveBeenCalled();
 
     const testButtons = screen.getAllByTitle('Test sound');
-    testButtons[0].removeAttribute('disabled');
-    fireEvent.click(testButtons[0]);
+    const reactPropsKey = Object.keys(testButtons[0]).find(key => key.startsWith('__reactProps$'));
+    const reactOnClick = reactPropsKey
+      ? (testButtons[0] as any)[reactPropsKey]?.onClick
+      : undefined;
+    expect(typeof reactOnClick).toBe('function');
+    reactOnClick?.({} as React.MouseEvent<HTMLButtonElement>);
     expect(mockState.playSound).not.toHaveBeenCalled();
   });
 
@@ -182,5 +186,25 @@ describe('NotificationSoundSettings branch coverage', () => {
     const testButtons = screen.getAllByTitle('Test sound');
     await user.click(testButtons[0]);
     expect(mockState.playSound).toHaveBeenCalledWith('chime', 65);
+  });
+
+  it('covers per-event toggle callback and payload update', async () => {
+    const user = userEvent.setup();
+    render(<NotificationSoundSettings />);
+
+    const confirmationRow = screen.getByText('Confirmation').closest('div[class*="surface-muted"]') as HTMLElement;
+    const eventToggle = confirmationRow.querySelector('button') as HTMLButtonElement;
+    await user.click(eventToggle);
+
+    await waitFor(() => {
+      expect(mockState.updatePreferences).toHaveBeenCalledWith(expect.objectContaining({
+        notificationSounds: expect.objectContaining({
+          confirmation: expect.objectContaining({
+            enabled: false,
+            sound: 'chime',
+          }),
+        }),
+      }));
+    });
   });
 });

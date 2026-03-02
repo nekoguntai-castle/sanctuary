@@ -102,6 +102,65 @@ describe('useTransactionList branches', () => {
     });
   });
 
+  it('covers explorer/details fetch failures plus clipboard success/fallback timeout paths', async () => {
+    vi.mocked(bitcoinApi.getStatus).mockRejectedValueOnce(new Error('status failed'));
+    vi.mocked(transactionsApi.getTransaction).mockRejectedValueOnce(new Error('details failed'));
+    const timeoutCallbacks: Array<() => void> = [];
+    const realSetTimeout = globalThis.setTimeout;
+    const setTimeoutSpy = vi
+      .spyOn(globalThis, 'setTimeout')
+      .mockImplementation(((cb: TimerHandler, ms?: number) => {
+        if (typeof cb === 'function' && ms === 2000) {
+          timeoutCallbacks.push(cb as () => void);
+          return 0 as unknown as ReturnType<typeof setTimeout>;
+        }
+        return realSetTimeout(cb, ms);
+      }) as typeof setTimeout);
+
+    const writeText = vi.fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('clipboard failed'));
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+    const execCommand = vi.fn().mockReturnValue(true);
+    Object.defineProperty(document, 'execCommand', {
+      value: execCommand,
+      configurable: true,
+    });
+
+    const tx = makeTx({ id: 'tx-fail', txid: 'txid-fail' });
+    const { result } = renderHook(() => useTransactionList({ transactions: [tx] }));
+
+    act(() => {
+      result.current.handleTxClick(tx);
+    });
+    await waitFor(() => {
+      expect(transactionsApi.getTransaction).toHaveBeenCalledWith('txid-fail');
+    });
+    await waitFor(() => {
+      expect(result.current.loadingDetails).toBe(false);
+    });
+    expect(result.current.fullTxDetails).toBeNull();
+
+    await act(async () => {
+      await result.current.copyToClipboard('txid-fail');
+    });
+    expect(result.current.copied).toBe(true);
+    act(() => timeoutCallbacks.shift()?.());
+    expect(result.current.copied).toBe(false);
+
+    await act(async () => {
+      await result.current.copyToClipboard('txid-fail');
+    });
+    expect(execCommand).toHaveBeenCalledWith('copy');
+    expect(result.current.copied).toBe(true);
+    act(() => timeoutCallbacks.shift()?.());
+    expect(result.current.copied).toBe(false);
+    setTimeoutSpy.mockRestore();
+  });
+
   it('no-ops save labels and AI suggestion when no transaction is selected', async () => {
     const { result } = renderHook(() => useTransactionList({ transactions: [makeTx()] }));
 
@@ -114,8 +173,37 @@ describe('useTransactionList branches', () => {
     expect(labelsApi.createLabel).not.toHaveBeenCalled();
   });
 
+  it('falls back to empty selected labels when transaction labels are undefined', async () => {
+    const tx = makeTx({
+      id: 'tx-no-labels',
+      txid: 'txid-no-labels',
+      labels: undefined as any,
+    });
+
+    const { result } = renderHook(() =>
+      useTransactionList({
+        transactions: [tx],
+      })
+    );
+
+    act(() => {
+      result.current.handleTxClick(tx);
+    });
+    await waitFor(() => expect(transactionsApi.getTransaction).toHaveBeenCalledWith('txid-no-labels'));
+
+    await act(async () => {
+      await result.current.handleEditLabels(tx);
+    });
+
+    expect(result.current.selectedLabelIds).toEqual([]);
+  });
+
   it('edits labels, toggles add/remove branches, and saves selected labels', async () => {
-    const tx = makeTx({ id: 'tx-edit', txid: 'txid-edit', labels: undefined });
+    const tx = makeTx({
+      id: 'tx-edit',
+      txid: 'txid-edit',
+      labels: [{ id: 'lbl-existing-on-tx', name: 'Existing', color: '#333333' } as Label],
+    });
     const onLabelsChange = vi.fn();
     const labelA: Label = {
       id: 'lbl-a',
@@ -152,30 +240,66 @@ describe('useTransactionList branches', () => {
     await act(async () => {
       await result.current.handleEditLabels(tx);
     });
-    expect(result.current.selectedLabelIds).toEqual([]);
+    expect(result.current.selectedLabelIds).toEqual(['lbl-existing-on-tx']);
 
     act(() => {
       result.current.handleToggleLabel('lbl-a');
     });
-    expect(result.current.selectedLabelIds).toEqual(['lbl-a']);
+    expect(result.current.selectedLabelIds).toEqual(['lbl-existing-on-tx', 'lbl-a']);
 
     act(() => {
       result.current.handleToggleLabel('lbl-a');
     });
-    expect(result.current.selectedLabelIds).toEqual([]);
+    expect(result.current.selectedLabelIds).toEqual(['lbl-existing-on-tx']);
 
     act(() => {
       result.current.handleToggleLabel('lbl-b');
     });
-    expect(result.current.selectedLabelIds).toEqual(['lbl-b']);
+    expect(result.current.selectedLabelIds).toEqual(['lbl-existing-on-tx', 'lbl-b']);
 
     await act(async () => {
       await result.current.handleSaveLabels();
     });
 
-    expect(labelsApi.setTransactionLabels).toHaveBeenCalledWith('tx-edit', ['lbl-b']);
+    expect(labelsApi.setTransactionLabels).toHaveBeenCalledWith('tx-edit', ['lbl-existing-on-tx', 'lbl-b']);
     expect(result.current.selectedTx?.labels?.map(l => l.id)).toEqual(['lbl-b']);
     expect(onLabelsChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('covers edit/save/AI suggestion error handlers', async () => {
+    const tx = makeTx({ id: 'tx-errors', txid: 'txid-errors', walletId: 'wallet-errors', labels: [] });
+    vi.mocked(labelsApi.getLabels).mockRejectedValueOnce(new Error('labels failed'));
+    vi.mocked(labelsApi.setTransactionLabels).mockRejectedValueOnce(new Error('save failed'));
+    vi.mocked(labelsApi.createLabel).mockRejectedValueOnce(new Error('create failed'));
+
+    const { result } = renderHook(() =>
+      useTransactionList({
+        transactions: [tx],
+      })
+    );
+
+    act(() => {
+      result.current.handleTxClick(tx);
+    });
+    await waitFor(() => expect(transactionsApi.getTransaction).toHaveBeenCalledWith('txid-errors'));
+
+    await act(async () => {
+      await result.current.handleEditLabels(tx);
+    });
+
+    act(() => {
+      result.current.handleToggleLabel('lbl-x');
+    });
+    await act(async () => {
+      await result.current.handleSaveLabels();
+    });
+
+    await act(async () => {
+      await result.current.handleAISuggestion('NewLabel');
+    });
+
+    expect(labelsApi.setTransactionLabels).toHaveBeenCalled();
+    expect(labelsApi.createLabel).toHaveBeenCalled();
   });
 
   it('applies AI suggestions for existing labels, avoids duplicate selection, and creates missing labels', async () => {

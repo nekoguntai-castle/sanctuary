@@ -145,6 +145,20 @@ describe('API Client', () => {
       expect(calledUrl).not.toContain('sort');
     });
 
+    it('should not append query string when params serialize to empty', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve([]),
+      });
+
+      await apiClient.get('/users', { filter: undefined, sort: null });
+
+      const calledUrl = mockFetch.mock.calls[0][0];
+      expect(calledUrl).toBe('/api/v1/users');
+      expect(calledUrl).not.toContain('?');
+    });
+
     it('should include auth token in headers', async () => {
       apiClient.setToken('my-token');
       mockFetch.mockResolvedValue({
@@ -224,6 +238,19 @@ describe('API Client', () => {
       expect(mockFetch.mock.calls[0][1].method).toBe('PUT');
     });
 
+    it('should make PUT request without body when no data is provided', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ updated: true }),
+      });
+
+      await apiClient.put('/resource/1');
+
+      expect(mockFetch.mock.calls[0][1].method).toBe('PUT');
+      expect(mockFetch.mock.calls[0][1].body).toBeUndefined();
+    });
+
     it('should make PATCH request', async () => {
       mockFetch.mockResolvedValue({
         ok: true,
@@ -234,6 +261,19 @@ describe('API Client', () => {
       await apiClient.patch('/resource/1', { field: 'value' });
 
       expect(mockFetch.mock.calls[0][1].method).toBe('PATCH');
+    });
+
+    it('should make PATCH request without body when no data is provided', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ patched: true }),
+      });
+
+      await apiClient.patch('/resource/1');
+
+      expect(mockFetch.mock.calls[0][1].method).toBe('PATCH');
+      expect(mockFetch.mock.calls[0][1].body).toBeUndefined();
     });
 
     it('should make DELETE request', async () => {
@@ -458,6 +498,47 @@ describe('API Client', () => {
       expect(mockFetch).toHaveBeenCalledTimes(2);
     });
 
+    it('should retry when an ApiError is also a TypeError instance', async () => {
+      const originalProtoParent = Object.getPrototypeOf(ApiError.prototype);
+      Object.setPrototypeOf(ApiError.prototype, TypeError.prototype);
+
+      try {
+        mockFetch
+          .mockResolvedValueOnce({
+            ok: false,
+            status: 418,
+            statusText: "I'm a teapot",
+            json: () => Promise.resolve({ message: 'teapot' }),
+          })
+          .mockResolvedValueOnce({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({ recovered: true }),
+          });
+
+        const result = await apiClient.get('/teapot', undefined, {
+          maxRetries: 1,
+          initialDelayMs: 1,
+        });
+
+        expect(result).toEqual({ recovered: true });
+        expect(mockFetch).toHaveBeenCalledTimes(2);
+      } finally {
+        Object.setPrototypeOf(ApiError.prototype, originalProtoParent);
+      }
+    });
+
+    it('should map non-Error thrown values to Unknown error', async () => {
+      mockFetch.mockRejectedValue('boom');
+
+      await expect(
+        apiClient.get('/unknown-error', undefined, { enabled: false })
+      ).rejects.toMatchObject({
+        status: 0,
+        message: 'Unknown error',
+      });
+    });
+
     it('should throw after exhausting all retries', async () => {
       mockFetch.mockResolvedValue({
         ok: false,
@@ -490,6 +571,17 @@ describe('API Client', () => {
       ).rejects.toThrow();
 
       expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('should throw fallback retries-exhausted message when maxRetries is negative', async () => {
+      await expect(
+        apiClient.get('/no-attempt', undefined, { maxRetries: -1 })
+      ).rejects.toMatchObject({
+        status: 0,
+        message: 'Request failed after all retries',
+      });
+
+      expect(mockFetch).not.toHaveBeenCalled();
     });
   });
 
@@ -579,6 +671,20 @@ describe('API Client', () => {
       });
     });
 
+    it('should use status fallback when fetchBlob error JSON has no message', async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 500,
+        statusText: 'Internal Server Error',
+        json: () => Promise.resolve({}),
+      });
+
+      await expect(apiClient.fetchBlob('/exports/archive')).rejects.toMatchObject({
+        status: 500,
+        message: 'HTTP 500: Internal Server Error',
+      });
+    });
+
     it('should resolve filename from Content-Disposition when downloading', async () => {
       const blob = new Blob(['backup-bytes'], { type: 'application/gzip' });
       apiClient.setToken('download-token');
@@ -616,6 +722,22 @@ describe('API Client', () => {
       expect(mockDownloadBlob).toHaveBeenCalledWith(blob, 'download');
     });
 
+    it('should keep provided filename when content disposition has no filename', async () => {
+      const blob = new Blob(['raw-bytes']);
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: {
+          get: (header: string) => (header === 'Content-Disposition' ? 'attachment' : null),
+        },
+        blob: () => Promise.resolve(blob),
+      });
+
+      await apiClient.download('/reports/daily', 'fallback.csv');
+
+      expect(mockDownloadBlob).toHaveBeenCalledWith(blob, 'fallback.csv');
+    });
+
     it('should throw ApiError on download failure', async () => {
       mockFetch.mockResolvedValue({
         ok: false,
@@ -628,6 +750,48 @@ describe('API Client', () => {
         status: 404,
         message: 'File not found',
       });
+    });
+
+    it('should throw HTTP fallback when download error body is not JSON', async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 503,
+        statusText: 'Service Unavailable',
+        json: () => Promise.reject(new Error('not-json')),
+      });
+
+      await expect(apiClient.download('/admin/backup/missing')).rejects.toMatchObject({
+        status: 503,
+        message: 'HTTP 503',
+      });
+    });
+
+    it('should use status fallback when download error JSON has no message', async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 400,
+        statusText: 'Bad Request',
+        json: () => Promise.resolve({}),
+      });
+
+      await expect(apiClient.download('/admin/backup/missing')).rejects.toMatchObject({
+        status: 400,
+        message: 'HTTP 400: Bad Request',
+      });
+    });
+  });
+
+  describe('Module initialization', () => {
+    it('should honor VITE_API_URL when set at import time', async () => {
+      vi.resetModules();
+      vi.stubEnv('VITE_API_URL', 'https://api.example.test/v1');
+
+      const mod = await import('../../src/api/client');
+
+      expect(mod.API_BASE_URL).toBe('https://api.example.test/v1');
+
+      vi.unstubAllEnvs();
+      vi.resetModules();
     });
   });
 });

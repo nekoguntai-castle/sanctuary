@@ -151,6 +151,36 @@ describe('BlockVisualizer branch coverage', () => {
     expect(window.open).toHaveBeenCalledWith('https://mempool.space/block/800456', '_blank');
   });
 
+  it('does not animate when the first confirmed height is unchanged', () => {
+    const first = [
+      makeBlock({ status: 'pending', height: 'mempool' }),
+      makeBlock({ status: 'confirmed', height: 810000 }),
+      makeBlock({ status: 'confirmed', height: 809999 }),
+    ];
+    const second = [
+      makeBlock({ status: 'pending', height: 'mempool' }),
+      makeBlock({ status: 'confirmed', height: 810000 }),
+      makeBlock({ status: 'confirmed', height: 809998 }),
+    ];
+
+    const { rerender } = render(<BlockVisualizer blocks={first} />);
+    rerender(<BlockVisualizer blocks={second} />);
+
+    expect(screen.getByTestId('block-confirmed-810000')).toHaveAttribute('data-anim', 'false');
+  });
+
+  it('does not open explorer for pending blocks when pending index is undefined', async () => {
+    const user = userEvent.setup();
+    const mutableBlock = makeBlock({ status: 'confirmed', height: 820000 });
+
+    render(<BlockVisualizer blocks={[mutableBlock]} explorerUrl="https://mempool.space" />);
+
+    mutableBlock.status = 'pending';
+    await user.click(screen.getByTestId('block-confirmed-820000'));
+
+    expect(window.open).not.toHaveBeenCalled();
+  });
+
   it('shows/hides queued summary based on queued block count and stuck transactions', () => {
     const { rerender } = render(
       <BlockVisualizer

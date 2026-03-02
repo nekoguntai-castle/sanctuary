@@ -204,4 +204,56 @@ describe('useDraftManagement', () => {
     expect(draftId).toBeNull();
     expect(deps.setError).toHaveBeenCalledWith('Failed to save draft');
   });
+
+  it('uses fallback arrays when tx data omits utxos/input paths and skips signed-state update', async () => {
+    const deps = createDeps({
+      txData: {
+        ...baseTxData,
+        utxos: undefined,
+        inputPaths: undefined,
+      } as any,
+      unsignedPsbt: null,
+      signedDevices: new Set(),
+    });
+    const { result } = renderHook(() => useDraftManagement(deps));
+
+    let draftId: string | null = null;
+    await act(async () => {
+      draftId = await result.current.saveDraft();
+    });
+
+    expect(draftId).toBe('draft-1');
+    expect(mocks.createDraft).toHaveBeenCalledWith(
+      'wallet-1',
+      expect.objectContaining({
+        selectedUtxoIds: undefined,
+        inputs: undefined,
+        inputPaths: [],
+      })
+    );
+    expect(mocks.updateDraft).not.toHaveBeenCalled();
+  });
+
+  it('stores signed PSBT for new drafts when PSBT changed even without signed device ids', async () => {
+    const deps = createDeps({
+      txData: {
+        ...baseTxData,
+        psbtBase64: 'old-psbt',
+      } as any,
+      unsignedPsbt: 'new-psbt',
+      signedDevices: new Set(),
+    });
+    const { result } = renderHook(() => useDraftManagement(deps));
+
+    let draftId: string | null = null;
+    await act(async () => {
+      draftId = await result.current.saveDraft();
+    });
+
+    expect(draftId).toBe('draft-1');
+    expect(mocks.updateDraft).toHaveBeenCalledWith('wallet-1', 'draft-1', {
+      signedPsbtBase64: 'new-psbt',
+      signedDeviceId: undefined,
+    });
+  });
 });

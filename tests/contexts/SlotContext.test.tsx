@@ -117,6 +117,43 @@ describe('SlotContext', () => {
       expect(registrations).toHaveLength(1);
       expect(registrations[0].component).toBe(Comp2);
     });
+
+    it('should keep slot entry when unregistering one of multiple registrations', () => {
+      const { result } = renderHook(() => useSlots(), { wrapper });
+      const CompA = () => <div>A</div>;
+      const CompB = () => <div>B</div>;
+      let unregisterA: () => void;
+
+      act(() => {
+        unregisterA = result.current.register('test-slot', { id: 'a', priority: 10, component: CompA });
+        result.current.register('test-slot', { id: 'b', priority: 20, component: CompB });
+      });
+
+      act(() => {
+        unregisterA();
+      });
+
+      const registrations = result.current.getRegistrations('test-slot');
+      expect(registrations).toHaveLength(1);
+      expect(registrations[0].id).toBe('b');
+    });
+
+    it('should allow returned unregister to be called repeatedly without crashing', () => {
+      const { result } = renderHook(() => useSlots(), { wrapper });
+      const Comp = () => <div>One</div>;
+      let unregister: () => void;
+
+      act(() => {
+        unregister = result.current.register('test-slot', { id: 'one', priority: 10, component: Comp });
+      });
+
+      act(() => {
+        unregister();
+        unregister();
+      });
+
+      expect(result.current.getRegistrations('test-slot')).toHaveLength(0);
+    });
   });
 
   describe('unregister', () => {
@@ -287,6 +324,35 @@ describe('SlotContext', () => {
       expect(spans[0]).toHaveTextContent('First');
       expect(spans[1]).toHaveTextContent('Second');
       expect(spans[2]).toHaveTextContent('Third');
+    });
+
+    it('should render slot content inside wrapper when provided', () => {
+      const WrappedComponent = () => <span data-testid="wrapped-content">Wrapped Content</span>;
+      const Wrapper = ({ children }: { children: ReactNode }) => (
+        <div data-testid="slot-wrapper">{children}</div>
+      );
+
+      const TestApp = () => {
+        const { register } = useSlots();
+        React.useEffect(() => {
+          return register('test-slot', {
+            id: 'wrapped',
+            priority: 50,
+            component: WrappedComponent,
+          });
+        }, [register]);
+
+        return <Slot name="test-slot" wrapper={Wrapper} />;
+      };
+
+      render(
+        <SlotProvider>
+          <TestApp />
+        </SlotProvider>
+      );
+
+      expect(screen.getByTestId('slot-wrapper')).toBeInTheDocument();
+      expect(screen.getByTestId('wrapped-content')).toBeInTheDocument();
     });
   });
 

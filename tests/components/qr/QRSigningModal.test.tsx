@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QRSigningModal } from '../../../components/qr/QRSigningModal';
 
@@ -116,6 +116,34 @@ describe('QRSigningModal', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it('ignores empty scan payloads', async () => {
+    const user = userEvent.setup();
+    const { onSignedPsbt } = renderModal();
+
+    scannerScanPayload = [];
+    await user.click(screen.getByText("I've Signed It"));
+    await user.click(screen.getByRole('button', { name: /emit scan/i }));
+
+    expect(mockCreateDecoder).not.toHaveBeenCalled();
+    expect(onSignedPsbt).not.toHaveBeenCalled();
+  });
+
+  it('reuses the existing decoder across sequential scans', async () => {
+    const user = userEvent.setup();
+    const { onSignedPsbt } = renderModal();
+
+    mockFeedDecoderPart
+      .mockReturnValueOnce({ complete: false, progress: 25 })
+      .mockReturnValueOnce({ complete: true, progress: 100 });
+
+    await user.click(screen.getByText("I've Signed It"));
+    await user.click(screen.getByRole('button', { name: /emit scan/i }));
+    await user.click(screen.getByRole('button', { name: /emit scan/i }));
+
+    expect(mockCreateDecoder).toHaveBeenCalledTimes(1);
+    expect(onSignedPsbt).toHaveBeenCalledWith('signed-psbt');
+  });
+
   it('accepts raw base64 PSBT scan payloads', async () => {
     const user = userEvent.setup();
     const { onClose, onSignedPsbt } = renderModal();
@@ -136,6 +164,19 @@ describe('QRSigningModal', () => {
 
     mockIsUrFormat.mockReturnValueOnce(false);
     scannerScanPayload = [{ rawValue: 'not-a-psbt' }];
+
+    await user.click(screen.getByText("I've Signed It"));
+    await user.click(screen.getByRole('button', { name: /emit scan/i }));
+
+    expect(await screen.findByText(/Invalid QR code format/i)).toBeInTheDocument();
+  });
+
+  it('handles decoded base64 payloads that are not PSBT data', async () => {
+    const user = userEvent.setup();
+    renderModal();
+
+    mockIsUrFormat.mockReturnValueOnce(false);
+    scannerScanPayload = [{ rawValue: 'aGVsbG8=' }]; // "hello"
 
     await user.click(screen.getByText("I've Signed It"));
     await user.click(screen.getByRole('button', { name: /emit scan/i }));
@@ -191,6 +232,20 @@ describe('QRSigningModal', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  it('uses generic decode error message when non-Error is thrown', async () => {
+    const user = userEvent.setup();
+    renderModal();
+
+    mockGetDecodedPsbt.mockImplementationOnce(() => {
+      throw 'decode boom';
+    });
+
+    await user.click(screen.getByText("I've Signed It"));
+    await user.click(screen.getByRole('button', { name: /emit scan/i }));
+
+    expect(await screen.findByText('Failed to decode PSBT')).toBeInTheDocument();
+  });
+
   it('handles camera errors and allows retrying scanner mode', async () => {
     const user = userEvent.setup();
     renderModal();
@@ -202,6 +257,17 @@ describe('QRSigningModal', () => {
     expect(await screen.findByText('Camera blocked')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /try again/i }));
     expect(screen.getByTestId('scanner')).toBeInTheDocument();
+  });
+
+  it('uses generic camera error text when camera error is not an Error instance', async () => {
+    const user = userEvent.setup();
+    renderModal();
+    scannerErrorPayload = 'blocked';
+
+    await user.click(screen.getByText("I've Signed It"));
+    await user.click(screen.getByRole('button', { name: /emit camera error/i }));
+
+    expect(await screen.findByText('Camera access denied')).toBeInTheDocument();
   });
 
   it('returns to display step from scan step via back button', async () => {
@@ -288,5 +354,105 @@ describe('QRSigningModal', () => {
     await user.upload(input, file);
 
     expect(await screen.findByText('Invalid PSBT file format. Expected binary PSBT, base64, or hex.')).toBeInTheDocument();
+  });
+
+  it('returns early when file input change event has no files', async () => {
+    const user = userEvent.setup();
+    const { onSignedPsbt } = renderModal();
+
+    await user.click(screen.getByText("I've Signed It"));
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [] } });
+
+    expect(onSignedPsbt).not.toHaveBeenCalled();
+  });
+
+  it('shows parse failure when text parsing throws for malformed content', async () => {
+    const user = userEvent.setup();
+    const atobSpy = vi.spyOn(globalThis, 'atob').mockImplementation(() => {
+      throw new Error('bad base64');
+    });
+
+    renderModal();
+
+    await user.click(screen.getByText("I've Signed It"));
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(['c29tZQ=='], 'signed.txt', { type: 'text/plain' });
+
+    await user.upload(input, file);
+
+    expect(await screen.findByText('Failed to parse PSBT file')).toBeInTheDocument();
+    atobSpy.mockRestore();
+  });
+
+  it('shows explicit read errors for binary and text FileReader failures', async () => {
+    const user = userEvent.setup();
+    const OriginalFileReader = global.FileReader;
+
+    try {
+      class BinaryErrorFileReader {
+        onload: ((e: ProgressEvent<FileReader>) => void) | null = null;
+        onerror: (() => void) | null = null;
+        readAsArrayBuffer() {
+          this.onerror?.();
+        }
+        readAsText() {}
+      }
+      // @ts-expect-error test-only override
+      global.FileReader = BinaryErrorFileReader;
+
+      renderModal();
+      await user.click(screen.getByText("I've Signed It"));
+      const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+      await user.upload(input, new File(['x'], 'signed.txt', { type: 'text/plain' }));
+      expect(await screen.findByText('Failed to read file')).toBeInTheDocument();
+    } finally {
+      global.FileReader = OriginalFileReader;
+    }
+  });
+
+  it('opens hidden file input when clicking upload fallback button', async () => {
+    const user = userEvent.setup();
+    const { onSignedPsbt } = renderModal();
+
+    await user.click(screen.getByText("I've Signed It"));
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const clickSpy = vi.spyOn(input, 'click');
+
+    await user.click(screen.getByRole('button', { name: /upload psbt file instead/i }));
+
+    expect(clickSpy).toHaveBeenCalled();
+    expect(onSignedPsbt).not.toHaveBeenCalled();
+    clickSpy.mockRestore();
+  });
+
+  it('shows text read error when fallback text FileReader fails', async () => {
+    const user = userEvent.setup();
+    const OriginalFileReader = global.FileReader;
+
+    try {
+      class TextErrorFileReader {
+        onload: ((e: ProgressEvent<FileReader>) => void) | null = null;
+        onerror: (() => void) | null = null;
+        readAsArrayBuffer() {
+          const bytes = new Uint8Array([0x00, 0x00, 0x00, 0x00, 0x00]); // Not PSBT magic
+          this.onload?.({ target: { result: bytes.buffer } } as any);
+        }
+        readAsText() {
+          this.onerror?.();
+        }
+      }
+      // @ts-expect-error test-only override
+      global.FileReader = TextErrorFileReader;
+
+      renderModal();
+      await user.click(screen.getByText("I've Signed It"));
+      const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+      await user.upload(input, new File(['x'], 'signed.txt', { type: 'text/plain' }));
+
+      expect(await screen.findByText('Failed to read file as text')).toBeInTheDocument();
+    } finally {
+      global.FileReader = OriginalFileReader;
+    }
   });
 });

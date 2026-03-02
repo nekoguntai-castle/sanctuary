@@ -100,4 +100,44 @@ describe('TransactionsTab', () => {
 
     expect(screen.getByText('Loading...')).toBeInTheDocument();
   });
+
+  it('formats non-count aggregation as sats and falls back stats prop to undefined when null', () => {
+    render(
+      <TransactionsTab
+        {...baseProps}
+        aiEnabled={true}
+        aiQueryFilter={{ type: 'transactions', aggregation: 'sum' }}
+        aiAggregationResult={12345}
+        transactionStats={null}
+      />
+    );
+
+    expect(screen.getByText('12,345 sats')).toBeInTheDocument();
+    expect(screen.getByText('(sum)')).toBeInTheDocument();
+    expect(mockRefs.txListProps.transactionStats).toBeUndefined();
+  });
+
+  it('shows filtered transaction summary when AI filter has no aggregation result', () => {
+    render(
+      <TransactionsTab
+        {...baseProps}
+        aiEnabled={true}
+        aiQueryFilter={{ type: 'transactions', aggregation: 'sum' }}
+        aiAggregationResult={null}
+      />
+    );
+
+    expect(screen.getByText('Showing 1 of 2 transactions')).toBeInTheDocument();
+  });
+
+  it('falls back transactionStats prop to undefined when no filter and stats are null', () => {
+    render(
+      <TransactionsTab
+        {...baseProps}
+        transactionStats={null}
+      />
+    );
+
+    expect(mockRefs.txListProps.transactionStats).toBeUndefined();
+  });
 });

@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { EnableModal } from '../../components/AISettings/components/EnableModal';
 import { ModelsTab } from '../../components/AISettings/tabs/ModelsTab';
@@ -28,6 +28,11 @@ describe('EnableModal', () => {
     render(<EnableModal {...baseProps} isLoadingResources={true} />);
     expect(screen.getByText(/checking system resources/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /enable ai/i })).toBeDisabled();
+  });
+
+  it('shows unknown-resources fallback message when resources are unavailable', () => {
+    render(<EnableModal {...baseProps} />);
+    expect(screen.getByText(/Could not check system resources/i)).toBeInTheDocument();
   });
 
   it('shows insufficient resource warning and acknowledgement checkbox flow', async () => {
@@ -172,6 +177,86 @@ describe('ModelsTab', () => {
     expect(onPullModel).toHaveBeenCalledWith('mistral:7b');
     expect(onCustomModelNameChange).toHaveBeenCalledWith('');
   });
+
+  it('renders success progress style and pulling/verifying status labels', () => {
+    const { rerender } = render(
+      <ModelsTab
+        {...baseProps}
+        pullProgress="Successfully pulled model"
+      />
+    );
+
+    expect(screen.getByText('Successfully pulled model')).toBeInTheDocument();
+
+    rerender(
+      <ModelsTab
+        {...baseProps}
+        pullProgress="Working..."
+        downloadProgress={{ status: 'pulling', percent: 0, completed: 0, total: 0 } as any}
+      />
+    );
+    expect(screen.getByText('Pulling manifest...')).toBeInTheDocument();
+
+    rerender(
+      <ModelsTab
+        {...baseProps}
+        pullProgress="Working..."
+        downloadProgress={{ status: 'verifying', percent: 0, completed: 0, total: 0 } as any}
+      />
+    );
+    expect(screen.getByText('Verifying...')).toBeInTheDocument();
+  });
+
+  it('shows delete spinner for the model currently being deleted', () => {
+    render(
+      <ModelsTab
+        {...baseProps}
+        popularModels={[{ name: 'llama3', description: 'Main model' }]}
+        availableModels={[{ name: 'llama3', size: 1 } as any]}
+        isDeleting={true}
+        deleteModelName="llama3"
+      />
+    );
+
+    const deleteButton = screen.getByRole('button', { name: /delete/i });
+    expect(deleteButton.querySelector('.animate-spin')).not.toBeNull();
+  });
+
+  it('does not trigger custom pull handlers when custom model name is blank (manual click handler path)', () => {
+    const onPullModel = vi.fn();
+    const onCustomModelNameChange = vi.fn();
+
+    const element = ModelsTab({
+      ...baseProps,
+      customModelName: '   ',
+      onPullModel,
+      onCustomModelNameChange,
+    });
+
+    function findCustomPullButton(node: any): any {
+      if (!node || typeof node !== 'object') return null;
+      if (node.type === 'button' && typeof node.props?.className === 'string' && node.props.className.includes('px-4 py-2')) {
+        return node;
+      }
+      const children = React.Children.toArray(node.props?.children);
+      for (const child of children) {
+        const found = findCustomPullButton(child);
+        if (found) return found;
+      }
+      return null;
+    }
+
+    const customPullButton = findCustomPullButton(element);
+    expect(customPullButton).not.toBeNull();
+    expect(typeof customPullButton.props.onClick).toBe('function');
+
+    act(() => {
+      customPullButton.props.onClick();
+    });
+
+    expect(onPullModel).not.toHaveBeenCalled();
+    expect(onCustomModelNameChange).not.toHaveBeenCalled();
+  });
 });
 
 describe('SettingsTab', () => {
@@ -259,6 +344,29 @@ describe('SettingsTab', () => {
     expect(screen.getByText(/could not save/i)).toBeInTheDocument();
     expect(screen.getByText(/connected/i)).toBeInTheDocument();
   });
+
+  it('shows model-loading spinner when models are being fetched', () => {
+    const { container } = render(
+      <SettingsTab
+        {...baseProps}
+        isLoadingModels={true}
+      />
+    );
+
+    expect(container.querySelector('.animate-spin')).not.toBeNull();
+  });
+
+  it('shows empty-models helper text when dropdown is open without installed models', () => {
+    render(
+      <SettingsTab
+        {...baseProps}
+        showModelDropdown={true}
+        availableModels={[]}
+      />
+    );
+
+    expect(screen.getByText('No models installed. Go to Models tab to download one.')).toBeInTheDocument();
+  });
 });
 
 describe('ContainerControls', () => {
@@ -295,6 +403,34 @@ describe('ContainerControls', () => {
 
     await user.click(screen.getByRole('button', { name: /stop/i }));
     expect(onStopContainer).toHaveBeenCalled();
+  });
+
+  it('shows loader icon and disables actions while container start is in progress', async () => {
+    const user = userEvent.setup();
+    const onStartContainer = vi.fn();
+    const onStopContainer = vi.fn();
+    const onRefreshContainerStatus = vi.fn();
+
+    render(
+      <ContainerControls
+        containerStatus={{ running: false } as any}
+        isStartingContainer={true}
+        onStartContainer={onStartContainer}
+        onStopContainer={onStopContainer}
+        onRefreshContainerStatus={onRefreshContainerStatus}
+      />
+    );
+
+    const startButton = screen.getByRole('button', { name: /start/i });
+    expect(startButton).toBeDisabled();
+    expect(startButton.querySelector('.animate-spin')).not.toBeNull();
+
+    await user.click(startButton);
+    expect(onStartContainer).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: '' }));
+    expect(onRefreshContainerStatus).toHaveBeenCalled();
+    expect(onStopContainer).not.toHaveBeenCalled();
   });
 });
 
@@ -352,5 +488,18 @@ describe('StatusTab', () => {
 
     expect(onStartContainer).toHaveBeenCalled();
     expect(onNavigateToSettings).toHaveBeenCalled();
+  });
+
+  it('renders loading spinner when container startup is in progress', () => {
+    const { container } = render(
+      <StatusTab
+        {...baseProps}
+        isStartingContainer={true}
+        containerMessage="Booting container..."
+      />
+    );
+
+    expect(container.querySelector('.animate-spin')).not.toBeNull();
+    expect(screen.getByText('Booting container...')).toBeInTheDocument();
   });
 });

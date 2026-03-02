@@ -266,6 +266,15 @@ class MockFileReader {
   }
 }
 
+class ErrorFileReader {
+  onload: ((event: { target?: { result?: string } }) => void) | null = null;
+  onerror: (() => void) | null = null;
+
+  readAsText() {
+    this.onerror?.();
+  }
+}
+
 describe('ConnectDevice branch coverage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -291,6 +300,7 @@ describe('ConnectDevice branch coverage', () => {
     expect(mergeDeviceMock).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole('button', { name: 'select-model' }));
+    await user.click(screen.getByRole('button', { name: 'toggle-qr-details' }));
 
     hookState.qr.scanResult = {
       xpub: 'xpub-qr',
@@ -397,6 +407,20 @@ describe('ConnectDevice branch coverage', () => {
     parseDeviceJsonMock.mockReturnValueOnce(null);
     await user.click(screen.getByRole('button', { name: 'upload-valid' }));
     expect(screen.getByText('Could not parse file. Please check the format.')).toBeInTheDocument();
+  });
+
+  it('covers file reader onerror branch', async () => {
+    const user = userEvent.setup();
+    render(<ConnectDevice />);
+
+    // @ts-expect-error test override
+    globalThis.FileReader = ErrorFileReader;
+
+    await user.click(screen.getByRole('button', { name: 'select-model' }));
+    await user.click(screen.getByRole('button', { name: 'method-sd' }));
+    await user.click(screen.getByRole('button', { name: 'upload-valid' }));
+
+    expect(screen.getByText('Failed to read file.')).toBeInTheDocument();
   });
 
   it('covers QR parse branches when optional fields are missing and label replacement is allowed', async () => {

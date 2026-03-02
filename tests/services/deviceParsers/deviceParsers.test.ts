@@ -349,6 +349,42 @@ describe('Device Parser Registry', () => {
       // 'h' should be converted to apostrophe
       expect(result.derivationPath).toBe("m/84'/0'/0'");
     });
+
+    it('returns undetected for non-object and missing descriptor JSON shapes', () => {
+      expect(descriptorJsonParser.canParse(null).detected).toBe(false);
+      expect(descriptorJsonParser.canParse('not-json').detected).toBe(false);
+      expect(descriptorJsonParser.canParse({}).detected).toBe(false);
+      expect(descriptorJsonParser.canParse({ descriptor: '' }).detected).toBe(false);
+    });
+
+    it('returns undetected for descriptor JSON with non-matching descriptor content', () => {
+      const result = descriptorJsonParser.canParse({ descriptor: 'wpkh([zzzzzzzz]not-an-xpub)' });
+      expect(result.detected).toBe(false);
+      expect(result.confidence).toBe(0);
+    });
+
+    it('parses descriptor JSON label fallback from name and empty default', () => {
+      const withName = descriptorJsonParser.parse({
+        descriptor: "wpkh([fa79b6aa/84h/0h/0h]xpub6BosfCnifzxcFwrSzQiqu2DBVTshkCXacvNsWGYJVVhhawA7d4R5WSWGFNbi8Aw6ZRc1brxMyWMzG3DSSSSoekkudhUd9yLb6qx39T9nMdj/0/*)#abcd1234",
+        name: 'Fallback Name',
+      });
+      expect(withName.label).toBe('Fallback Name');
+
+      const empty = descriptorJsonParser.parse({ descriptor: 'invalid' });
+      expect(empty).toEqual({ label: '' });
+
+      const missingDescriptor = descriptorJsonParser.parse({} as any);
+      expect(missingDescriptor).toEqual({ label: '' });
+    });
+
+    it('parses descriptor JSON with no path segment as empty derivation path', () => {
+      const result = descriptorJsonParser.parse({
+        descriptor: 'wpkh([fa79b6aa]xpub6BosfCnifzxcFwrSzQiqu2DBVTshkCXacvNsWGYJVVhhawA7d4R5WSWGFNbi8Aw6ZRc1brxMyWMzG3DSSSSoekkudhUd9yLb6qx39T9nMdj/0/*)#abcd1234',
+      });
+
+      expect(result.fingerprint).toBe('fa79b6aa');
+      expect(result.derivationPath).toBe('');
+    });
   });
 
   describe('Descriptor String Format Parser', () => {
@@ -365,6 +401,19 @@ describe('Device Parser Registry', () => {
       expect(result.xpub).toBe('xpub6BosfCnifzxcFwrSzQiqu2DBVTshkCXacvNsWGYJVVhhawA7d4R5WSWGFNbi8Aw6ZRc1brxMyWMzG3DSSSSoekkudhUd9yLb6qx39T9nMdj');
       expect(result.fingerprint).toBe('fa79b6aa');
       expect(result.derivationPath).toBe("m/84'/0'/0'");
+    });
+
+    it('returns undetected for non-string or invalid descriptor string input', () => {
+      expect(descriptorStringParser.canParse({ descriptor: 'x' }).detected).toBe(false);
+
+      const invalid = descriptorStringParser.canParse('wpkh([fa79b6aa/84h/0h/0h]not-an-xpub)');
+      expect(invalid.detected).toBe(false);
+      expect(invalid.confidence).toBe(0);
+    });
+
+    it('returns empty parse result for non-string or invalid descriptor strings', () => {
+      expect(descriptorStringParser.parse(123 as unknown as string)).toEqual({});
+      expect(descriptorStringParser.parse('wpkh([fa79b6aa/84h/0h/0h]not-an-xpub)')).toEqual({});
     });
   });
 
@@ -387,6 +436,22 @@ describe('Device Parser Registry', () => {
       expect(result.derivationPath).toBe("m/84'/0'/0'");
       expect(result.label).toBe('My Ledger Wallet');
     });
+
+    it('rejects invalid shapes in format detection', () => {
+      expect(ledgerParser.canParse(null)).toEqual({ detected: false, confidence: 0 });
+      expect(ledgerParser.canParse({ xpub: '', freshAddressPath: "84'/0'/0'/0/0" })).toEqual({ detected: false, confidence: 0 });
+      expect(ledgerParser.canParse({ xpub: 'xpub123' })).toEqual({ detected: false, confidence: 0 });
+    });
+
+    it('returns parse fallbacks when path/xpub/name are missing or malformed', () => {
+      const result = ledgerParser.parse({
+        freshAddressPath: 'not/a/bip/path',
+      });
+
+      expect(result.derivationPath).toBe('');
+      expect(result.xpub).toBe('');
+      expect(result.label).toBe('');
+    });
   });
 
   describe('BitBox Format Parser', () => {
@@ -405,6 +470,20 @@ describe('Device Parser Registry', () => {
       const result = bitboxParser.parse(bitboxJson);
       expect(result.xpub).toBe('zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs');
       expect(result.derivationPath).toBe("m/84'/0'/0'");
+    });
+
+    it('rejects malformed BitBox payloads in detection', () => {
+      expect(bitboxParser.canParse(null)).toEqual({ detected: false, confidence: 0 });
+      expect(bitboxParser.canParse({ keypath: "m/84'/0'/0'" })).toEqual({ detected: false, confidence: 0 });
+      expect(bitboxParser.canParse({ xpub: 'xpub123' })).toEqual({ detected: false, confidence: 0 });
+      expect(bitboxParser.canParse({ keypath: '', xpub: 'xpub123' })).toEqual({ detected: false, confidence: 0 });
+    });
+
+    it('falls back to empty parse fields when keypath/xpub are missing', () => {
+      expect(bitboxParser.parse({})).toEqual({
+        xpub: '',
+        derivationPath: '',
+      });
     });
   });
 
@@ -429,9 +508,27 @@ describe('Device Parser Registry', () => {
       expect(result.derivationPath).toBe("m/84'/0'/0'");
       expect(result.label).toBe('My Coldcard');
     });
+
+    it('falls back to empty strings when expected fields are missing', () => {
+      const result = simpleColdcardParser.parse({});
+      expect(result).toEqual({
+        xpub: '',
+        fingerprint: '',
+        derivationPath: '',
+        label: '',
+      });
+    });
   });
 
   describe('Generic JSON Parser', () => {
+    const xpub = 'xpub6BosfCnifzxcFwrSzQiqu2DBVTshkCXacvNsWGYJVVhhawA7d4R5WSWGFNbi8Aw6ZRc1brxMyWMzG3DSSSSoekkudhUd9yLb6qx39T9nMdj';
+
+    it('detects only object payloads with a sufficiently long xpub-like field', () => {
+      expect(genericJsonParser.canParse('not-an-object')).toEqual({ detected: false, confidence: 0 });
+      expect(genericJsonParser.canParse({ xpub: 'short-xpub' })).toEqual({ detected: false, confidence: 0 });
+      expect(genericJsonParser.canParse({ extPubKey: xpub })).toEqual({ detected: true, confidence: 50 });
+    });
+
     it('parses JSON with various xpub field names', () => {
       const zpubJson = { zpub: 'zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs' };
       const result = genericJsonParser.parse(zpubJson);
@@ -442,6 +539,19 @@ describe('Device Parser Registry', () => {
       const json = { xpub: 'xpub123456789012345678901234567890123456789012345678901234567', master_fingerprint: 'DEADBEEF' };
       const result = genericJsonParser.parse(json);
       expect(result.fingerprint).toBe('DEADBEEF');
+    });
+
+    it('uses first non-empty path/label fields after skipping empty values', () => {
+      const result = genericJsonParser.parse({
+        xpub,
+        derivation: '',
+        path: "m/84'/0'/0'",
+        label: '',
+        wallet_name: 'Fallback Label',
+      });
+
+      expect(result.derivationPath).toBe("m/84'/0'/0'");
+      expect(result.label).toBe('Fallback Label');
     });
   });
 
@@ -464,10 +574,21 @@ describe('Device Parser Registry', () => {
       expect(result.xpub).toBe('xpub6BosfCnifzxcFwrSzQiqu2DBVTshkCXacvNsWGYJVVhhawA7d4R5WSWGFNbi8Aw6ZRc1brxMyWMzG3DSSSSoekkudhUd9yLb6qx39T9nMdj');
     });
 
+    it('detects embedded xpub text with lower confidence', () => {
+      const text = 'prefix xpub6BosfCnifzxcFwrSzQiqu2DBVTshkCXacvNsWGYJVVhhawA7d4R5WSWGFNbi8Aw6ZRc1brxMyWMzG3DSSSSoekkudhUd9yLb6qx39T9nMdj suffix';
+      const result = plainXpubParser.canParse(text);
+      expect(result).toEqual({ detected: true, confidence: 40 });
+    });
+
     it('parses zpub, ypub, and other prefixes', () => {
       const zpub = 'zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs';
       const result = plainXpubParser.parse(zpub);
       expect(result.xpub).toBe(zpub);
+    });
+
+    it('returns empty parse result for non-string input or strings without xpub', () => {
+      expect(plainXpubParser.parse(123 as unknown as string)).toEqual({});
+      expect(plainXpubParser.parse('no xpub present here')).toEqual({});
     });
   });
 

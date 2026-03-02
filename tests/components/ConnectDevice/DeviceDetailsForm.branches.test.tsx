@@ -163,5 +163,23 @@ describe('DeviceDetailsForm branch coverage', () => {
     );
 
     expect(screen.getAllByText('From QR').length).toBeGreaterThanOrEqual(3);
+
+    rerender(
+      <DeviceDetailsForm
+        {...createProps({
+          scanned: true,
+          warning: null,
+          qrExtractedFields: {
+            xpub: false,
+            fingerprint: true,
+            derivationPath: true,
+            label: true,
+          },
+          showQrDetails: true,
+        })}
+      />,
+    );
+
+    expect(screen.getByText('Manual')).toBeInTheDocument();
   });
 });

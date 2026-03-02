@@ -81,6 +81,25 @@ describe('useContainerLifecycle', () => {
     } as never);
   });
 
+  it('toRunningContainerStatus handles null and object inputs', async () => {
+    const { toRunningContainerStatus } = await import('../../../../components/AISettings/hooks/useContainerLifecycle');
+
+    expect(toRunningContainerStatus(null)).toBeNull();
+    expect(
+      toRunningContainerStatus({
+        available: true,
+        exists: false,
+        running: false,
+        status: 'stopped',
+      } as any)
+    ).toEqual({
+      available: true,
+      exists: true,
+      running: true,
+      status: 'running',
+    });
+  });
+
   it('opens/close enable modal and loads resources when toggling from disabled', async () => {
     const { result } = renderLifecycle({ aiEnabled: false });
 
@@ -265,5 +284,107 @@ describe('useContainerLifecycle', () => {
       await result.current.handleStopContainer();
     });
     expect(result.current.containerMessage).toBe('Failed: busy');
+  });
+
+  it('executes deferred timer callbacks that clear save/container messages', async () => {
+    const { result } = renderLifecycle({
+      aiEnabled: true,
+      containerStatus: {
+        available: true,
+        exists: true,
+        running: true,
+        status: 'running',
+      } as any,
+    });
+
+    await act(async () => {
+      await result.current.performToggleAI(false);
+    });
+    expect(result.current.saveSuccess).toBe(true);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(result.current.saveSuccess).toBe(false);
+    expect(result.current.containerMessage).toBe('');
+
+    await act(async () => {
+      const startPromise = result.current.handleStartContainer();
+      await vi.advanceTimersByTimeAsync(3500);
+      await startPromise;
+    });
+    expect(result.current.containerMessage).toBe('Container running. Click Detect to configure.');
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(8000);
+    });
+    expect(result.current.containerMessage).toBe('');
+
+    vi.mocked(aiApi.stopOllamaContainer).mockResolvedValueOnce({ success: true, message: 'stopped' } as never);
+    await act(async () => {
+      await result.current.handleStopContainer();
+    });
+    expect(result.current.containerMessage).toBe('Container stopped');
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(result.current.containerMessage).toBe('');
+  });
+
+  it('handles resource check failure when opening the enable modal', async () => {
+    vi.mocked(aiApi.getSystemResources).mockRejectedValueOnce(new Error('resources failed') as never);
+
+    const { result } = renderLifecycle({ aiEnabled: false });
+
+    await act(async () => {
+      await result.current.handleToggleAI();
+    });
+
+    expect(result.current.showEnableModal).toBe(true);
+    expect(result.current.systemResources).toBeNull();
+    expect(result.current.isLoadingResources).toBe(false);
+  });
+
+  it('continues enable flow when auto-detect throws after enabling', async () => {
+    vi.mocked(aiApi.detectOllama).mockRejectedValueOnce(new Error('detect failed') as never);
+
+    const { result, props } = renderLifecycle({
+      containerStatus: {
+        available: true,
+        exists: true,
+        running: true,
+        status: 'running',
+      } as any,
+    });
+
+    await act(async () => {
+      const promise = result.current.performToggleAI(true);
+      await vi.advanceTimersByTimeAsync(1000);
+      await promise;
+    });
+
+    expect(props.setAiEnabled).toHaveBeenCalledWith(true);
+    expect(result.current.saveError).toBeNull();
+  });
+
+  it('sets saveError when performToggleAI fails at the settings update step', async () => {
+    vi.mocked(adminApi.updateSystemSettings).mockRejectedValueOnce(new Error('settings failed') as never);
+
+    const { result } = renderLifecycle({
+      aiEnabled: true,
+      containerStatus: {
+        available: false,
+        exists: false,
+        running: false,
+        status: 'stopped',
+      } as any,
+    });
+
+    await act(async () => {
+      await result.current.performToggleAI(false);
+    });
+
+    expect(result.current.saveError).toBe('Failed to update AI settings');
   });
 });

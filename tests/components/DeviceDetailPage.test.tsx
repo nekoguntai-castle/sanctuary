@@ -208,6 +208,34 @@ describe('DeviceDetail page', () => {
     expect(screen.getByTestId('device-icon')).toBeInTheDocument();
   });
 
+  it('navigates back and handles device-type select changes in edit mode', async () => {
+    const user = userEvent.setup();
+    render(<DeviceDetail />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Back to Devices')).toBeInTheDocument();
+      expect(screen.getByLabelText('Edit label')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText('Back to Devices'));
+    expect(mockNavigate).toHaveBeenCalledWith('/devices');
+
+    await user.click(screen.getByLabelText('Edit label'));
+    const modelSelect = screen.getByRole('combobox');
+    fireEvent.change(modelSelect, { target: { value: '' } });
+
+    expect((modelSelect as HTMLSelectElement).value).toBe('');
+  });
+
+  it('renders not-found state when API returns no device', async () => {
+    mockGetDevice.mockResolvedValueOnce(null as any);
+    render(<DeviceDetail />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Device not found.')).toBeInTheDocument();
+    });
+  });
+
   it('allows entering edit mode and canceling', async () => {
     const user = userEvent.setup();
     render(<DeviceDetail />);

@@ -117,6 +117,21 @@ describe('PayjoinSection', () => {
         expect(toggle).toBeDisabled();
       });
     });
+
+    it('skips eligibility fetch when walletId is empty', async () => {
+      vi.mocked(payjoinApi.checkPayjoinEligibility).mockResolvedValue({
+        eligible: true,
+        status: 'ready',
+      });
+
+      render(<PayjoinSection {...defaultProps} walletId="" />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Enhanced Privacy')).toBeInTheDocument();
+      });
+
+      expect(payjoinApi.checkPayjoinEligibility).not.toHaveBeenCalled();
+    });
   });
 
   describe('status pills', () => {
@@ -320,6 +335,31 @@ describe('PayjoinSection', () => {
 
       expect(screen.getByText('Learn more about Payjoin')).toBeInTheDocument();
     });
+
+    it('closes tooltip on outside click and stays open on inside click', async () => {
+      vi.mocked(payjoinApi.checkPayjoinEligibility).mockResolvedValue({
+        eligible: false,
+        status: 'no-utxos',
+      });
+
+      render(<PayjoinSection {...defaultProps} />);
+
+      await waitFor(() => {
+        expect(payjoinApi.checkPayjoinEligibility).toHaveBeenCalled();
+      });
+
+      fireEvent.click(screen.getByLabelText('What is Payjoin?'));
+      expect(screen.getByText('What is Payjoin?')).toBeInTheDocument();
+
+      fireEvent.mouseDown(screen.getByText(/Payjoin adds your coins/));
+      expect(screen.getByText('What is Payjoin?')).toBeInTheDocument();
+
+      fireEvent.mouseDown(document.body);
+      await waitFor(() => {
+        expect(screen.queryByText('What is Payjoin?')).not.toBeInTheDocument();
+      });
+    });
+
   });
 
   describe('education modal', () => {
@@ -375,6 +415,40 @@ describe('PayjoinSection', () => {
 
       // Press escape
       fireEvent.keyDown(document, { key: 'Escape' });
+
+      await waitFor(() => {
+        expect(screen.queryByText('Understanding Payjoin')).not.toBeInTheDocument();
+      });
+    });
+
+    it('keeps modal open on non-Escape key and on inside click', async () => {
+      vi.mocked(payjoinApi.checkPayjoinEligibility).mockImplementation(() => new Promise(() => {}));
+
+      render(<PayjoinSection {...defaultProps} />);
+
+      fireEvent.click(screen.getByLabelText('What is Payjoin?'));
+      fireEvent.click(screen.getByText('Learn more about Payjoin'));
+      expect(screen.getByText('Understanding Payjoin')).toBeInTheDocument();
+
+      fireEvent.keyDown(document, { key: 'Enter' });
+      expect(screen.getByText('Understanding Payjoin')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByText('The Problem'));
+      expect(screen.getByText('Understanding Payjoin')).toBeInTheDocument();
+    });
+
+    it('closes education modal on backdrop click', async () => {
+      vi.mocked(payjoinApi.checkPayjoinEligibility).mockImplementation(() => new Promise(() => {}));
+
+      render(<PayjoinSection {...defaultProps} />);
+
+      fireEvent.click(screen.getByLabelText('What is Payjoin?'));
+      fireEvent.click(screen.getByText('Learn more about Payjoin'));
+      expect(screen.getByText('Understanding Payjoin')).toBeInTheDocument();
+
+      const modalBackdrop = document.querySelector('.fixed.inset-0.z-50');
+      expect(modalBackdrop).not.toBeNull();
+      fireEvent.click(modalBackdrop!);
 
       await waitFor(() => {
         expect(screen.queryByText('Understanding Payjoin')).not.toBeInTheDocument();

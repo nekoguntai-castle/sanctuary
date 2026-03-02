@@ -70,6 +70,18 @@ vi.mock('../../../components/send/steps/review/SigningFlow', () => ({
         >
           Device Upload Empty
         </button>
+        <button
+          data-testid="device-upload-no-ref"
+          onClick={async () => {
+            await onDeviceFileUpload(
+              { target: { files: [new File(['signed'], 'multi-no-ref.psbt')] } },
+              'missing-device',
+            );
+            capture.deviceRefValueAfterUpload = deviceFileInputRefs.current['missing-device']?.value ?? null;
+          }}
+        >
+          Device Upload No Ref
+        </button>
       </div>
     );
   },
@@ -79,15 +91,27 @@ vi.mock('../../../components/send/steps/review/UsbSigning', () => ({
   UsbSigning: ({ onFileUpload, fileInputRef }: any) => {
     fileInputRef.current = { value: 'before-usb-upload' };
     return (
-      <button
-        data-testid="usb-upload"
-        onClick={async () => {
-          await onFileUpload({ target: { files: [new File(['signed'], 'single.psbt')] } });
-          capture.usbRefValueAfterUpload = fileInputRef.current?.value ?? null;
-        }}
-      >
-        USB Upload
-      </button>
+      <div>
+        <button
+          data-testid="usb-upload"
+          onClick={async () => {
+            await onFileUpload({ target: { files: [new File(['signed'], 'single.psbt')] } });
+            capture.usbRefValueAfterUpload = fileInputRef.current?.value ?? null;
+          }}
+        >
+          USB Upload
+        </button>
+        <button
+          data-testid="usb-upload-empty-no-ref"
+          onClick={async () => {
+            fileInputRef.current = null;
+            await onFileUpload({ target: { files: [] } });
+            capture.usbRefValueAfterUpload = fileInputRef.current?.value ?? null;
+          }}
+        >
+          USB Upload Empty No Ref
+        </button>
+      </div>
     );
   },
 }));
@@ -193,7 +217,10 @@ describe('ReviewStep branch coverage', () => {
 
     await waitFor(() => {
       const flowData = capture.summaryProps?.flowData;
-      expect(flowData).toBeTruthy();
+      expect(flowData).toMatchObject({
+        inputs: expect.any(Array),
+        outputs: expect.any(Array),
+      });
       expect(flowData.inputs[0]).toMatchObject({
         address: 'bc1qknown',
         amount: 12000,
@@ -223,7 +250,12 @@ describe('ReviewStep branch coverage', () => {
 
     render(<ReviewStep />);
 
-    await waitFor(() => expect(capture.summaryProps).toBeTruthy());
+    await waitFor(() =>
+      expect(capture.summaryProps?.flowData).toMatchObject({
+        inputs: expect.any(Array),
+        outputs: expect.any(Array),
+      }),
+    );
     expect(lookupAddresses).not.toHaveBeenCalled();
 
     const flowData = capture.summaryProps.flowData;
@@ -263,6 +295,16 @@ describe('ReviewStep branch coverage', () => {
 
     await waitFor(() => expect(onUploadSignedPsbt).toHaveBeenCalledTimes(1));
     expect(capture.usbRefValueAfterUpload).toBe('');
+  });
+
+  it('skips single-sig upload when file/callback is missing and ref is null', async () => {
+    const user = userEvent.setup();
+
+    render(<ReviewStep txData={{ fee: 100 } as any} />);
+
+    await user.click(screen.getByTestId('usb-upload-empty-no-ref'));
+
+    expect(capture.usbRefValueAfterUpload).toBeNull();
   });
 
   it('handles multisig per-device upload success and resets that device input', async () => {
@@ -314,5 +356,71 @@ describe('ReviewStep branch coverage', () => {
     rerender(<ReviewStep txData={{ fee: 100 } as any} unsignedPsbt="base64-psbt" />);
     await user.click(screen.getByTestId('device-upload-empty'));
     expect(loggerSpies.debug).toHaveBeenCalledWith('Upload skipped - no file or no callback');
+  });
+
+  it('handles per-device non-Error failures and missing device input refs', async () => {
+    const user = userEvent.setup();
+    const onUploadSignedPsbt = vi.fn().mockRejectedValue('string failure');
+
+    vi.mocked(SendContext.useSendTransaction).mockReturnValue(
+      makeContext({
+        wallet: { id: 'w1', name: 'Main Wallet', type: 'multi_sig', quorum: 0 },
+      }) as never,
+    );
+
+    render(
+      <ReviewStep
+        txData={{ fee: 100 } as any}
+        unsignedPsbt="base64-psbt"
+        onUploadSignedPsbt={onUploadSignedPsbt}
+      />,
+    );
+
+    await user.click(screen.getByTestId('device-upload-no-ref'));
+
+    await waitFor(() => expect(onUploadSignedPsbt).toHaveBeenCalledTimes(1));
+    expect(alertSpy).not.toHaveBeenCalledWith('string failure');
+    expect(capture.deviceRefValueAfterUpload).toBeNull();
+  });
+
+  it('covers txData input fallbacks for hasData, lookup fallback, and empty defaults', async () => {
+    vi.mocked(SendContext.useSendTransaction).mockReturnValue(
+      makeContext({
+        utxos: [{ txid: 'known-tx', vout: 1, address: 'bc1qknownlookup', amount: 7777 }],
+        state: {
+          transactionType: 'standard',
+          outputs: [{ address: 'bc1qrecipient', amount: '1000', sendMax: false }],
+          selectedUTXOs: new Set<string>(),
+        },
+      }) as never,
+    );
+
+    render(
+      <ReviewStep
+        txData={{
+          utxos: [
+            { txid: 'data-tx', vout: 0, address: 'bc1qfromdata', amount: 1234 },
+            { txid: 'known-tx', vout: 1 },
+            { txid: 'missing-tx', vout: 9 },
+          ],
+          outputs: [{ address: 'bc1qrecipient', amount: 1000 }],
+        } as any}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(capture.summaryProps?.flowData).toMatchObject({
+        inputs: expect.any(Array),
+        outputs: expect.any(Array),
+      }),
+    );
+    const inputs = capture.summaryProps.flowData.inputs;
+    expect(inputs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ address: 'bc1qfromdata', amount: 1234 }),
+        expect.objectContaining({ address: 'bc1qknownlookup', amount: 7777 }),
+        expect.objectContaining({ address: '', amount: 0 }),
+      ]),
+    );
   });
 });

@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { NotificationPanel } from '../../components/NotificationPanel';
 import { AppNotificationProvider, useAppNotifications } from '../../contexts/AppNotificationContext';
 
@@ -252,5 +252,30 @@ describe('NotificationPanel branch coverage', () => {
     const titles = Array.from(document.querySelectorAll('p.text-sm.font-medium')).map((el) => el.textContent);
     expect(titles[0]).toContain('Newer warning');
     expect(titles[1]).toContain('Older warning');
+  });
+
+  it('covers action-label button callback navigation path', async () => {
+    const onClose = vi.fn();
+    renderPanel({
+      onClose,
+      notifications: [
+        {
+          type: 'action-item',
+          severity: 'warning',
+          title: 'Needs attention',
+          actionLabel: 'Open Wallet',
+          actionUrl: '/wallets/w1',
+        },
+      ],
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open Wallet' }));
+
+    expect(onClose).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/wallets/w1', {
+        state: { activeTab: 'drafts' },
+      });
+    });
   });
 });

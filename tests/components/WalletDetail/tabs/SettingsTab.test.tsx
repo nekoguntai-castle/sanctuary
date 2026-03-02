@@ -157,6 +157,37 @@ describe('SettingsTab', () => {
     expect(baseProps.onSetEditedName).toHaveBeenCalledWith('Main Wallet');
   });
 
+  it('does not submit wallet rename when edited name is blank', () => {
+    const onUpdateWallet = vi.fn();
+    const onSetIsEditingName = vi.fn();
+    const onSetEditedName = vi.fn();
+
+    render(
+      <SettingsTab
+        {...baseProps}
+        isEditingName={true}
+        editedName="   "
+        onUpdateWallet={onUpdateWallet}
+        onSetIsEditingName={onSetIsEditingName}
+        onSetEditedName={onSetEditedName}
+      />
+    );
+
+    const input = screen.getByPlaceholderText('Enter wallet name');
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onUpdateWallet).not.toHaveBeenCalled();
+
+    const saveButton = screen.getAllByRole('button').find((b) => b.querySelector('.lucide-check')) as HTMLButtonElement;
+    const reactPropsKey = Object.keys(saveButton).find(key => key.startsWith('__reactProps$'));
+    const reactOnClick = reactPropsKey
+      ? (saveButton as any)[reactPropsKey]?.onClick
+      : undefined;
+    expect(typeof reactOnClick).toBe('function');
+    reactOnClick?.({} as React.MouseEvent<HTMLButtonElement>);
+    expect(onUpdateWallet).not.toHaveBeenCalled();
+    expect(onSetIsEditingName).not.toHaveBeenCalled();
+  });
+
   it('enters edit mode from view mode', () => {
     render(<SettingsTab {...baseProps} isEditingName={false} />);
 

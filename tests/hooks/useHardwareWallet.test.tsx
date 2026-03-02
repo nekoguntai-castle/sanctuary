@@ -305,6 +305,31 @@ describe('useHardwareWallet', () => {
       expect(result.current.error).toBe('User rejected');
       expect(result.current.signing).toBe(false);
     });
+
+    it('should use fallback message for non-Error signTransaction failures', async () => {
+      mockConnect.mockResolvedValue(mockDevice);
+      mockGetDevices.mockResolvedValue([mockDevice]);
+      mockSignTransaction.mockRejectedValue('sign failed');
+
+      const { result } = renderHook(() => useHardwareWallet());
+
+      await act(async () => {
+        await result.current.connect('ledger');
+      });
+
+      let caughtError: unknown;
+      await act(async () => {
+        try {
+          await result.current.signTransaction(mockTx);
+        } catch (e) {
+          caughtError = e;
+        }
+      });
+
+      expect(caughtError).toBe('sign failed');
+      expect(result.current.error).toBe('Failed to sign transaction');
+      expect(result.current.signing).toBe(false);
+    });
   });
 
   describe('signPSBT', () => {
@@ -416,6 +441,32 @@ describe('useHardwareWallet', () => {
 
       expect(caughtError?.message).toBe('Invalid PSBT');
       expect(result.current.error).toBe('Invalid PSBT');
+      expect(result.current.signing).toBe(false);
+    });
+
+    it('should use fallback message for non-Error signPSBT failures', async () => {
+      mockConnect.mockResolvedValue(mockDevice);
+      mockGetDevices.mockResolvedValue([mockDevice]);
+      mockIsConnected.mockReturnValue(true);
+      mockSignPSBT.mockRejectedValue(123);
+
+      const { result } = renderHook(() => useHardwareWallet());
+
+      await act(async () => {
+        await result.current.connect('ledger');
+      });
+
+      let caughtError: unknown;
+      await act(async () => {
+        try {
+          await result.current.signPSBT(mockPsbt);
+        } catch (e) {
+          caughtError = e;
+        }
+      });
+
+      expect(caughtError).toBe(123);
+      expect(result.current.error).toBe('Failed to sign PSBT');
       expect(result.current.signing).toBe(false);
     });
   });

@@ -13,6 +13,7 @@ import {
   useDevice,
   useCreateDevice,
   useDeleteDevice,
+  useInvalidateDevices,
   deviceKeys,
 } from '../../../hooks/queries/useDevices';
 
@@ -196,6 +197,20 @@ describe('Device Query Hooks', () => {
       const { result } = renderHook(() => useDeleteDevice(), { wrapper });
 
       await expect(result.current.mutateAsync('bad-id')).rejects.toThrow('Deletion failed');
+    });
+  });
+
+  describe('useInvalidateDevices', () => {
+    it('invalidates all device queries', () => {
+      const invalidateSpy = vi
+        .spyOn(queryClient, 'invalidateQueries')
+        .mockResolvedValue(undefined as unknown as void);
+      const wrapper = createWrapper(queryClient);
+
+      const { result } = renderHook(() => useInvalidateDevices(), { wrapper });
+      result.current();
+
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: deviceKeys.all });
     });
   });
 });

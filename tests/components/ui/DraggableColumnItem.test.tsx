@@ -1,9 +1,13 @@
 import React from 'react';
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DraggableColumnItem } from '../../../components/ui/DraggableColumnItem';
 import type { TableColumnConfig } from '../../../types';
+
+const sortableState = vi.hoisted(() => ({
+  isDragging: false,
+}));
 
 vi.mock('@dnd-kit/sortable', () => ({
   useSortable: () => ({
@@ -12,7 +16,7 @@ vi.mock('@dnd-kit/sortable', () => ({
     setNodeRef: vi.fn(),
     transform: { x: 10, y: 5, scaleX: 1, scaleY: 1 },
     transition: 'transform 150ms ease',
-    isDragging: false,
+    isDragging: sortableState.isDragging,
   }),
 }));
 
@@ -35,6 +39,10 @@ const baseColumn: TableColumnConfig = {
 };
 
 describe('DraggableColumnItem', () => {
+  afterEach(() => {
+    sortableState.isDragging = false;
+  });
+
   it('renders label and shows check when visible', () => {
     render(
       <DraggableColumnItem
@@ -83,5 +91,20 @@ describe('DraggableColumnItem', () => {
     await user.click(checkbox);
     expect(onToggle).not.toHaveBeenCalled();
     expect(screen.getByText('(required)')).toBeInTheDocument();
+  });
+
+  it('applies dragging style when sortable state indicates dragging', () => {
+    sortableState.isDragging = true;
+
+    const { container } = render(
+      <DraggableColumnItem
+        column={baseColumn}
+        isVisible={true}
+        onToggle={vi.fn()}
+      />
+    );
+
+    const root = container.firstElementChild as HTMLElement;
+    expect(root.className).toContain('bg-primary-100');
   });
 });

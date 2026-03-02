@@ -209,6 +209,24 @@ describe('urHelpers', () => {
       path: "m/49'/0'/0'",
     });
 
+    const fallbackNonHardened = new CryptoAccount(Buffer.from('10101010', 'hex'), [
+      new CryptoOutput(
+        new CryptoHDKey({
+          xpub: 'xpub-49-nonhardened',
+          origin: makeOrigin(undefined, [
+            makePathComponent(49, true),
+            makePathComponent(0, true),
+            makePathComponent(0, false),
+          ]),
+        }),
+      ),
+    ]);
+    expect(extractFromUrResult(fallbackNonHardened as any)).toEqual({
+      xpub: 'xpub-49-nonhardened',
+      fingerprint: '10101010',
+      path: "m/49'/0'/0",
+    });
+
     const withNullHdKeyThen84 = new CryptoAccount(null, [
       new CryptoOutput(null),
       new CryptoOutput(

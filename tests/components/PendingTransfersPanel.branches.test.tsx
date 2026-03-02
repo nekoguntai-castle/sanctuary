@@ -259,4 +259,65 @@ describe('PendingTransfersPanel branch coverage', () => {
       expect(screen.getByText('Confirm API error')).toBeInTheDocument();
     });
   });
+
+  it('uses fallback messages for non-ApiError decline/cancel/confirm failures', async () => {
+    const now = Date.now();
+    vi.mocked(transfersApi.getTransfers).mockResolvedValue({
+      transfers: [
+        baseTransfer({
+          id: 'incoming-nonapi',
+          createdAt: new Date(now - 3_600_000).toISOString(),
+        }),
+        baseTransfer({
+          id: 'outgoing-nonapi',
+          fromUserId: 'current-user',
+          toUserId: 'recipient-nonapi',
+          status: 'pending',
+          toUser: { id: 'recipient-nonapi', username: 'recipientNonApi' },
+        }),
+        baseTransfer({
+          id: 'accepted-nonapi',
+          fromUserId: 'current-user',
+          toUserId: 'recipient-confirm-nonapi',
+          status: 'accepted',
+          acceptedAt: new Date(now - 3_600_000).toISOString(),
+          toUser: { id: 'recipient-confirm-nonapi', username: 'recipientConfirmNonApi' },
+        }),
+      ],
+      total: 3,
+    });
+
+    vi.mocked(transfersApi.declineTransfer).mockRejectedValue(new Error('decline boom'));
+    vi.mocked(transfersApi.cancelTransfer).mockRejectedValue(new Error('cancel boom'));
+    vi.mocked(transfersApi.confirmTransfer).mockRejectedValue(new Error('confirm boom'));
+
+    render(<PendingTransfersPanel {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Incoming Transfer Request')).toBeInTheDocument();
+    });
+
+    fireEvent.click(within(getIncomingCard()).getByRole('button', { name: /Decline/i }));
+    let modal = screen.getByText('Decline Transfer?').closest('div.surface-elevated') as HTMLElement;
+    fireEvent.click(within(modal).getByRole('button', { name: 'Decline Transfer' }));
+    await waitFor(() => {
+      expect(screen.getByText('Failed to decline transfer')).toBeInTheDocument();
+    });
+    fireEvent.click(within(modal).getByRole('button', { name: 'Cancel' }));
+
+    fireEvent.click(within(getOutgoingCard()).getByRole('button', { name: 'Cancel' }));
+    modal = screen.getByText('Cancel Transfer?').closest('div.surface-elevated') as HTMLElement;
+    fireEvent.click(within(modal).getByRole('button', { name: 'Cancel Transfer' }));
+    await waitFor(() => {
+      expect(screen.getByText('Failed to cancel transfer')).toBeInTheDocument();
+    });
+    fireEvent.click(within(modal).getByRole('button', { name: 'Keep Transfer' }));
+
+    fireEvent.click(within(getAwaitingConfirmCard()).getByRole('button', { name: /Confirm Transfer/i }));
+    modal = screen.getByText('Confirm Transfer?').closest('div.surface-elevated') as HTMLElement;
+    fireEvent.click(within(modal).getByRole('button', { name: /Complete Transfer/i }));
+    await waitFor(() => {
+      expect(screen.getByText('Failed to confirm transfer')).toBeInTheDocument();
+    });
+  });
 });

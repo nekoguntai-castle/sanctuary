@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { TransactionActions } from '../../components/TransactionActions';
@@ -107,6 +107,17 @@ describe('TransactionActions', () => {
       renderComponent();
 
       expect(document.querySelector('.animate-spin')).toBeInTheDocument();
+    });
+
+    it('handles RBF status check failures and still leaves loading state', async () => {
+      vi.mocked(bitcoinApi.checkRBF).mockRejectedValueOnce('status unavailable' as any);
+
+      renderComponent();
+
+      await waitFor(() => {
+        expect(screen.getByText('Transaction Actions')).toBeInTheDocument();
+      });
+      expect(screen.queryByText(/Bump Fee \(RBF\)/)).not.toBeInTheDocument();
     });
   });
 
@@ -266,6 +277,128 @@ describe('TransactionActions', () => {
       });
     });
 
+    it('uses fallback draft label and supports missing onActionComplete callback', async () => {
+      vi.mocked(transactionsApi.getTransaction).mockResolvedValueOnce({
+        txid: 'abc123def456',
+        label: '',
+      } as any);
+
+      const user = userEvent.setup();
+      renderComponent({ onActionComplete: undefined });
+
+      await waitFor(() => {
+        expect(screen.getByText(/Bump Fee \(RBF\)/)).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText(/Bump Fee \(RBF\)/));
+      const input = screen.getByRole('spinbutton');
+      await user.clear(input);
+      await user.type(input, '20');
+
+      const bumpButton = screen.getAllByText(/Bump Fee/i).find(btn =>
+        btn.closest('button')?.textContent?.includes('Bump Fee') &&
+        !btn.closest('button')?.textContent?.includes('(RBF)')
+      );
+      if (bumpButton) {
+        await user.click(bumpButton);
+      }
+
+      await waitFor(() => {
+        expect(draftsApi.createDraft).toHaveBeenCalledWith(
+          'wallet-1',
+          expect.objectContaining({
+            label: 'RBF: Fee bump from 10 to 20 sat/vB',
+          })
+        );
+      });
+    });
+
+    it('shows fallback RBF error message when thrown error has no message', async () => {
+      vi.mocked(bitcoinApi.createRBFTransaction).mockRejectedValueOnce({} as any);
+
+      const user = userEvent.setup();
+      renderComponent();
+
+      await waitFor(() => {
+        expect(screen.getByText(/Bump Fee \(RBF\)/)).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText(/Bump Fee \(RBF\)/));
+      const input = screen.getByRole('spinbutton');
+      await user.clear(input);
+      await user.type(input, '20');
+
+      const bumpButton = screen.getAllByText(/Bump Fee/i).find(btn =>
+        btn.closest('button')?.textContent?.includes('Bump Fee') &&
+        !btn.closest('button')?.textContent?.includes('(RBF)')
+      );
+      if (bumpButton) {
+        await user.click(bumpButton);
+      }
+
+      await waitFor(() => {
+        expect(screen.getByText(/Failed to create RBF transaction/)).toBeInTheDocument();
+      });
+    });
+
+    it('uses default minimum fee fallback when minNewFeeRate is absent', async () => {
+      vi.mocked(bitcoinApi.checkRBF).mockResolvedValueOnce({
+        replaceable: true,
+        currentFeeRate: 12,
+        reason: null,
+      } as any);
+
+      const user = userEvent.setup();
+      renderComponent();
+
+      await waitFor(() => {
+        expect(screen.getByText(/Bump Fee \(RBF\)/)).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText(/Bump Fee \(RBF\)/));
+
+      const input = screen.getByRole('spinbutton');
+      expect(input).toHaveAttribute('min', '0.1');
+      expect(screen.queryByText(/Minimum:/)).not.toBeInTheDocument();
+
+      const modalButtons = screen.getAllByRole('button', { name: /Bump Fee/i });
+      const submitButton = modalButtons.find(
+        btn => !btn.textContent?.includes('(RBF)')
+      ) as HTMLButtonElement | undefined;
+      expect(submitButton?.disabled).toBe(true);
+    });
+
+    it('no-ops RBF when fee rate is zero even if button click is forced', async () => {
+      vi.mocked(bitcoinApi.checkRBF).mockResolvedValueOnce({
+        replaceable: true,
+        currentFeeRate: 10,
+        minNewFeeRate: -1,
+        reason: null,
+      } as any);
+
+      const user = userEvent.setup();
+      renderComponent();
+
+      await waitFor(() => {
+        expect(screen.getByText(/Bump Fee \(RBF\)/)).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText(/Bump Fee \(RBF\)/));
+      const input = screen.getByRole('spinbutton');
+      await user.clear(input);
+      await user.type(input, '0');
+
+      const modalButtons = screen.getAllByRole('button', { name: /Bump Fee/i });
+      const submitButton = modalButtons.find(
+        btn => !btn.textContent?.includes('(RBF)')
+      ) as HTMLButtonElement | undefined;
+      if (submitButton) {
+        await user.click(submitButton);
+      }
+
+      expect(bitcoinApi.createRBFTransaction).not.toHaveBeenCalled();
+    });
+
     it('closes modal on cancel', async () => {
       const user = userEvent.setup();
       renderComponent();
@@ -406,6 +539,96 @@ describe('TransactionActions', () => {
 
       await waitFor(() => {
         expect(screen.getByText(/No spendable output/)).toBeInTheDocument();
+      });
+    });
+
+    it('supports successful CPFP flow when onActionComplete is not provided', async () => {
+      const user = userEvent.setup();
+      renderComponent({ isReceived: true, onActionComplete: undefined });
+
+      await waitFor(() => {
+        expect(screen.getByText(/Accelerate \(CPFP\)/)).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText(/Accelerate \(CPFP\)/));
+      const input = screen.getByRole('spinbutton');
+      await user.clear(input);
+      await user.type(input, '50');
+
+      const accelerateButton = screen.getAllByText('Accelerate').find(btn =>
+        btn.closest('button')
+      );
+      if (accelerateButton) {
+        await user.click(accelerateButton);
+      }
+
+      await waitFor(() => {
+        expect(screen.getByText(/CPFP transaction created/)).toBeInTheDocument();
+      });
+    });
+
+    it('shows fallback CPFP error message when thrown error has no message', async () => {
+      vi.mocked(bitcoinApi.createCPFPTransaction).mockRejectedValueOnce({} as any);
+
+      const user = userEvent.setup();
+      renderComponent({ isReceived: true });
+
+      await waitFor(() => {
+        expect(screen.getByText(/Accelerate \(CPFP\)/)).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText(/Accelerate \(CPFP\)/));
+      const input = screen.getByRole('spinbutton');
+      await user.clear(input);
+      await user.type(input, '50');
+
+      const accelerateButton = screen.getAllByText('Accelerate').find(btn =>
+        btn.closest('button')
+      );
+      if (accelerateButton) {
+        await user.click(accelerateButton);
+      }
+
+      await waitFor(() => {
+        expect(screen.getByText(/Failed to create CPFP transaction/)).toBeInTheDocument();
+      });
+    });
+
+    it('no-ops CPFP when target fee is zero even if disabled button is forced', async () => {
+      const user = userEvent.setup();
+      renderComponent({ isReceived: true });
+
+      await waitFor(() => {
+        expect(screen.getByText(/Accelerate \(CPFP\)/)).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText(/Accelerate \(CPFP\)/));
+      const modalButtons = screen.getAllByRole('button', { name: 'Accelerate' });
+      const submitButton = modalButtons[modalButtons.length - 1] as HTMLButtonElement;
+      submitButton.disabled = false;
+      fireEvent.click(submitButton);
+
+      expect(bitcoinApi.createCPFPTransaction).not.toHaveBeenCalled();
+    });
+
+    it('closes CPFP modal on cancel', async () => {
+      const user = userEvent.setup();
+      renderComponent({ isReceived: true });
+
+      await waitFor(() => {
+        expect(screen.getByText(/Accelerate \(CPFP\)/)).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText(/Accelerate \(CPFP\)/));
+
+      await waitFor(() => {
+        expect(screen.getByText('Accelerate Transaction (CPFP)')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText('Cancel'));
+
+      await waitFor(() => {
+        expect(screen.queryByText('Accelerate Transaction (CPFP)')).not.toBeInTheDocument();
       });
     });
   });

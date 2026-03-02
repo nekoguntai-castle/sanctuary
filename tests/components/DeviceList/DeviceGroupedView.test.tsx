@@ -217,18 +217,37 @@ describe('DeviceGroupedView', () => {
 
   it('renders wallet-count fallback and unused fallback badges', () => {
     const countOnly = makeDevice({ id: 'device-count', label: 'Count Device', wallets: undefined });
+    const countPlural = makeDevice({ id: 'device-count-plural', label: 'Count Device Plural', wallets: undefined });
     const unused = makeDevice({ id: 'device-unused', label: 'Unused Device', wallets: [] });
 
     renderGroupedView({
-      groupedDevices: { ledger: [countOnly, unused] },
+      groupedDevices: { ledger: [countOnly, countPlural, unused] },
       walletCounts: new Map([
         ['device-count', 1],
+        ['device-count-plural', 2],
         ['device-unused', 0],
       ]),
     });
 
     expect(screen.getByText('1 wallet')).toBeInTheDocument();
+    expect(screen.getByText('2 wallets')).toBeInTheDocument();
     expect(screen.getByText('Unused')).toBeInTheDocument();
-    expect(screen.getByTestId('icon-hard-drive')).toBeInTheDocument();
+    expect(screen.getAllByTestId('icon-hard-drive')).toHaveLength(2);
+  });
+
+  it('falls back wallet type to single_sig when wallet type is missing', () => {
+    const unknownTypeWallet = makeDevice({
+      id: 'device-unknown-wallet-type',
+      label: 'Unknown Type Wallet Device',
+      wallets: [{ wallet: { id: 'w-missing-type', name: 'Missing Type Wallet' } }] as any,
+    });
+
+    renderGroupedView({
+      groupedDevices: { ledger: [unknownTypeWallet] },
+      walletCounts: new Map([['device-unknown-wallet-type', 1]]),
+    });
+
+    expect(screen.getByText('Missing Type Wallet')).toBeInTheDocument();
+    expect(getWalletIconMock).toHaveBeenCalledWith('single_sig', 'w-2 h-2 mr-1 flex-shrink-0');
   });
 });

@@ -135,6 +135,19 @@ describe('useAITransactionFilter', () => {
     expect(result.current.filteredTransactions.map((tx) => tx.txid)).toEqual(expected);
   });
 
+  it('ignores non-object amount filters without excluding transactions', () => {
+    const { result } = renderHook(() => useAITransactionFilter({ transactions: transactions as any }));
+
+    act(() => {
+      result.current.setAiQueryFilter({
+        type: 'transactions',
+        filter: { amount: 10_000 as any },
+      });
+    });
+
+    expect(result.current.filteredTransactions.map((tx) => tx.txid)).toEqual(['txid-1', 'txid-2', 'txid-3']);
+  });
+
   it('filters by exact confirmations value and excludes non-matching transactions', () => {
     const { result } = renderHook(() => useAITransactionFilter({ transactions: transactions as any }));
 
@@ -189,6 +202,29 @@ describe('useAITransactionFilter', () => {
       });
     });
     expect(result.current.filteredTransactions.map((tx) => tx.txid)).toEqual(['txid-2', 'txid-1', 'txid-3']);
+  });
+
+  it('sorts with timestamp fallbacks and safely handles unknown sort fields', () => {
+    const withMissingTimestamp = transactions.map((tx) => ({ ...tx, timestamp: undefined }));
+    const { result } = renderHook(() =>
+      useAITransactionFilter({ transactions: withMissingTimestamp as any })
+    );
+
+    act(() => {
+      result.current.setAiQueryFilter({
+        type: 'transactions',
+        sort: { field: 'timestamp', order: 'desc' },
+      });
+    });
+    expect(result.current.filteredTransactions).toHaveLength(3);
+
+    act(() => {
+      result.current.setAiQueryFilter({
+        type: 'transactions',
+        sort: { field: 'unknown' as any, order: 'asc' },
+      });
+    });
+    expect(result.current.filteredTransactions).toHaveLength(3);
   });
 
   it('does not apply limit when limit is zero or negative', () => {

@@ -317,6 +317,24 @@ describe('signPsbtWithTrezor branch coverage', () => {
     expect(mockSignTransaction.mock.calls.at(-1)?.[0].coin).toBe('Bitcoin');
   });
 
+  it('falls through request-path detection when coin type is neither 0 nor 1', async () => {
+    const { psbt, signedTxHex } = createPsbt();
+    mockSignTransaction.mockResolvedValueOnce({
+      success: true,
+      payload: { serializedTx: signedTxHex },
+    });
+
+    await signPsbtWithTrezor(
+      {
+        psbt: psbt.toBase64(),
+        accountPath: "m/84'/2'/0'",
+      },
+      { fingerprint: undefined } as any
+    );
+
+    expect(mockSignTransaction.mock.calls.at(-1)?.[0].coin).toBe('Bitcoin');
+  });
+
   it('uses bip32 derivation paths when request paths are empty and supports testnet/mainnet detection', async () => {
     const mainnet = createPsbt();
     mockSignTransaction.mockResolvedValueOnce({

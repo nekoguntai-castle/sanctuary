@@ -262,6 +262,19 @@ describe('BitBoxAdapter', () => {
     });
   });
 
+  it('uses fallback name and connected=false mapping when HID fields are missing', async () => {
+    setAuthorizedHidDevices([makeHidDevice({ productName: undefined, opened: undefined })]);
+
+    const adapter = new BitBoxAdapter();
+    const devices = await adapter.getAuthorizedDevices();
+
+    expect(devices).toHaveLength(1);
+    expect(devices[0]).toMatchObject({
+      name: 'BitBox02',
+      connected: false,
+    });
+  });
+
   it('handles HID enumeration errors', async () => {
     (globalThis.navigator as any).hid.getDevices.mockRejectedValue(new Error('hid failed'));
     const adapter = new BitBoxAdapter();
@@ -287,6 +300,9 @@ describe('BitBoxAdapter', () => {
 
     mockGetDevicePath.mockRejectedValueOnce(new Error('strange connect error'));
     await expect(new BitBoxAdapter().connect()).rejects.toThrow('Failed to connect: strange connect error');
+
+    mockGetDevicePath.mockRejectedValueOnce({ code: 'unknown' });
+    await expect(new BitBoxAdapter().connect()).rejects.toThrow('Failed to connect: Unknown error');
   });
 
   it('connects successfully, sets device state, and handles close callback', async () => {
@@ -311,6 +327,43 @@ describe('BitBoxAdapter', () => {
 
     onCloseHandler?.();
     expect(adapter.getDevice()?.connected).toBe(false);
+  });
+
+  it('supports bitcoin-only product and handles early close/attestation-success branches', async () => {
+    mockFirmwareProduct.mockReturnValue(constants.Product.BitBox02BTCOnly);
+    mockApiConnect.mockImplementationOnce(async (_pairing, _userVerify, attestation, onClose) => {
+      attestation(true);
+      onClose();
+    });
+
+    const adapter = new BitBoxAdapter();
+    const device = await adapter.connect();
+
+    expect(device.name).toBe('BitBox02 Bitcoin-only');
+    expect(adapter.isConnected()).toBe(true);
+  });
+
+  it('covers pairing timeout branch when resolve was already cleared', async () => {
+    vi.useFakeTimers();
+    try {
+      const adapter = new BitBoxAdapter();
+      mockApiConnect.mockImplementationOnce(async (_pairing, userVerify) => {
+        const verifyPromise = userVerify();
+        const resolve = (adapter as any).pairingResolve as (() => void) | null;
+        resolve?.();
+        (adapter as any).pairingResolve = null;
+        await verifyPromise;
+      });
+
+      const connectPromise = adapter.connect();
+      await vi.runAllTimersAsync();
+      await expect(connectPromise).resolves.toMatchObject({
+        type: 'bitbox',
+        connected: true,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('closes previous connection before reconnect and ignores close errors', async () => {
@@ -345,6 +398,12 @@ describe('BitBoxAdapter', () => {
     expect(adapter.getDevice()).toBeNull();
     expect((adapter as any).pairingCode).toBeNull();
     expect((adapter as any).pairingResolve).toBeNull();
+  });
+
+  it('disconnects cleanly when no connection exists', async () => {
+    const adapter = new BitBoxAdapter();
+    await expect(adapter.disconnect()).resolves.toBeUndefined();
+    expect(adapter.getDevice()).toBeNull();
   });
 
   it('requires connected state for xpub/address/sign operations', async () => {
@@ -402,6 +461,10 @@ describe('BitBoxAdapter', () => {
     mockIsErrorAbort.mockReturnValueOnce(false);
     await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow('Failed to get xpub: xpub failed');
 
+    mockBtcXPub.mockRejectedValueOnce('xpub failed');
+    mockIsErrorAbort.mockReturnValueOnce(false);
+    await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow('Failed to get xpub: Unknown error');
+
     await expect(adapter.verifyAddress("m/49h/0h/0h/0/0", '3abc')).resolves.toBe(true);
     expect(mockDisplayAddressSimple).toHaveBeenLastCalledWith(31, expect.any(Array), 11, true);
 
@@ -418,6 +481,12 @@ describe('BitBoxAdapter', () => {
     mockDisplayAddressSimple.mockRejectedValueOnce(new Error('unexpected'));
     mockIsErrorAbort.mockReturnValueOnce(false);
     await expect(adapter.verifyAddress("m/84'/0'/0'/0/0", 'bc1qxyz')).rejects.toThrow('Failed to verify address');
+
+    mockDisplayAddressSimple.mockRejectedValueOnce('unexpected');
+    mockIsErrorAbort.mockReturnValueOnce(false);
+    await expect(adapter.verifyAddress("m/84'/0'/0'/0/0", 'bc1qxyz')).rejects.toThrow(
+      'Failed to verify address: Unknown error'
+    );
   });
 
   it('maps signPSBT abort, busy, and generic failures', async () => {
@@ -446,6 +515,14 @@ describe('BitBoxAdapter', () => {
     });
     mockIsErrorAbort.mockReturnValueOnce(false);
     await expect(adapter.signPSBT({ psbt: 'x', inputPaths: [] })).rejects.toThrow('Failed to sign transaction: unexpected');
+
+    mockPsbtFromBase64.mockImplementationOnce(() => {
+      throw 'unexpected';
+    });
+    mockIsErrorAbort.mockReturnValueOnce(false);
+    await expect(adapter.signPSBT({ psbt: '', inputPaths: [] })).rejects.toThrow(
+      'Failed to sign transaction: Unknown error'
+    );
   });
 
   it('signs and finalizes a PSBT with mocked BitBox responses', async () => {
@@ -725,5 +802,57 @@ describe('BitBoxAdapter', () => {
     expect(outputs[2]).toMatchObject({ ours: false, type: 42, value: '3000' });
     expect(outputs[3]).toMatchObject({ ours: false, type: 43, value: '4000' });
     expect(outputs[4]).toMatchObject({ ours: false, type: 44, value: '5000' });
+  });
+
+  it('uses default address and sighash branches when output address and input sighash are missing', async () => {
+    const adapter = new BitBoxAdapter();
+    const mockBtcSignSimple = vi.fn().mockResolvedValue([new Uint8Array(64).fill(7)]);
+    (adapter as any).connection = {
+      api: { btcSignSimple: (...args: unknown[]) => mockBtcSignSimple(...args) },
+      devicePath: 'WEBHID',
+      product: constants.Product.BitBox02Multi,
+    };
+
+    const mockPsbt = {
+      data: {
+        globalMap: { unsignedTx: {} },
+        inputs: [{
+          witnessUtxo: { value: 1500 },
+          bip32Derivation: [{
+            path: "m/84'/0'/0'/0/0",
+            pubkey: Buffer.from(`02${'22'.repeat(32)}`, 'hex'),
+          }],
+        }],
+        outputs: [{}],
+      },
+      txInputs: [{ hash: Buffer.alloc(32, 9), index: 1, sequence: 0xfffffffd }],
+      txOutputs: [{ value: 1200 }],
+      version: 2,
+      locktime: 0,
+      updateInput: vi.fn(),
+      finalizeAllInputs: vi.fn(),
+      toBase64: vi.fn(() => 'signed-default-branches'),
+    };
+    mockPsbtFromBase64.mockReturnValue(mockPsbt);
+
+    const result = await adapter.signPSBT({
+      psbt: 'default-branch-psbt',
+      accountPath: "m/84'/0'/0'",
+      inputPaths: ["m/84'/0'/0'/0/0"],
+    });
+
+    expect(result).toEqual({ psbt: 'signed-default-branches', signatures: 1 });
+
+    const [, , , , outputs] = mockBtcSignSimple.mock.calls[0];
+    expect(outputs[0]).toMatchObject({
+      ours: false,
+      type: 40,
+      value: '1200',
+      payload: new Uint8Array(0),
+    });
+
+    const [, update] = mockPsbt.updateInput.mock.calls[0];
+    const signature: Buffer = update.partialSig[0].signature;
+    expect(signature[signature.length - 1]).toBe(1);
   });
 });

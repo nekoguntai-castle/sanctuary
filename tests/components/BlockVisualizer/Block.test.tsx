@@ -222,4 +222,20 @@ describe('Block', () => {
     expect(screen.queryByText(/txs • Median:/)).not.toBeInTheDocument();
     expect(screen.queryByText('Median Fee')).not.toBeInTheDocument();
   });
+
+  it('renders compact confirmed numeric height without locale formatting', () => {
+    render(
+      <Block
+        block={{ ...confirmedBlock, height: 800000 }}
+        index={4}
+        onClick={vi.fn()}
+        compact={true}
+        isAnimating={false}
+        animationDirection="none"
+        explorerUrl="https://mempool.space"
+      />
+    );
+
+    expect(screen.getByText('800000')).toBeInTheDocument();
+  });
 });

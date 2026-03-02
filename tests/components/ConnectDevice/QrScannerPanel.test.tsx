@@ -56,9 +56,11 @@ describe('QrScannerPanel', () => {
 
     expect(screen.getByText(/requires HTTPS/i)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Upload File/i }));
+    await user.click(screen.getByRole('button', { name: /Scan with Camera/i }));
     await user.click(screen.getByRole('button', { name: /Start Camera/i }));
 
     expect(props.onQrModeChange).toHaveBeenCalledWith('file');
+    expect(props.onQrModeChange).toHaveBeenCalledWith('camera');
     expect(props.onCameraActiveChange).toHaveBeenCalledWith(true);
   });
 
@@ -76,6 +78,13 @@ describe('QrScannerPanel', () => {
     expect(stopButton).toBeTruthy();
     await user.click(stopButton);
     expect(props.onStopCamera).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows positioning hint when camera is active and UR progress is zero', () => {
+    const props = createProps({ cameraActive: true, urProgress: 0 });
+    render(<QrScannerPanel {...props} />);
+
+    expect(screen.getByText(/Position the QR code within the frame/i)).toBeInTheDocument();
   });
 
   it('renders camera error and retries activation', async () => {
@@ -111,4 +120,3 @@ describe('QrScannerPanel', () => {
     expect(screen.getByText(/Fingerprint: Not provided/i)).toBeInTheDocument();
   });
 });
-

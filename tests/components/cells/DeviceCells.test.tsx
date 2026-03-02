@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createDeviceCellRenderers, type DeviceWithWallets } from '../../../components/cells/DeviceCells';
 import type { TableColumnConfig } from '../../../types';
@@ -67,6 +67,53 @@ describe('DeviceCells', () => {
     expect(screen.getByDisplayValue('My Device')).toBeInTheDocument();
     await user.click(screen.getByLabelText('Save device'));
     expect(handleSave).toHaveBeenCalledWith(baseDevice);
+  });
+
+  it('updates edit fields and cancels editing from label cell controls', async () => {
+    const user = userEvent.setup();
+    const setEditValue = vi.fn();
+    const setEditType = vi.fn();
+    const setEditingId = vi.fn();
+
+    const renderers = createDeviceCellRenderers(
+      {
+        editingId: 'device-1',
+        editValue: 'My Device',
+        editType: 'passport',
+        setEditingId,
+        setEditValue,
+        setEditType,
+      },
+      {
+        deleteConfirmId: null,
+        deleteError: null,
+        setDeleteConfirmId: vi.fn(),
+        setDeleteError: vi.fn(),
+      },
+      {
+        handleEdit: vi.fn(),
+        handleSave: vi.fn(),
+        handleDelete: vi.fn(),
+      },
+      {
+        getDeviceDisplayName: (type: string) => `Display ${type}`,
+        deviceModels: [
+          { slug: 'passport', manufacturer: 'Foundation', name: 'Passport' },
+          { slug: 'trezor-safe-3', manufacturer: 'Trezor', name: 'Safe 3' },
+        ],
+      }
+    );
+
+    render(<renderers.label item={baseDevice} column={baseColumn} />);
+
+    fireEvent.change(screen.getByPlaceholderText('Label'), { target: { value: 'Renamed' } });
+    expect(setEditValue).toHaveBeenCalledWith('Renamed');
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'trezor-safe-3' } });
+    expect(setEditType).toHaveBeenCalledWith('trezor-safe-3');
+
+    await user.click(screen.getByLabelText('Cancel editing'));
+    expect(setEditingId).toHaveBeenCalledWith(null);
   });
 
   it('shows edit button for owner and triggers edit', async () => {
@@ -139,6 +186,40 @@ describe('DeviceCells', () => {
     );
 
     expect(screen.getByText('Shared by alice')).toBeInTheDocument();
+  });
+
+  it('renders type and fingerprint cells', () => {
+    const renderers = createDeviceCellRenderers(
+      {
+        editingId: null,
+        editValue: '',
+        editType: '',
+        setEditingId: vi.fn(),
+        setEditValue: vi.fn(),
+        setEditType: vi.fn(),
+      },
+      {
+        deleteConfirmId: null,
+        deleteError: null,
+        setDeleteConfirmId: vi.fn(),
+        setDeleteError: vi.fn(),
+      },
+      {
+        handleEdit: vi.fn(),
+        handleSave: vi.fn(),
+        handleDelete: vi.fn(),
+      },
+      {
+        getDeviceDisplayName: (type: string) => `Display ${type}`,
+        deviceModels: [],
+      }
+    );
+
+    const { rerender } = render(<renderers.type item={baseDevice} column={baseColumn} />);
+    expect(screen.getByText('Display passport')).toBeInTheDocument();
+
+    rerender(<renderers.fingerprint item={baseDevice} column={baseColumn} />);
+    expect(screen.getByText('abcd1234')).toBeInTheDocument();
   });
 
   it('renders accounts fallback and none states', () => {
@@ -216,6 +297,18 @@ describe('DeviceCells', () => {
       <renderers.wallets item={{ ...baseDevice, walletCount: 2, wallets: [] }} column={baseColumn} />
     );
     expect(screen.getByText('2 wallets')).toBeInTheDocument();
+
+    rerender(
+      <renderers.wallets
+        item={{
+          ...baseDevice,
+          walletCount: undefined,
+          wallets: [{ wallet: { id: 'w-1', name: 'One Wallet', type: 'single_sig' } }],
+        } as any}
+        column={baseColumn}
+      />
+    );
+    expect(screen.getByText('One Wallet')).toBeInTheDocument();
   });
 
   it('handles delete confirmation flow', async () => {
@@ -480,6 +573,43 @@ describe('DeviceCells', () => {
 
     rerender(<renderers.actions item={{ ...baseDevice, isOwner: true, walletCount: 1 }} column={baseColumn} />);
     expect(container.firstChild).toBeNull();
+  });
+
+  it('uses zero-wallet fallback when wallet count and wallets are both undefined', () => {
+    const renderers = createDeviceCellRenderers(
+      {
+        editingId: null,
+        editValue: '',
+        editType: '',
+        setEditingId: vi.fn(),
+        setEditValue: vi.fn(),
+        setEditType: vi.fn(),
+      },
+      {
+        deleteConfirmId: null,
+        deleteError: null,
+        setDeleteConfirmId: vi.fn(),
+        setDeleteError: vi.fn(),
+      },
+      {
+        handleEdit: vi.fn(),
+        handleSave: vi.fn(),
+        handleDelete: vi.fn(),
+      },
+      {
+        getDeviceDisplayName: (type: string) => `Display ${type}`,
+        deviceModels: [],
+      }
+    );
+
+    render(
+      <renderers.actions
+        item={{ ...baseDevice, walletCount: undefined, wallets: undefined } as any}
+        column={baseColumn}
+      />
+    );
+
+    expect(screen.getByTitle('Delete device')).toBeInTheDocument();
   });
 
   it('shows delete error only for the currently confirmed device id', () => {

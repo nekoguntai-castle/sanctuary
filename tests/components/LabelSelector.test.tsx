@@ -140,6 +140,37 @@ describe('LabelSelector', () => {
 
         expect(screen.queryByPlaceholderText('Search labels...')).not.toBeInTheDocument();
       });
+
+      it('keeps dropdown open when clicking inside the dropdown content', async () => {
+        render(<LabelSelector {...defaultProps} />);
+
+        await waitFor(() => {
+          expect(screen.getByText('Select labels...')).toBeInTheDocument();
+        });
+
+        fireEvent.click(screen.getByText('Select labels...'));
+        const searchInput = screen.getByPlaceholderText('Search labels...');
+        fireEvent.mouseDown(searchInput);
+
+        expect(screen.getByPlaceholderText('Search labels...')).toBeInTheDocument();
+      });
+
+      it('handles outside clicks safely when dropdown ref is unavailable', async () => {
+        const realUseRef = React.useRef;
+        const useRefSpy = vi.spyOn(React, 'useRef');
+        useRefSpy.mockImplementation((initialValue) => realUseRef(initialValue));
+        useRefSpy.mockImplementationOnce(() => ({ current: null } as any));
+        useRefSpy.mockImplementationOnce(() => ({ current: null } as any));
+
+        render(<LabelSelector {...defaultProps} />);
+
+        fireEvent.mouseDown(document.body);
+        await waitFor(() => {
+          expect(labelsApi.getLabels).toHaveBeenCalled();
+        });
+
+        useRefSpy.mockRestore();
+      });
     });
 
     describe('selecting labels', () => {
@@ -230,6 +261,21 @@ describe('LabelSelector', () => {
           expect(screen.getByText('No labels found')).toBeInTheDocument();
         });
       });
+
+      it('shows "No labels available" when there are no labels and no search query', async () => {
+        vi.mocked(labelsApi.getLabels).mockResolvedValue([]);
+        render(<LabelSelector {...defaultProps} />);
+
+        await waitFor(() => {
+          expect(labelsApi.getLabels).toHaveBeenCalled();
+        });
+
+        fireEvent.click(screen.getByText('Select labels...'));
+
+        await waitFor(() => {
+          expect(screen.getByText('No labels available')).toBeInTheDocument();
+        });
+      });
     });
 
     describe('creating labels', () => {
@@ -270,6 +316,28 @@ describe('LabelSelector', () => {
         expect(screen.getByPlaceholderText('New label name...')).toBeInTheDocument();
       });
 
+      it('exits create mode and clears text when cancel button is clicked', async () => {
+        render(<LabelSelector {...defaultProps} />);
+
+        await waitFor(() => {
+          expect(labelsApi.getLabels).toHaveBeenCalled();
+        });
+
+        fireEvent.click(screen.getByText('Select labels...'));
+        fireEvent.click(screen.getByText('Create new label'));
+
+        const input = screen.getByPlaceholderText('New label name...') as HTMLInputElement;
+        fireEvent.change(input, { target: { value: 'Temp Label' } });
+
+        const actionButtons = input.parentElement?.querySelectorAll('button');
+        expect(actionButtons?.length).toBeGreaterThanOrEqual(2);
+        fireEvent.click(actionButtons![1]);
+
+        expect(screen.queryByPlaceholderText('New label name...')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByText('Create new label'));
+        expect((screen.getByPlaceholderText('New label name...') as HTMLInputElement).value).toBe('');
+      });
+
       it('calls createLabel API when new label is submitted', async () => {
         const onChange = vi.fn();
         render(<LabelSelector {...defaultProps} onChange={onChange} />);
@@ -290,6 +358,52 @@ describe('LabelSelector', () => {
             name: 'New Label',
           });
         });
+      });
+
+      it('does not create labels for blank input and closes create mode on Escape', async () => {
+        render(<LabelSelector {...defaultProps} />);
+
+        await waitFor(() => {
+          expect(labelsApi.getLabels).toHaveBeenCalled();
+        });
+
+        fireEvent.click(screen.getByText('Select labels...'));
+        fireEvent.click(screen.getByText('Create new label'));
+
+        const input = screen.getByPlaceholderText('New label name...');
+        fireEvent.keyDown(input, { key: 'Enter' });
+        expect(labelsApi.createLabel).not.toHaveBeenCalled();
+
+        fireEvent.change(input, { target: { value: 'Temporary' } });
+        fireEvent.keyDown(input, { key: 'Escape' });
+
+        await waitFor(() => {
+          expect(screen.queryByPlaceholderText('New label name...')).not.toBeInTheDocument();
+        });
+      });
+
+      it('keeps state unchanged when label creation fails and runCreate returns no result', async () => {
+        const onChange = vi.fn();
+        vi.mocked(labelsApi.createLabel).mockRejectedValueOnce(new Error('create failed'));
+        render(<LabelSelector {...defaultProps} onChange={onChange} />);
+
+        await waitFor(() => {
+          expect(labelsApi.getLabels).toHaveBeenCalled();
+        });
+
+        fireEvent.click(screen.getByText('Select labels...'));
+        fireEvent.click(screen.getByText('Create new label'));
+
+        const input = screen.getByPlaceholderText('New label name...');
+        fireEvent.change(input, { target: { value: 'Will Fail' } });
+        fireEvent.keyDown(input, { key: 'Enter' });
+
+        await waitFor(() => {
+          expect(labelsApi.createLabel).toHaveBeenCalledWith('wallet-1', {
+            name: 'Will Fail',
+          });
+        });
+        expect(onChange).not.toHaveBeenCalled();
       });
     });
 
@@ -315,6 +429,27 @@ describe('LabelSelector', () => {
         fireEvent.click(screen.getByRole('button'));
 
         expect(screen.queryByPlaceholderText('Search labels...')).not.toBeInTheDocument();
+      });
+
+      it('removes selected label from trigger chip via X icon click', async () => {
+        const onChange = vi.fn();
+        render(
+          <LabelSelector
+            {...defaultProps}
+            selectedLabels={[mockLabels[0]]}
+            onChange={onChange}
+          />
+        );
+
+        await waitFor(() => {
+          expect(labelsApi.getLabels).toHaveBeenCalled();
+        });
+
+        const triggerRemoveIcon = screen.getByRole('button').querySelector('.lucide-x.cursor-pointer');
+        expect(triggerRemoveIcon).not.toBeNull();
+        fireEvent.click(triggerRemoveIcon!);
+
+        expect(onChange).toHaveBeenCalledWith([]);
       });
     });
   });
@@ -351,6 +486,24 @@ describe('LabelSelector', () => {
       expect(screen.getByText('Add Label')).toBeInTheDocument();
     });
 
+    it('handles inline Add Label click without changing selected labels', async () => {
+      render(
+        <LabelSelector
+          {...defaultProps}
+          mode="inline"
+          selectedLabels={[mockLabels[0]]}
+        />
+      );
+
+      await waitFor(() => {
+        expect(labelsApi.getLabels).toHaveBeenCalled();
+      });
+
+      fireEvent.click(screen.getByText('Add Label'));
+      expect(screen.getByText('Personal')).toBeInTheDocument();
+      expect(screen.queryByPlaceholderText('Search labels...')).not.toBeInTheDocument();
+    });
+
     it('removes label when X is clicked', async () => {
       const onChange = vi.fn();
       render(
@@ -372,6 +525,45 @@ describe('LabelSelector', () => {
       }
 
       expect(onChange).toHaveBeenCalledWith([]);
+    });
+
+    it('toggles selected chip on click when enabled', async () => {
+      const onChange = vi.fn();
+      render(
+        <LabelSelector
+          {...defaultProps}
+          mode="inline"
+          selectedLabels={[mockLabels[0]]}
+          onChange={onChange}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Personal')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByText('Personal'));
+      expect(onChange).toHaveBeenCalledWith([]);
+    });
+
+    it('does not toggle selected chip when disabled', async () => {
+      const onChange = vi.fn();
+      render(
+        <LabelSelector
+          {...defaultProps}
+          mode="inline"
+          selectedLabels={[mockLabels[0]]}
+          disabled={true}
+          onChange={onChange}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Personal')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByText('Personal'));
+      expect(onChange).not.toHaveBeenCalled();
     });
   });
 

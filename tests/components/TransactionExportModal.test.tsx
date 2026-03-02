@@ -87,6 +87,18 @@ describe('TransactionExportModal', () => {
 
       expect(jsonButton).toHaveClass('border-primary-500');
     });
+
+    it('allows switching back to CSV after selecting JSON', async () => {
+      const user = userEvent.setup();
+      render(<TransactionExportModal {...defaultProps} />);
+
+      const jsonButton = screen.getByText('JSON').closest('button');
+      const csvButton = screen.getByText('CSV').closest('button');
+      await user.click(jsonButton!);
+      await user.click(csvButton!);
+
+      expect(csvButton).toHaveClass('border-primary-500');
+    });
   });
 
   describe('date range filter', () => {
@@ -109,6 +121,27 @@ describe('TransactionExportModal', () => {
       // Date inputs exist in the DOM
       const dateInputs = document.querySelectorAll('input[type="date"]');
       expect(dateInputs.length).toBe(2);
+    });
+
+    it('passes selected start/end dates to export API', async () => {
+      const user = userEvent.setup();
+      render(<TransactionExportModal {...defaultProps} />);
+
+      const dateInputs = document.querySelectorAll('input[type="date"]') as NodeListOf<HTMLInputElement>;
+      await user.type(dateInputs[0], '2025-01-01');
+      await user.type(dateInputs[1], '2025-01-31');
+      await user.click(screen.getByRole('button', { name: /Export/i }));
+
+      await waitFor(() => {
+        expect(transactionsApi.exportTransactions).toHaveBeenCalledWith(
+          'wallet-123',
+          'My Wallet',
+          expect.objectContaining({
+            startDate: '2025-01-01',
+            endDate: '2025-01-31',
+          })
+        );
+      });
     });
   });
 
@@ -239,6 +272,19 @@ describe('TransactionExportModal', () => {
       });
 
       expect(onCloseMock).not.toHaveBeenCalled();
+    });
+
+    it('shows fallback error when export rejects with non-Error value', async () => {
+      vi.mocked(transactionsApi.exportTransactions).mockRejectedValue('not-an-error-object');
+
+      const user = userEvent.setup();
+      render(<TransactionExportModal {...defaultProps} />);
+
+      await user.click(screen.getByRole('button', { name: /Export/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText('Export failed')).toBeInTheDocument();
+      });
     });
   });
 

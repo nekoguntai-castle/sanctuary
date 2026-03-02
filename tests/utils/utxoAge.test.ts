@@ -42,6 +42,22 @@ describe('utxoAge utilities', () => {
         expect(result.category).toBe('fresh');
       });
 
+      it('formats sub-hour ages in minutes (singular and plural)', () => {
+        const tenMinutes = calculateUTXOAge({ confirmations: 1 });
+        expect(tenMinutes.displayText).toBe('10 mins');
+        expect(tenMinutes.shortText).toBe('10m');
+
+        const oneMinute = calculateUTXOAge({ confirmations: 0.1 as any });
+        expect(oneMinute.displayText).toBe('1 min');
+        expect(oneMinute.shortText).toBe('1m');
+      });
+
+      it('formats exactly one hour with singular hour text', () => {
+        const oneHour = calculateUTXOAge({ confirmations: 6 });
+        expect(oneHour.displayText).toBe('1 hour');
+        expect(oneHour.shortText).toBe('1h');
+      });
+
       it('returns young category for 1-6 days', () => {
         const result = calculateUTXOAge({ confirmations: BLOCKS_PER_DAY * 3 });
 
@@ -88,12 +104,28 @@ describe('utxoAge utilities', () => {
         expect(result.shortText).toBe('3mo');
       });
 
+      it('formats singular month when rounded month value is below 1.5', () => {
+        const result = calculateUTXOAge({ confirmations: BLOCKS_PER_DAY * 40 });
+
+        expect(result.days).toBe(40);
+        expect(result.displayText).toBe('1 month');
+        expect(result.shortText).toBe('1mo');
+      });
+
       it('formats years for 365+ days', () => {
         const result = calculateUTXOAge({ confirmations: BLOCKS_PER_DAY * 730 });
 
         expect(result.days).toBe(730);
         expect(result.displayText).toBe('2 years');
         expect(result.shortText).toBe('2y');
+      });
+
+      it('formats singular year when rounded year value is below 1.5', () => {
+        const result = calculateUTXOAge({ confirmations: BLOCKS_PER_DAY * 400 });
+
+        expect(result.days).toBe(400);
+        expect(result.displayText).toBe('1 year');
+        expect(result.shortText).toBe('1y');
       });
     });
 
@@ -115,6 +147,12 @@ describe('utxoAge utilities', () => {
 
         expect(result.days).toBeCloseTo(3, 0);
         expect(result.category).toBe('young');
+      });
+
+      it('handles date provided as numeric timestamp', () => {
+        const twoDaysAgoTs = NOW - 2 * 24 * 60 * 60 * 1000;
+        const result = calculateUTXOAge({ date: twoDaysAgoTs });
+        expect(result.days).toBeCloseTo(2, 0);
       });
 
       it('handles date as Date object', () => {
@@ -279,6 +317,11 @@ describe('utxoAge utilities', () => {
       const ancientColor = getAgeCategoryColor('ancient');
 
       expect(freshColor).not.toBe(ancientColor);
+    });
+
+    it('falls back to default color for unexpected category values', () => {
+      const color = getAgeCategoryColor('unexpected' as never);
+      expect(color).toBe('text-sanctuary-500');
     });
   });
 });

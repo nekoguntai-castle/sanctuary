@@ -69,6 +69,17 @@ describe('MempoolSection', () => {
     expect(screen.getByText('Offline')).toBeInTheDocument();
   });
 
+  it('shows spinning refresh icon while mempool data is refreshing', () => {
+    render(
+      <MempoolSection
+        {...baseProps}
+        mempoolRefreshing={true}
+      />
+    );
+
+    expect(screen.getByTestId('refresh-icon').className).toContain('animate-spin');
+  });
+
   it('renders non-mainnet configuration prompt and navigates to node settings', async () => {
     const user = userEvent.setup();
     render(
@@ -82,6 +93,23 @@ describe('MempoolSection', () => {
     expect(screen.getByText('Testnet Node Not Configured')).toBeInTheDocument();
     expect(screen.queryByTestId('block-visualizer')).not.toBeInTheDocument();
     expect(screen.getByText('TESTNET')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /configure node/i }));
+    expect(mockNavigate).toHaveBeenCalledWith('/settings/node');
+  });
+
+  it('renders signet-specific non-mainnet styling and configure action', async () => {
+    const user = userEvent.setup();
+    render(
+      <MempoolSection
+        {...baseProps}
+        selectedNetwork="signet"
+        isMainnet={false}
+      />
+    );
+
+    expect(screen.getByText('Signet Node Not Configured')).toBeInTheDocument();
+    expect(screen.getByText('SIGNET')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /configure node/i }));
     expect(mockNavigate).toHaveBeenCalledWith('/settings/node');

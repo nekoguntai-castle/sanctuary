@@ -52,6 +52,7 @@ describe('useModelManagement', () => {
   });
 
   it('ignores progress for other models and handles websocket error fallback', async () => {
+    const timeoutSpy = vi.spyOn(globalThis, 'setTimeout');
     const { result } = renderHook(() =>
       useModelManagement({
         aiEndpoint: 'http://ollama:11434',
@@ -86,6 +87,108 @@ describe('useModelManagement', () => {
     });
     expect(result.current.pullProgress).toBe('Failed: Unknown error');
     expect(result.current.isPulling).toBe(false);
+
+    const timeoutCallbacks = timeoutSpy.mock.calls
+      .filter(([, delay]) => delay === 5000)
+      .map(([callback]) => callback)
+      .filter((callback): callback is () => void => typeof callback === 'function');
+
+    act(() => {
+      timeoutCallbacks.forEach((callback) => callback());
+    });
+
+    expect(result.current.pullProgress).toBe('');
+    expect(result.current.pullModelName).toBe('');
+    expect(result.current.downloadProgress).toBeNull();
+    timeoutSpy.mockRestore();
+  });
+
+  it('handles websocket completion and clears progress after timeout', async () => {
+    const timeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+    const { result } = renderHook(() =>
+      useModelManagement({
+        aiEndpoint: 'http://ollama:11434',
+        aiEnabled: true,
+        aiModel: '',
+        setAiModel,
+        loadModels,
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.isLoadingPopularModels).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.handlePullModel('model-complete');
+    });
+
+    act(() => {
+      progressListener.callback?.({ model: 'model-complete', status: 'complete' });
+    });
+
+    expect(result.current.pullProgress).toBe('Successfully pulled model-complete');
+    expect(result.current.isPulling).toBe(false);
+    expect(setAiModel).toHaveBeenCalledWith('model-complete');
+    expect(loadModels).toHaveBeenCalled();
+
+    const timeoutCallbacks = timeoutSpy.mock.calls
+      .filter(([, delay]) => delay === 3000)
+      .map(([callback]) => callback)
+      .filter((callback): callback is () => void => typeof callback === 'function');
+
+    act(() => {
+      timeoutCallbacks.forEach((callback) => callback());
+    });
+
+    expect(result.current.pullProgress).toBe('');
+    expect(result.current.pullModelName).toBe('');
+    expect(result.current.downloadProgress).toBeNull();
+    timeoutSpy.mockRestore();
+  });
+
+  it('covers immediate pull failures and thrown errors', async () => {
+    const timeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+    const { result } = renderHook(() =>
+      useModelManagement({
+        aiEndpoint: 'http://ollama:11434',
+        aiEnabled: true,
+        aiModel: '',
+        setAiModel,
+        loadModels,
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.isLoadingPopularModels).toBe(false);
+    });
+
+    vi.mocked(aiApi.pullModel).mockResolvedValueOnce({ success: false, error: 'denied' } as never);
+    await act(async () => {
+      await result.current.handlePullModel('model-immediate-fail');
+    });
+    expect(result.current.pullProgress).toBe('Failed: denied');
+    expect(result.current.isPulling).toBe(false);
+
+    vi.mocked(aiApi.pullModel).mockRejectedValueOnce(new Error('boom') as never);
+    await act(async () => {
+      await result.current.handlePullModel('model-throws');
+    });
+    expect(result.current.pullProgress).toBe('Error: boom');
+    expect(result.current.isPulling).toBe(false);
+
+    const timeoutCallbacks = timeoutSpy.mock.calls
+      .filter(([, delay]) => delay === 5000)
+      .map(([callback]) => callback)
+      .filter((callback): callback is () => void => typeof callback === 'function');
+
+    act(() => {
+      timeoutCallbacks.forEach((callback) => callback());
+    });
+
+    expect(result.current.pullProgress).toBe('');
+    expect(result.current.pullModelName).toBe('');
+    timeoutSpy.mockRestore();
   });
 
   it('covers delete-model success, selected-model clear, and failure-alert branches', async () => {

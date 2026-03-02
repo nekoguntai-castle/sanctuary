@@ -63,6 +63,16 @@ describe('AnimatedPrice', () => {
     expect(screen.getByText('$-----')).toBeInTheDocument();
   });
 
+  it('handles null-to-number transition without direction indicator', () => {
+    const { rerender } = render(<AnimatedPrice value={null} symbol="$" />);
+
+    rerender(<AnimatedPrice value={2500} symbol="$" />);
+
+    expect(screen.getByText('$2,500')).toBeInTheDocument();
+    expect(screen.queryByText('↑')).not.toBeInTheDocument();
+    expect(screen.queryByText('↓')).not.toBeInTheDocument();
+  });
+
   it('shows formatted value when present', () => {
     render(<AnimatedPrice value={12345} symbol="$" />);
     expect(screen.getByText('$12,345')).toBeInTheDocument();
@@ -109,8 +119,20 @@ describe('AnimatedPrice', () => {
       callbacks[0]?.(start);
     });
     expect(screen.getByText('↓')).toBeInTheDocument();
+    expect(screen.getByText('$200')).toHaveClass('text-rose-600');
 
     unmount();
     expect(cancelSpy).toHaveBeenCalled();
+  });
+
+  it('does not call cancelAnimationFrame when animation id is 0', () => {
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 0);
+    const cancelSpy = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+
+    const { rerender, unmount } = render(<AnimatedPrice value={100} symbol="$" />);
+    rerender(<AnimatedPrice value={200} symbol="$" />);
+    unmount();
+
+    expect(cancelSpy).not.toHaveBeenCalled();
   });
 });

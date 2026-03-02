@@ -81,6 +81,17 @@ describe('BBQrDecoder', () => {
     expect(decoder.getError()).toContain('File type mismatch');
   });
 
+  it('reports missing part indices when packet set is incomplete', () => {
+    const decoder = new BBQrDecoder();
+    expect(decoder.receivePart('B$HP0300AAAA')).toBe(true);
+    expect(decoder.receivePart('B$HP0302CCCC')).toBe(true);
+
+    expect(decoder.isComplete()).toBe(false);
+    expect(decoder.getReceivedCount()).toBe(2);
+    expect(decoder.getTotalParts()).toBe(3);
+    expect(decoder.getMissingParts()).toEqual([1]);
+  });
+
   it('decodes complete hex text payloads', () => {
     const text = '{"ok":true}';
     const hex = Buffer.from(text, 'utf8').toString('hex').toUpperCase();
@@ -113,6 +124,15 @@ describe('BBQrDecoder', () => {
     expect(result.text).toBe('foo');
   });
 
+  it('decodes non-text file types without attaching text payload', () => {
+    const decoder = new BBQrDecoder();
+    expect(decoder.receivePart('B$HP010048656C6C6F')).toBe(true); // "Hello"
+    const result = decoder.decode();
+    expect(result.fileType).toBe('P');
+    expect(result.text).toBeUndefined();
+    expect(Buffer.from(result.data).toString('utf8')).toBe('Hello');
+  });
+
   it('throws when decoding incomplete data', () => {
     const decoder = new BBQrDecoder();
     decoder.receivePart('B$HP0200AA');
@@ -142,4 +162,3 @@ describe('BBQrDecoder', () => {
     expect(() => decoder.decode()).toThrow('Unknown encoding: X');
   });
 });
-

@@ -248,6 +248,41 @@ describe('useBroadcast', () => {
     );
   });
 
+  it('broadcasts multisig transactions when debug PSBT inputs have no partial signatures', async () => {
+    mocks.fromBase64.mockReturnValueOnce({
+      data: {
+        inputs: [{}],
+      },
+    });
+    const deps = createDeps({
+      wallet: { id: 'wallet-1', type: 'multi_sig', name: 'Multisig Wallet' } as any,
+      txData: {
+        ...baseTxData,
+        effectiveAmount: undefined,
+        outputs: undefined,
+      } as any,
+    });
+    const { result } = renderHook(() => useBroadcast(deps));
+
+    let ok = false;
+    await act(async () => {
+      ok = await result.current.broadcastTransaction();
+    });
+
+    expect(ok).toBe(true);
+    expect(mocks.broadcastTransaction).toHaveBeenCalledWith('wallet-1', {
+      signedPsbtBase64: 'signed-psbt',
+      rawTxHex: undefined,
+      recipient: 'bc1qrecipient',
+      amount: 0,
+      fee: 123,
+      utxos: baseTxData.utxos,
+    });
+    expect(
+      mocks.logger.info.mock.calls.some(([message]) => message === 'BROADCAST PSBT SIGNATURES')
+    ).toBe(false);
+  });
+
   it('logs but ignores draft deletion failure after successful broadcast', async () => {
     mocks.deleteDraft.mockRejectedValueOnce(new Error('delete failed'));
     const deps = createDeps({

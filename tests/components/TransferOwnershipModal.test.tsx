@@ -3,11 +3,12 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TransferOwnershipModal } from '../../components/TransferOwnershipModal';
 import * as authApi from '../../src/api/auth';
 import * as transfersApi from '../../src/api/transfers';
+import { ApiError } from '../../src/api/client';
 
 vi.mock('../../utils/logger', () => ({
   createLogger: () => ({
@@ -150,6 +151,21 @@ describe('TransferOwnershipModal', () => {
         expect(document.querySelector('.animate-spin')).toBeInTheDocument();
       }, { timeout: 100 });
     });
+
+    it('handles search API failures without crashing', async () => {
+      vi.mocked(authApi.searchUsers).mockRejectedValueOnce(new Error('search failed'));
+
+      const user = userEvent.setup();
+      render(<TransferOwnershipModal {...defaultProps} />);
+
+      const input = screen.getByPlaceholderText('Search users by username...');
+      await user.type(input, 'al');
+
+      await waitFor(() => {
+        expect(authApi.searchUsers).toHaveBeenCalledWith('al');
+      });
+      expect(screen.queryByText('alice')).not.toBeInTheDocument();
+    });
   });
 
   describe('user selection', () => {
@@ -283,6 +299,16 @@ describe('TransferOwnershipModal', () => {
       expect(submitButton).toBeDisabled();
     });
 
+    it('shows recipient selection error when submit is forced without selected user', () => {
+      render(<TransferOwnershipModal {...defaultProps} />);
+
+      const form = screen.getByText('Initiate Transfer').closest('form');
+      expect(form).toBeInTheDocument();
+      fireEvent.submit(form!);
+
+      expect(screen.getByText('Please select a recipient')).toBeInTheDocument();
+    });
+
     it('initiates transfer with correct parameters', async () => {
       const user = userEvent.setup();
       render(<TransferOwnershipModal {...defaultProps} />);
@@ -363,6 +389,29 @@ describe('TransferOwnershipModal', () => {
 
       await waitFor(() => {
         expect(screen.getByText(/Failed to initiate transfer/)).toBeInTheDocument();
+      });
+    });
+
+    it('shows ApiError message when transfer API rejects with ApiError', async () => {
+      vi.mocked(transfersApi.initiateTransfer).mockRejectedValue(
+        new ApiError('Transfer blocked by policy', 400)
+      );
+
+      const user = userEvent.setup();
+      render(<TransferOwnershipModal {...defaultProps} />);
+
+      const input = screen.getByPlaceholderText('Search users by username...');
+      await user.type(input, 'alice');
+
+      await waitFor(() => {
+        expect(screen.getByText('alice')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText('alice'));
+      await user.click(screen.getByText('Initiate Transfer'));
+
+      await waitFor(() => {
+        expect(screen.getByText('Transfer blocked by policy')).toBeInTheDocument();
       });
     });
 

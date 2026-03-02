@@ -53,6 +53,15 @@ describe('transactionReducer', () => {
       expect(newState.completedSteps.has('type')).toBe(true);
     });
 
+    it('should not go to next step when already on last step', () => {
+      const state = { ...createInitialState(), currentStep: 'success' as WizardStep };
+      const action: TransactionAction = { type: 'NEXT_STEP' };
+
+      const newState = transactionReducer(state, action);
+
+      expect(newState).toBe(state);
+    });
+
     it('should go to previous step', () => {
       const state = { ...createInitialState(), currentStep: 'outputs' as WizardStep };
       const action: TransactionAction = { type: 'PREV_STEP' };
@@ -60,6 +69,15 @@ describe('transactionReducer', () => {
       const newState = transactionReducer(state, action);
 
       expect(newState.currentStep).toBe('type');
+    });
+
+    it('should not go to previous step when already on first step', () => {
+      const state = createInitialState();
+      const action: TransactionAction = { type: 'PREV_STEP' };
+
+      const newState = transactionReducer(state, action);
+
+      expect(newState).toBe(state);
     });
 
     it('should jump to specific step if allowed', () => {
@@ -114,6 +132,19 @@ describe('transactionReducer', () => {
       expect(newState.transactionType).toBe('standard');
       expect(newState.outputs).toHaveLength(1);
       expect(newState.outputs[0].sendMax).toBe(false);
+    });
+
+    it('should not reset outputs when already standard', () => {
+      const state = createInitialState();
+      state.transactionType = 'standard';
+      state.outputs = [{ address: 'bc1qalready', amount: '21000', sendMax: false }];
+      state.outputsValid = [true];
+
+      const action: TransactionAction = { type: 'SET_TRANSACTION_TYPE', txType: 'standard' };
+      const newState = transactionReducer(state, action);
+
+      expect(newState.outputs).toEqual([{ address: 'bc1qalready', amount: '21000', sendMax: false }]);
+      expect(newState.outputsValid).toEqual([true]);
     });
 
     it('should set transaction type to consolidation with sendMax', () => {
@@ -194,6 +225,27 @@ describe('transactionReducer', () => {
       expect(newState.outputs[0].address).toBe('bc1qtest');
     });
 
+    it('should clear amount and disable sendMax on other outputs via UPDATE_OUTPUT sendMax', () => {
+      const state = createInitialState();
+      state.outputs = [
+        { address: 'bc1q1', amount: '1000', sendMax: true },
+        { address: 'bc1q2', amount: '2000', sendMax: false },
+      ];
+
+      const action: TransactionAction = {
+        type: 'UPDATE_OUTPUT',
+        index: 1,
+        field: 'sendMax',
+        value: true,
+      };
+
+      const newState = transactionReducer(state, action);
+
+      expect(newState.outputs[0].sendMax).toBe(false);
+      expect(newState.outputs[1].sendMax).toBe(true);
+      expect(newState.outputs[1].amount).toBe('');
+    });
+
     it('should set output address', () => {
       const state = createInitialState();
       const action: TransactionAction = {
@@ -245,6 +297,17 @@ describe('transactionReducer', () => {
 
       expect(newState.outputs[0].sendMax).toBe(false);
       expect(newState.outputs[1].sendMax).toBe(true);
+    });
+
+    it('should allow toggling sendMax off without clearing amount', () => {
+      const state = createInitialState();
+      state.outputs = [{ address: 'bc1qtoggle', amount: '3000', sendMax: true }];
+
+      const action: TransactionAction = { type: 'TOGGLE_SEND_MAX', index: 0 };
+      const newState = transactionReducer(state, action);
+
+      expect(newState.outputs[0].sendMax).toBe(false);
+      expect(newState.outputs[0].amount).toBe('3000');
     });
 
     it('should set all outputs', () => {
@@ -453,6 +516,20 @@ describe('transactionReducer', () => {
 
       expect(newState.selectedUTXOs.size).toBe(0);
     });
+
+    it('should set selected UTXOs from provided list', () => {
+      const state = createInitialState();
+      const action: TransactionAction = {
+        type: 'SET_SELECTED_UTXOS',
+        utxoIds: ['utxo-a', 'utxo-b'],
+      };
+
+      const newState = transactionReducer(state, action);
+
+      expect(newState.selectedUTXOs.has('utxo-a')).toBe(true);
+      expect(newState.selectedUTXOs.has('utxo-b')).toBe(true);
+      expect(newState.selectedUTXOs.size).toBe(2);
+    });
   });
 
   describe('Fee actions', () => {
@@ -575,6 +652,24 @@ describe('transactionReducer', () => {
       const newState = transactionReducer(state, action);
 
       expect(newState.showPsbtOptions).toBe(true);
+    });
+
+    it('should set PSBT options visibility explicitly', () => {
+      const state = createInitialState();
+      const action: TransactionAction = { type: 'SET_SHOW_PSBT_OPTIONS', show: true };
+
+      const newState = transactionReducer(state, action);
+
+      expect(newState.showPsbtOptions).toBe(true);
+    });
+
+    it('should set PSBT device id', () => {
+      const state = createInitialState();
+      const action: TransactionAction = { type: 'SET_PSBT_DEVICE_ID', deviceId: 'device-psbt' };
+
+      const newState = transactionReducer(state, action);
+
+      expect(newState.psbtDeviceId).toBe('device-psbt');
     });
 
     it('should clear signatures', () => {

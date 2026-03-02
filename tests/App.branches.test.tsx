@@ -83,6 +83,70 @@ vi.mock('../components/WalletDetail', () => ({
   WalletDetail: () => <div>Wallet Detail</div>,
 }));
 
+vi.mock('../components/send', () => ({
+  SendTransactionPage: () => <div>Send Transaction Page</div>,
+}));
+
+vi.mock('../components/CreateWallet', () => ({
+  CreateWallet: () => <div>Create Wallet Page</div>,
+}));
+
+vi.mock('../components/ImportWallet', () => ({
+  ImportWallet: () => <div>Import Wallet Page</div>,
+}));
+
+vi.mock('../components/DeviceList', () => ({
+  DeviceList: () => <div>Device List Page</div>,
+}));
+
+vi.mock('../components/DeviceDetail', () => ({
+  DeviceDetail: () => <div>Device Detail Page</div>,
+}));
+
+vi.mock('../components/ConnectDevice', () => ({
+  ConnectDevice: () => <div>Connect Device Page</div>,
+}));
+
+vi.mock('../components/Settings', () => ({
+  Settings: () => <div>Settings Page</div>,
+}));
+
+vi.mock('../components/Account', () => ({
+  Account: () => <div>Account Page</div>,
+}));
+
+vi.mock('../components/NodeConfig', () => ({
+  NodeConfig: () => <div>Node Config Page</div>,
+}));
+
+vi.mock('../components/UsersGroups', () => ({
+  UsersGroups: () => <div>Users Groups Page</div>,
+}));
+
+vi.mock('../components/SystemSettings', () => ({
+  SystemSettings: () => <div>System Settings Page</div>,
+}));
+
+vi.mock('../components/Variables', () => ({
+  Variables: () => <div>Variables Page</div>,
+}));
+
+vi.mock('../components/BackupRestore', () => ({
+  BackupRestore: () => <div>Backup Restore Page</div>,
+}));
+
+vi.mock('../components/AuditLogs', () => ({
+  AuditLogs: () => <div>Audit Logs Page</div>,
+}));
+
+vi.mock('../components/AISettings', () => ({
+  default: () => <div>AI Settings Page</div>,
+}));
+
+vi.mock('../components/Monitoring', () => ({
+  default: () => <div>Monitoring Page</div>,
+}));
+
 vi.mock('../components/NotificationToast', () => ({
   NotificationContainer: ({ notifications }: { notifications: unknown[] }) => (
     <div data-testid="notification-count">{notifications.length}</div>
@@ -110,13 +174,20 @@ vi.mock('../components/AnimatedBackground', () => ({
 
 vi.mock('../components/ChangePasswordModal', () => ({
   ChangePasswordModal: ({ onPasswordChanged }: { onPasswordChanged: () => Promise<void> }) => (
-    <button onClick={() => onPasswordChanged()}>password-changed</button>
+    <button
+      onClick={() => {
+        void onPasswordChanged().catch(() => undefined);
+      }}
+    >
+      password-changed
+    </button>
   ),
 }));
 
 describe('App branch coverage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.location.hash = '#/';
     mockUseNotifications.mockReturnValue({
       notifications: [{ id: 'n1' }],
       removeNotification: vi.fn(),
@@ -213,5 +284,88 @@ describe('App branch coverage', () => {
     await waitFor(() => {
       expect(screen.getByText('password-changed')).toBeInTheDocument();
     });
+  });
+
+  it('resolves all lazy routes through hash navigation', async () => {
+    mockUseUser.mockReturnValue({
+      isAuthenticated: true,
+      logout: vi.fn(),
+      user: {
+        usingDefaultPassword: false,
+        preferences: {},
+      },
+      updatePreferences: vi.fn(),
+    });
+
+    const routes: Array<{ hash: string; text: string }> = [
+      { hash: '#/wallets/create', text: 'Create Wallet Page' },
+      { hash: '#/wallets/import', text: 'Import Wallet Page' },
+      { hash: '#/wallets/abc/send', text: 'Send Transaction Page' },
+      { hash: '#/devices', text: 'Device List Page' },
+      { hash: '#/devices/connect', text: 'Connect Device Page' },
+      { hash: '#/devices/device-1', text: 'Device Detail Page' },
+      { hash: '#/account', text: 'Account Page' },
+      { hash: '#/settings', text: 'Settings Page' },
+      { hash: '#/admin/node-config', text: 'Node Config Page' },
+      { hash: '#/admin/users-groups', text: 'Users Groups Page' },
+      { hash: '#/admin/settings', text: 'System Settings Page' },
+      { hash: '#/admin/variables', text: 'Variables Page' },
+      { hash: '#/admin/backup', text: 'Backup Restore Page' },
+      { hash: '#/admin/audit-logs', text: 'Audit Logs Page' },
+      { hash: '#/admin/ai', text: 'AI Settings Page' },
+      { hash: '#/admin/monitoring', text: 'Monitoring Page' },
+    ];
+
+    for (const route of routes) {
+      window.location.hash = route.hash;
+      const rendered = render(<App />);
+
+      await waitFor(() => {
+        expect(screen.getByText(route.text)).toBeInTheDocument();
+      });
+
+      rendered.unmount();
+    }
+  });
+
+  it('handles password refresh success and failure during forced password change', async () => {
+    const baseUser = {
+      isAuthenticated: true,
+      logout: vi.fn(),
+      user: {
+        usingDefaultPassword: true,
+        preferences: {},
+      },
+      updatePreferences: vi.fn(),
+    };
+
+    mockUseUser.mockReturnValue(baseUser);
+    mockGetCurrentUser.mockResolvedValueOnce({ id: 'updated-user' });
+
+    const firstRender = render(<App />);
+    await waitFor(() => {
+      expect(screen.getByText('password-changed')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('password-changed'));
+
+    await waitFor(() => {
+      expect(mockGetCurrentUser).toHaveBeenCalledTimes(1);
+    });
+    firstRender.unmount();
+
+    mockUseUser.mockReturnValue(baseUser);
+    mockGetCurrentUser.mockRejectedValueOnce(new Error('refresh failed'));
+
+    const secondRender = render(<App />);
+    await waitFor(() => {
+      expect(screen.getByText('password-changed')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('password-changed'));
+
+    await waitFor(() => {
+      expect(mockGetCurrentUser).toHaveBeenCalledTimes(2);
+    });
+
+    secondRender.unmount();
   });
 });

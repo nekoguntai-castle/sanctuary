@@ -452,6 +452,21 @@ describe('useQrScanner', () => {
       expect(result.current.scanning).toBe(false);
     });
 
+    it('uses fallback unknown error when plain scan throws non-Error values', () => {
+      const { result } = renderHook(() => useQrScanner());
+
+      (parseDeviceJson as ReturnType<typeof vi.fn>).mockImplementation(() => {
+        throw 'non-error-scan-failure';
+      });
+
+      act(() => {
+        result.current.handleQrScan([{ rawValue: 'raw-content' }]);
+      });
+
+      expect(result.current.error).toBe('Unknown error');
+      expect(result.current.scanning).toBe(false);
+    });
+
     it('should ignore empty scan results', () => {
       const { result } = renderHook(() => useQrScanner());
 
@@ -509,9 +524,47 @@ describe('useQrScanner', () => {
       expect(result.current.scanResult).toBeNull();
       expect(result.current.scanning).toBe(false);
     });
+
+    it('uses fallback unknown error when file parsing throws non-Error values', () => {
+      const { result } = renderHook(() => useQrScanner());
+
+      (parseDeviceJson as ReturnType<typeof vi.fn>).mockImplementation(() => {
+        throw 'non-error-file-failure';
+      });
+
+      act(() => {
+        result.current.handleFileContent('raw file content');
+      });
+
+      expect(result.current.error).toBe('Unknown error');
+      expect(result.current.scanning).toBe(false);
+    });
   });
 
   describe('UR Format Processing', () => {
+    it('falls back to unknown UR type when detector returns null', () => {
+      const { result } = renderHook(() => useQrScanner());
+
+      (getUrType as ReturnType<typeof vi.fn>).mockReturnValue(null);
+      mockUrRegistryDecoder.receivePart.mockReturnValue(true);
+      mockUrRegistryDecoder.estimatedPercentComplete.mockReturnValue(1);
+      mockUrRegistryDecoder.isComplete.mockReturnValue(true);
+      mockUrRegistryDecoder.isSuccess.mockReturnValue(true);
+      mockUrRegistryDecoder.resultRegistryType.mockReturnValue({ type: 'crypto-hdkey' });
+      (extractFromUrResult as ReturnType<typeof vi.fn>).mockReturnValue({
+        xpub: 'xpub6UnknownType...',
+        fingerprint: 'UNKN1234',
+        path: "m/84'/0'/0'",
+      });
+
+      act(() => {
+        result.current.handleQrScan([{ rawValue: 'ur:untyped/1-1/...' }]);
+      });
+
+      expect(result.current.scanResult?.xpub).toBe('xpub6UnknownType...');
+      expect(result.current.error).toBeNull();
+    });
+
     it('should detect UR format and process crypto-hdkey', () => {
       const { result } = renderHook(() => useQrScanner());
 

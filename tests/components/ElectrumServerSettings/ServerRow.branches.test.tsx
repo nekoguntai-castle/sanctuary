@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { ServerRow } from '../../../components/ElectrumServerSettings/ServerRow';
 import type { ElectrumServer } from '../../../types';
 
@@ -158,5 +158,16 @@ describe('Electrum ServerRow branch coverage', () => {
     );
     failedBadge = screen.getByText('Failed').closest('span[title]');
     expect(failedBadge).toHaveAttribute('title', 'Connection test failed');
+  });
+
+  it('covers move up/down callbacks when priority buttons are enabled', () => {
+    renderRow({}, { index: 1, totalCount: 3 });
+
+    const buttons = screen.getAllByRole('button');
+    fireEvent.click(buttons[0]); // move up
+    fireEvent.click(buttons[1]); // move down
+
+    expect(callbacks.onMoveServer).toHaveBeenCalledWith('server-1', 'up');
+    expect(callbacks.onMoveServer).toHaveBeenCalledWith('server-1', 'down');
   });
 });

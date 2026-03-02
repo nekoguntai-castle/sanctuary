@@ -225,4 +225,85 @@ describe('ThemeRegistry', () => {
     expect(registry.getAll()).toEqual([]);
     expect(registry.getAllPatterns()).toEqual([]);
   });
+
+  it('covers remaining contrast, metadata, pattern fallback, and seasonal preference branches', () => {
+    const registry = createRegistry();
+
+    registry.register(createTheme('sanctuary'));
+
+    registry.register(createTheme('metadata-defaults', {
+      colors: {
+        light: {
+          bg: {},
+          primary: {},
+          success: { 500: '#22aa66' },
+          warning: { 500: '#ffaa33' },
+        },
+        dark: {
+          bg: { 900: '#111111' },
+          primary: { 500: '#6699cc' },
+          success: { 500: '#33cc88' },
+          warning: { 500: '#ffbb55' },
+        },
+      } as any,
+    }));
+
+    const metadata = registry.getAllMetadata().find(theme => theme.id === 'metadata-defaults');
+    expect(metadata?.preview.primaryColor).toBe('#3B82F6');
+    expect(metadata?.preview.backgroundColor).toBe('#FFFFFF');
+
+    const contrastTheme = createTheme('contrast-branches') as any;
+    contrastTheme.colors.light.bg = {
+      50: '#fefefe',
+      150: '',       // Covers empty value branch in applyTheme
+      300: '#cccccc', // Covers light mode 201-400 branch
+      500: '#999999', // Covers light mode >400 branch
+    };
+    contrastTheme.colors.light.accent = null; // Covers non-object/null scale branch
+    contrastTheme.colors.dark.bg = {
+      500: '#444444', // Covers dark mode <600 branch
+      700: '#333333', // Covers dark mode 600-799 branch
+      900: '#111111', // Covers dark mode >=800 branch
+    };
+    contrastTheme.colors.dark.accent = null;
+    registry.register(contrastTheme as ThemeDefinition);
+
+    registry.applyTheme('contrast-branches', 'light', 1);
+    registry.applyTheme('contrast-branches', 'dark', 1);
+    expect(document.documentElement.style.getPropertyValue('--color-bg-300')).not.toBe('');
+    expect(document.documentElement.style.getPropertyValue('--color-bg-500')).not.toBe('');
+    expect(document.documentElement.style.getPropertyValue('--color-bg-700')).not.toBe('');
+
+    registry.register(createTheme('no-patterns'));
+    registry.registerPattern({ id: 'g-only', name: 'Global Only' });
+    expect(registry.getAllPatterns('no-patterns').map(p => p.id)).toContain('g-only');
+
+    registry.registerPattern({ id: 'dark-only', name: 'Dark only', svgDark: '<svg id=\"dark-only\"></svg>' });
+    registry.registerPattern({ id: 'light-only', name: 'Light only', svgLight: '<svg id=\"light-only\"></svg>' });
+
+    registry.applyPattern('dark-only');
+    const darkOnlyStyleFirst = document.getElementById('pattern-dark-only');
+    expect(darkOnlyStyleFirst?.textContent).toContain('dark-only');
+
+    // Re-applying should reuse the existing style element
+    registry.applyPattern('dark-only');
+    const darkOnlyStyleSecond = document.getElementById('pattern-dark-only');
+    expect(darkOnlyStyleSecond).toBe(darkOnlyStyleFirst);
+
+    registry.applyPattern('light-only');
+    const lightOnlyStyle = document.getElementById('pattern-light-only');
+    expect(lightOnlyStyle?.textContent).toContain('light-only');
+
+    (registry as any).injectPatternStyles('no-svg', { id: 'no-svg', name: 'No SVG fallback' });
+    const noSvgStyle = document.getElementById('pattern-no-svg');
+    expect(noSvgStyle?.textContent).toContain('url(\"\")');
+
+    document.body.className = 'foo';
+    document.documentElement.classList.remove('dark');
+    const applyThemeSpy = vi.spyOn(registry, 'applyTheme');
+    registry.applyContrast(-1);
+    expect(applyThemeSpy).toHaveBeenCalledWith('sanctuary', 'light', -1);
+
+    expect(registry.getSeasonalBackground({ summer: 'custom-summer' })).toBe('bg-spring');
+  });
 });

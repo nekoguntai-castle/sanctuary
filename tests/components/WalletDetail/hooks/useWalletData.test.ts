@@ -375,4 +375,60 @@ describe('useWalletData', () => {
     expect(walletsApi.getWallet).not.toHaveBeenCalled();
     expect(result.current.loading).toBe(true);
   });
+
+  it('covers loadAddressSummary helper for present and missing summaries', async () => {
+    const { result } = renderHook(() => useWalletData({ id: 'wallet-1', user: defaultUser }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    vi.mocked(transactionsApi.getAddressSummary).mockResolvedValueOnce({ totalAddresses: 7 } as never);
+    await act(async () => {
+      await result.current.loadAddressSummary('wallet-1');
+    });
+    expect(result.current.addressSummary?.totalAddresses).toBe(7);
+
+    vi.mocked(transactionsApi.getAddressSummary).mockRejectedValueOnce(new Error('summary missing'));
+    await act(async () => {
+      await result.current.loadAddressSummary('wallet-1');
+    });
+    expect(result.current.addressSummary?.totalAddresses).toBe(7);
+  });
+
+  it('appends addresses and uses limit fallback when address summary is unavailable', async () => {
+    vi.mocked(transactionsApi.getAddressSummary).mockRejectedValue(new Error('no summary'));
+    vi.mocked(transactionsApi.getAddresses)
+      .mockResolvedValueOnce([makeAddress('initial')] as never)
+      .mockResolvedValueOnce([makeAddress('next-page')] as never);
+
+    const { result } = renderHook(() => useWalletData({ id: 'wallet-1', user: defaultUser }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.addressSummary).toBeNull();
+
+    await act(async () => {
+      await result.current.loadAddresses('wallet-1', 2, 1, false);
+    });
+
+    expect(result.current.addresses.some(a => a.id === 'next-page')).toBe(true);
+    expect(result.current.hasMoreAddresses).toBe(false);
+  });
+
+  it('uses singular pending-draft notification title and skips hidden-tab refresh', async () => {
+    vi.mocked(draftsApi.getDrafts).mockResolvedValueOnce([{ id: 'draft-1' }] as never);
+
+    const { result } = renderHook(() => useWalletData({ id: 'wallet-1', user: defaultUser }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(mockAddNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: '1 pending draft',
+        count: 1,
+      })
+    );
+
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    expect(walletsApi.getWallet).toHaveBeenCalledTimes(1);
+  });
 });

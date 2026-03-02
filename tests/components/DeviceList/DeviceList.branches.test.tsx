@@ -322,6 +322,8 @@ describe('DeviceList branch coverage', () => {
       makeDevice({ id: 'o2', label: 'Owned Ledger', isOwner: true, type: 'ledger', fingerprint: 'aaa', wallets: [{ wallet: { id: 'w1', name: 'W1', type: 'single_sig' } }] as any, walletCount: undefined }),
       makeDevice({ id: 's1', label: 'Shared Coldcard', isOwner: false, isShared: true, type: 'coldcard', fingerprint: 'bbb', walletCount: 3 }),
       makeDevice({ id: 's2', label: 'Shared Bitbox', isOwner: false, isShared: true, type: 'bitbox', fingerprint: 'ddd', walletCount: 0 }),
+      makeDevice({ id: 'z1', label: 'Unknown Wallets 1', isOwner: true, type: 'jade', fingerprint: 'eee', walletCount: undefined, wallets: undefined }),
+      makeDevice({ id: 'z2', label: 'Unknown Wallets 2', isOwner: false, isShared: true, type: 'passport', fingerprint: 'fff', walletCount: undefined, wallets: undefined }),
     ];
     mockGetDevices.mockResolvedValue(devices);
 
@@ -336,7 +338,7 @@ describe('DeviceList branch coverage', () => {
     const ownedView = render(<DeviceList />);
     await waitFor(() => {
       const rows = screen.getAllByTestId('table-row').map(row => row.textContent);
-      expect(rows).toEqual(['Owned Ledger', 'Owned Trezor']);
+      expect(rows).toEqual(['Unknown Wallets 1', 'Owned Ledger', 'Owned Trezor']);
     });
     ownedView.unmount();
 
@@ -351,7 +353,7 @@ describe('DeviceList branch coverage', () => {
     const sharedView = render(<DeviceList />);
     await waitFor(() => {
       const rows = screen.getAllByTestId('table-row').map(row => row.textContent);
-      expect(rows).toEqual(['Shared Coldcard', 'Shared Bitbox']);
+      expect(rows).toEqual(['Shared Coldcard', 'Shared Bitbox', 'Unknown Wallets 2']);
     });
     sharedView.unmount();
 
@@ -380,7 +382,7 @@ describe('DeviceList branch coverage', () => {
     });
     render(<DeviceList />);
     await waitFor(() => {
-      expect(screen.getAllByTestId('table-row').length).toBe(4);
+      expect(screen.getAllByTestId('table-row').length).toBe(6);
     });
   });
 });

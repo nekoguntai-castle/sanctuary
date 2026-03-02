@@ -236,6 +236,30 @@ describe('useWalletSharing', () => {
     expect(result.current.deviceSharePrompt.targetUsername).toBe('alice');
   });
 
+  it('shares with user without device prompt when no devices require sharing', async () => {
+    vi.mocked(authApi.searchUsers).mockResolvedValue([{ id: 'user-2', username: 'alice' }] as never);
+    vi.mocked(walletsApi.getWalletShareInfo).mockResolvedValue({
+      users: [{ id: 'user-2', username: 'alice' }],
+      group: null,
+    } as never);
+    vi.mocked(walletsApi.shareWalletWithUser).mockResolvedValue({ devicesToShare: [] } as never);
+
+    const { result } = renderSharingHook();
+
+    await act(async () => {
+      await result.current.handleSearchUsers('al');
+    });
+    expect(result.current.userSearchResults).toEqual([{ id: 'user-2', username: 'alice' }]);
+
+    await act(async () => {
+      await result.current.handleShareWithUser('user-2');
+    });
+
+    expect(result.current.deviceSharePrompt.show).toBe(false);
+    expect(result.current.userSearchQuery).toBe('');
+    expect(result.current.userSearchResults).toEqual([]);
+  });
+
   it('resolves share target username from search results, then falls back to default text', async () => {
     vi.mocked(authApi.searchUsers).mockResolvedValue([{ id: 'user-9', username: 'bob' }] as never);
     vi.mocked(walletsApi.getWalletShareInfo).mockResolvedValue({ users: [], group: null } as never);
@@ -306,6 +330,32 @@ describe('useWalletSharing', () => {
     expect(result.current.deviceSharePrompt.show).toBe(false);
   });
 
+  it('shares prompted devices successfully without warning notifications', async () => {
+    vi.mocked(walletsApi.getWalletShareInfo).mockResolvedValue({
+      users: [{ id: 'user-2', username: 'alice' }],
+      group: null,
+    } as never);
+    vi.mocked(walletsApi.shareWalletWithUser).mockResolvedValue({
+      devicesToShare: [{ id: 'device-1' }, { id: 'device-2' }],
+    } as never);
+    vi.mocked(devicesApi.shareDeviceWithUser)
+      .mockResolvedValueOnce({ success: true } as never)
+      .mockResolvedValueOnce({ success: true } as never);
+
+    const { result } = renderSharingHook();
+
+    await act(async () => {
+      await result.current.handleShareWithUser('user-2');
+    });
+    await act(async () => {
+      await result.current.handleShareDevicesWithUser();
+    });
+
+    expect(addNotification).not.toHaveBeenCalled();
+    expect(handleError).not.toHaveBeenCalledWith(expect.anything(), 'Device Share Failed');
+    expect(result.current.deviceSharePrompt.show).toBe(false);
+  });
+
   it('reports complete device-share failure through error handler', async () => {
     vi.mocked(walletsApi.getWalletShareInfo).mockResolvedValue({
       users: [{ id: 'user-2', username: 'alice' }],
@@ -327,6 +377,28 @@ describe('useWalletSharing', () => {
     });
 
     expect(handleError).toHaveBeenCalledWith(expect.any(Error), 'Device Share Failed');
+  });
+
+  it('falls back to unknown error text for device-share failures without a message', async () => {
+    vi.mocked(walletsApi.getWalletShareInfo).mockResolvedValue({
+      users: [{ id: 'user-2', username: 'alice' }],
+      group: null,
+    } as never);
+    vi.mocked(walletsApi.shareWalletWithUser).mockResolvedValue({
+      devicesToShare: [{ id: 'device-1' }],
+    } as never);
+    vi.mocked(devicesApi.shareDeviceWithUser).mockRejectedValue({} as never);
+
+    const { result } = renderSharingHook();
+
+    await act(async () => {
+      await result.current.handleShareWithUser('user-2');
+    });
+    await act(async () => {
+      await result.current.handleShareDevicesWithUser();
+    });
+
+    expect(handleError).toHaveBeenCalledWith({}, 'Device Share Failed');
   });
 
   it('no-ops device sharing when prompt is hidden and supports dismissing the prompt', async () => {
@@ -411,6 +483,24 @@ describe('useWalletSharing', () => {
 
     expect(handleError).toHaveBeenCalledWith(expect.any(Error), 'Failed to Search Users');
     expect(result.current.searchingUsers).toBe(false);
+  });
+
+  it('searches users when wallet share info is unavailable', async () => {
+    vi.mocked(authApi.searchUsers).mockResolvedValue([
+      { id: 'user-2', username: 'alice' },
+      { id: 'user-3', username: 'bob' },
+    ] as never);
+
+    const { result } = renderSharingHook({ walletShareInfo: null });
+
+    await act(async () => {
+      await result.current.handleSearchUsers('al');
+    });
+
+    expect(result.current.userSearchResults).toEqual([
+      { id: 'user-2', username: 'alice' },
+      { id: 'user-3', username: 'bob' },
+    ]);
   });
 
   it('reloads wallet and share info after transfer completion', async () => {

@@ -1,6 +1,6 @@
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ApiError } from '../../src/api/client';
 import { Account } from '../../components/Account';
@@ -53,8 +53,11 @@ vi.mock('../../utils/clipboard', () => ({
 }));
 
 vi.mock('../../components/Account/PasswordForm', () => ({
-  PasswordForm: ({ passwordError, passwordSuccess }: any) => (
+  PasswordForm: ({ passwordError, passwordSuccess, onToggleShowCurrentPassword, onToggleShowNewPassword, onToggleShowConfirmPassword }: any) => (
     <div>
+      <button type="button" onClick={onToggleShowCurrentPassword}>toggle-current-password</button>
+      <button type="button" onClick={onToggleShowNewPassword}>toggle-new-password</button>
+      <button type="button" onClick={onToggleShowConfirmPassword}>toggle-confirm-password</button>
       {passwordError && <p>{passwordError}</p>}
       {passwordSuccess && <p>Password changed successfully</p>}
     </div>
@@ -247,5 +250,67 @@ describe('Account branch coverage', () => {
     expect(mockState.copyToClipboard).toHaveBeenCalledWith('CODE1111');
     expect(mockState.copyToClipboard).toHaveBeenCalledWith('CODE1111\nCODE2222');
     expect(screen.getByTestId('setup-copied-code')).toHaveTextContent('');
+  });
+
+  it('covers modal close handlers and password visibility toggle callbacks', async () => {
+    const user = userEvent.setup();
+    render(<Account />);
+
+    await user.click(screen.getByRole('button', { name: 'toggle-current-password' }));
+    await user.click(screen.getByRole('button', { name: 'toggle-new-password' }));
+    await user.click(screen.getByRole('button', { name: 'toggle-confirm-password' }));
+
+    await user.click(screen.getByRole('button', { name: 'start-setup' }));
+    expect(await screen.findByTestId('setup-modal')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'close-setup' }));
+    expect(screen.queryByTestId('setup-modal')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'open-disable' }));
+    expect(await screen.findByTestId('disable-modal')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'close-disable' }));
+    expect(screen.queryByTestId('disable-modal')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'open-backup' }));
+    expect(await screen.findByTestId('backup-codes-modal')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'close-backup' }));
+    expect(screen.queryByTestId('backup-codes-modal')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'open-backup' }));
+    expect(await screen.findByTestId('backup-codes-modal')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'done-backup' }));
+    expect(screen.queryByTestId('backup-codes-modal')).not.toBeInTheDocument();
+  });
+
+  it('clears copied-code state after clipboard success timeouts', async () => {
+    const timeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+    const user = userEvent.setup();
+    render(<Account />);
+
+    await user.click(screen.getByRole('button', { name: 'start-setup' }));
+    await user.click(screen.getByRole('button', { name: 'set-valid-code' }));
+    await user.click(screen.getByRole('button', { name: 'verify-enable' }));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(screen.getByText('CODE1111')).toBeInTheDocument();
+    expect(screen.getByText('CODE2222')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'copy-code' }));
+    expect(screen.getByTestId('setup-copied-code')).toHaveTextContent('code-1');
+
+    await user.click(screen.getByRole('button', { name: 'copy-all' }));
+    expect(screen.getByTestId('setup-copied-code')).toHaveTextContent('all');
+
+    const timeoutCallbacks = timeoutSpy.mock.calls
+      .filter(([, delay]) => delay === 2000)
+      .map(([callback]) => callback)
+      .filter((callback): callback is () => void => typeof callback === 'function');
+
+    act(() => {
+      timeoutCallbacks.forEach((callback) => callback());
+    });
+
+    expect(screen.getByTestId('setup-copied-code')).toHaveTextContent('');
+    timeoutSpy.mockRestore();
   });
 });

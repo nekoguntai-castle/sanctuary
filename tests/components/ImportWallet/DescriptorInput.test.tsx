@@ -88,6 +88,21 @@ describe('DescriptorInput', () => {
     expect(setValidationError).toHaveBeenCalledWith(expect.stringContaining('Input too large'));
   });
 
+  it('accepts small textarea input without triggering paste-validation branch', () => {
+    const setImportData = vi.fn();
+    const setValidationError = vi.fn();
+    renderDescriptorInput({
+      setImportData,
+      setValidationError,
+    });
+
+    const smallValue = 'wpkh(xpub-test/0/*)';
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: smallValue } });
+
+    expect(setImportData).toHaveBeenCalledWith(smallValue);
+    expect(setValidationError).toHaveBeenLastCalledWith(null);
+  });
+
   it('validates large pasted content and reports JSON format issues', () => {
     const setImportData = vi.fn();
     const setValidationError = vi.fn();
@@ -104,6 +119,22 @@ describe('DescriptorInput', () => {
     expect(setValidationError).toHaveBeenCalledWith('Invalid JSON format. Please check the file contents.');
   });
 
+  it('accepts large valid pasted content without validation error', () => {
+    const setImportData = vi.fn();
+    const setValidationError = vi.fn();
+    renderDescriptorInput({
+      format: 'descriptor',
+      setImportData,
+      setValidationError,
+    });
+
+    const validLargeDescriptor = `wpkh(xpub${'a'.repeat(1100)}/0/*)`;
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: validLargeDescriptor } });
+
+    expect(setImportData).toHaveBeenCalledWith(validLargeDescriptor);
+    expect(setValidationError).toHaveBeenLastCalledWith(null);
+  });
+
   it('rejects oversized upload files', () => {
     const setValidationError = vi.fn();
     renderDescriptorInput({ setValidationError });
@@ -113,6 +144,18 @@ describe('DescriptorInput', () => {
     fireEvent.change(input, { target: { files: [tooLargeFile] } });
 
     expect(setValidationError).toHaveBeenCalledWith(expect.stringContaining('File too large'));
+  });
+
+  it('ignores upload change events with no selected file', () => {
+    const setValidationError = vi.fn();
+    const setImportData = vi.fn();
+    renderDescriptorInput({ setValidationError, setImportData });
+
+    const input = screen.getByLabelText(/Click to upload/i);
+    fireEvent.change(input, { target: { files: [] } });
+
+    expect(setValidationError).not.toHaveBeenCalled();
+    expect(setImportData).not.toHaveBeenCalled();
   });
 
   it('rejects invalid file extensions for descriptor format', () => {
@@ -150,5 +193,35 @@ describe('DescriptorInput', () => {
 
     fireEvent.change(input, { target: { files: [validFile] } });
     expect(setValidationError).toHaveBeenCalledWith('Failed to read file');
+  });
+
+  it('reports validation error when uploaded file content is invalid', () => {
+    const setImportData = vi.fn();
+    const setValidationError = vi.fn();
+    const invalidContent = `{${'x'.repeat(700)}`;
+
+    mockFileReader({ result: invalidContent });
+    renderDescriptorInput({
+      format: 'json',
+      setImportData,
+      setValidationError,
+    });
+
+    const input = screen.getByLabelText(/Click to upload/i);
+    const invalidFile = new File([invalidContent], 'wallet.json', { type: 'application/json' });
+    fireEvent.change(input, { target: { files: [invalidFile] } });
+
+    expect(setValidationError).toHaveBeenCalledWith('Invalid JSON format. Please check the file contents.');
+    expect(setImportData).not.toHaveBeenCalled();
+  });
+
+  it('renders textarea and error styles when validationError prop is provided', () => {
+    renderDescriptorInput({
+      validationError: 'Invalid descriptor',
+    });
+
+    const textarea = screen.getByRole('textbox');
+    expect(textarea.className).toContain('border-red-500');
+    expect(screen.getByText('Invalid descriptor')).toBeInTheDocument();
   });
 });

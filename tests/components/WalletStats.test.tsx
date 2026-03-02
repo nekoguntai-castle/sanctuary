@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import React from 'react';
 import { WalletStats } from '../../components/WalletStats';
+import { useCurrency } from '../../contexts/CurrencyContext';
 import type { UTXO, Transaction } from '../../types';
 
 // Mock the CurrencyContext
@@ -49,10 +50,28 @@ vi.mock('recharts', () => ({
   Cell: () => <div data-testid="cell" />,
   XAxis: () => <div data-testid="x-axis" />,
   YAxis: () => <div data-testid="y-axis" />,
-  Tooltip: () => <div data-testid="tooltip" />,
+  Tooltip: ({ formatter }: { formatter?: (value: number) => unknown }) => {
+    if (typeof formatter === 'function') {
+      formatter(123456789);
+    }
+    return <div data-testid="tooltip" />;
+  },
 }));
 
 describe('WalletStats', () => {
+  const createCurrencyContext = (overrides: Partial<ReturnType<typeof useCurrency>> = {}) => ({
+    getFiatValue: vi.fn((sats: number) => sats / 100_000),
+    btcPrice: 50000,
+    currencySymbol: '$',
+    fiatCurrency: 'USD',
+    showFiat: true,
+    format: vi.fn((sats: number) => {
+      const btc = sats / 100_000_000;
+      return `${btc.toFixed(8)} BTC`;
+    }),
+    ...overrides,
+  });
+
   const mockUtxos: UTXO[] = [
     {
       txid: 'tx1',
@@ -106,6 +125,7 @@ describe('WalletStats', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(useCurrency).mockReturnValue(createCurrencyContext());
   });
 
   describe('rendering', () => {
@@ -291,6 +311,31 @@ describe('WalletStats', () => {
       expect(screen.getByText('2')).toBeInTheDocument();
       expect(screen.getByText('years')).toBeInTheDocument();
     });
+
+    it('should display fractional years for UTXOs between one and two years old', () => {
+      const somewhatOldUtxos: UTXO[] = [
+        {
+          txid: 'tx1',
+          vout: 0,
+          amount: 50000000,
+          date: new Date(Date.now() - 500 * 24 * 60 * 60 * 1000), // ~1.4 years ago
+          address: 'bc1q...',
+          scriptPubKey: '',
+          confirmations: 3000,
+        },
+      ];
+
+      render(
+        <WalletStats
+          utxos={somewhatOldUtxos}
+          balance={50000000}
+          transactions={[]}
+        />
+      );
+
+      expect(screen.getByText('1.4')).toBeInTheDocument();
+      expect(screen.getByText('years')).toBeInTheDocument();
+    });
   });
 
   describe('first activity', () => {
@@ -468,6 +513,104 @@ describe('WalletStats', () => {
       // Should fall back to current time, so 0 days
       expect(screen.getByText('0')).toBeInTheDocument();
       expect(screen.getByText('days')).toBeInTheDocument();
+    });
+  });
+
+  describe('fiat and accumulation variants', () => {
+    const createTransactions = (oldestDaysAgo: number): Transaction[] => [
+      {
+        txid: 'oldest',
+        type: 'receive',
+        amount: 10000000,
+        fee: 0,
+        timestamp: Date.now() - oldestDaysAgo * 24 * 60 * 60 * 1000,
+        confirmations: 100,
+        balanceAfter: 10000000,
+      },
+      {
+        txid: 'latest',
+        type: 'receive',
+        amount: 5000000,
+        fee: 0,
+        timestamp: Date.now() - 1 * 24 * 60 * 60 * 1000,
+        confirmations: 10,
+        balanceAfter: 15000000,
+      },
+    ];
+
+    it('should render BTC-only mode when fiat display is disabled', () => {
+      vi.mocked(useCurrency).mockReturnValue(
+        createCurrencyContext({
+          showFiat: false,
+          format: vi.fn(() => '1.00000000 BTC (formatted)'),
+        })
+      );
+
+      render(
+        <WalletStats
+          utxos={mockUtxos}
+          balance={100000000}
+          transactions={[]}
+        />
+      );
+
+      expect(screen.getByText('BTC Value')).toBeInTheDocument();
+      expect(screen.getByText('1.00000000 BTC')).toBeInTheDocument();
+      expect(screen.getByText('Current Holdings')).toBeInTheDocument();
+    });
+
+    it('should show loading text when fiat mode has no BTC price yet', () => {
+      vi.mocked(useCurrency).mockReturnValue(
+        createCurrencyContext({
+          btcPrice: null,
+        })
+      );
+
+      render(
+        <WalletStats
+          utxos={mockUtxos}
+          balance={100000000}
+          transactions={[]}
+        />
+      );
+
+      expect(screen.getByText('Loading price...')).toBeInTheDocument();
+    });
+
+    it('should build accumulation labels for short history spans', () => {
+      render(
+        <WalletStats
+          utxos={mockUtxos}
+          balance={15000000}
+          transactions={createTransactions(7)}
+        />
+      );
+
+      expect(screen.getByTestId('area-chart')).toBeInTheDocument();
+    });
+
+    it('should build accumulation labels for medium history spans', () => {
+      render(
+        <WalletStats
+          utxos={mockUtxos}
+          balance={15000000}
+          transactions={createTransactions(400)}
+        />
+      );
+
+      expect(screen.getByTestId('area-chart')).toBeInTheDocument();
+    });
+
+    it('should build accumulation labels for long history spans', () => {
+      render(
+        <WalletStats
+          utxos={mockUtxos}
+          balance={15000000}
+          transactions={createTransactions(900)}
+        />
+      );
+
+      expect(screen.getByTestId('area-chart')).toBeInTheDocument();
     });
   });
 });

@@ -23,6 +23,28 @@ vi.mock('@dnd-kit/core', () => ({
       >
         Trigger drag
       </button>
+      <button
+        type="button"
+        onClick={() =>
+          onDragEnd({
+            active: { id: 'name' },
+            over: { id: 'name' },
+          })
+        }
+      >
+        Trigger drag same
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          onDragEnd({
+            active: { id: 'name' },
+            over: null,
+          })
+        }
+      >
+        Trigger drag missing
+      </button>
       {children}
     </div>
   ),
@@ -121,9 +143,20 @@ describe('ColumnConfigButton', () => {
     const { onOrderChange } = renderColumnConfigButton();
 
     await user.click(screen.getByRole('button', { name: /configure columns/i }));
-    await user.click(screen.getByRole('button', { name: /trigger drag/i }));
+    await user.click(screen.getByRole('button', { name: /^trigger drag$/i }));
 
     expect(onOrderChange).toHaveBeenCalledWith(['balance', 'name']);
+  });
+
+  it('does not reorder when drag target is missing or unchanged', async () => {
+    const user = userEvent.setup();
+    const { onOrderChange } = renderColumnConfigButton();
+
+    await user.click(screen.getByRole('button', { name: /configure columns/i }));
+    await user.click(screen.getByRole('button', { name: /trigger drag same/i }));
+    await user.click(screen.getByRole('button', { name: /trigger drag missing/i }));
+
+    expect(onOrderChange).not.toHaveBeenCalled();
   });
 
   it('disables reset when configuration matches defaults', async () => {
@@ -147,5 +180,18 @@ describe('ColumnConfigButton', () => {
 
     await user.click(reset);
     expect(onReset).toHaveBeenCalled();
+  });
+
+  it('skips unknown column ids and ignores non-escape keys for close handler', async () => {
+    const user = userEvent.setup();
+    renderColumnConfigButton({
+      columnOrder: ['name', 'missing-column', 'balance'],
+    });
+
+    await user.click(screen.getByRole('button', { name: /configure columns/i }));
+    expect(screen.queryByRole('button', { name: /missing-column/i })).not.toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: 'Enter' });
+    expect(screen.getByText('Columns')).toBeInTheDocument();
   });
 });

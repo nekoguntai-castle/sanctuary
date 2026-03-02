@@ -3,9 +3,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ChangePasswordModal } from '../../components/ChangePasswordModal';
+import { ApiError } from '../../src/api/client';
 import * as authApi from '../../src/api/auth';
 
 // Mock logger
@@ -315,6 +316,20 @@ describe('ChangePasswordModal', () => {
         expect(screen.getByText('New password must be different from current password')).toBeInTheDocument();
       });
     });
+
+    it('shows requirements error when submitted with a weak password', async () => {
+      const user = userEvent.setup();
+      render(<ChangePasswordModal {...defaultProps} />);
+
+      await user.type(screen.getByPlaceholderText('sanctuary'), 'sanctuary');
+      await user.type(screen.getByPlaceholderText('Enter new password'), 'weakpass');
+      await user.type(screen.getByPlaceholderText('Confirm new password'), 'weakpass');
+
+      fireEvent.submit(document.querySelector('form') as HTMLFormElement);
+
+      expect(screen.getByText('Password does not meet all requirements')).toBeInTheDocument();
+      expect(authApi.changePassword).not.toHaveBeenCalled();
+    });
   });
 
   describe('form submission', () => {
@@ -384,9 +399,9 @@ describe('ChangePasswordModal', () => {
     });
 
     it('shows API error message on failure', async () => {
-      vi.mocked(authApi.changePassword).mockRejectedValue({
-        message: 'Current password is incorrect',
-      });
+      vi.mocked(authApi.changePassword).mockRejectedValue(
+        new ApiError('Current password is incorrect', 400)
+      );
 
       const user = userEvent.setup();
       render(<ChangePasswordModal {...defaultProps} />);
@@ -403,7 +418,7 @@ describe('ChangePasswordModal', () => {
       await user.click(submitButton);
 
       await waitFor(() => {
-        expect(screen.getByText(/Current password is incorrect|Failed to change password/)).toBeInTheDocument();
+        expect(screen.getByText('Current password is incorrect')).toBeInTheDocument();
       });
     });
 
