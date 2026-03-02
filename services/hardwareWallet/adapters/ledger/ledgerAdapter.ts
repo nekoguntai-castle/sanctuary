@@ -7,10 +7,8 @@
 
 import TransportWebUSB from '@ledgerhq/hw-transport-webusb';
 import AppBtc from '@ledgerhq/hw-app-btc';
-import { AppClient, DefaultWalletPolicy } from 'ledger-bitcoin';
-import * as bitcoin from 'bitcoinjs-lib';
-import { createLogger } from '../../../utils/logger';
-import { normalizeDerivationPath } from '../../../shared/utils/bitcoin';
+import { AppClient } from 'ledger-bitcoin';
+import { createLogger } from '../../../../utils/logger';
 import type {
   DeviceAdapter,
   DeviceType,
@@ -18,16 +16,11 @@ import type {
   PSBTSignRequest,
   PSBTSignResponse,
   XpubResult,
-} from '../types';
+} from '../../types';
+import { LEDGER_VENDOR_ID, XPUB_VERSION, TPUB_VERSION, getLedgerModel, getDeviceId } from './utils';
+import { signPsbt } from './signPsbt';
 
 const log = createLogger('LedgerAdapter');
-
-// Ledger USB vendor ID
-const LEDGER_VENDOR_ID = 0x2c97;
-
-// xpub version bytes
-const XPUB_VERSION = 0x0488b21e; // Standard xpub (mainnet)
-const TPUB_VERSION = 0x043587cf; // Standard tpub (testnet)
 
 // Connection state
 interface LedgerConnection {
@@ -36,76 +29,6 @@ interface LedgerConnection {
   appClient: AppClient;
   device: USBDevice;
 }
-
-/**
- * Get model name from Ledger product ID
- */
-const getLedgerModel = (productId: number): string => {
-  const models: Record<number, string> = {
-    0x0001: 'Ledger Nano S',
-    0x0004: 'Ledger Nano X',
-    0x0005: 'Ledger Nano S Plus',
-    0x0006: 'Ledger Stax',
-    0x0007: 'Ledger Flex',
-  };
-  return models[productId] || 'Ledger Device';
-};
-
-/**
- * Get device ID from USB device
- */
-const getDeviceId = (device: USBDevice): string => {
-  return `ledger-${device.vendorId}-${device.productId}-${device.serialNumber || 'unknown'}`;
-};
-
-/**
- * Get descriptor template for wallet policy based on script type
- */
-const getDescriptorTemplate = (scriptType: string): 'wpkh(@0/**)' | 'sh(wpkh(@0/**))' | 'pkh(@0/**)' | 'tr(@0/**)' => {
-  switch (scriptType) {
-    case 'p2wpkh':
-      return 'wpkh(@0/**)';
-    case 'p2sh-p2wpkh':
-      return 'sh(wpkh(@0/**))';
-    case 'p2pkh':
-      return 'pkh(@0/**)';
-    case 'p2tr':
-      return 'tr(@0/**)';
-    default:
-      return 'wpkh(@0/**)';
-  }
-};
-
-/**
- * Infer script type from derivation path
- */
-const inferScriptTypeFromPath = (path: string): 'p2wpkh' | 'p2sh-p2wpkh' | 'p2pkh' | 'p2tr' => {
-  if (path.startsWith("m/84'") || path.startsWith("84'")) {
-    return 'p2wpkh';
-  }
-  if (path.startsWith("m/49'") || path.startsWith("49'")) {
-    return 'p2sh-p2wpkh';
-  }
-  if (path.startsWith("m/44'") || path.startsWith("44'")) {
-    return 'p2pkh';
-  }
-  if (path.startsWith("m/86'") || path.startsWith("86'")) {
-    return 'p2tr';
-  }
-  return 'p2wpkh';
-};
-
-/**
- * Extract account path from a full derivation path (first 4 components)
- */
-const extractAccountPath = (fullPath: string): string => {
-  const normalized = normalizeDerivationPath(fullPath);
-  const parts = normalized.split('/');
-  if (parts.length >= 4) {
-    return parts.slice(0, 4).join('/');
-  }
-  return normalized;
-};
 
 /**
  * Ledger Device Adapter
@@ -323,138 +246,13 @@ export class LedgerAdapter implements DeviceAdapter {
    * Sign a PSBT
    */
   async signPSBT(request: PSBTSignRequest): Promise<PSBTSignResponse> {
-    log.info('signPSBT called', {
-      hasRequest: !!request,
-      psbtLength: request?.psbt?.length || 0,
-      inputPathsCount: request?.inputPaths?.length || 0,
-      accountPath: request?.accountPath,
-      scriptType: request?.scriptType,
-    });
-
     if (!this.connection) {
       log.error('No active connection');
       throw new Error('No device connected');
     }
 
     try {
-      const { appClient } = this.connection;
-
-      // Parse PSBT to extract derivation paths
-      const tempPsbt = bitcoin.Psbt.fromBase64(request.psbt);
-      let detectedAccountPath: string | null = null;
-
-      for (const input of tempPsbt.data.inputs) {
-        if (input.bip32Derivation && input.bip32Derivation.length > 0) {
-          const fullPath = input.bip32Derivation[0].path;
-          if (fullPath) {
-            detectedAccountPath = extractAccountPath(fullPath);
-            log.info('Detected account path from PSBT:', { detectedAccountPath });
-            break;
-          }
-        }
-      }
-
-      // Determine account path and script type
-      let accountPath = request.accountPath || detectedAccountPath;
-      let scriptType = request.scriptType;
-
-      if (!accountPath && request.inputPaths && request.inputPaths.length > 0) {
-        accountPath = extractAccountPath(request.inputPaths[0]);
-      }
-      if (!accountPath) {
-        accountPath = "m/84'/0'/0'";
-      }
-
-      if (!scriptType) {
-        scriptType = inferScriptTypeFromPath(accountPath);
-      }
-
-      log.info('Using account path and script type', { accountPath, scriptType });
-
-      // Get master fingerprint
-      const masterFpHex = await appClient.getMasterFingerprint();
-      log.info('Got master fingerprint', { masterFpHex });
-
-      // Get account xpub
-      const xpub = await appClient.getExtendedPubkey(accountPath);
-      log.info('Got xpub', { xpubPrefix: xpub.substring(0, 20) });
-
-      // Create wallet policy key string
-      const pathWithoutM = accountPath.replace(/^m\//, '');
-      const keyInfo = `[${masterFpHex}/${pathWithoutM}]${xpub}`;
-
-      // Create DefaultWalletPolicy
-      const descriptorTemplate = getDescriptorTemplate(scriptType);
-      const walletPolicy = new DefaultWalletPolicy(descriptorTemplate, keyInfo);
-
-      log.info('Created wallet policy', { descriptorTemplate, keyInfo });
-
-      // Parse and fix PSBT fingerprints
-      const psbt = bitcoin.Psbt.fromBase64(request.psbt);
-      const connectedFpBuffer = Buffer.from(masterFpHex, 'hex');
-
-      let fingerprintMismatchFixed = false;
-      let missingBip32Derivation = false;
-
-      psbt.data.inputs.forEach((input, idx) => {
-        if (!input.bip32Derivation || input.bip32Derivation.length === 0) {
-          missingBip32Derivation = true;
-          log.warn(`Input ${idx} is missing bip32Derivation`);
-        }
-
-        if (input.bip32Derivation && input.bip32Derivation.length > 0) {
-          input.bip32Derivation.forEach((deriv) => {
-            const fpHex = deriv.masterFingerprint.toString('hex');
-            const matches = fpHex.toLowerCase() === masterFpHex.toLowerCase();
-
-            if (!matches) {
-              log.warn(`Updating fingerprint from ${fpHex} to ${masterFpHex} for input ${idx}`);
-              deriv.masterFingerprint = connectedFpBuffer;
-              fingerprintMismatchFixed = true;
-            }
-          });
-        }
-      });
-
-      if (fingerprintMismatchFixed) {
-        log.info('Fixed fingerprint mismatches in PSBT');
-      }
-
-      if (missingBip32Derivation) {
-        throw new Error(
-          'PSBT is missing bip32Derivation data required by Ledger. ' +
-          'Ensure wallet descriptor is properly configured with xpub and fingerprint.'
-        );
-      }
-
-      // Sign the PSBT
-      const updatedPsbtBase64 = psbt.toBase64();
-      log.info('Calling appClient.signPsbt...');
-
-      const signatures = await appClient.signPsbt(updatedPsbtBase64, walletPolicy, null);
-
-      log.info('Got signatures from device', { signatureCount: signatures.length });
-
-      // Apply signatures to PSBT
-      for (const [inputIndex, partialSig] of signatures) {
-        psbt.updateInput(inputIndex, {
-          partialSig: [{
-            pubkey: partialSig.pubkey,
-            signature: partialSig.signature,
-          }],
-        });
-      }
-
-      // Finalize
-      psbt.finalizeAllInputs();
-
-      log.info('PSBT signed and finalized successfully', { signatureCount: signatures.length });
-
-      return {
-        psbt: psbt.toBase64(),
-        signatures: signatures.length,
-        // Ledger returns signed PSBT, not raw tx
-      };
+      return await signPsbt(this.connection.appClient, request);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       log.error('PSBT signing failed', { error: message });
