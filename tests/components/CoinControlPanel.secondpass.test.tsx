@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { CoinControlPanel } from '../../components/CoinControlPanel';
 import type { UTXO } from '../../types';
 
@@ -51,13 +51,20 @@ vi.mock('../../components/CoinControlPanel/UtxoRow', () => ({
   UtxoRow: ({
     utxo,
     onToggle,
+    privacyInfo,
   }: {
     utxo: { txid: string; vout: number };
     onToggle: (utxoId: string) => void;
+    privacyInfo?: { txid: string; vout: number } | undefined;
   }) => (
-    <button onClick={() => onToggle(`${utxo.txid}:${utxo.vout}`)}>
-      row-{utxo.txid}:{utxo.vout}
-    </button>
+    <div>
+      <button onClick={() => onToggle(`${utxo.txid}:${utxo.vout}`)}>
+        row-{utxo.txid}:{utxo.vout}
+      </button>
+      <span>
+        {privacyInfo ? `privacy-${utxo.txid}:${utxo.vout}` : `no-privacy-${utxo.txid}:${utxo.vout}`}
+      </span>
+    </div>
   ),
 }));
 
@@ -171,20 +178,50 @@ describe('CoinControlPanel second-pass branches', () => {
     const { rerender } = render(<CoinControlPanel {...initialProps} />);
     fireEvent.click(screen.getByText(/Coin Control/));
 
-    await vi.advanceTimersByTimeAsync(350);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(350);
+    });
     rerender(
       <CoinControlPanel
         {...initialProps}
         selectedUtxos={new Set(['a:0', 'b:1'])}
       />
     );
-    await vi.advanceTimersByTimeAsync(350);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(350);
+    });
 
-    rejectFirst?.(new Error('stale-request'));
-    await Promise.resolve();
+    await act(async () => {
+      rejectFirst?.(new Error('stale-request'));
+      await Promise.resolve();
+    });
 
     expect(mockAnalyzeSpendPrivacy).toHaveBeenCalledTimes(2);
     expect(mockLogError).not.toHaveBeenCalledWith(
+      'Failed to analyze spend privacy',
+      expect.any(Object)
+    );
+  });
+
+  it('logs analyze failures for the latest request', async () => {
+    vi.useFakeTimers();
+    mockAnalyzeSpendPrivacy.mockRejectedValueOnce(new Error('analysis failed'));
+
+    render(
+      <CoinControlPanel
+        {...makeProps({
+          strategy: 'manual',
+          selectedUtxos: new Set(['a:0']),
+        })}
+      />
+    );
+    fireEvent.click(screen.getByText(/Coin Control/));
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(350);
+      await Promise.resolve();
+    });
+    expect(mockLogError).toHaveBeenCalledWith(
       'Failed to analyze spend privacy',
       expect.any(Object)
     );

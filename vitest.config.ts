@@ -55,12 +55,12 @@ export default defineConfig({
       ],
       reportsDirectory: './coverage',
       thresholds: {
-        // Thresholds updated after Batch 1-3 test coverage implementation (2026-01-11)
-        // Current coverage: branches=48.77%, functions=52.43%, lines=54.17%, statements=54.17%
-        branches: 45,
-        functions: 50,
-        lines: 50,
-        statements: 50,
+        // Coverage baseline raised after second-pass + low-coverage batch hardening (2026-03-02)
+        // Keep this aligned with CI to prevent silent branch regressions.
+        branches: 90,
+        functions: 90,
+        lines: 90,
+        statements: 90,
       },
     },
     reporters: ['default', 'junit'],

@@ -759,6 +759,39 @@ describe('signPsbtWithTrezor branch coverage', () => {
     );
   });
 
+  it('handles OP_N sentinel while parsing witnessScript pubkeys', async () => {
+    const { psbt } = createPsbt();
+    const pubkey = Buffer.from(`02${'11'.repeat(32)}`, 'hex');
+    const witnessScript = Buffer.from([0x52, 0x51, 0x00, 0xae]);
+    const psbtInput = psbt.data.inputs[0] as any;
+    psbtInput.witnessScript = witnessScript;
+    psbtInput.bip32Derivation = [
+      {
+        masterFingerprint: Buffer.from('deadbeef', 'hex'),
+        path: "m/48'/0'/0'/2'/0/0",
+        pubkey,
+      },
+    ];
+
+    mockIsMultisigInput.mockReturnValue(true);
+    const tx = txFromPsbt(psbt);
+    tx.ins[0].witness = [Buffer.alloc(0), Buffer.from('3003', 'hex'), witnessScript];
+    mockSignTransaction.mockResolvedValueOnce({
+      success: true,
+      payload: { serializedTx: tx.toHex() },
+    });
+
+    const response = await signPsbtWithTrezor(
+      {
+        psbt: psbt.toBase64(),
+      },
+      { fingerprint: 'deadbeef' } as any
+    );
+
+    const parsed = bitcoin.Psbt.fromBase64(response.psbt);
+    expect(((parsed.data.inputs[0] as any).partialSig || []).length).toBe(1);
+  });
+
   it('skips extraction for inputs without witness data or witnessScript', async () => {
     const { psbt } = createPsbt();
     mockIsMultisigInput.mockReturnValue(true);

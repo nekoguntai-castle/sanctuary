@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { NodeConfig } from '../../components/NodeConfig';
 import * as adminApi from '../../src/api/admin';
 import * as bitcoinApi from '../../src/api/bitcoin';
@@ -217,6 +217,19 @@ describe('NodeConfig second-pass branches', () => {
     });
   });
 
+  it('returns early on save when nodeConfig is missing', async () => {
+    vi.mocked(adminApi.getNodeConfig).mockResolvedValueOnce(null as any);
+    vi.mocked(adminApi.getTorContainerStatus).mockResolvedValueOnce(null as any);
+
+    render(<NodeConfig />);
+    await waitFor(() => {
+      expect(screen.getByText('Node Configuration')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Save All Settings'));
+    expect(adminApi.updateNodeConfig).not.toHaveBeenCalled();
+  });
+
   it('covers tor toggle early return without status plus install branch and null refresh status', async () => {
     vi.mocked(adminApi.getTorContainerStatus)
       .mockResolvedValueOnce(null as any)
@@ -240,13 +253,50 @@ describe('NodeConfig second-pass branches', () => {
     });
 
     vi.useFakeTimers();
-    fireEvent.click(screen.getByText('tor-toggle'));
-    await Promise.resolve();
-    await Promise.resolve();
+    await act(async () => {
+      fireEvent.click(screen.getByText('tor-toggle'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
     expect(adminApi.startTorContainer).toHaveBeenCalled();
 
-    await vi.runAllTimersAsync();
-    await Promise.resolve();
+    await act(async () => {
+      await vi.runAllTimersAsync();
+      await Promise.resolve();
+    });
     expect(adminApi.getTorContainerStatus).toHaveBeenCalledTimes(3);
+  });
+
+  it('disables proxy when stopping bundled tor and skips null post-toggle refresh', async () => {
+    vi.mocked(adminApi.getNodeConfig).mockResolvedValueOnce({
+      ...baseConfig,
+      proxyEnabled: true,
+      proxyHost: 'tor',
+      proxyPort: 9050,
+    } as any);
+    vi.mocked(adminApi.getTorContainerStatus)
+      .mockResolvedValueOnce({ available: true, exists: true, running: true, status: 'running' } as any)
+      .mockResolvedValueOnce(null as any);
+    vi.mocked(adminApi.stopTorContainer).mockResolvedValueOnce({ success: true, message: 'stopped' } as any);
+
+    render(<NodeConfig />);
+    await waitFor(() => {
+      expect(screen.getByText('Node Configuration')).toBeInTheDocument();
+    });
+
+    vi.useFakeTimers();
+    await act(async () => {
+      fireEvent.click(screen.getByText('tor-toggle'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(adminApi.stopTorContainer).toHaveBeenCalled();
+    expect(screen.getByText('Disabled')).toBeInTheDocument();
+
+    await act(async () => {
+      await vi.runAllTimersAsync();
+      await Promise.resolve();
+    });
+    expect(adminApi.getTorContainerStatus).toHaveBeenCalledTimes(2);
   });
 });
