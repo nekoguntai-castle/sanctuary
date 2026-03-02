@@ -196,7 +196,6 @@ export const NodeConfig: React.FC = () => {
   };
 
   const handleProxyPreset = (preset: 'tor' | 'tor-browser' | 'tor-container') => {
-    if (!nodeConfig) return;
     if (preset === 'tor-container') {
       setNodeConfig({
         ...nodeConfig,
@@ -281,7 +280,6 @@ export const NodeConfig: React.FC = () => {
 
   // Generate summaries for collapsed sections
   const getExternalServicesSummary = () => {
-    if (!nodeConfig) return '';
     const explorer = nodeConfig.explorerUrl?.replace('https://', '') || 'mempool.space';
     const feeSource = nodeConfig.feeEstimatorUrl ? 'Mempool API' : 'Electrum';
     return `${explorer} • ${feeSource}`;

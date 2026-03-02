@@ -82,20 +82,21 @@ export const LabelManager: React.FC<LabelManagerProps> = ({ walletId, onLabelsCh
   };
 
   const handleSave = async () => {
-    if (!formName.trim()) return;
+    const trimmedName = formName.trim();
+    const trimmedDescription = formDescription.trim() || undefined;
 
     const result = await runSave(async () => {
       if (editingLabel) {
         await labelsApi.updateLabel(walletId, editingLabel.id, {
-          name: formName.trim(),
+          name: trimmedName,
           color: formColor,
-          description: formDescription.trim() || undefined,
+          description: trimmedDescription,
         });
       } else {
         await labelsApi.createLabel(walletId, {
-          name: formName.trim(),
+          name: trimmedName,
           color: formColor,
-          description: formDescription.trim() || undefined,
+          description: trimmedDescription,
         });
       }
     });

@@ -51,7 +51,10 @@ export const ReceiveModal: React.FC<ReceiveModalProps> = ({
   // Get the selected address or first unused
   const selectedReceiveAddress = useMemo(() => {
     if (selectedReceiveAddressId) {
-      return unusedReceiveAddresses.find((a) => a.id === selectedReceiveAddressId);
+      const selected = unusedReceiveAddresses.find((a) => a.id === selectedReceiveAddressId);
+      if (selected) {
+        return selected;
+      }
     }
     return unusedReceiveAddresses[0];
   }, [unusedReceiveAddresses, selectedReceiveAddressId]);
@@ -61,7 +64,7 @@ export const ReceiveModal: React.FC<ReceiveModalProps> = ({
 
   // Generate Payjoin URI when enabled
   useEffect(() => {
-    if (!payjoinEnabled || !receiveAddress || !walletId) {
+    if (!payjoinEnabled || !receiveAddress || !selectedReceiveAddress || !walletId) {
       setPayjoinUri(null);
       return;
     }
@@ -69,8 +72,15 @@ export const ReceiveModal: React.FC<ReceiveModalProps> = ({
     const generatePayjoinUri = async () => {
       setPayjoinLoading(true);
       try {
-        const amountBtc = receiveAmount ? parseFloat(receiveAmount) : undefined;
-        const response = await payjoinApi.generatePayjoinUri(walletId, receiveAddress, amountBtc);
+        const parsedAmount = receiveAmount ? parseFloat(receiveAmount) : NaN;
+        const amountSats =
+          Number.isFinite(parsedAmount) && parsedAmount > 0
+            ? Math.round(parsedAmount * 100_000_000)
+            : undefined;
+        const response = await payjoinApi.getPayjoinUri(
+          selectedReceiveAddress.id,
+          amountSats ? { amount: amountSats } : undefined
+        );
         setPayjoinUri(response.uri);
       } catch (err) {
         log.error('Failed to generate Payjoin URI', { error: err });
@@ -81,7 +91,7 @@ export const ReceiveModal: React.FC<ReceiveModalProps> = ({
     };
 
     generatePayjoinUri();
-  }, [payjoinEnabled, receiveAddress, walletId, receiveAmount]);
+  }, [payjoinEnabled, receiveAddress, selectedReceiveAddress, walletId, receiveAmount]);
 
   const handleClose = () => {
     setPayjoinEnabled(false);
@@ -125,13 +135,13 @@ export const ReceiveModal: React.FC<ReceiveModalProps> = ({
             </div>
 
             {/* Address Selector */}
-            {unusedReceiveAddresses.length > 1 && (
+            {selectedReceiveAddress && unusedReceiveAddresses.length > 1 && (
               <div className="w-full mb-4">
                 <label className="block text-xs font-medium text-sanctuary-500 mb-1">
                   Select Address ({unusedReceiveAddresses.length} unused)
                 </label>
                 <select
-                  value={selectedReceiveAddress?.id || ''}
+                  value={selectedReceiveAddress.id}
                   onChange={(e) => setSelectedReceiveAddressId(e.target.value || null)}
                   className="w-full px-3 py-2 rounded-lg border border-sanctuary-200 dark:border-sanctuary-700 surface-muted text-sm font-mono focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 >

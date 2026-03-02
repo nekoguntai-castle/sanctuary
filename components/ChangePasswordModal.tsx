@@ -34,9 +34,7 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ onPass
 
   // Auto-focus the current password field when the modal opens
   useEffect(() => {
-    if (currentPasswordRef.current) {
-      currentPasswordRef.current.focus();
-    }
+    currentPasswordRef.current?.focus();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {

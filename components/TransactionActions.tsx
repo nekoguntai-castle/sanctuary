@@ -40,12 +40,12 @@ export const TransactionActions: React.FC<TransactionActionsProps> = ({
 
     const checkRBFStatus = async () => {
       if (confirmed) {
-        if (mounted) setLoading(false);
+        setLoading(false);
         return;
       }
 
       try {
-        if (mounted) setLoading(true);
+        setLoading(true);
         const result = await bitcoinApi.checkRBF(txid);
         if (!mounted) return;
 
@@ -135,8 +135,6 @@ export const TransactionActions: React.FC<TransactionActionsProps> = ({
   };
 
   const handleCPFP = async () => {
-    if (!targetFeeRate) return;
-
     try {
       setProcessing(true);
       setError(null);

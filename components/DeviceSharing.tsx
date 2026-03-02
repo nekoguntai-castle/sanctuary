@@ -119,8 +119,6 @@ export const DeviceSharing: React.FC<DeviceSharingProps> = ({
 
   // Share with group
   const handleAddGroup = async () => {
-    if (!selectedGroupToAdd) return;
-
     const result = await runSharing(async () => {
       await devicesApi.shareDeviceWithGroup(deviceId, { groupId: selectedGroupToAdd });
       await fetchShareInfo();

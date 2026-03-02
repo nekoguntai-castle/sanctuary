@@ -180,15 +180,13 @@ export function useWalletData({
     }
   };
 
-  const loadUtxos = async (walletId: string, limit: number, offset: number, reset = false) => {
-    if (!reset) setLoadingMoreUtxos(true);
+  const loadUtxos = async (walletId: string, limit: number, offset: number) => {
+    setLoadingMoreUtxos(true);
 
     try {
-      if (reset) setUtxoOffset(0);
-
       const page = await loadUtxoPage(walletId, offset, limit);
       setUtxoSummary({ count: page.count, totalBalance: page.totalBalance });
-      setUTXOs(prev => reset ? page.utxos : [...prev, ...page.utxos]);
+      setUTXOs(prev => [...prev, ...page.utxos]);
 
       const nextOffset = offset + page.utxos.length;
       setUtxoOffset(nextOffset);
@@ -196,7 +194,7 @@ export function useWalletData({
     } catch (err) {
       logError(log, err, 'Failed to load UTXOs');
     } finally {
-      if (!reset) setLoadingMoreUtxos(false);
+      setLoadingMoreUtxos(false);
     }
   };
 
@@ -236,7 +234,7 @@ export function useWalletData({
 
   const loadMoreUtxos = async () => {
     if (!id || loadingMoreUtxos || !hasMoreUtxos) return;
-    await loadUtxos(id, UTXO_PAGE_SIZE, utxoOffset, false);
+    await loadUtxos(id, UTXO_PAGE_SIZE, utxoOffset);
   };
 
   // -----------------------------------------------------------------------

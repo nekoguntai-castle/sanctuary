@@ -61,25 +61,30 @@ export type { Logger };
 /**
  * Detect if we're in development mode
  */
-const isDevelopment = (): boolean => {
-  try {
-    return (import.meta as any).env?.DEV === true;
-  } catch {
-    return false;
+type LoggerEnv = {
+  DEV?: boolean;
+  VITE_LOG_LEVEL?: string;
+};
+
+const getRuntimeEnv = (): LoggerEnv | undefined => {
+  const override = (globalThis as any).__SANCTUARY_LOGGER_ENV__;
+  if (override && typeof override === 'object') {
+    return override as LoggerEnv;
   }
+  return (import.meta as any).env as LoggerEnv | undefined;
+};
+
+const isDevelopment = (): boolean => {
+  return getRuntimeEnv()?.DEV === true;
 };
 
 /**
  * Get log level from environment or default based on mode
  */
 const getLogLevelFromEnv = (): LogLevel => {
-  try {
-    const envLevel = (import.meta as any).env?.VITE_LOG_LEVEL?.toLowerCase();
-    if (envLevel && LOG_LEVEL_MAP[envLevel] !== undefined) {
-      return LOG_LEVEL_MAP[envLevel];
-    }
-  } catch {
-    // Environment not available
+  const envLevel = getRuntimeEnv()?.VITE_LOG_LEVEL?.toLowerCase();
+  if (envLevel && LOG_LEVEL_MAP[envLevel] !== undefined) {
+    return LOG_LEVEL_MAP[envLevel];
   }
   // Default: debug in development, warn in production
   return isDevelopment() ? LogLevel.DEBUG : LogLevel.WARN;

@@ -300,9 +300,8 @@ export async function signPsbtWithTrezor(
         const matching = firstInput.bip32Derivation.find(d =>
           d.masterFingerprint.equals(deviceFingerprintBuffer)
         );
-        if (matching) {
-          matchingDerivation = matching;
-        }
+        // Invariant: the earlier multisig cosigner check guarantees a match here.
+        matchingDerivation = matching!;
       }
       accountPath = matchingDerivation.path;
     }

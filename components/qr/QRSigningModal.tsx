@@ -352,15 +352,6 @@ export const QRSigningModal: React.FC<QRSigningModalProps> = ({
                     </div>
                   )}
 
-                  {/* Processing overlay */}
-                  {processing && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/70">
-                      <div className="flex flex-col items-center text-white">
-                        <Loader2 className="w-8 h-8 animate-spin mb-2" />
-                        <span>Processing...</span>
-                      </div>
-                    </div>
-                  )}
                 </div>
               ) : (
                 <div className="w-full py-8 text-center">

@@ -109,9 +109,8 @@ export function useWalletSharing({
   // Helpers
   // -----------------------------------------------------------------------
 
-  const refreshShareInfo = async () => {
-    if (!walletId) return;
-    const shareInfo = await walletsApi.getWalletShareInfo(walletId);
+  const refreshShareInfo = async (id: string) => {
+    const shareInfo = await walletsApi.getWalletShareInfo(id);
     setWalletShareInfo(shareInfo);
   };
 
@@ -124,7 +123,7 @@ export function useWalletSharing({
     try {
       setSharingLoading(true);
       await walletsApi.shareWalletWithGroup(walletId, { groupId: selectedGroupToAdd, role });
-      await refreshShareInfo();
+      await refreshShareInfo(walletId);
       setSelectedGroupToAdd('');
     } catch (err) {
       log.error('Failed to share with group', { error: err });
@@ -139,7 +138,7 @@ export function useWalletSharing({
     try {
       setSharingLoading(true);
       await walletsApi.shareWalletWithGroup(walletId, { groupId: walletShareInfo.group.id, role });
-      await refreshShareInfo();
+      await refreshShareInfo(walletId);
     } catch (err) {
       log.error('Failed to update group role', { error: err });
       handleError(err, 'Update Role Failed');
@@ -154,7 +153,7 @@ export function useWalletSharing({
       setSharingLoading(true);
       // Setting groupId to null removes group access
       await walletsApi.shareWalletWithGroup(walletId, { groupId: null });
-      await refreshShareInfo();
+      await refreshShareInfo(walletId);
     } catch (err) {
       log.error('Failed to remove group', { error: err });
       handleError(err, 'Remove Group Failed');
@@ -257,7 +256,7 @@ export function useWalletSharing({
     try {
       setSharingLoading(true);
       await walletsApi.removeUserFromWallet(walletId, targetUserId);
-      await refreshShareInfo();
+      await refreshShareInfo(walletId);
     } catch (err) {
       log.error('Failed to remove user', { error: err });
       handleError(err, 'Remove User Failed');
@@ -292,7 +291,7 @@ export function useWalletSharing({
     try {
       const walletData = await walletsApi.getWallet(walletId);
       setWallet(walletData);
-      await refreshShareInfo();
+      await refreshShareInfo(walletId);
     } catch (err) {
       log.error('Failed to reload wallet after transfer', { error: err });
     }

@@ -78,8 +78,6 @@ export const HardwareImport: React.FC<HardwareImportProps> = ({
 
   // Fetch xpub from connected device
   const handleFetchXpub = async () => {
-    if (!deviceConnected) return;
-
     setIsFetchingXpub(true);
     setHardwareError(null);
 
@@ -123,11 +121,9 @@ export const HardwareImport: React.FC<HardwareImportProps> = ({
           <div className="grid grid-cols-2 gap-3">
             <button
               onClick={() => {
-                if (ledgerSupported) {
-                  setHardwareDeviceType('ledger');
-                  setDeviceConnected(false);
-                  setXpubData(null);
-                }
+                setHardwareDeviceType('ledger');
+                setDeviceConnected(false);
+                setXpubData(null);
               }}
               disabled={!ledgerSupported}
               className={`p-4 rounded-lg border text-left transition-colors ${

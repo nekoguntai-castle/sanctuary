@@ -56,7 +56,7 @@ export const descriptorJsonParser: DeviceParser = {
     }
 
     const d = data as DescriptorJsonFormat;
-    const parsed = parseDescriptorString(d.descriptor || '');
+    const parsed = parseDescriptorString(d.descriptor);
 
     if (!parsed?.xpub) {
       return { detected: false, confidence: 0 };

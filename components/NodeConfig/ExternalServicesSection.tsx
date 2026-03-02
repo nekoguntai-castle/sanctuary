@@ -67,7 +67,7 @@ export const ExternalServicesSection: React.FC<ExternalServicesSectionProps> = (
                   type="radio"
                   name="feeSource"
                   checked={!!nodeConfig.feeEstimatorUrl}
-                  onChange={() => onConfigChange({ ...nodeConfig, feeEstimatorUrl: nodeConfig.feeEstimatorUrl || 'https://mempool.space' })}
+                  onChange={() => onConfigChange({ ...nodeConfig, feeEstimatorUrl: 'https://mempool.space' })}
                   className="w-4 h-4 text-primary-600"
                 />
                 <span className="text-sm text-sanctuary-700 dark:text-sanctuary-300">Mempool API</span>

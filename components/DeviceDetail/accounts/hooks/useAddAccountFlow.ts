@@ -234,13 +234,12 @@ export function useAddAccountFlow({ deviceId, device, onClose, onDeviceUpdated }
     setAddAccountLoading(true);
 
     const parseResult = parseDeviceJson(content);
-    if (parseResult && (parseResult.xpub || parseResult.accounts?.length)) {
-      if (parseResult.accounts && parseResult.accounts.length > 0) {
-        handleProcessImportedAccounts(parseResult.accounts, parseResult.fingerprint || '');
-      } else if (parseResult.xpub) {
-        const singleAccount = createSingleAccount(parseResult);
-        handleProcessImportedAccounts([singleAccount], parseResult.fingerprint || '');
-      }
+    if (parseResult?.accounts && parseResult.accounts.length > 0) {
+      handleProcessImportedAccounts(parseResult.accounts, parseResult.fingerprint || '');
+      log.info('QR code parsed successfully', { format: parseResult.format });
+    } else if (parseResult?.xpub) {
+      const singleAccount = createSingleAccount(parseResult);
+      handleProcessImportedAccounts([singleAccount], parseResult.fingerprint || '');
       log.info('QR code parsed successfully', { format: parseResult.format });
     } else {
       setAddAccountError('Could not find valid account data in QR code');

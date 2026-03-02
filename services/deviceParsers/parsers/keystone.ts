@@ -64,8 +64,8 @@ export const keystoneStandardParser: DeviceParser = {
     }
 
     const ks = data as KeystoneStandardFormat;
-    const coins = ks.coins || ks.data?.sync?.coins || [];
-    const btcCoin = coins.find((c) => c.coinCode === 'BTC' || c.coin === 'BTC');
+    const coins = ks.coins || ks.data?.sync?.coins;
+    const btcCoin = coins?.find((c) => c.coinCode === 'BTC' || c.coin === 'BTC');
 
     if (!btcCoin?.accounts?.length) {
       return { detected: false, confidence: 0 };

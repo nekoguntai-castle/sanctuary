@@ -57,6 +57,11 @@ const AnimatedPrice: React.FC<{ value: number | null; symbol: string }> = ({ val
   const direction = value !== null && prevValueRef.current !== null
     ? value > prevValueRef.current ? 'up' : value < prevValueRef.current ? 'down' : 'none'
     : 'none';
+  const animatedPriceClass = isAnimating
+    ? direction === 'up'
+      ? 'text-success-600 dark:text-success-400'
+      : 'text-rose-600 dark:text-rose-400'
+    : 'text-sanctuary-900 dark:text-sanctuary-50';
 
   // Show placeholder if price not yet loaded
   if (displayValue === null) {
@@ -73,13 +78,7 @@ const AnimatedPrice: React.FC<{ value: number | null; symbol: string }> = ({ val
     <div className="relative">
       <span
         className={`text-3xl font-bold transition-colors duration-300 ${
-          isAnimating
-            ? direction === 'up'
-              ? 'text-success-600 dark:text-success-400'
-              : direction === 'down'
-                ? 'text-rose-600 dark:text-rose-400'
-                : 'text-sanctuary-900 dark:text-sanctuary-50'
-            : 'text-sanctuary-900 dark:text-sanctuary-50'
+          animatedPriceClass
         }`}
       >
         {symbol}{displayValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}

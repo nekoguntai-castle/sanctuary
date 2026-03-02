@@ -28,7 +28,7 @@ export const WebSocketStatsCard: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  if (loading) {
+  if (loading && !stats) {
     return (
       <div className="surface-elevated rounded-2xl border border-sanctuary-200 dark:border-sanctuary-800 p-6">
         <div className="animate-pulse space-y-4">

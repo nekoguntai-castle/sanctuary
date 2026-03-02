@@ -67,8 +67,8 @@ export function calculateUTXOAge(
   if (days < 1) {
     if (hours === 0) {
       const mins = Math.floor(ageMs / 60000);
-      displayText = mins < 60 ? `${mins} min${mins !== 1 ? 's' : ''}` : '<1 hour';
-      shortText = mins < 60 ? `${mins}m` : '<1h';
+      displayText = `${mins} min${mins !== 1 ? 's' : ''}`;
+      shortText = `${mins}m`;
     } else {
       displayText = `${hours} hour${hours !== 1 ? 's' : ''}`;
       shortText = `${hours}h`;

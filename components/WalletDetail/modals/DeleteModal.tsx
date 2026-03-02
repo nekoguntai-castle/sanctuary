@@ -23,7 +23,6 @@ export const DeleteModal: React.FC<DeleteModalProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
 
   const handleDelete = async () => {
-    if (deleteInput !== 'DELETE') return;
     setIsDeleting(true);
     try {
       await onConfirm();

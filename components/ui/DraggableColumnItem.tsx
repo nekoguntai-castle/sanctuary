@@ -38,9 +38,7 @@ export const DraggableColumnItem: React.FC<DraggableColumnItemProps> = ({
 
   const handleCheckboxClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!column.required) {
-      onToggle(column.id, !isVisible);
-    }
+    onToggle(column.id, !isVisible);
   };
 
   return (

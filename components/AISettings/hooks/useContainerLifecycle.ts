@@ -50,6 +50,14 @@ interface UseContainerLifecycleReturn {
   performToggleAI: (newValue: boolean) => Promise<void>;
 }
 
+export function toRunningContainerStatus(
+  containerStatus: aiApi.OllamaContainerStatus | null
+): aiApi.OllamaContainerStatus | null {
+  return containerStatus
+    ? { ...containerStatus, exists: true, running: true, status: 'running' }
+    : null;
+}
+
 export function useContainerLifecycle({
   aiEnabled,
   setAiEnabled,
@@ -145,7 +153,7 @@ export function useContainerLifecycle({
         }
 
         // Update container status
-        setContainerStatus(containerStatus ? { ...containerStatus, exists: true, running: true, status: 'running' } : null);
+        setContainerStatus(toRunningContainerStatus(containerStatus));
         setContainerMessage('Container started! Waiting for Ollama to be ready...');
 
         // Wait a bit for Ollama to initialize (longer if we just created it)

@@ -27,8 +27,6 @@ export const NetworkSyncActions: React.FC<NetworkSyncActionsProps> = ({
   const networkLabel = network.charAt(0).toUpperCase() + network.slice(1);
 
   const handleSyncAll = async () => {
-    if (walletCount === 0) return;
-
     setSyncing(true);
     setResult(null);
 

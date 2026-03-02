@@ -61,7 +61,7 @@ interface ExportModalProps {
 /**
  * Generate Coldcard/Passport compatible multisig config text.
  */
-function generateMultisigConfigText(
+export function generateMultisigConfigText(
   name: string,
   quorum: number,
   totalSigners: number,

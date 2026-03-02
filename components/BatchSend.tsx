@@ -15,6 +15,12 @@ interface Recipient {
   label?: string;
 }
 
+export function removeRecipientById(recipients: Recipient[], id: string): Recipient[] {
+  return recipients.length > 1
+    ? recipients.filter((recipient) => recipient.id !== id)
+    : recipients;
+}
+
 export const BatchSend: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -36,9 +42,7 @@ export const BatchSend: React.FC = () => {
   };
 
   const removeRecipient = (id: string) => {
-    if (recipients.length > 1) {
-      setRecipients(recipients.filter((r) => r.id !== id));
-    }
+    setRecipients((currentRecipients) => removeRecipientById(currentRecipients, id));
   };
 
   const updateRecipient = (id: string, field: keyof Recipient, value: string) => {
