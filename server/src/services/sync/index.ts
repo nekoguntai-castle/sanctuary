@@ -9,4 +9,4 @@
  */
 
 export { default, getSyncService } from './syncService';
-export type { SyncJob, SyncResult, SyncHealthMetrics, SubscriptionOwnership } from './types';
+export type { SyncJob, SyncResult, SyncHealthMetrics, SubscriptionOwnership, PollingMode } from './types';

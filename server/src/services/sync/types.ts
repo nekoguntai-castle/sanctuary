@@ -22,6 +22,8 @@ export interface SyncResult {
   error?: string;
 }
 
+export type PollingMode = 'worker-delegated' | 'in-process';
+
 export interface SyncHealthMetrics {
   isRunning: boolean;
   queueLength: number;
@@ -29,6 +31,7 @@ export interface SyncHealthMetrics {
   subscribedAddresses: number;
   subscriptionsEnabled: boolean;
   subscriptionOwnership: SubscriptionOwnership;
+  pollingMode: PollingMode;
 }
 
 export type SubscriptionOwnership = 'self' | 'external' | 'disabled';
@@ -51,6 +54,7 @@ export interface SyncState {
   subscriptionsEnabled: boolean;
   subscriptionOwnership: SubscriptionOwnership;
   subscribedToHeaders: boolean;
+  pollingMode: PollingMode;
 }
 
 // Maximum sync queue size to prevent unbounded memory growth

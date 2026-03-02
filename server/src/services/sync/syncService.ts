@@ -21,7 +21,8 @@ import { getErrorMessage } from '../../utils/errors';
 import { getConfig } from '../../config';
 import { eventService } from '../eventService';
 import { releaseLock } from '../../infrastructure';
-import type { SyncState, SyncResult } from './types';
+import { getWorkerHealthStatus } from '../workerHealth';
+import type { SyncState, SyncResult, SyncHealthMetrics, PollingMode } from './types';
 import { queueSync as doQueueSync, processQueue as doProcessQueue } from './syncQueue';
 import { executeSyncJob as doExecuteSyncJob, acquireSyncLock as doAcquireSyncLock } from './walletSync';
 import {
@@ -47,6 +48,8 @@ class SyncService {
   private confirmationInterval: NodeJS.Timeout | null = null;
   // Periodic reconciliation interval for addressToWalletMap cleanup
   private reconciliationInterval: NodeJS.Timeout | null = null;
+  // Polls worker health to dynamically start/stop in-process intervals
+  private workerHealthPollTimer: NodeJS.Timeout | null = null;
 
   /**
    * Shared mutable state accessed by sub-modules.
@@ -64,6 +67,7 @@ class SyncService {
     subscriptionsEnabled: false,
     subscriptionOwnership: 'disabled',
     subscribedToHeaders: false,
+    pollingMode: 'in-process',
   };
 
   private constructor() {}
@@ -130,15 +134,18 @@ class SyncService {
     const syncConfig = getConfig().sync;
     this.state.subscriptionsEnabled = syncConfig.electrumSubscriptionsEnabled;
 
-    // Start periodic sync check
-    this.syncInterval = setInterval(() => {
-      this.checkAndQueueStaleSyncs();
-    }, syncConfig.intervalMs);
-
-    // Start periodic confirmation updates
-    this.confirmationInterval = setInterval(() => {
-      this.updateAllConfirmations();
-    }, syncConfig.confirmationUpdateIntervalMs);
+    // Decide initial polling mode based on worker health.
+    // If the worker is healthy it owns stale-wallet checks and confirmation updates;
+    // the API server only runs them when the worker is down.
+    const workerHealthy = getWorkerHealthStatus().healthy;
+    if (workerHealthy) {
+      this.state.pollingMode = 'worker-delegated';
+      log.info('[SYNC] Worker healthy — deferring polling to worker');
+    } else {
+      this.state.pollingMode = 'in-process';
+      this.startPollingIntervals();
+      log.info('[SYNC] Worker unhealthy — starting in-process polling');
+    }
 
     // Process any existing queue
     this.processQueue();
@@ -150,6 +157,7 @@ class SyncService {
 
     // Periodic reconciliation of addressToWalletMap (every hour)
     // Rebuilds map from database to clean up entries for deleted wallets
+    // Always runs — worker has no in-memory address map
     this.reconciliationInterval = setInterval(() => {
       this.reconcileAddressToWalletMap().catch(err => {
         log.error('[SYNC] Address map reconciliation failed', { error: getErrorMessage(err) });
@@ -157,7 +165,15 @@ class SyncService {
     }, 60 * 60 * 1000); // 1 hour
     this.reconciliationInterval.unref?.();
 
-    log.info('[SYNC] Background sync service started');
+    // Poll worker health every 30s and start/stop intervals dynamically
+    this.workerHealthPollTimer = setInterval(() => {
+      this.evaluatePollingMode();
+    }, 30_000);
+    this.workerHealthPollTimer.unref?.();
+
+    log.info('[SYNC] Background sync service started', {
+      pollingMode: this.state.pollingMode,
+    });
   }
 
   /**
@@ -180,6 +196,11 @@ class SyncService {
     if (this.reconciliationInterval) {
       clearInterval(this.reconciliationInterval);
       this.reconciliationInterval = null;
+    }
+
+    if (this.workerHealthPollTimer) {
+      clearInterval(this.workerHealthPollTimer);
+      this.workerHealthPollTimer = null;
     }
 
     await this.teardownRealTimeSubscriptions();
@@ -222,14 +243,7 @@ class SyncService {
   /**
    * Get health metrics for monitoring
    */
-  getHealthMetrics(): {
-    isRunning: boolean;
-    queueLength: number;
-    activeSyncs: number;
-    subscribedAddresses: number;
-    subscriptionsEnabled: boolean;
-    subscriptionOwnership: 'self' | 'external' | 'disabled';
-  } {
+  getHealthMetrics(): SyncHealthMetrics {
     return {
       isRunning: this.state.isRunning,
       queueLength: this.state.syncQueue.length,
@@ -237,6 +251,7 @@ class SyncService {
       subscribedAddresses: this.state.addressToWalletMap.size,
       subscriptionsEnabled: this.state.subscriptionsEnabled,
       subscriptionOwnership: this.state.subscriptionOwnership,
+      pollingMode: this.state.pollingMode,
     };
   }
 
@@ -422,6 +437,63 @@ class SyncService {
 
   private stopSubscriptionLockRefresh(): void {
     doStopSubscriptionLockRefresh(this.state);
+  }
+
+  /**
+   * Start in-process polling intervals (stale wallet checks + confirmation updates).
+   * Guarded against double-start.
+   */
+  private startPollingIntervals(): void {
+    if (this.syncInterval) return; // already running
+
+    const syncConfig = getConfig().sync;
+
+    this.syncInterval = setInterval(() => {
+      this.checkAndQueueStaleSyncs();
+    }, syncConfig.intervalMs);
+
+    this.confirmationInterval = setInterval(() => {
+      this.updateAllConfirmations();
+    }, syncConfig.confirmationUpdateIntervalMs);
+
+    this.state.pollingMode = 'in-process';
+    log.info('[SYNC] In-process polling intervals started');
+  }
+
+  /**
+   * Stop in-process polling intervals (worker is handling them).
+   */
+  private stopPollingIntervals(): void {
+    if (this.syncInterval) {
+      clearInterval(this.syncInterval);
+      this.syncInterval = null;
+    }
+    if (this.confirmationInterval) {
+      clearInterval(this.confirmationInterval);
+      this.confirmationInterval = null;
+    }
+
+    this.state.pollingMode = 'worker-delegated';
+    log.info('[SYNC] In-process polling intervals stopped — delegated to worker');
+  }
+
+  /**
+   * Re-evaluate whether to run sync/confirmation intervals in-process
+   * based on the current worker health status.
+   */
+  private evaluatePollingMode(): void {
+    if (!this.state.isRunning) return;
+
+    const workerHealthy = getWorkerHealthStatus().healthy;
+    const currentMode: PollingMode = this.state.pollingMode;
+
+    if (workerHealthy && currentMode === 'in-process') {
+      // Worker recovered — hand off polling
+      this.stopPollingIntervals();
+    } else if (!workerHealthy && currentMode === 'worker-delegated') {
+      // Worker went down — take over polling
+      this.startPollingIntervals();
+    }
   }
 
   /**

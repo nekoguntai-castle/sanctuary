@@ -163,6 +163,11 @@ vi.mock('../../../src/utils/async', () => ({
   withTimeout: vi.fn().mockImplementation((promise) => promise),
 }));
 
+// Mock worker health — default to unhealthy so existing tests keep in-process polling
+vi.mock('../../../src/services/workerHealth', () => ({
+  getWorkerHealthStatus: () => ({ healthy: false }),
+}));
+
 // Import after mocks
 import SyncService, { getSyncService } from '../../../src/services/syncService';
 

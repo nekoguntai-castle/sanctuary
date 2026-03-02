@@ -213,10 +213,23 @@ export class WorkerJobQueue {
     try {
       const jobId = options?.jobId ?? `repeat:${queueName}:${jobName}:${cron}`;
       const repeatableJobs = await queueInstance.queue.getRepeatableJobs();
-      const existingJob = repeatableJobs.find(j => j.name === jobName && j.id === jobId);
-      if (existingJob) {
-        log.info(`Repeatable job already scheduled: ${queueName}:${jobName}`, { cron });
-        return null;
+
+      // Check all existing repeatables for this jobName
+      for (const existing of repeatableJobs) {
+        if (existing.name !== jobName) continue;
+
+        if (existing.id === jobId) {
+          // Exact same schedule already exists — idempotent no-op
+          log.info(`Repeatable job already scheduled: ${queueName}:${jobName}`, { cron });
+          return null;
+        }
+
+        // Stale repeatable with a different cron — remove before re-scheduling
+        log.info(`Removing stale repeatable job: ${queueName}:${jobName}`, {
+          oldKey: existing.key,
+          newJobId: jobId,
+        });
+        await queueInstance.queue.removeRepeatableByKey(existing.key);
       }
 
       const job = await queueInstance.queue.add(jobName, data, {

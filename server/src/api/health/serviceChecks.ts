@@ -111,7 +111,7 @@ export function checkSync(): ComponentHealth {
       return {
         status: 'degraded',
         message: 'Sync queue appears stalled',
-        details: metrics,
+        details: { ...metrics },
       };
     }
 
