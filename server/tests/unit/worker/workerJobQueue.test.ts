@@ -279,6 +279,68 @@ describe('WorkerJobQueue', () => {
 
       expect(job).toBeNull();
     });
+
+    it('should return early (idempotent) when exact jobId already exists', async () => {
+      await queue.initialize();
+      const syncQueue = (queue as any).queues.get('sync').queue;
+
+      syncQueue.getRepeatableJobs.mockResolvedValueOnce([
+        { name: 'check-stale', id: 'repeat:sync:check-stale:*/5 * * * *', key: 'key-1' },
+      ]);
+
+      const job = await queue.scheduleRecurring('sync', 'check-stale', {}, '*/5 * * * *');
+
+      expect(job).toBeNull();
+      expect(syncQueue.removeRepeatableByKey).not.toHaveBeenCalled();
+      expect(syncQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('should remove stale repeatable with different cron before scheduling new one', async () => {
+      await queue.initialize();
+      const syncQueue = (queue as any).queues.get('sync').queue;
+
+      // Old cron was every 10 min, new cron is every 5 min
+      syncQueue.getRepeatableJobs.mockResolvedValueOnce([
+        { name: 'check-stale', id: 'repeat:sync:check-stale:*/10 * * * *', key: 'old-key' },
+      ]);
+
+      const job = await queue.scheduleRecurring('sync', 'check-stale', {}, '*/5 * * * *');
+
+      expect(syncQueue.removeRepeatableByKey).toHaveBeenCalledWith('old-key');
+      expect(job).toBeDefined();
+      expect(syncQueue.add).toHaveBeenCalled();
+    });
+
+    it('should not remove repeatables belonging to a different job name', async () => {
+      await queue.initialize();
+      const syncQueue = (queue as any).queues.get('sync').queue;
+
+      syncQueue.getRepeatableJobs.mockResolvedValueOnce([
+        { name: 'other-job', id: 'repeat:sync:other-job:*/5 * * * *', key: 'other-key' },
+      ]);
+
+      const job = await queue.scheduleRecurring('sync', 'check-stale', {}, '*/5 * * * *');
+
+      expect(syncQueue.removeRepeatableByKey).not.toHaveBeenCalled();
+      expect(job).toBeDefined();
+    });
+
+    it('should remove multiple stale repeatables for the same job name', async () => {
+      await queue.initialize();
+      const syncQueue = (queue as any).queues.get('sync').queue;
+
+      syncQueue.getRepeatableJobs.mockResolvedValueOnce([
+        { name: 'check-stale', id: 'repeat:sync:check-stale:*/10 * * * *', key: 'stale-1' },
+        { name: 'check-stale', id: 'repeat:sync:check-stale:*/15 * * * *', key: 'stale-2' },
+      ]);
+
+      const job = await queue.scheduleRecurring('sync', 'check-stale', {}, '*/5 * * * *');
+
+      expect(syncQueue.removeRepeatableByKey).toHaveBeenCalledTimes(2);
+      expect(syncQueue.removeRepeatableByKey).toHaveBeenCalledWith('stale-1');
+      expect(syncQueue.removeRepeatableByKey).toHaveBeenCalledWith('stale-2');
+      expect(job).toBeDefined();
+    });
   });
 
   describe('getHealth', () => {

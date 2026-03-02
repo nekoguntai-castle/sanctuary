@@ -25,6 +25,7 @@ const {
   mockAcquireLock,
   mockExtendLock,
   mockReleaseLock,
+  mockGetWorkerHealthStatus,
 } = vi.hoisted(() => ({
   mockPrismaClient: {
     wallet: {
@@ -75,6 +76,7 @@ const {
   mockAcquireLock: vi.fn<any>(),
   mockExtendLock: vi.fn<any>(),
   mockReleaseLock: vi.fn<any>(),
+  mockGetWorkerHealthStatus: vi.fn<any>().mockReturnValue({ healthy: false }),
 }));
 
 vi.mock('../../../src/models/prisma', () => ({
@@ -165,7 +167,7 @@ vi.mock('../../../src/utils/async', () => ({
 
 // Mock worker health — default to unhealthy so existing tests keep in-process polling
 vi.mock('../../../src/services/workerHealth', () => ({
-  getWorkerHealthStatus: () => ({ healthy: false }),
+  getWorkerHealthStatus: mockGetWorkerHealthStatus,
 }));
 
 // Import after mocks
@@ -192,6 +194,15 @@ describe('SyncService', () => {
     syncService['subscriptionLockRefresh'] = null;
     syncService['subscriptionsEnabled'] = false;
     syncService['subscriptionOwnership'] = 'disabled';
+
+    // Clear polling timers from previous tests
+    if (syncService['syncInterval']) { clearInterval(syncService['syncInterval']); syncService['syncInterval'] = null; }
+    if (syncService['confirmationInterval']) { clearInterval(syncService['confirmationInterval']); syncService['confirmationInterval'] = null; }
+    if (syncService['workerHealthPollTimer']) { clearInterval(syncService['workerHealthPollTimer']); syncService['workerHealthPollTimer'] = null; }
+    if (syncService['reconciliationInterval']) { clearInterval(syncService['reconciliationInterval']); syncService['reconciliationInterval'] = null; }
+
+    // Default worker health: unhealthy (in-process polling)
+    mockGetWorkerHealthStatus.mockReturnValue({ healthy: false });
 
     // Default mock implementations
     mockAcquireLock.mockResolvedValue({
@@ -750,6 +761,156 @@ describe('SyncService', () => {
       expect(metrics.queueLength).toBe(1);
       expect(metrics.activeSyncs).toBe(1);
       expect(metrics.subscribedAddresses).toBe(1);
+    });
+
+    it('should include pollingMode in health metrics', () => {
+      syncService['isRunning'] = true;
+
+      const metrics = syncService.getHealthMetrics();
+
+      expect(metrics.pollingMode).toBe('in-process');
+    });
+  });
+
+  describe('polling mode', () => {
+    it('should start in-process polling when worker is unhealthy', async () => {
+      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false });
+
+      await syncService.start();
+
+      expect(syncService.getHealthMetrics().pollingMode).toBe('in-process');
+      expect(syncService['syncInterval']).not.toBeNull();
+      expect(syncService['confirmationInterval']).not.toBeNull();
+    });
+
+    it('should defer polling to worker when worker is healthy', async () => {
+      mockGetWorkerHealthStatus.mockReturnValue({ healthy: true });
+
+      await syncService.start();
+
+      expect(syncService.getHealthMetrics().pollingMode).toBe('worker-delegated');
+      expect(syncService['syncInterval']).toBeNull();
+      expect(syncService['confirmationInterval']).toBeNull();
+    });
+
+    it('should always start reconciliation interval regardless of worker health', async () => {
+      mockGetWorkerHealthStatus.mockReturnValue({ healthy: true });
+
+      await syncService.start();
+
+      expect(syncService['reconciliationInterval']).not.toBeNull();
+    });
+
+    it('should always start workerHealthPollTimer', async () => {
+      mockGetWorkerHealthStatus.mockReturnValue({ healthy: true });
+
+      await syncService.start();
+
+      expect(syncService['workerHealthPollTimer']).not.toBeNull();
+    });
+
+    it('should transition from worker-delegated to in-process when worker goes down', async () => {
+      mockGetWorkerHealthStatus.mockReturnValue({ healthy: true });
+      await syncService.start();
+
+      expect(syncService.getHealthMetrics().pollingMode).toBe('worker-delegated');
+
+      // Worker goes down
+      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false });
+      syncService['evaluatePollingMode']();
+
+      expect(syncService.getHealthMetrics().pollingMode).toBe('in-process');
+      expect(syncService['syncInterval']).not.toBeNull();
+      expect(syncService['confirmationInterval']).not.toBeNull();
+    });
+
+    it('should transition from in-process to worker-delegated when worker recovers', async () => {
+      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false });
+      await syncService.start();
+
+      expect(syncService.getHealthMetrics().pollingMode).toBe('in-process');
+
+      // Worker recovers
+      mockGetWorkerHealthStatus.mockReturnValue({ healthy: true });
+      syncService['evaluatePollingMode']();
+
+      expect(syncService.getHealthMetrics().pollingMode).toBe('worker-delegated');
+      expect(syncService['syncInterval']).toBeNull();
+      expect(syncService['confirmationInterval']).toBeNull();
+    });
+
+    it('should not double-start polling intervals', async () => {
+      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false });
+      await syncService.start();
+
+      const firstSyncInterval = syncService['syncInterval'];
+      const firstConfirmInterval = syncService['confirmationInterval'];
+
+      // Call startPollingIntervals again — should be a no-op
+      syncService['startPollingIntervals']();
+
+      expect(syncService['syncInterval']).toBe(firstSyncInterval);
+      expect(syncService['confirmationInterval']).toBe(firstConfirmInterval);
+    });
+
+    it('should not evaluate polling mode when service is stopped', async () => {
+      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false });
+      await syncService.start();
+      await syncService.stop();
+
+      // Worker recovers while service is stopped
+      mockGetWorkerHealthStatus.mockReturnValue({ healthy: true });
+      syncService['evaluatePollingMode']();
+
+      // Should remain unchanged since isRunning is false
+      expect(syncService['syncInterval']).toBeNull();
+    });
+
+    it('should be no-op when worker stays healthy (already delegated)', async () => {
+      mockGetWorkerHealthStatus.mockReturnValue({ healthy: true });
+      await syncService.start();
+
+      // Evaluate again with same state
+      syncService['evaluatePollingMode']();
+
+      expect(syncService.getHealthMetrics().pollingMode).toBe('worker-delegated');
+      expect(syncService['syncInterval']).toBeNull();
+    });
+
+    it('should be no-op when worker stays unhealthy (already in-process)', async () => {
+      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false });
+      await syncService.start();
+
+      const firstSyncInterval = syncService['syncInterval'];
+
+      // Evaluate again with same state
+      syncService['evaluatePollingMode']();
+
+      expect(syncService.getHealthMetrics().pollingMode).toBe('in-process');
+      expect(syncService['syncInterval']).toBe(firstSyncInterval);
+    });
+
+    it('should clear workerHealthPollTimer on stop', async () => {
+      await syncService.start();
+
+      expect(syncService['workerHealthPollTimer']).not.toBeNull();
+
+      await syncService.stop();
+
+      expect(syncService['workerHealthPollTimer']).toBeNull();
+    });
+
+    it('should trigger evaluatePollingMode via the 30s timer', async () => {
+      mockGetWorkerHealthStatus.mockReturnValue({ healthy: true });
+      await syncService.start();
+
+      expect(syncService.getHealthMetrics().pollingMode).toBe('worker-delegated');
+
+      // Worker goes down — advance the 30s timer
+      mockGetWorkerHealthStatus.mockReturnValue({ healthy: false });
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      expect(syncService.getHealthMetrics().pollingMode).toBe('in-process');
     });
   });
 
