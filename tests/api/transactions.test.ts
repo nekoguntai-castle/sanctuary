@@ -11,6 +11,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const mockGet = vi.fn();
 const mockPost = vi.fn();
 const mockPatch = vi.fn();
+const mockDownload = vi.fn();
 const mockGetToken = vi.fn().mockReturnValue('test-token');
 
 vi.mock('../../src/api/client', () => ({
@@ -18,6 +19,7 @@ vi.mock('../../src/api/client', () => ({
     get: (...args: unknown[]) => mockGet(...args),
     post: (...args: unknown[]) => mockPost(...args),
     patch: (...args: unknown[]) => mockPatch(...args),
+    download: (...args: unknown[]) => mockDownload(...args),
     getToken: () => mockGetToken(),
   },
   API_BASE_URL: '/api/v1',
@@ -33,6 +35,7 @@ import {
   getTransaction,
   getPendingTransactions,
   getTransactionStats,
+  exportTransactions,
   getUTXOs,
   getAddresses,
   getAddressSummary,
@@ -100,6 +103,50 @@ describe('Transactions API', () => {
       const result = await getTransactionStats('wallet-1');
       expect(mockGet).toHaveBeenCalledWith('/wallets/wallet-1/transactions/stats');
       expect(result).toEqual(mockStats);
+    });
+  });
+
+  describe('exportTransactions', () => {
+    it('uses json extension and includes optional date params', async () => {
+      const expectedDate = new Date().toISOString().slice(0, 10);
+      mockDownload.mockResolvedValue(undefined);
+
+      await exportTransactions('wallet-1', 'My Wallet #1', {
+        format: 'json',
+        startDate: '2026-01-01',
+        endDate: '2026-01-31',
+      });
+
+      expect(mockDownload).toHaveBeenCalledWith(
+        '/wallets/wallet-1/transactions/export',
+        `My_Wallet__1_transactions_${expectedDate}.json`,
+        {
+          params: {
+            format: 'json',
+            startDate: '2026-01-01',
+            endDate: '2026-01-31',
+          },
+        }
+      );
+    });
+
+    it('uses csv extension and omits optional date params when missing', async () => {
+      const expectedDate = new Date().toISOString().slice(0, 10);
+      mockDownload.mockResolvedValue(undefined);
+
+      await exportTransactions('wallet-1', 'Team Wallet', {
+        format: 'csv',
+      });
+
+      expect(mockDownload).toHaveBeenCalledWith(
+        '/wallets/wallet-1/transactions/export',
+        `Team_Wallet_transactions_${expectedDate}.csv`,
+        {
+          params: {
+            format: 'csv',
+          },
+        }
+      );
     });
   });
 
