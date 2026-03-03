@@ -18,7 +18,7 @@
     "test:watch": "vitest --watch",
     "test:coverage": "vitest run --coverage",
     "test:unit": "vitest run tests/unit",
-    "test:integration": "vitest run tests/integration",
+    "test:integration": "vitest run tests/integration --no-file-parallelism",
     "test:integration:db": "DATABASE_URL='postgresql://sanctuary:sanctuary@localhost:5432/sanctuary_test?schema=public' npm run test:integration",
     "test:ci": "vitest run --coverage --reporter=junit",
     "test:bitcoin": "vitest run tests/unit/services/bitcoin",
