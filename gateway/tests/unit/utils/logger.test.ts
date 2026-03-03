@@ -258,6 +258,23 @@ describe('Logger', () => {
       expect(metaArg).toContain('"nested"');
       expect(metaArg).toContain('"array"');
     });
+
+    it('should serialize metadata for debug, warn, and error logs', async () => {
+      vi.doMock('../../../src/config', () => ({
+        config: { logLevel: 'debug' },
+      }));
+
+      const { createLogger } = await import('../../../src/utils/logger');
+      const logger = createLogger('TEST');
+
+      logger.debug('debug with meta', { level: 'debug-meta' });
+      logger.warn('warn with meta', { level: 'warn-meta' });
+      logger.error('error with meta', { level: 'error-meta' });
+
+      expect(consoleLogSpy.mock.calls[0][1]).toContain('"level":"debug-meta"');
+      expect(consoleWarnSpy.mock.calls[0][1]).toContain('"level":"warn-meta"');
+      expect(consoleErrorSpy.mock.calls[0][1]).toContain('"level":"error-meta"');
+    });
   });
 
   describe('exports', () => {

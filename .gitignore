@@ -41,6 +41,10 @@ coverage/
 coverage-*/
 junit.xml
 *.lcov
+playwright-report/
+playwright-results.xml
+test-results/
+.tmp-gh/
 
 # Claude Code local settings (keep agents in repo)
 .claude/settings.json

@@ -43,9 +43,8 @@ export function createLogger(module: string): Logger {
       }
     },
     error: (message: string, meta?: Record<string, unknown>) => {
-      if (shouldLog(LogLevel.ERROR)) {
-        console.error(`[${formatTimestamp()}] ERROR ${prefix} ${message}`, meta ? JSON.stringify(meta) : '');
-      }
+      // Errors are always emitted regardless of configured log level.
+      console.error(`[${formatTimestamp()}] ERROR ${prefix} ${message}`, meta ? JSON.stringify(meta) : '');
     },
   };
 }

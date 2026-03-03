@@ -69,11 +69,7 @@ const waitForClose = (socket: WebSocket) =>
     socket.once('close', () => resolve());
   });
 
-const shouldRunWebSocketIntegration = process.env.RUN_WS_INTEGRATION === 'true';
-
-const describeWebSocket = shouldRunWebSocketIntegration ? describe : describe.skip;
-
-describeWebSocket('websocket integration', () => {
+describe('websocket integration', () => {
   afterEach(() => {
     (verifyToken as ReturnType<typeof vi.fn>).mockClear();
     (checkWalletAccess as ReturnType<typeof vi.fn>).mockClear();

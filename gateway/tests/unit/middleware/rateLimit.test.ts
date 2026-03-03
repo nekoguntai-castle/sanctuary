@@ -48,14 +48,21 @@ describe('Rate Limiting Middleware', () => {
   const invokeLimiterUntilBlocked = async (
     middleware: (req: Request, res: Response, next: NextFunction) => void,
     max: number,
-    options?: { userId?: string; path?: string; ip?: string }
+    options?: { userId?: string; path?: string; ip?: string; forceNoIp?: boolean }
   ) => {
     const path = options?.path || '/api/v1/test';
     const ip = options?.ip || '198.51.100.100';
     const userId = options?.userId;
+    const forceNoIp = options?.forceNoIp || false;
     const app = express();
     app.set('trust proxy', true);
     app.use((req, _res, next) => {
+      if (forceNoIp) {
+        Object.defineProperty(req, 'ip', {
+          value: undefined,
+          configurable: true,
+        });
+      }
       if (userId) {
         (req as AuthenticatedRequest).user = {
           userId,
@@ -69,9 +76,14 @@ describe('Rate Limiting Middleware', () => {
       res.status(200).json({ ok: true });
     });
 
-    let response = await request(app).get(path).set('x-forwarded-for', ip).set('user-agent', 'vitest-agent');
+    const makeRequest = () => {
+      const reqBuilder = request(app).get(path).set('user-agent', 'vitest-agent');
+      return forceNoIp ? reqBuilder : reqBuilder.set('x-forwarded-for', ip);
+    };
+
+    let response = await makeRequest();
     for (let i = 0; i < max; i++) {
-      response = await request(app).get(path).set('x-forwarded-for', ip).set('user-agent', 'vitest-agent');
+      response = await makeRequest();
     }
     return response;
   };
@@ -318,6 +330,41 @@ describe('Rate Limiting Middleware', () => {
       );
     });
 
+    it('defaultRateLimiter falls back to IP key for unauthenticated clients', async () => {
+      const response = await invokeLimiterUntilBlocked(defaultRateLimiter, 60, {
+        ip: '203.0.113.45',
+        path: '/api/v1/wallets',
+      });
+
+      expect(response.status).toBe(429);
+      expect(vi.mocked(logSecurityEvent)).toHaveBeenCalledWith(
+        'RATE_LIMIT_EXCEEDED',
+        expect.objectContaining({
+          tier: 'default',
+          userId: undefined,
+          ip: '203.0.113.45',
+        })
+      );
+    });
+
+    it('defaultRateLimiter uses backoff violation fallback when tracker lookup misses', async () => {
+      const getSpy = vi.spyOn(backoffTracker, 'get').mockReturnValue(undefined as any);
+      const response = await invokeLimiterUntilBlocked(defaultRateLimiter, 60, {
+        path: '/api/v1/wallets',
+        forceNoIp: true,
+      });
+
+      expect(response.status).toBe(429);
+      expect(vi.mocked(logSecurityEvent)).toHaveBeenCalledWith(
+        'RATE_LIMIT_EXCEEDED',
+        expect.objectContaining({
+          tier: 'default',
+          backoffViolations: 1,
+        })
+      );
+      getSpy.mockRestore();
+    });
+
     it('strictRateLimiter emits strict 429 response', async () => {
       const response = await invokeLimiterUntilBlocked(strictRateLimiter, 10, {
         userId: 'strict-user',
@@ -345,6 +392,25 @@ describe('Rate Limiting Middleware', () => {
         'AUTH_RATE_LIMIT_EXCEEDED',
         expect.objectContaining({ tier: 'auth', severity: 'high' })
       );
+    });
+
+    it('authRateLimiter handles missing IP and logs fallback backoff violations', async () => {
+      const getSpy = vi.spyOn(backoffTracker, 'get').mockReturnValue(undefined as any);
+      const response = await invokeLimiterUntilBlocked(authRateLimiter, 15, {
+        path: '/api/v1/auth/login',
+        forceNoIp: true,
+      });
+
+      expect(response.status).toBe(429);
+      expect(vi.mocked(logSecurityEvent)).toHaveBeenCalledWith(
+        'AUTH_RATE_LIMIT_EXCEEDED',
+        expect.objectContaining({
+          tier: 'auth',
+          ip: undefined,
+          backoffViolations: 1,
+        })
+      );
+      getSpy.mockRestore();
     });
 
     it('transactionCreateRateLimiter emits tier-specific 429 response', async () => {
