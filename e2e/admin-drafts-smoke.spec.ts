@@ -2,6 +2,18 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 
 const WALLET_ID = 'wallet-smoke-1';
 
+const API_ORIGIN = (() => {
+  const apiUrl = process.env.VITE_API_URL;
+  if (!apiUrl || !/^https?:\/\//.test(apiUrl)) {
+    return null;
+  }
+  try {
+    return new URL(apiUrl).origin;
+  } catch {
+    return null;
+  }
+})();
+
 const ADMIN_USER = {
   id: 'user-admin-1',
   username: 'admin',
@@ -50,7 +62,7 @@ async function mockAuthenticatedApi(page: Page) {
     localStorage.setItem('sanctuary_token', 'playwright-smoke-token');
   });
 
-  await page.route('**/api/v1/**', async route => {
+  const apiRouteHandler = async (route: Route) => {
     const request = route.request();
     const method = request.method();
     const url = new URL(request.url());
@@ -197,7 +209,12 @@ async function mockAuthenticatedApi(page: Page) {
     }
 
     return json(route, { message: `Unmocked endpoint: ${method} ${path}` }, 404);
-  });
+  };
+
+  await page.route('**/api/v1/**', apiRouteHandler);
+  if (API_ORIGIN) {
+    await page.route(`${API_ORIGIN}/**`, apiRouteHandler);
+  }
 }
 
 test.describe('Admin and drafts smoke routes', () => {
