@@ -85,38 +85,45 @@ async function seedTestData(client: PrismaClient): Promise<void> {
 export async function cleanupTestData(): Promise<void> {
   if (!prisma) return;
 
-  // Delete in order respecting foreign keys
-  // Using raw SQL for efficiency and to handle foreign key constraints
-  try {
-    // Delete labels and label associations first
-    await prisma.$executeRaw`DELETE FROM "TransactionLabel"`;
-    await prisma.$executeRaw`DELETE FROM "AddressLabel"`;
-    await prisma.$executeRaw`DELETE FROM "Label"`;
+  // Delete in dependency order so FK-constrained rows are removed safely.
+  await prisma.transactionLabel.deleteMany();
+  await prisma.addressLabel.deleteMany();
+  await prisma.label.deleteMany();
 
-    // Delete wallet-related data
-    await prisma.$executeRaw`DELETE FROM "UTXO"`;
-    await prisma.$executeRaw`DELETE FROM "Transaction"`;
-    await prisma.$executeRaw`DELETE FROM "DraftTransaction"`;
-    await prisma.$executeRaw`DELETE FROM "Address"`;
-    await prisma.$executeRaw`DELETE FROM "WalletDevice"`;
-    await prisma.$executeRaw`DELETE FROM "WalletUser"`;
-    await prisma.$executeRaw`DELETE FROM "Wallet"`;
+  await prisma.featureFlagAudit.deleteMany();
+  await prisma.featureFlag.deleteMany();
 
-    // Delete device data
-    await prisma.$executeRaw`DELETE FROM "Device"`;
+  await prisma.transactionInput.deleteMany();
+  await prisma.transactionOutput.deleteMany();
+  await prisma.draftUtxoLock.deleteMany();
+  await prisma.draftTransaction.deleteMany();
+  await prisma.transaction.deleteMany();
+  await prisma.uTXO.deleteMany();
+  await prisma.address.deleteMany();
+  await prisma.walletDevice.deleteMany();
+  await prisma.mobilePermission.deleteMany();
+  await prisma.walletUser.deleteMany();
+  await prisma.wallet.deleteMany();
 
-    // Delete user data
-    await prisma.$executeRaw`DELETE FROM "PushDevice"`;
-    await prisma.$executeRaw`DELETE FROM "GroupMember"`;
-    await prisma.$executeRaw`DELETE FROM "Group"`;
-    await prisma.$executeRaw`DELETE FROM "User"`;
+  await prisma.deviceAccount.deleteMany();
+  await prisma.deviceUser.deleteMany();
+  await prisma.device.deleteMany();
+  await prisma.hardwareDeviceModel.deleteMany();
 
-    // Delete audit logs
-    await prisma.$executeRaw`DELETE FROM "AuditLog"`;
-  } catch (error) {
-    // Some tables might not exist or have different constraints
-    console.warn('Cleanup warning:', error);
-  }
+  await prisma.emailVerificationToken.deleteMany();
+  await prisma.refreshToken.deleteMany();
+  await prisma.revokedToken.deleteMany();
+  await prisma.pushDevice.deleteMany();
+  await prisma.ownershipTransfer.deleteMany();
+  await prisma.groupMember.deleteMany();
+  await prisma.group.deleteMany();
+  await prisma.user.deleteMany();
+
+  await prisma.auditLog.deleteMany();
+  await prisma.priceData.deleteMany();
+  await prisma.feeEstimate.deleteMany();
+  await prisma.electrumServer.deleteMany();
+  await prisma.nodeConfig.deleteMany();
 }
 
 /**

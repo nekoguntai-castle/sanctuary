@@ -134,30 +134,44 @@ export async function cleanupTestData(): Promise<void> {
   const client = await getTestPrisma();
 
   // Delete in order respecting foreign keys
-  await client.$executeRaw`DELETE FROM "TransactionLabel"`;
-  await client.$executeRaw`DELETE FROM "AddressLabel"`;
-  await client.$executeRaw`DELETE FROM "Label"`;
-  await client.$executeRaw`DELETE FROM "DraftUtxoLock"`;
-  await client.$executeRaw`DELETE FROM "DraftTransaction"`;
-  await client.$executeRaw`DELETE FROM "TransactionInput"`;
-  await client.$executeRaw`DELETE FROM "TransactionOutput"`;
-  await client.$executeRaw`DELETE FROM "UTXO"`;
-  await client.$executeRaw`DELETE FROM "Transaction"`;
-  await client.$executeRaw`DELETE FROM "Address"`;
-  await client.$executeRaw`DELETE FROM "WalletDevice"`;
-  await client.$executeRaw`DELETE FROM "WalletUser"`;
-  await client.$executeRaw`DELETE FROM "Wallet"`;
-  await client.$executeRaw`DELETE FROM "DeviceAccount"`;
-  await client.$executeRaw`DELETE FROM "DeviceUser"`;
-  await client.$executeRaw`DELETE FROM "Device"`;
-  await client.$executeRaw`DELETE FROM "RefreshToken"`;
-  await client.$executeRaw`DELETE FROM "RevokedToken"`;
-  await client.$executeRaw`DELETE FROM "PushDevice"`;
-  await client.$executeRaw`DELETE FROM "GroupMember"`;
-  await client.$executeRaw`DELETE FROM "Group"`;
-  await client.$executeRaw`DELETE FROM "AuditLog"`;
-  await client.$executeRaw`DELETE FROM "OwnershipTransfer"`;
-  await client.$executeRaw`DELETE FROM "users"`;
+  await client.transactionLabel.deleteMany();
+  await client.addressLabel.deleteMany();
+  await client.label.deleteMany();
+
+  await client.featureFlagAudit.deleteMany();
+  await client.featureFlag.deleteMany();
+
+  await client.transactionInput.deleteMany();
+  await client.transactionOutput.deleteMany();
+  await client.draftUtxoLock.deleteMany();
+  await client.draftTransaction.deleteMany();
+  await client.transaction.deleteMany();
+  await client.uTXO.deleteMany();
+  await client.address.deleteMany();
+  await client.walletDevice.deleteMany();
+  await client.mobilePermission.deleteMany();
+  await client.walletUser.deleteMany();
+  await client.wallet.deleteMany();
+
+  await client.deviceAccount.deleteMany();
+  await client.deviceUser.deleteMany();
+  await client.device.deleteMany();
+  await client.hardwareDeviceModel.deleteMany();
+
+  await client.emailVerificationToken.deleteMany();
+  await client.refreshToken.deleteMany();
+  await client.revokedToken.deleteMany();
+  await client.pushDevice.deleteMany();
+  await client.ownershipTransfer.deleteMany();
+  await client.groupMember.deleteMany();
+  await client.group.deleteMany();
+  await client.user.deleteMany();
+
+  await client.auditLog.deleteMany();
+  await client.priceData.deleteMany();
+  await client.feeEstimate.deleteMany();
+  await client.electrumServer.deleteMany();
+  await client.nodeConfig.deleteMany();
 }
 
 // ========================================
