@@ -30,6 +30,10 @@ vi.mock('../../../../src/utils/logger', () => ({
   createLogger: () => mockLogger,
 }));
 
+vi.mock('../../../../src/websocket/notifications', () => ({
+  walletLog: vi.fn(),
+}));
+
 const loadService = async () => import('../../../../src/services/telegram/telegramService');
 
 describe('telegramService', () => {

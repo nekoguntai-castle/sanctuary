@@ -18,6 +18,11 @@ vi.mock('../../../src/models/prisma', () => ({
   default: mockPrismaClient,
 }));
 
+// Mock walletLog (used by telegram notifications for system log entries)
+vi.mock('../../../src/websocket/notifications', () => ({
+  walletLog: vi.fn(),
+}));
+
 // Import after mocks
 import {
   sendTelegramMessage,

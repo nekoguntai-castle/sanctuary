@@ -6,6 +6,7 @@
 
 import { db as prisma } from '../../repositories/db';
 import { createLogger } from '../../utils/logger';
+import { walletLog } from '../../websocket/notifications';
 import { sendTelegramMessage } from './api';
 import { getWalletUsers, formatTransactionMessage, formatDraftMessage } from './formatting';
 import type { TelegramConfig, TransactionData, DraftData } from './types';
@@ -43,18 +44,25 @@ export async function notifyNewTransactions(
     // Get all users with access to this wallet
     const users = await getWalletUsers(walletId);
 
+    if (users.length === 0) {
+      log.debug(`No users found for wallet ${walletId}, skipping Telegram notifications`);
+      return;
+    }
+
     for (const user of users) {
       const prefs = user.preferences as Record<string, unknown> | null;
       const telegram = prefs?.telegram as TelegramConfig | undefined;
 
       // Skip if Telegram not configured or not enabled
       if (!telegram?.enabled || !telegram?.botToken || !telegram?.chatId) {
+        log.debug(`Telegram not configured for user ${user.username}, skipping`);
         continue;
       }
 
       // Get wallet-specific settings
       const walletSettings = telegram.wallets?.[walletId];
       if (!walletSettings?.enabled) {
+        log.debug(`Telegram wallet notifications disabled for user ${user.username} on wallet ${walletId}`);
         continue;
       }
 
@@ -71,14 +79,23 @@ export async function notifyNewTransactions(
 
           if (result.success) {
             log.debug(`Sent Telegram notification to ${user.username} for tx ${tx.txid.slice(0, 8)}...`);
+            walletLog(walletId, 'info', 'TELEGRAM', `Sent ${tx.type} notification to ${user.username}`, {
+              txid: tx.txid.slice(0, 12),
+            });
           } else {
             log.warn(`Failed to send Telegram to ${user.username}: ${result.error}`);
+            walletLog(walletId, 'warn', 'TELEGRAM', `Failed to send ${tx.type} notification to ${user.username}: ${result.error}`, {
+              txid: tx.txid.slice(0, 12),
+            });
           }
+        } else {
+          log.debug(`Skipping Telegram for tx ${tx.txid.slice(0, 8)} (type=${tx.type}, notifyReceived=${walletSettings.notifyReceived}, notifySent=${walletSettings.notifySent}, notifyConsolidation=${walletSettings.notifyConsolidation})`);
         }
       }
     }
   } catch (err) {
     log.error(`Error sending Telegram notifications: ${err}`);
+    walletLog(walletId, 'error', 'TELEGRAM', `Error sending notifications: ${err}`);
   }
 }
 
@@ -131,11 +148,14 @@ export async function notifyNewDraft(
 
       if (result.success) {
         log.debug(`Sent draft notification to ${user.username}`);
+        walletLog(walletId, 'info', 'TELEGRAM', `Sent draft notification to ${user.username}`);
       } else {
         log.warn(`Failed to send draft notification to ${user.username}: ${result.error}`);
+        walletLog(walletId, 'warn', 'TELEGRAM', `Failed to send draft notification to ${user.username}: ${result.error}`);
       }
     }
   } catch (err) {
     log.error(`Error sending draft notifications: ${err}`);
+    walletLog(walletId, 'error', 'TELEGRAM', `Error sending draft notifications: ${err}`);
   }
 }
