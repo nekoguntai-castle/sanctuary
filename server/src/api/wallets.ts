@@ -12,6 +12,7 @@
  * - import.ts         - Wallet import from descriptors/JSON
  * - xpubValidation.ts - XPUB validation utility
  * - telegram.ts       - Per-wallet notification settings
+ * - autopilot.ts      - Treasury Autopilot settings and status
  */
 
 import { Router } from 'express';
@@ -26,6 +27,7 @@ import devicesRouter from './wallets/devices';
 import exportRouter from './wallets/export';
 import sharingRouter from './wallets/sharing';
 import telegramRouter from './wallets/telegram';
+import autopilotRouter from './wallets/autopilot';
 
 const router = Router();
 
@@ -43,5 +45,6 @@ router.use('/', devicesRouter);
 router.use('/', exportRouter);
 router.use('/', sharingRouter);
 router.use('/', telegramRouter);
+router.use('/', autopilotRouter);
 
 export default router;

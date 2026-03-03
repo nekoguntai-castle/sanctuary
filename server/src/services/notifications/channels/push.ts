@@ -18,7 +18,8 @@ export const pushChannelHandler: NotificationChannelHandler = {
   description: 'Send notifications to mobile devices (iOS/Android)',
   capabilities: {
     supportsTransactions: true,
-    supportsDrafts: false, // Push doesn't support draft notifications yet
+    supportsDrafts: false,
+    supportsConsolidationSuggestions: false,
     supportsRichFormatting: false,
     supportsImages: false,
   },

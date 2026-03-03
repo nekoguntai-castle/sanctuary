@@ -60,6 +60,9 @@ const mocks = vi.hoisted(() => {
       priceDataRetentionDays: 30,
       feeEstimateRetentionDays: 7,
     },
+    features: {
+      treasuryAutopilot: false,
+    },
   }));
 
   return {

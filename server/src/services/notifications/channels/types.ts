@@ -26,6 +26,23 @@ export interface DraftNotification {
 }
 
 /**
+ * Consolidation suggestion notification data
+ */
+export interface ConsolidationSuggestionNotification {
+  walletId: string;
+  walletName: string;
+  feeRate: number;
+  utxoHealth: {
+    totalUtxos: number;
+    dustCount: number;
+    dustValue: bigint;
+    totalValue: bigint;
+  };
+  estimatedSavings: string;
+  reason: string;
+}
+
+/**
  * Result of a notification attempt
  */
 export interface NotificationResult {
@@ -41,6 +58,7 @@ export interface NotificationResult {
 export interface ChannelCapabilities {
   supportsTransactions: boolean;
   supportsDrafts: boolean;
+  supportsConsolidationSuggestions: boolean;
   supportsRichFormatting: boolean;
   supportsImages: boolean;
 }
@@ -90,5 +108,16 @@ export interface NotificationChannelHandler {
     walletId: string,
     draft: DraftNotification,
     createdByUserId: string
+  ): Promise<NotificationResult>;
+
+  /**
+   * Send consolidation suggestion notification (optional)
+   * @param walletId - The wallet to consolidate
+   * @param suggestion - The consolidation suggestion data
+   * @returns Result of the notification attempt
+   */
+  notifyConsolidationSuggestion?(
+    walletId: string,
+    suggestion: ConsolidationSuggestionNotification
   ): Promise<NotificationResult>;
 }

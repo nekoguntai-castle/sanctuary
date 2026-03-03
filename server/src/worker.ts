@@ -319,6 +319,25 @@ async function scheduleRecurringJobs(): Promise<void> {
     '0 4 1 * *' // 1st of month 4 AM
   );
 
+  // Treasury Autopilot jobs (behind feature flag)
+  if (config.features.treasuryAutopilot) {
+    await jobQueue.scheduleRecurring(
+      'maintenance',
+      'autopilot:record-fees',
+      {},
+      '*/10 * * * *' // Every 10 minutes
+    );
+
+    await jobQueue.scheduleRecurring(
+      'maintenance',
+      'autopilot:evaluate',
+      {},
+      '5/10 * * * *' // Every 10 minutes, offset by 5
+    );
+
+    log.info('Treasury Autopilot jobs scheduled');
+  }
+
   // Set up job result handler for stale wallet check
   // This queues individual sync jobs for each stale wallet
   setupStaleWalletHandler();

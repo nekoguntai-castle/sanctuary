@@ -30,6 +30,7 @@ export type {
   NotificationChannelHandler,
   TransactionNotification,
   DraftNotification,
+  ConsolidationSuggestionNotification,
   NotificationResult,
   ChannelCapabilities,
 } from './types';
