@@ -138,9 +138,6 @@ export async function cleanupTestData(): Promise<void> {
   await client.addressLabel.deleteMany();
   await client.label.deleteMany();
 
-  await client.featureFlagAudit.deleteMany();
-  await client.featureFlag.deleteMany();
-
   await client.transactionInput.deleteMany();
   await client.transactionOutput.deleteMany();
   await client.draftUtxoLock.deleteMany();

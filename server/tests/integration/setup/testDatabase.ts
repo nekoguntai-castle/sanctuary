@@ -90,9 +90,6 @@ export async function cleanupTestData(): Promise<void> {
   await prisma.addressLabel.deleteMany();
   await prisma.label.deleteMany();
 
-  await prisma.featureFlagAudit.deleteMany();
-  await prisma.featureFlag.deleteMany();
-
   await prisma.transactionInput.deleteMany();
   await prisma.transactionOutput.deleteMany();
   await prisma.draftUtxoLock.deleteMany();
