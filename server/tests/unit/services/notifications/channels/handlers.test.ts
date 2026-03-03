@@ -4,6 +4,9 @@ const { mockTelegramService, mockPushService } = vi.hoisted(() => ({
   mockTelegramService: {
     notifyNewTransactions: vi.fn(),
     notifyNewDraft: vi.fn(),
+    getWalletUsers: vi.fn(),
+    escapeHtml: vi.fn((value: string) => value),
+    sendTelegramMessage: vi.fn(),
   },
   mockPushService: {
     isPushConfigured: vi.fn(),
@@ -20,6 +23,8 @@ import { pushChannelHandler } from '../../../../../src/services/notifications/ch
 describe('notification channel handlers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockTelegramService.getWalletUsers.mockResolvedValue([]);
+    mockTelegramService.sendTelegramMessage.mockResolvedValue({ success: true });
   });
 
   describe('telegramChannelHandler', () => {
@@ -106,6 +111,131 @@ describe('notification channel handlers', () => {
       expect(result.channelId).toBe('telegram');
       expect(result.usersNotified).toBe(0);
       expect(result.errors?.[0]).toContain('telegram draft failure');
+    });
+
+    it('sends consolidation suggestions only to enabled telegram recipients', async () => {
+      mockTelegramService.getWalletUsers.mockResolvedValueOnce([
+        {
+          username: 'alice',
+          preferences: { telegram: { enabled: true, botToken: 'bot-1', chatId: 'chat-1' } },
+        },
+        {
+          username: 'bob',
+          preferences: { telegram: { enabled: false, botToken: 'bot-2', chatId: 'chat-2' } },
+        },
+        {
+          username: 'carol',
+          preferences: { telegram: { enabled: true, botToken: 'bot-3' } },
+        },
+      ]);
+      mockTelegramService.sendTelegramMessage.mockResolvedValueOnce({ success: true });
+
+      const result = await telegramChannelHandler.notifyConsolidationSuggestion!(
+        'wallet-1',
+        {
+          walletId: 'wallet-1',
+          walletName: 'Treasury <Main>',
+          feeRate: 5,
+          utxoHealth: {
+            totalUtxos: 21,
+            dustCount: 3,
+            dustValue: 12000n,
+            totalValue: 900000n,
+            avgUtxoSize: 42_857n,
+            smallestUtxo: 1000n,
+            largestUtxo: 300000n,
+          },
+          estimatedSavings: '~12,000 sats in potential fee savings',
+          reason: 'Fees are low',
+        }
+      );
+
+      expect(mockTelegramService.sendTelegramMessage).toHaveBeenCalledTimes(1);
+      const [botToken, chatId, message] = mockTelegramService.sendTelegramMessage.mock.calls[0];
+      expect(botToken).toBe('bot-1');
+      expect(chatId).toBe('chat-1');
+      expect(message).toContain('Consolidation Opportunity');
+      expect(message).toContain('3 dust');
+      expect(message).toContain('Estimated savings: ~12,000 sats');
+      expect(result).toEqual({
+        success: true,
+        channelId: 'telegram',
+        usersNotified: 1,
+      });
+    });
+
+    it('continues when one consolidation notification fails', async () => {
+      mockTelegramService.getWalletUsers.mockResolvedValueOnce([
+        {
+          username: 'alice',
+          preferences: { telegram: { enabled: true, botToken: 'bot-1', chatId: 'chat-1' } },
+        },
+        {
+          username: 'bob',
+          preferences: { telegram: { enabled: true, botToken: 'bot-2', chatId: 'chat-2' } },
+        },
+      ]);
+      mockTelegramService.sendTelegramMessage
+        .mockResolvedValueOnce({ success: false, error: 'chat blocked' })
+        .mockResolvedValueOnce({ success: true });
+
+      const result = await telegramChannelHandler.notifyConsolidationSuggestion!(
+        'wallet-1',
+        {
+          walletId: 'wallet-1',
+          walletName: 'Treasury',
+          feeRate: 6,
+          utxoHealth: {
+            totalUtxos: 14,
+            dustCount: 0,
+            dustValue: 0n,
+            totalValue: 700000n,
+            avgUtxoSize: 50_000n,
+            smallestUtxo: 5000n,
+            largestUtxo: 250000n,
+          },
+          estimatedSavings: 'minimal savings',
+          reason: 'Fees are low',
+        }
+      );
+
+      expect(mockTelegramService.sendTelegramMessage).toHaveBeenCalledTimes(2);
+      const [, , firstMessage] = mockTelegramService.sendTelegramMessage.mock.calls[0];
+      expect(firstMessage).not.toContain('Estimated savings:');
+      expect(result).toEqual({
+        success: true,
+        channelId: 'telegram',
+        usersNotified: 1,
+      });
+    });
+
+    it('returns failed result when consolidation notifications throw', async () => {
+      mockTelegramService.getWalletUsers.mockRejectedValueOnce(new Error('wallet lookup failed'));
+
+      const result = await telegramChannelHandler.notifyConsolidationSuggestion!(
+        'wallet-1',
+        {
+          walletId: 'wallet-1',
+          walletName: 'Treasury',
+          feeRate: 5,
+          utxoHealth: {
+            totalUtxos: 12,
+            dustCount: 1,
+            dustValue: 500n,
+            totalValue: 120000n,
+            avgUtxoSize: 10000n,
+            smallestUtxo: 500n,
+            largestUtxo: 50000n,
+          },
+          estimatedSavings: '~5,000 sats in potential fee savings',
+          reason: 'Fees are low',
+        }
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.channelId).toBe('telegram');
+      expect(result.usersNotified).toBe(0);
+      expect(result.errors?.[0]).toContain('wallet lookup failed');
     });
   });
 

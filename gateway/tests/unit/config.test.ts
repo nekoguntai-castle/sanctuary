@@ -407,5 +407,23 @@ describe('Gateway Config', () => {
       const warnCalls = consoleWarnSpy.mock.calls.flat().join(' ');
       expect(warnCalls).not.toContain('TLS');
     });
+
+    it('should exit when TLS is enabled but cert/key paths are empty', async () => {
+      process.env.JWT_SECRET = 'my-secret';
+      process.env.GATEWAY_SECRET = 'this-is-a-32-character-secret!!!';
+      process.env.TLS_ENABLED = 'true';
+      const { config, validateConfig } = await import('../../src/config');
+
+      // These are defaulted during parsing, so force the edge-case for validation branch coverage.
+      config.tls.certPath = '';
+      config.tls.keyPath = '';
+
+      validateConfig();
+
+      expect(processExitSpy).toHaveBeenCalledWith(1);
+      const errorCall = consoleErrorSpy.mock.calls.flat().join(' ');
+      expect(errorCall).toContain('TLS_CERT_PATH');
+      expect(errorCall).toContain('TLS_KEY_PATH');
+    });
   });
 });

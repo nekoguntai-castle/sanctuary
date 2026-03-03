@@ -92,6 +92,12 @@ npm run test:debug
 
 Integration tests require a running PostgreSQL database. They will automatically skip if no database is available.
 
+**Recommended (one command from repo root)**
+
+```bash
+npm run test:integration
+```
+
 **Option 1: Use Docker (recommended)**
 
 Expose the PostgreSQL port and run tests:

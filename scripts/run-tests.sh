@@ -138,37 +138,20 @@ FRONTEND_RESULT=0
 # Run backend tests
 if [ "$RUN_BACKEND" = true ]; then
     if [ "$INTEGRATION_MODE" = true ]; then
-        echo -e "${YELLOW}Running backend integration tests (requires database)...${NC}"
+        echo -e "${YELLOW}Running backend integration tests...${NC}"
     else
         echo -e "${YELLOW}Running backend tests...${NC}"
     fi
     echo ""
 
-    cd "$PROJECT_ROOT/server"
-
     if [ "$INTEGRATION_MODE" = true ]; then
-        # Check if PostgreSQL is accessible
-        if ! command -v pg_isready &> /dev/null; then
-            echo -e "${YELLOW}Note: pg_isready not found, skipping database check${NC}"
-        elif ! pg_isready -h localhost -p 5432 -U sanctuary -d sanctuary_test -q 2>/dev/null; then
-            echo -e "${RED}Error: PostgreSQL not accessible on localhost:5432${NC}"
-            echo ""
-            echo "Make sure Docker is running with exposed PostgreSQL port:"
-            echo "  docker compose up -d postgres"
-            echo ""
-            echo "Or create test database manually:"
-            echo "  docker exec sanctuary-db psql -U sanctuary -c 'CREATE DATABASE sanctuary_test'"
-            echo ""
-            BACKEND_RESULT=1
-            cd "$PROJECT_ROOT"
-        fi
-
-        if [ "$BACKEND_RESULT" -eq 0 ]; then
-            npm run test:integration:db || BACKEND_RESULT=$?
-        fi
+        cd "$PROJECT_ROOT"
+        npm run test:integration || BACKEND_RESULT=$?
     elif [ "$WITH_COVERAGE" = true ]; then
+        cd "$PROJECT_ROOT/server"
         npm run test:coverage || BACKEND_RESULT=$?
     else
+        cd "$PROJECT_ROOT/server"
         npm test || BACKEND_RESULT=$?
     fi
 

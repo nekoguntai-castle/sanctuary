@@ -1195,6 +1195,15 @@ npm install
 npm run dev
 ```
 
+### Running Integration Tests
+
+```bash
+# From repository root
+npm run test:integration
+```
+
+This command starts the dedicated test database container, runs Prisma migrations, executes backend integration tests, and then cleans up.
+
 ### Project Structure
 
 ```

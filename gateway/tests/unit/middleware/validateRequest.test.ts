@@ -318,6 +318,27 @@ describe('Request Validation Middleware', () => {
 
         expect(mockNext).toHaveBeenCalled();
       });
+
+      it('should return 500 when schema parsing throws unexpected errors', () => {
+        mockReq.method = 'POST';
+        mockReq.path = '/api/v1/auth/login';
+        mockReq.body = { username: 'alice', password: 'secret' };
+
+        const parseSpy = vi.spyOn(loginSchema, 'parse').mockImplementation(() => {
+          throw new Error('unexpected parser failure');
+        });
+
+        validateRequest(mockReq as Request, mockRes as Response, mockNext);
+
+        expect(statusMock).toHaveBeenCalledWith(500);
+        expect(jsonMock).toHaveBeenCalledWith({
+          error: 'Internal Server Error',
+          message: 'Request validation failed',
+        });
+        expect(mockNext).not.toHaveBeenCalled();
+
+        parseSpy.mockRestore();
+      });
     });
   });
 
@@ -339,6 +360,19 @@ describe('Request Validation Middleware', () => {
 
       expect(statusMock).toHaveBeenCalledWith(400);
       expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('should forward non-zod errors to next()', () => {
+      const middleware = validate({
+        parse: () => {
+          throw new Error('boom');
+        },
+      } as any);
+
+      middleware(mockReq as Request, mockRes as Response, mockNext);
+
+      expect(mockNext).toHaveBeenCalledWith(expect.any(Error));
+      expect(statusMock).not.toHaveBeenCalled();
     });
   });
 

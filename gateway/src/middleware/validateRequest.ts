@@ -138,12 +138,6 @@ export function validateRequest(req: Request, res: Response, next: NextFunction)
     return;
   }
 
-  // Skip validation for GET/DELETE (no body)
-  if (['GET', 'DELETE'].includes(req.method)) {
-    next();
-    return;
-  }
-
   try {
     // Validate request body
     schema.parse(req.body);

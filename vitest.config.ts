@@ -49,6 +49,8 @@ export default defineConfig({
         '**/coverage/**',
         '**/dist/**',
         '**/node_modules/**',
+        // Canvas animation internals are covered indirectly through AnimatedBackground
+        // registry/dispatch tests and guarded by tests/config/coveragePolicy.test.ts.
         'components/animations/**',
         'src/types/**/*.ts',
         'shared/types/**/*.ts',

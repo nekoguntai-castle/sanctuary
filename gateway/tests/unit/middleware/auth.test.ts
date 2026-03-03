@@ -149,6 +149,21 @@ describe('Auth Middleware', () => {
       expect(mockNext).not.toHaveBeenCalled();
     });
 
+    it('should return 500 on unexpected verification errors', () => {
+      mockReq.headers = { authorization: 'Bearer any-token' };
+      const verifySpy = vi.spyOn(jwt, 'verify').mockImplementation(() => {
+        throw new Error('unexpected');
+      });
+
+      authenticate(mockReq as AuthenticatedRequest, mockRes as Response, mockNext);
+
+      expect(statusMock).toHaveBeenCalledWith(500);
+      expect(jsonMock).toHaveBeenCalledWith({ error: 'Internal Server Error' });
+      expect(mockNext).not.toHaveBeenCalled();
+
+      verifySpy.mockRestore();
+    });
+
     it('should reject 2FA pending tokens', () => {
       const pending2FAToken = createValidToken({ pending2FA: true });
       mockReq.headers = { authorization: `Bearer ${pending2FAToken}` };

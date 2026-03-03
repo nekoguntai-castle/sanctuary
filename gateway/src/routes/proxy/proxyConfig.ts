@@ -22,7 +22,7 @@ const log = createLogger('PROXY');
 /**
  * Proxy configuration
  */
-const proxyOptions: Options = {
+export const proxyOptions: Options = {
   target: config.backendUrl,
   changeOrigin: true,
   logLevel: 'silent',

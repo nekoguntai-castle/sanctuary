@@ -11,6 +11,7 @@
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:coverage:full": "npm run test:coverage && npm run test:backend:coverage && cd gateway && npm run test:coverage",
+    "test:integration": "./scripts/run-integration-tests.sh",
     "test:all": "npm run test:run && npm run test:backend",
     "test:backend": "cd server && npm test",
     "test:backend:watch": "cd server && npm run test:watch",

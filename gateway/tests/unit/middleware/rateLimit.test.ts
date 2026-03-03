@@ -265,6 +265,43 @@ describe('Rate Limiting Middleware', () => {
     });
   });
 
+  describe('key generator fallback branches', () => {
+    it('uses fallback keys when user ID and IP are missing', () => {
+      const req = {
+        headers: {},
+        path: '/api/v1/test',
+      } as Partial<AuthenticatedRequest>;
+      const res = {
+        setHeader: vi.fn(),
+        status: vi.fn().mockReturnThis(),
+        json: vi.fn(),
+      } as unknown as Response;
+      const next = vi.fn();
+
+      expect(() => defaultRateLimiter(req as Request, res, next)).not.toThrow();
+      expect(() => strictRateLimiter(req as Request, res, next)).not.toThrow();
+      expect(() => transactionCreateRateLimiter(req as Request, res, next)).not.toThrow();
+      expect(() => broadcastRateLimiter(req as Request, res, next)).not.toThrow();
+      expect(() => deviceRegistrationRateLimiter(req as Request, res, next)).not.toThrow();
+      expect(() => addressGenerationRateLimiter(req as Request, res, next)).not.toThrow();
+    });
+
+    it('uses auth unknown key fallback when IP is missing', () => {
+      const req = {
+        headers: {},
+        path: '/api/v1/auth/login',
+      } as Partial<Request>;
+      const res = {
+        setHeader: vi.fn(),
+        status: vi.fn().mockReturnThis(),
+        json: vi.fn(),
+      } as unknown as Response;
+      const next = vi.fn();
+
+      expect(() => authRateLimiter(req as Request, res, next)).not.toThrow();
+    });
+  });
+
   describe('Rate limiter handlers (429 paths)', () => {
     it('defaultRateLimiter emits 429 payload and security log', async () => {
       const response = await invokeLimiterUntilBlocked(defaultRateLimiter, 60, {
