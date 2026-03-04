@@ -46,13 +46,8 @@ playwright-results.xml
 test-results/
 .tmp-gh/
 
-# Claude Code local settings (keep agents in repo)
-.claude/settings.json
-.claude/settings.local.json
-.claude/*.old
-
-# Claude Code scratch artifacts
-.claude/plans/
+# Claude Code
+.claude/
 **/CLAUDE.md
 **/.stryker-tmp/
 \*\*
