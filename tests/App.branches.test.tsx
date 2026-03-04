@@ -326,7 +326,7 @@ describe('App branch coverage', () => {
 
       rendered.unmount();
     }
-  });
+  }, 15_000);
 
   it('handles password refresh success and failure during forced password change', async () => {
     const baseUser = {

@@ -79,6 +79,22 @@ function mockTelegramUser() {
   } as never);
 }
 
+function mockTelegramDisabledUser() {
+  vi.mocked(useUser).mockReturnValue({
+    user: {
+      id: 'u1',
+      preferences: {
+        telegram: {
+          botToken: 'token',
+          chatId: 'chat-id',
+          enabled: false,
+        },
+      },
+    },
+    isLoading: false,
+  } as never);
+}
+
 function mockNoTelegramUser() {
   vi.mocked(useUser).mockReturnValue({
     user: { id: 'u1', preferences: {} },
@@ -341,5 +357,128 @@ describe('WalletAutopilotSettings', () => {
         expect.objectContaining({ notifyTelegram: false })
       );
     });
+  });
+
+  it('toggles push notification checkbox', async () => {
+    const user = userEvent.setup();
+    mockTelegramUser();
+    vi.mocked(walletsApi.getWalletAutopilotSettings).mockResolvedValue({
+      ...defaultSettings,
+      enabled: true,
+    });
+
+    render(<WalletAutopilotSettings walletId={walletId} />);
+
+    const pushCheckbox = await screen.findByLabelText('Push notifications');
+    await user.click(pushCheckbox);
+
+    await waitFor(() => {
+      expect(walletsApi.updateWalletAutopilotSettings).toHaveBeenCalledWith(
+        walletId,
+        expect.objectContaining({ notifyPush: false })
+      );
+    });
+  });
+
+  it('shows feature unavailable on 404 error', async () => {
+    mockTelegramUser();
+    vi.mocked(walletsApi.getWalletAutopilotSettings).mockRejectedValue(
+      new ApiError('Not found', 404)
+    );
+
+    render(<WalletAutopilotSettings walletId={walletId} />);
+
+    expect(await screen.findByText('Feature not available')).toBeInTheDocument();
+  });
+
+  it('shows warning when telegram is configured but globally disabled', async () => {
+    mockTelegramDisabledUser();
+
+    render(<WalletAutopilotSettings walletId={walletId} />);
+
+    expect(await screen.findByText('Notifications required')).toBeInTheDocument();
+    expect(screen.queryByText('Enable Autopilot')).not.toBeInTheDocument();
+  });
+
+  it('hides settings fields when not enabled', async () => {
+    mockTelegramUser();
+    vi.mocked(walletsApi.getWalletAutopilotSettings).mockResolvedValue({
+      ...defaultSettings,
+      enabled: false,
+    });
+
+    render(<WalletAutopilotSettings walletId={walletId} />);
+
+    await screen.findByText('Enable Autopilot');
+    expect(screen.queryByText('Max fee rate (sat/vB)')).not.toBeInTheDocument();
+    expect(screen.queryByText('Conditions')).not.toBeInTheDocument();
+  });
+
+  it('rejects negative number input', async () => {
+    mockTelegramUser();
+    vi.mocked(walletsApi.getWalletAutopilotSettings).mockResolvedValue({
+      ...defaultSettings,
+      enabled: true,
+    });
+
+    render(<WalletAutopilotSettings walletId={walletId} />);
+
+    await screen.findByText('Max fee rate (sat/vB)');
+    const inputs = screen.getAllByRole('spinbutton');
+    const maxFeeInput = inputs[0];
+
+    fireEvent.change(maxFeeInput, { target: { value: '-5' } });
+    // Value should not have changed from original
+    expect(maxFeeInput).toHaveValue(5);
+  });
+
+  it('hides economy fee row when feeSnapshot is null', async () => {
+    mockTelegramUser();
+    vi.mocked(walletsApi.getWalletAutopilotSettings).mockResolvedValue({
+      ...defaultSettings,
+      enabled: true,
+    });
+    vi.mocked(walletsApi.getWalletAutopilotStatus).mockResolvedValue({
+      ...defaultStatus,
+      feeSnapshot: null,
+    });
+
+    render(<WalletAutopilotSettings walletId={walletId} />);
+
+    expect(await screen.findByText('UTXO Health')).toBeInTheDocument();
+    expect(screen.queryByText('Economy fee')).not.toBeInTheDocument();
+  });
+
+  it('formats large values as BTC in UTXO health card', async () => {
+    mockTelegramUser();
+    vi.mocked(walletsApi.getWalletAutopilotSettings).mockResolvedValue({
+      ...defaultSettings,
+      enabled: true,
+    });
+    vi.mocked(walletsApi.getWalletAutopilotStatus).mockResolvedValue({
+      ...defaultStatus,
+      utxoHealth: {
+        ...defaultStatus.utxoHealth,
+        largestUtxo: '250000000', // 2.5 BTC
+      },
+    });
+
+    render(<WalletAutopilotSettings walletId={walletId} />);
+
+    expect(await screen.findByText('2.50000000 BTC')).toBeInTheDocument();
+  });
+
+  it('hides UTXO health card when status fetch fails', async () => {
+    mockTelegramUser();
+    vi.mocked(walletsApi.getWalletAutopilotSettings).mockResolvedValue({
+      ...defaultSettings,
+      enabled: true,
+    });
+    vi.mocked(walletsApi.getWalletAutopilotStatus).mockRejectedValue(new Error('fetch failed'));
+
+    render(<WalletAutopilotSettings walletId={walletId} />);
+
+    await screen.findByText('Enable Autopilot');
+    expect(screen.queryByText('UTXO Health')).not.toBeInTheDocument();
   });
 });

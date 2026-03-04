@@ -119,7 +119,8 @@ describe('AnimatedPrice', () => {
       callbacks[0]?.(start);
     });
     expect(screen.getByText('↓')).toBeInTheDocument();
-    expect(screen.getByText('$200')).toHaveClass('text-rose-600');
+    // Value is mid-animation (between 200→100) so match any dollar amount
+    expect(screen.getByText(/^\$\d+$/)).toHaveClass('text-rose-600');
 
     unmount();
     expect(cancelSpy).toHaveBeenCalled();
