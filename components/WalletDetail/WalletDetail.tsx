@@ -38,7 +38,7 @@ import { useAddressLabels } from './hooks/useAddressLabels';
 import { useUtxoActions } from './hooks/useUtxoActions';
 import { useWalletMutations } from './hooks/useWalletMutations';
 
-import type { TabType } from './types';
+import type { TabType, SettingsSubTab } from './types';
 import * as walletsApi from '../../src/api/wallets';
 
 const log = createLogger('WalletDetail');
@@ -173,7 +173,7 @@ export const WalletDetail: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>(initialTab);
   const [addressSubTab, setAddressSubTab] = useState<'receive' | 'change'>('receive');
   const [accessSubTab, setAccessSubTab] = useState<'ownership' | 'sharing' | 'transfers'>('ownership');
-  const [settingsSubTab, setSettingsSubTab] = useState<'general' | 'devices' | 'notifications' | 'advanced'>('general');
+  const [settingsSubTab, setSettingsSubTab] = useState<SettingsSubTab>('general');
   const [showDangerZone, setShowDangerZone] = useState(false);
 
   // Update activeTab if navigation state changes

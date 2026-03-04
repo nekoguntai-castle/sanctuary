@@ -8,7 +8,7 @@
 export type TabType = 'tx' | 'utxo' | 'addresses' | 'drafts' | 'stats' | 'access' | 'settings' | 'log';
 export type AddressSubTab = 'receive' | 'change';
 export type AccessSubTab = 'ownership' | 'sharing' | 'transfers';
-export type SettingsSubTab = 'general' | 'devices' | 'notifications' | 'advanced';
+export type SettingsSubTab = 'general' | 'devices' | 'notifications' | 'advanced' | 'autopilot';
 
 // Device share prompt state (used by useWalletSharing hook and DeviceSharePromptModal)
 export interface DeviceSharePromptState {

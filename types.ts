@@ -225,6 +225,48 @@ export interface TelegramConfig {
   wallets: Record<string, WalletTelegramSettings>;
 }
 
+// ============================================================================
+// AUTOPILOT TYPES
+// ============================================================================
+
+export interface WalletAutopilotSettings {
+  enabled: boolean;
+  maxFeeRate: number;
+  minUtxoCount: number;
+  dustThreshold: number;
+  cooldownHours: number;
+  notifyTelegram: boolean;
+  notifyPush: boolean;
+  minDustCount: number;
+  maxUtxoSize: number;
+}
+
+export interface UtxoHealthStatus {
+  totalUtxos: number;
+  dustCount: number;
+  dustValue: string;      // BigInt serialized as string
+  totalValue: string;
+  avgUtxoSize: string;
+  smallestUtxo: string;
+  largestUtxo: string;
+  consolidationCandidates: number;
+}
+
+export interface FeeSnapshot {
+  timestamp: number;
+  fastest: number;
+  halfHour: number;
+  hour: number;
+  economy: number;
+  minimum: number;
+}
+
+export interface AutopilotStatus {
+  utxoHealth: UtxoHealthStatus;
+  feeSnapshot: FeeSnapshot | null;
+  settings: WalletAutopilotSettings;
+}
+
 export type SoundType = 'chime' | 'bell' | 'coin' | 'success' | 'gentle' | 'zen' | 'ping' | 'pop' | 'harp' | 'retro' | 'marimba' | 'glass' | 'synth' | 'drop' | 'sparkle' | 'drums' | 'whistle' | 'brass' | 'windchime' | 'click' | 'none';
 
 export interface EventSoundConfig {

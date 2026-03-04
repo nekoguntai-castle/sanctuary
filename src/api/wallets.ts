@@ -331,7 +331,7 @@ export async function exportLabelsBip329(walletId: string, walletName: string): 
 // TELEGRAM SETTINGS
 // ============================================================================
 
-import type { WalletTelegramSettings } from '../../types';
+import type { WalletTelegramSettings, WalletAutopilotSettings, AutopilotStatus } from '../../types';
 
 /**
  * Get Telegram notification settings for a wallet
@@ -349,4 +349,33 @@ export async function updateWalletTelegramSettings(
   settings: Partial<WalletTelegramSettings>
 ): Promise<void> {
   await apiClient.patch(`/wallets/${walletId}/telegram`, settings);
+}
+
+// ============================================================================
+// AUTOPILOT SETTINGS
+// ============================================================================
+
+/**
+ * Get autopilot settings for a wallet
+ */
+export async function getWalletAutopilotSettings(walletId: string): Promise<WalletAutopilotSettings> {
+  const response = await apiClient.get<{ settings: WalletAutopilotSettings }>(`/wallets/${walletId}/autopilot`);
+  return response.settings;
+}
+
+/**
+ * Update autopilot settings for a wallet
+ */
+export async function updateWalletAutopilotSettings(
+  walletId: string,
+  settings: Partial<WalletAutopilotSettings>
+): Promise<void> {
+  await apiClient.patch(`/wallets/${walletId}/autopilot`, settings);
+}
+
+/**
+ * Get autopilot status including UTXO health and fee snapshot
+ */
+export async function getWalletAutopilotStatus(walletId: string): Promise<AutopilotStatus> {
+  return apiClient.get<AutopilotStatus>(`/wallets/${walletId}/autopilot/status`);
 }

@@ -19,6 +19,7 @@ import {
 import { Button } from '../../ui/Button';
 import { LabelManager } from '../../LabelManager';
 import { WalletTelegramSettings } from '../WalletTelegramSettings';
+import { WalletAutopilotSettings } from '../WalletAutopilotSettings';
 import { getDeviceIcon } from '../../ui/CustomIcons';
 import { WalletType, isMultisigType, getQuorumM, getQuorumN } from '../../../types';
 import type { Wallet, Device } from '../../../types';
@@ -114,6 +115,16 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           }`}
         >
           Advanced
+        </button>
+        <button
+          onClick={() => onSettingsSubTabChange('autopilot')}
+          className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+            settingsSubTab === 'autopilot'
+              ? 'bg-white dark:bg-sanctuary-700 text-sanctuary-900 dark:text-sanctuary-100 shadow-sm'
+              : 'text-sanctuary-600 dark:text-sanctuary-400 hover:text-sanctuary-900 dark:hover:text-sanctuary-200'
+          }`}
+        >
+          Autopilot
         </button>
       </div>
 
@@ -416,6 +427,11 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             </div>
           )}
         </div>
+      )}
+
+      {/* Autopilot Sub-tab */}
+      {settingsSubTab === 'autopilot' && (
+        <WalletAutopilotSettings walletId={wallet.id} />
       )}
     </div>
   );

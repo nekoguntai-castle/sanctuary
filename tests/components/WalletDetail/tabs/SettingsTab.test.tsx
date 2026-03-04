@@ -21,6 +21,10 @@ vi.mock('../../../../components/WalletDetail/WalletTelegramSettings', () => ({
   WalletTelegramSettings: () => <div data-testid="wallet-telegram-settings">Telegram settings</div>,
 }));
 
+vi.mock('../../../../components/WalletDetail/WalletAutopilotSettings', () => ({
+  WalletAutopilotSettings: () => <div data-testid="wallet-autopilot-settings">Autopilot settings</div>,
+}));
+
 vi.mock('../../../../components/ui/CustomIcons', () => ({
   getDeviceIcon: () => <span data-testid="device-icon">icon</span>,
 }));
@@ -123,11 +127,18 @@ describe('SettingsTab', () => {
     fireEvent.click(screen.getByText('Devices'));
     fireEvent.click(screen.getByText('Notifications'));
     fireEvent.click(screen.getByText('Advanced'));
+    fireEvent.click(screen.getByText('Autopilot'));
 
     expect(baseProps.onSettingsSubTabChange).toHaveBeenCalledWith('general');
     expect(baseProps.onSettingsSubTabChange).toHaveBeenCalledWith('devices');
     expect(baseProps.onSettingsSubTabChange).toHaveBeenCalledWith('notifications');
     expect(baseProps.onSettingsSubTabChange).toHaveBeenCalledWith('advanced');
+    expect(baseProps.onSettingsSubTabChange).toHaveBeenCalledWith('autopilot');
+  });
+
+  it('renders autopilot subtab component', () => {
+    render(<SettingsTab {...baseProps} settingsSubTab="autopilot" />);
+    expect(screen.getByTestId('wallet-autopilot-settings')).toBeInTheDocument();
   });
 
   it('handles rename edit interactions (change, save, cancel, escape)', () => {
