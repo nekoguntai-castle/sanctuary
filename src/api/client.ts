@@ -21,6 +21,10 @@ const DEFAULT_INITIAL_DELAY_MS = 1000;
 const DEFAULT_MAX_DELAY_MS = 10000;
 const DEFAULT_BACKOFF_MULTIPLIER = 2;
 
+// Default request timeout (30 seconds for API calls, 120 seconds for file transfers)
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+const FILE_TRANSFER_TIMEOUT_MS = 120_000;
+
 // Retryable HTTP status codes (server errors)
 const RETRYABLE_STATUS_CODES = [408, 429, 500, 502, 503, 504];
 
@@ -206,6 +210,7 @@ class ApiClient {
       const response = await fetch(url, {
         ...options,
         headers,
+        signal: options.signal ?? AbortSignal.timeout(DEFAULT_REQUEST_TIMEOUT_MS),
       });
 
       // Handle non-JSON responses (like 204 No Content)
@@ -344,6 +349,7 @@ class ApiClient {
     const response = await fetch(url, {
       method: options.method || 'GET',
       headers,
+      signal: AbortSignal.timeout(FILE_TRANSFER_TIMEOUT_MS),
     });
 
     if (!response.ok) {
@@ -381,6 +387,7 @@ class ApiClient {
     const response = await fetch(url, {
       method: options.method || 'GET',
       headers,
+      signal: AbortSignal.timeout(FILE_TRANSFER_TIMEOUT_MS),
     });
 
     if (!response.ok) {
@@ -424,6 +431,7 @@ class ApiClient {
         method: 'POST',
         headers,
         body: formData,
+        signal: AbortSignal.timeout(FILE_TRANSFER_TIMEOUT_MS),
       });
 
       const data = await response.json();

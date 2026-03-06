@@ -113,16 +113,20 @@ export async function reconcileUtxosPhase(ctx: SyncContext): Promise<SyncContext
     }
   }
 
-  // Batch update UTXO confirmations
+  // Batch update UTXO confirmations in chunks to avoid long-held locks
   if (utxosToUpdate.length > 0) {
-    await prisma.$transaction(
-      utxosToUpdate.map(u =>
-        prisma.uTXO.update({
-          where: { id: u.id },
-          data: { confirmations: u.confirmations, blockHeight: u.blockHeight },
-        })
-      )
-    );
+    const UTXO_BATCH_SIZE = 200;
+    for (let i = 0; i < utxosToUpdate.length; i += UTXO_BATCH_SIZE) {
+      const chunk = utxosToUpdate.slice(i, i + UTXO_BATCH_SIZE);
+      await prisma.$transaction(
+        chunk.map(u =>
+          prisma.uTXO.update({
+            where: { id: u.id },
+            data: { confirmations: u.confirmations, blockHeight: u.blockHeight },
+          })
+        )
+      );
+    }
     log.debug(`[SYNC] Updated confirmations for ${utxosToUpdate.length} UTXOs`);
   }
 

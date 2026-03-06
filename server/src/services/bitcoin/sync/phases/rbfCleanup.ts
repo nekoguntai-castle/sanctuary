@@ -40,40 +40,59 @@ export async function rbfCleanupPhase(ctx: SyncContext): Promise<SyncContext> {
     },
   });
 
-  // Check each pending tx against confirmed transactions
-  for (const pendingTx of pendingTxsWithInputs) {
-    const confirmedReplacement = await prisma.transaction.findFirst({
+  // Batch: collect all inputs from pending txs and find confirmed replacements in one query
+  if (pendingTxsWithInputs.length > 0) {
+    const allPendingInputs = pendingTxsWithInputs.flatMap(tx => tx.inputs);
+    const pendingTxids = new Set(pendingTxsWithInputs.map(tx => tx.txid));
+
+    // Single query: find all confirmed txs sharing any input with pending txs
+    const confirmedWithSharedInputs = await prisma.transaction.findMany({
       where: {
         walletId,
         confirmations: { gt: 0 },
-        txid: { not: pendingTx.txid },
         inputs: {
           some: {
-            OR: pendingTx.inputs.map(i => ({
-              txid: i.txid,
-              vout: i.vout,
-            })),
+            OR: allPendingInputs.map(i => ({ txid: i.txid, vout: i.vout })),
           },
         },
       },
-      select: { txid: true },
+      select: {
+        txid: true,
+        inputs: { select: { txid: true, vout: true } },
+      },
     });
 
-    if (confirmedReplacement) {
-      await prisma.transaction.update({
-        where: { id: pendingTx.id },
-        data: {
-          rbfStatus: 'replaced',
-          replacedByTxid: confirmedReplacement.txid,
-        },
-      });
+    // Build a map: "inputTxid:vout" → confirmed txid
+    const inputToConfirmedTxid = new Map<string, string>();
+    for (const confirmed of confirmedWithSharedInputs) {
+      if (pendingTxids.has(confirmed.txid)) continue; // Skip self-matches
+      for (const input of confirmed.inputs) {
+        inputToConfirmedTxid.set(`${input.txid}:${input.vout}`, confirmed.txid);
+      }
+    }
 
-      walletLog(
-        walletId,
-        'info',
-        'RBF',
-        `Cleanup: Marked ${pendingTx.txid.slice(0, 8)}... as replaced by ${confirmedReplacement.txid.slice(0, 8)}...`
-      );
+    // Match pending txs to their replacements in memory
+    for (const pendingTx of pendingTxsWithInputs) {
+      const replacementTxid = pendingTx.inputs
+        .map(i => inputToConfirmedTxid.get(`${i.txid}:${i.vout}`))
+        .find(Boolean);
+
+      if (replacementTxid) {
+        await prisma.transaction.update({
+          where: { id: pendingTx.id },
+          data: {
+            rbfStatus: 'replaced',
+            replacedByTxid: replacementTxid,
+          },
+        });
+
+        walletLog(
+          walletId,
+          'info',
+          'RBF',
+          `Cleanup: Marked ${pendingTx.txid.slice(0, 8)}... as replaced by ${replacementTxid.slice(0, 8)}...`
+        );
+      }
     }
   }
 
@@ -92,38 +111,57 @@ export async function rbfCleanupPhase(ctx: SyncContext): Promise<SyncContext> {
   });
 
   if (unlinkedReplacedTxs.length > 0) {
-    for (const replacedTx of unlinkedReplacedTxs) {
-      if (replacedTx.inputs.length === 0) continue;
+    const txsWithInputs = unlinkedReplacedTxs.filter(tx => tx.inputs.length > 0);
 
-      const replacementTx = await prisma.transaction.findFirst({
+    if (txsWithInputs.length > 0) {
+      const allUnlinkedInputs = txsWithInputs.flatMap(tx => tx.inputs);
+      const unlinkedTxids = new Set(txsWithInputs.map(tx => tx.txid));
+
+      // Single query: find all confirmed txs sharing any input
+      const confirmedMatches = await prisma.transaction.findMany({
         where: {
           walletId,
           confirmations: { gt: 0 },
-          txid: { not: replacedTx.txid },
           inputs: {
             some: {
-              OR: replacedTx.inputs.map(i => ({
-                txid: i.txid,
-                vout: i.vout,
-              })),
+              OR: allUnlinkedInputs.map(i => ({ txid: i.txid, vout: i.vout })),
             },
           },
         },
-        select: { txid: true },
+        select: {
+          txid: true,
+          inputs: { select: { txid: true, vout: true } },
+        },
       });
 
-      if (replacementTx) {
-        await prisma.transaction.update({
-          where: { id: replacedTx.id },
-          data: { replacedByTxid: replacementTx.txid },
-        });
+      // Build input → confirmed txid map
+      const inputToConfirmed = new Map<string, string>();
+      for (const confirmed of confirmedMatches) {
+        if (unlinkedTxids.has(confirmed.txid)) continue;
+        for (const input of confirmed.inputs) {
+          inputToConfirmed.set(`${input.txid}:${input.vout}`, confirmed.txid);
+        }
+      }
 
-        walletLog(
-          walletId,
-          'info',
-          'RBF',
-          `Retroactive link: ${replacedTx.txid.slice(0, 8)}... replaced by ${replacementTx.txid.slice(0, 8)}...`
-        );
+      // Match in memory
+      for (const replacedTx of txsWithInputs) {
+        const replacementTxid = replacedTx.inputs
+          .map(i => inputToConfirmed.get(`${i.txid}:${i.vout}`))
+          .find(Boolean);
+
+        if (replacementTxid) {
+          await prisma.transaction.update({
+            where: { id: replacedTx.id },
+            data: { replacedByTxid: replacementTxid },
+          });
+
+          walletLog(
+            walletId,
+            'info',
+            'RBF',
+            `Retroactive link: ${replacedTx.txid.slice(0, 8)}... replaced by ${replacementTxid.slice(0, 8)}...`
+          );
+        }
       }
     }
   }

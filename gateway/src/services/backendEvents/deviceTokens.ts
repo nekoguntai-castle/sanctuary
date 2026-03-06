@@ -35,7 +35,10 @@ export async function getDevicesForUser(userId: string): Promise<DeviceInfo[]> {
       headers['X-Gateway-Request'] = 'true';
     }
 
-    const response = await fetch(`${config.backendUrl}${path}`, { headers });
+    const response = await fetch(`${config.backendUrl}${path}`, {
+      headers,
+      signal: AbortSignal.timeout(5000),
+    });
 
     if (!response.ok) {
       log.warn('Failed to fetch devices for user', { userId, status: response.status });
@@ -76,6 +79,7 @@ export async function removeInvalidDevice(deviceId: string, token: string): Prom
     const response = await fetch(`${config.backendUrl}${path}`, {
       method: 'DELETE',
       headers,
+      signal: AbortSignal.timeout(5000),
     });
 
     if (response.ok) {

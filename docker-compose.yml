@@ -175,11 +175,11 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
 
       # Database with connection pool and timeout settings:
-      # - connection_limit=20: max pool size
+      # - connection_limit: max pool size (default 30, configurable via DB_POOL_SIZE)
       # - pool_timeout=30: wait time for connection from pool (seconds)
       # - connect_timeout=10: connection establishment timeout (seconds)
       # - statement_timeout=30000: query execution timeout (milliseconds)
-      DATABASE_URL: postgresql://${POSTGRES_USER:-sanctuary}:${POSTGRES_PASSWORD:-sanctuary}@postgres:5432/${POSTGRES_DB:-sanctuary}?schema=public&connection_limit=20&pool_timeout=30&connect_timeout=10&statement_timeout=30000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-sanctuary}:${POSTGRES_PASSWORD:-sanctuary}@postgres:5432/${POSTGRES_DB:-sanctuary}?schema=public&connection_limit=${DB_POOL_SIZE:-30}&pool_timeout=30&connect_timeout=10&statement_timeout=30000
 
       # Redis for distributed caching and event bus
       REDIS_URL: redis://redis:6379
@@ -281,7 +281,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
 
       # Database
-      DATABASE_URL: postgresql://${POSTGRES_USER:-sanctuary}:${POSTGRES_PASSWORD:-sanctuary}@postgres:5432/${POSTGRES_DB:-sanctuary}?schema=public&connection_limit=10&pool_timeout=30&connect_timeout=10
+      DATABASE_URL: postgresql://${POSTGRES_USER:-sanctuary}:${POSTGRES_PASSWORD:-sanctuary}@postgres:5432/${POSTGRES_DB:-sanctuary}?schema=public&connection_limit=${DB_WORKER_POOL_SIZE:-10}&pool_timeout=30&connect_timeout=10
 
       # Redis (required for job queue)
       REDIS_URL: redis://redis:6379

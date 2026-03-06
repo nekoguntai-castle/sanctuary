@@ -25,13 +25,27 @@ export async function insertUtxosPhase(ctx: SyncContext): Promise<SyncContext> {
   // This data is prepared by fetchUtxoDetails phase
   const utxosToCreate: UTXOCreateData[] = [];
 
-  // Get existing UTXOs to know which are new
-  const existingUtxoSet = new Set(
-    (await prisma.uTXO.findMany({
-      where: { walletId },
+  // Check which UTXOs already exist using targeted queries (avoids loading all wallet UTXOs)
+  const keysToCheck = [...ctx.allUtxoKeys].map(key => {
+    const [txid, voutStr] = key.split(':');
+    return { txid, vout: parseInt(voutStr, 10) };
+  });
+
+  const existingUtxoSet = new Set<string>();
+  const CHUNK_SIZE = 500;
+  for (let i = 0; i < keysToCheck.length; i += CHUNK_SIZE) {
+    const chunk = keysToCheck.slice(i, i + CHUNK_SIZE);
+    const existing = await prisma.uTXO.findMany({
+      where: {
+        walletId,
+        OR: chunk.map(k => ({ txid: k.txid, vout: k.vout })),
+      },
       select: { txid: true, vout: true },
-    })).map(u => `${u.txid}:${u.vout}`)
-  );
+    });
+    for (const u of existing) {
+      existingUtxoSet.add(`${u.txid}:${u.vout}`);
+    }
+  }
 
   // Process UTXO data from context
   for (const key of ctx.allUtxoKeys) {

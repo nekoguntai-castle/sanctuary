@@ -106,15 +106,19 @@ describe('Sync Phases', () => {
             inputs: [{ txid: 'input_txid', vout: 0 }],
           }];
         }
+        // Batch query: confirmed txs sharing inputs with pending txs
+        if (args?.where?.confirmations?.gt === 0 && args?.where?.inputs?.some?.OR) {
+          return [{
+            txid: confirmedTxid,
+            inputs: [{ txid: 'input_txid', vout: 0 }],
+          }];
+        }
         // Unlinked replaced txs
         if (args?.where?.rbfStatus === 'replaced' && args?.where?.replacedByTxid === null) {
           return [];
         }
         return [];
       });
-
-      // Confirmed replacement found
-      mockPrismaClient.transaction.findFirst.mockResolvedValue({ txid: confirmedTxid });
 
       const updateCalls: any[] = [];
       mockPrismaClient.transaction.update.mockImplementation(async (args: any) => {
@@ -141,11 +145,12 @@ describe('Sync Phases', () => {
             inputs: [{ txid: 'input_txid', vout: 0 }],
           }];
         }
+        // No confirmed replacement found
+        if (args?.where?.confirmations?.gt === 0 && args?.where?.inputs?.some?.OR) {
+          return [];
+        }
         return [];
       });
-
-      // No confirmed replacement
-      mockPrismaClient.transaction.findFirst.mockResolvedValue(null);
 
       const updateCalls: any[] = [];
       mockPrismaClient.transaction.update.mockImplementation(async (args: any) => {
@@ -165,7 +170,7 @@ describe('Sync Phases', () => {
       const replacementTxid = 'replacement_' + 'b'.repeat(52);
 
       mockPrismaClient.transaction.findMany.mockImplementation(async (args: any) => {
-        if (args?.where?.confirmations === 0) return [];
+        if (args?.where?.confirmations === 0 && args?.where?.rbfStatus === 'active') return [];
         if (args?.where?.rbfStatus === 'replaced' && args?.where?.replacedByTxid === null) {
           return [{
             id: 'unlinked-tx-id',
@@ -173,10 +178,15 @@ describe('Sync Phases', () => {
             inputs: [{ txid: 'shared_input', vout: 0 }],
           }];
         }
+        // Batch query: confirmed txs sharing inputs with unlinked txs
+        if (args?.where?.confirmations?.gt === 0 && args?.where?.inputs?.some?.OR) {
+          return [{
+            txid: replacementTxid,
+            inputs: [{ txid: 'shared_input', vout: 0 }],
+          }];
+        }
         return [];
       });
-
-      mockPrismaClient.transaction.findFirst.mockResolvedValue({ txid: replacementTxid });
 
       const updateCalls: any[] = [];
       mockPrismaClient.transaction.update.mockImplementation(async (args: any) => {

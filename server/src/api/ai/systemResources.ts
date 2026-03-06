@@ -7,8 +7,11 @@
 import { Router, Request, Response } from 'express';
 import { authenticate } from '../../middleware/auth';
 import * as os from 'os';
-import { execSync } from 'child_process';
+import { execFile as execFileCb } from 'child_process';
+import { promisify } from 'util';
 import { createLogger } from '../../utils/logger';
+
+const execFile = promisify(execFileCb);
 
 const log = createLogger('AI-API');
 
@@ -24,15 +27,11 @@ interface DiskInfo {
 /**
  * Get disk space info for the root filesystem (or relevant mount)
  */
-function getDiskInfo(): DiskInfo {
+async function getDiskInfo(): Promise<DiskInfo> {
   try {
-    // Try to get disk space using df command
-    const output = execSync('df -m / 2>/dev/null || df -m . 2>/dev/null', {
-      encoding: 'utf-8',
-      timeout: 5000,
-    });
+    const { stdout } = await execFile('df', ['-m', '/'], { timeout: 5000 });
 
-    const lines = output.trim().split('\n');
+    const lines = stdout.trim().split('\n');
     if (lines.length >= 2) {
       // Parse df output: Filesystem, 1M-blocks, Used, Available, Use%, Mounted on
       const parts = lines[1].split(/\s+/);
@@ -43,8 +42,23 @@ function getDiskInfo(): DiskInfo {
         };
       }
     }
-  } catch (error) {
-    log.warn('Failed to get disk info', { error: String(error) });
+  } catch {
+    // Fallback: try current directory
+    try {
+      const { stdout } = await execFile('df', ['-m', '.'], { timeout: 5000 });
+      const lines = stdout.trim().split('\n');
+      if (lines.length >= 2) {
+        const parts = lines[1].split(/\s+/);
+        if (parts.length >= 4) {
+          return {
+            total: parseInt(parts[1], 10) || 0,
+            available: parseInt(parts[3], 10) || 0,
+          };
+        }
+      }
+    } catch (error) {
+      log.warn('Failed to get disk info', { error: String(error) });
+    }
   }
 
   return { total: 0, available: 0 };
@@ -53,14 +67,15 @@ function getDiskInfo(): DiskInfo {
 /**
  * Check for NVIDIA GPU availability
  */
-function getGpuInfo(): { available: boolean; name: string | null } {
+async function getGpuInfo(): Promise<{ available: boolean; name: string | null }> {
   try {
-    const output = execSync('nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null', {
-      encoding: 'utf-8',
-      timeout: 5000,
-    });
+    const { stdout } = await execFile(
+      'nvidia-smi',
+      ['--query-gpu=name', '--format=csv,noheader'],
+      { timeout: 5000 }
+    );
 
-    const gpuName = output.trim().split('\n')[0];
+    const gpuName = stdout.trim().split('\n')[0];
     if (gpuName) {
       return { available: true, name: gpuName };
     }
@@ -87,11 +102,8 @@ export function createSystemResourcesRouter(): Router {
       const totalRamMB = Math.round(os.totalmem() / (1024 * 1024));
       const freeRamMB = Math.round(os.freemem() / (1024 * 1024));
 
-      // Get disk info
-      const diskInfo = getDiskInfo();
-
-      // Get GPU info
-      const gpuInfo = getGpuInfo();
+      // Get disk and GPU info concurrently (non-blocking)
+      const [diskInfo, gpuInfo] = await Promise.all([getDiskInfo(), getGpuInfo()]);
 
       // Check sufficiency
       const ramSufficient = freeRamMB >= MIN_RAM_MB;

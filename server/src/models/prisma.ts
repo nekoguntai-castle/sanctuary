@@ -10,10 +10,10 @@
  * - Periodic health check with auto-reconnection
  *
  * Connection pool and timeouts are configured via DATABASE_URL:
- * postgresql://user:pass@host:5432/db?connection_limit=20&pool_timeout=30&connect_timeout=10&statement_timeout=30000
+ * postgresql://user:pass@host:5432/db?connection_limit=30&pool_timeout=30&connect_timeout=10&statement_timeout=30000
  *
  * Timeout parameters:
- * - connection_limit: Max connections in pool (default: 20)
+ * - connection_limit: Max connections in pool (default: 30, configurable via DB_POOL_SIZE env var)
  * - pool_timeout: Wait time for connection from pool in seconds (default: 30)
  * - connect_timeout: Connection establishment timeout in seconds (default: 10)
  * - statement_timeout: Query execution timeout in milliseconds (default: 30000)

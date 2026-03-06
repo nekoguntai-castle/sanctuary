@@ -2174,19 +2174,18 @@ describe('Blockchain Service', () => {
               inputs: [{ txid: sharedInputTxid, vout: sharedInputVout }],
             }];
           }
+          // Batch query: confirmed txs sharing inputs with pending txs
+          if (args?.where?.confirmations?.gt === 0 && args?.where?.inputs?.some?.OR) {
+            return [{
+              txid: confirmedTxid,
+              inputs: [{ txid: sharedInputTxid, vout: sharedInputVout }],
+            }];
+          }
           // Call for unlinked replaced txs
           if (args?.where?.rbfStatus === 'replaced' && args?.where?.replacedByTxid === null) {
             return [];
           }
           return [];
-        });
-
-        // Mock finding confirmed replacement (shares same input)
-        mockPrismaClient.transaction.findFirst.mockImplementation(async (args) => {
-          if (args?.where?.confirmations?.gt === 0) {
-            return { txid: confirmedTxid };
-          }
-          return null;
         });
 
         // Track update calls
@@ -2232,14 +2231,15 @@ describe('Blockchain Service', () => {
               inputs: [{ txid: 'input_txid', vout: 0 }],
             }];
           }
+          // Batch query: no confirmed txs share inputs
+          if (args?.where?.confirmations?.gt === 0 && args?.where?.inputs?.some?.OR) {
+            return [];
+          }
           if (args?.where?.rbfStatus === 'replaced') {
             return [];
           }
           return [];
         });
-
-        // No confirmed replacement found
-        mockPrismaClient.transaction.findFirst.mockResolvedValue(null);
 
         const updateCalls: any[] = [];
         mockPrismaClient.transaction.update.mockImplementation(async (args) => {
@@ -2273,7 +2273,6 @@ describe('Blockchain Service', () => {
           { address: 'tb1test', derivationPath: "m/84'/0'/0'/0/0", index: 0, used: false },
         ]);
 
-        let callCount = 0;
         mockPrismaClient.transaction.findMany.mockImplementation(async (args) => {
           // First call: pending txs for RBF cleanup
           if (args?.where?.confirmations === 0 && args?.where?.rbfStatus === 'active') {
@@ -2287,15 +2286,14 @@ describe('Blockchain Service', () => {
               inputs: [{ txid: sharedInputTxid, vout: 0 }],
             }];
           }
-          return [];
-        });
-
-        // Mock finding the replacement transaction
-        mockPrismaClient.transaction.findFirst.mockImplementation(async (args) => {
-          if (args?.where?.confirmations?.gt === 0) {
-            return { txid: replacementTxid };
+          // Batch query: confirmed txs sharing inputs with unlinked txs
+          if (args?.where?.confirmations?.gt === 0 && args?.where?.inputs?.some?.OR) {
+            return [{
+              txid: replacementTxid,
+              inputs: [{ txid: sharedInputTxid, vout: 0 }],
+            }];
           }
-          return null;
+          return [];
         });
 
         const updateCalls: any[] = [];

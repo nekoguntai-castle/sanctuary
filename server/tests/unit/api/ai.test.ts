@@ -9,7 +9,6 @@ import { vi, Mock } from 'vitest';
  */
 
 import express, { Express, Request, Response, NextFunction } from 'express';
-import { execSync } from 'child_process';
 import * as os from 'os';
 
 // Mock Prisma
@@ -58,10 +57,20 @@ vi.mock('../../../src/utils/docker', () => ({
   stopOllama: vi.fn(),
 }));
 
-// Mock child_process execSync for system resources
-vi.mock('child_process', () => ({
-  execSync: vi.fn().mockReturnValue('Filesystem     1M-blocks      Used Available Use% Mounted on\n/dev/sda1         100000     50000     40000  56% /'),
+// Mock child_process execFile for system resources (used via promisify)
+const { mockExecFilePromisified } = vi.hoisted(() => ({
+  mockExecFilePromisified: vi.fn().mockResolvedValue({
+    stdout: 'Filesystem     1M-blocks      Used Available Use% Mounted on\n/dev/sda1         100000     50000     40000  56% /',
+    stderr: '',
+  }),
 }));
+vi.mock('child_process', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { promisify } = require('util');
+  const fn = vi.fn();
+  fn[promisify.custom] = mockExecFilePromisified;
+  return { execFile: fn };
+});
 
 // Mock os module for system resources
 vi.mock('os', () => ({
@@ -867,13 +876,10 @@ describe('AI API Routes', () => {
     });
 
     it('should fall back when disk and gpu probes fail', async () => {
-      (execSync as Mock)
-        .mockImplementationOnce(() => {
-          throw new Error('df failed');
-        })
-        .mockImplementationOnce(() => {
-          throw new Error('nvidia-smi missing');
-        });
+      mockExecFilePromisified
+        .mockRejectedValueOnce(new Error('df failed'))
+        .mockRejectedValueOnce(new Error('df fallback failed'))
+        .mockRejectedValueOnce(new Error('nvidia-smi missing'));
 
       const response = await request(app)
         .get('/api/v1/ai/system-resources')
@@ -899,11 +905,12 @@ describe('AI API Routes', () => {
     });
 
     it('should fall back to zero disk values when df numeric fields are invalid', async () => {
-      (execSync as Mock)
-        .mockImplementationOnce(
-          () => 'Filesystem 1M-blocks Used Available Use% Mounted on\n/dev/sda1 xx yy zz 56% /'
-        )
-        .mockImplementationOnce(() => '');
+      mockExecFilePromisified
+        .mockResolvedValueOnce({
+          stdout: 'Filesystem 1M-blocks Used Available Use% Mounted on\n/dev/sda1 xx yy zz 56% /',
+          stderr: '',
+        })
+        .mockResolvedValueOnce({ stdout: '', stderr: '' });
 
       const response = await request(app)
         .get('/api/v1/ai/system-resources')
@@ -915,11 +922,12 @@ describe('AI API Routes', () => {
     });
 
     it('should fall back to zero disk values when df output has too few columns', async () => {
-      (execSync as Mock)
-        .mockImplementationOnce(
-          () => 'Filesystem 1M-blocks Used Available Use% Mounted on\n/dev/sda1 100000 50000'
-        )
-        .mockImplementationOnce(() => '');
+      mockExecFilePromisified
+        .mockResolvedValueOnce({
+          stdout: 'Filesystem 1M-blocks Used Available Use% Mounted on\n/dev/sda1 100000 50000',
+          stderr: '',
+        })
+        .mockResolvedValueOnce({ stdout: '', stderr: '' });
 
       const response = await request(app)
         .get('/api/v1/ai/system-resources')

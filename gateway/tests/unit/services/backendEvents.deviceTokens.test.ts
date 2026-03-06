@@ -66,12 +66,13 @@ describe('backendEvents deviceTokens', () => {
       );
       expect(fetchMock).toHaveBeenCalledWith(
         'http://backend:3000/api/v1/push/by-user/u1',
-        {
+        expect.objectContaining({
           headers: {
             'X-Gateway-Signature': 'sig-123',
             'X-Gateway-Timestamp': '1700000000000',
           },
-        }
+          signal: expect.any(AbortSignal),
+        })
       );
       expect(devices).toEqual([{ id: 'd1', platform: 'ios', pushToken: 'tok', userId: 'u1' }]);
     });
@@ -88,11 +89,12 @@ describe('backendEvents deviceTokens', () => {
       expect(mockGenerateRequestSignature).not.toHaveBeenCalled();
       expect(fetchMock).toHaveBeenCalledWith(
         'http://backend:3000/api/v1/push/by-user/u1',
-        {
+        expect.objectContaining({
           headers: {
             'X-Gateway-Request': 'true',
           },
-        }
+          signal: expect.any(AbortSignal),
+        })
       );
     });
 
@@ -133,13 +135,14 @@ describe('backendEvents deviceTokens', () => {
       );
       expect(fetchMock).toHaveBeenCalledWith(
         'http://backend:3000/api/v1/push/device/device-1',
-        {
+        expect.objectContaining({
           method: 'DELETE',
           headers: {
             'X-Gateway-Signature': 'sig-123',
             'X-Gateway-Timestamp': '1700000000000',
           },
-        }
+          signal: expect.any(AbortSignal),
+        })
       );
       expect(mockLogger.info).toHaveBeenCalledWith(
         'Removed invalid push token',
@@ -155,12 +158,13 @@ describe('backendEvents deviceTokens', () => {
 
       expect(fetchMock).toHaveBeenCalledWith(
         'http://backend:3000/api/v1/push/device/device-2',
-        {
+        expect.objectContaining({
           method: 'DELETE',
           headers: {
             'X-Gateway-Request': 'true',
           },
-        }
+          signal: expect.any(AbortSignal),
+        })
       );
       expect(mockLogger.warn).toHaveBeenCalledWith(
         'Failed to remove invalid token',
