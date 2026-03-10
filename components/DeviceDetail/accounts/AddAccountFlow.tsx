@@ -1,6 +1,6 @@
 import React from 'react';
 import { X, Usb, QrCode, HardDrive, Edit2 } from 'lucide-react';
-import { isSecureContext } from '../../../services/hardwareWallet';
+import { isSecureContext } from '../../../services/hardwareWallet/environment';
 import { ManualAccountForm } from '../ManualAccountForm';
 import { ImportReview } from './ImportReview';
 import { UsbImport } from './UsbImport';

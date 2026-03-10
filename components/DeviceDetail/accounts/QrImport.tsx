@@ -1,7 +1,7 @@
 import React from 'react';
 import { Scanner } from '@yudiel/react-qr-scanner';
 import { Camera, Upload, X, Loader2, AlertCircle } from 'lucide-react';
-import { isSecureContext } from '../../../services/hardwareWallet';
+import { isSecureContext } from '../../../services/hardwareWallet/environment';
 
 interface QrImportProps {
   qrMode: 'camera' | 'file';

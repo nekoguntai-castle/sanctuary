@@ -230,7 +230,7 @@ const KeystoneIcon: React.FC<IconProps> = ({ className }) => (
 
 export const getDeviceIcon = (type: HardwareDevice | string, className?: string) => {
   // Normalize type to lowercase for matching
-  const normalizedType = typeof type === 'string' ? type.toLowerCase() : type;
+  const normalizedType = typeof type === 'string' ? type.toLowerCase() : '';
 
   // Match against enum values or string patterns
   if (type === HardwareDevice.COLDCARD_MK4 || normalizedType.includes('coldcard') && (normalizedType.includes('mk4') || normalizedType.includes('mk3'))) {

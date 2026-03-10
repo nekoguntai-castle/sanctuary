@@ -7,7 +7,7 @@ vi.mock('@yudiel/react-qr-scanner', () => ({
   Scanner: () => <div data-testid="qr-scanner" />,
 }));
 
-vi.mock('../../../../services/hardwareWallet', () => ({
+vi.mock('../../../../services/hardwareWallet/environment', () => ({
   isSecureContext: vi.fn(() => true),
 }));
 

@@ -70,13 +70,16 @@ vi.mock('../../services/deviceParsers', () => ({
   parseDeviceJson: vi.fn(),
 }));
 
+vi.mock('../../services/hardwareWallet/environment', () => ({
+  isSecureContext: () => mockIsSecureContext(),
+}));
+
 vi.mock('../../services/hardwareWallet', () => ({
   hardwareWalletService: {
     connect: (...args: unknown[]) => mockHardwareConnect(...args),
     getAllXpubs: (...args: unknown[]) => mockHardwareGetAllXpubs(...args),
     disconnect: (...args: unknown[]) => mockHardwareDisconnect(...args),
   },
-  isSecureContext: () => mockIsSecureContext(),
   DeviceType: {},
 }));
 

@@ -35,6 +35,11 @@ export { LedgerAdapter, TrezorAdapter, BitBoxAdapter, JadeAdapter } from './adap
 
 // Re-export service class
 export { HardwareWalletService, createHardwareWalletService } from './service';
+export {
+  isWebUSBSupported,
+  isSecureContext,
+  isHardwareWalletSupported,
+} from './environment';
 
 // Import for setup
 import { HardwareWalletService } from './service';
@@ -42,28 +47,6 @@ import { LedgerAdapter } from './adapters/ledger';
 import { TrezorAdapter } from './adapters/trezor';
 import { BitBoxAdapter } from './adapters/bitbox';
 import { JadeAdapter } from './adapters/jade';
-
-/**
- * Check if WebUSB is supported in this browser
- */
-export const isWebUSBSupported = (): boolean => {
-  return typeof navigator !== 'undefined' && 'usb' in navigator;
-};
-
-/**
- * Check if we're in a secure context (HTTPS or localhost)
- */
-export const isSecureContext = (): boolean => {
-  return typeof window !== 'undefined' && window.isSecureContext;
-};
-
-/**
- * Check if hardware wallet integration is supported
- * All USB devices require HTTPS (secure context)
- */
-export const isHardwareWalletSupported = (): boolean => {
-  return isWebUSBSupported() && isSecureContext();
-};
 
 /**
  * Get list of previously authorized devices

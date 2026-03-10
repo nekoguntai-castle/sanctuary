@@ -9,7 +9,7 @@ import { useState, useRef, useCallback } from 'react';
 import { URRegistryDecoder } from '@keystonehq/bc-ur-registry';
 import { URDecoder as BytesURDecoder } from '@ngraveio/bc-ur';
 import { DeviceAccount as ParsedDeviceAccount, parseDeviceJson } from '../../../../services/deviceParsers';
-import { hardwareWalletService, DeviceType } from '../../../../services/hardwareWallet';
+import type { DeviceType, HardwareWalletService } from '../../../../services/hardwareWallet';
 import { getDevice, addDeviceAccount } from '../../../../src/api/devices';
 import { createLogger } from '../../../../utils/logger';
 import { extractFromUrResult, normalizeDerivationPath } from '../urHelpers';
@@ -289,13 +289,18 @@ export function useAddAccountFlow({ deviceId, device, onClose, onDeviceUpdated }
     setAddAccountLoading(true);
     setAddAccountError(null);
     setUsbProgress(null);
+    let walletService: HardwareWalletService | null = null;
 
     try {
+      // Defer hardware runtime import until USB flow is actually used.
+      const { hardwareWalletService } = await import('../../../../services/hardwareWallet');
+      walletService = hardwareWalletService;
+
       // Connect to the device
-      await hardwareWalletService.connect(deviceType);
+      await walletService.connect(deviceType);
 
       // Fetch all xpubs
-      const allXpubs = await hardwareWalletService.getAllXpubs((current, total, name) => {
+      const allXpubs = await walletService.getAllXpubs((current, total, name) => {
         setUsbProgress({ current, total, name });
       });
 
@@ -336,10 +341,12 @@ export function useAddAccountFlow({ deviceId, device, onClose, onDeviceUpdated }
     } finally {
       setAddAccountLoading(false);
       setUsbProgress(null);
-      try {
-        await hardwareWalletService.disconnect();
-      } catch {
-        // Ignore disconnect errors
+      if (walletService) {
+        try {
+          await walletService.disconnect();
+        } catch {
+          // Ignore disconnect errors
+        }
       }
     }
   }, [device, deviceId, onClose, onDeviceUpdated]);

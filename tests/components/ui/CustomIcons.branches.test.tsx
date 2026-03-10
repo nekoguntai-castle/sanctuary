@@ -73,12 +73,13 @@ describe('CustomIcons branch coverage', () => {
     }
   });
 
-  it('handles a non-string device value by using fallback icon', () => {
-    const nonStringType = { includes: () => false } as any;
-    const icon = getDeviceIcon(nonStringType, 'fallback-icon');
+  it('handles nullish and non-string device values by using fallback icon', () => {
+    for (const invalidType of [null, undefined, {}, 123] as const) {
+      const icon = getDeviceIcon(invalidType as any, 'fallback-icon');
 
-    expect(iconTypeName(icon)).toBe('Key');
-    expect(icon.props.className).toBe('fallback-icon');
-    expectSvgToRender(icon);
+      expect(iconTypeName(icon)).toBe('Key');
+      expect(icon.props.className).toBe('fallback-icon');
+      expectSvgToRender(icon);
+    }
   });
 });

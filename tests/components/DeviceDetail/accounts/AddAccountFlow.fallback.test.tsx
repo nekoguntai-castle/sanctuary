@@ -8,7 +8,7 @@ const setAddAccountMethodMock = vi.hoisted(() => vi.fn());
 const setAddAccountErrorMock = vi.hoisted(() => vi.fn());
 const resetImportStateMock = vi.hoisted(() => vi.fn());
 
-vi.mock('../../../../services/hardwareWallet', () => ({
+vi.mock('../../../../services/hardwareWallet/environment', () => ({
   isSecureContext: () => true,
 }));
 
