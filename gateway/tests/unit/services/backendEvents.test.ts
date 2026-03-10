@@ -54,6 +54,7 @@ vi.mock('../../../src/config', () => ({
     gatewaySecret: 'test-gateway-secret',
     backendUrl: 'http://localhost:3000',
     backendWsUrl: 'ws://localhost:3000',
+    backendRequestTimeoutMs: 5000,
   },
 }));
 
@@ -948,4 +949,3 @@ describe('Backend Events Service', () => {
     });
   });
 });
-
