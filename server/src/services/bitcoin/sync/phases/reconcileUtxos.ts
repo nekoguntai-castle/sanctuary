@@ -7,7 +7,7 @@
  * - Invalidates draft transactions using spent UTXOs
  */
 
-import config from '../../../../config';
+import { getConfig } from '../../../../config';
 import { db as prisma } from '../../../../repositories/db';
 import { createLogger } from '../../../../utils/logger';
 import { walletLog } from '../../../../websocket/notifications';
@@ -116,7 +116,7 @@ export async function reconcileUtxosPhase(ctx: SyncContext): Promise<SyncContext
 
   // Batch update UTXO confirmations in chunks to avoid long-held locks
   if (utxosToUpdate.length > 0) {
-    const batchSize = config.sync.transactionBatchSize;
+    const batchSize = getConfig().sync.transactionBatchSize;
     for (let i = 0; i < utxosToUpdate.length; i += batchSize) {
       const chunk = utxosToUpdate.slice(i, i + batchSize);
       await prisma.$transaction(

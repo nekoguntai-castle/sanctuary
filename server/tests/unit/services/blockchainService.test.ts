@@ -128,9 +128,9 @@ vi.mock('../../../src/services/notifications/notificationService', () => ({
 
 // Mock config
 vi.mock('../../../src/config', () => ({
-  config: {
+  getConfig: () => ({
     sync: { transactionBatchSize: 100 },
-  },
+  }),
 }));
 
 // Mock logger
