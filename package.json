@@ -22,6 +22,8 @@
     "test:docker:coverage": "docker compose -f docker-compose.test.yml run --rm backend-coverage && docker compose -f docker-compose.test.yml run --rm frontend-coverage",
     "test:docker:clean": "docker compose -f docker-compose.test.yml down -v --remove-orphans",
     "test:e2e": "playwright test",
+    "test:e2e:render": "playwright test --project=chromium e2e/render-regression.spec.ts",
+    "test:e2e:render:update": "playwright test --project=chromium e2e/render-regression.spec.ts --update-snapshots",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
     "test:hygiene": "node scripts/test-hygiene.mjs",

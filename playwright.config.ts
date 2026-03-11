@@ -1,5 +1,9 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const PLAYWRIGHT_PORT = Number(process.env.PLAYWRIGHT_PORT ?? 5173);
+const DEFAULT_BASE_URL = `http://localhost:${PLAYWRIGHT_PORT}`;
+const BASE_URL = process.env.BASE_URL || DEFAULT_BASE_URL;
+
 /**
  * Playwright E2E Test Configuration
  *
@@ -19,7 +23,7 @@ export default defineConfig({
   ],
 
   use: {
-    baseURL: process.env.BASE_URL || 'http://localhost:5173',
+    baseURL: BASE_URL,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'on-first-retry',
@@ -53,8 +57,10 @@ export default defineConfig({
   // In CI, use preview mode (serves built assets) for reliability
   // Locally, use dev mode for faster iteration
   webServer: {
-    command: process.env.CI ? 'npm run preview -- --port 5173' : 'npm run dev',
-    url: 'http://localhost:5173',
+    command: process.env.CI
+      ? `npm run preview -- --port ${PLAYWRIGHT_PORT}`
+      : `npm run dev -- --port ${PLAYWRIGHT_PORT}`,
+    url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,
   },

@@ -345,6 +345,11 @@ jobs:
         env:
           CI: 'true'
 
+      - name: Run render regression E2E tests
+        run: npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts
+        env:
+          CI: 'true'
+
   # ============================================
   # Full Lane (main/nightly/manual)
   # ============================================

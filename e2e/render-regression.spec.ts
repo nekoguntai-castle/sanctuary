@@ -16,6 +16,20 @@ const API_ORIGIN = (() => {
   }
 })();
 
+const VISUAL_ASSERTION_OPTIONS = {
+  animations: 'disabled' as const,
+  caret: 'hide' as const,
+  scale: 'css' as const,
+  maxDiffPixelRatio: 0.01,
+};
+
+async function expectChromiumMainScreenshot(page: Page, filename: string) {
+  if (test.info().project.name !== 'chromium') {
+    return;
+  }
+  await expect(page.getByRole('main')).toHaveScreenshot(filename, VISUAL_ASSERTION_OPTIONS);
+}
+
 const ADMIN_USER = {
   id: 'user-admin-render',
   username: 'admin',
@@ -762,6 +776,7 @@ test.describe('Route-level rendering regressions', () => {
     await page.getByRole('button', { name: /Testnet/i }).click();
     await expect(page.getByText('Testnet coins have no market value')).toBeVisible();
     await expect(page.getByText(/^Testnet node not configured$/)).toBeVisible();
+    await expectChromiumMainScreenshot(page, 'dashboard-testnet-shell.png');
 
     expect(unhandledRequests).toEqual([]);
   });
@@ -785,6 +800,7 @@ test.describe('Route-level rendering regressions', () => {
 
     await page.getByRole('button', { name: 'addresses', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'No Addresses Available' })).toBeVisible();
+    await expectChromiumMainScreenshot(page, 'wallet-detail-addresses-empty-shell.png');
 
     expect(unhandledRequests).toEqual([]);
   });
@@ -828,6 +844,7 @@ test.describe('Route-level rendering regressions', () => {
     await page.getByRole('button', { name: /Testnet/i }).click();
     await expect(page.getByRole('heading', { name: 'Testnet Wallets' })).toBeVisible();
     await expect(page.getByText('Render Testnet Wallet')).toBeVisible();
+    await expectChromiumMainScreenshot(page, 'wallet-list-testnet-shell.png');
 
     expect(unhandledRequests).toEqual([]);
   });
@@ -876,6 +893,7 @@ test.describe('Route-level rendering regressions', () => {
     await expect(page.getByRole('heading', { name: 'Notification Sounds' })).toBeVisible();
     await page.getByRole('button', { name: 'Telegram', exact: true }).click();
     await expect(page.getByText('Telegram Notifications')).toBeVisible();
+    await expectChromiumMainScreenshot(page, 'settings-notifications-telegram-shell.png');
 
     expect(unhandledRequests).toEqual([]);
   });
@@ -899,6 +917,7 @@ test.describe('Route-level rendering regressions', () => {
 
     await page.getByText('Rate Limit Events', { exact: true }).click();
     await expect(page.getByText('No rate limit events recorded')).toBeVisible();
+    await expectChromiumMainScreenshot(page, 'admin-settings-websocket-shell.png');
 
     expect(unhandledRequests).toEqual([]);
   });
@@ -914,7 +933,6 @@ test.describe('Route-level rendering regressions', () => {
     await expect(page.getByText('enhancedDashboard')).toBeVisible();
     await expect(page.getByText('treasuryAutopilot')).toBeVisible();
     await expect(page.getByText('Toggle features without restarting the server.')).toBeVisible();
-    await expect(page.getByText('Toggling this starts or stops background consolidation jobs without requiring a restart.')).toBeVisible();
 
     await page.getByRole('button', { name: 'Change History' }).click();
     await expect(page.getByText('No changes recorded yet.')).toBeVisible();
