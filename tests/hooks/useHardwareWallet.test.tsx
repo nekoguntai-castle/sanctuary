@@ -36,8 +36,11 @@ vi.mock('../../services/hardwareWallet', () => ({
     getDevices: () => mockGetDevices(),
     isConnected: () => mockIsConnected(),
   },
-  isHardwareWalletSupported: vi.fn(() => true),
   getConnectedDevices: () => mockGetDevices(),
+}));
+
+vi.mock('../../services/hardwareWallet/environment', () => ({
+  isHardwareWalletSupported: vi.fn(() => true),
 }));
 
 vi.mock('../../utils/logger', () => ({
@@ -133,6 +136,9 @@ describe('useHardwareWallet', () => {
       });
 
       expect(result.current.connecting).toBe(true);
+      await waitFor(() => {
+        expect(mockConnect).toHaveBeenCalled();
+      });
 
       await act(async () => {
         resolveConnect!(mockDevice);
@@ -200,7 +206,32 @@ describe('useHardwareWallet', () => {
         result.current.disconnect();
       });
 
-      expect(mockDisconnect).toHaveBeenCalled();
+      await waitFor(() => {
+        expect(mockDisconnect).toHaveBeenCalled();
+      });
+      expect(result.current.device).toBeNull();
+      expect(result.current.error).toBeNull();
+    });
+
+    it('should keep state cleared even when disconnect call fails', async () => {
+      mockConnect.mockResolvedValue(mockDevice);
+      mockGetDevices.mockResolvedValue([mockDevice]);
+      mockDisconnect.mockRejectedValueOnce(new Error('disconnect failed'));
+
+      const { result } = renderHook(() => useHardwareWallet());
+
+      await act(async () => {
+        await result.current.connect('ledger');
+      });
+
+      act(() => {
+        result.current.disconnect();
+      });
+
+      await waitFor(() => {
+        expect(mockDisconnect).toHaveBeenCalled();
+      });
+
       expect(result.current.device).toBeNull();
       expect(result.current.error).toBeNull();
     });
@@ -256,6 +287,9 @@ describe('useHardwareWallet', () => {
       });
 
       expect(result.current.signing).toBe(true);
+      await waitFor(() => {
+        expect(mockSignTransaction).toHaveBeenCalled();
+      });
 
       await act(async () => {
         resolveSign!('txid');

@@ -16,6 +16,9 @@ vi.mock('../../../services/hardwareWallet', () => ({
     getXpub: (...args: unknown[]) => mockGetXpub(...args),
   },
   DeviceType: {},
+}));
+
+vi.mock('../../../services/hardwareWallet/environment', () => ({
   isSecureContext: () => mockIsSecureContext(),
 }));
 

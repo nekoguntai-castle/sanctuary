@@ -9,6 +9,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { ImportWallet } from '../../components/ImportWallet';
 import * as walletsApi from '../../src/api/wallets';
 import * as hardwareWallet from '../../services/hardwareWallet';
+import * as hardwareWalletEnvironment from '../../services/hardwareWallet/environment';
 import * as useWalletsHooks from '../../hooks/queries/useWallets';
 
 // Mock logger
@@ -42,6 +43,9 @@ vi.mock('../../services/hardwareWallet', () => ({
     connect: vi.fn(),
     getXpub: vi.fn(),
   },
+}));
+
+vi.mock('../../services/hardwareWallet/environment', () => ({
   isSecureContext: vi.fn(),
 }));
 
@@ -69,7 +73,7 @@ describe('ImportWallet', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(useWalletsHooks.useImportWallet).mockReturnValue(mockImportMutation as any);
-    vi.mocked(hardwareWallet.isSecureContext).mockReturnValue(true);
+    vi.mocked(hardwareWalletEnvironment.isSecureContext).mockReturnValue(true);
   });
 
   const renderImportWallet = () => {

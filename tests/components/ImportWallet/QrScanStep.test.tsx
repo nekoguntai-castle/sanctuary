@@ -33,7 +33,7 @@ vi.mock('@ngraveio/bc-ur', () => ({
   },
 }));
 
-vi.mock('../../../services/hardwareWallet', () => ({
+vi.mock('../../../services/hardwareWallet/environment', () => ({
   isSecureContext: () => secureContext,
 }));
 
@@ -210,21 +210,21 @@ describe('QrScanStep', () => {
     );
   });
 
-  it('tracks progress for incomplete ur:bytes scans', () => {
+  it('tracks progress for incomplete ur:bytes scans', async () => {
     mockDecoderInstance.estimatedPercentComplete.mockReturnValue(0.42);
     mockDecoderInstance.isComplete.mockReturnValue(false);
 
     const props = renderQrScanStep({ cameraActive: true });
     const qrScanner = getScannerProps();
 
-    qrScanner.onScan([{ rawValue: 'ur:bytes/part-1' }]);
+    await qrScanner.onScan([{ rawValue: 'ur:bytes/part-1' }]);
 
     expect(mockDecoderFactory).toHaveBeenCalledTimes(1);
     expect(props.setUrProgress).toHaveBeenCalledWith(42);
     expect(props.setCameraActive).not.toHaveBeenCalledWith(false);
   });
 
-  it('reuses existing bytes decoder when present', () => {
+  it('reuses existing bytes decoder when present', async () => {
     mockDecoderInstance.estimatedPercentComplete.mockReturnValue(0.4);
     mockDecoderInstance.isComplete.mockReturnValue(false);
 
@@ -233,13 +233,13 @@ describe('QrScanStep', () => {
 
     props.bytesDecoderRef.current = mockDecoderInstance as any;
     mockDecoderFactory.mockClear();
-    qrScanner.onScan([{ rawValue: 'ur:bytes/part-2' }]);
+    await qrScanner.onScan([{ rawValue: 'ur:bytes/part-2' }]);
 
     expect(mockDecoderFactory).not.toHaveBeenCalled();
     expect(mockDecoderInstance.receivePart).toHaveBeenCalledWith('ur:bytes/part-2');
   });
 
-  it('completes ur:bytes scan and decodes imported data', () => {
+  it('completes ur:bytes scan and decodes imported data', async () => {
     mockDecoderInstance.estimatedPercentComplete.mockReturnValue(1);
     mockDecoderInstance.isComplete.mockReturnValue(true);
     mockDecoderInstance.isSuccess.mockReturnValue(true);
@@ -250,7 +250,7 @@ describe('QrScanStep', () => {
     const props = renderQrScanStep({ cameraActive: true });
     const qrScanner = getScannerProps();
 
-    qrScanner.onScan([{ rawValue: 'ur:bytes/complete' }]);
+    await qrScanner.onScan([{ rawValue: 'ur:bytes/complete' }]);
 
     expect(props.setCameraActive).toHaveBeenCalledWith(false);
     expect(props.setImportData).toHaveBeenCalledWith('{"type":"single_sig"}');
@@ -260,7 +260,7 @@ describe('QrScanStep', () => {
     expect(props.bytesDecoderRef.current).toBeNull();
   });
 
-  it('handles ur:bytes decode failures and clears decoder ref', () => {
+  it('handles ur:bytes decode failures and clears decoder ref', async () => {
     mockDecoderInstance.estimatedPercentComplete.mockReturnValue(1);
     mockDecoderInstance.isComplete.mockReturnValue(true);
     mockDecoderInstance.isSuccess.mockReturnValue(false);
@@ -269,7 +269,7 @@ describe('QrScanStep', () => {
     const props = renderQrScanStep({ cameraActive: true });
     const qrScanner = getScannerProps();
 
-    qrScanner.onScan([{ rawValue: 'ur:bytes/fail' }]);
+    await qrScanner.onScan([{ rawValue: 'ur:bytes/fail' }]);
 
     expect(props.setValidationError).toHaveBeenCalledWith(
       'UR decode failed: bad checksum',
@@ -278,7 +278,7 @@ describe('QrScanStep', () => {
     expect(props.bytesDecoderRef.current).toBeNull();
   });
 
-  it('uses fallback error text when ur:bytes decoder has no error message', () => {
+  it('uses fallback error text when ur:bytes decoder has no error message', async () => {
     mockDecoderInstance.estimatedPercentComplete.mockReturnValue(1);
     mockDecoderInstance.isComplete.mockReturnValue(true);
     mockDecoderInstance.isSuccess.mockReturnValue(false);
@@ -287,12 +287,12 @@ describe('QrScanStep', () => {
     const props = renderQrScanStep({ cameraActive: true });
     const qrScanner = getScannerProps();
 
-    qrScanner.onScan([{ rawValue: 'ur:bytes/fail-no-message' }]);
+    await qrScanner.onScan([{ rawValue: 'ur:bytes/fail-no-message' }]);
     expect(props.setValidationError).toHaveBeenCalledWith('UR decode failed: unknown error');
     expect(props.setCameraActive).toHaveBeenCalledWith(false);
   });
 
-  it('handles non-Error UR decode throws with generic message', () => {
+  it('handles non-Error UR decode throws with generic message', async () => {
     mockDecoderInstance.receivePart.mockImplementation(() => {
       throw 'decoder panic';
     });
@@ -300,7 +300,7 @@ describe('QrScanStep', () => {
     const props = renderQrScanStep({ cameraActive: true });
     const qrScanner = getScannerProps();
 
-    qrScanner.onScan([{ rawValue: 'ur:bytes/throws-string' }]);
+    await qrScanner.onScan([{ rawValue: 'ur:bytes/throws-string' }]);
     expect(props.setValidationError).toHaveBeenCalledWith('Failed to decode QR code');
     expect(props.setCameraActive).toHaveBeenCalledWith(false);
     expect(props.bytesDecoderRef.current).toBeNull();

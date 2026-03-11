@@ -136,6 +136,9 @@ describe('useDeviceConnection', () => {
       });
 
       expect(result.current.scanning).toBe(true);
+      await waitFor(() => {
+        expect(mockConnect).toHaveBeenCalled();
+      });
 
       await act(async () => {
         resolveConnect!({ connected: true });
@@ -244,6 +247,9 @@ describe('useDeviceConnection', () => {
       });
 
       expect(result.current.connectionResult).toBeNull();
+      await waitFor(() => {
+        expect(mockConnect).toHaveBeenCalled();
+      });
 
       await act(async () => {
         resolveConnect!({ connected: true });
