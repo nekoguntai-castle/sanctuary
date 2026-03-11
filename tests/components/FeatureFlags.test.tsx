@@ -141,12 +141,61 @@ describe('FeatureFlags', () => {
       });
     });
 
+    it('shows fallback side-effect warning when sideEffectDescription is missing', async () => {
+      vi.mocked(adminApi.getFeatureFlags).mockResolvedValue([
+        {
+          ...mockFlags[1],
+          sideEffectDescription: null,
+        },
+      ]);
+
+      render(<FeatureFlags />);
+
+      await waitFor(() => {
+        expect(
+          screen.getByText('Toggling this flag has immediate runtime side effects.')
+        ).toBeInTheDocument();
+      });
+    });
+
+    it('does not show side-effect warning when hasSideEffects is not set', async () => {
+      vi.mocked(adminApi.getFeatureFlags).mockResolvedValue([
+        {
+          ...mockFlags[1],
+          hasSideEffects: undefined,
+          sideEffectDescription: undefined,
+        },
+      ]);
+
+      render(<FeatureFlags />);
+
+      await waitFor(() => {
+        expect(screen.getByText('treasuryAutopilot')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByText(/starts or stops background consolidation jobs/)).not.toBeInTheDocument();
+      expect(screen.queryByText('Toggling this flag has immediate runtime side effects.')).not.toBeInTheDocument();
+    });
+
     it('shows modified-by info for non-system modifiers', async () => {
       render(<FeatureFlags />);
 
       await waitFor(() => {
         expect(screen.getByText(/Modified by admin-1/)).toBeInTheDocument();
       });
+    });
+
+    it('renders shell when initial feature flag fetch fails', async () => {
+      vi.mocked(adminApi.getFeatureFlags).mockRejectedValueOnce(new Error('Initial load failed'));
+
+      render(<FeatureFlags />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Feature Flags')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByText('aiAssistant')).not.toBeInTheDocument();
+      expect(screen.queryByText('Initial load failed')).not.toBeInTheDocument();
     });
   });
 
@@ -235,6 +284,24 @@ describe('FeatureFlags', () => {
 
       await waitFor(() => {
         expect(adminApi.resetFeatureFlag).toHaveBeenCalledWith('aiAssistant');
+      });
+    });
+
+    it('shows error message on reset failure', async () => {
+      const user = userEvent.setup();
+      vi.mocked(adminApi.resetFeatureFlag).mockRejectedValue(new Error('Reset failed'));
+
+      render(<FeatureFlags />);
+
+      await waitFor(() => {
+        expect(screen.getByText('aiAssistant')).toBeInTheDocument();
+      });
+
+      const resetButtons = screen.getAllByTitle('Reset to environment default');
+      await user.click(resetButtons[0]);
+
+      await waitFor(() => {
+        expect(screen.getByText('Reset failed')).toBeInTheDocument();
       });
     });
   });
@@ -342,6 +409,57 @@ describe('FeatureFlags', () => {
 
       await user.click(screen.getByText('Change History'));
       expect(adminApi.getFeatureFlagAuditLog).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not render reason text when audit entry reason is null', async () => {
+      vi.mocked(adminApi.getFeatureFlagAuditLog).mockResolvedValueOnce({
+        entries: [
+          {
+            id: 'audit-no-reason',
+            key: 'aiAssistant',
+            previousValue: false,
+            newValue: true,
+            changedBy: 'admin-2',
+            reason: null,
+            createdAt: new Date().toISOString(),
+          },
+        ],
+        total: 1,
+        limit: 50,
+        offset: 0,
+      });
+
+      const user = userEvent.setup();
+      render(<FeatureFlags />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Change History')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText('Change History'));
+
+      await waitFor(() => {
+        expect(screen.getByText('enabled')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByText('Enable for testing')).not.toBeInTheDocument();
+    });
+
+    it('shows empty-state fallback when audit log request fails', async () => {
+      vi.mocked(adminApi.getFeatureFlagAuditLog).mockRejectedValueOnce(new Error('Audit log down'));
+
+      const user = userEvent.setup();
+      render(<FeatureFlags />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Change History')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText('Change History'));
+
+      await waitFor(() => {
+        expect(screen.getByText('No changes recorded yet.')).toBeInTheDocument();
+      });
     });
   });
 

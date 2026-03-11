@@ -96,6 +96,33 @@ describe('Admin Feature Flags Routes', () => {
       expect(response.body[0].key).toBe('aiAssistant');
     });
 
+    it('should return side-effect metadata from the service payload', async () => {
+      mockFeatureFlagService.getAllFlags.mockResolvedValue([
+        {
+          key: 'treasuryAutopilot',
+          enabled: true,
+          description: 'Enable Treasury Autopilot consolidation jobs',
+          category: 'general',
+          source: 'database',
+          modifiedBy: 'admin-1',
+          updatedAt: new Date(),
+          hasSideEffects: true,
+          sideEffectDescription: 'Toggling this starts or stops background consolidation jobs without requiring a restart.',
+        },
+      ]);
+
+      const response = await request(app).get('/api/v1/admin/features');
+
+      expect(response.status).toBe(200);
+      expect(response.body[0]).toEqual(
+        expect.objectContaining({
+          key: 'treasuryAutopilot',
+          hasSideEffects: true,
+          sideEffectDescription: expect.stringContaining('starts or stops'),
+        })
+      );
+    });
+
     it('should return 500 on service error', async () => {
       mockFeatureFlagService.getAllFlags.mockRejectedValue(new Error('DB error'));
 
@@ -141,8 +168,27 @@ describe('Admin Feature Flags Routes', () => {
       expect(response.body.limit).toBe(10);
     });
 
+    it('should accept offset parameter', async () => {
+      mockFeatureFlagService.getAuditLog.mockResolvedValue([]);
+
+      const response = await request(app).get('/api/v1/admin/features/audit-log?offset=5');
+
+      expect(response.status).toBe(200);
+      expect(mockFeatureFlagService.getAuditLog).toHaveBeenCalledWith(
+        undefined,
+        expect.any(Number),
+        5
+      );
+    });
+
     it('should reject invalid limit', async () => {
       const response = await request(app).get('/api/v1/admin/features/audit-log?limit=999');
+
+      expect(response.status).toBe(400);
+    });
+
+    it('should reject invalid offset', async () => {
+      const response = await request(app).get('/api/v1/admin/features/audit-log?offset=-1');
 
       expect(response.status).toBe(400);
     });
@@ -183,6 +229,16 @@ describe('Admin Feature Flags Routes', () => {
       expect(response.status).toBe(404);
       expect(response.body.error).toBe('Not Found');
       expect(mockFeatureFlagService.getFlag).not.toHaveBeenCalled();
+    });
+
+    it('should return 404 for known key when service has no record', async () => {
+      mockFeatureFlagService.getFlag.mockResolvedValue(null);
+
+      const response = await request(app).get('/api/v1/admin/features/aiAssistant');
+
+      expect(response.status).toBe(404);
+      expect(response.body.error).toBe('Not Found');
+      expect(mockFeatureFlagService.getFlag).toHaveBeenCalledWith('aiAssistant');
     });
 
     it('should return 500 on service error', async () => {
@@ -246,6 +302,16 @@ describe('Admin Feature Flags Routes', () => {
         .send({ enabled: 'yes' });
 
       expect(response.status).toBe(400);
+      expect(mockFeatureFlagService.getFlag).not.toHaveBeenCalled();
+    });
+
+    it('should return 400 for reason longer than 500 characters', async () => {
+      const response = await request(app)
+        .patch('/api/v1/admin/features/aiAssistant')
+        .send({ enabled: true, reason: 'x'.repeat(501) });
+
+      expect(response.status).toBe(400);
+      expect(mockFeatureFlagService.setFlag).not.toHaveBeenCalled();
     });
 
     it('should return 404 for unknown flag', async () => {
@@ -255,6 +321,18 @@ describe('Admin Feature Flags Routes', () => {
 
       expect(response.status).toBe(404);
       expect(mockFeatureFlagService.getFlag).not.toHaveBeenCalled();
+      expect(mockFeatureFlagService.setFlag).not.toHaveBeenCalled();
+    });
+
+    it('should return 404 for known key when service has no record', async () => {
+      mockFeatureFlagService.getFlag.mockResolvedValue(null);
+
+      const response = await request(app)
+        .patch('/api/v1/admin/features/aiAssistant')
+        .send({ enabled: true });
+
+      expect(response.status).toBe(404);
+      expect(mockFeatureFlagService.getFlag).toHaveBeenCalledWith('aiAssistant');
       expect(mockFeatureFlagService.setFlag).not.toHaveBeenCalled();
     });
 
@@ -296,6 +374,17 @@ describe('Admin Feature Flags Routes', () => {
 
       expect(response.status).toBe(404);
       expect(mockFeatureFlagService.getFlag).not.toHaveBeenCalled();
+      expect(mockFeatureFlagService.resetToDefault).not.toHaveBeenCalled();
+    });
+
+    it('should return 404 for known key when service has no record', async () => {
+      mockFeatureFlagService.getFlag.mockResolvedValue(null);
+
+      const response = await request(app)
+        .post('/api/v1/admin/features/aiAssistant/reset');
+
+      expect(response.status).toBe(404);
+      expect(mockFeatureFlagService.getFlag).toHaveBeenCalledWith('aiAssistant');
       expect(mockFeatureFlagService.resetToDefault).not.toHaveBeenCalled();
     });
 

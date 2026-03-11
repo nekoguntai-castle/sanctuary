@@ -506,6 +506,29 @@ describe('Feature Flag Service', () => {
         })
       );
     });
+
+    it('keeps side-effect metadata empty for normal flags', async () => {
+      mockPrisma.featureFlag.findMany.mockResolvedValue([
+        {
+          key: 'aiAssistant',
+          enabled: true,
+          description: 'Enable AI-powered transaction analysis',
+          category: 'general',
+          modifiedBy: 'admin',
+          updatedAt: new Date(),
+        },
+      ]);
+
+      const [flag] = await featureFlagService.getAllFlags();
+
+      expect(flag).toEqual(
+        expect.objectContaining({
+          key: 'aiAssistant',
+          hasSideEffects: undefined,
+          sideEffectDescription: null,
+        })
+      );
+    });
   });
 
   describe('getAuditLog', () => {

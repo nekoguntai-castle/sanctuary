@@ -309,6 +309,11 @@ describe('worker entrypoint', () => {
     mocks.queueInstance.scheduleRecurring.mockClear();
     mocks.queueInstance.removeRecurring.mockClear();
 
+    await workerListener({ key: 'aiAssistant', enabled: true });
+
+    expect(mocks.queueInstance.scheduleRecurring).not.toHaveBeenCalled();
+    expect(mocks.queueInstance.removeRecurring).not.toHaveBeenCalled();
+
     await workerListener({ key: 'treasuryAutopilot', enabled: true });
 
     expect(mocks.queueInstance.scheduleRecurring).toHaveBeenCalledWith(

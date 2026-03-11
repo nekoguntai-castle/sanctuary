@@ -52,6 +52,7 @@ describe('feature flag admin + worker integration', () => {
 
     const state = {
       treasuryAutopilot: false,
+      aiAssistant: false,
       modifiedBy: 'system',
       updatedAt: new Date(),
     };
@@ -80,7 +81,11 @@ describe('feature flag admin + worker integration', () => {
 
     const featureFlagService = {
       initialize: vi.fn(async () => undefined),
-      isEnabled: vi.fn(async (key: string) => key === 'treasuryAutopilot' ? state.treasuryAutopilot : false),
+      isEnabled: vi.fn(async (key: string) => {
+        if (key === 'treasuryAutopilot') return state.treasuryAutopilot;
+        if (key === 'aiAssistant') return state.aiAssistant;
+        return false;
+      }),
       getAllFlags: vi.fn(async () => [
         {
           key: 'treasuryAutopilot',
@@ -93,34 +98,59 @@ describe('feature flag admin + worker integration', () => {
           hasSideEffects: true,
           sideEffectDescription: 'Toggling this starts or stops background consolidation jobs without requiring a restart.',
         },
-      ]),
-      getAuditLog: vi.fn(async () => []),
-      getFlag: vi.fn(async (key: string) => {
-        if (key !== 'treasuryAutopilot') {
-          return null;
-        }
-
-        return {
-          key: 'treasuryAutopilot',
-          enabled: state.treasuryAutopilot,
-          description: 'Enable Treasury Autopilot consolidation jobs',
+        {
+          key: 'aiAssistant',
+          enabled: state.aiAssistant,
+          description: 'Enable AI-powered transaction analysis',
           category: 'general',
           source: 'database' as const,
           modifiedBy: state.modifiedBy,
           updatedAt: state.updatedAt,
-          hasSideEffects: true,
-          sideEffectDescription: 'Toggling this starts or stops background consolidation jobs without requiring a restart.',
+          hasSideEffects: undefined,
+          sideEffectDescription: null,
+        },
+      ]),
+      getAuditLog: vi.fn(async () => []),
+      getFlag: vi.fn(async (key: string) => {
+        if (key === 'treasuryAutopilot') {
+          return {
+            key: 'treasuryAutopilot',
+            enabled: state.treasuryAutopilot,
+            description: 'Enable Treasury Autopilot consolidation jobs',
+            category: 'general',
+            source: 'database' as const,
+            modifiedBy: state.modifiedBy,
+            updatedAt: state.updatedAt,
+            hasSideEffects: true,
+            sideEffectDescription: 'Toggling this starts or stops background consolidation jobs without requiring a restart.',
+          };
+        }
+
+        return {
+          key: 'aiAssistant',
+          enabled: state.aiAssistant,
+          description: 'Enable AI-powered transaction analysis',
+          category: 'general',
+          source: 'database' as const,
+          modifiedBy: state.modifiedBy,
+          updatedAt: state.updatedAt,
+          hasSideEffects: undefined,
+          sideEffectDescription: null,
         };
       }),
       setFlag: vi.fn(async (key: string, enabled: boolean, options: { userId: string }) => {
-        if (key !== 'treasuryAutopilot') {
+        if (key !== 'treasuryAutopilot' && key !== 'aiAssistant') {
           throw new Error(`Unsupported key in test: ${key}`);
         }
 
-        const previousValue = state.treasuryAutopilot;
+        const previousValue = key === 'treasuryAutopilot' ? state.treasuryAutopilot : state.aiAssistant;
         if (previousValue === enabled) return;
 
-        state.treasuryAutopilot = enabled;
+        if (key === 'treasuryAutopilot') {
+          state.treasuryAutopilot = enabled;
+        } else {
+          state.aiAssistant = enabled;
+        }
         state.modifiedBy = options.userId;
         state.updatedAt = new Date();
 
@@ -274,6 +304,29 @@ describe('feature flag admin + worker integration', () => {
         'autopilot:evaluate',
         { purgeQueued: true }
       );
+
+      jobQueueInstance.scheduleRecurring.mockClear();
+      jobQueueInstance.removeRecurring.mockClear();
+
+      const nonAutopilotResponse = await request(app)
+        .patch('/api/v1/admin/features/aiAssistant')
+        .send({ enabled: true, reason: 'integration test' });
+
+      expect(nonAutopilotResponse.status).toBe(200);
+      expect(nonAutopilotResponse.body.enabled).toBe(true);
+      expect(jobQueueInstance.scheduleRecurring).not.toHaveBeenCalled();
+      expect(jobQueueInstance.removeRecurring).not.toHaveBeenCalled();
+
+      jobQueueInstance.scheduleRecurring.mockClear();
+      jobQueueInstance.removeRecurring.mockClear();
+
+      const unknownFlagResponse = await request(app)
+        .patch('/api/v1/admin/features/nonExistent')
+        .send({ enabled: true, reason: 'integration test' });
+
+      expect(unknownFlagResponse.status).toBe(404);
+      expect(jobQueueInstance.scheduleRecurring).not.toHaveBeenCalled();
+      expect(jobQueueInstance.removeRecurring).not.toHaveBeenCalled();
 
       // Startup happened once; runtime toggle should not require process restart.
       expect(jobQueueInstance.initialize).toHaveBeenCalledTimes(1);
