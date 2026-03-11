@@ -1,5 +1,4 @@
 import { useState, useRef } from 'react';
-import { URDecoder as BytesURDecoder } from '@ngraveio/bc-ur';
 import { ImportValidationResult } from '../../../src/api/wallets';
 import { ImportFormat, ScriptType, HardwareDeviceType } from '../importHelpers';
 
@@ -7,6 +6,17 @@ export interface XpubData {
   xpub: string;
   fingerprint: string;
   path: string;
+}
+
+export interface BytesUrDecoderLike {
+  receivePart: (part: string) => unknown;
+  estimatedPercentComplete: () => number;
+  isComplete: () => boolean;
+  isSuccess: () => boolean;
+  resultError: () => string | undefined;
+  resultUR: () => {
+    decodeCBOR: () => Uint8Array;
+  };
 }
 
 export function useImportState() {
@@ -43,7 +53,7 @@ export function useImportState() {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [urProgress, setUrProgress] = useState<number>(0);
   const [qrScanned, setQrScanned] = useState(false);
-  const bytesDecoderRef = useRef<BytesURDecoder | null>(null);
+  const bytesDecoderRef = useRef<BytesUrDecoderLike | null>(null);
 
   const resetHardwareState = () => {
     setDeviceConnected(false);

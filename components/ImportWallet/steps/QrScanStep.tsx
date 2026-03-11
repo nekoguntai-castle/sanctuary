@@ -1,6 +1,5 @@
 import React, { useRef } from 'react';
 import { Scanner } from '@yudiel/react-qr-scanner';
-import { URDecoder as BytesURDecoder } from '@ngraveio/bc-ur';
 import {
   AlertCircle,
   CheckCircle,
@@ -9,8 +8,9 @@ import {
   X,
 } from 'lucide-react';
 import { Button } from '../../ui/Button';
-import { isSecureContext } from '../../../services/hardwareWallet';
+import { isSecureContext } from '../../../services/hardwareWallet/environment';
 import { createLogger } from '../../../utils/logger';
+import type { BytesUrDecoderLike } from '../hooks/useImportState';
 
 const log = createLogger('ImportWallet');
 
@@ -26,7 +26,7 @@ interface QrScanStepProps {
   setImportData: (data: string) => void;
   validationError: string | null;
   setValidationError: (error: string | null) => void;
-  bytesDecoderRef: React.MutableRefObject<BytesURDecoder | null>;
+  bytesDecoderRef: React.MutableRefObject<BytesUrDecoderLike | null>;
 }
 
 export const QrScanStep: React.FC<QrScanStepProps> = ({
@@ -61,7 +61,7 @@ export const QrScanStep: React.FC<QrScanStepProps> = ({
   };
 
   // Handle QR code scan - parse wallet data from various formats
-  const handleQrScan = (result: { rawValue: string }[]) => {
+  const handleQrScan = async (result: { rawValue: string }[]) => {
     if (!result || result.length === 0) return;
 
     const content = result[0].rawValue;
@@ -78,10 +78,11 @@ export const QrScanStep: React.FC<QrScanStepProps> = ({
         // Use BytesURDecoder for ur:bytes (Foundation Passport format)
         if (urType === 'bytes') {
           if (!bytesDecoderRef.current) {
-            bytesDecoderRef.current = new BytesURDecoder();
+            const { URDecoder } = await import('@ngraveio/bc-ur');
+            bytesDecoderRef.current = new URDecoder() as BytesUrDecoderLike;
           }
 
-          const partReceived = bytesDecoderRef.current.receivePart(content);
+          bytesDecoderRef.current.receivePart(content);
 
           // Check progress for multi-part QR codes
           const progress = bytesDecoderRef.current.estimatedPercentComplete();

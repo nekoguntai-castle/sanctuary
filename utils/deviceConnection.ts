@@ -6,7 +6,7 @@
  */
 
 import { HardwareDeviceModel } from '../src/api/devices';
-import { DeviceType } from '../services/hardwareWallet';
+import type { DeviceType } from '../services/hardwareWallet/types';
 import { normalizeDerivationPath as sharedNormalizePath } from '../shared/utils/bitcoin';
 import { Usb, HardDrive, QrCode } from 'lucide-react';
 

@@ -7,7 +7,7 @@
 
 import type { Wallet, Device } from '../../types';
 import type { TransactionState } from '../../contexts/send/types';
-import type { DeviceType } from '../../services/hardwareWallet';
+import type { DeviceType } from '../../services/hardwareWallet/types';
 import { createLogger } from '../../utils/logger';
 
 const log = createLogger('SendTxHelpers');

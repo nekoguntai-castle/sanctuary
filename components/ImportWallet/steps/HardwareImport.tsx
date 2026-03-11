@@ -6,13 +6,19 @@ import {
   Loader2,
 } from 'lucide-react';
 import { Button } from '../../ui/Button';
-import * as hardwareWallet from '../../../services/hardwareWallet';
-import { DeviceType } from '../../../services/hardwareWallet';
+import type { DeviceType } from '../../../services/hardwareWallet/types';
+import { isSecureContext } from '../../../services/hardwareWallet/environment';
 import { createLogger } from '../../../utils/logger';
 import { ScriptType, HardwareDeviceType, getDerivationPath, scriptTypeOptions } from '../importHelpers';
 import { XpubData } from '../hooks/useImportState';
 
 const log = createLogger('ImportWallet');
+let hardwareWalletModulePromise: Promise<typeof import('../../../services/hardwareWallet')> | null = null;
+
+const loadHardwareWalletModule = async () => {
+  hardwareWalletModulePromise ??= import('../../../services/hardwareWallet');
+  return hardwareWalletModulePromise;
+};
 
 interface HardwareImportProps {
   hardwareDeviceType: HardwareDeviceType;
@@ -56,7 +62,7 @@ export const HardwareImport: React.FC<HardwareImportProps> = ({
   setHardwareError,
 }) => {
   // Check if Ledger is supported (requires HTTPS)
-  const ledgerSupported = hardwareWallet.isSecureContext();
+  const ledgerSupported = isSecureContext();
 
   // Hardware device connection handler
   const handleConnectDevice = async () => {
@@ -64,8 +70,9 @@ export const HardwareImport: React.FC<HardwareImportProps> = ({
     setHardwareError(null);
 
     try {
+      const { hardwareWalletService } = await loadHardwareWalletModule();
       // Connect using the selected device type
-      const device = await hardwareWallet.hardwareWalletService.connect(hardwareDeviceType as DeviceType);
+      const device = await hardwareWalletService.connect(hardwareDeviceType as DeviceType);
       setDeviceConnected(true);
       setDeviceLabel(device.name || (hardwareDeviceType === 'trezor' ? 'Trezor Device' : 'Ledger Device'));
     } catch (error) {
@@ -82,9 +89,10 @@ export const HardwareImport: React.FC<HardwareImportProps> = ({
     setHardwareError(null);
 
     try {
+      const { hardwareWalletService } = await loadHardwareWalletModule();
       const path = getDerivationPath(scriptType, accountIndex);
       // Use the service which routes to the correct device implementation
-      const result = await hardwareWallet.hardwareWalletService.getXpub(path);
+      const result = await hardwareWalletService.getXpub(path);
 
       if (result.xpub && result.fingerprint) {
         setXpubData({

@@ -16,7 +16,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Loader2, AlertCircle } from 'lucide-react';
 import { HardwareDeviceModel } from '../../src/api/devices';
-import { isSecureContext } from '../../services/hardwareWallet';
+import { isSecureContext } from '../../services/hardwareWallet/environment';
 
 // Hooks
 import { useDeviceModels } from '../../hooks/useDeviceModels';

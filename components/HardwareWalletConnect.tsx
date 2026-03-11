@@ -1,5 +1,5 @@
 import React from 'react';
-import { DeviceType } from '../services/hardwareWallet';
+import type { DeviceType } from '../services/hardwareWallet/types';
 import { Button } from './ui/Button';
 import { X, Usb, Shield, AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
 
