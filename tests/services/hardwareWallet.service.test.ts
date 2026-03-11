@@ -149,6 +149,41 @@ describe('HardwareWalletService', () => {
     await expect(service.connect('ledger')).rejects.toThrow('is not supported in this environment');
   });
 
+  it('handles lazy adapter loader failures and surfaces missing adapter error', async () => {
+    const service = new HardwareWalletService();
+    const failingLoader = vi.fn(async () => {
+      throw new Error('lazy load failed');
+    });
+
+    service.registerAdapterLoader('ledger', failingLoader);
+
+    await expect(service.connect('ledger')).rejects.toThrow('No adapter registered for device type: ledger');
+    expect(failingLoader).toHaveBeenCalledTimes(1);
+  });
+
+  it('reuses in-flight lazy adapter load for concurrent connects', async () => {
+    const service = new HardwareWalletService();
+    const { adapter, device } = createMockAdapter('ledger');
+    let resolveLoader: ((value: DeviceAdapter) => void) | undefined;
+    const loader = vi.fn(
+      () =>
+        new Promise<DeviceAdapter>((resolve) => {
+          resolveLoader = resolve;
+        })
+    );
+
+    service.registerAdapterLoader('ledger', loader);
+
+    const connectOne = service.connect('ledger');
+    const connectTwo = service.connect('ledger');
+
+    expect(loader).toHaveBeenCalledTimes(1);
+    resolveLoader?.(adapter);
+
+    await expect(connectOne).resolves.toEqual(device);
+    await expect(connectTwo).resolves.toEqual(device);
+  });
+
   it('connects and switches adapters, disconnecting previous adapter', async () => {
     const service = new HardwareWalletService();
     const { adapter: ledger } = createMockAdapter('ledger');

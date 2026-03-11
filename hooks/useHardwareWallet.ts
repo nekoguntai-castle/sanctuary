@@ -8,10 +8,10 @@ import type {
 import { createLogger } from '../utils/logger';
 
 const log = createLogger('useHardwareWallet');
-let hardwareWalletModulePromise: Promise<typeof import('../services/hardwareWallet')> | null = null;
+let hardwareWalletModulePromise: Promise<typeof import('../services/hardwareWallet/runtime')> | null = null;
 
 const loadHardwareWalletModule = async () => {
-  hardwareWalletModulePromise ??= import('../services/hardwareWallet');
+  hardwareWalletModulePromise ??= import('../services/hardwareWallet/runtime');
   return hardwareWalletModulePromise;
 };
 

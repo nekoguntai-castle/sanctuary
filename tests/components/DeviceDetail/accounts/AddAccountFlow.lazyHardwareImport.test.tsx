@@ -10,7 +10,7 @@ vi.mock('../../../../services/hardwareWallet/environment', () => ({
   isSecureContext: () => true,
 }));
 
-vi.mock('../../../../services/hardwareWallet', () => {
+vi.mock('../../../../services/hardwareWallet/runtime', () => {
   hardwareModuleImportSpy();
   return {
     hardwareWalletService: {

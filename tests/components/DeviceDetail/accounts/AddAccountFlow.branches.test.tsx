@@ -116,7 +116,7 @@ vi.mock('../../../../services/hardwareWallet/environment', () => ({
   isSecureContext: () => isSecureContextMock(),
 }));
 
-vi.mock('../../../../services/hardwareWallet', () => ({
+vi.mock('../../../../services/hardwareWallet/runtime', () => ({
   hardwareWalletService: {
     connect: (...args: unknown[]) => connectMock(...args),
     getAllXpubs: (...args: unknown[]) => getAllXpubsMock(...args),

@@ -9,7 +9,7 @@ import { useState, useRef, useCallback } from 'react';
 import { URRegistryDecoder } from '@keystonehq/bc-ur-registry';
 import { URDecoder as BytesURDecoder } from '@ngraveio/bc-ur';
 import { DeviceAccount as ParsedDeviceAccount, parseDeviceJson } from '../../../../services/deviceParsers';
-import type { DeviceType, HardwareWalletService } from '../../../../services/hardwareWallet';
+import type { DeviceType } from '../../../../services/hardwareWallet/types';
 import { getDevice, addDeviceAccount } from '../../../../src/api/devices';
 import { createLogger } from '../../../../utils/logger';
 import { extractFromUrResult, normalizeDerivationPath } from '../urHelpers';
@@ -293,7 +293,7 @@ export function useAddAccountFlow({ deviceId, device, onClose, onDeviceUpdated }
 
     try {
       // Defer hardware runtime import until USB flow is actually used.
-      const { hardwareWalletService } = await import('../../../../services/hardwareWallet');
+      const { hardwareWalletService } = await import('../../../../services/hardwareWallet/runtime');
       disconnectFromDevice = hardwareWalletService.disconnect.bind(hardwareWalletService);
 
       // Connect to the device

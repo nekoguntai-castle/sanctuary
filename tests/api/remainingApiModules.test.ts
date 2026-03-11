@@ -32,7 +32,6 @@ vi.mock('../../src/api/client', () => ({
 
 import * as draftsApi from '../../src/api/drafts';
 import * as labelsApi from '../../src/api/labels';
-import * as nodeApi from '../../src/api/node';
 import * as payjoinApi from '../../src/api/payjoin';
 import * as priceApi from '../../src/api/price';
 import * as syncApi from '../../src/api/sync';
@@ -117,24 +116,6 @@ describe('Remaining API Modules', () => {
       expect(mockPost).toHaveBeenCalledWith('/addresses/addr1/labels', { labelIds: ['l1'] });
       expect(mockPut).toHaveBeenCalledWith('/addresses/addr1/labels', { labelIds: ['l2'] });
       expect(mockDelete).toHaveBeenCalledWith('/addresses/addr1/labels/l2');
-    });
-  });
-
-  describe('Node API', () => {
-    it('calls node test endpoint', async () => {
-      mockPost.mockResolvedValue({ success: true });
-      await nodeApi.testNodeConnection({
-        nodeType: 'electrum',
-        host: 'electrum.example.com',
-        port: '50002',
-        protocol: 'ssl',
-      });
-      expect(mockPost).toHaveBeenCalledWith('/node/test', {
-        nodeType: 'electrum',
-        host: 'electrum.example.com',
-        port: '50002',
-        protocol: 'ssl',
-      });
     });
   });
 

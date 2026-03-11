@@ -8,7 +8,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import React from 'react';
-import { ElectrumServerSettings } from '../../components/ElectrumServerSettings';
+import { ElectrumServerSettings } from '../../components/ElectrumServerSettings/ElectrumServerSettings';
 import * as adminApi from '../../src/api/admin';
 import * as bitcoinApi from '../../src/api/bitcoin';
 

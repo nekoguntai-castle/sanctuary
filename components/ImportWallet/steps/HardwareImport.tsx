@@ -13,10 +13,10 @@ import { ScriptType, HardwareDeviceType, getDerivationPath, scriptTypeOptions } 
 import { XpubData } from '../hooks/useImportState';
 
 const log = createLogger('ImportWallet');
-let hardwareWalletModulePromise: Promise<typeof import('../../../services/hardwareWallet')> | null = null;
+let hardwareWalletModulePromise: Promise<typeof import('../../../services/hardwareWallet/runtime')> | null = null;
 
 const loadHardwareWalletModule = async () => {
-  hardwareWalletModulePromise ??= import('../../../services/hardwareWallet');
+  hardwareWalletModulePromise ??= import('../../../services/hardwareWallet/runtime');
   return hardwareWalletModulePromise;
 };
 

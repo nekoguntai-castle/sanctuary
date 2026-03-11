@@ -11,7 +11,7 @@ import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter } from 'react-router-dom';
 import { parseDeviceJson } from '../../services/deviceParsers';
-import { hardwareWalletService } from '../../services/hardwareWallet';
+import { hardwareWalletService } from '../../services/hardwareWallet/runtime';
 import { isSecureContext } from '../../services/hardwareWallet/environment';
 
 // Mock navigate
@@ -53,12 +53,11 @@ vi.mock('../../services/bbqr', () => ({
 }));
 
 // Mock hardware wallet service
-vi.mock('../../services/hardwareWallet', () => ({
+vi.mock('../../services/hardwareWallet/runtime', () => ({
   hardwareWalletService: {
     connect: vi.fn(),
     getAllXpubs: vi.fn(),
   },
-  DeviceType: {},
 }));
 
 vi.mock('../../services/hardwareWallet/environment', () => ({

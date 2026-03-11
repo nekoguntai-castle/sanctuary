@@ -22,6 +22,7 @@ import type {
 } from './types';
 
 const log = createLogger('HardwareWalletService');
+type AdapterLoader = () => Promise<DeviceAdapter>;
 
 /**
  * Hardware Wallet Service
@@ -30,6 +31,8 @@ const log = createLogger('HardwareWalletService');
  */
 export class HardwareWalletService {
   private adapters: Map<DeviceType, DeviceAdapter> = new Map();
+  private adapterLoaders: Map<DeviceType, AdapterLoader> = new Map();
+  private adapterLoadPromises: Map<DeviceType, Promise<DeviceAdapter | undefined>> = new Map();
   private activeAdapter: DeviceAdapter | null = null;
 
   /**
@@ -39,6 +42,42 @@ export class HardwareWalletService {
   registerAdapter(adapter: DeviceAdapter): void {
     this.adapters.set(adapter.type, adapter);
     log.info(`Registered adapter: ${adapter.displayName}`, { type: adapter.type });
+  }
+
+  /**
+   * Register a lazy adapter loader. The adapter will only be imported/instantiated
+   * when the device type is first used.
+   */
+  registerAdapterLoader(type: DeviceType, loader: AdapterLoader): void {
+    this.adapterLoaders.set(type, loader);
+  }
+
+  private async ensureAdapter(type: DeviceType): Promise<DeviceAdapter | undefined> {
+    const existing = this.adapters.get(type);
+    if (existing) return existing;
+
+    const loader = this.adapterLoaders.get(type);
+    if (!loader) return undefined;
+
+    if (!this.adapterLoadPromises.has(type)) {
+      this.adapterLoadPromises.set(
+        type,
+        (async () => {
+          try {
+            const adapter = await loader();
+            this.registerAdapter(adapter);
+            return adapter;
+          } catch (error) {
+            log.error(`Failed to lazy-load adapter: ${type}`, { error });
+            return undefined;
+          } finally {
+            this.adapterLoadPromises.delete(type);
+          }
+        })()
+      );
+    }
+
+    return this.adapterLoadPromises.get(type);
   }
 
   /**
@@ -116,6 +155,7 @@ export class HardwareWalletService {
       }
     }
 
+    await this.ensureAdapter(type);
     const adapter = this.adapters.get(type);
     if (!adapter) {
       throw new Error(`No adapter registered for device type: ${type}`);

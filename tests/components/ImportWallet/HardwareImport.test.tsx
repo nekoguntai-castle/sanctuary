@@ -10,7 +10,7 @@ const mockConnect = vi.fn();
 const mockGetXpub = vi.fn();
 const mockIsSecureContext = vi.fn();
 
-vi.mock('../../../services/hardwareWallet', () => ({
+vi.mock('../../../services/hardwareWallet/runtime', () => ({
   hardwareWalletService: {
     connect: (...args: unknown[]) => mockConnect(...args),
     getXpub: (...args: unknown[]) => mockGetXpub(...args),

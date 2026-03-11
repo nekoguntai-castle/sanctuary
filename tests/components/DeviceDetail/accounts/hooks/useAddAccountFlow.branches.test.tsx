@@ -122,7 +122,7 @@ vi.mock('../../../../../services/deviceParsers', () => ({
   parseDeviceJson: (...args: unknown[]) => parseDeviceJsonMock(...args),
 }));
 
-vi.mock('../../../../../services/hardwareWallet', () => ({
+vi.mock('../../../../../services/hardwareWallet/runtime', () => ({
   hardwareWalletService: {
     connect: (...args: unknown[]) => connectMock(...args),
     getAllXpubs: (...args: unknown[]) => getAllXpubsMock(...args),

@@ -8,7 +8,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { ImportWallet } from '../../components/ImportWallet';
 import * as walletsApi from '../../src/api/wallets';
-import * as hardwareWallet from '../../services/hardwareWallet';
+import * as hardwareWallet from '../../services/hardwareWallet/runtime';
 import * as hardwareWalletEnvironment from '../../services/hardwareWallet/environment';
 import * as useWalletsHooks from '../../hooks/queries/useWallets';
 
@@ -38,7 +38,7 @@ vi.mock('../../src/api/wallets', () => ({
   importWallet: vi.fn(),
 }));
 
-vi.mock('../../services/hardwareWallet', () => ({
+vi.mock('../../services/hardwareWallet/runtime', () => ({
   hardwareWalletService: {
     connect: vi.fn(),
     getXpub: vi.fn(),

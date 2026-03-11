@@ -67,17 +67,14 @@ const AppRoutes: React.FC = () => {
   const handlePasswordChanged = async () => {
     // Refresh user data to clear the usingDefaultPassword flag
     try {
-      const updatedUser = await authApi.getCurrentUser();
+      await authApi.getCurrentUser();
       // The user context will be updated, and the modal will close
-      setShowPasswordModal(false);
-      // Force a page reload to ensure all user data is fresh
-      window.location.reload();
     } catch (error) {
       log.error('Failed to refresh user data', { error });
-      // Still close the modal on success
-      setShowPasswordModal(false);
-      window.location.reload();
     }
+    // Force a page reload to ensure all user data is fresh
+    setShowPasswordModal(false);
+    window.location.reload();
   };
 
   if (!isAuthenticated) {

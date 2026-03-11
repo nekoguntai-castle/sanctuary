@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React from 'react';
 
-import { CoinControlPanel } from '../../components/CoinControlPanel';
+import { CoinControlPanel } from '../../components/CoinControlPanel/CoinControlPanel';
 import type { UTXO } from '../../types';
 
 type UIStrategy = 'auto' | 'privacy' | 'manual' | 'consolidate';

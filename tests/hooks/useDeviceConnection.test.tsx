@@ -13,7 +13,7 @@ import type { HardwareDeviceModel } from '../../types';
 const mockConnect = vi.fn();
 const mockGetAllXpubs = vi.fn();
 
-vi.mock('../../services/hardwareWallet', () => ({
+vi.mock('../../services/hardwareWallet/runtime', () => ({
   hardwareWalletService: {
     connect: (type: unknown) => mockConnect(type),
     getAllXpubs: (callback: unknown) => mockGetAllXpubs(callback),
