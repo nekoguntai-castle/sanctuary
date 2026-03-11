@@ -16,13 +16,30 @@ import {
   FeatureFlagKeyParamSchema,
   FeatureFlagAuditQuerySchema,
 } from '../schemas/admin';
+import { UNKNOWN_FEATURE_FLAG_KEY_MESSAGE } from '../../services/featureFlags/definitions';
 
 const router = Router();
 const log = createLogger('ADMIN:FEATURES');
-const UNKNOWN_FEATURE_FLAG_KEY_MESSAGE = 'Unknown feature flag key';
 
 function hasUnknownFeatureKeyIssue(error: ZodError): boolean {
   return error.issues.some((issue) => issue.message === UNKNOWN_FEATURE_FLAG_KEY_MESSAGE);
+}
+
+/**
+ * Parse and validate feature flag key from request params.
+ * Returns the validated key, or sends an error response and returns null.
+ */
+function parseFeatureKeyParam(req: Request, res: Response): FeatureFlagKey | null {
+  const params = FeatureFlagKeyParamSchema.safeParse(req.params);
+  if (!params.success) {
+    const isUnknownKey = hasUnknownFeatureKeyIssue(params.error);
+    res.status(isUnknownKey ? 404 : 400).json({
+      error: isUnknownKey ? 'Not Found' : 'Validation Error',
+      message: params.error.issues.map(i => i.message).join(', '),
+    });
+    return null;
+  }
+  return params.data.key as FeatureFlagKey;
 }
 
 /**
@@ -82,20 +99,14 @@ router.get('/audit-log', authenticate, requireAdmin, async (req: Request, res: R
  */
 router.get('/:key', authenticate, requireAdmin, async (req: Request, res: Response) => {
   try {
-    const params = FeatureFlagKeyParamSchema.safeParse(req.params);
-    if (!params.success) {
-      const isUnknownKey = hasUnknownFeatureKeyIssue(params.error);
-      return res.status(isUnknownKey ? 404 : 400).json({
-        error: isUnknownKey ? 'Not Found' : 'Validation Error',
-        message: params.error.issues.map(i => i.message).join(', '),
-      });
-    }
+    const key = parseFeatureKeyParam(req, res);
+    if (!key) return;
 
-    const flag = await featureFlagService.getFlag(params.data.key as FeatureFlagKey);
+    const flag = await featureFlagService.getFlag(key);
     if (!flag) {
       return res.status(404).json({
         error: 'Not Found',
-        message: `Feature flag '${params.data.key}' does not exist`,
+        message: `Feature flag '${key}' does not exist`,
       });
     }
 
@@ -115,14 +126,8 @@ router.get('/:key', authenticate, requireAdmin, async (req: Request, res: Respon
  */
 router.patch('/:key', authenticate, requireAdmin, async (req: Request, res: Response) => {
   try {
-    const params = FeatureFlagKeyParamSchema.safeParse(req.params);
-    if (!params.success) {
-      const isUnknownKey = hasUnknownFeatureKeyIssue(params.error);
-      return res.status(isUnknownKey ? 404 : 400).json({
-        error: isUnknownKey ? 'Not Found' : 'Validation Error',
-        message: params.error.issues.map(i => i.message).join(', '),
-      });
-    }
+    const key = parseFeatureKeyParam(req, res);
+    if (!key) return;
 
     const body = UpdateFeatureFlagSchema.safeParse(req.body);
     if (!body.success) {
@@ -132,14 +137,12 @@ router.patch('/:key', authenticate, requireAdmin, async (req: Request, res: Resp
       });
     }
 
-    const key = params.data.key as FeatureFlagKey;
-
     // Verify flag exists
     const existing = await featureFlagService.getFlag(key);
     if (!existing) {
       return res.status(404).json({
         error: 'Not Found',
-        message: `Feature flag '${params.data.key}' does not exist`,
+        message: `Feature flag '${key}' does not exist`,
       });
     }
 
@@ -166,23 +169,15 @@ router.patch('/:key', authenticate, requireAdmin, async (req: Request, res: Resp
  */
 router.post('/:key/reset', authenticate, requireAdmin, async (req: Request, res: Response) => {
   try {
-    const params = FeatureFlagKeyParamSchema.safeParse(req.params);
-    if (!params.success) {
-      const isUnknownKey = hasUnknownFeatureKeyIssue(params.error);
-      return res.status(isUnknownKey ? 404 : 400).json({
-        error: isUnknownKey ? 'Not Found' : 'Validation Error',
-        message: params.error.issues.map(i => i.message).join(', '),
-      });
-    }
-
-    const key = params.data.key as FeatureFlagKey;
+    const key = parseFeatureKeyParam(req, res);
+    if (!key) return;
 
     // Verify flag exists
     const existing = await featureFlagService.getFlag(key);
     if (!existing) {
       return res.status(404).json({
         error: 'Not Found',
-        message: `Feature flag '${params.data.key}' does not exist`,
+        message: `Feature flag '${key}' does not exist`,
       });
     }
 

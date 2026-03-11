@@ -7,7 +7,9 @@ export interface FeatureFlagDefinition {
   sideEffectDescription?: string;
 }
 
-export const FEATURE_DEFINITIONS: Record<string, FeatureFlagDefinition> = {
+export const UNKNOWN_FEATURE_FLAG_KEY_MESSAGE = 'Unknown feature flag key';
+
+export const FEATURE_DEFINITIONS: Record<FeatureFlagKey, FeatureFlagDefinition> = {
   hardwareWalletSigning: { description: 'Enable hardware wallet signing support', category: 'general' },
   qrCodeSigning: { description: 'Enable QR code based transaction signing', category: 'general' },
   multisigWallets: { description: 'Enable multi-signature wallet support', category: 'general' },
@@ -47,5 +49,5 @@ export function isKnownFeatureFlagKey(key: string): key is FeatureFlagKey {
 }
 
 export function getFeatureFlagDefinition(key: string): FeatureFlagDefinition | undefined {
-  return FEATURE_DEFINITIONS[key];
+  return (FEATURE_DEFINITIONS as Record<string, FeatureFlagDefinition>)[key];
 }
