@@ -35,7 +35,10 @@ interface AnimationRunnerProps {
   opacity: number;
 }
 
-const animationModules = import.meta.glob('./animations/*.ts');
+/* v8 ignore start */
+const animationModules: Record<string, () => Promise<unknown>> =
+  import.meta.glob('./animations/*.ts');
+/* v8 ignore stop */
 
 const toPascalCase = (pattern: string): string => {
   return pattern

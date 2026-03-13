@@ -54,6 +54,12 @@ export default defineConfig({
         'components/animations/**',
         'src/types/**/*.ts',
         'shared/types/**/*.ts',
+        // Type-only and barrel-export files with no executable logic
+        'services/**/types.ts',
+        'services/**/index.ts',
+        'themes/types.ts',
+        'src/api/**/types.ts',
+        'src/api/**/index.ts',
       ],
       reportsDirectory: './coverage',
       thresholds: {

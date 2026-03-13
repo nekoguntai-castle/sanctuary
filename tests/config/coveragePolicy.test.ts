@@ -21,6 +21,11 @@ const EXPECTED_FRONTEND_COVERAGE_EXCLUDES = [
   'components/animations/**',
   'src/types/**/*.ts',
   'shared/types/**/*.ts',
+  'services/**/types.ts',
+  'services/**/index.ts',
+  'themes/types.ts',
+  'src/api/**/types.ts',
+  'src/api/**/index.ts',
 ];
 
 function readCoverageExcludesFromConfig(): string[] {
@@ -39,13 +44,18 @@ describe('frontend coverage policy', () => {
     expect(readCoverageExcludesFromConfig()).toEqual(EXPECTED_FRONTEND_COVERAGE_EXCLUDES);
   });
 
-  it('only excludes animation internals and type-only files from product code', () => {
+  it('only excludes animation internals, type-only, and barrel-export files from product code', () => {
     const sourcePathExcludes = readCoverageExcludesFromConfig().filter(pattern => !pattern.startsWith('**/'));
 
     expect(sourcePathExcludes).toEqual([
       'components/animations/**',
       'src/types/**/*.ts',
       'shared/types/**/*.ts',
+      'services/**/types.ts',
+      'services/**/index.ts',
+      'themes/types.ts',
+      'src/api/**/types.ts',
+      'src/api/**/index.ts',
     ]);
   });
 

@@ -81,7 +81,8 @@ vi.mock('../../components/NodeConfig/ProxyTorSection', () => ({
     onProxyPreset: (preset: 'tor' | 'tor-browser' | 'tor-container') => void;
     onTorContainerToggle: () => void;
     onRefreshTorStatus: () => void;
-  }) => (
+  }) => {
+    return (
     <div>
       <button onClick={onToggle}>proxy-toggle</button>
       <button
@@ -111,13 +112,15 @@ vi.mock('../../components/NodeConfig/ProxyTorSection', () => ({
       <button onClick={() => onProxyPreset('tor')}>proxy-preset-tor</button>
       <button onClick={() => onProxyPreset('tor-browser')}>proxy-preset-browser</button>
       <button onClick={() => onProxyPreset('tor-container')}>proxy-preset-container</button>
+      <button onClick={() => onConfigChange(null as any)}>proxy-nullify</button>
       <button onClick={onTorContainerToggle}>tor-toggle</button>
       <button onClick={onRefreshTorStatus}>tor-refresh</button>
       <span>{summary}</span>
       <span>{proxyTestMessage}</span>
       <span>{torContainerMessage}</span>
     </div>
-  ),
+  );
+  },
 }));
 
 describe('NodeConfig second-pass branches', () => {
@@ -511,5 +514,46 @@ describe('NodeConfig second-pass branches', () => {
 
     expect(adminApi.startTorContainer).toHaveBeenCalledTimes(1);
     expect(adminApi.stopTorContainer).toHaveBeenCalledTimes(1);
+  });
+
+  it('exercises setNodeConfig falsy-prev guard by nullifying config while tor stop is pending', async () => {
+    // Load with proxyHost='tor' so the tor-stop path reaches setNodeConfig callback.
+    // The functional updater (prev) => prev ? {...} : prev runs with prev as the
+    // latest state. By setting nodeConfig to null via onConfigChange before the stop
+    // resolves, prev will be null when the callback runs, exercising the falsy branch.
+    let resolveStop: (v: any) => void;
+    const stopPromise = new Promise<any>((r) => { resolveStop = r; });
+    vi.mocked(adminApi.getNodeConfig).mockResolvedValueOnce({
+      ...baseConfig,
+      proxyEnabled: true,
+      proxyHost: 'tor',
+      proxyPort: 9050,
+    } as any);
+    vi.mocked(adminApi.stopTorContainer).mockReturnValueOnce(stopPromise);
+
+    render(<NodeConfig />);
+    await waitFor(() => {
+      expect(screen.getByText('Bundled Tor')).toBeInTheDocument();
+    });
+
+    // Click tor-toggle to initiate stop (async handler awaits stopTorContainer)
+    act(() => {
+      fireEvent.click(screen.getByText('tor-toggle'));
+    });
+
+    // While stop is pending, set nodeConfig to null via the mock button.
+    // This means when setNodeConfig((prev) => ...) runs, prev will be null.
+    act(() => {
+      fireEvent.click(screen.getByText('proxy-nullify'));
+    });
+
+    // Now resolve the stop - the closure still has proxyHost='tor', so it enters
+    // the if(nodeConfig?.proxyHost === 'tor') branch and calls setNodeConfig.
+    // But prev is null, so (prev) => prev ? {...} : prev returns null (falsy branch).
+    await act(async () => {
+      resolveStop!({ success: true, message: 'stopped' });
+    });
+
+    expect(adminApi.stopTorContainer).toHaveBeenCalled();
   });
 });

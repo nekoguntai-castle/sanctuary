@@ -488,6 +488,20 @@ describe('BitBoxAdapter', () => {
     );
   });
 
+  it('treats errors as non-abort when isErrorAbort itself throws', async () => {
+    const adapter = new BitBoxAdapter();
+    setAuthorizedHidDevices([makeHidDevice()]);
+    mockApiConnect.mockResolvedValue(undefined);
+    await adapter.connect();
+
+    const deviceErr = new Error('device broke');
+    mockBtcXPub.mockRejectedValueOnce(deviceErr);
+    mockIsErrorAbort.mockImplementationOnce(() => {
+      throw new Error('module load failed');
+    });
+    await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow('Failed to get xpub: device broke');
+  });
+
   it('maps signPSBT abort, busy, and generic failures', async () => {
     const adapter = new BitBoxAdapter();
     (adapter as any).connection = {
@@ -572,6 +586,47 @@ describe('BitBoxAdapter', () => {
       psbt: 'bitbox-signed-psbt',
       signatures: 1,
     });
+  });
+
+  it('defaults sequence to 0xffffffff when txInput.sequence is undefined', async () => {
+    const adapter = new BitBoxAdapter();
+    const mockBtcSignSimple = vi.fn().mockResolvedValue([new Uint8Array(64)]);
+    (adapter as any).connection = {
+      api: { btcSignSimple: (...args: unknown[]) => mockBtcSignSimple(...args) },
+      devicePath: 'WEBHID',
+      product: constants.Product.BitBox02Multi,
+    };
+
+    mockPsbtFromBase64.mockReturnValue({
+      data: {
+        globalMap: { unsignedTx: {} },
+        inputs: [{
+          witnessUtxo: { value: 500 },
+          bip32Derivation: [{
+            path: "m/84'/0'/0'/0/0",
+            pubkey: Buffer.from(`02${'aa'.repeat(32)}`, 'hex'),
+          }],
+          sighashType: 1,
+        }],
+        outputs: [{}],
+      },
+      txInputs: [{ hash: Buffer.alloc(32, 5), index: 0 }],
+      txOutputs: [{ value: 400, address: 'bc1qfallback' }],
+      version: 2,
+      locktime: 0,
+      updateInput: vi.fn(),
+      finalizeAllInputs: vi.fn(),
+      toBase64: vi.fn(() => 'signed-default-seq'),
+    });
+
+    await adapter.signPSBT({
+      psbt: 'no-sequence-psbt',
+      accountPath: "m/84'/0'/0'",
+      inputPaths: ["m/84'/0'/0'/0/0"],
+    });
+
+    const [, , , inputs] = mockBtcSignSimple.mock.calls[0];
+    expect(inputs[0].sequence).toBe(0xffffffff);
   });
 
   it('maps signPSBT scriptType overrides to simpleType constants', async () => {

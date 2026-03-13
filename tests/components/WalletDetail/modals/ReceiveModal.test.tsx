@@ -500,6 +500,45 @@ describe('ReceiveModal', () => {
       ]);
     });
 
+    it('falls back to .address when selectedReceiveAddress has no id', async () => {
+      const user = userEvent.setup();
+      const getPayjoinUriMock = vi.mocked(payjoinApi.getPayjoinUri);
+      getPayjoinUriMock.mockResolvedValue({
+        uri: 'bitcoin:bc1qnoid?pj=https://payjoin.example.com',
+        address: 'bc1qnoid',
+        payjoinUrl: 'https://payjoin.example.com',
+      });
+
+      // Address without id property — exercises the ?? fallback on line 79
+      const addressesWithoutId: Address[] = [
+        {
+          address: 'bc1qnoid',
+          derivationPath: "m/84'/0'/0'/0/0",
+          index: 0,
+          balance: 0,
+          isChange: false,
+          used: false,
+        },
+      ];
+
+      render(
+        <ReceiveModal
+          {...defaultProps}
+          addresses={addressesWithoutId}
+        />
+      );
+
+      await user.click(screen.getByTestId('payjoin-toggle'));
+
+      await waitFor(() => {
+        expect(getPayjoinUriMock).toHaveBeenCalled();
+      });
+
+      // Should fall back to using .address since .id is undefined
+      const lastCall = getPayjoinUriMock.mock.calls.at(-1);
+      expect(lastCall?.[0]).toBe('bc1qnoid');
+    });
+
     it('falls back to receive address when Payjoin URI generation fails', async () => {
       const user = userEvent.setup();
       const getPayjoinUriMock = vi.mocked(payjoinApi.getPayjoinUri);

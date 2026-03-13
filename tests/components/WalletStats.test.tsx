@@ -580,6 +580,25 @@ describe('WalletStats', () => {
       expect(screen.getByText('Current Holdings')).toBeInTheDocument();
     });
 
+    it('should fall back to 0 when getFiatValue returns null', () => {
+      vi.mocked(useCurrency).mockReturnValue(
+        createCurrencyContext({
+          getFiatValue: vi.fn(() => null),
+        })
+      );
+
+      render(
+        <WalletStats
+          utxos={mockUtxos}
+          balance={100000000}
+          transactions={[]}
+        />
+      );
+
+      // fiatBalance should be 0 when getFiatValue returns null
+      expect(screen.getByText('$0')).toBeInTheDocument();
+    });
+
     it('should show loading text when fiat mode has no BTC price yet', () => {
       vi.mocked(useCurrency).mockReturnValue(
         createCurrencyContext({

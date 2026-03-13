@@ -147,6 +147,24 @@ describe('OutputsStep branch coverage', () => {
     vi.mocked(txApi.analyzeSpendPrivacy).mockResolvedValue({ score: 75 } as never);
   });
 
+  it('falls back to false when output.sendMax is undefined', async () => {
+    // When sendMax is undefined, the ?? false fallback on line 86 is exercised
+    vi.mocked(SendContext.useSendTransaction).mockReturnValue(
+      makeContext({
+        state: {
+          ...makeContext().state,
+          outputs: [{ address: 'bc1qdest', amount: '1000', sendMax: undefined }],
+        },
+      }) as never,
+    );
+
+    render(<OutputsStep />);
+    await waitFor(() => expect(capture.outputRows[0]).toBeTruthy());
+
+    // OutputRow receives the output; sendMax undefined causes ?? false path
+    expect(screen.getByTestId('output-row-0')).toBeInTheDocument();
+  });
+
   it('auto-selects consolidation destination from first unused receive address and fallback', async () => {
     vi.mocked(SendContext.useSendTransaction).mockReturnValue(
       makeContext({

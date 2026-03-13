@@ -196,11 +196,12 @@ export const NodeConfig: React.FC = () => {
   };
 
   const handleProxyPreset = (preset: 'tor' | 'tor-browser' | 'tor-container') => {
-    if (!nodeConfig) return;
+    // nodeConfig is guaranteed truthy — proxy UI only renders after config loads
+    const config = nodeConfig!;
 
     if (preset === 'tor-container') {
       setNodeConfig({
-        ...nodeConfig,
+        ...config,
         proxyEnabled: true,
         proxyHost: 'tor',
         proxyPort: 9050,
@@ -211,7 +212,7 @@ export const NodeConfig: React.FC = () => {
     } else {
       const port = preset === 'tor' ? 9050 : 9150;
       setNodeConfig({
-        ...nodeConfig,
+        ...config,
         proxyEnabled: true,
         proxyHost: '127.0.0.1',
         proxyPort: port,

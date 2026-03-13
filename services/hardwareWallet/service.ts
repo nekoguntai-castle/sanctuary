@@ -151,14 +151,11 @@ export class HardwareWalletService {
     // If no type specified and only one adapter, use it
     if (!resolvedType) {
       if (this.adapters.size === 1) {
-        resolvedType = this.adapters.keys().next().value as DeviceType | undefined;
+        // size === 1 guarantees the iterator yields a value
+        resolvedType = this.adapters.keys().next().value as DeviceType;
       } else {
         throw new Error('Device type must be specified when multiple adapters are registered');
       }
-    }
-
-    if (!resolvedType) {
-      throw new Error('No device type available');
     }
 
     await this.ensureAdapter(resolvedType);

@@ -117,6 +117,37 @@ describe('NodeConfig branch coverage', () => {
     });
   });
 
+  it('applies tor and tor-browser custom proxy presets', async () => {
+    // Start with proxy enabled but NOT using bundled Tor, so custom proxy section shows.
+    // proxyEnabled + proxyHost != 'tor' causes showCustomProxy = true on load.
+    vi.mocked(adminApi.getNodeConfig).mockResolvedValue({
+      ...baseConfig,
+      proxyEnabled: true,
+      proxyHost: '127.0.0.1',
+      proxyPort: 1234,
+    } as any);
+
+    render(<NodeConfig />);
+    await waitFor(() => {
+      expect(screen.getByText('Proxy / Tor')).toBeInTheDocument();
+    });
+
+    // Expand the Proxy / Tor section
+    fireEvent.click(screen.getByText('Proxy / Tor'));
+    // showCustomProxy is true on load, so preset buttons should be visible
+    await waitFor(() => {
+      expect(screen.getByText('Tor Daemon (9050)')).toBeInTheDocument();
+    });
+
+    // Click Tor Daemon preset - exercises handleProxyPreset('tor')
+    fireEvent.click(screen.getByText('Tor Daemon (9050)'));
+
+    // Click Tor Browser preset - exercises handleProxyPreset('tor-browser')
+    fireEvent.click(screen.getByText('Tor Browser (9150)'));
+
+    expect(screen.getByText('Node Configuration')).toBeInTheDocument();
+  });
+
   it('surfaces start-tor failure message branch', async () => {
     vi.mocked(adminApi.getTorContainerStatus).mockResolvedValue({
       available: true,

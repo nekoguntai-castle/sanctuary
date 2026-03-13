@@ -12,6 +12,7 @@ vi.mock('lucide-react', () => ({
   CheckCircle: () => <span data-testid="icon-check" />,
   TrendingUp: () => <span data-testid="icon-trending" />,
   Activity: () => <span data-testid="icon-activity" />,
+  AlertTriangle: () => <span data-testid="icon-warning" />,
 }));
 
 const baseNotification: Notification = {
@@ -44,6 +45,7 @@ describe('NotificationToast branch coverage', () => {
     [{ type: 'block' }, 'icon-activity', 'surface-secondary'],
     [{ type: 'success' }, 'icon-check', 'bg-success-50'],
     [{ type: 'error' }, 'icon-x', 'bg-rose-50'],
+    [{ type: 'warning' }, 'icon-warning', 'bg-amber-50'],
     [{ type: 'info' }, 'icon-activity', 'surface-secondary'],
   ] as const)(
     'renders expected icon/colors for %o',

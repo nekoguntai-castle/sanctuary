@@ -59,6 +59,22 @@ describe('WalletCells', () => {
     expect(screen.getByTestId('wallet-icon')).toBeInTheDocument();
   });
 
+  it('renders "unknown" when wallet.scriptType is undefined', () => {
+    const renderers = createWalletCellRenderers({
+      format: (sats) => `${sats} sats`,
+      formatFiat: () => null,
+      showFiat: false,
+    });
+
+    render(
+      <renderers.name
+        item={{ ...baseWallet, scriptType: undefined as any }}
+        column={baseColumn}
+      />
+    );
+    expect(screen.getByText('unknown')).toBeInTheDocument();
+  });
+
   it('renders type cell with multisig badge and shared indicator', () => {
     const renderers = createWalletCellRenderers({
       format: (sats) => `${sats} sats`,
