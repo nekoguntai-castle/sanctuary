@@ -5,6 +5,7 @@
  */
 
 import { Router, Request, Response } from 'express';
+import https from 'node:https';
 import { authenticate, requireAdmin } from '../../middleware/auth';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
@@ -68,26 +69,12 @@ router.post('/proxy/test', authenticate, requireAdmin, async (req: Request, res:
     let isTorExit = false;
 
     try {
-      // Dynamic imports for SOCKS proxy agent and node-fetch
+      // Dynamic import for SOCKS proxy agent
       const socksModule = await import('socks-proxy-agent') as Record<string, unknown>;
       const SocksProxyAgent =
         (socksModule as Record<string, unknown>).SocksProxyAgent ??
         ((socksModule as Record<string, Record<string, unknown>>).default)?.SocksProxyAgent ??
         (socksModule as Record<string, unknown>).default;
-      const nodeFetchModule = await import('node-fetch') as Record<string, unknown>;
-      const nodeFetchCandidate =
-        ((nodeFetchModule as Record<string, Record<string, unknown>>).default)?.default ??
-        (nodeFetchModule as Record<string, unknown>).default ??
-        nodeFetchModule;
-      const nodeFetch =
-        typeof nodeFetchCandidate === 'function'
-          ? nodeFetchCandidate
-          : (typeof (nodeFetchCandidate as Record<string, unknown>)?.default === 'function'
-            ? (nodeFetchCandidate as Record<string, unknown>).default
-            : undefined);
-      if (!nodeFetch) {
-        throw new Error('node-fetch did not expose a callable function');
-      }
 
       const proxyUrl = username && password
         ? `socks5://${username}:${password}@${host}:${proxyPort}`
@@ -97,21 +84,33 @@ router.post('/proxy/test', authenticate, requireAdmin, async (req: Request, res:
       const agent = new SocksProxyAgent(proxyUrl);
 
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000);
+      const timer = setTimeout(() => controller.abort(), 15000);
 
-      // Use node-fetch which properly supports the agent option for SOCKS proxy
-      const response = await (nodeFetch as Function)('https://check.torproject.org/api/ip', {
-        agent,
-        signal: controller.signal,
-      });
+      try {
+        const body = await new Promise<string>((resolve, reject) => {
+          const req = https.get(
+            'https://check.torproject.org/api/ip',
+            { agent, signal: controller.signal },
+            (res) => {
+              let data = '';
+              res.on('data', (chunk: Buffer) => { data += chunk; });
+              res.on('end', () => {
+                if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+                  resolve(data);
+                } else {
+                  reject(new Error(`HTTP ${res.statusCode}`));
+                }
+              });
+            }
+          );
+          req.on('error', reject);
+        });
 
-      clearTimeout(timeout);
-
-      const fetchResponse = response as unknown as { ok: boolean; json: () => Promise<unknown> };
-      if (fetchResponse.ok) {
-        const data = await fetchResponse.json() as { IsTor: boolean; IP: string };
-        isTorExit = data.IsTor;
-        exitIp = data.IP;
+        const parsed = JSON.parse(body) as { IsTor: boolean; IP: string };
+        isTorExit = parsed.IsTor;
+        exitIp = parsed.IP;
+      } finally {
+        clearTimeout(timer);
       }
     } catch (ipError) {
       // Non-fatal - .onion test already passed, just couldn't get exit IP

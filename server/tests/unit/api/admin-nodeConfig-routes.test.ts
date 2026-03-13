@@ -9,7 +9,7 @@ const {
   mockEncrypt,
   mockAuditLogFromRequest,
   mockSocksCreateConnection,
-  mockNodeFetch,
+  mockHttpsGet,
   mockSocksProxyAgentConstruct,
   mockLogInfo,
   mockLogWarn,
@@ -20,7 +20,7 @@ const {
   mockEncrypt: vi.fn((value: string) => `enc:${value}`),
   mockAuditLogFromRequest: vi.fn(),
   mockSocksCreateConnection: vi.fn(),
-  mockNodeFetch: vi.fn(),
+  mockHttpsGet: vi.fn(),
   mockSocksProxyAgentConstruct: vi.fn(),
   mockLogInfo: vi.fn(),
   mockLogWarn: vi.fn(),
@@ -92,14 +92,11 @@ vi.mock('socks-proxy-agent', () => ({
   },
 }));
 
-vi.mock('node-fetch', () => {
-  const fetchImpl = (...args: any[]) => mockNodeFetch(...args);
-  return {
-    default: {
-      default: fetchImpl,
-    },
-  };
-});
+vi.mock('node:https', () => ({
+  default: {
+    get: (...args: any[]) => mockHttpsGet(...args),
+  },
+}));
 
 import nodeConfigRouter from '../../../src/api/admin/nodeConfig';
 
@@ -198,6 +195,22 @@ function buildNodeConfig(overrides: Partial<NodeConfigRecord> = {}): NodeConfigR
   };
 }
 
+function httpsGetMock(statusCode: number, body: string) {
+  return (_url: string, _options: unknown, callback: Function) => {
+    const handlers: Record<string, Function> = {};
+    const res = {
+      statusCode,
+      on(event: string, handler: Function) { handlers[event] = handler; return this; },
+    };
+    callback(res);
+    process.nextTick(() => {
+      handlers['data']?.(body);
+      handlers['end']?.();
+    });
+    return { on: vi.fn() };
+  };
+}
+
 describe('Admin Node Config Routes', () => {
   let app: Express;
 
@@ -220,10 +233,9 @@ describe('Admin Node Config Routes', () => {
     mockSocksCreateConnection.mockResolvedValue({
       socket: { destroy: vi.fn() },
     });
-    mockNodeFetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({ IsTor: true, IP: '1.2.3.4' }),
-    });
+    mockHttpsGet.mockImplementation(
+      httpsGetMock(200, JSON.stringify({ IsTor: true, IP: '1.2.3.4' }))
+    );
   });
 
   it('returns defaults when node config does not exist', async () => {
@@ -785,11 +797,12 @@ describe('Admin Node Config Routes', () => {
     expect(response.body.success).toBe(true);
     expect(mockSocksCreateConnection).toHaveBeenCalled();
     expect(mockLogWarn).not.toHaveBeenCalled();
-    expect(mockNodeFetch).toHaveBeenCalledWith(
+    expect(mockHttpsGet).toHaveBeenCalledWith(
       'https://check.torproject.org/api/ip',
       expect.objectContaining({
         agent: expect.any(Object),
-      })
+      }),
+      expect.any(Function),
     );
     expect(response.body.message).toContain('Tor verified!');
     expect(response.body.exitIp).toBe('1.2.3.4');
@@ -811,11 +824,12 @@ describe('Admin Node Config Routes', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
-      expect(mockNodeFetch).toHaveBeenCalledWith(
+      expect(mockHttpsGet).toHaveBeenCalledWith(
         'https://check.torproject.org/api/ip',
         expect.objectContaining({
           signal: expect.any(Object),
-        })
+        }),
+        expect.any(Function),
       );
     } finally {
       setTimeoutSpy.mockRestore();
@@ -823,10 +837,9 @@ describe('Admin Node Config Routes', () => {
   });
 
   it('uses proxy credentials and reports verified tor exit status', async () => {
-    mockNodeFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ IsTor: true, IP: '9.9.9.9' }),
-    });
+    mockHttpsGet.mockImplementationOnce(
+      httpsGetMock(200, JSON.stringify({ IsTor: true, IP: '9.9.9.9' }))
+    );
 
     const response = await request(app)
       .post('/api/v1/admin/proxy/test')
@@ -855,10 +868,9 @@ describe('Admin Node Config Routes', () => {
   });
 
   it('returns inconclusive result when torproject exit check responds non-ok', async () => {
-    mockNodeFetch.mockResolvedValueOnce({
-      ok: false,
-      json: async () => ({ IsTor: true, IP: '8.8.8.8' }),
-    });
+    mockHttpsGet.mockImplementationOnce(
+      httpsGetMock(503, JSON.stringify({ IsTor: true, IP: '8.8.8.8' }))
+    );
 
     const response = await request(app)
       .post('/api/v1/admin/proxy/test')
@@ -924,85 +936,6 @@ describe('Admin Node Config Routes', () => {
     } finally {
       socksProxyAgentModule.SocksProxyAgent = originalSocksProxyAgent;
       socksProxyAgentModule.default = originalDefault;
-    }
-  });
-
-  it('supports node-fetch nested default object callable fallback', async () => {
-    const nodeFetchModule: any = await import('node-fetch');
-    const originalFetch = nodeFetchModule.default.default;
-    nodeFetchModule.default.default = {
-      default: (...args: any[]) => mockNodeFetch(...args),
-    };
-
-    try {
-      const response = await request(app)
-        .post('/api/v1/admin/proxy/test')
-        .send({ host: '127.0.0.1', port: 9050 });
-
-      expect(response.status).toBe(200);
-      expect(response.body.success).toBe(true);
-      expect(mockNodeFetch).toHaveBeenCalledWith(
-        'https://check.torproject.org/api/ip',
-        expect.objectContaining({
-          agent: expect.any(Object),
-        })
-      );
-    } finally {
-      nodeFetchModule.default.default = originalFetch;
-    }
-  });
-
-  it('continues with inconclusive result when node-fetch default export is null', async () => {
-    const nodeFetchModule: any = await import('node-fetch');
-    const originalDefault = nodeFetchModule.default;
-    nodeFetchModule.default = null;
-
-    try {
-      const response = await request(app)
-        .post('/api/v1/admin/proxy/test')
-        .send({ host: '127.0.0.1', port: 9050 });
-
-      expect(response.status).toBe(200);
-      expect(response.body).toMatchObject({
-        success: true,
-        isTorExit: false,
-        exitIp: 'unknown',
-      });
-      expect(mockLogWarn).toHaveBeenCalledWith(
-        'Could not fetch exit IP from torproject.org',
-        expect.objectContaining({
-          error: expect.stringContaining('node-fetch did not expose a callable function'),
-        })
-      );
-    } finally {
-      nodeFetchModule.default = originalDefault;
-    }
-  });
-
-  it('continues with inconclusive result when node-fetch import is non-callable', async () => {
-    const nodeFetchModule: any = await import('node-fetch');
-    const originalFetch = nodeFetchModule.default.default;
-    nodeFetchModule.default.default = undefined;
-
-    try {
-      const response = await request(app)
-        .post('/api/v1/admin/proxy/test')
-        .send({ host: '127.0.0.1', port: 9050 });
-
-      expect(response.status).toBe(200);
-      expect(response.body).toMatchObject({
-        success: true,
-        isTorExit: false,
-        exitIp: 'unknown',
-      });
-      expect(mockLogWarn).toHaveBeenCalledWith(
-        'Could not fetch exit IP from torproject.org',
-        expect.objectContaining({
-          error: expect.stringContaining('node-fetch did not expose a callable function'),
-        })
-      );
-    } finally {
-      nodeFetchModule.default.default = originalFetch;
     }
   });
 
