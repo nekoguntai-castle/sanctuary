@@ -99,7 +99,7 @@ export async function classifyTransactions(
                 txDetailsCache.set(input.txid, fetchedPrevTx);
               }
             } catch (e) {
-              // Skip if we can't look up the prev tx
+              log.debug(`Failed to fetch prev tx ${input.txid.slice(0, 8)}...`, { error: String(e) });
             }
           }
         }

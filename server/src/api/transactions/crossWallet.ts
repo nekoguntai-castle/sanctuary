@@ -75,7 +75,12 @@ async function getBucketedBalanceDeltas(
   startDate: Date,
   bucketUnit: BucketUnit
 ): Promise<Array<{ bucket: Date; amount: bigint }>> {
-  // Bucket unit is controlled by a trusted switch above.
+  // Defense in depth: validate bucket unit even though callers constrain it
+  const VALID_UNITS = new Set<BucketUnit>(['hour', 'day', 'week', 'month']);
+  if (!VALID_UNITS.has(bucketUnit)) {
+    throw new Error(`Invalid bucket unit: ${bucketUnit}`);
+  }
+
   const query = `
     SELECT date_trunc('${bucketUnit}', "blockTime") AS bucket,
            COALESCE(SUM("amount"), 0) AS amount

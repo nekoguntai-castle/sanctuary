@@ -51,8 +51,13 @@ if [ -n "$MISSING_SECRETS" ]; then
     exit 1
 fi
 
+# Auto-generate AI_CONFIG_SECRET if not set
+if [ -z "$AI_CONFIG_SECRET" ]; then
+    export AI_CONFIG_SECRET=$(openssl rand -hex 32)
+fi
+
 # Export for docker compose
-export JWT_SECRET ENCRYPTION_KEY GATEWAY_SECRET POSTGRES_PASSWORD
+export JWT_SECRET ENCRYPTION_KEY GATEWAY_SECRET POSTGRES_PASSWORD AI_CONFIG_SECRET
 export HTTPS_PORT HTTP_PORT ENABLE_MONITORING ENABLE_TOR
 
 # Check SSL certificate expiry

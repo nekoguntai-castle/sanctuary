@@ -188,7 +188,13 @@ export class RedisEventBus {
 
     // Execute local handlers
     const listeners = this.localEmitter.listeners(event) as Array<(data: EventTypes[E]) => Promise<void>>;
-    await Promise.all(listeners.map((listener) => listener(data)));
+    const results = await Promise.allSettled(listeners.map((listener) => listener(data)));
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        log.error(`Error in async event handler for ${event}`, { error: result.reason });
+        this.metrics.errors.set(event, (this.metrics.errors.get(event) || 0) + 1);
+      }
+    }
 
     // Broadcast to other instances
     const envelope: EventEnvelope = {

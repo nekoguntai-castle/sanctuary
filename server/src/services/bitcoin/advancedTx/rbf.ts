@@ -181,8 +181,8 @@ export async function createRBFTransaction(
       if (parsed.xpub) {
         accountXpub = parsed.xpub;
       }
-    } catch (e) {
-      // Ignore parsing errors
+    } catch {
+      log.debug('Could not parse xpub from descriptor for RBF');
     }
   }
 

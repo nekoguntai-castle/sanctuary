@@ -112,18 +112,12 @@ router.get('/status', async (_req: Request, res: Response) => {
       protocol: version.protocol,
       blockHeight,
       network: 'mainnet',
-      host: nodeConfig ? `${nodeConfig.host}:${nodeConfig.port}` : undefined,
-      useSsl: nodeConfig?.useSsl,
       explorerUrl: nodeConfig?.explorerUrl || 'https://mempool.space',
       confirmationThreshold,
       deepConfirmationThreshold,
-      // Pool settings (Electrum only)
+      // Pool status (Electrum only) - no infrastructure details exposed
       pool: nodeConfig?.type === 'electrum' ? {
         enabled: nodeConfig.poolEnabled,
-        minConnections: effectiveMin,
-        maxConnections: effectiveMax,
-        configuredMin: nodeConfig.poolMinConnections,
-        configuredMax: nodeConfig.poolMaxConnections,
         stats: poolStats,
       } : null,
     });

@@ -250,39 +250,44 @@ class FeatureFlagService {
    * Set a feature flag value
    */
   async setFlag(key: FeatureFlagKey, enabled: boolean, options: SetFlagOptions): Promise<void> {
-    // Get current value
-    const current = await prisma.featureFlag.findUnique({ where: { key } });
-    if (!current) {
-      throw new Error(`Feature flag '${key}' does not exist`);
-    }
+    // Use interactive transaction to avoid TOCTOU race on the read-then-write
+    const previousValue = await prisma.$transaction(async (tx) => {
+      const current = await tx.featureFlag.findUnique({ where: { key } });
+      if (!current) {
+        throw new Error(`Feature flag '${key}' does not exist`);
+      }
 
-    const previousValue = current.enabled;
-    if (previousValue === enabled) {
-      log.debug(`Feature flag ${key} already set to ${enabled}`);
-      return;
-    }
+      if (current.enabled === enabled) {
+        return null; // No change needed
+      }
 
-    // Update flag and create audit entry in a transaction
-    await prisma.$transaction([
-      prisma.featureFlag.update({
+      await tx.featureFlag.update({
         where: { key },
         data: {
           enabled,
           modifiedBy: options.userId,
         },
-      }),
-      prisma.featureFlagAudit.create({
+      });
+
+      await tx.featureFlagAudit.create({
         data: {
           featureFlagId: current.id,
           key,
-          previousValue,
+          previousValue: current.enabled,
           newValue: enabled,
           changedBy: options.userId,
           reason: options.reason,
           ipAddress: options.ipAddress,
         },
-      }),
-    ]);
+      });
+
+      return current.enabled;
+    });
+
+    if (previousValue === null) {
+      log.debug(`Feature flag ${key} already set to ${enabled}`);
+      return;
+    }
 
     // Invalidate caches
     this.localCache.set(key, enabled);

@@ -7,6 +7,9 @@
 import prisma from '../models/prisma';
 import type { SystemSetting } from '@prisma/client';
 import { safeJsonParseUntyped } from '../utils/safeJson';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('SystemSettingRepo');
 
 /**
  * Well-known system setting keys
@@ -222,8 +225,8 @@ export async function setMany(
 export async function deleteSetting(key: string): Promise<void> {
   await prisma.systemSetting.delete({
     where: { key },
-  }).catch(() => {
-    // Ignore if not found
+  }).catch((err) => {
+    log.debug('Setting not found for deletion', { key, error: String(err) });
   });
 }
 

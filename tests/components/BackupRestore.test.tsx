@@ -21,7 +21,7 @@ vi.mock('../../src/api/admin', () => ({
   createBackup: (...args: unknown[]) => mockCreateBackup(...args),
   validateBackup: (...args: unknown[]) => mockValidateBackup(...args),
   restoreBackup: (...args: unknown[]) => mockRestoreBackup(...args),
-  getEncryptionKeys: () => mockGetEncryptionKeys(),
+  getEncryptionKeys: (password: string) => mockGetEncryptionKeys(password),
 }));
 
 // Mock notification context
@@ -68,6 +68,8 @@ vi.mock('lucide-react', () => ({
   EyeOff: () => <span data-testid="eye-off-icon" />,
   Shield: () => <span data-testid="shield-icon" />,
   FileText: () => <span data-testid="file-text-icon" />,
+  Lock: () => <span data-testid="lock-icon" />,
+  Loader2: () => <span data-testid="loader-icon" />,
 }));
 
 // Mock Button component
@@ -104,8 +106,21 @@ const installClipboardMock = () => {
 
 const renderBackupRestore = async (BackupRestore: React.ComponentType) => {
   render(<BackupRestore />, { wrapper: createWrapper() });
+  // Wait for initial render to settle
   await waitFor(() => {
-    expect(mockGetEncryptionKeys).toHaveBeenCalled();
+    expect(screen.getByText(/backup & restore/i)).toBeInTheDocument();
+  });
+};
+
+/**
+ * Helper to reveal encryption keys by entering password in the prompt
+ */
+const revealEncryptionKeys = async (user: ReturnType<typeof userEvent.setup>) => {
+  const passwordInput = screen.getByPlaceholderText(/enter your password/i);
+  await user.type(passwordInput, 'test-password');
+  await user.click(screen.getByRole('button', { name: /reveal/i }));
+  await waitFor(() => {
+    expect(mockGetEncryptionKeys).toHaveBeenCalledWith('test-password');
   });
 };
 
@@ -166,13 +181,13 @@ describe('BackupRestore Component', () => {
     });
   });
 
-  it('should load encryption keys on mount', async () => {
+  it('should show password prompt for encryption keys', async () => {
     const { BackupRestore } = await import('../../components/BackupRestore');
 
     await renderBackupRestore(BackupRestore);
 
     await waitFor(() => {
-      expect(mockGetEncryptionKeys).toHaveBeenCalled();
+      expect(screen.getByPlaceholderText(/enter your password/i)).toBeInTheDocument();
     });
   });
 
@@ -181,11 +196,6 @@ describe('BackupRestore Component', () => {
     const user = userEvent.setup();
 
     await renderBackupRestore(BackupRestore);
-
-    // Wait for keys to load
-    await waitFor(() => {
-      expect(mockGetEncryptionKeys).toHaveBeenCalled();
-    });
 
     // Find the toggle button (it's the button element within the toggle container)
     const toggleLabel = screen.getByText(/include cache data/i);
@@ -309,10 +319,12 @@ describe('BackupRestore Component - Encryption Keys', () => {
     installClipboardMock();
   });
 
-  it('should display masked encryption keys by default', async () => {
+  it('should display masked encryption keys after password confirmation', async () => {
     const { BackupRestore } = await import('../../components/BackupRestore');
+    const user = userEvent.setup();
 
     await renderBackupRestore(BackupRestore);
+    await revealEncryptionKeys(user);
 
     await waitFor(() => {
       expect(screen.getByText(/encryption_key/i)).toBeInTheDocument();
@@ -324,14 +336,16 @@ describe('BackupRestore Component - Encryption Keys', () => {
   });
 
   it('should handle encryption key loading error gracefully', async () => {
-    mockGetEncryptionKeys.mockRejectedValue(new Error('Failed to load'));
+    mockGetEncryptionKeys.mockRejectedValue(new Error('Incorrect password'));
 
     const { BackupRestore } = await import('../../components/BackupRestore');
+    const user = userEvent.setup();
 
     await renderBackupRestore(BackupRestore);
+    await revealEncryptionKeys(user);
 
     await waitFor(() => {
-      expect(screen.getByText(/failed to load encryption keys/i)).toBeInTheDocument();
+      expect(screen.getByText(/incorrect password/i)).toBeInTheDocument();
     });
   });
 });
@@ -351,6 +365,7 @@ describe('BackupRestore Component - Advanced Flows', () => {
     const { BackupRestore } = await import('../../components/BackupRestore');
     const user = userEvent.setup();
     await renderBackupRestore(BackupRestore);
+    await revealEncryptionKeys(user);
 
     const showButtons = screen.getAllByTitle('Show');
     await user.click(showButtons[0]);
@@ -380,6 +395,8 @@ describe('BackupRestore Component - Advanced Flows', () => {
     const { BackupRestore } = await import('../../components/BackupRestore');
     const user = userEvent.setup();
     await renderBackupRestore(BackupRestore);
+    // Reveal encryption keys first so the modal can display
+    await revealEncryptionKeys(user);
 
     await user.click(screen.getByRole('button', { name: /download backup/i }));
 

@@ -149,7 +149,13 @@ class TypedEventBus {
     this.metrics.emitted.set(event, (this.metrics.emitted.get(event) || 0) + 1);
 
     const listeners = this.emitter.listeners(event) as Array<(data: EventTypes[E]) => Promise<void>>;
-    await Promise.all(listeners.map(listener => listener(data)));
+    const results = await Promise.allSettled(listeners.map(listener => listener(data)));
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        log.error(`Error in async event handler for ${event}`, { error: result.reason });
+        this.metrics.errors.set(event, (this.metrics.errors.get(event) || 0) + 1);
+      }
+    }
   }
 
   /**

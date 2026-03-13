@@ -24,11 +24,12 @@ import type {
 /**
  * Get the encryption keys for backup restoration (admin only)
  *
+ * Requires password re-authentication for security.
  * These keys are required when restoring a backup to a new instance.
  * Without matching keys, encrypted data (node passwords, 2FA) cannot be restored.
  */
-export async function getEncryptionKeys(): Promise<EncryptionKeysResponse> {
-  return apiClient.get<EncryptionKeysResponse>('/admin/encryption-keys');
+export async function getEncryptionKeys(password: string): Promise<EncryptionKeysResponse> {
+  return apiClient.post<EncryptionKeysResponse>('/admin/encryption-keys', { password });
 }
 
 // ========================================

@@ -53,12 +53,13 @@ export const AIQueryInput: React.FC<AIQueryInputProps> = ({
 
       setResult(response);
       onQueryResult?.(response);
-    } catch (err: any) {
+    } catch (err) {
       log.error('AI query failed', { error: err });
 
-      if (err.message?.includes('503') || err.message?.includes('not enabled')) {
+      const msg = err instanceof Error ? err.message : '';
+      if (msg.includes('503') || msg.includes('not enabled')) {
         setError('AI is not enabled. Configure it in Admin → AI Assistant.');
-      } else if (err.message?.includes('429')) {
+      } else if (msg.includes('429')) {
         setError('Too many requests. Please try again in a moment.');
       } else {
         setError('Failed to process query. AI may be unavailable.');

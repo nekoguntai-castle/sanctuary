@@ -39,11 +39,9 @@ const router = Router();
  * This ensures only the AI container can access these endpoints.
  */
 const restrictToInternalNetwork = (req: Request, res: Response, next: NextFunction) => {
-  // Get the real client IP (handles proxies)
-  const forwardedFor = req.headers['x-forwarded-for'];
-  const clientIp = forwardedFor
-    ? (Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor.split(',')[0]).trim()
-    : req.socket.remoteAddress || '';
+  // Use req.ip which respects Express's trust proxy setting,
+  // preventing X-Forwarded-For spoofing
+  const clientIp = req.ip || req.socket.remoteAddress || '';
 
   // Check if IP is from a private range (Docker internal networks)
   // Private ranges: 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, localhost

@@ -126,9 +126,9 @@ export const TransactionActions: React.FC<TransactionActionsProps> = ({
       if (onActionComplete) {
         onActionComplete();
       }
-    } catch (err: any) {
+    } catch (err) {
       log.error('RBF failed', { error: err });
-      setError(err.message || 'Failed to create RBF transaction');
+      setError(err instanceof Error ? err.message : 'Failed to create RBF transaction');
     } finally {
       setProcessing(false);
     }
@@ -157,9 +157,9 @@ export const TransactionActions: React.FC<TransactionActionsProps> = ({
       if (onActionComplete) {
         onActionComplete();
       }
-    } catch (err: any) {
+    } catch (err) {
       log.error('CPFP failed', { error: err });
-      setError(err.message || 'Failed to create CPFP transaction');
+      setError(err instanceof Error ? err.message : 'Failed to create CPFP transaction');
     } finally {
       setProcessing(false);
     }

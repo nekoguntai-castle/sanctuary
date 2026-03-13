@@ -9,7 +9,10 @@ import { WalletTelegramSettings as WalletTelegramSettingsType } from '../../type
 import * as walletsApi from '../../src/api/wallets';
 import { ApiError } from '../../src/api/client';
 import { useUser } from '../../contexts/UserContext';
+import { createLogger } from '../../utils/logger';
 import { Send, AlertCircle } from 'lucide-react';
+
+const log = createLogger('WalletTelegramSettings');
 
 interface Props {
   walletId: string;
@@ -41,7 +44,7 @@ export const WalletTelegramSettings: React.FC<Props> = ({ walletId }) => {
         const data = await walletsApi.getWalletTelegramSettings(walletId);
         setSettings(data);
       } catch (err) {
-        // Use default settings if not configured
+        log.debug('Using default telegram settings', { error: err });
       } finally {
         setLoading(false);
       }

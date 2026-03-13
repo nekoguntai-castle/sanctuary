@@ -313,7 +313,7 @@ describe('Remaining API Modules', () => {
       mockGet.mockResolvedValue({});
       mockPost.mockResolvedValue({});
 
-      await adminBackupApi.getEncryptionKeys();
+      await adminBackupApi.getEncryptionKeys('test-password');
       await adminBackupApi.createBackupJson({ includeSettings: true } as any);
       await adminBackupApi.validateBackup({ meta: {} } as any);
       await adminBackupApi.restoreBackup({ meta: {} } as any);
@@ -332,7 +332,7 @@ describe('Remaining API Modules', () => {
       await adminBackupApi.getAuditLogStats(7);
       await adminBackupApi.checkVersion();
 
-      expect(mockGet).toHaveBeenCalledWith('/admin/encryption-keys');
+      expect(mockPost).toHaveBeenCalledWith('/admin/encryption-keys', { password: 'test-password' });
       expect(mockPost).toHaveBeenCalledWith('/admin/backup', { includeSettings: true });
       expect(mockPost).toHaveBeenCalledWith('/admin/backup/validate', { backup: { meta: {} } });
       expect(mockPost).toHaveBeenCalledWith('/admin/restore', {

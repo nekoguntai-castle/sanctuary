@@ -7,7 +7,7 @@
 import { Router, Request, Response } from 'express';
 import { requireWalletAccess } from '../../../middleware/walletAccess';
 import { db as prisma } from '../../../repositories/db';
-import { handleApiError } from '../../../utils/errors';
+import { handleApiError, bigIntToNumberOrZero } from '../../../utils/errors';
 import { walletCache } from '../../../services/cache';
 
 /**
@@ -119,10 +119,10 @@ export function createStatsRouter(): Router {
         receivedCount: stats._receivedCount,
         sentCount: stats._sentCount,
         consolidationCount: stats._consolidationCount,
-        totalReceived: Number(BigInt(stats.totalReceived)),
-        totalSent: Number(BigInt(stats.totalSent)),
-        totalFees: Number(BigInt(stats.totalFees)),
-        walletBalance: Number(BigInt(stats.currentBalance)),
+        totalReceived: bigIntToNumberOrZero(BigInt(stats.totalReceived)),
+        totalSent: bigIntToNumberOrZero(BigInt(stats.totalSent)),
+        totalFees: bigIntToNumberOrZero(BigInt(stats.totalFees)),
+        walletBalance: bigIntToNumberOrZero(BigInt(stats.currentBalance)),
       });
     } catch (error: unknown) {
       handleApiError(error, res, 'Get transaction stats');

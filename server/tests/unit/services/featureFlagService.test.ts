@@ -24,7 +24,13 @@ const { mockPrisma, mockCache, mockConfig, mockEventBus } = vi.hoisted(() => {
       findMany: vi.fn(),
       create: vi.fn(),
     },
-    $transaction: vi.fn((queries: any[]) => Promise.all(queries)),
+    $transaction: vi.fn((arg: any) => {
+      // Support both batched transactions (array) and interactive transactions (callback)
+      if (typeof arg === 'function') {
+        return arg(mockPrisma);
+      }
+      return Promise.all(arg);
+    }),
   };
 
   const mockCache = {
@@ -392,8 +398,9 @@ describe('Feature Flag Service', () => {
         userId: 'admin-123',
       });
 
-      // Transaction should not be called
-      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+      // Transaction is called (for the read) but update/audit should not be called
+      expect(mockPrisma.featureFlag.update).not.toHaveBeenCalled();
+      expect(mockPrisma.featureFlagAudit.create).not.toHaveBeenCalled();
     });
 
     it('should invalidate cache after update', async () => {

@@ -382,9 +382,9 @@ export async function testNodeConfig(config: NodeConfig): Promise<{
     try {
       supportsVerbose = await testClient.testVerboseSupport();
       log.debug(`Server ${config.host}:${config.port} verbose support: ${supportsVerbose}`);
-    } catch (capabilityError: any) {
+    } catch (capabilityError) {
       // Capability check failed, leave as unknown
-      log.debug(`Could not determine verbose capability for ${config.host}:${config.port}: ${capabilityError.message}`);
+      log.debug(`Could not determine verbose capability for ${config.host}:${config.port}: ${getErrorMessage(capabilityError)}`);
     }
 
     testClient.disconnect();

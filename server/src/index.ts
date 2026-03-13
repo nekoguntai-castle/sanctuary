@@ -125,9 +125,9 @@ app.use(compression({
   },
 }));
 
-// Body parsing (200MB limit for backup/restore operations with large wallets)
-app.use(express.json({ limit: '200mb' }));
-app.use(express.urlencoded({ extended: true, limit: '200mb' }));
+// Body parsing (10MB default; backup/restore routes override with 200MB)
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Request logging and correlation IDs
 app.use(requestLogger);

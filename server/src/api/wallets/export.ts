@@ -253,10 +253,10 @@ router.get('/:id/export', requireWalletAccess('view'), async (req: Request, res:
       res.setHeader('Content-Type', result.mimeType);
       res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
       res.send(result.content);
-    } catch (exportError: any) {
+    } catch (exportError) {
       return res.status(400).json({
         error: 'Bad Request',
-        message: exportError.message || 'Failed to export wallet in the specified format',
+        message: exportError instanceof Error ? exportError.message : 'Failed to export wallet in the specified format',
       });
     }
   } catch (error) {

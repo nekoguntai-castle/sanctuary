@@ -5,7 +5,7 @@
  * Accessible from Administration > Backup & Restore in the sidebar.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Download,
   Upload,
@@ -28,24 +28,24 @@ export const BackupRestore: React.FC = () => {
 
   // Encryption keys state
   const [encryptionKeys, setEncryptionKeys] = useState<EncryptionKeysResponse | null>(null);
-  const [isLoadingKeys, setIsLoadingKeys] = useState(true);
+  const [isLoadingKeys, setIsLoadingKeys] = useState(false);
+  const [keysError, setKeysError] = useState<string | null>(null);
   const [showEncryptionKey, setShowEncryptionKey] = useState(false);
   const [showEncryptionSalt, setShowEncryptionSalt] = useState(false);
 
-  // Fetch encryption keys on mount
-  useEffect(() => {
-    const fetchEncryptionKeys = async () => {
-      try {
-        const keys = await adminApi.getEncryptionKeys();
-        setEncryptionKeys(keys);
-      } catch (error) {
-        log.error('Failed to fetch encryption keys', { error });
-      } finally {
-        setIsLoadingKeys(false);
-      }
-    };
-    fetchEncryptionKeys();
-  }, []);
+  const handleRevealKeys = async (password: string) => {
+    setIsLoadingKeys(true);
+    setKeysError(null);
+    try {
+      const keys = await adminApi.getEncryptionKeys(password);
+      setEncryptionKeys(keys);
+    } catch (error) {
+      log.error('Failed to fetch encryption keys', { error });
+      setKeysError(error instanceof Error ? error.message : 'Incorrect password or failed to fetch keys');
+    } finally {
+      setIsLoadingKeys(false);
+    }
+  };
 
   const handlers = useBackupHandlers(encryptionKeys);
 
@@ -133,6 +133,8 @@ export const BackupRestore: React.FC = () => {
       <EncryptionKeyDisplay
         encryptionKeys={encryptionKeys}
         isLoadingKeys={isLoadingKeys}
+        keysError={keysError}
+        onRevealKeys={handleRevealKeys}
         showEncryptionKey={showEncryptionKey}
         setShowEncryptionKey={setShowEncryptionKey}
         showEncryptionSalt={showEncryptionSalt}

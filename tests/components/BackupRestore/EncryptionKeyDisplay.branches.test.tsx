@@ -16,6 +16,8 @@ describe('EncryptionKeyDisplay branch coverage', () => {
       <EncryptionKeyDisplay
         encryptionKeys={encryptionKeys}
         isLoadingKeys={false}
+        keysError={null}
+        onRevealKeys={vi.fn()}
         showEncryptionKey={false}
         setShowEncryptionKey={vi.fn()}
         showEncryptionSalt
@@ -42,6 +44,8 @@ describe('EncryptionKeyDisplay branch coverage', () => {
       <EncryptionKeyDisplay
         encryptionKeys={encryptionKeys}
         isLoadingKeys={false}
+        keysError={null}
+        onRevealKeys={vi.fn()}
         showEncryptionKey={false}
         setShowEncryptionKey={vi.fn()}
         showEncryptionSalt={false}

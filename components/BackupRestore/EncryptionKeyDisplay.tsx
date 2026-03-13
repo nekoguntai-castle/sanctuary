@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Button } from '../ui/Button';
 import {
   Check,
@@ -8,12 +8,17 @@ import {
   EyeOff,
   Shield,
   FileText,
+  Lock,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
 import type { EncryptionKeysResponse } from '../../src/api/admin';
 
 interface EncryptionKeyDisplayProps {
   encryptionKeys: EncryptionKeysResponse | null;
   isLoadingKeys: boolean;
+  keysError: string | null;
+  onRevealKeys: (password: string) => Promise<void>;
   showEncryptionKey: boolean;
   setShowEncryptionKey: (show: boolean) => void;
   showEncryptionSalt: boolean;
@@ -26,6 +31,8 @@ interface EncryptionKeyDisplayProps {
 export const EncryptionKeyDisplay: React.FC<EncryptionKeyDisplayProps> = ({
   encryptionKeys,
   isLoadingKeys,
+  keysError,
+  onRevealKeys,
   showEncryptionKey,
   setShowEncryptionKey,
   showEncryptionSalt,
@@ -34,6 +41,15 @@ export const EncryptionKeyDisplay: React.FC<EncryptionKeyDisplayProps> = ({
   copyToClipboard,
   downloadEncryptionKeys,
 }) => {
+  const [password, setPassword] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!password.trim()) return;
+    await onRevealKeys(password);
+    setPassword('');
+  };
+
   return (
     <div className="surface-elevated rounded-2xl border border-warning-200 dark:border-warning-800 overflow-hidden">
       <div className="p-4 border-b border-warning-100 dark:border-warning-800 bg-warning-50 dark:bg-warning-900/20">
@@ -58,9 +74,7 @@ export const EncryptionKeyDisplay: React.FC<EncryptionKeyDisplayProps> = ({
           </div>
         </div>
 
-        {isLoadingKeys ? (
-          <div className="text-sm text-sanctuary-500">Loading encryption keys...</div>
-        ) : encryptionKeys ? (
+        {encryptionKeys ? (
           <div className="space-y-3">
             {/* ENCRYPTION_KEY */}
             <div className="space-y-1">
@@ -147,7 +161,37 @@ export const EncryptionKeyDisplay: React.FC<EncryptionKeyDisplayProps> = ({
             </div>
           </div>
         ) : (
-          <div className="text-sm text-red-500">Failed to load encryption keys</div>
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <p className="text-sm text-sanctuary-600 dark:text-sanctuary-400">
+              Enter your password to reveal encryption keys.
+            </p>
+            <div className="flex space-x-2">
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter your password"
+                className="flex-1 px-3 py-2 rounded-lg border border-sanctuary-300 dark:border-sanctuary-600 bg-white dark:bg-sanctuary-800 text-sanctuary-900 dark:text-sanctuary-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                disabled={isLoadingKeys}
+              />
+              <Button type="submit" disabled={isLoadingKeys || !password.trim()}>
+                {isLoadingKeys ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    <Lock className="w-4 h-4 mr-2" />
+                    Reveal
+                  </>
+                )}
+              </Button>
+            </div>
+            {keysError && (
+              <div className="flex items-center space-x-2 text-sm text-rose-600 dark:text-rose-400">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{keysError}</span>
+              </div>
+            )}
+          </form>
         )}
       </div>
     </div>

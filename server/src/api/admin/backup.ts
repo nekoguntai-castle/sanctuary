@@ -5,13 +5,19 @@
  */
 
 import { Router, Request, Response } from 'express';
+import express from 'express';
 import { authenticate, requireAdmin } from '../../middleware/auth';
 import { createLogger } from '../../utils/logger';
 import { backupService, SanctuaryBackup } from '../../services/backupService';
 import { auditService, AuditAction, AuditCategory } from '../../services/auditService';
+import { db as prisma } from '../../repositories/db';
+import { verifyPassword } from '../../utils/password';
 
 const router = Router();
 const log = createLogger('ADMIN:BACKUP');
+
+// Large body parser for backup/restore operations (200MB for large wallets)
+const largeBodyParser = express.json({ limit: '200mb' });
 
 /**
  * GET /api/v1/admin/encryption-keys
@@ -26,8 +32,29 @@ const log = createLogger('ADMIN:BACKUP');
  *   - hasEncryptionKey: boolean - Whether ENCRYPTION_KEY is set
  *   - hasEncryptionSalt: boolean - Whether ENCRYPTION_SALT is set
  */
-router.get('/encryption-keys', authenticate, requireAdmin, async (req: Request, res: Response) => {
+router.post('/encryption-keys', authenticate, requireAdmin, async (req: Request, res: Response) => {
   try {
+    // Require password re-authentication for this sensitive operation
+    const { password } = req.body;
+    if (!password) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: 'Password confirmation required to view encryption keys',
+      });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: req.user!.userId },
+      select: { password: true },
+    });
+
+    if (!user || !(await verifyPassword(password, user.password))) {
+      return res.status(401).json({
+        error: 'Unauthorized',
+        message: 'Incorrect password',
+      });
+    }
+
     const encryptionKey = process.env.ENCRYPTION_KEY || '';
     const encryptionSalt = process.env.ENCRYPTION_SALT || '';
 
@@ -112,7 +139,7 @@ router.post('/backup', authenticate, requireAdmin, async (req: Request, res: Res
  *
  * Response: ValidationResult
  */
-router.post('/backup/validate', authenticate, requireAdmin, async (req: Request, res: Response) => {
+router.post('/backup/validate', largeBodyParser, authenticate, requireAdmin, async (req: Request, res: Response) => {
   try {
     const { backup } = req.body;
 
@@ -146,7 +173,7 @@ router.post('/backup/validate', authenticate, requireAdmin, async (req: Request,
  *
  * Response: RestoreResult
  */
-router.post('/restore', authenticate, requireAdmin, async (req: Request, res: Response) => {
+router.post('/restore', largeBodyParser, authenticate, requireAdmin, async (req: Request, res: Response) => {
   try {
     const { backup, confirmationCode } = req.body;
     const adminUser = req.user?.username || 'unknown';

@@ -28,7 +28,7 @@ export function formatNotificationForEvent(event: BackendEvent): push.PushNotifi
 
   switch (event.type) {
     case 'transaction':
-      if (!event.data.type || !event.data.amount || !event.data.txid) return null;
+      if (!event.data.type || event.data.amount == null || !event.data.txid) return null;
       const txType = event.data.type === 'consolidation' ? 'sent' : event.data.type;
       return push.formatTransactionNotification(
         txType as 'received' | 'sent',
@@ -64,18 +64,18 @@ export function formatNotificationForEvent(event: BackendEvent): push.PushNotifi
       );
 
     case 'psbt_signing_required':
-      if (!event.data.draftId || !event.data.amount) return null;
+      if (!event.data.draftId || event.data.amount == null) return null;
       return push.formatPsbtSigningNotification(
         walletName,
         event.data.draftId,
         event.data.creatorName || 'Someone',
         event.data.amount,
-        event.data.requiredSignatures || 2,
-        event.data.currentSignatures || 1
+        event.data.requiredSignatures ?? 2,
+        event.data.currentSignatures ?? 1
       );
 
     case 'draft_created':
-      if (!event.data.draftId || !event.data.amount) return null;
+      if (!event.data.draftId || event.data.amount == null) return null;
       return push.formatDraftCreatedNotification(
         walletName,
         event.data.draftId,
@@ -89,8 +89,8 @@ export function formatNotificationForEvent(event: BackendEvent): push.PushNotifi
         walletName,
         event.data.draftId,
         event.data.signerName || 'Someone',
-        event.data.currentSignatures || 0,
-        event.data.requiredSignatures || 0
+        event.data.currentSignatures ?? 0,
+        event.data.requiredSignatures ?? 0
       );
 
     default:

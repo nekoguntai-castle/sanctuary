@@ -7,6 +7,9 @@
 import prisma from '../models/prisma';
 import crypto from 'crypto';
 import type { RefreshToken, RevokedToken } from '@prisma/client';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('SessionRepo');
 
 /**
  * Create refresh token input
@@ -137,8 +140,8 @@ export async function revokeRefreshToken(token: string): Promise<void> {
   const tokenHash = hashToken(token);
   await prisma.refreshToken.delete({
     where: { tokenHash },
-  }).catch(() => {
-    // Token may already be deleted
+  }).catch((err) => {
+    log.debug('Token may already be deleted', { error: String(err) });
   });
 }
 
@@ -158,8 +161,8 @@ export async function revokeAllUserTokens(userId: string): Promise<number> {
 export async function deleteRefreshTokenById(id: string): Promise<void> {
   await prisma.refreshToken.delete({
     where: { id },
-  }).catch(() => {
-    // Token may already be deleted
+  }).catch((err) => {
+    log.debug('Token may already be deleted', { error: String(err) });
   });
 }
 
@@ -183,8 +186,8 @@ export async function updateLastUsed(token: string): Promise<void> {
   await prisma.refreshToken.update({
     where: { tokenHash },
     data: { lastUsedAt: new Date() },
-  }).catch(() => {
-    // Token may not exist
+  }).catch((err) => {
+    log.debug('Token may not exist for lastUsed update', { error: String(err) });
   });
 }
 

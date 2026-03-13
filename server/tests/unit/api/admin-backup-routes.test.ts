@@ -7,11 +7,15 @@ const {
   mockValidateBackup,
   mockRestoreFromBackup,
   mockAuditLogFromRequest,
+  mockVerifyPassword,
+  mockPrismaUserFindUnique,
 } = vi.hoisted(() => ({
   mockCreateBackup: vi.fn(),
   mockValidateBackup: vi.fn(),
   mockRestoreFromBackup: vi.fn(),
   mockAuditLogFromRequest: vi.fn(),
+  mockVerifyPassword: vi.fn(),
+  mockPrismaUserFindUnique: vi.fn(),
 }));
 
 vi.mock('../../../src/middleware/auth', () => ({
@@ -54,6 +58,18 @@ vi.mock('../../../src/utils/logger', () => ({
     warn: vi.fn(),
     error: vi.fn(),
   }),
+}));
+
+vi.mock('../../../src/repositories/db', () => ({
+  db: {
+    user: {
+      findUnique: mockPrismaUserFindUnique,
+    },
+  },
+}));
+
+vi.mock('../../../src/utils/password', () => ({
+  verifyPassword: mockVerifyPassword,
 }));
 
 import backupRouter from '../../../src/api/admin/backup';
@@ -114,6 +130,8 @@ describe('Admin Backup Routes', () => {
     process.env.ENCRYPTION_SALT = 'test-encryption-salt';
 
     mockAuditLogFromRequest.mockResolvedValue(undefined);
+    mockVerifyPassword.mockResolvedValue(true);
+    mockPrismaUserFindUnique.mockResolvedValue({ password: 'hashed-password' });
     mockCreateBackup.mockResolvedValue(makeBackup());
     mockValidateBackup.mockResolvedValue({
       valid: true,
@@ -135,8 +153,10 @@ describe('Admin Backup Routes', () => {
     });
   });
 
-  it('returns encryption keys and audits access', async () => {
-    const response = await request(app).get('/api/v1/admin/encryption-keys');
+  it('returns encryption keys after password verification and audits access', async () => {
+    const response = await request(app)
+      .post('/api/v1/admin/encryption-keys')
+      .send({ password: 'admin-password' });
 
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
@@ -145,6 +165,7 @@ describe('Admin Backup Routes', () => {
       hasEncryptionKey: true,
       hasEncryptionSalt: true,
     });
+    expect(mockVerifyPassword).toHaveBeenCalledWith('admin-password', 'hashed-password');
     expect(mockAuditLogFromRequest).toHaveBeenCalledWith(
       expect.any(Object),
       'encryption_keys_view',
@@ -153,11 +174,39 @@ describe('Admin Backup Routes', () => {
     );
   });
 
+  it('returns 400 when password is not provided', async () => {
+    const response = await request(app)
+      .post('/api/v1/admin/encryption-keys')
+      .send({});
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      error: 'Bad Request',
+      message: 'Password confirmation required to view encryption keys',
+    });
+  });
+
+  it('returns 401 when password is incorrect', async () => {
+    mockVerifyPassword.mockResolvedValue(false);
+
+    const response = await request(app)
+      .post('/api/v1/admin/encryption-keys')
+      .send({ password: 'wrong-password' });
+
+    expect(response.status).toBe(401);
+    expect(response.body).toMatchObject({
+      error: 'Unauthorized',
+      message: 'Incorrect password',
+    });
+  });
+
   it('returns empty encryption values when environment variables are missing', async () => {
     delete process.env.ENCRYPTION_KEY;
     delete process.env.ENCRYPTION_SALT;
 
-    const response = await request(app).get('/api/v1/admin/encryption-keys');
+    const response = await request(app)
+      .post('/api/v1/admin/encryption-keys')
+      .send({ password: 'admin-password' });
 
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
@@ -171,7 +220,9 @@ describe('Admin Backup Routes', () => {
   it('returns 500 when encryption key lookup auditing fails', async () => {
     mockAuditLogFromRequest.mockRejectedValue(new Error('audit failure'));
 
-    const response = await request(app).get('/api/v1/admin/encryption-keys');
+    const response = await request(app)
+      .post('/api/v1/admin/encryption-keys')
+      .send({ password: 'admin-password' });
 
     expect(response.status).toBe(500);
     expect(response.body).toMatchObject({

@@ -69,7 +69,15 @@ export async function getRecentFees(windowMinutes: number = 60): Promise<FeeSnap
   const cutoff = Date.now() - windowMinutes * 60 * 1000;
   const entries = await redis.zrangebyscore(REDIS_KEY, cutoff, '+inf');
 
-  return entries.map((entry) => JSON.parse(entry) as FeeSnapshot);
+  const snapshots: FeeSnapshot[] = [];
+  for (const entry of entries) {
+    try {
+      snapshots.push(JSON.parse(entry) as FeeSnapshot);
+    } catch {
+      log.debug('Skipping corrupt fee snapshot entry');
+    }
+  }
+  return snapshots;
 }
 
 /**
@@ -82,7 +90,12 @@ export async function getLatestFeeSnapshot(): Promise<FeeSnapshot | null> {
   const entries = await redis.zrevrange(REDIS_KEY, 0, 0);
   if (entries.length === 0) return null;
 
-  return JSON.parse(entries[0]) as FeeSnapshot;
+  try {
+    return JSON.parse(entries[0]) as FeeSnapshot;
+  } catch {
+    log.debug('Corrupt latest fee snapshot, discarding');
+    return null;
+  }
 }
 
 /**

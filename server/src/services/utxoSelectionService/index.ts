@@ -81,6 +81,10 @@ export async function selectUtxos(options: SelectionOptions): Promise<SelectionR
       return selectLargestFirst(utxos, targetAmount, feeRate, scriptType);
     case 'smallest_first':
       return selectSmallestFirst(utxos, targetAmount, feeRate, scriptType);
+    default: {
+      const _exhaustive: never = strategy;
+      throw new Error(`Unknown UTXO selection strategy: ${_exhaustive}`);
+    }
   }
 }
 

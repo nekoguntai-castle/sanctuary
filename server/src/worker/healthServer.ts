@@ -69,9 +69,7 @@ export function startHealthServer(options: HealthServerOptions): HealthServerHan
   const server = http.createServer(async (req, res) => {
     const url = req.url || '/';
 
-    // Set CORS headers
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET');
+    // Internal-only server, no CORS needed
 
     try {
       switch (url) {
