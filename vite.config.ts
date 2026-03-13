@@ -35,6 +35,9 @@ export default defineConfig(() => {
         include: ['regenerator-runtime/runtime'],
       },
       build: {
+        // Suppress chunk size warnings — further splitting attempted (commit 0ff0bc0)
+        // but libraries like lucide-react, recharts, bc-ur have issues when split.
+        chunkSizeWarningLimit: 5500,
         rollupOptions: {
           // Ensure regenerator-runtime is treated as external-facing code
           output: {
