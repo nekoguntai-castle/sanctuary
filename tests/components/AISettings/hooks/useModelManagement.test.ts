@@ -12,7 +12,7 @@ vi.mock('../../../../src/api/ai', () => ({
   deleteModel: vi.fn(),
 }));
 
-vi.mock('../../../../hooks/useWebSocket', () => ({
+vi.mock('../../../../hooks/websocket', () => ({
   useModelDownloadProgress: (callback: (progress: any) => void) => {
     progressListener.callback = callback;
   },

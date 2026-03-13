@@ -6,7 +6,7 @@
 
 import React, { useRef, useState, useEffect } from 'react';
 import { ScrollText, RefreshCw, RotateCcw, Pause, Play } from 'lucide-react';
-import type { WalletLogEntry } from '../../hooks/useWebSocket';
+import type { WalletLogEntry } from '../../hooks/websocket';
 
 interface LogTabProps {
   logs: WalletLogEntry[];

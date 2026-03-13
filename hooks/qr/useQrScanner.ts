@@ -33,6 +33,8 @@ import { DeviceAccount } from '../../services/deviceParsers';
 
 const log = createLogger('useQrScanner');
 
+export type { QrScanResult, UseQrScannerState } from './types';
+
 /**
  * Hook for managing QR code scanning
  *

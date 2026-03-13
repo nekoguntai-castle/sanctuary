@@ -8,6 +8,7 @@ import { vi } from 'vitest';
  */
 
 import { ElectrumClient, getElectrumClientForNetwork } from '../../../../src/services/bitcoin/electrum';
+import { addressToScriptHash, getNetworkLib } from '../../../../src/services/bitcoin/electrum/methods';
 
 // Mock the net and tls modules
 vi.mock('net');
@@ -97,7 +98,7 @@ describe('ElectrumClient Network Support', () => {
 
       // This should not throw
       expect(() => {
-        const scriptHash = (client as any).addressToScriptHash(address);
+        const scriptHash = addressToScriptHash(address, client.getNetwork());
         expect(scriptHash).toBeDefined();
         expect(typeof scriptHash).toBe('string');
         expect(scriptHash.length).toBe(64); // SHA256 hex string
@@ -109,7 +110,7 @@ describe('ElectrumClient Network Support', () => {
       const address = 'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx';
 
       expect(() => {
-        const scriptHash = (client as any).addressToScriptHash(address);
+        const scriptHash = addressToScriptHash(address, client.getNetwork());
         expect(scriptHash).toBeDefined();
         expect(typeof scriptHash).toBe('string');
         expect(scriptHash.length).toBe(64);
@@ -121,7 +122,7 @@ describe('ElectrumClient Network Support', () => {
       const address = '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
 
       expect(() => {
-        const scriptHash = (client as any).addressToScriptHash(address);
+        const scriptHash = addressToScriptHash(address, client.getNetwork());
         expect(scriptHash).toBeDefined();
         expect(typeof scriptHash).toBe('string');
         expect(scriptHash.length).toBe(64);
@@ -133,7 +134,7 @@ describe('ElectrumClient Network Support', () => {
       const address = 'mipcBbFg9gMiCh81Kj8tqqdgoZub1ZJRfn';
 
       expect(() => {
-        const scriptHash = (client as any).addressToScriptHash(address);
+        const scriptHash = addressToScriptHash(address, client.getNetwork());
         expect(scriptHash).toBeDefined();
         expect(typeof scriptHash).toBe('string');
         expect(scriptHash.length).toBe(64);
@@ -155,7 +156,7 @@ describe('ElectrumClient Network Support', () => {
 
     it('should use mainnet network library for mainnet client', () => {
       const client = new ElectrumClient(createTestConfig('mainnet'));
-      const networkLib = (client as any).getNetworkLib();
+      const networkLib = getNetworkLib(client.getNetwork()) as { bech32: string };
 
       expect(networkLib).toBeDefined();
       expect(networkLib.bech32).toBe('bc');
@@ -163,7 +164,7 @@ describe('ElectrumClient Network Support', () => {
 
     it('should use testnet network library for testnet client', () => {
       const client = new ElectrumClient(createTestConfig('testnet'));
-      const networkLib = (client as any).getNetworkLib();
+      const networkLib = getNetworkLib(client.getNetwork()) as { bech32: string };
 
       expect(networkLib).toBeDefined();
       expect(networkLib.bech32).toBe('tb');
@@ -174,7 +175,7 @@ describe('ElectrumClient Network Support', () => {
 
     it('should use regtest network library for regtest client', () => {
       const client = new ElectrumClient(createTestConfig('regtest'));
-      const networkLib = (client as any).getNetworkLib();
+      const networkLib = getNetworkLib(client.getNetwork()) as { bech32: string };
 
       expect(networkLib).toBeDefined();
       expect(networkLib.bech32).toBe('bcrt');
@@ -195,7 +196,7 @@ describe('ElectrumClient Network Support', () => {
       const mainnetAddress = 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4';
 
       expect(() => {
-        (client as any).addressToScriptHash(mainnetAddress);
+        addressToScriptHash(mainnetAddress, client.getNetwork());
       }).not.toThrow();
     });
 
@@ -204,7 +205,7 @@ describe('ElectrumClient Network Support', () => {
       const testnetAddress = 'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx';
 
       expect(() => {
-        (client as any).addressToScriptHash(testnetAddress);
+        addressToScriptHash(testnetAddress, client.getNetwork());
       }).not.toThrow();
     });
 
@@ -214,7 +215,7 @@ describe('ElectrumClient Network Support', () => {
 
       // Using a testnet address with mainnet client should throw or handle gracefully
       expect(() => {
-        (mainnetClient as any).addressToScriptHash(testnetAddress);
+        addressToScriptHash(testnetAddress, mainnetClient.getNetwork());
       }).toThrow();
     });
   });

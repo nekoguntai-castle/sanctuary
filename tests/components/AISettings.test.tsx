@@ -50,7 +50,7 @@ vi.mock('../../utils/logger', () => ({
 }));
 
 // Mock useModelDownloadProgress hook
-vi.mock('../../hooks/useWebSocket', () => ({
+vi.mock('../../hooks/websocket', () => ({
   useModelDownloadProgress: () => ({ progress: null }),
 }));
 

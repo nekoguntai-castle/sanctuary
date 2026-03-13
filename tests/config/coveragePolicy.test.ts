@@ -52,7 +52,7 @@ describe('frontend coverage policy', () => {
   it('retains animation registry coverage through AnimatedBackground tests', () => {
     const animationTestSource = fs.readFileSync(animatedBackgroundTestPath, 'utf8');
 
-    expect(animationTestSource).toContain("vi.mock('../../components/animations'");
+    expect(animationTestSource).toMatch(/vi\.mock\('\.\.\/\.\.\/components\/animations\/[^']+'/);
     expect(animationTestSource).toContain('Pattern Registry Consistency');
   });
 });

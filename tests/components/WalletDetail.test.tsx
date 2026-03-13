@@ -13,7 +13,7 @@ import * as NotificationContext from '../../contexts/NotificationContext';
 import * as UserContext from '../../contexts/UserContext';
 import * as useBitcoinHooks from '../../hooks/queries/useBitcoin';
 import * as useAIStatusHook from '../../hooks/useAIStatus';
-import * as useWebSocketHooks from '../../hooks/useWebSocket';
+import * as useWebSocketHooks from '../../hooks/websocket';
 import * as bitcoinApi from '../../src/api/bitcoin';
 import * as devicesApi from '../../src/api/devices';
 import * as draftsApi from '../../src/api/drafts';
@@ -50,7 +50,7 @@ vi.mock('../../hooks/queries/useBitcoin', () => ({
   useBitcoinStatus: vi.fn(),
 }));
 
-vi.mock('../../hooks/useWebSocket', () => ({
+vi.mock('../../hooks/websocket', () => ({
   useWalletEvents: vi.fn(),
   useWalletLogs: vi.fn(),
 }));

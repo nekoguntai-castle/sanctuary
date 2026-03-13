@@ -10,7 +10,7 @@ import { useSendTransaction } from '../../../contexts/send';
 import { useCurrency } from '../../../contexts/CurrencyContext';
 import { createLogger } from '../../../utils/logger';
 import { lookupAddresses, type AddressLookupResult } from '../../../src/api/bitcoin';
-import type { TransactionData } from '../../../hooks/useSendTransactionActions';
+import type { TransactionData } from '../../../hooks/send/useSendTransactionActions';
 import { isMultisigType } from '../../../types';
 import type { Device } from '../../../types';
 import type { FlowInput, FlowOutput } from '../../TransactionFlowPreview';

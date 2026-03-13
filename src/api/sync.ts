@@ -5,7 +5,7 @@
  */
 
 import apiClient from './client';
-import type { WalletLogEntry } from '../../hooks/useWebSocket';
+import type { WalletLogEntry } from '../../hooks/websocket';
 
 export interface SyncStatus {
   lastSyncedAt: string | null;

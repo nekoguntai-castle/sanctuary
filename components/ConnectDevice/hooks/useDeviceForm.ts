@@ -13,7 +13,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { HardwareDeviceModel, CreateDeviceRequest, DeviceAccountInput } from '../../../src/api/devices';
 import { DeviceAccount, parseDeviceJson } from '../../../services/deviceParsers';
-import { QrScanResult } from '../../../hooks/useQrScanner';
+import { QrScanResult } from '../../../hooks/qr/useQrScanner';
 import { normalizeDerivationPath } from '../../../utils/deviceConnection';
 import { ConnectionMethod, DeviceFormData } from '../types';
 

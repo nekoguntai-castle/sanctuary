@@ -1,5 +1,5 @@
 import type { OllamaModel, OllamaContainerStatus, SystemResources } from '../../src/api/ai';
-import type { ModelDownloadProgress } from '../../hooks/useWebSocket';
+import type { ModelDownloadProgress } from '../../hooks/websocket';
 
 export interface PopularModel {
   name: string;

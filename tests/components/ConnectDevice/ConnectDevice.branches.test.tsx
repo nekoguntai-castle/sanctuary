@@ -91,7 +91,7 @@ vi.mock('../../../hooks/useDeviceSave', () => ({
   useDeviceSave: () => hookState.save,
 }));
 
-vi.mock('../../../hooks/useQrScanner', () => ({
+vi.mock('../../../hooks/qr/useQrScanner', () => ({
   useQrScanner: () => hookState.qr,
 }));
 

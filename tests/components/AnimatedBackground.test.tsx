@@ -4,75 +4,16 @@
  * Tests for the animated background pattern detection and registration.
  */
 
-import { render } from '@testing-library/react';
+import { render,waitFor } from '@testing-library/react';
 import { vi } from 'vitest';
 
-// Define hook names inline in the mock factory to avoid hoisting issues
-vi.mock('../../components/animations', () => {
-  const hookNames = [
-    'useSakuraPetals',
-    'useFloatingShields',
-    'useBitcoinParticles',
-    'useStackingBlocks',
-    'useDigitalRain',
-    'useConstellation',
-    'useSanctuaryLogo',
-    'useSnowfall',
-    'useFireflies',
-    'useInkDrops',
-    'useRipplingWater',
-    'useFallingLeaves',
-    'useEmbersRising',
-    'useGentleRain',
-    'useNorthernLights',
-    'useKoiShadows',
-    'useBambooSway',
-    'useLotusBloom',
-    'useFloatingLanterns',
-    'useMoonlitClouds',
-    'useTidePools',
-    'useTrainStation',
-    'useSereneMeadows',
-    'useStillPonds',
-    'useDesertDunes',
-    'useDucklingParade',
-    'useBunnyMeadow',
-    'useStargazing',
-    'useMountainMist',
-    'useLavenderFields',
-    'useZenSandGarden',
-    'useSunsetSailing',
-    'useRaindropWindow',
-    'useButterflyGarden',
-    'useDandelionWishes',
-    'useMistyValley',
-    'useGentleWaves',
-    'useJellyfishDrift',
-    'useWindChimes',
-    'useSakuraRedux',
-    'useSatsSymbol',
-    'useFireworks',
-    'useHashStorm',
-    'useIceCrystals',
-    'useAutumnWind',
-    'useSmokeCalligraphy',
-    'useBreath',
-    'useMyceliumNetwork',
-    'useOilSlick',
-    'useBioluminescentBeach',
-    'useVolcanicIslands',
-    'useTidalPatterns',
-    'useEclipse',
-    'usePaperBoats',
-    'usePaperAirplanes',
-    'useThunderstorm',
-  ];
-  const exports: Record<string, unknown> = {};
-  hookNames.forEach((name) => {
-    exports[name] = vi.fn();
-  });
-  return exports;
-});
+const { useSakuraPetalsMock } = vi.hoisted(() => ({
+  useSakuraPetalsMock: vi.fn(),
+}));
+
+vi.mock('../../components/animations/sakuraPetals.ts', () => ({
+  useSakuraPetals: useSakuraPetalsMock,
+}));
 
 import {
 ANIMATED_PATTERNS,
@@ -80,7 +21,6 @@ AnimatedBackground,
 AnimatedPatternId,
 isAnimatedPattern,
 } from '../../components/AnimatedBackground';
-import * as animations from '../../components/animations';
 import { globalPatterns } from '../../themes/patterns';
 
 describe('AnimatedBackground', () => {
@@ -245,12 +185,15 @@ describe('AnimatedBackground', () => {
   });
 
   describe('Component Rendering', () => {
-    it('renders canvas for animated pattern', () => {
+    it('renders canvas for animated pattern', async () => {
       const { container } = render(<AnimatedBackground pattern="sakura-petals" darkMode={true} opacity={70} />);
       const canvas = container.querySelector('canvas');
       expect(canvas).not.toBeNull();
       expect(canvas).toHaveStyle({ opacity: '0.7' });
-      expect(animations.useSakuraPetals).toHaveBeenCalled();
+
+      await waitFor(() => {
+        expect(useSakuraPetalsMock).toHaveBeenCalled();
+      });
     });
 
     it('returns null for non-animated pattern', () => {

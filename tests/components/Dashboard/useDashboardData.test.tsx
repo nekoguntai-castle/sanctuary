@@ -64,7 +64,7 @@ vi.mock('../../../utils/logger', () => ({
   }),
 }));
 
-vi.mock('../../../hooks/useWebSocket', () => ({
+vi.mock('../../../hooks/websocket', () => ({
   useWebSocket: () => ({
     connected: wsConnected,
     state: wsState,

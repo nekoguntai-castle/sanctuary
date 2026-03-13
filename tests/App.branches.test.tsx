@@ -15,7 +15,7 @@ const {
   mockUseWebSocketQueryInvalidation: vi.fn(),
 }));
 
-vi.mock('../hooks/useWebSocket', () => ({
+vi.mock('../hooks/websocket', () => ({
   useWebSocketQueryInvalidation: (...args: unknown[]) => mockUseWebSocketQueryInvalidation(...args),
 }));
 

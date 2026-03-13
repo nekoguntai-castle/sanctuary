@@ -1,6 +1,6 @@
 import { Wallet, Transaction } from '../../../types';
 import { satsToBTC, formatBTC } from '@shared/utils/bitcoin';
-import { useWalletEvents } from '../../../hooks/useWebSocket';
+import { useWalletEvents } from '../../../hooks/websocket';
 import { useNotifications } from '../../../contexts/NotificationContext';
 import { createLogger } from '../../../utils/logger';
 import type { SyncRetryInfo } from '../types';

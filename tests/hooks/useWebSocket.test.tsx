@@ -91,7 +91,7 @@ useWalletLogs,
 useWebSocket,
 useWebSocketEvent,
 useWebSocketQueryInvalidation,
-} from '../../hooks/useWebSocket';
+} from '../../hooks/websocket';
 
 describe('useWebSocket', () => {
   beforeEach(() => {

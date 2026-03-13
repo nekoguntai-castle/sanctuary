@@ -134,7 +134,7 @@ vi.mock('../../utils/logger', () => ({
 }));
 
 // Import after mocks
-import { useQrScanner } from '../../hooks/useQrScanner';
+import { useQrScanner } from '../../hooks/qr/useQrScanner';
 import { isBBQr } from '../../services/bbqr';
 import { parseDeviceJson } from '../../services/deviceParsers';
 import { generateMissingFieldsWarning } from '../../utils/deviceConnection';

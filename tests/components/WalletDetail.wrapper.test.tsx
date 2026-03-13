@@ -89,7 +89,7 @@ vi.mock('../../hooks/useAIStatus', () => ({
   }),
 }));
 
-vi.mock('../../hooks/useWebSocket', () => ({
+vi.mock('../../hooks/websocket', () => ({
   useWalletLogs: () => mocks.walletLogsState,
 }));
 

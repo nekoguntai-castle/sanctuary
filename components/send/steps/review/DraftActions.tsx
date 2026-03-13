@@ -7,7 +7,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { Button } from '../../../ui/Button';
-import type { TransactionData } from '../../../../hooks/useSendTransactionActions';
+import type { TransactionData } from '../../../../hooks/send/useSendTransactionActions';
 
 interface DraftActionsProps {
   isMultiSig: boolean;

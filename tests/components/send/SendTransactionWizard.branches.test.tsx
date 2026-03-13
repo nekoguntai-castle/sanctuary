@@ -24,7 +24,7 @@ vi.mock('../../../contexts/send', () => ({
   useSendTransaction: () => useSendTransactionMock(),
 }));
 
-vi.mock('../../../hooks/useSendTransactionActions', () => ({
+vi.mock('../../../hooks/send/useSendTransactionActions', () => ({
   useSendTransactionActions: (args: any) => useSendTransactionActionsMock(args),
 }));
 

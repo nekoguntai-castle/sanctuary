@@ -5,16 +5,7 @@
  * Supports BitBox02 Multi and BitBox02 Bitcoin-only editions.
  */
 
-import {
-  BitBox02API,
-  getDevicePath,
-  constants,
-  getKeypathFromString,
-  isErrorAbort,
-} from 'bitbox02-api';
 import { createLogger } from '../../../../utils/logger';
-import { getSimpleType, getXpubType, getCoin } from './pathUtils';
-import { signPsbtWithBitBox } from './signPsbt';
 import { BITBOX_VENDOR_ID, BITBOX_PRODUCT_ID } from './types';
 import type { BitBoxConnection } from './types';
 import type {
@@ -27,6 +18,44 @@ import type {
 } from '../../types';
 
 const log = createLogger('BitBoxAdapter');
+
+type BitBoxApiModule = typeof import('bitbox02-api');
+type BitBoxPathUtilsModule = typeof import('./pathUtils');
+type BitBoxSignModule = typeof import('./signPsbt');
+
+let bitBoxApiModulePromise: Promise<BitBoxApiModule> | null = null;
+let bitBoxPathUtilsModulePromise: Promise<BitBoxPathUtilsModule> | null = null;
+let bitBoxSignModulePromise: Promise<BitBoxSignModule> | null = null;
+
+const loadBitBoxApiModule = async (): Promise<BitBoxApiModule> => {
+  if (!bitBoxApiModulePromise) {
+    bitBoxApiModulePromise = import('bitbox02-api');
+  }
+  return bitBoxApiModulePromise;
+};
+
+const loadBitBoxPathUtilsModule = async (): Promise<BitBoxPathUtilsModule> => {
+  if (!bitBoxPathUtilsModulePromise) {
+    bitBoxPathUtilsModulePromise = import('./pathUtils');
+  }
+  return bitBoxPathUtilsModulePromise;
+};
+
+const loadBitBoxSignModule = async (): Promise<BitBoxSignModule> => {
+  if (!bitBoxSignModulePromise) {
+    bitBoxSignModulePromise = import('./signPsbt');
+  }
+  return bitBoxSignModulePromise;
+};
+
+const isAbortError = async (error: unknown): Promise<boolean> => {
+  try {
+    const { isErrorAbort } = await loadBitBoxApiModule();
+    return isErrorAbort(error);
+  } catch {
+    return false;
+  }
+};
 
 /**
  * BitBox02 Device Adapter
@@ -109,6 +138,8 @@ export class BitBoxAdapter implements DeviceAdapter {
     }
 
     try {
+      const { BitBox02API, getDevicePath, constants } = await loadBitBoxApiModule();
+
       // Get device path (returns "WEBHID" for WebHID)
       const devicePath = await getDevicePath();
       log.info('Got device path', { devicePath });
@@ -221,6 +252,11 @@ export class BitBoxAdapter implements DeviceAdapter {
     }
 
     try {
+      const [{ getKeypathFromString }, { getCoin, getXpubType }] = await Promise.all([
+        loadBitBoxApiModule(),
+        loadBitBoxPathUtilsModule(),
+      ]);
+
       const isTestnet = path.includes("/1'") || path.includes("/1h");
       const coin = getCoin(path);
       const keypathArray = getKeypathFromString(path);
@@ -238,7 +274,7 @@ export class BitBoxAdapter implements DeviceAdapter {
         path,
       };
     } catch (error) {
-      if (isErrorAbort(error)) {
+      if (await isAbortError(error)) {
         throw new Error('Request cancelled on device');
       }
 
@@ -256,6 +292,11 @@ export class BitBoxAdapter implements DeviceAdapter {
     }
 
     try {
+      const [{ getKeypathFromString }, { getCoin, getSimpleType }] = await Promise.all([
+        loadBitBoxApiModule(),
+        loadBitBoxPathUtilsModule(),
+      ]);
+
       const coin = getCoin(path);
       const keypathArray = getKeypathFromString(path);
       const simpleType = getSimpleType(undefined, path);
@@ -263,7 +304,7 @@ export class BitBoxAdapter implements DeviceAdapter {
       await this.connection.api.btcDisplayAddressSimple(coin, keypathArray, simpleType, true);
       return true;
     } catch (error) {
-      if (isErrorAbort(error)) {
+      if (await isAbortError(error)) {
         return false;
       }
 
@@ -290,9 +331,10 @@ export class BitBoxAdapter implements DeviceAdapter {
     }
 
     try {
+      const { signPsbtWithBitBox } = await loadBitBoxSignModule();
       return await signPsbtWithBitBox(request, this.connection);
     } catch (error) {
-      if (isErrorAbort(error)) {
+      if (await isAbortError(error)) {
         throw new Error('Transaction rejected on device. Please approve the transaction on your BitBox02.');
       }
 

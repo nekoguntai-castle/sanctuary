@@ -9,7 +9,7 @@ import React, { useCallback, useEffect, useMemo } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { SendTransactionProvider, useSendTransaction } from '../../contexts/send';
-import { useSendTransactionActions } from '../../hooks/useSendTransactionActions';
+import { useSendTransactionActions } from '../../hooks/send/useSendTransactionActions';
 import { useHardwareWallet } from '../../hooks/useHardwareWallet';
 import { createLogger } from '../../utils/logger';
 import { WizardNavigation } from './WizardNavigation';

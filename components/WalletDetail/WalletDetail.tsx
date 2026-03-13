@@ -10,7 +10,7 @@ import { useAIStatus } from '../../hooks/useAIStatus';
 import { Button } from '../ui/Button';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { useUser } from '../../contexts/UserContext';
-import { useWalletLogs } from '../../hooks/useWebSocket';
+import { useWalletLogs } from '../../hooks/websocket';
 import { useAppNotifications } from '../../contexts/AppNotificationContext';
 import { createLogger } from '../../utils/logger';
 import { logError } from '../../utils/errorHandler';

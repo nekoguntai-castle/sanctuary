@@ -54,6 +54,7 @@ import {
   closeAllElectrumClients,
   resetElectrumClient,
 } from '../../../../src/services/bitcoin/electrum';
+import { handleNotification } from '../../../../src/services/bitcoin/electrum/dataHandler';
 
 class FakeSocket extends EventEmitter {
   write = vi.fn();
@@ -243,24 +244,24 @@ describe('ElectrumClient behavior', () => {
     client.on('addressActivity', addrActivity);
 
     (client as any).scriptHashToAddress.set('hash1', testAddress);
-    (client as any).handleNotification({
+    handleNotification({
       jsonrpc: '2.0',
       id: null,
       method: 'blockchain.headers.subscribe',
       params: [{ height: 999, hex: 'beef' }],
-    });
-    (client as any).handleNotification({
+    }, client, (client as any).scriptHashToAddress);
+    handleNotification({
       jsonrpc: '2.0',
       id: null,
       method: 'blockchain.scripthash.subscribe',
       params: ['hash1', 'status-1'],
-    });
-    (client as any).handleNotification({
+    }, client, (client as any).scriptHashToAddress);
+    handleNotification({
       jsonrpc: '2.0',
       id: null,
       method: 'custom.unknown',
       params: [],
-    });
+    }, client, (client as any).scriptHashToAddress);
 
     expect(newBlock).toHaveBeenCalledWith({ height: 999, hex: 'beef' });
     expect(addrActivity).toHaveBeenCalledWith(expect.objectContaining({
@@ -322,24 +323,24 @@ describe('ElectrumClient behavior', () => {
     client.on('newBlock', newBlock);
     client.on('addressActivity', addrActivity);
 
-    (client as any).handleNotification({
+    handleNotification({
       jsonrpc: '2.0',
       id: null,
       method: 'blockchain.headers.subscribe',
       params: [],
-    });
-    (client as any).handleNotification({
+    }, client, (client as any).scriptHashToAddress);
+    handleNotification({
       jsonrpc: '2.0',
       id: null,
       method: 'blockchain.scripthash.subscribe',
       params: [],
-    });
-    (client as any).handleNotification({
+    }, client, (client as any).scriptHashToAddress);
+    handleNotification({
       jsonrpc: '2.0',
       id: null,
       method: 'blockchain.scripthash.subscribe',
       params: ['unknown-hash', 'status-value'],
-    });
+    }, client, (client as any).scriptHashToAddress);
 
     expect(newBlock).not.toHaveBeenCalled();
     expect(addrActivity).toHaveBeenCalledWith(expect.objectContaining({

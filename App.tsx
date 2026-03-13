@@ -35,7 +35,7 @@ import { SidebarProvider } from './contexts/SidebarContext';
 import { NotificationContainer } from './components/NotificationToast';
 import { useNotifications } from './contexts/NotificationContext';
 import { QueryProvider } from './providers/QueryProvider';
-import { useWebSocketQueryInvalidation } from './hooks/useWebSocket';
+import { useWebSocketQueryInvalidation } from './hooks/websocket';
 import * as authApi from './src/api/auth';
 import { createLogger } from './utils/logger';
 import { isAnimatedPattern } from './components/animatedPatterns';

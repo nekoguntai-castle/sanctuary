@@ -9,7 +9,7 @@ import { beforeEach,describe,expect,it,vi } from 'vitest';
 import { SendTransactionWizard } from '../../../components/send/SendTransactionWizard';
 import * as SendContext from '../../../contexts/send';
 import * as useHardwareWalletHook from '../../../hooks/useHardwareWallet';
-import * as useSendTransactionActionsHook from '../../../hooks/useSendTransactionActions';
+import * as useSendTransactionActionsHook from '../../../hooks/send/useSendTransactionActions';
 import { WalletType } from '../../../types';
 
 // Mock logger
@@ -29,7 +29,7 @@ vi.mock('../../../contexts/send', () => ({
 }));
 
 // Mock hooks
-vi.mock('../../../hooks/useSendTransactionActions', () => ({
+vi.mock('../../../hooks/send/useSendTransactionActions', () => ({
   useSendTransactionActions: vi.fn(),
 }));
 

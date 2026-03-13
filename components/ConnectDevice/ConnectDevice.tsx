@@ -21,7 +21,7 @@ import { isSecureContext } from '../../services/hardwareWallet/environment';
 // Hooks
 import { useDeviceModels } from '../../hooks/useDeviceModels';
 import { useDeviceSave } from '../../hooks/useDeviceSave';
-import { useQrScanner } from '../../hooks/useQrScanner';
+import { useQrScanner } from '../../hooks/qr/useQrScanner';
 import { useDeviceConnection } from '../../hooks/useDeviceConnection';
 import { useDeviceForm } from './hooks/useDeviceForm';
 

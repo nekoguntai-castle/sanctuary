@@ -7,7 +7,7 @@ import {
 import { TransactionFlowPreview, FlowInput, FlowOutput } from '../../../TransactionFlowPreview';
 import { FiatDisplay } from '../../../FiatDisplay';
 import type { WizardStep, TransactionState } from '../../../../contexts/send/types';
-import type { TransactionData } from '../../../../hooks/useSendTransactionActions';
+import type { TransactionData } from '../../../../hooks/send/useSendTransactionActions';
 
 interface TransactionSummaryProps {
   state: TransactionState;

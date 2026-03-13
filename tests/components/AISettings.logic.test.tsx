@@ -43,15 +43,15 @@ vi.mock('../../hooks/useAIStatus', () => ({
   invalidateAIStatusCache: vi.fn(),
 }));
 
-vi.mock('../../components/AISettings/hooks/useAIStatus', () => ({
-  useAIStatus: () => ({
+vi.mock('../../components/AISettings/hooks/useAIConnectionStatus', () => ({
+  useAIConnectionStatus: () => ({
     aiStatus: 'idle',
     aiStatusMessage: '',
     handleTestConnection: vi.fn(),
   }),
 }));
 
-vi.mock('../../hooks/useWebSocket', () => ({
+vi.mock('../../hooks/websocket', () => ({
   useModelDownloadProgress: (listener: (progress: any) => void) => {
     downloadProgressListener = listener;
   },

@@ -8,12 +8,12 @@
  * - useAISettings: settings state, persistence, detection, model list
  * - useModelManagement: pull/delete models, download progress, popular models
  * - useContainerLifecycle: container start/stop, enable/disable toggle, modal
- * - useAIStatus: connection test status
+ * - useAIConnectionStatus: connection test status
  */
 
 import React, { useState } from 'react';
 import { Brain, Download, Server, Loader2 } from 'lucide-react';
-import { useAIStatus } from './hooks/useAIStatus';
+import { useAIConnectionStatus } from './hooks/useAIConnectionStatus';
 import { useAISettings } from './hooks/useAISettings';
 import { useModelManagement } from './hooks/useModelManagement';
 import { useContainerLifecycle } from './hooks/useContainerLifecycle';
@@ -29,7 +29,7 @@ export default function AISettings() {
   const [activeTab, setActiveTab] = useState<AISettingsTab>('status');
 
   // AI connection status
-  const { aiStatus, aiStatusMessage, handleTestConnection } = useAIStatus();
+  const { aiStatus, aiStatusMessage, handleTestConnection } = useAIConnectionStatus();
 
   // Core settings: enabled, endpoint, model, model list, save/detect
   const settings = useAISettings();

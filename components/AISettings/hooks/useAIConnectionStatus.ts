@@ -4,7 +4,7 @@ import { createLogger } from '../../../utils/logger';
 
 const log = createLogger('AISettings');
 
-export function useAIStatus() {
+export function useAIConnectionStatus() {
   const [aiStatus, setAiStatus] = useState<'idle' | 'checking' | 'connected' | 'error'>('idle');
   const [aiStatusMessage, setAiStatusMessage] = useState('');
 

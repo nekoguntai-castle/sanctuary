@@ -9,7 +9,7 @@ import { useState, useCallback, useEffect } from 'react';
 import * as aiApi from '../../../src/api/ai';
 import { createLogger } from '../../../utils/logger';
 import { extractErrorMessage } from '../../../utils/errorHandler';
-import { useModelDownloadProgress, ModelDownloadProgress } from '../../../hooks/useWebSocket';
+import { useModelDownloadProgress, ModelDownloadProgress } from '../../../hooks/websocket';
 import type { PopularModel } from '../types';
 
 const log = createLogger('AISettings:useModelManagement');

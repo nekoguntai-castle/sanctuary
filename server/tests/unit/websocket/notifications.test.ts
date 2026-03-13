@@ -75,6 +75,13 @@ import {
   type MempoolNotification,
   type ModelDownloadProgress,
 } from '../../../src/websocket/notifications';
+import {
+  subscribeToBlocks,
+  handleAddressUpdate,
+  handleTransaction,
+  checkConfirmationUpdate,
+  handleBalanceUpdate,
+} from '../../../src/websocket/notifications/subscriptions';
 import { walletLogBuffer } from '../../../src/services/walletLogBuffer';
 
 describe('NotificationService', () => {
@@ -184,7 +191,7 @@ describe('NotificationService', () => {
         throw new Error('temporary subscribe failure');
       });
 
-      await (service as any).subscribeToBlocks(2, 0);
+      await subscribeToBlocks(2, 0);
 
       expect(mockLogger.warn).toHaveBeenCalledWith(
         'Failed to subscribe to blocks (attempt 1/2)',
@@ -198,7 +205,7 @@ describe('NotificationService', () => {
         throw new Error('persistent subscribe failure');
       });
 
-      await (service as any).subscribeToBlocks(1, 0);
+      await subscribeToBlocks(1, 0);
 
       expect(mockLogger.error).toHaveBeenCalledWith(
         'Failed to subscribe to blocks after all retries',
@@ -242,7 +249,7 @@ describe('NotificationService', () => {
     it('should ignore address updates when the address is missing in database', async () => {
       (prisma.address.findFirst as Mock).mockResolvedValue(null);
 
-      await (service as any).handleAddressUpdate('bc1q-missing', 'wallet-123');
+      await handleAddressUpdate('bc1q-missing', 'wallet-123');
 
       expect(mockGetAddressHistory).not.toHaveBeenCalled();
       expect(mockGetAddressBalance).not.toHaveBeenCalled();
@@ -261,7 +268,7 @@ describe('NotificationService', () => {
       (prisma.wallet.findUnique as Mock).mockResolvedValue({ id: 'wallet-123' });
       mockGetAddressBalance.mockResolvedValueOnce({ confirmed: 250000, unconfirmed: 5000 });
 
-      await (service as any).handleAddressUpdate('bc1q123', 'wallet-ignored');
+      await handleAddressUpdate('bc1q123', 'wallet-ignored');
 
       const eventTypes = mockBroadcast.mock.calls.map(([event]) => event.type);
       expect(eventTypes.filter(type => type === 'transaction')).toHaveLength(2);
@@ -270,7 +277,7 @@ describe('NotificationService', () => {
 
     it('should swallow handleAddressUpdate errors', async () => {
       (prisma.address.findFirst as Mock).mockRejectedValueOnce(new Error('DB failed'));
-      await expect((service as any).handleAddressUpdate('bc1q-err', 'wallet-123')).resolves.toBeUndefined();
+      await expect(handleAddressUpdate('bc1q-err', 'wallet-123')).resolves.toBeUndefined();
     });
 
     it('should broadcast confirmation update for existing transactions', async () => {
@@ -278,7 +285,7 @@ describe('NotificationService', () => {
         .mockResolvedValueOnce({ txid: 'tx-existing' })
         .mockResolvedValueOnce({ txid: 'tx-existing', confirmations: 4 });
 
-      await (service as any).handleTransaction('tx-existing', 'wallet-123', 'bc1q123');
+      await handleTransaction('tx-existing', 'wallet-123', 'bc1q123');
 
       expect(mockBroadcast).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -297,7 +304,7 @@ describe('NotificationService', () => {
         .mockResolvedValueOnce({ txid: 'tx-existing' })
         .mockResolvedValueOnce(null);
 
-      await (service as any).handleTransaction('tx-existing', 'wallet-123', 'bc1q123');
+      await handleTransaction('tx-existing', 'wallet-123', 'bc1q123');
 
       expect(mockBroadcast).not.toHaveBeenCalled();
     });
@@ -305,21 +312,21 @@ describe('NotificationService', () => {
     it('should swallow handleTransaction errors', async () => {
       (prisma.transaction.findFirst as Mock).mockRejectedValueOnce(new Error('tx failed'));
       await expect(
-        (service as any).handleTransaction('tx-fail', 'wallet-123', 'bc1q123')
+        handleTransaction('tx-fail', 'wallet-123', 'bc1q123')
       ).resolves.toBeUndefined();
     });
 
     it('should swallow checkConfirmationUpdate errors', async () => {
       (prisma.transaction.findFirst as Mock).mockRejectedValueOnce(new Error('confirm failed'));
       await expect(
-        (service as any).checkConfirmationUpdate('tx-fail', 'wallet-123')
+        checkConfirmationUpdate('tx-fail', 'wallet-123')
       ).resolves.toBeUndefined();
     });
 
     it('should skip and error-handle balance updates when wallet lookup fails', async () => {
       (prisma.wallet.findUnique as Mock).mockResolvedValueOnce(null);
 
-      await (service as any).handleBalanceUpdate('wallet-missing', {
+      await handleBalanceUpdate('wallet-missing', {
         confirmed: 1000,
         unconfirmed: 0,
       });
@@ -327,7 +334,7 @@ describe('NotificationService', () => {
 
       (prisma.wallet.findUnique as Mock).mockRejectedValueOnce(new Error('wallet lookup failed'));
       await expect(
-        (service as any).handleBalanceUpdate('wallet-fail', { confirmed: 1000, unconfirmed: 0 })
+        handleBalanceUpdate('wallet-fail', { confirmed: 1000, unconfirmed: 0 })
       ).resolves.toBeUndefined();
     });
   });

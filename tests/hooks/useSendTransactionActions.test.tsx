@@ -1,7 +1,7 @@
 import { act,renderHook,waitFor } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 import type { TransactionState } from '../../contexts/send/types';
-import { useSendTransactionActions } from '../../hooks/useSendTransactionActions';
+import { useSendTransactionActions } from '../../hooks/send/useSendTransactionActions';
 import { queryClient } from '../../providers/QueryProvider';
 import { ApiError } from '../../src/api/client';
 import * as draftsApi from '../../src/api/drafts';

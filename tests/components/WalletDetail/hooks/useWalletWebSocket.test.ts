@@ -1,7 +1,7 @@
 import { renderHook } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 import { useWalletWebSocket } from '../../../../components/WalletDetail/hooks/useWalletWebSocket';
-import { useWalletEvents } from '../../../../hooks/useWebSocket';
+import { useWalletEvents } from '../../../../hooks/websocket';
 
 vi.mock('../../../../utils/logger', () => ({
   createLogger: () => ({
@@ -12,7 +12,7 @@ vi.mock('../../../../utils/logger', () => ({
   }),
 }));
 
-vi.mock('../../../../hooks/useWebSocket', () => ({
+vi.mock('../../../../hooks/websocket', () => ({
   useWalletEvents: vi.fn(),
 }));
 

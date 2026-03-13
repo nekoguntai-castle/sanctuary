@@ -13,8 +13,8 @@ vi.mock('../../hooks/qr/useQrScanner', () => ({
   useQrScanner: mocks.useQrScanner,
 }));
 
-import { useQrScanner } from '../../hooks/useQrScanner';
-import { useSendTransactionActions } from '../../hooks/useSendTransactionActions';
+import { useQrScanner } from '../../hooks/qr/useQrScanner';
+import { useSendTransactionActions } from '../../hooks/send/useSendTransactionActions';
 
 describe('hooks re-export shims', () => {
   it('re-exports useSendTransactionActions', () => {

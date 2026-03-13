@@ -4,7 +4,7 @@ import { Wallet, Transaction, WalletType, WalletNetwork, WebSocketTransactionDat
 import { TabNetwork } from '../../NetworkTabs';
 import { satsToBTC, formatBTC } from '@shared/utils/bitcoin';
 import * as adminApi from '../../../src/api/admin';
-import { useWebSocket, useWebSocketEvent } from '../../../hooks/useWebSocket';
+import { useWebSocket, useWebSocketEvent } from '../../../hooks/websocket';
 import { useNotifications } from '../../../contexts/NotificationContext';
 import { useNotificationSound } from '../../../hooks/useNotificationSound';
 import { createLogger } from '../../../utils/logger';

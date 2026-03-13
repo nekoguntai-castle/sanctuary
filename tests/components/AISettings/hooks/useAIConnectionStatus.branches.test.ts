@@ -1,6 +1,6 @@
 import { act,renderHook } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { useAIStatus } from '../../../../components/AISettings/hooks/useAIStatus';
+import { useAIConnectionStatus } from '../../../../components/AISettings/hooks/useAIConnectionStatus';
 import * as aiApi from '../../../../src/api/ai';
 
 const loggerSpies = vi.hoisted(() => ({
@@ -18,7 +18,7 @@ vi.mock('../../../../utils/logger', () => ({
   createLogger: () => loggerSpies,
 }));
 
-describe('useAIStatus branch coverage', () => {
+describe('useAIConnectionStatus branch coverage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -31,7 +31,7 @@ describe('useAIStatus branch coverage', () => {
       .mockResolvedValueOnce({ available: false, message: 'temporary outage' } as never)
       .mockResolvedValueOnce({ available: false } as never);
 
-    const { result } = renderHook(() => useAIStatus());
+    const { result } = renderHook(() => useAIConnectionStatus());
 
     await act(async () => {
       await result.current.handleTestConnection();
@@ -67,7 +67,7 @@ describe('useAIStatus branch coverage', () => {
   it('covers exception path and logging', async () => {
     vi.mocked(aiApi.getAIStatus).mockRejectedValueOnce(new Error('network failed'));
 
-    const { result } = renderHook(() => useAIStatus());
+    const { result } = renderHook(() => useAIConnectionStatus());
 
     await act(async () => {
       await result.current.handleTestConnection();
