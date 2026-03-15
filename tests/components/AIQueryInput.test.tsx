@@ -461,6 +461,22 @@ describe('AIQueryInput', () => {
       });
     });
 
+    it('should handle non-Error thrown values gracefully', async () => {
+      mockExecuteNaturalQuery.mockRejectedValue('string-error');
+
+      render(<AIQueryInput walletId={testWalletId} />);
+
+      const input = screen.getByPlaceholderText('Ask about your transactions...');
+      await userEvent.type(input, 'Test query');
+
+      const form = input.closest('form');
+      fireEvent.submit(form!);
+
+      await waitFor(() => {
+        expect(screen.getByText(/Failed to process query/)).toBeInTheDocument();
+      });
+    });
+
     it('should allow dismissing error', async () => {
       mockExecuteNaturalQuery.mockRejectedValue(new Error('Test error'));
 

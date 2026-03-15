@@ -348,6 +348,20 @@ describe('BackupRestore Component - Encryption Keys', () => {
       expect(screen.getByText(/incorrect password/i)).toBeInTheDocument();
     });
   });
+
+  it('should show fallback message when non-Error is thrown during key reveal', async () => {
+    mockGetEncryptionKeys.mockRejectedValue('unexpected-string-error');
+
+    const { BackupRestore } = await import('../../components/BackupRestore');
+    const user = userEvent.setup();
+
+    await renderBackupRestore(BackupRestore);
+    await revealEncryptionKeys(user);
+
+    await waitFor(() => {
+      expect(screen.getByText(/incorrect password or failed to fetch keys/i)).toBeInTheDocument();
+    });
+  });
 });
 
 describe('BackupRestore Component - Advanced Flows', () => {

@@ -161,11 +161,12 @@ test_ensure_existing_installation() {
     # No existing installation - create one
     log_info "No existing installation found. Creating initial installation..."
 
-    # Generate all 4 required secrets
+    # Generate all required secrets
     ORIGINAL_JWT_SECRET=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
     ORIGINAL_ENCRYPTION_KEY=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
     ORIGINAL_GATEWAY_SECRET=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
     ORIGINAL_POSTGRES_PASSWORD=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
+    ORIGINAL_AI_CONFIG_SECRET=$(openssl rand -hex 32)
 
     # Save to .env (Docker Compose's default file)
     cat > "$PROJECT_ROOT/.env" << EOF
@@ -176,6 +177,7 @@ JWT_SECRET=$ORIGINAL_JWT_SECRET
 ENCRYPTION_KEY=$ORIGINAL_ENCRYPTION_KEY
 GATEWAY_SECRET=$ORIGINAL_GATEWAY_SECRET
 POSTGRES_PASSWORD=$ORIGINAL_POSTGRES_PASSWORD
+AI_CONFIG_SECRET=$ORIGINAL_AI_CONFIG_SECRET
 
 HTTP_PORT=${HTTP_PORT:-8080}
 HTTPS_PORT=${HTTPS_PORT:-8443}
@@ -192,6 +194,7 @@ EOF
     # Build images first (migrate container depends on backend image)
     JWT_SECRET="$ORIGINAL_JWT_SECRET" ENCRYPTION_KEY="$ORIGINAL_ENCRYPTION_KEY" \
         GATEWAY_SECRET="$ORIGINAL_GATEWAY_SECRET" POSTGRES_PASSWORD="$ORIGINAL_POSTGRES_PASSWORD" \
+        AI_CONFIG_SECRET="$ORIGINAL_AI_CONFIG_SECRET" \
         HTTPS_PORT="$HTTPS_PORT" HTTP_PORT="$HTTP_PORT" \
         RATE_LIMIT_LOGIN=100 RATE_LIMIT_PASSWORD_CHANGE=100 \
         docker compose build 2>&1
@@ -199,6 +202,7 @@ EOF
     # Then start containers
     JWT_SECRET="$ORIGINAL_JWT_SECRET" ENCRYPTION_KEY="$ORIGINAL_ENCRYPTION_KEY" \
         GATEWAY_SECRET="$ORIGINAL_GATEWAY_SECRET" POSTGRES_PASSWORD="$ORIGINAL_POSTGRES_PASSWORD" \
+        AI_CONFIG_SECRET="$ORIGINAL_AI_CONFIG_SECRET" \
         HTTPS_PORT="$HTTPS_PORT" HTTP_PORT="$HTTP_PORT" \
         RATE_LIMIT_LOGIN=100 RATE_LIMIT_PASSWORD_CHANGE=100 \
         docker compose up -d 2>&1
@@ -364,9 +368,10 @@ test_restart_containers_after_upgrade() {
     # Load secrets from .env
     source "$PROJECT_ROOT/.env"
 
-    # Restart with existing secrets (all 4 required)
+    # Restart with existing secrets (all required)
     JWT_SECRET="$JWT_SECRET" ENCRYPTION_KEY="$ENCRYPTION_KEY" \
         GATEWAY_SECRET="$GATEWAY_SECRET" POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+        AI_CONFIG_SECRET="$AI_CONFIG_SECRET" \
         HTTPS_PORT="$HTTPS_PORT" HTTP_PORT="$HTTP_PORT" \
         RATE_LIMIT_LOGIN=100 RATE_LIMIT_PASSWORD_CHANGE=100 \
         docker compose up -d 2>&1
@@ -547,9 +552,10 @@ test_force_rebuild_upgrade() {
     # Load secrets
     source "$PROJECT_ROOT/.env"
 
-    # Force rebuild all containers (all 4 secrets required)
+    # Force rebuild all containers (all secrets required)
     JWT_SECRET="$JWT_SECRET" ENCRYPTION_KEY="$ENCRYPTION_KEY" \
         GATEWAY_SECRET="$GATEWAY_SECRET" POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+        AI_CONFIG_SECRET="$AI_CONFIG_SECRET" \
         HTTPS_PORT="$HTTPS_PORT" HTTP_PORT="$HTTP_PORT" \
         RATE_LIMIT_LOGIN=100 RATE_LIMIT_PASSWORD_CHANGE=100 \
         docker compose up -d --build --force-recreate 2>&1

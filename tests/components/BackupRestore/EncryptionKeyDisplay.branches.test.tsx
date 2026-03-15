@@ -1,4 +1,4 @@
-import { render,screen } from '@testing-library/react';
+import { fireEvent,render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe,expect,it,vi } from 'vitest';
 import { EncryptionKeyDisplay } from '../../../components/BackupRestore/EncryptionKeyDisplay';
@@ -33,6 +33,32 @@ describe('EncryptionKeyDisplay branch coverage', () => {
 
     const copyButtons = screen.getAllByTitle('Copy to clipboard');
     expect(copyButtons[1].querySelector('.text-success-500')).not.toBeNull();
+  });
+
+  it('does not call onRevealKeys when password is empty or whitespace', () => {
+    const onRevealKeys = vi.fn();
+
+    render(
+      <EncryptionKeyDisplay
+        encryptionKeys={null}
+        isLoadingKeys={false}
+        keysError={null}
+        onRevealKeys={onRevealKeys}
+        showEncryptionKey={false}
+        setShowEncryptionKey={vi.fn()}
+        showEncryptionSalt={false}
+        setShowEncryptionSalt={vi.fn()}
+        copiedKey={null}
+        copyToClipboard={vi.fn()}
+        downloadEncryptionKeys={vi.fn()}
+      />
+    );
+
+    // Submit the form programmatically (bypasses the disabled button guard)
+    const form = screen.getByPlaceholderText(/enter your password/i).closest('form')!;
+    fireEvent.submit(form);
+
+    expect(onRevealKeys).not.toHaveBeenCalled();
   });
 
   it('handles salt show toggle and salt copy actions', async () => {

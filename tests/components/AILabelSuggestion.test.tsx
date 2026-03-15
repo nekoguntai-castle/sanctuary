@@ -286,6 +286,18 @@ describe('AILabelSuggestion', () => {
       });
     });
 
+    it('should handle non-Error thrown values gracefully', async () => {
+      mockSuggestLabel.mockRejectedValue('string-error');
+
+      render(<AILabelSuggestion transaction={mockTransaction} />);
+
+      fireEvent.click(screen.getByText('Suggest with AI'));
+
+      await waitFor(() => {
+        expect(screen.getByText(/Failed to get suggestion/)).toBeInTheDocument();
+      });
+    });
+
     it('should allow dismissing error', async () => {
       mockSuggestLabel.mockRejectedValue(new Error('Test error'));
 

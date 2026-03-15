@@ -456,6 +456,13 @@ load_or_generate_secrets() {
         echo "  - POSTGRES_PASSWORD: generated"
     fi
 
+    if [ -n "$AI_CONFIG_SECRET" ]; then
+        echo "  - AI_CONFIG_SECRET: using existing"
+    else
+        AI_CONFIG_SECRET=$(openssl rand -hex 32 2>/dev/null || generate_secret)
+        echo "  - AI_CONFIG_SECRET: generated"
+    fi
+
     echo ""
 }
 
@@ -482,6 +489,7 @@ ENCRYPTION_KEY=$ENCRYPTION_KEY
 ENCRYPTION_SALT=$ENCRYPTION_SALT
 GATEWAY_SECRET=$GATEWAY_SECRET
 POSTGRES_PASSWORD=$POSTGRES_PASSWORD
+AI_CONFIG_SECRET=$AI_CONFIG_SECRET
 
 # ============================================
 # PORTS
