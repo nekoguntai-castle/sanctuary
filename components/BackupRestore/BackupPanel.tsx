@@ -4,7 +4,9 @@ import {
   Download,
   Check,
   AlertCircle,
+  Loader2,
 } from 'lucide-react';
+import { Toggle } from '../ui/Toggle';
 
 interface BackupPanelProps {
   isCreatingBackup: boolean;
@@ -56,23 +58,12 @@ export const BackupPanel: React.FC<BackupPanelProps> = ({
                 Include price history and fee estimates (can be regenerated)
               </p>
             </div>
-            <button
-              onClick={() => setIncludeCache(!includeCache)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 ${
-                includeCache ? 'bg-primary-600' : 'bg-sanctuary-300 dark:bg-sanctuary-700'
-              }`}
-            >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white dark:bg-sanctuary-100 shadow transition-transform ${
-                  includeCache ? 'translate-x-6' : 'translate-x-1'
-                }`}
-              />
-            </button>
+            <Toggle checked={includeCache} onChange={setIncludeCache} />
           </div>
 
           {/* Description */}
           <div className="space-y-2">
-            <label className="text-sm font-medium text-sanctuary-900 dark:text-sanctuary-100">
+            <label className="block text-sm font-medium text-sanctuary-700 dark:text-sanctuary-300">
               Description (optional)
             </label>
             <input
@@ -80,7 +71,7 @@ export const BackupPanel: React.FC<BackupPanelProps> = ({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="e.g., Before migration, Weekly backup"
-              className="w-full px-3 py-2 rounded-lg border border-sanctuary-300 dark:border-sanctuary-700 bg-white dark:bg-sanctuary-900 text-sanctuary-900 dark:text-sanctuary-100 placeholder-sanctuary-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="w-full px-3 py-2 rounded-lg surface-muted border border-sanctuary-200 dark:border-sanctuary-700 text-sanctuary-900 dark:text-sanctuary-100 placeholder-sanctuary-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
             />
           </div>
         </div>
@@ -93,7 +84,7 @@ export const BackupPanel: React.FC<BackupPanelProps> = ({
         >
           {isCreatingBackup ? (
             <>
-              <span className="animate-spin mr-2">⏳</span>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
               Creating Backup...
             </>
           ) : (
@@ -106,14 +97,14 @@ export const BackupPanel: React.FC<BackupPanelProps> = ({
 
         {/* Success/Error Messages */}
         {backupSuccess && (
-          <div className="flex items-center space-x-2 p-3 rounded-lg bg-success-50 dark:bg-success-900/20 text-success-700 dark:text-success-400">
+          <div className="flex items-center space-x-2 p-3 rounded-lg bg-success-50 dark:bg-success-900/20 border border-success-200 dark:border-success-800 text-success-600 dark:text-success-400">
             <Check className="w-4 h-4" />
             <span className="text-sm">Backup created and downloaded successfully</span>
           </div>
         )}
 
         {backupError && (
-          <div className="flex items-center space-x-2 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400">
+          <div className="flex items-center space-x-2 p-3 rounded-lg bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400">
             <AlertCircle className="w-4 h-4" />
             <span className="text-sm">{backupError}</span>
           </div>

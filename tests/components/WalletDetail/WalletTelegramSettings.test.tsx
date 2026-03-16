@@ -97,7 +97,7 @@ describe('WalletTelegramSettings', () => {
 
     await screen.findByText('Enable for this wallet');
 
-    const walletToggle = screen.getByRole('button');
+    const walletToggle = screen.getByRole('switch');
     await user.click(walletToggle);
 
     await waitFor(() => {
@@ -179,7 +179,7 @@ describe('WalletTelegramSettings', () => {
     render(<WalletTelegramSettings walletId={walletId} />);
 
     await screen.findByText('Enable for this wallet');
-    const walletToggle = screen.getByRole('button');
+    const walletToggle = screen.getByRole('switch');
     await user.click(walletToggle);
 
     expect(await screen.findByText('Failed to update settings')).toBeInTheDocument();

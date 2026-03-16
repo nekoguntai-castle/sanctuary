@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Button } from '../ui/Button';
 import { X, Eye, EyeOff } from 'lucide-react';
+import { Toggle } from '../ui/Toggle';
 import { PasswordRequirements } from './PasswordRequirements';
 
 interface CreateUserModalProps {
@@ -54,7 +55,7 @@ export const CreateUserModal: React.FC<CreateUserModalProps> = ({
         </div>
 
         {error && (
-          <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-800 dark:text-red-300">
+          <div className="mb-4 p-3 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-lg text-sm text-rose-600 dark:text-rose-400">
             {error}
           </div>
         )}
@@ -105,13 +106,7 @@ export const CreateUserModal: React.FC<CreateUserModalProps> = ({
           </div>
 
           <div className="flex items-center">
-            <button
-              type="button"
-              onClick={() => setIsAdmin(!isAdmin)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 ${isAdmin ? 'bg-amber-500' : 'bg-sanctuary-300 dark:bg-sanctuary-700'}`}
-            >
-              <span className={`inline-block h-4 w-4 transform rounded-full bg-white dark:bg-sanctuary-100 shadow transition-transform ${isAdmin ? 'translate-x-6' : 'translate-x-1'}`} />
-            </button>
+            <Toggle checked={isAdmin} onChange={setIsAdmin} color="warning" />
             <span className="ml-3 text-sm text-sanctuary-700 dark:text-sanctuary-300">Administrator privileges</span>
           </div>
         </div>

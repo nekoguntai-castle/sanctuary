@@ -6,6 +6,7 @@
 
 import React from 'react';
 import { Contrast, Layers } from 'lucide-react';
+import { Toggle } from '../../../../ui/Toggle';
 
 interface VisualSettingsPanelProps {
   isDark: boolean;
@@ -34,12 +35,7 @@ export const VisualSettingsPanel: React.FC<VisualSettingsPanelProps> = ({
         {/* Dark Mode Toggle */}
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium text-sanctuary-900 dark:text-sanctuary-100">Dark Mode</span>
-          <button
-            onClick={onToggleDarkMode}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 ${isDark ? 'bg-primary-600' : 'bg-sanctuary-300'}`}
-          >
-            <span className={`inline-block h-4 w-4 transform rounded-full bg-white dark:bg-sanctuary-100 shadow transition-transform ${isDark ? 'translate-x-6' : 'translate-x-1'}`} />
-          </button>
+          <Toggle checked={isDark} onChange={onToggleDarkMode} />
         </div>
 
         {/* Background Contrast */}

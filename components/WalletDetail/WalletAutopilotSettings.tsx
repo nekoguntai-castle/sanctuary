@@ -11,6 +11,7 @@ import * as walletsApi from '../../src/api/wallets';
 import { ApiError } from '../../src/api/client';
 import { useUser } from '../../contexts/UserContext';
 import { Zap, AlertCircle, ChevronDown, Activity } from 'lucide-react';
+import { Toggle } from '../ui/Toggle';
 
 interface Props {
   walletId: string;
@@ -119,7 +120,7 @@ export const WalletAutopilotSettings: React.FC<Props> = ({ walletId }) => {
 
   if (loading) {
     return (
-      <div className="surface-elevated rounded-xl p-6 border border-sanctuary-200 dark:border-sanctuary-800">
+      <div className="surface-elevated rounded-2xl p-6 border border-sanctuary-200 dark:border-sanctuary-800">
         <div className="animate-pulse flex space-x-4">
           <div className="h-5 w-5 bg-sanctuary-200 dark:bg-sanctuary-700 rounded"></div>
           <div className="flex-1 space-y-4 py-1">
@@ -133,19 +134,25 @@ export const WalletAutopilotSettings: React.FC<Props> = ({ walletId }) => {
 
   if (featureUnavailable) {
     return (
-      <div className="surface-elevated rounded-xl p-6 border border-sanctuary-200 dark:border-sanctuary-800">
-        <div className="flex items-center space-x-3 mb-4">
-          <Zap className="w-5 h-5 text-sanctuary-400" />
-          <h3 className="text-lg font-medium text-sanctuary-900 dark:text-sanctuary-100">Autopilot</h3>
+      <div className="surface-elevated rounded-2xl border border-sanctuary-200 dark:border-sanctuary-800 overflow-hidden">
+        <div className="p-6 border-b border-sanctuary-100 dark:border-sanctuary-800">
+          <div className="flex items-center space-x-3">
+            <div className="p-2 surface-secondary rounded-lg text-sanctuary-400">
+              <Zap className="w-5 h-5" />
+            </div>
+            <h3 className="text-lg font-medium text-sanctuary-900 dark:text-sanctuary-100">Autopilot</h3>
+          </div>
         </div>
-        <div className="p-4 surface-secondary border border-sanctuary-200 dark:border-sanctuary-700 rounded-xl">
-          <div className="flex items-start space-x-3">
-            <AlertCircle className="w-5 h-5 text-sanctuary-400 mt-0.5 flex-shrink-0" />
-            <div>
-              <p className="text-sm font-medium text-sanctuary-700 dark:text-sanctuary-300">Feature not available</p>
-              <p className="text-xs text-sanctuary-500 mt-1">
-                Treasury Autopilot is not enabled on this server.
-              </p>
+        <div className="p-6">
+          <div className="p-4 surface-secondary border border-sanctuary-200 dark:border-sanctuary-700 rounded-xl">
+            <div className="flex items-start space-x-3">
+              <AlertCircle className="w-5 h-5 text-sanctuary-400 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-sanctuary-700 dark:text-sanctuary-300">Feature not available</p>
+                <p className="text-xs text-sanctuary-500 mt-1">
+                  Treasury Autopilot is not enabled on this server.
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -155,22 +162,27 @@ export const WalletAutopilotSettings: React.FC<Props> = ({ walletId }) => {
 
   return (
     <div className="space-y-4">
-      <div className="surface-elevated rounded-xl p-6 border border-sanctuary-200 dark:border-sanctuary-800">
-        <div className="flex items-center space-x-3 mb-4">
-          <Zap className="w-5 h-5 text-primary-600 dark:text-primary-500" />
-          <h3 className="text-lg font-medium text-sanctuary-900 dark:text-sanctuary-100">Autopilot</h3>
-          {success && (
-            <span className="text-xs text-success-600 dark:text-success-400 ml-auto">Saved!</span>
-          )}
+      <div className="surface-elevated rounded-2xl border border-sanctuary-200 dark:border-sanctuary-800 overflow-hidden">
+        <div className="p-6 border-b border-sanctuary-100 dark:border-sanctuary-800">
+          <div className="flex items-center space-x-3">
+            <div className="p-2 surface-secondary rounded-lg text-primary-600 dark:text-primary-500">
+              <Zap className="w-5 h-5" />
+            </div>
+            <h3 className="text-lg font-medium text-sanctuary-900 dark:text-sanctuary-100">Autopilot</h3>
+            {success && (
+              <span className="text-xs text-success-600 dark:text-success-400 ml-auto">Saved!</span>
+            )}
+          </div>
         </div>
 
+        <div className="p-6">
         {!notificationsAvailable ? (
-          <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl">
+          <div className="p-4 bg-warning-50 dark:bg-warning-900/20 border border-warning-200 dark:border-warning-800 rounded-xl">
             <div className="flex items-start space-x-3">
-              <AlertCircle className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
+              <AlertCircle className="w-5 h-5 text-warning-600 dark:text-warning-400 mt-0.5 flex-shrink-0" />
               <div>
-                <p className="text-sm font-medium text-amber-700 dark:text-amber-300">Notifications required</p>
-                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                <p className="text-sm font-medium text-warning-700 dark:text-warning-300">Notifications required</p>
+                <p className="text-xs text-warning-600 dark:text-warning-400 mt-1">
                   Configure Telegram or push notifications in Account Settings to use Autopilot.
                   Autopilot sends consolidation suggestions via notification channels.
                 </p>
@@ -191,22 +203,12 @@ export const WalletAutopilotSettings: React.FC<Props> = ({ walletId }) => {
                 <p className="text-sm font-medium text-sanctuary-900 dark:text-sanctuary-100">Enable Autopilot</p>
                 <p className="text-xs text-sanctuary-500">Monitor UTXOs and suggest consolidation when conditions are favorable</p>
               </div>
-              <button
-                type="button"
-                onClick={() => handleToggle('enabled')}
+              <Toggle
+                checked={settings.enabled}
+                onChange={() => handleToggle('enabled')}
                 disabled={saving}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  settings.enabled
-                    ? 'bg-success-500'
-                    : 'bg-sanctuary-300 dark:bg-sanctuary-700'
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white dark:bg-sanctuary-100 shadow transition-transform ${
-                    settings.enabled ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
+                color="success"
+              />
             </div>
 
             {settings.enabled && (
@@ -316,16 +318,22 @@ export const WalletAutopilotSettings: React.FC<Props> = ({ walletId }) => {
             )}
           </div>
         )}
+        </div>
       </div>
 
       {/* UTXO Health Status Card */}
       {notificationsAvailable && settings.enabled && status && (
-        <div className="surface-elevated rounded-xl p-6 border border-sanctuary-200 dark:border-sanctuary-800">
-          <div className="flex items-center space-x-3 mb-4">
-            <Activity className="w-5 h-5 text-primary-600 dark:text-primary-500" />
-            <h3 className="text-base font-medium text-sanctuary-900 dark:text-sanctuary-100">UTXO Health</h3>
+        <div className="surface-elevated rounded-2xl border border-sanctuary-200 dark:border-sanctuary-800 overflow-hidden">
+          <div className="p-6 border-b border-sanctuary-100 dark:border-sanctuary-800">
+            <div className="flex items-center space-x-3">
+              <div className="p-2 surface-secondary rounded-lg text-primary-600 dark:text-primary-500">
+                <Activity className="w-5 h-5" />
+              </div>
+              <h3 className="text-lg font-medium text-sanctuary-900 dark:text-sanctuary-100">UTXO Health</h3>
+            </div>
           </div>
 
+          <div className="p-6">
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
             <div className="flex items-center justify-between py-1.5 border-b border-sanctuary-100 dark:border-sanctuary-700">
               <span className="text-sanctuary-500">Total UTXOs</span>
@@ -357,6 +365,7 @@ export const WalletAutopilotSettings: React.FC<Props> = ({ walletId }) => {
                 <span className="text-sanctuary-900 dark:text-sanctuary-100 font-medium">{status.feeSnapshot.economy} sat/vB</span>
               </div>
             )}
+          </div>
           </div>
         </div>
       )}
@@ -393,7 +402,7 @@ function NumberField({
         onChange={(e) => onChange(e.target.value)}
         onBlur={onBlur}
         disabled={disabled}
-        className="w-24 px-3 py-2 text-sm border border-sanctuary-300 dark:border-sanctuary-600 rounded-lg bg-white dark:bg-sanctuary-800 text-sanctuary-900 dark:text-sanctuary-100 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:opacity-50"
+        className="w-24 px-3 py-2 text-sm surface-muted border border-sanctuary-200 dark:border-sanctuary-700 rounded-lg text-sanctuary-900 dark:text-sanctuary-100 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
       />
     </div>
   );

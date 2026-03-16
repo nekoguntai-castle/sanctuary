@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { RefreshCw, Filter } from 'lucide-react';
+import { RefreshCw, Filter, AlertCircle } from 'lucide-react';
 import {
   getAuditLogs,
   getAuditLogStats,
@@ -86,10 +86,10 @@ export const AuditLogs: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-sanctuary-900 dark:text-sanctuary-100">
+          <h2 className="text-2xl font-light text-sanctuary-900 dark:text-sanctuary-50">
             Audit Logs
-          </h1>
-          <p className="text-sanctuary-500 dark:text-sanctuary-400 mt-1">
+          </h2>
+          <p className="text-sanctuary-500">
             Security and activity logs for the system
           </p>
         </div>
@@ -144,8 +144,9 @@ export const AuditLogs: React.FC = () => {
 
       {/* Error */}
       {error && (
-        <div className="p-4 rounded-xl bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400">
-          {error}
+        <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 flex items-center space-x-2">
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          <span className="text-sm">{error}</span>
         </div>
       )}
 

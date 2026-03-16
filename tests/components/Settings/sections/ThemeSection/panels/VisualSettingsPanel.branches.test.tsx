@@ -29,7 +29,7 @@ describe('VisualSettingsPanel branch coverage', () => {
   it('covers dark mode class branches and toggle callback', () => {
     const { onToggleDarkMode, rerender } = renderPanel({ isDark: false });
 
-    const toggleButton = screen.getByRole('button');
+    const toggleButton = screen.getByRole('switch');
     expect(toggleButton.className).toContain('bg-sanctuary-300');
     expect(toggleButton.querySelector('span')?.className).toContain('translate-x-1');
 
@@ -47,7 +47,7 @@ describe('VisualSettingsPanel branch coverage', () => {
       />,
     );
 
-    const darkToggleButton = screen.getByRole('button');
+    const darkToggleButton = screen.getByRole('switch');
     expect(darkToggleButton.className).toContain('bg-primary-600');
     expect(darkToggleButton.querySelector('span')?.className).toContain('translate-x-6');
   });

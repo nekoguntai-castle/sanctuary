@@ -11,6 +11,7 @@ import {
   Database,
   Layers,
   X,
+  Loader2,
 } from 'lucide-react';
 import type { SanctuaryBackup, ValidationResult } from '../../src/api/admin';
 
@@ -154,18 +155,18 @@ export const RestorePanel: React.FC<RestorePanelProps> = ({
               {/* Validation Status */}
               {isValidating ? (
                 <div className="flex items-center space-x-2 p-3 rounded-lg bg-sanctuary-100 dark:bg-sanctuary-800">
-                  <span className="animate-spin">⏳</span>
+                  <Loader2 className="w-4 h-4 animate-spin text-sanctuary-500" />
                   <span className="text-sm text-sanctuary-600 dark:text-sanctuary-400">Validating backup...</span>
                 </div>
               ) : validationResult && (
                 <div className="space-y-2">
                   {validationResult.valid ? (
-                    <div className="flex items-center space-x-2 p-3 rounded-lg bg-success-50 dark:bg-success-900/20 text-success-700 dark:text-success-400">
+                    <div className="flex items-center space-x-2 p-3 rounded-lg bg-success-50 dark:bg-success-900/20 border border-success-200 dark:border-success-800 text-success-600 dark:text-success-400">
                       <Check className="w-4 h-4" />
                       <span className="text-sm">Backup is valid and ready to restore</span>
                     </div>
                   ) : (
-                    <div className="flex items-start space-x-2 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400">
+                    <div className="flex items-start space-x-2 p-3 rounded-lg bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400">
                       <AlertCircle className="w-4 h-4 mt-0.5" />
                       <div className="text-sm">
                         <p className="font-medium">Backup validation failed:</p>
@@ -179,7 +180,7 @@ export const RestorePanel: React.FC<RestorePanelProps> = ({
                   )}
 
                   {validationResult.warnings.length > 0 && (
-                    <div className="flex items-start space-x-2 p-3 rounded-lg bg-warning-50 dark:bg-warning-900/20 text-warning-700 dark:text-warning-400">
+                    <div className="flex items-start space-x-2 p-3 rounded-lg bg-warning-50 dark:bg-warning-900/20 border border-warning-200 dark:border-warning-800 text-warning-700 dark:text-warning-400">
                       <AlertTriangle className="w-4 h-4 mt-0.5" />
                       <div className="text-sm">
                         <p className="font-medium">Warnings:</p>
@@ -203,7 +204,7 @@ export const RestorePanel: React.FC<RestorePanelProps> = ({
               >
                 {isRestoring ? (
                   <>
-                    <span className="animate-spin mr-2">⏳</span>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     Restoring...
                   </>
                 ) : (
@@ -218,14 +219,14 @@ export const RestorePanel: React.FC<RestorePanelProps> = ({
 
           {/* Success/Error Messages */}
           {restoreSuccess && (
-            <div className="flex items-center space-x-2 p-3 rounded-lg bg-success-50 dark:bg-success-900/20 text-success-700 dark:text-success-400">
+            <div className="flex items-center space-x-2 p-3 rounded-lg bg-success-50 dark:bg-success-900/20 border border-success-200 dark:border-success-800 text-success-600 dark:text-success-400">
               <Check className="w-4 h-4" />
               <span className="text-sm">Database restored successfully! Reloading...</span>
             </div>
           )}
 
           {restoreError && (
-            <div className="flex items-center space-x-2 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400">
+            <div className="flex items-center space-x-2 p-3 rounded-lg bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400">
               <AlertCircle className="w-4 h-4" />
               <span className="text-sm">{restoreError}</span>
             </div>
@@ -239,8 +240,8 @@ export const RestorePanel: React.FC<RestorePanelProps> = ({
           <div className="surface-elevated rounded-2xl border border-sanctuary-200 dark:border-sanctuary-800 w-full max-w-md mx-4 overflow-hidden">
             <div className="p-6 border-b border-sanctuary-100 dark:border-sanctuary-800">
               <div className="flex items-center space-x-3">
-                <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-lg">
-                  <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400" />
+                <div className="p-2 bg-rose-100 dark:bg-rose-900/30 rounded-lg">
+                  <AlertTriangle className="w-5 h-5 text-rose-600 dark:text-rose-400" />
                 </div>
                 <h3 className="text-lg font-medium text-sanctuary-900 dark:text-sanctuary-100">
                   Confirm Database Restore
@@ -253,7 +254,7 @@ export const RestorePanel: React.FC<RestorePanelProps> = ({
                 This action will:
               </p>
               <ul className="text-sm text-sanctuary-600 dark:text-sanctuary-400 list-disc list-inside space-y-1">
-                <li><strong className="text-red-600 dark:text-red-400">Delete ALL current data</strong></li>
+                <li><strong className="text-rose-600 dark:text-rose-400">Delete ALL current data</strong></li>
                 <li>Replace with backup from {uploadedBackup?.meta && formatDate(uploadedBackup.meta.createdAt)}</li>
                 <li>Log you out (you'll need to log in again)</li>
               </ul>
@@ -266,7 +267,7 @@ export const RestorePanel: React.FC<RestorePanelProps> = ({
                 value={confirmText}
                 onChange={(e) => setConfirmText(e.target.value.toUpperCase())}
                 placeholder="Type RESTORE"
-                className="w-full px-3 py-2 rounded-lg border border-sanctuary-300 dark:border-sanctuary-700 bg-white dark:bg-sanctuary-900 text-sanctuary-900 dark:text-sanctuary-100 placeholder-sanctuary-400 focus:outline-none focus:ring-2 focus:ring-red-500"
+                className="w-full px-3 py-2 rounded-lg surface-muted border border-sanctuary-200 dark:border-sanctuary-700 text-sanctuary-900 dark:text-sanctuary-100 placeholder-sanctuary-400 focus:outline-none focus:ring-2 focus:ring-rose-500"
                 autoFocus
               />
 

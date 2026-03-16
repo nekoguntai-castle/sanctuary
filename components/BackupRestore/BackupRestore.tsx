@@ -23,6 +23,11 @@ const log = createLogger('BackupRestore');
 
 type BackupTab = 'backup' | 'restore';
 
+const BACKUP_TABS: { id: BackupTab; name: string; icon: React.FC<{ className?: string }> }[] = [
+  { id: 'backup', name: 'Backup', icon: Download },
+  { id: 'restore', name: 'Restore', icon: Upload },
+];
+
 export const BackupRestore: React.FC = () => {
   const [activeTab, setActiveTab] = useState<BackupTab>('backup');
 
@@ -61,7 +66,7 @@ export const BackupRestore: React.FC = () => {
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6 animate-fade-in pb-12">
+    <div className="max-w-4xl mx-auto space-y-6 animate-fade-in pb-12">
       <div>
         <h2 className="text-2xl font-light text-sanctuary-900 dark:text-sanctuary-50">Backup & Restore</h2>
         <p className="text-sanctuary-500">Create database backups and restore from backup files</p>
@@ -69,28 +74,20 @@ export const BackupRestore: React.FC = () => {
 
       {/* Tabs */}
       <div className="flex space-x-1 surface-secondary rounded-xl p-1">
-        <button
-          onClick={() => setActiveTab('backup')}
-          className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2.5 text-sm font-medium rounded-lg transition-all ${
-            activeTab === 'backup'
-              ? 'bg-white dark:bg-sanctuary-800 text-primary-700 dark:text-primary-300 shadow-sm'
-              : 'text-sanctuary-500 hover:text-sanctuary-700 dark:hover:text-sanctuary-300'
-          }`}
-        >
-          <Download className="w-4 h-4" />
-          <span>Backup</span>
-        </button>
-        <button
-          onClick={() => setActiveTab('restore')}
-          className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2.5 text-sm font-medium rounded-lg transition-all ${
-            activeTab === 'restore'
-              ? 'bg-white dark:bg-sanctuary-800 text-primary-700 dark:text-primary-300 shadow-sm'
-              : 'text-sanctuary-500 hover:text-sanctuary-700 dark:hover:text-sanctuary-300'
-          }`}
-        >
-          <Upload className="w-4 h-4" />
-          <span>Restore</span>
-        </button>
+        {BACKUP_TABS.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2.5 text-sm font-medium rounded-lg transition-all ${
+              activeTab === tab.id
+                ? 'bg-white dark:bg-sanctuary-800 text-primary-700 dark:text-primary-300 shadow-sm'
+                : 'text-sanctuary-500 hover:text-sanctuary-700 dark:hover:text-sanctuary-300'
+            }`}
+          >
+            <tab.icon className="w-4 h-4" />
+            <span>{tab.name}</span>
+          </button>
+        ))}
       </div>
 
       {/* Create Backup Section */}
@@ -149,22 +146,22 @@ export const BackupRestore: React.FC = () => {
         <h4 className="text-sm font-medium text-sanctuary-900 dark:text-sanctuary-100 mb-2">
           {activeTab === 'backup' ? 'About Backups' : 'About Restore'}
         </h4>
-        <ul className="text-sm text-sanctuary-600 dark:text-sanctuary-400 space-y-1">
+        <ul className="text-sm text-sanctuary-600 dark:text-sanctuary-400 space-y-1 list-disc list-inside">
           {activeTab === 'backup' ? (
             <>
-              <li>• Backups include all users, wallets, transactions, addresses, labels, and settings</li>
-              <li>• Backups can be restored to this or another Sanctuary instance</li>
-              <li>• Passwords are stored as secure hashes and remain protected</li>
-              <li>• Consider creating regular backups before major changes</li>
-              <li>• <strong>Node passwords and 2FA secrets are encrypted</strong> - save your encryption keys!</li>
+              <li>Backups include all users, wallets, transactions, addresses, labels, and settings</li>
+              <li>Backups can be restored to this or another Sanctuary instance</li>
+              <li>Passwords are stored as secure hashes and remain protected</li>
+              <li>Consider creating regular backups before major changes</li>
+              <li><strong>Node passwords and 2FA secrets are encrypted</strong> - save your encryption keys!</li>
             </>
           ) : (
             <>
-              <li>• Restoring will completely replace all existing data</li>
-              <li>• Backups from older versions can be restored to newer versions</li>
-              <li>• You will be logged out after restore and need to log in again</li>
-              <li>• The restore process cannot be undone - create a backup first</li>
-              <li>• <strong>To restore encrypted data</strong>, ensure ENCRYPTION_KEY and ENCRYPTION_SALT match the original instance</li>
+              <li>Restoring will completely replace all existing data</li>
+              <li>Backups from older versions can be restored to newer versions</li>
+              <li>You will be logged out after restore and need to log in again</li>
+              <li>The restore process cannot be undone - create a backup first</li>
+              <li><strong>To restore encrypted data</strong>, ensure ENCRYPTION_KEY and ENCRYPTION_SALT match the original instance</li>
             </>
           )}
         </ul>

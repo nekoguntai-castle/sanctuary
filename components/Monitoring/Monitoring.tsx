@@ -163,17 +163,17 @@ export const Monitoring: React.FC = () => {
 
       {/* Info banner when monitoring is not enabled */}
       {data && !data.enabled && (
-        <div className="mb-6 p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+        <div className="mb-6 p-4 rounded-xl bg-warning-50 dark:bg-warning-900/20 border border-warning-200 dark:border-warning-800">
           <div className="flex items-start space-x-3">
-            <Info className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+            <Info className="w-5 h-5 text-warning-600 dark:text-warning-400 mt-0.5 flex-shrink-0" />
             <div>
-              <h3 className="text-sm font-medium text-amber-800 dark:text-amber-200">
+              <h3 className="text-sm font-medium text-warning-800 dark:text-warning-200">
                 Monitoring Stack Not Enabled
               </h3>
-              <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+              <p className="text-sm text-warning-700 dark:text-warning-300 mt-1">
                 To enable monitoring, start Sanctuary with the monitoring compose file:
               </p>
-              <code className="block mt-2 text-xs font-mono bg-amber-100 dark:bg-amber-900/40 p-2 rounded text-amber-800 dark:text-amber-200">
+              <code className="block mt-2 text-xs font-mono bg-warning-100 dark:bg-warning-900/40 p-2 rounded text-warning-800 dark:text-warning-200">
                 docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d
               </code>
             </div>

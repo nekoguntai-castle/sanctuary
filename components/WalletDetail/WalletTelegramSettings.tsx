@@ -11,6 +11,7 @@ import { ApiError } from '../../src/api/client';
 import { useUser } from '../../contexts/UserContext';
 import { createLogger } from '../../utils/logger';
 import { Send, AlertCircle } from 'lucide-react';
+import { Toggle } from '../ui/Toggle';
 
 const log = createLogger('WalletTelegramSettings');
 
@@ -74,7 +75,7 @@ export const WalletTelegramSettings: React.FC<Props> = ({ walletId }) => {
 
   if (loading) {
     return (
-      <div className="surface-elevated rounded-xl p-6 border border-sanctuary-200 dark:border-sanctuary-800">
+      <div className="surface-elevated rounded-2xl p-6 border border-sanctuary-200 dark:border-sanctuary-800">
         <div className="animate-pulse flex space-x-4">
           <div className="h-5 w-5 bg-sanctuary-200 dark:bg-sanctuary-700 rounded"></div>
           <div className="flex-1 space-y-4 py-1">
@@ -87,22 +88,27 @@ export const WalletTelegramSettings: React.FC<Props> = ({ walletId }) => {
   }
 
   return (
-    <div className="surface-elevated rounded-xl p-6 border border-sanctuary-200 dark:border-sanctuary-800">
-      <div className="flex items-center space-x-3 mb-4">
-        <Send className="w-5 h-5 text-primary-600 dark:text-primary-500" />
-        <h3 className="text-lg font-medium text-sanctuary-900 dark:text-sanctuary-100">Telegram Notifications</h3>
-        {success && (
-          <span className="text-xs text-success-600 dark:text-success-400 ml-auto">Saved!</span>
-        )}
+    <div className="surface-elevated rounded-2xl border border-sanctuary-200 dark:border-sanctuary-800 overflow-hidden">
+      <div className="p-6 border-b border-sanctuary-100 dark:border-sanctuary-800">
+        <div className="flex items-center space-x-3">
+          <div className="p-2 surface-secondary rounded-lg text-primary-600 dark:text-primary-500">
+            <Send className="w-5 h-5" />
+          </div>
+          <h3 className="text-lg font-medium text-sanctuary-900 dark:text-sanctuary-100">Telegram Notifications</h3>
+          {success && (
+            <span className="text-xs text-success-600 dark:text-success-400 ml-auto">Saved!</span>
+          )}
+        </div>
       </div>
 
+      <div className="p-6">
       {!telegramConfigured ? (
-        <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl">
+        <div className="p-4 bg-warning-50 dark:bg-warning-900/20 border border-warning-200 dark:border-warning-800 rounded-xl">
           <div className="flex items-start space-x-3">
-            <AlertCircle className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
+            <AlertCircle className="w-5 h-5 text-warning-600 dark:text-warning-400 mt-0.5 flex-shrink-0" />
             <div>
-              <p className="text-sm font-medium text-amber-700 dark:text-amber-300">Telegram not configured</p>
-              <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+              <p className="text-sm font-medium text-warning-700 dark:text-warning-300">Telegram not configured</p>
+              <p className="text-xs text-warning-600 dark:text-warning-400 mt-1">
                 Configure your Telegram bot in Account Settings to receive notifications.
               </p>
             </div>
@@ -123,8 +129,9 @@ export const WalletTelegramSettings: React.FC<Props> = ({ walletId }) => {
       ) : (
         <div className="space-y-4">
           {error && (
-            <div className="p-3 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-lg">
-              <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>
+            <div className="p-3 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-lg flex items-center space-x-2">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <span className="text-sm text-rose-600 dark:text-rose-400">{error}</span>
             </div>
           )}
 
@@ -134,22 +141,12 @@ export const WalletTelegramSettings: React.FC<Props> = ({ walletId }) => {
               <p className="text-sm font-medium text-sanctuary-900 dark:text-sanctuary-100">Enable for this wallet</p>
               <p className="text-xs text-sanctuary-500">Receive notifications for this wallet's transactions</p>
             </div>
-            <button
-              type="button"
-              onClick={() => handleToggle('enabled')}
+            <Toggle
+              checked={settings.enabled}
+              onChange={() => handleToggle('enabled')}
               disabled={saving}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                settings.enabled
-                  ? 'bg-success-500'
-                  : 'bg-sanctuary-300 dark:bg-sanctuary-700'
-              }`}
-            >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white dark:bg-sanctuary-100 shadow transition-transform ${
-                  settings.enabled ? 'translate-x-6' : 'translate-x-1'
-                }`}
-              />
-            </button>
+              color="success"
+            />
           </div>
 
           {settings.enabled && (
@@ -207,6 +204,7 @@ export const WalletTelegramSettings: React.FC<Props> = ({ walletId }) => {
           )}
         </div>
       )}
+      </div>
     </div>
   );
 };

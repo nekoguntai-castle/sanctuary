@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useUser } from '../../../contexts/UserContext';
 import { Send, Eye, EyeOff, RefreshCw, AlertCircle, ExternalLink, Check } from 'lucide-react';
 import { Button } from '../../ui/Button';
+import { Toggle } from '../../ui/Toggle';
 import * as authApi from '../../../src/api/auth';
 import { createLogger } from '../../../utils/logger';
 import { logError } from '../../../utils/errorHandler';
@@ -191,7 +192,7 @@ const TelegramSettings: React.FC = () => {
               value={botToken}
               onChange={(e) => setBotToken(e.target.value)}
               placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
-              className="w-full px-4 py-2.5 pr-12 surface-secondary border border-sanctuary-200 dark:border-sanctuary-700 rounded-xl text-sanctuary-900 dark:text-sanctuary-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all font-mono text-sm"
+              className="w-full px-3 py-2 pr-12 surface-muted border border-sanctuary-200 dark:border-sanctuary-700 rounded-lg text-sanctuary-900 dark:text-sanctuary-100 focus:outline-none focus:ring-2 focus:ring-primary-500 font-mono text-sm"
             />
             <button
               type="button"
@@ -215,7 +216,7 @@ const TelegramSettings: React.FC = () => {
               value={chatId}
               onChange={(e) => setChatId(e.target.value)}
               placeholder="123456789"
-              className="flex-1 px-4 py-2.5 surface-secondary border border-sanctuary-200 dark:border-sanctuary-700 rounded-xl text-sanctuary-900 dark:text-sanctuary-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all font-mono text-sm"
+              className="flex-1 px-3 py-2 surface-muted border border-sanctuary-200 dark:border-sanctuary-700 rounded-lg text-sanctuary-900 dark:text-sanctuary-100 focus:outline-none focus:ring-2 focus:ring-primary-500 font-mono text-sm"
             />
             <Button
               variant="secondary"
@@ -237,23 +238,23 @@ const TelegramSettings: React.FC = () => {
 
         {/* Error */}
         {error && (
-          <div className="p-3 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-xl flex items-center space-x-2">
-            <AlertCircle className="w-4 h-4 text-rose-500" />
+          <div className="p-3 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-lg flex items-center space-x-2">
+            <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400" />
             <span className="text-sm text-rose-600 dark:text-rose-400">{error}</span>
           </div>
         )}
 
         {/* Test Result */}
         {testResult && (
-          <div className={`p-3 rounded-xl flex items-center space-x-2 ${
+          <div className={`p-3 rounded-lg flex items-center space-x-2 ${
             testResult.success
               ? 'bg-success-50 dark:bg-success-900/20 border border-success-200 dark:border-success-800'
               : 'bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800'
           }`}>
             {testResult.success ? (
-              <Check className="w-4 h-4 text-success-500" />
+              <Check className="w-4 h-4 text-success-600 dark:text-success-400" />
             ) : (
-              <AlertCircle className="w-4 h-4 text-rose-500" />
+              <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400" />
             )}
             <span className={`text-sm ${
               testResult.success
@@ -265,8 +266,8 @@ const TelegramSettings: React.FC = () => {
 
         {/* Save Success */}
         {saveSuccess && (
-          <div className="p-3 bg-success-50 dark:bg-success-900/20 border border-success-200 dark:border-success-800 rounded-xl flex items-center space-x-2">
-            <Check className="w-4 h-4 text-success-500" />
+          <div className="p-3 bg-success-50 dark:bg-success-900/20 border border-success-200 dark:border-success-800 rounded-lg flex items-center space-x-2">
+            <Check className="w-4 h-4 text-success-600 dark:text-success-400" />
             <span className="text-sm text-success-600 dark:text-success-400">Settings saved successfully</span>
           </div>
         )}
@@ -305,22 +306,12 @@ const TelegramSettings: React.FC = () => {
             <span className="text-sm text-sanctuary-600 dark:text-sanctuary-400">
               {enabled ? 'Enabled' : 'Disabled'}
             </span>
-            <button
-              type="button"
-              onClick={handleToggleEnabled}
+            <Toggle
+              checked={!!(enabled && isConfigured)}
+              onChange={handleToggleEnabled}
               disabled={!isConfigured}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                enabled && isConfigured
-                  ? 'bg-success-500'
-                  : 'bg-sanctuary-300 dark:bg-sanctuary-700'
-              } ${!isConfigured ? 'opacity-50 cursor-not-allowed' : ''}`}
-            >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white dark:bg-sanctuary-100 shadow-md transition-transform ${
-                  enabled ? 'translate-x-6' : 'translate-x-1'
-                }`}
-              />
-            </button>
+              color="success"
+            />
           </label>
         </div>
 

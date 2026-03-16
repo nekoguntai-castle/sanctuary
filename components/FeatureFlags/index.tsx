@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { ToggleLeft, RotateCcw, Check, AlertCircle, ChevronDown, ChevronRight, Info, Clock } from 'lucide-react';
+import { RotateCcw, Check, AlertCircle, ChevronDown, ChevronRight, Info, Clock, Loader2 } from 'lucide-react';
+import { Toggle } from '../ui/Toggle';
 import * as adminApi from '../../src/api/admin';
 import type { FeatureFlagInfo, FeatureFlagAuditEntry } from '../../src/api/admin';
 import { useLoadingState } from '../../hooks/useLoadingState';
@@ -132,25 +133,24 @@ export function FeatureFlags() {
   }, {}), [flags]);
 
   if (loading) {
-    return <div className="p-8 text-center text-sanctuary-400">Loading feature flags...</div>;
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-primary-500" />
+      </div>
+    );
   }
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center space-x-3">
-        <div className="p-2 surface-secondary rounded-lg text-primary-600 dark:text-primary-500">
-          <ToggleLeft className="w-5 h-5" />
-        </div>
-        <div>
-          <h2 className="text-lg font-medium text-sanctuary-900 dark:text-sanctuary-100">Feature Flags</h2>
-          <p className="text-sm text-sanctuary-500">Toggle features without restarting the server.</p>
-        </div>
+      <div>
+        <h2 className="text-2xl font-light text-sanctuary-900 dark:text-sanctuary-50">Feature Flags</h2>
+        <p className="text-sanctuary-500">Toggle features without restarting the server.</p>
       </div>
 
       {/* Error Banner */}
       {actionError && (
-        <div className="flex items-center space-x-2 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400">
+        <div className="flex items-center space-x-2 p-3 rounded-lg bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400">
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
           <span className="text-sm">{actionError}</span>
         </div>
@@ -204,19 +204,11 @@ export function FeatureFlags() {
                     </button>
 
                     {/* Toggle switch */}
-                    <button
-                      onClick={() => handleToggle(flag)}
+                    <Toggle
+                      checked={flag.enabled}
+                      onChange={() => handleToggle(flag)}
                       disabled={togglingKey === flag.key || resettingKey === flag.key}
-                      className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 ${
-                        flag.enabled ? 'bg-primary-600' : 'bg-sanctuary-300 dark:bg-sanctuary-700'
-                      } ${togglingKey === flag.key ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    >
-                      <span
-                        className={`inline-block h-5 w-5 transform rounded-full bg-white dark:bg-sanctuary-100 shadow transition-transform ${
-                          flag.enabled ? 'translate-x-6' : 'translate-x-1'
-                        }`}
-                      />
-                    </button>
+                    />
                   </div>
                 </div>
 

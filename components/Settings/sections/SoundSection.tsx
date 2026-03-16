@@ -1,6 +1,7 @@
 import React from 'react';
 import { useUser } from '../../../contexts/UserContext';
 import { Volume2 } from 'lucide-react';
+import { Toggle } from '../../ui/Toggle';
 import { useNotificationSound } from '../../../hooks/useNotificationSound';
 
 const NotificationSoundSettings: React.FC = () => {
@@ -90,16 +91,7 @@ const NotificationSoundSettings: React.FC = () => {
             <label className="text-base font-medium text-sanctuary-900 dark:text-sanctuary-100">Enable Sounds</label>
             <p className="text-sm text-sanctuary-500">Master toggle for all notification sounds</p>
           </div>
-          <button
-            onClick={handleToggleSounds}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-              soundPrefs.enabled ? 'bg-primary-600 dark:bg-sanctuary-500' : 'bg-sanctuary-300 dark:bg-sanctuary-600'
-            }`}
-          >
-            <span className={`inline-block h-4 w-4 transform rounded-full bg-white dark:bg-sanctuary-100 shadow transition-transform ${
-              soundPrefs.enabled ? 'translate-x-6' : 'translate-x-1'
-            }`} />
-          </button>
+          <Toggle checked={soundPrefs.enabled} onChange={handleToggleSounds} />
         </div>
 
         {/* Per-Event Sound Configuration */}

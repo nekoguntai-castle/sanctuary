@@ -51,20 +51,20 @@ export const EncryptionKeyDisplay: React.FC<EncryptionKeyDisplayProps> = ({
   };
 
   return (
-    <div className="surface-elevated rounded-2xl border border-warning-200 dark:border-warning-800 overflow-hidden">
-      <div className="p-4 border-b border-warning-100 dark:border-warning-800 bg-warning-50 dark:bg-warning-900/20">
+    <div className="surface-elevated rounded-2xl border border-sanctuary-200 dark:border-sanctuary-800 overflow-hidden">
+      <div className="p-6 border-b border-sanctuary-100 dark:border-sanctuary-800 bg-warning-50 dark:bg-warning-900/20">
         <div className="flex items-center space-x-3">
-          <div className="p-2 bg-warning-100 dark:bg-warning-800/50 rounded-lg">
-            <Key className="w-5 h-5 text-warning-600 dark:text-warning-400" />
+          <div className="p-2 surface-secondary rounded-lg text-warning-600 dark:text-warning-400">
+            <Key className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-base font-medium text-sanctuary-900 dark:text-sanctuary-100">Encryption Keys</h3>
+            <h3 className="text-lg font-medium text-sanctuary-900 dark:text-sanctuary-100">Encryption Keys</h3>
             <p className="text-xs text-sanctuary-500 dark:text-sanctuary-400">Required for restoring backups on a new instance</p>
           </div>
         </div>
       </div>
 
-      <div className="p-4 space-y-4">
+      <div className="p-6 space-y-6">
         <div className="flex items-start space-x-3 p-3 rounded-lg bg-warning-50 dark:bg-warning-900/20 border border-warning-200 dark:border-warning-800">
           <Shield className="w-4 h-4 text-warning-600 dark:text-warning-400 flex-shrink-0 mt-0.5" />
           <div className="text-sm text-warning-700 dark:text-warning-300">
@@ -171,7 +171,7 @@ export const EncryptionKeyDisplay: React.FC<EncryptionKeyDisplayProps> = ({
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter your password"
-                className="flex-1 px-3 py-2 rounded-lg border border-sanctuary-300 dark:border-sanctuary-600 bg-white dark:bg-sanctuary-800 text-sanctuary-900 dark:text-sanctuary-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className="flex-1 px-3 py-2 rounded-lg surface-muted border border-sanctuary-200 dark:border-sanctuary-700 text-sanctuary-900 dark:text-sanctuary-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                 disabled={isLoadingKeys}
               />
               <Button type="submit" disabled={isLoadingKeys || !password.trim()}>
@@ -186,9 +186,9 @@ export const EncryptionKeyDisplay: React.FC<EncryptionKeyDisplayProps> = ({
               </Button>
             </div>
             {keysError && (
-              <div className="flex items-center space-x-2 text-sm text-rose-600 dark:text-rose-400">
+              <div className="flex items-center space-x-2 p-3 rounded-lg bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400">
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                <span>{keysError}</span>
+                <span className="text-sm">{keysError}</span>
               </div>
             )}
           </form>

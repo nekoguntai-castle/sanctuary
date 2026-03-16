@@ -78,8 +78,8 @@ describe('FeatureFlags', () => {
     it('renders header and loading state', async () => {
       render(<FeatureFlags />);
 
-      // Should show loading initially
-      expect(screen.getByText('Loading feature flags...')).toBeInTheDocument();
+      // Should show loading spinner initially
+      expect(document.querySelector('.animate-spin')).toBeInTheDocument();
 
       // Then show the header
       await waitFor(() => {
@@ -215,9 +215,7 @@ describe('FeatureFlags', () => {
       });
 
       // Find the toggle buttons (there should be one per flag)
-      const toggleButtons = screen.getAllByRole('button').filter(
-        btn => btn.className.includes('rounded-full') && btn.className.includes('inline-flex')
-      );
+      const toggleButtons = screen.getAllByRole('switch');
       expect(toggleButtons.length).toBeGreaterThan(0);
 
       await user.click(toggleButtons[0]);
@@ -238,9 +236,7 @@ describe('FeatureFlags', () => {
           expect(screen.getByText('aiAssistant')).toBeInTheDocument();
         });
 
-        const toggleButtons = screen.getAllByRole('button').filter(
-          btn => btn.className.includes('rounded-full') && btn.className.includes('inline-flex')
-        );
+        const toggleButtons = screen.getAllByRole('switch');
         const resetButtons = screen.getAllByTitle('Reset to environment default');
 
         await user.click(toggleButtons[0]);
@@ -477,9 +473,7 @@ describe('FeatureFlags', () => {
         expect(screen.getByText('aiAssistant')).toBeInTheDocument();
       });
 
-      const toggleButtons = screen.getAllByRole('button').filter(
-        btn => btn.className.includes('rounded-full') && btn.className.includes('inline-flex')
-      );
+      const toggleButtons = screen.getAllByRole('switch');
       await user.click(toggleButtons[0]);
 
       await waitFor(() => {

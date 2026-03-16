@@ -74,10 +74,10 @@ export default function AISettings() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-sanctuary-900 dark:text-sanctuary-100">
+          <h2 className="text-2xl font-light text-sanctuary-900 dark:text-sanctuary-50">
             AI Assistant
-          </h1>
-          <p className="text-sm text-sanctuary-500 mt-1">
+          </h2>
+          <p className="text-sanctuary-500">
             Configure AI-powered transaction labeling and natural language queries
           </p>
         </div>

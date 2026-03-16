@@ -159,7 +159,7 @@ describe('WalletAutopilotSettings', () => {
     render(<WalletAutopilotSettings walletId={walletId} />);
 
     await screen.findByText('Enable Autopilot');
-    const toggle = screen.getByRole('button');
+    const toggle = screen.getByRole('switch');
     await user.click(toggle);
 
     await waitFor(() => {
@@ -383,7 +383,7 @@ describe('WalletAutopilotSettings', () => {
     render(<WalletAutopilotSettings walletId={walletId} />);
 
     await screen.findByText('Enable Autopilot');
-    const toggle = screen.getByRole('button');
+    const toggle = screen.getByRole('switch');
     await user.click(toggle);
 
     expect(await screen.findByText('Could not update')).toBeInTheDocument();
@@ -398,7 +398,7 @@ describe('WalletAutopilotSettings', () => {
     render(<WalletAutopilotSettings walletId={walletId} />);
 
     await screen.findByText('Enable Autopilot');
-    const toggle = screen.getByRole('button');
+    const toggle = screen.getByRole('switch');
     await user.click(toggle);
 
     expect(await screen.findByText('Failed to update settings')).toBeInTheDocument();
@@ -412,7 +412,7 @@ describe('WalletAutopilotSettings', () => {
     render(<WalletAutopilotSettings walletId={walletId} />);
 
     await screen.findByText('Enable Autopilot');
-    const toggle = screen.getByRole('button');
+    const toggle = screen.getByRole('switch');
     await user.click(toggle);
 
     expect(await screen.findByText('Saved!')).toBeInTheDocument();
