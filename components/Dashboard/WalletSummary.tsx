@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Wallet, isMultisigType } from '../../types';
 import { Wallet as WalletIcon, ChevronRight, RefreshCw, Check, AlertTriangle, Clock } from 'lucide-react';
@@ -54,9 +54,16 @@ export const WalletSummary: React.FC<WalletSummaryProps> = ({
 }) => {
   const navigate = useNavigate();
   const [hoveredWalletId, setHoveredWalletId] = useState<string | null>(null);
+  const [barAnimated, setBarAnimated] = useState(false);
+
+  // Trigger bar animation after mount
+  useEffect(() => {
+    const timer = setTimeout(() => setBarAnimated(true), 100);
+    return () => clearTimeout(timer);
+  }, []);
 
   return (
-    <div className="surface-elevated rounded-2xl p-6 shadow-sm border border-sanctuary-200 dark:border-sanctuary-800 card-interactive">
+    <div className="surface-glass rounded-2xl p-6 shadow-sm card-interactive">
        <div className="flex items-center justify-between mb-6">
           <h3 className="text-lg font-medium text-sanctuary-900 dark:text-sanctuary-100 flex items-center">
              <WalletIcon className="w-5 h-5 mr-2 text-sanctuary-400" />
@@ -92,8 +99,12 @@ export const WalletSummary: React.FC<WalletSummaryProps> = ({
              return (
                 <div
                    key={w.id}
-                   className="relative"
-                   style={{ width: `${percent}%`, minWidth: '4px' }}
+                   className="relative transition-all duration-700 ease-out"
+                   style={{
+                     width: barAnimated ? `${percent}%` : '0%',
+                     minWidth: barAnimated ? '4px' : '0px',
+                     transitionDelay: `${idx * 80}ms`,
+                   }}
                    onMouseEnter={() => setHoveredWalletId(w.id)}
                    onMouseLeave={() => setHoveredWalletId(null)}
                 >

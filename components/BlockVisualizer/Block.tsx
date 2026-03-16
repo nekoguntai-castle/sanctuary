@@ -29,7 +29,7 @@ export const Block: React.FC<BlockProps> = ({ block, index, onClick, compact, is
   // Animation classes
   const getAnimationClass = () => {
     if (!isAnimating) return '';
-    if (animationDirection === 'enter') return 'animate-block-enter';
+    if (animationDirection === 'enter') return 'animate-block-enter animate-confirm-glow';
     if (animationDirection === 'exit') return 'animate-block-exit';
     return '';
   };
@@ -45,6 +45,7 @@ export const Block: React.FC<BlockProps> = ({ block, index, onClick, compact, is
           hover:scale-105 hover:shadow-lg hover:z-20
           cursor-pointer
           ${colors.bg}
+          ${isPending ? 'animate-breathing-pulse' : ''}
           ${getAnimationClass()}
         `}
         style={{
@@ -92,10 +93,10 @@ export const Block: React.FC<BlockProps> = ({ block, index, onClick, compact, is
           {/* Middle: Median Fee Rate - main focus */}
           <div className="text-center">
             {!compact && <div className={`text-[10px] uppercase font-bold ${colors.text} mb-0.5`}>Median Fee</div>}
-            <div className={`${compact ? 'text-base' : 'text-xl md:text-2xl'} font-black leading-none tabular-nums ${colors.text}`}>
+            <div className={`${compact ? 'text-base' : 'text-xl md:text-2xl'} font-black font-mono leading-none tabular-nums ${colors.text}`}>
               {block.medianFee < 1 ? block.medianFee.toFixed(1) : Math.round(block.medianFee)}
             </div>
-            <div className={`${compact ? 'text-[9px]' : 'text-[10px]'} font-bold ${colors.text}`}>sat/vB</div>
+            <div className={`${compact ? 'text-[9px]' : 'text-[10px]'} font-bold font-mono ${colors.text}`}>sat/vB</div>
             {!compact && block.feeRange && (
               <div className={`text-[9px] font-medium ${colors.text} opacity-70 mt-0.5`}>
                 {block.feeRange}

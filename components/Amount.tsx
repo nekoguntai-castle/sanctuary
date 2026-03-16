@@ -50,8 +50,8 @@ export const Amount: React.FC<AmountProps> = ({
   if (inline && fiatValue) {
     return (
       <span className={className}>
-        <span className={`${btcSizeClass} tabular-nums`}>{displayBtc}</span>
-        <span className={`ml-2 ${fiatSizeClass} tabular-nums ${fiatColorClass} ${fiatClassName}`}>
+        <span className={`${btcSizeClass} font-mono tabular-nums`}>{displayBtc}</span>
+        <span className={`ml-2 ${fiatSizeClass} font-mono tabular-nums ${fiatColorClass} ${fiatClassName}`}>
           {fiatValue}
         </span>
       </span>
@@ -60,9 +60,9 @@ export const Amount: React.FC<AmountProps> = ({
 
   return (
     <div className={`flex flex-col ${className}`}>
-      <span className={`${btcSizeClass} tabular-nums`}>{displayBtc}</span>
+      <span className={`${btcSizeClass} font-mono tabular-nums`}>{displayBtc}</span>
       {fiatValue && (
-        <span className={`${fiatSizeClass} tabular-nums ${fiatColorClass} ${fiatClassName}`}>
+        <span className={`${fiatSizeClass} font-mono tabular-nums ${fiatColorClass} ${fiatClassName}`}>
           {fiatValue}
         </span>
       )}

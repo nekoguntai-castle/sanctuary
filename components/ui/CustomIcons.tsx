@@ -32,6 +32,24 @@ export const SanctuaryLogo: React.FC<IconProps> = ({ className }) => (
   </svg>
 );
 
+// --- Branded Loading Spinner ---
+// Sanctuary logo layers with pulsing animation for loading states.
+// Use instead of generic Loader2 for brand-consistent loading indicators.
+interface SpinnerProps {
+  className?: string;
+  size?: 'sm' | 'md' | 'lg';
+}
+
+const spinnerSizes = { sm: 'h-4 w-4', md: 'h-6 w-6', lg: 'h-10 w-10' };
+
+export const SanctuarySpinner: React.FC<SpinnerProps> = ({ className, size = 'md' }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`${spinnerSizes[size]} text-primary-500 animate-sanctuary-pulse ${className || ''}`}>
+    <path d="M12 2L2 7l10 5 10-5-10-5z" />
+    <path d="M2 17l10 5 10-5" />
+    <path d="M2 12l10 5 10-5" />
+  </svg>
+);
+
 // --- Wallet Type Icons ---
 
 // "The Master Key": Represents a single point of entry/control.

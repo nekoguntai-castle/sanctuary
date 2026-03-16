@@ -17,7 +17,7 @@ export const NavItem: React.FC<NavItemProps> = ({
     : location.pathname.startsWith(to);
 
   return (
-    <div className={`group flex items-center justify-between px-3 py-2 text-sm font-medium rounded-xl transition-all duration-200 ${isActive ? 'bg-primary-50 dark:bg-sanctuary-800' : 'hover:bg-sanctuary-100 dark:hover:bg-sanctuary-800'} text-sanctuary-600 dark:text-sanctuary-400 focus-within:ring-2 focus-within:ring-primary-500 focus-within:ring-offset-1`}>
+    <div className={`group flex items-center justify-between px-3 py-2 text-sm font-medium rounded-xl transition-all duration-200 ${isActive ? 'bg-primary-50 dark:bg-sanctuary-800 border-l-[3px] border-primary-600 dark:border-primary-500 pl-[9px]' : 'hover:bg-sanctuary-100 dark:hover:bg-sanctuary-800 border-l-[3px] border-transparent pl-[9px]'} text-sanctuary-600 dark:text-sanctuary-400 focus-within:ring-2 focus-within:ring-primary-500 focus-within:ring-offset-1`}>
       <Link
         to={to}
         className={`flex-1 flex items-center outline-none ${isActive ? 'text-primary-700 dark:text-primary-500 font-semibold' : ''}`}

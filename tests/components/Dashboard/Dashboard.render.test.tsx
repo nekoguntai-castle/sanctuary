@@ -149,7 +149,7 @@ describe('Dashboard render branches', () => {
     mocks.dashboardData = makeDashboardState({ loading: true });
     render(<Dashboard />);
 
-    expect(document.querySelector('.animate-spin')).toBeInTheDocument();
+    expect(document.querySelector('.animate-sanctuary-pulse')).toBeInTheDocument();
     expect(screen.queryByTestId('network-tabs')).not.toBeInTheDocument();
   });
 

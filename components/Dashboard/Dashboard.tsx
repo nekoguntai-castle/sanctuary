@@ -1,11 +1,12 @@
 import React from 'react';
 import { NetworkTabs } from '../NetworkTabs';
-import { TrendingUp, TrendingDown, Zap, CheckCircle2, XCircle, Bitcoin, Download, X, Loader2 } from 'lucide-react';
+import { TrendingUp, TrendingDown, Zap, CheckCircle2, XCircle, Bitcoin, Download, X } from 'lucide-react';
 import { useDashboardData } from './hooks/useDashboardData';
 import { MempoolSection } from './MempoolSection';
 import { AnimatedPrice, PriceChart } from './PriceChart';
 import { WalletSummary } from './WalletSummary';
 import { RecentTransactions } from './RecentTransactions';
+import { SanctuarySpinner } from '../ui/CustomIcons';
 
 export const Dashboard: React.FC = () => {
   const {
@@ -45,7 +46,11 @@ export const Dashboard: React.FC = () => {
   } = useDashboardData();
 
   if (loading) {
-    return <div className="flex h-full items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-sanctuary-400" /></div>;
+    return (
+      <div className="flex h-full items-center justify-center">
+        <SanctuarySpinner size="lg" />
+      </div>
+    );
   }
 
   return (
@@ -100,6 +105,7 @@ export const Dashboard: React.FC = () => {
       </div>
 
       {/* Block Visualizer Section */}
+      <div className="animate-fade-in-up-4">
       <MempoolSection
         selectedNetwork={selectedNetwork}
         isMainnet={isMainnet}
@@ -113,12 +119,13 @@ export const Dashboard: React.FC = () => {
         wsConnected={wsConnected}
         wsState={wsState}
       />
+      </div>
 
       {/* Top Stats Row - 3 columns */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
         {/* BTC Price Card - Compact with animated price */}
-        <div className="surface-elevated rounded-2xl p-6 shadow-sm border border-sanctuary-200 dark:border-sanctuary-800 card-interactive animate-fade-in-up-1">
+        <div className="surface-glass rounded-2xl p-6 shadow-sm card-interactive animate-fade-in-up-1">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-medium text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-wide">Bitcoin Price</h3>
             <div className="p-2 bg-warning-100 dark:bg-warning-900/30 rounded-xl">
@@ -187,7 +194,7 @@ export const Dashboard: React.FC = () => {
                     <div className={`w-2 h-2 rounded-full ${tier.dot} mr-2`}></div>
                     <span className="text-sm text-sanctuary-600 dark:text-sanctuary-300">{tier.label}</span>
                   </div>
-                  <span className="font-bold text-sm tabular-nums text-sanctuary-900 dark:text-sanctuary-100">{formatFeeRate(tier.rate)} sat/vB</span>
+                  <span className="font-bold text-sm font-mono tabular-nums text-sanctuary-900 dark:text-sanctuary-100">{formatFeeRate(tier.rate)} sat/vB</span>
                   {/* Fee tooltip */}
                   <div className={`
                     absolute z-50 pointer-events-none
@@ -356,28 +363,34 @@ export const Dashboard: React.FC = () => {
       </div>
 
       {/* Total Balance Card - Full Width */}
-      <PriceChart
-        totalBalance={totalBalance}
-        chartReady={chartReady}
-        timeframe={timeframe}
-        setTimeframe={setTimeframe}
-        chartData={chartData}
-      />
+      <div className="animate-fade-in-up-5">
+        <PriceChart
+          totalBalance={totalBalance}
+          chartReady={chartReady}
+          timeframe={timeframe}
+          setTimeframe={setTimeframe}
+          chartData={chartData}
+        />
+      </div>
 
       {/* Wallet Breakdown Section (Table View) */}
-      <WalletSummary
-        selectedNetwork={selectedNetwork}
-        filteredWallets={filteredWallets}
-        totalBalance={totalBalance}
-      />
+      <div className="animate-fade-in-up-6">
+        <WalletSummary
+          selectedNetwork={selectedNetwork}
+          filteredWallets={filteredWallets}
+          totalBalance={totalBalance}
+        />
+      </div>
 
       {/* Recent Activity */}
-      <RecentTransactions
-        recentTx={recentTx}
-        wallets={wallets}
-        confirmationThreshold={bitcoinStatus?.confirmationThreshold}
-        deepConfirmationThreshold={bitcoinStatus?.deepConfirmationThreshold}
-      />
+      <div className="animate-fade-in-up-7">
+        <RecentTransactions
+          recentTx={recentTx}
+          wallets={wallets}
+          confirmationThreshold={bitcoinStatus?.confirmationThreshold}
+          deepConfirmationThreshold={bitcoinStatus?.deepConfirmationThreshold}
+        />
+      </div>
     </div>
   );
 };

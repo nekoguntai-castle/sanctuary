@@ -112,11 +112,12 @@ export const NotificationToast: React.FC<NotificationToastProps> = ({ notificati
   return (
     <div
       className={`
-        flex items-start space-x-3 p-4 rounded-xl border shadow-xl backdrop-blur-sm
+        flex items-start space-x-3 p-4 rounded-xl border shadow-xl backdrop-blur-xl
         ${getColors()}
         ${isExiting ? 'animate-slide-out-right' : 'animate-slide-in-right'}
         transition-all duration-300
       `}
+      style={{ WebkitBackdropFilter: 'blur(16px)' }}
       role="alert"
     >
       <div className="flex-shrink-0 mt-0.5">{getIcon()}</div>

@@ -48,11 +48,17 @@ export const TransactionRow: React.FC<TransactionRowProps> = ({
       ? `Locked by draft: ${tx.lockedByDraftLabel}`
       : 'Transaction has draft-locked UTXOs';
 
+  const directionBorderClass = isConsolidation
+    ? 'border-l-[3px] border-primary-500'
+    : isReceive
+    ? 'border-l-[3px] border-success-500'
+    : 'border-l-[3px] border-sanctuary-300 dark:border-sanctuary-600';
+
   return (
     <>
       {/* Date */}
       <td
-        className={`px-4 py-3 whitespace-nowrap text-sm text-sanctuary-700 dark:text-sanctuary-300 font-medium cursor-pointer transition-colors ${highlightClass}`}
+        className={`${directionBorderClass} px-4 py-3 whitespace-nowrap text-sm text-sanctuary-700 dark:text-sanctuary-300 font-medium cursor-pointer transition-colors ${highlightClass}`}
         onClick={() => onTxClick(tx)}
       >
         {tx.timestamp ? new Date(tx.timestamp).toLocaleDateString() : 'Pending'}

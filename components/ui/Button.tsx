@@ -1,5 +1,5 @@
 import React from 'react';
-import { Loader2 } from 'lucide-react';
+import { SanctuarySpinner } from './CustomIcons';
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
@@ -43,7 +43,7 @@ export const Button: React.FC<ButtonProps> = ({
       {...props}
     >
       {isLoading ? (
-        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        <SanctuarySpinner size="sm" className="mr-2" />
       ) : null}
       {children}
     </button>

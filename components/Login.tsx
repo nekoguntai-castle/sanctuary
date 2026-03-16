@@ -106,11 +106,11 @@ export const Login: React.FC = () => {
   // 2FA Verification Screen
   if (twoFactorPending) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-transparent p-4 transition-colors duration-500">
+      <div className="min-h-screen flex items-center justify-center bg-atmospheric p-4 transition-colors duration-500">
         <div className="max-w-md w-full space-y-8 animate-fade-in-up">
           <div className="text-center">
-            <div className="mx-auto h-20 w-20 bg-sanctuary-200 dark:bg-sanctuary-800 rounded-2xl flex items-center justify-center mb-6 shadow-inner">
-              <Shield className="h-10 w-10 text-sanctuary-600 dark:text-sanctuary-300" />
+            <div className="mx-auto h-20 w-20 bg-sanctuary-200/80 dark:bg-sanctuary-800/80 rounded-2xl flex items-center justify-center mb-6 shadow-inner backdrop-blur-sm">
+              <Shield className="h-10 w-10 text-primary-600 dark:text-primary-400" />
             </div>
             <h2 className="mt-6 text-3xl font-light text-sanctuary-900 dark:text-sanctuary-100 tracking-tight">
               Two-Factor Authentication
@@ -178,13 +178,13 @@ export const Login: React.FC = () => {
 
   // Regular Login/Register Screen
   return (
-    <div className="min-h-screen flex items-center justify-center bg-transparent p-4 transition-colors duration-500">
+    <div className="min-h-screen flex items-center justify-center bg-atmospheric p-4 transition-colors duration-500">
       <div className="max-w-md w-full space-y-8 animate-fade-in-up">
         <div className="text-center">
-          <div className="mx-auto h-20 w-20 bg-sanctuary-200 dark:bg-sanctuary-800 rounded-2xl flex items-center justify-center mb-6 shadow-inner">
-            <SanctuaryLogo className="h-10 w-10 text-sanctuary-600 dark:text-sanctuary-300" />
+          <div className="mx-auto h-20 w-20 bg-sanctuary-200/80 dark:bg-sanctuary-800/80 rounded-2xl flex items-center justify-center mb-6 shadow-inner backdrop-blur-sm">
+            <SanctuaryLogo className="h-10 w-10 text-primary-600 dark:text-primary-400" />
           </div>
-          <h2 className="mt-6 text-3xl font-light text-sanctuary-900 dark:text-sanctuary-100 tracking-tight">
+          <h2 className="mt-6 text-3xl font-light tracking-tight bg-gradient-to-r from-sanctuary-900 via-primary-700 to-sanctuary-900 dark:from-sanctuary-100 dark:via-primary-400 dark:to-sanctuary-100 bg-clip-text text-transparent">
             Sanctuary
           </h2>
           <p className="mt-2 text-sm text-sanctuary-500 dark:text-sanctuary-400">
@@ -193,7 +193,7 @@ export const Login: React.FC = () => {
         </div>
 
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          <div className="rounded-xl surface-elevated shadow-sm border border-sanctuary-200 dark:border-sanctuary-800 p-6 space-y-4">
+          <div className="rounded-xl surface-glass shadow-sm p-6 space-y-4">
             <div>
               <label htmlFor="username" className="block text-xs font-medium text-sanctuary-500 uppercase mb-1">Username</label>
               <div className="relative">
