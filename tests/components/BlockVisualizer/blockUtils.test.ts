@@ -34,14 +34,14 @@ describe('blockUtils', () => {
   describe('getBlockColors', () => {
     it('returns warning colors for pending blocks', () => {
       const colors = getBlockColors(true);
-      expect(colors.bg).toContain('bg-warning-200');
+      expect(colors.bgGradient).toContain('warning');
       expect(colors.bar).toContain('bg-warning-600');
       expect(colors.label).toContain('bg-warning-500');
     });
 
     it('returns success colors for confirmed blocks', () => {
       const colors = getBlockColors(false);
-      expect(colors.bg).toContain('bg-success-200');
+      expect(colors.bgGradient).toContain('success');
       expect(colors.bar).toContain('bg-success-600');
       expect(colors.label).toContain('bg-success-500');
     });

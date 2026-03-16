@@ -139,9 +139,10 @@ describe('NetworkConnectionCard', () => {
     it('highlights current mode', () => {
       render(<NetworkConnectionCard {...defaultProps} />);
 
-      // Pool should be highlighted for mainnet
+      // Pool should be highlighted for mainnet (active tab uses white bg with shadow)
       const poolButton = screen.getByText('Pool').closest('button');
-      expect(poolButton?.className).toContain('bg-mainnet');
+      expect(poolButton?.className).toContain('bg-white');
+      expect(poolButton?.className).toContain('shadow-sm');
     });
 
     it('changes mode when clicking button', async () => {

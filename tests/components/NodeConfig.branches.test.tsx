@@ -217,6 +217,8 @@ describe('NodeConfig branch coverage', () => {
     await waitFor(() => {
       expect(adminApi.stopTorContainer).toHaveBeenCalled();
     });
-    expect(screen.getByText('Disabled')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('Disabled')).toBeInTheDocument();
+    });
   });
 });
