@@ -5,7 +5,7 @@ interface SkeletonProps {
 }
 
 const Skeleton: React.FC<SkeletonProps> = ({ className = '' }) => (
-  <div className={`animate-pulse rounded-lg bg-sanctuary-200 dark:bg-sanctuary-800 ${className}`} />
+  <div className={`rounded-lg animate-shimmer ${className}`} />
 );
 
 /** Dashboard-shaped skeleton with cards and activity list */

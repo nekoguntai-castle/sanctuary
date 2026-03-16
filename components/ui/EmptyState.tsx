@@ -46,10 +46,12 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
   }
 
   return (
-    <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
+    <div className="flex flex-col items-center justify-center py-12 px-6 text-center animate-fade-in-up">
       {icon && (
-        <div className="mb-4 p-4 rounded-2xl surface-secondary">
-          {icon}
+        <div className="mb-5 p-5 rounded-2xl border-2 border-dashed border-primary-200 dark:border-primary-800/50 bg-primary-50/30 dark:bg-primary-900/10">
+          {React.isValidElement(icon) ? React.cloneElement(icon as React.ReactElement<{ className?: string }>, {
+            className: ((icon as React.ReactElement<{ className?: string }>).props.className || '').replace(/text-sanctuary-\d+/g, '') + ' text-primary-400 dark:text-primary-500',
+          }) : icon}
         </div>
       )}
       <h4 className="text-base font-medium text-sanctuary-700 dark:text-sanctuary-300 mb-1">

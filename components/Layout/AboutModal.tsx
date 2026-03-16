@@ -30,7 +30,7 @@ export const AboutModal: React.FC<AboutModalProps> = ({
         className="fixed inset-0 bg-black/50 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="relative surface-elevated rounded-2xl shadow-2xl border border-sanctuary-200 dark:border-sanctuary-700 max-w-md w-full max-h-[90vh] overflow-y-auto">
+      <div className="relative surface-elevated rounded-2xl shadow-2xl border border-sanctuary-200 dark:border-sanctuary-700 max-w-md w-full max-h-[90vh] overflow-y-auto animate-modal-enter">
         {/* Header */}
         <div className="p-6 border-b border-sanctuary-200 dark:border-sanctuary-800">
           <div className="flex items-center justify-between">
@@ -234,8 +234,8 @@ const DonationSection: React.FC<DonationSectionProps> = ({
       >
         {copiedAddress === copyType ? (
           <>
-            <Check className="h-3 w-3" />
-            <span>Copied!</span>
+            <Check className="h-3 w-3 text-success-500 animate-copy-bounce" />
+            <span className="text-success-600 dark:text-success-400">Copied!</span>
           </>
         ) : (
           <>

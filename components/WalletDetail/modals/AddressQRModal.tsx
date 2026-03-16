@@ -26,7 +26,7 @@ export const AddressQRModal: React.FC<AddressQRModalProps> = ({
       onClick={onClose}
     >
       <div
-        className="surface-elevated rounded-2xl max-w-sm w-full p-6 shadow-xl border border-sanctuary-200 dark:border-sanctuary-700 animate-fade-in-up"
+        className="surface-elevated rounded-2xl max-w-sm w-full p-6 shadow-xl border border-sanctuary-200 dark:border-sanctuary-700 animate-modal-enter"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-center mb-4">

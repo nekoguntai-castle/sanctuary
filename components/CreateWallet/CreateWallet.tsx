@@ -11,7 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import * as devicesApi from '../../src/api/devices';
 import { Device, WalletType, DeviceAccount } from '../../types';
 import { Button } from '../ui/Button';
-import { ArrowLeft, ArrowRight, Check } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Wallet, Cpu, Settings, ClipboardCheck } from 'lucide-react';
 import { useErrorHandler } from '../../hooks/useErrorHandler';
 import { createLogger } from '../../utils/logger';
 import { logError } from '../../utils/errorHandler';
@@ -160,13 +160,44 @@ export const CreateWallet: React.FC = () => {
             >
                 <ArrowLeft className="w-4 h-4 mr-1" /> {step === 1 ? 'Cancel' : 'Back'}
             </button>
-            <div className="flex space-x-2">
-                {[1, 2, 3, 4].map(s => (
-                    <div
-                        key={s}
-                        className={`h-2 rounded-full transition-all duration-300 ${s === step ? 'w-8 bg-sanctuary-800 dark:bg-sanctuary-200' : s < step ? 'w-2 bg-success-500' : 'w-2 bg-sanctuary-200 dark:bg-sanctuary-800'}`}
-                    />
-                ))}
+            <div className="flex items-center">
+                {[
+                  { num: 1, label: 'Type', icon: Wallet },
+                  { num: 2, label: 'Signers', icon: Cpu },
+                  { num: 3, label: 'Config', icon: Settings },
+                  { num: 4, label: 'Review', icon: ClipboardCheck },
+                ].map((s, idx) => {
+                  const isCompleted = s.num < step;
+                  const isCurrent = s.num === step;
+                  const StepIcon = s.icon;
+                  return (
+                    <React.Fragment key={s.num}>
+                      {idx > 0 && (
+                        <div className={`w-8 h-px mx-1 transition-colors duration-300 ${isCompleted ? 'bg-success-500' : 'bg-sanctuary-200 dark:bg-sanctuary-800'} ${isCurrent ? 'bg-gradient-to-r from-success-500 to-sanctuary-200 dark:to-sanctuary-800' : ''}`} />
+                      )}
+                      <div className="flex flex-col items-center">
+                        <div className={`
+                          flex items-center justify-center rounded-full transition-all duration-300
+                          ${isCompleted
+                            ? 'w-8 h-8 bg-success-500 text-white'
+                            : isCurrent
+                            ? 'w-9 h-9 border-2 border-primary-500 text-primary-600 dark:text-primary-400 shadow-sm'
+                            : 'w-8 h-8 border border-sanctuary-300 dark:border-sanctuary-700 text-sanctuary-400'
+                          }
+                        `}>
+                          {isCompleted ? (
+                            <Check className="w-4 h-4" />
+                          ) : (
+                            <StepIcon className="w-4 h-4" />
+                          )}
+                        </div>
+                        <span className={`text-[10px] mt-1 font-medium transition-colors ${isCurrent ? 'text-primary-600 dark:text-primary-400' : isCompleted ? 'text-success-600 dark:text-success-400' : 'text-sanctuary-400'}`}>
+                          {s.label}
+                        </span>
+                      </div>
+                    </React.Fragment>
+                  );
+                })}
             </div>
         </div>
 

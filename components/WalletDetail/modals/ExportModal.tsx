@@ -176,7 +176,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
-      <div className="surface-elevated rounded-2xl max-w-lg w-full p-6 shadow-xl border border-sanctuary-200 dark:border-sanctuary-700 animate-fade-in-up">
+      <div className="surface-elevated rounded-2xl max-w-lg w-full p-6 shadow-xl border border-sanctuary-200 dark:border-sanctuary-700 animate-modal-enter">
         <div className="flex justify-between items-center mb-6">
           <h3 className="text-xl font-light">Export Wallet</h3>
           <button

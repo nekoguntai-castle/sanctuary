@@ -39,7 +39,7 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({
             className={`p-2 rounded transition-colors ${copied ? 'bg-success-100 dark:bg-success-500/20 text-success-600 dark:text-success-400' : 'hover:bg-sanctuary-200 dark:hover:bg-sanctuary-800 text-sanctuary-500'}`}
             title={copied ? 'Copied!' : 'Copy to clipboard'}
           >
-            {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+            {copied ? <Check className="w-4 h-4 text-success-500 animate-copy-bounce" /> : <Copy className="w-4 h-4" />}
           </button>
         </div>
       </div>

@@ -104,6 +104,8 @@ vi.mock('lucide-react', () => ({
   Settings: () => <span data-testid="settings" />,
   CheckCircle: () => <span data-testid="check-circle" />,
   AlertCircle: () => <span data-testid="alert-circle" />,
+  Wallet: () => <span data-testid="wallet-icon" />,
+  ClipboardCheck: () => <span data-testid="clipboard-check" />,
 }));
 
 // Mock custom icons
@@ -328,7 +330,7 @@ describe('CreateWallet Component - Multi-step Navigation', () => {
 
     // Step 4: Review and create - button text is "Construct Wallet"
     await waitFor(() => {
-      expect(screen.getByText(/review/i)).toBeInTheDocument();
+      expect(screen.getByText(/review wallet details/i)).toBeInTheDocument();
     });
     await user.click(screen.getByText(/construct wallet/i));
 

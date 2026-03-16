@@ -79,17 +79,17 @@ export function ConfigurableTable<T>({
     <div className="surface-elevated rounded-2xl border border-sanctuary-200 dark:border-sanctuary-800 overflow-hidden">
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-sanctuary-200 dark:divide-sanctuary-800">
-          <thead className="surface-muted">
-            <tr>
+          <thead className="surface-muted sticky top-0 z-10">
+            <tr className="border-b-2 border-sanctuary-200 dark:border-sanctuary-700">
               {orderedColumns.map((column) => (
                 <th
                   key={column.id}
                   scope="col"
                   onClick={() => handleHeaderClick(column)}
                   className={`
-                    px-6 py-3 text-xs font-medium text-sanctuary-500 uppercase tracking-wider
+                    px-6 py-3.5 text-xs font-semibold text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-wider
                     ${getAlignmentClass(column.align)}
-                    ${column.sortable ? 'cursor-pointer hover:text-sanctuary-700 dark:hover:text-sanctuary-300 select-none' : ''}
+                    ${column.sortable ? 'cursor-pointer hover:text-sanctuary-700 dark:hover:text-sanctuary-300 select-none transition-colors' : ''}
                   `}
                 >
                   <span className={`inline-flex items-center gap-1 ${column.align === 'right' ? 'justify-end' : ''}`}>
@@ -97,12 +97,12 @@ export function ConfigurableTable<T>({
                     {column.sortable && column.sortKey && (
                       sortBy === column.sortKey ? (
                         sortOrder === 'asc' ? (
-                          <ChevronUp className="w-3 h-3" />
+                          <ChevronUp className="w-3.5 h-3.5 text-primary-500 transition-transform" />
                         ) : (
-                          <ChevronDown className="w-3 h-3" />
+                          <ChevronDown className="w-3.5 h-3.5 text-primary-500 transition-transform" />
                         )
                       ) : (
-                        <ArrowUpDown className="w-3 h-3 opacity-30" />
+                        <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-50 transition-opacity" />
                       )
                     )}
                   </span>

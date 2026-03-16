@@ -50,7 +50,11 @@ export const WalletGridView: React.FC<WalletGridViewProps> = ({
           <div
             key={wallet.id}
             onClick={() => navigate(`/wallets/${wallet.id}`)}
-            className="group surface-elevated rounded-2xl p-6 border border-sanctuary-200 dark:border-sanctuary-800 shadow-sm hover:shadow-md hover:border-primary-300 dark:hover:border-primary-600 transition-all cursor-pointer relative overflow-hidden"
+            className={`group surface-elevated rounded-2xl p-6 border shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 cursor-pointer relative overflow-hidden ${
+              isMultisig
+                ? 'border-sanctuary-200 dark:border-sanctuary-800 hover:border-warning-300 dark:hover:border-warning-600'
+                : 'border-sanctuary-200 dark:border-sanctuary-800 hover:border-success-300 dark:hover:border-success-600'
+            }`}
           >
             <div className="flex justify-between items-start mb-6">
               <div className={`p-3 rounded-xl ${iconColorClass}`}>
@@ -75,7 +79,7 @@ export const WalletGridView: React.FC<WalletGridViewProps> = ({
 
             <div className="mt-2 mb-4">
               {/* BTC balance with inline net pending and type icons */}
-              <div className="text-lg font-bold text-sanctuary-900 dark:text-sanctuary-50 flex items-center gap-1.5">
+              <div className="text-lg font-bold font-mono tabular-nums text-sanctuary-900 dark:text-sanctuary-50 flex items-center gap-1.5">
                 <span>{format(wallet.balance)}</span>
                 {pendingByWallet[wallet.id] && (
                   <>

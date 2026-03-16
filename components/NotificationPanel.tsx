@@ -52,32 +52,32 @@ const getNotificationIcon = (type: NotificationType, severity: string) => {
   }
 };
 
-// Get severity color classes
+// Get severity color classes - uses left border accent for visual hierarchy
 const getSeverityColors = (severity: string) => {
   switch (severity) {
     case 'critical':
       return {
-        bg: 'bg-rose-50 dark:bg-rose-900/20',
-        border: 'border-rose-200 dark:border-rose-800',
+        bg: 'bg-rose-50/50 dark:bg-rose-900/10',
+        border: 'border border-rose-100 dark:border-rose-900/30 border-l-[3px] border-l-rose-500',
         icon: 'text-rose-500',
         title: 'text-rose-900 dark:text-rose-100',
         text: 'text-rose-700 dark:text-rose-300',
       };
     case 'warning':
       return {
-        bg: 'bg-rose-50 dark:bg-rose-900/20',
-        border: 'border-rose-200 dark:border-rose-800',
-        icon: 'text-rose-400 dark:text-rose-500',
-        title: 'text-rose-900 dark:text-rose-100',
-        text: 'text-rose-700 dark:text-rose-300',
+        bg: 'bg-amber-50/50 dark:bg-amber-900/10',
+        border: 'border border-amber-100 dark:border-amber-900/30 border-l-[3px] border-l-amber-500',
+        icon: 'text-amber-500',
+        title: 'text-sanctuary-900 dark:text-sanctuary-100',
+        text: 'text-sanctuary-700 dark:text-sanctuary-300',
       };
     default:
       return {
-        bg: 'bg-primary-50 dark:bg-primary-900/20',
-        border: 'border-primary-200 dark:border-primary-800',
+        bg: 'bg-primary-50/50 dark:bg-primary-900/10',
+        border: 'border border-primary-100 dark:border-primary-900/30 border-l-[3px] border-l-primary-500',
         icon: 'text-primary-500',
-        title: 'text-primary-900 dark:text-primary-100',
-        text: 'text-primary-700 dark:text-primary-300',
+        title: 'text-sanctuary-900 dark:text-sanctuary-100',
+        text: 'text-sanctuary-700 dark:text-sanctuary-300',
       };
   }
 };
@@ -256,7 +256,7 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
   return (
     <div
       ref={panelRef}
-      className="absolute left-0 bottom-full mb-2 w-80 max-h-[70vh] bg-white dark:bg-sanctuary-900 rounded-xl shadow-xl border border-sanctuary-200 dark:border-sanctuary-700 overflow-hidden z-50 animate-fade-in"
+      className="absolute left-0 bottom-full mb-2 w-80 max-h-[70vh] surface-glass rounded-xl shadow-xl overflow-hidden z-50 animate-modal-enter"
     >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-sanctuary-200 dark:border-sanctuary-800">

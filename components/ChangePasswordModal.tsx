@@ -78,7 +78,7 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ onPass
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="surface-elevated rounded-2xl border border-sanctuary-200 dark:border-sanctuary-800 max-w-md w-full shadow-2xl animate-fade-in-up">
+      <div className="surface-elevated rounded-2xl border border-sanctuary-200 dark:border-sanctuary-800 max-w-md w-full shadow-2xl animate-modal-enter">
         {/* Header */}
         <div className="p-6 border-b border-sanctuary-100 dark:border-sanctuary-800">
           <div className="flex items-center space-x-3">
