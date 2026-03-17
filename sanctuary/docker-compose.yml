@@ -9,7 +9,7 @@ services:
       PROXY_AUTH_ADD: "false"
 
   web:
-    image: ghcr.io/nekoguntai/sanctuary-frontend:v0.8.13@sha256:11df11ea3c2e0a79e4dfeff1d88966cb5404275d64874d383b13fb37f2100749
+    image: ghcr.io/nekoguntai/sanctuary-frontend:v0.8.14@sha256:c8c0aa9fd22dd266be3e016a0bf11d70736418181d2de023549f8ccd3e9c1907
     restart: on-failure
     stop_grace_period: 1m
     depends_on:
@@ -24,7 +24,7 @@ services:
         ipv4_address: $APP_SANCTUARY_WEB_IP
 
   server:
-    image: ghcr.io/nekoguntai/sanctuary-backend:v0.8.13@sha256:1513878044f6fa2c404c825083f4f851e7a1eb2f48ecd0e2d379cc9bf3323baa
+    image: ghcr.io/nekoguntai/sanctuary-backend:v0.8.14@sha256:75b7f1bb1339c638d804fed54318f0698efb9eff6ef396950655ad71b123e040
     restart: on-failure
     stop_grace_period: 1m
     depends_on:
@@ -107,7 +107,7 @@ services:
         ipv4_address: $APP_SANCTUARY_REDIS_IP
 
   worker:
-    image: ghcr.io/nekoguntai/sanctuary-backend:v0.8.13@sha256:1513878044f6fa2c404c825083f4f851e7a1eb2f48ecd0e2d379cc9bf3323baa
+    image: ghcr.io/nekoguntai/sanctuary-backend:v0.8.14@sha256:75b7f1bb1339c638d804fed54318f0698efb9eff6ef396950655ad71b123e040
     restart: on-failure
     stop_grace_period: 1m
     depends_on:
@@ -142,7 +142,7 @@ services:
         ipv4_address: $APP_SANCTUARY_WORKER_IP
 
   migrate:
-    image: ghcr.io/nekoguntai/sanctuary-backend:v0.8.13@sha256:1513878044f6fa2c404c825083f4f851e7a1eb2f48ecd0e2d379cc9bf3323baa
+    image: ghcr.io/nekoguntai/sanctuary-backend:v0.8.14@sha256:75b7f1bb1339c638d804fed54318f0698efb9eff6ef396950655ad71b123e040
     restart: "no"
     depends_on:
       db:
