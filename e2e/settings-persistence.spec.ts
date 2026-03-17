@@ -6,18 +6,7 @@
  */
 
 import { expect, test, type Page, type Route } from '@playwright/test';
-
-const API_ORIGIN = (() => {
-  const apiUrl = process.env.VITE_API_URL;
-  if (!apiUrl || !/^https?:\/\//.test(apiUrl)) {
-    return null;
-  }
-  try {
-    return new URL(apiUrl).origin;
-  } catch {
-    return null;
-  }
-})();
+import { json, unmocked, registerApiRoutes } from './helpers';
 
 const ADMIN_USER = {
   id: 'user-settings-admin',
@@ -37,14 +26,6 @@ const ADMIN_USER = {
   },
   createdAt: '2026-03-11T00:00:00.000Z',
 };
-
-function json(route: Route, data: unknown, status = 200) {
-  return route.fulfill({
-    status,
-    contentType: 'application/json',
-    body: JSON.stringify(data),
-  });
-}
 
 async function mockSettingsApi(page: Page) {
   await page.addInitScript(() => {
@@ -93,11 +74,10 @@ async function mockSettingsApi(page: Page) {
     if (method === 'GET' && path === '/ai/status') return json(route, { available: false, containerAvailable: false });
 
     unhandledRequests.push(`${method} ${path}`);
-    return json(route, { message: `Unmocked: ${method} ${path}` }, 404);
+    return unmocked(route, method, path);
   };
 
-  await page.route('**/api/v1/**', apiRouteHandler);
-  if (API_ORIGIN) await page.route(`${API_ORIGIN}/**`, apiRouteHandler);
+  await registerApiRoutes(page, apiRouteHandler);
   return { unhandledRequests, preferenceUpdates };
 }
 

@@ -6,21 +6,10 @@
  */
 
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { json, unmocked, registerApiRoutes } from './helpers';
 
 const WALLET_ID = 'wallet-a11y-1';
 const DEVICE_ID = 'device-a11y-1';
-
-const API_ORIGIN = (() => {
-  const apiUrl = process.env.VITE_API_URL;
-  if (!apiUrl || !/^https?:\/\//.test(apiUrl)) {
-    return null;
-  }
-  try {
-    return new URL(apiUrl).origin;
-  } catch {
-    return null;
-  }
-})();
 
 const ADMIN_USER = {
   id: 'user-a11y-admin',
@@ -72,14 +61,6 @@ const DEVICE = {
   accounts: [{ id: 'acct-a11y-1', purpose: 'single_sig', scriptType: 'native_segwit', derivationPath: "m/84'/0'/0'", xpub: 'xpub-a11y-account' }],
   model: { slug: 'ledger', manufacturer: 'Ledger', name: 'Nano X' },
 };
-
-function json(route: Route, data: unknown, status = 200) {
-  return route.fulfill({
-    status,
-    contentType: 'application/json',
-    body: JSON.stringify(data),
-  });
-}
 
 async function mockA11yApi(page: Page) {
   await page.addInitScript(() => {
@@ -138,11 +119,10 @@ async function mockA11yApi(page: Page) {
     if (method === 'GET' && path === '/devices/models') return json(route, []);
 
     unhandledRequests.push(`${method} ${path}`);
-    return json(route, { message: `Unmocked: ${method} ${path}` }, 404);
+    return unmocked(route, method, path);
   };
 
-  await page.route('**/api/v1/**', apiRouteHandler);
-  if (API_ORIGIN) await page.route(`${API_ORIGIN}/**`, apiRouteHandler);
+  await registerApiRoutes(page, apiRouteHandler);
   return unhandledRequests;
 }
 
@@ -239,7 +219,7 @@ test.describe('Accessibility', () => {
       localStorage.removeItem('sanctuary_token');
     });
 
-    await page.route('**/api/v1/**', async (route) => {
+    await registerApiRoutes(page, async (route) => {
       const path = new URL(route.request().url()).pathname.replace(/^\/api\/v1/, '');
       if (path === '/health') return json(route, { status: 'ok' });
       if (path === '/auth/registration-status') return json(route, { enabled: false });

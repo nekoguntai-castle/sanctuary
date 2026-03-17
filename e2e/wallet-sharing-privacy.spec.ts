@@ -6,21 +6,10 @@
  */
 
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { json, unmocked, registerApiRoutes } from './helpers';
 
 const WALLET_ID = 'wallet-share-1';
 const DEVICE_ID = 'device-share-1';
-
-const API_ORIGIN = (() => {
-  const apiUrl = process.env.VITE_API_URL;
-  if (!apiUrl || !/^https?:\/\//.test(apiUrl)) {
-    return null;
-  }
-  try {
-    return new URL(apiUrl).origin;
-  } catch {
-    return null;
-  }
-})();
 
 const ADMIN_USER = {
   id: 'user-share-admin',
@@ -105,14 +94,6 @@ const ADDRESSES = [
   { index: 1, address: 'bc1qshareaddr2xxxxxxxxxxxxxxxxxxxxxxxx', type: 'receive', used: true, balance: 25000000, label: 'Exchange deposit' },
   { index: 2, address: 'bc1qshareaddr3xxxxxxxxxxxxxxxxxxxxxxxx', type: 'receive', used: false, balance: 0, label: null },
 ];
-
-function json(route: Route, data: unknown, status = 200) {
-  return route.fulfill({
-    status,
-    contentType: 'application/json',
-    body: JSON.stringify(data),
-  });
-}
 
 async function mockShareApi(page: Page) {
   await page.addInitScript(() => {
@@ -254,11 +235,10 @@ async function mockShareApi(page: Page) {
     ]);
 
     unhandledRequests.push(`${method} ${path}`);
-    return json(route, { message: `Unmocked: ${method} ${path}` }, 404);
+    return unmocked(route, method, path);
   };
 
-  await page.route('**/api/v1/**', apiRouteHandler);
-  if (API_ORIGIN) await page.route(`${API_ORIGIN}/**`, apiRouteHandler);
+  await registerApiRoutes(page, apiRouteHandler);
   return unhandledRequests;
 }
 
@@ -309,17 +289,24 @@ test.describe('Wallet sharing and privacy', () => {
     expect(unhandledRequests).toEqual([]);
   });
 
-  // --- UTXO Tab ---
+  // --- Tab Buttons ---
 
-  test('UTXO tab button is present on wallet detail', async ({ page }) => {
-    await mockShareApi(page);
+  for (const { tab, locator } of [
+    { tab: 'UTXOs', locator: { name: 'UTXOs', exact: true } },
+    { tab: 'Addresses', locator: { name: /addresses/i } },
+  ] as const) {
+    test(`${tab} tab is clickable on wallet detail`, async ({ page }) => {
+      await mockShareApi(page);
 
-    await page.goto(`/#/wallets/${WALLET_ID}`);
-    await expect(page.getByRole('heading', { name: WALLET.name })).toBeVisible();
+      await page.goto(`/#/wallets/${WALLET_ID}`);
+      await expect(page.getByRole('heading', { name: WALLET.name })).toBeVisible();
 
-    // UTXOs tab button should be present
-    await expect(page.getByRole('button', { name: 'UTXOs', exact: true })).toBeVisible();
-  });
+      const tabButton = page.getByRole('button', locator);
+      await expect(tabButton).toBeVisible();
+      await tabButton.click();
+      await expect(page.getByRole('main')).toBeVisible();
+    });
+  }
 
   // --- Privacy ---
 
@@ -332,18 +319,6 @@ test.describe('Wallet sharing and privacy', () => {
     // The wallet detail page loads without crashing when privacy data is mocked
     await expect(page.getByRole('main')).toBeVisible();
     expect(unhandledRequests).toEqual([]);
-  });
-
-  // --- Addresses Tab ---
-
-  test('addresses tab button is present on wallet detail', async ({ page }) => {
-    await mockShareApi(page);
-
-    await page.goto(`/#/wallets/${WALLET_ID}`);
-    await expect(page.getByRole('heading', { name: WALLET.name })).toBeVisible();
-
-    // Addresses tab button should be present
-    await expect(page.getByRole('button', { name: /addresses/i })).toBeVisible();
   });
 
   // --- Stats Tab ---

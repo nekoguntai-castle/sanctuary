@@ -6,18 +6,7 @@
  */
 
 import { expect, test, type Page, type Route } from '@playwright/test';
-
-const API_ORIGIN = (() => {
-  const apiUrl = process.env.VITE_API_URL;
-  if (!apiUrl || !/^https?:\/\//.test(apiUrl)) {
-    return null;
-  }
-  try {
-    return new URL(apiUrl).origin;
-  } catch {
-    return null;
-  }
-})();
+import { json, unmocked, registerApiRoutes } from './helpers';
 
 const ADMIN_USER = {
   id: 'user-ops-admin',
@@ -108,14 +97,6 @@ const NODE_CONFIG = {
   proxyHost: 'tor',
   proxyPort: 9050,
 };
-
-function json(route: Route, data: unknown, status = 200) {
-  return route.fulfill({
-    status,
-    contentType: 'application/json',
-    body: JSON.stringify(data),
-  });
-}
 
 async function mockAdminApi(
   page: Page,
@@ -282,11 +263,10 @@ async function mockAdminApi(
     }
 
     unhandledRequests.push(requestKey);
-    return json(route, { message: `Unmocked: ${requestKey}` }, 404);
+    return unmocked(route, method, path);
   };
 
-  await page.route('**/api/v1/**', apiRouteHandler);
-  if (API_ORIGIN) await page.route(`${API_ORIGIN}/**`, apiRouteHandler);
+  await registerApiRoutes(page, apiRouteHandler);
   return unhandledRequests;
 }
 

@@ -6,20 +6,9 @@
  */
 
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { json, unmocked, registerApiRoutes } from './helpers';
 
 const IMPORTED_WALLET_ID = 'wallet-imported-1';
-
-const API_ORIGIN = (() => {
-  const apiUrl = process.env.VITE_API_URL;
-  if (!apiUrl || !/^https?:\/\//.test(apiUrl)) {
-    return null;
-  }
-  try {
-    return new URL(apiUrl).origin;
-  } catch {
-    return null;
-  }
-})();
 
 const ADMIN_USER = {
   id: 'user-import-admin',
@@ -42,14 +31,6 @@ const ADMIN_USER = {
 
 const VALID_DESCRIPTOR = "wpkh([abcd1234/84'/0'/0']xpub6CUGRUonZSQ4TWtTMmzXdrXDtyPWKiLzXCTFHKEJR7TXPfdsg9aVjqYkZ4hCshELBgwMGxZVqV8Dqo3Fg5HsEqFFz5eMzCsvJk4ahGPeBTc/0/*)";
 const VALID_DESCRIPTOR_CHECKSUM = "wpkh([abcd1234/84'/0'/0']xpub6CUGRUonZSQ4TWtTMmzXdrXDtyPWKiLzXCTFHKEJR7TXPfdsg9aVjqYkZ4hCshELBgwMGxZVqV8Dqo3Fg5HsEqFFz5eMzCsvJk4ahGPeBTc/0/*)#abc12345";
-
-function json(route: Route, data: unknown, status = 200) {
-  return route.fulfill({
-    status,
-    contentType: 'application/json',
-    body: JSON.stringify(data),
-  });
-}
 
 async function mockImportApi(
   page: Page,
@@ -165,11 +146,10 @@ async function mockImportApi(
     if (method === 'GET' && path === `/wallets/${IMPORTED_WALLET_ID}/share`) return json(route, { group: null, users: [] });
 
     unhandledRequests.push(requestKey);
-    return json(route, { message: `Unmocked: ${requestKey}` }, 404);
+    return unmocked(route, method, path);
   };
 
-  await page.route('**/api/v1/**', apiRouteHandler);
-  if (API_ORIGIN) await page.route(`${API_ORIGIN}/**`, apiRouteHandler);
+  await registerApiRoutes(page, apiRouteHandler);
   return unhandledRequests;
 }
 

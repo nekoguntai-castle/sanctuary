@@ -7,20 +7,9 @@
  */
 
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { json, unmocked, registerApiRoutes } from './helpers';
 
 const MAINNET_WALLET_ID = 'wallet-dash-price-1';
-
-const API_ORIGIN = (() => {
-  const apiUrl = process.env.VITE_API_URL;
-  if (!apiUrl || !/^https?:\/\//.test(apiUrl)) {
-    return null;
-  }
-  try {
-    return new URL(apiUrl).origin;
-  } catch {
-    return null;
-  }
-})();
 
 const ADMIN_USER = {
   id: 'user-dash-price',
@@ -106,14 +95,6 @@ const PENDING_BLOCKS = [
     txCount: 900,
   },
 ];
-
-function json(route: Route, data: unknown, status = 200) {
-  return route.fulfill({
-    status,
-    contentType: 'application/json',
-    body: JSON.stringify(data),
-  });
-}
 
 async function mockDashboardApi(
   page: Page,
@@ -222,15 +203,10 @@ async function mockDashboardApi(
       });
     }
 
-    // Return 404 for unmocked routes instead of route.continue()
-    // to avoid hanging on dead backend in CI
-    return json(route, { message: `Unmocked: ${method} ${path}` }, 404);
+    return unmocked(route, method, path);
   };
 
-  if (API_ORIGIN) {
-    await page.route(`${API_ORIGIN}/api/v1/**`, apiRouteHandler);
-  }
-  await page.route('**/api/v1/**', apiRouteHandler);
+  await registerApiRoutes(page, apiRouteHandler);
 }
 
 // ─── 1. 24h Price Change Display ─────────────────────────────────────

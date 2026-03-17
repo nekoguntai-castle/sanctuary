@@ -6,21 +6,10 @@
  */
 
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { json, unmocked, registerApiRoutes } from './helpers';
 
 const WALLET_ID = 'wallet-send-1';
 const DEVICE_ID = 'device-send-1';
-
-const API_ORIGIN = (() => {
-  const apiUrl = process.env.VITE_API_URL;
-  if (!apiUrl || !/^https?:\/\//.test(apiUrl)) {
-    return null;
-  }
-  try {
-    return new URL(apiUrl).origin;
-  } catch {
-    return null;
-  }
-})();
 
 const ADMIN_USER = {
   id: 'user-send-admin',
@@ -127,14 +116,6 @@ const RECEIVE_ADDRESSES = [
   { index: 1, address: 'bc1qsendtestaddr2xxxxxxxxxxxxxxxxxx', used: true, balance: 50000000 },
   { index: 2, address: 'bc1qsendtestaddr3xxxxxxxxxxxxxxxxxx', used: false, balance: 0 },
 ];
-
-function json(route: Route, data: unknown, status = 200) {
-  return route.fulfill({
-    status,
-    contentType: 'application/json',
-    body: JSON.stringify(data),
-  });
-}
 
 async function mockSendApi(
   page: Page,
@@ -248,11 +229,10 @@ async function mockSendApi(
     if (method === 'GET' && path === '/ai/status') return json(route, { available: false, containerAvailable: false });
 
     unhandledRequests.push(`${method} ${path}`);
-    return json(route, { message: `Unmocked: ${requestKey}` }, 404);
+    return unmocked(route, method, path);
   };
 
-  await page.route('**/api/v1/**', apiRouteHandler);
-  if (API_ORIGIN) await page.route(`${API_ORIGIN}/**`, apiRouteHandler);
+  await registerApiRoutes(page, apiRouteHandler);
   return unhandledRequests;
 }
 

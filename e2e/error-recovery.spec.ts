@@ -6,20 +6,9 @@
  */
 
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { json, unmocked, registerApiRoutes } from './helpers';
 
 const WALLET_ID = 'wallet-error-1';
-
-const API_ORIGIN = (() => {
-  const apiUrl = process.env.VITE_API_URL;
-  if (!apiUrl || !/^https?:\/\//.test(apiUrl)) {
-    return null;
-  }
-  try {
-    return new URL(apiUrl).origin;
-  } catch {
-    return null;
-  }
-})();
 
 const ADMIN_USER = {
   id: 'user-error-admin',
@@ -59,14 +48,6 @@ const WALLET = {
   lastSyncedAt: '2026-03-11T00:00:00.000Z',
   lastSyncStatus: 'success',
 };
-
-function json(route: Route, data: unknown, status = 200) {
-  return route.fulfill({
-    status,
-    contentType: 'application/json',
-    body: JSON.stringify(data),
-  });
-}
 
 type MockApiFailure = {
   status?: number;
@@ -146,11 +127,10 @@ async function mockErrorApi(
     if (method === 'GET' && path === '/admin/websocket/stats') return json(route, { connections: { current: 1, max: 100 }, subscriptions: { total: 0 }, rateLimits: {} });
 
     unhandledRequests.push(requestKey);
-    return json(route, { message: `Unmocked: ${requestKey}` }, 404);
+    return unmocked(route, method, path);
   };
 
-  await page.route('**/api/v1/**', apiRouteHandler);
-  if (API_ORIGIN) await page.route(`${API_ORIGIN}/**`, apiRouteHandler);
+  await registerApiRoutes(page, apiRouteHandler);
   return unhandledRequests;
 }
 
@@ -328,7 +308,7 @@ test.describe('Error recovery', () => {
       localStorage.setItem('sanctuary_token', 'playwright-recovery-token');
     });
 
-    await page.route('**/api/v1/**', async (route) => {
+    await registerApiRoutes(page, async (route) => {
       const request = route.request();
       const method = request.method();
       const url = new URL(request.url());
@@ -358,7 +338,7 @@ test.describe('Error recovery', () => {
       if (method === 'GET' && path === '/admin/settings') return json(route, { registrationEnabled: false, confirmationThreshold: 1, deepConfirmationThreshold: 6, dustThreshold: 546, aiEnabled: false });
       if (method === 'GET' && path === '/admin/features') return json(route, []);
       if (method === 'GET' && path === '/ai/status') return json(route, { available: false, containerAvailable: false });
-      return json(route, { message: `Unmocked: ${method} ${path}` }, 404);
+      return unmocked(route, method, path);
     });
 
     // Load with failing price

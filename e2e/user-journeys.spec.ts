@@ -6,22 +6,11 @@
  */
 
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { json, unmocked, registerApiRoutes } from './helpers';
 
 const MAINNET_WALLET_ID = 'wallet-journey-main';
 const TESTNET_WALLET_ID = 'wallet-journey-test';
 const DEVICE_ID = 'device-journey-1';
-
-const API_ORIGIN = (() => {
-  const apiUrl = process.env.VITE_API_URL;
-  if (!apiUrl || !/^https?:\/\//.test(apiUrl)) {
-    return null;
-  }
-  try {
-    return new URL(apiUrl).origin;
-  } catch {
-    return null;
-  }
-})();
 
 const ADMIN_USER = {
   id: 'user-journey-admin',
@@ -157,14 +146,6 @@ type MockApiFailure = {
 };
 
 type MockApiFailureMap = Record<string, MockApiFailure>;
-
-function json(route: Route, data: unknown, status = 200) {
-  return route.fulfill({
-    status,
-    contentType: 'application/json',
-    body: JSON.stringify(data),
-  });
-}
 
 async function mockAuthenticatedApi(
   page: Page,
@@ -491,13 +472,10 @@ async function mockAuthenticatedApi(
     }
 
     unhandledRequests.push(`${method} ${path}`);
-    return json(route, { message: `Unmocked endpoint: ${method} ${path}` }, 404);
+    return unmocked(route, method, path);
   };
 
-  await page.route('**/api/v1/**', apiRouteHandler);
-  if (API_ORIGIN) {
-    await page.route(`${API_ORIGIN}/**`, apiRouteHandler);
-  }
+  await registerApiRoutes(page, apiRouteHandler);
 
   return unhandledRequests;
 }
@@ -529,13 +507,10 @@ async function mockPublicApi(page: Page) {
     }
 
     unhandledRequests.push(`${method} ${path}`);
-    return json(route, { message: `Unmocked endpoint: ${method} ${path}` }, 404);
+    return unmocked(route, method, path);
   };
 
-  await page.route('**/api/v1/**', apiRouteHandler);
-  if (API_ORIGIN) {
-    await page.route(`${API_ORIGIN}/**`, apiRouteHandler);
-  }
+  await registerApiRoutes(page, apiRouteHandler);
 
   return unhandledRequests;
 }

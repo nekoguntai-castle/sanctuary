@@ -7,21 +7,11 @@
 
 import { expect, test, type Page, type Route } from '@playwright/test';
 
+import { json, unmocked, registerApiRoutes } from './helpers';
+
 const DEVICE_1_ID = 'device-create-1';
 const DEVICE_2_ID = 'device-create-2';
 const CREATED_WALLET_ID = 'wallet-created-new';
-
-const API_ORIGIN = (() => {
-  const apiUrl = process.env.VITE_API_URL;
-  if (!apiUrl || !/^https?:\/\//.test(apiUrl)) {
-    return null;
-  }
-  try {
-    return new URL(apiUrl).origin;
-  } catch {
-    return null;
-  }
-})();
 
 const ADMIN_USER = {
   id: 'user-create-admin',
@@ -127,14 +117,6 @@ const DEVICE_NO_SINGLESIG = {
     name: 'Nano S',
   },
 };
-
-function json(route: Route, data: unknown, status = 200) {
-  return route.fulfill({
-    status,
-    contentType: 'application/json',
-    body: JSON.stringify(data),
-  });
-}
 
 async function mockCreateWalletApi(
   page: Page,
@@ -246,11 +228,10 @@ async function mockCreateWalletApi(
     if (method === 'GET' && path === `/wallets/${CREATED_WALLET_ID}/share`) return json(route, { group: null, users: [] });
 
     unhandledRequests.push(requestKey);
-    return json(route, { message: `Unmocked: ${requestKey}` }, 404);
+    return unmocked(route, method, path);
   };
 
-  await page.route('**/api/v1/**', apiRouteHandler);
-  if (API_ORIGIN) await page.route(`${API_ORIGIN}/**`, apiRouteHandler);
+  await registerApiRoutes(page, apiRouteHandler);
   return unhandledRequests;
 }
 
