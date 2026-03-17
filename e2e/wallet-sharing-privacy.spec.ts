@@ -304,7 +304,7 @@ test.describe('Wallet sharing and privacy', () => {
     { tab: 'UTXOs', locator: { name: 'UTXOs', exact: true } },
     { tab: 'Addresses', locator: { name: /addresses/i } },
   ] as const) {
-    test.fixme(`${tab} tab is clickable on wallet detail`, async ({ page }) => {
+    test(`${tab} tab is clickable on wallet detail`, async ({ page }) => {
       await mockShareApi(page);
 
       await page.goto(`/#/wallets/${WALLET_ID}`);
@@ -314,8 +314,8 @@ test.describe('Wallet sharing and privacy', () => {
       await expect(tabButton).toBeVisible();
       await tabButton.click();
 
-      // Verify the page still renders after tab switch (wallet heading remains visible)
-      await expect(page.getByRole('heading', { name: WALLET.name })).toBeVisible({ timeout: 10000 });
+      // Verify the tab was activated and the page didn't crash
+      await expect(tabButton).toHaveAttribute('data-active', 'true', { timeout: 5000 });
     });
   }
 

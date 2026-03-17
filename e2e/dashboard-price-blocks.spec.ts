@@ -108,7 +108,7 @@ async function mockDashboardApi(
     localStorage.setItem('sanctuary_token', 'playwright-dash-price-token');
   });
 
-  const change24h = options?.change24h ?? 2.45;
+  const change24h = options?.change24h !== undefined ? options.change24h : 2.45;
   const price = options?.price ?? 75000;
   const includeBlocks = options?.includeBlocks ?? true;
 
@@ -238,7 +238,7 @@ test.describe('Dashboard 24h Price Change', () => {
     await expect(changeText).toBeVisible();
   });
 
-  test.fixme('displays --- when change24h is null', async ({ page }) => {
+  test('displays --- when change24h is null', async ({ page }) => {
     await mockDashboardApi(page, { change24h: null, price: 75000 });
     await page.goto('/#/');
     await page.waitForLoadState('networkidle');
@@ -298,7 +298,7 @@ test.describe('Block Visualizer Tooltip', () => {
     }
   });
 
-  test.fixme('tooltip shows block fullness percentage', async ({ page }) => {
+  test('tooltip shows block fullness percentage', async ({ page }) => {
     await mockDashboardApi(page, { includeBlocks: true });
     await page.goto('/#/');
     await page.waitForLoadState('networkidle');
@@ -310,10 +310,13 @@ test.describe('Block Visualizer Tooltip', () => {
     // Hover the block
     await blockButton.hover();
 
+    // Wait for tooltip to appear (same pattern as the passing tooltip test above)
+    const tooltip = page.getByText('2,800 txs');
+    await expect(tooltip).toBeVisible({ timeout: 5000 });
+
     // Tooltip should show fullness percentage
     // Block size is 1.4, fillPercentage = min((1.4 / 1.6) * 100, 100) = 87.5 → 88%
-    // The percentage is in a <span>88%</span> followed by text " full"
-    await expect(page.locator('text=88%').first()).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('88%')).toBeVisible();
   });
 
   test('pending block tooltip also appears above', async ({ page }) => {
