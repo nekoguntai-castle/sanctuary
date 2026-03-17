@@ -4,7 +4,7 @@ name: Sanctuary
 tagline: Self-hosted Bitcoin wallet coordinator for hardware wallets
 icon: https://raw.githubusercontent.com/nekoguntai/sanctuary/main/sanctuary/images/icon.svg
 category: bitcoin
-version: "0.8.15"
+version: "0.8.16"
 description: >-
   Sanctuary is a watch-only wallet coordinator that helps you manage Bitcoin
   wallets without exposing private keys to any networked device. All transaction
@@ -70,6 +70,6 @@ gallery: []
 path: ""
 defaultUsername: "admin"
 defaultPassword: "sanctuary"
-releaseNotes: "Version 0.8.15 released on 2026-03-17. See https://github.com/nekoguntai/sanctuary/releases/tag/v0.8.15 for details."
+releaseNotes: "Version 0.8.16 released on 2026-03-16. See https://github.com/nekoguntai/sanctuary/releases/tag/v0.8.15 for details."
 submitter: nekoguntai
 submission: https://github.com/getumbrel/umbrel-apps/pull/XXXX
