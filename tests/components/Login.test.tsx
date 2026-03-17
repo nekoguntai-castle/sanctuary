@@ -327,6 +327,7 @@ describe('Login Component', () => {
     changeHandler({ matches: false } as MediaQueryListEvent);
     expect(document.documentElement.classList.contains('dark')).toBe(false);
   });
+
 });
 
 describe('Login Component - 2FA Flow', () => {
