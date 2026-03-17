@@ -55,6 +55,12 @@ export default defineConfig({
         'src/types/**/*.ts',
         'shared/types/**/*.ts',
         // Type-only and barrel-export files with no executable logic
+        'components/**/types.ts',
+        'components/**/index.ts',
+        'components/**/index.tsx',
+        'contexts/**/index.ts',
+        'hooks/**/types.ts',
+        'hooks/**/index.ts',
         'services/**/types.ts',
         'services/**/index.ts',
         'themes/types.ts',

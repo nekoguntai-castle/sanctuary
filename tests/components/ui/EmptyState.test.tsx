@@ -14,6 +14,11 @@ describe('EmptyState', () => {
     expect(screen.getByTestId('icon')).toBeInTheDocument();
   });
 
+  it('renders non-element icon without cloning', () => {
+    render(<EmptyState title="Empty" icon={'text-icon' as unknown as React.ReactNode} />);
+    expect(screen.getByText('text-icon')).toBeInTheDocument();
+  });
+
   it('renders action button and navigates via hash when actionTo is set', () => {
     render(<EmptyState title="Empty" actionLabel="Go" actionTo="/somewhere" />);
     const button = screen.getByText('Go');

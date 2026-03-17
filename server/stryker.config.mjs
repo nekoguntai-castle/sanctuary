@@ -28,11 +28,11 @@ export default {
     '!**/*.d.ts',
   ],
 
-  // Higher thresholds for security-critical code
+  // Higher thresholds for security-critical code (tightened from 85/70/60)
   thresholds: {
-    high: 85,
-    low: 70,
-    break: 60,
+    high: 90,
+    low: 75,
+    break: 65,
   },
 
   timeoutMS: 15000,

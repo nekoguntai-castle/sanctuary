@@ -25,11 +25,11 @@ export default {
     '!**/*.d.ts',
   ],
 
-  // Thresholds for mutation score
+  // Thresholds for mutation score (tightened from 80/60/50)
   thresholds: {
-    high: 80,
-    low: 60,
-    break: 50,
+    high: 85,
+    low: 70,
+    break: 60,
   },
 
   // Timeout for individual tests

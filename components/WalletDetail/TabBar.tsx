@@ -29,7 +29,9 @@ export const TabBar: React.FC<TabBarProps> = ({
   const [indicator, setIndicator] = useState({ left: 0, width: 0 });
 
   const updateIndicator = useCallback(() => {
+    /* v8 ignore start -- defensive guard; ref is always attached after mount */
     if (!navRef.current) return;
+    /* v8 ignore stop */
     const activeEl = navRef.current.querySelector('[data-active="true"]') as HTMLElement | null;
     if (activeEl) {
       setIndicator({
