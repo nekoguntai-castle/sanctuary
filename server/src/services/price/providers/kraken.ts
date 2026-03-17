@@ -13,6 +13,7 @@ interface KrakenTickerResponse {
   result: {
     [pair: string]: {
       c: [string, string]; // Last trade closed [price, lot volume]
+      o: string;           // Today's opening price
     };
   };
 }
@@ -45,12 +46,17 @@ export class KrakenPriceProvider extends BasePriceProvider {
     }
 
     const price = parseFloat(pairData.c[0]);
+    const openPrice = parseFloat(pairData.o);
+    const change24h = openPrice > 0
+      ? parseFloat(((price - openPrice) / openPrice * 100).toFixed(2))
+      : undefined;
 
     return {
       provider: this.name,
       price,
       currency,
       timestamp: new Date(),
+      change24h,
     };
   }
 }

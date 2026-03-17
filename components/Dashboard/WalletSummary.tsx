@@ -63,7 +63,7 @@ export const WalletSummary: React.FC<WalletSummaryProps> = ({
   }, []);
 
   return (
-    <div className="surface-glass rounded-2xl p-6 shadow-sm card-interactive">
+    <div className="surface-elevated rounded-2xl p-6 shadow-sm border border-sanctuary-200 dark:border-sanctuary-800 card-interactive">
        <div className="flex items-center justify-between mb-6">
           <h3 className="text-lg font-medium text-sanctuary-900 dark:text-sanctuary-100 flex items-center">
              <WalletIcon className="w-5 h-5 mr-2 text-sanctuary-400" />

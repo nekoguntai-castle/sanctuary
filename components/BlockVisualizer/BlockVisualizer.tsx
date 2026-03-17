@@ -118,7 +118,7 @@ export const BlockVisualizer: React.FC<BlockVisualizerProps> = ({
       </div>
 
       {/* Blocks container */}
-      <div className={`relative flex items-center justify-center ${compact ? 'space-x-1.5' : 'space-x-2 sm:space-x-3'} overflow-x-auto overflow-y-visible pb-6 px-4 scrollbar-hide`}>
+      <div className={`relative flex items-center justify-center ${compact ? 'space-x-1.5' : 'space-x-2 sm:space-x-3'} overflow-x-auto pt-12 pb-2 px-4 scrollbar-hide`}>
         {/* Center divider line */}
         <div className="absolute left-1/2 top-0 bottom-4 w-px bg-gradient-to-b from-transparent via-sanctuary-300 to-transparent dark:via-sanctuary-700 -ml-0.5 z-0" />
 

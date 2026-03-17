@@ -97,10 +97,10 @@ export const QueuedSummaryBlock: React.FC<QueuedSummaryBlockProps> = ({ summary,
         </div>
       )}
 
-      {/* TX count tooltip on hover */}
+      {/* TX count tooltip on hover - positioned above to avoid overflow clipping */}
       {!compact && (
         <div className={`
-          absolute top-full left-1/2 -translate-x-1/2 mt-1
+          absolute bottom-full left-1/2 -translate-x-1/2 mb-1
           text-[9px] font-mono font-semibold px-1.5 py-0.5 rounded
           bg-sanctuary-800 text-white dark:bg-white dark:text-sanctuary-900
           opacity-0 group-hover:opacity-100 transition-opacity duration-200

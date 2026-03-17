@@ -160,9 +160,10 @@ class PriceService {
     const average = prices.reduce((sum, p) => sum + p, 0) / prices.length;
     const median = this.calculateMedian(prices);
 
-    // Get 24h change from CoinGecko if available
-    const coinGeckoSource = results.find(r => r.provider === 'coingecko');
-    const change24h = coinGeckoSource?.change24h;
+    // Get 24h change from any provider that has it (prefer CoinGecko, then any other)
+    const change24hSource = results.find(r => r.provider === 'coingecko' && r.change24h !== undefined)
+      || results.find(r => r.change24h !== undefined);
+    const change24h = change24hSource?.change24h;
 
     const aggregated: AggregatedPrice = {
       price: median,
@@ -175,9 +176,9 @@ class PriceService {
       change24h,
     };
 
-    // Cache the result
+    // Cache the result (prefer source with change24h data)
     if (results.length > 0) {
-      const sourceToCache = coinGeckoSource || results[0];
+      const sourceToCache = change24hSource || results[0];
       if (change24h !== undefined && !sourceToCache.change24h) {
         sourceToCache.change24h = change24h;
       }

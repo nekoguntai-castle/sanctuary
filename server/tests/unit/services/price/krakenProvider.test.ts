@@ -21,12 +21,12 @@ describe('KrakenPriceProvider', () => {
     vi.clearAllMocks();
   });
 
-  it('parses ticker result and returns normalized price data', async () => {
+  it('parses ticker result and returns normalized price data with 24h change', async () => {
     mockedAxios.get.mockResolvedValue({
       data: {
         error: [],
         result: {
-          XXBTZUSD: { c: ['50123.45', '0.1'] },
+          XXBTZUSD: { c: ['50123.45', '0.1'], o: '49000.00' },
         },
       },
     } as any);
@@ -37,6 +37,8 @@ describe('KrakenPriceProvider', () => {
     expect(result.provider).toBe('kraken');
     expect(result.currency).toBe('USD');
     expect(result.price).toBe(50123.45);
+    // change24h = ((50123.45 - 49000) / 49000) * 100 = 2.29
+    expect(result.change24h).toBe(2.29);
     expect(result.timestamp).toBeInstanceOf(Date);
   });
 

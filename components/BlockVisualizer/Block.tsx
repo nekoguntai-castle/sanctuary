@@ -131,19 +131,19 @@ export const Block: React.FC<BlockProps> = ({ block, index, onClick, compact, is
         </div>
       )}
 
-      {/* TX count tooltip on hover - outside button to avoid overflow clip */}
+      {/* TX count tooltip on hover - positioned above to avoid overflow clipping */}
       {!compact && block.txCount !== undefined && (
         <div className={`
-          absolute top-full left-1/2 -translate-x-1/2 mt-2
+          absolute bottom-full left-1/2 -translate-x-1/2 mb-2
           text-[10px] font-medium px-3 py-2 rounded-lg
           bg-sanctuary-800 text-sanctuary-100 dark:bg-sanctuary-100 dark:text-sanctuary-900
           opacity-0 group-hover:opacity-100 transition-all duration-200 delay-150
-          group-hover:translate-y-0 translate-y-1
+          group-hover:translate-y-0 -translate-y-1
           whitespace-nowrap z-50 pointer-events-none shadow-xl
           border border-sanctuary-700 dark:border-sanctuary-200
         `}>
-          {/* Tooltip arrow */}
-          <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 rotate-45 bg-sanctuary-800 dark:bg-sanctuary-100 border-l border-t border-sanctuary-700 dark:border-sanctuary-200" />
+          {/* Tooltip arrow pointing down */}
+          <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 rotate-45 bg-sanctuary-800 dark:bg-sanctuary-100 border-r border-b border-sanctuary-700 dark:border-sanctuary-200" />
           <span className="tabular-nums">{block.txCount.toLocaleString()}</span> txs
           <span className="mx-1.5 text-sanctuary-500 dark:text-sanctuary-400">·</span>
           Median: <span className="tabular-nums">{block.medianFee < 1 ? block.medianFee.toFixed(1) : Math.round(block.medianFee)}</span>

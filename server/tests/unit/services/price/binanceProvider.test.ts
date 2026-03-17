@@ -21,11 +21,12 @@ describe('BinancePriceProvider', () => {
     vi.clearAllMocks();
   });
 
-  it('maps currency symbols and parses ticker prices', async () => {
+  it('maps currency symbols and parses ticker prices with 24h change', async () => {
     mockedAxios.get.mockResolvedValue({
       data: {
         symbol: 'BTCUSDT',
-        price: '50123.45',
+        lastPrice: '50123.45',
+        priceChangePercent: '2.50',
       },
     } as any);
 
@@ -35,9 +36,10 @@ describe('BinancePriceProvider', () => {
     expect(result.provider).toBe('binance');
     expect(result.currency).toBe('USD');
     expect(result.price).toBe(50123.45);
+    expect(result.change24h).toBe(2.5);
     expect(result.timestamp).toBeInstanceOf(Date);
     expect(mockedAxios.get).toHaveBeenCalledWith(
-      'https://api.binance.com/api/v3/ticker/price',
+      'https://api.binance.com/api/v3/ticker/24hr',
       expect.objectContaining({
         params: { symbol: 'BTCUSDT' },
       })

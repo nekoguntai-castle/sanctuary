@@ -10,7 +10,8 @@ import type { PriceData } from '../types';
 
 interface BinancePriceResponse {
   symbol: string;
-  price: string;
+  lastPrice: string;
+  priceChangePercent: string;
 }
 
 export class BinancePriceProvider extends BasePriceProvider {
@@ -36,17 +37,21 @@ export class BinancePriceProvider extends BasePriceProvider {
     }
 
     const data = await this.httpGet<BinancePriceResponse>(
-      'https://api.binance.com/api/v3/ticker/price',
+      'https://api.binance.com/api/v3/ticker/24hr',
       { symbol }
     );
 
-    const price = parseFloat(data.price);
+    const price = parseFloat(data.lastPrice);
+    const change24h = data.priceChangePercent
+      ? parseFloat(parseFloat(data.priceChangePercent).toFixed(2))
+      : undefined;
 
     return {
       provider: this.name,
       price,
       currency,
       timestamp: new Date(),
+      change24h,
     };
   }
 }

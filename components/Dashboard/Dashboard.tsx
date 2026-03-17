@@ -125,7 +125,7 @@ export const Dashboard: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
         {/* BTC Price Card - Compact with animated price */}
-        <div className="surface-glass rounded-2xl p-6 shadow-sm card-interactive animate-fade-in-up-1">
+        <div className="surface-elevated rounded-2xl p-6 shadow-sm border border-sanctuary-200 dark:border-sanctuary-800 card-interactive animate-fade-in-up-1">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-medium text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-wide">Bitcoin Price</h3>
             <div className="p-2 bg-warning-100 dark:bg-warning-900/30 rounded-xl">

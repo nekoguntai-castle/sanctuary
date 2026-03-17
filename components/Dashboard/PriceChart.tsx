@@ -111,7 +111,7 @@ export const PriceChart: React.FC<PriceChartProps> = ({
 }) => {
   // Hero card: intentionally uses gradient background + glow instead of surface-glass
   return (
-    <div className="relative overflow-hidden rounded-2xl p-6 shadow-sm border border-primary-200/50 dark:border-primary-800/30 bg-gradient-to-br from-white via-primary-50/30 to-success-50/20 dark:from-sanctuary-900 dark:via-primary-950/20 dark:to-success-950/10">
+    <div className="relative overflow-hidden rounded-2xl p-6 shadow-sm border border-sanctuary-200/30 dark:border-sanctuary-700/20 bg-gradient-to-br from-white via-primary-50/30 to-success-50/20 dark:from-sanctuary-900 dark:via-primary-950/20 dark:to-success-950/10">
       {/* Subtle radial glow behind balance */}
       <div className="absolute top-0 left-0 w-72 h-72 bg-primary-400/5 dark:bg-primary-400/5 rounded-full blur-3xl -translate-x-1/3 -translate-y-1/3 pointer-events-none" />
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6 relative z-10">

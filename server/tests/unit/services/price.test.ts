@@ -131,7 +131,7 @@ describe('Price Service', () => {
         }
         if (url.includes('binance')) {
           return Promise.resolve({
-            data: { price: '50000.00' },
+            data: { lastPrice: '50000.00', priceChangePercent: '1.50' },
           });
         }
         return Promise.reject(new Error('Unknown URL'));
@@ -171,7 +171,7 @@ describe('Price Service', () => {
         }
         if (url.includes('binance')) {
           return Promise.resolve({
-            data: { price: '54000.00' },
+            data: { lastPrice: '54000.00', priceChangePercent: '2.00' },
           });
         }
         return Promise.reject(new Error('Unknown URL'));
