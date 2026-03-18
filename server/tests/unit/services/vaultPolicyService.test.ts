@@ -517,6 +517,294 @@ describe('VaultPolicyService', () => {
   });
 
   // ========================================
+  // GET POLICY BY ID
+  // ========================================
+
+  describe('getPolicy', () => {
+    it('returns a policy by id', async () => {
+      mockPolicyRepo.findPolicyById.mockResolvedValue({ id: policyId, name: 'Found' });
+      const result = await vaultPolicyService.getPolicy(policyId);
+      expect(result.name).toBe('Found');
+    });
+
+    it('throws NotFoundError when policy does not exist', async () => {
+      mockPolicyRepo.findPolicyById.mockResolvedValue(null);
+      await expect(vaultPolicyService.getPolicy(policyId)).rejects.toThrow('Policy not found');
+    });
+  });
+
+  describe('getPolicyInWallet', () => {
+    it('returns a policy scoped to a wallet', async () => {
+      mockPolicyRepo.findPolicyByIdInWallet.mockResolvedValue({ id: policyId, walletId });
+      const result = await vaultPolicyService.getPolicyInWallet(policyId, walletId);
+      expect(result.id).toBe(policyId);
+    });
+
+    it('throws NotFoundError when policy not in wallet', async () => {
+      mockPolicyRepo.findPolicyByIdInWallet.mockResolvedValue(null);
+      await expect(vaultPolicyService.getPolicyInWallet(policyId, walletId))
+        .rejects.toThrow('Policy not found');
+    });
+  });
+
+  // ========================================
+  // SYSTEM & GROUP POLICIES
+  // ========================================
+
+  describe('getSystemPolicies', () => {
+    it('delegates to repository', async () => {
+      const policies = [{ id: '1', sourceType: 'system' }];
+      mockPolicyRepo.findSystemPolicies.mockResolvedValue(policies);
+      const result = await vaultPolicyService.getSystemPolicies();
+      expect(result).toEqual(policies);
+    });
+  });
+
+  describe('getGroupPolicies', () => {
+    it('delegates to repository', async () => {
+      const policies = [{ id: '1', sourceType: 'group' }];
+      mockPolicyRepo.findGroupPolicies.mockResolvedValue(policies);
+      const result = await vaultPolicyService.getGroupPolicies(groupId);
+      expect(result).toEqual(policies);
+      expect(mockPolicyRepo.findGroupPolicies).toHaveBeenCalledWith(groupId);
+    });
+  });
+
+  // ========================================
+  // ADDITIONAL UPDATE TESTS
+  // ========================================
+
+  describe('updatePolicy (additional branches)', () => {
+    it('allows admin to update system policies', async () => {
+      mockPolicyRepo.findPolicyById.mockResolvedValue({
+        id: policyId,
+        type: 'spending_limit',
+        sourceType: 'system',
+      });
+      mockPolicyRepo.updatePolicy.mockResolvedValue({ id: policyId, name: 'Updated' });
+
+      const result = await vaultPolicyService.updatePolicy(
+        policyId, userId, { name: 'Updated' }, { isAdmin: true }
+      );
+      expect(result.name).toBe('Updated');
+    });
+
+    it('allows admin to update group policies', async () => {
+      mockPolicyRepo.findPolicyById.mockResolvedValue({
+        id: policyId,
+        type: 'spending_limit',
+        sourceType: 'group',
+      });
+      mockPolicyRepo.updatePolicy.mockResolvedValue({ id: policyId, name: 'Updated' });
+
+      const result = await vaultPolicyService.updatePolicy(
+        policyId, userId, { name: 'Updated' }, { isAdmin: true }
+      );
+      expect(result.name).toBe('Updated');
+    });
+
+    it('validates config when config is provided on update', async () => {
+      mockPolicyRepo.findPolicyById.mockResolvedValue({
+        id: policyId,
+        type: 'spending_limit',
+        sourceType: 'wallet',
+      });
+
+      await expect(
+        vaultPolicyService.updatePolicy(policyId, userId, {
+          config: { scope: 'wallet' } as any, // no limits set
+        })
+      ).rejects.toThrow('at least one non-zero limit');
+    });
+  });
+
+  // ========================================
+  // ADDITIONAL VALIDATION TESTS
+  // ========================================
+
+  describe('validation edge cases', () => {
+    it('creates a group-level policy', async () => {
+      const input: CreatePolicyInput = {
+        groupId,
+        name: 'Group Cap',
+        type: 'spending_limit',
+        config: { daily: 50_000_000, scope: 'wallet' },
+      };
+      mockPolicyRepo.createPolicy.mockResolvedValue({ id: policyId, ...input, sourceType: 'group' });
+
+      await vaultPolicyService.createPolicy(userId, input);
+      expect(mockPolicyRepo.createPolicy).toHaveBeenCalledWith(
+        expect.objectContaining({ sourceType: 'group' })
+      );
+    });
+
+    it('rejects time_delay with zero delayHours', async () => {
+      const input: CreatePolicyInput = {
+        walletId,
+        name: 'Zero Delay',
+        type: 'time_delay',
+        config: {
+          trigger: { always: true },
+          delayHours: 0,
+          vetoEligible: 'any_approver',
+          notifyOnStart: true,
+          notifyOnVeto: true,
+          notifyOnClear: true,
+        },
+      };
+      await expect(vaultPolicyService.createPolicy(userId, input))
+        .rejects.toThrow('delayHours must be a positive number');
+    });
+
+    it('rejects time_delay with missing trigger', async () => {
+      const input: CreatePolicyInput = {
+        walletId,
+        name: 'No Trigger',
+        type: 'time_delay',
+        config: {
+          delayHours: 24,
+          vetoEligible: 'any_approver',
+          notifyOnStart: true,
+          notifyOnVeto: true,
+          notifyOnClear: true,
+        } as any,
+      };
+      await expect(vaultPolicyService.createPolicy(userId, input))
+        .rejects.toThrow('trigger');
+    });
+
+    it('rejects time_delay with invalid vetoEligible', async () => {
+      const input: CreatePolicyInput = {
+        walletId,
+        name: 'Bad Veto',
+        type: 'time_delay',
+        config: {
+          trigger: { always: true },
+          delayHours: 24,
+          vetoEligible: 'nobody' as any,
+          notifyOnStart: true,
+          notifyOnVeto: true,
+          notifyOnClear: true,
+        },
+      };
+      await expect(vaultPolicyService.createPolicy(userId, input))
+        .rejects.toThrow('vetoEligible');
+    });
+
+    it('rejects address_control with invalid mode', async () => {
+      const input: CreatePolicyInput = {
+        walletId,
+        name: 'Bad Mode',
+        type: 'address_control',
+        config: {
+          mode: 'blocklist' as any,
+          allowSelfSend: true,
+          managedBy: 'owner_only',
+        },
+      };
+      await expect(vaultPolicyService.createPolicy(userId, input))
+        .rejects.toThrow('mode');
+    });
+
+    it('rejects address_control with non-boolean allowSelfSend', async () => {
+      const input: CreatePolicyInput = {
+        walletId,
+        name: 'Bad Self Send',
+        type: 'address_control',
+        config: {
+          mode: 'allowlist',
+          allowSelfSend: 'yes' as any,
+          managedBy: 'owner_only',
+        },
+      };
+      await expect(vaultPolicyService.createPolicy(userId, input))
+        .rejects.toThrow('allowSelfSend must be a boolean');
+    });
+
+    it('rejects velocity with invalid scope', async () => {
+      const input: CreatePolicyInput = {
+        walletId,
+        name: 'Bad Scope',
+        type: 'velocity',
+        config: {
+          maxPerDay: 10,
+          scope: 'global' as any,
+        },
+      };
+      await expect(vaultPolicyService.createPolicy(userId, input))
+        .rejects.toThrow('scope');
+    });
+
+    it('rejects approval_required with invalid quorumType', async () => {
+      const input: CreatePolicyInput = {
+        walletId,
+        name: 'Bad Quorum',
+        type: 'approval_required',
+        config: {
+          trigger: { always: true },
+          requiredApprovals: 1,
+          quorumType: 'majority' as any,
+          allowSelfApproval: false,
+          expirationHours: 24,
+        },
+      };
+      await expect(vaultPolicyService.createPolicy(userId, input))
+        .rejects.toThrow('quorumType');
+    });
+
+    it('rejects approval_required with missing trigger object', async () => {
+      const input: CreatePolicyInput = {
+        walletId,
+        name: 'No Trigger',
+        type: 'approval_required',
+        config: {
+          requiredApprovals: 1,
+          quorumType: 'any_n',
+          allowSelfApproval: false,
+          expirationHours: 24,
+        } as any,
+      };
+      await expect(vaultPolicyService.createPolicy(userId, input))
+        .rejects.toThrow('trigger');
+    });
+
+    it('creates a valid time_delay policy', async () => {
+      const input: CreatePolicyInput = {
+        walletId,
+        name: 'Cool Down',
+        type: 'time_delay',
+        config: {
+          trigger: { always: true },
+          delayHours: 24,
+          vetoEligible: 'specific',
+          specificVetoers: [userId],
+          notifyOnStart: true,
+          notifyOnVeto: true,
+          notifyOnClear: true,
+        },
+      };
+      mockPolicyRepo.createPolicy.mockResolvedValue({ id: policyId, ...input });
+      const result = await vaultPolicyService.createPolicy(userId, input);
+      expect(result.id).toBe(policyId);
+    });
+
+    it('creates a valid velocity policy', async () => {
+      const input: CreatePolicyInput = {
+        walletId,
+        name: 'Rate Limit',
+        type: 'velocity',
+        config: {
+          maxPerDay: 10,
+          scope: 'per_user',
+        },
+      };
+      mockPolicyRepo.createPolicy.mockResolvedValue({ id: policyId, ...input });
+      const result = await vaultPolicyService.createPolicy(userId, input);
+      expect(result.id).toBe(policyId);
+    });
+  });
+
+  // ========================================
   // ROLE RESOLUTION
   // ========================================
 
