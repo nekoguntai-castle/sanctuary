@@ -42,6 +42,16 @@ vi.mock('../../../src/models/prisma', () => ({
   },
 }));
 
+// Mock repositories/db — wallet/accessControl imports db from here
+vi.mock('../../../src/repositories/db', async () => {
+  const prismaMod = await import('../../../src/models/prisma');
+  return {
+    __esModule: true,
+    db: prismaMod.default,
+    default: prismaMod.default,
+  };
+});
+
 // Mock Redis/cache
 vi.mock('../../../src/infrastructure/redis', () => ({
   getNamespacedCache: mockGetNamespacedCache,
@@ -66,6 +76,7 @@ import {
   requireTransactionAccess,
   buildWalletAccessWhere,
 } from '../../../src/services/accessControl';
+import { checkWalletApproveAccess } from '../../../src/services/wallet/accessControl';
 import { NotFoundError, ForbiddenError, WalletNotFoundError } from '../../../src/errors';
 
 describe('Access Control Service', () => {
@@ -561,6 +572,73 @@ describe('Access Control Service', () => {
         const { requireTransactionEditAccess } = await import('../../../src/services/accessControl');
         await expect(requireTransactionEditAccess(transactionId, userId)).rejects.toThrow(NotFoundError);
       });
+    });
+  });
+
+  describe('checkWalletApproveAccess (wallet module)', () => {
+    it('should return true for owner role', async () => {
+      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
+        id: faker.string.uuid(),
+        walletId,
+        userId,
+        role: 'owner',
+        addedAt: new Date(),
+      });
+
+      const result = await checkWalletApproveAccess(walletId, userId);
+
+      expect(result).toBe(true);
+    });
+
+    it('should return true for approver role', async () => {
+      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
+        id: faker.string.uuid(),
+        walletId,
+        userId,
+        role: 'approver',
+        addedAt: new Date(),
+      });
+
+      const result = await checkWalletApproveAccess(walletId, userId);
+
+      expect(result).toBe(true);
+    });
+
+    it('should return false for signer role', async () => {
+      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
+        id: faker.string.uuid(),
+        walletId,
+        userId,
+        role: 'signer',
+        addedAt: new Date(),
+      });
+
+      const result = await checkWalletApproveAccess(walletId, userId);
+
+      expect(result).toBe(false);
+    });
+
+    it('should return false for viewer role', async () => {
+      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
+        id: faker.string.uuid(),
+        walletId,
+        userId,
+        role: 'viewer',
+        addedAt: new Date(),
+      });
+
+      const result = await checkWalletApproveAccess(walletId, userId);
+
+      expect(result).toBe(false);
+    });
+
+    it('should return false when user has no access', async () => {
+      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue(null);
+      vi.mocked(prisma.wallet.findFirst).mockResolvedValue(null);
+
+      const result = await checkWalletApproveAccess(walletId, userId);
+
+      expect(result).toBe(false);
     });
   });
 

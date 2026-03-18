@@ -17,6 +17,7 @@ const {
   mockGetPSBTInfo,
   mockFetch,
   mockEvaluatePolicies,
+  mockRecordUsage,
 } = vi.hoisted(() => ({
   mockGetCachedBlockHeight: vi.fn(),
   mockRecalculateWalletBalances: vi.fn(),
@@ -31,6 +32,7 @@ const {
   mockGetPSBTInfo: vi.fn(),
   mockFetch: vi.fn(),
   mockEvaluatePolicies: vi.fn(),
+  mockRecordUsage: vi.fn(),
 }));
 
 vi.mock('../../../src/repositories/db', async () => {
@@ -90,7 +92,7 @@ vi.mock('../../../src/services/bitcoin/transactionService', () => ({
 vi.mock('../../../src/services/vaultPolicy', () => ({
   policyEvaluationEngine: {
     evaluatePolicies: mockEvaluatePolicies,
-    recordUsage: vi.fn().mockResolvedValue(undefined),
+    recordUsage: mockRecordUsage,
   },
 }));
 
@@ -122,6 +124,7 @@ describe('Transaction HTTP Routes', () => {
     mockWalletCacheGet.mockResolvedValue(null);
     mockWalletCacheSet.mockResolvedValue(undefined);
     mockEvaluatePolicies.mockResolvedValue({ allowed: true, triggered: [] });
+    mockRecordUsage.mockResolvedValue(undefined);
     mockValidateAddress.mockReturnValue({ valid: true });
     mockAuditLogFromRequest.mockResolvedValue(undefined);
     mockCreateTransaction.mockResolvedValue({
@@ -1292,5 +1295,76 @@ describe('Transaction HTTP Routes', () => {
       'WALLET',
       expect.objectContaining({ success: false })
     );
+  });
+
+  it('extracts recipient and amount from PSBT when not provided in body', async () => {
+    mockGetPSBTInfo.mockReturnValue({
+      outputs: [{ address: 'tb1qpsbt-recipient', value: 42000 }],
+      inputs: [{ txid: 'a'.repeat(64), vout: 0 }],
+      fee: 300,
+    });
+
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
+      .send({
+        signedPsbtBase64: 'cHNi',
+        // No recipient or amount — should be extracted from PSBT
+      });
+
+    expect(response.status).toBe(200);
+    expect(mockEvaluatePolicies).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recipient: 'tb1qpsbt-recipient',
+        amount: BigInt(42000),
+      })
+    );
+  });
+
+  it('proceeds without policy eval when PSBT parsing fails and no recipient/amount supplied', async () => {
+    mockGetPSBTInfo.mockImplementationOnce(() => {
+      throw new Error('corrupt PSBT');
+    });
+
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
+      .send({
+        signedPsbtBase64: 'bad-psbt-data',
+        // No recipient or amount in body and PSBT parse fails
+      });
+
+    expect(response.status).toBe(200);
+    // Policy evaluation should NOT be called since there's no recipient/amount
+    expect(mockEvaluatePolicies).not.toHaveBeenCalled();
+  });
+
+  it('swallows recordUsage errors on the broadcast route', async () => {
+    mockRecordUsage.mockRejectedValueOnce(new Error('usage recording failed'));
+
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/broadcast`)
+      .send({
+        signedPsbtBase64: 'cHNi',
+        recipient: 'tb1qrecipient',
+        amount: 10000,
+      });
+
+    expect(response.status).toBe(200);
+    expect(mockRecordUsage).toHaveBeenCalled();
+  });
+
+  it('swallows recordUsage errors on the PSBT broadcast route', async () => {
+    mockRecordUsage.mockRejectedValueOnce(new Error('usage recording failed'));
+    mockGetPSBTInfo.mockReturnValue({
+      fee: 450,
+      outputs: [{ address: 'tb1qdest', value: 25000 }],
+      inputs: [{ txid: 'f'.repeat(64), vout: 1 }],
+    });
+
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/psbt/broadcast`)
+      .send({ signedPsbt: 'cHNi' });
+
+    expect(response.status).toBe(200);
+    expect(mockRecordUsage).toHaveBeenCalled();
   });
 });

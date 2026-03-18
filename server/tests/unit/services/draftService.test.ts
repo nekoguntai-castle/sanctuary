@@ -293,6 +293,61 @@ describe('DraftService', () => {
 
       expect(result).toEqual(mockDraft);
     });
+
+    it('creates approval requests when policy evaluation has approval_required triggers', async () => {
+      const { approvalService } = await import('../../../src/services/vaultPolicy/approvalService');
+
+      const policyEvaluation = {
+        allowed: true,
+        triggered: [
+          { policyId: 'p1', policyName: 'Large TX', type: 'spending_limit' as const, action: 'approval_required' as const, reason: 'Over threshold' },
+        ],
+      };
+
+      const result = await createDraft(walletId, userId, { ...validInput, policyEvaluation });
+
+      expect(approvalService.createApprovalRequestsForDraft).toHaveBeenCalledWith(
+        mockDraft.id,
+        walletId,
+        userId,
+        policyEvaluation.triggered
+      );
+      expect(result).toEqual(mockDraft);
+    });
+
+    it('swallows errors from approval request creation and still returns draft', async () => {
+      const { approvalService } = await import('../../../src/services/vaultPolicy/approvalService');
+      (approvalService.createApprovalRequestsForDraft as Mock).mockRejectedValueOnce(
+        new Error('approval service down')
+      );
+
+      const policyEvaluation = {
+        allowed: true,
+        triggered: [
+          { policyId: 'p1', policyName: 'Limit', type: 'spending_limit' as const, action: 'approval_required' as const, reason: 'Exceeded' },
+        ],
+      };
+
+      const result = await createDraft(walletId, userId, { ...validInput, policyEvaluation });
+
+      expect(approvalService.createApprovalRequestsForDraft).toHaveBeenCalled();
+      expect(result).toEqual(mockDraft);
+    });
+
+    it('does not create approval requests when no triggers have approval_required action', async () => {
+      const { approvalService } = await import('../../../src/services/vaultPolicy/approvalService');
+
+      const policyEvaluation = {
+        allowed: true,
+        triggered: [
+          { policyId: 'p1', policyName: 'Alert', type: 'spending_limit' as const, action: 'blocked' as const, reason: 'Info only' },
+        ],
+      };
+
+      await createDraft(walletId, userId, { ...validInput, policyEvaluation });
+
+      expect(approvalService.createApprovalRequestsForDraft).not.toHaveBeenCalled();
+    });
   });
 
   describe('updateDraft', () => {
