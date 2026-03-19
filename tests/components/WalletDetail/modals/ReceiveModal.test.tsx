@@ -226,6 +226,15 @@ describe('ReceiveModal', () => {
       });
     });
 
+    it('should not render Payjoin section when status check fails', async () => {
+      vi.mocked(payjoinApi.getPayjoinStatus).mockRejectedValueOnce(new Error('network error'));
+      render(<ReceiveModal {...defaultProps} />);
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('payjoin-section')).not.toBeInTheDocument();
+      });
+    });
+
     it('should not render Payjoin section when URL is not configured', async () => {
       vi.mocked(payjoinApi.getPayjoinStatus).mockResolvedValueOnce({
         enabled: true,
