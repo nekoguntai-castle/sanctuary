@@ -1,4 +1,4 @@
-import React, { forwardRef } from 'react';
+import React, { forwardRef, useRef, useState, useEffect, useCallback } from 'react';
 import { TableVirtuoso } from 'react-virtuoso';
 import { Transaction, Wallet } from '../../types';
 import { useCurrency } from '../../contexts/CurrencyContext';
@@ -83,6 +83,26 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     transactionStats,
   });
 
+  // Dynamic height: fill remaining viewport space instead of fixed 600px cap
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+  const [tableHeight, setTableHeight] = useState(600);
+
+  const recalcHeight = useCallback(() => {
+    if (tableContainerRef.current) {
+      const rect = tableContainerRef.current.getBoundingClientRect();
+      const bottomMargin = 32; // breathing room at bottom
+      const available = window.innerHeight - rect.top - bottomMargin;
+      const contentHeight = filteredTransactions.length * 52 + 48;
+      setTableHeight(Math.max(300, Math.min(contentHeight, available)));
+    }
+  }, [filteredTransactions.length]);
+
+  useEffect(() => {
+    recalcHeight();
+    window.addEventListener('resize', recalcHeight);
+    return () => window.removeEventListener('resize', recalcHeight);
+  }, [recalcHeight]);
+
   // Early return AFTER all hooks have been called
   if (filteredTransactions.length === 0) {
     return (
@@ -142,9 +162,10 @@ export const TransactionList: React.FC<TransactionListProps> = ({
       </div>
 
       {/* Virtualized Transaction Table */}
+      <div ref={tableContainerRef}>
       <TableVirtuoso
         ref={virtuosoRef}
-        style={{ height: Math.min(filteredTransactions.length * 52 + 48, 600) }}
+        style={{ height: tableHeight }}
         data={filteredTransactions}
         fixedHeaderContent={() => (
           <tr className="surface-muted">
@@ -191,6 +212,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
           );
         }}
       />
+      </div>
 
       {/* Transaction Details Modal */}
       {selectedTx && (
