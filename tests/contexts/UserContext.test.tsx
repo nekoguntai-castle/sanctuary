@@ -733,7 +733,10 @@ describe('UserContext', () => {
         expect(screen.getByTestId('user')).toHaveTextContent('testuser');
       });
 
-      expect(themeRegistry.applyTheme).toHaveBeenCalledWith('sanctuary', 'light', 0);
+      // Wait for the theme effect to apply user preferences after state update
+      await waitFor(() => {
+        expect(themeRegistry.applyTheme).toHaveBeenCalledWith('sanctuary', 'light', 0);
+      });
       expect(document.documentElement.classList.contains('dark')).toBe(false);
     });
   });
