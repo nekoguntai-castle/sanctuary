@@ -171,6 +171,10 @@ export interface PushNotificationConfig {
   };
 }
 
+export interface PayjoinConfig {
+  publicUrl: string;
+}
+
 export interface DockerConfig {
   proxyUrl: string;
 }
@@ -266,6 +270,7 @@ export interface AppConfig {
   electrumClient: ElectrumClientConfig;
   websocket: WebSocketConfig;
   push: PushNotificationConfig;
+  payjoin: PayjoinConfig;
   docker: DockerConfig;
   worker: WorkerConfig;
   logging: LoggingConfig;

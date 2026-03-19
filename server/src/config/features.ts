@@ -38,8 +38,8 @@ export const defaultFeatureFlags: FeatureFlags = {
   multisigWallets: true,
   batchSync: true,
 
-  // Transaction features (enabled by default)
-  payjoinSupport: true,
+  // Transaction features (enabled by default, except payjoin)
+  payjoinSupport: false,
   batchTransactions: true,
   rbfTransactions: true,
 

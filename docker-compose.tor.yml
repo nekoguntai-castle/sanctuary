@@ -1,9 +1,12 @@
 # =============================================
-# Sanctuary - Tor Proxy Service
+# Sanctuary - Tor Proxy & Hidden Service
 # =============================================
 #
 # Optional Tor SOCKS5 proxy for routing Electrum connections
 # through the Tor network for enhanced privacy.
+#
+# Also provides a Tor hidden service for inbound connections,
+# enabling Payjoin (BIP78) receives without exposing your IP.
 #
 # Usage:
 #   docker compose -f docker-compose.yml -f docker-compose.tor.yml up -d
@@ -12,20 +15,28 @@
 #   ./start.sh --with-tor
 #
 # Configuration:
-#   In Node Configuration → Proxy / Tor settings:
+#   In Node Configuration -> Proxy / Tor settings:
 #   - Enable proxy
 #   - Select "Tor Container" preset (tor:9050)
+#
+# Payjoin over Tor:
+#   After starting, get your .onion address:
+#     docker exec sanctuary-tor cat /var/lib/tor/hidden_service/hostname
+#
+#   Then set in your .env:
+#     PAYJOIN_PUBLIC_URL=http://<your-onion-address>.onion
 #
 # =============================================
 
 services:
   # ============================================
-  # Tor - SOCKS5 Proxy
+  # Tor - SOCKS5 Proxy + Hidden Service
   # ============================================
-  # Provides a Tor SOCKS5 proxy that Sanctuary can use
-  # to route Electrum server connections through Tor.
-  # This enhances privacy by hiding your IP from
-  # Electrum servers.
+  # Provides:
+  # 1. A Tor SOCKS5 proxy for outbound connections (port 9050)
+  #    Routes Electrum server connections through Tor.
+  # 2. A Tor hidden service for inbound connections
+  #    Maps .onion:80 -> backend:3001 for BIP78 Payjoin.
   # ============================================
   tor:
     image: dperson/torproxy:latest
@@ -34,8 +45,13 @@ services:
     networks:
       - sanctuary-network
     environment:
-      # Disable exit node functionality - we only need SOCKS proxy
+      # Disable exit node functionality - we only need SOCKS proxy + hidden service
       LOCATION: ""
+    # Hidden service: map port 80 on the .onion address to backend port 3001
+    command: -l "sanctuary_payjoin:80:backend:3001"
+    volumes:
+      # Persist hidden service keys so the .onion address stays the same across restarts
+      - tor_hidden_service:/var/lib/tor/hidden_service
     logging:
       driver: "json-file"
       options:
@@ -55,3 +71,6 @@ services:
       timeout: 30s
       retries: 3
       start_period: 60s
+
+volumes:
+  tor_hidden_service:

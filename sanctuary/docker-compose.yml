@@ -59,6 +59,8 @@ services:
       # Price APIs (public)
       MEMPOOL_API: https://mempool.space/api/v1
       COINGECKO_API: https://api.coingecko.com/api/v3
+      # Payjoin - use Tor hidden service if available
+      PAYJOIN_PUBLIC_URL: http://${APP_SANCTUARY_HIDDEN_SERVICE}
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/health"]
       interval: 30s

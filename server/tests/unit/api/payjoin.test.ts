@@ -13,6 +13,15 @@ vi.mock('../../../src/config', () => ({
   default: {
     gatewaySecret: 'test-gateway-secret',
   },
+  getConfig: () => ({
+    payjoin: { publicUrl: '' },
+  }),
+}));
+
+// Mock feature gate to pass through (tests assume feature is enabled)
+vi.mock('../../../src/middleware/featureGate', () => ({
+  requireFeature: () => (_req: Request, _res: Response, next: NextFunction) => next(),
+  isFeatureEnabledAsync: vi.fn().mockResolvedValue(true),
 }));
 
 // Mock rate limiter to avoid rate limiting in tests

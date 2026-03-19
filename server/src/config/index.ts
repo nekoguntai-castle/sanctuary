@@ -213,6 +213,10 @@ function loadConfig(): CombinedConfig {
       },
     },
 
+    payjoin: {
+      publicUrl: process.env.PAYJOIN_PUBLIC_URL || '',
+    },
+
     docker: {
       proxyUrl: process.env.DOCKER_PROXY_URL || 'http://docker-proxy:2375',
     },

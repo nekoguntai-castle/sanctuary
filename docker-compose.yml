@@ -215,6 +215,10 @@ services:
       COINGECKO_API: ${COINGECKO_API:-https://api.coingecko.com/api/v3}
       KRAKEN_API: ${KRAKEN_API:-https://api.kraken.com/0/public}
 
+      # Payjoin public URL (for BIP78 URI generation)
+      # Required for Payjoin to work behind NAT/Tor. Example: http://your-onion.onion
+      PAYJOIN_PUBLIC_URL: ${PAYJOIN_PUBLIC_URL:-}
+
       # AI Container URL (isolated AI service)
       # Backend forwards all AI requests to this container
       AI_CONTAINER_URL: ${AI_CONTAINER_URL:-http://ai:3100}

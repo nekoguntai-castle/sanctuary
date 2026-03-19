@@ -164,6 +164,10 @@ export const PushNotificationConfigSchema = z.object({
   apns: ApnsConfigSchema,
 });
 
+export const PayjoinConfigSchema = z.object({
+  publicUrl: z.string(),
+});
+
 export const DockerConfigSchema = z.object({
   proxyUrl: z.string(),
 });
@@ -219,6 +223,7 @@ export const AppConfigSchema = z.object({
   electrumClient: ElectrumClientConfigSchema,
   websocket: WebSocketConfigSchema,
   push: PushNotificationConfigSchema,
+  payjoin: PayjoinConfigSchema,
   docker: DockerConfigSchema,
   worker: WorkerConfigSchema,
   logging: LoggingConfigSchema,

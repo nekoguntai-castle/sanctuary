@@ -44,6 +44,18 @@ export interface PayjoinEligibility {
   reason: string | null;
 }
 
+export interface PayjoinStatus {
+  enabled: boolean;
+  configured: boolean;
+}
+
+/**
+ * Check if Payjoin feature is enabled and properly configured
+ */
+export async function getPayjoinStatus(): Promise<PayjoinStatus> {
+  return apiClient.get<PayjoinStatus>('/payjoin/status');
+}
+
 /**
  * Generate a BIP21 URI with Payjoin endpoint for an address
  */

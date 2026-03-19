@@ -124,6 +124,9 @@ function buildValidConfig() {
         isProduction: false,
       },
     },
+    payjoin: {
+      publicUrl: '',
+    },
     docker: {
       proxyUrl: 'http://docker-proxy:2375',
     },

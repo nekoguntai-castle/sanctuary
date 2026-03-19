@@ -88,6 +88,10 @@ vi.mock('../../../../hooks/useCopyToClipboard', () => ({
 
 // Mock payjoin API
 vi.mock('../../../../src/api/payjoin', () => ({
+  getPayjoinStatus: vi.fn().mockResolvedValue({
+    enabled: true,
+    configured: true,
+  }),
   getPayjoinUri: vi.fn().mockResolvedValue({
     uri: 'bitcoin:bc1qtest?pj=https://payjoin.example.com',
     address: 'bc1qtest',
@@ -201,10 +205,37 @@ describe('ReceiveModal', () => {
       expect(screen.getByTestId('copy-icon')).toBeInTheDocument();
     });
 
-    it('should render Payjoin section', () => {
+    it('should render Payjoin section when feature is enabled and configured', async () => {
       render(<ReceiveModal {...defaultProps} />);
 
-      expect(screen.getByTestId('payjoin-section')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByTestId('payjoin-section')).toBeInTheDocument();
+      });
+    });
+
+    it('should not render Payjoin section when feature is disabled', async () => {
+      vi.mocked(payjoinApi.getPayjoinStatus).mockResolvedValueOnce({
+        enabled: false,
+        configured: true,
+      });
+      render(<ReceiveModal {...defaultProps} />);
+
+      // Wait for async check to complete, then verify it's not shown
+      await waitFor(() => {
+        expect(screen.queryByTestId('payjoin-section')).not.toBeInTheDocument();
+      });
+    });
+
+    it('should not render Payjoin section when URL is not configured', async () => {
+      vi.mocked(payjoinApi.getPayjoinStatus).mockResolvedValueOnce({
+        enabled: true,
+        configured: false,
+      });
+      render(<ReceiveModal {...defaultProps} />);
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('payjoin-section')).not.toBeInTheDocument();
+      });
     });
 
     it('should show Bitcoin-only warning message', () => {
@@ -424,10 +455,10 @@ describe('ReceiveModal', () => {
   });
 
   describe('Payjoin Toggle', () => {
-    it('should have Payjoin disabled by default', () => {
+    it('should have Payjoin disabled by default', async () => {
       render(<ReceiveModal {...defaultProps} />);
 
-      const toggle = screen.getByTestId('payjoin-toggle');
+      const toggle = await screen.findByTestId('payjoin-toggle');
       expect(toggle).not.toBeChecked();
     });
 
@@ -435,7 +466,7 @@ describe('ReceiveModal', () => {
       const user = userEvent.setup();
       render(<ReceiveModal {...defaultProps} />);
 
-      const toggle = screen.getByTestId('payjoin-toggle');
+      const toggle = await screen.findByTestId('payjoin-toggle');
       await user.click(toggle);
 
       // Amount input should appear
@@ -450,7 +481,7 @@ describe('ReceiveModal', () => {
       // Initially shows "Receive Address"
       expect(screen.getByText('Receive Address')).toBeInTheDocument();
 
-      const toggle = screen.getByTestId('payjoin-toggle');
+      const toggle = await screen.findByTestId('payjoin-toggle');
       await user.click(toggle);
 
       // Now shows BIP21 URI label
@@ -465,7 +496,7 @@ describe('ReceiveModal', () => {
       const user = userEvent.setup();
       render(<ReceiveModal {...defaultProps} />);
 
-      const toggle = screen.getByTestId('payjoin-toggle');
+      const toggle = await screen.findByTestId('payjoin-toggle');
       await user.click(toggle);
 
       await waitFor(() => {
@@ -486,7 +517,7 @@ describe('ReceiveModal', () => {
 
       render(<ReceiveModal {...defaultProps} />);
 
-      await user.click(screen.getByTestId('payjoin-toggle'));
+      await user.click(await screen.findByTestId('payjoin-toggle'));
       await user.type(screen.getByPlaceholderText('0.00000000'), '0.12345678');
 
       await waitFor(() => {
@@ -528,7 +559,7 @@ describe('ReceiveModal', () => {
         />
       );
 
-      await user.click(screen.getByTestId('payjoin-toggle'));
+      await user.click(await screen.findByTestId('payjoin-toggle'));
 
       await waitFor(() => {
         expect(getPayjoinUriMock).toHaveBeenCalled();
@@ -545,7 +576,7 @@ describe('ReceiveModal', () => {
       getPayjoinUriMock.mockRejectedValueOnce(new Error('payjoin unavailable'));
 
       render(<ReceiveModal {...defaultProps} />);
-      await user.click(screen.getByTestId('payjoin-toggle'));
+      await user.click(await screen.findByTestId('payjoin-toggle'));
 
       await waitFor(() => {
         expect(getPayjoinUriMock).toHaveBeenCalled();

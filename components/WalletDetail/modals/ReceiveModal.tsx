@@ -40,6 +40,22 @@ export const ReceiveModal: React.FC<ReceiveModalProps> = ({
   // Selected address state
   const [selectedReceiveAddressId, setSelectedReceiveAddressId] = useState<string | null>(null);
 
+  // Payjoin: only show when feature flag is enabled AND public URL is configured
+  const [payjoinAvailable, setPayjoinAvailable] = useState(false);
+
+  useEffect(() => {
+    const checkPayjoinStatus = async () => {
+      try {
+        const status = await payjoinApi.getPayjoinStatus();
+        setPayjoinAvailable(status.enabled && status.configured);
+      } catch (error) {
+        log.debug('Failed to check payjoin status', { error });
+        setPayjoinAvailable(false);
+      }
+    };
+    checkPayjoinStatus();
+  }, []);
+
   // Payjoin state
   const [payjoinEnabled, setPayjoinEnabled] = useState(false);
   const [payjoinUri, setPayjoinUri] = useState<string | null>(null);
@@ -152,16 +168,18 @@ export const ReceiveModal: React.FC<ReceiveModalProps> = ({
               </div>
             )}
 
-            {/* Payjoin Section */}
-            <PayjoinSection
-              walletId={walletId}
-              enabled={payjoinEnabled}
-              onToggle={setPayjoinEnabled}
-              className="w-full mb-4"
-            />
+            {/* Payjoin Section - only shown when feature flag is enabled */}
+            {payjoinAvailable && (
+              <PayjoinSection
+                walletId={walletId}
+                enabled={payjoinEnabled}
+                onToggle={setPayjoinEnabled}
+                className="w-full mb-4"
+              />
+            )}
 
             {/* Amount Input (optional, for BIP21) */}
-            {payjoinEnabled && (
+            {payjoinAvailable && payjoinEnabled && (
               <div className="w-full mb-4">
                 <label className="block text-xs font-medium text-sanctuary-500 mb-1">
                   Amount (optional)

@@ -14,7 +14,12 @@ export const FEATURE_DEFINITIONS: Record<FeatureFlagKey, FeatureFlagDefinition> 
   qrCodeSigning: { description: 'Enable QR code based transaction signing', category: 'general' },
   multisigWallets: { description: 'Enable multi-signature wallet support', category: 'general' },
   batchSync: { description: 'Enable batch synchronization of wallets', category: 'general' },
-  payjoinSupport: { description: 'Enable PayJoin (BIP78) transaction support', category: 'general' },
+  payjoinSupport: {
+    description: 'Enable PayJoin (BIP78) transaction support',
+    category: 'general',
+    hasSideEffects: true,
+    sideEffectDescription: 'Enables a public unauthenticated BIP78 endpoint. Requires PAYJOIN_PUBLIC_URL to be set for external reachability.',
+  },
   batchTransactions: { description: 'Enable batch transaction creation', category: 'general' },
   rbfTransactions: { description: 'Enable Replace-By-Fee transaction support', category: 'general' },
   priceAlerts: { description: 'Enable price alert notifications', category: 'general' },

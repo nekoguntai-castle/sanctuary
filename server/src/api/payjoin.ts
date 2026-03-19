@@ -8,8 +8,10 @@
 
 import { Router, Request, Response } from 'express';
 import { authenticate } from '../middleware/auth';
+import { requireFeature, isFeatureEnabledAsync } from '../middleware/featureGate';
 import { db as prisma } from '../repositories/db';
 import { createLogger } from '../utils/logger';
+import { getConfig } from '../config';
 import { rateLimitByIpAndKey } from '../middleware/rateLimit';
 import {
   processPayjoinRequest,
@@ -35,10 +37,28 @@ const payjoinRateLimiter = rateLimitByIpAndKey(
 // ========================================
 
 /**
+ * GET /api/v1/payjoin/status
+ * Check if Payjoin is enabled and properly configured
+ * NOT gated by requireFeature so the frontend can determine visibility
+ */
+router.get('/status', authenticate, async (_req: Request, res: Response) => {
+  try {
+    const enabled = await isFeatureEnabledAsync('payjoinSupport');
+    const config = getConfig();
+    const configured = !!config.payjoin.publicUrl;
+
+    res.json({ enabled, configured });
+  } catch (error) {
+    log.error('Error checking Payjoin status', { error: String(error) });
+    res.status(500).json({ error: 'Failed to check Payjoin status' });
+  }
+});
+
+/**
  * GET /api/v1/payjoin/eligibility/:walletId
  * Check if wallet is eligible for Payjoin receives
  */
-router.get('/eligibility/:walletId', authenticate, async (req: Request, res: Response) => {
+router.get('/eligibility/:walletId', authenticate, requireFeature('payjoinSupport'), async (req: Request, res: Response) => {
   try {
     const { walletId } = req.params;
     const userId = req.user?.userId;
@@ -128,7 +148,7 @@ router.get('/eligibility/:walletId', authenticate, async (req: Request, res: Res
  * GET /api/v1/payjoin/address/:addressId/uri
  * Generate a BIP21 URI with Payjoin endpoint for an address
  */
-router.get('/address/:addressId/uri', authenticate, async (req: Request, res: Response) => {
+router.get('/address/:addressId/uri', authenticate, requireFeature('payjoinSupport'), async (req: Request, res: Response) => {
   try {
     const { addressId } = req.params;
     const { amount, label, message } = req.query;
@@ -151,9 +171,9 @@ router.get('/address/:addressId/uri', authenticate, async (req: Request, res: Re
       return res.status(404).json({ error: 'Address not found or access denied' });
     }
 
-    // Generate Payjoin URL
-    // In production, this should be the public URL of the server
-    const baseUrl = req.protocol + '://' + req.get('host');
+    // Generate Payjoin URL using configured public URL or fallback to request host
+    const config = getConfig();
+    const baseUrl = config.payjoin.publicUrl || `${req.protocol}://${req.get('host')}`;
     const payjoinUrl = `${baseUrl}/api/v1/payjoin/${addressId}`;
 
     const uri = generateBip21Uri(address.address, {
@@ -178,7 +198,7 @@ router.get('/address/:addressId/uri', authenticate, async (req: Request, res: Re
  * POST /api/v1/payjoin/parse-uri
  * Parse a BIP21 URI to extract address and Payjoin URL
  */
-router.post('/parse-uri', authenticate, async (req: Request, res: Response) => {
+router.post('/parse-uri', authenticate, requireFeature('payjoinSupport'), async (req: Request, res: Response) => {
   try {
     const { uri } = req.body;
 
@@ -206,7 +226,7 @@ router.post('/parse-uri', authenticate, async (req: Request, res: Response) => {
  * POST /api/v1/payjoin/attempt
  * Attempt to perform a Payjoin send
  */
-router.post('/attempt', authenticate, async (req: Request, res: Response) => {
+router.post('/attempt', authenticate, requireFeature('payjoinSupport'), async (req: Request, res: Response) => {
   try {
     const { psbt, payjoinUrl, network } = req.body;
 
@@ -262,7 +282,13 @@ router.post('/attempt', authenticate, async (req: Request, res: Response) => {
  * Body: Original PSBT (text/plain, base64)
  * Returns: Proposal PSBT (text/plain, base64)
  */
-router.post('/:addressId', payjoinRateLimiter, async (req: Request, res: Response) => {
+router.post('/:addressId', async (req: Request, res: Response, next) => {
+  const enabled = await isFeatureEnabledAsync('payjoinSupport');
+  if (!enabled) {
+    return res.status(403).type('text/plain').send(PayjoinErrors.RECEIVER_ERROR);
+  }
+  next();
+}, payjoinRateLimiter, async (req: Request, res: Response) => {
   const { addressId } = req.params;
   const { v, minfeerate } = req.query;
 
