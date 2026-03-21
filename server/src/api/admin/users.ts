@@ -11,6 +11,7 @@ import { authenticate, requireAdmin } from '../../middleware/auth';
 import { createLogger } from '../../utils/logger';
 import { validatePasswordStrength } from '../../utils/password';
 import { auditService, AuditAction, AuditCategory } from '../../services/auditService';
+import { revokeAllUserTokens } from '../../services/tokenRevocation';
 
 const router = Router();
 const log = createLogger('ADMIN:USERS');
@@ -244,6 +245,12 @@ router.put('/:userId', authenticate, requireAdmin, async (req: Request, res: Res
         updatedAt: true,
       },
     });
+
+    // If password was changed by admin, invalidate all user sessions
+    if ('password' in updateData) {
+      await revokeAllUserTokens(userId, 'admin_password_reset');
+      log.info('User sessions invalidated after admin password reset', { userId });
+    }
 
     log.info('User updated:', { userId, changes: Object.keys(updateData) });
 

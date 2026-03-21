@@ -36,11 +36,13 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD:-}
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "sh", "-c", "redis-cli -a \"$REDIS_PASSWORD\" --no-auth-warning ping || redis-cli ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -182,11 +184,11 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-sanctuary}:${POSTGRES_PASSWORD:-sanctuary}@postgres:5432/${POSTGRES_DB:-sanctuary}?schema=public&connection_limit=${DB_POOL_SIZE:-30}&pool_timeout=30&connect_timeout=10&statement_timeout=30000
 
       # Redis for distributed caching and event bus
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: redis://:${REDIS_PASSWORD:-}@redis:6379
 
       # JWT
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
-      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1h}
 
       # Rate limiting (configurable for testing, defaults to production values)
       RATE_LIMIT_LOGIN: ${RATE_LIMIT_LOGIN:-5}
@@ -288,7 +290,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-sanctuary}:${POSTGRES_PASSWORD:-sanctuary}@postgres:5432/${POSTGRES_DB:-sanctuary}?schema=public&connection_limit=${DB_WORKER_POOL_SIZE:-10}&pool_timeout=30&connect_timeout=10
 
       # Redis (required for job queue)
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: redis://:${REDIS_PASSWORD:-}@redis:6379
 
       # Worker-specific settings
       WORKER_HEALTH_PORT: 3002

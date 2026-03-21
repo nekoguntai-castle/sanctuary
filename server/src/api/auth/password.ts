@@ -10,6 +10,7 @@ import { db as prisma } from '../../repositories/db';
 import { createLogger } from '../../utils/logger';
 import { hashPassword, verifyPassword, validatePasswordStrength } from '../../utils/password';
 import { auditService, AuditAction, AuditCategory } from '../../services/auditService';
+import { revokeAllUserTokens } from '../../services/tokenRevocation';
 
 const router = Router();
 const log = createLogger('AUTH:PASSWORD');
@@ -128,6 +129,9 @@ export function createPasswordRouter(passwordChangeLimiter: RequestHandler): Rou
 
       // Clear the initial password marker since user has changed their password
       await clearInitialPasswordMarker(user.id);
+
+      // Invalidate all existing sessions (security: prevent stolen tokens from persisting)
+      await revokeAllUserTokens(user.id, 'password_change');
 
       // Audit password change
       await auditService.logFromRequest(req, AuditAction.PASSWORD_CHANGE, AuditCategory.AUTH, {

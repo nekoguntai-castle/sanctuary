@@ -74,6 +74,17 @@ server {
         add_header Content-Type text/plain;
     }
 
+    # Block internal and metrics routes from external access
+    location /internal/ {
+        deny all;
+        return 403;
+    }
+
+    location /metrics {
+        deny all;
+        return 403;
+    }
+
     # API proxy - all requests to /api go to backend
     location /api/ {
         proxy_pass http://backend;
@@ -123,6 +134,11 @@ server {
     location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
         expires 1y;
         add_header Cache-Control "public, immutable";
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-XSS-Protection "1; mode=block" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
         access_log off;
         try_files $uri =404;
     }
@@ -135,6 +151,11 @@ server {
         add_header Cache-Control "no-cache, no-store, must-revalidate";
         add_header Pragma "no-cache";
         add_header Expires "0";
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-XSS-Protection "1; mode=block" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
     }
 
     # Deny access to hidden files

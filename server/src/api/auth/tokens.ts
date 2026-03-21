@@ -23,7 +23,7 @@ const log = createLogger('AUTH:TOKENS');
  */
 router.post('/refresh', async (req: Request, res: Response) => {
   try {
-    const { refreshToken: refreshTokenStr, rotate } = req.body;
+    const { refreshToken: refreshTokenStr } = req.body;
 
     if (!refreshTokenStr) {
       return res.status(400).json({
@@ -73,31 +73,28 @@ router.post('/refresh', async (req: Request, res: Response) => {
       isAdmin: user.isAdmin,
     });
 
-    // Get device info for potential rotation
+    // Get device info for rotation
     const { ipAddress, userAgent } = getClientInfo(req);
     const deviceInfo = { userAgent, ipAddress };
 
-    // Token rotation if requested (more secure - invalidates old token)
-    let newRefreshToken: string | undefined;
-    if (rotate) {
-      const rotatedToken = await refreshTokenService.rotateRefreshToken(refreshTokenStr, deviceInfo);
-      if (rotatedToken) {
-        newRefreshToken = rotatedToken;
-      }
+    // Always rotate refresh token (security: limits window of stolen tokens)
+    const newRefreshToken = await refreshTokenService.rotateRefreshToken(refreshTokenStr, deviceInfo);
+
+    if (!newRefreshToken) {
+      log.error('Token rotation failed', { userId: user.id });
+      return res.status(500).json({
+        error: 'Internal Server Error',
+        message: 'Failed to rotate refresh token',
+      });
     }
 
-    log.debug('Token refreshed', { userId: user.id, rotated: !!newRefreshToken });
+    log.debug('Token refreshed with rotation', { userId: user.id });
 
-    const response: Record<string, unknown> = {
+    res.json({
       token: newAccessToken,
+      refreshToken: newRefreshToken,
       expiresIn: 3600, // 1 hour in seconds
-    };
-
-    if (newRefreshToken) {
-      response.refreshToken = newRefreshToken;
-    }
-
-    res.json(response);
+    });
   } catch (error) {
     log.error('Token refresh error', { error });
     res.status(500).json({

@@ -140,6 +140,11 @@ vi.mock('../../../src/services/accessControl', () => ({
   invalidateUserAccessCache: vi.fn(),
 }));
 
+// Mock token revocation (called on admin password reset)
+vi.mock('../../../src/services/tokenRevocation', () => ({
+  revokeAllUserTokens: vi.fn().mockResolvedValue(0),
+}));
+
 // Mock backup service
 vi.mock('../../../src/services/backupService', () => ({
   backupService: {

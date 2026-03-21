@@ -1841,7 +1841,7 @@ describe('Auth API Routes', () => {
       expect(response.body.refreshToken).toBe('new-refresh-token');
     });
 
-    it('should not return refresh token when rotation fails', async () => {
+    it('should return 500 when mandatory token rotation fails', async () => {
       mockPrismaClient.user.findUnique.mockResolvedValue({
         id: 'test-user-id',
         username: 'testuser',
@@ -1853,11 +1853,10 @@ describe('Auth API Routes', () => {
 
       const response = await request(app)
         .post('/api/v1/auth/refresh')
-        .send({ refreshToken: 'valid-token', rotate: true });
+        .send({ refreshToken: 'valid-token' });
 
-      expect(response.status).toBe(200);
-      expect(response.body.token).toBeDefined();
-      expect(response.body.refreshToken).toBeUndefined();
+      expect(response.status).toBe(500);
+      expect(response.body.message).toBe('Failed to rotate refresh token');
     });
 
     it('should handle errors gracefully', async () => {

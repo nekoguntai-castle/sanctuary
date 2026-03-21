@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   verifyPassword: vi.fn(),
   hashPassword: vi.fn(),
   logFromRequest: vi.fn(),
+  revokeAllUserTokens: vi.fn(),
 }));
 
 vi.mock('../../../src/repositories/db', async () => {
@@ -35,6 +36,10 @@ vi.mock('../../../src/services/auditService', () => ({
   AuditCategory: {
     AUTH: 'auth',
   },
+}));
+
+vi.mock('../../../src/services/tokenRevocation', () => ({
+  revokeAllUserTokens: mocks.revokeAllUserTokens,
 }));
 
 vi.mock('../../../src/utils/logger', () => ({
@@ -69,6 +74,7 @@ describe('auth password routes', () => {
     mocks.verifyPassword.mockResolvedValue(true);
     mocks.hashPassword.mockResolvedValue('hashed-new-password');
     mocks.logFromRequest.mockResolvedValue(undefined);
+    mocks.revokeAllUserTokens.mockResolvedValue(0);
 
     mockPrismaClient.systemSetting.deleteMany.mockResolvedValue({ count: 1 });
     mockPrismaClient.user.update.mockResolvedValue({ id: 'user-1' });
@@ -99,6 +105,7 @@ describe('auth password routes', () => {
     expect(mockPrismaClient.systemSetting.deleteMany).toHaveBeenCalledWith({
       where: { key: 'initialPassword_user-1' },
     });
+    expect(mocks.revokeAllUserTokens).toHaveBeenCalledWith('user-1', 'password_change');
     expect(mocks.logFromRequest).toHaveBeenCalledWith(
       expect.any(Object),
       'password.change',

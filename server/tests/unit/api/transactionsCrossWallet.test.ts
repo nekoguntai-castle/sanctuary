@@ -48,7 +48,7 @@ describe('transactions cross-wallet routes', () => {
     resetPrismaMocks();
     vi.clearAllMocks();
     mocks.getCachedBlockHeight.mockReturnValue(850000);
-    (mockPrismaClient as any).$queryRawUnsafe = vi.fn().mockResolvedValue([]);
+    (mockPrismaClient as any).$queryRaw = vi.fn().mockResolvedValue([]);
   });
 
   it('GET /transactions/recent returns empty array when user has no wallets', async () => {
@@ -301,7 +301,7 @@ describe('transactions cross-wallet routes', () => {
 
   it('GET /transactions/balance-history reconstructs running balances from bucket deltas', async () => {
     mockPrismaClient.wallet.findMany.mockResolvedValue([{ id: 'wallet-1' }]);
-    (mockPrismaClient as any).$queryRawUnsafe.mockResolvedValue([
+    (mockPrismaClient as any).$queryRaw.mockResolvedValue([
       { bucket: new Date('2026-01-01T00:00:00.000Z'), amount: BigInt(100) },
       { bucket: new Date('2026-01-02T00:00:00.000Z'), amount: BigInt(-50) },
     ]);
@@ -328,7 +328,7 @@ describe('transactions cross-wallet routes', () => {
 
   it('GET /transactions/balance-history filters to requested wallet IDs', async () => {
     mockPrismaClient.wallet.findMany.mockResolvedValue([{ id: 'wallet-2' }]);
-    (mockPrismaClient as any).$queryRawUnsafe.mockResolvedValue([]);
+    (mockPrismaClient as any).$queryRaw.mockResolvedValue([]);
 
     const response = await request(app)
       .get('/api/v1/transactions/balance-history')
@@ -350,7 +350,7 @@ describe('transactions cross-wallet routes', () => {
 
   it('GET /transactions/balance-history returns flat line when there are no bucketed deltas', async () => {
     mockPrismaClient.wallet.findMany.mockResolvedValue([{ id: 'wallet-1' }]);
-    (mockPrismaClient as any).$queryRawUnsafe.mockResolvedValue([]);
+    (mockPrismaClient as any).$queryRaw.mockResolvedValue([]);
 
     const response = await request(app)
       .get('/api/v1/transactions/balance-history')
@@ -372,7 +372,7 @@ describe('transactions cross-wallet routes', () => {
     'GET /transactions/balance-history uses correct bucket config for $timeframe',
     async ({ timeframe, expectedUnit, expectedDays }) => {
       mockPrismaClient.wallet.findMany.mockResolvedValue([{ id: 'wallet-1' }]);
-      (mockPrismaClient as any).$queryRawUnsafe.mockResolvedValue([
+      (mockPrismaClient as any).$queryRaw.mockResolvedValue([
         { bucket: new Date('2026-01-01T00:00:00.000Z'), amount: BigInt(0) },
       ]);
 
@@ -383,15 +383,18 @@ describe('transactions cross-wallet routes', () => {
       const after = Date.now();
 
       expect(response.status).toBe(200);
-      expect((mockPrismaClient as any).$queryRawUnsafe).toHaveBeenCalledTimes(1);
+      expect((mockPrismaClient as any).$queryRaw).toHaveBeenCalledTimes(1);
 
-      const callArgs = (mockPrismaClient as any).$queryRawUnsafe.mock.calls[0];
-      const query = callArgs[0] as string;
-      const walletIds = callArgs[1] as string[];
+      // $queryRaw tagged template: first arg is TemplateStringsArray, rest are interpolated values
+      const callArgs = (mockPrismaClient as any).$queryRaw.mock.calls[0];
+
+      // date_trunc is now baked into the template string (no Prisma.raw())
+      const templateStrings = callArgs[0] as TemplateStringsArray;
+      const fullTemplate = templateStrings.join('?');
+      expect(fullTemplate).toContain(`date_trunc('${expectedUnit}'`);
+
+      // callArgs[1] is walletIds, callArgs[2] is startDate
       const startDate = callArgs[2] as Date;
-
-      expect(query).toContain(`date_trunc('${expectedUnit}'`);
-      expect(walletIds).toEqual(['wallet-1']);
       expect(startDate).toBeInstanceOf(Date);
 
       if (expectedDays === null) {
@@ -408,7 +411,7 @@ describe('transactions cross-wallet routes', () => {
 
   it('GET /transactions/balance-history returns 500 when aggregation query fails', async () => {
     mockPrismaClient.wallet.findMany.mockResolvedValue([{ id: 'wallet-1' }]);
-    (mockPrismaClient as any).$queryRawUnsafe.mockRejectedValue(new Error('aggregation failed'));
+    (mockPrismaClient as any).$queryRaw.mockRejectedValue(new Error('aggregation failed'));
 
     const response = await request(app)
       .get('/api/v1/transactions/balance-history')

@@ -75,28 +75,53 @@ async function getBucketedBalanceDeltas(
   startDate: Date,
   bucketUnit: BucketUnit
 ): Promise<Array<{ bucket: Date; amount: bigint }>> {
-  // Defense in depth: validate bucket unit even though callers constrain it
-  const VALID_UNITS = new Set<BucketUnit>(['hour', 'day', 'week', 'month']);
-  if (!VALID_UNITS.has(bucketUnit)) {
-    throw new Error(`Invalid bucket unit: ${bucketUnit}`);
+  // Each bucket unit has its own fully parameterized query — no Prisma.raw() needed
+  switch (bucketUnit) {
+    case 'hour':
+      return prisma.$queryRaw<Array<{ bucket: Date; amount: bigint }>>`
+        SELECT date_trunc('hour', "blockTime") AS bucket,
+               COALESCE(SUM("amount"), 0) AS amount
+        FROM "transactions"
+        WHERE "walletId" = ANY(${walletIds}::text[])
+          AND "blockTime" IS NOT NULL
+          AND "blockTime" >= ${startDate}
+        GROUP BY bucket
+        ORDER BY bucket ASC
+      `;
+    case 'day':
+      return prisma.$queryRaw<Array<{ bucket: Date; amount: bigint }>>`
+        SELECT date_trunc('day', "blockTime") AS bucket,
+               COALESCE(SUM("amount"), 0) AS amount
+        FROM "transactions"
+        WHERE "walletId" = ANY(${walletIds}::text[])
+          AND "blockTime" IS NOT NULL
+          AND "blockTime" >= ${startDate}
+        GROUP BY bucket
+        ORDER BY bucket ASC
+      `;
+    case 'week':
+      return prisma.$queryRaw<Array<{ bucket: Date; amount: bigint }>>`
+        SELECT date_trunc('week', "blockTime") AS bucket,
+               COALESCE(SUM("amount"), 0) AS amount
+        FROM "transactions"
+        WHERE "walletId" = ANY(${walletIds}::text[])
+          AND "blockTime" IS NOT NULL
+          AND "blockTime" >= ${startDate}
+        GROUP BY bucket
+        ORDER BY bucket ASC
+      `;
+    case 'month':
+      return prisma.$queryRaw<Array<{ bucket: Date; amount: bigint }>>`
+        SELECT date_trunc('month', "blockTime") AS bucket,
+               COALESCE(SUM("amount"), 0) AS amount
+        FROM "transactions"
+        WHERE "walletId" = ANY(${walletIds}::text[])
+          AND "blockTime" IS NOT NULL
+          AND "blockTime" >= ${startDate}
+        GROUP BY bucket
+        ORDER BY bucket ASC
+      `;
   }
-
-  const query = `
-    SELECT date_trunc('${bucketUnit}', "blockTime") AS bucket,
-           COALESCE(SUM("amount"), 0) AS amount
-    FROM "transactions"
-    WHERE "walletId" = ANY($1)
-      AND "blockTime" IS NOT NULL
-      AND "blockTime" >= $2
-    GROUP BY bucket
-    ORDER BY bucket ASC
-  `;
-
-  return prisma.$queryRawUnsafe<Array<{ bucket: Date; amount: bigint }>>(
-    query,
-    walletIds,
-    startDate
-  );
 }
 
 /**
