@@ -7,6 +7,7 @@
 
 import { Router, Request, Response } from 'express';
 import { db as prisma } from '../../repositories/db';
+import { buildWalletAccessWhere } from '../../repositories/accessControl';
 import { handleApiError, bigIntToNumber, bigIntToNumberOrZero } from '../../utils/errors';
 import { getCachedBlockHeight, type Network } from '../../services/bitcoin/blockchain';
 
@@ -144,11 +145,7 @@ router.get('/transactions/recent', async (req: Request, res: Response) => {
     // Get all wallet IDs the user has access to (include network for block height lookups)
     const accessibleWallets = await prisma.wallet.findMany({
       where: {
-        OR: [
-          { users: { some: { userId } } },
-          { group: { members: { some: { userId } } } },
-        ],
-        // If specific wallets requested, filter to only those
+        ...buildWalletAccessWhere(userId),
         ...(requestedWalletIds && { id: { in: requestedWalletIds } }),
       },
       select: { id: true, name: true, network: true },
@@ -271,12 +268,7 @@ router.get('/transactions/pending', async (req: Request, res: Response) => {
 
     // Get all wallet IDs the user has access to
     const accessibleWallets = await prisma.wallet.findMany({
-      where: {
-        OR: [
-          { users: { some: { userId } } },
-          { group: { members: { some: { userId } } } },
-        ],
-      },
+      where: buildWalletAccessWhere(userId),
       select: { id: true, name: true },
     });
 
@@ -361,10 +353,7 @@ router.get('/transactions/balance-history', async (req: Request, res: Response) 
     // Get all wallet IDs the user has access to
     const accessibleWallets = await prisma.wallet.findMany({
       where: {
-        OR: [
-          { users: { some: { userId } } },
-          { group: { members: { some: { userId } } } },
-        ],
+        ...buildWalletAccessWhere(userId),
         ...(requestedWalletIds && { id: { in: requestedWalletIds } }),
       },
       select: { id: true },

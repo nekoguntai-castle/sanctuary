@@ -8,6 +8,7 @@ import { Router, Request, Response } from 'express';
 import { db as prisma } from '../../repositories/db';
 import { createLogger } from '../../utils/logger';
 import { generateToken, verifyRefreshToken, decodeToken } from '../../utils/jwt';
+import { getErrorMessage } from '../../utils/errors';
 import { revokeToken, revokeAllUserTokens } from '../../services/tokenRevocation';
 import * as refreshTokenService from '../../services/refreshTokenService';
 import { auditService, AuditAction, AuditCategory, getClientInfo } from '../../services/auditService';
@@ -96,7 +97,7 @@ router.post('/refresh', async (req: Request, res: Response) => {
       expiresIn: 3600, // 1 hour in seconds
     });
   } catch (error) {
-    log.error('Token refresh error', { error });
+    log.error('Token refresh error', { error: getErrorMessage(error) });
     res.status(500).json({
       error: 'Internal Server Error',
       message: 'Failed to refresh token',
@@ -148,7 +149,7 @@ router.post('/logout', authenticate, async (req: Request, res: Response) => {
       message: 'Logged out successfully',
     });
   } catch (error) {
-    log.error('Logout error', { error });
+    log.error('Logout error', { error: getErrorMessage(error) });
     res.status(500).json({
       error: 'Internal Server Error',
       message: 'Failed to logout',
@@ -191,7 +192,7 @@ router.post('/logout-all', authenticate, async (req: Request, res: Response) => 
       sessionsRevoked: revokedCount,
     });
   } catch (error) {
-    log.error('Logout all error', { error });
+    log.error('Logout all error', { error: getErrorMessage(error) });
     res.status(500).json({
       error: 'Internal Server Error',
       message: 'Failed to logout from all devices',

@@ -5,13 +5,13 @@
  */
 
 import { Router, Request, Response } from 'express';
-import bcrypt from 'bcryptjs';
 import { db as prisma } from '../../repositories/db';
 import { authenticate, requireAdmin } from '../../middleware/auth';
 import { createLogger } from '../../utils/logger';
-import { validatePasswordStrength } from '../../utils/password';
+import { hashPassword, validatePasswordStrength } from '../../utils/password';
 import { auditService, AuditAction, AuditCategory } from '../../services/auditService';
 import { revokeAllUserTokens } from '../../services/tokenRevocation';
+import { getErrorMessage } from '../../utils/errors';
 
 const router = Router();
 const log = createLogger('ADMIN:USERS');
@@ -37,7 +37,7 @@ router.get('/', authenticate, requireAdmin, async (_req: Request, res: Response)
 
     res.json(users);
   } catch (error) {
-    log.error('Get users error', { error: String(error) });
+    log.error('Get users error', { error: getErrorMessage(error) });
     res.status(500).json({
       error: 'Internal Server Error',
       message: 'Failed to get users',
@@ -112,7 +112,7 @@ router.post('/', authenticate, requireAdmin, async (req: Request, res: Response)
     }
 
     // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await hashPassword(password);
 
     // Create user - admin-created users are trusted (auto-verified)
     const user = await prisma.user.create({
@@ -143,7 +143,7 @@ router.post('/', authenticate, requireAdmin, async (req: Request, res: Response)
 
     res.status(201).json(user);
   } catch (error) {
-    log.error('Create user error', { error: String(error) });
+    log.error('Create user error', { error: getErrorMessage(error) });
     res.status(500).json({
       error: 'Internal Server Error',
       message: 'Failed to create user',
@@ -224,7 +224,7 @@ router.put('/:userId', authenticate, requireAdmin, async (req: Request, res: Res
           details: passwordValidation.errors,
         });
       }
-      updateData.password = await bcrypt.hash(password, 10);
+      updateData.password = await hashPassword(password);
     }
 
     if (isAdmin !== undefined) {
@@ -270,7 +270,7 @@ router.put('/:userId', authenticate, requireAdmin, async (req: Request, res: Res
 
     res.json(user);
   } catch (error) {
-    log.error('Update user error', { error: String(error) });
+    log.error('Update user error', { error: getErrorMessage(error) });
     res.status(500).json({
       error: 'Internal Server Error',
       message: 'Failed to update user',
@@ -321,7 +321,7 @@ router.delete('/:userId', authenticate, requireAdmin, async (req: Request, res: 
 
     res.json({ message: 'User deleted successfully' });
   } catch (error) {
-    log.error('Delete user error', { error: String(error) });
+    log.error('Delete user error', { error: getErrorMessage(error) });
     res.status(500).json({
       error: 'Internal Server Error',
       message: 'Failed to delete user',

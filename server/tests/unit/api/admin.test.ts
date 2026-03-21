@@ -129,6 +129,7 @@ vi.mock('../../../src/utils/password', () => ({
     }
     return { valid: true, errors: [] };
   }),
+  hashPassword: vi.fn().mockResolvedValue('hashed-password'),
   verifyPassword: (...args: unknown[]) => mockVerifyPassword(...args),
 }));
 

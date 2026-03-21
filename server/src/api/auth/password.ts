@@ -11,6 +11,7 @@ import { createLogger } from '../../utils/logger';
 import { hashPassword, verifyPassword, validatePasswordStrength } from '../../utils/password';
 import { auditService, AuditAction, AuditCategory } from '../../services/auditService';
 import { revokeAllUserTokens } from '../../services/tokenRevocation';
+import { getErrorMessage } from '../../utils/errors';
 
 const router = Router();
 const log = createLogger('AUTH:PASSWORD');
@@ -45,7 +46,7 @@ export async function isUsingInitialPassword(userId: string): Promise<boolean> {
     // Check if current password matches the initial password hash stored in settings
     return initialPasswordSetting.value === user.password;
   } catch (error) {
-    log.error('Error checking initial password status', { error });
+    log.error('Error checking initial password status', { error: getErrorMessage(error) });
     return false;
   }
 }
@@ -59,7 +60,7 @@ export async function clearInitialPasswordMarker(userId: string): Promise<void> 
       where: { key: `initialPassword_${userId}` },
     });
   } catch (error) {
-    log.error('Error clearing initial password marker', { error });
+    log.error('Error clearing initial password marker', { error: getErrorMessage(error) });
   }
 }
 
@@ -142,7 +143,7 @@ export function createPasswordRouter(passwordChangeLimiter: RequestHandler): Rou
         message: 'Password changed successfully',
       });
     } catch (error) {
-      log.error('Change password error', { error });
+      log.error('Change password error', { error: getErrorMessage(error) });
       res.status(500).json({
         error: 'Internal Server Error',
         message: 'Failed to change password',
