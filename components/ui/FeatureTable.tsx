@@ -138,12 +138,12 @@ export function FeatureTable<T>({
 }: FeatureTableProps<T>) {
   // ----- Preference persistence via dot-notation keys -----
 
-  const [savedColumnOrder, setSavedColumnOrder] = useUserPreference<string[] | undefined>(
+  const [savedColumnOrder] = useUserPreference<string[] | undefined>(
     `viewSettings.${preferenceKey}.columnOrder`,
     undefined,
   );
 
-  const [visibleColumns, setVisibleColumns] = useUserPreference<string[]>(
+  const [visibleColumns] = useUserPreference<string[]>(
     `viewSettings.${preferenceKey}.visibleColumns`,
     defaultVisibleColumns,
   );
@@ -153,30 +153,6 @@ export function FeatureTable<T>({
     () => mergeColumnOrder(savedColumnOrder, defaultColumnOrder, columns),
     [savedColumnOrder, defaultColumnOrder, columns],
   );
-
-  // ----- Column config handlers -----
-
-  const handleColumnOrderChange = useCallback(
-    (newOrder: string[]) => {
-      setSavedColumnOrder(newOrder);
-    },
-    [setSavedColumnOrder],
-  );
-
-  const handleColumnVisibilityChange = useCallback(
-    (columnId: string, visible: boolean) => {
-      const updated = visible
-        ? [...visibleColumns, columnId]
-        : visibleColumns.filter((id) => id !== columnId);
-      setVisibleColumns(updated);
-    },
-    [visibleColumns, setVisibleColumns],
-  );
-
-  const handleColumnReset = useCallback(() => {
-    setSavedColumnOrder(undefined);
-    setVisibleColumns(defaultVisibleColumns);
-  }, [setSavedColumnOrder, setVisibleColumns, defaultVisibleColumns]);
 
   return (
     <div>

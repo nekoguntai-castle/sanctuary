@@ -5,8 +5,9 @@
  * Mocks external services (Electrum, push notifications) while using real database.
  */
 
-import express, { Express, Request, Response, NextFunction } from 'express';
+import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
+import { errorHandler } from '../../../src/errors/errorHandler';
 
 // Import routes
 import authRoutes from '../../../src/api/auth';
@@ -52,10 +53,7 @@ export function createTestApp(): Express {
   });
 
   // Error handler
-  app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-    console.error('Test app error:', err);
-    res.status(500).json({ error: err.message });
-  });
+  app.use(errorHandler);
 
   testApp = app;
   return app;
