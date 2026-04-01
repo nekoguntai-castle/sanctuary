@@ -375,6 +375,40 @@ describe('API Client', () => {
         expect((error as ApiError).message).toContain('403');
       }
     });
+
+    it('should extract message from nested error object when top-level message is absent', async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 429,
+        statusText: '',
+        json: () => Promise.resolve({
+          success: false,
+          error: { type: 'RateLimitError', message: 'Too many requests' },
+        }),
+      });
+
+      try {
+        await apiClient.get('/rate-limited', undefined, { enabled: false });
+      } catch (error) {
+        expect((error as ApiError).message).toBe('Too many requests');
+        expect((error as ApiError).status).toBe(429);
+      }
+    });
+
+    it('should fall back to Unknown error when both message fields and statusText are empty', async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 502,
+        statusText: '',
+        json: () => Promise.resolve({}),
+      });
+
+      try {
+        await apiClient.get('/empty-error', undefined, { enabled: false });
+      } catch (error) {
+        expect((error as ApiError).message).toBe('HTTP 502: Unknown error');
+      }
+    });
   });
 
   // ========================================

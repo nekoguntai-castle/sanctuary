@@ -77,7 +77,7 @@ export async function register(data: RegisterRequest): Promise<AuthResponse> {
  * Returns either a full auth response or a 2FA required response
  */
 export async function login(data: LoginRequest): Promise<LoginResponse> {
-  const response = await apiClient.post<LoginResponse>('/auth/login', data);
+  const response = await apiClient.post<LoginResponse>('/auth/login', data, { retry: { enabled: false } });
 
   // Only set token if full auth (not 2FA pending)
   if (!requires2FA(response)) {

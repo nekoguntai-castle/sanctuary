@@ -136,7 +136,7 @@ describe('Auth API', () => {
       expect(mockPost).toHaveBeenCalledWith('/auth/login', {
         username: 'testuser',
         password: 'pass',
-      });
+      }, { retry: { enabled: false } });
       expect(mockSetToken).toHaveBeenCalledWith('login-token');
       expect(requires2FA(result)).toBe(false);
     });

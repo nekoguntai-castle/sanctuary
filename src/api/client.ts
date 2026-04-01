@@ -223,7 +223,7 @@ class ApiClient {
       // Handle error responses
       if (!response.ok) {
         throw new ApiError(
-          data.message || `HTTP ${response.status}: ${response.statusText}`,
+          data.message || data.error?.message || `HTTP ${response.status}: ${response.statusText || 'Unknown error'}`,
           response.status,
           data
         );

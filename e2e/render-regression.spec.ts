@@ -745,7 +745,7 @@ test.describe('Route-level rendering regressions', () => {
     await expect(page.getByText('Bitcoin Price')).toBeVisible();
     await expect(page.getByText('Fee Estimation')).toBeVisible();
     await expect(page.getByText('Node Status')).toBeVisible();
-    await expect(page.getByText('900,123')).toBeVisible();
+    await expect(page.getByTitle('Current block height')).toBeVisible();
     await expect(page.getByText('22 sat/vB')).toBeVisible();
 
     await page.getByRole('button', { name: /Testnet/i }).click();

@@ -84,8 +84,14 @@ export const AnimatedBackground: React.FC<AnimatedBackgroundProps> = ({
   useEffect(() => {
     let cancelled = false;
 
+    // Clear the active hook immediately to prevent rendering AnimationRunner
+    // with a stale hook while the new one loads. Different animation hooks have
+    // different numbers of React hooks internally, so rendering with a mismatched
+    // hook causes "Cannot read properties of undefined (reading 'length')" in
+    // React's hook reconciler.
+    setActiveHook(null);
+
     if (!animatedPattern) {
-      setActiveHook(null);
       return;
     }
 
