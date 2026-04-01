@@ -238,6 +238,11 @@ test_env_file_has_secrets() {
         missing_vars+=("POSTGRES_PASSWORD")
     fi
 
+    # Check for REDIS_PASSWORD
+    if ! grep -q "^REDIS_PASSWORD=" "$PROJECT_ROOT/.env"; then
+        missing_vars+=("REDIS_PASSWORD")
+    fi
+
     if [ ${#missing_vars[@]} -gt 0 ]; then
         log_error "Missing required variables in .env: ${missing_vars[*]}"
         log_error ".env contents:"

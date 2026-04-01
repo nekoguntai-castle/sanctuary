@@ -469,6 +469,13 @@ load_or_generate_secrets() {
         echo "  - AI_CONFIG_SECRET: generated"
     fi
 
+    if [ -n "$REDIS_PASSWORD" ]; then
+        echo "  - REDIS_PASSWORD: using existing"
+    else
+        REDIS_PASSWORD=$(generate_password)
+        echo "  - REDIS_PASSWORD: generated"
+    fi
+
     echo ""
 }
 
@@ -496,6 +503,7 @@ ENCRYPTION_SALT=$ENCRYPTION_SALT
 GATEWAY_SECRET=$GATEWAY_SECRET
 POSTGRES_PASSWORD=$POSTGRES_PASSWORD
 AI_CONFIG_SECRET=$AI_CONFIG_SECRET
+REDIS_PASSWORD=$REDIS_PASSWORD
 
 # ============================================
 # PORTS

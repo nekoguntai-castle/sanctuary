@@ -364,7 +364,7 @@ main() {
     echo ""
 
     # Export secrets so setup.sh can use them (but NOT feature flags - let setup.sh prompt)
-    export JWT_SECRET ENCRYPTION_KEY ENCRYPTION_SALT GATEWAY_SECRET POSTGRES_PASSWORD AI_CONFIG_SECRET
+    export JWT_SECRET ENCRYPTION_KEY ENCRYPTION_SALT GATEWAY_SECRET POSTGRES_PASSWORD AI_CONFIG_SECRET REDIS_PASSWORD
     export HTTPS_PORT HTTP_PORT GATEWAY_PORT
 
     # Run setup.sh
