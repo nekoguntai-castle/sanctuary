@@ -529,10 +529,19 @@ describe('WalletDetail wrapper behaviors', () => {
     await user.click(screen.getByRole('button', { name: 'header-receive' }));
     expect(screen.getByTestId('receive-modal')).toBeInTheDocument();
 
-    // Exercise onFetchUnusedAddresses callback (covers WalletDetail.tsx lines 512-517)
+    // Exercise onFetchUnusedAddresses early-return branch (unused addresses found)
+    vi.mocked(transactionsApi.getAddresses).mockResolvedValueOnce([
+      { id: 'a1', address: 'bc1qtest', isChange: false, used: false, index: 0, derivationPath: "m/84'/0'/0'/0/0", balance: 0 },
+    ] as any);
     await user.click(screen.getByRole('button', { name: 'receive-fetch-unused' }));
     await waitFor(() => {
       expect(transactionsApi.getAddresses).toHaveBeenCalledWith('wallet-1', { used: false, limit: 10 });
+    });
+    // Exercise fallthrough branch (no unused found → generate → re-fetch)
+    vi.mocked(transactionsApi.getAddresses).mockResolvedValueOnce([]);
+    await user.click(screen.getByRole('button', { name: 'receive-fetch-unused' }));
+    await waitFor(() => {
+      expect(transactionsApi.generateAddresses).toHaveBeenCalledWith('wallet-1', 10);
     });
 
     await user.click(screen.getByRole('button', { name: 'receive-settings' }));

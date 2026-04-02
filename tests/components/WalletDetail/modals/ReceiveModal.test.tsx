@@ -751,5 +751,32 @@ describe('ReceiveModal', () => {
         expect(screen.getByTestId('qr-code')).toHaveAttribute('data-value', 'bc1qnewaddress');
       });
     });
+
+    it('should show error state when fetch callback rejects', async () => {
+      const allUsedAddresses: Address[] = [
+        {
+          id: 'addr-used-0',
+          address: 'bc1qused0000',
+          derivationPath: "m/84'/0'/0'/0/0",
+          index: 0,
+          balance: 0,
+          isChange: false,
+          used: true,
+        },
+      ];
+
+      const mockFetch = vi.fn().mockRejectedValue(new Error('network error'));
+
+      render(
+        <ReceiveModal {...defaultProps} addresses={allUsedAddresses} onFetchUnusedAddresses={mockFetch} />
+      );
+
+      // After fetch fails, should show error state (not stuck on loading)
+      await waitFor(() => {
+        expect(
+          screen.getByText(/no receive address available/i)
+        ).toBeInTheDocument();
+      });
+    });
   });
 });
