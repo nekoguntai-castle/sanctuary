@@ -227,6 +227,7 @@ vi.mock('../../components/WalletDetail/modals', () => ({
       <span data-testid="receive-network">{props.network}</span>
       <button onClick={props.onClose}>receive-close</button>
       <button onClick={props.onNavigateToSettings}>receive-settings</button>
+      <button onClick={() => props.onFetchUnusedAddresses?.(props.walletId)}>receive-fetch-unused</button>
     </div>
   ),
   ExportModal: (props: any) => (
@@ -279,6 +280,7 @@ vi.mock('../../src/api/transactions', async (importOriginal) => {
   const actual = await importOriginal() as any;
   return {
     ...actual,
+    getAddresses: vi.fn().mockResolvedValue([]),
     generateAddresses: vi.fn(),
     freezeUTXO: vi.fn(),
   };
@@ -449,6 +451,7 @@ describe('WalletDetail wrapper behaviors', () => {
       togglePause: vi.fn(),
     };
 
+    vi.mocked(transactionsApi.getAddresses).mockResolvedValue([]);
     vi.mocked(transactionsApi.generateAddresses).mockResolvedValue({} as any);
     vi.mocked(transactionsApi.freezeUTXO).mockResolvedValue({} as any);
     vi.mocked(labelsApi.getLabels).mockResolvedValue([
@@ -525,6 +528,12 @@ describe('WalletDetail wrapper behaviors', () => {
 
     await user.click(screen.getByRole('button', { name: 'header-receive' }));
     expect(screen.getByTestId('receive-modal')).toBeInTheDocument();
+
+    // Exercise onFetchUnusedAddresses callback (covers WalletDetail.tsx lines 512-517)
+    await user.click(screen.getByRole('button', { name: 'receive-fetch-unused' }));
+    await waitFor(() => {
+      expect(transactionsApi.getAddresses).toHaveBeenCalledWith('wallet-1', { used: false, limit: 10 });
+    });
 
     await user.click(screen.getByRole('button', { name: 'receive-settings' }));
     expect(screen.getByTestId('settings-tab')).toBeInTheDocument();
