@@ -5,7 +5,7 @@
  * address selection, and Payjoin functionality.
  */
 
-import { fireEvent,render,screen,waitFor } from '@testing-library/react';
+import { act, fireEvent,render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
@@ -599,7 +599,7 @@ describe('ReceiveModal', () => {
   });
 
   describe('All Used Addresses', () => {
-    it('should show empty state when all addresses are used or change', () => {
+    it('should show empty state when all addresses are used or change (no fetch callback)', () => {
       const usedAddresses: Address[] = [
         {
           id: 'addr-1',
@@ -626,6 +626,130 @@ describe('ReceiveModal', () => {
       expect(
         screen.getByText(/no receive address available/i)
       ).toBeInTheDocument();
+    });
+
+    it('should show empty state after fetch returns nothing', async () => {
+      const usedAddresses: Address[] = [
+        {
+          id: 'addr-1',
+          address: 'bc1qused1',
+          derivationPath: "m/84'/0'/0'/0/0",
+          index: 0,
+          balance: 0,
+          isChange: false,
+          used: true,
+        },
+      ];
+
+      const mockFetch = vi.fn().mockImplementation(() =>
+        new Promise<Address[]>(resolve => setTimeout(() => resolve([]), 0))
+      );
+
+      render(
+        <ReceiveModal {...defaultProps} addresses={usedAddresses} onFetchUnusedAddresses={mockFetch} />
+      );
+
+      // Should show loading first, then error after fetch returns nothing
+      await waitFor(() => {
+        expect(
+          screen.getByText(/no receive address available/i)
+        ).toBeInTheDocument();
+      });
+
+      expect(mockFetch).toHaveBeenCalledWith(defaultProps.walletId);
+    });
+  });
+
+  describe('Address Exhaustion Recovery', () => {
+    it('should auto-fetch unused addresses when all loaded addresses are used (regression: address #54+)', async () => {
+      // Simulate: user has used many addresses. The initial page load returned
+      // only used addresses (e.g., indices 0-24, all used). The next unused
+      // address is at index 54 which was never loaded.
+      const allUsedAddresses: Address[] = Array.from({ length: 25 }, (_, i) => ({
+        id: `addr-used-${i}`,
+        address: `bc1qused${i.toString().padStart(4, '0')}`,
+        derivationPath: `m/84'/0'/0'/0/${i}`,
+        index: i,
+        balance: 0,
+        isChange: false,
+        used: true,
+      }));
+
+      // The callback returns an unused address at index 54 (use setTimeout to ensure async flush)
+      const mockFetch = vi.fn().mockImplementation(() =>
+        new Promise<Address[]>(resolve => setTimeout(() => resolve([
+          {
+            id: 'addr-54',
+            address: 'bc1qunused54address',
+            derivationPath: "m/84'/0'/0'/0/54",
+            index: 54,
+            balance: 0,
+            isChange: false,
+            used: false,
+          },
+        ]), 0))
+      );
+
+      render(
+        <ReceiveModal {...defaultProps} addresses={allUsedAddresses} onFetchUnusedAddresses={mockFetch} />
+      );
+
+      // Should eventually show the fetched unused address instead of error
+      await waitFor(() => {
+        expect(screen.getByTestId('qr-code')).toHaveAttribute(
+          'data-value',
+          'bc1qunused54address'
+        );
+      });
+
+      // Should NOT show the error message
+      expect(screen.queryByText(/no receive address available/i)).not.toBeInTheDocument();
+      expect(mockFetch).toHaveBeenCalledWith(defaultProps.walletId);
+    });
+
+    it('should show loading state while fetching unused addresses', async () => {
+      const allUsedAddresses: Address[] = [
+        {
+          id: 'addr-used-0',
+          address: 'bc1qused0000',
+          derivationPath: "m/84'/0'/0'/0/0",
+          index: 0,
+          balance: 0,
+          isChange: false,
+          used: true,
+        },
+      ];
+
+      // Slow callback to see loading state
+      let resolveCallback: (value: Address[]) => void;
+      const mockFetch = vi.fn().mockImplementation(() =>
+        new Promise<Address[]>((resolve) => { resolveCallback = resolve; })
+      );
+
+      render(
+        <ReceiveModal {...defaultProps} addresses={allUsedAddresses} onFetchUnusedAddresses={mockFetch} />
+      );
+
+      // Should show loading
+      await waitFor(() => {
+        expect(screen.getByText('Loading receive address...')).toBeInTheDocument();
+      });
+
+      // Resolve the callback
+      resolveCallback!([{
+        id: 'addr-new',
+        address: 'bc1qnewaddress',
+        derivationPath: "m/84'/0'/0'/0/20",
+        index: 20,
+        balance: 0,
+        isChange: false,
+        used: false,
+      }]);
+
+      // Should show the address
+      await waitFor(() => {
+        expect(screen.getByTestId('qr-code')).toHaveAttribute('data-value', 'bc1qnewaddress');
+      });
     });
   });
 });

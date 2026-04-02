@@ -3,9 +3,12 @@
  *
  * Modal for generating and displaying receive addresses with QR codes.
  * Supports Payjoin and BIP21 URI generation.
+ *
+ * When all loaded addresses are used, automatically fetches more via
+ * onFetchUnusedAddresses callback to handle address exhaustion at any index.
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { X, RefreshCw, Copy, Check } from 'lucide-react';
 import { Button } from '../../ui/Button';
@@ -22,6 +25,8 @@ interface ReceiveModalProps {
   addresses: Address[];
   onClose: () => void;
   onNavigateToSettings: () => void;
+  /** Callback to fetch unused receive addresses when all loaded ones are exhausted. */
+  onFetchUnusedAddresses?: (walletId: string) => Promise<Address[]>;
 }
 
 export const ReceiveModal: React.FC<ReceiveModalProps> = ({
@@ -29,13 +34,49 @@ export const ReceiveModal: React.FC<ReceiveModalProps> = ({
   addresses,
   onClose,
   onNavigateToSettings,
+  onFetchUnusedAddresses,
 }) => {
   const { copy, isCopied } = useCopyToClipboard();
 
-  // Get unused receive addresses (not change addresses)
+  // Fetched unused addresses (when prop addresses are all exhausted)
+  const [fetchedAddresses, setFetchedAddresses] = useState<Address[]>([]);
+  const [fetchingAddress, setFetchingAddress] = useState(false);
+  const fetchAttemptedRef = useRef(false);
+
+  // Get unused receive addresses (not change addresses) from both props and fetched
   const unusedReceiveAddresses = useMemo(() => {
-    return addresses.filter((a) => !a.isChange && !a.used);
-  }, [addresses]);
+    const fromProps = addresses.filter((a) => !a.isChange && !a.used);
+    if (fromProps.length > 0) return fromProps;
+    return fetchedAddresses.filter((a) => !a.isChange && !a.used);
+  }, [addresses, fetchedAddresses]);
+
+  // Auto-fetch unused addresses when loaded addresses are all used (exhaustion).
+  // Skip when addresses is empty (no descriptor / no device — show error immediately).
+  // Skip when no fetch callback is provided.
+  useEffect(() => {
+    const unusedFromProps = addresses.filter((a) => !a.isChange && !a.used);
+    if (unusedFromProps.length > 0 || fetchAttemptedRef.current || addresses.length === 0 || !onFetchUnusedAddresses) return;
+
+    let cancelled = false;
+    fetchAttemptedRef.current = true;
+    setFetchingAddress(true);
+
+    const fetchUnused = async () => {
+      try {
+        const result = await onFetchUnusedAddresses(walletId);
+        if (!cancelled) {
+          setFetchedAddresses(result);
+        }
+      } catch (err) {
+        log.error('Failed to fetch unused receive address', { error: err });
+      } finally {
+        if (!cancelled) setFetchingAddress(false);
+      }
+    };
+
+    fetchUnused();
+    return () => { cancelled = true; };
+  }, [walletId, addresses, onFetchUnusedAddresses]);
 
   // Selected address state
   const [selectedReceiveAddressId, setSelectedReceiveAddressId] = useState<string | null>(null);
@@ -230,6 +271,11 @@ export const ReceiveModal: React.FC<ReceiveModalProps> = ({
                 ? 'Share this URI with a Payjoin-capable wallet for enhanced privacy.'
                 : 'Send only Bitcoin (BTC) to this address.'}
             </p>
+          </div>
+        ) : fetchingAddress ? (
+          <div className="flex flex-col items-center py-8">
+            <RefreshCw className="w-8 h-8 animate-spin text-sanctuary-400 mb-4" />
+            <p className="text-sanctuary-500">Loading receive address...</p>
           </div>
         ) : (
           <div className="text-center py-8">

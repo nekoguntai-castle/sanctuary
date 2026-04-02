@@ -507,6 +507,15 @@ export const WalletDetail: React.FC = () => {
           addresses={addresses}
           onClose={() => setShowReceive(false)}
           onNavigateToSettings={() => { setShowReceive(false); setActiveTab('settings'); }}
+          onFetchUnusedAddresses={async (wId) => {
+            // Fetch unused addresses; if none exist, generate more then re-fetch
+            const unused = await transactionsApi.getAddresses(wId, { used: false, limit: 10 });
+            const unusedReceive = unused.filter((a) => !a.isChange);
+            if (unusedReceive.length > 0) return unusedReceive;
+            await transactionsApi.generateAddresses(wId, 10);
+            const fresh = await transactionsApi.getAddresses(wId, { used: false, limit: 10 });
+            return fresh.filter((a) => !a.isChange);
+          }}
         />
       )}
 
