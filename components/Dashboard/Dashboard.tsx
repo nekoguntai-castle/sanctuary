@@ -11,7 +11,7 @@ import { RecentTransactions } from './RecentTransactions';
 import { SanctuarySpinner, SanctuaryLogo } from '../ui/CustomIcons';
 
 /** Flashes green/red when a fee rate value changes */
-const AnimatedFeeRate: React.FC<{ value: string }> = ({ value }) => {
+export const AnimatedFeeRate: React.FC<{ value: string }> = ({ value }) => {
   const prevRef = useRef(value);
   const [flash, setFlash] = useState<'up' | 'down' | null>(null);
 
