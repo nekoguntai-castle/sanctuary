@@ -240,6 +240,34 @@ describe('WalletGridView', () => {
     expect(paths?.[1].getAttribute('stroke')).toContain('warning');
   });
 
+  it('renders sparkline with constant balance values (flat line)', () => {
+    const { container } = render(
+      <WalletGridView
+        wallets={[
+          {
+            id: 'w-flat',
+            name: 'Flat Wallet',
+            type: 'single_sig',
+            balance: 1000,
+            scriptType: 'native_segwit',
+            deviceCount: 1,
+            isShared: false,
+            lastSyncStatus: 'success',
+            syncInProgress: false,
+          } as any,
+        ]}
+        pendingByWallet={{}}
+        sparklineData={{ 'w-flat': [500, 500, 500] }}
+      />
+    );
+
+    const svg = container.querySelector('svg');
+    const paths = svg?.querySelectorAll('path');
+    expect(paths?.length).toBe(2);
+    // Line path should still render (range falls back to 1)
+    expect(paths?.[1].getAttribute('d')).toContain('L');
+  });
+
   it('handles sparkline data with fewer than 2 points as fallback', () => {
     const { container } = render(
       <WalletGridView
