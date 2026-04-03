@@ -57,25 +57,13 @@ export const ReceiveModal: React.FC<ReceiveModalProps> = ({
     const unusedFromProps = addresses.filter((a) => !a.isChange && !a.used);
     if (unusedFromProps.length > 0 || fetchAttemptedRef.current || addresses.length === 0 || !onFetchUnusedAddresses) return;
 
-    let cancelled = false;
     fetchAttemptedRef.current = true;
     setFetchingAddress(true);
 
-    const fetchUnused = async () => {
-      try {
-        const result = await onFetchUnusedAddresses(walletId);
-        if (!cancelled) {
-          setFetchedAddresses(result);
-        }
-      } catch (err) {
-        log.error('Failed to fetch unused receive address', { error: err });
-      } finally {
-        if (!cancelled) setFetchingAddress(false);
-      }
-    };
-
-    fetchUnused();
-    return () => { cancelled = true; };
+    onFetchUnusedAddresses(walletId)
+      .then((result) => setFetchedAddresses(result))
+      .catch((err) => log.error('Failed to fetch unused receive address', { error: err }))
+      .finally(() => setFetchingAddress(false));
   }, [walletId, addresses, onFetchUnusedAddresses]);
 
   // Selected address state

@@ -256,6 +256,16 @@ export const WalletDetail: React.FC = () => {
     }
   };
 
+  // Fetch unused receive addresses for ReceiveModal (handles address exhaustion at any index)
+  const handleFetchUnusedAddresses = useCallback(async (wId: string) => {
+    const unused = await transactionsApi.getAddresses(wId, { used: false, limit: 10 });
+    const unusedReceive = unused.filter((a) => !a.isChange);
+    if (unusedReceive.length > 0) return unusedReceive;
+    await transactionsApi.generateAddresses(wId, 10);
+    const fresh = await transactionsApi.getAddresses(wId, { used: false, limit: 10 });
+    return fresh.filter((a) => !a.isChange);
+  }, []);
+
   // Drafts change handler with app notifications
   const handleDraftsChange = useCallback((count: number) => {
     setDraftsCount(count);
@@ -507,15 +517,7 @@ export const WalletDetail: React.FC = () => {
           addresses={addresses}
           onClose={() => setShowReceive(false)}
           onNavigateToSettings={() => { setShowReceive(false); setActiveTab('settings'); }}
-          onFetchUnusedAddresses={async (wId) => {
-            // Fetch unused addresses; if none exist, generate more then re-fetch
-            const unused = await transactionsApi.getAddresses(wId, { used: false, limit: 10 });
-            const unusedReceive = unused.filter((a) => !a.isChange);
-            if (unusedReceive.length > 0) return unusedReceive;
-            await transactionsApi.generateAddresses(wId, 10);
-            const fresh = await transactionsApi.getAddresses(wId, { used: false, limit: 10 });
-            return fresh.filter((a) => !a.isChange);
-          }}
+          onFetchUnusedAddresses={handleFetchUnusedAddresses}
         />
       )}
 
