@@ -537,8 +537,12 @@ describe('WalletDetail wrapper behaviors', () => {
     await waitFor(() => {
       expect(transactionsApi.getAddresses).toHaveBeenCalledWith('wallet-1', { used: false, limit: 10 });
     });
-    // Exercise fallthrough branch (no unused found → generate → re-fetch)
-    vi.mocked(transactionsApi.getAddresses).mockResolvedValueOnce([]);
+    // Exercise fallthrough branch (no unused found → generate → re-fetch with results)
+    vi.mocked(transactionsApi.getAddresses)
+      .mockResolvedValueOnce([]) // first fetch: nothing unused
+      .mockResolvedValueOnce([   // re-fetch after generate: fresh address
+        { id: 'a2', address: 'bc1qfresh', isChange: false, used: false, index: 20, derivationPath: "m/84'/0'/0'/0/20", balance: 0 },
+      ] as any);
     await user.click(screen.getByRole('button', { name: 'receive-fetch-unused' }));
     await waitFor(() => {
       expect(transactionsApi.generateAddresses).toHaveBeenCalledWith('wallet-1', 10);
