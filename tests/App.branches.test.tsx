@@ -151,6 +151,10 @@ vi.mock('../components/FeatureFlags', () => ({
   FeatureFlags: () => <div>Feature Flags Page</div>,
 }));
 
+vi.mock('../components/Intelligence', () => ({
+  Intelligence: () => <div>Intelligence Page</div>,
+}));
+
 vi.mock('../components/NotificationToast', () => ({
   NotificationContainer: ({ notifications }: { notifications: unknown[] }) => (
     <div data-testid="notification-count">{notifications.length}</div>
@@ -318,6 +322,7 @@ describe('App branch coverage', () => {
       { hash: '#/admin/ai', text: 'AI Settings Page' },
       { hash: '#/admin/monitoring', text: 'Monitoring Page' },
       { hash: '#/admin/feature-flags', text: 'Feature Flags Page' },
+      { hash: '#/intelligence', text: 'Intelligence Page' },
     ];
 
     for (const route of routes) {

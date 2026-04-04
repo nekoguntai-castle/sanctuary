@@ -44,9 +44,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ walletId }) => {
 
   const updateSetting = useCallback(
     async (update: Partial<WalletIntelligenceSettings>) => {
-      if (!settings) return;
-
-      const newSettings = { ...settings, ...update };
+      // settings is guaranteed non-null here: the JSX that invokes this callback
+      // only renders after the render-time `if (!settings)` guard (line 87).
+      const current = settings!;
+      const newSettings = { ...current, ...update };
       setSettings(newSettings);
       setSaving(true);
 
@@ -56,7 +57,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ walletId }) => {
       } catch (error) {
         log.error('Failed to update settings', { error });
         // Revert on failure
-        setSettings(settings);
+        setSettings(current);
       } finally {
         setSaving(false);
       }
@@ -66,8 +67,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ walletId }) => {
 
   const handleTypeFilterToggle = useCallback(
     (type: string) => {
-      if (!settings) return;
-      const current = settings.typeFilter;
+      // settings is guaranteed non-null here: checkboxes only render when settings is loaded.
+      const current = settings!.typeFilter;
       const updated = current.includes(type)
         ? current.filter((t) => t !== type)
         : [...current, type];

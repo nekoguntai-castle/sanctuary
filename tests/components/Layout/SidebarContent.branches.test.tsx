@@ -57,7 +57,7 @@ describe('SidebarContent branch coverage', () => {
     expect(screen.getByText('?')).toBeInTheDocument();
   });
 
-  it('covers empty wallets/devices state and admin toggle callback path', () => {
+  it('covers empty wallets/devices state and all toggle callback paths', () => {
     const props = buildProps();
     render(<SidebarContent {...props} />);
 
@@ -66,6 +66,12 @@ describe('SidebarContent branch coverage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Administration' }));
     expect(props.toggleSection).toHaveBeenCalledWith('admin');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Wallets' }));
+    expect(props.toggleSection).toHaveBeenCalledWith('wallets');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Devices' }));
+    expect(props.toggleSection).toHaveBeenCalledWith('devices');
   });
 
   it('covers wallet/device mapping with multisig and single-sig icon/class branches', () => {
@@ -102,6 +108,27 @@ describe('SidebarContent branch coverage', () => {
       .map((node) => node.getAttribute('data-active') || '');
     expect(activeClasses.some((value) => value.includes('text-warning-700'))).toBe(true);
     expect(activeClasses.some((value) => value.includes('text-success-700'))).toBe(true);
+  });
+
+  it('renders Intelligence nav item when intelligenceAvailable is true', () => {
+    const props = buildProps({ intelligenceAvailable: true });
+    render(<SidebarContent {...props} />);
+
+    expect(screen.getByText('Intelligence')).toBeInTheDocument();
+  });
+
+  it('hides Intelligence nav item when intelligenceAvailable is falsy', () => {
+    const props = buildProps({ intelligenceAvailable: false });
+    render(<SidebarContent {...props} />);
+
+    expect(screen.queryByText('Intelligence')).not.toBeInTheDocument();
+  });
+
+  it('renders dark mode theme button title and Sun icon when darkMode is true', () => {
+    const props = buildProps({ darkMode: true });
+    render(<SidebarContent {...props} />);
+
+    expect(screen.getByTitle('Switch to light mode')).toBeInTheDocument();
   });
 
   it('covers all wallet sync status branches', () => {

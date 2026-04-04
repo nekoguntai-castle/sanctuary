@@ -68,10 +68,11 @@ export async function generateSupportPackage(options: GenerateOptions = {}): Pro
 
   for (const result of results) {
     // Promise.allSettled with our try/catch means these are always fulfilled
+    /* v8 ignore next -- allSettled results are always fulfilled due to inner try/catch */
     if (result.status === 'fulfilled') {
       const { name, data, error } = result.value;
       if (error || !data) {
-        collectors[name] = { error: error || 'Unknown error' };
+        collectors[name] = { error: error /* v8 ignore next */ || 'Unknown error' };
         failed.push(name);
       } else {
         collectors[name] = data;

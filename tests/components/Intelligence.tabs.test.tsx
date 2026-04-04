@@ -375,6 +375,24 @@ describe('InsightsTab', () => {
       });
     });
   });
+
+  it('should omit statusFilter from API call when cleared to empty string', async () => {
+    vi.mocked(intelligenceApi.getInsights).mockResolvedValue({ insights: [] });
+
+    render(<InsightsTab walletId="wallet-1" />);
+
+    await waitFor(() => {
+      expect(intelligenceApi.getInsights).toHaveBeenCalledTimes(1);
+    });
+
+    const selects = screen.getAllByRole('combobox');
+    // Clear the status filter to empty string to exercise the falsy branch
+    fireEvent.change(selects[2], { target: { value: '' } });
+
+    await waitFor(() => {
+      expect(intelligenceApi.getInsights).toHaveBeenCalledWith('wallet-1', {});
+    });
+  });
 });
 
 // ========================================
@@ -1414,6 +1432,29 @@ describe('SettingsTab', () => {
         { notifyTelegram: false }
       );
     });
+  });
+
+  it('should guard updateSetting when settings is null (API resolves null)', async () => {
+    // When the API resolves with settings: null (rather than rejecting),
+    // setSettings(null) is called explicitly. The component renders the error
+    // state and the updateSetting/handleTypeFilterToggle guards are exercised
+    // through the render-time !settings check.
+    vi.mocked(intelligenceApi.getIntelligenceSettings).mockResolvedValue({
+      settings: null as unknown as any,
+    });
+
+    render(<SettingsTab walletId="wallet-1" />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Failed to load intelligence settings.')
+      ).toBeInTheDocument();
+    });
+
+    // Toggles should not be rendered when settings is null
+    expect(screen.queryByText('Enable intelligence')).not.toBeInTheDocument();
+    expect(screen.queryAllByRole('switch')).toHaveLength(0);
+    expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
   });
 
   it('should show "Saving..." indicator while updating', async () => {

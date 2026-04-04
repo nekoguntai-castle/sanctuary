@@ -264,6 +264,52 @@ describe('telegram collector', () => {
     expect(w2.hasDirectAccess).toBe(false);
   });
 
+  it('defaults undefined wallet settings fields to false', async () => {
+    mockFindManyUsers.mockResolvedValue([{
+      id: 'user-1',
+      preferences: {
+        telegram: {
+          enabled: true,
+          botToken: 'bot:abc',
+          chatId: '123',
+          wallets: {
+            'w1': {}, // all fields undefined
+          },
+        },
+      },
+      wallets: [{ walletId: 'w1' }],
+      groupMemberships: [],
+    }]);
+    mockFindManyWallets.mockResolvedValue([{ id: 'w1', type: 'single_sig' }]);
+
+    const result = await getTelegramCollector()(makeContext());
+    const ws = (result.users as any[])[0].walletSettings[0];
+    expect(ws.enabled).toBe(false);
+    expect(ws.notifyReceived).toBe(false);
+    expect(ws.notifySent).toBe(false);
+    expect(ws.notifyConsolidation).toBe(false);
+    expect(ws.notifyDraft).toBe(false);
+  });
+
+  it('handles wallet accessible via both direct and group access', async () => {
+    mockFindManyUsers.mockResolvedValue([
+      {
+        id: 'user-1',
+        preferences: null,
+        wallets: [{ walletId: 'shared-w' }],
+        groupMemberships: [{ group: { wallets: [{ id: 'shared-w' }] } }],
+      },
+    ]);
+    mockFindManyWallets.mockResolvedValue([{ id: 'shared-w', type: 'multi_sig' }]);
+
+    const result = await getTelegramCollector()(makeContext());
+    const assocs = result.walletUserAssociations as any[];
+    expect(assocs).toHaveLength(1);
+    expect(assocs[0].hasDirectAccess).toBe(true);
+    expect(assocs[0].hasGroupAccess).toBe(true);
+    expect(assocs[0].userCount).toBe(1);
+  });
+
   it('returns "unknown" walletType when wallet is not in the database', async () => {
     mockFindManyUsers.mockResolvedValue([{
       id: 'user-1',
