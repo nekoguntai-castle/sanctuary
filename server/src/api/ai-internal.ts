@@ -416,15 +416,15 @@ router.get('/wallet/:id/spending-velocity', asyncHandler(async (req, res) => {
       where: {
         walletId: id,
         type: 'sent',
-        date: { gte: cutoff },
+        blockTime: { gte: cutoff },
       },
-      _count: { id: true },
+      _count: { _all: true },
       _sum: { amount: true },
     });
 
     velocity[period.label] = {
-      count: result._count.id,
-      totalSats: Math.abs(Number(result._sum.amount ?? 0)),
+      count: result._count?._all ?? 0,
+      totalSats: Math.abs(Number(result._sum?.amount ?? 0)),
     };
   }
 

@@ -249,17 +249,17 @@ async function getTransactionVelocity(
     by: ['type'],
     where: {
       walletId,
-      date: { gte: cutoff },
+      blockTime: { gte: cutoff },
       type: 'sent',
     },
-    _count: { id: true },
+    _count: { _all: true },
     _sum: { amount: true },
   });
 
   return txs.map((t) => ({
     period: `${days}d`,
-    count: t._count.id,
-    totalSats: t._sum.amount ?? BigInt(0),
+    count: t._count?._all ?? 0,
+    totalSats: t._sum?.amount ?? BigInt(0),
   }));
 }
 

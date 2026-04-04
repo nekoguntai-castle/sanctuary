@@ -99,11 +99,8 @@ export async function getEnabledIntelligenceWallets(): Promise<
   }> = [];
 
   try {
-    // Find all users with intelligence preferences
+    // Find all users with their wallet associations
     const users = await prisma.user.findMany({
-      where: {
-        preferences: { not: null },
-      },
       select: {
         id: true,
         preferences: true,
@@ -116,6 +113,7 @@ export async function getEnabledIntelligenceWallets(): Promise<
     });
 
     for (const user of users) {
+      if (!user.preferences) continue;
       const prefs = user.preferences as Record<string, unknown>;
       const intelligence = prefs?.intelligence as IntelligenceConfig | undefined;
       if (!intelligence?.wallets) continue;
@@ -124,7 +122,7 @@ export async function getEnabledIntelligenceWallets(): Promise<
         if (!settings?.enabled) continue;
 
         // Find wallet name from user's wallets
-        const walletUser = user.wallets.find(wu => wu.wallet.id === walletId);
+        const walletUser = user.wallets.find((wu: { wallet: { id: string; name: string } }) => wu.wallet.id === walletId);
         if (!walletUser) continue;
 
         results.push({
