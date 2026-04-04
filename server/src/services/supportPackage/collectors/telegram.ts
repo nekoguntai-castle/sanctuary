@@ -1,0 +1,184 @@
+/**
+ * Telegram Collector (Priority)
+ *
+ * Diagnoses Telegram notification issues by inspecting per-user config,
+ * per-wallet settings, circuit breaker state, DLQ entries, and
+ * automatically detecting common misconfiguration issues.
+ */
+
+import { db as prisma } from '../../../repositories/db';
+import { circuitBreakerRegistry } from '../../circuitBreaker';
+import { deadLetterQueue } from '../../deadLetterQueue';
+import { registerCollector } from './registry';
+import type { CollectorContext } from '../types';
+
+interface TelegramConfig {
+  enabled?: boolean;
+  botToken?: string;
+  chatId?: string;
+  wallets?: Record<string, {
+    enabled?: boolean;
+    notifyReceived?: boolean;
+    notifySent?: boolean;
+    notifyConsolidation?: boolean;
+    notifyDraft?: boolean;
+  }>;
+}
+
+registerCollector('telegram', async (context: CollectorContext) => {
+  const commonIssues: string[] = [];
+
+  // 1. Get all users with their preferences
+  const users = await prisma.user.findMany({
+    select: {
+      id: true,
+      preferences: true,
+      wallets: { select: { walletId: true } },
+      groupMemberships: {
+        select: {
+          group: {
+            select: {
+              wallets: { select: { id: true } },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  // Build set of wallets each user can access
+  function getUserAccessibleWallets(user: typeof users[0]): Set<string> {
+    const walletIds = new Set<string>();
+    for (const wu of user.wallets) {
+      walletIds.add(wu.walletId);
+    }
+    for (const gm of user.groupMemberships) {
+      for (const w of gm.group.wallets) {
+        walletIds.add(w.id);
+      }
+    }
+    return walletIds;
+  }
+
+  // 2. Get wallet types for context
+  const allWalletIds = new Set<string>();
+  for (const user of users) {
+    for (const wu of user.wallets) allWalletIds.add(wu.walletId);
+    for (const gm of user.groupMemberships) {
+      for (const w of gm.group.wallets) allWalletIds.add(w.id);
+    }
+  }
+
+  const wallets = await prisma.wallet.findMany({
+    where: { id: { in: [...allWalletIds] } },
+    select: { id: true, type: true },
+  });
+  const walletTypeMap = new Map(wallets.map(w => [w.id, w.type]));
+
+  // 3. Analyze each user
+  const userResults = users.map(user => {
+    const anonUserId = context.anonymize('user', user.id);
+    const prefs = user.preferences as Record<string, unknown> | null;
+    const telegram = prefs?.telegram as TelegramConfig | undefined;
+
+    const globalEnabled = telegram?.enabled ?? false;
+    const hasBotToken = Boolean(telegram?.botToken);
+    const hasChatId = Boolean(telegram?.chatId);
+    const accessibleWallets = getUserAccessibleWallets(user);
+
+    // Detect: global enabled but missing credentials
+    if (globalEnabled && !hasBotToken) {
+      commonIssues.push(`${anonUserId} has telegram enabled but missing botToken`);
+    }
+    if (globalEnabled && !hasChatId) {
+      commonIssues.push(`${anonUserId} has telegram enabled but missing chatId`);
+    }
+
+    // Process wallet settings
+    const walletSettings = Object.entries(telegram?.wallets ?? {}).map(([walletId, settings]) => {
+      const anonWalletId = context.anonymize('wallet', walletId);
+
+      // Detect: wallet enabled but global disabled
+      if (settings.enabled && !globalEnabled) {
+        commonIssues.push(
+          `${anonUserId} has wallet ${anonWalletId} enabled but global telegram is disabled`
+        );
+      }
+
+      // Detect: orphaned wallet setting (user has no access)
+      if (!accessibleWallets.has(walletId)) {
+        commonIssues.push(
+          `${anonUserId} has settings for wallet ${anonWalletId} but no access to it (orphaned setting)`
+        );
+      }
+
+      return {
+        walletId: anonWalletId,
+        walletType: walletTypeMap.get(walletId) ?? 'unknown',
+        enabled: settings.enabled ?? false,
+        notifyReceived: settings.notifyReceived ?? false,
+        notifySent: settings.notifySent ?? false,
+        notifyConsolidation: settings.notifyConsolidation ?? false,
+        notifyDraft: settings.notifyDraft ?? false,
+      };
+    });
+
+    return {
+      id: anonUserId,
+      globalEnabled,
+      hasBotToken,
+      hasChatId,
+      walletSettings,
+    };
+  });
+
+  // 4. Build wallet-user association info
+  const walletUserCounts = new Map<string, { direct: Set<string>; group: Set<string> }>();
+  for (const user of users) {
+    for (const wu of user.wallets) {
+      if (!walletUserCounts.has(wu.walletId)) {
+        walletUserCounts.set(wu.walletId, { direct: new Set(), group: new Set() });
+      }
+      walletUserCounts.get(wu.walletId)!.direct.add(user.id);
+    }
+    for (const gm of user.groupMemberships) {
+      for (const w of gm.group.wallets) {
+        if (!walletUserCounts.has(w.id)) {
+          walletUserCounts.set(w.id, { direct: new Set(), group: new Set() });
+        }
+        walletUserCounts.get(w.id)!.group.add(user.id);
+      }
+    }
+  }
+
+  const walletUserAssociations = [...walletUserCounts.entries()].map(([walletId, counts]) => ({
+    walletId: context.anonymize('wallet', walletId),
+    userCount: new Set([...counts.direct, ...counts.group]).size,
+    hasDirectAccess: counts.direct.size > 0,
+    hasGroupAccess: counts.group.size > 0,
+  }));
+
+  // 5. Circuit breaker status for telegram
+  const allBreakers = circuitBreakerRegistry.getAllHealth();
+  const telegramBreaker = allBreakers.find(b => b.name.toLowerCase().includes('telegram'));
+
+  if (telegramBreaker?.state === 'open') {
+    commonIssues.push('Telegram circuit breaker is OPEN — all notifications are being blocked');
+  }
+
+  // 6. DLQ telegram entries
+  const telegramDlqEntries = deadLetterQueue.getByCategory('telegram');
+  if (telegramDlqEntries.length > 0) {
+    commonIssues.push(`${telegramDlqEntries.length} telegram entries in dead letter queue`);
+  }
+
+  return {
+    users: userResults,
+    walletUserAssociations,
+    circuitBreaker: telegramBreaker ?? { state: 'no-breaker-registered', failures: 0 },
+    dlqTelegramEntries: telegramDlqEntries.length,
+    diagnostics: {
+      commonIssues,
+    },
+  };
+});

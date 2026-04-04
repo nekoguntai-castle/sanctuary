@@ -13,6 +13,7 @@ vi.mock('../../src/api/admin', () => ({
   getSystemSettings: vi.fn(),
   updateSystemSettings: vi.fn(),
   getWebSocketStats: vi.fn(),
+  downloadSupportPackage: vi.fn(),
 }));
 
 describe('SystemSettings', () => {
@@ -83,6 +84,7 @@ describe('SystemSettings', () => {
 
       expect(screen.getByRole('button', { name: 'Access Control' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'WebSocket' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Support' })).toBeInTheDocument();
 
       await waitFor(() => {
         expect(adminApi.getSystemSettings).toHaveBeenCalled();

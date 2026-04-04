@@ -257,66 +257,54 @@ describe('AISettings logic branches', () => {
     });
   });
 
-  it('returns early when enabling fails to start bundled container', async () => {
+  it('enables AI without starting containers (decoupled toggle)', async () => {
     mockGetOllamaContainerStatus.mockResolvedValue({ available: true, exists: false, running: false, status: 'stopped' });
-    mockStartOllamaContainer.mockResolvedValue({ success: false, message: 'Docker unavailable' });
 
     await renderAndWaitForReady();
     fireEvent.click(screen.getByText('toggle-ai'));
     fireEvent.click(screen.getByText('confirm-enable'));
 
     await waitFor(() => {
-      expect(mockStartOllamaContainer).toHaveBeenCalled();
+      expect(mockUpdateSystemSettings).toHaveBeenCalledWith({ aiEnabled: true });
     });
-    expect(mockUpdateSystemSettings).not.toHaveBeenCalledWith({ aiEnabled: true });
+    // Toggle no longer starts containers - that is a separate user action
+    expect(mockStartOllamaContainer).not.toHaveBeenCalled();
   });
 
-  it('auto-configures endpoint and first model when enabling with running bundled container', async () => {
+  it('enables AI with running container without auto-configuring endpoint', async () => {
     mockGetOllamaContainerStatus.mockResolvedValue({ available: true, exists: true, running: true, status: 'running' });
     mockDetectOllama.mockResolvedValue({ found: true, endpoint: 'http://ollama:11434', models: ['phi3:mini'] });
 
     await renderAndWaitForReady();
-    vi.useFakeTimers();
     fireEvent.click(screen.getByText('toggle-ai'));
     fireEvent.click(screen.getByText('confirm-enable'));
 
-    await act(async () => {
-      await Promise.resolve();
-      vi.advanceTimersByTime(1000);
-      await Promise.resolve();
-      vi.advanceTimersByTime(500);
-      await Promise.resolve();
+    await waitFor(() => {
+      expect(mockUpdateSystemSettings).toHaveBeenCalledWith({ aiEnabled: true });
     });
 
-    expect(mockUpdateSystemSettings).toHaveBeenCalledWith({ aiEnabled: true });
-    expect(mockUpdateSystemSettings).toHaveBeenCalledWith({
+    // Toggle no longer auto-detects or auto-configures — user does that separately
+    expect(mockDetectOllama).not.toHaveBeenCalled();
+    expect(mockUpdateSystemSettings).not.toHaveBeenCalledWith({
       aiEndpoint: 'http://ollama:11434',
       aiModel: 'phi3:mini',
     });
-    expect(mockDetectOllama).toHaveBeenCalled();
-    expect(mockListModels).toHaveBeenCalled();
-
-    expect(screen.getByTestId('status-endpoint')).toHaveTextContent('http://ollama:11434');
-    expect(screen.getByTestId('status-model')).toHaveTextContent('phi3:mini');
   });
 
-  it('saves endpoint only when enabling and detect finds no models', async () => {
+  it('enables AI without auto-detecting when container is running but has no models', async () => {
     mockGetOllamaContainerStatus.mockResolvedValue({ available: true, exists: true, running: true, status: 'running' });
     mockDetectOllama.mockResolvedValue({ found: true, endpoint: 'http://ollama:11434', models: [] });
 
     await renderAndWaitForReady();
-    vi.useFakeTimers();
     fireEvent.click(screen.getByText('toggle-ai'));
     fireEvent.click(screen.getByText('confirm-enable'));
 
-    await act(async () => {
-      await Promise.resolve();
-      vi.advanceTimersByTime(1000);
-      await Promise.resolve();
+    await waitFor(() => {
+      expect(mockUpdateSystemSettings).toHaveBeenCalledWith({ aiEnabled: true });
     });
 
-    expect(mockUpdateSystemSettings).toHaveBeenCalledWith({ aiEnabled: true });
-    expect(mockUpdateSystemSettings).toHaveBeenCalledWith({ aiEndpoint: 'http://ollama:11434' });
+    // Toggle no longer auto-detects — user configures endpoint separately
+    expect(mockDetectOllama).not.toHaveBeenCalled();
   });
 
   it('handles delete model confirmation, failure response, and thrown error', async () => {

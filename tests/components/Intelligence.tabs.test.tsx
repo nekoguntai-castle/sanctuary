@@ -16,6 +16,13 @@ import * as intelligenceApi from '../../src/api/intelligence';
 import type { AIInsight, AIMessage, AIConversation } from '../../src/api/intelligence';
 
 vi.mock('../../src/api/intelligence', () => ({
+  INSIGHT_TYPE_LABELS: {
+    utxo_health: 'UTXO Health',
+    fee_timing: 'Fee Timing',
+    anomaly: 'Anomaly Detection',
+    tax: 'Tax Implications',
+    consolidation: 'Consolidation',
+  },
   getInsights: vi.fn().mockResolvedValue({ insights: [] }),
   updateInsightStatus: vi.fn().mockResolvedValue({ insight: {} }),
   getConversations: vi.fn().mockResolvedValue({ conversations: [] }),
@@ -141,7 +148,7 @@ describe('InsightsTab', () => {
 
     const { container } = render(<InsightsTab walletId="wallet-1" />);
 
-    expect(container.querySelector('.animate-spin')).toBeInTheDocument();
+    expect(container.querySelector('.animate-sanctuary-pulse')).toBeInTheDocument();
   });
 
   it('should show empty state when no insights exist', async () => {
@@ -463,7 +470,7 @@ describe('InsightCard', () => {
     );
 
     expect(screen.getByText('Unusual Transaction Pattern')).toBeInTheDocument();
-    expect(screen.getByText('Anomaly')).toBeInTheDocument();
+    expect(screen.getByText('Anomaly Detection')).toBeInTheDocument();
   });
 
   it('should render info severity correctly', () => {
@@ -531,8 +538,8 @@ describe('InsightCard', () => {
     const types: Array<{ type: AIInsight['type']; label: string }> = [
       { type: 'utxo_health', label: 'UTXO Health' },
       { type: 'fee_timing', label: 'Fee Timing' },
-      { type: 'anomaly', label: 'Anomaly' },
-      { type: 'tax', label: 'Tax' },
+      { type: 'anomaly', label: 'Anomaly Detection' },
+      { type: 'tax', label: 'Tax Implications' },
       { type: 'consolidation', label: 'Consolidation' },
     ];
 
@@ -1120,7 +1127,7 @@ describe('SettingsTab', () => {
 
     const { container } = render(<SettingsTab walletId="wallet-1" />);
 
-    expect(container.querySelector('.animate-spin')).toBeInTheDocument();
+    expect(container.querySelector('.animate-sanctuary-pulse')).toBeInTheDocument();
   });
 
   it('should show error state when settings fail to load', async () => {

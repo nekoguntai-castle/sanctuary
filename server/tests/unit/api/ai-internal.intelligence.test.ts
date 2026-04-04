@@ -469,16 +469,12 @@ describe('AI Internal Intelligence Endpoints', () => {
         longTerm: { label: '>= 365 days', count: 5, totalSats: BigInt(2000000) },
       });
 
-      // Mock the 3 milestone window checks (15d, 30d, 60d ahead)
-      mockUtxoCount
-        .mockResolvedValueOnce(2)  // 15 days
-        .mockResolvedValueOnce(3)  // 30 days
-        .mockResolvedValueOnce(0); // 60 days (no UTXOs)
-
+      // Mock the 3 milestone window aggregate calls (15d, 30d, 60d ahead)
+      // Each aggregate returns both _count and _sum
       mockUtxoAggregate
-        .mockResolvedValueOnce({ _sum: { amount: BigInt(500000) } } as any)  // 15 days
-        .mockResolvedValueOnce({ _sum: { amount: BigInt(750000) } } as any); // 30 days
-      // No aggregate call for 60 days since count = 0
+        .mockResolvedValueOnce({ _count: { _all: 2 }, _sum: { amount: BigInt(500000) } } as any)  // 15 days
+        .mockResolvedValueOnce({ _count: { _all: 3 }, _sum: { amount: BigInt(750000) } } as any)  // 30 days
+        .mockResolvedValueOnce({ _count: { _all: 0 }, _sum: { amount: null } } as any);           // 60 days
 
       const req = createMockRequest({
         user: { userId: 'test-user-123', username: 'testuser', isAdmin: false },
@@ -529,11 +525,11 @@ describe('AI Internal Intelligence Endpoints', () => {
         longTerm: { label: '>= 365 days', count: 0, totalSats: BigInt(0) },
       });
 
-      // All milestone window checks return 0
-      mockUtxoCount
-        .mockResolvedValueOnce(0)
-        .mockResolvedValueOnce(0)
-        .mockResolvedValueOnce(0);
+      // All milestone window aggregate calls return 0
+      mockUtxoAggregate
+        .mockResolvedValueOnce({ _count: { _all: 0 }, _sum: { amount: null } } as any)
+        .mockResolvedValueOnce({ _count: { _all: 0 }, _sum: { amount: null } } as any)
+        .mockResolvedValueOnce({ _count: { _all: 0 }, _sum: { amount: null } } as any);
 
       const req = createMockRequest({
         user: { userId: 'test-user-123', username: 'testuser', isAdmin: false },

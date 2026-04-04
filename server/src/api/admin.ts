@@ -31,6 +31,7 @@ import infrastructureRouter from './admin/infrastructure';
 import monitoringRouter from './admin/monitoring';
 import featuresRouter from './admin/features';
 import policiesRouter from './admin/policies';
+import supportPackageRouter from './admin/supportPackage';
 
 const router = Router();
 
@@ -47,5 +48,6 @@ router.use('/', nodeConfigRouter);
 router.use('/', infrastructureRouter);
 router.use('/monitoring', monitoringRouter);
 router.use('/policies', policiesRouter);
+router.use('/', supportPackageRouter);
 
 export default router;

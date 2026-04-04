@@ -71,6 +71,17 @@ class WalletLogBuffer {
   }
 
   /**
+   * Get all buffers (copies) keyed by wallet ID
+   */
+  getAll(): Map<string, WalletLogEntry[]> {
+    const result = new Map<string, WalletLogEntry[]>();
+    for (const [walletId, buffer] of this.buffers) {
+      result.set(walletId, [...buffer]);
+    }
+    return result;
+  }
+
+  /**
    * Get statistics about the buffer
    */
   getStats(): { walletCount: number; totalEntries: number } {

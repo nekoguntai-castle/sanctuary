@@ -24,37 +24,21 @@ describe('EnableModal', () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it('shows loading state and disables enable button', () => {
-    render(<EnableModal {...baseProps} isLoadingResources={true} />);
-    expect(screen.getByText(/checking system resources/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /enable ai/i })).toBeDisabled();
-  });
-
-  it('shows unknown-resources fallback message when resources are unavailable', () => {
+  it('shows deployment options info when modal is open', () => {
     render(<EnableModal {...baseProps} />);
-    expect(screen.getByText(/Could not check system resources/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/bundled container/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/host-installed/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/remote server/i).length).toBeGreaterThan(0);
   });
 
-  it('shows insufficient resource warning and acknowledgement checkbox flow', async () => {
-    const user = userEvent.setup();
-    const onAcknowledgeChange = vi.fn();
-    const props = {
-      ...baseProps,
-      onAcknowledgeChange,
-      systemResources: {
-        ram: { available: 1024, total: 8192, sufficient: false },
-        disk: { available: 2048, sufficient: false },
-        gpu: { available: false, name: '' },
-        overall: { sufficient: false, warnings: ['Low RAM'] },
-      } as any,
-    };
+  it('always enables the Enable AI button (resource check removed)', () => {
+    render(<EnableModal {...baseProps} />);
+    expect(screen.getByRole('button', { name: /enable ai/i })).not.toBeDisabled();
+  });
 
-    render(<EnableModal {...props} />);
-
-    expect(screen.getByText(/resource warning/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /enable ai/i })).toBeDisabled();
-    await user.click(screen.getByRole('checkbox'));
-    expect(onAcknowledgeChange).toHaveBeenCalledWith(true);
+  it('shows after-enable hint about configuring endpoint', () => {
+    render(<EnableModal {...baseProps} />);
+    expect(screen.getByText(/settings/i)).toBeInTheDocument();
   });
 
   it('enables actions for sufficient resources and handles close/enable actions', async () => {

@@ -112,6 +112,9 @@ export enum AuditAction {
   POLICY_DELETE = 'wallet.policy_delete',
   POLICY_APPROVAL_VOTE = 'wallet.policy_approval_vote',
   POLICY_OVERRIDE = 'wallet.policy_override',
+
+  // Support package
+  SUPPORT_PACKAGE_GENERATE = 'admin.support_package_generate',
 }
 
 /**

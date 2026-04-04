@@ -12,13 +12,21 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Intelligence } from '../../components/Intelligence/Intelligence';
-import * as walletsApi from '../../src/api/wallets';
 
-vi.mock('../../src/api/wallets', () => ({
-  getWallets: vi.fn(),
+const mockUseWallets = vi.fn();
+
+vi.mock('../../hooks/queries/useWallets', () => ({
+  useWallets: () => mockUseWallets(),
 }));
 
 vi.mock('../../src/api/intelligence', () => ({
+  INSIGHT_TYPE_LABELS: {
+    utxo_health: 'UTXO Health',
+    fee_timing: 'Fee Timing',
+    anomaly: 'Anomaly Detection',
+    tax: 'Tax Implications',
+    consolidation: 'Consolidation',
+  },
   getInsights: vi.fn().mockResolvedValue({ insights: [] }),
   updateInsightStatus: vi.fn().mockResolvedValue({ insight: {} }),
   getConversations: vi.fn().mockResolvedValue({ conversations: [] }),
@@ -70,15 +78,15 @@ describe('Intelligence', () => {
   });
 
   it('should show loading spinner initially', () => {
-    vi.mocked(walletsApi.getWallets).mockReturnValue(new Promise(() => {}));
+    mockUseWallets.mockReturnValue({ data: undefined, isLoading: true });
 
     const { container } = render(<Intelligence />);
 
-    expect(container.querySelector('.animate-spin')).toBeInTheDocument();
+    expect(container.querySelector('.animate-sanctuary-pulse')).toBeInTheDocument();
   });
 
   it('should show empty state when no wallets are available', async () => {
-    vi.mocked(walletsApi.getWallets).mockResolvedValue([]);
+    mockUseWallets.mockReturnValue({ data: [], isLoading: false });
 
     render(<Intelligence />);
 
@@ -90,7 +98,7 @@ describe('Intelligence', () => {
   });
 
   it('should render wallet selector after wallets load', async () => {
-    vi.mocked(walletsApi.getWallets).mockResolvedValue(mockWallets as never);
+    mockUseWallets.mockReturnValue({ data: mockWallets, isLoading: false });
 
     render(<Intelligence />);
 
@@ -100,7 +108,7 @@ describe('Intelligence', () => {
   });
 
   it('should render tab navigation with Insights, Chat, and Settings', async () => {
-    vi.mocked(walletsApi.getWallets).mockResolvedValue(mockWallets as never);
+    mockUseWallets.mockReturnValue({ data: mockWallets, isLoading: false });
 
     render(<Intelligence />);
 
@@ -113,7 +121,7 @@ describe('Intelligence', () => {
   });
 
   it('should default to Insights tab', async () => {
-    vi.mocked(walletsApi.getWallets).mockResolvedValue(mockWallets as never);
+    mockUseWallets.mockReturnValue({ data: mockWallets, isLoading: false });
 
     render(<Intelligence />);
 
@@ -127,7 +135,7 @@ describe('Intelligence', () => {
   });
 
   it('should switch tabs when clicked', async () => {
-    vi.mocked(walletsApi.getWallets).mockResolvedValue(mockWallets as never);
+    mockUseWallets.mockReturnValue({ data: mockWallets, isLoading: false });
 
     render(<Intelligence />);
 
@@ -154,7 +162,7 @@ describe('Intelligence', () => {
   });
 
   it('should open wallet dropdown on click and show all wallets', async () => {
-    vi.mocked(walletsApi.getWallets).mockResolvedValue(mockWallets as never);
+    mockUseWallets.mockReturnValue({ data: mockWallets, isLoading: false });
 
     render(<Intelligence />);
 
@@ -176,7 +184,7 @@ describe('Intelligence', () => {
   });
 
   it('should switch wallet when dropdown item is clicked', async () => {
-    vi.mocked(walletsApi.getWallets).mockResolvedValue(mockWallets as never);
+    mockUseWallets.mockReturnValue({ data: mockWallets, isLoading: false });
 
     render(<Intelligence />);
 
@@ -205,7 +213,7 @@ describe('Intelligence', () => {
   });
 
   it('should close dropdown when clicking outside', async () => {
-    vi.mocked(walletsApi.getWallets).mockResolvedValue(mockWallets as never);
+    mockUseWallets.mockReturnValue({ data: mockWallets, isLoading: false });
 
     render(<Intelligence />);
 
@@ -238,7 +246,7 @@ describe('Intelligence', () => {
   });
 
   it('should render Intelligence header text', async () => {
-    vi.mocked(walletsApi.getWallets).mockResolvedValue(mockWallets as never);
+    mockUseWallets.mockReturnValue({ data: mockWallets, isLoading: false });
 
     render(<Intelligence />);
 
@@ -248,7 +256,7 @@ describe('Intelligence', () => {
   });
 
   it('should handle getWallets API error gracefully', async () => {
-    vi.mocked(walletsApi.getWallets).mockRejectedValue(new Error('Network error'));
+    mockUseWallets.mockReturnValue({ data: [], isLoading: false });
 
     render(<Intelligence />);
 
@@ -261,7 +269,7 @@ describe('Intelligence', () => {
   });
 
   it('should select first wallet automatically when wallets load', async () => {
-    vi.mocked(walletsApi.getWallets).mockResolvedValue(mockWallets as never);
+    mockUseWallets.mockReturnValue({ data: mockWallets, isLoading: false });
 
     render(<Intelligence />);
 
@@ -276,7 +284,7 @@ describe('Intelligence', () => {
     // In practice, the component auto-selects the first wallet, so this tests
     // the fallback text in the button. We can verify the auto-selection works
     // by checking the first wallet is shown
-    vi.mocked(walletsApi.getWallets).mockResolvedValue(mockWallets as never);
+    mockUseWallets.mockReturnValue({ data: mockWallets, isLoading: false });
 
     render(<Intelligence />);
 

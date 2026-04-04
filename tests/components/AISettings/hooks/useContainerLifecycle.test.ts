@@ -116,7 +116,7 @@ describe('useContainerLifecycle', () => {
     expect(result.current.systemResources).toBeNull();
   });
 
-  it('starts missing container (exists=false), waits, and handles detect-not-found path', async () => {
+  it('enables AI without starting containers (decoupled toggle)', async () => {
     const { result, props } = renderLifecycle({
       containerStatus: {
         available: true,
@@ -128,29 +128,22 @@ describe('useContainerLifecycle', () => {
 
     await act(async () => {
       const promise = result.current.performToggleAI(true);
-      await vi.advanceTimersByTimeAsync(6000); // 5000 startup wait + 1000 detect delay
+      await vi.advanceTimersByTimeAsync(5100);
       await promise;
     });
 
-    expect(aiApi.startOllamaContainer).toHaveBeenCalled();
-    expect(props.setContainerStatus).toHaveBeenCalledWith({
-      available: true,
-      exists: true,
-      running: true,
-      status: 'running',
-    });
+    // Toggle just saves aiEnabled — no container start or detect
     expect(adminApi.updateSystemSettings).toHaveBeenCalledWith({ aiEnabled: true });
     expect(props.setAiEnabled).toHaveBeenCalledWith(true);
     expect(invalidateAIStatusCache).toHaveBeenCalled();
+    expect(result.current.saveSuccess).toBe(false); // cleared after 5000ms
+    expect(aiApi.startOllamaContainer).not.toHaveBeenCalled();
     expect(aiApi.detectOllama).not.toHaveBeenCalled();
     expect(props.setAiEndpoint).not.toHaveBeenCalled();
   });
 
-  it('returns early with save error when container start fails', async () => {
-    vi.mocked(aiApi.startOllamaContainer).mockResolvedValueOnce({
-      success: false,
-      message: 'Docker unavailable',
-    } as never);
+  it('sets saveError when updateSystemSettings fails during enable', async () => {
+    vi.mocked(adminApi.updateSystemSettings).mockRejectedValueOnce(new Error('settings failed') as never);
 
     const { result } = renderLifecycle({
       containerStatus: {
@@ -165,17 +158,10 @@ describe('useContainerLifecycle', () => {
       await result.current.performToggleAI(true);
     });
 
-    expect(result.current.saveError).toBe('Failed to start AI container: Docker unavailable');
-    expect(adminApi.updateSystemSettings).not.toHaveBeenCalledWith({ aiEnabled: true });
+    expect(result.current.saveError).toBe('Failed to update AI settings');
   });
 
-  it('starts existing container (exists=true), auto-configures endpoint/model, and loads models', async () => {
-    vi.mocked(aiApi.detectOllama).mockResolvedValueOnce({
-      found: true,
-      endpoint: 'http://ollama:11434',
-      models: ['phi3:mini'],
-    } as never);
-
+  it('enables AI regardless of container status (no auto-configure)', async () => {
     const { result, props } = renderLifecycle({
       containerStatus: {
         available: true,
@@ -187,25 +173,19 @@ describe('useContainerLifecycle', () => {
 
     await act(async () => {
       const promise = result.current.performToggleAI(true);
-      await vi.advanceTimersByTimeAsync(4500); // 3000 startup wait + 1000 detect + 500 model refresh
+      await vi.advanceTimersByTimeAsync(100);
       await promise;
     });
 
-    expect(props.setAiEndpoint).toHaveBeenCalledWith('http://ollama:11434');
-    expect(props.setAiModel).toHaveBeenCalledWith('phi3:mini');
-    expect(adminApi.updateSystemSettings).toHaveBeenCalledWith({
-      aiEndpoint: 'http://ollama:11434',
-      aiModel: 'phi3:mini',
-    });
-    expect(props.loadModels).toHaveBeenCalled();
+    expect(adminApi.updateSystemSettings).toHaveBeenCalledWith({ aiEnabled: true });
+    expect(props.setAiEnabled).toHaveBeenCalledWith(true);
+    // No auto-detection or endpoint configuration on toggle
+    expect(props.setAiEndpoint).not.toHaveBeenCalled();
+    expect(props.setAiModel).not.toHaveBeenCalled();
+    expect(aiApi.detectOllama).not.toHaveBeenCalled();
   });
 
-  it('handles detect-not-found branch when enabling with already running/available container', async () => {
-    vi.mocked(aiApi.detectOllama).mockResolvedValueOnce({
-      found: false,
-      message: 'not found',
-    } as never);
-
+  it('enables AI with running container without starting or detecting', async () => {
     const { result, props } = renderLifecycle({
       containerStatus: {
         available: true,
@@ -217,11 +197,12 @@ describe('useContainerLifecycle', () => {
 
     await act(async () => {
       const promise = result.current.performToggleAI(true);
-      await vi.advanceTimersByTimeAsync(1000);
+      await vi.advanceTimersByTimeAsync(100);
       await promise;
     });
 
-    expect(aiApi.detectOllama).toHaveBeenCalled();
+    expect(adminApi.updateSystemSettings).toHaveBeenCalledWith({ aiEnabled: true });
+    expect(aiApi.detectOllama).not.toHaveBeenCalled();
     expect(props.setAiEndpoint).not.toHaveBeenCalled();
   });
 

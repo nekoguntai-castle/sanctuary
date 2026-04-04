@@ -1,16 +1,18 @@
 import React, { useState } from 'react';
-import { Shield, Radio } from 'lucide-react';
+import { Shield, Radio, LifeBuoy } from 'lucide-react';
 
 import { AccessControlTab } from './AccessControlTab';
 import { WebSocketStatsCard } from './WebSocketStatsCard';
+import { SupportPackageCard } from './SupportPackageCard';
 
 // Tab type definition
-type SystemSettingsTab = 'access' | 'websocket';
+type SystemSettingsTab = 'access' | 'websocket' | 'support';
 
 // Tab configuration
 const SYSTEM_SETTINGS_TABS: { id: SystemSettingsTab; name: string; icon: React.FC<{ className?: string }> }[] = [
   { id: 'access', name: 'Access Control', icon: Shield },
   { id: 'websocket', name: 'WebSocket', icon: Radio },
+  { id: 'support', name: 'Support', icon: LifeBuoy },
 ];
 
 export const SystemSettings: React.FC = () => {
@@ -47,6 +49,7 @@ export const SystemSettings: React.FC = () => {
       <div className="space-y-6">
         {activeTab === 'access' && <AccessControlTab />}
         {activeTab === 'websocket' && <WebSocketStatsCard />}
+        {activeTab === 'support' && <SupportPackageCard />}
       </div>
     </div>
   );

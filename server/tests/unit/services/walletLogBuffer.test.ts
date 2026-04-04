@@ -66,6 +66,21 @@ describe('walletLogBuffer', () => {
     expect(walletLogBuffer.get('wallet-2')).toHaveLength(1);
   });
 
+  it('getAll returns copies of all wallet buffers', () => {
+    walletLogBuffer.add('w1', { level: 'info', message: 'a' } as any);
+    walletLogBuffer.add('w1', { level: 'info', message: 'b' } as any);
+    walletLogBuffer.add('w2', { level: 'warn', message: 'c' } as any);
+
+    const all = walletLogBuffer.getAll();
+    expect(all.size).toBe(2);
+    expect(all.get('w1')).toHaveLength(2);
+    expect(all.get('w2')).toHaveLength(1);
+
+    // Verify it returns copies, not references
+    all.get('w1')!.push({ level: 'error', message: 'external' } as any);
+    expect(walletLogBuffer.get('w1')).toHaveLength(2);
+  });
+
   it('reports stats across all wallets', () => {
     walletLogBuffer.add('w1', { level: 'info', message: 'a' } as any);
     walletLogBuffer.add('w1', { level: 'info', message: 'b' } as any);

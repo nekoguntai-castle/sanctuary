@@ -297,8 +297,9 @@ describe('Intelligence API Routes', () => {
     });
 
     it('dismisses an insight', async () => {
-      const existing = { id: 'insight-1', status: 'active' };
+      const existing = { id: 'insight-1', status: 'active', walletId: 'wallet-1' };
       mockInsightService.getInsightById.mockResolvedValueOnce(existing);
+      mockWalletFindFirst.mockResolvedValueOnce({ id: 'wallet-1' } as any);
       const updated = { ...existing, status: 'dismissed' };
       mockInsightService.dismissInsight.mockResolvedValueOnce(updated);
 
@@ -317,8 +318,9 @@ describe('Intelligence API Routes', () => {
     });
 
     it('marks an insight as acted_on', async () => {
-      const existing = { id: 'insight-1', status: 'active' };
+      const existing = { id: 'insight-1', status: 'active', walletId: 'wallet-1' };
       mockInsightService.getInsightById.mockResolvedValueOnce(existing);
+      mockWalletFindFirst.mockResolvedValueOnce({ id: 'wallet-1' } as any);
       const updated = { ...existing, status: 'acted_on' };
       mockInsightService.markActedOn.mockResolvedValueOnce(updated);
 

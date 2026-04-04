@@ -98,3 +98,6 @@ export {
   resetFeatureFlag,
   getFeatureFlagAuditLog,
 } from './features';
+
+// Support package
+export { downloadSupportPackage } from './supportPackage';
