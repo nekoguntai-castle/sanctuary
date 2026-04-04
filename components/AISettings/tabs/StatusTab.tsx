@@ -42,9 +42,7 @@ export function StatusTab({
               Enable AI Features
             </label>
             <p className="text-sm text-sanctuary-500 max-w-md">
-              {containerStatus?.available && containerStatus?.exists
-                ? 'The bundled AI container will start automatically.'
-                : 'Requires Ollama or another AI backend.'}
+              Use a bundled, host-local, or remote Ollama instance.
             </p>
           </div>
         </div>
@@ -71,15 +69,28 @@ export function StatusTab({
         </div>
       )}
 
-      {/* Bundled Container Status */}
+      {/* Bundled Container (optional — only needed if running Ollama locally) */}
       {containerStatus?.available && containerStatus?.exists && (
-        <ContainerControls
-          containerStatus={containerStatus}
-          isStartingContainer={isStartingContainer}
-          onStartContainer={onStartContainer}
-          onStopContainer={onStopContainer}
-          onRefreshContainerStatus={onRefreshContainerStatus}
-        />
+        <div className="space-y-2">
+          <div className="flex items-center space-x-2">
+            <h3 className="text-sm font-medium text-sanctuary-700 dark:text-sanctuary-300">
+              Local AI Container
+            </h3>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-sanctuary-100 dark:bg-sanctuary-800 text-sanctuary-500">
+              optional
+            </span>
+          </div>
+          <p className="text-xs text-sanctuary-500">
+            Start the bundled Ollama container to run AI locally. Skip this if you use Ollama on another machine.
+          </p>
+          <ContainerControls
+            containerStatus={containerStatus}
+            isStartingContainer={isStartingContainer}
+            onStartContainer={onStartContainer}
+            onStopContainer={onStopContainer}
+            onRefreshContainerStatus={onRefreshContainerStatus}
+          />
+        </div>
       )}
 
       {/* Quick Status Summary */}
@@ -108,7 +119,10 @@ export function StatusTab({
       {aiEnabled && (
         <div className="p-4 rounded-lg bg-primary-50 dark:bg-primary-900/30 border border-primary-200 dark:border-primary-700">
           <p className="text-sm text-primary-700 dark:text-primary-700">
-            <span className="font-medium">Next:</span> Go to the <button onClick={onNavigateToSettings} className="underline font-medium">Settings</button> tab to configure your AI endpoint.
+            <span className="font-medium">Next:</span> Go to the <button onClick={onNavigateToSettings} className="underline font-medium">Settings</button> tab to configure your Ollama endpoint
+            {containerStatus?.available && containerStatus?.exists && !containerStatus?.running
+              ? ', or start the local container above.'
+              : '.'}
           </p>
         </div>
       )}

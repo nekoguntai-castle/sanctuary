@@ -1,4 +1,4 @@
-import { Brain, Check, AlertTriangle, Loader2, X, Cpu, HardDrive, Zap } from 'lucide-react';
+import { Brain, X } from 'lucide-react';
 import type { EnableModalProps } from '../types';
 
 export function EnableModal({
@@ -42,132 +42,26 @@ export function EnableModal({
 
         {/* Content */}
         <div className="p-4 space-y-4">
-          {/* Info message */}
           <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
             <p className="text-sm text-blue-800 dark:text-blue-200">
-              AI features run a local language model using Ollama. This requires significant system resources.
+              AI features use an Ollama-compatible language model. You can run Ollama locally (bundled container or host-installed) or point to a remote instance on your network.
             </p>
           </div>
 
-          {/* System Resources */}
-          {isLoadingResources ? (
-            <div className="flex items-center justify-center py-6">
-              <Loader2 className="w-6 h-6 animate-spin text-primary-500" />
-              <span className="ml-2 text-sm text-sanctuary-500">Checking system resources...</span>
-            </div>
-          ) : systemResources ? (
-            <div className="space-y-3">
-              <h3 className="text-sm font-medium text-sanctuary-900 dark:text-sanctuary-100">
-                System Resources
-              </h3>
-
-              {/* RAM */}
-              <div className="flex items-center justify-between p-3 rounded-lg surface-secondary">
-                <div className="flex items-center space-x-3">
-                  <Cpu className="w-4 h-4 text-sanctuary-500" />
-                  <div>
-                    <div className="text-sm font-medium text-sanctuary-900 dark:text-sanctuary-100">RAM</div>
-                    <div className="text-xs text-sanctuary-500">
-                      {(systemResources.ram.available / 1024).toFixed(1)} GB available of {(systemResources.ram.total / 1024).toFixed(1)} GB
-                    </div>
-                  </div>
-                </div>
-                {systemResources.ram.sufficient ? (
-                  <Check className="w-5 h-5 text-emerald-500" />
-                ) : (
-                  <AlertTriangle className="w-5 h-5 text-amber-500" />
-                )}
-              </div>
-
-              {/* Disk */}
-              <div className="flex items-center justify-between p-3 rounded-lg surface-secondary">
-                <div className="flex items-center space-x-3">
-                  <HardDrive className="w-4 h-4 text-sanctuary-500" />
-                  <div>
-                    <div className="text-sm font-medium text-sanctuary-900 dark:text-sanctuary-100">Disk Space</div>
-                    <div className="text-xs text-sanctuary-500">
-                      {(systemResources.disk.available / 1024).toFixed(1)} GB available
-                    </div>
-                  </div>
-                </div>
-                {systemResources.disk.sufficient ? (
-                  <Check className="w-5 h-5 text-emerald-500" />
-                ) : (
-                  <AlertTriangle className="w-5 h-5 text-amber-500" />
-                )}
-              </div>
-
-              {/* GPU */}
-              <div className="flex items-center justify-between p-3 rounded-lg surface-secondary">
-                <div className="flex items-center space-x-3">
-                  <Zap className="w-4 h-4 text-sanctuary-500" />
-                  <div>
-                    <div className="text-sm font-medium text-sanctuary-900 dark:text-sanctuary-100">GPU Acceleration</div>
-                    <div className="text-xs text-sanctuary-500">
-                      {systemResources.gpu.available
-                        ? systemResources.gpu.name
-                        : 'Not detected (CPU will be used)'}
-                    </div>
-                  </div>
-                </div>
-                {systemResources.gpu.available ? (
-                  <Check className="w-5 h-5 text-emerald-500" />
-                ) : (
-                  <span className="text-xs text-sanctuary-400">Optional</span>
-                )}
-              </div>
-
-              {/* Warnings */}
-              {!systemResources.overall.sufficient && (
-                <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
-                  <div className="flex items-start space-x-2">
-                    <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <div className="text-sm font-medium text-amber-800 dark:text-amber-200">
-                        Resource Warning
-                      </div>
-                      <ul className="mt-1 text-xs text-amber-700 dark:text-amber-300 list-disc list-inside">
-                        {systemResources.overall.warnings.map((warning, i) => (
-                          <li key={i}>{warning}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="p-3 rounded-lg bg-sanctuary-100 dark:bg-sanctuary-800">
-              <p className="text-sm text-sanctuary-600 dark:text-sanctuary-400">
-                Could not check system resources. You can still enable AI.
-              </p>
-            </div>
-          )}
-
-          {/* Requirements summary */}
-          <div className="text-xs text-sanctuary-500 space-y-1">
-            <div><strong>Minimum requirements:</strong></div>
-            <ul className="list-disc list-inside ml-2 space-y-0.5">
-              <li>4 GB RAM available (8 GB recommended for 7B models)</li>
-              <li>8 GB disk space for model storage</li>
-              <li>GPU optional but significantly improves speed</li>
+          <div className="text-xs text-sanctuary-500 space-y-2">
+            <div><strong>Deployment options:</strong></div>
+            <ul className="list-disc list-inside ml-2 space-y-1">
+              <li><strong>Bundled container</strong> — start the local Ollama container from the Status tab after enabling</li>
+              <li><strong>Host-installed</strong> — use Ollama running directly on your host OS</li>
+              <li><strong>Remote server</strong> — point to Ollama on another machine on your network</li>
             </ul>
           </div>
 
-          {/* Acknowledgment checkbox for insufficient resources */}
-          {systemResources && !systemResources.overall.sufficient && (
-            <label className="flex items-start space-x-3 p-3 rounded-lg bg-sanctuary-50 dark:bg-sanctuary-800 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={acknowledgeInsufficient}
-                onChange={(e) => onAcknowledgeChange(e.target.checked)}
-                className="mt-0.5 rounded border-sanctuary-300 dark:border-sanctuary-600 text-primary-600 focus:ring-primary-500"
-              />
-              <span className="text-sm text-sanctuary-700 dark:text-sanctuary-300">
-                I understand my system may not meet the recommended requirements and performance may be limited
-              </span>
-            </label>
-          )}
+          <div className="p-3 rounded-lg surface-secondary">
+            <p className="text-xs text-sanctuary-500">
+              After enabling, go to the <strong>Settings</strong> tab to configure your Ollama endpoint and select a model.
+            </p>
+          </div>
         </div>
 
         {/* Footer */}
@@ -180,8 +74,7 @@ export function EnableModal({
           </button>
           <button
             onClick={onEnable}
-            disabled={isLoadingResources || (systemResources != null && !systemResources.overall.sufficient && !acknowledgeInsufficient)}
-            className="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 dark:bg-sanctuary-700 dark:text-sanctuary-100 dark:hover:bg-sanctuary-600 dark:border dark:border-sanctuary-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+            className="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 dark:bg-sanctuary-700 dark:text-sanctuary-100 dark:hover:bg-sanctuary-600 dark:border dark:border-sanctuary-600 rounded-lg transition-colors"
           >
             Enable AI
           </button>

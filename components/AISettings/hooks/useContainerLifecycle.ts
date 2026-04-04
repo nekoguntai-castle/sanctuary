@@ -114,7 +114,8 @@ export function useContainerLifecycle({
     setAcknowledgeInsufficient(false);
   };
 
-  // Called when user clicks the toggle
+  // Called when user clicks the toggle — just enables/disables the feature
+  // without starting containers (user can start the container separately)
   const handleToggleAI = async () => {
     if (!aiEnabled) {
       // Enabling - show confirmation modal first
@@ -135,74 +136,10 @@ export function useContainerLifecycle({
     setContainerMessage('');
 
     try {
-      // If enabling AI and bundled container is available but not running, start/create it
-      if (newValue && containerStatus?.available && !containerStatus?.running) {
-        setIsStartingContainer(true);
-        setContainerMessage(containerStatus?.exists ? 'Starting AI container...' : 'Creating AI container (this may take a minute)...');
-
-        const startResult = await aiApi.startOllamaContainer();
-        if (!startResult.success) {
-          setSaveError(`Failed to start AI container: ${startResult.message}`);
-          setIsStartingContainer(false);
-          setIsSaving(false);
-          return;
-        }
-
-        // Update container status
-        setContainerStatus(toRunningContainerStatus(containerStatus));
-        setContainerMessage('Container started! Waiting for Ollama to be ready...');
-
-        // Wait a bit for Ollama to initialize (longer if we just created it)
-        await new Promise(resolve => setTimeout(resolve, containerStatus?.exists ? 3000 : 5000));
-        setIsStartingContainer(false);
-      }
-
-      // Enable the AI setting
+      // Enable/disable the AI setting — no container management here
       await adminApi.updateSystemSettings({ aiEnabled: newValue });
       setAiEnabled(newValue);
       invalidateAIStatusCache(); // Refresh AI status across the app
-
-      // If enabling and container is running, auto-detect and configure
-      if (newValue && containerStatus?.available && (containerStatus?.running || containerStatus?.exists)) {
-        setContainerMessage('Detecting Ollama endpoint...');
-
-        // Small delay then detect
-        await new Promise(resolve => setTimeout(resolve, 1000));
-
-        try {
-          const detectResult = await aiApi.detectOllama();
-          if (detectResult.found && detectResult.endpoint) {
-            setAiEndpoint(detectResult.endpoint);
-            setContainerMessage(`Found Ollama at ${detectResult.endpoint}`);
-
-            // If models are available, select first one
-            if (detectResult.models && detectResult.models.length > 0) {
-              const firstModel = detectResult.models[0];
-              setAiModel(firstModel);
-
-              // Save the configuration automatically
-              await adminApi.updateSystemSettings({
-                aiEndpoint: detectResult.endpoint,
-                aiModel: firstModel,
-              });
-
-              setContainerMessage(`Configured with ${firstModel}`);
-
-              // Load models list
-              setTimeout(loadModels, 500);
-            } else {
-              // Endpoint found but no models - save endpoint
-              await adminApi.updateSystemSettings({
-                aiEndpoint: detectResult.endpoint,
-              });
-              setContainerMessage('Ollama connected! Go to the Models tab to pull a model.');
-            }
-          }
-        } catch (detectError) {
-          log.error('Auto-detect failed', { error: detectError });
-          // Non-fatal - user can configure manually
-        }
-      }
 
       setSaveSuccess(true);
       setTimeout(() => {
@@ -214,7 +151,6 @@ export function useContainerLifecycle({
       setSaveError('Failed to update AI settings');
     } finally {
       setIsSaving(false);
-      setIsStartingContainer(false);
     }
   };
 
