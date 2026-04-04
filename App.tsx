@@ -27,6 +27,7 @@ const AuditLogs = lazy(() => import('./components/AuditLogs').then(m => ({ defau
 const AISettings = lazy(() => import('./components/AISettings'));
 const Monitoring = lazy(() => import('./components/Monitoring'));
 const FeatureFlags = lazy(() => import('./components/FeatureFlags').then(m => ({ default: m.FeatureFlags })));
+const Intelligence = lazy(() => import('./components/Intelligence').then(m => ({ default: m.Intelligence })));
 const AnimatedBackground = lazy(() => import('./components/AnimatedBackground').then(m => ({ default: m.AnimatedBackground })));
 import { useUser } from './contexts/UserContext';
 import { NotificationContainer } from './components/NotificationToast';
@@ -110,6 +111,7 @@ const AppRoutes: React.FC = () => {
           <Route path="/devices/:id" element={<ErrorBoundary><Suspense fallback={<WalletDetailSkeleton />}><DeviceDetail /></Suspense></ErrorBoundary>} />
           <Route path="/account" element={<ErrorBoundary><Suspense fallback={<SettingsSkeleton />}><Account /></Suspense></ErrorBoundary>} />
           <Route path="/settings" element={<ErrorBoundary><Suspense fallback={<SettingsSkeleton />}><Settings /></Suspense></ErrorBoundary>} />
+          <Route path="/intelligence" element={<ErrorBoundary><Suspense fallback={<DashboardSkeleton />}><Intelligence /></Suspense></ErrorBoundary>} />
 
           {/* Admin routes - lazy-loaded */}
           <Route path="/admin/node-config" element={<ErrorBoundary><Suspense fallback={<SettingsSkeleton />}><NodeConfig /></Suspense></ErrorBoundary>} />

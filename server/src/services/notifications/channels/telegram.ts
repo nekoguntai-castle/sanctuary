@@ -25,6 +25,7 @@ export const telegramChannelHandler: NotificationChannelHandler = {
     supportsTransactions: true,
     supportsDrafts: true,
     supportsConsolidationSuggestions: true,
+    supportsAIInsights: false,
     supportsRichFormatting: true,
     supportsImages: false,
   },

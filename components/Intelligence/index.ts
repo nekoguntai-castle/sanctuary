@@ -1,0 +1,1 @@
+export { Intelligence } from './Intelligence';

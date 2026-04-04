@@ -31,6 +31,12 @@ export const FEATURE_DEFINITIONS: Record<FeatureFlagKey, FeatureFlagDefinition> 
     hasSideEffects: true,
     sideEffectDescription: 'Toggling this starts or stops background consolidation jobs without requiring a restart.',
   },
+  treasuryIntelligence: {
+    description: 'Enable Treasury Intelligence AI analysis',
+    category: 'general',
+    hasSideEffects: true,
+    sideEffectDescription: 'Starts background AI analysis jobs. Requires an Ollama-compatible LLM endpoint (local or remote).',
+  },
   websocketV2Events: { description: 'Enable WebSocket v2 event format', category: 'general' },
   'experimental.taprootAddresses': {
     description: 'Enable Taproot (P2TR) address support',

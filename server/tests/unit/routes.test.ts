@@ -104,7 +104,7 @@ describe('registerRoutes', () => {
     registerRoutes(app);
 
     expect(app.get).toHaveBeenCalledTimes(2);
-    expect(app.use).toHaveBeenCalledTimes(21);
+    expect(app.use).toHaveBeenCalledTimes(22);
 
     expect(app.get).toHaveBeenCalledWith('/health', expect.any(Function));
     expect(app.get).toHaveBeenCalledWith('/metrics', mockMetricsHandler);

@@ -59,6 +59,11 @@ export const mockPrismaClient = {
   deviceAccount: createModelMock(),
   mobilePermission: createModelMock(),
 
+  // Treasury Intelligence
+  aIInsight: createModelMock(),
+  aIConversation: createModelMock(),
+  aIMessage: createModelMock(),
+
   // Transaction method
   $transaction: vi.fn().mockImplementation(async (callback) => {
     if (typeof callback === 'function') {

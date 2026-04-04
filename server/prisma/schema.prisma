@@ -61,6 +61,9 @@ model User {
   createdPolicies VaultPolicy[] @relation("PolicyCreator")
   approvalVotes   ApprovalVote[]
 
+  // Treasury Intelligence
+  aiConversations AIConversation[]
+
   @@index([isAdmin]) // For admin user lookups
   @@map("users")
 }
@@ -142,6 +145,7 @@ model Wallet {
   draftTransactions DraftTransaction[]
   mobilePermissions MobilePermission[]
   vaultPolicies     VaultPolicy[]
+  aiInsights        AIInsight[]
 
   @@index([groupId])
   @@index([syncInProgress]) // For sync service startup & scheduling
@@ -1154,4 +1158,61 @@ model PolicyUsageWindow {
   @@unique([policyId, walletId, userId, windowType, windowStart])
   @@index([walletId, windowType, windowEnd])
   @@map("policy_usage_windows")
+}
+
+// ========================================
+// TREASURY INTELLIGENCE
+// ========================================
+
+model AIInsight {
+  id        String   @id @default(uuid())
+  walletId  String
+  type      String   // utxo_health, fee_timing, anomaly, tax, consolidation
+  severity  String   @default("info") // info, warning, critical
+  title     String
+  summary   String
+  analysis  String   // Full AI-generated analysis text
+  data      Json?    // Structured data backing the insight
+  status    String   @default("active") // active, dismissed, acted_on, expired
+  expiresAt DateTime?
+  notifiedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@index([walletId, status])
+  @@index([walletId, type, createdAt])
+  @@index([status, createdAt])
+  @@index([expiresAt])
+  @@map("ai_insights")
+}
+
+model AIConversation {
+  id        String   @id @default(uuid())
+  userId    String
+  walletId  String?
+  title     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages AIMessage[]
+
+  @@index([userId, updatedAt])
+  @@map("ai_conversations")
+}
+
+model AIMessage {
+  id             String   @id @default(uuid())
+  conversationId String
+  role           String   // user, assistant
+  content        String
+  metadata       Json?    // Token usage, model info, etc.
+  createdAt      DateTime @default(now())
+
+  conversation AIConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@map("ai_messages")
 }

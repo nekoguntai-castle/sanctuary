@@ -27,6 +27,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { authenticate } from '../middleware/auth';
 import { db as prisma } from '../repositories/db';
 import { createLogger } from '../utils/logger';
+import { getErrorMessage } from '../utils/errors';
 import { notificationService } from '../websocket/notifications';
 import { asyncHandler } from '../errors/errorHandler';
 import { NotFoundError } from '../errors/ApiError';
@@ -260,6 +261,257 @@ router.get('/wallet/:id/context', asyncHandler(async (req, res) => {
       utxoCount: utxoCount,
     },
     // DO NOT include: balance, addresses, txids, or any identifying info
+  });
+}));
+
+// ========================================
+// TREASURY INTELLIGENCE ENDPOINTS
+// ========================================
+
+/**
+ * GET /internal/ai/wallet/:id/utxo-health
+ *
+ * Returns sanitized UTXO health profile for treasury analysis.
+ * DOES NOT include: addresses, txids, or any identifying information.
+ */
+router.get('/wallet/:id/utxo-health', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const userId = req.user?.userId;
+
+  const wallet = await prisma.wallet.findFirst({
+    where: {
+      id,
+      OR: [
+        { users: { some: { userId } } },
+        { group: { members: { some: { userId } } } },
+      ],
+    },
+  });
+
+  if (!wallet) {
+    throw new NotFoundError('Wallet not found');
+  }
+
+  try {
+    const { getUtxoHealthProfile } = await import('../services/autopilot/utxoHealth');
+    const health = await getUtxoHealthProfile(id, 10_000); // default dust threshold
+
+    res.json({
+      totalUtxos: health.totalUtxos,
+      dustCount: health.dustCount,
+      dustValueSats: Number(health.dustValue),
+      totalValueSats: Number(health.totalValue),
+      avgUtxoSizeSats: Number(health.avgUtxoSize),
+      consolidationCandidates: health.consolidationCandidates,
+      distribution: {
+        dust: health.dustCount,
+        small: Math.max(0, health.consolidationCandidates - health.dustCount),
+        total: health.totalUtxos,
+      },
+    });
+  } catch (error) {
+    log.error('Failed to get UTXO health', { walletId: id, error: getErrorMessage(error) });
+    res.json({
+      totalUtxos: 0, dustCount: 0, dustValueSats: 0, totalValueSats: 0,
+      avgUtxoSizeSats: 0, consolidationCandidates: 0,
+      distribution: { dust: 0, small: 0, total: 0 },
+    });
+  }
+}));
+
+/**
+ * GET /internal/ai/wallet/:id/fee-history
+ *
+ * Returns recent fee snapshots for fee timing analysis.
+ * Aggregate data only — no identifying information.
+ */
+router.get('/wallet/:id/fee-history', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const userId = req.user?.userId;
+
+  const wallet = await prisma.wallet.findFirst({
+    where: {
+      id,
+      OR: [
+        { users: { some: { userId } } },
+        { group: { members: { some: { userId } } } },
+      ],
+    },
+  });
+
+  if (!wallet) {
+    throw new NotFoundError('Wallet not found');
+  }
+
+  try {
+    const { getRecentFees, getLatestFeeSnapshot } = await import('../services/autopilot/feeMonitor');
+    const snapshots = await getRecentFees(1440); // 24 hours
+    const latest = await getLatestFeeSnapshot();
+
+    // Determine trend
+    let trend: 'rising' | 'falling' | 'stable' = 'stable';
+    if (snapshots.length >= 2) {
+      const recent = snapshots.slice(-6);
+      const avgRecent = recent.reduce((s, f) => s + f.economy, 0) / recent.length;
+      const older = snapshots.slice(0, Math.min(6, snapshots.length));
+      const avgOlder = older.reduce((s, f) => s + f.economy, 0) / older.length;
+      if (avgRecent < avgOlder * 0.8) trend = 'falling';
+      else if (avgRecent > avgOlder * 1.2) trend = 'rising';
+    }
+
+    res.json({
+      snapshots: snapshots.map(s => ({
+        timestamp: s.timestamp,
+        economy: s.economy,
+        minimum: s.minimum,
+        fastest: s.fastest,
+      })),
+      trend,
+      currentEconomy: latest?.economy ?? null,
+      snapshotCount: snapshots.length,
+    });
+  } catch (error) {
+    log.error('Failed to get fee history', { walletId: id, error: getErrorMessage(error) });
+    res.json({ snapshots: [], trend: 'stable', currentEconomy: null, snapshotCount: 0 });
+  }
+}));
+
+/**
+ * GET /internal/ai/wallet/:id/spending-velocity
+ *
+ * Returns aggregated spending velocity data for anomaly detection.
+ * Aggregate counts/amounts only — no addresses or txids.
+ */
+router.get('/wallet/:id/spending-velocity', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const userId = req.user?.userId;
+
+  const wallet = await prisma.wallet.findFirst({
+    where: {
+      id,
+      OR: [
+        { users: { some: { userId } } },
+        { group: { members: { some: { userId } } } },
+      ],
+    },
+  });
+
+  if (!wallet) {
+    throw new NotFoundError('Wallet not found');
+  }
+
+  const now = new Date();
+  const periods = [
+    { label: '24h', days: 1 },
+    { label: '7d', days: 7 },
+    { label: '30d', days: 30 },
+    { label: '90d', days: 90 },
+  ];
+
+  const velocity: Record<string, { count: number; totalSats: number }> = {};
+
+  for (const period of periods) {
+    const cutoff = new Date(now.getTime() - period.days * 86400000);
+    const result = await prisma.transaction.aggregate({
+      where: {
+        walletId: id,
+        type: 'sent',
+        date: { gte: cutoff },
+      },
+      _count: { id: true },
+      _sum: { amount: true },
+    });
+
+    velocity[period.label] = {
+      count: result._count.id,
+      totalSats: Math.abs(Number(result._sum.amount ?? 0)),
+    };
+  }
+
+  const avgDaily90d = velocity['90d'].count > 0
+    ? velocity['90d'].totalSats / 90
+    : 0;
+
+  res.json({
+    ...velocity,
+    averageDailySpend90d: Math.round(avgDaily90d),
+    currentDayVsAverage: avgDaily90d > 0
+      ? Number((velocity['24h'].totalSats / avgDaily90d).toFixed(2))
+      : 0,
+  });
+}));
+
+/**
+ * GET /internal/ai/wallet/:id/utxo-age-profile
+ *
+ * Returns UTXO age distribution for tax intelligence.
+ * Aggregate counts and sums only — no addresses or txids.
+ */
+router.get('/wallet/:id/utxo-age-profile', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const userId = req.user?.userId;
+
+  const wallet = await prisma.wallet.findFirst({
+    where: {
+      id,
+      OR: [
+        { users: { some: { userId } } },
+        { group: { members: { some: { userId } } } },
+      ],
+    },
+  });
+
+  if (!wallet) {
+    throw new NotFoundError('Wallet not found');
+  }
+
+  const { intelligenceRepository } = await import('../repositories/intelligenceRepository');
+  const distribution = await intelligenceRepository.getUtxoAgeDistribution(id);
+
+  // Find UTXOs approaching long-term threshold
+  const now = new Date();
+  const upcomingMilestones = [];
+  for (const daysAhead of [15, 30, 60]) {
+    const windowStart = new Date(now.getTime() - (365 - daysAhead) * 86400000);
+    const windowEnd = new Date(now.getTime() - (365 - daysAhead - 1) * 86400000);
+
+    const count = await prisma.uTXO.count({
+      where: {
+        walletId: id,
+        spent: false,
+        createdAt: { gte: windowStart, lt: windowEnd },
+      },
+    });
+
+    if (count > 0) {
+      const agg = await prisma.uTXO.aggregate({
+        where: {
+          walletId: id,
+          spent: false,
+          createdAt: { gte: windowStart, lt: windowEnd },
+        },
+        _sum: { amount: true },
+      });
+
+      upcomingMilestones.push({
+        daysUntilLongTerm: daysAhead,
+        count,
+        totalSats: Number(agg._sum.amount ?? 0),
+      });
+    }
+  }
+
+  res.json({
+    shortTerm: {
+      count: distribution.shortTerm.count,
+      totalSats: Number(distribution.shortTerm.totalSats),
+    },
+    longTerm: {
+      count: distribution.longTerm.count,
+      totalSats: Number(distribution.longTerm.totalSats),
+    },
+    thresholdDays: 365,
+    upcomingLongTerm: upcomingMilestones,
   });
 }));
 

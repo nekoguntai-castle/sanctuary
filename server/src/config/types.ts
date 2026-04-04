@@ -243,6 +243,7 @@ export interface FeatureFlags {
   aiAssistant: boolean;
   telegramNotifications: boolean;
   treasuryAutopilot: boolean;
+  treasuryIntelligence: boolean;
 
   // Protocol features
   websocketV2Events: boolean;

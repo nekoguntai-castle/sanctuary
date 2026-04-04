@@ -53,12 +53,25 @@ export interface NotificationResult {
 }
 
 /**
+ * AI insight notification data
+ */
+export interface AIInsightNotification {
+  id: string;
+  type: string;
+  severity: string;
+  title: string;
+  summary: string;
+  walletName: string;
+}
+
+/**
  * Channel capabilities
  */
 export interface ChannelCapabilities {
   supportsTransactions: boolean;
   supportsDrafts: boolean;
   supportsConsolidationSuggestions: boolean;
+  supportsAIInsights: boolean;
   supportsRichFormatting: boolean;
   supportsImages: boolean;
 }
@@ -119,5 +132,16 @@ export interface NotificationChannelHandler {
   notifyConsolidationSuggestion?(
     walletId: string,
     suggestion: ConsolidationSuggestionNotification
+  ): Promise<NotificationResult>;
+
+  /**
+   * Send AI insight notification (optional)
+   * @param walletId - The wallet the insight is about
+   * @param insight - The AI-generated insight data
+   * @returns Result of the notification attempt
+   */
+  notifyAIInsight?(
+    walletId: string,
+    insight: AIInsightNotification
   ): Promise<NotificationResult>;
 }

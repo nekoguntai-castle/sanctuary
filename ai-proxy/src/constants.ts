@@ -10,3 +10,6 @@ export const RATE_LIMIT_MAX_REQUESTS = parseInt(process.env.AI_RATE_LIMIT_MAX_RE
 
 // AI request timeout
 export const AI_REQUEST_TIMEOUT_MS = parseInt(process.env.AI_REQUEST_TIMEOUT_MS || '30000', 10); // 30 seconds default
+
+// AI analysis timeout (longer for complex analysis prompts)
+export const AI_ANALYSIS_TIMEOUT_MS = parseInt(process.env.AI_ANALYSIS_TIMEOUT_MS || '120000', 10); // 120 seconds default

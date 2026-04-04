@@ -15,6 +15,8 @@ function createHandler(overrides: Partial<NotificationChannelHandler> = {}): Not
     capabilities: {
       supportsTransactions: true,
       supportsDrafts: true,
+      supportsConsolidationSuggestions: false,
+      supportsAIInsights: false,
       supportsRichFormatting: false,
       supportsImages: false,
     },
@@ -84,6 +86,8 @@ describe('NotificationChannelRegistry', () => {
       capabilities: {
         supportsTransactions: true,
         supportsDrafts: false,
+        supportsConsolidationSuggestions: false,
+        supportsAIInsights: false,
         supportsRichFormatting: false,
         supportsImages: false,
       },
@@ -95,6 +99,8 @@ describe('NotificationChannelRegistry', () => {
       capabilities: {
         supportsTransactions: false,
         supportsDrafts: true,
+        supportsConsolidationSuggestions: false,
+        supportsAIInsights: false,
         supportsRichFormatting: false,
         supportsImages: false,
       },
@@ -106,6 +112,8 @@ describe('NotificationChannelRegistry', () => {
       capabilities: {
         supportsTransactions: true,
         supportsDrafts: true,
+        supportsConsolidationSuggestions: false,
+        supportsAIInsights: false,
         supportsRichFormatting: false,
         supportsImages: false,
       },

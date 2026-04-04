@@ -20,6 +20,7 @@ export const pushChannelHandler: NotificationChannelHandler = {
     supportsTransactions: true,
     supportsDrafts: false,
     supportsConsolidationSuggestions: false,
+    supportsAIInsights: false,
     supportsRichFormatting: false,
     supportsImages: false,
   },

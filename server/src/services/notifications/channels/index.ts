@@ -19,10 +19,12 @@ import { notificationChannelRegistry } from './registry';
 // Import handlers
 import { telegramChannelHandler } from './telegram';
 import { pushChannelHandler } from './push';
+import { aiInsightsChannelHandler } from './aiInsights';
 
 // Register handlers
 notificationChannelRegistry.register(telegramChannelHandler);
 notificationChannelRegistry.register(pushChannelHandler);
+notificationChannelRegistry.register(aiInsightsChannelHandler);
 
 // Export the registry and types
 export { notificationChannelRegistry } from './registry';
@@ -31,6 +33,7 @@ export type {
   TransactionNotification,
   DraftNotification,
   ConsolidationSuggestionNotification,
+  AIInsightNotification,
   NotificationResult,
   ChannelCapabilities,
 } from './types';
@@ -38,3 +41,4 @@ export type {
 // Export individual handlers for direct use if needed
 export { telegramChannelHandler } from './telegram';
 export { pushChannelHandler } from './push';
+export { aiInsightsChannelHandler } from './aiInsights';

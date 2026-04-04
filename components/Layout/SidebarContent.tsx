@@ -42,6 +42,7 @@ interface SidebarContentProps {
   getWalletCount: (walletId: string) => number;
   getDeviceCount: (deviceId: string) => number;
   onVersionClick: () => void;
+  intelligenceAvailable?: boolean;
 }
 
 export const SidebarContent: React.FC<SidebarContentProps> = ({
@@ -56,6 +57,7 @@ export const SidebarContent: React.FC<SidebarContentProps> = ({
   getWalletCount,
   getDeviceCount,
   onVersionClick,
+  intelligenceAvailable,
 }) => {
   return (
     <>
@@ -66,6 +68,10 @@ export const SidebarContent: React.FC<SidebarContentProps> = ({
 
       <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
         <NavItem to="/" icon={LayoutDashboard} label="Dashboard" />
+
+        {intelligenceAvailable && (
+          <NavItem to="/intelligence" icon={Brain} label="Intelligence" />
+        )}
 
         {/* Wallets Section */}
         <div className="pt-5 pb-1.5">

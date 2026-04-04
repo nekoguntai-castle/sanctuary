@@ -39,6 +39,8 @@ const mockFeatures = {
   priceAlerts: false,
   aiAssistant: false,
   telegramNotifications: false,
+  treasuryAutopilot: false,
+  treasuryIntelligence: false,
   websocketV2Events: true,
   experimental: {
     taprootAddresses: false,
@@ -100,6 +102,8 @@ describe('Feature Gate Middleware', () => {
     mockFeatures.priceAlerts = false;
     mockFeatures.aiAssistant = false;
     mockFeatures.telegramNotifications = false;
+    mockFeatures.treasuryAutopilot = false;
+    mockFeatures.treasuryIntelligence = false;
     mockFeatures.websocketV2Events = true;
     mockFeatures.experimental.taprootAddresses = false;
     mockFeatures.experimental.silentPayments = false;

@@ -243,6 +243,7 @@ export function getEnabledFeatures(): FeatureFlagKey[] {
     'aiAssistant',
     'telegramNotifications',
     'treasuryAutopilot',
+    'treasuryIntelligence',
     'websocketV2Events',
   ];
 
@@ -297,6 +298,7 @@ export function getFeatureFlagsSummary(): {
     'aiAssistant',
     'telegramNotifications',
     'treasuryAutopilot',
+    'treasuryIntelligence',
     'websocketV2Events',
   ];
 

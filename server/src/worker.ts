@@ -111,12 +111,22 @@ async function startWorker(): Promise<void> {
   // Subscribe to feature flag changes for dynamic job scheduling
   const bus = getDistributedEventBus();
   bus.on('system:featureFlag.changed', async ({ key, enabled }) => {
-    if (key !== 'treasuryAutopilot' || !jobQueue) return;
+    if (!jobQueue) return;
 
-    if (enabled) {
-      await scheduleAutopilotJobs();
-    } else {
-      await removeAutopilotJobs();
+    if (key === 'treasuryAutopilot') {
+      if (enabled) {
+        await scheduleAutopilotJobs();
+      } else {
+        await removeAutopilotJobs();
+      }
+    }
+
+    if (key === 'treasuryIntelligence') {
+      if (enabled) {
+        await scheduleIntelligenceJobs();
+      } else {
+        await removeIntelligenceJobs();
+      }
     }
   });
 
@@ -343,6 +353,14 @@ async function scheduleRecurringJobs(): Promise<void> {
     await removeAutopilotJobs();
   }
 
+  // Treasury Intelligence jobs (behind feature flag)
+  const intelligenceEnabled = await featureFlagService.isEnabled('treasuryIntelligence');
+  if (intelligenceEnabled) {
+    await scheduleIntelligenceJobs();
+  } else {
+    await removeIntelligenceJobs();
+  }
+
   // Set up job result handler for stale wallet check
   // This queues individual sync jobs for each stale wallet
   setupStaleWalletHandler();
@@ -386,6 +404,41 @@ async function removeAutopilotJobs(): Promise<void> {
   await jobQueue.removeRecurring('maintenance', 'autopilot:evaluate', { purgeQueued: true });
 
   log.info('Treasury Autopilot jobs removed');
+}
+
+/**
+ * Schedule Treasury Intelligence recurring jobs
+ */
+async function scheduleIntelligenceJobs(): Promise<void> {
+  if (!jobQueue) return;
+
+  await jobQueue.scheduleRecurring(
+    'maintenance',
+    'intelligence:analyze',
+    {},
+    '*/30 * * * *' // Every 30 minutes
+  );
+
+  await jobQueue.scheduleRecurring(
+    'maintenance',
+    'intelligence:cleanup',
+    {},
+    '0 6 * * *' // Daily at 6 AM
+  );
+
+  log.info('Treasury Intelligence jobs scheduled');
+}
+
+/**
+ * Remove Treasury Intelligence recurring jobs and purge queued instances
+ */
+async function removeIntelligenceJobs(): Promise<void> {
+  if (!jobQueue) return;
+
+  await jobQueue.removeRecurring('maintenance', 'intelligence:analyze', { purgeQueued: true });
+  await jobQueue.removeRecurring('maintenance', 'intelligence:cleanup', { purgeQueued: true });
+
+  log.info('Treasury Intelligence jobs removed');
 }
 
 /**

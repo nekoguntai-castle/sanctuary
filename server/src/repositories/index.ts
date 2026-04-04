@@ -30,6 +30,7 @@ export { systemSettingRepository, default as systemSettingRepo } from './systemS
 export { mobilePermissionRepository, default as mobilePermissionRepo } from './mobilePermissionRepository';
 export { emailVerificationRepository, default as emailVerificationRepo } from './emailVerificationRepository';
 export { policyRepository, default as policyRepo } from './policyRepository';
+export { intelligenceRepository, default as intelligenceRepo } from './intelligenceRepository';
 
 // Access control helpers
 export { buildWalletAccessWhere, buildDeviceAccessWhere } from './accessControl';
@@ -83,6 +84,16 @@ export type {
 
 export { SystemSettingKeys } from './systemSettingRepository';
 export type { SystemSettingKey } from './systemSettingRepository';
+
+export type {
+  InsightType,
+  InsightSeverity,
+  InsightStatus,
+  InsightFilter,
+  CreateInsightInput,
+  CreateConversationInput,
+  CreateMessageInput,
+} from './intelligenceRepository';
 
 export type {
   MobilePermissionCapability,

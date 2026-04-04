@@ -18,7 +18,7 @@
  */
 
 import express, { Request, Response, NextFunction } from 'express';
-import { RATE_LIMIT_WINDOW_MS, RATE_LIMIT_MAX_REQUESTS, AI_REQUEST_TIMEOUT_MS } from './constants';
+import { RATE_LIMIT_WINDOW_MS, RATE_LIMIT_MAX_REQUESTS, AI_REQUEST_TIMEOUT_MS, AI_ANALYSIS_TIMEOUT_MS } from './constants';
 import {
   extractErrorMessage,
   normalizeOllamaBaseUrl,
@@ -232,6 +232,85 @@ async function callExternalAI(prompt: string, timeout = AI_REQUEST_TIMEOUT_MS): 
     } else {
       console.error(`[AI] Request failed: ${extractErrorMessage(error)}`);
     }
+    return null;
+  }
+}
+
+/**
+ * Call external AI with multi-message support (for analysis and chat)
+ */
+async function callExternalAIWithMessages(
+  messages: Array<{ role: string; content: string }>,
+  timeout = AI_REQUEST_TIMEOUT_MS
+): Promise<string | null> {
+  if (!aiConfig.enabled || !aiConfig.endpoint || !aiConfig.model) {
+    return null;
+  }
+
+  try {
+    const endpoint = normalizeOllamaChatUrl(aiConfig.endpoint);
+    console.log(`[AI] Calling external AI (multi-message): ${endpoint}`);
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: aiConfig.model,
+        messages,
+        temperature: 0.7,
+        max_tokens: 2000,
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      console.error(`[AI] External AI error: ${response.status}`);
+      return null;
+    }
+
+    const data = await response.json() as any;
+    if (!data.choices || data.choices.length === 0) {
+      console.error('[AI] No choices in response');
+      return null;
+    }
+
+    return data.choices[0].message.content.trim();
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      console.error('[AI] Request timeout');
+    } else {
+      console.error(`[AI] Request failed: ${extractErrorMessage(error)}`);
+    }
+    return null;
+  }
+}
+
+/**
+ * Parse structured JSON from AI response (handles markdown code blocks, comments, trailing commas)
+ */
+function parseStructuredResponse(raw: string): any | null {
+  try {
+    let jsonStr = raw;
+    const codeBlockMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (codeBlockMatch) {
+      jsonStr = codeBlockMatch[1].trim();
+    }
+    const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return null;
+
+    const cleanJson = jsonMatch[0]
+      .replace(/\/\/[^\n]*/g, '')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/,(\s*[}\]])/g, '$1')
+      .replace(/\n\s*\n/g, '\n');
+
+    return JSON.parse(cleanJson);
+  } catch {
     return null;
   }
 }
@@ -455,7 +534,7 @@ app.post('/test', rateLimit, async (_req: Request, res: Response) => {
  * Detect Ollama at common endpoints
  * Returns the first working endpoint found
  */
-app.post('/detect-ollama', rateLimit, async (_req: Request, res: Response) => {
+app.post('/detect-ollama', rateLimit, async (req: Request, res: Response) => {
   // Common Ollama endpoints to check (bundled container first)
   const endpoints = [
     'http://ollama:11434',                 // Bundled Ollama container (./start.sh --with-ai)
@@ -463,6 +542,16 @@ app.post('/detect-ollama', rateLimit, async (_req: Request, res: Response) => {
     'http://172.17.0.1:11434',             // Docker Linux bridge (host Ollama)
     'http://localhost:11434',              // Direct localhost (unlikely from container)
   ];
+
+  // Support custom endpoints for remote/off-box Ollama
+  const customEndpoints = req.body?.customEndpoints;
+  if (Array.isArray(customEndpoints)) {
+    for (const ep of customEndpoints) {
+      if (typeof ep === 'string' && ep.startsWith('http') && !endpoints.includes(ep)) {
+        endpoints.push(ep);
+      }
+    }
+  }
 
   for (const endpoint of endpoints) {
     try {
@@ -699,6 +788,150 @@ app.delete('/delete-model', rateLimit, async (req: Request, res: Response) => {
   } catch (error) {
     console.error(`[AI] Delete error: ${extractErrorMessage(error)}`);
     res.status(502).json({ error: `Delete failed: ${extractErrorMessage(error)}` });
+  }
+});
+
+// ========================================
+// TREASURY INTELLIGENCE ENDPOINTS
+// ========================================
+
+/**
+ * Analyze wallet data for treasury insights
+ *
+ * INPUT: Pre-assembled context from backend (sanitized, no addresses/txids)
+ * PROCESS:
+ *   1. Build type-specific system prompt
+ *   2. Call external AI with analysis context
+ *   3. Parse structured response
+ *   4. Return insight data
+ */
+app.post('/analyze', rateLimit, async (req: Request, res: Response) => {
+  const { type, context } = req.body;
+
+  if (!type || !context) {
+    return res.status(400).json({ error: 'type and context required' });
+  }
+
+  if (!aiConfig.enabled) {
+    return res.status(503).json({ error: 'AI is not enabled' });
+  }
+
+  const validTypes = ['utxo_health', 'fee_timing', 'anomaly', 'tax', 'consolidation'];
+  if (!validTypes.includes(type)) {
+    return res.status(400).json({ error: `Invalid type. Must be one of: ${validTypes.join(', ')}` });
+  }
+
+  const systemPrompts: Record<string, string> = {
+    utxo_health: `You are a Bitcoin treasury advisor analyzing UTXO health. Based on the wallet data, provide a concise analysis.
+Respond with a JSON object: {"title": "short title", "summary": "1-2 sentence summary", "severity": "info|warning|critical", "analysis": "detailed analysis paragraph"}
+Focus on: dust UTXOs, consolidation opportunities, fee savings potential.`,
+
+    fee_timing: `You are a Bitcoin fee analyst. Based on recent fee data, identify fee timing opportunities.
+Respond with a JSON object: {"title": "short title", "summary": "1-2 sentence summary", "severity": "info|warning|critical", "analysis": "detailed analysis paragraph"}
+Focus on: fee trends, optimal send timing, cost comparisons.`,
+
+    anomaly: `You are a Bitcoin spending pattern analyst. Based on transaction velocity data, detect anomalies.
+Respond with a JSON object: {"title": "short title", "summary": "1-2 sentence summary", "severity": "info|warning|critical", "analysis": "detailed analysis paragraph"}
+Focus on: unusual spending velocity, comparison to historical averages.`,
+
+    tax: `You are a Bitcoin tax advisor. Based on UTXO age data, provide tax-relevant insights.
+Respond with a JSON object: {"title": "short title", "summary": "1-2 sentence summary", "severity": "info|warning|critical", "analysis": "detailed analysis paragraph"}
+Focus on: short-term vs long-term capital gains, UTXOs approaching long-term threshold.`,
+
+    consolidation: `You are a Bitcoin UTXO management strategist. Based on combined UTXO and fee data, recommend a consolidation strategy.
+Respond with a JSON object: {"title": "short title", "summary": "1-2 sentence summary", "severity": "info|warning|critical", "analysis": "detailed analysis paragraph"}
+Focus on: when to consolidate, how many UTXOs, expected savings, privacy considerations.`,
+  };
+
+  const messages = [
+    { role: 'system', content: systemPrompts[type] },
+    { role: 'user', content: `Wallet data:\n${JSON.stringify(context, null, 2)}` },
+  ];
+
+  const result = await callExternalAIWithMessages(messages, AI_ANALYSIS_TIMEOUT_MS);
+
+  if (!result) {
+    return res.status(503).json({ error: 'AI endpoint not available' });
+  }
+
+  const parsed = parseStructuredResponse(result);
+  if (!parsed || !parsed.title || !parsed.summary) {
+    console.error('[AI] Analysis response not structured correctly:', result.substring(0, 300));
+    return res.status(500).json({ error: 'AI did not return valid analysis' });
+  }
+
+  // Ensure severity is valid
+  if (!['info', 'warning', 'critical'].includes(parsed.severity)) {
+    parsed.severity = 'info';
+  }
+
+  res.json({
+    title: parsed.title,
+    summary: parsed.summary,
+    severity: parsed.severity,
+    analysis: parsed.analysis || parsed.summary,
+  });
+});
+
+/**
+ * Interactive chat for treasury intelligence
+ *
+ * INPUT: Conversation messages + wallet context
+ * OUTPUT: Assistant response
+ */
+app.post('/chat', rateLimit, async (req: Request, res: Response) => {
+  const { messages, walletContext } = req.body;
+
+  if (!messages || !Array.isArray(messages) || messages.length === 0) {
+    return res.status(400).json({ error: 'messages array required' });
+  }
+
+  if (!aiConfig.enabled) {
+    return res.status(503).json({ error: 'AI is not enabled' });
+  }
+
+  const systemMessage = {
+    role: 'system',
+    content: `You are a Bitcoin treasury advisor for a self-hosted wallet coordinator called Sanctuary. You help users understand their wallet health, UTXO management, fee optimization, and spending patterns. You never have access to private keys or addresses — only aggregate statistics and sanitized metadata. Be concise and actionable.${walletContext ? `\n\nWallet context:\n${JSON.stringify(walletContext, null, 2)}` : ''}`,
+  };
+
+  const aiMessages = [systemMessage, ...messages];
+  const result = await callExternalAIWithMessages(aiMessages, AI_REQUEST_TIMEOUT_MS);
+
+  if (!result) {
+    return res.status(503).json({ error: 'AI endpoint not available' });
+  }
+
+  res.json({ response: result });
+});
+
+/**
+ * Check if configured endpoint is Ollama-compatible
+ * Used by Treasury Intelligence to verify Ollama is available
+ */
+app.post('/check-ollama', rateLimit, async (_req: Request, res: Response) => {
+  if (!aiConfig.endpoint) {
+    return res.json({ compatible: false, reason: 'no_endpoint' });
+  }
+
+  try {
+    const endpoint = normalizeOllamaBaseUrl(aiConfig.endpoint);
+    const response = await fetch(`${endpoint}/api/tags`, {
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (response.ok) {
+      // Determine endpoint type
+      let endpointType: 'bundled' | 'host' | 'remote' = 'remote';
+      if (aiConfig.endpoint.includes('ollama:')) endpointType = 'bundled';
+      else if (aiConfig.endpoint.includes('host.docker.internal') || aiConfig.endpoint.includes('172.17.0.1') || aiConfig.endpoint.includes('localhost')) endpointType = 'host';
+
+      return res.json({ compatible: true, endpointType });
+    }
+
+    res.json({ compatible: false, reason: 'not_ollama' });
+  } catch {
+    res.json({ compatible: false, reason: 'unreachable' });
   }
 });
 

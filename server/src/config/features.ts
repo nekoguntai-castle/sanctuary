@@ -48,6 +48,7 @@ export const defaultFeatureFlags: FeatureFlags = {
   aiAssistant: false,
   telegramNotifications: false,
   treasuryAutopilot: false,
+  treasuryIntelligence: false,
 
   // Protocol features
   websocketV2Events: false,
@@ -78,6 +79,7 @@ export function loadFeatureFlags(): FeatureFlags {
     aiAssistant: parseBoolEnv('FEATURE_AI_ASSISTANT', defaultFeatureFlags.aiAssistant),
     telegramNotifications: parseBoolEnv('FEATURE_TELEGRAM', defaultFeatureFlags.telegramNotifications),
     treasuryAutopilot: parseBoolEnv('FEATURE_TREASURY_AUTOPILOT', defaultFeatureFlags.treasuryAutopilot),
+    treasuryIntelligence: parseBoolEnv('FEATURE_TREASURY_INTELLIGENCE', defaultFeatureFlags.treasuryIntelligence),
 
     // Protocol features
     websocketV2Events: parseBoolEnv('FEATURE_WS_V2', defaultFeatureFlags.websocketV2Events),

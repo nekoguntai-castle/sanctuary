@@ -7,8 +7,9 @@ import {
 } from '../../../../src/services/featureFlags/definitions';
 
 describe('feature flag definitions', () => {
-  it('exposes known keys including treasuryAutopilot', () => {
+  it('exposes known keys including treasuryAutopilot and treasuryIntelligence', () => {
     expect(FEATURE_FLAG_KEYS).toContain('treasuryAutopilot');
+    expect(FEATURE_FLAG_KEYS).toContain('treasuryIntelligence');
     expect(FEATURE_FLAG_KEYS).toContain('aiAssistant');
   });
 
@@ -26,6 +27,18 @@ describe('feature flag definitions', () => {
         category: 'general',
         hasSideEffects: true,
         sideEffectDescription: expect.stringContaining('starts or stops background consolidation jobs'),
+      })
+    );
+  });
+
+  it('returns runtime side-effect metadata for treasuryIntelligence', () => {
+    const definition = getFeatureFlagDefinition('treasuryIntelligence');
+
+    expect(definition).toEqual(
+      expect.objectContaining({
+        category: 'general',
+        hasSideEffects: true,
+        sideEffectDescription: expect.stringContaining('Ollama-compatible LLM endpoint'),
       })
     );
   });

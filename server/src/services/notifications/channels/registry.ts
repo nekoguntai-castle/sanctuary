@@ -11,6 +11,7 @@ import type {
   NotificationChannelHandler,
   TransactionNotification,
   DraftNotification,
+  AIInsightNotification,
   NotificationResult,
 } from './types';
 
@@ -167,6 +168,63 @@ class NotificationChannelRegistry {
         return await handler.notifyDraft(walletId, draft, createdByUserId);
       } catch (err) {
         log.error(`Channel ${handler.id} draft notification failed`, { error: err });
+        return {
+          success: false,
+          channelId: handler.id,
+          usersNotified: 0,
+          errors: [getErrorMessage(err)],
+        };
+      }
+    });
+
+    const settled = await Promise.allSettled(promises);
+    for (const result of settled) {
+      if (result.status === 'fulfilled') {
+        results.push(result.value);
+      } else {
+        results.push({
+          success: false,
+          channelId: 'unknown',
+          usersNotified: 0,
+          errors: [result.reason?.message || 'Unknown error'],
+        });
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Get channels that support AI insight notifications
+   */
+  getInsightCapable(): NotificationChannelHandler[] {
+    return this.getAll().filter((h) => h.capabilities.supportsAIInsights && h.notifyAIInsight);
+  }
+
+  /**
+   * Dispatch AI insight notification to all enabled channels
+   */
+  async notifyInsight(
+    walletId: string,
+    insight: AIInsightNotification
+  ): Promise<NotificationResult[]> {
+    const handlers = this.getInsightCapable();
+    const results: NotificationResult[] = [];
+
+    const promises = handlers.map(async (handler) => {
+      try {
+        const isEnabled = await handler.isEnabled();
+        if (!isEnabled || !handler.notifyAIInsight) {
+          return {
+            success: true,
+            channelId: handler.id,
+            usersNotified: 0,
+          };
+        }
+
+        return await handler.notifyAIInsight(walletId, insight);
+      } catch (err) {
+        log.error(`Channel ${handler.id} insight notification failed`, { error: err });
         return {
           success: false,
           channelId: handler.id,

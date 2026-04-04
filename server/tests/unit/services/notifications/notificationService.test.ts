@@ -94,6 +94,8 @@ describe('notificationService', () => {
         capabilities: {
           supportsTransactions: true,
           supportsDrafts: true,
+          supportsConsolidationSuggestions: false,
+          supportsAIInsights: false,
           supportsRichFormatting: false,
           supportsImages: false,
         },
@@ -108,6 +110,8 @@ describe('notificationService', () => {
         capabilities: {
           supportsTransactions: true,
           supportsDrafts: true,
+          supportsConsolidationSuggestions: false,
+          supportsAIInsights: false,
           supportsRichFormatting: false,
           supportsImages: false,
         },
