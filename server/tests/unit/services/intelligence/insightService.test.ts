@@ -16,6 +16,7 @@ vi.mock('../../../../src/repositories/intelligenceRepository', () => ({
     updateInsightStatus: vi.fn(),
     markInsightNotified: vi.fn(),
     findExpiredInsights: vi.fn(),
+    expireActiveInsights: vi.fn(),
     deleteExpiredInsights: vi.fn(),
     deleteOldConversations: vi.fn(),
   },
@@ -197,11 +198,7 @@ describe('Insight Service', () => {
 
   describe('cleanupExpiredInsights', () => {
     it('should expire active insights, delete old ones, and clean up conversations', async () => {
-      const expiredInsight1 = { ...mockInsight, id: 'exp-1' };
-      const expiredInsight2 = { ...mockInsight, id: 'exp-2' };
-
-      (intelligenceRepository.findExpiredInsights as Mock).mockResolvedValue([expiredInsight1, expiredInsight2]);
-      (intelligenceRepository.updateInsightStatus as Mock).mockResolvedValue(mockInsight);
+      (intelligenceRepository.expireActiveInsights as Mock).mockResolvedValue(2);
       (intelligenceRepository.deleteExpiredInsights as Mock).mockResolvedValue(5);
       (intelligenceRepository.deleteOldConversations as Mock).mockResolvedValue(3);
 
@@ -209,16 +206,13 @@ describe('Insight Service', () => {
 
       // 2 expired + 5 deleted = 7
       expect(result).toBe(7);
-      expect(intelligenceRepository.findExpiredInsights).toHaveBeenCalled();
-      expect(intelligenceRepository.updateInsightStatus).toHaveBeenCalledTimes(2);
-      expect(intelligenceRepository.updateInsightStatus).toHaveBeenCalledWith('exp-1', 'expired');
-      expect(intelligenceRepository.updateInsightStatus).toHaveBeenCalledWith('exp-2', 'expired');
+      expect(intelligenceRepository.expireActiveInsights).toHaveBeenCalled();
       expect(intelligenceRepository.deleteExpiredInsights).toHaveBeenCalledWith(expect.any(Date));
       expect(intelligenceRepository.deleteOldConversations).toHaveBeenCalledWith(expect.any(Date));
     });
 
     it('should return 0 when nothing to clean up', async () => {
-      (intelligenceRepository.findExpiredInsights as Mock).mockResolvedValue([]);
+      (intelligenceRepository.expireActiveInsights as Mock).mockResolvedValue(0);
       (intelligenceRepository.deleteExpiredInsights as Mock).mockResolvedValue(0);
       (intelligenceRepository.deleteOldConversations as Mock).mockResolvedValue(0);
 

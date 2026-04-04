@@ -626,8 +626,8 @@ describe('Intelligence Repository', () => {
 
     it('should return zero totalSats when _sum.amount is null', async () => {
       (prisma.uTXO.aggregate as Mock)
-        .mockResolvedValueOnce({ _count: { _all: 0 }, _sum: { amount: null } })
-        .mockResolvedValueOnce({ _count: { _all: 0 }, _sum: { amount: null } });
+        .mockResolvedValueOnce({ _count: { id: 0 }, _sum: { amount: null } })
+        .mockResolvedValueOnce({ _count: { id: 0 }, _sum: { amount: null } });
 
       const result = await intelligenceRepository.getUtxoAgeDistribution('wallet-1');
 
