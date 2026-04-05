@@ -147,7 +147,7 @@ export const RestorePanel: React.FC<RestorePanelProps> = ({
               )}
 
               {uploadedBackup.meta?.description && (
-                <p className="text-sm text-sanctuary-600 dark:text-sanctuary-400 italic">
+                <p className="text-sm text-sanctuary-600 dark:text-sanctuary-400">
                   "{uploadedBackup.meta.description}"
                 </p>
               )}

@@ -221,7 +221,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, darkMode, toggleTheme 
         <div className="md:hidden pl-1 pt-1 sm:pl-3 sm:pt-3 surface-elevated border-b border-sanctuary-200 dark:border-sanctuary-800 flex justify-between items-center px-4 h-16">
             <div className="flex items-center">
               <SanctuaryLogo className="h-6 w-6 text-primary-700 dark:text-primary-500 mr-2" />
-              <span className="text-lg font-display italic text-sanctuary-800 dark:text-sanctuary-200">Sanctuary</span>
+              <span className="text-lg font-semibold tracking-tight text-sanctuary-800 dark:text-sanctuary-200">Sanctuary</span>
             </div>
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}

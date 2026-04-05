@@ -110,7 +110,7 @@ export const WalletHeader: React.FC<WalletHeaderProps> = ({
 
         {/* Row 2: Name + Balance */}
         <div className="flex items-center justify-between gap-4 mb-3">
-          <h1 className="text-2xl font-light text-sanctuary-900 dark:text-sanctuary-50 tracking-tight truncate">{wallet.name}</h1>
+          <h1 className="text-2xl font-medium text-sanctuary-900 dark:text-sanctuary-50 tracking-tight truncate">{wallet.name}</h1>
           <Amount
             sats={wallet.balance}
             size="lg"

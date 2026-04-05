@@ -221,7 +221,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                {/* Modal Header */}
                <div className="sticky top-0 surface-elevated p-6 border-b border-sanctuary-100 dark:border-sanctuary-800 flex justify-between items-start z-10">
                   <div>
-                    <h3 className="text-xl font-light text-sanctuary-900 dark:text-sanctuary-50">Transaction Details</h3>
+                    <h3 className="text-xl font-medium text-sanctuary-900 dark:text-sanctuary-50">Transaction Details</h3>
                     <p className="text-sm text-sanctuary-500">{selectedTx.timestamp ? new Date(selectedTx.timestamp).toLocaleString() : 'Pending'}</p>
                   </div>
                   <button onClick={() => setSelectedTx(null)} className="p-2 hover:bg-sanctuary-100 dark:hover:bg-sanctuary-800 rounded-full transition-colors">
@@ -332,7 +332,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                             <p className="text-sm font-mono font-medium text-sanctuary-900 dark:text-sanctuary-100">
                                {selectedTx.blockHeight != null && selectedTx.blockHeight > 0
                                  ? selectedTx.blockHeight.toLocaleString()
-                                 : <span className="text-sanctuary-400 italic">Unconfirmed</span>}
+                                 : <span className="text-sanctuary-400">Unconfirmed</span>}
                             </p>
                          </div>
 
@@ -343,7 +343,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                               <p className="text-sm font-medium text-sanctuary-900 dark:text-sanctuary-100">
                                  {selectedTx.fee != null && selectedTx.fee > 0
                                    ? format(selectedTx.fee, { forceSats: true })
-                                   : <span className="text-sanctuary-400 italic">N/A</span>}
+                                   : <span className="text-sanctuary-400">N/A</span>}
                               </p>
                            </div>
                          ) : (

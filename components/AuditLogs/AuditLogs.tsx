@@ -86,7 +86,7 @@ export const AuditLogs: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-light text-sanctuary-900 dark:text-sanctuary-50">
+          <h2 className="text-2xl font-medium text-sanctuary-900 dark:text-sanctuary-50">
             Audit Logs
           </h2>
           <p className="text-sanctuary-500">

@@ -126,7 +126,7 @@ export const LabelEditor: React.FC<LabelEditorProps> = ({
               {selectedTx.label}
             </span>
           ) : (
-            <span className="text-sm text-sanctuary-400 italic">No labels</span>
+            <span className="text-sm text-sanctuary-400">No labels</span>
           )}
         </div>
       )}

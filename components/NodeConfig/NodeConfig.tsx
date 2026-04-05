@@ -315,7 +315,7 @@ export const NodeConfig: React.FC = () => {
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-light text-sanctuary-900 dark:text-sanctuary-50">Node Configuration</h2>
+          <h2 className="text-2xl font-medium text-sanctuary-900 dark:text-sanctuary-50">Node Configuration</h2>
           <p className="text-sm text-sanctuary-500">Configure network settings for the Bitcoin backend</p>
         </div>
         <Button onClick={handleSaveNodeConfig} isLoading={isSavingNode}>

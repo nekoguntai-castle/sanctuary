@@ -36,7 +36,7 @@ export const ConfigurationStep: React.FC<ConfigurationStepProps> = ({
   selectedDeviceCount,
 }) => (
   <div className="space-y-6 animate-fade-in max-w-lg mx-auto">
-      <h2 className="text-xl font-light text-center text-sanctuary-900 dark:text-sanctuary-50 mb-6">Configuration</h2>
+      <h2 className="text-xl font-medium text-center text-sanctuary-900 dark:text-sanctuary-50 mb-6">Configuration</h2>
 
       <div className="space-y-4">
           <div>

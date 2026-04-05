@@ -50,7 +50,7 @@ export const DeviceListHeader: React.FC<DeviceListHeaderProps> = ({
   return (
     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
       <div>
-        <h2 className="text-2xl font-light text-sanctuary-900 dark:text-sanctuary-50">Hardware Devices</h2>
+        <h2 className="text-2xl font-medium text-sanctuary-900 dark:text-sanctuary-50">Hardware Devices</h2>
         <p className="text-sanctuary-500">Manage your signers and keys</p>
       </div>
       <div className="flex items-center space-x-3">

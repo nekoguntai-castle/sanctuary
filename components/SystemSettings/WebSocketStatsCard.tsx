@@ -225,7 +225,7 @@ export const WebSocketStatsCard: React.FC = () => {
             </summary>
             <div className="mt-3">
               {stats.recentRateLimitEvents.length === 0 ? (
-                <div className="text-sm text-sanctuary-400 italic">No rate limit events recorded</div>
+                <div className="text-sm text-sanctuary-400">No rate limit events recorded</div>
               ) : (
                 <div className="max-h-48 overflow-y-auto space-y-2">
                   {stats.recentRateLimitEvents.map((event, index) => (

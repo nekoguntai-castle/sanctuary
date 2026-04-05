@@ -69,7 +69,7 @@ export const Variables: React.FC = () => {
   return (
     <div className="max-w-2xl mx-auto space-y-8 animate-fade-in pb-12">
       <div>
-        <h2 className="text-2xl font-light text-sanctuary-900 dark:text-sanctuary-50">System Variables</h2>
+        <h2 className="text-2xl font-medium text-sanctuary-900 dark:text-sanctuary-50">System Variables</h2>
         <p className="text-sanctuary-500">Configure system-wide variables for Sanctuary</p>
       </div>
 

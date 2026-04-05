@@ -68,7 +68,7 @@ export const BackupRestore: React.FC = () => {
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-fade-in pb-12">
       <div>
-        <h2 className="text-2xl font-light text-sanctuary-900 dark:text-sanctuary-50">Backup & Restore</h2>
+        <h2 className="text-2xl font-medium text-sanctuary-900 dark:text-sanctuary-50">Backup & Restore</h2>
         <p className="text-sanctuary-500">Create database backups and restore from backup files</p>
       </div>
 

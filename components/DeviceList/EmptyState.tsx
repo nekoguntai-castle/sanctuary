@@ -16,7 +16,7 @@ export const EmptyState: React.FC = () => {
     <div className="space-y-6 animate-fade-in pb-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-light text-sanctuary-900 dark:text-sanctuary-50">Hardware Devices</h2>
+          <h2 className="text-2xl font-medium text-sanctuary-900 dark:text-sanctuary-50">Hardware Devices</h2>
           <p className="text-sanctuary-500">Manage your signers and keys</p>
         </div>
       </div>

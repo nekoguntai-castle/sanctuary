@@ -82,7 +82,7 @@ export const GroupPanel: React.FC<GroupPanelProps> = ({
               </div>
               <div className="flex flex-wrap gap-1">
                 {g.members.length === 0 ? (
-                  <span className="text-[10px] text-sanctuary-400 italic">No members</span>
+                  <span className="text-[10px] text-sanctuary-400">No members</span>
                 ) : g.members.map(member => (
                   <span key={member.userId} className="text-[10px] px-1.5 py-0.5 border border-sanctuary-200 dark:border-sanctuary-700 rounded text-sanctuary-500">
                     {member.username} {member.role === 'admin' && '(admin)'}

@@ -21,7 +21,7 @@ export const Settings: React.FC = () => {
     <div className="max-w-2xl mx-auto animate-fade-in pb-12">
       {/* Header */}
       <div className="mb-6">
-        <h2 className="text-2xl font-light text-sanctuary-900 dark:text-sanctuary-50">System Settings</h2>
+        <h2 className="text-2xl font-medium text-sanctuary-900 dark:text-sanctuary-50">System Settings</h2>
         <p className="text-sanctuary-500">Customize your Sanctuary experience</p>
       </div>
 

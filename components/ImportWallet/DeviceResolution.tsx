@@ -52,7 +52,7 @@ export const DeviceResolutionStep: React.FC<DeviceResolutionProps> = ({
 
   return (
     <div className="space-y-6 animate-fade-in max-w-2xl mx-auto">
-      <h2 className="text-xl font-light text-center text-sanctuary-900 dark:text-sanctuary-50 mb-6">
+      <h2 className="text-xl font-medium text-center text-sanctuary-900 dark:text-sanctuary-50 mb-6">
         Configure Import
       </h2>
 

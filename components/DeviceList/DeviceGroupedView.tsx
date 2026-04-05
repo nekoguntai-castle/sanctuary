@@ -191,7 +191,7 @@ export const DeviceGroupedView: React.FC<DeviceGroupedViewProps> = ({
                                              {walletCount} {walletCount === 1 ? 'wallet' : 'wallets'}
                                          </span>
                                      ) : (
-                                         <span className="text-[10px] text-sanctuary-300 italic">Unused</span>
+                                         <span className="text-[10px] text-sanctuary-300">Unused</span>
                                      )}
                                  </div>
                              </li>

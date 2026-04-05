@@ -199,7 +199,7 @@ export const Account: React.FC = () => {
   return (
     <div className="max-w-2xl mx-auto space-y-8 animate-fade-in pb-12">
       <div>
-        <h2 className="text-2xl font-light text-sanctuary-900 dark:text-sanctuary-50">Account Settings</h2>
+        <h2 className="text-2xl font-medium text-sanctuary-900 dark:text-sanctuary-50">Account Settings</h2>
         <p className="text-sanctuary-500">Manage your account information and security</p>
       </div>
 

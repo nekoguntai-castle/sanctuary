@@ -142,7 +142,7 @@ export const Monitoring: React.FC = () => {
       <div className="mb-6">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-light text-sanctuary-900 dark:text-sanctuary-50">
+            <h2 className="text-2xl font-medium text-sanctuary-900 dark:text-sanctuary-50">
               Monitoring
             </h2>
             <p className="text-sanctuary-500">

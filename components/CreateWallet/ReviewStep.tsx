@@ -32,7 +32,7 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({
       <div className="mx-auto w-16 h-16 surface-secondary rounded-full flex items-center justify-center mb-4">
           <Shield className="w-8 h-8 text-sanctuary-600 dark:text-sanctuary-300" />
       </div>
-      <h2 className="text-2xl font-light text-sanctuary-900 dark:text-sanctuary-50">Review Wallet Details</h2>
+      <h2 className="text-2xl font-medium text-sanctuary-900 dark:text-sanctuary-50">Review Wallet Details</h2>
 
       <div className="surface-elevated rounded-xl border border-sanctuary-200 dark:border-sanctuary-800 overflow-hidden text-left">
           <div className="px-6 py-4 border-b border-sanctuary-100 dark:border-sanctuary-800">

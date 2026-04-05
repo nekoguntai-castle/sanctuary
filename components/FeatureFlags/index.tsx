@@ -144,7 +144,7 @@ export function FeatureFlags() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h2 className="text-2xl font-light text-sanctuary-900 dark:text-sanctuary-50">Feature Flags</h2>
+        <h2 className="text-2xl font-medium text-sanctuary-900 dark:text-sanctuary-50">Feature Flags</h2>
         <p className="text-sanctuary-500">Toggle features without restarting the server.</p>
       </div>
 

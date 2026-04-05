@@ -202,7 +202,7 @@ export const PendingTransfersPanel: React.FC<PendingTransfersPanelProps> = ({
                   <span>You</span>
                 </div>
                 {transfer.message && (
-                  <p className="text-sm text-sanctuary-500 mt-2 italic">"{transfer.message}"</p>
+                  <p className="text-sm text-sanctuary-500 mt-2">"{transfer.message}"</p>
                 )}
                 <div className="flex items-center text-xs text-sanctuary-400 mt-2 space-x-3">
                   <span>{formatTimeAgo(transfer.createdAt)}</span>
@@ -313,7 +313,7 @@ export const PendingTransfersPanel: React.FC<PendingTransfersPanelProps> = ({
                   <span className="font-medium">{transfer.toUser?.username}</span>
                 </div>
                 {transfer.message && (
-                  <p className="text-sm text-sanctuary-500 mt-2 italic">"{transfer.message}"</p>
+                  <p className="text-sm text-sanctuary-500 mt-2">"{transfer.message}"</p>
                 )}
                 <div className="flex items-center text-xs text-sanctuary-400 mt-2 space-x-3">
                   <span>Initiated {formatTimeAgo(transfer.createdAt)}</span>

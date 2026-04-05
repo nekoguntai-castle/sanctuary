@@ -132,7 +132,7 @@
             },
             fontFamily: {
               sans: ['General Sans', 'Inter', 'sans-serif'],
-              display: ['Instrument Serif', 'Georgia', 'serif'],
+              display: ['General Sans', 'Inter', 'sans-serif'],
               mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
             },
             animation: {
@@ -180,7 +180,7 @@
         },
       }
     </script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdn.fontshare.com/css?f[]=general-sans@400,500,600,700&display=swap" rel="stylesheet">
     <style>
       body {
@@ -726,15 +726,8 @@
        * Display serif for headings, refined body sans
        * ============================================ */
 
-      /* Page headings get display serif treatment */
-      h1, h2 {
-        font-family: 'Instrument Serif', Georgia, serif;
-        font-style: italic;
-        letter-spacing: 0.01em;
-      }
-
-      /* Keep h3-h6 and everything else on General Sans */
-      h3, h4, h5, h6 {
+      /* All headings use General Sans */
+      h1, h2, h3, h4, h5, h6 {
         font-family: 'General Sans', 'Inter', sans-serif;
       }
 

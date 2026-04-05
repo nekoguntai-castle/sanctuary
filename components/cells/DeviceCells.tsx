@@ -188,7 +188,7 @@ export function createDeviceCellRenderers(
           </span>
         );
       }
-      return <span className="text-xs text-sanctuary-400 italic">None</span>;
+      return <span className="text-xs text-sanctuary-400">None</span>;
     }
 
     return (
@@ -213,7 +213,7 @@ export function createDeviceCellRenderers(
     const count = device.walletCount ?? wallets.length;
 
     if (count === 0) {
-      return <span className="text-xs text-sanctuary-400 italic">Unused</span>;
+      return <span className="text-xs text-sanctuary-400">Unused</span>;
     }
 
     // Get badge styling based on wallet type

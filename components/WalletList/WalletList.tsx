@@ -217,7 +217,7 @@ export const WalletList: React.FC = () => {
       <div className="space-y-6 animate-fade-in pb-8">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h2 className="text-2xl font-light text-sanctuary-900 dark:text-sanctuary-50">Wallet Overview</h2>
+            <h2 className="text-2xl font-medium text-sanctuary-900 dark:text-sanctuary-50">Wallet Overview</h2>
             <p className="text-sanctuary-500">Manage your wallets and spending accounts</p>
           </div>
         </div>
@@ -260,7 +260,7 @@ export const WalletList: React.FC = () => {
       {/* Header & Controls */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-light text-sanctuary-900 dark:text-sanctuary-50">
+          <h2 className="text-2xl font-medium text-sanctuary-900 dark:text-sanctuary-50">
             {selectedNetwork.charAt(0).toUpperCase() + selectedNetwork.slice(1)} Wallets
           </h2>
           <p className="text-sanctuary-500">Manage your {selectedNetwork} wallets and spending accounts</p>

@@ -63,7 +63,7 @@ export const DescriptorInput: React.FC<DescriptorInputProps> = ({
 
   return (
     <div className="space-y-6 animate-fade-in max-w-2xl mx-auto">
-      <h2 className="text-xl font-light text-center text-sanctuary-900 dark:text-sanctuary-50 mb-2">
+      <h2 className="text-xl font-medium text-center text-sanctuary-900 dark:text-sanctuary-50 mb-2">
         {format === 'descriptor' ? 'Enter Output Descriptor' : 'Enter Configuration'}
       </h2>
       <p className="text-center text-sanctuary-500 mb-6">

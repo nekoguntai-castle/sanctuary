@@ -154,7 +154,7 @@ export const ReceiveModal: React.FC<ReceiveModalProps> = ({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-xl font-light text-sanctuary-900 dark:text-sanctuary-50">
+          <h3 className="text-xl font-medium text-sanctuary-900 dark:text-sanctuary-50">
             Receive Bitcoin
           </h3>
           <button

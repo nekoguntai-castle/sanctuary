@@ -14,7 +14,7 @@ interface FormatSelectionProps {
 
 export const FormatSelection: React.FC<FormatSelectionProps> = ({ format, setFormat }) => (
   <div className="space-y-6 animate-fade-in">
-    <h2 className="text-xl font-light text-center text-sanctuary-900 dark:text-sanctuary-50 mb-8">
+    <h2 className="text-xl font-medium text-center text-sanctuary-900 dark:text-sanctuary-50 mb-8">
       Select Import Format
     </h2>
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

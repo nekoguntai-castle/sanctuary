@@ -48,7 +48,7 @@ export function TransactionExportModal({ walletId, walletName, onClose }: Transa
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-center mb-6">
-          <h3 className="text-xl font-light">Export Transactions</h3>
+          <h3 className="text-xl font-medium">Export Transactions</h3>
           <button
             onClick={onClose}
             className="text-sanctuary-400 hover:text-sanctuary-600 dark:hover:text-sanctuary-300"

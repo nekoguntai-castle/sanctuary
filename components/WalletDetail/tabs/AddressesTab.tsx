@@ -100,7 +100,7 @@ export const AddressesTab: React.FC<AddressesTabProps> = ({
   // Render the address table content
   const renderAddressTableContent = (addressList: Address[], emptyMessage: string) => (
     addressList.length === 0 ? (
-      <div className="p-8 text-center text-sanctuary-500 text-sm italic">
+      <div className="p-8 text-center text-sanctuary-500 text-sm">
         {emptyMessage}
       </div>
     ) : (
@@ -212,7 +212,7 @@ export const AddressesTab: React.FC<AddressesTabProps> = ({
                           {addr.label}
                         </span>
                       ) : (
-                        <span className="text-sanctuary-300 italic">-</span>
+                        <span className="text-sanctuary-300">-</span>
                       )}
                       {addr.id && (
                         <button

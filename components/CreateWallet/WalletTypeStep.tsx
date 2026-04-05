@@ -15,7 +15,7 @@ interface WalletTypeStepProps {
 
 export const WalletTypeStep: React.FC<WalletTypeStepProps> = ({ walletType, setWalletType }) => (
   <div className="space-y-6 animate-fade-in">
-      <h2 className="text-xl font-light text-center text-sanctuary-900 dark:text-sanctuary-50 mb-8">Select Wallet Topology</h2>
+      <h2 className="text-xl font-medium text-center text-sanctuary-900 dark:text-sanctuary-50 mb-8">Select Wallet Topology</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <button
               onClick={() => setWalletType(WalletType.SINGLE_SIG)}

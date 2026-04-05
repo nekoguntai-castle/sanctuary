@@ -150,7 +150,7 @@ export const ConnectDevice: React.FC = () => {
 
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-light text-sanctuary-900 dark:text-sanctuary-50">Connect Hardware Device</h1>
+        <h1 className="text-3xl font-medium text-sanctuary-900 dark:text-sanctuary-50">Connect Hardware Device</h1>
         <p className="text-sanctuary-500">Add a new signing device to your sanctuary.</p>
       </div>
 

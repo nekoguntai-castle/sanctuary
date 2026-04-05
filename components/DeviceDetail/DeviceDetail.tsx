@@ -87,7 +87,7 @@ export const DeviceDetail: React.FC = () => {
                                     </div>
                                 ) : (
                                     <>
-                                        <h1 className="text-3xl font-light text-sanctuary-900 dark:text-sanctuary-50">{device.label}</h1>
+                                        <h1 className="text-3xl font-medium text-sanctuary-900 dark:text-sanctuary-50">{device.label}</h1>
                                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                                           userRole === 'owner' ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300' :
                                           'bg-sanctuary-100 text-sanctuary-700 dark:bg-sanctuary-700 dark:text-sanctuary-300'
