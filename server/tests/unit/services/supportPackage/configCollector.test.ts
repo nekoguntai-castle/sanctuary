@@ -1,12 +1,19 @@
 import { describe, it, expect, vi } from 'vitest';
 
-const { collectorMap, mockGetConfig } = vi.hoisted(() => ({
+const { collectorMap, mockGetConfig, mockGetAllFlags } = vi.hoisted(() => ({
   collectorMap: new Map<string, (ctx: any) => Promise<Record<string, unknown>>>(),
   mockGetConfig: vi.fn(),
+  mockGetAllFlags: vi.fn(),
 }));
 
 vi.mock('../../../../src/config', () => ({
   getConfig: (...args: unknown[]) => mockGetConfig(...args),
+}));
+
+vi.mock('../../../../src/services/featureFlagService', () => ({
+  featureFlagService: {
+    getAllFlags: (...args: unknown[]) => mockGetAllFlags(...args),
+  },
 }));
 
 vi.mock('../../../../src/services/supportPackage/collectors/registry', () => ({
@@ -104,5 +111,44 @@ describe('config collector', () => {
     // database should be redacted, redis should not exist
     expect((result.database as Record<string, unknown>).url).toBe('[REDACTED]');
     expect(result.redis).toBeUndefined();
+  });
+
+  it('overlays runtime feature flags from database over static config defaults', async () => {
+    mockGetConfig.mockReturnValue({
+      server: { port: 3001 },
+      features: {
+        telegramNotifications: false,
+        aiAssistant: false,
+        experimental: { taprootAddresses: false },
+      },
+    });
+    mockGetAllFlags.mockResolvedValue([
+      { key: 'telegramNotifications', enabled: true },
+      { key: 'aiAssistant', enabled: true },
+      { key: 'experimental.taprootAddresses', enabled: true },
+    ]);
+
+    const result = await getCollector()(makeContext());
+    const features = result.features as Record<string, unknown>;
+
+    expect(features.telegramNotifications).toBe(true);
+    expect(features.aiAssistant).toBe(true);
+    expect((features.experimental as Record<string, unknown>).taprootAddresses).toBe(true);
+  });
+
+  it('falls back to static config when featureFlagService throws', async () => {
+    mockGetConfig.mockReturnValue({
+      server: { port: 3001 },
+      features: {
+        telegramNotifications: false,
+        experimental: { taprootAddresses: false },
+      },
+    });
+    mockGetAllFlags.mockRejectedValue(new Error('service not initialized'));
+
+    const result = await getCollector()(makeContext());
+    const features = result.features as Record<string, unknown>;
+
+    expect(features.telegramNotifications).toBe(false);
   });
 });

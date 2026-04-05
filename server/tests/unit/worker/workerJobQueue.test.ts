@@ -497,6 +497,102 @@ describe('WorkerJobQueue', () => {
     });
   });
 
+  describe('getJobCompletionTimes', () => {
+    it('returns empty object initially', async () => {
+      await queue.initialize();
+      expect(queue.getJobCompletionTimes()).toEqual({});
+    });
+
+    it('records completion timestamps via event handlers', async () => {
+      await queue.initialize();
+
+      // The setupWorkerEventHandlers was called with the completion map.
+      // Simulate a completed event by calling the handler registered on the worker.
+      const syncWorker = (queue as any).queues.get('sync').worker;
+      const completedCalls = syncWorker.on.mock.calls.filter(
+        (call: any) => call[0] === 'completed'
+      );
+      // The first 'completed' listener is from setupWorkerEventHandlers
+      const completedHandler = completedCalls[0][1];
+
+      completedHandler({
+        id: 'j-1',
+        name: 'sync-wallet',
+        processedOn: 100,
+        finishedOn: 200,
+      });
+
+      const times = queue.getJobCompletionTimes();
+      expect(times['sync:sync-wallet']).toBeGreaterThan(0);
+    });
+  });
+
+  describe('onJobCompleted', () => {
+    /** Helper: get the last 'completed' listener registered on a queue's worker */
+    function getOnCompleted(queueName: string) {
+      const worker = (queue as any).queues.get(queueName).worker;
+      const completedCalls = worker.on.mock.calls.filter(
+        (call: any) => call[0] === 'completed'
+      );
+      return completedCalls[completedCalls.length - 1][1];
+    }
+
+    it('calls callback when matching job completes', async () => {
+      await queue.initialize();
+      const callback = vi.fn();
+
+      queue.onJobCompleted('sync', 'check-stale-wallets', callback);
+
+      const onCompleted = getOnCompleted('sync');
+      // BullMQ Worker completed event: (job, returnvalue, prev)
+      onCompleted({ name: 'check-stale-wallets' }, { staleWalletIds: ['w1'] });
+
+      expect(callback).toHaveBeenCalledWith({ staleWalletIds: ['w1'] });
+    });
+
+    it('does not call callback for non-matching job names', async () => {
+      await queue.initialize();
+      const callback = vi.fn();
+
+      queue.onJobCompleted('sync', 'check-stale-wallets', callback);
+
+      const onCompleted = getOnCompleted('sync');
+      onCompleted({ name: 'sync-wallet' }, {});
+
+      expect(callback).not.toHaveBeenCalled();
+    });
+
+    it('handles async callback errors gracefully', async () => {
+      await queue.initialize();
+      const callback = vi.fn().mockRejectedValue(new Error('callback failed'));
+
+      queue.onJobCompleted('sync', 'check-stale-wallets', callback);
+
+      const onCompleted = getOnCompleted('sync');
+      // Should not throw
+      onCompleted({ name: 'check-stale-wallets' }, {});
+      await Promise.resolve();
+    });
+
+    it('handles sync callback errors gracefully', async () => {
+      await queue.initialize();
+      const callback = vi.fn().mockImplementation(() => { throw new Error('sync error'); });
+
+      queue.onJobCompleted('sync', 'check-stale-wallets', callback);
+
+      const onCompleted = getOnCompleted('sync');
+      // Should not throw
+      onCompleted({ name: 'check-stale-wallets' }, {});
+    });
+
+    it('warns when queue does not exist', async () => {
+      await queue.initialize();
+
+      // Should not throw for non-existent queue
+      queue.onJobCompleted('nonexistent', 'some-job', vi.fn());
+    });
+  });
+
   describe('internal behavior and error paths', () => {
     it('worker process callback delegates to processJob', async () => {
       await queue.initialize();
@@ -593,6 +689,46 @@ describe('WorkerJobQueue', () => {
       handlers.failed?.(undefined, new Error('failed-without-job'));
 
       expect(mockDlqAdd).not.toHaveBeenCalled();
+    });
+
+    it('records completion timestamps when jobCompletionTimes map is provided', () => {
+      const completionTimes = new Map<string, number>();
+      const handlers: Record<string, (...args: any[]) => void> = {};
+      const fakeWorker = {
+        on: vi.fn((event: string, handler: (...args: any[]) => void) => {
+          handlers[event] = handler;
+        }),
+      };
+
+      setupWorkerEventHandlers('sync', fakeWorker as any, completionTimes);
+
+      handlers.completed?.({
+        id: 'job-1',
+        name: 'sync-wallet',
+        processedOn: 100,
+        finishedOn: 200,
+      });
+
+      expect(completionTimes.get('sync:sync-wallet')).toBeGreaterThan(0);
+    });
+
+    it('does not record completion timestamps when jobCompletionTimes is omitted', () => {
+      const handlers: Record<string, (...args: any[]) => void> = {};
+      const fakeWorker = {
+        on: vi.fn((event: string, handler: (...args: any[]) => void) => {
+          handlers[event] = handler;
+        }),
+      };
+
+      setupWorkerEventHandlers('sync', fakeWorker as any);
+
+      // Should not throw when no map is provided
+      handlers.completed?.({
+        id: 'job-1',
+        name: 'sync-wallet',
+        processedOn: 100,
+        finishedOn: 200,
+      });
     });
 
     it('logs DLQ recording failures for exhausted jobs', async () => {

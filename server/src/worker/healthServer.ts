@@ -39,6 +39,7 @@ export interface HealthCheckProvider {
       subscribedAddresses: number;
       networks: Record<string, { connected: boolean; lastBlockHeight: number }>;
     };
+    jobCompletions?: Record<string, number>;
   }>;
 }
 

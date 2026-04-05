@@ -26,7 +26,11 @@ export function queueToDlqCategory(queueName: string): DeadLetterCategory {
 /**
  * Set up event handlers for a worker
  */
-export function setupWorkerEventHandlers(queueName: string, worker: Worker): void {
+export function setupWorkerEventHandlers(
+  queueName: string,
+  worker: Worker,
+  jobCompletionTimes?: Map<string, number>,
+): void {
   worker.on('completed', (job) => {
     log.debug(`Job completed: ${queueName}:${job.name}`, {
       jobId: job.id,
@@ -34,6 +38,10 @@ export function setupWorkerEventHandlers(queueName: string, worker: Worker): voi
         ? job.finishedOn - job.processedOn
         : undefined,
     });
+
+    if (jobCompletionTimes) {
+      jobCompletionTimes.set(`${queueName}:${job.name}`, Date.now());
+    }
   });
 
   worker.on('failed', (job, error) => {

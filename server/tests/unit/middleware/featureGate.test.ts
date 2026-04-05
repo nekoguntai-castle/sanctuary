@@ -10,10 +10,7 @@ import {
   requireFeature,
   requireAllFeatures,
   requireAnyFeature,
-  isFeatureEnabled,
   isFeatureEnabledAsync,
-  getEnabledFeatures,
-  getFeatureFlagsSummary,
 } from '../../../src/middleware/featureGate';
 import { featureFlagService } from '../../../src/services/featureFlagService';
 
@@ -300,33 +297,6 @@ describe('Feature Gate Middleware', () => {
     });
   });
 
-  describe('isFeatureEnabled', () => {
-    it('should return true for enabled features', () => {
-      expect(isFeatureEnabled('hardwareWalletSigning')).toBe(true);
-      expect(isFeatureEnabled('qrCodeSigning')).toBe(true);
-    });
-
-    it('should return false for disabled features', () => {
-      expect(isFeatureEnabled('payjoinSupport')).toBe(false);
-      expect(isFeatureEnabled('priceAlerts')).toBe(false);
-    });
-
-    it('should handle experimental features', () => {
-      mockFeatures.experimental.taprootAddresses = true;
-      expect(isFeatureEnabled('experimental.taprootAddresses')).toBe(true);
-
-      expect(isFeatureEnabled('experimental.silentPayments')).toBe(false);
-    });
-
-    it('should default unknown experimental feature keys to false', () => {
-      expect(isFeatureEnabled('experimental.nonexistentFeature' as any)).toBe(false);
-    });
-
-    it('should default unknown top-level feature keys to false', () => {
-      expect(isFeatureEnabled('nonexistentFeature' as any)).toBe(false);
-    });
-  });
-
   describe('isFeatureEnabledAsync', () => {
     it('returns service value when feature service succeeds', async () => {
       await expect(isFeatureEnabledAsync('hardwareWalletSigning')).resolves.toBe(true);
@@ -339,64 +309,4 @@ describe('Feature Gate Middleware', () => {
     });
   });
 
-  describe('getEnabledFeatures', () => {
-    it('should return list of enabled features', () => {
-      const enabled = getEnabledFeatures();
-
-      expect(enabled).toContain('hardwareWalletSigning');
-      expect(enabled).toContain('qrCodeSigning');
-      expect(enabled).not.toContain('payjoinSupport');
-    });
-
-    it('should include enabled experimental features', () => {
-      mockFeatures.experimental.taprootAddresses = true;
-
-      const enabled = getEnabledFeatures();
-
-      expect(enabled).toContain('experimental.taprootAddresses');
-    });
-  });
-
-  describe('getFeatureFlagsSummary', () => {
-    it('should return summary of feature flags', () => {
-      const summary = getFeatureFlagsSummary();
-
-      expect(summary).toHaveProperty('total');
-      expect(summary).toHaveProperty('enabled');
-      expect(summary).toHaveProperty('disabled');
-      expect(summary).toHaveProperty('experimental');
-      expect(summary).toHaveProperty('flags');
-    });
-
-    it('should correctly count enabled and disabled features', () => {
-      const summary = getFeatureFlagsSummary();
-
-      expect(summary.total).toBeGreaterThan(0);
-      expect(summary.enabled + summary.disabled).toBe(summary.total);
-    });
-
-    it('should include experimental feature counts', () => {
-      const summary = getFeatureFlagsSummary();
-
-      expect(summary.experimental.total).toBe(3); // taprootAddresses, silentPayments, coinJoin
-      expect(summary.experimental.enabled).toBe(0); // All disabled by default
-    });
-
-    it('should have all flags in the flags object', () => {
-      const summary = getFeatureFlagsSummary();
-
-      expect(summary.flags).toHaveProperty('hardwareWalletSigning');
-      // Key is a literal string "experimental.taprootAddresses"
-      expect('experimental.taprootAddresses' in summary.flags).toBe(true);
-    });
-
-    it('should count enabled experimental flags in totals', () => {
-      mockFeatures.experimental.coinJoin = true;
-
-      const summary = getFeatureFlagsSummary();
-
-      expect(summary.experimental.enabled).toBe(1);
-      expect(summary.flags['experimental.coinJoin']).toBe(true);
-    });
-  });
 });

@@ -13,9 +13,12 @@ const mocks = vi.hoisted(() => {
     getRegisteredJobs: vi.fn(),
     isHealthy: vi.fn(),
     getHealth: vi.fn(),
+    getJobCompletionTimes: vi.fn(),
     addJob: vi.fn(),
+    addBulkJobs: vi.fn(),
     scheduleRecurring: vi.fn(),
     removeRecurring: vi.fn(),
+    onJobCompleted: vi.fn(),
     shutdown: vi.fn(),
   };
 
@@ -166,9 +169,12 @@ describe('worker entrypoint', () => {
     mocks.queueInstance.getRegisteredJobs.mockReturnValue(['check-stale-wallets']);
     mocks.queueInstance.isHealthy.mockReturnValue(true);
     mocks.queueInstance.getHealth.mockResolvedValue({ queues: { sync: { size: 0 } } });
+    mocks.queueInstance.getJobCompletionTimes.mockReturnValue({});
     mocks.queueInstance.addJob.mockResolvedValue(undefined);
+    mocks.queueInstance.addBulkJobs.mockResolvedValue([]);
     mocks.queueInstance.scheduleRecurring.mockResolvedValue(undefined);
     mocks.queueInstance.removeRecurring.mockResolvedValue(undefined);
+    mocks.queueInstance.onJobCompleted.mockReturnValue(undefined);
     mocks.queueInstance.shutdown.mockResolvedValue(undefined);
 
     mocks.electrumInstance.start.mockResolvedValue(undefined);
@@ -344,6 +350,72 @@ describe('worker entrypoint', () => {
     );
   });
 
+  it('setupStaleWalletHandler registers onJobCompleted and queues sync jobs for stale wallets', async () => {
+    vi.spyOn(process, 'on').mockImplementation(((event: string, handler: (...args: any[]) => any) => {
+      void event;
+      void handler;
+      return process;
+    }) as any);
+    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+
+    // onJobCompleted should have been called with 'sync', 'check-stale-wallets'
+    expect(mocks.queueInstance.onJobCompleted).toHaveBeenCalledWith(
+      'sync',
+      'check-stale-wallets',
+      expect.any(Function)
+    );
+
+    // Get the registered callback
+    const callback = mocks.queueInstance.onJobCompleted.mock.calls.find(
+      (call: any) => call[0] === 'sync' && call[1] === 'check-stale-wallets'
+    )?.[2];
+    expect(callback).toBeDefined();
+
+    // Simulate stale wallet check completing with results
+    await callback({ staleWalletIds: ['w1', 'w2'], queued: 2 });
+
+    expect(mocks.queueInstance.addBulkJobs).toHaveBeenCalledWith(
+      'sync',
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'sync-wallet',
+          data: { walletId: 'w1', reason: 'stale' },
+        }),
+        expect.objectContaining({
+          name: 'sync-wallet',
+          data: { walletId: 'w2', reason: 'stale' },
+        }),
+      ])
+    );
+  });
+
+  it('setupStaleWalletHandler skips queueing when no stale wallets found', async () => {
+    vi.spyOn(process, 'on').mockImplementation(((event: string, handler: (...args: any[]) => any) => {
+      void event;
+      void handler;
+      return process;
+    }) as any);
+    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+
+    const callback = mocks.queueInstance.onJobCompleted.mock.calls.find(
+      (call: any) => call[0] === 'sync' && call[1] === 'check-stale-wallets'
+    )?.[2];
+
+    // Empty result
+    await callback({ staleWalletIds: [], queued: 0 });
+    expect(mocks.queueInstance.addBulkJobs).not.toHaveBeenCalled();
+
+    // Undefined result
+    await callback(undefined);
+    expect(mocks.queueInstance.addBulkJobs).not.toHaveBeenCalled();
+  });
+
   it('covers timer, queue-error handlers, process handlers, and graceful shutdown branches', async () => {
     const handlers: Record<string, Array<(...args: any[]) => any>> = {};
     let intervalCallback: (() => Promise<void> | void) | undefined;
@@ -402,6 +474,7 @@ describe('worker entrypoint', () => {
         subscribedAddresses: 2,
         networks: { testnet: { connected: true } },
       },
+      jobCompletions: {},
     });
     mocks.queueInstance.getHealth.mockResolvedValueOnce(undefined);
     mocks.electrumInstance.getHealthMetrics.mockReturnValueOnce(undefined);
@@ -411,6 +484,7 @@ describe('worker entrypoint', () => {
         subscribedAddresses: 0,
         networks: {},
       },
+      jobCompletions: {},
     });
 
     await intervalCallback?.();
@@ -495,5 +569,75 @@ describe('worker entrypoint', () => {
       expect.objectContaining({ error: expect.any(Error) })
     );
     expect(processExitSpy).toHaveBeenCalledWith(0);
+  });
+
+  it('queues a startup catch-up check-stale-wallets job with 30s delay', async () => {
+    vi.spyOn(process, 'on').mockImplementation(((event: string, handler: (...args: any[]) => any) => {
+      void event;
+      void handler;
+      return process;
+    }) as any);
+    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+
+    expect(mocks.queueInstance.addJob).toHaveBeenCalledWith(
+      'sync',
+      'check-stale-wallets',
+      {},
+      expect.objectContaining({
+        delay: 30_000,
+        jobId: expect.stringMatching(/^startup-catch-up:\d+$/),
+      })
+    );
+  });
+
+  it('reports jobQueue unhealthy when check-stale-wallets is stale past grace period', async () => {
+    vi.spyOn(process, 'on').mockImplementation(((event: string, handler: (...args: any[]) => any) => {
+      void event;
+      void handler;
+      return process;
+    }) as any);
+    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
+
+    // Force Date.now to simulate time passage past the grace period
+    const realDateNow = Date.now;
+    const startTime = realDateNow();
+    let mockNow = startTime;
+    vi.spyOn(Date, 'now').mockImplementation(() => mockNow);
+
+    await import('../../../src/worker.ts');
+    await vi.dynamicImportSettled();
+
+    const healthProvider = mocks.getHealthProvider();
+    expect(healthProvider).toBeDefined();
+
+    // During startup grace period — should still be healthy
+    await expect(healthProvider?.getHealth()).resolves.toEqual({
+      redis: true,
+      electrum: true,
+      jobQueue: true,
+    });
+
+    // Advance past grace period (syncIntervalMs=300000 + 30000 = 330000)
+    // and set last completion to a stale time (>2x interval = 600000ms ago)
+    mockNow = startTime + 700_000; // past grace period, and stale
+    mocks.queueInstance.getJobCompletionTimes.mockReturnValue({
+      'sync:check-stale-wallets': startTime + 10_000, // completed early, now 690s ago > 600s threshold
+    });
+
+    const health = await healthProvider?.getHealth();
+    expect(health).toEqual({
+      redis: true,
+      electrum: true,
+      jobQueue: false,
+    });
+    expect(mocks.logger.warn).toHaveBeenCalledWith(
+      'check-stale-wallets job is stale',
+      expect.objectContaining({ threshold: expect.any(String) })
+    );
+
+    Date.now = realDateNow;
   });
 });

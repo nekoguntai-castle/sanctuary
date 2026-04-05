@@ -2,10 +2,13 @@
  * Config Collector
  *
  * Collects application configuration with sensitive values redacted.
+ * Feature flags are overlaid from the database to reflect runtime state,
+ * not just the static environment defaults.
  */
 
 import { getConfig } from '../../../config';
 import { redactDeep } from '../../../utils/redact';
+import { featureFlagService } from '../../../services/featureFlagService';
 import { registerCollector } from './registry';
 
 registerCollector('config', async () => {
@@ -18,6 +21,27 @@ registerCollector('config', async () => {
   }
   if (redacted.redis && typeof redacted.redis === 'object') {
     (redacted.redis as Record<string, unknown>).url = '[REDACTED]';
+  }
+
+  // Overlay runtime feature flags from database over static config defaults
+  // so the support file reflects what the UI actually shows
+  try {
+    const runtimeFlags = await featureFlagService.getAllFlags();
+    if (runtimeFlags?.length && redacted.features && typeof redacted.features === 'object') {
+      const features = redacted.features as Record<string, unknown>;
+      for (const flag of runtimeFlags) {
+        if (flag.key.startsWith('experimental.')) {
+          const expKey = flag.key.replace('experimental.', '');
+          if (features.experimental && typeof features.experimental === 'object') {
+            (features.experimental as Record<string, unknown>)[expKey] = flag.enabled;
+          }
+        } else {
+          features[flag.key] = flag.enabled;
+        }
+      }
+    }
+  } catch {
+    // If feature flag service is not available, static config is the best we have
   }
 
   return redacted;

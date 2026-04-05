@@ -27,6 +27,7 @@ const log = createLogger('WORKER:QUEUE');
 export class WorkerJobQueue {
   private queues: Map<string, QueueInstance> = new Map();
   private handlers: Map<string, RegisteredHandler> = new Map();
+  private jobCompletionTimes: Map<string, number> = new Map();
   private config: WorkerJobQueueConfig;
   private connection: ConnectionOptions | null = null;
   private initialized = false;
@@ -108,7 +109,7 @@ export class WorkerJobQueue {
     });
 
     // Set up event handlers
-    setupWorkerEventHandlers(queueName, worker);
+    setupWorkerEventHandlers(queueName, worker, this.jobCompletionTimes);
 
     this.queues.set(queueName, { queue, worker, events });
     log.debug(`Created queue: ${queueName}`);
@@ -358,10 +359,48 @@ export class WorkerJobQueue {
   }
 
   /**
+   * Register a callback for when a specific job completes on a queue.
+   * Uses the BullMQ Worker 'completed' event.
+   */
+  onJobCompleted(
+    queueName: string,
+    jobName: string,
+    callback: (returnvalue: unknown) => void | Promise<void>
+  ): void {
+    const instance = this.queues.get(queueName);
+    if (!instance) {
+      log.warn(`Queue not found for onJobCompleted: ${queueName}`);
+      return;
+    }
+
+    instance.worker.on('completed', (job, returnvalue) => {
+      if (job.name !== jobName) return;
+
+      try {
+        const result = callback(returnvalue);
+        if (result && typeof (result as Promise<void>).catch === 'function') {
+          (result as Promise<void>).catch((err) => {
+            log.error(`onJobCompleted callback error for ${queueName}:${jobName}`, { error: String(err) });
+          });
+        }
+      } catch (err) {
+        log.error(`onJobCompleted callback error for ${queueName}:${jobName}`, { error: String(err) });
+      }
+    });
+  }
+
+  /**
    * Get registered job names
    */
   getRegisteredJobs(): string[] {
     return Array.from(this.handlers.keys());
+  }
+
+  /**
+   * Get the last completion timestamp for each job type
+   */
+  getJobCompletionTimes(): Record<string, number> {
+    return Object.fromEntries(this.jobCompletionTimes);
   }
 
   /**

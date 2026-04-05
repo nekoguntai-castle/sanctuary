@@ -26,3 +26,9 @@ export {
   type DistributedLock,
   type LockOptions,
 } from './distributedLock';
+
+export {
+  queueTransactionNotification,
+  shutdownNotificationDispatcher,
+  type TransactionNotificationPayload,
+} from './notificationDispatcher';

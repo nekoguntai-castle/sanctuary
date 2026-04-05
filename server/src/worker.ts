@@ -140,14 +140,37 @@ async function startWorker(): Promise<void> {
 
   // Start health server
   const healthPort = parseInt(process.env.WORKER_HEALTH_PORT || '3002', 10);
+  const workerStartedAt = Date.now();
   healthServer = startHealthServer({
     port: healthPort,
     healthProvider: {
-      getHealth: async () => ({
-        redis: isRedisConnected(),
-        electrum: electrumManager?.isConnected() ?? false,
-        jobQueue: jobQueue?.isHealthy() ?? false,
-      }),
+      getHealth: async () => {
+        const syncIntervalMs = config.sync.intervalMs;
+        const staleThresholdMs = syncIntervalMs * 2;
+        const startupGraceMs = syncIntervalMs + 30_000; // Allow for startup delay + first run
+
+        let jobQueueHealthy = jobQueue?.isHealthy() ?? false;
+
+        // After the startup grace period, check that check-stale-wallets
+        // has completed within 2x its expected interval
+        if (jobQueueHealthy && Date.now() - workerStartedAt > startupGraceMs) {
+          const completions = jobQueue?.getJobCompletionTimes() ?? {};
+          const lastStaleCheck = completions['sync:check-stale-wallets'];
+          if (lastStaleCheck !== undefined && Date.now() - lastStaleCheck > staleThresholdMs) {
+            log.warn('check-stale-wallets job is stale', {
+              lastCompletedAgo: `${Math.round((Date.now() - lastStaleCheck) / 1000)}s`,
+              threshold: `${Math.round(staleThresholdMs / 1000)}s`,
+            });
+            jobQueueHealthy = false;
+          }
+        }
+
+        return {
+          redis: isRedisConnected(),
+          electrum: electrumManager?.isConnected() ?? false,
+          jobQueue: jobQueueHealthy,
+        };
+      },
       getMetrics: async () => {
         const queueHealth = await jobQueue?.getHealth();
         const electrumMetrics = electrumManager?.getHealthMetrics();
@@ -158,6 +181,7 @@ async function startWorker(): Promise<void> {
             subscribedAddresses: electrumMetrics?.totalSubscribedAddresses ?? 0,
             networks: electrumMetrics?.networks ?? {},
           },
+          jobCompletions: jobQueue?.getJobCompletionTimes() ?? {},
         };
       },
     },
@@ -169,6 +193,13 @@ async function startWorker(): Promise<void> {
   // Start periodic reconciliation of subscriptions
   // This cleans up addresses from deleted wallets and subscribes to new ones
   startReconciliationTimer();
+
+  // Queue an immediate stale-wallet check to catch transactions that arrived
+  // during the startup window before Electrum subscriptions were active
+  await jobQueue.addJob('sync', 'check-stale-wallets', {}, {
+    delay: 30_000,
+    jobId: `startup-catch-up:${Date.now()}`,
+  });
 
   log.info('Sanctuary Background Worker started successfully', {
     healthPort,
@@ -442,18 +473,31 @@ async function removeIntelligenceJobs(): Promise<void> {
 }
 
 /**
- * Set up handler for stale wallet check results
+ * Set up handler for stale wallet check results.
+ *
+ * Listens for completed `check-stale-wallets` jobs and queues individual
+ * `sync-wallet` jobs for each stale wallet returned.
  */
 function setupStaleWalletHandler(): void {
-  // The check-stale-wallets job returns wallet IDs, we need to queue sync jobs for them
-  // This is handled by listening for job completion
+  if (!jobQueue) return;
 
-  // For now, we'll rely on the job handler to return the list
-  // and the next iteration will pick them up
-  // A more sophisticated approach would use BullMQ's job events
+  jobQueue.onJobCompleted('sync', 'check-stale-wallets', async (returnvalue) => {
+    if (isShuttingDown) return;
 
-  // Note: The actual queueing of stale wallets is done inline in the job handler
-  // by calling addBulkJobs when the check-stale-wallets job completes
+    const result = returnvalue as { staleWalletIds?: string[]; queued?: number } | undefined;
+    if (!result?.staleWalletIds?.length) return;
+
+    log.info(`Queueing sync for ${result.staleWalletIds.length} stale wallets`);
+
+    await jobQueue!.addBulkJobs('sync', result.staleWalletIds.map(walletId => ({
+      name: 'sync-wallet',
+      data: { walletId, reason: 'stale' },
+      options: {
+        priority: 3, // Lower priority than real-time address activity
+        jobId: `sync:stale:${walletId}:${Date.now()}`,
+      },
+    })));
+  });
 }
 
 // =============================================================================
