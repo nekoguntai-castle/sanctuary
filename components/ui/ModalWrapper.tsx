@@ -26,6 +26,8 @@ interface ModalWrapperProps {
   className?: string;
   /** Show border-b under the header (use for modals with distinct content sections) */
   headerBorder?: boolean;
+  /** Entry animation class (default: animate-modal-enter) */
+  animation?: string;
 }
 
 export function ModalWrapper({
@@ -35,6 +37,7 @@ export function ModalWrapper({
   maxWidth = 'md',
   className = '',
   headerBorder = false,
+  animation = 'animate-modal-enter',
 }: ModalWrapperProps) {
   return (
     <div
@@ -42,7 +45,7 @@ export function ModalWrapper({
       onClick={onClose}
     >
       <div
-        className={`surface-elevated rounded-xl w-full ${MAX_WIDTH_CLASSES[maxWidth]} max-h-[90vh] overflow-y-auto shadow-xl border border-sanctuary-200 dark:border-sanctuary-700 animate-modal-enter ${className}`}
+        className={`surface-elevated rounded-xl w-full ${MAX_WIDTH_CLASSES[maxWidth]} max-h-[90vh] overflow-y-auto shadow-xl border border-sanctuary-200 dark:border-sanctuary-700 ${animation} ${className}`}
         onClick={(e) => e.stopPropagation()}
       >
         <div

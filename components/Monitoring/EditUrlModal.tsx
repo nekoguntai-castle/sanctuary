@@ -31,7 +31,7 @@ export const EditUrlModal: React.FC<EditUrlModalProps> = ({
   if (!service) return null;
 
   return (
-    <ModalWrapper title={`Configure ${service.name} URL`} onClose={onClose}>
+    <ModalWrapper title={`Configure ${service.name} URL`} onClose={onClose} animation="animate-fade-in">
       <p className="text-sm text-sanctuary-500 mb-4">
         Use a custom URL for reverse proxy setups. Leave empty to use the default port-based URL.
       </p>

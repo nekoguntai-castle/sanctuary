@@ -88,4 +88,24 @@ describe('ModalWrapper', () => {
     const modal = container.querySelector('.custom-class');
     expect(modal).toBeInTheDocument();
   });
+
+  it('uses default animate-modal-enter animation', () => {
+    const { container } = render(
+      <ModalWrapper title="Animation Test" onClose={vi.fn()}>
+        <p>Content</p>
+      </ModalWrapper>
+    );
+    const modal = container.querySelector('.animate-modal-enter');
+    expect(modal).toBeInTheDocument();
+  });
+
+  it('applies custom animation class', () => {
+    const { container } = render(
+      <ModalWrapper title="Custom Anim" onClose={vi.fn()} animation="animate-fade-in">
+        <p>Content</p>
+      </ModalWrapper>
+    );
+    expect(container.querySelector('.animate-fade-in')).toBeInTheDocument();
+    expect(container.querySelector('.animate-modal-enter')).not.toBeInTheDocument();
+  });
 });
