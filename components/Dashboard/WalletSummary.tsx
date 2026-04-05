@@ -89,9 +89,10 @@ export const WalletSummary: React.FC<WalletSummaryProps> = ({
                    key={w.id}
                    className="relative transition-all duration-700 ease-out"
                    style={{
-                     /* v8 ignore next 2 -- animation initial state; timer fires before assertions */
+                     /* v8 ignore start -- animation initial state; timer fires before jsdom assertions */
                      width: barAnimated ? `${percent}%` : '0%',
                      minWidth: barAnimated ? '4px' : '0px',
+                     /* v8 ignore stop */
                      transitionDelay: `${idx * 80}ms`,
                    }}
                    onMouseEnter={() => setHoveredWalletId(w.id)}
