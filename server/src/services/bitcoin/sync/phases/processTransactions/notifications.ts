@@ -32,17 +32,16 @@ export async function sendNotifications(
         amount: first.amount.toString(),
       });
 
-      if (useQueue) {
-        // Queue the remaining transactions
-        for (let i = 1; i < newTransactions.length; i++) {
-          const tx = newTransactions[i];
-          await queueTransactionNotification({
+      if (useQueue && newTransactions.length > 1) {
+        // Queue the remaining transactions in parallel
+        await Promise.all(newTransactions.slice(1).map(tx =>
+          queueTransactionNotification({
             walletId,
             txid: tx.txid,
             type: tx.type as 'received' | 'sent' | 'consolidation',
             amount: tx.amount.toString(),
-          });
-        }
+          })
+        ));
       }
     }
 

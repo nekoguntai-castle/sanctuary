@@ -10,6 +10,15 @@ vi.mock('../../../../src/config', () => ({
   getConfig: (...args: unknown[]) => mockGetConfig(...args),
 }));
 
+vi.mock('../../../../src/utils/logger', () => ({
+  createLogger: () => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    debug: vi.fn(),
+    error: vi.fn(),
+  }),
+}));
+
 vi.mock('../../../../src/services/featureFlagService', () => ({
   featureFlagService: {
     getAllFlags: (...args: unknown[]) => mockGetAllFlags(...args),

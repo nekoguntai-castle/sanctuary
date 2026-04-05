@@ -8,8 +8,11 @@
 
 import { getConfig } from '../../../config';
 import { redactDeep } from '../../../utils/redact';
+import { createLogger } from '../../../utils/logger';
 import { featureFlagService } from '../../../services/featureFlagService';
 import { registerCollector } from './registry';
+
+const log = createLogger('SUPPORT:CONFIG');
 
 registerCollector('config', async () => {
   const config = getConfig();
@@ -40,8 +43,8 @@ registerCollector('config', async () => {
         }
       }
     }
-  } catch {
-    // If feature flag service is not available, static config is the best we have
+  } catch (error) {
+    log.debug('Feature flag service unavailable, using static config defaults', { error: String(error) });
   }
 
   return redacted;

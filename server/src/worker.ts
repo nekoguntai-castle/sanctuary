@@ -24,7 +24,7 @@ import { getConfig } from './config';
 import { createLogger } from './utils/logger';
 import { getErrorMessage } from './utils/errors';
 import { connectWithRetry, disconnect } from './models/prisma';
-import { initializeRedis, shutdownRedis, isRedisConnected, shutdownDistributedLock, getDistributedEventBus } from './infrastructure';
+import { initializeRedis, shutdownRedis, isRedisConnected, shutdownDistributedLock, getDistributedEventBus, shutdownNotificationDispatcher } from './infrastructure';
 import { WorkerJobQueue } from './worker/workerJobQueue';
 import { ElectrumSubscriptionManager, type BitcoinNetwork } from './worker/electrumManager';
 import { startHealthServer, type HealthServerHandle } from './worker/healthServer';
@@ -541,6 +541,13 @@ async function shutdown(signal: string): Promise<void> {
     } catch (err) {
       log.error('Error shutting down job queue', { error: err });
     }
+  }
+
+  // Shutdown notification dispatcher queue
+  try {
+    await shutdownNotificationDispatcher();
+  } catch (err) {
+    log.error('Error shutting down notification dispatcher', { error: err });
   }
 
   // Shutdown distributed locking

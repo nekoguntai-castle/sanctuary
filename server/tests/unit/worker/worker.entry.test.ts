@@ -87,6 +87,7 @@ const mocks = vi.hoisted(() => {
     isRedisConnected: vi.fn(),
     shutdownDistributedLock: vi.fn(),
     getDistributedEventBus: vi.fn(),
+    shutdownNotificationDispatcher: vi.fn(),
     getErrorMessage: vi.fn((error: unknown) =>
       error instanceof Error ? error.message : String(error)
     ),
@@ -130,6 +131,7 @@ vi.mock('../../../src/infrastructure', () => ({
   isRedisConnected: mocks.isRedisConnected,
   shutdownDistributedLock: mocks.shutdownDistributedLock,
   getDistributedEventBus: () => mocks.mockEventBus,
+  shutdownNotificationDispatcher: mocks.shutdownNotificationDispatcher,
 }));
 
 vi.mock('../../../src/services/featureFlagService', () => ({
@@ -164,6 +166,7 @@ describe('worker entrypoint', () => {
     mocks.shutdownRedis.mockResolvedValue(undefined);
     mocks.isRedisConnected.mockReturnValue(true);
     mocks.shutdownDistributedLock.mockReturnValue(undefined);
+    mocks.shutdownNotificationDispatcher.mockResolvedValue(undefined);
 
     mocks.queueInstance.initialize.mockResolvedValue(undefined);
     mocks.queueInstance.getRegisteredJobs.mockReturnValue(['check-stale-wallets']);

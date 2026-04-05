@@ -438,6 +438,7 @@ export class WorkerJobQueue {
 
     this.queues.clear();
     this.handlers.clear();
+    this.jobCompletionTimes.clear();
     this.initialized = false;
 
     log.info('Worker job queue shutdown complete');
