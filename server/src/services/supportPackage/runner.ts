@@ -7,6 +7,7 @@
 
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
+import { withTimeout } from '../../utils/async';
 import { generateSalt, createAnonymizer } from './anonymizer';
 import { getCollectors } from './collectors';
 import type { SupportPackage, CollectorContext, GenerateOptions } from './types';
@@ -42,12 +43,11 @@ export async function generateSupportPackage(options: GenerateOptions = {}): Pro
     entries.map(async ([name, collector]) => {
       const collectorStart = Date.now();
       try {
-        const data = await Promise.race([
+        const data = await withTimeout(
           collector(context),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error(`Collector '${name}' timed out after ${COLLECTOR_TIMEOUT_MS}ms`)), COLLECTOR_TIMEOUT_MS)
-          ),
-        ]);
+          COLLECTOR_TIMEOUT_MS,
+          `Collector '${name}' timed out after ${COLLECTOR_TIMEOUT_MS}ms`
+        );
         return { name, data, durationMs: Date.now() - collectorStart };
       } catch (error) {
         log.warn(`Collector '${name}' failed`, { error: getErrorMessage(error) });

@@ -9,10 +9,11 @@ import { checkElectrum, checkWebSocket, checkSync, checkRedis, checkJobQueue } f
 import { registerCollector } from './registry';
 
 registerCollector('health', async () => {
-  const [database, redis, jobQueue] = await Promise.all([
+  const [database, redis, jobQueue, disk] = await Promise.all([
     checkDatabase(),
     checkRedis(),
     checkJobQueue(),
+    checkDiskSpace(),
   ]);
 
   return {
@@ -23,6 +24,6 @@ registerCollector('health', async () => {
     sync: checkSync(),
     jobQueue,
     memory: checkMemory(),
-    disk: await checkDiskSpace(),
+    disk,
   };
 });

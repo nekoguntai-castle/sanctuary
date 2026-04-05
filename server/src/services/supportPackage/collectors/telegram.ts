@@ -11,24 +11,12 @@ import { circuitBreakerRegistry } from '../../circuitBreaker';
 import { deadLetterQueue } from '../../deadLetterQueue';
 import { registerCollector } from './registry';
 import type { CollectorContext } from '../types';
-
-interface TelegramConfig {
-  enabled?: boolean;
-  botToken?: string;
-  chatId?: string;
-  wallets?: Record<string, {
-    enabled?: boolean;
-    notifyReceived?: boolean;
-    notifySent?: boolean;
-    notifyConsolidation?: boolean;
-    notifyDraft?: boolean;
-  }>;
-}
+import type { TelegramConfig } from '../../telegram/types';
 
 registerCollector('telegram', async (context: CollectorContext) => {
   const commonIssues: string[] = [];
 
-  // 1. Get all users with their preferences
+  // 1. Get all users with their preferences and wallet relationships
   const users = await prisma.user.findMany({
     select: {
       id: true,
@@ -46,45 +34,52 @@ registerCollector('telegram', async (context: CollectorContext) => {
     },
   });
 
-  // Build set of wallets each user can access
-  function getUserAccessibleWallets(user: typeof users[0]): Set<string> {
-    const walletIds = new Set<string>();
+  // 2. Single pass: build wallet-user associations AND collect all wallet IDs
+  const walletUserCounts = new Map<string, { direct: Set<string>; group: Set<string> }>();
+
+  function ensureWallet(walletId: string): { direct: Set<string>; group: Set<string> } {
+    let entry = walletUserCounts.get(walletId);
+    if (!entry) {
+      entry = { direct: new Set(), group: new Set() };
+      walletUserCounts.set(walletId, entry);
+    }
+    return entry;
+  }
+
+  for (const user of users) {
     for (const wu of user.wallets) {
-      walletIds.add(wu.walletId);
+      ensureWallet(wu.walletId).direct.add(user.id);
     }
     for (const gm of user.groupMemberships) {
       for (const w of gm.group.wallets) {
-        walletIds.add(w.id);
+        ensureWallet(w.id).group.add(user.id);
       }
     }
-    return walletIds;
   }
 
-  // 2. Get wallet types for context
-  const allWalletIds = new Set<string>();
-  for (const user of users) {
-    for (const wu of user.wallets) allWalletIds.add(wu.walletId);
-    for (const gm of user.groupMemberships) {
-      for (const w of gm.group.wallets) allWalletIds.add(w.id);
-    }
-  }
-
+  // 3. Get wallet types for context (uses allWalletIds from walletUserCounts)
   const wallets = await prisma.wallet.findMany({
-    where: { id: { in: [...allWalletIds] } },
+    where: { id: { in: [...walletUserCounts.keys()] } },
     select: { id: true, type: true },
   });
   const walletTypeMap = new Map(wallets.map(w => [w.id, w.type]));
 
-  // 3. Analyze each user
+  // 4. Analyze each user
   const userResults = users.map(user => {
     const anonUserId = context.anonymize('user', user.id);
     const prefs = user.preferences as Record<string, unknown> | null;
-    const telegram = prefs?.telegram as TelegramConfig | undefined;
+    const telegram = prefs?.telegram as Partial<TelegramConfig> | undefined;
 
     const globalEnabled = telegram?.enabled ?? false;
     const hasBotToken = Boolean(telegram?.botToken);
     const hasChatId = Boolean(telegram?.chatId);
-    const accessibleWallets = getUserAccessibleWallets(user);
+
+    // Build accessible wallet set for this user from walletUserCounts
+    const accessibleWallets = new Set<string>();
+    for (const wu of user.wallets) accessibleWallets.add(wu.walletId);
+    for (const gm of user.groupMemberships) {
+      for (const w of gm.group.wallets) accessibleWallets.add(w.id);
+    }
 
     // Detect: global enabled but missing credentials
     if (globalEnabled && !hasBotToken) {
@@ -132,25 +127,7 @@ registerCollector('telegram', async (context: CollectorContext) => {
     };
   });
 
-  // 4. Build wallet-user association info
-  const walletUserCounts = new Map<string, { direct: Set<string>; group: Set<string> }>();
-  for (const user of users) {
-    for (const wu of user.wallets) {
-      if (!walletUserCounts.has(wu.walletId)) {
-        walletUserCounts.set(wu.walletId, { direct: new Set(), group: new Set() });
-      }
-      walletUserCounts.get(wu.walletId)!.direct.add(user.id);
-    }
-    for (const gm of user.groupMemberships) {
-      for (const w of gm.group.wallets) {
-        if (!walletUserCounts.has(w.id)) {
-          walletUserCounts.set(w.id, { direct: new Set(), group: new Set() });
-        }
-        walletUserCounts.get(w.id)!.group.add(user.id);
-      }
-    }
-  }
-
+  // 5. Build wallet-user associations from the map built in step 2
   const walletUserAssociations = [...walletUserCounts.entries()].map(([walletId, counts]) => ({
     walletId: context.anonymize('wallet', walletId),
     userCount: new Set([...counts.direct, ...counts.group]).size,
@@ -158,7 +135,7 @@ registerCollector('telegram', async (context: CollectorContext) => {
     hasGroupAccess: counts.group.size > 0,
   }));
 
-  // 5. Circuit breaker status for telegram
+  // 6. Circuit breaker status for telegram
   const allBreakers = circuitBreakerRegistry.getAllHealth();
   const telegramBreaker = allBreakers.find(b => b.name.toLowerCase().includes('telegram'));
 
@@ -166,7 +143,7 @@ registerCollector('telegram', async (context: CollectorContext) => {
     commonIssues.push('Telegram circuit breaker is OPEN — all notifications are being blocked');
   }
 
-  // 6. DLQ telegram entries
+  // 7. DLQ telegram entries
   const telegramDlqEntries = deadLetterQueue.getByCategory('telegram');
   if (telegramDlqEntries.length > 0) {
     commonIssues.push(`${telegramDlqEntries.length} telegram entries in dead letter queue`);

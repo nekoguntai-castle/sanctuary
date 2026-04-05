@@ -19,10 +19,10 @@ registerCollector('deadLetterQueue', async (context: CollectorContext) => {
 
     // Anonymize known ID fields in payload
     if (typeof payload.walletId === 'string') {
-      payload.walletId = context.anonymize('wallet', payload.walletId as string);
+      payload.walletId = context.anonymize('wallet', payload.walletId);
     }
     if (typeof payload.userId === 'string') {
-      payload.userId = context.anonymize('user', payload.userId as string);
+      payload.userId = context.anonymize('user', payload.userId);
     }
 
     return {
