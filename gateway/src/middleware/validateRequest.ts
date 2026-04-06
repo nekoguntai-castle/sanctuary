@@ -59,7 +59,7 @@ export const pushRegisterSchema = z.object({
     .max(500, 'Device token too long'),
   platform: z
     .enum(['ios', 'android'], {
-      errorMap: () => ({ message: 'Platform must be ios or android' }),
+      message: 'Platform must be ios or android',
     }),
   deviceName: z
     .string()
@@ -74,7 +74,7 @@ export const pushRegisterSchema = z.object({
 export const labelSchema = z.object({
   type: z
     .enum(['address', 'transaction', 'utxo'], {
-      errorMap: () => ({ message: 'Invalid label type' }),
+      message: 'Invalid label type',
     }),
   ref: z
     .string()
