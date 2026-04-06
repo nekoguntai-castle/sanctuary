@@ -14,6 +14,7 @@ import type { VaultPolicy } from '@prisma/client';
 import { policyRepository } from '../../repositories/policyRepository';
 import { walletRepository } from '../../repositories/walletRepository';
 import { createLogger } from '../../utils/logger';
+import { getErrorMessage } from '../../utils/errors';
 import type {
   PolicyEvaluationInput,
   PolicyEvaluationResult,
@@ -164,7 +165,7 @@ export async function evaluatePolicies(
       log.error('Policy evaluation error', {
         policyId: policy.id,
         policyType: policy.type,
-        error: error instanceof Error ? error.message : String(error),
+        error: getErrorMessage(error),
       });
 
       // Fail-CLOSED for enforce-mode policies: if we can't evaluate, block.
@@ -270,7 +271,7 @@ export async function recordUsage(
     } catch (error) {
       log.error('Failed to record policy usage', {
         policyId: policy.id,
-        error: error instanceof Error ? error.message : String(error),
+        error: getErrorMessage(error),
       });
     }
   }

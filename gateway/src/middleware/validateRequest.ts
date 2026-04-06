@@ -146,13 +146,13 @@ export function validateRequest(req: Request, res: Response, next: NextFunction)
     if (error instanceof z.ZodError) {
       log.debug('Validation failed', {
         path: req.path,
-        errors: error.errors,
+        errors: error.issues,
       });
 
       res.status(400).json({
         error: 'Bad Request',
         message: 'Validation failed',
-        details: error.errors.map((e) => ({
+        details: error.issues.map((e) => ({
           field: e.path.join('.'),
           message: e.message,
         })),
@@ -182,7 +182,7 @@ export function validate(schema: z.ZodSchema) {
         res.status(400).json({
           error: 'Bad Request',
           message: 'Validation failed',
-          details: error.errors.map((e) => ({
+          details: error.issues.map((e) => ({
             field: e.path.join('.'),
             message: e.message,
           })),

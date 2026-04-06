@@ -7,6 +7,7 @@
 
 import { db as prisma } from '../../repositories/db';
 import { createLogger } from '../../utils/logger';
+import { getErrorMessage } from '../../utils/errors';
 import { migrationService } from '../migrationService';
 import { isEncrypted, decrypt } from '../../utils/encryption';
 import { processRecord, camelToSnakeCase } from './serialization';
@@ -70,7 +71,7 @@ export async function restoreFromBackup(backup: SanctuaryBackup): Promise<Restor
           await tx[table].deleteMany({});
           log.debug(`[BACKUP] Deleted all records from ${table}`);
         } catch (error) {
-          log.warn(`[BACKUP] Failed to delete from ${table}`, { error: String(error) });
+          log.warn(`[BACKUP] Failed to delete from ${table}`, { error: getErrorMessage(error) });
         }
       }
 
@@ -115,7 +116,7 @@ export async function restoreFromBackup(backup: SanctuaryBackup): Promise<Restor
           recordsRestored += records.length;
           log.debug(`[BACKUP] Restored ${records.length} records to ${table}`);
         } catch (error) {
-          const errorMsg = `Failed to restore table ${table}: ${String(error)}`;
+          const errorMsg = `Failed to restore table ${table}: ${getErrorMessage(error)}`;
           log.error('[BACKUP] ' + errorMsg);
           throw new Error(errorMsg);
         }
@@ -133,13 +134,13 @@ export async function restoreFromBackup(backup: SanctuaryBackup): Promise<Restor
       warnings,
     };
   } catch (error) {
-    log.error('[BACKUP] Restore failed, transaction rolled back', { error: String(error) });
+    log.error('[BACKUP] Restore failed, transaction rolled back', { error: getErrorMessage(error) });
     return {
       success: false,
       tablesRestored: 0,
       recordsRestored: 0,
       warnings,
-      error: String(error),
+      error: getErrorMessage(error),
     };
   }
 }

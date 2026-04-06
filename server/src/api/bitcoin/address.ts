@@ -104,7 +104,7 @@ router.post('/address-lookup', authenticate, asyncHandler(async (req: Request, r
     throw new ValidationError('Maximum 100 addresses per request');
   }
 
-  const userId = (req as any).user?.id;
+  const userId = req.user!.userId;
 
   // Find addresses that belong to wallets the user has access to
   const addressRecords = await prisma.address.findMany({

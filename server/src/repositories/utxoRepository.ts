@@ -127,6 +127,37 @@ export async function countByWalletId(
   return prisma.uTXO.count({ where });
 }
 
+/**
+ * Count UTXOs by eligibility categories for payjoin
+ * Returns counts for: eligible, total, frozen, unconfirmed, locked
+ */
+export async function countEligibility(walletId: string): Promise<{
+  eligible: number;
+  total: number;
+  frozen: number;
+  unconfirmed: number;
+  locked: number;
+}> {
+  const [eligible, total, frozen, unconfirmed, locked] = await Promise.all([
+    prisma.uTXO.count({
+      where: { walletId, spent: false, frozen: false, confirmations: { gt: 0 }, draftLock: null },
+    }),
+    prisma.uTXO.count({
+      where: { walletId, spent: false },
+    }),
+    prisma.uTXO.count({
+      where: { walletId, spent: false, frozen: true },
+    }),
+    prisma.uTXO.count({
+      where: { walletId, spent: false, confirmations: 0 },
+    }),
+    prisma.uTXO.count({
+      where: { walletId, spent: false, draftLock: { isNot: null } },
+    }),
+  ]);
+  return { eligible, total, frozen, unconfirmed, locked };
+}
+
 // Export as namespace
 export const utxoRepository = {
   getUnspentBalance,
@@ -137,6 +168,7 @@ export const utxoRepository = {
   deleteByWalletId,
   deleteByWalletIds,
   countByWalletId,
+  countEligibility,
 };
 
 export default utxoRepository;

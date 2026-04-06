@@ -12,6 +12,7 @@
 
 import { db as prisma } from '../../../../../repositories/db';
 import { createLogger } from '../../../../../utils/logger';
+import { getErrorMessage } from '../../../../../utils/errors';
 import { walletLog } from '../../../../../websocket/notifications';
 import { recalculateWalletBalances } from '../../../utils/balanceCalculation';
 import type { SyncContext, TransactionCreateData } from '../../types';
@@ -66,13 +67,13 @@ export async function processTransactionsPhase(ctx: SyncContext): Promise<SyncCo
         txDetailsCache.set(txid, details);
       }
     } catch (error) {
-      log.warn(`[SYNC] Batch tx fetch failed, falling back to individual requests`, { error: String(error) });
+      log.warn(`[SYNC] Batch tx fetch failed, falling back to individual requests`, { error: getErrorMessage(error) });
       for (const txid of batchTxids) {
         try {
           const details = await client.getTransaction(txid, true);
           txDetailsCache.set(txid, details);
         } catch (e) {
-          log.warn(`[SYNC] Failed to get tx ${txid}`, { error: String(e) });
+          log.warn(`[SYNC] Failed to get tx ${txid}`, { error: getErrorMessage(e) });
         }
       }
     }
@@ -165,7 +166,7 @@ async function prefetchPreviousTransactions(
         txDetailsCache.set(txid, details);
       }
     } catch (error) {
-      log.warn(`[SYNC] Batch prev tx fetch failed, will fall back to individual requests`, { error: String(error) });
+      log.warn(`[SYNC] Batch prev tx fetch failed, will fall back to individual requests`, { error: getErrorMessage(error) });
     }
   }
 }

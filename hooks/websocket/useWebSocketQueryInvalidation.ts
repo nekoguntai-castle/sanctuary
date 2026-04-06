@@ -78,9 +78,9 @@ export const useWebSocketQueryInvalidation = () => {
       if (!walletId) return;
 
       // Directly update wallet list cache
-      queryClient.setQueryData(['wallets', 'list'], (oldData: any[] | undefined) => {
+      queryClient.setQueryData(['wallets', 'list'], (oldData: Record<string, unknown>[] | undefined) => {
         if (!oldData) return oldData;
-        return oldData.map((wallet: any) =>
+        return oldData.map((wallet) =>
           wallet.id === walletId
             ? {
                 ...wallet,
@@ -93,7 +93,7 @@ export const useWebSocketQueryInvalidation = () => {
       });
 
       // Also update individual wallet cache if it exists
-      queryClient.setQueryData(['wallets', 'detail', walletId], (oldData: any | undefined) => {
+      queryClient.setQueryData(['wallets', 'detail', walletId], (oldData: Record<string, unknown> | undefined) => {
         if (!oldData) return oldData;
         return {
           ...oldData,

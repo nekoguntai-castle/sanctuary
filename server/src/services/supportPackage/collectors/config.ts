@@ -9,6 +9,7 @@
 import { getConfig } from '../../../config';
 import { redactDeep } from '../../../utils/redact';
 import { createLogger } from '../../../utils/logger';
+import { getErrorMessage } from '../../../utils/errors';
 import { featureFlagService } from '../../../services/featureFlagService';
 import { registerCollector } from './registry';
 
@@ -44,7 +45,7 @@ registerCollector('config', async () => {
       }
     }
   } catch (error) {
-    log.debug('Feature flag service unavailable, using static config defaults', { error: String(error) });
+    log.debug('Feature flag service unavailable, using static config defaults', { error: getErrorMessage(error) });
   }
 
   return redacted;

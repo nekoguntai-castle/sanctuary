@@ -7,8 +7,8 @@
 
 import { Router, Request, Response } from 'express';
 import { requireWalletAccess } from '../../middleware/walletAccess';
-import { db as prisma } from '../../repositories/db';
 import { createLogger } from '../../utils/logger';
+import { walletRepository } from '../../repositories/walletRepository';
 import { asyncHandler } from '../../errors/errorHandler';
 import { ValidationError, NotFoundError, ForbiddenError } from '../../errors/ApiError';
 import { validateAddress } from '../../services/bitcoin/utils';
@@ -58,9 +58,7 @@ router.post('/wallets/:walletId/transactions/create', requireWalletAccess('edit'
   }
 
   // Fetch wallet data
-  const wallet = await prisma.wallet.findUnique({
-    where: { id: walletId },
-  });
+  const wallet = await walletRepository.findById(walletId);
 
   if (!wallet) {
     throw new NotFoundError('Wallet not found');
@@ -151,9 +149,7 @@ router.post('/wallets/:walletId/transactions/batch', requireWalletAccess('edit')
   }
 
   // Fetch wallet for network validation
-  const wallet = await prisma.wallet.findUnique({
-    where: { id: walletId },
-  });
+  const wallet = await walletRepository.findById(walletId);
 
   if (!wallet) {
     throw new NotFoundError('Wallet not found');

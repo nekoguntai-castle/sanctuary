@@ -10,6 +10,7 @@ import { walletRepository, transactionRepository, addressRepository } from '../.
 import { asyncHandler } from '../../errors/errorHandler';
 import { InvalidInputError, NotFoundError } from '../../errors/ApiError';
 import { exportFormatRegistry, type WalletExportData } from '../../services/export';
+import type { ScriptType, Network } from '../../services/bitcoin/descriptorParser';
 
 const router = Router();
 
@@ -25,19 +26,19 @@ function buildWalletExportData(wallet: NonNullable<Awaited<ReturnType<typeof wal
     id: wallet.id,
     name: wallet.name,
     type: wallet.type === 'multi_sig' ? 'multi_sig' : 'single_sig',
-    scriptType: wallet.scriptType as any,
-    network: wallet.network as any,
+    scriptType: wallet.scriptType as ScriptType,
+    network: wallet.network as Network,
     descriptor: wallet.descriptor || '',
     quorum: wallet.quorum || undefined,
     totalSigners: wallet.totalSigners || undefined,
     devices: wallet.devices.map((wd) => {
       // Find the appropriate account based on wallet type
       // Priority: exact match (purpose + scriptType) > purpose match > legacy fields
-      const accounts = (wd.device as any).accounts || [];
+      const accounts = wd.device.accounts || [];
       const exactMatch = accounts.find(
-        (a: any) => a.purpose === expectedPurpose && a.scriptType === wallet.scriptType
+        (a) => a.purpose === expectedPurpose && a.scriptType === wallet.scriptType
       );
-      const purposeMatch = accounts.find((a: any) => a.purpose === expectedPurpose);
+      const purposeMatch = accounts.find((a) => a.purpose === expectedPurpose);
       const account = exactMatch || purposeMatch;
 
       return {

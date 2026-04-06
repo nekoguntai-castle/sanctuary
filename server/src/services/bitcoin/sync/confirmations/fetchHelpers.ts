@@ -6,6 +6,7 @@
  */
 
 import { createLogger } from '../../../../utils/logger';
+import { getErrorMessage } from '../../../../utils/errors';
 import { getNodeClient } from '../../nodeClient';
 import { walletLog } from '../../../../websocket/notifications';
 import { mapWithConcurrency } from '../../../../utils/async';
@@ -100,7 +101,7 @@ export async function fetchTransactionDetails(
           const details = await client.getTransaction(txid, true);
           return { txid, details };
         } catch (error) {
-          log.warn(`Failed to fetch tx ${txid}`, { error: String(error) });
+          log.warn(`Failed to fetch tx ${txid}`, { error: getErrorMessage(error) });
           return { txid, details: null };
         }
       },
@@ -185,7 +186,7 @@ export async function fetchPreviousTransactions(
             const details = await client.getTransaction(txid, true);
             return { txid, details };
           } catch (error) {
-            log.warn(`Failed to fetch previous tx ${txid}`, { error: String(error) });
+            log.warn(`Failed to fetch previous tx ${txid}`, { error: getErrorMessage(error) });
             return { txid, details: null };
           }
         },

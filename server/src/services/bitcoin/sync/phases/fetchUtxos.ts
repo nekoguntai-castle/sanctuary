@@ -6,6 +6,7 @@
  */
 
 import { createLogger } from '../../../../utils/logger';
+import { getErrorMessage } from '../../../../utils/errors';
 import { walletLog } from '../../../../websocket/notifications';
 import type { SyncContext } from '../types';
 
@@ -46,7 +47,7 @@ export async function fetchUtxosPhase(ctx: SyncContext): Promise<SyncContext> {
         ctx.successfullyFetchedAddresses.add(addr);
       }
     } catch (error) {
-      log.warn(`[SYNC] Batch UTXO fetch failed, falling back to individual requests`, { error: String(error) });
+      log.warn(`[SYNC] Batch UTXO fetch failed, falling back to individual requests`, { error: getErrorMessage(error) });
 
       // Fallback to individual requests
       for (const addr of batchAddresses) {
@@ -55,7 +56,7 @@ export async function fetchUtxosPhase(ctx: SyncContext): Promise<SyncContext> {
           ctx.utxoResults.push({ address: addr, utxos });
           ctx.successfullyFetchedAddresses.add(addr);
         } catch (e) {
-          log.warn(`[SYNC] Failed to get UTXOs for ${addr}`, { error: String(e) });
+          log.warn(`[SYNC] Failed to get UTXOs for ${addr}`, { error: getErrorMessage(e) });
           // Don't add to successfullyFetchedAddresses - we don't know the true state
         }
       }

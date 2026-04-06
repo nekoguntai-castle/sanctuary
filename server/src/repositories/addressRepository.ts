@@ -6,6 +6,7 @@
 
 import prisma from '../models/prisma';
 import type { Address, Prisma } from '@prisma/client';
+import { buildWalletAccessWhere } from './accessControl';
 
 /**
  * Reset used flags for all addresses in a wallet
@@ -115,6 +116,21 @@ export async function findWithLabels(walletId: string) {
   });
 }
 
+/**
+ * Find an address by ID if user has access to its wallet
+ */
+export async function findByIdWithAccess(
+  addressId: string,
+  userId: string
+): Promise<Address | null> {
+  return prisma.address.findFirst({
+    where: {
+      id: addressId,
+      wallet: buildWalletAccessWhere(userId),
+    },
+  });
+}
+
 // Export as namespace
 export const addressRepository = {
   resetUsedFlags,
@@ -124,6 +140,7 @@ export const addressRepository = {
   findNextUnused,
   countByWalletId,
   findWithLabels,
+  findByIdWithAccess,
 };
 
 export default addressRepository;

@@ -12,11 +12,10 @@ const {
   mockInvalidateUserAccessCache: vi.fn(),
 }));
 
-vi.mock('../../../src/repositories/db', async () => {
+vi.mock('../../../src/models/prisma', async () => {
   const { mockPrismaClient: prisma } = await import('../../mocks/prisma');
   return {
     __esModule: true,
-    db: prisma,
     default: prisma,
   };
 });
@@ -272,6 +271,11 @@ describe('Admin Groups Routes', () => {
         purpose: null,
         members: [{ userId: 'u1' }, { userId: 'u2' }],
       } as any)
+      // setMembers internal fetch
+      .mockResolvedValueOnce({
+        id: 'group-1',
+        members: [{ userId: 'u1' }, { userId: 'u2' }],
+      } as any)
       .mockResolvedValueOnce({
         id: 'group-1',
         name: 'Group',
@@ -308,6 +312,11 @@ describe('Admin Groups Routes', () => {
         name: 'Existing Name',
         description: 'old description',
         purpose: 'old purpose',
+        members: [{ userId: 'u1' }],
+      } as any)
+      // setMembers internal fetch
+      .mockResolvedValueOnce({
+        id: 'group-1',
         members: [{ userId: 'u1' }],
       } as any)
       .mockResolvedValueOnce({
@@ -350,6 +359,11 @@ describe('Admin Groups Routes', () => {
         purpose: null,
         members: [{ userId: 'u1' }, { userId: 'u2' }],
       } as any)
+      // setMembers internal fetch
+      .mockResolvedValueOnce({
+        id: 'group-1',
+        members: [{ userId: 'u1' }, { userId: 'u2' }],
+      } as any)
       .mockResolvedValueOnce({
         id: 'group-1',
         name: 'Group',
@@ -379,6 +393,11 @@ describe('Admin Groups Routes', () => {
         name: 'Group',
         description: null,
         purpose: null,
+        members: [{ userId: 'u1' }, { userId: 'u2' }],
+      } as any)
+      // setMembers internal fetch
+      .mockResolvedValueOnce({
+        id: 'group-1',
         members: [{ userId: 'u1' }, { userId: 'u2' }],
       } as any)
       .mockResolvedValueOnce({
@@ -411,6 +430,11 @@ describe('Admin Groups Routes', () => {
         name: 'Group',
         description: null,
         purpose: null,
+        members: [],
+      } as any)
+      // setMembers internal fetch
+      .mockResolvedValueOnce({
+        id: 'group-1',
         members: [],
       } as any)
       .mockResolvedValueOnce({

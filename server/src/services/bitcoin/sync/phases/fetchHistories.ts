@@ -6,6 +6,7 @@
  */
 
 import { createLogger } from '../../../../utils/logger';
+import { getErrorMessage } from '../../../../utils/errors';
 import { walletLog } from '../../../../websocket/notifications';
 import type { SyncContext } from '../types';
 
@@ -46,7 +47,7 @@ export async function fetchHistoriesPhase(ctx: SyncContext): Promise<SyncContext
         ctx.historyResults.set(addr, history);
       }
     } catch (error) {
-      log.warn(`[SYNC] Batch history failed, falling back to individual requests`, { error: String(error) });
+      log.warn(`[SYNC] Batch history failed, falling back to individual requests`, { error: getErrorMessage(error) });
 
       // Fallback to individual requests
       for (const addr of batchAddresses) {
@@ -54,7 +55,7 @@ export async function fetchHistoriesPhase(ctx: SyncContext): Promise<SyncContext
           const history = await client.getAddressHistory(addr);
           ctx.historyResults.set(addr, history);
         } catch (e) {
-          log.warn(`[SYNC] Failed to get history for ${addr}`, { error: String(e) });
+          log.warn(`[SYNC] Failed to get history for ${addr}`, { error: getErrorMessage(e) });
           ctx.historyResults.set(addr, []);
         }
       }

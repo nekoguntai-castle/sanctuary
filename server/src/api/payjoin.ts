@@ -11,7 +11,9 @@ import { authenticate } from '../middleware/auth';
 import { requireFeature, isFeatureEnabledAsync } from '../middleware/featureGate';
 import { asyncHandler } from '../errors/errorHandler';
 import { InvalidInputError, NotFoundError } from '../errors/ApiError';
-import { db as prisma } from '../repositories/db';
+import { findByIdWithAccess } from '../repositories/walletRepository';
+import { findByIdWithAccess as findAddressByIdWithAccess } from '../repositories/addressRepository';
+import { countEligibility } from '../repositories/utxoRepository';
 import { createLogger } from '../utils/logger';
 import { getConfig } from '../config';
 import { rateLimitByIpAndKey } from '../middleware/rateLimit';
@@ -57,52 +59,17 @@ router.get('/status', authenticate, asyncHandler(async (_req, res) => {
  */
 router.get('/eligibility/:walletId', authenticate, requireFeature('payjoinSupport'), asyncHandler(async (req, res) => {
   const { walletId } = req.params;
-  const userId = req.user?.userId;
+  const userId = req.user!.userId;
 
   // Verify wallet access
-  const wallet = await prisma.wallet.findFirst({
-    where: {
-      id: walletId,
-      OR: [
-        { users: { some: { userId } } },
-        { group: { members: { some: { userId } } } },
-      ],
-    },
-  });
+  const wallet = await findByIdWithAccess(walletId, userId);
 
   if (!wallet) {
     throw new NotFoundError('Wallet not found or access denied');
   }
 
   // Count UTXOs by eligibility status
-  const [eligibleCount, totalCount, frozenCount, unconfirmedCount, lockedCount] = await Promise.all([
-    // Eligible: confirmed, not frozen, not locked
-    prisma.uTXO.count({
-      where: {
-        walletId,
-        spent: false,
-        frozen: false,
-        confirmations: { gt: 0 },
-        draftLock: null,
-      },
-    }),
-    // Total unspent
-    prisma.uTXO.count({
-      where: { walletId, spent: false },
-    }),
-    // Frozen
-    prisma.uTXO.count({
-      where: { walletId, spent: false, frozen: true },
-    }),
-    // Unconfirmed
-    prisma.uTXO.count({
-      where: { walletId, spent: false, confirmations: 0 },
-    }),
-    // Locked by draft
-    prisma.uTXO.count({
-      where: { walletId, spent: false, draftLock: { isNot: null } },
-    }),
-  ]);
+  const { eligible: eligibleCount, total: totalCount, frozen: frozenCount, unconfirmed: unconfirmedCount, locked: lockedCount } = await countEligibility(walletId);
 
   // Determine status and reason
   let status: string;
@@ -143,20 +110,10 @@ router.get('/eligibility/:walletId', authenticate, requireFeature('payjoinSuppor
 router.get('/address/:addressId/uri', authenticate, requireFeature('payjoinSupport'), asyncHandler(async (req, res) => {
   const { addressId } = req.params;
   const { amount, label, message } = req.query;
-  const userId = req.user?.userId;
+  const userId = req.user!.userId;
 
   // Get address and verify access
-  const address = await prisma.address.findFirst({
-    where: {
-      id: addressId,
-      wallet: {
-        OR: [
-          { users: { some: { userId } } },
-          { group: { members: { some: { userId } } } },
-        ],
-      },
-    },
-  });
+  const address = await findAddressByIdWithAccess(addressId, userId);
 
   if (!address) {
     throw new NotFoundError('Address not found or access denied');

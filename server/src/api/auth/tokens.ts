@@ -5,8 +5,8 @@
  */
 
 import { Router } from 'express';
-import { db as prisma } from '../../repositories/db';
 import { asyncHandler } from '../../errors/errorHandler';
+import { userRepository } from '../../repositories/userRepository';
 import { InvalidInputError, UnauthorizedError } from '../../errors/ApiError';
 import { createLogger } from '../../utils/logger';
 import { generateToken, verifyRefreshToken, decodeToken } from '../../utils/jwt';
@@ -48,9 +48,7 @@ router.post('/refresh', asyncHandler(async (req, res) => {
   }
 
   // Get user from database
-  const user = await prisma.user.findUnique({
-    where: { id: decoded.userId },
-  });
+  const user = await userRepository.findById(decoded.userId);
 
   if (!user) {
     throw new UnauthorizedError('User not found');

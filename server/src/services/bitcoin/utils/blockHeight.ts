@@ -6,6 +6,7 @@
 
 import { getNodeClient } from '../nodeClient';
 import { createLogger } from '../../../utils/logger';
+import { getErrorMessage } from '../../../utils/errors';
 
 const log = createLogger('BITCOIN:SVC_BLOCK_HEIGHT');
 
@@ -51,7 +52,7 @@ export async function getBlockHeight(network: Network = 'mainnet'): Promise<numb
     setCachedBlockHeight(height, network);
     return height;
   } catch (error) {
-    log.error('Failed to get block height', { error: String(error), network });
+    log.error('Failed to get block height', { error: getErrorMessage(error), network });
     // Return cached height if available, otherwise throw
     const cached = getCachedBlockHeight(network);
     if (cached > 0) {
@@ -153,7 +154,7 @@ export async function getBlockTimestamp(height: number, network: 'mainnet' | 'te
 
     return date;
   } catch (error) {
-    log.warn(`Failed to get block timestamp for height ${height}`, { error: String(error) });
+    log.warn(`Failed to get block timestamp for height ${height}`, { error: getErrorMessage(error) });
     return null;
   }
 }

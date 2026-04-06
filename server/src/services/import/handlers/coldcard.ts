@@ -49,13 +49,19 @@ export const coldcardHandler: ImportFormatHandler = {
   },
 
   parse(input: string): ImportParseResult {
-    const json = JSON.parse(input.trim());
-    const { parsed, availablePaths } = parseColdcardExport(json);
+    let json: unknown;
+    try {
+      json = JSON.parse(input.trim());
+    } catch {
+      throw new Error('Invalid JSON in Coldcard export input');
+    }
+    const typedJson = json as Record<string, unknown>;
+    const { parsed, availablePaths } = parseColdcardExport(json as Parameters<typeof parseColdcardExport>[0]);
 
     return {
       parsed,
       availablePaths,
-      suggestedName: json.name || json.label,
+      suggestedName: (typedJson.name || typedJson.label) as string | undefined,
     };
   },
 

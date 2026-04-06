@@ -327,7 +327,12 @@ export async function importWallet(
   // For wallet_export format (JSON with descriptor field), extract and use the descriptor
   if (parseResult.format === 'wallet_export') {
     // Parse the JSON to get the descriptor
-    const walletExport = JSON.parse(trimmed);
+    let walletExport: { descriptor: string };
+    try {
+      walletExport = JSON.parse(trimmed);
+    } catch {
+      throw new Error('Invalid JSON in wallet export data');
+    }
     return importFromDescriptor(userId, {
       descriptor: walletExport.descriptor,
       name: input.name,

@@ -18,6 +18,7 @@ const {
   mockFetch,
   mockEvaluatePolicies,
   mockRecordUsage,
+  mockWalletFindById,
 } = vi.hoisted(() => ({
   mockGetCachedBlockHeight: vi.fn(),
   mockRecalculateWalletBalances: vi.fn(),
@@ -33,6 +34,7 @@ const {
   mockFetch: vi.fn(),
   mockEvaluatePolicies: vi.fn(),
   mockRecordUsage: vi.fn(),
+  mockWalletFindById: vi.fn(),
 }));
 
 vi.mock('../../../src/repositories/db', async () => {
@@ -43,6 +45,12 @@ vi.mock('../../../src/repositories/db', async () => {
     default: prisma,
   };
 });
+
+vi.mock('../../../src/repositories/walletRepository', () => ({
+  walletRepository: {
+    findById: mockWalletFindById,
+  },
+}));
 
 vi.mock('../../../src/middleware/walletAccess', () => ({
   requireWalletAccess: () => (req: any, _res: any, next: () => void) => {
@@ -745,6 +753,7 @@ describe('Transaction HTTP Routes', () => {
 
   it('returns 404 when creating a transaction for missing wallet', async () => {
     mockPrismaClient.wallet.findUnique.mockResolvedValue(null);
+    mockWalletFindById.mockResolvedValue(null);
 
     const response = await request(app)
       .post(`/api/v1/wallets/${walletId}/transactions/create`)
@@ -760,6 +769,7 @@ describe('Transaction HTTP Routes', () => {
 
   it('rejects invalid recipient address during transaction creation', async () => {
     mockPrismaClient.wallet.findUnique.mockResolvedValue({ id: walletId, network: 'mainnet' });
+    mockWalletFindById.mockResolvedValue({ id: walletId, network: 'mainnet' });
     mockValidateAddress.mockReturnValueOnce({
       valid: false,
       error: 'bad checksum',
@@ -779,6 +789,7 @@ describe('Transaction HTTP Routes', () => {
 
   it('creates transaction and returns PSBT payload', async () => {
     mockPrismaClient.wallet.findUnique.mockResolvedValue({ id: walletId, network: 'testnet' });
+    mockWalletFindById.mockResolvedValue({ id: walletId, network: 'testnet' });
     mockCreateTransaction.mockResolvedValue({
       psbtBase64: 'cHNiYmFzZTY0',
       fee: 160,
@@ -819,6 +830,7 @@ describe('Transaction HTTP Routes', () => {
 
   it('returns 403 when vault policy blocks transaction creation', async () => {
     mockPrismaClient.wallet.findUnique.mockResolvedValue({ id: walletId, network: 'mainnet' });
+    mockWalletFindById.mockResolvedValue({ id: walletId, network: 'mainnet' });
     mockEvaluatePolicies.mockResolvedValueOnce({
       allowed: false,
       triggered: [{ policyId: 'p1', policyName: 'Daily Limit', type: 'spending_limit', action: 'blocked', reason: 'Exceeded daily limit' }],
@@ -878,6 +890,7 @@ describe('Transaction HTTP Routes', () => {
 
   it('returns bad request when transaction creation service throws', async () => {
     mockPrismaClient.wallet.findUnique.mockResolvedValue({ id: walletId, network: 'mainnet' });
+    mockWalletFindById.mockResolvedValue({ id: walletId, network: 'mainnet' });
     mockCreateTransaction.mockRejectedValueOnce(new Error('insufficient funds'));
 
     const response = await request(app)
@@ -915,6 +928,7 @@ describe('Transaction HTTP Routes', () => {
 
   it('returns 404 when creating a batch transaction for missing wallet', async () => {
     mockPrismaClient.wallet.findUnique.mockResolvedValue(null);
+    mockWalletFindById.mockResolvedValue(null);
 
     const response = await request(app)
       .post(`/api/v1/wallets/${walletId}/transactions/batch`)
@@ -929,6 +943,7 @@ describe('Transaction HTTP Routes', () => {
 
   it('validates that each batch output has an address', async () => {
     mockPrismaClient.wallet.findUnique.mockResolvedValue({ id: walletId, network: 'mainnet' });
+    mockWalletFindById.mockResolvedValue({ id: walletId, network: 'mainnet' });
 
     const response = await request(app)
       .post(`/api/v1/wallets/${walletId}/transactions/batch`)
@@ -943,6 +958,7 @@ describe('Transaction HTTP Routes', () => {
 
   it('validates that each non-sendMax batch output has an amount', async () => {
     mockPrismaClient.wallet.findUnique.mockResolvedValue({ id: walletId, network: 'mainnet' });
+    mockWalletFindById.mockResolvedValue({ id: walletId, network: 'mainnet' });
 
     const response = await request(app)
       .post(`/api/v1/wallets/${walletId}/transactions/batch`)
@@ -957,6 +973,7 @@ describe('Transaction HTTP Routes', () => {
 
   it('rejects batch outputs with invalid recipient addresses', async () => {
     mockPrismaClient.wallet.findUnique.mockResolvedValue({ id: walletId, network: 'mainnet' });
+    mockWalletFindById.mockResolvedValue({ id: walletId, network: 'mainnet' });
     mockValidateAddress.mockReturnValueOnce({
       valid: false,
       error: 'invalid checksum',
@@ -975,6 +992,7 @@ describe('Transaction HTTP Routes', () => {
 
   it('returns bad request when batch transaction creation throws', async () => {
     mockPrismaClient.wallet.findUnique.mockResolvedValue({ id: walletId, network: 'mainnet' });
+    mockWalletFindById.mockResolvedValue({ id: walletId, network: 'mainnet' });
     mockCreateBatchTransaction.mockRejectedValueOnce(new Error('batch create failed'));
 
     const response = await request(app)
@@ -990,6 +1008,7 @@ describe('Transaction HTTP Routes', () => {
 
   it('rejects batch transaction when more than one output uses sendMax', async () => {
     mockPrismaClient.wallet.findUnique.mockResolvedValue({ id: walletId, network: 'mainnet' });
+    mockWalletFindById.mockResolvedValue({ id: walletId, network: 'mainnet' });
 
     const response = await request(app)
       .post(`/api/v1/wallets/${walletId}/transactions/batch`)
@@ -1007,6 +1026,7 @@ describe('Transaction HTTP Routes', () => {
 
   it('creates batch transaction with validated outputs', async () => {
     mockPrismaClient.wallet.findUnique.mockResolvedValue({ id: walletId, network: 'testnet' });
+    mockWalletFindById.mockResolvedValue({ id: walletId, network: 'testnet' });
 
     const response = await request(app)
       .post(`/api/v1/wallets/${walletId}/transactions/batch`)

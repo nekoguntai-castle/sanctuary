@@ -102,7 +102,7 @@ class MigrationService {
       return migrations;
     } catch (error) {
       // Table might not exist if no migrations have run
-      log.warn('Could not query migrations table', { error: String(error) });
+      log.warn('Could not query migrations table', { error: getErrorMessage(error) });
       return [];
     }
   }

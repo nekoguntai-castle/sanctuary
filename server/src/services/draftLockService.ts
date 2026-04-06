@@ -14,6 +14,7 @@
 import { db as prisma } from '../repositories/db';
 import { Prisma } from '@prisma/client';
 import { createLogger } from '../utils/logger';
+import { getErrorMessage } from '../utils/errors';
 
 const log = createLogger('DRAFT_LOCK:SVC');
 
@@ -154,7 +155,7 @@ export async function lockUtxosForDraft(
 
     return lockResult;
   } catch (error) {
-    log.error(`Failed to lock UTXOs for draft ${draftId}`, { error: String(error) });
+    log.error(`Failed to lock UTXOs for draft ${draftId}`, { error: getErrorMessage(error) });
 
     // Check if it's a unique constraint violation (race condition)
     if (isUniqueConstraintError(error)) {
@@ -179,7 +180,7 @@ export async function lockUtxosForDraft(
         }
       } catch (lookupError) {
         log.warn(`Failed to inspect conflicting draft locks for ${draftId}`, {
-          error: String(lookupError),
+          error: getErrorMessage(lookupError),
         });
       }
 
@@ -211,7 +212,7 @@ export async function unlockUtxosForDraft(draftId: string): Promise<number> {
 
     return result.count;
   } catch (error) {
-    log.error(`Failed to unlock UTXOs for draft ${draftId}`, { error: String(error) });
+    log.error(`Failed to unlock UTXOs for draft ${draftId}`, { error: getErrorMessage(error) });
     throw error;
   }
 }

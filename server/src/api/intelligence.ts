@@ -16,8 +16,7 @@ import {
   conversationService,
   intelligenceSettings,
 } from '../services/intelligence';
-import { buildWalletAccessWhere } from '../repositories/accessControl';
-import { db as prisma } from '../repositories/db';
+import { findByIdWithAccess } from '../repositories/walletRepository';
 
 const router = Router();
 
@@ -55,9 +54,7 @@ router.get('/insights', asyncHandler(async (req, res) => {
   }
 
   // Verify wallet access
-  const wallet = await prisma.wallet.findFirst({
-    where: { id: walletId, ...buildWalletAccessWhere(userId) },
-  });
+  const wallet = await findByIdWithAccess(walletId, userId);
   if (!wallet) {
     throw new NotFoundError('Wallet not found');
   }
@@ -89,9 +86,7 @@ router.get('/insights/count', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'walletId query parameter required' });
   }
 
-  const wallet = await prisma.wallet.findFirst({
-    where: { id: walletId, ...buildWalletAccessWhere(userId) },
-  });
+  const wallet = await findByIdWithAccess(walletId, userId);
   if (!wallet) {
     throw new NotFoundError('Wallet not found');
   }
@@ -119,9 +114,7 @@ router.patch('/insights/:id', asyncHandler(async (req, res) => {
   }
 
   // Verify user has access to the wallet this insight belongs to
-  const wallet = await prisma.wallet.findFirst({
-    where: { id: existing.walletId, ...buildWalletAccessWhere(userId) },
-  });
+  const wallet = await findByIdWithAccess(existing.walletId, userId);
   if (!wallet) {
     throw new NotFoundError('Insight not found');
   }

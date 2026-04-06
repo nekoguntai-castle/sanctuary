@@ -205,7 +205,7 @@ async function getNetworkModeConfig(network: NetworkType): Promise<NetworkModeCo
         return { mode: 'pool' };
     }
   } catch (error) {
-    log.warn(`Failed to load network mode config for ${network}`, { error: String(error) });
+    log.warn(`Failed to load network mode config for ${network}`, { error: getErrorMessage(error) });
     return { mode: network === 'mainnet' ? 'pool' : 'singleton' };
   }
 }
@@ -241,7 +241,7 @@ export async function getNodeClient(network: 'mainnet' | 'testnet' | 'signet' | 
       log.info(`Using Electrum connection pool for ${network}`);
     } catch (error) {
       // Fall back to singleton if pool fails
-      log.warn(`Pool initialization failed for ${network}, falling back to singleton`, { error: String(error) });
+      log.warn(`Pool initialization failed for ${network}, falling back to singleton`, { error: getErrorMessage(error) });
       const electrumClient = getElectrumClientForNetwork(network);
 
       if (!electrumClient.isConnected()) {

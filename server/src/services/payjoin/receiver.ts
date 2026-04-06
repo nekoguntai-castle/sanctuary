@@ -156,7 +156,7 @@ export async function processPayjoinRequest(
       proposalPsbt: proposalPsbt.toBase64(),
     };
   } catch (error) {
-    log.error('Error processing Payjoin request', { error: String(error) });
+    log.error('Error processing Payjoin request', { error: getErrorMessage(error) });
     return {
       success: false,
       error: PayjoinErrors.RECEIVER_ERROR,

@@ -120,8 +120,8 @@ const loadNotifications = (): AppNotification[] => {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (!stored) return [];
 
-    const parsed = JSON.parse(stored);
-    return parsed.map((n: any) => ({
+    const parsed = JSON.parse(stored) as Array<Omit<AppNotification, 'createdAt' | 'expiresAt'> & { createdAt: string; expiresAt?: string }>;
+    return parsed.map((n) => ({
       ...n,
       createdAt: new Date(n.createdAt),
       expiresAt: n.expiresAt ? new Date(n.expiresAt) : undefined,

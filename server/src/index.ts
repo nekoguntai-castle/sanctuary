@@ -227,9 +227,10 @@ log.info('Worker-owned architecture: in-process maintenance fallback disabled');
     try {
       await validateEncryptionKey();
     } catch (error) {
-      console.error('FATAL: Missing required environment variable');
-      console.error(getErrorMessage(error));
-      console.error('Please set ENCRYPTION_KEY in your .env file (at least 32 characters)');
+      log.error('FATAL: Missing required environment variable', {
+        error: getErrorMessage(error),
+        hint: 'Please set ENCRYPTION_KEY in your .env file (at least 32 characters)',
+      });
       process.exit(1);
     }
 

@@ -8,6 +8,7 @@ import { Router, Request, Response } from 'express';
 import * as blockchain from '../../services/bitcoin/blockchain';
 import { getElectrumClient } from '../../services/bitcoin/electrum';
 import { getElectrumPoolAsync } from '../../services/bitcoin/electrumPool';
+import type { PooledConnectionHandle } from '../../services/bitcoin/electrumPool/types';
 import * as mempool from '../../services/bitcoin/mempool';
 import { db as prisma } from '../../repositories/db';
 import { createLogger } from '../../utils/logger';
@@ -21,7 +22,7 @@ const router = Router();
 const log = createLogger('BITCOIN_NETWORK:ROUTE');
 
 // Simple cache for mempool data to avoid hammering external APIs
-let mempoolCache: { data: any; timestamp: number; } | null = null;
+let mempoolCache: { data: Awaited<ReturnType<typeof mempool.getBlocksAndMempool>>; timestamp: number; } | null = null;
 const MEMPOOL_CACHE_TTL = 15000; // 15 seconds
 const MEMPOOL_STALE_TTL = 300000; // 5 minutes for stale fallback
 
@@ -45,7 +46,7 @@ router.get('/status', async (_req: Request, res: Response) => {
     // Use per-network settings if available, otherwise fall back to legacy pool settings
     let effectiveMin = nodeConfig?.mainnetPoolMin ?? nodeConfig?.poolMinConnections;
     let effectiveMax = nodeConfig?.mainnetPoolMax ?? nodeConfig?.poolMaxConnections;
-    let poolHandle: any = null;
+    let poolHandle: PooledConnectionHandle | null = null;
 
     // Try to use pool first if enabled and initialized
     // Check both legacy poolEnabled flag and per-network mainnetMode

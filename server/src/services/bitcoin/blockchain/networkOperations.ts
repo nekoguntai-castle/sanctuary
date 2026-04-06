@@ -55,7 +55,7 @@ export async function getFeeEstimates(): Promise<FeeEstimates> {
       economy: Math.max(1, economy),
     };
   } catch (error) {
-    log.error('[BLOCKCHAIN] Failed to get fee estimates', { error: String(error) });
+    log.error('[BLOCKCHAIN] Failed to get fee estimates', { error: getErrorMessage(error) });
     // Return sensible defaults if fee estimation fails
     return {
       fastest: 20,

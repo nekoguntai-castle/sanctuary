@@ -98,7 +98,7 @@ export async function attemptPayjoinSend(
       isPayjoin: true,
     };
   } catch (error) {
-    log.error('Payjoin send attempt failed', { error: String(error) });
+    log.error('Payjoin send attempt failed', { error: getErrorMessage(error) });
     return {
       success: false,
       isPayjoin: false,

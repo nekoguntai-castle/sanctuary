@@ -6,6 +6,7 @@
 
 import { db as prisma } from '../../repositories/db';
 import { createLogger } from '../../utils/logger';
+import { getErrorMessage } from '../../utils/errors';
 import { version as appVersion } from '../../../package.json';
 import { migrationService } from '../migrationService';
 import { serializeRecord } from './serialization';
@@ -46,7 +47,7 @@ export async function createBackup(adminUser: string, options: BackupOptions = {
       recordCounts[table] = data[table].length;
       log.debug(`[BACKUP] Exported ${data[table].length} records from ${table}`);
     } catch (error) {
-      log.warn(`[BACKUP] Failed to export table ${table}`, { error: String(error) });
+      log.warn(`[BACKUP] Failed to export table ${table}`, { error: getErrorMessage(error) });
       data[table] = [];
       recordCounts[table] = 0;
     }

@@ -40,7 +40,7 @@ check_versions() {
   echo -e "${YELLOW}Checking version sync...${NC}"
   echo ""
 
-  for file in package.json server/package.json gateway/package.json sanctuary/umbrel-app.yml; do
+  for file in package.json server/package.json gateway/package.json ai-proxy/package.json sanctuary/umbrel-app.yml; do
     local ver=$(get_version "$file")
     if [[ "$ver" == "$root_ver" ]]; then
       echo -e "  ${GREEN}✓${NC} $file: $ver"
@@ -108,7 +108,7 @@ echo -e "${YELLOW}Bumping version: $CURRENT -> $NEW_VERSION${NC}"
 echo ""
 
 # Update all package.json files
-for file in package.json server/package.json gateway/package.json; do
+for file in package.json server/package.json gateway/package.json ai-proxy/package.json; do
   sed -i "s/\"version\": \"[0-9]*\.[0-9]*\.[0-9]*\"/\"version\": \"$NEW_VERSION\"/" "$file"
   echo -e "  ${GREEN}✓${NC} $file"
 done

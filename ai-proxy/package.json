@@ -1,6 +1,6 @@
 {
   "name": "sanctuary-ai-proxy",
-  "version": "0.7.3",
+  "version": "0.8.23",
   "description": "Isolated AI proxy for Sanctuary - validates endpoints are local only",
   "main": "dist/index.js",
   "scripts": {
@@ -13,7 +13,7 @@
   },
   "devDependencies": {
     "@types/express": "^4.17.25",
-    "@types/node": "^20.11.0",
+    "@types/node": "^20.19.27",
     "typescript": "^5.3.3"
   }
 }

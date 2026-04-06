@@ -52,7 +52,12 @@ export const jsonConfigHandler: ImportFormatHandler = {
   },
 
   parse(input: string): ImportParseResult {
-    const json = JSON.parse(input.trim());
+    let json: unknown;
+    try {
+      json = JSON.parse(input.trim());
+    } catch {
+      throw new Error('Invalid JSON in configuration input');
+    }
     const validated = JsonImportConfigSchema.parse(json);
 
     return {

@@ -43,12 +43,17 @@ export const walletExportHandler: ImportFormatHandler = {
   },
 
   parse(input: string): ImportParseResult {
-    const json = JSON.parse(input.trim());
-    const parsed = parseDescriptorForImport(json.descriptor);
+    let json: Record<string, unknown>;
+    try {
+      json = JSON.parse(input.trim());
+    } catch {
+      throw new Error('Invalid JSON in wallet export input');
+    }
+    const parsed = parseDescriptorForImport(json.descriptor as string);
 
     return {
       parsed,
-      suggestedName: json.label || json.name,
+      suggestedName: (json.label || json.name) as string | undefined,
     };
   },
 

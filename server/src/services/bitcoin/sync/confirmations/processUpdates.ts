@@ -6,6 +6,7 @@
  */
 
 import { createLogger } from '../../../../utils/logger';
+import { getErrorMessage } from '../../../../utils/errors';
 import { getBlockTimestamp } from '../../utils/blockHeight';
 import { walletLog } from '../../../../websocket/notifications';
 import { populateBlockHeight, populateBlockTime, populateFee, populateCounterpartyAddress, populateAddressId } from './fieldPopulators';
@@ -126,8 +127,8 @@ export async function processTransactionUpdates(
         pendingUpdates.push({ id: tx.id, txid: tx.txid, oldConfirmations, data: updates });
       }
     } catch (error) {
-      log.warn(`Failed to populate fields for tx ${tx.txid}`, { error: String(error) });
-      walletLog(walletId, 'warn', 'POPULATE', `Failed to process tx ${tx.txid.slice(0, 8)}...`, { error: String(error) });
+      log.warn(`Failed to populate fields for tx ${tx.txid}`, { error: getErrorMessage(error) });
+      walletLog(walletId, 'warn', 'POPULATE', `Failed to process tx ${tx.txid.slice(0, 8)}...`, { error: getErrorMessage(error) });
     }
   }
 

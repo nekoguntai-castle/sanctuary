@@ -147,7 +147,7 @@ router.get('/cache/stats', authenticate, requireAdmin, (_req: Request, res: Resp
  * Clear price cache (admin only)
  */
 router.post('/cache/clear', authenticate, requireAdmin, asyncHandler(async (req, res) => {
-  log.info('Cache cleared by admin', { userId: (req as any).user?.id });
+  log.info('Cache cleared by admin', { userId: req.user!.userId });
   await priceService.clearCache();
   res.json({
     message: 'Cache cleared successfully',
@@ -168,7 +168,7 @@ router.post('/cache/duration', authenticate, requireAdmin, (req: Request, res: R
     });
   }
 
-  log.info('Cache duration updated by admin', { userId: (req as any).user?.id, duration });
+  log.info('Cache duration updated by admin', { userId: req.user!.userId, duration });
   priceService.setCacheDuration(duration);
 
   res.json({

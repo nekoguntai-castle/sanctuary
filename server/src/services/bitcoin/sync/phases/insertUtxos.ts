@@ -7,6 +7,7 @@
 
 import { db as prisma } from '../../../../repositories/db';
 import { createLogger } from '../../../../utils/logger';
+import { getErrorMessage } from '../../../../utils/errors';
 import { walletLog } from '../../../../websocket/notifications';
 import type { SyncContext, UTXOCreateData } from '../types';
 
@@ -68,7 +69,7 @@ export async function insertUtxosPhase(ctx: SyncContext): Promise<SyncContext> {
         ctx.txDetailsCache.set(utxo.tx_hash, fetched);
         txDetails = fetched;
       } catch (error) {
-        log.warn(`[SYNC] Failed to get tx ${utxo.tx_hash} for UTXO`, { error: String(error) });
+        log.warn(`[SYNC] Failed to get tx ${utxo.tx_hash} for UTXO`, { error: getErrorMessage(error) });
         continue;
       }
     }

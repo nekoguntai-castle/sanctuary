@@ -28,7 +28,7 @@ interface ElectrumTestConfig {
 /**
  * Test Electrum server connection
  */
-async function testElectrumConnection(config: ElectrumTestConfig): Promise<{ success: boolean; message: string; serverInfo?: any }> {
+async function testElectrumConnection(config: ElectrumTestConfig): Promise<{ success: boolean; message: string; serverInfo?: Record<string, unknown> }> {
   return new Promise((resolve) => {
     const { host, port, protocol } = config;
     let socket: net.Socket | tls.TLSSocket;
@@ -41,7 +41,7 @@ async function testElectrumConnection(config: ElectrumTestConfig): Promise<{ suc
       }
     };
 
-    const handleSuccess = (message: string, serverInfo?: any) => {
+    const handleSuccess = (message: string, serverInfo?: Record<string, unknown>) => {
       if (!resolved) {
         resolved = true;
         cleanup();

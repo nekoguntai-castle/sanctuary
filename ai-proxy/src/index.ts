@@ -26,6 +26,9 @@ import {
   fetchFromBackend,
   BackendFetchResult,
 } from './utils';
+import { createLogger } from './logger';
+
+const log = createLogger('AI');
 
 // ========================================
 // GLOBAL EXCEPTION HANDLERS
@@ -33,7 +36,7 @@ import {
 // Catch unhandled errors to prevent silent crashes
 
 process.on('uncaughtException', (error: Error) => {
-  console.error('[AI] FATAL: Uncaught exception - process will exit', {
+  log.error('FATAL: Uncaught exception - process will exit', {
     error: error.message,
     stack: error.stack,
   });
@@ -41,7 +44,7 @@ process.on('uncaughtException', (error: Error) => {
 });
 
 process.on('unhandledRejection', (reason: unknown) => {
-  console.error('[AI] Unhandled promise rejection', {
+  log.error('Unhandled promise rejection', {
     reason: extractErrorMessage(reason),
     stack: reason instanceof Error ? reason.stack : undefined,
   });
@@ -96,7 +99,7 @@ setInterval(() => {
     }
   }
   if (cleaned > 0) {
-    console.log(`[AI] Rate limit cleanup: removed ${cleaned} expired entries`);
+    log.debug(`Rate limit cleanup: removed ${cleaned} expired entries`);
   }
 }, CLEANUP_INTERVAL_MS);
 
@@ -114,7 +117,7 @@ const rateLimit = (req: Request, res: Response, next: NextFunction) => {
     // Existing window
     entry.count++;
     if (entry.count > RATE_LIMIT_MAX_REQUESTS) {
-      console.warn(`[AI] Rate limit exceeded for ${clientIp}`);
+      log.warn(`Rate limit exceeded`, { clientIp });
       const retryAfter = Math.ceil((entry.windowStart + RATE_LIMIT_WINDOW_MS - now) / 1000);
       return res.status(429).json({
         error: `Rate limit exceeded. AI requests are limited to ${RATE_LIMIT_MAX_REQUESTS} per minute. Please wait ${retryAfter}s before trying again.`,
@@ -130,7 +133,7 @@ app.use(express.json({ limit: '1mb' }));
 
 // Request logging
 app.use((req: Request, _res: Response, next: NextFunction) => {
-  console.log(`[AI] ${req.method} ${req.path}`);
+  log.debug(`${req.method} ${req.path}`);
   next();
 });
 
@@ -156,7 +159,7 @@ app.post('/config', (req: Request, res: Response) => {
   // SECURITY: Always verify shared secret - no bypass allowed
   const providedSecret = req.headers['x-ai-config-secret'];
   if (!providedSecret || providedSecret !== CONFIG_SECRET) {
-    console.warn('[AI] Unauthorized config attempt - invalid or missing secret');
+    log.warn('Unauthorized config attempt - invalid or missing secret');
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -168,7 +171,7 @@ app.post('/config', (req: Request, res: Response) => {
     model: model ?? aiConfig.model,
   };
 
-  console.log(`[AI] Configuration updated: enabled=${aiConfig.enabled}, model=${aiConfig.model}`);
+  log.info('Configuration updated', { enabled: aiConfig.enabled, model: aiConfig.model });
 
   res.json({ success: true, config: { enabled: aiConfig.enabled, model: aiConfig.model } });
 });
@@ -195,7 +198,7 @@ async function callExternalAI(prompt: string, timeout = AI_REQUEST_TIMEOUT_MS): 
   try {
     const endpoint = normalizeOllamaChatUrl(aiConfig.endpoint);
 
-    console.log(`[AI] Calling external AI: ${endpoint}`);
+    log.info('Calling external AI', { endpoint });
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -215,22 +218,22 @@ async function callExternalAI(prompt: string, timeout = AI_REQUEST_TIMEOUT_MS): 
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      console.error(`[AI] External AI error: ${response.status}`);
+      log.error('External AI error', { status: response.status });
       return null;
     }
 
-    const data = await response.json() as any;
+    const data = await response.json() as { choices?: Array<{ message: { content: string } }> };
     if (!data.choices || data.choices.length === 0) {
-      console.error('[AI] No choices in response');
+      log.error('No choices in response');
       return null;
     }
 
     return data.choices[0].message.content.trim();
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
-      console.error('[AI] Request timeout');
+      log.error('Request timeout');
     } else {
-      console.error(`[AI] Request failed: ${extractErrorMessage(error)}`);
+      log.error('Request failed', { error: extractErrorMessage(error) });
     }
     return null;
   }
@@ -249,7 +252,7 @@ async function callExternalAIWithMessages(
 
   try {
     const endpoint = normalizeOllamaChatUrl(aiConfig.endpoint);
-    console.log(`[AI] Calling external AI (multi-message): ${endpoint}`);
+    log.info('Calling external AI (multi-message)', { endpoint });
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -269,22 +272,22 @@ async function callExternalAIWithMessages(
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      console.error(`[AI] External AI error: ${response.status}`);
+      log.error('External AI error', { status: response.status });
       return null;
     }
 
-    const data = await response.json() as any;
+    const data = await response.json() as { choices?: Array<{ message: { content: string } }> };
     if (!data.choices || data.choices.length === 0) {
-      console.error('[AI] No choices in response');
+      log.error('No choices in response');
       return null;
     }
 
     return data.choices[0].message.content.trim();
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
-      console.error('[AI] Request timeout');
+      log.error('Request timeout');
     } else {
-      console.error(`[AI] Request failed: ${extractErrorMessage(error)}`);
+      log.error('Request failed', { error: extractErrorMessage(error) });
     }
     return null;
   }
@@ -293,7 +296,7 @@ async function callExternalAIWithMessages(
 /**
  * Parse structured JSON from AI response (handles markdown code blocks, comments, trailing commas)
  */
-function parseStructuredResponse(raw: string): any | null {
+function parseStructuredResponse(raw: string): Record<string, unknown> | null {
   try {
     let jsonStr = raw;
     const codeBlockMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -369,7 +372,7 @@ app.post('/suggest-label', rateLimit, async (req: Request, res: Response) => {
   // SECURITY: Return early with appropriate error if backend validation fails
   if (!txResult.success) {
     if (txResult.error === 'auth_failed') {
-      console.warn(`[AI] Auth validation failed for suggest-label: ${txResult.status}`);
+      log.warn('Auth validation failed for suggest-label', { status: txResult.status });
       return res.status(txResult.status || 401).json({ error: 'Authentication failed' });
     }
     if (txResult.error === 'not_found') {
@@ -385,7 +388,7 @@ app.post('/suggest-label', rateLimit, async (req: Request, res: Response) => {
 
   // SECURITY: Check for auth failure on labels fetch too
   if (!labelsResult.success && labelsResult.error === 'auth_failed') {
-    console.warn(`[AI] Auth validation failed for wallet labels: ${labelsResult.status}`);
+    log.warn('Auth validation failed for wallet labels', { status: labelsResult.status });
     return res.status(labelsResult.status || 401).json({ error: 'Authentication failed' });
   }
 
@@ -442,7 +445,7 @@ app.post('/query', rateLimit, async (req: Request, res: Response) => {
   // SECURITY: Return early with appropriate error if backend validation fails
   if (!contextResult.success) {
     if (contextResult.error === 'auth_failed') {
-      console.warn(`[AI] Auth validation failed for query: ${contextResult.status}`);
+      log.warn('Auth validation failed for query', { status: contextResult.status });
       return res.status(contextResult.status || 401).json({ error: 'Authentication failed' });
     }
     if (contextResult.error === 'not_found') {
@@ -491,7 +494,7 @@ JSON:`;
     // Extract JSON object
     const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      console.error('[AI] No JSON found in response:', result.substring(0, 200));
+      log.error('No JSON found in response', { preview: result.substring(0, 200) });
       return res.status(500).json({ error: 'AI did not return valid JSON' });
     }
 
@@ -505,7 +508,7 @@ JSON:`;
     const parsed = JSON.parse(cleanJson);
     res.json({ query: parsed });
   } catch (err) {
-    console.error(`[AI] Failed to parse JSON: ${extractErrorMessage(err)}`, 'Response:', result.substring(0, 200));
+    log.error('Failed to parse JSON', { error: extractErrorMessage(err), preview: result.substring(0, 200) });
     res.status(500).json({ error: 'Failed to parse AI response' });
   }
 });
@@ -555,7 +558,7 @@ app.post('/detect-ollama', rateLimit, async (req: Request, res: Response) => {
 
   for (const endpoint of endpoints) {
     try {
-      console.log(`[AI] Checking Ollama at ${endpoint}...`);
+      log.debug(`Checking Ollama`, { endpoint });
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 3000);
 
@@ -567,7 +570,7 @@ app.post('/detect-ollama', rateLimit, async (req: Request, res: Response) => {
 
       if (response.ok) {
         const data = await response.json() as { models?: Array<{ name: string }> };
-        console.log(`[AI] Found Ollama at ${endpoint}`);
+        log.info('Found Ollama', { endpoint });
         return res.json({
           found: true,
           endpoint,
@@ -576,7 +579,7 @@ app.post('/detect-ollama', rateLimit, async (req: Request, res: Response) => {
       }
     } catch (error) {
       // Continue to next endpoint
-      console.log(`[AI] No Ollama at ${endpoint}: ${extractErrorMessage(error)}`);
+      log.debug('No Ollama at endpoint', { endpoint, error: extractErrorMessage(error) });
     }
   }
 
@@ -615,7 +618,7 @@ app.get('/list-models', rateLimit, async (_req: Request, res: Response) => {
       })) || [],
     });
   } catch (error) {
-    console.error(`[AI] Failed to list models: ${extractErrorMessage(error)}`);
+    log.error('Failed to list models', { error: extractErrorMessage(error) });
     res.status(502).json({ error: 'Cannot connect to AI endpoint' });
   }
 });
@@ -637,14 +640,14 @@ app.post('/pull-model', rateLimit, async (req: Request, res: Response) => {
 
   const endpoint = normalizeOllamaBaseUrl(aiConfig.endpoint);
 
-  console.log(`[AI] Starting pull for model: ${model}`);
+  log.info('Starting pull for model', { model });
 
   // Return immediately - progress will be streamed via callback
   res.json({ success: true, status: 'started', model });
 
   // Stream progress in background
   streamModelPull(model, endpoint).catch(err => {
-    console.error(`[AI] Pull stream error: ${err.message}`);
+    log.error('Pull stream error', { error: err.message });
   });
 });
 
@@ -671,7 +674,7 @@ async function streamModelPull(model: string, ollamaEndpoint: string): Promise<v
         signal: AbortSignal.timeout(5000),
       });
     } catch (err) {
-      console.warn(`[AI] Failed to send progress: ${extractErrorMessage(err)}`);
+      log.warn('Failed to send progress', { error: extractErrorMessage(err) });
     }
   };
 
@@ -688,7 +691,7 @@ async function streamModelPull(model: string, ollamaEndpoint: string): Promise<v
 
     if (!response.ok) {
       const error = await response.text();
-      console.error(`[AI] Pull failed: ${error}`);
+      log.error('Pull failed', { error });
       await sendProgress({ model, status: 'error', error });
       return;
     }
@@ -742,11 +745,11 @@ async function streamModelPull(model: string, ollamaEndpoint: string): Promise<v
     }
 
     // Send completion
-    console.log(`[AI] Pull completed for ${model}`);
+    log.info('Pull completed', { model });
     await sendProgress({ model, status: 'complete' });
 
   } catch (error) {
-    console.error(`[AI] Pull error: ${extractErrorMessage(error)}`);
+    log.error('Pull error', { error: extractErrorMessage(error) });
     await sendProgress({ model, status: 'error', error: extractErrorMessage(error) });
   }
 }
@@ -768,7 +771,7 @@ app.delete('/delete-model', rateLimit, async (req: Request, res: Response) => {
   try {
     const endpoint = normalizeOllamaBaseUrl(aiConfig.endpoint);
 
-    console.log(`[AI] Deleting model: ${model}`);
+    log.info('Deleting model', { model });
 
     const response = await fetch(`${endpoint}/api/delete`, {
       method: 'DELETE',
@@ -779,14 +782,14 @@ app.delete('/delete-model', rateLimit, async (req: Request, res: Response) => {
 
     if (!response.ok) {
       const error = await response.text();
-      console.error(`[AI] Delete failed: ${error}`);
+      log.error('Delete failed', { error });
       return res.status(502).json({ error: `Failed to delete model: ${error}` });
     }
 
-    console.log(`[AI] Successfully deleted ${model}`);
+    log.info('Successfully deleted model', { model });
     res.json({ success: true, model });
   } catch (error) {
-    console.error(`[AI] Delete error: ${extractErrorMessage(error)}`);
+    log.error('Delete error', { error: extractErrorMessage(error) });
     res.status(502).json({ error: `Delete failed: ${extractErrorMessage(error)}` });
   }
 });
@@ -856,12 +859,12 @@ Focus on: when to consolidate, how many UTXOs, expected savings, privacy conside
 
   const parsed = parseStructuredResponse(result);
   if (!parsed || !parsed.title || !parsed.summary) {
-    console.error('[AI] Analysis response not structured correctly:', result.substring(0, 300));
+    log.error('Analysis response not structured correctly', { preview: result.substring(0, 300) });
     return res.status(500).json({ error: 'AI did not return valid analysis' });
   }
 
   // Ensure severity is valid
-  if (!['info', 'warning', 'critical'].includes(parsed.severity)) {
+  if (typeof parsed.severity !== 'string' || !['info', 'warning', 'critical'].includes(parsed.severity)) {
     parsed.severity = 'info';
   }
 
@@ -939,21 +942,21 @@ app.post('/check-ollama', rateLimit, async (_req: Request, res: Response) => {
  * Error handler
  */
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  console.error('[AI] Error:', err.message);
+  log.error('Unhandled error', { error: err.message });
   res.status(500).json({ error: 'Internal error' });
 });
 
 app.listen(PORT, () => {
-  console.log(`[AI] Sanctuary AI Container started on port ${PORT}`);
-  console.log(`[AI] Backend URL: ${BACKEND_URL}`);
-  console.log('[AI] Security: Isolated container - no DB access, no keys, read-only metadata');
+  log.info(`Sanctuary AI Container started on port ${PORT}`);
+  log.info('Backend URL', { url: BACKEND_URL });
+  log.info('Security: Isolated container - no DB access, no keys, read-only metadata');
 
   // SECURITY: Warn if using auto-generated secret
   if (IS_AUTO_GENERATED_SECRET) {
-    console.warn('[AI] WARNING: AI_CONFIG_SECRET not set - using auto-generated secret');
-    console.warn('[AI] WARNING: Backend must be configured with the same secret to sync config');
-    console.warn(`[AI] Auto-generated secret: ${CONFIG_SECRET}`);
+    log.warn('AI_CONFIG_SECRET not set - using auto-generated secret');
+    log.warn('Backend must be configured with the same secret to sync config');
+    log.warn('Auto-generated secret', { secret: CONFIG_SECRET });
   } else {
-    console.log('[AI] Config secret: configured via environment');
+    log.info('Config secret: configured via environment');
   }
 });

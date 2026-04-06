@@ -5,6 +5,7 @@
  */
 
 import { Router } from 'express';
+import type { Prisma } from '@prisma/client';
 import { db as prisma } from '../../repositories/db';
 import { authenticate, requireAdmin } from '../../middleware/auth';
 import { asyncHandler } from '../../errors/errorHandler';
@@ -33,9 +34,9 @@ router.get('/', authenticate, requireAdmin, asyncHandler(async (req, res) => {
     return res.json([]);
   }
 
-  const where: any = { nodeConfigId: nodeConfig.id };
+  const where: Prisma.ElectrumServerWhereInput = { nodeConfigId: nodeConfig.id };
   if (network) {
-    where.network = network;
+    where.network = network as string;
   }
 
   const servers = await prisma.electrumServer.findMany({

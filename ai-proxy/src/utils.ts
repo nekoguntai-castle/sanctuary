@@ -6,6 +6,10 @@
  * so these utilities are standalone.
  */
 
+import { createLogger } from './logger';
+
+const log = createLogger('AI:UTIL');
+
 /**
  * Extract a user-friendly error message from an unknown error
  */
@@ -59,24 +63,24 @@ export async function fetchFromBackend<T>(
     });
 
     if (response.status === 401 || response.status === 403) {
-      console.warn(`[AI] Auth failed for ${label}: ${response.status}`);
+      log.warn(`Auth failed for ${label}`, { status: response.status });
       return { success: false, error: 'auth_failed', status: response.status };
     }
 
     if (response.status === 404) {
-      console.warn(`[AI] Not found for ${label}`);
+      log.warn(`Not found for ${label}`);
       return { success: false, error: 'not_found', status: response.status };
     }
 
     if (!response.ok) {
-      console.error(`[AI] Failed to fetch ${label}: ${response.status}`);
+      log.error(`Failed to fetch ${label}`, { status: response.status });
       return { success: false, error: 'server_error', status: response.status };
     }
 
     const data = await response.json();
     return { success: true, data: data as T };
   } catch (error) {
-    console.error(`[AI] Failed to fetch ${label}: ${extractErrorMessage(error)}`);
+    log.error(`Failed to fetch ${label}`, { error: extractErrorMessage(error) });
     return { success: false, error: 'network_error' };
   }
 }

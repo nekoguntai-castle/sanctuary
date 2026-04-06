@@ -18,6 +18,7 @@
 import { auditLogRepository } from '../repositories';
 import type { AuditCategory as RepoAuditCategory } from '../repositories/auditLogRepository';
 import { createLogger } from '../utils/logger';
+import { getErrorMessage } from '../utils/errors';
 import { Request } from 'express';
 import {
   AUDIT_DEFAULT_PAGE_SIZE,
@@ -200,7 +201,7 @@ class AuditService {
       }
     } catch (error) {
       // Don't let audit logging failures break the application
-      log.error('Failed to write audit log', { error: String(error), input });
+      log.error('Failed to write audit log', { error: getErrorMessage(error), input });
     }
   }
 

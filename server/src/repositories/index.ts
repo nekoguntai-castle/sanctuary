@@ -31,6 +31,7 @@ export { mobilePermissionRepository, default as mobilePermissionRepo } from './m
 export { emailVerificationRepository, default as emailVerificationRepo } from './emailVerificationRepository';
 export { policyRepository, default as policyRepo } from './policyRepository';
 export { intelligenceRepository, default as intelligenceRepo } from './intelligenceRepository';
+export { default as groupRepo } from './groupRepository';
 
 // Access control helpers
 export { buildWalletAccessWhere, buildDeviceAccessWhere } from './accessControl';

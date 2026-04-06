@@ -9,6 +9,7 @@ import { getNodeClient } from '../nodeClient';
 import type { TransactionOutput, TransactionInput } from '../electrum';
 import { db as prisma } from '../../../repositories/db';
 import { createLogger } from '../../../utils/logger';
+import { getErrorMessage } from '../../../utils/errors';
 import { getBlockHeight, getBlockTimestamp } from '../utils/blockHeight';
 import type { SyncAddressResult } from './types';
 
@@ -24,7 +25,7 @@ export async function getConfirmations(blockHeight: number, network: 'mainnet' |
     const currentHeight = await getBlockHeight(network);
     return Math.max(0, currentHeight - blockHeight + 1);
   } catch (error) {
-    log.error('[BLOCKCHAIN] Failed to get confirmations', { error: String(error), network });
+    log.error('[BLOCKCHAIN] Failed to get confirmations', { error: getErrorMessage(error), network });
     return 0;
   }
 }
@@ -468,7 +469,7 @@ export async function syncAddress(addressId: string): Promise<SyncAddressResult>
       utxos: utxoCount,
     };
   } catch (error) {
-    log.error('[BLOCKCHAIN] Sync address error', { error: String(error) });
+    log.error('[BLOCKCHAIN] Sync address error', { error: getErrorMessage(error) });
     throw error;
   }
 }

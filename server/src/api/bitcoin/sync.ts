@@ -7,7 +7,7 @@
 import { Router, Request, Response } from 'express';
 import { authenticate } from '../../middleware/auth';
 import * as blockchain from '../../services/bitcoin/blockchain';
-import { db as prisma } from '../../repositories/db';
+import { findByIdWithAccess } from '../../repositories/walletRepository';
 import { asyncHandler } from '../../errors/errorHandler';
 import { NotFoundError } from '../../errors/ApiError';
 
@@ -25,15 +25,7 @@ router.post('/wallet/:walletId/sync', asyncHandler(async (req: Request, res: Res
   const { walletId } = req.params;
 
   // Check user has access to wallet
-  const wallet = await prisma.wallet.findFirst({
-    where: {
-      id: walletId,
-      OR: [
-        { users: { some: { userId } } },
-        { group: { members: { some: { userId } } } },
-      ],
-    },
-  });
+  const wallet = await findByIdWithAccess(walletId, userId);
 
   if (!wallet) {
     throw new NotFoundError('Wallet not found');
@@ -56,15 +48,7 @@ router.post('/wallet/:walletId/update-confirmations', asyncHandler(async (req: R
   const { walletId } = req.params;
 
   // Check user has access to wallet
-  const wallet = await prisma.wallet.findFirst({
-    where: {
-      id: walletId,
-      OR: [
-        { users: { some: { userId } } },
-        { group: { members: { some: { userId } } } },
-      ],
-    },
-  });
+  const wallet = await findByIdWithAccess(walletId, userId);
 
   if (!wallet) {
     throw new NotFoundError('Wallet not found');

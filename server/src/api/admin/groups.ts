@@ -5,40 +5,21 @@
  */
 
 import { Router } from 'express';
-import { db as prisma } from '../../repositories/db';
 import { authenticate, requireAdmin } from '../../middleware/auth';
 import { asyncHandler } from '../../errors/errorHandler';
 import { InvalidInputError, NotFoundError, ConflictError } from '../../errors/ApiError';
 import { createLogger } from '../../utils/logger';
 import { auditService, AuditAction, AuditCategory } from '../../services/auditService';
 import { invalidateUserAccessCache } from '../../services/accessControl';
+import * as groupRepo from '../../repositories/groupRepository';
+import { findById as findUserById } from '../../repositories/userRepository';
 
 const router = Router();
 const log = createLogger('ADMIN_GROUP:ROUTE');
 
-/**
- * GET /api/v1/admin/groups
- * Get all groups (admin only)
- */
-router.get('/', authenticate, requireAdmin, asyncHandler(async (_req, res) => {
-  const groups = await prisma.group.findMany({
-    include: {
-      members: {
-        include: {
-          user: {
-            select: {
-              id: true,
-              username: true,
-            },
-          },
-        },
-      },
-    },
-    orderBy: { createdAt: 'desc' },
-  });
-
-  // Transform to simpler format
-  const result = groups.map(group => ({
+/** Format a group with members for API response */
+function formatGroup(group: NonNullable<Awaited<ReturnType<typeof groupRepo.findByIdWithMembers>>>) {
+  return {
     id: group.id,
     name: group.name,
     description: group.description,
@@ -50,9 +31,16 @@ router.get('/', authenticate, requireAdmin, asyncHandler(async (_req, res) => {
       username: m.user.username,
       role: m.role,
     })),
-  }));
+  };
+}
 
-  res.json(result);
+/**
+ * GET /api/v1/admin/groups
+ * Get all groups (admin only)
+ */
+router.get('/', authenticate, requireAdmin, asyncHandler(async (_req, res) => {
+  const groups = await groupRepo.findAllWithMembers();
+  res.json(groups.map(formatGroup));
 }));
 
 /**
@@ -62,56 +50,21 @@ router.get('/', authenticate, requireAdmin, asyncHandler(async (_req, res) => {
 router.post('/', authenticate, requireAdmin, asyncHandler(async (req, res) => {
   const { name, description, purpose, memberIds } = req.body;
 
-  // Validation
   if (!name) {
     throw new InvalidInputError('Group name is required');
   }
 
-  // Create group
-  const group = await prisma.group.create({
-    data: {
-      name,
-      description: description || null,
-      purpose: purpose || null,
-    },
+  const group = await groupRepo.create({
+    name,
+    description: description || null,
+    purpose: purpose || null,
   });
 
-  // Add members if provided (batch operation to avoid N+1 queries)
   if (memberIds && Array.isArray(memberIds) && memberIds.length > 0) {
-    const existingUsers = await prisma.user.findMany({
-      where: { id: { in: memberIds } },
-      select: { id: true },
-    });
-    const validUserIds = new Set(existingUsers.map(u => u.id));
-
-    await prisma.groupMember.createMany({
-      data: memberIds
-        .filter((id: string) => validUserIds.has(id))
-        .map((userId: string) => ({
-          groupId: group.id,
-          userId,
-          role: 'member',
-        })),
-      skipDuplicates: true,
-    });
+    await groupRepo.addMembers(group.id, memberIds);
   }
 
-  // Fetch the complete group with members
-  const completeGroup = await prisma.group.findUnique({
-    where: { id: group.id },
-    include: {
-      members: {
-        include: {
-          user: {
-            select: {
-              id: true,
-              username: true,
-            },
-          },
-        },
-      },
-    },
-  });
+  const completeGroup = await groupRepo.findByIdWithMembers(group.id);
 
   log.info('Group created:', { name, id: group.id });
 
@@ -119,18 +72,7 @@ router.post('/', authenticate, requireAdmin, asyncHandler(async (req, res) => {
     details: { groupName: name, groupId: group.id, memberCount: memberIds?.length || 0 },
   });
 
-  res.status(201).json({
-    id: completeGroup!.id,
-    name: completeGroup!.name,
-    description: completeGroup!.description,
-    purpose: completeGroup!.purpose,
-    createdAt: completeGroup!.createdAt,
-    members: completeGroup!.members.map(m => ({
-      userId: m.userId,
-      username: m.user.username,
-      role: m.role,
-    })),
-  });
+  res.status(201).json(formatGroup(completeGroup!));
 }));
 
 /**
@@ -141,78 +83,26 @@ router.put('/:groupId', authenticate, requireAdmin, asyncHandler(async (req, res
   const { groupId } = req.params;
   const { name, description, purpose, memberIds } = req.body;
 
-  const existingGroup = await prisma.group.findUnique({
-    where: { id: groupId },
-    include: { members: true },
-  });
-
+  const existingGroup = await groupRepo.findById(groupId);
   if (!existingGroup) {
     throw new NotFoundError('Group not found');
   }
 
-  await prisma.group.update({
-    where: { id: groupId },
-    data: {
-      name: name || existingGroup.name,
-      description: description !== undefined ? description : existingGroup.description,
-      purpose: purpose !== undefined ? purpose : existingGroup.purpose,
-    },
+  await groupRepo.update(groupId, {
+    name: name || existingGroup.name,
+    description: description !== undefined ? description : existingGroup.description,
+    purpose: purpose !== undefined ? purpose : existingGroup.purpose,
   });
 
-  // Update members if provided
   if (memberIds !== undefined && Array.isArray(memberIds)) {
-    const currentMemberIds = existingGroup.members.map(m => m.userId);
-    const toAdd = memberIds.filter((id: string) => !currentMemberIds.includes(id));
-    const toRemove = currentMemberIds.filter(id => !memberIds.includes(id));
-
-    if (toRemove.length > 0) {
-      await prisma.groupMember.deleteMany({
-        where: { groupId, userId: { in: toRemove } },
-      });
-    }
-
-    if (toAdd.length > 0) {
-      const existingUsers = await prisma.user.findMany({
-        where: { id: { in: toAdd } },
-        select: { id: true },
-      });
-      const validUserIds = new Set(existingUsers.map(u => u.id));
-
-      await prisma.groupMember.createMany({
-        data: toAdd
-          .filter((id: string) => validUserIds.has(id))
-          .map((userId: string) => ({ groupId, userId, role: 'member' })),
-        skipDuplicates: true,
-      });
-    }
+    await groupRepo.setMembers(groupId, memberIds);
   }
 
-  const group = await prisma.group.findUnique({
-    where: { id: groupId },
-    include: {
-      members: {
-        include: {
-          user: { select: { id: true, username: true } },
-        },
-      },
-    },
-  });
+  const group = await groupRepo.findByIdWithMembers(groupId);
 
   log.info('Group updated:', { groupId, name: group!.name });
 
-  res.json({
-    id: group!.id,
-    name: group!.name,
-    description: group!.description,
-    purpose: group!.purpose,
-    createdAt: group!.createdAt,
-    updatedAt: group!.updatedAt,
-    members: group!.members.map(m => ({
-      userId: m.userId,
-      username: m.user.username,
-      role: m.role,
-    })),
-  });
+  res.json(formatGroup(group!));
 }));
 
 /**
@@ -222,28 +112,20 @@ router.put('/:groupId', authenticate, requireAdmin, asyncHandler(async (req, res
 router.delete('/:groupId', authenticate, requireAdmin, asyncHandler(async (req, res) => {
   const { groupId } = req.params;
 
-  const existingGroup = await prisma.group.findUnique({
-    where: { id: groupId },
-    include: { members: { select: { userId: true } } },
-  });
-
-  if (!existingGroup) {
+  const deletedGroup = await groupRepo.deleteById(groupId);
+  if (!deletedGroup) {
     throw new NotFoundError('Group not found');
   }
 
-  await prisma.group.delete({
-    where: { id: groupId },
-  });
-
   // Invalidate access cache for all former group members
   await Promise.all(
-    existingGroup.members.map((m) => invalidateUserAccessCache(m.userId))
+    deletedGroup.members.map((m) => invalidateUserAccessCache(m.userId))
   );
 
-  log.info('Group deleted:', { groupId, name: existingGroup.name });
+  log.info('Group deleted:', { groupId, name: deletedGroup.name });
 
   await auditService.logFromRequest(req, AuditAction.GROUP_DELETE, AuditCategory.ADMIN, {
-    details: { groupName: existingGroup.name, groupId },
+    details: { groupName: deletedGroup.name, groupId },
   });
 
   res.json({ message: 'Group deleted successfully' });
@@ -261,27 +143,22 @@ router.post('/:groupId/members', authenticate, requireAdmin, asyncHandler(async 
     throw new InvalidInputError('User ID is required');
   }
 
-  const group = await prisma.group.findUnique({ where: { id: groupId } });
+  const group = await groupRepo.findById(groupId);
   if (!group) {
     throw new NotFoundError('Group not found');
   }
 
-  const user = await prisma.user.findUnique({ where: { id: userId } });
+  const user = await findUserById(userId);
   if (!user) {
     throw new NotFoundError('User not found');
   }
 
-  const existingMembership = await prisma.groupMember.findUnique({
-    where: { userId_groupId: { userId, groupId } },
-  });
-
+  const existingMembership = await groupRepo.findMembership(userId, groupId);
   if (existingMembership) {
     throw new ConflictError('User is already a member of this group');
   }
 
-  const membership = await prisma.groupMember.create({
-    data: { groupId, userId, role: role || 'member' },
-  });
+  const membership = await groupRepo.addMember(groupId, userId, role || 'member');
 
   // Invalidate user's access cache (they now have access to group wallets)
   await invalidateUserAccessCache(userId);
@@ -306,17 +183,12 @@ router.post('/:groupId/members', authenticate, requireAdmin, asyncHandler(async 
 router.delete('/:groupId/members/:userId', authenticate, requireAdmin, asyncHandler(async (req, res) => {
   const { groupId, userId } = req.params;
 
-  const membership = await prisma.groupMember.findUnique({
-    where: { userId_groupId: { userId, groupId } },
-  });
-
+  const membership = await groupRepo.findMembership(userId, groupId);
   if (!membership) {
     throw new NotFoundError('Member not found in this group');
   }
 
-  await prisma.groupMember.delete({
-    where: { userId_groupId: { userId, groupId } },
-  });
+  await groupRepo.removeMember(groupId, userId);
 
   // Invalidate user's access cache (they lost access to group wallets)
   await invalidateUserAccessCache(userId);

@@ -92,28 +92,11 @@ vi.mock('../../../src/services/intelligence', () => ({
   intelligenceSettings: mockIntelligenceSettings,
 }));
 
-// Mock accessControl
-vi.mock('../../../src/repositories/accessControl', () => ({
-  buildWalletAccessWhere: vi.fn((userId: string) => ({
-    OR: [
-      { users: { some: { userId } } },
-      { group: { members: { some: { userId } } } },
-    ],
-  })),
+// Mock walletRepository
+const mockFindByIdWithAccess = vi.fn();
+vi.mock('../../../src/repositories/walletRepository', () => ({
+  findByIdWithAccess: (...args: unknown[]) => mockFindByIdWithAccess(...args),
 }));
-
-// Mock prisma via db
-vi.mock('../../../src/repositories/db', () => ({
-  db: {
-    wallet: {
-      findFirst: vi.fn(),
-    },
-  },
-}));
-
-import { db as prisma } from '../../../src/repositories/db';
-
-const mockWalletFindFirst = vi.mocked(prisma.wallet.findFirst);
 
 // We need to import the router to get the route handlers.
 // Since asyncHandler is pass-through, we can extract the handlers from Express router.
@@ -185,7 +168,7 @@ describe('Intelligence API Routes', () => {
     });
 
     it('throws NotFoundError when wallet not accessible', async () => {
-      mockWalletFindFirst.mockResolvedValueOnce(null);
+      mockFindByIdWithAccess.mockResolvedValueOnce(null);
 
       const req = createMockRequest({
         user: { userId: 'test-user-123', username: 'testuser', isAdmin: false },
@@ -198,7 +181,7 @@ describe('Intelligence API Routes', () => {
     });
 
     it('returns insights when wallet is accessible', async () => {
-      mockWalletFindFirst.mockResolvedValueOnce({ id: 'wallet-1' } as any);
+      mockFindByIdWithAccess.mockResolvedValueOnce({ id: 'wallet-1' } as any);
       const insightData = [{ id: 'insight-1', type: 'utxo_health', severity: 'warning' }];
       mockInsightService.getInsightsByWallet.mockResolvedValueOnce(insightData);
 
@@ -236,7 +219,7 @@ describe('Intelligence API Routes', () => {
     });
 
     it('returns count of active insights', async () => {
-      mockWalletFindFirst.mockResolvedValueOnce({ id: 'wallet-1' } as any);
+      mockFindByIdWithAccess.mockResolvedValueOnce({ id: 'wallet-1' } as any);
       mockInsightService.countActiveInsights.mockResolvedValueOnce(7);
 
       const req = createMockRequest({
@@ -299,7 +282,7 @@ describe('Intelligence API Routes', () => {
     it('dismisses an insight', async () => {
       const existing = { id: 'insight-1', status: 'active', walletId: 'wallet-1' };
       mockInsightService.getInsightById.mockResolvedValueOnce(existing);
-      mockWalletFindFirst.mockResolvedValueOnce({ id: 'wallet-1' } as any);
+      mockFindByIdWithAccess.mockResolvedValueOnce({ id: 'wallet-1' } as any);
       const updated = { ...existing, status: 'dismissed' };
       mockInsightService.dismissInsight.mockResolvedValueOnce(updated);
 
@@ -320,7 +303,7 @@ describe('Intelligence API Routes', () => {
     it('marks an insight as acted_on', async () => {
       const existing = { id: 'insight-1', status: 'active', walletId: 'wallet-1' };
       mockInsightService.getInsightById.mockResolvedValueOnce(existing);
-      mockWalletFindFirst.mockResolvedValueOnce({ id: 'wallet-1' } as any);
+      mockFindByIdWithAccess.mockResolvedValueOnce({ id: 'wallet-1' } as any);
       const updated = { ...existing, status: 'acted_on' };
       mockInsightService.markActedOn.mockResolvedValueOnce(updated);
 
