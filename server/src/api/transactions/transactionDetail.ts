@@ -4,7 +4,7 @@
  * Endpoints for fetching individual transaction details
  */
 
-import { Router, Request, Response } from 'express';
+import { Router } from 'express';
 import { db as prisma } from '../../repositories/db';
 import { createLogger } from '../../utils/logger';
 import { asyncHandler } from '../../errors/errorHandler';
@@ -18,7 +18,7 @@ const log = createLogger('TX_DETAIL:ROUTE');
  * Get raw transaction hex for hardware wallet signing (Trezor needs full prev tx data)
  * First checks database (with wallet access verification), then fetches from mempool.space if not found
  */
-router.get('/transactions/:txid/raw', asyncHandler(async (req: Request, res: Response) => {
+router.get('/transactions/:txid/raw', asyncHandler(async (req, res) => {
   const userId = req.user!.userId;
   const { txid } = req.params;
 
@@ -63,7 +63,7 @@ router.get('/transactions/:txid/raw', asyncHandler(async (req: Request, res: Res
  * GET /api/v1/transactions/:txid
  * Get a specific transaction by txid
  */
-router.get('/transactions/:txid', asyncHandler(async (req: Request, res: Response) => {
+router.get('/transactions/:txid', asyncHandler(async (req, res) => {
   const userId = req.user!.userId;
   const { txid } = req.params;
 

@@ -4,7 +4,7 @@
  * Address validation, lookup, and sync operations
  */
 
-import { Router, Request, Response } from 'express';
+import { Router } from 'express';
 import { authenticate } from '../../middleware/auth';
 import * as blockchain from '../../services/bitcoin/blockchain';
 import * as utils from '../../services/bitcoin/utils';
@@ -18,7 +18,7 @@ const router = Router();
  * POST /api/v1/bitcoin/address/validate
  * Validate a Bitcoin address
  */
-router.post('/address/validate', asyncHandler(async (req: Request, res: Response) => {
+router.post('/address/validate', asyncHandler(async (req, res) => {
   const { address, network = 'mainnet' } = req.body;
 
   if (!address) {
@@ -34,7 +34,7 @@ router.post('/address/validate', asyncHandler(async (req: Request, res: Response
  * GET /api/v1/bitcoin/address/:address
  * Get address information from blockchain
  */
-router.get('/address/:address', asyncHandler(async (req: Request, res: Response) => {
+router.get('/address/:address', asyncHandler(async (req, res) => {
   const { address } = req.params;
   const networkParam = req.query.network as string | undefined;
   const network: 'mainnet' | 'testnet' | 'regtest' =
@@ -59,7 +59,7 @@ router.get('/address/:address', asyncHandler(async (req: Request, res: Response)
  * POST /api/v1/bitcoin/address/:addressId/sync
  * Sync single address with blockchain
  */
-router.post('/address/:addressId/sync', authenticate, asyncHandler(async (req: Request, res: Response) => {
+router.post('/address/:addressId/sync', authenticate, asyncHandler(async (req, res) => {
   const userId = req.user!.userId;
   const { addressId } = req.params;
 
@@ -92,7 +92,7 @@ router.post('/address/:addressId/sync', authenticate, asyncHandler(async (req: R
  * POST /api/v1/bitcoin/address-lookup
  * Look up which wallets own given addresses (for internal wallet detection in send flow)
  */
-router.post('/address-lookup', authenticate, asyncHandler(async (req: Request, res: Response) => {
+router.post('/address-lookup', authenticate, asyncHandler(async (req, res) => {
   const { addresses } = req.body;
 
   if (!Array.isArray(addresses) || addresses.length === 0) {

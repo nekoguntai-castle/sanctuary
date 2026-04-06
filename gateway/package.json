@@ -16,7 +16,7 @@
   "dependencies": {
     "@parse/node-apn": "^8.0.0",
     "cors": "^2.8.6",
-    "express": "^4.18.2",
+    "express": "^5.2.1",
     "express-rate-limit": "^7.1.5",
     "firebase-admin": "^13.7.0",
     "helmet": "^8.1.0",
@@ -27,7 +27,7 @@
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
-    "@types/express": "^4.17.21",
+    "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.5",
     "@types/node": "^22.14.0",
     "@types/supertest": "^6.0.3",

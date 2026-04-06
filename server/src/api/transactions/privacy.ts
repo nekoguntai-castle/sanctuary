@@ -4,7 +4,7 @@
  * Endpoints for UTXO privacy scoring and spend analysis
  */
 
-import { Router, Request, Response } from 'express';
+import { Router } from 'express';
 import { requireWalletAccess } from '../../middleware/walletAccess';
 import { db as prisma } from '../../repositories/db';
 import { checkWalletAccess } from '../../services/accessControl';
@@ -17,7 +17,7 @@ const router = Router();
  * GET /api/v1/wallets/:walletId/privacy
  * Get privacy analysis for all UTXOs in a wallet
  */
-router.get('/wallets/:walletId/privacy', requireWalletAccess('view'), asyncHandler(async (req: Request, res: Response) => {
+router.get('/wallets/:walletId/privacy', requireWalletAccess('view'), asyncHandler(async (req, res) => {
   const walletId = req.walletId!;
 
   const privacyService = await import('../../services/privacyService');
@@ -39,7 +39,7 @@ router.get('/wallets/:walletId/privacy', requireWalletAccess('view'), asyncHandl
  * GET /api/v1/utxos/:utxoId/privacy
  * Get privacy score for a single UTXO
  */
-router.get('/utxos/:utxoId/privacy', asyncHandler(async (req: Request, res: Response) => {
+router.get('/utxos/:utxoId/privacy', asyncHandler(async (req, res) => {
   const { utxoId } = req.params;
   const userId = req.user?.userId;
 
@@ -72,7 +72,7 @@ router.get('/utxos/:utxoId/privacy', asyncHandler(async (req: Request, res: Resp
  * POST /api/v1/wallets/:walletId/privacy/spend-analysis
  * Analyze privacy impact of spending selected UTXOs together
  */
-router.post('/wallets/:walletId/privacy/spend-analysis', requireWalletAccess('view'), asyncHandler(async (req: Request, res: Response) => {
+router.post('/wallets/:walletId/privacy/spend-analysis', requireWalletAccess('view'), asyncHandler(async (req, res) => {
   const walletId = req.walletId!;
   const { utxoIds } = req.body;
 

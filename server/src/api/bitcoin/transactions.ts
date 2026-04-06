@@ -4,7 +4,7 @@
  * Transaction operations including broadcast, RBF, CPFP, and batch transactions
  */
 
-import { Router, Request, Response } from 'express';
+import { Router } from 'express';
 import { authenticate } from '../../middleware/auth';
 import * as blockchain from '../../services/bitcoin/blockchain';
 import { db as prisma } from '../../repositories/db';
@@ -17,7 +17,7 @@ const router = Router();
  * GET /api/v1/bitcoin/transaction/:txid
  * Get transaction details from blockchain
  */
-router.get('/transaction/:txid', asyncHandler(async (req: Request, res: Response) => {
+router.get('/transaction/:txid', asyncHandler(async (req, res) => {
   const { txid } = req.params;
 
   const txDetails = await blockchain.getTransactionDetails(txid);
@@ -29,7 +29,7 @@ router.get('/transaction/:txid', asyncHandler(async (req: Request, res: Response
  * POST /api/v1/bitcoin/broadcast
  * Broadcast a raw transaction to the network
  */
-router.post('/broadcast', authenticate, asyncHandler(async (req: Request, res: Response) => {
+router.post('/broadcast', authenticate, asyncHandler(async (req, res) => {
   const { rawTx } = req.body;
 
   if (!rawTx) {
@@ -45,7 +45,7 @@ router.post('/broadcast', authenticate, asyncHandler(async (req: Request, res: R
  * POST /api/v1/bitcoin/transaction/:txid/rbf-check
  * Check if a transaction can be replaced with RBF
  */
-router.post('/transaction/:txid/rbf-check', authenticate, asyncHandler(async (req: Request, res: Response) => {
+router.post('/transaction/:txid/rbf-check', authenticate, asyncHandler(async (req, res) => {
   const { txid } = req.params;
   const advancedTx = await import('../../services/bitcoin/advancedTx');
 
@@ -58,7 +58,7 @@ router.post('/transaction/:txid/rbf-check', authenticate, asyncHandler(async (re
  * POST /api/v1/bitcoin/transaction/:txid/rbf
  * Create an RBF replacement transaction
  */
-router.post('/transaction/:txid/rbf', authenticate, asyncHandler(async (req: Request, res: Response) => {
+router.post('/transaction/:txid/rbf', authenticate, asyncHandler(async (req, res) => {
   const userId = req.user!.userId;
   const { txid } = req.params;
   const { newFeeRate, walletId } = req.body;
@@ -107,7 +107,7 @@ router.post('/transaction/:txid/rbf', authenticate, asyncHandler(async (req: Req
  * POST /api/v1/bitcoin/transaction/cpfp
  * Create a CPFP transaction
  */
-router.post('/transaction/cpfp', authenticate, asyncHandler(async (req: Request, res: Response) => {
+router.post('/transaction/cpfp', authenticate, asyncHandler(async (req, res) => {
   const userId = req.user!.userId;
   const {
     parentTxid,
@@ -161,7 +161,7 @@ router.post('/transaction/cpfp', authenticate, asyncHandler(async (req: Request,
  * POST /api/v1/bitcoin/transaction/batch
  * Create a batch transaction
  */
-router.post('/transaction/batch', authenticate, asyncHandler(async (req: Request, res: Response) => {
+router.post('/transaction/batch', authenticate, asyncHandler(async (req, res) => {
   const userId = req.user!.userId;
   const {
     recipients,

@@ -138,7 +138,7 @@ export function requireMobilePermission(action: MobileAction) {
     const authReq = req as AuthenticatedRequest;
 
     // Extract walletId from params (supports both :id and :walletId patterns)
-    const walletId = req.params.id || req.params.walletId;
+    const walletId = (req.params.id || req.params.walletId) as string;
     const userId = authReq.user?.userId;
 
     // Must be authenticated

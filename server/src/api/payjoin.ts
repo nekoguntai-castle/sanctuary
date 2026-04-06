@@ -32,7 +32,7 @@ const router = Router();
 // Prevents DoS attacks by limiting requests per addressId
 const payjoinRateLimiter = rateLimitByIpAndKey(
   'payjoin:create',
-  (req) => req.params.addressId,
+  (req) => req.params.addressId as string,
   { message: PayjoinErrors.RECEIVER_ERROR, responseType: 'text', contentType: 'text/plain' }
 );
 
@@ -228,7 +228,7 @@ router.post('/:addressId', async (req, res, next) => {
   }
   next();
 }, payjoinRateLimiter, async (req, res) => {
-  const { addressId } = req.params;
+  const addressId = req.params.addressId as string;
   const { v, minfeerate } = req.query;
 
   // BIP78 requires v=1

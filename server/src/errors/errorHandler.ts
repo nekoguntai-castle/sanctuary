@@ -140,11 +140,20 @@ export function errorHandler(
  * }));
  * ```
  */
+/**
+ * Request with string-only params.
+ * Express 5 types params as string | string[] for wildcard route support.
+ * Since Sanctuary uses no wildcard routes, we narrow params to string-only.
+ */
+export interface TypedRequest extends Omit<Request, 'params'> {
+  params: Record<string, string>;
+}
+
 export function asyncHandler<T>(
-  fn: (req: Request, res: Response, next: NextFunction) => Promise<T>
+  fn: (req: TypedRequest, res: Response, next: NextFunction) => Promise<T>
 ): RequestHandler {
   return (req: Request, res: Response, next: NextFunction) => {
-    Promise.resolve(fn(req, res, next)).catch(next);
+    Promise.resolve(fn(req as TypedRequest, res, next)).catch(next);
   };
 }
 

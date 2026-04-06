@@ -163,7 +163,7 @@ router.get('/mempool', async (_req: Request, res: Response) => {
  * GET /api/v1/bitcoin/blocks/recent
  * Get recent confirmed blocks
  */
-router.get('/blocks/recent', asyncHandler(async (req: Request, res: Response) => {
+router.get('/blocks/recent', asyncHandler(async (req, res) => {
   const count = parseInt(req.query.count as string, 10) || 10;
   const blocks = await mempool.getRecentBlocks(count);
 
@@ -174,7 +174,7 @@ router.get('/blocks/recent', asyncHandler(async (req: Request, res: Response) =>
  * GET /api/v1/bitcoin/block/:height
  * Get block information
  */
-router.get('/block/:height', asyncHandler(async (req: Request, res: Response) => {
+router.get('/block/:height', asyncHandler(async (req, res) => {
   const height = parseInt(req.params.height, 10);
 
   if (isNaN(height) || height < 0) {

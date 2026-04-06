@@ -4,7 +4,7 @@
  * Endpoints for listing and managing UTXOs
  */
 
-import { Router, Request, Response } from 'express';
+import { Router } from 'express';
 import { requireWalletAccess } from '../../middleware/walletAccess';
 import { db as prisma } from '../../repositories/db';
 import { systemSettingRepository } from '../../repositories';
@@ -20,7 +20,7 @@ const router = Router();
  * GET /api/v1/wallets/:walletId/utxos
  * Get all UTXOs for a wallet
  */
-router.get('/wallets/:walletId/utxos', requireWalletAccess('view'), asyncHandler(async (req: Request, res: Response) => {
+router.get('/wallets/:walletId/utxos', requireWalletAccess('view'), asyncHandler(async (req, res) => {
   const walletId = req.walletId!;
   const hasPagination = req.query.limit !== undefined || req.query.offset !== undefined;
   const DEFAULT_UNPAGED_LIMIT = 1000;
@@ -115,7 +115,7 @@ router.get('/wallets/:walletId/utxos', requireWalletAccess('view'), asyncHandler
  * PATCH /api/v1/utxos/:utxoId/freeze
  * Toggle the frozen status of a UTXO (requires edit access: owner or signer)
  */
-router.patch('/utxos/:utxoId/freeze', asyncHandler(async (req: Request, res: Response) => {
+router.patch('/utxos/:utxoId/freeze', asyncHandler(async (req, res) => {
   const userId = req.user!.userId;
   const { utxoId } = req.params;
   const { frozen } = req.body;

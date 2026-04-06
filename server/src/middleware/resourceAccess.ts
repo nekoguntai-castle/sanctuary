@@ -32,7 +32,7 @@ export function createResourceAccessMiddleware<TLevel extends string>(
   return function requireAccess(level: TLevel) {
     return async (req: Request, res: Response, next: NextFunction) => {
       const resourceId = config.paramNames
-        .map((name) => req.params[name])
+        .map((name) => req.params[name] as string)
         .find(Boolean);
       const userId = req.user?.userId;
 
