@@ -700,7 +700,7 @@ describe('Wallet Service', () => {
         expect(created.id).toBe('wallet-1');
         expect(mockLogError).toHaveBeenCalledWith(
           'Failed to generate initial addresses',
-          expect.objectContaining({ error: expect.any(Error) })
+          expect.objectContaining({ error: expect.any(String) })
         );
       });
 
@@ -735,7 +735,7 @@ describe('Wallet Service', () => {
         await Promise.resolve();
         expect(mockLogWarn).toHaveBeenCalledWith(
           'After hook failed',
-          expect.objectContaining({ error: expect.any(Error) })
+          expect.objectContaining({ error: expect.any(String) })
         );
       });
     });
@@ -1238,7 +1238,7 @@ describe('Wallet Service', () => {
       await Promise.resolve();
       expect(mockLogWarn).toHaveBeenCalledWith(
         'After hook failed',
-        expect.objectContaining({ error: expect.any(Error) })
+        expect.objectContaining({ error: expect.any(String) })
       );
     });
 
@@ -1491,7 +1491,7 @@ describe('Wallet Service', () => {
       await Promise.resolve();
       expect(mockLogWarn).toHaveBeenCalledWith(
         'After hook failed',
-        expect.objectContaining({ error: expect.any(Error) })
+        expect.objectContaining({ error: expect.any(String) })
       );
     });
 

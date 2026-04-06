@@ -37,6 +37,7 @@
 
 import { getRedisClient, isRedisConnected } from './redis';
 import { createLogger } from '../utils/logger';
+import { getErrorMessage } from '../utils/errors';
 import crypto from 'crypto';
 
 const log = createLogger('INFRA:DIST_LOCK');
@@ -168,7 +169,7 @@ async function tryAcquireLock(
 
       return null; // Lock held by another
     } catch (error) {
-      log.warn(`Redis lock acquisition failed, falling back to local`, { key, error });
+      log.warn(`Redis lock acquisition failed, falling back to local`, { key, error: getErrorMessage(error) });
       // Fall through to local lock
     }
   }
@@ -220,7 +221,7 @@ export async function releaseLock(lock: DistributedLock): Promise<boolean> {
       log.debug(`Lock already released or stolen: ${lock.key}`);
       return false;
     } catch (error) {
-      log.warn(`Redis lock release failed`, { key: lock.key, error });
+      log.warn(`Redis lock release failed`, { key: lock.key, error: getErrorMessage(error) });
       return false;
     }
   }
@@ -277,7 +278,7 @@ export async function extendLock(
       log.warn(`Failed to extend lock (lost ownership): ${lock.key}`);
       return null;
     } catch (error) {
-      log.warn(`Redis lock extension failed`, { key: lock.key, error });
+      log.warn(`Redis lock extension failed`, { key: lock.key, error: getErrorMessage(error) });
       return null;
     }
   }
@@ -335,7 +336,7 @@ export async function isLocked(key: string): Promise<boolean> {
       const result = await redis.exists(`lock:${key}`);
       return result === 1;
     } catch (error) {
-      log.warn(`Redis lock check failed, checking local`, { key, error });
+      log.warn(`Redis lock check failed, checking local`, { key, error: getErrorMessage(error) });
     }
   }
 

@@ -8,6 +8,7 @@
 import { db as prisma } from '../../repositories/db';
 import * as descriptorBuilder from '../bitcoin/descriptorBuilder';
 import { createLogger } from '../../utils/logger';
+import { getErrorMessage } from '../../utils/errors';
 import { hookRegistry, Operations } from '../hooks';
 import { InvalidInputError, DeviceNotFoundError } from '../../errors';
 import { generateInitialAddresses } from './addressGeneration';
@@ -180,7 +181,7 @@ export async function createWallet(
       const addressesToCreate = generateInitialAddresses(wallet.id, descriptor, network);
       await prisma.address.createMany({ data: addressesToCreate });
     } catch (err) {
-      log.error('Failed to generate initial addresses', { error: err });
+      log.error('Failed to generate initial addresses', { error: getErrorMessage(err) });
       // Don't fail wallet creation if address generation fails
     }
   }
@@ -207,7 +208,7 @@ export async function createWallet(
     userId,
     result,
     success: true,
-  }).catch(err => log.warn('After hook failed', { error: err }));
+  }).catch(err => log.warn('After hook failed', { error: getErrorMessage(err) }));
 
   return result;
 }

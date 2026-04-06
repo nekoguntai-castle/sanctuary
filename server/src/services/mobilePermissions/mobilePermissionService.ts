@@ -34,6 +34,7 @@
 
 import { db as prisma } from '../../repositories/db';
 import { createLogger } from '../../utils/logger';
+import { getErrorMessage } from '../../utils/errors';
 import { ForbiddenError, NotFoundError } from '../../errors';
 import { mobilePermissionRepository } from '../../repositories';
 import type { MobilePermission } from '../../generated/prisma/client';
@@ -429,7 +430,7 @@ class MobilePermissionService {
         reason: allowed ? undefined : `Mobile access denied for action: ${action}`,
       };
     } catch (error) {
-      log.error('Error checking mobile permission', { walletId, userId, action, error });
+      log.error('Error checking mobile permission', { walletId, userId, action, error: getErrorMessage(error) });
       return { allowed: false, reason: 'Permission check failed' };
     }
   }

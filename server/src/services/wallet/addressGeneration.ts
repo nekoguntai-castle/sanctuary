@@ -7,6 +7,7 @@
 import { db as prisma } from '../../repositories/db';
 import * as addressDerivation from '../bitcoin/addressDerivation';
 import { createLogger } from '../../utils/logger';
+import { getErrorMessage } from '../../utils/errors';
 import { INITIAL_ADDRESS_COUNT } from '../../constants';
 import { hookRegistry, Operations } from '../hooks';
 import { InvalidInputError, WalletNotFoundError } from '../../errors';
@@ -97,7 +98,7 @@ export async function generateAddress(
     userId,
     result: address,
     success: true,
-  }).catch(err => log.warn('After hook failed', { error: err }));
+  }).catch(err => log.warn('After hook failed', { error: getErrorMessage(err) }));
 
   return address;
 }

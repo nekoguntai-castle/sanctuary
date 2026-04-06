@@ -553,23 +553,23 @@ describe('worker entrypoint', () => {
     expect(mocks.shutdownDistributedLock).toHaveBeenCalledTimes(1);
     expect(mocks.logger.error).toHaveBeenCalledWith(
       'Error closing health server',
-      expect.objectContaining({ error: expect.any(Error) })
+      expect.objectContaining({ error: expect.any(String) })
     );
     expect(mocks.logger.error).toHaveBeenCalledWith(
       'Error stopping Electrum manager',
-      expect.objectContaining({ error: expect.any(Error) })
+      expect.objectContaining({ error: expect.any(String) })
     );
     expect(mocks.logger.error).toHaveBeenCalledWith(
       'Error shutting down job queue',
-      expect.objectContaining({ error: expect.any(Error) })
+      expect.objectContaining({ error: expect.any(String) })
     );
     expect(mocks.logger.error).toHaveBeenCalledWith(
       'Error shutting down Redis',
-      expect.objectContaining({ error: expect.any(Error) })
+      expect.objectContaining({ error: expect.any(String) })
     );
     expect(mocks.logger.error).toHaveBeenCalledWith(
       'Error disconnecting database',
-      expect.objectContaining({ error: expect.any(Error) })
+      expect.objectContaining({ error: expect.any(String) })
     );
     expect(processExitSpy).toHaveBeenCalledWith(0);
   });

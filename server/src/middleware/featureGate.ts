@@ -18,6 +18,7 @@ import { Request, Response, NextFunction } from 'express';
 import { getConfig } from '../config';
 import type { FeatureFlagKey, FeatureFlags, ExperimentalFeatures } from '../config/types';
 import { createLogger } from '../utils/logger';
+import { getErrorMessage } from '../utils/errors';
 import { featureFlagService } from '../services/featureFlagService';
 
 const log = createLogger('MW:FEATURE_GATE');
@@ -69,7 +70,7 @@ export function requireFeature(flag: FeatureFlagKey) {
       next();
     } catch (error) {
       // Fallback to config on service error
-      log.warn('Feature flag service error, using config fallback', { flag, error });
+      log.warn('Feature flag service error, using config fallback', { flag, error: getErrorMessage(error) });
       const config = getConfig();
       const isEnabled = getFeatureValueFromConfig(config.features, flag);
 
@@ -120,7 +121,7 @@ export function requireAllFeatures(flags: FeatureFlagKey[]) {
 
       next();
     } catch (error) {
-      log.warn('Feature flag service error, using config fallback', { flags, error });
+      log.warn('Feature flag service error, using config fallback', { flags, error: getErrorMessage(error) });
       const config = getConfig();
       const disabledFlags = flags.filter((flag) => !getFeatureValueFromConfig(config.features, flag));
 
@@ -167,7 +168,7 @@ export function requireAnyFeature(flags: FeatureFlagKey[]) {
 
       next();
     } catch (error) {
-      log.warn('Feature flag service error, using config fallback', { flags, error });
+      log.warn('Feature flag service error, using config fallback', { flags, error: getErrorMessage(error) });
       const config = getConfig();
       const hasAnyEnabled = flags.some((flag) => getFeatureValueFromConfig(config.features, flag));
 

@@ -27,6 +27,7 @@
 
 import { getRedisClient, isRedisConnected } from '../../infrastructure';
 import { createLogger } from '../../utils/logger';
+import { getErrorMessage } from '../../utils/errors';
 import type { IRateLimiter, IRateLimitService, RateLimitPolicy, RateLimitResult } from './types';
 import { RedisRateLimiter } from './redisRateLimiter';
 import { MemoryRateLimiter } from './memoryRateLimiter';
@@ -121,7 +122,7 @@ class RateLimitService implements IRateLimitService {
 
       return result;
     } catch (error) {
-      log.error('Rate limit check failed', { policy: policyName, key, error });
+      log.error('Rate limit check failed', { policy: policyName, key, error: getErrorMessage(error) });
       // Fail open on error
       return {
         allowed: true,
@@ -149,7 +150,7 @@ class RateLimitService implements IRateLimitService {
     try {
       return await limiter.check(fullKey, policy.limit, policy.windowSeconds);
     } catch (error) {
-      log.error('Rate limit check failed', { policy: policyName, key, error });
+      log.error('Rate limit check failed', { policy: policyName, key, error: getErrorMessage(error) });
       return {
         allowed: true,
         remaining: policy.limit,

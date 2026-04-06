@@ -23,6 +23,7 @@
 import { Request, Response, NextFunction, RequestHandler } from 'express';
 import { rateLimitService, type RateLimitResult } from '../services/rateLimiting';
 import { createLogger } from '../utils/logger';
+import { getErrorMessage } from '../utils/errors';
 
 const log = createLogger('MW:RATE_LIMIT');
 
@@ -117,7 +118,7 @@ export function rateLimit(policyName: string, options?: RateLimitOptions): Reque
 
       next();
     } catch (error) {
-      log.error('Rate limit middleware error', { policy: policyName, error });
+      log.error('Rate limit middleware error', { policy: policyName, error: getErrorMessage(error) });
       // Fail closed - block request on error for security
       res.status(503).json({
         error: 'Service Unavailable',
@@ -154,7 +155,7 @@ export function rateLimitByUser(policyName: string, options?: RateLimitOptions):
         }
         return next();
       } catch (error) {
-        log.error('Rate limit middleware error', { policy: policyName, error });
+        log.error('Rate limit middleware error', { policy: policyName, error: getErrorMessage(error) });
         // Fail closed - block request on error for security
         return res.status(503).json({
           error: 'Service Unavailable',
@@ -175,7 +176,7 @@ export function rateLimitByUser(policyName: string, options?: RateLimitOptions):
 
       next();
     } catch (error) {
-      log.error('Rate limit middleware error', { policy: policyName, error });
+      log.error('Rate limit middleware error', { policy: policyName, error: getErrorMessage(error) });
       // Fail closed - block request on error for security
       res.status(503).json({
         error: 'Service Unavailable',
@@ -213,7 +214,7 @@ export function rateLimitByIpAndKey(
 
       next();
     } catch (error) {
-      log.error('Rate limit middleware error', { policy: policyName, error });
+      log.error('Rate limit middleware error', { policy: policyName, error: getErrorMessage(error) });
       // Fail closed - block request on error for security
       res.status(503).json({
         error: 'Service Unavailable',
@@ -249,7 +250,7 @@ export function rateLimitByKey(
 
       next();
     } catch (error) {
-      log.error('Rate limit middleware error', { policy: policyName, error });
+      log.error('Rate limit middleware error', { policy: policyName, error: getErrorMessage(error) });
       // Fail closed - block request on error for security
       res.status(503).json({
         error: 'Service Unavailable',

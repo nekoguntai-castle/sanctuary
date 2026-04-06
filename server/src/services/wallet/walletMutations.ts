@@ -6,6 +6,7 @@
 
 import { db as prisma } from '../../repositories/db';
 import { createLogger } from '../../utils/logger';
+import { getErrorMessage } from '../../utils/errors';
 import { hookRegistry, Operations } from '../hooks';
 import { ForbiddenError } from '../../errors';
 import type { WalletWithBalance } from './types';
@@ -111,5 +112,5 @@ export async function deleteWallet(walletId: string, userId: string): Promise<vo
   hookRegistry.executeAfter(Operations.WALLET_DELETE, { walletId }, {
     userId,
     success: true,
-  }).catch(err => log.warn('After hook failed', { error: err }));
+  }).catch(err => log.warn('After hook failed', { error: getErrorMessage(err) }));
 }

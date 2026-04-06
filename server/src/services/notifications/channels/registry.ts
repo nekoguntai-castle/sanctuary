@@ -116,7 +116,7 @@ class NotificationChannelRegistry {
 
         return await handler.notifyTransactions(walletId, transactions);
       } catch (err) {
-        log.error(`Channel ${handler.id} notification failed`, { error: err });
+        log.error(`Channel ${handler.id} notification failed`, { error: getErrorMessage(err) });
         return {
           success: false,
           channelId: handler.id,
@@ -167,7 +167,7 @@ class NotificationChannelRegistry {
 
         return await handler.notifyDraft(walletId, draft, createdByUserId);
       } catch (err) {
-        log.error(`Channel ${handler.id} draft notification failed`, { error: err });
+        log.error(`Channel ${handler.id} draft notification failed`, { error: getErrorMessage(err) });
         return {
           success: false,
           channelId: handler.id,
@@ -224,7 +224,7 @@ class NotificationChannelRegistry {
 
         return await handler.notifyAIInsight(walletId, insight);
       } catch (err) {
-        log.error(`Channel ${handler.id} insight notification failed`, { error: err });
+        log.error(`Channel ${handler.id} insight notification failed`, { error: getErrorMessage(err) });
         return {
           success: false,
           channelId: handler.id,

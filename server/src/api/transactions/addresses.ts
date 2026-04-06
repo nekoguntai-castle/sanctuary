@@ -9,7 +9,7 @@ import { requireWalletAccess } from '../../middleware/walletAccess';
 import { db as prisma } from '../../repositories/db';
 import * as addressDerivation from '../../services/bitcoin/addressDerivation';
 import { createLogger } from '../../utils/logger';
-import { bigIntToNumberOrZero, validatePagination } from '../../utils/errors';
+import { bigIntToNumberOrZero, validatePagination, getErrorMessage } from '../../utils/errors';
 import { asyncHandler } from '../../errors/errorHandler';
 import { NotFoundError, ValidationError } from '../../errors/ApiError';
 import { INITIAL_ADDRESS_COUNT } from '../../constants';
@@ -137,7 +137,7 @@ router.get('/wallets/:walletId/addresses', requireWalletAccess('view'), asyncHan
         skip: effectiveOffset,
       });
     } catch (err) {
-      log.error('Failed to auto-generate addresses', { error: err });
+      log.error('Failed to auto-generate addresses', { error: getErrorMessage(err) });
       // Return empty array if generation fails
     }
   }
@@ -296,7 +296,7 @@ router.post('/wallets/:walletId/addresses/generate', requireWalletAccess('edit')
         used: false,
       });
     } catch (err) {
-      log.error(`Failed to derive receive address ${i}`, { error: err });
+      log.error(`Failed to derive receive address ${i}`, { error: getErrorMessage(err) });
     }
   }
 
@@ -319,7 +319,7 @@ router.post('/wallets/:walletId/addresses/generate', requireWalletAccess('edit')
         used: false,
       });
     } catch (err) {
-      log.error(`Failed to derive change address ${i}`, { error: err });
+      log.error(`Failed to derive change address ${i}`, { error: getErrorMessage(err) });
     }
   }
 

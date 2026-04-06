@@ -521,7 +521,7 @@ async function shutdown(signal: string): Promise<void> {
     try {
       await healthServer.close();
     } catch (err) {
-      log.error('Error closing health server', { error: err });
+      log.error('Error closing health server', { error: getErrorMessage(err) });
     }
   }
 
@@ -530,7 +530,7 @@ async function shutdown(signal: string): Promise<void> {
     try {
       await electrumManager.stop();
     } catch (err) {
-      log.error('Error stopping Electrum manager', { error: err });
+      log.error('Error stopping Electrum manager', { error: getErrorMessage(err) });
     }
   }
 
@@ -539,7 +539,7 @@ async function shutdown(signal: string): Promise<void> {
     try {
       await jobQueue.shutdown();
     } catch (err) {
-      log.error('Error shutting down job queue', { error: err });
+      log.error('Error shutting down job queue', { error: getErrorMessage(err) });
     }
   }
 
@@ -547,7 +547,7 @@ async function shutdown(signal: string): Promise<void> {
   try {
     await shutdownNotificationDispatcher();
   } catch (err) {
-    log.error('Error shutting down notification dispatcher', { error: err });
+    log.error('Error shutting down notification dispatcher', { error: getErrorMessage(err) });
   }
 
   // Shutdown distributed locking
@@ -557,14 +557,14 @@ async function shutdown(signal: string): Promise<void> {
   try {
     await shutdownRedis();
   } catch (err) {
-    log.error('Error shutting down Redis', { error: err });
+    log.error('Error shutting down Redis', { error: getErrorMessage(err) });
   }
 
   // Close database
   try {
     await disconnect();
   } catch (err) {
-    log.error('Error disconnecting database', { error: err });
+    log.error('Error disconnecting database', { error: getErrorMessage(err) });
   }
 
   log.info('Worker shutdown complete');

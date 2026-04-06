@@ -228,7 +228,7 @@ export async function createWalletTransaction(
         data: addressesToCreate,
       });
     } catch (err) {
-      log.error('Failed to generate initial addresses', { error: err });
+      log.error('Failed to generate initial addresses', { error: getErrorMessage(err) });
     }
 
     return {

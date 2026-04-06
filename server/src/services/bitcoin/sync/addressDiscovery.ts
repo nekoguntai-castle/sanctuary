@@ -7,6 +7,7 @@
 
 import { db as prisma } from '../../../repositories/db';
 import { createLogger } from '../../../utils/logger';
+import { getErrorMessage } from '../../../utils/errors';
 import { walletLog } from '../../../websocket/notifications';
 import { ADDRESS_GAP_LIMIT } from '../../../constants';
 import * as addressDerivation from '../addressDerivation';
@@ -67,7 +68,7 @@ export async function ensureGapLimit(walletId: string): Promise<Array<{ address:
         );
         newAddresses.push({ address, derivationPath });
       } catch (err) {
-        log.error(`Failed to derive receive address ${i}`, { error: err });
+        log.error(`Failed to derive receive address ${i}`, { error: getErrorMessage(err) });
       }
     }
   }
@@ -92,7 +93,7 @@ export async function ensureGapLimit(walletId: string): Promise<Array<{ address:
         );
         newAddresses.push({ address, derivationPath });
       } catch (err) {
-        log.error(`Failed to derive change address ${i}`, { error: err });
+        log.error(`Failed to derive change address ${i}`, { error: getErrorMessage(err) });
       }
     }
   }

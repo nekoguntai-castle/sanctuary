@@ -119,8 +119,8 @@ export class SanctuaryImplementation implements PsbtImplementation {
       const psbt = bitcoin.Psbt.fromBase64(psbtBase64);
 
       // Calculate fee
-      let inputValue = 0;
-      let outputValue = 0;
+      let inputValue = BigInt(0);
+      let outputValue = BigInt(0);
       let complete = true;
 
       psbt.data.inputs.forEach((input) => {
@@ -146,7 +146,7 @@ export class SanctuaryImplementation implements PsbtImplementation {
         outputValue += output.value;
       });
 
-      const fee = inputValue > 0 ? inputValue - outputValue : 0;
+      const fee = inputValue > BigInt(0) ? Number(inputValue - outputValue) : 0;
 
       return {
         valid: true,
@@ -200,7 +200,7 @@ export class SanctuaryImplementation implements PsbtImplementation {
       if (input.witnessUtxo) {
         inputData.witnessUtxo = {
           script: Buffer.from(input.witnessUtxo.script, 'hex'),
-          value: input.witnessUtxo.value,
+          value: BigInt(input.witnessUtxo.value),
         };
       }
 
@@ -226,7 +226,7 @@ export class SanctuaryImplementation implements PsbtImplementation {
     for (const output of outputs) {
       psbt.addOutput({
         address: output.address,
-        value: output.amount,
+        value: BigInt(output.amount),
       });
     }
 
