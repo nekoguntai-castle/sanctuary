@@ -5,9 +5,10 @@
  */
 
 import { db as prisma } from '../../repositories/db';
+import { systemSettingRepository } from '../../repositories';
 import { estimateTransactionSize, calculateFee } from './utils';
 import { DEFAULT_CONFIRMATION_THRESHOLD } from '../../constants';
-import { safeJsonParse, SystemSettingSchemas } from '../../utils/safeJson';
+import { SystemSettingSchemas } from '../../utils/safeJson';
 
 /**
  * UTXO Selection Strategy
@@ -58,15 +59,7 @@ export async function selectUTXOs(
   selectedUtxoIds?: string[]
 ): Promise<UTXOSelectionResult> {
   // Get confirmation threshold setting
-  const thresholdSetting = await prisma.systemSetting.findUnique({
-    where: { key: 'confirmationThreshold' },
-  });
-  const confirmationThreshold = safeJsonParse(
-    thresholdSetting?.value,
-    SystemSettingSchemas.number,
-    DEFAULT_CONFIRMATION_THRESHOLD,
-    'confirmationThreshold'
-  );
+  const confirmationThreshold = await systemSettingRepository.getParsed('confirmationThreshold', SystemSettingSchemas.number, DEFAULT_CONFIRMATION_THRESHOLD);
 
   // Get available UTXOs (exclude frozen, unconfirmed, and locked-by-draft UTXOs)
   let utxos = await prisma.uTXO.findMany({

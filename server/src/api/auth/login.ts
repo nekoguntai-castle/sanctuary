@@ -7,12 +7,13 @@
 import { Router } from 'express';
 import type { RequestHandler } from 'express';
 import { db as prisma } from '../../repositories/db';
+import { systemSettingRepository } from '../../repositories';
 import { createLogger } from '../../utils/logger';
 import { hashPassword, verifyPassword, validatePasswordStrength } from '../../utils/password';
 import { generateToken, generate2FAToken } from '../../utils/jwt';
 import { auditService, AuditAction, AuditCategory, getClientInfo } from '../../services/auditService';
 import * as refreshTokenService from '../../services/refreshTokenService';
-import { safeJsonParse, SystemSettingSchemas } from '../../utils/safeJson';
+import { SystemSettingSchemas } from '../../utils/safeJson';
 import { isUsingInitialPassword } from './password';
 import { isValidEmail } from '../../utils/validators';
 import { asyncHandler } from '../../errors/errorHandler';
@@ -39,14 +40,7 @@ export function createLoginRouter(
    * Check if public registration is enabled (public endpoint for login page)
    */
   router.get('/registration-status', asyncHandler(async (_req, res) => {
-    const setting = await prisma.systemSetting.findUnique({
-      where: { key: 'registrationEnabled' },
-    });
-
-    // Default to disabled if setting doesn't exist (admin-only)
-    const enabled = setting
-      ? safeJsonParse(setting.value, SystemSettingSchemas.boolean, false, 'registrationEnabled')
-      : false;
+    const enabled = await systemSettingRepository.getParsed('registrationEnabled', SystemSettingSchemas.boolean, false);
 
     res.json({ enabled });
   }));
@@ -57,13 +51,7 @@ export function createLoginRouter(
    */
   router.post('/register', registerLimiter, asyncHandler(async (req, res) => {
     // Check if registration is enabled (default: disabled / admin-only)
-    const setting = await prisma.systemSetting.findUnique({
-      where: { key: 'registrationEnabled' },
-    });
-
-    const registrationEnabled = setting
-      ? safeJsonParse(setting.value, SystemSettingSchemas.boolean, false, 'registrationEnabled')
-      : false;
+    const registrationEnabled = await systemSettingRepository.getParsed('registrationEnabled', SystemSettingSchemas.boolean, false);
 
     if (!registrationEnabled) {
       throw new ForbiddenError('Public registration is disabled. Please contact an administrator.');

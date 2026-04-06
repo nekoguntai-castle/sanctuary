@@ -27,6 +27,7 @@ import {
   getByPrefix,
   getJson,
   getNumber,
+  getParsed,
   getValue,
   getValueOrDefault,
   set,
@@ -88,6 +89,19 @@ describe('systemSettingRepository', () => {
     await expect(getJson<{ enabled: boolean }>('j1')).resolves.toEqual({ enabled: true });
     await expect(getJson('j2', { enabled: false })).resolves.toEqual({ enabled: false });
     await expect(getJson('j3', { x: 1 })).resolves.toEqual({ x: 1 });
+  });
+
+  it('getParsed validates with Zod schema and returns default for invalid/missing', async () => {
+    const { z } = await import('zod');
+
+    (prisma.systemSetting.findUnique as Mock)
+      .mockResolvedValueOnce({ key: 'n', value: '42' })
+      .mockResolvedValueOnce({ key: 'n', value: '"not_a_number"' })
+      .mockResolvedValueOnce(null);
+
+    await expect(getParsed('n', z.number(), 0)).resolves.toBe(42);
+    await expect(getParsed('n', z.number(), 99)).resolves.toBe(99);
+    await expect(getParsed('missing', z.number(), 7)).resolves.toBe(7);
   });
 
   it('getAll/getByPrefix/getAllAsMap use expected queries', async () => {

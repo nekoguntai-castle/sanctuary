@@ -4,20 +4,17 @@
  * Fee and transaction size estimation utilities.
  */
 
-import { db as prisma } from '../../repositories/db';
+import { systemSettingRepository } from '../../repositories';
 import { DEFAULT_DUST_THRESHOLD } from '../../constants';
 import { getErrorMessage } from '../../utils/errors';
-import { safeJsonParse, SystemSettingSchemas } from '../../utils/safeJson';
+import { SystemSettingSchemas } from '../../utils/safeJson';
 import { selectUTXOs, UTXOSelectionStrategy } from './utxoSelection';
 
 /**
  * Get dust threshold from system settings
  */
 export async function getDustThreshold(): Promise<number> {
-  const setting = await prisma.systemSetting.findUnique({
-    where: { key: 'dustThreshold' },
-  });
-  return safeJsonParse(setting?.value, SystemSettingSchemas.number, DEFAULT_DUST_THRESHOLD, 'dustThreshold');
+  return systemSettingRepository.getParsed('dustThreshold', SystemSettingSchemas.number, DEFAULT_DUST_THRESHOLD);
 }
 
 /**

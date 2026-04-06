@@ -228,7 +228,7 @@ export const WalletStats: React.FC<WalletStatsProps> = ({ utxos, balance, transa
                    <YAxis hide domain={[0, 'dataMax']} />
                    <Tooltip
                     contentStyle={{ backgroundColor: '#1c1917', border: 'none', borderRadius: '8px', color: '#fff' }}
-                    formatter={(value: number) => [format(value), 'Balance']}
+                    formatter={(value) => [format(value as number), 'Balance']}
                   />
                    <Area type="monotone" dataKey="amount" stroke="#d4b483" strokeWidth={2} fillOpacity={1} fill="url(#colorAmount)" />
                  </AreaChart>
@@ -248,7 +248,7 @@ export const WalletStats: React.FC<WalletStatsProps> = ({ utxos, balance, transa
                    <Tooltip
                       cursor={{fill: 'transparent'}}
                       contentStyle={{ backgroundColor: '#1c1917', border: 'none', borderRadius: '8px', color: '#fff' }}
-                      formatter={(value: number) => [format(value), 'Amount']}
+                      formatter={(value) => [format(value as number), 'Amount']}
                    />
                    <Bar dataKey="amount" radius={[4, 4, 0, 0]}>
                       {ageData.map((_, index) => (

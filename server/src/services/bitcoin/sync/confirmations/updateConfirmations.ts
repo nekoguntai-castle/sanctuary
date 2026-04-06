@@ -7,9 +7,10 @@
  */
 
 import { db as prisma } from '../../../../repositories/db';
+import { systemSettingRepository } from '../../../../repositories';
 import { DEFAULT_DEEP_CONFIRMATION_THRESHOLD } from '../../../../constants';
 import { getBlockHeight } from '../../utils/blockHeight';
-import { safeJsonParse, SystemSettingSchemas } from '../../../../utils/safeJson';
+import { SystemSettingSchemas } from '../../../../utils/safeJson';
 import { executeInChunks } from './batchUpdates';
 import type { ConfirmationUpdate } from './types';
 
@@ -28,15 +29,7 @@ export async function updateTransactionConfirmations(walletId: string): Promise<
   const network = (wallet.network as 'mainnet' | 'testnet' | 'signet' | 'regtest') || 'mainnet';
 
   // Get deep confirmation threshold from settings
-  const deepThresholdSetting = await prisma.systemSetting.findUnique({
-    where: { key: 'deepConfirmationThreshold' },
-  });
-  const deepConfirmationThreshold = safeJsonParse(
-    deepThresholdSetting?.value,
-    SystemSettingSchemas.number,
-    DEFAULT_DEEP_CONFIRMATION_THRESHOLD,
-    'deepConfirmationThreshold'
-  );
+  const deepConfirmationThreshold = await systemSettingRepository.getParsed('deepConfirmationThreshold', SystemSettingSchemas.number, DEFAULT_DEEP_CONFIRMATION_THRESHOLD);
 
   const transactions = await prisma.transaction.findMany({
     where: {

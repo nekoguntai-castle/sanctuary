@@ -6,8 +6,9 @@
 
 import prisma from '../models/prisma';
 import type { SystemSetting } from '@prisma/client';
-import { safeJsonParseUntyped } from '../utils/safeJson';
+import { safeJsonParse, safeJsonParseUntyped } from '../utils/safeJson';
 import { createLogger } from '../utils/logger';
+import type { z } from 'zod';
 
 const log = createLogger('SYSTEM_SETTING:REPO');
 
@@ -126,6 +127,20 @@ export async function getJson<T>(
   const value = await getValue(key);
   if (value === null) return defaultValue;
   return safeJsonParseUntyped<T | undefined>(value, defaultValue, `systemSetting:${key}`);
+}
+
+/**
+ * Get a setting parsed and validated with a Zod schema.
+ * Combines the findUnique + safeJsonParse pattern into one call.
+ */
+export async function getParsed<T>(
+  key: string,
+  schema: z.ZodType<T>,
+  defaultValue: T
+): Promise<T> {
+  const value = await getValue(key);
+  if (value === null) return defaultValue;
+  return safeJsonParse(value, schema, defaultValue, key);
 }
 
 /**
@@ -260,6 +275,7 @@ export const systemSettingRepository = {
   getBoolean,
   getNumber,
   getJson,
+  getParsed,
   getAll,
   getByPrefix,
   getAllAsMap,

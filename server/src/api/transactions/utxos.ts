@@ -7,8 +7,9 @@
 import { Router, Request, Response } from 'express';
 import { requireWalletAccess } from '../../middleware/walletAccess';
 import { db as prisma } from '../../repositories/db';
+import { systemSettingRepository } from '../../repositories';
 import { checkWalletAccess } from '../../services/accessControl';
-import { safeJsonParse, SystemSettingSchemas } from '../../utils/safeJson';
+import { SystemSettingSchemas } from '../../utils/safeJson';
 import { bigIntToNumberOrZero, validatePagination } from '../../utils/errors';
 import { asyncHandler } from '../../errors/errorHandler';
 import { ValidationError, NotFoundError, ForbiddenError } from '../../errors/ApiError';
@@ -32,15 +33,7 @@ router.get('/wallets/:walletId/utxos', requireWalletAccess('view'), asyncHandler
   const effectiveOffset = hasPagination ? offset : 0;
 
   // Get confirmation threshold setting
-  const thresholdSetting = await prisma.systemSetting.findUnique({
-    where: { key: 'confirmationThreshold' },
-  });
-  const confirmationThreshold = safeJsonParse(
-    thresholdSetting?.value,
-    SystemSettingSchemas.number,
-    3, // Default to 3
-    'confirmationThreshold'
-  );
+  const confirmationThreshold = await systemSettingRepository.getParsed('confirmationThreshold', SystemSettingSchemas.number, 3);
 
   const [summary, utxos] = await Promise.all([
     prisma.uTXO.aggregate({

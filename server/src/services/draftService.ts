@@ -7,14 +7,13 @@
 
 import type { DraftTransaction, Prisma } from '@prisma/client';
 import * as bitcoin from 'bitcoinjs-lib';
-import { db as prisma } from '../repositories/db';
-import { draftRepository, DraftStatus } from '../repositories';
+import { draftRepository, DraftStatus, systemSettingRepository } from '../repositories';
 import { lockUtxosForDraft, resolveUtxoIds } from './draftLockService';
 import { notifyNewDraft } from './notifications/notificationService';
 import { NotFoundError, ForbiddenError, InvalidInputError, ConflictError } from '../errors';
 import { createLogger } from '../utils/logger';
 import { getErrorMessage } from '../utils/errors';
-import { safeJsonParse, SystemSettingSchemas } from '../utils/safeJson';
+import { SystemSettingSchemas } from '../utils/safeJson';
 import { DEFAULT_DRAFT_EXPIRATION_DAYS } from '../constants';
 import { approvalService } from './vaultPolicy/approvalService';
 import type { PolicyEvaluationResult } from './vaultPolicy/types';
@@ -67,15 +66,7 @@ export interface UpdateDraftInput {
  * Get draft expiration days from system settings
  */
 async function getDraftExpirationDays(): Promise<number> {
-  const setting = await prisma.systemSetting.findUnique({
-    where: { key: 'draftExpirationDays' },
-  });
-  return safeJsonParse(
-    setting?.value,
-    SystemSettingSchemas.number,
-    DEFAULT_DRAFT_EXPIRATION_DAYS,
-    'draftExpirationDays'
-  );
+  return systemSettingRepository.getParsed('draftExpirationDays', SystemSettingSchemas.number, DEFAULT_DRAFT_EXPIRATION_DAYS);
 }
 
 // ========================================

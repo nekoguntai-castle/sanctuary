@@ -3,8 +3,9 @@ import express, { type Express } from 'express';
 import request from 'supertest';
 import { mockPrismaClient, resetPrismaMocks } from '../../mocks/prisma';
 
-const { mockCheckWalletAccess } = vi.hoisted(() => ({
+const { mockCheckWalletAccess, mockGetParsed } = vi.hoisted(() => ({
   mockCheckWalletAccess: vi.fn(),
+  mockGetParsed: vi.fn(),
 }));
 
 vi.mock('../../../src/repositories/db', async () => {
@@ -25,6 +26,12 @@ vi.mock('../../../src/middleware/walletAccess', () => ({
 
 vi.mock('../../../src/services/accessControl', () => ({
   checkWalletAccess: mockCheckWalletAccess,
+}));
+
+vi.mock('../../../src/repositories', () => ({
+  systemSettingRepository: {
+    getParsed: mockGetParsed,
+  },
 }));
 
 vi.mock('../../../src/utils/logger', () => ({
@@ -62,10 +69,7 @@ describe('Transactions UTXO Routes', () => {
     vi.clearAllMocks();
     mockCheckWalletAccess.mockResolvedValue({ canEdit: true });
 
-    mockPrismaClient.systemSetting.findUnique.mockResolvedValue({
-      key: 'confirmationThreshold',
-      value: '2',
-    });
+    mockGetParsed.mockResolvedValue(2);
     mockPrismaClient.uTXO.aggregate.mockResolvedValue({
       _count: { _all: 0 },
       _sum: { amount: BigInt(0) },
@@ -78,10 +82,8 @@ describe('Transactions UTXO Routes', () => {
     const txBlockTime = new Date('2025-01-03T00:00:00.000Z');
     const fallbackCreatedAt = new Date('2025-01-02T00:00:00.000Z');
 
-    mockPrismaClient.systemSetting.findUnique.mockResolvedValue({
-      key: 'confirmationThreshold',
-      value: '"invalid"',
-    });
+    // getParsed returns the default value (3) for invalid input
+    mockGetParsed.mockResolvedValue(3);
     mockPrismaClient.uTXO.aggregate.mockResolvedValue({
       _count: { _all: 2 },
       _sum: { amount: BigInt(1500) },
@@ -153,10 +155,7 @@ describe('Transactions UTXO Routes', () => {
   });
 
   it('uses explicit pagination params and omits unpaged response headers', async () => {
-    mockPrismaClient.systemSetting.findUnique.mockResolvedValue({
-      key: 'confirmationThreshold',
-      value: '1',
-    });
+    mockGetParsed.mockResolvedValue(1);
     mockPrismaClient.uTXO.aggregate.mockResolvedValue({
       _count: { _all: 1 },
       _sum: { amount: BigInt(2500) },

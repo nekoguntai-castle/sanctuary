@@ -13,9 +13,10 @@ import * as bitcoin from 'bitcoinjs-lib';
 import { getNetwork, estimateTransactionSize, calculateFee } from '../utils';
 import { RBF_SEQUENCE } from '../advancedTx';
 import { db as prisma } from '../../../repositories/db';
+import { systemSettingRepository } from '../../../repositories';
 import { DEFAULT_CONFIRMATION_THRESHOLD } from '../../../constants';
 import { createLogger } from '../../../utils/logger';
-import { safeJsonParse, SystemSettingSchemas } from '../../../utils/safeJson';
+import { SystemSettingSchemas } from '../../../utils/safeJson';
 import { getDustThreshold } from '../estimation';
 import { isLegacyScriptType } from './helpers';
 import {
@@ -205,15 +206,7 @@ async function getAvailableUtxos(
   selectedUtxoIds?: string[]
 ): Promise<UtxoRecord[]> {
   // Get confirmation threshold setting
-  const thresholdSetting = await prisma.systemSetting.findUnique({
-    where: { key: 'confirmationThreshold' },
-  });
-  const confirmationThreshold = safeJsonParse(
-    thresholdSetting?.value,
-    SystemSettingSchemas.number,
-    DEFAULT_CONFIRMATION_THRESHOLD,
-    'confirmationThreshold'
-  );
+  const confirmationThreshold = await systemSettingRepository.getParsed('confirmationThreshold', SystemSettingSchemas.number, DEFAULT_CONFIRMATION_THRESHOLD);
 
   let utxos = await prisma.uTXO.findMany({
     where: {

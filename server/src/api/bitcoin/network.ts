@@ -11,12 +11,13 @@ import { getElectrumPoolAsync } from '../../services/bitcoin/electrumPool';
 import type { PooledConnectionHandle } from '../../services/bitcoin/electrumPool/types';
 import * as mempool from '../../services/bitcoin/mempool';
 import { db as prisma } from '../../repositories/db';
+import { systemSettingRepository } from '../../repositories';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { asyncHandler } from '../../errors/errorHandler';
 import { ValidationError } from '../../errors/ApiError';
 import { DEFAULT_CONFIRMATION_THRESHOLD, DEFAULT_DEEP_CONFIRMATION_THRESHOLD } from '../../constants';
-import { safeJsonParse, SystemSettingSchemas } from '../../utils/safeJson';
+import { SystemSettingSchemas } from '../../utils/safeJson';
 
 const router = Router();
 const log = createLogger('BITCOIN_NETWORK:ROUTE');
@@ -95,22 +96,10 @@ router.get('/status', async (_req: Request, res: Response) => {
     }
 
     // Get confirmation threshold settings
-    const [thresholdSetting, deepThresholdSetting] = await Promise.all([
-      prisma.systemSetting.findUnique({ where: { key: 'confirmationThreshold' } }),
-      prisma.systemSetting.findUnique({ where: { key: 'deepConfirmationThreshold' } }),
+    const [confirmationThreshold, deepConfirmationThreshold] = await Promise.all([
+      systemSettingRepository.getParsed('confirmationThreshold', SystemSettingSchemas.number, DEFAULT_CONFIRMATION_THRESHOLD),
+      systemSettingRepository.getParsed('deepConfirmationThreshold', SystemSettingSchemas.number, DEFAULT_DEEP_CONFIRMATION_THRESHOLD),
     ]);
-    const confirmationThreshold = safeJsonParse(
-      thresholdSetting?.value,
-      SystemSettingSchemas.number,
-      DEFAULT_CONFIRMATION_THRESHOLD,
-      'confirmationThreshold'
-    );
-    const deepConfirmationThreshold = safeJsonParse(
-      deepThresholdSetting?.value,
-      SystemSettingSchemas.number,
-      DEFAULT_DEEP_CONFIRMATION_THRESHOLD,
-      'deepConfirmationThreshold'
-    );
 
     res.json({
       connected: true,

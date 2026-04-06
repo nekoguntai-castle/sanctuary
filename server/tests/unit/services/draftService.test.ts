@@ -25,6 +25,9 @@ vi.mock('../../../src/repositories', () => ({
     remove: vi.fn(),
     deleteExpired: vi.fn(),
   },
+  systemSettingRepository: {
+    getParsed: vi.fn(),
+  },
   DraftStatus: {
     UNSIGNED: 'unsigned',
     PARTIAL: 'partial',
@@ -63,7 +66,7 @@ vi.mock('../../../src/constants', () => ({
 }));
 
 import prisma from '../../../src/models/prisma';
-import { draftRepository } from '../../../src/repositories';
+import { draftRepository, systemSettingRepository } from '../../../src/repositories';
 import { lockUtxosForDraft, resolveUtxoIds } from '../../../src/services/draftLockService';
 import { notifyNewDraft } from '../../../src/services/notifications/notificationService';
 import * as bitcoin from 'bitcoinjs-lib';
@@ -144,7 +147,7 @@ describe('DraftService', () => {
       (draftRepository.create as Mock).mockResolvedValue(mockDraft);
       (resolveUtxoIds as Mock).mockResolvedValue({ found: ['utxo-id-1'], notFound: [] });
       (lockUtxosForDraft as Mock).mockResolvedValue({ success: true, lockedCount: 1 });
-      (prisma.systemSetting.findUnique as Mock).mockResolvedValue(null);
+      (systemSettingRepository.getParsed as Mock).mockResolvedValue(7);
     });
 
     it('should create a draft with valid input', async () => {
@@ -237,7 +240,7 @@ describe('DraftService', () => {
     });
 
     it('should use custom expiration days from settings', async () => {
-      (prisma.systemSetting.findUnique as Mock).mockResolvedValue({ value: '14' });
+      (systemSettingRepository.getParsed as Mock).mockResolvedValue(14);
 
       await createDraft(walletId, userId, validInput);
 
