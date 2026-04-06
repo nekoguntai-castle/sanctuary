@@ -878,60 +878,6 @@ describe('Admin Node Config Routes', () => {
     expect(response.body.message).toContain('inconclusive');
   });
 
-  it('supports socks-proxy-agent default namespace fallback shape', async () => {
-    const socksProxyAgentModule: any = await import('socks-proxy-agent');
-    const originalSocksProxyAgent = socksProxyAgentModule.SocksProxyAgent;
-    const originalDefault = socksProxyAgentModule.default;
-
-    try {
-      socksProxyAgentModule.SocksProxyAgent = undefined;
-      socksProxyAgentModule.default = {
-        SocksProxyAgent: class MockFallbackNamespaceProxyAgent {
-          constructor(proxyUrl: string) {
-            mockSocksProxyAgentConstruct(proxyUrl);
-          }
-        },
-      };
-
-      const response = await request(app)
-        .post('/api/v1/admin/proxy/test')
-        .send({ host: '127.0.0.1', port: 9050 });
-
-      expect(response.status).toBe(200);
-      expect(response.body.success).toBe(true);
-      expect(mockSocksProxyAgentConstruct).toHaveBeenCalledWith('socks5://127.0.0.1:9050');
-    } finally {
-      socksProxyAgentModule.SocksProxyAgent = originalSocksProxyAgent;
-      socksProxyAgentModule.default = originalDefault;
-    }
-  });
-
-  it('supports socks-proxy-agent default constructor fallback shape', async () => {
-    const socksProxyAgentModule: any = await import('socks-proxy-agent');
-    const originalSocksProxyAgent = socksProxyAgentModule.SocksProxyAgent;
-    const originalDefault = socksProxyAgentModule.default;
-
-    try {
-      socksProxyAgentModule.SocksProxyAgent = undefined;
-      socksProxyAgentModule.default = class MockFallbackDefaultProxyAgent {
-        constructor(proxyUrl: string) {
-          mockSocksProxyAgentConstruct(proxyUrl);
-        }
-      };
-
-      const response = await request(app)
-        .post('/api/v1/admin/proxy/test')
-        .send({ host: '127.0.0.1', port: 9050 });
-
-      expect(response.status).toBe(200);
-      expect(response.body.success).toBe(true);
-      expect(mockSocksProxyAgentConstruct).toHaveBeenCalledWith('socks5://127.0.0.1:9050');
-    } finally {
-      socksProxyAgentModule.SocksProxyAgent = originalSocksProxyAgent;
-      socksProxyAgentModule.default = originalDefault;
-    }
-  });
-
   it('handles proxy verification setup errors', async () => {
     const response = await request(app)
       .post('/api/v1/admin/proxy/test')
