@@ -14,6 +14,7 @@ import { getErrorMessage } from '../../utils/errors';
 
 const router = Router();
 const log = createLogger('ADMIN_PROXY:ROUTE');
+type SocksProxyAgentConstructor = new (proxyUrl: string, ...args: unknown[]) => unknown;
 
 /**
  * POST /api/v1/admin/proxy/test
@@ -68,18 +69,25 @@ router.post('/proxy/test', authenticate, requireAdmin, asyncHandler(async (req, 
 
   try {
     // Dynamic import for SOCKS proxy agent
-    const socksModule = await import('socks-proxy-agent') as Record<string, unknown>;
+    const socksModule = await import('socks-proxy-agent') as {
+      SocksProxyAgent?: SocksProxyAgentConstructor;
+      default?: SocksProxyAgentConstructor | { SocksProxyAgent?: SocksProxyAgentConstructor };
+    };
+    const defaultExport = socksModule.default;
     const SocksProxyAgent =
-      (socksModule as Record<string, unknown>).SocksProxyAgent ??
-      ((socksModule as Record<string, Record<string, unknown>>).default)?.SocksProxyAgent ??
-      (socksModule as Record<string, unknown>).default;
+      socksModule.SocksProxyAgent ??
+      (typeof defaultExport === 'function'
+        ? defaultExport
+        : defaultExport?.SocksProxyAgent);
 
     const proxyUrl = username && password
       ? `socks5://${username}:${password}@${host}:${proxyPort}`
       : `socks5://${host}:${proxyPort}`;
 
-    // @ts-expect-error - SocksProxyAgent constructor is dynamically resolved
-    const agent = new SocksProxyAgent(proxyUrl);
+    if (!SocksProxyAgent) {
+      throw new Error('Unable to resolve SocksProxyAgent constructor');
+    }
+    const agent = new SocksProxyAgent(proxyUrl) as https.Agent;
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 15000);
