@@ -75,8 +75,8 @@ fi
 echo "Applying migrations..."
 npx prisma migrate deploy
 
-# Run seed
+# Run seed (use compiled JS in production, bypasses prisma.config.ts which needs tsx)
 echo "Running database seed..."
-npx prisma db seed
+node dist/prisma/prisma/seed.js
 
 echo "=== Migration Complete ==="
