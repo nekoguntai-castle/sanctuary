@@ -16,7 +16,7 @@ vi.mock('recharts', () => ({
   Area: () => <span data-testid="area" />,
   XAxis: () => <span data-testid="x-axis" />,
   YAxis: () => <span data-testid="y-axis" />,
-  Tooltip: ({ content }: { content: React.ReactElement }) => (
+  Tooltip: ({ content }: { content: React.ReactElement<Record<string, unknown>> }) => (
     <div data-testid="tooltip">
       <div data-testid="tooltip-inactive">{React.cloneElement(content, { active: false, payload: [], label: '' })}</div>
       <div data-testid="tooltip-active">{React.cloneElement(content, { active: true, payload: [{ value: 42000 }], label: 'Jan 1' })}</div>

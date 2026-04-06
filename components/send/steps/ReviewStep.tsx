@@ -42,7 +42,7 @@ export interface ReviewStepProps {
   onMarkDeviceSigned?: (deviceId: string) => void;
   onProcessQrSignedPsbt?: (signedPsbt: string, deviceId: string) => void;
   onBroadcastSigned?: () => Promise<boolean>;
-  hardwareWallet?: any;
+  hardwareWallet?: { isConnected: boolean; device: unknown };
   // Draft mode - locks editing, shows draft info
   isDraftMode?: boolean;
 }

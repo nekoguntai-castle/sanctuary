@@ -54,7 +54,7 @@
     "qrcode.react": "^4.2.0",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
-    "react-router-dom": "^7.10.1",
+    "react-router-dom": "^7.14.0",
     "react-virtuoso": "^4.17.0",
     "recharts": "^3.5.1",
     "regenerator-runtime": "^0.14.1"

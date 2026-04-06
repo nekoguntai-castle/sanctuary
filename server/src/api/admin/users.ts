@@ -11,6 +11,7 @@ import { asyncHandler } from '../../errors/errorHandler';
 import { InvalidInputError, NotFoundError, ConflictError } from '../../errors/ApiError';
 import { createLogger } from '../../utils/logger';
 import { hashPassword, validatePasswordStrength } from '../../utils/password';
+import { isValidEmail } from '../../utils/validators';
 import { auditService, AuditAction, AuditCategory } from '../../services/auditService';
 import { revokeAllUserTokens } from '../../services/tokenRevocation';
 
@@ -55,8 +56,7 @@ router.post('/', authenticate, requireAdmin, asyncHandler(async (req, res) => {
   }
 
   // Validate email format
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(email)) {
+  if (!isValidEmail(email)) {
     throw new InvalidInputError('Invalid email address format');
   }
 

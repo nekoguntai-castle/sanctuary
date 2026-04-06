@@ -13,7 +13,7 @@ vi.mock('../../utils/errorHandler', () => ({
   extractErrorMessage: vi.fn((err: unknown) => err instanceof Error ? err.message : String(err)),
 }));
 
-interface TestFormValues {
+interface TestFormValues extends Record<string, unknown> {
   username: string;
   email: string;
   isAdmin: boolean;
@@ -26,9 +26,9 @@ const defaultInitialValues: TestFormValues = {
 };
 
 describe('useModalForm', () => {
-  let mockOnSubmit: ReturnType<typeof vi.fn>;
-  let mockOnSuccess: ReturnType<typeof vi.fn>;
-  let mockOnError: ReturnType<typeof vi.fn>;
+  let mockOnSubmit: ReturnType<typeof vi.fn<(values: TestFormValues) => Promise<void>>>;
+  let mockOnSuccess: ReturnType<typeof vi.fn<() => void>>;
+  let mockOnError: ReturnType<typeof vi.fn<(error: unknown) => void>>;
 
   beforeEach(() => {
     vi.clearAllMocks();

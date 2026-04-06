@@ -184,7 +184,7 @@ const NotificationItem: React.FC<NotificationItemProps> = ({
 interface NotificationPanelProps {
   isOpen: boolean;
   onClose: () => void;
-  anchorRef?: React.RefObject<HTMLElement>;
+  anchorRef?: React.RefObject<HTMLElement | null>;
 }
 
 export const NotificationPanel: React.FC<NotificationPanelProps> = ({
@@ -368,7 +368,7 @@ export const NotificationBell: React.FC = () => {
       <NotificationPanel
         isOpen={isPanelOpen}
         onClose={closePanel}
-        anchorRef={buttonRef as any}
+        anchorRef={buttonRef}
       />
     </div>
   );

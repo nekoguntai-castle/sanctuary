@@ -24,7 +24,9 @@ vi.mock('../../../../../../themes/backgroundCategories', () => ({
   }),
 }));
 
-const IconStub = () => <span data-testid="icon-stub" />;
+import type { LucideIcon } from 'lucide-react';
+
+const IconStub = (() => <span data-testid="icon-stub" />) as unknown as LucideIcon;
 
 const renderPanel = (
   overrides: Partial<React.ComponentProps<typeof BackgroundsPanel>> = {},

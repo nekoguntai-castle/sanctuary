@@ -14,6 +14,7 @@ import { auditService, AuditAction, AuditCategory, getClientInfo } from '../../s
 import * as refreshTokenService from '../../services/refreshTokenService';
 import { safeJsonParse, SystemSettingSchemas } from '../../utils/safeJson';
 import { isUsingInitialPassword } from './password';
+import { isValidEmail } from '../../utils/validators';
 import { asyncHandler } from '../../errors/errorHandler';
 import { InvalidInputError, ValidationError, ConflictError, ForbiddenError } from '../../errors/ApiError';
 import {
@@ -76,8 +77,7 @@ export function createLoginRouter(
     }
 
     // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
+    if (!isValidEmail(email)) {
       throw new InvalidInputError('Invalid email address format');
     }
 

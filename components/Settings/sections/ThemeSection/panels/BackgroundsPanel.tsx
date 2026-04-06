@@ -6,6 +6,7 @@
 
 import React, { useState } from 'react';
 import { Search, X, Heart, Sparkles, Calendar, ChevronDown } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import type { BackgroundOption, SeasonalBackgrounds } from '../../../../../types';
 import { Season, themeRegistry } from '../../../../../themes';
 import { CATEGORIES, BackgroundCategory, getBackgroundsByCategory } from '../../../../../themes/backgroundCategories';
@@ -14,7 +15,7 @@ import { seasonIcons } from '../iconMaps';
 interface BackgroundInfo {
   id: BackgroundOption;
   name: string;
-  icon: any;
+  icon: LucideIcon;
 }
 
 interface BackgroundsPanelProps {

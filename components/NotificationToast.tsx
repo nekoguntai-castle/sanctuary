@@ -3,13 +3,29 @@ import { X, ArrowDownLeft, ArrowUpRight, CheckCircle, TrendingUp, Activity, Aler
 
 export type NotificationType = 'transaction' | 'balance' | 'confirmation' | 'block' | 'success' | 'error' | 'warning' | 'info';
 
+/** Notification payload — shape varies by notification type */
+export interface NotificationData {
+  type?: string;
+  txid?: string;
+  amount?: number;
+  confirmations?: number;
+  previousConfirmations?: number;
+  walletId?: string;
+  balance?: number;
+  confirmed?: number;
+  unconfirmed?: number;
+  change?: number;
+  height?: number;
+  transactionCount?: number;
+}
+
 export interface Notification {
   id: string;
   type: NotificationType;
   title: string;
   message?: string;
   duration?: number; // milliseconds, undefined = persistent
-  data?: any;
+  data?: NotificationData;
 }
 
 interface NotificationToastProps {
