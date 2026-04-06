@@ -12,58 +12,54 @@
  */
 
 import { Request, Response } from 'express';
-import { createProxyMiddleware, fixRequestBody, Options } from 'http-proxy-middleware';
+import { createProxyMiddleware, fixRequestBody } from 'http-proxy-middleware';
 import { config } from '../../config';
 import { AuthenticatedRequest } from '../../middleware/auth';
 import { createLogger } from '../../utils/logger';
 
 const log = createLogger('PROXY');
 
-/**
- * Proxy configuration
- */
-export const proxyOptions: Options = {
+// Create proxy middleware
+export const proxy = createProxyMiddleware({
   target: config.backendUrl,
   changeOrigin: true,
-  logLevel: 'silent',
-  onProxyReq: (proxyReq, req) => {
-    // Fix for body parsing: when express.json() parses the body,
-    // the raw stream is consumed. This re-attaches the parsed body
-    // to the proxy request so it can be forwarded to the backend.
-    fixRequestBody(proxyReq, req as Request);
+  on: {
+    proxyReq: (proxyReq, req) => {
+      // Fix for body parsing: when express.json() parses the body,
+      // the raw stream is consumed. This re-attaches the parsed body
+      // to the proxy request so it can be forwarded to the backend.
+      fixRequestBody(proxyReq, req as Request);
 
-    const authReq = req as AuthenticatedRequest;
+      const authReq = req as AuthenticatedRequest;
 
-    // Forward user info to backend
-    if (authReq.user) {
-      proxyReq.setHeader('X-Gateway-User-Id', authReq.user.userId);
-      proxyReq.setHeader('X-Gateway-Username', authReq.user.username);
-    }
+      // Forward user info to backend
+      if (authReq.user) {
+        proxyReq.setHeader('X-Gateway-User-Id', authReq.user.userId);
+        proxyReq.setHeader('X-Gateway-Username', authReq.user.username);
+      }
 
-    // Mark request as coming from gateway
-    proxyReq.setHeader('X-Gateway-Request', 'true');
+      // Mark request as coming from gateway
+      proxyReq.setHeader('X-Gateway-Request', 'true');
 
-    log.debug('Proxying request', {
-      method: req.method,
-      path: req.path,
-      userId: authReq.user?.userId,
-    });
+      log.debug('Proxying request', {
+        method: req.method,
+        path: req.url,
+        userId: authReq.user?.userId,
+      });
+    },
+    proxyRes: (proxyRes, req) => {
+      log.debug('Proxy response', {
+        method: req.method,
+        path: req.url,
+        status: proxyRes.statusCode,
+      });
+    },
+    error: (err, req, res) => {
+      log.error('Proxy error', { error: (err as Error).message, path: req.url });
+      (res as Response).status(502).json({
+        error: 'Bad Gateway',
+        message: 'Unable to reach backend service',
+      });
+    },
   },
-  onProxyRes: (proxyRes, req) => {
-    log.debug('Proxy response', {
-      method: req.method,
-      path: req.path,
-      status: proxyRes.statusCode,
-    });
-  },
-  onError: (err, req, res) => {
-    log.error('Proxy error', { error: err.message, path: req.path });
-    (res as Response).status(502).json({
-      error: 'Bad Gateway',
-      message: 'Unable to reach backend service',
-    });
-  },
-};
-
-// Create proxy middleware
-export const proxy = createProxyMiddleware(proxyOptions);
+});
