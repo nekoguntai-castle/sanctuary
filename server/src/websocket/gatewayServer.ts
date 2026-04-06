@@ -16,6 +16,7 @@ import { WebSocket, WebSocketServer } from 'ws';
 import { IncomingMessage } from 'http';
 import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
 import { createLogger } from '../utils/logger';
+import { getErrorMessage } from '../utils/errors';
 import config from '../config';
 import { parseGatewayMessage } from './schemas';
 import {
@@ -115,7 +116,7 @@ export class GatewayWebSocketServer {
 
     // Handle errors
     client.on('error', (error) => {
-      log.error('Gateway WebSocket error', { error });
+      log.error('Gateway WebSocket error', { error: getErrorMessage(error) });
     });
   }
 

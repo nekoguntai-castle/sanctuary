@@ -289,7 +289,7 @@ describe('Metrics Middleware', () => {
       expect(res.send).toHaveBeenCalledWith('Failed to collect metrics');
       expect(mockLogger.error).toHaveBeenCalledWith(
         'Failed to get metrics',
-        expect.objectContaining({ error: expect.any(Error) })
+        expect.objectContaining({ error: 'Metrics error' })
       );
     });
   });

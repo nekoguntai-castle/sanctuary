@@ -39,6 +39,7 @@
 import Redis from 'ioredis';
 import { EventEmitter } from 'events';
 import { createLogger } from '../utils/logger';
+import { getErrorMessage } from '../utils/errors';
 import type { EventName, EventTypes, EventHandler } from './eventBus';
 
 const log = createLogger('INFRA:REDIS_EVENT_BUS');
@@ -110,7 +111,7 @@ export class RedisEventBus {
         // Emit to local handlers
         this.localEmitter.emit(eventName, envelope.data);
       } catch (error) {
-        log.error('Failed to process distributed event', { error, message });
+        log.error('Failed to process distributed event', { error: getErrorMessage(error), message });
       }
     });
 
@@ -127,7 +128,7 @@ export class RedisEventBus {
       try {
         await handler(data);
       } catch (error) {
-        log.error(`Error in event handler for ${event}`, { error });
+        log.error(`Error in event handler for ${event}`, { error: getErrorMessage(error) });
         this.metrics.errors.set(event, (this.metrics.errors.get(event) || 0) + 1);
       }
     };
@@ -147,7 +148,7 @@ export class RedisEventBus {
       try {
         await handler(data);
       } catch (error) {
-        log.error(`Error in one-time event handler for ${event}`, { error });
+        log.error(`Error in one-time event handler for ${event}`, { error: getErrorMessage(error) });
         this.metrics.errors.set(event, (this.metrics.errors.get(event) || 0) + 1);
       }
     };
@@ -174,7 +175,7 @@ export class RedisEventBus {
 
     const channel = `${CHANNEL_PREFIX}${event}`;
     this.publisher.publish(channel, JSON.stringify(envelope)).catch((error) => {
-      log.error('Failed to publish event to Redis', { event, error });
+      log.error('Failed to publish event to Redis', { event, error: getErrorMessage(error) });
     });
 
     log.debug(`Event emitted: ${event}`, { data });

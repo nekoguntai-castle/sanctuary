@@ -86,7 +86,7 @@ async function loadNodeConfig(): Promise<NodeConfig | null> {
       };
     }
   } catch (error) {
-    log.error('Failed to load node config from database', { error });
+    log.error('Failed to load node config from database', { error: getErrorMessage(error) });
   }
 
   return null;

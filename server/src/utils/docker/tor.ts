@@ -32,7 +32,7 @@ async function findTorContainer(): Promise<ContainerInfo | null> {
 
     return tor || null;
   } catch (error) {
-    log.error('Error finding Tor container', { error });
+    log.error('Error finding Tor container', { error: getErrorMessage(error) });
     return null;
   }
 }
@@ -55,7 +55,7 @@ export async function getTorStatus(): Promise<ContainerStatus> {
       containerId: tor.Id,
     };
   } catch (error) {
-    log.error('Error getting Tor status', { error });
+    log.error('Error getting Tor status', { error: getErrorMessage(error) });
     return { exists: false, running: false, status: 'error' };
   }
 }
@@ -165,7 +165,7 @@ export async function createTorContainer(): Promise<ContainerActionResult> {
     log.warn('Failed to start Tor container', { status: startResponse.status, error: errorText });
     return { success: false, message: `Container created but failed to start: ${errorText}` };
   } catch (error) {
-    log.error('Error creating Tor container', { error });
+    log.error('Error creating Tor container', { error: getErrorMessage(error) });
     return { success: false, message: getErrorMessage(error, 'Failed to create Tor container') };
   }
 }
@@ -204,7 +204,7 @@ export async function startTor(): Promise<ContainerActionResult> {
     log.warn('Failed to start Tor', { status: response.status, error: errorText });
     return { success: false, message: `Failed to start Tor: ${errorText}` };
   } catch (error) {
-    log.error('Error starting Tor', { error });
+    log.error('Error starting Tor', { error: getErrorMessage(error) });
     return { success: false, message: getErrorMessage(error, 'Failed to start Tor') };
   }
 }
@@ -242,7 +242,7 @@ export async function stopTor(): Promise<ContainerActionResult> {
     log.warn('Failed to stop Tor', { status: response.status, error: errorText });
     return { success: false, message: `Failed to stop Tor: ${errorText}` };
   } catch (error) {
-    log.error('Error stopping Tor', { error });
+    log.error('Error stopping Tor', { error: getErrorMessage(error) });
     return { success: false, message: getErrorMessage(error, 'Failed to stop Tor') };
   }
 }

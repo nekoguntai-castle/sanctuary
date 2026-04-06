@@ -6,6 +6,7 @@
  */
 
 import { createLogger } from '../../../utils/logger';
+import { getErrorMessage } from '../../../utils/errors';
 import type { ElectrumResponse, ElectrumRequest, PendingRequest } from './types';
 
 const log = createLogger('ELECTRUM:SVC_PROTOCOL');
@@ -30,7 +31,7 @@ export function parseResponseBuffer(
       const response: ElectrumResponse = JSON.parse(line);
       responses.push(response);
     } catch (error) {
-      log.error('Failed to parse response', { error });
+      log.error('Failed to parse response', { error: getErrorMessage(error) });
     }
   }
 

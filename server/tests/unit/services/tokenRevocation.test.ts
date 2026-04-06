@@ -322,7 +322,7 @@ describe('Token Revocation Service', () => {
       await vi.advanceTimersByTimeAsync(5 * 60 * 1000 + 1);
 
       expect(mockLogger.error).toHaveBeenCalledWith('Cleanup interval error', {
-        error: expect.any(Error),
+        error: 'logger write failed',
       });
     });
   });

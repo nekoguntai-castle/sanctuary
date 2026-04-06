@@ -254,7 +254,7 @@ describe('infrastructure/redis', () => {
     await expect(redisInfra.shutdownRedis()).resolves.toBeUndefined();
     expect(mockLogger.error).toHaveBeenCalledWith(
       'Error during Redis shutdown',
-      expect.objectContaining({ error: expect.any(Error) })
+      expect.objectContaining({ error: 'event bus shutdown failed' })
     );
   });
 

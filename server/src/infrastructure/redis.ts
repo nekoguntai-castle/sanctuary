@@ -141,7 +141,7 @@ export async function initializeRedis(): Promise<void> {
       eventBus: 'redis',
     });
   } catch (error) {
-    log.error('Failed to initialize Redis', { error });
+    log.error('Failed to initialize Redis', { error: getErrorMessage(error) });
 
     // Clean up partial connections
     if (redisClient) {
@@ -238,7 +238,7 @@ export async function shutdownRedis(): Promise<void> {
 
     log.info('Redis infrastructure shutdown complete');
   } catch (error) {
-    log.error('Error during Redis shutdown', { error });
+    log.error('Error during Redis shutdown', { error: getErrorMessage(error) });
   }
 }
 

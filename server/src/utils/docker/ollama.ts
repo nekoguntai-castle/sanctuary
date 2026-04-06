@@ -32,7 +32,7 @@ async function findOllamaContainer(): Promise<ContainerInfo | null> {
 
     return ollama || null;
   } catch (error) {
-    log.error('Error finding Ollama container', { error });
+    log.error('Error finding Ollama container', { error: getErrorMessage(error) });
     return null;
   }
 }
@@ -55,7 +55,7 @@ export async function getOllamaStatus(): Promise<ContainerStatus> {
       containerId: ollama.Id,
     };
   } catch (error) {
-    log.error('Error getting Ollama status', { error });
+    log.error('Error getting Ollama status', { error: getErrorMessage(error) });
     return { exists: false, running: false, status: 'error' };
   }
 }
@@ -174,7 +174,7 @@ export async function createOllamaContainer(): Promise<ContainerActionResult> {
     log.warn('Failed to start Ollama container', { status: startResponse.status, error: errorText });
     return { success: false, message: `Container created but failed to start: ${errorText}` };
   } catch (error) {
-    log.error('Error creating Ollama container', { error });
+    log.error('Error creating Ollama container', { error: getErrorMessage(error) });
     return { success: false, message: getErrorMessage(error, 'Failed to create Ollama container') };
   }
 }
@@ -213,7 +213,7 @@ export async function startOllama(): Promise<ContainerActionResult> {
     log.warn('Failed to start Ollama', { status: response.status, error: errorText });
     return { success: false, message: `Failed to start Ollama: ${errorText}` };
   } catch (error) {
-    log.error('Error starting Ollama', { error });
+    log.error('Error starting Ollama', { error: getErrorMessage(error) });
     return { success: false, message: getErrorMessage(error, 'Failed to start Ollama') };
   }
 }
@@ -251,7 +251,7 @@ export async function stopOllama(): Promise<ContainerActionResult> {
     log.warn('Failed to stop Ollama', { status: response.status, error: errorText });
     return { success: false, message: `Failed to stop Ollama: ${errorText}` };
   } catch (error) {
-    log.error('Error stopping Ollama', { error });
+    log.error('Error stopping Ollama', { error: getErrorMessage(error) });
     return { success: false, message: getErrorMessage(error, 'Failed to stop Ollama') };
   }
 }

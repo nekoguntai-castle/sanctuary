@@ -60,7 +60,7 @@ describe('initializeOpenTelemetry', () => {
 
     expect(mockLogger.error).toHaveBeenCalledWith(
       'Failed to initialize OpenTelemetry',
-      expect.objectContaining({ error: expect.any(Error) })
+      expect.objectContaining({ error: expect.any(String) })
     );
   });
 
@@ -198,7 +198,7 @@ describe('initializeOpenTelemetry', () => {
       expect(sdkShutdown).toHaveBeenCalledTimes(1);
       expect(mockLogger.error).toHaveBeenCalledWith(
         'Error shutting down OpenTelemetry SDK',
-        expect.objectContaining({ error: expect.any(Error) })
+        expect.objectContaining({ error: 'shutdown failed' })
       );
     } finally {
       requireSpy.mockRestore();

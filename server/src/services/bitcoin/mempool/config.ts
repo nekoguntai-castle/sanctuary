@@ -6,6 +6,7 @@
 
 import { db as prisma } from '../../../repositories/db';
 import { createLogger } from '../../../utils/logger';
+import { getErrorMessage } from '../../../utils/errors';
 
 const log = createLogger('BITCOIN:SVC_MEMPOOL_CONFIG');
 
@@ -35,7 +36,7 @@ export async function getMempoolApiBase(): Promise<string> {
       return `${explorerUrl}/api`;
     }
   } catch (error) {
-    log.warn('Could not fetch node config, using default', { error });
+    log.warn('Could not fetch node config, using default', { error: getErrorMessage(error) });
   }
 
   return DEFAULT_MEMPOOL_API;
@@ -51,7 +52,7 @@ export async function getMempoolEstimatorType(): Promise<'simple' | 'mempool_spa
     });
     return (nodeConfig?.mempoolEstimator as 'simple' | 'mempool_space') || 'mempool_space';
   } catch (error) {
-    log.warn('Could not fetch mempool estimator config, using mempool_space', { error });
+    log.warn('Could not fetch mempool estimator config, using mempool_space', { error: getErrorMessage(error) });
     return 'mempool_space';
   }
 }

@@ -230,7 +230,7 @@ class SyncService {
         try {
           await releaseLock(lock);
         } catch (error) {
-          log.warn(`[SYNC] Failed to release lock for wallet ${walletId}`, { error });
+          log.warn(`[SYNC] Failed to release lock for wallet ${walletId}`, { error: getErrorMessage(error) });
         }
       }
       this.state.activeLocks.clear();

@@ -12,6 +12,7 @@ import { EventEmitter } from 'events';
 import config from '../../../config';
 import { db as prisma } from '../../../repositories/db';
 import { createLogger } from '../../../utils/logger';
+import { getErrorMessage } from '../../../utils/errors';
 import { createConnection, wrapSocketInTls, applySocketOptimizations } from './connection';
 import { createRequestMessage, createBatchMessage, rejectAllPendingRequests } from './protocol';
 import { getDefaultTimeouts } from './clientConfig';
@@ -220,7 +221,7 @@ class ElectrumClient extends EventEmitter {
             this.socket!.on('data', (data) => this.handleData(data));
 
             this.socket!.on('error', (error) => {
-              log.error('Socket error', { error });
+              log.error('Socket error', { error: getErrorMessage(error) });
               rejectAllPendingRequests(this.pendingRequests, new Error(`Socket error: ${error.message}`));
             });
 
@@ -237,11 +238,11 @@ class ElectrumClient extends EventEmitter {
             });
           })
           .catch((error) => {
-            log.error('Connection error', { error });
+            log.error('Connection error', { error: getErrorMessage(error) });
             handleError(error as Error);
           });
       } catch (error) {
-        log.error('Connection setup error', { error });
+        log.error('Connection setup error', { error: getErrorMessage(error) });
         handleError(error as Error);
       }
     });

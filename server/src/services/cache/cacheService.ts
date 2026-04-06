@@ -29,6 +29,7 @@
  */
 
 import { createLogger } from '../../utils/logger';
+import { getErrorMessage } from '../../utils/errors';
 import { cacheOperationsTotal } from '../../observability/metrics';
 
 const log = createLogger('CACHE:SVC');
@@ -373,7 +374,7 @@ export async function warmCaches(config: CacheWarmConfig = {}): Promise<{
             failed.push('featureFlags');
           }
         } catch (error) {
-          log.warn('Failed to warm feature flags cache', { error });
+          log.warn('Failed to warm feature flags cache', { error: getErrorMessage(error) });
           failed.push('featureFlags');
         }
       })()
@@ -393,7 +394,7 @@ export async function warmCaches(config: CacheWarmConfig = {}): Promise<{
             failed.push('blockHeight');
           }
         } catch (error) {
-          log.warn('Failed to warm block height cache', { error });
+          log.warn('Failed to warm block height cache', { error: getErrorMessage(error) });
           failed.push('blockHeight');
         }
       })()
@@ -413,7 +414,7 @@ export async function warmCaches(config: CacheWarmConfig = {}): Promise<{
             failed.push('priceData');
           }
         } catch (error) {
-          log.warn('Failed to warm price cache', { error });
+          log.warn('Failed to warm price cache', { error: getErrorMessage(error) });
           failed.push('priceData');
         }
       })()

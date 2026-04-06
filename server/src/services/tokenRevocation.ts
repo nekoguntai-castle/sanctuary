@@ -21,6 +21,7 @@
 
 import { db as prisma } from '../repositories/db';
 import { createLogger } from '../utils/logger';
+import { getErrorMessage } from '../utils/errors';
 import { getNamespacedCache } from '../infrastructure/redis';
 import type { ICacheService } from './cache/cacheService';
 
@@ -92,7 +93,7 @@ export async function revokeToken(
     });
     log.debug('Token revoked', { jti: jti.substring(0, 8) + '...', reason });
   } catch (error) {
-    log.error('Failed to revoke token', { error, jti: jti.substring(0, 8) + '...' });
+    log.error('Failed to revoke token', { error: getErrorMessage(error), jti: jti.substring(0, 8) + '...' });
     throw error;
   }
 }
@@ -138,7 +139,7 @@ export async function isTokenRevoked(jti: string): Promise<boolean> {
 
     return isRevoked;
   } catch (error) {
-    log.error('Failed to check token revocation', { error, jti: jti.substring(0, 8) + '...' });
+    log.error('Failed to check token revocation', { error: getErrorMessage(error), jti: jti.substring(0, 8) + '...' });
     // Fail secure - treat as revoked if we can't check
     return true;
   }
@@ -151,7 +152,7 @@ export async function getRevokedTokenCount(): Promise<number> {
   try {
     return await prisma.revokedToken.count();
   } catch (error) {
-    log.error('Failed to get revoked token count', { error });
+    log.error('Failed to get revoked token count', { error: getErrorMessage(error) });
     return 0;
   }
 }
@@ -174,7 +175,7 @@ async function cleanupExpiredEntries(): Promise<void> {
       log.debug('Cleaned up expired revocation entries', { count: result.count });
     }
   } catch (error) {
-    log.error('Failed to cleanup expired tokens', { error });
+    log.error('Failed to cleanup expired tokens', { error: getErrorMessage(error) });
   }
 }
 
@@ -197,7 +198,7 @@ export async function revokeAllUserTokens(userId: string, reason?: string): Prom
     log.info('Revoked all user tokens', { userId, count: result.count });
     return result.count;
   } catch (error) {
-    log.error('Failed to revoke all user tokens', { error, userId });
+    log.error('Failed to revoke all user tokens', { error: getErrorMessage(error), userId });
     throw error;
   }
 }
@@ -210,7 +211,7 @@ export async function clearAllRevokedTokens(): Promise<void> {
     await prisma.revokedToken.deleteMany();
     log.debug('All revoked tokens cleared');
   } catch (error) {
-    log.error('Failed to clear all revoked tokens', { error });
+    log.error('Failed to clear all revoked tokens', { error: getErrorMessage(error) });
     throw error;
   }
 }
@@ -228,7 +229,7 @@ export function initializeRevocationService(): void {
 
   cleanupInterval = setInterval(() => {
     cleanupExpiredEntries().catch((err) => {
-      log.error('Cleanup interval error', { error: err });
+      log.error('Cleanup interval error', { error: getErrorMessage(err) });
     });
   }, CLEANUP_INTERVAL_MS);
 

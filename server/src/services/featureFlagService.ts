@@ -46,6 +46,7 @@ import { getConfig, type FeatureFlags, type FeatureFlagKey, type ExperimentalFea
 import { db as prisma } from '../repositories/db';
 import { getDistributedCache, getDistributedEventBus } from '../infrastructure';
 import { createLogger } from '../utils/logger';
+import { getErrorMessage } from '../utils/errors';
 import { getFeatureFlagDefinition } from './featureFlags/definitions';
 import { FEATURE_FLAG_CACHE_TTL_SECONDS } from '../constants';
 
@@ -155,7 +156,7 @@ class FeatureFlagService {
         flagCount: this.localCache.size,
       });
     } catch (error) {
-      log.error('Failed to initialize feature flag service', { error });
+      log.error('Failed to initialize feature flag service', { error: getErrorMessage(error) });
       // Fall back to environment-only mode
       this.initialized = true;
     }
@@ -202,7 +203,7 @@ class FeatureFlagService {
       const cache = getDistributedCache();
       await cache.set(CACHE_KEY, Object.fromEntries(this.localCache), CACHE_TTL);
     } catch (error) {
-      log.error('Failed to refresh feature flag cache', { error });
+      log.error('Failed to refresh feature flag cache', { error: getErrorMessage(error) });
     }
   }
 

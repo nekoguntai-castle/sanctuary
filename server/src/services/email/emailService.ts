@@ -42,7 +42,7 @@ export async function getSmtpConfig(): Promise<SmtpConfig | null> {
     try {
       password = decrypt(passwordRaw);
     } catch (error) {
-      log.error('Failed to decrypt SMTP password', { error });
+      log.error('Failed to decrypt SMTP password', { error: getErrorMessage(error) });
       password = '';
     }
   }
@@ -102,7 +102,7 @@ async function getTransporter(): Promise<Transporter | null> {
     log.info('SMTP transporter created', { host: config.host, port: config.port });
     return transporter;
   } catch (error) {
-    log.error('Failed to create SMTP transporter', { error });
+    log.error('Failed to create SMTP transporter', { error: getErrorMessage(error) });
     return null;
   }
 }

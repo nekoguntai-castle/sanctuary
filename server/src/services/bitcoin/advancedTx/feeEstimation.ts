@@ -7,6 +7,7 @@
 
 import { getNodeClient } from '../nodeClient';
 import { estimateTransactionSize, calculateFee } from '../utils';
+import { getErrorMessage } from '../../../utils/errors';
 import { log } from './shared';
 
 /**
@@ -39,7 +40,7 @@ export async function getAdvancedFeeEstimates(): Promise<{
       minimum: { feeRate: Math.max(1, Math.ceil(minimum)), blocks: 144, minutes: 1440 },
     };
   } catch (error) {
-    log.error('Failed to get fee estimates', { error });
+    log.error('Failed to get fee estimates', { error: getErrorMessage(error) });
     // Return sensible defaults
     return {
       fastest: { feeRate: 50, blocks: 1, minutes: 10 },

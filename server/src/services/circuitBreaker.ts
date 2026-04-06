@@ -204,7 +204,7 @@ export class CircuitBreaker<T = unknown> {
       try {
         this.onStateChange(newState, previousState);
       } catch (error) {
-        log.error(`[${this.name}] onStateChange callback error`, { error });
+        log.error(`[${this.name}] onStateChange callback error`, { error: getErrorMessage(error) });
       }
     }
   }

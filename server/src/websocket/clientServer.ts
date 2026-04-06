@@ -13,6 +13,7 @@
 import { WebSocket, WebSocketServer } from 'ws';
 import { IncomingMessage } from 'http';
 import { createLogger } from '../utils/logger';
+import { getErrorMessage } from '../utils/errors';
 import { redisBridge } from './redisBridge';
 import { parseClientMessage } from './schemas';
 import {
@@ -178,7 +179,7 @@ export class SanctauryWebSocketServer {
 
     // Setup error handler
     client.on('error', (error) => {
-      log.error('WebSocket error', { error });
+      log.error('WebSocket error', { error: getErrorMessage(error) });
       client.closeReason = 'error';
       this.handleDisconnect(client);
     });
@@ -435,7 +436,7 @@ export class SanctauryWebSocketServer {
           client.ping();
         }
       } catch (error) {
-        log.error('Error in heartbeat interval', { error });
+        log.error('Error in heartbeat interval', { error: getErrorMessage(error) });
       }
     }, 30000); // 30 seconds
 

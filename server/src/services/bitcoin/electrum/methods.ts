@@ -115,7 +115,7 @@ export function decodeRawTransaction(rawTx: string, network: BitcoinNetwork): Tr
       hex: rawTx, // Include raw hex for RBF checking
     };
   } catch (error) {
-    log.error('Failed to decode raw transaction', { error });
+    log.error('Failed to decode raw transaction', { error: getErrorMessage(error) });
     throw new Error('Failed to decode transaction');
   }
 }

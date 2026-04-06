@@ -1,4 +1,4 @@
-import { vi, Mock, Mock } from 'vitest';
+import { vi, Mock } from 'vitest';
 /**
  * External API Mocks
  *

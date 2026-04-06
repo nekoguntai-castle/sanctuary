@@ -1,4 +1,3 @@
-import { vi } from 'vitest';
 /**
  * Blockchain Service Unit Tests
  *

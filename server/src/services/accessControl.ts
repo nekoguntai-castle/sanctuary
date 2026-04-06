@@ -8,6 +8,7 @@
 import { db as prisma } from '../repositories/db';
 import { NotFoundError, ForbiddenError, WalletNotFoundError } from '../errors';
 import { createLogger } from '../utils/logger';
+import { getErrorMessage } from '../utils/errors';
 import { getNamespacedCache } from '../infrastructure/redis';
 import type { ICacheService } from './cache/cacheService';
 
@@ -41,7 +42,7 @@ export async function invalidateWalletAccessCache(walletId: string): Promise<voi
     await cache.deletePattern(`*:${walletId}`);
     log.debug('Invalidated access cache for wallet', { walletId: walletId.substring(0, 8) });
   } catch (error) {
-    log.warn('Failed to invalidate wallet access cache', { walletId, error });
+    log.warn('Failed to invalidate wallet access cache', { walletId, error: getErrorMessage(error) });
   }
 }
 
@@ -54,7 +55,7 @@ export async function invalidateUserAccessCache(userId: string): Promise<void> {
     await cache.deletePattern(`${userId}:*`);
     log.debug('Invalidated access cache for user', { userId: userId.substring(0, 8) });
   } catch (error) {
-    log.warn('Failed to invalidate user access cache', { userId, error });
+    log.warn('Failed to invalidate user access cache', { userId, error: getErrorMessage(error) });
   }
 }
 
@@ -67,7 +68,7 @@ export async function clearAccessCache(): Promise<void> {
     await cache.clear();
     log.info('Cleared entire access cache');
   } catch (error) {
-    log.warn('Failed to clear access cache', { error });
+    log.warn('Failed to clear access cache', { error: getErrorMessage(error) });
   }
 }
 

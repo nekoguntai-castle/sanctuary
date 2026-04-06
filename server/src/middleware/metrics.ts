@@ -27,6 +27,7 @@ import {
   normalizePath,
 } from '../observability/metrics';
 import { createLogger } from '../utils/logger';
+import { getErrorMessage } from '../utils/errors';
 
 const log = createLogger('MW:METRICS');
 
@@ -128,7 +129,7 @@ export async function metricsHandler(_req: Request, res: Response): Promise<void
     res.set('Content-Type', metricsService.getContentType());
     res.send(metrics);
   } catch (error) {
-    log.error('Failed to get metrics', { error });
+    log.error('Failed to get metrics', { error: getErrorMessage(error) });
     res.status(500).send('Failed to collect metrics');
   }
 }

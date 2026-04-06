@@ -129,7 +129,7 @@ export function handlePrismaError(
 
     default:
       // Log unhandled Prisma errors but don't expose details
-      log.error(`Unhandled Prisma error code: ${error.code}`, { error });
+      log.error(`Unhandled Prisma error code: ${error.code}`, { error: getErrorMessage(error) });
       return false;
   }
 }

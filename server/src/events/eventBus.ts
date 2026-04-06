@@ -26,6 +26,7 @@
 
 import { EventEmitter } from 'events';
 import { createLogger } from '../utils/logger';
+import { getErrorMessage } from '../utils/errors';
 import { Semaphore } from './semaphore';
 import type { EventTypes, EventName, EventHandler } from './types';
 
@@ -98,7 +99,7 @@ class TypedEventBus {
         try {
           await handler(data);
         } catch (error) {
-          log.error(`Error in event handler for ${event}`, { error });
+          log.error(`Error in event handler for ${event}`, { error: getErrorMessage(error) });
           this.metrics.errors.set(event, (this.metrics.errors.get(event) || 0) + 1);
         }
       });
@@ -123,7 +124,7 @@ class TypedEventBus {
         try {
           await handler(data);
         } catch (error) {
-          log.error(`Error in one-time event handler for ${event}`, { error });
+          log.error(`Error in one-time event handler for ${event}`, { error: getErrorMessage(error) });
           this.metrics.errors.set(event, (this.metrics.errors.get(event) || 0) + 1);
         }
       });

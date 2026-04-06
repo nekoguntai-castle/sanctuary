@@ -10,6 +10,7 @@
  */
 
 import { createLogger } from '../logger';
+import { getErrorMessage } from '../errors';
 
 const log = createLogger('UTIL:OTEL');
 
@@ -93,14 +94,14 @@ export async function initializeOpenTelemetry(): Promise<void> {
         await sdk.shutdown();
         log.info('OpenTelemetry SDK shut down successfully');
       } catch (error) {
-        log.error('Error shutting down OpenTelemetry SDK', { error });
+        log.error('Error shutting down OpenTelemetry SDK', { error: getErrorMessage(error) });
       }
     };
 
     process.on('SIGTERM', shutdown);
     process.on('SIGINT', shutdown);
   } catch (error) {
-    log.error('Failed to initialize OpenTelemetry', { error });
+    log.error('Failed to initialize OpenTelemetry', { error: getErrorMessage(error) });
     // Don't throw - allow the application to continue without tracing
   }
 }

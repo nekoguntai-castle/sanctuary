@@ -15,6 +15,7 @@
 import { sessionRepository } from '../repositories';
 import { generateRefreshToken, decodeToken } from '../utils/jwt';
 import { createLogger } from '../utils/logger';
+import { getErrorMessage } from '../utils/errors';
 
 const log = createLogger('REFRESH_TOKEN:SVC');
 
@@ -66,7 +67,7 @@ export async function createRefreshToken(
     log.debug('Refresh token created', { userId, deviceId: deviceInfo?.deviceId });
     return refreshToken;
   } catch (error) {
-    log.error('Failed to create refresh token', { error, userId });
+    log.error('Failed to create refresh token', { error: getErrorMessage(error), userId });
     throw error;
   }
 }
@@ -94,7 +95,7 @@ export async function verifyRefreshTokenExists(token: string): Promise<boolean> 
 
     return true;
   } catch (error) {
-    log.error('Failed to verify refresh token', { error });
+    log.error('Failed to verify refresh token', { error: getErrorMessage(error) });
     return false;
   }
 }
@@ -132,7 +133,7 @@ export async function rotateRefreshToken(
 
     return newToken;
   } catch (error) {
-    log.error('Failed to rotate refresh token', { error });
+    log.error('Failed to rotate refresh token', { error: getErrorMessage(error) });
     return null;
   }
 }
@@ -175,7 +176,7 @@ export async function revokeSession(sessionId: string, userId: string): Promise<
     log.info('Session revoked', { sessionId, userId });
     return true;
   } catch (error) {
-    log.error('Failed to revoke session', { error, sessionId });
+    log.error('Failed to revoke session', { error: getErrorMessage(error), sessionId });
     return false;
   }
 }
@@ -189,7 +190,7 @@ export async function revokeAllUserRefreshTokens(userId: string): Promise<number
     log.info('All user refresh tokens revoked', { userId, count });
     return count;
   } catch (error) {
-    log.error('Failed to revoke all user refresh tokens', { error, userId });
+    log.error('Failed to revoke all user refresh tokens', { error: getErrorMessage(error), userId });
     throw error;
   }
 }
@@ -233,7 +234,7 @@ export async function getUserSessions(
       isCurrent: session.isCurrent,
     }));
   } catch (error) {
-    log.error('Failed to get user sessions', { error, userId });
+    log.error('Failed to get user sessions', { error: getErrorMessage(error), userId });
     throw error;
   }
 }
@@ -251,7 +252,7 @@ export async function cleanupExpiredRefreshTokens(): Promise<number> {
 
     return count;
   } catch (error) {
-    log.error('Failed to cleanup expired refresh tokens', { error });
+    log.error('Failed to cleanup expired refresh tokens', { error: getErrorMessage(error) });
     return 0;
   }
 }
@@ -263,7 +264,7 @@ export async function getActiveSessionCount(userId: string): Promise<number> {
   try {
     return await sessionRepository.countActiveSessions(userId);
   } catch (error) {
-    log.error('Failed to get active session count', { error, userId });
+    log.error('Failed to get active session count', { error: getErrorMessage(error), userId });
     return 0;
   }
 }

@@ -1,5 +1,3 @@
-import { vi } from 'vitest';
-
 const hoisted = vi.hoisted(() => ({
   ensureGapLimit: vi.fn(),
 }));

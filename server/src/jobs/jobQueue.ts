@@ -37,6 +37,7 @@
 import { Queue, Worker, Job, QueueEvents, type ConnectionOptions, type JobsOptions } from 'bullmq';
 import { getRedisClient, isRedisConnected } from '../infrastructure';
 import { createLogger } from '../utils/logger';
+import { getErrorMessage } from '../utils/errors';
 import { withSpan } from '../utils/tracing';
 import type { JobDefinition, JobQueueConfig, QueueHealthStatus, ScheduleOptions, JobResult } from './types';
 
@@ -151,7 +152,7 @@ class JobQueueService {
         concurrency: this.config.concurrency,
       });
     } catch (error) {
-      log.error('Failed to initialize job queue', { error });
+      log.error('Failed to initialize job queue', { error: getErrorMessage(error) });
       throw error;
     }
   }
@@ -220,7 +221,7 @@ class JobQueueService {
       log.debug('Job added', { name, id: job.id });
       return job;
     } catch (error) {
-      log.error('Failed to add job', { name, error });
+      log.error('Failed to add job', { name, error: getErrorMessage(error) });
       return null;
     }
   }
@@ -241,7 +242,7 @@ class JobQueueService {
       log.debug('Bulk jobs added', { count: result.length });
       return result;
     } catch (error) {
-      log.error('Failed to add bulk jobs', { error });
+      log.error('Failed to add bulk jobs', { error: getErrorMessage(error) });
       return [];
     }
   }
@@ -301,7 +302,7 @@ class JobQueueService {
       });
       return job;
     } catch (error) {
-      log.error('Failed to schedule job', { name, error });
+      log.error('Failed to schedule job', { name, error: getErrorMessage(error) });
       return null;
     }
   }
@@ -315,7 +316,7 @@ class JobQueueService {
     try {
       return (await this.queue.getJob(id)) as Job<T> | null;
     } catch (error) {
-      log.error('Failed to get job', { id, error });
+      log.error('Failed to get job', { id, error: getErrorMessage(error) });
       return null;
     }
   }
@@ -354,7 +355,7 @@ class JobQueueService {
       await job.remove();
       return true;
     } catch (error) {
-      log.error('Failed to remove job', { id, error });
+      log.error('Failed to remove job', { id, error: getErrorMessage(error) });
       return false;
     }
   }
@@ -398,7 +399,7 @@ class JobQueueService {
         paused: isPaused,
       };
     } catch (error) {
-      log.error('Failed to get queue health', { error });
+      log.error('Failed to get queue health', { error: getErrorMessage(error) });
       return {
         healthy: false,
         queueName: 'main',
@@ -443,7 +444,7 @@ class JobQueueService {
       log.info('Cleaned old jobs', { type, count: removed.length });
       return removed;
     } catch (error) {
-      log.error('Failed to clean jobs', { error });
+      log.error('Failed to clean jobs', { error: getErrorMessage(error) });
       return [];
     }
   }

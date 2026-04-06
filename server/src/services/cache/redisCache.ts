@@ -25,6 +25,7 @@
 
 import Redis from 'ioredis';
 import { createLogger } from '../../utils/logger';
+import { getErrorMessage } from '../../utils/errors';
 import type { ICacheService, CacheStats } from './cacheService';
 
 const log = createLogger('CACHE:SVC_REDIS');
@@ -67,7 +68,7 @@ export class RedisCache implements ICacheService {
       this.stats.hits++;
       return JSON.parse(value) as T;
     } catch (error) {
-      log.error('Redis get error', { key, error });
+      log.error('Redis get error', { key, error: getErrorMessage(error) });
       this.stats.misses++;
       return null;
     }
@@ -82,7 +83,7 @@ export class RedisCache implements ICacheService {
       await this.redis.setex(fullKey, ttl, serialized);
       this.stats.sets++;
     } catch (error) {
-      log.error('Redis set error', { key, error });
+      log.error('Redis set error', { key, error: getErrorMessage(error) });
     }
   }
 
@@ -96,7 +97,7 @@ export class RedisCache implements ICacheService {
       }
       return false;
     } catch (error) {
-      log.error('Redis delete error', { key, error });
+      log.error('Redis delete error', { key, error: getErrorMessage(error) });
       return false;
     }
   }
@@ -131,7 +132,7 @@ export class RedisCache implements ICacheService {
 
       return count;
     } catch (error) {
-      log.error('Redis deletePattern error', { pattern, error });
+      log.error('Redis deletePattern error', { pattern, error: getErrorMessage(error) });
       return 0;
     }
   }
@@ -142,7 +143,7 @@ export class RedisCache implements ICacheService {
       const exists = await this.redis.exists(fullKey);
       return exists === 1;
     } catch (error) {
-      log.error('Redis has error', { key, error });
+      log.error('Redis has error', { key, error: getErrorMessage(error) });
       return false;
     }
   }
@@ -152,7 +153,7 @@ export class RedisCache implements ICacheService {
       await this.deletePattern('*');
       log.info('Cache cleared', { prefix: this.prefix });
     } catch (error) {
-      log.error('Redis clear error', { error });
+      log.error('Redis clear error', { error: getErrorMessage(error) });
     }
   }
 

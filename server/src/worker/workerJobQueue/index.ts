@@ -15,6 +15,7 @@
 import { Queue, Worker, Job, QueueEvents, type ConnectionOptions, type JobsOptions } from 'bullmq';
 import { getRedisClient, isRedisConnected } from '../../infrastructure';
 import { createLogger } from '../../utils/logger';
+import { getErrorMessage } from '../../utils/errors';
 import type { WorkerJobHandler } from '../jobs/types';
 import type { WorkerJobQueueConfig, QueueInstance, RegisteredHandler } from './types';
 import { setupWorkerEventHandlers } from './eventHandlers';
@@ -167,7 +168,7 @@ export class WorkerJobQueue {
       log.debug(`Job added: ${queueName}:${jobName}`, { jobId: job.id });
       return job;
     } catch (error) {
-      log.error(`Failed to add job: ${queueName}:${jobName}`, { error });
+      log.error(`Failed to add job: ${queueName}:${jobName}`, { error: getErrorMessage(error) });
       return null;
     }
   }
@@ -190,7 +191,7 @@ export class WorkerJobQueue {
       log.debug(`Bulk jobs added to ${queueName}`, { count: result.length });
       return result;
     } catch (error) {
-      log.error(`Failed to add bulk jobs to ${queueName}`, { error });
+      log.error(`Failed to add bulk jobs to ${queueName}`, { error: getErrorMessage(error) });
       return [];
     }
   }
@@ -243,7 +244,7 @@ export class WorkerJobQueue {
       log.info(`Scheduled recurring job: ${queueName}:${jobName}`, { cron });
       return job;
     } catch (error) {
-      log.error(`Failed to schedule recurring job: ${queueName}:${jobName}`, { error });
+      log.error(`Failed to schedule recurring job: ${queueName}:${jobName}`, { error: getErrorMessage(error) });
       return null;
     }
   }
@@ -283,7 +284,7 @@ export class WorkerJobQueue {
         }
       }
     } catch (error) {
-      log.error(`Failed to remove recurring job: ${queueName}:${jobName}`, { error });
+      log.error(`Failed to remove recurring job: ${queueName}:${jobName}`, { error: getErrorMessage(error) });
     }
   }
 
@@ -329,7 +330,7 @@ export class WorkerJobQueue {
 
         result.queues[name] = { waiting, active, completed, failed, delayed, paused };
       } catch (error) {
-        log.error(`Failed to get health for queue: ${name}`, { error });
+        log.error(`Failed to get health for queue: ${name}`, { error: getErrorMessage(error) });
         result.healthy = false;
         result.queues[name] = {
           waiting: 0,

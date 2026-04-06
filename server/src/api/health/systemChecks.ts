@@ -25,7 +25,7 @@ export async function checkDatabase(): Promise<ComponentHealth> {
       latency: Date.now() - start,
     };
   } catch (error) {
-    log.error('Database health check failed', { error });
+    log.error('Database health check failed', { error: getErrorMessage(error) });
     return {
       status: 'unhealthy',
       message: getErrorMessage(error, 'Database unreachable'),
