@@ -41,7 +41,7 @@ RUN npm run build
 
 # Compile seed script separately
 COPY server/prisma/seed.ts ./prisma/
-RUN npx tsc prisma/seed.ts --outDir dist/prisma --esModuleInterop --skipLibCheck --resolveJsonModule --ignoreConfig
+RUN npx tsc prisma/seed.ts --outDir dist/prisma --esModuleInterop --skipLibCheck --resolveJsonModule --ignoreConfig --types node
 
 # Prune dev dependencies for production
 RUN npm prune --production

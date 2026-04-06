@@ -1,8 +1,10 @@
 import { PrismaClient } from '../src/generated/prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 
-const prisma = new PrismaClient();
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL || '' });
+const prisma = new PrismaClient({ adapter });
 
 /**
  * Get the default initial password for the admin user.
