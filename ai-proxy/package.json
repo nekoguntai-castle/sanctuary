@@ -3,6 +3,9 @@
   "version": "0.8.25",
   "description": "Isolated AI proxy for Sanctuary - validates endpoints are local only",
   "main": "dist/index.js",
+  "engines": {
+    "node": ">=22 <23"
+  },
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",

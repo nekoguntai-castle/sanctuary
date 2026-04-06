@@ -1,7 +1,7 @@
 # Sanctuary AI Proxy
 # Security-focused proxy that ensures AI calls stay on local network
 
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
@@ -18,7 +18,7 @@ RUN npm run build
 RUN npm prune --production
 
 # --- Production image ---
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 
 WORKDIR /app
 

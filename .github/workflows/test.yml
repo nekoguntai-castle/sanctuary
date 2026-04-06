@@ -35,7 +35,7 @@ on:
   workflow_dispatch:
 
 env:
-  NODE_VERSION: '20'
+  NODE_VERSION: '22'
 
 jobs:
   # ============================================
@@ -217,13 +217,31 @@ jobs:
           JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
           ENCRYPTION_KEY: test-encryption-key-32-chars-long!
           NODE_ENV: test
-        run: npx vitest related --run --passWithNoTests ${{ needs.detect-changes.outputs.backend_files }}
+        run: npx vitest related --run --passWithNoTests --exclude "tests/integration/**" ${{ needs.detect-changes.outputs.backend_files }}
 
   quick-backend-integration-smoke:
     name: Quick Backend Integration Smoke
     if: github.event_name == 'pull_request' && needs.detect-changes.outputs.backend_changed == 'true'
     runs-on: ubuntu-latest
     needs: [detect-changes]
+    defaults:
+      run:
+        working-directory: server
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: sanctuary_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - name: Checkout repository
@@ -237,11 +255,17 @@ jobs:
           cache-dependency-path: server/package-lock.json
 
       - name: Install backend dependencies
-        working-directory: server
         run: npm ci
 
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Run database migrations
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/sanctuary_test?schema=public
+        run: npx prisma migrate deploy
+
       - name: Run integration smoke tests
-        working-directory: ${{ github.workspace }}/server
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/sanctuary_test?schema=public
           JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
@@ -320,6 +344,32 @@ jobs:
     if: github.event_name == 'pull_request' && (needs.detect-changes.outputs.e2e_changed == 'true' || needs.detect-changes.outputs.frontend_changed == 'true')
     runs-on: ubuntu-latest
     needs: [detect-changes]
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: sanctuary_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -342,15 +392,67 @@ jobs:
         env:
           VITE_API_URL: http://localhost:3001
 
+      - name: Setup backend
+        working-directory: server
+        run: |
+          npm ci
+          npx prisma generate
+          npx prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/sanctuary_test?schema=public
+
+      - name: Build backend
+        working-directory: server
+        run: npm run build
+
+      - name: Start backend server
+        working-directory: server
+        run: npm run start &
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/sanctuary_test?schema=public
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
+          ENCRYPTION_KEY: test-encryption-key-32-chars-long!
+          GATEWAY_SECRET: test-gateway-secret-for-ci-minimum-32-chars
+          ENCRYPTION_SALT: test-encryption-salt-for-ci
+          NODE_ENV: test
+          PORT: 3001
+
+      - name: Wait for backend to be ready
+        run: |
+          echo "Waiting for backend server..."
+          for i in {1..30}; do
+            if curl -s http://localhost:3001/health > /dev/null 2>&1; then
+              echo "Backend is ready!"
+              exit 0
+            fi
+            echo "Attempt $i: Backend not ready yet..."
+            sleep 2
+          done
+          echo "Backend failed to start"
+          exit 1
+
       - name: Run smoke E2E tests
         run: npm run test:e2e -- --project=chromium e2e/admin-drafts-smoke.spec.ts
         env:
           CI: 'true'
+          DATABASE_URL: postgresql://test:test@localhost:5432/sanctuary_test?schema=public
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
+          ENCRYPTION_KEY: test-encryption-key-32-chars-long!
+          NODE_ENV: test
+          VITE_API_URL: http://localhost:3001
 
       - name: Run render regression E2E tests
         run: npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts
         env:
           CI: 'true'
+          DATABASE_URL: postgresql://test:test@localhost:5432/sanctuary_test?schema=public
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
+          ENCRYPTION_KEY: test-encryption-key-32-chars-long!
+          NODE_ENV: test
+          VITE_API_URL: http://localhost:3001
 
   # ============================================
   # Full Lane (main/nightly/manual)

@@ -121,7 +121,7 @@ services:
   # Frontend Tests
   # ============================================
   frontend-test:
-    image: node:20-alpine
+    image: node:22-alpine
     container_name: sanctuary-frontend-test
     working_dir: /app
     volumes:
@@ -142,7 +142,7 @@ services:
   # Frontend Tests with Coverage
   # ============================================
   frontend-coverage:
-    image: node:20-alpine
+    image: node:22-alpine
     container_name: sanctuary-frontend-coverage
     working_dir: /app
     volumes:
