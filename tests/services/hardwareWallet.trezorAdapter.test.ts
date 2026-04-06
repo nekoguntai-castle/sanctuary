@@ -437,6 +437,29 @@ describe('TrezorAdapter class', () => {
     expect(device.fingerprint).toBeUndefined();
   });
 
+  it('converts null pin_protection and passphrase_protection to undefined', async () => {
+    mockGetFeatures.mockResolvedValueOnce({
+      success: true,
+      payload: {
+        device_id: 'abc123',
+        internal_model: 'T2B1',
+        pin_protection: null,
+        unlocked: true,
+        passphrase_protection: null,
+      },
+    });
+    mockGetPublicKey.mockResolvedValueOnce({
+      success: true,
+      payload: { xpub: 'xpub...' },
+    });
+
+    const adapter = new TrezorAdapter();
+    const device = await adapter.connect();
+
+    expect(device.needsPin).toBeUndefined();
+    expect(device.needsPassphrase).toBeUndefined();
+  });
+
   it('continues connecting when fingerprint request throws an exception', async () => {
     mockGetPublicKey.mockImplementationOnce(async () => {
       throw new Error('fingerprint unavailable');

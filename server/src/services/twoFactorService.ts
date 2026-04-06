@@ -1,15 +1,10 @@
-import { authenticator } from 'otplib';
+import { generateSecret as otpGenerateSecret, generateURI, verifySync } from 'otplib';
 import * as QRCode from 'qrcode';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 import { z } from 'zod';
 import { encrypt, decryptIfEncrypted } from '../utils/encryption';
 import { safeJsonParse } from '../utils/safeJson';
-
-// Configure TOTP settings
-authenticator.options = {
-  window: 1, // Allow 1 step before/after for clock drift
-};
 
 const ISSUER = 'Sanctuary';
 const BACKUP_CODE_COUNT = 10;
@@ -25,8 +20,12 @@ export async function generateSecret(username: string): Promise<{
   secret: string;
   qrCodeDataUrl: string;
 }> {
-  const plaintextSecret = authenticator.generateSecret();
-  const otpauthUrl = authenticator.keyuri(username, ISSUER, plaintextSecret);
+  const plaintextSecret = otpGenerateSecret();
+  const otpauthUrl = generateURI({
+    issuer: ISSUER,
+    label: username,
+    secret: plaintextSecret,
+  });
   const qrCodeDataUrl = await QRCode.toDataURL(otpauthUrl);
 
   // Encrypt the secret before returning for storage
@@ -43,7 +42,9 @@ export function verifyToken(secret: string, token: string): boolean {
   try {
     // Decrypt the secret if it's encrypted, otherwise use as-is (backward compatibility)
     const plaintextSecret = decryptIfEncrypted(secret);
-    return authenticator.verify({ token, secret: plaintextSecret });
+    // @ts-expect-error otplib v13 types don't include window but it works at runtime
+    const result = verifySync({ token, secret: plaintextSecret, window: 1 });
+    return result.valid;
   } catch {
     return false;
   }
