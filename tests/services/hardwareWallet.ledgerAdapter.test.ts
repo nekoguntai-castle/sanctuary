@@ -64,7 +64,7 @@ vi.mock('@ledgerhq/hw-app-btc', () => ({
   default: MockAppBtc,
 }));
 
-vi.mock('ledger-bitcoin', () => ({
+vi.mock('@ledgerhq/ledger-bitcoin', () => ({
   AppClient: MockAppClient,
   DefaultWalletPolicy: MockDefaultWalletPolicy,
 }));

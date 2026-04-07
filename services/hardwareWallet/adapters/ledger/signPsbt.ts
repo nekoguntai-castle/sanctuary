@@ -5,8 +5,8 @@
  * Receives connection state as a parameter instead of using `this`.
  */
 
-import type { AppClient } from 'ledger-bitcoin';
-import { DefaultWalletPolicy } from 'ledger-bitcoin';
+import type { AppClient } from '@ledgerhq/ledger-bitcoin';
+import { DefaultWalletPolicy } from '@ledgerhq/ledger-bitcoin';
 import * as bitcoin from 'bitcoinjs-lib';
 import { createLogger } from '../../../../utils/logger';
 import { toHex } from '../../../../utils/bufferUtils';

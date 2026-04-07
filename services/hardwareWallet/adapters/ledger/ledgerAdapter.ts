@@ -7,7 +7,7 @@
 
 import TransportWebUSB from '@ledgerhq/hw-transport-webusb';
 import AppBtc from '@ledgerhq/hw-app-btc';
-import { AppClient } from 'ledger-bitcoin';
+import { AppClient } from '@ledgerhq/ledger-bitcoin';
 import { createLogger } from '../../../../utils/logger';
 import type {
   DeviceAdapter,
