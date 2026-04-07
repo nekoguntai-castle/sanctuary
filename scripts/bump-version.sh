@@ -33,9 +33,18 @@ get_version() {
   fi
 }
 
+get_umbrel_image_versions() {
+  local image=$1
+  grep "ghcr.io/nekoguntai/sanctuary-${image}:v" sanctuary/docker-compose.yml \
+    | sed -E 's/.*sanctuary-[^:]+:v([0-9]+\.[0-9]+\.[0-9]+).*/\1/' \
+    | sort -u
+}
+
 check_versions() {
   local root_ver=$(get_version "package.json")
   local all_match=true
+  local frontend_versions
+  local backend_versions
 
   echo -e "${YELLOW}Checking version sync...${NC}"
   echo ""
@@ -49,6 +58,23 @@ check_versions() {
       all_match=false
     fi
   done
+
+  frontend_versions=$(get_umbrel_image_versions "frontend" | paste -sd ', ' -)
+  backend_versions=$(get_umbrel_image_versions "backend" | paste -sd ', ' -)
+
+  if [[ "$frontend_versions" == "$root_ver" ]]; then
+    echo -e "  ${GREEN}✓${NC} sanctuary/docker-compose.yml frontend image: $frontend_versions"
+  else
+    echo -e "  ${RED}✗${NC} sanctuary/docker-compose.yml frontend image: ${frontend_versions:-missing} (expected $root_ver)"
+    all_match=false
+  fi
+
+  if [[ "$backend_versions" == "$root_ver" ]]; then
+    echo -e "  ${GREEN}✓${NC} sanctuary/docker-compose.yml backend images: $backend_versions"
+  else
+    echo -e "  ${RED}✗${NC} sanctuary/docker-compose.yml backend images: ${backend_versions:-missing} (expected $root_ver)"
+    all_match=false
+  fi
 
   echo ""
   if $all_match; then
@@ -130,9 +156,11 @@ echo "  1. Update lock files:"
 echo "     npm install --package-lock-only"
 echo "     cd server && npm install --package-lock-only"
 echo "     cd gateway && npm install --package-lock-only"
-echo "  2. Commit: git add -A && git commit -m 'Bump version to $NEW_VERSION'"
-echo "  3. Tag: git tag v$NEW_VERSION"
-echo "  4. Push: git push origin main --tags"
+echo "  2. Update sanctuary/docker-compose.yml image tags to v$NEW_VERSION"
+echo "     with the matching GHCR digests once the images are published"
+echo "  3. Commit: git add -A && git commit -m 'Bump version to $NEW_VERSION'"
+echo "  4. Tag: git tag v$NEW_VERSION"
+echo "  5. Push: git push origin main --tags"
 echo ""
-echo "NOTE: sanctuary/docker-compose.yml image tags need manual update after"
-echo "      building and pushing new images."
+echo "NOTE: ./scripts/bump-version.sh --check now verifies the Umbrel image tags"
+echo "      in sanctuary/docker-compose.yml match the release version."

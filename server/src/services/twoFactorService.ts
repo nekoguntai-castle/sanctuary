@@ -1,4 +1,4 @@
-import { generateSecret as otpGenerateSecret, generateURI, verifySync } from 'otplib';
+import { createGuardrails, generateSecret as otpGenerateSecret, generateURI, verifySync } from 'otplib';
 import * as QRCode from 'qrcode';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
@@ -9,6 +9,12 @@ import { safeJsonParse } from '../utils/safeJson';
 const ISSUER = 'Sanctuary';
 const BACKUP_CODE_COUNT = 10;
 const BACKUP_CODE_LENGTH = 8;
+const LEGACY_TOTP_SECRET_MIN_BYTES = 10;
+
+// Sanctuary generated 16-char Base32 secrets before the otplib v13 migration.
+// Those decode to 10 bytes, so lower the verifier minimum for backward compatibility
+// while keeping newly generated secrets on otplib's stronger default length.
+const TOTP_GUARDRAILS = createGuardrails({ MIN_SECRET_BYTES: LEGACY_TOTP_SECRET_MIN_BYTES });
 
 const BackupCodesSchema = z.array(z.object({ hash: z.string(), used: z.boolean() }));
 
@@ -43,7 +49,12 @@ export function verifyToken(secret: string, token: string): boolean {
     // Decrypt the secret if it's encrypted, otherwise use as-is (backward compatibility)
     const plaintextSecret = decryptIfEncrypted(secret);
     // epochTolerance: 30 = ±1 time step (30s) for clock drift between server and authenticator app
-    const result = verifySync({ token, secret: plaintextSecret, epochTolerance: 30 });
+    const result = verifySync({
+      token,
+      secret: plaintextSecret,
+      epochTolerance: 30,
+      guardrails: TOTP_GUARDRAILS,
+    });
     return result.valid;
   } catch {
     return false;

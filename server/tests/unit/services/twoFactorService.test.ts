@@ -5,7 +5,7 @@
  */
 
 import * as bcrypt from 'bcryptjs';
-import { generateSync, generateSecret as otpGenerateSecret } from 'otplib';
+import { createGuardrails, generateSync, generateSecret as otpGenerateSecret } from 'otplib';
 import { vi } from 'vitest';
 import * as encryption from '../../../src/utils/encryption';
 
@@ -22,6 +22,7 @@ import {
 
 // Increase timeout for bcrypt-heavy tests (10 backup codes with cost factor 10)
 const BCRYPT_TIMEOUT = 30000;
+const LEGACY_SECRET_GUARDRAILS = createGuardrails({ MIN_SECRET_BYTES: 10 });
 
 describe('Two-Factor Authentication Service', () => {
   describe('Secret Generation', () => {
@@ -115,6 +116,27 @@ describe('Two-Factor Authentication Service', () => {
       const legacyPlaintextSecret = 'JBSWY3DPEHPK3PXP';
       const result = verifyToken(legacyPlaintextSecret, '000000');
       expect(typeof result).toBe('boolean');
+    });
+
+    it('should verify valid tokens for legacy 16-character Base32 secrets', () => {
+      // Regression: otplib v13 rejects old 16-char Base32 secrets by default.
+      // Existing Sanctuary users must keep working after upgrade.
+      const legacyPlaintextSecret = 'JBSWY3DPEHPK3PXP';
+      const fixedMs = Date.now();
+      const fixedEpoch = Math.floor(fixedMs / 1000);
+      const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(fixedMs);
+
+      try {
+        const token = generateSync({
+          secret: legacyPlaintextSecret,
+          epoch: fixedEpoch,
+          guardrails: LEGACY_SECRET_GUARDRAILS,
+        });
+
+        expect(verifyToken(legacyPlaintextSecret, token)).toBe(true);
+      } finally {
+        nowSpy.mockRestore();
+      }
     });
 
     it('should accept token from adjacent time step (clock drift tolerance)', () => {
