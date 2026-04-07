@@ -116,6 +116,7 @@ async function mockErrorApi(
     if (method === 'GET' && path === `/wallets/${WALLET_ID}/addresses`) return json(route, []);
     if (method === 'GET' && path === `/wallets/${WALLET_ID}/drafts`) return json(route, []);
     if (method === 'GET' && path === `/wallets/${WALLET_ID}/share`) return json(route, { group: null, users: [] });
+    if (method === 'GET' && path.match(/^\/wallets\/[^/]+\/labels$/)) return json(route, []);
 
     // Admin
     if (method === 'GET' && path === '/admin/settings') return json(route, { registrationEnabled: false, confirmationThreshold: 1, deepConfirmationThreshold: 6, dustThreshold: 546, aiEnabled: false });

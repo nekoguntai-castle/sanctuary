@@ -145,6 +145,7 @@ async function mockImportApi(
     if (method === 'GET' && path === `/wallets/${IMPORTED_WALLET_ID}/addresses`) return json(route, []);
     if (method === 'GET' && path === `/wallets/${IMPORTED_WALLET_ID}/drafts`) return json(route, []);
     if (method === 'GET' && path === `/wallets/${IMPORTED_WALLET_ID}/share`) return json(route, { group: null, users: [] });
+    if (method === 'GET' && path.match(/^\/wallets\/[^/]+\/labels$/)) return json(route, []);
 
     unhandledRequests.push(requestKey);
     return unmocked(route, method, path);

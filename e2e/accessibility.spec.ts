@@ -115,6 +115,7 @@ async function mockA11yApi(page: Page) {
     if (method === 'GET' && path === `/wallets/${WALLET_ID}/addresses`) return json(route, []);
     if (method === 'GET' && path === `/wallets/${WALLET_ID}/drafts`) return json(route, []);
     if (method === 'GET' && path === `/wallets/${WALLET_ID}/share`) return json(route, { group: null, users: [] });
+    if (method === 'GET' && path.match(/^\/wallets\/[^/]+\/labels$/)) return json(route, []);
     if (method === 'GET' && path === `/devices/${DEVICE_ID}`) return json(route, DEVICE);
     if (method === 'GET' && path === `/devices/${DEVICE_ID}/share`) return json(route, { users: [{ id: ADMIN_USER.id, username: ADMIN_USER.username, role: 'owner' }], group: null });
     if (method === 'GET' && path === '/devices/models') return json(route, []);

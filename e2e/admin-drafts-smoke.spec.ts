@@ -125,6 +125,7 @@ async function mockAuthenticatedApi(page: Page) {
     if (method === 'GET' && path === `/wallets/${WALLET_ID}/share`) {
       return json(route, { group: null, users: [] });
     }
+    if (method === 'GET' && path.match(/^\/wallets\/[^/]+\/labels$/)) return json(route, []);
     if (method === 'GET' && path === '/admin/groups') {
       return json(route, []);
     }

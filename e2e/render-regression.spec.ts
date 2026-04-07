@@ -560,6 +560,7 @@ async function mockAuthenticatedApi(page: Page, options?: { failures?: MockApiFa
     if (method === 'GET' && path === `/wallets/${MAINNET_WALLET_ID}/share`) {
       return json(route, { group: null, users: [] });
     }
+    if (method === 'GET' && path.match(/^\/wallets\/[^/]+\/labels$/)) return json(route, []);
 
     // Device detail route data
     if (method === 'GET' && path === `/devices/${DEVICE_ID}`) {

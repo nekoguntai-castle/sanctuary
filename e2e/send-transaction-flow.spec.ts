@@ -204,6 +204,7 @@ async function mockSendApi(
     }
     if (method === 'GET' && path === `/wallets/${wallet.id}/drafts`) return json(route, []);
     if (method === 'GET' && path === `/wallets/${wallet.id}/share`) return json(route, { group: null, users: [] });
+    if (method === 'GET' && path.match(/^\/wallets\/[^/]+\/labels$/)) return json(route, []);
     if (method === 'GET' && path === `/devices/${DEVICE_ID}`) return json(route, DEVICE);
 
     // Transaction creation

@@ -322,6 +322,7 @@ async function mockAuthenticatedApi(
     if (method === 'GET' && path === `/wallets/${MAINNET_WALLET_ID}/share`) {
       return json(route, { group: null, users: [] });
     }
+    if (method === 'GET' && path.match(/^\/wallets\/[^/]+\/labels$/)) return json(route, []);
 
     // Device detail
     if (method === 'GET' && path === `/devices/${DEVICE_ID}`) {
