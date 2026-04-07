@@ -1,6 +1,6 @@
 {
   "name": "sanctuary-ai-proxy",
-  "version": "0.8.26",
+  "version": "0.8.27",
   "description": "Isolated AI proxy for Sanctuary - validates endpoints are local only",
   "main": "dist/index.js",
   "engines": {
