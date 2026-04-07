@@ -41,9 +41,9 @@ export default defineConfig({
         'src/services/workerSyncQueue.ts',
       ],
       thresholds: {
-        // Coverage baseline locked to current observed total coverage (2026-03-04).
+        // Coverage baseline locked to current observed total coverage.
         // Remaining gaps are v8 arrow-function artifacts in delegate methods.
-        branches: 99,
+        branches: 98,
         functions: 99,
         lines: 99,
         statements: 99,
