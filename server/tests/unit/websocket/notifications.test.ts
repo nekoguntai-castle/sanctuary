@@ -15,18 +15,23 @@ const mockLogger = vi.hoisted(() => ({
   error: vi.fn(),
 }));
 
+const mockBroadcast = vi.hoisted(() => vi.fn());
+const mockGetStats = vi.hoisted(() => vi.fn().mockReturnValue({ clients: 5, channelList: [] }));
+const mockGetWebSocketServerIfInitialized = vi.hoisted(() => vi.fn(() => ({
+  broadcast: mockBroadcast,
+  getStats: mockGetStats,
+})));
+
 vi.mock('../../../src/utils/logger', () => ({
   createLogger: () => mockLogger,
 }));
-
-const mockBroadcast = vi.fn();
-const mockGetStats = vi.fn().mockReturnValue({ clients: 5, channelList: [] });
 
 vi.mock('../../../src/websocket/server', () => ({
   getWebSocketServer: vi.fn(() => ({
     broadcast: mockBroadcast,
     getStats: mockGetStats,
   })),
+  getWebSocketServerIfInitialized: mockGetWebSocketServerIfInitialized,
 }));
 
 const mockSubscribeAddress = vi.fn().mockResolvedValue('subscription-id');
@@ -83,6 +88,7 @@ import {
   handleBalanceUpdate,
 } from '../../../src/websocket/notifications/subscriptions';
 import { walletLogBuffer } from '../../../src/services/walletLogBuffer';
+import { getWebSocketServerIfInitialized } from '../../../src/websocket/server';
 
 describe('NotificationService', () => {
   let service: NotificationService;
@@ -696,6 +702,26 @@ describe('NotificationService', () => {
         })
       );
     });
+
+    it('should store log in buffer even when websocket server is unavailable', () => {
+      vi.mocked(getWebSocketServerIfInitialized).mockReturnValueOnce(null as any);
+
+      expect(() => service.broadcastWalletLog('wallet-123', {
+        level: 'info',
+        module: 'sync',
+        message: 'Buffered only',
+      })).not.toThrow();
+
+      expect(walletLogBuffer.add).toHaveBeenCalledWith(
+        'wallet-123',
+        expect.objectContaining({
+          level: 'info',
+          module: 'sync',
+          message: 'Buffered only',
+        })
+      );
+      expect(mockBroadcast).not.toHaveBeenCalled();
+    });
   });
 });
 
@@ -763,5 +789,13 @@ describe('walletLog helper', () => {
         })
       );
     }
+  });
+
+  it('should skip websocket-only delivery when the server is unavailable', () => {
+    vi.mocked(getWebSocketServerIfInitialized).mockReturnValueOnce(null as any);
+
+    expect(() => walletLog('wallet-123', 'info', 'sync', 'server unavailable')).not.toThrow();
+    expect(mockBroadcast).not.toHaveBeenCalled();
+    expect(walletLogBuffer.add).toHaveBeenCalled();
   });
 });

@@ -14,6 +14,33 @@ import type { SyncWalletResult } from './types';
 
 const log = createLogger('BITCOIN:SVC_SYNC_WALLET');
 
+async function subscribeGeneratedAddresses(
+  walletId: string,
+  client: Awaited<ReturnType<typeof getNodeClient>>,
+  addresses: string[]
+): Promise<void> {
+  if (addresses.length === 0) return;
+
+  try {
+    await client.subscribeAddressBatch(addresses);
+  } catch (error) {
+    log.warn(`[BLOCKCHAIN] Failed to batch-subscribe generated addresses for wallet ${walletId}`, {
+      error: error instanceof Error ? error.message : String(error),
+      count: addresses.length,
+    });
+
+    for (const address of addresses) {
+      try {
+        await client.subscribeAddress(address);
+      } catch (subscribeError) {
+        log.warn(`[BLOCKCHAIN] Failed to subscribe generated address ${address} for wallet ${walletId}`, {
+          error: subscribeError instanceof Error ? subscribeError.message : String(subscribeError),
+        });
+      }
+    }
+  }
+}
+
 /**
  * Sync all addresses for a wallet using the modular sync pipeline
  *
@@ -50,6 +77,7 @@ export async function syncWallet(walletId: string): Promise<SyncWalletResult> {
 
       if (newAddresses.length > 0) {
         try {
+          await subscribeGeneratedAddresses(walletId, client, newAddresses.map(a => a.address));
           const newHistoryResults = await client.getAddressHistoryBatch(newAddresses.map(a => a.address));
 
           let foundTransactions = false;

@@ -39,6 +39,14 @@ export interface SyncWalletJobData {
 export interface CheckStaleWalletsJobData {
   /** Override stale threshold in ms */
   staleThresholdMs?: number;
+  /** Override the number of stale wallets to return */
+  maxWallets?: number;
+  /** Priority to use when queueing resulting sync jobs */
+  priority?: 'high' | 'normal' | 'low';
+  /** Delay between queued sync jobs */
+  staggerDelayMs?: number;
+  /** Free-form reason for observability */
+  reason?: string;
 }
 
 export interface UpdateConfirmationsJobData {
@@ -87,6 +95,10 @@ export interface SyncWalletJobResult {
 export interface CheckStaleWalletsResult {
   staleWalletIds: string[];
   queued: number;
+  priority: 'high' | 'normal' | 'low';
+  staggerDelayMs: number;
+  reason: string;
+  maxWallets: number;
 }
 
 export interface UpdateConfirmationsResult {

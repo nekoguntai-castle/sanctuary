@@ -15,6 +15,7 @@ const {
   mockAddressRepository,
   mockSyncService,
   mockWalletLogBufferGet,
+  mockEnqueueWalletSyncBatch,
 } = vi.hoisted(() => ({
   mockWalletRepository: {
     findByIdWithAccess: vi.fn(),
@@ -36,6 +37,7 @@ const {
     queueUserWallets: vi.fn(),
   },
   mockWalletLogBufferGet: vi.fn(() => []),
+  mockEnqueueWalletSyncBatch: vi.fn(),
 }));
 
 vi.mock('../../../src/repositories', () => ({
@@ -46,6 +48,18 @@ vi.mock('../../../src/repositories', () => ({
 
 vi.mock('../../../src/services/syncService', () => ({
   getSyncService: () => mockSyncService,
+}));
+
+vi.mock('../../../src/services/workerSyncQueue', () => ({
+  enqueueWalletSyncBatch: mockEnqueueWalletSyncBatch,
+}));
+
+vi.mock('../../../src/config', () => ({
+  getConfig: () => ({
+    sync: {
+      syncStaggerDelayMs: 2000,
+    },
+  }),
 }));
 
 // Mock authentication middleware
@@ -110,6 +124,7 @@ describe('Sync API - Network Endpoints', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockSyncService.getSyncStatus.mockResolvedValue({ queuePosition: 1, syncInProgress: false });
+    mockEnqueueWalletSyncBatch.mockImplementation(async (walletIds: string[]) => walletIds.length);
   });
 
   describe('wallet-level endpoints', () => {
@@ -389,9 +404,15 @@ describe('Sync API - Network Endpoints', () => {
         queued: 2,
         walletIds: ['wallet-1', 'wallet-2'],
       });
-      expect(mockSyncService.queueSync).toHaveBeenCalledTimes(2);
-      expect(mockSyncService.queueSync).toHaveBeenCalledWith('wallet-1', 'normal');
-      expect(mockSyncService.queueSync).toHaveBeenCalledWith('wallet-2', 'normal');
+      expect(mockEnqueueWalletSyncBatch).toHaveBeenCalledWith(
+        ['wallet-1', 'wallet-2'],
+        expect.objectContaining({
+          priority: 'normal',
+          reason: 'manual-network-sync:mainnet',
+          staggerDelayMs: 2000,
+          jobIdPrefix: 'manual-network-sync:mainnet:test-user-id',
+        })
+      );
     });
 
     it('should queue testnet wallets for sync', async () => {
@@ -403,7 +424,13 @@ describe('Sync API - Network Endpoints', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.queued).toBe(1);
-      expect(mockSyncService.queueSync).toHaveBeenCalledWith('testnet-wallet-1', 'high');
+      expect(mockEnqueueWalletSyncBatch).toHaveBeenCalledWith(
+        ['testnet-wallet-1'],
+        expect.objectContaining({
+          priority: 'high',
+          reason: 'manual-network-sync:testnet',
+        })
+      );
     });
 
     it('should queue signet wallets for sync', async () => {
@@ -431,7 +458,7 @@ describe('Sync API - Network Endpoints', () => {
         walletIds: [],
         message: 'No testnet wallets found',
       });
-      expect(mockSyncService.queueSync).not.toHaveBeenCalled();
+      expect(mockEnqueueWalletSyncBatch).not.toHaveBeenCalled();
     });
 
     it('should reject invalid network', async () => {
@@ -450,7 +477,10 @@ describe('Sync API - Network Endpoints', () => {
         .post('/sync/network/mainnet')
         .send({});
 
-      expect(mockSyncService.queueSync).toHaveBeenCalledWith('wallet-1', 'normal');
+      expect(mockEnqueueWalletSyncBatch).toHaveBeenCalledWith(
+        ['wallet-1'],
+        expect.objectContaining({ priority: 'normal' })
+      );
     });
 
     it('should return 500 when network queue lookup fails', async () => {
@@ -569,7 +599,15 @@ describe('Sync API - Network Endpoints', () => {
       expect(mockWalletRepository.resetSyncState).toHaveBeenCalledWith('wallet-1');
 
       // Verify queued for high priority sync
-      expect(mockSyncService.queueSync).toHaveBeenCalledWith('wallet-1', 'high');
+      expect(mockEnqueueWalletSyncBatch).toHaveBeenCalledWith(
+        ['wallet-1'],
+        expect.objectContaining({
+          priority: 'high',
+          reason: 'manual-network-resync:mainnet',
+          staggerDelayMs: 2000,
+          jobIdPrefix: 'manual-network-resync:mainnet:test-user-id',
+        })
+      );
     });
 
     it('should return 500 when network resync fails', async () => {

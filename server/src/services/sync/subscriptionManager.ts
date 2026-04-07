@@ -269,27 +269,76 @@ export async function unsubscribeWalletAddresses(state: SyncState, walletId: str
  * from wallets that were deleted without proper cleanup.
  */
 export async function reconcileAddressToWalletMap(state: SyncState): Promise<void> {
-  if (state.addressToWalletMap.size === 0) return;
+  if (state.addressToWalletMap.size === 0 && state.subscriptionOwnership !== 'self') {
+    return;
+  }
 
-  // Get all wallet IDs that still exist in the database
-  const existingWallets = await prisma.wallet.findMany({
-    select: { id: true },
+  const addressRecords = await prisma.address.findMany({
+    select: { address: true, walletId: true },
   });
-  const existingWalletIds = new Set(existingWallets.map((w: { id: string }) => w.id));
+
+  if (addressRecords.length === 0) {
+    if (state.addressToWalletMap.size > 0) {
+      state.addressToWalletMap.clear();
+    }
+    return;
+  }
+
+  const dbAddressMap = new Map(addressRecords.map(({ address, walletId }) => [address, walletId]));
 
   // Remove entries for wallets that no longer exist
   let removed = 0;
   for (const [address, walletId] of state.addressToWalletMap.entries()) {
-    if (!existingWalletIds.has(walletId)) {
+    if (dbAddressMap.get(address) !== walletId) {
       state.addressToWalletMap.delete(address);
       removed++;
     }
   }
 
-  if (removed > 0) {
-    log.info(`[SYNC] Reconciliation removed ${removed} stale address mappings (map size: ${state.addressToWalletMap.size})`);
+  let added = 0;
+  if (state.subscriptionOwnership === 'self') {
+    const electrumClient = await getElectrumClientIfActive();
+
+    if (electrumClient) {
+      const newAddressRecords = addressRecords.filter(({ address }) => !state.addressToWalletMap.has(address));
+
+      if (newAddressRecords.length > 0) {
+        try {
+          const results = await electrumClient.subscribeAddressBatch(newAddressRecords.map(({ address }) => address));
+          for (const [address] of results) {
+            const walletId = dbAddressMap.get(address);
+            if (!walletId) continue;
+            state.addressToWalletMap.set(address, walletId);
+            added++;
+          }
+        } catch (error) {
+          log.error('[SYNC] Batch subscription failed during reconciliation, falling back to individual subscriptions', {
+            error: getErrorMessage(error),
+          });
+
+          for (const { address, walletId } of newAddressRecords) {
+            try {
+              await electrumClient.subscribeAddress(address);
+              state.addressToWalletMap.set(address, walletId);
+              added++;
+            } catch (subscribeError) {
+              log.error(`[SYNC] Failed to subscribe reconciled address ${address}`, {
+                error: getErrorMessage(subscribeError),
+              });
+            }
+          }
+        }
+      }
+    }
+  }
+
+  if (removed > 0 || added > 0) {
+    log.info(`[SYNC] Reconciliation updated address mappings (map size: ${state.addressToWalletMap.size})`, {
+      removed,
+      added,
+    });
   } else {
-    log.debug(`[SYNC] Reconciliation complete, no stale entries (map size: ${state.addressToWalletMap.size})`);
+    log.debug(`[SYNC] Reconciliation complete, no address mapping changes (map size: ${state.addressToWalletMap.size})`);
   }
 }
 

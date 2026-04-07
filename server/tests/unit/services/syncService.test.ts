@@ -1375,7 +1375,9 @@ describe('SyncService', () => {
     it('removes stale address-to-wallet mappings for deleted wallets', async () => {
       syncService['addressToWalletMap'].set('addr-keep', 'wallet-keep');
       syncService['addressToWalletMap'].set('addr-remove', 'wallet-remove');
-      mockPrismaClient.wallet.findMany.mockResolvedValueOnce([{ id: 'wallet-keep' }]);
+      mockPrismaClient.address.findMany.mockResolvedValueOnce([
+        { address: 'addr-keep', walletId: 'wallet-keep' },
+      ]);
 
       await syncService['reconcileAddressToWalletMap']();
 
@@ -1386,7 +1388,24 @@ describe('SyncService', () => {
     it('skips reconciliation query when map is empty', async () => {
       syncService['addressToWalletMap'].clear();
       await syncService['reconcileAddressToWalletMap']();
-      expect(mockPrismaClient.wallet.findMany).not.toHaveBeenCalled();
+      expect(mockPrismaClient.address.findMany).not.toHaveBeenCalled();
+    });
+
+    it('subscribes new addresses during reconciliation when ownership is self', async () => {
+      syncService['subscriptionOwnership'] = 'self';
+      syncService['addressToWalletMap'].set('addr-existing', 'wallet-1');
+      mockPrismaClient.address.findMany.mockResolvedValueOnce([
+        { address: 'addr-existing', walletId: 'wallet-1' },
+        { address: 'addr-new', walletId: 'wallet-2' },
+      ]);
+      mockElectrumClient.subscribeAddressBatch.mockResolvedValueOnce(
+        new Map([['addr-new', 'status-new']])
+      );
+
+      await syncService['reconcileAddressToWalletMap']();
+
+      expect(mockElectrumClient.subscribeAddressBatch).toHaveBeenCalledWith(['addr-new']);
+      expect(syncService['addressToWalletMap'].get('addr-new')).toBe('wallet-2');
     });
   });
 
@@ -1683,7 +1702,9 @@ describe('SyncService', () => {
 
     it('logs no-op reconciliation path when all wallets still exist', async () => {
       syncService['addressToWalletMap'].set('addr-keep', 'wallet-keep');
-      mockPrismaClient.wallet.findMany.mockResolvedValueOnce([{ id: 'wallet-keep' }]);
+      mockPrismaClient.address.findMany.mockResolvedValueOnce([
+        { address: 'addr-keep', walletId: 'wallet-keep' },
+      ]);
 
       await syncService['reconcileAddressToWalletMap']();
 

@@ -8,11 +8,13 @@ import { Router } from 'express';
 import { authenticate } from '../middleware/auth';
 import { rateLimitByUser } from '../middleware/rateLimit';
 import { getSyncService } from '../services/syncService';
+import { enqueueWalletSyncBatch } from '../services/workerSyncQueue';
 import { walletRepository, transactionRepository, addressRepository } from '../repositories';
 import { createLogger } from '../utils/logger';
 import { walletLogBuffer } from '../services/walletLogBuffer';
 import { asyncHandler } from '../errors/errorHandler';
 import { NotFoundError, InvalidInputError } from '../errors/ApiError';
+import { getConfig } from '../config';
 
 const router = Router();
 const log = createLogger('SYNC:ROUTE');
@@ -226,16 +228,16 @@ router.post('/network/:network', rateLimitByUser('sync:batch'), asyncHandler(asy
     });
   }
 
-  const syncService = getSyncService();
-
-  // Queue each wallet
-  for (const walletId of walletIds) {
-    syncService.queueSync(walletId, priority);
-  }
+  const queued = await enqueueWalletSyncBatch(walletIds, {
+    priority,
+    reason: `manual-network-sync:${network}`,
+    staggerDelayMs: getConfig().sync.syncStaggerDelayMs,
+    jobIdPrefix: `manual-network-sync:${network}:${userId}`,
+  });
 
   res.json({
     success: true,
-    queued: walletIds.length,
+    queued,
     walletIds,
   });
 }));
@@ -294,15 +296,16 @@ router.post('/network/:network/resync', rateLimitByUser('sync:batch'), asyncHand
     await walletRepository.resetSyncState(walletId);
   }
 
-  // Queue all wallets for high-priority sync
-  const syncService = getSyncService();
-  for (const walletId of walletIds) {
-    syncService.queueSync(walletId, 'high');
-  }
+  const queued = await enqueueWalletSyncBatch(walletIds, {
+    priority: 'high',
+    reason: `manual-network-resync:${network}`,
+    staggerDelayMs: getConfig().sync.syncStaggerDelayMs,
+    jobIdPrefix: `manual-network-resync:${network}:${userId}`,
+  });
 
   res.json({
     success: true,
-    queued: walletIds.length,
+    queued,
     walletIds,
     deletedTransactions: totalDeletedTxs,
     clearedStuckFlags: stuckWallets.length,

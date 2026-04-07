@@ -67,6 +67,7 @@ describe('Blockchain syncWallet recursion', () => {
     const result = await syncWallet(walletId);
 
     expect(mockExecuteSyncPipeline).toHaveBeenCalledTimes(2);
+    expect(mockElectrumClient.subscribeAddressBatch).toHaveBeenCalledWith([scanAddress]);
     expect(walletLog).toHaveBeenCalledWith(
       walletId,
       'info',
@@ -108,6 +109,39 @@ describe('Blockchain syncWallet recursion', () => {
       utxos: baseResult.utxos,
     });
     expect(mockExecuteSyncPipeline).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to individual subscriptions when batch subscription fails', async () => {
+    const walletId = 'wallet-subscribe-fallback';
+    const scanAddress = 'tb1qv2m8n0h3l6j4z8u3n6n2s4m5k7y8p9q0r1t2u3';
+    const baseResult = {
+      addresses: 2,
+      transactions: 0,
+      utxos: 0,
+      stats: { newAddressesGenerated: 1 },
+    };
+
+    mockExecuteSyncPipeline.mockResolvedValueOnce(baseResult);
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({
+      id: walletId,
+      network: 'testnet',
+    });
+    mockPrismaClient.address.findMany.mockResolvedValue([
+      { id: 'addr-fallback', address: scanAddress, used: false },
+    ]);
+    mockElectrumClient.subscribeAddressBatch.mockRejectedValueOnce(new Error('batch failed'));
+    mockElectrumClient.subscribeAddress.mockResolvedValueOnce(undefined);
+    mockElectrumClient.getAddressHistoryBatch.mockResolvedValue(new Map([[scanAddress, []]]));
+
+    const result = await syncWallet(walletId);
+
+    expect(mockElectrumClient.subscribeAddressBatch).toHaveBeenCalledWith([scanAddress]);
+    expect(mockElectrumClient.subscribeAddress).toHaveBeenCalledWith(scanAddress);
+    expect(result).toEqual({
+      addresses: baseResult.addresses,
+      transactions: baseResult.transactions,
+      utxos: baseResult.utxos,
+    });
   });
 
   it('returns base result when generated-address scan is requested but wallet is missing', async () => {

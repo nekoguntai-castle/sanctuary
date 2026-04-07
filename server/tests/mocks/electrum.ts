@@ -68,6 +68,7 @@ export const mockElectrumClient = {
   getAddressUTXOs: vi.fn().mockResolvedValue([]),
   getAddressUTXOsBatch: vi.fn().mockResolvedValue(new Map()),
   subscribeAddress: vi.fn().mockResolvedValue('subscription-id'),
+  subscribeAddressBatch: vi.fn().mockResolvedValue(new Map()),
 
   // Block methods
   getBlockHeight: vi.fn().mockResolvedValue(800000),

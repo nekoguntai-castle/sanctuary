@@ -155,16 +155,12 @@ export const syncWalletJob: WorkerJobHandler<SyncWalletJobData, SyncWalletJobRes
 // Check Stale Wallets Job
 // =============================================================================
 
-// Maximum number of stale wallets to process per job run
-// Prevents overwhelming the sync queue with too many jobs at once
-const MAX_STALE_WALLETS_PER_RUN = 50;
-
 /**
  * Check for stale wallets and queue sync jobs
  *
  * This is a scheduled job that runs periodically to find wallets
  * that haven't been synced recently and queue them for sync.
- * Limited to MAX_STALE_WALLETS_PER_RUN to prevent queue flooding.
+ * Limited to a configured batch size to prevent queue flooding.
  */
 export const checkStaleWalletsJob: WorkerJobHandler<CheckStaleWalletsJobData, CheckStaleWalletsResult> = {
   name: 'check-stale-wallets',
@@ -176,9 +172,20 @@ export const checkStaleWalletsJob: WorkerJobHandler<CheckStaleWalletsJobData, Ch
   handler: async (job: Job<CheckStaleWalletsJobData>): Promise<CheckStaleWalletsResult> => {
     const config = getConfig();
     const staleThresholdMs = job.data.staleThresholdMs ?? config.sync.staleThresholdMs;
+    const maxWallets = job.data.maxWallets ?? config.sync.staleBatchSize;
+    const priority = job.data.priority ?? 'low';
+    const staggerDelayMs = job.data.staggerDelayMs ?? config.sync.syncStaggerDelayMs;
+    const reason = job.data.reason ?? 'stale';
     const cutoffTime = new Date(Date.now() - staleThresholdMs);
 
-    log.debug('Checking for stale wallets', { staleThresholdMs, cutoffTime });
+    log.debug('Checking for stale wallets', {
+      staleThresholdMs,
+      cutoffTime,
+      maxWallets,
+      priority,
+      staggerDelayMs,
+      reason,
+    });
 
     // Find stale wallets, prioritizing those never synced, then oldest first
     // Limited to prevent queue flooding
@@ -194,15 +201,25 @@ export const checkStaleWalletsJob: WorkerJobHandler<CheckStaleWalletsJobData, Ch
       orderBy: [
         { lastSyncedAt: { sort: 'asc', nulls: 'first' } },
       ],
-      take: MAX_STALE_WALLETS_PER_RUN,
+      take: maxWallets,
     });
 
     if (staleWallets.length === 0) {
       log.debug('No stale wallets found');
-      return { staleWalletIds: [], queued: 0 };
+      return {
+        staleWalletIds: [],
+        queued: 0,
+        priority,
+        staggerDelayMs,
+        reason,
+        maxWallets,
+      };
     }
 
-    log.info(`Found ${staleWallets.length} stale wallets (max: ${MAX_STALE_WALLETS_PER_RUN})`);
+    log.info(`Found ${staleWallets.length} stale wallets (max: ${maxWallets})`, {
+      priority,
+      reason,
+    });
 
     // Return the wallet IDs - the worker will queue them
     // This is done in the worker entry point to avoid circular dependencies
@@ -211,6 +228,10 @@ export const checkStaleWalletsJob: WorkerJobHandler<CheckStaleWalletsJobData, Ch
     return {
       staleWalletIds,
       queued: staleWalletIds.length,
+      priority,
+      staggerDelayMs,
+      reason,
+      maxWallets,
     };
   },
 };

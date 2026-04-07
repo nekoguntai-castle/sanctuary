@@ -46,6 +46,18 @@ let isShuttingDown = false;
 // Reconciliation interval - clean up stale subscriptions every 15 minutes
 const RECONCILIATION_INTERVAL_MS = 15 * 60 * 1000;
 
+function toBullPriority(priority: 'high' | 'normal' | 'low'): number {
+  switch (priority) {
+    case 'high':
+      return 1;
+    case 'normal':
+      return 2;
+    case 'low':
+    default:
+      return 3;
+  }
+}
+
 // =============================================================================
 // Exception Handlers
 // =============================================================================
@@ -196,8 +208,13 @@ async function startWorker(): Promise<void> {
 
   // Queue an immediate stale-wallet check to catch transactions that arrived
   // during the startup window before Electrum subscriptions were active
-  await jobQueue.addJob('sync', 'check-stale-wallets', {}, {
-    delay: 30_000,
+  await jobQueue.addJob('sync', 'check-stale-wallets', {
+    maxWallets: config.sync.startupCatchUpBatchSize,
+    priority: 'normal',
+    staggerDelayMs: config.sync.startupCatchUpStaggerDelayMs,
+    reason: 'startup-catch-up',
+  }, {
+    delay: config.sync.startupCatchUpDelayMs,
     jobId: `startup-catch-up:${Date.now()}`,
   });
 
@@ -484,19 +501,28 @@ function setupStaleWalletHandler(): void {
   jobQueue.onJobCompleted('sync', 'check-stale-wallets', async (returnvalue) => {
     if (isShuttingDown) return;
 
-    const result = returnvalue as { staleWalletIds?: string[]; queued?: number } | undefined;
+    const result = returnvalue as {
+      staleWalletIds?: string[];
+      queued?: number;
+      priority?: 'high' | 'normal' | 'low';
+      staggerDelayMs?: number;
+      reason?: string;
+    } | undefined;
     if (!result?.staleWalletIds?.length) return;
 
     log.info(`Queueing sync for ${result.staleWalletIds.length} stale wallets`);
 
     const config = getConfig();
+    const priority = result.priority ?? 'low';
+    const staggerDelayMs = result.staggerDelayMs ?? config.sync.syncStaggerDelayMs;
+    const reason = result.reason ?? 'stale';
     await jobQueue!.addBulkJobs('sync', result.staleWalletIds.map((walletId, index) => ({
       name: 'sync-wallet',
-      data: { walletId, reason: 'stale' },
+      data: { walletId, priority, reason },
       options: {
-        priority: 3, // Lower priority than real-time address activity
+        priority: toBullPriority(priority),
         jobId: `sync:stale:${walletId}:${Date.now()}`,
-        delay: index * config.sync.syncStaggerDelayMs,
+        delay: index * staggerDelayMs,
       },
     })));
   });

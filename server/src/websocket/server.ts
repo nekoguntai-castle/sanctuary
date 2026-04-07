@@ -88,6 +88,16 @@ export const getWebSocketServer = (): SanctauryWebSocketServer => {
   return wsServer;
 };
 
+/**
+ * Get the client WebSocket server if it has been initialized.
+ *
+ * Returns null instead of throwing so background-only processes can treat
+ * websocket broadcasting as optional.
+ */
+export const getWebSocketServerIfInitialized = (): SanctauryWebSocketServer | null => {
+  return wsServer;
+};
+
 // ============================================================================
 // Gateway WebSocket Server Singleton
 // ============================================================================

@@ -134,8 +134,12 @@ export interface SyncConfig {
   intervalMs: number;                    // Full sync check interval (default: 5 minutes)
   confirmationUpdateIntervalMs: number;  // Confirmation update interval (default: 2 minutes)
   staleThresholdMs: number;              // Consider wallet stale after this time (default: 10 minutes)
+  staleBatchSize: number;               // Max stale wallets to queue per worker pass (default: 50)
   maxConcurrentSyncs: number;            // Max wallets syncing at once (default: 5)
   syncStaggerDelayMs: number;            // Delay between stale wallet sync jobs (default: 2s)
+  startupCatchUpBatchSize: number;      // Startup stale-wallet catch-up batch size (default: 250)
+  startupCatchUpDelayMs: number;        // Delay before startup catch-up begins (default: 10s)
+  startupCatchUpStaggerDelayMs: number; // Delay between startup catch-up sync jobs (default: 250ms)
   maxRetryAttempts: number;              // Max retries on failure (default: 3)
   retryDelaysMs: number[];               // Exponential backoff delays
   maxSyncDurationMs: number;             // Max time for a single wallet sync (default: 30 minutes)
@@ -186,7 +190,7 @@ export interface DockerConfig {
 export interface WorkerConfig {
   /** Health check endpoint port (default: 3002) */
   healthPort: number;
-  /** Worker readiness endpoint URL (default: http://worker:3002/ready in production) */
+  /** Worker health endpoint URL (default: http://worker:3002/health in production) */
   healthUrl: string;
   /** Worker health request timeout in milliseconds */
   healthTimeoutMs: number;

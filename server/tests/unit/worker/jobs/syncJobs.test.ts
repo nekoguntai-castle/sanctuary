@@ -27,7 +27,10 @@ vi.mock('../../../../src/config', () => ({
   getConfig: vi.fn(() => ({
     sync: {
       staleThresholdMs: 600000, // 10 minutes
+      staleBatchSize: 75,
       maxConcurrentSyncs: 5,
+      maxSyncDurationMs: 120000,
+      syncStaggerDelayMs: 2000,
     },
     bitcoin: {
       network: 'mainnet',
@@ -205,8 +208,7 @@ describe('Sync Jobs', () => {
       expect(result.queued).toBe(0);
     });
 
-    it('should limit results to MAX_STALE_WALLETS_PER_RUN', async () => {
-      // The job should use take: 50 in the query
+    it('should limit results to configured stale batch size by default', async () => {
       vi.mocked(prisma.wallet.findMany).mockResolvedValueOnce([]);
 
       const mockJob = {
@@ -220,7 +222,26 @@ describe('Sync Jobs', () => {
 
       expect(prisma.wallet.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          take: 50, // MAX_STALE_WALLETS_PER_RUN
+          take: 75,
+        })
+      );
+    });
+
+    it('should use a per-job maxWallets override when provided', async () => {
+      vi.mocked(prisma.wallet.findMany).mockResolvedValueOnce([]);
+
+      const mockJob = {
+        id: 'job-override',
+        data: { maxWallets: 12 },
+        attemptsMade: 0,
+        opts: { attempts: 2 },
+      } as unknown as Job;
+
+      await checkStaleWalletsJob.handler(mockJob);
+
+      expect(prisma.wallet.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          take: 12,
         })
       );
     });

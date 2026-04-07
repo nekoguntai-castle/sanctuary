@@ -58,7 +58,11 @@ const mocks = vi.hoisted(() => {
     sync: {
       intervalMs: 5 * 60 * 1000,
       confirmationUpdateIntervalMs: 2 * 60 * 1000,
+      staleBatchSize: 50,
       syncStaggerDelayMs: 2000,
+      startupCatchUpBatchSize: 250,
+      startupCatchUpDelayMs: 10_000,
+      startupCatchUpStaggerDelayMs: 250,
     },
     maintenance: {
       auditLogRetentionDays: 30,
@@ -386,13 +390,13 @@ describe('worker entrypoint', () => {
       expect.arrayContaining([
         expect.objectContaining({
           name: 'sync-wallet',
-          data: { walletId: 'w1', reason: 'stale' },
-          options: expect.objectContaining({ delay: 0 }),
+          data: { walletId: 'w1', priority: 'low', reason: 'stale' },
+          options: expect.objectContaining({ delay: 0, priority: 3 }),
         }),
         expect.objectContaining({
           name: 'sync-wallet',
-          data: { walletId: 'w2', reason: 'stale' },
-          options: expect.objectContaining({ delay: 2000 }),
+          data: { walletId: 'w2', priority: 'low', reason: 'stale' },
+          options: expect.objectContaining({ delay: 2000, priority: 3 }),
         }),
       ])
     );
@@ -577,7 +581,7 @@ describe('worker entrypoint', () => {
     expect(processExitSpy).toHaveBeenCalledWith(0);
   });
 
-  it('queues a startup catch-up check-stale-wallets job with 30s delay', async () => {
+  it('queues a startup catch-up check-stale-wallets job with configured delay and batch settings', async () => {
     vi.spyOn(process, 'on').mockImplementation(((event: string, handler: (...args: any[]) => any) => {
       void event;
       void handler;
@@ -591,9 +595,14 @@ describe('worker entrypoint', () => {
     expect(mocks.queueInstance.addJob).toHaveBeenCalledWith(
       'sync',
       'check-stale-wallets',
-      {},
+      {
+        maxWallets: 250,
+        priority: 'normal',
+        staggerDelayMs: 250,
+        reason: 'startup-catch-up',
+      },
       expect.objectContaining({
-        delay: 30_000,
+        delay: 10_000,
         jobId: expect.stringMatching(/^startup-catch-up:\d+$/),
       })
     );

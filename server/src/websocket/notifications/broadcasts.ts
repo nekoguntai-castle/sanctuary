@@ -5,7 +5,7 @@
  * Each method constructs the appropriate WebSocketEvent and broadcasts it.
  */
 
-import { getWebSocketServer, WebSocketEvent } from '../server';
+import { getWebSocketServerIfInitialized, WebSocketEvent } from '../server';
 import { walletLogBuffer } from '../../services/walletLogBuffer';
 import { createLogger } from '../../utils/logger';
 import type {
@@ -21,11 +21,21 @@ import type {
 
 const log = createLogger('WS:NOTIFY_BROADCAST');
 
+function getBroadcastServer(eventType: WebSocketEvent['type']) {
+  const wsServer = getWebSocketServerIfInitialized();
+  if (!wsServer) {
+    log.debug('Skipping websocket broadcast; server not initialized', { type: eventType });
+    return null;
+  }
+  return wsServer;
+}
+
 /**
  * Broadcast transaction notification
  */
 export function broadcastTransactionNotification(notification: TransactionNotification): void {
-  const wsServer = getWebSocketServer();
+  const wsServer = getBroadcastServer('transaction');
+  if (!wsServer) return;
 
   const event: WebSocketEvent = {
     type: 'transaction',
@@ -49,7 +59,8 @@ export function broadcastTransactionNotification(notification: TransactionNotifi
  * Broadcast balance update
  */
 export function broadcastBalanceUpdate(update: BalanceUpdate): void {
-  const wsServer = getWebSocketServer();
+  const wsServer = getBroadcastServer('balance');
+  if (!wsServer) return;
 
   const event: WebSocketEvent = {
     type: 'balance',
@@ -71,7 +82,8 @@ export function broadcastBalanceUpdate(update: BalanceUpdate): void {
  * Broadcast new block notification (full details)
  */
 export function broadcastBlockNotification(notification: BlockNotification): void {
-  const wsServer = getWebSocketServer();
+  const wsServer = getBroadcastServer('block');
+  if (!wsServer) return;
 
   const event: WebSocketEvent = {
     type: 'block',
@@ -92,7 +104,8 @@ export function broadcastBlockNotification(notification: BlockNotification): voi
  * Used by real-time Electrum subscription
  */
 export function broadcastNewBlock(block: { height: number }): void {
-  const wsServer = getWebSocketServer();
+  const wsServer = getBroadcastServer('newBlock');
+  if (!wsServer) return;
 
   const event: WebSocketEvent = {
     type: 'newBlock',
@@ -110,7 +123,8 @@ export function broadcastNewBlock(block: { height: number }): void {
  * Broadcast mempool notification
  */
 export function broadcastMempoolNotification(notification: MempoolNotification): void {
-  const wsServer = getWebSocketServer();
+  const wsServer = getBroadcastServer('mempool');
+  if (!wsServer) return;
 
   const event: WebSocketEvent = {
     type: 'mempool',
@@ -130,7 +144,8 @@ export function broadcastMempoolNotification(notification: MempoolNotification):
  * Used for real-time UI updates during Ollama model pulls
  */
 export function broadcastModelDownloadProgress(progress: ModelDownloadProgress): void {
-  const wsServer = getWebSocketServer();
+  const wsServer = getBroadcastServer('modelDownload');
+  if (!wsServer) return;
 
   const event: WebSocketEvent = {
     type: 'modelDownload',
@@ -154,7 +169,8 @@ export function broadcastModelDownloadProgress(progress: ModelDownloadProgress):
  * Includes previousConfirmations so frontend can detect milestone transitions (e.g., 0->1)
  */
 export function broadcastConfirmationUpdate(walletId: string, update: ConfirmationUpdate): void {
-  const wsServer = getWebSocketServer();
+  const wsServer = getBroadcastServer('confirmation');
+  if (!wsServer) return;
 
   const event: WebSocketEvent = {
     type: 'confirmation',
@@ -182,7 +198,8 @@ export function broadcastConfirmationUpdate(walletId: string, update: Confirmati
  * Broadcast sync status update for a wallet
  */
 export function broadcastSyncStatus(walletId: string, status: SyncStatusUpdate): void {
-  const wsServer = getWebSocketServer();
+  const wsServer = getBroadcastServer('sync');
+  if (!wsServer) return;
 
   const event: WebSocketEvent = {
     type: 'sync',
@@ -202,8 +219,6 @@ export function broadcastSyncStatus(walletId: string, status: SyncStatusUpdate):
  * Also stores the entry in the log buffer for later retrieval
  */
 export function broadcastWalletLog(walletId: string, entry: Omit<WalletLogEntry, 'id' | 'timestamp'>): void {
-  const wsServer = getWebSocketServer();
-
   const logEntry: WalletLogEntry = {
     id: crypto.randomUUID(),
     timestamp: new Date().toISOString(),
@@ -212,6 +227,9 @@ export function broadcastWalletLog(walletId: string, entry: Omit<WalletLogEntry,
 
   // Store in buffer for historical retrieval
   walletLogBuffer.add(walletId, logEntry);
+
+  const wsServer = getBroadcastServer('log');
+  if (!wsServer) return;
 
   const event: WebSocketEvent = {
     type: 'log',
