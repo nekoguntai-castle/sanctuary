@@ -22,8 +22,9 @@ COPY gateway/src ./src
 # Build TypeScript
 RUN npm run build
 
-# Prune dev dependencies
-RUN npm prune --production
+# Prune dev + optional dependencies.
+# firebase-admin optional packages (firestore/storage chain) are not used by gateway push flows.
+RUN npm prune --production --omit=optional
 
 # Production stage
 FROM node:22-alpine AS runner

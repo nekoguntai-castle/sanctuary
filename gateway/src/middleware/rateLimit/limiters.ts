@@ -18,11 +18,21 @@
  * - User agent
  */
 
-import rateLimit from 'express-rate-limit';
+import type { Request } from 'express';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { config } from '../../config';
 import { logSecurityEvent } from '../requestLogger';
 import { AuthenticatedRequest } from '../auth';
 import { calculateBackoff, backoffTracker } from './backoff';
+
+const getIpKey = (req: Request): string => {
+  return req.ip ? ipKeyGenerator(req.ip) : 'unknown';
+};
+
+const getClientKey = (req: Request): string => {
+  const authReq = req as AuthenticatedRequest;
+  return authReq.user?.userId || getIpKey(req);
+};
 
 /**
  * Default rate limiter - applies to all authenticated routes
@@ -33,14 +43,10 @@ export const defaultRateLimiter = rateLimit({
   max: config.rateLimit.maxRequests,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
-    // Use user ID if authenticated, otherwise IP
-    const authReq = req as AuthenticatedRequest;
-    return authReq.user?.userId || req.ip || 'unknown';
-  },
+  keyGenerator: (req) => getClientKey(req),
   handler: (req, res) => {
     const authReq = req as AuthenticatedRequest;
-    const key = authReq.user?.userId || req.ip || 'unknown';
+    const key = getClientKey(req);
     const retryAfter = calculateBackoff(key);
 
     logSecurityEvent('RATE_LIMIT_EXCEEDED', {
@@ -69,10 +75,7 @@ export const strictRateLimiter = rateLimit({
   max: 10, // 10 requests per hour
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
-    const authReq = req as AuthenticatedRequest;
-    return authReq.user?.userId || req.ip || 'unknown';
-  },
+  keyGenerator: (req) => getClientKey(req),
   handler: (req, res) => {
     const authReq = req as AuthenticatedRequest;
     logSecurityEvent('RATE_LIMIT_EXCEEDED', {
@@ -102,9 +105,9 @@ export const authRateLimiter = rateLimit({
   max: 15, // 15 login attempts per 15 minutes
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.ip || 'unknown',
+  keyGenerator: (req) => getIpKey(req),
   handler: (req, res) => {
-    const key = `auth:${req.ip || 'unknown'}`;
+    const key = `auth:${getIpKey(req)}`;
     const retryAfter = calculateBackoff(key);
 
     logSecurityEvent('AUTH_RATE_LIMIT_EXCEEDED', {
@@ -140,10 +143,7 @@ export const transactionCreateRateLimiter = rateLimit({
   max: 10, // 10 transactions per minute
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
-    const authReq = req as AuthenticatedRequest;
-    return authReq.user?.userId || req.ip || 'unknown';
-  },
+  keyGenerator: (req) => getClientKey(req),
   handler: (req, res) => {
     const authReq = req as AuthenticatedRequest;
     logSecurityEvent('RATE_LIMIT_EXCEEDED', {
@@ -173,10 +173,7 @@ export const broadcastRateLimiter = rateLimit({
   max: 5, // 5 broadcasts per minute
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
-    const authReq = req as AuthenticatedRequest;
-    return authReq.user?.userId || req.ip || 'unknown';
-  },
+  keyGenerator: (req) => getClientKey(req),
   handler: (req, res) => {
     const authReq = req as AuthenticatedRequest;
     logSecurityEvent('RATE_LIMIT_EXCEEDED', {
@@ -206,10 +203,7 @@ export const deviceRegistrationRateLimiter = rateLimit({
   max: 3, // 3 device registrations per hour
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
-    const authReq = req as AuthenticatedRequest;
-    return authReq.user?.userId || req.ip || 'unknown';
-  },
+  keyGenerator: (req) => getClientKey(req),
   handler: (req, res) => {
     const authReq = req as AuthenticatedRequest;
     logSecurityEvent('RATE_LIMIT_EXCEEDED', {
@@ -239,10 +233,7 @@ export const addressGenerationRateLimiter = rateLimit({
   max: 20, // 20 addresses per minute
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
-    const authReq = req as AuthenticatedRequest;
-    return authReq.user?.userId || req.ip || 'unknown';
-  },
+  keyGenerator: (req) => getClientKey(req),
   handler: (req, res) => {
     const authReq = req as AuthenticatedRequest;
     logSecurityEvent('RATE_LIMIT_EXCEEDED', {

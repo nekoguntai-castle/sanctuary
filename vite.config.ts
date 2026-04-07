@@ -16,7 +16,7 @@ export default defineConfig(() => {
       plugins: [
         react(),
         nodePolyfills({
-          include: ['buffer', 'process', 'stream', 'util'],
+          include: ['process', 'stream', 'util'],
           globals: {
             Buffer: true,
             process: true,
@@ -48,11 +48,13 @@ export default defineConfig(() => {
             // - lucide-react: barrel exports don't initialize properly when split
             // - recharts: complex internal redux/d3 state
             // - @ngraveio/bc-ur + @keystonehq: circular dependencies
-            manualChunks: {
-              // React core - designed for code splitting, very safe
-              'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-              // Data fetching - standalone, no complex init
-              'vendor-query': ['@tanstack/react-query'],
+            manualChunks(id) {
+              if (id.includes('/node_modules/react/') || id.includes('/node_modules/react-dom/') || id.includes('/node_modules/react-router-dom/')) {
+                return 'vendor-react';
+              }
+              if (id.includes('/node_modules/@tanstack/react-query/')) {
+                return 'vendor-query';
+              }
             },
             // DO NOT add to chunks (known problematic):
             // - lucide-react (barrel export pattern breaks)
