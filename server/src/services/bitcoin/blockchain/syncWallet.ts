@@ -56,11 +56,27 @@ async function subscribeGeneratedAddresses(
  * 9. Gap Limit - Generate new addresses if needed
  * 10. Fix Consolidations - Correct misclassified consolidation transactions
  */
-export async function syncWallet(walletId: string): Promise<SyncWalletResult> {
+// BIP-44 gap limit expansion can trigger recursive syncs when newly generated
+// addresses have transactions. Cap recursion to prevent infinite loops when
+// scattered transaction patterns keep shrinking the consecutive unused gap.
+const MAX_GAP_LIMIT_RECURSION = 10;
+
+export async function syncWallet(walletId: string, depth = 0): Promise<SyncWalletResult> {
   const result = await executeSyncPipeline(walletId, defaultSyncPhases);
 
   // Handle recursive sync for gap limit expansion
   if (result.stats.newAddressesGenerated > 0) {
+    if (depth >= MAX_GAP_LIMIT_RECURSION) {
+      log.warn(`[BLOCKCHAIN] Gap limit recursion depth ${depth} reached for wallet ${walletId}, stopping`, {
+        newAddressesGenerated: result.stats.newAddressesGenerated,
+      });
+      return {
+        addresses: result.addresses,
+        transactions: result.transactions,
+        utxos: result.utxos,
+      };
+    }
+
     const wallet = await prisma.wallet.findUnique({ where: { id: walletId } });
     if (wallet) {
       const network = (wallet.network as 'mainnet' | 'testnet' | 'signet' | 'regtest') || 'mainnet';
@@ -89,8 +105,8 @@ export async function syncWallet(walletId: string): Promise<SyncWalletResult> {
           }
 
           if (foundTransactions) {
-            walletLog(walletId, 'info', 'BLOCKCHAIN', 'Found transactions on new addresses, re-syncing...');
-            const recursiveResult = await syncWallet(walletId);
+            walletLog(walletId, 'info', 'BLOCKCHAIN', `Found transactions on new addresses, re-syncing (depth ${depth + 1})...`);
+            const recursiveResult = await syncWallet(walletId, depth + 1);
             return {
               addresses: result.addresses + recursiveResult.addresses,
               transactions: result.transactions + recursiveResult.transactions,

@@ -194,6 +194,43 @@ describe('Blockchain syncWallet recursion', () => {
     expect(mockElectrumClient.getAddressHistoryBatch).not.toHaveBeenCalled();
   });
 
+  it('stops recursion at MAX_GAP_LIMIT_RECURSION depth', async () => {
+    const walletId = 'wallet-deep-recursion';
+    const scanAddress = 'tb1qdeeprecursion';
+
+    // Every pipeline call generates new addresses with transactions,
+    // simulating the infinite loop scenario
+    mockExecuteSyncPipeline.mockImplementation(async () => ({
+      addresses: 1,
+      transactions: 1,
+      utxos: 1,
+      stats: { newAddressesGenerated: 1 },
+    }));
+
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({
+      id: walletId,
+      network: 'testnet',
+    });
+    mockPrismaClient.address.findMany.mockResolvedValue([
+      { id: 'addr-deep', address: scanAddress, used: false },
+    ]);
+    mockElectrumClient.getAddressHistoryBatch.mockResolvedValue(
+      new Map([[scanAddress, [{ tx_hash: 'b'.repeat(64), height: 200 }]]])
+    );
+
+    const result = await syncWallet(walletId);
+
+    // Should stop at depth 10: 1 initial + 10 recursive = 11 pipeline calls
+    expect(mockExecuteSyncPipeline).toHaveBeenCalledTimes(11);
+
+    // Results should be accumulated from all 11 calls
+    expect(result).toEqual({
+      addresses: 11,
+      transactions: 11,
+      utxos: 11,
+    });
+  });
+
   it('does not recurse when generated addresses have no transaction history', async () => {
     const walletId = 'wallet-no-new-history';
     const scanAddress = 'tb1q6j8r8w8r0pg6j7mt6v4n3v0q0q7xg84n2n8l8t';
