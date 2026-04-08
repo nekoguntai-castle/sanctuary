@@ -7,6 +7,7 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import type { Transaction } from '../../../types';
+import { isConsolidation } from '../../../utils/transaction';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -76,11 +77,6 @@ function getDateRange(preset: '7d' | '30d' | 'this_month' | 'last_month'): { fro
       return { from: start.getTime(), to: end.getTime() };
     }
   }
-}
-
-function isConsolidation(tx: Transaction, walletAddresses: string[]): boolean {
-  if (tx.type === 'consolidation') return true;
-  return !!tx.counterpartyAddress && walletAddresses.includes(tx.counterpartyAddress);
 }
 
 // ---------------------------------------------------------------------------

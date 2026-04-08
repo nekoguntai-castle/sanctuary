@@ -5,19 +5,16 @@
  * query filtering, aggregation results, and load-more pagination.
  */
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Download, X } from 'lucide-react';
 import { TransactionList } from '../../TransactionList';
 import { AIQueryInput } from '../../AIQueryInput';
 import { TransactionFilterBar } from './TransactionFilterBar';
-import * as labelsApi from '../../../src/api/labels';
-import { createLogger } from '../../../utils/logger';
-import type { Transaction, Label } from '../../../types';
+import { useWalletLabels } from '../../../hooks/queries/useWalletLabels';
+import type { Transaction } from '../../../types';
 import type { NaturalQueryResult } from '../../../src/api/ai';
 import type { TransactionStats } from '../../../src/api/transactions';
 import type { TransactionFilters, TxTypeFilter, ConfirmationFilter, DatePreset } from '../hooks/useTransactionFilters';
-
-const log = createLogger('TransactionsTab');
 
 interface TransactionsTabProps {
   walletId: string;
@@ -79,17 +76,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
   onClearAllFilters,
   hasActiveFilters,
 }) => {
-  // Fetch wallet labels for the label filter dropdown
-  const [walletLabels, setWalletLabels] = useState<Label[]>([]);
-  useEffect(() => {
-    let cancelled = false;
-    labelsApi.getLabels(walletId).then(labels => {
-      if (!cancelled) setWalletLabels(labels);
-    }).catch(err => {
-      log.debug('Failed to fetch labels for filter', { error: err });
-    });
-    return () => { cancelled = true; };
-  }, [walletId]);
+  const { data: walletLabels = [] } = useWalletLabels(walletId);
 
   return (
     <div className="surface-elevated rounded-xl p-6 shadow-sm border border-sanctuary-200 dark:border-sanctuary-800 animate-fade-in">

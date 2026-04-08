@@ -89,6 +89,10 @@ vi.mock('../../hooks/useAIStatus', () => ({
   }),
 }));
 
+vi.mock('../../hooks/queries/useWalletLabels', () => ({
+  useWalletLabels: () => ({ data: [], isLoading: false }),
+}));
+
 vi.mock('../../hooks/websocket', () => ({
   useWalletLogs: () => mocks.walletLogsState,
 }));

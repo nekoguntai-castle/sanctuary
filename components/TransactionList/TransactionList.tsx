@@ -5,6 +5,7 @@ import { useCurrency } from '../../contexts/CurrencyContext';
 import { Amount } from '../Amount';
 import { useAIStatus } from '../../hooks/useAIStatus';
 import { ArrowDownLeft, ArrowUpRight, RefreshCw, Clock, ShieldCheck, CheckCircle2, X } from 'lucide-react';
+import { isConsolidation } from '../../utils/transaction';
 import { useTransactionList } from './hooks/useTransactionList';
 import { TransactionRow } from './TransactionRow';
 import { LabelEditor } from './LabelEditor';
@@ -295,10 +296,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                       <div className="grid grid-cols-2 gap-3">
                          {/* Type */}
                          {(() => {
-                           const isSelectedConsolidation = (
-                             (selectedTx.amount < 0 && selectedTx.counterpartyAddress && walletAddresses.includes(selectedTx.counterpartyAddress)) ||
-                             (selectedTx.amount > 0 && selectedTx.counterpartyAddress && walletAddresses.includes(selectedTx.counterpartyAddress))
-                           );
+                           const isSelectedConsolidation = isConsolidation(selectedTx, walletAddresses);
                            return (
                              <div className="p-3 rounded-lg surface-muted border border-sanctuary-100 dark:border-sanctuary-800">
                                <p className="text-xs text-sanctuary-500 mb-1">Type</p>
@@ -358,10 +356,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
 
                       {/* Counterparty Address - Sender (for receives), Consolidation Address, or Recipient (for sends) */}
                       {selectedTx.counterpartyAddress && (() => {
-                        const isSelectedConsolidation = (
-                          (selectedTx.amount < 0 && selectedTx.counterpartyAddress && walletAddresses.includes(selectedTx.counterpartyAddress)) ||
-                          (selectedTx.amount > 0 && selectedTx.counterpartyAddress && walletAddresses.includes(selectedTx.counterpartyAddress))
-                        );
+                        const isSelectedConsolidation = isConsolidation(selectedTx, walletAddresses);
                         return (
                         <div className="surface-muted p-4 rounded-lg border border-sanctuary-100 dark:border-sanctuary-800">
                            <p className="text-xs font-medium text-sanctuary-500 uppercase mb-2">

@@ -21,9 +21,8 @@ vi.mock('../../../../components/AIQueryInput', () => ({
   ),
 }));
 
-const mockGetLabels = vi.fn().mockResolvedValue([]);
-vi.mock('../../../../src/api/labels', () => ({
-  getLabels: (...args: unknown[]) => mockGetLabels(...args),
+vi.mock('../../../../hooks/queries/useWalletLabels', () => ({
+  useWalletLabels: () => ({ data: [], isLoading: false }),
 }));
 
 vi.mock('../../../../components/WalletDetail/tabs/TransactionFilterBar', () => ({
@@ -161,23 +160,6 @@ describe('TransactionsTab', () => {
   it('renders filter bar when there are transactions', () => {
     render(<TransactionsTab {...baseProps} />);
     expect(screen.getByTestId('filter-bar')).toBeInTheDocument();
-  });
-
-  it('handles label fetch failure gracefully', async () => {
-    mockGetLabels.mockRejectedValueOnce(new Error('Network error'));
-    // Should not throw — error is caught and logged
-    render(<TransactionsTab {...baseProps} />);
-    // Wait for the rejected promise to settle
-    await new Promise(r => setTimeout(r, 10));
-    expect(screen.getByTestId('filter-bar')).toBeInTheDocument();
-  });
-
-  it('cancels label fetch on unmount', async () => {
-    const { unmount } = render(<TransactionsTab {...baseProps} />);
-    unmount();
-    // Wait for the resolved promise to settle — cancelled flag should prevent setState
-    await new Promise(r => setTimeout(r, 10));
-    // No error thrown means cancelled flag worked
   });
 
   it('falls back transactionStats prop to undefined when no filter and stats are null', () => {

@@ -2,6 +2,7 @@ import React from 'react';
 import { Transaction, Wallet } from '../../types';
 import { TransactionActions } from '../TransactionActions';
 import { getTxExplorerUrl } from '../../utils/explorer';
+import { isConsolidation } from '../../utils/transaction';
 import { ExternalLink, Copy, Check } from 'lucide-react';
 
 interface ActionMenuProps {
@@ -58,9 +59,7 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({
       {/* Transaction Actions (RBF/CPFP) for pending transactions */}
       {selectedTx.confirmations === 0 && (() => {
         // Consolidations are sent BY the user (to themselves), so should show RBF not CPFP
-        const isConsolidationTx = selectedTx.type === 'consolidation' ||
-          (selectedTx.counterpartyAddress && walletAddresses.includes(selectedTx.counterpartyAddress));
-        // Treat consolidations as "not received" for RBF eligibility
+        const isConsolidationTx = isConsolidation(selectedTx, walletAddresses);
         const isReceivedForActions = isConsolidationTx ? false : selectedTx.amount > 0;
         return (
           <TransactionActions

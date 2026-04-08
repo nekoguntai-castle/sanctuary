@@ -4,6 +4,7 @@ import * as bitcoinApi from '../../../src/api/bitcoin';
 import * as labelsApi from '../../../src/api/labels';
 import * as transactionsApi from '../../../src/api/transactions';
 import { createLogger } from '../../../utils/logger';
+import { isConsolidation } from '../../../utils/transaction';
 import type { TransactionStats } from '../../../src/api/transactions';
 
 const log = createLogger('TransactionList');
@@ -203,15 +204,10 @@ export function useTransactionList({
   };
 
   // Helper to get transaction type info
-  const getTxTypeInfo = (tx: Transaction) => {
-    const isReceive = tx.amount > 0;
-    const isConsolidation = !!(
-      tx.type === 'consolidation' ||
-      (tx.amount < 0 && tx.counterpartyAddress && walletAddresses.includes(tx.counterpartyAddress)) ||
-      (tx.amount > 0 && tx.counterpartyAddress && walletAddresses.includes(tx.counterpartyAddress))
-    );
-    return { isReceive, isConsolidation };
-  };
+  const getTxTypeInfo = (tx: Transaction) => ({
+    isReceive: tx.amount > 0,
+    isConsolidation: isConsolidation(tx, walletAddresses),
+  });
 
   // Calculate transaction statistics
   // IMPORTANT: This useMemo must be called BEFORE any early returns to follow React's rules of hooks
@@ -237,13 +233,9 @@ export function useTransactionList({
 
     for (const tx of filteredTransactions) {
       const isReceive = tx.amount > 0;
-      const isConsolidation = (
-        tx.type === 'consolidation' ||
-        (tx.amount < 0 && tx.counterpartyAddress && walletAddresses.includes(tx.counterpartyAddress)) ||
-        (tx.amount > 0 && tx.counterpartyAddress && walletAddresses.includes(tx.counterpartyAddress))
-      );
+      const txIsConsolidation = isConsolidation(tx, walletAddresses);
 
-      if (isConsolidation) {
+      if (txIsConsolidation) {
         consolidations++;
         // Use actual fee, not amount (amount is the consolidated value, fee is much smaller)
         if (tx.fee && tx.fee > 0) {

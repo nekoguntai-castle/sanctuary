@@ -59,6 +59,10 @@ vi.mock('../../hooks/useAIStatus', () => ({
   useAIStatus: vi.fn(),
 }));
 
+vi.mock('../../hooks/queries/useWalletLabels', () => ({
+  useWalletLabels: () => ({ data: [], isLoading: false }),
+}));
+
 vi.mock('../../hooks/useErrorHandler', () => ({
   useErrorHandler: () => ({
     handleError: vi.fn(),
