@@ -150,6 +150,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
         highlightedTxId={highlightTxId}
         onLabelsChange={onLabelsChange}
         walletAddresses={walletAddressStrings}
+        walletLabels={walletLabels}
         canEdit={canEdit}
         confirmationThreshold={confirmationThreshold}
         deepConfirmationThreshold={deepConfirmationThreshold}

@@ -8,11 +8,7 @@
 
 import { useState, useCallback } from 'react';
 import * as labelsApi from '../../../src/api/labels';
-import { createLogger } from '../../../utils/logger';
-import { logError } from '../../../utils/errorHandler';
 import type { Address, Label } from '../../../types';
-
-const log = createLogger('useAddressLabels');
 
 // ---------------------------------------------------------------------------
 // Types
@@ -21,6 +17,8 @@ const log = createLogger('useAddressLabels');
 export interface UseAddressLabelsParams {
   /** Wallet ID – required for fetching wallet-scoped labels */
   walletId: string | undefined;
+  /** All labels available for the wallet (from React Query cache) */
+  walletLabels: Label[];
   /** Setter to update the addresses list after saving label changes */
   setAddresses: React.Dispatch<React.SetStateAction<Address[]>>;
   /** Unified error handler (from useErrorHandler) */
@@ -52,26 +50,21 @@ export interface UseAddressLabelsReturn {
 
 export function useAddressLabels({
   walletId,
+  walletLabels,
   setAddresses,
   handleError,
 }: UseAddressLabelsParams): UseAddressLabelsReturn {
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
-  const [availableLabels, setAvailableLabels] = useState<Label[]>([]);
   const [selectedLabelIds, setSelectedLabelIds] = useState<string[]>([]);
   const [savingAddressLabels, setSavingAddressLabels] = useState(false);
+
+  const availableLabels = walletLabels;
 
   const handleEditAddressLabels = useCallback(async (addr: Address) => {
     if (!addr.id || !walletId) return;
     setEditingAddressId(addr.id);
     setSelectedLabelIds(addr.labels?.map(l => l.id) || []);
-    try {
-      const labels = await labelsApi.getLabels(walletId);
-      setAvailableLabels(labels);
-    } catch (err) {
-      logError(log, err, 'Failed to load labels');
-      handleError(err, 'Failed to Load Labels');
-    }
-  }, [walletId, handleError]);
+  }, [walletId]);
 
   const handleSaveAddressLabels = useCallback(async () => {
     if (!editingAddressId) return;
@@ -87,7 +80,6 @@ export function useAddressLabels({
       );
       setEditingAddressId(null);
     } catch (err) {
-      logError(log, err, 'Failed to save address labels');
       handleError(err, 'Failed to Save Labels');
     } finally {
       setSavingAddressLabels(false);

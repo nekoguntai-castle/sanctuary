@@ -1,6 +1,6 @@
 import React, { forwardRef, useRef, useState, useEffect, useCallback } from 'react';
 import { TableVirtuoso } from 'react-virtuoso';
-import { Transaction, Wallet } from '../../types';
+import { Transaction, Wallet, Label } from '../../types';
 import { useCurrency } from '../../contexts/CurrencyContext';
 import { Amount } from '../Amount';
 import { useAIStatus } from '../../hooks/useAIStatus';
@@ -31,13 +31,17 @@ interface TransactionListProps {
   deepConfirmationThreshold?: number; // Number of confirmations for "deeply confirmed" status
   walletBalance?: number; // Current wallet balance in sats for showing running balance column
   transactionStats?: TransactionStats; // Pre-computed stats from API (for all transactions, not just displayed)
+  walletLabels?: Label[];
 }
+
+const EMPTY_LABELS: Label[] = [];
 
 export const TransactionList: React.FC<TransactionListProps> = ({
   transactions,
   showWalletBadge = false,
   wallets = EMPTY_WALLETS,
   walletAddresses = EMPTY_ADDRESSES,
+  walletLabels = EMPTY_LABELS,
   onWalletClick,
   onTransactionClick,
   highlightedTxId,
@@ -78,6 +82,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     transactions,
     wallets,
     walletAddresses,
+    walletLabels,
     onTransactionClick,
     onLabelsChange,
     highlightedTxId,

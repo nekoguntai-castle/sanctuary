@@ -1,8 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Tag, Plus, Edit2, Trash2, X, Check, Hash } from 'lucide-react';
-import * as labelsApi from '../src/api/labels';
-import type { Label } from '../src/api/labels';
-import { useLoadingState } from '../hooks/useLoadingState';
+import {
+  useWalletLabels,
+  useCreateWalletLabel,
+  useUpdateWalletLabel,
+  useDeleteWalletLabel,
+} from '../hooks/queries/useWalletLabels';
+import type { Label } from '../types';
+import { extractErrorMessage } from '../shared/utils/errors';
 
 interface LabelManagerProps {
   walletId: string;
@@ -26,14 +31,22 @@ const PRESET_COLORS = [
 ];
 
 export const LabelManager: React.FC<LabelManagerProps> = ({ walletId, onLabelsChange }) => {
-  const [labels, setLabels] = useState<Label[]>([]);
+  // React Query hooks
+  const { data, isLoading: loading, error: loadError } = useWalletLabels(walletId);
+  const createMutation = useCreateWalletLabel();
+  const updateMutation = useUpdateWalletLabel();
+  const deleteMutation = useDeleteWalletLabel();
 
-  // Loading states using hook
-  const { loading, error: loadError, execute: runLoad } = useLoadingState({ initialLoading: true });
-  const { loading: saving, error: saveError, execute: runSave, clearError } = useLoadingState();
+  const labels = data ?? [];
+  const saving = createMutation.isPending || updateMutation.isPending || deleteMutation.isPending;
 
   // Combined error display
-  const error = loadError || saveError;
+  const mutationError = createMutation.error || updateMutation.error || deleteMutation.error;
+  const error = loadError
+    ? extractErrorMessage(loadError)
+    : mutationError
+      ? extractErrorMessage(mutationError)
+      : null;
 
   // Create/Edit state
   const [isCreating, setIsCreating] = useState(false);
@@ -45,14 +58,11 @@ export const LabelManager: React.FC<LabelManagerProps> = ({ walletId, onLabelsCh
   // Delete confirmation
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadLabels();
-  }, [walletId]);
-
-  const loadLabels = () => runLoad(async () => {
-    const data = await labelsApi.getLabels(walletId);
-    setLabels(data);
-  });
+  const resetMutationErrors = () => {
+    createMutation.reset();
+    updateMutation.reset();
+    deleteMutation.reset();
+  };
 
   const handleCreate = () => {
     setIsCreating(true);
@@ -60,7 +70,7 @@ export const LabelManager: React.FC<LabelManagerProps> = ({ walletId, onLabelsCh
     setFormName('');
     setFormColor(PRESET_COLORS[0]);
     setFormDescription('');
-    clearError();
+    resetMutationErrors();
   };
 
   const handleEdit = (label: Label) => {
@@ -69,7 +79,7 @@ export const LabelManager: React.FC<LabelManagerProps> = ({ walletId, onLabelsCh
     setFormName(label.name);
     setFormColor(label.color);
     setFormDescription(label.description || '');
-    clearError();
+    resetMutationErrors();
   };
 
   const handleCancel = () => {
@@ -78,45 +88,40 @@ export const LabelManager: React.FC<LabelManagerProps> = ({ walletId, onLabelsCh
     setFormName('');
     setFormColor(PRESET_COLORS[0]);
     setFormDescription('');
-    clearError();
+    resetMutationErrors();
   };
 
   const handleSave = async () => {
     const trimmedName = formName.trim();
     const trimmedDescription = formDescription.trim() || undefined;
 
-    const result = await runSave(async () => {
+    try {
       if (editingLabel) {
-        await labelsApi.updateLabel(walletId, editingLabel.id, {
-          name: trimmedName,
-          color: formColor,
-          description: trimmedDescription,
+        await updateMutation.mutateAsync({
+          walletId,
+          labelId: editingLabel.id,
+          data: { name: trimmedName, color: formColor, description: trimmedDescription },
         });
       } else {
-        await labelsApi.createLabel(walletId, {
-          name: trimmedName,
-          color: formColor,
-          description: trimmedDescription,
+        await createMutation.mutateAsync({
+          walletId,
+          data: { name: trimmedName, color: formColor, description: trimmedDescription },
         });
       }
-    });
-
-    if (result !== null) {
       handleCancel();
-      await loadLabels();
       onLabelsChange?.();
+    } catch {
+      // Error is captured by the mutation hook and displayed via the error variable
     }
   };
 
   const handleDelete = async (labelId: string) => {
-    const result = await runSave(async () => {
-      await labelsApi.deleteLabel(walletId, labelId);
-    });
-
-    if (result !== null) {
+    try {
+      await deleteMutation.mutateAsync({ walletId, labelId });
       setDeleteConfirm(null);
-      await loadLabels();
       onLabelsChange?.();
+    } catch {
+      // Error is captured by the mutation hook and displayed via the error variable
     }
   };
 

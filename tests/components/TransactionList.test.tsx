@@ -37,7 +37,6 @@ vi.mock('../../src/api/bitcoin', () => ({
 }));
 
 vi.mock('../../src/api/labels', () => ({
-  getLabels: vi.fn().mockResolvedValue([]),
   setTransactionLabels: vi.fn().mockResolvedValue([]),
   createLabel: vi.fn(),
 }));
@@ -158,7 +157,6 @@ describe('TransactionList Component', () => {
     vi.clearAllMocks();
     vi.mocked(bitcoinApi.getStatus).mockResolvedValue({ explorerUrl: 'https://mempool.space' } as any);
     vi.mocked(transactionsApi.getTransaction).mockResolvedValue({} as any);
-    vi.mocked(labelsApi.getLabels).mockResolvedValue([]);
     vi.mocked(labelsApi.setTransactionLabels).mockResolvedValue([]);
   });
 
@@ -542,15 +540,15 @@ describe('TransactionList - Additional behaviors', () => {
     const user = userEvent.setup();
     const onLabelsChange = vi.fn();
     const { TransactionList } = await import('../../components/TransactionList');
-    vi.mocked(labelsApi.getLabels).mockResolvedValueOnce([
-      { id: 'label-1', name: 'Bills', color: '#ff0000' } as any,
-      { id: 'label-2', name: 'Travel', color: '#00ff00' } as any,
-    ]);
 
     render(
       <TransactionList
         transactions={[{ ...baseTx, labels: [] }]}
         onLabelsChange={onLabelsChange}
+        walletLabels={[
+          { id: 'label-1', name: 'Bills', color: '#ff0000', walletId: 'wallet-1', createdAt: '', updatedAt: '' },
+          { id: 'label-2', name: 'Travel', color: '#00ff00', walletId: 'wallet-1', createdAt: '', updatedAt: '' },
+        ]}
       />
     );
 
@@ -558,7 +556,7 @@ describe('TransactionList - Additional behaviors', () => {
     await user.click(row.querySelectorAll('td')[0]);
 
     await user.click(await screen.findByRole('button', { name: /edit/i }));
-    expect(labelsApi.getLabels).toHaveBeenCalledWith('wallet-1');
+    // Labels are now read from walletLabels prop, not fetched via API
 
     await user.click(await screen.findByRole('button', { name: /travel/i }));
     await user.click(screen.getByRole('button', { name: /save/i }));

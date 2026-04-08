@@ -12,7 +12,6 @@ vi.mock('../../../src/api/bitcoin', () => ({
 }));
 
 vi.mock('../../../src/api/labels', () => ({
-  getLabels: vi.fn(),
   setTransactionLabels: vi.fn(),
   createLabel: vi.fn(),
 }));
@@ -47,7 +46,6 @@ describe('useTransactionList branches', () => {
     vi.mocked(bitcoinApi.getStatus).mockResolvedValue({
       explorerUrl: 'https://mempool.space',
     } as Awaited<ReturnType<typeof bitcoinApi.getStatus>>);
-    vi.mocked(labelsApi.getLabels).mockResolvedValue([]);
     vi.mocked(labelsApi.setTransactionLabels).mockResolvedValue([]);
     vi.mocked(labelsApi.createLabel).mockResolvedValue({
       id: 'lbl-new',
@@ -220,11 +218,11 @@ describe('useTransactionList branches', () => {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    vi.mocked(labelsApi.getLabels).mockResolvedValueOnce([labelA, labelB]);
 
     const { result } = renderHook(() =>
       useTransactionList({
         transactions: [tx],
+        walletLabels: [labelA, labelB],
         onLabelsChange,
       })
     );
@@ -263,9 +261,8 @@ describe('useTransactionList branches', () => {
     expect(onLabelsChange).toHaveBeenCalledTimes(1);
   });
 
-  it('covers edit/save/AI suggestion error handlers', async () => {
+  it('covers save/AI suggestion error handlers', async () => {
     const tx = makeTx({ id: 'tx-errors', txid: 'txid-errors', walletId: 'wallet-errors', labels: [] });
-    vi.mocked(labelsApi.getLabels).mockRejectedValueOnce(new Error('labels failed'));
     vi.mocked(labelsApi.setTransactionLabels).mockRejectedValueOnce(new Error('save failed'));
     vi.mocked(labelsApi.createLabel).mockRejectedValueOnce(new Error('create failed'));
 
@@ -280,6 +277,7 @@ describe('useTransactionList branches', () => {
     });
     await waitFor(() => expect(transactionsApi.getTransaction).toHaveBeenCalledWith('txid-errors'));
 
+    // handleEditLabels now reads from walletLabels synchronously (no API call)
     await act(async () => {
       await result.current.handleEditLabels(tx);
     });
@@ -317,13 +315,12 @@ describe('useTransactionList branches', () => {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    vi.mocked(labelsApi.getLabels).mockResolvedValueOnce([existing]);
     vi.mocked(labelsApi.createLabel).mockResolvedValueOnce(created);
-    vi.mocked(labelsApi.getLabels).mockResolvedValueOnce([existing, created]);
 
     const { result } = renderHook(() =>
       useTransactionList({
         transactions: [tx],
+        walletLabels: [existing],
       })
     );
 
@@ -332,21 +329,25 @@ describe('useTransactionList branches', () => {
     });
     await waitFor(() => expect(transactionsApi.getTransaction).toHaveBeenCalledWith('txid-ai'));
 
+    // handleEditLabels now reads from walletLabels synchronously
     await act(async () => {
       await result.current.handleEditLabels(tx);
     });
 
+    // "groceries" matches existing label (case-insensitive) - should not create
     await act(async () => {
       await result.current.handleAISuggestion('groceries');
     });
     expect(labelsApi.createLabel).not.toHaveBeenCalled();
     expect(result.current.selectedLabelIds).toEqual(['lbl-existing']);
 
+    // Duplicate suggestion - should remain selected without duplication
     await act(async () => {
       await result.current.handleAISuggestion('groceries');
     });
     expect(result.current.selectedLabelIds).toEqual(['lbl-existing']);
 
+    // "Coffee" does not exist - should create via API
     await act(async () => {
       await result.current.handleAISuggestion('Coffee');
     });

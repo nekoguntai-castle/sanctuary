@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Tag, Plus, X, Check, ChevronDown } from 'lucide-react';
-import * as labelsApi from '../src/api/labels';
-import type { Label } from '../src/api/labels';
-import { useLoadingState } from '../hooks/useLoadingState';
+import type { Label } from '../types';
+import { useWalletLabels, useCreateWalletLabel } from '../hooks/queries/useWalletLabels';
 
 interface LabelSelectorProps {
   walletId: string;
@@ -23,24 +22,19 @@ export const LabelSelector: React.FC<LabelSelectorProps> = ({
   disabled = false,
   className = '',
 }) => {
-  const [labels, setLabels] = useState<Label[]>([]);
+  const { data: labels = [], isLoading: loading } = useWalletLabels(walletId);
+  const createMutation = useCreateWalletLabel();
+
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [newLabelName, setNewLabelName] = useState('');
 
-  // Loading states using hook
-  const { loading, execute: runLoad } = useLoadingState({ initialLoading: true });
-  const { loading: creating, execute: runCreate } = useLoadingState<Label>();
+  const creating = createMutation.isPending;
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    loadLabels();
-  }, [walletId]);
-
-  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -53,11 +47,6 @@ export const LabelSelector: React.FC<LabelSelectorProps> = ({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  const loadLabels = () => runLoad(async () => {
-    const data = await labelsApi.getLabels(walletId);
-    setLabels(data);
-  });
 
   const handleToggleLabel = (label: Label) => {
     const isSelected = selectedLabels.some((l) => l.id === label.id);
@@ -76,17 +65,16 @@ export const LabelSelector: React.FC<LabelSelectorProps> = ({
   const handleCreateLabel = async () => {
     if (!newLabelName.trim()) return;
 
-    const result = await runCreate(async () => {
-      return await labelsApi.createLabel(walletId, {
-        name: newLabelName.trim(),
+    try {
+      const result = await createMutation.mutateAsync({
+        walletId,
+        data: { name: newLabelName.trim() },
       });
-    });
-
-    if (result) {
-      setLabels([...labels, result]);
       onChange([...selectedLabels, result]);
       setNewLabelName('');
       setIsCreating(false);
+    } catch {
+      // Error surfaces through createMutation.error
     }
   };
 

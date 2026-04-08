@@ -17,16 +17,20 @@ interface UseTransactionListParams {
   transactions: Transaction[];
   wallets?: Wallet[];
   walletAddresses?: string[];
+  walletLabels?: Label[];
   onTransactionClick?: (transaction: Transaction) => void;
   onLabelsChange?: () => void;
   highlightedTxId?: string;
   transactionStats?: TransactionStats;
 }
 
+const EMPTY_LABELS: Label[] = [];
+
 export function useTransactionList({
   transactions,
   wallets = EMPTY_WALLETS,
   walletAddresses = EMPTY_ADDRESSES,
+  walletLabels = EMPTY_LABELS,
   onTransactionClick,
   onLabelsChange,
   highlightedTxId,
@@ -134,16 +138,10 @@ export function useTransactionList({
     }
   };
 
-  // Load labels when opening edit mode
   const handleEditLabels = async (tx: Transaction) => {
     setEditingLabels(true);
     setSelectedLabelIds(tx.labels?.map(l => l.id) || []);
-    try {
-      const labels = await labelsApi.getLabels(tx.walletId);
-      setAvailableLabels(labels);
-    } catch (err) {
-      log.error('Failed to load labels', { error: err });
-    }
+    setAvailableLabels(walletLabels);
   };
 
   const handleSaveLabels = async () => {
@@ -181,17 +179,14 @@ export function useTransactionList({
         l => l.name.toLowerCase() === suggestion.toLowerCase()
       );
 
-      // If it doesn't exist, create it
       if (!existingLabel) {
         const newLabel = await labelsApi.createLabel(selectedTx.walletId, {
           name: suggestion,
-          color: '#6366f1', // Default indigo color
+          color: '#6366f1',
         });
         existingLabel = newLabel;
-
-        // Reload available labels to include the new one
-        const labels = await labelsApi.getLabels(selectedTx.walletId);
-        setAvailableLabels(labels);
+        setAvailableLabels(prev => [...prev, newLabel]);
+        onLabelsChange?.(); // Triggers React Query cache invalidation upstream
       }
 
       // Toggle the label on

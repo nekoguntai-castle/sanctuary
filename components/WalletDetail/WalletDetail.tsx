@@ -37,6 +37,7 @@ import { useTransactionFilters } from './hooks/useTransactionFilters';
 import { useWalletWebSocket } from './hooks/useWalletWebSocket';
 import { useAddressLabels } from './hooks/useAddressLabels';
 import { useUtxoActions } from './hooks/useUtxoActions';
+import { useWalletLabels } from '../../hooks/queries/useWalletLabels';
 import { useWalletMutations } from './hooks/useWalletMutations';
 
 import type { TabType, SettingsSubTab } from './types';
@@ -134,6 +135,9 @@ export const WalletDetail: React.FC = () => {
     setWallet,
   });
 
+  // Wallet labels (shared cache for all label consumers on this page)
+  const { data: walletLabels = [] } = useWalletLabels(id);
+
   // Address label editing
   const {
     editingAddressId,
@@ -146,6 +150,7 @@ export const WalletDetail: React.FC = () => {
     handleCancelEditLabels,
   } = useAddressLabels({
     walletId: id,
+    walletLabels,
     setAddresses,
     handleError,
   });

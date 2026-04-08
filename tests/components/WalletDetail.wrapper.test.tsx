@@ -90,7 +90,13 @@ vi.mock('../../hooks/useAIStatus', () => ({
 }));
 
 vi.mock('../../hooks/queries/useWalletLabels', () => ({
-  useWalletLabels: () => ({ data: [], isLoading: false }),
+  useWalletLabels: () => ({
+    data: [
+      { id: 'label-1', name: 'Known Label', walletId: 'wallet-1', color: '#000', createdAt: '', updatedAt: '' },
+      { id: 'label-2', name: 'Second Label', walletId: 'wallet-1', color: '#111', createdAt: '', updatedAt: '' },
+    ],
+    isLoading: false,
+  }),
 }));
 
 vi.mock('../../hooks/websocket', () => ({
@@ -458,10 +464,7 @@ describe('WalletDetail wrapper behaviors', () => {
     vi.mocked(transactionsApi.getAddresses).mockResolvedValue([]);
     vi.mocked(transactionsApi.generateAddresses).mockResolvedValue({} as any);
     vi.mocked(transactionsApi.freezeUTXO).mockResolvedValue({} as any);
-    vi.mocked(labelsApi.getLabels).mockResolvedValue([
-      { id: 'label-1', name: 'Known Label' },
-      { id: 'label-2', name: 'Second Label' },
-    ] as any);
+    // Labels are now provided via useWalletLabels mock, not labelsApi.getLabels
     vi.mocked(labelsApi.setAddressLabels).mockResolvedValue({} as any);
     vi.mocked(walletsApi.updateWallet).mockResolvedValue({} as any);
     vi.mocked(walletsApi.deleteWallet).mockResolvedValue({} as any);
@@ -581,7 +584,7 @@ describe('WalletDetail wrapper behaviors', () => {
     expect(mocks.loadAddresses).toHaveBeenCalledWith('wallet-1', 25, 0, true);
 
     await user.click(screen.getByRole('button', { name: 'addr-edit-labels' }));
-    expect(labelsApi.getLabels).toHaveBeenCalledWith('wallet-1');
+    // Labels are now read from walletLabels prop (via useWalletLabels), not fetched via labelsApi.getLabels
 
     await user.click(screen.getByRole('button', { name: 'addr-toggle-label' }));
     await user.click(screen.getByRole('button', { name: 'addr-save-labels' }));

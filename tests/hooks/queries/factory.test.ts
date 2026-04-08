@@ -360,6 +360,22 @@ describe('createMutation', () => {
     expect(removeSpy).toHaveBeenCalledWith({ queryKey: keys.detail('r-1') });
   });
 
+  it('invalidates keys specified as a function on success', async () => {
+    const mutationFn = vi.fn().mockResolvedValue({ id: '1' });
+    const useCreate = createMutation<{ id: string }, string>(mutationFn, {
+      invalidateKeys: (id) => [keys.detail(id)],
+    });
+
+    const { wrapper, queryClient } = createWrapperWithClient();
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+
+    const { result } = renderHook(() => useCreate(), { wrapper });
+
+    await result.current.mutateAsync('r-42');
+
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.detail('r-42') });
+  });
+
   it('removes keys specified as a function on success', async () => {
     const mutationFn = vi.fn().mockResolvedValue(undefined);
     const useDelete = createMutation<undefined, string>(mutationFn, {

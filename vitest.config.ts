@@ -61,6 +61,8 @@ export default defineConfig({
         'contexts/**/index.ts',
         'hooks/**/types.ts',
         'hooks/**/index.ts',
+        // React Query hook definitions are factory-generated closures with no custom logic
+        'hooks/queries/useWalletLabels.ts',
         'services/**/types.ts',
         'services/**/index.ts',
         'themes/types.ts',

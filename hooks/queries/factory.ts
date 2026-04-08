@@ -134,8 +134,8 @@ export function createDetailQuery<TData>(
 // ---------------------------------------------------------------------------
 
 interface MutationOptions<TData, TVariables> {
-  /** Query keys to invalidate on success */
-  invalidateKeys?: QueryKey[];
+  /** Query keys to invalidate on success (static array or callback from variables) */
+  invalidateKeys?: ((variables: TVariables) => QueryKey[]) | QueryKey[];
   /** Query keys to remove from cache on success */
   removeKeys?: ((variables: TVariables) => QueryKey[]) | QueryKey[];
   /** Additional onSuccess callback */
@@ -168,19 +168,23 @@ export function createMutation<TData, TVariables>(
   mutationFn: (variables: TVariables) => Promise<TData>,
   options: MutationOptions<TData, TVariables> = {}
 ) {
-  const { invalidateKeys = [], removeKeys, onSuccess: onSuccessCallback } = options;
+  const { invalidateKeys: invalidateKeysOpt, removeKeys, onSuccess: onSuccessCallback } = options;
+  const invalidateKeys = invalidateKeysOpt ?? [];
 
   return function useMutationHook(
-    overrides?: Partial<UseMutationOptions<TData, Error, TVariables>>
+    overrides?: Partial<UseMutationOptions<TData, Error, TVariables, unknown>>
   ) {
     const queryClient = useQueryClient();
     const { onSuccess: overrideOnSuccess, ...restOverrides } = overrides ?? {};
 
-    return useMutation<TData, Error, TVariables>({
+    return useMutation<TData, Error, TVariables, unknown>({
       mutationFn,
       onSuccess: (data, variables, onMutateResult, context) => {
         // Invalidate specified query keys
-        for (const key of invalidateKeys) {
+        const keysToInvalidate = typeof invalidateKeys === 'function'
+          ? invalidateKeys(variables)
+          : invalidateKeys;
+        for (const key of keysToInvalidate) {
           queryClient.invalidateQueries({ queryKey: key });
         }
 

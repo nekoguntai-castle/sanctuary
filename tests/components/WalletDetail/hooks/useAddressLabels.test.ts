@@ -2,34 +2,26 @@ import { act,renderHook } from '@testing-library/react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 import { useAddressLabels } from '../../../../components/WalletDetail/hooks/useAddressLabels';
 import * as labelsApi from '../../../../src/api/labels';
-import { logError } from '../../../../utils/errorHandler';
+import type { Label } from '../../../../types';
 
 vi.mock('../../../../src/api/labels', () => ({
-  getLabels: vi.fn(),
   setAddressLabels: vi.fn(),
-}));
-
-vi.mock('../../../../utils/errorHandler', () => ({
-  logError: vi.fn(),
-}));
-
-vi.mock('../../../../utils/logger', () => ({
-  createLogger: () => ({
-    info: vi.fn(),
-    debug: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  }),
 }));
 
 describe('useAddressLabels', () => {
   const setAddresses = vi.fn();
   const handleError = vi.fn();
 
-  const renderAddressLabels = (walletId: string | undefined = 'wallet-1') =>
+  const mockLabels: Label[] = [
+    { id: 'label-1', walletId: 'wallet-1', name: 'one', color: '#111', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+    { id: 'label-2', walletId: 'wallet-1', name: 'two', color: '#222', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+  ];
+
+  const renderAddressLabels = (walletId: string | undefined = 'wallet-1', walletLabels: Label[] = mockLabels) =>
     renderHook(() =>
       useAddressLabels({
         walletId,
+        walletLabels,
         setAddresses,
         handleError,
       })
@@ -37,10 +29,6 @@ describe('useAddressLabels', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(labelsApi.getLabels).mockResolvedValue([
-      { id: 'label-1', name: 'one' },
-      { id: 'label-2', name: 'two' },
-    ] as any);
     vi.mocked(labelsApi.setAddressLabels).mockResolvedValue(undefined as never);
   });
 
@@ -48,6 +36,7 @@ describe('useAddressLabels', () => {
     const { result: noWallet } = renderHook(() =>
       useAddressLabels({
         walletId: undefined,
+        walletLabels: mockLabels,
         setAddresses,
         handleError,
       })
@@ -55,7 +44,8 @@ describe('useAddressLabels', () => {
     await act(async () => {
       await noWallet.current.handleEditAddressLabels({ id: 'addr-1', labels: [] } as any);
     });
-    expect(labelsApi.getLabels).not.toHaveBeenCalled();
+    // Should not set editingAddressId when walletId is missing
+    expect(noWallet.current.editingAddressId).toBeNull();
 
     vi.clearAllMocks();
     const { result: noId } = renderAddressLabels('wallet-1');
@@ -63,12 +53,11 @@ describe('useAddressLabels', () => {
       await noId.current.handleEditAddressLabels({ id: undefined, labels: [] } as any);
     });
 
-    expect(labelsApi.getLabels).not.toHaveBeenCalled();
-    expect(noWallet.current.editingAddressId).toBeNull();
+    // Should not set editingAddressId when address id is missing
     expect(noId.current.editingAddressId).toBeNull();
   });
 
-  it('loads labels, handles selected-label fallback, and supports toggle/cancel', async () => {
+  it('reads walletLabels, handles selected-label fallback, and supports toggle/cancel', async () => {
     const { result } = renderAddressLabels('wallet-1');
 
     await act(async () => {
@@ -78,6 +67,7 @@ describe('useAddressLabels', () => {
       } as any);
     });
     expect(result.current.editingAddressId).toBe('addr-1');
+    // availableLabels comes from walletLabels prop, not from API call
     expect(result.current.availableLabels).toHaveLength(2);
     expect(result.current.selectedLabelIds).toEqual(['label-1']);
 
@@ -140,32 +130,22 @@ describe('useAddressLabels', () => {
     expect(result.current.savingAddressLabels).toBe(false);
   });
 
-  it('reports load/save failures via logError and handleError', async () => {
-    vi.mocked(labelsApi.getLabels).mockRejectedValueOnce(new Error('load labels failed'));
+  it('reports save failures via handleError', async () => {
     const { result } = renderAddressLabels('wallet-1');
 
+    // Start editing to set editingAddressId
     await act(async () => {
       await result.current.handleEditAddressLabels({
         id: 'addr-1',
         labels: [],
       } as any);
     });
-    expect(logError).toHaveBeenCalledWith(expect.any(Object), expect.any(Error), 'Failed to load labels');
-    expect(handleError).toHaveBeenCalledWith(expect.any(Error), 'Failed to Load Labels');
-
-    vi.mocked(labelsApi.getLabels).mockResolvedValueOnce([{ id: 'label-1', name: 'one' }] as any);
-    await act(async () => {
-      await result.current.handleEditAddressLabels({
-        id: 'addr-1',
-        labels: [],
-      } as any);
-    });
+    expect(result.current.editingAddressId).toBe('addr-1');
 
     vi.mocked(labelsApi.setAddressLabels).mockRejectedValueOnce(new Error('save labels failed'));
     await act(async () => {
       await result.current.handleSaveAddressLabels();
     });
-    expect(logError).toHaveBeenCalledWith(expect.any(Object), expect.any(Error), 'Failed to save address labels');
     expect(handleError).toHaveBeenCalledWith(expect.any(Error), 'Failed to Save Labels');
     expect(result.current.savingAddressLabels).toBe(false);
   });

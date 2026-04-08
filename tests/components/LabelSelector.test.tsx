@@ -10,12 +10,17 @@ import React from 'react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 import { LabelBadges,LabelSelector } from '../../components/LabelSelector';
 import type { Label } from '../../src/api/labels';
-import * as labelsApi from '../../src/api/labels';
 
-// Mock the labels API
-vi.mock('../../src/api/labels', () => ({
-  getLabels: vi.fn(),
-  createLabel: vi.fn(),
+// Mock mutation function
+const mockCreateMutateAsync = vi.fn();
+
+// Mutable hook return values — overridden per-test as needed
+let mockUseWalletLabelsReturn: { data: Label[] | undefined; isLoading: boolean; error: unknown };
+let mockCreateMutationReturn: { mutateAsync: typeof mockCreateMutateAsync; isPending: boolean; error: unknown; reset: () => void };
+
+vi.mock('../../hooks/queries/useWalletLabels', () => ({
+  useWalletLabels: () => mockUseWalletLabelsReturn,
+  useCreateWalletLabel: () => mockCreateMutationReturn,
 }));
 
 describe('LabelSelector', () => {
@@ -33,8 +38,15 @@ describe('LabelSelector', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(labelsApi.getLabels).mockResolvedValue(mockLabels);
-    vi.mocked(labelsApi.createLabel).mockResolvedValue({
+    // Default: loaded state with labels
+    mockUseWalletLabelsReturn = { data: mockLabels, isLoading: false, error: null };
+    mockCreateMutationReturn = {
+      mutateAsync: mockCreateMutateAsync,
+      isPending: false,
+      error: null,
+      reset: vi.fn(),
+    };
+    mockCreateMutateAsync.mockResolvedValue({
       id: 'new-label',
       name: 'New Label',
       color: '#6366F1',
@@ -92,10 +104,6 @@ describe('LabelSelector', () => {
       it('shows available labels in dropdown', async () => {
         render(<LabelSelector {...defaultProps} />);
 
-        await waitFor(() => {
-          expect(labelsApi.getLabels).toHaveBeenCalled();
-        });
-
         fireEvent.click(screen.getByText('Select labels...'));
 
         await waitFor(() => {
@@ -112,10 +120,6 @@ describe('LabelSelector', () => {
             selectedLabels={[mockLabels[0]]}
           />
         );
-
-        await waitFor(() => {
-          expect(labelsApi.getLabels).toHaveBeenCalled();
-        });
 
         fireEvent.click(screen.getByText('Personal'));
 
@@ -166,7 +170,7 @@ describe('LabelSelector', () => {
 
         fireEvent.mouseDown(document.body);
         await waitFor(() => {
-          expect(labelsApi.getLabels).toHaveBeenCalled();
+          expect(screen.getByText('Select labels...')).toBeInTheDocument();
         });
 
         useRefSpy.mockRestore();
@@ -177,10 +181,6 @@ describe('LabelSelector', () => {
       it('calls onChange when label is selected', async () => {
         const onChange = vi.fn();
         render(<LabelSelector {...defaultProps} onChange={onChange} />);
-
-        await waitFor(() => {
-          expect(labelsApi.getLabels).toHaveBeenCalled();
-        });
 
         fireEvent.click(screen.getByText('Select labels...'));
 
@@ -208,10 +208,6 @@ describe('LabelSelector', () => {
           />
         );
 
-        await waitFor(() => {
-          expect(labelsApi.getLabels).toHaveBeenCalled();
-        });
-
         fireEvent.click(screen.getByText('Personal'));
 
         await waitFor(() => {
@@ -229,10 +225,6 @@ describe('LabelSelector', () => {
       it('filters labels based on search query', async () => {
         render(<LabelSelector {...defaultProps} />);
 
-        await waitFor(() => {
-          expect(labelsApi.getLabels).toHaveBeenCalled();
-        });
-
         fireEvent.click(screen.getByText('Select labels...'));
         fireEvent.change(screen.getByPlaceholderText('Search labels...'), {
           target: { value: 'pers' },
@@ -248,10 +240,6 @@ describe('LabelSelector', () => {
       it('shows "No labels found" when search has no results', async () => {
         render(<LabelSelector {...defaultProps} />);
 
-        await waitFor(() => {
-          expect(labelsApi.getLabels).toHaveBeenCalled();
-        });
-
         fireEvent.click(screen.getByText('Select labels...'));
         fireEvent.change(screen.getByPlaceholderText('Search labels...'), {
           target: { value: 'nonexistent' },
@@ -263,12 +251,8 @@ describe('LabelSelector', () => {
       });
 
       it('shows "No labels available" when there are no labels and no search query', async () => {
-        vi.mocked(labelsApi.getLabels).mockResolvedValue([]);
+        mockUseWalletLabelsReturn = { data: [], isLoading: false, error: null };
         render(<LabelSelector {...defaultProps} />);
-
-        await waitFor(() => {
-          expect(labelsApi.getLabels).toHaveBeenCalled();
-        });
 
         fireEvent.click(screen.getByText('Select labels...'));
 
@@ -282,10 +266,6 @@ describe('LabelSelector', () => {
       it('shows create option by default', async () => {
         render(<LabelSelector {...defaultProps} />);
 
-        await waitFor(() => {
-          expect(labelsApi.getLabels).toHaveBeenCalled();
-        });
-
         fireEvent.click(screen.getByText('Select labels...'));
 
         expect(screen.getByText('Create new label')).toBeInTheDocument();
@@ -293,10 +273,6 @@ describe('LabelSelector', () => {
 
       it('hides create option when showCreateOption is false', async () => {
         render(<LabelSelector {...defaultProps} showCreateOption={false} />);
-
-        await waitFor(() => {
-          expect(labelsApi.getLabels).toHaveBeenCalled();
-        });
 
         fireEvent.click(screen.getByText('Select labels...'));
 
@@ -306,10 +282,6 @@ describe('LabelSelector', () => {
       it('shows create input when Create new label is clicked', async () => {
         render(<LabelSelector {...defaultProps} />);
 
-        await waitFor(() => {
-          expect(labelsApi.getLabels).toHaveBeenCalled();
-        });
-
         fireEvent.click(screen.getByText('Select labels...'));
         fireEvent.click(screen.getByText('Create new label'));
 
@@ -318,10 +290,6 @@ describe('LabelSelector', () => {
 
       it('exits create mode and clears text when cancel button is clicked', async () => {
         render(<LabelSelector {...defaultProps} />);
-
-        await waitFor(() => {
-          expect(labelsApi.getLabels).toHaveBeenCalled();
-        });
 
         fireEvent.click(screen.getByText('Select labels...'));
         fireEvent.click(screen.getByText('Create new label'));
@@ -338,13 +306,9 @@ describe('LabelSelector', () => {
         expect((screen.getByPlaceholderText('New label name...') as HTMLInputElement).value).toBe('');
       });
 
-      it('calls createLabel API when new label is submitted', async () => {
+      it('calls createLabel mutation when new label is submitted', async () => {
         const onChange = vi.fn();
         render(<LabelSelector {...defaultProps} onChange={onChange} />);
-
-        await waitFor(() => {
-          expect(labelsApi.getLabels).toHaveBeenCalled();
-        });
 
         fireEvent.click(screen.getByText('Select labels...'));
         fireEvent.click(screen.getByText('Create new label'));
@@ -354,8 +318,9 @@ describe('LabelSelector', () => {
         fireEvent.keyDown(input, { key: 'Enter' });
 
         await waitFor(() => {
-          expect(labelsApi.createLabel).toHaveBeenCalledWith('wallet-1', {
-            name: 'New Label',
+          expect(mockCreateMutateAsync).toHaveBeenCalledWith({
+            walletId: 'wallet-1',
+            data: { name: 'New Label' },
           });
         });
       });
@@ -363,16 +328,12 @@ describe('LabelSelector', () => {
       it('does not create labels for blank input and closes create mode on Escape', async () => {
         render(<LabelSelector {...defaultProps} />);
 
-        await waitFor(() => {
-          expect(labelsApi.getLabels).toHaveBeenCalled();
-        });
-
         fireEvent.click(screen.getByText('Select labels...'));
         fireEvent.click(screen.getByText('Create new label'));
 
         const input = screen.getByPlaceholderText('New label name...');
         fireEvent.keyDown(input, { key: 'Enter' });
-        expect(labelsApi.createLabel).not.toHaveBeenCalled();
+        expect(mockCreateMutateAsync).not.toHaveBeenCalled();
 
         fireEvent.change(input, { target: { value: 'Temporary' } });
         fireEvent.keyDown(input, { key: 'Escape' });
@@ -382,14 +343,10 @@ describe('LabelSelector', () => {
         });
       });
 
-      it('keeps state unchanged when label creation fails and runCreate returns no result', async () => {
+      it('keeps state unchanged when label creation fails and mutation returns no result', async () => {
         const onChange = vi.fn();
-        vi.mocked(labelsApi.createLabel).mockRejectedValueOnce(new Error('create failed'));
+        mockCreateMutateAsync.mockRejectedValueOnce(new Error('create failed'));
         render(<LabelSelector {...defaultProps} onChange={onChange} />);
-
-        await waitFor(() => {
-          expect(labelsApi.getLabels).toHaveBeenCalled();
-        });
 
         fireEvent.click(screen.getByText('Select labels...'));
         fireEvent.click(screen.getByText('Create new label'));
@@ -399,8 +356,9 @@ describe('LabelSelector', () => {
         fireEvent.keyDown(input, { key: 'Enter' });
 
         await waitFor(() => {
-          expect(labelsApi.createLabel).toHaveBeenCalledWith('wallet-1', {
-            name: 'Will Fail',
+          expect(mockCreateMutateAsync).toHaveBeenCalledWith({
+            walletId: 'wallet-1',
+            data: { name: 'Will Fail' },
           });
         });
         expect(onChange).not.toHaveBeenCalled();
@@ -411,20 +369,12 @@ describe('LabelSelector', () => {
       it('disables trigger button when disabled', async () => {
         render(<LabelSelector {...defaultProps} disabled={true} />);
 
-        await waitFor(() => {
-          expect(labelsApi.getLabels).toHaveBeenCalled();
-        });
-
         const button = screen.getByRole('button');
         expect(button).toBeDisabled();
       });
 
       it('does not open dropdown when disabled', async () => {
         render(<LabelSelector {...defaultProps} disabled={true} />);
-
-        await waitFor(() => {
-          expect(labelsApi.getLabels).toHaveBeenCalled();
-        });
 
         fireEvent.click(screen.getByRole('button'));
 
@@ -440,10 +390,6 @@ describe('LabelSelector', () => {
             onChange={onChange}
           />
         );
-
-        await waitFor(() => {
-          expect(labelsApi.getLabels).toHaveBeenCalled();
-        });
 
         const triggerRemoveIcon = screen.getByRole('button').querySelector('.lucide-x.cursor-pointer');
         expect(triggerRemoveIcon).not.toBeNull();
@@ -479,10 +425,6 @@ describe('LabelSelector', () => {
         />
       );
 
-      await waitFor(() => {
-        expect(labelsApi.getLabels).toHaveBeenCalled();
-      });
-
       expect(screen.getByText('Add Label')).toBeInTheDocument();
     });
 
@@ -494,10 +436,6 @@ describe('LabelSelector', () => {
           selectedLabels={[mockLabels[0]]}
         />
       );
-
-      await waitFor(() => {
-        expect(labelsApi.getLabels).toHaveBeenCalled();
-      });
 
       fireEvent.click(screen.getByText('Add Label'));
       expect(screen.getByText('Personal')).toBeInTheDocument();
@@ -569,9 +507,7 @@ describe('LabelSelector', () => {
 
   describe('loading state', () => {
     it('shows loading spinner while fetching labels', async () => {
-      vi.mocked(labelsApi.getLabels).mockImplementation(
-        () => new Promise(() => {}) // Never resolves
-      );
+      mockUseWalletLabelsReturn = { data: undefined, isLoading: true, error: null };
 
       render(<LabelSelector {...defaultProps} />);
 
@@ -586,8 +522,6 @@ describe('LabelSelector', () => {
 
   describe('className prop', () => {
     it('applies custom className', async () => {
-      vi.mocked(labelsApi.getLabels).mockImplementation(() => new Promise(() => {}));
-
       const { container } = render(
         <LabelSelector {...defaultProps} className="custom-class" />
       );
