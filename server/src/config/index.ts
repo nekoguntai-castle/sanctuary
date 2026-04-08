@@ -184,7 +184,7 @@ function loadConfig(): CombinedConfig {
       syncStaggerDelayMs: parseInt(process.env.SYNC_STAGGER_DELAY_MS || '2000', 10),
       startupCatchUpBatchSize: parseInt(process.env.SYNC_STARTUP_CATCH_UP_BATCH_SIZE || '250', 10),
       startupCatchUpDelayMs: parseInt(process.env.SYNC_STARTUP_CATCH_UP_DELAY_MS || '10000', 10),
-      startupCatchUpStaggerDelayMs: parseInt(process.env.SYNC_STARTUP_CATCH_UP_STAGGER_DELAY_MS || '250', 10),
+      startupCatchUpStaggerDelayMs: parseInt(process.env.SYNC_STARTUP_CATCH_UP_STAGGER_DELAY_MS || '1000', 10),
       maxRetryAttempts: parseInt(process.env.SYNC_MAX_RETRIES || '3', 10),
       retryDelaysMs: (process.env.SYNC_RETRY_DELAYS_MS || '5000,15000,45000').split(',').map(s => parseInt(s.trim(), 10)),
       maxSyncDurationMs: parseInt(process.env.SYNC_MAX_DURATION_MS || String(30 * 60 * 1000), 10), // 30 minutes default

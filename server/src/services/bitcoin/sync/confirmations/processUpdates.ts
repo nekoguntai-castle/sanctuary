@@ -116,14 +116,8 @@ export async function processTransactionUpdates(
         updates, stats
       );
 
-      // Collect updates if any
+      // Collect updates if any (stats already incremented by field populators)
       if (Object.keys(updates).length > 0) {
-        if (updates.fee !== undefined) stats.feesPopulated++;
-        if (updates.blockHeight !== undefined) stats.blockHeightsPopulated++;
-        if (updates.blockTime !== undefined) stats.blockTimesPopulated++;
-        if (updates.counterpartyAddress !== undefined) stats.counterpartyAddressesPopulated++;
-        if (updates.addressId !== undefined) stats.addressIdsPopulated++;
-
         pendingUpdates.push({ id: tx.id, txid: tx.txid, oldConfirmations, data: updates });
       }
     } catch (error) {

@@ -15,12 +15,23 @@ import { getBlockHeight } from '../../utils/blockHeight';
 import { getNodeClient } from '../../nodeClient';
 import { walletLog } from '../../../../websocket/notifications';
 import { recalculateWalletBalances } from '../../utils/balanceCalculation';
+import { Semaphore } from '../../../../events/semaphore';
 import { executeInChunks } from './batchUpdates';
 import { fetchBlockHeightsFromHistory, fetchTransactionDetails, fetchPreviousTransactions } from './fetchHelpers';
 import { processTransactionUpdates } from './processUpdates';
-import type { ConfirmationUpdate, PopulateFieldsResult } from './types';
+import type { ConfirmationUpdate, PopulationStats, PopulateFieldsResult } from './types';
 
 const log = createLogger('BITCOIN:SVC_CONFIRMATIONS');
+
+// Limit concurrent populate operations to prevent memory exhaustion
+// when multiple wallets sync simultaneously during startup catch-up
+const POPULATE_MAX_CONCURRENT = 2;
+const populateSemaphore = new Semaphore(POPULATE_MAX_CONCURRENT);
+
+// Process transactions in chunks to bound memory usage during field population.
+// Each chunk fetches tx details + previous txs, processes them, writes to DB,
+// then releases the caches for GC before the next chunk.
+const POPULATE_CHUNK_SIZE = 50;
 
 /**
  * Populate missing transaction fields (blockHeight, addressId, blockTime, fee) from blockchain
@@ -39,129 +50,153 @@ export async function populateMissingTransactionFields(walletId: string): Promis
     return { updated: 0, confirmationUpdates: [] };
   }
 
-  const network = (wallet.network as 'mainnet' | 'testnet' | 'signet' | 'regtest') || 'mainnet';
-  const client = await getNodeClient(network);
+  // Acquire semaphore to limit concurrent populate operations
+  return populateSemaphore.run(async () => {
+    const network = (wallet.network as 'mainnet' | 'testnet' | 'signet' | 'regtest') || 'mainnet';
+    const client = await getNodeClient(network);
 
-  // Find transactions with missing fields (including fee and counterparty address)
-  // OPTIMIZED: Don't include all wallet addresses - fetch them separately with only needed fields
-  const transactions = await prisma.transaction.findMany({
-    where: {
-      walletId,
-      OR: [
-        { blockHeight: null },
-        { addressId: null },
-        { blockTime: null },
-        { fee: null },
-        { counterpartyAddress: null },
-      ],
-    },
-    select: {
-      id: true,
-      txid: true,
-      type: true,
-      amount: true,
-      fee: true,
-      blockHeight: true,
-      blockTime: true,
-      confirmations: true,
-      addressId: true,
-      counterpartyAddress: true,
-    },
-  });
+    // Find transactions with missing fields
+    const transactions = await prisma.transaction.findMany({
+      where: {
+        walletId,
+        OR: [
+          { blockHeight: null },
+          { addressId: null },
+          { blockTime: null },
+          { fee: null },
+          { counterpartyAddress: null },
+        ],
+      },
+      select: {
+        id: true,
+        txid: true,
+        type: true,
+        amount: true,
+        fee: true,
+        blockHeight: true,
+        blockTime: true,
+        confirmations: true,
+        addressId: true,
+        counterpartyAddress: true,
+      },
+    });
 
-  // Fetch wallet addresses separately with only needed fields (more memory efficient)
-  const walletAddresses = await prisma.address.findMany({
-    where: { walletId },
-    select: { id: true, address: true },
-  });
+    // Fetch wallet addresses separately with only needed fields (more memory efficient)
+    const walletAddresses = await prisma.address.findMany({
+      where: { walletId },
+      select: { id: true, address: true },
+    });
 
-  // Attach addresses to a lookup structure for efficient access
-  const walletAddressLookup = new Map(walletAddresses.map(a => [a.address, a.id]));
-  const walletAddressSet = new Set(walletAddresses.map(a => a.address));
+    const walletAddressLookup = new Map(walletAddresses.map(a => [a.address, a.id]));
+    const walletAddressSet = new Set(walletAddresses.map(a => a.address));
 
-  if (transactions.length === 0) {
-    walletLog(walletId, 'info', 'POPULATE', 'All transaction fields are complete');
-    return { updated: 0, confirmationUpdates: [] };
-  }
-
-  log.debug(`Populating missing fields for ${transactions.length} transactions in wallet ${walletId}`);
-  walletLog(walletId, 'info', 'POPULATE', `Starting field population for ${transactions.length} transactions`, {
-    missingFields: {
-      blockHeight: transactions.filter(t => t.blockHeight === null).length,
-      fee: transactions.filter(t => t.fee === null).length,
-      blockTime: transactions.filter(t => t.blockTime === null).length,
-      counterpartyAddress: transactions.filter(t => t.counterpartyAddress === null).length,
-      addressId: transactions.filter(t => t.addressId === null).length,
-    },
-  });
-
-  const currentHeight = await getBlockHeight(network);
-
-  // PHASE 0: Get block heights from address history
-  const txHeightFromHistory = await fetchBlockHeightsFromHistory(
-    walletId, transactions, walletAddressSet, client
-  );
-
-  // PHASE 1: Batch fetch all transaction details
-  const txDetailsCache = await fetchTransactionDetails(walletId, transactions, client);
-
-  // PHASE 1.5: Batch fetch previous transactions needed for fee/counterparty calculation
-  const prevTxCache = await fetchPreviousTransactions(
-    walletId, transactions, txDetailsCache, client
-  );
-
-  // PHASE 2: Process transactions and collect updates
-  const { pendingUpdates, updated: _updated, stats } = await processTransactionUpdates(
-    walletId, transactions, txDetailsCache, prevTxCache, txHeightFromHistory,
-    walletAddresses, walletAddressLookup, walletAddressSet, currentHeight, network
-  );
-
-  // Log field population summary
-  walletLog(walletId, 'info', 'POPULATE', `Fields calculated: ${pendingUpdates.length} transactions have updates`, {
-    fees: stats.feesPopulated,
-    blockHeights: stats.blockHeightsPopulated,
-    blockTimes: stats.blockTimesPopulated,
-    counterpartyAddresses: stats.counterpartyAddressesPopulated,
-    addressIds: stats.addressIdsPopulated,
-  });
-
-  // PHASE 3: Batch apply all updates
-  let totalUpdated = 0;
-  if (pendingUpdates.length > 0) {
-    walletLog(walletId, 'info', 'POPULATE', `Saving ${pendingUpdates.length} transaction updates to database...`);
-    log.debug(`Applying ${pendingUpdates.length} transaction updates...`);
-    await executeInChunks(
-      pendingUpdates,
-      (u) => prisma.transaction.update({
-        where: { id: u.id },
-        data: u.data,
-      }),
-      walletId
-    );
-    totalUpdated = pendingUpdates.length;
-    walletLog(walletId, 'info', 'POPULATE', `Saved ${totalUpdated} transaction updates`);
-
-    // Recalculate running balances if any amounts were updated
-    const hasAmountUpdates = pendingUpdates.some(u => u.data.amount !== undefined);
-    if (hasAmountUpdates) {
-      walletLog(walletId, 'info', 'POPULATE', 'Recalculating running balances...');
-      await recalculateWalletBalances(walletId);
+    if (transactions.length === 0) {
+      walletLog(walletId, 'info', 'POPULATE', 'All transaction fields are complete');
+      return { updated: 0, confirmationUpdates: [] };
     }
-  } else {
-    walletLog(walletId, 'info', 'POPULATE', 'No transaction updates needed');
-  }
 
-  // Extract confirmation updates for notification broadcasting
-  // Only include updates where confirmations actually changed
-  const confirmationUpdates: ConfirmationUpdate[] = pendingUpdates
-    .filter(u => u.data.confirmations !== undefined && u.data.confirmations !== u.oldConfirmations)
-    .map(u => ({
-      txid: u.txid,
-      oldConfirmations: u.oldConfirmations,
-      newConfirmations: u.data.confirmations as number,
-    }));
+    log.debug(`Populating missing fields for ${transactions.length} transactions in wallet ${walletId}`);
+    walletLog(walletId, 'info', 'POPULATE', `Starting field population for ${transactions.length} transactions`, {
+      missingFields: {
+        blockHeight: transactions.filter(t => t.blockHeight === null).length,
+        fee: transactions.filter(t => t.fee === null).length,
+        blockTime: transactions.filter(t => t.blockTime === null).length,
+        counterpartyAddress: transactions.filter(t => t.counterpartyAddress === null).length,
+        addressId: transactions.filter(t => t.addressId === null).length,
+      },
+    });
 
-  log.debug(`Populated missing fields for ${totalUpdated} transactions, ${confirmationUpdates.length} confirmation updates`);
-  walletLog(walletId, 'info', 'POPULATE', `Field population complete: ${totalUpdated} transactions updated, ${confirmationUpdates.length} confirmation changes`);
-  return { updated: totalUpdated, confirmationUpdates };
+    const currentHeight = await getBlockHeight(network);
+
+    // PHASE 0: Get block heights from address history (runs once — small Map<txid, number>)
+    const txHeightFromHistory = await fetchBlockHeightsFromHistory(
+      walletId, transactions, walletAddressSet, client
+    );
+
+    // Process in chunks to bound memory: fetch, process, write, then release caches for GC
+    const allConfirmationUpdates: ConfirmationUpdate[] = [];
+    const aggregateStats: PopulationStats = {
+      feesPopulated: 0,
+      blockHeightsPopulated: 0,
+      blockTimesPopulated: 0,
+      counterpartyAddressesPopulated: 0,
+      addressIdsPopulated: 0,
+    };
+    let totalUpdated = 0;
+    let hasAmountUpdates = false;
+    const totalChunks = Math.ceil(transactions.length / POPULATE_CHUNK_SIZE);
+
+    for (let i = 0; i < transactions.length; i += POPULATE_CHUNK_SIZE) {
+      const chunk = transactions.slice(i, i + POPULATE_CHUNK_SIZE);
+      const chunkNum = Math.floor(i / POPULATE_CHUNK_SIZE) + 1;
+
+      if (totalChunks > 1) {
+        walletLog(walletId, 'info', 'POPULATE', `Processing chunk ${chunkNum}/${totalChunks} (${chunk.length} transactions)`);
+      }
+
+      const txDetailsCache = await fetchTransactionDetails(walletId, chunk, client);
+      const prevTxCache = await fetchPreviousTransactions(walletId, chunk, txDetailsCache, client);
+
+      const { pendingUpdates, stats } = await processTransactionUpdates(
+        walletId, chunk, txDetailsCache, prevTxCache, txHeightFromHistory,
+        walletAddresses, walletAddressLookup, walletAddressSet, currentHeight, network
+      );
+
+      if (pendingUpdates.length > 0) {
+        await executeInChunks(
+          pendingUpdates,
+          (u) => prisma.transaction.update({
+            where: { id: u.id },
+            data: u.data,
+          }),
+          walletId
+        );
+        if (pendingUpdates.some(u => u.data.amount !== undefined)) {
+          hasAmountUpdates = true;
+        }
+
+        // Extract confirmation updates immediately so pendingUpdates can be GC'd
+        for (const u of pendingUpdates) {
+          if (u.data.confirmations !== undefined && u.data.confirmations !== u.oldConfirmations) {
+            allConfirmationUpdates.push({
+              txid: u.txid,
+              oldConfirmations: u.oldConfirmations,
+              newConfirmations: u.data.confirmations as number,
+            });
+          }
+        }
+      }
+
+      totalUpdated += pendingUpdates.length;
+      aggregateStats.feesPopulated += stats.feesPopulated;
+      aggregateStats.blockHeightsPopulated += stats.blockHeightsPopulated;
+      aggregateStats.blockTimesPopulated += stats.blockTimesPopulated;
+      aggregateStats.counterpartyAddressesPopulated += stats.counterpartyAddressesPopulated;
+      aggregateStats.addressIdsPopulated += stats.addressIdsPopulated;
+    }
+
+    walletLog(walletId, 'info', 'POPULATE', `Fields calculated: ${totalUpdated} transactions have updates`, {
+      fees: aggregateStats.feesPopulated,
+      blockHeights: aggregateStats.blockHeightsPopulated,
+      blockTimes: aggregateStats.blockTimesPopulated,
+      counterpartyAddresses: aggregateStats.counterpartyAddressesPopulated,
+      addressIds: aggregateStats.addressIdsPopulated,
+    });
+
+    if (totalUpdated > 0) {
+      walletLog(walletId, 'info', 'POPULATE', `Saved ${totalUpdated} transaction updates`);
+      if (hasAmountUpdates) {
+        walletLog(walletId, 'info', 'POPULATE', 'Recalculating running balances...');
+        await recalculateWalletBalances(walletId);
+      }
+    } else {
+      walletLog(walletId, 'info', 'POPULATE', 'No transaction updates needed');
+    }
+
+    const confirmationUpdates = allConfirmationUpdates;
+
+    log.debug(`Populated missing fields for ${totalUpdated} transactions, ${confirmationUpdates.length} confirmation updates`);
+    walletLog(walletId, 'info', 'POPULATE', `Field population complete: ${totalUpdated} transactions updated, ${confirmationUpdates.length} confirmation changes`);
+    return { updated: totalUpdated, confirmationUpdates };
+  });
 }
