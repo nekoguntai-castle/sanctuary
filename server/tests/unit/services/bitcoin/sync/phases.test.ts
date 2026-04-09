@@ -1,8 +1,10 @@
 import { vi, Mock } from 'vitest';
 /**
- * Sync Phase Tests
+ * Sync Phase Tests — Small Phases
  *
- * Unit tests for individual sync pipeline phases.
+ * Unit tests for individual sync pipeline phases:
+ * rbfCleanupPhase, fetchHistoriesPhase, checkExistingPhase,
+ * fetchUtxosPhase, updateAddressesPhase, gapLimitPhase, fixConsolidationsPhase.
  */
 
 import { mockPrismaClient, resetPrismaMocks } from '../../../../mocks/prisma';
@@ -72,10 +74,7 @@ import {
   rbfCleanupPhase,
   fetchHistoriesPhase,
   checkExistingPhase,
-  processTransactionsPhase,
   fetchUtxosPhase,
-  reconcileUtxosPhase,
-  insertUtxosPhase,
   updateAddressesPhase,
   gapLimitPhase,
   fixConsolidationsPhase,
@@ -449,9 +448,6 @@ describe('Sync Phases', () => {
     });
   });
 
-
-  // reconcileUtxosPhase tests in phases.utxoReconciliation.test.ts
-
   describe('updateAddressesPhase', () => {
     it('should mark addresses with transactions as used', async () => {
       const usedAddress = 'tb1qused';
@@ -579,12 +575,6 @@ describe('Sync Phases', () => {
       expect(result.newAddresses.length).toBe(0);
     });
   });
-
-
-  // processTransactionsPhase tests moved to phases.processTransactions.test.ts
-
-
-  // insertUtxosPhase tests in phases.utxoReconciliation.test.ts
 
   describe('fixConsolidationsPhase', () => {
     const walletId = 'test-wallet';
