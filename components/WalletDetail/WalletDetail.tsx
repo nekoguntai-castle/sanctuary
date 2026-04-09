@@ -4,11 +4,7 @@ import { WalletType } from '../../types';
 import * as transactionsApi from '../../src/api/transactions';
 import { useBitcoinStatus } from '../../hooks/queries/useBitcoin';
 import { useErrorHandler } from '../../hooks/useErrorHandler';
-import { TransactionExportModal } from '../TransactionExportModal';
-import { TransferOwnershipModal } from '../TransferOwnershipModal';
 import { useAIStatus } from '../../hooks/useAIStatus';
-import { Button } from '../ui/Button';
-import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { useUser } from '../../contexts/UserContext';
 import { useWalletLogs } from '../../hooks/websocket';
 import { useAppNotifications } from '../../contexts/AppNotificationContext';
@@ -16,7 +12,6 @@ import { createLogger } from '../../utils/logger';
 import { logError } from '../../utils/errorHandler';
 import { LogTab } from './LogTab';
 import { WalletHeader } from './WalletHeader';
-import { DeleteModal, ReceiveModal, ExportModal, AddressQRModal, DeviceSharePromptModal } from './modals';
 import { TabBar } from './TabBar';
 import {
   TransactionsTab,
@@ -27,6 +22,8 @@ import {
   AccessTab,
   SettingsTab,
 } from './tabs';
+import { WalletDetailModals } from './WalletDetailModals';
+import { LoadingState, ErrorState } from './WalletDetailStates';
 
 // Custom hooks extracted from this component
 import { useWalletData } from './hooks/useWalletData';
@@ -309,25 +306,18 @@ export const WalletDetail: React.FC = () => {
   }, [id, setDraftsCount, addAppNotification, removeNotificationsByType]);
 
 
-  if (loading) return <div className="p-8 text-center animate-pulse">Loading wallet...</div>;
+  if (loading) return <LoadingState />;
 
   if (error) {
     return (
-      <div className="p-8 text-center">
-        <div className="bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 rounded-lg p-6 max-w-md mx-auto">
-          <AlertTriangle className="w-12 h-12 text-rose-500 mx-auto mb-3" />
-          <h3 className="text-lg font-medium text-rose-900 dark:text-rose-100 mb-2">Failed to Load Wallet</h3>
-          <p className="text-rose-700 dark:text-rose-300 mb-4">{error}</p>
-          <Button onClick={() => { setError(null); fetchData(); }} variant="primary">
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Retry
-          </Button>
-        </div>
-      </div>
+      <ErrorState
+        error={error}
+        onRetry={() => { setError(null); fetchData(); }}
+      />
     );
   }
 
-  if (!wallet) return <div className="p-8 text-center animate-pulse">Loading wallet...</div>;
+  if (!wallet) return <LoadingState />;
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -513,89 +503,58 @@ export const WalletDetail: React.FC = () => {
         )}
       </div>
 
-      {/* Export Modal */}
-      {showExport && wallet && id && (
-        <ExportModal
-          walletId={id}
-          walletName={wallet.name}
-          walletType={wallet.type}
-          scriptType={wallet.scriptType}
-          descriptor={wallet.descriptor}
-          quorum={wallet.quorum}
-          totalSigners={wallet.totalSigners}
-          devices={devices}
-          onClose={() => setShowExport(false)}
-          onError={handleError}
-        />
-      )}
+      <WalletDetailModals
+        walletId={id}
+        walletName={wallet.name}
+        walletType={wallet.type}
+        walletScriptType={wallet.scriptType}
+        walletDescriptor={wallet.descriptor}
+        walletQuorum={wallet.quorum}
+        walletTotalSigners={wallet.totalSigners}
+        devices={devices}
+        addresses={addresses}
 
-      {/* Transaction Export Modal */}
-      {showTransactionExport && wallet && (
-        <TransactionExportModal
-          walletId={wallet.id}
-          walletName={wallet.name}
-          onClose={() => setShowTransactionExport(false)}
-        />
-      )}
+        showExport={showExport}
+        onCloseExport={() => setShowExport(false)}
+        onError={handleError}
 
-      {/* Receive Modal */}
-      {showReceive && wallet && (
-        <ReceiveModal
-          walletId={wallet.id}
-          addresses={addresses}
-          onClose={() => setShowReceive(false)}
-          onNavigateToSettings={() => { setShowReceive(false); setActiveTab('settings'); }}
-          onFetchUnusedAddresses={handleFetchUnusedAddresses}
-        />
-      )}
+        showTransactionExport={showTransactionExport}
+        onCloseTransactionExport={() => setShowTransactionExport(false)}
 
-      {/* Address QR Code Modal */}
-      {qrModalAddress && (
-        <AddressQRModal
-          address={qrModalAddress}
-          onClose={() => setQrModalAddress(null)}
-        />
-      )}
+        showReceive={showReceive}
+        onCloseReceive={() => setShowReceive(false)}
+        onNavigateToSettings={() => { setShowReceive(false); setActiveTab('settings'); }}
+        onFetchUnusedAddresses={handleFetchUnusedAddresses}
 
-      {/* Device Share Prompt Modal */}
-      <DeviceSharePromptModal
+        qrModalAddress={qrModalAddress}
+        onCloseQrModal={() => setQrModalAddress(null)}
+
         deviceSharePrompt={deviceSharePrompt}
         sharingLoading={sharingLoading}
-        onDismiss={dismissDeviceSharePrompt}
-        onShareDevices={handleShareDevicesWithUser}
-      />
+        onDismissDeviceSharePrompt={dismissDeviceSharePrompt}
+        onShareDevicesWithUser={handleShareDevicesWithUser}
 
-      {/* Delete Confirmation Modal */}
-      {showDelete && wallet && (
-        <DeleteModal
-          onConfirm={async () => {
-            if (id) {
-              try {
-                await walletsApi.deleteWallet(id);
-                navigate('/wallets');
-              } catch (err) {
-                log.error('Failed to delete wallet', { error: err });
-                handleError(err, 'Delete Failed');
-              }
+        showDelete={showDelete}
+        onCloseDelete={() => setShowDelete(false)}
+        onConfirmDelete={async () => {
+          if (id) {
+            try {
+              await walletsApi.deleteWallet(id);
+              navigate('/wallets');
+            } catch (err) {
+              log.error('Failed to delete wallet', { error: err });
+              handleError(err, 'Delete Failed');
             }
-          }}
-          onClose={() => setShowDelete(false)}
-        />
-      )}
+          }
+        }}
 
-      {/* Transfer Ownership Modal */}
-      {showTransferModal && wallet && (
-        <TransferOwnershipModal
-          resourceType="wallet"
-          resourceId={wallet.id}
-          resourceName={wallet.name}
-          onClose={() => setShowTransferModal(false)}
-          onTransferInitiated={() => {
-            setShowTransferModal(false);
-            handleTransferComplete();
-          }}
-        />
-      )}
+        showTransferModal={showTransferModal}
+        onCloseTransferModal={() => setShowTransferModal(false)}
+        onTransferInitiated={() => {
+          setShowTransferModal(false);
+          handleTransferComplete();
+        }}
+      />
     </div>
   );
 };

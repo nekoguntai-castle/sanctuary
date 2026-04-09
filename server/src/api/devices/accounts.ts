@@ -8,7 +8,7 @@ import { Router } from 'express';
 import { requireDeviceAccess } from '../../middleware/deviceAccess';
 import { asyncHandler } from '../../errors/errorHandler';
 import { InvalidInputError, NotFoundError, ConflictError } from '../../errors/ApiError';
-import { db as prisma } from '../../repositories/db';
+import { deviceRepository } from '../../repositories';
 import { createLogger } from '../../utils/logger';
 
 const router = Router();
@@ -21,13 +21,7 @@ const log = createLogger('DEVICE:ROUTE:ACCOUNTS');
 router.get('/:id/accounts', requireDeviceAccess('view'), asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  const accounts = await prisma.deviceAccount.findMany({
-    where: { deviceId: id },
-    orderBy: [
-      { purpose: 'asc' },
-      { scriptType: 'asc' },
-    ],
-  });
+  const accounts = await deviceRepository.findAccountsByDeviceId(id);
 
   res.json(accounts);
 }));
@@ -57,28 +51,18 @@ router.post('/:id/accounts', requireDeviceAccess('owner'), asyncHandler(async (r
   }
 
   // Check if this account type already exists
-  const existingAccount = await prisma.deviceAccount.findFirst({
-    where: {
-      deviceId: id,
-      OR: [
-        { derivationPath },
-        { purpose, scriptType },
-      ],
-    },
-  });
+  const existingAccount = await deviceRepository.findDuplicateAccount(id, derivationPath, purpose, scriptType);
 
   if (existingAccount) {
     throw new ConflictError('An account with this derivation path or purpose/scriptType combination already exists');
   }
 
-  const account = await prisma.deviceAccount.create({
-    data: {
-      deviceId: id,
-      purpose,
-      scriptType,
-      derivationPath,
-      xpub,
-    },
+  const account = await deviceRepository.createAccount({
+    deviceId: id,
+    purpose,
+    scriptType,
+    derivationPath,
+    xpub,
   });
 
   log.info('Device account added', {
@@ -102,29 +86,20 @@ router.delete('/:id/accounts/:accountId', requireDeviceAccess('owner'), asyncHan
   const { id, accountId } = req.params;
 
   // Check if account exists and belongs to this device
-  const account = await prisma.deviceAccount.findFirst({
-    where: {
-      id: accountId,
-      deviceId: id,
-    },
-  });
+  const account = await deviceRepository.findAccountByIdAndDevice(accountId, id);
 
   if (!account) {
     throw new NotFoundError('Account not found');
   }
 
   // Check if this is the last account
-  const accountCount = await prisma.deviceAccount.count({
-    where: { deviceId: id },
-  });
+  const accountCount = await deviceRepository.countAccountsByDeviceId(id);
 
   if (accountCount <= 1) {
     throw new InvalidInputError('Cannot delete the last account of a device');
   }
 
-  await prisma.deviceAccount.delete({
-    where: { id: accountId },
-  });
+  await deviceRepository.deleteAccount(accountId);
 
   log.info('Device account deleted', {
     deviceId: id,

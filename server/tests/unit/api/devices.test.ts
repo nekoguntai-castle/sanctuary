@@ -734,11 +734,13 @@ describe('Devices API', () => {
         .send(xpubOnlyDevice);
 
       expect(response.status).toBe(201);
-      expect(mockPrismaClient.deviceAccount.create).not.toHaveBeenCalled();
+      // With repository layer, device creation goes through createWithOwnerAndAccounts
+      // which creates accounts in a transaction. Legacy xpub is stored on the device itself.
       expect(mockPrismaClient.device.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
-          derivationPath: undefined,
-          xpub: undefined,
+          fingerprint: 'xpubonly12',
+          label: 'Xpub Only',
+          type: 'trezor',
         }),
         include: { model: true },
       });

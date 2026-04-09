@@ -5,7 +5,7 @@
  */
 
 import prisma from '../models/prisma';
-import type { Device, DeviceUser, WalletDevice } from '../generated/prisma/client';
+import type { Device, DeviceUser, WalletDevice, Prisma } from '../generated/prisma/client';
 
 /**
  * Device with user associations
@@ -226,6 +226,318 @@ export async function getSharedUserCount(deviceId: string): Promise<number> {
   });
 }
 
+/**
+ * Find device by ID with full details (model, accounts, wallets, owner)
+ */
+export async function findByIdFull(deviceId: string) {
+  return prisma.device.findUnique({
+    where: { id: deviceId },
+    include: {
+      model: true,
+      accounts: true,
+      wallets: {
+        include: {
+          wallet: {
+            select: {
+              id: true,
+              name: true,
+              type: true,
+              scriptType: true,
+            },
+          },
+        },
+      },
+      user: {
+        select: { username: true },
+      },
+    },
+  });
+}
+
+/**
+ * Find device by ID with model and accounts
+ */
+export async function findByIdWithModelAndAccounts(deviceId: string) {
+  return prisma.device.findUnique({
+    where: { id: deviceId },
+    include: {
+      model: true,
+      accounts: true,
+    },
+  });
+}
+
+/**
+ * Find device by fingerprint with accounts
+ */
+export async function findByFingerprintWithAccounts(fingerprint: string) {
+  return prisma.device.findUnique({
+    where: { fingerprint },
+    include: {
+      accounts: true,
+      model: true,
+    },
+  });
+}
+
+/**
+ * Find device by ID with wallets (for delete check)
+ */
+export async function findByIdWithWallets(deviceId: string) {
+  return prisma.device.findUnique({
+    where: { id: deviceId },
+    include: {
+      wallets: {
+        include: {
+          wallet: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
+/**
+ * Create device with owner record and accounts in a transaction
+ */
+export async function createWithOwnerAndAccounts(
+  data: {
+    userId: string;
+    type: string;
+    label: string;
+    fingerprint: string;
+    derivationPath?: string | null;
+    xpub?: string | null;
+    modelId?: string | null;
+  },
+  accounts: Array<{
+    purpose: string;
+    scriptType: string;
+    derivationPath: string;
+    xpub: string;
+  }>
+) {
+  return prisma.$transaction(async (tx) => {
+    const newDevice = await tx.device.create({
+      data: {
+        userId: data.userId,
+        type: data.type,
+        label: data.label,
+        fingerprint: data.fingerprint,
+        derivationPath: data.derivationPath ?? undefined,
+        xpub: data.xpub ?? '',
+        modelId: data.modelId ?? undefined,
+      },
+      include: {
+        model: true,
+      },
+    });
+
+    await tx.deviceUser.create({
+      data: {
+        deviceId: newDevice.id,
+        userId: data.userId,
+        role: 'owner',
+      },
+    });
+
+    for (const account of accounts) {
+      await tx.deviceAccount.create({
+        data: {
+          deviceId: newDevice.id,
+          purpose: account.purpose,
+          scriptType: account.scriptType,
+          derivationPath: account.derivationPath,
+          xpub: account.xpub,
+        },
+      });
+    }
+
+    return newDevice;
+  });
+}
+
+/**
+ * Merge new accounts into an existing device in a transaction
+ */
+export async function mergeAccounts(
+  deviceId: string,
+  accounts: Array<{
+    purpose: string;
+    scriptType: string;
+    derivationPath: string;
+    xpub: string;
+  }>
+) {
+  return prisma.$transaction(async (tx) => {
+    const created = [];
+    for (const account of accounts) {
+      const newAccount = await tx.deviceAccount.create({
+        data: {
+          deviceId,
+          purpose: account.purpose,
+          scriptType: account.scriptType,
+          derivationPath: account.derivationPath,
+          xpub: account.xpub,
+        },
+      });
+      created.push(newAccount);
+    }
+    return created;
+  });
+}
+
+/**
+ * Update device with model include
+ */
+export async function updateWithModel(
+  deviceId: string,
+  data: Record<string, unknown>
+) {
+  return prisma.device.update({
+    where: { id: deviceId },
+    data,
+    include: {
+      model: true,
+    },
+  });
+}
+
+/**
+ * Find all accounts for a device
+ */
+export async function findAccountsByDeviceId(deviceId: string) {
+  return prisma.deviceAccount.findMany({
+    where: { deviceId },
+    orderBy: [
+      { purpose: 'asc' },
+      { scriptType: 'asc' },
+    ],
+  });
+}
+
+/**
+ * Find a specific account by ID and device
+ */
+export async function findAccountByIdAndDevice(accountId: string, deviceId: string) {
+  return prisma.deviceAccount.findFirst({
+    where: {
+      id: accountId,
+      deviceId,
+    },
+  });
+}
+
+/**
+ * Find duplicate account (same derivation path or purpose/scriptType)
+ */
+export async function findDuplicateAccount(
+  deviceId: string,
+  derivationPath: string,
+  purpose: string,
+  scriptType: string
+) {
+  return prisma.deviceAccount.findFirst({
+    where: {
+      deviceId,
+      OR: [
+        { derivationPath },
+        { purpose, scriptType },
+      ],
+    },
+  });
+}
+
+/**
+ * Create a device account
+ */
+export async function createAccount(data: {
+  deviceId: string;
+  purpose: string;
+  scriptType: string;
+  derivationPath: string;
+  xpub: string;
+}) {
+  return prisma.deviceAccount.create({ data });
+}
+
+/**
+ * Count accounts for a device
+ */
+export async function countAccountsByDeviceId(deviceId: string): Promise<number> {
+  return prisma.deviceAccount.count({
+    where: { deviceId },
+  });
+}
+
+/**
+ * Delete a device account
+ */
+export async function deleteAccount(accountId: string): Promise<void> {
+  await prisma.deviceAccount.delete({
+    where: { id: accountId },
+  });
+}
+
+/**
+ * Find a hardware device model by slug
+ */
+export async function findHardwareModel(slug: string) {
+  return prisma.hardwareDeviceModel.findUnique({
+    where: { slug },
+  });
+}
+
+/**
+ * Find hardware device models with filters
+ */
+export async function findHardwareModels(filters: {
+  manufacturer?: string;
+  airGapped?: boolean;
+  connectivity?: string;
+  discontinued?: boolean;
+}) {
+  const where: Prisma.HardwareDeviceModelWhereInput = {};
+
+  if (filters.manufacturer) {
+    where.manufacturer = filters.manufacturer;
+  }
+  if (filters.airGapped !== undefined) {
+    where.airGapped = filters.airGapped;
+  }
+  if (filters.connectivity) {
+    where.connectivity = { has: filters.connectivity };
+  }
+  if (filters.discontinued !== undefined) {
+    where.discontinued = filters.discontinued;
+  }
+
+  return prisma.hardwareDeviceModel.findMany({
+    where,
+    orderBy: [
+      { manufacturer: 'asc' },
+      { name: 'asc' },
+    ],
+  });
+}
+
+/**
+ * Find distinct manufacturers
+ */
+export async function findManufacturers() {
+  const manufacturers = await prisma.hardwareDeviceModel.findMany({
+    where: { discontinued: false },
+    select: { manufacturer: true },
+    distinct: ['manufacturer'],
+    orderBy: { manufacturer: 'asc' },
+  });
+  return manufacturers.map(m => m.manufacturer);
+}
+
 // Export as namespace
 export const deviceRepository = {
   findById,
@@ -243,6 +555,22 @@ export const deviceRepository = {
   addUser,
   removeUser,
   getSharedUserCount,
+  findByIdFull,
+  findByIdWithModelAndAccounts,
+  findByFingerprintWithAccounts,
+  findByIdWithWallets,
+  createWithOwnerAndAccounts,
+  mergeAccounts,
+  updateWithModel,
+  findAccountsByDeviceId,
+  findAccountByIdAndDevice,
+  findDuplicateAccount,
+  createAccount,
+  countAccountsByDeviceId,
+  deleteAccount,
+  findHardwareModel,
+  findHardwareModels,
+  findManufacturers,
 };
 
 export default deviceRepository;

@@ -11,11 +11,10 @@ const mocks = vi.hoisted(() => ({
   revokeAllUserTokens: vi.fn(),
 }));
 
-vi.mock('../../../src/repositories/db', async () => {
+vi.mock('../../../src/models/prisma', async () => {
   const { mockPrismaClient: prisma } = await import('../../mocks/prisma');
   return {
     __esModule: true,
-    db: prisma,
     default: prisma,
   };
 });
@@ -78,7 +77,7 @@ describe('auth password routes', () => {
     mocks.logFromRequest.mockResolvedValue(undefined);
     mocks.revokeAllUserTokens.mockResolvedValue(0);
 
-    mockPrismaClient.systemSetting.deleteMany.mockResolvedValue({ count: 1 });
+    mockPrismaClient.systemSetting.delete.mockResolvedValue({ key: 'initialPassword_user-1', value: '' });
     mockPrismaClient.user.update.mockResolvedValue({ id: 'user-1' });
   });
 
@@ -104,7 +103,7 @@ describe('auth password routes', () => {
       where: { id: 'user-1' },
       data: { password: 'hashed-new-password' },
     });
-    expect(mockPrismaClient.systemSetting.deleteMany).toHaveBeenCalledWith({
+    expect(mockPrismaClient.systemSetting.delete).toHaveBeenCalledWith({
       where: { key: 'initialPassword_user-1' },
     });
     expect(mocks.revokeAllUserTokens).toHaveBeenCalledWith('user-1', 'password_change');

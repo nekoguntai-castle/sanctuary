@@ -1753,18 +1753,18 @@ describe('Auth API Routes', () => {
 
   describe('clearInitialPasswordMarker helper', () => {
     it('should delete the initial password marker', async () => {
-      mockPrismaClient.systemSetting.deleteMany.mockResolvedValue({ count: 1 });
+      mockPrismaClient.systemSetting.delete.mockResolvedValue({ key: 'initialPassword_user-id', value: '' });
 
       const { clearInitialPasswordMarker } = await import('../../../src/api/auth/password');
       await clearInitialPasswordMarker('user-id');
 
-      expect(mockPrismaClient.systemSetting.deleteMany).toHaveBeenCalledWith({
+      expect(mockPrismaClient.systemSetting.delete).toHaveBeenCalledWith({
         where: { key: 'initialPassword_user-id' },
       });
     });
 
     it('should handle deletion errors gracefully', async () => {
-      mockPrismaClient.systemSetting.deleteMany.mockRejectedValue(new Error('Delete error'));
+      mockPrismaClient.systemSetting.delete.mockRejectedValue(new Error('Delete error'));
 
       const { clearInitialPasswordMarker } = await import('../../../src/api/auth/password');
       // Should not throw

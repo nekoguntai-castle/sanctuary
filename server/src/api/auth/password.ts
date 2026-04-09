@@ -6,7 +6,7 @@
 
 import { Router } from 'express';
 import type { RequestHandler } from 'express';
-import { db as prisma } from '../../repositories/db';
+import { userRepository, systemSettingRepository } from '../../repositories';
 import { asyncHandler } from '../../errors/errorHandler';
 import { InvalidInputError, NotFoundError, UnauthorizedError } from '../../errors/ApiError';
 import { createLogger } from '../../utils/logger';
@@ -26,9 +26,7 @@ export async function isUsingInitialPassword(userId: string): Promise<boolean> {
   try {
     // Check if the user's password matches the initial generated password hash
     // stored in system settings during first setup
-    const initialPasswordSetting = await prisma.systemSetting.findUnique({
-      where: { key: `initialPassword_${userId}` },
-    });
+    const initialPasswordSetting = await systemSettingRepository.get(`initialPassword_${userId}`);
 
     if (!initialPasswordSetting) {
       // No initial password marker - user was created after initial setup
@@ -38,10 +36,7 @@ export async function isUsingInitialPassword(userId: string): Promise<boolean> {
 
     // The setting stores the hash of the initial password
     // If the current password matches, user hasn't changed it
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { password: true },
-    });
+    const user = await userRepository.findById(userId);
 
     if (!user) return false;
 
@@ -58,9 +53,7 @@ export async function isUsingInitialPassword(userId: string): Promise<boolean> {
  */
 export async function clearInitialPasswordMarker(userId: string): Promise<void> {
   try {
-    await prisma.systemSetting.deleteMany({
-      where: { key: `initialPassword_${userId}` },
-    });
+    await systemSettingRepository.delete(`initialPassword_${userId}`);
   } catch (error) {
     log.error('Error clearing initial password marker', { error: getErrorMessage(error) });
   }
@@ -90,9 +83,7 @@ export function createPasswordRouter(passwordChangeLimiter: RequestHandler): Rou
     }
 
     // Get user
-    const user = await prisma.user.findUnique({
-      where: { id: req.user!.userId },
-    });
+    const user = await userRepository.findById(req.user!.userId);
 
     if (!user) {
       throw new NotFoundError('User not found');
@@ -109,12 +100,7 @@ export function createPasswordRouter(passwordChangeLimiter: RequestHandler): Rou
     const hashedPassword = await hashPassword(newPassword);
 
     // Update password
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        password: hashedPassword,
-      },
-    });
+    await userRepository.updatePassword(user.id, hashedPassword);
 
     // Clear the initial password marker since user has changed their password
     await clearInitialPasswordMarker(user.id);

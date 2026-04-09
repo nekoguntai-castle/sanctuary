@@ -5,7 +5,7 @@
  */
 
 import { Router } from 'express';
-import { db as prisma } from '../../repositories/db';
+import { userRepository } from '../../repositories';
 import { authenticate, requireAdmin } from '../../middleware/auth';
 import { asyncHandler } from '../../errors/errorHandler';
 import { InvalidInputError, NotFoundError, ConflictError } from '../../errors/ApiError';
@@ -23,18 +23,7 @@ const log = createLogger('ADMIN_USER:ROUTE');
  * Get all users (admin only)
  */
 router.get('/', authenticate, requireAdmin, asyncHandler(async (_req, res) => {
-  const users = await prisma.user.findMany({
-    select: {
-      id: true,
-      username: true,
-      email: true,
-      emailVerified: true,
-      isAdmin: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-    orderBy: { createdAt: 'desc' },
-  });
+  const users = await userRepository.findAllSummary();
 
   res.json(users);
 }));
@@ -67,18 +56,14 @@ router.post('/', authenticate, requireAdmin, asyncHandler(async (req, res) => {
   }
 
   // Check if username already exists
-  const existingUser = await prisma.user.findUnique({
-    where: { username },
-  });
+  const existingUser = await userRepository.findByUsername(username);
 
   if (existingUser) {
     throw new ConflictError('Username already exists');
   }
 
   // Check if email already exists
-  const existingEmail = await prisma.user.findUnique({
-    where: { email: email.toLowerCase() },
-  });
+  const existingEmail = await userRepository.findByEmail(email.toLowerCase());
 
   if (existingEmail) {
     throw new ConflictError('Email already exists');
@@ -88,8 +73,8 @@ router.post('/', authenticate, requireAdmin, asyncHandler(async (req, res) => {
   const hashedPassword = await hashPassword(password);
 
   // Create user - admin-created users are trusted (auto-verified)
-  const user = await prisma.user.create({
-    data: {
+  const user = await userRepository.createWithSelect(
+    {
       username,
       password: hashedPassword,
       email: email.toLowerCase(),
@@ -97,7 +82,7 @@ router.post('/', authenticate, requireAdmin, asyncHandler(async (req, res) => {
       emailVerifiedAt: new Date(),
       isAdmin: isAdmin === true,
     },
-    select: {
+    {
       id: true,
       username: true,
       email: true,
@@ -105,7 +90,7 @@ router.post('/', authenticate, requireAdmin, asyncHandler(async (req, res) => {
       isAdmin: true,
       createdAt: true,
     },
-  });
+  );
 
   log.info('User created:', { username, isAdmin: isAdmin === true });
 
@@ -126,9 +111,7 @@ router.put('/:userId', authenticate, requireAdmin, asyncHandler(async (req, res)
   const { username, password, email, isAdmin } = req.body;
 
   // Check if user exists
-  const existingUser = await prisma.user.findUnique({
-    where: { id: userId },
-  });
+  const existingUser = await userRepository.findById(userId);
 
   if (!existingUser) {
     throw new NotFoundError('User not found');
@@ -139,9 +122,7 @@ router.put('/:userId', authenticate, requireAdmin, asyncHandler(async (req, res)
 
   if (username && username !== existingUser.username) {
     // Check if new username is taken
-    const usernameTaken = await prisma.user.findUnique({
-      where: { username },
-    });
+    const usernameTaken = await userRepository.findByUsername(username);
     if (usernameTaken) {
       throw new ConflictError('Username already exists');
     }
@@ -152,9 +133,7 @@ router.put('/:userId', authenticate, requireAdmin, asyncHandler(async (req, res)
     const normalizedEmail = email ? email.toLowerCase() : null;
     if (normalizedEmail && normalizedEmail !== existingUser.email) {
       // Check if new email is taken
-      const emailTaken = await prisma.user.findUnique({
-        where: { email: normalizedEmail },
-      });
+      const emailTaken = await userRepository.findByEmail(normalizedEmail);
       if (emailTaken) {
         throw new ConflictError('Email already exists');
       }
@@ -184,10 +163,10 @@ router.put('/:userId', authenticate, requireAdmin, asyncHandler(async (req, res)
   }
 
   // Update user
-  const user = await prisma.user.update({
-    where: { id: userId },
-    data: updateData,
-    select: {
+  const user = await userRepository.updateWithSelect(
+    userId,
+    updateData,
+    {
       id: true,
       username: true,
       email: true,
@@ -196,7 +175,7 @@ router.put('/:userId', authenticate, requireAdmin, asyncHandler(async (req, res)
       createdAt: true,
       updatedAt: true,
     },
-  });
+  );
 
   // If password was changed by admin, invalidate all user sessions
   if ('password' in updateData) {
@@ -237,18 +216,14 @@ router.delete('/:userId', authenticate, requireAdmin, asyncHandler(async (req, r
   }
 
   // Check if user exists
-  const existingUser = await prisma.user.findUnique({
-    where: { id: userId },
-  });
+  const existingUser = await userRepository.findById(userId);
 
   if (!existingUser) {
     throw new NotFoundError('User not found');
   }
 
   // Delete user
-  await prisma.user.delete({
-    where: { id: userId },
-  });
+  await userRepository.deleteById(userId);
 
   log.info('User deleted:', { userId, username: existingUser.username });
 

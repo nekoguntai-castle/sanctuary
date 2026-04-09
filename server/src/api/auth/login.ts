@@ -6,8 +6,7 @@
 
 import { Router } from 'express';
 import type { RequestHandler } from 'express';
-import { db as prisma } from '../../repositories/db';
-import { systemSettingRepository } from '../../repositories';
+import { userRepository, systemSettingRepository } from '../../repositories';
 import { createLogger } from '../../utils/logger';
 import { hashPassword, verifyPassword, validatePasswordStrength } from '../../utils/password';
 import { generateToken, generate2FAToken } from '../../utils/jwt';
@@ -78,18 +77,14 @@ export function createLoginRouter(
     }
 
     // Check if user exists
-    const existingUser = await prisma.user.findUnique({
-      where: { username },
-    });
+    const existingUser = await userRepository.findByUsername(username);
 
     if (existingUser) {
       throw new ConflictError('Username already exists');
     }
 
     // Check if email is already in use
-    const existingEmail = await prisma.user.findUnique({
-      where: { email: email.toLowerCase() },
-    });
+    const existingEmail = await userRepository.findByEmail(email.toLowerCase());
 
     if (existingEmail) {
       throw new ConflictError('Email address is already in use');
@@ -99,27 +94,25 @@ export function createLoginRouter(
     const hashedPassword = await hashPassword(password);
 
     // Create user with default preferences
-    const user = await prisma.user.create({
-      data: {
-        username,
-        password: hashedPassword,
-        email: email.toLowerCase(),
-        emailVerified: false,
-        preferences: {
-          darkMode: true,
-          theme: 'sanctuary',
-          background: 'zen',
-          unit: 'sats',
-          fiatCurrency: 'USD',
-          showFiat: true,
-          priceProvider: 'auto',
-          notificationSounds: {
-            enabled: true,
-            volume: 50,
-            confirmation: { enabled: true, sound: 'chime' },
-            receive: { enabled: true, sound: 'coin' },
-            send: { enabled: true, sound: 'success' },
-          },
+    const user = await userRepository.create({
+      username,
+      password: hashedPassword,
+      email: email.toLowerCase(),
+      emailVerified: false,
+      preferences: {
+        darkMode: true,
+        theme: 'sanctuary',
+        background: 'zen',
+        unit: 'sats',
+        fiatCurrency: 'USD',
+        showFiat: true,
+        priceProvider: 'auto',
+        notificationSounds: {
+          enabled: true,
+          volume: 50,
+          confirmation: { enabled: true, sound: 'chime' },
+          receive: { enabled: true, sound: 'coin' },
+          send: { enabled: true, sound: 'success' },
         },
       },
     });
@@ -198,9 +191,7 @@ export function createLoginRouter(
     }
 
     // Find user
-    const user = await prisma.user.findUnique({
-      where: { username },
-    });
+    const user = await userRepository.findByUsername(username);
 
     if (!user) {
       // Audit failed login (user not found)

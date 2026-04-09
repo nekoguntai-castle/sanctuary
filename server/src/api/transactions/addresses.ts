@@ -6,7 +6,7 @@
 
 import { Router } from 'express';
 import { requireWalletAccess } from '../../middleware/walletAccess';
-import { db as prisma } from '../../repositories/db';
+import { walletRepository, addressRepository } from '../../repositories';
 import * as addressDerivation from '../../services/bitcoin/addressDerivation';
 import { createLogger } from '../../utils/logger';
 import { bigIntToNumberOrZero, validatePagination, getErrorMessage } from '../../utils/errors';
@@ -36,10 +36,7 @@ router.get('/wallets/:walletId/addresses', requireWalletAccess('view'), asyncHan
   const effectiveOffset = hasPagination ? offset : 0;
 
   // Get wallet for descriptor
-  const wallet = await prisma.wallet.findUnique({
-    where: { id: walletId },
-    select: { descriptor: true, network: true },
-  });
+  const wallet = await walletRepository.findById(walletId);
 
   if (!wallet) {
     throw new NotFoundError('Wallet not found');
@@ -51,23 +48,12 @@ router.get('/wallets/:walletId/addresses', requireWalletAccess('view'), asyncHan
   // don't match the bare /1/ pattern.
   const changeFilter = change !== undefined
     ? { derivationPath: { contains: change === 'true' ? '/1/' : '/0/' } }
-    : {};
+    : undefined;
 
   // Check if addresses exist
-  let addresses = await prisma.address.findMany({
-    where: {
-      walletId,
-      ...(used !== undefined && { used: used === 'true' }),
-      ...changeFilter,
-    },
-    include: {
-      addressLabels: {
-        include: {
-          label: true,
-        },
-      },
-    },
-    orderBy: { index: 'asc' },
+  let addresses = await addressRepository.findByWalletIdWithLabels(walletId, {
+    used: used !== undefined ? used === 'true' : undefined,
+    changeFilter,
     take: effectiveLimit,
     skip: effectiveOffset,
   });
@@ -116,23 +102,10 @@ router.get('/wallets/:walletId/addresses', requireWalletAccess('view'), asyncHan
       }
 
       // Bulk insert addresses
-      await prisma.address.createMany({
-        data: addressesToCreate,
-      });
+      await addressRepository.createMany(addressesToCreate);
 
       // Re-fetch the created addresses (respect pagination)
-      addresses = await prisma.address.findMany({
-        where: {
-          walletId,
-        },
-        include: {
-          addressLabels: {
-            include: {
-              label: true,
-            },
-          },
-        },
-        orderBy: { index: 'asc' },
+      addresses = await addressRepository.findByWalletIdWithLabels(walletId, {
         take: effectiveLimit,
         skip: effectiveOffset,
       });
@@ -144,17 +117,7 @@ router.get('/wallets/:walletId/addresses', requireWalletAccess('view'), asyncHan
 
   // Get balances for each address from UTXOs
   const addressList = addresses.map(addr => addr.address);
-  const utxos = await prisma.uTXO.findMany({
-    where: {
-      walletId,
-      spent: false,
-      ...(addressList.length > 0 && { address: { in: addressList } }),
-    },
-    select: {
-      address: true,
-      amount: true,
-    },
-  });
+  const utxos = await addressRepository.findUtxoBalancesByAddresses(walletId, addressList);
 
   // Sum balances by address
   const addressBalances = new Map<string, number>();
@@ -194,26 +157,11 @@ router.get('/wallets/:walletId/addresses', requireWalletAccess('view'), asyncHan
 router.get('/wallets/:walletId/addresses/summary', requireWalletAccess('view'), asyncHandler(async (req, res) => {
   const walletId = req.walletId!;
 
-  const [totalCount, usedCount, unusedCount, totalBalanceResult, usedBalances] = await Promise.all([
-    prisma.address.count({ where: { walletId } }),
-    prisma.address.count({ where: { walletId, used: true } }),
-    prisma.address.count({ where: { walletId, used: false } }),
-    prisma.uTXO.aggregate({
-      where: { walletId, spent: false },
-      _sum: { amount: true },
-    }),
-    prisma.$queryRaw<Array<{ used: boolean; balance: bigint }>>`
-      SELECT a."used" as used, COALESCE(SUM(u."amount"), 0) as balance
-      FROM "utxos" u
-      JOIN "addresses" a ON a."address" = u."address"
-      WHERE u."walletId" = ${walletId} AND u."spent" = false
-      GROUP BY a."used"
-    `,
-  ]);
+  const summary = await addressRepository.getAddressSummary(walletId);
 
   let usedBalance = 0;
   let unusedBalance = 0;
-  for (const row of usedBalances) {
+  for (const row of summary.usedBalances) {
     if (row.used) {
       usedBalance = bigIntToNumberOrZero(row.balance);
     } else {
@@ -222,10 +170,10 @@ router.get('/wallets/:walletId/addresses/summary', requireWalletAccess('view'), 
   }
 
   res.json({
-    totalAddresses: totalCount,
-    usedCount,
-    unusedCount,
-    totalBalance: bigIntToNumberOrZero(totalBalanceResult._sum.amount),
+    totalAddresses: summary.totalCount,
+    usedCount: summary.usedCount,
+    unusedCount: summary.unusedCount,
+    totalBalance: bigIntToNumberOrZero(summary.totalBalanceResult._sum.amount),
     usedBalance,
     unusedBalance,
   });
@@ -240,9 +188,7 @@ router.post('/wallets/:walletId/addresses/generate', requireWalletAccess('edit')
   const { count = 10 } = req.body;
 
   // Fetch wallet data
-  const wallet = await prisma.wallet.findUnique({
-    where: { id: walletId },
-  });
+  const wallet = await walletRepository.findById(walletId);
 
   if (!wallet) {
     throw new NotFoundError('Wallet not found');
@@ -253,10 +199,7 @@ router.post('/wallets/:walletId/addresses/generate', requireWalletAccess('edit')
   }
 
   // Get current max index for receive and change addresses
-  const existingAddresses = await prisma.address.findMany({
-    where: { walletId },
-    select: { derivationPath: true, index: true },
-  });
+  const existingAddresses = await addressRepository.findDerivationPaths(walletId);
 
   // Parse existing addresses to find max indices
   let maxReceiveIndex = -1;
@@ -325,10 +268,7 @@ router.post('/wallets/:walletId/addresses/generate', requireWalletAccess('edit')
 
   // Bulk insert addresses (skip duplicates)
   if (addressesToCreate.length > 0) {
-    await prisma.address.createMany({
-      data: addressesToCreate,
-      skipDuplicates: true,
-    });
+    await addressRepository.createMany(addressesToCreate, { skipDuplicates: true });
   }
 
   res.json({

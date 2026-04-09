@@ -138,6 +138,30 @@ export async function findExistingUserIds(userIds: string[]) {
   return users.map((u) => u.id);
 }
 
+/**
+ * Find groups that a user is a member of
+ */
+export async function findByUserId(userId: string) {
+  return prisma.group.findMany({
+    where: {
+      members: {
+        some: { userId },
+      },
+    },
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      members: {
+        select: {
+          userId: true,
+          role: true,
+        },
+      },
+    },
+  });
+}
+
 const groupRepository = {
   findAllWithMembers,
   findByIdWithMembers,
@@ -151,6 +175,7 @@ const groupRepository = {
   removeMember,
   findMembership,
   findExistingUserIds,
+  findByUserId,
 };
 
 export default groupRepository;

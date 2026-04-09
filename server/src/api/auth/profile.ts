@@ -5,7 +5,7 @@
  */
 
 import { Router } from 'express';
-import { db as prisma } from '../../repositories/db';
+import { userRepository, systemSettingRepository, groupRepo as groupRepository } from '../../repositories';
 import { asyncHandler } from '../../errors/errorHandler';
 import { NotFoundError, InvalidInputError } from '../../errors/ApiError';
 
@@ -16,19 +16,7 @@ const router = Router();
  * Get current authenticated user
  */
 router.get('/me', asyncHandler(async (req, res) => {
-  const user = await prisma.user.findUnique({
-    where: { id: req.user!.userId },
-    select: {
-      id: true,
-      username: true,
-      email: true,
-      isAdmin: true,
-      preferences: true,
-      createdAt: true,
-      twoFactorEnabled: true,
-      password: true, // Need this to check default password
-    },
-  });
+  const user = await userRepository.findByIdWithProfile(req.user!.userId);
 
   if (!user) {
     throw new NotFoundError('User not found');
@@ -36,9 +24,7 @@ router.get('/me', asyncHandler(async (req, res) => {
 
   // Check if user is still using the initial password
   // We check by looking for the initial password marker in system settings
-  const initialPasswordSetting = await prisma.systemSetting.findUnique({
-    where: { key: `initialPassword_${user.id}` },
-  });
+  const initialPasswordSetting = await systemSettingRepository.get(`initialPassword_${user.id}`);
   const usingDefaultPassword = initialPasswordSetting?.value === user.password;
 
   // Don't send the password hash to the client
@@ -76,10 +62,7 @@ router.patch('/me/preferences', asyncHandler(async (req, res) => {
   };
 
   // First get current preferences to merge with
-  const currentUser = await prisma.user.findUnique({
-    where: { id: req.user!.userId },
-    select: { preferences: true },
-  });
+  const currentUser = await userRepository.findById(req.user!.userId);
 
   // Merge: defaults -> existing preferences -> new preferences
   const mergedPreferences = {
@@ -88,21 +71,7 @@ router.patch('/me/preferences', asyncHandler(async (req, res) => {
     ...newPreferences,
   };
 
-  const user = await prisma.user.update({
-    where: { id: req.user!.userId },
-    data: {
-      preferences: mergedPreferences,
-    },
-    select: {
-      id: true,
-      username: true,
-      email: true,
-      isAdmin: true,
-      preferences: true,
-      twoFactorEnabled: true,
-      createdAt: true,
-    },
-  });
+  const user = await userRepository.updatePreferences(req.user!.userId, mergedPreferences);
 
   res.json(user);
 }));
@@ -114,24 +83,7 @@ router.patch('/me/preferences', asyncHandler(async (req, res) => {
 router.get('/me/groups', asyncHandler(async (req, res) => {
   const userId = req.user!.userId;
 
-  const groups = await prisma.group.findMany({
-    where: {
-      members: {
-        some: { userId },
-      },
-    },
-    select: {
-      id: true,
-      name: true,
-      description: true,
-      members: {
-        select: {
-          userId: true,
-          role: true,
-        },
-      },
-    },
-  });
+  const groups = await groupRepository.findByUserId(userId);
 
   res.json(groups.map(g => ({
     id: g.id,
@@ -153,19 +105,7 @@ router.get('/users/search', asyncHandler(async (req, res) => {
     throw new InvalidInputError('Search query must be at least 2 characters');
   }
 
-  const users = await prisma.user.findMany({
-    where: {
-      username: {
-        contains: q,
-        mode: 'insensitive',
-      },
-    },
-    select: {
-      id: true,
-      username: true,
-    },
-    take: 10,
-  });
+  const users = await userRepository.searchByUsername(q, 10);
 
   res.json(users);
 }));

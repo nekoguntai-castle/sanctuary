@@ -7,11 +7,10 @@ const { mockDeriveAddressFromDescriptor } = vi.hoisted(() => ({
   mockDeriveAddressFromDescriptor: vi.fn(),
 }));
 
-vi.mock('../../../src/repositories/db', async () => {
+vi.mock('../../../src/models/prisma', async () => {
   const { mockPrismaClient: prisma } = await import('../../mocks/prisma');
   return {
     __esModule: true,
-    db: prisma,
     default: prisma,
   };
 });

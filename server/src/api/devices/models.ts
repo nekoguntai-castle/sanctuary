@@ -5,10 +5,9 @@
  */
 
 import { Router } from 'express';
-import type { Prisma } from '../../generated/prisma/client';
 import { asyncHandler } from '../../errors/errorHandler';
 import { NotFoundError } from '../../errors/ApiError';
-import { db as prisma } from '../../repositories/db';
+import { deviceRepository } from '../../repositories';
 
 const router = Router();
 
@@ -19,36 +18,11 @@ const router = Router();
 router.get('/models', asyncHandler(async (req, res) => {
   const { manufacturer, airGapped, connectivity } = req.query;
 
-  const filters: Prisma.HardwareDeviceModelWhereInput = {};
-
-  // Filter by manufacturer
-  if (manufacturer) {
-    filters.manufacturer = manufacturer as string;
-  }
-
-  // Filter by air-gapped capability
-  if (airGapped !== undefined) {
-    filters.airGapped = airGapped === 'true';
-  }
-
-  // Filter by connectivity type
-  if (connectivity) {
-    filters.connectivity = {
-      has: connectivity as string,
-    };
-  }
-
-  // Don't show discontinued by default
-  if (!req.query.showDiscontinued) {
-    filters.discontinued = false;
-  }
-
-  const models = await prisma.hardwareDeviceModel.findMany({
-    where: filters,
-    orderBy: [
-      { manufacturer: 'asc' },
-      { name: 'asc' },
-    ],
+  const models = await deviceRepository.findHardwareModels({
+    manufacturer: manufacturer as string | undefined,
+    airGapped: airGapped !== undefined ? airGapped === 'true' : undefined,
+    connectivity: connectivity as string | undefined,
+    discontinued: !req.query.showDiscontinued ? false : undefined,
   });
 
   res.json(models);
@@ -61,9 +35,7 @@ router.get('/models', asyncHandler(async (req, res) => {
 router.get('/models/:slug', asyncHandler(async (req, res) => {
   const { slug } = req.params;
 
-  const model = await prisma.hardwareDeviceModel.findUnique({
-    where: { slug },
-  });
+  const model = await deviceRepository.findHardwareModel(slug);
 
   if (!model) {
     throw new NotFoundError('Device model not found');
@@ -77,14 +49,9 @@ router.get('/models/:slug', asyncHandler(async (req, res) => {
  * Get list of all manufacturers (public endpoint)
  */
 router.get('/manufacturers', asyncHandler(async (_req, res) => {
-  const manufacturers = await prisma.hardwareDeviceModel.findMany({
-    where: { discontinued: false },
-    select: { manufacturer: true },
-    distinct: ['manufacturer'],
-    orderBy: { manufacturer: 'asc' },
-  });
+  const manufacturers = await deviceRepository.findManufacturers();
 
-  res.json(manufacturers.map(m => m.manufacturer));
+  res.json(manufacturers);
 }));
 
 export default router;

@@ -131,6 +131,112 @@ export async function findByIdWithAccess(
   });
 }
 
+/**
+ * Find addresses by wallet with labels included
+ */
+export async function findByWalletIdWithLabels(
+  walletId: string,
+  options?: {
+    used?: boolean;
+    changeFilter?: { derivationPath: { contains: string } };
+    skip?: number;
+    take?: number;
+  }
+) {
+  const where: Prisma.AddressWhereInput = { walletId };
+
+  if (options?.used !== undefined) {
+    where.used = options.used;
+  }
+  if (options?.changeFilter) {
+    where.derivationPath = options.changeFilter.derivationPath;
+  }
+
+  return prisma.address.findMany({
+    where,
+    include: {
+      addressLabels: {
+        include: {
+          label: true,
+        },
+      },
+    },
+    orderBy: { index: 'asc' },
+    take: options?.take,
+    skip: options?.skip,
+  });
+}
+
+/**
+ * Bulk create addresses
+ */
+export async function createMany(
+  data: Array<{
+    walletId: string;
+    address: string;
+    derivationPath: string;
+    index: number;
+    used: boolean;
+  }>,
+  options?: { skipDuplicates?: boolean }
+) {
+  return prisma.address.createMany({
+    data,
+    skipDuplicates: options?.skipDuplicates,
+  });
+}
+
+/**
+ * Find derivation paths for all addresses in a wallet
+ */
+export async function findDerivationPaths(walletId: string) {
+  return prisma.address.findMany({
+    where: { walletId },
+    select: { derivationPath: true, index: true },
+  });
+}
+
+/**
+ * Get address summary counts and balances for a wallet
+ */
+export async function getAddressSummary(walletId: string) {
+  const [totalCount, usedCount, unusedCount, totalBalanceResult, usedBalances] = await Promise.all([
+    prisma.address.count({ where: { walletId } }),
+    prisma.address.count({ where: { walletId, used: true } }),
+    prisma.address.count({ where: { walletId, used: false } }),
+    prisma.uTXO.aggregate({
+      where: { walletId, spent: false },
+      _sum: { amount: true },
+    }),
+    prisma.$queryRaw<Array<{ used: boolean; balance: bigint }>>`
+      SELECT a."used" as used, COALESCE(SUM(u."amount"), 0) as balance
+      FROM "utxos" u
+      JOIN "addresses" a ON a."address" = u."address"
+      WHERE u."walletId" = ${walletId} AND u."spent" = false
+      GROUP BY a."used"
+    `,
+  ]);
+
+  return { totalCount, usedCount, unusedCount, totalBalanceResult, usedBalances };
+}
+
+/**
+ * Find UTXO balances grouped by address for a set of addresses
+ */
+export async function findUtxoBalancesByAddresses(walletId: string, addresses: string[]) {
+  return prisma.uTXO.findMany({
+    where: {
+      walletId,
+      spent: false,
+      ...(addresses.length > 0 && { address: { in: addresses } }),
+    },
+    select: {
+      address: true,
+      amount: true,
+    },
+  });
+}
+
 // Export as namespace
 export const addressRepository = {
   resetUsedFlags,
@@ -141,6 +247,11 @@ export const addressRepository = {
   countByWalletId,
   findWithLabels,
   findByIdWithAccess,
+  findByWalletIdWithLabels,
+  createMany,
+  findDerivationPaths,
+  getAddressSummary,
+  findUtxoBalancesByAddresses,
 };
 
 export default addressRepository;

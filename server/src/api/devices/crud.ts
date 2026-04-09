@@ -8,7 +8,7 @@ import { Router } from 'express';
 import { requireDeviceAccess } from '../../middleware/deviceAccess';
 import { asyncHandler } from '../../errors/errorHandler';
 import { InvalidInputError, NotFoundError, ConflictError } from '../../errors/ApiError';
-import { db as prisma } from '../../repositories/db';
+import { deviceRepository } from '../../repositories';
 import { getUserAccessibleDevices } from '../../services/deviceAccess';
 import { createLogger } from '../../utils/logger';
 import {
@@ -74,13 +74,7 @@ router.post('/', asyncHandler(async (req, res) => {
   const incomingAccounts = normalized.accounts;
 
   // Check if device already exists
-  const existingDevice = await prisma.device.findUnique({
-    where: { fingerprint },
-    include: {
-      accounts: true,
-      model: true,
-    },
-  });
+  const existingDevice = await deviceRepository.findByFingerprintWithAccounts(fingerprint);
 
   if (existingDevice) {
     // Compare accounts
@@ -112,22 +106,7 @@ router.post('/', asyncHandler(async (req, res) => {
       }
 
       // Add new accounts
-      const addedAccounts = await prisma.$transaction(async (tx) => {
-        const created = [];
-        for (const account of comparison.newAccounts) {
-          const newAccount = await tx.deviceAccount.create({
-            data: {
-              deviceId: existingDevice.id,
-              purpose: account.purpose,
-              scriptType: account.scriptType,
-              derivationPath: account.derivationPath,
-              xpub: account.xpub,
-            },
-          });
-          created.push(newAccount);
-        }
-        return created;
-      });
+      const addedAccounts = await deviceRepository.mergeAccounts(existingDevice.id, comparison.newAccounts);
 
       log.info('Merged accounts into existing device', {
         deviceId: existingDevice.id,
@@ -137,10 +116,7 @@ router.post('/', asyncHandler(async (req, res) => {
       });
 
       // Return updated device
-      const updatedDevice = await prisma.device.findUnique({
-        where: { id: existingDevice.id },
-        include: { model: true, accounts: true },
-      });
+      const updatedDevice = await deviceRepository.findByIdWithModelAndAccounts(existingDevice.id);
 
       return res.status(200).json({
         message: `Added ${addedAccounts.length} new account(s) to existing device`,
@@ -172,9 +148,7 @@ router.post('/', asyncHandler(async (req, res) => {
   // Find the model ID if a slug was provided
   let modelId: string | undefined;
   if (modelSlug) {
-    const model = await prisma.hardwareDeviceModel.findUnique({
-      where: { slug: modelSlug },
-    });
+    const model = await deviceRepository.findHardwareModel(modelSlug);
     if (model) {
       modelId = model.id;
     }
@@ -188,62 +162,28 @@ router.post('/', asyncHandler(async (req, res) => {
   const primaryPath = primaryAccount?.derivationPath;
 
   // Create device, owner record, and accounts in a transaction
-  const device = await prisma.$transaction(async (tx) => {
-    const newDevice = await tx.device.create({
-      data: {
-        userId,
-        type,
-        label,
-        fingerprint,
-        derivationPath: primaryPath,
-        xpub: primaryXpub,
-        modelId,
-      },
-      include: {
-        model: true,
-      },
-    });
-
-    // Create owner record in DeviceUser
-    await tx.deviceUser.create({
-      data: {
-        deviceId: newDevice.id,
-        userId,
-        role: 'owner',
-      },
-    });
-
-    // Create DeviceAccount records
-    for (const account of incomingAccounts) {
-      await tx.deviceAccount.create({
-        data: {
-          deviceId: newDevice.id,
-          purpose: account.purpose,
-          scriptType: account.scriptType,
-          derivationPath: account.derivationPath,
-          xpub: account.xpub,
-        },
-      });
-    }
-
-    log.info('Device registered', {
-      deviceId: newDevice.id,
+  const device = await deviceRepository.createWithOwnerAndAccounts(
+    {
+      userId,
+      type,
+      label,
       fingerprint,
-      accountCount: incomingAccounts.length,
-      purposes: incomingAccounts.map(a => a.purpose),
-    });
+      derivationPath: primaryPath,
+      xpub: primaryXpub,
+      modelId,
+    },
+    incomingAccounts,
+  );
 
-    return newDevice;
+  log.info('Device registered', {
+    deviceId: device.id,
+    fingerprint,
+    accountCount: incomingAccounts.length,
+    purposes: incomingAccounts.map(a => a.purpose),
   });
 
   // Fetch the complete device with accounts for response
-  const deviceWithAccounts = await prisma.device.findUnique({
-    where: { id: device.id },
-    include: {
-      model: true,
-      accounts: true,
-    },
-  });
+  const deviceWithAccounts = await deviceRepository.findByIdWithModelAndAccounts(device.id);
 
   res.status(201).json(deviceWithAccounts);
 }));
@@ -256,28 +196,7 @@ router.get('/:id', requireDeviceAccess('view'), asyncHandler(async (req, res) =>
   const { id } = req.params;
   const deviceRole = req.deviceRole;
 
-  const device = await prisma.device.findUnique({
-    where: { id },
-    include: {
-      model: true,
-      accounts: true, // Include all device accounts
-      wallets: {
-        include: {
-          wallet: {
-            select: {
-              id: true,
-              name: true,
-              type: true,
-              scriptType: true,
-            },
-          },
-        },
-      },
-      user: {
-        select: { username: true },
-      },
-    },
-  });
+  const device = await deviceRepository.findByIdFull(id);
 
   if (!device) {
     throw new NotFoundError('Device not found');
@@ -310,9 +229,7 @@ router.patch('/:id', requireDeviceAccess('owner'), asyncHandler(async (req, res)
 
   // If modelSlug provided, look up the model ID
   if (modelSlug) {
-    const model = await prisma.hardwareDeviceModel.findUnique({
-      where: { slug: modelSlug },
-    });
+    const model = await deviceRepository.findHardwareModel(modelSlug);
     if (model) {
       updateData.modelId = model.id;
       // Also update the type to match the model's type
@@ -322,13 +239,7 @@ router.patch('/:id', requireDeviceAccess('owner'), asyncHandler(async (req, res)
     }
   }
 
-  const updatedDevice = await prisma.device.update({
-    where: { id },
-    data: updateData,
-    include: {
-      model: true,
-    },
-  });
+  const updatedDevice = await deviceRepository.updateWithModel(id, updateData);
 
   log.info('Device updated', { deviceId: id, userId, updates: Object.keys(updateData) });
 
@@ -343,21 +254,7 @@ router.delete('/:id', requireDeviceAccess('owner'), asyncHandler(async (req, res
   const userId = req.user!.userId;
   const { id } = req.params;
 
-  const device = await prisma.device.findUnique({
-    where: { id },
-    include: {
-      wallets: {
-        include: {
-          wallet: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
-        },
-      },
-    },
-  });
+  const device = await deviceRepository.findByIdWithWallets(id);
 
   if (!device) {
     throw new NotFoundError('Device not found');
@@ -369,9 +266,7 @@ router.delete('/:id', requireDeviceAccess('owner'), asyncHandler(async (req, res
     throw new ConflictError(`Cannot delete device. It is in use by wallet(s): ${walletNames}`);
   }
 
-  await prisma.device.delete({
-    where: { id },
-  });
+  await deviceRepository.delete(id);
 
   log.info('Device deleted', { deviceId: id, userId });
 
