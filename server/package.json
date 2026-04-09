@@ -60,7 +60,7 @@
     "bcryptjs": "^3.0.3",
     "bip32": "^5.0.1",
     "bitcoinjs-lib": "^7.0.1",
-    "bullmq": "^5.73.0",
+    "bullmq": "^5.73.3",
     "compression": "^1.8.1",
     "cors": "^2.8.6",
     "dotenv": "^17.4.1",
@@ -93,7 +93,7 @@
     "@types/qrcode": "^1.5.6",
     "@types/supertest": "^7.2.0",
     "@types/ws": "^8.5.10",
-    "@vitest/coverage-v8": "^4.0.16",
+    "@vitest/coverage-v8": "^4.1.4",
     "ecpair": "^3.0.1",
     "fast-check": "^4.5.3",
     "husky": "^9.1.7",
@@ -101,6 +101,6 @@
     "supertest": "^7.1.4",
     "tsx": "^4.21.0",
     "typescript": "~6.0.2",
-    "vitest": "^4.0.16"
+    "vitest": "^4.1.4"
   }
 }

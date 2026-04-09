@@ -35,10 +35,10 @@
     "@types/node": "^25.5.2",
     "@types/supertest": "^7.2.0",
     "@types/ws": "^8.5.10",
-    "@vitest/coverage-v8": "^4.0.16",
+    "@vitest/coverage-v8": "^4.1.4",
     "supertest": "^7.1.4",
     "tsx": "^4.21.0",
     "typescript": "~6.0.2",
-    "vitest": "^4.0.16"
+    "vitest": "^4.1.4"
   }
 }
