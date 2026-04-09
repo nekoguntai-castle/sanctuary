@@ -582,6 +582,16 @@ export async function createWithDeviceLinks(
   });
 }
 
+/**
+ * Execute a callback inside a default-isolation Prisma transaction.
+ * Used by services that need atomic multi-model operations.
+ */
+export async function withTransaction<T>(
+  fn: (tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0]) => Promise<T>
+): Promise<T> {
+  return prisma.$transaction(fn);
+}
+
 // Export all functions as a namespace for convenient importing
 export const walletRepository = {
   findByIdWithAccess,
@@ -619,6 +629,7 @@ export const walletRepository = {
   findByIdWithOwnerAndDevices,
   linkDevice,
   createWithDeviceLinks,
+  withTransaction,
 };
 
 export default walletRepository;

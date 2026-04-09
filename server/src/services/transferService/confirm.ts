@@ -7,7 +7,6 @@
  */
 
 import { transferRepository } from '../../repositories';
-import prisma from '../../models/prisma';
 import type { OwnershipTransfer } from '../../generated/prisma/client';
 import { createLogger } from '../../utils/logger';
 import { NotFoundError, ForbiddenError, InvalidInputError, ConflictError } from '../../errors';
@@ -38,7 +37,7 @@ export async function confirmTransfer(
 
   // Execute everything in a serializable transaction to prevent race conditions
   // This ensures status check and execution are atomic
-  await prisma.$transaction(async (tx) => {
+  await transferRepository.withSerializableTransaction(async (tx) => {
     // Re-fetch and validate inside transaction
     const current = await tx.ownershipTransfer.findUnique({
       where: { id: transferId },
@@ -66,8 +65,6 @@ export async function confirmTransfer(
     } else {
       await executeDeviceTransferTx(tx, current);
     }
-  }, {
-    isolationLevel: 'Serializable',
   });
 
   // Fetch updated transfer for return
