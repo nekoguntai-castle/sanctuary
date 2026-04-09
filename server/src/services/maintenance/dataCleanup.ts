@@ -5,7 +5,7 @@
  * fee estimates, expired drafts, expired transfers, and expired refresh tokens.
  */
 
-import { db as prisma } from '../../repositories/db';
+import { maintenanceRepository } from '../../repositories';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { auditService, AuditCategory } from '../auditService';
@@ -46,20 +46,16 @@ export async function cleanupPriceData(config: MaintenanceServiceConfig): Promis
   cutoffDate.setDate(cutoffDate.getDate() - config.priceDataRetentionDays);
 
   try {
-    const result = await prisma.priceData.deleteMany({
-      where: {
-        createdAt: { lt: cutoffDate },
-      },
-    });
+    const count = await maintenanceRepository.deletePriceDataBefore(cutoffDate);
 
-    if (result.count > 0) {
+    if (count > 0) {
       log.info('Price data cleanup completed', {
-        deleted: result.count,
+        deleted: count,
         olderThan: cutoffDate.toISOString(),
       });
     }
 
-    return result.count;
+    return count;
   } catch (error) {
     log.error('Price data cleanup failed', { error: getErrorMessage(error) });
     throw error;
@@ -74,20 +70,16 @@ export async function cleanupFeeEstimates(config: MaintenanceServiceConfig): Pro
   cutoffDate.setDate(cutoffDate.getDate() - config.feeEstimateRetentionDays);
 
   try {
-    const result = await prisma.feeEstimate.deleteMany({
-      where: {
-        createdAt: { lt: cutoffDate },
-      },
-    });
+    const count = await maintenanceRepository.deleteFeeEstimatesBefore(cutoffDate);
 
-    if (result.count > 0) {
+    if (count > 0) {
       log.info('Fee estimate cleanup completed', {
-        deleted: result.count,
+        deleted: count,
         olderThan: cutoffDate.toISOString(),
       });
     }
 
-    return result.count;
+    return count;
   } catch (error) {
     log.error('Fee estimate cleanup failed', { error: getErrorMessage(error) });
     throw error;
@@ -98,18 +90,12 @@ export async function cleanupFeeEstimates(config: MaintenanceServiceConfig): Pro
  * Clean up expired draft transactions
  */
 export async function cleanupExpiredDrafts(): Promise<number> {
-  const now = new Date();
-
   try {
-    const result = await prisma.draftTransaction.deleteMany({
-      where: {
-        expiresAt: { lt: now },
-      },
-    });
+    const count = await maintenanceRepository.deleteExpiredDrafts();
 
-    if (result.count > 0) {
+    if (count > 0) {
       log.info('Expired draft cleanup completed', {
-        deleted: result.count,
+        deleted: count,
       });
 
       // Log to audit for tracking
@@ -117,12 +103,12 @@ export async function cleanupExpiredDrafts(): Promise<number> {
         username: 'system',
         action: 'maintenance.draft_cleanup',
         category: AuditCategory.SYSTEM,
-        details: { deletedCount: result.count },
+        details: { deletedCount: count },
         success: true,
       });
     }
 
-    return result.count;
+    return count;
   } catch (error) {
     log.error('Expired draft cleanup failed', { error: getErrorMessage(error) });
     throw error;
@@ -162,22 +148,16 @@ export async function cleanupExpiredTransfers(): Promise<number> {
  * Clean up expired refresh tokens
  */
 export async function cleanupExpiredRefreshTokens(): Promise<number> {
-  const now = new Date();
-
   try {
-    const result = await prisma.refreshToken.deleteMany({
-      where: {
-        expiresAt: { lt: now },
-      },
-    });
+    const count = await maintenanceRepository.deleteExpiredRefreshTokens();
 
-    if (result.count > 0) {
+    if (count > 0) {
       log.info('Expired refresh token cleanup completed', {
-        deleted: result.count,
+        deleted: count,
       });
     }
 
-    return result.count;
+    return count;
   } catch (error) {
     log.error('Expired refresh token cleanup failed', { error: getErrorMessage(error) });
     throw error;

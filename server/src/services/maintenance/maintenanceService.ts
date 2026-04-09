@@ -16,7 +16,7 @@
  *   - Monthly orphaned record cleanup
  */
 
-import { db as prisma } from '../../repositories/db';
+import { maintenanceRepository } from '../../repositories';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { getConfig } from '../../config';
@@ -248,26 +248,7 @@ export class MaintenanceService {
     draftCount: number;
     expiredDraftCount: number;
   }> {
-    const now = new Date();
-
-    const [auditLogCount, priceDataCount, feeEstimateCount, draftCount, expiredDraftCount] =
-      await Promise.all([
-        prisma.auditLog.count(),
-        prisma.priceData.count(),
-        prisma.feeEstimate.count(),
-        prisma.draftTransaction.count(),
-        prisma.draftTransaction.count({
-          where: { expiresAt: { lt: now } },
-        }),
-      ]);
-
-    return {
-      auditLogCount,
-      priceDataCount,
-      feeEstimateCount,
-      draftCount,
-      expiredDraftCount,
-    };
+    return maintenanceRepository.getStats();
   }
 
   /**

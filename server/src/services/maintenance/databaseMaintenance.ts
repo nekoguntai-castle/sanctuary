@@ -5,7 +5,7 @@
  * and monthly orphaned record cleanup.
  */
 
-import { db as prisma } from '../../repositories/db';
+import { maintenanceRepository, pushDeviceRepository } from '../../repositories';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { auditService, AuditCategory } from '../auditService';
@@ -25,26 +25,11 @@ export async function runWeeklyMaintenance(): Promise<void> {
   try {
     // Run VACUUM ANALYZE with timeout protection (5 minute limit)
     log.info('Running VACUUM ANALYZE on database');
-    await prisma.$executeRaw`SET statement_timeout = '300000'`;
-    try {
-      await prisma.$executeRaw`VACUUM ANALYZE`;
-    } finally {
-      await prisma.$executeRaw`SET statement_timeout = '0'`;
-    }
+    await maintenanceRepository.vacuumAnalyze(300000);
 
     // Run REINDEX on heavily-updated tables
-    // SECURITY: Use individual static queries - no string interpolation
-    // Note: Use actual PostgreSQL table names from @@map(), not Prisma model names
-    log.info('Running REINDEX on table: audit_logs');
-    await prisma.$executeRaw`REINDEX TABLE audit_logs`;
-
-    log.info('Running REINDEX on table: transactions');
-    await prisma.$executeRaw`REINDEX TABLE transactions`;
-
-    log.info('Running REINDEX on table: utxos');
-    await prisma.$executeRaw`REINDEX TABLE utxos`;
-
-    const heavyTables = ['audit_logs', 'transactions', 'utxos'];
+    log.info('Running REINDEX on heavily-updated tables');
+    const heavyTables = await maintenanceRepository.reindexHeavyTables();
 
     const duration = Date.now() - startTime;
     log.info('Weekly database maintenance completed', {
@@ -84,20 +69,15 @@ export async function runWeeklyMaintenance(): Promise<void> {
  */
 export async function cleanupOrphanedDrafts(): Promise<number> {
   try {
-    // Delete drafts where wallet no longer exists using raw SQL for efficiency
-    // Note: Use actual PostgreSQL table names from @@map(), not Prisma model names
-    const result = await prisma.$executeRaw`
-      DELETE FROM draft_transactions
-      WHERE "walletId" NOT IN (SELECT id FROM wallets)
-    `;
+    const count = await maintenanceRepository.deleteOrphanedDrafts();
 
-    if (result > 0) {
+    if (count > 0) {
       log.info('Orphaned draft cleanup completed', {
-        deleted: result,
+        deleted: count,
       });
     }
 
-    return result;
+    return count;
   } catch (error) {
     log.error('Orphaned draft cleanup failed', { error: getErrorMessage(error) });
     throw error;
@@ -117,17 +97,11 @@ export async function runMonthlyMaintenance(): Promise<void> {
     const staleDate = new Date();
     staleDate.setDate(staleDate.getDate() - 90);
 
-    const stalePushDevicesResult = await prisma.pushDevice.deleteMany({
-      where: {
-        lastUsedAt: {
-          lt: staleDate,
-        },
-      },
-    });
+    const stalePushDevicesCount = await pushDeviceRepository.deleteStale(staleDate);
 
-    if (stalePushDevicesResult.count > 0) {
+    if (stalePushDevicesCount > 0) {
       log.info('Stale push devices cleanup completed', {
-        deleted: stalePushDevicesResult.count,
+        deleted: stalePushDevicesCount,
       });
     }
 
@@ -140,7 +114,7 @@ export async function runMonthlyMaintenance(): Promise<void> {
       action: 'maintenance.monthly_stale_cleanup',
       category: AuditCategory.SYSTEM,
       details: {
-        stalePushDevices: stalePushDevicesResult.count,
+        stalePushDevices: stalePushDevicesCount,
         orphanedDrafts,
       },
       success: true,

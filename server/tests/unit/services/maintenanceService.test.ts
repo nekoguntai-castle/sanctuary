@@ -65,6 +65,11 @@ vi.mock('../../../src/repositories/db', () => ({
   db: mockDb,
 }));
 
+vi.mock('../../../src/models/prisma', () => ({
+  __esModule: true,
+  default: mockDb,
+}));
+
 vi.mock('../../../src/services/auditService', () => ({
   auditService: mockAuditService,
   AuditAction: {},

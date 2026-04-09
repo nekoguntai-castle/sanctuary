@@ -32,6 +32,10 @@ export { emailVerificationRepository, default as emailVerificationRepo } from '.
 export { policyRepository, default as policyRepo } from './policyRepository';
 export { intelligenceRepository, default as intelligenceRepo } from './intelligenceRepository';
 export { default as groupRepo } from './groupRepository';
+export { nodeConfigRepository, default as nodeConfigRepo } from './nodeConfigRepository';
+export { featureFlagRepository, default as featureFlagRepo } from './featureFlagRepository';
+export { draftLockRepository, default as draftLockRepo } from './draftLockRepository';
+export { maintenanceRepository, default as maintenanceRepo } from './maintenanceRepository';
 
 // Access control helpers
 export { buildWalletAccessWhere, buildDeviceAccessWhere } from './accessControl';
