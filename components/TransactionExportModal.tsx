@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X, Download, FileSpreadsheet, FileJson, Loader2, Calendar } from 'lucide-react';
 import { Button } from './ui/Button';
+import { Input } from './ui/Input';
 import * as transactionsApi from '../src/api/transactions';
 import { createLogger } from '../utils/logger';
 
@@ -103,20 +104,20 @@ export function TransactionExportModal({ walletId, walletName, onClose }: Transa
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs text-sanctuary-500 mb-1">From</label>
-              <input
+              <Input
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="w-full px-3 py-2 text-sm surface-muted border border-sanctuary-200 dark:border-sanctuary-700 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className="text-sm"
               />
             </div>
             <div>
               <label className="block text-xs text-sanctuary-500 mb-1">To</label>
-              <input
+              <Input
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="w-full px-3 py-2 text-sm surface-muted border border-sanctuary-200 dark:border-sanctuary-700 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className="text-sm"
               />
             </div>
           </div>

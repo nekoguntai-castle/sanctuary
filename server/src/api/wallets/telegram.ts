@@ -7,6 +7,7 @@
 import { Router } from 'express';
 import { requireWalletAccess } from '../../middleware/walletAccess';
 import { asyncHandler } from '../../errors/errorHandler';
+import { getWalletTelegramSettings, updateWalletTelegramSettings } from '../../services/telegram/telegramService';
 
 const router = Router();
 
@@ -18,7 +19,6 @@ router.get('/:id/telegram', requireWalletAccess('view'), asyncHandler(async (req
   const walletId = req.walletId!;
   const userId = req.user!.userId;
 
-  const { getWalletTelegramSettings } = await import('../../services/telegram/telegramService');
   const settings = await getWalletTelegramSettings(userId, walletId);
 
   res.json({
@@ -41,7 +41,6 @@ router.patch('/:id/telegram', requireWalletAccess('view'), asyncHandler(async (r
   const userId = req.user!.userId;
   const { enabled, notifyReceived, notifySent, notifyConsolidation, notifyDraft } = req.body;
 
-  const { updateWalletTelegramSettings } = await import('../../services/telegram/telegramService');
   await updateWalletTelegramSettings(userId, walletId, {
     enabled: enabled ?? false,
     notifyReceived: notifyReceived ?? true,

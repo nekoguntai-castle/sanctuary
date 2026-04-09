@@ -6,6 +6,7 @@
 
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
+import { safeJsonParseUntyped } from '../../utils/safeJson';
 import { auditService, AuditCategory } from '../auditService';
 import { exec } from 'child_process';
 import { promisify } from 'util';
@@ -32,7 +33,7 @@ export async function checkDiskUsage(config: MaintenanceServiceConfig): Promise<
       try {
         // Use docker volume inspect to get the mountpoint
         const { stdout: inspectOutput } = await execAsync(`docker volume inspect ${volumeName}`);
-        const volumeData = JSON.parse(inspectOutput);
+        const volumeData = safeJsonParseUntyped<Array<{ Mountpoint: string }>>(inspectOutput, [], 'docker volume inspect');
 
         if (volumeData && volumeData.length > 0) {
           const mountpoint = volumeData[0].Mountpoint;

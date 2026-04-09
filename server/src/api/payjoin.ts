@@ -22,7 +22,9 @@ import {
   PayjoinErrors,
   parseBip21Uri,
   generateBip21Uri,
+  attemptPayjoinSend,
 } from '../services/payjoinService';
+import { getNetwork } from '../services/bitcoin/utils';
 
 const log = createLogger('PAYJOIN:ROUTE');
 
@@ -182,14 +184,11 @@ router.post('/attempt', authenticate, requireFeature('payjoinSupport'), asyncHan
     throw new InvalidInputError('Invalid network. Must be mainnet, testnet, or regtest');
   }
 
-  const payjoinService = await import('../services/payjoinService');
-  const { getNetwork } = await import('../services/bitcoin/utils');
-
   // Use provided network or default to mainnet
   const networkStr = (network || 'mainnet') as 'mainnet' | 'testnet' | 'regtest';
   const networkObj = getNetwork(networkStr);
 
-  const result = await payjoinService.attemptPayjoinSend(
+  const result = await attemptPayjoinSend(
     psbt,
     payjoinUrl,
     [0], // Assume first input is sender's

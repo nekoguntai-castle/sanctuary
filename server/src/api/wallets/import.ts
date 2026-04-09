@@ -8,6 +8,7 @@ import { Router } from 'express';
 import { asyncHandler } from '../../errors/errorHandler';
 import { InvalidInputError } from '../../errors/ApiError';
 import * as walletImport from '../../services/walletImport';
+import { importFormatRegistry } from '../../services/import';
 
 const router = Router();
 
@@ -16,7 +17,6 @@ const router = Router();
  * Get available import formats
  */
 router.get('/import/formats', asyncHandler(async (_req, res) => {
-  const { importFormatRegistry } = await import('../../services/import');
   const handlers = importFormatRegistry.getAll();
 
   const formats = handlers.map((handler) => ({

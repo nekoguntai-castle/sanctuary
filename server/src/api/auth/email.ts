@@ -6,7 +6,7 @@
 
 import { Router, Response } from 'express';
 import type { RequestHandler } from 'express';
-import { verifyEmail, resendVerification } from '../../services/email';
+import { verifyEmail, resendVerification, createVerificationToken } from '../../services/email';
 import { userRepository } from '../../repositories';
 import { verifyPassword } from '../../utils/password';
 import { VerifyEmailSchema, UpdateEmailSchema } from '../schemas/email';
@@ -211,7 +211,6 @@ export function createEmailRouter(
       });
 
       // Send verification email to new address
-      const { createVerificationToken } = await import('../../services/email');
       const verificationResult = await createVerificationToken(userId, email.toLowerCase(), user.username);
 
       log.info('Email updated', {

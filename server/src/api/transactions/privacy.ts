@@ -10,6 +10,7 @@ import { db as prisma } from '../../repositories/db';
 import { checkWalletAccess } from '../../services/accessControl';
 import { asyncHandler } from '../../errors/errorHandler';
 import { NotFoundError, ForbiddenError, UnauthorizedError, ValidationError } from '../../errors/ApiError';
+import * as privacyService from '../../services/privacyService';
 
 const router = Router();
 
@@ -20,7 +21,6 @@ const router = Router();
 router.get('/wallets/:walletId/privacy', requireWalletAccess('view'), asyncHandler(async (req, res) => {
   const walletId = req.walletId!;
 
-  const privacyService = await import('../../services/privacyService');
   const result = await privacyService.calculateWalletPrivacy(walletId);
 
   // Convert BigInt to number for JSON serialization
@@ -62,7 +62,6 @@ router.get('/utxos/:utxoId/privacy', asyncHandler(async (req, res) => {
     throw new ForbiddenError('Access denied');
   }
 
-  const privacyService = await import('../../services/privacyService');
   const score = await privacyService.calculateUtxoPrivacy(utxoId);
 
   res.json(score);
@@ -93,7 +92,6 @@ router.post('/wallets/:walletId/privacy/spend-analysis', requireWalletAccess('vi
     throw new ValidationError('Some UTXOs not found or do not belong to this wallet');
   }
 
-  const privacyService = await import('../../services/privacyService');
   const analysis = await privacyService.calculateSpendPrivacy(utxoIds);
 
   res.json(analysis);

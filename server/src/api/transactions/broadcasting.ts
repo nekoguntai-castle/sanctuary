@@ -15,6 +15,7 @@ import { asyncHandler } from '../../errors/errorHandler';
 import { ValidationError, ForbiddenError } from '../../errors/ApiError';
 import { auditService, AuditCategory, AuditAction } from '../../services/auditService';
 import { policyEvaluationEngine } from '../../services/vaultPolicy';
+import * as txService from '../../services/bitcoin/transactionService';
 
 const router = Router();
 const log = createLogger('TX_BROADCAST:ROUTE');
@@ -46,7 +47,6 @@ router.post('/wallets/:walletId/transactions/broadcast', requireWalletAccess('ed
 
   // Re-evaluate policies before broadcast (guard against drift).
   // Extract from PSBT when available; fall back to client-supplied fields.
-  const txService = await import('../../services/bitcoin/transactionService');
   let evalRecipient = recipient;
   let evalAmount = amount;
 
@@ -143,7 +143,6 @@ router.post('/wallets/:walletId/psbt/broadcast', requireWalletAccess('edit'), as
   }
 
   // Parse PSBT to get transaction details
-  const txService = await import('../../services/bitcoin/transactionService');
   const psbtInfo = txService.getPSBTInfo(signedPsbt);
 
   // Calculate amount from outputs (exclude change)

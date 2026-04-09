@@ -32,6 +32,8 @@ import { getErrorMessage } from '../utils/errors';
 import { notificationService } from '../websocket/notifications';
 import { asyncHandler } from '../errors/errorHandler';
 import { NotFoundError } from '../errors/ApiError';
+// Dynamic imports - kept as dynamic because test mocks use vi.mock factories
+// that are hoisted above static imports, causing initialization errors
 
 const log = createLogger('AI_INTERNAL:ROUTE');
 

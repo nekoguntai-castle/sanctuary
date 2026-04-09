@@ -8,6 +8,7 @@
 import React, { useState, useCallback } from 'react';
 import { X, UserPlus, AlertTriangle, Search, Send } from 'lucide-react';
 import { Button } from './ui/Button';
+import { ErrorAlert } from './ui/ErrorAlert';
 import * as authApi from '../src/api/auth';
 import * as transfersApi from '../src/api/transfers';
 import { ApiError } from '../src/api/client';
@@ -162,11 +163,7 @@ export const TransferOwnershipModal: React.FC<TransferOwnershipModalProps> = ({
           </div>
 
           {/* Error Display */}
-          {error && (
-            <div className="p-4 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-lg text-rose-700 dark:text-rose-300 text-sm animate-fade-in">
-              {error}
-            </div>
-          )}
+          <ErrorAlert message={error} className="mb-0" />
 
           {/* Recipient Selection */}
           <div>

@@ -26,6 +26,7 @@
 import Redis from 'ioredis';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
+import { safeJsonParseUntyped } from '../../utils/safeJson';
 import type { ICacheService, CacheStats } from './cacheService';
 
 const log = createLogger('CACHE:SVC_REDIS');
@@ -65,8 +66,13 @@ export class RedisCache implements ICacheService {
         return null;
       }
 
+      const parsed = safeJsonParseUntyped<T | null>(value, null, `redis:${key}`);
+      if (parsed === null) {
+        this.stats.misses++;
+        return null;
+      }
       this.stats.hits++;
-      return JSON.parse(value) as T;
+      return parsed;
     } catch (error) {
       log.error('Redis get error', { key, error: getErrorMessage(error) });
       this.stats.misses++;

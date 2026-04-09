@@ -4,7 +4,8 @@
  * Pure helper functions for Ledger device identification and derivation path handling.
  */
 
-import { normalizeDerivationPath } from '../../../../shared/utils/bitcoin';
+// Re-export shared path utilities for backward compatibility
+export { inferScriptTypeFromPath, extractAccountPath } from '../../pathUtils';
 
 // Ledger USB vendor ID
 export const LEDGER_VENDOR_ID = 0x2c97;
@@ -50,35 +51,4 @@ export const getDescriptorTemplate = (scriptType: string): 'wpkh(@0/**)' | 'sh(w
     default:
       return 'wpkh(@0/**)';
   }
-};
-
-/**
- * Infer script type from derivation path
- */
-export const inferScriptTypeFromPath = (path: string): 'p2wpkh' | 'p2sh-p2wpkh' | 'p2pkh' | 'p2tr' => {
-  if (path.startsWith("m/84'") || path.startsWith("84'")) {
-    return 'p2wpkh';
-  }
-  if (path.startsWith("m/49'") || path.startsWith("49'")) {
-    return 'p2sh-p2wpkh';
-  }
-  if (path.startsWith("m/44'") || path.startsWith("44'")) {
-    return 'p2pkh';
-  }
-  if (path.startsWith("m/86'") || path.startsWith("86'")) {
-    return 'p2tr';
-  }
-  return 'p2wpkh';
-};
-
-/**
- * Extract account path from a full derivation path (first 4 components)
- */
-export const extractAccountPath = (fullPath: string): string => {
-  const normalized = normalizeDerivationPath(fullPath);
-  const parts = normalized.split('/');
-  if (parts.length >= 4) {
-    return parts.slice(0, 4).join('/');
-  }
-  return normalized;
 };

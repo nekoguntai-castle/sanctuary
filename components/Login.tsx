@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react';
 import { Button } from './ui/Button';
+import { ErrorAlert } from './ui/ErrorAlert';
 import { Lock, User, Mail, Shield, ArrowLeft } from 'lucide-react';
 import { SanctuaryLogo } from './ui/CustomIcons';
 import { useUser } from '../contexts/UserContext';
@@ -229,11 +230,7 @@ export const Login: React.FC = () => {
             </p>
           </div>
 
-          {error && (
-            <div className="text-center text-sm text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 p-2 rounded-lg">
-              {error}
-            </div>
-          )}
+          <ErrorAlert message={error} className="text-center" />
 
           <div className="space-y-3 login-reveal-3">
             <Button
@@ -377,11 +374,7 @@ export const Login: React.FC = () => {
           </div>
         </div>
 
-        {error && (
-          <div className="text-center text-sm text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 p-2 rounded-lg">
-            {error}
-          </div>
-        )}
+        <ErrorAlert message={error} className="text-center" />
 
         {/* #1: Staggered entrance - Buttons */}
         <div className="space-y-3 login-reveal-4">

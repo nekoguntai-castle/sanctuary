@@ -9,6 +9,7 @@ import { requireWalletAccess } from '../../middleware/walletAccess';
 import { db as prisma } from '../../repositories/db';
 import { asyncHandler } from '../../errors/errorHandler';
 import { ValidationError } from '../../errors/ApiError';
+import * as selectionService from '../../services/utxoSelectionService';
 
 const router = Router();
 
@@ -34,7 +35,6 @@ router.post('/wallets/:walletId/utxos/select', requireWalletAccess('view'), asyn
     throw new ValidationError(`Invalid strategy. Valid options: ${validStrategies.join(', ')}`);
   }
 
-  const selectionService = await import('../../services/utxoSelectionService');
   const result = await selectionService.selectUtxos({
     walletId,
     targetAmount: BigInt(amount),
@@ -76,7 +76,6 @@ router.post('/wallets/:walletId/utxos/compare-strategies', requireWalletAccess('
     throw new ValidationError('feeRate must be a positive number');
   }
 
-  const selectionService = await import('../../services/utxoSelectionService');
   const results = await selectionService.compareStrategies(
     walletId,
     BigInt(amount),
@@ -123,7 +122,6 @@ router.get('/wallets/:walletId/utxos/recommended-strategy', requireWalletAccess(
     },
   });
 
-  const selectionService = await import('../../services/utxoSelectionService');
   const recommendation = selectionService.getRecommendedStrategy(
     utxoCount,
     feeRate,

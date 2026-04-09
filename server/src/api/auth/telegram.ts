@@ -7,6 +7,7 @@
 import { Router } from 'express';
 import { asyncHandler } from '../../errors/errorHandler';
 import { InvalidInputError } from '../../errors/ApiError';
+import { getChatIdFromBot, testTelegramConfig } from '../../services/telegram/telegramService';
 
 const router = Router();
 
@@ -21,7 +22,6 @@ router.post('/telegram/chat-id', asyncHandler(async (req, res) => {
     throw new InvalidInputError('Bot token is required');
   }
 
-  const { getChatIdFromBot } = await import('../../services/telegram/telegramService');
   const result = await getChatIdFromBot(botToken);
 
   if (result.success) {
@@ -46,8 +46,6 @@ router.post('/telegram/test', asyncHandler(async (req, res) => {
     throw new InvalidInputError('Bot token and chat ID are required');
   }
 
-  // Import telegram service
-  const { testTelegramConfig } = await import('../../services/telegram/telegramService');
   const result = await testTelegramConfig(botToken, chatId);
 
   if (result.success) {

@@ -10,6 +10,7 @@ import * as blockchain from '../../services/bitcoin/blockchain';
 import { db as prisma } from '../../repositories/db';
 import { asyncHandler } from '../../errors/errorHandler';
 import { ValidationError, ForbiddenError } from '../../errors/ApiError';
+import * as advancedTx from '../../services/bitcoin/advancedTx';
 
 const router = Router();
 
@@ -47,7 +48,6 @@ router.post('/broadcast', authenticate, asyncHandler(async (req, res) => {
  */
 router.post('/transaction/:txid/rbf-check', authenticate, asyncHandler(async (req, res) => {
   const { txid } = req.params;
-  const advancedTx = await import('../../services/bitcoin/advancedTx');
 
   const result = await advancedTx.canReplaceTransaction(txid);
 
@@ -84,7 +84,6 @@ router.post('/transaction/:txid/rbf', authenticate, asyncHandler(async (req, res
     throw new ForbiddenError('Insufficient permissions for this wallet');
   }
 
-  const advancedTx = await import('../../services/bitcoin/advancedTx');
   const result = await advancedTx.createRBFTransaction(
     txid,
     newFeeRate,
@@ -138,7 +137,6 @@ router.post('/transaction/cpfp', authenticate, asyncHandler(async (req, res) => 
     throw new ForbiddenError('Insufficient permissions for this wallet');
   }
 
-  const advancedTx = await import('../../services/bitcoin/advancedTx');
   const result = await advancedTx.createCPFPTransaction(
     parentTxid,
     parentVout,
@@ -198,7 +196,6 @@ router.post('/transaction/batch', authenticate, asyncHandler(async (req, res) =>
     throw new ForbiddenError('Insufficient permissions for this wallet');
   }
 
-  const advancedTx = await import('../../services/bitcoin/advancedTx');
   const result = await advancedTx.createBatchTransaction(
     recipients,
     feeRate,

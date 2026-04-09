@@ -186,7 +186,7 @@ export class SanctuaryImplementation implements PsbtImplementation {
         hash: string;
         index: number;
         sequence?: number;
-        witnessUtxo?: { script: Buffer; value: number };
+        witnessUtxo?: { script: Buffer; value: bigint };
         nonWitnessUtxo?: Buffer;
         redeemScript?: Buffer;
         witnessScript?: Buffer;

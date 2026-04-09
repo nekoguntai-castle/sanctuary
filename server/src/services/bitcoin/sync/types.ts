@@ -33,6 +33,8 @@ export interface RawTransaction {
   txid: string;
   time?: number;
   blocktime?: number;
+  blockheight?: number;
+  fee?: number;
   vin: TransactionInput[];
   vout: TransactionOutput[];
   confirmations?: number;

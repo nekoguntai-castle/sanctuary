@@ -8,6 +8,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { Button } from '../ui/Button';
+import { Input } from '../ui/Input';
 import { ProxyTorSectionProps } from './types';
 
 export const ProxyTorSection: React.FC<ProxyTorSectionProps> = ({
@@ -173,41 +174,41 @@ export const ProxyTorSection: React.FC<ProxyTorSectionProps> = ({
                   <div className="grid grid-cols-3 gap-3">
                     <div className="col-span-2">
                       <label className="block text-xs font-medium text-sanctuary-500 mb-1">Host</label>
-                      <input
+                      <Input
                         type="text"
                         value={nodeConfig.proxyHost || ''}
                         onChange={(e) => onConfigChange({ ...nodeConfig, proxyHost: e.target.value })}
                         placeholder="127.0.0.1"
-                        className="w-full px-3 py-2 surface-muted border border-sanctuary-200 dark:border-sanctuary-700 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 font-mono text-sm"
+                        className="font-mono text-sm"
                       />
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-sanctuary-500 mb-1">Port</label>
-                      <input
+                      <Input
                         type="number"
                         value={nodeConfig.proxyPort || ''}
                         onChange={(e) => onConfigChange({ ...nodeConfig, proxyPort: parseInt(e.target.value, 10) || undefined })}
                         placeholder="9050"
-                        className="w-full px-3 py-2 surface-muted border border-sanctuary-200 dark:border-sanctuary-700 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 font-mono text-sm"
+                        className="font-mono text-sm"
                       />
                     </div>
                   </div>
 
                   {/* Optional Authentication */}
                   <div className="grid grid-cols-2 gap-3">
-                    <input
+                    <Input
                       type="text"
                       value={nodeConfig.proxyUsername || ''}
                       onChange={(e) => onConfigChange({ ...nodeConfig, proxyUsername: e.target.value || undefined })}
                       placeholder="Username (optional)"
-                      className="w-full px-3 py-2 surface-muted border border-sanctuary-200 dark:border-sanctuary-700 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
+                      className="text-sm"
                     />
-                    <input
+                    <Input
                       type="password"
                       value={nodeConfig.proxyPassword || ''}
                       onChange={(e) => onConfigChange({ ...nodeConfig, proxyPassword: e.target.value || undefined })}
                       placeholder="Password (optional)"
-                      className="w-full px-3 py-2 surface-muted border border-sanctuary-200 dark:border-sanctuary-700 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
+                      className="text-sm"
                     />
                   </div>
                 </div>

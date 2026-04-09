@@ -14,6 +14,7 @@
 
 import { WebSocket, WebSocketServer } from 'ws';
 import { IncomingMessage } from 'http';
+import type { Duplex } from 'stream';
 import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
 import { createLogger } from '../utils/logger';
 import { getErrorMessage } from '../utils/errors';
@@ -54,7 +55,7 @@ export class GatewayWebSocketServer {
   /**
    * Handle HTTP upgrade request
    */
-  public handleUpgrade(request: IncomingMessage, socket: any, head: Buffer) {
+  public handleUpgrade(request: IncomingMessage, socket: Duplex, head: Buffer) {
     this.wss.handleUpgrade(request, socket, head, (ws) => {
       this.wss.emit('connection', ws, request);
     });

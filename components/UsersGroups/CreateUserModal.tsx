@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Button } from '../ui/Button';
+import { ErrorAlert } from '../ui/ErrorAlert';
+import { Input } from '../ui/Input';
 import { Eye, EyeOff } from 'lucide-react';
 import { Toggle } from '../ui/Toggle';
 import { PasswordRequirements } from './PasswordRequirements';
@@ -47,21 +49,16 @@ export const CreateUserModal: React.FC<CreateUserModalProps> = ({
 
   return (
     <ModalWrapper title="Create New User" onClose={handleClose}>
-      {error && (
-        <div className="mb-4 p-3 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-lg text-sm text-rose-600 dark:text-rose-400">
-          {error}
-        </div>
-      )}
+      <ErrorAlert message={error} />
 
       <div className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-sanctuary-700 dark:text-sanctuary-300 mb-1">Username *</label>
-          <input
+          <Input
             type="text"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             placeholder="Enter username"
-            className="w-full px-3 py-2 surface-muted border border-sanctuary-200 dark:border-sanctuary-700 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
             autoFocus
           />
         </div>
@@ -69,12 +66,12 @@ export const CreateUserModal: React.FC<CreateUserModalProps> = ({
         <div>
           <label className="block text-sm font-medium text-sanctuary-700 dark:text-sanctuary-300 mb-1">Password *</label>
           <div className="relative">
-            <input
+            <Input
               type={showPassword ? 'text' : 'password'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Enter password"
-              className="w-full px-3 py-2 pr-10 surface-muted border border-sanctuary-200 dark:border-sanctuary-700 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="pr-10"
             />
             <button
               type="button"
@@ -89,12 +86,11 @@ export const CreateUserModal: React.FC<CreateUserModalProps> = ({
 
         <div>
           <label className="block text-sm font-medium text-sanctuary-700 dark:text-sanctuary-300 mb-1">Email (optional)</label>
-          <input
+          <Input
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="user@example.com"
-            className="w-full px-3 py-2 surface-muted border border-sanctuary-200 dark:border-sanctuary-700 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
           />
         </div>
 

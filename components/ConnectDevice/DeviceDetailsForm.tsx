@@ -8,6 +8,7 @@
 import React from 'react';
 import { Lock, Loader2, ChevronRight, ChevronDown, AlertCircle, Check, Info } from 'lucide-react';
 import { Button } from '../ui/Button';
+import { Input } from '../ui/Input';
 import { DeviceDetailsFormProps, getPurposeLabel, getScriptLabel } from './types';
 
 export const DeviceDetailsForm: React.FC<DeviceDetailsFormProps> = ({
@@ -50,25 +51,25 @@ export const DeviceDetailsForm: React.FC<DeviceDetailsFormProps> = ({
         {/* Device Label */}
         <div>
           <label className="block text-xs font-medium text-sanctuary-500 mb-1">Device Label</label>
-          <input
+          <Input
             type="text"
             value={label}
             onChange={(e) => onFormDataChange({ label: e.target.value })}
             placeholder={`My ${selectedModel.name}`}
-            className="w-full px-3 py-2 surface-muted border border-sanctuary-200 dark:border-sanctuary-700 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-sanctuary-500"
+            className="text-sm focus:ring-sanctuary-500"
           />
         </div>
 
         {/* Master Fingerprint */}
         <div>
           <label className="block text-xs font-medium text-sanctuary-500 mb-1">Master Fingerprint</label>
-          <input
+          <Input
             type="text"
             value={fingerprint}
             onChange={(e) => onFormDataChange({ fingerprint: e.target.value })}
             placeholder="00000000"
             readOnly={method !== 'manual' && scanned}
-            className={`w-full px-3 py-2 surface-muted border border-sanctuary-200 dark:border-sanctuary-700 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-sanctuary-500 ${method !== 'manual' && scanned ? 'opacity-70' : ''}`}
+            className={`text-sm font-mono focus:ring-sanctuary-500 ${method !== 'manual' && scanned ? 'opacity-70' : ''}`}
           />
         </div>
 
@@ -137,11 +138,11 @@ export const DeviceDetailsForm: React.FC<DeviceDetailsFormProps> = ({
           <>
             <div>
               <label className="block text-xs font-medium text-sanctuary-500 mb-1">Derivation Path</label>
-              <input
+              <Input
                 type="text"
                 value={derivationPath}
                 onChange={(e) => onFormDataChange({ derivationPath: e.target.value })}
-                className="w-full px-3 py-2 surface-muted border border-sanctuary-200 dark:border-sanctuary-700 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-sanctuary-500"
+                className="text-sm font-mono focus:ring-sanctuary-500"
               />
               <p className="text-[10px] text-sanctuary-400 mt-1">BIP84 Native SegWit default</p>
             </div>

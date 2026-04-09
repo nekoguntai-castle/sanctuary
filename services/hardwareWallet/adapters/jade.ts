@@ -7,6 +7,7 @@
 
 import { encode, decode } from 'cbor-x';
 import { createLogger } from '../../../utils/logger';
+import { isTestnetPath } from '../pathUtils';
 import type {
   DeviceAdapter,
   DeviceType,
@@ -345,7 +346,7 @@ export class JadeAdapter implements DeviceAdapter {
     }
 
     try {
-      const isTestnet = path.includes("/1'") || path.includes("/1h");
+      const isTestnet = isTestnetPath(path);
       const network = isTestnet ? 'testnet' : 'mainnet';
       const pathArray = pathToArray(path);
 
@@ -383,7 +384,7 @@ export class JadeAdapter implements DeviceAdapter {
     }
 
     try {
-      const isTestnet = path.includes("/1'") || path.includes("/1h");
+      const isTestnet = isTestnetPath(path);
       const network = isTestnet ? 'testnet' : 'mainnet';
       const pathArray = pathToArray(path);
 
@@ -437,7 +438,7 @@ export class JadeAdapter implements DeviceAdapter {
     try {
       // Determine network from account path
       const accountPath = request.accountPath || request.inputPaths?.[0] || "m/84'/0'/0'";
-      const isTestnet = accountPath.includes("/1'") || accountPath.includes("/1h");
+      const isTestnet = isTestnetPath(accountPath);
       const network = isTestnet ? 'testnet' : 'mainnet';
 
       log.info('Signing PSBT', { network, accountPath });

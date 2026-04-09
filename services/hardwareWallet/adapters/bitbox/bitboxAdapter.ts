@@ -6,6 +6,7 @@
  */
 
 import { createLogger } from '../../../../utils/logger';
+import { isTestnetPath } from '../../pathUtils';
 import { BITBOX_VENDOR_ID, BITBOX_PRODUCT_ID } from './types';
 import type { BitBoxConnection } from './types';
 import type {
@@ -257,7 +258,7 @@ export class BitBoxAdapter implements DeviceAdapter {
         loadBitBoxPathUtilsModule(),
       ]);
 
-      const isTestnet = path.includes("/1'") || path.includes("/1h");
+      const isTestnet = isTestnetPath(path);
       const coin = getCoin(path);
       const keypathArray = getKeypathFromString(path);
       const xpubType = getXpubType(path, isTestnet);

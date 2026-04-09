@@ -28,10 +28,10 @@ export function parseResponseBuffer(
     if (!line.trim()) continue;
 
     try {
-      const response: ElectrumResponse = JSON.parse(line);
-      responses.push(response);
+      const parsed: ElectrumResponse = JSON.parse(line);
+      responses.push(parsed);
     } catch (error) {
-      log.error('Failed to parse response', { error: getErrorMessage(error) });
+      log.error('Failed to parse Electrum response', { error: getErrorMessage(error) });
     }
   }
 

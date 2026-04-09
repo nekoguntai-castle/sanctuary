@@ -89,11 +89,12 @@ export function metricsMiddleware(options: MetricsMiddlewareOptions = {}): Reque
     const originalEnd = res.end;
     let responseSize = 0;
 
-    res.end = function (chunk?: any, encoding?: any, callback?: any): Response {
+    // @ts-expect-error - res.end has multiple overloaded signatures that cannot be satisfied by a single typed wrapper
+    res.end = function (chunk?: string | Buffer | Uint8Array, encoding?: BufferEncoding, callback?: () => void): Response {
       // Calculate response size
-      if (chunk) {
+      if (chunk && typeof chunk !== 'function') {
         if (typeof chunk === 'string') {
-          responseSize = Buffer.byteLength(chunk, encoding as BufferEncoding);
+          responseSize = Buffer.byteLength(chunk, encoding || 'utf8');
         } else if (Buffer.isBuffer(chunk)) {
           responseSize = chunk.length;
         }
@@ -111,7 +112,7 @@ export function metricsMiddleware(options: MetricsMiddlewareOptions = {}): Reque
       }
 
       // Call original end
-      return originalEnd.call(this, chunk, encoding, callback);
+      return originalEnd.call(this, chunk, encoding as BufferEncoding, callback);
     };
 
     next();
@@ -145,10 +146,11 @@ export function responseTimeMiddleware(): RequestHandler {
     const startTime = process.hrtime.bigint();
 
     const originalEnd = res.end;
-    res.end = function (chunk?: any, encoding?: any, callback?: any): Response {
+    // @ts-expect-error - res.end has multiple overloaded signatures that cannot be satisfied by a single typed wrapper
+    res.end = function (chunk?: string | Buffer | Uint8Array, encoding?: BufferEncoding, callback?: () => void): Response {
       const duration = Number(process.hrtime.bigint() - startTime) / 1e6; // Convert to ms
       res.setHeader('X-Response-Time', `${duration.toFixed(2)}ms`);
-      return originalEnd.call(this, chunk, encoding, callback);
+      return originalEnd.call(this, chunk, encoding as BufferEncoding, callback);
     };
 
     next();

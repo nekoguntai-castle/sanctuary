@@ -11,6 +11,7 @@ import { asyncHandler } from '../../errors/errorHandler';
 import { InvalidInputError } from '../../errors/ApiError';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
+import { SocksClient } from 'socks';
 
 const router = Router();
 const log = createLogger('ADMIN_PROXY:ROUTE');
@@ -31,8 +32,6 @@ router.post('/proxy/test', authenticate, requireAdmin, asyncHandler(async (req, 
   }
 
   const proxyPort = parseInt(port.toString(), 10);
-  const { SocksClient } = await import('socks');
-
   // Step 1: Test .onion connectivity (definitive proof Tor works)
   const onionTarget = {
     host: 'explorerzydxu5ecjrkwceayqybizmpjjznk5izmitf2modhcusuqlid.onion',

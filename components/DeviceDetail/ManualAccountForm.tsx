@@ -6,6 +6,7 @@
 
 import React from 'react';
 import { Plus, Loader2 } from 'lucide-react';
+import { Input } from '../ui/Input';
 
 export interface ManualAccountData {
   purpose: 'single_sig' | 'multisig';
@@ -125,12 +126,12 @@ export const ManualAccountForm: React.FC<ManualAccountFormProps> = ({
         <label className="block text-xs font-medium text-sanctuary-500 mb-1">
           Derivation Path
         </label>
-        <input
+        <Input
           type="text"
           value={account.derivationPath}
           onChange={(e) => onChange({ ...account, derivationPath: e.target.value })}
           placeholder="m/48'/0'/0'/2'"
-          className="w-full px-3 py-2 surface-muted border border-sanctuary-200 dark:border-sanctuary-700 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-sanctuary-500"
+          className="text-sm font-mono focus:ring-sanctuary-500"
         />
       </div>
 

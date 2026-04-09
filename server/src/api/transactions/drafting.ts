@@ -14,6 +14,7 @@ import { ValidationError, NotFoundError, ForbiddenError } from '../../errors/Api
 import { validateAddress } from '../../services/bitcoin/utils';
 import { policyEvaluationEngine } from '../../services/vaultPolicy';
 import { MIN_FEE_RATE } from '../../constants';
+import * as txService from '../../services/bitcoin/transactionService';
 
 const router = Router();
 const log = createLogger('TX_DRAFT:ROUTE');
@@ -84,7 +85,6 @@ router.post('/wallets/:walletId/transactions/create', requireWalletAccess('edit'
   }
 
   // Create transaction
-  const txService = await import('../../services/bitcoin/transactionService');
   const txData = await txService.createTransaction(
     walletId,
     recipient,
@@ -200,7 +200,6 @@ router.post('/wallets/:walletId/transactions/batch', requireWalletAccess('edit')
   }
 
   // Create batch transaction
-  const txService = await import('../../services/bitcoin/transactionService');
   const txData = await txService.createBatchTransaction(
     walletId,
     outputs,
@@ -241,7 +240,6 @@ router.post('/wallets/:walletId/transactions/estimate', requireWalletAccess('vie
   }
 
   // Estimate transaction
-  const txService = await import('../../services/bitcoin/transactionService');
   const estimate = await txService.estimateTransaction(
     walletId,
     recipient,
@@ -298,7 +296,6 @@ router.post('/wallets/:walletId/psbt/create', requireWalletAccess('edit'), async
   }
 
   // Create PSBT
-  const txService = await import('../../services/bitcoin/transactionService');
   const txData = await txService.createTransaction(
     walletId,
     address,

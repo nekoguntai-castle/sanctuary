@@ -10,6 +10,9 @@ import { requireWalletAccess } from '../../middleware/walletAccess';
 import { requireFeature } from '../../middleware/featureGate';
 import { asyncHandler } from '../../errors/errorHandler';
 import { DEFAULT_AUTOPILOT_SETTINGS } from '../../services/autopilot/types';
+import { getWalletAutopilotSettings, updateWalletAutopilotSettings } from '../../services/autopilot/settings';
+import { getUtxoHealthProfile } from '../../services/autopilot/utxoHealth';
+import { getLatestFeeSnapshot } from '../../services/autopilot/feeMonitor';
 
 const router = Router();
 
@@ -25,7 +28,6 @@ router.get(
     const walletId = req.walletId!;
     const userId = req.user!.userId;
 
-    const { getWalletAutopilotSettings } = await import('../../services/autopilot/settings');
     const settings = await getWalletAutopilotSettings(userId, walletId);
 
     res.json({
@@ -57,7 +59,6 @@ router.patch(
       maxUtxoSize,
     } = req.body;
 
-    const { updateWalletAutopilotSettings } = await import('../../services/autopilot/settings');
     await updateWalletAutopilotSettings(userId, walletId, {
       enabled: enabled ?? DEFAULT_AUTOPILOT_SETTINGS.enabled,
       maxFeeRate: maxFeeRate ?? DEFAULT_AUTOPILOT_SETTINGS.maxFeeRate,
@@ -88,10 +89,6 @@ router.get(
   asyncHandler(async (req, res) => {
     const walletId = req.walletId!;
     const userId = req.user!.userId;
-
-    const { getWalletAutopilotSettings } = await import('../../services/autopilot/settings');
-    const { getUtxoHealthProfile } = await import('../../services/autopilot/utxoHealth');
-    const { getLatestFeeSnapshot } = await import('../../services/autopilot/feeMonitor');
 
     const settings = await getWalletAutopilotSettings(userId, walletId);
     const dustThreshold = settings?.dustThreshold ?? DEFAULT_AUTOPILOT_SETTINGS.dustThreshold;

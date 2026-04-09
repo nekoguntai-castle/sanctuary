@@ -13,13 +13,13 @@
     "@caravan/bitcoin": "^0.4.3",
     "bip32": "^4.0.0",
     "bip39": "^3.1.0",
-    "bitcoinjs-lib": "^6.1.5",
+    "bitcoinjs-lib": "^7.0.1",
     "bs58check": "^3.0.1",
     "tiny-secp256k1": "^2.2.3"
   },
   "devDependencies": {
-    "@types/node": "^20.10.0",
+    "@types/node": "^22.0.0",
     "tsx": "^4.7.0",
-    "typescript": "^5.3.0"
+    "typescript": "~6.0.2"
   }
 }

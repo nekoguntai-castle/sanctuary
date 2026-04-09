@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '../ui/Button';
+import { ErrorAlert } from '../ui/ErrorAlert';
+import { Input } from '../ui/Input';
 import { ModalWrapper } from '../ui/ModalWrapper';
 import { AdminUser, AdminGroup } from '../../src/api/admin';
 
@@ -50,20 +52,15 @@ export const EditGroupModal: React.FC<EditGroupModalProps> = ({
 
   return (
     <ModalWrapper title="Edit Group" onClose={onClose}>
-      {error && (
-        <div className="mb-4 p-3 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-lg text-sm text-rose-600 dark:text-rose-400">
-          {error}
-        </div>
-      )}
+      <ErrorAlert message={error} />
 
       <div className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-sanctuary-700 dark:text-sanctuary-300 mb-1">Group Name</label>
-          <input
+          <Input
             type="text"
             value={groupName}
             onChange={(e) => setGroupName(e.target.value)}
-            className="w-full px-3 py-2 surface-muted border border-sanctuary-200 dark:border-sanctuary-700 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
             autoFocus
           />
         </div>

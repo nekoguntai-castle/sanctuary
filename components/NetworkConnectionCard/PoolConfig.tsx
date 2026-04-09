@@ -6,6 +6,7 @@ import {
   Settings2,
 } from 'lucide-react';
 import { Button } from '../ui/Button';
+import { Input } from '../ui/Input';
 import { ElectrumServer } from '../../types';
 import type { NetworkColors, PresetServer, NewServerState } from './types';
 import { ServerRow } from './ServerRow';
@@ -91,24 +92,24 @@ export const PoolConfig: React.FC<PoolConfigProps> = ({
         <div className="grid grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-sanctuary-700 dark:text-sanctuary-300 mb-1">Min Connections</label>
-            <input
+            <Input
               type="number"
               value={poolMin}
               onChange={(e) => onUpdateConfig('poolMin', parseInt(e.target.value, 10) || 1)}
               min={1}
               max={poolMax}
-              className="w-full px-3 py-2 surface-muted border border-sanctuary-200 dark:border-sanctuary-700 rounded-md text-sm"
+              className="text-sm"
             />
           </div>
           <div>
             <label className="block text-sm font-medium text-sanctuary-700 dark:text-sanctuary-300 mb-1">Max Connections</label>
-            <input
+            <Input
               type="number"
               value={poolMax}
               onChange={(e) => onUpdateConfig('poolMax', parseInt(e.target.value, 10) || 5)}
               min={poolMin}
               max={20}
-              className="w-full px-3 py-2 surface-muted border border-sanctuary-200 dark:border-sanctuary-700 rounded-md text-sm"
+              className="text-sm"
             />
           </div>
           <div>

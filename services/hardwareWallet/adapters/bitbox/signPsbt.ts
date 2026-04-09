@@ -8,6 +8,7 @@
 import { getKeypathFromString } from 'bitbox02-api';
 import * as bitcoin from 'bitcoinjs-lib';
 import { createLogger } from '../../../../utils/logger';
+import { isTestnetPath } from '../../pathUtils';
 import { getSimpleType, getCoin, getOutputType, extractAccountPath } from './pathUtils';
 import type { BitBoxConnection } from './types';
 import type { PSBTSignRequest, PSBTSignResponse } from '../../types';
@@ -49,7 +50,7 @@ export async function signPsbtWithBitBox(
   const keypathAccount = getKeypathFromString(accountPath);
 
   // Determine network
-  const isTestnet = accountPath.includes("/1'") || accountPath.includes("/1h");
+  const isTestnet = isTestnetPath(accountPath);
   const network = isTestnet ? bitcoin.networks.testnet : bitcoin.networks.bitcoin;
 
   // Build inputs array for BitBox02

@@ -81,6 +81,12 @@ const PRISMA_IMPORT_PATTERNS = [
  */
 const PRISMA_SINGLETON_PATTERN = /import\s+(?!type\s).*prisma.*from\s+['"]\..*models\/prisma['"]/;
 
+/**
+ * Pattern that matches importing the transitional db re-export
+ * (routes and services should use repository methods instead)
+ */
+const DB_IMPORT_PATTERN = /import\s+.*from\s+['"]\..*repositories\/db['"]/;
+
 // =============================================================================
 // File Scanning
 // =============================================================================
@@ -103,6 +109,15 @@ function scanFile(filePath: string): Violation[] {
   lines.forEach((line, index) => {
     // Check for prisma singleton imports
     if (PRISMA_SINGLETON_PATTERN.test(line)) {
+      violations.push({
+        file: filePath,
+        line: index + 1,
+        content: line.trim(),
+      });
+    }
+
+    // Check for transitional db re-export imports
+    if (DB_IMPORT_PATTERN.test(line)) {
       violations.push({
         file: filePath,
         line: index + 1,

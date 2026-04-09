@@ -1,5 +1,6 @@
 import React from 'react';
 import { ExternalLink, ChevronRight } from 'lucide-react';
+import { Input } from '../ui/Input';
 import { ExternalServicesSectionProps } from './types';
 
 export const ExternalServicesSection: React.FC<ExternalServicesSectionProps> = ({
@@ -33,12 +34,12 @@ export const ExternalServicesSection: React.FC<ExternalServicesSectionProps> = (
           <div className="flex items-center gap-3">
             <div className="flex-1">
               <label className="block text-xs font-medium text-sanctuary-500 mb-1">Block Explorer</label>
-              <input
+              <Input
                 type="text"
                 value={nodeConfig.explorerUrl || ''}
                 onChange={(e) => onConfigChange({ ...nodeConfig, explorerUrl: e.target.value })}
                 placeholder="https://mempool.space"
-                className="w-full px-3 py-2 surface-muted border border-sanctuary-200 dark:border-sanctuary-700 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 font-mono text-sm"
+                className="font-mono text-sm"
               />
             </div>
             <div className="flex gap-1 pt-5">
@@ -90,12 +91,12 @@ export const ExternalServicesSection: React.FC<ExternalServicesSectionProps> = (
             <div className="flex items-center gap-3">
               <div className="flex-1">
                 <label className="block text-xs font-medium text-sanctuary-500 mb-1">Mempool API URL</label>
-                <input
+                <Input
                   type="text"
                   value={nodeConfig.feeEstimatorUrl}
                   onChange={(e) => onConfigChange({ ...nodeConfig, feeEstimatorUrl: e.target.value })}
                   placeholder="https://mempool.space"
-                  className="w-full px-3 py-2 surface-muted border border-sanctuary-200 dark:border-sanctuary-700 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 font-mono text-sm"
+                  className="font-mono text-sm"
                 />
               </div>
             </div>

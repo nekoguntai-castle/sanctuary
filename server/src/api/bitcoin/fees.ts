@@ -12,6 +12,7 @@ import { db as prisma } from '../../repositories/db';
 import { createLogger } from '../../utils/logger';
 import { asyncHandler } from '../../errors/errorHandler';
 import { ValidationError } from '../../errors/ApiError';
+import * as advancedTx from '../../services/bitcoin/advancedTx';
 
 const router = Router();
 const log = createLogger('BITCOIN_FEE:ROUTE');
@@ -60,7 +61,6 @@ router.get('/fees', asyncHandler(async (_req, res) => {
  * Get advanced fee estimates with time predictions
  */
 router.get('/fees/advanced', asyncHandler(async (_req, res) => {
-  const advancedTx = await import('../../services/bitcoin/advancedTx');
   const fees = await advancedTx.getAdvancedFeeEstimates();
 
   res.json(fees);
@@ -108,7 +108,6 @@ router.post('/utils/estimate-optimal-fee', asyncHandler(async (req, res) => {
     throw new ValidationError('inputCount and outputCount are required');
   }
 
-  const advancedTx = await import('../../services/bitcoin/advancedTx');
   const result = await advancedTx.estimateOptimalFee(
     inputCount,
     outputCount,

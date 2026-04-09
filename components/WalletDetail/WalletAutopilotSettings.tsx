@@ -12,6 +12,7 @@ import { ApiError } from '../../src/api/client';
 import { useUser } from '../../contexts/UserContext';
 import { Zap, AlertCircle, ChevronDown, Activity } from 'lucide-react';
 import { Toggle } from '../ui/Toggle';
+import { ErrorAlert } from '../ui/ErrorAlert';
 
 interface Props {
   walletId: string;
@@ -191,11 +192,7 @@ export const WalletAutopilotSettings: React.FC<Props> = ({ walletId }) => {
           </div>
         ) : (
           <div>
-            {error && (
-              <div className="p-3 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-lg mb-4">
-                <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>
-              </div>
-            )}
+            <ErrorAlert message={error} />
 
             {/* Enable toggle */}
             <div className="flex items-center justify-between">

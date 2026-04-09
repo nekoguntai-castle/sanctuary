@@ -9,6 +9,7 @@ import * as jwt from 'jsonwebtoken';
 import * as fs from 'fs';
 import { BasePushProvider } from './base';
 import { createLogger } from '../../../utils/logger';
+import { safeJsonParseUntyped } from '../../../utils/safeJson';
 import { createCircuitBreaker, type CircuitBreaker } from '../../circuitBreaker';
 import type { PushMessage, PushResult } from '../types';
 
@@ -154,12 +155,7 @@ export class APNsPushProvider extends BasePushProvider {
 
       if (!response.ok) {
         const errorBody = await response.text();
-        let errorJson: Record<string, unknown> = {};
-        try {
-          errorJson = JSON.parse(errorBody);
-        } catch {
-          // Not JSON
-        }
+        const errorJson = safeJsonParseUntyped<Record<string, unknown>>(errorBody, {}, 'APNs error response');
 
         const reason = (errorJson as { reason?: string }).reason || errorBody || `HTTP ${response.status}`;
 

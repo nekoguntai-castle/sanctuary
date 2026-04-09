@@ -9,6 +9,13 @@ import { createLogger } from '../../../../utils/logger';
 import { convertToStandardXpub } from './xpubUtils';
 import type { TrezorMultisig, TrezorMultisigPubkey } from './types';
 
+/** Subset of PSBT input fields used for multisig detection (compatible with both bip174 Buffer and Uint8Array variants) */
+interface PsbtInputLike {
+  witnessScript?: Uint8Array;
+  redeemScript?: Uint8Array;
+  bip32Derivation?: readonly { pubkey: Uint8Array; masterFingerprint: Uint8Array; path: string }[];
+}
+
 const log = createLogger('TrezorAdapter');
 
 /**
@@ -110,7 +117,7 @@ export function buildTrezorMultisig(
 /**
  * Check if PSBT input is a multisig input
  */
-export function isMultisigInput(input: any): boolean {
+export function isMultisigInput(input: PsbtInputLike): boolean {
   return !!(
     input.witnessScript ||
     input.redeemScript ||

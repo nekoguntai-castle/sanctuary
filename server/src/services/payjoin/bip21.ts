@@ -27,19 +27,24 @@ export function parseBip21Uri(uri: string): {
   const result: ReturnType<typeof parseBip21Uri> = { address };
 
   if (paramsPart) {
+    // URLSearchParams.get() already percent-decodes values — no need for decodeURIComponent
     const params = new URLSearchParams(paramsPart);
 
-    if (params.has('amount')) {
-      result.amount = parseFloat(params.get('amount')!) * 100_000_000; // BTC to sats
+    const amount = params.get('amount');
+    if (amount !== null) {
+      result.amount = parseFloat(amount) * 100_000_000; // BTC to sats
     }
-    if (params.has('label')) {
-      result.label = decodeURIComponent(params.get('label')!);
+    const label = params.get('label');
+    if (label !== null) {
+      result.label = label;
     }
-    if (params.has('message')) {
-      result.message = decodeURIComponent(params.get('message')!);
+    const message = params.get('message');
+    if (message !== null) {
+      result.message = message;
     }
-    if (params.has('pj')) {
-      result.payjoinUrl = decodeURIComponent(params.get('pj')!);
+    const pj = params.get('pj');
+    if (pj !== null) {
+      result.payjoinUrl = pj;
     }
   }
 

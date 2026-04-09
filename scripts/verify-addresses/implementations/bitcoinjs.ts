@@ -72,7 +72,7 @@ function getNetwork(network: Network): bitcoin.Network {
 
 export const bitcoinjsImpl: AddressDeriver = {
   name: 'bitcoinjs-lib',
-  version: '6.1.5',
+  version: '7.0.1',
 
   async deriveSingleSig(
     xpub: string,

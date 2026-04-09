@@ -9,6 +9,7 @@ import { getRedisClient, isRedisConnected } from '../../infrastructure';
 import { getAdvancedFeeEstimates } from '../bitcoin/advancedTx/feeEstimation';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
+import { safeJsonParseUntyped } from '../../utils/safeJson';
 import type { FeeSnapshot } from './types';
 
 const log = createLogger('AUTOPILOT:SVC_FEES');
@@ -71,10 +72,9 @@ export async function getRecentFees(windowMinutes: number = 60): Promise<FeeSnap
 
   const snapshots: FeeSnapshot[] = [];
   for (const entry of entries) {
-    try {
-      snapshots.push(JSON.parse(entry) as FeeSnapshot);
-    } catch {
-      log.debug('Skipping corrupt fee snapshot entry');
+    const snapshot = safeJsonParseUntyped<FeeSnapshot | null>(entry, null, 'fee snapshot');
+    if (snapshot) {
+      snapshots.push(snapshot);
     }
   }
   return snapshots;
@@ -90,12 +90,7 @@ export async function getLatestFeeSnapshot(): Promise<FeeSnapshot | null> {
   const entries = await redis.zrevrange(REDIS_KEY, 0, 0);
   if (entries.length === 0) return null;
 
-  try {
-    return JSON.parse(entries[0]) as FeeSnapshot;
-  } catch {
-    log.debug('Corrupt latest fee snapshot, discarding');
-    return null;
-  }
+  return safeJsonParseUntyped<FeeSnapshot | null>(entries[0], null, 'latest fee snapshot');
 }
 
 /**

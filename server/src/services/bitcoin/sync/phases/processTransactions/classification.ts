@@ -8,14 +8,14 @@
 
 import { createLogger } from '../../../../../utils/logger';
 import { getBlockTimestamp } from '../../../utils/blockHeight';
-import type { SyncContext, TransactionCreateData } from '../../types';
+import type { SyncContext, TransactionCreateData, TransactionOutput } from '../../types';
 
 const log = createLogger('BITCOIN:SVC_SYNC_TX');
 
 /**
  * Helper to check if output matches an address
  */
-export function outputMatchesAddress(out: any, address: string): boolean {
+export function outputMatchesAddress(out: TransactionOutput, address: string): boolean {
   if (out.scriptPubKey?.address === address) return true;
   if (out.scriptPubKey?.addresses?.includes(address)) return true;
   return false;
@@ -56,7 +56,7 @@ export async function classifyTransactions(
       const outputs = txDetails.vout || [];
       const inputs = txDetails.vin || [];
 
-      const isReceived = outputs.some((out: any) => outputMatchesAddress(out, addressStr));
+      const isReceived = outputs.some((out: TransactionOutput) => outputMatchesAddress(out, addressStr));
 
       // Get block timestamp
       let blockTime: Date | null = null;
@@ -186,11 +186,11 @@ export async function classifyTransactions(
         existingTxMap.set(`${item.tx_hash}:sent`, true);
       } else if (!isSent && isReceived && !existingTxMap.has(`${item.tx_hash}:received`)) {
         const amount = outputs
-          .filter((out: any) => {
+          .filter((out: TransactionOutput) => {
             const outAddr = out.scriptPubKey?.address || out.scriptPubKey?.addresses?.[0];
             return outAddr && walletAddressSet.has(outAddr);
           })
-          .reduce((sum: number, out: any) => sum + Math.round(out.value * 100000000), 0);
+          .reduce((sum: number, out: TransactionOutput) => sum + Math.round(out.value * 100000000), 0);
 
         transactionsToCreate.push({
           txid: item.tx_hash,

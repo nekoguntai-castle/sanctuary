@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useUser } from '../../../contexts/UserContext';
 import { Send, Eye, EyeOff, RefreshCw, AlertCircle, ExternalLink, Check } from 'lucide-react';
 import { Button } from '../../ui/Button';
+import { Input } from '../../ui/Input';
 import { Toggle } from '../../ui/Toggle';
 import * as authApi from '../../../src/api/auth';
 import { createLogger } from '../../../utils/logger';
@@ -187,12 +188,12 @@ const TelegramSettings: React.FC = () => {
             Bot Token
           </label>
           <div className="relative">
-            <input
+            <Input
               type={showBotToken ? 'text' : 'password'}
               value={botToken}
               onChange={(e) => setBotToken(e.target.value)}
               placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
-              className="w-full px-3 py-2 pr-12 surface-muted border border-sanctuary-200 dark:border-sanctuary-700 rounded-md text-sanctuary-900 dark:text-sanctuary-100 focus:outline-none focus:ring-2 focus:ring-primary-500 font-mono text-sm"
+              className="pr-12 text-sanctuary-900 dark:text-sanctuary-100 font-mono text-sm"
             />
             <button
               type="button"
@@ -211,12 +212,12 @@ const TelegramSettings: React.FC = () => {
             Chat ID
           </label>
           <div className="flex space-x-2">
-            <input
+            <Input
               type="text"
               value={chatId}
               onChange={(e) => setChatId(e.target.value)}
               placeholder="123456789"
-              className="flex-1 px-3 py-2 surface-muted border border-sanctuary-200 dark:border-sanctuary-700 rounded-md text-sanctuary-900 dark:text-sanctuary-100 focus:outline-none focus:ring-2 focus:ring-primary-500 font-mono text-sm"
+              className="flex-1 text-sanctuary-900 dark:text-sanctuary-100 font-mono text-sm"
             />
             <Button
               variant="secondary"

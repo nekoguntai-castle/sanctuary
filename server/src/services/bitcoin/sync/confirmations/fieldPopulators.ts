@@ -6,6 +6,7 @@
  */
 
 import { createLogger } from '../../../../utils/logger';
+import type { RawTransaction, TransactionInput, TransactionOutput } from '../types';
 import type { PopulationStats } from './types';
 
 const log = createLogger('BITCOIN:SVC_CONFIRMATIONS');
@@ -15,7 +16,7 @@ const log = createLogger('BITCOIN:SVC_CONFIRMATIONS');
  */
 export function populateBlockHeight(
   tx: { blockHeight: number | null; txid: string },
-  txDetails: any,
+  txDetails: RawTransaction,
   txHeightFromHistory: Map<string, number>,
   currentHeight: number,
   updates: Record<string, unknown>,
@@ -46,7 +47,7 @@ export function populateBlockHeight(
  */
 export function populateBlockTime(
   tx: { blockTime: Date | null; blockHeight: number | null },
-  txDetails: any,
+  txDetails: RawTransaction,
   updates: Record<string, unknown>,
   stats: PopulationStats
 ): void {
@@ -64,10 +65,10 @@ export function populateBlockTime(
  */
 export function populateFee(
   tx: { fee: bigint | null; type: string; amount: bigint; txid: string },
-  txDetails: any,
-  inputs: any[],
-  outputs: any[],
-  prevTxCache: Map<string, any>,
+  txDetails: RawTransaction,
+  inputs: TransactionInput[],
+  outputs: TransactionOutput[],
+  prevTxCache: Map<string, RawTransaction>,
   isSentTx: boolean,
   isConsolidationTx: boolean,
   updates: Record<string, unknown>,
@@ -134,9 +135,9 @@ export function populateFee(
  */
 export function populateCounterpartyAddress(
   tx: { counterpartyAddress: string | null; txid: string },
-  inputs: any[],
-  outputs: any[],
-  prevTxCache: Map<string, any>,
+  inputs: TransactionInput[],
+  outputs: TransactionOutput[],
+  prevTxCache: Map<string, RawTransaction>,
   walletAddressSet: Set<string>,
   isSentTx: boolean,
   isReceivedTx: boolean,
@@ -190,7 +191,7 @@ export function populateCounterpartyAddress(
  */
 export function populateAddressId(
   tx: { addressId: string | null; type: string },
-  txDetails: any,
+  txDetails: RawTransaction,
   walletAddresses: Array<{ id: string; address: string }>,
   walletAddressLookup: Map<string, string>,
   walletAddressSet: Set<string>,

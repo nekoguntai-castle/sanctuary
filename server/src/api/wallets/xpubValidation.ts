@@ -7,6 +7,7 @@
 import { Router } from 'express';
 import { asyncHandler } from '../../errors/errorHandler';
 import { InvalidInputError } from '../../errors/ApiError';
+import * as addressDerivation from '../../services/bitcoin/addressDerivation';
 
 const router = Router();
 
@@ -42,7 +43,6 @@ router.post('/validate-xpub', asyncHandler(async (req, res) => {
   }
 
   // Validate xpub
-  const addressDerivation = await import('../../services/bitcoin/addressDerivation');
   const validation = addressDerivation.validateXpub(xpub, network);
 
   if (!validation.valid) {

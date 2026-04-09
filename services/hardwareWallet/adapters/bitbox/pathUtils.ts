@@ -6,7 +6,10 @@
 
 import { constants } from 'bitbox02-api';
 import * as bitcoin from 'bitcoinjs-lib';
-import { normalizeDerivationPath } from '../../../../shared/utils/bitcoin';
+import { isTestnetPath } from '../../pathUtils';
+
+// Re-export for backward compatibility
+export { extractAccountPath } from '../../pathUtils';
 
 /**
  * Get script type constant from path or script type string
@@ -75,8 +78,7 @@ export const getXpubType = (path: string, isTestnet: boolean): number => {
  * Get coin constant from path
  */
 export const getCoin = (path: string): number => {
-  const isTestnet = path.includes("/1'") || path.includes("/1h");
-  return isTestnet
+  return isTestnetPath(path)
     ? constants.messages.BTCCoin.TBTC
     : constants.messages.BTCCoin.BTC;
 };
@@ -116,14 +118,3 @@ export const getOutputType = (address: string, network: bitcoin.Network): number
   return constants.messages.BTCOutputType.P2WPKH;
 };
 
-/**
- * Extract account path from full derivation path (first 4 components)
- */
-export const extractAccountPath = (fullPath: string): string => {
-  const normalized = normalizeDerivationPath(fullPath);
-  const parts = normalized.split('/');
-  if (parts.length >= 4) {
-    return parts.slice(0, 4).join('/');
-  }
-  return normalized;
-};

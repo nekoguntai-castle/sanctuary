@@ -1,6 +1,7 @@
 import React from 'react';
 import { Loader2, CheckCircle, XCircle } from 'lucide-react';
 import { Button } from '../ui/Button';
+import { Input } from '../ui/Input';
 import type { NetworkColors, PresetServer } from './types';
 
 interface SingletonConfigProps {
@@ -30,21 +31,21 @@ export const SingletonConfig: React.FC<SingletonConfigProps> = ({
     <div className="grid grid-cols-2 gap-4">
       <div className="col-span-2 sm:col-span-1">
         <label className="block text-sm font-medium text-sanctuary-700 dark:text-sanctuary-300 mb-1">Host</label>
-        <input
+        <Input
           type="text"
           value={singletonHost}
           onChange={(e) => onUpdateConfig('singletonHost', e.target.value)}
-          className="w-full px-3 py-2 surface-muted border border-sanctuary-200 dark:border-sanctuary-700 rounded-md text-sm"
+          className="text-sm"
           placeholder="electrum.example.com"
         />
       </div>
       <div>
         <label className="block text-sm font-medium text-sanctuary-700 dark:text-sanctuary-300 mb-1">Port</label>
-        <input
+        <Input
           type="number"
           value={singletonPort}
           onChange={(e) => onUpdateConfig('singletonPort', parseInt(e.target.value, 10) || 50002)}
-          className="w-full px-3 py-2 surface-muted border border-sanctuary-200 dark:border-sanctuary-700 rounded-md text-sm"
+          className="text-sm"
         />
       </div>
     </div>

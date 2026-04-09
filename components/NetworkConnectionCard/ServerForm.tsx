@@ -1,6 +1,7 @@
 import React from 'react';
 import { Loader2 } from 'lucide-react';
 import { Button } from '../ui/Button';
+import { Input } from '../ui/Input';
 import type { NetworkColors, PresetServer, NewServerState } from './types';
 
 interface ServerFormProps {
@@ -36,32 +37,32 @@ export const ServerForm: React.FC<ServerFormProps> = ({
     <div className="grid grid-cols-2 gap-3">
       <div className="col-span-2">
         <label className="block text-xs font-medium text-sanctuary-500 mb-1">Label</label>
-        <input
+        <Input
           type="text"
           value={newServer.label}
           onChange={(e) => onSetNewServer({ ...newServer, label: e.target.value })}
-          className="w-full px-3 py-2 surface-muted border border-sanctuary-200 dark:border-sanctuary-700 rounded-md text-sm"
+          className="text-sm"
           placeholder="My Server"
         />
       </div>
       <div>
         <label className="block text-xs font-medium text-sanctuary-500 mb-1">Host</label>
-        <input
+        <Input
           type="text"
           value={newServer.host}
           onChange={(e) => onSetNewServer({ ...newServer, host: e.target.value })}
-          className="w-full px-3 py-2 surface-muted border border-sanctuary-200 dark:border-sanctuary-700 rounded-md text-sm"
+          className="text-sm"
           placeholder="electrum.example.com"
         />
       </div>
       <div className="flex space-x-2">
         <div className="flex-1">
           <label className="block text-xs font-medium text-sanctuary-500 mb-1">Port</label>
-          <input
+          <Input
             type="number"
             value={newServer.port}
             onChange={(e) => onSetNewServer({ ...newServer, port: parseInt(e.target.value, 10) || 50002 })}
-            className="w-full px-3 py-2 surface-muted border border-sanctuary-200 dark:border-sanctuary-700 rounded-md text-sm"
+            className="text-sm"
           />
         </div>
         <div>

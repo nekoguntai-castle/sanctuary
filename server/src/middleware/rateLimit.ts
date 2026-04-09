@@ -289,16 +289,16 @@ export function combineRateLimits(...middlewares: RequestHandler[]): RequestHand
       let error: Error | undefined;
 
       await new Promise<void>((resolve) => {
-        middleware(req, res, (err?: any) => {
+        middleware(req, res, ((err?: unknown) => {
           if (err) {
-            error = err;
+            error = err instanceof Error ? err : new Error(String(err));
           }
           // Check if response was already sent (rate limited)
           if (res.headersSent) {
             blocked = true;
           }
           resolve();
-        });
+        }) as NextFunction);
       });
 
       if (blocked) {
