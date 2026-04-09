@@ -9,6 +9,7 @@ import type { ImportFormatHandler, FormatDetectionResult, ImportParseResult } fr
 import { parseDescriptorForImport } from '../../bitcoin/descriptorParser';
 import { WalletExportDetectionSchema } from '../schemas';
 import { createLogger } from '../../../utils/logger';
+import { safeJsonParseUntyped } from '../../../utils/safeJson';
 
 const log = createLogger('IMPORT:WALLET_EXPORT');
 
@@ -27,34 +28,29 @@ export const walletExportHandler: ImportFormatHandler = {
       return { detected: false, confidence: 0 };
     }
 
-    try {
-      const json = JSON.parse(trimmed);
-      const result = WalletExportDetectionSchema.safeParse(json);
-
-      if (result.success) {
-        // High confidence if it has descriptor and other expected fields
-        const hasLabel = 'label' in json || 'name' in json;
-        const hasKeystores = 'keystores' in json;
-        const confidence = 80 + (hasLabel ? 5 : 0) + (hasKeystores ? 10 : 0);
-        return { detected: true, confidence };
-      }
-
-      return { detected: false, confidence: 0 };
-    } catch (error) {
-      log.debug('Failed to parse input as wallet export JSON', { error: String(error) });
+    const json = safeJsonParseUntyped<Record<string, unknown> | null>(trimmed, null, 'wallet export detection');
+    if (!json) {
       return { detected: false, confidence: 0 };
     }
+
+    const result = WalletExportDetectionSchema.safeParse(json);
+    if (result.success) {
+      // High confidence if it has descriptor and other expected fields
+      const hasLabel = 'label' in json || 'name' in json;
+      const hasKeystores = 'keystores' in json;
+      const confidence = 80 + (hasLabel ? 5 : 0) + (hasKeystores ? 10 : 0);
+      return { detected: true, confidence };
+    }
+
+    return { detected: false, confidence: 0 };
   },
 
   parse(input: string): ImportParseResult {
-    let json: Record<string, unknown>;
-    try {
-      json = JSON.parse(input.trim());
-    } catch (error) {
-      log.debug('Invalid JSON in wallet export parse', { error: String(error) });
+    const json = safeJsonParseUntyped<Record<string, unknown> | null>(input.trim(), null, 'wallet export parse');
+    if (!json || typeof json.descriptor !== 'string') {
       throw new Error('Invalid JSON in wallet export input');
     }
-    const parsed = parseDescriptorForImport(json.descriptor as string);
+    const parsed = parseDescriptorForImport(json.descriptor);
 
     return {
       parsed,
@@ -63,12 +59,8 @@ export const walletExportHandler: ImportFormatHandler = {
   },
 
   extractName(input: string): string | undefined {
-    try {
-      const json = JSON.parse(input.trim());
-      return json.label || json.name;
-    } catch (error) {
-      log.debug('Failed to extract wallet export name', { error: String(error) });
-      return undefined;
-    }
+    const json = safeJsonParseUntyped<Record<string, unknown> | null>(input.trim(), null, 'wallet export name extraction');
+    if (!json) return undefined;
+    return (json.label || json.name) as string | undefined;
   },
 };

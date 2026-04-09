@@ -13,6 +13,7 @@ import type {
 } from '../bitcoin/descriptorParser';
 import { parseImportInput } from '../import';
 import { getErrorMessage } from '../../utils/errors';
+import { safeJsonParseUntyped } from '../../utils/safeJson';
 import * as descriptorBuilder from '../bitcoin/descriptorBuilder';
 import * as addressDerivation from '../bitcoin/addressDerivation';
 import { createLogger } from '../../utils/logger';
@@ -329,11 +330,8 @@ export async function importWallet(
   // For wallet_export format (JSON with descriptor field), extract and use the descriptor
   if (parseResult.format === 'wallet_export') {
     // Parse the JSON to get the descriptor
-    let walletExport: { descriptor: string };
-    try {
-      walletExport = JSON.parse(trimmed);
-    } catch (error) {
-      log.debug('Failed to parse wallet export JSON', { error: String(error) });
+    const walletExport = safeJsonParseUntyped<{ descriptor?: string } | null>(trimmed, null, 'wallet export parse');
+    if (!walletExport || typeof walletExport.descriptor !== 'string') {
       throw new Error('Invalid JSON in wallet export data');
     }
     return importFromDescriptor(userId, {

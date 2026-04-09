@@ -40,6 +40,7 @@ import Redis from 'ioredis';
 import { EventEmitter } from 'events';
 import { createLogger } from '../utils/logger';
 import { getErrorMessage } from '../utils/errors';
+import { safeJsonParseUntyped } from '../utils/safeJson';
 import type { EventName, EventTypes, EventHandler } from './eventBus';
 
 const log = createLogger('INFRA:REDIS_EVENT_BUS');
@@ -92,27 +93,26 @@ export class RedisEventBus {
     });
 
     this.subscriber.on('pmessage', (_pattern, channel, message) => {
-      try {
-        const envelope: EventEnvelope = JSON.parse(message);
-
-        // Skip events from this instance (already handled locally)
-        if (envelope.instanceId === this.instanceId) {
-          return;
-        }
-
-        const eventName = channel.replace(CHANNEL_PREFIX, '');
-        this.metrics.received.set(eventName, (this.metrics.received.get(eventName) || 0) + 1);
-
-        log.debug('Received distributed event', {
-          event: eventName,
-          fromInstance: envelope.instanceId,
-        });
-
-        // Emit to local handlers
-        this.localEmitter.emit(eventName, envelope.data);
-      } catch (error) {
-        log.error('Failed to process distributed event', { error: getErrorMessage(error), message });
+      const envelope = safeJsonParseUntyped<EventEnvelope | null>(message, null, 'distributed event');
+      if (!envelope) {
+        return;
       }
+
+      // Skip events from this instance (already handled locally)
+      if (envelope.instanceId === this.instanceId) {
+        return;
+      }
+
+      const eventName = channel.replace(CHANNEL_PREFIX, '');
+      this.metrics.received.set(eventName, (this.metrics.received.get(eventName) || 0) + 1);
+
+      log.debug('Received distributed event', {
+        event: eventName,
+        fromInstance: envelope.instanceId,
+      });
+
+      // Emit to local handlers
+      this.localEmitter.emit(eventName, envelope.data);
     });
 
     this.subscriber.on('error', (err) => {

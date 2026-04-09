@@ -9,6 +9,7 @@ import type { ImportFormatHandler, FormatDetectionResult, ImportParseResult } fr
 import { parseJsonImport, type JsonImportConfig } from '../../bitcoin/descriptorParser';
 import { JsonImportConfigSchema, JsonConfigDetectionSchema } from '../schemas';
 import { createLogger } from '../../../utils/logger';
+import { safeJsonParseUntyped } from '../../../utils/safeJson';
 
 const log = createLogger('IMPORT:JSON_CONFIG');
 
@@ -27,40 +28,35 @@ export const jsonConfigHandler: ImportFormatHandler = {
       return { detected: false, confidence: 0 };
     }
 
-    try {
-      const json = JSON.parse(trimmed);
-      const result = JsonConfigDetectionSchema.safeParse(json);
-
-      if (result.success) {
-        // Check for more specific fields to increase confidence
-        const hasType = 'type' in json;
-        const hasScriptType = 'scriptType' in json;
-        const hasNetwork = 'network' in json;
-        const hasQuorum = 'quorum' in json;
-
-        const confidence =
-          50 +
-          (hasType ? 10 : 0) +
-          (hasScriptType ? 10 : 0) +
-          (hasNetwork ? 10 : 0) +
-          (hasQuorum ? 10 : 0);
-
-        return { detected: true, confidence };
-      }
-
-      return { detected: false, confidence: 0 };
-    } catch (error) {
-      log.debug('Failed to parse input as JSON config', { error: String(error) });
+    const json = safeJsonParseUntyped<Record<string, unknown> | null>(trimmed, null, 'json config detection');
+    if (!json) {
       return { detected: false, confidence: 0 };
     }
+
+    const result = JsonConfigDetectionSchema.safeParse(json);
+    if (result.success) {
+      // Check for more specific fields to increase confidence
+      const hasType = 'type' in json;
+      const hasScriptType = 'scriptType' in json;
+      const hasNetwork = 'network' in json;
+      const hasQuorum = 'quorum' in json;
+
+      const confidence =
+        50 +
+        (hasType ? 10 : 0) +
+        (hasScriptType ? 10 : 0) +
+        (hasNetwork ? 10 : 0) +
+        (hasQuorum ? 10 : 0);
+
+      return { detected: true, confidence };
+    }
+
+    return { detected: false, confidence: 0 };
   },
 
   parse(input: string): ImportParseResult {
-    let json: unknown;
-    try {
-      json = JSON.parse(input.trim());
-    } catch (error) {
-      log.debug('Invalid JSON in config parse', { error: String(error) });
+    const json = safeJsonParseUntyped<unknown>(input.trim(), null, 'json config parse');
+    if (json === null) {
       throw new Error('Invalid JSON in configuration input');
     }
     const validated = JsonImportConfigSchema.parse(json);
@@ -86,12 +82,8 @@ export const jsonConfigHandler: ImportFormatHandler = {
   },
 
   extractName(input: string): string | undefined {
-    try {
-      const json = JSON.parse(input.trim());
-      return json.name;
-    } catch (error) {
-      log.debug('Failed to extract JSON config name', { error: String(error) });
-      return undefined;
-    }
+    const json = safeJsonParseUntyped<Record<string, unknown> | null>(input.trim(), null, 'json config name extraction');
+    if (!json) return undefined;
+    return json.name as string | undefined;
   },
 };

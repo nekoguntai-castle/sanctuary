@@ -9,6 +9,7 @@ import type { ImportFormatHandler, FormatDetectionResult, ImportParseResult } fr
 import { parseColdcardExport } from '../../bitcoin/descriptorParser';
 import { ColdcardDetectionSchema } from '../schemas';
 import { createLogger } from '../../../utils/logger';
+import { safeJsonParseUntyped } from '../../../utils/safeJson';
 
 const log = createLogger('IMPORT:COLDCARD');
 
@@ -27,56 +28,46 @@ export const coldcardHandler: ImportFormatHandler = {
       return { detected: false, confidence: 0 };
     }
 
-    try {
-      const json = JSON.parse(trimmed);
-      const result = ColdcardDetectionSchema.safeParse(json);
-
-      if (result.success) {
-        // High confidence if it has the expected Coldcard structure
-        // Nested format (standard single-sig export)
-        const hasNestedPaths =
-          json.bip84 || json.bip48_2 || json.bip49 || json.bip44;
-        // Flat format (generic multisig export)
-        const hasFlatPaths =
-          json.p2wsh || json.p2sh_p2wsh || json.p2sh;
-        return {
-          detected: true,
-          confidence: (hasNestedPaths || hasFlatPaths) ? 95 : 85,
-        };
-      }
-
-      return { detected: false, confidence: 0 };
-    } catch (error) {
-      log.debug('Failed to parse input as Coldcard JSON', { error: String(error) });
+    const json = safeJsonParseUntyped<Record<string, unknown> | null>(trimmed, null, 'coldcard detection');
+    if (!json) {
       return { detected: false, confidence: 0 };
     }
+
+    const result = ColdcardDetectionSchema.safeParse(json);
+    if (result.success) {
+      // High confidence if it has the expected Coldcard structure
+      // Nested format (standard single-sig export)
+      const hasNestedPaths =
+        json.bip84 || json.bip48_2 || json.bip49 || json.bip44;
+      // Flat format (generic multisig export)
+      const hasFlatPaths =
+        json.p2wsh || json.p2sh_p2wsh || json.p2sh;
+      return {
+        detected: true,
+        confidence: (hasNestedPaths || hasFlatPaths) ? 95 : 85,
+      };
+    }
+
+    return { detected: false, confidence: 0 };
   },
 
   parse(input: string): ImportParseResult {
-    let json: unknown;
-    try {
-      json = JSON.parse(input.trim());
-    } catch (error) {
-      log.debug('Invalid JSON in Coldcard export parse', { error: String(error) });
+    const json = safeJsonParseUntyped<Record<string, unknown> | null>(input.trim(), null, 'coldcard export parse');
+    if (!json) {
       throw new Error('Invalid JSON in Coldcard export input');
     }
-    const typedJson = json as Record<string, unknown>;
-    const { parsed, availablePaths } = parseColdcardExport(json as Parameters<typeof parseColdcardExport>[0]);
+    const { parsed, availablePaths } = parseColdcardExport(json as unknown as Parameters<typeof parseColdcardExport>[0]);
 
     return {
       parsed,
       availablePaths,
-      suggestedName: (typedJson.name || typedJson.label) as string | undefined,
+      suggestedName: (json.name || json.label) as string | undefined,
     };
   },
 
   extractName(input: string): string | undefined {
-    try {
-      const json = JSON.parse(input.trim());
-      return json.name || json.label;
-    } catch (error) {
-      log.debug('Failed to extract Coldcard export name', { error: String(error) });
-      return undefined;
-    }
+    const json = safeJsonParseUntyped<Record<string, unknown> | null>(input.trim(), null, 'coldcard name extraction');
+    if (!json) return undefined;
+    return (json.name || json.label) as string | undefined;
   },
 };

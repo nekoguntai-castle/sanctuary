@@ -10,6 +10,7 @@ import { parseJsonImport } from '../bitcoin/descriptorParser';
 import { resolveDevices } from './deviceResolution';
 import { createWalletTransaction } from './walletImportService';
 import { createLogger } from '../../utils/logger';
+import { safeJsonParseUntyped } from '../../utils/safeJson';
 import type { ImportWalletResult } from './types';
 
 const log = createLogger('WALLET_IMPORT:JSON');
@@ -27,11 +28,8 @@ export async function importFromJson(
 ): Promise<ImportWalletResult> {
   // Parse and validate JSON with Zod schema
   const { JsonImportConfigSchema } = await import('../import/schemas');
-  let parsedJson: unknown;
-  try {
-    parsedJson = JSON.parse(input.json);
-  } catch (error) {
-    log.debug('Failed to parse wallet import JSON', { error: String(error) });
+  const parsedJson = safeJsonParseUntyped<unknown>(input.json, null, 'wallet import JSON');
+  if (parsedJson === null) {
     throw new Error('Invalid JSON format in wallet import data');
   }
   const parseResult = JsonImportConfigSchema.safeParse(parsedJson);

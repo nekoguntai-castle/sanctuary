@@ -11,6 +11,7 @@ import { asyncHandler } from '../../errors/errorHandler';
 import { InvalidInputError } from '../../errors/ApiError';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
+import { safeJsonParseUntyped } from '../../utils/safeJson';
 import { SocksClient } from 'socks';
 
 const router = Router();
@@ -102,9 +103,9 @@ router.post('/proxy/test', authenticate, requireAdmin, asyncHandler(async (req, 
         req.on('error', reject);
       });
 
-      const parsed = JSON.parse(body) as { IsTor: boolean; IP: string };
-      isTorExit = parsed.IsTor;
-      exitIp = parsed.IP;
+      const parsed = safeJsonParseUntyped<{ IsTor?: boolean; IP?: string }>(body, {}, 'tor exit IP check');
+      isTorExit = parsed.IsTor ?? false;
+      exitIp = parsed.IP ?? 'unknown';
     } finally {
       clearTimeout(timer);
     }

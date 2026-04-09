@@ -6,6 +6,7 @@
  */
 
 import { createLogger } from '../../../utils/logger';
+import { safeJsonParseUntyped } from '../../../utils/safeJson';
 import { parseDescriptorForImport, extractDescriptorFromText, isDescriptorTextFormat } from './descriptorParser';
 import { parseJsonImport, isWalletExportFormat } from './jsonParser';
 import { isColdcardExportFormat, parseColdcardExport } from './coldcardParser';
@@ -30,43 +31,38 @@ export function parseImportInput(input: string): {
 
   // Try to detect if it's JSON
   if (trimmed.startsWith('{')) {
-    try {
-      const json = JSON.parse(trimmed);
-
-      // Check if it's a wallet export format (has descriptor field)
-      if (isWalletExportFormat(json)) {
-        const parsed = parseDescriptorForImport(json.descriptor);
-        return {
-          format: 'wallet_export',
-          parsed,
-          suggestedName: json.label || json.name,
-        };
-      }
-
-      // Check if it's a Coldcard JSON export (has xfp and bip paths)
-      if (isColdcardExportFormat(json)) {
-        const { parsed, availablePaths } = parseColdcardExport(json);
-        return {
-          format: 'coldcard',
-          parsed,
-          availablePaths,
-        };
-      }
-
-      // Otherwise treat as our JSON config format
-      const config = json as JsonImportConfig;
-      return {
-        format: 'json',
-        parsed: parseJsonImport(config),
-        originalDevices: config.devices,
-      };
-    } catch (e) {
-      // If JSON parsing fails, try as descriptor
-      if (e instanceof SyntaxError) {
-        throw new Error('Invalid JSON format');
-      }
-      throw e;
+    const json = safeJsonParseUntyped<Record<string, unknown> | null>(trimmed, null, 'import input');
+    if (json === null) {
+      throw new Error('Invalid JSON format');
     }
+
+    // Check if it's a wallet export format (has descriptor field)
+    if (isWalletExportFormat(json)) {
+      const parsed = parseDescriptorForImport(json.descriptor as string);
+      return {
+        format: 'wallet_export',
+        parsed,
+        suggestedName: (json.label || json.name) as string | undefined,
+      };
+    }
+
+    // Check if it's a Coldcard JSON export (has xfp and bip paths)
+    if (isColdcardExportFormat(json)) {
+      const { parsed, availablePaths } = parseColdcardExport(json as Parameters<typeof parseColdcardExport>[0]);
+      return {
+        format: 'coldcard',
+        parsed,
+        availablePaths,
+      };
+    }
+
+    // Otherwise treat as our JSON config format
+    const config = json as unknown as JsonImportConfig;
+    return {
+      format: 'json',
+      parsed: parseJsonImport(config),
+      originalDevices: config.devices,
+    };
   }
 
   // Check if it's BlueWallet/Coldcard text format (has Policy: M of N)
