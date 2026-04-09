@@ -48,7 +48,7 @@ export function parseImportInput(input: string): {
 
     // Check if it's a Coldcard JSON export (has xfp and bip paths)
     if (isColdcardExportFormat(json)) {
-      const { parsed, availablePaths } = parseColdcardExport(json as Parameters<typeof parseColdcardExport>[0]);
+      const { parsed, availablePaths } = parseColdcardExport(json);
       return {
         format: 'coldcard',
         parsed,

@@ -69,10 +69,10 @@ describe('setTruncationHeaders', () => {
     expect(res.setHeader).not.toHaveBeenCalled();
   });
 
-  it('uses custom default limit in header value', () => {
+  it('uses effectiveLimit from pagination result in header value', () => {
     const res = mockResponse();
     const pagination = { effectiveLimit: 500, effectiveOffset: 0, hasPagination: false };
-    setTruncationHeaders(res, 500, pagination, 500);
+    setTruncationHeaders(res, 500, pagination);
     expect(res.setHeader).toHaveBeenCalledWith('X-Result-Limit', '500');
     expect(res.setHeader).toHaveBeenCalledWith('X-Result-Truncated', 'true');
   });

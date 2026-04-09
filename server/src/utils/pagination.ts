@@ -45,10 +45,9 @@ export function setTruncationHeaders(
   res: Response,
   resultLength: number,
   pagination: PaginationResult,
-  defaultLimit = DEFAULT_UNPAGED_LIMIT,
 ): void {
   if (!pagination.hasPagination) {
-    res.setHeader('X-Result-Limit', String(defaultLimit));
-    res.setHeader('X-Result-Truncated', resultLength >= defaultLimit ? 'true' : 'false');
+    res.setHeader('X-Result-Limit', String(pagination.effectiveLimit));
+    res.setHeader('X-Result-Truncated', resultLength >= pagination.effectiveLimit ? 'true' : 'false');
   }
 }
