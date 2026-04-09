@@ -77,6 +77,10 @@ export const isBip48MultisigPath = (path: string): boolean => {
 /**
  * Extract the account-level path prefix for unlocking.
  * e.g., "m/48'/0'/0'/2'/0/5" -> "m/48'/0'/0'/2'"
+ *
+ * NOTE: This differs from shared extractAccountPath — it returns 4 segments
+ * AFTER m/ (purpose/coin/account/script), which is needed for BIP-48 paths
+ * where the script type suffix is part of the account identity.
  * @internal Exported for testing
  */
 export const getAccountPathPrefix = (path: string): string => {

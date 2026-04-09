@@ -1,0 +1,35 @@
+import { vi } from 'vitest';
+/**
+ * Shared mock setup for Auth API Route tests.
+ *
+ * This file is imported by auth.routes.registration.test.ts and auth.routes.2fa.test.ts
+ * to avoid duplicating the mock declarations (vi.mock calls must be at the top level
+ * of each test file, but the factory functions can be shared via re-exports).
+ */
+
+import { mockPrismaClient, resetPrismaMocks } from '../../mocks/prisma';
+import express from 'express';
+import { errorHandler } from '../../../src/errors/errorHandler';
+
+// Re-export so consuming test files don't need to import from mocks/prisma directly
+export { mockPrismaClient, resetPrismaMocks };
+
+// ----- Mock factory values (shared across route test files) -----
+
+export const mockIsVerificationRequired = vi.fn().mockResolvedValue(true);
+export const mockIsSmtpConfigured = vi.fn().mockResolvedValue(false);
+export const mockCreateVerificationToken = vi.fn().mockResolvedValue({ success: false });
+
+// ----- createAuthTestApp -----
+
+export const createAuthTestApp = async () => {
+  const app = express();
+  app.use(express.json());
+
+  // Import router dynamically after mocks
+  const authModule = await import('../../../src/api/auth');
+  app.use('/api/v1/auth', authModule.default);
+  app.use(errorHandler);
+
+  return app;
+};
