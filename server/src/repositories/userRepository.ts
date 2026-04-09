@@ -336,6 +336,16 @@ export async function findWithAutopilotPreferences() {
   });
 }
 
+/**
+ * Find all users with a custom select shape.
+ */
+export async function findAllWithSelect<T extends Prisma.UserSelect>(
+  select: T,
+  where?: Prisma.UserWhereInput,
+) {
+  return prisma.user.findMany({ where, select });
+}
+
 // Export as namespace
 export const userRepository = {
   findById,
@@ -359,6 +369,7 @@ export const userRepository = {
   emailExists,
   findByWalletAccess,
   findAllWithWalletAssociations,
+  findAllWithSelect,
   findWithAutopilotPreferences,
 };
 

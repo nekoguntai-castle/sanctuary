@@ -2,24 +2,26 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Use vi.hoisted() so these are available in hoisted vi.mock() factories
 const {
-  mockFindManyUsers,
-  mockFindManyWallets,
+  mockFindAllWithSelectUsers,
+  mockFindAllWithSelectWallets,
   mockGetAllHealth,
   mockGetByCategory,
   collectorMap,
 } = vi.hoisted(() => ({
-  mockFindManyUsers: vi.fn(),
-  mockFindManyWallets: vi.fn(),
+  mockFindAllWithSelectUsers: vi.fn(),
+  mockFindAllWithSelectWallets: vi.fn(),
   mockGetAllHealth: vi.fn(),
   mockGetByCategory: vi.fn(),
   collectorMap: new Map<string, (ctx: any) => Promise<Record<string, unknown>>>(),
 }));
 
-// Mock prisma
-vi.mock('../../../../src/models/prisma', () => ({
-  default: {
-    user: { findMany: (...args: unknown[]) => mockFindManyUsers(...args) },
-    wallet: { findMany: (...args: unknown[]) => mockFindManyWallets(...args) },
+// Mock repositories
+vi.mock('../../../../src/repositories', () => ({
+  userRepository: {
+    findAllWithSelect: (...args: unknown[]) => mockFindAllWithSelectUsers(...args),
+  },
+  walletRepository: {
+    findAllWithSelect: (...args: unknown[]) => mockFindAllWithSelectWallets(...args),
   },
 }));
 
@@ -59,10 +61,10 @@ function makeContext(): CollectorContext {
 
 describe('telegram collector', () => {
   beforeEach(() => {
-    mockFindManyUsers.mockResolvedValue([]);
+    mockFindAllWithSelectUsers.mockResolvedValue([]);
     mockGetAllHealth.mockReturnValue([]);
     mockGetByCategory.mockReturnValue([]);
-    mockFindManyWallets.mockResolvedValue([]);
+    mockFindAllWithSelectWallets.mockResolvedValue([]);
   });
 
   const getTelegramCollector = () => {
@@ -76,7 +78,7 @@ describe('telegram collector', () => {
   });
 
   it('returns empty state when no users exist', async () => {
-    mockFindManyUsers.mockResolvedValue([]);
+    mockFindAllWithSelectUsers.mockResolvedValue([]);
     const result = await getTelegramCollector()(makeContext());
 
     expect(result.users).toEqual([]);
@@ -86,7 +88,7 @@ describe('telegram collector', () => {
   });
 
   it('anonymizes user and wallet IDs', async () => {
-    mockFindManyUsers.mockResolvedValue([{
+    mockFindAllWithSelectUsers.mockResolvedValue([{
       id: 'user-real-id',
       preferences: {
         telegram: {
@@ -107,7 +109,7 @@ describe('telegram collector', () => {
       wallets: [{ walletId: 'wallet-real-id' }],
       groupMemberships: [],
     }]);
-    mockFindManyWallets.mockResolvedValue([{ id: 'wallet-real-id', type: 'multi_sig' }]);
+    mockFindAllWithSelectWallets.mockResolvedValue([{ id: 'wallet-real-id', type: 'multi_sig' }]);
 
     const ctx = makeContext();
     const result = await getTelegramCollector()(ctx);
@@ -131,7 +133,7 @@ describe('telegram collector', () => {
   });
 
   it('detects global enabled but missing botToken', async () => {
-    mockFindManyUsers.mockResolvedValue([{
+    mockFindAllWithSelectUsers.mockResolvedValue([{
       id: 'user-1',
       preferences: {
         telegram: { enabled: true, botToken: '', chatId: '123', wallets: {} },
@@ -146,7 +148,7 @@ describe('telegram collector', () => {
   });
 
   it('detects global enabled but missing chatId', async () => {
-    mockFindManyUsers.mockResolvedValue([{
+    mockFindAllWithSelectUsers.mockResolvedValue([{
       id: 'user-1',
       preferences: {
         telegram: { enabled: true, botToken: 'bot:abc', chatId: '', wallets: {} },
@@ -161,7 +163,7 @@ describe('telegram collector', () => {
   });
 
   it('detects wallet enabled but global disabled', async () => {
-    mockFindManyUsers.mockResolvedValue([{
+    mockFindAllWithSelectUsers.mockResolvedValue([{
       id: 'user-1',
       preferences: {
         telegram: {
@@ -174,7 +176,7 @@ describe('telegram collector', () => {
       wallets: [{ walletId: 'w1' }],
       groupMemberships: [],
     }]);
-    mockFindManyWallets.mockResolvedValue([{ id: 'w1', type: 'single_sig' }]);
+    mockFindAllWithSelectWallets.mockResolvedValue([{ id: 'w1', type: 'single_sig' }]);
 
     const result = await getTelegramCollector()(makeContext());
     const issues = (result.diagnostics as any).commonIssues as string[];
@@ -182,7 +184,7 @@ describe('telegram collector', () => {
   });
 
   it('detects orphaned wallet setting (no access)', async () => {
-    mockFindManyUsers.mockResolvedValue([{
+    mockFindAllWithSelectUsers.mockResolvedValue([{
       id: 'user-1',
       preferences: {
         telegram: {
@@ -195,7 +197,7 @@ describe('telegram collector', () => {
       wallets: [],
       groupMemberships: [],
     }]);
-    mockFindManyWallets.mockResolvedValue([]);
+    mockFindAllWithSelectWallets.mockResolvedValue([]);
 
     const result = await getTelegramCollector()(makeContext());
     const issues = (result.diagnostics as any).commonIssues as string[];
@@ -203,7 +205,7 @@ describe('telegram collector', () => {
   });
 
   it('detects telegram circuit breaker open', async () => {
-    mockFindManyUsers.mockResolvedValue([]);
+    mockFindAllWithSelectUsers.mockResolvedValue([]);
     mockGetAllHealth.mockReturnValue([
       { name: 'telegram-api', state: 'open', failures: 5 },
     ]);
@@ -214,7 +216,7 @@ describe('telegram collector', () => {
   });
 
   it('detects DLQ telegram entries', async () => {
-    mockFindManyUsers.mockResolvedValue([]);
+    mockFindAllWithSelectUsers.mockResolvedValue([]);
     mockGetByCategory.mockReturnValue([
       { id: 'dlq-1', category: 'telegram' },
       { id: 'dlq-2', category: 'telegram' },
@@ -227,7 +229,7 @@ describe('telegram collector', () => {
   });
 
   it('includes wallet-user associations', async () => {
-    mockFindManyUsers.mockResolvedValue([
+    mockFindAllWithSelectUsers.mockResolvedValue([
       {
         id: 'user-1',
         preferences: null,
@@ -241,7 +243,7 @@ describe('telegram collector', () => {
         groupMemberships: [{ group: { wallets: [{ id: 'w2' }] } }],
       },
     ]);
-    mockFindManyWallets.mockResolvedValue([
+    mockFindAllWithSelectWallets.mockResolvedValue([
       { id: 'w1', type: 'multi_sig' },
       { id: 'w2', type: 'single_sig' },
     ]);
@@ -265,7 +267,7 @@ describe('telegram collector', () => {
   });
 
   it('defaults undefined wallet settings fields to false', async () => {
-    mockFindManyUsers.mockResolvedValue([{
+    mockFindAllWithSelectUsers.mockResolvedValue([{
       id: 'user-1',
       preferences: {
         telegram: {
@@ -280,7 +282,7 @@ describe('telegram collector', () => {
       wallets: [{ walletId: 'w1' }],
       groupMemberships: [],
     }]);
-    mockFindManyWallets.mockResolvedValue([{ id: 'w1', type: 'single_sig' }]);
+    mockFindAllWithSelectWallets.mockResolvedValue([{ id: 'w1', type: 'single_sig' }]);
 
     const result = await getTelegramCollector()(makeContext());
     const ws = (result.users as any[])[0].walletSettings[0];
@@ -292,7 +294,7 @@ describe('telegram collector', () => {
   });
 
   it('handles wallet accessible via both direct and group access', async () => {
-    mockFindManyUsers.mockResolvedValue([
+    mockFindAllWithSelectUsers.mockResolvedValue([
       {
         id: 'user-1',
         preferences: null,
@@ -300,7 +302,7 @@ describe('telegram collector', () => {
         groupMemberships: [{ group: { wallets: [{ id: 'shared-w' }] } }],
       },
     ]);
-    mockFindManyWallets.mockResolvedValue([{ id: 'shared-w', type: 'multi_sig' }]);
+    mockFindAllWithSelectWallets.mockResolvedValue([{ id: 'shared-w', type: 'multi_sig' }]);
 
     const result = await getTelegramCollector()(makeContext());
     const assocs = result.walletUserAssociations as any[];
@@ -311,7 +313,7 @@ describe('telegram collector', () => {
   });
 
   it('returns "unknown" walletType when wallet is not in the database', async () => {
-    mockFindManyUsers.mockResolvedValue([{
+    mockFindAllWithSelectUsers.mockResolvedValue([{
       id: 'user-1',
       preferences: {
         telegram: {
@@ -333,7 +335,7 @@ describe('telegram collector', () => {
       groupMemberships: [],
     }]);
     // Return empty wallet list — missing-wallet is not found
-    mockFindManyWallets.mockResolvedValue([]);
+    mockFindAllWithSelectWallets.mockResolvedValue([]);
 
     const result = await getTelegramCollector()(makeContext());
     const users = result.users as any[];

@@ -5,25 +5,23 @@
  * Includes type, network, sync status, and counts — no addresses or xpubs.
  */
 
-import prisma from '../../../models/prisma';
+import { walletRepository } from '../../../repositories';
 import { registerCollector } from './registry';
 import type { CollectorContext } from '../types';
 
 registerCollector('wallets', async (context: CollectorContext) => {
-  const wallets = await prisma.wallet.findMany({
-    select: {
-      id: true,
-      type: true,
-      network: true,
-      lastSyncStatus: true,
-      lastSyncedAt: true,
-      lastSyncError: true,
-      syncInProgress: true,
-      _count: {
-        select: {
-          addresses: true,
-          transactions: true,
-        },
+  const wallets = await walletRepository.findAllWithSelect({
+    id: true,
+    type: true,
+    network: true,
+    lastSyncStatus: true,
+    lastSyncedAt: true,
+    lastSyncError: true,
+    syncInProgress: true,
+    _count: {
+      select: {
+        addresses: true,
+        transactions: true,
       },
     },
   });

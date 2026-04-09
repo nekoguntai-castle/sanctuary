@@ -6,7 +6,7 @@
  * automatically detecting common misconfiguration issues.
  */
 
-import prisma from '../../../models/prisma';
+import { userRepository, walletRepository } from '../../../repositories';
 import { circuitBreakerRegistry } from '../../circuitBreaker';
 import { deadLetterQueue } from '../../deadLetterQueue';
 import { registerCollector } from './registry';
@@ -17,17 +17,15 @@ registerCollector('telegram', async (context: CollectorContext) => {
   const commonIssues: string[] = [];
 
   // 1. Get all users with their preferences and wallet relationships
-  const users = await prisma.user.findMany({
-    select: {
-      id: true,
-      preferences: true,
-      wallets: { select: { walletId: true } },
-      groupMemberships: {
-        select: {
-          group: {
-            select: {
-              wallets: { select: { id: true } },
-            },
+  const users = await userRepository.findAllWithSelect({
+    id: true,
+    preferences: true,
+    wallets: { select: { walletId: true } },
+    groupMemberships: {
+      select: {
+        group: {
+          select: {
+            wallets: { select: { id: true } },
           },
         },
       },
@@ -58,10 +56,10 @@ registerCollector('telegram', async (context: CollectorContext) => {
   }
 
   // 3. Get wallet types for context (uses allWalletIds from walletUserCounts)
-  const wallets = await prisma.wallet.findMany({
-    where: { id: { in: [...walletUserCounts.keys()] } },
-    select: { id: true, type: true },
-  });
+  const wallets = await walletRepository.findAllWithSelect(
+    { id: true, type: true },
+    { id: { in: [...walletUserCounts.keys()] } },
+  );
   const walletTypeMap = new Map(wallets.map(w => [w.id, w.type]));
 
   // 4. Analyze each user

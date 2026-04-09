@@ -9,10 +9,10 @@ import prisma from '../models/prisma';
 import type { OwnershipTransfer, Prisma } from '../generated/prisma/client';
 import { createLogger } from '../utils/logger';
 
+import type { PrismaTxClient } from '../models/prisma';
 const log = createLogger('TRANSFER:REPO');
 
-/** Prisma transaction client type */
-type PrismaTx = Omit<typeof prisma, '$connect' | '$disconnect' | '$transaction' | '$extends'>;
+type PrismaTx = PrismaTxClient;
 
 const userSelect = { id: true, username: true } as const;
 

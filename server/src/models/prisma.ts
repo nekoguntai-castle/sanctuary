@@ -374,4 +374,10 @@ process.on('beforeExit', async () => {
   await prisma.$disconnect();
 });
 
+/**
+ * Prisma interactive-transaction client type.
+ * Use this for functions that receive the `tx` parameter inside `prisma.$transaction()`.
+ */
+export type PrismaTxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
+
 export default prisma;

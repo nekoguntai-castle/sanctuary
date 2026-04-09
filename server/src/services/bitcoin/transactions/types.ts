@@ -5,12 +5,8 @@
  */
 
 import * as bitcoin from 'bitcoinjs-lib';
-import prisma from '../../../models/prisma';
 
-/**
- * Prisma transaction client type for use in nested $transaction blocks.
- */
-export type PrismaTxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
+export type { PrismaTxClient } from '../../../models/prisma';
 
 /**
  * Input metadata for transaction storage

@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockFindMany, collectorMap } = vi.hoisted(() => ({
-  mockFindMany: vi.fn(),
+const { mockFindAllWithSelect, collectorMap } = vi.hoisted(() => ({
+  mockFindAllWithSelect: vi.fn(),
   collectorMap: new Map<string, (ctx: any) => Promise<Record<string, unknown>>>(),
 }));
 
-vi.mock('../../../../src/models/prisma', () => ({
-  default: {
-    wallet: { findMany: (...args: unknown[]) => mockFindMany(...args) },
+vi.mock('../../../../src/repositories', () => ({
+  walletRepository: {
+    findAllWithSelect: (...args: unknown[]) => mockFindAllWithSelect(...args),
   },
 }));
 
@@ -27,7 +27,7 @@ function makeContext(): CollectorContext {
 
 describe('wallets collector', () => {
   beforeEach(() => {
-    mockFindMany.mockResolvedValue([]);
+    mockFindAllWithSelect.mockResolvedValue([]);
   });
 
   const getCollector = () => {
@@ -41,7 +41,7 @@ describe('wallets collector', () => {
   });
 
   it('anonymizes wallet IDs', async () => {
-    mockFindMany.mockResolvedValue([{
+    mockFindAllWithSelect.mockResolvedValue([{
       id: 'real-wallet-uuid-123',
       type: 'multi_sig',
       network: 'mainnet',
@@ -69,7 +69,7 @@ describe('wallets collector', () => {
 
   it('does not leak raw wallet IDs anywhere in output', async () => {
     const realId = 'uuid-that-should-not-appear';
-    mockFindMany.mockResolvedValue([{
+    mockFindAllWithSelect.mockResolvedValue([{
       id: realId,
       type: 'single_sig',
       network: 'testnet',
