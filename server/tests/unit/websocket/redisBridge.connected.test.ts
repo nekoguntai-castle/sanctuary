@@ -224,6 +224,25 @@ describe('RedisWebSocketBridge (connected mode)', () => {
     await shutdownRedisBridge();
   });
 
+  it('catches and logs errors thrown by broadcastHandler', async () => {
+    const { initializeRedisBridge, redisBridge, shutdownRedisBridge, mocks } = await loadBridgeWithMocks();
+    const handler = vi.fn(() => { throw new Error('handler exploded'); });
+    redisBridge.setBroadcastHandler(handler);
+    await initializeRedisBridge();
+
+    const envelope = {
+      event: { type: 'sync', data: { source: 'remote' } },
+      instanceId: 'remote-instance',
+      timestamp: Date.now(),
+    };
+    mocks.subscriber.emit('message', 'sanctuary:ws:broadcast', JSON.stringify(envelope));
+
+    expect(handler).toHaveBeenCalled();
+    expect(redisBridge.getMetrics().errors).toBe(1);
+
+    await shutdownRedisBridge();
+  });
+
   it('increments error metrics on publisher/subscriber error events', async () => {
     const { initializeRedisBridge, redisBridge, shutdownRedisBridge, mocks } = await loadBridgeWithMocks();
     await initializeRedisBridge();

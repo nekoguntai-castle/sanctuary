@@ -183,6 +183,7 @@ describe('RedisEventBus', () => {
     expect(mockLogError).toHaveBeenCalled();
   });
 
+
   it('handles publish failures in emit()', async () => {
     publisher.publish.mockRejectedValueOnce(new Error('publish failed'));
 

@@ -93,26 +93,30 @@ export class RedisEventBus {
     });
 
     this.subscriber.on('pmessage', (_pattern, channel, message) => {
-      const envelope = safeJsonParseUntyped<EventEnvelope | null>(message, null, 'distributed event');
-      if (!envelope) {
-        return;
+      try {
+        const envelope = safeJsonParseUntyped<EventEnvelope | null>(message, null, 'distributed event');
+        if (!envelope) {
+          return;
+        }
+
+        // Skip events from this instance (already handled locally)
+        if (envelope.instanceId === this.instanceId) {
+          return;
+        }
+
+        const eventName = channel.replace(CHANNEL_PREFIX, '');
+        this.metrics.received.set(eventName, (this.metrics.received.get(eventName) || 0) + 1);
+
+        log.debug('Received distributed event', {
+          event: eventName,
+          fromInstance: envelope.instanceId,
+        });
+
+        // Emit to local handlers
+        this.localEmitter.emit(eventName, envelope.data);
+      } catch (error) {
+        log.error('Failed to process distributed event', { error: getErrorMessage(error), message });
       }
-
-      // Skip events from this instance (already handled locally)
-      if (envelope.instanceId === this.instanceId) {
-        return;
-      }
-
-      const eventName = channel.replace(CHANNEL_PREFIX, '');
-      this.metrics.received.set(eventName, (this.metrics.received.get(eventName) || 0) + 1);
-
-      log.debug('Received distributed event', {
-        event: eventName,
-        fromInstance: envelope.instanceId,
-      });
-
-      // Emit to local handlers
-      this.localEmitter.emit(eventName, envelope.data);
     });
 
     this.subscriber.on('error', (err) => {

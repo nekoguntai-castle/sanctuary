@@ -190,26 +190,33 @@ class RedisWebSocketBridge {
    * Handle incoming message from Redis
    */
   private handleMessage(message: string): void {
-    const envelope = safeJsonParseUntyped<WebSocketEnvelope | null>(message, null, 'websocket broadcast');
-    if (!envelope) {
-      this.metrics.errors++;
-      return;
-    }
+    try {
+      const envelope = safeJsonParseUntyped<WebSocketEnvelope | null>(message, null, 'websocket broadcast');
+      if (!envelope) {
+        this.metrics.errors++;
+        return;
+      }
 
-    // Skip our own messages (deduplication)
-    if (envelope.instanceId === instanceId) {
-      this.metrics.skippedSelf++;
-      return;
-    }
+      // Skip our own messages (deduplication)
+      if (envelope.instanceId === instanceId) {
+        this.metrics.skippedSelf++;
+        return;
+      }
 
-    // Invoke the broadcast handler
-    if (this.broadcastHandler) {
-      this.broadcastHandler(envelope.event);
-      this.metrics.received++;
-      log.debug('Received remote broadcast', {
-        type: envelope.event.type,
-        fromInstance: envelope.instanceId.substring(0, 8),
+      // Invoke the broadcast handler
+      if (this.broadcastHandler) {
+        this.broadcastHandler(envelope.event);
+        this.metrics.received++;
+        log.debug('Received remote broadcast', {
+          type: envelope.event.type,
+          fromInstance: envelope.instanceId.substring(0, 8),
+        });
+      }
+    } catch (error) {
+      log.error('Failed to handle WebSocket broadcast message', {
+        error: getErrorMessage(error),
       });
+      this.metrics.errors++;
     }
   }
 
