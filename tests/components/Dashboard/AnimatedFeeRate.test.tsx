@@ -1,6 +1,6 @@
 import { render, screen, act } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { AnimatedFeeRate } from '../../../components/Dashboard/Dashboard';
+import { AnimatedFeeRate } from '../../../components/Dashboard/AnimatedFeeRate';
 
 describe('AnimatedFeeRate', () => {
   it('renders value with sat/vB suffix', () => {

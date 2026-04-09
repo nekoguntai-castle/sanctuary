@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
 import { NetworkTabs } from '../NetworkTabs';
 import { TrendingUp, TrendingDown, Zap, CheckCircle2, XCircle, Bitcoin, Download, X } from 'lucide-react';
@@ -6,34 +6,10 @@ import { Button } from '../ui/Button';
 import { useDashboardData } from './hooks/useDashboardData';
 import { MempoolSection } from './MempoolSection';
 import { AnimatedPrice, PriceChart } from './PriceChart';
+import { AnimatedFeeRate } from './AnimatedFeeRate';
 import { WalletSummary } from './WalletSummary';
 import { RecentTransactions } from './RecentTransactions';
 import { SanctuarySpinner, SanctuaryLogo } from '../ui/CustomIcons';
-
-/** Flashes green/red when a fee rate value changes */
-export const AnimatedFeeRate: React.FC<{ value: string }> = ({ value }) => {
-  const prevRef = useRef(value);
-  const [flash, setFlash] = useState<'up' | 'down' | null>(null);
-
-  useEffect(() => {
-    if (prevRef.current !== value && prevRef.current !== '---' && value !== '---') {
-      const prev = parseFloat(prevRef.current);
-      const curr = parseFloat(value);
-      if (!isNaN(prev) && !isNaN(curr) && prev !== curr) {
-        setFlash(curr > prev ? 'up' : 'down');
-        const timer = setTimeout(() => setFlash(null), 600);
-        return () => clearTimeout(timer);
-      }
-    }
-    prevRef.current = value;
-  }, [value]);
-
-  return (
-    <span className={`number-transition ${flash === 'up' ? 'number-transition-up' : flash === 'down' ? 'number-transition-down' : ''}`}>
-      {value} sat/vB
-    </span>
-  );
-};
 
 export const Dashboard: React.FC = () => {
   const {
