@@ -61,14 +61,6 @@ vi.mock('../../../src/utils/logger', () => ({
   }),
 }));
 
-vi.mock('../../../src/repositories/db', () => ({
-  db: {
-    user: {
-      findUnique: mockPrismaUserFindUnique,
-    },
-  },
-}));
-
 vi.mock('../../../src/models/prisma', () => ({
   __esModule: true,
   default: {

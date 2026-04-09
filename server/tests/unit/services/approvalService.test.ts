@@ -53,8 +53,9 @@ vi.mock('../../../src/repositories/draftRepository', () => ({
   draftRepository: mockDraftRepo,
 }));
 
-vi.mock('../../../src/repositories/db', () => ({
-  db: {},
+vi.mock('../../../src/models/prisma', () => ({
+  __esModule: true,
+  default: {},
 }));
 
 vi.mock('../../../src/services/vaultPolicy/approvalNotifications', () => mockNotify);

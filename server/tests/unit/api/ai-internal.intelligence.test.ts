@@ -86,12 +86,7 @@ vi.mock('../../../src/websocket/notifications', () => ({
   },
 }));
 
-// Mock Prisma - shared object via vi.hoisted for both mock factories
-vi.mock('../../../src/repositories/db', () => ({
-  db: sharedMockPrisma,
-}));
-
-// Also mock models/prisma since repositories import from it
+// Mock Prisma - shared object via vi.hoisted
 vi.mock('../../../src/models/prisma', () => ({
   __esModule: true,
   default: sharedMockPrisma,
@@ -114,7 +109,7 @@ vi.mock('../../../src/repositories/intelligenceRepository', () => ({
   },
 }));
 
-import { db as prisma } from '../../../src/repositories/db';
+import prisma from '../../../src/models/prisma';
 import aiInternalRoutes from '../../../src/api/ai-internal';
 
 const mockWalletFindFirst = vi.mocked(prisma.wallet.findFirst);

@@ -10,8 +10,9 @@ vi.mock('dns', () => ({
   lookup: dnsLookupMock,
 }));
 
-vi.mock('../../../src/repositories/db', () => ({
-  db: {},
+vi.mock('../../../src/models/prisma', () => ({
+  __esModule: true,
+  default: {},
 }));
 
 vi.mock('../../../src/utils/logger', () => ({

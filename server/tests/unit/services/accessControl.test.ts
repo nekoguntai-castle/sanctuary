@@ -42,16 +42,6 @@ vi.mock('../../../src/models/prisma', () => ({
   },
 }));
 
-// Mock repositories/db — wallet/accessControl imports db from here
-vi.mock('../../../src/repositories/db', async () => {
-  const prismaMod = await import('../../../src/models/prisma');
-  return {
-    __esModule: true,
-    db: prismaMod.default,
-    default: prismaMod.default,
-  };
-});
-
 // Mock Redis/cache
 vi.mock('../../../src/infrastructure/redis', () => ({
   getNamespacedCache: mockGetNamespacedCache,

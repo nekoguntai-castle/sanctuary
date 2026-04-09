@@ -8,15 +8,6 @@ const mocks = vi.hoisted(() => ({
   reloadElectrumServers: vi.fn(),
 }));
 
-vi.mock('../../../src/repositories/db', async () => {
-  const { mockPrismaClient: prisma } = await import('../../mocks/prisma');
-  return {
-    __esModule: true,
-    db: prisma,
-    default: prisma,
-  };
-});
-
 vi.mock('../../../src/models/prisma', async () => {
   const { mockPrismaClient: prisma } = await import('../../mocks/prisma');
   return {

@@ -30,14 +30,6 @@ vi.mock('../../../src/services/vaultPolicy/approvalService', () => ({
   },
 }));
 
-vi.mock('../../../src/repositories/db', () => ({
-  db: {
-    walletUser: {
-      findMany: mockFindManyWalletUser,
-    },
-  },
-}));
-
 vi.mock('../../../src/models/prisma', () => ({
   __esModule: true,
   default: {
