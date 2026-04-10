@@ -20,6 +20,7 @@ export interface PageViewSettings {
   sortBy?: string;          // Column to sort by (future)
   sortOrder?: 'asc' | 'desc'; // Sort direction (future)
   ownershipFilter?: 'all' | 'owned' | 'shared'; // For filtering by ownership
+  walletFilter?: string;             // 'all' | 'unassigned' | wallet-id
   visibleColumns?: string[];  // Column IDs that are visible
   columnOrder?: string[];     // Column IDs in display order
 }

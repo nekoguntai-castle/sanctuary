@@ -637,6 +637,134 @@ describe('DeviceCells', () => {
     expect(screen.getByTitle('Delete device')).toBeInTheDocument();
   });
 
+  it('shows Exclusive badge when filterContext is active and device is exclusive', () => {
+    const renderers = createDeviceCellRenderers(
+      {
+        editingId: null,
+        editValue: '',
+        editType: '',
+        setEditingId: vi.fn(),
+        setEditValue: vi.fn(),
+        setEditType: vi.fn(),
+      },
+      {
+        deleteConfirmId: null,
+        deleteError: null,
+        setDeleteConfirmId: vi.fn(),
+        setDeleteError: vi.fn(),
+      },
+      {
+        handleEdit: vi.fn(),
+        handleSave: vi.fn(),
+        handleDelete: vi.fn(),
+      },
+      {
+        getDeviceDisplayName: (type: string) => `Display ${type}`,
+        deviceModels: [],
+      },
+      {
+        walletFilter: 'w1',
+        exclusiveDeviceIds: new Set(['device-1']),
+      }
+    );
+
+    render(
+      <renderers.wallets
+        item={{
+          ...baseDevice,
+          wallets: [{ wallet: { id: 'w1', name: 'My Wallet', type: 'single_sig' } }],
+        } as any}
+        column={baseColumn}
+      />
+    );
+
+    expect(screen.getByText('Exclusive')).toBeInTheDocument();
+  });
+
+  it('does not show Exclusive badge when filterContext is undefined', () => {
+    const renderers = createDeviceCellRenderers(
+      {
+        editingId: null,
+        editValue: '',
+        editType: '',
+        setEditingId: vi.fn(),
+        setEditValue: vi.fn(),
+        setEditType: vi.fn(),
+      },
+      {
+        deleteConfirmId: null,
+        deleteError: null,
+        setDeleteConfirmId: vi.fn(),
+        setDeleteError: vi.fn(),
+      },
+      {
+        handleEdit: vi.fn(),
+        handleSave: vi.fn(),
+        handleDelete: vi.fn(),
+      },
+      {
+        getDeviceDisplayName: (type: string) => `Display ${type}`,
+        deviceModels: [],
+      }
+    );
+
+    render(
+      <renderers.wallets
+        item={{
+          ...baseDevice,
+          wallets: [{ wallet: { id: 'w1', name: 'My Wallet', type: 'single_sig' } }],
+        } as any}
+        column={baseColumn}
+      />
+    );
+
+    expect(screen.queryByText('Exclusive')).not.toBeInTheDocument();
+  });
+
+  it('does not show Exclusive badge when walletFilter is all', () => {
+    const renderers = createDeviceCellRenderers(
+      {
+        editingId: null,
+        editValue: '',
+        editType: '',
+        setEditingId: vi.fn(),
+        setEditValue: vi.fn(),
+        setEditType: vi.fn(),
+      },
+      {
+        deleteConfirmId: null,
+        deleteError: null,
+        setDeleteConfirmId: vi.fn(),
+        setDeleteError: vi.fn(),
+      },
+      {
+        handleEdit: vi.fn(),
+        handleSave: vi.fn(),
+        handleDelete: vi.fn(),
+      },
+      {
+        getDeviceDisplayName: (type: string) => `Display ${type}`,
+        deviceModels: [],
+      },
+      {
+        walletFilter: 'all',
+        exclusiveDeviceIds: new Set(['device-1']),
+      }
+    );
+
+    render(
+      <renderers.wallets
+        item={{
+          ...baseDevice,
+          wallets: [{ wallet: { id: 'w1', name: 'My Wallet', type: 'single_sig' } }],
+        } as any}
+        column={baseColumn}
+      />
+    );
+
+    expect(screen.queryByText('Exclusive')).not.toBeInTheDocument();
+  });
+
   it('shows delete error only for the currently confirmed device id', () => {
     const renderers = createDeviceCellRenderers(
       {

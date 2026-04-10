@@ -87,6 +87,8 @@ vi.mock('lucide-react', () => ({
   Save: () => <span data-testid="save-icon" />,
   X: () => <span data-testid="x-icon" />,
   Trash2: () => <span data-testid="trash-icon" />,
+  Wallet: () => <span data-testid="wallet-icon-lucide" />,
+  ChevronDown: () => <span data-testid="chevron-down-icon" />,
 }));
 
 // Mock custom icons

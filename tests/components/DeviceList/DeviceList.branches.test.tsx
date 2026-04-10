@@ -87,10 +87,12 @@ vi.mock('../../../components/DeviceList/DeviceListHeader', () => ({
   DeviceListHeader: ({
     setViewMode,
     setOwnershipFilter,
+    setWalletFilter,
     onColumnVisibilityChange,
   }: {
     setViewMode: (mode: 'list' | 'grouped') => void;
     setOwnershipFilter: (mode: 'all' | 'owned' | 'shared') => void;
+    setWalletFilter: (filter: string) => void;
     onColumnVisibilityChange: (columnId: string, visible: boolean) => void;
   }) => (
     <div>
@@ -98,6 +100,8 @@ vi.mock('../../../components/DeviceList/DeviceListHeader', () => ({
       <button onClick={() => setViewMode('grouped')}>Set Grouped</button>
       <button onClick={() => setOwnershipFilter('owned')}>Filter Owned</button>
       <button onClick={() => setOwnershipFilter('shared')}>Filter Shared</button>
+      <button onClick={() => setWalletFilter('w1')}>Filter Wallet W1</button>
+      <button onClick={() => setWalletFilter('unassigned')}>Filter Unassigned</button>
       <button onClick={() => onColumnVisibilityChange('type', true)}>Show Type Column</button>
     </div>
   ),
@@ -393,5 +397,309 @@ describe('DeviceList branch coverage', () => {
     await waitFor(() => {
       expect(screen.getAllByTestId('table-row').length).toBe(6);
     });
+  });
+
+  it('covers wallet filter by specific wallet ID', async () => {
+    const devices = [
+      makeDevice({ id: 'd1', label: 'In W1', wallets: [{ wallet: { id: 'w1', name: 'Wallet 1', type: 'single_sig' } }] as any }),
+      makeDevice({ id: 'd2', label: 'In W2', wallets: [{ wallet: { id: 'w2', name: 'Wallet 2', type: 'multi_sig' } }] as any }),
+      makeDevice({ id: 'd3', label: 'Unused', wallets: [] }),
+    ];
+    mockGetDevices.mockResolvedValue(devices);
+
+    currentUser = makeUser({
+      layout: 'list',
+      sortBy: 'label',
+      sortOrder: 'asc',
+      ownershipFilter: 'all',
+      walletFilter: 'w1',
+      visibleColumns: ['label'],
+      columnOrder: ['label'],
+    });
+    render(<DeviceList />);
+    await waitFor(() => {
+      const rows = screen.getAllByTestId('table-row').map(row => row.textContent);
+      expect(rows).toEqual(['In W1']);
+    });
+  });
+
+  it('covers wallet filter for unassigned devices', async () => {
+    const devices = [
+      makeDevice({ id: 'd1', label: 'In Wallet', wallets: [{ wallet: { id: 'w1', name: 'Wallet 1', type: 'single_sig' } }] as any }),
+      makeDevice({ id: 'd2', label: 'Unused 1', wallets: [], walletCount: 0 }),
+      makeDevice({ id: 'd3', label: 'Unused 2', wallets: [], walletCount: 0 }),
+    ];
+    mockGetDevices.mockResolvedValue(devices);
+
+    currentUser = makeUser({
+      layout: 'list',
+      sortBy: 'label',
+      sortOrder: 'asc',
+      ownershipFilter: 'all',
+      walletFilter: 'unassigned',
+      visibleColumns: ['label'],
+      columnOrder: ['label'],
+    });
+    render(<DeviceList />);
+    await waitFor(() => {
+      const rows = screen.getAllByTestId('table-row').map(row => row.textContent);
+      expect(rows).toEqual(['Unused 1', 'Unused 2']);
+    });
+  });
+
+  it('resets stale wallet filter to all when wallet no longer exists', async () => {
+    const devices = [
+      makeDevice({ id: 'd1', label: 'Device A', wallets: [{ wallet: { id: 'w1', name: 'Wallet 1', type: 'single_sig' } }] as any }),
+      makeDevice({ id: 'd2', label: 'Device B', wallets: [] }),
+    ];
+    mockGetDevices.mockResolvedValue(devices);
+
+    // walletFilter references a wallet that doesn't exist in device data
+    currentUser = makeUser({
+      layout: 'list',
+      sortBy: 'label',
+      sortOrder: 'asc',
+      ownershipFilter: 'all',
+      walletFilter: 'deleted-wallet-id',
+      visibleColumns: ['label'],
+      columnOrder: ['label'],
+    });
+    render(<DeviceList />);
+    await waitFor(() => {
+      // Should show all devices since filter is invalid
+      expect(screen.getAllByTestId('table-row').length).toBe(2);
+    });
+  });
+
+  it('shows wallet summary banner with exclusive count', async () => {
+    const devices = [
+      makeDevice({ id: 'd1', label: 'Exclusive Device', wallets: [{ wallet: { id: 'w1', name: 'Wallet 1', type: 'single_sig' } }] as any }),
+      makeDevice({ id: 'd2', label: 'Multi Device', wallets: [
+        { wallet: { id: 'w1', name: 'Wallet 1', type: 'single_sig' } },
+        { wallet: { id: 'w2', name: 'Wallet 2', type: 'multi_sig' } },
+      ] as any }),
+    ];
+    mockGetDevices.mockResolvedValue(devices);
+
+    currentUser = makeUser({
+      layout: 'list',
+      sortBy: 'label',
+      sortOrder: 'asc',
+      ownershipFilter: 'all',
+      walletFilter: 'w1',
+      visibleColumns: ['label'],
+      columnOrder: ['label'],
+    });
+    render(<DeviceList />);
+    await waitFor(() => {
+      expect(screen.getByText(/Showing 2 devices linked to this wallet/)).toBeInTheDocument();
+      expect(screen.getByText(/is exclusive to this wallet/)).toBeInTheDocument();
+    });
+
+    // Test clear filter button
+    const user = userEvent.setup();
+    await user.click(screen.getByText('Clear filter'));
+    expect(mockUpdatePreferences).toHaveBeenCalledWith(
+      expect.objectContaining({
+        viewSettings: expect.objectContaining({
+          devices: expect.objectContaining({ walletFilter: 'all' }),
+        }),
+      })
+    );
+  });
+
+  it('shows unassigned summary banner', async () => {
+    const devices = [
+      makeDevice({ id: 'd1', label: 'Unused 1', wallets: [], walletCount: 0 }),
+    ];
+    mockGetDevices.mockResolvedValue(devices);
+
+    currentUser = makeUser({
+      layout: 'list',
+      sortBy: 'label',
+      sortOrder: 'asc',
+      ownershipFilter: 'all',
+      walletFilter: 'unassigned',
+      visibleColumns: ['label'],
+      columnOrder: ['label'],
+    });
+    render(<DeviceList />);
+    await waitFor(() => {
+      expect(screen.getByText(/Showing 1 unassigned device/)).toBeInTheDocument();
+    });
+
+    // Test clear filter button
+    const user = userEvent.setup();
+    await user.click(screen.getByText('Clear filter'));
+    expect(mockUpdatePreferences).toHaveBeenCalledWith(
+      expect.objectContaining({
+        viewSettings: expect.objectContaining({
+          devices: expect.objectContaining({ walletFilter: 'all' }),
+        }),
+      })
+    );
+  });
+
+  it('shows plural exclusive count in summary banner', async () => {
+    const devices = [
+      makeDevice({ id: 'd1', label: 'Excl 1', wallets: [{ wallet: { id: 'w1', name: 'W1', type: 'single_sig' } }] as any }),
+      makeDevice({ id: 'd2', label: 'Excl 2', wallets: [{ wallet: { id: 'w1', name: 'W1', type: 'single_sig' } }] as any }),
+    ];
+    mockGetDevices.mockResolvedValue(devices);
+
+    currentUser = makeUser({
+      layout: 'list',
+      sortBy: 'label',
+      sortOrder: 'asc',
+      ownershipFilter: 'all',
+      walletFilter: 'w1',
+      visibleColumns: ['label'],
+      columnOrder: ['label'],
+    });
+    render(<DeviceList />);
+    await waitFor(() => {
+      expect(screen.getByText(/are exclusive to this wallet/)).toBeInTheDocument();
+    });
+  });
+
+  it('shows singular device text in wallet banner', async () => {
+    const devices = [
+      makeDevice({ id: 'd1', label: 'Only One', wallets: [{ wallet: { id: 'w1', name: 'W1', type: 'single_sig' } }] as any }),
+    ];
+    mockGetDevices.mockResolvedValue(devices);
+
+    currentUser = makeUser({
+      layout: 'list',
+      sortBy: 'label',
+      sortOrder: 'asc',
+      ownershipFilter: 'all',
+      walletFilter: 'w1',
+      visibleColumns: ['label'],
+      columnOrder: ['label'],
+    });
+    render(<DeviceList />);
+    await waitFor(() => {
+      expect(screen.getByText(/Showing 1 device linked to this wallet/)).toBeInTheDocument();
+    });
+  });
+
+  it('shows plural unassigned text in banner', async () => {
+    const devices = [
+      makeDevice({ id: 'd1', label: 'U1', wallets: [], walletCount: 0 }),
+      makeDevice({ id: 'd2', label: 'U2', wallets: [], walletCount: 0 }),
+    ];
+    mockGetDevices.mockResolvedValue(devices);
+
+    currentUser = makeUser({
+      layout: 'list',
+      sortBy: 'label',
+      sortOrder: 'asc',
+      ownershipFilter: 'all',
+      walletFilter: 'unassigned',
+      visibleColumns: ['label'],
+      columnOrder: ['label'],
+    });
+    render(<DeviceList />);
+    await waitFor(() => {
+      expect(screen.getByText(/Showing 2 unassigned devices/)).toBeInTheDocument();
+    });
+  });
+
+  it('hides exclusive count when no devices are exclusive', async () => {
+    const devices = [
+      makeDevice({ id: 'd1', label: 'Multi', wallets: [
+        { wallet: { id: 'w1', name: 'W1', type: 'single_sig' } },
+        { wallet: { id: 'w2', name: 'W2', type: 'multi_sig' } },
+      ] as any }),
+    ];
+    mockGetDevices.mockResolvedValue(devices);
+
+    currentUser = makeUser({
+      layout: 'list',
+      sortBy: 'label',
+      sortOrder: 'asc',
+      ownershipFilter: 'all',
+      walletFilter: 'w1',
+      visibleColumns: ['label'],
+      columnOrder: ['label'],
+    });
+    render(<DeviceList />);
+    await waitFor(() => {
+      expect(screen.getByText(/Showing 1 device linked to this wallet/)).toBeInTheDocument();
+      expect(screen.queryByText(/exclusive/)).not.toBeInTheDocument();
+    });
+  });
+
+  it('covers unassigned filter with undefined walletCount and wallets', async () => {
+    const devices = [
+      makeDevice({ id: 'd1', label: 'Undefined Both', wallets: undefined, walletCount: undefined }),
+    ];
+    mockGetDevices.mockResolvedValue(devices);
+
+    currentUser = makeUser({
+      layout: 'list',
+      sortBy: 'label',
+      sortOrder: 'asc',
+      ownershipFilter: 'all',
+      walletFilter: 'unassigned',
+      visibleColumns: ['label'],
+      columnOrder: ['label'],
+    });
+    render(<DeviceList />);
+    await waitFor(() => {
+      expect(screen.getAllByTestId('table-row').length).toBe(1);
+    });
+  });
+
+  it('covers exclusive computation with undefined wallets', async () => {
+    const devices = [
+      makeDevice({ id: 'd1', label: 'No Wallets', wallets: undefined, walletCount: 0 }),
+      makeDevice({ id: 'd2', label: 'Has Wallet', wallets: [{ wallet: { id: 'w1', name: 'W1', type: 'single_sig' } }] as any }),
+    ];
+    mockGetDevices.mockResolvedValue(devices);
+
+    currentUser = makeUser({
+      layout: 'list',
+      sortBy: 'label',
+      sortOrder: 'asc',
+      ownershipFilter: 'all',
+      walletFilter: 'w1',
+      visibleColumns: ['label'],
+      columnOrder: ['label'],
+    });
+    render(<DeviceList />);
+    await waitFor(() => {
+      // Only 'Has Wallet' should show; 'd1' filtered out (no wallets)
+      const rows = screen.getAllByTestId('table-row').map(r => r.textContent);
+      expect(rows).toEqual(['Has Wallet']);
+    });
+  });
+
+  it('covers wallet filter setter via header button', async () => {
+    const user = userEvent.setup();
+    const devices = [makeDevice()];
+    mockGetDevices.mockResolvedValue(devices);
+
+    currentUser = makeUser({
+      layout: 'list',
+      sortBy: 'label',
+      sortOrder: 'asc',
+      ownershipFilter: 'all',
+      visibleColumns: ['label'],
+      columnOrder: ['label'],
+    });
+    render(<DeviceList />);
+    await screen.findByTestId('table-row');
+
+    await user.click(screen.getByRole('button', { name: 'Filter Wallet W1' }));
+    expect(mockUpdatePreferences).toHaveBeenCalledWith(
+      expect.objectContaining({
+        viewSettings: expect.objectContaining({
+          devices: expect.objectContaining({
+            walletFilter: 'w1',
+          }),
+        }),
+      })
+    );
   });
 });

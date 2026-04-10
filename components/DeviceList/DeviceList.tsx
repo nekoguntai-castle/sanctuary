@@ -21,7 +21,7 @@ import {
   mergeDeviceColumnOrder,
 } from '../columns/deviceColumns';
 import { createDeviceCellRenderers, DeviceWithWallets } from '../cells/DeviceCells';
-import type { ViewMode, SortField, SortOrder, OwnershipFilter } from './types';
+import type { ViewMode, SortField, SortOrder, OwnershipFilter, WalletFilter } from './types';
 import { EmptyState } from './EmptyState';
 import { DeviceListHeader } from './DeviceListHeader';
 import { DeviceGroupedView } from './DeviceGroupedView';
@@ -69,6 +69,18 @@ export const DeviceList: React.FC = () => {
       viewSettings: {
         ...user?.preferences?.viewSettings,
         devices: { ...user?.preferences?.viewSettings?.devices, ownershipFilter: filter }
+      }
+    });
+  };
+
+  // Wallet filter from user preferences
+  const walletFilter = (user?.preferences?.viewSettings?.devices?.walletFilter as WalletFilter) || 'all';
+
+  const setWalletFilter = (filter: WalletFilter) => {
+    updatePreferences({
+      viewSettings: {
+        ...user?.preferences?.viewSettings,
+        devices: { ...user?.preferences?.viewSettings?.devices, walletFilter: filter }
       }
     });
   };
@@ -175,6 +187,34 @@ export const DeviceList: React.FC = () => {
     return device.walletCount ?? device.wallets?.length ?? 0;
   };
 
+  // Count owned and shared devices
+  const ownedCount = devices.filter(d => d.isOwner === true).length;
+  const sharedCount = devices.filter(d => d.isOwner === false).length;
+
+  // Derive wallet options from device data (no extra API call)
+  const walletOptions = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; type: string; count: number }>();
+    for (const device of devices) {
+      for (const wd of device.wallets ?? []) {
+        const existing = map.get(wd.wallet.id);
+        if (existing) existing.count++;
+        else map.set(wd.wallet.id, { id: wd.wallet.id, name: wd.wallet.name, type: wd.wallet.type, count: 1 });
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [devices]);
+
+  const unassignedCount = useMemo(
+    () => devices.filter(d => (d.walletCount ?? d.wallets?.length ?? 0) === 0).length,
+    [devices]
+  );
+
+  // Guard against stale wallet filter (e.g. wallet was deleted)
+  const effectiveWalletFilter = useMemo(() => {
+    if (walletFilter === 'all' || walletFilter === 'unassigned') return walletFilter;
+    return walletOptions.some(w => w.id === walletFilter) ? walletFilter : 'all';
+  }, [walletFilter, walletOptions]);
+
   // Filter and sort devices based on current settings
   const sortedDevices = useMemo(() => {
     if (!devices.length) return devices;
@@ -185,6 +225,15 @@ export const DeviceList: React.FC = () => {
       filtered = devices.filter(d => d.isOwner === true);
     } else if (ownershipFilter === 'shared') {
       filtered = devices.filter(d => d.isOwner === false);
+    }
+
+    // Apply wallet filter
+    if (effectiveWalletFilter === 'unassigned') {
+      filtered = filtered.filter(d => (d.walletCount ?? d.wallets?.length ?? 0) === 0);
+    } else if (effectiveWalletFilter !== 'all') {
+      filtered = filtered.filter(d =>
+        d.wallets?.some(wd => wd.wallet.id === effectiveWalletFilter)
+      );
     }
 
     return [...filtered].sort((a, b) => {
@@ -209,19 +258,28 @@ export const DeviceList: React.FC = () => {
 
       return sortOrder === 'asc' ? comparison : -comparison;
     });
-  }, [devices, sortBy, sortOrder, ownershipFilter]);
+  }, [devices, sortBy, sortOrder, ownershipFilter, effectiveWalletFilter]);
 
-  // Count owned and shared devices
-  const ownedCount = devices.filter(d => d.isOwner === true).length;
-  const sharedCount = devices.filter(d => d.isOwner === false).length;
+  // Compute exclusive device IDs (devices that belong to ONLY the selected wallet)
+  const exclusiveDeviceIds = useMemo(() => {
+    if (effectiveWalletFilter === 'all' || effectiveWalletFilter === 'unassigned') return new Set<string>();
+    return new Set(
+      devices
+        .filter(d => {
+          const wallets = d.wallets ?? [];
+          return wallets.length === 1 && wallets[0].wallet.id === effectiveWalletFilter;
+        })
+        .map(d => d.id)
+    );
+  }, [devices, effectiveWalletFilter]);
 
-  // Group devices by Type
-  const groupedDevices = devices.reduce((acc, device) => {
+  // Group devices by Type (uses filtered data so filters apply to grouped view)
+  const groupedDevices = useMemo(() => sortedDevices.reduce((acc, device) => {
     const type = device.type as HardwareDevice;
     if (!acc[type]) acc[type] = [];
     acc[type].push(device);
     return acc;
-  }, {} as Record<HardwareDevice, Device[]>);
+  }, {} as Record<HardwareDevice, Device[]>), [sortedDevices]);
 
   // Get display name for device type (looks up model name from slug)
   const getDeviceDisplayName = (type: string): string => {
@@ -238,9 +296,10 @@ export const DeviceList: React.FC = () => {
       { editingId, editValue, editType, setEditingId, setEditValue, setEditType },
       { deleteConfirmId, deleteError, setDeleteConfirmId, setDeleteError },
       { handleEdit, handleSave, handleDelete },
-      { getDeviceDisplayName, deviceModels }
+      { getDeviceDisplayName, deviceModels },
+      { walletFilter: effectiveWalletFilter, exclusiveDeviceIds }
     ),
-    [editingId, editValue, editType, deleteConfirmId, deleteError, deviceModels]
+    [editingId, editValue, editType, deleteConfirmId, deleteError, deviceModels, effectiveWalletFilter, exclusiveDeviceIds]
   );
 
   if (loading) return <div className="p-8 text-center text-sanctuary-400">Loading devices...</div>;
@@ -262,12 +321,47 @@ export const DeviceList: React.FC = () => {
         setViewMode={setViewMode}
         ownershipFilter={ownershipFilter}
         setOwnershipFilter={setOwnershipFilter}
+        walletFilter={effectiveWalletFilter}
+        setWalletFilter={setWalletFilter}
+        walletOptions={walletOptions}
+        unassignedCount={unassignedCount}
         columnOrder={columnOrder}
         visibleColumns={visibleColumns}
         onColumnOrderChange={handleColumnOrderChange}
         onColumnVisibilityChange={handleColumnVisibilityChange}
         onColumnReset={handleColumnReset}
       />
+
+      {/* Wallet filter summary banner */}
+      {effectiveWalletFilter !== 'all' && effectiveWalletFilter !== 'unassigned' && (
+        <div className="flex items-center justify-between px-4 py-2 rounded-lg bg-primary-50 dark:bg-primary-500/10 border border-primary-200 dark:border-primary-500/20 text-sm">
+          <span className="text-primary-800 dark:text-primary-700">
+            Showing {sortedDevices.length} device{sortedDevices.length !== 1 ? 's' : ''} linked to this wallet.
+            {exclusiveDeviceIds.size > 0 && (
+              <> <strong>{exclusiveDeviceIds.size}</strong> {exclusiveDeviceIds.size === 1 ? 'is' : 'are'} exclusive to this wallet.</>
+            )}
+          </span>
+          <button
+            onClick={() => setWalletFilter('all')}
+            className="text-xs text-primary-600 dark:text-primary-600 hover:underline ml-4 flex-shrink-0"
+          >
+            Clear filter
+          </button>
+        </div>
+      )}
+      {effectiveWalletFilter === 'unassigned' && (
+        <div className="flex items-center justify-between px-4 py-2 rounded-lg bg-sanctuary-50 dark:bg-sanctuary-800 border border-sanctuary-200 dark:border-sanctuary-700 text-sm">
+          <span className="text-sanctuary-600 dark:text-sanctuary-400">
+            Showing {sortedDevices.length} unassigned device{sortedDevices.length !== 1 ? 's' : ''} (not linked to any wallet).
+          </span>
+          <button
+            onClick={() => setWalletFilter('all')}
+            className="text-xs text-sanctuary-500 hover:underline ml-4 flex-shrink-0"
+          >
+            Clear filter
+          </button>
+        </div>
+      )}
 
       {/* Table View */}
       {viewMode === 'list' && (
@@ -298,6 +392,8 @@ export const DeviceList: React.FC = () => {
           handleEdit={handleEdit}
           handleSave={handleSave}
           handleDelete={handleDelete}
+          walletFilter={effectiveWalletFilter}
+          exclusiveDeviceIds={exclusiveDeviceIds}
         />
       )}
     </div>

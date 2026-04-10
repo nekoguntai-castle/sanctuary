@@ -9,6 +9,7 @@ import { HardDrive, Edit2, Save, X, Trash2, Users } from 'lucide-react';
 import { HardwareDevice, HardwareDeviceModel, Device } from '../../types';
 import { getDeviceIcon, getWalletIcon } from '../ui/CustomIcons';
 import { useNavigate } from 'react-router-dom';
+import { EXCLUSIVE_BADGE_CLASS } from './types';
 
 interface EditState {
   editingId: string | null;
@@ -36,6 +37,8 @@ interface DeviceGroupedViewProps {
   handleEdit: (device: Device) => void;
   handleSave: (device: Device) => void;
   handleDelete: (device: Device) => void;
+  walletFilter: string;
+  exclusiveDeviceIds: Set<string>;
 }
 
 export const DeviceGroupedView: React.FC<DeviceGroupedViewProps> = ({
@@ -48,6 +51,8 @@ export const DeviceGroupedView: React.FC<DeviceGroupedViewProps> = ({
   handleEdit,
   handleSave,
   handleDelete,
+  walletFilter,
+  exclusiveDeviceIds,
 }) => {
   const navigate = useNavigate();
   const { editingId, editValue, editType, setEditingId, setEditValue, setEditType } = editState;
@@ -192,6 +197,11 @@ export const DeviceGroupedView: React.FC<DeviceGroupedViewProps> = ({
                                          </span>
                                      ) : (
                                          <span className="text-[10px] text-sanctuary-300">Unused</span>
+                                     )}
+                                     {walletFilter !== 'all' && walletFilter !== 'unassigned' && exclusiveDeviceIds.has(device.id) && (
+                                       <span className={EXCLUSIVE_BADGE_CLASS}>
+                                         Exclusive
+                                       </span>
                                      )}
                                  </div>
                              </li>

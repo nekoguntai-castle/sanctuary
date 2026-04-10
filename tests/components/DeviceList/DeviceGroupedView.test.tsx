@@ -84,6 +84,8 @@ const renderGroupedView = ({
   editType = '',
   deleteConfirmId = null,
   walletCounts = new Map<string, number>([['device-1', 0]]),
+  walletFilter = 'all',
+  exclusiveDeviceIds = new Set<string>(),
 }: {
   groupedDevices?: Record<string, Device[]>;
   editingId?: string | null;
@@ -91,6 +93,8 @@ const renderGroupedView = ({
   editType?: string;
   deleteConfirmId?: string | null;
   walletCounts?: Map<string, number>;
+  walletFilter?: string;
+  exclusiveDeviceIds?: Set<string>;
 } = {}) => {
   const setEditingId = vi.fn();
   const setEditValue = vi.fn();
@@ -125,6 +129,8 @@ const renderGroupedView = ({
       handleEdit={handleEdit}
       handleSave={handleSave}
       handleDelete={handleDelete}
+      walletFilter={walletFilter}
+      exclusiveDeviceIds={exclusiveDeviceIds}
     />
   );
 
@@ -236,6 +242,60 @@ describe('DeviceGroupedView', () => {
     expect(screen.getByText('2 wallets')).toBeInTheDocument();
     expect(screen.getByText('Unused')).toBeInTheDocument();
     expect(screen.getAllByTestId('icon-hard-drive')).toHaveLength(2);
+  });
+
+  it('shows Exclusive badge when wallet filter active and device is exclusive', () => {
+    const device = makeDevice({
+      id: 'device-exclusive',
+      label: 'Exclusive Device',
+      wallets: [{ wallet: { id: 'w1', name: 'My Wallet', type: 'single_sig' } }] as any,
+    });
+
+    renderGroupedView({
+      groupedDevices: { ledger: [device] },
+      walletCounts: new Map([['device-exclusive', 1]]),
+      walletFilter: 'w1',
+      exclusiveDeviceIds: new Set(['device-exclusive']),
+    });
+
+    expect(screen.getByText('Exclusive')).toBeInTheDocument();
+  });
+
+  it('does not show Exclusive badge when wallet filter is all', () => {
+    const device = makeDevice({
+      id: 'device-exclusive',
+      label: 'Exclusive Device',
+      wallets: [{ wallet: { id: 'w1', name: 'My Wallet', type: 'single_sig' } }] as any,
+    });
+
+    renderGroupedView({
+      groupedDevices: { ledger: [device] },
+      walletCounts: new Map([['device-exclusive', 1]]),
+      walletFilter: 'all',
+      exclusiveDeviceIds: new Set(['device-exclusive']),
+    });
+
+    expect(screen.queryByText('Exclusive')).not.toBeInTheDocument();
+  });
+
+  it('does not show Exclusive badge for non-exclusive devices', () => {
+    const device = makeDevice({
+      id: 'device-multi',
+      label: 'Multi Wallet Device',
+      wallets: [
+        { wallet: { id: 'w1', name: 'Wallet 1', type: 'single_sig' } },
+        { wallet: { id: 'w2', name: 'Wallet 2', type: 'multi_sig' } },
+      ] as any,
+    });
+
+    renderGroupedView({
+      groupedDevices: { ledger: [device] },
+      walletCounts: new Map([['device-multi', 2]]),
+      walletFilter: 'w1',
+      exclusiveDeviceIds: new Set(), // not exclusive
+    });
+
+    expect(screen.queryByText('Exclusive')).not.toBeInTheDocument();
   });
 
   it('falls back wallet type to single_sig when wallet type is missing', () => {

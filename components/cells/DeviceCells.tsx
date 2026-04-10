@@ -10,6 +10,7 @@ import { HardwareDevice, HardwareDeviceModel, Device, WalletType } from '../../t
 import { Edit2, Save, X, Trash2, Users, HardDrive } from 'lucide-react';
 import { getDeviceIcon, getWalletIcon } from '../ui/CustomIcons';
 import type { CellRendererProps } from '../ui/ConfigurableTable';
+import { EXCLUSIVE_BADGE_CLASS } from '../DeviceList/types';
 
 // Extended device type with wallet count for display
 export interface DeviceWithWallets extends Device {
@@ -47,6 +48,12 @@ interface DeviceModelsHelper {
   deviceModels: HardwareDeviceModel[];
 }
 
+// Filter context for wallet filter + exclusive badge
+interface FilterContext {
+  walletFilter: string;
+  exclusiveDeviceIds: Set<string>;
+}
+
 /**
  * Create device cell renderers with injected dependencies
  */
@@ -54,7 +61,8 @@ export function createDeviceCellRenderers(
   editState: EditState,
   deleteState: DeleteState,
   handlers: DeviceHandlers,
-  modelsHelper: DeviceModelsHelper
+  modelsHelper: DeviceModelsHelper,
+  filterContext?: FilterContext
 ) {
   const { editingId, editValue, editType, setEditingId, setEditValue, setEditType } = editState;
   const { deleteConfirmId, deleteError, setDeleteConfirmId, setDeleteError } = deleteState;
@@ -211,6 +219,10 @@ export function createDeviceCellRenderers(
   const WalletsCell: React.FC<CellRendererProps<DeviceWithWallets>> = ({ item: device }) => {
     const wallets = device.wallets || [];
     const count = device.walletCount ?? wallets.length;
+    const isExclusive = filterContext
+      && filterContext.walletFilter !== 'all'
+      && filterContext.walletFilter !== 'unassigned'
+      && filterContext.exclusiveDeviceIds.has(device.id);
 
     if (count === 0) {
       return <span className="text-xs text-sanctuary-400">Unused</span>;
@@ -243,6 +255,11 @@ export function createDeviceCellRenderers(
           <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-primary-100 text-primary-800 border border-primary-200 dark:bg-primary-500/10 dark:text-primary-300 dark:border-primary-500/20">
             <HardDrive className="w-3 h-3 mr-1" />
             {count} {count === 1 ? 'wallet' : 'wallets'}
+          </span>
+        )}
+        {isExclusive && (
+          <span className={EXCLUSIVE_BADGE_CLASS}>
+            Exclusive
           </span>
         )}
       </div>
