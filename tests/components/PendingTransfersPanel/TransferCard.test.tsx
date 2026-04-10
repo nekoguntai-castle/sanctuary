@@ -226,6 +226,20 @@ describe('TransferCard', () => {
       expect(onAction).toHaveBeenCalledWith('transfer-1', 'confirm');
     });
 
+    it('calls onAction with cancel when Cancel is clicked', () => {
+      render(
+        <TransferCard
+          transfer={makeTransfer({ acceptedAt: '2026-01-15' })}
+          variant="awaiting_confirmation"
+          actionLoading={null}
+          onAction={onAction}
+        />,
+      );
+
+      fireEvent.click(screen.getByText('Cancel'));
+      expect(onAction).toHaveBeenCalledWith('transfer-1', 'cancel');
+    });
+
     it('uses updatedAt as fallback when acceptedAt is null', () => {
       render(
         <TransferCard
