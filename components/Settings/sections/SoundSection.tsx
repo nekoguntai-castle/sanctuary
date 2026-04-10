@@ -3,6 +3,7 @@ import { useUser } from '../../../contexts/UserContext';
 import { Volume2 } from 'lucide-react';
 import { Toggle } from '../../ui/Toggle';
 import { useNotificationSound } from '../../../hooks/useNotificationSound';
+import type { SoundType } from '../../../types';
 
 const NotificationSoundSettings: React.FC = () => {
   const { user, updatePreferences } = useUser();
@@ -49,7 +50,7 @@ const NotificationSoundSettings: React.FC = () => {
     });
     // Play preview of selected sound
     if (sound !== 'none') {
-      playSound(sound as any, soundPrefs.volume);
+      playSound(sound as SoundType, soundPrefs.volume);
     }
   };
 
@@ -65,7 +66,7 @@ const NotificationSoundSettings: React.FC = () => {
 
   const handleTestSound = (sound: string) => {
     if (sound !== 'none') {
-      playSound(sound as any, soundPrefs.volume);
+      playSound(sound as SoundType, soundPrefs.volume);
     }
   };
 

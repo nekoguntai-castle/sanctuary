@@ -50,7 +50,7 @@ export const WalletDetail: React.FC = () => {
   const { user } = useUser();
   const { handleError } = useErrorHandler();
   const { addNotification: addAppNotification, removeNotificationsByType } = useAppNotifications();
-  const highlightTxId = (location.state as any)?.highlightTxId;
+  const highlightTxId = (location.state as { highlightTxId?: string } | null)?.highlightTxId;
   const { data: bitcoinStatus } = useBitcoinStatus();
   const { enabled: aiEnabled } = useAIStatus();
 
@@ -186,7 +186,7 @@ export const WalletDetail: React.FC = () => {
   // ---------------------------------------------------------------------------
 
   // Check for activeTab in navigation state (e.g., from notification panel)
-  const initialTab = (location.state as any)?.activeTab || 'tx';
+  const initialTab = (location.state as { activeTab?: TabType } | null)?.activeTab || 'tx';
   const [activeTab, setActiveTab] = useState<TabType>(initialTab);
   const [addressSubTab, setAddressSubTab] = useState<'receive' | 'change'>('receive');
   const [accessSubTab, setAccessSubTab] = useState<'ownership' | 'sharing' | 'transfers'>('ownership');
@@ -195,7 +195,7 @@ export const WalletDetail: React.FC = () => {
 
   // Update activeTab if navigation state changes
   useEffect(() => {
-    const stateTab = (location.state as any)?.activeTab;
+    const stateTab = (location.state as { activeTab?: TabType } | null)?.activeTab;
     if (stateTab && stateTab !== activeTab) {
       setActiveTab(stateTab);
     }
