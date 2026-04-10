@@ -5,6 +5,7 @@
  * Stored in user.preferences.intelligence (same pattern as autopilot/settings.ts).
  */
 
+import type { Prisma } from '../../generated/prisma/client';
 import { userRepository } from '../../repositories';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
@@ -70,7 +71,7 @@ export async function updateWalletIntelligenceSettings(
   intelligence.wallets[walletId] = updated;
   prefs.intelligence = intelligence;
 
-  await userRepository.updatePreferences(userId, prefs as any);
+  await userRepository.updatePreferences(userId, prefs as Prisma.InputJsonValue);
 
   return updated;
 }

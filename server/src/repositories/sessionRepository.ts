@@ -266,7 +266,7 @@ export async function findRevokedTokenByJti(
 ): Promise<RevokedToken | null> {
   return prisma.revokedToken.findUnique({
     where: { jti },
-    select: { jti: true } as any,
+    select: { jti: true },
   }) as Promise<RevokedToken | null>;
 }
 

@@ -6,6 +6,7 @@
  * persists insights, and dispatches notifications.
  */
 
+import type { Prisma } from '../../generated/prisma/client';
 import { getRedisClient, isRedisConnected } from '../../infrastructure';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
@@ -107,7 +108,7 @@ async function runPipeline(
     title: result.title,
     summary: result.summary,
     analysis: result.analysis,
-    data: context as any,
+    data: context as unknown as Prisma.JsonValue,
     expiresAt: new Date(Date.now() + DEFAULT_EXPIRY_MS),
   };
 

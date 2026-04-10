@@ -78,6 +78,17 @@ describe('websocket/server singleton wiring', () => {
     expect(() => mod.initializeWebSocketServer()).toThrow('WebSocket server already initialized');
   });
 
+  it('returns null from getWebSocketServerIfInitialized before initialization', async () => {
+    const mod = await import('../../../src/websocket/server');
+    expect(mod.getWebSocketServerIfInitialized()).toBeNull();
+  });
+
+  it('returns server from getWebSocketServerIfInitialized after initialization', async () => {
+    const mod = await import('../../../src/websocket/server');
+    const server = mod.initializeWebSocketServer();
+    expect(mod.getWebSocketServerIfInitialized()).toBe(server);
+  });
+
   it('returns null gateway server before initialization', async () => {
     const mod = await import('../../../src/websocket/server');
     expect(mod.getGatewayWebSocketServer()).toBeNull();

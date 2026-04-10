@@ -128,7 +128,7 @@ const safeStringify = (obj: any): string => {
       return {
         name: value.name,
         message: value.message,
-        code: (value as any).code,
+        code: (value as Error & { code?: string }).code,
       };
     }
     return value;

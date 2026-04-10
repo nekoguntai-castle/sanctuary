@@ -125,7 +125,7 @@ export async function findByUtxoId(
 ): Promise<DraftUtxoLock | null> {
   return prisma.draftUtxoLock.findUnique({
     where: { utxoId },
-    select: { draftId: true, utxoId: true, createdAt: true } as any,
+    select: { draftId: true, utxoId: true, createdAt: true },
   }) as Promise<DraftUtxoLock | null>;
 }
 

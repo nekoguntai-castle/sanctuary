@@ -15,6 +15,7 @@ import { walletLogBuffer } from '../services/walletLogBuffer';
 import { asyncHandler } from '../errors/errorHandler';
 import { NotFoundError, InvalidInputError } from '../errors/ApiError';
 import { getConfig } from '../config';
+import type { NetworkType } from '../config';
 
 const router = Router();
 const log = createLogger('SYNC:ROUTE');
@@ -217,7 +218,7 @@ router.post('/network/:network', rateLimitByUser('sync:batch'), asyncHandler(asy
   }
 
   // Find all user's wallets for this network
-  const walletIds = await walletRepository.getIdsByNetwork(userId, network as any);
+  const walletIds = await walletRepository.getIdsByNetwork(userId, network as NetworkType);
 
   if (walletIds.length === 0) {
     return res.json({
@@ -263,7 +264,7 @@ router.post('/network/:network/resync', rateLimitByUser('sync:batch'), asyncHand
   }
 
   // Find all user's wallets for this network with sync status
-  const wallets = await walletRepository.findByNetworkWithSyncStatus(userId, network as any);
+  const wallets = await walletRepository.findByNetworkWithSyncStatus(userId, network as NetworkType);
 
   if (wallets.length === 0) {
     return res.json({
@@ -326,7 +327,7 @@ router.get('/network/:network/status', asyncHandler(async (req, res) => {
   }
 
   // Find all user's wallets for this network with sync status
-  const wallets = await walletRepository.findByNetworkWithSyncStatus(userId, network as any);
+  const wallets = await walletRepository.findByNetworkWithSyncStatus(userId, network as NetworkType);
 
   const syncing = wallets.filter(w => w.syncInProgress).length;
   const synced = wallets.filter(w => !w.syncInProgress && w.lastSyncStatus === 'success').length;

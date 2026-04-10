@@ -139,7 +139,7 @@ export function rateLimitByUser(policyName: string, options?: RateLimitOptions):
   const message = options?.message || policy?.message;
 
   return async (req: Request, res: Response, next: NextFunction) => {
-    const userId = (req as any).user?.userId;
+    const userId = req.user?.userId;
 
     if (!userId) {
       // No user ID - fall back to IP

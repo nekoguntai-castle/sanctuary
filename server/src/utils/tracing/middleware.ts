@@ -18,6 +18,14 @@ import { startSpan, parseTraceContext, getTracerProvider } from './tracer';
 import type { Span, HttpSpanAttributes } from './types';
 import { requestContext } from '../requestContext';
 
+declare global {
+  namespace Express {
+    interface Request {
+      __span?: Span;
+    }
+  }
+}
+
 /**
  * Options for tracing middleware
  */
@@ -118,7 +126,7 @@ export function tracingMiddleware(options: TracingMiddlewareOptions = {}): Reque
     });
 
     // Store span on request for access in handlers
-    (req as any).__span = span;
+    req.__span = span;
 
     // Set traceId in request context for log correlation
     if (span.context?.traceId) {
@@ -174,7 +182,7 @@ function finishSpan(span: Span, res: Response): void {
  * Get the current request span (for adding custom attributes)
  */
 export function getCurrentSpan(req: Request): Span | undefined {
-  return (req as any).__span;
+  return req.__span;
 }
 
 /**

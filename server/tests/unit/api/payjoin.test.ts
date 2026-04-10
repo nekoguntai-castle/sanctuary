@@ -288,6 +288,18 @@ describe('Payjoin API Routes', () => {
     });
   });
 
+  describe('GET /status', () => {
+    it('should return payjoin status', async () => {
+      const res = await request(app)
+        .get('/api/v1/payjoin/status')
+        .set('Authorization', 'Bearer test-token');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty('enabled');
+      expect(res.body).toHaveProperty('configured');
+    });
+  });
+
   describe('GET /eligibility/:walletId', () => {
     it('should return ready status when eligible UTXOs exist', async () => {
       mockPrisma.wallet.findFirst.mockResolvedValue({

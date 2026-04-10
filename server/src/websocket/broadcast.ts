@@ -26,6 +26,7 @@ import type {
   BroadcastEvent,
 } from './events';
 import { EventBuilders } from './events';
+import type { WebSocketEvent } from './types';
 import { createLogger } from '../utils/logger';
 
 const log = createLogger('WS:BROADCAST');
@@ -38,11 +39,7 @@ const log = createLogger('WS:BROADCAST');
  * Convert typed event to legacy format for existing broadcast implementation
  * This provides backward compatibility during migration
  */
-function toLegacyEvent(event: BroadcastEvent): {
-  type: string;
-  data: unknown;
-  walletId?: string;
-} {
+function toLegacyEvent(event: BroadcastEvent): WebSocketEvent {
   if ('walletId' in event) {
     return {
       type: event.type,
@@ -61,13 +58,14 @@ function toLegacyEvent(event: BroadcastEvent): {
  */
 function broadcastEvent(event: BroadcastEvent): void {
   try {
+    const legacyEvent = toLegacyEvent(event);
     const wsServer = getWebSocketServer();
-    wsServer.broadcast(toLegacyEvent(event) as any);
+    wsServer.broadcast(legacyEvent);
 
     // Also send to gateway if connected
     const gatewayServer = getGatewayWebSocketServer();
     if (gatewayServer?.isGatewayConnected()) {
-      gatewayServer.sendEvent(toLegacyEvent(event) as any);
+      gatewayServer.sendEvent(legacyEvent);
     }
   } catch (error) {
     // WebSocket server might not be initialized during startup

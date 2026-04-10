@@ -182,7 +182,7 @@ export async function runInTransaction<T>(
   fn: (tx: TxClient) => Promise<T>,
   options?: { timeout?: number }
 ): Promise<T> {
-  return prisma.$transaction(fn as any, options);
+  return prisma.$transaction(fn, options);
 }
 
 /**
