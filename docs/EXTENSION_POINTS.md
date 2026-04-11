@@ -168,6 +168,10 @@ Public user API:
 - `server/src/api/sync.ts`
 - `server/src/api/bitcoin/sync.ts`
 
+User-facing sync command ownership:
+
+- `server/src/services/sync/syncCoordinator.ts`
+
 Worker queue producers:
 
 - `server/src/services/workerSyncQueue.ts`
@@ -209,14 +213,14 @@ Use this when:
 
 Current boundary notes:
 
-- `server/src/api/sync.ts` mixes in-process sync queue calls and worker BullMQ producer calls.
-- `server/src/api/bitcoin/sync.ts` overlaps with `server/src/api/sync.ts` for direct wallet sync and confirmation updates.
+- `server/src/services/sync/syncCoordinator.ts` owns user-facing sync commands from the public sync routes, including manual sync, queued sync, network sync, resync, legacy Bitcoin wallet sync, and confirmation updates.
+- `server/src/api/sync.ts` and `server/src/api/bitcoin/sync.ts` should remain thin HTTP/auth/rate-limit adapters over the coordinator.
 - Admin DLQ retry requeues sync failures into the in-process queue even when worker jobs can also enter the DLQ.
 - `server/src/jobs/jobQueue.ts` remains as a general queue singleton, but health/support-package paths usually see it as unavailable in the API process.
 
 Guardrails:
 
-- Do not refactor queue behavior before deciding public, admin, and internal ownership boundaries.
+- Put new user-facing sync command orchestration in `server/src/services/sync/syncCoordinator.ts` instead of adding route-local queue or blockchain dispatch.
 - Prefer documenting legacy aliases before deleting or changing public endpoints.
 - If DLQ retry is expanded, dispatch by original queue metadata when present instead of assuming every sync failure belongs to the in-process queue.
 - If worker BullMQ becomes the canonical manual-sync path, update status endpoints and tests in the same slice.

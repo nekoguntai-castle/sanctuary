@@ -50,6 +50,10 @@ vi.mock('../../../src/services/syncService', () => ({
   getSyncService: () => mockSyncService,
 }));
 
+vi.mock('../../../src/services/sync/syncService', () => ({
+  getSyncService: () => mockSyncService,
+}));
+
 vi.mock('../../../src/services/workerSyncQueue', () => ({
   enqueueWalletSyncBatch: mockEnqueueWalletSyncBatch,
 }));

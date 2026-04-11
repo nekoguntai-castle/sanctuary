@@ -6,10 +6,8 @@
 
 import { Router } from 'express';
 import { authenticate } from '../../middleware/auth';
-import * as blockchain from '../../services/bitcoin/blockchain';
-import { findByIdWithAccess } from '../../repositories/walletRepository';
+import { getSyncCoordinator } from '../../services/sync/syncCoordinator';
 import { asyncHandler } from '../../errors/errorHandler';
-import { NotFoundError } from '../../errors/ApiError';
 
 const router = Router();
 
@@ -24,19 +22,7 @@ router.post('/wallet/:walletId/sync', asyncHandler(async (req, res) => {
   const userId = req.user!.userId;
   const { walletId } = req.params;
 
-  // Check user has access to wallet
-  const wallet = await findByIdWithAccess(walletId, userId);
-
-  if (!wallet) {
-    throw new NotFoundError('Wallet not found');
-  }
-
-  const result = await blockchain.syncWallet(walletId);
-
-  res.json({
-    message: 'Wallet synced successfully',
-    ...result,
-  });
+  res.json(await getSyncCoordinator().syncLegacyBitcoinWallet(userId, walletId));
 }));
 
 /**
@@ -47,19 +33,7 @@ router.post('/wallet/:walletId/update-confirmations', asyncHandler(async (req, r
   const userId = req.user!.userId;
   const { walletId } = req.params;
 
-  // Check user has access to wallet
-  const wallet = await findByIdWithAccess(walletId, userId);
-
-  if (!wallet) {
-    throw new NotFoundError('Wallet not found');
-  }
-
-  const updated = await blockchain.updateTransactionConfirmations(walletId);
-
-  res.json({
-    message: 'Confirmations updated',
-    updated,
-  });
+  res.json(await getSyncCoordinator().updateWalletConfirmations(userId, walletId));
 }));
 
 export default router;
