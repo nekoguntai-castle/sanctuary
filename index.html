@@ -1083,43 +1083,6 @@
         animation: logoGlow 4s ease-in-out infinite;
       }
 
-      /* Login: Ambient glow ring rotating behind logo */
-      @keyframes glowRingRotate {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
-      }
-      .logo-glow-ring {
-        position: absolute;
-        inset: -8px;
-        border-radius: 16px;
-        opacity: 0;
-        pointer-events: none;
-        animation: loginReveal 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.9s forwards;
-      }
-      .logo-glow-ring::before {
-        content: '';
-        position: absolute;
-        inset: 0;
-        border-radius: inherit;
-        padding: 2px;
-        background: conic-gradient(
-          from 0deg,
-          transparent 0deg,
-          var(--color-primary-500) 60deg,
-          transparent 120deg,
-          var(--color-success-500) 200deg,
-          transparent 260deg,
-          var(--color-primary-400) 320deg,
-          transparent 360deg
-        );
-        -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-        -webkit-mask-composite: xor;
-        mask-composite: exclude;
-        animation: glowRingRotate 8s linear infinite;
-        filter: blur(1px);
-        will-change: transform;
-      }
-
       /* 2FA: Shield draw-on animation */
       @keyframes shieldDraw {
         0% { stroke-dashoffset: 80; opacity: 0; }
@@ -1150,7 +1113,6 @@
       /* Respect user's motion preferences */
       @media (prefers-reduced-motion: reduce) {
         .logo-assemble path, .logo-assemble circle,
-        .logo-glow-ring, .logo-glow-ring::before,
         .shield-draw, .verify-ready,
         .dust-mote,
         .login-reveal-1, .login-reveal-2, .login-reveal-3,

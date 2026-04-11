@@ -11,7 +11,6 @@ describe('LoginLogoContainer', () => {
     );
 
     expect(screen.getByTestId('child')).toBeInTheDocument();
-    expect(container.querySelector('.logo-glow-ring')).toBeInTheDocument();
     expect(container.querySelector('.login-logo-enter')).toBeInTheDocument();
   });
 });
