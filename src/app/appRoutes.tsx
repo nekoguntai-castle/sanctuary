@@ -17,12 +17,12 @@ import {
 } from 'lucide-react';
 import { ErrorBoundary } from '../../components/ErrorBoundary';
 import { DashboardSkeleton, ListSkeleton, SettingsSkeleton, WalletDetailSkeleton } from '../../components/ui/Skeleton';
+import type { AppCapability } from './capabilities';
 
 type LazyRouteComponent = LazyExoticComponent<ComponentType<any>>;
 type NavIcon = ComponentType<{ className?: string }>;
 
 export type AppNavSection = 'primary' | 'wallets' | 'hardware' | 'system' | 'admin';
-export type AppNavFeature = 'intelligence';
 
 export interface AppNavItem {
   id: string;
@@ -30,7 +30,7 @@ export interface AppNavItem {
   label: string;
   icon: NavIcon;
   section: AppNavSection;
-  feature?: AppNavFeature;
+  requiredCapabilities?: readonly AppCapability[];
 }
 
 interface AppRouteNavDefinition {
@@ -38,7 +38,7 @@ interface AppRouteNavDefinition {
   icon: NavIcon;
   section: AppNavSection;
   to?: string;
-  feature?: AppNavFeature;
+  requiredCapabilities?: readonly AppCapability[];
 }
 
 export interface AppRouteDefinition {
@@ -185,7 +185,7 @@ export const appRouteDefinitions: AppRouteDefinition[] = [
       label: 'Intelligence',
       icon: Brain,
       section: 'primary',
-      feature: 'intelligence',
+      requiredCapabilities: ['intelligence'],
     },
   },
   {
@@ -305,7 +305,7 @@ export const appNavItems: AppNavItem[] = appRouteDefinitions.flatMap((route) => 
     label: route.nav.label,
     icon: route.nav.icon,
     section: route.nav.section,
-    feature: route.nav.feature,
+    requiredCapabilities: route.nav.requiredCapabilities,
   }];
 });
 

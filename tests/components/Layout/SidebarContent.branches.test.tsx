@@ -1,6 +1,20 @@
 import { fireEvent,render,screen } from '@testing-library/react';
-import { describe,expect,it,vi } from 'vitest';
+import { beforeEach,describe,expect,it,vi } from 'vitest';
 import { SidebarContent } from '../../../components/Layout/SidebarContent';
+import { hasRequiredCapabilities } from '../../../src/app/capabilities';
+
+const { defaultHasRequiredCapabilities } = vi.hoisted(() => ({
+  defaultHasRequiredCapabilities: (
+    requiredCapabilities: readonly string[] | undefined,
+    capabilities: Record<string, boolean | undefined> = {}
+  ) => {
+    if (!requiredCapabilities || requiredCapabilities.length === 0) {
+      return true;
+    }
+
+    return requiredCapabilities.every((capability) => capabilities[capability] === true);
+  },
+}));
 
 vi.mock('../../../components/Layout/NavItem', () => ({
   NavItem: ({ label, onToggle }: any) => (
@@ -35,6 +49,10 @@ vi.mock('../../../components/ui/CustomIcons', () => ({
   getDeviceIcon: (_type: any, className: string) => <span data-testid="device-icon" data-class={className} />,
 }));
 
+vi.mock('../../../src/app/capabilities', () => ({
+  hasRequiredCapabilities: vi.fn(defaultHasRequiredCapabilities),
+}));
+
 const buildProps = (overrides: Partial<React.ComponentProps<typeof SidebarContent>> = {}) => ({
   user: { username: 'alice', isAdmin: true },
   wallets: [],
@@ -51,6 +69,10 @@ const buildProps = (overrides: Partial<React.ComponentProps<typeof SidebarConten
 });
 
 describe('SidebarContent branch coverage', () => {
+  beforeEach(() => {
+    vi.mocked(hasRequiredCapabilities).mockImplementation(defaultHasRequiredCapabilities);
+  });
+
   it('falls back to ? when username is missing', () => {
     const props = buildProps({ user: { username: '', isAdmin: false } });
     render(<SidebarContent {...props} />);
@@ -110,18 +132,32 @@ describe('SidebarContent branch coverage', () => {
     expect(activeClasses.some((value) => value.includes('text-success-700'))).toBe(true);
   });
 
-  it('renders Intelligence nav item when intelligenceAvailable is true', () => {
-    const props = buildProps({ intelligenceAvailable: true });
+  it('renders Intelligence nav item when its required capability is available', () => {
+    const props = buildProps({ capabilities: { intelligence: true } });
     render(<SidebarContent {...props} />);
 
     expect(screen.getByText('Intelligence')).toBeInTheDocument();
   });
 
-  it('hides Intelligence nav item when intelligenceAvailable is falsy', () => {
-    const props = buildProps({ intelligenceAvailable: false });
+  it('hides Intelligence nav item when its required capability is unavailable', () => {
+    const props = buildProps({ capabilities: { intelligence: false } });
     render(<SidebarContent {...props} />);
 
     expect(screen.queryByText('Intelligence')).not.toBeInTheDocument();
+  });
+
+  it('hides fixed sections when capability filtering excludes them', () => {
+    vi.mocked(hasRequiredCapabilities).mockReturnValue(false);
+
+    const props = buildProps({ user: { username: 'alice', isAdmin: true } });
+    render(<SidebarContent {...props} />);
+
+    expect(screen.queryByRole('button', { name: 'Wallets' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Devices' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Administration' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Settings' })).not.toBeInTheDocument();
+    expect(screen.queryByText('No wallets created')).not.toBeInTheDocument();
+    expect(screen.queryByText('No devices connected')).not.toBeInTheDocument();
   });
 
   it('renders dark mode theme button title and Sun icon when darkMode is true', () => {

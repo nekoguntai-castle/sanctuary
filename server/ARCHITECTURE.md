@@ -27,67 +27,69 @@ This document describes the architectural patterns and infrastructure used in th
 - Routes handle HTTP concerns only (max ~50 lines of logic)
 - Services contain business logic and throw domain errors
 - Repositories abstract all database access
-- Direct Prisma calls only in repositories
+- Runtime Prisma access belongs in repositories, except for documented infrastructure boundaries enforced by `npm run check:prisma-imports`
 
 ---
 
-## Dependency Injection
+## Service Lifecycle Registry
 
-The `ServiceRegistry` provides IoC container functionality.
+The service registry is a lifecycle registry, not an IoC container. It starts and stops long-running background services in a predictable order.
 
-**Location:** `src/services/registry.ts`
+**Location:** `src/services/serviceRegistry.ts`
 
 ### Registration
 
-```typescript
-import { serviceRegistry, ServiceNames } from './services/registry';
-import { syncService } from './services/syncService';
-
-// Register at startup
-serviceRegistry.register(ServiceNames.SYNC, syncService);
-serviceRegistry.freeze(); // Prevent modifications after startup
-```
-
-### Retrieval
+Register managed services during process startup in `src/index.ts`:
 
 ```typescript
-import { serviceRegistry, ServiceNames } from '../services/registry';
-import type { ISyncService } from '../services/interfaces';
+import { registerService } from './services/serviceRegistry';
 
-const sync = serviceRegistry.get<ISyncService>(ServiceNames.SYNC);
-await sync.triggerSync(walletId);
+registerService({
+  name: 'sync',
+  start: () => syncService.start(),
+  stop: () => syncService.stop(),
+  critical: false,
+  maxRetries: 3,
+  backoffMs: [2000, 5000, 10000],
+});
 ```
 
-### Testing
+### Startup
+
+`startRegisteredServices()` delegates to `src/services/startupManager.ts`, which applies retry/backoff and records degraded startup state:
 
 ```typescript
-import { createTestRegistry } from '../services/registry';
+import { startRegisteredServices } from './services/serviceRegistry';
 
-const mockSync: ISyncService = {
-  triggerSync: jest.fn(),
-  // ...
-};
-
-const registry = createTestRegistry({ sync: mockSync });
-// Use registry.get<ISyncService>('sync') in tests
+const startupResults = await startRegisteredServices();
 ```
 
-### Features
+### Shutdown
 
-| Feature | Description |
-|---------|-------------|
-| `register()` | Register service instance |
-| `registerFactory()` | Lazy instantiation on first access |
-| `mock()` / `unmock()` | Inject mocks for testing |
-| `freeze()` | Lock registry after startup |
-| `replace()` | Replace registration (testing only) |
-| `reset()` | Clear all registrations |
+`stopRegisteredServices()` stops services in reverse registration order and logs individual stop failures without skipping the rest of shutdown:
+
+```typescript
+import { stopRegisteredServices } from './services/serviceRegistry';
+
+await stopRegisteredServices();
+```
+
+### Current Scope
+
+| Function | Purpose |
+|----------|---------|
+| `registerService()` | Register a managed service with `start` and optional `stop` |
+| `getRegisteredServices()` | Return registered services in registration order |
+| `startRegisteredServices()` | Start services through the startup manager |
+| `stopRegisteredServices()` | Stop services in reverse registration order |
+
+Do not use this registry for request-time service lookup or dependency injection. For tests, mock the imported service module or repository module directly.
 
 ---
 
 ## Repository Pattern
 
-All data access goes through repositories. Never use Prisma directly in routes or services.
+Most data access goes through repositories. Do not add new runtime Prisma imports in routes or services unless the file is an intentional infrastructure exception in `scripts/check-prisma-imports.ts`.
 
 **Location:** `src/repositories/`
 
@@ -123,16 +125,18 @@ const count = await transactionRepository.deleteByWalletId(walletId);
 
 ### Transactions
 
-Repositories accept an optional Prisma transaction client:
+Repositories accept an optional Prisma transaction client where transactional workflows need to coordinate multiple repository calls. Runtime imports from `src/models/prisma.ts` are guarded by `npm run check:prisma-imports`; add new transaction-boundary exceptions only when the workflow cannot be modeled cleanly inside a repository.
 
 ```typescript
-import { prisma } from '../lib/prisma';
+import { withTransaction } from '../models/prisma';
 
-await prisma.$transaction(async (tx) => {
+await withTransaction(async (tx) => {
   await walletRepository.delete(walletId, tx);
   await transactionRepository.deleteByWalletId(walletId, tx);
 });
 ```
+
+Current non-repository runtime Prisma exceptions are documented in `ALLOWED_DIRECT_PRISMA_IMPORTS` in `scripts/check-prisma-imports.ts`.
 
 ---
 
@@ -582,45 +586,22 @@ const result = await breaker.execute(async () => {
 
 ## Testing Patterns
 
-### Mocking Services
+### Mocking Services And Repositories
 
 ```typescript
-import { serviceRegistry } from '../services/registry';
+import { vi } from 'vitest';
 
-beforeEach(() => {
-  serviceRegistry.mock('sync', {
-    triggerSync: jest.fn().mockResolvedValue({ success: true }),
-  });
-});
-
-afterEach(() => {
-  serviceRegistry.clearMocks();
-});
-```
-
-### Isolated Registry
-
-```typescript
-import { createTestRegistry } from '../services/registry';
-
-const registry = createTestRegistry({
-  sync: mockSyncService,
-  audit: mockAuditService,
-});
-
-// Inject registry into code under test
-```
-
-### Repository Mocking
-
-```typescript
-jest.mock('../repositories', () => ({
+vi.mock('../repositories', () => ({
   walletRepository: {
-    findById: jest.fn(),
-    findByIdWithAccess: jest.fn(),
+    findById: vi.fn(),
+    findByIdWithAccess: vi.fn(),
   },
 }));
 ```
+
+### Lifecycle Registry Tests
+
+`src/services/serviceRegistry.ts` is process lifecycle infrastructure. Test it by importing the registry module in an isolated module context and registering lightweight managed-service fakes, as in `tests/unit/services/serviceRegistry.test.ts`.
 
 ---
 
@@ -631,8 +612,8 @@ src/
 ├── api/                 # Route handlers (HTTP layer)
 ├── config/              # Centralized configuration
 ├── infrastructure/      # Redis, distributed locking
-├── lib/                 # Prisma client, external libs
 ├── middleware/          # Express middleware
+├── models/              # Prisma client singleton
 ├── repositories/        # Data access layer
 ├── services/            # Business logic layer
 │   ├── bitcoin/         # Bitcoin-specific services

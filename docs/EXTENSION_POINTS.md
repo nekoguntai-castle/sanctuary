@@ -10,20 +10,25 @@ Consumers:
 
 - `App.tsx`
 - `components/Layout/SidebarContent.tsx`
+- `hooks/useAppCapabilities.ts`
+- `src/app/capabilities.ts`
 - `tests/src/app/appRoutes.test.ts`
 
 Use this when:
 
 - Adding or removing a top-level app route.
 - Adding a sidebar nav entry that maps to an app route.
-- Adding route metadata such as labels, nav sections, feature flags, or redirects.
+- Adding route metadata such as labels, nav sections, capability gates, or redirects.
+- Adding a new sidebar-visible feature that should be hidden until runtime availability is confirmed.
 
 Guardrails:
 
 - Keep route IDs, paths, sidebar labels, lazy components, fallback behavior, and redirects in the route manifest.
 - Do not add a separate static sidebar route list unless the route is intentionally not navigable.
+- Put gated route requirements in `requiredCapabilities` and capability availability mapping in `hooks/useAppCapabilities.ts`.
+- Keep sidebar filtering generic through `src/app/capabilities.ts` instead of adding feature-specific checks to `components/Layout/SidebarContent.tsx`.
 - If routes need authorization later, add explicit access metadata to the manifest instead of scattering checks in `App.tsx`.
-- Run `npx vitest run tests/src/app/appRoutes.test.ts`.
+- Run `npx vitest run tests/src/app/appRoutes.test.ts tests/src/app/capabilities.test.ts tests/components/Layout/SidebarContent.branches.test.tsx tests/hooks/useAppCapabilities.test.ts`.
 
 ## Wallet Detail Tabs
 

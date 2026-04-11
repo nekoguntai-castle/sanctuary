@@ -14,6 +14,10 @@ import {
   getRequiredNavItem,
   type AppNavItem,
 } from '../../src/app/appRoutes';
+import {
+  hasRequiredCapabilities,
+  type AppCapabilityStatus,
+} from '../../src/app/capabilities';
 import { version } from '../../package.json';
 import { NotificationBell } from '../NotificationPanel';
 import { NavItem } from './NavItem';
@@ -34,7 +38,7 @@ interface SidebarContentProps {
   getWalletCount: (walletId: string) => number;
   getDeviceCount: (deviceId: string) => number;
   onVersionClick: () => void;
-  intelligenceAvailable?: boolean;
+  capabilities?: AppCapabilityStatus;
 }
 
 export const SidebarContent: React.FC<SidebarContentProps> = ({
@@ -49,16 +53,26 @@ export const SidebarContent: React.FC<SidebarContentProps> = ({
   getWalletCount,
   getDeviceCount,
   onVersionClick,
-  intelligenceAvailable,
+  capabilities,
 }) => {
-  const primaryNavItems = getNavItemsBySection('primary').filter((item) => {
-    return item.feature !== 'intelligence' || intelligenceAvailable;
-  });
+  const isNavItemVisible = (item: AppNavItem) => {
+    return hasRequiredCapabilities(item.requiredCapabilities, capabilities);
+  };
+  const filterByCapabilities = (items: AppNavItem[]) => {
+    return items.filter(isNavItemVisible);
+  };
+  const primaryNavItems = filterByCapabilities(getNavItemsBySection('primary'));
   const walletNavItem = getRequiredNavItem('wallets');
   const devicesNavItem = getRequiredNavItem('devices');
-  const systemNavItemsBeforeAdmin = getNavItemsBySection('system').filter((item) => item.id !== 'settings');
+  const systemNavItemsBeforeAdmin = filterByCapabilities(
+    getNavItemsBySection('system').filter((item) => item.id !== 'settings')
+  );
   const settingsNavItem = getRequiredNavItem('settings');
-  const adminNavItems = getNavItemsBySection('admin');
+  const adminNavItems = filterByCapabilities(getNavItemsBySection('admin'));
+  const showWalletsSection = isNavItemVisible(walletNavItem);
+  const showDevicesSection = isNavItemVisible(devicesNavItem);
+  const showSettingsNavItem = isNavItemVisible(settingsNavItem);
+  const showAdminSection = user?.isAdmin && adminNavItems.length > 0;
   const renderSubNavIcon = (Icon: AppNavItem['icon']) => <Icon className="w-3 h-3" />;
 
   return (
@@ -73,89 +87,97 @@ export const SidebarContent: React.FC<SidebarContentProps> = ({
           <NavItem key={item.id} to={item.to} icon={item.icon} label={item.label} />
         ))}
 
-        {/* Wallets Section */}
-        <div className="pt-5 pb-1.5">
-          <div className="px-4 text-[9px] font-semibold text-sanctuary-400 dark:text-sanctuary-500 uppercase tracking-[0.15em]">
-            Wallets
-          </div>
-        </div>
-        <div className="space-y-1">
-          <NavItem
-            to={walletNavItem.to}
-            icon={walletNavItem.icon}
-            label={walletNavItem.label}
-            hasSubmenu
-            isOpen={expanded.wallets}
-            onToggle={() => toggleSection('wallets')}
-          />
-          {expanded.wallets && (
-            <div className="animate-accordion-open space-y-0.5 mb-2 overflow-hidden">
-              {wallets.length === 0 && (
-                 <EmptyState compact title="No wallets created" actionLabel="Create wallet" actionTo="/wallets/create" />
-              )}
-              {[...wallets].sort((a, b) => a.name.localeCompare(b.name)).map(w => {
-                const isMultisig = isMultisigType(w.type);
-                const walletType = isMultisig ? WalletType.MULTI_SIG : WalletType.SINGLE_SIG;
-                // Use semantic colors (success/warning) to respect theme settings
-                const activeColor = isMultisig ? 'text-warning-700 dark:text-warning-400' : 'text-success-700 dark:text-success-400';
-                const walletNotifCount = getWalletCount(w.id);
-                const syncStatus = w.syncInProgress ? 'syncing' as const
-                  : w.lastSyncStatus === 'success' ? 'synced' as const
-                  : w.lastSyncStatus === 'failed' ? 'error' as const
-                  : 'pending' as const;
-                return (
-                  <SubNavItem
-                    key={w.id}
-                    to={`/wallets/${w.id}`}
-                    label={w.name}
-                    icon={getWalletIcon(walletType, `w-3 h-3 ${isMultisig ? 'text-warning-500' : 'text-success-500'}`)}
-                    activeColorClass={activeColor}
-                    badgeCount={walletNotifCount}
-                    badgeSeverity="warning"
-                    statusDot={syncStatus}
-                  />
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Devices Section */}
-        <div className="pt-4 pb-1.5">
-          <div className="px-4 text-[9px] font-semibold text-sanctuary-400 dark:text-sanctuary-500 uppercase tracking-[0.15em]">
-            Hardware
-          </div>
-        </div>
-        <div className="space-y-1">
-           <NavItem
-              to={devicesNavItem.to}
-              icon={devicesNavItem.icon}
-              label={devicesNavItem.label}
-              hasSubmenu
-              isOpen={expanded.devices}
-              onToggle={() => toggleSection('devices')}
-            />
-            {expanded.devices && (
-              <div className="animate-accordion-open space-y-0.5 mb-2 overflow-hidden">
-                 {devices.length === 0 && (
-                    <EmptyState compact title="No devices connected" actionLabel="Connect device" actionTo="/devices/connect" />
-                 )}
-                 {[...devices].sort((a, b) => a.label.localeCompare(b.label)).map(d => {
-                   const deviceNotifCount = getDeviceCount(d.id);
-                   return (
-                     <SubNavItem
-                       key={d.id}
-                       to={`/devices/${d.id}`}
-                       label={d.label}
-                       icon={getDeviceIcon(d.type, "w-3 h-3 text-sanctuary-400")}
-                       badgeCount={deviceNotifCount}
-                       badgeSeverity="warning"
-                     />
-                   );
-                 })}
+        {showWalletsSection && (
+          <>
+            {/* Wallets Section */}
+            <div className="pt-5 pb-1.5">
+              <div className="px-4 text-[9px] font-semibold text-sanctuary-400 dark:text-sanctuary-500 uppercase tracking-[0.15em]">
+                Wallets
               </div>
-            )}
-        </div>
+            </div>
+            <div className="space-y-1">
+              <NavItem
+                to={walletNavItem.to}
+                icon={walletNavItem.icon}
+                label={walletNavItem.label}
+                hasSubmenu
+                isOpen={expanded.wallets}
+                onToggle={() => toggleSection('wallets')}
+              />
+              {expanded.wallets && (
+                <div className="animate-accordion-open space-y-0.5 mb-2 overflow-hidden">
+                  {wallets.length === 0 && (
+                     <EmptyState compact title="No wallets created" actionLabel="Create wallet" actionTo="/wallets/create" />
+                  )}
+                  {[...wallets].sort((a, b) => a.name.localeCompare(b.name)).map(w => {
+                    const isMultisig = isMultisigType(w.type);
+                    const walletType = isMultisig ? WalletType.MULTI_SIG : WalletType.SINGLE_SIG;
+                    // Use semantic colors (success/warning) to respect theme settings
+                    const activeColor = isMultisig ? 'text-warning-700 dark:text-warning-400' : 'text-success-700 dark:text-success-400';
+                    const walletNotifCount = getWalletCount(w.id);
+                    const syncStatus = w.syncInProgress ? 'syncing' as const
+                      : w.lastSyncStatus === 'success' ? 'synced' as const
+                      : w.lastSyncStatus === 'failed' ? 'error' as const
+                      : 'pending' as const;
+                    return (
+                      <SubNavItem
+                        key={w.id}
+                        to={`/wallets/${w.id}`}
+                        label={w.name}
+                        icon={getWalletIcon(walletType, `w-3 h-3 ${isMultisig ? 'text-warning-500' : 'text-success-500'}`)}
+                        activeColorClass={activeColor}
+                        badgeCount={walletNotifCount}
+                        badgeSeverity="warning"
+                        statusDot={syncStatus}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {showDevicesSection && (
+          <>
+            {/* Devices Section */}
+            <div className="pt-4 pb-1.5">
+              <div className="px-4 text-[9px] font-semibold text-sanctuary-400 dark:text-sanctuary-500 uppercase tracking-[0.15em]">
+                Hardware
+              </div>
+            </div>
+            <div className="space-y-1">
+               <NavItem
+                  to={devicesNavItem.to}
+                  icon={devicesNavItem.icon}
+                  label={devicesNavItem.label}
+                  hasSubmenu
+                  isOpen={expanded.devices}
+                  onToggle={() => toggleSection('devices')}
+                />
+                {expanded.devices && (
+                  <div className="animate-accordion-open space-y-0.5 mb-2 overflow-hidden">
+                     {devices.length === 0 && (
+                        <EmptyState compact title="No devices connected" actionLabel="Connect device" actionTo="/devices/connect" />
+                     )}
+                     {[...devices].sort((a, b) => a.label.localeCompare(b.label)).map(d => {
+                       const deviceNotifCount = getDeviceCount(d.id);
+                       return (
+                         <SubNavItem
+                           key={d.id}
+                           to={`/devices/${d.id}`}
+                           label={d.label}
+                           icon={getDeviceIcon(d.type, "w-3 h-3 text-sanctuary-400")}
+                           badgeCount={deviceNotifCount}
+                           badgeSeverity="warning"
+                         />
+                       );
+                     })}
+                  </div>
+                )}
+            </div>
+          </>
+        )}
 
         <div className="pt-6 pb-2">
           <div className="px-4 text-xs font-semibold text-sanctuary-400 uppercase tracking-wider">
@@ -165,7 +187,7 @@ export const SidebarContent: React.FC<SidebarContentProps> = ({
         {systemNavItemsBeforeAdmin.map((item) => (
           <NavItem key={item.id} to={item.to} icon={item.icon} label={item.label} />
         ))}
-        {user?.isAdmin && (
+        {showAdminSection && (
           <div className="space-y-1 pt-2">
             <NavItem
               to={adminNavGroup.to}
@@ -189,7 +211,9 @@ export const SidebarContent: React.FC<SidebarContentProps> = ({
             )}
           </div>
         )}
-        <NavItem to={settingsNavItem.to} icon={settingsNavItem.icon} label={settingsNavItem.label} />
+        {showSettingsNavItem && (
+          <NavItem to={settingsNavItem.to} icon={settingsNavItem.icon} label={settingsNavItem.label} />
+        )}
       </nav>
 
       <div className="flex-shrink-0 border-t border-sanctuary-200 dark:border-sanctuary-800">

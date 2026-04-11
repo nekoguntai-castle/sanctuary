@@ -36,10 +36,10 @@ describe('app route manifest', () => {
     expect(getNavItemsBySection('primary').map((item) => ({
       id: item.id,
       to: item.to,
-      feature: item.feature ?? null,
+      requiredCapabilities: item.requiredCapabilities ?? [],
     }))).toEqual([
-      { id: 'dashboard', to: '/', feature: null },
-      { id: 'intelligence', to: '/intelligence', feature: 'intelligence' },
+      { id: 'dashboard', to: '/', requiredCapabilities: [] },
+      { id: 'intelligence', to: '/intelligence', requiredCapabilities: ['intelligence'] },
     ]);
 
     expect(getNavItemsBySection('admin').map((item) => item.label)).toEqual([

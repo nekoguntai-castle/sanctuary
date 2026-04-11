@@ -265,20 +265,20 @@ When services fail, the system degrades gracefully:
 
 To add a new service that integrates properly:
 
-1. **Create interface** in `src/services/interfaces.ts`
-2. **Implement service** following `ILifecycle` interface
-3. **Register** in `src/services/registry.ts` (optional, for DI)
-4. **Add to StartupManager** if it needs managed startup:
+1. **Implement a start/stop boundary** on the service when it owns background work or long-lived resources.
+2. **Register** the service in `src/index.ts` with `registerService()` from `src/services/serviceRegistry.ts`.
+3. **Declare startup behavior** with `critical`, `maxRetries`, `backoffMs`, and optional `dependsOn`.
+4. **Add tests** in `tests/unit/services/serviceRegistry.test.ts` or a focused service test when ordering or shutdown behavior matters.
 
 ```typescript
-// In index.ts
-backgroundServices.push({
+registerService({
   name: 'myService',
   start: () => myService.start(),
+  stop: () => myService.stop(),
   critical: false,  // Set to true if server should exit on failure
   maxRetries: 3,
   backoffMs: [1000, 2000, 5000],
-  dependsOn: ['sync'],  // Optional: wait for sync to start first
+  dependsOn: ['sync'],  // Optional: wait for sync first
 });
 ```
 

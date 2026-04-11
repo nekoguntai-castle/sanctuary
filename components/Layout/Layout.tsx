@@ -14,7 +14,7 @@ import { logError } from '../../utils/errorHandler';
 import { SidebarContent } from './SidebarContent';
 import { AboutModal } from './AboutModal';
 import { LayoutProps, ExpandedState } from './types';
-import { useIntelligenceStatus } from '../../hooks/useIntelligenceStatus';
+import { useAppCapabilities } from '../../hooks/useAppCapabilities';
 
 const log = createLogger('Layout');
 
@@ -57,8 +57,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, darkMode, toggleTheme 
   const { data: wallets = [] } = useWallets();
   const { data: devices = [] } = useDevices();
 
-  // Treasury Intelligence availability check
-  const { available: intelligenceAvailable } = useIntelligenceStatus();
+  const capabilities = useAppCapabilities();
 
   // Handle version click
   const handleVersionClick = async () => {
@@ -200,7 +199,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, darkMode, toggleTheme 
       getWalletCount={getWalletCount}
       getDeviceCount={getDeviceCount}
       onVersionClick={handleVersionClick}
-      intelligenceAvailable={intelligenceAvailable}
+      capabilities={capabilities}
     />
   );
 

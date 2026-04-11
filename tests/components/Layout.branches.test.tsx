@@ -27,6 +27,10 @@ vi.mock('../../hooks/queries/useDevices', () => ({
   useDevices: vi.fn(),
 }));
 
+vi.mock('../../hooks/useAppCapabilities', () => ({
+  useAppCapabilities: vi.fn(() => ({ intelligence: false })),
+}));
+
 vi.mock('../../src/api/bitcoin', () => ({
   getStatus: vi.fn(),
 }));
