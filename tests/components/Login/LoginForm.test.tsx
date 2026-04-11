@@ -8,6 +8,12 @@ vi.mock('../../../components/Login/LoginBackground', () => ({
   ),
 }));
 
+vi.mock('../../../components/Login/LoginLogoContainer', () => ({
+  LoginLogoContainer: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="login-logo-container">{children}</div>
+  ),
+}));
+
 vi.mock('../../../components/ui/CustomIcons', () => ({
   SanctuaryLogo: ({ className }: { className: string }) => (
     <svg data-testid="sanctuary-logo" className={className} />

@@ -1012,7 +1012,27 @@
         animation: atmosphericShift 45s ease-in-out infinite;
       }
 
-      /* Login: Breathing logo - SVG layers gently expand/contract */
+      /* Login: "Sanctuary Stack Assembles" - layers slide in then breathe */
+      @keyframes assembleTop {
+        0% { opacity: 0; transform: translateY(-18px) scaleY(0.6); }
+        60% { opacity: 1; transform: translateY(2px) scaleY(1.05); }
+        100% { opacity: 1; transform: translateY(0) scaleY(1); }
+      }
+      @keyframes assembleMiddle {
+        0% { opacity: 0; transform: translateX(-14px) scaleX(0.7); }
+        60% { opacity: 1; transform: translateX(1px) scaleX(1.03); }
+        100% { opacity: 1; transform: translateX(0) scaleX(1); }
+      }
+      @keyframes assembleBottom {
+        0% { opacity: 0; transform: translateX(14px) scaleX(0.7); }
+        60% { opacity: 1; transform: translateX(-1px) scaleX(1.03); }
+        100% { opacity: 1; transform: translateX(0) scaleX(1); }
+      }
+      @keyframes assembleDot {
+        0% { opacity: 0; transform: scale(0); }
+        50% { opacity: 1; transform: scale(1.6); filter: drop-shadow(0 0 6px var(--color-success-500)); }
+        100% { opacity: 0.5; transform: scale(1); filter: none; }
+      }
       @keyframes logoBreathe {
         0%, 100% { transform: scaleY(1); }
         50% { transform: scaleY(1.08); }
@@ -1021,6 +1041,32 @@
         0%, 100% { opacity: 0.5; }
         50% { opacity: 1; filter: drop-shadow(0 0 3px var(--color-success-500)); }
       }
+      /* Entrance: each layer assembles in from a different direction */
+      .logo-assemble path:first-child {
+        opacity: 0;
+        transform-origin: center 40%;
+        animation: assembleTop 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) 0.05s forwards,
+                   logoBreathe 4s ease-in-out 1.2s infinite;
+      }
+      .logo-assemble path:nth-child(2) {
+        opacity: 0;
+        transform-origin: center 60%;
+        animation: assembleBottom 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) 0.2s forwards,
+                   logoBreathe 4s ease-in-out 1.5s infinite;
+      }
+      .logo-assemble path:nth-child(3) {
+        opacity: 0;
+        transform-origin: center 80%;
+        animation: assembleMiddle 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) 0.35s forwards,
+                   logoBreathe 4s ease-in-out 1.8s infinite;
+      }
+      .logo-assemble circle {
+        opacity: 0;
+        animation: assembleDot 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.7s forwards,
+                   logoGlow 4s ease-in-out 1.3s infinite;
+      }
+
+      /* Idle breathing animation — used by Dashboard/WelcomeState */
       .logo-breathe path:first-child {
         animation: logoBreathe 4s ease-in-out infinite;
         transform-origin: center 40%;
@@ -1035,6 +1081,87 @@
       }
       .logo-breathe circle {
         animation: logoGlow 4s ease-in-out infinite;
+      }
+
+      /* Login: Ambient glow ring rotating behind logo */
+      @keyframes glowRingRotate {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+      .logo-glow-ring {
+        position: absolute;
+        inset: -8px;
+        border-radius: 16px;
+        opacity: 0;
+        pointer-events: none;
+        animation: loginReveal 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.9s forwards;
+      }
+      .logo-glow-ring::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        padding: 2px;
+        background: conic-gradient(
+          from 0deg,
+          transparent 0deg,
+          var(--color-primary-500) 60deg,
+          transparent 120deg,
+          var(--color-success-500) 200deg,
+          transparent 260deg,
+          var(--color-primary-400) 320deg,
+          transparent 360deg
+        );
+        -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+        -webkit-mask-composite: xor;
+        mask-composite: exclude;
+        animation: glowRingRotate 8s linear infinite;
+        filter: blur(1px);
+        will-change: transform;
+      }
+
+      /* 2FA: Shield draw-on animation */
+      @keyframes shieldDraw {
+        0% { stroke-dashoffset: 80; opacity: 0; }
+        15% { opacity: 1; }
+        100% { stroke-dashoffset: 0; opacity: 1; }
+      }
+      @keyframes shieldGlow {
+        0%, 100% { filter: none; stroke-opacity: 0.7; }
+        50% { filter: drop-shadow(0 0 4px var(--color-primary-500)); stroke-opacity: 1; }
+      }
+      .shield-draw {
+        stroke-dasharray: 80;
+        stroke-dashoffset: 80;
+        animation: shieldDraw 1s cubic-bezier(0.16, 1, 0.3, 1) 0.5s forwards,
+                   shieldGlow 3s ease-in-out 1.5s infinite;
+      }
+
+      /* 2FA: Verification pulse when code is complete */
+      @keyframes verifyPulse {
+        0% { transform: scale(1); }
+        40% { transform: scale(1.08); filter: drop-shadow(0 0 8px var(--color-success-500)); }
+        100% { transform: scale(1); filter: none; }
+      }
+      .verify-ready {
+        animation: verifyPulse 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+      }
+
+      /* Respect user's motion preferences */
+      @media (prefers-reduced-motion: reduce) {
+        .logo-assemble path, .logo-assemble circle,
+        .logo-glow-ring, .logo-glow-ring::before,
+        .shield-draw, .verify-ready,
+        .dust-mote,
+        .login-reveal-1, .login-reveal-2, .login-reveal-3,
+        .login-reveal-4, .login-reveal-5,
+        .login-logo-enter,
+        .logo-breathe path, .logo-breathe circle {
+          animation: none !important;
+          opacity: 1 !important;
+          transform: none !important;
+          stroke-dashoffset: 0 !important;
+        }
       }
 
       /* Login: Input focus ripple effect */

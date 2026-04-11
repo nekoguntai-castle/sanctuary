@@ -47,6 +47,7 @@ vi.mock('lucide-react', () => ({
 // Mock custom icons
 vi.mock('../../components/ui/CustomIcons', () => ({
   SanctuaryLogo: () => <span data-testid="sanctuary-logo" />,
+  SanctuaryShieldLogo: ({ ready }: { ready?: boolean }) => <span data-testid="sanctuary-shield-logo" data-ready={ready} />,
 }));
 
 // Mock Button component

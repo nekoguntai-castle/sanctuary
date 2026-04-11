@@ -2,6 +2,7 @@ import { render } from '@testing-library/react';
 import { describe,expect,it } from 'vitest';
 import {
 SanctuaryLogo,
+SanctuaryShieldLogo,
 SatsIcon,
 getDeviceIcon,
 getWalletIcon,
@@ -24,6 +25,8 @@ describe('CustomIcons branch coverage', () => {
   it('renders standalone exported icons', () => {
     expectSvgToRender(<SatsIcon className="sats-icon" />);
     expectSvgToRender(<SanctuaryLogo className="logo-icon" />);
+    expectSvgToRender(<SanctuaryShieldLogo className="shield-logo" />);
+    expectSvgToRender(<SanctuaryShieldLogo className="shield-logo" ready />);
   });
 
   it('routes wallet icon selection by wallet type', () => {

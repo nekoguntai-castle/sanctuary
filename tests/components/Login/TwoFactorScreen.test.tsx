@@ -9,6 +9,19 @@ vi.mock('../../../components/Login/LoginBackground', () => ({
   ),
 }));
 
+vi.mock('../../../components/Login/LoginLogoContainer', () => ({
+  LoginLogoContainer: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="login-logo-container">{children}</div>
+  ),
+}));
+
+vi.mock('../../../components/ui/CustomIcons', () => ({
+  SanctuaryShieldLogo: ({ ready }: { ready?: boolean }) => (
+    <span data-testid="sanctuary-shield-logo" data-ready={ready} />
+  ),
+  SanctuarySpinner: () => <span data-testid="spinner" />,
+}));
+
 const defaultProps = {
   darkMode: false,
   twoFactorCode: '',
@@ -87,5 +100,15 @@ describe('TwoFactorScreen', () => {
   it('shows error alert when error is provided', () => {
     renderScreen({ error: 'Invalid code' });
     expect(screen.getByText('Invalid code')).toBeInTheDocument();
+  });
+
+  it('signals ready state when code reaches 6 digits', () => {
+    renderScreen({ twoFactorCode: '123456' });
+    expect(screen.getByTestId('sanctuary-shield-logo')).toHaveAttribute('data-ready', 'true');
+  });
+
+  it('does not signal ready for short codes', () => {
+    renderScreen({ twoFactorCode: '123' });
+    expect(screen.getByTestId('sanctuary-shield-logo')).toHaveAttribute('data-ready', 'false');
   });
 });

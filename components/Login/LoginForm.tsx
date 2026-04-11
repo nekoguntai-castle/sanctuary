@@ -8,6 +8,7 @@ import { ErrorAlert } from '../ui/ErrorAlert';
 import { Lock, User, Mail } from 'lucide-react';
 import { SanctuaryLogo } from '../ui/CustomIcons';
 import { LoginBackground } from './LoginBackground';
+import { LoginLogoContainer } from './LoginLogoContainer';
 
 // Visual-only mouse tracking -- requires real DOM mouse physics untestable in jsdom
 /* v8 ignore start */
@@ -70,12 +71,11 @@ export const LoginForm: React.FC<LoginFormProps> = ({
 
   return (
     <LoginBackground darkMode={darkMode}>
-      {/* Staggered entrance - Logo */}
+      {/* Staggered entrance - Logo with glow ring */}
       <div className="text-center login-reveal-1">
-        <div className="mx-auto h-20 w-20 bg-sanctuary-200/80 dark:bg-sanctuary-800/80 rounded-xl flex items-center justify-center mb-6 shadow-inner backdrop-blur-sm login-logo-enter">
-          {/* Breathing logo */}
-          <SanctuaryLogo className="h-10 w-10 text-primary-600 dark:text-primary-400 logo-breathe" />
-        </div>
+        <LoginLogoContainer>
+          <SanctuaryLogo className="h-10 w-10 text-primary-600 dark:text-primary-400 logo-assemble" />
+        </LoginLogoContainer>
       </div>
 
       {/* Staggered entrance - Title */}

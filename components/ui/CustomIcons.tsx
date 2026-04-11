@@ -32,6 +32,27 @@ export const SanctuaryLogo: React.FC<IconProps> = ({ className }) => (
   </svg>
 );
 
+// --- 2FA Shield Logo ---
+// Sanctuary logo with an animated shield outline drawn over it.
+// Used on the 2FA verification screen for branded security feel.
+export const SanctuaryShieldLogo: React.FC<IconProps & { ready?: boolean }> = ({ className, ready }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={[className, ready && 'verify-ready'].filter(Boolean).join(' ')}>
+    {/* Sanctuary stack layers */}
+    <path d="M12 2L2 7l10 5 10-5-10-5z" className="logo-assemble" />
+    <path d="M2 17l10 5 10-5" className="logo-assemble" />
+    <path d="M2 12l10 5 10-5" className="logo-assemble" />
+    <circle cx="12" cy="12" r="1" fill="currentColor" fillOpacity="0.5" className="logo-assemble" />
+    {/* Shield outline - draws itself on */}
+    <path
+      d="M12 1.5C8.5 4 5 4.5 3 4.5c0 5 1 11 9 15 8-4 9-10 9-15-2 0-5.5-.5-9-3z"
+      fill="none"
+      strokeWidth="0.8"
+      strokeOpacity="0.7"
+      className="shield-draw"
+    />
+  </svg>
+);
+
 // --- Branded Loading Spinner ---
 // Sanctuary logo layers with pulsing animation for loading states.
 // Use instead of generic Loader2 for brand-consistent loading indicators.
