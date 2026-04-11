@@ -5,6 +5,7 @@
  */
 
 import { circuitBreakerState, cacheOperationsTotal, jobQueueDepth } from './infrastructureMetrics';
+import { activeUsers, activeWallets } from './businessMetrics';
 import {
   electrumPoolConnections,
   electrumPoolWaitingRequests,
@@ -66,6 +67,14 @@ export function updateJobQueueMetrics(
   jobQueueDepth.set({ queue, state: 'active' }, active);
   jobQueueDepth.set({ queue, state: 'delayed' }, delayed);
   jobQueueDepth.set({ queue, state: 'failed' }, failed);
+}
+
+/**
+ * Update active users and wallets gauges from database counts
+ */
+export function updateActiveStatsMetrics(userCount: number, walletCount: number): void {
+  activeUsers.set(userCount);
+  activeWallets.set(walletCount);
 }
 
 /**

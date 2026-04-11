@@ -189,6 +189,46 @@ services:
   # Default login: admin / sanctuary
   # ============================================
   # ============================================
+  # Alertmanager - Alert Routing & Deduplication
+  # ============================================
+  # Receives alerts from Prometheus and routes to
+  # configured receivers (Telegram, email, webhook).
+  # Configure receivers in alertmanager.yml.
+  # ============================================
+  alertmanager:
+    image: prom/alertmanager:v0.26.0
+    container_name: sanctuary-alertmanager
+    restart: unless-stopped
+    ports:
+      - "${ALERTMANAGER_PORT:-9093}:9093"
+    volumes:
+      - ./docker/monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    networks:
+      - sanctuary-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+        reservations:
+          cpus: '0.1'
+          memory: 32M
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:9093/-/healthy || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ============================================
   # Backend Extension - Enable Tracing
   # ============================================
   # Extends the backend service with OpenTelemetry config

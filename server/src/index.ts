@@ -50,6 +50,8 @@ import { walletLogBuffer } from './services/walletLogBuffer';
 import { deadLetterQueue } from './services/deadLetterQueue';
 import { initializeCacheInvalidation, shutdownCacheInvalidation } from './services/cacheInvalidation';
 import { startWorkerHealthMonitor, stopWorkerHealthMonitor } from './services/workerHealth';
+import { updateActiveStatsMetrics } from './observability/metrics/helpers';
+import { getActiveStats } from './repositories/maintenanceRepository';
 
 const log = createLogger('SERVER');
 
@@ -324,6 +326,16 @@ log.info('Worker-owned architecture: in-process maintenance fallback disabled');
         process.exit(1);
       }
 
+      // Periodically update active user/wallet gauges for Prometheus (every 60s)
+      activeStatsTimer = setInterval(async () => {
+        try {
+          const stats = await getActiveStats();
+          updateActiveStatsMetrics(stats.activeUserCount, stats.activeWalletCount);
+        } catch (error) {
+          log.debug('Active stats metrics update failed', { error: getErrorMessage(error) });
+        }
+      }, 60_000);
+
       // Log final migration status
       await migrationService.logMigrationStatus();
     });
@@ -338,6 +350,7 @@ log.info('Worker-owned architecture: in-process maintenance fallback disabled');
 // Graceful shutdown configuration
 const SHUTDOWN_TIMEOUT_MS = 30000; // 30 seconds to drain connections
 let isShuttingDown = false;
+let activeStatsTimer: NodeJS.Timeout | null = null;
 
 // Graceful shutdown handler with connection draining
 const handleShutdown = async (signal: string) => {
@@ -358,6 +371,12 @@ const handleShutdown = async (signal: string) => {
 
   // Don't let this timeout keep the process alive if everything else closes
   forceExitTimeout.unref();
+
+  // Stop metrics timer
+  if (activeStatsTimer) {
+    clearInterval(activeStatsTimer);
+    activeStatsTimer = null;
+  }
 
   // Close WebSocket servers first (stop accepting new connections)
   wsServer.close();

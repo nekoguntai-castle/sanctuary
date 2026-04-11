@@ -81,6 +81,7 @@ import {
   cleanupExpiredTokensJob,
   weeklyVacuumJob,
   monthlyCleanupJob,
+  scheduledBackupJob,
   maintenanceJobs,
 } from '../../../src/jobs/definitions/maintenance';
 
@@ -304,8 +305,65 @@ describe('Maintenance job definitions behavior', () => {
     expect(updateProgress).toHaveBeenCalledWith(100);
   });
 
+  it('scheduledBackupJob creates backup, writes file, and enforces retention', async () => {
+    const mockMkdir = vi.fn().mockResolvedValue(undefined);
+    const mockWriteFile = vi.fn().mockResolvedValue(undefined);
+    const mockReaddir = vi.fn().mockResolvedValue([
+      'sanctuary-backup-2026-04-01.json',
+      'sanctuary-backup-2026-04-02.json',
+      'sanctuary-backup-2026-04-03.json',
+    ]);
+    const mockUnlink = vi.fn().mockResolvedValue(undefined);
+
+    vi.doMock('fs/promises', () => ({
+      mkdir: mockMkdir,
+      writeFile: mockWriteFile,
+      readdir: mockReaddir,
+      unlink: mockUnlink,
+    }));
+
+    vi.doMock('path', async () => {
+      const actual = await vi.importActual('path');
+      return actual;
+    });
+
+    const mockBackup = {
+      meta: { recordCounts: { user: 1, wallet: 2 } },
+      data: {},
+    };
+    vi.doMock('../../../src/services/backupService/backupService', () => ({
+      BackupService: class {
+        async createBackup() { return mockBackup; }
+      },
+    }));
+
+    // Re-import to pick up doMock
+    const { scheduledBackupJob: freshJob } = await import('../../../src/jobs/definitions/maintenance');
+
+    const result = await freshJob.handler({
+      data: { retentionCount: 2 },
+    } as any);
+
+    expect(result).toMatch(/^sanctuary-backup-/);
+    expect(mockMkdir).toHaveBeenCalledWith('/data/backups', { recursive: true });
+    expect(mockWriteFile).toHaveBeenCalledWith(
+      expect.stringContaining('sanctuary-backup-'),
+      expect.any(String),
+      'utf-8',
+    );
+    // 3 files, retention 2 → 1 file deleted (oldest)
+    expect(mockUnlink).toHaveBeenCalledTimes(1);
+    expect(mockUnlink).toHaveBeenCalledWith(expect.stringContaining('2026-04-01'));
+    expect(mockAuditLog).toHaveBeenCalled();
+  });
+
+  it('scheduledBackupJob uses default retentionCount of 7', async () => {
+    expect(scheduledBackupJob.name).toBe('backup:scheduled');
+    expect(scheduledBackupJob.options?.attempts).toBe(2);
+  });
+
   it('exports the complete maintenance job list', () => {
-    expect(maintenanceJobs).toEqual([
+    expect(maintenanceJobs).toEqual(expect.arrayContaining([
       cleanupAuditLogsJob,
       cleanupPriceDataJob,
       cleanupFeeEstimatesJob,
@@ -314,6 +372,7 @@ describe('Maintenance job definitions behavior', () => {
       cleanupExpiredTokensJob,
       weeklyVacuumJob,
       monthlyCleanupJob,
-    ]);
+    ]));
+    expect(maintenanceJobs).toHaveLength(9);
   });
 });

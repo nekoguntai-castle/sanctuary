@@ -17,6 +17,7 @@ import {
   cleanupExpiredTokensJob,
   weeklyVacuumJob,
   monthlyCleanupJob,
+  scheduledBackupJob,
 } from '../../jobs/definitions/maintenance';
 
 // Type for handlers that accept any job data
@@ -29,6 +30,8 @@ const CLEANUP_LOCK_TTL_MS = 90_000;
 const VACUUM_LOCK_TTL_MS = 6 * 60_000;
 // Monthly cleanup: ~60s typical + 60s grace
 const MONTHLY_LOCK_TTL_MS = 2 * 60_000;
+// Backup: large DB could take several minutes
+const BACKUP_LOCK_TTL_MS = 30 * 60_000;
 
 export const maintenanceJobs: WorkerJobHandler<unknown, unknown>[] = [
   {
@@ -109,6 +112,16 @@ export const maintenanceJobs: WorkerJobHandler<unknown, unknown>[] = [
     lockOptions: {
       lockKey: () => `maintenance:${monthlyCleanupJob.name}`,
       lockTtlMs: MONTHLY_LOCK_TTL_MS,
+    },
+  },
+  {
+    name: scheduledBackupJob.name,
+    queue: 'maintenance',
+    handler: scheduledBackupJob.handler as AnyJobHandler,
+    options: scheduledBackupJob.options,
+    lockOptions: {
+      lockKey: () => `maintenance:${scheduledBackupJob.name}`,
+      lockTtlMs: BACKUP_LOCK_TTL_MS,
     },
   },
 ];

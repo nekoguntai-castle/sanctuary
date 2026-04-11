@@ -18,6 +18,7 @@ import {
   recordCacheOperation,
   updateJobQueueMetrics,
   updateElectrumPoolMetrics,
+  updateActiveStatsMetrics,
 } from '../../../src/observability/metrics';
 
 describe('observability/metrics', () => {
@@ -71,6 +72,15 @@ describe('observability/metrics', () => {
     expect(metricsText).toContain('sanctuary_job_queue_depth{queue="sync",state="active"} 2');
     expect(metricsText).toContain('sanctuary_job_queue_depth{queue="sync",state="delayed"} 1');
     expect(metricsText).toContain('sanctuary_job_queue_depth{queue="sync",state="failed"} 4');
+  });
+
+  it('updates active users and wallets gauges', async () => {
+    updateActiveStatsMetrics(5, 12);
+
+    const metricsText = await metricsService.getMetrics();
+
+    expect(metricsText).toContain('sanctuary_active_users 5');
+    expect(metricsText).toContain('sanctuary_active_wallets 12');
   });
 
   it('records all circuit breaker states and electrum pool server health branches', async () => {

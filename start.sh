@@ -83,13 +83,15 @@ check_ssl_expiry() {
 
                 if [ "$days_left" -le 0 ]; then
                     echo ""
-                    echo -e "\033[0;31mWarning: SSL certificate has expired!\033[0m"
-                    echo "  Regenerate with: cd docker/nginx/ssl && ./generate-certs.sh localhost"
-                    echo ""
+                    echo -e "\033[0;31mSSL certificate has expired — auto-regenerating...\033[0m"
                 elif [ "$days_left" -lt 30 ]; then
                     echo ""
-                    echo -e "\033[1;33mWarning: SSL certificate expires in $days_left days.\033[0m"
-                    echo "  Regenerate with: cd docker/nginx/ssl && ./generate-certs.sh localhost"
+                    echo -e "\033[1;33mSSL certificate expires in $days_left days — auto-regenerating...\033[0m"
+                fi
+
+                if [ "$days_left" -lt 30 ]; then
+                    (cd "$SCRIPT_DIR/docker/nginx/ssl" && bash generate-certs.sh localhost)
+                    echo -e "\033[0;32mSSL certificate regenerated.\033[0m"
                     echo ""
                 fi
             fi

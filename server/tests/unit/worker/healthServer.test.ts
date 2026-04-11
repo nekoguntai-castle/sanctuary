@@ -3,9 +3,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 let capturedHandler: ((req: any, res: any) => Promise<void> | void) | null = null;
 const serverInstances: any[] = [];
 let closeError: Error | null = null;
-const { mockLogInfo, mockLogError } = vi.hoisted(() => ({
+const { mockLogInfo, mockLogError, mockRegistryMetrics } = vi.hoisted(() => ({
   mockLogInfo: vi.fn(),
   mockLogError: vi.fn(),
+  mockRegistryMetrics: vi.fn().mockResolvedValue('# HELP sanctuary_up\nsanctuary_up 1\n'),
 }));
 
 vi.mock('http', () => {
@@ -35,6 +36,13 @@ vi.mock('../../../src/utils/logger', () => ({
     info: mockLogInfo,
     error: mockLogError,
   }),
+}));
+
+vi.mock('../../../src/observability/metrics/registry', () => ({
+  registry: {
+    metrics: mockRegistryMetrics,
+    contentType: 'text/plain; version=0.0.4; charset=utf-8',
+  },
 }));
 
 import { startHealthServer } from '../../../src/worker/healthServer';
@@ -211,6 +219,24 @@ describe('Worker Health Server', () => {
         health: { redis: true, electrum: true, jobQueue: false },
       })
     );
+  });
+
+  it('responds with Prometheus text metrics on /metrics/prometheus', async () => {
+    startHealthServer({
+      port: 3017,
+      healthProvider: {
+        getHealth: async () => ({ redis: true, electrum: true, jobQueue: true }),
+      },
+    });
+
+    const req = { url: '/metrics/prometheus' };
+    const res = makeRes();
+    await capturedHandler?.(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['Content-Type']).toBe('text/plain; version=0.0.4; charset=utf-8');
+    expect(res.body).toContain('sanctuary_up 1');
+    expect(mockRegistryMetrics).toHaveBeenCalled();
   });
 
   it('returns 404 for unknown routes', async () => {

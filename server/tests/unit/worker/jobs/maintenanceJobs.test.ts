@@ -9,6 +9,7 @@ const mockJobs = vi.hoisted(() => ({
   cleanupExpiredTokensJob: { name: 'cleanupExpiredTokens', handler: vi.fn(), options: { attempts: 6 } },
   weeklyVacuumJob: { name: 'weeklyVacuum', handler: vi.fn(), options: { attempts: 7 } },
   monthlyCleanupJob: { name: 'monthlyCleanup', handler: vi.fn(), options: { attempts: 8 } },
+  scheduledBackupJob: { name: 'backup:scheduled', handler: vi.fn(), options: { attempts: 2 } },
 }));
 
 vi.mock('../../../../src/jobs/definitions/maintenance', () => mockJobs);
@@ -17,7 +18,7 @@ import { maintenanceJobs } from '../../../../src/worker/jobs/maintenanceJobs';
 
 describe('worker maintenanceJobs', () => {
   it('exports all maintenance job handlers with queue and lock configuration', () => {
-    expect(maintenanceJobs).toHaveLength(8);
+    expect(maintenanceJobs).toHaveLength(9);
     expect(maintenanceJobs.map(j => j.name)).toEqual([
       'cleanupAuditLogs',
       'cleanupPriceData',
@@ -27,6 +28,7 @@ describe('worker maintenanceJobs', () => {
       'cleanupExpiredTokens',
       'weeklyVacuum',
       'monthlyCleanup',
+      'backup:scheduled',
     ]);
     expect(maintenanceJobs.every(j => j.queue === 'maintenance')).toBe(true);
   });
@@ -54,6 +56,10 @@ describe('worker maintenanceJobs', () => {
     const monthly = byName.get('monthlyCleanup')!;
     expect(monthly.lockOptions?.lockKey()).toBe('maintenance:monthlyCleanup');
     expect(monthly.lockOptions?.lockTtlMs).toBe(2 * 60_000);
+
+    const backup = byName.get('backup:scheduled')!;
+    expect(backup.lockOptions?.lockKey()).toBe('maintenance:backup:scheduled');
+    expect(backup.lockOptions?.lockTtlMs).toBe(30 * 60_000);
   });
 
   it('forwards handler and options from shared maintenance definitions', () => {

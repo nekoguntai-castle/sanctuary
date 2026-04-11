@@ -1,0 +1,72 @@
+# Alertmanager Configuration
+#
+# Default configuration routes all alerts to the 'default' receiver.
+#
+# To enable notifications, configure one of the receivers below:
+#
+#   Email (SMTP):
+#     Set ALERTMANAGER_SMTP_* environment variables
+#
+#   Telegram:
+#     Set ALERTMANAGER_TELEGRAM_BOT_TOKEN and ALERTMANAGER_TELEGRAM_CHAT_ID
+#     (Reuse your Sanctuary Telegram bot token and admin chat ID)
+#
+#   Webhook:
+#     Set ALERTMANAGER_WEBHOOK_URL to receive JSON alert payloads
+#
+# See: https://prometheus.io/docs/alerting/latest/configuration/
+
+global:
+  resolve_timeout: 5m
+
+route:
+  group_by: ['alertname', 'severity']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  receiver: 'default'
+
+  routes:
+    # Critical alerts get shorter repeat interval
+    - match:
+        severity: critical
+      receiver: 'default'
+      repeat_interval: 1h
+
+receivers:
+  - name: 'default'
+    webhook_configs: []
+    # Uncomment and configure as needed:
+    #
+    # Telegram notifications (recommended for Sanctuary):
+    # telegram_configs:
+    #   - bot_token: '<your-telegram-bot-token>'
+    #     chat_id: <your-admin-chat-id>
+    #     parse_mode: 'HTML'
+    #     message: |
+    #       {{ range .Alerts }}
+    #       <b>{{ .Labels.alertname }}</b> [{{ .Labels.severity }}]
+    #       {{ .Annotations.summary }}
+    #       {{ .Annotations.description }}
+    #       {{ end }}
+    #
+    # Email notifications:
+    # email_configs:
+    #   - to: 'admin@example.com'
+    #     from: 'sanctuary-alerts@example.com'
+    #     smarthost: 'smtp.example.com:587'
+    #     auth_username: 'user'
+    #     auth_password: 'password'
+    #
+    # Webhook (forward to any HTTP endpoint):
+    # webhook_configs:
+    #   - url: 'http://backend:3001/api/v1/webhooks/alerts'
+
+# Inhibition rules: suppress duplicate alerts
+inhibit_rules:
+  # If CriticalErrorRate fires, suppress HighErrorRate
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname']

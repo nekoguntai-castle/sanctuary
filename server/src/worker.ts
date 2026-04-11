@@ -412,6 +412,14 @@ async function scheduleRecurringJobs(): Promise<void> {
     '0 4 1 * *' // 1st of month 4 AM
   );
 
+  // Scheduled backup - daily at 1 AM (before cleanup jobs)
+  await jobQueue.scheduleRecurring(
+    'maintenance',
+    'backup:scheduled',
+    { retentionCount: 7 },
+    '0 1 * * *' // Daily 1 AM
+  );
+
   // Treasury Autopilot jobs (behind feature flag — uses DB-backed service for runtime toggling)
   const autopilotEnabled = await featureFlagService.isEnabled('treasuryAutopilot');
   if (autopilotEnabled) {

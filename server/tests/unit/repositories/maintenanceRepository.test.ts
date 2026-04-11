@@ -17,7 +17,8 @@ vi.mock('../../../src/models/prisma', () => ({
       deleteMany: vi.fn(),
       count: vi.fn(),
     },
-    refreshToken: { deleteMany: vi.fn() },
+    refreshToken: { deleteMany: vi.fn(), groupBy: vi.fn() },
+    wallet: { count: vi.fn() },
     revokedToken: {
       upsert: vi.fn(),
       findUnique: vi.fn(),
@@ -310,6 +311,35 @@ describe('Maintenance Repository', () => {
         by: ['platform'],
         _count: { _all: true },
       });
+    });
+  });
+
+  describe('getActiveStats', () => {
+    it('returns active user count from distinct sessions and total wallet count', async () => {
+      (prisma.refreshToken.groupBy as Mock).mockResolvedValue([
+        { userId: 'u1' },
+        { userId: 'u2' },
+        { userId: 'u3' },
+      ]);
+      (prisma.wallet.count as Mock).mockResolvedValue(7);
+
+      const result = await maintenanceRepository.getActiveStats();
+
+      expect(result).toEqual({ activeUserCount: 3, activeWalletCount: 7 });
+      expect(prisma.refreshToken.groupBy).toHaveBeenCalledWith({
+        by: ['userId'],
+        where: { expiresAt: { gt: expect.any(Date) } },
+      });
+      expect(prisma.wallet.count).toHaveBeenCalled();
+    });
+
+    it('returns zero when no active sessions or wallets', async () => {
+      (prisma.refreshToken.groupBy as Mock).mockResolvedValue([]);
+      (prisma.wallet.count as Mock).mockResolvedValue(0);
+
+      const result = await maintenanceRepository.getActiveStats();
+
+      expect(result).toEqual({ activeUserCount: 0, activeWalletCount: 0 });
     });
   });
 });

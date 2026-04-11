@@ -9,13 +9,12 @@ global:
   external_labels:
     monitor: 'sanctuary'
 
-# Alerting (optional)
-# To enable alert notifications, deploy Alertmanager and uncomment:
-# alerting:
-#   alertmanagers:
-#     - static_configs:
-#         - targets: ['alertmanager:9093']
-# See: https://prometheus.io/docs/alerting/latest/alertmanager/
+# Alerting - routes firing alerts to Alertmanager
+# Configure notification receivers in docker/monitoring/alertmanager.yml
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
 
 # Rule files - alert rules for Sanctuary
 rule_files:

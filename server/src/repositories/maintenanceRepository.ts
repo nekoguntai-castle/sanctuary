@@ -121,6 +121,27 @@ export async function getStats(): Promise<{
   return { auditLogCount, priceDataCount, feeEstimateCount, draftCount, expiredDraftCount };
 }
 
+/**
+ * Get active user and wallet counts for Prometheus metrics
+ */
+export async function getActiveStats(): Promise<{
+  activeUserCount: number;
+  activeWalletCount: number;
+}> {
+  const now = new Date();
+  const [activeUserCount, activeWalletCount] = await Promise.all([
+    // Users with at least one non-expired refresh token (active session)
+    prisma.refreshToken.groupBy({
+      by: ['userId'],
+      where: { expiresAt: { gt: now } },
+    }).then(groups => groups.length),
+    // Total wallets
+    prisma.wallet.count(),
+  ]);
+
+  return { activeUserCount, activeWalletCount };
+}
+
 // ============================================================================
 // Backup export helpers
 // ============================================================================
@@ -338,6 +359,7 @@ export const maintenanceRepository = {
   deleteOrphanedDrafts,
   // Stats
   getStats,
+  getActiveStats,
   // Backup
   exportTable,
   exportTablePaginated,

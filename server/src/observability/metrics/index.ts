@@ -94,6 +94,7 @@ export {
   recordCacheOperation,
   updateJobQueueMetrics,
   updateElectrumPoolMetrics,
+  updateActiveStatsMetrics,
 } from './helpers';
 
 // Default export

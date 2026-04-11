@@ -116,8 +116,6 @@ export const cleanupFeeEstimatesJob: JobDefinition<CleanupJobData, number> = {
 export const cleanupExpiredDraftsJob: JobDefinition<void, number> = {
   name: 'cleanup:expired-drafts',
   handler: async () => {
-    const now = new Date();
-
     log.info('Running expired drafts cleanup job');
 
     const deleted = await maintenanceRepository.deleteExpiredDrafts();
@@ -178,8 +176,6 @@ export const cleanupExpiredTransfersJob: JobDefinition<void, number> = {
 export const cleanupExpiredTokensJob: JobDefinition<void, number> = {
   name: 'cleanup:expired-tokens',
   handler: async () => {
-    const now = new Date();
-
     log.info('Running expired tokens cleanup job');
 
     const deleted = await maintenanceRepository.deleteExpiredRefreshTokens();
@@ -320,6 +316,79 @@ export const monthlyCleanupJob: JobDefinition<void, { stalePushDevices: number; 
 };
 
 // =============================================================================
+// Scheduled Backup Job
+// =============================================================================
+
+interface ScheduledBackupData {
+  retentionCount?: number;
+}
+
+/**
+ * Daily scheduled backup
+ * Creates a JSON backup and writes it to /data/backups/ (Docker volume).
+ * Retains the most recent N backups (default 7).
+ */
+export const scheduledBackupJob: JobDefinition<ScheduledBackupData, string> = {
+  name: 'backup:scheduled',
+  handler: async (job: Job<ScheduledBackupData>) => {
+    const fs = await import('fs/promises');
+    const path = await import('path');
+
+    const backupDir = process.env.BACKUP_DIR || '/data/backups';
+    const retentionCount = job.data.retentionCount ?? 7;
+
+    log.info('Running scheduled backup', { backupDir, retentionCount });
+
+    // Ensure backup directory exists
+    await fs.mkdir(backupDir, { recursive: true });
+
+    // Create backup via backup service
+    const { BackupService } = await import('../../services/backupService/backupService');
+    const backupService = new BackupService();
+    const backup = await backupService.createBackup('system-scheduled', {
+      description: `Automated daily backup`,
+    });
+
+    // Write to file
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `sanctuary-backup-${timestamp}.json`;
+    const filepath = path.join(backupDir, filename);
+    await fs.writeFile(filepath, JSON.stringify(backup), 'utf-8');
+
+    log.info('Backup written', { filepath, records: backup.meta.recordCounts });
+
+    // Enforce retention: delete oldest files beyond retentionCount
+    const files = await fs.readdir(backupDir);
+    const backupFiles = files
+      .filter(f => f.startsWith('sanctuary-backup-') && f.endsWith('.json'))
+      .sort()
+      .reverse(); // newest first
+
+    if (backupFiles.length > retentionCount) {
+      const toDelete = backupFiles.slice(retentionCount);
+      for (const file of toDelete) {
+        await fs.unlink(path.join(backupDir, file));
+        log.info('Deleted old backup', { file });
+      }
+    }
+
+    await auditService.log({
+      username: 'system',
+      action: 'maintenance.scheduled_backup',
+      category: AuditCategory.SYSTEM,
+      details: { filename, records: backup.meta.recordCounts },
+      success: true,
+    });
+
+    return filename;
+  },
+  options: {
+    attempts: 2,
+    backoff: { type: 'exponential', delay: 10000 },
+  },
+};
+
+// =============================================================================
 // All Maintenance Jobs
 // =============================================================================
 
@@ -332,4 +401,5 @@ export const maintenanceJobs = [
   cleanupExpiredTokensJob,
   weeklyVacuumJob,
   monthlyCleanupJob,
+  scheduledBackupJob,
 ];
