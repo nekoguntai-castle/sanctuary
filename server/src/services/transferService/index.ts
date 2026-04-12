@@ -13,9 +13,17 @@
  */
 
 // Types
+export {
+  TRANSFER_STATUS_VALUES,
+  TRANSFER_RESOURCE_TYPES,
+  TRANSFER_ROLE_FILTER_VALUES,
+  TRANSFER_STATUS_FILTER_VALUES,
+} from './types';
+
 export type {
   TransferStatus,
   ResourceType,
+  TransferRoleFilter,
   Transfer,
   InitiateTransferInput,
   TransferFilters,

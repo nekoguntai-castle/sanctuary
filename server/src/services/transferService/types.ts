@@ -13,8 +13,14 @@ export type TransferWithUsers = OwnershipTransfer & {
   toUser?: { id: string; username: string } | null;
 };
 
-export type TransferStatus = 'pending' | 'accepted' | 'confirmed' | 'cancelled' | 'declined' | 'expired';
-export type ResourceType = 'wallet' | 'device';
+export const TRANSFER_STATUS_VALUES = ['pending', 'accepted', 'confirmed', 'cancelled', 'declined', 'expired'] as const;
+export const TRANSFER_RESOURCE_TYPES = ['wallet', 'device'] as const;
+export const TRANSFER_ROLE_FILTER_VALUES = ['initiator', 'recipient', 'all'] as const;
+export const TRANSFER_STATUS_FILTER_VALUES = [...TRANSFER_STATUS_VALUES, 'active', 'all'] as const;
+
+export type TransferStatus = (typeof TRANSFER_STATUS_VALUES)[number];
+export type ResourceType = (typeof TRANSFER_RESOURCE_TYPES)[number];
+export type TransferRoleFilter = (typeof TRANSFER_ROLE_FILTER_VALUES)[number];
 
 export interface Transfer {
   id: string;
@@ -47,7 +53,7 @@ export interface InitiateTransferInput {
 }
 
 export interface TransferFilters {
-  role?: 'initiator' | 'recipient' | 'all';
+  role?: TransferRoleFilter;
   status?: TransferStatus | 'active' | 'all';
   resourceType?: ResourceType;
 }

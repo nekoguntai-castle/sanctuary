@@ -6,6 +6,12 @@ import {
   MOBILE_DEVICE_SCRIPT_TYPES,
   MOBILE_DRAFT_STATUS_VALUES,
 } from '../../../../shared/schemas/mobileApiRequests';
+import {
+  TRANSFER_RESOURCE_TYPES,
+  TRANSFER_ROLE_FILTER_VALUES,
+  TRANSFER_STATUS_FILTER_VALUES,
+  TRANSFER_STATUS_VALUES,
+} from '../../../src/services/transferService/types';
 
 type HandlerResponse = {
   statusCode: number;
@@ -340,6 +346,62 @@ describe('OpenAPI Docs', () => {
     });
     expect(receiverPath.responses[400].content['text/plain'].schema).toEqual({
       $ref: '#/components/schemas/PayjoinReceiverError',
+    });
+  });
+
+  it('documents ownership transfer routes', () => {
+    const routes: Array<[OpenApiPathKey, string]> = [
+      ['/transfers', 'get'],
+      ['/transfers', 'post'],
+      ['/transfers/counts', 'get'],
+      ['/transfers/{id}', 'get'],
+      ['/transfers/{id}/accept', 'post'],
+      ['/transfers/{id}/decline', 'post'],
+      ['/transfers/{id}/cancel', 'post'],
+      ['/transfers/{id}/confirm', 'post'],
+    ];
+
+    for (const [path, method] of routes) {
+      expectDocumentedMethod(path, method);
+    }
+
+    const transferSchema = openApiSpec.components.schemas.OwnershipTransfer;
+    expect(transferSchema.properties.resourceType.enum).toEqual([...TRANSFER_RESOURCE_TYPES]);
+    expect(transferSchema.properties.status.enum).toEqual([...TRANSFER_STATUS_VALUES]);
+    expect(transferSchema.required).toEqual(expect.arrayContaining([
+      'id',
+      'resourceType',
+      'resourceId',
+      'fromUserId',
+      'toUserId',
+      'status',
+      'createdAt',
+      'expiresAt',
+      'keepExistingUsers',
+    ]));
+
+    const createSchema = openApiSpec.components.schemas.TransferCreateRequest;
+    expect(createSchema.required).toEqual(['resourceType', 'resourceId', 'toUserId']);
+    expect(createSchema.properties.resourceType.enum).toEqual([...TRANSFER_RESOURCE_TYPES]);
+
+    const listParameters = openApiSpec.paths['/transfers'].get.parameters;
+    expect(listParameters).toContainEqual(expect.objectContaining({
+      name: 'role',
+      schema: expect.objectContaining({ enum: [...TRANSFER_ROLE_FILTER_VALUES] }),
+    }));
+    expect(listParameters).toContainEqual(expect.objectContaining({
+      name: 'status',
+      schema: expect.objectContaining({ enum: [...TRANSFER_STATUS_FILTER_VALUES] }),
+    }));
+
+    expect(openApiSpec.paths['/transfers'].post.responses[201].content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/OwnershipTransfer',
+    });
+    expect(openApiSpec.paths['/transfers/counts'].get.responses[200].content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/TransferCountsResponse',
+    });
+    expect(openApiSpec.paths['/transfers/{id}/decline'].post.requestBody.content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/TransferDeclineRequest',
     });
   });
 });
