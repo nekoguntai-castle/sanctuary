@@ -25,12 +25,17 @@
  */
 
 import { Router } from 'express';
+import type { z } from 'zod';
 import { authenticate } from '../middleware/auth';
 import { verifyGatewayRequest } from '../middleware/gatewayAuth';
 import { createLogger } from '../utils/logger';
 import { mobilePermissionService, type MobileAction, ALL_MOBILE_ACTIONS } from '../services/mobilePermissions';
 import { asyncHandler } from '../errors/errorHandler';
 import { InvalidInputError } from '../errors/ApiError';
+import {
+  MobilePermissionUpdateRequestSchema,
+  type MobilePermissionUpdateRequest,
+} from '../../../shared/schemas/mobileApiRequests';
 
 const publicRouter = Router();
 const internalRouter = Router();
@@ -46,23 +51,33 @@ function isValidMobileAction(action: string): action is MobileAction {
 /**
  * Validate permission update input
  */
-function validatePermissionInput(body: Record<string, unknown>): { valid: boolean; error?: string } {
-  const allowedKeys = ALL_MOBILE_ACTIONS;
+function formatPermissionValidationError(error: z.ZodError): string {
+  const issue = error.issues[0];
 
-  for (const [key, value] of Object.entries(body)) {
-    if (!allowedKeys.includes(key as MobileAction)) {
-      return { valid: false, error: `Invalid permission key: ${key}` };
-    }
-    if (typeof value !== 'boolean') {
-      return { valid: false, error: `Permission value for ${key} must be a boolean` };
-    }
+  if (!issue) {
+    return 'Invalid mobile permission update';
   }
 
-  if (Object.keys(body).length === 0) {
-    return { valid: false, error: 'At least one permission must be provided' };
+  if (issue.code === 'unrecognized_keys') {
+    return `Invalid permission key: ${issue.keys[0]}`;
   }
 
-  return { valid: true };
+  const [field] = issue.path;
+  if (field) {
+    return `Permission value for ${String(field)} must be a boolean`;
+  }
+
+  return issue.message;
+}
+
+function validatePermissionInput(body: unknown): { valid: boolean; value?: MobilePermissionUpdateRequest; error?: string } {
+  const result = MobilePermissionUpdateRequestSchema.safeParse(body);
+
+  if (!result.success) {
+    return { valid: false, error: formatPermissionValidationError(result.error) };
+  }
+
+  return { valid: true, value: result.data };
 }
 
 // =============================================================================
@@ -148,18 +163,19 @@ publicRouter.patch('/wallets/:id/mobile-permissions', authenticate, asyncHandler
   if (!validation.valid) {
     throw new InvalidInputError(validation.error!);
   }
+  const permissionUpdate = validation.value!;
 
   const result = await mobilePermissionService.updateOwnPermissions(
     walletId,
     userId,
-    req.body,
+    permissionUpdate,
     userId
   );
 
   log.info('Updated mobile permissions', {
     walletId,
     userId,
-    changes: Object.keys(req.body),
+    changes: Object.keys(permissionUpdate),
   });
 
   res.json({
@@ -186,19 +202,20 @@ publicRouter.patch('/wallets/:id/mobile-permissions/:userId', authenticate, asyn
   if (!validation.valid) {
     throw new InvalidInputError(validation.error!);
   }
+  const permissionUpdate = validation.value!;
 
   const result = await mobilePermissionService.setMaxPermissions(
     walletId,
     targetUserId,
     ownerId,
-    req.body
+    permissionUpdate
   );
 
   log.info('Set mobile permission caps', {
     walletId,
     targetUserId,
     ownerId,
-    caps: Object.keys(req.body),
+    caps: Object.keys(permissionUpdate),
   });
 
   res.json({

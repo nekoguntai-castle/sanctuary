@@ -82,19 +82,19 @@ Only these routes are proxied to the backend:
 |----------|-----------|
 | Auth | `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `POST /auth/logout-all`, `POST /auth/2fa/verify`, `GET /auth/me`, `PATCH /auth/me/preferences` |
 | Sessions | `GET /auth/sessions`, `DELETE /auth/sessions/:id` |
-| Wallets | `GET /wallets`, `GET /wallets/:id`, `POST /wallets/:id/sync` |
+| Wallets | `GET /wallets`, `GET /wallets/:id`, `POST /sync/wallet/:id` |
 | Transactions | `GET /wallets/:id/transactions`, `GET /transactions/:txid`, `GET /transactions/pending`, `POST /wallets/:id/transactions/create`, `POST /wallets/:id/transactions/estimate`, `POST /wallets/:id/transactions/broadcast`, `POST /wallets/:id/psbt/create`, `POST /wallets/:id/psbt/broadcast` |
 | Addresses | `GET /wallets/:id/addresses`, `GET /wallets/:id/addresses/summary`, `POST /wallets/:id/addresses/generate` |
 | UTXOs | `GET /wallets/:id/utxos` |
-| Labels | `GET /wallets/:id/labels`, `POST /wallets/:id/labels`, `PATCH /labels/:id`, `DELETE /labels/:id` |
+| Labels | `GET /wallets/:id/labels`, `POST /wallets/:id/labels`, `PUT /wallets/:id/labels/:labelId`, `DELETE /wallets/:id/labels/:labelId` |
 | Bitcoin | `GET /bitcoin/status`, `GET /bitcoin/fees` |
 | Price | `GET /price` |
 | Push | `POST /push/register`, `DELETE /push/unregister`, `GET /push/devices`, `DELETE /push/devices/:id` |
 | Devices | `GET /devices`, `POST /devices`, `PATCH /devices/:id`, `DELETE /devices/:id` |
-| Drafts | `GET /wallets/:id/drafts`, `GET /wallets/:id/drafts/:id`, `POST /wallets/:id/drafts/:id/sign` |
+| Drafts | `GET /wallets/:id/drafts`, `GET /wallets/:id/drafts/:id`, `PATCH /wallets/:id/drafts/:id` |
 | Mobile Permissions | `GET /mobile-permissions`, `GET /wallets/:id/mobile-permissions`, `PATCH /wallets/:id/mobile-permissions`, `PATCH /wallets/:id/mobile-permissions/:id`, `DELETE /wallets/:id/mobile-permissions/:id/caps`, `DELETE /wallets/:id/mobile-permissions` |
 
-Admin routes, device management, and other sensitive endpoints are NOT exposed.
+Admin routes, user management, node configuration, backup/restore, and internal gateway endpoints are NOT exposed.
 
 ### Push Notification Services (`services/push/`)
 

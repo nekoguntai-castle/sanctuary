@@ -1,4 +1,11 @@
 import openApiRouter, { openApiSpec } from '../../../src/api/openapi';
+import {
+  MOBILE_ACTIONS,
+  MOBILE_API_REQUEST_LIMITS,
+  MOBILE_DEVICE_ACCOUNT_PURPOSES,
+  MOBILE_DEVICE_SCRIPT_TYPES,
+  MOBILE_DRAFT_STATUS_VALUES,
+} from '../../../../shared/schemas/mobileApiRequests';
 
 type HandlerResponse = {
   statusCode: number;
@@ -37,6 +44,14 @@ const invokeRoute = (method: string, url: string) => new Promise<HandlerResponse
     reject(new Error(`Route not handled: ${method} ${url}`));
   });
 });
+
+type OpenApiPathKey = keyof typeof openApiSpec.paths;
+
+function expectDocumentedMethod(path: OpenApiPathKey, method: string) {
+  const pathItem = openApiSpec.paths[path] as Record<string, unknown>;
+  expect(pathItem).toBeDefined();
+  expect(pathItem[method.toLowerCase()]).toBeDefined();
+}
 
 describe('OpenAPI Docs', () => {
   it('serves Swagger UI html', async () => {
@@ -106,6 +121,12 @@ describe('OpenAPI Docs', () => {
     expect(createSchema.properties).toHaveProperty('accounts');
     expect(createSchema.properties).toHaveProperty('merge');
     expect(createSchema.properties).toHaveProperty('modelSlug');
+    expect(openApiSpec.components.schemas.DeviceAccountInput.properties.purpose.enum).toEqual([
+      ...MOBILE_DEVICE_ACCOUNT_PURPOSES,
+    ]);
+    expect(openApiSpec.components.schemas.DeviceAccountInput.properties.scriptType.enum).toEqual([
+      ...MOBILE_DEVICE_SCRIPT_TYPES,
+    ]);
   });
 
   it('documents device delete as 204 with not-found and conflict errors', () => {
@@ -125,5 +146,149 @@ describe('OpenAPI Docs', () => {
     expect(openApiSpec.components.schemas.UpdateDeviceRequest).toBeDefined();
     expect(openApiSpec.components.schemas.DeviceMergeResponse).toBeDefined();
     expect(openApiSpec.components.schemas.DeviceConflictResponse).toBeDefined();
+  });
+
+  it('documents gateway-exposed auth and session routes', () => {
+    const routes: Array<[OpenApiPathKey, string]> = [
+      ['/auth/logout', 'post'],
+      ['/auth/logout-all', 'post'],
+      ['/auth/2fa/verify', 'post'],
+      ['/auth/me', 'get'],
+      ['/auth/me/preferences', 'patch'],
+      ['/auth/sessions', 'get'],
+      ['/auth/sessions/{id}', 'delete'],
+    ];
+
+    for (const [path, method] of routes) {
+      expectDocumentedMethod(path, method);
+    }
+
+    expect(openApiSpec.components.schemas.RefreshTokenRequest).toBeDefined();
+    expect(openApiSpec.components.schemas.TwoFactorVerifyRequest).toBeDefined();
+    expect(openApiSpec.components.schemas.SessionsResponse).toBeDefined();
+
+    const loginSchema = openApiSpec.components.schemas.LoginRequest;
+    expect(loginSchema.properties.username).toMatchObject({
+      minLength: MOBILE_API_REQUEST_LIMITS.usernameMinLength,
+      maxLength: MOBILE_API_REQUEST_LIMITS.usernameMaxLength,
+    });
+    expect(loginSchema.properties.password).toMatchObject({
+      minLength: MOBILE_API_REQUEST_LIMITS.loginPasswordMinLength,
+    });
+  });
+
+  it('documents gateway-exposed transaction routes', () => {
+    const routes: Array<[OpenApiPathKey, string]> = [
+      ['/wallets/{walletId}/transactions', 'get'],
+      ['/transactions/{txid}', 'get'],
+      ['/transactions/pending', 'get'],
+      ['/wallets/{walletId}/transactions/create', 'post'],
+      ['/wallets/{walletId}/transactions/estimate', 'post'],
+      ['/wallets/{walletId}/transactions/broadcast', 'post'],
+      ['/wallets/{walletId}/psbt/create', 'post'],
+      ['/wallets/{walletId}/psbt/broadcast', 'post'],
+    ];
+
+    for (const [path, method] of routes) {
+      expectDocumentedMethod(path, method);
+    }
+
+    expect(openApiSpec.components.schemas.TransactionCreateRequest).toBeDefined();
+    expect(openApiSpec.components.schemas.TransactionCreateRequest.properties.feeRate.minimum).toBe(
+      MOBILE_API_REQUEST_LIMITS.minFeeRate
+    );
+    expect(openApiSpec.components.schemas.TransactionEstimateRequest.properties.feeRate.minimum).toBe(
+      MOBILE_API_REQUEST_LIMITS.minFeeRate
+    );
+    expect(openApiSpec.components.schemas.PsbtCreateRequest.properties.feeRate.minimum).toBe(
+      MOBILE_API_REQUEST_LIMITS.minFeeRate
+    );
+    expect(openApiSpec.components.schemas.TransactionBroadcastRequest).toBeDefined();
+    expect(openApiSpec.components.schemas.PsbtBroadcastResponse).toBeDefined();
+  });
+
+  it('documents gateway-exposed wallet resource, label, and draft routes', () => {
+    const routes: Array<[OpenApiPathKey, string]> = [
+      ['/sync/wallet/{walletId}', 'post'],
+      ['/bitcoin/status', 'get'],
+      ['/wallets/{walletId}/addresses/summary', 'get'],
+      ['/wallets/{walletId}/addresses', 'get'],
+      ['/wallets/{walletId}/addresses/generate', 'post'],
+      ['/wallets/{walletId}/utxos', 'get'],
+      ['/wallets/{walletId}/labels', 'get'],
+      ['/wallets/{walletId}/labels', 'post'],
+      ['/wallets/{walletId}/labels/{labelId}', 'put'],
+      ['/wallets/{walletId}/labels/{labelId}', 'delete'],
+      ['/wallets/{walletId}/drafts', 'get'],
+      ['/wallets/{walletId}/drafts/{draftId}', 'get'],
+      ['/wallets/{walletId}/drafts/{draftId}', 'patch'],
+    ];
+
+    for (const [path, method] of routes) {
+      expectDocumentedMethod(path, method);
+    }
+
+    expect(openApiSpec.components.schemas.BitcoinStatus).toBeDefined();
+    expect(openApiSpec.components.schemas.AddressSummary).toBeDefined();
+    expect(openApiSpec.components.schemas.UtxosResponse).toBeDefined();
+    expect(openApiSpec.components.schemas.CreateLabelRequest).toBeDefined();
+    expect(openApiSpec.components.schemas.CreateLabelRequest.properties.name).toMatchObject({
+      minLength: MOBILE_API_REQUEST_LIMITS.labelNameMinLength,
+      maxLength: MOBILE_API_REQUEST_LIMITS.labelNameMaxLength,
+    });
+    expect(openApiSpec.components.schemas.DraftTransaction).toBeDefined();
+    expect(openApiSpec.components.schemas.UpdateDraftRequest.properties.status.enum).toEqual([
+      ...MOBILE_DRAFT_STATUS_VALUES,
+    ]);
+    expect(openApiSpec.components.schemas.UpdateDraftRequest).toHaveProperty('additionalProperties', false);
+  });
+
+  it('documents gateway-exposed push routes without internal gateway routes', () => {
+    const routes: Array<[OpenApiPathKey, string]> = [
+      ['/push/register', 'post'],
+      ['/push/unregister', 'delete'],
+      ['/push/devices', 'get'],
+      ['/push/devices/{id}', 'delete'],
+    ];
+
+    for (const [path, method] of routes) {
+      expectDocumentedMethod(path, method);
+    }
+
+    expect(openApiSpec.paths).not.toHaveProperty('/push/by-user/{userId}');
+    expect(openApiSpec.paths).not.toHaveProperty('/push/gateway-audit');
+    expect(openApiSpec.components.schemas.PushRegisterRequest).toBeDefined();
+    expect(openApiSpec.components.schemas.PushRegisterRequest.properties.token).toMatchObject({
+      minLength: MOBILE_API_REQUEST_LIMITS.deviceTokenMinLength,
+      maxLength: MOBILE_API_REQUEST_LIMITS.deviceTokenMaxLength,
+    });
+    expect(openApiSpec.components.schemas.PushUnregisterRequest.properties.token).toMatchObject({
+      minLength: MOBILE_API_REQUEST_LIMITS.deviceTokenMinLength,
+      maxLength: MOBILE_API_REQUEST_LIMITS.deviceTokenMaxLength,
+    });
+    expect(openApiSpec.components.schemas.PushDevicesResponse).toBeDefined();
+  });
+
+  it('documents gateway-exposed mobile permission routes', () => {
+    const routes: Array<[OpenApiPathKey, string]> = [
+      ['/mobile-permissions', 'get'],
+      ['/wallets/{walletId}/mobile-permissions', 'get'],
+      ['/wallets/{walletId}/mobile-permissions', 'patch'],
+      ['/wallets/{walletId}/mobile-permissions', 'delete'],
+      ['/wallets/{walletId}/mobile-permissions/{userId}', 'patch'],
+      ['/wallets/{walletId}/mobile-permissions/{userId}/caps', 'delete'],
+    ];
+
+    for (const [path, method] of routes) {
+      expectDocumentedMethod(path, method);
+    }
+
+    const updateSchema = openApiSpec.components.schemas.MobilePermissionUpdateRequest;
+    for (const action of MOBILE_ACTIONS) {
+      expect(updateSchema.properties).toHaveProperty(action);
+    }
+    expect(updateSchema).toHaveProperty('additionalProperties', false);
+    expect(updateSchema).toHaveProperty('minProperties', 1);
+    expect(openApiSpec.components.schemas.MobilePermissionUpdateResponse).toBeDefined();
   });
 });

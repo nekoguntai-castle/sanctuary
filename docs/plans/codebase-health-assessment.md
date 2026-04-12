@@ -2,7 +2,7 @@
 
 Date: 2026-04-11 (Pacific/Honolulu)
 Owner: TBD
-Status: Phase 4 baseline complete; Phase 3 benchmark action items are carried forward
+Status: Refreshed assessment; Phase 3 benchmark and operations proof items are carried forward
 
 ## Scope
 
@@ -12,11 +12,15 @@ Inputs used:
 
 - Static review of the React/Vite frontend, Express backend, mobile gateway, AI proxy, Docker deployment, monitoring stack, route contracts, and tests.
 - Existing coverage artifacts in `coverage/`, `server/coverage/`, and `gateway/coverage/`.
-- Phase 3 local smoke benchmark record in `docs/plans/phase3-benchmark-2026-04-12T04-00-40-678Z.md`.
-- Targeted build and typecheck checks:
+- Phase 3 local smoke benchmark records in `docs/plans/phase3-benchmark-2026-04-12T04-00-40-678Z.md` and `docs/plans/phase3-benchmark-2026-04-12T05-12-14-935Z.md`.
+- Operations, scalability, extension-point, and release-gate documentation in `docs/OPERATIONS_RUNBOOKS.md`, `docs/SCALABILITY_AND_PERFORMANCE.md`, `docs/EXTENSION_POINTS.md`, and `docs/RELEASE_GATES.md`.
+- Fresh lightweight verification:
+  - `npm run typecheck:app` passed.
   - `cd server && npm run build` passed.
   - `cd gateway && npm run build` passed.
-  - Initial `npm run typecheck:app` failed on unused frontend symbols; Phase 0 restored it to passing.
+  - `cd ai-proxy && npm run build` passed.
+  - Targeted server contract/security tests passed: gateway HMAC, shared gateway auth, body parsing, WebSocket auth, validation middleware, and OpenAPI.
+  - Targeted gateway contract/security tests passed: mobile permission HMAC, request validation, proxy whitelist, request logger, and logger redaction.
 
 Not performed:
 
@@ -24,25 +28,27 @@ Not performed:
 - Production-like load testing beyond the Phase 3 smoke harness.
 - Monitoring stack exercise.
 - Production log, incident, or runtime metric review.
+- Real backup/restore drill against a non-production database.
+- Dependency audit rerun.
 
 ## Executive Summary
 
-Overall grade: **B**
+Overall grade: **B+**
 
-The codebase is much stronger than average for a self-hosted financial app. It has clear service/repository layering, documented extension points, a dedicated worker process, Redis-backed coordination, comprehensive health checks, Prometheus/Grafana/Loki/Jaeger support, high recorded coverage, and strong security primitives around JWTs, encryption, 2FA, rate limiting, and internal-network controls.
+The codebase is stronger than the previous baseline. It has clear service/repository layering, documented extension points, a dedicated worker process, Redis-backed coordination, comprehensive health checks, Prometheus/Grafana/Loki/Jaeger support, high recorded coverage, release-gate documentation, and strong security primitives around JWT audiences, encryption, 2FA, rate limiting, gateway HMAC auth, and internal-network controls.
 
-The main risk is not broad architecture quality. After Phase 0, the highest-risk direct defects in gateway-to-backend HMAC signing, WebSocket JWT audience enforcement, backup/restore body-parser ordering, and frontend strict typecheck have been fixed. The remaining path to A grades is centered on preventing future boundary drift, especially through OpenAPI/shared schemas, gateway whitelist contract tests, runbooks, and repeatable performance/scale checks.
+The main risk is no longer broad architecture quality or known P0 correctness defects. The remaining path to A grades is centered on proof and drift prevention: complete OpenAPI/shared schema coverage, generated or route-backed gateway whitelist checks, authenticated performance/scale benchmarks, a non-production restore drill, monitoring-stack exercise, production alert receivers, and continued browser token/CSP hardening.
 
 ## Scorecard
 
 | Domain | Grade | Rationale |
 | --- | --- | --- |
-| Extensibility | B+ | Strong route/service/repository boundaries, extension-point docs, registries for routes/tabs/backgrounds/flags/importers/providers, and a service lifecycle registry. Grade is held back by duplicate contracts and incomplete OpenAPI coverage. |
-| Scalability | B | Dedicated worker, BullMQ/Redis, distributed lock patterns, WebSocket limits, Redis bridge for cross-instance broadcasts, Prisma indexes, and cache invalidation are solid. The default Compose deployment is still a single backend/worker topology and needs explicit HA/runbook guidance before relying on scale-out. |
-| Performance | B | Caching, React Query discipline, Electrum pooling, database indexes, API aggregation work, and bounded WebSocket queues are good. Phase 0 fixed the backup/restore parser issue; missing load/perf budgets are now the main gap. |
-| Perpetual operations and supportability | B+ | `/health`, `/api/v1/health`, `/metrics`, Prometheus alerts, Grafana/Loki/Jaeger, support-package collectors, Docker healthchecks, resource limits, and Nginx blocks for `/metrics` and `/internal/` are strong. Phase 0 fixed the gateway audit HMAC path; runbooks and restore drills remain the main supportability gaps. |
-| Security | B | The baseline is good: JWT audiences exist, production secrets are required, 2FA is present, encryption uses AES-GCM, rate limiting fails closed, Helmet is configured, and internal routes are protected by Nginx. Phase 0 fixed WebSocket access-token enforcement and the internal gateway HMAC drift; remaining work is browser token/CSP hardening, broader schema validation, and ongoing release gates. |
-| Technical debt | B | There is extensive test coverage and useful architecture docs. Phase 0 restored strict frontend typecheck and shared the gateway HMAC contract; remaining debt is concentrated in incomplete OpenAPI, duplicated API schemas/whitelist definitions, unused centralized validation middleware, and a few oversized modules. |
+| Extensibility | B+ | Strong route/service/repository boundaries, extension-point docs, registries for routes/tabs/backgrounds/flags/importers/providers, and a service lifecycle registry. Grade is held back by incomplete OpenAPI coverage outside the gateway surface and hand-maintained gateway/backend request contracts. |
+| Scalability | B | Dedicated worker, BullMQ/Redis, distributed locks, WebSocket limits, Redis bridge broadcasts, Prisma indexes, cache invalidation, and a scale-out baseline are solid. The grade stays at B until backend scale-out, worker ownership, Redis/Postgres capacity, and WebSocket fanout are validated under non-production load. |
+| Performance | B | Caching, React Query discipline, Electrum pooling, database indexes, API aggregation, bounded WebSocket queues, and a Phase 3 benchmark harness are good. Authenticated large-wallet, wallet-sync, WebSocket fanout, backup/restore, and worker queue benchmarks are still pending. |
+| Perpetual operations and supportability | B+ | `/health`, `/api/v1/health`, `/metrics`, Prometheus alerts, Grafana/Loki/Jaeger, support-package collectors, Docker healthchecks, resource limits, monitoring exposure docs, and operations runbooks are strong. Restore drills, monitoring-stack exercise, production alert receivers, and runtime incident evidence are still missing. |
+| Security | B | JWT audiences, token revocation, 2FA, production secret requirements, AES-GCM encryption, rate limiting, Helmet, gateway HMAC auth, redacted gateway logs, and internal routes are good. Browser token storage in `localStorage`, broad CSP exceptions for docs UI, partial validation/schema coverage, and unaudited dependency posture keep it below A. |
+| Technical debt | B+ | Strict app typecheck, backend/gateway/AI builds, high recorded coverage, release gates, extension docs, shared gateway/redaction utilities, and shared mobile API request schemas are good. Remaining debt is concentrated in incomplete OpenAPI, remaining duplicated API request schemas, advisory-only test typecheck, and a few oversized modules. |
 
 ## Roadmap To A Grades
 
@@ -51,17 +57,17 @@ This roadmap focuses on changes that are objectively good for the codebase: they
 | Phase | Target | Work | Exit Criteria | Expected Grade Movement |
 | --- | --- | --- | --- | --- |
 | 0 | Stabilize correctness and security | Fix gateway/backend HMAC contract drift, WebSocket JWT audience enforcement, backup/restore large-body parsing, and the current frontend strict typecheck failures. | Gateway-signed requests verify in backend contract tests; WebSocket refresh and 2FA tokens are rejected; admin restore/validate accepts payloads above 10MB and below the intended limit; `npm run typecheck:app`, `cd server && npm run build`, and `cd gateway && npm run build` pass. | Security and technical debt move out of B- territory; supportability improves because known broken operational paths are fixed. |
-| 1 | Make boundary contracts source-of-truth driven | Complete OpenAPI coverage for implemented API domains; share or generate request schemas for drift-prone gateway/backend routes; contract-test the gateway whitelist against backend routes/OpenAPI; align push registration and transaction-detail route patterns. | New or changed public/gateway API routes cannot merge without OpenAPI/schema coverage or explicit contract tests; gateway whitelist tests prove allowed mobile routes still exist and blocked routes remain blocked. | Extensibility reaches A- or A; security and technical debt improve because contract drift becomes mechanically harder. |
-| 2 | Bring operations to production-grade | Add runbooks for existing alerts, queue stalls, Electrum degradation, sync failures, DB saturation, backup/restore failures, and gateway audit failures; verify gateway audit persistence; document and secure monitoring exposure; run a backup/restore drill. | Each critical alert has an owner-facing triage doc; monitoring ports are documented as local/private or protected; a restore drill result is recorded; gateway audit events persist through the HMAC path. | Perpetual operations and supportability reaches A- or A. |
-| 3 | Prove scalability and performance | Document supported scale-out topology; define what can be replicated and what remains singleton; add load/perf checks for wallet sync, large wallet list views, transaction history aggregation, WebSocket fanout, backup/restore, and queue processing. | A repeatable benchmark or scheduled perf suite records p95/p99 targets; scale-out docs cover backend, worker, Redis, Postgres, WebSocket broadcasts, and Electrum ownership; regressions have a clear threshold. | Scalability and performance reach A- or A. |
-| 4 | Institutionalize maintainability | Adopt centralized validation for new and touched backend routes; add gateway log redaction; modularize oversized files only when already changing them; keep dependency/security/container checks in release gates; maintain the A-grade contract and runbook checks. | New API work follows validation and contract guardrails; gateway logs use shared redaction; large-file cleanup is tied to active edits; release gates include typecheck, builds, contract checks, security checks, and targeted perf/ops checks. | Technical debt reaches A- or A and the earlier grade gains become durable. |
+| 1 | Make boundary contracts source-of-truth driven | Complete OpenAPI coverage for implemented API domains; share or generate request schemas for drift-prone gateway/backend routes; contract-test the gateway whitelist against backend routes/OpenAPI. | New or changed public/gateway API routes cannot merge without OpenAPI/schema coverage or explicit contract tests; gateway whitelist tests prove allowed mobile routes still exist and blocked routes remain blocked. | Extensibility reaches A- or A; security and technical debt improve because contract drift becomes mechanically harder. |
+| 2 | Bring operations proof to production-grade | Keep runbooks current, run a backup/restore drill, exercise the monitoring stack, verify alert receiver configuration, and record gateway audit persistence evidence. | Critical alerts have triage docs and tested notification paths; monitoring ports remain private/protected; a restore drill result is recorded; gateway audit events persist through the HMAC path. | Perpetual operations and supportability reaches A- or A. |
+| 3 | Prove scalability and performance | Run authenticated load/perf checks for wallet sync, large wallet list views, transaction history aggregation, WebSocket fanout, backup/restore, queue processing, backend scale-out, and worker scale-out or explicitly keep worker scale-out unsupported. | Benchmark records include p95/p99 targets, failure rates, dataset/topology notes, and strict release thresholds; Redis-backed WebSocket delivery works across backend instances. | Scalability and performance reach A- or A. |
+| 4 | Institutionalize maintainability | Continue adopting centralized validation for new and touched backend routes; keep gateway log redaction; modularize oversized files only when already changing them; keep dependency/security/container checks in release gates; maintain the A-grade contract and runbook checks. | New API work follows validation and contract guardrails; gateway logs use shared redaction; large-file cleanup is tied to active edits; release gates include typecheck, builds, contract checks, security checks, and targeted perf/ops checks. | Technical debt reaches A- or A and the earlier grade gains become durable. |
 
 Suggested sequencing:
 
-1. Phase 0 first. It fixes known defects and restores baseline signal.
-2. Phase 1 second. It prevents the same gateway/API drift from returning.
-3. Phase 2 and Phase 3 can run partly in parallel after Phase 0 if ownership is split.
-4. Phase 4 can start after the Phase 1 guardrails exist and then continue as normal engineering hygiene. It is not blocked by the remaining Phase 3 benchmark evidence, but the scalability/performance grade cannot move to A until the Phase 3 action items are completed.
+1. Keep Phase 1 as the highest-leverage next engineering slice because it prevents recurring gateway/API drift.
+2. Finish Phase 2 proof work before claiming A-grade operations.
+3. Finish Phase 3 authenticated and scale-out benchmarks before claiming A-grade scalability or performance.
+4. Continue Phase 4 hygiene as normal engineering practice when routes, schemas, gateway logging, and oversized files are touched.
 
 Domain-specific A-grade criteria:
 
@@ -114,16 +120,16 @@ Priority meanings:
 | P0 | Fix WebSocket JWT verification to require access tokens and reject pending 2FA tokens. | Completed in Phase 0. HTTP and WebSocket auth now enforce the same access-token boundary. | `server/src/websocket/auth.ts`, `server/tests/unit/websocket/auth.test.ts`. |
 | P0 | Fix admin backup/restore request parsing so 200MB payloads actually reach the route parser. | Completed in Phase 0. Large backup validate/restore requests now bypass the global 10MB parser and hit the route-specific parser. | `server/src/middleware/bodyParsing.ts`, `server/src/index.ts`, `server/tests/unit/middleware/bodyParsing.test.ts`. |
 | P1 | Keep strict frontend typecheck green. | Completed in Phase 0 and should remain a release gate. | `npm run typecheck:app` passes after removing unused symbols in `components/AISettings/components/EnableModal.tsx`, `components/AISettings/hooks/useContainerLifecycle.ts`, `components/ui/EmptyState.tsx`, and `hooks/queries/factory.ts`. |
-| P1 | Make API/gateway contracts source-of-truth driven. | The gateway whitelist, request validators, backend route schemas, and OpenAPI spec are drifting. Generating or sharing route schemas prevents repeat defects. | `server/src/api/openapi/spec.ts` assembles auth, wallets, devices, sync, bitcoin, and price, but omits many implemented domains such as transactions, drafts, push, mobile permissions, admin, payjoin, transfers, and gateway contracts. |
-| P1 | Align gateway mobile request validation with backend route bodies. | First Phase 1 slice completed for push registration; broader shared/generated schemas still remain. | `gateway/src/middleware/validateRequest.ts` now validates `token`, matching backend `POST /api/v1/push/register`. |
-| P1 | Add gateway whitelist contract tests against real backend route definitions or OpenAPI. | First Phase 1 slice completed for transaction detail route alignment; broader generated/OpenAPI-backed contract tests still remain. | Gateway whitelist now exposes backend `GET /api/v1/transactions/:txid` and blocks the old non-existent wallet-scoped detail route. |
+| P1 | Make API/gateway contracts source-of-truth driven. | A broad Phase 1 checkpoint now covers every current gateway whitelist route in OpenAPI, the whitelist/OpenAPI test matrix is derived from gateway route metadata, and shared mobile request schemas now feed gateway validation plus OpenAPI limits/constants across auth, push, labels, mobile permissions, drafts, transaction/PSBT, and device write bodies. Generation/shared schemas are still preferable for broader backend contracts and request bodies. | `server/src/api/openapi/spec.ts` now includes gateway-exposed auth/session, wallet sync, transaction, address, UTXO, label, Bitcoin status/fees, price, push, device, draft, and mobile-permission routes. Implemented but non-gateway domains such as admin, payjoin, transfers, and broader internal contracts still need coverage decisions. |
+| P1 | Align gateway mobile request validation with backend route bodies. | Phase 1 now covers shared auth login/refresh/logout/2FA/preferences, push register/unregister, wallet label create/update, mobile-permission update, draft signing update, transaction/PSBT create-broadcast-estimate, and device create/update schemas for the gateway path. Broader work remains for backend route adoption or generated OpenAPI from Zod where it reduces drift. | `shared/schemas/mobileApiRequests.ts` provides shared Zod schemas, mobile action constants, draft status constants, device constants, and request limits; `gateway/src/middleware/validateRequest.ts` consumes them for gateway validation; OpenAPI auth/push/label/mobile-permission/draft/transaction/device schemas reuse the same constants where applicable. |
+| P1 | Add generated or route-backed gateway whitelist contract tests. | Completed for current gateway routes: `ALLOWED_ROUTES` is derived from `GATEWAY_ROUTE_CONTRACTS`, and the test uses that same metadata to assert OpenAPI path/method coverage. The remaining improvement is eventual codegen/shared route registration from backend/OpenAPI if route churn justifies it. | `gateway/src/routes/proxy/whitelist.ts` owns the route regex, sample path, and OpenAPI path metadata; `gateway/tests/unit/routes/proxy.test.ts` asserts each current gateway whitelist route is allowed and has a matching OpenAPI path/method. It also blocks stale routes for wallet-scoped sync, legacy label item updates, and legacy draft-signing POST paths. |
 | P1 | Start using centralized request validation for backend APIs in new and touched routes. | Started in Phase 4 with the authenticated user-search route. Schema-first validation improves security, error consistency, and generated contract quality; broader route adoption should continue as files are touched. | `server/src/api/auth/profile.ts` now uses `validate({ query: UserSearchQuerySchema })`; `server/src/middleware/validate.ts` now safely replaces getter-backed Express 5 query objects; `server/tests/unit/middleware/validate.test.ts` and `server/tests/unit/api/auth.routes.registration.test.ts` cover the behavior. |
 | P1 | Harden browser token handling and CSP. | Access tokens in localStorage make XSS higher impact, and the backend CSP has broad inline/CDN exceptions. Moving docs UI exceptions to a narrower route or self-hosting assets reduces exposure. | `src/api/client.ts` stores `sanctuary_token` in `localStorage`. `server/src/index.ts` allows `'unsafe-inline'` and `https://unpkg.com` for scripts/styles. |
-| P1 | Add gateway log redaction before metadata volume grows. | Completed in Phase 4. Gateway logs now serialize metadata through shared redaction and safe serialization, reducing the chance of leaking tokens, secrets, or credentials as gateway features expand. | `shared/utils/redact.ts`, `gateway/src/utils/logger.ts`, `gateway/tests/unit/utils/logger.test.ts`. |
-| P1 | Add runbooks for alerts and routine operations. | The monitoring stack is present, but operators need triage steps for wallet sync failures, Electrum degradation, queue stalls, restore failures, DB saturation, and gateway audit failures. | `docker-compose.monitoring.yml`, `docker/monitoring/alert_rules.yml`, health checks, and support-package collectors exist; no obvious runbook ties alerts to actions. |
-| P2 | Add a small load/performance gate for high-risk workflows. | The architecture is performance-aware, but load tests would catch regressions in wallet sync, large wallet list views, WebSocket fanout, backup/restore, and transaction-history aggregation. | Existing code has caching, indexes, and queues, but this assessment did not find a repeatable perf budget or load-test gate. |
-| P2 | Document the supported scale-out topology. | Redis bridge, distributed locks, worker queues, and health checks suggest scale-out intent, but the default Compose topology is single backend and single worker. Operators need clear guidance on what can be replicated and what must stay singleton. | `docker-compose.yml` runs one backend service and one worker service by default; worker comments describe single ownership of background processing. |
-| P2 | Modularize oversized files only when touching them for product work. | Splitting purely for aesthetics can add churn. Splitting when changing the file reduces review risk and makes future edits easier. | Large production files include `ai-proxy/src/index.ts`, `server/src/repositories/transactionRepository.ts`, `server/src/services/bitcoin/electrumPool/electrumPool.ts`, and `server/src/worker.ts`. |
+| P1 | Add gateway log redaction before metadata volume grows. | Completed in Phase 4. Keep it as a release gate when new gateway metadata is added because it reduces token, secret, and credential leakage risk. | `shared/utils/redact.ts`, `gateway/src/utils/logger.ts`, and fresh `cd gateway && npx vitest run tests/unit/utils/logger.test.ts` passed. |
+| P1 | Complete operations proof, not just operations docs. | Runbooks now exist, but A-grade operations still need a non-production restore drill, monitoring-stack exercise, alert receiver configuration, and recorded gateway audit persistence evidence. | `docs/OPERATIONS_RUNBOOKS.md` maps alerts and failure modes to triage; `docker-compose.monitoring.yml` binds monitoring ports to loopback by default; no restore-drill record was found in this assessment. |
+| P2 | Run authenticated performance and scale gates for high-risk workflows. | The Phase 3 harness and scale topology docs exist, but skipped authenticated scenarios do not prove production-like performance. Load evidence would catch regressions in wallet sync, large wallet transaction history, WebSocket fanout, backup/restore, and worker queues. | `docs/SCALABILITY_AND_PERFORMANCE.md` and `npm run perf:phase3` exist; Phase 3 records show health/WebSocket smoke passed while authenticated and data-dependent scenarios were skipped or blocked by invalid local credentials. |
+| P2 | Validate the supported scale-out topology. | Redis bridge, distributed locks, worker queues, health checks, and scale-out docs show intent. Operators still need evidence for two backend/WebSocket instances sharing Redis and for worker replica safety, or an explicit production singleton worker policy. | `docker-compose.yml` runs one backend service and one worker service by default; `docs/SCALABILITY_AND_PERFORMANCE.md` keeps worker scale-out non-production only until validated. |
+| P2 | Modularize oversized files only when touching them for product work. | Splitting purely for aesthetics can add churn. Splitting when changing the file reduces review risk and makes future edits easier. | Large production files include `ai-proxy/src/index.ts` (962 lines), `server/src/repositories/transactionRepository.ts` (891), `server/src/services/bitcoin/electrumPool/electrumPool.ts` (841), and `server/src/worker.ts` (646). |
 
 ## P0 Detail
 
@@ -168,7 +174,7 @@ Implemented fix:
 
 ## Phase 1 Progress Notes
 
-Status: **Contract checkpoint complete as of 2026-04-11**
+Status: **Broad OpenAPI-backed gateway checkpoint complete as of 2026-04-11**
 
 Completed in the first Phase 1 slice:
 
@@ -176,16 +182,25 @@ Completed in the first Phase 1 slice:
 - Replaced the gateway whitelist's non-existent wallet-scoped transaction-detail path with the backend's canonical `GET /api/v1/transactions/:txid` path; server-side `findByTxidWithAccess` remains the wallet-access boundary for transaction detail.
 - Added gateway tests that reject the old push registration body field, allow the backend transaction-detail route, and keep raw transaction detail blocked unless deliberately exposed.
 - Fixed gateway validation path reconstruction so schema validation uses the same `baseUrl + path` model as whitelist checks for routes mounted through the general `/api/v1` proxy.
+- Added OpenAPI coverage for every current gateway whitelist route, including auth/session, wallet sync, transaction, address, UTXO, label, Bitcoin status/fees, price, push, device, draft, and mobile-permission routes.
+- Replaced stale gateway whitelist routes with backend-backed routes: `POST /api/v1/sync/wallet/:walletId`, `PUT/DELETE /api/v1/wallets/:walletId/labels/:labelId`, and `PATCH /api/v1/wallets/:walletId/drafts/:draftId`.
+- Added a full gateway whitelist-to-OpenAPI matrix test and server OpenAPI tests for the newly covered route families.
+- Replaced the hand-authored whitelist/OpenAPI test matrix with gateway route metadata: `GATEWAY_ROUTE_CONTRACTS` now carries regex, sample path, and OpenAPI path data, and `ALLOWED_ROUTES` is derived from it.
+- Added shared mobile request schemas for auth login/refresh/logout/2FA/preferences, push register/unregister, and wallet label create/update payloads, then reused their request limits in OpenAPI auth/push/label schemas.
+- Expanded gateway request validation to cover `POST /api/v1/auth/2fa/verify`, `PATCH /api/v1/auth/me/preferences`, and `DELETE /api/v1/push/unregister`.
+- Added shared mobile action constants and mobile-permission update validation, then reused them in the backend mobile-permission route, gateway request validation, and OpenAPI mobile-permission schemas.
+- Added shared draft status constants and a gateway draft update schema for `PATCH /api/v1/wallets/:walletId/drafts/:draftId`, with OpenAPI `UpdateDraftRequest` using the same status values.
+- Added shared transaction/PSBT and device write-body schemas, wired them into gateway request validation, and reused fee-rate/device enum constants in OpenAPI. This also corrected transaction/PSBT OpenAPI fee-rate minimums to the backend-aligned `0.1` value.
 
 Remaining Phase 1 work:
 
-- Complete OpenAPI coverage for implemented public and gateway-relevant domains.
-- Add broader gateway whitelist contract checks against backend route definitions or generated OpenAPI.
-- Share or generate schemas for more drift-prone gateway/backend request bodies.
+- Decide which non-gateway public domains should be documented next, including payjoin, transfers, intelligence, AI, and remaining wallet/admin surfaces.
+- Adopt shared schemas directly in more backend routes or generate OpenAPI from Zod for high-risk write bodies where that would reduce drift beyond the gateway path.
+- Consider generating gateway route metadata from OpenAPI or backend route registration if future route churn makes manual metadata updates costly.
 
-## Phase 2 Start Notes
+## Phase 2 Progress Notes
 
-Status: **In progress as of 2026-04-12**
+Status: **Runbook baseline complete; proof work pending**
 
 Completed in the first Phase 2 slice:
 
@@ -198,8 +213,9 @@ Remaining Phase 2 work:
 - Run and record a real backup/restore drill against a non-production database.
 - Exercise the monitoring stack locally and capture any environment-specific runbook adjustments.
 - Add durable alert receiver configuration once production notification channels are chosen.
+- Record gateway audit persistence evidence in an environment with backend and gateway using the production-style HMAC path.
 
-## Phase 3 Start Notes
+## Phase 3 Progress Notes
 
 Status: **In progress as of 2026-04-12**
 
@@ -285,25 +301,42 @@ Ongoing post-Phase 4 hygiene:
 
 Existing coverage artifacts reviewed:
 
-- Frontend coverage artifact reports 100% lines/statements/functions/branches.
-- Server `lcov.info` reports about 99.2% lines and 98.49% branches.
-- Gateway `lcov.info` reports 100% lines and 100% branches, with 98.72% functions.
+- Frontend `coverage/lcov.info`: 100.00% lines (12908/12908), 100.00% branches (10548/10548), 100.00% functions (3418/3418).
+- Server `server/coverage/lcov.info`: 99.20% lines (19101/19255), 98.49% branches (10165/10321), 99.22% functions (3555/3583).
+- Gateway `gateway/coverage/lcov.info`: 100.00% lines (457/457), 100.00% branches (297/297), 98.72% functions (77/78).
 
 These artifacts were not regenerated during this assessment.
 
-Current known check failures from this assessment:
+Fresh checks run in this refresh:
 
 ```text
-None after Phase 0 verification.
-```
-
-Current known passing checks from this assessment:
-
-```text
-cd server && npx vitest run tests/unit/middleware/gatewayAuth.test.ts tests/unit/middleware/bodyParsing.test.ts tests/unit/websocket/auth.test.ts tests/integration/websocket/websocket.integration.test.ts
-cd gateway && npx vitest run tests/unit/services/backendEvents.auth.test.ts tests/unit/services/backendEvents.deviceTokens.test.ts tests/unit/middleware/mobilePermission.test.ts tests/unit/middleware/requestLogger.test.ts
-cd gateway && npx vitest run tests/unit/config.test.ts
 npm run typecheck:app
 cd server && npm run build
 cd gateway && npm run build
+cd ai-proxy && npm run build
+cd server && npx vitest run tests/unit/middleware/gatewayAuth.test.ts tests/unit/middleware/bodyParsing.test.ts tests/unit/websocket/auth.test.ts tests/unit/middleware/validate.test.ts tests/unit/api/openapi.test.ts tests/unit/shared/gatewayAuth.test.ts
+cd gateway && npx vitest run tests/unit/middleware/mobilePermission.test.ts tests/unit/middleware/validateRequest.test.ts tests/unit/routes/proxy.test.ts tests/unit/middleware/requestLogger.test.ts tests/unit/utils/logger.test.ts
 ```
+
+Fresh check outcomes:
+
+```text
+All checks above passed.
+Server targeted tests: 6 files passed, 52 tests passed.
+Gateway targeted tests: 5 files passed, 178 tests passed in the initial refresh; the latest Phase 1 gateway route/request-validation/mobile-permission rerun passed 3 files, 158 tests after shared mobile-permission and draft schema expansion.
+The latest Phase 1 server OpenAPI/mobile-permission/types rerun passed 3 files, 72 tests after shared mobile-permission and draft schema expansion.
+The latest Phase 1 gateway request-validation/proxy rerun passed 2 files, 149 tests after transaction/PSBT/device schema expansion.
+The latest Phase 1 server OpenAPI/device rerun passed 2 files, 87 tests after transaction/PSBT/device schema expansion.
+```
+
+Not run in this refresh:
+
+- Full frontend/backend/gateway coverage suites.
+- Backend integration suite.
+- Playwright e2e suite.
+- Install/container workflows.
+- Critical mutation gate.
+- Dependency audits.
+- Phase 3 authenticated benchmark or scale-out smoke.
+- Monitoring stack exercise.
+- Non-production backup/restore drill.

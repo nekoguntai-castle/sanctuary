@@ -60,8 +60,11 @@ vi.mock('http-proxy-middleware', () => ({
 }));
 
 // Import the actual module AFTER mocks are set up
-import { isAllowedRoute, ALLOWED_ROUTES, checkWhitelist } from '../../../src/routes/proxy';
+import { isAllowedRoute, ALLOWED_ROUTES, GATEWAY_ROUTE_CONTRACTS, checkWhitelist } from '../../../src/routes/proxy';
 import { logSecurityEvent } from '../../../src/middleware/requestLogger';
+import { openApiSpec } from '../../../../server/src/api/openapi/spec';
+
+type OpenApiPathKey = keyof typeof openApiSpec.paths;
 
 describe('Proxy Routes', () => {
   beforeEach(() => {
@@ -101,6 +104,17 @@ describe('Proxy Routes', () => {
     it('should include push notification routes', () => {
       const pushRoutes = ALLOWED_ROUTES.filter((r) => r.pattern.source.includes('push'));
       expect(pushRoutes.length).toBeGreaterThan(0);
+    });
+
+    it('keeps every gateway whitelist route documented in OpenAPI', () => {
+      expect(GATEWAY_ROUTE_CONTRACTS).toHaveLength(ALLOWED_ROUTES.length);
+      for (const route of GATEWAY_ROUTE_CONTRACTS) {
+        const openApiPath = route.openApiPath as OpenApiPathKey;
+
+        expect(isAllowedRoute(route.method, route.samplePath)).toBe(true);
+        expect(openApiSpec.paths).toHaveProperty(route.openApiPath);
+        expect(openApiSpec.paths[openApiPath]).toHaveProperty(route.method.toLowerCase());
+      }
     });
   });
 
@@ -164,8 +178,12 @@ describe('Proxy Routes', () => {
         expect(isAllowedRoute('GET', `/api/v1/wallets/${validUuid}`)).toBe(true);
       });
 
-      it('should allow POST /api/v1/wallets/:id/sync', () => {
-        expect(isAllowedRoute('POST', `/api/v1/wallets/${validUuid}/sync`)).toBe(true);
+      it('should allow POST /api/v1/sync/wallet/:id', () => {
+        expect(isAllowedRoute('POST', `/api/v1/sync/wallet/${validUuid}`)).toBe(true);
+      });
+
+      it('should block legacy wallet-scoped sync route', () => {
+        expect(isAllowedRoute('POST', `/api/v1/wallets/${validUuid}/sync`)).toBe(false);
       });
 
       it('should block POST /api/v1/wallets (create wallet)', () => {
@@ -263,12 +281,17 @@ describe('Proxy Routes', () => {
         expect(isAllowedRoute('POST', `/api/v1/wallets/${validUuid}/labels`)).toBe(true);
       });
 
-      it('should allow PATCH label', () => {
-        expect(isAllowedRoute('PATCH', `/api/v1/labels/${validUuid}`)).toBe(true);
+      it('should allow PUT wallet label', () => {
+        expect(isAllowedRoute('PUT', `/api/v1/wallets/${validUuid}/labels/${validUuid}`)).toBe(true);
       });
 
-      it('should allow DELETE label', () => {
-        expect(isAllowedRoute('DELETE', `/api/v1/labels/${validUuid}`)).toBe(true);
+      it('should allow DELETE wallet label', () => {
+        expect(isAllowedRoute('DELETE', `/api/v1/wallets/${validUuid}/labels/${validUuid}`)).toBe(true);
+      });
+
+      it('should block legacy label item routes', () => {
+        expect(isAllowedRoute('PATCH', `/api/v1/labels/${validUuid}`)).toBe(false);
+        expect(isAllowedRoute('DELETE', `/api/v1/labels/${validUuid}`)).toBe(false);
       });
     });
 
@@ -339,8 +362,12 @@ describe('Proxy Routes', () => {
         expect(isAllowedRoute('GET', `/api/v1/wallets/${validUuid}/drafts/${validUuid}`)).toBe(true);
       });
 
-      it('should allow POST sign draft', () => {
-        expect(isAllowedRoute('POST', `/api/v1/wallets/${validUuid}/drafts/${validUuid}/sign`)).toBe(true);
+      it('should allow PATCH draft signing update', () => {
+        expect(isAllowedRoute('PATCH', `/api/v1/wallets/${validUuid}/drafts/${validUuid}`)).toBe(true);
+      });
+
+      it('should block legacy draft signing route', () => {
+        expect(isAllowedRoute('POST', `/api/v1/wallets/${validUuid}/drafts/${validUuid}/sign`)).toBe(false);
       });
     });
 

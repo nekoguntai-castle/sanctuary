@@ -34,25 +34,9 @@ import { AuthenticatedRequest } from './auth';
 import { createLogger } from '../utils/logger';
 import { logSecurityEvent } from './requestLogger';
 import { generateGatewaySignature } from '../../../shared/utils/gatewayAuth';
+import type { MobileAction } from '../../../shared/schemas/mobileApiRequests';
 
 const log = createLogger('MOBILE-PERM');
-
-/**
- * Actions that can be controlled via mobile permissions
- * Must match server/src/services/mobilePermissions/types.ts
- */
-export type MobileAction =
-  | 'viewBalance'
-  | 'viewTransactions'
-  | 'viewUtxos'
-  | 'createTransaction'
-  | 'broadcast'
-  | 'signPsbt'
-  | 'generateAddress'
-  | 'manageLabels'
-  | 'manageDevices'
-  | 'shareWallet'
-  | 'deleteWallet';
 
 /**
  * Response from backend permission check
@@ -189,9 +173,8 @@ export function requireMobilePermission(action: MobileAction) {
  * Used to automatically apply permission checks to routes.
  *
  * Note: Only routes with walletId in the path can use the mobile permission
- * middleware. Routes like /api/v1/labels/:id and /api/v1/devices don't have
- * walletId, so permission checking happens in the backend after looking up
- * the associated wallet.
+ * middleware. User-scoped routes like /api/v1/devices rely on backend access
+ * control because they are not wallet-scoped.
  */
 export const ROUTE_ACTION_MAP: Record<string, MobileAction> = {
   // Transaction operations
@@ -204,9 +187,11 @@ export const ROUTE_ACTION_MAP: Record<string, MobileAction> = {
   // Address generation
   'POST:/wallets/:id/addresses/generate': 'generateAddress',
 
-  // Labels (only create has walletId in path)
+  // Labels
   'POST:/wallets/:id/labels': 'manageLabels',
+  'PUT:/wallets/:id/labels/:labelId': 'manageLabels',
+  'DELETE:/wallets/:id/labels/:labelId': 'manageLabels',
 
   // Drafts (PSBT signing)
-  'POST:/wallets/:id/drafts/:draftId/sign': 'signPsbt',
+  'PATCH:/wallets/:id/drafts/:draftId': 'signPsbt',
 };

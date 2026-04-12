@@ -5,23 +5,12 @@
  * Mobile permissions act as additional restrictions on top of wallet roles.
  */
 
+import { MOBILE_ACTIONS, type MobileAction } from '../../../../shared/schemas/mobileApiRequests';
+
 /**
  * Actions that can be controlled via mobile permissions
  */
-export type MobileAction =
-  | 'viewBalance'
-  | 'viewTransactions'
-  | 'viewUtxos'
-  | 'createTransaction'
-  | 'broadcast'
-  | 'signPsbt'
-  | 'generateAddress'
-  | 'manageLabels'
-  | 'manageDevices'
-  | 'shareWallet'
-  | 'deleteWallet'
-  | 'approveTransaction'
-  | 'managePolicies';
+export type { MobileAction };
 
 /**
  * Wallet role types
@@ -117,7 +106,7 @@ export const ROLE_CAPABILITIES: Record<WalletRole, Record<MobileAction, boolean>
 /**
  * All mobile actions list
  */
-export const ALL_MOBILE_ACTIONS: MobileAction[] = Object.keys(ACTION_TO_FIELD) as MobileAction[];
+export const ALL_MOBILE_ACTIONS: MobileAction[] = [...MOBILE_ACTIONS];
 
 /**
  * Permission check result

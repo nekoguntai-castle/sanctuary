@@ -16,6 +16,26 @@
 import { z } from 'zod';
 import { Request, Response, NextFunction } from 'express';
 import { createLogger } from '../utils/logger';
+import {
+  MobileCreateLabelRequestSchema,
+  MobileCreateDeviceRequestSchema,
+  MobileDraftUpdateRequestSchema,
+  MobileLoginRequestSchema,
+  MobileLogoutRequestSchema,
+  MobilePermissionUpdateRequestSchema,
+  MobilePushRegisterRequestSchema,
+  MobilePushUnregisterRequestSchema,
+  MobilePsbtBroadcastRequestSchema,
+  MobilePsbtCreateRequestSchema,
+  MobileRefreshTokenRequestSchema,
+  MobileTwoFactorVerifyRequestSchema,
+  MobileTransactionBroadcastRequestSchema,
+  MobileTransactionCreateRequestSchema,
+  MobileTransactionEstimateRequestSchema,
+  MobileUpdateDeviceRequestSchema,
+  MobileUpdateLabelRequestSchema,
+  MobileUserPreferencesRequestSchema,
+} from '../../../shared/schemas/mobileApiRequests';
 
 const log = createLogger('VALIDATION');
 
@@ -23,75 +43,34 @@ const log = createLogger('VALIDATION');
 // Authentication Schemas
 // ============================================================================
 
-export const loginSchema = z.object({
-  username: z
-    .string()
-    .min(1, 'Username is required')
-    .max(50, 'Username too long'),
-  password: z
-    .string()
-    .min(1, 'Password is required'),
-});
-
-export const refreshTokenSchema = z.object({
-  refreshToken: z
-    .string()
-    .min(1, 'Refresh token is required'),
-  rotate: z
-    .boolean()
-    .optional(),
-});
-
-export const logoutSchema = z.object({
-  refreshToken: z
-    .string()
-    .optional(),
-});
+export const loginSchema = MobileLoginRequestSchema;
+export const refreshTokenSchema = MobileRefreshTokenRequestSchema;
+export const logoutSchema = MobileLogoutRequestSchema;
+export const twoFactorVerifySchema = MobileTwoFactorVerifyRequestSchema;
+export const userPreferencesSchema = MobileUserPreferencesRequestSchema;
 
 // ============================================================================
 // Push Notification Schemas
 // ============================================================================
 
-export const pushRegisterSchema = z.object({
-  token: z
-    .string({ message: 'Device token is required' })
-    .min(1, 'Device token is required')
-    .max(500, 'Device token too long'),
-  platform: z
-    .enum(['ios', 'android'], {
-      message: 'Platform must be ios or android',
-    }),
-  deviceName: z
-    .string()
-    .max(100, 'Device name too long')
-    .optional(),
-});
+export const pushRegisterSchema = MobilePushRegisterRequestSchema;
+export const pushUnregisterSchema = MobilePushUnregisterRequestSchema;
 
 // ============================================================================
 // Label Schemas
 // ============================================================================
 
-export const labelSchema = z.object({
-  type: z
-    .enum(['address', 'transaction', 'utxo'], {
-      message: 'Invalid label type',
-    }),
-  ref: z
-    .string()
-    .min(1, 'Reference is required')
-    .max(200, 'Reference too long'),
-  label: z
-    .string()
-    .min(1, 'Label is required')
-    .max(500, 'Label too long'),
-});
-
-export const updateLabelSchema = z.object({
-  label: z
-    .string()
-    .min(1, 'Label is required')
-    .max(500, 'Label too long'),
-});
+export const labelSchema = MobileCreateLabelRequestSchema;
+export const updateLabelSchema = MobileUpdateLabelRequestSchema;
+export const mobilePermissionUpdateSchema = MobilePermissionUpdateRequestSchema;
+export const draftUpdateSchema = MobileDraftUpdateRequestSchema;
+export const transactionCreateSchema = MobileTransactionCreateRequestSchema;
+export const transactionEstimateSchema = MobileTransactionEstimateRequestSchema;
+export const transactionBroadcastSchema = MobileTransactionBroadcastRequestSchema;
+export const psbtCreateSchema = MobilePsbtCreateRequestSchema;
+export const psbtBroadcastSchema = MobilePsbtBroadcastRequestSchema;
+export const createDeviceSchema = MobileCreateDeviceRequestSchema;
+export const updateDeviceSchema = MobileUpdateDeviceRequestSchema;
 
 // ============================================================================
 // Route to Schema Mapping
@@ -107,10 +86,23 @@ const ROUTE_SCHEMAS: RouteSchema[] = [
   { method: 'POST', pattern: /^\/api\/v1\/auth\/login$/, schema: loginSchema },
   { method: 'POST', pattern: /^\/api\/v1\/auth\/refresh$/, schema: refreshTokenSchema },
   { method: 'POST', pattern: /^\/api\/v1\/auth\/logout$/, schema: logoutSchema },
+  { method: 'POST', pattern: /^\/api\/v1\/auth\/2fa\/verify$/, schema: twoFactorVerifySchema },
+  { method: 'PATCH', pattern: /^\/api\/v1\/auth\/me\/preferences$/, schema: userPreferencesSchema },
   { method: 'POST', pattern: /^\/api\/v1\/push\/register$/, schema: pushRegisterSchema },
+  { method: 'DELETE', pattern: /^\/api\/v1\/push\/unregister$/, schema: pushUnregisterSchema },
   // Labels use dynamic wallet ID paths
   { method: 'POST', pattern: /^\/api\/v1\/wallets\/[a-f0-9-]+\/labels$/, schema: labelSchema },
-  { method: 'PATCH', pattern: /^\/api\/v1\/labels\/[a-f0-9-]+$/, schema: updateLabelSchema },
+  { method: 'PUT', pattern: /^\/api\/v1\/wallets\/[a-f0-9-]+\/labels\/[a-f0-9-]+$/, schema: updateLabelSchema },
+  { method: 'PATCH', pattern: /^\/api\/v1\/wallets\/[a-f0-9-]+\/mobile-permissions$/, schema: mobilePermissionUpdateSchema },
+  { method: 'PATCH', pattern: /^\/api\/v1\/wallets\/[a-f0-9-]+\/mobile-permissions\/[a-f0-9-]+$/, schema: mobilePermissionUpdateSchema },
+  { method: 'PATCH', pattern: /^\/api\/v1\/wallets\/[a-f0-9-]+\/drafts\/[a-f0-9-]+$/, schema: draftUpdateSchema },
+  { method: 'POST', pattern: /^\/api\/v1\/wallets\/[a-f0-9-]+\/transactions\/create$/, schema: transactionCreateSchema },
+  { method: 'POST', pattern: /^\/api\/v1\/wallets\/[a-f0-9-]+\/transactions\/estimate$/, schema: transactionEstimateSchema },
+  { method: 'POST', pattern: /^\/api\/v1\/wallets\/[a-f0-9-]+\/transactions\/broadcast$/, schema: transactionBroadcastSchema },
+  { method: 'POST', pattern: /^\/api\/v1\/wallets\/[a-f0-9-]+\/psbt\/create$/, schema: psbtCreateSchema },
+  { method: 'POST', pattern: /^\/api\/v1\/wallets\/[a-f0-9-]+\/psbt\/broadcast$/, schema: psbtBroadcastSchema },
+  { method: 'POST', pattern: /^\/api\/v1\/devices$/, schema: createDeviceSchema },
+  { method: 'PATCH', pattern: /^\/api\/v1\/devices\/[a-f0-9-]+$/, schema: updateDeviceSchema },
 ];
 
 /**

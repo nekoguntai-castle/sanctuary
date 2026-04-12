@@ -21,17 +21,37 @@ export const syncSchemas = {
 } as const;
 
 export const bitcoinSchemas = {
+  BitcoinStatus: {
+    type: 'object',
+    properties: {
+      connected: { type: 'boolean' },
+      server: { type: 'string' },
+      protocol: { type: 'string' },
+      blockHeight: { type: 'integer' },
+      network: { type: 'string' },
+      explorerUrl: { type: 'string' },
+      confirmationThreshold: { type: 'integer' },
+      deepConfirmationThreshold: { type: 'integer' },
+      error: { type: 'string' },
+      pool: {
+        type: 'object',
+        nullable: true,
+        additionalProperties: true,
+      },
+    },
+    required: ['connected'],
+  },
   FeeEstimates: {
     type: 'object',
     properties: {
       fastest: { type: 'number' },
-      fast: { type: 'number' },
-      medium: { type: 'number' },
-      slow: { type: 'number' },
+      halfHour: { type: 'number' },
+      hour: { type: 'number' },
+      economy: { type: 'number' },
       minimum: { type: 'number' },
-      updatedAt: { type: 'string', format: 'date-time' },
+      source: { type: 'string', enum: ['mempool', 'electrum'] },
     },
-    required: ['fastest', 'fast', 'medium', 'slow', 'minimum', 'updatedAt'],
+    required: ['fastest', 'halfHour', 'hour', 'economy', 'minimum', 'source'],
   },
   BroadcastRequest: {
     type: 'object',

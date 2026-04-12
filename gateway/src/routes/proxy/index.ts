@@ -26,7 +26,7 @@ import { requireMobilePermission } from '../../middleware/mobilePermission';
 import { checkWhitelist } from './whitelist';
 import { proxy } from './proxyConfig';
 
-export { ALLOWED_ROUTES, isAllowedRoute, checkWhitelist } from './whitelist';
+export { ALLOWED_ROUTES, GATEWAY_ROUTE_CONTRACTS, isAllowedRoute, checkWhitelist } from './whitelist';
 
 const router = Router();
 
@@ -113,9 +113,25 @@ router.post(
   proxy
 );
 
-// Note: PATCH/DELETE /api/v1/labels/:id routes don't have walletId in path.
-// Permission checking for these is handled by the backend after looking up
-// which wallet the label belongs to.
+router.put(
+  '/api/v1/wallets/:id/labels/:labelId',
+  authenticate,
+  defaultRateLimiter,
+  checkWhitelist,
+  requireMobilePermission('manageLabels'),
+  validateRequest,
+  proxy
+);
+
+router.delete(
+  '/api/v1/wallets/:id/labels/:labelId',
+  authenticate,
+  defaultRateLimiter,
+  checkWhitelist,
+  requireMobilePermission('manageLabels'),
+  validateRequest,
+  proxy
+);
 
 // Note: Device management routes (/api/v1/devices) are user-scoped, not wallet-scoped,
 // so they don't use mobile permission middleware. Access control is handled by the
@@ -132,8 +148,8 @@ router.post(
 );
 
 // Draft signing (multisig)
-router.post(
-  '/api/v1/wallets/:id/drafts/:draftId/sign',
+router.patch(
+  '/api/v1/wallets/:id/drafts/:draftId',
   authenticate,
   defaultRateLimiter,
   checkWhitelist,

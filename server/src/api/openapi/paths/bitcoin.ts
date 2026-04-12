@@ -34,6 +34,23 @@ export const syncPaths = {
 } as const;
 
 export const bitcoinPaths = {
+  '/bitcoin/status': {
+    get: {
+      tags: ['Bitcoin'],
+      summary: 'Get Bitcoin status',
+      description: 'Get Bitcoin node and network status with graceful degradation when unavailable',
+      responses: {
+        200: {
+          description: 'Bitcoin status',
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/BitcoinStatus' },
+            },
+          },
+        },
+      },
+    },
+  },
   '/bitcoin/fees': {
     get: {
       tags: ['Bitcoin'],

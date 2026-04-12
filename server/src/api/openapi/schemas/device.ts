@@ -4,6 +4,11 @@
  * Schema definitions for hardware device management.
  */
 
+import {
+  MOBILE_DEVICE_ACCOUNT_PURPOSES,
+  MOBILE_DEVICE_SCRIPT_TYPES,
+} from '../../../../../shared/schemas/mobileApiRequests';
+
 export const deviceSchemas = {
   DeviceAccount: {
     type: 'object',
@@ -20,8 +25,8 @@ export const deviceSchemas = {
   DeviceAccountInput: {
     type: 'object',
     properties: {
-      purpose: { type: 'string' },
-      scriptType: { type: 'string' },
+      purpose: { type: 'string', enum: [...MOBILE_DEVICE_ACCOUNT_PURPOSES] },
+      scriptType: { type: 'string', enum: [...MOBILE_DEVICE_SCRIPT_TYPES] },
       derivationPath: { type: 'string' },
       xpub: { type: 'string' },
     },

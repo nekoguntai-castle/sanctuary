@@ -113,7 +113,7 @@ function isSensitiveEndpoint(path: string): boolean {
   const sensitivePatterns = [
     /^\/api\/v1\/auth\//,      // Auth endpoints
     /^\/api\/v1\/push\//,      // Push device registration
-    /\/sync$/,                  // Wallet sync
+    /^\/api\/v1\/sync\//,      // Wallet sync
   ];
   return sensitivePatterns.some(pattern => pattern.test(path));
 }

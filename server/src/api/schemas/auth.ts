@@ -6,6 +6,13 @@
 
 import { z } from 'zod';
 import { UsernameSchema, EmailSchema, UuidSchema } from './common';
+import {
+  MobileLoginRequestSchema,
+  MobileLogoutRequestSchema,
+  MobileRefreshTokenRequestSchema,
+  MobileTwoFactorVerifyRequestSchema,
+  MobileUserPreferencesRequestSchema,
+} from '../../../../shared/schemas/mobileApiRequests';
 
 // =============================================================================
 // Password Validation
@@ -47,8 +54,7 @@ export const RegisterSchema = z.object({
 // =============================================================================
 
 export const LoginSchema = z.object({
-  username: z.string().min(1, 'Username is required'),
-  password: LoginPasswordSchema,
+  ...MobileLoginRequestSchema.shape,
 });
 
 // =============================================================================
@@ -65,7 +71,7 @@ export const BackupCodeSchema = z.string().regex(/^[A-Z0-9]{8}$/, 'Invalid backu
 export const TwoFactorCodeSchema = z.string().min(1, 'Code is required');
 
 export const TwoFactorVerifySchema = z.object({
-  tempToken: z.string().min(1, 'Temporary token is required'),
+  tempToken: MobileTwoFactorVerifyRequestSchema.shape.tempToken,
   code: TwoFactorCodeSchema,
 });
 
@@ -100,18 +106,13 @@ export const ChangePasswordSchema = z.object({
 // Token Refresh
 // =============================================================================
 
-export const RefreshTokenSchema = z.object({
-  refreshToken: z.string().min(1, 'Refresh token is required'),
-  rotate: z.boolean().optional(),
-});
+export const RefreshTokenSchema = MobileRefreshTokenRequestSchema;
 
 // =============================================================================
 // Logout
 // =============================================================================
 
-export const LogoutSchema = z.object({
-  refreshToken: z.string().optional(),
-});
+export const LogoutSchema = MobileLogoutRequestSchema;
 
 // =============================================================================
 // Session Management
@@ -133,31 +134,7 @@ export const UserSearchQuerySchema = z.object({
 // Preferences
 // =============================================================================
 
-export const PreferencesSchema = z.object({
-  darkMode: z.boolean().optional(),
-  theme: z.string().optional(),
-  background: z.string().optional(),
-  unit: z.enum(['btc', 'sats', 'mbtc']).optional(),
-  fiatCurrency: z.string().length(3).toUpperCase().optional(),
-  showFiat: z.boolean().optional(),
-  priceProvider: z.string().optional(),
-  notificationSounds: z.object({
-    enabled: z.boolean().optional(),
-    volume: z.number().min(0).max(100).optional(),
-    confirmation: z.object({
-      enabled: z.boolean().optional(),
-      sound: z.string().optional(),
-    }).optional(),
-    receive: z.object({
-      enabled: z.boolean().optional(),
-      sound: z.string().optional(),
-    }).optional(),
-    send: z.object({
-      enabled: z.boolean().optional(),
-      sound: z.string().optional(),
-    }).optional(),
-  }).optional(),
-}).passthrough(); // Allow additional preferences
+export const PreferencesSchema = MobileUserPreferencesRequestSchema;
 
 // =============================================================================
 // Telegram

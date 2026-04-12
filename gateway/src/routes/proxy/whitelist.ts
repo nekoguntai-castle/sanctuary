@@ -14,9 +14,10 @@
  * ## Adding New Routes
  *
  * To expose a new endpoint to mobile apps:
- * 1. Add pattern to ALLOWED_ROUTES array below
- * 2. Use regex to match dynamic segments (e.g., `[a-f0-9-]+` for UUIDs)
- * 3. Consider security implications before adding
+ * 1. Add route metadata to GATEWAY_ROUTE_CONTRACTS below
+ * 2. Use regex source strings for dynamic segments (e.g., uuidPattern)
+ * 3. Point openApiPath at the matching backend OpenAPI path
+ * 4. Consider security implications before adding
  *
  * ## Routes NOT to Expose
  *
@@ -31,94 +32,127 @@ import { Request, Response } from 'express';
 import { AuthenticatedRequest } from '../../middleware/auth';
 import { logSecurityEvent } from '../../middleware/requestLogger';
 
+type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+
+export type GatewayRouteContract = {
+  method: HttpMethod;
+  pattern: RegExp;
+  samplePath: string;
+  openApiPath: string;
+};
+
+const uuidPattern = '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}';
+const txidPattern = '[a-f0-9]{64}';
+const sampleUuid = '12345678-1234-1234-1234-123456789abc';
+const sampleTxid = 'a'.repeat(64);
+
+function route(
+  method: HttpMethod,
+  pathPattern: string,
+  samplePath: string,
+  openApiPath: string
+): GatewayRouteContract {
+  return {
+    method,
+    pattern: new RegExp(`^/api/v1${pathPattern}$`),
+    samplePath: `/api/v1${samplePath}`,
+    openApiPath,
+  };
+}
+
 /**
- * Whitelist of allowed API routes
+ * Whitelist contract for allowed API routes
  *
- * Format: { method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: RegExp }
+ * Runtime proxy access is derived from this metadata so tests can validate the
+ * same route list against OpenAPI coverage without maintaining a duplicate map.
  *
  * SECURITY: Only add routes that are safe for mobile app access.
  * Admin routes and sensitive operations should NOT be exposed.
  */
-export const ALLOWED_ROUTES: Array<{ method: string; pattern: RegExp }> = [
+export const GATEWAY_ROUTE_CONTRACTS: GatewayRouteContract[] = [
   // Authentication
-  { method: 'POST', pattern: /^\/api\/v1\/auth\/login$/ },
-  { method: 'POST', pattern: /^\/api\/v1\/auth\/refresh$/ },
-  { method: 'POST', pattern: /^\/api\/v1\/auth\/logout$/ },
-  { method: 'POST', pattern: /^\/api\/v1\/auth\/logout-all$/ },
-  { method: 'POST', pattern: /^\/api\/v1\/auth\/2fa\/verify$/ },
-  { method: 'GET', pattern: /^\/api\/v1\/auth\/me$/ },
-  { method: 'PATCH', pattern: /^\/api\/v1\/auth\/me\/preferences$/ },
+  route('POST', '/auth/login', '/auth/login', '/auth/login'),
+  route('POST', '/auth/refresh', '/auth/refresh', '/auth/refresh'),
+  route('POST', '/auth/logout', '/auth/logout', '/auth/logout'),
+  route('POST', '/auth/logout-all', '/auth/logout-all', '/auth/logout-all'),
+  route('POST', '/auth/2fa/verify', '/auth/2fa/verify', '/auth/2fa/verify'),
+  route('GET', '/auth/me', '/auth/me', '/auth/me'),
+  route('PATCH', '/auth/me/preferences', '/auth/me/preferences', '/auth/me/preferences'),
 
   // Session management
-  { method: 'GET', pattern: /^\/api\/v1\/auth\/sessions$/ },
-  { method: 'DELETE', pattern: /^\/api\/v1\/auth\/sessions\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/ },
+  route('GET', '/auth/sessions', '/auth/sessions', '/auth/sessions'),
+  route('DELETE', `/auth/sessions/${uuidPattern}`, `/auth/sessions/${sampleUuid}`, '/auth/sessions/{id}'),
 
   // Wallets (read-only + sync)
-  { method: 'GET', pattern: /^\/api\/v1\/wallets$/ },
-  { method: 'GET', pattern: /^\/api\/v1\/wallets\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/ },
-  { method: 'POST', pattern: /^\/api\/v1\/wallets\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/sync$/ },
+  route('GET', '/wallets', '/wallets', '/wallets'),
+  route('GET', `/wallets/${uuidPattern}`, `/wallets/${sampleUuid}`, '/wallets/{walletId}'),
+  route('POST', `/sync/wallet/${uuidPattern}`, `/sync/wallet/${sampleUuid}`, '/sync/wallet/{walletId}'),
 
   // Transactions (read-only)
-  { method: 'GET', pattern: /^\/api\/v1\/wallets\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/transactions$/ },
+  route('GET', `/wallets/${uuidPattern}/transactions`, `/wallets/${sampleUuid}/transactions`, '/wallets/{walletId}/transactions'),
   // Transaction detail is canonicalized by txid; backend findByTxidWithAccess enforces per-user wallet access.
-  { method: 'GET', pattern: /^\/api\/v1\/transactions\/[a-f0-9]{64}$/ },
+  route('GET', `/transactions/${txidPattern}`, `/transactions/${sampleTxid}`, '/transactions/{txid}'),
 
   // Addresses (read-only + generate)
-  { method: 'GET', pattern: /^\/api\/v1\/wallets\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/addresses\/summary$/ },
-  { method: 'GET', pattern: /^\/api\/v1\/wallets\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/addresses$/ },
-  { method: 'POST', pattern: /^\/api\/v1\/wallets\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/addresses\/generate$/ },
+  route('GET', `/wallets/${uuidPattern}/addresses/summary`, `/wallets/${sampleUuid}/addresses/summary`, '/wallets/{walletId}/addresses/summary'),
+  route('GET', `/wallets/${uuidPattern}/addresses`, `/wallets/${sampleUuid}/addresses`, '/wallets/{walletId}/addresses'),
+  route('POST', `/wallets/${uuidPattern}/addresses/generate`, `/wallets/${sampleUuid}/addresses/generate`, '/wallets/{walletId}/addresses/generate'),
 
   // UTXOs (read-only)
-  { method: 'GET', pattern: /^\/api\/v1\/wallets\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/utxos$/ },
+  route('GET', `/wallets/${uuidPattern}/utxos`, `/wallets/${sampleUuid}/utxos`, '/wallets/{walletId}/utxos'),
 
   // Labels (read + write)
-  { method: 'GET', pattern: /^\/api\/v1\/wallets\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/labels$/ },
-  { method: 'POST', pattern: /^\/api\/v1\/wallets\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/labels$/ },
-  { method: 'PATCH', pattern: /^\/api\/v1\/labels\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/ },
-  { method: 'DELETE', pattern: /^\/api\/v1\/labels\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/ },
+  route('GET', `/wallets/${uuidPattern}/labels`, `/wallets/${sampleUuid}/labels`, '/wallets/{walletId}/labels'),
+  route('POST', `/wallets/${uuidPattern}/labels`, `/wallets/${sampleUuid}/labels`, '/wallets/{walletId}/labels'),
+  route('PUT', `/wallets/${uuidPattern}/labels/${uuidPattern}`, `/wallets/${sampleUuid}/labels/${sampleUuid}`, '/wallets/{walletId}/labels/{labelId}'),
+  route('DELETE', `/wallets/${uuidPattern}/labels/${uuidPattern}`, `/wallets/${sampleUuid}/labels/${sampleUuid}`, '/wallets/{walletId}/labels/{labelId}'),
 
   // Bitcoin status
-  { method: 'GET', pattern: /^\/api\/v1\/bitcoin\/status$/ },
-  { method: 'GET', pattern: /^\/api\/v1\/bitcoin\/fees$/ },
+  route('GET', '/bitcoin/status', '/bitcoin/status', '/bitcoin/status'),
+  route('GET', '/bitcoin/fees', '/bitcoin/fees', '/bitcoin/fees'),
 
   // Price
-  { method: 'GET', pattern: /^\/api\/v1\/price$/ },
+  route('GET', '/price', '/price', '/price'),
 
   // Pending transactions
-  { method: 'GET', pattern: /^\/api\/v1\/transactions\/pending$/ },
+  route('GET', '/transactions/pending', '/transactions/pending', '/transactions/pending'),
 
   // Push notifications (device registration)
-  { method: 'POST', pattern: /^\/api\/v1\/push\/register$/ },
-  { method: 'DELETE', pattern: /^\/api\/v1\/push\/unregister$/ },
-  { method: 'GET', pattern: /^\/api\/v1\/push\/devices$/ },
-  { method: 'DELETE', pattern: /^\/api\/v1\/push\/devices\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/ },
+  route('POST', '/push/register', '/push/register', '/push/register'),
+  route('DELETE', '/push/unregister', '/push/unregister', '/push/unregister'),
+  route('GET', '/push/devices', '/push/devices', '/push/devices'),
+  route('DELETE', `/push/devices/${uuidPattern}`, `/push/devices/${sampleUuid}`, '/push/devices/{id}'),
 
   // Transaction building & broadcasting
-  { method: 'POST', pattern: /^\/api\/v1\/wallets\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/transactions\/create$/ },
-  { method: 'POST', pattern: /^\/api\/v1\/wallets\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/transactions\/estimate$/ },
-  { method: 'POST', pattern: /^\/api\/v1\/wallets\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/transactions\/broadcast$/ },
-  { method: 'POST', pattern: /^\/api\/v1\/wallets\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/psbt\/create$/ },
-  { method: 'POST', pattern: /^\/api\/v1\/wallets\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/psbt\/broadcast$/ },
+  route('POST', `/wallets/${uuidPattern}/transactions/create`, `/wallets/${sampleUuid}/transactions/create`, '/wallets/{walletId}/transactions/create'),
+  route('POST', `/wallets/${uuidPattern}/transactions/estimate`, `/wallets/${sampleUuid}/transactions/estimate`, '/wallets/{walletId}/transactions/estimate'),
+  route('POST', `/wallets/${uuidPattern}/transactions/broadcast`, `/wallets/${sampleUuid}/transactions/broadcast`, '/wallets/{walletId}/transactions/broadcast'),
+  route('POST', `/wallets/${uuidPattern}/psbt/create`, `/wallets/${sampleUuid}/psbt/create`, '/wallets/{walletId}/psbt/create'),
+  route('POST', `/wallets/${uuidPattern}/psbt/broadcast`, `/wallets/${sampleUuid}/psbt/broadcast`, '/wallets/{walletId}/psbt/broadcast'),
 
   // Hardware wallet device management
-  { method: 'GET', pattern: /^\/api\/v1\/devices$/ },
-  { method: 'POST', pattern: /^\/api\/v1\/devices$/ },
-  { method: 'PATCH', pattern: /^\/api\/v1\/devices\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/ },
-  { method: 'DELETE', pattern: /^\/api\/v1\/devices\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/ },
+  route('GET', '/devices', '/devices', '/devices'),
+  route('POST', '/devices', '/devices', '/devices'),
+  route('PATCH', `/devices/${uuidPattern}`, `/devices/${sampleUuid}`, '/devices/{deviceId}'),
+  route('DELETE', `/devices/${uuidPattern}`, `/devices/${sampleUuid}`, '/devices/{deviceId}'),
 
   // Draft transactions (multisig)
-  { method: 'GET', pattern: /^\/api\/v1\/wallets\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/drafts$/ },
-  { method: 'GET', pattern: /^\/api\/v1\/wallets\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/drafts\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/ },
-  { method: 'POST', pattern: /^\/api\/v1\/wallets\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/drafts\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/sign$/ },
+  route('GET', `/wallets/${uuidPattern}/drafts`, `/wallets/${sampleUuid}/drafts`, '/wallets/{walletId}/drafts'),
+  route('GET', `/wallets/${uuidPattern}/drafts/${uuidPattern}`, `/wallets/${sampleUuid}/drafts/${sampleUuid}`, '/wallets/{walletId}/drafts/{draftId}'),
+  route('PATCH', `/wallets/${uuidPattern}/drafts/${uuidPattern}`, `/wallets/${sampleUuid}/drafts/${sampleUuid}`, '/wallets/{walletId}/drafts/{draftId}'),
 
   // Mobile permissions
-  { method: 'GET', pattern: /^\/api\/v1\/mobile-permissions$/ },
-  { method: 'GET', pattern: /^\/api\/v1\/wallets\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/mobile-permissions$/ },
-  { method: 'PATCH', pattern: /^\/api\/v1\/wallets\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/mobile-permissions$/ },
-  { method: 'PATCH', pattern: /^\/api\/v1\/wallets\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/mobile-permissions\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/ },
-  { method: 'DELETE', pattern: /^\/api\/v1\/wallets\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/mobile-permissions\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/caps$/ },
-  { method: 'DELETE', pattern: /^\/api\/v1\/wallets\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/mobile-permissions$/ },
+  route('GET', '/mobile-permissions', '/mobile-permissions', '/mobile-permissions'),
+  route('GET', `/wallets/${uuidPattern}/mobile-permissions`, `/wallets/${sampleUuid}/mobile-permissions`, '/wallets/{walletId}/mobile-permissions'),
+  route('PATCH', `/wallets/${uuidPattern}/mobile-permissions`, `/wallets/${sampleUuid}/mobile-permissions`, '/wallets/{walletId}/mobile-permissions'),
+  route('PATCH', `/wallets/${uuidPattern}/mobile-permissions/${uuidPattern}`, `/wallets/${sampleUuid}/mobile-permissions/${sampleUuid}`, '/wallets/{walletId}/mobile-permissions/{userId}'),
+  route('DELETE', `/wallets/${uuidPattern}/mobile-permissions/${uuidPattern}/caps`, `/wallets/${sampleUuid}/mobile-permissions/${sampleUuid}/caps`, '/wallets/{walletId}/mobile-permissions/{userId}/caps'),
+  route('DELETE', `/wallets/${uuidPattern}/mobile-permissions`, `/wallets/${sampleUuid}/mobile-permissions`, '/wallets/{walletId}/mobile-permissions'),
 ];
+
+export const ALLOWED_ROUTES: Array<{ method: string; pattern: RegExp }> = GATEWAY_ROUTE_CONTRACTS.map(
+  ({ method, pattern }) => ({ method, pattern })
+);
 
 /**
  * Check if a request matches the whitelist

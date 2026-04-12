@@ -96,10 +96,12 @@ describe('Mobile Permission Middleware', () => {
 
     it('should map label management routes', () => {
       expect(ROUTE_ACTION_MAP['POST:/wallets/:id/labels']).toBe('manageLabels');
+      expect(ROUTE_ACTION_MAP['PUT:/wallets/:id/labels/:labelId']).toBe('manageLabels');
+      expect(ROUTE_ACTION_MAP['DELETE:/wallets/:id/labels/:labelId']).toBe('manageLabels');
     });
 
     it('should map draft signing routes', () => {
-      expect(ROUTE_ACTION_MAP['POST:/wallets/:id/drafts/:draftId/sign']).toBe('signPsbt');
+      expect(ROUTE_ACTION_MAP['PATCH:/wallets/:id/drafts/:draftId']).toBe('signPsbt');
     });
   });
 

@@ -11,12 +11,22 @@ import { authSchemas } from './schemas/auth';
 import { walletSchemas } from './schemas/wallet';
 import { deviceSchemas } from './schemas/device';
 import { syncSchemas, bitcoinSchemas, priceSchemas } from './schemas/bitcoin';
+import { transactionSchemas } from './schemas/transactions';
+import { pushSchemas } from './schemas/push';
+import { mobilePermissionSchemas } from './schemas/mobilePermissions';
+import { labelSchemas } from './schemas/labels';
+import { draftSchemas } from './schemas/drafts';
 
 // Paths
 import { authPaths } from './paths/auth';
 import { walletPaths } from './paths/wallets';
 import { devicePaths } from './paths/devices';
 import { syncPaths, bitcoinPaths, pricePaths } from './paths/bitcoin';
+import { transactionPaths } from './paths/transactions';
+import { pushPaths } from './paths/push';
+import { mobilePermissionPaths } from './paths/mobilePermissions';
+import { labelPaths } from './paths/labels';
+import { draftPaths } from './paths/drafts';
 
 export const openApiSpec = {
   openapi: '3.0.3',
@@ -43,9 +53,12 @@ export const openApiSpec = {
     { name: 'Devices', description: 'Hardware device management' },
     { name: 'Transactions', description: 'Transaction operations' },
     { name: 'Drafts', description: 'Transaction drafts (PSBT)' },
+    { name: 'Labels', description: 'Wallet labels' },
     { name: 'Sync', description: 'Wallet synchronization' },
     { name: 'Bitcoin', description: 'Bitcoin network operations' },
     { name: 'Price', description: 'Price information' },
+    { name: 'Push', description: 'Mobile push device registration' },
+    { name: 'Mobile Permissions', description: 'Mobile wallet permission restrictions' },
     { name: 'Admin', description: 'Administrative operations' },
   ],
   paths: {
@@ -55,6 +68,11 @@ export const openApiSpec = {
     ...syncPaths,
     ...bitcoinPaths,
     ...pricePaths,
+    ...transactionPaths,
+    ...labelPaths,
+    ...draftPaths,
+    ...pushPaths,
+    ...mobilePermissionPaths,
   },
   components: {
     securitySchemes: {
@@ -72,6 +90,11 @@ export const openApiSpec = {
       ...syncSchemas,
       ...bitcoinSchemas,
       ...priceSchemas,
+      ...transactionSchemas,
+      ...labelSchemas,
+      ...draftSchemas,
+      ...pushSchemas,
+      ...mobilePermissionSchemas,
     },
   },
 };

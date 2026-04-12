@@ -338,7 +338,7 @@ describe('requestLogger middleware', () => {
     });
 
     it('should detect sync endpoints as sensitive', () => {
-      req.path = '/api/v1/wallets/123/sync';
+      req.path = '/api/v1/sync/wallet/123';
 
       requestLogger(req as Request, res as Response, next);
 
