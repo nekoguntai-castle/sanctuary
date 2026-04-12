@@ -26,6 +26,7 @@
     "test:docker:coverage": "docker compose -f docker-compose.test.yml run --rm backend-coverage && docker compose -f docker-compose.test.yml run --rm frontend-coverage",
     "test:docker:clean": "docker compose -f docker-compose.test.yml down -v --remove-orphans",
     "ops:monitoring:phase2": "node scripts/ops/phase2-monitoring-smoke.mjs",
+    "ops:alert-receiver:phase2": "node scripts/ops/phase2-alert-receiver-smoke.mjs",
     "ops:gateway-audit:phase2": "node scripts/ops/phase2-gateway-audit-compose-smoke.mjs",
     "test:e2e": "playwright test",
     "test:e2e:render": "playwright test --project=chromium e2e/render-regression.spec.ts",

@@ -10,9 +10,11 @@ This document maps the existing monitoring stack and alert rules to concrete tri
 - 2026-04-12: `docs/plans/phase2-operations-proof-2026-04-12T08-44-39-1000.md` records a passing disposable PostgreSQL backup/restore drill and gateway audit persistence drill.
 - 2026-04-12: `docs/plans/phase2-monitoring-smoke-2026-04-12T22-42-59-008Z.md` records a passing local monitoring stack smoke with Grafana, Prometheus, Alertmanager, Jaeger, Loki, Promtail container health, Prometheus rule loading, Promtail runtime log checks, and loopback-only host port bindings.
 - 2026-04-12: `docs/plans/phase2-gateway-audit-compose-smoke-2026-04-12T23-18-24-249Z.md` records a passing full Compose backend/gateway audit smoke with signed audit persistence, unsigned audit rejection, gateway delivery-log checks, and container health.
+- 2026-04-12: `docs/plans/phase2-alert-receiver-smoke-2026-04-12T23-33-46-561Z.md` records a passing disposable Alertmanager webhook receiver delivery smoke.
 - Run repeatable local proof with `npm run test:ops:phase2`.
 - If local port `5433` is already allocated, run with an alternate host port, for example `TEST_POSTGRES_PORT=55433 npm run test:ops:phase2`.
 - Run repeatable monitoring proof with `npm run ops:monitoring:phase2` after starting the monitoring stack.
+- Run repeatable Alertmanager receiver delivery proof with `npm run ops:alert-receiver:phase2`.
 - Run repeatable full backend/gateway audit proof with `npm run ops:gateway-audit:phase2`.
 
 ## Monitoring Exposure
@@ -75,6 +77,23 @@ Environment-specific adjustments captured in the 2026-04-12 drill:
 - Promtail is pinned to `grafana/promtail:3.5.0`; `2.9.0` used an older Docker API client and failed against this host's Docker daemon.
 - Promtail health uses `/bin/promtail -config.file=/etc/promtail/config.yml -check-syntax` because the image does not include `wget`.
 - Promtail Docker discovery is filtered to `com.docker.compose.project=sanctuary`, and the pipeline adds `job=sanctuary` so local unrelated containers are not collected and Loki streams always have at least one label.
+
+## Alert Receiver Delivery Exercise
+
+Run the disposable receiver delivery smoke when Alertmanager routing or receiver configuration changes:
+
+```bash
+npm run ops:alert-receiver:phase2
+```
+
+Expected behavior:
+
+- The smoke starts a temporary Alertmanager container with a generated `phase2-webhook` receiver that points at a local webhook sink.
+- The smoke submits a real `Phase2AlertReceiverProof` alert to Alertmanager's v2 API.
+- Alertmanager routes the alert to the webhook sink, and the smoke verifies the delivered payload has `status=firing`, `receiver=phase2-webhook`, and the expected proof labels.
+- The temporary container and generated config are removed after the proof unless `PHASE2_ALERT_RECEIVER_KEEP_STACK=true`.
+
+This proves Alertmanager receiver routing and webhook delivery in a disposable local environment. It does not prove production Telegram, email, Slack, PagerDuty, or other external delivery; run a real production-channel delivery proof after the notification channel and credentials are chosen.
 
 ## First Checks
 
