@@ -498,6 +498,14 @@ describe('Bitcoin API', () => {
         expect(mockMempool.getRecentBlocks).toHaveBeenCalledWith(5);
       });
 
+      it('should cap excessive count parameter values', async () => {
+        mockMempool.getRecentBlocks.mockResolvedValue([]);
+
+        await request(app).get('/bitcoin/blocks/recent?count=999');
+
+        expect(mockMempool.getRecentBlocks).toHaveBeenCalledWith(100);
+      });
+
       it('should return 500 on fetch error', async () => {
         mockMempool.getRecentBlocks.mockRejectedValue(new Error('Fetch failed'));
 

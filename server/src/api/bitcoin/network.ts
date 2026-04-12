@@ -20,8 +20,11 @@ import { ValidationError } from '../../errors/ApiError';
 import { DEFAULT_CONFIRMATION_THRESHOLD, DEFAULT_DEEP_CONFIRMATION_THRESHOLD } from '../../constants';
 import { SystemSettingSchemas } from '../../utils/safeJson';
 
-/** Recent blocks count (clamps to default 10) */
-const RecentBlocksCountSchema = z.coerce.number().int().min(1).catch(10);
+const MAX_RECENT_BLOCKS_COUNT = 100;
+
+/** Recent blocks count (defaults invalid values to 10 and caps large requests). */
+const RecentBlocksCountSchema = z.coerce.number().int().min(1).catch(10)
+  .transform(count => Math.min(count, MAX_RECENT_BLOCKS_COUNT));
 
 /** Block height (must be a non-negative integer) */
 const BlockHeightSchema = z.coerce.number().int().min(0);

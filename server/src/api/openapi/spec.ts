@@ -72,6 +72,7 @@ export const openApiSpec = {
     { name: 'Labels', description: 'Wallet labels' },
     { name: 'Sync', description: 'Wallet synchronization' },
     { name: 'Bitcoin', description: 'Bitcoin network operations' },
+    { name: 'Node', description: 'Bitcoin node connectivity checks' },
     { name: 'Price', description: 'Price information' },
     { name: 'Push', description: 'Mobile push device registration' },
     { name: 'Mobile Permissions', description: 'Mobile wallet permission restrictions' },
