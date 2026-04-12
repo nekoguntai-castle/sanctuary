@@ -20,6 +20,16 @@ interface ValidationSchemas {
   query?: ZodSchema;
 }
 
+function assignParsedQuery(req: Request, query: unknown): void {
+  // Express 5 exposes req.query through a getter, so direct assignment can throw.
+  Object.defineProperty(req, 'query', {
+    value: query,
+    writable: true,
+    configurable: true,
+    enumerable: true,
+  });
+}
+
 /**
  * Express middleware that validates request data against Zod schemas.
  * Replaces req.body/params/query with the parsed (and potentially transformed) values.
@@ -31,7 +41,7 @@ export function validate(schemas: ValidationSchemas) {
         req.params = schemas.params.parse(req.params) as typeof req.params;
       }
       if (schemas.query) {
-        req.query = schemas.query.parse(req.query) as typeof req.query;
+        assignParsedQuery(req, schemas.query.parse(req.query));
       }
       if (schemas.body) {
         req.body = schemas.body.parse(req.body);

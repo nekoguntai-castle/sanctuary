@@ -117,7 +117,7 @@ Priority meanings:
 | P1 | Make API/gateway contracts source-of-truth driven. | The gateway whitelist, request validators, backend route schemas, and OpenAPI spec are drifting. Generating or sharing route schemas prevents repeat defects. | `server/src/api/openapi/spec.ts` assembles auth, wallets, devices, sync, bitcoin, and price, but omits many implemented domains such as transactions, drafts, push, mobile permissions, admin, payjoin, transfers, and gateway contracts. |
 | P1 | Align gateway mobile request validation with backend route bodies. | First Phase 1 slice completed for push registration; broader shared/generated schemas still remain. | `gateway/src/middleware/validateRequest.ts` now validates `token`, matching backend `POST /api/v1/push/register`. |
 | P1 | Add gateway whitelist contract tests against real backend route definitions or OpenAPI. | First Phase 1 slice completed for transaction detail route alignment; broader generated/OpenAPI-backed contract tests still remain. | Gateway whitelist now exposes backend `GET /api/v1/transactions/:txid` and blocks the old non-existent wallet-scoped detail route. |
-| P1 | Start using centralized request validation for backend APIs in new and touched routes. | `req.body`, `req.params`, and `req.query` are read directly in many routes. Schema-first validation improves security, error consistency, and generated contract quality. | `server/src/middleware/validate.ts` exists, but no `validate(...)` use was found in `server/src/api`. |
+| P1 | Start using centralized request validation for backend APIs in new and touched routes. | Started in Phase 4 with the authenticated user-search route. Schema-first validation improves security, error consistency, and generated contract quality; broader route adoption should continue as files are touched. | `server/src/api/auth/profile.ts` now uses `validate({ query: UserSearchQuerySchema })`; `server/src/middleware/validate.ts` now safely replaces getter-backed Express 5 query objects; `server/tests/unit/middleware/validate.test.ts` and `server/tests/unit/api/auth.routes.registration.test.ts` cover the behavior. |
 | P1 | Harden browser token handling and CSP. | Access tokens in localStorage make XSS higher impact, and the backend CSP has broad inline/CDN exceptions. Moving docs UI exceptions to a narrower route or self-hosting assets reduces exposure. | `src/api/client.ts` stores `sanctuary_token` in `localStorage`. `server/src/index.ts` allows `'unsafe-inline'` and `https://unpkg.com` for scripts/styles. |
 | P1 | Add gateway log redaction before metadata volume grows. | Completed in Phase 4. Gateway logs now serialize metadata through shared redaction and safe serialization, reducing the chance of leaking tokens, secrets, or credentials as gateway features expand. | `shared/utils/redact.ts`, `gateway/src/utils/logger.ts`, `gateway/tests/unit/utils/logger.test.ts`. |
 | P1 | Add runbooks for alerts and routine operations. | The monitoring stack is present, but operators need triage steps for wallet sync failures, Electrum degradation, queue stalls, restore failures, DB saturation, and gateway audit failures. | `docker-compose.monitoring.yml`, `docker/monitoring/alert_rules.yml`, health checks, and support-package collectors exist; no obvious runbook ties alerts to actions. |
@@ -243,9 +243,15 @@ Completed in the first Phase 4 slice:
 - Updated the gateway logger to serialize metadata through shared redaction instead of raw `JSON.stringify(meta)`.
 - Added gateway logger tests for sensitive field redaction, circular metadata, and bigint-safe serialization.
 
+Completed in the second Phase 4 slice:
+
+- Wired the authenticated user-search route through centralized request validation with `UserSearchQuerySchema`.
+- Fixed the validation middleware to safely replace getter-backed Express 5 query objects after parsing.
+- Added middleware coverage for getter-backed query validation and updated route coverage for structured validation errors.
+
 Remaining Phase 4 work:
 
-- Start using centralized backend request validation for new and touched routes.
+- Continue adopting centralized backend request validation as routes are touched.
 - Add release-gate documentation for the A-grade checks, with Phase 3 benchmark gates marked pending where they still need operator data.
 - Keep large-file cleanup opportunistic and tied to files already being changed.
 

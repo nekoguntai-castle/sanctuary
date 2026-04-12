@@ -442,7 +442,15 @@ describe('Auth API Routes — Registration, Login, Password, Tokens', () => {
         .get('/api/v1/auth/users/search?q=a');
 
       expect(response.status).toBe(400);
-      expect(response.body.message).toContain('at least 2 characters');
+      expect(response.body.message).toBe('Validation failed');
+      expect(response.body.details.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            path: 'q',
+            message: expect.stringContaining('at least 2 characters'),
+          }),
+        ])
+      );
     });
 
     it('should reject missing query parameter', async () => {

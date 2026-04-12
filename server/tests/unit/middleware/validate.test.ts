@@ -63,6 +63,24 @@ describe('validate middleware', () => {
     expect(req.query).toEqual({ page: '1' });
   });
 
+  it('validates and replaces getter-backed req.query values', () => {
+    const schema = z.object({ page: z.coerce.number() });
+    const middleware = validate({ query: schema });
+
+    const req = createMockReq();
+    Object.defineProperty(req, 'query', {
+      configurable: true,
+      enumerable: true,
+      get: () => ({ page: '2' }),
+    });
+    const next = vi.fn();
+
+    middleware(req, res, next);
+
+    expect(next).toHaveBeenCalledWith();
+    expect(req.query).toEqual({ page: 2 });
+  });
+
   it('validates body, params, and query together', () => {
     const middleware = validate({
       body: z.object({ name: z.string() }),

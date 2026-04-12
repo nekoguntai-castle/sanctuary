@@ -7,7 +7,9 @@
 import { Router } from 'express';
 import { userRepository, systemSettingRepository, groupRepo as groupRepository } from '../../repositories';
 import { asyncHandler } from '../../errors/errorHandler';
-import { NotFoundError, InvalidInputError } from '../../errors/ApiError';
+import { NotFoundError } from '../../errors/ApiError';
+import { validate } from '../../middleware/validate';
+import { UserSearchQuerySchema } from '../schemas/auth';
 
 const router = Router();
 
@@ -98,13 +100,8 @@ router.get('/me/groups', asyncHandler(async (req, res) => {
  * GET /api/v1/auth/users/search
  * Search users by username (for sharing)
  */
-router.get('/users/search', asyncHandler(async (req, res) => {
-  const { q } = req.query;
-
-  if (!q || typeof q !== 'string' || q.length < 2) {
-    throw new InvalidInputError('Search query must be at least 2 characters');
-  }
-
+router.get('/users/search', validate({ query: UserSearchQuerySchema }), asyncHandler(async (req, res) => {
+  const { q } = req.query as { q: string };
   const users = await userRepository.searchByUsername(q, 10);
 
   res.json(users);
