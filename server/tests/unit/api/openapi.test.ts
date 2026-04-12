@@ -43,6 +43,12 @@ import {
   VALID_SOURCE_TYPES,
   VALID_VOTE_DECISIONS,
 } from '../../../src/services/vaultPolicy/types';
+import {
+  DEFAULT_CONFIRMATION_THRESHOLD,
+  DEFAULT_SMTP_FROM_NAME,
+  DEFAULT_SMTP_PORT,
+} from '../../../src/constants';
+import { FEATURE_FLAG_KEYS } from '../../../src/services/featureFlags/definitions';
 
 type HandlerResponse = {
   statusCode: number;
@@ -399,6 +405,74 @@ describe('OpenAPI Docs', () => {
     expect(openApiSpec.paths['/wallets/{walletId}/drafts/{draftId}/override'].post.requestBody.content['application/json'].schema)
       .toEqual({
         $ref: '#/components/schemas/OwnerOverrideRequest',
+      });
+  });
+
+  it('documents admin version, settings, and feature flag routes', () => {
+    const routes: Array<[OpenApiPathKey, string]> = [
+      ['/admin/version', 'get'],
+      ['/admin/settings', 'get'],
+      ['/admin/settings', 'put'],
+      ['/admin/features', 'get'],
+      ['/admin/features/audit-log', 'get'],
+      ['/admin/features/{key}', 'get'],
+      ['/admin/features/{key}', 'patch'],
+      ['/admin/features/{key}/reset', 'post'],
+    ];
+
+    for (const [path, method] of routes) {
+      expectDocumentedMethod(path, method);
+    }
+
+    expect(openApiSpec.paths['/admin/version'].get).not.toHaveProperty('security');
+    expect(openApiSpec.paths['/admin/version'].get.responses[200].content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/AdminVersionResponse',
+    });
+
+    expect(openApiSpec.components.schemas.AdminSettings.properties.confirmationThreshold.default).toBe(
+      DEFAULT_CONFIRMATION_THRESHOLD,
+    );
+    expect(openApiSpec.components.schemas.AdminSettings.properties['smtp.port'].default).toBe(DEFAULT_SMTP_PORT);
+    expect(openApiSpec.components.schemas.AdminSettings.properties['smtp.fromName'].default).toBe(
+      DEFAULT_SMTP_FROM_NAME,
+    );
+    expect(openApiSpec.components.schemas.AdminSettings.properties).not.toHaveProperty('smtp.password');
+    expect(openApiSpec.components.schemas.AdminSettingsUpdateRequest.properties).toHaveProperty('smtp.password');
+    expect(openApiSpec.paths['/admin/settings'].put.requestBody.content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/AdminSettingsUpdateRequest',
+    });
+
+    expect(openApiSpec.components.schemas.AdminFeatureFlagKey.enum).toEqual([...FEATURE_FLAG_KEYS]);
+    expect(openApiSpec.components.schemas.AdminFeatureFlag.properties.source.enum).toEqual([
+      'environment',
+      'database',
+    ]);
+    expect(openApiSpec.components.schemas.AdminUpdateFeatureFlagRequest.required).toEqual(['enabled']);
+    expect(openApiSpec.components.schemas.AdminUpdateFeatureFlagRequest).toHaveProperty(
+      'additionalProperties',
+      false,
+    );
+    expect(openApiSpec.paths['/admin/features'].get.responses[200].content['application/json'].schema).toEqual({
+      type: 'array',
+      items: { $ref: '#/components/schemas/AdminFeatureFlag' },
+    });
+    expect(openApiSpec.paths['/admin/features/audit-log'].get.parameters).toContainEqual(
+      expect.objectContaining({
+        name: 'limit',
+        schema: expect.objectContaining({ maximum: 200, default: 50 }),
+      }),
+    );
+    expect(openApiSpec.paths['/admin/features/{key}'].patch.parameters).toContainEqual(
+      expect.objectContaining({
+        name: 'key',
+        in: 'path',
+        required: true,
+        schema: { $ref: '#/components/schemas/AdminFeatureFlagKey' },
+      }),
+    );
+    expect(openApiSpec.paths['/admin/features/{key}'].patch.requestBody.content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/AdminUpdateFeatureFlagRequest',
       });
   });
 

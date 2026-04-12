@@ -20,6 +20,7 @@ import { payjoinSchemas } from './schemas/payjoin';
 import { transferSchemas } from './schemas/transfers';
 import { intelligenceSchemas } from './schemas/intelligence';
 import { aiSchemas } from './schemas/ai';
+import { adminSchemas } from './schemas/admin';
 
 // Paths
 import { authPaths } from './paths/auth';
@@ -41,6 +42,7 @@ import { payjoinPaths } from './paths/payjoin';
 import { transferPaths } from './paths/transfers';
 import { intelligencePaths } from './paths/intelligence';
 import { aiPaths } from './paths/ai';
+import { adminPaths } from './paths/admin';
 
 export const openApiSpec = {
   openapi: '3.0.3',
@@ -101,6 +103,7 @@ export const openApiSpec = {
     ...transferPaths,
     ...intelligencePaths,
     ...aiPaths,
+    ...adminPaths,
   },
   components: {
     securitySchemes: {
@@ -127,6 +130,7 @@ export const openApiSpec = {
       ...transferSchemas,
       ...intelligenceSchemas,
       ...aiSchemas,
+      ...adminSchemas,
     },
   },
 };
