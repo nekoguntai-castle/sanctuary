@@ -437,6 +437,138 @@ describe('OpenAPI Docs', () => {
     }));
   });
 
+  it('documents transaction helper, UTXO selection, and privacy routes', () => {
+    const routes: Array<[OpenApiPathKey, string]> = [
+      ['/transactions/{txid}/raw', 'get'],
+      ['/transactions/recent', 'get'],
+      ['/transactions/balance-history', 'get'],
+      ['/utxos/{utxoId}/freeze', 'patch'],
+      ['/wallets/{walletId}/utxos/select', 'post'],
+      ['/wallets/{walletId}/utxos/compare-strategies', 'post'],
+      ['/wallets/{walletId}/utxos/recommended-strategy', 'get'],
+      ['/wallets/{walletId}/transactions/batch', 'post'],
+      ['/wallets/{walletId}/transactions/pending', 'get'],
+      ['/wallets/{walletId}/transactions/stats', 'get'],
+      ['/wallets/{walletId}/transactions/export', 'get'],
+      ['/wallets/{walletId}/transactions/recalculate', 'post'],
+      ['/wallets/{walletId}/privacy', 'get'],
+      ['/utxos/{utxoId}/privacy', 'get'],
+      ['/wallets/{walletId}/privacy/spend-analysis', 'post'],
+    ];
+
+    for (const [path, method] of routes) {
+      expectDocumentedMethod(path, method);
+    }
+
+    expect(openApiSpec.paths['/transactions/{txid}/raw'].get.responses[200].content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/RawTransactionResponse',
+    });
+    expect(openApiSpec.components.schemas.RawTransactionResponse.required).toEqual(['hex']);
+
+    expect(openApiSpec.paths['/transactions/recent'].get.parameters).toContainEqual(expect.objectContaining({
+      name: 'limit',
+      schema: expect.objectContaining({ minimum: 1, maximum: 50, default: 10 }),
+    }));
+    expect(openApiSpec.paths['/transactions/balance-history'].get.parameters).toContainEqual(expect.objectContaining({
+      name: 'timeframe',
+      schema: expect.objectContaining({ enum: ['1D', '1W', '1M', '1Y', 'ALL'], default: '1W' }),
+    }));
+    expect(openApiSpec.components.schemas.BalanceHistoryPoint.required).toEqual(['name', 'value']);
+
+    expect(openApiSpec.components.schemas.UtxoFreezeRequest.required).toEqual(['frozen']);
+    expect(openApiSpec.components.schemas.UtxoFreezeResponse.required).toEqual([
+      'id',
+      'txid',
+      'vout',
+      'frozen',
+      'message',
+    ]);
+    expect(openApiSpec.components.schemas.UtxoSelectionStrategy.enum).toEqual([
+      'privacy',
+      'efficiency',
+      'oldest_first',
+      'largest_first',
+      'smallest_first',
+    ]);
+    expect(openApiSpec.components.schemas.UtxoSelectionRequest.required).toEqual(['amount', 'feeRate']);
+    expect(openApiSpec.components.schemas.UtxoSelectionRequest.properties.amount.oneOf).toContainEqual({
+      type: 'string',
+      minLength: 1,
+    });
+    expect(openApiSpec.components.schemas.UtxoSelectionRequest.properties.feeRate.oneOf).toContainEqual({
+      type: 'number',
+      minimum: 1,
+    });
+    expect(openApiSpec.components.schemas.UtxoSelectionResult.required).toEqual([
+      'selected',
+      'totalAmount',
+      'estimatedFee',
+      'changeAmount',
+      'inputCount',
+      'strategy',
+      'warnings',
+    ]);
+    expect(openApiSpec.components.schemas.UtxoStrategyComparisonResponse.additionalProperties).toEqual({
+      $ref: '#/components/schemas/UtxoSelectionResult',
+    });
+    expect(openApiSpec.paths['/wallets/{walletId}/utxos/recommended-strategy'].get.parameters).toContainEqual(expect.objectContaining({
+      name: 'prioritizePrivacy',
+      schema: expect.objectContaining({ type: 'boolean', default: false }),
+    }));
+
+    expect(openApiSpec.paths['/wallets/{walletId}/transactions/batch'].post.requestBody.content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/TransactionBatchRequest',
+    });
+    expect(openApiSpec.components.schemas.TransactionBatchRequest.required).toEqual(['outputs', 'feeRate']);
+    expect(openApiSpec.components.schemas.TransactionBatchOutput.required).toEqual(['address']);
+    expect(openApiSpec.components.schemas.TransactionBatchOutput.properties).toHaveProperty('sendMax');
+
+    expect(openApiSpec.components.schemas.WalletPendingTransaction.required).toEqual([
+      'txid',
+      'walletId',
+      'type',
+      'amount',
+      'fee',
+      'feeRate',
+      'timeInQueue',
+      'createdAt',
+    ]);
+    expect(openApiSpec.components.schemas.WalletTransactionStatsResponse.required).toEqual([
+      'totalCount',
+      'receivedCount',
+      'sentCount',
+      'consolidationCount',
+      'totalReceived',
+      'totalSent',
+      'totalFees',
+      'walletBalance',
+    ]);
+    expect(openApiSpec.components.schemas.TransactionExportFormat.enum).toEqual(['csv', 'json']);
+    expect(openApiSpec.paths['/wallets/{walletId}/transactions/export'].get.responses[200].content).toHaveProperty('text/csv');
+    expect(openApiSpec.paths['/wallets/{walletId}/transactions/export'].get.responses[200].content['application/json'].schema.items).toEqual({
+      $ref: '#/components/schemas/TransactionExportEntry',
+    });
+    expect(openApiSpec.components.schemas.TransactionRecalculateResponse.required).toEqual([
+      'success',
+      'message',
+      'finalBalance',
+      'finalBalanceBtc',
+    ]);
+
+    expect(openApiSpec.components.schemas.PrivacyGrade.enum).toEqual(['excellent', 'good', 'fair', 'poor']);
+    expect(openApiSpec.components.schemas.WalletPrivacyResponse.required).toEqual(['utxos', 'summary']);
+    expect(openApiSpec.components.schemas.PrivacyScore.required).toEqual(['score', 'grade', 'factors', 'warnings']);
+    expect(openApiSpec.components.schemas.SpendPrivacyRequest.properties.utxoIds).toMatchObject({
+      minItems: 1,
+    });
+    expect(openApiSpec.components.schemas.SpendPrivacyResponse.required).toEqual([
+      'score',
+      'grade',
+      'linkedAddresses',
+      'warnings',
+    ]);
+  });
+
   it('documents wallet delete as a 204 empty response', () => {
     const deleteResponses = openApiSpec.paths['/wallets/{walletId}'].delete.responses;
 

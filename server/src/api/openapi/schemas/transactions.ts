@@ -247,6 +247,58 @@ export const transactionSchemas = {
     },
     required: ['psbtBase64', 'fee', 'totalInput', 'totalOutput', 'changeAmount', 'utxos'],
   },
+  TransactionBatchOutput: {
+    type: 'object',
+    properties: {
+      address: { type: 'string' },
+      amount: { type: 'number', minimum: 1 },
+      sendMax: { type: 'boolean', default: false },
+    },
+    required: ['address'],
+    additionalProperties: false,
+  },
+  TransactionBatchRequest: {
+    type: 'object',
+    properties: {
+      outputs: {
+        type: 'array',
+        minItems: 1,
+        items: { $ref: '#/components/schemas/TransactionBatchOutput' },
+      },
+      feeRate: { type: 'number', minimum: MOBILE_API_REQUEST_LIMITS.minFeeRate },
+      selectedUtxoIds: { type: 'array', items: { type: 'string' } },
+      enableRBF: { type: 'boolean', default: true },
+      label: { type: 'string' },
+      memo: { type: 'string' },
+    },
+    required: ['outputs', 'feeRate'],
+    additionalProperties: false,
+  },
+  TransactionBatchResponse: {
+    type: 'object',
+    properties: {
+      psbtBase64: { type: 'string' },
+      fee: { type: 'number' },
+      totalInput: { type: 'number' },
+      totalOutput: { type: 'number' },
+      changeAmount: { type: 'number' },
+      changeAddress: { type: 'string' },
+      utxos: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/UtxoReference' },
+      },
+      inputPaths: { type: 'array', items: { type: 'string' } },
+      outputs: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: true,
+        },
+      },
+      policyEvaluation: { type: 'object' },
+    },
+    required: ['psbtBase64', 'fee', 'totalInput', 'totalOutput', 'changeAmount', 'utxos', 'outputs'],
+  },
   TransactionEstimateRequest: {
     type: 'object',
     properties: {
@@ -351,5 +403,296 @@ export const transactionSchemas = {
       broadcasted: { type: 'boolean' },
     },
     required: ['txid', 'broadcasted'],
+  },
+  RawTransactionResponse: {
+    type: 'object',
+    properties: {
+      hex: { type: 'string' },
+    },
+    required: ['hex'],
+  },
+  CrossWalletRecentTransaction: {
+    allOf: [
+      { $ref: '#/components/schemas/Transaction' },
+      {
+        type: 'object',
+        properties: {
+          walletName: { type: 'string' },
+          isFrozen: { type: 'boolean' },
+          isLocked: { type: 'boolean' },
+          lockedByDraftLabel: { type: 'string' },
+        },
+      },
+    ],
+  },
+  BalanceHistoryPoint: {
+    type: 'object',
+    properties: {
+      name: { type: 'string' },
+      value: { type: 'number' },
+    },
+    required: ['name', 'value'],
+  },
+  WalletPendingTransaction: {
+    type: 'object',
+    properties: {
+      txid: { type: 'string', pattern: '^[a-fA-F0-9]{64}$' },
+      walletId: { type: 'string' },
+      walletName: { type: 'string' },
+      type: { type: 'string', enum: ['sent', 'received'] },
+      amount: { type: 'number' },
+      fee: { type: 'number' },
+      feeRate: { type: 'number' },
+      vsize: { type: 'integer' },
+      recipient: { type: 'string' },
+      timeInQueue: { type: 'integer', minimum: 0 },
+      createdAt: { type: 'string', format: 'date-time' },
+    },
+    required: ['txid', 'walletId', 'type', 'amount', 'fee', 'feeRate', 'timeInQueue', 'createdAt'],
+  },
+  WalletTransactionStatsResponse: {
+    type: 'object',
+    properties: {
+      totalCount: { type: 'integer', minimum: 0 },
+      receivedCount: { type: 'integer', minimum: 0 },
+      sentCount: { type: 'integer', minimum: 0 },
+      consolidationCount: { type: 'integer', minimum: 0 },
+      totalReceived: { type: 'number' },
+      totalSent: { type: 'number' },
+      totalFees: { type: 'number' },
+      walletBalance: { type: 'number' },
+    },
+    required: [
+      'totalCount',
+      'receivedCount',
+      'sentCount',
+      'consolidationCount',
+      'totalReceived',
+      'totalSent',
+      'totalFees',
+      'walletBalance',
+    ],
+  },
+  TransactionExportFormat: {
+    type: 'string',
+    enum: ['csv', 'json'],
+  },
+  TransactionExportEntry: {
+    type: 'object',
+    properties: {
+      date: { type: 'string', format: 'date-time' },
+      txid: { type: 'string', pattern: '^[a-fA-F0-9]{64}$' },
+      type: { type: 'string' },
+      amountBtc: { type: 'number' },
+      amountSats: { type: 'number' },
+      balanceAfterBtc: { type: 'number', nullable: true },
+      balanceAfterSats: { type: 'number', nullable: true },
+      feeSats: { type: 'number', nullable: true },
+      confirmations: { type: 'integer' },
+      label: { type: 'string' },
+      memo: { type: 'string' },
+      counterpartyAddress: { type: 'string' },
+      blockHeight: { type: 'integer', nullable: true },
+    },
+    required: ['date', 'txid', 'type', 'amountBtc', 'amountSats', 'confirmations'],
+  },
+  TransactionRecalculateResponse: {
+    type: 'object',
+    properties: {
+      success: { type: 'boolean', enum: [true] },
+      message: { type: 'string' },
+      finalBalance: { type: 'number' },
+      finalBalanceBtc: { type: 'number' },
+    },
+    required: ['success', 'message', 'finalBalance', 'finalBalanceBtc'],
+  },
+  UtxoFreezeRequest: {
+    type: 'object',
+    properties: {
+      frozen: { type: 'boolean' },
+    },
+    required: ['frozen'],
+    additionalProperties: false,
+  },
+  UtxoFreezeResponse: {
+    type: 'object',
+    properties: {
+      id: { type: 'string' },
+      txid: { type: 'string', pattern: '^[a-fA-F0-9]{64}$' },
+      vout: { type: 'integer', minimum: 0 },
+      frozen: { type: 'boolean' },
+      message: { type: 'string' },
+    },
+    required: ['id', 'txid', 'vout', 'frozen', 'message'],
+  },
+  UtxoSelectionStrategy: {
+    type: 'string',
+    enum: ['privacy', 'efficiency', 'oldest_first', 'largest_first', 'smallest_first'],
+  },
+  UtxoSelectionRequest: {
+    type: 'object',
+    properties: {
+      amount: {
+        oneOf: [
+          { type: 'number', minimum: 1 },
+          { type: 'string', minLength: 1 },
+        ],
+      },
+      feeRate: {
+        oneOf: [
+          { type: 'number', minimum: 1 },
+          { type: 'string', minLength: 1 },
+        ],
+      },
+      strategy: { $ref: '#/components/schemas/UtxoSelectionStrategy' },
+      scriptType: { type: 'string' },
+    },
+    required: ['amount', 'feeRate'],
+    additionalProperties: false,
+  },
+  UtxoSelectionResult: {
+    type: 'object',
+    properties: {
+      selected: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: true,
+          properties: {
+            id: { type: 'string' },
+            txid: { type: 'string' },
+            vout: { type: 'integer', minimum: 0 },
+            address: { type: 'string' },
+            amount: { type: 'number' },
+            confirmations: { type: 'integer' },
+          },
+        },
+      },
+      totalAmount: { type: 'number' },
+      estimatedFee: { type: 'number' },
+      changeAmount: { type: 'number' },
+      inputCount: { type: 'integer', minimum: 0 },
+      strategy: { $ref: '#/components/schemas/UtxoSelectionStrategy' },
+      warnings: {
+        type: 'array',
+        items: { type: 'string' },
+      },
+      privacyImpact: {
+        type: 'object',
+        additionalProperties: true,
+      },
+    },
+    required: ['selected', 'totalAmount', 'estimatedFee', 'changeAmount', 'inputCount', 'strategy', 'warnings'],
+  },
+  UtxoStrategyComparisonResponse: {
+    type: 'object',
+    additionalProperties: { $ref: '#/components/schemas/UtxoSelectionResult' },
+  },
+  UtxoRecommendedStrategyResponse: {
+    type: 'object',
+    properties: {
+      strategy: { $ref: '#/components/schemas/UtxoSelectionStrategy' },
+      reason: { type: 'string' },
+      utxoCount: { type: 'integer', minimum: 0 },
+      feeRate: { type: 'number' },
+    },
+    required: ['strategy', 'reason', 'utxoCount', 'feeRate'],
+  },
+  PrivacyGrade: {
+    type: 'string',
+    enum: ['excellent', 'good', 'fair', 'poor'],
+  },
+  PrivacyFactor: {
+    type: 'object',
+    properties: {
+      factor: { type: 'string' },
+      impact: { type: 'number' },
+      description: { type: 'string' },
+    },
+    required: ['factor', 'impact', 'description'],
+  },
+  PrivacyScore: {
+    type: 'object',
+    properties: {
+      score: { type: 'number', minimum: 0, maximum: 100 },
+      grade: { $ref: '#/components/schemas/PrivacyGrade' },
+      factors: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/PrivacyFactor' },
+      },
+      warnings: {
+        type: 'array',
+        items: { type: 'string' },
+      },
+    },
+    required: ['score', 'grade', 'factors', 'warnings'],
+    additionalProperties: true,
+  },
+  UtxoPrivacyInfo: {
+    type: 'object',
+    properties: {
+      utxoId: { type: 'string' },
+      txid: { type: 'string' },
+      vout: { type: 'integer', minimum: 0 },
+      amount: { type: 'number' },
+      address: { type: 'string' },
+      score: { $ref: '#/components/schemas/PrivacyScore' },
+    },
+    required: ['utxoId', 'txid', 'vout', 'amount', 'address', 'score'],
+    additionalProperties: true,
+  },
+  WalletPrivacySummary: {
+    type: 'object',
+    properties: {
+      averageScore: { type: 'number', minimum: 0, maximum: 100 },
+      grade: { $ref: '#/components/schemas/PrivacyGrade' },
+      utxoCount: { type: 'integer', minimum: 0 },
+      addressReuseCount: { type: 'integer', minimum: 0 },
+      roundAmountCount: { type: 'integer', minimum: 0 },
+      clusterCount: { type: 'integer', minimum: 0 },
+      recommendations: {
+        type: 'array',
+        items: { type: 'string' },
+      },
+    },
+    required: ['averageScore', 'grade', 'utxoCount', 'addressReuseCount', 'roundAmountCount', 'clusterCount', 'recommendations'],
+    additionalProperties: true,
+  },
+  WalletPrivacyResponse: {
+    type: 'object',
+    properties: {
+      utxos: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/UtxoPrivacyInfo' },
+      },
+      summary: { $ref: '#/components/schemas/WalletPrivacySummary' },
+    },
+    required: ['utxos', 'summary'],
+  },
+  SpendPrivacyRequest: {
+    type: 'object',
+    properties: {
+      utxoIds: {
+        type: 'array',
+        minItems: 1,
+        items: { type: 'string' },
+      },
+    },
+    required: ['utxoIds'],
+    additionalProperties: false,
+  },
+  SpendPrivacyResponse: {
+    type: 'object',
+    properties: {
+      score: { type: 'number', minimum: 0, maximum: 100 },
+      grade: { $ref: '#/components/schemas/PrivacyGrade' },
+      linkedAddresses: { type: 'integer', minimum: 0 },
+      warnings: {
+        type: 'array',
+        items: { type: 'string' },
+      },
+    },
+    required: ['score', 'grade', 'linkedAddresses', 'warnings'],
+    additionalProperties: true,
   },
 } as const;
