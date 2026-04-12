@@ -83,7 +83,7 @@ Only these routes are proxied to the backend:
 | Auth | `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `POST /auth/logout-all`, `POST /auth/2fa/verify`, `GET /auth/me`, `PATCH /auth/me/preferences` |
 | Sessions | `GET /auth/sessions`, `DELETE /auth/sessions/:id` |
 | Wallets | `GET /wallets`, `GET /wallets/:id`, `POST /wallets/:id/sync` |
-| Transactions | `GET /wallets/:id/transactions`, `GET /wallets/:id/transactions/:txid`, `GET /transactions/pending`, `POST /wallets/:id/transactions/create`, `POST /wallets/:id/transactions/estimate`, `POST /wallets/:id/transactions/broadcast`, `POST /wallets/:id/psbt/create`, `POST /wallets/:id/psbt/broadcast` |
+| Transactions | `GET /wallets/:id/transactions`, `GET /transactions/:txid`, `GET /transactions/pending`, `POST /wallets/:id/transactions/create`, `POST /wallets/:id/transactions/estimate`, `POST /wallets/:id/transactions/broadcast`, `POST /wallets/:id/psbt/create`, `POST /wallets/:id/psbt/broadcast` |
 | Addresses | `GET /wallets/:id/addresses`, `GET /wallets/:id/addresses/summary`, `POST /wallets/:id/addresses/generate` |
 | UTXOs | `GET /wallets/:id/utxos` |
 | Labels | `GET /wallets/:id/labels`, `POST /wallets/:id/labels`, `PATCH /labels/:id`, `DELETE /labels/:id` |

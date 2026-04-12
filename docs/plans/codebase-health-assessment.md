@@ -114,8 +114,8 @@ Priority meanings:
 | P0 | Fix admin backup/restore request parsing so 200MB payloads actually reach the route parser. | Completed in Phase 0. Large backup validate/restore requests now bypass the global 10MB parser and hit the route-specific parser. | `server/src/middleware/bodyParsing.ts`, `server/src/index.ts`, `server/tests/unit/middleware/bodyParsing.test.ts`. |
 | P1 | Keep strict frontend typecheck green. | Completed in Phase 0 and should remain a release gate. | `npm run typecheck:app` passes after removing unused symbols in `components/AISettings/components/EnableModal.tsx`, `components/AISettings/hooks/useContainerLifecycle.ts`, `components/ui/EmptyState.tsx`, and `hooks/queries/factory.ts`. |
 | P1 | Make API/gateway contracts source-of-truth driven. | The gateway whitelist, request validators, backend route schemas, and OpenAPI spec are drifting. Generating or sharing route schemas prevents repeat defects. | `server/src/api/openapi/spec.ts` assembles auth, wallets, devices, sync, bitcoin, and price, but omits many implemented domains such as transactions, drafts, push, mobile permissions, admin, payjoin, transfers, and gateway contracts. |
-| P1 | Align gateway mobile request validation with backend route bodies. | A request that the backend expects can be rejected by the gateway before reaching the backend. | Gateway `pushRegisterSchema` expects `deviceToken`; backend `POST /api/v1/push/register` reads `token`. |
-| P1 | Add gateway whitelist contract tests against real backend route definitions or OpenAPI. | The whitelist is security-positive, but it becomes availability risk when manually maintained. Contract tests keep safe routes available and unsafe routes blocked. | Gateway whitelist contains a wallet transaction-detail route using a UUID-like transaction id pattern; backend detail routes are mounted under `/api/v1/transactions/:txid` and `/api/v1/transactions/:txid/raw`. |
+| P1 | Align gateway mobile request validation with backend route bodies. | First Phase 1 slice completed for push registration; broader shared/generated schemas still remain. | `gateway/src/middleware/validateRequest.ts` now validates `token`, matching backend `POST /api/v1/push/register`. |
+| P1 | Add gateway whitelist contract tests against real backend route definitions or OpenAPI. | First Phase 1 slice completed for transaction detail route alignment; broader generated/OpenAPI-backed contract tests still remain. | Gateway whitelist now exposes backend `GET /api/v1/transactions/:txid` and blocks the old non-existent wallet-scoped detail route. |
 | P1 | Start using centralized request validation for backend APIs in new and touched routes. | `req.body`, `req.params`, and `req.query` are read directly in many routes. Schema-first validation improves security, error consistency, and generated contract quality. | `server/src/middleware/validate.ts` exists, but no `validate(...)` use was found in `server/src/api`. |
 | P1 | Harden browser token handling and CSP. | Access tokens in localStorage make XSS higher impact, and the backend CSP has broad inline/CDN exceptions. Moving docs UI exceptions to a narrower route or self-hosting assets reduces exposure. | `src/api/client.ts` stores `sanctuary_token` in `localStorage`. `server/src/index.ts` allows `'unsafe-inline'` and `https://unpkg.com` for scripts/styles. |
 | P1 | Add gateway log redaction before metadata volume grows. | Server logging has structured redaction, but gateway logging stringifies metadata directly. Shared redaction reduces the chance of leaking tokens, device IDs, or other sensitive fields as gateway features expand. | `server/src/utils/logger.ts` uses `redactObject`; `gateway/src/utils/logger.ts` logs `JSON.stringify(meta)`. |
@@ -164,6 +164,22 @@ Implemented fix:
 1. Exclude `/api/v1/admin/backup/validate` and `/api/v1/admin/restore` from the global 10MB JSON parser, or mount the admin backup router with its large parser before the global parser.
 2. Add route tests for payloads above 10MB and below 200MB.
 3. Confirm Nginx/client body limits are also aligned with the intended maximum.
+
+## Phase 1 Progress Notes
+
+Status: **Started as of 2026-04-11**
+
+Completed in the first Phase 1 slice:
+
+- Aligned gateway push registration validation with the backend request body by validating `token` instead of the gateway-only `deviceToken` field.
+- Replaced the gateway whitelist's non-existent wallet-scoped transaction-detail path with the backend's canonical `GET /api/v1/transactions/:txid` path; server-side `findByTxidWithAccess` remains the wallet-access boundary for transaction detail.
+- Added gateway tests that reject the old push registration body field, allow the backend transaction-detail route, and keep raw transaction detail blocked unless deliberately exposed.
+
+Remaining Phase 1 work:
+
+- Complete OpenAPI coverage for implemented public and gateway-relevant domains.
+- Add broader gateway whitelist contract checks against backend route definitions or generated OpenAPI.
+- Share or generate schemas for more drift-prone gateway/backend request bodies.
 
 ## Strengths To Preserve
 

@@ -149,7 +149,7 @@ describe('Request Validation Middleware', () => {
 
       it('should accept valid iOS push registration', () => {
         mockReq.body = {
-          deviceToken: 'abc123devicetoken',
+          token: 'abc123devicetoken',
           platform: 'ios',
           deviceName: 'iPhone 15',
         };
@@ -161,7 +161,7 @@ describe('Request Validation Middleware', () => {
 
       it('should accept valid Android push registration', () => {
         mockReq.body = {
-          deviceToken: 'fcm-token-here',
+          token: 'fcm-token-here',
           platform: 'android',
         };
 
@@ -172,7 +172,7 @@ describe('Request Validation Middleware', () => {
 
       it('should reject invalid platform', () => {
         mockReq.body = {
-          deviceToken: 'abc123',
+          token: 'abc123',
           platform: 'windows',
         };
 
@@ -201,13 +201,35 @@ describe('Request Validation Middleware', () => {
 
       it('should reject device token that is too long', () => {
         mockReq.body = {
-          deviceToken: 'a'.repeat(501),
+          token: 'a'.repeat(501),
           platform: 'ios',
         };
 
         validateRequest(mockReq as Request, mockRes as Response, mockNext);
 
         expect(statusMock).toHaveBeenCalledWith(400);
+      });
+
+      it('should reject the legacy gateway-only deviceToken field', () => {
+        mockReq.body = {
+          deviceToken: 'abc123',
+          platform: 'ios',
+        };
+
+        validateRequest(mockReq as Request, mockRes as Response, mockNext);
+
+        expect(statusMock).toHaveBeenCalledWith(400);
+        expect(jsonMock).toHaveBeenCalledWith(
+          expect.objectContaining({
+            details: expect.arrayContaining([
+              expect.objectContaining({
+                field: 'token',
+                message: 'Device token is required',
+              }),
+            ]),
+          })
+        );
+        expect(mockNext).not.toHaveBeenCalled();
       });
     });
 
@@ -419,7 +441,7 @@ describe('Request Validation Middleware', () => {
     describe('pushRegisterSchema', () => {
       it('should validate complete push registration', () => {
         const result = pushRegisterSchema.safeParse({
-          deviceToken: 'token123',
+          token: 'token123',
           platform: 'ios',
           deviceName: 'My iPhone',
         });
@@ -429,7 +451,7 @@ describe('Request Validation Middleware', () => {
 
       it('should validate push registration without optional deviceName', () => {
         const result = pushRegisterSchema.safeParse({
-          deviceToken: 'token123',
+          token: 'token123',
           platform: 'android',
         });
 

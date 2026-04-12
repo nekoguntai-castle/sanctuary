@@ -60,7 +60,8 @@ export const ALLOWED_ROUTES: Array<{ method: string; pattern: RegExp }> = [
 
   // Transactions (read-only)
   { method: 'GET', pattern: /^\/api\/v1\/wallets\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/transactions$/ },
-  { method: 'GET', pattern: /^\/api\/v1\/wallets\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/transactions\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/ },
+  // Transaction detail is canonicalized by txid; backend findByTxidWithAccess enforces per-user wallet access.
+  { method: 'GET', pattern: /^\/api\/v1\/transactions\/[a-f0-9]{64}$/ },
 
   // Addresses (read-only + generate)
   { method: 'GET', pattern: /^\/api\/v1\/wallets\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/addresses\/summary$/ },

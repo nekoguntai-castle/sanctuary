@@ -179,13 +179,28 @@ describe('Proxy Routes', () => {
 
     describe('Transaction routes', () => {
       const validUuid = '12345678-1234-1234-1234-123456789abc';
+      const validTxid = 'a'.repeat(64);
 
       it('should allow GET transactions list', () => {
         expect(isAllowedRoute('GET', `/api/v1/wallets/${validUuid}/transactions`)).toBe(true);
       });
 
-      it('should allow GET single transaction', () => {
-        expect(isAllowedRoute('GET', `/api/v1/wallets/${validUuid}/transactions/${validUuid}`)).toBe(true);
+      it('should allow GET single transaction by backend txid route', () => {
+        expect(isAllowedRoute('GET', `/api/v1/transactions/${validTxid}`)).toBe(true);
+      });
+
+      it('should block malformed transaction txids', () => {
+        expect(isAllowedRoute('GET', `/api/v1/transactions/${'a'.repeat(63)}`)).toBe(false);
+        expect(isAllowedRoute('GET', `/api/v1/transactions/${'a'.repeat(65)}`)).toBe(false);
+        expect(isAllowedRoute('GET', `/api/v1/transactions/${'A'.repeat(64)}`)).toBe(false);
+      });
+
+      it('should block legacy wallet-scoped single transaction route', () => {
+        expect(isAllowedRoute('GET', `/api/v1/wallets/${validUuid}/transactions/${validTxid}`)).toBe(false);
+      });
+
+      it('should block raw transaction detail unless explicitly exposed', () => {
+        expect(isAllowedRoute('GET', `/api/v1/transactions/${validTxid}/raw`)).toBe(false);
       });
 
       it('should allow POST transaction create', () => {

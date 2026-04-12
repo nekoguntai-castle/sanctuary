@@ -53,8 +53,8 @@ export const logoutSchema = z.object({
 // ============================================================================
 
 export const pushRegisterSchema = z.object({
-  deviceToken: z
-    .string()
+  token: z
+    .string({ message: 'Device token is required' })
     .min(1, 'Device token is required')
     .max(500, 'Device token too long'),
   platform: z
