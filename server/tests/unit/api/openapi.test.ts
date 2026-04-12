@@ -936,6 +936,266 @@ describe('OpenAPI Docs', () => {
     );
   });
 
+  it('documents admin infrastructure and DLQ routes', () => {
+    const routes: Array<[OpenApiPathKey, string]> = [
+      ['/admin/tor-container/status', 'get'],
+      ['/admin/tor-container/start', 'post'],
+      ['/admin/tor-container/stop', 'post'],
+      ['/admin/metrics/cache', 'get'],
+      ['/admin/websocket/stats', 'get'],
+      ['/admin/dlq', 'get'],
+      ['/admin/dlq/{dlqId}', 'delete'],
+      ['/admin/dlq/{dlqId}/retry', 'post'],
+      ['/admin/dlq/category/{category}', 'delete'],
+    ];
+
+    for (const [path, method] of routes) {
+      expectDocumentedMethod(path, method);
+    }
+
+    expect(openApiSpec.paths['/admin/tor-container/status'].get.responses[200].content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/AdminTorContainerStatusResponse',
+      });
+    expect(openApiSpec.components.schemas.AdminTorContainerStatusResponse.required).toEqual([
+      'available',
+      'exists',
+      'running',
+    ]);
+    expect(openApiSpec.paths['/admin/tor-container/start'].post.responses[200].content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/AdminContainerActionResponse',
+      });
+    expect(openApiSpec.paths['/admin/tor-container/start'].post.responses[400].content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/AdminSimpleErrorResponse',
+      });
+    expect(openApiSpec.paths['/admin/tor-container/stop'].post.responses[400].content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/AdminSimpleErrorResponse',
+      });
+    expect(openApiSpec.components.schemas.AdminContainerActionResponse.required).toEqual([
+      'success',
+      'message',
+    ]);
+
+    expect(openApiSpec.paths['/admin/metrics/cache'].get.responses[200].content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/AdminCacheMetricsResponse',
+      });
+    expect(openApiSpec.components.schemas.AdminCacheMetricsResponse.required).toEqual([
+      'timestamp',
+      'stats',
+      'hitRate',
+    ]);
+    expect(openApiSpec.components.schemas.AdminCacheStats).toHaveProperty('additionalProperties', true);
+
+    expect(openApiSpec.paths['/admin/websocket/stats'].get.responses[200].content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/AdminWebSocketStatsResponse',
+      });
+    expect(openApiSpec.components.schemas.AdminWebSocketStatsResponse.required).toEqual([
+      'connections',
+      'subscriptions',
+      'rateLimits',
+      'recentRateLimitEvents',
+    ]);
+    expect(openApiSpec.components.schemas.AdminWebSocketRateLimitEvent.properties.reason.enum).toEqual([
+      'grace_period_exceeded',
+      'per_second_exceeded',
+      'subscription_limit',
+      'queue_overflow',
+    ]);
+
+    expect(openApiSpec.components.schemas.AdminDeadLetterCategory.enum).toEqual([
+      'sync',
+      'push',
+      'telegram',
+      'notification',
+      'electrum',
+      'transaction',
+      'other',
+    ]);
+    expect(openApiSpec.paths['/admin/dlq'].get.parameters).toContainEqual(
+      expect.objectContaining({
+        name: 'limit',
+        schema: expect.objectContaining({
+          maximum: 500,
+          default: 100,
+        }),
+      }),
+    );
+    expect(openApiSpec.paths['/admin/dlq'].get.parameters).toContainEqual(
+      expect.objectContaining({
+        name: 'category',
+        schema: expect.objectContaining({
+          enum: ['sync', 'push', 'telegram', 'notification', 'electrum', 'transaction', 'other'],
+        }),
+      }),
+    );
+    expect(openApiSpec.paths['/admin/dlq'].get.responses[200].content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/AdminDeadLetterQueueResponse',
+      });
+    expect(openApiSpec.components.schemas.AdminDeadLetterEntry.properties.errorStack).toMatchObject({
+      description: expect.stringContaining('Truncated'),
+    });
+    expect(openApiSpec.components.schemas.AdminDeadLetterQueueResponse.required).toEqual([
+      'stats',
+      'entries',
+    ]);
+
+    expect(openApiSpec.paths['/admin/dlq/{dlqId}'].delete.parameters).toContainEqual(
+      expect.objectContaining({
+        name: 'dlqId',
+        in: 'path',
+        required: true,
+      }),
+    );
+    expect(openApiSpec.paths['/admin/dlq/{dlqId}'].delete.responses[200].content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/AdminSuccessResponse',
+      });
+    expect(openApiSpec.components.schemas.AdminSuccessResponse.required).toEqual(['success']);
+
+    expect(openApiSpec.paths['/admin/dlq/{dlqId}/retry'].post.responses[200].content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/AdminDeadLetterRetryResponse',
+      });
+    expect(openApiSpec.paths['/admin/dlq/{dlqId}/retry'].post.responses[500].content['application/json'].schema.oneOf)
+      .toContainEqual({
+        $ref: '#/components/schemas/AdminSimpleErrorResponse',
+      });
+    expect(openApiSpec.paths['/admin/dlq/{dlqId}/retry'].post.responses[500].content['application/json'].schema.oneOf)
+      .toContainEqual({
+        $ref: '#/components/schemas/ApiError',
+      });
+    expect(openApiSpec.components.schemas.AdminDeadLetterRetryResponse.required).toEqual([
+      'entry',
+      'retry',
+    ]);
+
+    expect(openApiSpec.paths['/admin/dlq/category/{category}'].delete.parameters).toContainEqual(
+      expect.objectContaining({
+        name: 'category',
+        schema: { type: 'string', enum: ['sync', 'push', 'telegram', 'notification', 'electrum', 'transaction', 'other'] },
+      }),
+    );
+    expect(openApiSpec.paths['/admin/dlq/category/{category}'].delete.responses[200].content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/AdminClearDeadLetterCategoryResponse',
+      });
+    expect(openApiSpec.components.schemas.AdminClearDeadLetterCategoryResponse.required).toEqual([
+      'success',
+      'removed',
+    ]);
+  });
+
+  it('documents admin monitoring service routes', () => {
+    const routes: Array<[OpenApiPathKey, string]> = [
+      ['/admin/monitoring/services', 'get'],
+      ['/admin/monitoring/services/{serviceId}', 'put'],
+      ['/admin/monitoring/grafana', 'get'],
+      ['/admin/monitoring/grafana', 'put'],
+    ];
+
+    for (const [path, method] of routes) {
+      expectDocumentedMethod(path, method);
+    }
+
+    expect(openApiSpec.components.schemas.AdminMonitoringServiceId.enum).toEqual([
+      'grafana',
+      'prometheus',
+      'jaeger',
+    ]);
+    expect(openApiSpec.paths['/admin/monitoring/services'].get.parameters).toContainEqual(
+      expect.objectContaining({
+        name: 'checkHealth',
+        in: 'query',
+        schema: expect.objectContaining({
+          type: 'boolean',
+          default: false,
+        }),
+      }),
+    );
+    expect(openApiSpec.paths['/admin/monitoring/services'].get.responses[200].content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/AdminMonitoringServicesResponse',
+      });
+    expect(openApiSpec.components.schemas.AdminMonitoringServicesResponse.required).toEqual([
+      'enabled',
+      'services',
+    ]);
+    expect(openApiSpec.components.schemas.AdminMonitoringService.properties.id).toEqual({
+      $ref: '#/components/schemas/AdminMonitoringServiceId',
+    });
+    expect(openApiSpec.components.schemas.AdminMonitoringService.properties.status.enum).toEqual([
+      'unknown',
+      'healthy',
+      'unhealthy',
+    ]);
+
+    expect(openApiSpec.paths['/admin/monitoring/services/{serviceId}'].put.parameters).toContainEqual(
+      expect.objectContaining({
+        name: 'serviceId',
+        in: 'path',
+        required: true,
+        schema: { type: 'string', enum: ['grafana', 'prometheus', 'jaeger'] },
+      }),
+    );
+    expect(openApiSpec.paths['/admin/monitoring/services/{serviceId}'].put.requestBody.content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/AdminUpdateMonitoringServiceRequest',
+      });
+    expect(openApiSpec.components.schemas.AdminUpdateMonitoringServiceRequest).toHaveProperty(
+      'additionalProperties',
+      false,
+    );
+    expect(openApiSpec.components.schemas.AdminUpdateMonitoringServiceRequest.properties.customUrl).toMatchObject({
+      nullable: true,
+    });
+    expect(openApiSpec.paths['/admin/monitoring/services/{serviceId}'].put.responses[200].content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/AdminSuccessResponse',
+      });
+
+    expect(openApiSpec.paths['/admin/monitoring/grafana'].get.responses[200].content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/AdminGrafanaConfigResponse',
+      });
+    expect(openApiSpec.components.schemas.AdminGrafanaConfigResponse.required).toEqual([
+      'username',
+      'passwordSource',
+      'password',
+      'anonymousAccess',
+      'anonymousAccessNote',
+    ]);
+    expect(openApiSpec.components.schemas.AdminGrafanaConfigResponse.properties.passwordSource.enum).toEqual([
+      'GRAFANA_PASSWORD',
+      'ENCRYPTION_KEY',
+    ]);
+    expect(openApiSpec.components.schemas.AdminGrafanaConfigResponse.properties.password).toMatchObject({
+      format: 'password',
+    });
+
+    expect(openApiSpec.paths['/admin/monitoring/grafana'].put.requestBody.content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/AdminUpdateGrafanaRequest',
+      });
+    expect(openApiSpec.components.schemas.AdminUpdateGrafanaRequest).toHaveProperty(
+      'additionalProperties',
+      false,
+    );
+    expect(openApiSpec.paths['/admin/monitoring/grafana'].put.responses[200].content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/AdminGrafanaUpdateResponse',
+      });
+    expect(openApiSpec.components.schemas.AdminGrafanaUpdateResponse.required).toEqual([
+      'success',
+      'message',
+    ]);
+  });
+
   it('documents admin user management routes', () => {
     const routes: Array<[OpenApiPathKey, string]> = [
       ['/admin/users', 'get'],

@@ -45,6 +45,8 @@ const NODE_CONNECTION_MODE_VALUES = ['singleton', 'pool'] as const;
 const NODE_LOAD_BALANCING_VALUES = ['round_robin', 'least_connections', 'failover_only'] as const;
 const NODE_MEMPOOL_ESTIMATOR_VALUES = ['simple', 'mempool_space'] as const;
 const ELECTRUM_NETWORK_VALUES = ['mainnet', 'testnet', 'signet', 'regtest'] as const;
+const DEAD_LETTER_CATEGORY_VALUES = ['sync', 'push', 'telegram', 'notification', 'electrum', 'transaction', 'other'] as const;
+const MONITORING_SERVICE_VALUES = ['grafana', 'prometheus', 'jaeger'] as const;
 
 const nodeConfigPortInputSchema = {
   oneOf: [
@@ -74,6 +76,14 @@ const electrumServerMutableProperties = {
   priority: { type: 'integer', minimum: 0 },
   enabled: { type: 'boolean', default: true },
   network: { type: 'string', enum: [...ELECTRUM_NETWORK_VALUES], default: 'mainnet' },
+} as const;
+
+const adminSuccessResponseSchema = {
+  type: 'object',
+  properties: {
+    success: { type: 'boolean' },
+  },
+  required: ['success'],
 } as const;
 
 const nodeConfigResponseProperties = {
@@ -198,6 +208,7 @@ export const adminSchemas = {
     },
     required: ['error'],
   },
+  AdminSuccessResponse: adminSuccessResponseSchema,
   AdminEncryptionKeysRequest: {
     type: 'object',
     properties: {
@@ -611,6 +622,246 @@ export const adminSchemas = {
       message: { type: 'string' },
       error: { type: 'string' },
       info: { $ref: '#/components/schemas/AdminElectrumServerTestInfo' },
+    },
+    required: ['success', 'message'],
+  },
+  AdminTorContainerStatusResponse: {
+    type: 'object',
+    properties: {
+      available: { type: 'boolean' },
+      exists: { type: 'boolean' },
+      running: { type: 'boolean' },
+      status: { type: 'string' },
+      containerId: { type: 'string' },
+      message: { type: 'string' },
+    },
+    required: ['available', 'exists', 'running'],
+  },
+  AdminContainerActionResponse: {
+    type: 'object',
+    properties: {
+      success: { type: 'boolean' },
+      message: { type: 'string' },
+    },
+    required: ['success', 'message'],
+  },
+  AdminCacheStats: {
+    type: 'object',
+    properties: {
+      hits: { type: 'integer', minimum: 0 },
+      misses: { type: 'integer', minimum: 0 },
+      sets: { type: 'integer', minimum: 0 },
+      deletes: { type: 'integer', minimum: 0 },
+      evictions: { type: 'integer', minimum: 0 },
+      size: { type: 'integer', minimum: 0 },
+    },
+    additionalProperties: true,
+  },
+  AdminCacheMetricsResponse: {
+    type: 'object',
+    properties: {
+      timestamp: { type: 'string', format: 'date-time' },
+      stats: { $ref: '#/components/schemas/AdminCacheStats' },
+      hitRate: { type: 'string' },
+    },
+    required: ['timestamp', 'stats', 'hitRate'],
+  },
+  AdminWebSocketRateLimits: {
+    type: 'object',
+    properties: {
+      maxMessagesPerSecond: { type: 'integer', minimum: 0 },
+      gracePeriodMs: { type: 'integer', minimum: 0 },
+      gracePeriodMessageLimit: { type: 'integer', minimum: 0 },
+      maxSubscriptionsPerConnection: { type: 'integer', minimum: 0 },
+    },
+    additionalProperties: true,
+  },
+  AdminWebSocketRateLimitEvent: {
+    type: 'object',
+    properties: {
+      timestamp: { type: 'string', format: 'date-time' },
+      userId: { type: 'string', nullable: true },
+      reason: {
+        type: 'string',
+        enum: ['grace_period_exceeded', 'per_second_exceeded', 'subscription_limit', 'queue_overflow'],
+      },
+      details: { type: 'string' },
+      path: { type: 'string' },
+    },
+    required: ['timestamp'],
+    additionalProperties: true,
+  },
+  AdminWebSocketStatsResponse: {
+    type: 'object',
+    properties: {
+      connections: {
+        type: 'object',
+        properties: {
+          current: { type: 'integer', minimum: 0 },
+          max: { type: 'integer', minimum: 0 },
+          uniqueUsers: { type: 'integer', minimum: 0 },
+          maxPerUser: { type: 'integer', minimum: 0 },
+        },
+        required: ['current', 'max', 'uniqueUsers', 'maxPerUser'],
+      },
+      subscriptions: {
+        type: 'object',
+        properties: {
+          total: { type: 'integer', minimum: 0 },
+          channels: { type: 'integer', minimum: 0 },
+          channelList: {
+            type: 'array',
+            items: { type: 'string' },
+          },
+        },
+        required: ['total', 'channels', 'channelList'],
+      },
+      rateLimits: { $ref: '#/components/schemas/AdminWebSocketRateLimits' },
+      recentRateLimitEvents: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/AdminWebSocketRateLimitEvent' },
+      },
+    },
+    required: ['connections', 'subscriptions', 'rateLimits', 'recentRateLimitEvents'],
+  },
+  AdminDeadLetterCategory: {
+    type: 'string',
+    enum: [...DEAD_LETTER_CATEGORY_VALUES],
+  },
+  AdminDeadLetterStats: {
+    type: 'object',
+    properties: {
+      total: { type: 'integer', minimum: 0 },
+      byCategory: {
+        type: 'object',
+        additionalProperties: { type: 'integer', minimum: 0 },
+      },
+      oldest: { type: 'string', format: 'date-time' },
+      newest: { type: 'string', format: 'date-time' },
+    },
+    required: ['total', 'byCategory'],
+  },
+  AdminDeadLetterEntry: {
+    type: 'object',
+    properties: {
+      id: { type: 'string' },
+      category: { $ref: '#/components/schemas/AdminDeadLetterCategory' },
+      operation: { type: 'string' },
+      payload: { type: 'object', additionalProperties: true },
+      error: { type: 'string' },
+      errorStack: {
+        type: 'string',
+        description: 'Truncated to 500 characters by the admin API.',
+      },
+      attempts: { type: 'integer', minimum: 0 },
+      firstFailedAt: { type: 'string', format: 'date-time' },
+      lastFailedAt: { type: 'string', format: 'date-time' },
+      metadata: { type: 'object', additionalProperties: true },
+    },
+    required: ['id', 'category'],
+    additionalProperties: true,
+  },
+  AdminDeadLetterQueueResponse: {
+    type: 'object',
+    properties: {
+      stats: { $ref: '#/components/schemas/AdminDeadLetterStats' },
+      entries: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/AdminDeadLetterEntry' },
+      },
+    },
+    required: ['stats', 'entries'],
+  },
+  AdminDeadLetterRetryResponse: {
+    type: 'object',
+    properties: {
+      entry: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          category: { $ref: '#/components/schemas/AdminDeadLetterCategory' },
+          operation: { type: 'string' },
+        },
+        required: ['id', 'category', 'operation'],
+      },
+      retry: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean' },
+          message: { type: 'string' },
+        },
+        required: ['success', 'message'],
+      },
+    },
+    required: ['entry', 'retry'],
+  },
+  AdminClearDeadLetterCategoryResponse: {
+    type: 'object',
+    properties: {
+      success: { type: 'boolean' },
+      removed: { type: 'integer', minimum: 0 },
+    },
+    required: ['success', 'removed'],
+  },
+  AdminMonitoringServiceId: {
+    type: 'string',
+    enum: [...MONITORING_SERVICE_VALUES],
+  },
+  AdminMonitoringService: {
+    type: 'object',
+    properties: {
+      id: { $ref: '#/components/schemas/AdminMonitoringServiceId' },
+      name: { type: 'string' },
+      description: { type: 'string' },
+      url: { type: 'string' },
+      defaultPort: { type: 'integer', minimum: 0 },
+      icon: { type: 'string' },
+      isCustomUrl: { type: 'boolean' },
+      status: { type: 'string', enum: ['unknown', 'healthy', 'unhealthy'] },
+    },
+    required: ['id', 'name', 'description', 'url', 'defaultPort', 'icon', 'isCustomUrl'],
+  },
+  AdminMonitoringServicesResponse: {
+    type: 'object',
+    properties: {
+      enabled: { type: 'boolean' },
+      services: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/AdminMonitoringService' },
+      },
+    },
+    required: ['enabled', 'services'],
+  },
+  AdminUpdateMonitoringServiceRequest: {
+    type: 'object',
+    properties: {
+      customUrl: { type: 'string', nullable: true },
+    },
+    additionalProperties: false,
+  },
+  AdminGrafanaConfigResponse: {
+    type: 'object',
+    properties: {
+      username: { type: 'string' },
+      passwordSource: { type: 'string', enum: ['GRAFANA_PASSWORD', 'ENCRYPTION_KEY'] },
+      password: { type: 'string', format: 'password' },
+      anonymousAccess: { type: 'boolean' },
+      anonymousAccessNote: { type: 'string' },
+    },
+    required: ['username', 'passwordSource', 'password', 'anonymousAccess', 'anonymousAccessNote'],
+  },
+  AdminUpdateGrafanaRequest: {
+    type: 'object',
+    properties: {
+      anonymousAccess: { type: 'boolean' },
+    },
+    additionalProperties: false,
+  },
+  AdminGrafanaUpdateResponse: {
+    type: 'object',
+    properties: {
+      success: { type: 'boolean' },
+      message: { type: 'string' },
     },
     required: ['success', 'message'],
   },

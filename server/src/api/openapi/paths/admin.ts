@@ -11,6 +11,8 @@ import { AUDIT_DEFAULT_PAGE_SIZE, AUDIT_STATS_DAYS } from '../../../constants';
 const bearerAuth = [{ bearerAuth: [] }] as const;
 const AUDIT_LOG_LIMIT_MAX = 500;
 const ELECTRUM_NETWORK_VALUES = ['mainnet', 'testnet', 'signet', 'regtest'] as const;
+const DEAD_LETTER_CATEGORY_VALUES = ['sync', 'push', 'telegram', 'notification', 'electrum', 'transaction', 'other'] as const;
+const MONITORING_SERVICE_VALUES = ['grafana', 'prometheus', 'jaeger'] as const;
 
 const apiErrorResponse = {
   description: 'Error response',
@@ -77,6 +79,27 @@ const adminElectrumServerIdParameter = {
   in: 'path',
   required: true,
   schema: { type: 'string' },
+} as const;
+
+const adminDeadLetterIdParameter = {
+  name: 'dlqId',
+  in: 'path',
+  required: true,
+  schema: { type: 'string' },
+} as const;
+
+const adminDeadLetterCategoryParameter = {
+  name: 'category',
+  in: 'path',
+  required: true,
+  schema: { type: 'string', enum: [...DEAD_LETTER_CATEGORY_VALUES] },
+} as const;
+
+const adminMonitoringServiceIdParameter = {
+  name: 'serviceId',
+  in: 'path',
+  required: true,
+  schema: { type: 'string', enum: [...MONITORING_SERVICE_VALUES] },
 } as const;
 
 const jsonRequestBody = (schemaRef: string) => ({
@@ -482,6 +505,223 @@ export const adminPaths = {
         401: apiErrorResponse,
         403: apiErrorResponse,
         404: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+  },
+  '/admin/tor-container/status': {
+    get: {
+      tags: ['Admin'],
+      summary: 'Get Tor container status',
+      description: 'Get the bundled Tor container status through the Docker socket proxy when Docker management is available.',
+      security: bearerAuth,
+      responses: {
+        200: jsonResponse('Tor container status', '#/components/schemas/AdminTorContainerStatusResponse'),
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+  },
+  '/admin/tor-container/start': {
+    post: {
+      tags: ['Admin'],
+      summary: 'Start Tor container',
+      description: 'Start the bundled Tor container.',
+      security: bearerAuth,
+      responses: {
+        200: jsonResponse('Tor container started', '#/components/schemas/AdminContainerActionResponse'),
+        400: jsonResponse('Tor container start failed', '#/components/schemas/AdminSimpleErrorResponse'),
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+  },
+  '/admin/tor-container/stop': {
+    post: {
+      tags: ['Admin'],
+      summary: 'Stop Tor container',
+      description: 'Stop the bundled Tor container.',
+      security: bearerAuth,
+      responses: {
+        200: jsonResponse('Tor container stopped', '#/components/schemas/AdminContainerActionResponse'),
+        400: jsonResponse('Tor container stop failed', '#/components/schemas/AdminSimpleErrorResponse'),
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+  },
+  '/admin/metrics/cache': {
+    get: {
+      tags: ['Admin'],
+      summary: 'Get cache metrics',
+      description: 'Get cache counters and a calculated hit rate for administrative monitoring.',
+      security: bearerAuth,
+      responses: {
+        200: jsonResponse('Cache metrics', '#/components/schemas/AdminCacheMetricsResponse'),
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+  },
+  '/admin/websocket/stats': {
+    get: {
+      tags: ['Admin'],
+      summary: 'Get WebSocket statistics',
+      description: 'Get WebSocket connection, subscription, and rate limit statistics.',
+      security: bearerAuth,
+      responses: {
+        200: jsonResponse('WebSocket statistics', '#/components/schemas/AdminWebSocketStatsResponse'),
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+  },
+  '/admin/dlq': {
+    get: {
+      tags: ['Admin'],
+      summary: 'List dead letter queue entries',
+      description: 'List dead letter queue entries and queue statistics. Error stacks are truncated in the response.',
+      security: bearerAuth,
+      parameters: [
+        {
+          name: 'category',
+          in: 'query',
+          required: false,
+          schema: { type: 'string', enum: [...DEAD_LETTER_CATEGORY_VALUES] },
+        },
+        {
+          name: 'limit',
+          in: 'query',
+          required: false,
+          schema: { type: 'integer', minimum: 1, maximum: 500, default: 100 },
+        },
+      ],
+      responses: {
+        200: jsonResponse('Dead letter queue entries', '#/components/schemas/AdminDeadLetterQueueResponse'),
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+  },
+  '/admin/dlq/{dlqId}': {
+    delete: {
+      tags: ['Admin'],
+      summary: 'Delete dead letter entry',
+      description: 'Remove a single dead letter queue entry.',
+      security: bearerAuth,
+      parameters: [adminDeadLetterIdParameter],
+      responses: {
+        200: jsonResponse('Dead letter entry deleted', '#/components/schemas/AdminSuccessResponse'),
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        404: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+  },
+  '/admin/dlq/{dlqId}/retry': {
+    post: {
+      tags: ['Admin'],
+      summary: 'Retry dead letter entry',
+      description: 'Remove a dead letter queue entry for retry and dispatch it to the matching subsystem when implemented.',
+      security: bearerAuth,
+      parameters: [adminDeadLetterIdParameter],
+      responses: {
+        200: jsonResponse('Dead letter retry result', '#/components/schemas/AdminDeadLetterRetryResponse'),
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        404: apiErrorResponse,
+        500: jsonOneOfResponse('Dead letter retry dispatch failed or unexpected error', [
+          '#/components/schemas/AdminSimpleErrorResponse',
+          '#/components/schemas/ApiError',
+        ]),
+      },
+    },
+  },
+  '/admin/dlq/category/{category}': {
+    delete: {
+      tags: ['Admin'],
+      summary: 'Clear dead letter category',
+      description: 'Clear all dead letter queue entries for a category.',
+      security: bearerAuth,
+      parameters: [adminDeadLetterCategoryParameter],
+      responses: {
+        200: jsonResponse('Dead letter category cleared', '#/components/schemas/AdminClearDeadLetterCategoryResponse'),
+        400: apiErrorResponse,
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+  },
+  '/admin/monitoring/services': {
+    get: {
+      tags: ['Admin'],
+      summary: 'List monitoring services',
+      description: 'List monitoring services and configured URLs, with optional on-demand health checks.',
+      security: bearerAuth,
+      parameters: [
+        {
+          name: 'checkHealth',
+          in: 'query',
+          required: false,
+          schema: { type: 'boolean', default: false },
+        },
+      ],
+      responses: {
+        200: jsonResponse('Monitoring services', '#/components/schemas/AdminMonitoringServicesResponse'),
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+  },
+  '/admin/monitoring/services/{serviceId}': {
+    put: {
+      tags: ['Admin'],
+      summary: 'Update monitoring service URL',
+      description: 'Set or clear a custom URL for a monitoring service.',
+      security: bearerAuth,
+      parameters: [adminMonitoringServiceIdParameter],
+      requestBody: jsonRequestBody('#/components/schemas/AdminUpdateMonitoringServiceRequest'),
+      responses: {
+        200: jsonResponse('Monitoring service URL updated', '#/components/schemas/AdminSuccessResponse'),
+        400: apiErrorResponse,
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+  },
+  '/admin/monitoring/grafana': {
+    get: {
+      tags: ['Admin'],
+      summary: 'Get Grafana configuration',
+      description: 'Get Grafana admin credential hints and anonymous-access setting for administrators.',
+      security: bearerAuth,
+      responses: {
+        200: jsonResponse('Grafana configuration', '#/components/schemas/AdminGrafanaConfigResponse'),
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+    put: {
+      tags: ['Admin'],
+      summary: 'Update Grafana configuration',
+      description: 'Update Grafana anonymous access. Applying the change requires restarting the Grafana container.',
+      security: bearerAuth,
+      requestBody: jsonRequestBody('#/components/schemas/AdminUpdateGrafanaRequest'),
+      responses: {
+        200: jsonResponse('Grafana configuration updated', '#/components/schemas/AdminGrafanaUpdateResponse'),
+        401: apiErrorResponse,
+        403: apiErrorResponse,
         500: apiErrorResponse,
       },
     },
