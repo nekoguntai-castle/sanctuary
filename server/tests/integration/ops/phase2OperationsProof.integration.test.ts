@@ -244,6 +244,38 @@ describeIfDb('Phase 2 operations proof', () => {
       route: '/api/v1/auth/login',
       proof: 'phase2-gateway-audit',
     }));
+
+    const missingTokenUsername = createUniqueId('phase2-gateway-missing-token');
+
+    logSecurityEvent('AUTH_MISSING_TOKEN', {
+      ip: '203.0.113.11',
+      userAgent: 'Phase2OpsProof/1.0',
+      username: missingTokenUsername,
+      path: '/api/v1/wallets',
+      proof: 'phase2-gateway-audit-missing-token',
+    });
+
+    const missingTokenAuditLog = await waitForAuditLog(
+      prisma,
+      'gateway.auth_missing_token',
+      missingTokenUsername
+    );
+
+    expect(missingTokenAuditLog).toEqual(expect.objectContaining({
+      username: missingTokenUsername,
+      action: 'gateway.auth_missing_token',
+      category: 'gateway',
+      ipAddress: '203.0.113.11',
+      userAgent: 'Phase2OpsProof/1.0',
+      success: false,
+      errorMsg: 'AUTH_MISSING_TOKEN',
+    }));
+    expect(missingTokenAuditLog.details).toEqual(expect.objectContaining({
+      severity: 'info',
+      source: 'gateway',
+      path: '/api/v1/wallets',
+      proof: 'phase2-gateway-audit-missing-token',
+    }));
   });
 
   it('rejects unsigned gateway audit events without persisting them', async () => {

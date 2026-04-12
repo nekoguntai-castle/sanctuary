@@ -42,6 +42,18 @@ import { InvalidInputError, NotFoundError } from '../errors/ApiError';
 
 const router = Router();
 const log = createLogger('PUSH:ROUTE');
+const GATEWAY_AUDIT_FAILURE_EVENT_TOKENS = [
+  'BLOCKED',
+  'DENIED',
+  'EXCEEDED',
+  'EXPIRED',
+  'FAILED',
+  'FORBIDDEN',
+  'INVALID',
+  'MISSING',
+  'MISUSE',
+  'UNAUTHORIZED',
+] as const;
 
 /**
  * Device token format validation (SEC-008)
@@ -308,8 +320,8 @@ router.post('/gateway-audit', verifyGatewayRequest, asyncHandler(async (req, res
     throw new InvalidInputError('Event type is required');
   }
 
-  // Determine success based on event type
-  const isFailure = event.includes('FAILED') || event.includes('EXCEEDED') || event.includes('BLOCKED');
+  // Determine success based on common gateway security-event names.
+  const isFailure = GATEWAY_AUDIT_FAILURE_EVENT_TOKENS.some((token) => event.includes(token));
 
   // Create audit log entry
   await auditLogRepository.create({

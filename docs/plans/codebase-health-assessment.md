@@ -2,7 +2,7 @@
 
 Date: 2026-04-12 (Pacific/Honolulu)
 Owner: TBD
-Status: Refreshed assessment; Phase 2 monitoring proof and Phase 3 benchmark items are carried forward
+Status: Refreshed assessment; Phase 2 alert receiver and Phase 3 benchmark items are carried forward
 
 ## Scope
 
@@ -13,7 +13,7 @@ Inputs used:
 - Static review of the React/Vite frontend, Express backend, mobile gateway, AI proxy, Docker deployment, monitoring stack, route contracts, and tests.
 - Existing coverage artifacts in `coverage/`, `server/coverage/`, and `gateway/coverage/`.
 - Phase 3 local smoke benchmark records in `docs/plans/phase3-benchmark-2026-04-12T04-00-40-678Z.md` and `docs/plans/phase3-benchmark-2026-04-12T05-12-14-935Z.md`.
-- Phase 2 operations proof records in `docs/plans/phase2-operations-proof-2026-04-12T08-44-39-1000.md` and `docs/plans/phase2-monitoring-smoke-2026-04-12T22-42-59-008Z.md`.
+- Phase 2 operations proof records in `docs/plans/phase2-operations-proof-2026-04-12T08-44-39-1000.md`, `docs/plans/phase2-monitoring-smoke-2026-04-12T22-42-59-008Z.md`, and `docs/plans/phase2-gateway-audit-compose-smoke-2026-04-12T23-18-24-249Z.md`.
 - Operations, scalability, extension-point, and release-gate documentation in `docs/OPERATIONS_RUNBOOKS.md`, `docs/SCALABILITY_AND_PERFORMANCE.md`, `docs/EXTENSION_POINTS.md`, and `docs/RELEASE_GATES.md`.
 - Fresh lightweight verification:
   - `npm run typecheck:app` passed.
@@ -45,7 +45,7 @@ The main risk is no longer broad architecture quality or known P0 correctness de
 | Extensibility | B+ | Strong route/service/repository boundaries, extension-point docs, registries for routes/tabs/backgrounds/flags/importers/providers, and a service lifecycle registry. Grade is held back by incomplete OpenAPI coverage outside the gateway surface and hand-maintained gateway/backend request contracts. |
 | Scalability | B | Dedicated worker, BullMQ/Redis, distributed locks, WebSocket limits, Redis bridge broadcasts, Prisma indexes, cache invalidation, and a scale-out baseline are solid. The grade stays at B until backend scale-out, worker ownership, Redis/Postgres capacity, and WebSocket fanout are validated under non-production load. |
 | Performance | B | Caching, React Query discipline, Electrum pooling, database indexes, API aggregation, bounded WebSocket queues, and a Phase 3 benchmark harness are good. Authenticated large-wallet, wallet-sync, WebSocket fanout, backup/restore, and worker queue benchmarks are still pending. |
-| Perpetual operations and supportability | B+ | `/health`, `/api/v1/health`, `/metrics`, Prometheus alerts, Grafana/Loki/Jaeger, support-package collectors, Docker healthchecks, resource limits, monitoring exposure docs, and operations runbooks are strong. A disposable restore drill, gateway audit persistence proof, and local monitoring stack smoke now exist. Durable production alert receivers and runtime incident evidence are still missing. |
+| Perpetual operations and supportability | B+ | `/health`, `/api/v1/health`, `/metrics`, Prometheus alerts, Grafana/Loki/Jaeger, support-package collectors, Docker healthchecks, resource limits, monitoring exposure docs, and operations runbooks are strong. A disposable restore drill, full Compose gateway audit persistence proof, and local monitoring stack smoke now exist. Durable production alert receivers and runtime incident evidence are still missing. |
 | Security | B | JWT audiences, token revocation, 2FA, production secret requirements, AES-GCM encryption, rate limiting, Helmet, gateway HMAC auth, redacted gateway logs, and internal routes are good. Browser token storage in `localStorage`, broad CSP exceptions for docs UI, partial validation/schema coverage, and unaudited dependency posture keep it below A. |
 | Technical debt | B+ | Strict app typecheck, backend/gateway/AI builds, high recorded coverage, release gates, extension docs, shared gateway/redaction utilities, and shared mobile API request schemas are good. Remaining debt is concentrated in incomplete OpenAPI, remaining duplicated API request schemas, advisory-only test typecheck, and a few oversized modules. |
 
@@ -64,7 +64,7 @@ This roadmap focuses on changes that are objectively good for the codebase: they
 Suggested sequencing:
 
 1. Phase 1 is closed for the current route surface; keep its OpenAPI/schema/whitelist guardrails in release-gate hygiene as routes change.
-2. Finish Phase 2 proof work before claiming A-grade operations.
+2. Finish Phase 2 production alert receiver selection and proof before claiming A-grade operations.
 3. Finish Phase 3 authenticated and scale-out benchmarks before claiming A-grade scalability or performance.
 4. Continue Phase 4 hygiene as normal engineering practice when routes, schemas, gateway logging, and oversized files are touched.
 
@@ -125,7 +125,7 @@ Priority meanings:
 | P1 | Start using centralized request validation for backend APIs in new and touched routes. | Completed for the planned Phase 1 baseline and moved to Phase 4 hygiene for future/touched routes. Schema-first validation now covers gateway-backed transaction/device bodies, high-risk auth bodies, and high-risk admin write bodies while preserving established response envelopes. | `server/src/api/auth/profile.ts` uses `validate({ query: UserSearchQuerySchema })`; `server/src/api/transactions/drafting.ts`, `server/src/api/transactions/broadcasting.ts`, and `server/src/api/devices/crud.ts` parse shared write schemas; `server/src/api/auth/login.ts`, `tokens.ts`, `email.ts`, `telegram.ts`, `password.ts`, and the 2FA route modules validate high-risk auth bodies through `server/src/middleware/validate.ts`; `server/src/api/admin/requestValidation.ts` parses admin user/group/Electrum/backup/settings bodies against `server/src/api/schemas/admin.ts`; targeted route and middleware tests cover the behavior. |
 | P1 | Harden browser token handling and CSP. | Access tokens in localStorage make XSS higher impact, and the backend CSP has broad inline/CDN exceptions. Moving docs UI exceptions to a narrower route or self-hosting assets reduces exposure. | `src/api/client.ts` stores `sanctuary_token` in `localStorage`. `server/src/index.ts` allows `'unsafe-inline'` and `https://unpkg.com` for scripts/styles. |
 | P1 | Add gateway log redaction before metadata volume grows. | Completed in Phase 4. Keep it as a release gate when new gateway metadata is added because it reduces token, secret, and credential leakage risk. | `shared/utils/redact.ts`, `gateway/src/utils/logger.ts`, and fresh `cd gateway && npx vitest run tests/unit/utils/logger.test.ts` passed. |
-| P1 | Complete operations proof, not just operations docs. | Non-production restore, gateway audit persistence, and local monitoring-stack proof now exist. A-grade operations still need durable production alert receiver configuration and runtime incident evidence, plus a full multi-container backend/gateway audit exercise if the in-process HMAC proof is not accepted for signoff. | `docs/OPERATIONS_RUNBOOKS.md` maps alerts and failure modes to triage; `docs/plans/phase2-operations-proof-2026-04-12T08-44-39-1000.md` records backup/restore plus gateway audit proof; `docs/plans/phase2-monitoring-smoke-2026-04-12T22-42-59-008Z.md` records monitoring stack proof with loopback bindings. |
+| P1 | Complete operations proof, not just operations docs. | Non-production restore, full Compose gateway audit persistence, and local monitoring-stack proof now exist. A-grade operations still need durable production alert receiver configuration and runtime incident evidence. | `docs/OPERATIONS_RUNBOOKS.md` maps alerts and failure modes to triage; `docs/plans/phase2-operations-proof-2026-04-12T08-44-39-1000.md` records backup/restore plus in-process gateway audit proof; `docs/plans/phase2-monitoring-smoke-2026-04-12T22-42-59-008Z.md` records monitoring stack proof with loopback bindings; `docs/plans/phase2-gateway-audit-compose-smoke-2026-04-12T23-18-24-249Z.md` records the multi-container backend/gateway HMAC audit proof. |
 | P2 | Run authenticated performance and scale gates for high-risk workflows. | The Phase 3 harness and scale topology docs exist, but skipped authenticated scenarios do not prove production-like performance. Load evidence would catch regressions in wallet sync, large wallet transaction history, WebSocket fanout, backup/restore, and worker queues. | `docs/SCALABILITY_AND_PERFORMANCE.md` and `npm run perf:phase3` exist; Phase 3 records show health/WebSocket smoke passed while authenticated and data-dependent scenarios were skipped or blocked by invalid local credentials. |
 | P2 | Validate the supported scale-out topology. | Redis bridge, distributed locks, worker queues, health checks, and scale-out docs show intent. Operators still need evidence for two backend/WebSocket instances sharing Redis and for worker replica safety, or an explicit production singleton worker policy. | `docker-compose.yml` runs one backend service and one worker service by default; `docs/SCALABILITY_AND_PERFORMANCE.md` keeps worker scale-out non-production only until validated. |
 | P2 | Modularize oversized files only when touching them for product work. | Splitting purely for aesthetics can add churn. Splitting when changing the file reduces review risk and makes future edits easier. | Large production files include `ai-proxy/src/index.ts` (962 lines), `server/src/repositories/transactionRepository.ts` (891), `server/src/services/bitcoin/electrumPool/electrumPool.ts` (841), and `server/src/worker.ts` (646). |
@@ -273,10 +273,18 @@ Completed in the 2026-04-12 Phase 2 monitoring proof slice:
 - Made Jaeger OTLP and Loki host ports configurable, upgraded Promtail to `grafana/promtail:3.5.0` after `2.9.0` failed against this host's Docker API floor, replaced the Promtail `wget` healthcheck with `promtail -check-syntax`, and constrained Promtail discovery to the Sanctuary Compose project with a stable `job=sanctuary` Loki label.
 - Added evidence in `docs/plans/phase2-monitoring-smoke-2026-04-12T22-42-59-008Z.md` and linked the repeatable proof command from `docs/OPERATIONS_RUNBOOKS.md` and `docs/RELEASE_GATES.md`.
 
+Completed in the 2026-04-12 Phase 2 gateway audit Compose proof slice:
+
+- Added `npm run ops:gateway-audit:phase2`, backed by `scripts/ops/phase2-gateway-audit-compose-smoke.mjs`, to start a temporary Docker Compose project with backend, gateway, Postgres, Redis, and worker services, then tear it down after the proof.
+- Fixed backend gateway audit classification so security events such as `AUTH_MISSING_TOKEN` persist as failed audit rows with `errorMsg` set, rather than as successful audit entries.
+- Fixed the backend and gateway container builds for shared TypeScript imports that resolve package dependencies from the repo-level `shared/` sibling directory during Docker builds.
+- Ran and recorded a passing full-stack gateway audit smoke. The proof hit the live gateway protected route without a token, verified the gateway-signed backend audit row persisted in PostgreSQL as `gateway.auth_missing_token`, verified an unsigned in-network backend audit request returned `403` without persistence, checked gateway delivery logs for audit send failures, and waited for all five Compose service containers to be healthy.
+- Captured the local environment adjustment that the proof pins `GATEWAY_TLS_ENABLED=false` because this drill targets the production-style HMAC audit path, not TLS listener behavior.
+- Added evidence in `docs/plans/phase2-gateway-audit-compose-smoke-2026-04-12T23-18-24-249Z.md` and linked the repeatable proof command from `docs/OPERATIONS_RUNBOOKS.md` and `docs/RELEASE_GATES.md`.
+
 Remaining Phase 2 work:
 
 - Add durable alert receiver configuration once production notification channels are chosen.
-- Run a full multi-container backend/gateway audit exercise if the in-process HMAC proof is not considered sufficient for production-readiness signoff.
 
 ## Phase 3 Progress Notes
 
@@ -381,6 +389,7 @@ cd server && npx vitest run tests/unit/middleware/gatewayAuth.test.ts tests/unit
 cd gateway && npx vitest run tests/unit/middleware/mobilePermission.test.ts tests/unit/middleware/validateRequest.test.ts tests/unit/routes/proxy.test.ts tests/unit/middleware/requestLogger.test.ts tests/unit/utils/logger.test.ts
 TEST_POSTGRES_PORT=55433 npm run test:ops:phase2
 MONITORING_BIND_ADDR=127.0.0.1 GRAFANA_PORT=13000 PROMETHEUS_PORT=19090 ALERTMANAGER_PORT=19093 JAEGER_UI_PORT=16687 JAEGER_OTLP_GRPC_PORT=14317 JAEGER_OTLP_HTTP_PORT=14318 LOKI_PORT=13100 npm run ops:monitoring:phase2
+npm run ops:gateway-audit:phase2
 ```
 
 Fresh check outcomes:
@@ -391,6 +400,7 @@ Server targeted tests: 6 files passed, 52 tests passed.
 Gateway targeted tests: 5 files passed, 178 tests passed in the initial refresh; the latest Phase 1 gateway route/request-validation/mobile-permission rerun passed 3 files, 158 tests after shared mobile-permission and draft schema expansion.
 Phase 2 ops proof passed on disposable PostgreSQL: 1 integration file / 3 tests, using `sanctuary-test-db` on `localhost:55433` after the default `5433` port was already allocated.
 Phase 2 monitoring smoke passed against the local Compose monitoring stack using alternate loopback ports: Grafana, Prometheus, Alertmanager, Jaeger, Loki, Promtail container health, Prometheus alert-rule loading, Promtail runtime log checks, and loopback host bindings passed. Evidence: `docs/plans/phase2-monitoring-smoke-2026-04-12T22-42-59-008Z.md`.
+Phase 2 gateway audit Compose smoke passed against a temporary backend/gateway/Postgres/Redis/worker stack: gateway health, missing-token protected-route event, signed backend audit persistence, unsigned audit rejection, gateway delivery logs, and Compose container health passed. Evidence: `docs/plans/phase2-gateway-audit-compose-smoke-2026-04-12T23-18-24-249Z.md`.
 The latest Phase 1 server OpenAPI/mobile-permission/types rerun passed 3 files, 72 tests after shared mobile-permission and draft schema expansion.
 The latest Phase 1 gateway request-validation/proxy rerun passed 2 files, 149 tests after transaction/PSBT/device schema expansion.
 The latest Phase 1 server OpenAPI/device rerun passed 2 files, 87 tests after transaction/PSBT/device schema expansion.
@@ -436,4 +446,3 @@ Not run in this refresh:
 - Dependency audits.
 - Phase 3 authenticated benchmark or scale-out smoke.
 - Durable production alert receiver delivery.
-- Full multi-container backend/gateway audit exercise.

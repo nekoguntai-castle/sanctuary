@@ -9,9 +9,11 @@ This document maps the existing monitoring stack and alert rules to concrete tri
 
 - 2026-04-12: `docs/plans/phase2-operations-proof-2026-04-12T08-44-39-1000.md` records a passing disposable PostgreSQL backup/restore drill and gateway audit persistence drill.
 - 2026-04-12: `docs/plans/phase2-monitoring-smoke-2026-04-12T22-42-59-008Z.md` records a passing local monitoring stack smoke with Grafana, Prometheus, Alertmanager, Jaeger, Loki, Promtail container health, Prometheus rule loading, Promtail runtime log checks, and loopback-only host port bindings.
+- 2026-04-12: `docs/plans/phase2-gateway-audit-compose-smoke-2026-04-12T23-18-24-249Z.md` records a passing full Compose backend/gateway audit smoke with signed audit persistence, unsigned audit rejection, gateway delivery-log checks, and container health.
 - Run repeatable local proof with `npm run test:ops:phase2`.
 - If local port `5433` is already allocated, run with an alternate host port, for example `TEST_POSTGRES_PORT=55433 npm run test:ops:phase2`.
 - Run repeatable monitoring proof with `npm run ops:monitoring:phase2` after starting the monitoring stack.
+- Run repeatable full backend/gateway audit proof with `npm run ops:gateway-audit:phase2`.
 
 ## Monitoring Exposure
 
@@ -298,6 +300,7 @@ Verification:
 cd server && npx vitest run tests/unit/api/push.test.ts tests/unit/middleware/gatewayAuth.test.ts
 cd gateway && npx vitest run tests/unit/middleware/requestLogger.test.ts
 npm run test:ops:phase2
+npm run ops:gateway-audit:phase2
 ```
 
 Expected behavior:
@@ -306,6 +309,8 @@ Expected behavior:
 - Backend `POST /api/v1/push/gateway-audit` must reject unsigned requests.
 - Signed gateway audit events must create `auditLogRepository` entries with `source: gateway`.
 - The Phase 2 ops proof sends an event through the actual gateway `logSecurityEvent` helper and verifies the persisted backend audit-log row in PostgreSQL.
+- The Phase 2 Compose proof starts separate backend, gateway, Postgres, Redis, and worker containers, triggers a live gateway missing-token security event, verifies signed backend persistence, verifies unsigned backend audit rejection, and checks gateway logs for audit delivery errors.
+- The local Compose proof pins `GATEWAY_TLS_ENABLED=false`; run TLS-specific gateway checks separately when TLS listener behavior changes.
 
 Mitigation:
 

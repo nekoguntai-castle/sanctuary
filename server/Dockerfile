@@ -38,6 +38,10 @@ COPY shared ../shared
 COPY server/tsconfig.json ./
 COPY server/src ./src
 
+# Shared TypeScript files live outside /app, so their package resolution walks
+# up to /node_modules during the container build.
+RUN ln -s /app/node_modules /node_modules
+
 # Build TypeScript (main app)
 RUN npm run build
 

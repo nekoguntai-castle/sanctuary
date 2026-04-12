@@ -939,6 +939,39 @@ describe('Push API Routes', () => {
       );
     });
 
+    it.each([
+      'AUTH_DENIED',
+      'TOKEN_EXPIRED',
+      'ACCESS_FORBIDDEN',
+      'TOKEN_INVALID',
+      'AUTH_MISSING_TOKEN',
+      'API_MISUSE',
+      'REQUEST_UNAUTHORIZED',
+    ])('should log %s as failure', async (event) => {
+      const body = {
+        event,
+        category: 'security',
+      };
+
+      const path = '/api/v1/push/gateway-audit';
+      const { signature, timestamp } = generateGatewaySignature('POST', path, body, 'test-gateway-secret');
+
+      const res = await request(app)
+        .post('/api/v1/push/gateway-audit')
+        .set('X-Gateway-Signature', signature)
+        .set('X-Gateway-Timestamp', timestamp)
+        .send(body);
+
+      expect(res.status).toBe(200);
+      expect(mockAuditLogCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: `gateway.${event.toLowerCase()}`,
+          success: false,
+          errorMsg: event,
+        })
+      );
+    });
+
     it('should use defaults for missing optional fields', async () => {
       const body = {
         event: 'CONNECTION_OPENED',
