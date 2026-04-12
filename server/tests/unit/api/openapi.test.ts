@@ -20,6 +20,11 @@ import {
   INTELLIGENCE_ENDPOINT_TYPE_VALUES,
   INTELLIGENCE_MESSAGE_ROLE_VALUES,
 } from '../../../src/services/intelligence/types';
+import {
+  AI_QUERY_AGGREGATION_VALUES,
+  AI_QUERY_RESULT_TYPES,
+  AI_QUERY_SORT_ORDERS,
+} from '../../../src/services/ai/types';
 
 type HandlerResponse = {
   statusCode: number;
@@ -471,5 +476,44 @@ describe('OpenAPI Docs', () => {
       $ref: '#/components/schemas/IntelligenceSendMessageRequest',
     });
     expect(openApiSpec.components.schemas.IntelligenceSendMessageRequest.required).toEqual(['content']);
+  });
+
+  it('documents public AI assistant routes', () => {
+    const routes: Array<[OpenApiPathKey, string]> = [
+      ['/ai/status', 'get'],
+      ['/ai/suggest-label', 'post'],
+      ['/ai/query', 'post'],
+      ['/ai/detect-ollama', 'post'],
+      ['/ai/models', 'get'],
+      ['/ai/pull-model', 'post'],
+      ['/ai/delete-model', 'delete'],
+      ['/ai/ollama-container/status', 'get'],
+      ['/ai/ollama-container/start', 'post'],
+      ['/ai/ollama-container/stop', 'post'],
+      ['/ai/system-resources', 'get'],
+    ];
+
+    for (const [path, method] of routes) {
+      expectDocumentedMethod(path, method);
+    }
+
+    const querySchema = openApiSpec.components.schemas.AIQueryResult;
+    expect(querySchema.properties.type.enum).toEqual([...AI_QUERY_RESULT_TYPES]);
+    expect(querySchema.properties.sort.properties.order.enum).toEqual([...AI_QUERY_SORT_ORDERS]);
+    expect(querySchema.properties.aggregation.enum).toEqual([...AI_QUERY_AGGREGATION_VALUES]);
+
+    expect(openApiSpec.components.schemas.AIQueryRequest.required).toEqual(['query', 'walletId']);
+    expect(openApiSpec.components.schemas.AIModelRequest.required).toEqual(['model']);
+    expect(openApiSpec.paths['/ai/delete-model'].delete.requestBody.content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/AIModelRequest',
+    });
+    expect(openApiSpec.paths['/ai/pull-model'].post.responses).toHaveProperty('403');
+    expect(openApiSpec.paths['/ai/models'].get.responses).toHaveProperty('502');
+    expect(openApiSpec.components.schemas.AISystemResourcesResponse.required).toEqual([
+      'ram',
+      'disk',
+      'gpu',
+      'overall',
+    ]);
   });
 });

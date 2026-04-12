@@ -19,6 +19,7 @@ import { draftSchemas } from './schemas/drafts';
 import { payjoinSchemas } from './schemas/payjoin';
 import { transferSchemas } from './schemas/transfers';
 import { intelligenceSchemas } from './schemas/intelligence';
+import { aiSchemas } from './schemas/ai';
 
 // Paths
 import { authPaths } from './paths/auth';
@@ -33,6 +34,7 @@ import { draftPaths } from './paths/drafts';
 import { payjoinPaths } from './paths/payjoin';
 import { transferPaths } from './paths/transfers';
 import { intelligencePaths } from './paths/intelligence';
+import { aiPaths } from './paths/ai';
 
 export const openApiSpec = {
   openapi: '3.0.3',
@@ -68,6 +70,7 @@ export const openApiSpec = {
     { name: 'Payjoin', description: 'BIP78 Payjoin sender and receiver operations' },
     { name: 'Transfers', description: 'Wallet and device ownership transfers' },
     { name: 'Intelligence', description: 'Treasury Intelligence insights and conversations' },
+    { name: 'AI', description: 'AI assistant features and model management' },
     { name: 'Admin', description: 'Administrative operations' },
   ],
   paths: {
@@ -85,6 +88,7 @@ export const openApiSpec = {
     ...payjoinPaths,
     ...transferPaths,
     ...intelligencePaths,
+    ...aiPaths,
   },
   components: {
     securitySchemes: {
@@ -110,6 +114,7 @@ export const openApiSpec = {
       ...payjoinSchemas,
       ...transferSchemas,
       ...intelligenceSchemas,
+      ...aiSchemas,
     },
   },
 };
