@@ -394,8 +394,32 @@ export function validatePriceResponse(data: unknown): ValidationResult {
 
   if (!isNumber(data.price)) errors.push('price must be a number');
   if (!isString(data.currency)) errors.push('currency must be a string');
-  if (!isNumber(data.change24h)) errors.push('change24h must be a number');
-  if (!isIsoDateString(data.updatedAt)) errors.push('updatedAt must be an ISO date string');
+  if (!isArray(data.sources)) {
+    errors.push('sources must be an array');
+  } else {
+    data.sources.forEach((source, index) => {
+      if (!isObject(source)) {
+        errors.push(`sources[${index}] must be an object`);
+        return;
+      }
+
+      if (!isString(source.provider)) errors.push(`sources[${index}].provider must be a string`);
+      if (!isNumber(source.price)) errors.push(`sources[${index}].price must be a number`);
+      if (!isString(source.currency)) errors.push(`sources[${index}].currency must be a string`);
+      if (!isIsoDateString(source.timestamp)) {
+        errors.push(`sources[${index}].timestamp must be an ISO date string`);
+      }
+      if (source.change24h !== undefined && !isNumber(source.change24h)) {
+        errors.push(`sources[${index}].change24h must be a number`);
+      }
+    });
+  }
+  if (!isNumber(data.median)) errors.push('median must be a number');
+  if (!isNumber(data.average)) errors.push('average must be a number');
+  if (!isIsoDateString(data.timestamp)) errors.push('timestamp must be an ISO date string');
+  if (!isBoolean(data.cached)) errors.push('cached must be a boolean');
+  if (data.change24h !== undefined && !isNumber(data.change24h)) errors.push('change24h must be a number');
+  if (data.stale !== undefined && !isBoolean(data.stale)) errors.push('stale must be a boolean');
 
   return { valid: errors.length === 0, errors };
 }

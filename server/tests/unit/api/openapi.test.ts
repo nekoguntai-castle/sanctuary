@@ -123,6 +123,106 @@ describe('OpenAPI Docs', () => {
     expect(openApiSpec.paths['/wallets']).toBeDefined();
   });
 
+  it('documents price routes including admin cache controls', () => {
+    const routes: Array<[OpenApiPathKey, string]> = [
+      ['/price', 'get'],
+      ['/price/multiple', 'get'],
+      ['/price/from/{provider}', 'get'],
+      ['/price/convert/to-fiat', 'post'],
+      ['/price/convert/to-sats', 'post'],
+      ['/price/currencies', 'get'],
+      ['/price/providers', 'get'],
+      ['/price/health', 'get'],
+      ['/price/cache/stats', 'get'],
+      ['/price/cache/clear', 'post'],
+      ['/price/cache/duration', 'post'],
+      ['/price/historical', 'get'],
+      ['/price/history', 'get'],
+    ];
+
+    for (const [path, method] of routes) {
+      expectDocumentedMethod(path, method);
+    }
+
+    expect(openApiSpec.paths['/price'].get.parameters).toContainEqual(expect.objectContaining({
+      name: 'useCache',
+      schema: expect.objectContaining({ type: 'boolean', default: true }),
+    }));
+    expect(openApiSpec.components.schemas.Price.required).toEqual([
+      'price',
+      'currency',
+      'sources',
+      'median',
+      'average',
+      'timestamp',
+      'cached',
+    ]);
+    expect(openApiSpec.components.schemas.Price.properties.sources.items).toEqual({
+      $ref: '#/components/schemas/PriceSource',
+    });
+    expect(openApiSpec.components.schemas.PriceSource.required).toEqual([
+      'provider',
+      'price',
+      'currency',
+      'timestamp',
+    ]);
+
+    expect(openApiSpec.paths['/price/multiple'].get.parameters).toContainEqual(expect.objectContaining({
+      name: 'currencies',
+      in: 'query',
+      required: true,
+    }));
+    expect(openApiSpec.components.schemas.PriceMultipleResponse.additionalProperties).toEqual({
+      $ref: '#/components/schemas/Price',
+    });
+    expect(openApiSpec.paths['/price/from/{provider}'].get.parameters).toContainEqual(expect.objectContaining({
+      name: 'provider',
+      in: 'path',
+      required: true,
+    }));
+
+    expect(openApiSpec.paths['/price/convert/to-fiat'].post.requestBody.content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/PriceConvertToFiatRequest',
+    });
+    expect(openApiSpec.components.schemas.PriceConvertToFiatRequest.required).toEqual(['sats']);
+    expect(openApiSpec.components.schemas.PriceConvertToSatsRequest.required).toEqual(['amount']);
+    expect(openApiSpec.components.schemas.PriceCurrencyListResponse.required).toEqual(['currencies', 'count']);
+    expect(openApiSpec.components.schemas.PriceProviderListResponse.required).toEqual(['providers', 'count']);
+    expect(openApiSpec.components.schemas.PriceHealthResponse.properties.providers.additionalProperties).toEqual({
+      type: 'boolean',
+    });
+
+    expect(openApiSpec.paths['/price/cache/stats'].get.security).toEqual([{ bearerAuth: [] }]);
+    expect(openApiSpec.paths['/price/cache/clear'].post.security).toEqual([{ bearerAuth: [] }]);
+    expect(openApiSpec.paths['/price/cache/duration'].post.security).toEqual([{ bearerAuth: [] }]);
+    expect(openApiSpec.paths['/price/cache/stats'].get.responses).toHaveProperty('403');
+    expect(openApiSpec.components.schemas.PriceCacheStats).toHaveProperty('additionalProperties', true);
+    expect(openApiSpec.components.schemas.PriceCacheStats.required).toEqual(['size', 'entries']);
+    expect(openApiSpec.paths['/price/cache/duration'].post.requestBody.content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/PriceCacheDurationRequest',
+    });
+    expect(openApiSpec.components.schemas.PriceCacheDurationRequest.required).toEqual(['duration']);
+    expect(openApiSpec.components.schemas.PriceCacheDurationRequest.properties.duration).toMatchObject({
+      minimum: 0,
+    });
+    expect(openApiSpec.paths['/price/cache/duration'].post.responses[400].content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/PriceSimpleErrorResponse',
+    });
+
+    expect(openApiSpec.paths['/price/historical'].get.parameters).toContainEqual(expect.objectContaining({
+      name: 'date',
+      in: 'query',
+      required: true,
+    }));
+    expect(openApiSpec.paths['/price/history'].get.parameters).toContainEqual(expect.objectContaining({
+      name: 'days',
+      schema: expect.objectContaining({ minimum: 1, maximum: 365, default: 30 }),
+    }));
+    expect(openApiSpec.components.schemas.PriceHistoryResponse.properties.history.items).toEqual({
+      $ref: '#/components/schemas/PriceHistoryPoint',
+    });
+  });
+
   it('documents wallet delete as a 204 empty response', () => {
     const deleteResponses = openApiSpec.paths['/wallets/{walletId}'].delete.responses;
 

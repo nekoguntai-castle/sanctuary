@@ -355,8 +355,26 @@ describe('Price API Contract', () => {
   const validPrice = {
     price: 42000.50,
     currency: 'USD',
+    sources: [
+      {
+        provider: 'coingecko',
+        price: 42000.50,
+        currency: 'USD',
+        timestamp: '2024-01-15T12:00:00.000Z',
+        change24h: 2.5,
+      },
+    ],
+    median: 42000.50,
+    average: 42000.50,
+    timestamp: '2024-01-15T12:00:00.000Z',
+    cached: false,
     change24h: 2.5,
-    updatedAt: '2024-01-15T12:00:00.000Z',
+  };
+
+  const expectInvalidPrice = (invalid: unknown, expectedError: string) => {
+    const result = validatePriceResponse(invalid);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain(expectedError);
   };
 
   it('should validate a correct price response', () => {
@@ -364,10 +382,65 @@ describe('Price API Contract', () => {
     expect(result.valid).toBe(true);
   });
 
+  it('should validate an empty price source array', () => {
+    const result = validatePriceResponse({ ...validPrice, sources: [] });
+    expect(result.valid).toBe(true);
+  });
+
   it('should reject missing currency', () => {
     const { currency, ...invalid } = validPrice;
-    const result = validatePriceResponse(invalid);
-    expect(result.valid).toBe(false);
-    expect(result.errors).toContain('currency must be a string');
+    expectInvalidPrice(invalid, 'currency must be a string');
+  });
+
+  it('should reject missing or invalid aggregate fields', () => {
+    const { sources, ...withoutSources } = validPrice;
+    const cases: Array<[unknown, string]> = [
+      [withoutSources, 'sources must be an array'],
+      [{ ...validPrice, sources: 'not-an-array' }, 'sources must be an array'],
+      [{ ...validPrice, median: '42000.50' }, 'median must be a number'],
+      [{ ...validPrice, average: '42000.50' }, 'average must be a number'],
+      [{ ...validPrice, timestamp: 'not-a-date' }, 'timestamp must be an ISO date string'],
+      [{ ...validPrice, cached: 'false' }, 'cached must be a boolean'],
+    ];
+
+    for (const [invalid, expectedError] of cases) {
+      expectInvalidPrice(invalid, expectedError);
+    }
+  });
+
+  it('should reject invalid source entries', () => {
+    const cases: Array<[unknown, string]> = [
+      [{ ...validPrice, sources: ['coingecko'] }, 'sources[0] must be an object'],
+      [{ ...validPrice, sources: [{ ...validPrice.sources[0], provider: 42 }] }, 'sources[0].provider must be a string'],
+      [{ ...validPrice, sources: [{ ...validPrice.sources[0], price: '42000.50' }] }, 'sources[0].price must be a number'],
+      [{ ...validPrice, sources: [{ ...validPrice.sources[0], currency: 840 }] }, 'sources[0].currency must be a string'],
+    ];
+
+    for (const [invalid, expectedError] of cases) {
+      expectInvalidPrice(invalid, expectedError);
+    }
+  });
+
+  it('should reject invalid source timestamps', () => {
+    const invalid = {
+      ...validPrice,
+      sources: [{ ...validPrice.sources[0], timestamp: 'not-a-date' }],
+    };
+    expectInvalidPrice(invalid, 'sources[0].timestamp must be an ISO date string');
+  });
+
+  it('should reject invalid optional price fields', () => {
+    const cases: Array<[unknown, string]> = [
+      [{ ...validPrice, change24h: '2.5' }, 'change24h must be a number'],
+      [{ ...validPrice, stale: 'true' }, 'stale must be a boolean'],
+      [
+        { ...validPrice, sources: [{ ...validPrice.sources[0], change24h: '2.5' }] },
+        'sources[0].change24h must be a number',
+      ],
+    ];
+
+    for (const [invalid, expectedError] of cases) {
+      expectInvalidPrice(invalid, expectedError);
+    }
   });
 });
