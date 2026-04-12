@@ -25,6 +25,7 @@ import { aiSchemas } from './schemas/ai';
 import { authPaths } from './paths/auth';
 import { walletPaths } from './paths/wallets';
 import { walletSharingPaths } from './paths/walletSharing';
+import { walletImportPaths } from './paths/walletImport';
 import { devicePaths } from './paths/devices';
 import { syncPaths, bitcoinPaths, pricePaths } from './paths/bitcoin';
 import { transactionPaths } from './paths/transactions';
@@ -78,6 +79,7 @@ export const openApiSpec = {
     ...authPaths,
     ...walletPaths,
     ...walletSharingPaths,
+    ...walletImportPaths,
     ...devicePaths,
     ...syncPaths,
     ...bitcoinPaths,

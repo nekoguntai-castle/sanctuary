@@ -8,6 +8,12 @@ import {
   WALLET_ROLE_VALUES,
   WALLET_SHARE_ROLE_VALUES,
 } from '../../../services/wallet/types';
+import {
+  WALLET_IMPORT_FORMAT_VALUES,
+  WALLET_IMPORT_NETWORK_VALUES,
+  WALLET_IMPORT_SCRIPT_TYPE_VALUES,
+  WALLET_IMPORT_WALLET_TYPE_VALUES,
+} from '../../../services/walletImport/types';
 
 export const walletSchemas = {
   Wallet: {
@@ -161,5 +167,153 @@ export const walletSchemas = {
       },
     },
     required: ['group', 'users'],
+  },
+  WalletImportFormat: {
+    type: 'object',
+    properties: {
+      id: { type: 'string' },
+      name: { type: 'string' },
+      description: { type: 'string' },
+      extensions: {
+        type: 'array',
+        items: { type: 'string' },
+      },
+      priority: { type: 'integer' },
+    },
+    required: ['id', 'name', 'description', 'extensions', 'priority'],
+  },
+  WalletImportFormatsResponse: {
+    type: 'object',
+    properties: {
+      formats: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/WalletImportFormat' },
+      },
+    },
+    required: ['formats'],
+  },
+  WalletImportValidateRequest: {
+    type: 'object',
+    properties: {
+      descriptor: { type: 'string' },
+      json: {
+        oneOf: [
+          { type: 'string' },
+          { type: 'object', additionalProperties: true },
+        ],
+      },
+    },
+    minProperties: 1,
+    additionalProperties: false,
+  },
+  WalletImportDeviceResolution: {
+    type: 'object',
+    properties: {
+      fingerprint: { type: 'string' },
+      xpub: { type: 'string' },
+      derivationPath: { type: 'string' },
+      existingDeviceId: { type: 'string', nullable: true },
+      existingDeviceLabel: { type: 'string', nullable: true },
+      willCreate: { type: 'boolean' },
+      suggestedLabel: { type: 'string' },
+      originalType: { type: 'string' },
+    },
+    required: [
+      'fingerprint',
+      'xpub',
+      'derivationPath',
+      'existingDeviceId',
+      'existingDeviceLabel',
+      'willCreate',
+    ],
+  },
+  WalletImportValidationResponse: {
+    type: 'object',
+    properties: {
+      valid: { type: 'boolean' },
+      error: { type: 'string' },
+      format: { type: 'string', enum: [...WALLET_IMPORT_FORMAT_VALUES] },
+      walletType: { type: 'string', enum: [...WALLET_IMPORT_WALLET_TYPE_VALUES] },
+      scriptType: { type: 'string', enum: [...WALLET_IMPORT_SCRIPT_TYPE_VALUES] },
+      network: { type: 'string', enum: [...WALLET_IMPORT_NETWORK_VALUES] },
+      quorum: { type: 'integer' },
+      totalSigners: { type: 'integer' },
+      devices: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/WalletImportDeviceResolution' },
+      },
+      suggestedName: { type: 'string' },
+    },
+    required: ['valid', 'format', 'walletType', 'scriptType', 'network', 'devices'],
+  },
+  WalletImportRequest: {
+    type: 'object',
+    properties: {
+      data: { type: 'string' },
+      name: { type: 'string', minLength: 1 },
+      network: { type: 'string', enum: [...WALLET_IMPORT_NETWORK_VALUES] },
+      deviceLabels: {
+        type: 'object',
+        additionalProperties: { type: 'string' },
+      },
+    },
+    required: ['data', 'name'],
+    additionalProperties: false,
+  },
+  ImportedWalletSummary: {
+    type: 'object',
+    properties: {
+      id: { type: 'string' },
+      name: { type: 'string' },
+      type: { type: 'string', enum: [...WALLET_IMPORT_WALLET_TYPE_VALUES] },
+      scriptType: { type: 'string', enum: [...WALLET_IMPORT_SCRIPT_TYPE_VALUES] },
+      network: { type: 'string', enum: [...WALLET_IMPORT_NETWORK_VALUES] },
+      quorum: { type: 'integer', nullable: true },
+      totalSigners: { type: 'integer', nullable: true },
+      descriptor: { type: 'string', nullable: true },
+    },
+    required: ['id', 'name', 'type', 'scriptType', 'network'],
+  },
+  WalletImportResponse: {
+    type: 'object',
+    properties: {
+      wallet: { $ref: '#/components/schemas/ImportedWalletSummary' },
+      devicesCreated: { type: 'integer', minimum: 0 },
+      devicesReused: { type: 'integer', minimum: 0 },
+      createdDeviceIds: {
+        type: 'array',
+        items: { type: 'string' },
+      },
+      reusedDeviceIds: {
+        type: 'array',
+        items: { type: 'string' },
+      },
+    },
+    required: ['wallet', 'devicesCreated', 'devicesReused', 'createdDeviceIds', 'reusedDeviceIds'],
+  },
+  ValidateXpubRequest: {
+    type: 'object',
+    properties: {
+      xpub: { type: 'string' },
+      scriptType: { type: 'string', enum: [...WALLET_IMPORT_SCRIPT_TYPE_VALUES] },
+      network: { type: 'string', enum: [...WALLET_IMPORT_NETWORK_VALUES], default: 'mainnet' },
+      fingerprint: { type: 'string' },
+      accountPath: { type: 'string' },
+    },
+    required: ['xpub'],
+    additionalProperties: false,
+  },
+  ValidateXpubResponse: {
+    type: 'object',
+    properties: {
+      valid: { type: 'boolean' },
+      descriptor: { type: 'string' },
+      scriptType: { type: 'string', enum: [...WALLET_IMPORT_SCRIPT_TYPE_VALUES] },
+      firstAddress: { type: 'string' },
+      xpub: { type: 'string' },
+      fingerprint: { type: 'string' },
+      accountPath: { type: 'string' },
+    },
+    required: ['valid', 'descriptor', 'scriptType', 'firstAddress', 'xpub', 'fingerprint', 'accountPath'],
   },
 } as const;

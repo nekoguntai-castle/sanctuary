@@ -29,6 +29,12 @@ import {
   WALLET_ROLE_VALUES,
   WALLET_SHARE_ROLE_VALUES,
 } from '../../../src/services/wallet/types';
+import {
+  WALLET_IMPORT_FORMAT_VALUES,
+  WALLET_IMPORT_NETWORK_VALUES,
+  WALLET_IMPORT_SCRIPT_TYPE_VALUES,
+  WALLET_IMPORT_WALLET_TYPE_VALUES,
+} from '../../../src/services/walletImport/types';
 
 type HandlerResponse = {
   statusCode: number;
@@ -146,6 +152,54 @@ describe('OpenAPI Docs', () => {
       .toEqual({
         $ref: '#/components/schemas/WalletSharingInfo',
       });
+  });
+
+  it('documents wallet import and XPUB validation routes', () => {
+    const routes: Array<[OpenApiPathKey, string]> = [
+      ['/wallets/import/formats', 'get'],
+      ['/wallets/import/validate', 'post'],
+      ['/wallets/import', 'post'],
+      ['/wallets/validate-xpub', 'post'],
+    ];
+
+    for (const [path, method] of routes) {
+      expectDocumentedMethod(path, method);
+    }
+
+    expect(openApiSpec.components.schemas.WalletImportValidationResponse.properties.format.enum).toEqual([
+      ...WALLET_IMPORT_FORMAT_VALUES,
+    ]);
+    expect(openApiSpec.components.schemas.WalletImportValidationResponse.properties.walletType.enum).toEqual([
+      ...WALLET_IMPORT_WALLET_TYPE_VALUES,
+    ]);
+    expect(openApiSpec.components.schemas.WalletImportValidationResponse.properties.scriptType.enum).toEqual([
+      ...WALLET_IMPORT_SCRIPT_TYPE_VALUES,
+    ]);
+    expect(openApiSpec.components.schemas.WalletImportValidationResponse.properties.network.enum).toEqual([
+      ...WALLET_IMPORT_NETWORK_VALUES,
+    ]);
+    expect(openApiSpec.components.schemas.WalletImportValidateRequest).toHaveProperty('minProperties', 1);
+    expect(openApiSpec.components.schemas.WalletImportRequest.required).toEqual(['data', 'name']);
+    expect(openApiSpec.components.schemas.ValidateXpubRequest.required).toEqual(['xpub']);
+    expect(openApiSpec.components.schemas.ValidateXpubRequest.properties.network).toMatchObject({
+      enum: [...WALLET_IMPORT_NETWORK_VALUES],
+      default: 'mainnet',
+    });
+    expect(openApiSpec.components.schemas.ValidateXpubResponse.required).toEqual([
+      'valid',
+      'descriptor',
+      'scriptType',
+      'firstAddress',
+      'xpub',
+      'fingerprint',
+      'accountPath',
+    ]);
+    expect(openApiSpec.paths['/wallets/import'].post.responses[201].content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/WalletImportResponse',
+    });
+    expect(openApiSpec.paths['/wallets/validate-xpub'].post.responses[400].content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/ApiError',
+    });
   });
 
   it('documents implemented device item routes', () => {

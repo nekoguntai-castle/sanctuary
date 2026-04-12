@@ -6,6 +6,17 @@
 
 import type { ScriptType, Network } from '../bitcoin/descriptorParser';
 
+export const WALLET_IMPORT_FORMAT_VALUES = [
+  'descriptor',
+  'json',
+  'wallet_export',
+  'bluewallet_text',
+  'coldcard',
+] as const;
+export const WALLET_IMPORT_WALLET_TYPE_VALUES = ['single_sig', 'multi_sig'] as const;
+export const WALLET_IMPORT_SCRIPT_TYPE_VALUES = ['native_segwit', 'nested_segwit', 'taproot', 'legacy'] as const;
+export const WALLET_IMPORT_NETWORK_VALUES = ['mainnet', 'testnet', 'regtest'] as const;
+
 export interface DeviceResolution {
   fingerprint: string;
   xpub: string;
@@ -20,8 +31,8 @@ export interface DeviceResolution {
 export interface ImportValidationResult {
   valid: boolean;
   error?: string;
-  format: 'descriptor' | 'json' | 'wallet_export' | 'bluewallet_text' | 'coldcard';
-  walletType: 'single_sig' | 'multi_sig';
+  format: (typeof WALLET_IMPORT_FORMAT_VALUES)[number];
+  walletType: (typeof WALLET_IMPORT_WALLET_TYPE_VALUES)[number];
   scriptType: ScriptType;
   network: Network;
   quorum?: number;
