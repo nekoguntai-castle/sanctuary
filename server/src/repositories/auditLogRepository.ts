@@ -54,6 +54,24 @@ export interface PaginationOptions {
   offset?: number;
 }
 
+type AuditLogDateRangeFilter = Pick<AuditLogFilter, 'startDate' | 'endDate'>;
+
+function buildDateRangeWhere(filter: AuditLogDateRangeFilter = {}): Prisma.AuditLogWhereInput {
+  const where: Prisma.AuditLogWhereInput = {};
+
+  if (filter.startDate || filter.endDate) {
+    where.createdAt = {};
+    if (filter.startDate) {
+      where.createdAt.gte = filter.startDate;
+    }
+    if (filter.endDate) {
+      where.createdAt.lte = filter.endDate;
+    }
+  }
+
+  return where;
+}
+
 /**
  * Create an audit log entry
  */
@@ -100,22 +118,14 @@ export async function findMany(
   if (filter.success !== undefined) {
     where.success = filter.success;
   }
-  if (filter.startDate || filter.endDate) {
-    where.createdAt = {};
-    if (filter.startDate) {
-      where.createdAt.gte = filter.startDate;
-    }
-    if (filter.endDate) {
-      where.createdAt.lte = filter.endDate;
-    }
-  }
+  Object.assign(where, buildDateRangeWhere(filter));
 
   const [logs, total] = await Promise.all([
     prisma.auditLog.findMany({
       where,
       orderBy: { createdAt: 'desc' },
-      take: pagination.limit || 50,
-      skip: pagination.offset || 0,
+      take: pagination.limit ?? 50,
+      skip: pagination.offset ?? 0,
     }),
     prisma.auditLog.count({ where }),
   ]);
@@ -180,9 +190,11 @@ export async function findRecent(limit: number = 100): Promise<AuditLog[]> {
 /**
  * Count audit logs by action type
  */
-export async function countByAction(): Promise<Record<string, number>> {
+export async function countByAction(filter: AuditLogDateRangeFilter = {}): Promise<Record<string, number>> {
+  const where = buildDateRangeWhere(filter);
   const results = await prisma.auditLog.groupBy({
     by: ['action'],
+    ...(Object.keys(where).length > 0 ? { where } : {}),
     _count: { action: true },
   });
 
@@ -196,9 +208,11 @@ export async function countByAction(): Promise<Record<string, number>> {
 /**
  * Count audit logs by category
  */
-export async function countByCategory(): Promise<Record<string, number>> {
+export async function countByCategory(filter: AuditLogDateRangeFilter = {}): Promise<Record<string, number>> {
+  const where = buildDateRangeWhere(filter);
   const results = await prisma.auditLog.groupBy({
     by: ['category'],
+    ...(Object.keys(where).length > 0 ? { where } : {}),
     _count: { category: true },
   });
 

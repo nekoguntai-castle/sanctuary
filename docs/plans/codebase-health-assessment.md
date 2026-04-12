@@ -205,6 +205,7 @@ Completed in the first Phase 1 slice:
 - Added OpenAPI coverage for wallet vault-policy event listing, evaluation preview, CRUD, address allow/deny-list management, draft approval listing/voting, and owner override endpoints, with policy and vote enum values reused from the vault-policy type module.
 - Added OpenAPI coverage for admin version, settings, and feature flag endpoints. The version endpoint remains unauthenticated in the spec, the settings response schema omits `smtp.password` while allowing password updates, and feature flag key enums reuse the service definition module.
 - Added OpenAPI coverage for admin audit-log listing and statistics endpoints. The audit-log username filter now flows through the audit service and repository instead of being silently dropped before query execution.
+- Fixed admin audit-log statistics so `byCategory` and `byAction` aggregates use the same requested day window as `totalEvents` and `failedEvents`, and preserved explicit `limit: 0` count-only repository queries instead of expanding them to the default page size.
 
 Remaining Phase 1 work:
 
@@ -355,6 +356,7 @@ The latest Phase 1 wallet Telegram/Autopilot OpenAPI coverage rerun passed `serv
 The latest Phase 1 wallet policy/approval OpenAPI coverage rerun passed `server/tests/unit/api/openapi.test.ts` (23 tests), `server/tests/unit/api/wallets-policies-routes.test.ts` (60 tests), `server/tests/unit/api/wallets-approvals-routes.test.ts` (24 tests), and `cd server && npm run build`.
 The latest Phase 1 admin core OpenAPI coverage rerun passed `server/tests/unit/api/openapi.test.ts` (24 tests), `server/tests/unit/api/admin-version-routes.test.ts` (6 tests), `server/tests/unit/api/admin-features-routes.test.ts` (28 tests), `server/tests/unit/api/admin-routes.test.ts` (57 tests), and `cd server && npm run build`.
 The latest Phase 1 admin audit-log OpenAPI/filter coverage rerun passed `server/tests/unit/api/openapi.test.ts` (25 tests), `server/tests/unit/api/admin-routes.test.ts` (58 tests), `server/tests/unit/services/auditService.test.ts` (38 tests), `server/tests/unit/repositories/auditLogRepository.test.ts` (34 tests), and `cd server && npm run build`.
+The latest Phase 1 admin audit-stats consistency rerun passed `server/tests/unit/services/auditService.test.ts` (38 tests), `server/tests/unit/repositories/auditLogRepository.test.ts` (37 tests), and `cd server && npm run build`.
 ```
 
 Not run in this refresh:

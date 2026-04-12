@@ -277,6 +277,20 @@ describe('Audit Log Repository', () => {
       });
     });
 
+    it('should preserve zero limit for count-only queries', async () => {
+      (prisma.auditLog.findMany as Mock).mockResolvedValue([]);
+      (prisma.auditLog.count as Mock).mockResolvedValue(100);
+
+      await auditLogRepository.findMany({}, { limit: 0 });
+
+      expect(prisma.auditLog.findMany).toHaveBeenCalledWith({
+        where: {},
+        orderBy: { createdAt: 'desc' },
+        take: 0,
+        skip: 0,
+      });
+    });
+
     it('should combine multiple filters', async () => {
       (prisma.auditLog.findMany as Mock).mockResolvedValue([mockAuditLog]);
       (prisma.auditLog.count as Mock).mockResolvedValue(1);
@@ -441,6 +455,21 @@ describe('Audit Log Repository', () => {
 
       expect(result).toEqual({});
     });
+
+    it('should count audit logs by action within a date range', async () => {
+      const startDate = new Date('2024-01-01');
+      (prisma.auditLog.groupBy as Mock).mockResolvedValue([
+        { action: 'login', _count: { action: 10 } },
+      ]);
+
+      await auditLogRepository.countByAction({ startDate });
+
+      expect(prisma.auditLog.groupBy).toHaveBeenCalledWith({
+        by: ['action'],
+        where: { createdAt: { gte: startDate } },
+        _count: { action: true },
+      });
+    });
   });
 
   describe('countByCategory', () => {
@@ -466,6 +495,21 @@ describe('Audit Log Repository', () => {
       const result = await auditLogRepository.countByCategory();
 
       expect(result).toEqual({});
+    });
+
+    it('should count audit logs by category within a date range', async () => {
+      const startDate = new Date('2024-01-01');
+      (prisma.auditLog.groupBy as Mock).mockResolvedValue([
+        { category: 'auth', _count: { category: 10 } },
+      ]);
+
+      await auditLogRepository.countByCategory({ startDate });
+
+      expect(prisma.auditLog.groupBy).toHaveBeenCalledWith({
+        by: ['category'],
+        where: { createdAt: { gte: startDate } },
+        _count: { category: true },
+      });
     });
   });
 

@@ -333,8 +333,8 @@ class AuditService {
     const [allResult, failedResult, byCategory, byAction] = await Promise.all([
       auditLogRepository.findMany({ startDate: since }, { limit: 0 }),
       auditLogRepository.findMany({ startDate: since, success: false }, { limit: 0 }),
-      auditLogRepository.countByCategory(),
-      auditLogRepository.countByAction(),
+      auditLogRepository.countByCategory({ startDate: since }),
+      auditLogRepository.countByAction({ startDate: since }),
     ]);
 
     return {

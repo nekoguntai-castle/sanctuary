@@ -24,8 +24,8 @@ vi.mock('../../../src/repositories', () => ({
     findByCategory: vi.fn(),
     findFailedActions: vi.fn(),
     findRecent: vi.fn(),
-    countByCategory: () => mockCountByCategory(),
-    countByAction: () => mockCountByAction(),
+    countByCategory: (...args: unknown[]) => mockCountByCategory(...args),
+    countByAction: (...args: unknown[]) => mockCountByAction(...args),
     deleteOlderThan: (...args: unknown[]) => mockDeleteOlderThan(...args),
     logSuccess: vi.fn(),
     logFailure: vi.fn(),
@@ -446,6 +446,8 @@ describe('Audit Service', () => {
         auth: 500,
         wallet: 300,
       });
+      expect(mockCountByCategory).toHaveBeenCalledWith({ startDate: expect.any(Date) });
+      expect(mockCountByAction).toHaveBeenCalledWith({ startDate: expect.any(Date) });
     });
 
     it('should count failed events', async () => {
