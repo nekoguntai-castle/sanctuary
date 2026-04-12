@@ -8,8 +8,9 @@
 import prisma from '../models/prisma';
 import type { WalletUser, GroupMember } from '../generated/prisma/client';
 import { invalidateWalletAccessCache } from '../services/accessControl';
+import type { WalletShareRole } from '../services/wallet/types';
 
-type WalletRole = 'owner' | 'signer' | 'viewer';
+type WalletUserRole = 'owner' | WalletShareRole;
 
 /**
  * Find wallet user access record
@@ -29,7 +30,7 @@ export async function findWalletUser(
 export async function addUserToWallet(
   walletId: string,
   userId: string,
-  role: WalletRole
+  role: WalletUserRole
 ): Promise<WalletUser> {
   const result = await prisma.walletUser.create({
     data: { walletId, userId, role },
@@ -44,7 +45,7 @@ export async function addUserToWallet(
  */
 export async function updateUserRole(
   walletUserId: string,
-  role: WalletRole
+  role: WalletUserRole
 ): Promise<WalletUser> {
   const result = await prisma.walletUser.update({
     where: { id: walletUserId },

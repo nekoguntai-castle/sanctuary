@@ -25,6 +25,10 @@ import {
   AI_QUERY_RESULT_TYPES,
   AI_QUERY_SORT_ORDERS,
 } from '../../../src/services/ai/types';
+import {
+  WALLET_ROLE_VALUES,
+  WALLET_SHARE_ROLE_VALUES,
+} from '../../../src/services/wallet/types';
 
 type HandlerResponse = {
   statusCode: number;
@@ -103,6 +107,45 @@ describe('OpenAPI Docs', () => {
     expect(deleteResponses).toHaveProperty('204');
     expect(deleteResponses).not.toHaveProperty('200');
     expect(deleteResponses[204]).not.toHaveProperty('content');
+  });
+
+  it('documents wallet sharing routes', () => {
+    const routes: Array<[OpenApiPathKey, string]> = [
+      ['/wallets/{walletId}/share', 'get'],
+      ['/wallets/{walletId}/share/group', 'post'],
+      ['/wallets/{walletId}/share/user', 'post'],
+      ['/wallets/{walletId}/share/user/{targetUserId}', 'delete'],
+    ];
+
+    for (const [path, method] of routes) {
+      expectDocumentedMethod(path, method);
+    }
+
+    expect(openApiSpec.components.schemas.Wallet.properties.role.enum).toEqual([...WALLET_ROLE_VALUES]);
+    expect(openApiSpec.components.schemas.WalletShareRole.enum).toEqual([...WALLET_SHARE_ROLE_VALUES]);
+    expect(openApiSpec.components.schemas.WalletShareUserRequest.required).toEqual(['targetUserId']);
+    expect(openApiSpec.components.schemas.WalletShareUserRequest.properties.role).toEqual({
+      $ref: '#/components/schemas/WalletShareRole',
+    });
+    expect(openApiSpec.components.schemas.WalletShareGroupRequest.properties.groupId).toMatchObject({
+      nullable: true,
+    });
+    expect(openApiSpec.components.schemas.WalletSharedUser.properties.role.enum).toEqual([
+      ...WALLET_ROLE_VALUES,
+    ]);
+
+    expect(openApiSpec.paths['/wallets/{walletId}/share/user'].post.responses[201].content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/WalletShareUserResponse',
+      });
+    expect(openApiSpec.paths['/wallets/{walletId}/share/user'].post.responses[200].content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/WalletShareUserResponse',
+      });
+    expect(openApiSpec.paths['/wallets/{walletId}/share'].get.responses[200].content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/WalletSharingInfo',
+      });
   });
 
   it('documents implemented device item routes', () => {

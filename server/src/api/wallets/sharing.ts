@@ -10,8 +10,16 @@ import { asyncHandler } from '../../errors/errorHandler';
 import { InvalidInputError, NotFoundError, ForbiddenError } from '../../errors/ApiError';
 import { userRepository, walletSharingRepository } from '../../repositories';
 import { getDevicesToShareForWallet } from '../../services/deviceAccess';
+import {
+  WALLET_SHARE_ROLE_VALUES,
+  type WalletShareRole,
+} from '../../services/wallet/types';
 
 const router = Router();
+
+function isWalletShareRole(role: unknown): role is WalletShareRole {
+  return typeof role === 'string' && WALLET_SHARE_ROLE_VALUES.includes(role as WalletShareRole);
+}
 
 /**
  * POST /api/v1/wallets/:id/share/group
@@ -23,7 +31,7 @@ router.post('/:id/share/group', requireWalletAccess('owner'), asyncHandler(async
   const { groupId, role = 'viewer' } = req.body;
 
   // Validate role
-  if (role && !['viewer', 'signer', 'approver'].includes(role)) {
+  if (role && !isWalletShareRole(role)) {
     throw new InvalidInputError('Invalid role. Must be viewer, signer, or approver');
   }
 
@@ -59,7 +67,7 @@ router.post('/:id/share/user', requireWalletAccess('owner'), asyncHandler(async 
     throw new InvalidInputError('targetUserId is required');
   }
 
-  if (!['viewer', 'signer', 'approver'].includes(role)) {
+  if (!isWalletShareRole(role)) {
     throw new InvalidInputError('role must be viewer, signer, or approver');
   }
 

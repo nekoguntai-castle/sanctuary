@@ -16,6 +16,8 @@
  * ```
  */
 
+import { WALLET_ROLE_VALUES } from '../../src/services/wallet/types';
+
 // =============================================================================
 // Types
 // =============================================================================
@@ -69,7 +71,7 @@ function isBigIntString(value: unknown): boolean {
 const WALLET_TYPES = ['single_sig', 'multi_sig'] as const;
 const SCRIPT_TYPES = ['native_segwit', 'nested_segwit', 'taproot', 'legacy'] as const;
 const NETWORKS = ['mainnet', 'testnet', 'regtest', 'signet'] as const;
-const WALLET_ROLES = ['owner', 'signer', 'viewer'] as const;
+const WALLET_ROLES = WALLET_ROLE_VALUES;
 const DEVICE_ROLES = ['owner', 'viewer'] as const;
 const SYNC_STATUSES = ['synced', 'syncing', 'error', 'pending', 'never'] as const;
 const TX_TYPES = ['sent', 'received', 'self', 'consolidation'] as const;

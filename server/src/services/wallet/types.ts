@@ -7,7 +7,11 @@
 /**
  * User's role for a specific wallet
  */
-export type WalletRole = 'owner' | 'approver' | 'signer' | 'viewer' | null;
+export const WALLET_ROLE_VALUES = ['owner', 'approver', 'signer', 'viewer'] as const;
+export const WALLET_SHARE_ROLE_VALUES = ['viewer', 'signer', 'approver'] as const;
+
+export type WalletRole = (typeof WALLET_ROLE_VALUES)[number] | null;
+export type WalletShareRole = (typeof WALLET_SHARE_ROLE_VALUES)[number];
 
 /**
  * Result of checking wallet access with edit permission
