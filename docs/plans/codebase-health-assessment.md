@@ -2,7 +2,7 @@
 
 Date: 2026-04-11 (Pacific/Honolulu)
 Owner: TBD
-Status: Phase 1 contract checkpoint complete; Phase 2 operations work is next
+Status: Phase 3 scalability/performance work in progress; Phase 4 is not started
 
 ## Scope
 
@@ -12,6 +12,7 @@ Inputs used:
 
 - Static review of the React/Vite frontend, Express backend, mobile gateway, AI proxy, Docker deployment, monitoring stack, route contracts, and tests.
 - Existing coverage artifacts in `coverage/`, `server/coverage/`, and `gateway/coverage/`.
+- Phase 3 local smoke benchmark record in `docs/plans/phase3-benchmark-2026-04-12T04-00-40-678Z.md`.
 - Targeted build and typecheck checks:
   - `cd server && npm run build` passed.
   - `cd gateway && npm run build` passed.
@@ -20,8 +21,8 @@ Inputs used:
 Not performed:
 
 - Full unit/integration/e2e suite rerun.
-- Load testing.
-- Live Docker or monitoring stack exercise.
+- Production-like load testing beyond the Phase 3 smoke harness.
+- Monitoring stack exercise.
 - Production log, incident, or runtime metric review.
 
 ## Executive Summary
@@ -184,7 +185,7 @@ Remaining Phase 1 work:
 
 ## Phase 2 Start Notes
 
-Status: **Started as of 2026-04-11**
+Status: **In progress as of 2026-04-12**
 
 Completed in the first Phase 2 slice:
 
@@ -197,6 +198,25 @@ Remaining Phase 2 work:
 - Run and record a real backup/restore drill against a non-production database.
 - Exercise the monitoring stack locally and capture any environment-specific runbook adjustments.
 - Add durable alert receiver configuration once production notification channels are chosen.
+
+## Phase 3 Start Notes
+
+Status: **In progress as of 2026-04-12**
+
+Completed so far:
+
+- Added `docs/SCALABILITY_AND_PERFORMANCE.md` with the current supported scale-out topology, component replication boundaries, required metrics, initial p95/p99 gates, and a benchmark run record template.
+- Documented that backend and gateway replicas are the safer first scale-out targets, while worker replicas require non-production validation of recurring job ownership, distributed locks, and Electrum subscriptions before production use.
+- Mapped existing Prometheus metrics and dashboards to the Phase 3 benchmark scenarios for HTTP APIs, database queries, wallet sync, worker queues, WebSocket fanout, Electrum pool behavior, cache behavior, and backup/restore.
+- Added `npm run perf:phase3`, a dependency-free benchmark harness that records Markdown and JSON run evidence under `docs/plans/`.
+- Recorded the first unauthenticated local smoke run in `docs/plans/phase3-benchmark-2026-04-12T04-00-40-678Z.md`. Frontend health, API health, gateway health, and WebSocket protocol readiness passed; authenticated wallet list, large wallet transaction history, wallet sync queueing, backup validation, and restore were skipped because no operator token, wallet ID, or backup file was provided.
+- Explicitly kept production worker scale-out unsupported until a non-production worker scale-out smoke test proves recurring ownership, distributed locks, and Electrum subscriptions are safe.
+
+Remaining Phase 3 work:
+
+- Run and record authenticated benchmark results for wallet sync, large wallet transaction history, WebSocket fanout with subscriptions/events, backup validation, backup restore in non-production, and worker queue processing.
+- Calibrate the scripted benchmark harness with realistic dataset size, request counts, concurrency, and strict release thresholds after the first authenticated run.
+- Validate backend scale-out with at least two backend instances and Redis-backed WebSocket broadcast delivery.
 
 ## Strengths To Preserve
 

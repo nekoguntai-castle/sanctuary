@@ -30,6 +30,7 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
     "test:hygiene": "node scripts/test-hygiene.mjs",
+    "perf:phase3": "node scripts/perf/phase3-benchmark.mjs",
     "typecheck": "npm run typecheck:app",
     "typecheck:app": "tsc --noEmit -p tsconfig.app.json --noUnusedLocals --noUnusedParameters",
     "typecheck:tests": "tsc --noEmit -p tsconfig.tests.json --noUnusedLocals --noUnusedParameters",

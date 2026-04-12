@@ -1,0 +1,158 @@
+{
+  "runId": "2026-04-12T04-00-40-678Z",
+  "timestamp": "2026-04-12T04:00:40.678Z",
+  "commit": "75710c5a",
+  "environment": {
+    "apiBaseUrl": "https://127.0.0.1:8443",
+    "gatewayBaseUrl": "https://127.0.0.1:4000",
+    "wsUrl": "wss://127.0.0.1:8443/ws",
+    "requestCount": 20,
+    "concurrency": 4,
+    "wsClients": 5,
+    "timeoutMs": 15000,
+    "insecureTls": true,
+    "authenticatedHttp": false,
+    "adminBackupInput": false,
+    "allowRestore": false
+  },
+  "notes": [
+    {
+      "type": "health",
+      "status": "degraded",
+      "components": {
+        "database": "healthy",
+        "redis": "healthy",
+        "electrum": "healthy",
+        "websocket": "healthy",
+        "sync": "healthy",
+        "jobQueue": "healthy",
+        "cacheInvalidation": "healthy",
+        "startup": "healthy",
+        "circuitBreakers": "degraded",
+        "memory": "healthy",
+        "disk": "healthy"
+      }
+    }
+  ],
+  "scenarios": [
+    {
+      "name": "frontend health",
+      "kind": "http",
+      "method": "GET",
+      "url": "https://127.0.0.1:8443/health",
+      "status": "passed",
+      "requests": 20,
+      "successes": 20,
+      "errors": 0,
+      "expectedStatuses": [
+        200
+      ],
+      "statusCounts": {
+        "200": 20
+      },
+      "latency": {
+        "minMs": 0.85,
+        "p50Ms": 2.18,
+        "p95Ms": 14.85,
+        "p99Ms": 26.92,
+        "maxMs": 29.93
+      },
+      "failures": []
+    },
+    {
+      "name": "api health",
+      "kind": "http",
+      "method": "GET",
+      "url": "https://127.0.0.1:8443/api/v1/health",
+      "status": "passed",
+      "requests": 20,
+      "successes": 20,
+      "errors": 0,
+      "expectedStatuses": [
+        200,
+        503
+      ],
+      "statusCounts": {
+        "200": 20
+      },
+      "latency": {
+        "minMs": 1.92,
+        "p50Ms": 4.09,
+        "p95Ms": 7.54,
+        "p99Ms": 9.27,
+        "maxMs": 9.71
+      },
+      "failures": []
+    },
+    {
+      "name": "gateway health",
+      "kind": "http",
+      "method": "GET",
+      "url": "https://127.0.0.1:4000/health",
+      "status": "passed",
+      "requests": 10,
+      "successes": 10,
+      "errors": 0,
+      "expectedStatuses": [
+        200
+      ],
+      "statusCounts": {
+        "200": 10
+      },
+      "latency": {
+        "minMs": 0.72,
+        "p50Ms": 2.79,
+        "p95Ms": 10.03,
+        "p99Ms": 10.24,
+        "maxMs": 10.29
+      },
+      "failures": []
+    },
+    {
+      "name": "websocket handshake",
+      "kind": "websocket",
+      "url": "wss://127.0.0.1:8443/ws",
+      "status": "passed",
+      "requests": 5,
+      "successes": 5,
+      "errors": 0,
+      "latency": {
+        "minMs": 1.96,
+        "p50Ms": 2.11,
+        "p95Ms": 2.36,
+        "p99Ms": 2.39,
+        "maxMs": 2.39
+      },
+      "messages": [
+        "connected",
+        "connected",
+        "connected",
+        "connected",
+        "connected"
+      ],
+      "failures": []
+    }
+  ],
+  "skipped": [
+    {
+      "name": "wallet list",
+      "reason": "SANCTUARY_TOKEN was not provided"
+    },
+    {
+      "name": "large wallet transaction history",
+      "reason": "SANCTUARY_TOKEN and SANCTUARY_WALLET_ID are required"
+    },
+    {
+      "name": "wallet sync queue",
+      "reason": "SANCTUARY_TOKEN and SANCTUARY_WALLET_ID are required"
+    },
+    {
+      "name": "backup validate",
+      "reason": "SANCTUARY_ADMIN_TOKEN and SANCTUARY_BACKUP_FILE are required"
+    },
+    {
+      "name": "backup restore",
+      "reason": "SANCTUARY_ADMIN_TOKEN, SANCTUARY_BACKUP_FILE, and SANCTUARY_ALLOW_RESTORE=true are required"
+    }
+  ]
+}
