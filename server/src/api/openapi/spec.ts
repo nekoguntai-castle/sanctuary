@@ -22,6 +22,7 @@ import { intelligenceSchemas } from './schemas/intelligence';
 import { aiSchemas } from './schemas/ai';
 import { adminSchemas } from './schemas/admin';
 import { healthSchemas } from './schemas/health';
+import { internalSchemas } from './schemas/internal';
 
 // Paths
 import { authPaths } from './paths/auth';
@@ -45,6 +46,7 @@ import { intelligencePaths } from './paths/intelligence';
 import { aiPaths } from './paths/ai';
 import { adminPaths } from './paths/admin';
 import { healthPaths } from './paths/health';
+import { internalPaths } from './paths/internal';
 
 export const openApiSpec = {
   openapi: '3.0.3',
@@ -84,6 +86,7 @@ export const openApiSpec = {
     { name: 'AI', description: 'AI assistant features and model management' },
     { name: 'Admin', description: 'Administrative operations' },
     { name: 'Health', description: 'Health, readiness, and circuit breaker status' },
+    { name: 'Internal', description: 'Root-mounted gateway and AI container contracts' },
   ],
   paths: {
     ...healthPaths,
@@ -109,6 +112,7 @@ export const openApiSpec = {
     ...intelligencePaths,
     ...aiPaths,
     ...adminPaths,
+    ...internalPaths,
   },
   components: {
     securitySchemes: {
@@ -116,6 +120,18 @@ export const openApiSpec = {
         type: 'http',
         scheme: 'bearer',
         bearerFormat: 'JWT',
+      },
+      gatewaySignature: {
+        type: 'apiKey',
+        in: 'header',
+        name: 'X-Gateway-Signature',
+        description: 'SEC-002 HMAC-SHA256 signature over method, full path, timestamp, and body hash.',
+      },
+      gatewayTimestamp: {
+        type: 'apiKey',
+        in: 'header',
+        name: 'X-Gateway-Timestamp',
+        description: 'Unix millisecond timestamp accepted within the gateway replay window.',
       },
     },
     schemas: {
@@ -137,6 +153,7 @@ export const openApiSpec = {
       ...aiSchemas,
       ...adminSchemas,
       ...healthSchemas,
+      ...internalSchemas,
     },
   },
 };
