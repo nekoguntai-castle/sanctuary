@@ -34,6 +34,7 @@ This document records the checks that should protect the A-grade engineering goa
 These gates are required before the scalability/performance domain can move to A:
 
 - Authenticated wallet list, large-wallet transaction history, and wallet sync queue benchmarks with `SANCTUARY_TOKEN` and `SANCTUARY_WALLET_ID`.
+- Local auto-provisioned smoke runs with `SANCTUARY_BENCHMARK_PROVISION=true` are useful for endpoint coverage, but they do not replace representative large-wallet evidence.
 - Backup validation, and restore only in a restore-safe environment, with `SANCTUARY_ADMIN_TOKEN`, `SANCTUARY_BACKUP_FILE`, and `SANCTUARY_ALLOW_RESTORE=true`.
 - WebSocket fanout with real subscriptions/events.
 - Worker queue processing under representative sync, notification, maintenance, autopilot, and intelligence jobs.

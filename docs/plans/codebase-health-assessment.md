@@ -210,17 +210,20 @@ Completed so far:
 - Mapped existing Prometheus metrics and dashboards to the Phase 3 benchmark scenarios for HTTP APIs, database queries, wallet sync, worker queues, WebSocket fanout, Electrum pool behavior, cache behavior, and backup/restore.
 - Added `npm run perf:phase3`, a dependency-free benchmark harness that records Markdown and JSON run evidence under `docs/plans/`.
 - Recorded the first unauthenticated local smoke run in `docs/plans/phase3-benchmark-2026-04-12T04-00-40-678Z.md`. Frontend health, API health, gateway health, and WebSocket protocol readiness passed; authenticated wallet list, large wallet transaction history, wallet sync queueing, backup validation, and restore were skipped because no operator token, wallet ID, or backup file was provided.
+- Added opt-in local fixture provisioning for the Phase 3 harness with `SANCTUARY_BENCHMARK_PROVISION=true`: the harness can log into a local seeded instance, create or reuse a testnet benchmark wallet, and optionally generate an in-memory backup with `SANCTUARY_BENCHMARK_CREATE_BACKUP=true`.
 - Explicitly kept production worker scale-out unsupported until a non-production worker scale-out smoke test proves recurring ownership, distributed locks, and Electrum subscriptions are safe.
 
 Remaining Phase 3 work:
 
 - Run and record authenticated benchmark results for wallet sync, large wallet transaction history, WebSocket fanout with subscriptions/events, backup validation, backup restore in non-production, and worker queue processing.
+- Record a local auto-provisioned smoke run, then separately record a representative large-wallet run because the local generated wallet proves end-to-end behavior but not scale characteristics.
 - Calibrate the scripted benchmark harness with realistic dataset size, request counts, concurrency, and strict release thresholds after the first authenticated run.
 - Validate backend scale-out with at least two backend instances and Redis-backed WebSocket broadcast delivery.
 
 Phase 3 action items carried forward while Phase 4 begins:
 
-- Obtain a non-production `SANCTUARY_TOKEN` and `SANCTUARY_WALLET_ID` for wallet list, transaction history, and wallet sync queue benchmarks.
+- Use `SANCTUARY_BENCHMARK_PROVISION=true` against a local seeded instance to capture wallet list, transaction history, wallet sync queue, and optional backup validation smoke evidence without manually obtaining a token and wallet ID.
+- Obtain a representative non-production `SANCTUARY_TOKEN` and `SANCTUARY_WALLET_ID` for large-wallet transaction history and wallet sync queue benchmarks.
 - Obtain a non-production `SANCTUARY_ADMIN_TOKEN` and representative `SANCTUARY_BACKUP_FILE` for backup validation, with `SANCTUARY_ALLOW_RESTORE=true` only in a restore-safe environment.
 - Stand up or identify two backend/WebSocket endpoints sharing Redis so the Redis-backed cross-instance WebSocket broadcast smoke test can be recorded.
 - Record the next benchmark output under `docs/plans/` and update this plan with the resulting p95/p99, failure rate, and go/no-go decision.

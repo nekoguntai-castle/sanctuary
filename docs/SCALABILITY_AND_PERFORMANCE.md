@@ -92,6 +92,16 @@ SANCTUARY_BACKUP_FILE=/path/to/backup.json \
 npm run perf:phase3
 ```
 
+For a local seeded instance, the harness can create or reuse a benchmark fixture instead of requiring a pre-collected token and wallet ID:
+
+```bash
+SANCTUARY_BENCHMARK_PROVISION=true npm run perf:phase3
+```
+
+Local fixture provisioning is intentionally limited to `localhost`, `127.0.0.1`, and `::1` API targets. It logs in with `admin` / `sanctuary` by default, unless `SANCTUARY_BENCHMARK_USERNAME` and `SANCTUARY_BENCHMARK_PASSWORD` are set, and creates or reuses a testnet wallet named `Phase 3 Benchmark Wallet`. Set `SANCTUARY_BENCHMARK_WALLET_NAME`, `SANCTUARY_BENCHMARK_WALLET_NETWORK`, or `SANCTUARY_BENCHMARK_WALLET_DESCRIPTOR` to override the fixture. Set `SANCTUARY_BENCHMARK_CREATE_BACKUP=true` to generate an in-memory backup for backup validation in the same run.
+
+The auto-provisioned local fixture is smoke evidence only. It is useful for proving the authenticated paths run end to end, but it does not replace the production-like large-wallet dataset needed for the final scalability/performance gate.
+
 Restore testing is destructive and remains opt-in:
 
 ```bash

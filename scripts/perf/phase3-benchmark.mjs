@@ -20,12 +20,20 @@ const requestCount = readPositiveInt(process.env.SANCTUARY_REQUESTS, DEFAULT_REQ
 const concurrency = readPositiveInt(process.env.SANCTUARY_CONCURRENCY, DEFAULT_CONCURRENCY);
 const wsClients = readPositiveInt(process.env.SANCTUARY_WS_CLIENTS, DEFAULT_WS_CLIENTS);
 const timeoutMs = readPositiveInt(process.env.SANCTUARY_TIMEOUT_MS, DEFAULT_TIMEOUT_MS);
-const token = process.env.SANCTUARY_TOKEN || '';
-const adminToken = process.env.SANCTUARY_ADMIN_TOKEN || token;
-const walletId = process.env.SANCTUARY_WALLET_ID || '';
+let token = process.env.SANCTUARY_TOKEN || '';
+let adminToken = process.env.SANCTUARY_ADMIN_TOKEN || token;
+let walletId = process.env.SANCTUARY_WALLET_ID || '';
 const backupFile = process.env.SANCTUARY_BACKUP_FILE || '';
 const allowRestore = process.env.SANCTUARY_ALLOW_RESTORE === 'true';
 const strictMode = process.env.SANCTUARY_BENCHMARK_STRICT === 'true';
+const provisionLocalFixture = process.env.SANCTUARY_BENCHMARK_PROVISION === 'true';
+const createBenchmarkBackup = process.env.SANCTUARY_BENCHMARK_CREATE_BACKUP === 'true';
+const benchmarkUsername = process.env.SANCTUARY_BENCHMARK_USERNAME || 'admin';
+const benchmarkPassword = process.env.SANCTUARY_BENCHMARK_PASSWORD || 'sanctuary';
+const benchmarkWalletName = process.env.SANCTUARY_BENCHMARK_WALLET_NAME || 'Phase 3 Benchmark Wallet';
+const benchmarkWalletNetwork = process.env.SANCTUARY_BENCHMARK_WALLET_NETWORK || 'testnet';
+const benchmarkWalletDescriptor = process.env.SANCTUARY_BENCHMARK_WALLET_DESCRIPTOR
+  || "wpkh([aabbccdd/84'/1'/0']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*)";
 
 if (shouldAllowInsecureTls(apiBaseUrl, gatewayBaseUrl)) {
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
@@ -38,6 +46,13 @@ const commit = readCommit();
 const notes = [];
 const scenarios = [];
 const skipped = [];
+const fixture = {
+  provisionRequested: provisionLocalFixture,
+  tokenSource: token ? 'environment' : null,
+  walletSource: walletId ? 'environment' : null,
+  backupSource: backupFile ? 'file' : null,
+};
+let generatedBackup = null;
 
 console.log(`Phase 3 benchmark run ${runId}`);
 console.log(`API: ${apiBaseUrl}`);
@@ -78,6 +93,10 @@ async function run() {
     captureBody: true,
   });
   recordHealthSnapshot(apiHealth);
+
+  if (provisionLocalFixture) {
+    await provisionBenchmarkFixture();
+  }
 
   await measureHttpScenario({
     name: 'gateway health',
@@ -127,8 +146,8 @@ async function run() {
     skipScenario('wallet sync queue', 'SANCTUARY_TOKEN and SANCTUARY_WALLET_ID are required');
   }
 
-  if (adminToken && backupFile) {
-    const backup = await readBackup(backupFile);
+  if (adminToken && (backupFile || generatedBackup)) {
+    const backup = generatedBackup || await readBackup(backupFile);
     await measureHttpScenario({
       name: 'backup validate',
       method: 'POST',
@@ -172,8 +191,10 @@ async function run() {
       timeoutMs,
       insecureTls: process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0',
       authenticatedHttp: Boolean(token),
-      adminBackupInput: Boolean(adminToken && backupFile),
+      adminBackupInput: Boolean(adminToken && (backupFile || generatedBackup)),
       allowRestore,
+      fixture,
+      datasetLabel: getDatasetLabel(),
     },
     notes,
     scenarios,
@@ -192,6 +213,156 @@ async function run() {
   if (strictMode && failedScenarios.length > 0) {
     console.error(`Strict mode failed: ${failedScenarios.map((scenario) => scenario.name).join(', ')}`);
     process.exitCode = 1;
+  }
+}
+
+async function provisionBenchmarkFixture() {
+  try {
+    assertLocalProvisionTarget();
+
+    if (!token) {
+      const login = await apiJson(`${apiBaseUrl}/api/v1/auth/login`, {
+        method: 'POST',
+        body: {
+          username: benchmarkUsername,
+          password: benchmarkPassword,
+        },
+      });
+
+      if (login && typeof login === 'object' && login.requires2FA) {
+        skipScenario('local fixture login', 'benchmark user requires 2FA; provide SANCTUARY_TOKEN instead');
+        return;
+      }
+
+      if (!login || typeof login !== 'object' || typeof login.token !== 'string') {
+        throw new Error('login response did not include an access token');
+      }
+
+      token = login.token;
+      fixture.tokenSource = 'local-login';
+      notes.push({
+        type: 'fixture',
+        action: 'login',
+        username: benchmarkUsername,
+        usingDefaultPassword: Boolean(login.user?.usingDefaultPassword),
+      });
+    }
+
+    if (!adminToken) {
+      adminToken = token;
+      fixture.adminTokenSource = fixture.tokenSource;
+    }
+
+    if (!walletId && token) {
+      walletId = await ensureBenchmarkWallet(token);
+    }
+
+    if (createBenchmarkBackup && !backupFile && !generatedBackup && adminToken) {
+      try {
+        generatedBackup = await apiJson(`${apiBaseUrl}/api/v1/admin/backup`, {
+          method: 'POST',
+          token: adminToken,
+          body: {
+            includeCache: false,
+            description: `Phase 3 benchmark fixture ${runId}`,
+          },
+        });
+        fixture.backupSource = 'local-admin-api';
+        notes.push({
+          type: 'fixture',
+          action: 'backup-create',
+          recordCounts: generatedBackup?.meta?.recordCounts || null,
+        });
+      } catch (error) {
+        const reason = getErrorMessage(error);
+        fixture.backupError = reason;
+        skipScenario('local fixture backup', reason);
+      }
+    }
+  } catch (error) {
+    const reason = getErrorMessage(error);
+    fixture.error = reason;
+    skipScenario('local fixture provisioning', reason);
+  }
+}
+
+async function ensureBenchmarkWallet(bearerToken) {
+  const wallets = await apiJson(`${apiBaseUrl}/api/v1/wallets`, {
+    method: 'GET',
+    token: bearerToken,
+  });
+  if (Array.isArray(wallets)) {
+    const existing = wallets.find((wallet) => wallet?.name === benchmarkWalletName);
+    if (existing?.id) {
+      fixture.walletSource = 'local-existing';
+      notes.push({
+        type: 'fixture',
+        action: 'wallet-reuse',
+        walletId: existing.id,
+        walletName: benchmarkWalletName,
+      });
+      return existing.id;
+    }
+  }
+
+  const wallet = await apiJson(`${apiBaseUrl}/api/v1/wallets`, {
+    method: 'POST',
+    token: bearerToken,
+    body: {
+      name: benchmarkWalletName,
+      type: 'single_sig',
+      scriptType: 'native_segwit',
+      network: benchmarkWalletNetwork,
+      descriptor: benchmarkWalletDescriptor,
+    },
+  }, [201]);
+
+  if (!wallet.id) {
+    throw new Error('wallet creation response did not include an id');
+  }
+
+  fixture.walletSource = 'local-created';
+  notes.push({
+    type: 'fixture',
+    action: 'wallet-create',
+    walletId: wallet.id,
+    walletName: wallet.name,
+    network: wallet.network,
+    addressCount: wallet.addressCount,
+  });
+  return wallet.id;
+}
+
+async function apiJson(url, options = {}, expectedStatuses = [200]) {
+  const headers = { Accept: 'application/json' };
+  let encodedBody;
+  if (options.body !== undefined) {
+    encodedBody = JSON.stringify(options.body);
+    headers['Content-Type'] = 'application/json';
+  }
+  if (options.token) {
+    headers.Authorization = `Bearer ${options.token}`;
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      method: options.method || 'GET',
+      headers,
+      body: encodedBody,
+      signal: controller.signal,
+    });
+    const text = await response.text();
+    const parsed = parseJson(text);
+
+    if (!expectedStatuses.includes(response.status)) {
+      throw new Error(`${options.method || 'GET'} ${sanitizeUrl(url)} returned ${response.status}: ${formatBodyForError(parsed)}`);
+    }
+
+    return parsed;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -455,7 +626,7 @@ function renderMarkdown(result) {
     `Commit: ${result.commit}`,
     `Environment: ${result.environment.apiBaseUrl}`,
     `Topology: single frontend/backend/gateway/worker stack unless noted externally`,
-    `Dataset: ${result.environment.authenticatedHttp ? 'operator-provided authenticated dataset' : 'unauthenticated smoke only'}`,
+    `Dataset: ${result.environment.datasetLabel}`,
     `Traffic shape: ${result.environment.requestCount} HTTP requests per default scenario at concurrency ${result.environment.concurrency}; ${result.environment.wsClients} WebSocket handshake clients`,
     '',
     '## Scenario Results',
@@ -484,6 +655,22 @@ function renderMarkdown(result) {
     for (const item of result.skipped) {
       lines.push(`- ${item.name}: ${item.reason}`);
     }
+  }
+
+  lines.push(
+    '',
+    '## Fixture',
+    '',
+    `Provision requested: ${result.environment.fixture.provisionRequested ? 'yes' : 'no'}`,
+    `Token source: ${result.environment.fixture.tokenSource || 'none'}`,
+    `Wallet source: ${result.environment.fixture.walletSource || 'none'}`,
+    `Backup source: ${result.environment.fixture.backupSource || 'none'}`
+  );
+  if (result.environment.fixture.error) {
+    lines.push(`Provision error: ${result.environment.fixture.error}`);
+  }
+  if (result.environment.fixture.backupError) {
+    lines.push(`Backup error: ${result.environment.fixture.backupError}`);
   }
 
   lines.push(
@@ -530,8 +717,40 @@ function shouldAllowInsecureTls(...urls) {
 
   return urls
     .filter(Boolean)
-    .map((value) => new URL(value))
-    .some((url) => ['127.0.0.1', 'localhost', '::1'].includes(url.hostname));
+    .some((value) => isLocalUrl(value));
+}
+
+function assertLocalProvisionTarget() {
+  if (!isLocalUrl(apiBaseUrl)) {
+    throw new Error('SANCTUARY_BENCHMARK_PROVISION=true is only allowed for localhost, 127.0.0.1, or ::1 API targets');
+  }
+}
+
+function getDatasetLabel() {
+  if (!token) {
+    return 'unauthenticated smoke only';
+  }
+
+  if (fixture.walletSource === 'local-created' || fixture.walletSource === 'local-existing') {
+    return 'local auto-provisioned benchmark fixture; not a large-wallet performance dataset';
+  }
+
+  if (provisionLocalFixture && !walletId) {
+    return 'authenticated local provisioning incomplete; wallet-dependent scenarios skipped';
+  }
+
+  return 'operator-provided authenticated dataset';
+}
+
+function formatBodyForError(body) {
+  if (body === null || body === undefined) return '';
+  const value = typeof body === 'string' ? body : JSON.stringify(body);
+  return value.length > 300 ? `${value.slice(0, 300)}...` : value;
+}
+
+function isLocalUrl(value) {
+  const hostname = new URL(value).hostname;
+  return ['127.0.0.1', 'localhost', '::1', '[::1]'].includes(hostname);
 }
 
 function trimTrailingSlash(value) {
