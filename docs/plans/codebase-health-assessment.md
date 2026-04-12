@@ -249,10 +249,15 @@ Completed in the second Phase 4 slice:
 - Fixed the validation middleware to safely replace getter-backed Express 5 query objects after parsing.
 - Added middleware coverage for getter-backed query validation and updated route coverage for structured validation errors.
 
+Completed in the third Phase 4 slice:
+
+- Added `docs/RELEASE_GATES.md` to map A-grade domains to required release checks.
+- Marked the Phase 3 performance and scale gate as pending operator evidence instead of treating skipped authenticated benchmarks as proof.
+- Documented that `npm run typecheck:tests` is advisory until its existing unused-symbol baseline is cleaned up.
+
 Remaining Phase 4 work:
 
 - Continue adopting centralized backend request validation as routes are touched.
-- Add release-gate documentation for the A-grade checks, with Phase 3 benchmark gates marked pending where they still need operator data.
 - Keep large-file cleanup opportunistic and tied to files already being changed.
 
 ## Strengths To Preserve
