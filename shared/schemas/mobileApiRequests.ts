@@ -44,6 +44,8 @@ export const MOBILE_API_REQUEST_LIMITS = {
 const feeRateMinimumMessage = `feeRate must be at least ${MOBILE_API_REQUEST_LIMITS.minFeeRate} sat/vB`;
 const transactionEstimateRequiredMessage = 'recipient, amount, and feeRate are required';
 const psbtRecipientRequiredMessage = 'Each recipient must have address and amount';
+const deviceRequiredMessage = 'type, label, and fingerprint are required';
+const deviceAccountRequiredMessage = 'Each account must have purpose, scriptType, derivationPath, and xpub';
 
 export const MobileLoginRequestSchema = z.object({
   username: z
@@ -260,16 +262,16 @@ export const MobilePsbtBroadcastRequestSchema = MobileTransactionMetadataSchema.
 });
 
 export const MobileDeviceAccountRequestSchema = z.object({
-  purpose: z.enum(MOBILE_DEVICE_ACCOUNT_PURPOSES),
-  scriptType: z.enum(MOBILE_DEVICE_SCRIPT_TYPES),
-  derivationPath: z.string().min(1),
-  xpub: z.string().min(1),
+  purpose: z.enum(MOBILE_DEVICE_ACCOUNT_PURPOSES, { message: deviceAccountRequiredMessage }),
+  scriptType: z.enum(MOBILE_DEVICE_SCRIPT_TYPES, { message: deviceAccountRequiredMessage }),
+  derivationPath: z.string({ message: deviceAccountRequiredMessage }).min(1, deviceAccountRequiredMessage),
+  xpub: z.string({ message: deviceAccountRequiredMessage }).min(1, deviceAccountRequiredMessage),
 });
 
 export const MobileCreateDeviceRequestSchema = z.object({
-  type: z.string().min(1),
-  label: z.string().min(1),
-  fingerprint: z.string().min(1),
+  type: z.string({ message: deviceRequiredMessage }).min(1, deviceRequiredMessage),
+  label: z.string({ message: deviceRequiredMessage }).min(1, deviceRequiredMessage),
+  fingerprint: z.string({ message: deviceRequiredMessage }).min(1, deviceRequiredMessage),
   xpub: z.string().min(1).optional(),
   derivationPath: z.string().min(1).optional(),
   modelSlug: z.string().min(1).optional(),

@@ -5,6 +5,7 @@
  */
 
 import { Router } from 'express';
+import type { ZodIssue, ZodType } from 'zod';
 import { requireDeviceAccess } from '../../middleware/deviceAccess';
 import { asyncHandler } from '../../errors/errorHandler';
 import { InvalidInputError, NotFoundError, ConflictError } from '../../errors/ApiError';
@@ -12,12 +13,30 @@ import { deviceRepository } from '../../repositories';
 import { getUserAccessibleDevices } from '../../services/deviceAccess';
 import { registerDevice } from '../../services/deviceRegistration';
 import { createLogger } from '../../utils/logger';
+import {
+  MobileCreateDeviceRequestSchema,
+  MobileUpdateDeviceRequestSchema,
+} from '../../../../shared/schemas/mobileApiRequests';
 
 const router = Router();
 const log = createLogger('DEVICE:ROUTE:CRUD');
 
 // Re-export for backward compatibility
 export type { DeviceAccountInput } from './accountConflicts';
+
+function formatDeviceIssue(issue: ZodIssue): string {
+  const path = issue.path.join('.');
+  return path ? `${path}: ${issue.message}` : issue.message;
+}
+
+function parseDeviceRequestBody<T>(schema: ZodType<T>, body: unknown): T {
+  const result = schema.safeParse(body);
+  if (result.success) {
+    return result.data;
+  }
+
+  throw new InvalidInputError(result.error.issues.map(formatDeviceIssue).join(', '));
+}
 
 /**
  * GET /api/v1/devices
@@ -47,7 +66,8 @@ router.get('/', asyncHandler(async (req, res) => {
  */
 router.post('/', asyncHandler(async (req, res) => {
   const userId = req.user!.userId;
-  const result = await registerDevice(userId, req.body);
+  const request = parseDeviceRequestBody(MobileCreateDeviceRequestSchema, req.body);
+  const result = await registerDevice(userId, request);
 
   if (result.kind === 'created') {
     return res.status(201).json(result.device);
@@ -113,7 +133,10 @@ router.get('/:id', requireDeviceAccess('view'), asyncHandler(async (req, res) =>
 router.patch('/:id', requireDeviceAccess('owner'), asyncHandler(async (req, res) => {
   const userId = req.user!.userId;
   const { id } = req.params;
-  const { label, derivationPath, type, modelSlug } = req.body;
+  const { label, derivationPath, type, modelSlug } = parseDeviceRequestBody(
+    MobileUpdateDeviceRequestSchema,
+    req.body
+  );
 
   // Build update data
   const updateData: Record<string, unknown> = {};
