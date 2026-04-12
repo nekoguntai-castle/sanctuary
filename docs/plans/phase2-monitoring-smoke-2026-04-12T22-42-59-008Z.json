@@ -1,0 +1,205 @@
+{
+  "startedAt": "2026-04-12T22:42:59.008Z",
+  "finishedAt": "2026-04-12T22:43:01.138Z",
+  "passed": true,
+  "endpoints": {
+    "grafana": "http://127.0.0.1:13000",
+    "prometheus": "http://127.0.0.1:19090",
+    "alertmanager": "http://127.0.0.1:19093",
+    "jaeger": "http://127.0.0.1:16687",
+    "loki": "http://127.0.0.1:13100"
+  },
+  "checks": [
+    {
+      "service": "grafana",
+      "name": "health",
+      "url": "http://127.0.0.1:13000/api/health",
+      "passed": true,
+      "status": 200,
+      "summary": "version=10.2.0 database=ok"
+    },
+    {
+      "service": "prometheus",
+      "name": "health",
+      "url": "http://127.0.0.1:19090/-/healthy",
+      "passed": true,
+      "status": 200,
+      "summary": "Prometheus Server is Healthy."
+    },
+    {
+      "service": "prometheus",
+      "name": "alert rules loaded",
+      "url": "http://127.0.0.1:19090/api/v1/rules",
+      "passed": true,
+      "status": 200,
+      "summary": "5 rule groups: sanctuary.http, sanctuary.infrastructure, sanctuary.sync, sanctuary.wallet, sanctuary.websocket"
+    },
+    {
+      "service": "alertmanager",
+      "name": "health",
+      "url": "http://127.0.0.1:19093/-/healthy",
+      "passed": true,
+      "status": 200,
+      "summary": "OK"
+    },
+    {
+      "service": "alertmanager",
+      "name": "status",
+      "url": "http://127.0.0.1:19093/api/v2/status",
+      "passed": true,
+      "status": 200,
+      "summary": "version=0.26.0"
+    },
+    {
+      "service": "jaeger",
+      "name": "services api",
+      "url": "http://127.0.0.1:16687/api/services",
+      "passed": true,
+      "status": 200,
+      "summary": "1 traced services visible"
+    },
+    {
+      "service": "loki",
+      "name": "ready",
+      "url": "http://127.0.0.1:13100/ready",
+      "passed": true,
+      "status": 200,
+      "summary": "ready"
+    }
+  ],
+  "containerHealth": [
+    {
+      "service": "grafana",
+      "container": "sanctuary-grafana",
+      "passed": true,
+      "running": true,
+      "healthStatus": "healthy",
+      "startedAt": "2026-04-12T18:54:38.535650789Z",
+      "summary": "running=true health=healthy"
+    },
+    {
+      "service": "prometheus",
+      "container": "sanctuary-prometheus",
+      "passed": true,
+      "running": true,
+      "healthStatus": "healthy",
+      "startedAt": "2026-04-12T18:54:38.356987708Z",
+      "summary": "running=true health=healthy"
+    },
+    {
+      "service": "alertmanager",
+      "container": "sanctuary-alertmanager",
+      "passed": true,
+      "running": true,
+      "healthStatus": "healthy",
+      "startedAt": "2026-04-12T18:54:38.360189211Z",
+      "summary": "running=true health=healthy"
+    },
+    {
+      "service": "jaeger",
+      "container": "sanctuary-jaeger",
+      "passed": true,
+      "running": true,
+      "healthStatus": "healthy",
+      "startedAt": "2026-04-12T18:54:38.354992346Z",
+      "summary": "running=true health=healthy"
+    },
+    {
+      "service": "loki",
+      "container": "sanctuary-loki",
+      "passed": true,
+      "running": true,
+      "healthStatus": "healthy",
+      "startedAt": "2026-04-12T18:54:38.359126402Z",
+      "summary": "running=true health=healthy"
+    },
+    {
+      "service": "promtail",
+      "container": "sanctuary-promtail",
+      "passed": true,
+      "running": true,
+      "healthStatus": "healthy",
+      "startedAt": "2026-04-12T20:07:57.230293317Z",
+      "summary": "running=true health=healthy"
+    }
+  ],
+  "runtimeLogChecks": [
+    {
+      "service": "promtail",
+      "container": "sanctuary-promtail",
+      "name": "Docker discovery compatibility",
+      "passed": true,
+      "window": "10m",
+      "summary": "no Promtail Docker discovery compatibility errors in recent logs (window=10m)",
+      "matchedPatterns": [],
+      "bytesRead": 1
+    },
+    {
+      "service": "promtail",
+      "container": "sanctuary-promtail",
+      "name": "Loki push path",
+      "passed": true,
+      "window": "10m",
+      "summary": "no Promtail-to-Loki push errors in recent logs (window=10m)",
+      "matchedPatterns": [],
+      "bytesRead": 1
+    }
+  ],
+  "portBindings": {
+    "passed": true,
+    "skipped": false,
+    "bindings": [
+      {
+        "service": "grafana",
+        "hostIp": "127.0.0.1",
+        "published": "13000",
+        "target": "3000",
+        "protocol": "tcp"
+      },
+      {
+        "service": "prometheus",
+        "hostIp": "127.0.0.1",
+        "published": "19090",
+        "target": "9090",
+        "protocol": "tcp"
+      },
+      {
+        "service": "alertmanager",
+        "hostIp": "127.0.0.1",
+        "published": "19093",
+        "target": "9093",
+        "protocol": "tcp"
+      },
+      {
+        "service": "jaeger",
+        "hostIp": "127.0.0.1",
+        "published": "16687",
+        "target": "16686",
+        "protocol": "tcp"
+      },
+      {
+        "service": "jaeger",
+        "hostIp": "127.0.0.1",
+        "published": "14317",
+        "target": "4317",
+        "protocol": "tcp"
+      },
+      {
+        "service": "jaeger",
+        "hostIp": "127.0.0.1",
+        "published": "14318",
+        "target": "4318",
+        "protocol": "tcp"
+      },
+      {
+        "service": "loki",
+        "hostIp": "127.0.0.1",
+        "published": "13100",
+        "target": "3100",
+        "protocol": "tcp"
+      }
+    ],
+    "unsafeBindings": [],
+    "summary": "all published monitoring ports bind to 127.0.0.1"
+  }
+}

@@ -26,7 +26,7 @@ This document records the checks that should protect the A-grade engineering goa
 | API/gateway contracts | Contract and drift-prone boundary tests | Targeted tests for gateway HMAC, WebSocket auth, mobile permission, request logging, body parsing, gateway whitelist, and new/touched schemas | Required when touched |
 | Dependency security | Production advisory review | `npm audit --omit=dev` in root and `server/`; `cd gateway && npm audit --omit=dev --omit=optional`; plus documented accepted findings | Required before release |
 | Container/install validation | Fresh install, install script, container health, auth flow | `.github/workflows/install-test.yml` release gate | Required for release candidates/releases |
-| Operations supportability | Runbook coverage and proof for backup/restore plus gateway audit persistence | `docs/OPERATIONS_RUNBOOKS.md` updated when alerts or operational flows change; `npm run test:ops:phase2` when backup/restore or gateway audit paths are touched | Required when touched |
+| Operations supportability | Runbook coverage and proof for backup/restore, gateway audit persistence, and monitoring stack behavior | `docs/OPERATIONS_RUNBOOKS.md` updated when alerts or operational flows change; `npm run test:ops:phase2` when backup/restore or gateway audit paths are touched; `npm run ops:monitoring:phase2` when monitoring Compose, Prometheus/Loki/Grafana/Jaeger/Alertmanager, or Promtail paths are touched | Required when touched |
 | Performance and scale | Phase 3 benchmark harness in strict mode | `SANCTUARY_BENCHMARK_STRICT=true npm run perf:phase3` with required scenario inputs | Pending operator evidence |
 
 ## Phase 3 Pending Evidence

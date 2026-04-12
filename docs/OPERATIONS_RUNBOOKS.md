@@ -1,15 +1,17 @@
 # Sanctuary Operations Runbooks
 
-Date: 2026-04-11 (Pacific/Honolulu)
-Status: Phase 2 operations baseline
+Date: 2026-04-12 (Pacific/Honolulu)
+Status: Phase 2 operations proof baseline
 
 This document maps the existing monitoring stack and alert rules to concrete triage steps. It intentionally starts with the alerts and failure modes already present in the repo instead of inventing new operational processes.
 
 ## Phase 2 Proof Records
 
 - 2026-04-12: `docs/plans/phase2-operations-proof-2026-04-12T08-44-39-1000.md` records a passing disposable PostgreSQL backup/restore drill and gateway audit persistence drill.
+- 2026-04-12: `docs/plans/phase2-monitoring-smoke-2026-04-12T22-42-59-008Z.md` records a passing local monitoring stack smoke with Grafana, Prometheus, Alertmanager, Jaeger, Loki, Promtail container health, Prometheus rule loading, Promtail runtime log checks, and loopback-only host port bindings.
 - Run repeatable local proof with `npm run test:ops:phase2`.
 - If local port `5433` is already allocated, run with an alternate host port, for example `TEST_POSTGRES_PORT=55433 npm run test:ops:phase2`.
+- Run repeatable monitoring proof with `npm run ops:monitoring:phase2` after starting the monitoring stack.
 
 ## Monitoring Exposure
 
@@ -31,6 +33,46 @@ Recommended remote access:
 - Prefer SSH tunnels or a private VPN.
 - If browser access is required, expose only Grafana through authenticated HTTPS and keep Prometheus, Alertmanager, Jaeger, Loki, and OTLP ingestion private.
 - Keep `GRAFANA_ANONYMOUS_ENABLED=false` for production.
+
+## Monitoring Stack Exercise
+
+Start the local monitoring stack before running the smoke:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d prometheus alertmanager grafana loki jaeger promtail
+npm run ops:monitoring:phase2
+```
+
+Use explicit loopback port overrides when defaults are already allocated. The 2026-04-12 smoke used this form because another local project already owned host port `3100`:
+
+```bash
+MONITORING_BIND_ADDR=127.0.0.1 \
+GRAFANA_PORT=13000 \
+PROMETHEUS_PORT=19090 \
+ALERTMANAGER_PORT=19093 \
+JAEGER_UI_PORT=16687 \
+JAEGER_OTLP_GRPC_PORT=14317 \
+JAEGER_OTLP_HTTP_PORT=14318 \
+LOKI_PORT=13100 \
+docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d prometheus alertmanager grafana loki jaeger promtail
+
+MONITORING_BIND_ADDR=127.0.0.1 \
+GRAFANA_PORT=13000 \
+PROMETHEUS_PORT=19090 \
+ALERTMANAGER_PORT=19093 \
+JAEGER_UI_PORT=16687 \
+JAEGER_OTLP_GRPC_PORT=14317 \
+JAEGER_OTLP_HTTP_PORT=14318 \
+LOKI_PORT=13100 \
+npm run ops:monitoring:phase2
+```
+
+Environment-specific adjustments captured in the 2026-04-12 drill:
+
+- `LOKI_PORT`, `JAEGER_OTLP_GRPC_PORT`, and `JAEGER_OTLP_HTTP_PORT` are configurable so the stack can be exercised without conflicting with other local services.
+- Promtail is pinned to `grafana/promtail:3.5.0`; `2.9.0` used an older Docker API client and failed against this host's Docker daemon.
+- Promtail health uses `/bin/promtail -config.file=/etc/promtail/config.yml -check-syntax` because the image does not include `wget`.
+- Promtail Docker discovery is filtered to `com.docker.compose.project=sanctuary`, and the pipeline adds `job=sanctuary` so local unrelated containers are not collected and Loki streams always have at least one label.
 
 ## First Checks
 

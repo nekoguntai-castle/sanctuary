@@ -12,62 +12,27 @@ clients:
   - url: http://loki:3100/loki/api/v1/push
 
 scrape_configs:
-  # Docker container logs
-  - job_name: containers
-    static_configs:
-      - targets:
-          - localhost
-        labels:
-          job: docker
-          __path__: /var/lib/docker/containers/*/*-json.log
-
-    pipeline_stages:
-      # Parse Docker JSON log format
-      - json:
-          expressions:
-            log: log
-            stream: stream
-            time: time
-
-      # Extract container info from filename
-      - regex:
-          source: filename
-          expression: '/var/lib/docker/containers/(?P<container_id>[^/]+)/.*-json.log'
-
-      # Add container name label
-      - labels:
-          container_id:
-
-      # Parse the log content
-      - output:
-          source: log
-
-      # Extract log level from Sanctuary logs
-      # Format: [2024-01-01T12:00:00.000Z] INFO [SERVER] Message
-      - regex:
-          source: log
-          expression: '^\[.*\]\s+(?P<level>DEBUG|INFO|WARN|ERROR)\s+\[(?P<component>[^\]]+)\]'
-
-      - labels:
-          level:
-          component:
-
-      # Drop debug logs in production (optional - uncomment to enable)
-      # - match:
-      #     selector: '{level="DEBUG"}'
-      #     action: drop
-
-  # Sanctuary-specific scrape config with better filtering
+  # Sanctuary container logs
   - job_name: sanctuary
     docker_sd_configs:
       - host: unix:///var/run/docker.sock
         refresh_interval: 5s
+        filters:
+          - name: label
+            values:
+              - com.docker.compose.project=sanctuary
 
     relabel_configs:
       # Only keep Sanctuary containers
       - source_labels: ['__meta_docker_container_name']
         regex: '/sanctuary-.*'
         action: keep
+
+      # Ensure every stream has a stable non-empty Loki label.
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/sanctuary-.*'
+        target_label: job
+        replacement: sanctuary
 
       # Add container name as label
       - source_labels: ['__meta_docker_container_name']
@@ -79,6 +44,10 @@ scrape_configs:
         regex: '/sanctuary-(.*)'
         target_label: service
 
+      # Add container ID for correlation with Docker inspect/log output
+      - source_labels: ['__meta_docker_container_id']
+        target_label: container_id
+
       # Keep the log path
       - source_labels: ['__meta_docker_container_log_stream']
         target_label: stream
@@ -86,6 +55,11 @@ scrape_configs:
     pipeline_stages:
       # Parse JSON logs from Docker
       - docker: {}
+
+      # Keep a stable non-empty Loki label even when log lines do not match
+      # Sanctuary's structured application log format.
+      - static_labels:
+          job: sanctuary
 
       # Extract Sanctuary log format
       - regex:
