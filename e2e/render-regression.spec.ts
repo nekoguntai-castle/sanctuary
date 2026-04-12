@@ -768,16 +768,16 @@ test.describe('Route-level rendering regressions', () => {
     await expect(page.getByRole('heading', { name: 'Render Main Wallet' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Transactions', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'UTXOs', exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'drafts', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Drafts', exact: true })).toBeVisible();
     await expect(page.getByText('No transactions found.')).toBeVisible();
 
     await page.getByRole('button', { name: 'UTXOs', exact: true }).click();
     await expect(page.getByText('Available Outputs')).toBeVisible();
 
-    await page.getByRole('button', { name: 'drafts', exact: true }).click();
+    await page.getByRole('button', { name: 'Drafts', exact: true }).click();
     await expect(page.getByText('No draft transactions')).toBeVisible();
 
-    await page.getByRole('button', { name: 'addresses', exact: true }).click();
+    await page.getByRole('button', { name: 'Addresses', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'No Addresses Available' })).toBeVisible();
     await expectChromiumMainScreenshot(page, 'wallet-detail-addresses-empty-shell.png');
 

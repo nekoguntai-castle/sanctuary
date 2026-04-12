@@ -611,7 +611,7 @@ test.describe('User journey flows', () => {
     await expect(page.getByText('Available Outputs')).toBeVisible();
 
     // Switch to Drafts tab
-    await page.getByRole('button', { name: 'drafts', exact: true }).click();
+    await page.getByRole('button', { name: 'Drafts', exact: true }).click();
     await expect(page.getByText('No draft transactions')).toBeVisible();
 
     // Switch back to Transactions tab
