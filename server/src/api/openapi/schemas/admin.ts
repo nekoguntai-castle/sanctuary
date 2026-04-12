@@ -44,6 +44,7 @@ const NODE_CONFIG_TYPE_VALUES = ['electrum'] as const;
 const NODE_CONNECTION_MODE_VALUES = ['singleton', 'pool'] as const;
 const NODE_LOAD_BALANCING_VALUES = ['round_robin', 'least_connections', 'failover_only'] as const;
 const NODE_MEMPOOL_ESTIMATOR_VALUES = ['simple', 'mempool_space'] as const;
+const ELECTRUM_NETWORK_VALUES = ['mainnet', 'testnet', 'signet', 'regtest'] as const;
 
 const nodeConfigPortInputSchema = {
   oneOf: [
@@ -64,6 +65,16 @@ const nodeConfigNullableCountInputSchema = { ...nodeConfigCountInputSchema, null
 const nodeConnectionModeSchema = { type: 'string', enum: [...NODE_CONNECTION_MODE_VALUES] } as const;
 const nodeLoadBalancingSchema = { type: 'string', enum: [...NODE_LOAD_BALANCING_VALUES] } as const;
 const nodeMempoolEstimatorSchema = { type: 'string', enum: [...NODE_MEMPOOL_ESTIMATOR_VALUES] } as const;
+
+const electrumServerMutableProperties = {
+  label: { type: 'string', minLength: 1 },
+  host: { type: 'string', minLength: 1 },
+  port: nodeConfigPortInputSchema,
+  useSsl: { type: 'boolean', default: true },
+  priority: { type: 'integer', minimum: 0 },
+  enabled: { type: 'boolean', default: true },
+  network: { type: 'string', enum: [...ELECTRUM_NETWORK_VALUES], default: 'mainnet' },
+} as const;
 
 const nodeConfigResponseProperties = {
   type: { type: 'string', enum: [...NODE_CONFIG_TYPE_VALUES] },
@@ -504,7 +515,7 @@ export const adminSchemas = {
     properties: {
       id: { type: 'string' },
       nodeConfigId: { type: 'string' },
-      network: { type: 'string', enum: ['mainnet', 'testnet', 'signet', 'regtest'] },
+      network: { type: 'string', enum: [...ELECTRUM_NETWORK_VALUES] },
       label: { type: 'string' },
       host: { type: 'string' },
       port: { type: 'integer', minimum: 1, maximum: 65535 },
@@ -522,6 +533,86 @@ export const adminSchemas = {
     },
     required: ['id', 'host', 'port', 'priority'],
     additionalProperties: true,
+  },
+  AdminCreateElectrumServerRequest: {
+    type: 'object',
+    properties: electrumServerMutableProperties,
+    required: ['label', 'host', 'port'],
+    additionalProperties: false,
+  },
+  AdminUpdateElectrumServerRequest: {
+    type: 'object',
+    properties: {
+      ...electrumServerMutableProperties,
+      useSsl: { type: 'boolean' },
+      enabled: { type: 'boolean' },
+      network: { type: 'string', enum: [...ELECTRUM_NETWORK_VALUES] },
+    },
+    additionalProperties: false,
+  },
+  AdminElectrumConnectionTestRequest: {
+    type: 'object',
+    properties: {
+      host: { type: 'string', minLength: 1 },
+      port: nodeConfigPortInputSchema,
+      useSsl: { type: 'boolean', default: false },
+    },
+    required: ['host', 'port'],
+    additionalProperties: false,
+  },
+  AdminElectrumConnectionTestResponse: {
+    type: 'object',
+    properties: {
+      success: { type: 'boolean' },
+      message: { type: 'string' },
+      blockHeight: { type: 'integer', minimum: 0 },
+    },
+    required: ['success', 'message'],
+  },
+  AdminReorderElectrumServersRequest: {
+    type: 'object',
+    properties: {
+      serverIds: {
+        type: 'array',
+        items: { type: 'string' },
+      },
+    },
+    required: ['serverIds'],
+    additionalProperties: false,
+  },
+  AdminReorderElectrumServersResponse: {
+    type: 'object',
+    properties: {
+      success: { type: 'boolean' },
+      message: { type: 'string' },
+    },
+    required: ['success', 'message'],
+  },
+  AdminDeleteElectrumServerResponse: {
+    type: 'object',
+    properties: {
+      success: { type: 'boolean' },
+      message: { type: 'string' },
+    },
+    required: ['success', 'message'],
+  },
+  AdminElectrumServerTestInfo: {
+    type: 'object',
+    properties: {
+      blockHeight: { type: 'integer', minimum: 0 },
+      supportsVerbose: { type: 'boolean' },
+    },
+    additionalProperties: true,
+  },
+  AdminElectrumServerTestResponse: {
+    type: 'object',
+    properties: {
+      success: { type: 'boolean' },
+      message: { type: 'string' },
+      error: { type: 'string' },
+      info: { $ref: '#/components/schemas/AdminElectrumServerTestInfo' },
+    },
+    required: ['success', 'message'],
   },
   AdminNodeConfig: {
     type: 'object',

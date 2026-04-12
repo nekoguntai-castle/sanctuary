@@ -746,6 +746,196 @@ describe('OpenAPI Docs', () => {
       .toEqual(['Tor Verification Failed']);
   });
 
+  it('documents admin Electrum server routes', () => {
+    const routes: Array<[OpenApiPathKey, string]> = [
+      ['/admin/electrum-servers', 'get'],
+      ['/admin/electrum-servers', 'post'],
+      ['/admin/electrum-servers/test-connection', 'post'],
+      ['/admin/electrum-servers/reorder', 'put'],
+      ['/admin/electrum-servers/{networkOrServerId}', 'get'],
+      ['/admin/electrum-servers/{networkOrServerId}', 'put'],
+      ['/admin/electrum-servers/{networkOrServerId}', 'delete'],
+      ['/admin/electrum-servers/{serverId}/test', 'post'],
+    ];
+
+    for (const [path, method] of routes) {
+      expectDocumentedMethod(path, method);
+    }
+
+    expect(openApiSpec.paths).not.toHaveProperty('/admin/electrum-servers/{network}');
+    expect(openApiSpec.paths).not.toHaveProperty('/admin/electrum-servers/{serverId}');
+
+    expect(openApiSpec.paths['/admin/electrum-servers'].get.parameters).toContainEqual(
+      expect.objectContaining({
+        name: 'network',
+        in: 'query',
+        schema: expect.objectContaining({
+          enum: ['mainnet', 'testnet', 'signet', 'regtest'],
+        }),
+      }),
+    );
+    expect(openApiSpec.paths['/admin/electrum-servers'].get.responses[200].content['application/json'].schema)
+      .toEqual({
+        type: 'array',
+        items: { $ref: '#/components/schemas/AdminElectrumServer' },
+      });
+
+    expect(openApiSpec.components.schemas.AdminElectrumServer.properties.network.enum).toEqual([
+      'mainnet',
+      'testnet',
+      'signet',
+      'regtest',
+    ]);
+    expect(openApiSpec.components.schemas.AdminCreateElectrumServerRequest.required).toEqual([
+      'label',
+      'host',
+      'port',
+    ]);
+    expect(openApiSpec.components.schemas.AdminCreateElectrumServerRequest).toHaveProperty(
+      'additionalProperties',
+      false,
+    );
+    expect(openApiSpec.components.schemas.AdminCreateElectrumServerRequest.properties.port.oneOf)
+      .toContainEqual({
+        type: 'string',
+        pattern: '^\\d+$',
+      });
+    expect(openApiSpec.components.schemas.AdminCreateElectrumServerRequest.properties.port.oneOf)
+      .toContainEqual({
+        type: 'integer',
+        minimum: 1,
+        maximum: 65535,
+      });
+    expect(openApiSpec.components.schemas.AdminCreateElectrumServerRequest.properties.network).toMatchObject({
+      enum: ['mainnet', 'testnet', 'signet', 'regtest'],
+      default: 'mainnet',
+    });
+    expect(openApiSpec.paths['/admin/electrum-servers'].post.requestBody.content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/AdminCreateElectrumServerRequest',
+      });
+    expect(openApiSpec.paths['/admin/electrum-servers'].post.responses[201].content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/AdminElectrumServer',
+      });
+    expect(openApiSpec.paths['/admin/electrum-servers'].post.responses).toHaveProperty('409');
+
+    expect(openApiSpec.paths['/admin/electrum-servers/test-connection'].post.requestBody.content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/AdminElectrumConnectionTestRequest',
+      });
+    expect(openApiSpec.components.schemas.AdminElectrumConnectionTestRequest.required).toEqual([
+      'host',
+      'port',
+    ]);
+    expect(openApiSpec.components.schemas.AdminElectrumConnectionTestRequest.properties.port.oneOf)
+      .toContainEqual({
+        type: 'string',
+        pattern: '^\\d+$',
+      });
+    expect(openApiSpec.paths['/admin/electrum-servers/test-connection'].post.responses[200].content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/AdminElectrumConnectionTestResponse',
+      });
+    expect(openApiSpec.components.schemas.AdminElectrumConnectionTestResponse.required).toEqual([
+      'success',
+      'message',
+    ]);
+
+    expect(openApiSpec.paths['/admin/electrum-servers/reorder'].put.requestBody.content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/AdminReorderElectrumServersRequest',
+      });
+    expect(openApiSpec.components.schemas.AdminReorderElectrumServersRequest.required).toEqual([
+      'serverIds',
+    ]);
+    expect(openApiSpec.components.schemas.AdminReorderElectrumServersRequest.properties.serverIds.items)
+      .toEqual({
+        type: 'string',
+      });
+    expect(openApiSpec.paths['/admin/electrum-servers/reorder'].put.responses[200].content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/AdminReorderElectrumServersResponse',
+      });
+
+    expect(openApiSpec.paths['/admin/electrum-servers/{networkOrServerId}'].get.parameters)
+      .toContainEqual(
+        expect.objectContaining({
+          name: 'networkOrServerId',
+          in: 'path',
+          required: true,
+          schema: expect.objectContaining({
+            enum: ['mainnet', 'testnet', 'signet', 'regtest'],
+          }),
+        }),
+      );
+    expect(openApiSpec.paths['/admin/electrum-servers/{networkOrServerId}'].get.responses[200].content['application/json'].schema)
+      .toEqual({
+        type: 'array',
+        items: { $ref: '#/components/schemas/AdminElectrumServer' },
+      });
+
+    expect(openApiSpec.paths['/admin/electrum-servers/{networkOrServerId}'].put.parameters)
+      .toContainEqual(
+        expect.objectContaining({
+          name: 'networkOrServerId',
+          in: 'path',
+          required: true,
+          schema: { type: 'string' },
+        }),
+      );
+    expect(openApiSpec.paths['/admin/electrum-servers/{networkOrServerId}'].put.requestBody.content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/AdminUpdateElectrumServerRequest',
+      });
+    expect(openApiSpec.components.schemas.AdminUpdateElectrumServerRequest.required).toBeUndefined();
+    expect(openApiSpec.components.schemas.AdminUpdateElectrumServerRequest.properties.network.enum).toEqual([
+      'mainnet',
+      'testnet',
+      'signet',
+      'regtest',
+    ]);
+    expect(openApiSpec.paths['/admin/electrum-servers/{networkOrServerId}'].put.responses[200].content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/AdminElectrumServer',
+      });
+    expect(openApiSpec.paths['/admin/electrum-servers/{networkOrServerId}'].put.responses).toHaveProperty('404');
+    expect(openApiSpec.paths['/admin/electrum-servers/{networkOrServerId}'].put.responses).toHaveProperty('409');
+
+    expect(openApiSpec.paths['/admin/electrum-servers/{networkOrServerId}'].delete.responses[200].content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/AdminDeleteElectrumServerResponse',
+      });
+    expect(openApiSpec.components.schemas.AdminDeleteElectrumServerResponse.required).toEqual([
+      'success',
+      'message',
+    ]);
+
+    expect(openApiSpec.paths['/admin/electrum-servers/{serverId}/test'].post.parameters)
+      .toContainEqual(
+        expect.objectContaining({
+          name: 'serverId',
+          in: 'path',
+          required: true,
+        }),
+      );
+    expect(openApiSpec.paths['/admin/electrum-servers/{serverId}/test'].post.responses[200].content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/AdminElectrumServerTestResponse',
+      });
+    expect(openApiSpec.components.schemas.AdminElectrumServerTestResponse.required).toEqual([
+      'success',
+      'message',
+    ]);
+    expect(openApiSpec.components.schemas.AdminElectrumServerTestResponse.properties.info).toEqual({
+      $ref: '#/components/schemas/AdminElectrumServerTestInfo',
+    });
+    expect(openApiSpec.components.schemas.AdminElectrumServerTestInfo).toHaveProperty(
+      'additionalProperties',
+      true,
+    );
+  });
+
   it('documents admin user management routes', () => {
     const routes: Array<[OpenApiPathKey, string]> = [
       ['/admin/users', 'get'],

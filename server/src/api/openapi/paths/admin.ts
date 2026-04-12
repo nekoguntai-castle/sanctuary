@@ -10,6 +10,7 @@ import { AUDIT_DEFAULT_PAGE_SIZE, AUDIT_STATS_DAYS } from '../../../constants';
 
 const bearerAuth = [{ bearerAuth: [] }] as const;
 const AUDIT_LOG_LIMIT_MAX = 500;
+const ELECTRUM_NETWORK_VALUES = ['mainnet', 'testnet', 'signet', 'regtest'] as const;
 
 const apiErrorResponse = {
   description: 'Error response',
@@ -55,6 +56,29 @@ const adminPolicyIdParameter = {
   schema: { type: 'string' },
 } as const;
 
+const adminElectrumNetworkPathParameter = {
+  name: 'networkOrServerId',
+  in: 'path',
+  required: true,
+  description: 'Electrum network name for GET requests.',
+  schema: { type: 'string', enum: [...ELECTRUM_NETWORK_VALUES] },
+} as const;
+
+const adminElectrumServerIdOnSharedPathParameter = {
+  name: 'networkOrServerId',
+  in: 'path',
+  required: true,
+  description: 'Electrum server ID for update and delete requests.',
+  schema: { type: 'string' },
+} as const;
+
+const adminElectrumServerIdParameter = {
+  name: 'serverId',
+  in: 'path',
+  required: true,
+  schema: { type: 'string' },
+} as const;
+
 const jsonRequestBody = (schemaRef: string) => ({
   required: true,
   content: {
@@ -78,6 +102,18 @@ const jsonResponse = (description: string, schemaRef: string) => ({
   content: {
     'application/json': {
       schema: { $ref: schemaRef },
+    },
+  },
+});
+
+const jsonArrayResponse = (description: string, itemSchemaRef: string) => ({
+  description,
+  content: {
+    'application/json': {
+      schema: {
+        type: 'array',
+        items: { $ref: itemSchemaRef },
+      },
     },
   },
 });
@@ -315,6 +351,138 @@ export const adminPaths = {
           '#/components/schemas/AdminProxyTestFailedResponse',
           '#/components/schemas/ApiError',
         ]),
+      },
+    },
+  },
+  '/admin/electrum-servers': {
+    get: {
+      tags: ['Admin'],
+      summary: 'List Electrum servers',
+      description: 'List configured Electrum servers for the default node configuration, optionally filtered by network.',
+      security: bearerAuth,
+      parameters: [
+        {
+          name: 'network',
+          in: 'query',
+          required: false,
+          schema: { type: 'string', enum: [...ELECTRUM_NETWORK_VALUES] },
+        },
+      ],
+      responses: {
+        200: jsonArrayResponse('Electrum servers', '#/components/schemas/AdminElectrumServer'),
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+    post: {
+      tags: ['Admin'],
+      summary: 'Add Electrum server',
+      description: 'Add an Electrum server to the default node configuration, creating the default config first when needed.',
+      security: bearerAuth,
+      requestBody: jsonRequestBody('#/components/schemas/AdminCreateElectrumServerRequest'),
+      responses: {
+        201: jsonResponse('Created Electrum server', '#/components/schemas/AdminElectrumServer'),
+        400: apiErrorResponse,
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        409: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+  },
+  '/admin/electrum-servers/test-connection': {
+    post: {
+      tags: ['Admin'],
+      summary: 'Test Electrum connection',
+      description: 'Test a provided Electrum host, port, and SSL mode without saving it as a configured server.',
+      security: bearerAuth,
+      requestBody: jsonRequestBody('#/components/schemas/AdminElectrumConnectionTestRequest'),
+      responses: {
+        200: jsonResponse('Electrum connection test result', '#/components/schemas/AdminElectrumConnectionTestResponse'),
+        400: apiErrorResponse,
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+  },
+  '/admin/electrum-servers/reorder': {
+    put: {
+      tags: ['Admin'],
+      summary: 'Reorder Electrum servers',
+      description: 'Update Electrum server priorities to match the supplied server ID order and reload the Electrum pool.',
+      security: bearerAuth,
+      requestBody: jsonRequestBody('#/components/schemas/AdminReorderElectrumServersRequest'),
+      responses: {
+        200: jsonResponse('Electrum servers reordered', '#/components/schemas/AdminReorderElectrumServersResponse'),
+        400: apiErrorResponse,
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+  },
+  '/admin/electrum-servers/{networkOrServerId}': {
+    get: {
+      tags: ['Admin'],
+      summary: 'List Electrum servers by network',
+      description: 'List configured Electrum servers for a specific network. Runtime routes this operation through the same path depth used by server ID operations.',
+      security: bearerAuth,
+      parameters: [adminElectrumNetworkPathParameter],
+      responses: {
+        200: jsonArrayResponse('Electrum servers for the network', '#/components/schemas/AdminElectrumServer'),
+        400: apiErrorResponse,
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+    put: {
+      tags: ['Admin'],
+      summary: 'Update Electrum server',
+      description: 'Update an Electrum server and reload the Electrum pool.',
+      security: bearerAuth,
+      parameters: [adminElectrumServerIdOnSharedPathParameter],
+      requestBody: jsonRequestBody('#/components/schemas/AdminUpdateElectrumServerRequest'),
+      responses: {
+        200: jsonResponse('Updated Electrum server', '#/components/schemas/AdminElectrumServer'),
+        400: apiErrorResponse,
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        404: apiErrorResponse,
+        409: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+    delete: {
+      tags: ['Admin'],
+      summary: 'Delete Electrum server',
+      description: 'Delete an Electrum server and reload the Electrum pool.',
+      security: bearerAuth,
+      parameters: [adminElectrumServerIdOnSharedPathParameter],
+      responses: {
+        200: jsonResponse('Electrum server deleted', '#/components/schemas/AdminDeleteElectrumServerResponse'),
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        404: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+  },
+  '/admin/electrum-servers/{serverId}/test': {
+    post: {
+      tags: ['Admin'],
+      summary: 'Test configured Electrum server',
+      description: 'Test a configured Electrum server and update its health and capability fields.',
+      security: bearerAuth,
+      parameters: [adminElectrumServerIdParameter],
+      responses: {
+        200: jsonResponse('Configured Electrum server test result', '#/components/schemas/AdminElectrumServerTestResponse'),
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        404: apiErrorResponse,
+        500: apiErrorResponse,
       },
     },
   },
