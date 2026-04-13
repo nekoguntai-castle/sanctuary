@@ -37,22 +37,31 @@ import { NextFunction, Request, Response } from 'express';
 import { doubleCsrf } from 'csrf-csrf';
 import config from '../config';
 import { decodeToken, extractTokenFromHeader } from '../utils/jwt';
+import {
+  SANCTUARY_ACCESS_COOKIE_NAME,
+  SANCTUARY_ACCESS_EXPIRES_AT_HEADER,
+  SANCTUARY_CSRF_COOKIE_NAME,
+  SANCTUARY_CSRF_HEADER_NAME,
+  SANCTUARY_REFRESH_COOKIE_NAME,
+  SANCTUARY_REFRESH_COOKIE_PATH,
+} from './authCookieNames';
 
-export const SANCTUARY_ACCESS_COOKIE_NAME = 'sanctuary_access';
-export const SANCTUARY_REFRESH_COOKIE_NAME = 'sanctuary_refresh';
-export const SANCTUARY_CSRF_COOKIE_NAME = 'sanctuary_csrf';
-export const SANCTUARY_CSRF_HEADER_NAME = 'x-csrf-token';
-export const SANCTUARY_ACCESS_EXPIRES_AT_HEADER = 'X-Access-Expires-At';
+// Re-export the names so existing imports from `./csrf` still work. The
+// canonical source is `./authCookieNames`, which has zero transitive
+// config imports and is safe to pull into the WebSocket upgrade path.
+export {
+  SANCTUARY_ACCESS_COOKIE_NAME,
+  SANCTUARY_ACCESS_EXPIRES_AT_HEADER,
+  SANCTUARY_CSRF_COOKIE_NAME,
+  SANCTUARY_CSRF_HEADER_NAME,
+  SANCTUARY_REFRESH_COOKIE_NAME,
+  SANCTUARY_REFRESH_COOKIE_PATH,
+};
 
 // Refresh cookie max-age in milliseconds. Must stay in sync with
 // config.jwtRefreshExpiresIn which drives the JWT refresh token expiry in
 // tokenRepository. The default is 7 days per ADR 0002.
 const REFRESH_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
-
-// The refresh cookie path scope. Per ADR 0002 it is intentionally narrow so
-// the refresh token is only sent on the single endpoint that consumes it,
-// preventing accidental exposure to any other route.
-export const SANCTUARY_REFRESH_COOKIE_PATH = '/api/v1/auth/refresh';
 
 type CsrfInstance = ReturnType<typeof doubleCsrf>;
 let cachedCsrfInstance: CsrfInstance | null = null;

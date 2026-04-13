@@ -27,7 +27,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken, extractTokenFromHeader, JWTPayload, TokenAudience } from '../utils/jwt';
 import { requestContext } from '../utils/requestContext';
-import { SANCTUARY_ACCESS_COOKIE_NAME } from './csrf';
+import { SANCTUARY_ACCESS_COOKIE_NAME } from './authCookieNames';
 
 // Extend Express Request type to include user
 declare global {

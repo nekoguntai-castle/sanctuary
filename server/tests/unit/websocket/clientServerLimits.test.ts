@@ -389,26 +389,76 @@ describe('SanctauryWebSocketServer limits', () => {
     expect(client.close).not.toHaveBeenCalled();
   });
 
-  it('extracts auth token from header first, then query parameter', async () => {
+  it('extracts auth token from Authorization header first, then sanctuary_access cookie (ADR 0001/0002 Phase 3)', async () => {
     const Server = await loadServer();
     const server = new Server();
     activeServers.push(server);
 
+    // 1. Header-only: mobile/gateway path, unchanged behavior.
     const fromHeader = (server as any).extractToken(
       createRequest({ headers: { host: 'localhost', authorization: 'Bearer header-token' } })
     );
-    const fromQuery = (server as any).extractToken(
-      createRequest({ url: '/ws?token=query-token' })
+    expect(fromHeader).toBe('header-token');
+
+    // 2. Cookie-only: browser path after Phase 2 cookie migration. Upgrade
+    //    requests on same-origin connections automatically carry the
+    //    sanctuary_access cookie, which Phase 3 now reads.
+    const fromCookie = (server as any).extractToken(
+      createRequest({ headers: { host: 'localhost', cookie: 'sanctuary_access=cookie-token' } })
     );
+    expect(fromCookie).toBe('cookie-token');
+
+    // 3. Both header and cookie present: header wins (matches the HTTP
+    //    middleware precedence so the browser rollback path where both
+    //    sources exist chooses the header consistently).
+    const bothPresent = (server as any).extractToken(
+      createRequest({
+        headers: {
+          host: 'localhost',
+          authorization: 'Bearer header-token',
+          cookie: 'sanctuary_access=cookie-token',
+        },
+      })
+    );
+    expect(bothPresent).toBe('header-token');
+
+    // 4. Cookie header with multiple entries: the parser must pick
+    //    sanctuary_access correctly and ignore unrelated cookies.
+    const mixedCookies = (server as any).extractToken(
+      createRequest({
+        headers: {
+          host: 'localhost',
+          cookie: 'sanctuary_csrf=csrf-value; sanctuary_access=cookie-token; other=x',
+        },
+      })
+    );
+    expect(mixedCookies).toBe('cookie-token');
+
+    // 5. Empty sanctuary_access cookie value: treat as absent, return null.
+    const emptyCookie = (server as any).extractToken(
+      createRequest({ headers: { host: 'localhost', cookie: 'sanctuary_access=' } })
+    );
+    expect(emptyCookie).toBeNull();
+
+    // 6. Neither header nor cookie: return null, caller falls back to
+    //    the auth-message-after-connect path.
+    const none = (server as any).extractToken(createRequest());
+    expect(none).toBeNull();
+
+    // 7. Deprecated query parameter is no longer honored. Phase 3
+    //    removed the `?token=<jwt>` entry point because query-string
+    //    tokens leak via referer headers and server access logs.
+    const queryParamRejected = (server as any).extractToken(
+      createRequest({ url: '/ws?token=should-be-rejected' })
+    );
+    expect(queryParamRejected).toBeNull();
+
+    // 8. Missing URL on the request still returns null cleanly (no
+    //    regression from the old implementation which used `new URL(...)`).
     const missingUrl = (server as any).extractToken(
       createRequest({ url: undefined })
     );
-    const none = (server as any).extractToken(createRequest());
-
-    expect(fromHeader).toBe('header-token');
-    expect(fromQuery).toBe('query-token');
     expect(missingUrl).toBeNull();
-    expect(none).toBeNull();
   });
 
   it('registers authenticated connection when token is provided on upgrade', async () => {
