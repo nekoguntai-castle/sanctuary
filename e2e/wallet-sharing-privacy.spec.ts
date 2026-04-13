@@ -96,9 +96,10 @@ const ADDRESSES = [
 ];
 
 async function mockShareApi(page: Page) {
-  await page.addInitScript(() => {
-    localStorage.setItem('sanctuary_token', 'playwright-share-token');
-  });
+  // ADR 0001 / 0002 Phase 6: browser auth is cookie-only. The legacy
+  // localStorage token seed is dead — the frontend reads nothing from
+  // storage. Authenticated state is established by /auth/me returning
+  // 200 below.
 
   const unhandledRequests: string[] = [];
   let shareState = {
@@ -116,6 +117,10 @@ async function mockShareApi(page: Page) {
     if (method === 'GET' && path === '/auth/me') return json(route, ADMIN_USER);
     if (method === 'GET' && path === '/auth/registration-status') return json(route, { enabled: false });
     if (method === 'GET' && path === '/health') return json(route, { status: 'ok' });
+    // Phase 5/6: cover the cookie-auth interceptor paths even when /auth/me
+    // succeeds — some tab navigations may trigger a logout side-effect.
+    if (method === 'POST' && path === '/auth/refresh') return json(route, { message: 'Unauthorized' }, 401);
+    if (method === 'POST' && path === '/auth/logout') return json(route, { success: true });
 
     // Shared
     if (method === 'GET' && path === '/wallets') return json(route, [WALLET]);

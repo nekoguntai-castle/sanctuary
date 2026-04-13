@@ -155,9 +155,10 @@ async function mockAuthenticatedApi(
     wallets?: typeof MAINNET_WALLET[];
   }
 ) {
-  await page.addInitScript(() => {
-    localStorage.setItem('sanctuary_token', 'playwright-journey-token');
-  });
+  // ADR 0001 / 0002 Phase 6: browser auth is cookie-only. The legacy
+  // localStorage seeding is dead code — the frontend does not read any
+  // token from local/session storage. The authenticated state is
+  // established by `GET /auth/me` returning 200 below.
 
   const user = options?.user ?? ADMIN_USER;
   const wallets = options?.wallets ?? [MAINNET_WALLET, TESTNET_WALLET];
@@ -183,6 +184,16 @@ async function mockAuthenticatedApi(
     // Auth/bootstrap
     if (method === 'GET' && path === '/auth/me') {
       return json(route, { ...user, preferences: preferencesState });
+    }
+    // Phase 5/6: /auth/me 401 triggers a refresh retry in the
+    // interceptor. When a test injects a /auth/me failure, return 401
+    // here so the refresh terminates and the frontend redirects to
+    // login.
+    if (method === 'POST' && path === '/auth/refresh') {
+      return json(route, { message: 'Unauthorized' }, 401);
+    }
+    if (method === 'POST' && path === '/auth/logout') {
+      return json(route, { success: true });
     }
     if (method === 'GET' && path === '/auth/registration-status') {
       return json(route, { enabled: false });
@@ -485,9 +496,9 @@ async function mockAuthenticatedApi(
 }
 
 async function mockPublicApi(page: Page) {
-  await page.addInitScript(() => {
-    localStorage.removeItem('sanctuary_token');
-  });
+  // ADR 0001 / 0002 Phase 6: legacy localStorage token removal is dead.
+  // Unauthenticated state is established by `/auth/me` and
+  // `/auth/refresh` both returning 401.
 
   const unhandledRequests: string[] = [];
 
@@ -499,6 +510,15 @@ async function mockPublicApi(page: Page) {
 
     if (method === 'GET' && path === '/health') {
       return json(route, { status: 'ok' });
+    }
+    // Phase 4+: UserContext boot calls /auth/me. For unauth users this
+    // returns 401 which triggers the 401 interceptor's refresh retry.
+    // Both need to be handled or the page hangs on unhandled requests.
+    if (method === 'GET' && path === '/auth/me') {
+      return json(route, { message: 'Unauthorized' }, 401);
+    }
+    if (method === 'POST' && path === '/auth/refresh') {
+      return json(route, { message: 'Unauthorized' }, 401);
     }
     if (method === 'GET' && path === '/auth/registration-status') {
       return json(route, { enabled: false });

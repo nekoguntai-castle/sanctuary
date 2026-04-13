@@ -487,28 +487,41 @@ describe('Login Component - Loading branches', () => {
     });
   });
 
+  // Phase 6 regression fix: the submit button's loading state is now
+  // tracked locally in useLoginFlow (isSubmitting), not read from
+  // UserContext.isLoading. This avoids showing "Signing in..." during
+  // the boot `/auth/me` check (see useLoginFlow.ts for the reasoning).
+  // Exercising the loading branch now requires triggering an actual
+  // submit whose async action does not resolve until we assert.
+
   it('covers loading branch on login submit button', async () => {
-    vi.doMock('../../contexts/UserContext', () => ({
-      useUser: () => ({
-        login: mockLogin,
-        register: mockRegister,
-        verify2FA: mockVerify2FA,
-        cancel2FA: mockCancel2FA,
-        twoFactorPending: null,
-        isLoading: true,
-        error: null,
-        clearError: mockClearError,
-      }),
-    }));
+    // Block login() forever so isSubmitting stays true.
+    let resolveLogin: (() => void) | undefined;
+    mockLogin.mockImplementation(
+      () => new Promise<void>((res) => { resolveLogin = () => res(); })
+    );
 
     vi.resetModules();
     const { Login } = await import('../../components/Login');
+    const user = userEvent.setup();
     await renderLogin(Login);
 
-    expect(screen.getByRole('button', { name: /loading/i })).toBeDisabled();
+    await user.type(screen.getByLabelText(/username/i), 'alice');
+    await user.type(screen.getByLabelText(/password/i), 'secret1234');
+    await user.click(screen.getByRole('button', { name: /sign in/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /loading/i })).toBeDisabled();
+    });
+
+    resolveLogin?.();
   });
 
   it('covers loading and error branches on 2FA screen', async () => {
+    // 2FA pending comes from UserContext; error surfaces through
+    // UserContext as well. Override the mock on this test to put the
+    // form into the 2FA state and return an error, then trigger the
+    // 2FA verify to exercise the local loading branch.
     vi.doMock('../../contexts/UserContext', () => ({
       useUser: () => ({
         login: mockLogin,
@@ -516,21 +529,38 @@ describe('Login Component - Loading branches', () => {
         verify2FA: mockVerify2FA,
         cancel2FA: mockCancel2FA,
         twoFactorPending: { tempToken: 'test-token' },
-        isLoading: true,
+        isLoading: false,
         error: 'Invalid code',
         clearError: mockClearError,
       }),
     }));
 
+    let resolveVerify: (() => void) | undefined;
+    mockVerify2FA.mockImplementation(
+      () => new Promise<void>((res) => { resolveVerify = () => res(); })
+    );
+
     vi.resetModules();
-    const { Login } = await import('../../components/Login');
-    await renderLogin(Login);
+    const { Login: LoginWith2FA } = await import('../../components/Login');
+    const user = userEvent.setup();
+    await renderLogin(LoginWith2FA);
 
     expect(screen.getByText('Invalid code')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /loading/i })).toBeDisabled();
+
+    await user.type(screen.getByLabelText(/verification code/i), '123456');
+    await user.click(screen.getByRole('button', { name: /verify/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /loading/i })).toBeDisabled();
+    });
+
+    resolveVerify?.();
   });
 
   it('covers loading branch while register mode is active', async () => {
+    // Reset the UserContext mock to the default (no 2FA pending). The
+    // previous test vi.doMock'd it into a 2FA-pending state and those
+    // doMocks persist across tests until explicitly overridden.
     vi.doMock('../../contexts/UserContext', () => ({
       useUser: () => ({
         login: mockLogin,
@@ -538,11 +568,16 @@ describe('Login Component - Loading branches', () => {
         verify2FA: mockVerify2FA,
         cancel2FA: mockCancel2FA,
         twoFactorPending: null,
-        isLoading: true,
+        isLoading: false,
         error: null,
         clearError: mockClearError,
       }),
     }));
+
+    let resolveRegister: (() => void) | undefined;
+    mockRegister.mockImplementation(
+      () => new Promise<void>((res) => { resolveRegister = () => res(); })
+    );
 
     vi.resetModules();
     const { Login } = await import('../../components/Login');
@@ -551,6 +586,15 @@ describe('Login Component - Loading branches', () => {
 
     await user.click(screen.getByText(/don't have an account\? register/i));
     expect(screen.getByText(/create your digital sanctuary/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /loading/i })).toBeDisabled();
+
+    await user.type(screen.getByLabelText(/username/i), 'alice');
+    await user.type(screen.getByLabelText(/password/i), 'secret1234');
+    await user.click(screen.getByRole('button', { name: /create account/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /loading/i })).toBeDisabled();
+    });
+
+    resolveRegister?.();
   });
 });

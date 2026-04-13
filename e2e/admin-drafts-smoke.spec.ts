@@ -39,9 +39,9 @@ const WALLET = {
 };
 
 async function mockAuthenticatedApi(page: Page) {
-  await page.addInitScript(() => {
-    localStorage.setItem('sanctuary_token', 'playwright-smoke-token');
-  });
+  // ADR 0001 / 0002 Phase 6: browser auth is cookie-only. Legacy
+  // localStorage token seed is dead; authenticated state comes from
+  // /auth/me returning 200.
 
   const apiRouteHandler = async (route: Route) => {
     const request = route.request();
@@ -52,6 +52,13 @@ async function mockAuthenticatedApi(page: Page) {
     // Auth/session bootstrap
     if (method === 'GET' && path === '/auth/me') {
       return json(route, ADMIN_USER);
+    }
+    // Phase 5/6 interceptor paths.
+    if (method === 'POST' && path === '/auth/refresh') {
+      return json(route, { message: 'Unauthorized' }, 401);
+    }
+    if (method === 'POST' && path === '/auth/logout') {
+      return json(route, { success: true });
     }
 
     // Shared layout queries

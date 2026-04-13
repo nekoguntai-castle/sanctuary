@@ -357,9 +357,10 @@ type MockApiFailure = {
 type MockApiFailureMap = Record<string, MockApiFailure>;
 
 async function mockAuthenticatedApi(page: Page, options?: { failures?: MockApiFailureMap }) {
-  await page.addInitScript(() => {
-    localStorage.setItem('sanctuary_token', 'playwright-render-token');
-  });
+  // ADR 0001 / 0002 Phase 6: browser auth is cookie-only. The legacy
+  // localStorage seeding is dead code now — the frontend does not read
+  // any token from local/session storage. The "authenticated" state is
+  // established by `GET /auth/me` returning 200 below.
 
   const unhandledRequests: string[] = [];
 
@@ -381,6 +382,20 @@ async function mockAuthenticatedApi(page: Page, options?: { failures?: MockApiFa
     // Auth/bootstrap
     if (method === 'GET' && path === '/auth/me') {
       return json(route, ADMIN_USER);
+    }
+    // Phase 5/6: the 401 interceptor on `/auth/me` triggers a refresh
+    // attempt. When a test injects `/auth/me` → 401 via `failures`, the
+    // frontend will follow up with `POST /auth/refresh`. Return 401 so
+    // the refresh is a terminal failure and the user is redirected to
+    // login. Tests that want to exercise a successful mid-session
+    // refresh can override this via `failures`.
+    if (method === 'POST' && path === '/auth/refresh') {
+      return json(route, { message: 'Unauthorized' }, 401);
+    }
+    // Logout after authenticated navigation (Layout exposes a logout
+    // action and some tests trigger it as a side-effect of navigating).
+    if (method === 'POST' && path === '/auth/logout') {
+      return json(route, { success: true });
     }
     if (method === 'GET' && path === '/auth/registration-status') {
       return json(route, { enabled: false });
@@ -684,9 +699,9 @@ async function mockAuthenticatedApi(page: Page, options?: { failures?: MockApiFa
 }
 
 async function mockPublicApi(page: Page) {
-  await page.addInitScript(() => {
-    localStorage.removeItem('sanctuary_token');
-  });
+  // ADR 0001 / 0002 Phase 6: legacy localStorage token seeding is dead.
+  // The unauthenticated state is established by `GET /auth/me` returning
+  // 401 and `POST /auth/refresh` also returning 401 (terminal failure).
 
   const unhandledRequests: string[] = [];
 
@@ -698,6 +713,15 @@ async function mockPublicApi(page: Page) {
 
     if (method === 'GET' && path === '/health') {
       return json(route, { status: 'ok' });
+    }
+    // Phase 4+: UserContext boots by calling /auth/me. Unauthenticated
+    // users get 401, which triggers the 401 interceptor's refresh path.
+    // Both must be handled or the frontend stalls on unhandled requests.
+    if (method === 'GET' && path === '/auth/me') {
+      return json(route, { message: 'Unauthorized' }, 401);
+    }
+    if (method === 'POST' && path === '/auth/refresh') {
+      return json(route, { message: 'Unauthorized' }, 401);
     }
     if (method === 'GET' && path === '/auth/registration-status') {
       return json(route, { enabled: false });
