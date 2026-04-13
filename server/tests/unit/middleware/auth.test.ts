@@ -254,6 +254,130 @@ describe('Authentication Middleware', () => {
       });
     });
 
+    describe('Cookie Token Source (ADR 0001)', () => {
+      it('should authenticate from sanctuary_access cookie when no Authorization header is present', async () => {
+        const cookieToken = 'cookie-jwt-token';
+        (extractTokenFromHeader as Mock).mockReturnValue(null);
+        (verifyToken as Mock).mockResolvedValue(validPayload);
+
+        const req = createMockRequest({
+          headers: {},
+          cookies: { sanctuary_access: cookieToken },
+        });
+        const { res } = createMockResponse();
+        const next = createMockNext();
+
+        await authenticate(req as any, res as any, next);
+
+        expect(verifyToken).toHaveBeenCalledWith(cookieToken, TokenAudience.ACCESS);
+        expect((req as any).user).toEqual(validPayload);
+        expect(requestContext.setUser).toHaveBeenCalledWith(
+          validPayload.userId,
+          validPayload.username
+        );
+        expect(next).toHaveBeenCalled();
+      });
+
+      it('should prefer Authorization header over cookie when both are present', async () => {
+        const headerToken = 'header-jwt-token';
+        const cookieToken = 'cookie-jwt-token';
+        (extractTokenFromHeader as Mock).mockReturnValue(headerToken);
+        (verifyToken as Mock).mockResolvedValue(validPayload);
+
+        const req = createMockRequest({
+          headers: { authorization: `Bearer ${headerToken}` },
+          cookies: { sanctuary_access: cookieToken },
+        });
+        const { res } = createMockResponse();
+        const next = createMockNext();
+
+        await authenticate(req as any, res as any, next);
+
+        expect(verifyToken).toHaveBeenCalledWith(headerToken, TokenAudience.ACCESS);
+        expect(verifyToken).not.toHaveBeenCalledWith(cookieToken, expect.anything());
+        expect(next).toHaveBeenCalled();
+      });
+
+      it('should reject when neither Authorization header nor sanctuary_access cookie is present', async () => {
+        (extractTokenFromHeader as Mock).mockReturnValue(null);
+
+        const req = createMockRequest({
+          headers: {},
+          cookies: {},
+        });
+        const { res, getResponse } = createMockResponse();
+        const next = createMockNext();
+
+        await authenticate(req as any, res as any, next);
+
+        const response = getResponse();
+        expect(response.statusCode).toBe(401);
+        expect(response.body.message).toBe('No authentication token provided');
+        expect(next).not.toHaveBeenCalled();
+        expect(verifyToken).not.toHaveBeenCalled();
+      });
+
+      it('should reject when sanctuary_access cookie is an empty string', async () => {
+        (extractTokenFromHeader as Mock).mockReturnValue(null);
+
+        const req = createMockRequest({
+          headers: {},
+          cookies: { sanctuary_access: '' },
+        });
+        const { res, getResponse } = createMockResponse();
+        const next = createMockNext();
+
+        await authenticate(req as any, res as any, next);
+
+        const response = getResponse();
+        expect(response.statusCode).toBe(401);
+        expect(response.body.message).toBe('No authentication token provided');
+        expect(next).not.toHaveBeenCalled();
+        expect(verifyToken).not.toHaveBeenCalled();
+      });
+
+      it('should reject when sanctuary_access cookie value is invalid', async () => {
+        const cookieToken = 'invalid-cookie-token';
+        (extractTokenFromHeader as Mock).mockReturnValue(null);
+        (verifyToken as Mock).mockRejectedValue(new Error('Invalid token'));
+
+        const req = createMockRequest({
+          headers: {},
+          cookies: { sanctuary_access: cookieToken },
+        });
+        const { res, getResponse } = createMockResponse();
+        const next = createMockNext();
+
+        await authenticate(req as any, res as any, next);
+
+        const response = getResponse();
+        expect(response.statusCode).toBe(401);
+        expect(response.body.message).toBe('Invalid or expired token');
+        expect(next).not.toHaveBeenCalled();
+      });
+
+      it('should reject 2FA pending tokens delivered via cookie', async () => {
+        const cookieToken = '2fa-cookie-token';
+        (extractTokenFromHeader as Mock).mockReturnValue(null);
+        (verifyToken as Mock).mockResolvedValue({ ...validPayload, pending2FA: true });
+
+        const req = createMockRequest({
+          headers: {},
+          cookies: { sanctuary_access: cookieToken },
+        });
+        const { res, getResponse } = createMockResponse();
+        const next = createMockNext();
+
+        await authenticate(req as any, res as any, next);
+
+        const response = getResponse();
+        expect(response.statusCode).toBe(401);
+        expect(response.body.message).toBe('2FA verification required');
+        expect(next).not.toHaveBeenCalled();
+        expect((req as any).user).toBeUndefined();
+      });
+    });
+
     describe('2FA Token Handling', () => {
       it('should reject 2FA pending tokens for regular endpoints', async () => {
         const token = '2fa-pending-token';
@@ -747,6 +871,81 @@ describe('Authentication Middleware', () => {
         await optionalAuth(req as any, res as any, next);
 
         expect((req as any).user).toBeUndefined();
+        expect(next).toHaveBeenCalled();
+      });
+
+      it('should attach user from sanctuary_access cookie when no Authorization header is present', async () => {
+        const cookieToken = 'cookie-jwt-token';
+        (extractTokenFromHeader as Mock).mockReturnValue(null);
+        (verifyToken as Mock).mockResolvedValue(validPayload);
+
+        const req = createMockRequest({
+          headers: {},
+          cookies: { sanctuary_access: cookieToken },
+        });
+        const { res } = createMockResponse();
+        const next = createMockNext();
+
+        await optionalAuth(req as any, res as any, next);
+
+        expect(verifyToken).toHaveBeenCalledWith(cookieToken, TokenAudience.ACCESS);
+        expect((req as any).user).toEqual(validPayload);
+        expect(next).toHaveBeenCalled();
+      });
+
+      it('should prefer Authorization header over cookie when both are present', async () => {
+        const headerToken = 'header-jwt-token';
+        const cookieToken = 'cookie-jwt-token';
+        (extractTokenFromHeader as Mock).mockReturnValue(headerToken);
+        (verifyToken as Mock).mockResolvedValue(validPayload);
+
+        const req = createMockRequest({
+          headers: { authorization: `Bearer ${headerToken}` },
+          cookies: { sanctuary_access: cookieToken },
+        });
+        const { res } = createMockResponse();
+        const next = createMockNext();
+
+        await optionalAuth(req as any, res as any, next);
+
+        expect(verifyToken).toHaveBeenCalledWith(headerToken, TokenAudience.ACCESS);
+        expect(verifyToken).not.toHaveBeenCalledWith(cookieToken, expect.anything());
+        expect(next).toHaveBeenCalled();
+      });
+
+      it('should continue without user when sanctuary_access cookie is empty', async () => {
+        (extractTokenFromHeader as Mock).mockReturnValue(null);
+
+        const req = createMockRequest({
+          headers: {},
+          cookies: { sanctuary_access: '' },
+        });
+        const { res } = createMockResponse();
+        const next = createMockNext();
+
+        await optionalAuth(req as any, res as any, next);
+
+        expect((req as any).user).toBeUndefined();
+        expect(verifyToken).not.toHaveBeenCalled();
+        expect(next).toHaveBeenCalled();
+      });
+
+      it('should not attach 2FA pending users delivered via cookie', async () => {
+        const cookieToken = '2fa-cookie-token';
+        (extractTokenFromHeader as Mock).mockReturnValue(null);
+        (verifyToken as Mock).mockResolvedValue({ ...validPayload, pending2FA: true });
+
+        const req = createMockRequest({
+          headers: {},
+          cookies: { sanctuary_access: cookieToken },
+        });
+        const { res } = createMockResponse();
+        const next = createMockNext();
+
+        await optionalAuth(req as any, res as any, next);
+
+        expect((req as any).user).toBeUndefined();
+        expect(requestContext.setUser).not.toHaveBeenCalled();
         expect(next).toHaveBeenCalled();
       });
     });

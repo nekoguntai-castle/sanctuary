@@ -17,6 +17,7 @@ import express, { Express, Request, Response, NextFunction } from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import compression from 'compression';
+import cookieParser from 'cookie-parser';
 import { createServer } from 'http';
 import config from './config';
 import { registerRoutes } from './routes';
@@ -31,6 +32,7 @@ import { validateEncryptionKey } from './utils/encryption';
 import { requestLogger } from './middleware/requestLogger';
 import { requestTimeout } from './middleware/requestTimeout';
 import { defaultJsonParser, defaultUrlencodedParser } from './middleware/bodyParsing';
+import { doubleCsrfProtection } from './middleware/csrf';
 import { apiVersionMiddleware } from './middleware/apiVersion';
 import { migrationService } from './services/migrationService';
 import { getStartupStatus, isSystemDegraded } from './services/startupManager';
@@ -129,6 +131,12 @@ app.use(compression({
   },
 }));
 
+// Cookie parsing — required for the browser auth cookie path (ADR 0001 / 0002).
+// Mounted before body parsing and request logging so all downstream middleware
+// can read req.cookies. Mobile/gateway callers do not set cookies, so this is
+// a no-op on their request path.
+app.use(cookieParser());
+
 // Body parsing (10MB default; backup/restore routes use route-specific 200MB parser)
 app.use(defaultJsonParser());
 app.use(defaultUrlencodedParser());
@@ -153,6 +161,13 @@ app.use('/api', apiVersionMiddleware({
   deprecatedVersions: [],
   sunsetVersions: [],
 }));
+
+// CSRF protection for browser cookie-authenticated requests (ADR 0001 / 0002).
+// Enforced only when the sanctuary_access cookie is present on a state-changing
+// request; mobile/gateway Authorization-header callers bypass via the
+// skipCsrfProtection check inside middleware/csrf.ts. In Phase 1 this is wired
+// but no route currently issues the cookie, so it is a no-op on real traffic.
+app.use(doubleCsrfProtection);
 
 // ========================================
 // ROUTES

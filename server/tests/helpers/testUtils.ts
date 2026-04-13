@@ -19,6 +19,7 @@ export function createMockRequest(options: {
   params?: Record<string, string>;
   query?: Record<string, string>;
   headers?: Record<string, string>;
+  cookies?: Record<string, string>;
   user?: {
     userId: string;
     username: string;
@@ -36,6 +37,7 @@ export function createMockRequest(options: {
     params: options.params || {},
     query: options.query || {},
     headers: mockHeaders,
+    cookies: options.cookies || {},
     user: options.user,
     ip: options.ip || '127.0.0.1',
     get: vi.fn((header: string): string | undefined => {
