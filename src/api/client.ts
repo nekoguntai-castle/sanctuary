@@ -7,7 +7,7 @@
  * Features:
  * - Automatic retry with exponential backoff for network errors and 5xx responses
  * - Configurable retry behavior per request
- * - Token-based authentication
+ * - Token-based authentication with session-scoped browser storage by default
  */
 
 import { createLogger } from '../../utils/logger';
@@ -134,6 +134,83 @@ const API_BASE_URL = getApiBaseUrl();
 // Export for use by functions that need direct fetch (e.g., file downloads)
 export { API_BASE_URL };
 
+const TOKEN_STORAGE_KEY = 'sanctuary_token';
+type TokenStorageMode = 'memory' | 'session' | 'local';
+
+let memoryToken: string | null = null;
+
+const getTokenStorageMode = (): TokenStorageMode => {
+  const configuredMode = import.meta.env.VITE_AUTH_TOKEN_STORAGE;
+  if (configuredMode === 'memory' || configuredMode === 'session' || configuredMode === 'local') {
+    return configuredMode;
+  }
+  // Default to session-scoped persistence to reduce the durable token exposure window.
+  return 'session';
+};
+
+const tokenStorageMode = getTokenStorageMode();
+
+const getBrowserStorage = (storageName: 'localStorage' | 'sessionStorage'): Storage | null => {
+  try {
+    const storage = storageName === 'localStorage' ? globalThis.localStorage : globalThis.sessionStorage;
+    const probeKey = `${TOKEN_STORAGE_KEY}:probe`;
+    storage.setItem(probeKey, '1');
+    storage.removeItem(probeKey);
+    return storage;
+  } catch {
+    return null;
+  }
+};
+
+const getPrimaryTokenStorage = (): Storage | null => {
+  if (tokenStorageMode === 'memory') return null;
+  return getBrowserStorage(tokenStorageMode === 'local' ? 'localStorage' : 'sessionStorage');
+};
+
+const readStoredToken = (): string | null => {
+  if (tokenStorageMode === 'memory') return memoryToken;
+
+  const storage = getPrimaryTokenStorage();
+  const storedToken = storage?.getItem(TOKEN_STORAGE_KEY) ?? null;
+  if (storedToken) return storedToken;
+  if (!storage && memoryToken) return memoryToken;
+
+  if (tokenStorageMode === 'session') {
+    const legacyLocalStorage = getBrowserStorage('localStorage');
+    const legacyToken = legacyLocalStorage?.getItem(TOKEN_STORAGE_KEY) ?? null;
+    if (legacyToken) {
+      // One-time migration from the previous durable localStorage storage scheme.
+      storage?.setItem(TOKEN_STORAGE_KEY, legacyToken);
+      legacyLocalStorage?.removeItem(TOKEN_STORAGE_KEY);
+      return legacyToken;
+    }
+  }
+
+  return null;
+};
+
+const writeStoredToken = (token: string | null): void => {
+  memoryToken = token;
+
+  const storage = getPrimaryTokenStorage();
+  if (token) {
+    storage?.setItem(TOKEN_STORAGE_KEY, token);
+  } else {
+    storage?.removeItem(TOKEN_STORAGE_KEY);
+  }
+
+  if (tokenStorageMode === 'memory') {
+    getBrowserStorage('sessionStorage')?.removeItem(TOKEN_STORAGE_KEY);
+    getBrowserStorage('localStorage')?.removeItem(TOKEN_STORAGE_KEY);
+    return;
+  }
+
+  const inactiveStorage = tokenStorageMode === 'local'
+    ? getBrowserStorage('sessionStorage')
+    : getBrowserStorage('localStorage');
+  inactiveStorage?.removeItem(TOKEN_STORAGE_KEY);
+};
+
 export interface ApiResponse<T> {
   data?: T;
   error?: string;
@@ -151,12 +228,12 @@ export class ApiError extends Error {
   }
 }
 
-class ApiClient {
+export class ApiClient {
   private token: string | null = null;
 
   constructor() {
-    // Load token from localStorage on initialization
-    this.token = localStorage.getItem('sanctuary_token');
+    // Load token from the configured browser storage on initialization.
+    this.token = readStoredToken();
   }
 
   /**
@@ -164,11 +241,7 @@ class ApiClient {
    */
   setToken(token: string | null): void {
     this.token = token;
-    if (token) {
-      localStorage.setItem('sanctuary_token', token);
-    } else {
-      localStorage.removeItem('sanctuary_token');
-    }
+    writeStoredToken(token);
   }
 
   /**

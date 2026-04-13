@@ -28,7 +28,7 @@ vi.stubGlobal('import', { meta: { env: {} } });
 
 // We need to test the module's internals, so we import after mocks
 // but the module uses import.meta.env at top level. We'll test via the default export.
-import apiClient,{ ApiError } from '../../src/api/client';
+import apiClient,{ ApiClient, ApiError } from '../../src/api/client';
 
 describe('API Client', () => {
   const mockFetch = vi.fn();
@@ -36,6 +36,8 @@ describe('API Client', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     global.fetch = mockFetch;
+    globalThis.localStorage.clear();
+    globalThis.sessionStorage.clear();
     // Reset token
     apiClient.setToken(null);
   });
@@ -86,14 +88,19 @@ describe('API Client', () => {
       expect(apiClient.isAuthenticated()).toBe(false);
     });
 
-    it('should interact with localStorage when setting token', () => {
-      // The test setup mocks localStorage - verify setToken calls it
-      // by checking the token round-trips correctly
+    it('should store tokens in sessionStorage by default and clear legacy localStorage', () => {
+      const removeItemMock = vi.mocked(globalThis.localStorage.removeItem);
+      removeItemMock.mockClear();
+
       apiClient.setToken('round-trip');
+
       expect(apiClient.getToken()).toBe('round-trip');
+      expect(globalThis.sessionStorage.getItem('sanctuary_token')).toBe('round-trip');
+      expect(removeItemMock).toHaveBeenCalledWith('sanctuary_token');
 
       apiClient.setToken(null);
       expect(apiClient.getToken()).toBeNull();
+      expect(globalThis.sessionStorage.getItem('sanctuary_token')).toBeNull();
     });
   });
 
@@ -826,6 +833,85 @@ describe('API Client', () => {
 
       vi.unstubAllEnvs();
       vi.resetModules();
+    });
+
+    it('should migrate a legacy localStorage token into sessionStorage by default', async () => {
+      vi.mocked(globalThis.localStorage.getItem).mockReturnValueOnce('legacy-token');
+      const removeItemMock = vi.mocked(globalThis.localStorage.removeItem);
+      removeItemMock.mockClear();
+
+      const client = new ApiClient();
+
+      expect(client.getToken()).toBe('legacy-token');
+      expect(globalThis.sessionStorage.getItem('sanctuary_token')).toBe('legacy-token');
+      expect(removeItemMock).toHaveBeenCalledWith('sanctuary_token');
+    });
+
+    it('should support memory-only token storage when configured', async () => {
+      vi.resetModules();
+      vi.stubEnv('VITE_AUTH_TOKEN_STORAGE', 'memory');
+
+      const mod = await import('../../src/api/client');
+      mod.default.setToken('memory-token');
+
+      expect(mod.default.getToken()).toBe('memory-token');
+      expect(globalThis.sessionStorage.getItem('sanctuary_token')).toBeNull();
+      expect(globalThis.localStorage.getItem('sanctuary_token')).toBeNull();
+
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    });
+
+    it('should use localStorage only when legacy local mode is configured', async () => {
+      vi.resetModules();
+      vi.stubEnv('VITE_AUTH_TOKEN_STORAGE', 'local');
+      globalThis.sessionStorage.setItem('sanctuary_token', 'stale-session-token');
+      const setItemMock = vi.mocked(globalThis.localStorage.setItem);
+      const getItemMock = vi.mocked(globalThis.localStorage.getItem);
+      setItemMock.mockClear();
+      getItemMock.mockReturnValueOnce('local-token');
+
+      const mod = await import('../../src/api/client');
+      mod.default.setToken('local-token');
+
+      expect(mod.default.getToken()).toBe('local-token');
+      expect(setItemMock).toHaveBeenCalledWith('sanctuary_token', 'local-token');
+      expect(globalThis.sessionStorage.getItem('sanctuary_token')).toBeNull();
+
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    });
+
+    it('should default unknown storage mode values to sessionStorage', async () => {
+      vi.resetModules();
+      vi.stubEnv('VITE_AUTH_TOKEN_STORAGE', 'bogus');
+
+      const mod = await import('../../src/api/client');
+      mod.default.setToken('session-token');
+
+      expect(mod.default.getToken()).toBe('session-token');
+      expect(globalThis.sessionStorage.getItem('sanctuary_token')).toBe('session-token');
+      expect(globalThis.localStorage.removeItem).toHaveBeenCalledWith('sanctuary_token');
+
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    });
+
+    it('should fall back to memory when sessionStorage is unavailable', () => {
+      const blocked = new DOMException('storage blocked');
+      const setItemSpy = vi.spyOn(globalThis.sessionStorage, 'setItem').mockImplementation(() => {
+        throw blocked;
+      });
+
+      try {
+        const client = new ApiClient();
+        client.setToken('fallback-token');
+
+        const secondClient = new ApiClient();
+        expect(secondClient.getToken()).toBe('fallback-token');
+      } finally {
+        setItemSpy.mockRestore();
+      }
     });
   });
 });

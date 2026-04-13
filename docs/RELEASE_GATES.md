@@ -23,6 +23,7 @@ This document records the checks that should protect the A-grade engineering goa
 | Gateway build | TypeScript build | `cd gateway && npm run build` | Required |
 | Gateway tests | Threshold-enforced coverage | `cd gateway && npm run test:coverage` or the `full-gateway-tests` CI job | Required for main/release |
 | Critical security logic | Mutation gate for auth, access control, address derivation, and PSBT validation | `cd server && npm run test:mutation:critical:gate` or the `full-critical-mutation` CI job | Required when touched; required for main/nightly |
+| Browser auth and CSP | API-client token storage mode and route-scoped Swagger CSP | `npx vitest run tests/api/client.test.ts`; `cd server && npx vitest run tests/unit/api/openapi.test.ts` when backend CSP/docs routing changes | Required when touched |
 | API/gateway contracts | Contract and drift-prone boundary tests | Targeted tests for gateway HMAC, WebSocket auth, mobile permission, request logging, body parsing, gateway whitelist, and new/touched schemas | Required when touched |
 | Dependency security | Production advisory review | `npm audit --omit=dev` in root and `server/`; `cd gateway && npm audit --omit=dev --omit=optional`; plus documented accepted findings | Required before release |
 | Container/install validation | Fresh install, install script, container health, auth flow | `.github/workflows/install-test.yml` release gate | Required for release candidates/releases |
@@ -48,3 +49,7 @@ Record benchmark output under `docs/plans/` and link it from `docs/plans/codebas
 ## Phase 4 Typecheck Gate
 
 `npm run typecheck:tests` passed after the Phase 4 unused-symbol fixture cleanup and is now a required frontend correctness gate alongside `npm run typecheck:app`.
+
+## Phase 4 Browser Auth Gate
+
+Frontend access tokens default to `sessionStorage` instead of durable `localStorage`. `VITE_AUTH_TOKEN_STORAGE=memory` is available for memory-only deployments, and `VITE_AUTH_TOKEN_STORAGE=local` is the explicit legacy mode. This does not replace the remaining HttpOnly-cookie/session architecture decision for an A-grade browser token claim.
