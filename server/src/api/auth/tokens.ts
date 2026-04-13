@@ -32,28 +32,44 @@ const log = createLogger('AUTH_TOKEN:ROUTE');
  * Always rotates the refresh token on success for enhanced security.
  *
  * The refresh token can be supplied in one of two ways, matching the dual
- * auth surface in ADR 0001:
+ * auth surface in ADR 0001 / 0002:
  *
- *   1. `req.body.refreshToken` — used by mobile/gateway callers and by
- *      browser clients during the Phase 2-6 rollback window where they may
- *      still be persisting the legacy JSON token.
- *   2. `sanctuary_refresh` HttpOnly cookie — used by browser clients after
- *      the Phase 2 cookie migration, scoped to `/api/v1/auth/refresh` so it
- *      is never sent to any other endpoint.
+ *   1. `sanctuary_refresh` HttpOnly cookie — the browser path after the
+ *      Phase 2 cookie migration, scoped to `/api/v1/auth/refresh` so it is
+ *      never sent to any other endpoint.
+ *   2. `req.body.refreshToken` — used by mobile/gateway callers that
+ *      cannot set browser cookies, and by browser clients during the
+ *      Phase 2-6 rollback window if the frontend is rolled back to the
+ *      legacy JSON-token storage path.
  *
- * If both sources are present the body field wins, which mirrors the
- * auth middleware's header-over-cookie precedence for the access token.
- * The gateway's own request validation still requires body.refreshToken
- * on mobile routes, so this relaxation does not weaken the gateway path.
+ * When both sources are present the **cookie wins**, per ADR 0002 migration
+ * plan item 2 ("both present uses the cookie"). The cookie is the modern
+ * browser path and the body field is the legacy fallback, so preferring the
+ * cookie ensures a cleanly-rolled-forward browser uses the rotated cookie
+ * it already has rather than a stale sessionStorage copy.
+ *
+ * On terminal failure (invalid/expired/revoked refresh token) the three
+ * browser auth cookies are cleared before the 401 response is sent, so a
+ * browser that hit this endpoint with a stale cookie does not keep sending
+ * the same stale credentials on every subsequent request. This matches
+ * ADR 0002's required test "refresh clears cookies on failure (revoked
+ * refresh token)" and is the backend half of the Phase 4 terminal-logout
+ * flow.
+ *
+ * The gateway's own request validation still requires body.refreshToken on
+ * mobile routes, so the precedence change does not affect the mobile path
+ * (no cookie is ever present there).
  */
 router.post('/refresh', asyncHandler(async (req, res) => {
   const bodyToken = typeof req.body?.refreshToken === 'string' ? req.body.refreshToken : null;
   const cookieToken = typeof req.cookies?.[SANCTUARY_REFRESH_COOKIE_NAME] === 'string'
     ? req.cookies[SANCTUARY_REFRESH_COOKIE_NAME]
     : null;
-  const refreshTokenStr = bodyToken && bodyToken.length > 0
-    ? bodyToken
-    : (cookieToken && cookieToken.length > 0 ? cookieToken : null);
+  // Cookie wins when both are present, per ADR 0002. Mobile/gateway
+  // callers only ever have the body field, so this has no effect on them.
+  const refreshTokenStr = cookieToken && cookieToken.length > 0
+    ? cookieToken
+    : (bodyToken && bodyToken.length > 0 ? bodyToken : null);
 
   if (!refreshTokenStr) {
     throw new InvalidInputError('Refresh token is required');
@@ -66,6 +82,10 @@ router.post('/refresh', asyncHandler(async (req, res) => {
     decoded = await verifyRefreshToken(refreshTokenStr);
   } catch (err) {
     log.debug('Refresh token verification failed', { error: (err as Error).message });
+    // ADR 0002: clear the browser cookies on terminal refresh failure so
+    // the client is evicted cleanly instead of looping 401s on a stale
+    // refresh cookie. No-op on mobile/gateway callers (no cookies set).
+    clearAuthCookies(res);
     throw new UnauthorizedError('Invalid or expired refresh token');
   }
 
@@ -73,6 +93,7 @@ router.post('/refresh', asyncHandler(async (req, res) => {
   const tokenExists = await refreshTokenService.verifyRefreshTokenExists(refreshTokenStr);
   if (!tokenExists) {
     log.warn('Refresh token not found in database', { userId: decoded.userId });
+    clearAuthCookies(res);
     throw new UnauthorizedError('Refresh token has been revoked');
   }
 
@@ -80,6 +101,7 @@ router.post('/refresh', asyncHandler(async (req, res) => {
   const user = await userRepository.findById(decoded.userId);
 
   if (!user) {
+    clearAuthCookies(res);
     throw new UnauthorizedError('User not found');
   }
 
@@ -99,6 +121,7 @@ router.post('/refresh', asyncHandler(async (req, res) => {
 
   if (!newRefreshToken) {
     log.error('Token rotation failed', { userId: user.id });
+    clearAuthCookies(res);
     throw new Error('Failed to rotate refresh token');
   }
 

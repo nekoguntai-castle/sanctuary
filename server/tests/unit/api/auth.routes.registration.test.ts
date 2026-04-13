@@ -1759,9 +1759,14 @@ describe('Auth API Routes — Registration, Login, Password, Tokens', () => {
       assertAccessExpiresAtHeader(response.headers);
     });
 
-    it('refresh prefers body token over cookie token when both are present', async () => {
+    it('refresh prefers cookie token over body token when both are present (ADR 0002)', async () => {
+      // ADR 0002 migration plan item 2 and required test spec: "both
+      // present uses the cookie." Mobile/gateway callers only ever have
+      // the body field, so this precedence has no effect on the mobile
+      // path.
       const { rotateRefreshToken } = await import('../../../src/services/refreshTokenService');
       const rotateMock = vi.mocked(rotateRefreshToken);
+      rotateMock.mockClear();
       mockPrismaClient.user.findUnique.mockResolvedValue({
         id: 'test-user-id',
         username: 'testuser',
@@ -1774,8 +1779,12 @@ describe('Auth API Routes — Registration, Login, Password, Tokens', () => {
         .send({ refreshToken: 'body-refresh-token' })
         .expect(200);
 
-      // The backend must have used the body field, not the cookie.
+      // The backend must have used the cookie token, not the body field.
       expect(rotateMock).toHaveBeenCalledWith(
+        'cookie-refresh-token',
+        expect.any(Object),
+      );
+      expect(rotateMock).not.toHaveBeenCalledWith(
         'body-refresh-token',
         expect.any(Object),
       );
@@ -1785,6 +1794,50 @@ describe('Auth API Routes — Registration, Login, Password, Tokens', () => {
       const response = await request(app).post('/api/v1/auth/refresh').send({});
       expect(response.status).toBe(400);
       expect(response.body.message).toContain('Refresh token is required');
+    });
+
+    it('refresh clears browser auth cookies on terminal failure (invalid refresh token)', async () => {
+      // ADR 0002 required test: "refresh clears cookies on failure
+      // (revoked refresh token)." Evicts a browser sitting on a stale
+      // refresh cookie so it does not keep 401-looping.
+      const { verifyRefreshToken } = await import('../../../src/utils/jwt');
+      vi.mocked(verifyRefreshToken).mockRejectedValueOnce(new Error('Refresh token expired'));
+
+      const response = await request(app)
+        .post('/api/v1/auth/refresh')
+        .set('Cookie', ['sanctuary_refresh=stale-refresh-token'])
+        .send({});
+
+      expect(response.status).toBe(401);
+      expect(response.body.message).toContain('Invalid or expired refresh token');
+      assertAuthCookiesCleared(response.headers['set-cookie']);
+    });
+
+    it('refresh clears browser auth cookies when the refresh token has been revoked', async () => {
+      const { verifyRefreshTokenExists } = await import('../../../src/services/refreshTokenService');
+      vi.mocked(verifyRefreshTokenExists).mockResolvedValueOnce(false);
+
+      const response = await request(app)
+        .post('/api/v1/auth/refresh')
+        .set('Cookie', ['sanctuary_refresh=revoked-refresh-token'])
+        .send({});
+
+      expect(response.status).toBe(401);
+      expect(response.body.message).toContain('Refresh token has been revoked');
+      assertAuthCookiesCleared(response.headers['set-cookie']);
+    });
+
+    it('refresh clears browser auth cookies when the user no longer exists', async () => {
+      mockPrismaClient.user.findUnique.mockResolvedValueOnce(null);
+
+      const response = await request(app)
+        .post('/api/v1/auth/refresh')
+        .set('Cookie', ['sanctuary_refresh=orphan-refresh-token'])
+        .send({});
+
+      expect(response.status).toBe(401);
+      expect(response.body.message).toContain('User not found');
+      assertAuthCookiesCleared(response.headers['set-cookie']);
     });
 
     // -- Logout ----------------------------------------------------------
