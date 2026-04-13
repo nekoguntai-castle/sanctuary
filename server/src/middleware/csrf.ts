@@ -36,11 +36,23 @@ import { createHmac } from 'crypto';
 import { NextFunction, Request, Response } from 'express';
 import { doubleCsrf } from 'csrf-csrf';
 import config from '../config';
-import { extractTokenFromHeader } from '../utils/jwt';
+import { decodeToken, extractTokenFromHeader } from '../utils/jwt';
 
 export const SANCTUARY_ACCESS_COOKIE_NAME = 'sanctuary_access';
+export const SANCTUARY_REFRESH_COOKIE_NAME = 'sanctuary_refresh';
 export const SANCTUARY_CSRF_COOKIE_NAME = 'sanctuary_csrf';
 export const SANCTUARY_CSRF_HEADER_NAME = 'x-csrf-token';
+export const SANCTUARY_ACCESS_EXPIRES_AT_HEADER = 'X-Access-Expires-At';
+
+// Refresh cookie max-age in milliseconds. Must stay in sync with
+// config.jwtRefreshExpiresIn which drives the JWT refresh token expiry in
+// tokenRepository. The default is 7 days per ADR 0002.
+const REFRESH_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+// The refresh cookie path scope. Per ADR 0002 it is intentionally narrow so
+// the refresh token is only sent on the single endpoint that consumes it,
+// preventing accidental exposure to any other route.
+export const SANCTUARY_REFRESH_COOKIE_PATH = '/api/v1/auth/refresh';
 
 type CsrfInstance = ReturnType<typeof doubleCsrf>;
 let cachedCsrfInstance: CsrfInstance | null = null;
@@ -127,4 +139,137 @@ export function generateCsrfToken(
   options?: Parameters<CsrfInstance['generateCsrfToken']>[2],
 ): string {
   return getCsrfInstance().generateCsrfToken(req, res, options);
+}
+
+/**
+ * Issue the browser auth cookies after a successful login, 2FA verify, or
+ * refresh. Called by route handlers in Phase 2 of the cookie auth migration
+ * (ADR 0001 / 0002).
+ *
+ * Sets three cookies:
+ *   - sanctuary_access: HttpOnly, Secure (prod), SameSite=Strict, path=/,
+ *     expires at the access token's JWT exp claim.
+ *   - sanctuary_refresh: HttpOnly, Secure (prod), SameSite=Strict,
+ *     path=/api/v1/auth/refresh, max-age 7 days.
+ *   - sanctuary_csrf: non-HttpOnly (readable by the frontend), Secure (prod),
+ *     SameSite=Strict, path=/, bound to the access cookie value via HMAC.
+ *
+ * Also sets the X-Access-Expires-At response header (ISO 8601) so the
+ * frontend can schedule a refresh without an extra round trip.
+ *
+ * Requires `req.cookies` to be populated by `cookie-parser`. Mutates
+ * `req.cookies.sanctuary_access` in-memory so that `generateCsrfToken`'s
+ * `getSessionIdentifier` reads the new token value when computing the HMAC
+ * binding — otherwise the CSRF token would be bound to the PREVIOUS access
+ * cookie and the frontend's first state-changing request after refresh
+ * would fail with 403. The in-memory mutation is scoped to this request
+ * only; it never leaks out of the handler.
+ */
+export function setAuthCookies(
+  req: Request,
+  res: Response,
+  options: { accessToken: string; refreshToken: string },
+): Date {
+  const { accessToken, refreshToken } = options;
+  const isProd = config.nodeEnv === 'production';
+
+  // Derive the access-token expiry from the JWT itself so the cookie's
+  // max-age and the X-Access-Expires-At header both match the authoritative
+  // source (the signed exp claim). Fall back to 1h if decode fails — that
+  // should never happen because we just generated the token, but defending
+  // against a malformed token is cheaper than debugging a mismatch.
+  const decoded = decodeToken(accessToken);
+  const accessExpiresAt = decoded?.exp
+    ? new Date(decoded.exp * 1000)
+    : new Date(Date.now() + 60 * 60 * 1000);
+
+  res.cookie(SANCTUARY_ACCESS_COOKIE_NAME, accessToken, {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: 'strict',
+    path: '/',
+    expires: accessExpiresAt,
+  });
+
+  res.cookie(SANCTUARY_REFRESH_COOKIE_NAME, refreshToken, {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: 'strict',
+    path: SANCTUARY_REFRESH_COOKIE_PATH,
+    maxAge: REFRESH_COOKIE_MAX_AGE_MS,
+  });
+
+  // Mutate req.cookies so the CSRF token is bound to the NEW access cookie
+  // value, not the one that was on the request. This matches the lifecycle
+  // of an authenticated browser session: login/refresh rotates the access
+  // cookie and the csrf cookie in lockstep.
+  req.cookies = {
+    ...(req.cookies ?? {}),
+    [SANCTUARY_ACCESS_COOKIE_NAME]: accessToken,
+  };
+  generateCsrfToken(req, res);
+
+  res.setHeader(SANCTUARY_ACCESS_EXPIRES_AT_HEADER, accessExpiresAt.toISOString());
+
+  return accessExpiresAt;
+}
+
+/**
+ * Clear all three browser auth cookies. Called on logout and on terminal
+ * refresh failure so the browser is immediately de-authenticated and cannot
+ * fall back to stale cookies on the next request.
+ *
+ * The cookie attributes passed here must match the ones used when setting
+ * the cookies — some browsers are strict about matching SameSite and Path
+ * before expiring a cookie.
+ */
+export function clearAuthCookies(res: Response): void {
+  const isProd = config.nodeEnv === 'production';
+
+  res.clearCookie(SANCTUARY_ACCESS_COOKIE_NAME, {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: 'strict',
+    path: '/',
+  });
+
+  res.clearCookie(SANCTUARY_REFRESH_COOKIE_NAME, {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: 'strict',
+    path: SANCTUARY_REFRESH_COOKIE_PATH,
+  });
+
+  res.clearCookie(SANCTUARY_CSRF_COOKIE_NAME, {
+    httpOnly: false,
+    secure: isProd,
+    sameSite: 'strict',
+    path: '/',
+  });
+}
+
+/**
+ * Set the X-Access-Expires-At response header for endpoints that verify the
+ * caller's current access token but do not issue a new one — specifically
+ * GET /auth/me, which the frontend calls on app boot to hydrate user state
+ * and schedule its first refresh.
+ *
+ * Reads the token source the same way the auth middleware does (header
+ * first, then cookie) so the expiry reported matches the token that
+ * authenticated the request. If no token is present (defensive), the
+ * header is simply not set and the caller gets the response unchanged.
+ */
+export function setAccessExpiresAtHeader(req: Request, res: Response): void {
+  const headerToken = extractTokenFromHeader(req.headers.authorization);
+  const cookieToken = req.cookies?.[SANCTUARY_ACCESS_COOKIE_NAME];
+  const token = headerToken ?? (typeof cookieToken === 'string' ? cookieToken : null);
+
+  if (!token) {
+    return;
+  }
+
+  const decoded = decodeToken(token);
+  if (decoded?.exp) {
+    res.setHeader(SANCTUARY_ACCESS_EXPIRES_AT_HEADER, new Date(decoded.exp * 1000).toISOString());
+  }
 }

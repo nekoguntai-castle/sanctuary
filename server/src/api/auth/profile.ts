@@ -9,6 +9,7 @@ import { userRepository, systemSettingRepository, groupRepo as groupRepository }
 import { asyncHandler } from '../../errors/errorHandler';
 import { NotFoundError } from '../../errors/ApiError';
 import { validate } from '../../middleware/validate';
+import { setAccessExpiresAtHeader } from '../../middleware/csrf';
 import { UserSearchQuerySchema } from '../schemas/auth';
 
 const router = Router();
@@ -31,6 +32,10 @@ router.get('/me', asyncHandler(async (req, res) => {
 
   // Don't send the password hash to the client
   const { password: _, ...userWithoutPassword } = user;
+
+  // ADR 0002: tell the frontend when the current access token expires so
+  // it can schedule its first refresh on app boot without an extra call.
+  setAccessExpiresAtHeader(req, res);
 
   res.json({
     ...userWithoutPassword,

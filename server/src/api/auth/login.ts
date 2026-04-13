@@ -16,6 +16,7 @@ import { SystemSettingSchemas } from '../../utils/safeJson';
 import { isUsingInitialPassword } from './password';
 import { isValidEmail } from '../../utils/validators';
 import { validate } from '../../middleware/validate';
+import { setAuthCookies } from '../../middleware/csrf';
 import { asyncHandler } from '../../errors/errorHandler';
 import { InvalidInputError, ValidationError, ConflictError, ForbiddenError } from '../../errors/ApiError';
 import { LoginSchema } from '../schemas/auth';
@@ -160,6 +161,11 @@ export function createLoginRouter(
     });
     const refreshToken = await refreshTokenService.createRefreshToken(user.id, deviceInfo);
 
+    // ADR 0001 / 0002: issue the browser auth cookies alongside the JSON
+    // token field. The JSON field is retained for one release as a rollback
+    // safety net (mobile/gateway clients still consume it).
+    setAuthCookies(req, res, { accessToken: token, refreshToken });
+
     res.status(201).json({
       token,
       refreshToken,
@@ -294,6 +300,11 @@ export function createLoginRouter(
 
     // Check if using initial password (for admin user warning)
     const usingDefaultPassword = await isUsingInitialPassword(user.id);
+
+    // ADR 0001 / 0002: issue the browser auth cookies alongside the JSON
+    // token field. The JSON field is retained for one release as a rollback
+    // safety net (mobile/gateway clients still consume it).
+    setAuthCookies(req, res, { accessToken: token, refreshToken });
 
     res.json({
       token,

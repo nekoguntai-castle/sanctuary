@@ -13,6 +13,7 @@ import * as twoFactorService from '../../../services/twoFactorService';
 import * as refreshTokenService from '../../../services/refreshTokenService';
 import { auditService, AuditAction, AuditCategory, getClientInfo } from '../../../services/auditService';
 import { validate } from '../../../middleware/validate';
+import { setAuthCookies } from '../../../middleware/csrf';
 import { asyncHandler } from '../../../errors/errorHandler';
 import { UnauthorizedError } from '../../../errors/ApiError';
 import { TwoFactorVerifySchema } from '../../schemas/auth';
@@ -122,6 +123,11 @@ export function createVerifyRouter(twoFactorLimiter: RequestHandler): Router {
       success: true,
       details: { via2FA: true, usedBackupCode },
     });
+
+    // ADR 0001 / 0002: issue the browser auth cookies alongside the JSON
+    // token field. The JSON field is retained for one release as a rollback
+    // safety net (mobile/gateway clients still consume it).
+    setAuthCookies(req, res, { accessToken: token, refreshToken });
 
     res.json({
       token,

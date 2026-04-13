@@ -710,6 +710,65 @@ describe('Auth API Routes — Two-Factor Authentication', () => {
       expect(response.status).toBe(500);
       expect(response.body.code).toBe('INTERNAL_ERROR');
     });
+
+    it('Phase 2: sets sanctuary_access/refresh/csrf cookies and X-Access-Expires-At header on success', async () => {
+      // Earlier tests in this describe block leave twoFactorService mocks in
+      // the backup-code-path state. Reset them to the happy-path TOTP config
+      // so this test exercises the same code path as the original success
+      // test at "should successfully verify 2FA and return tokens".
+      const twoFactorService = await import('../../../src/services/twoFactorService');
+      vi.mocked(twoFactorService.isBackupCode).mockReset().mockReturnValue(false);
+      vi.mocked(twoFactorService.verifyToken).mockReset().mockReturnValue(true);
+
+      mockPrismaClient.user.findUnique.mockResolvedValue({
+        id: 'test-user-id',
+        username: 'testuser',
+        email: 'test@example.com',
+        isAdmin: false,
+        twoFactorEnabled: true,
+        twoFactorSecret: 'some-secret',
+        preferences: { darkMode: true },
+      });
+
+      const response = await request(app)
+        .post('/api/v1/auth/2fa/verify')
+        .send({ tempToken: 'valid-token', code: '123456' });
+
+      expect(response.status).toBe(200);
+      // JSON fields are still present for the rollback window.
+      expect(response.body.token).toBeDefined();
+      expect(response.body.refreshToken).toBeDefined();
+
+      const setCookie = response.headers['set-cookie'];
+      const rawCookies: string[] = Array.isArray(setCookie)
+        ? (setCookie as string[])
+        : typeof setCookie === 'string'
+          ? [setCookie as string]
+          : [];
+      const names = rawCookies.map((c) => c.split(';')[0].split('=')[0]);
+      expect(names).toContain('sanctuary_access');
+      expect(names).toContain('sanctuary_refresh');
+      expect(names).toContain('sanctuary_csrf');
+
+      const accessCookie = rawCookies.find((c) => c.startsWith('sanctuary_access='));
+      expect(accessCookie).toContain('HttpOnly');
+      expect(accessCookie).toContain('SameSite=Strict');
+      expect(accessCookie).toContain('Path=/');
+
+      const refreshCookie = rawCookies.find((c) => c.startsWith('sanctuary_refresh='));
+      expect(refreshCookie).toContain('HttpOnly');
+      expect(refreshCookie).toContain('SameSite=Strict');
+      expect(refreshCookie).toContain('Path=/api/v1/auth/refresh');
+
+      const csrfCookie = rawCookies.find((c) => c.startsWith('sanctuary_csrf='));
+      expect(csrfCookie).not.toContain('HttpOnly');
+      expect(csrfCookie).toContain('SameSite=Strict');
+
+      const expiresHeader = response.headers['x-access-expires-at'];
+      expect(typeof expiresHeader).toBe('string');
+      const date = new Date(expiresHeader as string);
+      expect(Number.isNaN(date.getTime())).toBe(false);
+    });
   });
 
   describe('POST /auth/2fa/backup-codes - Get Backup Code Count', () => {

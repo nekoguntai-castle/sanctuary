@@ -9,6 +9,7 @@ import { vi } from 'vitest';
 
 import { mockPrismaClient, resetPrismaMocks } from '../../mocks/prisma';
 import express from 'express';
+import cookieParser from 'cookie-parser';
 import { errorHandler } from '../../../src/errors/errorHandler';
 
 // Re-export so consuming test files don't need to import from mocks/prisma directly
@@ -25,6 +26,10 @@ export const mockCreateVerificationToken = vi.fn().mockResolvedValue({ success: 
 export const createAuthTestApp = async () => {
   const app = express();
   app.use(express.json());
+  // cookie-parser mirrors the production wiring in server/src/index.ts so
+  // Phase 2 cookie-source tests can exercise req.cookies without rolling a
+  // separate parsing path in each test.
+  app.use(cookieParser());
 
   // Import router dynamically after mocks
   const authModule = await import('../../../src/api/auth');

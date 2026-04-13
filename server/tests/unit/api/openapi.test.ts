@@ -2729,6 +2729,19 @@ describe('OpenAPI Docs', () => {
       in: 'header',
       name: 'X-Gateway-Timestamp',
     });
+    // ADR 0001 / 0002: browser cookie auth security schemes. bearerAuth is
+    // retained for mobile/gateway callers; cookieAuth + csrfToken are the
+    // browser path added in Phase 2.
+    expect(openApiSpec.components.securitySchemes.cookieAuth).toMatchObject({
+      type: 'apiKey',
+      in: 'cookie',
+      name: 'sanctuary_access',
+    });
+    expect(openApiSpec.components.securitySchemes.csrfToken).toMatchObject({
+      type: 'apiKey',
+      in: 'header',
+      name: 'X-CSRF-Token',
+    });
 
     expect(openApiSpec.paths['/internal/mobile-permissions/check'].post.security).toEqual([
       { gatewaySignature: [], gatewayTimestamp: [] },

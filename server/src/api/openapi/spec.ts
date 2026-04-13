@@ -121,6 +121,20 @@ export const openApiSpec = {
         scheme: 'bearer',
         bearerFormat: 'JWT',
       },
+      cookieAuth: {
+        type: 'apiKey',
+        in: 'cookie',
+        name: 'sanctuary_access',
+        description:
+          'ADR 0001 — Browser auth via HttpOnly Secure SameSite=Strict cookie set on login/2FA-verify/refresh. Used by the web frontend. Mobile and gateway callers use bearerAuth instead.',
+      },
+      csrfToken: {
+        type: 'apiKey',
+        in: 'header',
+        name: 'X-CSRF-Token',
+        description:
+          'ADR 0001 — Double-submit CSRF token echoed from the sanctuary_csrf cookie. Required on state-changing requests (POST/PUT/PATCH/DELETE) when the request authenticates via the sanctuary_access cookie. Requests authenticating via bearerAuth are exempt because cross-site requests cannot attach a custom Authorization header without explicit cross-origin opt-in.',
+      },
       gatewaySignature: {
         type: 'apiKey',
         in: 'header',
