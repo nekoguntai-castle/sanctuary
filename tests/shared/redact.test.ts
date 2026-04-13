@@ -119,6 +119,11 @@ describe('shared redaction utilities', () => {
       expect(result.error).toEqual({ name: 'TypeError', message: 'bad input' });
     });
 
+    it('preserves nullish metadata values', () => {
+      expect(redactDeep(null)).toBeNull();
+      expect(redactDeep(undefined)).toBeUndefined();
+    });
+
     it('handles circular references and max depth', () => {
       const meta: Record<string, unknown> = { name: 'root' };
       meta.self = meta;
@@ -151,6 +156,22 @@ describe('shared redaction utilities', () => {
 
       const parsed = JSON.parse(output);
       expect(parsed.serializationError).toContain('Invalid time value');
+    });
+
+    it('serializes non-Error traversal failures', () => {
+      const metadata: Record<string, unknown> = {};
+      Object.defineProperty(metadata, 'broken', {
+        enumerable: true,
+        get: () => {
+          throw 'non-error failure';
+        },
+      });
+
+      const output = stringifyRedacted(metadata);
+
+      expect(JSON.parse(output)).toEqual({
+        serializationError: 'non-error failure',
+      });
     });
   });
 });

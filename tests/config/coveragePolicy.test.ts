@@ -21,6 +21,8 @@ const EXPECTED_FRONTEND_COVERAGE_EXCLUDES = [
   'components/animations/**',
   'src/types/**/*.ts',
   'shared/types/**/*.ts',
+  'shared/schemas/mobileApiRequests.ts',
+  'shared/utils/gatewayAuth.ts',
   'components/**/types.ts',
   'components/**/index.ts',
   'components/**/index.tsx',
@@ -51,13 +53,15 @@ describe('frontend coverage policy', () => {
     expect(readCoverageExcludesFromConfig()).toEqual(EXPECTED_FRONTEND_COVERAGE_EXCLUDES);
   });
 
-  it('only excludes animation internals, type-only, and barrel-export files from product code', () => {
+  it('only excludes animation internals, non-frontend shared contracts, type-only, and barrel-export files from product code', () => {
     const sourcePathExcludes = readCoverageExcludesFromConfig().filter(pattern => !pattern.startsWith('**/'));
 
     expect(sourcePathExcludes).toEqual([
       'components/animations/**',
       'src/types/**/*.ts',
       'shared/types/**/*.ts',
+      'shared/schemas/mobileApiRequests.ts',
+      'shared/utils/gatewayAuth.ts',
       'components/**/types.ts',
       'components/**/index.ts',
       'components/**/index.tsx',

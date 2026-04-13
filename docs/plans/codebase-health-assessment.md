@@ -395,6 +395,12 @@ Completed in the sixth Phase 4 slice:
 - Added a route-specific `/api/v1/docs` CSP that preserves the current Swagger UI CDN and inline bootstrap requirements only for the docs HTML response.
 - Added OpenAPI route coverage that verifies the docs CSP is present for Swagger UI and absent from the raw OpenAPI JSON router response.
 
+Completed in the seventh Phase 4 slice:
+
+- Fixed the frontend coverage gate after CI showed root coverage including shared server/gateway contract files that are not frontend runtime code.
+- Excluded `shared/schemas/mobileApiRequests.ts` and `shared/utils/gatewayAuth.ts` from the frontend coverage denominator because they are covered by server/gateway package-level contract tests.
+- Added missing branch coverage for shared redaction utilities so the frontend coverage gate remains at 100%.
+
 Ongoing post-Phase 4 hygiene:
 
 - Continue adopting centralized backend request validation as routes are touched.
@@ -451,6 +457,9 @@ npm run test:hygiene -- tests/components/UTXOList/UTXOSummaryBanners.test.tsx te
 rg -n "largest[-]known|production[-]like largest|operator eviden[c]e|representative operato[r]|largest expecte[d]|load[-]level" docs/plans/codebase-health-assessment.md docs/SCALABILITY_AND_PERFORMANCE.md docs/RELEASE_GATES.md scripts/perf -S
 cd server && npx vitest run tests/unit/api/openapi.test.ts
 cd server && npm run build
+npx vitest run tests/config/coveragePolicy.test.ts tests/shared/redact.test.ts
+npm run test:coverage
+npm run typecheck:tests
 git diff --check
 ```
 
@@ -469,6 +478,7 @@ Phase 3 close-out harness syntax, Compose config rendering, and diff whitespace 
 Phase 4 strict test typecheck gate passed: `npm run typecheck:tests`. Strict app typecheck also passed: `npm run typecheck:app`. The touched frontend test files passed: `npx vitest run tests/components/UTXOList/UTXOSummaryBanners.test.tsx tests/components/UsersGroups/EditUserModal.branches.test.tsx tests/components/WalletDetail/modals/ReceiveModal.test.tsx`. Test hygiene passed for those three files.
 Phase 4 privacy-safe benchmark policy checks passed: `node --check scripts/perf/phase3-benchmark.mjs`, `node --check scripts/perf/phase3-compose-benchmark-smoke.mjs`, and `git diff --check` passed. The stale benchmark-target language scan returned no matches.
 Phase 4 CSP hardening checks passed: `cd server && npx vitest run tests/unit/api/openapi.test.ts` passed 42 tests; `cd server && npm run build` passed.
+Phase 4 frontend coverage gate fix passed: `npx vitest run tests/config/coveragePolicy.test.ts tests/shared/redact.test.ts` passed 2 files / 14 tests, `npm run test:coverage` passed 384 files / 5,426 tests with 100% statements/branches/functions/lines, and `npm run typecheck:tests` passed.
 Redis WebSocket bridge readiness targeted test passed after the duplicate-client ready-state fix: `npx vitest run tests/unit/websocket/redisBridge.connected.test.ts` from `server/` passed 17 tests.
 The latest Phase 1 server OpenAPI/mobile-permission/types rerun passed 3 files, 72 tests after shared mobile-permission and draft schema expansion.
 The latest Phase 1 gateway request-validation/proxy rerun passed 2 files, 149 tests after transaction/PSBT/device schema expansion.

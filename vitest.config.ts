@@ -54,6 +54,10 @@ export default defineConfig({
         'components/animations/**',
         'src/types/**/*.ts',
         'shared/types/**/*.ts',
+        // Server/gateway contract helpers are covered by their package-level tests,
+        // not by the frontend coverage gate.
+        'shared/schemas/mobileApiRequests.ts',
+        'shared/utils/gatewayAuth.ts',
         // Type-only and barrel-export files with no executable logic
         'components/**/types.ts',
         'components/**/index.ts',
