@@ -24,6 +24,20 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 - Per-file `vi.mock` calls override setup mocks (they're hoisted), so dedicated hook/api tests still work.
 - Symptom check: if CI shows `Closing rpc while "onUserConsoleLog" was pending` or unexplained vitest worker teardown errors, look for unmocked retry-capable API calls in components rendered by the affected test file.
 
+## Don't evict credentials on server-side failures — only on terminal auth failures
+
+**Rule:** When a route fails, ask: "was the client's credential actually the problem, or was the server the problem?" Only evict the client's credentials (clear cookies, force logout, invalidate session) on the former. For transient server errors — database hiccups, service bugs, upstream timeouts — leave the credentials alone so the client can retry.
+
+**Why:** Fixing one Codex-flagged divergence (refresh failure should clear cookies) on commit `1f631091`, I over-corrected and added `clearAuthCookies(res)` to the `rotateRefreshToken` service-failure 500 path as well. Codex caught it on the next review: at that point the refresh token has ALREADY been verified (JWT signature OK, not revoked, user exists), so rotation returning null is a transient server error, not a terminal auth failure. Clearing the cookies would punish the client for a server bug — the client would have no credentials left to retry with, even though their session is fine. Fixed in commit `<next>` by removing the `clearAuthCookies` call from that one branch and adding a regression test that sends the three cookies, triggers the rotation-null path, and asserts the response has no clearing Set-Cookie entries for those names.
+
+**How to apply:**
+- Draw a line between "terminal auth failure" (credential is bad, no retry will fix it) and "transient server failure" (server hiccup, same credential would succeed next call). Clear cookies only on the first kind.
+  - Terminal: invalid/expired/revoked token, deleted user, permission denied, user disabled.
+  - Transient: rotation service bug, DB connection drop, upstream 502, rate-limit retry-after, unknown 500.
+- When adding cookie-clearing logic, enumerate the failure paths explicitly and tag each one as terminal or transient before the code gets written.
+- Add a regression test for the **transient** path that asserts the Set-Cookie header does NOT contain clearings for the auth cookie names. The happy-path and terminal-path tests cover the other directions.
+- The general principle beyond cookies: on a server bug, leave client state alone and return an error the client can retry. Never let a server bug become a user-facing logout.
+
 ## Implementations must match the ADR they claim to implement, not the implementer's intuition
 
 **Rule:** When implementing a phase of a plan documented in an ADR, grep the ADR for every stated invariant (precedence rules, failure behaviors, required tests, specific header/cookie attribute values) and verify each one against the code. Do not substitute a "sensible equivalent" from an unrelated part of the system.

@@ -1408,7 +1408,13 @@ describe('Auth API Routes — Registration, Login, Password, Tokens', () => {
       expect(response.body.refreshToken).toBe('new-refresh-token');
     });
 
-    it('should return 500 when mandatory token rotation fails', async () => {
+    it('should return 500 when mandatory token rotation fails and must NOT clear the browser auth cookies', async () => {
+      // Regression test for ADR 0002 conformance. Rotation failure is a
+      // transient server error — the refresh token was already verified
+      // as valid, so clearing cookies would punish the client for a
+      // server bug. The client must be able to retry with the same
+      // credentials. Only the three terminal auth-failure paths
+      // (invalid/revoked token, missing user) clear cookies.
       mockPrismaClient.user.findUnique.mockResolvedValue({
         id: 'test-user-id',
         username: 'testuser',
@@ -1420,10 +1426,32 @@ describe('Auth API Routes — Registration, Login, Password, Tokens', () => {
 
       const response = await request(app)
         .post('/api/v1/auth/refresh')
+        .set('Cookie', [
+          'sanctuary_access=live-access-cookie',
+          'sanctuary_refresh=live-refresh-cookie',
+          'sanctuary_csrf=live-csrf-cookie',
+        ])
         .send({ refreshToken: 'valid-token' });
 
       expect(response.status).toBe(500);
       expect(response.body.error).toBe('Internal');
+
+      // The Set-Cookie header must not contain any cookie clearings for
+      // the three auth cookies. Parse into a name→value map and assert
+      // none of the three names appear (or if they do, none has an
+      // empty value which is Express's clearCookie signature).
+      const setCookie = response.headers['set-cookie'];
+      const cookieStrings: string[] = Array.isArray(setCookie)
+        ? (setCookie as string[])
+        : typeof setCookie === 'string'
+          ? [setCookie as string]
+          : [];
+      for (const name of ['sanctuary_access', 'sanctuary_refresh', 'sanctuary_csrf']) {
+        const clearing = cookieStrings.find(
+          (c) => c.startsWith(`${name}=;`) || c.startsWith(`${name}=`) && c.split(';')[0].split('=')[1] === '',
+        );
+        expect(clearing).toBeUndefined();
+      }
     });
 
     it('should handle errors gracefully', async () => {

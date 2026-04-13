@@ -120,8 +120,15 @@ router.post('/refresh', asyncHandler(async (req, res) => {
   const newRefreshToken = await refreshTokenService.rotateRefreshToken(refreshTokenStr, deviceInfo);
 
   if (!newRefreshToken) {
+    // Transient server error, NOT a terminal auth failure. The refresh
+    // token has already been verified as valid (JWT signature OK, not
+    // revoked, user exists), so clearing the cookies here would punish
+    // the client for a server-side rotation bug — they would have no
+    // credentials left to retry with, even though their session is
+    // actually fine. ADR 0002's clear-on-failure rule specifically
+    // names "revoked refresh token" (terminal auth), not "any 500".
+    // Leave the cookies alone and let the client retry.
     log.error('Token rotation failed', { userId: user.id });
-    clearAuthCookies(res);
     throw new Error('Failed to rotate refresh token');
   }
 
