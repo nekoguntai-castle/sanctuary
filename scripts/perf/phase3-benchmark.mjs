@@ -20,6 +20,7 @@ const outputDir = process.env.SANCTUARY_OUTPUT_DIR || 'docs/plans';
 const requestCount = readPositiveInt(process.env.SANCTUARY_REQUESTS, DEFAULT_REQUESTS);
 const concurrency = readPositiveInt(process.env.SANCTUARY_CONCURRENCY, DEFAULT_CONCURRENCY);
 const wsClients = readPositiveInt(process.env.SANCTUARY_WS_CLIENTS, DEFAULT_WS_CLIENTS);
+const wsFanoutClients = readPositiveInt(process.env.SANCTUARY_WS_FANOUT_CLIENTS, wsClients);
 const timeoutMs = readPositiveInt(process.env.SANCTUARY_TIMEOUT_MS, DEFAULT_TIMEOUT_MS);
 let token = process.env.SANCTUARY_TOKEN || '';
 let adminToken = process.env.SANCTUARY_ADMIN_TOKEN || token;
@@ -126,6 +127,8 @@ async function run() {
   }
 
   if (token && walletId) {
+    await measureWebSocketSubscriptionFanout();
+
     await measureHttpScenario({
       name: 'large wallet transaction history',
       method: 'GET',
@@ -146,6 +149,7 @@ async function run() {
     });
   } else {
     skipScenario('large wallet transaction history', 'SANCTUARY_TOKEN and SANCTUARY_WALLET_ID are required');
+    skipScenario('websocket subscription fanout', 'SANCTUARY_TOKEN and SANCTUARY_WALLET_ID are required');
     skipScenario('wallet sync queue', 'SANCTUARY_TOKEN and SANCTUARY_WALLET_ID are required');
   }
 
@@ -191,6 +195,7 @@ async function run() {
       requestCount,
       concurrency,
       wsClients,
+      wsFanoutClients,
       timeoutMs,
       insecureTls: process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0',
       authenticatedHttp: Boolean(token),
@@ -463,6 +468,294 @@ async function measureWebSocketHandshake() {
   console.log(`${summary.status.toUpperCase()} websocket handshake: p95=${summary.latency.p95Ms ?? 'n/a'}ms errors=${summary.errors}`);
 }
 
+async function measureWebSocketSubscriptionFanout() {
+  if (typeof WebSocket !== 'function') {
+    skipScenario('websocket subscription fanout', 'global WebSocket is not available in this Node runtime');
+    return;
+  }
+
+  const channels = [`wallet:${walletId}`, `wallet:${walletId}:sync`, 'sync:all'];
+  const triggerUrl = `${apiBaseUrl}/api/v1/sync/queue/${encodeURIComponent(walletId)}`;
+  const clients = await Promise.all(
+    Array.from({ length: wsFanoutClients }, (_value, index) => connectSubscribedWebSocket(index, channels))
+  );
+  const setupRecords = clients.map((client) => client.setup);
+  const setupFailures = setupRecords.filter((record) => !record.ok);
+
+  if (setupFailures.length > 0) {
+    clients.forEach((client) => client.close('subscription setup failed'));
+    const summary = {
+      name: 'websocket subscription fanout',
+      kind: 'websocket',
+      url: sanitizeUrl(wsUrl),
+      status: 'failed',
+      requests: clients.length,
+      successes: 0,
+      errors: setupFailures.length,
+      latency: summarizeDurations(setupRecords.map((record) => record.durationMs)),
+      setupLatency: summarizeDurations(setupRecords.map((record) => record.durationMs)),
+      channels,
+      failures: setupFailures
+        .map((record) => record.error)
+        .filter(Boolean)
+        .slice(0, 5),
+    };
+
+    scenarios.push(summary);
+    console.log(`${summary.status.toUpperCase()} websocket subscription fanout: p95=${summary.latency.p95Ms ?? 'n/a'}ms errors=${summary.errors}`);
+    return;
+  }
+
+  const eventWaits = clients.map((client) => client.waitForSyncEvent());
+  let triggerStatus = null;
+  let triggerError = null;
+
+  try {
+    const response = await fetch(triggerUrl, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ priority: 'high' }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    triggerStatus = response.status;
+    const text = await response.text();
+
+    if (!response.ok) {
+      triggerError = `POST ${sanitizeUrl(triggerUrl)} returned ${response.status}: ${formatBodyForError(parseJson(text))}`;
+    }
+  } catch (error) {
+    triggerError = getErrorMessage(error);
+  }
+
+  if (triggerError) {
+    clients.forEach((client) => client.close(`trigger failed: ${triggerError}`));
+  }
+
+  const fanoutRecords = await Promise.all(eventWaits);
+  clients.forEach((client) => client.close());
+
+  const successful = triggerError ? [] : fanoutRecords.filter((record) => record.ok);
+  const failures = [
+    triggerError,
+    ...fanoutRecords.filter((record) => !record.ok).map((record) => record.error),
+  ].filter(Boolean);
+  const summary = {
+    name: 'websocket subscription fanout',
+    kind: 'websocket',
+    url: sanitizeUrl(wsUrl),
+    status: successful.length === fanoutRecords.length ? 'passed' : successful.length > 0 ? 'partial' : 'failed',
+    requests: fanoutRecords.length,
+    successes: successful.length,
+    errors: fanoutRecords.length - successful.length,
+    latency: summarizeDurations(fanoutRecords.map((record) => record.durationMs)),
+    setupLatency: summarizeDurations(setupRecords.map((record) => record.durationMs)),
+    channels,
+    trigger: {
+      method: 'POST',
+      url: sanitizeUrl(triggerUrl),
+      status: triggerStatus,
+      error: triggerError,
+    },
+    messages: [...new Set(successful.map((record) => `${record.event}:${record.channel}`))],
+    failures: failures.slice(0, 5),
+  };
+
+  scenarios.push(summary);
+  console.log(`${summary.status.toUpperCase()} websocket subscription fanout: p95=${summary.latency.p95Ms ?? 'n/a'}ms errors=${summary.errors}`);
+}
+
+function connectSubscribedWebSocket(index, channels) {
+  return new Promise((resolve) => {
+    const startedAt = performance.now();
+    const socket = new WebSocket(wsUrl);
+    let setupSettled = false;
+    let closed = false;
+    let fanoutWait = null;
+    const timer = setTimeout(() => {
+      finishSetup({
+        ok: false,
+        error: 'websocket subscription setup timeout',
+      });
+    }, timeoutMs);
+
+    function finishSetup(record) {
+      if (setupSettled) return;
+      setupSettled = true;
+      clearTimeout(timer);
+
+      const setup = {
+        client: index,
+        durationMs: performance.now() - startedAt,
+        ...record,
+      };
+
+      if (!setup.ok) {
+        closeSocket();
+      }
+
+      resolve({
+        setup,
+        waitForSyncEvent,
+        close: (reason) => {
+          resolveFanoutWait({
+            ok: false,
+            error: reason || 'socket closed before sync event',
+          });
+          closeSocket();
+        },
+      });
+    }
+
+    function waitForSyncEvent() {
+      if (closed) {
+        return Promise.resolve({
+          client: index,
+          durationMs: 0,
+          ok: false,
+          error: 'websocket already closed before sync event wait',
+        });
+      }
+
+      if (fanoutWait) {
+        return Promise.resolve({
+          client: index,
+          durationMs: 0,
+          ok: false,
+          error: 'websocket sync event wait already registered',
+        });
+      }
+
+      return new Promise((waitResolve) => {
+        const fanoutStartedAt = performance.now();
+        const fanoutTimer = setTimeout(() => {
+          fanoutWait = null;
+          waitResolve({
+            client: index,
+            durationMs: performance.now() - fanoutStartedAt,
+            ok: false,
+            error: 'websocket sync event timeout',
+          });
+        }, timeoutMs);
+
+        fanoutWait = {
+          startedAt: fanoutStartedAt,
+          timer: fanoutTimer,
+          resolve: waitResolve,
+        };
+      });
+    }
+
+    function resolveFanoutWait(record) {
+      if (!fanoutWait) return;
+      const current = fanoutWait;
+      fanoutWait = null;
+      clearTimeout(current.timer);
+      current.resolve({
+        client: index,
+        durationMs: performance.now() - current.startedAt,
+        ...record,
+      });
+    }
+
+    function closeSocket() {
+      if (closed) return;
+      closed = true;
+      try {
+        socket.close();
+      } catch {
+        // Socket may already be closed.
+      }
+    }
+
+    socket.addEventListener('open', () => {
+      socket.send(JSON.stringify({ type: 'auth', data: { token } }));
+    });
+
+    socket.addEventListener('message', (event) => {
+      const parsed = parseJson(String(event.data));
+
+      if (setupSettled && isSyncFanoutEvent(parsed)) {
+        resolveFanoutWait({
+          ok: true,
+          event: parsed.event,
+          channel: parsed.channel,
+        });
+        return;
+      }
+
+      if (!parsed || typeof parsed !== 'object') {
+        return;
+      }
+
+      if (parsed.type === 'authenticated') {
+        if (parsed.data && parsed.data.success === false) {
+          finishSetup({
+            ok: false,
+            error: 'websocket authentication failed',
+          });
+          return;
+        }
+
+        socket.send(JSON.stringify({ type: 'subscribe_batch', data: { channels } }));
+        return;
+      }
+
+      if (parsed.type === 'subscribed_batch') {
+        const subscribed = Array.isArray(parsed.data?.subscribed) ? parsed.data.subscribed : [];
+        const errors = Array.isArray(parsed.data?.errors) ? parsed.data.errors : [];
+        const missing = channels.filter((channel) => !subscribed.includes(channel));
+
+        if (missing.length > 0 || errors.length > 0) {
+          finishSetup({
+            ok: false,
+            error: `subscription failed; missing=${missing.join(',') || 'none'} errors=${JSON.stringify(errors)}`,
+          });
+          return;
+        }
+
+        finishSetup({ ok: true });
+        return;
+      }
+
+      if (parsed.type === 'error') {
+        finishSetup({
+          ok: false,
+          error: parsed.data?.message || 'websocket error message received during setup',
+        });
+      }
+    });
+
+    socket.addEventListener('error', () => {
+      if (!setupSettled) {
+        finishSetup({ ok: false, error: 'websocket setup error' });
+      } else {
+        resolveFanoutWait({ ok: false, error: 'websocket error before sync event' });
+      }
+    });
+
+    socket.addEventListener('close', () => {
+      closed = true;
+      if (!setupSettled) {
+        finishSetup({ ok: false, error: 'websocket closed during subscription setup' });
+      } else {
+        resolveFanoutWait({ ok: false, error: 'websocket closed before sync event' });
+      }
+    });
+  });
+}
+
+function isSyncFanoutEvent(value) {
+  return value
+    && typeof value === 'object'
+    && value.type === 'event'
+    && value.event === 'sync'
+    && (value.channel === `wallet:${walletId}` || value.channel === `wallet:${walletId}:sync`);
+}
+
 function measureOneWebSocket(targetUrl) {
   return new Promise((resolve) => {
     const startedAt = performance.now();
@@ -630,7 +923,7 @@ function renderMarkdown(result) {
     `Environment: ${result.environment.apiBaseUrl}`,
     `Topology: single frontend/backend/gateway/worker stack unless noted externally`,
     `Dataset: ${result.environment.datasetLabel}`,
-    `Traffic shape: ${result.environment.requestCount} HTTP requests per default scenario at concurrency ${result.environment.concurrency}; ${result.environment.wsClients} WebSocket handshake clients`,
+    `Traffic shape: ${result.environment.requestCount} HTTP requests per default scenario at concurrency ${result.environment.concurrency}; ${result.environment.wsClients} WebSocket handshake clients; ${result.environment.wsFanoutClients} WebSocket fanout clients`,
     '',
     '## Scenario Results',
     '',
@@ -698,7 +991,7 @@ function renderMarkdown(result) {
     '## Decision',
     '',
     result.skipped.length > 0
-      ? 'Smoke evidence captured. Phase 3 is not complete until authenticated wallet sync, transaction history, backup/restore, queue processing, and scale-out scenarios have run with production-like data.'
+      ? 'Smoke evidence captured. Phase 3 is not complete until authenticated wallet sync, transaction history, WebSocket fanout, backup/restore, queue processing, and scale-out scenarios have run with production-like data.'
       : 'Benchmark evidence captured for the configured scenarios. Compare p95/p99 and failure rates against the Phase 3 gates before promoting this run.'
   );
 

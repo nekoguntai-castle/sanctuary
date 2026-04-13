@@ -92,6 +92,7 @@ const benchmarkEnv = {
   SANCTUARY_REQUESTS: process.env.SANCTUARY_REQUESTS || '5',
   SANCTUARY_CONCURRENCY: process.env.SANCTUARY_CONCURRENCY || '2',
   SANCTUARY_WS_CLIENTS: process.env.SANCTUARY_WS_CLIENTS || '2',
+  SANCTUARY_WS_FANOUT_CLIENTS: process.env.SANCTUARY_WS_FANOUT_CLIENTS || process.env.SANCTUARY_WS_CLIENTS || '2',
   SANCTUARY_TIMEOUT_MS: process.env.SANCTUARY_TIMEOUT_MS || '20000',
 };
 
@@ -323,6 +324,7 @@ function assertBenchmarkProof(benchmark) {
   const requiredScenarios = new Map([
     ['wallet list', ['200']],
     ['large wallet transaction history', ['200']],
+    ['websocket subscription fanout', []],
     ['wallet sync queue', ['200']],
     ['backup validate', ['200']],
   ]);
@@ -341,9 +343,11 @@ function assertBenchmarkProof(benchmark) {
       throw new Error(`Required scenario "${scenarioName}" did not pass: ${JSON.stringify(scenario)}`);
     }
 
-    for (const status of requiredStatuses) {
-      if (!scenario.statusCounts || !scenario.statusCounts[status]) {
-        throw new Error(`Required scenario "${scenarioName}" did not record HTTP ${status}: ${JSON.stringify(scenario)}`);
+    if (requiredStatuses.length > 0) {
+      for (const status of requiredStatuses) {
+        if (!scenario.statusCounts || !scenario.statusCounts[status]) {
+          throw new Error(`Required scenario "${scenarioName}" did not record HTTP ${status}: ${JSON.stringify(scenario)}`);
+        }
       }
     }
   }
@@ -431,7 +435,7 @@ function buildMarkdown(report) {
     '',
     '- This proof starts a disposable full-stack Docker Compose project with frontend, backend, gateway, worker, Redis, and PostgreSQL services.',
     '- The smoke waits for database migration and seed completion, then runs the existing Phase 3 benchmark harness with local fixture provisioning.',
-    '- The run proves authenticated wallet list, transaction-history, wallet-sync queue, and admin backup-validation paths execute end to end on a local seeded stack.',
+    '- The run proves authenticated wallet list, transaction-history, WebSocket subscription fanout, wallet-sync queue, and admin backup-validation paths execute end to end on a local seeded stack.',
     '- The local generated wallet is smoke evidence only; a representative large-wallet dataset and backend scale-out proof remain required before claiming Phase 3 complete.',
     '- Restore remains intentionally skipped because it is destructive unless `SANCTUARY_ALLOW_RESTORE=true` is set for a restore-safe environment.'
   );
