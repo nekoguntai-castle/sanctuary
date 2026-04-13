@@ -33,11 +33,11 @@ This document records the checks that should protect the A-grade engineering goa
 
 These gates are required before the scalability/performance domain can move to A:
 
-- Local authenticated smoke coverage now has disposable Compose proof in `docs/plans/phase3-compose-benchmark-smoke-2026-04-13T00-23-45-258Z.md`; keep rerunning `npm run perf:phase3:compose-smoke` when Compose startup, seeded auth, benchmark provisioning, WebSocket fanout, or backup validation paths change.
+- Local authenticated smoke coverage now has disposable Compose proof in `docs/plans/phase3-compose-benchmark-smoke-2026-04-13T00-40-08-363Z.md`; keep rerunning `npm run perf:phase3:compose-smoke` when Compose startup, seeded auth, benchmark provisioning, WebSocket fanout, backup validation, or worker queue handler paths change.
 - Representative large-wallet transaction history and wallet sync queue benchmarks with `SANCTUARY_TOKEN` and `SANCTUARY_WALLET_ID`.
 - Backup restore only in a restore-safe environment, with `SANCTUARY_ADMIN_TOKEN`, `SANCTUARY_BACKUP_FILE`, and `SANCTUARY_ALLOW_RESTORE=true`; local generated-backup validation smoke does not replace restore proof.
 - Representative WebSocket fanout with larger client counts and production-like sync or transaction events; the local Compose smoke now proves the authenticated wallet-specific subscription path only.
-- Worker queue processing under representative sync, notification, maintenance, autopilot, and intelligence jobs.
+- Representative worker queue processing under production-like sync, notification, maintenance, autopilot, and intelligence job volume; the local Compose smoke now proves these handlers complete in a no-op/local fixture run only.
 - Backend scale-out smoke test with at least two backend/WebSocket endpoints sharing Redis.
 - Worker scale-out smoke test in non-production, or an explicit release note that production worker scale-out remains unsupported.
 

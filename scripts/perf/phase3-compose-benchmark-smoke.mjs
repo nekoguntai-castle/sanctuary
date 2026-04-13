@@ -15,6 +15,7 @@ const projectName = process.env.PHASE3_COMPOSE_BENCHMARK_PROJECT || `sanctuary-p
 const keepStack = process.env.PHASE3_COMPOSE_BENCHMARK_KEEP_STACK === 'true';
 const timeoutMs = Number(process.env.PHASE3_COMPOSE_BENCHMARK_TIMEOUT_MS || '360000');
 const retryMs = Number(process.env.PHASE3_COMPOSE_BENCHMARK_RETRY_MS || '2000');
+const workerQueueProofTimeoutMs = Number(process.env.PHASE3_WORKER_QUEUE_PROOF_TIMEOUT_MS || '60000');
 
 const postgresUser = 'sanctuary';
 const postgresDb = 'sanctuary_phase3_benchmark';
@@ -376,6 +377,46 @@ function assertBenchmarkProof(benchmark) {
   };
 }
 
+function runWorkerQueueProof() {
+  const output = runCompose([
+    'exec',
+    '-T',
+    '-e',
+    `PHASE3_QUEUE_PROOF_ID=${timestamp}`,
+    '-e',
+    `PHASE3_WORKER_QUEUE_PROOF_TIMEOUT_MS=${workerQueueProofTimeoutMs}`,
+    'worker',
+    'node',
+    '--input-type=module',
+    '--eval',
+    getWorkerQueueProofScript(),
+  ]);
+
+  const proof = parseLastJsonLine(output);
+  const failedJobs = proof.jobs.filter((job) => job.state !== 'completed');
+  if (failedJobs.length > 0) {
+    throw new Error(`Worker queue proof recorded non-completed jobs: ${JSON.stringify(failedJobs)}`);
+  }
+
+  return proof;
+}
+
+function parseLastJsonLine(output) {
+  const lines = output.trim().split('\n').map((line) => line.trim()).filter(Boolean);
+  for (const line of lines.toReversed()) {
+    if (!line.startsWith('{')) continue;
+    return JSON.parse(line);
+  }
+
+  throw new Error(`Worker queue proof did not emit JSON output:\n${output}`);
+}
+
+function summarizeWorkerQueueProof(proof) {
+  const categories = [...new Set(proof.jobs.map((job) => job.category))];
+  const durations = summarizeDurations(proof.jobs.map((job) => job.durationMs));
+  return `${proof.jobs.length} jobs completed across ${categories.join(', ')}; p95=${durations.p95Ms}ms`;
+}
+
 function buildMarkdown(report) {
   const lines = [
     '# Phase 3 Compose Benchmark Smoke',
@@ -426,6 +467,36 @@ function buildMarkdown(report) {
     lines.push('No benchmark scenarios recorded.', '');
   }
 
+  lines.push('## Worker Queue Proof', '');
+
+  if (report.workerQueueProof?.jobs?.length) {
+    const durations = summarizeDurations(report.workerQueueProof.jobs.map((job) => job.durationMs));
+    lines.push(
+      `Total duration: ${report.workerQueueProof.totalDurationMs} ms`,
+      `Job p95: ${durations.p95Ms} ms`,
+      '',
+      '| Category | Queue | Job | State | Duration ms |',
+      '| --- | --- | --- | --- | ---: |',
+      ...report.workerQueueProof.jobs.map((job) => [
+        job.category,
+        job.queue,
+        escapeCell(job.name),
+        job.state,
+        job.durationMs,
+      ].join(' | ').replace(/^/, '| ').replace(/$/, ' |')),
+      '',
+      'Queue counts after proof:',
+      ''
+    );
+
+    for (const [queueName, stats] of Object.entries(report.workerQueueProof.metricsAfter?.queues || {})) {
+      lines.push(`- ${queueName}: waiting=${stats.waiting} active=${stats.active} delayed=${stats.delayed} failed=${stats.failed} completed=${stats.completed}`);
+    }
+    lines.push('');
+  } else {
+    lines.push('No worker queue proof recorded.', '');
+  }
+
   lines.push(
     '## Containers',
     '',
@@ -436,6 +507,7 @@ function buildMarkdown(report) {
     '- This proof starts a disposable full-stack Docker Compose project with frontend, backend, gateway, worker, Redis, and PostgreSQL services.',
     '- The smoke waits for database migration and seed completion, then runs the existing Phase 3 benchmark harness with local fixture provisioning.',
     '- The run proves authenticated wallet list, transaction-history, WebSocket subscription fanout, wallet-sync queue, and admin backup-validation paths execute end to end on a local seeded stack.',
+    '- The worker queue proof enqueues and waits for BullMQ jobs across sync, confirmations, notifications, maintenance, autopilot, and intelligence handlers in the running worker container.',
     '- The local generated wallet is smoke evidence only; a representative large-wallet dataset and backend scale-out proof remain required before claiming Phase 3 complete.',
     '- Restore remains intentionally skipped because it is destructive unless `SANCTUARY_ALLOW_RESTORE=true` is set for a restore-safe environment.'
   );
@@ -467,6 +539,35 @@ function escapeCell(value) {
   return String(value).replace(/\|/g, '\\|');
 }
 
+function summarizeDurations(values) {
+  if (values.length === 0) {
+    return { minMs: null, p50Ms: null, p95Ms: null, p99Ms: null, maxMs: null };
+  }
+
+  const sorted = values.slice().sort((a, b) => a - b);
+  return {
+    minMs: round(sorted[0]),
+    p50Ms: round(percentile(sorted, 0.5)),
+    p95Ms: round(percentile(sorted, 0.95)),
+    p99Ms: round(percentile(sorted, 0.99)),
+    maxMs: round(sorted[sorted.length - 1]),
+  };
+}
+
+function percentile(sortedValues, percentileValue) {
+  if (sortedValues.length === 1) return sortedValues[0];
+  const index = (sortedValues.length - 1) * percentileValue;
+  const lower = Math.floor(index);
+  const upper = Math.ceil(index);
+  if (lower === upper) return sortedValues[lower];
+  const weight = index - lower;
+  return sortedValues[lower] * (1 - weight) + sortedValues[upper] * weight;
+}
+
+function round(value) {
+  return Math.round(value * 100) / 100;
+}
+
 function getErrorMessage(error) {
   return error instanceof Error ? error.message : String(error);
 }
@@ -488,6 +589,7 @@ let composePs = [];
 let benchmarkRun = null;
 let benchmarkEvidence = null;
 let benchmarkProof = null;
+let workerQueueProof = null;
 let passed = false;
 let failureError = null;
 
@@ -515,6 +617,9 @@ try {
 
   benchmarkProof = assertBenchmarkProof(benchmarkEvidence.benchmark);
   recordStep('authenticated scenario proof', true, `${benchmarkProof.requiredScenarios.join(', ')} passed`);
+
+  workerQueueProof = runWorkerQueueProof();
+  recordStep('worker queue proof', true, summarizeWorkerQueueProof(workerQueueProof));
 
   passed = steps.every((step) => step.passed);
 } catch (error) {
@@ -556,6 +661,7 @@ try {
         }
       : null,
     benchmarkProof,
+    workerQueueProof,
     composePs,
     keptStack: keepStack,
   };
@@ -586,4 +692,152 @@ if (!passed) {
     console.error(getErrorMessage(failureError));
   }
   process.exitCode = 1;
+}
+
+function getWorkerQueueProofScript() {
+  return `
+import { Queue, QueueEvents } from 'bullmq';
+
+const proofId = process.env.PHASE3_QUEUE_PROOF_ID || String(Date.now());
+const safeProofId = proofId.replace(/[^a-zA-Z0-9_-]/g, '-');
+const jobTimeoutMs = Number(process.env.PHASE3_WORKER_QUEUE_PROOF_TIMEOUT_MS || '60000');
+const prefix = 'sanctuary:worker';
+
+function connectionFromEnv() {
+  const redisUrl = process.env.REDIS_URL;
+  if (!redisUrl) {
+    throw new Error('REDIS_URL is required for worker queue proof');
+  }
+
+  const parsed = new URL(redisUrl);
+  const db = parsed.pathname && parsed.pathname !== '/'
+    ? Number.parseInt(parsed.pathname.slice(1), 10)
+    : 0;
+
+  return {
+    host: parsed.hostname,
+    port: Number.parseInt(parsed.port || '6379', 10),
+    password: parsed.password ? decodeURIComponent(parsed.password) : undefined,
+    db: Number.isFinite(db) ? db : 0,
+  };
+}
+
+async function readWorkerMetrics() {
+  const response = await fetch('http://127.0.0.1:3002/metrics', {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(5000),
+  });
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error('worker metrics returned ' + response.status + ': ' + body.slice(0, 200));
+  }
+  return JSON.parse(body);
+}
+
+const connection = connectionFromEnv();
+const queueNames = ['sync', 'confirmations', 'notifications', 'maintenance'];
+const queues = new Map();
+const events = new Map();
+
+for (const queueName of queueNames) {
+  const queue = new Queue(queueName, { connection, prefix });
+  const queueEvents = new QueueEvents(queueName, { connection, prefix });
+  await queueEvents.waitUntilReady();
+  queues.set(queueName, queue);
+  events.set(queueName, queueEvents);
+}
+
+const jobDefinitions = [
+  {
+    category: 'sync',
+    queue: 'sync',
+    name: 'check-stale-wallets',
+    data: {
+      staleThresholdMs: 0,
+      maxWallets: 0,
+      priority: 'low',
+      staggerDelayMs: 0,
+      reason: 'phase3-worker-queue-proof',
+    },
+  },
+  {
+    category: 'confirmations',
+    queue: 'confirmations',
+    name: 'update-all-confirmations',
+    data: {},
+  },
+  {
+    category: 'notifications',
+    queue: 'notifications',
+    name: 'confirmation-notify',
+    data: {
+      walletId: '00000000-0000-4000-8000-000000000000',
+      txid: 'phase3-worker-queue-proof',
+      confirmations: 2,
+      previousConfirmations: 1,
+    },
+  },
+  {
+    category: 'maintenance',
+    queue: 'maintenance',
+    name: 'cleanup:expired-tokens',
+    data: {},
+  },
+  {
+    category: 'autopilot',
+    queue: 'maintenance',
+    name: 'autopilot:evaluate',
+    data: {},
+  },
+  {
+    category: 'intelligence',
+    queue: 'maintenance',
+    name: 'intelligence:cleanup',
+    data: {},
+  },
+];
+
+const proofStartedAt = Date.now();
+const jobs = [];
+
+try {
+  const metricsBefore = await readWorkerMetrics();
+
+  for (const definition of jobDefinitions) {
+    const queue = queues.get(definition.queue);
+    const queueEvents = events.get(definition.queue);
+    const job = await queue.add(definition.name, definition.data, {
+      attempts: 1,
+      jobId: ['phase3', safeProofId, definition.category, definition.name.replace(/[^a-zA-Z0-9_-]/g, '-')].join('-'),
+      removeOnComplete: 100,
+      removeOnFail: 100,
+    });
+    const startedAt = Date.now();
+    const returnvalue = await job.waitUntilFinished(queueEvents, jobTimeoutMs);
+    const state = await job.getState();
+
+    jobs.push({
+      category: definition.category,
+      queue: definition.queue,
+      name: definition.name,
+      id: job.id,
+      state,
+      durationMs: Date.now() - startedAt,
+      returnvalue,
+    });
+  }
+
+  const metricsAfter = await readWorkerMetrics();
+  console.log(JSON.stringify({
+    proofId,
+    totalDurationMs: Date.now() - proofStartedAt,
+    metricsBefore,
+    metricsAfter,
+    jobs,
+  }));
+} finally {
+  await Promise.all([...events.values()].map((queueEvents) => queueEvents.close()));
+  await Promise.all([...queues.values()].map((queue) => queue.close()));
+}
+`;
 }
