@@ -138,18 +138,46 @@ describe('WebSocketClient', () => {
       expect(authMsg.data.token).toBe('my-jwt-token');
     });
 
-    it('should resubscribe immediately when no token', () => {
-      // Subscribe before connecting
+    it('should resubscribe after server sends "connected" welcome (no-token cookie-auth path)', () => {
+      // ADR 0001/0002 Phase 4 — resubscribe is now triggered by the
+      // server's "connected" welcome message, not by the client's
+      // onopen. This avoids the race where Phase 3 cookie auth runs
+      // verifyWebSocketAccessToken async and the message handler is
+      // not yet attached when the client subscribes.
       client.subscribe('blocks');
       client.connect();
       getLastWs().simulateOpen();
 
-      // Should have sent subscribe_batch (resubscribe)
+      // Before the welcome arrives, NO subscribe message has been sent.
+      expect(getLastWs().sentMessages).toHaveLength(0);
+
+      // Server signals it is ready (auth completed, message handler
+      // attached). Welcome carries authenticated:true if cookie-auth
+      // succeeded, false otherwise — the client resubscribes either
+      // way and the server filters by auth state.
+      getLastWs().simulateMessage({ type: 'connected', data: { authenticated: true } });
+
       const sent = getLastWs().sentMessages;
       expect(sent).toHaveLength(1);
       const msg = JSON.parse(sent[0]);
       expect(msg.type).toBe('subscribe_batch');
       expect(msg.data.channels).toContain('blocks');
+    });
+
+    it('should resubscribe on "connected" welcome even when authenticated is false (public channels)', () => {
+      // Anonymous user opening the app: server sends connected with
+      // authenticated:false. The frontend still resubscribes — the
+      // server filters protected channels server-side so unauthenticated
+      // subscriptions to public channels still work.
+      client.subscribe('public-channel');
+      client.connect();
+      getLastWs().simulateOpen();
+
+      getLastWs().simulateMessage({ type: 'connected', data: { authenticated: false } });
+
+      const sent = getLastWs().sentMessages;
+      expect(sent).toHaveLength(1);
+      expect(JSON.parse(sent[0]).type).toBe('subscribe_batch');
     });
 
     it('should notify connection listeners on open', () => {
@@ -300,13 +328,15 @@ describe('WebSocketClient', () => {
       expect(getLastWs().sentMessages.length).toBe(countAfterFirst);
     });
 
-    it('should queue subscription when not connected', () => {
+    it('should queue subscription when not connected and resubscribe on "connected" welcome', () => {
       client.subscribe('blocks');
       // No WebSocket created yet, but subscription is stored
       client.connect();
       getLastWs().simulateOpen();
 
-      // Should resubscribe via batch
+      // Phase 4: resubscribe waits for the server welcome message.
+      getLastWs().simulateMessage({ type: 'connected', data: { authenticated: true } });
+
       const sent = getLastWs().sentMessages;
       expect(sent.some(s => JSON.parse(s).type === 'subscribe_batch')).toBe(true);
     });
@@ -531,29 +561,35 @@ describe('WebSocketClient', () => {
   // Message handling
   // ========================================
   describe('message handling', () => {
-    it('should handle authenticated message and resubscribe', () => {
+    it('legacy auth-message path still sends the auth frame on open with a token', () => {
+      // Phase 4 expects the typical browser flow to use cookie auth
+      // (no token), but the perf benchmark scripts still use the
+      // sendAuthMessage path. Verify the auth frame is sent on open
+      // when a token is passed.
       client.subscribe('blocks');
       client.connect('token');
       const ws = getLastWs();
       ws.simulateOpen();
 
-      // Auth message sent
       const authMsg = JSON.parse(ws.sentMessages[0]);
       expect(authMsg.type).toBe('auth');
+      expect((authMsg.data as Record<string, unknown>).token).toBe('token');
 
-      // Simulate server confirming authentication
-      ws.simulateMessage({
-        type: 'authenticated',
-        data: { success: true },
-      });
+      // Resubscribe still waits for the 'connected' welcome — NOT for
+      // the legacy 'authenticated' message.
+      expect(ws.sentMessages.some(s => JSON.parse(s).type === 'subscribe_batch')).toBe(false);
 
-      // Should have sent subscribe_batch after auth confirmed
+      ws.simulateMessage({ type: 'connected', data: { authenticated: true } });
+
       const lastMsg = JSON.parse(ws.sentMessages[ws.sentMessages.length - 1]);
       expect(lastMsg.type).toBe('subscribe_batch');
       expect(lastMsg.data.channels).toContain('blocks');
     });
 
-    it('should not resubscribe on failed authentication', () => {
+    it('legacy "authenticated" message is now a no-op — does not trigger resubscribe', () => {
+      // Phase 4: 'authenticated' is logged for diagnostic purposes but
+      // does NOT trigger resubscribe. The 'connected' welcome is the
+      // single authoritative resubscribe trigger.
       client.subscribe('blocks');
       client.connect('bad-token');
       const ws = getLastWs();
@@ -563,10 +599,15 @@ describe('WebSocketClient', () => {
 
       ws.simulateMessage({
         type: 'authenticated',
+        data: { success: true },
+      });
+      ws.simulateMessage({
+        type: 'authenticated',
         data: { success: false },
       });
 
-      // No subscribe_batch sent after failed auth
+      // Neither success nor failure on the 'authenticated' message
+      // triggers a resubscribe. Only 'connected' does.
       expect(ws.sentMessages.length).toBe(countAfterAuth);
     });
 

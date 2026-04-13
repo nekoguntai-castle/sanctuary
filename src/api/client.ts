@@ -66,17 +66,27 @@ const ACCESS_EXPIRES_AT_HEADER = 'X-Access-Expires-At';
 const STATE_CHANGING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 // Auth identity-boundary endpoints that MUST NOT trigger the refresh
-// interceptor on a 401. A 401 from these is the intended outcome (wrong
-// password, revoked token, unauthenticated boot probe), not a signal
-// that the current session expired and should be refreshed.
+// interceptor on a 401. A 401 from these means the credential being
+// presented is the problem itself — refreshing won't help and would
+// just produce noise (or recurse, in the case of /auth/refresh).
+//
+// Notably NOT exempt:
+//
+//   - /auth/me — this is the boot probe AND the mid-session
+//     "am I still authenticated?" check. A 401 with a stale access
+//     cookie + a valid refresh cookie is exactly the case that should
+//     trigger refresh + retry. Excluding it from the interceptor would
+//     force-logout users on every reload after access-token expiry.
+//
+//   - /auth/logout, /auth/logout-all — refreshing on 401 here lets the
+//     client actually revoke the server-side session even when the
+//     access token has already expired. The request is best-effort, and
+//     authApi.logout() catches any failure so local cleanup still runs.
 const AUTH_ENDPOINTS_EXEMPT_FROM_REFRESH_ON_401 = new Set<string>([
   '/auth/login',
   '/auth/register',
   '/auth/2fa/verify',
   '/auth/refresh',
-  '/auth/me',
-  '/auth/logout',
-  '/auth/logout-all',
 ]);
 
 interface RetryOptions {

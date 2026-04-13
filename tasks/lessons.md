@@ -24,6 +24,31 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 - Per-file `vi.mock` calls override setup mocks (they're hoisted), so dedicated hook/api tests still work.
 - Symptom check: if CI shows `Closing rpc while "onUserConsoleLog" was pending` or unexplained vitest worker teardown errors, look for unmocked retry-capable API calls in components rendered by the affected test file.
 
+## Refresh-on-401 exempt list: only credential-presentation endpoints
+
+**Rule:** When implementing a refresh-on-401 interceptor, the exempt list (endpoints that DO NOT trigger refresh on a 401) must contain ONLY endpoints where the credential being presented IS the thing being authenticated — never general-purpose endpoints that just happen to be in the auth namespace. Specifically: `/auth/login`, `/auth/register`, `/auth/2fa/verify`, `/auth/refresh`. Endpoints like `/auth/me`, `/auth/logout`, and `/auth/logout-all` MUST refresh on 401 because they represent ongoing-session operations where a stale access token + valid refresh cookie should recover the session, not force a re-login.
+
+**Why:** Phase 4 of the cookie auth migration originally exempted `/auth/me`, `/auth/logout`, and `/auth/logout-all` from the refresh interceptor as "auth identity-boundary endpoints." Codex stop-time review caught the consequence: any user with an expired access token but still-valid refresh cookie would be force-logged-out on every page reload, because the boot probe `/auth/me` returned 401 and the interceptor was exempted from triggering refresh. The whole point of the migration was to make session expiry invisible — this regression undid it. Fixed in commit `<next>` by trimming the exempt list to only the four credential-presentation endpoints. `/auth/me` boot recovery now refreshes + retries when there is a valid refresh cookie. `/auth/logout` refreshes + retries so the server-side session is actually revoked even when the access token has already expired client-side.
+
+**How to apply:**
+- For each endpoint you consider exempting, ask: "is the credential being presented here the THING being authenticated?" (login = yes, refresh = yes, 2FA verify = yes, register = yes — the credentials in the request body are the identity claim). If yes, exempt. If the endpoint just consumes an existing session, do NOT exempt — it should benefit from refresh-on-401.
+- Specifically: do not exempt `/auth/me`, `/auth/logout`, `/auth/logout-all`, or any other "do something with my existing session" endpoint.
+- Test the exempt-list behavior with a regression test that asserts 401 → refresh + retry → success on a non-exempt endpoint that has overlap with the exempt names (e.g., `/auth/me`).
+- The general principle beyond auth: an interceptor's "skip" rule and the operation's actual semantics must align. Skipping the interceptor for an endpoint that would benefit from it is silently breaking the user-visible flow.
+
+## Pre-attached message handlers and welcome-message synchronization for async-auth WebSockets
+
+**Rule:** When a WebSocket server authenticates connections asynchronously after the upgrade handshake (e.g., via cookie verification), the message handler must either be attached synchronously OR the client must wait for an explicit "I am ready" message from the server before sending any subscriptions. Sending immediately on `onopen` races the server's async auth and the messages are silently dropped.
+
+**Why:** Phase 4 frontend rewrote `useWebSocket` to call `connect()` with no token, relying on Phase 3's same-origin cookie auth on the upgrade request. But the existing `services/websocket.ts` `onopen` handler took the "no token" branch and resubscribed immediately. Server-side, `authenticateOnUpgrade` runs `verifyWebSocketAccessToken` async (because verifyToken hits the token revocation list), and the message handler is only attached at the END of `completeClientRegistration`, AFTER auth completes. Client subscribe messages sent on `onopen` arrived at a socket with no message handler and were silently dropped. Fixed in commit `<next>` by moving the resubscribe trigger from `onopen` to the server's `'connected'` welcome message handler in `services/websocket.ts`. The welcome is sent at the end of `completeClientRegistration` — i.e., AFTER the message handler is attached — so resubscribing in response to it is race-free. The legacy `'authenticated'` message path (from the auth-message-after-connect flow) is preserved as a no-op log for diagnostic purposes; the perf benchmark scripts that still use sendAuthMessage now also rely on the `'connected'` welcome for resubscription.
+
+**How to apply:**
+- Any time the server authenticates on connection asynchronously, either attach the message handler synchronously and queue subscriptions until auth completes, OR have the client wait for an explicit "ready" signal.
+- The "ready" signal pattern is simpler: the server sends a welcome message at the moment it has fully wired up the connection (handler attached, auth done, user tracking complete). The client treats receipt of this message as the only valid trigger for sending state-changing messages.
+- Do NOT rely on `onopen` as the moment to start sending — `onopen` only means the WebSocket handshake completed, not that the server is logically ready to receive messages.
+- Add a regression test that simulates the welcome message and asserts subscriptions are sent in response to it, NOT in response to `simulateOpen()`.
+- The general principle beyond WebSockets: any protocol where one side does work after the connection is established needs an explicit "ready" signal before the other side can act. Don't assume "connected" means "ready to talk."
+
 ## Don't evict credentials on server-side failures — only on terminal auth failures
 
 **Rule:** When a route fails, ask: "was the client's credential actually the problem, or was the server the problem?" Only evict the client's credentials (clear cookies, force logout, invalidate session) on the former. For transient server errors — database hiccups, service bugs, upstream timeouts — leave the credentials alone so the client can retry.

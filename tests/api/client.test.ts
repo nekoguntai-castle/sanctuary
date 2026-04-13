@@ -966,15 +966,18 @@ describe('API Client', () => {
       expect(mockFetch).toHaveBeenCalledTimes(2);
     });
 
-    it('does NOT trigger refresh on 401 from exempt auth endpoints', async () => {
+    it('does NOT trigger refresh on 401 from exempt auth identity-credential endpoints', async () => {
+      // Only the credential-presentation endpoints are exempt — a 401
+      // from these means the credential being presented is the problem
+      // itself (wrong password, wrong 2FA code, refresh token revoked),
+      // not "the access token expired and should be refreshed". /auth/me,
+      // /auth/logout, and /auth/logout-all are intentionally NOT in
+      // the exempt list — see client.ts comments.
       const exemptEndpoints = [
         '/auth/login',
         '/auth/register',
         '/auth/2fa/verify',
         '/auth/refresh',
-        '/auth/me',
-        '/auth/logout',
-        '/auth/logout-all',
       ];
 
       for (const endpoint of exemptEndpoints) {
@@ -983,13 +986,45 @@ describe('API Client', () => {
         mockFetch.mockResolvedValue(errorResponse(401, { message: 'Unauthorized' }));
 
         await expect(
-          endpoint.includes('logout') || endpoint.includes('refresh') || endpoint.includes('login') || endpoint.includes('register') || endpoint.includes('2fa')
-            ? apiClient.post(endpoint, {}, { retry: { enabled: false } })
-            : apiClient.get(endpoint, undefined, { enabled: false }),
+          apiClient.post(endpoint, {}, { retry: { enabled: false } }),
         ).rejects.toMatchObject({ status: 401 });
 
         expect(mockRefreshAccessToken).not.toHaveBeenCalled();
       }
+    });
+
+    it('DOES trigger refresh on 401 from /auth/me (valid-session recovery on boot)', async () => {
+      // ADR 0001/0002: a 401 from /auth/me with a still-valid refresh
+      // cookie should refresh + retry, hydrating the user. Excluding
+      // /auth/me from the interceptor would force-logout users on
+      // every reload after their access token expired.
+      mockFetch
+        .mockResolvedValueOnce(errorResponse(401, { message: 'Unauthorized' }))
+        .mockResolvedValueOnce(okResponse({ id: 'user-1', username: 'restored' }));
+      mockRefreshAccessToken.mockResolvedValue(undefined);
+
+      const result = await apiClient.get<{ username: string }>('/auth/me', undefined, { enabled: false });
+
+      expect(mockRefreshAccessToken).toHaveBeenCalledTimes(1);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(result.username).toBe('restored');
+    });
+
+    it('DOES trigger refresh on 401 from /auth/logout (revoke session even when access expired)', async () => {
+      // The interceptor refreshes + retries the logout call so the
+      // server-side session is actually revoked even when the access
+      // token has already expired client-side. authApi.logout() also
+      // catches errors so local cleanup runs regardless.
+      mockFetch
+        .mockResolvedValueOnce(errorResponse(401, { message: 'Unauthorized' }))
+        .mockResolvedValueOnce(okResponse({ success: true }));
+      mockRefreshAccessToken.mockResolvedValue(undefined);
+
+      const result = await apiClient.post<{ success: boolean }>('/auth/logout', {}, { retry: { enabled: false } });
+
+      expect(mockRefreshAccessToken).toHaveBeenCalledTimes(1);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(result.success).toBe(true);
     });
 
     it('does not trigger refresh on non-401 errors', async () => {
@@ -1015,12 +1050,12 @@ describe('API Client', () => {
     });
 
     it('strips the query string before checking the exempt list', async () => {
-      // /auth/me?foo=bar must be treated the same as /auth/me — a 401
-      // from boot probe must not trigger a refresh even when params
-      // are present.
+      // /auth/refresh?foo=bar must be treated the same as /auth/refresh
+      // — a 401 from the refresh endpoint must NOT recursively call
+      // refresh again (infinite loop) even when query params are present.
       mockFetch.mockResolvedValue(errorResponse(401));
 
-      await expect(apiClient.get('/auth/me', { foo: 'bar' }, { enabled: false }))
+      await expect(apiClient.post('/auth/refresh?foo=bar', {}, { retry: { enabled: false } }))
         .rejects.toMatchObject({ status: 401 });
 
       expect(mockRefreshAccessToken).not.toHaveBeenCalled();

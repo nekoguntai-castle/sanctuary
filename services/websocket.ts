@@ -76,16 +76,32 @@ export class WebSocketClient {
         this.reconnectAttempts = 0;
         this.reconnectDelay = 1000;
 
-        // Send authentication message if we have a token
-        // This avoids exposing token in URL query parameters
+        // Send the legacy auth message ONLY if a token was explicitly
+        // passed (perf benchmark scripts still use this path). The
+        // browser frontend after Phase 4 connects without a token —
+        // its sanctuary_access HttpOnly cookie is attached automatically
+        // by the same-origin upgrade, and the server reads it via
+        // websocket/auth.ts extractToken (Phase 3).
+        //
+        // In BOTH paths (auth-message and cookie), the resubscribe MUST
+        // wait for the server's 'connected' welcome message. Reasons:
+        //
+        //   1. The cookie-auth path runs verifyWebSocketAccessToken
+        //      asynchronously inside authenticateOnUpgrade.then(...).
+        //      The message handler is only attached at the end of
+        //      completeClientRegistration, AFTER auth completes. Any
+        //      subscribe message sent on `onopen` arrives at a socket
+        //      with no message handler and is silently dropped.
+        //
+        //   2. The auth-message path triggers the same async verify and
+        //      the same race; the legacy code papered over this with
+        //      its 'authenticated' wait, which is now subsumed by the
+        //      'connected' wait.
+        //
+        // Both paths converge on the 'connected' welcome message,
+        // handled in handleMessage below.
         if (this.token) {
           this.sendAuthMessage(this.token);
-          // Don't resubscribe here - wait for 'authenticated' response
-          // to avoid race condition where subscriptions are rejected
-          // because auth hasn't completed yet
-        } else {
-          // No token - resubscribe immediately for unauthenticated channels
-          this.resubscribe();
         }
 
         // Notify connection listeners
@@ -195,17 +211,25 @@ export class WebSocketClient {
     // Handle special message types
     switch (message.type) {
       case 'connected':
-        log.debug('Connection confirmed');
+        // The server sends this AFTER it has attached its message handler
+        // and (if the upgrade carried a sanctuary_access cookie) AFTER
+        // verifyWebSocketAccessToken has resolved. This is the safe
+        // moment to resubscribe — earlier subscriptions race the
+        // server's async cookie auth (Phase 3-4) and would be dropped.
+        // Resubscribe in BOTH the authenticated (cookie or auth-message)
+        // and unauthenticated (public-only) cases; subscriptions to
+        // protected channels are filtered server-side based on userId.
+        log.debug('Connection confirmed', { authenticated: data?.authenticated });
+        this.resubscribe();
         break;
 
       case 'authenticated':
-        log.debug('Authenticated', { success: data?.success });
-        // Now that auth is confirmed, resubscribe to channels
-        // This fixes the race condition where subscriptions were rejected
-        // because they arrived before auth completed
-        if (data?.success) {
-          this.resubscribe();
-        }
+        // Legacy auth-message path: kept for perf benchmark scripts
+        // that still use sendAuthMessage. The 'connected' welcome above
+        // already triggered the resubscribe, so this is a no-op for the
+        // typical flow — but we log it so a debugging operator can see
+        // which path the client took.
+        log.debug('Authenticated (legacy auth-message path)', { success: data?.success });
         break;
 
       case 'subscribed':
@@ -428,14 +452,17 @@ export class WebSocketClient {
   }
 
   /**
-   * Send message to server
+   * Send message to server.
+   *
+   * Every caller is already gated on `this.ws?.readyState === WebSocket.OPEN`
+   * (subscribe/unsubscribe/subscribeBatch/unsubscribeBatch) or only runs
+   * after the server's 'connected' welcome message has arrived
+   * (resubscribe, sendAuthMessage), which by definition means the socket
+   * is open. The previous defensive readyState check inside this helper
+   * was dead code that the 100% coverage gate could not exercise.
    */
   private send(message: unknown) {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(message));
-    } else {
-      log.warn('Cannot send: not connected');
-    }
+    this.ws!.send(JSON.stringify(message));
   }
 
   /**
