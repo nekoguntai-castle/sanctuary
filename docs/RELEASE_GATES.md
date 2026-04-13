@@ -1,6 +1,6 @@
 # Sanctuary Release Gates
 
-Date: 2026-04-11 (Pacific/Honolulu)
+Date: 2026-04-12 (Pacific/Honolulu)
 Status: Phase 4 release-gate baseline
 
 This document records the checks that should protect the A-grade engineering goals in `docs/plans/codebase-health-assessment.md`. A release should not claim an A grade in a domain unless the matching gate has passed or the plan explicitly marks the gate as pending with an owner and date.
@@ -27,18 +27,18 @@ This document records the checks that should protect the A-grade engineering goa
 | Dependency security | Production advisory review | `npm audit --omit=dev` in root and `server/`; `cd gateway && npm audit --omit=dev --omit=optional`; plus documented accepted findings | Required before release |
 | Container/install validation | Fresh install, install script, container health, auth flow | `.github/workflows/install-test.yml` release gate | Required for release candidates/releases |
 | Operations supportability | Runbook coverage and proof for backup/restore, gateway audit persistence, alert receiver delivery, and monitoring stack behavior | `docs/OPERATIONS_RUNBOOKS.md` updated when alerts or operational flows change; `npm run test:ops:phase2` when backup/restore or in-process gateway audit paths are touched; `npm run ops:gateway-audit:phase2` when backend/gateway containers or gateway audit delivery paths are touched; `npm run ops:monitoring:phase2` when monitoring Compose, Prometheus/Loki/Grafana/Jaeger/Alertmanager, or Promtail paths are touched; `npm run ops:alert-receiver:phase2` when Alertmanager routing or receiver config is touched | Required when touched |
-| Performance and scale | Phase 3 benchmark harness in strict mode | `npm run perf:phase3:compose-smoke` for disposable local authenticated smoke; `SANCTUARY_BENCHMARK_STRICT=true npm run perf:phase3` with representative scenario inputs for production-like datasets | Pending representative operator evidence |
+| Performance and scale | Phase 3 benchmark harness in strict mode | `npm run perf:phase3:compose-smoke` for disposable local authenticated capacity proof; `SANCTUARY_BENCHMARK_STRICT=true npm run perf:phase3` with representative scenario inputs for production-like datasets | Local proof complete; pending representative operator evidence |
 
 ## Phase 3 Pending Evidence
 
 These gates are required before the scalability/performance domain can move to A:
 
-- Local authenticated smoke coverage now has disposable Compose proof in `docs/plans/phase3-compose-benchmark-smoke-2026-04-13T02-21-10-302Z.md`; keep rerunning `npm run perf:phase3:compose-smoke` when Compose startup, seeded auth, benchmark provisioning, synthetic large-wallet history, WebSocket fanout, backup validation/restore, worker queue handler, worker scale-out, Electrum ownership, Redis-backed backend scale-out, or backend fanout paths change.
-- Production-like largest-known-wallet transaction history and wallet sync queue benchmarks with `SANCTUARY_TOKEN` and `SANCTUARY_WALLET_ID`; the local synthetic 1,000-transaction gate is regression smoke evidence, not representative operator evidence.
-- Representative backup restore only in a restore-safe environment, with `SANCTUARY_ADMIN_TOKEN`, `SANCTUARY_BACKUP_FILE`, and `SANCTUARY_ALLOW_RESTORE=true`; the disposable Compose smoke proves generated-backup restore, but not the largest expected support backup size.
-- Representative WebSocket fanout with larger client counts and production-like sync or transaction events; the local Compose smoke now proves the authenticated wallet-specific subscription path and multi-client two-backend Redis bridge delivery only.
-- Representative worker queue processing under production-like sync, notification, maintenance, autopilot, and intelligence job volume; the local Compose smoke now proves these handlers complete in a no-op/local fixture run and proves two-worker diagnostic processing/ownership only.
-- Representative backend scale-out load/capacity evidence; the local multi-client two-backend Redis WebSocket smoke is recorded in `docs/plans/phase3-compose-benchmark-smoke-2026-04-13T02-21-10-302Z.md`.
+- Local authenticated capacity coverage now has disposable Compose proof in `docs/plans/phase3-compose-benchmark-smoke-2026-04-13T02-50-46-877Z.md`, with benchmark output in `docs/plans/phase3-benchmark-2026-04-13T02-51-11-475Z.md`; keep rerunning `npm run perf:phase3:compose-smoke` when Compose startup, seeded auth, benchmark provisioning, synthetic large-wallet history, WebSocket fanout, backup validation/restore, worker queue handler, worker scale-out, Electrum ownership, Redis-backed backend scale-out, backend fanout paths, Nginx backup payload limits, or Postgres/Redis capacity snapshot logic change.
+- Production-like largest-known-wallet transaction history and wallet sync queue benchmarks with `SANCTUARY_TOKEN` and `SANCTUARY_WALLET_ID`; the local synthetic 10,000-transaction gate is repository-controlled regression evidence, not representative operator evidence.
+- Representative backup restore only in a restore-safe environment, with `SANCTUARY_ADMIN_TOKEN`, `SANCTUARY_BACKUP_FILE`, and `SANCTUARY_ALLOW_RESTORE=true`; the disposable Compose smoke proves a generated 6.53 MiB backup with 10,076 restored records, but not the largest expected support backup size.
+- Representative WebSocket fanout with operator client counts and production-like sync or transaction events; the local Compose smoke now proves the authenticated wallet-specific subscription path and 64-client two-backend Redis bridge delivery.
+- Representative worker queue processing under production-like sync, notification, maintenance, autopilot, and intelligence job volume; the local Compose smoke now proves a repeated 60-job handler profile and proves two-worker diagnostic processing/ownership.
+- Representative backend scale-out load/capacity evidence; the local 64-client two-backend Redis WebSocket smoke is recorded in `docs/plans/phase3-compose-benchmark-smoke-2026-04-13T02-50-46-877Z.md`.
 - Representative worker scale-out queue-load and Electrum subscription-volume evidence before production worker replica support is broadened beyond the local smoke boundary.
 
 Record benchmark output under `docs/plans/` and link it from `docs/plans/codebase-health-assessment.md`.

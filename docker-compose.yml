@@ -201,6 +201,10 @@ services:
       # Gateway secret (for gateway WebSocket connection)
       GATEWAY_SECRET: ${GATEWAY_SECRET:-}
 
+      # WebSocket limits (configurable for local scale/fanout proof)
+      MAX_WEBSOCKET_CONNECTIONS: ${MAX_WEBSOCKET_CONNECTIONS:-10000}
+      MAX_WEBSOCKET_PER_USER: ${MAX_WEBSOCKET_PER_USER:-10}
+
       # Bitcoin Network
       BITCOIN_NETWORK: ${BITCOIN_NETWORK:-mainnet}
 

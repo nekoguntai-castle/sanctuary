@@ -1,0 +1,5201 @@
+{
+  "startedAt": "2026-04-13T02:50:46.877Z",
+  "finishedAt": "2026-04-13T02:51:39.750Z",
+  "commit": "b9bf4e5e",
+  "passed": true,
+  "projectName": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z",
+  "apiUrl": "https://127.0.0.1:18443",
+  "gatewayUrl": "http://127.0.0.1:14000",
+  "wsUrl": "wss://127.0.0.1:18443/ws",
+  "ports": {
+    "http": "18080",
+    "https": "18443",
+    "gateway": "14000"
+  },
+  "steps": [
+    {
+      "name": "compose stack started",
+      "passed": true,
+      "summary": "project=sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z apiPort=18443 gatewayPort=14000"
+    },
+    {
+      "name": "database migration and seed",
+      "passed": true,
+      "summary": "migrate exited with 0"
+    },
+    {
+      "name": "compose container health",
+      "passed": true,
+      "summary": "6 service containers running and healthy"
+    },
+    {
+      "name": "capacity baseline snapshot",
+      "passed": true,
+      "summary": "postgres=10.01 MiB 4/100 connections, transactions=0; redis=2 MiB used, clients=25, keys=44"
+    },
+    {
+      "name": "frontend health",
+      "passed": true,
+      "summary": "status=200"
+    },
+    {
+      "name": "gateway health",
+      "passed": true,
+      "summary": "status=200"
+    },
+    {
+      "name": "phase3 benchmark harness",
+      "passed": true,
+      "summary": "npm run perf:phase3 completed in strict mode"
+    },
+    {
+      "name": "benchmark evidence written",
+      "passed": true,
+      "summary": "docs/plans/phase3-benchmark-2026-04-13T02-51-11-475Z.md and docs/plans/phase3-benchmark-2026-04-13T02-51-11-475Z.json"
+    },
+    {
+      "name": "authenticated scenario proof",
+      "passed": true,
+      "summary": "wallet list, large wallet transaction history, websocket subscription fanout, wallet sync queue, backup validate, backup restore passed"
+    },
+    {
+      "name": "large-wallet transaction-history proof",
+      "passed": true,
+      "summary": "10000 synthetic transactions; 100 requests at concurrency 8; p95=37.8ms target<=2000ms"
+    },
+    {
+      "name": "sized backup restore proof",
+      "passed": true,
+      "summary": "6.53 MiB backup with 10076 records (10000 transactions) restored in 3543ms"
+    },
+    {
+      "name": "worker queue proof",
+      "passed": true,
+      "summary": "60 jobs (10x profile) completed across sync, confirmations, notifications, maintenance, autopilot, intelligence; p95=16.4ms"
+    },
+    {
+      "name": "worker scale-out proof",
+      "passed": true,
+      "summary": "2 workers healthy; processors=ecb31cc51b7e, a6a10fd854e9; electrumOwner=sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-worker-1; lockedSkips=1"
+    },
+    {
+      "name": "backend scale-out websocket proof",
+      "passed": true,
+      "summary": "sync event from sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2 reached 64/64 WebSockets across 2 backend replicas via Redis; p95=17ms"
+    },
+    {
+      "name": "capacity load snapshot",
+      "passed": true,
+      "summary": "postgres=24.66 MiB 13/100 connections, transactions=10000; redis=2.95 MiB used, clients=49, keys=158"
+    }
+  ],
+  "benchmarkRun": {
+    "status": 0,
+    "stdoutTail": "\n> sanctuary@0.8.32 perf:phase3\n> node scripts/perf/phase3-benchmark.mjs\n\nPhase 3 benchmark run 2026-04-13T02-51-11-475Z\nAPI: https://127.0.0.1:18443\nWebSocket: wss://127.0.0.1:18443/ws\nPASSED frontend health: p95=24.26ms errors=0\nPASSED api health: p95=9.08ms errors=0\nPASSED gateway health: p95=2.36ms errors=0\nPASSED websocket handshake: p95=2.67ms errors=0\nPASSED wallet list: p95=16.93ms errors=0\nPASSED websocket subscription fanout: p95=10.22ms errors=0\nPASSED large wallet transaction history: p95=12.69ms errors=0\nPASSED wallet sync queue: p95=4.48ms errors=0\nPASSED backup validate: p95=5.05ms errors=0\nPASSED backup restore: p95=51.24ms errors=0\nWrote docs/plans/phase3-benchmark-2026-04-13T02-51-11-475Z.json\nWrote docs/plans/phase3-benchmark-2026-04-13T02-51-11-475Z.md\n",
+    "stderrTail": "(node:670254) Warning: Setting the NODE_TLS_REJECT_UNAUTHORIZED environment variable to '0' makes TLS connections and HTTPS requests insecure by disabling certificate verification.\n(Use `node --trace-warnings ...` to show where the warning was created)\n"
+  },
+  "benchmarkEvidence": {
+    "jsonPath": "docs/plans/phase3-benchmark-2026-04-13T02-51-11-475Z.json",
+    "mdPath": "docs/plans/phase3-benchmark-2026-04-13T02-51-11-475Z.md",
+    "benchmark": {
+      "runId": "2026-04-13T02-51-11-475Z",
+      "timestamp": "2026-04-13T02:51:11.475Z",
+      "commit": "b9bf4e5e",
+      "environment": {
+        "apiBaseUrl": "https://127.0.0.1:18443",
+        "gatewayBaseUrl": "http://127.0.0.1:14000",
+        "wsUrl": "wss://127.0.0.1:18443/ws",
+        "requestCount": 5,
+        "concurrency": 2,
+        "wsClients": 2,
+        "wsFanoutClients": 2,
+        "timeoutMs": 60000,
+        "insecureTls": true,
+        "authenticatedHttp": true,
+        "adminBackupInput": true,
+        "allowRestore": true,
+        "fixture": {
+          "provisionRequested": true,
+          "privateProvisionAllowed": false,
+          "tokenSource": "local-login",
+          "walletSource": "local-created",
+          "backupSource": "local-admin-api",
+          "adminTokenSource": "local-login"
+        },
+        "datasetLabel": "local auto-provisioned benchmark fixture; not a large-wallet performance dataset"
+      },
+      "notes": [
+        {
+          "type": "health",
+          "status": "healthy",
+          "components": {
+            "database": "healthy",
+            "redis": "healthy",
+            "electrum": "healthy",
+            "websocket": "healthy",
+            "sync": "healthy",
+            "jobQueue": "healthy",
+            "cacheInvalidation": "healthy",
+            "startup": "healthy",
+            "circuitBreakers": "healthy",
+            "memory": "healthy",
+            "disk": "healthy"
+          }
+        },
+        {
+          "type": "fixture",
+          "action": "login",
+          "username": "admin",
+          "usingDefaultPassword": true
+        },
+        {
+          "type": "fixture",
+          "action": "wallet-create",
+          "walletId": "a8281f23-a9c0-48b3-be00-cc1b8fbb21d4",
+          "walletName": "Phase 3 Compose Benchmark Wallet",
+          "network": "testnet",
+          "addressCount": 40
+        },
+        {
+          "type": "fixture",
+          "action": "backup-create",
+          "recordCounts": {
+            "hardwareDeviceModel": 25,
+            "systemSetting": 1,
+            "nodeConfig": 1,
+            "user": 1,
+            "group": 0,
+            "groupMember": 0,
+            "device": 0,
+            "wallet": 1,
+            "pushDevice": 0,
+            "electrumServer": 0,
+            "walletUser": 1,
+            "walletDevice": 0,
+            "address": 40,
+            "label": 0,
+            "draftTransaction": 0,
+            "transaction": 0,
+            "uTXO": 0,
+            "transactionInput": 0,
+            "transactionOutput": 0,
+            "transactionLabel": 0,
+            "addressLabel": 0,
+            "draftUtxoLock": 0,
+            "auditLog": 1
+          }
+        }
+      ],
+      "scenarios": [
+        {
+          "name": "frontend health",
+          "kind": "http",
+          "method": "GET",
+          "url": "https://127.0.0.1:18443/health",
+          "status": "passed",
+          "requests": 5,
+          "successes": 5,
+          "errors": 0,
+          "expectedStatuses": [
+            200
+          ],
+          "statusCounts": {
+            "200": 5
+          },
+          "latency": {
+            "minMs": 0.84,
+            "p50Ms": 3.89,
+            "p95Ms": 24.26,
+            "p99Ms": 27.5,
+            "maxMs": 28.31
+          },
+          "failures": []
+        },
+        {
+          "name": "api health",
+          "kind": "http",
+          "method": "GET",
+          "url": "https://127.0.0.1:18443/api/v1/health",
+          "status": "passed",
+          "requests": 5,
+          "successes": 5,
+          "errors": 0,
+          "expectedStatuses": [
+            200,
+            503
+          ],
+          "statusCounts": {
+            "200": 5
+          },
+          "latency": {
+            "minMs": 2.29,
+            "p50Ms": 4.99,
+            "p95Ms": 9.08,
+            "p99Ms": 9.2,
+            "maxMs": 9.23
+          },
+          "failures": []
+        },
+        {
+          "name": "gateway health",
+          "kind": "http",
+          "method": "GET",
+          "url": "http://127.0.0.1:14000/health",
+          "status": "passed",
+          "requests": 5,
+          "successes": 5,
+          "errors": 0,
+          "expectedStatuses": [
+            200
+          ],
+          "statusCounts": {
+            "200": 5
+          },
+          "latency": {
+            "minMs": 0.59,
+            "p50Ms": 1.54,
+            "p95Ms": 2.36,
+            "p99Ms": 2.5,
+            "maxMs": 2.53
+          },
+          "failures": []
+        },
+        {
+          "name": "websocket handshake",
+          "kind": "websocket",
+          "url": "wss://127.0.0.1:18443/ws",
+          "status": "passed",
+          "requests": 2,
+          "successes": 2,
+          "errors": 0,
+          "latency": {
+            "minMs": 2.61,
+            "p50Ms": 2.64,
+            "p95Ms": 2.67,
+            "p99Ms": 2.67,
+            "maxMs": 2.67
+          },
+          "messages": [
+            "connected",
+            "connected"
+          ],
+          "failures": []
+        },
+        {
+          "name": "wallet list",
+          "kind": "http",
+          "method": "GET",
+          "url": "https://127.0.0.1:18443/api/v1/wallets",
+          "status": "passed",
+          "requests": 5,
+          "successes": 5,
+          "errors": 0,
+          "expectedStatuses": [
+            200
+          ],
+          "statusCounts": {
+            "200": 5
+          },
+          "latency": {
+            "minMs": 5.31,
+            "p50Ms": 6.3,
+            "p95Ms": 16.93,
+            "p99Ms": 17.44,
+            "maxMs": 17.56
+          },
+          "failures": []
+        },
+        {
+          "name": "websocket subscription fanout",
+          "kind": "websocket",
+          "url": "wss://127.0.0.1:18443/ws",
+          "status": "passed",
+          "requests": 2,
+          "successes": 2,
+          "errors": 0,
+          "latency": {
+            "minMs": 10.11,
+            "p50Ms": 10.17,
+            "p95Ms": 10.22,
+            "p99Ms": 10.23,
+            "maxMs": 10.23
+          },
+          "setupLatency": {
+            "minMs": 4.82,
+            "p50Ms": 4.94,
+            "p95Ms": 5.06,
+            "p99Ms": 5.07,
+            "maxMs": 5.07
+          },
+          "channels": [
+            "wallet:a8281f23-a9c0-48b3-be00-cc1b8fbb21d4",
+            "wallet:a8281f23-a9c0-48b3-be00-cc1b8fbb21d4:sync",
+            "sync:all"
+          ],
+          "trigger": {
+            "method": "POST",
+            "url": "https://127.0.0.1:18443/api/v1/sync/queue/a8281f23-a9c0-48b3-be00-cc1b8fbb21d4",
+            "status": 200,
+            "error": null
+          },
+          "messages": [
+            "sync:wallet:a8281f23-a9c0-48b3-be00-cc1b8fbb21d4"
+          ],
+          "failures": []
+        },
+        {
+          "name": "large wallet transaction history",
+          "kind": "http",
+          "method": "GET",
+          "url": "https://127.0.0.1:18443/api/v1/wallets/a8281f23-a9c0-48b3-be00-cc1b8fbb21d4/transactions?limit=50&offset=0",
+          "status": "passed",
+          "requests": 5,
+          "successes": 5,
+          "errors": 0,
+          "expectedStatuses": [
+            200
+          ],
+          "statusCounts": {
+            "200": 5
+          },
+          "latency": {
+            "minMs": 2.97,
+            "p50Ms": 5.25,
+            "p95Ms": 12.69,
+            "p99Ms": 12.82,
+            "maxMs": 12.86
+          },
+          "failures": []
+        },
+        {
+          "name": "wallet sync queue",
+          "kind": "http",
+          "method": "POST",
+          "url": "https://127.0.0.1:18443/api/v1/sync/queue/a8281f23-a9c0-48b3-be00-cc1b8fbb21d4",
+          "status": "passed",
+          "requests": 5,
+          "successes": 5,
+          "errors": 0,
+          "expectedStatuses": [
+            200
+          ],
+          "statusCounts": {
+            "200": 5
+          },
+          "latency": {
+            "minMs": 2.65,
+            "p50Ms": 3.58,
+            "p95Ms": 4.48,
+            "p99Ms": 4.57,
+            "maxMs": 4.6
+          },
+          "failures": []
+        },
+        {
+          "name": "backup validate",
+          "kind": "http",
+          "method": "POST",
+          "url": "https://127.0.0.1:18443/api/v1/admin/backup/validate",
+          "status": "passed",
+          "requests": 1,
+          "successes": 1,
+          "errors": 0,
+          "expectedStatuses": [
+            200,
+            400
+          ],
+          "statusCounts": {
+            "200": 1
+          },
+          "latency": {
+            "minMs": 5.05,
+            "p50Ms": 5.05,
+            "p95Ms": 5.05,
+            "p99Ms": 5.05,
+            "maxMs": 5.05
+          },
+          "failures": []
+        },
+        {
+          "name": "backup restore",
+          "kind": "http",
+          "method": "POST",
+          "url": "https://127.0.0.1:18443/api/v1/admin/restore",
+          "status": "passed",
+          "requests": 1,
+          "successes": 1,
+          "errors": 0,
+          "expectedStatuses": [
+            200
+          ],
+          "statusCounts": {
+            "200": 1
+          },
+          "latency": {
+            "minMs": 51.24,
+            "p50Ms": 51.24,
+            "p95Ms": 51.24,
+            "p99Ms": 51.24,
+            "maxMs": 51.24
+          },
+          "failures": []
+        }
+      ],
+      "skipped": []
+    }
+  },
+  "benchmarkProof": {
+    "requiredScenarios": [
+      "wallet list",
+      "large wallet transaction history",
+      "websocket subscription fanout",
+      "wallet sync queue",
+      "backup validate",
+      "backup restore"
+    ],
+    "skipped": [],
+    "datasetLabel": "local auto-provisioned benchmark fixture; not a large-wallet performance dataset"
+  },
+  "largeWalletHistoryProof": {
+    "proofId": "2026-04-13T02-50-46-877Z",
+    "status": "passed",
+    "wallet": {
+      "id": "72d4540b-1cbc-42c3-8325-d795bc426f0e",
+      "name": "Phase 3 Large Wallet 2026-04-13T02-50-46-877Z",
+      "network": "testnet"
+    },
+    "dataset": {
+      "kind": "synthetic-local-large-wallet",
+      "requestedTransactions": 10000,
+      "insertedTransactions": 10000,
+      "transactionCount": 10000,
+      "pageSize": 50
+    },
+    "traffic": {
+      "requests": 100,
+      "concurrency": 8,
+      "endpoint": "/api/v1/wallets/:walletId/transactions"
+    },
+    "gate": {
+      "p95BudgetMs": 2000
+    },
+    "statusCounts": {
+      "200": 100
+    },
+    "latency": {
+      "minMs": 15,
+      "p50Ms": 26,
+      "p95Ms": 37.8,
+      "p99Ms": 56,
+      "maxMs": 56
+    },
+    "failures": []
+  },
+  "workerQueueProof": {
+    "proofId": "2026-04-13T02-50-46-877Z",
+    "repeatCount": 10,
+    "totalDurationMs": 282,
+    "metricsBefore": {
+      "worker": {
+        "hostname": "14d1e377bffc",
+        "pid": 7,
+        "startedAt": "2026-04-13T02:51:02.136Z",
+        "concurrency": 1,
+        "electrumSubscriptionOwner": true
+      },
+      "queues": {
+        "sync": {
+          "waiting": 0,
+          "active": 0,
+          "completed": 0,
+          "failed": 0,
+          "delayed": 1,
+          "paused": false
+        },
+        "notifications": {
+          "waiting": 0,
+          "active": 0,
+          "completed": 0,
+          "failed": 0,
+          "delayed": 0,
+          "paused": false
+        },
+        "confirmations": {
+          "waiting": 0,
+          "active": 0,
+          "completed": 0,
+          "failed": 0,
+          "delayed": 1,
+          "paused": false
+        },
+        "maintenance": {
+          "waiting": 0,
+          "active": 0,
+          "completed": 0,
+          "failed": 0,
+          "delayed": 9,
+          "paused": false
+        }
+      },
+      "electrum": {
+        "isRunning": true,
+        "ownershipRetryActive": false,
+        "subscribedAddresses": 0,
+        "networks": {
+          "mainnet": {
+            "connected": true,
+            "subscribedToHeaders": true,
+            "subscribedAddresses": 0,
+            "lastBlockHeight": 944821,
+            "reconnectAttempts": 0
+          }
+        }
+      },
+      "jobCompletions": {},
+      "timestamp": "2026-04-13T02:51:16.975Z"
+    },
+    "metricsAfter": {
+      "worker": {
+        "hostname": "14d1e377bffc",
+        "pid": 7,
+        "startedAt": "2026-04-13T02:51:02.136Z",
+        "concurrency": 1,
+        "electrumSubscriptionOwner": true
+      },
+      "queues": {
+        "sync": {
+          "waiting": 0,
+          "active": 0,
+          "completed": 10,
+          "failed": 0,
+          "delayed": 1,
+          "paused": false
+        },
+        "notifications": {
+          "waiting": 0,
+          "active": 0,
+          "completed": 10,
+          "failed": 0,
+          "delayed": 0,
+          "paused": false
+        },
+        "confirmations": {
+          "waiting": 0,
+          "active": 0,
+          "completed": 10,
+          "failed": 0,
+          "delayed": 1,
+          "paused": false
+        },
+        "maintenance": {
+          "waiting": 0,
+          "active": 0,
+          "completed": 30,
+          "failed": 0,
+          "delayed": 9,
+          "paused": false
+        }
+      },
+      "electrum": {
+        "isRunning": true,
+        "ownershipRetryActive": false,
+        "subscribedAddresses": 0,
+        "networks": {
+          "mainnet": {
+            "connected": true,
+            "subscribedToHeaders": true,
+            "subscribedAddresses": 0,
+            "lastBlockHeight": 944821,
+            "reconnectAttempts": 0
+          }
+        }
+      },
+      "jobCompletions": {
+        "sync:check-stale-wallets": 1776048677215,
+        "confirmations:update-all-confirmations": 1776048677217,
+        "notifications:confirmation-notify": 1776048677218,
+        "maintenance:cleanup:expired-tokens": 1776048677219,
+        "maintenance:autopilot:evaluate": 1776048677221,
+        "maintenance:intelligence:cleanup": 1776048677224
+      },
+      "timestamp": "2026-04-13T02:51:17.226Z"
+    },
+    "jobs": [
+      {
+        "repeat": 0,
+        "category": "sync",
+        "queue": "sync",
+        "name": "check-stale-wallets",
+        "id": "phase3-2026-04-13T02-50-46-877Z-sync-0-check-stale-wallets",
+        "state": "completed",
+        "durationMs": 24,
+        "returnvalue": {
+          "staleWalletIds": [],
+          "queued": 0,
+          "priority": "low",
+          "staggerDelayMs": 0,
+          "reason": "phase3-worker-queue-proof",
+          "maxWallets": 0
+        }
+      },
+      {
+        "repeat": 0,
+        "category": "confirmations",
+        "queue": "confirmations",
+        "name": "update-all-confirmations",
+        "id": "phase3-2026-04-13T02-50-46-877Z-confirmations-0-update-all-confirmations",
+        "state": "completed",
+        "durationMs": 6,
+        "returnvalue": {
+          "updated": 0,
+          "notified": 0
+        }
+      },
+      {
+        "repeat": 0,
+        "category": "notifications",
+        "queue": "notifications",
+        "name": "confirmation-notify",
+        "id": "phase3-2026-04-13T02-50-46-877Z-notifications-0-confirmation-notify",
+        "state": "completed",
+        "durationMs": 1,
+        "returnvalue": {
+          "success": true,
+          "channelsNotified": 0
+        }
+      },
+      {
+        "repeat": 0,
+        "category": "maintenance",
+        "queue": "maintenance",
+        "name": "cleanup:expired-tokens",
+        "id": "phase3-2026-04-13T02-50-46-877Z-maintenance-0-cleanup-expired-tokens",
+        "state": "completed",
+        "durationMs": 3,
+        "returnvalue": 0
+      },
+      {
+        "repeat": 0,
+        "category": "autopilot",
+        "queue": "maintenance",
+        "name": "autopilot:evaluate",
+        "id": "phase3-2026-04-13T02-50-46-877Z-autopilot-0-autopilot-evaluate",
+        "state": "completed",
+        "durationMs": 16,
+        "returnvalue": null
+      },
+      {
+        "repeat": 0,
+        "category": "intelligence",
+        "queue": "maintenance",
+        "name": "intelligence:cleanup",
+        "id": "phase3-2026-04-13T02-50-46-877Z-intelligence-0-intelligence-cleanup",
+        "state": "completed",
+        "durationMs": 7,
+        "returnvalue": null
+      },
+      {
+        "repeat": 1,
+        "category": "sync",
+        "queue": "sync",
+        "name": "check-stale-wallets",
+        "id": "phase3-2026-04-13T02-50-46-877Z-sync-1-check-stale-wallets",
+        "state": "completed",
+        "durationMs": 4,
+        "returnvalue": {
+          "staleWalletIds": [],
+          "queued": 0,
+          "priority": "low",
+          "staggerDelayMs": 0,
+          "reason": "phase3-worker-queue-proof",
+          "maxWallets": 0
+        }
+      },
+      {
+        "repeat": 1,
+        "category": "confirmations",
+        "queue": "confirmations",
+        "name": "update-all-confirmations",
+        "id": "phase3-2026-04-13T02-50-46-877Z-confirmations-1-update-all-confirmations",
+        "state": "completed",
+        "durationMs": 4,
+        "returnvalue": {
+          "updated": 0,
+          "notified": 0
+        }
+      },
+      {
+        "repeat": 1,
+        "category": "notifications",
+        "queue": "notifications",
+        "name": "confirmation-notify",
+        "id": "phase3-2026-04-13T02-50-46-877Z-notifications-1-confirmation-notify",
+        "state": "completed",
+        "durationMs": 1,
+        "returnvalue": {
+          "success": true,
+          "channelsNotified": 0
+        }
+      },
+      {
+        "repeat": 1,
+        "category": "maintenance",
+        "queue": "maintenance",
+        "name": "cleanup:expired-tokens",
+        "id": "phase3-2026-04-13T02-50-46-877Z-maintenance-1-cleanup-expired-tokens",
+        "state": "completed",
+        "durationMs": 3,
+        "returnvalue": 0
+      },
+      {
+        "repeat": 1,
+        "category": "autopilot",
+        "queue": "maintenance",
+        "name": "autopilot:evaluate",
+        "id": "phase3-2026-04-13T02-50-46-877Z-autopilot-1-autopilot-evaluate",
+        "state": "completed",
+        "durationMs": 3,
+        "returnvalue": null
+      },
+      {
+        "repeat": 1,
+        "category": "intelligence",
+        "queue": "maintenance",
+        "name": "intelligence:cleanup",
+        "id": "phase3-2026-04-13T02-50-46-877Z-intelligence-1-intelligence-cleanup",
+        "state": "completed",
+        "durationMs": 3,
+        "returnvalue": null
+      },
+      {
+        "repeat": 2,
+        "category": "sync",
+        "queue": "sync",
+        "name": "check-stale-wallets",
+        "id": "phase3-2026-04-13T02-50-46-877Z-sync-2-check-stale-wallets",
+        "state": "completed",
+        "durationMs": 2,
+        "returnvalue": {
+          "staleWalletIds": [],
+          "queued": 0,
+          "priority": "low",
+          "staggerDelayMs": 0,
+          "reason": "phase3-worker-queue-proof",
+          "maxWallets": 0
+        }
+      },
+      {
+        "repeat": 2,
+        "category": "confirmations",
+        "queue": "confirmations",
+        "name": "update-all-confirmations",
+        "id": "phase3-2026-04-13T02-50-46-877Z-confirmations-2-update-all-confirmations",
+        "state": "completed",
+        "durationMs": 2,
+        "returnvalue": {
+          "updated": 0,
+          "notified": 0
+        }
+      },
+      {
+        "repeat": 2,
+        "category": "notifications",
+        "queue": "notifications",
+        "name": "confirmation-notify",
+        "id": "phase3-2026-04-13T02-50-46-877Z-notifications-2-confirmation-notify",
+        "state": "completed",
+        "durationMs": 0,
+        "returnvalue": {
+          "success": true,
+          "channelsNotified": 0
+        }
+      },
+      {
+        "repeat": 2,
+        "category": "maintenance",
+        "queue": "maintenance",
+        "name": "cleanup:expired-tokens",
+        "id": "phase3-2026-04-13T02-50-46-877Z-maintenance-2-cleanup-expired-tokens",
+        "state": "completed",
+        "durationMs": 1,
+        "returnvalue": 0
+      },
+      {
+        "repeat": 2,
+        "category": "autopilot",
+        "queue": "maintenance",
+        "name": "autopilot:evaluate",
+        "id": "phase3-2026-04-13T02-50-46-877Z-autopilot-2-autopilot-evaluate",
+        "state": "completed",
+        "durationMs": 32,
+        "returnvalue": null
+      },
+      {
+        "repeat": 2,
+        "category": "intelligence",
+        "queue": "maintenance",
+        "name": "intelligence:cleanup",
+        "id": "phase3-2026-04-13T02-50-46-877Z-intelligence-2-intelligence-cleanup",
+        "state": "completed",
+        "durationMs": 2,
+        "returnvalue": null
+      },
+      {
+        "repeat": 3,
+        "category": "sync",
+        "queue": "sync",
+        "name": "check-stale-wallets",
+        "id": "phase3-2026-04-13T02-50-46-877Z-sync-3-check-stale-wallets",
+        "state": "completed",
+        "durationMs": 2,
+        "returnvalue": {
+          "staleWalletIds": [],
+          "queued": 0,
+          "priority": "low",
+          "staggerDelayMs": 0,
+          "reason": "phase3-worker-queue-proof",
+          "maxWallets": 0
+        }
+      },
+      {
+        "repeat": 3,
+        "category": "confirmations",
+        "queue": "confirmations",
+        "name": "update-all-confirmations",
+        "id": "phase3-2026-04-13T02-50-46-877Z-confirmations-3-update-all-confirmations",
+        "state": "completed",
+        "durationMs": 2,
+        "returnvalue": {
+          "updated": 0,
+          "notified": 0
+        }
+      },
+      {
+        "repeat": 3,
+        "category": "notifications",
+        "queue": "notifications",
+        "name": "confirmation-notify",
+        "id": "phase3-2026-04-13T02-50-46-877Z-notifications-3-confirmation-notify",
+        "state": "completed",
+        "durationMs": 2,
+        "returnvalue": {
+          "success": true,
+          "channelsNotified": 0
+        }
+      },
+      {
+        "repeat": 3,
+        "category": "maintenance",
+        "queue": "maintenance",
+        "name": "cleanup:expired-tokens",
+        "id": "phase3-2026-04-13T02-50-46-877Z-maintenance-3-cleanup-expired-tokens",
+        "state": "completed",
+        "durationMs": 1,
+        "returnvalue": 0
+      },
+      {
+        "repeat": 3,
+        "category": "autopilot",
+        "queue": "maintenance",
+        "name": "autopilot:evaluate",
+        "id": "phase3-2026-04-13T02-50-46-877Z-autopilot-3-autopilot-evaluate",
+        "state": "completed",
+        "durationMs": 2,
+        "returnvalue": null
+      },
+      {
+        "repeat": 3,
+        "category": "intelligence",
+        "queue": "maintenance",
+        "name": "intelligence:cleanup",
+        "id": "phase3-2026-04-13T02-50-46-877Z-intelligence-3-intelligence-cleanup",
+        "state": "completed",
+        "durationMs": 2,
+        "returnvalue": null
+      },
+      {
+        "repeat": 4,
+        "category": "sync",
+        "queue": "sync",
+        "name": "check-stale-wallets",
+        "id": "phase3-2026-04-13T02-50-46-877Z-sync-4-check-stale-wallets",
+        "state": "completed",
+        "durationMs": 1,
+        "returnvalue": {
+          "staleWalletIds": [],
+          "queued": 0,
+          "priority": "low",
+          "staggerDelayMs": 0,
+          "reason": "phase3-worker-queue-proof",
+          "maxWallets": 0
+        }
+      },
+      {
+        "repeat": 4,
+        "category": "confirmations",
+        "queue": "confirmations",
+        "name": "update-all-confirmations",
+        "id": "phase3-2026-04-13T02-50-46-877Z-confirmations-4-update-all-confirmations",
+        "state": "completed",
+        "durationMs": 2,
+        "returnvalue": {
+          "updated": 0,
+          "notified": 0
+        }
+      },
+      {
+        "repeat": 4,
+        "category": "notifications",
+        "queue": "notifications",
+        "name": "confirmation-notify",
+        "id": "phase3-2026-04-13T02-50-46-877Z-notifications-4-confirmation-notify",
+        "state": "completed",
+        "durationMs": 1,
+        "returnvalue": {
+          "success": true,
+          "channelsNotified": 0
+        }
+      },
+      {
+        "repeat": 4,
+        "category": "maintenance",
+        "queue": "maintenance",
+        "name": "cleanup:expired-tokens",
+        "id": "phase3-2026-04-13T02-50-46-877Z-maintenance-4-cleanup-expired-tokens",
+        "state": "completed",
+        "durationMs": 2,
+        "returnvalue": 0
+      },
+      {
+        "repeat": 4,
+        "category": "autopilot",
+        "queue": "maintenance",
+        "name": "autopilot:evaluate",
+        "id": "phase3-2026-04-13T02-50-46-877Z-autopilot-4-autopilot-evaluate",
+        "state": "completed",
+        "durationMs": 2,
+        "returnvalue": null
+      },
+      {
+        "repeat": 4,
+        "category": "intelligence",
+        "queue": "maintenance",
+        "name": "intelligence:cleanup",
+        "id": "phase3-2026-04-13T02-50-46-877Z-intelligence-4-intelligence-cleanup",
+        "state": "completed",
+        "durationMs": 1,
+        "returnvalue": null
+      },
+      {
+        "repeat": 5,
+        "category": "sync",
+        "queue": "sync",
+        "name": "check-stale-wallets",
+        "id": "phase3-2026-04-13T02-50-46-877Z-sync-5-check-stale-wallets",
+        "state": "completed",
+        "durationMs": 0,
+        "returnvalue": {
+          "staleWalletIds": [],
+          "queued": 0,
+          "priority": "low",
+          "staggerDelayMs": 0,
+          "reason": "phase3-worker-queue-proof",
+          "maxWallets": 0
+        }
+      },
+      {
+        "repeat": 5,
+        "category": "confirmations",
+        "queue": "confirmations",
+        "name": "update-all-confirmations",
+        "id": "phase3-2026-04-13T02-50-46-877Z-confirmations-5-update-all-confirmations",
+        "state": "completed",
+        "durationMs": 2,
+        "returnvalue": {
+          "updated": 0,
+          "notified": 0
+        }
+      },
+      {
+        "repeat": 5,
+        "category": "notifications",
+        "queue": "notifications",
+        "name": "confirmation-notify",
+        "id": "phase3-2026-04-13T02-50-46-877Z-notifications-5-confirmation-notify",
+        "state": "completed",
+        "durationMs": 1,
+        "returnvalue": {
+          "success": true,
+          "channelsNotified": 0
+        }
+      },
+      {
+        "repeat": 5,
+        "category": "maintenance",
+        "queue": "maintenance",
+        "name": "cleanup:expired-tokens",
+        "id": "phase3-2026-04-13T02-50-46-877Z-maintenance-5-cleanup-expired-tokens",
+        "state": "completed",
+        "durationMs": 1,
+        "returnvalue": 0
+      },
+      {
+        "repeat": 5,
+        "category": "autopilot",
+        "queue": "maintenance",
+        "name": "autopilot:evaluate",
+        "id": "phase3-2026-04-13T02-50-46-877Z-autopilot-5-autopilot-evaluate",
+        "state": "completed",
+        "durationMs": 2,
+        "returnvalue": null
+      },
+      {
+        "repeat": 5,
+        "category": "intelligence",
+        "queue": "maintenance",
+        "name": "intelligence:cleanup",
+        "id": "phase3-2026-04-13T02-50-46-877Z-intelligence-5-intelligence-cleanup",
+        "state": "completed",
+        "durationMs": 2,
+        "returnvalue": null
+      },
+      {
+        "repeat": 6,
+        "category": "sync",
+        "queue": "sync",
+        "name": "check-stale-wallets",
+        "id": "phase3-2026-04-13T02-50-46-877Z-sync-6-check-stale-wallets",
+        "state": "completed",
+        "durationMs": 1,
+        "returnvalue": {
+          "staleWalletIds": [],
+          "queued": 0,
+          "priority": "low",
+          "staggerDelayMs": 0,
+          "reason": "phase3-worker-queue-proof",
+          "maxWallets": 0
+        }
+      },
+      {
+        "repeat": 6,
+        "category": "confirmations",
+        "queue": "confirmations",
+        "name": "update-all-confirmations",
+        "id": "phase3-2026-04-13T02-50-46-877Z-confirmations-6-update-all-confirmations",
+        "state": "completed",
+        "durationMs": 2,
+        "returnvalue": {
+          "updated": 0,
+          "notified": 0
+        }
+      },
+      {
+        "repeat": 6,
+        "category": "notifications",
+        "queue": "notifications",
+        "name": "confirmation-notify",
+        "id": "phase3-2026-04-13T02-50-46-877Z-notifications-6-confirmation-notify",
+        "state": "completed",
+        "durationMs": 1,
+        "returnvalue": {
+          "success": true,
+          "channelsNotified": 0
+        }
+      },
+      {
+        "repeat": 6,
+        "category": "maintenance",
+        "queue": "maintenance",
+        "name": "cleanup:expired-tokens",
+        "id": "phase3-2026-04-13T02-50-46-877Z-maintenance-6-cleanup-expired-tokens",
+        "state": "completed",
+        "durationMs": 1,
+        "returnvalue": 0
+      },
+      {
+        "repeat": 6,
+        "category": "autopilot",
+        "queue": "maintenance",
+        "name": "autopilot:evaluate",
+        "id": "phase3-2026-04-13T02-50-46-877Z-autopilot-6-autopilot-evaluate",
+        "state": "completed",
+        "durationMs": 2,
+        "returnvalue": null
+      },
+      {
+        "repeat": 6,
+        "category": "intelligence",
+        "queue": "maintenance",
+        "name": "intelligence:cleanup",
+        "id": "phase3-2026-04-13T02-50-46-877Z-intelligence-6-intelligence-cleanup",
+        "state": "completed",
+        "durationMs": 2,
+        "returnvalue": null
+      },
+      {
+        "repeat": 7,
+        "category": "sync",
+        "queue": "sync",
+        "name": "check-stale-wallets",
+        "id": "phase3-2026-04-13T02-50-46-877Z-sync-7-check-stale-wallets",
+        "state": "completed",
+        "durationMs": 1,
+        "returnvalue": {
+          "staleWalletIds": [],
+          "queued": 0,
+          "priority": "low",
+          "staggerDelayMs": 0,
+          "reason": "phase3-worker-queue-proof",
+          "maxWallets": 0
+        }
+      },
+      {
+        "repeat": 7,
+        "category": "confirmations",
+        "queue": "confirmations",
+        "name": "update-all-confirmations",
+        "id": "phase3-2026-04-13T02-50-46-877Z-confirmations-7-update-all-confirmations",
+        "state": "completed",
+        "durationMs": 2,
+        "returnvalue": {
+          "updated": 0,
+          "notified": 0
+        }
+      },
+      {
+        "repeat": 7,
+        "category": "notifications",
+        "queue": "notifications",
+        "name": "confirmation-notify",
+        "id": "phase3-2026-04-13T02-50-46-877Z-notifications-7-confirmation-notify",
+        "state": "completed",
+        "durationMs": 0,
+        "returnvalue": {
+          "success": true,
+          "channelsNotified": 0
+        }
+      },
+      {
+        "repeat": 7,
+        "category": "maintenance",
+        "queue": "maintenance",
+        "name": "cleanup:expired-tokens",
+        "id": "phase3-2026-04-13T02-50-46-877Z-maintenance-7-cleanup-expired-tokens",
+        "state": "completed",
+        "durationMs": 1,
+        "returnvalue": 0
+      },
+      {
+        "repeat": 7,
+        "category": "autopilot",
+        "queue": "maintenance",
+        "name": "autopilot:evaluate",
+        "id": "phase3-2026-04-13T02-50-46-877Z-autopilot-7-autopilot-evaluate",
+        "state": "completed",
+        "durationMs": 46,
+        "returnvalue": null
+      },
+      {
+        "repeat": 7,
+        "category": "intelligence",
+        "queue": "maintenance",
+        "name": "intelligence:cleanup",
+        "id": "phase3-2026-04-13T02-50-46-877Z-intelligence-7-intelligence-cleanup",
+        "state": "completed",
+        "durationMs": 2,
+        "returnvalue": null
+      },
+      {
+        "repeat": 8,
+        "category": "sync",
+        "queue": "sync",
+        "name": "check-stale-wallets",
+        "id": "phase3-2026-04-13T02-50-46-877Z-sync-8-check-stale-wallets",
+        "state": "completed",
+        "durationMs": 1,
+        "returnvalue": {
+          "staleWalletIds": [],
+          "queued": 0,
+          "priority": "low",
+          "staggerDelayMs": 0,
+          "reason": "phase3-worker-queue-proof",
+          "maxWallets": 0
+        }
+      },
+      {
+        "repeat": 8,
+        "category": "confirmations",
+        "queue": "confirmations",
+        "name": "update-all-confirmations",
+        "id": "phase3-2026-04-13T02-50-46-877Z-confirmations-8-update-all-confirmations",
+        "state": "completed",
+        "durationMs": 2,
+        "returnvalue": {
+          "updated": 0,
+          "notified": 0
+        }
+      },
+      {
+        "repeat": 8,
+        "category": "notifications",
+        "queue": "notifications",
+        "name": "confirmation-notify",
+        "id": "phase3-2026-04-13T02-50-46-877Z-notifications-8-confirmation-notify",
+        "state": "completed",
+        "durationMs": 1,
+        "returnvalue": {
+          "success": true,
+          "channelsNotified": 0
+        }
+      },
+      {
+        "repeat": 8,
+        "category": "maintenance",
+        "queue": "maintenance",
+        "name": "cleanup:expired-tokens",
+        "id": "phase3-2026-04-13T02-50-46-877Z-maintenance-8-cleanup-expired-tokens",
+        "state": "completed",
+        "durationMs": 1,
+        "returnvalue": 0
+      },
+      {
+        "repeat": 8,
+        "category": "autopilot",
+        "queue": "maintenance",
+        "name": "autopilot:evaluate",
+        "id": "phase3-2026-04-13T02-50-46-877Z-autopilot-8-autopilot-evaluate",
+        "state": "completed",
+        "durationMs": 2,
+        "returnvalue": null
+      },
+      {
+        "repeat": 8,
+        "category": "intelligence",
+        "queue": "maintenance",
+        "name": "intelligence:cleanup",
+        "id": "phase3-2026-04-13T02-50-46-877Z-intelligence-8-intelligence-cleanup",
+        "state": "completed",
+        "durationMs": 2,
+        "returnvalue": null
+      },
+      {
+        "repeat": 9,
+        "category": "sync",
+        "queue": "sync",
+        "name": "check-stale-wallets",
+        "id": "phase3-2026-04-13T02-50-46-877Z-sync-9-check-stale-wallets",
+        "state": "completed",
+        "durationMs": 1,
+        "returnvalue": {
+          "staleWalletIds": [],
+          "queued": 0,
+          "priority": "low",
+          "staggerDelayMs": 0,
+          "reason": "phase3-worker-queue-proof",
+          "maxWallets": 0
+        }
+      },
+      {
+        "repeat": 9,
+        "category": "confirmations",
+        "queue": "confirmations",
+        "name": "update-all-confirmations",
+        "id": "phase3-2026-04-13T02-50-46-877Z-confirmations-9-update-all-confirmations",
+        "state": "completed",
+        "durationMs": 2,
+        "returnvalue": {
+          "updated": 0,
+          "notified": 0
+        }
+      },
+      {
+        "repeat": 9,
+        "category": "notifications",
+        "queue": "notifications",
+        "name": "confirmation-notify",
+        "id": "phase3-2026-04-13T02-50-46-877Z-notifications-9-confirmation-notify",
+        "state": "completed",
+        "durationMs": 1,
+        "returnvalue": {
+          "success": true,
+          "channelsNotified": 0
+        }
+      },
+      {
+        "repeat": 9,
+        "category": "maintenance",
+        "queue": "maintenance",
+        "name": "cleanup:expired-tokens",
+        "id": "phase3-2026-04-13T02-50-46-877Z-maintenance-9-cleanup-expired-tokens",
+        "state": "completed",
+        "durationMs": 1,
+        "returnvalue": 0
+      },
+      {
+        "repeat": 9,
+        "category": "autopilot",
+        "queue": "maintenance",
+        "name": "autopilot:evaluate",
+        "id": "phase3-2026-04-13T02-50-46-877Z-autopilot-9-autopilot-evaluate",
+        "state": "completed",
+        "durationMs": 1,
+        "returnvalue": null
+      },
+      {
+        "repeat": 9,
+        "category": "intelligence",
+        "queue": "maintenance",
+        "name": "intelligence:cleanup",
+        "id": "phase3-2026-04-13T02-50-46-877Z-intelligence-9-intelligence-cleanup",
+        "state": "completed",
+        "durationMs": 2,
+        "returnvalue": null
+      }
+    ]
+  },
+  "workerScaleOutProof": {
+    "proofId": "2026-04-13T02-50-46-877Z",
+    "totalDurationMs": 5396,
+    "workers": [
+      {
+        "id": "ecb31cc51b7ec201021857fc99caa987b25da6d4e35f99133a8298feffaca7d4",
+        "shortId": "ecb31cc51b7e",
+        "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-worker-1",
+        "ip": "172.29.0.4"
+      },
+      {
+        "id": "a6a10fd854e951f308c0a8d4c65a9867eaca1055bd9f9b1010485213ea9b7ab8",
+        "shortId": "a6a10fd854e9",
+        "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-worker-2",
+        "ip": "172.29.0.6"
+      }
+    ],
+    "workerCount": 2,
+    "metricsBefore": [
+      {
+        "target": {
+          "id": "ecb31cc51b7ec201021857fc99caa987b25da6d4e35f99133a8298feffaca7d4",
+          "shortId": "ecb31cc51b7e",
+          "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-worker-1",
+          "ip": "172.29.0.4"
+        },
+        "metrics": {
+          "worker": {
+            "hostname": "ecb31cc51b7e",
+            "pid": 7,
+            "startedAt": "2026-04-13T02:51:19.204Z",
+            "concurrency": 1,
+            "electrumSubscriptionOwner": true
+          },
+          "queues": {
+            "sync": {
+              "waiting": 0,
+              "active": 0,
+              "completed": 10,
+              "failed": 0,
+              "delayed": 1,
+              "paused": false
+            },
+            "notifications": {
+              "waiting": 0,
+              "active": 0,
+              "completed": 10,
+              "failed": 0,
+              "delayed": 0,
+              "paused": false
+            },
+            "confirmations": {
+              "waiting": 0,
+              "active": 0,
+              "completed": 10,
+              "failed": 0,
+              "delayed": 1,
+              "paused": false
+            },
+            "maintenance": {
+              "waiting": 0,
+              "active": 0,
+              "completed": 30,
+              "failed": 0,
+              "delayed": 9,
+              "paused": false
+            }
+          },
+          "electrum": {
+            "isRunning": true,
+            "ownershipRetryActive": false,
+            "subscribedAddresses": 40,
+            "networks": {
+              "mainnet": {
+                "connected": true,
+                "subscribedToHeaders": true,
+                "subscribedAddresses": 0,
+                "lastBlockHeight": 944821,
+                "reconnectAttempts": 0
+              }
+            }
+          },
+          "jobCompletions": {},
+          "timestamp": "2026-04-13T02:51:24.864Z"
+        }
+      },
+      {
+        "target": {
+          "id": "a6a10fd854e951f308c0a8d4c65a9867eaca1055bd9f9b1010485213ea9b7ab8",
+          "shortId": "a6a10fd854e9",
+          "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-worker-2",
+          "ip": "172.29.0.6"
+        },
+        "metrics": {
+          "worker": {
+            "hostname": "a6a10fd854e9",
+            "pid": 7,
+            "startedAt": "2026-04-13T02:51:19.024Z",
+            "concurrency": 1,
+            "electrumSubscriptionOwner": false
+          },
+          "queues": {
+            "sync": {
+              "waiting": 0,
+              "active": 0,
+              "completed": 10,
+              "failed": 0,
+              "delayed": 1,
+              "paused": false
+            },
+            "notifications": {
+              "waiting": 0,
+              "active": 0,
+              "completed": 10,
+              "failed": 0,
+              "delayed": 0,
+              "paused": false
+            },
+            "confirmations": {
+              "waiting": 0,
+              "active": 0,
+              "completed": 10,
+              "failed": 0,
+              "delayed": 1,
+              "paused": false
+            },
+            "maintenance": {
+              "waiting": 0,
+              "active": 0,
+              "completed": 30,
+              "failed": 0,
+              "delayed": 9,
+              "paused": false
+            }
+          },
+          "electrum": {
+            "isRunning": false,
+            "ownershipRetryActive": true,
+            "subscribedAddresses": 0,
+            "networks": {}
+          },
+          "jobCompletions": {},
+          "timestamp": "2026-04-13T02:51:24.864Z"
+        }
+      }
+    ],
+    "metricsAfter": [
+      {
+        "target": {
+          "id": "ecb31cc51b7ec201021857fc99caa987b25da6d4e35f99133a8298feffaca7d4",
+          "shortId": "ecb31cc51b7e",
+          "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-worker-1",
+          "ip": "172.29.0.4"
+        },
+        "metrics": {
+          "worker": {
+            "hostname": "ecb31cc51b7e",
+            "pid": 7,
+            "startedAt": "2026-04-13T02:51:19.204Z",
+            "concurrency": 1,
+            "electrumSubscriptionOwner": true
+          },
+          "queues": {
+            "sync": {
+              "waiting": 0,
+              "active": 0,
+              "completed": 10,
+              "failed": 0,
+              "delayed": 1,
+              "paused": false
+            },
+            "notifications": {
+              "waiting": 0,
+              "active": 0,
+              "completed": 10,
+              "failed": 0,
+              "delayed": 0,
+              "paused": false
+            },
+            "confirmations": {
+              "waiting": 0,
+              "active": 0,
+              "completed": 10,
+              "failed": 0,
+              "delayed": 1,
+              "paused": false
+            },
+            "maintenance": {
+              "waiting": 0,
+              "active": 0,
+              "completed": 64,
+              "failed": 0,
+              "delayed": 9,
+              "paused": false
+            }
+          },
+          "electrum": {
+            "isRunning": true,
+            "ownershipRetryActive": false,
+            "subscribedAddresses": 40,
+            "networks": {
+              "mainnet": {
+                "connected": true,
+                "subscribedToHeaders": true,
+                "subscribedAddresses": 0,
+                "lastBlockHeight": 944821,
+                "reconnectAttempts": 0
+              }
+            }
+          },
+          "jobCompletions": {
+            "maintenance:diagnostics:worker-ping": 1776048689699,
+            "maintenance:diagnostics:locked-worker-ping": 1776048689700
+          },
+          "timestamp": "2026-04-13T02:51:30.208Z"
+        }
+      },
+      {
+        "target": {
+          "id": "a6a10fd854e951f308c0a8d4c65a9867eaca1055bd9f9b1010485213ea9b7ab8",
+          "shortId": "a6a10fd854e9",
+          "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-worker-2",
+          "ip": "172.29.0.6"
+        },
+        "metrics": {
+          "worker": {
+            "hostname": "a6a10fd854e9",
+            "pid": 7,
+            "startedAt": "2026-04-13T02:51:19.024Z",
+            "concurrency": 1,
+            "electrumSubscriptionOwner": false
+          },
+          "queues": {
+            "sync": {
+              "waiting": 0,
+              "active": 0,
+              "completed": 10,
+              "failed": 0,
+              "delayed": 1,
+              "paused": false
+            },
+            "notifications": {
+              "waiting": 0,
+              "active": 0,
+              "completed": 10,
+              "failed": 0,
+              "delayed": 0,
+              "paused": false
+            },
+            "confirmations": {
+              "waiting": 0,
+              "active": 0,
+              "completed": 10,
+              "failed": 0,
+              "delayed": 1,
+              "paused": false
+            },
+            "maintenance": {
+              "waiting": 0,
+              "active": 0,
+              "completed": 64,
+              "failed": 0,
+              "delayed": 9,
+              "paused": false
+            }
+          },
+          "electrum": {
+            "isRunning": false,
+            "ownershipRetryActive": true,
+            "subscribedAddresses": 0,
+            "networks": {}
+          },
+          "jobCompletions": {
+            "maintenance:diagnostics:worker-ping": 1776048689699,
+            "maintenance:diagnostics:locked-worker-ping": 1776048690204
+          },
+          "timestamp": "2026-04-13T02:51:30.207Z"
+        }
+      }
+    ],
+    "repeatableJobs": [
+      {
+        "queue": "sync",
+        "name": "check-stale-wallets",
+        "count": 1,
+        "keys": [
+          "75a7eb5f6b160f60e9375f2192741e8c"
+        ]
+      },
+      {
+        "queue": "confirmations",
+        "name": "update-all-confirmations",
+        "count": 1,
+        "keys": [
+          "fa24c4273eed3737f9723135a99f2858"
+        ]
+      },
+      {
+        "queue": "maintenance",
+        "name": "cleanup:expired-drafts",
+        "count": 1,
+        "keys": [
+          "6b21500d90ba74c568f01c83badc59a1"
+        ]
+      },
+      {
+        "queue": "maintenance",
+        "name": "cleanup:expired-transfers",
+        "count": 1,
+        "keys": [
+          "15e6156663eec93a7bca0e6e38baf1b3"
+        ]
+      },
+      {
+        "queue": "maintenance",
+        "name": "cleanup:audit-logs",
+        "count": 1,
+        "keys": [
+          "55b704ff344ec6f7c65b147fe8ff2c28"
+        ]
+      },
+      {
+        "queue": "maintenance",
+        "name": "cleanup:price-data",
+        "count": 1,
+        "keys": [
+          "6b24e63ae9386db2ed6f66620985b09f"
+        ]
+      },
+      {
+        "queue": "maintenance",
+        "name": "cleanup:fee-estimates",
+        "count": 1,
+        "keys": [
+          "dc49f55d4e04e5a6bae10a74d6a06ce3"
+        ]
+      },
+      {
+        "queue": "maintenance",
+        "name": "cleanup:expired-tokens",
+        "count": 1,
+        "keys": [
+          "a5f64779e1ad4a648988852a0924a694"
+        ]
+      },
+      {
+        "queue": "maintenance",
+        "name": "maintenance:weekly-vacuum",
+        "count": 1,
+        "keys": [
+          "cdff87341cbb16fc660c432eb506123f"
+        ]
+      },
+      {
+        "queue": "maintenance",
+        "name": "maintenance:monthly-cleanup",
+        "count": 1,
+        "keys": [
+          "3902089b6f5ac8bcd089fe0f6abc4c18"
+        ]
+      },
+      {
+        "queue": "maintenance",
+        "name": "backup:scheduled",
+        "count": 1,
+        "keys": [
+          "9f364205223f69ab7af696ad7734aa85"
+        ]
+      }
+    ],
+    "jobs": [
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T02-50-46-877Z-ping-0",
+        "state": "completed",
+        "durationMs": 280,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T02-50-46-877Z",
+          "sequence": 0,
+          "worker": {
+            "hostname": "ecb31cc51b7e",
+            "pid": 7
+          },
+          "durationMs": 300
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T02-50-46-877Z-ping-1",
+        "state": "completed",
+        "durationMs": 280,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T02-50-46-877Z",
+          "sequence": 1,
+          "worker": {
+            "hostname": "a6a10fd854e9",
+            "pid": 7
+          },
+          "durationMs": 299
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T02-50-46-877Z-ping-2",
+        "state": "completed",
+        "durationMs": 580,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T02-50-46-877Z",
+          "sequence": 2,
+          "worker": {
+            "hostname": "a6a10fd854e9",
+            "pid": 7
+          },
+          "durationMs": 299
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T02-50-46-877Z-ping-3",
+        "state": "completed",
+        "durationMs": 581,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T02-50-46-877Z",
+          "sequence": 3,
+          "worker": {
+            "hostname": "ecb31cc51b7e",
+            "pid": 7
+          },
+          "durationMs": 300
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T02-50-46-877Z-ping-4",
+        "state": "completed",
+        "durationMs": 882,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T02-50-46-877Z",
+          "sequence": 4,
+          "worker": {
+            "hostname": "a6a10fd854e9",
+            "pid": 7
+          },
+          "durationMs": 301
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T02-50-46-877Z-ping-5",
+        "state": "completed",
+        "durationMs": 882,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T02-50-46-877Z",
+          "sequence": 5,
+          "worker": {
+            "hostname": "ecb31cc51b7e",
+            "pid": 7
+          },
+          "durationMs": 300
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T02-50-46-877Z-ping-6",
+        "state": "completed",
+        "durationMs": 1186,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T02-50-46-877Z",
+          "sequence": 6,
+          "worker": {
+            "hostname": "a6a10fd854e9",
+            "pid": 7
+          },
+          "durationMs": 299
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T02-50-46-877Z-ping-7",
+        "state": "completed",
+        "durationMs": 1186,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T02-50-46-877Z",
+          "sequence": 7,
+          "worker": {
+            "hostname": "ecb31cc51b7e",
+            "pid": 7
+          },
+          "durationMs": 300
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T02-50-46-877Z-ping-8",
+        "state": "completed",
+        "durationMs": 1487,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T02-50-46-877Z",
+          "sequence": 8,
+          "worker": {
+            "hostname": "a6a10fd854e9",
+            "pid": 7
+          },
+          "durationMs": 300
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T02-50-46-877Z-ping-9",
+        "state": "completed",
+        "durationMs": 1486,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T02-50-46-877Z",
+          "sequence": 9,
+          "worker": {
+            "hostname": "ecb31cc51b7e",
+            "pid": 7
+          },
+          "durationMs": 299
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T02-50-46-877Z-ping-10",
+        "state": "completed",
+        "durationMs": 1787,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T02-50-46-877Z",
+          "sequence": 10,
+          "worker": {
+            "hostname": "ecb31cc51b7e",
+            "pid": 7
+          },
+          "durationMs": 300
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T02-50-46-877Z-ping-11",
+        "state": "completed",
+        "durationMs": 1787,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T02-50-46-877Z",
+          "sequence": 11,
+          "worker": {
+            "hostname": "a6a10fd854e9",
+            "pid": 7
+          },
+          "durationMs": 300
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T02-50-46-877Z-ping-12",
+        "state": "completed",
+        "durationMs": 2089,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T02-50-46-877Z",
+          "sequence": 12,
+          "worker": {
+            "hostname": "ecb31cc51b7e",
+            "pid": 7
+          },
+          "durationMs": 300
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T02-50-46-877Z-ping-13",
+        "state": "completed",
+        "durationMs": 2089,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T02-50-46-877Z",
+          "sequence": 13,
+          "worker": {
+            "hostname": "a6a10fd854e9",
+            "pid": 7
+          },
+          "durationMs": 299
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T02-50-46-877Z-ping-14",
+        "state": "completed",
+        "durationMs": 2389,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T02-50-46-877Z",
+          "sequence": 14,
+          "worker": {
+            "hostname": "a6a10fd854e9",
+            "pid": 7
+          },
+          "durationMs": 299
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T02-50-46-877Z-ping-15",
+        "state": "completed",
+        "durationMs": 2389,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T02-50-46-877Z",
+          "sequence": 15,
+          "worker": {
+            "hostname": "ecb31cc51b7e",
+            "pid": 7
+          },
+          "durationMs": 299
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T02-50-46-877Z-ping-16",
+        "state": "completed",
+        "durationMs": 2691,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T02-50-46-877Z",
+          "sequence": 16,
+          "worker": {
+            "hostname": "ecb31cc51b7e",
+            "pid": 7
+          },
+          "durationMs": 301
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T02-50-46-877Z-ping-17",
+        "state": "completed",
+        "durationMs": 2691,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T02-50-46-877Z",
+          "sequence": 17,
+          "worker": {
+            "hostname": "a6a10fd854e9",
+            "pid": 7
+          },
+          "durationMs": 301
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T02-50-46-877Z-ping-18",
+        "state": "completed",
+        "durationMs": 2992,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T02-50-46-877Z",
+          "sequence": 18,
+          "worker": {
+            "hostname": "a6a10fd854e9",
+            "pid": 7
+          },
+          "durationMs": 299
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T02-50-46-877Z-ping-19",
+        "state": "completed",
+        "durationMs": 2992,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T02-50-46-877Z",
+          "sequence": 19,
+          "worker": {
+            "hostname": "ecb31cc51b7e",
+            "pid": 7
+          },
+          "durationMs": 300
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T02-50-46-877Z-ping-20",
+        "state": "completed",
+        "durationMs": 3296,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T02-50-46-877Z",
+          "sequence": 20,
+          "worker": {
+            "hostname": "a6a10fd854e9",
+            "pid": 7
+          },
+          "durationMs": 301
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T02-50-46-877Z-ping-21",
+        "state": "completed",
+        "durationMs": 3296,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T02-50-46-877Z",
+          "sequence": 21,
+          "worker": {
+            "hostname": "ecb31cc51b7e",
+            "pid": 7
+          },
+          "durationMs": 300
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T02-50-46-877Z-ping-22",
+        "state": "completed",
+        "durationMs": 3597,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T02-50-46-877Z",
+          "sequence": 22,
+          "worker": {
+            "hostname": "ecb31cc51b7e",
+            "pid": 7
+          },
+          "durationMs": 300
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T02-50-46-877Z-ping-23",
+        "state": "completed",
+        "durationMs": 3596,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T02-50-46-877Z",
+          "sequence": 23,
+          "worker": {
+            "hostname": "a6a10fd854e9",
+            "pid": 7
+          },
+          "durationMs": 299
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T02-50-46-877Z-ping-24",
+        "state": "completed",
+        "durationMs": 3898,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T02-50-46-877Z",
+          "sequence": 24,
+          "worker": {
+            "hostname": "a6a10fd854e9",
+            "pid": 7
+          },
+          "durationMs": 301
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T02-50-46-877Z-ping-25",
+        "state": "completed",
+        "durationMs": 3898,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T02-50-46-877Z",
+          "sequence": 25,
+          "worker": {
+            "hostname": "ecb31cc51b7e",
+            "pid": 7
+          },
+          "durationMs": 300
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T02-50-46-877Z-ping-26",
+        "state": "completed",
+        "durationMs": 4202,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T02-50-46-877Z",
+          "sequence": 26,
+          "worker": {
+            "hostname": "ecb31cc51b7e",
+            "pid": 7
+          },
+          "durationMs": 301
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T02-50-46-877Z-ping-27",
+        "state": "completed",
+        "durationMs": 4202,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T02-50-46-877Z",
+          "sequence": 27,
+          "worker": {
+            "hostname": "a6a10fd854e9",
+            "pid": 7
+          },
+          "durationMs": 299
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T02-50-46-877Z-ping-28",
+        "state": "completed",
+        "durationMs": 4503,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T02-50-46-877Z",
+          "sequence": 28,
+          "worker": {
+            "hostname": "a6a10fd854e9",
+            "pid": 7
+          },
+          "durationMs": 300
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T02-50-46-877Z-ping-29",
+        "state": "completed",
+        "durationMs": 4503,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T02-50-46-877Z",
+          "sequence": 29,
+          "worker": {
+            "hostname": "ecb31cc51b7e",
+            "pid": 7
+          },
+          "durationMs": 299
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T02-50-46-877Z-ping-30",
+        "state": "completed",
+        "durationMs": 4804,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T02-50-46-877Z",
+          "sequence": 30,
+          "worker": {
+            "hostname": "ecb31cc51b7e",
+            "pid": 7
+          },
+          "durationMs": 301
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T02-50-46-877Z-ping-31",
+        "state": "completed",
+        "durationMs": 4804,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T02-50-46-877Z",
+          "sequence": 31,
+          "worker": {
+            "hostname": "a6a10fd854e9",
+            "pid": 7
+          },
+          "durationMs": 300
+        }
+      }
+    ],
+    "lockProof": {
+      "lockKey": "phase3-worker-scaleout-2026-04-13T02-50-46-877Z-shared-lock",
+      "jobs": [
+        {
+          "category": "distributed-lock",
+          "queue": "maintenance",
+          "name": "diagnostics:locked-worker-ping",
+          "id": "phase3-worker-scaleout-2026-04-13T02-50-46-877Z-locked-0",
+          "state": "completed",
+          "durationMs": 504,
+          "returnvalue": {
+            "success": true,
+            "proofId": "2026-04-13T02-50-46-877Z",
+            "sequence": 0,
+            "worker": {
+              "hostname": "a6a10fd854e9",
+              "pid": 7
+            },
+            "durationMs": 500
+          }
+        },
+        {
+          "category": "distributed-lock",
+          "queue": "maintenance",
+          "name": "diagnostics:locked-worker-ping",
+          "id": "phase3-worker-scaleout-2026-04-13T02-50-46-877Z-locked-1",
+          "state": "completed",
+          "durationMs": 0,
+          "returnvalue": {
+            "skipped": true,
+            "reason": "lock_held"
+          }
+        }
+      ]
+    },
+    "workerPs": [
+      {
+        "service": "worker",
+        "state": "running",
+        "health": "healthy",
+        "exitCode": 0,
+        "publishers": [
+          {
+            "URL": "",
+            "TargetPort": 3001,
+            "PublishedPort": 0,
+            "Protocol": "tcp"
+          }
+        ]
+      },
+      {
+        "service": "worker",
+        "state": "running",
+        "health": "healthy",
+        "exitCode": 0,
+        "publishers": [
+          {
+            "URL": "",
+            "TargetPort": 3001,
+            "PublishedPort": 0,
+            "Protocol": "tcp"
+          }
+        ]
+      }
+    ]
+  },
+  "backendScaleOutProof": {
+    "proofId": "2026-04-13T02-50-46-877Z",
+    "totalDurationMs": 343,
+    "backends": [
+      {
+        "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+        "shortId": "c826f599e0c8",
+        "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+        "ip": "172.29.0.5"
+      },
+      {
+        "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+        "shortId": "08185a6a433e",
+        "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+        "ip": "172.29.0.9"
+      }
+    ],
+    "websocketTarget": {
+      "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+      "shortId": "c826f599e0c8",
+      "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+      "ip": "172.29.0.5"
+    },
+    "triggerTarget": {
+      "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+      "shortId": "08185a6a433e",
+      "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+      "ip": "172.29.0.9"
+    },
+    "wallet": {
+      "id": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+      "name": "Phase 3 Scale-Out Wallet 2026-04-13T02-50-46-877Z",
+      "addressCount": 0
+    },
+    "websocket": {
+      "clientCount": 64,
+      "targets": [
+        {
+          "clientIndex": 0,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "url": "ws://172.29.0.5:3001/ws",
+          "setupDurationMs": 94,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 1,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "url": "ws://172.29.0.9:3001/ws",
+          "setupDurationMs": 93,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 2,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "url": "ws://172.29.0.5:3001/ws",
+          "setupDurationMs": 93,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 3,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "url": "ws://172.29.0.9:3001/ws",
+          "setupDurationMs": 93,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 4,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "url": "ws://172.29.0.5:3001/ws",
+          "setupDurationMs": 107,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 5,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "url": "ws://172.29.0.9:3001/ws",
+          "setupDurationMs": 92,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 6,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "url": "ws://172.29.0.5:3001/ws",
+          "setupDurationMs": 107,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 7,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "url": "ws://172.29.0.9:3001/ws",
+          "setupDurationMs": 92,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 8,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "url": "ws://172.29.0.5:3001/ws",
+          "setupDurationMs": 105,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 9,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "url": "ws://172.29.0.9:3001/ws",
+          "setupDurationMs": 91,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 10,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "url": "ws://172.29.0.5:3001/ws",
+          "setupDurationMs": 106,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 11,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "url": "ws://172.29.0.9:3001/ws",
+          "setupDurationMs": 91,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 12,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "url": "ws://172.29.0.5:3001/ws",
+          "setupDurationMs": 106,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 13,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "url": "ws://172.29.0.9:3001/ws",
+          "setupDurationMs": 91,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 14,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "url": "ws://172.29.0.5:3001/ws",
+          "setupDurationMs": 105,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 15,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "url": "ws://172.29.0.9:3001/ws",
+          "setupDurationMs": 91,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 16,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "url": "ws://172.29.0.5:3001/ws",
+          "setupDurationMs": 92,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 17,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "url": "ws://172.29.0.9:3001/ws",
+          "setupDurationMs": 90,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 18,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "url": "ws://172.29.0.5:3001/ws",
+          "setupDurationMs": 92,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 19,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "url": "ws://172.29.0.9:3001/ws",
+          "setupDurationMs": 90,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 20,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "url": "ws://172.29.0.5:3001/ws",
+          "setupDurationMs": 92,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 21,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "url": "ws://172.29.0.9:3001/ws",
+          "setupDurationMs": 90,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 22,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "url": "ws://172.29.0.5:3001/ws",
+          "setupDurationMs": 92,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 23,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "url": "ws://172.29.0.9:3001/ws",
+          "setupDurationMs": 90,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 24,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "url": "ws://172.29.0.5:3001/ws",
+          "setupDurationMs": 93,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 25,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "url": "ws://172.29.0.9:3001/ws",
+          "setupDurationMs": 90,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 26,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "url": "ws://172.29.0.5:3001/ws",
+          "setupDurationMs": 93,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 27,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "url": "ws://172.29.0.9:3001/ws",
+          "setupDurationMs": 91,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 28,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "url": "ws://172.29.0.5:3001/ws",
+          "setupDurationMs": 93,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 29,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "url": "ws://172.29.0.9:3001/ws",
+          "setupDurationMs": 91,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 30,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "url": "ws://172.29.0.5:3001/ws",
+          "setupDurationMs": 92,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 31,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "url": "ws://172.29.0.9:3001/ws",
+          "setupDurationMs": 91,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 32,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "url": "ws://172.29.0.5:3001/ws",
+          "setupDurationMs": 92,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 33,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "url": "ws://172.29.0.9:3001/ws",
+          "setupDurationMs": 91,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 34,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "url": "ws://172.29.0.5:3001/ws",
+          "setupDurationMs": 92,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 35,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "url": "ws://172.29.0.9:3001/ws",
+          "setupDurationMs": 91,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 36,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "url": "ws://172.29.0.5:3001/ws",
+          "setupDurationMs": 92,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 37,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "url": "ws://172.29.0.9:3001/ws",
+          "setupDurationMs": 91,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 38,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "url": "ws://172.29.0.5:3001/ws",
+          "setupDurationMs": 92,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 39,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "url": "ws://172.29.0.9:3001/ws",
+          "setupDurationMs": 91,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 40,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "url": "ws://172.29.0.5:3001/ws",
+          "setupDurationMs": 92,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 41,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "url": "ws://172.29.0.9:3001/ws",
+          "setupDurationMs": 91,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 42,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "url": "ws://172.29.0.5:3001/ws",
+          "setupDurationMs": 93,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 43,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "url": "ws://172.29.0.9:3001/ws",
+          "setupDurationMs": 90,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 44,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "url": "ws://172.29.0.5:3001/ws",
+          "setupDurationMs": 92,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 45,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "url": "ws://172.29.0.9:3001/ws",
+          "setupDurationMs": 90,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 46,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "url": "ws://172.29.0.5:3001/ws",
+          "setupDurationMs": 92,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 47,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "url": "ws://172.29.0.9:3001/ws",
+          "setupDurationMs": 90,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 48,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "url": "ws://172.29.0.5:3001/ws",
+          "setupDurationMs": 92,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 49,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "url": "ws://172.29.0.9:3001/ws",
+          "setupDurationMs": 90,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 50,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "url": "ws://172.29.0.5:3001/ws",
+          "setupDurationMs": 92,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 51,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "url": "ws://172.29.0.9:3001/ws",
+          "setupDurationMs": 90,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 52,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "url": "ws://172.29.0.5:3001/ws",
+          "setupDurationMs": 92,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 53,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "url": "ws://172.29.0.9:3001/ws",
+          "setupDurationMs": 90,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 54,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "url": "ws://172.29.0.5:3001/ws",
+          "setupDurationMs": 92,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 55,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "url": "ws://172.29.0.9:3001/ws",
+          "setupDurationMs": 90,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 56,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "url": "ws://172.29.0.5:3001/ws",
+          "setupDurationMs": 92,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 57,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "url": "ws://172.29.0.9:3001/ws",
+          "setupDurationMs": 89,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 58,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "url": "ws://172.29.0.5:3001/ws",
+          "setupDurationMs": 91,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 59,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "url": "ws://172.29.0.9:3001/ws",
+          "setupDurationMs": 89,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 60,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "url": "ws://172.29.0.5:3001/ws",
+          "setupDurationMs": 90,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 61,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "url": "ws://172.29.0.9:3001/ws",
+          "setupDurationMs": 88,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 62,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "url": "ws://172.29.0.5:3001/ws",
+          "setupDurationMs": 90,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        },
+        {
+          "clientIndex": 63,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "url": "ws://172.29.0.9:3001/ws",
+          "setupDurationMs": 88,
+          "channels": [
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7:sync",
+            "sync:all"
+          ]
+        }
+      ]
+    },
+    "trigger": {
+      "url": "http://172.29.0.9:3001/api/v1/sync/queue/6fe26f76-f046-44ab-85ce-cf712e387da7",
+      "status": 200,
+      "durationMs": 18,
+      "body": {
+        "queued": true,
+        "queuePosition": null,
+        "syncInProgress": true
+      }
+    },
+    "fanout": {
+      "clientCount": 64,
+      "successes": 64,
+      "errors": 0,
+      "latency": {
+        "minMs": 11,
+        "p50Ms": 14,
+        "p95Ms": 17,
+        "p99Ms": 17,
+        "maxMs": 17
+      },
+      "events": [
+        {
+          "clientIndex": 0,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "durationMs": 15,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 1,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "durationMs": 13,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 2,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "durationMs": 15,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 3,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "durationMs": 17,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 4,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "durationMs": 14,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 5,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "durationMs": 17,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 6,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "durationMs": 15,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 7,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "durationMs": 17,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 8,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "durationMs": 14,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 9,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "durationMs": 17,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 10,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "durationMs": 14,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 11,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "durationMs": 13,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 12,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "durationMs": 15,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 13,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "durationMs": 13,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 14,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "durationMs": 14,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 15,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "durationMs": 12,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 16,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "durationMs": 13,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 17,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "durationMs": 12,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 18,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "durationMs": 15,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 19,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "durationMs": 12,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 20,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "durationMs": 13,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 21,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "durationMs": 12,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 22,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "durationMs": 13,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 23,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "durationMs": 12,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 24,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "durationMs": 13,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 25,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "durationMs": 12,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 26,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "durationMs": 11,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 27,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "durationMs": 12,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 28,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "durationMs": 12,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 29,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "durationMs": 13,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 30,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "durationMs": 12,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 31,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "durationMs": 14,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 32,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "durationMs": 12,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 33,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "durationMs": 14,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 34,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "durationMs": 12,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 35,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "durationMs": 14,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 36,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "durationMs": 12,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 37,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "durationMs": 14,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 38,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "durationMs": 12,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 39,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "durationMs": 15,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 40,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "durationMs": 12,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 41,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "durationMs": 15,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 42,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "durationMs": 12,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 43,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "durationMs": 15,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 44,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "durationMs": 12,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 45,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "durationMs": 15,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 46,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "durationMs": 12,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 47,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "durationMs": 16,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 48,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "durationMs": 12,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 49,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "durationMs": 16,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 50,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "durationMs": 12,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 51,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "durationMs": 16,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 52,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "durationMs": 12,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 53,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "durationMs": 16,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 54,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "durationMs": 13,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 55,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "durationMs": 16,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 56,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "durationMs": 14,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 57,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "durationMs": 16,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 58,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "durationMs": 14,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 59,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "durationMs": 16,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 60,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "durationMs": 14,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 61,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "durationMs": 17,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 62,
+          "target": {
+            "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+            "shortId": "c826f599e0c8",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+            "ip": "172.29.0.5"
+          },
+          "durationMs": 14,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        },
+        {
+          "clientIndex": 63,
+          "target": {
+            "id": "08185a6a433ea30eb1552d3450ebb15d2f157df73067623ece3bb804e8e4cec2",
+            "shortId": "08185a6a433e",
+            "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-2",
+            "ip": "172.29.0.9"
+          },
+          "durationMs": 17,
+          "ok": true,
+          "event": "sync",
+          "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+          "data": {
+            "inProgress": true,
+            "retryCount": 0,
+            "maxRetries": 3,
+            "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+            "timestamp": "2026-04-13T02:51:39.474Z"
+          }
+        }
+      ]
+    },
+    "event": {
+      "clientIndex": 0,
+      "target": {
+        "id": "c826f599e0c823e3aa73600fdc2e6141f565de718817b1f40e79fbacf7462c8f",
+        "shortId": "c826f599e0c8",
+        "name": "sanctuary-phase3-benchmark-2026-04-13t02-50-46-877z-backend-1",
+        "ip": "172.29.0.5"
+      },
+      "durationMs": 15,
+      "ok": true,
+      "event": "sync",
+      "channel": "wallet:6fe26f76-f046-44ab-85ce-cf712e387da7",
+      "data": {
+        "inProgress": true,
+        "retryCount": 0,
+        "maxRetries": 3,
+        "walletId": "6fe26f76-f046-44ab-85ce-cf712e387da7",
+        "timestamp": "2026-04-13T02:51:39.474Z"
+      }
+    },
+    "backendPs": [
+      {
+        "service": "backend",
+        "state": "running",
+        "health": "healthy",
+        "exitCode": 0,
+        "publishers": [
+          {
+            "URL": "",
+            "TargetPort": 3001,
+            "PublishedPort": 0,
+            "Protocol": "tcp"
+          }
+        ]
+      },
+      {
+        "service": "backend",
+        "state": "running",
+        "health": "healthy",
+        "exitCode": 0,
+        "publishers": [
+          {
+            "URL": "",
+            "TargetPort": 3001,
+            "PublishedPort": 0,
+            "Protocol": "tcp"
+          }
+        ]
+      }
+    ]
+  },
+  "sizedBackupRestoreProof": {
+    "proofId": "2026-04-13T02-50-46-877Z",
+    "backup": {
+      "status": 200,
+      "durationMs": 204,
+      "sizeBytes": 6842965,
+      "createdAt": "2026-04-13T02:51:12.946Z",
+      "schemaVersion": 47,
+      "includesCache": false,
+      "recordCounts": {
+        "hardwareDeviceModel": 25,
+        "systemSetting": 1,
+        "nodeConfig": 1,
+        "user": 1,
+        "group": 0,
+        "groupMember": 0,
+        "device": 0,
+        "wallet": 2,
+        "pushDevice": 0,
+        "electrumServer": 0,
+        "walletUser": 2,
+        "walletDevice": 0,
+        "address": 40,
+        "label": 0,
+        "draftTransaction": 0,
+        "transaction": 10000,
+        "uTXO": 0,
+        "transactionInput": 0,
+        "transactionOutput": 0,
+        "transactionLabel": 0,
+        "addressLabel": 0,
+        "draftUtxoLock": 0,
+        "auditLog": 4
+      },
+      "totalRecords": 10076
+    },
+    "validation": {
+      "status": 200,
+      "durationMs": 41,
+      "valid": true,
+      "issueCount": 0,
+      "totalRecords": 10076
+    },
+    "restore": {
+      "status": 200,
+      "durationMs": 3543,
+      "success": true,
+      "tablesRestored": 9,
+      "recordsRestored": 10076,
+      "warnings": []
+    }
+  },
+  "capacitySnapshots": [
+    {
+      "label": "baseline-after-health",
+      "at": "2026-04-13T02:51:11.167Z",
+      "postgres": {
+        "label": "baseline-after-health",
+        "databaseSizeBytes": 10501143,
+        "connections": 4,
+        "maxConnections": 100,
+        "settings": {
+          "sharedBuffers": "256MB",
+          "effectiveCacheSize": "768MB",
+          "workMem": "16MB",
+          "maintenanceWorkMem": "128MB"
+        },
+        "rowCounts": {
+          "users": 1,
+          "wallets": 0,
+          "walletUsers": 0,
+          "addresses": 0,
+          "transactions": 0,
+          "auditLogs": 0
+        },
+        "topTables": [
+          {
+            "table": "feature_flags",
+            "estimatedRows": 0,
+            "totalSizeBytes": 81920
+          },
+          {
+            "table": "transactions",
+            "estimatedRows": 0,
+            "totalSizeBytes": 81920
+          },
+          {
+            "table": "hardware_device_models",
+            "estimatedRows": 25,
+            "totalSizeBytes": 65536
+          },
+          {
+            "table": "_prisma_migrations",
+            "estimatedRows": 47,
+            "totalSizeBytes": 65536
+          },
+          {
+            "table": "users",
+            "estimatedRows": 1,
+            "totalSizeBytes": 65536
+          },
+          {
+            "table": "transaction_outputs",
+            "estimatedRows": 0,
+            "totalSizeBytes": 57344
+          },
+          {
+            "table": "audit_logs",
+            "estimatedRows": 0,
+            "totalSizeBytes": 49152
+          },
+          {
+            "table": "draft_utxo_locks",
+            "estimatedRows": 0,
+            "totalSizeBytes": 49152
+          },
+          {
+            "table": "system_settings",
+            "estimatedRows": 1,
+            "totalSizeBytes": 49152
+          },
+          {
+            "table": "device_accounts",
+            "estimatedRows": 0,
+            "totalSizeBytes": 49152
+          },
+          {
+            "table": "ai_insights",
+            "estimatedRows": 0,
+            "totalSizeBytes": 49152
+          },
+          {
+            "table": "ownership_transfers",
+            "estimatedRows": 0,
+            "totalSizeBytes": 49152
+          }
+        ]
+      },
+      "redis": {
+        "label": "baseline-after-health",
+        "usedMemoryBytes": 2101544,
+        "usedMemoryPeakBytes": 3005008,
+        "maxMemoryBytes": 134217728,
+        "maxMemoryPolicy": "allkeys-lru",
+        "connectedClients": 25,
+        "blockedClients": 8,
+        "totalConnectionsReceived": 65,
+        "totalCommandsProcessed": 839,
+        "instantaneousOpsPerSec": 0,
+        "pubsubChannels": 1,
+        "evictedKeys": 0,
+        "keyspaceHits": 241,
+        "keyspaceMisses": 102,
+        "keyspace": {
+          "db0": {
+            "keys": 44,
+            "expires": 6,
+            "avg_ttl": 43126,
+            "subexpiry": 0
+          }
+        }
+      }
+    },
+    {
+      "label": "after-local-load-profile",
+      "at": "2026-04-13T02:51:39.546Z",
+      "postgres": {
+        "label": "after-local-load-profile",
+        "databaseSizeBytes": 25852951,
+        "connections": 13,
+        "maxConnections": 100,
+        "settings": {
+          "sharedBuffers": "256MB",
+          "effectiveCacheSize": "768MB",
+          "workMem": "16MB",
+          "maintenanceWorkMem": "128MB"
+        },
+        "rowCounts": {
+          "users": 1,
+          "wallets": 3,
+          "walletUsers": 3,
+          "addresses": 40,
+          "transactions": 10000,
+          "auditLogs": 6
+        },
+        "topTables": [
+          {
+            "table": "transactions",
+            "estimatedRows": 10000,
+            "totalSizeBytes": 15138816
+          },
+          {
+            "table": "addresses",
+            "estimatedRows": 40,
+            "totalSizeBytes": 114688
+          },
+          {
+            "table": "hardware_device_models",
+            "estimatedRows": 25,
+            "totalSizeBytes": 106496
+          },
+          {
+            "table": "audit_logs",
+            "estimatedRows": 5,
+            "totalSizeBytes": 98304
+          },
+          {
+            "table": "refresh_tokens",
+            "estimatedRows": 0,
+            "totalSizeBytes": 81920
+          },
+          {
+            "table": "feature_flags",
+            "estimatedRows": 15,
+            "totalSizeBytes": 81920
+          },
+          {
+            "table": "_prisma_migrations",
+            "estimatedRows": 47,
+            "totalSizeBytes": 65536
+          },
+          {
+            "table": "users",
+            "estimatedRows": 1,
+            "totalSizeBytes": 65536
+          },
+          {
+            "table": "wallet_users",
+            "estimatedRows": 2,
+            "totalSizeBytes": 65536
+          },
+          {
+            "table": "transaction_outputs",
+            "estimatedRows": 0,
+            "totalSizeBytes": 57344
+          },
+          {
+            "table": "system_settings",
+            "estimatedRows": 1,
+            "totalSizeBytes": 49152
+          },
+          {
+            "table": "ownership_transfers",
+            "estimatedRows": 0,
+            "totalSizeBytes": 49152
+          }
+        ]
+      },
+      "redis": {
+        "label": "after-local-load-profile",
+        "usedMemoryBytes": 3088064,
+        "usedMemoryPeakBytes": 4658216,
+        "maxMemoryBytes": 134217728,
+        "maxMemoryPolicy": "allkeys-lru",
+        "connectedClients": 49,
+        "blockedClients": 16,
+        "totalConnectionsReceived": 162,
+        "totalCommandsProcessed": 10717,
+        "instantaneousOpsPerSec": 140,
+        "pubsubChannels": 1,
+        "evictedKeys": 0,
+        "keyspaceHits": 6348,
+        "keyspaceMisses": 932,
+        "keyspace": {
+          "db0": {
+            "keys": 158,
+            "expires": 20,
+            "avg_ttl": 161490,
+            "subexpiry": 0
+          }
+        }
+      }
+    }
+  ],
+  "composePs": [
+    {
+      "service": "backend",
+      "state": "running",
+      "health": "healthy",
+      "exitCode": 0,
+      "publishers": [
+        {
+          "URL": "",
+          "TargetPort": 3001,
+          "PublishedPort": 0,
+          "Protocol": "tcp"
+        }
+      ]
+    },
+    {
+      "service": "backend",
+      "state": "running",
+      "health": "healthy",
+      "exitCode": 0,
+      "publishers": [
+        {
+          "URL": "",
+          "TargetPort": 3001,
+          "PublishedPort": 0,
+          "Protocol": "tcp"
+        }
+      ]
+    },
+    {
+      "service": "frontend",
+      "state": "running",
+      "health": "healthy",
+      "exitCode": 0,
+      "publishers": [
+        {
+          "URL": "0.0.0.0",
+          "TargetPort": 80,
+          "PublishedPort": 18080,
+          "Protocol": "tcp"
+        },
+        {
+          "URL": "::",
+          "TargetPort": 80,
+          "PublishedPort": 18080,
+          "Protocol": "tcp"
+        },
+        {
+          "URL": "0.0.0.0",
+          "TargetPort": 443,
+          "PublishedPort": 18443,
+          "Protocol": "tcp"
+        },
+        {
+          "URL": "::",
+          "TargetPort": 443,
+          "PublishedPort": 18443,
+          "Protocol": "tcp"
+        }
+      ]
+    },
+    {
+      "service": "gateway",
+      "state": "running",
+      "health": "healthy",
+      "exitCode": 0,
+      "publishers": [
+        {
+          "URL": "0.0.0.0",
+          "TargetPort": 4000,
+          "PublishedPort": 14000,
+          "Protocol": "tcp"
+        },
+        {
+          "URL": "::",
+          "TargetPort": 4000,
+          "PublishedPort": 14000,
+          "Protocol": "tcp"
+        }
+      ]
+    },
+    {
+      "service": "postgres",
+      "state": "running",
+      "health": "healthy",
+      "exitCode": 0,
+      "publishers": [
+        {
+          "URL": "",
+          "TargetPort": 5432,
+          "PublishedPort": 0,
+          "Protocol": "tcp"
+        }
+      ]
+    },
+    {
+      "service": "redis",
+      "state": "running",
+      "health": "healthy",
+      "exitCode": 0,
+      "publishers": [
+        {
+          "URL": "",
+          "TargetPort": 6379,
+          "PublishedPort": 0,
+          "Protocol": "tcp"
+        }
+      ]
+    },
+    {
+      "service": "worker",
+      "state": "running",
+      "health": "healthy",
+      "exitCode": 0,
+      "publishers": [
+        {
+          "URL": "",
+          "TargetPort": 3001,
+          "PublishedPort": 0,
+          "Protocol": "tcp"
+        }
+      ]
+    },
+    {
+      "service": "worker",
+      "state": "running",
+      "health": "healthy",
+      "exitCode": 0,
+      "publishers": [
+        {
+          "URL": "",
+          "TargetPort": 3001,
+          "PublishedPort": 0,
+          "Protocol": "tcp"
+        }
+      ]
+    }
+  ],
+  "keptStack": false
+}

@@ -16,6 +16,7 @@ const keepStack = process.env.PHASE3_COMPOSE_BENCHMARK_KEEP_STACK === 'true';
 const timeoutMs = Number(process.env.PHASE3_COMPOSE_BENCHMARK_TIMEOUT_MS || '360000');
 const retryMs = Number(process.env.PHASE3_COMPOSE_BENCHMARK_RETRY_MS || '2000');
 const workerQueueProofTimeoutMs = Number(process.env.PHASE3_WORKER_QUEUE_PROOF_TIMEOUT_MS || '60000');
+const workerQueueProofRepeats = readPositiveInt(process.env.PHASE3_WORKER_QUEUE_PROOF_REPEATS, 1);
 const workerScaleOutReplicas = Number(process.env.PHASE3_WORKER_SCALE_OUT_REPLICAS || '2');
 const workerScaleOutProofTimeoutMs = Number(process.env.PHASE3_WORKER_SCALE_OUT_PROOF_TIMEOUT_MS || '60000');
 const workerScaleOutJobCount = Number(process.env.PHASE3_WORKER_SCALE_OUT_JOB_COUNT || '8');
@@ -24,11 +25,21 @@ const composeWorkerConcurrency = process.env.PHASE3_COMPOSE_WORKER_CONCURRENCY |
 const backendScaleOutReplicas = Number(process.env.PHASE3_BACKEND_SCALE_OUT_REPLICAS || '2');
 const backendScaleOutProofTimeoutMs = Number(process.env.PHASE3_BACKEND_SCALE_OUT_PROOF_TIMEOUT_MS || '60000');
 const backendScaleOutWsClients = readPositiveInt(process.env.PHASE3_BACKEND_SCALE_OUT_WS_CLIENTS, 8);
+const backendScaleOutPerUserLimit = readPositiveInt(
+  process.env.PHASE3_MAX_WEBSOCKET_PER_USER || process.env.MAX_WEBSOCKET_PER_USER,
+  Math.max(10, backendScaleOutWsClients)
+);
+const backendScaleOutTotalLimit = readPositiveInt(
+  process.env.PHASE3_MAX_WEBSOCKET_CONNECTIONS || process.env.MAX_WEBSOCKET_CONNECTIONS,
+  Math.max(10000, backendScaleOutWsClients * backendScaleOutReplicas)
+);
 const largeWalletTransactionCount = readPositiveInt(process.env.PHASE3_LARGE_WALLET_TRANSACTION_COUNT, 1000);
 const largeWalletHistoryRequests = readPositiveInt(process.env.PHASE3_LARGE_WALLET_HISTORY_REQUESTS, 20);
 const largeWalletHistoryConcurrency = readPositiveInt(process.env.PHASE3_LARGE_WALLET_HISTORY_CONCURRENCY, 4);
 const largeWalletHistoryPageSize = readPositiveInt(process.env.PHASE3_LARGE_WALLET_HISTORY_PAGE_SIZE, 50);
 const largeWalletHistoryP95BudgetMs = readPositiveInt(process.env.PHASE3_LARGE_WALLET_HISTORY_P95_MS, 2000);
+const sizedBackupRestoreProofEnabled = process.env.PHASE3_SIZED_BACKUP_RESTORE_PROOF !== 'false';
+const capacitySnapshotsEnabled = process.env.PHASE3_CAPACITY_SNAPSHOTS !== 'false';
 
 const postgresUser = 'sanctuary';
 const postgresDb = 'sanctuary_phase3_benchmark';
@@ -89,6 +100,8 @@ const composeEnv = {
   TLS_ENABLED: 'false',
   WORKER_HEALTH_URL: 'http://worker:3002/ready',
   WORKER_CONCURRENCY: composeWorkerConcurrency,
+  MAX_WEBSOCKET_PER_USER: String(backendScaleOutPerUserLimit),
+  MAX_WEBSOCKET_CONNECTIONS: String(backendScaleOutTotalLimit),
   ELECTRUM_SUBSCRIPTION_LOCK_TTL_MS: process.env.PHASE3_ELECTRUM_SUBSCRIPTION_LOCK_TTL_MS || process.env.ELECTRUM_SUBSCRIPTION_LOCK_TTL_MS || '15000',
   ELECTRUM_SUBSCRIPTION_LOCK_REFRESH_MS: process.env.PHASE3_ELECTRUM_SUBSCRIPTION_LOCK_REFRESH_MS || process.env.ELECTRUM_SUBSCRIPTION_LOCK_REFRESH_MS || '5000',
   ELECTRUM_SUBSCRIPTION_LOCK_RETRY_MS: process.env.PHASE3_ELECTRUM_SUBSCRIPTION_LOCK_RETRY_MS || process.env.ELECTRUM_SUBSCRIPTION_LOCK_RETRY_MS || '5000',
@@ -590,6 +603,10 @@ async function createLargeWalletProofWallet(token) {
 }
 
 async function publicApiJson(url, options = {}, expectedStatuses = [200]) {
+  return (await timedPublicApiJson(url, options, expectedStatuses)).body;
+}
+
+async function timedPublicApiJson(url, options = {}, expectedStatuses = [200]) {
   const headers = { Accept: 'application/json' };
   let body;
   if (options.body !== undefined) {
@@ -600,6 +617,7 @@ async function publicApiJson(url, options = {}, expectedStatuses = [200]) {
     headers.Authorization = `Bearer ${options.token}`;
   }
 
+  const startedAt = Date.now();
   const response = await fetch(url, {
     method: options.method || 'GET',
     headers,
@@ -613,7 +631,11 @@ async function publicApiJson(url, options = {}, expectedStatuses = [200]) {
     throw new Error(`${options.method || 'GET'} ${url} returned ${response.status}: ${formatBody(parsed)}`);
   }
 
-  return parsed;
+  return {
+    status: response.status,
+    body: parsed,
+    durationMs: Date.now() - startedAt,
+  };
 }
 
 function seedLargeWalletTransactions(walletId) {
@@ -698,6 +720,138 @@ function runPostgresJson(sql) {
   return parseLastJsonLine(output);
 }
 
+function collectCapacitySnapshot(label) {
+  return {
+    label,
+    at: new Date().toISOString(),
+    postgres: collectPostgresCapacity(label),
+    redis: collectRedisCapacity(label),
+  };
+}
+
+function collectPostgresCapacity(label) {
+  const sql = `
+WITH table_stats AS (
+  SELECT
+    c.relname AS table_name,
+    COALESCE(s.n_live_tup, 0) AS estimated_rows,
+    pg_total_relation_size(c.oid) AS total_size_bytes
+  FROM pg_class c
+  JOIN pg_namespace n ON n.oid = c.relnamespace
+  LEFT JOIN pg_stat_user_tables s ON s.relid = c.oid
+  WHERE n.nspname = 'public'
+    AND c.relkind = 'r'
+  ORDER BY pg_total_relation_size(c.oid) DESC
+  LIMIT 12
+)
+SELECT json_build_object(
+  'label', ${sqlLiteral(label)},
+  'databaseSizeBytes', pg_database_size(current_database()),
+  'connections', (SELECT COUNT(*) FROM pg_stat_activity WHERE datname = current_database()),
+  'maxConnections', current_setting('max_connections')::int,
+  'settings', json_build_object(
+    'sharedBuffers', current_setting('shared_buffers'),
+    'effectiveCacheSize', current_setting('effective_cache_size'),
+    'workMem', current_setting('work_mem'),
+    'maintenanceWorkMem', current_setting('maintenance_work_mem')
+  ),
+  'rowCounts', json_build_object(
+    'users', (SELECT COUNT(*) FROM users),
+    'wallets', (SELECT COUNT(*) FROM wallets),
+    'walletUsers', (SELECT COUNT(*) FROM wallet_users),
+    'addresses', (SELECT COUNT(*) FROM addresses),
+    'transactions', (SELECT COUNT(*) FROM transactions),
+    'auditLogs', (SELECT COUNT(*) FROM audit_logs)
+  ),
+  'topTables', COALESCE((
+    SELECT json_agg(json_build_object(
+      'table', table_name,
+      'estimatedRows', estimated_rows,
+      'totalSizeBytes', total_size_bytes
+    ))
+    FROM table_stats
+  ), '[]'::json)
+);
+`;
+
+  return runPostgresJson(sql);
+}
+
+function collectRedisCapacity(label) {
+  const output = runCompose([
+    'exec',
+    '-T',
+    'redis',
+    'sh',
+    '-c',
+    'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning INFO memory clients stats keyspace',
+  ]);
+  const info = parseRedisInfo(output);
+
+  return {
+    label,
+    usedMemoryBytes: readRedisNumber(info.used_memory),
+    usedMemoryPeakBytes: readRedisNumber(info.used_memory_peak),
+    maxMemoryBytes: readRedisNumber(info.maxmemory),
+    maxMemoryPolicy: info.maxmemory_policy || null,
+    connectedClients: readRedisNumber(info.connected_clients),
+    blockedClients: readRedisNumber(info.blocked_clients),
+    totalConnectionsReceived: readRedisNumber(info.total_connections_received),
+    totalCommandsProcessed: readRedisNumber(info.total_commands_processed),
+    instantaneousOpsPerSec: readRedisNumber(info.instantaneous_ops_per_sec),
+    pubsubChannels: readRedisNumber(info.pubsub_channels),
+    evictedKeys: readRedisNumber(info.evicted_keys),
+    keyspaceHits: readRedisNumber(info.keyspace_hits),
+    keyspaceMisses: readRedisNumber(info.keyspace_misses),
+    keyspace: parseRedisKeyspace(info),
+  };
+}
+
+function parseRedisInfo(output) {
+  const info = {};
+  for (const line of output.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) {
+      continue;
+    }
+
+    const separatorIndex = trimmed.indexOf(':');
+    if (separatorIndex === -1) {
+      continue;
+    }
+
+    info[trimmed.slice(0, separatorIndex)] = trimmed.slice(separatorIndex + 1);
+  }
+  return info;
+}
+
+function readRedisNumber(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseRedisKeyspace(info) {
+  return Object.fromEntries(
+    Object.entries(info)
+      .filter(([key]) => key.startsWith('db'))
+      .map(([key, value]) => [key, parseRedisMetricMap(value)])
+  );
+}
+
+function parseRedisMetricMap(value) {
+  return Object.fromEntries(
+    String(value)
+      .split(',')
+      .map((entry) => entry.split('='))
+      .filter(([key, metricValue]) => key && metricValue !== undefined)
+      .map(([key, metricValue]) => [key, readRedisNumber(metricValue) ?? metricValue])
+  );
+}
+
 function sqlLiteral(value) {
   return `'${String(value).replace(/'/g, "''")}'`;
 }
@@ -726,6 +880,8 @@ function runWorkerQueueProof() {
     `PHASE3_QUEUE_PROOF_ID=${timestamp}`,
     '-e',
     `PHASE3_WORKER_QUEUE_PROOF_TIMEOUT_MS=${workerQueueProofTimeoutMs}`,
+    '-e',
+    `PHASE3_WORKER_QUEUE_PROOF_REPEATS=${workerQueueProofRepeats}`,
     'worker',
     'node',
     '--input-type=module',
@@ -755,7 +911,8 @@ function parseLastJsonLine(output) {
 function summarizeWorkerQueueProof(proof) {
   const categories = [...new Set(proof.jobs.map((job) => job.category))];
   const durations = summarizeDurations(proof.jobs.map((job) => job.durationMs));
-  return `${proof.jobs.length} jobs completed across ${categories.join(', ')}; p95=${durations.p95Ms}ms`;
+  const repeatLabel = proof.repeatCount && proof.repeatCount > 1 ? ` (${proof.repeatCount}x profile)` : '';
+  return `${proof.jobs.length} jobs${repeatLabel} completed across ${categories.join(', ')}; p95=${durations.p95Ms}ms`;
 }
 
 async function runWorkerScaleOutProof() {
@@ -922,6 +1079,90 @@ function summarizeBackendScaleOutProof(proof) {
   return `sync event from ${proof.triggerTarget.name} reached ${successes}/${clientCount} WebSockets across ${targetCount} backend replicas via Redis; p95=${p95}ms`;
 }
 
+async function runSizedBackupRestoreProof() {
+  const token = await loginForProof();
+  const backupCreate = await timedPublicApiJson(`${apiUrl}/api/v1/admin/backup`, {
+    method: 'POST',
+    token,
+    body: {
+      includeCache: false,
+      description: `Phase 3 sized restore proof ${timestamp}`,
+    },
+  });
+  const backup = backupCreate.body;
+  const serializedBackup = JSON.stringify(backup);
+  const backupSizeBytes = Buffer.byteLength(serializedBackup, 'utf8');
+  const recordCounts = backup?.meta?.recordCounts || {};
+  const totalRecords = Object.values(recordCounts).reduce((sum, count) => (
+    sum + (Number.isFinite(Number(count)) ? Number(count) : 0)
+  ), 0);
+
+  const validation = await timedPublicApiJson(`${apiUrl}/api/v1/admin/backup/validate`, {
+    method: 'POST',
+    token,
+    body: { backup },
+  });
+  if (validation.body?.valid !== true) {
+    throw new Error(`Sized backup validation failed: ${JSON.stringify(validation.body)}`);
+  }
+
+  const restore = await timedPublicApiJson(`${apiUrl}/api/v1/admin/restore`, {
+    method: 'POST',
+    token,
+    body: {
+      backup,
+      confirmationCode: 'CONFIRM_RESTORE',
+    },
+  });
+  if (restore.body?.success !== true) {
+    throw new Error(`Sized backup restore failed: ${JSON.stringify(restore.body)}`);
+  }
+
+  return {
+    proofId: timestamp,
+    backup: {
+      status: backupCreate.status,
+      durationMs: backupCreate.durationMs,
+      sizeBytes: backupSizeBytes,
+      createdAt: backup?.meta?.createdAt || null,
+      schemaVersion: backup?.meta?.schemaVersion || null,
+      includesCache: backup?.meta?.includesCache ?? null,
+      recordCounts,
+      totalRecords,
+    },
+    validation: {
+      status: validation.status,
+      durationMs: validation.durationMs,
+      valid: validation.body?.valid === true,
+      issueCount: Array.isArray(validation.body?.issues) ? validation.body.issues.length : null,
+      totalRecords: validation.body?.info?.totalRecords ?? null,
+    },
+    restore: {
+      status: restore.status,
+      durationMs: restore.durationMs,
+      success: restore.body?.success === true,
+      tablesRestored: restore.body?.tablesRestored ?? null,
+      recordsRestored: restore.body?.recordsRestored ?? null,
+      warnings: restore.body?.warnings || [],
+    },
+  };
+}
+
+function summarizeSizedBackupRestoreProof(proof) {
+  const transactionCount = proof.backup.recordCounts?.transaction ?? 'unknown';
+  return `${formatBytes(proof.backup.sizeBytes)} backup with ${proof.backup.totalRecords} records (${transactionCount} transactions) restored in ${proof.restore.durationMs}ms`;
+}
+
+function summarizeCapacitySnapshot(snapshot) {
+  const transactionRows = snapshot.postgres?.rowCounts?.transactions ?? 'unknown';
+  const redisKeys = totalRedisKeys(snapshot.redis?.keyspace || {});
+  return `postgres=${formatBytes(snapshot.postgres?.databaseSizeBytes)} ${snapshot.postgres?.connections}/${snapshot.postgres?.maxConnections} connections, transactions=${transactionRows}; redis=${formatBytes(snapshot.redis?.usedMemoryBytes)} used, clients=${snapshot.redis?.connectedClients}, keys=${redisKeys}`;
+}
+
+function totalRedisKeys(keyspace) {
+  return Object.values(keyspace).reduce((sum, entry) => sum + (entry?.keys || 0), 0);
+}
+
 function buildMarkdown(report) {
   const lines = [
     '# Phase 3 Compose Benchmark Smoke',
@@ -949,9 +1190,30 @@ function buildMarkdown(report) {
       ? `- Dataset: ${report.benchmarkProof.datasetLabel}`
       : '- Dataset: not recorded',
     '',
-    '## Scenario Summary',
-    '',
   ];
+
+  lines.push('## Capacity Snapshots', '');
+
+  if (report.capacitySnapshots?.length) {
+    lines.push(
+      '| Label | Postgres size | Connections | Transactions | Redis memory | Redis clients | Redis keys |',
+      '| --- | ---: | ---: | ---: | ---: | ---: | ---: |',
+      ...report.capacitySnapshots.map((snapshot) => [
+        escapeCell(snapshot.label),
+        formatBytes(snapshot.postgres?.databaseSizeBytes),
+        `${snapshot.postgres?.connections ?? ''}/${snapshot.postgres?.maxConnections ?? ''}`,
+        snapshot.postgres?.rowCounts?.transactions ?? '',
+        formatBytes(snapshot.redis?.usedMemoryBytes),
+        snapshot.redis?.connectedClients ?? '',
+        totalRedisKeys(snapshot.redis?.keyspace || {}),
+      ].join(' | ').replace(/^/, '| ').replace(/$/, ' |')),
+      ''
+    );
+  } else {
+    lines.push('No capacity snapshots recorded.', '');
+  }
+
+  lines.push('## Scenario Summary', '');
 
   if (report.benchmarkEvidence?.benchmark?.scenarios?.length) {
     lines.push(
@@ -989,17 +1251,36 @@ function buildMarkdown(report) {
     lines.push('No large-wallet transaction-history proof recorded.', '');
   }
 
+  lines.push('## Sized Backup Restore Proof', '');
+
+  if (report.sizedBackupRestoreProof) {
+    lines.push(
+      `Backup size: ${formatBytes(report.sizedBackupRestoreProof.backup.sizeBytes)}`,
+      `Backup records: ${report.sizedBackupRestoreProof.backup.totalRecords}`,
+      `Transaction records: ${report.sizedBackupRestoreProof.backup.recordCounts?.transaction ?? 'unknown'}`,
+      `Backup create duration: ${report.sizedBackupRestoreProof.backup.durationMs} ms`,
+      `Validation duration: ${report.sizedBackupRestoreProof.validation.durationMs} ms`,
+      `Restore duration: ${report.sizedBackupRestoreProof.restore.durationMs} ms`,
+      `Restore result: ${report.sizedBackupRestoreProof.restore.success ? 'success' : 'failed'}; tables=${report.sizedBackupRestoreProof.restore.tablesRestored}; records=${report.sizedBackupRestoreProof.restore.recordsRestored}`,
+      ''
+    );
+  } else {
+    lines.push('No sized backup restore proof recorded.', '');
+  }
+
   lines.push('## Worker Queue Proof', '');
 
   if (report.workerQueueProof?.jobs?.length) {
     const durations = summarizeDurations(report.workerQueueProof.jobs.map((job) => job.durationMs));
     lines.push(
       `Total duration: ${report.workerQueueProof.totalDurationMs} ms`,
+      `Repeat profile: ${report.workerQueueProof.repeatCount || 1}x`,
       `Job p95: ${durations.p95Ms} ms`,
       '',
-      '| Category | Queue | Job | State | Duration ms |',
-      '| --- | --- | --- | --- | ---: |',
+      '| Repeat | Category | Queue | Job | State | Duration ms |',
+      '| ---: | --- | --- | --- | --- | ---: |',
       ...report.workerQueueProof.jobs.map((job) => [
+        job.repeat ?? 0,
         job.category,
         job.queue,
         escapeCell(job.name),
@@ -1089,7 +1370,9 @@ function buildMarkdown(report) {
     '- This proof starts a disposable full-stack Docker Compose project with frontend, backend, gateway, worker, Redis, and PostgreSQL services.',
     '- The smoke waits for database migration and seed completion, then runs the existing Phase 3 benchmark harness with local fixture provisioning.',
     '- The run proves authenticated wallet list, transaction-history, WebSocket subscription fanout, wallet-sync queue, and admin backup-validation paths execute end to end on a local seeded stack.',
+    '- Capacity snapshots capture PostgreSQL row counts, database size, connection use, selected memory settings, Redis memory, client count, and keyspace counts for the tested local topology.',
     '- The large-wallet transaction-history proof seeds synthetic transaction rows into the disposable PostgreSQL database and measures the authenticated wallet transaction-history endpoint against a strict local p95 gate.',
+    '- The sized backup restore proof creates, validates, and restores a generated backup after the synthetic transaction data is present in the disposable PostgreSQL database.',
     '- The worker queue proof enqueues and waits for BullMQ jobs across sync, confirmations, notifications, maintenance, autopilot, and intelligence handlers in the running worker container.',
     '- The worker scale-out proof runs two worker replicas, verifies diagnostic BullMQ jobs complete on both replicas, proves a shared diagnostic lock skips one concurrent duplicate, checks recurring jobs have one repeatable definition, and requires exactly one worker to own Electrum subscriptions.',
     '- The backend scale-out proof runs two backend replicas, opens multiple wallet subscription WebSockets across the replicas, triggers wallet sync on one replica, and requires the Redis bridge to deliver the sync event to every client.',
@@ -1161,6 +1444,23 @@ function round(value) {
   return Math.round(value * 100) / 100;
 }
 
+function formatBytes(value) {
+  const bytes = Number(value);
+  if (!Number.isFinite(bytes)) {
+    return 'n/a';
+  }
+
+  const units = ['B', 'KiB', 'MiB', 'GiB'];
+  let scaled = bytes;
+  let unitIndex = 0;
+  while (scaled >= 1024 && unitIndex < units.length - 1) {
+    scaled /= 1024;
+    unitIndex += 1;
+  }
+
+  return `${round(scaled)} ${units[unitIndex]}`;
+}
+
 function getErrorMessage(error) {
   return error instanceof Error ? error.message : String(error);
 }
@@ -1186,6 +1486,8 @@ let largeWalletHistoryProof = null;
 let workerQueueProof = null;
 let workerScaleOutProof = null;
 let backendScaleOutProof = null;
+let sizedBackupRestoreProof = null;
+const capacitySnapshots = [];
 let passed = false;
 let failureError = null;
 
@@ -1198,6 +1500,12 @@ try {
 
   composePs = await waitForComposeHealthy();
   recordStep('compose container health', true, `${composePs.length} service containers running and healthy`);
+
+  if (capacitySnapshotsEnabled) {
+    const baselineCapacity = collectCapacitySnapshot('baseline-after-health');
+    capacitySnapshots.push(baselineCapacity);
+    recordStep('capacity baseline snapshot', true, summarizeCapacitySnapshot(baselineCapacity));
+  }
 
   const frontendHealth = await waitForHttpOk('frontend health', `${apiUrl}/health`);
   recordStep('frontend health', true, `status=${frontendHealth.status}`);
@@ -1217,6 +1525,11 @@ try {
   largeWalletHistoryProof = await runLargeWalletTransactionHistoryProof();
   recordStep('large-wallet transaction-history proof', true, summarizeLargeWalletTransactionHistoryProof(largeWalletHistoryProof));
 
+  if (sizedBackupRestoreProofEnabled) {
+    sizedBackupRestoreProof = await runSizedBackupRestoreProof();
+    recordStep('sized backup restore proof', true, summarizeSizedBackupRestoreProof(sizedBackupRestoreProof));
+  }
+
   workerQueueProof = runWorkerQueueProof();
   recordStep('worker queue proof', true, summarizeWorkerQueueProof(workerQueueProof));
 
@@ -1227,6 +1540,12 @@ try {
   backendScaleOutProof = await runBackendScaleOutProof();
   composePs = collectComposePs();
   recordStep('backend scale-out websocket proof', true, summarizeBackendScaleOutProof(backendScaleOutProof));
+
+  if (capacitySnapshotsEnabled) {
+    const finalCapacity = collectCapacitySnapshot('after-local-load-profile');
+    capacitySnapshots.push(finalCapacity);
+    recordStep('capacity load snapshot', true, summarizeCapacitySnapshot(finalCapacity));
+  }
 
   passed = steps.every((step) => step.passed);
 } catch (error) {
@@ -1272,6 +1591,8 @@ try {
     workerQueueProof,
     workerScaleOutProof,
     backendScaleOutProof,
+    sizedBackupRestoreProof,
+    capacitySnapshots,
     composePs,
     keptStack: keepStack,
   };
@@ -1311,6 +1632,7 @@ import { Queue, QueueEvents } from 'bullmq';
 const proofId = process.env.PHASE3_QUEUE_PROOF_ID || String(Date.now());
 const safeProofId = proofId.replace(/[^a-zA-Z0-9_-]/g, '-');
 const jobTimeoutMs = Number(process.env.PHASE3_WORKER_QUEUE_PROOF_TIMEOUT_MS || '60000');
+const repeatCount = Math.max(1, Number(process.env.PHASE3_WORKER_QUEUE_PROOF_REPEATS || '1'));
 const prefix = 'sanctuary:worker';
 
 function connectionFromEnv() {
@@ -1413,33 +1735,40 @@ const jobs = [];
 try {
   const metricsBefore = await readWorkerMetrics();
 
-  for (const definition of jobDefinitions) {
-    const queue = queues.get(definition.queue);
-    const queueEvents = events.get(definition.queue);
-    const job = await queue.add(definition.name, definition.data, {
-      attempts: 1,
-      jobId: ['phase3', safeProofId, definition.category, definition.name.replace(/[^a-zA-Z0-9_-]/g, '-')].join('-'),
-      removeOnComplete: 100,
-      removeOnFail: 100,
-    });
-    const startedAt = Date.now();
-    const returnvalue = await job.waitUntilFinished(queueEvents, jobTimeoutMs);
-    const state = await job.getState();
+  for (let repeat = 0; repeat < repeatCount; repeat += 1) {
+    for (const definition of jobDefinitions) {
+      const queue = queues.get(definition.queue);
+      const queueEvents = events.get(definition.queue);
+      const job = await queue.add(definition.name, {
+        ...definition.data,
+        phase3ProofRepeat: repeat,
+      }, {
+        attempts: 1,
+        jobId: ['phase3', safeProofId, definition.category, String(repeat), definition.name.replace(/[^a-zA-Z0-9_-]/g, '-')].join('-'),
+        removeOnComplete: 100,
+        removeOnFail: 100,
+      });
+      const startedAt = Date.now();
+      const returnvalue = await job.waitUntilFinished(queueEvents, jobTimeoutMs);
+      const state = await job.getState();
 
-    jobs.push({
-      category: definition.category,
-      queue: definition.queue,
-      name: definition.name,
-      id: job.id,
-      state,
-      durationMs: Date.now() - startedAt,
-      returnvalue,
-    });
+      jobs.push({
+        repeat,
+        category: definition.category,
+        queue: definition.queue,
+        name: definition.name,
+        id: job.id,
+        state,
+        durationMs: Date.now() - startedAt,
+        returnvalue,
+      });
+    }
   }
 
   const metricsAfter = await readWorkerMetrics();
   console.log(JSON.stringify({
     proofId,
+    repeatCount,
     totalDurationMs: Date.now() - proofStartedAt,
     metricsBefore,
     metricsAfter,

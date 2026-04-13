@@ -276,7 +276,7 @@ Signals:
 Immediate triage:
 
 - Check backend logs for body-size errors, JSON parse errors, password verification errors, and Prisma restore failures.
-- Confirm frontend/Nginx/client body limits match the intended 200MB admin restore limit.
+- Confirm frontend/Nginx/client body limits match the intended 200MB admin restore limit. The default Nginx `/api/` proxy templates set `client_max_body_size 200m` to match the backend admin backup validate/restore parser.
 - Confirm disk capacity before retrying restore.
 
 Verification:
