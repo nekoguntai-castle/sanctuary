@@ -7,16 +7,25 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   isLoading?: boolean;
 }
 
-export const Button: React.FC<ButtonProps> = ({ 
-  children, 
-  variant = 'primary', 
-  size = 'md', 
-  className = '', 
+export const Button: React.FC<ButtonProps> = ({
+  children,
+  variant = 'primary',
+  size = 'md',
+  className = '',
   isLoading = false,
-  ...props 
+  // Destructure `disabled` out of props so the `{...props}` spread
+  // below cannot overwrite the computed `disabled` attribute. JSX
+  // applies attributes left-to-right; an earlier implementation had
+  // `disabled={isLoading || props.disabled}` followed by `{...props}`,
+  // which meant a caller passing `disabled={false}` alongside
+  // `isLoading={true}` would see the button render ENABLED — the
+  // spread silently overwrote the computed disabled value. LoginForm
+  // hit this after Phase 6 when it started passing both props at once.
+  disabled,
+  ...props
 }) => {
   const baseStyles = "inline-flex items-center justify-center rounded-md transition-all duration-200 font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed";
-  
+
   const variants = {
     // Primary uses the 'primary' palette (variable driven) in both modes.
     // In Dark Mode (inverted scale), primary-200 is a warm dark tone and primary-900 is near-white.
@@ -24,9 +33,9 @@ export const Button: React.FC<ButtonProps> = ({
 
     // Secondary uses neutral Sanctuary palette — subtle border that stays neutral on hover
     secondary: "bg-white text-sanctuary-700 border border-sanctuary-200 hover:border-sanctuary-300 hover:text-sanctuary-900 dark:bg-sanctuary-800 dark:text-sanctuary-300 dark:border-sanctuary-700/50 dark:hover:border-sanctuary-500 dark:hover:text-sanctuary-100",
-    
+
     danger: "bg-rose-50 text-rose-600 hover:bg-rose-100 dark:bg-rose-900/20 dark:text-rose-400 dark:hover:bg-rose-900/30",
-    
+
     ghost: "text-sanctuary-500 hover:text-primary-700 hover:bg-sanctuary-100 dark:text-sanctuary-400 dark:hover:text-primary-200 dark:hover:bg-sanctuary-800",
   };
 
@@ -37,10 +46,10 @@ export const Button: React.FC<ButtonProps> = ({
   };
 
   return (
-    <button 
-      className={`${baseStyles} ${variants[variant]} ${sizes[size]} ${className}`}
-      disabled={isLoading || props.disabled}
+    <button
       {...props}
+      className={`${baseStyles} ${variants[variant]} ${sizes[size]} ${className}`}
+      disabled={isLoading || disabled}
     >
       {isLoading ? (
         <SanctuarySpinner size="sm" className="mr-2" />
