@@ -22,12 +22,23 @@ import { swaggerUIHtml } from './swaggerUI';
 
 const router = Router();
 
+const swaggerUIContentSecurityPolicy = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' https://unpkg.com",
+  "style-src 'self' 'unsafe-inline' https://unpkg.com",
+  "img-src 'self' data: blob:",
+  "font-src 'self' data: https://unpkg.com",
+  "connect-src 'self'",
+  "object-src 'none'",
+].join('; ');
+
 /**
  * GET /api/v1/docs
  * Swagger UI
  */
 router.get('/', (_req: Request, res: Response) => {
   res.setHeader('Content-Type', 'text/html');
+  res.setHeader('Content-Security-Policy', swaggerUIContentSecurityPolicy);
   res.send(swaggerUIHtml);
 });
 

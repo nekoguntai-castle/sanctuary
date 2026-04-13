@@ -104,6 +104,8 @@ describe('OpenAPI Docs', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.headers['content-type']).toContain('text/html');
+    expect(response.headers['content-security-policy']).toContain("script-src 'self' 'unsafe-inline' https://unpkg.com");
+    expect(response.headers['content-security-policy']).toContain("style-src 'self' 'unsafe-inline' https://unpkg.com");
     expect(String(response.body)).toContain('swagger-ui-bundle.js');
     expect(String(response.body)).toContain('/api/v1/docs/openapi.json');
   });
@@ -113,6 +115,7 @@ describe('OpenAPI Docs', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.headers['content-type']).toContain('application/json');
+    expect(response.headers['content-security-policy']).toBeUndefined();
     const body = response.body as { openapi?: string; info?: { title?: string } };
     expect(body.openapi).toBe('3.0.3');
     expect(body.info?.title).toBe('Sanctuary API');

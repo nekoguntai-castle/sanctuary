@@ -97,8 +97,8 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", 'https://unpkg.com'], // Required for React patterns + Swagger UI CDN
-      styleSrc: ["'self'", "'unsafe-inline'", 'https://unpkg.com'],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'"],
       imgSrc: ["'self'", 'data:', 'blob:'],
       connectSrc: ["'self'", 'wss:', 'ws:'],
       fontSrc: ["'self'"],
