@@ -847,6 +847,14 @@ describe('API Client', () => {
       expect(removeItemMock).toHaveBeenCalledWith('sanctuary_token');
     });
 
+    it('should initialize from the default sessionStorage token when present', () => {
+      globalThis.sessionStorage.setItem('sanctuary_token', 'stored-session-token');
+
+      const client = new ApiClient();
+
+      expect(client.getToken()).toBe('stored-session-token');
+    });
+
     it('should support memory-only token storage when configured', async () => {
       vi.resetModules();
       vi.stubEnv('VITE_AUTH_TOKEN_STORAGE', 'memory');
@@ -867,9 +875,7 @@ describe('API Client', () => {
       vi.stubEnv('VITE_AUTH_TOKEN_STORAGE', 'local');
       globalThis.sessionStorage.setItem('sanctuary_token', 'stale-session-token');
       const setItemMock = vi.mocked(globalThis.localStorage.setItem);
-      const getItemMock = vi.mocked(globalThis.localStorage.getItem);
       setItemMock.mockClear();
-      getItemMock.mockReturnValueOnce('local-token');
 
       const mod = await import('../../src/api/client');
       mod.default.setToken('local-token');
@@ -898,9 +904,20 @@ describe('API Client', () => {
     });
 
     it('should fall back to memory when sessionStorage is unavailable', () => {
-      const blocked = new DOMException('storage blocked');
-      const setItemSpy = vi.spyOn(globalThis.sessionStorage, 'setItem').mockImplementation(() => {
-        throw blocked;
+      const originalSessionStorage = globalThis.sessionStorage;
+      const blockedSessionStorage = {
+        getItem: vi.fn(() => null),
+        setItem: vi.fn(() => {
+          throw new DOMException('storage blocked');
+        }),
+        removeItem: vi.fn(),
+        clear: vi.fn(),
+        key: vi.fn(() => null),
+        length: 0,
+      } as Storage;
+      Object.defineProperty(globalThis, 'sessionStorage', {
+        configurable: true,
+        value: blockedSessionStorage,
       });
 
       try {
@@ -910,7 +927,10 @@ describe('API Client', () => {
         const secondClient = new ApiClient();
         expect(secondClient.getToken()).toBe('fallback-token');
       } finally {
-        setItemSpy.mockRestore();
+        Object.defineProperty(globalThis, 'sessionStorage', {
+          configurable: true,
+          value: originalSessionStorage,
+        });
       }
     });
   });
