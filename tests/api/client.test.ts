@@ -23,12 +23,31 @@ vi.mock('../../utils/download', () => ({
   downloadBlob: (...args: unknown[]) => mockDownloadBlob(...args),
 }));
 
+// Mock the refresh module. ADR 0001 / 0002 Phase 4 — client.ts imports
+// scheduleRefreshFromHeader and refreshAccessToken from refresh.ts. We
+// mock both so client tests can assert the client calls them correctly
+// without exercising the real Web Lock / BroadcastChannel paths
+// (those have their own tests in tests/api/refresh.test.ts).
+const mockScheduleRefreshFromHeader = vi.fn();
+const mockRefreshAccessToken = vi.fn();
+
+vi.mock('../../src/api/refresh', async () => {
+  const actual = await vi.importActual<typeof import('../../src/api/refresh')>(
+    '../../src/api/refresh',
+  );
+  return {
+    ...actual,
+    scheduleRefreshFromHeader: (iso: string) => mockScheduleRefreshFromHeader(iso),
+    refreshAccessToken: () => mockRefreshAccessToken(),
+  };
+});
+
 // Mock import.meta.env
 vi.stubGlobal('import', { meta: { env: {} } });
 
 // We need to test the module's internals, so we import after mocks
 // but the module uses import.meta.env at top level. We'll test via the default export.
-import apiClient,{ ApiClient, ApiError } from '../../src/api/client';
+import apiClient,{ ApiError } from '../../src/api/client';
 
 describe('API Client', () => {
   const mockFetch = vi.fn();
@@ -36,10 +55,15 @@ describe('API Client', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     global.fetch = mockFetch;
-    globalThis.localStorage.clear();
-    globalThis.sessionStorage.clear();
-    // Reset token
-    apiClient.setToken(null);
+    mockScheduleRefreshFromHeader.mockReset();
+    mockRefreshAccessToken.mockReset();
+    // Clear document.cookie so CSRF header reads from a known state.
+    if (typeof document !== 'undefined') {
+      document.cookie.split(';').forEach((c) => {
+        const name = c.split('=')[0]?.trim();
+        if (name) document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+      });
+    }
   });
 
   afterEach(() => {
@@ -63,44 +87,6 @@ describe('API Client', () => {
       const error = new ApiError('Server Error', 500);
       expect(error.status).toBe(500);
       expect(error.response).toBeUndefined();
-    });
-  });
-
-  // ========================================
-  // Token Management
-  // ========================================
-  describe('Token Management', () => {
-    it('should set and get token', () => {
-      apiClient.setToken('test-token');
-      expect(apiClient.getToken()).toBe('test-token');
-      expect(apiClient.isAuthenticated()).toBe(true);
-    });
-
-    it('should report authenticated when token is set', () => {
-      apiClient.setToken('some-token');
-      expect(apiClient.isAuthenticated()).toBe(true);
-    });
-
-    it('should clear token on null', () => {
-      apiClient.setToken('temp');
-      apiClient.setToken(null);
-      expect(apiClient.getToken()).toBeNull();
-      expect(apiClient.isAuthenticated()).toBe(false);
-    });
-
-    it('should store tokens in sessionStorage by default and clear legacy localStorage', () => {
-      const removeItemMock = vi.mocked(globalThis.localStorage.removeItem);
-      removeItemMock.mockClear();
-
-      apiClient.setToken('round-trip');
-
-      expect(apiClient.getToken()).toBe('round-trip');
-      expect(globalThis.sessionStorage.getItem('sanctuary_token')).toBe('round-trip');
-      expect(removeItemMock).toHaveBeenCalledWith('sanctuary_token');
-
-      apiClient.setToken(null);
-      expect(apiClient.getToken()).toBeNull();
-      expect(globalThis.sessionStorage.getItem('sanctuary_token')).toBeNull();
     });
   });
 
@@ -166,33 +152,9 @@ describe('API Client', () => {
       expect(calledUrl).not.toContain('?');
     });
 
-    it('should include auth token in headers', async () => {
-      apiClient.setToken('my-token');
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: () => Promise.resolve({}),
-      });
-
-      await apiClient.get('/protected');
-
-      const calledOptions = mockFetch.mock.calls[0][1];
-      expect(calledOptions.headers['Authorization']).toBe('Bearer my-token');
-    });
-
-    it('should not include auth header when no token', async () => {
-      apiClient.setToken(null);
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: () => Promise.resolve({}),
-      });
-
-      await apiClient.get('/public');
-
-      const calledOptions = mockFetch.mock.calls[0][1];
-      expect(calledOptions.headers['Authorization']).toBeUndefined();
-    });
+    // ADR 0001 / 0002 Phase 4: the Authorization header is no longer
+    // set by the browser client. See the "Phase 4 — cookie auth + CSRF"
+    // describe block at the end of this file for cookie-path assertions.
   });
 
   // ========================================
@@ -506,18 +468,29 @@ describe('API Client', () => {
       expect(mockFetch).toHaveBeenCalledTimes(1);
     });
 
-    it('should NOT retry on 401 Unauthorized', async () => {
+    it('should NOT retry on 401 Unauthorized via the exponential-backoff path', async () => {
+      // Phase 4: 401 now triggers the refresh interceptor instead of
+      // the exponential-backoff retry loop. This test asserts the
+      // *backoff* loop does not fire — it should run zero retries and
+      // surface the 401 cleanly. Mock the refresh to fail so the
+      // interceptor bails out and returns the original 401 without
+      // the retry-once Phase 4 path kicking in. The Phase 4 describe
+      // block below has dedicated tests for the refresh-then-retry flow.
       mockFetch.mockResolvedValue({
         ok: false,
         status: 401,
         statusText: 'Unauthorized',
         json: () => Promise.resolve({ message: 'Invalid token' }),
       });
+      mockRefreshAccessToken.mockRejectedValueOnce(new Error('refresh suppressed for backoff test'));
 
       await expect(
         apiClient.get('/protected', undefined, { maxRetries: 3, initialDelayMs: 1 })
       ).rejects.toThrow('Invalid token');
 
+      // The exponential-backoff retry loop should NOT have fired, and
+      // the refresh interceptor's one-shot retry should have been
+      // aborted when refresh threw. Net: exactly one fetch call.
       expect(mockFetch).toHaveBeenCalledTimes(1);
     });
 
@@ -640,7 +613,6 @@ describe('API Client', () => {
       const formData = new FormData();
       formData.append('file', new Blob(['test']), 'test.txt');
 
-      apiClient.setToken('upload-token');
       await apiClient.upload('/upload', formData);
 
       const calledOptions = mockFetch.mock.calls[0][1];
@@ -648,7 +620,9 @@ describe('API Client', () => {
       expect(calledOptions.body).toBe(formData);
       // Should NOT set Content-Type (browser sets it with boundary)
       expect(calledOptions.headers['Content-Type']).toBeUndefined();
-      expect(calledOptions.headers['Authorization']).toBe('Bearer upload-token');
+      // Phase 4: credentials: 'include' replaces the Bearer header for
+      // browser callers. See the "Phase 4" describe block.
+      expect(calledOptions.credentials).toBe('include');
     });
 
     it('should throw ApiError for failed upload responses', async () => {
@@ -674,9 +648,8 @@ describe('API Client', () => {
   // Blob / Download
   // ========================================
   describe('Blob / Download', () => {
-    it('should fetch blob with params, method, and auth header', async () => {
+    it('should fetch blob with params, method, and credentials:include', async () => {
       const blob = new Blob(['file-bytes'], { type: 'application/octet-stream' });
-      apiClient.setToken('blob-token');
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -695,7 +668,8 @@ describe('API Client', () => {
       expect(mockFetch.mock.calls[0][0]).toContain('from=2026-01-01');
       expect(mockFetch.mock.calls[0][0]).toContain('to=2026-01-31');
       expect(mockFetch.mock.calls[0][1].method).toBe('POST');
-      expect(mockFetch.mock.calls[0][1].headers['Authorization']).toBe('Bearer blob-token');
+      // Phase 4: browser auth is via HttpOnly cookies, not Bearer header.
+      expect(mockFetch.mock.calls[0][1].credentials).toBe('include');
     });
 
     it('should throw ApiError with HTTP fallback when fetchBlob error body is not JSON', async () => {
@@ -728,7 +702,6 @@ describe('API Client', () => {
 
     it('should resolve filename from Content-Disposition when downloading', async () => {
       const blob = new Blob(['backup-bytes'], { type: 'application/gzip' });
-      apiClient.setToken('download-token');
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -745,7 +718,8 @@ describe('API Client', () => {
       });
 
       expect(mockFetch.mock.calls[0][0]).toContain('/admin/backup?walletId=w1');
-      expect(mockFetch.mock.calls[0][1].headers['Authorization']).toBe('Bearer download-token');
+      // Phase 4: cookie-based auth via credentials:'include'.
+      expect(mockFetch.mock.calls[0][1].credentials).toBe('include');
       expect(mockDownloadBlob).toHaveBeenCalledWith(blob, 'backup-2026.tar.gz');
     });
 
@@ -834,104 +808,332 @@ describe('API Client', () => {
       vi.unstubAllEnvs();
       vi.resetModules();
     });
+  });
 
-    it('should migrate a legacy localStorage token into sessionStorage by default', async () => {
-      vi.mocked(globalThis.localStorage.getItem).mockReturnValueOnce('legacy-token');
-      const removeItemMock = vi.mocked(globalThis.localStorage.removeItem);
-      removeItemMock.mockClear();
+  // =========================================================================
+  // Phase 4 — cookie auth + CSRF + X-Access-Expires-At + 401 interceptor
+  // =========================================================================
+  //
+  // ADR 0001 / 0002 Phase 4 changes to the client:
+  //   - Every request carries `credentials: 'include'` so the browser
+  //     attaches sanctuary_access / sanctuary_refresh / sanctuary_csrf
+  //     cookies automatically.
+  //   - State-changing requests (POST/PUT/PATCH/DELETE) read the
+  //     sanctuary_csrf cookie and echo it in the X-CSRF-Token header.
+  //   - The X-Access-Expires-At response header is parsed and forwarded
+  //     to refresh.ts's scheduleRefreshFromHeader.
+  //   - A 401 response on a non-exempt endpoint calls refreshAccessToken
+  //     and retries the request once.
+  //
+  // The refresh module is mocked at the top of this file so these tests
+  // can assert the client's behavior without exercising the real Web
+  // Lock / BroadcastChannel machinery (those have their own tests).
+  describe('Phase 4 — cookie auth + CSRF + X-Access-Expires-At + 401 interceptor', () => {
+    function okResponse(body: unknown = {}, headers?: Record<string, string>) {
+      const headersMap = new Map<string, string>(Object.entries(headers ?? {}));
+      return {
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(body),
+        headers: { get: (name: string) => headersMap.get(name) ?? null },
+      };
+    }
 
-      const client = new ApiClient();
+    function errorResponse(status: number, body: unknown = { message: 'error' }, headers?: Record<string, string>) {
+      const headersMap = new Map<string, string>(Object.entries(headers ?? {}));
+      return {
+        ok: false,
+        status,
+        statusText: 'Error',
+        json: () => Promise.resolve(body),
+        headers: { get: (name: string) => headersMap.get(name) ?? null },
+      };
+    }
 
-      expect(client.getToken()).toBe('legacy-token');
-      expect(globalThis.sessionStorage.getItem('sanctuary_token')).toBe('legacy-token');
-      expect(removeItemMock).toHaveBeenCalledWith('sanctuary_token');
-    });
-
-    it('should initialize from the default sessionStorage token when present', () => {
-      globalThis.sessionStorage.setItem('sanctuary_token', 'stored-session-token');
-
-      const client = new ApiClient();
-
-      expect(client.getToken()).toBe('stored-session-token');
-    });
-
-    it('should support memory-only token storage when configured', async () => {
-      vi.resetModules();
-      vi.stubEnv('VITE_AUTH_TOKEN_STORAGE', 'memory');
-
-      const mod = await import('../../src/api/client');
-      mod.default.setToken('memory-token');
-
-      expect(mod.default.getToken()).toBe('memory-token');
-      expect(globalThis.sessionStorage.getItem('sanctuary_token')).toBeNull();
-      expect(globalThis.localStorage.getItem('sanctuary_token')).toBeNull();
-
-      vi.unstubAllEnvs();
-      vi.resetModules();
-    });
-
-    it('should use localStorage only when legacy local mode is configured', async () => {
-      vi.resetModules();
-      vi.stubEnv('VITE_AUTH_TOKEN_STORAGE', 'local');
-      globalThis.sessionStorage.setItem('sanctuary_token', 'stale-session-token');
-      const setItemMock = vi.mocked(globalThis.localStorage.setItem);
-      setItemMock.mockClear();
-
-      const mod = await import('../../src/api/client');
-      mod.default.setToken('local-token');
-
-      expect(mod.default.getToken()).toBe('local-token');
-      expect(setItemMock).toHaveBeenCalledWith('sanctuary_token', 'local-token');
-      expect(globalThis.sessionStorage.getItem('sanctuary_token')).toBeNull();
-
-      vi.unstubAllEnvs();
-      vi.resetModules();
-    });
-
-    it('should default unknown storage mode values to sessionStorage', async () => {
-      vi.resetModules();
-      vi.stubEnv('VITE_AUTH_TOKEN_STORAGE', 'bogus');
-
-      const mod = await import('../../src/api/client');
-      mod.default.setToken('session-token');
-
-      expect(mod.default.getToken()).toBe('session-token');
-      expect(globalThis.sessionStorage.getItem('sanctuary_token')).toBe('session-token');
-      expect(globalThis.localStorage.removeItem).toHaveBeenCalledWith('sanctuary_token');
-
-      vi.unstubAllEnvs();
-      vi.resetModules();
-    });
-
-    it('should fall back to memory when sessionStorage is unavailable', () => {
-      const originalSessionStorage = globalThis.sessionStorage;
-      const blockedSessionStorage = {
-        getItem: vi.fn(() => null),
-        setItem: vi.fn(() => {
-          throw new DOMException('storage blocked');
-        }),
-        removeItem: vi.fn(),
-        clear: vi.fn(),
-        key: vi.fn(() => null),
-        length: 0,
-      } as Storage;
-      Object.defineProperty(globalThis, 'sessionStorage', {
-        configurable: true,
-        value: blockedSessionStorage,
-      });
-
-      try {
-        const client = new ApiClient();
-        client.setToken('fallback-token');
-
-        const secondClient = new ApiClient();
-        expect(secondClient.getToken()).toBe('fallback-token');
-      } finally {
-        Object.defineProperty(globalThis, 'sessionStorage', {
-          configurable: true,
-          value: originalSessionStorage,
+    afterEach(() => {
+      // Belt-and-suspenders: clear any cookies a test set so the next
+      // test starts with an empty cookie jar.
+      if (typeof document !== 'undefined') {
+        document.cookie.split(';').forEach((c) => {
+          const name = c.split('=')[0]?.trim();
+          if (name) document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
         });
       }
+    });
+
+    // -- credentials: 'include' -----------------------------------------
+    it('sends credentials: "include" on GET requests', async () => {
+      mockFetch.mockResolvedValue(okResponse({}));
+      await apiClient.get('/public');
+      expect(mockFetch.mock.calls[0][1].credentials).toBe('include');
+    });
+
+    it('sends credentials: "include" on POST requests', async () => {
+      mockFetch.mockResolvedValue(okResponse({}));
+      await apiClient.post('/endpoint', { x: 1 });
+      expect(mockFetch.mock.calls[0][1].credentials).toBe('include');
+    });
+
+    // -- CSRF header ----------------------------------------------------
+    it('does NOT include X-CSRF-Token on GET requests', async () => {
+      document.cookie = 'sanctuary_csrf=csrf-value; path=/';
+      mockFetch.mockResolvedValue(okResponse({}));
+
+      await apiClient.get('/public');
+
+      const headers = mockFetch.mock.calls[0][1].headers as Record<string, string>;
+      expect(headers['X-CSRF-Token']).toBeUndefined();
+    });
+
+    it('reads sanctuary_csrf cookie and injects X-CSRF-Token on POST', async () => {
+      document.cookie = 'sanctuary_csrf=csrf-value-123; path=/';
+      mockFetch.mockResolvedValue(okResponse({}));
+
+      await apiClient.post('/endpoint', { x: 1 });
+
+      const headers = mockFetch.mock.calls[0][1].headers as Record<string, string>;
+      expect(headers['X-CSRF-Token']).toBe('csrf-value-123');
+    });
+
+    it('injects X-CSRF-Token on PUT/PATCH/DELETE', async () => {
+      document.cookie = 'sanctuary_csrf=csrf-value-abc; path=/';
+      mockFetch.mockResolvedValue(okResponse({}));
+
+      await apiClient.put('/endpoint', {});
+      expect((mockFetch.mock.calls[0][1].headers as Record<string, string>)['X-CSRF-Token']).toBe('csrf-value-abc');
+
+      mockFetch.mockClear();
+      await apiClient.patch('/endpoint', {});
+      expect((mockFetch.mock.calls[0][1].headers as Record<string, string>)['X-CSRF-Token']).toBe('csrf-value-abc');
+
+      mockFetch.mockClear();
+      await apiClient.delete('/endpoint');
+      expect((mockFetch.mock.calls[0][1].headers as Record<string, string>)['X-CSRF-Token']).toBe('csrf-value-abc');
+    });
+
+    it('omits X-CSRF-Token when no sanctuary_csrf cookie is set', async () => {
+      // Fresh pre-login session: no cookie yet. The backend's
+      // skipCsrfProtection lets the request through because there is
+      // also no sanctuary_access cookie, so this is still a valid path.
+      mockFetch.mockResolvedValue(okResponse({}));
+
+      await apiClient.post('/auth/login', { username: 'u', password: 'p' });
+
+      const headers = mockFetch.mock.calls[0][1].headers as Record<string, string>;
+      expect(headers['X-CSRF-Token']).toBeUndefined();
+    });
+
+    // -- X-Access-Expires-At forwarding ---------------------------------
+    it('forwards X-Access-Expires-At to refresh.scheduleRefreshFromHeader on any response that carries it', async () => {
+      const iso = new Date(Date.now() + 3600_000).toISOString();
+      mockFetch.mockResolvedValue(okResponse({ user: { id: 'u1' } }, { 'X-Access-Expires-At': iso }));
+
+      await apiClient.get('/auth/me');
+
+      expect(mockScheduleRefreshFromHeader).toHaveBeenCalledWith(iso);
+    });
+
+    it('does not call scheduleRefreshFromHeader when the header is absent', async () => {
+      mockFetch.mockResolvedValue(okResponse({}));
+      await apiClient.get('/wallets');
+      expect(mockScheduleRefreshFromHeader).not.toHaveBeenCalled();
+    });
+
+    // -- 401 refresh interceptor ----------------------------------------
+    it('triggers refreshAccessToken + retry on 401 for a non-exempt endpoint', async () => {
+      mockFetch
+        .mockResolvedValueOnce(errorResponse(401, { message: 'Unauthorized' }))
+        .mockResolvedValueOnce(okResponse({ ok: true }));
+      mockRefreshAccessToken.mockResolvedValue(undefined);
+
+      const result = await apiClient.get('/wallets', undefined, { enabled: false });
+
+      expect(mockRefreshAccessToken).toHaveBeenCalledTimes(1);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(result).toEqual({ ok: true });
+    });
+
+    it('surfaces the second 401 without a third refresh attempt when the retry also fails', async () => {
+      mockFetch
+        .mockResolvedValueOnce(errorResponse(401, { message: 'Unauthorized' }))
+        .mockResolvedValueOnce(errorResponse(401, { message: 'Still unauthorized' }));
+      mockRefreshAccessToken.mockResolvedValue(undefined);
+
+      await expect(apiClient.get('/wallets', undefined, { enabled: false }))
+        .rejects.toMatchObject({ status: 401 });
+
+      expect(mockRefreshAccessToken).toHaveBeenCalledTimes(1);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('does NOT trigger refresh on 401 from exempt auth endpoints', async () => {
+      const exemptEndpoints = [
+        '/auth/login',
+        '/auth/register',
+        '/auth/2fa/verify',
+        '/auth/refresh',
+        '/auth/me',
+        '/auth/logout',
+        '/auth/logout-all',
+      ];
+
+      for (const endpoint of exemptEndpoints) {
+        mockFetch.mockClear();
+        mockRefreshAccessToken.mockClear();
+        mockFetch.mockResolvedValue(errorResponse(401, { message: 'Unauthorized' }));
+
+        await expect(
+          endpoint.includes('logout') || endpoint.includes('refresh') || endpoint.includes('login') || endpoint.includes('register') || endpoint.includes('2fa')
+            ? apiClient.post(endpoint, {}, { retry: { enabled: false } })
+            : apiClient.get(endpoint, undefined, { enabled: false }),
+        ).rejects.toMatchObject({ status: 401 });
+
+        expect(mockRefreshAccessToken).not.toHaveBeenCalled();
+      }
+    });
+
+    it('does not trigger refresh on non-401 errors', async () => {
+      mockFetch.mockResolvedValue(errorResponse(500, { message: 'server error' }));
+
+      await expect(apiClient.get('/wallets', undefined, { enabled: false }))
+        .rejects.toMatchObject({ status: 500 });
+
+      expect(mockRefreshAccessToken).not.toHaveBeenCalled();
+    });
+
+    it('surfaces the original 401 when the refresh itself fails', async () => {
+      mockFetch.mockResolvedValueOnce(errorResponse(401, { message: 'Unauthorized' }));
+      mockRefreshAccessToken.mockRejectedValue(new Error('refresh broke'));
+
+      await expect(apiClient.get('/wallets', undefined, { enabled: false }))
+        .rejects.toMatchObject({ status: 401 });
+
+      expect(mockRefreshAccessToken).toHaveBeenCalledTimes(1);
+      // fetch only called once — the retry was aborted because refresh
+      // failed, so the original 401 is surfaced.
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('strips the query string before checking the exempt list', async () => {
+      // /auth/me?foo=bar must be treated the same as /auth/me — a 401
+      // from boot probe must not trigger a refresh even when params
+      // are present.
+      mockFetch.mockResolvedValue(errorResponse(401));
+
+      await expect(apiClient.get('/auth/me', { foo: 'bar' }, { enabled: false }))
+        .rejects.toMatchObject({ status: 401 });
+
+      expect(mockRefreshAccessToken).not.toHaveBeenCalled();
+    });
+
+    it('omits X-CSRF-Token when the cookie jar has other cookies but no sanctuary_csrf', async () => {
+      // Exercises the readCsrfCookieValue end-of-loop "no match" branch
+      // — the cookie jar is non-empty but does not contain sanctuary_csrf.
+      document.cookie = 'unrelated=value; path=/';
+      document.cookie = 'another=foo; path=/';
+      mockFetch.mockResolvedValue(okResponse({}));
+
+      await apiClient.post('/endpoint', { x: 1 });
+
+      const headers = mockFetch.mock.calls[0][1].headers as Record<string, string>;
+      expect(headers['X-CSRF-Token']).toBeUndefined();
+
+      document.cookie = 'unrelated=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
+      document.cookie = 'another=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
+    });
+
+    it('surfaces the original 401 when refresh.refreshAccessToken throws a RefreshFailedError', async () => {
+      // Exercises the `refreshErr instanceof RefreshFailedError` true
+      // branch in the 401 interceptor. refresh.ts has already broadcast
+      // the terminal logout; the client just needs to bubble up the
+      // original 401 so the caller knows the retry was not attempted.
+      const { RefreshFailedError } = await import('../../src/api/refresh');
+      mockFetch.mockResolvedValueOnce(errorResponse(401, { message: 'Unauthorized' }));
+      mockRefreshAccessToken.mockRejectedValueOnce(new RefreshFailedError('rejected', 401));
+
+      await expect(apiClient.get('/wallets', undefined, { enabled: false }))
+        .rejects.toMatchObject({ status: 401 });
+
+      expect(mockRefreshAccessToken).toHaveBeenCalledTimes(1);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('fetchBlob with state-changing method injects X-CSRF-Token from the cookie', async () => {
+      document.cookie = 'sanctuary_csrf=blob-csrf; path=/';
+      const blob = new Blob(['x']);
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        blob: () => Promise.resolve(blob),
+      });
+
+      await apiClient.fetchBlob('/exports/archive', { method: 'POST' });
+
+      const calledOptions = mockFetch.mock.calls[0][1];
+      expect(calledOptions.headers['X-CSRF-Token']).toBe('blob-csrf');
+
+      document.cookie = 'sanctuary_csrf=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
+    });
+
+    it('download with state-changing method injects X-CSRF-Token from the cookie', async () => {
+      document.cookie = 'sanctuary_csrf=download-csrf; path=/';
+      const blob = new Blob(['x']);
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        blob: () => Promise.resolve(blob),
+      });
+
+      await apiClient.download('/admin/something', 'file.bin', { method: 'POST' });
+
+      const calledOptions = mockFetch.mock.calls[0][1];
+      expect(calledOptions.headers['X-CSRF-Token']).toBe('download-csrf');
+
+      document.cookie = 'sanctuary_csrf=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
+    });
+
+    it('upload always injects X-CSRF-Token because POST is implicit', async () => {
+      document.cookie = 'sanctuary_csrf=upload-csrf; path=/';
+      mockFetch.mockResolvedValueOnce(okResponse({ uploaded: true }));
+
+      const formData = new FormData();
+      formData.append('file', new Blob(['x']), 'file.bin');
+      await apiClient.upload('/upload', formData);
+
+      const calledOptions = mockFetch.mock.calls[0][1];
+      expect(calledOptions.headers['X-CSRF-Token']).toBe('upload-csrf');
+
+      document.cookie = 'sanctuary_csrf=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
+    });
+
+    it('fetchBlob with state-changing method omits X-CSRF-Token when no cookie is set', async () => {
+      // Exercises the falsy `if (csrf)` branch in fetchBlob.
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        blob: () => Promise.resolve(new Blob(['x'])),
+      });
+
+      await apiClient.fetchBlob('/exports/archive', { method: 'POST' });
+
+      const calledOptions = mockFetch.mock.calls[0][1];
+      expect(calledOptions.headers['X-CSRF-Token']).toBeUndefined();
+    });
+
+    it('download with state-changing method omits X-CSRF-Token when no cookie is set', async () => {
+      // Exercises the falsy `if (csrf)` branch in download.
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        blob: () => Promise.resolve(new Blob(['x'])),
+      });
+
+      await apiClient.download('/admin/something', 'file.bin', { method: 'POST' });
+
+      const calledOptions = mockFetch.mock.calls[0][1];
+      expect(calledOptions.headers['X-CSRF-Token']).toBeUndefined();
     });
   });
 });

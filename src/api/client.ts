@@ -4,14 +4,41 @@
  * Base HTTP client for communicating with the Sanctuary backend API.
  * Handles authentication, error handling, and request/response formatting.
  *
+ * ## Authentication (ADR 0001 / 0002)
+ *
+ * Browser callers authenticate via the `sanctuary_access` HttpOnly cookie
+ * set by the backend on login/2FA-verify/refresh. This module never
+ * touches the access token directly — it just sends every request with
+ * `credentials: 'include'` so the browser attaches cookies automatically.
+ *
+ * State-changing requests (POST/PUT/PATCH/DELETE) read the
+ * `sanctuary_csrf` cookie and echo its value in the `X-CSRF-Token`
+ * header, implementing the double-submit CSRF defense. The CSRF cookie
+ * is non-HttpOnly by design so the frontend can read it.
+ *
+ * Auth responses carry an `X-Access-Expires-At` header. Each request
+ * inspects the response for that header and forwards it to
+ * `src/api/refresh.ts` which schedules the next proactive refresh.
+ *
+ * On a 401 response, the client invokes the refresh primitive once and
+ * retries the original request. Endpoints in the `AUTH_ENDPOINTS_EXEMPT`
+ * list (login, 2FA verify, refresh, me, logout, register) bypass this
+ * interceptor — they ARE the identity boundary and a 401 from them is
+ * the intended outcome, not a signal to refresh.
+ *
  * Features:
  * - Automatic retry with exponential backoff for network errors and 5xx responses
  * - Configurable retry behavior per request
- * - Token-based authentication with session-scoped browser storage by default
+ * - Cookie-based authentication (no token in JavaScript memory)
  */
 
 import { createLogger } from '../../utils/logger';
 import { downloadBlob } from '../../utils/download';
+import {
+  refreshAccessToken,
+  scheduleRefreshFromHeader,
+  RefreshFailedError,
+} from './refresh';
 
 const log = createLogger('ApiClient');
 
@@ -27,6 +54,30 @@ const FILE_TRANSFER_TIMEOUT_MS = 120_000;
 
 // Retryable HTTP status codes (server errors)
 const RETRYABLE_STATUS_CODES = [408, 429, 500, 502, 503, 504];
+
+// CSRF cookie + header names. Must stay in sync with the backend
+// constants in server/src/middleware/authCookieNames.ts.
+const CSRF_COOKIE_NAME = 'sanctuary_csrf';
+const CSRF_HEADER_NAME = 'X-CSRF-Token';
+const ACCESS_EXPIRES_AT_HEADER = 'X-Access-Expires-At';
+
+// HTTP methods that need a CSRF token. GET/HEAD/OPTIONS are exempt
+// (no state change → no CSRF risk).
+const STATE_CHANGING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+// Auth identity-boundary endpoints that MUST NOT trigger the refresh
+// interceptor on a 401. A 401 from these is the intended outcome (wrong
+// password, revoked token, unauthenticated boot probe), not a signal
+// that the current session expired and should be refreshed.
+const AUTH_ENDPOINTS_EXEMPT_FROM_REFRESH_ON_401 = new Set<string>([
+  '/auth/login',
+  '/auth/register',
+  '/auth/2fa/verify',
+  '/auth/refresh',
+  '/auth/me',
+  '/auth/logout',
+  '/auth/logout-all',
+]);
 
 interface RetryOptions {
   maxRetries?: number;
@@ -134,82 +185,52 @@ const API_BASE_URL = getApiBaseUrl();
 // Export for use by functions that need direct fetch (e.g., file downloads)
 export { API_BASE_URL };
 
-const TOKEN_STORAGE_KEY = 'sanctuary_token';
-type TokenStorageMode = 'memory' | 'session' | 'local';
-
-let memoryToken: string | null = null;
-
-const getTokenStorageMode = (): TokenStorageMode => {
-  const configuredMode = import.meta.env.VITE_AUTH_TOKEN_STORAGE;
-  if (configuredMode === 'memory' || configuredMode === 'session' || configuredMode === 'local') {
-    return configuredMode;
-  }
-  // Default to session-scoped persistence to reduce the durable token exposure window.
-  return 'session';
-};
-
-const tokenStorageMode = getTokenStorageMode();
-
-const getBrowserStorage = (storageName: 'localStorage' | 'sessionStorage'): Storage | null => {
-  try {
-    const storage = storageName === 'localStorage' ? globalThis.localStorage : globalThis.sessionStorage;
-    const probeKey = `${TOKEN_STORAGE_KEY}:probe`;
-    storage.setItem(probeKey, '1');
-    storage.removeItem(probeKey);
-    return storage;
-  } catch {
-    return null;
-  }
-};
-
-const getPrimaryTokenStorage = (): Storage | null => {
-  if (tokenStorageMode === 'memory') return null;
-  return getBrowserStorage(tokenStorageMode === 'local' ? 'localStorage' : 'sessionStorage');
-};
-
-const readStoredToken = (): string | null => {
-  if (tokenStorageMode === 'memory') return memoryToken;
-
-  const storage = getPrimaryTokenStorage();
-  const storedToken = storage?.getItem(TOKEN_STORAGE_KEY) ?? null;
-  if (storedToken) return storedToken;
-  if (!storage && memoryToken) return memoryToken;
-
-  if (tokenStorageMode === 'session') {
-    const legacyLocalStorage = getBrowserStorage('localStorage');
-    const legacyToken = legacyLocalStorage?.getItem(TOKEN_STORAGE_KEY) ?? null;
-    if (legacyToken) {
-      // One-time migration from the previous durable localStorage storage scheme.
-      storage?.setItem(TOKEN_STORAGE_KEY, legacyToken);
-      legacyLocalStorage?.removeItem(TOKEN_STORAGE_KEY);
-      return legacyToken;
+/**
+ * Read the sanctuary_csrf cookie and return its value, or null if the
+ * cookie is missing (fresh session before first login, or when the user
+ * is not authenticated at all). Callers echo the value in the
+ * X-CSRF-Token header on state-changing requests.
+ */
+function readCsrfCookieValue(): string | null {
+  // Browser-only: document is always defined.
+  const raw = document.cookie;
+  if (!raw) return null;
+  for (const part of raw.split(';')) {
+    const [rawName, ...rest] = part.split('=');
+    if (rawName?.trim() === CSRF_COOKIE_NAME) {
+      return decodeURIComponent(rest.join('=')).trim();
     }
   }
-
   return null;
-};
+}
 
-const writeStoredToken = (token: string | null): void => {
-  memoryToken = token;
+/**
+ * Normalize the endpoint path for the exemption check. Strips query
+ * strings so `/auth/me?foo=bar` still matches `/auth/me`.
+ */
+function normalizeEndpointForExemption(endpoint: string): string {
+  const qIndex = endpoint.indexOf('?');
+  return qIndex >= 0 ? endpoint.substring(0, qIndex) : endpoint;
+}
 
-  const storage = getPrimaryTokenStorage();
-  if (token) {
-    storage?.setItem(TOKEN_STORAGE_KEY, token);
-  } else {
-    storage?.removeItem(TOKEN_STORAGE_KEY);
+function isAuthEndpointExemptFromRefreshOn401(endpoint: string): boolean {
+  return AUTH_ENDPOINTS_EXEMPT_FROM_REFRESH_ON_401.has(normalizeEndpointForExemption(endpoint));
+}
+
+/**
+ * Inspect a response for the X-Access-Expires-At header and schedule the
+ * next proactive refresh. No-op if the header is absent (non-auth routes)
+ * or if the response does not expose a Headers-like `get` method (which
+ * some test doubles may omit — real `Response` always has it).
+ */
+function handleAccessExpiryHeader(response: Response): void {
+  const headers = response.headers as unknown as { get?: (name: string) => string | null };
+  if (typeof headers?.get !== 'function') return;
+  const value = headers.get(ACCESS_EXPIRES_AT_HEADER);
+  if (value) {
+    scheduleRefreshFromHeader(value);
   }
-
-  if (tokenStorageMode === 'memory') {
-    getBrowserStorage('sessionStorage')?.removeItem(TOKEN_STORAGE_KEY);
-    getBrowserStorage('localStorage')?.removeItem(TOKEN_STORAGE_KEY);
-    return;
-  }
-
-  const inactiveStorage = tokenStorageMode === 'local'
-    ? getBrowserStorage('sessionStorage')
-    : getBrowserStorage('localStorage');
-  inactiveStorage?.removeItem(TOKEN_STORAGE_KEY);
-};
+}
 
 export interface ApiResponse<T> {
   data?: T;
@@ -229,44 +250,20 @@ export class ApiError extends Error {
 }
 
 export class ApiClient {
-  private token: string | null = null;
-
-  constructor() {
-    // Load token from the configured browser storage on initialization.
-    this.token = readStoredToken();
-  }
-
   /**
-   * Set authentication token
-   */
-  setToken(token: string | null): void {
-    this.token = token;
-    writeStoredToken(token);
-  }
-
-  /**
-   * Get current token
-   */
-  getToken(): string | null {
-    return this.token;
-  }
-
-  /**
-   * Check if user is authenticated
-   */
-  isAuthenticated(): boolean {
-    return !!this.token;
-  }
-
-  /**
-   * Make HTTP request with automatic retry for transient failures
+   * Make HTTP request with automatic retry for transient failures and
+   * a refresh-on-401 interceptor for non-exempt endpoints.
    */
   private async request<T>(
     endpoint: string,
     options: RequestInit = {},
-    retryOptions: RetryOptions = {}
+    retryOptions: RetryOptions = {},
+    isRefreshRetry = false,
   ): Promise<T> {
     const url = `${API_BASE_URL}${endpoint}`;
+    // All public methods (get/post/put/patch/delete) set options.method
+    // explicitly before calling request, so we trust it is defined here.
+    const method = (options.method as string).toUpperCase();
 
     // Set default headers
     const headers: Record<string, string> = {
@@ -274,17 +271,29 @@ export class ApiClient {
       ...((options.headers as Record<string, string>) || {}),
     };
 
-    // Add authentication token if available
-    if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`;
+    // Inject CSRF token on state-changing requests when the cookie is
+    // available. A fresh unauthenticated session will not have the cookie
+    // yet — the backend's skipCsrfProtection lets those requests through
+    // because there is no sanctuary_access cookie either.
+    if (STATE_CHANGING_METHODS.has(method)) {
+      const csrf = readCsrfCookieValue();
+      if (csrf && !headers[CSRF_HEADER_NAME]) {
+        headers[CSRF_HEADER_NAME] = csrf;
+      }
     }
 
     const performRequest = async (): Promise<T> => {
       const response = await fetch(url, {
         ...options,
+        credentials: 'include',
         headers,
         signal: options.signal ?? AbortSignal.timeout(DEFAULT_REQUEST_TIMEOUT_MS),
       });
+
+      // Every response may carry X-Access-Expires-At (auth responses do,
+      // others do not). Forward to refresh.ts unconditionally — the
+      // scheduler ignores invalid/missing values.
+      handleAccessExpiryHeader(response);
 
       // Handle non-JSON responses (like 204 No Content)
       if (response.status === 204) {
@@ -305,7 +314,36 @@ export class ApiClient {
       return data as T;
     };
 
-    return withRetry(performRequest, retryOptions, endpoint);
+    try {
+      return await withRetry(performRequest, retryOptions, endpoint);
+    } catch (error) {
+      if (
+        error instanceof ApiError
+        && error.status === 401
+        && !isRefreshRetry
+        && !isAuthEndpointExemptFromRefreshOn401(endpoint)
+      ) {
+        // Reactive refresh. Call refreshAccessToken and replay the
+        // original request once. If the refresh itself fails terminally,
+        // surface the refresh error (which the caller can distinguish).
+        // If the retry also returns 401, surface the second error
+        // without attempting a third refresh cycle.
+        try {
+          await refreshAccessToken();
+        } catch (refreshErr) {
+          if (refreshErr instanceof RefreshFailedError) {
+            // Terminal logout already broadcast by refresh.ts. Bubble the
+            // original 401 up to the caller.
+            throw error;
+          }
+          // Transient refresh error: surface the original 401 so the
+          // caller knows the retry was not attempted.
+          throw error;
+        }
+        return this.request<T>(endpoint, options, retryOptions, true);
+      }
+      throw error;
+    }
   }
 
   /**
@@ -418,16 +456,21 @@ export class ApiClient {
       url += `?${searchParams}`;
     }
 
+    const method = (options.method ?? 'GET').toUpperCase();
     const headers: Record<string, string> = {};
-    if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`;
+    if (STATE_CHANGING_METHODS.has(method)) {
+      const csrf = readCsrfCookieValue();
+      if (csrf) headers[CSRF_HEADER_NAME] = csrf;
     }
 
     const response = await fetch(url, {
       method: options.method || 'GET',
+      credentials: 'include',
       headers,
       signal: AbortSignal.timeout(FILE_TRANSFER_TIMEOUT_MS),
     });
+
+    handleAccessExpiryHeader(response);
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ message: `HTTP ${response.status}` }));
@@ -456,16 +499,21 @@ export class ApiClient {
       url += `?${searchParams}`;
     }
 
+    const method = (options.method ?? 'GET').toUpperCase();
     const headers: Record<string, string> = {};
-    if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`;
+    if (STATE_CHANGING_METHODS.has(method)) {
+      const csrf = readCsrfCookieValue();
+      if (csrf) headers[CSRF_HEADER_NAME] = csrf;
     }
 
     const response = await fetch(url, {
       method: options.method || 'GET',
+      credentials: 'include',
       headers,
       signal: AbortSignal.timeout(FILE_TRANSFER_TIMEOUT_MS),
     });
+
+    handleAccessExpiryHeader(response);
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ message: `HTTP ${response.status}` }));
@@ -496,20 +544,21 @@ export class ApiClient {
   async upload<T>(endpoint: string, formData: FormData, retryOptions: RetryOptions = {}): Promise<T> {
     const url = `${API_BASE_URL}${endpoint}`;
 
+    // Upload is always POST → always a state-changing request.
     const headers: Record<string, string> = {};
-
-    // Add authentication token if available
-    if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`;
-    }
+    const csrf = readCsrfCookieValue();
+    if (csrf) headers[CSRF_HEADER_NAME] = csrf;
 
     const performUpload = async (): Promise<T> => {
       const response = await fetch(url, {
         method: 'POST',
+        credentials: 'include',
         headers,
         body: formData,
         signal: AbortSignal.timeout(FILE_TRANSFER_TIMEOUT_MS),
       });
+
+      handleAccessExpiryHeader(response);
 
       const data = await response.json();
 

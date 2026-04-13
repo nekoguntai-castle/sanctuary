@@ -63,15 +63,16 @@ export async function disable2FA(data: TwoFactorDisableRequest): Promise<{ succe
 }
 
 /**
- * Verify 2FA code during login
+ * Verify 2FA code during login.
+ *
+ * ADR 0001 / 0002 Phase 4: no token persistence on the browser side.
+ * The backend sets the sanctuary_access / _refresh / _csrf cookies on
+ * this response and the ApiClient reads the X-Access-Expires-At header
+ * to schedule the next refresh. The caller receives the user object
+ * for context hydration only.
  */
 export async function verify2FA(data: TwoFactorVerifyRequest): Promise<AuthResponse> {
-  const response = await apiClient.post<AuthResponse>('/auth/2fa/verify', data);
-
-  // Set the full auth token after successful 2FA verification
-  apiClient.setToken(response.token);
-
-  return response;
+  return apiClient.post<AuthResponse>('/auth/2fa/verify', data);
 }
 
 /**

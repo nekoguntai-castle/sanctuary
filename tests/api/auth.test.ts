@@ -7,20 +7,19 @@
 
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 
-// Mock the API client
+// Mock the API client. ADR 0001 / 0002 Phase 4: no more setToken/
+// isAuthenticated — auth state lives in the backend cookies, and the
+// frontend just calls the endpoints and lets credentials:'include' do
+// the attaching automatically.
 const mockGet = vi.fn();
 const mockPost = vi.fn();
 const mockPatch = vi.fn();
-const mockSetToken = vi.fn();
-const mockIsAuthenticated = vi.fn();
 
 vi.mock('../../src/api/client', () => ({
   default: {
     get: (...args: unknown[]) => mockGet(...args),
     post: (...args: unknown[]) => mockPost(...args),
     patch: (...args: unknown[]) => mockPatch(...args),
-    setToken: (t: string | null) => mockSetToken(t),
-    isAuthenticated: () => mockIsAuthenticated(),
   },
 }));
 
@@ -31,7 +30,6 @@ fetchTelegramChatId,
 getCurrentUser,
 getRegistrationStatus,
 getUserGroups,
-isAuthenticated,
 login,
 logout,
 register,
@@ -77,7 +75,10 @@ describe('Auth API', () => {
   // register
   // ========================================
   describe('register', () => {
-    it('should POST registration data and set token', async () => {
+    it('should POST registration data and return the auth response', async () => {
+      // Phase 4: the backend sets the browser auth cookies on this
+      // response; the frontend reads the `user` field for hydration but
+      // no longer extracts or persists the `token` field on its own.
       const mockResponse: AuthResponse = {
         token: 'new-user-token',
         user: {
@@ -96,8 +97,6 @@ describe('Auth API', () => {
         username: 'newuser',
         password: 'securepass',
       });
-      expect(mockSetToken).toHaveBeenCalledWith('new-user-token');
-      expect(result.token).toBe('new-user-token');
       expect(result.user.username).toBe('newuser');
     });
 
@@ -118,7 +117,7 @@ describe('Auth API', () => {
   // login
   // ========================================
   describe('login', () => {
-    it('should POST login and set token on success', async () => {
+    it('should POST login and return the auth response on success', async () => {
       const mockResponse: AuthResponse = {
         token: 'login-token',
         user: {
@@ -137,11 +136,10 @@ describe('Auth API', () => {
         username: 'testuser',
         password: 'pass',
       }, { retry: { enabled: false } });
-      expect(mockSetToken).toHaveBeenCalledWith('login-token');
       expect(requires2FA(result)).toBe(false);
     });
 
-    it('should NOT set token when 2FA is required', async () => {
+    it('should return the 2FA pending shape when the backend requires 2FA', async () => {
       const mockResponse: TwoFactorRequiredResponse = {
         requires2FA: true,
         tempToken: 'temp-token',
@@ -150,7 +148,6 @@ describe('Auth API', () => {
 
       const result = await login({ username: 'secureuser', password: 'pass' });
 
-      expect(mockSetToken).not.toHaveBeenCalled();
       expect(requires2FA(result)).toBe(true);
       expect((result as TwoFactorRequiredResponse).tempToken).toBe('temp-token');
     });
@@ -160,9 +157,20 @@ describe('Auth API', () => {
   // logout
   // ========================================
   describe('logout', () => {
-    it('should clear the token', () => {
-      logout();
-      expect(mockSetToken).toHaveBeenCalledWith(null);
+    it('should POST /auth/logout with retries disabled', async () => {
+      mockPost.mockResolvedValue({ success: true });
+      await logout();
+      expect(mockPost).toHaveBeenCalledWith('/auth/logout', {}, { retry: { enabled: false } });
+    });
+
+    it('should swallow backend errors so local cleanup still runs', async () => {
+      // Phase 4 logout is best-effort on the backend call — the local
+      // refresh-module cleanup and React state reset in UserContext
+      // always run, even if the backend request fails (e.g. network
+      // offline). The authApi.logout() helper wraps the call in a
+      // try/catch to guarantee this.
+      mockPost.mockRejectedValue(new Error('network down'));
+      await expect(logout()).resolves.toBeUndefined();
     });
   });
 
@@ -201,18 +209,11 @@ describe('Auth API', () => {
     });
   });
 
-  // ========================================
-  // isAuthenticated
-  // ========================================
-  describe('isAuthenticated', () => {
-    it('should delegate to apiClient.isAuthenticated', () => {
-      mockIsAuthenticated.mockReturnValue(true);
-      expect(isAuthenticated()).toBe(true);
-
-      mockIsAuthenticated.mockReturnValue(false);
-      expect(isAuthenticated()).toBe(false);
-    });
-  });
+  // The legacy `isAuthenticated()` helper was removed in Phase 4 — auth
+  // state lives in the backend cookies, and the frontend determines
+  // "am I authenticated?" by calling /auth/me and interpreting the
+  // response status. See tests/contexts/UserContext.test.tsx for the
+  // /auth/me hydration test.
 
   // ========================================
   // changePassword

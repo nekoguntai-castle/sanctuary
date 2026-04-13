@@ -28,9 +28,11 @@ vi.mock('../../utils/logger', () => ({
   }),
 }));
 
-// Mock the APIs
+// Mock the APIs. ADR 0001 / 0002 Phase 4: isAuthenticated() was removed
+// — authentication state is determined by calling /auth/me and inspecting
+// the status, so tests mock getCurrentUser directly (resolve = hydrated,
+// reject with 401 = not authenticated).
 vi.mock('../../src/api/auth', () => ({
-  isAuthenticated: vi.fn(() => false),
   getCurrentUser: vi.fn(),
   logout: vi.fn(),
   login: vi.fn(),
@@ -41,6 +43,17 @@ vi.mock('../../src/api/auth', () => ({
 
 vi.mock('../../src/api/twoFactor', () => ({
   verify2FA: vi.fn(),
+}));
+
+// Mock the refresh module. UserContext subscribes to onTerminalLogout on
+// mount and calls triggerLogout on explicit logout. Neither should
+// actually exercise the Web Lock / BroadcastChannel paths in these
+// tests — those have their own dedicated tests in tests/api/refresh.test.ts.
+const mockOnTerminalLogout = vi.fn<(cb: () => void) => () => void>(() => () => {});
+const mockTriggerLogout = vi.fn<() => void>();
+vi.mock('../../src/api/refresh', () => ({
+  onTerminalLogout: (cb: () => void) => mockOnTerminalLogout(cb),
+  triggerLogout: () => mockTriggerLogout(),
 }));
 
 // Mock theme registry
@@ -116,8 +129,10 @@ describe('UserContext', () => {
   });
 
   describe('Provider initialization', () => {
-    it('initializes with unauthenticated state', async () => {
-      vi.mocked(authApi.isAuthenticated).mockReturnValue(false);
+    it('initializes with unauthenticated state when /auth/me returns 401', async () => {
+      // Phase 4: UserContext calls /auth/me on mount. A 401 means the
+      // user is not authenticated (or never was) — render login.
+      vi.mocked(authApi.getCurrentUser).mockRejectedValue(new ApiError('Unauthorized', 401));
 
       render(<UserProvider><TestConsumer /></UserProvider>);
 
@@ -125,12 +140,12 @@ describe('UserContext', () => {
         expect(screen.getByTestId('loading')).toHaveTextContent('false');
       });
 
+      expect(authApi.getCurrentUser).toHaveBeenCalled();
       expect(screen.getByTestId('authenticated')).toHaveTextContent('false');
       expect(screen.getByTestId('user')).toHaveTextContent('null');
     });
 
-    it('checks for existing auth on mount', async () => {
-      vi.mocked(authApi.isAuthenticated).mockReturnValue(true);
+    it('hydrates the user state from /auth/me when the call succeeds', async () => {
       vi.mocked(authApi.getCurrentUser).mockResolvedValue(mockUser);
 
       render(<UserProvider><TestConsumer /></UserProvider>);
@@ -145,21 +160,65 @@ describe('UserContext', () => {
       });
     });
 
-    it('handles auth check failure gracefully', async () => {
-      vi.mocked(authApi.isAuthenticated).mockReturnValue(true);
-      vi.mocked(authApi.getCurrentUser).mockRejectedValue(new Error('Token expired'));
+    it('swallows non-401 /auth/me failures without calling logout', async () => {
+      // Phase 4 UserContext does NOT call authApi.logout when the boot
+      // /auth/me call fails — server or network errors should not evict
+      // the user; they just render the login screen and let the user
+      // try again. This matches the "don't evict credentials on server-
+      // side failures" lesson captured in tasks/lessons.md after the
+      // Phase 2 rotation-500 fix.
+      vi.mocked(authApi.getCurrentUser).mockRejectedValue(new Error('network down'));
 
       render(<UserProvider><TestConsumer /></UserProvider>);
 
       await waitFor(() => {
-        expect(authApi.logout).toHaveBeenCalled();
+        expect(screen.getByTestId('loading')).toHaveTextContent('false');
       });
 
+      expect(authApi.logout).not.toHaveBeenCalled();
       expect(screen.getByTestId('authenticated')).toHaveTextContent('false');
     });
 
+    it('subscribes to terminal logout broadcasts on mount', async () => {
+      vi.mocked(authApi.getCurrentUser).mockRejectedValue(new ApiError('Unauthorized', 401));
+
+      render(<UserProvider><TestConsumer /></UserProvider>);
+
+      await waitFor(() => {
+        expect(mockOnTerminalLogout).toHaveBeenCalled();
+      });
+    });
+
+    it('clears user state when a terminal logout broadcast fires', async () => {
+      // Drive the terminal-logout listener directly: capture the
+      // callback that UserContext passed to onTerminalLogout, render
+      // the provider with a hydrated user, then invoke the callback and
+      // assert the user is cleared.
+      vi.mocked(authApi.getCurrentUser).mockResolvedValue(mockUser);
+      let capturedListener: (() => void) | null = null;
+      mockOnTerminalLogout.mockImplementation((cb: () => void) => {
+        capturedListener = cb;
+        return () => {};
+      });
+
+      render(<UserProvider><TestConsumer /></UserProvider>);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('user')).toHaveTextContent('testuser');
+      });
+
+      // Simulate a logout-broadcast delivered by refresh.ts.
+      if (!capturedListener) throw new Error('terminal logout listener not captured');
+      (capturedListener as () => void)();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('user')).toHaveTextContent('null');
+        expect(screen.getByTestId('authenticated')).toHaveTextContent('false');
+      });
+    });
+
     it('applies default dark theme when no user', async () => {
-      vi.mocked(authApi.isAuthenticated).mockReturnValue(false);
+      vi.mocked(authApi.getCurrentUser).mockRejectedValue(new ApiError('Unauthorized', 401));
 
       render(<UserProvider><TestConsumer /></UserProvider>);
 
@@ -446,10 +505,14 @@ describe('UserContext', () => {
         expect(screen.getByTestId('authenticated')).toHaveTextContent('true');
       });
 
-      // Then logout
+      // Then logout. Phase 4 expects both the backend call (authApi.logout)
+      // and the refresh-module cleanup (triggerLogout) to run in lockstep.
       await user.click(screen.getByTestId('logout'));
 
-      expect(authApi.logout).toHaveBeenCalled();
+      await waitFor(() => {
+        expect(authApi.logout).toHaveBeenCalled();
+        expect(mockTriggerLogout).toHaveBeenCalled();
+      });
       expect(screen.getByTestId('authenticated')).toHaveTextContent('false');
       expect(screen.getByTestId('user')).toHaveTextContent('null');
     });
@@ -488,7 +551,7 @@ describe('UserContext', () => {
 
     it('does not call updatePreferences when no authenticated user is loaded', async () => {
       const user = userEvent.setup();
-      vi.mocked(authApi.isAuthenticated).mockReturnValue(false);
+      vi.mocked(authApi.getCurrentUser).mockRejectedValue(new ApiError('Unauthorized', 401));
 
       render(<UserProvider><TestConsumer /></UserProvider>);
 
@@ -631,7 +694,6 @@ describe('UserContext', () => {
         return <span data-testid="user">{user?.username ?? 'null'}</span>;
       };
 
-      vi.mocked(authApi.isAuthenticated).mockReturnValue(true);
       vi.mocked(authApi.getCurrentUser).mockResolvedValue(mockUser);
 
       render(<UserProvider><TestCurrentUser /></UserProvider>);
@@ -654,7 +716,6 @@ describe('UserContext', () => {
         );
       };
 
-      vi.mocked(authApi.isAuthenticated).mockReturnValue(true);
       vi.mocked(authApi.getCurrentUser).mockResolvedValue(mockUser);
 
       render(<UserProvider><TestPrefs /></UserProvider>);
@@ -693,14 +754,12 @@ describe('UserContext', () => {
       // Also ensure document is in clean state (redundant but ensures isolation)
       document.documentElement.classList.remove('dark');
       // Reset auth mocks to prevent pollution from previous tests
-      vi.mocked(authApi.isAuthenticated).mockReset();
       vi.mocked(authApi.getCurrentUser).mockReset();
     });
 
     it('applies user theme preferences', async () => {
       const { themeRegistry } = await import('../../themes');
 
-      vi.mocked(authApi.isAuthenticated).mockReturnValue(true);
       vi.mocked(authApi.getCurrentUser).mockResolvedValue(mockUser);
 
       render(<UserProvider><TestConsumer /></UserProvider>);
@@ -724,7 +783,6 @@ describe('UserContext', () => {
         preferences: { ...mockUser.preferences, darkMode: false },
       };
 
-      vi.mocked(authApi.isAuthenticated).mockReturnValue(true);
       vi.mocked(authApi.getCurrentUser).mockResolvedValue(lightUser);
 
       render(<UserProvider><TestConsumer /></UserProvider>);

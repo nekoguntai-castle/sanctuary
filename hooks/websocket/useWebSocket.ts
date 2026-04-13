@@ -7,7 +7,6 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { websocketClient } from '../../services/websocket';
-import apiClient from '../../src/api/client';
 
 export interface UseWebSocketReturn {
   connected: boolean;
@@ -35,10 +34,16 @@ export const useWebSocket = (): UseWebSocketReturn => {
 
     websocketClient.onConnectionChange(handleConnectionChange);
 
-    // Connect if not already connected
+    // Connect if not already connected.
+    // ADR 0001 / 0002 Phase 3-4: same-origin WebSocket upgrades carry the
+    // sanctuary_access HttpOnly cookie automatically, and the server's
+    // extractToken in websocket/auth.ts reads it on upgrade. The frontend
+    // no longer has the access token in JavaScript, so no auth-message
+    // flow is required here — connect() with no args skips the auth
+    // message and resubscribes immediately on the assumption the server
+    // already authenticated the upgrade.
     if (!websocketClient.isConnected()) {
-      const token = apiClient.getToken();
-      websocketClient.connect(token || undefined);
+      websocketClient.connect();
     } else {
       setConnected(true);
       setState('connected');

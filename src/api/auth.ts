@@ -61,38 +61,45 @@ export function requires2FA(response: LoginResponse): response is TwoFactorRequi
 }
 
 /**
- * Register a new user
+ * Register a new user.
+ *
+ * ADR 0001 / 0002 Phase 4: the browser no longer stores or sends the
+ * JSON access token. The backend sets the sanctuary_access / _refresh /
+ * _csrf cookies on this response, and the ApiClient reads the
+ * X-Access-Expires-At header to schedule the next refresh. The caller
+ * receives the user object for context hydration only.
  */
 export async function register(data: RegisterRequest): Promise<AuthResponse> {
-  const response = await apiClient.post<AuthResponse>('/auth/register', data);
-
-  // Set token in client
-  apiClient.setToken(response.token);
-
-  return response;
+  return apiClient.post<AuthResponse>('/auth/register', data);
 }
 
 /**
  * Login user
- * Returns either a full auth response or a 2FA required response
+ * Returns either a full auth response or a 2FA required response.
+ *
+ * Phase 4 cookie path: no token persistence on the browser side.
  */
 export async function login(data: LoginRequest): Promise<LoginResponse> {
   // Disable retries — auto-retrying failed logins worsens server-side rate limiting
-  const response = await apiClient.post<LoginResponse>('/auth/login', data, { retry: { enabled: false } });
-
-  // Only set token if full auth (not 2FA pending)
-  if (!requires2FA(response)) {
-    apiClient.setToken(response.token);
-  }
-
-  return response;
+  return apiClient.post<LoginResponse>('/auth/login', data, { retry: { enabled: false } });
 }
 
 /**
- * Logout user
+ * Logout user.
+ *
+ * Tells the backend to revoke the session and clear the browser cookies.
+ * The UserContext calls this then invokes refresh.triggerLogout() to
+ * clear local in-memory refresh state and broadcast the logout to other
+ * tabs. Best-effort: even if the backend call fails (e.g. network
+ * offline), the local cleanup still runs.
  */
-export function logout(): void {
-  apiClient.setToken(null);
+export async function logout(): Promise<void> {
+  try {
+    await apiClient.post('/auth/logout', {}, { retry: { enabled: false } });
+  } catch {
+    // Swallow: local cleanup (UserContext + refresh.triggerLogout) runs
+    // regardless so the user is always logged out client-side.
+  }
 }
 
 /**
@@ -107,13 +114,6 @@ export async function getCurrentUser(): Promise<User> {
  */
 export async function updatePreferences(preferences: Partial<User['preferences']>): Promise<User> {
   return apiClient.patch<User>('/auth/me/preferences', preferences);
-}
-
-/**
- * Check if user is authenticated
- */
-export function isAuthenticated(): boolean {
-  return apiClient.isAuthenticated();
 }
 
 export interface ChangePasswordRequest {

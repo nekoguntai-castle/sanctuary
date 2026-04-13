@@ -5,6 +5,23 @@
  */
 
 import apiClient, { API_BASE_URL } from '../client';
+
+// CSRF cookie + header names, kept in sync with src/api/client.ts.
+const CSRF_COOKIE_NAME = 'sanctuary_csrf';
+const CSRF_HEADER_NAME = 'X-CSRF-Token';
+
+function readCsrfCookieValue(): string | null {
+  // Browser-only: document is always defined.
+  const raw = document.cookie;
+  if (!raw) return null;
+  for (const part of raw.split(';')) {
+    const [rawName, ...rest] = part.split('=');
+    if (rawName?.trim() === CSRF_COOKIE_NAME) {
+      return decodeURIComponent(rest.join('=')).trim();
+    }
+  }
+  return null;
+}
 import type {
   EncryptionKeysResponse,
   SanctuaryBackup,
@@ -42,14 +59,18 @@ export async function getEncryptionKeys(password: string): Promise<EncryptionKey
  * This returns a Blob for file download.
  */
 export async function createBackup(options?: BackupOptions): Promise<Blob> {
-  const token = apiClient.getToken();
+  // ADR 0001 Phase 4: authenticate via HttpOnly cookies (credentials:
+  // 'include') + double-submit CSRF header instead of a JS-readable Bearer.
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  const csrf = readCsrfCookieValue();
+  if (csrf) headers[CSRF_HEADER_NAME] = csrf;
 
   const response = await fetch(`${API_BASE_URL}/admin/backup`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
-    },
+    credentials: 'include',
+    headers,
     body: JSON.stringify(options || {}),
   });
 

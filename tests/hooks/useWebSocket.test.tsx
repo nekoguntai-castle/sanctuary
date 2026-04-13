@@ -45,14 +45,11 @@ vi.mock('../../services/websocket', () => ({
   WebSocketEventType: {},
 }));
 
-// Mock the API client
-const mockGetToken = vi.fn();
-
-vi.mock('../../src/api/client', () => ({
-  default: {
-    getToken: (...args: any[]) => mockGetToken(...args),
-  },
-}));
+// Phase 4: useWebSocket no longer reads a token from apiClient — the
+// browser's sanctuary_access HttpOnly cookie is attached automatically
+// by the same-origin WebSocket upgrade, and the server's extractToken
+// in websocket/auth.ts (Phase 3) reads it from the upgrade request.
+// No apiClient mock needed for the hook.
 
 // Mock the sync API to avoid actual API calls in useWalletLogs
 const mockGetWalletLogs = vi.fn();
@@ -102,7 +99,6 @@ describe('useWebSocket', () => {
     // Default mock implementations
     mockIsConnected.mockReturnValue(false);
     mockGetState.mockReturnValue('disconnected');
-    mockGetToken.mockReturnValue('test-token-123');
 
     // Store callbacks when registered
     mockOnConnectionChange.mockImplementation((callback: (connected: boolean) => void) => {
@@ -133,14 +129,18 @@ describe('useWebSocket', () => {
   });
 
   describe('Connection Lifecycle', () => {
-    it('should connect on mount when not already connected', () => {
+    it('should connect on mount when not already connected (no token arg — Phase 4 cookie auth)', () => {
       mockIsConnected.mockReturnValue(false);
 
       renderHook(() => useWebSocket());
 
       expect(mockOnConnectionChange).toHaveBeenCalledTimes(1);
       expect(mockConnect).toHaveBeenCalledTimes(1);
-      expect(mockConnect).toHaveBeenCalledWith('test-token-123');
+      // Phase 3-4: same-origin WS upgrades carry the sanctuary_access
+      // HttpOnly cookie automatically, so the frontend no longer passes
+      // a token to connect(). The server's extractToken reads the cookie
+      // off the upgrade request.
+      expect(mockConnect).toHaveBeenCalledWith();
     });
 
     it('should not connect if already connected', () => {
@@ -152,15 +152,6 @@ describe('useWebSocket', () => {
       expect(mockConnect).not.toHaveBeenCalled();
       expect(result.current.connected).toBe(true);
       expect(result.current.state).toBe('connected');
-    });
-
-    it('should connect with undefined token when token is null', () => {
-      mockGetToken.mockReturnValue(null);
-      mockIsConnected.mockReturnValue(false);
-
-      renderHook(() => useWebSocket());
-
-      expect(mockConnect).toHaveBeenCalledWith(undefined);
     });
 
     it('should disconnect on unmount', () => {
@@ -1110,7 +1101,6 @@ describe('useModelDownloadProgress', () => {
 
     mockIsConnected.mockReturnValue(true);
     mockGetState.mockReturnValue('connected');
-    mockGetToken.mockReturnValue('test-token');
 
     mockOnConnectionChange.mockImplementation((callback: (connected: boolean) => void) => {
       connectionChangeCallbacks.add(callback);
@@ -1364,7 +1354,6 @@ describe('useWebSocketQueryInvalidation', () => {
 
     mockIsConnected.mockReturnValue(true);
     mockGetState.mockReturnValue('connected');
-    mockGetToken.mockReturnValue('test-token');
 
     mockOnConnectionChange.mockImplementation((callback: (connected: boolean) => void) => {
       connectionChangeCallbacks.add(callback);

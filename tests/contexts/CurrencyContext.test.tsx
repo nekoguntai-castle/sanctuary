@@ -34,12 +34,19 @@ vi.mock('../../src/api/price', () => ({
 }));
 
 vi.mock('../../src/api/auth', () => ({
-  isAuthenticated: vi.fn(() => false),
   getCurrentUser: vi.fn(),
   logout: vi.fn(),
   login: vi.fn(),
   register: vi.fn(),
   updatePreferences: vi.fn(),
+}));
+
+// Mock the refresh module so UserContext's onTerminalLogout subscribe
+// + triggerLogout call do not exercise the Web Lock / BroadcastChannel
+// paths during currency tests.
+vi.mock('../../src/api/refresh', () => ({
+  onTerminalLogout: () => () => {},
+  triggerLogout: vi.fn(),
 }));
 
 const authenticatedUser = {
@@ -351,7 +358,6 @@ describe('CurrencyContext', () => {
     it('updates user preferences when authenticated', async () => {
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 
-      vi.mocked(authApi.isAuthenticated).mockReturnValue(true);
       vi.mocked(authApi.getCurrentUser).mockResolvedValue(authenticatedUser as any);
       vi.mocked(authApi.updatePreferences).mockImplementation(async (prefs: any) => ({
         ...authenticatedUser,

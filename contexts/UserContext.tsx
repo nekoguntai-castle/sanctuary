@@ -4,6 +4,7 @@ import { themeRegistry } from '../themes';
 import * as authApi from '../src/api/auth';
 import * as twoFactorApi from '../src/api/twoFactor';
 import { ApiError } from '../src/api/client';
+import { onTerminalLogout, triggerLogout } from '../src/api/refresh';
 import { createLogger } from '../utils/logger';
 
 const log = createLogger('UserContext');
@@ -41,23 +42,51 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [error, setError] = useState<string | null>(null);
   const [twoFactorPending, setTwoFactorPending] = useState<TwoFactorPending | null>(null);
 
-  // Check for existing authentication on mount
+  // Check for existing authentication on mount.
+  //
+  // ADR 0001 / 0002 Phase 4: the browser has no access to the
+  // HttpOnly access cookie, so "am I authenticated?" is determined by
+  // calling /auth/me and interpreting the response. 200 → hydrate the
+  // user object and schedule the next refresh from the
+  // X-Access-Expires-At header (ApiClient forwards it automatically).
+  // 401 → the user is not authenticated, render the login screen.
+  // The /auth/me route is in the ApiClient's exempt list so a 401
+  // does not trigger a refresh-on-401 cycle on boot.
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        if (authApi.isAuthenticated()) {
-          const currentUser = await authApi.getCurrentUser();
-          setUser(currentUser as User);
-        }
+        const currentUser = await authApi.getCurrentUser();
+        setUser(currentUser as User);
       } catch (err) {
-        log.error('Auth check failed', { error: err });
-        authApi.logout(); // Clear invalid token
+        if (err instanceof ApiError && err.status === 401) {
+          // Not authenticated — normal state on fresh boot. Render login.
+        } else {
+          log.error('Auth check failed', { error: err });
+        }
       } finally {
         setIsLoading(false);
       }
     };
 
     checkAuth();
+  }, []);
+
+  // Subscribe to terminal logout broadcasts from the refresh module.
+  //
+  // Fires when:
+  //   - Another tab explicitly logs out and broadcasts logout-broadcast
+  //   - This tab or another tab hit a terminal refresh failure
+  //     (revoked refresh token, user deleted, etc.)
+  //
+  // React to it by clearing local auth state. The backend cookies are
+  // already cleared by the server response; there is nothing else for
+  // the frontend to do besides updating the React tree.
+  useEffect(() => {
+    return onTerminalLogout(() => {
+      setUser(null);
+      setTwoFactorPending(null);
+      setError(null);
+    });
   }, []);
 
   // Initialize theme based on user preferences whenever user changes
@@ -169,9 +198,16 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  const logout = useCallback(() => {
-    authApi.logout();
+  const logout = useCallback(async () => {
+    // Best-effort backend logout: revokes the session server-side and
+    // clears the response cookies. Swallowed inside authApi.logout() so
+    // a network failure does not prevent local cleanup.
+    await authApi.logout();
+    // Clear local refresh state (timer + in-memory expiry) and broadcast
+    // the logout event so other tabs log out in lockstep.
+    triggerLogout();
     setUser(null);
+    setTwoFactorPending(null);
     setError(null);
   }, []);
 
