@@ -2,7 +2,7 @@
 
 Date: 2026-04-12 (Pacific/Honolulu)
 Owner: TBD
-Status: Refreshed assessment; Phase 3 repository-controlled local capacity proof is complete, Phase 4 test typecheck gate is complete, while production alert receiver and privacy-safe scale/load calibration remain release gates
+Status: Refreshed assessment; Phase 3 repository-controlled local capacity proof is complete, Phase 4 test typecheck and dependency-audit triage gates are current, while production alert receiver and privacy-safe scale/load calibration remain release gates
 
 ## Scope
 
@@ -67,6 +67,21 @@ Suggested sequencing:
 2. Finish Phase 2 production alert receiver selection and proof before claiming A-grade operations.
 3. Treat the Phase 3 local proof as complete for repository-controlled evidence, and collect privacy-safe load/capacity calibration before claiming A-grade scalability or performance.
 4. Continue Phase 4 hygiene as normal engineering practice when routes, schemas, gateway logging, and oversized files are touched.
+
+## Outstanding Items
+
+These are the remaining known blockers before claiming A-grade status. Repository-controlled local proof is complete for Phase 2/3/4 where noted; the remaining items are either target-environment evidence, production-channel choices, or architecture decisions.
+
+| Area | Outstanding item | Required evidence / exit criteria |
+| --- | --- | --- |
+| Phase 2 operations | Choose durable external production alert receiver channels and credentials. | Alertmanager/receiver configuration is committed without secrets, credential ownership is documented, and a production-safe test alert is delivered to the chosen channel. The disposable local webhook receiver remains smoke evidence only. |
+| Phase 2 operations | Capture production runtime or incident evidence. | A production or production-like review records relevant metrics/logs/incidents or a clean runtime window, with sensitive data excluded and runbook adjustments captured. |
+| Phase 3 scalability/performance | Run privacy-safe calibrated load benchmarks. | Benchmark records cover wallet sync, transaction history, WebSocket fanout, worker queue processing, backend scale-out, and backup validation/restore using synthetic/regtest fixtures, operator-owned testnet wallets created for proof, or approved restore-safe non-production backups. Do not use third-party wallets, public wallet histories, or private user wallet activity. |
+| Phase 3 topology | Validate target non-production topology under expected capacity. | Load-balanced backend capacity, worker queue load, Electrum subscription ownership/volume, expected WebSocket fanout, p95/p99, failure rates, dataset size, and topology notes are recorded with strict go/no-go thresholds. |
+| Security | Decide the final HttpOnly-cookie/session browser auth architecture. | An ADR or implementation plan covers refresh behavior, CSRF protection, WebSocket auth, mobile/gateway compatibility, migration from session-scoped token storage, and required tests. |
+| Security/dependencies | Monitor accepted dependency audit findings. | No unaccepted high/critical production advisories remain; revisit root hardware-wallet/polyfill chains, server Prisma tooling, and gateway optional dependency findings when same-major, non-downgrade fixes are available. |
+| Phase 4 hygiene | Keep contract, validation, redaction, and release-gate guardrails current. | New or touched routes keep OpenAPI/shared-schema/gateway whitelist coverage; gateway logs continue to use shared redaction; large-file cleanup stays tied to files already being changed. |
+| Release verification | Run remaining release-scope checks when cutting a release or touching covered areas. | Full backend/gateway coverage, backend integration, Playwright e2e, install/container workflows, and the critical mutation gate are rerun according to `docs/RELEASE_GATES.md`. |
 
 Domain-specific A-grade criteria:
 
