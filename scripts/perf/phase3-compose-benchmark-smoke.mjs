@@ -102,6 +102,7 @@ const benchmarkEnv = {
   SANCTUARY_BENCHMARK_PROVISION: 'true',
   SANCTUARY_BENCHMARK_CREATE_BACKUP: 'true',
   SANCTUARY_BENCHMARK_STRICT: 'true',
+  SANCTUARY_ALLOW_RESTORE: process.env.PHASE3_COMPOSE_ALLOW_RESTORE || 'true',
   SANCTUARY_BENCHMARK_USERNAME: adminUsername,
   SANCTUARY_BENCHMARK_PASSWORD: adminPassword,
   SANCTUARY_BENCHMARK_WALLET_NAME: process.env.SANCTUARY_BENCHMARK_WALLET_NAME || 'Phase 3 Compose Benchmark Wallet',
@@ -407,6 +408,9 @@ function assertBenchmarkProof(benchmark) {
     ['wallet sync queue', ['200']],
     ['backup validate', ['200']],
   ]);
+  if (benchmark.environment?.allowRestore) {
+    requiredScenarios.set('backup restore', ['200']);
+  }
   const scenariosByName = new Map((benchmark.scenarios || []).map((scenario) => [scenario.name, scenario]));
   const skippedByName = new Map((benchmark.skipped || []).map((scenario) => [scenario.name, scenario]));
 
@@ -1064,7 +1068,7 @@ function buildMarkdown(report) {
     '- The worker scale-out proof runs two worker replicas, verifies diagnostic BullMQ jobs complete on both replicas, proves a shared diagnostic lock skips one concurrent duplicate, checks recurring jobs have one repeatable definition, and requires exactly one worker to own Electrum subscriptions.',
     '- The backend scale-out proof runs two backend replicas, opens a wallet subscription WebSocket on one replica, triggers wallet sync on the other replica, and requires the Redis bridge to deliver the sync event across instances.',
     '- The local generated wallets and two-replica topology are smoke evidence only; production-like largest-known-wallet, load-level fanout, and capacity evidence remain required before claiming Phase 3 complete.',
-    '- Restore remains intentionally skipped because it is destructive unless `SANCTUARY_ALLOW_RESTORE=true` is set for a restore-safe environment.'
+    '- The disposable wrapper enables backup restore by default because the PostgreSQL database is temporary; set `PHASE3_COMPOSE_ALLOW_RESTORE=false` only when explicitly testing non-destructive mode.'
   );
 
   return `${lines.join('\n')}\n`;
