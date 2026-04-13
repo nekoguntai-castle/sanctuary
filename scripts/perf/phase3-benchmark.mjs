@@ -991,7 +991,7 @@ function renderMarkdown(result) {
     '## Decision',
     '',
     result.skipped.length > 0
-      ? 'Smoke evidence captured. Phase 3 is not complete until authenticated wallet sync, transaction history, WebSocket fanout, backup/restore, queue processing, and scale-out scenarios have run with production-like data.'
+      ? 'Smoke evidence captured for the configured inputs. A-grade scale claims require privacy-safe calibrated inputs for wallet sync, transaction history, WebSocket fanout, backup/restore, queue processing, and scale-out scenarios.'
       : 'Benchmark evidence captured for the configured scenarios. Compare p95/p99 and failure rates against the Phase 3 gates before promoting this run.'
   );
 
@@ -1044,7 +1044,7 @@ function getDatasetLabel() {
     return 'authenticated local provisioning incomplete; wallet-dependent scenarios skipped';
   }
 
-  return 'operator-provided authenticated dataset';
+  return 'operator-provided privacy-safe authenticated dataset';
 }
 
 function formatBodyForError(body) {
