@@ -33,12 +33,12 @@ This document records the checks that should protect the A-grade engineering goa
 
 These gates are required before the scalability/performance domain can move to A:
 
-- Local authenticated smoke coverage now has disposable Compose proof in `docs/plans/phase3-compose-benchmark-smoke-2026-04-13T02-12-27-332Z.md`; keep rerunning `npm run perf:phase3:compose-smoke` when Compose startup, seeded auth, benchmark provisioning, synthetic large-wallet history, WebSocket fanout, backup validation/restore, worker queue handler, worker scale-out, Electrum ownership, or Redis-backed backend scale-out paths change.
+- Local authenticated smoke coverage now has disposable Compose proof in `docs/plans/phase3-compose-benchmark-smoke-2026-04-13T02-21-10-302Z.md`; keep rerunning `npm run perf:phase3:compose-smoke` when Compose startup, seeded auth, benchmark provisioning, synthetic large-wallet history, WebSocket fanout, backup validation/restore, worker queue handler, worker scale-out, Electrum ownership, Redis-backed backend scale-out, or backend fanout paths change.
 - Production-like largest-known-wallet transaction history and wallet sync queue benchmarks with `SANCTUARY_TOKEN` and `SANCTUARY_WALLET_ID`; the local synthetic 1,000-transaction gate is regression smoke evidence, not representative operator evidence.
 - Representative backup restore only in a restore-safe environment, with `SANCTUARY_ADMIN_TOKEN`, `SANCTUARY_BACKUP_FILE`, and `SANCTUARY_ALLOW_RESTORE=true`; the disposable Compose smoke proves generated-backup restore, but not the largest expected support backup size.
-- Representative WebSocket fanout with larger client counts and production-like sync or transaction events; the local Compose smoke now proves the authenticated wallet-specific subscription path and a two-backend Redis bridge delivery path only.
+- Representative WebSocket fanout with larger client counts and production-like sync or transaction events; the local Compose smoke now proves the authenticated wallet-specific subscription path and multi-client two-backend Redis bridge delivery only.
 - Representative worker queue processing under production-like sync, notification, maintenance, autopilot, and intelligence job volume; the local Compose smoke now proves these handlers complete in a no-op/local fixture run and proves two-worker diagnostic processing/ownership only.
-- Representative backend scale-out load/capacity evidence; the local two-backend Redis WebSocket smoke is recorded in `docs/plans/phase3-compose-benchmark-smoke-2026-04-13T02-12-27-332Z.md`.
+- Representative backend scale-out load/capacity evidence; the local multi-client two-backend Redis WebSocket smoke is recorded in `docs/plans/phase3-compose-benchmark-smoke-2026-04-13T02-21-10-302Z.md`.
 - Representative worker scale-out queue-load and Electrum subscription-volume evidence before production worker replica support is broadened beyond the local smoke boundary.
 
 Record benchmark output under `docs/plans/` and link it from `docs/plans/codebase-health-assessment.md`.

@@ -23,6 +23,7 @@ const workerScaleOutJobDelayMs = Number(process.env.PHASE3_WORKER_SCALE_OUT_JOB_
 const composeWorkerConcurrency = process.env.PHASE3_COMPOSE_WORKER_CONCURRENCY || process.env.WORKER_CONCURRENCY || '1';
 const backendScaleOutReplicas = Number(process.env.PHASE3_BACKEND_SCALE_OUT_REPLICAS || '2');
 const backendScaleOutProofTimeoutMs = Number(process.env.PHASE3_BACKEND_SCALE_OUT_PROOF_TIMEOUT_MS || '60000');
+const backendScaleOutWsClients = readPositiveInt(process.env.PHASE3_BACKEND_SCALE_OUT_WS_CLIENTS, 8);
 const largeWalletTransactionCount = readPositiveInt(process.env.PHASE3_LARGE_WALLET_TRANSACTION_COUNT, 1000);
 const largeWalletHistoryRequests = readPositiveInt(process.env.PHASE3_LARGE_WALLET_HISTORY_REQUESTS, 20);
 const largeWalletHistoryConcurrency = readPositiveInt(process.env.PHASE3_LARGE_WALLET_HISTORY_CONCURRENCY, 4);
@@ -875,6 +876,8 @@ async function runBackendScaleOutProof() {
     '-e',
     `PHASE3_BACKEND_SCALE_OUT_PROOF_TIMEOUT_MS=${backendScaleOutProofTimeoutMs}`,
     '-e',
+    `PHASE3_BACKEND_SCALE_OUT_WS_CLIENTS=${backendScaleOutWsClients}`,
+    '-e',
     `SANCTUARY_BENCHMARK_USERNAME=${adminUsername}`,
     '-e',
     `SANCTUARY_BENCHMARK_PASSWORD=${adminPassword}`,
@@ -886,8 +889,19 @@ async function runBackendScaleOutProof() {
   ]);
 
   const proof = parseLastJsonLine(output);
-  if (!proof.event?.ok) {
-    throw new Error(`Backend scale-out proof did not receive a cross-instance sync event: ${JSON.stringify(proof.event || null)}`);
+  const fanoutEvents = proof.fanout?.events || [];
+  const failedFanoutEvents = fanoutEvents.filter((event) => !event.ok);
+  if (fanoutEvents.length !== proof.fanout?.clientCount || failedFanoutEvents.length > 0) {
+    throw new Error(`Backend scale-out proof did not receive the sync event on every WebSocket client: ${JSON.stringify(proof.fanout || null)}`);
+  }
+
+  const fanoutTargetNames = new Set(
+    (proof.websocket?.targets || [])
+      .map((target) => target.target?.name)
+      .filter(Boolean)
+  );
+  if (fanoutTargetNames.size < Math.min(2, backendScaleOutReplicas)) {
+    throw new Error(`Backend scale-out fanout proof did not cover multiple backend replicas: ${JSON.stringify([...fanoutTargetNames])}`);
   }
 
   return {
@@ -897,7 +911,15 @@ async function runBackendScaleOutProof() {
 }
 
 function summarizeBackendScaleOutProof(proof) {
-  return `sync event from ${proof.triggerTarget.name} reached WebSocket on ${proof.websocketTarget.name} via Redis in ${proof.event.durationMs}ms`;
+  const clientCount = proof.fanout?.clientCount || 0;
+  const successes = proof.fanout?.successes || 0;
+  const targetCount = new Set(
+    (proof.websocket?.targets || [])
+      .map((target) => target.target?.name)
+      .filter(Boolean)
+  ).size;
+  const p95 = proof.fanout?.latency?.p95Ms ?? 'n/a';
+  return `sync event from ${proof.triggerTarget.name} reached ${successes}/${clientCount} WebSockets across ${targetCount} backend replicas via Redis; p95=${p95}ms`;
 }
 
 function buildMarkdown(report) {
@@ -1042,11 +1064,15 @@ function buildMarkdown(report) {
   if (report.backendScaleOutProof?.event?.ok) {
     lines.push(
       `Backend replicas: ${report.backendScaleOutProof.backends?.length || 0}`,
-      `WebSocket target: ${report.backendScaleOutProof.websocketTarget.name} (${report.backendScaleOutProof.websocketTarget.ip})`,
+      report.backendScaleOutProof.fanout
+        ? `WebSocket clients: ${report.backendScaleOutProof.fanout.successes}/${report.backendScaleOutProof.fanout.clientCount} received the event across ${new Set((report.backendScaleOutProof.websocket?.targets || []).map((target) => target.target?.name).filter(Boolean)).size} backend replicas`
+        : `WebSocket target: ${report.backendScaleOutProof.websocketTarget.name} (${report.backendScaleOutProof.websocketTarget.ip})`,
       `Trigger target: ${report.backendScaleOutProof.triggerTarget.name} (${report.backendScaleOutProof.triggerTarget.ip})`,
       `Wallet: ${report.backendScaleOutProof.wallet.name} (${report.backendScaleOutProof.wallet.id})`,
       `Trigger status: ${report.backendScaleOutProof.trigger.status}`,
-      `Event: ${report.backendScaleOutProof.event.event} on ${report.backendScaleOutProof.event.channel} in ${report.backendScaleOutProof.event.durationMs} ms`,
+      report.backendScaleOutProof.fanout
+        ? `Fanout p95: ${report.backendScaleOutProof.fanout.latency.p95Ms} ms`
+        : `Event: ${report.backendScaleOutProof.event.event} on ${report.backendScaleOutProof.event.channel} in ${report.backendScaleOutProof.event.durationMs} ms`,
       ''
     );
   } else {
@@ -1066,7 +1092,7 @@ function buildMarkdown(report) {
     '- The large-wallet transaction-history proof seeds synthetic transaction rows into the disposable PostgreSQL database and measures the authenticated wallet transaction-history endpoint against a strict local p95 gate.',
     '- The worker queue proof enqueues and waits for BullMQ jobs across sync, confirmations, notifications, maintenance, autopilot, and intelligence handlers in the running worker container.',
     '- The worker scale-out proof runs two worker replicas, verifies diagnostic BullMQ jobs complete on both replicas, proves a shared diagnostic lock skips one concurrent duplicate, checks recurring jobs have one repeatable definition, and requires exactly one worker to own Electrum subscriptions.',
-    '- The backend scale-out proof runs two backend replicas, opens a wallet subscription WebSocket on one replica, triggers wallet sync on the other replica, and requires the Redis bridge to deliver the sync event across instances.',
+    '- The backend scale-out proof runs two backend replicas, opens multiple wallet subscription WebSockets across the replicas, triggers wallet sync on one replica, and requires the Redis bridge to deliver the sync event to every client.',
     '- The local generated wallets and two-replica topology are smoke evidence only; production-like largest-known-wallet, load-level fanout, and capacity evidence remain required before claiming Phase 3 complete.',
     '- The disposable wrapper enables backup restore by default because the PostgreSQL database is temporary; set `PHASE3_COMPOSE_ALLOW_RESTORE=false` only when explicitly testing non-destructive mode.'
   );
@@ -1636,6 +1662,7 @@ const timeoutMs = Number(process.env.PHASE3_BACKEND_SCALE_OUT_PROOF_TIMEOUT_MS |
 const username = process.env.SANCTUARY_BENCHMARK_USERNAME || 'admin';
 const password = process.env.SANCTUARY_BENCHMARK_PASSWORD || 'sanctuary';
 const backends = JSON.parse(process.env.PHASE3_BACKEND_SCALE_OUT_TARGETS || '[]');
+const fanoutClientCount = Math.max(backends.length * 2, Number(process.env.PHASE3_BACKEND_SCALE_OUT_WS_CLIENTS || '8'));
 const proofStartedAt = Date.now();
 const walletDescriptor = "wpkh([aabbccdd/84'/1'/0']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*)";
 
@@ -1665,6 +1692,30 @@ function parseJson(value) {
 
 function formatBody(value) {
   return typeof value === 'string' ? value.slice(0, 300) : JSON.stringify(value).slice(0, 300);
+}
+
+function summarizeDurations(values) {
+  if (values.length === 0) {
+    return { minMs: null, p50Ms: null, p95Ms: null, p99Ms: null, maxMs: null };
+  }
+  const sorted = values.slice().sort((a, b) => a - b);
+  return {
+    minMs: sorted[0],
+    p50Ms: percentile(sorted, 0.5),
+    p95Ms: percentile(sorted, 0.95),
+    p99Ms: percentile(sorted, 0.99),
+    maxMs: sorted[sorted.length - 1],
+  };
+}
+
+function percentile(sortedValues, percentileValue) {
+  if (sortedValues.length === 1) return sortedValues[0];
+  const index = (sortedValues.length - 1) * percentileValue;
+  const lower = Math.floor(index);
+  const upper = Math.ceil(index);
+  if (lower === upper) return sortedValues[lower];
+  const weight = index - lower;
+  return Math.round((sortedValues[lower] * (1 - weight) + sortedValues[upper] * weight) * 100) / 100;
 }
 
 async function apiJson(target, path, options = {}, expectedStatuses = [200]) {
@@ -1737,7 +1788,7 @@ async function createProofWallet(target, token) {
   };
 }
 
-function connectSubscribedWebSocket(target, token, walletId) {
+function connectSubscribedWebSocket(target, token, walletId, clientIndex) {
   return new Promise((resolve, reject) => {
     const channels = ['wallet:' + walletId, 'wallet:' + walletId + ':sync', 'sync:all'];
     const startedAt = Date.now();
@@ -1768,6 +1819,7 @@ function connectSubscribedWebSocket(target, token, walletId) {
       setupDone = true;
       clearTimeout(setupTimer);
       resolve({
+        clientIndex,
         target,
         channels,
         setupDurationMs: Date.now() - startedAt,
@@ -1796,6 +1848,8 @@ function connectSubscribedWebSocket(target, token, walletId) {
         const eventTimer = setTimeout(() => {
           eventWait = null;
           waitResolve({
+            clientIndex,
+            target,
             ok: false,
             durationMs: Date.now() - eventStartedAt,
             error: 'cross-instance sync event timeout',
@@ -1807,6 +1861,8 @@ function connectSubscribedWebSocket(target, token, walletId) {
             clearTimeout(eventTimer);
             eventWait = null;
             waitResolve({
+              clientIndex,
+              target,
               durationMs: Date.now() - eventStartedAt,
               ...record,
             });
@@ -1875,7 +1931,7 @@ function connectSubscribedWebSocket(target, token, walletId) {
 
     socket.addEventListener('error', () => {
       if (!setupDone) {
-        fail(new Error('websocket setup error on ' + target.name));
+        fail(new Error('websocket setup error on ' + target.name + ' for client ' + clientIndex));
       } else if (eventWait) {
         eventWait.resolve({ ok: false, error: 'websocket error before sync event' });
       }
@@ -1883,7 +1939,7 @@ function connectSubscribedWebSocket(target, token, walletId) {
 
     socket.addEventListener('close', () => {
       if (!setupDone) {
-        fail(new Error('websocket closed during setup on ' + target.name));
+        fail(new Error('websocket closed during setup on ' + target.name + ' for client ' + clientIndex));
       } else if (eventWait) {
         eventWait.resolve({ ok: false, error: 'websocket closed before sync event' });
       }
@@ -1893,16 +1949,22 @@ function connectSubscribedWebSocket(target, token, walletId) {
 
 const token = await login(triggerTarget);
 const wallet = await createProofWallet(triggerTarget, token);
-const socketProof = await connectSubscribedWebSocket(websocketTarget, token, wallet.id);
-const eventPromise = socketProof.waitForSyncEvent();
+const socketProofs = await Promise.all(
+  Array.from({ length: fanoutClientCount }, (_value, index) => (
+    connectSubscribedWebSocket(backends[index % backends.length], token, wallet.id, index)
+  ))
+);
+const eventPromises = socketProofs.map((socketProof) => socketProof.waitForSyncEvent());
 const triggerStartedAt = Date.now();
 const triggerResponse = await apiJson(triggerTarget, '/api/v1/sync/queue/' + encodeURIComponent(wallet.id), {
   method: 'POST',
   token,
   body: { priority: 'high' },
 });
-const event = await eventPromise;
-socketProof.close();
+const events = await Promise.all(eventPromises);
+socketProofs.forEach((socketProof) => socketProof.close());
+const successfulEvents = events.filter((eventRecord) => eventRecord.ok);
+const failedEvents = events.filter((eventRecord) => !eventRecord.ok);
 
 console.log(JSON.stringify({
   proofId,
@@ -1912,9 +1974,14 @@ console.log(JSON.stringify({
   triggerTarget,
   wallet,
   websocket: {
-    url: backendWsUrl(websocketTarget),
-    setupDurationMs: socketProof.setupDurationMs,
-    channels: socketProof.channels,
+    clientCount: socketProofs.length,
+    targets: socketProofs.map((socketProof) => ({
+      clientIndex: socketProof.clientIndex,
+      target: socketProof.target,
+      url: backendWsUrl(socketProof.target),
+      setupDurationMs: socketProof.setupDurationMs,
+      channels: socketProof.channels,
+    })),
   },
   trigger: {
     url: backendHttpUrl(triggerTarget, '/api/v1/sync/queue/' + encodeURIComponent(wallet.id)),
@@ -1922,7 +1989,14 @@ console.log(JSON.stringify({
     durationMs: Date.now() - triggerStartedAt,
     body: triggerResponse.body,
   },
-  event,
+  fanout: {
+    clientCount: socketProofs.length,
+    successes: successfulEvents.length,
+    errors: failedEvents.length,
+    latency: summarizeDurations(events.map((eventRecord) => eventRecord.durationMs)),
+    events,
+  },
+  event: events[0] || null,
 }));
 `;
 }
