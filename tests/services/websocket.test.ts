@@ -309,6 +309,7 @@ describe('WebSocketClient', () => {
     it('should send subscribe message when connected', () => {
       client.connect();
       getLastWs().simulateOpen();
+      getLastWs().simulateMessage({ type: 'connected', data: {} });
 
       client.subscribe('blocks');
 
@@ -321,6 +322,7 @@ describe('WebSocketClient', () => {
     it('should not send duplicate subscription', () => {
       client.connect();
       getLastWs().simulateOpen();
+      getLastWs().simulateMessage({ type: 'connected', data: {} });
 
       client.subscribe('blocks');
       const countAfterFirst = getLastWs().sentMessages.length;
@@ -344,6 +346,7 @@ describe('WebSocketClient', () => {
     it('should send unsubscribe message', () => {
       client.connect();
       getLastWs().simulateOpen();
+      getLastWs().simulateMessage({ type: 'connected', data: {} });
 
       client.subscribe('blocks');
       client.unsubscribe('blocks');
@@ -357,6 +360,7 @@ describe('WebSocketClient', () => {
     it('should not unsubscribe from unsubscribed channel', () => {
       client.connect();
       getLastWs().simulateOpen();
+      getLastWs().simulateMessage({ type: 'connected', data: {} });
 
       const countBefore = getLastWs().sentMessages.length;
       client.unsubscribe('not-subscribed');
@@ -384,6 +388,7 @@ describe('WebSocketClient', () => {
     it('should batch subscribe to multiple channels', () => {
       client.connect();
       getLastWs().simulateOpen();
+      getLastWs().simulateMessage({ type: 'connected', data: {} });
 
       client.subscribeBatch(['blocks', 'wallet:1', 'wallet:2']);
 
@@ -396,6 +401,7 @@ describe('WebSocketClient', () => {
     it('should filter out already-subscribed channels in batch', () => {
       client.connect();
       getLastWs().simulateOpen();
+      getLastWs().simulateMessage({ type: 'connected', data: {} });
 
       client.subscribe('blocks');
       client.subscribeBatch(['blocks', 'wallet:1']);
@@ -408,6 +414,7 @@ describe('WebSocketClient', () => {
     it('should batch unsubscribe', () => {
       client.connect();
       getLastWs().simulateOpen();
+      getLastWs().simulateMessage({ type: 'connected', data: {} });
 
       client.subscribeBatch(['a', 'b', 'c']);
       client.unsubscribeBatch(['a', 'c']);
@@ -421,6 +428,7 @@ describe('WebSocketClient', () => {
     it('should skip empty batch operations', () => {
       client.connect();
       getLastWs().simulateOpen();
+      getLastWs().simulateMessage({ type: 'connected', data: {} });
 
       const countBefore = getLastWs().sentMessages.length;
       client.subscribeBatch([]);

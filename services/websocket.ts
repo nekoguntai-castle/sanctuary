@@ -43,6 +43,16 @@ export class WebSocketClient {
   private reconnectTimer: NodeJS.Timeout | null = null;
   private isConnecting: boolean = false;
   private shouldReconnect: boolean = true;
+  // True only after the server has sent its 'connected' welcome message.
+  // Phase 4 (ADR 0001/0002): the server runs verifyWebSocketAccessToken
+  // asynchronously inside authenticateOnUpgrade, and the message handler
+  // is only attached at the END of completeClientRegistration AFTER auth
+  // resolves. The 'connected' welcome is sent at that point, so receipt
+  // of the welcome is the ONLY safe signal that subscribe/unsubscribe
+  // messages will actually be processed. Sending ANY message between
+  // ws.readyState === OPEN and 'connected' arriving races the server.
+  // All public mutator methods gate on this flag instead of readyState.
+  private isServerReady: boolean = false;
 
   private subscriptions: Set<string> = new Set();
   private eventListeners: Map<string, Set<EventCallback>> = new Map();
@@ -63,6 +73,9 @@ export class WebSocketClient {
 
     this.isConnecting = true;
     this.token = token || null;
+    // Reset the server-ready flag for this new connection. It will flip
+    // back to true only when the 'connected' welcome arrives.
+    this.isServerReady = false;
 
     // Connect without token in URL (security: avoid token exposure in logs/history)
     log.debug('Connecting', { url: this.url });
@@ -125,6 +138,7 @@ export class WebSocketClient {
       this.ws.onclose = (event) => {
         log.debug('Closed', { code: event.code, reason: event.reason });
         this.isConnecting = false;
+        this.isServerReady = false;
         this.ws = null;
 
         // Notify connection listeners
@@ -214,12 +228,14 @@ export class WebSocketClient {
         // The server sends this AFTER it has attached its message handler
         // and (if the upgrade carried a sanctuary_access cookie) AFTER
         // verifyWebSocketAccessToken has resolved. This is the safe
-        // moment to resubscribe — earlier subscriptions race the
-        // server's async cookie auth (Phase 3-4) and would be dropped.
-        // Resubscribe in BOTH the authenticated (cookie or auth-message)
-        // and unauthenticated (public-only) cases; subscriptions to
-        // protected channels are filtered server-side based on userId.
+        // moment to flip isServerReady to true and resubscribe — earlier
+        // sends race the server's async cookie auth (Phase 3-4) and
+        // would be dropped. Resubscribe in BOTH the authenticated
+        // (cookie or auth-message) and unauthenticated (public-only)
+        // cases; subscriptions to protected channels are filtered
+        // server-side based on userId.
         log.debug('Connection confirmed', { authenticated: data?.authenticated });
+        this.isServerReady = true;
         this.resubscribe();
         break;
 
@@ -326,7 +342,13 @@ export class WebSocketClient {
 
     this.subscriptions.add(channel);
 
-    if (this.ws?.readyState === WebSocket.OPEN) {
+    // Gate on isServerReady (NOT readyState === OPEN). The 'connected'
+    // welcome is the single authoritative signal that the server has
+    // attached its message handler and finished cookie auth. Sending
+    // between onopen and the welcome races the server (Phase 4 fix).
+    // While not ready, the channel is queued in this.subscriptions
+    // and will be sent by resubscribe() when the welcome arrives.
+    if (this.isServerReady) {
       this.send({
         type: 'subscribe',
         data: { channel },
@@ -344,12 +366,14 @@ export class WebSocketClient {
 
     this.subscriptions.delete(channel);
 
-    if (this.ws?.readyState === WebSocket.OPEN) {
+    if (this.isServerReady) {
       this.send({
         type: 'unsubscribe',
         data: { channel },
       });
     }
+    // While not ready, removing from this.subscriptions is enough —
+    // the next resubscribe() on welcome will not include this channel.
   }
 
   /**
@@ -364,7 +388,7 @@ export class WebSocketClient {
       this.subscriptions.add(channel);
     }
 
-    if (this.ws?.readyState === WebSocket.OPEN) {
+    if (this.isServerReady) {
       this.send({
         type: 'subscribe_batch',
         data: { channels: newChannels },
@@ -383,7 +407,7 @@ export class WebSocketClient {
       this.subscriptions.delete(channel);
     }
 
-    if (this.ws?.readyState === WebSocket.OPEN) {
+    if (this.isServerReady) {
       this.send({
         type: 'unsubscribe_batch',
         data: { channels: existingChannels },
