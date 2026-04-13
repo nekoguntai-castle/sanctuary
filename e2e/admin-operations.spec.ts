@@ -355,7 +355,7 @@ test.describe('Admin operations', () => {
     await page.getByRole('button', { name: /Create User/i }).click();
 
     // Modal should close and new user should appear
-    await expect(page.getByText('newuser')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('newuser', { exact: true })).toBeVisible({ timeout: 5000 });
 
     expect(unhandledRequests).toEqual([]);
   });
