@@ -36,6 +36,7 @@ import { createHmac } from 'crypto';
 import { NextFunction, Request, Response } from 'express';
 import { doubleCsrf } from 'csrf-csrf';
 import config from '../config';
+import { extractTokenFromHeader } from '../utils/jwt';
 
 export const SANCTUARY_ACCESS_COOKIE_NAME = 'sanctuary_access';
 export const SANCTUARY_CSRF_COOKIE_NAME = 'sanctuary_csrf';
@@ -84,10 +85,31 @@ function getCsrfInstance(): CsrfInstance {
       return typeof header === 'string' ? header : undefined;
     },
     skipCsrfProtection: (req: Request) => {
-      // Only enforce CSRF when the request authenticated via the
-      // sanctuary_access cookie. Authorization-header (mobile/gateway)
-      // callers are exempt because cross-site requests cannot attach a
-      // custom Authorization header without explicit cross-origin opt-in.
+      // The skip rule must mirror the auth middleware's source-selection
+      // precedence (header wins over cookie); otherwise we break the
+      // browser bearer-header rollback path during the Phase 2-6 cookie
+      // migration window, where a browser client may legitimately send
+      // BOTH an Authorization header (legacy persisted token) AND have
+      // the cookie auto-attached by the browser. The auth middleware
+      // would use the header — and would expect no CSRF token because the
+      // request never authenticated via the cookie — but a naive
+      // "cookie present → enforce CSRF" rule would 403 it.
+      //
+      // 1. Request will authenticate via the Authorization header
+      //    (mobile/gateway path, OR browser rollback path) → skip CSRF.
+      // 2. No access cookie at all → skip CSRF (the request will fail at
+      //    the auth middleware with 401, or hit a public endpoint).
+      // 3. Otherwise the request will authenticate via the cookie →
+      //    enforce CSRF.
+      //
+      // Uses extractTokenFromHeader (not just !!authorization) so that a
+      // malformed Authorization header like "Bearer " or "Basic ..." is
+      // treated as "no header present" and the cookie path's CSRF
+      // enforcement still applies. This matches extractAccessToken in
+      // middleware/auth.ts exactly.
+      if (extractTokenFromHeader(req.headers.authorization)) {
+        return true;
+      }
       return !req.cookies?.[SANCTUARY_ACCESS_COOKIE_NAME];
     },
   });

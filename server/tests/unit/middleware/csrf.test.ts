@@ -141,6 +141,72 @@ describe('csrf middleware (ADR 0001 / 0002 Phase 1)', () => {
     });
   });
 
+  describe('skipCsrfProtection: Authorization header takes precedence (browser bearer-header rollback path)', () => {
+    // Phase 2-6 ships the cookie + the JSON token field in parallel for one
+    // release as a rollback safety net. During that window a browser client
+    // may legitimately send BOTH an Authorization: Bearer header (legacy
+    // persisted token) AND have the sanctuary_access cookie auto-attached
+    // by the browser. The auth middleware uses the header (header wins),
+    // and the CSRF middleware must mirror that precedence — otherwise it
+    // 403s a request that the rest of the stack would happily authenticate.
+
+    it('allows a state-changing POST when Authorization header AND cookie are present, even with no CSRF token (rollback path)', async () => {
+      const { cookieJar } = await issueTokens(app);
+      await request(app)
+        .post('/test/protected')
+        .set('Cookie', cookieJar)
+        .set('Authorization', 'Bearer some-legacy-bearer-token')
+        // No X-CSRF-Token — the legacy bearer-header client doesn't have one.
+        .expect(200, { ok: true, method: 'POST' });
+    });
+
+    it('allows PUT/PATCH/DELETE on the rollback path (header + cookie + no CSRF token)', async () => {
+      const { cookieJar } = await issueTokens(app);
+      await request(app)
+        .put('/test/protected')
+        .set('Cookie', cookieJar)
+        .set('Authorization', 'Bearer legacy-token')
+        .expect(200);
+      await request(app)
+        .patch('/test/protected')
+        .set('Cookie', cookieJar)
+        .set('Authorization', 'Bearer legacy-token')
+        .expect(200);
+      await request(app)
+        .delete('/test/protected')
+        .set('Cookie', cookieJar)
+        .set('Authorization', 'Bearer legacy-token')
+        .expect(200);
+    });
+
+    it('still ENFORCES CSRF when Authorization header is malformed and cookie is present (auth would fall back to cookie)', async () => {
+      // The auth middleware uses extractTokenFromHeader, which returns null
+      // for "Basic ..." or "Bearer " (no token). Auth then falls through to
+      // the cookie. CSRF must enforce in that case because the actual auth
+      // path used is the cookie. The skip rule matches extractTokenFromHeader
+      // exactly, not just !!req.headers.authorization, so this works.
+      const { cookieJar } = await issueTokens(app);
+      const res = await request(app)
+        .post('/test/protected')
+        .set('Cookie', cookieJar)
+        .set('Authorization', 'Basic dXNlcjpwYXNzd29yZA==')
+        // No X-CSRF-Token. The auth middleware will use the cookie because
+        // extractTokenFromHeader returns null on the Basic header.
+        .expect(403);
+      expect(res.body.error).toBe('CsrfError');
+    });
+
+    it('still ENFORCES CSRF when Authorization header is empty Bearer and cookie is present', async () => {
+      const { cookieJar } = await issueTokens(app);
+      const res = await request(app)
+        .post('/test/protected')
+        .set('Cookie', cookieJar)
+        .set('Authorization', 'Bearer ')
+        .expect(403);
+      expect(res.body.error).toBe('CsrfError');
+    });
+  });
+
   describe('exempt methods when the access cookie IS present', () => {
     it('allows a GET when the access cookie is present but no CSRF header', async () => {
       const { cookieJar } = await issueTokens(app);
