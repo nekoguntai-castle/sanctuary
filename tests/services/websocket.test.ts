@@ -270,6 +270,37 @@ describe('WebSocketClient', () => {
       vi.advanceTimersByTime(60000);
       expect(mockWsInstances).toHaveLength(1);
     });
+
+    it('should reset isServerReady synchronously so post-disconnect mutators do not hit a null socket', () => {
+      // Regression for Codex stop-hook finding: disconnect() cleared
+      // `this.ws` but relied on the async onclose handler to reset
+      // isServerReady. Between ws.close() and the async onclose, a
+      // mutator called on the client would see isServerReady === true
+      // AND this.ws === null, and `send()` would crash on
+      // `this.ws!.send()`.
+      //
+      // Our MockWebSocket dispatches onclose synchronously from close(),
+      // so to prove the synchronous reset happens BEFORE ws.close() we
+      // stub close() to a no-op and verify isServerReady is still false.
+      client.connect();
+      const ws = getLastWs();
+      ws.simulateOpen();
+      ws.simulateMessage({ type: 'connected', data: {} });
+      expect(client.isConnected()).toBe(true);
+
+      // Replace close with a no-op so onclose will NOT fire — this
+      // models the browser's async close-event delivery.
+      ws.close = () => {};
+
+      client.disconnect();
+
+      // Post-disconnect subscribe MUST NOT throw (previously would
+      // crash inside send() on `this.ws!.send(...)`).
+      expect(() => client.subscribe('blocks')).not.toThrow();
+      expect(() => client.unsubscribe('blocks')).not.toThrow();
+      expect(() => client.subscribeBatch(['a', 'b'])).not.toThrow();
+      expect(() => client.unsubscribeBatch(['a'])).not.toThrow();
+    });
   });
 
   // ========================================

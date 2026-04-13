@@ -183,6 +183,14 @@ export class WebSocketClient {
       this.reconnectTimer = null;
     }
 
+    // Reset the server-ready flag synchronously with clearing `this.ws`.
+    // onclose also resets it, but browsers deliver close events async,
+    // so between `ws.close()` returning and onclose firing there is a
+    // window where `this.ws === null` AND `this.isServerReady === true`.
+    // Any mutator call in that window would hit `this.ws!.send()` on
+    // null. Clearing the flag here closes that window.
+    this.isServerReady = false;
+
     if (this.ws) {
       this.ws.close(1000, 'Client disconnect');
       this.ws = null;
