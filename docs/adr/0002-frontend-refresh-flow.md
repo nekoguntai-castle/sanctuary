@@ -277,3 +277,48 @@ These are deliberately left open. They should be answered before implementation 
 3. **WebSocket reconnect on refresh.** The cookie rotation rotates the access token, but existing WebSocket connections were authenticated with the *previous* token. In practice the previous token is still valid in `server/src/utils/jwt.ts` until its original `exp` claim, so the WS does not need to reconnect immediately. Confirm this is true in `server/src/utils/jwt.ts` and document the assumption. If not, the client must reconnect WS after refresh.
 4. **Logout-all UI hook.** The backend already has `POST /api/v1/auth/logout-all` (`server/src/api/auth/tokens.ts:131-160`). This ADR does not add a UI for it but the implementation should make it trivial to wire up later (the BroadcastChannel `logout-broadcast` path is already the right primitive).
 5. **Page Visibility API.** Should we *defer* scheduled refresh while the tab is hidden and run it on visibility change instead? This is a small UX improvement (no refresh while the user is not looking) but it interacts with WebSocket reconnect timing. Defer this question to implementation time.
+
+## Resolution
+
+**Status: implemented as of 2026-04-13** alongside ADR 0001 in a single coherent Phase 4. See ADR 0001's Resolution section for the full commit list; this section captures the refresh-flow-specific surface.
+
+**Implementation:**
+- `src/api/refresh.ts` — exports `refreshAccessToken()`. Within a tab, it is single-flight via a module-scoped in-flight `Promise` reference; concurrent callers share the same promise so the lock acquisition itself is not duplicated.
+- Cross-tab mutual exclusion: `navigator.locks.request('sanctuary-auth-refresh', { mode: 'exclusive' }, async () => { ... })`. Only one tab in the same origin holds the lock at a time.
+- **Freshness check inside the lock:** if `accessExpiresAtMs > Date.now() + REFRESH_LEAD_TIME_MS` (60,000ms), another tab already refreshed during the wait — return without making a network call. Otherwise, send `POST /api/v1/auth/refresh` with `credentials: 'include'` and the CSRF header, parse `X-Access-Expires-At`, update the in-memory expiry, broadcast `refresh-complete`, reschedule the local timer.
+- **BroadcastChannel `sanctuary-auth`** is used for state propagation only: `refresh-complete` (new expiry from another tab) and `logout-broadcast` (terminal failure or explicit logout). There is **no** `refresh-start` event — the Web Lock is the only start signal.
+- `RefreshFailedError` vs `RefreshTransientError` distinction: terminal auth failure (401 on `/auth/refresh`, revoked refresh token) triggers `logout-broadcast` and rejects with `RefreshFailedError`; server errors (500, network) reject with `RefreshTransientError` so the caller can retry without evicting credentials.
+- Proactive refresh: every successful auth response parses `X-Access-Expires-At` and schedules `setTimeout` for `expiresAt - REFRESH_LEAD_TIME_MS`. Previous timers are cleared before scheduling a new one.
+- Reactive refresh: `src/api/client.ts:request` intercepts 401s, awaits `refreshAccessToken()`, and replays the request once. Exempt list is only the four credential-presentation endpoints (`/auth/login`, `/auth/register`, `/auth/2fa/verify`, `/auth/refresh`). The retry is bounded to one attempt; a second 401 surfaces as a normal error and triggers the logout flow.
+- `contexts/UserContext.tsx` — boot calls `/auth/me` unconditionally and hydrates from its response (refresh interceptor recovers valid-session on 401 transparently). Logout is async, calls the backend revocation, then calls `triggerLogout()` which fires `logout-broadcast`.
+
+**Test scaffolding (`tests/setup.ts`):**
+- `navigator.locks` mock: Map of held lock names with FIFO waiters per name, supports `mode: 'exclusive'`, supports multi-instance "tab" simulation by sharing the Map across module imports. Installed via `Object.defineProperty(globalThis.navigator, 'locks', ...)` — **do not replace the whole `navigator` object**, react-dom reads `navigator.userAgent` during render and will crash.
+- `BroadcastChannel` mock: multi-instance same-channel pub/sub, supports the `'message'` event.
+
+**Coverage (`tests/api/refresh.test.ts`, 27 tests):**
+- Within-tab single-flight: two concurrent `refreshAccessToken()` calls share one promise and acquire the lock exactly once.
+- Proactive refresh with fake timers: advancing past `expiresAt - REFRESH_LEAD_TIME_MS` triggers exactly one refresh; the new expiry is honored; the timer reschedules itself.
+- Reactive refresh: 401 → refresh → retry success surfaces normally; retry failure triggers logout.
+- Non-401 (500, network) failures do not trigger a refresh attempt.
+- Cross-tab Web Lock serialization: two tabs contending for the same lock; exactly one `POST /auth/refresh` is sent when the broadcast arrives in time (freshness short-circuits the second tab).
+- Cross-tab race with stale broadcast: two tabs contending; the second tab still sends a refresh but uses the rotated cookie and does not log out.
+- BroadcastChannel state propagation: `refresh-complete` updates local state; `logout-broadcast` fires logout.
+- Malformed BroadcastChannel messages are ignored.
+- Web Locks fallback: environments without `navigator.locks` take the no-lock code path without crashing.
+- Terminal refresh failure releases the lock, sends `logout-broadcast`, rejects with `RefreshFailedError`.
+
+**Codex stop-time review caught and fixed the following bugs before merge (see ADR 0001 Resolution for the full list of race / state-eviction bugs; this section only covers the refresh-flow-specific ones):**
+- The original ADR draft recommended Option C (BroadcastChannel-only coordination). Codex caught that BroadcastChannel is asynchronous pub/sub and does not actually provide mutual exclusion — tab A and tab B can both decide to refresh at the same instant before the broadcast is delivered to tab B's event loop. The ADR was revised to Option E (Web Locks API for mutual exclusion + BroadcastChannel for state propagation only) and the Option C section was marked REJECTED in place so the reasoning history stays visible.
+- `vi.runOnlyPendingTimersAsync()` was running ALL queued timers (including the scheduled-refresh timer) and racing the test assertions; switched to `vi.advanceTimersByTimeAsync(ms)` which respects deadlines.
+- The freshness short-circuit test was seeding `accessExpiresAtMs` via a helper that also re-scheduled the timer, which expired state before fetch could run; added `__seedAccessExpiresAtMsForTests()` that bypasses scheduling.
+- `rotateRefreshToken` service-failure (500) path was initially clearing cookies alongside terminal failures; removed — at that point the refresh token has already been verified (JWT signature OK, not revoked, user exists), so a null rotation result is a transient server error, not a terminal auth failure. See `tasks/lessons.md` "Don't evict credentials on server-side failures."
+
+**Answers to the ADR's own open questions (deferred to implementation time):**
+1. **Refresh lead time:** 60,000ms (`REFRESH_LEAD_TIME_MS`) — default in `src/api/refresh.ts`. Sufficient for current deployment topology.
+2. **Refresh token TTL:** 7 days, matching the existing implicit value in `server/src/api/auth/tokens.ts` rotation logic. Configurable via existing JWT/session config.
+3. **WebSocket reconnect on refresh:** not required. `server/src/utils/jwt.ts` honors the original `exp` claim of an access token until it naturally expires, so an existing WebSocket authenticated with the previous access token survives the rotation.
+4. **Logout-all UI hook:** not wired in Phase 4. The `logout-broadcast` BroadcastChannel path is ready for it whenever a UI is added.
+5. **Page Visibility API deferred-refresh:** not implemented. Continues to be deferred — the simpler always-schedule behavior is correct and the added complexity is not justified.
+
+**Carry-over to Phase 6:** remove the JSON `token`/`refreshToken` fields from browser-mounted auth response bodies one release after Phase 2. The refresh flow does not depend on those fields — they are only kept as a rollback safety net.

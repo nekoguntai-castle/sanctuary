@@ -296,6 +296,63 @@ Mitigation:
 - Preserve the failing backup file and backend logs for diagnosis.
 - Run a restore drill against a non-production database before retrying risky production restore paths.
 
+## Browser Auth Cookies (ADR 0001 / ADR 0002)
+
+Since Phase 4 landed on 2026-04-13, browser authentication uses HttpOnly cookies with a double-submit CSRF token and a Web Locks-coordinated refresh flow. This section documents the operational requirements and failure modes.
+
+### TLS termination requirement
+
+Browser auth cookies are set with `Secure`, which means the browser will only send them over HTTPS. Any reverse-proxy / Compose deployment **must** terminate TLS in front of the backend or users will be unable to log in on that origin. The existing Nginx config in this repo terminates TLS, so this is a configuration check, not a blocker — but if you deploy the backend directly on HTTP the login response will include Set-Cookie headers that the browser silently drops, and the user will see an apparent "login succeeded but the next request is 401" pattern.
+
+**Triage:** if users report "I log in and then every page reload kicks me back to login":
+- Confirm the app is served over HTTPS end-to-end.
+- In browser devtools → Application → Cookies, confirm `sanctuary_access`, `sanctuary_refresh`, and `sanctuary_csrf` are present after login. If they are missing or marked "not set" in the Network panel's Set-Cookie column, TLS termination is misconfigured or the browser rejected the cookies (e.g., `SameSite=Strict` blocked a cross-site navigation).
+- Confirm the Nginx `client_max_body_size` on `/api/v1/auth/refresh` is not 0 — a 413 from the proxy at refresh time looks like a silent logout.
+
+### Cookie names and scopes
+
+- `sanctuary_access` — HttpOnly, Secure, SameSite=Strict, Path=/. Access token; script cannot read it.
+- `sanctuary_refresh` — HttpOnly, Secure, SameSite=Strict, **Path=/api/v1/auth/refresh**. Refresh token; the browser never sends it to any other endpoint, which limits exposure to the refresh route only.
+- `sanctuary_csrf` — Secure, SameSite=Strict, **NOT HttpOnly**. The frontend reads it from `document.cookie` and echoes it as `X-CSRF-Token` on POST/PUT/PATCH/DELETE when authenticated via cookie.
+
+### CSRF token rotation behavior
+
+`csrf-csrf` uses a per-session double-submit token derived from the sanctuary JWT secret material. The CSRF cookie rotates on every auth response (login, 2FA verify, refresh). A stale tab that missed a refresh broadcast may briefly hold an old CSRF token; the 401 interceptor will refresh and retry the request once, which also surfaces the rotated cookie to that tab. If a request persistently fails CSRF validation with `EBADCSRFTOKEN` in backend logs after Phase 4, the common causes are:
+- The frontend read the cookie before the rotation response was processed (`sanctuary_csrf` is not HttpOnly so it is readable — confirm `document.cookie` reflects the new value).
+- A non-same-origin request tried to attach credentials; SameSite=Strict blocked the cookie and the request authenticated via no path at all, but hit the CSRF-exempt check incorrectly.
+- The JWT secret material was rotated without restarting the backend, invalidating all in-flight CSRF tokens.
+
+### Refresh token TTL and rotation
+
+- **TTL:** 7 days. Matches the existing implicit value in `server/src/api/auth/tokens.ts` rotation logic. Configurable via the existing JWT/session config.
+- **Rotation:** on every successful `POST /api/v1/auth/refresh`, the server rotates the refresh token and issues a new `sanctuary_refresh` cookie. The previous token is marked used.
+- **Rotation failure detection:** if the same refresh token is presented twice, the second presentation returns 401 (revoked). This is the rotation security primitive — do not weaken it.
+
+**Triage:** if a user reports "I was logged out after a short time":
+- Check backend logs for `RefreshFailedError` and the user's token audience — a genuine refresh-token expiry at 7 days is the most common cause.
+- If the refresh-route returns 401 with no corresponding server-side revocation, check Alertmanager for any event suggesting token store corruption, and check `server/src/api/auth/tokens.ts:rotateRefreshToken` return values. A `rotationResult === null` is treated as a **transient** 500 server error and the client's credentials are NOT cleared — the user can retry. Only terminal failures (JWT signature invalid, user not found, token revoked) clear the cookies.
+
+### Cross-tab refresh coordination (Web Locks + BroadcastChannel)
+
+Phase 4 introduced cross-tab coordination for the refresh flow. Two primitives are involved:
+
+- **`navigator.locks.request('sanctuary-auth-refresh', { mode: 'exclusive' }, ...)`** — the Web Locks API provides real mutual exclusion across same-origin tabs. Only one tab holds the lock at a time; other tabs that try to acquire it queue. Inside the lock callback the holding tab re-checks `accessExpiresAtMs` against `Date.now() + REFRESH_LEAD_TIME_MS` (60s) — if another tab already refreshed, the check short-circuits without a network call.
+- **`BroadcastChannel('sanctuary-auth')`** — used **only** for state propagation: `refresh-complete` (carries the new expiry so other tabs update their scheduled timers) and `logout-broadcast` (terminal failure or explicit logout; triggers the local logout flow). There is intentionally no `refresh-start` event; the Web Lock is the only start signal. If a future change introduces `refresh-start` or treats a BroadcastChannel message as a coordination primitive, the race window documented in ADR 0002 Option C returns.
+
+**Triage: "all my tabs logged out at once":**
+- Expected if any tab emitted `logout-broadcast`. Check that tab's console/network for the originating `RefreshFailedError` or an explicit user logout. The message propagates to all same-origin tabs and is the correct behavior.
+- Check that the user's refresh token was not revoked administratively (look for `POST /auth/logout-all` in backend audit logs).
+
+**Triage: "one tab is logged in, another is looping on 401":**
+- A previous buggy revision of the ADR used BroadcastChannel as a coordination primitive and could race the refresh; the current implementation uses Web Locks and should not exhibit this. If you see it on current main, the `navigator.locks` polyfill (tests) or browser Web Locks support may be disabled. Check `navigator.locks` in devtools console — if it is undefined, the deployment's browser is below the supported floor (Chrome 69+, Firefox 96+, Safari 15.4+, Edge 79+).
+
+**Triage: "a user's session is dying on every page reload" — the Phase 4 regression:**
+- The 401 interceptor must refresh-and-retry for `/auth/me`, `/auth/logout`, and `/auth/logout-all`. If those endpoints are in the exempt list, a user with a valid refresh cookie but expired access token will be force-logged-out on every reload. See ADR 0001 Resolution for the narrowed exempt list: only the four credential-presentation endpoints (`/auth/login`, `/auth/register`, `/auth/2fa/verify`, `/auth/refresh`) are exempt.
+
+### Release gate
+
+See `docs/RELEASE_GATES.md` "Browser auth cookies and refresh flow" — the cookie/CSRF/refresh-flow test suite must run on any PR that touches `src/api/client.ts`, `src/api/refresh.ts`, `contexts/UserContext.tsx`, `services/websocket.ts`, `server/src/middleware/auth.ts`, `server/src/middleware/csrf.ts`, `server/src/api/auth/*`, or `server/src/websocket/auth.ts`.
+
 ## Gateway Audit Failures
 
 Signals:

@@ -174,25 +174,25 @@ This is the biggest phase. It implements both ADR 0001 (cookies replace storage)
 - Forcing a 401 (e.g., by waiting past expiry without scheduled refresh) triggers a transparent refresh + retry.
 - Two open tabs do not race the refresh; the second tab uses the rotated cookie without making its own refresh call.
 
-## Phase 5 — Documentation (PR 5)
+## Phase 5 — Documentation (PR 5) — COMPLETE 2026-04-13
 
 Goal: the new model is captured in operations and release docs so the next operator does not have to read both ADRs to understand the system.
 
-- [ ] `docs/OPERATIONS_RUNBOOKS.md`:
-  - [ ] Add the cookie + Secure + TLS termination requirement.
-  - [ ] Document the CSRF token rotation behavior.
-  - [ ] Document the refresh token TTL and rotation.
-  - [ ] Document the BroadcastChannel cross-tab coordination so an operator debugging "why did all my tabs log out at once" knows where to look.
-- [ ] `docs/RELEASE_GATES.md` — add the cookie/CSRF/refresh tests to the security release gate.
-- [ ] `docs/plans/codebase-health-assessment.md`:
-  - [ ] Move the Security row from B to A on browser token handling.
-  - [ ] Remove the HttpOnly-cookie ADR row from the outstanding items table (resolved).
-  - [ ] Add a new entry noting that the missing frontend refresh flow is also resolved (this was an undocumented gap that became visible during the ADR work).
-- [ ] `docs/adr/0001-browser-auth-token-storage.md` — add a "Resolution" section noting the merged PRs.
-- [ ] `docs/adr/0002-frontend-refresh-flow.md` — add a "Resolution" section noting the merged PRs.
-- [ ] OpenAPI: confirm `cookieAuth` and `csrfToken` security schemes are referenced from the relevant route schemas (carry-over from Phase 2).
+- [x] `docs/OPERATIONS_RUNBOOKS.md`:
+  - [x] Add the cookie + Secure + TLS termination requirement.
+  - [x] Document the CSRF token rotation behavior.
+  - [x] Document the refresh token TTL and rotation.
+  - [x] Document the BroadcastChannel cross-tab coordination so an operator debugging "why did all my tabs log out at once" knows where to look.
+- [x] `docs/RELEASE_GATES.md` — cookie/CSRF/refresh test suite added to the Browser auth and CSP gate; Phase 4 Browser Auth Gate section rewritten from "remaining architecture decision" to "resolved 2026-04-13".
+- [x] `docs/plans/codebase-health-assessment.md`:
+  - [x] Security row moved from B to A- (partial schema coverage + accepted dependency findings keep it from a clean A).
+  - [x] HttpOnly-cookie ADR row removed from outstanding items table.
+  - [x] Ninth Phase 4 slice section records the ADR 0001/0002 implementation and the undocumented refresh-flow gap closure.
+- [x] `docs/adr/0001-browser-auth-token-storage.md` — Resolution section added with full commit history, Codex-caught bug list, and Security grade movement.
+- [x] `docs/adr/0002-frontend-refresh-flow.md` — Resolution section added with implementation summary, test coverage list, Codex-caught bugs specific to the refresh flow, and answers to all 5 "open questions."
+- [x] OpenAPI: `cookieAuth` and `csrfToken` security schemes confirmed present in `server/src/api/openapi/spec.ts:118-140` (Phase 2 carry-over verified).
 
-**Exit criteria:** docs reviewed, both ADR resolution sections filled in, codebase health assessment grade movement recorded.
+**Exit criteria:** ✓ docs reviewed, both ADR resolution sections filled in, codebase health assessment grade movement recorded.
 
 ## Phase 6 — Deprecation removal (PR 6, one release after Phase 2)
 

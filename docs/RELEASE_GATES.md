@@ -23,7 +23,7 @@ This document records the checks that should protect the A-grade engineering goa
 | Gateway build | TypeScript build | `cd gateway && npm run build` | Required |
 | Gateway tests | Threshold-enforced coverage | `cd gateway && npm run test:coverage` or the `full-gateway-tests` CI job | Required for main/release |
 | Critical security logic | Mutation gate for auth, access control, address derivation, and PSBT validation | `cd server && npm run test:mutation:critical:gate` or the `full-critical-mutation` CI job | Required when touched; required for main/nightly |
-| Browser auth and CSP | API-client token storage mode and route-scoped Swagger CSP | `npx vitest run tests/api/client.test.ts`; `cd server && npx vitest run tests/unit/api/openapi.test.ts` when backend CSP/docs routing changes | Required when touched |
+| Browser auth and CSP | API-client cookie auth, CSRF double-submit, refresh flow, and route-scoped Swagger CSP | `npx vitest run tests/api/client.test.ts tests/api/refresh.test.ts tests/services/websocket.test.ts tests/contexts/UserContext.test.tsx`; `cd server && npx vitest run tests/unit/middleware/csrf.test.ts tests/unit/middleware/auth.test.ts tests/unit/api/auth.test.ts tests/unit/api/openapi.test.ts tests/unit/websocket/auth.test.ts` when backend auth/CSP/docs routing changes | Required when touched |
 | API/gateway contracts | Contract and drift-prone boundary tests | Targeted tests for gateway HMAC, WebSocket auth, mobile permission, request logging, body parsing, gateway whitelist, and new/touched schemas | Required when touched |
 | Dependency security | Production advisory review | `npm audit --omit=dev` in root and `server/`; `cd gateway && npm audit --omit=dev --omit=optional`; plus documented accepted findings | Required before release |
 | Container/install validation | Fresh install, install script, container health, auth flow | `.github/workflows/install-test.yml` release gate | Required for release candidates/releases |
@@ -52,4 +52,13 @@ Record benchmark output under `docs/plans/` and link it from `docs/plans/codebas
 
 ## Phase 4 Browser Auth Gate
 
-Frontend access tokens default to `sessionStorage` instead of durable `localStorage`. `VITE_AUTH_TOKEN_STORAGE=memory` is available for memory-only deployments, and `VITE_AUTH_TOKEN_STORAGE=local` is the explicit legacy mode. This does not replace the remaining HttpOnly-cookie/session architecture decision for an A-grade browser token claim.
+**Resolved as of 2026-04-13.** The HttpOnly cookie migration (ADR 0001) and Web Locks-coordinated refresh flow (ADR 0002) shipped together. See ADR 0001/0002 Resolution sections and `docs/OPERATIONS_RUNBOOKS.md` "Browser Auth Cookies" for the full behavior.
+
+- The access token lives in a `sanctuary_access` HttpOnly, Secure, SameSite=Strict cookie. Scripts cannot read it.
+- The refresh token lives in a `sanctuary_refresh` HttpOnly cookie scoped to `Path=/api/v1/auth/refresh`. The browser never sends it to any other endpoint.
+- CSRF is enforced via a `sanctuary_csrf` readable double-submit cookie echoed as `X-CSRF-Token` on POST/PUT/PATCH/DELETE when the request authenticates via cookie. `Authorization: Bearer` requests (mobile/gateway) are exempt.
+- Proactive refresh fires 60s before `X-Access-Expires-At`; reactive refresh on 401 retries the request once; `navigator.locks` serializes refresh across same-origin tabs; BroadcastChannel propagates `refresh-complete` and `logout-broadcast` state.
+- Refresh-on-401 exempt list is only the four credential-presentation endpoints: `/auth/login`, `/auth/register`, `/auth/2fa/verify`, `/auth/refresh`. `/auth/me`, `/auth/logout`, and `/auth/logout-all` refresh-and-retry on 401 so valid-session recovery and server-side revocation both work.
+- The WebSocket upgrade reads `sanctuary_access` from the `Cookie` header; the deprecated `?token=` query parameter path is removed. The client waits for the server's `'connected'` welcome message before sending any subscribe/unsubscribe frames (gating on `readyState === OPEN` races the server's async cookie auth).
+
+Gate: `tests/api/client.test.ts`, `tests/api/refresh.test.ts`, `tests/services/websocket.test.ts`, `tests/contexts/UserContext.test.tsx`, `server/tests/unit/middleware/csrf.test.ts`, `server/tests/unit/middleware/auth.test.ts`, `server/tests/unit/api/auth.test.ts`, and `server/tests/unit/websocket/auth.test.ts` must all pass. The 100% frontend coverage gate must stay green for `src/api/refresh.ts`, the 401 interceptor branches in `src/api/client.ts`, and the `isServerReady` branches in `services/websocket.ts`.
