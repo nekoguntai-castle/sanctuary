@@ -6,6 +6,11 @@ const mockRegister = vi.fn();
 const mockVerify2FA = vi.fn();
 const mockCancel2FA = vi.fn();
 const mockClearError = vi.fn();
+// Mutable state object so individual tests can flip the UserContext
+// boot-loading flag without re-mocking the module.
+const mockUserContextState = {
+  isLoading: false,
+};
 
 vi.mock('../../../contexts/UserContext', () => ({
   useUser: () => ({
@@ -14,7 +19,7 @@ vi.mock('../../../contexts/UserContext', () => ({
     verify2FA: mockVerify2FA,
     cancel2FA: mockCancel2FA,
     twoFactorPending: false,
-    isLoading: false,
+    isLoading: mockUserContextState.isLoading,
     error: null,
     clearError: mockClearError,
   }),
@@ -30,6 +35,8 @@ import { useLoginFlow } from '../../../components/Login/useLoginFlow';
 describe('useLoginFlow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Reset the mutable UserContext state before every test.
+    mockUserContextState.isLoading = false;
     // Mock fetch for health check
     global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
   });
@@ -141,5 +148,40 @@ describe('useLoginFlow', () => {
 
     act(() => result.current.setTwoFactorCode('ABC'));
     expect(result.current.twoFactorCode).toBe('ABC');
+  });
+
+  // Phase 6 regression: the submit handlers must refuse to fire while
+  // UserContext is running the boot `/auth/me` check. Otherwise the
+  // user can race their login against the boot authentication probe.
+  it('handleSubmit returns early when UserContext is still boot-loading', async () => {
+    mockUserContextState.isLoading = true;
+    const { result } = renderHook(() => useLoginFlow());
+
+    act(() => result.current.setUsername('alice'));
+    act(() => result.current.setPassword('password123'));
+
+    const mockEvent = { preventDefault: vi.fn() } as unknown as React.FormEvent;
+    await act(() => result.current.handleSubmit(mockEvent));
+
+    expect(mockEvent.preventDefault).toHaveBeenCalled();
+    // Boot-loading guard must prevent login/register from firing and
+    // must not touch the error state either — nothing happens.
+    expect(mockLogin).not.toHaveBeenCalled();
+    expect(mockRegister).not.toHaveBeenCalled();
+    expect(mockClearError).not.toHaveBeenCalled();
+  });
+
+  it('handle2FASubmit returns early when UserContext is still boot-loading', async () => {
+    mockUserContextState.isLoading = true;
+    const { result } = renderHook(() => useLoginFlow());
+
+    act(() => result.current.setTwoFactorCode('123456'));
+
+    const mockEvent = { preventDefault: vi.fn() } as unknown as React.FormEvent;
+    await act(() => result.current.handle2FASubmit(mockEvent));
+
+    expect(mockEvent.preventDefault).toHaveBeenCalled();
+    expect(mockVerify2FA).not.toHaveBeenCalled();
+    expect(mockClearError).not.toHaveBeenCalled();
   });
 });

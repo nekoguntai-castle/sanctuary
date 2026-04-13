@@ -30,6 +30,7 @@ const defaultProps = {
   apiStatus: 'connected' as const,
   registrationEnabled: true,
   isLoading: false,
+  isBootLoading: false,
   error: null as string | null,
   onUsernameChange: vi.fn(),
   onPasswordChange: vi.fn(),

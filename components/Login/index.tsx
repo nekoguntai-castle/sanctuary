@@ -22,6 +22,7 @@ export const Login: React.FC = () => {
     darkMode,
     twoFactorPending,
     isLoading,
+    isBootLoading,
     error,
     setUsername,
     setPassword,
@@ -41,6 +42,7 @@ export const Login: React.FC = () => {
         onTwoFactorCodeChange={setTwoFactorCode}
         twoFactorInputRef={twoFactorInputRef}
         isLoading={isLoading}
+        isBootLoading={isBootLoading}
         error={error}
         onSubmit={handle2FASubmit}
         onCancel={handleCancel2FA}
@@ -58,6 +60,7 @@ export const Login: React.FC = () => {
       apiStatus={apiStatus}
       registrationEnabled={registrationEnabled}
       isLoading={isLoading}
+      isBootLoading={isBootLoading}
       error={error}
       onUsernameChange={setUsername}
       onPasswordChange={setPassword}

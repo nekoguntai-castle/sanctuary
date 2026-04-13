@@ -43,6 +43,9 @@ interface LoginFormProps {
   apiStatus: 'checking' | 'connected' | 'error';
   registrationEnabled: boolean;
   isLoading: boolean;
+  /** True while UserContext is running the boot `/auth/me` check. The
+   *  submit button is disabled but the label stays "Sign In". */
+  isBootLoading: boolean;
   error: string | null;
   onUsernameChange: (value: string) => void;
   onPasswordChange: (value: string) => void;
@@ -60,6 +63,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
   apiStatus,
   registrationEnabled,
   isLoading,
+  isBootLoading,
   error,
   onUsernameChange,
   onPasswordChange,
@@ -190,6 +194,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
             type="submit"
             className="w-full justify-center py-3"
             isLoading={isLoading}
+            disabled={isBootLoading}
           >
             {isLoading
               ? (isRegisterMode ? 'Creating account...' : 'Signing in...')

@@ -28,6 +28,7 @@ const defaultProps = {
   onTwoFactorCodeChange: vi.fn(),
   twoFactorInputRef: createRef<HTMLInputElement>(),
   isLoading: false,
+  isBootLoading: false,
   error: null as string | null,
   onSubmit: vi.fn(),
   onCancel: vi.fn(),

@@ -7,7 +7,16 @@ import { useUser } from '../../contexts/UserContext';
 import { getRegistrationStatus } from '../../src/api/auth';
 
 export function useLoginFlow() {
-  const { login, register, verify2FA, cancel2FA, twoFactorPending, error, clearError } = useUser();
+  const {
+    login,
+    register,
+    verify2FA,
+    cancel2FA,
+    twoFactorPending,
+    isLoading: isBootLoading,
+    error,
+    clearError,
+  } = useUser();
   const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -17,16 +26,30 @@ export function useLoginFlow() {
   const [twoFactorCode, setTwoFactorCode] = useState('');
   const twoFactorInputRef = useRef<HTMLInputElement>(null);
   const [darkMode, setDarkMode] = useState(false);
-  // Track the submit state locally rather than reading UserContext.isLoading.
+  // Track the submit state locally in addition to reading the boot
+  // loading flag from UserContext.
   //
-  // ADR 0001 / 0002 Phase 4 regression fix: UserContext.isLoading is true
-  // during the boot `/auth/me` check AND during login-submission. Showing
-  // the button label as "Signing in..." during boot-check is confusing
-  // (the user hasn't clicked anything yet) and also breaks the E2E test
-  // `auth.spec.ts:14` which expects `getByRole('button', { name: /sign in/i })`
-  // to match — "Signing in..." does not contain the substring "sign in".
-  // Tracking submit state locally keeps the form interactive during boot
-  // and only flips to "Signing in..." when the user actually submits.
+  // ADR 0001 / 0002 Phase 4/6 UX invariants:
+  //
+  //   - During the boot `/auth/me` check, the submit button must be
+  //     disabled so the user cannot fire a login API call that races
+  //     the boot authentication probe. A raced login against a session
+  //     that is actually already authenticated can produce a confusing
+  //     error flash or a benign double-request.
+  //
+  //   - During the boot check, the button label must still read
+  //     "Sign In" (not "Signing in..."). The user has not clicked
+  //     anything yet; showing "Signing in..." is confusing and also
+  //     breaks the E2E test `auth.spec.ts:14` which looks for
+  //     `getByRole('button', { name: /sign in/i })`.
+  //
+  //   - During actual submission (after the user clicks Sign In), the
+  //     button must be disabled AND show the "Signing in..." label.
+  //
+  // Splitting into `isBootLoading` (from UserContext) and `isSubmitting`
+  // (local) lets LoginForm/TwoFactorScreen pass the former as `disabled`
+  // and the latter as `isLoading`, so the text and spinner reflect only
+  // real submissions while the button stays un-pressable during boot.
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Apply system color scheme preference on login screen
@@ -85,6 +108,11 @@ export function useLoginFlow() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Belt-and-suspenders: the submit button is already disabled via
+    // the Button `disabled` prop during boot, but refuse to fire the
+    // login/register API call here too so an Enter keypress on the form
+    // cannot sneak past the button state and race the /auth/me probe.
+    if (isBootLoading || isSubmitting) return;
     clearError();
     setIsSubmitting(true);
     try {
@@ -100,6 +128,7 @@ export function useLoginFlow() {
 
   const handle2FASubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isBootLoading || isSubmitting) return;
     clearError();
     setIsSubmitting(true);
     try {
@@ -135,6 +164,7 @@ export function useLoginFlow() {
     darkMode,
     twoFactorPending,
     isLoading: isSubmitting,
+    isBootLoading,
     error,
 
     // Setters

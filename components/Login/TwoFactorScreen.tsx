@@ -16,6 +16,13 @@ interface TwoFactorScreenProps {
   onTwoFactorCodeChange: (code: string) => void;
   twoFactorInputRef: React.RefObject<HTMLInputElement | null>;
   isLoading: boolean;
+  /** True while UserContext is running the boot `/auth/me` check. The
+   *  verify button is disabled but the label stays "Verify". In
+   *  practice the 2FA screen is reached after login(), so the boot
+   *  check has already resolved by the time this screen is rendered,
+   *  but plumbing the prop through keeps the invariant consistent
+   *  with LoginForm. */
+  isBootLoading: boolean;
   error: string | null;
   onSubmit: (e: React.FormEvent) => void;
   onCancel: () => void;
@@ -27,6 +34,7 @@ export const TwoFactorScreen: React.FC<TwoFactorScreenProps> = ({
   onTwoFactorCodeChange,
   twoFactorInputRef,
   isLoading,
+  isBootLoading,
   error,
   onSubmit,
   onCancel,
@@ -78,7 +86,7 @@ export const TwoFactorScreen: React.FC<TwoFactorScreenProps> = ({
           type="submit"
           className="w-full justify-center py-3"
           isLoading={isLoading}
-          disabled={twoFactorCode.length < 6}
+          disabled={isBootLoading || twoFactorCode.length < 6}
         >
           {isLoading ? 'Verifying...' : 'Verify'}
         </Button>
