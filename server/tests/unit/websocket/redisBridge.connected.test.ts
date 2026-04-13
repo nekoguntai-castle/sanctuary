@@ -5,17 +5,22 @@ type EventCallback = (...args: any[]) => void;
 function createMockPubSubClient(options?: {
   autoConnect?: boolean;
   publishThrows?: boolean;
+  status?: string;
 }) {
   const onceHandlers = new Map<string, EventCallback[]>();
   const onHandlers = new Map<string, EventCallback[]>();
 
   const client: any = {
+    status: options?.status || 'connecting',
     once: vi.fn((event: string, cb: EventCallback) => {
       const existing = onceHandlers.get(event) || [];
       existing.push(cb);
       onceHandlers.set(event, existing);
-      if (options?.autoConnect && event === 'connect') {
-        queueMicrotask(() => cb());
+      if (options?.autoConnect && (event === 'connect' || event === 'ready')) {
+        queueMicrotask(() => {
+          client.status = 'ready';
+          cb();
+        });
       }
       return client;
     }),
@@ -28,6 +33,11 @@ function createMockPubSubClient(options?: {
     subscribe: vi.fn().mockResolvedValue(1),
     unsubscribe: vi.fn().mockResolvedValue(1),
     quit: vi.fn().mockResolvedValue('OK'),
+    removeListener: vi.fn((event: string, cb: EventCallback) => {
+      onceHandlers.set(event, (onceHandlers.get(event) || []).filter((handler) => handler !== cb));
+      onHandlers.set(event, (onHandlers.get(event) || []).filter((handler) => handler !== cb));
+      return client;
+    }),
     publish: vi.fn((_channel: string, _payload: string) => {
       if (options?.publishThrows) {
         throw new Error('publish failed');
@@ -35,6 +45,9 @@ function createMockPubSubClient(options?: {
       return 1;
     }),
     emit: (event: string, ...args: any[]) => {
+      if (event === 'ready') {
+        client.status = 'ready';
+      }
       const once = onceHandlers.get(event) || [];
       onceHandlers.delete(event);
       for (const cb of once) cb(...args);
@@ -182,6 +195,24 @@ describe('RedisWebSocketBridge (connected mode)', () => {
     await shutdownRedisBridge();
   });
 
+  it('initializes when duplicate Redis clients are already ready', async () => {
+    const publisher = createMockPubSubClient({ autoConnect: false, status: 'ready' });
+    const subscriber = createMockPubSubClient({ autoConnect: false, status: 'ready' });
+    const { initializeRedisBridge, redisBridge, shutdownRedisBridge, mocks } = await loadBridgeWithMocks({
+      publisher,
+      subscriber,
+    });
+
+    await initializeRedisBridge();
+
+    expect(redisBridge.isActive()).toBe(true);
+    expect(mocks.subscriber.subscribe).toHaveBeenCalledWith('sanctuary:ws:broadcast');
+    expect(publisher.once).not.toHaveBeenCalledWith('ready', expect.any(Function));
+    expect(subscriber.once).not.toHaveBeenCalledWith('ready', expect.any(Function));
+
+    await shutdownRedisBridge();
+  });
+
   it('records publish errors when publisher throws', async () => {
     const publisher = createMockPubSubClient({ autoConnect: true, publishThrows: true });
     const { initializeRedisBridge, redisBridge, shutdownRedisBridge } = await loadBridgeWithMocks({ publisher });
@@ -315,7 +346,7 @@ describe('RedisWebSocketBridge (connected mode)', () => {
     expect(publisher.quit).toHaveBeenCalled();
   });
 
-  it('handles publisher/subscriber connect timeout callbacks during initialize', async () => {
+  it('handles publisher/subscriber ready timeout callbacks during initialize', async () => {
     vi.useFakeTimers();
     try {
       const publisher = createMockPubSubClient({ autoConnect: false });

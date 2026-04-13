@@ -104,19 +104,11 @@ class RedisWebSocketBridge {
       this.publisher = redisClient.duplicate();
       this.subscriber = redisClient.duplicate();
 
-      // Wait for connections
+      // Wait for connections to be command-ready. Duplicate clients can reach
+      // ready before listeners are attached, so handle already-ready clients.
       await Promise.all([
-        new Promise<void>((resolve, reject) => {
-          this.publisher!.once('connect', resolve);
-          this.publisher!.once('error', reject);
-          // Timeout after 5 seconds
-          setTimeout(() => reject(new Error('Publisher connection timeout')), 5000);
-        }),
-        new Promise<void>((resolve, reject) => {
-          this.subscriber!.once('connect', resolve);
-          this.subscriber!.once('error', reject);
-          setTimeout(() => reject(new Error('Subscriber connection timeout')), 5000);
-        }),
+        this.waitForReady(this.publisher, 'Publisher'),
+        this.waitForReady(this.subscriber, 'Subscriber'),
       ]);
 
       // Subscribe to broadcast channel
@@ -157,6 +149,42 @@ class RedisWebSocketBridge {
    */
   setBroadcastHandler(handler: BroadcastHandler): void {
     this.broadcastHandler = handler;
+  }
+
+  private waitForReady(client: Redis | null, label: string): Promise<void> {
+    if (!client) {
+      return Promise.reject(new Error(`${label} client is not available`));
+    }
+
+    if (client.status === 'ready') {
+      return Promise.resolve();
+    }
+
+    return new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        cleanup();
+        reject(new Error(`${label} connection timeout`));
+      }, 5000);
+
+      const cleanup = () => {
+        clearTimeout(timeout);
+        client.removeListener('ready', onReady);
+        client.removeListener('error', onError);
+      };
+
+      const onReady = () => {
+        cleanup();
+        resolve();
+      };
+
+      const onError = (error: Error) => {
+        cleanup();
+        reject(error);
+      };
+
+      client.once('ready', onReady);
+      client.once('error', onError);
+    });
   }
 
   /**

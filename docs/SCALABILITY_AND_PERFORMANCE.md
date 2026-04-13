@@ -86,7 +86,7 @@ For a disposable local full-stack smoke, use the Compose wrapper:
 npm run perf:phase3:compose-smoke
 ```
 
-The wrapper starts a temporary Docker Compose project with frontend, backend, gateway, worker, Redis, and PostgreSQL, waits for migration/seed and service health, then runs `npm run perf:phase3` with strict local fixture provisioning, wallet-specific WebSocket sync fanout, generated backup validation, and local worker queue handler proof. It chooses loopback host ports automatically unless `PHASE3_COMPOSE_BENCHMARK_HTTP_PORT`, `PHASE3_COMPOSE_BENCHMARK_HTTPS_PORT`, or `PHASE3_COMPOSE_BENCHMARK_GATEWAY_PORT` are set. Set `PHASE3_WORKER_QUEUE_PROOF_TIMEOUT_MS` to adjust the per-job wait timeout for the worker queue proof. Set `PHASE3_COMPOSE_BENCHMARK_KEEP_STACK=true` only when you need to inspect the disposable stack after a failed run.
+The wrapper starts a temporary Docker Compose project with frontend, backend, gateway, worker, Redis, and PostgreSQL, waits for migration/seed and service health, then runs `npm run perf:phase3` with strict local fixture provisioning, wallet-specific WebSocket sync fanout, generated backup validation, local worker queue handler proof, and two-backend Redis WebSocket delivery proof. It chooses loopback host ports automatically unless `PHASE3_COMPOSE_BENCHMARK_HTTP_PORT`, `PHASE3_COMPOSE_BENCHMARK_HTTPS_PORT`, or `PHASE3_COMPOSE_BENCHMARK_GATEWAY_PORT` are set. Set `PHASE3_WORKER_QUEUE_PROOF_TIMEOUT_MS` to adjust the per-job wait timeout for the worker queue proof; set `PHASE3_BACKEND_SCALE_OUT_REPLICAS` and `PHASE3_BACKEND_SCALE_OUT_PROOF_TIMEOUT_MS` to adjust the backend scale-out proof. Set `PHASE3_COMPOSE_BENCHMARK_KEEP_STACK=true` only when you need to inspect the disposable stack after a failed run.
 
 Configure authenticated and data-dependent scenarios with environment variables:
 
@@ -108,7 +108,7 @@ SANCTUARY_BENCHMARK_PROVISION=true npm run perf:phase3
 
 Local fixture provisioning is intentionally limited to `localhost`, `127.0.0.1`, and `::1` API targets by default. For a private non-production LAN target such as `https://10.14.23.93:8443`, set `SANCTUARY_BENCHMARK_ALLOW_PRIVATE_PROVISION=true`; if the target uses the local development certificate, also set `SANCTUARY_INSECURE_TLS=true`. It logs in with `admin` / `sanctuary` by default, unless `SANCTUARY_BENCHMARK_USERNAME` and `SANCTUARY_BENCHMARK_PASSWORD` are set, and creates or reuses a testnet wallet named `Phase 3 Benchmark Wallet`. Set `SANCTUARY_BENCHMARK_WALLET_NAME`, `SANCTUARY_BENCHMARK_WALLET_NETWORK`, or `SANCTUARY_BENCHMARK_WALLET_DESCRIPTOR` to override the fixture. Set `SANCTUARY_BENCHMARK_CREATE_BACKUP=true` to generate an in-memory backup for backup validation in the same run. Set `SANCTUARY_WS_FANOUT_CLIENTS` to change the number of authenticated WebSocket clients used for the subscription fanout scenario; it defaults to `SANCTUARY_WS_CLIENTS`.
 
-The auto-provisioned local fixture is smoke evidence only. It is useful for proving the authenticated paths and worker queue handlers run end to end, and the Compose wrapper records this proof without requiring a pre-existing local stack, but it does not replace the production-like large-wallet dataset, load-level WebSocket fanout, or representative worker queue depth needed for the final scalability/performance gate. The current passing disposable evidence is `docs/plans/phase3-compose-benchmark-smoke-2026-04-13T00-40-08-363Z.md` with benchmark output in `docs/plans/phase3-benchmark-2026-04-13T00-40-31-291Z.md`.
+The auto-provisioned local fixture is smoke evidence only. It is useful for proving the authenticated paths, worker queue handlers, and two-backend Redis WebSocket delivery run end to end, and the Compose wrapper records this proof without requiring a pre-existing local stack, but it does not replace the production-like large-wallet dataset, load-level WebSocket fanout, representative worker queue depth, or backend load-balanced capacity evidence needed for the final scalability/performance gate. The current passing disposable evidence is `docs/plans/phase3-compose-benchmark-smoke-2026-04-13T00-54-44-886Z.md` with benchmark output in `docs/plans/phase3-benchmark-2026-04-13T00-55-56-530Z.md`.
 
 Restore testing is destructive and remains opt-in:
 
@@ -146,8 +146,8 @@ Decision:
 
 Phase 3 should not be considered complete until:
 
-- At least one representative benchmark run is recorded for wallet sync, transaction history, WebSocket fanout, backup/restore, and worker queue processing. The disposable Compose smoke proves the WebSocket subscription path and local worker queue handlers, but not production-like fanout volume or representative queue load.
-- The backend scale-out smoke test proves Redis-backed WebSocket broadcast delivery across at least two backend instances.
+- At least one representative benchmark run is recorded for wallet sync, transaction history, WebSocket fanout, backup/restore, and worker queue processing. The disposable Compose smoke proves the WebSocket subscription path, local worker queue handlers, and two-backend Redis WebSocket delivery, but not production-like fanout volume, representative queue load, or load-balanced backend capacity.
+- The backend scale-out smoke test proves Redis-backed WebSocket broadcast delivery across at least two backend instances. Current local evidence is `docs/plans/phase3-compose-benchmark-smoke-2026-04-13T00-54-44-886Z.md`.
 - Worker scale-out is either validated in non-production or remains explicitly unsupported for production.
 - Postgres and Redis capacity limits are captured for the tested topology.
 - Any regression gate used in release checks points to the exact metric or test evidence it depends on.

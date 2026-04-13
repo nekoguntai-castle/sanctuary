@@ -33,12 +33,12 @@ This document records the checks that should protect the A-grade engineering goa
 
 These gates are required before the scalability/performance domain can move to A:
 
-- Local authenticated smoke coverage now has disposable Compose proof in `docs/plans/phase3-compose-benchmark-smoke-2026-04-13T00-40-08-363Z.md`; keep rerunning `npm run perf:phase3:compose-smoke` when Compose startup, seeded auth, benchmark provisioning, WebSocket fanout, backup validation, or worker queue handler paths change.
+- Local authenticated smoke coverage now has disposable Compose proof in `docs/plans/phase3-compose-benchmark-smoke-2026-04-13T00-54-44-886Z.md`; keep rerunning `npm run perf:phase3:compose-smoke` when Compose startup, seeded auth, benchmark provisioning, WebSocket fanout, backup validation, worker queue handler, or Redis-backed backend scale-out paths change.
 - Representative large-wallet transaction history and wallet sync queue benchmarks with `SANCTUARY_TOKEN` and `SANCTUARY_WALLET_ID`.
 - Backup restore only in a restore-safe environment, with `SANCTUARY_ADMIN_TOKEN`, `SANCTUARY_BACKUP_FILE`, and `SANCTUARY_ALLOW_RESTORE=true`; local generated-backup validation smoke does not replace restore proof.
-- Representative WebSocket fanout with larger client counts and production-like sync or transaction events; the local Compose smoke now proves the authenticated wallet-specific subscription path only.
+- Representative WebSocket fanout with larger client counts and production-like sync or transaction events; the local Compose smoke now proves the authenticated wallet-specific subscription path and a two-backend Redis bridge delivery path only.
 - Representative worker queue processing under production-like sync, notification, maintenance, autopilot, and intelligence job volume; the local Compose smoke now proves these handlers complete in a no-op/local fixture run only.
-- Backend scale-out smoke test with at least two backend/WebSocket endpoints sharing Redis.
+- Representative backend scale-out load/capacity evidence; the local two-backend Redis WebSocket smoke is recorded in `docs/plans/phase3-compose-benchmark-smoke-2026-04-13T00-54-44-886Z.md`.
 - Worker scale-out smoke test in non-production, or an explicit release note that production worker scale-out remains unsupported.
 
 Record benchmark output under `docs/plans/` and link it from `docs/plans/codebase-health-assessment.md`.

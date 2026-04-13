@@ -16,6 +16,8 @@ const keepStack = process.env.PHASE3_COMPOSE_BENCHMARK_KEEP_STACK === 'true';
 const timeoutMs = Number(process.env.PHASE3_COMPOSE_BENCHMARK_TIMEOUT_MS || '360000');
 const retryMs = Number(process.env.PHASE3_COMPOSE_BENCHMARK_RETRY_MS || '2000');
 const workerQueueProofTimeoutMs = Number(process.env.PHASE3_WORKER_QUEUE_PROOF_TIMEOUT_MS || '60000');
+const backendScaleOutReplicas = Number(process.env.PHASE3_BACKEND_SCALE_OUT_REPLICAS || '2');
+const backendScaleOutProofTimeoutMs = Number(process.env.PHASE3_BACKEND_SCALE_OUT_PROOF_TIMEOUT_MS || '60000');
 
 const postgresUser = 'sanctuary';
 const postgresDb = 'sanctuary_phase3_benchmark';
@@ -173,10 +175,44 @@ function getServiceContainerId(serviceName) {
   return runCompose(['ps', '-aq', serviceName]).trim().split('\n').filter(Boolean)[0] || '';
 }
 
-function inspectContainerState(containerId) {
+function getServiceContainerIds(serviceName) {
+  return runCompose(['ps', '-q', serviceName]).trim().split('\n').filter(Boolean);
+}
+
+function inspectContainer(containerId) {
   const output = runDocker(['inspect', containerId]);
   const inspected = JSON.parse(output);
-  return inspected?.[0]?.State || {};
+  if (!inspected?.[0]) {
+    throw new Error(`Could not inspect container ${containerId}`);
+  }
+  return inspected[0];
+}
+
+function inspectContainerState(containerId) {
+  return inspectContainer(containerId).State || {};
+}
+
+function getServiceContainers(serviceName) {
+  return getServiceContainerIds(serviceName).map((containerId) => {
+    const inspected = inspectContainer(containerId);
+    return {
+      id: containerId,
+      shortId: containerId.slice(0, 12),
+      name: String(inspected.Name || '').replace(/^\//, ''),
+      ip: findComposeNetworkAddress(inspected),
+    };
+  });
+}
+
+function findComposeNetworkAddress(inspected) {
+  const networks = inspected?.NetworkSettings?.Networks || {};
+  const entries = Object.entries(networks);
+  const entry = entries.find(([name]) => name.endsWith('_sanctuary-network')) || entries[0];
+  const ipAddress = entry?.[1]?.IPAddress;
+  if (!ipAddress) {
+    throw new Error(`Could not find Compose network address for ${inspected?.Name || inspected?.Id || 'container'}`);
+  }
+  return ipAddress;
 }
 
 async function waitForMigrateExit() {
@@ -231,6 +267,29 @@ async function waitForComposeHealthy() {
     && (container.state !== 'running' || (container.health && container.health !== 'healthy'))
   ));
   throw new Error(`Unhealthy containers: ${JSON.stringify({ missing, unhealthy })}`);
+}
+
+async function waitForServiceReplicaHealth(serviceName, expectedCount) {
+  const deadline = Date.now() + timeoutMs;
+  let latestContainers = [];
+
+  while (Date.now() < deadline) {
+    latestContainers = collectComposePs().filter((container) => container.service === serviceName);
+    const unhealthy = latestContainers.filter((container) => (
+      container.state !== 'running' || (container.health && container.health !== 'healthy')
+    ));
+
+    if (latestContainers.length === expectedCount && unhealthy.length === 0) {
+      return latestContainers;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, retryMs));
+  }
+
+  const unhealthy = latestContainers.filter((container) => (
+    container.state !== 'running' || (container.health && container.health !== 'healthy')
+  ));
+  throw new Error(`Service ${serviceName} did not reach ${expectedCount} healthy replicas: ${JSON.stringify({ count: latestContainers.length, unhealthy })}`);
 }
 
 async function waitForHttpOk(name, url) {
@@ -417,6 +476,52 @@ function summarizeWorkerQueueProof(proof) {
   return `${proof.jobs.length} jobs completed across ${categories.join(', ')}; p95=${durations.p95Ms}ms`;
 }
 
+async function runBackendScaleOutProof() {
+  if (backendScaleOutReplicas < 2) {
+    throw new Error(`PHASE3_BACKEND_SCALE_OUT_REPLICAS must be at least 2, got ${backendScaleOutReplicas}`);
+  }
+
+  runCompose(['up', '-d', '--scale', `backend=${backendScaleOutReplicas}`, 'backend']);
+  const backendPs = await waitForServiceReplicaHealth('backend', backendScaleOutReplicas);
+  const backends = getServiceContainers('backend');
+  if (backends.length < 2) {
+    throw new Error(`Expected at least two backend containers after scale-out, found ${backends.length}`);
+  }
+
+  const output = runDocker([
+    'exec',
+    '-e',
+    `PHASE3_BACKEND_SCALE_OUT_TARGETS=${JSON.stringify(backends)}`,
+    '-e',
+    `PHASE3_BACKEND_SCALE_OUT_PROOF_ID=${timestamp}`,
+    '-e',
+    `PHASE3_BACKEND_SCALE_OUT_PROOF_TIMEOUT_MS=${backendScaleOutProofTimeoutMs}`,
+    '-e',
+    `SANCTUARY_BENCHMARK_USERNAME=${adminUsername}`,
+    '-e',
+    `SANCTUARY_BENCHMARK_PASSWORD=${adminPassword}`,
+    backends[0].id,
+    'node',
+    '--input-type=module',
+    '--eval',
+    getBackendScaleOutProofScript(),
+  ]);
+
+  const proof = parseLastJsonLine(output);
+  if (!proof.event?.ok) {
+    throw new Error(`Backend scale-out proof did not receive a cross-instance sync event: ${JSON.stringify(proof.event || null)}`);
+  }
+
+  return {
+    ...proof,
+    backendPs,
+  };
+}
+
+function summarizeBackendScaleOutProof(proof) {
+  return `sync event from ${proof.triggerTarget.name} reached WebSocket on ${proof.websocketTarget.name} via Redis in ${proof.event.durationMs}ms`;
+}
+
 function buildMarkdown(report) {
   const lines = [
     '# Phase 3 Compose Benchmark Smoke',
@@ -497,6 +602,22 @@ function buildMarkdown(report) {
     lines.push('No worker queue proof recorded.', '');
   }
 
+  lines.push('## Backend Scale-Out Proof', '');
+
+  if (report.backendScaleOutProof?.event?.ok) {
+    lines.push(
+      `Backend replicas: ${report.backendScaleOutProof.backends?.length || 0}`,
+      `WebSocket target: ${report.backendScaleOutProof.websocketTarget.name} (${report.backendScaleOutProof.websocketTarget.ip})`,
+      `Trigger target: ${report.backendScaleOutProof.triggerTarget.name} (${report.backendScaleOutProof.triggerTarget.ip})`,
+      `Wallet: ${report.backendScaleOutProof.wallet.name} (${report.backendScaleOutProof.wallet.id})`,
+      `Trigger status: ${report.backendScaleOutProof.trigger.status}`,
+      `Event: ${report.backendScaleOutProof.event.event} on ${report.backendScaleOutProof.event.channel} in ${report.backendScaleOutProof.event.durationMs} ms`,
+      ''
+    );
+  } else {
+    lines.push('No backend scale-out proof recorded.', '');
+  }
+
   lines.push(
     '## Containers',
     '',
@@ -508,7 +629,8 @@ function buildMarkdown(report) {
     '- The smoke waits for database migration and seed completion, then runs the existing Phase 3 benchmark harness with local fixture provisioning.',
     '- The run proves authenticated wallet list, transaction-history, WebSocket subscription fanout, wallet-sync queue, and admin backup-validation paths execute end to end on a local seeded stack.',
     '- The worker queue proof enqueues and waits for BullMQ jobs across sync, confirmations, notifications, maintenance, autopilot, and intelligence handlers in the running worker container.',
-    '- The local generated wallet is smoke evidence only; a representative large-wallet dataset and backend scale-out proof remain required before claiming Phase 3 complete.',
+    '- The backend scale-out proof runs two backend replicas, opens a wallet subscription WebSocket on one replica, triggers wallet sync on the other replica, and requires the Redis bridge to deliver the sync event across instances.',
+    '- The local generated wallet and two-replica topology are smoke evidence only; representative large-wallet, load-level fanout, and capacity evidence remain required before claiming Phase 3 complete.',
     '- Restore remains intentionally skipped because it is destructive unless `SANCTUARY_ALLOW_RESTORE=true` is set for a restore-safe environment.'
   );
 
@@ -590,6 +712,7 @@ let benchmarkRun = null;
 let benchmarkEvidence = null;
 let benchmarkProof = null;
 let workerQueueProof = null;
+let backendScaleOutProof = null;
 let passed = false;
 let failureError = null;
 
@@ -620,6 +743,10 @@ try {
 
   workerQueueProof = runWorkerQueueProof();
   recordStep('worker queue proof', true, summarizeWorkerQueueProof(workerQueueProof));
+
+  backendScaleOutProof = await runBackendScaleOutProof();
+  composePs = collectComposePs();
+  recordStep('backend scale-out websocket proof', true, summarizeBackendScaleOutProof(backendScaleOutProof));
 
   passed = steps.every((step) => step.passed);
 } catch (error) {
@@ -662,6 +789,7 @@ try {
       : null,
     benchmarkProof,
     workerQueueProof,
+    backendScaleOutProof,
     composePs,
     keptStack: keepStack,
   };
@@ -839,5 +967,303 @@ try {
   await Promise.all([...events.values()].map((queueEvents) => queueEvents.close()));
   await Promise.all([...queues.values()].map((queue) => queue.close()));
 }
+`;
+}
+
+function getBackendScaleOutProofScript() {
+  return `
+const proofId = process.env.PHASE3_BACKEND_SCALE_OUT_PROOF_ID || String(Date.now());
+const timeoutMs = Number(process.env.PHASE3_BACKEND_SCALE_OUT_PROOF_TIMEOUT_MS || '60000');
+const username = process.env.SANCTUARY_BENCHMARK_USERNAME || 'admin';
+const password = process.env.SANCTUARY_BENCHMARK_PASSWORD || 'sanctuary';
+const backends = JSON.parse(process.env.PHASE3_BACKEND_SCALE_OUT_TARGETS || '[]');
+const proofStartedAt = Date.now();
+const walletDescriptor = "wpkh([aabbccdd/84'/1'/0']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*)";
+
+if (backends.length < 2) {
+  throw new Error('At least two backend targets are required for backend scale-out proof');
+}
+
+const websocketTarget = backends[0];
+const triggerTarget = backends.find((target) => target.ip !== websocketTarget.ip) || backends[1];
+
+function backendHttpUrl(target, path) {
+  return 'http://' + target.ip + ':3001' + path;
+}
+
+function backendWsUrl(target) {
+  return 'ws://' + target.ip + ':3001/ws';
+}
+
+function parseJson(value) {
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
+function formatBody(value) {
+  return typeof value === 'string' ? value.slice(0, 300) : JSON.stringify(value).slice(0, 300);
+}
+
+async function apiJson(target, path, options = {}, expectedStatuses = [200]) {
+  const headers = { Accept: 'application/json' };
+  let body;
+  if (options.body !== undefined) {
+    body = JSON.stringify(options.body);
+    headers['Content-Type'] = 'application/json';
+  }
+  if (options.token) {
+    headers.Authorization = 'Bearer ' + options.token;
+  }
+
+  const response = await fetch(backendHttpUrl(target, path), {
+    method: options.method || 'GET',
+    headers,
+    body,
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  const text = await response.text();
+  const parsed = parseJson(text);
+  if (!expectedStatuses.includes(response.status)) {
+    throw new Error((options.method || 'GET') + ' ' + path + ' on ' + target.name + ' returned ' + response.status + ': ' + formatBody(parsed));
+  }
+  return { status: response.status, body: parsed };
+}
+
+async function login(target) {
+  const response = await apiJson(target, '/api/v1/auth/login', {
+    method: 'POST',
+    body: {
+      username,
+      password,
+    },
+  });
+
+  if (response.body && typeof response.body === 'object' && response.body.requires2FA) {
+    throw new Error('benchmark user requires 2FA; provide a non-2FA local proof user');
+  }
+
+  if (!response.body || typeof response.body !== 'object' || typeof response.body.token !== 'string') {
+    throw new Error('login response from ' + target.name + ' did not include an access token');
+  }
+
+  return response.body.token;
+}
+
+async function createProofWallet(target, token) {
+  const walletName = 'Phase 3 Scale-Out Wallet ' + proofId;
+  const response = await apiJson(target, '/api/v1/wallets', {
+    method: 'POST',
+    token,
+    body: {
+      name: walletName,
+      type: 'single_sig',
+      scriptType: 'native_segwit',
+      network: 'testnet',
+      descriptor: walletDescriptor,
+    },
+  }, [201]);
+
+  if (!response.body || typeof response.body !== 'object' || typeof response.body.id !== 'string') {
+    throw new Error('wallet creation response from ' + target.name + ' did not include an id');
+  }
+
+  return {
+    id: response.body.id,
+    name: response.body.name || walletName,
+    addressCount: response.body.addressCount ?? null,
+  };
+}
+
+function connectSubscribedWebSocket(target, token, walletId) {
+  return new Promise((resolve, reject) => {
+    const channels = ['wallet:' + walletId, 'wallet:' + walletId + ':sync', 'sync:all'];
+    const startedAt = Date.now();
+    const socket = new WebSocket(backendWsUrl(target));
+    let setupDone = false;
+    let eventWait = null;
+    let settled = false;
+
+    const setupTimer = setTimeout(() => {
+      fail(new Error('websocket setup timeout on ' + target.name));
+    }, timeoutMs);
+
+    function fail(error) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(setupTimer);
+      try {
+        socket.close();
+      } catch {
+        // Socket may already be closed.
+      }
+      reject(error);
+    }
+
+    function finishSetup() {
+      if (settled) return;
+      settled = true;
+      setupDone = true;
+      clearTimeout(setupTimer);
+      resolve({
+        target,
+        channels,
+        setupDurationMs: Date.now() - startedAt,
+        waitForSyncEvent,
+        close: () => {
+          try {
+            socket.close();
+          } catch {
+            // Socket may already be closed.
+          }
+        },
+      });
+    }
+
+    function waitForSyncEvent() {
+      if (!setupDone) {
+        return Promise.resolve({ ok: false, error: 'websocket setup did not finish' });
+      }
+
+      if (eventWait) {
+        return Promise.resolve({ ok: false, error: 'event wait already registered' });
+      }
+
+      return new Promise((waitResolve) => {
+        const eventStartedAt = Date.now();
+        const eventTimer = setTimeout(() => {
+          eventWait = null;
+          waitResolve({
+            ok: false,
+            durationMs: Date.now() - eventStartedAt,
+            error: 'cross-instance sync event timeout',
+          });
+        }, timeoutMs);
+
+        eventWait = {
+          resolve: (record) => {
+            clearTimeout(eventTimer);
+            eventWait = null;
+            waitResolve({
+              durationMs: Date.now() - eventStartedAt,
+              ...record,
+            });
+          },
+        };
+      });
+    }
+
+    socket.addEventListener('open', () => {
+      socket.send(JSON.stringify({ type: 'auth', data: { token } }));
+    });
+
+    socket.addEventListener('message', (event) => {
+      const parsed = parseJson(String(event.data));
+
+      if (
+        setupDone
+        && eventWait
+        && parsed
+        && typeof parsed === 'object'
+        && parsed.type === 'event'
+        && parsed.event === 'sync'
+        && (parsed.channel === 'wallet:' + walletId || parsed.channel === 'wallet:' + walletId + ':sync')
+      ) {
+        eventWait.resolve({
+          ok: true,
+          event: parsed.event,
+          channel: parsed.channel,
+          data: parsed.data,
+        });
+        return;
+      }
+
+      if (!parsed || typeof parsed !== 'object') {
+        return;
+      }
+
+      if (parsed.type === 'authenticated') {
+        if (parsed.data && parsed.data.success === false) {
+          fail(new Error('websocket authentication failed on ' + target.name));
+          return;
+        }
+        socket.send(JSON.stringify({ type: 'subscribe_batch', data: { channels } }));
+        return;
+      }
+
+      if (parsed.type === 'subscribed_batch') {
+        const subscribed = Array.isArray(parsed.data?.subscribed) ? parsed.data.subscribed : [];
+        const errors = Array.isArray(parsed.data?.errors) ? parsed.data.errors : [];
+        const required = ['wallet:' + walletId, 'wallet:' + walletId + ':sync'];
+        const missing = required.filter((channel) => !subscribed.includes(channel));
+
+        if (missing.length > 0 || errors.length > 0) {
+          fail(new Error('subscription failed on ' + target.name + '; missing=' + (missing.join(',') || 'none') + ' errors=' + JSON.stringify(errors)));
+          return;
+        }
+
+        finishSetup();
+        return;
+      }
+
+      if (!setupDone && parsed.type === 'error') {
+        fail(new Error(parsed.data?.message || 'websocket error message received during setup'));
+      }
+    });
+
+    socket.addEventListener('error', () => {
+      if (!setupDone) {
+        fail(new Error('websocket setup error on ' + target.name));
+      } else if (eventWait) {
+        eventWait.resolve({ ok: false, error: 'websocket error before sync event' });
+      }
+    });
+
+    socket.addEventListener('close', () => {
+      if (!setupDone) {
+        fail(new Error('websocket closed during setup on ' + target.name));
+      } else if (eventWait) {
+        eventWait.resolve({ ok: false, error: 'websocket closed before sync event' });
+      }
+    });
+  });
+}
+
+const token = await login(triggerTarget);
+const wallet = await createProofWallet(triggerTarget, token);
+const socketProof = await connectSubscribedWebSocket(websocketTarget, token, wallet.id);
+const eventPromise = socketProof.waitForSyncEvent();
+const triggerStartedAt = Date.now();
+const triggerResponse = await apiJson(triggerTarget, '/api/v1/sync/queue/' + encodeURIComponent(wallet.id), {
+  method: 'POST',
+  token,
+  body: { priority: 'high' },
+});
+const event = await eventPromise;
+socketProof.close();
+
+console.log(JSON.stringify({
+  proofId,
+  totalDurationMs: Date.now() - proofStartedAt,
+  backends,
+  websocketTarget,
+  triggerTarget,
+  wallet,
+  websocket: {
+    url: backendWsUrl(websocketTarget),
+    setupDurationMs: socketProof.setupDurationMs,
+    channels: socketProof.channels,
+  },
+  trigger: {
+    url: backendHttpUrl(triggerTarget, '/api/v1/sync/queue/' + encodeURIComponent(wallet.id)),
+    status: triggerResponse.status,
+    durationMs: Date.now() - triggerStartedAt,
+    body: triggerResponse.body,
+  },
+  event,
+}));
 `;
 }
