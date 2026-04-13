@@ -406,6 +406,7 @@ Completed in the eighth Phase 4 slice:
 - Moved frontend API access-token persistence from durable `localStorage` to `sessionStorage` by default.
 - Added an explicit `VITE_AUTH_TOKEN_STORAGE` switch for `session`, `memory`, and legacy `local` modes so more restrictive deployments can run memory-only without changing API-client call sites.
 - Added legacy `localStorage` token migration/cleanup into session-scoped storage. This reduces durable browser token exposure, but it is not the final HttpOnly-cookie/session architecture.
+- Added focused coverage for stored session token initialization, legacy local-mode initialization, and blocked `sessionStorage` memory fallback so the 100% frontend coverage gate stays green after the storage hardening.
 
 Ongoing post-Phase 4 hygiene:
 
@@ -434,11 +435,11 @@ Ongoing post-Phase 4 hygiene:
 
 Existing coverage artifacts reviewed:
 
-- Frontend `coverage/lcov.info`: 100.00% lines (12908/12908), 100.00% branches (10548/10548), 100.00% functions (3418/3418).
+- Frontend `coverage/lcov.info`: 100.00% lines (12980/12980), 100.00% branches (10616/10616), 100.00% functions (3430/3430).
 - Server `server/coverage/lcov.info`: 99.20% lines (19101/19255), 98.49% branches (10165/10321), 99.22% functions (3555/3583).
 - Gateway `gateway/coverage/lcov.info`: 100.00% lines (457/457), 100.00% branches (297/297), 98.72% functions (77/78).
 
-These artifacts were not regenerated during this assessment.
+The frontend artifact was regenerated during the Phase 4 coverage gate fix; server and gateway coverage artifacts were not regenerated during this refresh.
 
 Fresh checks run in this refresh:
 
@@ -487,8 +488,8 @@ Phase 3 close-out harness syntax, Compose config rendering, and diff whitespace 
 Phase 4 strict test typecheck gate passed: `npm run typecheck:tests`. Strict app typecheck also passed: `npm run typecheck:app`. The touched frontend test files passed: `npx vitest run tests/components/UTXOList/UTXOSummaryBanners.test.tsx tests/components/UsersGroups/EditUserModal.branches.test.tsx tests/components/WalletDetail/modals/ReceiveModal.test.tsx`. Test hygiene passed for those three files.
 Phase 4 privacy-safe benchmark policy checks passed: `node --check scripts/perf/phase3-benchmark.mjs`, `node --check scripts/perf/phase3-compose-benchmark-smoke.mjs`, and `git diff --check` passed. The stale benchmark-target language scan returned no matches.
 Phase 4 CSP hardening checks passed: `cd server && npx vitest run tests/unit/api/openapi.test.ts` passed 42 tests; `cd server && npm run build` passed.
-Phase 4 frontend coverage gate fix passed: `npx vitest run tests/config/coveragePolicy.test.ts tests/shared/redact.test.ts` passed 2 files / 14 tests, `npm run test:coverage` passed 384 files / 5,426 tests with 100% statements/branches/functions/lines, and `npm run typecheck:tests` passed.
-Phase 4 browser token storage hardening checks passed: `npx vitest run tests/api/client.test.ts` passed 55 tests, and `npm run typecheck:app` passed.
+Phase 4 frontend coverage gate fix passed: `npx vitest run tests/config/coveragePolicy.test.ts tests/shared/redact.test.ts` passed 2 files / 14 tests, `npm run test:coverage` passed 384 files / 5,432 tests with 100% statements/branches/functions/lines, and `npm run typecheck:tests` passed.
+Phase 4 browser token storage hardening checks passed: `npx vitest run tests/api/client.test.ts` passed 56 tests, `npm run typecheck:app` passed, `npm run typecheck:tests` passed, and the pre-commit `npm run test:run` frontend suite passed 384 files / 5,432 tests.
 Redis WebSocket bridge readiness targeted test passed after the duplicate-client ready-state fix: `npx vitest run tests/unit/websocket/redisBridge.connected.test.ts` from `server/` passed 17 tests.
 The latest Phase 1 server OpenAPI/mobile-permission/types rerun passed 3 files, 72 tests after shared mobile-permission and draft schema expansion.
 The latest Phase 1 gateway request-validation/proxy rerun passed 2 files, 149 tests after transaction/PSBT/device schema expansion.
@@ -527,7 +528,7 @@ The Phase 1 close-out admin schema adoption rerun passed `server/tests/unit/api/
 
 Not run in this refresh:
 
-- Full frontend/backend/gateway coverage suites.
+- Full backend/gateway coverage suites.
 - Backend integration suite.
 - Playwright e2e suite.
 - Install/container workflows.
