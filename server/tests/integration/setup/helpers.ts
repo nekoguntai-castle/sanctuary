@@ -72,7 +72,45 @@ export async function createTestUser(
 }
 
 /**
- * Login and get auth token
+ * Extract access and refresh JWTs from the Set-Cookie header of an auth
+ * response.
+ *
+ * ADR 0001 / 0002 Phase 6: browser auth is cookie-only. The access and
+ * refresh JWTs are no longer carried in the response body; they are set
+ * as HttpOnly cookies (`sanctuary_access`, `sanctuary_refresh`). Integration
+ * tests still want the raw JWTs so they can pass them as `Authorization:
+ * Bearer` on subsequent requests (which is the same surface the auth
+ * middleware supports, and avoids dealing with CSRF in every test). This
+ * helper returns both tokens; callers that only need the access token can
+ * destructure.
+ */
+export function extractAuthTokens(
+  response: import('supertest').Response
+): { token: string; refreshToken: string } {
+  const setCookie = response.headers['set-cookie'];
+  const cookies: string[] = Array.isArray(setCookie)
+    ? (setCookie as string[])
+    : typeof setCookie === 'string'
+      ? [setCookie as string]
+      : [];
+  const accessCookie = cookies.find(c => c.startsWith('sanctuary_access='));
+  const refreshCookie = cookies.find(c => c.startsWith('sanctuary_refresh='));
+  if (!accessCookie || !refreshCookie) {
+    throw new Error(
+      'Expected sanctuary_access and sanctuary_refresh Set-Cookie headers on auth response'
+    );
+  }
+  return {
+    token: accessCookie.split(';')[0].split('=').slice(1).join('='),
+    refreshToken: refreshCookie.split(';')[0].split('=').slice(1).join('='),
+  };
+}
+
+/**
+ * Login and get auth tokens.
+ *
+ * Returns the access token extracted from the Set-Cookie header. For tests
+ * that also need the refresh token, use `loginTestUserWithTokens` below.
  */
 export async function loginTestUser(
   app: Express,
@@ -83,7 +121,22 @@ export async function loginTestUser(
     .send(credentials)
     .expect(200);
 
-  return response.body.token;
+  return extractAuthTokens(response).token;
+}
+
+/**
+ * Login and return both access and refresh JWTs from the Set-Cookie header.
+ */
+export async function loginTestUserWithTokens(
+  app: Express,
+  credentials: { username: string; password: string }
+): Promise<{ token: string; refreshToken: string }> {
+  const response = await request(app)
+    .post('/api/v1/auth/login')
+    .send(credentials)
+    .expect(200);
+
+  return extractAuthTokens(response);
 }
 
 /**

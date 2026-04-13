@@ -134,14 +134,12 @@ router.post('/refresh', asyncHandler(async (req, res) => {
 
   log.debug('Token refreshed with rotation', { userId: user.id });
 
-  // ADR 0001 / 0002: rotate the browser auth cookies alongside the JSON
-  // token field. The JSON field is retained for one release as a rollback
-  // safety net (mobile/gateway clients still consume it).
+  // ADR 0001 / 0002 — Phase 6: rotated tokens are delivered via cookies only.
+  // The X-Access-Expires-At header (set by setAuthCookies) lets the client
+  // reschedule its proactive refresh timer without reading the token body.
   setAuthCookies(req, res, { accessToken: newAccessToken, refreshToken: newRefreshToken });
 
   res.json({
-    token: newAccessToken,
-    refreshToken: newRefreshToken,
     expiresIn: 3600, // 1 hour in seconds
   });
 }));

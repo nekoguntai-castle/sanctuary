@@ -161,14 +161,14 @@ export function createLoginRouter(
     });
     const refreshToken = await refreshTokenService.createRefreshToken(user.id, deviceInfo);
 
-    // ADR 0001 / 0002: issue the browser auth cookies alongside the JSON
-    // token field. The JSON field is retained for one release as a rollback
-    // safety net (mobile/gateway clients still consume it).
+    // ADR 0001 / 0002 — Phase 6: browser auth is cookie-only. Access and
+    // refresh tokens are set via HttpOnly cookies; the JSON body no longer
+    // carries the token/refreshToken fields. The `expiresIn` hint and the
+    // X-Access-Expires-At header (via setAuthCookies) let the client
+    // schedule proactive refresh without reading tokens from the body.
     setAuthCookies(req, res, { accessToken: token, refreshToken });
 
     res.status(201).json({
-      token,
-      refreshToken,
       expiresIn: 3600, // 1 hour in seconds
       user: {
         id: user.id,
@@ -301,14 +301,11 @@ export function createLoginRouter(
     // Check if using initial password (for admin user warning)
     const usingDefaultPassword = await isUsingInitialPassword(user.id);
 
-    // ADR 0001 / 0002: issue the browser auth cookies alongside the JSON
-    // token field. The JSON field is retained for one release as a rollback
-    // safety net (mobile/gateway clients still consume it).
+    // ADR 0001 / 0002 — Phase 6: browser auth is cookie-only. See register
+    // handler above for the rationale.
     setAuthCookies(req, res, { accessToken: token, refreshToken });
 
     res.json({
-      token,
-      refreshToken,
       expiresIn: 3600, // 1 hour in seconds
       user: {
         id: user.id,

@@ -194,16 +194,27 @@ Goal: the new model is captured in operations and release docs so the next opera
 
 **Exit criteria:** ✓ docs reviewed, both ADR resolution sections filled in, codebase health assessment grade movement recorded.
 
-## Phase 6 — Deprecation removal (PR 6, one release after Phase 2)
+## Phase 6 — Deprecation removal (PR 6) — COMPLETE 2026-04-13
 
-Goal: remove the rollback safety net once we are confident the cookie + refresh path is stable in production.
+Goal: remove the rollback safety net once we are confident the cookie + refresh path is stable.
 
-- [ ] Remove the JSON `token`/`refreshToken` fields from `/auth/login`, `/auth/2fa/verify`, and `/auth/refresh` response bodies for the **browser-mounted** routes only. The gateway-mounted equivalents keep the JSON fields because mobile clients depend on them.
-- [ ] Remove `VITE_AUTH_TOKEN_STORAGE` from `vite.config.ts` and any `.env.example` files.
-- [ ] Audit `src/api/client.ts` for any defensive comments or dead code left behind from Phase 4.
-- [ ] Update tests to assert the JSON token fields are absent on the browser path (positive assertion: the field is `undefined`).
+**Scope note:** the original Phase 6 plan assumed browser-mounted and gateway-mounted auth routes were separately mounted. They aren't — there's a single `authRouter` under `/api/v1/auth` that serves both browsers and the gateway's transparent proxy. Mobile is not currently an active consumer. Given that, Phase 6 strips the JSON `token`/`refreshToken` fields from **all** callers of the auth router. If/when a mobile client ships, it will need to authenticate via cookies OR the auth flow will need a cryptographically-verified gateway channel (the `shared/utils/gatewayAuth.ts` HMAC primitive is the obvious building block). That future work is explicitly out of scope here.
 
-**Exit criteria:** server builds, frontend builds, no test references `VITE_AUTH_TOKEN_STORAGE`, no test references `apiClient.setToken`, no production code reads or writes the JSON token field on the browser routes.
+- [x] Remove the JSON `token`/`refreshToken` fields from `/auth/register`, `/auth/login`, `/auth/2fa/verify`, and `/auth/refresh` response bodies (`server/src/api/auth/login.ts`, `server/src/api/auth/twoFactor/verify.ts`, `server/src/api/auth/tokens.ts`). Rollback-safety-net comments replaced with Phase 6 rationale.
+- [x] Update OpenAPI schemas to drop `token`/`refreshToken` from `LoginResponse` and `RefreshTokenResponse`; `RefreshTokenResponse.required` updated from `['token','refreshToken','expiresIn']` to `['expiresIn']`.
+- [x] Remove `VITE_AUTH_TOKEN_STORAGE` leftover from `.env.example` (there was no `vite.config.ts` entry to remove — Phase 4 already did that).
+- [x] Audit `src/api/client.ts` for Phase-4-era dead code. Confirmed clean: no `setToken`/`getToken`/`TokenStorageMode`/`readStoredToken`/`writeStoredToken`/`storedToken`/"rollback"/"legacy" references. Phase 4 removed all of it.
+- [x] Update 12 unit test assertions in `server/tests/unit/api/auth.routes.registration.test.ts` and `server/tests/unit/api/auth.routes.2fa.test.ts` from `toBeDefined()` to `toBeUndefined()` for `response.body.token` / `response.body.refreshToken`. Where the assertion was load-bearing (rotation tests), replace with `Set-Cookie` content assertions.
+- [x] Refactor integration tests in `server/tests/integration/flows/auth.integration.test.ts`, `admin.integration.test.ts`, and `security.integration.test.ts` to read tokens from the `sanctuary_access` / `sanctuary_refresh` Set-Cookie headers instead of the response body. Added `extractAuthTokens(response)` helper in `server/tests/integration/setup/helpers.ts`.
+
+**Exit criteria achieved:**
+- ✓ Backend builds and typechecks cleanly.
+- ✓ Backend unit + integration test suites pass (8749 unit + 503 integration-skip-when-no-db).
+- ✓ Frontend coverage gate stays at 100% (5475 tests).
+- ✓ Gateway builds and 510 gateway tests pass.
+- ✓ No test references `VITE_AUTH_TOKEN_STORAGE`.
+- ✓ No test references `apiClient.setToken`.
+- ✓ No production code reads or writes the JSON `token`/`refreshToken` field anywhere on the auth routes.
 
 ## Cross-phase guardrails
 

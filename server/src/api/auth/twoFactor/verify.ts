@@ -124,14 +124,11 @@ export function createVerifyRouter(twoFactorLimiter: RequestHandler): Router {
       details: { via2FA: true, usedBackupCode },
     });
 
-    // ADR 0001 / 0002: issue the browser auth cookies alongside the JSON
-    // token field. The JSON field is retained for one release as a rollback
-    // safety net (mobile/gateway clients still consume it).
+    // ADR 0001 / 0002 — Phase 6: browser auth is cookie-only. Tokens are
+    // delivered via HttpOnly cookies; the JSON body no longer carries them.
     setAuthCookies(req, res, { accessToken: token, refreshToken });
 
     res.json({
-      token,
-      refreshToken,
       expiresIn: 3600, // 1 hour in seconds
       user: {
         id: user.id,

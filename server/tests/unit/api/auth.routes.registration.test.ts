@@ -770,8 +770,9 @@ describe('Auth API Routes — Registration, Login, Password, Tokens', () => {
         .send({ username: 'newuser', password: 'StrongPassword123!', email: 'new@example.com' });
 
       expect(response.status).toBe(201);
-      expect(response.body.token).toBeDefined();
-      expect(response.body.refreshToken).toBe('mock-refresh-token');
+      // Phase 6: browser auth is cookie-only; JSON body no longer carries tokens.
+      expect(response.body.token).toBeUndefined();
+      expect(response.body.refreshToken).toBeUndefined();
       expect(response.body.user.username).toBe('newuser');
     });
 
@@ -1028,8 +1029,9 @@ describe('Auth API Routes — Registration, Login, Password, Tokens', () => {
         .send({ username: 'testuser', password: correctPassword });
 
       expect(response.status).toBe(200);
-      expect(response.body.token).toBeDefined();
-      expect(response.body.refreshToken).toBe('mock-refresh-token');
+      // Phase 6: browser auth is cookie-only; JSON body no longer carries tokens.
+      expect(response.body.token).toBeUndefined();
+      expect(response.body.refreshToken).toBeUndefined();
       expect(response.body.user.username).toBe('testuser');
       expect(response.body.usingDefaultPassword).toBeUndefined();
     });
@@ -1083,7 +1085,8 @@ describe('Auth API Routes — Registration, Login, Password, Tokens', () => {
         .send({ username: 'testuser', password: correctPassword });
 
       expect(response.status).toBe(200);
-      expect(response.body.token).toBeDefined();
+      // Phase 6: tokens are delivered via cookies, not the JSON body.
+      expect(response.body.token).toBeUndefined();
     });
 
     // Skip this test because it hits the rate limiter threshold from previous tests
@@ -1376,7 +1379,7 @@ describe('Auth API Routes — Registration, Login, Password, Tokens', () => {
       expect(response.body.message).toContain('User not found');
     });
 
-    it('should return new access token', async () => {
+    it('should rotate the access token via cookies', async () => {
       mockPrismaClient.user.findUnique.mockResolvedValue({
         id: 'test-user-id',
         username: 'testuser',
@@ -1388,11 +1391,18 @@ describe('Auth API Routes — Registration, Login, Password, Tokens', () => {
         .send({ refreshToken: 'valid-token' });
 
       expect(response.status).toBe(200);
-      expect(response.body.token).toBeDefined();
+      // Phase 6: rotated tokens are delivered via Set-Cookie, not body.
+      expect(response.body.token).toBeUndefined();
+      expect(response.body.refreshToken).toBeUndefined();
       expect(response.body.expiresIn).toBe(3600);
+      const setCookie = response.headers['set-cookie'];
+      expect(setCookie).toBeDefined();
+      const cookieHeader = Array.isArray(setCookie) ? setCookie.join('\n') : String(setCookie);
+      expect(cookieHeader).toContain('sanctuary_access=');
+      expect(cookieHeader).toContain('sanctuary_refresh=');
     });
 
-    it('should return new refresh token when rotation is requested', async () => {
+    it('should rotate the refresh token via cookies when rotation is requested', async () => {
       mockPrismaClient.user.findUnique.mockResolvedValue({
         id: 'test-user-id',
         username: 'testuser',
@@ -1404,8 +1414,14 @@ describe('Auth API Routes — Registration, Login, Password, Tokens', () => {
         .send({ refreshToken: 'valid-token', rotate: true });
 
       expect(response.status).toBe(200);
-      expect(response.body.token).toBeDefined();
-      expect(response.body.refreshToken).toBe('new-refresh-token');
+      // Phase 6: rotated tokens are delivered via Set-Cookie, not body.
+      expect(response.body.token).toBeUndefined();
+      expect(response.body.refreshToken).toBeUndefined();
+      const setCookie = response.headers['set-cookie'];
+      expect(setCookie).toBeDefined();
+      const cookieHeader = Array.isArray(setCookie) ? setCookie.join('\n') : String(setCookie);
+      // The rotated refresh token value is visible in the Set-Cookie header.
+      expect(cookieHeader).toContain('sanctuary_refresh=new-refresh-token');
     });
 
     it('should return 500 when mandatory token rotation fails and must NOT clear the browser auth cookies', async () => {
@@ -1710,9 +1726,9 @@ describe('Auth API Routes — Registration, Login, Password, Tokens', () => {
         .send({ username: 'testuser', password: correctPassword });
 
       expect(response.status).toBe(200);
-      // JSON fields are still present for the rollback window.
-      expect(response.body.token).toBeDefined();
-      expect(response.body.refreshToken).toBeDefined();
+      // Phase 6: JSON fields are gone; tokens are delivered via cookies.
+      expect(response.body.token).toBeUndefined();
+      expect(response.body.refreshToken).toBeUndefined();
       assertAuthCookiesIssued(response.headers['set-cookie']);
       assertAccessExpiresAtHeader(response.headers);
     });
@@ -1762,8 +1778,10 @@ describe('Auth API Routes — Registration, Login, Password, Tokens', () => {
         .send({ refreshToken: 'body-refresh-token' });
 
       expect(response.status).toBe(200);
-      expect(response.body.token).toBeDefined();
-      expect(response.body.refreshToken).toBe('new-refresh-token');
+      // Phase 6: tokens are in Set-Cookie, not body. assertAuthCookiesIssued
+      // already verifies both sanctuary_access and sanctuary_refresh are set.
+      expect(response.body.token).toBeUndefined();
+      expect(response.body.refreshToken).toBeUndefined();
       assertAuthCookiesIssued(response.headers['set-cookie']);
       assertAccessExpiresAtHeader(response.headers);
     });
@@ -1781,8 +1799,9 @@ describe('Auth API Routes — Registration, Login, Password, Tokens', () => {
         .send({});
 
       expect(response.status).toBe(200);
-      expect(response.body.token).toBeDefined();
-      expect(response.body.refreshToken).toBe('new-refresh-token');
+      // Phase 6: tokens are in Set-Cookie, not body.
+      expect(response.body.token).toBeUndefined();
+      expect(response.body.refreshToken).toBeUndefined();
       assertAuthCookiesIssued(response.headers['set-cookie']);
       assertAccessExpiresAtHeader(response.headers);
     });

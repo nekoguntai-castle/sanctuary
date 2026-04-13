@@ -41,8 +41,6 @@ export const authSchemas = {
   LoginResponse: {
     type: 'object',
     properties: {
-      token: { type: 'string' },
-      refreshToken: { type: 'string' },
       expiresIn: { type: 'integer' },
       user: { $ref: '#/components/schemas/User' },
       requires2FA: { type: 'boolean' },
@@ -66,11 +64,9 @@ export const authSchemas = {
   RefreshTokenResponse: {
     type: 'object',
     properties: {
-      token: { type: 'string' },
-      refreshToken: { type: 'string' },
       expiresIn: { type: 'integer' },
     },
-    required: ['token', 'refreshToken', 'expiresIn'],
+    required: ['expiresIn'],
   },
   LogoutRequest: {
     type: 'object',

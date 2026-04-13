@@ -621,8 +621,9 @@ describe('Auth API Routes — Two-Factor Authentication', () => {
         .send({ tempToken: 'valid-token', code: '123456' });
 
       expect(response.status).toBe(200);
-      expect(response.body.token).toBeDefined();
-      expect(response.body.refreshToken).toBeDefined();
+      // Phase 6: browser auth is cookie-only; JSON body no longer carries tokens.
+      expect(response.body.token).toBeUndefined();
+      expect(response.body.refreshToken).toBeUndefined();
       expect(response.body.user.username).toBe('testuser');
     });
 
@@ -649,7 +650,10 @@ describe('Auth API Routes — Two-Factor Authentication', () => {
         .send({ tempToken: 'valid-token', code: 'BACKUP-CODE' });
 
       expect(response.status).toBe(200);
-      expect(response.body.token).toBeDefined();
+      // Phase 6: tokens are delivered via Set-Cookie, not body.
+      expect(response.body.token).toBeUndefined();
+      const setCookie = response.headers['set-cookie'];
+      expect(setCookie).toBeDefined();
     });
 
     it('should skip backup code persistence when verifyBackupCode does not return updates', async () => {
@@ -673,7 +677,8 @@ describe('Auth API Routes — Two-Factor Authentication', () => {
         .send({ tempToken: 'valid-token', code: 'BACKUP-CODE' });
 
       expect(response.status).toBe(200);
-      expect(response.body.token).toBeDefined();
+      // Phase 6: tokens are delivered via Set-Cookie, not body.
+      expect(response.body.token).toBeUndefined();
       expect(mockPrismaClient.user.update).not.toHaveBeenCalled();
     });
 
@@ -735,9 +740,9 @@ describe('Auth API Routes — Two-Factor Authentication', () => {
         .send({ tempToken: 'valid-token', code: '123456' });
 
       expect(response.status).toBe(200);
-      // JSON fields are still present for the rollback window.
-      expect(response.body.token).toBeDefined();
-      expect(response.body.refreshToken).toBeDefined();
+      // Phase 6: JSON fields are gone; tokens are delivered via cookies.
+      expect(response.body.token).toBeUndefined();
+      expect(response.body.refreshToken).toBeUndefined();
 
       const setCookie = response.headers['set-cookie'];
       const rawCookies: string[] = Array.isArray(setCookie)

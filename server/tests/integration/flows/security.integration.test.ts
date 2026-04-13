@@ -14,7 +14,7 @@ import { vi } from 'vitest';
 import request from 'supertest';
 import { setupTestDatabase, cleanupTestData, teardownTestDatabase, canRunIntegrationTests } from '../setup/testDatabase';
 import { createTestApp, resetTestApp } from '../setup/testServer';
-import { getTestUser, getTestAdmin, createTestUser, loginTestUser } from '../setup/helpers';
+import { getTestUser, getTestAdmin, createTestUser, loginTestUser, extractAuthTokens } from '../setup/helpers';
 import { PrismaClient } from '../../../src/generated/prisma/client';
 import { Express } from 'express';
 import bcrypt from 'bcryptjs';
@@ -145,7 +145,7 @@ describeWithDb('Security Integration Tests', () => {
         .send({ username, password: DEFAULT_PASSWORD })
         .expect(200);
 
-      const token = loginResponse.body.token;
+      const { token } = extractAuthTokens(loginResponse);
 
       // Check /me endpoint
       const meResponse = await request(app)
@@ -519,9 +519,11 @@ describeWithDb('Security Integration Tests', () => {
         })
         .expect(200);
 
-      expect(response.body.token).toBeDefined();
+      // Phase 6: token is delivered via Set-Cookie, not body.
+      const { token } = extractAuthTokens(response);
       // JWT has 3 parts separated by dots
-      expect(response.body.token.split('.').length).toBe(3);
+      expect(token.split('.').length).toBe(3);
+      expect(response.body.token).toBeUndefined();
     });
 
     it('should reject access with wrong password after password change', async () => {

@@ -17,7 +17,7 @@ import { vi } from 'vitest';
 import request from 'supertest';
 import { setupTestDatabase, cleanupTestData, teardownTestDatabase, canRunIntegrationTests } from '../setup/testDatabase';
 import { createTestApp, resetTestApp } from '../setup/testServer';
-import { getTestUser, getTestAdmin, createTestUser, loginTestUser } from '../setup/helpers';
+import { getTestUser, getTestAdmin, createTestUser, loginTestUser, extractAuthTokens } from '../setup/helpers';
 import { PrismaClient } from '../../../src/generated/prisma/client';
 import { Express } from 'express';
 
@@ -70,8 +70,11 @@ describeWithDb('Authentication Integration', () => {
         })
         .expect(200);
 
-      expect(response.body.token).toBeDefined();
-      expect(typeof response.body.token).toBe('string');
+      // Phase 6: tokens are delivered via Set-Cookie, not body.
+      const { token } = extractAuthTokens(response);
+      expect(typeof token).toBe('string');
+      expect(token.split('.').length).toBe(3);
+      expect(response.body.token).toBeUndefined();
       expect(response.body.user).toBeDefined();
       expect(response.body.user.username).toBe(testUser.username);
       expect(response.body.user.password).toBeUndefined();
@@ -160,7 +163,8 @@ describeWithDb('Authentication Integration', () => {
         })
         .expect(200);
 
-      expect(loginResponse.body.token).toBeDefined();
+      // Phase 6: token is in the Set-Cookie header.
+      expect(extractAuthTokens(loginResponse).token).toBeTruthy();
     });
 
     it('should reject password change with wrong current password', async () => {
@@ -207,7 +211,8 @@ describeWithDb('Authentication Integration', () => {
         })
         .expect(200);
 
-      expect(loginResponse.body.token).toBeDefined();
+      // Phase 6: token is in the Set-Cookie header.
+      expect(extractAuthTokens(loginResponse).token).toBeTruthy();
     });
 
     it('should not allow non-admin to create user', async () => {
@@ -227,7 +232,7 @@ describeWithDb('Authentication Integration', () => {
   });
 
   describe('Token Refresh', () => {
-    it('should return valid token on login', async () => {
+    it('should return valid access cookie on login', async () => {
       const testUser = getTestUser();
       await createTestUser(prisma, testUser);
 
@@ -239,11 +244,13 @@ describeWithDb('Authentication Integration', () => {
         })
         .expect(200);
 
-      expect(response.body.token).toBeDefined();
-      expect(response.body.token.split('.').length).toBe(3);
+      // Phase 6: tokens are delivered via Set-Cookie, not body.
+      const { token } = extractAuthTokens(response);
+      expect(token.split('.').length).toBe(3);
+      expect(response.body.token).toBeUndefined();
     });
 
-    it('should return refresh token on login', async () => {
+    it('should return refresh cookie on login', async () => {
       const testUser = getTestUser();
       await createTestUser(prisma, testUser);
 
@@ -255,8 +262,10 @@ describeWithDb('Authentication Integration', () => {
         })
         .expect(200);
 
-      expect(response.body.refreshToken).toBeDefined();
-      expect(response.body.refreshToken.split('.').length).toBe(3);
+      // Phase 6: tokens are delivered via Set-Cookie, not body.
+      const { refreshToken } = extractAuthTokens(response);
+      expect(refreshToken.split('.').length).toBe(3);
+      expect(response.body.refreshToken).toBeUndefined();
     });
 
     it('should refresh access token using refresh token', async () => {
@@ -271,17 +280,20 @@ describeWithDb('Authentication Integration', () => {
         })
         .expect(200);
 
-      const refreshToken = loginResponse.body.refreshToken;
+      const { refreshToken } = extractAuthTokens(loginResponse);
 
       const refreshResponse = await request(app)
         .post('/api/v1/auth/refresh')
         .send({ refreshToken, rotate: true })
         .expect(200);
 
-      expect(refreshResponse.body.token).toBeDefined();
-      expect(refreshResponse.body.refreshToken).toBeDefined();
-      // New refresh token should be different (rotation)
-      expect(refreshResponse.body.refreshToken).not.toBe(refreshToken);
+      // Phase 6: rotated tokens are delivered via Set-Cookie.
+      const rotated = extractAuthTokens(refreshResponse);
+      expect(rotated.token).toBeTruthy();
+      expect(rotated.refreshToken).toBeTruthy();
+      expect(rotated.refreshToken).not.toBe(refreshToken);
+      expect(refreshResponse.body.token).toBeUndefined();
+      expect(refreshResponse.body.refreshToken).toBeUndefined();
     });
   });
 
@@ -298,7 +310,7 @@ describeWithDb('Authentication Integration', () => {
         })
         .expect(200);
 
-      const { token, refreshToken } = loginResponse.body;
+      const { token, refreshToken } = extractAuthTokens(loginResponse);
 
       // Logout
       await request(app)
@@ -326,7 +338,7 @@ describeWithDb('Authentication Integration', () => {
         })
         .expect(200);
 
-      const { token, refreshToken } = loginResponse.body;
+      const { token, refreshToken } = extractAuthTokens(loginResponse);
 
       // Logout with refresh token
       await request(app)
@@ -365,10 +377,13 @@ describeWithDb('Authentication Integration', () => {
         })
         .expect(200);
 
+      const tokens1 = extractAuthTokens(login1);
+      const tokens2 = extractAuthTokens(login2);
+
       // Logout all from first session
       const logoutResponse = await request(app)
         .post('/api/v1/auth/logout-all')
-        .set('Authorization', `Bearer ${login1.body.token}`)
+        .set('Authorization', `Bearer ${tokens1.token}`)
         .expect(200);
 
       expect(logoutResponse.body.sessionsRevoked).toBeGreaterThanOrEqual(2);
@@ -376,12 +391,12 @@ describeWithDb('Authentication Integration', () => {
       // Both refresh tokens should now be invalid
       await request(app)
         .post('/api/v1/auth/refresh')
-        .send({ refreshToken: login1.body.refreshToken })
+        .send({ refreshToken: tokens1.refreshToken })
         .expect(401);
 
       await request(app)
         .post('/api/v1/auth/refresh')
-        .send({ refreshToken: login2.body.refreshToken })
+        .send({ refreshToken: tokens2.refreshToken })
         .expect(401);
     });
   });
@@ -400,9 +415,10 @@ describeWithDb('Authentication Integration', () => {
         })
         .expect(200);
 
+      const { token } = extractAuthTokens(loginResponse);
       const response = await request(app)
         .get('/api/v1/auth/sessions')
-        .set('Authorization', `Bearer ${loginResponse.body.token}`)
+        .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
       expect(response.body.sessions).toBeDefined();
@@ -428,10 +444,11 @@ describeWithDb('Authentication Integration', () => {
         })
         .expect(200);
 
+      const { token, refreshToken } = extractAuthTokens(loginResponse);
       const response = await request(app)
         .get('/api/v1/auth/sessions')
-        .set('Authorization', `Bearer ${loginResponse.body.token}`)
-        .set('X-Refresh-Token', loginResponse.body.refreshToken)
+        .set('Authorization', `Bearer ${token}`)
+        .set('X-Refresh-Token', refreshToken)
         .expect(200);
 
       const currentSession = response.body.sessions.find((s: any) => s.isCurrent);
@@ -459,10 +476,11 @@ describeWithDb('Authentication Integration', () => {
         })
         .expect(200);
 
+      const { token: token1 } = extractAuthTokens(login1);
       // Get sessions from first login
       const sessionsResponse = await request(app)
         .get('/api/v1/auth/sessions')
-        .set('Authorization', `Bearer ${login1.body.token}`)
+        .set('Authorization', `Bearer ${token1}`)
         .expect(200);
 
       expect(sessionsResponse.body.sessions.length).toBe(2);
@@ -473,13 +491,13 @@ describeWithDb('Authentication Integration', () => {
 
       await request(app)
         .delete(`/api/v1/auth/sessions/${otherSession.id}`)
-        .set('Authorization', `Bearer ${login1.body.token}`)
+        .set('Authorization', `Bearer ${token1}`)
         .expect(200);
 
       // Verify the session was revoked
       const newSessionsResponse = await request(app)
         .get('/api/v1/auth/sessions')
-        .set('Authorization', `Bearer ${login1.body.token}`)
+        .set('Authorization', `Bearer ${token1}`)
         .expect(200);
 
       expect(newSessionsResponse.body.sessions.length).toBe(1);
@@ -508,10 +526,13 @@ describeWithDb('Authentication Integration', () => {
         })
         .expect(200);
 
+      const { token: userToken } = extractAuthTokens(userLogin);
+      const { token: adminToken } = extractAuthTokens(adminLogin);
+
       // Get user's sessions
       const sessionsResponse = await request(app)
         .get('/api/v1/auth/sessions')
-        .set('Authorization', `Bearer ${userLogin.body.token}`)
+        .set('Authorization', `Bearer ${userToken}`)
         .expect(200);
 
       const userSessionId = sessionsResponse.body.sessions[0].id;
@@ -519,7 +540,7 @@ describeWithDb('Authentication Integration', () => {
       // Try to revoke user's session as admin (should fail - each user manages their own sessions)
       await request(app)
         .delete(`/api/v1/auth/sessions/${userSessionId}`)
-        .set('Authorization', `Bearer ${adminLogin.body.token}`)
+        .set('Authorization', `Bearer ${adminToken}`)
         .expect(404);
     });
   });
@@ -740,11 +761,14 @@ describeWithDb('Authentication Integration', () => {
           })
           .expect(200);
 
-        // Regular login returns full token, not pending2FA token
-        // Attempting to verify should fail
+        // Regular login returns a full access token (via Set-Cookie),
+        // not a pending2FA tempToken. Attempting to verify with that
+        // access token as tempToken must fail because the token has the
+        // wrong audience (ACCESS, not PENDING_2FA).
+        const { token: accessToken } = extractAuthTokens(loginResponse);
         await request(app)
           .post('/api/v1/auth/2fa/verify')
-          .send({ tempToken: loginResponse.body.token, code: '123456' })
+          .send({ tempToken: accessToken, code: '123456' })
           .expect(401);
       });
 

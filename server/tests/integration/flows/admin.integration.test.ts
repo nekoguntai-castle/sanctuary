@@ -16,6 +16,7 @@ import {
   cleanupTestData,
   canRunIntegrationTests,
 } from '../setup/testDatabase';
+import { extractAuthTokens } from '../setup/helpers';
 
 // Skip tests if no database available
 const describeIfDb = canRunIntegrationTests() ? describe : describe.skip;
@@ -50,7 +51,7 @@ describeIfDb('Admin API Integration', () => {
       .send({ username, password })
       .expect(200);
 
-    return { adminId: admin.id, token: response.body.token };
+    return { adminId: admin.id, token: extractAuthTokens(response).token };
   }
 
   // Helper to create regular user and get token
@@ -74,7 +75,7 @@ describeIfDb('Admin API Integration', () => {
       .send({ username, password })
       .expect(200);
 
-    return { userId: user.id, token: response.body.token, username };
+    return { userId: user.id, token: extractAuthTokens(response).token, username };
   }
 
   function authHeader(token: string) {
