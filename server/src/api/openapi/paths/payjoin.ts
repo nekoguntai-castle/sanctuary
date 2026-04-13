@@ -4,7 +4,7 @@
  * OpenAPI path definitions for BIP78 Payjoin management and receiver endpoints.
  */
 
-const bearerAuth = [{ bearerAuth: [] }] as const;
+import { browserOrBearerAuth as bearerAuth } from '../security';
 
 const walletIdParameter = {
   name: 'walletId',

@@ -7,8 +7,8 @@
 
 import { FEATURE_FLAG_KEYS } from '../../../services/featureFlags/definitions';
 import { AUDIT_DEFAULT_PAGE_SIZE, AUDIT_STATS_DAYS } from '../../../constants';
+import { browserOrBearerAuth as bearerAuth } from '../security';
 
-const bearerAuth = [{ bearerAuth: [] }] as const;
 const AUDIT_LOG_LIMIT_MAX = 500;
 const ELECTRUM_NETWORK_VALUES = ['mainnet', 'testnet', 'signet', 'regtest'] as const;
 const DEAD_LETTER_CATEGORY_VALUES = ['sync', 'push', 'telegram', 'notification', 'electrum', 'transaction', 'other'] as const;

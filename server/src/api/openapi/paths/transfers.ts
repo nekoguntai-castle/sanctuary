@@ -9,8 +9,7 @@ import {
   TRANSFER_ROLE_FILTER_VALUES,
   TRANSFER_STATUS_FILTER_VALUES,
 } from '../../../services/transferService/types';
-
-const bearerAuth = [{ bearerAuth: [] }] as const;
+import { browserOrBearerAuth as bearerAuth } from '../security';
 
 const transferIdParameter = {
   name: 'id',

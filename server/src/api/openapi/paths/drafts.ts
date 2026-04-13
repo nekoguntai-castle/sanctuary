@@ -4,7 +4,7 @@
  * OpenAPI path definitions for gateway-exposed draft transaction routes.
  */
 
-const bearerAuth = [{ bearerAuth: [] }] as const;
+import { browserOrBearerAuth as bearerAuth } from '../security';
 
 const walletIdParameter = {
   name: 'walletId',

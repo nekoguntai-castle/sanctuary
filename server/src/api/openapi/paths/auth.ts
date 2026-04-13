@@ -4,7 +4,7 @@
  * OpenAPI path definitions for authentication endpoints.
  */
 
-const bearerAuth = [{ bearerAuth: [] }] as const;
+import { browserOrBearerAuth as bearerAuth } from '../security';
 
 const apiErrorResponse = {
   description: 'Error response',

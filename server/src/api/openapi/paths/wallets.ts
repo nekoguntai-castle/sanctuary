@@ -4,13 +4,15 @@
  * OpenAPI path definitions for wallet management endpoints.
  */
 
+import { browserOrBearerAuth as bearerAuth } from '../security';
+
 export const walletPaths = {
   '/wallets': {
     get: {
       tags: ['Wallets'],
       summary: 'List wallets',
       description: 'Get all wallets for the authenticated user',
-      security: [{ bearerAuth: [] }],
+      security: bearerAuth,
       responses: {
         200: {
           description: 'List of wallets',
@@ -29,7 +31,7 @@ export const walletPaths = {
       tags: ['Wallets'],
       summary: 'Create wallet',
       description: 'Create a new wallet',
-      security: [{ bearerAuth: [] }],
+      security: bearerAuth,
       requestBody: {
         required: true,
         content: {
@@ -55,7 +57,7 @@ export const walletPaths = {
       tags: ['Wallets'],
       summary: 'Get wallet',
       description: 'Get a specific wallet by ID',
-      security: [{ bearerAuth: [] }],
+      security: bearerAuth,
       parameters: [
         {
           name: 'walletId',
@@ -87,7 +89,7 @@ export const walletPaths = {
       tags: ['Wallets'],
       summary: 'Update wallet',
       description: 'Update wallet properties',
-      security: [{ bearerAuth: [] }],
+      security: bearerAuth,
       parameters: [
         {
           name: 'walletId',
@@ -119,7 +121,7 @@ export const walletPaths = {
       tags: ['Wallets'],
       summary: 'Delete wallet',
       description: 'Delete a wallet (owner only)',
-      security: [{ bearerAuth: [] }],
+      security: bearerAuth,
       parameters: [
         {
           name: 'walletId',
@@ -140,7 +142,7 @@ export const walletPaths = {
       tags: ['Wallets'],
       summary: 'Get wallet stats',
       description: 'Get wallet statistics (balance, tx count, etc)',
-      security: [{ bearerAuth: [] }],
+      security: bearerAuth,
       parameters: [
         {
           name: 'walletId',

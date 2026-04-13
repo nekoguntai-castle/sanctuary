@@ -4,7 +4,7 @@
  * OpenAPI path definitions for hardware device management endpoints.
  */
 
-const bearerAuth = [{ bearerAuth: [] }] as const;
+import { browserOrBearerAuth as bearerAuth } from '../security';
 
 const deviceIdParameter = {
   name: 'deviceId',

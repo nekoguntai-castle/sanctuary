@@ -4,7 +4,7 @@
  * OpenAPI path definitions for user-facing push device routes.
  */
 
-const bearerAuth = [{ bearerAuth: [] }] as const;
+import { browserOrBearerAuth as bearerAuth } from '../security';
 
 const deviceIdParameter = {
   name: 'id',

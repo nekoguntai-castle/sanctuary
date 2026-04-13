@@ -9,8 +9,7 @@ import {
   INSIGHT_STATUS_VALUES,
   INSIGHT_TYPE_VALUES,
 } from '../../../services/intelligence/types';
-
-const bearerAuth = [{ bearerAuth: [] }] as const;
+import { browserOrBearerAuth as bearerAuth } from '../security';
 
 const idParameter = {
   name: 'id',

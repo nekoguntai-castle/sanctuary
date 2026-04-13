@@ -52,6 +52,17 @@ import {
 } from '../../../src/constants';
 import { FEATURE_FLAG_KEYS } from '../../../src/services/featureFlags/definitions';
 
+// ADR 0001 / ADR 0002 — every browser-mounted protected route advertises
+// two auth alternatives: bearer (mobile/gateway) and cookie + CSRF (browser).
+// The shared shape is imported/exported from `src/api/openapi/security.ts`
+// as `browserOrBearerAuth`. Internal AI container routes continue to use
+// bearer only and assert against `bearerOnlyAuth` below.
+const browserOrBearerAuthSecurity = [
+  { bearerAuth: [] },
+  { cookieAuth: [], csrfToken: [] },
+];
+const bearerOnlyAuthSecurity = [{ bearerAuth: [] }];
+
 type HandlerResponse = {
   statusCode: number;
   headers: Record<string, string>;
@@ -195,9 +206,9 @@ describe('OpenAPI Docs', () => {
       type: 'boolean',
     });
 
-    expect(openApiSpec.paths['/price/cache/stats'].get.security).toEqual([{ bearerAuth: [] }]);
-    expect(openApiSpec.paths['/price/cache/clear'].post.security).toEqual([{ bearerAuth: [] }]);
-    expect(openApiSpec.paths['/price/cache/duration'].post.security).toEqual([{ bearerAuth: [] }]);
+    expect(openApiSpec.paths['/price/cache/stats'].get.security).toEqual(browserOrBearerAuthSecurity);
+    expect(openApiSpec.paths['/price/cache/clear'].post.security).toEqual(browserOrBearerAuthSecurity);
+    expect(openApiSpec.paths['/price/cache/duration'].post.security).toEqual(browserOrBearerAuthSecurity);
     expect(openApiSpec.paths['/price/cache/stats'].get.responses).toHaveProperty('403');
     expect(openApiSpec.components.schemas.PriceCacheStats).toHaveProperty('additionalProperties', true);
     expect(openApiSpec.components.schemas.PriceCacheStats.required).toEqual(['size', 'entries']);
@@ -314,7 +325,7 @@ describe('OpenAPI Docs', () => {
       minItems: 1,
       maxItems: 100,
     });
-    expect(openApiSpec.paths['/bitcoin/address/{addressId}/sync'].post.security).toEqual([{ bearerAuth: [] }]);
+    expect(openApiSpec.paths['/bitcoin/address/{addressId}/sync'].post.security).toEqual(browserOrBearerAuthSecurity);
     expect(openApiSpec.paths['/bitcoin/address-lookup'].post.requestBody.content['application/json'].schema).toEqual({
       $ref: '#/components/schemas/AddressLookupRequest',
     });
@@ -350,7 +361,7 @@ describe('OpenAPI Docs', () => {
     });
     expect(openApiSpec.components.schemas.RbfResponse.properties.inputPaths.items).toEqual({ type: 'string' });
 
-    expect(openApiSpec.paths['/node/test'].post.security).toEqual([{ bearerAuth: [] }]);
+    expect(openApiSpec.paths['/node/test'].post.security).toEqual(browserOrBearerAuthSecurity);
     expect(openApiSpec.components.schemas.NodeConnectionTestRequest.required).toEqual(['host', 'port', 'protocol']);
     expect(openApiSpec.components.schemas.NodeConnectionTestRequest.properties.nodeType).toMatchObject({
       enum: ['electrum'],
@@ -2225,9 +2236,9 @@ describe('OpenAPI Docs', () => {
 
     expect(openApiSpec.paths['/auth/registration-status'].get).not.toHaveProperty('security');
     expect(openApiSpec.paths['/auth/email/verify'].post).not.toHaveProperty('security');
-    expect(openApiSpec.paths['/auth/2fa/setup'].post.security).toEqual([{ bearerAuth: [] }]);
-    expect(openApiSpec.paths['/auth/email/resend'].post.security).toEqual([{ bearerAuth: [] }]);
-    expect(openApiSpec.paths['/auth/telegram/chat-id'].post.security).toEqual([{ bearerAuth: [] }]);
+    expect(openApiSpec.paths['/auth/2fa/setup'].post.security).toEqual(browserOrBearerAuthSecurity);
+    expect(openApiSpec.paths['/auth/email/resend'].post.security).toEqual(browserOrBearerAuthSecurity);
+    expect(openApiSpec.paths['/auth/telegram/chat-id'].post.security).toEqual(browserOrBearerAuthSecurity);
 
     expect(openApiSpec.components.schemas.RegistrationStatusResponse.required).toEqual(['enabled']);
     expect(openApiSpec.components.schemas.RegisterRequest.required).toEqual(['username', 'password', 'email']);
@@ -2712,7 +2723,7 @@ describe('OpenAPI Docs', () => {
       '/internal/ai/wallet/{walletId}/spending-velocity',
       '/internal/ai/wallet/{walletId}/utxo-age-profile',
     ] as const) {
-      expect(openApiSpec.paths[path].get.security).toEqual([{ bearerAuth: [] }]);
+      expect(openApiSpec.paths[path].get.security).toEqual(bearerOnlyAuthSecurity);
     }
 
     expect(openApiSpec.tags).toContainEqual({

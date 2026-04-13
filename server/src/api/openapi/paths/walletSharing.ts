@@ -4,7 +4,7 @@
  * OpenAPI path definitions for wallet user and group sharing endpoints.
  */
 
-const bearerAuth = [{ bearerAuth: [] }] as const;
+import { browserOrBearerAuth as bearerAuth } from '../security';
 
 const walletIdParameter = {
   name: 'walletId',
