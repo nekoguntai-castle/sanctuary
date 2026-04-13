@@ -291,7 +291,8 @@ describe('Remaining API Modules', () => {
       await twoFactorApi.enable2FA('123456');
       await twoFactorApi.disable2FA({ password: 'p', token: '123456' });
 
-      const verifyResponse = { token: 'jwt-2fa', user: { id: 'u1' } };
+      // Phase 6: verify2FA response body no longer carries a token field.
+      const verifyResponse = { user: { id: 'u1' } };
       mockPost.mockResolvedValueOnce(verifyResponse);
       const result = await twoFactorApi.verify2FA({ tempToken: 'tmp', code: '111111' });
 

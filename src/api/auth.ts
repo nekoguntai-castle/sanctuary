@@ -41,8 +41,14 @@ export interface RegisterRequest {
   email?: string;
 }
 
+/**
+ * ADR 0001 / 0002 Phase 6: browser auth is cookie-only. The response
+ * body no longer carries a `token` field — the access and refresh JWTs
+ * are set via `Set-Cookie` (sanctuary_access / sanctuary_refresh) and
+ * the `X-Access-Expires-At` header drives the refresh scheduler. The
+ * caller only needs the user object for UserContext hydration.
+ */
 export interface AuthResponse {
-  token: string;
   user: User;
 }
 

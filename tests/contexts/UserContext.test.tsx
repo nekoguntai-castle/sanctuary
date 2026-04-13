@@ -233,7 +233,7 @@ describe('UserContext', () => {
   describe('Login', () => {
     it('logs in successfully', async () => {
       const user = userEvent.setup();
-      vi.mocked(authApi.login).mockResolvedValue({ token: 'token-123', user: mockUser });
+      vi.mocked(authApi.login).mockResolvedValue({ user: mockUser });
       vi.mocked(authApi.requires2FA).mockReturnValue(false);
 
       render(<UserProvider><TestConsumer /></UserProvider>);
@@ -327,7 +327,7 @@ describe('UserContext', () => {
       });
 
       // Now verify 2FA
-      vi.mocked(twoFactorApi.verify2FA).mockResolvedValue({ token: 'token-123', user: mockUser });
+      vi.mocked(twoFactorApi.verify2FA).mockResolvedValue({ user: mockUser });
 
       await user.click(screen.getByTestId('verify-2fa'));
 
@@ -435,7 +435,7 @@ describe('UserContext', () => {
   describe('Registration', () => {
     it('registers successfully', async () => {
       const user = userEvent.setup();
-      vi.mocked(authApi.register).mockResolvedValue({ token: 'token-123', user: mockUser });
+      vi.mocked(authApi.register).mockResolvedValue({ user: mockUser });
 
       render(<UserProvider><TestConsumer /></UserProvider>);
 
@@ -489,7 +489,7 @@ describe('UserContext', () => {
   describe('Logout', () => {
     it('logs out user', async () => {
       const user = userEvent.setup();
-      vi.mocked(authApi.login).mockResolvedValue({ token: 'token-123', user: mockUser });
+      vi.mocked(authApi.login).mockResolvedValue({ user: mockUser });
       vi.mocked(authApi.requires2FA).mockReturnValue(false);
 
       render(<UserProvider><TestConsumer /></UserProvider>);
@@ -521,7 +521,7 @@ describe('UserContext', () => {
   describe('Preferences', () => {
     it('updates preferences optimistically', async () => {
       const user = userEvent.setup();
-      vi.mocked(authApi.login).mockResolvedValue({ token: 'token-123', user: mockUser });
+      vi.mocked(authApi.login).mockResolvedValue({ user: mockUser });
       vi.mocked(authApi.requires2FA).mockReturnValue(false);
       vi.mocked(authApi.updatePreferences).mockResolvedValue({
         ...mockUser,
@@ -567,7 +567,7 @@ describe('UserContext', () => {
 
     it('reverts optimistic preference update and uses ApiError message on failure', async () => {
       const user = userEvent.setup();
-      vi.mocked(authApi.login).mockResolvedValue({ token: 'token-123', user: mockUser });
+      vi.mocked(authApi.login).mockResolvedValue({ user: mockUser });
       vi.mocked(authApi.requires2FA).mockReturnValue(false);
       vi.mocked(authApi.updatePreferences).mockRejectedValue(new ApiError('Preference save failed', 500));
 
@@ -592,7 +592,7 @@ describe('UserContext', () => {
 
     it('uses fallback preference update error for non-ApiError failures', async () => {
       const user = userEvent.setup();
-      vi.mocked(authApi.login).mockResolvedValue({ token: 'token-123', user: mockUser });
+      vi.mocked(authApi.login).mockResolvedValue({ user: mockUser });
       vi.mocked(authApi.requires2FA).mockReturnValue(false);
       vi.mocked(authApi.updatePreferences).mockRejectedValue(new Error('network down'));
 
@@ -670,7 +670,7 @@ describe('UserContext', () => {
         );
       };
 
-      vi.mocked(authApi.login).mockResolvedValue({ token: 'token-123', user: mockUser });
+      vi.mocked(authApi.login).mockResolvedValue({ user: mockUser });
       vi.mocked(authApi.requires2FA).mockReturnValue(false);
 
       render(<UserProvider><TestAuth /></UserProvider>);

@@ -58,7 +58,6 @@ describe('Auth API', () => {
 
     it('should return false for normal auth response', () => {
       const response: AuthResponse = {
-        token: 'jwt-token',
         user: {
           id: '1',
           username: 'test',
@@ -76,11 +75,10 @@ describe('Auth API', () => {
   // ========================================
   describe('register', () => {
     it('should POST registration data and return the auth response', async () => {
-      // Phase 4: the backend sets the browser auth cookies on this
-      // response; the frontend reads the `user` field for hydration but
-      // no longer extracts or persists the `token` field on its own.
+      // Phase 6: the backend sets the browser auth cookies on this
+      // response; the response body carries only the user object for
+      // UserContext hydration. Tokens are delivered via Set-Cookie.
       const mockResponse: AuthResponse = {
-        token: 'new-user-token',
         user: {
           id: 'user-1',
           username: 'newuser',
@@ -101,7 +99,7 @@ describe('Auth API', () => {
     });
 
     it('should include email when provided', async () => {
-      mockPost.mockResolvedValue({ token: 't', user: { id: '1' } });
+      mockPost.mockResolvedValue({ user: { id: '1' } });
 
       await register({ username: 'user', password: 'pass', email: 'user@example.com' });
 
@@ -119,7 +117,6 @@ describe('Auth API', () => {
   describe('login', () => {
     it('should POST login and return the auth response on success', async () => {
       const mockResponse: AuthResponse = {
-        token: 'login-token',
         user: {
           id: 'user-1',
           username: 'testuser',

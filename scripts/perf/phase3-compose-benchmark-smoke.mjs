@@ -557,24 +557,46 @@ async function runLargeWalletTransactionHistoryProof() {
   return proof;
 }
 
+// ADR 0001 / 0002 Phase 6: browser auth is cookie-only. /auth/login no
+// longer returns a `token` in the JSON body; the access JWT is in the
+// sanctuary_access Set-Cookie header. This helper parses it out so the
+// benchmark scripts can continue to use the JWT as `Authorization:
+// Bearer` on subsequent calls (the bearer path is preserved on the
+// server for mobile/gateway/tooling, it's just no longer reachable via
+// the JSON body).
+function extractAccessTokenFromSetCookie(setCookieHeaders) {
+  if (!setCookieHeaders) return null;
+  const cookies = Array.isArray(setCookieHeaders) ? setCookieHeaders : [setCookieHeaders];
+  for (const cookie of cookies) {
+    if (typeof cookie !== 'string') continue;
+    if (!cookie.startsWith('sanctuary_access=')) continue;
+    const firstAttr = cookie.split(';')[0];
+    const value = firstAttr.slice('sanctuary_access='.length);
+    if (value) return value;
+  }
+  return null;
+}
+
 async function loginForProof() {
-  const response = await publicApiJson(`${apiUrl}/api/v1/auth/login`, {
+  const timed = await timedPublicApiJson(`${apiUrl}/api/v1/auth/login`, {
     method: 'POST',
     body: {
       username: adminUsername,
       password: adminPassword,
     },
   });
+  const response = timed.body;
 
   if (response && typeof response === 'object' && response.requires2FA) {
     throw new Error('benchmark user requires 2FA; provide a non-2FA local proof user');
   }
 
-  if (!response || typeof response !== 'object' || typeof response.token !== 'string') {
-    throw new Error('login response did not include an access token');
+  const token = extractAccessTokenFromSetCookie(timed.setCookie);
+  if (!token) {
+    throw new Error('login response did not include an access token in Set-Cookie');
   }
 
-  return response.token;
+  return token;
 }
 
 async function createLargeWalletProofWallet(token) {
@@ -631,9 +653,15 @@ async function timedPublicApiJson(url, options = {}, expectedStatuses = [200]) {
     throw new Error(`${options.method || 'GET'} ${url} returned ${response.status}: ${formatBody(parsed)}`);
   }
 
+  // Phase 6: expose Set-Cookie so login callers can read sanctuary_access.
+  const setCookie = typeof response.headers.getSetCookie === 'function'
+    ? response.headers.getSetCookie()
+    : response.headers.get('set-cookie');
+
   return {
     status: response.status,
     body: parsed,
+    setCookie,
     durationMs: Date.now() - startedAt,
   };
 }
@@ -2069,7 +2097,11 @@ async function apiJson(target, path, options = {}, expectedStatuses = [200]) {
   if (!expectedStatuses.includes(response.status)) {
     throw new Error((options.method || 'GET') + ' ' + path + ' on ' + target.name + ' returned ' + response.status + ': ' + formatBody(parsed));
   }
-  return { status: response.status, body: parsed };
+  // Phase 6: expose Set-Cookie so login callers can read sanctuary_access.
+  const setCookie = typeof response.headers.getSetCookie === 'function'
+    ? response.headers.getSetCookie()
+    : response.headers.get('set-cookie');
+  return { status: response.status, body: parsed, setCookie };
 }
 
 async function login(target) {
@@ -2085,11 +2117,12 @@ async function login(target) {
     throw new Error('benchmark user requires 2FA; provide a non-2FA local proof user');
   }
 
-  if (!response.body || typeof response.body !== 'object' || typeof response.body.token !== 'string') {
-    throw new Error('login response from ' + target.name + ' did not include an access token');
+  const token = extractAccessTokenFromSetCookie(response.setCookie);
+  if (!token) {
+    throw new Error('login response from ' + target.name + ' did not include an access token in Set-Cookie');
   }
 
-  return response.body.token;
+  return token;
 }
 
 async function createProofWallet(target, token) {

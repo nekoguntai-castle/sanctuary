@@ -242,11 +242,15 @@ async function provisionBenchmarkFixture() {
         return;
       }
 
-      if (!login || typeof login !== 'object' || typeof login.token !== 'string') {
-        throw new Error('login response did not include an access token');
+      // Phase 6: the login response body no longer carries a `token`
+      // field. The access JWT is in the sanctuary_access Set-Cookie
+      // header, which apiJson attaches as a non-enumerable property.
+      const extractedToken = extractAccessTokenFromSetCookie(login && login.__setCookie);
+      if (!extractedToken) {
+        throw new Error('login response did not include an access token in Set-Cookie');
       }
 
-      token = login.token;
+      token = extractedToken;
       fixture.tokenSource = 'local-login';
       notes.push({
         type: 'fixture',
@@ -341,6 +345,27 @@ async function ensureBenchmarkWallet(bearerToken) {
   return wallet.id;
 }
 
+// ADR 0001 / 0002 Phase 6: browser auth is cookie-only. The /auth/login
+// response no longer carries a `token` field in the JSON body — the
+// access and refresh JWTs are delivered via Set-Cookie. This helper
+// parses the sanctuary_access cookie out of the response so the
+// benchmark script can continue to pass the JWT as `Authorization:
+// Bearer` on subsequent calls (which the backend accepts — the bearer
+// path is preserved for mobile/gateway/tooling, it's just no longer
+// reachable via the response body).
+function extractAccessTokenFromSetCookie(setCookieHeaders) {
+  if (!setCookieHeaders) return null;
+  const cookies = Array.isArray(setCookieHeaders) ? setCookieHeaders : [setCookieHeaders];
+  for (const cookie of cookies) {
+    if (typeof cookie !== 'string') continue;
+    if (!cookie.startsWith('sanctuary_access=')) continue;
+    const firstAttr = cookie.split(';')[0];
+    const value = firstAttr.slice('sanctuary_access='.length);
+    if (value) return value;
+  }
+  return null;
+}
+
 async function apiJson(url, options = {}, expectedStatuses = [200]) {
   const headers = { Accept: 'application/json' };
   let encodedBody;
@@ -363,6 +388,22 @@ async function apiJson(url, options = {}, expectedStatuses = [200]) {
     });
     const text = await response.text();
     const parsed = parseJson(text);
+
+    // Phase 6: callers that need auth tokens read them from the
+    // sanctuary_access Set-Cookie header. getSetCookie() returns an
+    // array; we expose it as a non-enumerable property on the parsed
+    // body so existing `const body = await apiJson(...)` callers keep
+    // working unchanged and only login-like callers reach for it.
+    if (parsed && typeof parsed === 'object') {
+      const setCookie = typeof response.headers.getSetCookie === 'function'
+        ? response.headers.getSetCookie()
+        : response.headers.get('set-cookie');
+      Object.defineProperty(parsed, '__setCookie', {
+        value: setCookie,
+        enumerable: false,
+        configurable: true,
+      });
+    }
 
     if (!expectedStatuses.includes(response.status)) {
       throw new Error(`${options.method || 'GET'} ${sanitizeUrl(url)} returned ${response.status}: ${formatBodyForError(parsed)}`);
