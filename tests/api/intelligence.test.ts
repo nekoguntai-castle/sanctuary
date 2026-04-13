@@ -7,6 +7,10 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+// The global setup file stubs getIntelligenceStatus to silence /intelligence/status
+// retry storms in component tests; this file tests the real implementation.
+vi.unmock('../../src/api/intelligence');
+
 // Mock the API client
 const mockGet = vi.fn();
 const mockPost = vi.fn();

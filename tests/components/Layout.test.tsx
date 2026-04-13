@@ -55,6 +55,13 @@ vi.mock('../../components/NotificationBadge', () => ({
   NotificationBadge: ({ count }: { count: number }) => <span data-testid="notification-badge">{count}</span>,
 }));
 
+// Mock BlockHeightIndicator to avoid late async state updates from
+// bitcoinApi.getStatus that fire after each test ends, producing act() warnings
+// and console output during vitest worker teardown.
+vi.mock('../../components/Layout/BlockHeightIndicator', () => ({
+  BlockHeightIndicator: () => <div data-testid="block-height-indicator" />,
+}));
+
 vi.mock('qrcode.react', () => ({
   QRCodeSVG: () => <div data-testid="qr-code">QR</div>,
 }));

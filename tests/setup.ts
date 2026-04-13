@@ -1,6 +1,26 @@
 import '@testing-library/jest-dom';
 import { vi } from 'vitest';
 
+// Stub the Treasury Intelligence status probe globally so tests that mount
+// Layout/Dashboard via useAppCapabilities don't fire real ApiClient calls.
+// Without this, the unmocked /intelligence/status request retries with
+// setTimeout-backed backoff after each test ends, spamming console.warn from
+// background workers and racing vitest's onUserConsoleLog at worker teardown
+// ("Closing rpc while onUserConsoleLog was pending"). Per-file vi.mock calls
+// in tests/hooks/useIntelligenceStatus.test.ts override this.
+vi.mock('../src/api/intelligence', async () => {
+  const actual = await vi.importActual<typeof import('../src/api/intelligence')>(
+    '../src/api/intelligence'
+  );
+  return {
+    ...actual,
+    getIntelligenceStatus: vi.fn().mockResolvedValue({
+      available: false,
+      ollamaConfigured: false,
+    }),
+  };
+});
+
 const originalConsoleWarn = console.warn.bind(console);
 vi.spyOn(console, 'warn').mockImplementation((message?: unknown, ...args: unknown[]) => {
   if (typeof message === 'string' && message.startsWith('[API] Request failed')) {
