@@ -349,6 +349,7 @@ test.describe('Admin operations', () => {
     // Fill form
     await page.getByPlaceholder(/username/i).fill('newuser');
     await page.getByPlaceholder(/password/i).fill('SecurePass123!');
+    await page.getByPlaceholder('user@example.com').fill('newuser@example.com');
 
     // Submit
     await page.getByRole('button', { name: /Create User/i }).click();
@@ -459,6 +460,7 @@ test.describe('Admin operations', () => {
 
     await page.getByPlaceholder(/username/i).fill('duplicate');
     await page.getByPlaceholder(/password/i).fill('SecurePass123!');
+    await page.getByPlaceholder('user@example.com').fill('duplicate@example.com');
     await page.getByRole('button', { name: /Create User/i }).click();
 
     // Should show error message
