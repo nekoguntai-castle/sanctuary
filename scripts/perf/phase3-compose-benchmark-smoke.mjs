@@ -23,6 +23,11 @@ const workerScaleOutJobDelayMs = Number(process.env.PHASE3_WORKER_SCALE_OUT_JOB_
 const composeWorkerConcurrency = process.env.PHASE3_COMPOSE_WORKER_CONCURRENCY || process.env.WORKER_CONCURRENCY || '1';
 const backendScaleOutReplicas = Number(process.env.PHASE3_BACKEND_SCALE_OUT_REPLICAS || '2');
 const backendScaleOutProofTimeoutMs = Number(process.env.PHASE3_BACKEND_SCALE_OUT_PROOF_TIMEOUT_MS || '60000');
+const largeWalletTransactionCount = readPositiveInt(process.env.PHASE3_LARGE_WALLET_TRANSACTION_COUNT, 1000);
+const largeWalletHistoryRequests = readPositiveInt(process.env.PHASE3_LARGE_WALLET_HISTORY_REQUESTS, 20);
+const largeWalletHistoryConcurrency = readPositiveInt(process.env.PHASE3_LARGE_WALLET_HISTORY_CONCURRENCY, 4);
+const largeWalletHistoryPageSize = readPositiveInt(process.env.PHASE3_LARGE_WALLET_HISTORY_PAGE_SIZE, 50);
+const largeWalletHistoryP95BudgetMs = readPositiveInt(process.env.PHASE3_LARGE_WALLET_HISTORY_P95_MS, 2000);
 
 const postgresUser = 'sanctuary';
 const postgresDb = 'sanctuary_phase3_benchmark';
@@ -120,6 +125,11 @@ function recordStep(name, passed, summary, extra = {}) {
   steps.push(step);
   console.log(`${passed ? 'PASS' : 'FAIL'} ${name}: ${summary}`);
   return step;
+}
+
+function readPositiveInt(value, fallback) {
+  const parsed = Number.parseInt(value || '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function runDocker(args, options = {}) {
@@ -445,6 +455,264 @@ function assertBenchmarkProof(benchmark) {
   };
 }
 
+async function runLargeWalletTransactionHistoryProof() {
+  const token = await loginForProof();
+  const wallet = await createLargeWalletProofWallet(token);
+  const seed = seedLargeWalletTransactions(wallet.id);
+  const url = `${apiUrl}/api/v1/wallets/${encodeURIComponent(wallet.id)}/transactions?limit=${largeWalletHistoryPageSize}&offset=0`;
+  const records = [];
+
+  await runPool(largeWalletHistoryRequests, largeWalletHistoryConcurrency, async () => {
+    const startedAt = Date.now();
+    try {
+      const response = await fetch(url, {
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      const body = await response.text();
+      const parsed = parseJson(body);
+      const expectedPageSize = Math.min(largeWalletHistoryPageSize, seed.transactionCount);
+      const bodyOk = Array.isArray(parsed) && parsed.length === expectedPageSize;
+
+      records.push({
+        ok: response.status === 200 && bodyOk,
+        status: response.status,
+        durationMs: Date.now() - startedAt,
+        rowCount: Array.isArray(parsed) ? parsed.length : null,
+        error: response.status === 200 && bodyOk
+          ? null
+          : `expected ${expectedPageSize} transactions, received ${Array.isArray(parsed) ? parsed.length : typeof parsed}`,
+      });
+    } catch (error) {
+      records.push({
+        ok: false,
+        status: 'error',
+        durationMs: Date.now() - startedAt,
+        rowCount: null,
+        error: getErrorMessage(error),
+      });
+    }
+  });
+
+  const latency = summarizeDurations(records.map((record) => record.durationMs));
+  const failures = records.filter((record) => !record.ok);
+  const statusCounts = records.reduce((counts, record) => {
+    const key = String(record.status || 'error');
+    counts[key] = (counts[key] || 0) + 1;
+    return counts;
+  }, {});
+  const p95Ms = latency.p95Ms ?? Number.POSITIVE_INFINITY;
+  const passed = failures.length === 0 && p95Ms <= largeWalletHistoryP95BudgetMs;
+  const proof = {
+    proofId: timestamp,
+    status: passed ? 'passed' : 'failed',
+    wallet,
+    dataset: {
+      kind: 'synthetic-local-large-wallet',
+      requestedTransactions: largeWalletTransactionCount,
+      insertedTransactions: seed.insertedTransactions,
+      transactionCount: seed.transactionCount,
+      pageSize: largeWalletHistoryPageSize,
+    },
+    traffic: {
+      requests: largeWalletHistoryRequests,
+      concurrency: largeWalletHistoryConcurrency,
+      endpoint: '/api/v1/wallets/:walletId/transactions',
+    },
+    gate: {
+      p95BudgetMs: largeWalletHistoryP95BudgetMs,
+    },
+    statusCounts,
+    latency,
+    failures: failures
+      .map((record) => record.error || `status ${record.status}`)
+      .slice(0, 5),
+  };
+
+  if (!passed) {
+    throw new Error(`Large-wallet transaction-history proof failed: ${JSON.stringify(proof)}`);
+  }
+
+  return proof;
+}
+
+async function loginForProof() {
+  const response = await publicApiJson(`${apiUrl}/api/v1/auth/login`, {
+    method: 'POST',
+    body: {
+      username: adminUsername,
+      password: adminPassword,
+    },
+  });
+
+  if (response && typeof response === 'object' && response.requires2FA) {
+    throw new Error('benchmark user requires 2FA; provide a non-2FA local proof user');
+  }
+
+  if (!response || typeof response !== 'object' || typeof response.token !== 'string') {
+    throw new Error('login response did not include an access token');
+  }
+
+  return response.token;
+}
+
+async function createLargeWalletProofWallet(token) {
+  const walletName = `Phase 3 Large Wallet ${timestamp}`;
+  const response = await publicApiJson(`${apiUrl}/api/v1/wallets`, {
+    method: 'POST',
+    token,
+    body: {
+      name: walletName,
+      type: 'single_sig',
+      scriptType: 'native_segwit',
+      network: 'testnet',
+      descriptor: "wpkh([aabbccdd/84'/1'/0']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*)",
+    },
+  }, [201]);
+
+  if (!response || typeof response !== 'object' || typeof response.id !== 'string') {
+    throw new Error('wallet creation response did not include an id');
+  }
+
+  return {
+    id: response.id,
+    name: response.name || walletName,
+    network: response.network || 'testnet',
+  };
+}
+
+async function publicApiJson(url, options = {}, expectedStatuses = [200]) {
+  const headers = { Accept: 'application/json' };
+  let body;
+  if (options.body !== undefined) {
+    body = JSON.stringify(options.body);
+    headers['Content-Type'] = 'application/json';
+  }
+  if (options.token) {
+    headers.Authorization = `Bearer ${options.token}`;
+  }
+
+  const response = await fetch(url, {
+    method: options.method || 'GET',
+    headers,
+    body,
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  const text = await response.text();
+  const parsed = parseJson(text);
+
+  if (!expectedStatuses.includes(response.status)) {
+    throw new Error(`${options.method || 'GET'} ${url} returned ${response.status}: ${formatBody(parsed)}`);
+  }
+
+  return parsed;
+}
+
+function seedLargeWalletTransactions(walletId) {
+  const sql = `
+WITH generated AS (
+  SELECT
+    gs,
+    md5(${sqlLiteral(timestamp)} || ':' || ${sqlLiteral(walletId)} || ':' || gs::text) AS h1,
+    md5(${sqlLiteral(timestamp)} || ':' || ${sqlLiteral(walletId)} || ':tail:' || gs::text) AS h2
+  FROM generate_series(1, ${largeWalletTransactionCount}) AS gs
+),
+inserted AS (
+  INSERT INTO "transactions" (
+    "id",
+    "txid",
+    "walletId",
+    "type",
+    "amount",
+    "fee",
+    "balanceAfter",
+    "confirmations",
+    "blockHeight",
+    "blockTime",
+    "label",
+    "memo",
+    "rawTx",
+    "counterpartyAddress",
+    "createdAt",
+    "updatedAt",
+    "rbfStatus"
+  )
+  SELECT
+    'phase3-' || h1,
+    h1 || h2,
+    ${sqlLiteral(walletId)},
+    CASE WHEN gs % 5 = 0 THEN 'sent' ELSE 'received' END,
+    CASE WHEN gs % 5 = 0 THEN -((100000 + gs)::bigint) ELSE (100000 + gs)::bigint END,
+    CASE WHEN gs % 5 = 0 THEN 12::bigint ELSE NULL END,
+    (100000000 + gs)::bigint,
+    6 + (gs % 100),
+    2500000 - gs,
+    now() - (gs::text || ' minutes')::interval,
+    'phase3 synthetic large-wallet fixture',
+    'synthetic benchmark transaction ' || gs::text,
+    NULL,
+    'tb1qphase3benchmark' || gs::text,
+    now() - (gs::text || ' minutes')::interval,
+    now(),
+    'active'
+  FROM generated
+  ON CONFLICT ("txid", "walletId") DO NOTHING
+  RETURNING 1
+)
+SELECT json_build_object(
+  'walletId', ${sqlLiteral(walletId)},
+  'requestedTransactions', ${largeWalletTransactionCount},
+  'insertedTransactions', (SELECT COUNT(*) FROM inserted),
+  'transactionCount', (SELECT COUNT(*) FROM inserted)
+);
+`;
+
+  return runPostgresJson(sql);
+}
+
+function runPostgresJson(sql) {
+  const output = runCompose([
+    'exec',
+    '-T',
+    'postgres',
+    'psql',
+    '-U',
+    postgresUser,
+    '-d',
+    postgresDb,
+    '-v',
+    'ON_ERROR_STOP=1',
+    '-t',
+    '-A',
+    '-c',
+    sql,
+  ]);
+  return parseLastJsonLine(output);
+}
+
+function sqlLiteral(value) {
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+async function runPool(total, limit, worker) {
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, total) }, async () => {
+    while (next < total) {
+      const index = next;
+      next += 1;
+      await worker(index);
+    }
+  });
+  await Promise.all(workers);
+}
+
+function summarizeLargeWalletTransactionHistoryProof(proof) {
+  return `${proof.dataset.transactionCount} synthetic transactions; ${proof.traffic.requests} requests at concurrency ${proof.traffic.concurrency}; p95=${proof.latency.p95Ms}ms target<=${proof.gate.p95BudgetMs}ms`;
+}
+
 function runWorkerQueueProof() {
   const output = runCompose([
     'exec',
@@ -678,6 +946,23 @@ function buildMarkdown(report) {
     lines.push('No benchmark scenarios recorded.', '');
   }
 
+  lines.push('## Large Wallet Transaction-History Proof', '');
+
+  if (report.largeWalletHistoryProof) {
+    lines.push(
+      `Dataset: ${report.largeWalletHistoryProof.dataset.transactionCount} synthetic transactions`,
+      `Wallet: ${report.largeWalletHistoryProof.wallet.name} (${report.largeWalletHistoryProof.wallet.id})`,
+      `Traffic: ${report.largeWalletHistoryProof.traffic.requests} requests at concurrency ${report.largeWalletHistoryProof.traffic.concurrency}`,
+      `Page size: ${report.largeWalletHistoryProof.dataset.pageSize}`,
+      `p95: ${report.largeWalletHistoryProof.latency.p95Ms} ms`,
+      `p99: ${report.largeWalletHistoryProof.latency.p99Ms} ms`,
+      `Gate: p95 <= ${report.largeWalletHistoryProof.gate.p95BudgetMs} ms`,
+      ''
+    );
+  } else {
+    lines.push('No large-wallet transaction-history proof recorded.', '');
+  }
+
   lines.push('## Worker Queue Proof', '');
 
   if (report.workerQueueProof?.jobs?.length) {
@@ -774,10 +1059,11 @@ function buildMarkdown(report) {
     '- This proof starts a disposable full-stack Docker Compose project with frontend, backend, gateway, worker, Redis, and PostgreSQL services.',
     '- The smoke waits for database migration and seed completion, then runs the existing Phase 3 benchmark harness with local fixture provisioning.',
     '- The run proves authenticated wallet list, transaction-history, WebSocket subscription fanout, wallet-sync queue, and admin backup-validation paths execute end to end on a local seeded stack.',
+    '- The large-wallet transaction-history proof seeds synthetic transaction rows into the disposable PostgreSQL database and measures the authenticated wallet transaction-history endpoint against a strict local p95 gate.',
     '- The worker queue proof enqueues and waits for BullMQ jobs across sync, confirmations, notifications, maintenance, autopilot, and intelligence handlers in the running worker container.',
     '- The worker scale-out proof runs two worker replicas, verifies diagnostic BullMQ jobs complete on both replicas, proves a shared diagnostic lock skips one concurrent duplicate, checks recurring jobs have one repeatable definition, and requires exactly one worker to own Electrum subscriptions.',
     '- The backend scale-out proof runs two backend replicas, opens a wallet subscription WebSocket on one replica, triggers wallet sync on the other replica, and requires the Redis bridge to deliver the sync event across instances.',
-    '- The local generated wallet and two-replica topology are smoke evidence only; representative large-wallet, load-level fanout, and capacity evidence remain required before claiming Phase 3 complete.',
+    '- The local generated wallets and two-replica topology are smoke evidence only; production-like largest-known-wallet, load-level fanout, and capacity evidence remain required before claiming Phase 3 complete.',
     '- Restore remains intentionally skipped because it is destructive unless `SANCTUARY_ALLOW_RESTORE=true` is set for a restore-safe environment.'
   );
 
@@ -802,6 +1088,14 @@ function parseJson(value) {
   } catch {
     return value.length > 200 ? `${value.slice(0, 200)}...` : value;
   }
+}
+
+function formatBody(value) {
+  if (value === null || value === undefined) {
+    return '';
+  }
+  const serialized = typeof value === 'string' ? value : JSON.stringify(value);
+  return serialized.length > 300 ? `${serialized.slice(0, 300)}...` : serialized;
 }
 
 function escapeCell(value) {
@@ -858,6 +1152,7 @@ let composePs = [];
 let benchmarkRun = null;
 let benchmarkEvidence = null;
 let benchmarkProof = null;
+let largeWalletHistoryProof = null;
 let workerQueueProof = null;
 let workerScaleOutProof = null;
 let backendScaleOutProof = null;
@@ -888,6 +1183,9 @@ try {
 
   benchmarkProof = assertBenchmarkProof(benchmarkEvidence.benchmark);
   recordStep('authenticated scenario proof', true, `${benchmarkProof.requiredScenarios.join(', ')} passed`);
+
+  largeWalletHistoryProof = await runLargeWalletTransactionHistoryProof();
+  recordStep('large-wallet transaction-history proof', true, summarizeLargeWalletTransactionHistoryProof(largeWalletHistoryProof));
 
   workerQueueProof = runWorkerQueueProof();
   recordStep('worker queue proof', true, summarizeWorkerQueueProof(workerQueueProof));
@@ -940,6 +1238,7 @@ try {
         }
       : null,
     benchmarkProof,
+    largeWalletHistoryProof,
     workerQueueProof,
     workerScaleOutProof,
     backendScaleOutProof,
