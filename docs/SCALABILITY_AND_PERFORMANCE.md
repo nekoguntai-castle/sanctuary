@@ -80,6 +80,14 @@ npm run perf:phase3
 
 By default, the harness targets the local HTTPS stack at `https://127.0.0.1:8443`, the local gateway at `https://127.0.0.1:4000`, and the proxied WebSocket endpoint at `wss://127.0.0.1:8443/ws`. It writes Markdown and JSON records under `docs/plans/`.
 
+For a disposable local full-stack smoke, use the Compose wrapper:
+
+```bash
+npm run perf:phase3:compose-smoke
+```
+
+The wrapper starts a temporary Docker Compose project with frontend, backend, gateway, worker, Redis, and PostgreSQL, waits for migration/seed and service health, then runs `npm run perf:phase3` with strict local fixture provisioning and generated backup validation. It chooses loopback host ports automatically unless `PHASE3_COMPOSE_BENCHMARK_HTTP_PORT`, `PHASE3_COMPOSE_BENCHMARK_HTTPS_PORT`, or `PHASE3_COMPOSE_BENCHMARK_GATEWAY_PORT` are set. Set `PHASE3_COMPOSE_BENCHMARK_KEEP_STACK=true` only when you need to inspect the disposable stack after a failed run.
+
 Configure authenticated and data-dependent scenarios with environment variables:
 
 ```bash
@@ -100,7 +108,7 @@ SANCTUARY_BENCHMARK_PROVISION=true npm run perf:phase3
 
 Local fixture provisioning is intentionally limited to `localhost`, `127.0.0.1`, and `::1` API targets by default. For a private non-production LAN target such as `https://10.14.23.93:8443`, set `SANCTUARY_BENCHMARK_ALLOW_PRIVATE_PROVISION=true`; if the target uses the local development certificate, also set `SANCTUARY_INSECURE_TLS=true`. It logs in with `admin` / `sanctuary` by default, unless `SANCTUARY_BENCHMARK_USERNAME` and `SANCTUARY_BENCHMARK_PASSWORD` are set, and creates or reuses a testnet wallet named `Phase 3 Benchmark Wallet`. Set `SANCTUARY_BENCHMARK_WALLET_NAME`, `SANCTUARY_BENCHMARK_WALLET_NETWORK`, or `SANCTUARY_BENCHMARK_WALLET_DESCRIPTOR` to override the fixture. Set `SANCTUARY_BENCHMARK_CREATE_BACKUP=true` to generate an in-memory backup for backup validation in the same run.
 
-The auto-provisioned local fixture is smoke evidence only. It is useful for proving the authenticated paths run end to end, but it does not replace the production-like large-wallet dataset needed for the final scalability/performance gate.
+The auto-provisioned local fixture is smoke evidence only. It is useful for proving the authenticated paths run end to end, and the Compose wrapper records this proof without requiring a pre-existing local stack, but it does not replace the production-like large-wallet dataset needed for the final scalability/performance gate. The current passing disposable evidence is `docs/plans/phase3-compose-benchmark-smoke-2026-04-13T00-04-57-821Z.md` with benchmark output in `docs/plans/phase3-benchmark-2026-04-13T00-06-30-381Z.md`.
 
 Restore testing is destructive and remains opt-in:
 

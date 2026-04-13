@@ -27,15 +27,15 @@ This document records the checks that should protect the A-grade engineering goa
 | Dependency security | Production advisory review | `npm audit --omit=dev` in root and `server/`; `cd gateway && npm audit --omit=dev --omit=optional`; plus documented accepted findings | Required before release |
 | Container/install validation | Fresh install, install script, container health, auth flow | `.github/workflows/install-test.yml` release gate | Required for release candidates/releases |
 | Operations supportability | Runbook coverage and proof for backup/restore, gateway audit persistence, alert receiver delivery, and monitoring stack behavior | `docs/OPERATIONS_RUNBOOKS.md` updated when alerts or operational flows change; `npm run test:ops:phase2` when backup/restore or in-process gateway audit paths are touched; `npm run ops:gateway-audit:phase2` when backend/gateway containers or gateway audit delivery paths are touched; `npm run ops:monitoring:phase2` when monitoring Compose, Prometheus/Loki/Grafana/Jaeger/Alertmanager, or Promtail paths are touched; `npm run ops:alert-receiver:phase2` when Alertmanager routing or receiver config is touched | Required when touched |
-| Performance and scale | Phase 3 benchmark harness in strict mode | `SANCTUARY_BENCHMARK_STRICT=true npm run perf:phase3` with required scenario inputs | Pending operator evidence |
+| Performance and scale | Phase 3 benchmark harness in strict mode | `npm run perf:phase3:compose-smoke` for disposable local authenticated smoke; `SANCTUARY_BENCHMARK_STRICT=true npm run perf:phase3` with representative scenario inputs for production-like datasets | Pending representative operator evidence |
 
 ## Phase 3 Pending Evidence
 
 These gates are required before the scalability/performance domain can move to A:
 
-- Authenticated wallet list, large-wallet transaction history, and wallet sync queue benchmarks with `SANCTUARY_TOKEN` and `SANCTUARY_WALLET_ID`.
-- Local auto-provisioned smoke runs with `SANCTUARY_BENCHMARK_PROVISION=true` are useful for endpoint coverage, but they do not replace representative large-wallet evidence.
-- Backup validation, and restore only in a restore-safe environment, with `SANCTUARY_ADMIN_TOKEN`, `SANCTUARY_BACKUP_FILE`, and `SANCTUARY_ALLOW_RESTORE=true`.
+- Local authenticated smoke coverage now has disposable Compose proof in `docs/plans/phase3-compose-benchmark-smoke-2026-04-13T00-04-57-821Z.md`; keep rerunning `npm run perf:phase3:compose-smoke` when Compose startup, seeded auth, benchmark provisioning, or backup validation paths change.
+- Representative large-wallet transaction history and wallet sync queue benchmarks with `SANCTUARY_TOKEN` and `SANCTUARY_WALLET_ID`.
+- Backup restore only in a restore-safe environment, with `SANCTUARY_ADMIN_TOKEN`, `SANCTUARY_BACKUP_FILE`, and `SANCTUARY_ALLOW_RESTORE=true`; local generated-backup validation smoke does not replace restore proof.
 - WebSocket fanout with real subscriptions/events.
 - Worker queue processing under representative sync, notification, maintenance, autopilot, and intelligence jobs.
 - Backend scale-out smoke test with at least two backend/WebSocket endpoints sharing Redis.
