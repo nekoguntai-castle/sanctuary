@@ -1,0 +1,1453 @@
+{
+  "startedAt": "2026-04-13T01:28:46.631Z",
+  "finishedAt": "2026-04-13T01:29:28.957Z",
+  "commit": "bcfb78fe",
+  "passed": true,
+  "projectName": "sanctuary-phase3-benchmark-2026-04-13t01-28-46-631z",
+  "apiUrl": "https://127.0.0.1:18443",
+  "gatewayUrl": "http://127.0.0.1:14000",
+  "wsUrl": "wss://127.0.0.1:18443/ws",
+  "ports": {
+    "http": "18080",
+    "https": "18443",
+    "gateway": "14000"
+  },
+  "steps": [
+    {
+      "name": "compose stack started",
+      "passed": true,
+      "summary": "project=sanctuary-phase3-benchmark-2026-04-13t01-28-46-631z apiPort=18443 gatewayPort=14000"
+    },
+    {
+      "name": "database migration and seed",
+      "passed": true,
+      "summary": "migrate exited with 0"
+    },
+    {
+      "name": "compose container health",
+      "passed": true,
+      "summary": "6 service containers running and healthy"
+    },
+    {
+      "name": "frontend health",
+      "passed": true,
+      "summary": "status=200"
+    },
+    {
+      "name": "gateway health",
+      "passed": true,
+      "summary": "status=200"
+    },
+    {
+      "name": "phase3 benchmark harness",
+      "passed": true,
+      "summary": "npm run perf:phase3 completed in strict mode"
+    },
+    {
+      "name": "benchmark evidence written",
+      "passed": true,
+      "summary": "docs/plans/phase3-benchmark-2026-04-13T01-29-09-675Z.md and docs/plans/phase3-benchmark-2026-04-13T01-29-09-675Z.json"
+    },
+    {
+      "name": "authenticated scenario proof",
+      "passed": true,
+      "summary": "wallet list, large wallet transaction history, websocket subscription fanout, wallet sync queue, backup validate passed"
+    },
+    {
+      "name": "worker queue proof",
+      "passed": true,
+      "summary": "6 jobs completed across sync, confirmations, notifications, maintenance, autopilot, intelligence; p95=15.5ms"
+    },
+    {
+      "name": "worker scale-out proof",
+      "passed": true,
+      "summary": "2 workers healthy; processors=9c71a1bac3c8, 20725bb8a06e; electrumOwner=sanctuary-phase3-benchmark-2026-04-13t01-28-46-631z-worker-1; lockedSkips=1"
+    },
+    {
+      "name": "backend scale-out websocket proof",
+      "passed": true,
+      "summary": "sync event from sanctuary-phase3-benchmark-2026-04-13t01-28-46-631z-backend-2 reached WebSocket on sanctuary-phase3-benchmark-2026-04-13t01-28-46-631z-backend-1 via Redis in 18ms"
+    }
+  ],
+  "benchmarkRun": {
+    "status": 0,
+    "stdoutTail": "\n> sanctuary@0.8.32 perf:phase3\n> node scripts/perf/phase3-benchmark.mjs\n\nPhase 3 benchmark run 2026-04-13T01-29-09-675Z\nAPI: https://127.0.0.1:18443\nWebSocket: wss://127.0.0.1:18443/ws\nPASSED frontend health: p95=23.32ms errors=0\nPASSED api health: p95=9.03ms errors=0\nPASSED gateway health: p95=2.45ms errors=0\nPASSED websocket handshake: p95=2.1ms errors=0\nPASSED wallet list: p95=17.62ms errors=0\nPASSED websocket subscription fanout: p95=11.64ms errors=0\nPASSED large wallet transaction history: p95=15.8ms errors=0\nPASSED wallet sync queue: p95=6.61ms errors=0\nPASSED backup validate: p95=5.42ms errors=0\nSKIP backup restore: SANCTUARY_ALLOW_RESTORE=true is required because restore is destructive\nWrote docs/plans/phase3-benchmark-2026-04-13T01-29-09-675Z.json\nWrote docs/plans/phase3-benchmark-2026-04-13T01-29-09-675Z.md\n",
+    "stderrTail": "(node:415141) Warning: Setting the NODE_TLS_REJECT_UNAUTHORIZED environment variable to '0' makes TLS connections and HTTPS requests insecure by disabling certificate verification.\n(Use `node --trace-warnings ...` to show where the warning was created)\n"
+  },
+  "benchmarkEvidence": {
+    "jsonPath": "docs/plans/phase3-benchmark-2026-04-13T01-29-09-675Z.json",
+    "mdPath": "docs/plans/phase3-benchmark-2026-04-13T01-29-09-675Z.md",
+    "benchmark": {
+      "runId": "2026-04-13T01-29-09-675Z",
+      "timestamp": "2026-04-13T01:29:09.675Z",
+      "commit": "bcfb78fe",
+      "environment": {
+        "apiBaseUrl": "https://127.0.0.1:18443",
+        "gatewayBaseUrl": "http://127.0.0.1:14000",
+        "wsUrl": "wss://127.0.0.1:18443/ws",
+        "requestCount": 5,
+        "concurrency": 2,
+        "wsClients": 2,
+        "wsFanoutClients": 2,
+        "timeoutMs": 20000,
+        "insecureTls": true,
+        "authenticatedHttp": true,
+        "adminBackupInput": true,
+        "allowRestore": false,
+        "fixture": {
+          "provisionRequested": true,
+          "privateProvisionAllowed": false,
+          "tokenSource": "local-login",
+          "walletSource": "local-created",
+          "backupSource": "local-admin-api",
+          "adminTokenSource": "local-login"
+        },
+        "datasetLabel": "local auto-provisioned benchmark fixture; not a large-wallet performance dataset"
+      },
+      "notes": [
+        {
+          "type": "health",
+          "status": "healthy",
+          "components": {
+            "database": "healthy",
+            "redis": "healthy",
+            "electrum": "healthy",
+            "websocket": "healthy",
+            "sync": "healthy",
+            "jobQueue": "healthy",
+            "cacheInvalidation": "healthy",
+            "startup": "healthy",
+            "circuitBreakers": "healthy",
+            "memory": "healthy",
+            "disk": "healthy"
+          }
+        },
+        {
+          "type": "fixture",
+          "action": "login",
+          "username": "admin",
+          "usingDefaultPassword": true
+        },
+        {
+          "type": "fixture",
+          "action": "wallet-create",
+          "walletId": "bc7d157a-fafb-46b5-9c63-a0b5cba8d685",
+          "walletName": "Phase 3 Compose Benchmark Wallet",
+          "network": "testnet",
+          "addressCount": 40
+        },
+        {
+          "type": "fixture",
+          "action": "backup-create",
+          "recordCounts": {
+            "hardwareDeviceModel": 25,
+            "systemSetting": 1,
+            "nodeConfig": 1,
+            "user": 1,
+            "group": 0,
+            "groupMember": 0,
+            "device": 0,
+            "wallet": 1,
+            "pushDevice": 0,
+            "electrumServer": 0,
+            "walletUser": 1,
+            "walletDevice": 0,
+            "address": 40,
+            "label": 0,
+            "draftTransaction": 0,
+            "transaction": 0,
+            "uTXO": 0,
+            "transactionInput": 0,
+            "transactionOutput": 0,
+            "transactionLabel": 0,
+            "addressLabel": 0,
+            "draftUtxoLock": 0,
+            "auditLog": 1
+          }
+        }
+      ],
+      "scenarios": [
+        {
+          "name": "frontend health",
+          "kind": "http",
+          "method": "GET",
+          "url": "https://127.0.0.1:18443/health",
+          "status": "passed",
+          "requests": 5,
+          "successes": 5,
+          "errors": 0,
+          "expectedStatuses": [
+            200
+          ],
+          "statusCounts": {
+            "200": 5
+          },
+          "latency": {
+            "minMs": 0.85,
+            "p50Ms": 3.28,
+            "p95Ms": 23.32,
+            "p99Ms": 26.08,
+            "maxMs": 26.77
+          },
+          "failures": []
+        },
+        {
+          "name": "api health",
+          "kind": "http",
+          "method": "GET",
+          "url": "https://127.0.0.1:18443/api/v1/health",
+          "status": "passed",
+          "requests": 5,
+          "successes": 5,
+          "errors": 0,
+          "expectedStatuses": [
+            200,
+            503
+          ],
+          "statusCounts": {
+            "200": 5
+          },
+          "latency": {
+            "minMs": 2.35,
+            "p50Ms": 4.31,
+            "p95Ms": 9.03,
+            "p99Ms": 9.05,
+            "maxMs": 9.05
+          },
+          "failures": []
+        },
+        {
+          "name": "gateway health",
+          "kind": "http",
+          "method": "GET",
+          "url": "http://127.0.0.1:14000/health",
+          "status": "passed",
+          "requests": 5,
+          "successes": 5,
+          "errors": 0,
+          "expectedStatuses": [
+            200
+          ],
+          "statusCounts": {
+            "200": 5
+          },
+          "latency": {
+            "minMs": 0.6,
+            "p50Ms": 1.52,
+            "p95Ms": 2.45,
+            "p99Ms": 2.62,
+            "maxMs": 2.66
+          },
+          "failures": []
+        },
+        {
+          "name": "websocket handshake",
+          "kind": "websocket",
+          "url": "wss://127.0.0.1:18443/ws",
+          "status": "passed",
+          "requests": 2,
+          "successes": 2,
+          "errors": 0,
+          "latency": {
+            "minMs": 2.01,
+            "p50Ms": 2.06,
+            "p95Ms": 2.1,
+            "p99Ms": 2.11,
+            "maxMs": 2.11
+          },
+          "messages": [
+            "connected",
+            "connected"
+          ],
+          "failures": []
+        },
+        {
+          "name": "wallet list",
+          "kind": "http",
+          "method": "GET",
+          "url": "https://127.0.0.1:18443/api/v1/wallets",
+          "status": "passed",
+          "requests": 5,
+          "successes": 5,
+          "errors": 0,
+          "expectedStatuses": [
+            200
+          ],
+          "statusCounts": {
+            "200": 5
+          },
+          "latency": {
+            "minMs": 4.72,
+            "p50Ms": 12.89,
+            "p95Ms": 17.62,
+            "p99Ms": 18.3,
+            "maxMs": 18.47
+          },
+          "failures": []
+        },
+        {
+          "name": "websocket subscription fanout",
+          "kind": "websocket",
+          "url": "wss://127.0.0.1:18443/ws",
+          "status": "passed",
+          "requests": 2,
+          "successes": 2,
+          "errors": 0,
+          "latency": {
+            "minMs": 11.59,
+            "p50Ms": 11.62,
+            "p95Ms": 11.64,
+            "p99Ms": 11.64,
+            "maxMs": 11.65
+          },
+          "setupLatency": {
+            "minMs": 4.45,
+            "p50Ms": 4.54,
+            "p95Ms": 4.63,
+            "p99Ms": 4.64,
+            "maxMs": 4.64
+          },
+          "channels": [
+            "wallet:bc7d157a-fafb-46b5-9c63-a0b5cba8d685",
+            "wallet:bc7d157a-fafb-46b5-9c63-a0b5cba8d685:sync",
+            "sync:all"
+          ],
+          "trigger": {
+            "method": "POST",
+            "url": "https://127.0.0.1:18443/api/v1/sync/queue/bc7d157a-fafb-46b5-9c63-a0b5cba8d685",
+            "status": 200,
+            "error": null
+          },
+          "messages": [
+            "sync:wallet:bc7d157a-fafb-46b5-9c63-a0b5cba8d685"
+          ],
+          "failures": []
+        },
+        {
+          "name": "large wallet transaction history",
+          "kind": "http",
+          "method": "GET",
+          "url": "https://127.0.0.1:18443/api/v1/wallets/bc7d157a-fafb-46b5-9c63-a0b5cba8d685/transactions?limit=50&offset=0",
+          "status": "passed",
+          "requests": 5,
+          "successes": 5,
+          "errors": 0,
+          "expectedStatuses": [
+            200
+          ],
+          "statusCounts": {
+            "200": 5
+          },
+          "latency": {
+            "minMs": 4.53,
+            "p50Ms": 5,
+            "p95Ms": 15.8,
+            "p99Ms": 15.87,
+            "maxMs": 15.89
+          },
+          "failures": []
+        },
+        {
+          "name": "wallet sync queue",
+          "kind": "http",
+          "method": "POST",
+          "url": "https://127.0.0.1:18443/api/v1/sync/queue/bc7d157a-fafb-46b5-9c63-a0b5cba8d685",
+          "status": "passed",
+          "requests": 5,
+          "successes": 5,
+          "errors": 0,
+          "expectedStatuses": [
+            200
+          ],
+          "statusCounts": {
+            "200": 5
+          },
+          "latency": {
+            "minMs": 3.37,
+            "p50Ms": 3.91,
+            "p95Ms": 6.61,
+            "p99Ms": 6.91,
+            "maxMs": 6.99
+          },
+          "failures": []
+        },
+        {
+          "name": "backup validate",
+          "kind": "http",
+          "method": "POST",
+          "url": "https://127.0.0.1:18443/api/v1/admin/backup/validate",
+          "status": "passed",
+          "requests": 1,
+          "successes": 1,
+          "errors": 0,
+          "expectedStatuses": [
+            200,
+            400
+          ],
+          "statusCounts": {
+            "200": 1
+          },
+          "latency": {
+            "minMs": 5.42,
+            "p50Ms": 5.42,
+            "p95Ms": 5.42,
+            "p99Ms": 5.42,
+            "maxMs": 5.42
+          },
+          "failures": []
+        }
+      ],
+      "skipped": [
+        {
+          "name": "backup restore",
+          "reason": "SANCTUARY_ALLOW_RESTORE=true is required because restore is destructive"
+        }
+      ]
+    }
+  },
+  "benchmarkProof": {
+    "requiredScenarios": [
+      "wallet list",
+      "large wallet transaction history",
+      "websocket subscription fanout",
+      "wallet sync queue",
+      "backup validate"
+    ],
+    "skipped": [
+      {
+        "name": "backup restore",
+        "reason": "SANCTUARY_ALLOW_RESTORE=true is required because restore is destructive"
+      }
+    ],
+    "datasetLabel": "local auto-provisioned benchmark fixture; not a large-wallet performance dataset"
+  },
+  "workerQueueProof": {
+    "proofId": "2026-04-13T01-28-46-631Z",
+    "totalDurationMs": 99,
+    "metricsBefore": {
+      "worker": {
+        "hostname": "20725bb8a06e",
+        "pid": 7,
+        "startedAt": "2026-04-13T01:29:00.566Z",
+        "concurrency": 1,
+        "electrumSubscriptionOwner": true
+      },
+      "queues": {
+        "sync": {
+          "waiting": 0,
+          "active": 0,
+          "completed": 0,
+          "failed": 0,
+          "delayed": 1,
+          "paused": false
+        },
+        "notifications": {
+          "waiting": 0,
+          "active": 0,
+          "completed": 0,
+          "failed": 0,
+          "delayed": 0,
+          "paused": false
+        },
+        "confirmations": {
+          "waiting": 0,
+          "active": 0,
+          "completed": 0,
+          "failed": 0,
+          "delayed": 1,
+          "paused": false
+        },
+        "maintenance": {
+          "waiting": 0,
+          "active": 0,
+          "completed": 0,
+          "failed": 0,
+          "delayed": 9,
+          "paused": false
+        }
+      },
+      "electrum": {
+        "isRunning": true,
+        "ownershipRetryActive": false,
+        "subscribedAddresses": 0,
+        "networks": {
+          "mainnet": {
+            "connected": true,
+            "subscribedToHeaders": true,
+            "subscribedAddresses": 0,
+            "lastBlockHeight": 944814,
+            "reconnectAttempts": 0
+          }
+        }
+      },
+      "jobCompletions": {},
+      "timestamp": "2026-04-13T01:29:10.330Z"
+    },
+    "metricsAfter": {
+      "worker": {
+        "hostname": "20725bb8a06e",
+        "pid": 7,
+        "startedAt": "2026-04-13T01:29:00.566Z",
+        "concurrency": 1,
+        "electrumSubscriptionOwner": true
+      },
+      "queues": {
+        "sync": {
+          "waiting": 0,
+          "active": 0,
+          "completed": 1,
+          "failed": 0,
+          "delayed": 1,
+          "paused": false
+        },
+        "notifications": {
+          "waiting": 0,
+          "active": 0,
+          "completed": 1,
+          "failed": 0,
+          "delayed": 0,
+          "paused": false
+        },
+        "confirmations": {
+          "waiting": 0,
+          "active": 0,
+          "completed": 1,
+          "failed": 0,
+          "delayed": 1,
+          "paused": false
+        },
+        "maintenance": {
+          "waiting": 0,
+          "active": 0,
+          "completed": 3,
+          "failed": 0,
+          "delayed": 9,
+          "paused": false
+        }
+      },
+      "electrum": {
+        "isRunning": true,
+        "ownershipRetryActive": false,
+        "subscribedAddresses": 0,
+        "networks": {
+          "mainnet": {
+            "connected": true,
+            "subscribedToHeaders": true,
+            "subscribedAddresses": 0,
+            "lastBlockHeight": 944814,
+            "reconnectAttempts": 0
+          }
+        }
+      },
+      "jobCompletions": {
+        "sync:check-stale-wallets": 1776043750345,
+        "confirmations:update-all-confirmations": 1776043750349,
+        "notifications:confirmation-notify": 1776043750351,
+        "maintenance:cleanup:expired-tokens": 1776043750355,
+        "maintenance:autopilot:evaluate": 1776043750374,
+        "maintenance:intelligence:cleanup": 1776043750381
+      },
+      "timestamp": "2026-04-13T01:29:10.384Z"
+    },
+    "jobs": [
+      {
+        "category": "sync",
+        "queue": "sync",
+        "name": "check-stale-wallets",
+        "id": "phase3-2026-04-13T01-28-46-631Z-sync-check-stale-wallets",
+        "state": "completed",
+        "durationMs": 8,
+        "returnvalue": {
+          "staleWalletIds": [],
+          "queued": 0,
+          "priority": "low",
+          "staggerDelayMs": 0,
+          "reason": "phase3-worker-queue-proof",
+          "maxWallets": 0
+        }
+      },
+      {
+        "category": "confirmations",
+        "queue": "confirmations",
+        "name": "update-all-confirmations",
+        "id": "phase3-2026-04-13T01-28-46-631Z-confirmations-update-all-confirmations",
+        "state": "completed",
+        "durationMs": 3,
+        "returnvalue": {
+          "updated": 0,
+          "notified": 0
+        }
+      },
+      {
+        "category": "notifications",
+        "queue": "notifications",
+        "name": "confirmation-notify",
+        "id": "phase3-2026-04-13T01-28-46-631Z-notifications-confirmation-notify",
+        "state": "completed",
+        "durationMs": 1,
+        "returnvalue": {
+          "success": true,
+          "channelsNotified": 0
+        }
+      },
+      {
+        "category": "maintenance",
+        "queue": "maintenance",
+        "name": "cleanup:expired-tokens",
+        "id": "phase3-2026-04-13T01-28-46-631Z-maintenance-cleanup-expired-tokens",
+        "state": "completed",
+        "durationMs": 3,
+        "returnvalue": 0
+      },
+      {
+        "category": "autopilot",
+        "queue": "maintenance",
+        "name": "autopilot:evaluate",
+        "id": "phase3-2026-04-13T01-28-46-631Z-autopilot-autopilot-evaluate",
+        "state": "completed",
+        "durationMs": 18,
+        "returnvalue": null
+      },
+      {
+        "category": "intelligence",
+        "queue": "maintenance",
+        "name": "intelligence:cleanup",
+        "id": "phase3-2026-04-13T01-28-46-631Z-intelligence-intelligence-cleanup",
+        "state": "completed",
+        "durationMs": 6,
+        "returnvalue": null
+      }
+    ]
+  },
+  "workerScaleOutProof": {
+    "proofId": "2026-04-13T01-28-46-631Z",
+    "totalDurationMs": 1798,
+    "workers": [
+      {
+        "id": "20725bb8a06e495b3674c81f7bf2540452ecb1fac1ac76f6a9d77f2526c581f4",
+        "shortId": "20725bb8a06e",
+        "name": "sanctuary-phase3-benchmark-2026-04-13t01-28-46-631z-worker-1",
+        "ip": "172.29.0.6"
+      },
+      {
+        "id": "9c71a1bac3c8161d59bac433f72f96cf7f737291c4030279e32d8af56fa87ddc",
+        "shortId": "9c71a1bac3c8",
+        "name": "sanctuary-phase3-benchmark-2026-04-13t01-28-46-631z-worker-2",
+        "ip": "172.29.0.4"
+      }
+    ],
+    "workerCount": 2,
+    "metricsBefore": [
+      {
+        "target": {
+          "id": "20725bb8a06e495b3674c81f7bf2540452ecb1fac1ac76f6a9d77f2526c581f4",
+          "shortId": "20725bb8a06e",
+          "name": "sanctuary-phase3-benchmark-2026-04-13t01-28-46-631z-worker-1",
+          "ip": "172.29.0.6"
+        },
+        "metrics": {
+          "worker": {
+            "hostname": "20725bb8a06e",
+            "pid": 7,
+            "startedAt": "2026-04-13T01:29:00.566Z",
+            "concurrency": 1,
+            "electrumSubscriptionOwner": true
+          },
+          "queues": {
+            "sync": {
+              "waiting": 0,
+              "active": 0,
+              "completed": 1,
+              "failed": 0,
+              "delayed": 1,
+              "paused": false
+            },
+            "notifications": {
+              "waiting": 0,
+              "active": 0,
+              "completed": 1,
+              "failed": 0,
+              "delayed": 0,
+              "paused": false
+            },
+            "confirmations": {
+              "waiting": 0,
+              "active": 0,
+              "completed": 1,
+              "failed": 0,
+              "delayed": 1,
+              "paused": false
+            },
+            "maintenance": {
+              "waiting": 0,
+              "active": 0,
+              "completed": 3,
+              "failed": 0,
+              "delayed": 9,
+              "paused": false
+            }
+          },
+          "electrum": {
+            "isRunning": true,
+            "ownershipRetryActive": false,
+            "subscribedAddresses": 0,
+            "networks": {
+              "mainnet": {
+                "connected": true,
+                "subscribedToHeaders": true,
+                "subscribedAddresses": 0,
+                "lastBlockHeight": 944814,
+                "reconnectAttempts": 0
+              }
+            }
+          },
+          "jobCompletions": {
+            "sync:check-stale-wallets": 1776043750345,
+            "confirmations:update-all-confirmations": 1776043750349,
+            "notifications:confirmation-notify": 1776043750351,
+            "maintenance:cleanup:expired-tokens": 1776043750355,
+            "maintenance:autopilot:evaluate": 1776043750374,
+            "maintenance:intelligence:cleanup": 1776043750381
+          },
+          "timestamp": "2026-04-13T01:29:17.675Z"
+        }
+      },
+      {
+        "target": {
+          "id": "9c71a1bac3c8161d59bac433f72f96cf7f737291c4030279e32d8af56fa87ddc",
+          "shortId": "9c71a1bac3c8",
+          "name": "sanctuary-phase3-benchmark-2026-04-13t01-28-46-631z-worker-2",
+          "ip": "172.29.0.4"
+        },
+        "metrics": {
+          "worker": {
+            "hostname": "9c71a1bac3c8",
+            "pid": 8,
+            "startedAt": "2026-04-13T01:29:11.801Z",
+            "concurrency": 1,
+            "electrumSubscriptionOwner": false
+          },
+          "queues": {
+            "sync": {
+              "waiting": 0,
+              "active": 0,
+              "completed": 1,
+              "failed": 0,
+              "delayed": 1,
+              "paused": false
+            },
+            "notifications": {
+              "waiting": 0,
+              "active": 0,
+              "completed": 1,
+              "failed": 0,
+              "delayed": 0,
+              "paused": false
+            },
+            "confirmations": {
+              "waiting": 0,
+              "active": 0,
+              "completed": 1,
+              "failed": 0,
+              "delayed": 1,
+              "paused": false
+            },
+            "maintenance": {
+              "waiting": 0,
+              "active": 0,
+              "completed": 3,
+              "failed": 0,
+              "delayed": 9,
+              "paused": false
+            }
+          },
+          "electrum": {
+            "isRunning": false,
+            "ownershipRetryActive": true,
+            "subscribedAddresses": 0,
+            "networks": {}
+          },
+          "jobCompletions": {},
+          "timestamp": "2026-04-13T01:29:17.675Z"
+        }
+      }
+    ],
+    "metricsAfter": [
+      {
+        "target": {
+          "id": "20725bb8a06e495b3674c81f7bf2540452ecb1fac1ac76f6a9d77f2526c581f4",
+          "shortId": "20725bb8a06e",
+          "name": "sanctuary-phase3-benchmark-2026-04-13t01-28-46-631z-worker-1",
+          "ip": "172.29.0.6"
+        },
+        "metrics": {
+          "worker": {
+            "hostname": "20725bb8a06e",
+            "pid": 7,
+            "startedAt": "2026-04-13T01:29:00.566Z",
+            "concurrency": 1,
+            "electrumSubscriptionOwner": true
+          },
+          "queues": {
+            "sync": {
+              "waiting": 0,
+              "active": 0,
+              "completed": 1,
+              "failed": 0,
+              "delayed": 1,
+              "paused": false
+            },
+            "notifications": {
+              "waiting": 0,
+              "active": 0,
+              "completed": 1,
+              "failed": 0,
+              "delayed": 0,
+              "paused": false
+            },
+            "confirmations": {
+              "waiting": 0,
+              "active": 0,
+              "completed": 1,
+              "failed": 0,
+              "delayed": 1,
+              "paused": false
+            },
+            "maintenance": {
+              "waiting": 0,
+              "active": 0,
+              "completed": 13,
+              "failed": 0,
+              "delayed": 9,
+              "paused": false
+            }
+          },
+          "electrum": {
+            "isRunning": true,
+            "ownershipRetryActive": false,
+            "subscribedAddresses": 0,
+            "networks": {
+              "mainnet": {
+                "connected": true,
+                "subscribedToHeaders": true,
+                "subscribedAddresses": 0,
+                "lastBlockHeight": 944814,
+                "reconnectAttempts": 0
+              }
+            }
+          },
+          "jobCompletions": {
+            "sync:check-stale-wallets": 1776043750345,
+            "confirmations:update-all-confirmations": 1776043750349,
+            "notifications:confirmation-notify": 1776043750351,
+            "maintenance:cleanup:expired-tokens": 1776043750355,
+            "maintenance:autopilot:evaluate": 1776043750374,
+            "maintenance:intelligence:cleanup": 1776043750381,
+            "maintenance:diagnostics:worker-ping": 1776043758890,
+            "maintenance:diagnostics:locked-worker-ping": 1776043758893
+          },
+          "timestamp": "2026-04-13T01:29:19.395Z"
+        }
+      },
+      {
+        "target": {
+          "id": "9c71a1bac3c8161d59bac433f72f96cf7f737291c4030279e32d8af56fa87ddc",
+          "shortId": "9c71a1bac3c8",
+          "name": "sanctuary-phase3-benchmark-2026-04-13t01-28-46-631z-worker-2",
+          "ip": "172.29.0.4"
+        },
+        "metrics": {
+          "worker": {
+            "hostname": "9c71a1bac3c8",
+            "pid": 8,
+            "startedAt": "2026-04-13T01:29:11.801Z",
+            "concurrency": 1,
+            "electrumSubscriptionOwner": false
+          },
+          "queues": {
+            "sync": {
+              "waiting": 0,
+              "active": 0,
+              "completed": 1,
+              "failed": 0,
+              "delayed": 1,
+              "paused": false
+            },
+            "notifications": {
+              "waiting": 0,
+              "active": 0,
+              "completed": 1,
+              "failed": 0,
+              "delayed": 0,
+              "paused": false
+            },
+            "confirmations": {
+              "waiting": 0,
+              "active": 0,
+              "completed": 1,
+              "failed": 0,
+              "delayed": 1,
+              "paused": false
+            },
+            "maintenance": {
+              "waiting": 0,
+              "active": 0,
+              "completed": 13,
+              "failed": 0,
+              "delayed": 9,
+              "paused": false
+            }
+          },
+          "electrum": {
+            "isRunning": false,
+            "ownershipRetryActive": true,
+            "subscribedAddresses": 0,
+            "networks": {}
+          },
+          "jobCompletions": {
+            "maintenance:diagnostics:worker-ping": 1776043758890,
+            "maintenance:diagnostics:locked-worker-ping": 1776043759392
+          },
+          "timestamp": "2026-04-13T01:29:19.395Z"
+        }
+      }
+    ],
+    "repeatableJobs": [
+      {
+        "queue": "sync",
+        "name": "check-stale-wallets",
+        "count": 1,
+        "keys": [
+          "75a7eb5f6b160f60e9375f2192741e8c"
+        ]
+      },
+      {
+        "queue": "confirmations",
+        "name": "update-all-confirmations",
+        "count": 1,
+        "keys": [
+          "fa24c4273eed3737f9723135a99f2858"
+        ]
+      },
+      {
+        "queue": "maintenance",
+        "name": "cleanup:expired-drafts",
+        "count": 1,
+        "keys": [
+          "6b21500d90ba74c568f01c83badc59a1"
+        ]
+      },
+      {
+        "queue": "maintenance",
+        "name": "cleanup:expired-transfers",
+        "count": 1,
+        "keys": [
+          "15e6156663eec93a7bca0e6e38baf1b3"
+        ]
+      },
+      {
+        "queue": "maintenance",
+        "name": "cleanup:audit-logs",
+        "count": 1,
+        "keys": [
+          "55b704ff344ec6f7c65b147fe8ff2c28"
+        ]
+      },
+      {
+        "queue": "maintenance",
+        "name": "cleanup:price-data",
+        "count": 1,
+        "keys": [
+          "6b24e63ae9386db2ed6f66620985b09f"
+        ]
+      },
+      {
+        "queue": "maintenance",
+        "name": "cleanup:fee-estimates",
+        "count": 1,
+        "keys": [
+          "dc49f55d4e04e5a6bae10a74d6a06ce3"
+        ]
+      },
+      {
+        "queue": "maintenance",
+        "name": "cleanup:expired-tokens",
+        "count": 1,
+        "keys": [
+          "a5f64779e1ad4a648988852a0924a694"
+        ]
+      },
+      {
+        "queue": "maintenance",
+        "name": "maintenance:weekly-vacuum",
+        "count": 1,
+        "keys": [
+          "cdff87341cbb16fc660c432eb506123f"
+        ]
+      },
+      {
+        "queue": "maintenance",
+        "name": "maintenance:monthly-cleanup",
+        "count": 1,
+        "keys": [
+          "3902089b6f5ac8bcd089fe0f6abc4c18"
+        ]
+      },
+      {
+        "queue": "maintenance",
+        "name": "backup:scheduled",
+        "count": 1,
+        "keys": [
+          "9f364205223f69ab7af696ad7734aa85"
+        ]
+      }
+    ],
+    "jobs": [
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T01-28-46-631Z-ping-0",
+        "state": "completed",
+        "durationMs": 301,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T01-28-46-631Z",
+          "sequence": 0,
+          "worker": {
+            "hostname": "9c71a1bac3c8",
+            "pid": 8
+          },
+          "durationMs": 301
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T01-28-46-631Z-ping-1",
+        "state": "completed",
+        "durationMs": 301,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T01-28-46-631Z",
+          "sequence": 1,
+          "worker": {
+            "hostname": "20725bb8a06e",
+            "pid": 7
+          },
+          "durationMs": 300
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T01-28-46-631Z-ping-2",
+        "state": "completed",
+        "durationMs": 601,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T01-28-46-631Z",
+          "sequence": 2,
+          "worker": {
+            "hostname": "20725bb8a06e",
+            "pid": 7
+          },
+          "durationMs": 300
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T01-28-46-631Z-ping-3",
+        "state": "completed",
+        "durationMs": 601,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T01-28-46-631Z",
+          "sequence": 3,
+          "worker": {
+            "hostname": "9c71a1bac3c8",
+            "pid": 8
+          },
+          "durationMs": 300
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T01-28-46-631Z-ping-4",
+        "state": "completed",
+        "durationMs": 902,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T01-28-46-631Z",
+          "sequence": 4,
+          "worker": {
+            "hostname": "20725bb8a06e",
+            "pid": 7
+          },
+          "durationMs": 300
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T01-28-46-631Z-ping-5",
+        "state": "completed",
+        "durationMs": 902,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T01-28-46-631Z",
+          "sequence": 5,
+          "worker": {
+            "hostname": "9c71a1bac3c8",
+            "pid": 8
+          },
+          "durationMs": 300
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T01-28-46-631Z-ping-6",
+        "state": "completed",
+        "durationMs": 1205,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T01-28-46-631Z",
+          "sequence": 6,
+          "worker": {
+            "hostname": "9c71a1bac3c8",
+            "pid": 8
+          },
+          "durationMs": 300
+        }
+      },
+      {
+        "category": "worker-distribution",
+        "queue": "maintenance",
+        "name": "diagnostics:worker-ping",
+        "id": "phase3-worker-scaleout-2026-04-13T01-28-46-631Z-ping-7",
+        "state": "completed",
+        "durationMs": 1205,
+        "returnvalue": {
+          "success": true,
+          "proofId": "2026-04-13T01-28-46-631Z",
+          "sequence": 7,
+          "worker": {
+            "hostname": "20725bb8a06e",
+            "pid": 7
+          },
+          "durationMs": 300
+        }
+      }
+    ],
+    "lockProof": {
+      "lockKey": "phase3-worker-scaleout-2026-04-13T01-28-46-631Z-shared-lock",
+      "jobs": [
+        {
+          "category": "distributed-lock",
+          "queue": "maintenance",
+          "name": "diagnostics:locked-worker-ping",
+          "id": "phase3-worker-scaleout-2026-04-13T01-28-46-631Z-locked-0",
+          "state": "completed",
+          "durationMs": 501,
+          "returnvalue": {
+            "success": true,
+            "proofId": "2026-04-13T01-28-46-631Z",
+            "sequence": 0,
+            "worker": {
+              "hostname": "9c71a1bac3c8",
+              "pid": 8
+            },
+            "durationMs": 499
+          }
+        },
+        {
+          "category": "distributed-lock",
+          "queue": "maintenance",
+          "name": "diagnostics:locked-worker-ping",
+          "id": "phase3-worker-scaleout-2026-04-13T01-28-46-631Z-locked-1",
+          "state": "completed",
+          "durationMs": 1,
+          "returnvalue": {
+            "skipped": true,
+            "reason": "lock_held"
+          }
+        }
+      ]
+    },
+    "workerPs": [
+      {
+        "service": "worker",
+        "state": "running",
+        "health": "healthy",
+        "exitCode": 0,
+        "publishers": [
+          {
+            "URL": "",
+            "TargetPort": 3001,
+            "PublishedPort": 0,
+            "Protocol": "tcp"
+          }
+        ]
+      },
+      {
+        "service": "worker",
+        "state": "running",
+        "health": "healthy",
+        "exitCode": 0,
+        "publishers": [
+          {
+            "URL": "",
+            "TargetPort": 3001,
+            "PublishedPort": 0,
+            "Protocol": "tcp"
+          }
+        ]
+      }
+    ]
+  },
+  "backendScaleOutProof": {
+    "proofId": "2026-04-13T01-28-46-631Z",
+    "totalDurationMs": 246,
+    "backends": [
+      {
+        "id": "d6c6cbb9f9ffd798a62890ab2341ec39b39e61791e9163c5d71f2d63bb9cc7a2",
+        "shortId": "d6c6cbb9f9ff",
+        "name": "sanctuary-phase3-benchmark-2026-04-13t01-28-46-631z-backend-1",
+        "ip": "172.29.0.6"
+      },
+      {
+        "id": "4367fb13979ca17cdff3487359a7e16c94d8b85784fcd466ea0c561e6984a29a",
+        "shortId": "4367fb13979c",
+        "name": "sanctuary-phase3-benchmark-2026-04-13t01-28-46-631z-backend-2",
+        "ip": "172.29.0.9"
+      }
+    ],
+    "websocketTarget": {
+      "id": "d6c6cbb9f9ffd798a62890ab2341ec39b39e61791e9163c5d71f2d63bb9cc7a2",
+      "shortId": "d6c6cbb9f9ff",
+      "name": "sanctuary-phase3-benchmark-2026-04-13t01-28-46-631z-backend-1",
+      "ip": "172.29.0.6"
+    },
+    "triggerTarget": {
+      "id": "4367fb13979ca17cdff3487359a7e16c94d8b85784fcd466ea0c561e6984a29a",
+      "shortId": "4367fb13979c",
+      "name": "sanctuary-phase3-benchmark-2026-04-13t01-28-46-631z-backend-2",
+      "ip": "172.29.0.9"
+    },
+    "wallet": {
+      "id": "6e185406-e822-45bc-9a93-78a2a840bd83",
+      "name": "Phase 3 Scale-Out Wallet 2026-04-13T01-28-46-631Z",
+      "addressCount": 0
+    },
+    "websocket": {
+      "url": "ws://172.29.0.6:3001/ws",
+      "setupDurationMs": 10,
+      "channels": [
+        "wallet:6e185406-e822-45bc-9a93-78a2a840bd83",
+        "wallet:6e185406-e822-45bc-9a93-78a2a840bd83:sync",
+        "sync:all"
+      ]
+    },
+    "trigger": {
+      "url": "http://172.29.0.9:3001/api/v1/sync/queue/6e185406-e822-45bc-9a93-78a2a840bd83",
+      "status": 200,
+      "durationMs": 19,
+      "body": {
+        "queued": true,
+        "queuePosition": null,
+        "syncInProgress": true
+      }
+    },
+    "event": {
+      "durationMs": 18,
+      "ok": true,
+      "event": "sync",
+      "channel": "wallet:6e185406-e822-45bc-9a93-78a2a840bd83",
+      "data": {
+        "inProgress": true,
+        "retryCount": 0,
+        "maxRetries": 3,
+        "walletId": "6e185406-e822-45bc-9a93-78a2a840bd83",
+        "timestamp": "2026-04-13T01:29:28.897Z"
+      }
+    },
+    "backendPs": [
+      {
+        "service": "backend",
+        "state": "running",
+        "health": "healthy",
+        "exitCode": 0,
+        "publishers": [
+          {
+            "URL": "",
+            "TargetPort": 3001,
+            "PublishedPort": 0,
+            "Protocol": "tcp"
+          }
+        ]
+      },
+      {
+        "service": "backend",
+        "state": "running",
+        "health": "healthy",
+        "exitCode": 0,
+        "publishers": [
+          {
+            "URL": "",
+            "TargetPort": 3001,
+            "PublishedPort": 0,
+            "Protocol": "tcp"
+          }
+        ]
+      }
+    ]
+  },
+  "composePs": [
+    {
+      "service": "backend",
+      "state": "running",
+      "health": "healthy",
+      "exitCode": 0,
+      "publishers": [
+        {
+          "URL": "",
+          "TargetPort": 3001,
+          "PublishedPort": 0,
+          "Protocol": "tcp"
+        }
+      ]
+    },
+    {
+      "service": "backend",
+      "state": "running",
+      "health": "healthy",
+      "exitCode": 0,
+      "publishers": [
+        {
+          "URL": "",
+          "TargetPort": 3001,
+          "PublishedPort": 0,
+          "Protocol": "tcp"
+        }
+      ]
+    },
+    {
+      "service": "frontend",
+      "state": "running",
+      "health": "healthy",
+      "exitCode": 0,
+      "publishers": [
+        {
+          "URL": "0.0.0.0",
+          "TargetPort": 80,
+          "PublishedPort": 18080,
+          "Protocol": "tcp"
+        },
+        {
+          "URL": "::",
+          "TargetPort": 80,
+          "PublishedPort": 18080,
+          "Protocol": "tcp"
+        },
+        {
+          "URL": "0.0.0.0",
+          "TargetPort": 443,
+          "PublishedPort": 18443,
+          "Protocol": "tcp"
+        },
+        {
+          "URL": "::",
+          "TargetPort": 443,
+          "PublishedPort": 18443,
+          "Protocol": "tcp"
+        }
+      ]
+    },
+    {
+      "service": "gateway",
+      "state": "running",
+      "health": "healthy",
+      "exitCode": 0,
+      "publishers": [
+        {
+          "URL": "0.0.0.0",
+          "TargetPort": 4000,
+          "PublishedPort": 14000,
+          "Protocol": "tcp"
+        },
+        {
+          "URL": "::",
+          "TargetPort": 4000,
+          "PublishedPort": 14000,
+          "Protocol": "tcp"
+        }
+      ]
+    },
+    {
+      "service": "postgres",
+      "state": "running",
+      "health": "healthy",
+      "exitCode": 0,
+      "publishers": [
+        {
+          "URL": "",
+          "TargetPort": 5432,
+          "PublishedPort": 0,
+          "Protocol": "tcp"
+        }
+      ]
+    },
+    {
+      "service": "redis",
+      "state": "running",
+      "health": "healthy",
+      "exitCode": 0,
+      "publishers": [
+        {
+          "URL": "",
+          "TargetPort": 6379,
+          "PublishedPort": 0,
+          "Protocol": "tcp"
+        }
+      ]
+    },
+    {
+      "service": "worker",
+      "state": "running",
+      "health": "healthy",
+      "exitCode": 0,
+      "publishers": [
+        {
+          "URL": "",
+          "TargetPort": 3001,
+          "PublishedPort": 0,
+          "Protocol": "tcp"
+        }
+      ]
+    },
+    {
+      "service": "worker",
+      "state": "running",
+      "health": "healthy",
+      "exitCode": 0,
+      "publishers": [
+        {
+          "URL": "",
+          "TargetPort": 3001,
+          "PublishedPort": 0,
+          "Protocol": "tcp"
+        }
+      ]
+    }
+  ],
+  "keptStack": false
+}

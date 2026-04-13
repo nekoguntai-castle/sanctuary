@@ -16,6 +16,11 @@ const keepStack = process.env.PHASE3_COMPOSE_BENCHMARK_KEEP_STACK === 'true';
 const timeoutMs = Number(process.env.PHASE3_COMPOSE_BENCHMARK_TIMEOUT_MS || '360000');
 const retryMs = Number(process.env.PHASE3_COMPOSE_BENCHMARK_RETRY_MS || '2000');
 const workerQueueProofTimeoutMs = Number(process.env.PHASE3_WORKER_QUEUE_PROOF_TIMEOUT_MS || '60000');
+const workerScaleOutReplicas = Number(process.env.PHASE3_WORKER_SCALE_OUT_REPLICAS || '2');
+const workerScaleOutProofTimeoutMs = Number(process.env.PHASE3_WORKER_SCALE_OUT_PROOF_TIMEOUT_MS || '60000');
+const workerScaleOutJobCount = Number(process.env.PHASE3_WORKER_SCALE_OUT_JOB_COUNT || '8');
+const workerScaleOutJobDelayMs = Number(process.env.PHASE3_WORKER_SCALE_OUT_JOB_DELAY_MS || '300');
+const composeWorkerConcurrency = process.env.PHASE3_COMPOSE_WORKER_CONCURRENCY || process.env.WORKER_CONCURRENCY || '1';
 const backendScaleOutReplicas = Number(process.env.PHASE3_BACKEND_SCALE_OUT_REPLICAS || '2');
 const backendScaleOutProofTimeoutMs = Number(process.env.PHASE3_BACKEND_SCALE_OUT_PROOF_TIMEOUT_MS || '60000');
 
@@ -77,6 +82,10 @@ const composeEnv = {
   GATEWAY_TLS_ENABLED: 'false',
   TLS_ENABLED: 'false',
   WORKER_HEALTH_URL: 'http://worker:3002/ready',
+  WORKER_CONCURRENCY: composeWorkerConcurrency,
+  ELECTRUM_SUBSCRIPTION_LOCK_TTL_MS: process.env.PHASE3_ELECTRUM_SUBSCRIPTION_LOCK_TTL_MS || process.env.ELECTRUM_SUBSCRIPTION_LOCK_TTL_MS || '15000',
+  ELECTRUM_SUBSCRIPTION_LOCK_REFRESH_MS: process.env.PHASE3_ELECTRUM_SUBSCRIPTION_LOCK_REFRESH_MS || process.env.ELECTRUM_SUBSCRIPTION_LOCK_REFRESH_MS || '5000',
+  ELECTRUM_SUBSCRIPTION_LOCK_RETRY_MS: process.env.PHASE3_ELECTRUM_SUBSCRIPTION_LOCK_RETRY_MS || process.env.ELECTRUM_SUBSCRIPTION_LOCK_RETRY_MS || '5000',
 };
 
 const benchmarkEnv = {
@@ -476,12 +485,109 @@ function summarizeWorkerQueueProof(proof) {
   return `${proof.jobs.length} jobs completed across ${categories.join(', ')}; p95=${durations.p95Ms}ms`;
 }
 
+async function runWorkerScaleOutProof() {
+  if (workerScaleOutReplicas < 2) {
+    throw new Error(`PHASE3_WORKER_SCALE_OUT_REPLICAS must be at least 2, got ${workerScaleOutReplicas}`);
+  }
+
+  runCompose(['up', '-d', '--scale', `worker=${workerScaleOutReplicas}`, 'worker']);
+  const workerPs = await waitForServiceReplicaHealth('worker', workerScaleOutReplicas);
+  const workers = getServiceContainers('worker');
+  if (workers.length < 2) {
+    throw new Error(`Expected at least two worker containers after scale-out, found ${workers.length}`);
+  }
+
+  const output = runDocker([
+    'exec',
+    '-e',
+    `PHASE3_WORKER_SCALE_OUT_TARGETS=${JSON.stringify(workers)}`,
+    '-e',
+    `PHASE3_WORKER_SCALE_OUT_PROOF_ID=${timestamp}`,
+    '-e',
+    `PHASE3_WORKER_SCALE_OUT_PROOF_TIMEOUT_MS=${workerScaleOutProofTimeoutMs}`,
+    '-e',
+    `PHASE3_WORKER_SCALE_OUT_JOB_COUNT=${workerScaleOutJobCount}`,
+    '-e',
+    `PHASE3_WORKER_SCALE_OUT_JOB_DELAY_MS=${workerScaleOutJobDelayMs}`,
+    workers[0].id,
+    'node',
+    '--input-type=module',
+    '--eval',
+    getWorkerScaleOutProofScript(),
+  ]);
+
+  const proof = parseLastJsonLine(output);
+  const failedJobs = proof.jobs.filter((job) => job.state !== 'completed');
+  if (failedJobs.length > 0) {
+    throw new Error(`Worker scale-out proof recorded non-completed jobs: ${JSON.stringify(failedJobs)}`);
+  }
+
+  const diagnosticJobs = proof.jobs.filter((job) => job.name === 'diagnostics:worker-ping');
+  const processorIds = new Set(
+    diagnosticJobs
+      .map((job) => job.returnvalue?.worker?.hostname)
+      .filter(Boolean)
+  );
+  if (processorIds.size < Math.min(2, workerScaleOutReplicas)) {
+    throw new Error(`Worker scale-out proof did not observe multiple job processors: ${JSON.stringify([...processorIds])}`);
+  }
+
+  const seenSequences = new Set();
+  for (const job of diagnosticJobs) {
+    const sequence = job.returnvalue?.sequence;
+    if (sequence === null || sequence === undefined) {
+      throw new Error(`Worker diagnostic job did not return a sequence: ${JSON.stringify(job)}`);
+    }
+    if (seenSequences.has(sequence)) {
+      throw new Error(`Worker diagnostic sequence processed more than once: ${sequence}`);
+    }
+    seenSequences.add(sequence);
+  }
+
+  const lockedExecuted = proof.lockProof.jobs.filter((job) => job.returnvalue?.success);
+  const lockedSkipped = proof.lockProof.jobs.filter((job) => job.returnvalue?.skipped);
+  if (lockedExecuted.length !== 1 || lockedSkipped.length !== 1) {
+    throw new Error(`Worker locked diagnostic proof expected one executed job and one lock-held skip: ${JSON.stringify(proof.lockProof.jobs)}`);
+  }
+
+  const ownerMetrics = proof.metricsAfter.filter((entry) => (
+    entry.metrics?.worker?.electrumSubscriptionOwner || entry.metrics?.electrum?.isRunning
+  ));
+  if (ownerMetrics.length !== 1) {
+    throw new Error(`Expected exactly one worker to own Electrum subscriptions, found ${ownerMetrics.length}: ${JSON.stringify(ownerMetrics)}`);
+  }
+
+  const repeatableDuplicates = (proof.repeatableJobs || []).filter((job) => job.count > 1);
+  if (repeatableDuplicates.length > 0) {
+    throw new Error(`Worker scale-out proof found duplicate repeatable jobs: ${JSON.stringify(repeatableDuplicates)}`);
+  }
+
+  return {
+    ...proof,
+    workerPs,
+  };
+}
+
+function summarizeWorkerScaleOutProof(proof) {
+  const processorIds = [...new Set(
+    proof.jobs
+      .filter((job) => job.name === 'diagnostics:worker-ping')
+      .map((job) => job.returnvalue?.worker?.hostname)
+      .filter(Boolean)
+  )];
+  const owner = proof.metricsAfter.find((entry) => (
+    entry.metrics?.worker?.electrumSubscriptionOwner || entry.metrics?.electrum?.isRunning
+  ));
+  const lockedSkipped = proof.lockProof.jobs.filter((job) => job.returnvalue?.skipped).length;
+  return `${proof.workers.length} workers healthy; processors=${processorIds.join(', ')}; electrumOwner=${owner?.target?.name || 'unknown'}; lockedSkips=${lockedSkipped}`;
+}
+
 async function runBackendScaleOutProof() {
   if (backendScaleOutReplicas < 2) {
     throw new Error(`PHASE3_BACKEND_SCALE_OUT_REPLICAS must be at least 2, got ${backendScaleOutReplicas}`);
   }
 
-  runCompose(['up', '-d', '--scale', `backend=${backendScaleOutReplicas}`, 'backend']);
+  runCompose(['up', '-d', '--scale', `backend=${backendScaleOutReplicas}`, '--scale', `worker=${workerScaleOutReplicas}`, 'backend', 'worker']);
   const backendPs = await waitForServiceReplicaHealth('backend', backendScaleOutReplicas);
   const backends = getServiceContainers('backend');
   if (backends.length < 2) {
@@ -602,6 +708,46 @@ function buildMarkdown(report) {
     lines.push('No worker queue proof recorded.', '');
   }
 
+  lines.push('## Worker Scale-Out Proof', '');
+
+  if (report.workerScaleOutProof?.jobs?.length) {
+    const processorIds = [...new Set(
+      report.workerScaleOutProof.jobs
+        .filter((job) => job.name === 'diagnostics:worker-ping')
+        .map((job) => job.returnvalue?.worker?.hostname)
+        .filter(Boolean)
+    )];
+    const owner = report.workerScaleOutProof.metricsAfter.find((entry) => (
+      entry.metrics?.worker?.electrumSubscriptionOwner || entry.metrics?.electrum?.isRunning
+    ));
+    lines.push(
+      `Worker replicas: ${report.workerScaleOutProof.workers?.length || 0}`,
+      `Diagnostic job processors: ${processorIds.join(', ')}`,
+      `Electrum subscription owner: ${owner?.target?.name || 'unknown'}`,
+      `Locked diagnostic result: ${report.workerScaleOutProof.lockProof.jobs.filter((job) => job.returnvalue?.success).length} executed, ${report.workerScaleOutProof.lockProof.jobs.filter((job) => job.returnvalue?.skipped).length} skipped by lock`,
+      '',
+      '| Category | Job | State | Processor | Duration ms |',
+      '| --- | --- | --- | --- | ---: |',
+      ...report.workerScaleOutProof.jobs.map((job) => [
+        job.category,
+        escapeCell(job.name),
+        job.state,
+        job.returnvalue?.worker?.hostname || '',
+        job.durationMs,
+      ].join(' | ').replace(/^/, '| ').replace(/$/, ' |')),
+      '',
+      'Repeatable job ownership:',
+      ''
+    );
+
+    for (const job of report.workerScaleOutProof.repeatableJobs || []) {
+      lines.push(`- ${job.queue}:${job.name}: repeatable definitions=${job.count}`);
+    }
+    lines.push('');
+  } else {
+    lines.push('No worker scale-out proof recorded.', '');
+  }
+
   lines.push('## Backend Scale-Out Proof', '');
 
   if (report.backendScaleOutProof?.event?.ok) {
@@ -629,6 +775,7 @@ function buildMarkdown(report) {
     '- The smoke waits for database migration and seed completion, then runs the existing Phase 3 benchmark harness with local fixture provisioning.',
     '- The run proves authenticated wallet list, transaction-history, WebSocket subscription fanout, wallet-sync queue, and admin backup-validation paths execute end to end on a local seeded stack.',
     '- The worker queue proof enqueues and waits for BullMQ jobs across sync, confirmations, notifications, maintenance, autopilot, and intelligence handlers in the running worker container.',
+    '- The worker scale-out proof runs two worker replicas, verifies diagnostic BullMQ jobs complete on both replicas, proves a shared diagnostic lock skips one concurrent duplicate, checks recurring jobs have one repeatable definition, and requires exactly one worker to own Electrum subscriptions.',
     '- The backend scale-out proof runs two backend replicas, opens a wallet subscription WebSocket on one replica, triggers wallet sync on the other replica, and requires the Redis bridge to deliver the sync event across instances.',
     '- The local generated wallet and two-replica topology are smoke evidence only; representative large-wallet, load-level fanout, and capacity evidence remain required before claiming Phase 3 complete.',
     '- Restore remains intentionally skipped because it is destructive unless `SANCTUARY_ALLOW_RESTORE=true` is set for a restore-safe environment.'
@@ -712,6 +859,7 @@ let benchmarkRun = null;
 let benchmarkEvidence = null;
 let benchmarkProof = null;
 let workerQueueProof = null;
+let workerScaleOutProof = null;
 let backendScaleOutProof = null;
 let passed = false;
 let failureError = null;
@@ -743,6 +891,10 @@ try {
 
   workerQueueProof = runWorkerQueueProof();
   recordStep('worker queue proof', true, summarizeWorkerQueueProof(workerQueueProof));
+
+  workerScaleOutProof = await runWorkerScaleOutProof();
+  composePs = collectComposePs();
+  recordStep('worker scale-out proof', true, summarizeWorkerScaleOutProof(workerScaleOutProof));
 
   backendScaleOutProof = await runBackendScaleOutProof();
   composePs = collectComposePs();
@@ -789,6 +941,7 @@ try {
       : null,
     benchmarkProof,
     workerQueueProof,
+    workerScaleOutProof,
     backendScaleOutProof,
     composePs,
     keptStack: keepStack,
@@ -967,6 +1120,209 @@ try {
   await Promise.all([...events.values()].map((queueEvents) => queueEvents.close()));
   await Promise.all([...queues.values()].map((queue) => queue.close()));
 }
+`;
+}
+
+function getWorkerScaleOutProofScript() {
+  return `
+import { Queue, QueueEvents } from 'bullmq';
+
+const proofId = process.env.PHASE3_WORKER_SCALE_OUT_PROOF_ID || String(Date.now());
+const safeProofId = proofId.replace(/[^a-zA-Z0-9_-]/g, '-');
+const workers = JSON.parse(process.env.PHASE3_WORKER_SCALE_OUT_TARGETS || '[]');
+const jobTimeoutMs = Number(process.env.PHASE3_WORKER_SCALE_OUT_PROOF_TIMEOUT_MS || '60000');
+const requestedJobCount = Number(process.env.PHASE3_WORKER_SCALE_OUT_JOB_COUNT || '8');
+const jobDelayMs = Number(process.env.PHASE3_WORKER_SCALE_OUT_JOB_DELAY_MS || '300');
+const prefix = 'sanctuary:worker';
+const proofStartedAt = Date.now();
+
+if (workers.length < 2) {
+  throw new Error('At least two worker targets are required for worker scale-out proof');
+}
+
+function connectionFromEnv() {
+  const redisUrl = process.env.REDIS_URL;
+  if (!redisUrl) {
+    throw new Error('REDIS_URL is required for worker scale-out proof');
+  }
+
+  const parsed = new URL(redisUrl);
+  const db = parsed.pathname && parsed.pathname !== '/'
+    ? Number.parseInt(parsed.pathname.slice(1), 10)
+    : 0;
+
+  return {
+    host: parsed.hostname,
+    port: Number.parseInt(parsed.port || '6379', 10),
+    password: parsed.password ? decodeURIComponent(parsed.password) : undefined,
+    db: Number.isFinite(db) ? db : 0,
+  };
+}
+
+function parseJson(value) {
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
+async function readWorkerMetrics(target) {
+  const response = await fetch('http://' + target.ip + ':3002/metrics', {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(5000),
+  });
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error('worker metrics for ' + target.name + ' returned ' + response.status + ': ' + body.slice(0, 200));
+  }
+  return {
+    target,
+    metrics: parseJson(body),
+  };
+}
+
+async function readAllWorkerMetrics() {
+  return Promise.all(workers.map((target) => readWorkerMetrics(target)));
+}
+
+async function waitForElectrumOwner() {
+  const deadline = Date.now() + jobTimeoutMs;
+  let latest = [];
+
+  while (Date.now() < deadline) {
+    latest = await readAllWorkerMetrics();
+    const owners = latest.filter((entry) => (
+      entry.metrics?.worker?.electrumSubscriptionOwner || entry.metrics?.electrum?.isRunning
+    ));
+    if (owners.length === 1) {
+      return latest;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+
+  return latest;
+}
+
+const connection = connectionFromEnv();
+const queueNames = ['sync', 'confirmations', 'maintenance'];
+const queues = new Map();
+for (const queueName of queueNames) {
+  queues.set(queueName, new Queue(queueName, { connection, prefix }));
+}
+const maintenanceQueue = queues.get('maintenance');
+const maintenanceEvents = new QueueEvents('maintenance', { connection, prefix });
+await maintenanceEvents.waitUntilReady();
+
+async function readRepeatableJobs() {
+  const expected = {
+    sync: ['check-stale-wallets'],
+    confirmations: ['update-all-confirmations'],
+    maintenance: [
+      'cleanup:expired-drafts',
+      'cleanup:expired-transfers',
+      'cleanup:audit-logs',
+      'cleanup:price-data',
+      'cleanup:fee-estimates',
+      'cleanup:expired-tokens',
+      'maintenance:weekly-vacuum',
+      'maintenance:monthly-cleanup',
+      'backup:scheduled',
+    ],
+  };
+  const records = [];
+
+  for (const [queueName, names] of Object.entries(expected)) {
+    const queue = queues.get(queueName);
+    const repeatableJobs = await queue.getRepeatableJobs();
+    for (const name of names) {
+      const matches = repeatableJobs.filter((job) => job.name === name);
+      records.push({
+        queue: queueName,
+        name,
+        count: matches.length,
+        keys: matches.map((job) => job.key),
+      });
+    }
+  }
+
+  return records;
+}
+
+async function waitForJob(job, category) {
+  const startedAt = Date.now();
+  const returnvalue = await job.waitUntilFinished(maintenanceEvents, jobTimeoutMs);
+  const state = await job.getState();
+  return {
+    category,
+    queue: 'maintenance',
+    name: job.name,
+    id: job.id,
+    state,
+    durationMs: Date.now() - startedAt,
+    returnvalue,
+  };
+}
+
+const metricsBefore = await readAllWorkerMetrics();
+const repeatableJobs = await readRepeatableJobs();
+const jobCount = Math.max(workers.length * 2, requestedJobCount);
+
+const diagnosticJobs = [];
+for (let sequence = 0; sequence < jobCount; sequence += 1) {
+  const job = await maintenanceQueue.add('diagnostics:worker-ping', {
+    proofId,
+    sequence,
+    delayMs: jobDelayMs,
+  }, {
+    attempts: 1,
+    jobId: ['phase3-worker-scaleout', safeProofId, 'ping', String(sequence)].join('-'),
+    removeOnComplete: 100,
+    removeOnFail: 100,
+  });
+  diagnosticJobs.push(job);
+}
+
+const jobs = await Promise.all(diagnosticJobs.map((job) => waitForJob(job, 'worker-distribution')));
+
+const lockKey = ['phase3-worker-scaleout', safeProofId, 'shared-lock'].join('-');
+const lockedJobs = [];
+for (let sequence = 0; sequence < 2; sequence += 1) {
+  const job = await maintenanceQueue.add('diagnostics:locked-worker-ping', {
+    proofId,
+    sequence,
+    lockKey,
+    delayMs: Math.max(jobDelayMs, 500),
+  }, {
+    attempts: 1,
+    jobId: ['phase3-worker-scaleout', safeProofId, 'locked', String(sequence)].join('-'),
+    removeOnComplete: 100,
+    removeOnFail: 100,
+  });
+  lockedJobs.push(job);
+}
+
+const lockProof = {
+  lockKey,
+  jobs: await Promise.all(lockedJobs.map((job) => waitForJob(job, 'distributed-lock'))),
+};
+const metricsAfter = await waitForElectrumOwner();
+
+console.log(JSON.stringify({
+  proofId,
+  totalDurationMs: Date.now() - proofStartedAt,
+  workers,
+  workerCount: workers.length,
+  metricsBefore,
+  metricsAfter,
+  repeatableJobs,
+  jobs,
+  lockProof,
+}));
+
+await maintenanceEvents.close();
+await Promise.all([...queues.values()].map((queue) => queue.close()));
 `;
 }
 

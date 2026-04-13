@@ -20,6 +20,7 @@
 import { initializeOpenTelemetry } from './utils/tracing/otel';
 const otelPromise = initializeOpenTelemetry();
 
+import os from 'node:os';
 import { getConfig } from './config';
 import { createLogger } from './utils/logger';
 import { getErrorMessage } from './utils/errors';
@@ -157,6 +158,7 @@ async function startWorker(): Promise<void> {
   // Start health server
   const healthPort = parseInt(process.env.WORKER_HEALTH_PORT || '3002', 10);
   const workerStartedAt = Date.now();
+  const workerHostname = os.hostname();
   healthServer = startHealthServer({
     port: healthPort,
     healthProvider: {
@@ -192,8 +194,17 @@ async function startWorker(): Promise<void> {
         const electrumMetrics = electrumManager?.getHealthMetrics();
 
         return {
+          worker: {
+            hostname: workerHostname,
+            pid: process.pid,
+            startedAt: new Date(workerStartedAt).toISOString(),
+            concurrency: workerConcurrency,
+            electrumSubscriptionOwner: electrumMetrics?.isRunning ?? false,
+          },
           queues: queueHealth?.queues ?? {},
           electrum: {
+            isRunning: electrumMetrics?.isRunning ?? false,
+            ownershipRetryActive: electrumMetrics?.ownershipRetryActive ?? false,
             subscribedAddresses: electrumMetrics?.totalSubscribedAddresses ?? 0,
             networks: electrumMetrics?.networks ?? {},
           },

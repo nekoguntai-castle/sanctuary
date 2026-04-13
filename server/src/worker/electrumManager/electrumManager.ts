@@ -9,7 +9,7 @@ import { closeAllElectrumClients } from '../../services/bitcoin/electrum';
 import { getConfig } from '../../config';
 import { createLogger } from '../../utils/logger';
 import type { DistributedLock } from '../../infrastructure';
-import { HEALTH_CHECK_INTERVAL_MS } from './types';
+import { HEALTH_CHECK_INTERVAL_MS, ELECTRUM_SUBSCRIPTION_LOCK_RETRY_MS } from './types';
 import type { BitcoinNetwork, NetworkState, ElectrumManagerCallbacks } from './types';
 import { acquireSubscriptionLock, startLockRefresh, releaseSubscriptionLock } from './lockCoordination';
 import { connectNetwork } from './networkConnection';
@@ -37,6 +37,9 @@ export class ElectrumSubscriptionManager {
   private healthCheckTimer: NodeJS.Timeout | null = null;
   private subscriptionLock: DistributedLock | null = null;
   private subscriptionLockRefresh: NodeJS.Timeout | null = null;
+  private subscriptionLockRetryTimer: NodeJS.Timeout | null = null;
+  private subscriptionLockRetryInFlight = false;
+  private explicitlyStopped = false;
 
   constructor(callbacks: ElectrumManagerCallbacks) {
     this.callbacks = callbacks;
@@ -46,19 +49,32 @@ export class ElectrumSubscriptionManager {
    * Start the Electrum subscription manager
    */
   async start(): Promise<void> {
+    this.explicitlyStopped = false;
     if (this.isRunningFlag) {
       log.warn('Electrum manager already running');
       return;
     }
+    if (this.subscriptionLockRetryTimer) {
+      log.debug('Electrum subscription ownership retry already scheduled');
+      return;
+    }
 
     const lock = await acquireSubscriptionLock();
-    if (!lock) return;
+    if (!lock) {
+      this.startSubscriptionOwnershipRetry();
+      return;
+    }
 
+    await this.startWithLock(lock);
+  }
+
+  private async startWithLock(lock: DistributedLock): Promise<void> {
+    this.stopSubscriptionOwnershipRetry();
     this.subscriptionLock = lock;
     this.subscriptionLockRefresh = startLockRefresh(
       () => this.subscriptionLock,
       (l) => { this.subscriptionLock = l; },
-      () => this.stop()
+      () => this.handleSubscriptionLockLost()
     );
     this.isRunningFlag = true;
     log.info('Starting Electrum subscription manager...');
@@ -67,21 +83,83 @@ export class ElectrumSubscriptionManager {
     const config = getConfig();
     const primaryNetwork = config.bitcoin.network as BitcoinNetwork;
 
-    // Connect to primary network
-    await this.doConnectNetwork(primaryNetwork);
+    try {
+      // Connect to primary network
+      await this.doConnectNetwork(primaryNetwork);
 
-    // Subscribe to all wallet addresses
-    await subscribeAllAddresses(this.networks, this.addressToWallet);
+      // Subscribe to all wallet addresses
+      await subscribeAllAddresses(this.networks, this.addressToWallet);
 
-    // Start health check timer
-    this.healthCheckTimer = setInterval(() => {
-      this.doCheckHealth();
-    }, HEALTH_CHECK_INTERVAL_MS);
+      // Start health check timer
+      this.healthCheckTimer = setInterval(() => {
+        this.doCheckHealth();
+      }, HEALTH_CHECK_INTERVAL_MS);
 
-    log.info('Electrum subscription manager started', {
-      networks: Array.from(this.networks.keys()),
-      subscribedAddresses: this.addressToWallet.size,
+      log.info('Electrum subscription manager started', {
+        networks: Array.from(this.networks.keys()),
+        subscribedAddresses: this.addressToWallet.size,
+      });
+    } catch (error) {
+      await this.stopRunningManager();
+      throw error;
+    }
+  }
+
+  private startSubscriptionOwnershipRetry(): void {
+    if (this.explicitlyStopped || this.subscriptionLockRetryTimer || this.isRunningFlag) {
+      return;
+    }
+
+    log.info('Electrum subscription ownership unavailable; retrying until lock is acquired', {
+      retryMs: ELECTRUM_SUBSCRIPTION_LOCK_RETRY_MS,
     });
+
+    this.subscriptionLockRetryTimer = setInterval(() => {
+      void this.tryAcquireSubscriptionOwnership();
+    }, ELECTRUM_SUBSCRIPTION_LOCK_RETRY_MS);
+    this.subscriptionLockRetryTimer.unref?.();
+  }
+
+  private stopSubscriptionOwnershipRetry(): void {
+    if (!this.subscriptionLockRetryTimer) {
+      return;
+    }
+
+    clearInterval(this.subscriptionLockRetryTimer);
+    this.subscriptionLockRetryTimer = null;
+  }
+
+  private async tryAcquireSubscriptionOwnership(): Promise<void> {
+    if (this.explicitlyStopped || this.subscriptionLockRetryInFlight || this.isRunningFlag) {
+      return;
+    }
+
+    this.subscriptionLockRetryInFlight = true;
+    try {
+      const lock = await acquireSubscriptionLock();
+      if (!lock) return;
+
+      if (this.explicitlyStopped) {
+        await releaseSubscriptionLock(lock, null);
+        return;
+      }
+
+      try {
+        await this.startWithLock(lock);
+      } catch (error) {
+        log.error('Failed to start Electrum subscription manager after acquiring retry lock', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        this.startSubscriptionOwnershipRetry();
+      }
+    } finally {
+      this.subscriptionLockRetryInFlight = false;
+    }
+  }
+
+  private async handleSubscriptionLockLost(): Promise<void> {
+    await this.stopRunningManager();
+    this.startSubscriptionOwnershipRetry();
   }
 
   private async doConnectNetwork(network: BitcoinNetwork): Promise<void> {
@@ -142,13 +220,22 @@ export class ElectrumSubscriptionManager {
    * Get health metrics for monitoring
    */
   getHealthMetrics() {
-    return buildHealthMetrics(this.isRunningFlag, this.networks, this.addressToWallet);
+    return {
+      ...buildHealthMetrics(this.isRunningFlag, this.networks, this.addressToWallet),
+      ownershipRetryActive: this.subscriptionLockRetryTimer !== null,
+    };
   }
 
   /**
    * Stop the Electrum subscription manager
    */
   async stop(): Promise<void> {
+    this.explicitlyStopped = true;
+    this.stopSubscriptionOwnershipRetry();
+    await this.stopRunningManager();
+  }
+
+  private async stopRunningManager(): Promise<void> {
     if (!this.isRunningFlag) return;
 
     log.info('Stopping Electrum subscription manager...');

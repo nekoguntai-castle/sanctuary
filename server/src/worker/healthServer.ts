@@ -30,6 +30,13 @@ export interface HealthCheckProvider {
     database?: boolean;
   }>;
   getMetrics?(): Promise<{
+    worker?: {
+      hostname: string;
+      pid: number;
+      startedAt: string;
+      concurrency: number;
+      electrumSubscriptionOwner: boolean;
+    };
     queues: Record<string, {
       waiting: number;
       active: number;
@@ -37,6 +44,8 @@ export interface HealthCheckProvider {
       failed: number;
     }>;
     electrum: {
+      isRunning?: boolean;
+      ownershipRetryActive?: boolean;
       subscribedAddresses: number;
       networks: Record<string, { connected: boolean; lastBlockHeight: number }>;
     };

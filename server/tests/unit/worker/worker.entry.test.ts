@@ -203,6 +203,8 @@ describe('worker entrypoint', () => {
     mocks.electrumInstance.stop.mockResolvedValue(undefined);
     mocks.electrumInstance.isConnected.mockReturnValue(true);
     mocks.electrumInstance.getHealthMetrics.mockReturnValue({
+      isRunning: true,
+      ownershipRetryActive: false,
       totalSubscribedAddresses: 2,
       networks: { testnet: { connected: true } },
     });
@@ -493,8 +495,17 @@ describe('worker entrypoint', () => {
       jobQueue: false,
     });
     await expect(healthProvider?.getMetrics()).resolves.toEqual({
+      worker: expect.objectContaining({
+        hostname: expect.any(String),
+        pid: process.pid,
+        startedAt: expect.any(String),
+        concurrency: 5,
+        electrumSubscriptionOwner: true,
+      }),
       queues: { sync: { size: 0 } },
       electrum: {
+        isRunning: true,
+        ownershipRetryActive: false,
         subscribedAddresses: 2,
         networks: { testnet: { connected: true } },
       },
@@ -503,8 +514,17 @@ describe('worker entrypoint', () => {
     mocks.queueInstance.getHealth.mockResolvedValueOnce(undefined);
     mocks.electrumInstance.getHealthMetrics.mockReturnValueOnce(undefined);
     await expect(healthProvider?.getMetrics()).resolves.toEqual({
+      worker: expect.objectContaining({
+        hostname: expect.any(String),
+        pid: process.pid,
+        startedAt: expect.any(String),
+        concurrency: 5,
+        electrumSubscriptionOwner: false,
+      }),
       queues: {},
       electrum: {
+        isRunning: false,
+        ownershipRetryActive: false,
         subscribedAddresses: 0,
         networks: {},
       },
