@@ -27,6 +27,8 @@ export default defineConfig({
         '**/*.d.ts',
         '**/index.ts',
         '**/types.ts',
+        // Prisma client/model output is generated code; app behavior is covered through repositories/services.
+        'src/generated/**',
         // Re-export shims preserving backward-compatible import paths (zero logic)
         'src/services/aiService.ts',
         'src/services/eventService.ts',
