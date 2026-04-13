@@ -29,7 +29,6 @@ Not performed:
 - Full unit/integration/e2e suite rerun.
 - Privacy-safe calibrated load testing beyond the Phase 3 local capacity proof.
 - Production log, incident, or runtime metric review.
-- Dependency audit rerun.
 
 ## Executive Summary
 
@@ -47,7 +46,7 @@ The main risk is no longer broad architecture quality or known P0 correctness de
 | Scalability | B+ | Dedicated worker, BullMQ/Redis, distributed locks, WebSocket limits, Redis bridge broadcasts, Prisma indexes, cache invalidation, and a scale-out baseline are solid. Disposable two-backend and two-worker smokes now prove Redis-backed WebSocket delivery to 64 local clients across backend replicas, BullMQ diagnostic processing on both worker replicas, recurring job deduplication, one Electrum subscription owner after retry recovery, a shared-lock skip, and Postgres/Redis capacity snapshots before and after the local load profile. The grade stays below A until privacy-safe backend load-balanced capacity, worker queue load, Electrum subscription volume, and expected WebSocket fanout are validated under non-production load. |
 | Performance | B+ | Caching, React Query discipline, Electrum pooling, database indexes, API aggregation, bounded WebSocket queues, and a Phase 3 benchmark harness are good. The disposable full-stack authenticated capacity profile now covers wallet list, transaction history, a synthetic 10,000-transaction wallet-history gate with 100 requests at concurrency 8, wallet-specific WebSocket sync fanout, wallet-sync queueing, WebSocket handshake, generated backup validation and 10,076-record restore, 60 worker proof jobs, two-worker diagnostic scale-out, and 64-client two-backend Redis WebSocket fanout. Privacy-safe calibrated wallet/load data, approved support-size backup restore, worker queue load, and target topology benchmarks are still pending. |
 | Perpetual operations and supportability | B+ | `/health`, `/api/v1/health`, `/metrics`, Prometheus alerts, Grafana/Loki/Jaeger, support-package collectors, Docker healthchecks, resource limits, monitoring exposure docs, and operations runbooks are strong. A disposable restore drill, full Compose gateway audit persistence proof, local monitoring stack smoke, and disposable Alertmanager receiver delivery smoke now exist. Durable production alert receivers and runtime incident evidence are still missing. |
-| Security | B | JWT audiences, token revocation, 2FA, production secret requirements, AES-GCM encryption, rate limiting, Helmet, gateway HMAC auth, redacted gateway logs, route-scoped Swagger CSP allowances, and internal routes are good. Browser access tokens now default to session-scoped storage with memory-only and local-storage modes explicit, but tokens remain script-readable until a cookie/session architecture is chosen. Partial validation/schema coverage and unaudited dependency posture also keep it below A. |
+| Security | B | JWT audiences, token revocation, 2FA, production secret requirements, AES-GCM encryption, rate limiting, Helmet, gateway HMAC auth, redacted gateway logs, route-scoped Swagger CSP allowances, and internal routes are good. Browser access tokens now default to session-scoped storage with memory-only and local-storage modes explicit, but tokens remain script-readable until a cookie/session architecture is chosen. Partial validation/schema coverage and accepted upstream dependency audit findings also keep it below A. |
 | Technical debt | B+ | Strict app/test typecheck, backend/gateway/AI builds, high recorded coverage, release gates, extension docs, shared gateway/redaction utilities, and shared mobile API request schemas are good. Remaining debt is concentrated in incomplete OpenAPI, remaining duplicated API request schemas, and a few oversized modules. |
 
 ## Roadmap To A Grades
@@ -471,12 +470,15 @@ npm run typecheck:tests
 npx vitest run tests/api/client.test.ts
 npm run typecheck:app
 git diff --check
+npm audit --omit=dev
+cd server && npm audit --omit=dev
+cd gateway && npm audit --omit=dev --omit=optional
 ```
 
 Fresh check outcomes:
 
 ```text
-All checks above passed.
+All non-audit checks above passed; audit commands completed with the accepted findings noted below.
 Server targeted tests: 6 files passed, 52 tests passed.
 Gateway targeted tests: 5 files passed, 178 tests passed in the initial refresh; the latest Phase 1 gateway route/request-validation/mobile-permission rerun passed 3 files, 158 tests after shared mobile-permission and draft schema expansion.
 Phase 2 ops proof passed on disposable PostgreSQL: 1 integration file / 3 tests, using `sanctuary-test-db` on `localhost:55433` after the default `5433` port was already allocated.
@@ -490,6 +492,7 @@ Phase 4 privacy-safe benchmark policy checks passed: `node --check scripts/perf/
 Phase 4 CSP hardening checks passed: `cd server && npx vitest run tests/unit/api/openapi.test.ts` passed 42 tests; `cd server && npm run build` passed.
 Phase 4 frontend coverage gate fix passed: `npx vitest run tests/config/coveragePolicy.test.ts tests/shared/redact.test.ts` passed 2 files / 14 tests, `npm run test:coverage` passed 384 files / 5,432 tests with 100% statements/branches/functions/lines, and `npm run typecheck:tests` passed.
 Phase 4 browser token storage hardening checks passed: `npx vitest run tests/api/client.test.ts` passed 56 tests, `npm run typecheck:app` passed, `npm run typecheck:tests` passed, and the pre-commit `npm run test:run` frontend suite passed 384 files / 5,432 tests.
+Dependency audit refresh completed: root `npm audit --omit=dev` is down to 14 low upstream `elliptic` findings after the transitive Axios lockfile update; `server/` reports 3 moderate Prisma dev-chain `@hono/node-server` findings where npm suggests a force/breaking Prisma downgrade; `gateway/` production audit with optional deps omitted reports 0 vulnerabilities. Accepted findings are documented in `docs/DEPENDENCY_AUDIT_TRIAGE.md`.
 Redis WebSocket bridge readiness targeted test passed after the duplicate-client ready-state fix: `npx vitest run tests/unit/websocket/redisBridge.connected.test.ts` from `server/` passed 17 tests.
 The latest Phase 1 server OpenAPI/mobile-permission/types rerun passed 3 files, 72 tests after shared mobile-permission and draft schema expansion.
 The latest Phase 1 gateway request-validation/proxy rerun passed 2 files, 149 tests after transaction/PSBT/device schema expansion.
@@ -533,6 +536,5 @@ Not run in this refresh:
 - Playwright e2e suite.
 - Install/container workflows.
 - Critical mutation gate.
-- Dependency audits.
 - Phase 3 privacy-safe calibrated wallet/load benchmark, WebSocket fanout under expected client counts and generated/operator-owned testnet events, worker queue load benchmark, approved backup restore-size benchmark, and backend scale-out load/capacity benchmark.
 - Durable production external alert receiver delivery.
