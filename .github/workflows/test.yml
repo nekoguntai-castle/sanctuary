@@ -162,6 +162,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Run strict app typecheck
+        run: npm run typecheck:app
+
+      - name: Run strict test typecheck
+        run: npm run typecheck:tests
+
       - name: Run related frontend tests
         run: npx vitest related --run --passWithNoTests ${{ needs.detect-changes.outputs.frontend_files }}
 
@@ -547,6 +553,12 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Run strict app typecheck
+        run: npm run typecheck:app
+
+      - name: Run strict test typecheck
+        run: npm run typecheck:tests
 
       - name: Run frontend coverage (threshold-enforced)
         run: npm run test:coverage

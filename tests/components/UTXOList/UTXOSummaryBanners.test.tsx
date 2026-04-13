@@ -138,10 +138,10 @@ describe('UTXOSummaryBanners', () => {
 
   it('applies correct color class for each privacy grade', () => {
     const grades = ['excellent', 'good', 'fair', 'poor'] as const;
-    const expectedClasses = ['zen-matcha', 'zen-indigo', 'zen-gold', 'zen-vermilion'];
+    const expectedClasses = ['text-zen-matcha', 'text-zen-indigo', 'text-zen-gold', 'text-zen-vermilion'];
 
     for (let i = 0; i < grades.length; i++) {
-      const { container, unmount } = render(
+      const { unmount } = render(
         <UTXOSummaryBanners
           showPrivacy={true}
           privacySummary={{
@@ -160,9 +160,7 @@ describe('UTXOSummaryBanners', () => {
         />,
       );
 
-      const gradeEl = container.querySelector(`.${expectedClasses[i].replace('-', '\\-')}`);
-      // Just check grade text is rendered
-      expect(screen.getByText(grades[i])).toBeInTheDocument();
+      expect(screen.getByText(grades[i])).toHaveClass(expectedClasses[i]);
       unmount();
     }
   });

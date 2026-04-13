@@ -1,7 +1,7 @@
 # Sanctuary Release Gates
 
 Date: 2026-04-12 (Pacific/Honolulu)
-Status: Phase 4 release-gate baseline
+Status: Phase 4 release-gate baseline; frontend test typecheck now promoted to a required gate
 
 This document records the checks that should protect the A-grade engineering goals in `docs/plans/codebase-health-assessment.md`. A release should not claim an A grade in a domain unless the matching gate has passed or the plan explicitly marks the gate as pending with an owner and date.
 
@@ -16,7 +16,7 @@ This document records the checks that should protect the A-grade engineering goa
 
 | Area | Gate | Evidence | Status |
 | --- | --- | --- | --- |
-| Frontend correctness | Strict app typecheck | `npm run typecheck:app` | Required |
+| Frontend correctness | Strict app and test typecheck | `npm run typecheck:app` and `npm run typecheck:tests`; the Test Suite quick/full frontend lanes run both before frontend tests | Required |
 | Frontend tests | Threshold-enforced coverage | `npm run test:coverage` or the `full-frontend-tests` CI job | Required for main/release |
 | Backend build | TypeScript build and Prisma generation | `cd server && npm run build` | Required |
 | Backend tests | Unit and integration coverage | `cd server && npm run test:unit -- --coverage` and `cd server && npm run test:integration`, or the `full-backend-tests` CI job | Required for main/release |
@@ -43,6 +43,6 @@ These gates are required before the scalability/performance domain can move to A
 
 Record benchmark output under `docs/plans/` and link it from `docs/plans/codebase-health-assessment.md`.
 
-## Non-Blocking Advisory
+## Phase 4 Typecheck Gate
 
-`npm run typecheck:tests` is useful, but it is not a release gate until the current unused-symbol test baseline is cleaned up. Do not add it to the required gate list without first making it pass consistently.
+`npm run typecheck:tests` passed after the Phase 4 unused-symbol fixture cleanup and is now a required frontend correctness gate alongside `npm run typecheck:app`.

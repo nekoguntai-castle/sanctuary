@@ -2,7 +2,7 @@
 
 Date: 2026-04-12 (Pacific/Honolulu)
 Owner: TBD
-Status: Refreshed assessment; Phase 3 repository-controlled local capacity proof is complete, while production alert receiver and representative operator load/scale evidence remain release gates
+Status: Refreshed assessment; Phase 3 repository-controlled local capacity proof is complete, Phase 4 test typecheck gate is complete, while production alert receiver and representative operator load/scale evidence remain release gates
 
 ## Scope
 
@@ -48,7 +48,7 @@ The main risk is no longer broad architecture quality or known P0 correctness de
 | Performance | B+ | Caching, React Query discipline, Electrum pooling, database indexes, API aggregation, bounded WebSocket queues, and a Phase 3 benchmark harness are good. The disposable full-stack authenticated capacity profile now covers wallet list, transaction history, a synthetic 10,000-transaction wallet-history gate with 100 requests at concurrency 8, wallet-specific WebSocket sync fanout, wallet-sync queueing, WebSocket handshake, generated backup validation and 10,076-record restore, 60 worker proof jobs, two-worker diagnostic scale-out, and 64-client two-backend Redis WebSocket fanout. Production-like largest-known-wallet/load, largest expected backup size, representative worker queue load, and operator topology benchmarks are still pending. |
 | Perpetual operations and supportability | B+ | `/health`, `/api/v1/health`, `/metrics`, Prometheus alerts, Grafana/Loki/Jaeger, support-package collectors, Docker healthchecks, resource limits, monitoring exposure docs, and operations runbooks are strong. A disposable restore drill, full Compose gateway audit persistence proof, local monitoring stack smoke, and disposable Alertmanager receiver delivery smoke now exist. Durable production alert receivers and runtime incident evidence are still missing. |
 | Security | B | JWT audiences, token revocation, 2FA, production secret requirements, AES-GCM encryption, rate limiting, Helmet, gateway HMAC auth, redacted gateway logs, and internal routes are good. Browser token storage in `localStorage`, broad CSP exceptions for docs UI, partial validation/schema coverage, and unaudited dependency posture keep it below A. |
-| Technical debt | B+ | Strict app typecheck, backend/gateway/AI builds, high recorded coverage, release gates, extension docs, shared gateway/redaction utilities, and shared mobile API request schemas are good. Remaining debt is concentrated in incomplete OpenAPI, remaining duplicated API request schemas, advisory-only test typecheck, and a few oversized modules. |
+| Technical debt | B+ | Strict app/test typecheck, backend/gateway/AI builds, high recorded coverage, release gates, extension docs, shared gateway/redaction utilities, and shared mobile API request schemas are good. Remaining debt is concentrated in incomplete OpenAPI, remaining duplicated API request schemas, and a few oversized modules. |
 
 ## Roadmap To A Grades
 
@@ -375,9 +375,16 @@ Completed in the third Phase 4 slice:
 - Marked the Phase 3 performance and scale gate as pending operator evidence instead of treating skipped authenticated benchmarks as proof.
 - Documented that `npm run typecheck:tests` is advisory until its existing unused-symbol baseline is cleaned up.
 
+Completed in the fourth Phase 4 slice:
+
+- Cleaned the strict test typecheck baseline by fixing a stale `AdminUser` fixture, removing an unused test import, and making the UTXO summary grade-color assertion exercise the rendered class instead of leaving an unused query.
+- Promoted `npm run typecheck:tests` from advisory to required frontend correctness evidence in `docs/RELEASE_GATES.md`.
+- Added `npm run typecheck:app` and `npm run typecheck:tests` to the Test Suite quick and full frontend CI lanes so test fixture/type drift fails mechanically before frontend tests run.
+
 Ongoing post-Phase 4 hygiene:
 
 - Continue adopting centralized backend request validation as routes are touched.
+- Keep strict app and test typecheck green as frontend and test fixtures evolve.
 - Keep large-file cleanup opportunistic and tied to files already being changed.
 
 ## Strengths To Preserve
@@ -422,6 +429,10 @@ npm run ops:gateway-audit:phase2
 COMPOSE_PARALLEL_LIMIT=1 PHASE3_COMPOSE_BENCHMARK_TIMEOUT_MS=900000 SANCTUARY_TIMEOUT_MS=60000 PHASE3_LARGE_WALLET_TRANSACTION_COUNT=10000 PHASE3_LARGE_WALLET_HISTORY_REQUESTS=100 PHASE3_LARGE_WALLET_HISTORY_CONCURRENCY=8 PHASE3_WORKER_QUEUE_PROOF_REPEATS=10 PHASE3_WORKER_SCALE_OUT_JOB_COUNT=32 PHASE3_BACKEND_SCALE_OUT_WS_CLIENTS=64 npm run perf:phase3:compose-smoke
 node --check scripts/perf/phase3-compose-benchmark-smoke.mjs
 docker compose config
+npm run typecheck:tests
+npm run typecheck:app
+npx vitest run tests/components/UTXOList/UTXOSummaryBanners.test.tsx tests/components/UsersGroups/EditUserModal.branches.test.tsx tests/components/WalletDetail/modals/ReceiveModal.test.tsx
+npm run test:hygiene -- tests/components/UTXOList/UTXOSummaryBanners.test.tsx tests/components/UsersGroups/EditUserModal.branches.test.tsx tests/components/WalletDetail/modals/ReceiveModal.test.tsx
 git diff --check
 ```
 
@@ -437,6 +448,7 @@ Phase 2 alert receiver delivery smoke passed against a disposable Alertmanager w
 Phase 2 gateway audit Compose smoke passed against a temporary backend/gateway/Postgres/Redis/worker stack: gateway health, missing-token protected-route event, signed backend audit persistence, unsigned audit rejection, gateway delivery logs, and Compose container health passed. Evidence: `docs/plans/phase2-gateway-audit-compose-smoke-2026-04-12T23-18-24-249Z.md`.
 Phase 3 Compose benchmark smoke passed against a temporary frontend/backend/gateway/worker/Postgres/Redis stack: migration/seed, service health, frontend/API/gateway health, WebSocket handshake, local authenticated wallet list, wallet-specific WebSocket sync fanout, transaction-history, synthetic 10,000-transaction wallet-history gate, wallet-sync queueing, admin backup validation and restore, generated 10,076-record backup restore, 60 worker proof jobs, two-worker BullMQ/Electrum ownership proof, 64-client two-backend Redis WebSocket fanout, and Postgres/Redis capacity snapshots passed. Latest evidence: `docs/plans/phase3-compose-benchmark-smoke-2026-04-13T02-50-46-877Z.md` and `docs/plans/phase3-benchmark-2026-04-13T02-51-11-475Z.md`.
 Phase 3 close-out harness syntax, Compose config rendering, and diff whitespace checks passed: `node --check scripts/perf/phase3-compose-benchmark-smoke.mjs`, `docker compose config`, and `git diff --check`.
+Phase 4 strict test typecheck gate passed: `npm run typecheck:tests`. Strict app typecheck also passed: `npm run typecheck:app`. The touched frontend test files passed: `npx vitest run tests/components/UTXOList/UTXOSummaryBanners.test.tsx tests/components/UsersGroups/EditUserModal.branches.test.tsx tests/components/WalletDetail/modals/ReceiveModal.test.tsx`. Test hygiene passed for those three files.
 Redis WebSocket bridge readiness targeted test passed after the duplicate-client ready-state fix: `npx vitest run tests/unit/websocket/redisBridge.connected.test.ts` from `server/` passed 17 tests.
 The latest Phase 1 server OpenAPI/mobile-permission/types rerun passed 3 files, 72 tests after shared mobile-permission and draft schema expansion.
 The latest Phase 1 gateway request-validation/proxy rerun passed 2 files, 149 tests after transaction/PSBT/device schema expansion.
