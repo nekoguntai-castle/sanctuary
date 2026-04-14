@@ -10,10 +10,12 @@
  */
 
 import { Router } from 'express';
+import { z } from 'zod';
 import { authenticate } from '../middleware/auth';
+import { validate } from '../middleware/validate';
 import { createLogger } from '../utils/logger';
 import { asyncHandler } from '../errors/errorHandler';
-import { InvalidInputError, NotFoundError, ForbiddenError } from '../errors/ApiError';
+import { ErrorCodes, NotFoundError, ForbiddenError } from '../errors/ApiError';
 import {
   initiateTransfer,
   acceptTransfer,
@@ -34,6 +36,42 @@ const log = createLogger('TRANSFER:ROUTE');
 
 const router = Router();
 
+const InitiateTransferBodySchema = z.object({
+  resourceType: z.unknown(),
+  resourceId: z.unknown(),
+  toUserId: z.unknown(),
+  message: z.unknown().optional(),
+  keepExistingUsers: z.unknown().optional(),
+  expiresInDays: z.unknown().optional(),
+}).superRefine((data, ctx) => {
+  if (!data.resourceType || !data.resourceId || !data.toUserId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'resourceType, resourceId, and toUserId are required',
+      path: ['resourceType'],
+    });
+    return;
+  }
+
+  if (data.resourceType !== 'wallet' && data.resourceType !== 'device') {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'resourceType must be "wallet" or "device"',
+      path: ['resourceType'],
+    });
+  }
+});
+
+const DeclineTransferBodySchema = z.object({
+  reason: z.unknown().optional(),
+}).passthrough();
+
+const initiateTransferValidationMessage = (issues: Array<{ message: string }>) => (
+  issues.some(issue => issue.message === 'resourceType must be "wallet" or "device"')
+    ? 'resourceType must be "wallet" or "device"'
+    : 'resourceType, resourceId, and toUserId are required'
+);
+
 // All routes require authentication
 router.use(authenticate);
 
@@ -45,18 +83,12 @@ router.use(authenticate);
  * POST /api/v1/transfers
  * Initiate an ownership transfer
  */
-router.post('/', asyncHandler(async (req, res) => {
+router.post('/', validate(
+  { body: InitiateTransferBodySchema },
+  { message: initiateTransferValidationMessage, code: ErrorCodes.INVALID_INPUT }
+), asyncHandler(async (req, res) => {
   const userId = req.user!.userId;
   const { resourceType, resourceId, toUserId, message, keepExistingUsers, expiresInDays } = req.body;
-
-  // Validation
-  if (!resourceType || !resourceId || !toUserId) {
-    throw new InvalidInputError('resourceType, resourceId, and toUserId are required');
-  }
-
-  if (resourceType !== 'wallet' && resourceType !== 'device') {
-    throw new InvalidInputError('resourceType must be "wallet" or "device"');
-  }
 
   const input: InitiateTransferInput = {
     resourceType: resourceType as ResourceType,
@@ -172,7 +204,7 @@ router.post('/:id/accept', asyncHandler(async (req, res) => {
  * POST /api/v1/transfers/:id/decline
  * Decline a pending transfer (recipient action)
  */
-router.post('/:id/decline', asyncHandler(async (req, res) => {
+router.post('/:id/decline', validate({ body: DeclineTransferBodySchema }), asyncHandler(async (req, res) => {
   const userId = req.user!.userId;
   const { id } = req.params;
   const { reason } = req.body;
