@@ -44,6 +44,18 @@ interface EvaluationState {
   blocked: boolean;
 }
 
+interface UsageRecordContext {
+  walletId: string;
+  userId: string;
+  amount: bigint;
+}
+
+interface UsageWindowRecord {
+  type: WindowType;
+  userId?: string;
+  incrementAmount: bigint;
+}
+
 /**
  * Evaluate all active policies for a transaction.
  * Returns the combined result of all policy evaluations.
@@ -326,63 +338,113 @@ export async function recordUsage(
   userId: string,
   amount: bigint
 ): Promise<void> {
-  const wallet = await walletRepository.findById(walletId);
-  const groupId = wallet?.groupId ?? null;
-  const policies = await vaultPolicyService.getActivePoliciesForWallet(walletId, groupId);
+  const context: UsageRecordContext = { walletId, userId, amount };
+  const policies = await getActivePoliciesForUsage(walletId);
 
   for (const policy of policies) {
-    const config = policy.config as Record<string, unknown>;
-
-    try {
-      if (policy.type === 'spending_limit') {
-        const slConfig = config as unknown as SpendingLimitConfig;
-        const windowTypes: Array<{ type: WindowType; limit: number }> = [];
-        if (slConfig.daily && slConfig.daily > 0) windowTypes.push({ type: 'daily', limit: slConfig.daily });
-        if (slConfig.weekly && slConfig.weekly > 0) windowTypes.push({ type: 'weekly', limit: slConfig.weekly });
-        if (slConfig.monthly && slConfig.monthly > 0) windowTypes.push({ type: 'monthly', limit: slConfig.monthly });
-
-        for (const wt of windowTypes) {
-          const { start, end } = getWindowBounds(wt.type);
-          const window = await policyRepository.findOrCreateUsageWindow({
-            policyId: policy.id,
-            walletId,
-            userId: slConfig.scope === 'per_user' ? userId : undefined,
-            windowType: wt.type,
-            windowStart: start,
-            windowEnd: end,
-          });
-          await policyRepository.incrementUsageWindow(window.id, amount);
-        }
-      }
-
-      if (policy.type === 'velocity') {
-        const vConfig = config as unknown as VelocityConfig;
-        const windowTypes: Array<{ type: WindowType }> = [];
-        if (vConfig.maxPerHour && vConfig.maxPerHour > 0) windowTypes.push({ type: 'hourly' });
-        if (vConfig.maxPerDay && vConfig.maxPerDay > 0) windowTypes.push({ type: 'daily' });
-        if (vConfig.maxPerWeek && vConfig.maxPerWeek > 0) windowTypes.push({ type: 'weekly' });
-
-        for (const wt of windowTypes) {
-          const { start, end } = getWindowBounds(wt.type);
-          const window = await policyRepository.findOrCreateUsageWindow({
-            policyId: policy.id,
-            walletId,
-            userId: vConfig.scope === 'per_user' ? userId : undefined,
-            windowType: wt.type,
-            windowStart: start,
-            windowEnd: end,
-          });
-          await policyRepository.incrementUsageWindow(window.id, BigInt(0));
-        }
-      }
-    } catch (error) {
-      log.error('Failed to record policy usage', {
-        policyId: policy.id,
-        error: getErrorMessage(error),
-      });
-    }
+    await recordPolicyUsage(policy, context);
   }
 }
+
+const getActivePoliciesForUsage = async (
+  walletId: string
+): Promise<VaultPolicy[]> => {
+  const wallet = await walletRepository.findById(walletId);
+  const groupId = wallet?.groupId ?? null;
+  return vaultPolicyService.getActivePoliciesForWallet(walletId, groupId);
+};
+
+const recordPolicyUsage = async (
+  policy: VaultPolicy,
+  context: UsageRecordContext
+): Promise<void> => {
+  try {
+    for (const record of getUsageWindowRecords(policy, context)) {
+      await recordUsageWindow(policy, context.walletId, record);
+    }
+  } catch (error) {
+    log.error('Failed to record policy usage', {
+      policyId: policy.id,
+      error: getErrorMessage(error),
+    });
+  }
+};
+
+const getUsageWindowRecords = (
+  policy: VaultPolicy,
+  context: UsageRecordContext
+): UsageWindowRecord[] => {
+  const config = policy.config as Record<string, unknown>;
+
+  if (policy.type === 'spending_limit') {
+    return getSpendingLimitUsageRecords(
+      config as unknown as SpendingLimitConfig,
+      context
+    );
+  }
+
+  if (policy.type === 'velocity') {
+    return getVelocityUsageRecords(config as unknown as VelocityConfig, context);
+  }
+
+  return [];
+};
+
+const getSpendingLimitUsageRecords = (
+  config: SpendingLimitConfig,
+  context: UsageRecordContext
+): UsageWindowRecord[] => {
+  const scopedUserId = getScopedUsageUserId(config.scope, context.userId);
+
+  return [
+    createUsageWindowRecord('daily', config.daily, context.amount, scopedUserId),
+    createUsageWindowRecord('weekly', config.weekly, context.amount, scopedUserId),
+    createUsageWindowRecord('monthly', config.monthly, context.amount, scopedUserId),
+  ].filter((record): record is UsageWindowRecord => record !== null);
+};
+
+const getVelocityUsageRecords = (
+  config: VelocityConfig,
+  context: UsageRecordContext
+): UsageWindowRecord[] => {
+  const scopedUserId = getScopedUsageUserId(config.scope, context.userId);
+
+  return [
+    createUsageWindowRecord('hourly', config.maxPerHour, BigInt(0), scopedUserId),
+    createUsageWindowRecord('daily', config.maxPerDay, BigInt(0), scopedUserId),
+    createUsageWindowRecord('weekly', config.maxPerWeek, BigInt(0), scopedUserId),
+  ].filter((record): record is UsageWindowRecord => record !== null);
+};
+
+const createUsageWindowRecord = (
+  type: WindowType,
+  limit: number | undefined,
+  incrementAmount: bigint,
+  userId: string | undefined
+): UsageWindowRecord | null =>
+  limit && limit > 0 ? { type, userId, incrementAmount } : null;
+
+const getScopedUsageUserId = (
+  scope: SpendingLimitConfig['scope'] | VelocityConfig['scope'],
+  userId: string
+): string | undefined => scope === 'per_user' ? userId : undefined;
+
+const recordUsageWindow = async (
+  policy: VaultPolicy,
+  walletId: string,
+  record: UsageWindowRecord
+): Promise<void> => {
+  const { start, end } = getWindowBounds(record.type);
+  const window = await policyRepository.findOrCreateUsageWindow({
+    policyId: policy.id,
+    walletId,
+    userId: record.userId,
+    windowType: record.type,
+    windowStart: start,
+    windowEnd: end,
+  });
+  await policyRepository.incrementUsageWindow(window.id, record.incrementAmount);
+};
 
 // ========================================
 // INDIVIDUAL POLICY EVALUATORS
