@@ -1,7 +1,7 @@
 # Software Quality Report — 2026-04-13
 
-**Overall Score**: 78/100 (implementation-adjusted; original validated baseline was 76/100)
-**Grade**: C
+**Overall Score**: 80/100 (implementation-adjusted; original validated baseline was 76/100)
+**Grade**: B
 **Confidence**: Low
 **Mode**: full
 **Commit**: `dd86dd2f`
@@ -25,22 +25,23 @@ None. The explicit PEM-marker validation split into two groups:
 |-------------------------|-----------|---------------|
 | Correctness             | 20/20     | Tests + typecheck + lint pass; High suppression density; High completeness |
 | Reliability             | 12/15     | Typed errors + central timeouts; middleware-guaranteed `!` remains by contract; the previously called-out transaction typing gaps are now fixed |
-| Maintainability         | 8/15      | lizard baseline measured at 83 warnings; jscpd measured at 2.33%; the validated largest-file split backlog through the auth 2FA route test split is complete, but the largest non-generated TS/TSX file is now `server/tests/unit/services/bitcoin/electrum.connection.test.ts` at 1010 LOC; clean architecture |
+| Maintainability         | 10/15     | lizard baseline measured at 83 warnings; jscpd measured at 2.33%; the scoped largest-file threshold is now cleared after the Electrum connection test split; clean architecture |
 | Security                | 11/15     | 0 high CVEs; no JS eval/DOM injection; mixed input validation; new-commit secret gate clean |
 | Performance             | 4/10      | Cursor pagination + recent streaming; some in-loop N+1 risk |
 | Test Quality            | 13/15     | Thresholds 98–100% enforced; clear AAA structure; sleeps mostly intentional |
 | Operational Readiness   | 10/10     | Docker + CI + health/metrics endpoints + observability + structured logger |
-| **TOTAL**               | **78/100**|               |
+| **TOTAL**               | **80/100**|               |
 
 ---
 
 ## Trend
 
-vs 2026-04-13 (`13efff91`): original validated report was **overall +7 (69→76), grade D→C**, confidence Low→Low. The implementation-adjusted score is now **78/100** after the first-pass lint gate landed.
+vs 2026-04-13 (`13efff91`): original validated report was **overall +7 (69→76), grade D→C**, confidence Low→Low. The implementation-adjusted score is now **80/100** after the first-pass lint gate landed and the scoped largest-file threshold was cleared.
 
 - **Correctness +4** (14→18): `typecheck=fail → pass` (commit `350f67c1` excluded `scripts/verify-addresses/` from root typecheck; `fc086954` stabilized coverage emission).
 - **Correctness +2 after implementation** (18→20): first-pass ESLint gate added and passing.
-- All other domains unchanged numerically; the remaining 7 commits delivered qualitative reliability/security/performance improvements (REPEATABLE READ snapshot on tx export, DoS cap on `POST /addresses/generate`, streamed tx export, halved device-route queries) that aren't captured by the static signal set.
+- **Maintainability +2 after implementation** (8→10): the validated largest-file split backlog now clears the scoped threshold; the largest non-generated TS/TSX file is `server/tests/unit/services/utxoSelectionService.test.ts` at 991 LOC.
+- Other domains unchanged numerically; the remaining 7 commits delivered qualitative reliability/security/performance improvements (REPEATABLE READ snapshot on tx export, DoS cap on `POST /addresses/generate`, streamed tx export, halved device-route queries) that aren't captured by the static signal set.
 - Original heuristic deltas recorded in this report: `secrets` 7→8 (originally caused by `.gitleaks.toml` + `tasks/grade-fix-plan.md` PEM sentinel text — both false positives); `timeout_retry_count` 1264→1269 (+0.4%). After the implementation pass, `.gitleaks.toml` no longer contains a PEM sentinel string and grade task files are allowlisted. I could validate the commit history and the false-positive secret hits; I could not independently reproduce the exact timeout-count heuristic from repository files alone, and no local grade script was found in the repo.
 
 ---
@@ -57,7 +58,7 @@ vs 2026-04-13 (`13efff91`): original validated report was **overall +7 (69→76)
 | coverage | ≥98% (enforced) | vitest thresholds in config (root 100, server 98–99, gateway 98–100); do not rely on stale coverage-summary artifacts for this grade | 6.1 → +5 |
 | security_high | 0 | `npm audit --audit-level=high` (17 total: 16 low, 1 moderate) | 4.1 → +5 |
 | secrets (effective) | 0 real in the new-commit gate | explicit PEM-marker search now finds 8 markers: 7 allowlisted fixture hits and 1 allowlisted prose hit (`tasks/grade-fix-plan.md`); `gitleaks git --log-opts -1` passed on the latest commit, while full-history/current-directory scans still surface legacy/test/ignored-file false positives | 4.2 → +2 (new-commit gate measured) |
-| largest_file_lines | 1010 | `server/tests/unit/services/bitcoin/electrum.connection.test.ts` after the auth 2FA route test split; next largest validated files are `server/tests/unit/services/utxoSelectionService.test.ts` at 991 LOC and `server/tests/unit/api/wallets-policies-routes.test.ts` at 981 LOC when generated verified-vector files are excluded. `server/tests/unit/api/auth.routes.2fa.test.ts` is now a 41-line registrar, with auth 2FA contract/harness modules capped at 239 LOC. | 3.3 → 0 |
+| largest_file_lines | 991 | `server/tests/unit/services/utxoSelectionService.test.ts` after the Electrum connection test split; next largest validated files are `server/tests/unit/api/wallets-policies-routes.test.ts` at 981 LOC and `server/tests/unit/api/ai-internal.test.ts` at 964 LOC when generated verified-vector files are excluded. `server/tests/unit/services/bitcoin/electrum.connection.test.ts` is now a 16-line registrar, with Electrum connection contract/harness modules capped at 284 LOC. | 3.3 → +2 |
 | lizard_warning_count | 83 | lizard 1.21.3 temporary `/tmp` install, CI command with current exclusions | 3.1 → +0 measured; enforced as no-increase baseline |
 | duplication_pct | 2.33% | `npm run quality` with temporary `/tmp` gitleaks/lizard installs and `GITLEAKS_LOG_OPTS=-1` | 3.2 → +3 |
 | deploy_artifact_count | 2 | Dockerfile + `.github/workflows/` (incl. new `quality.yml`) | 7.1 → +3 |
@@ -109,7 +110,7 @@ Every row below was checked against repository files or command output during th
 | Coverage | Valid as config thresholds: root 100%, server 98/99/99/99, gateway 100/98/100/100. Coverage-summary artifacts exist but may be stale/partial and should not be used as the grade source. | Keep threshold credit; do not cite stale coverage-summary totals. |
 | Audit | Valid: `npm audit --audit-level=high` exits clean while reporting 17 total lower-severity advisories: 16 low in the transitive `elliptic` chain and 1 moderate `follow-redirects`. | P2: run the nonbreaking `npm audit fix` path for `follow-redirects`; review the low `elliptic` chain separately because audit reports the available fix path as `npm audit fix --force` with a breaking `vite-plugin-node-polyfills` downgrade. Not a high-severity blocker. |
 | gitleaks/lizard/jscpd | Valid with correction: these tools were not installed globally, but temporary `/tmp` installs/binaries produced baselines. CI now runs all three as blocking regression gates; `.jscpd.json` exists and has been tuned to ignore local temp/report artifacts. | P1 implementation complete for regression gating; full-history gitleaks cleanup and lizard baseline reduction remain separate follow-ups. |
-| Largest file | Corrected after implementation: prior oversized split passes are recorded in the implementation log below. After the auth 2FA route split, `server/tests/unit/api/auth.routes.2fa.test.ts` is a 41-line registrar with auth 2FA contract/harness modules capped at 239 LOC; the scoped largest-file scan now reports `server/tests/unit/services/bitcoin/electrum.connection.test.ts` at 1010 LOC, followed by `server/tests/unit/services/utxoSelectionService.test.ts` at 991 LOC and `server/tests/unit/api/wallets-policies-routes.test.ts` at 981 LOC when generated verified-vector files are excluded. | Next largest-file criterion work is splitting `server/tests/unit/services/bitcoin/electrum.connection.test.ts`, or reframing the scoring threshold after it is cleared. |
+| Largest file | Corrected after implementation: prior oversized split passes are recorded in the implementation log below. After the Electrum connection split, `server/tests/unit/services/bitcoin/electrum.connection.test.ts` is a 16-line registrar with Electrum connection contract/harness modules capped at 284 LOC; the scoped largest-file scan now reports `server/tests/unit/services/utxoSelectionService.test.ts` at 991 LOC, followed by `server/tests/unit/api/wallets-policies-routes.test.ts` at 981 LOC and `server/tests/unit/api/ai-internal.test.ts` at 964 LOC when generated verified-vector files are excluded. | Largest-file criterion 3.3 can now claim `+2`; further file splits should be treated as buffer/maintainability work, not additional score movement under this criterion. |
 | Health endpoint count | Corrected: 169 is a grep-hit count, not a route count. Real evidence includes `/health`, `/metrics`, `/api/v1/health` in `server/src/routes.ts` and `/health` in `gateway/src/index.ts`. | Keep ops credit but avoid calling 169 "routes." |
 | Suppression density | Corrected: direct source search found 25 suppressions, not 24, excluding generated Prisma files. Most have explanatory comments. | Keep as a low-risk maintainability note; lint can enforce future policy. |
 | Test-file count | Corrected: 771 TS/TSX test/spec files under `server/`, `gateway/`, and `tests/`; 785 when `e2e/` is included; 798 broader `.test`/`.spec` path matches. | Do not cite a single count without naming scope. |
@@ -129,7 +130,7 @@ Every row below was checked against repository files or command output during th
 ## Top Risks
 
 1. **CI quality signals are now blocking, but lizard is baseline-gated.** The new lint, gitleaks, lizard, and jscpd jobs are blocking in `.github/workflows/quality.yml`. `lizard` still has 83 existing warnings, so the immediate guardrail is "do not increase warning count"; reducing the baseline remains future maintainability work.
-2. **Remaining oversized API/service modules** — the validated split backlog through the auth 2FA route test file is complete, but the current largest non-generated TS/TSX file is now `server/tests/unit/services/bitcoin/electrum.connection.test.ts` at 1010 LOC, followed by `server/tests/unit/services/utxoSelectionService.test.ts` at 991 LOC and `server/tests/unit/api/wallets-policies-routes.test.ts` at 981 LOC when generated verified-vector files are excluded. This keeps criterion 3.3 at 0 until the Electrum connection file is split or the scoring threshold is reframed.
+2. **Large-file buffer remains thin, but criterion 3.3 is cleared.** The scoped largest non-generated TS/TSX file is now `server/tests/unit/services/utxoSelectionService.test.ts` at 991 LOC, followed by `server/tests/unit/api/wallets-policies-routes.test.ts` at 981 LOC and `server/tests/unit/api/ai-internal.test.ts` at 964 LOC when generated verified-vector files are excluded. This earns the 3.3 `+2`; further splits are useful only to keep future edits from crossing the threshold again.
 3. **Inconsistent input validation at mutation boundaries** — the AI/device/wallet sharing/wallet CRUD/wallet import/wallet policy/wallet settings/wallet approval/Bitcoin/label/price/node/internal-mobile-permission/push/transfers/payjoin/transaction-UTXO/transaction-batch/sync/admin-monitoring/admin-policy/admin-node/AI-internal/intelligence/draft/auth-profile/auth-registration/auth-token slices are now on Zod-backed validation, but a post-slice `req.body` sweep still shows other handlers that need route-specific triage as already parser-backed or future Zod targets. A handler missing validation is a latent CWE-20.
 4. **Broader lint tightening remains.** The first-pass ESLint gate catches seeded violations for `console.log`, `catch (error: any)`, empty `catch`, and `@ts-ignore`; it does not yet enforce every `CLAUDE.md` rule such as raw `JSON.parse` because existing call sites need a separate baseline/fix pass.
 
@@ -159,15 +160,15 @@ Ordered by priority, not cost. The first two items are the ones that change the 
 - Replaced the 2825-line file with a 17-line suite registrar plus domain contract modules: core 417 LOC, wallet 462 LOC, admin-core 542 LOC, admin-ops 579 LOC, gateway 819 LOC, and shared helpers 113 LOC.
 - Preserved the executable test surface: before/after counts are `describe=1`, `it=42`, and `expect=584`; the OpenAPI `it` name set is unchanged.
 - Verification: `npx vitest run --config server/vitest.config.ts tests/unit/api/openapi.test.ts` passed with 42 tests.
-- Maintainability 3.3 score impact: **no numeric movement yet**. The validated largest-file split backlog through the auth 2FA route test split is complete, but `server/tests/unit/services/bitcoin/electrum.connection.test.ts` is still 1010 LOC and keeps the repo-wide largest-file criterion at 0.
+- Maintainability 3.3 score impact: **no numeric movement at that checkpoint**. The later Electrum connection split below clears the scoped threshold and moves 3.3 to `+2`.
 
 ### Done — Split the remaining oversized API test files
 - `server/tests/unit/api/transactions.test.ts` is now split into a 25-line registrar plus contract modules capped at 821 LOC.
 - `server/tests/unit/api/admin.test.ts` is now split into a 26-line registrar plus contract modules capped at 937 LOC.
 - Preserved assertions the same way as the OpenAPI split: before/after admin API counts are `describe=38`, `it=71`, and `expect=180`.
-- Maintainability 3.3: **no numeric movement yet** because API/service tests remain above the scoped threshold.
+- Maintainability 3.3: **no numeric movement at that checkpoint**; the later Electrum connection split below clears the scoped threshold.
 
-### In progress — Reduce the remaining largest API/e2e/frontend test files if chasing 3.3 score movement
+### Done — Clear the scoped largest-file threshold
 - `server/tests/unit/services/policyEvaluationEngine.test.ts` is now split into a 30-line registrar plus contract modules capped at 601 LOC.
 - `server/tests/unit/services/bitcoin/blockchain.test.ts` is now split into a 24-line registrar plus contract modules capped at 493 LOC.
 - `server/tests/unit/services/backupService.test.ts` is now split into a 29-line registrar plus contract modules capped at 559 LOC.
@@ -214,9 +215,10 @@ Ordered by priority, not cost. The first two items are the ones that change the 
 - `tests/hooks/useQrScanner.test.tsx` is now split into an 85-line registrar plus useQrScanner contract/harness modules capped at 197 LOC.
 - `server/tests/unit/api/ai.test.ts` is now split into an 82-line registrar plus AI API contract/harness modules capped at 268 LOC.
 - `server/tests/unit/api/auth.routes.2fa.test.ts` is now split into a 41-line registrar plus auth 2FA contract/harness modules capped at 239 LOC.
-- Next validated targets: `server/tests/unit/services/bitcoin/electrum.connection.test.ts` (1010 LOC), followed by `server/tests/unit/services/utxoSelectionService.test.ts` (991 LOC) and `server/tests/unit/api/wallets-policies-routes.test.ts` (981 LOC), excluding generated verified-vector files.
+- `server/tests/unit/services/bitcoin/electrum.connection.test.ts` is now split into a 16-line registrar plus Electrum connection contract/harness modules capped at 284 LOC.
+- Next validated buffer targets: `server/tests/unit/services/utxoSelectionService.test.ts` (991 LOC), followed by `server/tests/unit/api/wallets-policies-routes.test.ts` (981 LOC) and `server/tests/unit/api/ai-internal.test.ts` (964 LOC), excluding generated verified-vector files.
 - Use the same registrar/harness pattern only where the existing suite has clear domains; preserve before/after `describe`/`it`/`expect` counts and run each focused suite before broadening.
-- Maintainability 3.3: `0 → +2` only after the scoped largest-file threshold is actually cleared or the scoring criterion is narrowed.
+- Maintainability 3.3: `0 → +2` after the Electrum connection split cleared the scoped largest-file threshold.
 
 ### In progress — Continue normalizing request-body validation on Zod
 - Use `server/src/api/transactions/addresses.ts` + `server/src/api/schemas/transactions.ts` as the template (`validate({ body: Schema })` middleware, cap bounds in the schema).
@@ -235,7 +237,7 @@ Ordered by priority, not cost. The first two items are the ones that change the 
 - Run the nonbreaking `npm audit fix` path for the moderate `follow-redirects <=1.15.11` advisory. No score impact at the high-severity gate, but keeps the advisory list tidy.
 - Review the low-severity `elliptic` transitive chain separately. Current `npm audit --audit-level=high` output reports a `npm audit fix --force` path that would install `vite-plugin-node-polyfills@0.2.0` as a breaking change, so do not force that under this quality-report cleanup.
 
-Combined low-effort ceiling from the remaining P1 items: **≈ 86 (B)**, assuming lizard reduction, Zod normalization, and the remaining largest-file service/integration test split are included rather than treating the API-test splits as sufficient for 3.3.
+Combined low-effort ceiling from the remaining P1 items: **≈ 86 (B)**, assuming lizard baseline reduction and Zod normalization. The scoped largest-file criterion is now cleared; additional file splits only add buffer against future growth.
 
 ### Execution order & dependencies
 
@@ -243,7 +245,7 @@ The four P1 items can largely run in parallel, but there is one sequencing rule 
 
 1. **Install tools locally first** (`gitleaks`, `lizard`, `jscpd`). Do this before anything else — it unblocks a pre-push `scripts/quality.sh` and lets you baseline without round-tripping through CI. ~10 min.
 2. **Baseline the three existing CI jobs in a separate branch** before touching `continue-on-error`. If `lizard` or `jscpd` report pre-existing violations, triage them into either "fix now" or "document + add exclusion", then flip `continue-on-error: false` per-job only when each one is clean. Do NOT flip all three at once.
-3. **The first-pass lint gate and API test splits have landed.** Use them as the guardrails/pattern for the remaining oversized service/integration test split and Zod sweep work.
+3. **The first-pass lint gate and largest-file threshold work have landed.** Use the registrar/harness pattern only for future buffer splits, and use the existing validation cadence for the Zod sweep work.
 4. **Zod normalization sweep (P1 #4)** can now add a regression-prevention rule to `eslint.config.js` — e.g., an `no-restricted-syntax` rule flagging any function that references `req.body` without a nearby `validate({ body: … })` import, or a simpler taxonomy check that forbids destructuring `req.body` in handler function bodies. The rule should NOT try to force `validate({ body })` onto bodyless mutation handlers; it should trigger only when `req.body` is actually read.
 5. **P2 typing-gap work (item #5)** is complete; do not broaden it into a rewrite of middleware-guaranteed request augmentation assertions.
 
@@ -253,39 +255,40 @@ The four P1 items can largely run in parallel, but there is one sequencing rule 
 |---|---|
 | Lint gate | Done locally: `npm run lint` exists in root + server + gateway, `.github/workflows/quality.yml` has a blocking `lint` job, and the rules fail on seeded violations for `console.log`, `catch (error: any)`, empty `catch`, and `@ts-ignore`. |
 | CI signals enforceable | Done for regression gating: `scripts/quality.sh` runs all three tools; `quality.yml`'s `gitleaks`, `lizard`, and `jscpd` jobs no longer use `continue-on-error`; gitleaks gates PR/latest commits, lizard gates no increase above 83 warnings, and jscpd gates the existing 5% threshold. |
-| API test splits | Done for the original named files: OpenAPI, transaction API, and admin API suite registrars are 17, 25, and 26 LOC respectively; contract modules are capped at 819, 821, and 937 LOC respectively; before/after `describe`/`it`/`expect` counts are preserved for each split. Later passes also split transaction HTTP route, auth registration, device API, Bitcoin API, Draft API, and Wallets API tests. This does not claim the repo-wide largest-file criterion is cleared, because large service tests remain. |
+| API/test split backlog | Done for the original named API files and the later largest-file threshold backlog: OpenAPI, transaction API, and admin API suite registrars are 17, 25, and 26 LOC respectively; later passes split service, integration, frontend, gateway, and API tests down through `server/tests/unit/services/bitcoin/electrum.connection.test.ts`. The scoped largest-file criterion is now cleared, with `server/tests/unit/services/utxoSelectionService.test.ts` at 991 LOC as the current largest non-generated TS/TSX file. |
 | Zod normalization | Every handler in `server/src/api/**` that reads `req.body` (directly or via destructure such as `const { x } = req.body`) is gated by a `validate({ body: Schema })` middleware on its route registration. Handlers with no request body (e.g. `DELETE /resource/:id`, action endpoints keyed only by URL/query params) are explicitly out of scope and do not need `validate({ body })`. The two original AI model offenders have been migrated; verify the remaining sweep by (a) reading each mutation handler that references `req.body` against its route registration, and (b) confirming remaining inline body guards have been replaced or intentionally documented. |
 
 ### Target state after P1 (projected)
 
-The "After P1" ranges below assume P1 is run to the mid-case Maintainability band *at minimum* — that is, Execution Order item 2 ("triage lizard/jscpd violations into 'fix now' or 'document + add exclusion'") is part of P1 scope, not a follow-up. A true worst-case outcome would regress Maintainability by 1 point on net and is explicitly not the plan target; if it happens, P1 does more refactor work until it reaches mid-case.
+The "After P1" ranges below assume P1 is run to the mid-case Maintainability band *at minimum* — that is, Execution Order item 2 ("triage lizard/jscpd violations into 'fix now' or 'document + add exclusion'") is part of P1 scope, not a follow-up. The largest-file threshold is already cleared; remaining score movement comes from lizard baseline reduction and Zod/security cleanup.
 
 | Domain | Current | After P1 (mid → best) | Delta | Driver |
 |---|---|---|---|---|
 | Correctness | 20/20 | 20/20 | 0 | First-pass lint gate already landed |
 | Reliability | 12/15 | 12/15 | 0 | Unchanged (P2 typing gaps don't move the band) |
-| Maintainability | 8/15 | 13 → 15/15 | +5 to +7 | See per-criterion breakdown below |
+| Maintainability | 10/15 | 13 → 15/15 | +3 to +5 | See per-criterion breakdown below |
 | Security | 11/15 | 13 → 15/15 | +2 to +4 | gitleaks measured (4.2) `+0 to +2`; Zod normalization (4.3) `+2` |
 | Performance | 4/10 | 4/10 | 0 | No P1 item targets Performance (see rationale below) |
 | Test Quality | 13/15 | 13/15 | 0 | No P1 item targets Test Quality |
 | Operational Readiness | 10/10 | 10/10 | 0 | At cap |
-| **TOTAL** | **78/100 (C)** | **85 → 89/100 (B)** | **+7 to +11** | Realistic mid-estimate: **~86 (B)** |
+| **TOTAL** | **80/100 (B)** | **85 → 89/100 (B)** | **+5 to +9** | Realistic mid-estimate: **~86 (B)** |
 
 Arithmetic check (rounded, no handwaving):
 
+- Current total: 20 + 12 + 10 + 11 + 4 + 13 + 10 = **80**
 - Mid-case total: 20 + 12 + 13 + 13 + 4 + 13 + 10 = **85**
 - Best-case total: 20 + 12 + 15 + 15 + 4 + 13 + 10 = **89**
 - Mid-estimate (requires lizard baseline reduction + full Zod sweep + clean gitleaks regression gate): 20 + 12 + 13 + 14 + 4 + 13 + 10 = **86**
 
-**Maintainability range breakdown** — 3.1 and 3.2 are now measured. Only mid-case and best-case are carried into the range above; worst-case is off-plan (see the paragraph above the table):
+**Maintainability range breakdown** — 3.1 and 3.2 are now measured, and 3.3 is now cleared:
 
-| Criterion | Current | Worst-case measured (off-plan) | Mid-case measured | Best-case measured |
+| Criterion | Current | No further lizard reduction | Mid-case measured | Best-case measured |
 |---|---|---|---|---|
 | 3.1 Cyclomatic complexity (lizard warnings) | +0 (83 warnings) | +0 (`>15`) | +3 (`1–5`) | +5 (`0`) |
 | 3.2 Duplication (jscpd %) | +3 (2.33%) | +3 (`<3%`) | +3 (`<3%`) | +3 (`<3%`) |
-| 3.3 Largest file (after validated largest-file split backlog through auth 2FA route test) | 0 (`server/tests/unit/services/bitcoin/electrum.connection.test.ts` 1010 LOC; next `server/tests/unit/services/utxoSelectionService.test.ts` 991 LOC) | 0 | +2 | +2 |
+| 3.3 Largest file (after validated largest-file split backlog through Electrum connection test) | +2 (`server/tests/unit/services/utxoSelectionService.test.ts` 991 LOC; next `server/tests/unit/api/wallets-policies-routes.test.ts` 981 LOC) | +2 | +2 | +2 |
 | 3.4 + 3.5 (unchanged) | +5 | +5 | +5 | +5 |
-| **Domain total** | **8** | **7** | **13** | **15** |
+| **Domain total** | **10** | **10** | **13** | **15** |
 
 **Security range assumption** — the `+2` on 4.2 now applies only to the new-commit regression gate. Full-history/current-directory scans still report legacy/test/ignored-file false positives; those should be resolved through a separate history/current-tree secret-scan cleanup before claiming a full clean-room gitleaks signal.
 
@@ -305,7 +308,7 @@ Deliberately not recommended from this evidence pass:
 
 ## Summary
 
-The repo climbed from **D (69) → C (76)** on the back of the typecheck fix (`350f67c1`); the recent performance/security commits (streamed exports, DoS cap, REPEATABLE READ snapshot) reinforce the existing Reliability score even though the static signals do not move. The biggest lever to reach B is now **reducing the measured lizard baseline, finishing the Zod validation sweep, and splitting the remaining oversized modules**: lint, gitleaks, lizard, and jscpd are blocking regression gates, but lizard still has 83 existing warnings and the largest scoped TS/TSX file is now `server/tests/unit/services/bitcoin/electrum.connection.test.ts` at 1010 LOC after the validated largest-file split backlog through the auth 2FA route test split.
+The repo climbed from **D (69) → C (76)** on the back of the typecheck fix (`350f67c1`), and the implementation-adjusted score is now **80/100 (B)** after the lint gate and scoped largest-file threshold work. The biggest remaining levers are **reducing the measured lizard baseline and finishing the Zod validation sweep**: lint, gitleaks, lizard, and jscpd are blocking regression gates, but lizard still has 83 existing warnings and the largest scoped TS/TSX file is now `server/tests/unit/services/utxoSelectionService.test.ts` at 991 LOC.
 
 ---
 
@@ -1670,3 +1673,21 @@ Verification after auth 2FA route test split:
 - `npm run lint` — passed.
 - `rg -n "[[:blank:]]$" server/tests/unit/api/auth.routes.2fa.test.ts server/tests/unit/api/auth2fa` — passed: no trailing-whitespace hits in the newly split auth 2FA files.
 - `rg --files -g '*.ts' -g '*.tsx' | rg -v '(^|/)(node_modules|dist|coverage)(/|$)|generated|verified.*vectors|verified.*Vectors|\\.tmp-gh' | xargs wc -l | sort -nr | sed -n '1,25p'` — passed: next largest files are `server/tests/unit/services/bitcoin/electrum.connection.test.ts` 1010 LOC, `server/tests/unit/services/utxoSelectionService.test.ts` 991 LOC, and `server/tests/unit/api/wallets-policies-routes.test.ts` 981 LOC.
+
+### Electrum connection test split pass — 2026-04-13
+
+Implemented the next oversized service test split:
+
+- Split `server/tests/unit/services/bitcoin/electrum.connection.test.ts` from 1010 LOC into a 16-line suite registrar plus focused Electrum connection contract modules.
+- New Electrum connection test file sizes: `electrum.connection.network-config.contracts.ts` 284 LOC, `electrum.connection.requests.contracts.ts` 211 LOC, `electrum.connection.proxy.contracts.ts` 178 LOC, `electrum.connection.tls.contracts.ts` 147 LOC, `electrum.connection.edge-data.contracts.ts` 119 LOC, and shared harness `electrumConnectionTestHarness.ts` 100 LOC.
+- Preserved the executable test surface: before/after counts are `describe=1`, `it=35`, and `expect=69`.
+- Current largest non-generated TS/TSX file after the split is `server/tests/unit/services/utxoSelectionService.test.ts` at 991 LOC, followed by `server/tests/unit/api/wallets-policies-routes.test.ts` at 981 LOC and `server/tests/unit/api/ai-internal.test.ts` at 964 LOC when generated verified-vector files are excluded. This clears the scoped largest-file threshold and moves Maintainability 3.3 from `0` to `+2`.
+
+Verification after Electrum connection test split:
+
+- `npx vitest run --config server/vitest.config.ts tests/unit/services/bitcoin/electrum.connection.test.ts` — passed from the repo root: 1 file, 35 tests.
+- `npx tsc --noEmit -p server/tsconfig.json` — passed.
+- `npm run lint` — passed.
+- `rg -n "[[:blank:]]$" server/tests/unit/services/bitcoin/electrum.connection.test.ts server/tests/unit/services/bitcoin/electrumConnection` — passed: no trailing-whitespace hits in the newly split Electrum connection files.
+- `git diff --check` — passed.
+- `rg --files -g '*.ts' -g '*.tsx' | rg -v '(^|/)(node_modules|dist|coverage)(/|$)|generated|verified.*vectors|verified.*Vectors|\\.tmp-gh' | xargs wc -l | sort -nr | sed -n '1,25p'` — passed: next largest files are `server/tests/unit/services/utxoSelectionService.test.ts` 991 LOC, `server/tests/unit/api/wallets-policies-routes.test.ts` 981 LOC, and `server/tests/unit/api/ai-internal.test.ts` 964 LOC.
