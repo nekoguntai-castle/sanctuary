@@ -2,6 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Tag, Plus, X, Check, ChevronDown } from 'lucide-react';
 import type { Label } from '../types';
 import { useWalletLabels, useCreateWalletLabel } from '../hooks/queries/useWalletLabels';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('LabelSelector');
 
 interface LabelSelectorProps {
   walletId: string;
@@ -73,7 +76,8 @@ export const LabelSelector: React.FC<LabelSelectorProps> = ({
       onChange([...selectedLabels, result]);
       setNewLabelName('');
       setIsCreating(false);
-    } catch {
+    } catch (error) {
+      log.debug('Label create mutation surfaced through hook state', { error });
       // Error surfaces through createMutation.error
     }
   };

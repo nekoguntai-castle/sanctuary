@@ -343,7 +343,8 @@ export function useAddAccountFlow({ deviceId, device, onClose, onDeviceUpdated }
       setUsbProgress(null);
       try {
         await disconnectFromDevice();
-      } catch {
+      } catch (error) {
+        log.debug('Device disconnect failed after add-account flow', { error });
         // Ignore disconnect errors
       }
     }

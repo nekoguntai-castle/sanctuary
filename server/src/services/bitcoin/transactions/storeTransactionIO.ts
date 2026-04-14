@@ -154,6 +154,7 @@ export async function storeTransactionOutputs(
       try {
         address = bitcoin.address.fromOutputScript(output.script, networkObj);
       } catch (_e) {
+        log.debug('Output has no standard address while storing transaction IO', { error: String(_e) });
         // OP_RETURN or non-standard output
       }
 

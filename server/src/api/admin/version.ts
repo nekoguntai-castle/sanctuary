@@ -32,7 +32,8 @@ try {
         currentVersion = pkg.version;
         break;
       }
-    } catch {
+    } catch (error) {
+      log.debug('Package version path did not resolve', { path: pkgPath, error: String(error) });
       // Try next path
     }
   }

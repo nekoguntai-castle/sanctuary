@@ -14,7 +14,8 @@
     "test:run": "vitest run",
     "test:watch": "vitest --watch",
     "test:coverage": "vitest run --coverage",
-    "test:ci": "vitest run --coverage --reporter=junit"
+    "test:ci": "vitest run --coverage --reporter=junit",
+    "lint": "cd .. && npm run lint:gateway"
   },
   "dependencies": {
     "@parse/node-apn": "^8.0.0",

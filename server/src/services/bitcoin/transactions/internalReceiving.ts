@@ -43,6 +43,7 @@ export async function createInternalReceivingTransactions(
         const addr = bitcoin.address.fromOutputScript(output.script, networkObj);
         outputAddresses.push({ address: addr, amount: Number(output.value) });
       } catch (_e) {
+        log.debug('Skipping non-address output while detecting internal receive', { error: String(_e) });
         // Skip OP_RETURN or non-standard outputs
       }
     }

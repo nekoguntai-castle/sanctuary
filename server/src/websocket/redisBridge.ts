@@ -256,7 +256,8 @@ class RedisWebSocketBridge {
       try {
         await this.subscriber.unsubscribe(WS_BROADCAST_CHANNEL);
         await this.subscriber.quit();
-      } catch {
+      } catch (error) {
+        log.debug('Redis WebSocket subscriber cleanup failed', { error: getErrorMessage(error) });
         // Ignore cleanup errors
       }
       this.subscriber = null;
@@ -265,7 +266,8 @@ class RedisWebSocketBridge {
     if (this.publisher) {
       try {
         await this.publisher.quit();
-      } catch {
+      } catch (error) {
+        log.debug('Redis WebSocket publisher cleanup failed', { error: getErrorMessage(error) });
         // Ignore cleanup errors
       }
       this.publisher = null;

@@ -101,7 +101,8 @@ export class LedgerAdapter implements DeviceAdapter {
     if (this.connection) {
       try {
         await this.connection.transport.close();
-      } catch {
+      } catch (error) {
+        log.debug('Ignoring Ledger transport close error before reconnect', { error });
         // Ignore close errors
       }
       this.connection = null;

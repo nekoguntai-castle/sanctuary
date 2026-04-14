@@ -40,6 +40,11 @@
     "typecheck:app": "tsc --noEmit -p tsconfig.app.json --noUnusedLocals --noUnusedParameters",
     "typecheck:tests": "tsc --noEmit -p tsconfig.tests.json --noUnusedLocals --noUnusedParameters",
     "typecheck:scripts": "tsc --noEmit -p tsconfig.scripts.json --noUnusedLocals --noUnusedParameters",
+    "lint": "npm run lint:app && npm run lint:server && npm run lint:gateway",
+    "lint:app": "eslint \"App.tsx\" \"components/**/*.{ts,tsx}\" \"contexts/**/*.{ts,tsx}\" \"hooks/**/*.{ts,tsx}\" \"services/**/*.{ts,tsx}\" \"src/**/*.{ts,tsx}\" \"themes/**/*.{ts,tsx}\" \"utils/**/*.{ts,tsx}\" \"shared/**/*.ts\"",
+    "lint:server": "eslint \"server/src/**/*.ts\" \"shared/**/*.ts\"",
+    "lint:gateway": "eslint \"gateway/src/**/*.ts\" \"shared/**/*.ts\"",
+    "quality": "./scripts/quality.sh",
     "test:mutation": "stryker run",
     "test:mutation:backend": "cd server && npx stryker run",
     "test:mutation:critical:backend": "cd server && npm run test:mutation:critical:gate"
@@ -69,6 +74,7 @@
     "regenerator-runtime": "^0.14.1"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
     "@faker-js/faker": "^10.4.0",
     "@playwright/test": "^1.49.1",
     "@stryker-mutator/core": "^9.6.0",
@@ -84,8 +90,11 @@
     "@types/w3c-web-usb": "^1.0.13",
     "@vitejs/plugin-react": "^6.0.1",
     "@vitest/coverage-v8": "^4.1.4",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react-hooks": "^7.0.1",
     "jsdom": "^29.0.1",
     "typescript": "~6.0.2",
+    "typescript-eslint": "^8.58.2",
     "vite": "^8.0.8",
     "vite-plugin-node-polyfills": "^0.26.0",
     "vitest": "^4.1.4"

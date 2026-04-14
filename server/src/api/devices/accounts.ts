@@ -5,14 +5,26 @@
  */
 
 import { Router } from 'express';
+import { z } from 'zod';
 import { requireDeviceAccess } from '../../middleware/deviceAccess';
+import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
-import { InvalidInputError, NotFoundError, ConflictError } from '../../errors/ApiError';
+import { ConflictError, ErrorCodes, InvalidInputError, NotFoundError } from '../../errors/ApiError';
 import { deviceRepository } from '../../repositories';
 import { createLogger } from '../../utils/logger';
 
 const router = Router();
 const log = createLogger('DEVICE:ROUTE:ACCOUNTS');
+
+const DeviceAccountBodySchema = z.object({
+  purpose: z.enum(['single_sig', 'multisig']),
+  scriptType: z.enum(['native_segwit', 'nested_segwit', 'taproot', 'legacy']),
+  derivationPath: z.string().trim().min(1),
+  xpub: z.string().trim().min(1),
+});
+
+const deviceAccountValidationMessage =
+  'purpose, scriptType, derivationPath, and xpub are required; purpose must be "single_sig" or "multisig"; scriptType must be one of: native_segwit, nested_segwit, taproot, legacy';
 
 /**
  * GET /api/v1/devices/:id/accounts
@@ -33,48 +45,43 @@ router.get('/:id/accounts', requireDeviceAccess('view'), asyncHandler(async (req
  * This allows adding a multisig xpub to a device that was originally
  * registered with only a single-sig xpub.
  */
-router.post('/:id/accounts', requireDeviceAccess('owner'), asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const { purpose, scriptType, derivationPath, xpub } = req.body;
+router.post(
+  '/:id/accounts',
+  requireDeviceAccess('owner'),
+  validate(
+    { body: DeviceAccountBodySchema },
+    { message: deviceAccountValidationMessage, code: ErrorCodes.INVALID_INPUT }
+  ),
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const { purpose, scriptType, derivationPath, xpub } = req.body;
 
-  // Validation
-  if (!purpose || !scriptType || !derivationPath || !xpub) {
-    throw new InvalidInputError('purpose, scriptType, derivationPath, and xpub are required');
-  }
+    // Check if this account type already exists
+    const existingAccount = await deviceRepository.findDuplicateAccount(id, derivationPath, purpose, scriptType);
 
-  if (!['single_sig', 'multisig'].includes(purpose)) {
-    throw new InvalidInputError('purpose must be "single_sig" or "multisig"');
-  }
+    if (existingAccount) {
+      throw new ConflictError('An account with this derivation path or purpose/scriptType combination already exists');
+    }
 
-  if (!['native_segwit', 'nested_segwit', 'taproot', 'legacy'].includes(scriptType)) {
-    throw new InvalidInputError('scriptType must be one of: native_segwit, nested_segwit, taproot, legacy');
-  }
+    const account = await deviceRepository.createAccount({
+      deviceId: id,
+      purpose,
+      scriptType,
+      derivationPath,
+      xpub,
+    });
 
-  // Check if this account type already exists
-  const existingAccount = await deviceRepository.findDuplicateAccount(id, derivationPath, purpose, scriptType);
+    log.info('Device account added', {
+      deviceId: id,
+      accountId: account.id,
+      purpose,
+      scriptType,
+      derivationPath,
+    });
 
-  if (existingAccount) {
-    throw new ConflictError('An account with this derivation path or purpose/scriptType combination already exists');
-  }
-
-  const account = await deviceRepository.createAccount({
-    deviceId: id,
-    purpose,
-    scriptType,
-    derivationPath,
-    xpub,
-  });
-
-  log.info('Device account added', {
-    deviceId: id,
-    accountId: account.id,
-    purpose,
-    scriptType,
-    derivationPath,
-  });
-
-  res.status(201).json(account);
-}));
+    res.status(201).json(account);
+  })
+);
 
 /**
  * DELETE /api/v1/devices/:id/accounts/:accountId

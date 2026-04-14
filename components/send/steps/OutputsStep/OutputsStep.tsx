@@ -129,7 +129,8 @@ export function OutputsStep() {
           }
         }
         return;
-      } catch {
+      } catch (error) {
+        log.debug('Address input is not a BIP21 URI', { error });
         // Not a valid BIP21
       }
     }

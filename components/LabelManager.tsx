@@ -8,6 +8,9 @@ import {
 } from '../hooks/queries/useWalletLabels';
 import type { Label } from '../types';
 import { extractErrorMessage } from '../shared/utils/errors';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('LabelManager');
 
 interface LabelManagerProps {
   walletId: string;
@@ -110,7 +113,8 @@ export const LabelManager: React.FC<LabelManagerProps> = ({ walletId, onLabelsCh
       }
       handleCancel();
       onLabelsChange?.();
-    } catch {
+    } catch (error) {
+      log.debug('Label save mutation surfaced through hook state', { error });
       // Error is captured by the mutation hook and displayed via the error variable
     }
   };
@@ -120,7 +124,8 @@ export const LabelManager: React.FC<LabelManagerProps> = ({ walletId, onLabelsCh
       await deleteMutation.mutateAsync({ walletId, labelId });
       setDeleteConfirm(null);
       onLabelsChange?.();
-    } catch {
+    } catch (error) {
+      log.debug('Label delete mutation surfaced through hook state', { error });
       // Error is captured by the mutation hook and displayed via the error variable
     }
   };

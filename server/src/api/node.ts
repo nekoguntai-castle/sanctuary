@@ -121,6 +121,7 @@ async function testElectrumConnection(config: ElectrumTestConfig): Promise<{ suc
               }
             }
           } catch (e) {
+            log.debug('Waiting for complete Electrum server JSON response', { error: getErrorMessage(e) });
             // Not valid JSON yet, wait for more data
           }
         }

@@ -79,7 +79,8 @@ async function getGpuInfo(): Promise<{ available: boolean; name: string | null }
     if (gpuName) {
       return { available: true, name: gpuName };
     }
-  } catch {
+  } catch (error) {
+    log.debug('nvidia-smi unavailable for GPU detection', { error: String(error) });
     // nvidia-smi not available or no GPU
   }
 

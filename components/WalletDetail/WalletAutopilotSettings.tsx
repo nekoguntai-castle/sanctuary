@@ -13,6 +13,9 @@ import { useUser } from '../../contexts/UserContext';
 import { Zap, AlertCircle, ChevronDown, Activity } from 'lucide-react';
 import { Toggle } from '../ui/Toggle';
 import { ErrorAlert } from '../ui/ErrorAlert';
+import { createLogger } from '../../utils/logger';
+
+const log = createLogger('WalletAutopilotSettings');
 
 interface Props {
   walletId: string;
@@ -73,7 +76,8 @@ export const WalletAutopilotSettings: React.FC<Props> = ({ walletId }) => {
       try {
         const statusData = await walletsApi.getWalletAutopilotStatus(walletId);
         setStatus(statusData);
-      } catch {
+      } catch (error) {
+        log.debug('Optional autopilot status fetch failed', { error });
         // Status fetch is optional
       }
 

@@ -14,7 +14,7 @@ description = "Allowlist for test fixtures and example placeholders"
 
 paths = [
   # Push-notification test fixtures ship deliberately-broken PEM blocks
-  # (e.g. `-----BEGIN PRIVATE KEY-----\ntest\n-----END PRIVATE KEY-----`)
+  # (for example, private-key PEM placeholder blocks)
   # so the server/gateway providers have something parseable to exercise
   # against. These files have been inspected during the 2026-04-13
   # /grade audit and contain no real key material.
@@ -22,6 +22,10 @@ paths = [
   '''server/tests/unit/services/push/providers/fcm\.test\.ts''',
   '''gateway/tests/unit/services/push/apns\.test\.ts''',
   '''gateway/tests/unit/services/push/fcm\.test\.ts''',
+  # Grade-report task files may mention PEM sentinels while documenting
+  # secret-scan false positives; they must not carry real key material.
+  '''tasks/grade-fix-plan\.md''',
+  '''tasks/grade-report-2026-04-13-c76\.md''',
   # .env.example ships default placeholders, not real secrets.
   '''\.env\.example$''',
   '''server/\.env\.example$''',

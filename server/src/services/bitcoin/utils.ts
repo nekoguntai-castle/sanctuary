@@ -12,6 +12,7 @@ import * as bitcoin from 'bitcoinjs-lib';
 import * as ecc from 'tiny-secp256k1';
 import { INPUT_VBYTES, OUTPUT_VBYTES, OVERHEAD_VBYTES } from './constants';
 import { getErrorMessage } from '../../utils/errors';
+import { createLogger } from '../../utils/logger';
 
 // Import and re-export shared utilities
 import {
@@ -24,6 +25,8 @@ import {
 import type { NetworkType, AddressType } from '../../../../shared/constants/bitcoin';
 
 export { satsToBTC, btcToSats, SATS_PER_BTC, NetworkType, AddressType };
+
+const log = createLogger('BITCOIN:SVC_UTILS');
 
 // Initialize ECC library for Taproot/P2TR support
 // This is required by bitcoinjs-lib v6+ for bech32m address validation
@@ -156,7 +159,8 @@ export function parseTransaction(
     let address: string | undefined;
     try {
       address = bitcoin.address.fromOutputScript(output.script, networkObj);
-    } catch {
+    } catch (error) {
+      log.debug('Transaction output has no standard address', { error: String(error) });
       // OP_RETURN and other non-address outputs are expected
     }
 
@@ -248,4 +252,3 @@ export function createTransaction(
     totalOutput,
   };
 }
-

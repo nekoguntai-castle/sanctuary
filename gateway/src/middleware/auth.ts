@@ -164,7 +164,8 @@ export function optionalAuth(
       if (!payload.pending2FA) {
         req.user = payload;
       }
-    } catch {
+    } catch (error) {
+      log.debug('Optional auth token verification failed', { error });
       // Token invalid, but that's ok for optional auth
     }
   }

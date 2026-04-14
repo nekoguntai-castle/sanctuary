@@ -5,6 +5,9 @@
  */
 
 import * as bitcoin from 'bitcoinjs-lib';
+import { createLogger } from '../../utils/logger';
+
+const log = createLogger('BITCOIN:SVC_PSBT_INFO');
 
 /**
  * PSBT input information
@@ -67,7 +70,8 @@ export function getPSBTInfoWithNetwork(psbtBase64: string, network: 'mainnet' | 
     let address: string | undefined;
     try {
       address = bitcoin.address.fromOutputScript(output.script, networkObj);
-    } catch {
+    } catch (error) {
+      log.debug('PSBT output has no standard address', { error: String(error) });
       // OP_RETURN and other non-address outputs are expected
     }
 

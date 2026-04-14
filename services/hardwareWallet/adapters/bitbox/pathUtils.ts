@@ -7,6 +7,9 @@
 import { constants } from 'bitbox02-api';
 import * as bitcoin from 'bitcoinjs-lib';
 import { isTestnetPath } from '../../pathUtils';
+import { createLogger } from '../../../../utils/logger';
+
+const log = createLogger('BitBoxPathUtils');
 
 // Re-export for backward compatibility
 export { extractAccountPath } from '../../pathUtils';
@@ -98,7 +101,8 @@ export const getOutputType = (address: string, network: bitcoin.Network): number
     if (decoded.version === 1) {
       return constants.messages.BTCOutputType.P2TR;
     }
-  } catch {
+  } catch (error) {
+    log.debug('Address is not bech32 for BitBox output type detection', { error });
     // Not bech32
   }
 
@@ -110,11 +114,11 @@ export const getOutputType = (address: string, network: bitcoin.Network): number
     if (decoded.version === network.scriptHash) {
       return constants.messages.BTCOutputType.P2SH;
     }
-  } catch {
+  } catch (error) {
+    log.debug('Address is not base58 for BitBox output type detection', { error });
     // Not base58
   }
 
   // Default to P2WPKH
   return constants.messages.BTCOutputType.P2WPKH;
 };
-

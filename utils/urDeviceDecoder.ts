@@ -50,7 +50,8 @@ export function extractFingerprintFromHdKey(hdKey: CryptoHDKey): string {
       log.debug('Using parent fingerprint as fallback');
       return parentFp.toString('hex');
     }
-  } catch {
+  } catch (error) {
+    log.debug('Parent fingerprint fallback failed', { error });
     // getParentFingerprint might not exist or fail
   }
 

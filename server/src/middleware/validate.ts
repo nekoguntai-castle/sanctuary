@@ -12,7 +12,7 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { ZodSchema, ZodError } from 'zod';
-import { ValidationError } from '../errors/ApiError';
+import { ValidationError, type ErrorCode } from '../errors/ApiError';
 
 interface ValidationSchemas {
   body?: ZodSchema;
@@ -22,6 +22,7 @@ interface ValidationSchemas {
 
 interface ValidationOptions {
   message?: string | ((issues: Array<{ path: string; message: string }>) => string);
+  code?: ErrorCode;
 }
 
 function assignParsedQuery(req: Request, query: unknown): void {
@@ -63,7 +64,7 @@ export function validate(schemas: ValidationSchemas, options: ValidationOptions 
         const details = {
           issues,
         };
-        next(new ValidationError(message, undefined, details));
+        next(new ValidationError(message, options.code, details));
         return;
       }
       next(error);

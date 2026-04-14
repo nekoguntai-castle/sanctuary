@@ -369,8 +369,8 @@ export function __resetRefreshModuleForTests(): void {
   if (broadcastChannel) {
     try {
       broadcastChannel.close();
-    } catch {
-      /* ignore */
+    } catch (error) {
+      log.debug('BroadcastChannel close failed during refresh test reset', { error });
     }
     broadcastChannel = null;
   }

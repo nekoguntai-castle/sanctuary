@@ -7,6 +7,9 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { analyzeSpendPrivacy, getWalletPrivacy, type SpendPrivacyAnalysis, type UtxoPrivacyInfo } from '../../../../../src/api/transactions';
 import type { UTXO } from '../../../../../types';
+import { createLogger } from '../../../../../utils/logger';
+
+const log = createLogger('TransactionComposition');
 
 interface TransactionCompositionInput {
   walletId: string;
@@ -127,7 +130,8 @@ export function useTransactionComposition(input: TransactionCompositionInput) {
           privacyMap.set(key, utxo);
         }
         setUtxoPrivacyMap(privacyMap);
-      } catch {
+      } catch (error) {
+        log.debug('Optional wallet privacy data fetch failed', { error });
         // Silently fail - privacy data is optional
       }
     };

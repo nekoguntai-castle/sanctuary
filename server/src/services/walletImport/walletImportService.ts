@@ -111,9 +111,14 @@ export async function createWalletTransaction(
         createdDeviceIds.push(newDevice.id);
         deviceIdsForWallet.push(newDevice.id);
       } else {
+        const existingDeviceId = resolution.existingDeviceId;
+        if (!existingDeviceId) {
+          throw new Error('Existing device resolution is missing device id');
+        }
+
         // Device exists - check if we need to add the account with imported derivation path
         const existingAccounts = await tx.deviceAccount.findMany({
-          where: { deviceId: resolution.existingDeviceId! },
+          where: { deviceId: existingDeviceId },
         });
 
         const hasMatchingAccount = existingAccounts.some(
@@ -123,7 +128,7 @@ export async function createWalletTransaction(
         if (!hasMatchingAccount) {
           await tx.deviceAccount.create({
             data: {
-              deviceId: resolution.existingDeviceId!,
+              deviceId: existingDeviceId,
               purpose: accountPurpose,
               scriptType: parsed.scriptType,
               derivationPath: resolution.derivationPath,
@@ -131,14 +136,14 @@ export async function createWalletTransaction(
             },
           });
           log.info('Added new device account for import', {
-            deviceId: resolution.existingDeviceId,
+            deviceId: existingDeviceId,
             purpose: accountPurpose,
             derivationPath: resolution.derivationPath,
           });
         }
 
-        reusedDeviceIds.push(resolution.existingDeviceId!);
-        deviceIdsForWallet.push(resolution.existingDeviceId!);
+        reusedDeviceIds.push(existingDeviceId);
+        deviceIdsForWallet.push(existingDeviceId);
       }
 
       // Always use the IMPORTED derivation path/xpub for building the descriptor

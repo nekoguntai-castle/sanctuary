@@ -132,7 +132,8 @@ export class BitBoxAdapter implements DeviceAdapter {
     if (this.connection) {
       try {
         this.connection.api.close();
-      } catch {
+      } catch (error) {
+        log.debug('Ignoring BitBox close error before reconnect', { error });
         // Ignore close errors
       }
       this.connection = null;

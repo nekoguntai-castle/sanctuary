@@ -8,11 +8,17 @@
  */
 
 import { Router } from 'express';
+import { z } from 'zod';
 import { authenticate, requireAdmin } from '../../middleware/auth';
+import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
-import { InvalidInputError } from '../../errors/ApiError';
+import { ErrorCodes } from '../../errors/ApiError';
 import { aiService } from '../../services/aiService';
 import type { RequestHandler } from 'express';
+
+const ModelBodySchema = z.object({
+  model: z.string().trim().min(1, 'Model name is required'),
+});
 
 export function createModelsRouter(aiRateLimiter: RequestHandler): Router {
   const router = Router();
@@ -47,47 +53,59 @@ export function createModelsRouter(aiRateLimiter: RequestHandler): Router {
    * POST /api/v1/ai/pull-model
    * Pull (download) a model from Ollama
    */
-  router.post('/pull-model', authenticate, requireAdmin, aiRateLimiter, asyncHandler(async (req, res) => {
-    const { model } = req.body;
+  router.post(
+    '/pull-model',
+    authenticate,
+    requireAdmin,
+    aiRateLimiter,
+    validate(
+      { body: ModelBodySchema },
+      { message: 'Model name is required', code: ErrorCodes.INVALID_INPUT }
+    ),
+    asyncHandler(async (req, res) => {
+      const { model } = req.body;
 
-    if (!model) {
-      throw new InvalidInputError('Model name is required');
-    }
+      const result = await aiService.pullModel(model);
 
-    const result = await aiService.pullModel(model);
+      if (!result.success) {
+        return res.status(502).json({
+          error: 'Bad Gateway',
+          message: result.error || 'Pull failed',
+        });
+      }
 
-    if (!result.success) {
-      return res.status(502).json({
-        error: 'Bad Gateway',
-        message: result.error || 'Pull failed',
-      });
-    }
-
-    res.json(result);
-  }));
+      res.json(result);
+    })
+  );
 
   /**
    * DELETE /api/v1/ai/delete-model
    * Delete a model from Ollama
    */
-  router.delete('/delete-model', authenticate, requireAdmin, aiRateLimiter, asyncHandler(async (req, res) => {
-    const { model } = req.body;
+  router.delete(
+    '/delete-model',
+    authenticate,
+    requireAdmin,
+    aiRateLimiter,
+    validate(
+      { body: ModelBodySchema },
+      { message: 'Model name is required', code: ErrorCodes.INVALID_INPUT }
+    ),
+    asyncHandler(async (req, res) => {
+      const { model } = req.body;
 
-    if (!model) {
-      throw new InvalidInputError('Model name is required');
-    }
+      const result = await aiService.deleteModel(model);
 
-    const result = await aiService.deleteModel(model);
+      if (!result.success) {
+        return res.status(502).json({
+          error: 'Bad Gateway',
+          message: result.error || 'Delete failed',
+        });
+      }
 
-    if (!result.success) {
-      return res.status(502).json({
-        error: 'Bad Gateway',
-        message: result.error || 'Delete failed',
-      });
-    }
-
-    res.json(result);
-  }));
+      res.json(result);
+    })
+  );
 
   return router;
 }

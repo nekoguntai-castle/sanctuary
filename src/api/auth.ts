@@ -6,6 +6,9 @@
 
 import apiClient from './client';
 import type { TelegramConfig, WalletTelegramSettings } from '../../types';
+import { createLogger } from '../../utils/logger';
+
+const log = createLogger('AuthApi');
 
 export interface User {
   id: string;
@@ -102,7 +105,8 @@ export async function login(data: LoginRequest): Promise<LoginResponse> {
 export async function logout(): Promise<void> {
   try {
     await apiClient.post('/auth/logout', {}, { retry: { enabled: false } });
-  } catch {
+  } catch (error) {
+    log.debug('Logout request failed before local cleanup', { error });
     // Swallow: local cleanup (UserContext + refresh.triggerLogout) runs
     // regardless so the user is always logged out client-side.
   }
