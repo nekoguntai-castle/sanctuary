@@ -17,58 +17,80 @@ import type {
 
 const log = createLogger('ELECTRUM_POOL:SVC_SELECTOR');
 
-/**
- * Select a server based on load balancing strategy with backoff awareness
- */
-export function selectServer(
+type ServerStats = Map<string, ServerState>;
+type PoolConnections = Map<string, PooledConnection>;
+type RoundRobinIndex = { value: number };
+
+const getAvailableServers = (
   servers: ServerConfig[],
-  serverStats: Map<string, ServerState>,
-  connections: Map<string, PooledConnection>,
-  strategy: LoadBalancingStrategy,
-  roundRobinIndex: { value: number },
-): ServerConfig | null {
-  const now = Date.now();
+  serverStats: ServerStats,
+  now: number,
+): ServerConfig[] => {
+  return servers.filter(server => isServerAvailable(server, serverStats, now));
+};
 
-  // Filter servers: healthy, not in cooldown
-  const availableServers = servers.filter(s => {
-    const stats = serverStats.get(s.id);
-    if (!s.enabled) return false;
-    if (!stats) return true;
-    if (!stats.isHealthy) return false;
+const isServerAvailable = (
+  server: ServerConfig,
+  serverStats: ServerStats,
+  now: number,
+): boolean => {
+  if (!server.enabled) return false;
 
-    // Check if server is in cooldown
-    if (stats.cooldownUntil && stats.cooldownUntil.getTime() > now) {
-      return false;
-    }
+  const stats = serverStats.get(server.id);
+  if (!stats) return true;
 
-    return true;
-  });
+  return stats.isHealthy && !isInCooldown(stats, now);
+};
 
-  if (availableServers.length === 0) {
-    // If no available servers, check if any are just in cooldown (not unhealthy)
-    // We can use cooldown servers as last resort
-    const cooldownServers = servers.filter(s => {
-      const stats = serverStats.get(s.id);
-      return s.enabled && stats?.isHealthy && stats?.cooldownUntil && stats.cooldownUntil.getTime() > now;
-    });
+const isInCooldown = (stats: ServerState | undefined, now: number): boolean => {
+  return Boolean(stats?.cooldownUntil && stats.cooldownUntil.getTime() > now);
+};
 
-    if (cooldownServers.length > 0) {
-      // Use the one with shortest remaining cooldown
-      log.warn('All available servers in cooldown, using server with shortest cooldown');
-      cooldownServers.sort((a, b) => {
-        const statsA = serverStats.get(a.id);
-        const statsB = serverStats.get(b.id);
-        return (statsA?.cooldownUntil?.getTime() || 0) - (statsB?.cooldownUntil?.getTime() || 0);
-      });
-      return cooldownServers[0];
-    }
-
-    // Fall back to any enabled server
-    const enabledServers = servers.filter(s => s.enabled);
-    if (enabledServers.length === 0) return null;
-    return enabledServers[0];
+const selectFallbackServer = (
+  servers: ServerConfig[],
+  serverStats: ServerStats,
+  now: number,
+): ServerConfig | null => {
+  const cooldownFallback = selectCooldownFallbackServer(servers, serverStats, now);
+  if (cooldownFallback) {
+    return cooldownFallback;
   }
 
+  const enabledServers = servers.filter(server => server.enabled);
+  return enabledServers[0] ?? null;
+};
+
+const selectCooldownFallbackServer = (
+  servers: ServerConfig[],
+  serverStats: ServerStats,
+  now: number,
+): ServerConfig | undefined => {
+  const cooldownServers = servers.filter(server => {
+    const stats = serverStats.get(server.id);
+    return server.enabled && Boolean(stats?.isHealthy && isInCooldown(stats, now));
+  });
+
+  if (cooldownServers.length === 0) {
+    return undefined;
+  }
+
+  log.warn('All available servers in cooldown, using server with shortest cooldown');
+  return cooldownServers.sort((a, b) =>
+    getCooldownUntilMs(a, serverStats) - getCooldownUntilMs(b, serverStats)
+  )[0];
+};
+
+const getCooldownUntilMs = (server: ServerConfig, serverStats: ServerStats): number => {
+  return serverStats.get(server.id)?.cooldownUntil?.getTime() || 0;
+};
+
+const selectAvailableServer = (
+  availableServers: ServerConfig[],
+  serverStats: ServerStats,
+  connections: PoolConnections,
+  strategy: LoadBalancingStrategy,
+  roundRobinIndex: RoundRobinIndex,
+): ServerConfig => {
   switch (strategy) {
     case 'failover_only':
       // Always use highest priority (lowest number) available server
@@ -83,17 +105,17 @@ export function selectServer(
       // Weighted round robin - servers with higher weight are selected more often
       return selectWeightedRoundRobin(availableServers, serverStats, roundRobinIndex);
   }
-}
+};
 
 /**
  * Select server with fewest active connections, weighted by reliability.
  * Verbose-capable servers get a small (10%) weight bonus.
  */
-function selectLeastConnections(
+const selectLeastConnections = (
   availableServers: ServerConfig[],
-  serverStats: Map<string, ServerState>,
-  connections: Map<string, PooledConnection>,
-): ServerConfig {
+  serverStats: ServerStats,
+  connections: PoolConnections,
+): ServerConfig => {
   let bestScore = -Infinity;
   let selectedServer = availableServers[0];
   for (const server of availableServers) {
@@ -114,18 +136,18 @@ function selectLeastConnections(
     }
   }
   return selectedServer;
-}
+};
 
 /**
  * Weighted round-robin selection.
  * Servers with higher weights are selected more frequently.
  * Verbose-capable servers get a small (10%) weight bonus.
  */
-function selectWeightedRoundRobin(
+const selectWeightedRoundRobin = (
   servers: ServerConfig[],
-  serverStats: Map<string, ServerState>,
-  roundRobinIndex: { value: number },
-): ServerConfig {
+  serverStats: ServerStats,
+  roundRobinIndex: RoundRobinIndex,
+): ServerConfig => {
   // Calculate total weight
   let totalWeight = 0;
   const weights: number[] = [];
@@ -156,4 +178,24 @@ function selectWeightedRoundRobin(
 
   // Fallback to last server
   return servers[servers.length - 1];
+};
+
+/**
+ * Select a server based on load balancing strategy with backoff awareness
+ */
+export function selectServer(
+  servers: ServerConfig[],
+  serverStats: ServerStats,
+  connections: PoolConnections,
+  strategy: LoadBalancingStrategy,
+  roundRobinIndex: RoundRobinIndex,
+): ServerConfig | null {
+  const now = Date.now();
+  const availableServers = getAvailableServers(servers, serverStats, now);
+
+  if (availableServers.length === 0) {
+    return selectFallbackServer(servers, serverStats, now);
+  }
+
+  return selectAvailableServer(availableServers, serverStats, connections, strategy, roundRobinIndex);
 }
