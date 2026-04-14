@@ -24,7 +24,9 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
 import { authenticate } from '../middleware/auth';
+import { validate } from '../middleware/validate';
 import { walletRepository, transactionRepository, labelRepository, utxoRepository, addressRepository } from '../repositories';
 import { buildWalletAccessWhere } from '../repositories/accessControl';
 import { createLogger } from '../utils/logger';
@@ -38,6 +40,15 @@ import { NotFoundError } from '../errors/ApiError';
 const log = createLogger('AI_INTERNAL:ROUTE');
 
 const router = Router();
+
+const PullProgressBodySchema = z.object({
+  model: z.unknown().optional(),
+  status: z.unknown().optional(),
+  completed: z.unknown().optional(),
+  total: z.unknown().optional(),
+  digest: z.unknown().optional(),
+  error: z.unknown().optional(),
+}).passthrough().catch({});
 
 /**
  * IP-based access control for internal AI endpoints.
@@ -99,7 +110,7 @@ router.use(restrictToInternalNetwork);
  * Note: This endpoint only requires internal network access (no JWT auth)
  * since it's called by the AI container, not a user.
  */
-router.post('/pull-progress', (req: Request, res: Response) => {
+router.post('/pull-progress', validate({ body: PullProgressBodySchema }), (req: Request, res: Response) => {
   try {
     const { model, status, completed, total, digest, error } = req.body;
 
