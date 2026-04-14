@@ -121,6 +121,45 @@ export interface MockSession {
 
 const mockSessions: MockSession[] = [];
 
+function defaultSessionId(): string {
+  return `session-${Date.now()}-${Math.random()}`;
+}
+
+function defaultTokenHash(): string {
+  return `hash-${Date.now()}`;
+}
+
+function defaultExpiresAt(): Date {
+  return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+}
+
+function defaultNow(): Date {
+  return new Date();
+}
+
+function valueOrDefault<T>(value: T | null | undefined, getDefault: () => T): T {
+  return value || getDefault();
+}
+
+function nullableField<T>(value: T | null | undefined): T | null {
+  return value ?? null;
+}
+
+function buildMockSession(session: Partial<MockSession>): MockSession {
+  return {
+    id: valueOrDefault(session.id, defaultSessionId),
+    userId: valueOrDefault(session.userId, () => 'test-user-id'),
+    tokenHash: valueOrDefault(session.tokenHash, defaultTokenHash),
+    expiresAt: valueOrDefault(session.expiresAt, defaultExpiresAt),
+    deviceId: nullableField(session.deviceId),
+    deviceName: nullableField(session.deviceName),
+    userAgent: nullableField(session.userAgent),
+    ipAddress: nullableField(session.ipAddress),
+    lastUsedAt: valueOrDefault(session.lastUsedAt, defaultNow),
+    createdAt: valueOrDefault(session.createdAt, defaultNow),
+  };
+}
+
 export const mockSessionRepository = {
   createRefreshToken: vi.fn().mockImplementation(async (input) => {
     const session: MockSession = {
@@ -445,18 +484,7 @@ export function seedAuditLogs(logs: Partial<MockAuditLogEntry>[]): void {
  */
 export function seedSessions(sessions: Partial<MockSession>[]): void {
   for (const session of sessions) {
-    mockSessions.push({
-      id: session.id || `session-${Date.now()}-${Math.random()}`,
-      userId: session.userId || 'test-user-id',
-      tokenHash: session.tokenHash || `hash-${Date.now()}`,
-      expiresAt: session.expiresAt || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      deviceId: session.deviceId ?? null,
-      deviceName: session.deviceName ?? null,
-      userAgent: session.userAgent ?? null,
-      ipAddress: session.ipAddress ?? null,
-      lastUsedAt: session.lastUsedAt || new Date(),
-      createdAt: session.createdAt || new Date(),
-    });
+    mockSessions.push(buildMockSession(session));
   }
 }
 
