@@ -27,6 +27,14 @@ export interface AccountComparisonResult {
   }>;
 }
 
+const validPurposes = new Set<DeviceAccountInput['purpose']>(['single_sig', 'multisig']);
+const validScriptTypes = new Set<DeviceAccountInput['scriptType']>([
+  'native_segwit',
+  'nested_segwit',
+  'taproot',
+  'legacy',
+]);
+
 /**
  * Compare incoming accounts with existing accounts.
  * Returns categorized accounts: new, matching, and conflicting.
@@ -72,28 +80,11 @@ export function normalizeIncomingAccounts(
   derivationPath: string | undefined
 ): { accounts: DeviceAccountInput[] } | { error: string } {
   if (accounts && accounts.length > 0) {
-    for (const account of accounts) {
-      if (!account.purpose || !account.scriptType || !account.derivationPath || !account.xpub) {
-        return { error: 'Each account must have purpose, scriptType, derivationPath, and xpub' };
-      }
-      if (!['single_sig', 'multisig'].includes(account.purpose)) {
-        return { error: 'Account purpose must be "single_sig" or "multisig"' };
-      }
-      if (!['native_segwit', 'nested_segwit', 'taproot', 'legacy'].includes(account.scriptType)) {
-        return { error: 'Account scriptType must be one of: native_segwit, nested_segwit, taproot, legacy' };
-      }
-    }
-    return { accounts };
+    return normalizeMultiAccountInput(accounts);
   }
 
   if (xpub && derivationPath) {
-    const purpose = derivationPath.startsWith("m/48'") ? 'multisig' : 'single_sig';
-    let scriptType: DeviceAccountInput['scriptType'] = 'native_segwit';
-    if (derivationPath.startsWith("m/86'")) scriptType = 'taproot';
-    else if (derivationPath.startsWith("m/49'")) scriptType = 'nested_segwit';
-    else if (derivationPath.startsWith("m/44'")) scriptType = 'legacy';
-
-    return { accounts: [{ purpose, scriptType, derivationPath, xpub }] };
+    return { accounts: [buildLegacyAccount(xpub, derivationPath)] };
   }
 
   if (xpub) {
@@ -101,4 +92,54 @@ export function normalizeIncomingAccounts(
   }
 
   return { error: 'Either xpub or accounts array is required' };
+}
+
+function normalizeMultiAccountInput(accounts: DeviceAccountInput[]): { accounts: DeviceAccountInput[] } | { error: string } {
+  const error = findInvalidAccountError(accounts);
+  return error ? { error } : { accounts };
+}
+
+function findInvalidAccountError(accounts: DeviceAccountInput[]): string | null {
+  for (const account of accounts) {
+    const error = validateAccount(account);
+    if (error) return error;
+  }
+
+  return null;
+}
+
+function validateAccount(account: DeviceAccountInput): string | null {
+  if (!account.purpose || !account.scriptType || !account.derivationPath || !account.xpub) {
+    return 'Each account must have purpose, scriptType, derivationPath, and xpub';
+  }
+
+  if (!validPurposes.has(account.purpose)) {
+    return 'Account purpose must be "single_sig" or "multisig"';
+  }
+
+  if (!validScriptTypes.has(account.scriptType)) {
+    return 'Account scriptType must be one of: native_segwit, nested_segwit, taproot, legacy';
+  }
+
+  return null;
+}
+
+function buildLegacyAccount(xpub: string, derivationPath: string): DeviceAccountInput {
+  return {
+    purpose: inferPurpose(derivationPath),
+    scriptType: inferScriptType(derivationPath),
+    derivationPath,
+    xpub,
+  };
+}
+
+function inferPurpose(derivationPath: string): DeviceAccountInput['purpose'] {
+  return derivationPath.startsWith("m/48'") ? 'multisig' : 'single_sig';
+}
+
+function inferScriptType(derivationPath: string): DeviceAccountInput['scriptType'] {
+  if (derivationPath.startsWith("m/86'")) return 'taproot';
+  if (derivationPath.startsWith("m/49'")) return 'nested_segwit';
+  if (derivationPath.startsWith("m/44'")) return 'legacy';
+  return 'native_segwit';
 }
