@@ -12,6 +12,11 @@ import { subscribeAddressBatch } from './addressSubscriptions';
 import type { BitcoinNetwork, NetworkState } from './types';
 
 const log = createLogger('WORKER:ELECTRUM_HEALTH');
+const RECONCILE_PAGE_SIZE = 2000;
+
+type AddressWalletInfo = { walletId: string; network: BitcoinNetwork };
+type ReconcileAddress = Awaited<ReturnType<typeof addressRepository.findAllWithWalletNetworkPaginated>>[number];
+type NewAddressesByNetwork = Map<BitcoinNetwork, Array<{ address: string; walletId: string }>>;
 
 /**
  * Check health of all connections and reconnect if needed.
@@ -55,9 +60,7 @@ export async function reconcileSubscriptions(
 ): Promise<{ removed: number; added: number }> {
   log.info('Reconciling Electrum subscriptions with database...');
 
-  const PAGE_SIZE = 2000;
   const dbAddressSet = new Set<string>();
-  let removed = 0;
   let added = 0;
   let cursor: string | undefined;
 
@@ -66,75 +69,122 @@ export async function reconcileSubscriptions(
   // - Find and subscribe to new addresses in batches
   while (true) {
     const addresses = await addressRepository.findAllWithWalletNetworkPaginated({
-      take: PAGE_SIZE,
+      take: RECONCILE_PAGE_SIZE,
       cursor,
     });
 
     if (addresses.length === 0) break;
 
-    // Collect new addresses to subscribe per network
-    const newAddressesByNetwork = new Map<BitcoinNetwork, Array<{ address: string; walletId: string }>>();
-
-    for (const addr of addresses) {
-      // Add to set for removal check later
-      dbAddressSet.add(addr.address);
-
-      // Check if this is a new address we need to track
-      if (!addressToWallet.has(addr.address)) {
-        const network = (addr.wallet.network || 'mainnet') as BitcoinNetwork;
-
-        if (!newAddressesByNetwork.has(network)) {
-          newAddressesByNetwork.set(network, []);
-        }
-        newAddressesByNetwork.get(network)!.push({
-          address: addr.address,
-          walletId: addr.walletId,
-        });
-
-        // Track the new address
-        addressToWallet.set(addr.address, {
-          walletId: addr.walletId,
-          network,
-        });
-        added++;
-      }
-    }
-
-    // Subscribe to new addresses in this batch
-    for (const [network, networkAddresses] of newAddressesByNetwork) {
-      const state = networks.get(network);
-      if (state?.connected && networkAddresses.length > 0) {
-        await subscribeAddressBatch(state, networkAddresses);
-      }
-    }
+    const pageResult = collectReconcilePage(addresses, dbAddressSet, addressToWallet);
+    added += pageResult.added;
+    await subscribeNewAddressesByNetwork(networks, pageResult.newAddressesByNetwork);
 
     cursor = addresses[addresses.length - 1].id;
-    if (addresses.length < PAGE_SIZE) break;
+    if (addresses.length < RECONCILE_PAGE_SIZE) break;
   }
 
   // Second pass: Remove addresses that no longer exist in database
-  for (const [address, info] of addressToWallet) {
-    if (!dbAddressSet.has(address)) {
-      addressToWallet.delete(address);
-      const state = networks.get(info.network);
-      if (state) {
-        state.subscribedAddresses.delete(address);
-      }
-      removed++;
+  const removed = removeDeletedAddresses(dbAddressSet, networks, addressToWallet);
+  logReconcileSummary(removed, added, addressToWallet.size);
+
+  return { removed, added };
+}
+
+function collectReconcilePage(
+  addresses: ReconcileAddress[],
+  dbAddressSet: Set<string>,
+  addressToWallet: Map<string, AddressWalletInfo>
+): { newAddressesByNetwork: NewAddressesByNetwork; added: number } {
+  const newAddressesByNetwork = new Map<BitcoinNetwork, Array<{ address: string; walletId: string }>>();
+  let added = 0;
+
+  for (const addr of addresses) {
+    dbAddressSet.add(addr.address);
+
+    if (!addressToWallet.has(addr.address)) {
+      trackNewAddress(addr, addressToWallet, newAddressesByNetwork);
+      added++;
     }
   }
 
+  return { newAddressesByNetwork, added };
+}
+
+function trackNewAddress(
+  addr: ReconcileAddress,
+  addressToWallet: Map<string, AddressWalletInfo>,
+  newAddressesByNetwork: NewAddressesByNetwork
+): void {
+  const network = (addr.wallet.network || 'mainnet') as BitcoinNetwork;
+  getNetworkAddressBatch(newAddressesByNetwork, network).push({
+    address: addr.address,
+    walletId: addr.walletId,
+  });
+
+  addressToWallet.set(addr.address, {
+    walletId: addr.walletId,
+    network,
+  });
+}
+
+function getNetworkAddressBatch(
+  newAddressesByNetwork: NewAddressesByNetwork,
+  network: BitcoinNetwork
+): Array<{ address: string; walletId: string }> {
+  const networkAddresses = newAddressesByNetwork.get(network);
+  if (networkAddresses) {
+    return networkAddresses;
+  }
+
+  const newNetworkAddresses: Array<{ address: string; walletId: string }> = [];
+  newAddressesByNetwork.set(network, newNetworkAddresses);
+  return newNetworkAddresses;
+}
+
+async function subscribeNewAddressesByNetwork(
+  networks: Map<BitcoinNetwork, NetworkState>,
+  newAddressesByNetwork: NewAddressesByNetwork
+): Promise<void> {
+  for (const [network, networkAddresses] of newAddressesByNetwork) {
+    const state = networks.get(network);
+    if (!state?.connected || networkAddresses.length === 0) {
+      continue;
+    }
+
+    await subscribeAddressBatch(state, networkAddresses);
+  }
+}
+
+function removeDeletedAddresses(
+  dbAddressSet: Set<string>,
+  networks: Map<BitcoinNetwork, NetworkState>,
+  addressToWallet: Map<string, AddressWalletInfo>
+): number {
+  let removed = 0;
+
+  for (const [address, info] of addressToWallet) {
+    if (dbAddressSet.has(address)) {
+      continue;
+    }
+
+    addressToWallet.delete(address);
+    networks.get(info.network)?.subscribedAddresses.delete(address);
+    removed++;
+  }
+
+  return removed;
+}
+
+function logReconcileSummary(removed: number, added: number, totalSubscribed: number): void {
   if (removed > 0 || added > 0) {
     log.info('Subscription reconciliation complete', {
       removed,
       added,
-      totalSubscribed: addressToWallet.size,
+      totalSubscribed,
     });
   } else {
     log.debug('Subscription reconciliation complete - no changes');
   }
-
-  return { removed, added };
 }
 
 /**
