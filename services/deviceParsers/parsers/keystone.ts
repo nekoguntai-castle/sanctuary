@@ -10,17 +10,21 @@
 
 import type { DeviceParser, DeviceParseResult, DeviceAccount, FormatDetectionResult } from '../types';
 
+type KeystoneAccount = {
+  hdPath?: string;
+  xPub?: string;
+  xpub?: string;
+};
+
+type KeystoneCoin = {
+  coinCode?: string;
+  coin?: string;
+  accounts?: KeystoneAccount[];
+};
+
 // Standard Keystone format
 interface KeystoneStandardFormat {
-  coins?: Array<{
-    coinCode?: string;
-    coin?: string;
-    accounts?: Array<{
-      hdPath?: string;
-      xPub?: string;
-      xpub?: string;
-    }>;
-  }>;
+  coins?: KeystoneCoin[];
   data?: {
     sync?: {
       coins?: KeystoneStandardFormat['coins'];
@@ -48,6 +52,53 @@ function isKeystoneMultisigFormat(data: unknown): data is KeystoneMultisigFormat
   return typeof ks.ExtendedPublicKey === 'string' && ks.ExtendedPublicKey.length > 0;
 }
 
+const getKeystoneCoins = (ks: KeystoneStandardFormat): KeystoneCoin[] =>
+  ks.coins || ks.data?.sync?.coins || [];
+
+const getBitcoinCoin = (ks: KeystoneStandardFormat): KeystoneCoin | undefined =>
+  getKeystoneCoins(ks).find((coin) => coin.coinCode === 'BTC' || coin.coin === 'BTC');
+
+const normalizeKeystonePath = (path?: string): string => (path || '').replace(/^M/, 'm');
+
+const getKeystoneAccountXpub = (account: KeystoneAccount): string => account.xPub || account.xpub || '';
+
+const getKeystoneAccountPurpose = (path: string): DeviceAccount['purpose'] =>
+  path.includes("48'") || path.includes('48h') ? 'multisig' : 'single_sig';
+
+const getKeystoneScriptType = (path: string): DeviceAccount['scriptType'] => {
+  if (path.includes("48'") || path.includes('48h')) {
+    if (path.includes("/1'") || path.includes('/1h')) return 'nested_segwit';
+    return 'native_segwit';
+  }
+  if (path.includes("86'") || path.includes('86h')) return 'taproot';
+  if (path.includes("49'") || path.includes('49h')) return 'nested_segwit';
+  if (path.includes("44'") || path.includes('44h')) return 'legacy';
+  return 'native_segwit';
+};
+
+const createKeystoneAccount = (account: KeystoneAccount): DeviceAccount | undefined => {
+  const xpub = getKeystoneAccountXpub(account);
+  if (!xpub) return undefined;
+
+  const derivationPath = normalizeKeystonePath(account.hdPath);
+  return {
+    xpub,
+    derivationPath,
+    purpose: getKeystoneAccountPurpose(derivationPath),
+    scriptType: getKeystoneScriptType(derivationPath),
+  };
+};
+
+const isDefined = <T>(value: T | undefined): value is T => value !== undefined;
+
+const getKeystoneAccounts = (coin: KeystoneCoin): DeviceAccount[] =>
+  (coin.accounts || []).map(createKeystoneAccount).filter(isDefined);
+
+const getPrimaryAccount = (accounts: DeviceAccount[]): DeviceAccount | undefined =>
+  accounts.find((account) => account.purpose === 'single_sig' && account.scriptType === 'native_segwit')
+  || accounts.find((account) => account.purpose === 'single_sig')
+  || accounts[0];
+
 /**
  * Keystone Standard Format Parser
  * { coins: [{ coinCode: "BTC", accounts: [{ hdPath: "M/84'/0'/0'", xPub: "xpub..." }] }] }
@@ -64,8 +115,7 @@ export const keystoneStandardParser: DeviceParser = {
     }
 
     const ks = data as KeystoneStandardFormat;
-    const coins = ks.coins || ks.data?.sync?.coins;
-    const btcCoin = coins?.find((c) => c.coinCode === 'BTC' || c.coin === 'BTC');
+    const btcCoin = getBitcoinCoin(ks);
 
     if (!btcCoin?.accounts?.length) {
       return { detected: false, confidence: 0 };
@@ -79,49 +129,14 @@ export const keystoneStandardParser: DeviceParser = {
 
   parse(data: unknown): DeviceParseResult {
     const ks = data as KeystoneStandardFormat;
-    const coins = ks.coins || ks.data?.sync?.coins || [];
-    const btcCoin = coins.find((c) => c.coinCode === 'BTC' || c.coin === 'BTC');
+    const btcCoin = getBitcoinCoin(ks);
 
     if (!btcCoin?.accounts?.length) {
       return {};
     }
 
-    // Extract all accounts
-    const accounts: DeviceAccount[] = [];
-    for (const acct of btcCoin.accounts) {
-      const xpub = acct.xPub || acct.xpub || '';
-      const hdPath = (acct.hdPath || '').replace(/^M/, 'm');
-      if (!xpub) continue;
-
-      // Determine purpose and scriptType from path
-      let purpose: 'single_sig' | 'multisig' = 'single_sig';
-      let scriptType: DeviceAccount['scriptType'] = 'native_segwit';
-
-      if (hdPath.includes("48'") || hdPath.includes("48h")) {
-        purpose = 'multisig';
-        // Check script type from BIP-48 last hardened component
-        if (hdPath.includes("/2'") || hdPath.includes("/2h")) {
-          scriptType = 'native_segwit';
-        } else if (hdPath.includes("/1'") || hdPath.includes("/1h")) {
-          scriptType = 'nested_segwit';
-        }
-      } else if (hdPath.includes("84'") || hdPath.includes("84h")) {
-        scriptType = 'native_segwit';
-      } else if (hdPath.includes("86'") || hdPath.includes("86h")) {
-        scriptType = 'taproot';
-      } else if (hdPath.includes("49'") || hdPath.includes("49h")) {
-        scriptType = 'nested_segwit';
-      } else if (hdPath.includes("44'") || hdPath.includes("44h")) {
-        scriptType = 'legacy';
-      }
-
-      accounts.push({ xpub, derivationPath: hdPath, purpose, scriptType });
-    }
-
-    // Primary: prefer native segwit single-sig
-    const primaryAccount = accounts.find(a => a.purpose === 'single_sig' && a.scriptType === 'native_segwit')
-      || accounts.find(a => a.purpose === 'single_sig')
-      || accounts[0];
+    const accounts = getKeystoneAccounts(btcCoin);
+    const primaryAccount = getPrimaryAccount(accounts);
 
     return {
       xpub: primaryAccount?.xpub || '',

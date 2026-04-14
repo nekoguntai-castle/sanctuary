@@ -26,7 +26,7 @@ if [[ "$missing" -ne 0 ]]; then
 fi
 
 GITLEAKS_LOG_OPTS="${GITLEAKS_LOG_OPTS:--1}"
-LIZARD_WARNING_BASELINE="${LIZARD_WARNING_BASELINE:-52}"
+LIZARD_WARNING_BASELINE="${LIZARD_WARNING_BASELINE:-51}"
 
 echo "==> gitleaks"
 gitleaks git . --config .gitleaks.toml --redact --no-banner --log-opts "$GITLEAKS_LOG_OPTS"
