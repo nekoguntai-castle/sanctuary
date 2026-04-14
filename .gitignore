@@ -46,6 +46,9 @@ playwright-results.xml
 test-results/
 .tmp-gh/
 
+# Quality tool reports (jscpd, lizard, etc.)
+reports/
+
 # Claude Code
 .claude/
 **/CLAUDE.md

@@ -1,0 +1,40 @@
+title = "Sanctuary gitleaks config"
+
+# Inherit the default gitleaks ruleset (AWS, Stripe, Slack, PEM, etc.).
+# This file layers project-specific allowlists on top.
+[extend]
+useDefault = true
+
+# Global allowlist: these regex targets match *intentional* test fixtures,
+# example files, or placeholder defaults that carry no real credentials.
+# Anything else — including real keys in any other path — will still be
+# flagged.
+[allowlist]
+description = "Allowlist for test fixtures and example placeholders"
+
+paths = [
+  # Push-notification test fixtures ship deliberately-broken PEM blocks
+  # (e.g. `-----BEGIN PRIVATE KEY-----\ntest\n-----END PRIVATE KEY-----`)
+  # so the server/gateway providers have something parseable to exercise
+  # against. These files have been inspected during the 2026-04-13
+  # /grade audit and contain no real key material.
+  '''server/tests/unit/services/push/providers/apns\.test\.ts''',
+  '''server/tests/unit/services/push/providers/fcm\.test\.ts''',
+  '''gateway/tests/unit/services/push/apns\.test\.ts''',
+  '''gateway/tests/unit/services/push/fcm\.test\.ts''',
+  # .env.example ships default placeholders, not real secrets.
+  '''\.env\.example$''',
+  '''server/\.env\.example$''',
+  # Prisma client generated output never contains secrets and trips
+  # heuristic entropy checks on random-looking identifiers.
+  '''server/src/generated/''',
+  # Lock files are reproducible from package.json and have no secrets.
+  '''package-lock\.json$''',
+  '''.*/package-lock\.json$''',
+  # Vendored dependencies.
+  '''node_modules/''',
+  '''.*/node_modules/''',
+]
+
+# Rule-specific allowlists can be added below as the tool matures.
+# Start wide, tighten as false positives are understood.
