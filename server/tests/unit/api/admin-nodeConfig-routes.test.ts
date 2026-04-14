@@ -330,6 +330,22 @@ describe('Admin Node Config Routes', () => {
     expect(response.body.message).toContain('Only Electrum');
   });
 
+  it('rejects invalid optional node config field types before updating', async () => {
+    const response = await request(app)
+      .put('/api/v1/admin/node-config')
+      .send({
+        type: 'electrum',
+        host: 'example.com',
+        port: 50002,
+        useSsl: 'true',
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toContain('Invalid node configuration');
+    expect(mockPrismaClient.nodeConfig.findFirst).not.toHaveBeenCalled();
+    expect(mockPrismaClient.nodeConfig.update).not.toHaveBeenCalled();
+  });
+
   it('updates existing default config and resets node client', async () => {
     mockPrismaClient.nodeConfig.findFirst.mockResolvedValue({ id: 'default-existing' });
     mockPrismaClient.nodeConfig.update.mockResolvedValue(
@@ -739,6 +755,20 @@ describe('Admin Node Config Routes', () => {
     expect(response.body.message).toContain('required');
   });
 
+  it('rejects invalid node test field types before testing connection', async () => {
+    const response = await request(app)
+      .post('/api/v1/admin/node-config/test')
+      .send({
+        type: 'electrum',
+        host: 'electrum.example.com',
+        port: { value: 50002 },
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toContain('Invalid node configuration');
+    expect(mockTestNodeConfig).not.toHaveBeenCalled();
+  });
+
   it('rejects unsupported node type on test endpoint', async () => {
     const response = await request(app)
       .post('/api/v1/admin/node-config/test')
@@ -884,7 +914,7 @@ describe('Admin Node Config Routes', () => {
     expect(response.body.message).toContain('inconclusive');
   });
 
-  it('handles proxy verification setup errors', async () => {
+  it('rejects invalid proxy test field types before verification', async () => {
     const response = await request(app)
       .post('/api/v1/admin/proxy/test')
       .send({
@@ -892,6 +922,8 @@ describe('Admin Node Config Routes', () => {
         port: { toString: null },
       });
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(400);
+    expect(response.body.message).toContain('Invalid proxy configuration');
+    expect(mockSocksCreateConnection).not.toHaveBeenCalled();
   });
 });

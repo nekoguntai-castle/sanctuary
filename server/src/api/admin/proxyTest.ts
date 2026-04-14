@@ -6,6 +6,7 @@
 
 import { Router } from 'express';
 import https from 'node:https';
+import { z } from 'zod';
 import { authenticate, requireAdmin } from '../../middleware/auth';
 import { asyncHandler } from '../../errors/errorHandler';
 import { InvalidInputError } from '../../errors/ApiError';
@@ -18,6 +19,19 @@ const router = Router();
 const log = createLogger('ADMIN_PROXY:ROUTE');
 type SocksProxyAgentConstructor = new (proxyUrl: string) => https.Agent;
 
+const ProxyTestBodySchema = z.object({
+  host: z.string().min(1),
+  port: z.union([z.string().min(1), z.number()]),
+  username: z.string().optional(),
+  password: z.string().optional(),
+}).strict();
+
+function hasProxyRequiredFields(body: unknown): boolean {
+  if (!body || typeof body !== 'object') return false;
+  const candidate = body as Record<string, unknown>;
+  return Boolean(candidate.host && candidate.port);
+}
+
 /**
  * POST /api/v1/admin/proxy/test
  * Test SOCKS5/Tor proxy with comprehensive verification:
@@ -25,12 +39,15 @@ type SocksProxyAgentConstructor = new (proxyUrl: string) => https.Agent;
  * 2. Check torproject.org to confirm Tor exit and get exit IP
  */
 router.post('/proxy/test', authenticate, requireAdmin, asyncHandler(async (req, res) => {
-  const { host, port, username, password } = req.body;
-
-  // Validation
-  if (!host || !port) {
-    throw new InvalidInputError('Proxy host and port are required');
+  const parsedBody = ProxyTestBodySchema.safeParse(req.body);
+  if (!parsedBody.success) {
+    throw new InvalidInputError(
+      hasProxyRequiredFields(req.body)
+        ? 'Invalid proxy configuration'
+        : 'Proxy host and port are required'
+    );
   }
+  const { host, port, username, password } = parsedBody.data;
 
   const proxyPort = parseInt(port.toString(), 10);
   // Step 1: Test .onion connectivity (definitive proof Tor works)

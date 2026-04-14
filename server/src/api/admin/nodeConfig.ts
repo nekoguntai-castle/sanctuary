@@ -6,6 +6,7 @@
  */
 
 import { Router } from 'express';
+import { z } from 'zod';
 import { nodeConfigRepository } from '../../repositories';
 import { authenticate, requireAdmin } from '../../middleware/auth';
 import { asyncHandler } from '../../errors/errorHandler';
@@ -14,11 +15,92 @@ import { testNodeConfig, resetNodeClient, NodeConfig } from '../../services/bitc
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { auditService, AuditAction, AuditCategory } from '../../services/auditService';
-import { buildNodeConfigData, buildNodeConfigResponse } from './nodeConfigData';
+import { buildNodeConfigData, buildNodeConfigResponse, type NodeConfigInput } from './nodeConfigData';
 import proxyTestRouter from './proxyTest';
 
 const router = Router();
 const log = createLogger('ADMIN_NODE_CONFIG:ROUTE');
+
+const NodeStringOrNumberSchema = z.union([z.string().min(1), z.number()]);
+const NodeNullableStringSchema = z.union([z.string(), z.null()]);
+const NodeNullableStringOrNumberSchema = z.union([NodeStringOrNumberSchema, z.null()]);
+
+const NodeConfigBodySchema = z.object({
+  type: z.string().min(1),
+  host: z.string().min(1),
+  port: NodeStringOrNumberSchema,
+  useSsl: z.boolean().optional(),
+  allowSelfSignedCert: z.boolean().optional(),
+  user: NodeNullableStringSchema.optional(),
+  password: z.string().optional(),
+  hasPassword: z.boolean().optional(),
+  explorerUrl: NodeNullableStringSchema.optional(),
+  feeEstimatorUrl: NodeNullableStringSchema.optional(),
+  mempoolEstimator: z.string().optional(),
+  poolEnabled: z.boolean().optional(),
+  poolMinConnections: z.number().optional(),
+  poolMaxConnections: z.number().optional(),
+  poolLoadBalancing: z.string().optional(),
+  proxyEnabled: z.boolean().optional(),
+  proxyHost: NodeNullableStringSchema.optional(),
+  proxyPort: NodeNullableStringOrNumberSchema.optional(),
+  proxyUsername: NodeNullableStringSchema.optional(),
+  proxyPassword: NodeNullableStringSchema.optional(),
+  mainnetMode: z.string().optional(),
+  mainnetSingletonHost: NodeNullableStringSchema.optional(),
+  mainnetSingletonPort: NodeNullableStringOrNumberSchema.optional(),
+  mainnetSingletonSsl: z.boolean().nullable().optional(),
+  mainnetPoolMin: NodeNullableStringOrNumberSchema.optional(),
+  mainnetPoolMax: NodeNullableStringOrNumberSchema.optional(),
+  mainnetPoolLoadBalancing: z.string().optional(),
+  testnetEnabled: z.boolean().optional(),
+  testnetMode: z.string().optional(),
+  testnetSingletonHost: NodeNullableStringSchema.optional(),
+  testnetSingletonPort: NodeNullableStringOrNumberSchema.optional(),
+  testnetSingletonSsl: z.boolean().nullable().optional(),
+  testnetPoolMin: NodeNullableStringOrNumberSchema.optional(),
+  testnetPoolMax: NodeNullableStringOrNumberSchema.optional(),
+  testnetPoolLoadBalancing: z.string().optional(),
+  signetEnabled: z.boolean().optional(),
+  signetMode: z.string().optional(),
+  signetSingletonHost: NodeNullableStringSchema.optional(),
+  signetSingletonPort: NodeNullableStringOrNumberSchema.optional(),
+  signetSingletonSsl: z.boolean().nullable().optional(),
+  signetPoolMin: NodeNullableStringOrNumberSchema.optional(),
+  signetPoolMax: NodeNullableStringOrNumberSchema.optional(),
+  signetPoolLoadBalancing: z.string().optional(),
+  servers: z.unknown().optional(),
+}).strict();
+
+const NodeConfigTestBodySchema = z.object({
+  type: z.string().min(1),
+  host: z.string().min(1),
+  port: NodeStringOrNumberSchema,
+  useSsl: z.boolean().optional(),
+}).strict();
+
+function hasNodeConfigRequiredFields(body: unknown): boolean {
+  if (!body || typeof body !== 'object') return false;
+  const candidate = body as Record<string, unknown>;
+  return Boolean(candidate.type && candidate.host && candidate.port);
+}
+
+function invalidNodeConfigResponse(res: { status: (code: number) => { json: (body: unknown) => unknown } }, body: unknown) {
+  const message = hasNodeConfigRequiredFields(body)
+    ? 'Invalid node configuration'
+    : 'Type, host, and port are required';
+  return res.status(400).json({ error: 'Validation Error', message });
+}
+
+function parseNodeConfigBody(body: unknown): NodeConfigInput | null {
+  const parsed = NodeConfigBodySchema.safeParse(body);
+  return parsed.success ? parsed.data as NodeConfigInput : null;
+}
+
+function parseNodeConfigTestBody(body: unknown): Pick<NodeConfigInput, 'type' | 'host' | 'port' | 'useSsl'> | null {
+  const parsed = NodeConfigTestBodySchema.safeParse(body);
+  return parsed.success ? parsed.data : null;
+}
 
 /**
  * GET /api/v1/admin/node-config
@@ -67,33 +149,32 @@ router.get('/node-config', authenticate, requireAdmin, asyncHandler(async (_req,
  * Update the global node configuration (admin only)
  */
 router.put('/node-config', authenticate, requireAdmin, asyncHandler(async (req, res) => {
-  const { type, host, port } = req.body;
+  const nodeConfigBody = parseNodeConfigBody(req.body);
+  if (!nodeConfigBody) {
+    return invalidNodeConfigResponse(res, req.body);
+  }
+  const { type, host, port } = nodeConfigBody;
 
   // Log non-sensitive fields only (password excluded)
   log.info('PUT /node-config', {
     type, host, port,
-    useSsl: req.body.useSsl,
-    allowSelfSignedCert: req.body.allowSelfSignedCert,
-    hasPassword: !!req.body.password,
-    mempoolEstimator: req.body.mempoolEstimator,
-    poolEnabled: req.body.poolEnabled,
-    poolMinConnections: req.body.poolMinConnections,
-    poolMaxConnections: req.body.poolMaxConnections,
-    poolLoadBalancing: req.body.poolLoadBalancing,
-    proxyEnabled: req.body.proxyEnabled,
-    proxyHost: req.body.proxyHost,
-    proxyPort: req.body.proxyPort,
-    mainnetMode: req.body.mainnetMode,
-    testnetEnabled: req.body.testnetEnabled,
-    testnetMode: req.body.testnetMode,
-    signetEnabled: req.body.signetEnabled,
-    signetMode: req.body.signetMode,
+    useSsl: nodeConfigBody.useSsl,
+    allowSelfSignedCert: nodeConfigBody.allowSelfSignedCert,
+    hasPassword: !!nodeConfigBody.password,
+    mempoolEstimator: nodeConfigBody.mempoolEstimator,
+    poolEnabled: nodeConfigBody.poolEnabled,
+    poolMinConnections: nodeConfigBody.poolMinConnections,
+    poolMaxConnections: nodeConfigBody.poolMaxConnections,
+    poolLoadBalancing: nodeConfigBody.poolLoadBalancing,
+    proxyEnabled: nodeConfigBody.proxyEnabled,
+    proxyHost: nodeConfigBody.proxyHost,
+    proxyPort: nodeConfigBody.proxyPort,
+    mainnetMode: nodeConfigBody.mainnetMode,
+    testnetEnabled: nodeConfigBody.testnetEnabled,
+    testnetMode: nodeConfigBody.testnetMode,
+    signetEnabled: nodeConfigBody.signetEnabled,
+    signetMode: nodeConfigBody.signetMode,
   });
-
-  // Validation
-  if (!type || !host || !port) {
-    throw new InvalidInputError('Type, host, and port are required');
-  }
 
   // Only Electrum is supported
   if (type && type !== 'electrum') {
@@ -101,7 +182,7 @@ router.put('/node-config', authenticate, requireAdmin, asyncHandler(async (req, 
   }
 
   // Build the config data from the request body
-  const configData = buildNodeConfigData(req.body);
+  const configData = buildNodeConfigData(nodeConfigBody);
 
   // Check if a default config exists
   const existingConfig = await nodeConfigRepository.findDefault();
@@ -145,12 +226,11 @@ router.put('/node-config', authenticate, requireAdmin, asyncHandler(async (req, 
  * Test connection to node with provided configuration (admin only)
  */
 router.post('/node-config/test', authenticate, requireAdmin, asyncHandler(async (req, res) => {
-  const { type, host, port, useSsl } = req.body;
-
-  // Validation
-  if (!type || !host || !port) {
-    throw new InvalidInputError('Type, host, and port are required');
+  const nodeConfigBody = parseNodeConfigTestBody(req.body);
+  if (!nodeConfigBody) {
+    return invalidNodeConfigResponse(res, req.body);
   }
+  const { type, host, port, useSsl } = nodeConfigBody;
 
   // Only Electrum is supported
   if (type && type !== 'electrum') {
