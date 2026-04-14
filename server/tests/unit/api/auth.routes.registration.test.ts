@@ -352,6 +352,26 @@ describe('Auth API Routes — Registration, Login, Password, Tokens', () => {
       });
     });
 
+    it('should reject non-object preference updates', async () => {
+      const response = await request(app)
+        .patch('/api/v1/auth/me/preferences')
+        .send(['darkMode']);
+
+      expect(response.status).toBe(400);
+      expect(response.body.code).toBe('VALIDATION_ERROR');
+      expect(mockPrismaClient.user.update).not.toHaveBeenCalled();
+    });
+
+    it('should reject invalid known preference field types', async () => {
+      const response = await request(app)
+        .patch('/api/v1/auth/me/preferences')
+        .send({ darkMode: 'yes' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.code).toBe('VALIDATION_ERROR');
+      expect(mockPrismaClient.user.update).not.toHaveBeenCalled();
+    });
+
     it('should handle database errors gracefully', async () => {
       mockPrismaClient.user.findUnique.mockResolvedValue({ preferences: {} });
       mockPrismaClient.user.update.mockRejectedValue(new Error('Database error'));

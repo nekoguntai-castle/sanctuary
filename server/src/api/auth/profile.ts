@@ -5,6 +5,7 @@
  */
 
 import { Router } from 'express';
+import { z } from 'zod';
 import { userRepository, systemSettingRepository, groupRepo as groupRepository } from '../../repositories';
 import { asyncHandler } from '../../errors/errorHandler';
 import { NotFoundError } from '../../errors/ApiError';
@@ -13,6 +14,23 @@ import { setAccessExpiresAtHeader } from '../../middleware/csrf';
 import { UserSearchQuerySchema } from '../schemas/auth';
 
 const router = Router();
+
+const PreferencesBodySchema = z.object({
+  darkMode: z.boolean().optional(),
+  theme: z.string().optional(),
+  background: z.string().optional(),
+  unit: z.string().optional(),
+  fiatCurrency: z.string().optional(),
+  showFiat: z.boolean().optional(),
+  priceProvider: z.string().optional(),
+  favoriteBackgrounds: z.array(z.string()).optional(),
+  seasonalBackgrounds: z.record(z.string(), z.string()).optional(),
+  contrastLevel: z.number().optional(),
+  patternOpacity: z.number().optional(),
+  notificationSounds: z.unknown().optional(),
+  telegram: z.unknown().optional(),
+  viewSettings: z.unknown().optional(),
+}).passthrough();
 
 /**
  * GET /api/v1/auth/me
@@ -47,7 +65,7 @@ router.get('/me', asyncHandler(async (req, res) => {
  * PATCH /api/v1/auth/me/preferences
  * Update user preferences
  */
-router.patch('/me/preferences', asyncHandler(async (req, res) => {
+router.patch('/me/preferences', validate({ body: PreferencesBodySchema }), asyncHandler(async (req, res) => {
   const newPreferences = req.body;
 
   // Default preferences for new users or those with null preferences
