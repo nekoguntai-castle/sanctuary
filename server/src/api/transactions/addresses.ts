@@ -14,6 +14,8 @@ import { extractPagination, setTruncationHeaders } from '../../utils/pagination'
 import { asyncHandler } from '../../errors/errorHandler';
 import { NotFoundError, ValidationError } from '../../errors/ApiError';
 import { INITIAL_ADDRESS_COUNT } from '../../constants';
+import { validate } from '../../middleware/validate';
+import { GenerateAddressesBodySchema } from '../schemas/transactions';
 
 const router = Router();
 const log = createLogger('ADDRESS:ROUTE');
@@ -174,9 +176,9 @@ router.get('/wallets/:walletId/addresses/summary', requireWalletAccess('view'), 
  * POST /api/v1/wallets/:walletId/addresses/generate
  * Generate more addresses for a wallet (requires edit access: owner or signer)
  */
-router.post('/wallets/:walletId/addresses/generate', requireWalletAccess('edit'), asyncHandler(async (req, res) => {
+router.post('/wallets/:walletId/addresses/generate', requireWalletAccess('edit'), validate({ body: GenerateAddressesBodySchema }), asyncHandler(async (req, res) => {
   const walletId = req.walletId!;
-  const { count = 10 } = req.body;
+  const { count } = req.body;
 
   // Fetch wallet data
   const wallet = await walletRepository.findById(walletId);

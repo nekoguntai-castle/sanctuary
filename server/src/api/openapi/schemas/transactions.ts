@@ -150,7 +150,7 @@ export const transactionSchemas = {
   GenerateAddressesRequest: {
     type: 'object',
     properties: {
-      count: { type: 'integer', minimum: 1, default: 10 },
+      count: { type: 'integer', minimum: 0, maximum: 1000, default: 10 },
     },
   },
   GenerateAddressesResponse: {

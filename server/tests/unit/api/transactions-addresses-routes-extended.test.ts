@@ -384,4 +384,62 @@ describe('Transactions Addresses Routes (Extended)', () => {
     expect(response.status).toBe(500);
     expect(response.body.code).toBe('INTERNAL_ERROR');
   });
+
+  it('rejects count above the 1000-address upper bound (DoS guard)', async () => {
+    const response = await request(app)
+      .post('/api/v1/wallets/wallet-1/addresses/generate')
+      .send({ count: 1_000_001 });
+
+    expect(response.status).toBe(400);
+    expect(mockDeriveAddressFromDescriptor).not.toHaveBeenCalled();
+    expect(mockPrismaClient.address.createMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-numeric count (string coercion guard)', async () => {
+    const response = await request(app)
+      .post('/api/v1/wallets/wallet-1/addresses/generate')
+      .send({ count: '5' });
+
+    expect(response.status).toBe(400);
+    expect(mockDeriveAddressFromDescriptor).not.toHaveBeenCalled();
+    expect(mockPrismaClient.address.createMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects negative count', async () => {
+    const response = await request(app)
+      .post('/api/v1/wallets/wallet-1/addresses/generate')
+      .send({ count: -5 });
+
+    expect(response.status).toBe(400);
+    expect(mockDeriveAddressFromDescriptor).not.toHaveBeenCalled();
+  });
+
+  it('applies default count=10 when body is empty', async () => {
+    mockPrismaClient.address.findMany.mockResolvedValue([]);
+    mockPrismaClient.address.createMany.mockResolvedValue({ count: 20 } as any);
+
+    const response = await request(app)
+      .post('/api/v1/wallets/wallet-1/addresses/generate')
+      .send({});
+
+    expect(response.status).toBe(200);
+    expect(mockDeriveAddressFromDescriptor).toHaveBeenCalledTimes(20);
+    expect(response.body).toEqual({
+      generated: 20,
+      receiveAddresses: 10,
+      changeAddresses: 10,
+    });
+  });
+
+  it('accepts count at the upper bound', async () => {
+    mockPrismaClient.address.findMany.mockResolvedValue([]);
+    mockPrismaClient.address.createMany.mockResolvedValue({ count: 2000 } as any);
+
+    const response = await request(app)
+      .post('/api/v1/wallets/wallet-1/addresses/generate')
+      .send({ count: 1000 });
+
+    expect(response.status).toBe(200);
+    expect(mockDeriveAddressFromDescriptor).toHaveBeenCalledTimes(2000);
+  });
 });
