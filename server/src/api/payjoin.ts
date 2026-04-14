@@ -7,10 +7,12 @@
  */
 
 import { Router } from 'express';
+import { z } from 'zod';
 import { authenticate } from '../middleware/auth';
 import { requireFeature, isFeatureEnabledAsync } from '../middleware/featureGate';
+import { validate } from '../middleware/validate';
 import { asyncHandler } from '../errors/errorHandler';
-import { InvalidInputError, NotFoundError } from '../errors/ApiError';
+import { ErrorCodes, InvalidInputError, NotFoundError } from '../errors/ApiError';
 import { findByIdWithAccess } from '../repositories/walletRepository';
 import { findByIdWithAccess as findAddressByIdWithAccess } from '../repositories/addressRepository';
 import { countEligibility } from '../repositories/utxoRepository';
@@ -29,6 +31,39 @@ import { getNetwork } from '../services/bitcoin/utils';
 const log = createLogger('PAYJOIN:ROUTE');
 
 const router = Router();
+
+const ParseUriBodySchema = z.object({
+  uri: z.string().min(1),
+});
+
+const AttemptPayjoinBodySchema = z.object({
+  psbt: z.unknown(),
+  payjoinUrl: z.unknown(),
+  network: z.unknown().optional(),
+}).superRefine((data, ctx) => {
+  if (!data.psbt || !data.payjoinUrl) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'psbt and payjoinUrl are required',
+      path: ['psbt'],
+    });
+    return;
+  }
+
+  if (data.network && !['mainnet', 'testnet', 'regtest'].includes(data.network as string)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Invalid network. Must be mainnet, testnet, or regtest',
+      path: ['network'],
+    });
+  }
+});
+
+const attemptPayjoinValidationMessage = (issues: Array<{ message: string }>) => (
+  issues.some(issue => issue.message === 'Invalid network. Must be mainnet, testnet, or regtest')
+    ? 'Invalid network. Must be mainnet, testnet, or regtest'
+    : 'psbt and payjoinUrl are required'
+);
 
 // Rate limiter for unauthenticated BIP78 endpoint
 // Prevents DoS attacks by limiting requests per addressId
@@ -144,12 +179,11 @@ router.get('/address/:addressId/uri', authenticate, requireFeature('payjoinSuppo
  * POST /api/v1/payjoin/parse-uri
  * Parse a BIP21 URI to extract address and Payjoin URL
  */
-router.post('/parse-uri', authenticate, requireFeature('payjoinSupport'), asyncHandler(async (req, res) => {
+router.post('/parse-uri', authenticate, requireFeature('payjoinSupport'), validate(
+  { body: ParseUriBodySchema },
+  { message: 'URI is required', code: ErrorCodes.INVALID_INPUT }
+), asyncHandler(async (req, res) => {
   const { uri } = req.body;
-
-  if (!uri || typeof uri !== 'string') {
-    throw new InvalidInputError('URI is required');
-  }
 
   let parsed;
   try {
@@ -172,17 +206,11 @@ router.post('/parse-uri', authenticate, requireFeature('payjoinSupport'), asyncH
  * POST /api/v1/payjoin/attempt
  * Attempt to perform a Payjoin send
  */
-router.post('/attempt', authenticate, requireFeature('payjoinSupport'), asyncHandler(async (req, res) => {
+router.post('/attempt', authenticate, requireFeature('payjoinSupport'), validate(
+  { body: AttemptPayjoinBodySchema },
+  { message: attemptPayjoinValidationMessage, code: ErrorCodes.INVALID_INPUT }
+), asyncHandler(async (req, res) => {
   const { psbt, payjoinUrl, network } = req.body;
-
-  if (!psbt || !payjoinUrl) {
-    throw new InvalidInputError('psbt and payjoinUrl are required');
-  }
-
-  // Validate network parameter
-  if (network && !['mainnet', 'testnet', 'regtest'].includes(network)) {
-    throw new InvalidInputError('Invalid network. Must be mainnet, testnet, or regtest');
-  }
 
   // Use provided network or default to mainnet
   const networkStr = (network || 'mainnet') as 'mainnet' | 'testnet' | 'regtest';
