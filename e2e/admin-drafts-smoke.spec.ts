@@ -38,173 +38,156 @@ const WALLET = {
   lastSyncStatus: null,
 };
 
+type MockApiResponse = {
+  status?: number;
+  body: unknown;
+};
+
+function mockResponse(body: unknown, status?: number): MockApiResponse {
+  return { body, status };
+}
+
+function parseApiRoute(route: Route) {
+  const request = route.request();
+  const method = request.method();
+  const url = new URL(request.url());
+  const path = url.pathname.replace(/^\/api\/v1/, '');
+  return { method, path };
+}
+
+const MOCK_API_RESPONSES: Record<string, MockApiResponse> = {
+  'GET /auth/me': mockResponse(ADMIN_USER),
+  'POST /auth/refresh': mockResponse({ message: 'Unauthorized' }, 401),
+  'POST /auth/logout': mockResponse({ success: true }),
+  'GET /wallets': mockResponse([WALLET]),
+  'GET /devices': mockResponse([]),
+  'GET /bitcoin/status': mockResponse({
+    connected: true,
+    explorerUrl: 'https://mempool.space',
+    confirmationThreshold: 1,
+    deepConfirmationThreshold: 6,
+  }),
+  [`GET /wallets/${WALLET_ID}`]: mockResponse(WALLET),
+  [`GET /wallets/${WALLET_ID}/transactions`]: mockResponse([]),
+  [`GET /wallets/${WALLET_ID}/transactions/stats`]: mockResponse({
+    totalCount: 0,
+    receivedCount: 0,
+    sentCount: 0,
+    consolidationCount: 0,
+    totalReceived: 0,
+    totalSent: 0,
+    totalFees: 0,
+    walletBalance: 0,
+  }),
+  [`GET /wallets/${WALLET_ID}/utxos`]: mockResponse({ utxos: [], count: 0, totalBalance: 0 }),
+  [`GET /wallets/${WALLET_ID}/privacy`]: mockResponse({
+    utxos: [],
+    summary: {
+      averageScore: 100,
+      grade: 'excellent',
+      utxoCount: 0,
+      addressReuseCount: 0,
+      roundAmountCount: 0,
+      clusterCount: 0,
+      recommendations: [],
+    },
+  }),
+  [`GET /wallets/${WALLET_ID}/addresses/summary`]: mockResponse({
+    totalAddresses: 0,
+    usedCount: 0,
+    unusedCount: 0,
+    totalBalance: 0,
+    usedBalance: 0,
+    unusedBalance: 0,
+  }),
+  [`GET /wallets/${WALLET_ID}/addresses`]: mockResponse([]),
+  [`GET /wallets/${WALLET_ID}/drafts`]: mockResponse([]),
+  [`GET /wallets/${WALLET_ID}/share`]: mockResponse({ group: null, users: [] }),
+  'GET /admin/groups': mockResponse([]),
+  'GET /admin/audit-logs': mockResponse({
+    logs: [
+      {
+        id: 'log-1',
+        userId: ADMIN_USER.id,
+        username: ADMIN_USER.username,
+        action: 'auth.login',
+        category: 'auth',
+        details: null,
+        ipAddress: '127.0.0.1',
+        userAgent: 'Playwright',
+        success: true,
+        errorMsg: null,
+        createdAt: '2026-03-02T00:00:00.000Z',
+      },
+    ],
+    total: 1,
+    limit: 25,
+    offset: 0,
+  }),
+  'GET /admin/audit-logs/stats': mockResponse({
+    totalEvents: 1,
+    byCategory: { auth: 1 },
+    byAction: { 'auth.login': 1 },
+    failedEvents: 0,
+  }),
+  'GET /admin/monitoring/services': mockResponse({
+    enabled: true,
+    services: [
+      {
+        id: 'grafana',
+        name: 'Grafana',
+        description: 'Dashboards',
+        url: 'http://localhost:3000',
+        defaultPort: 3000,
+        icon: 'BarChart3',
+        isCustomUrl: false,
+        status: 'healthy',
+      },
+    ],
+  }),
+  'GET /admin/monitoring/grafana': mockResponse({
+    username: 'admin',
+    passwordSource: 'GRAFANA_PASSWORD',
+    password: 'grafana-secret',
+    anonymousAccess: false,
+    anonymousAccessNote: 'Anonymous access disabled',
+  }),
+  'GET /intelligence/status': mockResponse({ available: false, ollamaConfigured: false }),
+};
+
+function getMockApiResponse(method: string, path: string): MockApiResponse | null {
+  const response = MOCK_API_RESPONSES[`${method} ${path}`];
+  if (response) {
+    return response;
+  }
+  if (method === 'GET' && /^\/wallets\/[^/]+\/labels$/.test(path)) {
+    return mockResponse([]);
+  }
+  return null;
+}
+
+function createApiRouteHandler() {
+  const apiRouteHandler = async (route: Route) => {
+    const { method, path } = parseApiRoute(route);
+    const response = getMockApiResponse(method, path);
+
+    if (response) {
+      await json(route, response.body, response.status);
+      return;
+    }
+
+    await unmocked(route, method, path);
+  };
+
+  return apiRouteHandler;
+}
+
 async function mockAuthenticatedApi(page: Page) {
   // ADR 0001 / 0002 Phase 6: browser auth is cookie-only. Legacy
   // localStorage token seed is dead; authenticated state comes from
   // /auth/me returning 200.
 
-  const apiRouteHandler = async (route: Route) => {
-    const request = route.request();
-    const method = request.method();
-    const url = new URL(request.url());
-    const path = url.pathname.replace(/^\/api\/v1/, '');
-
-    // Auth/session bootstrap
-    if (method === 'GET' && path === '/auth/me') {
-      return json(route, ADMIN_USER);
-    }
-    // Phase 5/6 interceptor paths.
-    if (method === 'POST' && path === '/auth/refresh') {
-      return json(route, { message: 'Unauthorized' }, 401);
-    }
-    if (method === 'POST' && path === '/auth/logout') {
-      return json(route, { success: true });
-    }
-
-    // Shared layout queries
-    if (method === 'GET' && path === '/wallets') {
-      return json(route, [WALLET]);
-    }
-    if (method === 'GET' && path === '/devices') {
-      return json(route, []);
-    }
-    if (method === 'GET' && path === '/bitcoin/status') {
-      return json(route, {
-        connected: true,
-        explorerUrl: 'https://mempool.space',
-        confirmationThreshold: 1,
-        deepConfirmationThreshold: 6,
-      });
-    }
-
-    // Wallet detail + drafts tab
-    if (method === 'GET' && path === `/wallets/${WALLET_ID}`) {
-      return json(route, WALLET);
-    }
-    if (method === 'GET' && path === `/wallets/${WALLET_ID}/transactions`) {
-      return json(route, []);
-    }
-    if (method === 'GET' && path === `/wallets/${WALLET_ID}/transactions/stats`) {
-      return json(route, {
-        totalCount: 0,
-        receivedCount: 0,
-        sentCount: 0,
-        consolidationCount: 0,
-        totalReceived: 0,
-        totalSent: 0,
-        totalFees: 0,
-        walletBalance: 0,
-      });
-    }
-    if (method === 'GET' && path === `/wallets/${WALLET_ID}/utxos`) {
-      return json(route, { utxos: [], count: 0, totalBalance: 0 });
-    }
-    if (method === 'GET' && path === `/wallets/${WALLET_ID}/privacy`) {
-      return json(route, {
-        utxos: [],
-        summary: {
-          averageScore: 100,
-          grade: 'excellent',
-          utxoCount: 0,
-          addressReuseCount: 0,
-          roundAmountCount: 0,
-          clusterCount: 0,
-          recommendations: [],
-        },
-      });
-    }
-    if (method === 'GET' && path === `/wallets/${WALLET_ID}/addresses/summary`) {
-      return json(route, {
-        totalAddresses: 0,
-        usedCount: 0,
-        unusedCount: 0,
-        totalBalance: 0,
-        usedBalance: 0,
-        unusedBalance: 0,
-      });
-    }
-    if (method === 'GET' && path === `/wallets/${WALLET_ID}/addresses`) {
-      return json(route, []);
-    }
-    if (method === 'GET' && path === `/wallets/${WALLET_ID}/drafts`) {
-      return json(route, []);
-    }
-    if (method === 'GET' && path === `/wallets/${WALLET_ID}/share`) {
-      return json(route, { group: null, users: [] });
-    }
-    if (method === 'GET' && path.match(/^\/wallets\/[^/]+\/labels$/)) return json(route, []);
-    if (method === 'GET' && path === '/admin/groups') {
-      return json(route, []);
-    }
-
-    // Audit logs
-    if (method === 'GET' && path === '/admin/audit-logs') {
-      return json(route, {
-        logs: [
-          {
-            id: 'log-1',
-            userId: ADMIN_USER.id,
-            username: ADMIN_USER.username,
-            action: 'auth.login',
-            category: 'auth',
-            details: null,
-            ipAddress: '127.0.0.1',
-            userAgent: 'Playwright',
-            success: true,
-            errorMsg: null,
-            createdAt: '2026-03-02T00:00:00.000Z',
-          },
-        ],
-        total: 1,
-        limit: 25,
-        offset: 0,
-      });
-    }
-    if (method === 'GET' && path === '/admin/audit-logs/stats') {
-      return json(route, {
-        totalEvents: 1,
-        byCategory: { auth: 1 },
-        byAction: { 'auth.login': 1 },
-        failedEvents: 0,
-      });
-    }
-
-    // Monitoring
-    if (method === 'GET' && path === '/admin/monitoring/services') {
-      return json(route, {
-        enabled: true,
-        services: [
-          {
-            id: 'grafana',
-            name: 'Grafana',
-            description: 'Dashboards',
-            url: 'http://localhost:3000',
-            defaultPort: 3000,
-            icon: 'BarChart3',
-            isCustomUrl: false,
-            status: 'healthy',
-          },
-        ],
-      });
-    }
-    if (method === 'GET' && path === '/admin/monitoring/grafana') {
-      return json(route, {
-        username: 'admin',
-        passwordSource: 'GRAFANA_PASSWORD',
-        password: 'grafana-secret',
-        anonymousAccess: false,
-        anonymousAccessNote: 'Anonymous access disabled',
-      });
-    }
-
-    if (method === 'GET' && path === '/intelligence/status') {
-      return json(route, { available: false, ollamaConfigured: false });
-    }
-
-    return unmocked(route, method, path);
-  };
-
-  await registerApiRoutes(page, apiRouteHandler);
+  await registerApiRoutes(page, createApiRouteHandler());
 }
 
 test.describe('Admin and drafts smoke routes', () => {
