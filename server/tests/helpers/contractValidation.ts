@@ -128,6 +128,10 @@ function isWalletRole(value: unknown): boolean {
   return isEnumValue(value, WALLET_ROLES);
 }
 
+function isDeviceRole(value: unknown): boolean {
+  return isEnumValue(value, DEVICE_ROLES);
+}
+
 const WALLET_RESPONSE_RULES: FieldValidationRule[] = [
   { field: 'id', isValid: isString, message: 'id must be a string' },
   { field: 'name', isValid: isString, message: 'name must be a string' },
@@ -170,6 +174,20 @@ function validateWalletGroup(group: unknown, errors: string[]) {
   validateFields(group, errors, WALLET_GROUP_RULES);
 }
 
+const DEVICE_RESPONSE_RULES: FieldValidationRule[] = [
+  { field: 'id', isValid: isString, message: 'id must be a string' },
+  { field: 'label', isValid: isString, message: 'label must be a string' },
+  { field: 'fingerprint', isValid: isString, message: 'fingerprint must be a string' },
+  { field: 'role', isValid: isDeviceRole, message: `role must be one of: ${DEVICE_ROLES.join(', ')}` },
+  { field: 'xpub', isValid: isNullableString, message: 'xpub must be a string or null' },
+  { field: 'derivationPath', isValid: isNullableString, message: 'derivationPath must be a string or null' },
+  { field: 'model', isValid: isNullableString, message: 'model must be a string or null' },
+  { field: 'type', isValid: isNullableString, message: 'type must be a string or null' },
+  { field: 'createdAt', isValid: isIsoDateString, message: 'createdAt must be an ISO date string' },
+  { field: 'updatedAt', isValid: isIsoDateString, message: 'updatedAt must be an ISO date string' },
+  { field: 'walletCount', isValid: isNumber, message: 'walletCount must be a number' },
+];
+
 // =============================================================================
 // Response Validators
 // =============================================================================
@@ -200,24 +218,7 @@ export function validateDeviceResponse(data: unknown): ValidationResult {
     return { valid: false, errors: ['Response is not an object'] };
   }
 
-  // Required string fields
-  if (!isString(data.id)) errors.push('id must be a string');
-  if (!isString(data.label)) errors.push('label must be a string');
-  if (!isString(data.fingerprint)) errors.push('fingerprint must be a string');
-  if (!isEnumValue(data.role, DEVICE_ROLES)) errors.push(`role must be one of: ${DEVICE_ROLES.join(', ')}`);
-
-  // Nullable string fields
-  if (data.xpub !== null && !isString(data.xpub)) errors.push('xpub must be a string or null');
-  if (data.derivationPath !== null && !isString(data.derivationPath)) errors.push('derivationPath must be a string or null');
-  if (data.model !== null && !isString(data.model)) errors.push('model must be a string or null');
-  if (data.type !== null && !isString(data.type)) errors.push('type must be a string or null');
-
-  // Date strings
-  if (!isIsoDateString(data.createdAt)) errors.push('createdAt must be an ISO date string');
-  if (!isIsoDateString(data.updatedAt)) errors.push('updatedAt must be an ISO date string');
-
-  // Required number fields
-  if (!isNumber(data.walletCount)) errors.push('walletCount must be a number');
+  validateFields(data, errors, DEVICE_RESPONSE_RULES);
 
   return { valid: errors.length === 0, errors };
 }
