@@ -1,0 +1,251 @@
+import {
+  adminGroupIdParameter,
+  adminGroupMemberUserIdParameter,
+  adminPolicyIdParameter,
+  adminUserIdParameter,
+  apiErrorResponse,
+  bearerAuth,
+  jsonRequestBody,
+  jsonResponse,
+} from './shared';
+
+export const adminIdentityPolicyPaths = {
+  '/admin/users': {
+    get: {
+      tags: ['Admin'],
+      summary: 'List users',
+      description: 'List user account summaries for administrative management.',
+      security: bearerAuth,
+      responses: {
+        200: {
+          description: 'User account summaries',
+          content: {
+            'application/json': {
+              schema: {
+                type: 'array',
+                items: { $ref: '#/components/schemas/AdminUser' },
+              },
+            },
+          },
+        },
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+    post: {
+      tags: ['Admin'],
+      summary: 'Create user',
+      description: 'Create a trusted user account with an auto-verified email address.',
+      security: bearerAuth,
+      requestBody: jsonRequestBody('#/components/schemas/AdminCreateUserRequest'),
+      responses: {
+        201: jsonResponse('Created user', '#/components/schemas/AdminUser'),
+        400: apiErrorResponse,
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        409: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+  },
+  '/admin/users/{userId}': {
+    put: {
+      tags: ['Admin'],
+      summary: 'Update user',
+      description: 'Update user account fields, admin status, email verification state, or password.',
+      security: bearerAuth,
+      parameters: [adminUserIdParameter],
+      requestBody: jsonRequestBody('#/components/schemas/AdminUpdateUserRequest'),
+      responses: {
+        200: jsonResponse('Updated user', '#/components/schemas/AdminUser'),
+        400: apiErrorResponse,
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        404: apiErrorResponse,
+        409: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+    delete: {
+      tags: ['Admin'],
+      summary: 'Delete user',
+      description: 'Delete a user account. The current admin cannot delete their own account.',
+      security: bearerAuth,
+      parameters: [adminUserIdParameter],
+      responses: {
+        200: jsonResponse('User deleted', '#/components/schemas/AdminDeleteUserResponse'),
+        400: apiErrorResponse,
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        404: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+  },
+  '/admin/groups': {
+    get: {
+      tags: ['Admin'],
+      summary: 'List groups',
+      description: 'List administrative groups with their members.',
+      security: bearerAuth,
+      responses: {
+        200: {
+          description: 'Groups',
+          content: {
+            'application/json': {
+              schema: {
+                type: 'array',
+                items: { $ref: '#/components/schemas/AdminGroup' },
+              },
+            },
+          },
+        },
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+    post: {
+      tags: ['Admin'],
+      summary: 'Create group',
+      description: 'Create an administrative group and optionally add existing users as members.',
+      security: bearerAuth,
+      requestBody: jsonRequestBody('#/components/schemas/AdminCreateGroupRequest'),
+      responses: {
+        201: jsonResponse('Created group', '#/components/schemas/AdminGroup'),
+        400: apiErrorResponse,
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+  },
+  '/admin/groups/{groupId}': {
+    put: {
+      tags: ['Admin'],
+      summary: 'Update group',
+      description: 'Update group fields and optionally replace the group member set.',
+      security: bearerAuth,
+      parameters: [adminGroupIdParameter],
+      requestBody: jsonRequestBody('#/components/schemas/AdminUpdateGroupRequest'),
+      responses: {
+        200: jsonResponse('Updated group', '#/components/schemas/AdminGroup'),
+        400: apiErrorResponse,
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        404: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+    delete: {
+      tags: ['Admin'],
+      summary: 'Delete group',
+      description: 'Delete an administrative group and invalidate access caches for former members.',
+      security: bearerAuth,
+      parameters: [adminGroupIdParameter],
+      responses: {
+        200: jsonResponse('Group deleted', '#/components/schemas/AdminDeleteGroupResponse'),
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        404: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+  },
+  '/admin/groups/{groupId}/members': {
+    post: {
+      tags: ['Admin'],
+      summary: 'Add group member',
+      description: 'Add an existing user to an administrative group.',
+      security: bearerAuth,
+      parameters: [adminGroupIdParameter],
+      requestBody: jsonRequestBody('#/components/schemas/AdminAddGroupMemberRequest'),
+      responses: {
+        201: jsonResponse('Group member added', '#/components/schemas/AdminGroupMember'),
+        400: apiErrorResponse,
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        404: apiErrorResponse,
+        409: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+  },
+  '/admin/groups/{groupId}/members/{userId}': {
+    delete: {
+      tags: ['Admin'],
+      summary: 'Remove group member',
+      description: 'Remove a user from an administrative group.',
+      security: bearerAuth,
+      parameters: [adminGroupIdParameter, adminGroupMemberUserIdParameter],
+      responses: {
+        200: jsonResponse('Group member removed', '#/components/schemas/AdminRemoveGroupMemberResponse'),
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        404: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+  },
+  '/admin/policies': {
+    get: {
+      tags: ['Admin'],
+      summary: 'List system policies',
+      description: 'List system-wide vault policies for administrative management.',
+      security: bearerAuth,
+      responses: {
+        200: jsonResponse('System policies', '#/components/schemas/VaultPolicyListResponse'),
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+    post: {
+      tags: ['Admin'],
+      summary: 'Create system policy',
+      description: 'Create a system-wide vault policy.',
+      security: bearerAuth,
+      requestBody: jsonRequestBody('#/components/schemas/CreateVaultPolicyRequest'),
+      responses: {
+        201: jsonResponse('Created system policy', '#/components/schemas/VaultPolicyResponse'),
+        400: apiErrorResponse,
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+  },
+  '/admin/policies/{policyId}': {
+    patch: {
+      tags: ['Admin'],
+      summary: 'Update system policy',
+      description: 'Update a system-wide vault policy. Non-system policies are rejected.',
+      security: bearerAuth,
+      parameters: [adminPolicyIdParameter],
+      requestBody: jsonRequestBody('#/components/schemas/UpdateVaultPolicyRequest'),
+      responses: {
+        200: jsonResponse('Updated system policy', '#/components/schemas/VaultPolicyResponse'),
+        400: apiErrorResponse,
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        404: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+    delete: {
+      tags: ['Admin'],
+      summary: 'Delete system policy',
+      description: 'Delete a system-wide vault policy. Non-system policies are rejected.',
+      security: bearerAuth,
+      parameters: [adminPolicyIdParameter],
+      responses: {
+        200: jsonResponse('System policy deleted', '#/components/schemas/AdminPolicyDeleteResponse'),
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        404: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+  },
+} as const;
