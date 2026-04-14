@@ -96,120 +96,164 @@ const PENDING_BLOCKS = [
   },
 ];
 
+type MockApiResponse = {
+  status?: number;
+  body: unknown;
+};
+
+type ParsedApiRoute = {
+  method: string;
+  path: string;
+  requestKey: string;
+};
+
+type DashboardApiOptions = {
+  change24h?: number | null;
+  price?: number;
+  includeBlocks?: boolean;
+};
+
+type DashboardApiScenario = {
+  change24h: number | null;
+  price: number;
+  includeBlocks: boolean;
+};
+
+function mockResponse(body: unknown, status?: number): MockApiResponse {
+  return { body, status };
+}
+
+function parseApiRoute(route: Route): ParsedApiRoute {
+  const request = route.request();
+  const method = request.method();
+  const url = new URL(request.url());
+  const path = url.pathname.replace(/^\/api\/v1/, '');
+  return { method, path, requestKey: `${method} ${path}` };
+}
+
+function createDashboardApiScenario(options?: DashboardApiOptions): DashboardApiScenario {
+  return {
+    change24h: options?.change24h !== undefined ? options.change24h : 2.45,
+    price: options?.price ?? 75000,
+    includeBlocks: options?.includeBlocks ?? true,
+  };
+}
+
+function createPriceResponse(scenario: DashboardApiScenario) {
+  const { price, change24h } = scenario;
+  return {
+    price,
+    currency: 'USD',
+    sources: [{ provider: 'kraken', price, currency: 'USD', timestamp: '2026-03-11T00:00:00.000Z', change24h }],
+    median: price,
+    average: price,
+    timestamp: '2026-03-11T00:00:00.000Z',
+    cached: true,
+    change24h,
+  };
+}
+
+function createMempoolResponse(includeBlocks: boolean) {
+  return {
+    mempool: includeBlocks ? PENDING_BLOCKS : [],
+    blocks: includeBlocks ? CONFIRMED_BLOCKS : [],
+    mempoolInfo: { count: 5000, size: 12000000, totalFees: 1.5 },
+    queuedBlocksSummary: null,
+  };
+}
+
+const BITCOIN_STATUS_RESPONSE = {
+  connected: true,
+  blockHeight: 900100,
+  explorerUrl: 'https://mempool.space',
+  confirmationThreshold: 1,
+  deepConfirmationThreshold: 6,
+  pool: { enabled: false },
+  host: 'electrum.blockstream.info',
+};
+
+const ADMIN_SETTINGS_RESPONSE = {
+  registrationEnabled: false,
+  confirmationThreshold: 1,
+  deepConfirmationThreshold: 6,
+  dustThreshold: 546,
+  aiEnabled: false,
+};
+
+const WEBSOCKET_STATS_RESPONSE = {
+  connections: { current: 1, max: 100, uniqueUsers: 1, maxPerUser: 10 },
+  subscriptions: { total: 0, channels: 0, channelList: [] },
+  rateLimits: {
+    maxMessagesPerSecond: 15,
+    gracePeriodMs: 2000,
+    gracePeriodMessageLimit: 30,
+    maxSubscriptionsPerConnection: 40,
+  },
+  recentRateLimitEvents: [],
+};
+
+const STATIC_DASHBOARD_API_RESPONSES: Record<string, MockApiResponse> = {
+  'GET /auth/me': mockResponse(ADMIN_USER),
+  'GET /auth/registration-status': mockResponse({ enabled: false }),
+  'GET /wallets': mockResponse([MAINNET_WALLET]),
+  'GET /devices': mockResponse([]),
+  'GET /health': mockResponse({ status: 'ok' }),
+  'GET /admin/version': mockResponse({ updateAvailable: false, currentVersion: '0.8.15' }),
+  'GET /bitcoin/status': mockResponse(BITCOIN_STATUS_RESPONSE),
+  'GET /bitcoin/fees': mockResponse({ fastest: 18, halfHour: 12, hour: 8, economy: 3 }),
+  'GET /transactions/recent': mockResponse([]),
+  'GET /transactions/balance-history': mockResponse([
+    { name: 'Start', value: 100000000 },
+    { name: 'Now', value: 100000000 },
+  ]),
+  [`GET /wallets/${MAINNET_WALLET_ID}/transactions/pending`]: mockResponse([]),
+  'GET /admin/features': mockResponse([]),
+  'GET /admin/settings': mockResponse(ADMIN_SETTINGS_RESPONSE),
+  'GET /admin/websocket/stats': mockResponse(WEBSOCKET_STATS_RESPONSE),
+  'GET /intelligence/status': mockResponse({ available: false, ollamaConfigured: false }),
+};
+
+function getDashboardApiResponse(
+  requestKey: string,
+  scenario: DashboardApiScenario
+): MockApiResponse | null {
+  if (requestKey === 'GET /price') {
+    return mockResponse(createPriceResponse(scenario));
+  }
+  if (requestKey === 'GET /bitcoin/mempool') {
+    return mockResponse(createMempoolResponse(scenario.includeBlocks));
+  }
+  return STATIC_DASHBOARD_API_RESPONSES[requestKey] ?? null;
+}
+
+function createDashboardApiRouteHandler(scenario: DashboardApiScenario) {
+  const apiRouteHandler = async (route: Route) => {
+    const { method, path, requestKey } = parseApiRoute(route);
+    const response = getDashboardApiResponse(requestKey, scenario);
+
+    if (response) {
+      await json(route, response.body, response.status);
+      return;
+    }
+
+    await unmocked(route, method, path);
+  };
+
+  return apiRouteHandler;
+}
+
 async function mockDashboardApi(
   page: Page,
-  options?: {
-    change24h?: number | null;
-    price?: number;
-    includeBlocks?: boolean;
-  }
+  options?: DashboardApiOptions
 ) {
   await page.addInitScript(() => {
     localStorage.setItem('sanctuary_token', 'playwright-dash-price-token');
   });
 
-  const change24h = options?.change24h !== undefined ? options.change24h : 2.45;
-  const price = options?.price ?? 75000;
-  const includeBlocks = options?.includeBlocks ?? true;
-
-  const apiRouteHandler = async (route: Route) => {
-    const request = route.request();
-    const method = request.method();
-    const url = new URL(request.url());
-    const path = url.pathname.replace(/^\/api\/v1/, '');
-
-    if (method === 'GET' && path === '/auth/me') {
-      return json(route, ADMIN_USER);
-    }
-    if (method === 'GET' && path === '/auth/registration-status') {
-      return json(route, { enabled: false });
-    }
-    if (method === 'GET' && path === '/wallets') {
-      return json(route, [MAINNET_WALLET]);
-    }
-    if (method === 'GET' && path === '/devices') {
-      return json(route, []);
-    }
-    if (method === 'GET' && path === '/health') {
-      return json(route, { status: 'ok' });
-    }
-    if (method === 'GET' && path === '/admin/version') {
-      return json(route, { updateAvailable: false, currentVersion: '0.8.15' });
-    }
-    if (method === 'GET' && path === '/price') {
-      return json(route, {
-        price,
-        currency: 'USD',
-        sources: [{ provider: 'kraken', price, currency: 'USD', timestamp: '2026-03-11T00:00:00.000Z', change24h }],
-        median: price,
-        average: price,
-        timestamp: '2026-03-11T00:00:00.000Z',
-        cached: true,
-        change24h,
-      });
-    }
-    if (method === 'GET' && path === '/bitcoin/status') {
-      return json(route, {
-        connected: true,
-        blockHeight: 900100,
-        explorerUrl: 'https://mempool.space',
-        confirmationThreshold: 1,
-        deepConfirmationThreshold: 6,
-        pool: { enabled: false },
-        host: 'electrum.blockstream.info',
-      });
-    }
-    if (method === 'GET' && path === '/bitcoin/fees') {
-      return json(route, { fastest: 18, halfHour: 12, hour: 8, economy: 3 });
-    }
-    if (method === 'GET' && path === '/bitcoin/mempool') {
-      return json(route, {
-        mempool: includeBlocks ? PENDING_BLOCKS : [],
-        blocks: includeBlocks ? CONFIRMED_BLOCKS : [],
-        mempoolInfo: { count: 5000, size: 12000000, totalFees: 1.5 },
-        queuedBlocksSummary: null,
-      });
-    }
-    if (method === 'GET' && path === '/transactions/recent') {
-      return json(route, []);
-    }
-    if (method === 'GET' && path === '/transactions/balance-history') {
-      return json(route, [
-        { name: 'Start', value: 100000000 },
-        { name: 'Now', value: 100000000 },
-      ]);
-    }
-    if (method === 'GET' && path === `/wallets/${MAINNET_WALLET_ID}/transactions/pending`) {
-      return json(route, []);
-    }
-    if (method === 'GET' && path === '/admin/features') {
-      return json(route, []);
-    }
-    if (method === 'GET' && path === '/admin/settings') {
-      return json(route, {
-        registrationEnabled: false,
-        confirmationThreshold: 1,
-        deepConfirmationThreshold: 6,
-        dustThreshold: 546,
-        aiEnabled: false,
-      });
-    }
-    if (method === 'GET' && path === '/admin/websocket/stats') {
-      return json(route, {
-        connections: { current: 1, max: 100, uniqueUsers: 1, maxPerUser: 10 },
-        subscriptions: { total: 0, channels: 0, channelList: [] },
-        rateLimits: { maxMessagesPerSecond: 15, gracePeriodMs: 2000, gracePeriodMessageLimit: 30, maxSubscriptionsPerConnection: 40 },
-        recentRateLimitEvents: [],
-      });
-    }
-    if (method === 'GET' && path === '/intelligence/status') {
-      return json(route, { available: false, ollamaConfigured: false });
-    }
-
-    return unmocked(route, method, path);
-  };
-
-  await registerApiRoutes(page, apiRouteHandler);
+  await registerApiRoutes(
+    page,
+    createDashboardApiRouteHandler(createDashboardApiScenario(options))
+  );
 }
 
 // ─── 1. 24h Price Change Display ─────────────────────────────────────
