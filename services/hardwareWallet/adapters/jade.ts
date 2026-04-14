@@ -8,6 +8,7 @@
 import { encode, decode } from 'cbor-x';
 import { createLogger } from '../../../utils/logger';
 import { isTestnetPath } from '../pathUtils';
+import { jadePathToArray } from './jadePathUtils';
 import type {
   DeviceAdapter,
   DeviceType,
@@ -60,22 +61,6 @@ interface JadeConnection {
   writer: WritableStreamDefaultWriter<Uint8Array>;
   messageId: number;
 }
-
-/**
- * Convert string path to array of integers for Jade
- * Jade expects paths as array of uint32, with hardened indicated by 0x80000000
- */
-const pathToArray = (path: string): number[] => {
-  const HARDENED = 0x80000000;
-  return path
-    .replace(/^m\//, '')
-    .split('/')
-    .map((part) => {
-      const isHardened = part.endsWith("'") || part.endsWith('h');
-      const index = parseInt(part.replace(/['h]$/, ''), 10);
-      return isHardened ? index + HARDENED : index;
-    });
-};
 
 /**
  * Generate unique message ID
@@ -349,7 +334,7 @@ export class JadeAdapter implements DeviceAdapter {
     try {
       const isTestnet = isTestnetPath(path);
       const network = isTestnet ? 'testnet' : 'mainnet';
-      const pathArray = pathToArray(path);
+      const pathArray = jadePathToArray(path);
 
       log.info('Getting xpub', { path, network, pathArray });
 
@@ -387,7 +372,7 @@ export class JadeAdapter implements DeviceAdapter {
     try {
       const isTestnet = isTestnetPath(path);
       const network = isTestnet ? 'testnet' : 'mainnet';
-      const pathArray = pathToArray(path);
+      const pathArray = jadePathToArray(path);
 
       // Determine variant based on path
       let variant = 'pkh(k)'; // Default P2PKH
