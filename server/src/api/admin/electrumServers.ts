@@ -6,6 +6,7 @@
 
 import { Router } from 'express';
 import { nodeConfigRepository } from '../../repositories/nodeConfigRepository';
+import type { ElectrumServer } from '../../generated/prisma/client';
 import { authenticate, requireAdmin } from '../../middleware/auth';
 import { asyncHandler } from '../../errors/errorHandler';
 import { InvalidInputError, NotFoundError, ConflictError } from '../../errors/ApiError';
@@ -25,12 +26,47 @@ const log = createLogger('ADMIN_ELECTRUM:ROUTE');
 const ELECTRUM_NETWORK_VALUES = ['mainnet', 'testnet', 'signet', 'regtest'] as const;
 const ELECTRUM_NETWORK_MESSAGE = `Invalid network. Must be one of: ${ELECTRUM_NETWORK_VALUES.join(', ')}`;
 
+type UpdateElectrumServerBody = {
+  label?: string;
+  host?: string;
+  port?: number;
+  useSsl?: boolean;
+  priority?: number;
+  enabled?: boolean;
+  network?: string;
+};
+
 function formatElectrumServerValidation(requiredMessage: string) {
   return (issues: Array<{ path: PropertyKey[]; message: string }>): string => {
     if (issues.some((issue) => issue.path[0] === 'network')) {
       return ELECTRUM_NETWORK_MESSAGE;
     }
     return requiredMessage;
+  };
+}
+
+function getElectrumUpdateTarget(server: ElectrumServer, body: UpdateElectrumServerBody) {
+  return {
+    host: body.host ?? server.host,
+    port: body.port ?? server.port,
+    network: body.network ?? server.network,
+  };
+}
+
+function buildElectrumServerUpdateData(
+  server: ElectrumServer,
+  body: UpdateElectrumServerBody,
+  network: string
+) {
+  return {
+    label: body.label ?? server.label,
+    host: body.host ?? server.host,
+    port: body.port ?? server.port,
+    useSsl: body.useSsl ?? server.useSsl,
+    priority: body.priority ?? server.priority,
+    enabled: body.enabled ?? server.enabled,
+    network,
+    updatedAt: new Date(),
   };
 }
 
@@ -214,35 +250,30 @@ router.put('/:id', authenticate, requireAdmin, asyncHandler(async (req, res) => 
     throw new NotFoundError('Electrum server not found');
   }
 
-  const { label, host, port, useSsl, priority, enabled, network } = parseAdminRequestBody(
+  const body = parseAdminRequestBody(
     UpdateElectrumServerSchema,
     req.body,
     formatElectrumServerValidation('Invalid Electrum server update')
   );
 
-  const serverNetwork = network ?? server.network;
+  const updateTarget = getElectrumUpdateTarget(server, body);
 
   // Check for duplicate (same host, port, and network, excluding this server)
-  const newHost = host ?? server.host;
-  const newPort = port ?? server.port;
   const existingServer = await nodeConfigRepository.electrumServer.findByHostAndPort(
-    newHost, newPort, serverNetwork, id,
+    updateTarget.host,
+    updateTarget.port,
+    updateTarget.network,
+    id,
   );
 
   if (existingServer) {
-    throw new ConflictError(`A server with host ${newHost}, port ${newPort}, and network ${serverNetwork} already exists (${existingServer.label})`);
+    throw new ConflictError(`A server with host ${updateTarget.host}, port ${updateTarget.port}, and network ${updateTarget.network} already exists (${existingServer.label})`);
   }
 
-  const updatedServer = await nodeConfigRepository.electrumServer.update(id, {
-    label: label ?? server.label,
-    host: host ?? server.host,
-    port: port ?? server.port,
-    useSsl: useSsl ?? server.useSsl,
-    priority: priority ?? server.priority,
-    enabled: enabled ?? server.enabled,
-    network: serverNetwork,
-    updatedAt: new Date(),
-  });
+  const updatedServer = await nodeConfigRepository.electrumServer.update(
+    id,
+    buildElectrumServerUpdateData(server, body, updateTarget.network)
+  );
 
   log.info('Electrum server updated', { id, label: updatedServer.label, network: updatedServer.network });
 
