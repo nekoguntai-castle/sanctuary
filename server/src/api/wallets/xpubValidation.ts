@@ -5,11 +5,28 @@
  */
 
 import { Router } from 'express';
+import { z } from 'zod';
+import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
-import { InvalidInputError } from '../../errors/ApiError';
+import { ErrorCodes, InvalidInputError } from '../../errors/ApiError';
 import * as addressDerivation from '../../services/bitcoin/addressDerivation';
 
 const router = Router();
+
+const ValidateXpubBodySchema = z.object({
+  xpub: z.string().min(1, 'xpub is required'),
+  scriptType: z.string().optional(),
+  network: z.string().optional().default('mainnet'),
+  fingerprint: z.string().optional(),
+  accountPath: z.string().optional(),
+});
+
+const xpubValidationMessage = (issues: Array<{ path: string; message: string }>) => {
+  if (issues.some(issue => issue.path === 'xpub')) {
+    return 'xpub is required';
+  }
+  return issues[0]?.message ?? 'Invalid xpub request';
+};
 
 /**
  * Helper to get default account path based on script type and network
@@ -35,12 +52,11 @@ function getDefaultAccountPath(scriptType: string, network: string): string {
  * POST /api/v1/wallets/validate-xpub
  * Validate an xpub and generate descriptor
  */
-router.post('/validate-xpub', asyncHandler(async (req, res) => {
+router.post('/validate-xpub', validate(
+  { body: ValidateXpubBodySchema },
+  { message: xpubValidationMessage, code: ErrorCodes.INVALID_INPUT }
+), asyncHandler(async (req, res) => {
   const { xpub, scriptType, network = 'mainnet', fingerprint, accountPath } = req.body;
-
-  if (!xpub) {
-    throw new InvalidInputError('xpub is required');
-  }
 
   // Validate xpub
   const validation = addressDerivation.validateXpub(xpub, network);

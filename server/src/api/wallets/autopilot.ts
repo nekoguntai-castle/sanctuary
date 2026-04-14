@@ -6,15 +6,30 @@
  */
 
 import { Router } from 'express';
+import { z } from 'zod';
 import { requireWalletAccess } from '../../middleware/walletAccess';
 import { requireFeature } from '../../middleware/featureGate';
+import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
+import { ErrorCodes } from '../../errors/ApiError';
 import { DEFAULT_AUTOPILOT_SETTINGS } from '../../services/autopilot/types';
 import { getWalletAutopilotSettings, updateWalletAutopilotSettings } from '../../services/autopilot/settings';
 import { getUtxoHealthProfile } from '../../services/autopilot/utxoHealth';
 import { getLatestFeeSnapshot } from '../../services/autopilot/feeMonitor';
 
 const router = Router();
+
+const AutopilotSettingsBodySchema = z.object({
+  enabled: z.boolean().optional(),
+  maxFeeRate: z.number().nonnegative().optional(),
+  minUtxoCount: z.number().int().nonnegative().optional(),
+  dustThreshold: z.number().int().nonnegative().optional(),
+  cooldownHours: z.number().nonnegative().optional(),
+  notifyTelegram: z.boolean().optional(),
+  notifyPush: z.boolean().optional(),
+  minDustCount: z.number().int().nonnegative().optional(),
+  maxUtxoSize: z.number().int().nonnegative().optional(),
+});
 
 /**
  * GET /api/v1/wallets/:id/autopilot
@@ -44,6 +59,10 @@ router.patch(
   '/:id/autopilot',
   requireFeature('treasuryAutopilot'),
   requireWalletAccess('view'),
+  validate(
+    { body: AutopilotSettingsBodySchema },
+    { message: 'Invalid autopilot settings', code: ErrorCodes.INVALID_INPUT }
+  ),
   asyncHandler(async (req, res) => {
     const walletId = req.walletId!;
     const userId = req.user!.userId;
