@@ -25,7 +25,7 @@ None. The explicit PEM-marker validation split into two groups:
 |-------------------------|-----------|---------------|
 | Correctness             | 20/20     | Tests + typecheck + lint pass; High suppression density; High completeness |
 | Reliability             | 12/15     | Typed errors + central timeouts; middleware-guaranteed `!` remains by contract; the previously called-out transaction typing gaps are now fixed |
-| Maintainability         | 8/15      | lizard baseline measured at 83 warnings; jscpd measured at 2.33%; OpenAPI, transaction API, and admin API test splits are complete, but largest non-generated TS/TSX file is still a 2387 LOC service test; clean architecture |
+| Maintainability         | 8/15      | lizard baseline measured at 83 warnings; jscpd measured at 2.33%; OpenAPI, transaction API, admin API, and policy engine test splits are complete, but largest non-generated TS/TSX file is still a 2378 LOC service test; clean architecture |
 | Security                | 11/15     | 0 high CVEs; no JS eval/DOM injection; mixed input validation; new-commit secret gate clean |
 | Performance             | 4/10      | Cursor pagination + recent streaming; some in-loop N+1 risk |
 | Test Quality            | 13/15     | Thresholds 98–100% enforced; clear AAA structure; sleeps mostly intentional |
@@ -57,7 +57,7 @@ vs 2026-04-13 (`13efff91`): original validated report was **overall +7 (69→76)
 | coverage | ≥98% (enforced) | vitest thresholds in config (root 100, server 98–99, gateway 98–100); do not rely on stale coverage-summary artifacts for this grade | 6.1 → +5 |
 | security_high | 0 | `npm audit --audit-level=high` (17 total: 16 low, 1 moderate) | 4.1 → +5 |
 | secrets (effective) | 0 real in the new-commit gate | explicit PEM-marker search now finds 8 markers: 7 allowlisted fixture hits and 1 allowlisted prose hit (`tasks/grade-fix-plan.md`); `gitleaks git --log-opts -1` passed on the latest commit, while full-history/current-directory scans still surface legacy/test/ignored-file false positives | 4.2 → +2 (new-commit gate measured) |
-| largest_file_lines | 2387 | `server/tests/unit/services/policyEvaluationEngine.test.ts` after the admin API contract split; next largest validated files include `server/tests/unit/services/bitcoin/blockchain.test.ts` at 2378 LOC and `server/tests/unit/services/backupService.test.ts` at 2335 LOC. `server/tests/unit/api/admin.test.ts` is now a 26-line registrar, with admin API contract modules capped at 937 LOC. | 3.3 → 0 |
+| largest_file_lines | 2378 | `server/tests/unit/services/bitcoin/blockchain.test.ts` after the policy engine contract split; next largest validated files include `server/tests/unit/services/backupService.test.ts` at 2335 LOC and `server/tests/unit/services/bitcoin/sync/phases.processTransactions.test.ts` at 2275 LOC. `server/tests/unit/services/policyEvaluationEngine.test.ts` is now a 30-line registrar, with policy engine contract modules capped at 601 LOC. | 3.3 → 0 |
 | lizard_warning_count | 83 | lizard 1.21.3 temporary `/tmp` install, CI command with current exclusions | 3.1 → +0 measured; enforced as no-increase baseline |
 | duplication_pct | 2.33% | `npm run quality` with temporary `/tmp` gitleaks/lizard installs and `GITLEAKS_LOG_OPTS=-1` | 3.2 → +3 |
 | deploy_artifact_count | 2 | Dockerfile + `.github/workflows/` (incl. new `quality.yml`) | 7.1 → +3 |
@@ -109,7 +109,7 @@ Every row below was checked against repository files or command output during th
 | Coverage | Valid as config thresholds: root 100%, server 98/99/99/99, gateway 100/98/100/100. Coverage-summary artifacts exist but may be stale/partial and should not be used as the grade source. | Keep threshold credit; do not cite stale coverage-summary totals. |
 | Audit | Valid: `npm audit --audit-level=high` exits clean while reporting 17 total lower-severity advisories: 16 low in the transitive `elliptic` chain and 1 moderate `follow-redirects`. | P2: run the nonbreaking `npm audit fix` path for `follow-redirects`; review the low `elliptic` chain separately because audit reports the available fix path as `npm audit fix --force` with a breaking `vite-plugin-node-polyfills` downgrade. Not a high-severity blocker. |
 | gitleaks/lizard/jscpd | Valid with correction: these tools were not installed globally, but temporary `/tmp` installs/binaries produced baselines. CI now runs all three as blocking regression gates; `.jscpd.json` exists and has been tuned to ignore local temp/report artifacts. | P1 implementation complete for regression gating; full-history gitleaks cleanup and lizard baseline reduction remain separate follow-ups. |
-| Largest file | Corrected after implementation: `server/tests/unit/api/openapi.test.ts` is now a 17-line suite registrar, with OpenAPI contract modules capped at 819 LOC. `server/tests/unit/api/transactions.test.ts` is now a 25-line suite registrar, with transaction API contract modules capped at 821 LOC. `server/tests/unit/api/admin.test.ts` is now a 26-line suite registrar, with admin API contract modules capped at 937 LOC. The current largest non-generated TS/TSX file found in the scoped search is `server/tests/unit/services/policyEvaluationEngine.test.ts` at 2387 LOC. | API test splits are complete; the next largest-file criterion work is service/integration test decomposition or reframing the scoring criterion. |
+| Largest file | Corrected after implementation: `server/tests/unit/api/openapi.test.ts` is now a 17-line suite registrar, with OpenAPI contract modules capped at 819 LOC. `server/tests/unit/api/transactions.test.ts` is now a 25-line suite registrar, with transaction API contract modules capped at 821 LOC. `server/tests/unit/api/admin.test.ts` is now a 26-line suite registrar, with admin API contract modules capped at 937 LOC. `server/tests/unit/services/policyEvaluationEngine.test.ts` is now a 30-line registrar, with policy engine contract modules capped at 601 LOC. The current largest non-generated TS/TSX file found in the scoped search is `server/tests/unit/services/bitcoin/blockchain.test.ts` at 2378 LOC. | API and policy-engine splits are complete; the next largest-file criterion work is service/integration test decomposition or reframing the scoring criterion. |
 | Health endpoint count | Corrected: 169 is a grep-hit count, not a route count. Real evidence includes `/health`, `/metrics`, `/api/v1/health` in `server/src/routes.ts` and `/health` in `gateway/src/index.ts`. | Keep ops credit but avoid calling 169 "routes." |
 | Suppression density | Corrected: direct source search found 25 suppressions, not 24, excluding generated Prisma files. Most have explanatory comments. | Keep as a low-risk maintainability note; lint can enforce future policy. |
 | Test-file count | Corrected: 771 TS/TSX test/spec files under `server/`, `gateway/`, and `tests/`; 785 when `e2e/` is included; 798 broader `.test`/`.spec` path matches. | Do not cite a single count without naming scope. |
@@ -129,7 +129,7 @@ Every row below was checked against repository files or command output during th
 ## Top Risks
 
 1. **CI quality signals are now blocking, but lizard is baseline-gated.** The new lint, gitleaks, lizard, and jscpd jobs are blocking in `.github/workflows/quality.yml`. `lizard` still has 83 existing warnings, so the immediate guardrail is "do not increase warning count"; reducing the baseline remains future maintainability work.
-2. **Remaining oversized service/integration tests** — the OpenAPI, transaction API, and admin API god-files are split, but the current largest non-generated TS/TSX file is now `server/tests/unit/services/policyEvaluationEngine.test.ts` at 2387 LOC, followed by `server/tests/unit/services/bitcoin/blockchain.test.ts` at 2378 LOC and `server/tests/unit/services/backupService.test.ts` at 2335 LOC. This keeps criterion 3.3 at 0 until those files are split or the scoring threshold is reframed.
+2. **Remaining oversized service/integration tests** — the OpenAPI, transaction API, admin API, and policy engine god-files are split, but the current largest non-generated TS/TSX file is now `server/tests/unit/services/bitcoin/blockchain.test.ts` at 2378 LOC, followed by `server/tests/unit/services/backupService.test.ts` at 2335 LOC and `server/tests/unit/services/bitcoin/sync/phases.processTransactions.test.ts` at 2275 LOC. This keeps criterion 3.3 at 0 until those files are split or the scoring threshold is reframed.
 3. **Inconsistent input validation at mutation boundaries** — the AI/device/wallet sharing/wallet CRUD/wallet import/wallet policy/wallet settings/wallet approval/Bitcoin/label/price/node/internal-mobile-permission/push/transfers/payjoin/transaction-UTXO/transaction-batch/sync/admin-monitoring/admin-policy/admin-node/AI-internal/intelligence/draft/auth-profile/auth-registration/auth-token slices are now on Zod-backed validation, but a post-slice `req.body` sweep still shows other handlers that need route-specific triage as already parser-backed or future Zod targets. A handler missing validation is a latent CWE-20.
 4. **Broader lint tightening remains.** The first-pass ESLint gate catches seeded violations for `console.log`, `catch (error: any)`, empty `catch`, and `@ts-ignore`; it does not yet enforce every `CLAUDE.md` rule such as raw `JSON.parse` because existing call sites need a separate baseline/fix pass.
 
@@ -159,16 +159,17 @@ Ordered by priority, not cost. The first two items are the ones that change the 
 - Replaced the 2825-line file with a 17-line suite registrar plus domain contract modules: core 417 LOC, wallet 462 LOC, admin-core 542 LOC, admin-ops 579 LOC, gateway 819 LOC, and shared helpers 113 LOC.
 - Preserved the executable test surface: before/after counts are `describe=1`, `it=42`, and `expect=584`; the OpenAPI `it` name set is unchanged.
 - Verification: `npx vitest run --config server/vitest.config.ts tests/unit/api/openapi.test.ts` passed with 42 tests.
-- Maintainability 3.3 score impact: **no numeric movement yet**. The OpenAPI, transaction API, and admin API god-files are gone, but `server/tests/unit/services/policyEvaluationEngine.test.ts` is now the largest scoped TS/TSX file at 2387 LOC, so the repo-wide largest-file criterion remains at 0.
+- Maintainability 3.3 score impact: **no numeric movement yet**. The OpenAPI, transaction API, admin API, and policy engine god-files are gone, but `server/tests/unit/services/bitcoin/blockchain.test.ts` is now the largest scoped TS/TSX file at 2378 LOC, so the repo-wide largest-file criterion remains at 0.
 
 ### Done — Split the remaining oversized API test files
 - `server/tests/unit/api/transactions.test.ts` is now split into a 25-line registrar plus contract modules capped at 821 LOC.
 - `server/tests/unit/api/admin.test.ts` is now split into a 26-line registrar plus contract modules capped at 937 LOC.
 - Preserved assertions the same way as the OpenAPI split: before/after admin API counts are `describe=38`, `it=71`, and `expect=180`.
-- Maintainability 3.3: **no numeric movement yet** because the scoped largest file is now `server/tests/unit/services/policyEvaluationEngine.test.ts` at 2387 LOC.
+- Maintainability 3.3: **no numeric movement yet** because service/integration tests remain above the scoped threshold.
 
-### P1 — Reduce the remaining largest service/integration test files if chasing 3.3 score movement
-- Next validated targets: `server/tests/unit/services/policyEvaluationEngine.test.ts` (2387 LOC), `server/tests/unit/services/bitcoin/blockchain.test.ts` (2378 LOC), and `server/tests/unit/services/backupService.test.ts` (2335 LOC).
+### In progress — Reduce the remaining largest service/integration test files if chasing 3.3 score movement
+- `server/tests/unit/services/policyEvaluationEngine.test.ts` is now split into a 30-line registrar plus contract modules capped at 601 LOC.
+- Next validated targets: `server/tests/unit/services/bitcoin/blockchain.test.ts` (2378 LOC), `server/tests/unit/services/backupService.test.ts` (2335 LOC), and `server/tests/unit/services/bitcoin/sync/phases.processTransactions.test.ts` (2275 LOC).
 - Use the same registrar/harness pattern only where the existing suite has clear domains; preserve before/after `describe`/`it`/`expect` counts and run each focused suite before broadening.
 - Maintainability 3.3: `0 → +2` only after the scoped largest-file threshold is actually cleared or the scoring criterion is narrowed.
 
@@ -237,7 +238,7 @@ Arithmetic check (rounded, no handwaving):
 |---|---|---|---|---|
 | 3.1 Cyclomatic complexity (lizard warnings) | +0 (83 warnings) | +0 (`>15`) | +3 (`1–5`) | +5 (`0`) |
 | 3.2 Duplication (jscpd %) | +3 (2.33%) | +3 (`<3%`) | +3 (`<3%`) | +3 (`<3%`) |
-| 3.3 Largest file (after OpenAPI + transaction + admin API splits) | 0 (`policyEvaluationEngine.test.ts` 2387 LOC) | 0 | +2 | +2 |
+| 3.3 Largest file (after OpenAPI + transaction + admin API + policy engine splits) | 0 (`blockchain.test.ts` 2378 LOC) | 0 | +2 | +2 |
 | 3.4 + 3.5 (unchanged) | +5 | +5 | +5 | +5 |
 | **Domain total** | **8** | **7** | **13** | **15** |
 
@@ -259,7 +260,7 @@ Deliberately not recommended from this evidence pass:
 
 ## Summary
 
-The repo climbed from **D (69) → C (76)** on the back of the typecheck fix (`350f67c1`); the recent performance/security commits (streamed exports, DoS cap, REPEATABLE READ snapshot) reinforce the existing Reliability score even though the static signals don't move. The biggest lever to reach B is now **reducing the measured lizard baseline, finishing the Zod validation sweep, and splitting the remaining oversized service/integration tests**: lint, gitleaks, lizard, and jscpd are blocking regression gates, but lizard still has 83 existing warnings and the largest test file is now `server/tests/unit/services/policyEvaluationEngine.test.ts` at 2387 LOC after the OpenAPI, transaction API, and admin API splits.
+The repo climbed from **D (69) → C (76)** on the back of the typecheck fix (`350f67c1`); the recent performance/security commits (streamed exports, DoS cap, REPEATABLE READ snapshot) reinforce the existing Reliability score even though the static signals don't move. The biggest lever to reach B is now **reducing the measured lizard baseline, finishing the Zod validation sweep, and splitting the remaining oversized service/integration tests**: lint, gitleaks, lizard, and jscpd are blocking regression gates, but lizard still has 83 existing warnings and the largest test file is now `server/tests/unit/services/bitcoin/blockchain.test.ts` at 2378 LOC after the OpenAPI, transaction API, admin API, and policy engine splits.
 
 ---
 
@@ -399,7 +400,7 @@ Verification after OpenAPI split:
 
 - `git diff --check` — passed.
 - `npx vitest run --config server/vitest.config.ts tests/unit/api/openapi.test.ts` — passed: 1 file, 42 tests.
-- Top non-generated TS/TSX file scan — current largest after the later transaction and admin API splits is `server/tests/unit/services/policyEvaluationEngine.test.ts` at 2387 LOC, followed by `server/tests/unit/services/bitcoin/blockchain.test.ts` at 2378 LOC and `server/tests/unit/services/backupService.test.ts` at 2335 LOC.
+- Top non-generated TS/TSX file scan — current largest after the later transaction, admin API, and policy engine splits is `server/tests/unit/services/bitcoin/blockchain.test.ts` at 2378 LOC, followed by `server/tests/unit/services/backupService.test.ts` at 2335 LOC and `server/tests/unit/services/bitcoin/sync/phases.processTransactions.test.ts` at 2275 LOC.
 
 ### Zod normalization slice — 2026-04-13
 
@@ -757,11 +758,27 @@ Implemented the next oversized API test split:
 - Split `server/tests/unit/api/admin.test.ts` from 2456 LOC into a 26-line suite registrar plus focused admin API contract modules.
 - New admin API test file sizes: `admin.users-groups.contracts.ts` 937 LOC, `admin.settings-node-backup.contracts.ts` 755 LOC, `admin.audit-version-electrum.contracts.ts` 576 LOC, and shared harness `adminTestHarness.ts` 267 LOC.
 - Preserved the executable test surface: before/after counts are `describe=38`, `it=71`, and `expect=180`.
-- Current largest non-generated TS/TSX file after the split is `server/tests/unit/services/policyEvaluationEngine.test.ts` at 2387 LOC, followed by `server/tests/unit/services/bitcoin/blockchain.test.ts` at 2378 LOC and `server/tests/unit/services/backupService.test.ts` at 2335 LOC. This closes the named oversized API-test P1 item, while service/integration test files still keep the repo-wide 3.3 score at 0.
+- Current largest non-generated TS/TSX file after the later policy engine split is `server/tests/unit/services/bitcoin/blockchain.test.ts` at 2378 LOC, followed by `server/tests/unit/services/backupService.test.ts` at 2335 LOC and `server/tests/unit/services/bitcoin/sync/phases.processTransactions.test.ts` at 2275 LOC. The admin split closed the named oversized API-test P1 item, while service/integration test files still keep the repo-wide 3.3 score at 0.
 
 Verification after admin API test split:
 
 - `npx vitest run --config server/vitest.config.ts tests/unit/api/admin.test.ts` — passed: 1 file, 71 tests.
+- `npx tsc --noEmit -p server/tsconfig.json` — passed.
+- `npm run lint` — passed.
+- `git diff --check` — passed.
+
+### Policy evaluation engine test split pass — 2026-04-13
+
+Implemented the next oversized service-test split:
+
+- Split `server/tests/unit/services/policyEvaluationEngine.test.ts` from 2387 LOC into a 30-line suite registrar plus focused policy engine contract modules.
+- New policy engine test file sizes: `evaluate.spending-approval.contracts.ts` 601 LOC, `evaluate.controls-timing.contracts.ts` 563 LOC, `recordUsage.contracts.ts` 528 LOC, `evaluate.error-preview-multiple.contracts.ts` 442 LOC, `windowBounds.contracts.ts` 216 LOC, and shared harness `policyEvaluationEngineTestHarness.ts` 105 LOC.
+- Preserved the executable test surface: before/after counts are `describe=14`, `it=82`, and `expect=195`.
+- Current largest non-generated TS/TSX file after the split is `server/tests/unit/services/bitcoin/blockchain.test.ts` at 2378 LOC, followed by `server/tests/unit/services/backupService.test.ts` at 2335 LOC and `server/tests/unit/services/bitcoin/sync/phases.processTransactions.test.ts` at 2275 LOC. This reduces the largest service-test hotspot but does not move the repo-wide 3.3 score yet.
+
+Verification after policy evaluation engine test split:
+
+- `npx vitest run --config server/vitest.config.ts tests/unit/services/policyEvaluationEngine.test.ts` — passed: 1 file, 82 tests.
 - `npx tsc --noEmit -p server/tsconfig.json` — passed.
 - `npm run lint` — passed.
 - `git diff --check` — passed.
