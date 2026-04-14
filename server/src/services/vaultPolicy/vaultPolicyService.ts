@@ -8,6 +8,10 @@ import type { VaultPolicy, Prisma } from '../../generated/prisma/client';
 import { policyRepository } from '../../repositories/policyRepository';
 import { NotFoundError, ForbiddenError, InvalidInputError } from '../../errors';
 import { createLogger } from '../../utils/logger';
+import {
+  VALID_ENFORCEMENT_MODES,
+  VALID_POLICY_TYPES,
+} from './types';
 import type {
   CreatePolicyInput,
   UpdatePolicyInput,
@@ -18,8 +22,6 @@ import type {
   TimeDelayConfig,
   AddressControlConfig,
   VelocityConfig,
-  VALID_POLICY_TYPES,
-  VALID_ENFORCEMENT_MODES,
 } from './types';
 
 const log = createLogger('VAULT_POLICY:SVC');
@@ -158,10 +160,7 @@ export async function updatePolicy(
   }
 
   if (input.enforcement !== undefined) {
-    const validModes = ['enforce', 'monitor'];
-    if (!validModes.includes(input.enforcement)) {
-      throw new InvalidInputError(`Invalid enforcement mode. Must be one of: ${validModes.join(', ')}`);
-    }
+    validateOptionalEnforcement(input.enforcement);
   }
 
   const updated = await policyRepository.updatePolicy(policyId, {
@@ -219,38 +218,38 @@ export async function getGroupPolicies(groupId: string): Promise<VaultPolicy[]> 
 // VALIDATION
 // ========================================
 
-function validatePolicyInput(input: CreatePolicyInput): void {
-  if (!input.name || input.name.trim().length === 0) {
+const validatePolicyInput = (input: CreatePolicyInput): void => {
+  validatePolicyName(input.name);
+  validatePolicyType(input.type);
+  validateOptionalEnforcement(input.enforcement);
+  validatePolicyConfig(input.type, input.config);
+};
+
+const validatePolicyName = (name: string): void => {
+  if (!name || name.trim().length === 0) {
     throw new InvalidInputError('Policy name is required');
   }
 
-  if (input.name.length > 100) {
+  if (name.length > 100) {
     throw new InvalidInputError('Policy name must be 100 characters or fewer');
   }
+};
 
-  const validTypes: PolicyType[] = [
-    'spending_limit',
-    'approval_required',
-    'time_delay',
-    'address_control',
-    'velocity',
-  ];
-
-  if (!validTypes.includes(input.type)) {
-    throw new InvalidInputError(`Invalid policy type. Must be one of: ${validTypes.join(', ')}`);
+const validatePolicyType = (type: PolicyType): void => {
+  if (!VALID_POLICY_TYPES.includes(type)) {
+    throw new InvalidInputError(`Invalid policy type. Must be one of: ${VALID_POLICY_TYPES.join(', ')}`);
   }
+};
 
-  if (input.enforcement !== undefined) {
-    const validModes = ['enforce', 'monitor'];
-    if (!validModes.includes(input.enforcement)) {
-      throw new InvalidInputError(`Invalid enforcement mode. Must be one of: ${validModes.join(', ')}`);
-    }
+const validateOptionalEnforcement = (
+  enforcement: CreatePolicyInput['enforcement'] | UpdatePolicyInput['enforcement']
+): void => {
+  if (enforcement !== undefined && !VALID_ENFORCEMENT_MODES.includes(enforcement)) {
+    throw new InvalidInputError(`Invalid enforcement mode. Must be one of: ${VALID_ENFORCEMENT_MODES.join(', ')}`);
   }
+};
 
-  validatePolicyConfig(input.type, input.config);
-}
-
-function validatePolicyConfig(type: PolicyType, config: PolicyConfig): void {
+const validatePolicyConfig = (type: PolicyType, config: PolicyConfig): void => {
   switch (type) {
     case 'spending_limit':
       validateSpendingLimitConfig(config as SpendingLimitConfig);
@@ -270,24 +269,19 @@ function validatePolicyConfig(type: PolicyType, config: PolicyConfig): void {
     default:
       throw new InvalidInputError(`Unknown policy type: ${type}`);
   }
-}
+};
 
-function validateSpendingLimitConfig(config: SpendingLimitConfig): void {
+const validateSpendingLimitConfig = (config: SpendingLimitConfig): void => {
   if (!config.scope || !['wallet', 'per_user'].includes(config.scope)) {
     throw new InvalidInputError('spending_limit config requires scope: "wallet" or "per_user"');
   }
 
-  const hasLimit = (config.perTransaction && config.perTransaction > 0)
-    || (config.daily && config.daily > 0)
-    || (config.weekly && config.weekly > 0)
-    || (config.monthly && config.monthly > 0);
-
-  if (!hasLimit) {
+  if (!hasPositiveLimit(config.perTransaction, config.daily, config.weekly, config.monthly)) {
     throw new InvalidInputError('spending_limit config requires at least one non-zero limit');
   }
-}
+};
 
-function validateApprovalRequiredConfig(config: ApprovalRequiredConfig): void {
+const validateApprovalRequiredConfig = (config: ApprovalRequiredConfig): void => {
   if (!config.trigger) {
     throw new InvalidInputError('approval_required config requires a trigger');
   }
@@ -310,9 +304,9 @@ function validateApprovalRequiredConfig(config: ApprovalRequiredConfig): void {
       throw new InvalidInputError('specific quorum requires specificApprovers array');
     }
   }
-}
+};
 
-function validateTimeDelayConfig(config: TimeDelayConfig): void {
+const validateTimeDelayConfig = (config: TimeDelayConfig): void => {
   if (!config.trigger) {
     throw new InvalidInputError('time_delay config requires a trigger');
   }
@@ -329,9 +323,9 @@ function validateTimeDelayConfig(config: TimeDelayConfig): void {
   if (!validEligible.includes(config.vetoEligible)) {
     throw new InvalidInputError(`vetoEligible must be one of: ${validEligible.join(', ')}`);
   }
-}
+};
 
-function validateAddressControlConfig(config: AddressControlConfig): void {
+const validateAddressControlConfig = (config: AddressControlConfig): void => {
   const validModes = ['allowlist', 'denylist'];
   if (!validModes.includes(config.mode)) {
     throw new InvalidInputError(`address_control mode must be one of: ${validModes.join(', ')}`);
@@ -340,21 +334,21 @@ function validateAddressControlConfig(config: AddressControlConfig): void {
   if (typeof config.allowSelfSend !== 'boolean') {
     throw new InvalidInputError('allowSelfSend must be a boolean');
   }
-}
+};
 
-function validateVelocityConfig(config: VelocityConfig): void {
+const validateVelocityConfig = (config: VelocityConfig): void => {
   if (!config.scope || !['wallet', 'per_user'].includes(config.scope)) {
     throw new InvalidInputError('velocity config requires scope: "wallet" or "per_user"');
   }
 
-  const hasLimit = (config.maxPerHour && config.maxPerHour > 0)
-    || (config.maxPerDay && config.maxPerDay > 0)
-    || (config.maxPerWeek && config.maxPerWeek > 0);
-
-  if (!hasLimit) {
+  if (!hasPositiveLimit(config.maxPerHour, config.maxPerDay, config.maxPerWeek)) {
     throw new InvalidInputError('velocity config requires at least one non-zero limit');
   }
-}
+};
+
+/** Undefined limit fields do not count as positive limits. */
+const hasPositiveLimit = (...limits: Array<number | undefined>): boolean =>
+  limits.some((limit) => limit !== undefined && limit > 0);
 
 // ========================================
 // EXPORTS
