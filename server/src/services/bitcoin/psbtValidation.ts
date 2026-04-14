@@ -27,6 +27,8 @@ export interface PsbtInput {
   sequence: number;
 }
 
+type ValidationMessages = Pick<ValidationResult, 'errors' | 'warnings'>;
+
 /**
  * Parse PSBT from base64 string
  */
@@ -133,81 +135,11 @@ export function validatePayjoinProposal(
     const originalInputs = getPsbtInputs(original);
     const proposalInputs = getPsbtInputs(proposal);
 
-    // Rule 1: Sender's outputs must be preserved or increased
-    for (const origOutput of originalOutputs) {
-      if (origOutput.address === 'unknown') continue;
-
-      const matchingOutput = proposalOutputs.find(
-        o => o.address === origOutput.address
-      );
-
-      if (!matchingOutput) {
-        errors.push(`Original output to ${origOutput.address} was removed`);
-      } else if (matchingOutput.value < origOutput.value) {
-        errors.push(
-          `Output to ${origOutput.address} decreased from ${origOutput.value} to ${matchingOutput.value}`
-        );
-      } else if (matchingOutput.value > origOutput.value) {
-        // This is allowed - receiver can contribute more
-        warnings.push(
-          `Output to ${origOutput.address} increased from ${origOutput.value} to ${matchingOutput.value}`
-        );
-      }
-    }
-
-    // Rule 2: Sender's inputs must not be modified
-    for (const idx of senderInputIndices) {
-      if (idx >= originalInputs.length) {
-        errors.push(`Sender input index ${idx} out of range`);
-        continue;
-      }
-      if (idx >= proposalInputs.length) {
-        errors.push(`Sender input ${idx} was removed from proposal`);
-        continue;
-      }
-
-      const origInput = originalInputs[idx];
-      const propInput = proposalInputs[idx];
-
-      if (origInput.txid !== propInput.txid || origInput.vout !== propInput.vout) {
-        errors.push(
-          `Sender input ${idx} was modified: ${origInput.txid}:${origInput.vout} -> ${propInput.txid}:${propInput.vout}`
-        );
-      }
-    }
-
-    // Rule 3: Fee must not increase unreasonably
-    const originalFee = calculatePsbtFee(original);
-    const proposalFee = calculatePsbtFee(proposal);
-
-    if (proposalFee > originalFee * 1.5) {
-      errors.push(
-        `Fee increased by more than 50%: ${originalFee} -> ${proposalFee} (${((proposalFee / originalFee - 1) * 100).toFixed(1)}%)`
-      );
-    } else if (proposalFee > originalFee * 1.2) {
-      warnings.push(
-        `Fee increased significantly: ${originalFee} -> ${proposalFee} (${((proposalFee / originalFee - 1) * 100).toFixed(1)}%)`
-      );
-    }
-
-    // Rule 4: Proposal must have at least as many inputs as original
-    // (receiver should add inputs, not remove)
-    if (proposalInputs.length < originalInputs.length) {
-      errors.push(
-        `Proposal has fewer inputs than original: ${proposalInputs.length} < ${originalInputs.length}`
-      );
-    }
-
-    // Rule 5: Check for receiver contribution (at least one new input)
-    const newInputs = proposalInputs.filter(
-      propInput => !originalInputs.some(
-        origInput => origInput.txid === propInput.txid && origInput.vout === propInput.vout
-      )
-    );
-
-    if (newInputs.length === 0) {
-      warnings.push('Receiver did not add any inputs - this is not a proper Payjoin');
-    }
+    validateSenderOutputs(originalOutputs, proposalOutputs, { errors, warnings });
+    validateSenderInputs(senderInputIndices, originalInputs, proposalInputs, { errors, warnings });
+    validateFeeIncrease(original, proposal, { errors, warnings });
+    validateProposalInputCount(originalInputs, proposalInputs, { errors, warnings });
+    validateReceiverContribution(originalInputs, proposalInputs, { errors, warnings });
 
   } catch (error) {
     errors.push(`Validation failed: ${getErrorMessage(error)}`);
@@ -219,6 +151,131 @@ export function validatePayjoinProposal(
     warnings,
   };
 }
+
+const validateSenderOutputs = (
+  originalOutputs: PsbtOutput[],
+  proposalOutputs: PsbtOutput[],
+  messages: ValidationMessages
+): void => {
+  for (const origOutput of originalOutputs) {
+    if (origOutput.address === 'unknown') continue;
+
+    const matchingOutput = proposalOutputs.find(
+      output => output.address === origOutput.address
+    );
+
+    validateSenderOutput(origOutput, matchingOutput, messages);
+  }
+};
+
+const validateSenderOutput = (
+  origOutput: PsbtOutput,
+  matchingOutput: PsbtOutput | undefined,
+  { errors, warnings }: ValidationMessages
+): void => {
+  if (!matchingOutput) {
+    errors.push(`Original output to ${origOutput.address} was removed`);
+  } else if (matchingOutput.value < origOutput.value) {
+    errors.push(
+      `Output to ${origOutput.address} decreased from ${origOutput.value} to ${matchingOutput.value}`
+    );
+  } else if (matchingOutput.value > origOutput.value) {
+    // This is allowed - receiver can contribute more
+    warnings.push(
+      `Output to ${origOutput.address} increased from ${origOutput.value} to ${matchingOutput.value}`
+    );
+  }
+};
+
+const validateSenderInputs = (
+  senderInputIndices: number[],
+  originalInputs: PsbtInput[],
+  proposalInputs: PsbtInput[],
+  { errors }: ValidationMessages
+): void => {
+  for (const idx of senderInputIndices) {
+    if (!hasOriginalSenderInput(idx, originalInputs, errors)) continue;
+    if (!hasProposalSenderInput(idx, proposalInputs, errors)) continue;
+
+    validateSenderInputUnchanged(idx, originalInputs[idx], proposalInputs[idx], errors);
+  }
+};
+
+const hasOriginalSenderInput = (idx: number, originalInputs: PsbtInput[], errors: string[]): boolean => {
+  if (idx < originalInputs.length) return true;
+
+  errors.push(`Sender input index ${idx} out of range`);
+  return false;
+};
+
+const hasProposalSenderInput = (idx: number, proposalInputs: PsbtInput[], errors: string[]): boolean => {
+  if (idx < proposalInputs.length) return true;
+
+  errors.push(`Sender input ${idx} was removed from proposal`);
+  return false;
+};
+
+const validateSenderInputUnchanged = (
+  idx: number,
+  origInput: PsbtInput,
+  propInput: PsbtInput,
+  errors: string[]
+): void => {
+  if (origInput.txid === propInput.txid && origInput.vout === propInput.vout) return;
+
+  errors.push(
+    `Sender input ${idx} was modified: ${origInput.txid}:${origInput.vout} -> ${propInput.txid}:${propInput.vout}`
+  );
+};
+
+const validateFeeIncrease = (
+  original: bitcoin.Psbt,
+  proposal: bitcoin.Psbt,
+  { errors, warnings }: ValidationMessages
+): void => {
+  const originalFee = calculatePsbtFee(original);
+  const proposalFee = calculatePsbtFee(proposal);
+
+  if (proposalFee > originalFee * 1.5) {
+    errors.push(
+      `Fee increased by more than 50%: ${originalFee} -> ${proposalFee} (${((proposalFee / originalFee - 1) * 100).toFixed(1)}%)`
+    );
+  } else if (proposalFee > originalFee * 1.2) {
+    warnings.push(
+      `Fee increased significantly: ${originalFee} -> ${proposalFee} (${((proposalFee / originalFee - 1) * 100).toFixed(1)}%)`
+    );
+  }
+};
+
+const validateProposalInputCount = (
+  originalInputs: PsbtInput[],
+  proposalInputs: PsbtInput[],
+  { errors }: ValidationMessages
+): void => {
+  if (proposalInputs.length >= originalInputs.length) return;
+
+  errors.push(
+    `Proposal has fewer inputs than original: ${proposalInputs.length} < ${originalInputs.length}`
+  );
+};
+
+const validateReceiverContribution = (
+  originalInputs: PsbtInput[],
+  proposalInputs: PsbtInput[],
+  { warnings }: ValidationMessages
+): void => {
+  const newInputs = proposalInputs.filter(
+    propInput => !originalInputs.some(origInput => isSameInput(origInput, propInput))
+  );
+
+  if (newInputs.length === 0) {
+    warnings.push('Receiver did not add any inputs - this is not a proper Payjoin');
+  }
+};
+
+const isSameInput = (a: PsbtInput, b: PsbtInput): boolean => {
+  return a.txid === b.txid && a.vout === b.vout;
+};
 
 /**
  * Check if a transaction is RBF-enabled (has any input with sequence < 0xfffffffe)
