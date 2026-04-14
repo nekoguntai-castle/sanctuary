@@ -22,16 +22,68 @@ export async function validateBackup(backup: unknown): Promise<ValidationResult>
   // Structure validation
   if (backup === null || backup === undefined || typeof backup !== 'object') {
     issues.push('Invalid backup format: not an object');
-    return {
-      valid: false,
-      issues,
-      warnings,
-      info: { createdAt: '', appVersion: '', schemaVersion: 0, totalRecords: 0, tables: [] },
-    };
+    return createValidationResult(false, issues, warnings);
   }
 
   const backupObj = backup as BackupRecord;
 
+  if (!validateBackupStructure(backupObj, issues)) {
+    return createValidationResult(false, issues, warnings);
+  }
+
+  const meta = backupObj.meta as BackupMeta;
+  const data = backupObj.data as Record<string, BackupRecord[]>;
+  const tables = Object.keys(data);
+
+  validateBackupMeta(meta, currentSchemaVersion, issues, warnings);
+  validateRequiredTables(data, issues, warnings);
+  validateUsers(data, issues);
+  validateDeviceReferences(data, issues);
+  validateWalletUserReferences(data, issues);
+
+  return createValidationResult(issues.length === 0, issues, warnings, meta, tables, data);
+}
+
+const createEmptyInfo = (): ValidationResult['info'] => ({
+  createdAt: '',
+  appVersion: '',
+  schemaVersion: 0,
+  totalRecords: 0,
+  tables: [],
+});
+
+const createValidationResult = (
+  valid: boolean,
+  issues: string[],
+  warnings: string[],
+  meta?: BackupMeta,
+  tables: string[] = [],
+  data?: Record<string, BackupRecord[]>
+): ValidationResult => {
+  if (!meta || !data) {
+    return {
+      valid,
+      issues,
+      warnings,
+      info: createEmptyInfo(),
+    };
+  }
+
+  return {
+    valid,
+    issues,
+    warnings,
+    info: {
+      createdAt: meta.createdAt || '',
+      appVersion: meta.appVersion || '',
+      schemaVersion: meta.schemaVersion || 0,
+      totalRecords: countTotalRecords(data, tables),
+      tables,
+    },
+  };
+};
+
+const validateBackupStructure = (backupObj: BackupRecord, issues: string[]): boolean => {
   if (!backupObj.meta) {
     issues.push('Missing meta section');
   }
@@ -40,18 +92,15 @@ export async function validateBackup(backup: unknown): Promise<ValidationResult>
     issues.push('Missing data section');
   }
 
-  if (issues.length > 0) {
-    return {
-      valid: false,
-      issues,
-      warnings,
-      info: { createdAt: '', appVersion: '', schemaVersion: 0, totalRecords: 0, tables: [] },
-    };
-  }
+  return issues.length === 0;
+};
 
-  const meta = backupObj.meta as BackupMeta;
-
-  // Version validation
+const validateBackupMeta = (
+  meta: BackupMeta,
+  currentSchemaVersion: number,
+  issues: string[],
+  warnings: string[]
+): void => {
   if (!meta.version) {
     issues.push('Missing backup format version');
   }
@@ -60,24 +109,39 @@ export async function validateBackup(backup: unknown): Promise<ValidationResult>
     warnings.push('Missing app version');
   }
 
+  validateSchemaVersion(meta, currentSchemaVersion, issues, warnings);
+};
+
+const validateSchemaVersion = (
+  meta: BackupMeta,
+  currentSchemaVersion: number,
+  issues: string[],
+  warnings: string[]
+): void => {
   if (meta.schemaVersion === undefined) {
     issues.push('Missing schema version');
-  } else if (meta.schemaVersion > currentSchemaVersion) {
-    // Allow restoring from slightly newer schema versions with a warning
-    // This can happen when migrations are consolidated during development
-    const versionDiff = meta.schemaVersion - currentSchemaVersion;
-    if (versionDiff <= 10) {
-      warnings.push(`Backup schema version (${meta.schemaVersion}) is newer than current (${currentSchemaVersion}). Proceeding with caution - some fields may be ignored.`);
-    } else {
-      issues.push(`Backup schema version (${meta.schemaVersion}) is too far ahead of current (${currentSchemaVersion}). Cannot restore from future version.`);
-    }
+    return;
   }
 
-  // Data validation
-  const data = backupObj.data as Record<string, BackupRecord[]>;
-  const tables = Object.keys(data);
+  if (meta.schemaVersion <= currentSchemaVersion) {
+    return;
+  }
 
-  // Check for required tables
+  // Slightly newer versions are allowed because migrations can be consolidated during development.
+  const versionDiff = meta.schemaVersion - currentSchemaVersion;
+  if (versionDiff <= 10) {
+    warnings.push(`Backup schema version (${meta.schemaVersion}) is newer than current (${currentSchemaVersion}). Proceeding with caution - some fields may be ignored.`);
+    return;
+  }
+
+  issues.push(`Backup schema version (${meta.schemaVersion}) is too far ahead of current (${currentSchemaVersion}). Cannot restore from future version.`);
+};
+
+const validateRequiredTables = (
+  data: Record<string, BackupRecord[]>,
+  issues: string[],
+  warnings: string[]
+): void => {
   for (const table of TABLE_ORDER) {
     if (!data[table]) {
       warnings.push(`Missing table: ${table}`);
@@ -85,8 +149,9 @@ export async function validateBackup(backup: unknown): Promise<ValidationResult>
       issues.push(`Table ${table} is not an array`);
     }
   }
+};
 
-  // Users validation
+const validateUsers = (data: Record<string, BackupRecord[]>, issues: string[]): void => {
   if (data.user && Array.isArray(data.user)) {
     if (data.user.length === 0) {
       issues.push('Backup must contain at least one user');
@@ -97,8 +162,12 @@ export async function validateBackup(backup: unknown): Promise<ValidationResult>
       }
     }
   }
+};
 
-  // Referential integrity checks
+const validateDeviceReferences = (
+  data: Record<string, BackupRecord[]>,
+  issues: string[]
+): void => {
   if (data.user && data.device) {
     const userIds = new Set(data.user.map((u: BackupRecord) => u.id));
     for (const device of data.device) {
@@ -107,7 +176,12 @@ export async function validateBackup(backup: unknown): Promise<ValidationResult>
       }
     }
   }
+};
 
+const validateWalletUserReferences = (
+  data: Record<string, BackupRecord[]>,
+  issues: string[]
+): void => {
   if (data.wallet && data.walletUser && data.user) {
     const walletIds = new Set(data.wallet.map((w: BackupRecord) => w.id));
     const userIds = new Set(data.user.map((u: BackupRecord) => u.id));
@@ -120,8 +194,9 @@ export async function validateBackup(backup: unknown): Promise<ValidationResult>
       }
     }
   }
+};
 
-  // Calculate total records
+const countTotalRecords = (data: Record<string, BackupRecord[]>, tables: string[]): number => {
   let totalRecords = 0;
   for (const table of tables) {
     if (Array.isArray(data[table])) {
@@ -129,16 +204,5 @@ export async function validateBackup(backup: unknown): Promise<ValidationResult>
     }
   }
 
-  return {
-    valid: issues.length === 0,
-    issues,
-    warnings,
-    info: {
-      createdAt: meta.createdAt || '',
-      appVersion: meta.appVersion || '',
-      schemaVersion: meta.schemaVersion || 0,
-      totalRecords,
-      tables,
-    },
-  };
-}
+  return totalRecords;
+};
