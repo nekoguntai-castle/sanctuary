@@ -35,6 +35,7 @@
     "node_modules",
     "server",
     "gateway",
-    "ai-proxy"
+    "ai-proxy",
+    "scripts/verify-addresses"
   ]
 }

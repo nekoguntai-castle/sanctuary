@@ -10,6 +10,7 @@
     "gateway",
     "ai-proxy",
     "tests",
-    "e2e"
+    "e2e",
+    "scripts/verify-addresses"
   ]
 }
