@@ -5,6 +5,27 @@
  * and address_n conversion for Trezor.
  */
 
+type TrezorScriptType = 'SPENDADDRESS' | 'SPENDP2SHWITNESS' | 'SPENDWITNESS' | 'SPENDTAPROOT';
+
+const SCRIPT_TYPE_BY_PURPOSE: Record<string, TrezorScriptType> = {
+  '44': 'SPENDADDRESS',
+  '49': 'SPENDP2SHWITNESS',
+  '84': 'SPENDWITNESS',
+  '86': 'SPENDTAPROOT',
+};
+
+function getHardenedPurpose(path: string): string | null {
+  const purposeMatch = path.replace(/^m\//, '').match(/^(\d+)(?:'|h)(?:\/|$)/);
+  return purposeMatch?.[1] ?? null;
+}
+
+function getBip48ScriptType(path: string): TrezorScriptType {
+  // BIP-48 script type suffix: /2' or /2h = native P2WSH; default = nested P2SH-P2WSH.
+  return path.includes("/2'") || path.includes("/2h")
+    ? 'SPENDWITNESS'
+    : 'SPENDP2SHWITNESS';
+}
+
 /**
  * Validate and format a satoshi amount for Trezor.
  * Handles both number and BigInt types, validates range.
@@ -26,34 +47,13 @@ export function validateSatoshiAmount(amount: number | bigint | undefined, conte
  * Determine Trezor script type from BIP path.
  * @internal Exported for testing
  */
-export const getTrezorScriptType = (path: string): 'SPENDADDRESS' | 'SPENDP2SHWITNESS' | 'SPENDWITNESS' | 'SPENDTAPROOT' => {
-  // Check for both apostrophe (') and h notation for hardened paths
-  if (path.startsWith("m/44'") || path.startsWith("44'") ||
-      path.startsWith("m/44h") || path.startsWith("44h")) {
-    return 'SPENDADDRESS';
+export const getTrezorScriptType = (path: string): TrezorScriptType => {
+  const purpose = getHardenedPurpose(path);
+  if (purpose === '48') {
+    return getBip48ScriptType(path);
   }
-  if (path.startsWith("m/49'") || path.startsWith("49'") ||
-      path.startsWith("m/49h") || path.startsWith("49h")) {
-    return 'SPENDP2SHWITNESS';
-  }
-  if (path.startsWith("m/84'") || path.startsWith("84'") ||
-      path.startsWith("m/84h") || path.startsWith("84h")) {
-    return 'SPENDWITNESS';
-  }
-  if (path.startsWith("m/86'") || path.startsWith("86'") ||
-      path.startsWith("m/86h") || path.startsWith("86h")) {
-    return 'SPENDTAPROOT';
-  }
-  // BIP-48 multisig paths
-  if (path.startsWith("m/48'") || path.startsWith("48'") ||
-      path.startsWith("m/48h") || path.startsWith("48h")) {
-    // Check script type suffix: /1' or /1h = P2SH-P2WSH, /2' or /2h = P2WSH
-    if (path.includes("/2'") || path.includes("/2h")) {
-      return 'SPENDWITNESS'; // Native SegWit multisig (P2WSH)
-    }
-    return 'SPENDP2SHWITNESS'; // Nested SegWit multisig (P2SH-P2WSH)
-  }
-  return 'SPENDWITNESS';
+
+  return purpose ? SCRIPT_TYPE_BY_PURPOSE[purpose] ?? 'SPENDWITNESS' : 'SPENDWITNESS';
 };
 
 /**
@@ -69,9 +69,7 @@ export const getTrezorScriptType = (path: string): 'SPENDADDRESS' | 'SPENDP2SHWI
  * @internal Exported for testing
  */
 export const isBip48MultisigPath = (path: string): boolean => {
-  // Check for both apostrophe notation (') and h notation
-  return path.startsWith("m/48'") || path.startsWith("48'") ||
-         path.startsWith("m/48h") || path.startsWith("48h");
+  return getHardenedPurpose(path) === '48';
 };
 
 /**
