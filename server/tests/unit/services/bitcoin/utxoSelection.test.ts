@@ -17,8 +17,7 @@ import {
   UTXOSelectionStrategy,
 } from '../../../../src/services/bitcoin/utxoSelection';
 
-// Helper to create mock UTXO records as Prisma would return them
-function createMockUtxo(overrides: Partial<{
+type MockUtxo = {
   id: string;
   txid: string;
   vout: number;
@@ -30,19 +29,33 @@ function createMockUtxo(overrides: Partial<{
   frozen: boolean;
   walletId: string;
   draftLock: unknown;
-}> = {}) {
+};
+
+const DEFAULT_MOCK_UTXO: MockUtxo = {
+  id: 'utxo-1',
+  txid: 'aaaa'.repeat(16),
+  vout: 0,
+  amount: BigInt(100000),
+  address: 'tb1qtest',
+  scriptPubKey: '0014abcdef',
+  confirmations: 6,
+  spent: false,
+  frozen: false,
+  walletId: 'wallet-1',
+  draftLock: null,
+};
+
+function nonNullishOverrides<T extends object>(overrides: Partial<T>): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(overrides).filter(([, value]) => value != null)
+  ) as Partial<T>;
+}
+
+// Helper to create mock UTXO records as Prisma would return them
+function createMockUtxo(overrides: Partial<MockUtxo> = {}): MockUtxo {
   return {
-    id: overrides.id ?? 'utxo-1',
-    txid: overrides.txid ?? 'aaaa'.repeat(16),
-    vout: overrides.vout ?? 0,
-    amount: overrides.amount ?? BigInt(100000),
-    address: overrides.address ?? 'tb1qtest',
-    scriptPubKey: overrides.scriptPubKey ?? '0014abcdef',
-    confirmations: overrides.confirmations ?? 6,
-    spent: overrides.spent ?? false,
-    frozen: overrides.frozen ?? false,
-    walletId: overrides.walletId ?? 'wallet-1',
-    draftLock: overrides.draftLock ?? null,
+    ...DEFAULT_MOCK_UTXO,
+    ...nonNullishOverrides(overrides),
   };
 }
 
