@@ -126,6 +126,58 @@ describe('Transaction Repository', () => {
     });
   });
 
+  describe('findByWalletIdWithDetails', () => {
+    it('should merge filters while keeping the scoped wallet id authoritative', async () => {
+      (prisma.transaction.findMany as Mock).mockResolvedValue([mockTransaction]);
+
+      await transactionRepository.findByWalletIdWithDetails('wallet-456', {
+        where: {
+          walletId: 'attacker-wallet',
+          rbfStatus: { not: 'replaced' },
+        },
+        include: {
+          transactionLabels: true,
+        },
+      });
+
+      expect(prisma.transaction.findMany).toHaveBeenCalledWith({
+        where: {
+          rbfStatus: { not: 'replaced' },
+          walletId: 'wallet-456',
+        },
+        include: {
+          transactionLabels: true,
+        },
+        orderBy: { blockTime: 'desc' },
+        take: undefined,
+        skip: undefined,
+      });
+    });
+  });
+
+  describe('findByWalletIdsWithDetails', () => {
+    it('should merge filters while keeping the scoped wallet id list authoritative', async () => {
+      (prisma.transaction.findMany as Mock).mockResolvedValue([mockTransaction]);
+
+      await transactionRepository.findByWalletIdsWithDetails(['wallet-1', 'wallet-2'], {
+        where: {
+          walletId: 'attacker-wallet',
+          type: 'sent',
+        },
+        take: 5,
+      });
+
+      expect(prisma.transaction.findMany).toHaveBeenCalledWith({
+        where: {
+          type: 'sent',
+          walletId: { in: ['wallet-1', 'wallet-2'] },
+        },
+        orderBy: { blockTime: 'desc' },
+        take: 5,
+      });
+    });
+  });
+
   describe('countByWalletId', () => {
     it('should return transaction count', async () => {
       (prisma.transaction.count as Mock).mockResolvedValue(42);

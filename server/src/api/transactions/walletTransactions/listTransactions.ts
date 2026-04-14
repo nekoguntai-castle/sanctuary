@@ -23,7 +23,7 @@ export function createListTransactionsRouter(): Router {
    * Get all transactions for a wallet
    */
   router.get('/wallets/:walletId/transactions', requireWalletAccess('view'), asyncHandler(async (req, res) => {
-    const walletId = req.walletId!;
+    const { walletId } = req.params;
     const { limit, offset } = validatePagination(
       req.query.limit as string,
       req.query.offset as string
@@ -36,8 +36,7 @@ export function createListTransactionsRouter(): Router {
     // Get cached block height for this network (no network call)
     const currentHeight = getCachedBlockHeight(network);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const transactions: any[] = await transactionRepository.findByWalletIdWithDetails(walletId, {
+    const transactions = await transactionRepository.findByWalletIdWithDetails(walletId, {
       where: {
         // Exclude replaced RBF transactions which are no longer in mempool
         // These show as "pending" forever since they'll never confirm
@@ -93,7 +92,7 @@ export function createListTransactionsRouter(): Router {
         // Calculate confirmations dynamically from cached block height
         // Falls back to stored value if cache not yet populated
         confirmations: currentHeight > 0 ? calculateConfirmations(blockHeight, currentHeight) : tx.confirmations,
-        labels: tx.transactionLabels.map((tl: any) => tl.label),
+        labels: tx.transactionLabels.map((tl) => tl.label),
         transactionLabels: undefined, // Remove the raw join data
       };
     });

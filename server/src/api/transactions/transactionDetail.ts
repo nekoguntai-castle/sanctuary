@@ -25,7 +25,7 @@ router.get('/transactions/:txid/raw', asyncHandler(async (req, res) => {
   // First, check if we have it in our database WITH wallet access verification
   const transaction = await transactionRepository.findByTxidWithAccess(txid, userId, {
     select: { id: true, rawTx: true, wallet: { select: { network: true } } },
-  }) as { id: string; rawTx: string | null; wallet: { network: string } | null } | null;
+  });
 
   if (transaction?.rawTx) {
     return res.json({ hex: transaction.rawTx });
@@ -58,7 +58,6 @@ router.get('/transactions/:txid', asyncHandler(async (req, res) => {
   const userId = req.user!.userId;
   const { txid } = req.params;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const transaction = await transactionRepository.findByTxidWithAccess(txid, userId, {
     include: {
       wallet: {
@@ -82,7 +81,7 @@ router.get('/transactions/:txid', asyncHandler(async (req, res) => {
         orderBy: { outputIndex: 'asc' },
       },
     },
-  }) as any;
+  });
 
   if (!transaction) {
     throw new NotFoundError('Transaction not found');
@@ -95,14 +94,14 @@ router.get('/transactions/:txid', asyncHandler(async (req, res) => {
     fee: transaction.fee ? Number(transaction.fee) : null,
     balanceAfter: transaction.balanceAfter ? Number(transaction.balanceAfter) : null,
     blockHeight: transaction.blockHeight ? Number(transaction.blockHeight) : null,
-    labels: transaction.transactionLabels.map((tl: any) => tl.label),
+    labels: transaction.transactionLabels.map((tl) => tl.label),
     transactionLabels: undefined, // Remove the raw join data
     // Serialize inputs/outputs
-    inputs: transaction.inputs.map((input: any) => ({
+    inputs: transaction.inputs.map((input) => ({
       ...input,
       amount: Number(input.amount),
     })),
-    outputs: transaction.outputs.map((output: any) => ({
+    outputs: transaction.outputs.map((output) => ({
       ...output,
       amount: Number(output.amount),
     })),

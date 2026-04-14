@@ -296,10 +296,21 @@ export async function findByIdWithAccess(
 /**
  * Find a transaction by txid with wallet access check
  */
+type FindByTxidWithAccessOptions = Omit<Prisma.TransactionFindFirstArgs, 'where'>;
+
+export async function findByTxidWithAccess(
+  txid: string,
+  userId: string
+): Promise<Transaction | null>;
+export async function findByTxidWithAccess<T extends FindByTxidWithAccessOptions>(
+  txid: string,
+  userId: string,
+  options: T
+): Promise<Prisma.TransactionGetPayload<T> | null>;
 export async function findByTxidWithAccess(
   txid: string,
   userId: string,
-  options?: { select?: Prisma.TransactionSelect; include?: Prisma.TransactionInclude }
+  options?: FindByTxidWithAccessOptions
 ) {
   const query: Prisma.TransactionFindFirstArgs = {
     where: {
@@ -346,20 +357,26 @@ export async function aggregateFees(walletId: string) {
 /**
  * Find transactions by wallet with full details (includes, labels, etc.)
  */
+type FindByWalletIdWithDetailsOptions = Omit<Prisma.TransactionFindManyArgs, 'where'> & {
+  where?: Prisma.TransactionWhereInput;
+};
+
+export async function findByWalletIdWithDetails(
+  walletId: string
+): Promise<Transaction[]>;
+export async function findByWalletIdWithDetails<T extends FindByWalletIdWithDetailsOptions>(
+  walletId: string,
+  options: T
+): Promise<Array<Prisma.TransactionGetPayload<T>>>;
 export async function findByWalletIdWithDetails(
   walletId: string,
-  options?: {
-    where?: Prisma.TransactionWhereInput;
-    include?: Prisma.TransactionInclude;
-    orderBy?: Prisma.TransactionOrderByWithRelationInput | Prisma.TransactionOrderByWithRelationInput[];
-    take?: number;
-    skip?: number;
-  }
+  options?: FindByWalletIdWithDetailsOptions
 ) {
   return prisma.transaction.findMany({
     where: {
-      walletId,
       ...options?.where,
+      // Keep the scoped wallet constraint last so caller filters cannot override it.
+      walletId,
     },
     include: options?.include,
     orderBy: options?.orderBy ?? { blockTime: 'desc' },
@@ -383,8 +400,9 @@ export async function findByWalletIdsWithDetails(
 ) {
   const query: Prisma.TransactionFindManyArgs = {
     where: {
-      walletId: { in: walletIds },
       ...options?.where,
+      // Keep the scoped wallet constraint last so caller filters cannot override it.
+      walletId: { in: walletIds },
     },
     orderBy: options?.orderBy ?? { blockTime: 'desc' },
     take: options?.take,
