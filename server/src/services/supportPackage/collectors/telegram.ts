@@ -11,7 +11,36 @@ import { circuitBreakerRegistry } from '../../circuitBreaker';
 import { deadLetterQueue } from '../../deadLetterQueue';
 import { registerCollector } from './registry';
 import type { CollectorContext } from '../types';
-import type { TelegramConfig } from '../../telegram/types';
+import type { TelegramConfig, WalletTelegramSettings } from '../../telegram/types';
+
+type WalletSettingDiagnosticInput = {
+  context: CollectorContext;
+  commonIssues: string[];
+  walletTypeMap: Map<string, string>;
+  accessibleWallets: Set<string>;
+  anonUserId: string;
+  globalEnabled: boolean;
+  walletId: string;
+  settings: Partial<WalletTelegramSettings>;
+};
+
+type WalletSettingDiagnostic = {
+  walletId: string;
+  walletType: string;
+  enabled: boolean;
+  notifyReceived: boolean;
+  notifySent: boolean;
+  notifyConsolidation: boolean;
+  notifyDraft: boolean;
+};
+
+type WalletSettingFlags = {
+  enabled: boolean;
+  notifyReceived: boolean;
+  notifySent: boolean;
+  notifyConsolidation: boolean;
+  notifyDraft: boolean;
+};
 
 registerCollector('telegram', async (context: CollectorContext) => {
   const commonIssues: string[] = [];
@@ -88,33 +117,18 @@ registerCollector('telegram', async (context: CollectorContext) => {
     }
 
     // Process wallet settings
-    const walletSettings = Object.entries(telegram?.wallets ?? {}).map(([walletId, settings]) => {
-      const anonWalletId = context.anonymize('wallet', walletId);
-
-      // Detect: wallet enabled but global disabled
-      if (settings.enabled && !globalEnabled) {
-        commonIssues.push(
-          `${anonUserId} has wallet ${anonWalletId} enabled but global telegram is disabled`
-        );
-      }
-
-      // Detect: orphaned wallet setting (user has no access)
-      if (!accessibleWallets.has(walletId)) {
-        commonIssues.push(
-          `${anonUserId} has settings for wallet ${anonWalletId} but no access to it (orphaned setting)`
-        );
-      }
-
-      return {
-        walletId: anonWalletId,
-        walletType: walletTypeMap.get(walletId) ?? 'unknown',
-        enabled: settings.enabled ?? false,
-        notifyReceived: settings.notifyReceived ?? false,
-        notifySent: settings.notifySent ?? false,
-        notifyConsolidation: settings.notifyConsolidation ?? false,
-        notifyDraft: settings.notifyDraft ?? false,
-      };
-    });
+    const walletSettings = Object.entries(telegram?.wallets ?? {}).map(([walletId, settings]) =>
+      buildWalletSettingDiagnostic({
+        context,
+        commonIssues,
+        walletTypeMap,
+        accessibleWallets,
+        anonUserId,
+        globalEnabled,
+        walletId,
+        settings,
+      })
+    );
 
     return {
       id: anonUserId,
@@ -157,3 +171,39 @@ registerCollector('telegram', async (context: CollectorContext) => {
     },
   };
 });
+
+function buildWalletSettingDiagnostic(
+  input: WalletSettingDiagnosticInput
+): WalletSettingDiagnostic {
+  const anonWalletId = input.context.anonymize('wallet', input.walletId);
+
+  // Detect: wallet enabled but global disabled
+  if (input.settings.enabled && !input.globalEnabled) {
+    input.commonIssues.push(
+      `${input.anonUserId} has wallet ${anonWalletId} enabled but global telegram is disabled`
+    );
+  }
+
+  // Detect: orphaned wallet setting (user has no access)
+  if (!input.accessibleWallets.has(input.walletId)) {
+    input.commonIssues.push(
+      `${input.anonUserId} has settings for wallet ${anonWalletId} but no access to it (orphaned setting)`
+    );
+  }
+
+  return {
+    walletId: anonWalletId,
+    walletType: input.walletTypeMap.get(input.walletId) ?? 'unknown',
+    ...getWalletSettingFlags(input.settings),
+  };
+}
+
+function getWalletSettingFlags(settings: Partial<WalletTelegramSettings>): WalletSettingFlags {
+  return {
+    enabled: settings.enabled ?? false,
+    notifyReceived: settings.notifyReceived ?? false,
+    notifySent: settings.notifySent ?? false,
+    notifyConsolidation: settings.notifyConsolidation ?? false,
+    notifyDraft: settings.notifyDraft ?? false,
+  };
+}
