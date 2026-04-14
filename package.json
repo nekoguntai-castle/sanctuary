@@ -42,9 +42,10 @@
     "typecheck:scripts": "tsc --noEmit -p tsconfig.scripts.json --noUnusedLocals --noUnusedParameters",
     "lint": "npm run lint:app && npm run lint:server && npm run lint:gateway",
     "lint:app": "eslint \"App.tsx\" \"components/**/*.{ts,tsx}\" \"contexts/**/*.{ts,tsx}\" \"hooks/**/*.{ts,tsx}\" \"services/**/*.{ts,tsx}\" \"src/**/*.{ts,tsx}\" \"themes/**/*.{ts,tsx}\" \"utils/**/*.{ts,tsx}\" \"shared/**/*.ts\"",
-    "lint:server": "eslint \"server/src/**/*.ts\" \"shared/**/*.ts\"",
+    "lint:server": "eslint \"server/src/**/*.ts\" \"shared/**/*.ts\" && npm run check:api-body-validation",
     "lint:gateway": "eslint \"gateway/src/**/*.ts\" \"shared/**/*.ts\"",
     "quality": "./scripts/quality.sh",
+    "check:api-body-validation": "node scripts/check-api-body-validation.mjs",
     "test:mutation": "stryker run",
     "test:mutation:backend": "cd server && npx stryker run",
     "test:mutation:critical:backend": "cd server && npm run test:mutation:critical:gate"

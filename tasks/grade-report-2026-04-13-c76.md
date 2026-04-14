@@ -1,6 +1,6 @@
 # Software Quality Report — 2026-04-13
 
-**Overall Score**: 80/100 (implementation-adjusted; original validated baseline was 76/100)
+**Overall Score**: 82/100 (implementation-adjusted; original validated baseline was 76/100)
 **Grade**: B
 **Confidence**: Low
 **Mode**: full
@@ -26,21 +26,22 @@ None. The explicit PEM-marker validation split into two groups:
 | Correctness             | 20/20     | Tests + typecheck + lint pass; High suppression density; High completeness |
 | Reliability             | 12/15     | Typed errors + central timeouts; middleware-guaranteed `!` remains by contract; the previously called-out transaction typing gaps are now fixed |
 | Maintainability         | 10/15     | lizard baseline measured at 83 warnings; jscpd measured at 2.33%; the scoped largest-file threshold is now cleared after the Electrum connection test split; clean architecture |
-| Security                | 11/15     | 0 high CVEs; no JS eval/DOM injection; mixed input validation; new-commit secret gate clean |
+| Security                | 13/15     | 0 high CVEs; no JS eval/DOM injection; API body validation sweep is guarded; new-commit secret gate clean |
 | Performance             | 4/10      | Cursor pagination + recent streaming; some in-loop N+1 risk |
 | Test Quality            | 13/15     | Thresholds 98–100% enforced; clear AAA structure; sleeps mostly intentional |
 | Operational Readiness   | 10/10     | Docker + CI + health/metrics endpoints + observability + structured logger |
-| **TOTAL**               | **80/100**|               |
+| **TOTAL**               | **82/100**|               |
 
 ---
 
 ## Trend
 
-vs 2026-04-13 (`13efff91`): original validated report was **overall +7 (69→76), grade D→C**, confidence Low→Low. The implementation-adjusted score is now **80/100** after the first-pass lint gate landed and the scoped largest-file threshold was cleared.
+vs 2026-04-13 (`13efff91`): original validated report was **overall +7 (69→76), grade D→C**, confidence Low→Low. The implementation-adjusted score is now **82/100** after the first-pass lint gate landed, the scoped largest-file threshold was cleared, and the API body-validation sweep was guarded.
 
 - **Correctness +4** (14→18): `typecheck=fail → pass` (commit `350f67c1` excluded `scripts/verify-addresses/` from root typecheck; `fc086954` stabilized coverage emission).
 - **Correctness +2 after implementation** (18→20): first-pass ESLint gate added and passing.
 - **Maintainability +2 after implementation** (8→10): the validated largest-file split backlog now clears the scoped threshold; the largest non-generated TS/TSX file is `server/tests/unit/services/utxoSelectionService.test.ts` at 991 LOC.
+- **Security +2 after implementation** (11→13): all `server/src/api` `req.body` readers are now covered by route-level `validate({ body })`, a shared Zod parser, direct `safeParse`, or a documented exception, and `npm run lint` now runs `scripts/check-api-body-validation.mjs` to prevent drift.
 - Other domains unchanged numerically; the remaining 7 commits delivered qualitative reliability/security/performance improvements (REPEATABLE READ snapshot on tx export, DoS cap on `POST /addresses/generate`, streamed tx export, halved device-route queries) that aren't captured by the static signal set.
 - Original heuristic deltas recorded in this report: `secrets` 7→8 (originally caused by `.gitleaks.toml` + `tasks/grade-fix-plan.md` PEM sentinel text — both false positives); `timeout_retry_count` 1264→1269 (+0.4%). After the implementation pass, `.gitleaks.toml` no longer contains a PEM sentinel string and grade task files are allowlisted. I could validate the commit history and the false-positive secret hits; I could not independently reproduce the exact timeout-count heuristic from repository files alone, and no local grade script was found in the repo.
 
@@ -59,6 +60,7 @@ vs 2026-04-13 (`13efff91`): original validated report was **overall +7 (69→76)
 | security_high | 0 | `npm audit --audit-level=high` (17 total: 16 low, 1 moderate) | 4.1 → +5 |
 | secrets (effective) | 0 real in the new-commit gate | explicit PEM-marker search now finds 8 markers: 7 allowlisted fixture hits and 1 allowlisted prose hit (`tasks/grade-fix-plan.md`); `gitleaks git --log-opts -1` passed on the latest commit, while full-history/current-directory scans still surface legacy/test/ignored-file false positives | 4.2 → +2 (new-commit gate measured) |
 | largest_file_lines | 991 | `server/tests/unit/services/utxoSelectionService.test.ts` after the Electrum connection test split; next largest validated files are `server/tests/unit/api/wallets-policies-routes.test.ts` at 981 LOC and `server/tests/unit/api/ai-internal.test.ts` at 964 LOC when generated verified-vector files are excluded. `server/tests/unit/services/bitcoin/electrum.connection.test.ts` is now a 16-line registrar, with Electrum connection contract/harness modules capped at 284 LOC. | 3.3 → +2 |
+| api_body_validation | pass | `scripts/check-api-body-validation.mjs`, now run by `npm run lint:server` | 4.3 → +3 |
 | lizard_warning_count | 83 | lizard 1.21.3 temporary `/tmp` install, CI command with current exclusions | 3.1 → +0 measured; enforced as no-increase baseline |
 | duplication_pct | 2.33% | `npm run quality` with temporary `/tmp` gitleaks/lizard installs and `GITLEAKS_LOG_OPTS=-1` | 3.2 → +3 |
 | deploy_artifact_count | 2 | Dockerfile + `.github/workflows/` (incl. new `quality.yml`) | 7.1 → +3 |
@@ -76,7 +78,7 @@ vs 2026-04-13 (`13efff91`): original validated report was **overall +7 (69→76)
     2. **Genuine typing gaps** — the earlier `walletImportService.ts` `existingDeviceId!` target was fixed during the first implementation pass, and the later `listTransactions.ts:26` (`walletId!`) / `transactionDetail.ts:85` (`as any`) targets were fixed during the transaction typing slice with typed params and repository payload overloads. ISO Fault Tolerance.
 - **[3.4] Architecture clarity — High → +3**: Clear `server/src/{api,services,repositories,middleware,utils}` split, `server/ARCHITECTURE.md` enforces repository pattern. ISO Modularity.
 - **[3.5] Readability / naming — High → +2**: Standardized helpers (`createLogger`, `safeJsonParse`, `getErrorMessage`, `isPrismaError`), consistent TS naming. ISO Analyzability.
-- **[4.3] Input validation quality — Medium → +1**: Zod-backed validation is used on more routes after the implementation passes (address generation, AI model pull/delete, AI suggest/query, device account creation, device sharing, wallet sharing, wallet-device linking, wallet CRUD, wallet import, wallet policy evaluate/address mutations, wallet autopilot/Telegram settings, XPUB validation, wallet approvals, Bitcoin mutation routes, label mutation routes, price conversion/cache-duration routes, node connection-test route, internal mobile-permission gateway check, push register/unregister/gateway-audit routes, transfer create/decline routes, authenticated Payjoin parse/attempt routes, transaction UTXO selection/privacy/freeze/batch routes, sync priority body routes, admin monitoring settings routes, admin policy create/update routes, admin node/proxy configuration routes, AI internal pull-progress route, intelligence mutation routes, draft create/update routes, auth profile preference updates, auth registration presence checks, and auth refresh-token body fallback); a post-slice `rg -n "req\\.body" server/src/api -g '*.ts'` sweep still finds other request-body readers that need route-specific triage as already parser-backed or future Zod targets. ISO Integrity.
+- **[4.3] Input validation quality — High → +3**: Zod-backed route validation or parser-backed schema helpers now cover the `server/src/api` request-body surface: address generation, AI model pull/delete, AI suggest/query, device account creation/sharing, wallet sharing/device/CRUD/import/policy/settings/approval routes, Bitcoin and label mutation routes, price/node/mobile-permission/push/transfer/payjoin/sync/admin/AI-internal/intelligence/draft/auth slices, plus parser-backed admin/mobile/transaction helpers. `npm run check:api-body-validation` now passes and is invoked by `npm run lint:server`; the documented exceptions are the auth login rate-limiter key extractor and the BIP78 Payjoin raw `text/plain` receiver body. ISO Integrity.
 - **[4.4] Safe system/API usage — High → +3**: No JS `eval`, `innerHTML`, or `dangerouslySetInnerHTML` in app source; `execSync` only in `migrationService.ts:203`; Redis `eval()` is Lua-only at `infrastructure/distributedLock.ts:214` and in the Redis rate limiter. Prisma tagged `$queryRaw`/`$executeRaw` exists for health checks, aggregation, and maintenance; I found no unsafe string-built raw SQL (`queryRawUnsafe`/`executeRawUnsafe`). ISO Integrity.
 - **[5.1] Time Behaviour — Medium → +2**: Cursor pagination + block-height caching in `listTransactions.ts:25-67`; recent streaming export improvement; but dual sequential derivation loops in `addresses.ts:63-101`. ISO Time Behaviour.
 - **[5.2] Data access patterns — Medium → +1**: `transactionRepository.ts:69-100` uses compound cursors; `mobilePermissionRepository.ts:112-133` avoids N+1 via join; still some sequential post-query enrichment in `addresses.ts:114-120`. ISO Resource Utilization.
@@ -118,7 +120,7 @@ Every row below was checked against repository files or command output during th
 | Timeouts/retries count | Partially validated: central Electrum timeout config exists; exact `1269` count was not reproduced from file search and the local generator script was not present. | Keep strength, but cite the config rather than the exact count. |
 | Crash-prone paths | Corrected: many `req.user!`/`req.walletId!` uses are middleware-guaranteed; the wallet-import `existingDeviceId!` assertions were fixed during implementation; the wallet transaction list `walletId!` and transaction detail/list serialization `as any` casts were fixed during the transaction typing slice. | P2 typing-gap item is complete; leave middleware-guaranteed request augmentations alone unless their middleware contract changes. |
 | Architecture clarity | Valid: `server/ARCHITECTURE.md` documents route/service/repository layering and Prisma boundaries; `server/package.json` has `check:prisma-imports`. | Preserve; no broad refactor recommended. |
-| Input validation | Valid mixed state: `server/src/api/transactions/addresses.ts` uses Zod `validate({ body: GenerateAddressesBodySchema })`; `server/src/api/transactions/coinSelection.ts`, `server/src/api/transactions/privacy.ts`, `server/src/api/transactions/utxos.ts`, `server/src/api/transactions/drafting.ts` batch transaction route, `server/src/api/ai/models.ts`, `server/src/api/ai/features.ts`, `server/src/api/devices/accounts.ts`, `server/src/api/devices/sharing.ts`, `server/src/api/wallets/sharing.ts`, `server/src/api/wallets/devices.ts`, `server/src/api/wallets/crud.ts`, `server/src/api/wallets/import.ts`, `server/src/api/wallets/policies.ts`, `server/src/api/wallets/autopilot.ts`, `server/src/api/wallets/telegram.ts`, `server/src/api/wallets/xpubValidation.ts`, `server/src/api/wallets/approvals.ts`, Bitcoin mutation routes, label mutation routes, `server/src/api/price.ts` conversion/cache-duration routes, `server/src/api/node.ts` connection-test route, `server/src/api/mobilePermissions.ts` internal gateway check, `server/src/api/push.ts` register/unregister/gateway-audit routes, `server/src/api/transfers.ts` create/decline routes, `server/src/api/payjoin.ts` authenticated parse/attempt routes, `server/src/api/sync.ts` priority body routes, `server/src/api/admin/monitoring.ts` settings routes, `server/src/api/admin/policies.ts` system-policy create/update routes, `server/src/api/admin/nodeConfig.ts` node config update/test routes, `server/src/api/admin/proxyTest.ts` proxy test route, `server/src/api/ai-internal.ts` pull-progress route, `server/src/api/intelligence.ts` mutation routes, `server/src/api/drafts.ts` create/update routes, `server/src/api/auth/profile.ts` preference update route, `server/src/api/auth/login.ts` registration route, and `server/src/api/auth/tokens.ts` refresh-token body fallback have now been migrated during implementation. A post-slice `rg -n "req\\.body" server/src/api -g '*.ts'` sweep still shows other request-body readers that should be triaged as parser-backed exceptions or future Zod targets. | P1: continue normalizing mutation request bodies onto Zod. |
+| Input validation | Valid and now guarded: `scripts/check-api-body-validation.mjs` scans `server/src/api/**/*.ts` `req.body` reads and passes only route-level `validate({ body })`, shared Zod parser helpers, direct `safeParse`, or documented exceptions. `npm run lint:server` runs the guard after ESLint, and `npm run lint` passed with it enabled. | P1 Zod normalization is complete for the scoped API body-reader surface; keep the guard in lint and update its documented exceptions only when a route has a deliberate non-JSON body contract. |
 | Safe system/API usage | Corrected: no JS eval/DOM injection found in app source; Redis Lua `eval` and tagged Prisma raw SQL are present; no unsafe raw SQL helpers were found. | Keep Security credit; do not claim "Prisma ORM throughout." |
 | Performance/data access | Valid: cursor pagination exists in `transactionRepository.ts`; wallet transaction listing uses cached block height; address generation and enrichment loops remain sequential. | Keep medium performance score and targeted Zod/cap/loop notes. |
 | Blocking I/O | Corrected: direct app-source search found 11 sync FS/exec call sites, not the original `28`; they are startup/config/provider/migration paths rather than main request hot paths. | Track, but do not make this a P1. |
@@ -131,8 +133,7 @@ Every row below was checked against repository files or command output during th
 
 1. **CI quality signals are now blocking, but lizard is baseline-gated.** The new lint, gitleaks, lizard, and jscpd jobs are blocking in `.github/workflows/quality.yml`. `lizard` still has 83 existing warnings, so the immediate guardrail is "do not increase warning count"; reducing the baseline remains future maintainability work.
 2. **Large-file buffer remains thin, but criterion 3.3 is cleared.** The scoped largest non-generated TS/TSX file is now `server/tests/unit/services/utxoSelectionService.test.ts` at 991 LOC, followed by `server/tests/unit/api/wallets-policies-routes.test.ts` at 981 LOC and `server/tests/unit/api/ai-internal.test.ts` at 964 LOC when generated verified-vector files are excluded. This earns the 3.3 `+2`; further splits are useful only to keep future edits from crossing the threshold again.
-3. **Inconsistent input validation at mutation boundaries** — the AI/device/wallet sharing/wallet CRUD/wallet import/wallet policy/wallet settings/wallet approval/Bitcoin/label/price/node/internal-mobile-permission/push/transfers/payjoin/transaction-UTXO/transaction-batch/sync/admin-monitoring/admin-policy/admin-node/AI-internal/intelligence/draft/auth-profile/auth-registration/auth-token slices are now on Zod-backed validation, but a post-slice `req.body` sweep still shows other handlers that need route-specific triage as already parser-backed or future Zod targets. A handler missing validation is a latent CWE-20.
-4. **Broader lint tightening remains.** The first-pass ESLint gate catches seeded violations for `console.log`, `catch (error: any)`, empty `catch`, and `@ts-ignore`; it does not yet enforce every `CLAUDE.md` rule such as raw `JSON.parse` because existing call sites need a separate baseline/fix pass.
+3. **Broader lint tightening remains.** The first-pass ESLint gate catches seeded violations for `console.log`, `catch (error: any)`, empty `catch`, and `@ts-ignore`; API body-validation drift is now guarded, but the lint gate does not yet enforce every `CLAUDE.md` rule such as raw `JSON.parse` because existing call sites need a separate baseline/fix pass.
 
 **Not top risks** (but worth tracking):
 
@@ -220,11 +221,12 @@ Ordered by priority, not cost. The first two items are the ones that change the 
 - Use the same registrar/harness pattern only where the existing suite has clear domains; preserve before/after `describe`/`it`/`expect` counts and run each focused suite before broadening.
 - Maintainability 3.3: `0 → +2` after the Electrum connection split cleared the scoped largest-file threshold.
 
-### In progress — Continue normalizing request-body validation on Zod
+### Done — Normalize request-body validation on Zod and guard it
 - Use `server/src/api/transactions/addresses.ts` + `server/src/api/schemas/transactions.ts` as the template (`validate({ body: Schema })` middleware, cap bounds in the schema).
 - `server/src/api/ai/models.ts` `POST /pull-model` and `DELETE /delete-model`, `server/src/api/ai/features.ts`, `server/src/api/devices/accounts.ts`, device/wallet sharing, wallet-device linking, wallet CRUD/import/policy routes, wallet autopilot/Telegram settings, XPUB validation, wallet approvals, Bitcoin mutation routes, label mutation routes, transaction UTXO selection/privacy/freeze routes, transaction batch drafting route, price conversion/cache-duration routes, node connection-test route, the internal mobile-permission gateway check, push register/unregister/gateway-audit routes, transfer create/decline routes, authenticated Payjoin parse/attempt routes, sync priority body routes, admin monitoring settings routes, admin policy create/update routes, admin node/proxy configuration routes, AI internal pull-progress route, intelligence mutation routes, draft create/update routes, auth profile preference updates, auth registration presence checks, and auth refresh-token body fallback have been migrated during implementation.
-- Continue by triaging the remaining `rg -n "req\\.body" server/src/api -g '*.ts'` hits as parser-backed exceptions or future Zod targets, then sweep any other `if (!foo) return 400` patterns in mutation handlers.
-- Security 4.3 full-sweep target: `+1 → +3` (**+2 points**) once the remaining mutation handlers are migrated or explicitly documented as parser-backed exceptions.
+- The remaining `rg -n "req\\.body" server/src/api -g '*.ts'` hits have been triaged as route-level `validate({ body })`, shared Zod parser helpers, direct `safeParse`, or documented exceptions (`server/src/api/auth.ts` login rate-limiter key extraction and the raw `text/plain` BIP78 Payjoin receiver body).
+- Added `scripts/check-api-body-validation.mjs` and wired it into `npm run lint:server`, so future `req.body` readers must stay validated, parser-backed, or explicitly documented.
+- Security 4.3 full-sweep target: `+1 → +3` (**+2 points**) is complete for the scoped API body-reader surface.
 
 ### Done — Address the genuine typing gaps
 - `resolution.existingDeviceId!` in `server/src/services/walletImport/walletImportService.ts` was replaced with a proper narrowing branch during the first implementation pass.
@@ -237,7 +239,7 @@ Ordered by priority, not cost. The first two items are the ones that change the 
 - Run the nonbreaking `npm audit fix` path for the moderate `follow-redirects <=1.15.11` advisory. No score impact at the high-severity gate, but keeps the advisory list tidy.
 - Review the low-severity `elliptic` transitive chain separately. Current `npm audit --audit-level=high` output reports a `npm audit fix --force` path that would install `vite-plugin-node-polyfills@0.2.0` as a breaking change, so do not force that under this quality-report cleanup.
 
-Combined low-effort ceiling from the remaining P1 items: **≈ 86 (B)**, assuming lizard baseline reduction and Zod normalization. The scoped largest-file criterion is now cleared; additional file splits only add buffer against future growth.
+Combined low-effort ceiling from the remaining P1 items: **≈ 85–89 (B)**, depending on lizard baseline reduction and whether the legacy/current-tree gitleaks false-positive cleanup is completed. The scoped largest-file and API body-validation criteria are now cleared; additional file splits only add buffer against future growth.
 
 ### Execution order & dependencies
 
@@ -246,7 +248,7 @@ The four P1 items can largely run in parallel, but there is one sequencing rule 
 1. **Install tools locally first** (`gitleaks`, `lizard`, `jscpd`). Do this before anything else — it unblocks a pre-push `scripts/quality.sh` and lets you baseline without round-tripping through CI. ~10 min.
 2. **Baseline the three existing CI jobs in a separate branch** before touching `continue-on-error`. If `lizard` or `jscpd` report pre-existing violations, triage them into either "fix now" or "document + add exclusion", then flip `continue-on-error: false` per-job only when each one is clean. Do NOT flip all three at once.
 3. **The first-pass lint gate and largest-file threshold work have landed.** Use the registrar/harness pattern only for future buffer splits, and use the existing validation cadence for the Zod sweep work.
-4. **Zod normalization sweep (P1 #4)** can now add a regression-prevention rule to `eslint.config.js` — e.g., an `no-restricted-syntax` rule flagging any function that references `req.body` without a nearby `validate({ body: … })` import, or a simpler taxonomy check that forbids destructuring `req.body` in handler function bodies. The rule should NOT try to force `validate({ body })` onto bodyless mutation handlers; it should trigger only when `req.body` is actually read.
+4. **Zod normalization sweep (P1 #4)** is complete for the scoped API body-reader surface and now has a regression guard: `scripts/check-api-body-validation.mjs`, run by `npm run lint:server`. The guard should be updated only for deliberate non-JSON body contracts or shared parser-backed helpers.
 5. **P2 typing-gap work (item #5)** is complete; do not broaden it into a rewrite of middleware-guaranteed request augmentation assertions.
 
 ### Acceptance criteria per P1 item
@@ -256,29 +258,29 @@ The four P1 items can largely run in parallel, but there is one sequencing rule 
 | Lint gate | Done locally: `npm run lint` exists in root + server + gateway, `.github/workflows/quality.yml` has a blocking `lint` job, and the rules fail on seeded violations for `console.log`, `catch (error: any)`, empty `catch`, and `@ts-ignore`. |
 | CI signals enforceable | Done for regression gating: `scripts/quality.sh` runs all three tools; `quality.yml`'s `gitleaks`, `lizard`, and `jscpd` jobs no longer use `continue-on-error`; gitleaks gates PR/latest commits, lizard gates no increase above 83 warnings, and jscpd gates the existing 5% threshold. |
 | API/test split backlog | Done for the original named API files and the later largest-file threshold backlog: OpenAPI, transaction API, and admin API suite registrars are 17, 25, and 26 LOC respectively; later passes split service, integration, frontend, gateway, and API tests down through `server/tests/unit/services/bitcoin/electrum.connection.test.ts`. The scoped largest-file criterion is now cleared, with `server/tests/unit/services/utxoSelectionService.test.ts` at 991 LOC as the current largest non-generated TS/TSX file. |
-| Zod normalization | Every handler in `server/src/api/**` that reads `req.body` (directly or via destructure such as `const { x } = req.body`) is gated by a `validate({ body: Schema })` middleware on its route registration. Handlers with no request body (e.g. `DELETE /resource/:id`, action endpoints keyed only by URL/query params) are explicitly out of scope and do not need `validate({ body })`. The two original AI model offenders have been migrated; verify the remaining sweep by (a) reading each mutation handler that references `req.body` against its route registration, and (b) confirming remaining inline body guards have been replaced or intentionally documented. |
+| Zod normalization | Done: `server/src/api/**` `req.body` readers are covered by `validate({ body })`, shared parser-backed helpers, direct `safeParse`, or documented exceptions. `npm run check:api-body-validation` passes and is part of `npm run lint:server`. |
 
 ### Target state after P1 (projected)
 
-The "After P1" ranges below assume P1 is run to the mid-case Maintainability band *at minimum* — that is, Execution Order item 2 ("triage lizard/jscpd violations into 'fix now' or 'document + add exclusion'") is part of P1 scope, not a follow-up. The largest-file threshold is already cleared; remaining score movement comes from lizard baseline reduction and Zod/security cleanup.
+The "After P1" ranges below assume P1 is run to the mid-case Maintainability band *at minimum* — that is, Execution Order item 2 ("triage lizard/jscpd violations into 'fix now' or 'document + add exclusion'") is part of P1 scope, not a follow-up. The largest-file threshold and Zod body-validation sweep are already cleared; remaining score movement comes from lizard baseline reduction and gitleaks false-positive cleanup.
 
 | Domain | Current | After P1 (mid → best) | Delta | Driver |
 |---|---|---|---|---|
 | Correctness | 20/20 | 20/20 | 0 | First-pass lint gate already landed |
 | Reliability | 12/15 | 12/15 | 0 | Unchanged (P2 typing gaps don't move the band) |
 | Maintainability | 10/15 | 13 → 15/15 | +3 to +5 | See per-criterion breakdown below |
-| Security | 11/15 | 13 → 15/15 | +2 to +4 | gitleaks measured (4.2) `+0 to +2`; Zod normalization (4.3) `+2` |
+| Security | 13/15 | 13 → 15/15 | +0 to +2 | gitleaks full-history/current-tree cleanup (4.2) can still add up to `+2`; Zod normalization (4.3) is complete |
 | Performance | 4/10 | 4/10 | 0 | No P1 item targets Performance (see rationale below) |
 | Test Quality | 13/15 | 13/15 | 0 | No P1 item targets Test Quality |
 | Operational Readiness | 10/10 | 10/10 | 0 | At cap |
-| **TOTAL** | **80/100 (B)** | **85 → 89/100 (B)** | **+5 to +9** | Realistic mid-estimate: **~86 (B)** |
+| **TOTAL** | **82/100 (B)** | **85 → 89/100 (B)** | **+3 to +7** | Realistic mid-estimate: **~85–86 (B)** |
 
 Arithmetic check (rounded, no handwaving):
 
-- Current total: 20 + 12 + 10 + 11 + 4 + 13 + 10 = **80**
+- Current total: 20 + 12 + 10 + 13 + 4 + 13 + 10 = **82**
 - Mid-case total: 20 + 12 + 13 + 13 + 4 + 13 + 10 = **85**
 - Best-case total: 20 + 12 + 15 + 15 + 4 + 13 + 10 = **89**
-- Mid-estimate (requires lizard baseline reduction + full Zod sweep + clean gitleaks regression gate): 20 + 12 + 13 + 14 + 4 + 13 + 10 = **86**
+- Mid-estimate (requires lizard baseline reduction plus partial gitleaks false-positive cleanup): 20 + 12 + 13 + 14 + 4 + 13 + 10 = **86**
 
 **Maintainability range breakdown** — 3.1 and 3.2 are now measured, and 3.3 is now cleared:
 
@@ -308,7 +310,7 @@ Deliberately not recommended from this evidence pass:
 
 ## Summary
 
-The repo climbed from **D (69) → C (76)** on the back of the typecheck fix (`350f67c1`), and the implementation-adjusted score is now **80/100 (B)** after the lint gate and scoped largest-file threshold work. The biggest remaining levers are **reducing the measured lizard baseline and finishing the Zod validation sweep**: lint, gitleaks, lizard, and jscpd are blocking regression gates, but lizard still has 83 existing warnings and the largest scoped TS/TSX file is now `server/tests/unit/services/utxoSelectionService.test.ts` at 991 LOC.
+The repo climbed from **D (69) → C (76)** on the back of the typecheck fix (`350f67c1`), and the implementation-adjusted score is now **82/100 (B)** after the lint gate, scoped largest-file threshold work, and guarded API body-validation sweep. The biggest remaining lever is **reducing the measured lizard baseline**; full-history/current-tree gitleaks false-positive cleanup can still add security headroom. The largest scoped TS/TSX file is now `server/tests/unit/services/utxoSelectionService.test.ts` at 991 LOC.
 
 ---
 
@@ -766,6 +768,20 @@ Verification after transaction batch Zod slice:
 - `npx tsc --noEmit -p server/tsconfig.json` — passed.
 - `npm run lint` — passed.
 - `git diff --check` — passed.
+
+### API body-validation guard pass — 2026-04-13
+
+Implemented the regression guard for the request-body validation sweep:
+
+- Added `scripts/check-api-body-validation.mjs` to scan `server/src/api/**/*.ts` for `req.body` reads and require route-level `validate({ body })`, a shared Zod parser helper, direct `safeParse`, or a documented exception.
+- Wired the guard into `npm run lint:server` so `npm run lint` now blocks body-reader drift after the ESLint server-source pass.
+- Documented the two intentional exceptions in the checker: `server/src/api/auth.ts` uses `req.body?.username` only as a login rate-limiter key extractor, and `server/src/api/payjoin.ts` accepts the BIP78 receiver PSBT as raw `text/plain`.
+- Verified the existing `server/src/api` body-reader surface against the guard; no route code changes were required because remaining hits were already route-validated, parser-backed, direct `safeParse`, or documented exceptions.
+
+Verification after API body-validation guard:
+
+- `npm run check:api-body-validation` — passed.
+- `npm run lint` — passed, including the new guard under `lint:server`.
 
 ### Transaction typing gap slice — 2026-04-13
 
