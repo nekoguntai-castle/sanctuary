@@ -132,6 +132,14 @@ function isDeviceRole(value: unknown): boolean {
   return isEnumValue(value, DEVICE_ROLES);
 }
 
+function isTransactionType(value: unknown): boolean {
+  return isEnumValue(value, TX_TYPES);
+}
+
+function isTransactionStatus(value: unknown): boolean {
+  return isEnumValue(value, TX_STATUSES);
+}
+
 const WALLET_RESPONSE_RULES: FieldValidationRule[] = [
   { field: 'id', isValid: isString, message: 'id must be a string' },
   { field: 'name', isValid: isString, message: 'name must be a string' },
@@ -188,6 +196,23 @@ const DEVICE_RESPONSE_RULES: FieldValidationRule[] = [
   { field: 'walletCount', isValid: isNumber, message: 'walletCount must be a number' },
 ];
 
+const TRANSACTION_RESPONSE_RULES: FieldValidationRule[] = [
+  { field: 'id', isValid: isString, message: 'id must be a string' },
+  { field: 'txid', isValid: isString, message: 'txid must be a string' },
+  { field: 'type', isValid: isTransactionType, message: `type must be one of: ${TX_TYPES.join(', ')}` },
+  { field: 'status', isValid: isTransactionStatus, message: `status must be one of: ${TX_STATUSES.join(', ')}` },
+  { field: 'amount', isValid: isBigIntString, message: 'amount must be a numeric string' },
+  { field: 'fee', isValid: isBigIntString, message: 'fee must be a numeric string' },
+  { field: 'confirmations', isValid: isNumber, message: 'confirmations must be a number' },
+  { field: 'blockHeight', isValid: isNullableNumber, message: 'blockHeight must be a number or null' },
+  { field: 'blockTime', isValid: isNullableIsoDateString, message: 'blockTime must be an ISO date string or null' },
+  { field: 'label', isValid: isNullableString, message: 'label must be a string or null' },
+  { field: 'memo', isValid: isNullableString, message: 'memo must be a string or null' },
+  { field: 'replacedByTxid', isValid: isNullableString, message: 'replacedByTxid must be a string or null' },
+  { field: 'createdAt', isValid: isIsoDateString, message: 'createdAt must be an ISO date string' },
+  { field: 'isRbf', isValid: isBoolean, message: 'isRbf must be a boolean' },
+];
+
 // =============================================================================
 // Response Validators
 // =============================================================================
@@ -233,31 +258,7 @@ export function validateTransactionResponse(data: unknown): ValidationResult {
     return { valid: false, errors: ['Response is not an object'] };
   }
 
-  // Required string fields
-  if (!isString(data.id)) errors.push('id must be a string');
-  if (!isString(data.txid)) errors.push('txid must be a string');
-  if (!isEnumValue(data.type, TX_TYPES)) errors.push(`type must be one of: ${TX_TYPES.join(', ')}`);
-  if (!isEnumValue(data.status, TX_STATUSES)) errors.push(`status must be one of: ${TX_STATUSES.join(', ')}`);
-
-  // BigInt strings
-  if (!isBigIntString(data.amount)) errors.push('amount must be a numeric string');
-  if (!isBigIntString(data.fee)) errors.push('fee must be a numeric string');
-
-  // Required number fields
-  if (!isNumber(data.confirmations)) errors.push('confirmations must be a number');
-
-  // Nullable fields
-  if (data.blockHeight !== null && !isNumber(data.blockHeight)) errors.push('blockHeight must be a number or null');
-  if (data.blockTime !== null && !isIsoDateString(data.blockTime)) errors.push('blockTime must be an ISO date string or null');
-  if (data.label !== null && !isString(data.label)) errors.push('label must be a string or null');
-  if (data.memo !== null && !isString(data.memo)) errors.push('memo must be a string or null');
-  if (data.replacedByTxid !== null && !isString(data.replacedByTxid)) errors.push('replacedByTxid must be a string or null');
-
-  // Date strings
-  if (!isIsoDateString(data.createdAt)) errors.push('createdAt must be an ISO date string');
-
-  // Boolean fields
-  if (!isBoolean(data.isRbf)) errors.push('isRbf must be a boolean');
+  validateFields(data, errors, TRANSACTION_RESPONSE_RULES);
 
   return { valid: errors.length === 0, errors };
 }
