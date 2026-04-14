@@ -5,14 +5,50 @@
  */
 
 import { Router } from 'express';
+import { z } from 'zod';
 import { authenticate } from '../../middleware/auth';
+import { validate } from '../../middleware/validate';
 import * as blockchain from '../../services/bitcoin/blockchain';
 import { walletRepository } from '../../repositories';
 import { asyncHandler } from '../../errors/errorHandler';
-import { ValidationError, ForbiddenError } from '../../errors/ApiError';
+import { ForbiddenError } from '../../errors/ApiError';
 import * as advancedTx from '../../services/bitcoin/advancedTx';
 
 const router = Router();
+
+const BroadcastBodySchema = z.object({
+  rawTx: z.string().min(1),
+});
+
+const RbfBodySchema = z.object({
+  newFeeRate: z.number().positive(),
+  walletId: z.string().min(1),
+});
+
+const CpfpBodySchema = z.object({
+  parentTxid: z.string().min(1),
+  parentVout: z.number().int().nonnegative(),
+  targetFeeRate: z.number().positive(),
+  recipientAddress: z.string().min(1),
+  walletId: z.string().min(1),
+});
+
+const BatchTransactionBodySchema = z.object({
+  recipients: z.array(z.object({
+    address: z.string().min(1),
+    amount: z.number().positive(),
+  }).passthrough()).min(1),
+  feeRate: z.number().positive(),
+  walletId: z.string().min(1),
+  selectedUtxoIds: z.array(z.string()).optional(),
+});
+
+const batchTransactionValidationMessage = (issues: Array<{ path: string }>) => {
+  if (issues.some(issue => issue.path.startsWith('recipients.') && issue.path !== 'recipients')) {
+    return 'Each recipient must have address and amount';
+  }
+  return 'recipients (array), feeRate, and walletId are required';
+};
 
 /**
  * GET /api/v1/bitcoin/transaction/:txid
@@ -30,12 +66,11 @@ router.get('/transaction/:txid', asyncHandler(async (req, res) => {
  * POST /api/v1/bitcoin/broadcast
  * Broadcast a raw transaction to the network
  */
-router.post('/broadcast', authenticate, asyncHandler(async (req, res) => {
+router.post('/broadcast', authenticate, validate(
+  { body: BroadcastBodySchema },
+  { message: 'rawTx is required' }
+), asyncHandler(async (req, res) => {
   const { rawTx } = req.body;
-
-  if (!rawTx) {
-    throw new ValidationError('rawTx is required');
-  }
 
   const result = await blockchain.broadcastTransaction(rawTx);
 
@@ -58,14 +93,13 @@ router.post('/transaction/:txid/rbf-check', authenticate, asyncHandler(async (re
  * POST /api/v1/bitcoin/transaction/:txid/rbf
  * Create an RBF replacement transaction
  */
-router.post('/transaction/:txid/rbf', authenticate, asyncHandler(async (req, res) => {
+router.post('/transaction/:txid/rbf', authenticate, validate(
+  { body: RbfBodySchema },
+  { message: 'newFeeRate and walletId are required' }
+), asyncHandler(async (req, res) => {
   const userId = req.user!.userId;
   const { txid } = req.params;
   const { newFeeRate, walletId } = req.body;
-
-  if (!newFeeRate || !walletId) {
-    throw new ValidationError('newFeeRate and walletId are required');
-  }
 
   // Check user has access to wallet
   const wallet = await walletRepository.findByIdWithEditAccess(walletId, userId);
@@ -96,7 +130,10 @@ router.post('/transaction/:txid/rbf', authenticate, asyncHandler(async (req, res
  * POST /api/v1/bitcoin/transaction/cpfp
  * Create a CPFP transaction
  */
-router.post('/transaction/cpfp', authenticate, asyncHandler(async (req, res) => {
+router.post('/transaction/cpfp', authenticate, validate(
+  { body: CpfpBodySchema },
+  { message: 'parentTxid, parentVout, targetFeeRate, recipientAddress, and walletId are required' }
+), asyncHandler(async (req, res) => {
   const userId = req.user!.userId;
   const {
     parentTxid,
@@ -105,10 +142,6 @@ router.post('/transaction/cpfp', authenticate, asyncHandler(async (req, res) => 
     recipientAddress,
     walletId,
   } = req.body;
-
-  if (!parentTxid || parentVout === undefined || !targetFeeRate || !recipientAddress || !walletId) {
-    throw new ValidationError('parentTxid, parentVout, targetFeeRate, recipientAddress, and walletId are required');
-  }
 
   // Check user has access to wallet
   const wallet = await walletRepository.findByIdWithEditAccess(walletId, userId);
@@ -139,7 +172,10 @@ router.post('/transaction/cpfp', authenticate, asyncHandler(async (req, res) => 
  * POST /api/v1/bitcoin/transaction/batch
  * Create a batch transaction
  */
-router.post('/transaction/batch', authenticate, asyncHandler(async (req, res) => {
+router.post('/transaction/batch', authenticate, validate(
+  { body: BatchTransactionBodySchema },
+  { message: batchTransactionValidationMessage }
+), asyncHandler(async (req, res) => {
   const userId = req.user!.userId;
   const {
     recipients,
@@ -147,17 +183,6 @@ router.post('/transaction/batch', authenticate, asyncHandler(async (req, res) =>
     walletId,
     selectedUtxoIds,
   } = req.body;
-
-  if (!recipients || !Array.isArray(recipients) || recipients.length === 0 || !feeRate || !walletId) {
-    throw new ValidationError('recipients (array), feeRate, and walletId are required');
-  }
-
-  // Validate recipients format
-  for (const recipient of recipients) {
-    if (!recipient.address || !recipient.amount) {
-      throw new ValidationError('Each recipient must have address and amount');
-    }
-  }
 
   // Check user has access to wallet
   const wallet = await walletRepository.findByIdWithEditAccess(walletId, userId);

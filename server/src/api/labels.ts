@@ -10,13 +10,41 @@
  */
 
 import { Router } from 'express';
+import { z } from 'zod';
 import { authenticate } from '../middleware/auth';
 import { requireWalletAccess } from '../middleware/walletAccess';
+import { validate } from '../middleware/validate';
 import { labelService } from '../services/labelService';
 import { asyncHandler } from '../errors/errorHandler';
+import { ErrorCodes } from '../errors';
 import { serializeForJson } from '../utils/serialization';
 
 const router = Router();
+
+const LabelCreateBodySchema = z.object({
+  name: z.string().trim().min(1),
+  color: z.string().optional(),
+  description: z.string().optional(),
+});
+
+const LabelUpdateBodySchema = z.object({
+  name: z.string().trim().min(1).optional(),
+  color: z.string().optional(),
+  description: z.string().optional(),
+});
+
+const LabelIdsAddBodySchema = z.object({
+  labelIds: z.array(z.string()).min(1),
+});
+
+const LabelIdsReplaceBodySchema = z.object({
+  labelIds: z.array(z.string()),
+});
+
+const labelIdsValidationOptions = {
+  message: 'labelIds array is required',
+  code: ErrorCodes.INVALID_INPUT,
+};
 
 // All routes require authentication
 router.use(authenticate);
@@ -51,7 +79,10 @@ router.get('/wallets/:walletId/labels/:labelId', requireWalletAccess('view'), as
  * POST /api/v1/wallets/:walletId/labels
  * Create a new label (requires edit access: owner or signer)
  */
-router.post('/wallets/:walletId/labels', requireWalletAccess('edit'), asyncHandler(async (req, res) => {
+router.post('/wallets/:walletId/labels', requireWalletAccess('edit'), validate(
+  { body: LabelCreateBodySchema },
+  { message: 'Label name is required', code: ErrorCodes.INVALID_INPUT }
+), asyncHandler(async (req, res) => {
   const { walletId } = req.params;
   const { name, color, description } = req.body;
 
@@ -68,7 +99,10 @@ router.post('/wallets/:walletId/labels', requireWalletAccess('edit'), asyncHandl
  * PUT /api/v1/wallets/:walletId/labels/:labelId
  * Update a label (requires edit access: owner or signer)
  */
-router.put('/wallets/:walletId/labels/:labelId', requireWalletAccess('edit'), asyncHandler(async (req, res) => {
+router.put('/wallets/:walletId/labels/:labelId', requireWalletAccess('edit'), validate(
+  { body: LabelUpdateBodySchema },
+  { message: 'Label name is required', code: ErrorCodes.INVALID_INPUT }
+), asyncHandler(async (req, res) => {
   const { walletId, labelId } = req.params;
   const { name, color, description } = req.body;
 
@@ -113,7 +147,10 @@ router.get('/transactions/:transactionId/labels', asyncHandler(async (req, res) 
  * Add labels to a transaction (requires edit access: owner or signer)
  * Body: { labelIds: string[] }
  */
-router.post('/transactions/:transactionId/labels', asyncHandler(async (req, res) => {
+router.post('/transactions/:transactionId/labels', validate(
+  { body: LabelIdsAddBodySchema },
+  labelIdsValidationOptions
+), asyncHandler(async (req, res) => {
   const userId = req.user!.userId;
   const { transactionId } = req.params;
   const { labelIds } = req.body;
@@ -127,7 +164,10 @@ router.post('/transactions/:transactionId/labels', asyncHandler(async (req, res)
  * Replace all labels on a transaction (requires edit access: owner or signer)
  * Body: { labelIds: string[] }
  */
-router.put('/transactions/:transactionId/labels', asyncHandler(async (req, res) => {
+router.put('/transactions/:transactionId/labels', validate(
+  { body: LabelIdsReplaceBodySchema },
+  labelIdsValidationOptions
+), asyncHandler(async (req, res) => {
   const userId = req.user!.userId;
   const { transactionId } = req.params;
   const { labelIds } = req.body;
@@ -169,7 +209,10 @@ router.get('/addresses/:addressId/labels', asyncHandler(async (req, res) => {
  * Add labels to an address (requires edit access: owner or signer)
  * Body: { labelIds: string[] }
  */
-router.post('/addresses/:addressId/labels', asyncHandler(async (req, res) => {
+router.post('/addresses/:addressId/labels', validate(
+  { body: LabelIdsAddBodySchema },
+  labelIdsValidationOptions
+), asyncHandler(async (req, res) => {
   const userId = req.user!.userId;
   const { addressId } = req.params;
   const { labelIds } = req.body;
@@ -183,7 +226,10 @@ router.post('/addresses/:addressId/labels', asyncHandler(async (req, res) => {
  * Replace all labels on an address (requires edit access: owner or signer)
  * Body: { labelIds: string[] }
  */
-router.put('/addresses/:addressId/labels', asyncHandler(async (req, res) => {
+router.put('/addresses/:addressId/labels', validate(
+  { body: LabelIdsReplaceBodySchema },
+  labelIdsValidationOptions
+), asyncHandler(async (req, res) => {
   const userId = req.user!.userId;
   const { addressId } = req.params;
   const { labelIds } = req.body;

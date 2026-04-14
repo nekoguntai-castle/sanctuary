@@ -5,17 +5,32 @@
  */
 
 import { Router } from 'express';
+import { z } from 'zod';
+import { validate } from '../../middleware/validate';
 import * as blockchain from '../../services/bitcoin/blockchain';
 import * as utils from '../../services/bitcoin/utils';
 import * as mempool from '../../services/bitcoin/mempool';
 import { nodeConfigRepository } from '../../repositories/nodeConfigRepository';
 import { createLogger } from '../../utils/logger';
 import { asyncHandler } from '../../errors/errorHandler';
-import { ValidationError } from '../../errors/ApiError';
 import * as advancedTx from '../../services/bitcoin/advancedTx';
 
 const router = Router();
 const log = createLogger('BITCOIN_FEE:ROUTE');
+
+const EstimateFeeBodySchema = z.object({
+  inputCount: z.number().int().positive(),
+  outputCount: z.number().int().positive(),
+  scriptType: z.string().optional().default('native_segwit'),
+  feeRate: z.number().positive(),
+});
+
+const EstimateOptimalFeeBodySchema = z.object({
+  inputCount: z.number().int().positive(),
+  outputCount: z.number().int().positive(),
+  priority: z.string().optional().default('medium'),
+  scriptType: z.string().optional().default('native_segwit'),
+});
 
 /**
  * GET /api/v1/bitcoin/fees
@@ -68,17 +83,16 @@ router.get('/fees/advanced', asyncHandler(async (_req, res) => {
  * POST /api/v1/bitcoin/utils/estimate-fee
  * Estimate transaction fee
  */
-router.post('/utils/estimate-fee', asyncHandler(async (req, res) => {
+router.post('/utils/estimate-fee', validate(
+  { body: EstimateFeeBodySchema },
+  { message: 'inputCount, outputCount, and feeRate are required' }
+), asyncHandler(async (req, res) => {
   const {
     inputCount,
     outputCount,
     scriptType = 'native_segwit',
     feeRate,
   } = req.body;
-
-  if (!inputCount || !outputCount || !feeRate) {
-    throw new ValidationError('inputCount, outputCount, and feeRate are required');
-  }
 
   const size = utils.estimateTransactionSize(inputCount, outputCount, scriptType);
   const fee = utils.calculateFee(size, feeRate);
@@ -94,17 +108,16 @@ router.post('/utils/estimate-fee', asyncHandler(async (req, res) => {
  * POST /api/v1/bitcoin/utils/estimate-optimal-fee
  * Estimate optimal fee for a transaction based on priority
  */
-router.post('/utils/estimate-optimal-fee', asyncHandler(async (req, res) => {
+router.post('/utils/estimate-optimal-fee', validate(
+  { body: EstimateOptimalFeeBodySchema },
+  { message: 'inputCount and outputCount are required' }
+), asyncHandler(async (req, res) => {
   const {
     inputCount,
     outputCount,
     priority = 'medium',
     scriptType = 'native_segwit',
   } = req.body;
-
-  if (!inputCount || !outputCount) {
-    throw new ValidationError('inputCount and outputCount are required');
-  }
 
   const result = await advancedTx.estimateOptimalFee(
     inputCount,

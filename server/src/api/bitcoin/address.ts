@@ -5,7 +5,9 @@
  */
 
 import { Router } from 'express';
+import { z } from 'zod';
 import { authenticate } from '../../middleware/auth';
+import { validate } from '../../middleware/validate';
 import * as blockchain from '../../services/bitcoin/blockchain';
 import * as utils from '../../services/bitcoin/utils';
 import { addressRepository } from '../../repositories';
@@ -14,16 +16,33 @@ import { ValidationError, NotFoundError } from '../../errors/ApiError';
 
 const router = Router();
 
+const AddressValidateBodySchema = z.object({
+  address: z.string().min(1),
+  network: z.string().optional().default('mainnet'),
+});
+
+const AddressLookupBodySchema = z.object({
+  addresses: z.array(z.string())
+    .min(1, 'addresses must be a non-empty array')
+    .max(100, 'Maximum 100 addresses per request'),
+});
+
+const addressLookupValidationMessage = (issues: Array<{ message: string }>) => {
+  if (issues.some(issue => issue.message === 'Maximum 100 addresses per request')) {
+    return 'Maximum 100 addresses per request';
+  }
+  return 'addresses must be a non-empty array';
+};
+
 /**
  * POST /api/v1/bitcoin/address/validate
  * Validate a Bitcoin address
  */
-router.post('/address/validate', asyncHandler(async (req, res) => {
+router.post('/address/validate', validate(
+  { body: AddressValidateBodySchema },
+  { message: 'address is required' }
+), asyncHandler(async (req, res) => {
   const { address, network = 'mainnet' } = req.body;
-
-  if (!address) {
-    throw new ValidationError('address is required');
-  }
 
   const result = await blockchain.checkAddress(address, network);
 
@@ -82,17 +101,11 @@ router.post('/address/:addressId/sync', authenticate, asyncHandler(async (req, r
  * POST /api/v1/bitcoin/address-lookup
  * Look up which wallets own given addresses (for internal wallet detection in send flow)
  */
-router.post('/address-lookup', authenticate, asyncHandler(async (req, res) => {
+router.post('/address-lookup', authenticate, validate(
+  { body: AddressLookupBodySchema },
+  { message: addressLookupValidationMessage }
+), asyncHandler(async (req, res) => {
   const { addresses } = req.body;
-
-  if (!Array.isArray(addresses) || addresses.length === 0) {
-    throw new ValidationError('addresses must be a non-empty array');
-  }
-
-  // Limit the number of addresses to prevent abuse
-  if (addresses.length > 100) {
-    throw new ValidationError('Maximum 100 addresses per request');
-  }
 
   const userId = req.user!.userId;
 
