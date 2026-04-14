@@ -25,7 +25,7 @@ None. The explicit PEM-marker validation split into two groups:
 |-------------------------|-----------|---------------|
 | Correctness             | 20/20     | Tests + typecheck + lint pass; High suppression density; High completeness |
 | Reliability             | 12/15     | Typed errors + central timeouts; middleware-guaranteed `!` remains by contract; the previously called-out transaction typing gaps are now fixed |
-| Maintainability         | 10/15     | lizard baseline measured at 68 warnings after the syncAddress, Payjoin SSRF, device account normalization, policy create-data, draft create-data, intelligence settings, Telegram collector, wallet autopilot settings, admin Electrum update, transaction batch output validation, push notification preference/message, approval vote guard/event, Electrum reconciliation, and Coldcard parser path-selection extraction passes; jscpd measured at 2.33%; the scoped largest-file threshold is now cleared after the Electrum connection test split; clean architecture |
+| Maintainability         | 10/15     | lizard baseline measured at 67 warnings after the syncAddress, Payjoin SSRF, device account normalization, policy create-data, draft create-data, intelligence settings, Telegram collector, wallet autopilot settings, admin Electrum update, transaction batch output validation, push notification preference/message, approval vote guard/event, Electrum reconciliation, Coldcard parser path-selection, and multisig script parsing extraction passes; jscpd measured at 2.33%; the scoped largest-file threshold is now cleared after the Electrum connection test split; clean architecture |
 | Security                | 13/15     | 0 high CVEs; no JS eval/DOM injection; API body validation sweep is guarded; new-commit secret gate clean |
 | Performance             | 4/10      | Cursor pagination + recent streaming; some in-loop N+1 risk |
 | Test Quality            | 13/15     | Thresholds 98–100% enforced; clear AAA structure; sleeps mostly intentional |
@@ -61,7 +61,7 @@ vs 2026-04-13 (`13efff91`): original validated report was **overall +7 (69→76)
 | secrets (effective) | 0 real in the new-commit gate | explicit PEM-marker search now finds 8 markers: 7 allowlisted fixture hits and 1 allowlisted prose hit (`tasks/grade-fix-plan.md`); `gitleaks git --log-opts -1` passed on the latest commit, while full-history/current-directory scans still surface legacy/test/ignored-file false positives | 4.2 → +2 (new-commit gate measured) |
 | largest_file_lines | 991 | `server/tests/unit/services/utxoSelectionService.test.ts` after the Electrum connection test split; next largest validated files are `server/tests/unit/api/wallets-policies-routes.test.ts` at 981 LOC and `server/tests/unit/api/ai-internal.test.ts` at 964 LOC when generated verified-vector files are excluded. `server/tests/unit/services/bitcoin/electrum.connection.test.ts` is now a 16-line registrar, with Electrum connection contract/harness modules capped at 284 LOC. | 3.3 → +2 |
 | api_body_validation | pass | `scripts/check-api-body-validation.mjs`, now run by `npm run lint:server` | 4.3 → +3 |
-| lizard_warning_count | 68 | lizard 1.21.3 temporary `/tmp` install, CI command with current exclusions; `server/src/services/bitcoin/blockchain/syncAddress.ts`, `server/src/services/payjoin/ssrf.ts`, `server/src/services/deviceAccountConflicts.ts`, `server/src/repositories/policyRepository.ts`, `server/src/repositories/draftRepository.ts`, `server/src/services/intelligence/settings.ts`, `server/src/services/supportPackage/collectors/telegram.ts`, `server/src/api/wallets/autopilot.ts`, `server/src/api/admin/electrumServers.ts`, `server/src/api/transactions/drafting.ts`, `server/src/services/push/pushService.ts`, `server/src/services/vaultPolicy/approvalService.ts`, `server/src/worker/electrumManager/healthMonitoring.ts`, and `server/src/services/bitcoin/descriptorParser/coldcardParser.ts` now have no lizard warnings after helper extraction | 3.1 → +0 measured; enforced as no-increase baseline |
+| lizard_warning_count | 67 | lizard 1.21.3 temporary `/tmp` install, CI command with current exclusions; `server/src/services/bitcoin/blockchain/syncAddress.ts`, `server/src/services/payjoin/ssrf.ts`, `server/src/services/deviceAccountConflicts.ts`, `server/src/repositories/policyRepository.ts`, `server/src/repositories/draftRepository.ts`, `server/src/services/intelligence/settings.ts`, `server/src/services/supportPackage/collectors/telegram.ts`, `server/src/api/wallets/autopilot.ts`, `server/src/api/admin/electrumServers.ts`, `server/src/api/transactions/drafting.ts`, `server/src/services/push/pushService.ts`, `server/src/services/vaultPolicy/approvalService.ts`, `server/src/worker/electrumManager/healthMonitoring.ts`, `server/src/services/bitcoin/descriptorParser/coldcardParser.ts`, and `server/src/services/bitcoin/psbtBuilder/witnessScript.ts` now have no lizard warnings after helper extraction | 3.1 → +0 measured; enforced as no-increase baseline |
 | duplication_pct | 2.33% | `npm run quality` with temporary `/tmp` gitleaks/lizard installs and `GITLEAKS_LOG_OPTS=-1` | 3.2 → +3 |
 | deploy_artifact_count | 2 | Dockerfile + `.github/workflows/` (incl. new `quality.yml`) | 7.1 → +3 |
 | health_endpoint_count | 169 grep hits | rg pattern match (NOT a route count) — real endpoints: `server/src/routes.ts` registers `/health`, `/metrics`, `/api/v1/health`; `gateway/src/index.ts` registers `/health`. The 169 figure includes docs, dashboards, workflows, and comments. | 7.2 → +2 |
@@ -90,7 +90,7 @@ vs 2026-04-13 (`13efff91`): original validated report was **overall +7 (69→76)
 
 ### Missing
 
-- `lizard` — not installed globally, but a temporary `/tmp` install measured 68 warnings after the syncAddress, Payjoin SSRF, device account normalization, policy create-data, draft create-data, intelligence settings, Telegram collector, wallet autopilot settings, admin Electrum update, transaction batch output validation, push notification preference/message, approval vote guard/event, Electrum reconciliation, and Coldcard parser path-selection extraction passes. `.github/workflows/quality.yml` is now blocking with `-i 68`, so the warning count cannot grow without failing CI.
+- `lizard` — not installed globally, but a temporary `/tmp` install measured 67 warnings after the syncAddress, Payjoin SSRF, device account normalization, policy create-data, draft create-data, intelligence settings, Telegram collector, wallet autopilot settings, admin Electrum update, transaction batch output validation, push notification preference/message, approval vote guard/event, Electrum reconciliation, Coldcard parser path-selection, and multisig script parsing extraction passes. `.github/workflows/quality.yml` is now blocking with `-i 67`, so the warning count cannot grow without failing CI.
 - `jscpd` — not installed globally, but `npx --yes jscpd@4 .` measured 2.33% duplicated lines under the existing 5% threshold after temp/report exclusions. `.github/workflows/quality.yml` is now blocking for jscpd.
 - `gitleaks` — not installed globally, but a temporary `/tmp` install measured the gate. `gitleaks git --log-opts -1` passes on the latest commit; full-history and current-directory scans still report legacy/test/ignored-file false positives, so CI now gates PR commit ranges and latest scheduled/manual commits.
 - Local coverage extractor for vitest — no standalone grade/coverage extractor script was found in this repo during validation; actual thresholds are enforced by `vitest.config.ts`, `server/vitest.config.ts`, and `gateway/vitest.config.ts`.
@@ -131,7 +131,7 @@ Every row below was checked against repository files or command output during th
 
 ## Top Risks
 
-1. **CI quality signals are now blocking, but lizard is baseline-gated.** The new lint, gitleaks, lizard, and jscpd jobs are blocking in `.github/workflows/quality.yml`. `lizard` still has 68 existing warnings, so the immediate guardrail is "do not increase warning count"; further baseline reduction remains future maintainability work.
+1. **CI quality signals are now blocking, but lizard is baseline-gated.** The new lint, gitleaks, lizard, and jscpd jobs are blocking in `.github/workflows/quality.yml`. `lizard` still has 67 existing warnings, so the immediate guardrail is "do not increase warning count"; further baseline reduction remains future maintainability work.
 2. **Large-file buffer remains thin, but criterion 3.3 is cleared.** The scoped largest non-generated TS/TSX file is now `server/tests/unit/services/utxoSelectionService.test.ts` at 991 LOC, followed by `server/tests/unit/api/wallets-policies-routes.test.ts` at 981 LOC and `server/tests/unit/api/ai-internal.test.ts` at 964 LOC when generated verified-vector files are excluded. This earns the 3.3 `+2`; further splits are useful only to keep future edits from crossing the threshold again.
 3. **Broader lint tightening remains.** The first-pass ESLint gate catches seeded violations for `console.log`, `catch (error: any)`, empty `catch`, and `@ts-ignore`; API body-validation drift is now guarded, but the lint gate does not yet enforce every `CLAUDE.md` rule such as raw `JSON.parse` because existing call sites need a separate baseline/fix pass.
 
@@ -154,7 +154,7 @@ Ordered by priority, not cost. The first two items are the ones that change the 
 ### Done — Make the existing CI quality signals enforceable + runnable locally
 - Install `gitleaks`, `lizard`, `jscpd` locally (Nix/Homebrew/pip/npm). Add `scripts/quality.sh` that runs the same commands as the CI jobs so developers get the signal pre-push.
 - **Keep the `.gitleaks.toml` grade-task allowlist** that was added during the implementation pass: `tasks/grade-fix-plan.md` and `tasks/grade-report-2026-04-13-c76.md`. `.gitleaks.toml` itself no longer carries a literal PEM sentinel in comments, so it does not need a broad self-allowlist.
-- Baseline the current lizard/jscpd output, document any intentional deltas, then remove `continue-on-error: true` from each job in `quality.yml` **per-job, not as a batch**. Implemented with jscpd at 2.33%, lizard now at a 68-warning no-increase baseline after the syncAddress, Payjoin SSRF, device account normalization, policy create-data, draft create-data, intelligence settings, Telegram collector, wallet autopilot settings, admin Electrum update, transaction batch output validation, push notification preference/message, approval vote guard/event, Electrum reconciliation, and Coldcard parser path-selection extraction passes, and gitleaks scoped to PR/latest-commit regression scanning because full-history/current-directory scans include legacy/test/ignored-file false positives.
+- Baseline the current lizard/jscpd output, document any intentional deltas, then remove `continue-on-error: true` from each job in `quality.yml` **per-job, not as a batch**. Implemented with jscpd at 2.33%, lizard now at a 67-warning no-increase baseline after the syncAddress, Payjoin SSRF, device account normalization, policy create-data, draft create-data, intelligence settings, Telegram collector, wallet autopilot settings, admin Electrum update, transaction batch output validation, push notification preference/message, approval vote guard/event, Electrum reconciliation, Coldcard parser path-selection, and multisig script parsing extraction passes, and gitleaks scoped to PR/latest-commit regression scanning because full-history/current-directory scans include legacy/test/ignored-file false positives.
 - Score impact: net **0 points** in this pass. jscpd improved 3.2 from `+1 → +3`, while the measured lizard baseline moved 3.1 from optimistic unknown `+2 → +0`; Security 4.2 is now a measured regression gate, but not a full-history clean signal.
 
 ### Done — Split `server/tests/unit/api/openapi.test.ts` by OpenAPI domain
@@ -256,7 +256,7 @@ The four P1 items can largely run in parallel, but there is one sequencing rule 
 | Item | Done when |
 |---|---|
 | Lint gate | Done locally: `npm run lint` exists in root + server + gateway, `.github/workflows/quality.yml` has a blocking `lint` job, and the rules fail on seeded violations for `console.log`, `catch (error: any)`, empty `catch`, and `@ts-ignore`. |
-| CI signals enforceable | Done for regression gating: `scripts/quality.sh` runs all three tools; `quality.yml`'s `gitleaks`, `lizard`, and `jscpd` jobs no longer use `continue-on-error`; gitleaks gates PR/latest commits, lizard gates no increase above 68 warnings, and jscpd gates the existing 5% threshold. |
+| CI signals enforceable | Done for regression gating: `scripts/quality.sh` runs all three tools; `quality.yml`'s `gitleaks`, `lizard`, and `jscpd` jobs no longer use `continue-on-error`; gitleaks gates PR/latest commits, lizard gates no increase above 67 warnings, and jscpd gates the existing 5% threshold. |
 | API/test split backlog | Done for the original named API files and the later largest-file threshold backlog: OpenAPI, transaction API, and admin API suite registrars are 17, 25, and 26 LOC respectively; later passes split service, integration, frontend, gateway, and API tests down through `server/tests/unit/services/bitcoin/electrum.connection.test.ts`. The scoped largest-file criterion is now cleared, with `server/tests/unit/services/utxoSelectionService.test.ts` at 991 LOC as the current largest non-generated TS/TSX file. |
 | Zod normalization | Done: `server/src/api/**` `req.body` readers are covered by `validate({ body })`, shared parser-backed helpers, direct `safeParse`, or documented exceptions. `npm run check:api-body-validation` passes and is part of `npm run lint:server`. |
 
@@ -286,7 +286,7 @@ Arithmetic check (rounded, no handwaving):
 
 | Criterion | Current | No further lizard reduction | Mid-case measured | Best-case measured |
 |---|---|---|---|---|
-| 3.1 Cyclomatic complexity (lizard warnings) | +0 (68 warnings) | +0 (`>15`) | +3 (`1–5`) | +5 (`0`) |
+| 3.1 Cyclomatic complexity (lizard warnings) | +0 (67 warnings) | +0 (`>15`) | +3 (`1–5`) | +5 (`0`) |
 | 3.2 Duplication (jscpd %) | +3 (2.33%) | +3 (`<3%`) | +3 (`<3%`) | +3 (`<3%`) |
 | 3.3 Largest file (after validated largest-file split backlog through Electrum connection test) | +2 (`server/tests/unit/services/utxoSelectionService.test.ts` 991 LOC; next `server/tests/unit/api/wallets-policies-routes.test.ts` 981 LOC) | +2 | +2 | +2 |
 | 3.4 + 3.5 (unchanged) | +5 | +5 | +5 | +5 |
@@ -1963,7 +1963,7 @@ Implemented the next measured lizard-baseline reduction:
 - Refactored `server/src/services/bitcoin/descriptorParser/coldcardParser.ts` Coldcard export parsing by moving flat/nested format detection, candidate path collection, selected-path choice, and available-path projection into focused helpers.
 - Preserved flat-format path priority (`p2wsh`, then `p2sh_p2wsh`, then `p2sh`), nested-format path priority (`bip84`, `bip49`, `bip44`, then `bip48_2`/`bip48_1` fallbacks), available path output, network detection, normalized derivation paths, and both error messages covered by the descriptor parser tests.
 - Removed the prior lizard warning for `parseColdcardExport` (`41 NLOC, 16 CCN`) without introducing a new warning in the file.
-- Reduced the CI-style lizard count from 69 to 68 warnings under the current exclusions, so `.github/workflows/quality.yml` and `scripts/quality.sh` now gate at `-i 68`.
+- Reduced the CI-style lizard count from 69 to 68 warnings under the current exclusions at this checkpoint; the following multisig script parsing extraction pass lowers the current gate further to `-i 67`.
 - Maintainability 3.1 still scores `+0` because 68 warnings remains above the `>15` threshold; this is another verified baseline reduction but not a score-band movement.
 
 Verification after lizard Coldcard parser path-selection extraction:
@@ -1974,3 +1974,22 @@ Verification after lizard Coldcard parser path-selection extraction:
 - `npm run lint` — passed, including `scripts/check-api-body-validation.mjs` under `lint:server`.
 - `PYTHONPATH=/tmp/sanctuary-quality/python python3 -m lizard -w -i 68 ... .` — passed under the same exclusions used by `.github/workflows/quality.yml`.
 - `PYTHONPATH=/tmp/sanctuary-quality/python python3 -m lizard -w -i 999 ... . | rg -c "warning:"` — returned `68`.
+
+### Lizard multisig script parsing extraction pass — 2026-04-13
+
+Implemented the next measured lizard-baseline reduction:
+
+- Refactored `server/src/services/bitcoin/psbtBuilder/witnessScript.ts` multisig script parsing by moving script-shape validation, multisig opcode detection, small-integer parsing, pubkey extraction, and invalid-result construction into focused helpers.
+- Preserved valid 1-of-2, 2-of-3, and 3-of-3 parsing, raw small-integer handling, compressed and uncompressed pubkey acceptance, non-multisig rejection, invalid `m`/`n` rejection, and pubkey-count mismatch warning behavior covered by the PSBT builder and PSBT industry tests.
+- Removed the prior lizard warning for `parseMultisigScript` (`49 NLOC, 20 CCN`) without introducing a new warning in the file.
+- Reduced the CI-style lizard count from 68 to 67 warnings under the current exclusions, so `.github/workflows/quality.yml` and `scripts/quality.sh` now gate at `-i 67`.
+- Maintainability 3.1 still scores `+0` because 67 warnings remains above the `>15` threshold; this is another verified baseline reduction but not a score-band movement.
+
+Verification after lizard multisig script parsing extraction:
+
+- `npx vitest run --config server/vitest.config.ts tests/unit/services/bitcoin/psbtBuilder.test.ts tests/unit/services/bitcoin/industry/psbtIndustry.test.ts` — passed: 2 files, 79 tests.
+- `PYTHONPATH=/tmp/sanctuary-quality/python python3 -m lizard -w -l typescript -C 15 -T nloc=200 server/src/services/bitcoin/psbtBuilder/witnessScript.ts` — passed with no warnings.
+- `npx tsc --noEmit -p server/tsconfig.json` — passed.
+- `npm run lint` — passed, including `scripts/check-api-body-validation.mjs` under `lint:server`.
+- `PYTHONPATH=/tmp/sanctuary-quality/python python3 -m lizard -w -i 67 ... .` — passed under the same exclusions used by `.github/workflows/quality.yml`.
+- `PYTHONPATH=/tmp/sanctuary-quality/python python3 -m lizard -w -i 999 ... . | rg -c "warning:"` — returned `67`.

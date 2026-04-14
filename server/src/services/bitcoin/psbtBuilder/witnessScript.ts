@@ -12,6 +12,10 @@ import { extractChangeAndAddressIndex } from '../../../../../shared/utils/bitcoi
 
 const log = createLogger('BITCOIN:SVC_PSBT_WITNESS');
 
+type ParsedMultisigScript = { isMultisig: boolean; m: number; n: number; pubkeys: Buffer[] };
+type DecompiledScript = NonNullable<ReturnType<typeof bitcoin.script.decompile>>;
+type ScriptChunk = DecompiledScript[number];
+
 /**
  * Build the witnessScript (multisig redeem script) for a P2WSH multisig input.
  *
@@ -94,57 +98,33 @@ export function buildMultisigWitnessScript(
   }
 }
 
-/**
- * Check if a witnessScript is a multisig script (OP_CHECKMULTISIG or OP_CHECKMULTISIGVERIFY)
- * Returns { isMultisig: boolean, m: number, n: number } if it is multisig
- */
-export function parseMultisigScript(witnessScript: Buffer | Uint8Array): { isMultisig: boolean; m: number; n: number; pubkeys: Buffer[] } {
+function hasMultisigScriptShape(decompiled: DecompiledScript): boolean {
+  return decompiled.length >= 4 && isMultisigCheckOp(decompiled[decompiled.length - 1]);
+}
+
+function isMultisigCheckOp(op: ScriptChunk): boolean {
   const OPS = bitcoin.script.OPS;
-  const decompiled = bitcoin.script.decompile(witnessScript);
+  return op === OPS.OP_CHECKMULTISIG || op === OPS.OP_CHECKMULTISIGVERIFY;
+}
 
-  if (!decompiled || decompiled.length < 4) {
-    return { isMultisig: false, m: 0, n: 0, pubkeys: [] };
+function parseScriptSmallInteger(value: ScriptChunk): number | undefined {
+  if (typeof value !== 'number') {
+    return undefined;
   }
 
-  // Last element should be OP_CHECKMULTISIG (174) or OP_CHECKMULTISIGVERIFY (175)
-  const lastOp = decompiled[decompiled.length - 1];
-  if (lastOp !== OPS.OP_CHECKMULTISIG && lastOp !== OPS.OP_CHECKMULTISIGVERIFY) {
-    return { isMultisig: false, m: 0, n: 0, pubkeys: [] };
+  // OP_1 (81) through OP_16 (96) encode Bitcoin Script small integers 1-16.
+  if (value >= 81 && value <= 96) {
+    return value - 80;
   }
 
-  // First element is M (required signatures) - can be OP_1-OP_16 (81-96) or small int
-  const mValue = decompiled[0];
-  let m: number;
-  if (typeof mValue === 'number') {
-    // OP_1 = 81, OP_16 = 96, so m = opcode - 80
-    if (mValue >= 81 && mValue <= 96) {
-      m = mValue - 80;
-    } else if (mValue >= 1 && mValue <= 16) {
-      // Could be a raw small integer
-      m = mValue;
-    } else {
-      return { isMultisig: false, m: 0, n: 0, pubkeys: [] };
-    }
-  } else {
-    return { isMultisig: false, m: 0, n: 0, pubkeys: [] };
+  if (value >= 1 && value <= 16) {
+    return value;
   }
 
-  // Second-to-last element is N (total pubkeys)
-  const nValue = decompiled[decompiled.length - 2];
-  let n: number;
-  if (typeof nValue === 'number') {
-    if (nValue >= 81 && nValue <= 96) {
-      n = nValue - 80;
-    } else if (nValue >= 1 && nValue <= 16) {
-      n = nValue;
-    } else {
-      return { isMultisig: false, m: 0, n: 0, pubkeys: [] };
-    }
-  } else {
-    return { isMultisig: false, m: 0, n: 0, pubkeys: [] };
-  }
+  return undefined;
+}
 
-  // Extract pubkeys (between M and N)
+function extractMultisigPubkeys(decompiled: DecompiledScript): Buffer[] {
   const pubkeys: Buffer[] = [];
   for (let i = 1; i < decompiled.length - 2; i++) {
     const item = decompiled[i];
@@ -153,10 +133,34 @@ export function parseMultisigScript(witnessScript: Buffer | Uint8Array): { isMul
     }
   }
 
-  // Validate: number of pubkeys should match N
+  return pubkeys;
+}
+
+function invalidMultisigScript(): ParsedMultisigScript {
+  return { isMultisig: false, m: 0, n: 0, pubkeys: [] };
+}
+
+/**
+ * Check if a witnessScript is a multisig script (OP_CHECKMULTISIG or OP_CHECKMULTISIGVERIFY)
+ * Returns { isMultisig: boolean, m: number, n: number } if it is multisig
+ */
+export function parseMultisigScript(witnessScript: Buffer | Uint8Array): ParsedMultisigScript {
+  const decompiled = bitcoin.script.decompile(witnessScript);
+
+  if (!decompiled || !hasMultisigScriptShape(decompiled)) {
+    return invalidMultisigScript();
+  }
+
+  const m = parseScriptSmallInteger(decompiled[0]);
+  const n = parseScriptSmallInteger(decompiled[decompiled.length - 2]);
+  if (m === undefined || n === undefined) {
+    return invalidMultisigScript();
+  }
+
+  const pubkeys = extractMultisigPubkeys(decompiled);
   if (pubkeys.length !== n) {
     log.warn('Multisig script pubkey count mismatch', { expected: n, actual: pubkeys.length });
-    return { isMultisig: false, m: 0, n: 0, pubkeys: [] };
+    return invalidMultisigScript();
   }
 
   return { isMultisig: true, m, n, pubkeys };
