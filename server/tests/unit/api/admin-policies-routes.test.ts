@@ -185,11 +185,16 @@ describe('Admin Policies Routes', () => {
     });
 
     it('should create policy with only required fields', async () => {
-      const minimalPayload = { name: 'Basic', type: 'spending_limit' };
+      const minimalPayload = {
+        name: 'Basic',
+        type: 'spending_limit',
+        config: { scope: 'wallet', daily: 100000 },
+      };
       const minimalResult = {
         id: 'pol-min',
         name: 'Basic',
         type: 'spending_limit',
+        config: { scope: 'wallet', daily: 100000 },
         sourceType: 'system',
       };
       mockCreatePolicy.mockResolvedValue(minimalResult);
@@ -203,7 +208,33 @@ describe('Admin Policies Routes', () => {
       expect(mockCreatePolicy).toHaveBeenCalledWith('admin-1', expect.objectContaining({
         name: 'Basic',
         type: 'spending_limit',
+        config: { scope: 'wallet', daily: 100000 },
       }));
+    });
+
+    it('should reject missing policy config before calling the service', async () => {
+      const response = await request(app)
+        .post(url)
+        .send({ name: 'Basic', type: 'spending_limit' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.code).toBe('VALIDATION_ERROR');
+      expect(mockCreatePolicy).not.toHaveBeenCalled();
+    });
+
+    it('should reject unexpected create fields before calling the service', async () => {
+      const response = await request(app)
+        .post(url)
+        .send({
+          name: 'Basic',
+          type: 'spending_limit',
+          config: { scope: 'wallet', daily: 100000 },
+          unexpected: true,
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.code).toBe('VALIDATION_ERROR');
+      expect(mockCreatePolicy).not.toHaveBeenCalled();
     });
 
     it('should log audit event after successful creation', async () => {
@@ -299,7 +330,7 @@ describe('Admin Policies Routes', () => {
         description: 'New description',
         config: { maxAmount: 500000 },
         priority: 5,
-        enforcement: 'warn',
+        enforcement: 'monitor',
         enabled: false,
       };
 
@@ -316,11 +347,33 @@ describe('Admin Policies Routes', () => {
           description: 'New description',
           config: { maxAmount: 500000 },
           priority: 5,
-          enforcement: 'warn',
+          enforcement: 'monitor',
           enabled: false,
         },
         { isAdmin: true },
       );
+    });
+
+    it('should reject invalid patch field values before loading the policy', async () => {
+      const response = await request(app)
+        .patch(url)
+        .send({ enforcement: 'warn' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.code).toBe('VALIDATION_ERROR');
+      expect(mockGetPolicy).not.toHaveBeenCalled();
+      expect(mockUpdatePolicy).not.toHaveBeenCalled();
+    });
+
+    it('should reject unexpected update fields before loading the policy', async () => {
+      const response = await request(app)
+        .patch(url)
+        .send({ name: 'Updated', unexpected: true });
+
+      expect(response.status).toBe(400);
+      expect(response.body.code).toBe('VALIDATION_ERROR');
+      expect(mockGetPolicy).not.toHaveBeenCalled();
+      expect(mockUpdatePolicy).not.toHaveBeenCalled();
     });
 
     it('should only include defined fields in update input', async () => {

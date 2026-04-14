@@ -5,7 +5,9 @@
  */
 
 import { Router } from 'express';
+import { z } from 'zod';
 import { authenticate, requireAdmin } from '../../middleware/auth';
+import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
 import { ForbiddenError } from '../../errors/ApiError';
 import { vaultPolicyService } from '../../services/vaultPolicy';
@@ -13,6 +15,35 @@ import { auditService, AuditAction, AuditCategory } from '../../services/auditSe
 import type { CreatePolicyInput, UpdatePolicyInput } from '../../services/vaultPolicy/types';
 
 const router = Router();
+
+const PolicyConfigSchema = z.record(z.string(), z.unknown());
+const PolicyTypeSchema = z.enum([
+  'spending_limit',
+  'approval_required',
+  'time_delay',
+  'address_control',
+  'velocity',
+]);
+const PolicyEnforcementSchema = z.enum(['enforce', 'monitor']);
+
+const AdminCreatePolicyBodySchema = z.object({
+  name: z.string(),
+  description: z.union([z.string(), z.null()]).optional(),
+  type: PolicyTypeSchema,
+  config: PolicyConfigSchema,
+  priority: z.number().int().optional(),
+  enforcement: PolicyEnforcementSchema.optional(),
+  enabled: z.boolean().optional(),
+}).strict();
+
+const AdminUpdatePolicyBodySchema = z.object({
+  name: z.string().optional(),
+  description: z.union([z.string(), z.null()]).optional(),
+  config: PolicyConfigSchema.optional(),
+  priority: z.number().int().optional(),
+  enforcement: PolicyEnforcementSchema.optional(),
+  enabled: z.boolean().optional(),
+}).strict();
 
 // ========================================
 // SYSTEM-WIDE POLICIES
@@ -29,7 +60,7 @@ router.get('/', authenticate, requireAdmin, asyncHandler(async (_req, res) => {
 /**
  * POST / - Create a system-wide policy
  */
-router.post('/', authenticate, requireAdmin, asyncHandler(async (req, res) => {
+router.post('/', authenticate, requireAdmin, validate({ body: AdminCreatePolicyBodySchema }), asyncHandler(async (req, res) => {
   const userId = req.user!.userId;
 
   const input: CreatePolicyInput = {
@@ -60,7 +91,7 @@ router.post('/', authenticate, requireAdmin, asyncHandler(async (req, res) => {
 /**
  * PATCH /:policyId - Update a system-wide policy
  */
-router.patch('/:policyId', authenticate, requireAdmin, asyncHandler(async (req, res) => {
+router.patch('/:policyId', authenticate, requireAdmin, validate({ body: AdminUpdatePolicyBodySchema }), asyncHandler(async (req, res) => {
   const { policyId } = req.params;
   const userId = req.user!.userId;
 
