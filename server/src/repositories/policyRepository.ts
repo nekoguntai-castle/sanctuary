@@ -20,6 +20,32 @@ import type {
 // VAULT POLICY CRUD
 // ========================================
 
+type CreatePolicyInput = {
+  walletId?: string;
+  groupId?: string;
+  name: string;
+  description?: string;
+  type: PolicyType;
+  config: Prisma.InputJsonValue;
+  priority?: number;
+  enforcement?: string;
+  enabled?: boolean;
+  createdBy: string;
+  sourceType?: PolicySourceType;
+  sourceId?: string;
+};
+
+const defaultPolicyCreateValues = {
+  walletId: null,
+  groupId: null,
+  description: null,
+  priority: 0,
+  enforcement: 'enforce',
+  enabled: true,
+  sourceType: 'wallet',
+  sourceId: null,
+};
+
 export async function findPoliciesByWalletId(walletId: string): Promise<VaultPolicy[]> {
   return prisma.vaultPolicy.findMany({
     where: { walletId, enabled: true },
@@ -63,36 +89,36 @@ export async function findPolicyByIdInWallet(
   });
 }
 
-export async function createPolicy(data: {
-  walletId?: string;
-  groupId?: string;
-  name: string;
-  description?: string;
-  type: PolicyType;
-  config: Prisma.InputJsonValue;
-  priority?: number;
-  enforcement?: string;
-  enabled?: boolean;
-  createdBy: string;
-  sourceType?: PolicySourceType;
-  sourceId?: string;
-}): Promise<VaultPolicy> {
+export async function createPolicy(data: CreatePolicyInput): Promise<VaultPolicy> {
   return prisma.vaultPolicy.create({
-    data: {
-      walletId: data.walletId ?? null,
-      groupId: data.groupId ?? null,
-      name: data.name,
-      description: data.description ?? null,
-      type: data.type,
-      config: data.config,
-      priority: data.priority ?? 0,
-      enforcement: data.enforcement ?? 'enforce',
-      enabled: data.enabled ?? true,
-      createdBy: data.createdBy,
-      sourceType: data.sourceType ?? 'wallet',
-      sourceId: data.sourceId ?? null,
-    },
+    data: buildPolicyCreateData(data),
   });
+}
+
+function buildPolicyCreateData(data: CreatePolicyInput) {
+  return {
+    ...defaultPolicyCreateValues,
+    ...compactNullish({
+      walletId: data.walletId,
+      groupId: data.groupId,
+      description: data.description,
+      priority: data.priority,
+      enforcement: data.enforcement,
+      enabled: data.enabled,
+      sourceType: data.sourceType,
+      sourceId: data.sourceId,
+    }),
+    name: data.name,
+    type: data.type,
+    config: data.config,
+    createdBy: data.createdBy,
+  };
+}
+
+function compactNullish<T extends Record<string, unknown>>(values: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(values).filter(([, value]) => value !== undefined && value !== null)
+  ) as Partial<T>;
 }
 
 export async function updatePolicy(
