@@ -1255,8 +1255,12 @@ function totalRedisKeys(keyspace) {
   return Object.values(keyspace).reduce((sum, entry) => sum + (entry?.keys || 0), 0);
 }
 
-function buildMarkdown(report) {
-  const lines = [
+function markdownTableRow(values) {
+  return `| ${values.join(' | ')} |`;
+}
+
+function buildMarkdownHeader(report) {
+  return [
     '# Phase 3 Compose Benchmark Smoke',
     '',
     `Date: ${report.startedAt}`,
@@ -1270,6 +1274,11 @@ function buildMarkdown(report) {
     '',
     ...report.steps.map((step) => `- ${step.passed ? 'PASS' : 'FAIL'} ${step.name}: ${step.summary}`),
     '',
+  ];
+}
+
+function buildBenchmarkEvidenceSection(report) {
+  return [
     '## Benchmark Evidence',
     '',
     report.benchmarkEvidence?.mdPath
@@ -1283,8 +1292,10 @@ function buildMarkdown(report) {
       : '- Dataset: not recorded',
     '',
   ];
+}
 
-  lines.push('## Capacity Snapshots', '');
+function buildCapacitySnapshotsSection(report) {
+  const lines = ['## Capacity Snapshots', ''];
 
   if (report.capacitySnapshots?.length) {
     lines.push(
@@ -1298,14 +1309,18 @@ function buildMarkdown(report) {
         formatBytes(snapshot.redis?.usedMemoryBytes),
         snapshot.redis?.connectedClients ?? '',
         totalRedisKeys(snapshot.redis?.keyspace || {}),
-      ].join(' | ').replace(/^/, '| ').replace(/$/, ' |')),
+      ]).map(markdownTableRow),
       ''
     );
   } else {
     lines.push('No capacity snapshots recorded.', '');
   }
 
-  lines.push('## Scenario Summary', '');
+  return lines;
+}
+
+function buildScenarioSummarySection(report) {
+  const lines = ['## Scenario Summary', ''];
 
   if (report.benchmarkEvidence?.benchmark?.scenarios?.length) {
     lines.push(
@@ -1319,14 +1334,18 @@ function buildMarkdown(report) {
         scenario.errors,
         scenario.latency?.p95Ms ?? '',
         scenario.latency?.p99Ms ?? '',
-      ].join(' | ').replace(/^/, '| ').replace(/$/, ' |')),
+      ]).map(markdownTableRow),
       ''
     );
   } else {
     lines.push('No benchmark scenarios recorded.', '');
   }
 
-  lines.push('## Large Wallet Transaction-History Proof', '');
+  return lines;
+}
+
+function buildLargeWalletHistorySection(report) {
+  const lines = ['## Large Wallet Transaction-History Proof', ''];
 
   if (report.largeWalletHistoryProof) {
     lines.push(
@@ -1343,7 +1362,11 @@ function buildMarkdown(report) {
     lines.push('No large-wallet transaction-history proof recorded.', '');
   }
 
-  lines.push('## Sized Backup Restore Proof', '');
+  return lines;
+}
+
+function buildSizedBackupRestoreSection(report) {
+  const lines = ['## Sized Backup Restore Proof', ''];
 
   if (report.sizedBackupRestoreProof) {
     lines.push(
@@ -1360,7 +1383,11 @@ function buildMarkdown(report) {
     lines.push('No sized backup restore proof recorded.', '');
   }
 
-  lines.push('## Worker Queue Proof', '');
+  return lines;
+}
+
+function buildWorkerQueueSection(report) {
+  const lines = ['## Worker Queue Proof', ''];
 
   if (report.workerQueueProof?.jobs?.length) {
     const durations = summarizeDurations(report.workerQueueProof.jobs.map((job) => job.durationMs));
@@ -1378,7 +1405,7 @@ function buildMarkdown(report) {
         escapeCell(job.name),
         job.state,
         job.durationMs,
-      ].join(' | ').replace(/^/, '| ').replace(/$/, ' |')),
+      ]).map(markdownTableRow),
       '',
       'Queue counts after proof:',
       ''
@@ -1392,18 +1419,30 @@ function buildMarkdown(report) {
     lines.push('No worker queue proof recorded.', '');
   }
 
-  lines.push('## Worker Scale-Out Proof', '');
+  return lines;
+}
+
+function getWorkerScaleOutProcessorIds(proof) {
+  return [...new Set(
+    proof.jobs
+      .filter((job) => job.name === 'diagnostics:worker-ping')
+      .map((job) => job.returnvalue?.worker?.hostname)
+      .filter(Boolean)
+  )];
+}
+
+function getWorkerScaleOutOwner(proof) {
+  return proof.metricsAfter.find((entry) => (
+    entry.metrics?.worker?.electrumSubscriptionOwner || entry.metrics?.electrum?.isRunning
+  ));
+}
+
+function buildWorkerScaleOutSection(report) {
+  const lines = ['## Worker Scale-Out Proof', ''];
 
   if (report.workerScaleOutProof?.jobs?.length) {
-    const processorIds = [...new Set(
-      report.workerScaleOutProof.jobs
-        .filter((job) => job.name === 'diagnostics:worker-ping')
-        .map((job) => job.returnvalue?.worker?.hostname)
-        .filter(Boolean)
-    )];
-    const owner = report.workerScaleOutProof.metricsAfter.find((entry) => (
-      entry.metrics?.worker?.electrumSubscriptionOwner || entry.metrics?.electrum?.isRunning
-    ));
+    const processorIds = getWorkerScaleOutProcessorIds(report.workerScaleOutProof);
+    const owner = getWorkerScaleOutOwner(report.workerScaleOutProof);
     lines.push(
       `Worker replicas: ${report.workerScaleOutProof.workers?.length || 0}`,
       `Diagnostic job processors: ${processorIds.join(', ')}`,
@@ -1418,7 +1457,7 @@ function buildMarkdown(report) {
         job.state,
         job.returnvalue?.worker?.hostname || '',
         job.durationMs,
-      ].join(' | ').replace(/^/, '| ').replace(/$/, ' |')),
+      ]).map(markdownTableRow),
       '',
       'Repeatable job ownership:',
       ''
@@ -1432,31 +1471,65 @@ function buildMarkdown(report) {
     lines.push('No worker scale-out proof recorded.', '');
   }
 
-  lines.push('## Backend Scale-Out Proof', '');
+  return lines;
+}
+
+function getBackendScaleOutTargetCount(proof) {
+  return new Set(
+    (proof.websocket?.targets || [])
+      .map((target) => target.target?.name)
+      .filter(Boolean)
+  ).size;
+}
+
+function buildBackendScaleOutFanoutLine(proof) {
+  if (!proof.fanout) {
+    return `WebSocket target: ${proof.websocketTarget.name} (${proof.websocketTarget.ip})`;
+  }
+
+  const targetCount = getBackendScaleOutTargetCount(proof);
+  return `WebSocket clients: ${proof.fanout.successes}/${proof.fanout.clientCount} received the event across ${targetCount} backend replicas`;
+}
+
+function buildBackendScaleOutEventLine(proof) {
+  if (proof.fanout) {
+    return `Fanout p95: ${proof.fanout.latency.p95Ms} ms`;
+  }
+
+  return `Event: ${proof.event.event} on ${proof.event.channel} in ${proof.event.durationMs} ms`;
+}
+
+function buildBackendScaleOutSection(report) {
+  const lines = ['## Backend Scale-Out Proof', ''];
 
   if (report.backendScaleOutProof?.event?.ok) {
     lines.push(
       `Backend replicas: ${report.backendScaleOutProof.backends?.length || 0}`,
-      report.backendScaleOutProof.fanout
-        ? `WebSocket clients: ${report.backendScaleOutProof.fanout.successes}/${report.backendScaleOutProof.fanout.clientCount} received the event across ${new Set((report.backendScaleOutProof.websocket?.targets || []).map((target) => target.target?.name).filter(Boolean)).size} backend replicas`
-        : `WebSocket target: ${report.backendScaleOutProof.websocketTarget.name} (${report.backendScaleOutProof.websocketTarget.ip})`,
+      buildBackendScaleOutFanoutLine(report.backendScaleOutProof),
       `Trigger target: ${report.backendScaleOutProof.triggerTarget.name} (${report.backendScaleOutProof.triggerTarget.ip})`,
       `Wallet: ${report.backendScaleOutProof.wallet.name} (${report.backendScaleOutProof.wallet.id})`,
       `Trigger status: ${report.backendScaleOutProof.trigger.status}`,
-      report.backendScaleOutProof.fanout
-        ? `Fanout p95: ${report.backendScaleOutProof.fanout.latency.p95Ms} ms`
-        : `Event: ${report.backendScaleOutProof.event.event} on ${report.backendScaleOutProof.event.channel} in ${report.backendScaleOutProof.event.durationMs} ms`,
+      buildBackendScaleOutEventLine(report.backendScaleOutProof),
       ''
     );
   } else {
     lines.push('No backend scale-out proof recorded.', '');
   }
 
-  lines.push(
+  return lines;
+}
+
+function buildContainerSection(report) {
+  return [
     '## Containers',
     '',
     ...report.composePs.map((container) => `- ${container.service}: state=${container.state}${container.health ? ` health=${container.health}` : ''}`),
     '',
+  ];
+}
+
+function buildNotesSection() {
+  return [
     '## Notes',
     '',
     '- This proof starts a disposable full-stack Docker Compose project with frontend, backend, gateway, worker, Redis, and PostgreSQL services.',
@@ -1470,7 +1543,23 @@ function buildMarkdown(report) {
     '- The backend scale-out proof runs two backend replicas, opens multiple wallet subscription WebSockets across the replicas, triggers wallet sync on one replica, and requires the Redis bridge to deliver the sync event to every client.',
     '- The local generated wallets and two-replica topology are repository-controlled proof; A-grade scale claims still require privacy-safe calibrated datasets and topologies, such as synthetic/regtest fixtures or operator-owned testnet wallets, without third-party wallet profiling.',
     '- The disposable wrapper enables backup restore by default because the PostgreSQL database is temporary; set `PHASE3_COMPOSE_ALLOW_RESTORE=false` only when explicitly testing non-destructive mode.'
-  );
+  ];
+}
+
+function buildMarkdown(report) {
+  const lines = [
+    ...buildMarkdownHeader(report),
+    ...buildBenchmarkEvidenceSection(report),
+    ...buildCapacitySnapshotsSection(report),
+    ...buildScenarioSummarySection(report),
+    ...buildLargeWalletHistorySection(report),
+    ...buildSizedBackupRestoreSection(report),
+    ...buildWorkerQueueSection(report),
+    ...buildWorkerScaleOutSection(report),
+    ...buildBackendScaleOutSection(report),
+    ...buildContainerSection(report),
+    ...buildNotesSection(),
+  ];
 
   return `${lines.join('\n')}\n`;
 }

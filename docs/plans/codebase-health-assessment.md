@@ -44,7 +44,7 @@ Current `/grade` state:
 
 - Latest quality report: `tasks/grade-report-2026-04-13-c76.md`.
 - Current `/grade` score: **82/100 (B)** after lint, body-validation, largest-file, quality-gate, and lizard extraction work.
-- Current lizard extraction sequence: `298c7754 Reduce Trezor connect lizard baseline` lowered the repo-wide baseline from 55 to 54 warnings. The gateway backend event notification, Coldcard nested parser account, Keystone standard parser account, UR device decoder, UR PSBT decode, UTXO age, Trezor path utility, Jade path conversion, send transaction action, draft management, QR signing, USB signing, send reducer, verify-address vector generation, Phase 3 benchmark proof assertion, and sized backup restore proof extraction passes lower the measured baseline again to 38 warnings.
+- Current lizard extraction sequence: `298c7754 Reduce Trezor connect lizard baseline` lowered the repo-wide baseline from 55 to 54 warnings. The gateway backend event notification, Coldcard nested parser account, Keystone standard parser account, UR device decoder, UR PSBT decode, UTXO age, Trezor path utility, Jade path conversion, send transaction action, draft management, QR signing, USB signing, send reducer, verify-address vector generation, Phase 3 benchmark proof assertion, sized backup restore proof, and Phase 3 benchmark Markdown rendering extraction passes lower the measured baseline again to 37 warnings.
 - Completed P1 items from the quality report: first-pass lint gate, blocking CI quality gates, scoped largest-file threshold, API body-validation guard, and the named transaction typing gaps.
 - Remaining score-moving local work: reduce the measured lizard baseline and clean up current-tree/full-history gitleaks false positives. Performance and operations A-grade movement still requires environment evidence, not broad local refactoring.
 
@@ -58,7 +58,7 @@ Recommended next sequence:
 | P2 | Keep A-grade operations and performance evidence moving outside the lizard loop. | Durable production alert receiver proof, production/prod-like runtime evidence, and privacy-safe calibrated load benchmarks remain the main non-local blockers. | Evidence is recorded in `docs/plans/` with p95/p99, failure rates, dataset/topology notes, alert delivery proof, and sensitive data excluded. |
 | P2 | Run routine dependency-audit maintenance separately from architecture refactors. | Nonbreaking `follow-redirects`/transitive updates and accepted Prisma/polyfill chains should not be mixed into lizard refactor commits. | Audit triage stays current, high/critical production advisories remain unaccepted, and breaking audit-fix paths are handled in their own decision record. |
 
-Practical next patch: refactor `buildMarkdown` in `scripts/perf/phase3-compose-benchmark-smoke.mjs` while keeping the generated Markdown report unchanged. Run `node --check scripts/perf/phase3-compose-benchmark-smoke.mjs`, a target lizard check for `scripts/perf/phase3-compose-benchmark-smoke.mjs`, `npm run typecheck:app`, and `npm run lint`.
+Practical next patch: split one of the remaining embedded proof-script string builders in `scripts/perf/phase3-compose-benchmark-smoke.mjs`, starting with `getWorkerScaleOutProofScript`, while preserving the generated Compose proof script. Run `node --check scripts/perf/phase3-compose-benchmark-smoke.mjs`, a target lizard check for `scripts/perf/phase3-compose-benchmark-smoke.mjs`, `npm run typecheck:app`, and `npm run lint`.
 
 ## Scorecard
 
