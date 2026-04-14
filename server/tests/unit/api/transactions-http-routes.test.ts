@@ -1073,6 +1073,20 @@ describe('Transaction HTTP Routes', () => {
     expect(response.body.message).toContain('feeRate must be at least');
   });
 
+  it('rejects malformed batch transaction field types before wallet lookup', async () => {
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/batch`)
+      .send({
+        feeRate: '1',
+        outputs: [{ address: 'tb1qone', amount: 10000 }],
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toContain('feeRate');
+    expect(mockWalletFindById).not.toHaveBeenCalled();
+    expect(mockCreateBatchTransaction).not.toHaveBeenCalled();
+  });
+
   it('returns 404 when creating a batch transaction for missing wallet', async () => {
     mockPrismaClient.wallet.findUnique.mockResolvedValue(null);
     mockWalletFindById.mockResolvedValue(null);

@@ -6,6 +6,7 @@
  */
 
 import { Router } from 'express';
+import { z } from 'zod';
 import { requireWalletAccess } from '../../middleware/walletAccess';
 import { createLogger } from '../../utils/logger';
 import { walletRepository } from '../../repositories/walletRepository';
@@ -24,6 +25,21 @@ import { parseTransactionRequestBody } from './requestValidation';
 
 const router = Router();
 const log = createLogger('TX_DRAFT:ROUTE');
+
+const BatchTransactionOutputSchema = z.object({
+  address: z.string().optional(),
+  amount: z.number().optional(),
+  sendMax: z.boolean().optional(),
+}).passthrough();
+
+const BatchTransactionRequestSchema = z.object({
+  outputs: z.array(BatchTransactionOutputSchema).optional(),
+  feeRate: z.number().optional(),
+  selectedUtxoIds: z.array(z.string()).optional(),
+  enableRBF: z.boolean().optional(),
+  label: z.string().optional(),
+  memo: z.string().optional(),
+}).passthrough();
 
 /**
  * POST /api/v1/wallets/:walletId/transactions/create
@@ -134,7 +150,7 @@ router.post('/wallets/:walletId/transactions/batch', requireWalletAccess('edit')
     enableRBF = true,
     label,
     memo,
-  } = req.body;
+  } = parseTransactionRequestBody(BatchTransactionRequestSchema, req.body);
 
   // Validate outputs array
   if (!outputs || !Array.isArray(outputs) || outputs.length === 0) {
@@ -153,6 +169,7 @@ router.post('/wallets/:walletId/transactions/batch', requireWalletAccess('edit')
   }
 
   const network = wallet.network as 'mainnet' | 'testnet' | 'regtest';
+  const validatedOutputs: Array<{ address: string; amount: number; sendMax?: boolean }> = [];
 
   // Validate each output
   for (let i = 0; i < outputs.length; i++) {
@@ -171,25 +188,29 @@ router.post('/wallets/:walletId/transactions/batch', requireWalletAccess('edit')
     if (!addressValidation.valid) {
       throw new ValidationError(`Output ${i + 1}: Invalid Bitcoin address: ${addressValidation.error}`);
     }
+
+    validatedOutputs.push({
+      address: output.address,
+      amount: output.amount ?? 0,
+      ...(output.sendMax !== undefined && { sendMax: output.sendMax }),
+    });
   }
 
   // Only one output can have sendMax
-  const sendMaxCount = outputs.filter((o: { sendMax?: boolean }) => o.sendMax).length;
+  const sendMaxCount = validatedOutputs.filter((o) => o.sendMax).length;
   if (sendMaxCount > 1) {
     throw new ValidationError('Only one output can have sendMax enabled');
   }
 
   // Evaluate vault policies BEFORE creating the batch PSBT
   // Note: sendMax outputs have amount=0 here; address control still applies
-  const totalAmount = outputs.reduce(
-    (sum: number, o: { amount?: number }) => sum + (o.amount || 0), 0
-  );
+  const totalAmount = validatedOutputs.reduce((sum, o) => sum + o.amount, 0);
   const policyResult = await policyEvaluationEngine.evaluatePolicies({
     walletId,
     userId: req.user!.userId,
-    recipient: outputs[0].address,
+    recipient: validatedOutputs[0].address,
     amount: BigInt(totalAmount),
-    outputs,
+    outputs: validatedOutputs,
   });
 
   if (!policyResult.allowed) {
@@ -199,7 +220,7 @@ router.post('/wallets/:walletId/transactions/batch', requireWalletAccess('edit')
   // Create batch transaction
   const txData = await txService.createBatchTransaction(
     walletId,
-    outputs,
+    validatedOutputs,
     feeRate,
     {
       selectedUtxoIds,
