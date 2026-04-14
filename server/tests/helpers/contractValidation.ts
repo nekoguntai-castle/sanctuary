@@ -140,6 +140,10 @@ function isTransactionStatus(value: unknown): boolean {
   return isEnumValue(value, TX_STATUSES);
 }
 
+function isDraftStatus(value: unknown): boolean {
+  return isEnumValue(value, DRAFT_STATUSES);
+}
+
 const WALLET_RESPONSE_RULES: FieldValidationRule[] = [
   { field: 'id', isValid: isString, message: 'id must be a string' },
   { field: 'name', isValid: isString, message: 'name must be a string' },
@@ -212,6 +216,60 @@ const TRANSACTION_RESPONSE_RULES: FieldValidationRule[] = [
   { field: 'createdAt', isValid: isIsoDateString, message: 'createdAt must be an ISO date string' },
   { field: 'isRbf', isValid: isBoolean, message: 'isRbf must be a boolean' },
 ];
+
+const DRAFT_RESPONSE_RULES: FieldValidationRule[] = [
+  { field: 'id', isValid: isString, message: 'id must be a string' },
+  { field: 'walletId', isValid: isString, message: 'walletId must be a string' },
+  { field: 'status', isValid: isDraftStatus, message: `status must be one of: ${DRAFT_STATUSES.join(', ')}` },
+  { field: 'psbt', isValid: isString, message: 'psbt must be a string' },
+  { field: 'amount', isValid: isBigIntString, message: 'amount must be a numeric string' },
+  { field: 'fee', isValid: isBigIntString, message: 'fee must be a numeric string' },
+  { field: 'createdAt', isValid: isIsoDateString, message: 'createdAt must be an ISO date string' },
+  { field: 'updatedAt', isValid: isIsoDateString, message: 'updatedAt must be an ISO date string' },
+  { field: 'expiresAt', isValid: isNullableIsoDateString, message: 'expiresAt must be an ISO date string or null' },
+  { field: 'memo', isValid: isNullableString, message: 'memo must be a string or null' },
+];
+
+function validateDraftRecipient(recipient: unknown, index: number, errors: string[]) {
+  if (!isObject(recipient)) {
+    errors.push(`recipients[${index}] must be an object`);
+    return;
+  }
+
+  if (!isString(recipient.address)) errors.push(`recipients[${index}].address must be a string`);
+  if (!isBigIntString(recipient.amount)) errors.push(`recipients[${index}].amount must be a numeric string`);
+}
+
+function validateDraftRecipients(recipients: unknown, errors: string[]) {
+  if (!isArray(recipients)) {
+    errors.push('recipients must be an array');
+    return;
+  }
+
+  recipients.forEach((recipient, index) => validateDraftRecipient(recipient, index, errors));
+}
+
+function validateDraftSigner(signer: unknown, index: number, errors: string[]) {
+  if (!isObject(signer)) {
+    errors.push(`signers[${index}] must be an object`);
+    return;
+  }
+
+  if (!isString(signer.fingerprint)) errors.push(`signers[${index}].fingerprint must be a string`);
+  if (!isBoolean(signer.signed)) errors.push(`signers[${index}].signed must be a boolean`);
+  if (!isNullableIsoDateString(signer.signedAt)) {
+    errors.push(`signers[${index}].signedAt must be an ISO date string or null`);
+  }
+}
+
+function validateDraftSigners(signers: unknown, errors: string[]) {
+  if (!isArray(signers)) {
+    errors.push('signers must be an array');
+    return;
+  }
+
+  signers.forEach((signer, index) => validateDraftSigner(signer, index, errors));
+}
 
 // =============================================================================
 // Response Validators
@@ -355,57 +413,9 @@ export function validateDraftResponse(data: unknown): ValidationResult {
     return { valid: false, errors: ['Response is not an object'] };
   }
 
-  // Required string fields
-  if (!isString(data.id)) errors.push('id must be a string');
-  if (!isString(data.walletId)) errors.push('walletId must be a string');
-  if (!isEnumValue(data.status, DRAFT_STATUSES)) errors.push(`status must be one of: ${DRAFT_STATUSES.join(', ')}`);
-  if (!isString(data.psbt)) errors.push('psbt must be a string');
-
-  // BigInt strings
-  if (!isBigIntString(data.amount)) errors.push('amount must be a numeric string');
-  if (!isBigIntString(data.fee)) errors.push('fee must be a numeric string');
-
-  // Arrays
-  if (!isArray(data.recipients)) {
-    errors.push('recipients must be an array');
-  } else {
-    data.recipients.forEach((r: unknown, i: number) => {
-      if (!isObject(r)) {
-        errors.push(`recipients[${i}] must be an object`);
-      } else {
-        if (!isString(r.address)) errors.push(`recipients[${i}].address must be a string`);
-        if (!isBigIntString(r.amount)) errors.push(`recipients[${i}].amount must be a numeric string`);
-      }
-    });
-  }
-
-  if (!isArray(data.signers)) {
-    errors.push('signers must be an array');
-  } else {
-    data.signers.forEach((s: unknown, i: number) => {
-      if (!isObject(s)) {
-        errors.push(`signers[${i}] must be an object`);
-      } else {
-        if (!isString(s.fingerprint)) errors.push(`signers[${i}].fingerprint must be a string`);
-        if (!isBoolean(s.signed)) errors.push(`signers[${i}].signed must be a boolean`);
-        if (s.signedAt !== null && !isIsoDateString(s.signedAt)) {
-          errors.push(`signers[${i}].signedAt must be an ISO date string or null`);
-        }
-      }
-    });
-  }
-
-  // Date strings
-  if (!isIsoDateString(data.createdAt)) errors.push('createdAt must be an ISO date string');
-  if (!isIsoDateString(data.updatedAt)) errors.push('updatedAt must be an ISO date string');
-
-  // Nullable fields
-  if (data.expiresAt !== null && !isIsoDateString(data.expiresAt)) {
-    errors.push('expiresAt must be an ISO date string or null');
-  }
-  if (data.memo !== null && !isString(data.memo)) {
-    errors.push('memo must be a string or null');
-  }
+  validateFields(data, errors, DRAFT_RESPONSE_RULES);
+  validateDraftRecipients(data.recipients, errors);
+  validateDraftSigners(data.signers, errors);
 
   return { valid: errors.length === 0, errors };
 }
