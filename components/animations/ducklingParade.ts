@@ -24,6 +24,55 @@ interface Duck {
   wingFlap: number;
 }
 
+type DuckKind = 'mother' | 'duckling';
+
+interface DuckPalette {
+  bodyColor: string;
+  bodyHighlight: string;
+  bodyDark: string;
+  wingDetail: string;
+  headHighlight: string;
+  headShadow: string;
+}
+
+const LIGHT_DUCK_PALETTES: Record<DuckKind, DuckPalette> = {
+  mother: {
+    bodyColor: '#8B7355',
+    bodyHighlight: '#A08060',
+    bodyDark: '#6B5340',
+    wingDetail: '#5B4B3B',
+    headHighlight: '#4A6B4A',
+    headShadow: '#2A4B2A',
+  },
+  duckling: {
+    bodyColor: '#FFD700',
+    bodyHighlight: '#FFEC8B',
+    bodyDark: '#DAA520',
+    wingDetail: '#C8B800',
+    headHighlight: '#FFEC8B',
+    headShadow: '#FFD700',
+  },
+};
+
+const DARK_DUCK_PALETTES: Record<DuckKind, DuckPalette> = {
+  mother: {
+    bodyColor: '#6B5B4B',
+    bodyHighlight: '#8B7B6B',
+    bodyDark: '#4B3B2B',
+    wingDetail: '#5B4B3B',
+    headHighlight: '#4B6B4B',
+    headShadow: '#2B4B2B',
+  },
+  duckling: {
+    bodyColor: '#B8A800',
+    bodyHighlight: '#D8C820',
+    bodyDark: '#988800',
+    wingDetail: '#C8B800',
+    headHighlight: '#D8C820',
+    headShadow: '#B8A800',
+  },
+};
+
 interface DuckFamily {
   ducks: Duck[];
   direction: 1 | -1;
@@ -292,33 +341,45 @@ export function useDucklingParade(
       ctx.restore();
     };
 
-    const drawDuck = (ctx: CanvasRenderingContext2D, duck: Duck, direction: number) => {
-      const waddle = Math.sin(timeRef * 0.08 + duck.waddle) * 5;
-      const bob = Math.sin(timeRef * 0.05 + duck.bobPhase) * 2;
-      const size = duck.size;
-
-      ctx.save();
-      ctx.translate(duck.x, duck.y + bob);
-      ctx.scale(direction, 1);
-
-      // Shadow
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+    const fillEllipse = (
+      ctx: CanvasRenderingContext2D,
+      x: number,
+      y: number,
+      radiusX: number,
+      radiusY: number,
+      rotation = 0
+    ) => {
       ctx.beginPath();
-      ctx.ellipse(0, size * 0.4, size * 0.6, size * 0.15, 0, 0, Math.PI * 2);
+      ctx.ellipse(x, y, radiusX, radiusY, rotation, 0, Math.PI * 2);
       ctx.fill();
+    };
 
-      // Body colors
-      const bodyColor = duck.isMother
-        ? (darkMode ? '#6B5B4B' : '#8B7355')
-        : (darkMode ? '#B8A800' : '#FFD700');
-      const bodyHighlight = duck.isMother
-        ? (darkMode ? '#8B7B6B' : '#A08060')
-        : (darkMode ? '#D8C820' : '#FFEC8B');
-      const bodyDark = duck.isMother
-        ? (darkMode ? '#4B3B2B' : '#6B5340')
-        : (darkMode ? '#988800' : '#DAA520');
+    const fillCircle = (
+      ctx: CanvasRenderingContext2D,
+      x: number,
+      y: number,
+      radius: number
+    ) => {
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fill();
+    };
 
-      // Tail feathers
+    const getDuckPalette = (duck: Duck): DuckPalette => {
+      const palettes = darkMode ? DARK_DUCK_PALETTES : LIGHT_DUCK_PALETTES;
+      return duck.isMother ? palettes.mother : palettes.duckling;
+    };
+
+    const drawDuckShadow = (ctx: CanvasRenderingContext2D, size: number) => {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+      fillEllipse(ctx, 0, size * 0.4, size * 0.6, size * 0.15);
+    };
+
+    const drawDuckTail = (
+      ctx: CanvasRenderingContext2D,
+      size: number,
+      bodyColor: string
+    ) => {
       ctx.fillStyle = bodyColor;
       ctx.beginPath();
       ctx.moveTo(-size * 0.3, 0);
@@ -329,99 +390,113 @@ export function useDucklingParade(
       }
       ctx.closePath();
       ctx.fill();
+    };
 
-      // Body
+    const drawDuckBody = (
+      ctx: CanvasRenderingContext2D,
+      size: number,
+      waddle: number,
+      palette: DuckPalette
+    ) => {
       const bodyGradient = ctx.createRadialGradient(
         size * 0.1, -size * 0.1, 0,
         0, 0, size * 0.5
       );
-      bodyGradient.addColorStop(0, bodyHighlight);
-      bodyGradient.addColorStop(0.6, bodyColor);
-      bodyGradient.addColorStop(1, bodyDark);
+      bodyGradient.addColorStop(0, palette.bodyHighlight);
+      bodyGradient.addColorStop(0.6, palette.bodyColor);
+      bodyGradient.addColorStop(1, palette.bodyDark);
 
       ctx.fillStyle = bodyGradient;
-      ctx.beginPath();
-      ctx.ellipse(0, 0, size * 0.45, size * 0.35, waddle * 0.02, 0, Math.PI * 2);
-      ctx.fill();
+      fillEllipse(ctx, 0, 0, size * 0.45, size * 0.35, waddle * 0.02);
+    };
 
-      // Wing
-      ctx.fillStyle = bodyDark;
+    const drawDuckWing = (
+      ctx: CanvasRenderingContext2D,
+      size: number,
+      duck: Duck,
+      palette: DuckPalette
+    ) => {
       const wingFlap = Math.sin(duck.wingFlap) * 5;
-      ctx.beginPath();
-      ctx.ellipse(-size * 0.1, -size * 0.05 + wingFlap, size * 0.25, size * 0.18, 0.3, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.fillStyle = palette.bodyDark;
+      fillEllipse(ctx, -size * 0.1, -size * 0.05 + wingFlap, size * 0.25, size * 0.18, 0.3);
 
-      // Wing detail
-      ctx.strokeStyle = duck.isMother ? '#5B4B3B' : '#C8B800';
+      ctx.strokeStyle = palette.wingDetail;
       ctx.lineWidth = 1;
       for (let i = 0; i < 3; i++) {
         ctx.beginPath();
         ctx.arc(-size * 0.1, -size * 0.05 + wingFlap, size * 0.12 + i * 4, -0.5, 0.8);
         ctx.stroke();
       }
+    };
 
-      // Neck
+    const drawDuckNeck = (
+      ctx: CanvasRenderingContext2D,
+      size: number,
+      bodyColor: string
+    ) => {
       ctx.fillStyle = bodyColor;
-      ctx.beginPath();
-      ctx.ellipse(size * 0.25, -size * 0.2, size * 0.15, size * 0.2, -0.3, 0, Math.PI * 2);
-      ctx.fill();
+      fillEllipse(ctx, size * 0.25, -size * 0.2, size * 0.15, size * 0.2, -0.3);
+    };
 
-      // Head
+    const drawDuckHead = (
+      ctx: CanvasRenderingContext2D,
+      size: number,
+      palette: DuckPalette
+    ) => {
       const headGradient = ctx.createRadialGradient(
         size * 0.4, -size * 0.35, 0,
         size * 0.35, -size * 0.4, size * 0.25
       );
-      if (duck.isMother) {
-        headGradient.addColorStop(0, darkMode ? '#4B6B4B' : '#4A6B4A');
-        headGradient.addColorStop(1, darkMode ? '#2B4B2B' : '#2A4B2A');
-      } else {
-        headGradient.addColorStop(0, darkMode ? '#D8C820' : '#FFEC8B');
-        headGradient.addColorStop(1, darkMode ? '#B8A800' : '#FFD700');
-      }
+      headGradient.addColorStop(0, palette.headHighlight);
+      headGradient.addColorStop(1, palette.headShadow);
 
       ctx.fillStyle = headGradient;
+      fillCircle(ctx, size * 0.35, -size * 0.4, size * 0.2);
+    };
+
+    const drawDucklingCheek = (ctx: CanvasRenderingContext2D, size: number) => {
+      ctx.fillStyle = 'rgba(255, 180, 180, 0.3)';
+      fillCircle(ctx, size * 0.45, -size * 0.35, size * 0.08);
+    };
+
+    const drawDuckOpenEye = (ctx: CanvasRenderingContext2D, size: number) => {
+      ctx.fillStyle = '#FFFFFF';
+      fillEllipse(ctx, size * 0.42, -size * 0.45, size * 0.08, size * 0.1);
+
+      ctx.fillStyle = '#000000';
+      fillCircle(ctx, size * 0.44, -size * 0.44, size * 0.04);
+
+      ctx.fillStyle = '#FFFFFF';
+      fillCircle(ctx, size * 0.46, -size * 0.46, size * 0.015);
+    };
+
+    const drawDuckClosedEye = (ctx: CanvasRenderingContext2D, size: number) => {
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(size * 0.35, -size * 0.4, size * 0.2, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.arc(size * 0.42, -size * 0.44, size * 0.05, 0.2, Math.PI - 0.2);
+      ctx.stroke();
+    };
 
-      // Cheek (for ducklings)
-      if (!duck.isMother) {
-        ctx.fillStyle = 'rgba(255, 180, 180, 0.3)';
-        ctx.beginPath();
-        ctx.arc(size * 0.45, -size * 0.35, size * 0.08, 0, Math.PI * 2);
-        ctx.fill();
+    const drawDuckEye = (
+      ctx: CanvasRenderingContext2D,
+      size: number,
+      isBlinking: boolean
+    ) => {
+      if (isBlinking) {
+        drawDuckClosedEye(ctx, size);
+        return;
       }
 
-      // Eye
-      if (!duck.isBlinking) {
-        // Eye white
-        ctx.fillStyle = '#FFFFFF';
-        ctx.beginPath();
-        ctx.ellipse(size * 0.42, -size * 0.45, size * 0.08, size * 0.1, 0, 0, Math.PI * 2);
-        ctx.fill();
+      drawDuckOpenEye(ctx, size);
+    };
 
-        // Pupil
-        ctx.fillStyle = '#000000';
-        ctx.beginPath();
-        ctx.arc(size * 0.44, -size * 0.44, size * 0.04, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Eye highlight
-        ctx.fillStyle = '#FFFFFF';
-        ctx.beginPath();
-        ctx.arc(size * 0.46, -size * 0.46, size * 0.015, 0, Math.PI * 2);
-        ctx.fill();
-      } else {
-        // Closed eye
-        ctx.strokeStyle = '#000000';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(size * 0.42, -size * 0.44, size * 0.05, 0.2, Math.PI - 0.2);
-        ctx.stroke();
-      }
-
-      // Beak
-      const beakOpen = duck.isQuacking ? size * 0.04 : 0;
+    const drawDuckBeak = (
+      ctx: CanvasRenderingContext2D,
+      size: number,
+      isQuacking: boolean
+    ) => {
+      const beakOpen = isQuacking ? size * 0.04 : 0;
       ctx.fillStyle = '#FF8C00';
       ctx.beginPath();
       ctx.moveTo(size * 0.5, -size * 0.4 - beakOpen);
@@ -430,16 +505,14 @@ export function useDucklingParade(
       ctx.closePath();
       ctx.fill();
 
-      // Beak nostril
       ctx.fillStyle = '#D87000';
-      ctx.beginPath();
-      ctx.arc(size * 0.55, -size * 0.38, size * 0.015, 0, Math.PI * 2);
-      ctx.fill();
+      fillCircle(ctx, size * 0.55, -size * 0.38, size * 0.015);
+    };
 
-      // Feet (if not in water)
-      ctx.fillStyle = '#FF8C00';
+    const drawDuckFeet = (ctx: CanvasRenderingContext2D, size: number) => {
       const footY = size * 0.35;
-      // Left foot
+      ctx.fillStyle = '#FF8C00';
+
       ctx.beginPath();
       ctx.moveTo(-size * 0.1, footY);
       ctx.lineTo(-size * 0.2, footY + size * 0.1);
@@ -448,7 +521,7 @@ export function useDucklingParade(
       ctx.lineTo(-size * 0.05, footY);
       ctx.closePath();
       ctx.fill();
-      // Right foot
+
       ctx.beginPath();
       ctx.moveTo(size * 0.1, footY);
       ctx.lineTo(0, footY + size * 0.1);
@@ -457,6 +530,28 @@ export function useDucklingParade(
       ctx.lineTo(size * 0.15, footY);
       ctx.closePath();
       ctx.fill();
+    };
+
+    const drawDuck = (ctx: CanvasRenderingContext2D, duck: Duck, direction: number) => {
+      const waddle = Math.sin(timeRef * 0.08 + duck.waddle) * 5;
+      const bob = Math.sin(timeRef * 0.05 + duck.bobPhase) * 2;
+      const size = duck.size;
+      const palette = getDuckPalette(duck);
+
+      ctx.save();
+      ctx.translate(duck.x, duck.y + bob);
+      ctx.scale(direction, 1);
+
+      drawDuckShadow(ctx, size);
+      drawDuckTail(ctx, size, palette.bodyColor);
+      drawDuckBody(ctx, size, waddle, palette);
+      drawDuckWing(ctx, size, duck, palette);
+      drawDuckNeck(ctx, size, palette.bodyColor);
+      drawDuckHead(ctx, size, palette);
+      if (!duck.isMother) drawDucklingCheek(ctx, size);
+      drawDuckEye(ctx, size, duck.isBlinking);
+      drawDuckBeak(ctx, size, duck.isQuacking);
+      drawDuckFeet(ctx, size);
 
       ctx.restore();
     };
@@ -544,96 +639,111 @@ export function useDucklingParade(
       ctx.restore();
     };
 
+    const randomTimer = (start: number, range: number) => (
+      range === 0 ? start : start + Math.random() * range
+    );
+
+    const updateDuckBlink = (
+      duck: Duck,
+      blinkDuration: number,
+      waitStart: number,
+      waitRange: number
+    ) => {
+      duck.blinkTimer--;
+      if (duck.blinkTimer > 0) return;
+
+      duck.isBlinking = !duck.isBlinking;
+      duck.blinkTimer = duck.isBlinking
+        ? blinkDuration
+        : randomTimer(waitStart, waitRange);
+    };
+
+    const updateDuckQuack = (
+      duck: Duck,
+      quackStart: number,
+      quackRange: number,
+      waitStart: number,
+      waitRange: number
+    ) => {
+      duck.quackTimer--;
+      if (duck.quackTimer > 0) return;
+
+      duck.isQuacking = !duck.isQuacking;
+      duck.quackTimer = duck.isQuacking
+        ? randomTimer(quackStart, quackRange)
+        : randomTimer(waitStart, waitRange);
+    };
+
+    const resetFamilyIfOffscreen = (family: DuckFamily, width: number) => {
+      const leader = family.leader;
+      const offRight = family.direction === 1 && leader.x > width + 100;
+      const offLeft = family.direction === -1 && leader.x < -100;
+      if (!offRight && !offLeft) return;
+
+      leader.x = family.direction === 1 ? -100 : width + 100;
+      family.pathY = getRandomSideY(canvas.height);
+      leader.y = family.pathY;
+    };
+
+    const updateDucklingFollow = (family: DuckFamily, index: number) => {
+      const duckling = family.ducks[index];
+      const target = family.ducks[index - 1];
+      const followDist = 25 + duckling.followIndex * 3;
+      const targetPosX = target.x - family.direction * followDist;
+      const dx = targetPosX - duckling.x;
+      const dy = target.y + Math.sin(timeRef * 0.02 + index) * 3 - duckling.y;
+      const moveSpeed = Math.min(Math.abs(dx) * 0.08, 2.0);
+
+      duckling.x += Math.sign(dx) * moveSpeed;
+      duckling.y += dy * 0.04;
+      duckling.waddle += 0.1;
+    };
+
+    const updateDucklingWing = (duckling: Duck) => {
+      if (Math.random() < 0.002) {
+        duckling.wingFlap = Math.PI;
+      }
+      if (duckling.wingFlap > 0) {
+        duckling.wingFlap -= 0.2;
+      }
+    };
+
+    const updateDuckling = (family: DuckFamily, index: number) => {
+      const duckling = family.ducks[index];
+
+      updateDucklingFollow(family, index);
+      updateDuckBlink(duckling, 8, 80, 150);
+      updateDuckQuack(duckling, 3, 0, 300, 500);
+      updateDucklingWing(duckling);
+    };
+
+    const addFamilyRipple = (family: DuckFamily) => {
+      if (Math.random() >= 0.03) return;
+
+      const randomDuck = family.ducks[Math.floor(Math.random() * family.ducks.length)];
+      ripples.push({
+        x: randomDuck.x,
+        y: randomDuck.y + randomDuck.size * 0.3,
+        radius: 0,
+        maxRadius: 15 + Math.random() * 10,
+        opacity: 0.3,
+      });
+    };
+
     const updateDucks = (family: DuckFamily, width: number) => {
       const leader = family.leader;
 
-      // Move leader
       leader.x += family.direction * 0.8;
       leader.waddle += 0.1;
+      updateDuckBlink(leader, 10, 100, 200);
+      updateDuckQuack(leader, 5, 10, 200, 400);
+      resetFamilyIfOffscreen(family, width);
 
-      // Update blinking
-      leader.blinkTimer--;
-      if (leader.blinkTimer <= 0) {
-        if (!leader.isBlinking) {
-          leader.isBlinking = true;
-          leader.blinkTimer = 10;
-        } else {
-          leader.isBlinking = false;
-          leader.blinkTimer = 100 + Math.random() * 200;
-        }
-      }
-
-      // Update quacking
-      leader.quackTimer--;
-      if (leader.quackTimer <= 0) {
-        if (!leader.isQuacking) {
-          leader.isQuacking = true;
-          leader.quackTimer = 5 + Math.random() * 10;
-        } else {
-          leader.isQuacking = false;
-          leader.quackTimer = 200 + Math.random() * 400;
-        }
-      }
-
-      // Reset when off screen
-      if ((family.direction === 1 && leader.x > width + 100) ||
-          (family.direction === -1 && leader.x < -100)) {
-        leader.x = family.direction === 1 ? -100 : width + 100;
-        family.pathY = getRandomSideY(canvas.height);
-        leader.y = family.pathY;
-      }
-
-      // Ducklings follow
       for (let i = 1; i < family.ducks.length; i++) {
-        const duckling = family.ducks[i];
-        const target = family.ducks[i - 1];
-        const followDist = 25 + duckling.followIndex * 3;
-
-        // Calculate where the duckling should be (behind the target in the parade direction)
-        const targetPosX = target.x - family.direction * followDist;
-        const dx = targetPosX - duckling.x;
-        const dy = target.y + Math.sin(timeRef * 0.02 + i) * 3 - duckling.y;
-
-        // Smooth following - clamp movement to prevent overshooting
-        const moveSpeed = Math.min(Math.abs(dx) * 0.08, 2.0);
-        duckling.x += Math.sign(dx) * moveSpeed;
-        duckling.y += dy * 0.04;
-        duckling.waddle += 0.1;
-
-        // Update blinking
-        duckling.blinkTimer--;
-        if (duckling.blinkTimer <= 0) {
-          duckling.isBlinking = !duckling.isBlinking;
-          duckling.blinkTimer = duckling.isBlinking ? 8 : (80 + Math.random() * 150);
-        }
-
-        // Update quacking (less frequent for ducklings)
-        duckling.quackTimer--;
-        if (duckling.quackTimer <= 0) {
-          duckling.isQuacking = !duckling.isQuacking;
-          duckling.quackTimer = duckling.isQuacking ? 3 : (300 + Math.random() * 500);
-        }
-
-        // Occasional wing flap
-        if (Math.random() < 0.002) {
-          duckling.wingFlap = Math.PI;
-        }
-        if (duckling.wingFlap > 0) {
-          duckling.wingFlap -= 0.2;
-        }
+        updateDuckling(family, i);
       }
 
-      // Add ripples occasionally
-      if (Math.random() < 0.03) {
-        const randomDuck = family.ducks[Math.floor(Math.random() * family.ducks.length)];
-        ripples.push({
-          x: randomDuck.x,
-          y: randomDuck.y + randomDuck.size * 0.3,
-          radius: 0,
-          maxRadius: 15 + Math.random() * 10,
-          opacity: 0.3,
-        });
-      }
+      addFamilyRipple(family);
     };
 
     const updateButterfly = (bf: Butterfly, width: number, height: number) => {
