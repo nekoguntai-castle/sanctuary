@@ -25,6 +25,58 @@ interface Bunny {
   tailWiggle: number;
 }
 
+interface BunnyPalette {
+  mainColor: string;
+  shadowColor: string;
+  highlightColor: string;
+}
+
+const LIGHT_BUNNY_PALETTES: Record<Bunny['color'], BunnyPalette> = {
+  white: {
+    mainColor: '#FFFAFA',
+    shadowColor: '#E0E0E0',
+    highlightColor: '#FFFFFF',
+  },
+  brown: {
+    mainColor: '#8B6914',
+    shadowColor: '#6B4904',
+    highlightColor: '#9B7924',
+  },
+  gray: {
+    mainColor: '#808080',
+    shadowColor: '#606060',
+    highlightColor: '#A0A0A0',
+  },
+  spotted: {
+    mainColor: '#FFFAFA',
+    shadowColor: '#D0D0D0',
+    highlightColor: '#FFFFFF',
+  },
+};
+
+const DARK_BUNNY_PALETTES: Record<Bunny['color'], BunnyPalette> = {
+  white: {
+    mainColor: '#D0D0D0',
+    shadowColor: '#A0A0A0',
+    highlightColor: '#E8E8E8',
+  },
+  brown: {
+    mainColor: '#6B4423',
+    shadowColor: '#4B2413',
+    highlightColor: '#8B5433',
+  },
+  gray: {
+    mainColor: '#606060',
+    shadowColor: '#404040',
+    highlightColor: '#808080',
+  },
+  spotted: {
+    mainColor: '#C8C8C8',
+    shadowColor: '#888888',
+    highlightColor: '#E0E0E0',
+  },
+};
+
 interface Flower {
   x: number;
   y: number;
@@ -363,177 +415,186 @@ export function useBunnyMeadow(
       ctx.restore();
     };
 
-    const drawBunny = (ctx: CanvasRenderingContext2D, bunny: Bunny) => {
-      const size = bunny.size;
-      const hopOffset = bunny.hopHeight;
-      const earWave = Math.sin(timeRef * 0.02 + bunny.earPhase) * 3;
-      const noseWiggle = Math.sin(timeRef * 0.15 + bunny.noseWiggle) * 2;
+    const fillEllipse = (
+      ctx: CanvasRenderingContext2D,
+      x: number,
+      y: number,
+      radiusX: number,
+      radiusY: number,
+      rotation = 0
+    ) => {
+      ctx.beginPath();
+      ctx.ellipse(x, y, radiusX, radiusY, rotation, 0, Math.PI * 2);
+      ctx.fill();
+    };
 
-      ctx.save();
-      ctx.translate(bunny.x, bunny.y - hopOffset);
-      ctx.scale(bunny.direction, 1);
+    const fillCircle = (
+      ctx: CanvasRenderingContext2D,
+      x: number,
+      y: number,
+      radius: number
+    ) => {
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fill();
+    };
 
-      // Get colors based on bunny type
-      let mainColor: string, shadowColor: string, highlightColor: string;
-      switch (bunny.color) {
-        case 'white':
-          mainColor = darkMode ? '#D0D0D0' : '#FFFAFA';
-          shadowColor = darkMode ? '#A0A0A0' : '#E0E0E0';
-          highlightColor = darkMode ? '#E8E8E8' : '#FFFFFF';
-          break;
-        case 'brown':
-          mainColor = darkMode ? '#6B4423' : '#8B6914';
-          shadowColor = darkMode ? '#4B2413' : '#6B4904';
-          highlightColor = darkMode ? '#8B5433' : '#9B7924';
-          break;
-        case 'gray':
-          mainColor = darkMode ? '#606060' : '#808080';
-          shadowColor = darkMode ? '#404040' : '#606060';
-          highlightColor = darkMode ? '#808080' : '#A0A0A0';
-          break;
-        case 'spotted':
-          mainColor = darkMode ? '#C8C8C8' : '#FFFAFA';
-          shadowColor = darkMode ? '#888888' : '#D0D0D0';
-          highlightColor = darkMode ? '#E0E0E0' : '#FFFFFF';
-          break;
-      }
+    const getBunnyPalette = (color: Bunny['color']): BunnyPalette => {
+      const palettes = darkMode ? DARK_BUNNY_PALETTES : LIGHT_BUNNY_PALETTES;
+      return palettes[color];
+    };
 
-      // Shadow
+    const drawBunnyShadow = (
+      ctx: CanvasRenderingContext2D,
+      size: number,
+      hopOffset: number
+    ) => {
       ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
-      ctx.beginPath();
-      ctx.ellipse(0, hopOffset + size * 0.5, size * 0.5, size * 0.15, 0, 0, Math.PI * 2);
-      ctx.fill();
+      fillEllipse(ctx, 0, hopOffset + size * 0.5, size * 0.5, size * 0.15);
+    };
 
-      // Back leg (when hopping)
-      if (bunny.state === 'hopping') {
-        ctx.fillStyle = shadowColor;
-        ctx.beginPath();
-        ctx.ellipse(-size * 0.15, size * 0.35, size * 0.2, size * 0.12, -0.5, 0, Math.PI * 2);
-        ctx.fill();
-      }
+    const drawBunnyBackLeg = (
+      ctx: CanvasRenderingContext2D,
+      size: number,
+      bunny: Bunny,
+      shadowColor: string
+    ) => {
+      if (bunny.state !== 'hopping') return;
 
-      // Tail (fluffy puffball)
+      ctx.fillStyle = shadowColor;
+      fillEllipse(ctx, -size * 0.15, size * 0.35, size * 0.2, size * 0.12, -0.5);
+    };
+
+    const drawBunnyTail = (
+      ctx: CanvasRenderingContext2D,
+      size: number,
+      bunny: Bunny,
+      palette: BunnyPalette
+    ) => {
       const tailWiggle = Math.sin(bunny.tailWiggle) * 3;
-      ctx.fillStyle = highlightColor;
-      ctx.beginPath();
-      ctx.arc(-size * 0.35 + tailWiggle, size * 0.1, size * 0.15, 0, Math.PI * 2);
-      ctx.fill();
-      // Tail fluff
-      ctx.fillStyle = mainColor;
-      ctx.beginPath();
-      ctx.arc(-size * 0.32 + tailWiggle, size * 0.08, size * 0.1, 0, Math.PI * 2);
-      ctx.fill();
 
-      // Body
+      ctx.fillStyle = palette.highlightColor;
+      fillCircle(ctx, -size * 0.35 + tailWiggle, size * 0.1, size * 0.15);
+
+      ctx.fillStyle = palette.mainColor;
+      fillCircle(ctx, -size * 0.32 + tailWiggle, size * 0.08, size * 0.1);
+    };
+
+    const drawBunnyBody = (
+      ctx: CanvasRenderingContext2D,
+      size: number,
+      palette: BunnyPalette
+    ) => {
       const bodyGradient = ctx.createRadialGradient(
         size * 0.1, -size * 0.1, 0,
         0, 0, size * 0.5
       );
-      bodyGradient.addColorStop(0, highlightColor);
-      bodyGradient.addColorStop(0.7, mainColor);
-      bodyGradient.addColorStop(1, shadowColor);
+      bodyGradient.addColorStop(0, palette.highlightColor);
+      bodyGradient.addColorStop(0.7, palette.mainColor);
+      bodyGradient.addColorStop(1, palette.shadowColor);
 
       ctx.fillStyle = bodyGradient;
-      ctx.beginPath();
-      ctx.ellipse(0, size * 0.1, size * 0.4, size * 0.35, 0, 0, Math.PI * 2);
-      ctx.fill();
+      fillEllipse(ctx, 0, size * 0.1, size * 0.4, size * 0.35);
+    };
 
-      // Spots for spotted bunny
-      if (bunny.color === 'spotted') {
-        ctx.fillStyle = darkMode ? '#4a3a2a' : '#8B6914';
-        ctx.beginPath();
-        ctx.ellipse(-size * 0.15, size * 0.05, size * 0.1, size * 0.08, 0.3, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.ellipse(size * 0.1, size * 0.2, size * 0.08, size * 0.06, -0.2, 0, Math.PI * 2);
-        ctx.fill();
-      }
+    const drawBunnySpots = (ctx: CanvasRenderingContext2D, size: number) => {
+      ctx.fillStyle = darkMode ? '#4a3a2a' : '#8B6914';
+      fillEllipse(ctx, -size * 0.15, size * 0.05, size * 0.1, size * 0.08, 0.3);
+      fillEllipse(ctx, size * 0.1, size * 0.2, size * 0.08, size * 0.06, -0.2);
+    };
 
-      // Front paws
+    const drawBunnyPawsUp = (
+      ctx: CanvasRenderingContext2D,
+      size: number
+    ) => {
+      fillEllipse(ctx, size * 0.25, -size * 0.15, size * 0.08, size * 0.12, 0.3);
+      fillEllipse(ctx, size * 0.35, -size * 0.1, size * 0.08, size * 0.12, 0.5);
+    };
+
+    const drawBunnyFrontPaws = (
+      ctx: CanvasRenderingContext2D,
+      size: number,
+      bunny: Bunny,
+      mainColor: string
+    ) => {
       ctx.fillStyle = mainColor;
+
       if (bunny.state === 'eating') {
-        // Paws up
-        ctx.beginPath();
-        ctx.ellipse(size * 0.25, -size * 0.15, size * 0.08, size * 0.12, 0.3, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.ellipse(size * 0.35, -size * 0.1, size * 0.08, size * 0.12, 0.5, 0, Math.PI * 2);
-        ctx.fill();
-      } else {
-        // Paws down
-        ctx.beginPath();
-        ctx.ellipse(size * 0.2, size * 0.35, size * 0.1, size * 0.06, 0, 0, Math.PI * 2);
-        ctx.fill();
+        drawBunnyPawsUp(ctx, size);
+        return;
       }
 
-      // Head
+      fillEllipse(ctx, size * 0.2, size * 0.35, size * 0.1, size * 0.06);
+    };
+
+    const drawBunnyHead = (
+      ctx: CanvasRenderingContext2D,
+      size: number,
+      palette: BunnyPalette
+    ) => {
       const headGradient = ctx.createRadialGradient(
         size * 0.35, -size * 0.35, 0,
         size * 0.3, -size * 0.25, size * 0.35
       );
-      headGradient.addColorStop(0, highlightColor);
-      headGradient.addColorStop(0.6, mainColor);
-      headGradient.addColorStop(1, shadowColor);
+      headGradient.addColorStop(0, palette.highlightColor);
+      headGradient.addColorStop(0.6, palette.mainColor);
+      headGradient.addColorStop(1, palette.shadowColor);
 
       ctx.fillStyle = headGradient;
-      ctx.beginPath();
-      ctx.arc(size * 0.3, -size * 0.2, size * 0.28, 0, Math.PI * 2);
-      ctx.fill();
+      fillCircle(ctx, size * 0.3, -size * 0.2, size * 0.28);
 
-      // Cheeks
       ctx.fillStyle = 'rgba(255, 182, 193, 0.3)';
-      ctx.beginPath();
-      ctx.ellipse(size * 0.45, -size * 0.1, size * 0.1, size * 0.08, 0, 0, Math.PI * 2);
-      ctx.fill();
+      fillEllipse(ctx, size * 0.45, -size * 0.1, size * 0.1, size * 0.08);
+    };
 
-      // Ears
+    const drawBunnyEar = (
+      ctx: CanvasRenderingContext2D,
+      size: number,
+      x: number,
+      y: number,
+      rotation: number,
+      mainColor: string
+    ) => {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(rotation);
+
+      ctx.fillStyle = mainColor;
+      fillEllipse(ctx, 0, -size * 0.35, size * 0.12, size * 0.35);
+
+      ctx.fillStyle = darkMode ? '#8a6a5a' : '#FFB6C1';
+      fillEllipse(ctx, 0, -size * 0.3, size * 0.06, size * 0.25);
+
+      ctx.restore();
+    };
+
+    const drawBunnyEars = (
+      ctx: CanvasRenderingContext2D,
+      size: number,
+      bunny: Bunny,
+      earWave: number,
+      mainColor: string
+    ) => {
       const earAngle = bunny.state === 'alert' ? -0.2 : 0.1;
 
-      // Left ear
-      ctx.save();
-      ctx.translate(size * 0.2, -size * 0.4);
-      ctx.rotate(earAngle + earWave * 0.02);
+      drawBunnyEar(ctx, size, size * 0.2, -size * 0.4, earAngle + earWave * 0.02, mainColor);
+      drawBunnyEar(ctx, size, size * 0.35, -size * 0.42, earAngle - 0.15 - earWave * 0.01, mainColor);
+    };
 
-      // Outer ear
-      ctx.fillStyle = mainColor;
-      ctx.beginPath();
-      ctx.ellipse(0, -size * 0.35, size * 0.12, size * 0.35, 0, 0, Math.PI * 2);
-      ctx.fill();
-      // Inner ear
-      ctx.fillStyle = darkMode ? '#8a6a5a' : '#FFB6C1';
-      ctx.beginPath();
-      ctx.ellipse(0, -size * 0.3, size * 0.06, size * 0.25, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-
-      // Right ear
-      ctx.save();
-      ctx.translate(size * 0.35, -size * 0.42);
-      ctx.rotate(earAngle - 0.15 - earWave * 0.01);
-
-      ctx.fillStyle = mainColor;
-      ctx.beginPath();
-      ctx.ellipse(0, -size * 0.35, size * 0.12, size * 0.35, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = darkMode ? '#8a6a5a' : '#FFB6C1';
-      ctx.beginPath();
-      ctx.ellipse(0, -size * 0.3, size * 0.06, size * 0.25, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-
-      // Snout
+    const drawBunnySnout = (
+      ctx: CanvasRenderingContext2D,
+      size: number,
+      highlightColor: string,
+      noseWiggle: number
+    ) => {
       ctx.fillStyle = highlightColor;
-      ctx.beginPath();
-      ctx.ellipse(size * 0.48, -size * 0.12, size * 0.12, size * 0.1, 0, 0, Math.PI * 2);
-      ctx.fill();
+      fillEllipse(ctx, size * 0.48, -size * 0.12, size * 0.12, size * 0.1);
 
-      // Nose
       ctx.fillStyle = darkMode ? '#8a5a4a' : '#FFB6C1';
-      ctx.beginPath();
-      ctx.ellipse(size * 0.55 + noseWiggle * 0.3, -size * 0.18, size * 0.05, size * 0.04, 0, 0, Math.PI * 2);
-      ctx.fill();
+      fillEllipse(ctx, size * 0.55 + noseWiggle * 0.3, -size * 0.18, size * 0.05, size * 0.04);
+    };
 
-      // Mouth (Y shape)
+    const drawBunnyMouth = (ctx: CanvasRenderingContext2D, size: number) => {
       ctx.strokeStyle = darkMode ? '#5a4a4a' : '#8B6969';
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -543,102 +604,163 @@ export function useBunnyMeadow(
       ctx.lineTo(size * 0.55, -size * 0.08);
       ctx.lineTo(size * 0.58, -size * 0.05);
       ctx.stroke();
+    };
 
-      // Eyes
-      if (!bunny.isBlinking) {
-        // Eye white
-        ctx.fillStyle = '#FFFFFF';
-        ctx.beginPath();
-        ctx.ellipse(size * 0.38, -size * 0.28, size * 0.08, size * 0.1, 0, 0, Math.PI * 2);
-        ctx.fill();
+    const drawBunnyOpenEye = (ctx: CanvasRenderingContext2D, size: number) => {
+      ctx.fillStyle = '#FFFFFF';
+      fillEllipse(ctx, size * 0.38, -size * 0.28, size * 0.08, size * 0.1);
 
-        // Pupil
-        ctx.fillStyle = '#000000';
-        ctx.beginPath();
-        ctx.arc(size * 0.4, -size * 0.27, size * 0.045, 0, Math.PI * 2);
-        ctx.fill();
+      ctx.fillStyle = '#000000';
+      fillCircle(ctx, size * 0.4, -size * 0.27, size * 0.045);
 
-        // Highlight
-        ctx.fillStyle = '#FFFFFF';
-        ctx.beginPath();
-        ctx.arc(size * 0.42, -size * 0.29, size * 0.015, 0, Math.PI * 2);
-        ctx.fill();
-      } else {
-        // Closed eye (happy arc)
-        ctx.strokeStyle = '#000000';
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.arc(size * 0.38, -size * 0.27, size * 0.05, 0.3, Math.PI - 0.3);
-        ctx.stroke();
+      ctx.fillStyle = '#FFFFFF';
+      fillCircle(ctx, size * 0.42, -size * 0.29, size * 0.015);
+    };
+
+    const drawBunnyClosedEye = (ctx: CanvasRenderingContext2D, size: number) => {
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(size * 0.38, -size * 0.27, size * 0.05, 0.3, Math.PI - 0.3);
+      ctx.stroke();
+    };
+
+    const drawBunnyEyes = (
+      ctx: CanvasRenderingContext2D,
+      size: number,
+      isBlinking: boolean
+    ) => {
+      if (isBlinking) {
+        drawBunnyClosedEye(ctx, size);
+        return;
       }
 
+      drawBunnyOpenEye(ctx, size);
+    };
+
+    const drawBunnyFace = (
+      ctx: CanvasRenderingContext2D,
+      size: number,
+      bunny: Bunny,
+      palette: BunnyPalette,
+      noseWiggle: number
+    ) => {
+      drawBunnySnout(ctx, size, palette.highlightColor, noseWiggle);
+      drawBunnyMouth(ctx, size);
+      drawBunnyEyes(ctx, size, bunny.isBlinking);
+    };
+
+    const drawBunny = (ctx: CanvasRenderingContext2D, bunny: Bunny) => {
+      const size = bunny.size;
+      const palette = getBunnyPalette(bunny.color);
+      const earWave = Math.sin(timeRef * 0.02 + bunny.earPhase) * 3;
+      const noseWiggle = Math.sin(timeRef * 0.15 + bunny.noseWiggle) * 2;
+
+      ctx.save();
+      ctx.translate(bunny.x, bunny.y - bunny.hopHeight);
+      ctx.scale(bunny.direction, 1);
+
+      drawBunnyShadow(ctx, size, bunny.hopHeight);
+      drawBunnyBackLeg(ctx, size, bunny, palette.shadowColor);
+      drawBunnyTail(ctx, size, bunny, palette);
+      drawBunnyBody(ctx, size, palette);
+      if (bunny.color === 'spotted') drawBunnySpots(ctx, size);
+      drawBunnyFrontPaws(ctx, size, bunny, palette.mainColor);
+      drawBunnyHead(ctx, size, palette);
+      drawBunnyEars(ctx, size, bunny, earWave, palette.mainColor);
+      drawBunnyFace(ctx, size, bunny, palette, noseWiggle);
+
       ctx.restore();
+    };
+
+    const startBunnyHop = (bunny: Bunny, width: number) => {
+      bunny.targetX = getRandomSidePosition(width);
+      bunny.direction = bunny.targetX > bunny.x ? 1 : -1;
+    };
+
+    const returnBunnyToSitting = (
+      bunny: Bunny,
+      timerStart: number,
+      timerRange: number
+    ) => {
+      bunny.state = 'sitting';
+      bunny.stateTimer = timerStart + Math.random() * timerRange;
+      bunny.hopHeight = 0;
+    };
+
+    const updateBunnyBlink = (bunny: Bunny) => {
+      bunny.blinkTimer--;
+      if (bunny.blinkTimer > 0) return;
+
+      bunny.isBlinking = !bunny.isBlinking;
+      bunny.blinkTimer = bunny.isBlinking ? 10 : (120 + Math.random() * 180);
+    };
+
+    const chooseNextSittingState = (bunny: Bunny, width: number) => {
+      const states: Bunny['state'][] = ['hopping', 'eating', 'alert', 'sitting'];
+      bunny.state = states[Math.floor(Math.random() * states.length)];
+      bunny.stateTimer = 80 + Math.random() * 150;
+
+      if (bunny.state === 'hopping') startBunnyHop(bunny, width);
+    };
+
+    const updateSittingBunny = (bunny: Bunny, width: number) => {
+      bunny.hopHeight = 0;
+      if (bunny.stateTimer > 0) return;
+
+      chooseNextSittingState(bunny, width);
+    };
+
+    const updateHoppingBunny = (bunny: Bunny) => {
+      bunny.hopPhase += 0.15;
+      bunny.hopHeight = Math.abs(Math.sin(bunny.hopPhase)) * 30;
+
+      if (Math.sin(bunny.hopPhase) > 0.5) {
+        bunny.x += bunny.direction * 2;
+        bunny.tailWiggle += 0.3;
+      }
+
+      if (Math.abs(bunny.x - bunny.targetX) < 20 || bunny.stateTimer <= 0) {
+        returnBunnyToSitting(bunny, 100, 200);
+      }
+    };
+
+    const updateEatingBunny = (bunny: Bunny) => {
+      bunny.noseWiggle += 0.1;
+      if (bunny.stateTimer > 0) return;
+
+      returnBunnyToSitting(bunny, 80, 150);
+    };
+
+    const chooseNextAlertState = (bunny: Bunny, width: number) => {
+      bunny.state = Math.random() < 0.5 ? 'hopping' : 'sitting';
+      bunny.stateTimer = 100 + Math.random() * 150;
+      if (bunny.state === 'hopping') startBunnyHop(bunny, width);
+    };
+
+    const updateAlertBunny = (bunny: Bunny, width: number) => {
+      bunny.earPhase += 0.05;
+      if (bunny.stateTimer > 0) return;
+
+      chooseNextAlertState(bunny, width);
+    };
+
+    const updateBunnyState = (bunny: Bunny, width: number) => {
+      const updaters: Record<Bunny['state'], (bunny: Bunny, width: number) => void> = {
+        sitting: updateSittingBunny,
+        hopping: updateHoppingBunny,
+        eating: updateEatingBunny,
+        alert: updateAlertBunny,
+      };
+
+      updaters[bunny.state](bunny, width);
     };
 
     const updateBunny = (bunny: Bunny, width: number) => {
       bunny.stateTimer--;
       bunny.noseWiggle += 0.1;
-
-      // Update blinking
-      bunny.blinkTimer--;
-      if (bunny.blinkTimer <= 0) {
-        bunny.isBlinking = !bunny.isBlinking;
-        bunny.blinkTimer = bunny.isBlinking ? 10 : (120 + Math.random() * 180);
-      }
-
-      switch (bunny.state) {
-        case 'sitting':
-          bunny.hopHeight = 0;
-          if (bunny.stateTimer <= 0) {
-            const states: Bunny['state'][] = ['hopping', 'eating', 'alert', 'sitting'];
-            bunny.state = states[Math.floor(Math.random() * states.length)];
-            bunny.stateTimer = 80 + Math.random() * 150;
-
-            if (bunny.state === 'hopping') {
-              bunny.targetX = getRandomSidePosition(width);
-              bunny.direction = bunny.targetX > bunny.x ? 1 : -1;
-            }
-          }
-          break;
-
-        case 'hopping':
-          bunny.hopPhase += 0.15;
-          bunny.hopHeight = Math.abs(Math.sin(bunny.hopPhase)) * 30;
-
-          // Move when at peak of hop
-          if (Math.sin(bunny.hopPhase) > 0.5) {
-            bunny.x += bunny.direction * 2;
-            bunny.tailWiggle += 0.3;
-          }
-
-          // Check if reached target
-          if (Math.abs(bunny.x - bunny.targetX) < 20 || bunny.stateTimer <= 0) {
-            bunny.state = 'sitting';
-            bunny.stateTimer = 100 + Math.random() * 200;
-            bunny.hopHeight = 0;
-          }
-          break;
-
-        case 'eating':
-          bunny.noseWiggle += 0.1;
-          if (bunny.stateTimer <= 0) {
-            bunny.state = 'sitting';
-            bunny.stateTimer = 80 + Math.random() * 150;
-          }
-          break;
-
-        case 'alert':
-          bunny.earPhase += 0.05;
-          if (bunny.stateTimer <= 0) {
-            bunny.state = Math.random() < 0.5 ? 'hopping' : 'sitting';
-            bunny.stateTimer = 100 + Math.random() * 150;
-            if (bunny.state === 'hopping') {
-              bunny.targetX = getRandomSidePosition(width);
-              bunny.direction = bunny.targetX > bunny.x ? 1 : -1;
-            }
-          }
-          break;
-      }
+      updateBunnyBlink(bunny);
+      updateBunnyState(bunny, width);
     };
 
     const updateButterfly = (bf: Butterfly, width: number, height: number) => {

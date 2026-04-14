@@ -101,13 +101,13 @@ jobs:
 
       - name: Run lizard
         # McCabe / NIST / SonarQube: warn on CCN > 15. The current measured
-        # baseline is 12 warnings; fail the job if the count grows.
+        # baseline is 10 warnings; fail the job if the count grows.
         # -l filters by language; `-x` excludes generated, vendored, and
         # test-fixture paths that skew the signal.
         run: |
           lizard \
             -w \
-            -i 12 \
+            -i 10 \
             -l javascript \
             -l typescript \
             -C 15 \
