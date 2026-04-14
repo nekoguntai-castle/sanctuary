@@ -1,6 +1,6 @@
 # Software Quality Report — 2026-04-13
 
-**Overall Score**: 87/100 (implementation-adjusted; original validated baseline was 76/100)
+**Overall Score**: 89/100 (implementation-adjusted; original validated baseline was 76/100)
 **Grade**: B
 **Confidence**: Low
 **Mode**: full
@@ -15,7 +15,7 @@ None. The explicit PEM-marker validation split into two groups:
 - **Allowlisted fixtures** (7): deliberately-broken PEM blocks in `server/tests/unit/services/push/providers/{apns,fcm}.test.ts` and `gateway/tests/unit/services/push/{apns,fcm}.test.ts` — explicitly listed in `.gitleaks.toml`'s `paths` allowlist.
 - **Allowlisted prose hit** (1): `tasks/grade-fix-plan.md` documents PEM sentinel strings by name and is now explicitly listed in `.gitleaks.toml`'s `paths` allowlist. It is not a real credential.
 
-`gitleaks` is not installed globally in this environment, but a temporary `/tmp` install of gitleaks `v8.30.1` was used during the CI-enforcement pass. A full-history scan still finds legacy/test-fixture false positives, so the blocking CI job now gates the PR commit range (and the latest commit on schedule/manual runs) rather than forcing unrelated history cleanup.
+`gitleaks` is not installed globally in this environment, but the pinned workflow version, gitleaks `v8.30.1`, was downloaded to `/tmp` for verification. Latest-commit, tracked-tree, and full-history scans now pass with `.gitleaks.toml` fixture allowlists and a `.gitleaksignore` limited to four historical ignored-artifact fingerprints.
 
 ---
 
@@ -26,17 +26,17 @@ None. The explicit PEM-marker validation split into two groups:
 | Correctness             | 20/20     | Tests + typecheck + lint pass; High suppression density; High completeness |
 | Reliability             | 12/15     | Typed errors + central timeouts; middleware-guaranteed `!` remains by contract; the previously called-out transaction typing gaps are now fixed |
 | Maintainability         | 15/15     | lizard baseline measured at 0 warnings after the syncAddress, Payjoin SSRF, device account normalization, policy create-data, draft create-data, intelligence settings, Telegram collector, wallet autopilot settings, admin Electrum update, transaction batch output validation, push notification preference/message, approval vote guard/event, Electrum reconciliation, Coldcard parser path-selection, multisig script parsing, Electrum server selection, confirmation address-id population, PSBT input construction, Payjoin proposal validation, multisig derivation, backup validation, transaction I/O, config validation, transaction classification, vault policy validation, policy evaluation dispatch, policy usage-recording, Trezor adapter connection, gateway backend event notification, Coldcard nested parser account, Keystone standard parser account, UR device decoder, UR PSBT decode, UTXO age, Trezor path utility, Jade path conversion, send transaction action, draft management, QR signing, USB signing, send reducer, verify-address vector generation, Phase 3 benchmark proof assertion, sized backup restore proof, Phase 3 benchmark Markdown rendering, worker scale-out proof-script, backend scale-out proof-script, UTXO edge-case fixture, BIP173/BIP350 SegWit decoder, UTXO selection fixture, maintenance jobs forwarding, wallet contract validation, device contract validation, transaction contract validation, draft contract validation, repository mock session seeding, repository scenario builder, render-regression API harness, admin drafts smoke API harness, error recovery API harness, user journeys API harness, accessibility API harness, dashboard price/block API harness, admin operations API harness, import wallet API harness, settings persistence API harness, create wallet API harness, paper boats animation, bunny meadow animation, train station animation, fireworks animation, duckling parade animation, paper airplanes animation, lavender fields animation, butterfly garden animation, and WalletDetail filter hook extraction passes; jscpd measured at 2.33%; the scoped largest-file threshold is now cleared after the Electrum connection test split; clean architecture |
-| Security                | 13/15     | 0 high CVEs; no JS eval/DOM injection; API body validation sweep is guarded; new-commit secret gate clean |
+| Security                | 15/15     | 0 high CVEs; no JS eval/DOM injection; API body validation sweep is guarded; latest-commit, tracked-tree, and full-history secret gates clean |
 | Performance             | 4/10      | Cursor pagination + recent streaming; some in-loop N+1 risk |
 | Test Quality            | 13/15     | Thresholds 98–100% enforced; clear AAA structure; sleeps mostly intentional |
 | Operational Readiness   | 10/10     | Docker + CI + health/metrics endpoints + observability + structured logger |
-| **TOTAL**               | **87/100**|               |
+| **TOTAL**               | **89/100**|               |
 
 ---
 
 ## Trend
 
-vs 2026-04-13 (`13efff91`): original validated report was **overall +7 (69→76), grade D→C**, confidence Low→Low. The implementation-adjusted score is now **87/100** after the first-pass lint gate landed, the scoped largest-file threshold was cleared, the API body-validation sweep was guarded, and the lizard baseline reached zero warnings.
+vs 2026-04-13 (`13efff91`): original validated report was **overall +7 (69→76), grade D→C**, confidence Low→Low. The implementation-adjusted score is now **89/100** after the first-pass lint gate landed, the scoped largest-file threshold was cleared, the API body-validation sweep was guarded, the lizard baseline reached zero warnings, and the gitleaks false-positive backlog was cleaned up.
 
 - **Correctness +4** (14→18): `typecheck=fail → pass` (commit `350f67c1` excluded `scripts/verify-addresses/` from root typecheck; `fc086954` stabilized coverage emission).
 - **Correctness +2 after implementation** (18→20): first-pass ESLint gate added and passing.
@@ -46,6 +46,7 @@ vs 2026-04-13 (`13efff91`): original validated report was **overall +7 (69→76)
 - **Maintainability baseline-only improvement after butterfly garden extraction**: the butterfly garden pass lowered the lizard baseline from 3 to 2 warnings; no additional numeric score movement occurs until the baseline reaches zero.
 - **Maintainability +2 after final lizard reduction** (13→15): the WalletDetail filter hook extraction pass lowered the lizard baseline from 2 to 0 warnings, moving criterion 3.1 from `+3` to `+5`.
 - **Security +2 after implementation** (11→13): all `server/src/api` `req.body` readers are now covered by route-level `validate({ body })`, a shared Zod parser, direct `safeParse`, or a documented exception, and `npm run lint` now runs `scripts/check-api-body-validation.mjs` to prevent drift.
+- **Security +2 after gitleaks cleanup** (13→15): latest-commit, tracked-tree, and full-history gitleaks scans now pass without broadly allowlisting ignored local secret files.
 - Other domains unchanged numerically; the remaining 7 commits delivered qualitative reliability/security/performance improvements (REPEATABLE READ snapshot on tx export, DoS cap on `POST /addresses/generate`, streamed tx export, halved device-route queries) that aren't captured by the static signal set.
 - Original heuristic deltas recorded in this report: `secrets` 7→8 (originally caused by `.gitleaks.toml` + `tasks/grade-fix-plan.md` PEM sentinel text — both false positives); `timeout_retry_count` 1264→1269 (+0.4%). After the implementation pass, `.gitleaks.toml` no longer contains a PEM sentinel string and grade task files are allowlisted. I could validate the commit history and the false-positive secret hits; I could not independently reproduce the exact timeout-count heuristic from repository files alone, and no local grade script was found in the repo.
 
@@ -62,7 +63,7 @@ vs 2026-04-13 (`13efff91`): original validated report was **overall +7 (69→76)
 | lint | pass | ESLint flat config + root/server/gateway `lint` scripts + blocking CI lint job added during implementation | 1.3 → +3 |
 | coverage | ≥98% (enforced) | vitest thresholds in config (root 100, server 98–99, gateway 98–100); do not rely on stale coverage-summary artifacts for this grade | 6.1 → +5 |
 | security_high | 0 | `npm audit --audit-level=high` (17 total: 16 low, 1 moderate) | 4.1 → +5 |
-| secrets (effective) | 0 real in the new-commit gate | explicit PEM-marker search now finds 8 markers: 7 allowlisted fixture hits and 1 allowlisted prose hit (`tasks/grade-fix-plan.md`); `gitleaks git --log-opts -1` passed on the latest commit, while full-history/current-directory scans still surface legacy/test/ignored-file false positives | 4.2 → +2 (new-commit gate measured) |
+| secrets (effective) | 0 real in latest-commit, tracked-tree, and full-history gates | explicit PEM-marker search finds only allowlisted fixture/prose hits; `gitleaks git --log-opts -1`, `scripts/gitleaks-tracked-tree.sh`, and full-history `gitleaks git .` all pass with narrow fixture allowlists plus four historical ignored-artifact fingerprints in `.gitleaksignore` | 4.2 → +4 measured |
 | largest_file_lines | 991 | `server/tests/unit/services/utxoSelectionService.test.ts` after the Electrum connection test split; next largest validated files are `server/tests/unit/api/wallets-policies-routes.test.ts` at 981 LOC and `server/tests/unit/api/ai-internal.test.ts` at 964 LOC when generated verified-vector files are excluded. `server/tests/unit/services/bitcoin/electrum.connection.test.ts` is now a 16-line registrar, with Electrum connection contract/harness modules capped at 284 LOC. | 3.3 → +2 |
 | api_body_validation | pass | `scripts/check-api-body-validation.mjs`, now run by `npm run lint:server` | 4.3 → +3 |
 | lizard_warning_count | 0 | lizard 1.21.3 temporary `/tmp` install, CI command with current exclusions; `server/src/services/bitcoin/blockchain/syncAddress.ts`, `server/src/services/payjoin/ssrf.ts`, `server/src/services/deviceAccountConflicts.ts`, `server/src/repositories/policyRepository.ts`, `server/src/repositories/draftRepository.ts`, `server/src/services/intelligence/settings.ts`, `server/src/services/supportPackage/collectors/telegram.ts`, `server/src/api/wallets/autopilot.ts`, `server/src/api/admin/electrumServers.ts`, `server/src/api/transactions/drafting.ts`, `server/src/services/push/pushService.ts`, `server/src/services/vaultPolicy/approvalService.ts`, `server/src/worker/electrumManager/healthMonitoring.ts`, `server/src/services/bitcoin/descriptorParser/coldcardParser.ts`, `server/src/services/bitcoin/psbtBuilder/witnessScript.ts`, `server/src/services/bitcoin/electrumPool/serverSelector.ts`, `server/src/services/bitcoin/sync/confirmations/fieldPopulators.ts`, `server/src/services/bitcoin/transactions/psbtConstruction.ts`, `server/src/services/bitcoin/psbtValidation.ts`, `server/src/services/bitcoin/addressDerivation/multisigDerivation.ts`, `server/src/services/backupService/validation.ts`, `server/src/services/bitcoin/sync/phases/processTransactions/transactionIO.ts`, `server/src/config/index.ts`, `server/src/services/bitcoin/sync/phases/processTransactions/classification.ts`, `server/src/services/vaultPolicy/vaultPolicyService.ts`, `server/src/services/vaultPolicy/policyEvaluationEngine.ts`, `services/hardwareWallet/adapters/trezor/trezorAdapter.ts`, `gateway/src/services/backendEvents/notifications.ts`, `services/deviceParsers/parsers/coldcardNested.ts`, `services/deviceParsers/parsers/keystone.ts`, `utils/urDeviceDecoder.ts`, `utils/urPsbt.ts`, `utils/utxoAge.ts`, `services/hardwareWallet/adapters/trezor/pathUtils.ts`, `services/hardwareWallet/adapters/jade.ts`, `hooks/send/useSendTransactionActions.ts`, `hooks/send/useDraftManagement.ts`, `hooks/send/useQrSigning.ts`, `hooks/send/useUsbSigning.ts`, `contexts/send/reducer.ts`, `scripts/verify-addresses/generate-vectors.ts`, `server/tests/unit/services/bitcoin/industry/utxoEdgeCases.test.ts`, `server/tests/unit/services/bitcoin/bip173-bip350.verified.test.ts`, `server/tests/unit/services/bitcoin/utxoSelection.test.ts`, `server/tests/unit/worker/jobs/maintenanceJobs.test.ts`, `server/tests/helpers/contractValidation.ts` wallet/device/transaction/draft validation, `server/tests/mocks/repositories.ts` session seeding, `server/tests/integration/repositories/setup.ts` scenario building, `e2e/render-regression/renderRegressionHarness.ts` authenticated API mocking, `e2e/admin-drafts-smoke.spec.ts` API mocking, `e2e/error-recovery.spec.ts` API mocking, `e2e/user-journeys.spec.ts` API mocking, `e2e/accessibility.spec.ts` API mocking, `e2e/dashboard-price-blocks.spec.ts` API mocking, `e2e/admin-operations.spec.ts` API mocking, `e2e/import-wallet-flow.spec.ts` API mocking, `e2e/settings-persistence.spec.ts` API mocking, `e2e/create-wallet-flow.spec.ts` API mocking, `components/animations/paperBoats.ts` frame rendering, `components/animations/bunnyMeadow.ts` bunny drawing/state updates, `components/animations/trainStation.ts` frame orchestration, `components/animations/fireworks.ts` explosion particle creation, `components/animations/ducklingParade.ts` duck drawing/family updates, `components/animations/paperAirplanes.ts` airplane drawing/frame updates, `components/animations/lavenderFields.ts` butterfly state/drawing updates, `components/animations/butterflyGarden.ts` butterfly flight/drawing updates, `components/WalletDetail/hooks/useTransactionFilters.ts` manual filter predicates, and `components/WalletDetail/hooks/useAITransactionFilter.ts` AI filter/sort/aggregation helpers now have no lizard warnings after helper extraction; the prior `assertBenchmarkProof`, `runSizedBackupRestoreProof`, `buildMarkdown`, `getWorkerScaleOutProofScript`, and `getBackendScaleOutProofScript` warnings in `scripts/perf/phase3-compose-benchmark-smoke.mjs` are also removed | 3.1 → +5 measured; enforced as zero-warning baseline |
@@ -96,7 +97,7 @@ vs 2026-04-13 (`13efff91`): original validated report was **overall +7 (69→76)
 
 - `lizard` — not installed globally, but a temporary `/tmp` install measured 0 warnings after the continued extraction passes through the WalletDetail filter hook split. `.github/workflows/quality.yml` is now blocking with `-i 0`, so any new warning fails CI.
 - `jscpd` — not installed globally, but `npx --yes jscpd@4 .` measured 2.33% duplicated lines under the existing 5% threshold after temp/report exclusions. `.github/workflows/quality.yml` is now blocking for jscpd.
-- `gitleaks` — not installed globally, but a temporary `/tmp` install measured the gate. `gitleaks git --log-opts -1` passes on the latest commit; full-history and current-directory scans still report legacy/test/ignored-file false positives, so CI now gates PR commit ranges and latest scheduled/manual commits.
+- **No longer missing: full-history/tracked-tree gitleaks signal** — `gitleaks` is not installed globally, but the pinned workflow binary was used to verify latest-commit, tracked-tree, and full-history scans. Raw `gitleaks detect --no-git` over every local file still finds ignored local `.env` and generated SSL artifacts; that all-files scan is intentionally not the quality signal because those paths are excluded from the tracked-tree scan and remain ignored by Git.
 - Local coverage extractor for vitest — no standalone grade/coverage extractor script was found in this repo during validation; actual thresholds are enforced by `vitest.config.ts`, `server/vitest.config.ts`, and `gateway/vitest.config.ts`.
 - **No longer missing: project linter** — implemented after the initial validation pass: `eslint.config.js`, root/server/gateway `lint` scripts, and a blocking `.github/workflows/quality.yml` lint job now exist. The first-pass rule set intentionally covers the highest-signal `CLAUDE.md` checks that are clean on current source (`console.log` in production source, `catch (error: any)`, empty `catch`, and `@ts-ignore`); broader rules such as raw `JSON.parse` are still future tightening work.
 
@@ -115,7 +116,7 @@ Every row below was checked against repository files or command output during th
 | Lint | Implemented after the initial validation gap was confirmed: root `eslint.config.js`, root/server/gateway `lint` scripts, and a blocking `quality.yml` lint job now exist. | P1 lint gate is complete for the first-pass rule set; future tightening can add broader TypeScript policy rules after baseline cleanup. |
 | Coverage | Valid as config thresholds: root 100%, server 98/99/99/99, gateway 100/98/100/100. Coverage-summary artifacts exist but may be stale/partial and should not be used as the grade source. | Keep threshold credit; do not cite stale coverage-summary totals. |
 | Audit | Valid: `npm audit --audit-level=high` exits clean while reporting 17 total lower-severity advisories: 16 low in the transitive `elliptic` chain and 1 moderate `follow-redirects`. | P2: run the nonbreaking `npm audit fix` path for `follow-redirects`; review the low `elliptic` chain separately because audit reports the available fix path as `npm audit fix --force` with a breaking `vite-plugin-node-polyfills` downgrade. Not a high-severity blocker. |
-| gitleaks/lizard/jscpd | Valid with correction: these tools were not installed globally, but temporary `/tmp` installs/binaries produced baselines. CI now runs all three as blocking regression gates; `.jscpd.json` exists and has been tuned to ignore local temp/report artifacts. | P1 implementation complete for regression gating; full-history gitleaks cleanup and further lizard baseline reduction remain separate follow-ups. |
+| gitleaks/lizard/jscpd | Valid with correction: these tools were not installed globally, but temporary `/tmp` installs/binaries produced baselines. CI now runs all three as blocking regression gates; `.jscpd.json` exists and has been tuned to ignore local temp/report artifacts; gitleaks now also has a tracked-tree scan and full-history cleanup. | P1 implementation complete for regression gating, zero-warning lizard, tracked-tree gitleaks, and full-history gitleaks. |
 | Largest file | Corrected after implementation: prior oversized split passes are recorded in the implementation log below. After the Electrum connection split, `server/tests/unit/services/bitcoin/electrum.connection.test.ts` is a 16-line registrar with Electrum connection contract/harness modules capped at 284 LOC; the scoped largest-file scan now reports `server/tests/unit/services/utxoSelectionService.test.ts` at 991 LOC, followed by `server/tests/unit/api/wallets-policies-routes.test.ts` at 981 LOC and `server/tests/unit/api/ai-internal.test.ts` at 964 LOC when generated verified-vector files are excluded. | Largest-file criterion 3.3 can now claim `+2`; further file splits should be treated as buffer/maintainability work, not additional score movement under this criterion. |
 | Health endpoint count | Corrected: 169 is a grep-hit count, not a route count. Real evidence includes `/health`, `/metrics`, `/api/v1/health` in `server/src/routes.ts` and `/health` in `gateway/src/index.ts`. | Keep ops credit but avoid calling 169 "routes." |
 | Suppression density | Corrected: direct source search found 25 suppressions, not 24, excluding generated Prisma files. Most have explanatory comments. | Keep as a low-risk maintainability note; lint can enforce future policy. |
@@ -135,7 +136,7 @@ Every row below was checked against repository files or command output during th
 
 ## Top Risks
 
-1. **CI quality signals are now blocking; lizard is clean at zero.** The new lint, gitleaks, lizard, and jscpd jobs are blocking in `.github/workflows/quality.yml`. `lizard` now has 0 existing warnings and is gated with `-i 0`, so any new complexity warning fails CI. The remaining quality-signal cleanup is the full-history/current-tree gitleaks false-positive backlog.
+1. **CI quality signals are now blocking and the local static-analysis backlog is clean.** The lint, gitleaks, lizard, and jscpd jobs are blocking in `.github/workflows/quality.yml`. `lizard` is gated at zero warnings, gitleaks gates PR/latest commits plus the tracked tree, and full-history gitleaks now passes with narrow fixture and historical-fingerprint allowlists.
 2. **Large-file buffer remains thin, but criterion 3.3 is cleared.** The scoped largest non-generated TS/TSX file is now `server/tests/unit/services/utxoSelectionService.test.ts` at 991 LOC, followed by `server/tests/unit/api/wallets-policies-routes.test.ts` at 981 LOC and `server/tests/unit/api/ai-internal.test.ts` at 964 LOC when generated verified-vector files are excluded. This earns the 3.3 `+2`; further splits are useful only to keep future edits from crossing the threshold again.
 3. **Broader lint tightening remains.** The first-pass ESLint gate catches seeded violations for `console.log`, `catch (error: any)`, empty `catch`, and `@ts-ignore`; API body-validation drift is now guarded, but the lint gate does not yet enforce every `CLAUDE.md` rule such as raw `JSON.parse` because existing call sites need a separate baseline/fix pass.
 
@@ -158,8 +159,8 @@ Ordered by priority, not cost. The first two items are the ones that change the 
 ### Done — Make the existing CI quality signals enforceable + runnable locally
 - Install `gitleaks`, `lizard`, `jscpd` locally (Nix/Homebrew/pip/npm). Add `scripts/quality.sh` that runs the same commands as the CI jobs so developers get the signal pre-push.
 - **Keep the `.gitleaks.toml` grade-task allowlist** that was added during the implementation pass: `tasks/grade-fix-plan.md` and `tasks/grade-report-2026-04-13-c76.md`. `.gitleaks.toml` itself no longer carries a literal PEM sentinel in comments, so it does not need a broad self-allowlist.
-- Baseline the current lizard/jscpd output, document any intentional deltas, then remove `continue-on-error: true` from each job in `quality.yml` **per-job, not as a batch**. Implemented with jscpd at 2.33%, lizard now at a zero-warning baseline after the continued extraction passes through the WalletDetail filter hook split, and gitleaks scoped to PR/latest-commit regression scanning because full-history/current-directory scans include legacy/test/ignored-file false positives.
-- Score impact: net **+5 points** in this continued pass. jscpd remains at 3.2 `+3`, while the measured lizard baseline moved 3.1 from `+0 → +5` after reaching zero warnings; Security 4.2 is now a measured regression gate, but not a full-history clean signal.
+- Baseline the current lizard/jscpd output, document any intentional deltas, then remove `continue-on-error: true` from each job in `quality.yml` **per-job, not as a batch**. Implemented with jscpd at 2.33%, lizard now at a zero-warning baseline after the continued extraction passes through the WalletDetail filter hook split, and gitleaks now clean for latest-commit, tracked-tree, and full-history scans.
+- Score impact: net **+7 points** in this continued pass. jscpd remains at 3.2 `+3`, the measured lizard baseline moved 3.1 from `+0 → +5` after reaching zero warnings, and Security 4.2 now claims the full clean secret-scan signal.
 
 ### Done — Split `server/tests/unit/api/openapi.test.ts` by OpenAPI domain
 - Replaced the 2825-line file with a 17-line suite registrar plus domain contract modules: core 417 LOC, wallet 462 LOC, admin-core 542 LOC, admin-ops 579 LOC, gateway 819 LOC, and shared helpers 113 LOC.
@@ -243,7 +244,7 @@ Ordered by priority, not cost. The first two items are the ones that change the 
 - Run the nonbreaking `npm audit fix` path for the moderate `follow-redirects <=1.15.11` advisory. No score impact at the high-severity gate, but keeps the advisory list tidy.
 - Review the low-severity `elliptic` transitive chain separately. Current `npm audit --audit-level=high` output reports a `npm audit fix --force` path that would install `vite-plugin-node-polyfills@0.2.0` as a breaking change, so do not force that under this quality-report cleanup.
 
-Combined low-effort ceiling from the remaining P1 items: **≈ 87–89 (B)**. The lizard baseline, scoped largest-file, and API body-validation criteria are now cleared; the remaining local score movement is the legacy/current-tree gitleaks false-positive cleanup.
+Combined low-effort ceiling from the original P1 items is now reached at **89/100 (B)**. The lizard baseline, scoped largest-file, API body-validation, and gitleaks false-positive criteria are cleared; further movement requires performance, scale, or operations evidence rather than local cleanup.
 
 ### Execution order & dependencies
 
@@ -260,30 +261,28 @@ The four P1 items can largely run in parallel, but there is one sequencing rule 
 | Item | Done when |
 |---|---|
 | Lint gate | Done locally: `npm run lint` exists in root + server + gateway, `.github/workflows/quality.yml` has a blocking `lint` job, and the rules fail on seeded violations for `console.log`, `catch (error: any)`, empty `catch`, and `@ts-ignore`. |
-| CI signals enforceable | Done for regression gating: `scripts/quality.sh` runs all three tools; `quality.yml`'s `gitleaks`, `lizard`, and `jscpd` jobs no longer use `continue-on-error`; gitleaks gates PR/latest commits, lizard gates zero warnings, and jscpd gates the existing 5% threshold. |
+| CI signals enforceable | Done for regression gating: `scripts/quality.sh` runs all three tools; `quality.yml`'s `gitleaks`, `lizard`, and `jscpd` jobs no longer use `continue-on-error`; gitleaks gates PR/latest commits and the tracked tree, lizard gates zero warnings, and jscpd gates the existing 5% threshold. |
 | API/test split backlog | Done for the original named API files and the later largest-file threshold backlog: OpenAPI, transaction API, and admin API suite registrars are 17, 25, and 26 LOC respectively; later passes split service, integration, frontend, gateway, and API tests down through `server/tests/unit/services/bitcoin/electrum.connection.test.ts`. The scoped largest-file criterion is now cleared, with `server/tests/unit/services/utxoSelectionService.test.ts` at 991 LOC as the current largest non-generated TS/TSX file. |
 | Zod normalization | Done: `server/src/api/**` `req.body` readers are covered by `validate({ body })`, shared parser-backed helpers, direct `safeParse`, or documented exceptions. `npm run check:api-body-validation` passes and is part of `npm run lint:server`. |
 
 ### Target state after P1 (projected)
 
-The "After P1" ranges below now assume the lizard warning baseline remains clean and the gitleaks false-positive cleanup is either deferred or completed. The largest-file threshold, Zod body-validation sweep, and zero-warning lizard gate are already cleared; remaining score movement comes from cleaning up full-history/current-tree gitleaks false positives.
+The "After P1" ranges below reflect the completed P1 cleanup. The largest-file threshold, Zod body-validation sweep, zero-warning lizard gate, and gitleaks false-positive cleanup are cleared; remaining score movement is outside this local cleanup plan.
 
 | Domain | Current | After P1 (mid → best) | Delta | Driver |
 |---|---|---|---|---|
 | Correctness | 20/20 | 20/20 | 0 | First-pass lint gate already landed |
 | Reliability | 12/15 | 12/15 | 0 | Unchanged (P2 typing gaps don't move the band) |
 | Maintainability | 15/15 | 15/15 | 0 | Lizard is now clean at zero warnings |
-| Security | 13/15 | 13 → 15/15 | +0 to +2 | gitleaks full-history/current-tree cleanup (4.2) can still add up to `+2`; Zod normalization (4.3) is complete |
+| Security | 15/15 | 15/15 | 0 | gitleaks latest-commit/tracked-tree/full-history cleanup and Zod normalization are complete |
 | Performance | 4/10 | 4/10 | 0 | No P1 item targets Performance (see rationale below) |
 | Test Quality | 13/15 | 13/15 | 0 | No P1 item targets Test Quality |
 | Operational Readiness | 10/10 | 10/10 | 0 | At cap |
-| **TOTAL** | **87/100 (B)** | **87 → 89/100 (B)** | **+0 to +2** | Remaining local score movement is gitleaks false-positive cleanup |
+| **TOTAL** | **89/100 (B)** | **89/100 (B)** | **0** | Remaining movement requires performance, scale, or operations evidence |
 
 Arithmetic check (rounded, no handwaving):
 
-- Current total: 20 + 12 + 15 + 13 + 4 + 13 + 10 = **87**
-- Best-case total: 20 + 12 + 15 + 15 + 4 + 13 + 10 = **89**
-- Mid-estimate (defers gitleaks false-positive cleanup): 20 + 12 + 15 + 13 + 4 + 13 + 10 = **87**
+- Current total: 20 + 12 + 15 + 15 + 4 + 13 + 10 = **89**
 
 **Maintainability range breakdown** — 3.1 and 3.2 are now measured, and 3.3 is now cleared:
 
@@ -295,7 +294,7 @@ Arithmetic check (rounded, no handwaving):
 | 3.4 + 3.5 (unchanged) | +5 | +5 | +5 | +5 |
 | **Domain total** | **15** | **15** | **15** | **15** |
 
-**Security range assumption** — the `+2` on 4.2 now applies only to the new-commit regression gate. Full-history/current-directory scans still report legacy/test/ignored-file false positives; those should be resolved through a separate history/current-tree secret-scan cleanup before claiming a full clean-room gitleaks signal.
+**Security range assumption** — resolved. The `+4` on 4.2 now reflects latest-commit, tracked-tree, and full-history gitleaks scans. Raw all-file `detect --no-git` still sees ignored local `.env` and generated SSL artifacts, which are deliberately outside the tracked-tree quality signal.
 
 **Performance rationale** — 4/10 is low but not an oversight. The recent landed commits (streamed tx export with REPEATABLE READ, capped `POST /addresses/generate`, halved device-route queries) already raised the qualitative ceiling; the next move is real measurement (request-path profiling, query-log sampling, p99 latency observation against the `/metrics` Prometheus surface), not speculative rewrites. That's a separate initiative from this audit and belongs in its own plan.
 
@@ -313,7 +312,7 @@ Deliberately not recommended from this evidence pass:
 
 ## Summary
 
-The repo climbed from **D (69) → C (76)** on the back of the typecheck fix (`350f67c1`), and the implementation-adjusted score is now **87/100 (B)** after the lint gate, scoped largest-file threshold work, guarded API body-validation sweep, and the lizard baseline reduction to zero warnings. The biggest remaining local lever is **full-history/current-tree gitleaks false-positive cleanup**. The largest scoped TS/TSX file is now `server/tests/unit/services/utxoSelectionService.test.ts` at 991 LOC.
+The repo climbed from **D (69) → C (76)** on the back of the typecheck fix (`350f67c1`), and the implementation-adjusted score is now **89/100 (B)** after the lint gate, scoped largest-file threshold work, guarded API body-validation sweep, lizard baseline reduction to zero warnings, and gitleaks false-positive cleanup. The remaining score movement requires performance, scale, or operations evidence rather than local static-analysis cleanup. The largest scoped TS/TSX file is now `server/tests/unit/services/utxoSelectionService.test.ts` at 991 LOC.
 
 ---
 
@@ -426,7 +425,7 @@ Not completed in this pass:
 
 Implemented the next recommended quality-signal pass after installing/baselining the tools in `/tmp`:
 
-- Replaced the advisory gitleaks action step with a blocking gitleaks `v8.30.1` CLI job that scans the PR commit range; scheduled/manual runs scan the latest commit. This matches the validated local result that the latest commit is clean while full-history/current-directory scans still contain legacy/test/ignored-file false positives.
+- Replaced the advisory gitleaks action step with a blocking gitleaks `v8.30.1` CLI job that scans the PR commit range; scheduled/manual runs scan the latest commit. At this checkpoint, the latest commit was clean while full-history/current-directory scans still contained legacy/test/ignored-file false positives; those were resolved in the later gitleaks cleanup pass.
 - Made lizard blocking with the measured 83-warning baseline (`-i 83`) so new complexity warnings fail CI without requiring an unrelated large refactor first.
 - Made jscpd blocking under the existing `.jscpd.json` 5% threshold; the measured baseline is 2.33% duplicated lines.
 - Added `.tmp-gh`, `.tmp`, reports, Playwright report, and test-results exclusions to local quality-tool scopes where needed.
@@ -438,7 +437,7 @@ Verification after CI-signal enforcement:
 - `PATH=/tmp/sanctuary-quality:/tmp/sanctuary-quality/python/bin:$PATH PYTHONPATH=/tmp/sanctuary-quality/python GITLEAKS_LOG_OPTS=-1 npm run quality` — passed after sandbox escalation for jscpd network access; measured 2.33% duplicated lines.
 - `PYTHONPATH=/tmp/sanctuary-quality/python python3 -m lizard ...` — failed as expected before baselining; measured 83 warnings.
 - `/tmp/sanctuary-quality/gitleaks git . --config .gitleaks.toml --redact --no-banner --log-opts -1` — passed: 1 commit scanned, no leaks found.
-- `/tmp/sanctuary-quality/gitleaks detect --source . --config .gitleaks.toml --redact --no-banner` — failed with 36 full-history findings; kept out of the strict gate because they are legacy/test-fixture history, not new leaks in the latest commit.
+- `/tmp/sanctuary-quality/gitleaks detect --source . --config .gitleaks.toml --redact --no-banner` — failed with 36 findings at this checkpoint; the later gitleaks cleanup pass replaces this raw all-file current-directory signal with a tracked-tree scan and clears full-history findings.
 
 ### OpenAPI contract split pass — 2026-04-13
 
@@ -3152,3 +3151,20 @@ Verification after lizard WalletDetail filter hooks extraction:
 - `PYTHONPATH=/tmp/sanctuary-quality/python python3 -m lizard -w -l typescript -C 15 -T nloc=200 components/WalletDetail/hooks/useTransactionFilters.ts components/WalletDetail/hooks/useAITransactionFilter.ts` — passed with no warnings.
 - `PYTHONPATH=/tmp/sanctuary-quality/python python3 -m lizard -w -i 0 ... .` — passed under the same exclusions used by `.github/workflows/quality.yml`.
 - `PYTHONPATH=/tmp/sanctuary-quality/python python3 -m lizard -w -i 999 ... . | awk '/warning:/{count++} END{print count + 0}'` — returned `0`.
+
+### Gitleaks false-positive cleanup pass — 2026-04-14
+
+Implemented the remaining local secret-scan cleanup:
+
+- Added explicit `.gitleaks.toml` allowlists for inspected fixture/test placeholder paths, including regtest Bitcoin RPC workflow credentials, canonical BIP340 vectors, backup/encryption-key UI test placeholders, auth test placeholders, redaction test examples, and render-regression/admin-operation E2E fixtures.
+- Added a narrow `.gitleaksignore` containing only four historical ignored-artifact fingerprints from `.claude/settings.local.json.old` and `extension/dist/background/service-worker.js`.
+- Added `scripts/gitleaks-tracked-tree.sh`, which copies only Git-tracked files into a temporary tree before scanning so ignored local `.env`, coverage, dist, and generated SSL artifacts are not part of the current-tree quality signal.
+- Updated `scripts/quality.sh` and `.github/workflows/quality.yml` so gitleaks covers both the PR/latest-commit gate and the tracked tree.
+- Security 4.2 moves from the new-commit-only `+2` signal to the full `+4` measured signal; the implementation-adjusted score moves from 87/100 to 89/100.
+
+Verification after gitleaks false-positive cleanup:
+
+- `/tmp/gitleaks git . --config .gitleaks.toml --redact --no-banner --log-opts -1` — passed: 1 commit scanned, no leaks found.
+- `GITLEAKS_BIN=/tmp/gitleaks bash scripts/gitleaks-tracked-tree.sh` — passed: no leaks found.
+- `/tmp/gitleaks git . --config .gitleaks.toml --redact --no-banner` — passed: 2053 commits scanned, no leaks found.
+- Raw `/tmp/gitleaks detect --no-git --config .gitleaks.toml --redact --no-banner` now reports only ignored local `.env` and generated SSL artifacts; this all-file scan is intentionally outside the tracked-tree quality signal.

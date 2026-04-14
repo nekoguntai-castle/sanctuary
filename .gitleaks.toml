@@ -26,6 +26,25 @@ paths = [
   # secret-scan false positives; they must not carry real key material.
   '''tasks/grade-fix-plan\.md''',
   '''tasks/grade-report-2026-04-13-c76\.md''',
+  # The verify-vectors workflow talks to a local regtest Bitcoin Core service
+  # with fixed disposable RPC credentials.
+  '''\.github/workflows/verify-vectors\.yml''',
+  # Canonical Bitcoin protocol vectors and test-only placeholders. These files
+  # are intentionally committed fixtures, not operational secrets.
+  '''server/tests/fixtures/bip340-test-vectors\.ts''',
+  '''server/tests/setup\.ts''',
+  '''server/tests/integration/ops/phase2OperationsProof\.integration\.test\.ts''',
+  '''server/tests/unit/api/auth\.test\.ts''',
+  '''server/tests/unit/api/schemas/admin-auth-device-sync\.test\.ts''',
+  '''server/tests/unit/security/securityAudit\.test\.ts''',
+  '''server/tests/unit/services/bitcoin/addressDerivation\.test\.ts''',
+  '''server/tests/unit/utils/redact\.test\.ts''',
+  '''tests/components/BackupRestore\.test\.tsx''',
+  '''tests/components/BackupRestore/EncryptionKeyDisplay\.branches\.test\.tsx''',
+  '''tests/install/e2e/auth-flow\.test\.sh''',
+  '''e2e/admin-operations\.spec\.ts''',
+  '''e2e/render-regression\.spec\.ts''',
+  '''e2e/render-regression/renderRegressionHarness\.ts''',
   # .env.example ships default placeholders, not real secrets.
   '''\.env\.example$''',
   '''server/\.env\.example$''',
@@ -38,6 +57,11 @@ paths = [
   # Vendored dependencies.
   '''node_modules/''',
   '''.*/node_modules/''',
+]
+
+regexes = [
+  # Example API key string used only in redaction documentation and tests.
+  '''sk_live_abc123xyz789''',
 ]
 
 # Rule-specific allowlists can be added below as the tool matures.

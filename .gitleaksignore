@@ -1,0 +1,6 @@
+# Historical ignored local artifacts. These fingerprints are limited to old
+# commits and do not suppress current tracked-tree or new-commit findings.
+95ca60914dc9172d55165171c2732d39a5e137be:.claude/settings.local.json.old:jwt:29
+44b8b2b9dce676248503ce32f14ccbbf0bb6bfa4:.claude/settings.local.json.old:jwt:29
+c13c7a8501cc0f80ea2808a5194acb2f17ac9fb1:extension/dist/background/service-worker.js:generic-api-key:25168
+e2132322bd8e1b8fb461ed0707aa39d0c6d73579:extension/dist/background/service-worker.js:generic-api-key:25168

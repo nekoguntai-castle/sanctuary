@@ -6,9 +6,8 @@ name: Code Quality
 # - lizard:   cyclomatic complexity (McCabe, NIST SP 500-235 thresholds)
 # - jscpd:    duplicate-block detection (SonarQube 3% default)
 #
-# These jobs are blocking. gitleaks gates new commit ranges instead of
-# historical repository cleanup, while lizard enforces a zero-warning
-# baseline. Scheduled
+# These jobs are blocking. gitleaks gates new commit ranges plus the tracked
+# tree, while lizard enforces a zero-warning baseline. Scheduled
 # weekly so baseline drift is visible even on quiet weeks; runs on every PR
 # for per-change feedback.
 
@@ -65,7 +64,9 @@ jobs:
       - name: Run gitleaks
         # The repository has older test-fixture/history false positives, so
         # this job gates new PR commits and the latest scheduled/dispatch
-        # commit instead of forcing an unrelated full-history cleanup.
+        # commit. The tracked-tree scan covers the full checked-out source
+        # while excluding ignored local artifacts such as .env, coverage,
+        # dist, and generated SSL keys.
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -83,6 +84,7 @@ jobs:
               --no-banner \
               --log-opts -1
           fi
+          GITLEAKS_BIN=/tmp/gitleaks bash scripts/gitleaks-tracked-tree.sh
 
   lizard:
     name: Cyclomatic complexity (lizard)

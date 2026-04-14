@@ -25,11 +25,15 @@ if [[ "$missing" -ne 0 ]]; then
   exit 127
 fi
 
+GITLEAKS_BIN="${GITLEAKS_BIN:-gitleaks}"
 GITLEAKS_LOG_OPTS="${GITLEAKS_LOG_OPTS:--1}"
 LIZARD_WARNING_BASELINE="${LIZARD_WARNING_BASELINE:-0}"
 
 echo "==> gitleaks"
-gitleaks git . --config .gitleaks.toml --redact --no-banner --log-opts "$GITLEAKS_LOG_OPTS"
+"$GITLEAKS_BIN" git . --config .gitleaks.toml --redact --no-banner --log-opts "$GITLEAKS_LOG_OPTS"
+
+echo "==> gitleaks tracked tree"
+GITLEAKS_BIN="$GITLEAKS_BIN" bash scripts/gitleaks-tracked-tree.sh
 
 echo "==> lizard"
 lizard \
