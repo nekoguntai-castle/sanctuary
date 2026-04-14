@@ -19,8 +19,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { selectUTXOs, UTXOSelectionStrategy } from '../../../../../src/services/bitcoin/utxoSelection';
 import { DEFAULT_DUST_THRESHOLD, DEFAULT_CONFIRMATION_THRESHOLD } from '../../../../../src/constants';
 
-// Helper to create mock UTXOs
-function createMockUTXO(overrides: Partial<{
+type MockUTXO = {
   id: string;
   txid: string;
   vout: number;
@@ -33,20 +32,34 @@ function createMockUTXO(overrides: Partial<{
   isCoinbase: boolean;
   draftLock: unknown;
   walletId: string;
-}> = {}) {
+};
+
+const DEFAULT_MOCK_UTXO: MockUTXO = {
+  id: 'utxo-1',
+  txid: 'a'.repeat(64),
+  vout: 0,
+  amount: BigInt(100_000),
+  scriptPubKey: '0014' + 'aa'.repeat(20),
+  address: 'bc1qtest',
+  spent: false,
+  frozen: false,
+  confirmations: 6,
+  isCoinbase: false,
+  draftLock: null,
+  walletId: 'wallet-1',
+};
+
+function nonNullishOverrides<T extends object>(overrides: Partial<T>): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(overrides).filter(([, value]) => value != null)
+  ) as Partial<T>;
+}
+
+// Helper to create mock UTXOs
+function createMockUTXO(overrides: Partial<MockUTXO> = {}): MockUTXO {
   return {
-    id: overrides.id ?? 'utxo-1',
-    txid: overrides.txid ?? 'a'.repeat(64),
-    vout: overrides.vout ?? 0,
-    amount: overrides.amount ?? BigInt(100_000),
-    scriptPubKey: overrides.scriptPubKey ?? '0014' + 'aa'.repeat(20),
-    address: overrides.address ?? 'bc1qtest',
-    spent: overrides.spent ?? false,
-    frozen: overrides.frozen ?? false,
-    confirmations: overrides.confirmations ?? 6,
-    isCoinbase: overrides.isCoinbase ?? false,
-    draftLock: overrides.draftLock ?? null,
-    walletId: overrides.walletId ?? 'wallet-1',
+    ...DEFAULT_MOCK_UTXO,
+    ...nonNullishOverrides(overrides),
   };
 }
 
