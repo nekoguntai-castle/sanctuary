@@ -25,7 +25,7 @@ None. The explicit PEM-marker validation split into two groups:
 |-------------------------|-----------|---------------|
 | Correctness             | 20/20     | Tests + typecheck + lint pass; High suppression density; High completeness |
 | Reliability             | 12/15     | Typed errors + central timeouts; middleware-guaranteed `!` remains by contract; the previously called-out transaction typing gaps are now fixed |
-| Maintainability         | 8/15      | lizard baseline measured at 83 warnings; jscpd measured at 2.33%; the validated largest-file split backlog through the push API test split is complete, but the largest non-generated TS/TSX file is now `server/tests/unit/services/approvalService.test.ts` at 1032 LOC; clean architecture |
+| Maintainability         | 8/15      | lizard baseline measured at 83 warnings; jscpd measured at 2.33%; the validated largest-file split backlog through the approval service test split is complete, but the largest non-generated TS/TSX file is now `gateway/tests/unit/middleware/validateRequest.test.ts` at 1022 LOC; clean architecture |
 | Security                | 11/15     | 0 high CVEs; no JS eval/DOM injection; mixed input validation; new-commit secret gate clean |
 | Performance             | 4/10      | Cursor pagination + recent streaming; some in-loop N+1 risk |
 | Test Quality            | 13/15     | Thresholds 98–100% enforced; clear AAA structure; sleeps mostly intentional |
@@ -57,7 +57,7 @@ vs 2026-04-13 (`13efff91`): original validated report was **overall +7 (69→76)
 | coverage | ≥98% (enforced) | vitest thresholds in config (root 100, server 98–99, gateway 98–100); do not rely on stale coverage-summary artifacts for this grade | 6.1 → +5 |
 | security_high | 0 | `npm audit --audit-level=high` (17 total: 16 low, 1 moderate) | 4.1 → +5 |
 | secrets (effective) | 0 real in the new-commit gate | explicit PEM-marker search now finds 8 markers: 7 allowlisted fixture hits and 1 allowlisted prose hit (`tasks/grade-fix-plan.md`); `gitleaks git --log-opts -1` passed on the latest commit, while full-history/current-directory scans still surface legacy/test/ignored-file false positives | 4.2 → +2 (new-commit gate measured) |
-| largest_file_lines | 1032 | `server/tests/unit/services/approvalService.test.ts` after the push API test split; next largest validated files are `gateway/tests/unit/middleware/validateRequest.test.ts` at 1022 LOC and `tests/hooks/useQrScanner.test.tsx` at 1021 LOC when generated verified-vector files are excluded. `server/tests/unit/api/push.test.ts` is now a 46-line registrar, with push API contract modules capped at 196 LOC. | 3.3 → 0 |
+| largest_file_lines | 1022 | `gateway/tests/unit/middleware/validateRequest.test.ts` after the approval service test split; next largest validated files are `tests/hooks/useQrScanner.test.tsx` at 1021 LOC and `server/tests/unit/api/ai.test.ts` at 1014 LOC when generated verified-vector files are excluded. `server/tests/unit/services/approvalService.test.ts` is now a 48-line registrar, with approval service contract modules capped at 179 LOC. | 3.3 → 0 |
 | lizard_warning_count | 83 | lizard 1.21.3 temporary `/tmp` install, CI command with current exclusions | 3.1 → +0 measured; enforced as no-increase baseline |
 | duplication_pct | 2.33% | `npm run quality` with temporary `/tmp` gitleaks/lizard installs and `GITLEAKS_LOG_OPTS=-1` | 3.2 → +3 |
 | deploy_artifact_count | 2 | Dockerfile + `.github/workflows/` (incl. new `quality.yml`) | 7.1 → +3 |
@@ -109,7 +109,7 @@ Every row below was checked against repository files or command output during th
 | Coverage | Valid as config thresholds: root 100%, server 98/99/99/99, gateway 100/98/100/100. Coverage-summary artifacts exist but may be stale/partial and should not be used as the grade source. | Keep threshold credit; do not cite stale coverage-summary totals. |
 | Audit | Valid: `npm audit --audit-level=high` exits clean while reporting 17 total lower-severity advisories: 16 low in the transitive `elliptic` chain and 1 moderate `follow-redirects`. | P2: run the nonbreaking `npm audit fix` path for `follow-redirects`; review the low `elliptic` chain separately because audit reports the available fix path as `npm audit fix --force` with a breaking `vite-plugin-node-polyfills` downgrade. Not a high-severity blocker. |
 | gitleaks/lizard/jscpd | Valid with correction: these tools were not installed globally, but temporary `/tmp` installs/binaries produced baselines. CI now runs all three as blocking regression gates; `.jscpd.json` exists and has been tuned to ignore local temp/report artifacts. | P1 implementation complete for regression gating; full-history gitleaks cleanup and lizard baseline reduction remain separate follow-ups. |
-| Largest file | Corrected after implementation: prior oversized split passes are recorded in the implementation log below. After the push API split, `server/tests/unit/api/push.test.ts` is a 46-line registrar with push API contract modules capped at 196 LOC; the scoped largest-file scan now reports `server/tests/unit/services/approvalService.test.ts` at 1032 LOC, followed by `gateway/tests/unit/middleware/validateRequest.test.ts` at 1022 LOC and `tests/hooks/useQrScanner.test.tsx` at 1021 LOC when generated verified-vector files are excluded. | Next largest-file criterion work is splitting `server/tests/unit/services/approvalService.test.ts`, then `gateway/tests/unit/middleware/validateRequest.test.ts`, or reframing the scoring threshold. |
+| Largest file | Corrected after implementation: prior oversized split passes are recorded in the implementation log below. After the approval service split, `server/tests/unit/services/approvalService.test.ts` is a 48-line registrar with approval service contract modules capped at 179 LOC; the scoped largest-file scan now reports `gateway/tests/unit/middleware/validateRequest.test.ts` at 1022 LOC, followed by `tests/hooks/useQrScanner.test.tsx` at 1021 LOC and `server/tests/unit/api/ai.test.ts` at 1014 LOC when generated verified-vector files are excluded. | Next largest-file criterion work is splitting `gateway/tests/unit/middleware/validateRequest.test.ts`, then `tests/hooks/useQrScanner.test.tsx`, or reframing the scoring threshold. |
 | Health endpoint count | Corrected: 169 is a grep-hit count, not a route count. Real evidence includes `/health`, `/metrics`, `/api/v1/health` in `server/src/routes.ts` and `/health` in `gateway/src/index.ts`. | Keep ops credit but avoid calling 169 "routes." |
 | Suppression density | Corrected: direct source search found 25 suppressions, not 24, excluding generated Prisma files. Most have explanatory comments. | Keep as a low-risk maintainability note; lint can enforce future policy. |
 | Test-file count | Corrected: 771 TS/TSX test/spec files under `server/`, `gateway/`, and `tests/`; 785 when `e2e/` is included; 798 broader `.test`/`.spec` path matches. | Do not cite a single count without naming scope. |
@@ -129,7 +129,7 @@ Every row below was checked against repository files or command output during th
 ## Top Risks
 
 1. **CI quality signals are now blocking, but lizard is baseline-gated.** The new lint, gitleaks, lizard, and jscpd jobs are blocking in `.github/workflows/quality.yml`. `lizard` still has 83 existing warnings, so the immediate guardrail is "do not increase warning count"; reducing the baseline remains future maintainability work.
-2. **Remaining oversized API/service modules** — the validated split backlog through the push API test file is complete, but the current largest non-generated TS/TSX file is now `server/tests/unit/services/approvalService.test.ts` at 1032 LOC, followed by `gateway/tests/unit/middleware/validateRequest.test.ts` at 1022 LOC and `tests/hooks/useQrScanner.test.tsx` at 1021 LOC when generated verified-vector files are excluded. This keeps criterion 3.3 at 0 until those files are split or the scoring threshold is reframed.
+2. **Remaining oversized API/service modules** — the validated split backlog through the approval service test file is complete, but the current largest non-generated TS/TSX file is now `gateway/tests/unit/middleware/validateRequest.test.ts` at 1022 LOC, followed by `tests/hooks/useQrScanner.test.tsx` at 1021 LOC and `server/tests/unit/api/ai.test.ts` at 1014 LOC when generated verified-vector files are excluded. This keeps criterion 3.3 at 0 until those files are split or the scoring threshold is reframed.
 3. **Inconsistent input validation at mutation boundaries** — the AI/device/wallet sharing/wallet CRUD/wallet import/wallet policy/wallet settings/wallet approval/Bitcoin/label/price/node/internal-mobile-permission/push/transfers/payjoin/transaction-UTXO/transaction-batch/sync/admin-monitoring/admin-policy/admin-node/AI-internal/intelligence/draft/auth-profile/auth-registration/auth-token slices are now on Zod-backed validation, but a post-slice `req.body` sweep still shows other handlers that need route-specific triage as already parser-backed or future Zod targets. A handler missing validation is a latent CWE-20.
 4. **Broader lint tightening remains.** The first-pass ESLint gate catches seeded violations for `console.log`, `catch (error: any)`, empty `catch`, and `@ts-ignore`; it does not yet enforce every `CLAUDE.md` rule such as raw `JSON.parse` because existing call sites need a separate baseline/fix pass.
 
@@ -159,7 +159,7 @@ Ordered by priority, not cost. The first two items are the ones that change the 
 - Replaced the 2825-line file with a 17-line suite registrar plus domain contract modules: core 417 LOC, wallet 462 LOC, admin-core 542 LOC, admin-ops 579 LOC, gateway 819 LOC, and shared helpers 113 LOC.
 - Preserved the executable test surface: before/after counts are `describe=1`, `it=42`, and `expect=584`; the OpenAPI `it` name set is unchanged.
 - Verification: `npx vitest run --config server/vitest.config.ts tests/unit/api/openapi.test.ts` passed with 42 tests.
-- Maintainability 3.3 score impact: **no numeric movement yet**. The validated largest-file split backlog through the push API test split is complete, but `server/tests/unit/services/approvalService.test.ts` is still 1032 LOC and keeps the repo-wide largest-file criterion at 0.
+- Maintainability 3.3 score impact: **no numeric movement yet**. The validated largest-file split backlog through the approval service test split is complete, but `gateway/tests/unit/middleware/validateRequest.test.ts` is still 1022 LOC and keeps the repo-wide largest-file criterion at 0.
 
 ### Done — Split the remaining oversized API test files
 - `server/tests/unit/api/transactions.test.ts` is now split into a 25-line registrar plus contract modules capped at 821 LOC.
@@ -210,7 +210,7 @@ Ordered by priority, not cost. The first two items are the ones that change the 
 - `server/tests/unit/middleware/auth.test.ts` is now split into a 15-line registrar plus auth middleware contract modules capped at 552 LOC.
 - `tests/services/hardwareWallet/trezor.signPsbt.branches.test.ts` is now split into a 15-line registrar plus Trezor sign PSBT branch contract modules capped at 338 LOC.
 - `server/tests/unit/worker/electrumManager.test.ts` is now split into a 21-line registrar plus Electrum manager contract modules capped at 570 LOC.
-- Next validated targets: `server/tests/unit/services/approvalService.test.ts` (1032 LOC), followed by `gateway/tests/unit/middleware/validateRequest.test.ts` (1022 LOC) and `tests/hooks/useQrScanner.test.tsx` (1021 LOC), excluding generated verified-vector files.
+- Next validated targets: `gateway/tests/unit/middleware/validateRequest.test.ts` (1022 LOC), followed by `tests/hooks/useQrScanner.test.tsx` (1021 LOC) and `server/tests/unit/api/ai.test.ts` (1014 LOC), excluding generated verified-vector files.
 - Use the same registrar/harness pattern only where the existing suite has clear domains; preserve before/after `describe`/`it`/`expect` counts and run each focused suite before broadening.
 - Maintainability 3.3: `0 → +2` only after the scoped largest-file threshold is actually cleared or the scoring criterion is narrowed.
 
@@ -279,7 +279,7 @@ Arithmetic check (rounded, no handwaving):
 |---|---|---|---|---|
 | 3.1 Cyclomatic complexity (lizard warnings) | +0 (83 warnings) | +0 (`>15`) | +3 (`1–5`) | +5 (`0`) |
 | 3.2 Duplication (jscpd %) | +3 (2.33%) | +3 (`<3%`) | +3 (`<3%`) | +3 (`<3%`) |
-| 3.3 Largest file (after validated largest-file split backlog through push API test) | 0 (`server/tests/unit/services/approvalService.test.ts` 1032 LOC; next `gateway/tests/unit/middleware/validateRequest.test.ts` 1022 LOC) | 0 | +2 | +2 |
+| 3.3 Largest file (after validated largest-file split backlog through approval service test) | 0 (`gateway/tests/unit/middleware/validateRequest.test.ts` 1022 LOC; next `tests/hooks/useQrScanner.test.tsx` 1021 LOC) | 0 | +2 | +2 |
 | 3.4 + 3.5 (unchanged) | +5 | +5 | +5 | +5 |
 | **Domain total** | **8** | **7** | **13** | **15** |
 
@@ -301,7 +301,7 @@ Deliberately not recommended from this evidence pass:
 
 ## Summary
 
-The repo climbed from **D (69) → C (76)** on the back of the typecheck fix (`350f67c1`); the recent performance/security commits (streamed exports, DoS cap, REPEATABLE READ snapshot) reinforce the existing Reliability score even though the static signals do not move. The biggest lever to reach B is now **reducing the measured lizard baseline, finishing the Zod validation sweep, and splitting the remaining oversized modules**: lint, gitleaks, lizard, and jscpd are blocking regression gates, but lizard still has 83 existing warnings and the largest scoped TS/TSX file is now `server/tests/unit/services/approvalService.test.ts` at 1032 LOC after the validated largest-file split backlog through the push API test split.
+The repo climbed from **D (69) → C (76)** on the back of the typecheck fix (`350f67c1`); the recent performance/security commits (streamed exports, DoS cap, REPEATABLE READ snapshot) reinforce the existing Reliability score even though the static signals do not move. The biggest lever to reach B is now **reducing the measured lizard baseline, finishing the Zod validation sweep, and splitting the remaining oversized modules**: lint, gitleaks, lizard, and jscpd are blocking regression gates, but lizard still has 83 existing warnings and the largest scoped TS/TSX file is now `gateway/tests/unit/middleware/validateRequest.test.ts` at 1022 LOC after the validated largest-file split backlog through the approval service test split.
 
 ---
 
@@ -1577,3 +1577,21 @@ Verification after push API test split:
 - `npm run lint` — passed.
 - `rg -n "[[:blank:]]$" server/tests/unit/api/push.test.ts server/tests/unit/api/push` — passed: no trailing-whitespace hits in the newly split push API files.
 - `rg --files -g '*.ts' -g '*.tsx' | rg -v '(^|/)(node_modules|dist|coverage)(/|$)|generated|verified.*vectors|verified.*Vectors|\\.tmp-gh' | xargs wc -l | sort -nr | sed -n '1,25p'` — passed: next largest files are `server/tests/unit/services/approvalService.test.ts` 1032 LOC, `gateway/tests/unit/middleware/validateRequest.test.ts` 1022 LOC, and `tests/hooks/useQrScanner.test.tsx` 1021 LOC.
+
+
+### Approval service test split pass — 2026-04-13
+
+Implemented the next oversized service test split:
+
+- Split `server/tests/unit/services/approvalService.test.ts` from 1032 LOC into a 48-line suite registrar plus focused approval service contract modules.
+- New approval service test file sizes: `approvalService.draft-status.contracts.ts` 179 LOC, `approvalService.create.contracts.ts` 174 LOC, `approvalService.cast-vote-guards.contracts.ts` 170 LOC, `approvalService.cast-vote-events.contracts.ts` 133 LOC, `approvalService.cast-vote-resolution.contracts.ts` 123 LOC, shared harness `approvalServiceTestHarness.ts` 91 LOC, `approvalService.owner-override.contracts.ts` 87 LOC, `approvalService.read-models.contracts.ts` 42 LOC, and `approvalService.check-resolve.contracts.ts` 28 LOC.
+- Preserved the executable test surface: before/after counts are `describe=8`, `it=40`, and `expect=73`.
+- Current largest non-generated TS/TSX file after the split is `gateway/tests/unit/middleware/validateRequest.test.ts` at 1022 LOC, followed by `tests/hooks/useQrScanner.test.tsx` at 1021 LOC and `server/tests/unit/api/ai.test.ts` at 1014 LOC when generated verified-vector files are excluded. This reduces the approval service test hotspot but does not move the repo-wide 3.3 score yet.
+
+Verification after approval service test split:
+
+- `npx vitest run --config server/vitest.config.ts tests/unit/services/approvalService.test.ts` — passed from the repo root: 1 file, 40 tests.
+- `npx tsc --noEmit -p server/tsconfig.json` — passed.
+- `npm run lint` — passed.
+- `rg -n "[[:blank:]]$" server/tests/unit/services/approvalService.test.ts server/tests/unit/services/approvalService` — passed: no trailing-whitespace hits in the newly split approval service files.
+- `rg --files -g '*.ts' -g '*.tsx' | rg -v '(^|/)(node_modules|dist|coverage)(/|$)|generated|verified.*vectors|verified.*Vectors|\\.tmp-gh' | xargs wc -l | sort -nr | sed -n '1,25p'` — passed: next largest files are `gateway/tests/unit/middleware/validateRequest.test.ts` 1022 LOC, `tests/hooks/useQrScanner.test.tsx` 1021 LOC, and `server/tests/unit/api/ai.test.ts` 1014 LOC.
