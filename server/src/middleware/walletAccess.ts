@@ -3,17 +3,15 @@
  *
  * Middleware to verify user has appropriate access level to a wallet.
  * Thin wrapper around the generic resource access middleware factory.
+ *
+ * The middleware performs exactly one role lookup per request
+ * (`getUserWalletRole`, which is cached for 30s) and derives each access
+ * level synchronously from the returned role.
  */
 
 import { Request } from 'express';
-import {
-  checkWalletAccess,
-  checkWalletEditAccess,
-  checkWalletOwnerAccess,
-  checkWalletApproveAccess,
-  getUserWalletRole,
-  WalletRole,
-} from '../services/wallet';
+import { getUserWalletRole, WalletRole } from '../services/wallet';
+import { EDIT_ROLES, APPROVE_ROLES } from '../services/wallet/types';
 import { createResourceAccessMiddleware } from './resourceAccess';
 
 // Extend Express Request type to include wallet info
@@ -28,20 +26,20 @@ declare global {
 
 export type AccessLevel = 'view' | 'edit' | 'approve' | 'owner';
 
-export const requireWalletAccess = createResourceAccessMiddleware<AccessLevel>({
+export const requireWalletAccess = createResourceAccessMiddleware<AccessLevel, WalletRole>({
   resourceName: 'Wallet',
   loggerName: 'MW:WALLET_ACCESS',
   paramNames: ['walletId', 'id'],
-  checks: {
-    view: checkWalletAccess,
-    edit: checkWalletEditAccess,
-    approve: checkWalletApproveAccess,
-    owner: checkWalletOwnerAccess,
-  },
   getRole: getUserWalletRole,
-  attachToRequest: (req: Request, id: string, role: unknown) => {
+  predicates: {
+    view: (role) => role !== null,
+    edit: (role) => role !== null && EDIT_ROLES.includes(role),
+    approve: (role) => role !== null && APPROVE_ROLES.includes(role),
+    owner: (role) => role === 'owner',
+  },
+  attachToRequest: (req: Request, id: string, role: WalletRole) => {
     req.walletId = id;
-    req.walletRole = role as WalletRole;
+    req.walletRole = role;
   },
 });
 

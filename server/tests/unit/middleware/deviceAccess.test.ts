@@ -93,7 +93,7 @@ describe('Device Access Middleware', () => {
     });
 
     it('should deny access when user has no permission', async () => {
-      (checkDeviceAccess as Mock).mockResolvedValue(false);
+      (getUserDeviceRole as Mock).mockResolvedValue(null);
 
       const req = createMockRequest({
         params: { id: deviceId },
@@ -163,7 +163,7 @@ describe('Device Access Middleware', () => {
     });
 
     it('should deny owner access for viewer', async () => {
-      (checkDeviceOwnerAccess as Mock).mockResolvedValue(false);
+      (getUserDeviceRole as Mock).mockResolvedValue('viewer');
 
       const req = createMockRequest({
         params: { id: deviceId },
@@ -218,7 +218,7 @@ describe('Device Access Middleware', () => {
 
   describe('Error Handling', () => {
     it('should return 500 on database error', async () => {
-      (checkDeviceAccess as Mock).mockRejectedValue(new Error('Database error'));
+      (getUserDeviceRole as Mock).mockRejectedValue(new Error('Database error'));
 
       const middleware = requireDeviceAccess('view');
       const req = createMockRequest({

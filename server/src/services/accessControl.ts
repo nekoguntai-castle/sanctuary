@@ -11,14 +11,9 @@ import { createLogger } from '../utils/logger';
 import { getErrorMessage } from '../utils/errors';
 import { getNamespacedCache } from '../infrastructure/redis';
 import type { ICacheService } from './cache/cacheService';
+import { EDIT_ROLES, APPROVE_ROLES } from './wallet/types';
 
 const log = createLogger('ACCESS_CONTROL:SVC');
-
-// Roles that can edit wallet data (labels, memos, etc.)
-const EDIT_ROLES = ['owner', 'signer'];
-
-// Roles that can approve transactions
-const APPROVE_ROLES = ['owner', 'approver'];
 
 /**
  * Cache TTL for wallet access checks (30 seconds - short for security)

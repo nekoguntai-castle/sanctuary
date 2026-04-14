@@ -104,7 +104,7 @@ describe('Wallet Access Middleware', () => {
     });
 
     it('should deny access when user has no permission', async () => {
-      (checkWalletAccess as Mock).mockResolvedValue(false);
+      (getUserWalletRole as Mock).mockResolvedValue(null);
 
       const req = createMockRequest({
         params: { id: walletId },
@@ -189,7 +189,7 @@ describe('Wallet Access Middleware', () => {
     });
 
     it('should deny edit access for viewer', async () => {
-      (checkWalletEditAccess as Mock).mockResolvedValue(false);
+      (getUserWalletRole as Mock).mockResolvedValue('viewer');
 
       const req = createMockRequest({
         params: { id: walletId },
@@ -227,7 +227,7 @@ describe('Wallet Access Middleware', () => {
     });
 
     it('should deny owner access for signer', async () => {
-      (checkWalletOwnerAccess as Mock).mockResolvedValue(false);
+      (getUserWalletRole as Mock).mockResolvedValue('signer');
 
       const req = createMockRequest({
         params: { id: walletId },
@@ -244,7 +244,7 @@ describe('Wallet Access Middleware', () => {
     });
 
     it('should deny owner access for viewer', async () => {
-      (checkWalletOwnerAccess as Mock).mockResolvedValue(false);
+      (getUserWalletRole as Mock).mockResolvedValue('viewer');
 
       const req = createMockRequest({
         params: { id: walletId },
@@ -299,7 +299,7 @@ describe('Wallet Access Middleware', () => {
 
   describe('Error Handling', () => {
     it('should return 500 on database error', async () => {
-      (checkWalletAccess as Mock).mockRejectedValue(new Error('Database error'));
+      (getUserWalletRole as Mock).mockRejectedValue(new Error('Database error'));
 
       const middleware = requireWalletAccess('view');
       const req = createMockRequest({
@@ -322,7 +322,6 @@ describe('Wallet Access Middleware', () => {
     const middleware = requireWalletAccess('approve');
 
     it('should allow access for users with approve permission', async () => {
-      (checkWalletApproveAccess as Mock).mockResolvedValue(true);
       (getUserWalletRole as Mock).mockResolvedValue('approver');
 
       const req = createMockRequest({
@@ -334,13 +333,13 @@ describe('Wallet Access Middleware', () => {
 
       await middleware(req as any, res as any, next);
 
-      expect(checkWalletApproveAccess).toHaveBeenCalledWith(walletId, userId);
+      expect(getUserWalletRole).toHaveBeenCalledWith(walletId, userId);
       expect(next).toHaveBeenCalled();
       expect((req as any).walletId).toBe(walletId);
     });
 
     it('should deny access for users without approve permission', async () => {
-      (checkWalletApproveAccess as Mock).mockResolvedValue(false);
+      (getUserWalletRole as Mock).mockResolvedValue('viewer');
 
       const req = createMockRequest({
         params: { walletId },

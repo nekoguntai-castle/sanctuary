@@ -12,24 +12,26 @@ vi.mock('../../../src/utils/logger', () => ({
 import { createResourceAccessMiddleware } from '../../../src/middleware/resourceAccess';
 import { createMockRequest, createMockResponse, createMockNext } from '../../helpers/testUtils';
 
+type WidgetRole = 'viewer' | 'owner' | null;
+
 describe('createResourceAccessMiddleware', () => {
   const userId = 'test-user-id';
   const user = { userId, username: 'testuser', isAdmin: false };
 
-  const mockCheckView = vi.fn();
-  const mockCheckOwner = vi.fn();
   const mockGetRole = vi.fn();
   const mockAttach = vi.fn();
+  const viewPredicate = vi.fn((role: WidgetRole) => role !== null);
+  const ownerPredicate = vi.fn((role: WidgetRole) => role === 'owner');
 
-  const requireAccess = createResourceAccessMiddleware({
+  const requireAccess = createResourceAccessMiddleware<'view' | 'owner', WidgetRole>({
     resourceName: 'Widget',
     loggerName: 'MW:WIDGET',
     paramNames: ['widgetId', 'id'],
-    checks: {
-      view: mockCheckView,
-      owner: mockCheckOwner,
-    },
     getRole: mockGetRole,
+    predicates: {
+      view: viewPredicate,
+      owner: ownerPredicate,
+    },
     attachToRequest: mockAttach,
   });
 
@@ -45,6 +47,7 @@ describe('createResourceAccessMiddleware', () => {
     await requireAccess('view')(req as any, res as any, next);
 
     expect(getResponse().statusCode).toBe(400);
+    expect(mockGetRole).not.toHaveBeenCalled();
     expect(next).not.toHaveBeenCalled();
   });
 
@@ -56,23 +59,25 @@ describe('createResourceAccessMiddleware', () => {
     await requireAccess('view')(req as any, res as any, next);
 
     expect(getResponse().statusCode).toBe(401);
+    expect(mockGetRole).not.toHaveBeenCalled();
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('returns 403 when access denied', async () => {
-    mockCheckView.mockResolvedValue(false);
+  it('returns 403 when the predicate rejects the role', async () => {
+    mockGetRole.mockResolvedValue(null);
     const req = createMockRequest({ params: { id: 'w1' }, user });
     const { res, getResponse } = createMockResponse();
     const next = createMockNext();
 
     await requireAccess('view')(req as any, res as any, next);
 
+    expect(mockGetRole).toHaveBeenCalledWith('w1', userId);
+    expect(viewPredicate).toHaveBeenCalledWith(null);
     expect(getResponse().statusCode).toBe(403);
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('calls next and attaches info on success', async () => {
-    mockCheckView.mockResolvedValue(true);
+  it('calls next and attaches info when the predicate accepts the role', async () => {
     mockGetRole.mockResolvedValue('viewer');
     const req = createMockRequest({ params: { widgetId: 'w1' }, user });
     const { res } = createMockResponse();
@@ -80,12 +85,13 @@ describe('createResourceAccessMiddleware', () => {
 
     await requireAccess('view')(req as any, res as any, next);
 
+    expect(mockGetRole).toHaveBeenCalledWith('w1', userId);
+    expect(viewPredicate).toHaveBeenCalledWith('viewer');
     expect(mockAttach).toHaveBeenCalledWith(req, 'w1', 'viewer');
     expect(next).toHaveBeenCalled();
   });
 
-  it('uses the correct check function per level', async () => {
-    mockCheckOwner.mockResolvedValue(true);
+  it('runs the predicate for the requested level only', async () => {
     mockGetRole.mockResolvedValue('owner');
     const req = createMockRequest({ params: { id: 'w1' }, user });
     const { res } = createMockResponse();
@@ -93,13 +99,24 @@ describe('createResourceAccessMiddleware', () => {
 
     await requireAccess('owner')(req as any, res as any, next);
 
-    expect(mockCheckOwner).toHaveBeenCalledWith('w1', userId);
-    expect(mockCheckView).not.toHaveBeenCalled();
+    expect(ownerPredicate).toHaveBeenCalledWith('owner');
+    expect(viewPredicate).not.toHaveBeenCalled();
     expect(next).toHaveBeenCalled();
   });
 
-  it('returns 500 on internal error', async () => {
-    mockCheckView.mockRejectedValue(new Error('DB down'));
+  it('calls getRole exactly once per request', async () => {
+    mockGetRole.mockResolvedValue('viewer');
+    const req = createMockRequest({ params: { id: 'w1' }, user });
+    const { res } = createMockResponse();
+    const next = createMockNext();
+
+    await requireAccess('view')(req as any, res as any, next);
+
+    expect(mockGetRole).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns 500 when getRole throws', async () => {
+    mockGetRole.mockRejectedValue(new Error('DB down'));
     const req = createMockRequest({ params: { id: 'w1' }, user });
     const { res, getResponse } = createMockResponse();
     const next = createMockNext();
@@ -110,15 +127,17 @@ describe('createResourceAccessMiddleware', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('prefers first param name', async () => {
-    mockCheckView.mockResolvedValue(true);
+  it('prefers the first configured param name', async () => {
     mockGetRole.mockResolvedValue('viewer');
-    const req = createMockRequest({ params: { widgetId: 'preferred', id: 'fallback' }, user });
+    const req = createMockRequest({
+      params: { widgetId: 'preferred', id: 'fallback' },
+      user,
+    });
     const { res } = createMockResponse();
     const next = createMockNext();
 
     await requireAccess('view')(req as any, res as any, next);
 
-    expect(mockCheckView).toHaveBeenCalledWith('preferred', userId);
+    expect(mockGetRole).toHaveBeenCalledWith('preferred', userId);
   });
 });
