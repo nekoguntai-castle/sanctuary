@@ -12,39 +12,48 @@ import { createLogger } from '../../utils/logger';
 const log = createLogger('PAYJOIN:SVC_SSRF');
 
 const dnsLookup = promisify(dns.lookup);
+type IPv4RangePredicate = (parts: number[]) => boolean;
+
+const privateIpv4Ranges: IPv4RangePredicate[] = [
+  // Loopback: 127.0.0.0/8
+  parts => parts[0] === 127,
+  // Private Class A: 10.0.0.0/8
+  parts => parts[0] === 10,
+  // Private Class B: 172.16.0.0/12
+  parts => parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31,
+  // Private Class C: 192.168.0.0/16
+  parts => parts[0] === 192 && parts[1] === 168,
+  // Link-local: 169.254.0.0/16, including cloud metadata endpoints.
+  parts => parts[0] === 169 && parts[1] === 254,
+  // Broadcast and invalid edge ranges.
+  parts => parts[0] === 0 || parts[0] === 255,
+];
+
+function normalizeIpv4MappedAddress(ip: string): string {
+  return ip.startsWith('::ffff:') ? ip.substring(7) : ip;
+}
+
+function parseIpv4Parts(ip: string): number[] | null {
+  const parts = ip.split('.').map(Number);
+  return parts.length === 4 && !parts.some(part => Number.isNaN(part)) ? parts : null;
+}
 
 /**
  * Check if an IP address is private/internal (SSRF protection)
  */
 export function isPrivateIP(ip: string): boolean {
-  // Handle IPv4-mapped IPv6 addresses
-  if (ip.startsWith('::ffff:')) {
-    ip = ip.substring(7);
-  }
+  const normalizedIp = normalizeIpv4MappedAddress(ip);
 
   // IPv6 localhost
-  if (ip === '::1') return true;
+  if (normalizedIp === '::1') return true;
 
-  const parts = ip.split('.').map(Number);
-  if (parts.length !== 4 || parts.some(p => isNaN(p))) {
+  const parts = parseIpv4Parts(normalizedIp);
+  if (!parts) {
     // Not a valid IPv4, could be IPv6 - block to be safe
-    return !ip.includes('.'); // Block non-IPv4 except public IPv6
+    return !normalizedIp.includes('.'); // Block non-IPv4 except public IPv6
   }
 
-  // Localhost
-  if (parts[0] === 127) return true;
-  // Private Class A (10.0.0.0/8)
-  if (parts[0] === 10) return true;
-  // Private Class B (172.16.0.0/12)
-  if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
-  // Private Class C (192.168.0.0/16)
-  if (parts[0] === 192 && parts[1] === 168) return true;
-  // Link-local includes cloud metadata endpoints (169.254.169.254)
-  if (parts[0] === 169 && parts[1] === 254) return true;
-  // Broadcast / invalid edge ranges
-  if (parts[0] === 0 || parts[0] === 255) return true;
-
-  return false;
+  return privateIpv4Ranges.some(isPrivateRange => isPrivateRange(parts));
 }
 
 /**

@@ -47,6 +47,7 @@ export const generateBip21Uri = payjoinService.generateBip21Uri;
 export const processPayjoinRequest = payjoinService.processPayjoinRequest;
 export const attemptPayjoinSend = payjoinService.attemptPayjoinSend;
 export const PayjoinErrors = payjoinService.PayjoinErrors;
+export const isPrivateIP = payjoinService.isPrivateIP;
 
 export const parsePsbt = psbtValidation.parsePsbt;
 export const validatePsbtStructure = psbtValidation.validatePsbtStructure;

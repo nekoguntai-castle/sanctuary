@@ -3,6 +3,7 @@ import * as bitcoin from 'bitcoinjs-lib';
 
 import {
   attemptPayjoinSend,
+  isPrivateIP,
   PayjoinErrors,
   TEST_PAYJOIN_URL,
   validatePayjoinProposal,
@@ -228,6 +229,31 @@ export const registerPayjoinSendAndSsrfContracts = () => {
 
   describe('SSRF Protection', () => {
     const originalPsbt = 'cHNidP8BAFICAAAAASaBcTce3/KF6Tig7cez53bDXJKhN6KHaGvkpKt8vp1WAAAAAP3///8BrBIAAAAAAAAWABTYQzl7cYbXYS5N0Wj6eS5qCeM5GgAAAAAAAA==';
+
+    it.each([
+      '::ffff:127.0.0.1',
+      '::1',
+      '127.0.0.1',
+      '10.0.0.1',
+      '172.16.0.1',
+      '172.31.255.255',
+      '192.168.1.1',
+      '169.254.169.254',
+      '0.0.0.0',
+      '255.255.255.255',
+      '2001:db8::1',
+    ])('should classify %s as private/internal', (ip) => {
+      expect(isPrivateIP(ip)).toBe(true);
+    });
+
+    it.each([
+      '8.8.8.8',
+      '172.15.255.255',
+      '172.32.0.1',
+      '192.167.1.1',
+    ])('should classify %s as public IPv4', (ip) => {
+      expect(isPrivateIP(ip)).toBe(false);
+    });
 
     it('should reject localhost URLs', async () => {
       const result = await attemptPayjoinSend(
