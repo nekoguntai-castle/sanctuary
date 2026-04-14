@@ -21,6 +21,58 @@ import { signPsbtWithTrezor } from './signPsbt';
 
 const log = createLogger('TrezorAdapter');
 
+type TrezorFeatures = {
+  device_id?: string | null;
+  label?: string | null;
+  model?: string;
+  internal_model?: string;
+  pin_protection?: boolean | null;
+  unlocked?: boolean | null;
+  passphrase_protection?: boolean | null;
+};
+
+type FingerprintPayload = {
+  fingerprint?: number;
+  xpub?: string;
+};
+
+const getTrezorModelName = (features: TrezorFeatures): string => {
+  if (features.model === 'T') return 'Trezor Model T';
+  if (features.model === '1') return 'Trezor Model One';
+  if (features.internal_model === 'T2B1') return 'Trezor Safe 3';
+  if (features.internal_model === 'T3T1') return 'Trezor Safe 5';
+  if (features.internal_model === 'T3W1') return 'Trezor Safe 7';
+  return 'Trezor';
+};
+
+const formatFingerprint = (payload: FingerprintPayload): string | undefined => {
+  const rawFp = payload.fingerprint;
+  // Handle unsigned 32-bit conversion (fingerprint can be > 2^31)
+  const unsignedFp = rawFp !== undefined ? (rawFp >>> 0) : undefined;
+  const fingerprint = unsignedFp?.toString(16).padStart(8, '0');
+  log.info('Trezor fingerprint obtained', {
+    rawFingerprint: rawFp,
+    unsignedFingerprint: unsignedFp,
+    hexFingerprint: fingerprint,
+    xpubPrefix: payload.xpub?.substring(0, 20),
+  });
+  return fingerprint;
+};
+
+const createConnectError = (message: string): Error => {
+  if (message.includes('Popup closed') || message.includes('cancelled')) {
+    return new Error('Connection cancelled by user');
+  }
+  if (message.includes('Device not found') || message.includes('no device')) {
+    return new Error('No Trezor device found. Please connect your device and ensure Trezor Suite is running.');
+  }
+  if (message.includes('Bridge not running')) {
+    return new Error('Trezor Suite bridge not running. Please open Trezor Suite desktop app.');
+  }
+
+  return new Error(`Failed to connect Trezor: ${message}`);
+};
+
 /**
  * Trezor Device Adapter
  */
@@ -88,80 +140,15 @@ export class TrezorAdapter implements DeviceAdapter {
    * Connect to a Trezor device
    */
   async connect(): Promise<HardwareWalletDevice> {
-    if (!this.connection.initialized) {
-      await this.initialize();
-    }
+    await this.ensureInitialized();
 
     try {
       log.info('Requesting Trezor device features...');
 
-      const result = await TrezorConnect.getFeatures();
-
-      if (!result.success) {
-        const errorPayload = result.payload as { error?: string; code?: string };
-        log.error('Trezor getFeatures failed', { payload: errorPayload });
-        throw new Error(errorPayload.error || 'Failed to connect to Trezor');
-      }
-
-      const features = result.payload;
-
-      // Get master fingerprint
-      let fingerprint: string | undefined;
-      try {
-        const fpResult = await TrezorConnect.getPublicKey({
-          path: "m/0'",
-          showOnTrezor: false,
-        });
-        if (fpResult.success) {
-          const rawFp = fpResult.payload.fingerprint;
-          // Handle unsigned 32-bit conversion (fingerprint can be > 2^31)
-          const unsignedFp = rawFp !== undefined ? (rawFp >>> 0) : undefined;
-          fingerprint = unsignedFp?.toString(16).padStart(8, '0');
-          log.info('Trezor fingerprint obtained', {
-            rawFingerprint: rawFp,
-            unsignedFingerprint: unsignedFp,
-            hexFingerprint: fingerprint,
-            xpubPrefix: fpResult.payload.xpub?.substring(0, 20),
-          });
-        }
-      } catch (fpError) {
-        log.warn('Could not get fingerprint from Trezor', { error: fpError });
-      }
-
-      // Determine model name
-      let modelName = 'Trezor';
-      if (features.model === 'T') {
-        modelName = 'Trezor Model T';
-      } else if (features.model === '1') {
-        modelName = 'Trezor Model One';
-      } else if (features.internal_model === 'T2B1') {
-        modelName = 'Trezor Safe 3';
-      } else if (features.internal_model === 'T3T1') {
-        modelName = 'Trezor Safe 5';
-      } else if (features.internal_model === 'T3W1') {
-        modelName = 'Trezor Safe 7';
-      }
-
-      this.connection = {
-        initialized: true,
-        connected: true,
-        deviceId: features.device_id || undefined,
-        fingerprint,
-        model: modelName,
-        label: features.label || undefined,
-      };
-
-      const device = {
-        id: `trezor-${features.device_id || 'unknown'}`,
-        type: 'trezor' as const,
-        name: features.label || modelName,
-        model: modelName,
-        connected: true,
-        fingerprint,
-        needsPin: (features.pin_protection && !features.unlocked) ?? undefined,
-        needsPassphrase: features.passphrase_protection ?? undefined,
-      };
-      this.connectedDevice = device;
+      const features = await this.getDeviceFeatures();
+      const fingerprint = await this.getMasterFingerprint();
+      const modelName = getTrezorModelName(features);
+      const device = this.setConnectedDevice(features, fingerprint, modelName);
 
       log.info('Trezor connected', {
         model: modelName,
@@ -174,18 +161,68 @@ export class TrezorAdapter implements DeviceAdapter {
       const message = error instanceof Error ? error.message : 'Unknown error';
       log.error('Failed to connect Trezor', { error: message });
 
-      if (message.includes('Popup closed') || message.includes('cancelled')) {
-        throw new Error('Connection cancelled by user');
-      }
-      if (message.includes('Device not found') || message.includes('no device')) {
-        throw new Error('No Trezor device found. Please connect your device and ensure Trezor Suite is running.');
-      }
-      if (message.includes('Bridge not running')) {
-        throw new Error('Trezor Suite bridge not running. Please open Trezor Suite desktop app.');
-      }
-
-      throw new Error(`Failed to connect Trezor: ${message}`);
+      throw createConnectError(message);
     }
+  }
+
+  private async ensureInitialized(): Promise<void> {
+    if (!this.connection.initialized) {
+      await this.initialize();
+    }
+  }
+
+  private async getDeviceFeatures(): Promise<TrezorFeatures> {
+    const result = await TrezorConnect.getFeatures();
+
+    if (!result.success) {
+      const errorPayload = result.payload as { error?: string; code?: string };
+      log.error('Trezor getFeatures failed', { payload: errorPayload });
+      throw new Error(errorPayload.error || 'Failed to connect to Trezor');
+    }
+
+    return result.payload as TrezorFeatures;
+  }
+
+  private async getMasterFingerprint(): Promise<string | undefined> {
+    try {
+      const fpResult = await TrezorConnect.getPublicKey({
+        path: "m/0'",
+        showOnTrezor: false,
+      });
+      return fpResult.success ? formatFingerprint(fpResult.payload) : undefined;
+    } catch (fpError) {
+      log.warn('Could not get fingerprint from Trezor', { error: fpError });
+      return undefined;
+    }
+  }
+
+  private setConnectedDevice(
+    features: TrezorFeatures,
+    fingerprint: string | undefined,
+    modelName: string
+  ): HardwareWalletDevice {
+    this.connection = {
+      initialized: true,
+      connected: true,
+      deviceId: features.device_id || undefined,
+      fingerprint,
+      model: modelName,
+      label: features.label || undefined,
+    };
+
+    const device = {
+      id: `trezor-${features.device_id || 'unknown'}`,
+      type: 'trezor' as const,
+      name: features.label || modelName,
+      model: modelName,
+      connected: true,
+      fingerprint,
+      needsPin: (features.pin_protection && !features.unlocked) ?? undefined,
+      needsPassphrase: features.passphrase_protection ?? undefined,
+    };
+    this.connectedDevice = device;
+
+    return device;
   }
 
   /**
