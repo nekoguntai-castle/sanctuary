@@ -74,6 +74,98 @@ function extractPathFromOrigin(origin: ReturnType<CryptoHDKey['getOrigin']>): st
     .join('/');
 }
 
+function extractFromHdKey(hdKey: CryptoHDKey, source: 'CryptoHDKey' | 'CryptoOutput'): UrExtractResult {
+  const result = {
+    xpub: hdKey.getBip32Key(),
+    fingerprint: extractFingerprintFromHdKey(hdKey),
+    path: extractPathFromOrigin(hdKey.getOrigin()),
+  };
+
+  log.debug(`Extracted from ${source}`, {
+    hasXpub: !!result.xpub,
+    fingerprint: result.fingerprint,
+    path: result.path,
+  });
+  return result;
+}
+
+function extractFromCryptoOutput(output: CryptoOutput): UrExtractResult | null {
+  const hdKey = output.getHDKey();
+  return hdKey ? extractFromHdKey(hdKey, 'CryptoOutput') : null;
+}
+
+function extractFromAccountOutput(
+  output: CryptoOutput,
+  fingerprint: string
+): UrExtractResult | null {
+  const hdKey = output.getHDKey();
+  if (!hdKey) return null;
+
+  return {
+    xpub: hdKey.getBip32Key(),
+    fingerprint,
+    path: extractPathFromOrigin(hdKey.getOrigin()),
+  };
+}
+
+function extractFromCryptoAccount(account: CryptoAccount): UrExtractResult | null {
+  const fingerprint = account.getMasterFingerprint()?.toString('hex') || '';
+  const outputs = account.getOutputDescriptors();
+
+  for (const output of outputs) {
+    const result = extractFromAccountOutput(output, fingerprint);
+    if (result?.path.includes("84'")) {
+      return result;
+    }
+  }
+
+  return outputs.length > 0 ? extractFromAccountOutput(outputs[0], fingerprint) : null;
+}
+
+function resultFromParsedDevice(
+  result: ReturnType<typeof parseDeviceJson>
+): UrExtractResult | null {
+  if (!result?.xpub) return null;
+
+  return {
+    xpub: result.xpub,
+    fingerprint: result.fingerprint || '',
+    path: result.derivationPath || ''
+  };
+}
+
+function extractFromUrBytes(registryType: unknown): UrExtractResult | null {
+  if (!registryType || typeof registryType !== 'object' || !('bytes' in registryType)) {
+    return null;
+  }
+
+  const obj = registryType as { bytes: unknown };
+  if (!(obj.bytes instanceof Uint8Array)) return null;
+
+  log.debug('Detected ur:bytes format, attempting to decode...');
+
+  try {
+    const textDecoder = new TextDecoder('utf-8');
+    const textContent = textDecoder.decode(obj.bytes);
+    log.debug('Decoded bytes as text', { preview: textContent.substring(0, 200) });
+
+    const parsed = parseDeviceJson(textContent);
+    const result = resultFromParsedDevice(parsed);
+    if (result) {
+      log.debug('Extracted from ur:bytes', {
+        format: parsed?.format,
+        xpubPreview: result.xpub.substring(0, 20) + '...',
+        fingerprint: result.fingerprint,
+        path: result.path
+      });
+    }
+    return result;
+  } catch (decodeErr) {
+    log.error('Failed to decode ur:bytes as text', { error: decodeErr });
+    return null;
+  }
+}
+
 /**
  * Try to extract xpub data from UR registry result
  *
@@ -85,97 +177,19 @@ function extractPathFromOrigin(origin: ReturnType<CryptoHDKey['getOrigin']>): st
  */
 export function extractFromUrResult(registryType: unknown): UrExtractResult | null {
   try {
-    // Handle CryptoHDKey
     if (registryType instanceof CryptoHDKey) {
-      const hdKey = registryType;
-      const xpub = hdKey.getBip32Key();
-      const fingerprint = extractFingerprintFromHdKey(hdKey);
-      const path = extractPathFromOrigin(hdKey.getOrigin());
-
-      log.debug('Extracted from CryptoHDKey', { hasXpub: !!xpub, fingerprint, path });
-      return { xpub, fingerprint, path };
+      return extractFromHdKey(registryType, 'CryptoHDKey');
     }
 
-    // Handle CryptoOutput (output descriptor)
     if (registryType instanceof CryptoOutput) {
-      const output = registryType;
-      const hdKey = output.getHDKey();
-      if (hdKey) {
-        const xpub = hdKey.getBip32Key();
-        const fingerprint = extractFingerprintFromHdKey(hdKey);
-        const path = extractPathFromOrigin(hdKey.getOrigin());
-
-        log.debug('Extracted from CryptoOutput', { hasXpub: !!xpub, fingerprint, path });
-        return { xpub, fingerprint, path };
-      }
+      return extractFromCryptoOutput(registryType);
     }
 
-    // Handle CryptoAccount (multi-account format)
     if (registryType instanceof CryptoAccount) {
-      const account = registryType;
-      const masterFingerprint = account.getMasterFingerprint()?.toString('hex') || '';
-      const outputs = account.getOutputDescriptors();
-
-      // Find a suitable output (prefer native segwit BIP84)
-      for (const output of outputs) {
-        const hdKey = output.getHDKey();
-        if (hdKey) {
-          const xpub = hdKey.getBip32Key();
-          const path = extractPathFromOrigin(hdKey.getOrigin());
-
-          // Return the first valid one with 84' in path for native segwit
-          if (path.includes("84'")) {
-            return { xpub, fingerprint: masterFingerprint, path };
-          }
-        }
-      }
-
-      // Fall back to first output if no BIP84 found
-      if (outputs.length > 0) {
-        const hdKey = outputs[0].getHDKey();
-        if (hdKey) {
-          const xpub = hdKey.getBip32Key();
-          const path = extractPathFromOrigin(hdKey.getOrigin());
-          return { xpub, fingerprint: masterFingerprint, path };
-        }
-      }
+      return extractFromCryptoAccount(registryType);
     }
 
-    // Handle ur:bytes format (Foundation Passport Sparrow export, etc.)
-    // The bytes may contain text/JSON wallet descriptor data
-    if (registryType && typeof registryType === 'object' && 'bytes' in registryType) {
-      const obj = registryType as { bytes: unknown };
-      if (obj.bytes instanceof Uint8Array) {
-        log.debug('Detected ur:bytes format, attempting to decode...');
-
-        // Try to decode as UTF-8 text (could be JSON or text descriptor)
-        try {
-          const textDecoder = new TextDecoder('utf-8');
-          const textContent = textDecoder.decode(obj.bytes);
-          log.debug('Decoded bytes as text', { preview: textContent.substring(0, 200) });
-
-          // Use the device parser registry to parse the content
-          const result = parseDeviceJson(textContent);
-          if (result && result.xpub) {
-            log.debug('Extracted from ur:bytes', {
-              format: result.format,
-              xpubPreview: result.xpub.substring(0, 20) + '...',
-              fingerprint: result.fingerprint || '',
-              path: result.derivationPath || ''
-            });
-            return {
-              xpub: result.xpub,
-              fingerprint: result.fingerprint || '',
-              path: result.derivationPath || ''
-            };
-          }
-        } catch (decodeErr) {
-          log.error('Failed to decode ur:bytes as text', { error: decodeErr });
-        }
-      }
-    }
-
-    return null;
+    return extractFromUrBytes(registryType);
   } catch (err) {
     log.error('Failed to extract from UR result', { error: err });
     return null;
@@ -190,23 +204,18 @@ export function extractFromUrResult(registryType: unknown): UrExtractResult | nu
  */
 export function extractFromUrBytesContent(textContent: string): UrExtractResult | null {
   // Use the device parser registry to parse the text content
-  const result = parseDeviceJson(textContent);
-
-  if (result && result.xpub) {
+  const parsed = parseDeviceJson(textContent);
+  const result = resultFromParsedDevice(parsed);
+  if (result) {
     log.debug('Extracted from ur:bytes text', {
-      format: result.format,
+      format: parsed?.format,
       xpubPreview: result.xpub.substring(0, 20) + '...',
-      fingerprint: result.fingerprint || '',
-      path: result.derivationPath || ''
+      fingerprint: result.fingerprint,
+      path: result.path
     });
-    return {
-      xpub: result.xpub,
-      fingerprint: result.fingerprint || '',
-      path: result.derivationPath || ''
-    };
   }
 
-  return null;
+  return result;
 }
 
 /**
