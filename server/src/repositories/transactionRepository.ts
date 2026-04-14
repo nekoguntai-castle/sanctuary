@@ -409,25 +409,68 @@ export async function aggregateSpending(
 }
 
 /**
- * Find transactions for export with labels
+ * Shape of a single row produced by the transaction-export path.
+ *
+ * Narrowed to exactly the fields the export handler serializes — avoids
+ * pulling the full Transaction row graph on large wallets. The previous
+ * implementation included `transactionLabels` via a join that was never
+ * read by the export (it emits the scalar `label` column); dropped here.
  */
-export async function findForExport(
+export interface ExportTransactionRow {
+  id: string;
+  txid: string;
+  type: string;
+  amount: bigint;
+  balanceAfter: bigint | null;
+  fee: bigint | null;
+  confirmations: number;
+  label: string | null;
+  memo: string | null;
+  counterpartyAddress: string | null;
+  blockHeight: number | null;
+  blockTime: Date | null;
+  createdAt: Date;
+}
+
+/**
+ * Fetch one page of transactions for CSV/JSON export.
+ *
+ * The export handler calls this repeatedly with increasing `skip` until a
+ * short page comes back, streaming each page to the client rather than
+ * loading the full result set into memory. Deterministic ordering is
+ * required — `(blockTime, id)` gives a stable total order even when
+ * multiple transactions share a block time, and `id` breaks ties within
+ * the pending (blockTime IS NULL) segment as well.
+ */
+export async function findExportPage(
   walletId: string,
-  dateFilter?: { gte?: Date; lte?: Date }
-) {
+  dateFilter: { gte?: Date; lte?: Date } | undefined,
+  skip: number,
+  take: number,
+): Promise<ExportTransactionRow[]> {
   return prisma.transaction.findMany({
     where: {
       walletId,
       ...(dateFilter && Object.keys(dateFilter).length > 0 ? { blockTime: dateFilter } : {}),
     },
-    include: {
-      transactionLabels: {
-        include: {
-          label: true,
-        },
-      },
+    select: {
+      id: true,
+      txid: true,
+      type: true,
+      amount: true,
+      balanceAfter: true,
+      fee: true,
+      confirmations: true,
+      label: true,
+      memo: true,
+      counterpartyAddress: true,
+      blockHeight: true,
+      blockTime: true,
+      createdAt: true,
     },
-    orderBy: { blockTime: 'asc' },
+    orderBy: [{ blockTime: 'asc' }, { id: 'asc' }],
+    skip,
+    take,
   });
 }
 
@@ -859,7 +902,7 @@ export const transactionRepository = {
   findByWalletIdWithDetails,
   findByWalletIdsWithDetails,
   aggregateSpending,
-  findForExport,
+  findExportPage,
   findBlockTimesByTxids,
   // Sync pipeline methods
   findByWalletIdAndTxids,

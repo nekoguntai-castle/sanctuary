@@ -693,6 +693,110 @@ describe('Transaction HTTP Routes', () => {
     expect(response.body.code).toBe('INTERNAL_ERROR');
   });
 
+  it('pages through large export result sets without loading all rows at once', async () => {
+    // Simulate a result set larger than a single page. Repository uses
+    // pageSize 500 internally; return 500 rows on page 1 and 3 on page 2
+    // so the handler must iterate exactly twice.
+    const makeRow = (n: number) => {
+      const day = String((n % 28) + 1).padStart(2, '0');
+      return {
+        txid: String(n).padStart(64, '0'),
+        type: 'received',
+        amount: BigInt(n * 100),
+        balanceAfter: BigInt(n * 100),
+        fee: BigInt(0),
+        confirmations: 1,
+        label: null,
+        memo: null,
+        counterpartyAddress: null,
+        blockHeight: BigInt(850000 + n),
+        blockTime: new Date(`2025-01-${day}T00:00:00.000Z`),
+        createdAt: new Date(`2025-01-${day}T00:00:00.000Z`),
+      };
+    };
+    const firstPage = Array.from({ length: 500 }, (_, i) => makeRow(i + 1));
+    const secondPage = Array.from({ length: 3 }, (_, i) => makeRow(501 + i));
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({ name: 'Paged Wallet' });
+    mockPrismaClient.transaction.findMany
+      .mockResolvedValueOnce(firstPage as any)
+      .mockResolvedValueOnce(secondPage as any);
+
+    const response = await request(app)
+      .get(`/api/v1/wallets/${walletId}/transactions/export`)
+      .query({ format: 'json' });
+
+    expect(response.status).toBe(200);
+    expect(Array.isArray(response.body)).toBe(true);
+    expect(response.body.length).toBe(503);
+    expect(mockPrismaClient.transaction.findMany).toHaveBeenCalledTimes(2);
+    // Second call should page past the first 500 rows.
+    expect(mockPrismaClient.transaction.findMany.mock.calls[1][0].skip).toBe(500);
+    expect(mockPrismaClient.transaction.findMany.mock.calls[1][0].take).toBe(500);
+  });
+
+  it('terminates export pagination when a page returns fewer rows than page size', async () => {
+    // A page smaller than 500 is the end-of-results sentinel. The handler
+    // must not issue a subsequent findMany call.
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({ name: 'Short Wallet' });
+    mockPrismaClient.transaction.findMany.mockResolvedValue([
+      {
+        txid: 'a'.repeat(64),
+        type: 'received',
+        amount: BigInt(1000),
+        balanceAfter: BigInt(1000),
+        fee: null,
+        confirmations: 6,
+        label: null,
+        memo: null,
+        counterpartyAddress: null,
+        blockHeight: BigInt(850100),
+        blockTime: new Date('2025-02-01T00:00:00.000Z'),
+        createdAt: new Date('2025-02-01T00:00:00.000Z'),
+      },
+    ] as any);
+
+    const response = await request(app)
+      .get(`/api/v1/wallets/${walletId}/transactions/export`)
+      .query({ format: 'json' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.length).toBe(1);
+    expect(mockPrismaClient.transaction.findMany).toHaveBeenCalledTimes(1);
+    // Ensure paginated query shape: deterministic orderBy + skip/take.
+    const call = mockPrismaClient.transaction.findMany.mock.calls[0][0];
+    expect(call.orderBy).toEqual([{ blockTime: 'asc' }, { id: 'asc' }]);
+    expect(call.skip).toBe(0);
+    expect(call.take).toBe(500);
+    // transactionLabels include must NOT appear — dead join was dropped.
+    expect(call.include).toBeUndefined();
+    expect(call.select).toBeDefined();
+  });
+
+  it('streams an empty JSON array for wallets with no transactions', async () => {
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({ name: 'Empty Wallet' });
+    mockPrismaClient.transaction.findMany.mockResolvedValue([]);
+
+    const response = await request(app)
+      .get(`/api/v1/wallets/${walletId}/transactions/export`)
+      .query({ format: 'json' });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual([]);
+    expect(mockPrismaClient.transaction.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('streams an empty CSV (headers only) for wallets with no transactions', async () => {
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({ name: 'Empty CSV' });
+    mockPrismaClient.transaction.findMany.mockResolvedValue([]);
+
+    const response = await request(app).get(`/api/v1/wallets/${walletId}/transactions/export`);
+
+    expect(response.status).toBe(200);
+    const lines = response.text.split('\n').filter(Boolean);
+    expect(lines.length).toBe(1);
+    expect(lines[0]).toContain('Transaction ID');
+  });
+
   it('recalculates wallet balances and returns final amount', async () => {
     mockPrismaClient.transaction.findFirst.mockResolvedValue({
       balanceAfter: BigInt(123456),
