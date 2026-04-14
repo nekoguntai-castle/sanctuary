@@ -54,11 +54,16 @@ export interface UseTransactionFiltersReturn {
   filteredTransactions: Transaction[];
 }
 
+interface DateRange {
+  from: number;
+  to: number;
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function getDateRange(preset: '7d' | '30d' | 'this_month' | 'last_month'): { from: number; to: number } {
+const getDateRange = (preset: '7d' | '30d' | 'this_month' | 'last_month'): DateRange => {
   const now = new Date();
   const to = now.getTime();
 
@@ -77,7 +82,79 @@ function getDateRange(preset: '7d' | '30d' | 'this_month' | 'last_month'): { fro
       return { from: start.getTime(), to: end.getTime() };
     }
   }
-}
+};
+
+const matchesDateFilter = (
+  tx: Transaction,
+  filters: TransactionFilters,
+  dateRange: DateRange | null
+): boolean => {
+  if (filters.datePreset === 'all') {
+    return true;
+  }
+
+  const ts = tx.timestamp;
+  if (!ts) {
+    return false;
+  }
+
+  if (filters.datePreset === 'custom') {
+    if (filters.dateFrom && ts < filters.dateFrom) return false;
+    if (filters.dateTo && ts > filters.dateTo) return false;
+    return true;
+  }
+
+  return !dateRange || (ts >= dateRange.from && ts <= dateRange.to);
+};
+
+const matchesConfirmationFilter = (
+  tx: Transaction,
+  confirmations: ConfirmationFilter,
+  confirmationThreshold: number,
+  deepConfirmationThreshold: number
+): boolean => {
+  switch (confirmations) {
+    case 'all':
+      return true;
+    case 'unconfirmed':
+      return tx.confirmations <= 0;
+    case 'confirmed':
+      return tx.confirmations >= confirmationThreshold;
+    case 'deep':
+      return tx.confirmations >= deepConfirmationThreshold;
+  }
+
+  return true;
+};
+
+const matchesLabelFilter = (tx: Transaction, labelId: string | null): boolean => {
+  if (!labelId) {
+    return true;
+  }
+
+  return tx.labels?.some(l => l.id === labelId) === true;
+};
+
+const matchesTransactionFilters = (
+  tx: Transaction,
+  filters: TransactionFilters,
+  walletAddresses: string[],
+  dateRange: DateRange | null,
+  confirmationThreshold: number,
+  deepConfirmationThreshold: number
+): boolean => {
+  return (
+    matchesTypeFilter(tx, filters.type, walletAddresses) &&
+    matchesDateFilter(tx, filters, dateRange) &&
+    matchesConfirmationFilter(
+      tx,
+      filters.confirmations,
+      confirmationThreshold,
+      deepConfirmationThreshold
+    ) &&
+    matchesLabelFilter(tx, filters.labelId)
+  );
+};
 
 // ---------------------------------------------------------------------------
 // Hook
@@ -134,59 +211,14 @@ export function useTransactionFilters({
       ? getDateRange(filters.datePreset)
       : null;
 
-    return transactions.filter(tx => {
-      // Type filter
-      if (filters.type !== 'all') {
-        const txIsConsolidation = isConsolidation(tx, walletAddresses);
-        switch (filters.type) {
-          case 'received':
-            if (txIsConsolidation || tx.amount <= 0) return false;
-            break;
-          case 'sent':
-            if (txIsConsolidation || tx.amount >= 0) return false;
-            break;
-          case 'consolidation':
-            if (!txIsConsolidation) return false;
-            break;
-        }
-      }
-
-      // Date filter
-      if (filters.datePreset !== 'all') {
-        const ts = tx.timestamp;
-        if (!ts) return false; // Pending transactions have no timestamp
-
-        if (filters.datePreset === 'custom') {
-          if (filters.dateFrom && ts < filters.dateFrom) return false;
-          if (filters.dateTo && ts > filters.dateTo) return false;
-        } else if (dateRange && (ts < dateRange.from || ts > dateRange.to)) {
-          return false;
-        }
-      }
-
-      // Confirmation filter
-      if (filters.confirmations !== 'all') {
-        switch (filters.confirmations) {
-          case 'unconfirmed':
-            if (tx.confirmations > 0) return false;
-            break;
-          case 'confirmed':
-            if (tx.confirmations < confirmationThreshold) return false;
-            break;
-          case 'deep':
-            if (tx.confirmations < deepConfirmationThreshold) return false;
-            break;
-        }
-      }
-
-      // Label filter
-      if (filters.labelId) {
-        const hasLabel = tx.labels?.some(l => l.id === filters.labelId);
-        if (!hasLabel) return false;
-      }
-
-      return true;
-    });
+    return transactions.filter(tx => matchesTransactionFilters(
+      tx,
+      filters,
+      walletAddresses,
+      dateRange,
+      confirmationThreshold,
+      deepConfirmationThreshold
+    ));
   }, [transactions, walletAddresses, filters, confirmationThreshold, deepConfirmationThreshold]);
 
   return {
@@ -200,4 +232,20 @@ export function useTransactionFilters({
     hasActiveFilters,
     filteredTransactions,
   };
+}
+
+function matchesTypeFilter(tx: Transaction, filterType: TxTypeFilter, walletAddresses: string[]): boolean {
+  if (filterType === 'all') {
+    return true;
+  }
+
+  const txIsConsolidation = isConsolidation(tx, walletAddresses);
+
+  if (filterType === 'consolidation') {
+    return txIsConsolidation;
+  }
+
+  return filterType === 'received'
+    ? !txIsConsolidation && tx.amount > 0
+    : !txIsConsolidation && tx.amount < 0;
 }

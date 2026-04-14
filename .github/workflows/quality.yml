@@ -7,8 +7,8 @@ name: Code Quality
 # - jscpd:    duplicate-block detection (SonarQube 3% default)
 #
 # These jobs are blocking. gitleaks gates new commit ranges instead of
-# historical repository cleanup, while lizard enforces the current warning
-# baseline until the existing complexity hot spots are refactored. Scheduled
+# historical repository cleanup, while lizard enforces a zero-warning
+# baseline. Scheduled
 # weekly so baseline drift is visible even on quiet weeks; runs on every PR
 # for per-change feedback.
 
@@ -101,13 +101,13 @@ jobs:
 
       - name: Run lizard
         # McCabe / NIST / SonarQube: warn on CCN > 15. The current measured
-        # baseline is 2 warnings; fail the job if the count grows.
+        # baseline is 0 warnings; fail the job if any warning is introduced.
         # -l filters by language; `-x` excludes generated, vendored, and
         # test-fixture paths that skew the signal.
         run: |
           lizard \
             -w \
-            -i 2 \
+            -i 0 \
             -l javascript \
             -l typescript \
             -C 15 \
