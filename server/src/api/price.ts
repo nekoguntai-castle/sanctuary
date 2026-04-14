@@ -9,11 +9,26 @@ import { z } from 'zod';
 import { getPriceService } from '../services/price';
 import { createLogger } from '../utils/logger';
 import { authenticate, requireAdmin } from '../middleware/auth';
+import { validate } from '../middleware/validate';
 import { asyncHandler } from '../errors/errorHandler';
-import { InvalidInputError } from '../errors/ApiError';
+import { ErrorCodes, InvalidInputError } from '../errors/ApiError';
 
 /** Days parameter: integer between 1 and 365 */
 const HistoryDaysSchema = z.coerce.number().int().min(1).max(365);
+
+const ConvertToFiatBodySchema = z.object({
+  sats: z.number(),
+  currency: z.string().optional().default('USD'),
+});
+
+const ConvertToSatsBodySchema = z.object({
+  amount: z.number(),
+  currency: z.string().optional().default('USD'),
+});
+
+const CacheDurationBodySchema = z.object({
+  duration: z.number().nonnegative(),
+});
 
 const router = Router();
 const log = createLogger('PRICE:ROUTE');
@@ -68,12 +83,11 @@ router.get('/from/:provider', asyncHandler(async (req, res) => {
  * POST /api/v1/price/convert/to-fiat
  * Convert satoshis to fiat
  */
-router.post('/convert/to-fiat', asyncHandler(async (req, res) => {
+router.post('/convert/to-fiat', validate(
+  { body: ConvertToFiatBodySchema },
+  { message: 'sats must be a number', code: ErrorCodes.INVALID_INPUT }
+), asyncHandler(async (req, res) => {
   const { sats, currency = 'USD' } = req.body;
-
-  if (typeof sats !== 'number') {
-    throw new InvalidInputError('sats must be a number');
-  }
 
   const fiatAmount = await priceService.convertToFiat(sats, currency);
 
@@ -88,12 +102,11 @@ router.post('/convert/to-fiat', asyncHandler(async (req, res) => {
  * POST /api/v1/price/convert/to-sats
  * Convert fiat to satoshis
  */
-router.post('/convert/to-sats', asyncHandler(async (req, res) => {
+router.post('/convert/to-sats', validate(
+  { body: ConvertToSatsBodySchema },
+  { message: 'amount must be a number', code: ErrorCodes.INVALID_INPUT }
+), asyncHandler(async (req, res) => {
   const { amount, currency = 'USD' } = req.body;
-
-  if (typeof amount !== 'number') {
-    throw new InvalidInputError('amount must be a number');
-  }
 
   const sats = await priceService.convertToSats(amount, currency);
 
@@ -162,15 +175,11 @@ router.post('/cache/clear', authenticate, requireAdmin, asyncHandler(async (req,
  * POST /api/v1/price/cache/duration
  * Set cache duration (admin only)
  */
-router.post('/cache/duration', authenticate, requireAdmin, (req: Request, res: Response) => {
+router.post('/cache/duration', authenticate, requireAdmin, validate(
+  { body: CacheDurationBodySchema },
+  { message: 'duration must be a positive number (milliseconds)', code: ErrorCodes.INVALID_INPUT }
+), (req: Request, res: Response) => {
   const { duration } = req.body;
-
-  if (typeof duration !== 'number' || duration < 0) {
-    return res.status(400).json({
-      error: 'Bad Request',
-      message: 'duration must be a positive number (milliseconds)',
-    });
-  }
 
   log.info('Cache duration updated by admin', { userId: req.user!.userId, duration });
   priceService.setCacheDuration(duration);

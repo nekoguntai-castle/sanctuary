@@ -5,16 +5,55 @@
  */
 
 import { Router } from 'express';
+import { z } from 'zod';
 import { authenticate } from '../middleware/auth';
+import { validate } from '../middleware/validate';
 import net from 'net';
 import tls from 'tls';
 import { createLogger } from '../utils/logger';
 import { getErrorMessage } from '../utils/errors';
 import { asyncHandler } from '../errors/errorHandler';
-import { InvalidInputError } from '../errors/ApiError';
+import { ErrorCodes } from '../errors/ApiError';
 
 const router = Router();
 const log = createLogger('NODE:ROUTE');
+
+const NodeTestBodySchema = z.object({
+  nodeType: z.string().optional(),
+  host: z.string().min(1),
+  port: z.union([z.number(), z.string()]),
+  protocol: z.enum(['tcp', 'ssl']),
+}).superRefine((data, ctx) => {
+  if (data.nodeType && data.nodeType !== 'electrum') {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Only Electrum connection type is supported',
+      path: ['nodeType'],
+    });
+  }
+
+  const portNum = parseInt(String(data.port), 10);
+  if (isNaN(portNum) || portNum <= 0 || portNum > 65535) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Invalid port number',
+      path: ['port'],
+    });
+  }
+});
+
+const nodeTestValidationMessage = (issues: Array<{ path: string; message: string }>) => {
+  if (issues.some(issue => issue.message === 'Only Electrum connection type is supported')) {
+    return 'Only Electrum connection type is supported';
+  }
+  if (issues.some(issue => issue.message === 'Invalid port number')) {
+    return 'Invalid port number';
+  }
+  if (issues.some(issue => issue.path === 'protocol')) {
+    return 'Missing required field: protocol (tcp or ssl)';
+  }
+  return 'Missing required fields: host, port';
+};
 
 // All routes require authentication
 router.use(authenticate);
@@ -147,30 +186,15 @@ async function testElectrumConnection(config: ElectrumTestConfig): Promise<{ suc
  * POST /api/v1/node/test
  * Test connection to an Electrum server
  */
-router.post('/test', asyncHandler(async (req, res) => {
+router.post('/test', validate(
+  { body: NodeTestBodySchema },
+  { message: nodeTestValidationMessage, code: ErrorCodes.INVALID_INPUT }
+), asyncHandler(async (req, res) => {
   const { nodeType, host, port, protocol } = req.body;
 
   log.debug('Testing connection', { nodeType, host, port, protocol });
 
-  // Validate required fields
-  if (!host || !port) {
-    throw new InvalidInputError('Missing required fields: host, port');
-  }
-
-  // Only Electrum is supported
-  if (nodeType && nodeType !== 'electrum') {
-    throw new InvalidInputError('Only Electrum connection type is supported');
-  }
-
-  // Test Electrum connection
-  if (!protocol) {
-    throw new InvalidInputError('Missing required field: protocol (tcp or ssl)');
-  }
-
   const portNum = parseInt(port, 10);
-  if (isNaN(portNum) || portNum <= 0 || portNum > 65535) {
-    throw new InvalidInputError('Invalid port number');
-  }
 
   const result = await testElectrumConnection({
     host,
