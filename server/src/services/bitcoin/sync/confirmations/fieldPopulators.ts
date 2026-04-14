@@ -11,6 +11,12 @@ import type { PopulationStats } from './types';
 
 const log = createLogger('BITCOIN:SVC_CONFIRMATIONS');
 
+type AddressLookup = Map<string, string>;
+type ScriptAddressSource = {
+  address?: string;
+  addresses?: string[];
+};
+
 /**
  * Populate blockHeight from various sources (Electrum, RPC, address history)
  */
@@ -193,51 +199,109 @@ export function populateAddressId(
   tx: { addressId: string | null; type: string },
   txDetails: RawTransaction,
   walletAddresses: Array<{ id: string; address: string }>,
-  walletAddressLookup: Map<string, string>,
+  walletAddressLookup: AddressLookup,
   walletAddressSet: Set<string>,
   updates: Record<string, unknown>,
   _stats: PopulationStats
 ): void {
   if (tx.addressId !== null || walletAddresses.length === 0) return;
 
-  // Check outputs for receive transactions
-  if (tx.type === 'received' || tx.type === 'receive') {
-    const outputs = txDetails.vout || [];
-    for (const output of outputs) {
-      const outputAddresses = output.scriptPubKey?.addresses || [];
-      if (output.scriptPubKey?.address) {
-        outputAddresses.push(output.scriptPubKey.address);
-      }
+  const addressId = findTransactionAddressId(
+    tx.type,
+    txDetails,
+    walletAddressLookup,
+    walletAddressSet
+  );
 
-      for (const addr of outputAddresses) {
-        if (walletAddressSet.has(addr)) {
-          const addressId = walletAddressLookup.get(addr);
-          if (addressId) {
-            updates.addressId = addressId;
-            break;
-          }
-        }
-      }
-      if (updates.addressId) break;
-    }
-  }
-
-  // Check inputs for send transactions
-  if (tx.type === 'sent' || tx.type === 'send') {
-    const inputs = txDetails.vin || [];
-    for (const input of inputs) {
-      if (input.prevout && input.prevout.scriptPubKey) {
-        const inputAddress = input.prevout.scriptPubKey.address ||
-          (input.prevout.scriptPubKey.addresses && input.prevout.scriptPubKey.addresses[0]);
-
-        if (inputAddress && walletAddressSet.has(inputAddress)) {
-          const addressId = walletAddressLookup.get(inputAddress);
-          if (addressId) {
-            updates.addressId = addressId;
-            break;
-          }
-        }
-      }
-    }
+  if (addressId) {
+    updates.addressId = addressId;
   }
 }
+
+const findTransactionAddressId = (
+  type: string,
+  txDetails: RawTransaction,
+  walletAddressLookup: AddressLookup,
+  walletAddressSet: Set<string>
+): string | undefined => {
+  if (isReceivedType(type)) {
+    return findReceivedAddressId(txDetails.vout || [], walletAddressLookup, walletAddressSet);
+  }
+
+  if (isSentType(type)) {
+    return findSentAddressId(txDetails.vin || [], walletAddressLookup, walletAddressSet);
+  }
+
+  return undefined;
+};
+
+const isReceivedType = (type: string): boolean => {
+  return type === 'received' || type === 'receive';
+};
+
+const isSentType = (type: string): boolean => {
+  return type === 'sent' || type === 'send';
+};
+
+const findReceivedAddressId = (
+  outputs: TransactionOutput[],
+  walletAddressLookup: AddressLookup,
+  walletAddressSet: Set<string>
+): string | undefined => {
+  for (const output of outputs) {
+    const addressId = findWalletAddressId(
+      getOutputAddresses(output.scriptPubKey),
+      walletAddressLookup,
+      walletAddressSet
+    );
+    if (addressId) return addressId;
+  }
+
+  return undefined;
+};
+
+const findSentAddressId = (
+  inputs: TransactionInput[],
+  walletAddressLookup: AddressLookup,
+  walletAddressSet: Set<string>
+): string | undefined => {
+  for (const input of inputs) {
+    const addressId = findWalletAddressId(
+      getInputAddresses(input),
+      walletAddressLookup,
+      walletAddressSet
+    );
+    if (addressId) return addressId;
+  }
+
+  return undefined;
+};
+
+const getOutputAddresses = (scriptPubKey: ScriptAddressSource | undefined): string[] => {
+  const addresses = scriptPubKey?.addresses ? [...scriptPubKey.addresses] : [];
+  if (scriptPubKey?.address) {
+    addresses.push(scriptPubKey.address);
+  }
+  return addresses;
+};
+
+const getInputAddresses = (input: TransactionInput): string[] => {
+  const inputAddress = input.prevout?.scriptPubKey?.address ||
+    input.prevout?.scriptPubKey?.addresses?.[0];
+  return inputAddress ? [inputAddress] : [];
+};
+
+const findWalletAddressId = (
+  addresses: string[],
+  walletAddressLookup: AddressLookup,
+  walletAddressSet: Set<string>
+): string | undefined => {
+  for (const address of addresses) {
+    if (!walletAddressSet.has(address)) continue;
+
+    const addressId = walletAddressLookup.get(address);
+    if (addressId) return addressId;
+  }
+
+  return undefined;
+};
