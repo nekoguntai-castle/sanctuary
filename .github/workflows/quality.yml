@@ -6,11 +6,11 @@ name: Code Quality
 # - lizard:   cyclomatic complexity (McCabe, NIST SP 500-235 thresholds)
 # - jscpd:    duplicate-block detection (SonarQube 3% default)
 #
-# The lint job is blocking. The other three jobs are nonblocking
-# (continue-on-error) during the initial rollout while we tune baselines.
-# Promote those checks to required once the signal is stable. Scheduled
-# weekly so baseline drift is visible even on quiet weeks; runs on every
-# PR for per-change feedback.
+# These jobs are blocking. gitleaks gates new commit ranges instead of
+# historical repository cleanup, while lizard enforces the current warning
+# baseline until the existing complexity hot spots are refactored. Scheduled
+# weekly so baseline drift is visible even on quiet weeks; runs on every PR
+# for per-change feedback.
 
 on:
   pull_request:
@@ -23,6 +23,7 @@ on:
 env:
   NODE_VERSION: '22'
   PYTHON_VERSION: '3.12'
+  GITLEAKS_VERSION: '8.30.1'
 
 jobs:
   lint:
@@ -47,24 +48,45 @@ jobs:
   gitleaks:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
+      - name: Install gitleaks
+        run: |
+          curl -sSL \
+            -o /tmp/gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          /tmp/gitleaks version
+
       - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        with:
-          config-path: .gitleaks.toml
+        # The repository has older test-fixture/history false positives, so
+        # this job gates new PR commits and the latest scheduled/dispatch
+        # commit instead of forcing an unrelated full-history cleanup.
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            /tmp/gitleaks git . \
+              --config .gitleaks.toml \
+              --redact \
+              --no-banner \
+              --log-opts "--no-merges --first-parent ${BASE_SHA}^..${HEAD_SHA}"
+          else
+            /tmp/gitleaks git . \
+              --config .gitleaks.toml \
+              --redact \
+              --no-banner \
+              --log-opts -1
+          fi
 
   lizard:
     name: Cyclomatic complexity (lizard)
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -78,11 +100,14 @@ jobs:
         run: python -m pip install --upgrade pip lizard
 
       - name: Run lizard
-        # McCabe / NIST / SonarQube: warn on CCN > 15, error on avg CCN > 15.
+        # McCabe / NIST / SonarQube: warn on CCN > 15. The first measured
+        # baseline is 83 warnings; fail the job if the count grows.
         # -l filters by language; `-x` excludes generated, vendored, and
         # test-fixture paths that skew the signal.
         run: |
           lizard \
+            -w \
+            -i 83 \
             -l javascript \
             -l typescript \
             -C 15 \
@@ -101,12 +126,13 @@ jobs:
             -x './reports/*' \
             -x './playwright-report/*' \
             -x './test-results/*' \
+            -x './.tmp/*' \
+            -x './.tmp-gh/*' \
             .
 
   jscpd:
     name: Duplication (jscpd)
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@v6

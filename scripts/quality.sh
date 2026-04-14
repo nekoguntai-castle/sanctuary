@@ -25,11 +25,16 @@ if [[ "$missing" -ne 0 ]]; then
   exit 127
 fi
 
+GITLEAKS_LOG_OPTS="${GITLEAKS_LOG_OPTS:--1}"
+LIZARD_WARNING_BASELINE="${LIZARD_WARNING_BASELINE:-83}"
+
 echo "==> gitleaks"
-gitleaks detect --source . --config .gitleaks.toml --redact --no-banner
+gitleaks git . --config .gitleaks.toml --redact --no-banner --log-opts "$GITLEAKS_LOG_OPTS"
 
 echo "==> lizard"
 lizard \
+  -w \
+  -i "$LIZARD_WARNING_BASELINE" \
   -l javascript \
   -l typescript \
   -C 15 \
@@ -48,6 +53,8 @@ lizard \
   -x './reports/*' \
   -x './playwright-report/*' \
   -x './test-results/*' \
+  -x './.tmp/*' \
+  -x './.tmp-gh/*' \
   .
 
 echo "==> jscpd"
