@@ -41,6 +41,54 @@ const BatchTransactionRequestSchema = z.object({
   memo: z.string().optional(),
 }).passthrough();
 
+type WalletNetwork = 'mainnet' | 'testnet' | 'regtest';
+type BatchTransactionOutputInput = z.infer<typeof BatchTransactionOutputSchema>;
+type ValidatedBatchOutput = { address: string; amount: number; sendMax?: boolean };
+
+function validateBatchOutputs(
+  outputs: BatchTransactionOutputInput[] | undefined,
+  network: WalletNetwork
+): ValidatedBatchOutput[] {
+  if (!outputs || outputs.length === 0) {
+    throw new ValidationError('outputs array is required with at least one output');
+  }
+
+  const validatedOutputs = outputs.map((output, index) =>
+    validateBatchOutput(output, index, network)
+  );
+
+  if (validatedOutputs.filter((output) => output.sendMax).length > 1) {
+    throw new ValidationError('Only one output can have sendMax enabled');
+  }
+
+  return validatedOutputs;
+}
+
+function validateBatchOutput(
+  output: BatchTransactionOutputInput,
+  index: number,
+  network: WalletNetwork
+): ValidatedBatchOutput {
+  if (!output.address) {
+    throw new ValidationError(`Output ${index + 1}: address is required`);
+  }
+
+  if (!output.sendMax && (!output.amount || output.amount <= 0)) {
+    throw new ValidationError(`Output ${index + 1}: amount is required (or set sendMax: true)`);
+  }
+
+  const addressValidation = validateAddress(output.address, network);
+  if (!addressValidation.valid) {
+    throw new ValidationError(`Output ${index + 1}: Invalid Bitcoin address: ${addressValidation.error}`);
+  }
+
+  return {
+    address: output.address,
+    amount: output.amount ?? 0,
+    ...(output.sendMax !== undefined && { sendMax: output.sendMax }),
+  };
+}
+
 /**
  * POST /api/v1/wallets/:walletId/transactions/create
  * Create a new transaction PSBT (returns PSBT for hardware wallet signing)
@@ -152,11 +200,6 @@ router.post('/wallets/:walletId/transactions/batch', requireWalletAccess('edit')
     memo,
   } = parseTransactionRequestBody(BatchTransactionRequestSchema, req.body);
 
-  // Validate outputs array
-  if (!outputs || !Array.isArray(outputs) || outputs.length === 0) {
-    throw new ValidationError('outputs array is required with at least one output');
-  }
-
   if (!feeRate || feeRate < MIN_FEE_RATE) {
     throw new ValidationError(`feeRate must be at least ${MIN_FEE_RATE} sat/vB`);
   }
@@ -168,39 +211,8 @@ router.post('/wallets/:walletId/transactions/batch', requireWalletAccess('edit')
     throw new NotFoundError('Wallet not found');
   }
 
-  const network = wallet.network as 'mainnet' | 'testnet' | 'regtest';
-  const validatedOutputs: Array<{ address: string; amount: number; sendMax?: boolean }> = [];
-
-  // Validate each output
-  for (let i = 0; i < outputs.length; i++) {
-    const output = outputs[i];
-    if (!output.address) {
-      throw new ValidationError(`Output ${i + 1}: address is required`);
-    }
-
-    // Amount is required unless sendMax is true
-    if (!output.sendMax && (!output.amount || output.amount <= 0)) {
-      throw new ValidationError(`Output ${i + 1}: amount is required (or set sendMax: true)`);
-    }
-
-    // Validate address
-    const addressValidation = validateAddress(output.address, network);
-    if (!addressValidation.valid) {
-      throw new ValidationError(`Output ${i + 1}: Invalid Bitcoin address: ${addressValidation.error}`);
-    }
-
-    validatedOutputs.push({
-      address: output.address,
-      amount: output.amount ?? 0,
-      ...(output.sendMax !== undefined && { sendMax: output.sendMax }),
-    });
-  }
-
-  // Only one output can have sendMax
-  const sendMaxCount = validatedOutputs.filter((o) => o.sendMax).length;
-  if (sendMaxCount > 1) {
-    throw new ValidationError('Only one output can have sendMax enabled');
-  }
+  const network = wallet.network as WalletNetwork;
+  const validatedOutputs = validateBatchOutputs(outputs, network);
 
   // Evaluate vault policies BEFORE creating the batch PSBT
   // Note: sendMax outputs have amount=0 here; address control still applies
