@@ -624,6 +624,14 @@ export function setupRepositoryTests() {
  * console.log(scenario.utxos.length);
  * ```
  */
+type TestUserEntity = Awaited<ReturnType<typeof createTestUser>>;
+type TestDeviceEntity = Awaited<ReturnType<typeof createTestDevice>>;
+type TestWalletEntity = Awaited<ReturnType<typeof createTestWallet>>;
+type TestAddressEntity = Awaited<ReturnType<typeof createTestAddress>>;
+type TestUtxoEntity = Awaited<ReturnType<typeof createTestUtxo>>;
+type TestTransactionEntity = Awaited<ReturnType<typeof createTestTransaction>>;
+type TestLabelEntity = Awaited<ReturnType<typeof createTestLabel>>;
+
 export class TestScenarioBuilder {
   private tx: PrismaClient;
   private userOptions: CreateUserOptions | null = null;
@@ -681,91 +689,116 @@ export class TestScenarioBuilder {
     return this;
   }
 
+  private async createRequestedDevice(user: TestUserEntity): Promise<TestDeviceEntity | null> {
+    if (this.deviceOptions === null) {
+      return null;
+    }
+
+    return createTestDevice(this.tx, user.id, this.deviceOptions);
+  }
+
+  private async createRequestedWallet(user: TestUserEntity): Promise<TestWalletEntity | null> {
+    if (this.walletOptions === null) {
+      return null;
+    }
+
+    return createTestWallet(this.tx, user.id, this.walletOptions);
+  }
+
+  private async createRequestedAddresses(wallet: TestWalletEntity | null): Promise<TestAddressEntity[]> {
+    const addresses: TestAddressEntity[] = [];
+    if (!wallet || this.addressCount <= 0) {
+      return addresses;
+    }
+
+    for (let i = 0; i < this.addressCount; i++) {
+      addresses.push(
+        await createTestAddress(this.tx, wallet.id, {
+          ...this.addressOptions,
+          index: i,
+        })
+      );
+    }
+
+    return addresses;
+  }
+
+  private async createRequestedUtxos(wallet: TestWalletEntity | null): Promise<TestUtxoEntity[]> {
+    const utxos: TestUtxoEntity[] = [];
+    if (!wallet || this.utxoCount <= 0) {
+      return utxos;
+    }
+
+    for (let i = 0; i < this.utxoCount; i++) {
+      utxos.push(
+        await createTestUtxo(this.tx, wallet.id, {
+          ...this.utxoOptions,
+          vout: i,
+        })
+      );
+    }
+
+    return utxos;
+  }
+
+  private async createRequestedTransactions(wallet: TestWalletEntity | null): Promise<TestTransactionEntity[]> {
+    const transactions: TestTransactionEntity[] = [];
+    if (!wallet || this.transactionCount <= 0) {
+      return transactions;
+    }
+
+    for (let i = 0; i < this.transactionCount; i++) {
+      transactions.push(
+        await createTestTransaction(this.tx, wallet.id, this.transactionOptions)
+      );
+    }
+
+    return transactions;
+  }
+
+  private async createRequestedLabels(wallet: TestWalletEntity | null): Promise<TestLabelEntity[]> {
+    const labels: TestLabelEntity[] = [];
+    if (!wallet || this.labelCount <= 0) {
+      return labels;
+    }
+
+    for (let i = 0; i < this.labelCount; i++) {
+      labels.push(
+        await createTestLabel(this.tx, wallet.id, {
+          ...this.labelOptions,
+          name: `${this.labelOptions.name || 'label'}-${i}`,
+        })
+      );
+    }
+
+    return labels;
+  }
+
   async build(): Promise<TestScenario> {
-    // Create user (required)
     const user = await createTestUser(this.tx, this.userOptions || {});
-
-    // Create device if requested
-    let device = null;
-    if (this.deviceOptions !== null) {
-      device = await createTestDevice(this.tx, user.id, this.deviceOptions);
-    }
-
-    // Create wallet if requested
-    let wallet = null;
-    if (this.walletOptions !== null) {
-      wallet = await createTestWallet(this.tx, user.id, this.walletOptions);
-    }
-
-    // Create addresses
-    const addresses = [];
-    if (wallet && this.addressCount > 0) {
-      for (let i = 0; i < this.addressCount; i++) {
-        addresses.push(
-          await createTestAddress(this.tx, wallet.id, {
-            ...this.addressOptions,
-            index: i,
-          })
-        );
-      }
-    }
-
-    // Create UTXOs
-    const utxos = [];
-    if (wallet && this.utxoCount > 0) {
-      for (let i = 0; i < this.utxoCount; i++) {
-        utxos.push(
-          await createTestUtxo(this.tx, wallet.id, {
-            ...this.utxoOptions,
-            vout: i,
-          })
-        );
-      }
-    }
-
-    // Create transactions
-    const transactions = [];
-    if (wallet && this.transactionCount > 0) {
-      for (let i = 0; i < this.transactionCount; i++) {
-        transactions.push(
-          await createTestTransaction(this.tx, wallet.id, this.transactionOptions)
-        );
-      }
-    }
-
-    // Create labels
-    const labels = [];
-    if (wallet && this.labelCount > 0) {
-      for (let i = 0; i < this.labelCount; i++) {
-        labels.push(
-          await createTestLabel(this.tx, wallet.id, {
-            ...this.labelOptions,
-            name: `${this.labelOptions.name || 'label'}-${i}`,
-          })
-        );
-      }
-    }
+    const device = await this.createRequestedDevice(user);
+    const wallet = await this.createRequestedWallet(user);
 
     return {
       user,
       device,
       wallet,
-      addresses,
-      utxos,
-      transactions,
-      labels,
+      addresses: await this.createRequestedAddresses(wallet),
+      utxos: await this.createRequestedUtxos(wallet),
+      transactions: await this.createRequestedTransactions(wallet),
+      labels: await this.createRequestedLabels(wallet),
     };
   }
 }
 
 export interface TestScenario {
-  user: Awaited<ReturnType<typeof createTestUser>>;
-  device: Awaited<ReturnType<typeof createTestDevice>> | null;
-  wallet: Awaited<ReturnType<typeof createTestWallet>> | null;
-  addresses: Awaited<ReturnType<typeof createTestAddress>>[];
-  utxos: Awaited<ReturnType<typeof createTestUtxo>>[];
-  transactions: Awaited<ReturnType<typeof createTestTransaction>>[];
-  labels: Awaited<ReturnType<typeof createTestLabel>>[];
+  user: TestUserEntity;
+  device: TestDeviceEntity | null;
+  wallet: TestWalletEntity | null;
+  addresses: TestAddressEntity[];
+  utxos: TestUtxoEntity[];
+  transactions: TestTransactionEntity[];
+  labels: TestLabelEntity[];
 }
 
 // ========================================
