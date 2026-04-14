@@ -14,6 +14,8 @@ import { DEFAULT_INTELLIGENCE_SETTINGS } from './types';
 
 const log = createLogger('INTELLIGENCE:SVC_SETTINGS');
 
+type PreferenceRecord = Record<string, unknown>;
+
 /**
  * Get intelligence settings for a specific wallet from a user's preferences.
  */
@@ -55,26 +57,51 @@ export async function updateWalletIntelligenceSettings(
 ): Promise<WalletIntelligenceSettings> {
   const user = await userRepository.findByIdWithSelect(userId, { preferences: true });
 
-  const prefs = (user?.preferences as Record<string, unknown>) ?? {};
-  const intelligence = (prefs.intelligence as IntelligenceConfig) ?? { wallets: {} };
-  const existing = intelligence.wallets?.[walletId] ?? { ...DEFAULT_INTELLIGENCE_SETTINGS };
+  const prefs = getPreferenceRecord(user?.preferences);
+  const intelligence = getIntelligenceConfig(prefs);
+  const existing = getExistingWalletSettings(intelligence, walletId);
+  const updated = mergeWalletSettings(existing, settings);
 
-  const updated: WalletIntelligenceSettings = {
-    enabled: settings.enabled ?? existing.enabled,
-    notifyTelegram: settings.notifyTelegram ?? existing.notifyTelegram,
-    notifyPush: settings.notifyPush ?? existing.notifyPush,
-    severityFilter: settings.severityFilter ?? existing.severityFilter,
-    typeFilter: settings.typeFilter ?? existing.typeFilter,
-  };
-
-  intelligence.wallets = intelligence.wallets ?? {};
-  intelligence.wallets[walletId] = updated;
-  prefs.intelligence = intelligence;
+  setWalletSettings(prefs, intelligence, walletId, updated);
 
   await userRepository.updatePreferences(userId, prefs as Prisma.InputJsonValue);
 
   return updated;
 }
+
+const getPreferenceRecord = (preferences: unknown): PreferenceRecord =>
+  (preferences as PreferenceRecord) ?? {};
+
+const getIntelligenceConfig = (prefs: PreferenceRecord): IntelligenceConfig =>
+  (prefs.intelligence as IntelligenceConfig) ?? { wallets: {} };
+
+const getExistingWalletSettings = (
+  intelligence: IntelligenceConfig,
+  walletId: string
+): WalletIntelligenceSettings =>
+  intelligence.wallets?.[walletId] ?? { ...DEFAULT_INTELLIGENCE_SETTINGS };
+
+const mergeWalletSettings = (
+  existing: WalletIntelligenceSettings,
+  settings: Partial<WalletIntelligenceSettings>
+): WalletIntelligenceSettings => ({
+    enabled: settings.enabled ?? existing.enabled,
+    notifyTelegram: settings.notifyTelegram ?? existing.notifyTelegram,
+    notifyPush: settings.notifyPush ?? existing.notifyPush,
+    severityFilter: settings.severityFilter ?? existing.severityFilter,
+    typeFilter: settings.typeFilter ?? existing.typeFilter,
+  });
+
+const setWalletSettings = (
+  prefs: PreferenceRecord,
+  intelligence: IntelligenceConfig,
+  walletId: string,
+  settings: WalletIntelligenceSettings
+): void => {
+  intelligence.wallets = intelligence.wallets ?? {};
+  intelligence.wallets[walletId] = settings;
+  prefs.intelligence = intelligence;
+};
 
 /**
  * Get all wallets with intelligence enabled across all users.

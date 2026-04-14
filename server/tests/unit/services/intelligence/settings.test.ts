@@ -226,6 +226,52 @@ describe('Treasury Intelligence Settings', () => {
       );
     });
 
+    it('should preserve explicit false updates', async () => {
+      (mockUserRepo.findByIdWithSelect as Mock).mockResolvedValue({
+        preferences: {
+          intelligence: {
+            wallets: {
+              'wallet-1': {
+                enabled: true,
+                notifyTelegram: true,
+                notifyPush: true,
+                severityFilter: 'info',
+                typeFilter: ['utxo_health'],
+              },
+            },
+          },
+        },
+      });
+      (mockUserRepo.updatePreferences as Mock).mockResolvedValue({});
+
+      const result = await updateWalletIntelligenceSettings('user-1', 'wallet-1', {
+        enabled: false,
+        notifyPush: false,
+      });
+
+      expect(result).toEqual({
+        enabled: false,
+        notifyTelegram: true,
+        notifyPush: false,
+        severityFilter: 'info',
+        typeFilter: ['utxo_health'],
+      });
+
+      expect(mockUserRepo.updatePreferences).toHaveBeenCalledWith(
+        'user-1',
+        expect.objectContaining({
+          intelligence: expect.objectContaining({
+            wallets: expect.objectContaining({
+              'wallet-1': expect.objectContaining({
+                enabled: false,
+                notifyPush: false,
+              }),
+            }),
+          }),
+        }),
+      );
+    });
+
     it('should create intelligence config when preferences exist but no intelligence key', async () => {
       (mockUserRepo.findByIdWithSelect as Mock).mockResolvedValue({
         preferences: { theme: 'dark' },
