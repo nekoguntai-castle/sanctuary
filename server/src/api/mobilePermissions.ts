@@ -25,13 +25,14 @@
  */
 
 import { Router } from 'express';
-import type { z } from 'zod';
+import { z } from 'zod';
 import { authenticate } from '../middleware/auth';
 import { verifyGatewayRequest } from '../middleware/gatewayAuth';
+import { validate } from '../middleware/validate';
 import { createLogger } from '../utils/logger';
 import { mobilePermissionService, type MobileAction, ALL_MOBILE_ACTIONS } from '../services/mobilePermissions';
 import { asyncHandler } from '../errors/errorHandler';
-import { InvalidInputError } from '../errors/ApiError';
+import { ErrorCodes, InvalidInputError } from '../errors/ApiError';
 import {
   MobilePermissionUpdateRequestSchema,
   type MobilePermissionUpdateRequest,
@@ -47,6 +48,25 @@ const log = createLogger('MOBILE_PERMS:ROUTE');
 function isValidMobileAction(action: string): action is MobileAction {
   return ALL_MOBILE_ACTIONS.includes(action as MobileAction);
 }
+
+const GatewayPermissionCheckBodySchema = z.object({
+  walletId: z.string().min(1),
+  userId: z.string().min(1),
+  action: z.string().min(1),
+}).superRefine((data, ctx) => {
+  if (!isValidMobileAction(data.action)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `Invalid action: ${data.action}`,
+      path: ['action'],
+    });
+  }
+});
+
+const gatewayPermissionCheckValidationMessage = (issues: Array<{ message: string }>) => {
+  const invalidActionIssue = issues.find(issue => issue.message.startsWith('Invalid action:'));
+  return invalidActionIssue?.message ?? 'walletId, userId, and action are required';
+};
 
 /**
  * Validate permission update input
@@ -295,18 +315,11 @@ publicRouter.delete('/wallets/:id/mobile-permissions', authenticate, asyncHandle
  *   - userId: string
  *   - action: MobileAction
  */
-internalRouter.post('/mobile-permissions/check', verifyGatewayRequest, asyncHandler(async (req, res) => {
+internalRouter.post('/mobile-permissions/check', verifyGatewayRequest, validate(
+  { body: GatewayPermissionCheckBodySchema },
+  { message: gatewayPermissionCheckValidationMessage, code: ErrorCodes.INVALID_INPUT }
+), asyncHandler(async (req, res) => {
   const { walletId, userId, action } = req.body;
-
-  // Validate required fields
-  if (!walletId || !userId || !action) {
-    throw new InvalidInputError('walletId, userId, and action are required');
-  }
-
-  // Validate action
-  if (!isValidMobileAction(action)) {
-    throw new InvalidInputError(`Invalid action: ${action}`);
-  }
 
   const result = await mobilePermissionService.checkForGateway(walletId, userId, action);
 
