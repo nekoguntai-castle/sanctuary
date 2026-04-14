@@ -5,12 +5,56 @@
  */
 
 import { Router } from 'express';
+import { z } from 'zod';
+import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
-import { InvalidInputError } from '../../errors/ApiError';
+import { ErrorCodes } from '../../errors/ApiError';
 import * as walletImport from '../../services/walletImport';
 import { importFormatRegistry } from '../../services/import';
 
 const router = Router();
+
+const WalletImportValidateBodySchema = z
+  .object({
+    descriptor: z.unknown().optional(),
+    json: z.unknown().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (!data.descriptor && !data.json) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Either descriptor or json is required',
+        path: ['descriptor'],
+      });
+    }
+  });
+
+const WalletImportBodySchema = z
+  .object({
+    data: z.unknown().optional(),
+    name: z.string().trim().min(1, 'name is required').optional(),
+    network: z.unknown().optional(),
+    deviceLabels: z.unknown().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (!data.data) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'data (descriptor or JSON) is required',
+        path: ['data'],
+      });
+    }
+    if (data.name === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'name is required',
+        path: ['name'],
+      });
+    }
+  });
+
+const walletImportValidationMessage = (issues: Array<{ message: string }>) =>
+  issues[0]?.message ?? 'Invalid wallet import request';
 
 /**
  * GET /api/v1/wallets/import/formats
@@ -34,13 +78,12 @@ router.get('/import/formats', asyncHandler(async (_req, res) => {
  * POST /api/v1/wallets/import/validate
  * Validate import data and preview what will happen
  */
-router.post('/import/validate', asyncHandler(async (req, res) => {
+router.post('/import/validate', validate(
+  { body: WalletImportValidateBodySchema },
+  { message: walletImportValidationMessage, code: ErrorCodes.INVALID_INPUT }
+), asyncHandler(async (req, res) => {
   const userId = req.user!.userId;
   const { descriptor, json } = req.body;
-
-  if (!descriptor && !json) {
-    throw new InvalidInputError('Either descriptor or json is required');
-  }
 
   const result = await walletImport.validateImport(userId, {
     descriptor,
@@ -54,21 +97,16 @@ router.post('/import/validate', asyncHandler(async (req, res) => {
  * POST /api/v1/wallets/import
  * Import a wallet from descriptor or JSON
  */
-router.post('/import', asyncHandler(async (req, res) => {
+router.post('/import', validate(
+  { body: WalletImportBodySchema },
+  { message: walletImportValidationMessage, code: ErrorCodes.INVALID_INPUT }
+), asyncHandler(async (req, res) => {
   const userId = req.user!.userId;
   const { data, name, network, deviceLabels } = req.body;
 
-  if (!data) {
-    throw new InvalidInputError('data (descriptor or JSON) is required');
-  }
-
-  if (!name || typeof name !== 'string' || name.trim().length === 0) {
-    throw new InvalidInputError('name is required');
-  }
-
   const result = await walletImport.importWallet(userId, {
     data,
-    name: name.trim(),
+    name,
     network,
     deviceLabels,
   });

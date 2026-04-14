@@ -5,13 +5,43 @@
  */
 
 import { Router } from 'express';
+import { z } from 'zod';
 import { requireWalletAccess } from '../../middleware/walletAccess';
+import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
-import { InvalidInputError, NotFoundError } from '../../errors/ApiError';
+import { ErrorCodes, InvalidInputError, NotFoundError } from '../../errors/ApiError';
 import * as walletService from '../../services/wallet';
 import { isValidScriptType, scriptTypeRegistry } from '../../services/scriptTypes';
 
 const router = Router();
+
+const CreateWalletBodySchema = z.object({
+  name: z.string().min(1),
+  type: z.enum(['single_sig', 'multi_sig']),
+  scriptType: z.string().min(1),
+  network: z.string().optional(),
+  quorum: z.unknown().optional(),
+  totalSigners: z.unknown().optional(),
+  descriptor: z.string().optional(),
+  fingerprint: z.string().optional(),
+  groupId: z.string().optional(),
+  deviceIds: z.array(z.string()).optional(),
+});
+
+const UpdateWalletBodySchema = z.object({
+  name: z.string().optional(),
+  descriptor: z.string().optional(),
+});
+
+const createWalletValidationMessage = (issues: Array<{ path: string }>) => {
+  if (issues.some(issue => ['name', 'scriptType'].includes(issue.path))) {
+    return 'name, type, and scriptType are required';
+  }
+  if (issues.some(issue => issue.path === 'type')) {
+    return 'type must be single_sig or multi_sig';
+  }
+  return 'Invalid wallet request';
+};
 
 /**
  * GET /api/v1/wallets
@@ -28,7 +58,10 @@ router.get('/', asyncHandler(async (req, res) => {
  * POST /api/v1/wallets
  * Create a new wallet
  */
-router.post('/', asyncHandler(async (req, res) => {
+router.post('/', validate(
+  { body: CreateWalletBodySchema },
+  { message: createWalletValidationMessage, code: ErrorCodes.INVALID_INPUT }
+), asyncHandler(async (req, res) => {
   const userId = req.user!.userId;
   const {
     name,
@@ -42,15 +75,6 @@ router.post('/', asyncHandler(async (req, res) => {
     groupId,
     deviceIds,
   } = req.body;
-
-  // Validation
-  if (!name || !type || !scriptType) {
-    throw new InvalidInputError('name, type, and scriptType are required');
-  }
-
-  if (!['single_sig', 'multi_sig'].includes(type)) {
-    throw new InvalidInputError('type must be single_sig or multi_sig');
-  }
 
   if (!isValidScriptType(scriptType)) {
     throw new InvalidInputError(`Invalid scriptType. Valid types: ${scriptTypeRegistry.getIds().join(', ')}`);
@@ -93,7 +117,7 @@ router.get('/:id', requireWalletAccess('view'), asyncHandler(async (req, res) =>
  * PATCH /api/v1/wallets/:id
  * Update a wallet (owner only)
  */
-router.patch('/:id', requireWalletAccess('owner'), asyncHandler(async (req, res) => {
+router.patch('/:id', requireWalletAccess('owner'), validate({ body: UpdateWalletBodySchema }), asyncHandler(async (req, res) => {
   const userId = req.user!.userId;
   const walletId = req.walletId!;
   const { name, descriptor } = req.body;

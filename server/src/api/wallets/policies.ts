@@ -8,8 +8,9 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { requireWalletAccess } from '../../middleware/walletAccess';
+import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
-import { InvalidInputError, NotFoundError } from '../../errors/ApiError';
+import { ErrorCodes, InvalidInputError, NotFoundError } from '../../errors/ApiError';
 import { vaultPolicyService, policyEvaluationEngine } from '../../services/vaultPolicy';
 import { policyRepository } from '../../repositories/policyRepository';
 import { walletRepository } from '../../repositories/walletRepository';
@@ -25,6 +26,80 @@ const PolicyEventPaginationSchema = z.object({
   limit: z.coerce.number().int().catch(50).transform(v => Math.max(1, Math.min(v, MAX_PAGE_LIMIT))),
   offset: z.coerce.number().int().catch(0).transform(v => Math.max(0, v)),
 });
+
+const PolicyEvaluationBodySchema = z
+  .object({
+    recipient: z.unknown().optional(),
+    amount: z.unknown().optional(),
+    outputs: z.unknown().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (!data.recipient || data.amount === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'recipient and amount are required',
+        path: ['recipient'],
+      });
+      return;
+    }
+
+    const validAmount = (
+      (typeof data.amount === 'number' && Number.isInteger(data.amount) && data.amount >= 0) ||
+      (typeof data.amount === 'string' && /^\d+$/.test(data.amount))
+    );
+
+    if (!validAmount) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'amount must be a valid non-negative integer',
+        path: ['amount'],
+      });
+    }
+  });
+
+const PolicyMutationBodySchema = z.object({
+  name: z.unknown().optional(),
+  description: z.unknown().optional(),
+  type: z.unknown().optional(),
+  config: z.unknown().optional(),
+  priority: z.unknown().optional(),
+  enforcement: z.unknown().optional(),
+  enabled: z.unknown().optional(),
+}).passthrough();
+
+const PolicyAddressBodySchema = z
+  .object({
+    address: z.unknown().optional(),
+    label: z.unknown().optional(),
+    listType: z.unknown().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (!data.address || !data.listType) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'address and listType are required',
+        path: ['address'],
+      });
+      return;
+    }
+    if (typeof data.address !== 'string' || data.address.length > 100) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'address must be a string of 100 characters or fewer',
+        path: ['address'],
+      });
+    }
+    if (data.listType !== 'allow' && data.listType !== 'deny') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'listType must be "allow" or "deny"',
+        path: ['listType'],
+      });
+    }
+  });
+
+const policyValidationMessage = (issues: Array<{ message: string }>) =>
+  issues[0]?.message ?? 'Invalid policy request';
 
 // ========================================
 // POLICY EVENTS (must be before /:policyId to avoid "events" matching as policyId)
@@ -60,19 +135,13 @@ router.get('/:walletId/policies/events', requireWalletAccess('view'), asyncHandl
  * POST /:walletId/policies/evaluate - Preview policy evaluation for a transaction
  * Returns which policies would trigger without creating anything.
  */
-router.post('/:walletId/policies/evaluate', requireWalletAccess('view'), asyncHandler(async (req, res) => {
+router.post('/:walletId/policies/evaluate', requireWalletAccess('view'), validate(
+  { body: PolicyEvaluationBodySchema },
+  { message: policyValidationMessage, code: ErrorCodes.INVALID_INPUT }
+), asyncHandler(async (req, res) => {
   const walletId = req.params.walletId;
   const userId = req.user!.userId;
   const { recipient, amount, outputs } = req.body;
-
-  if (!recipient || amount === undefined) {
-    throw new InvalidInputError('recipient and amount are required');
-  }
-
-  // Validate amount is a valid integer before BigInt conversion
-  if (typeof amount !== 'number' && (typeof amount !== 'string' || !/^\d+$/.test(amount))) {
-    throw new InvalidInputError('amount must be a valid non-negative integer');
-  }
 
   const result = await policyEvaluationEngine.evaluatePolicies({
     walletId,
@@ -118,7 +187,7 @@ router.get('/:walletId/policies/:policyId', requireWalletAccess('view'), asyncHa
 /**
  * POST /:walletId/policies - Create a new policy (Owner only)
  */
-router.post('/:walletId/policies', requireWalletAccess('owner'), asyncHandler(async (req, res) => {
+router.post('/:walletId/policies', requireWalletAccess('owner'), validate({ body: PolicyMutationBodySchema }), asyncHandler(async (req, res) => {
   const walletId = req.params.walletId;
   const userId = req.user!.userId;
 
@@ -150,7 +219,7 @@ router.post('/:walletId/policies', requireWalletAccess('owner'), asyncHandler(as
 /**
  * PATCH /:walletId/policies/:policyId - Update a policy (Owner only)
  */
-router.patch('/:walletId/policies/:policyId', requireWalletAccess('owner'), asyncHandler(async (req, res) => {
+router.patch('/:walletId/policies/:policyId', requireWalletAccess('owner'), validate({ body: PolicyMutationBodySchema }), asyncHandler(async (req, res) => {
   const { walletId, policyId } = req.params;
   const userId = req.user!.userId;
 
@@ -222,7 +291,10 @@ router.get('/:walletId/policies/:policyId/addresses', requireWalletAccess('view'
 /**
  * POST /:walletId/policies/:policyId/addresses - Add address to policy list
  */
-router.post('/:walletId/policies/:policyId/addresses', requireWalletAccess('owner'), asyncHandler(async (req, res) => {
+router.post('/:walletId/policies/:policyId/addresses', requireWalletAccess('owner'), validate(
+  { body: PolicyAddressBodySchema },
+  { message: policyValidationMessage, code: ErrorCodes.INVALID_INPUT }
+), asyncHandler(async (req, res) => {
   const { walletId, policyId } = req.params;
   const userId = req.user!.userId;
 
@@ -233,18 +305,6 @@ router.post('/:walletId/policies/:policyId/addresses', requireWalletAccess('owne
   }
 
   const { address, label, listType } = req.body;
-
-  if (!address || !listType) {
-    throw new InvalidInputError('address and listType are required');
-  }
-
-  if (typeof address !== 'string' || address.length > 100) {
-    throw new InvalidInputError('address must be a string of 100 characters or fewer');
-  }
-
-  if (listType !== 'allow' && listType !== 'deny') {
-    throw new InvalidInputError('listType must be "allow" or "deny"');
-  }
 
   const policyAddress = await policyRepository.createPolicyAddress({
     policyId,
