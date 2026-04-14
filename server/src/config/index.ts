@@ -270,73 +270,89 @@ function loadConfig(): CombinedConfig {
  * Validate configuration using Zod schema
  * Provides detailed error messages for invalid configuration
  */
-function validateConfig(config: CombinedConfig): void {
+const validateConfig = (config: CombinedConfig): void => {
   // Run Zod schema validation
   assertValidConfig(config);
 
-  // Additional production-specific validation
+  validateProductionConfig(config);
+  validateWorkerConfig(config);
+};
+
+const validateProductionConfig = (config: CombinedConfig): void => {
   if (config.server.nodeEnv === 'production') {
-    if (!config.database.url) {
-      throw new Error('DATABASE_URL is required in production');
-    }
-
-    // M4: Require encryption salt in production for better security isolation
-    if (!config.security.encryptionSalt) {
-      throw new Error(
-        'ENCRYPTION_SALT is required in production. ' +
-        'Generate one with: openssl rand -base64 16'
-      );
-    }
-
-    // M6: Require gateway secret in production for authenticated internal communication
-    if (!config.security.gatewaySecret) {
-      throw new Error(
-        'GATEWAY_SECRET is required in production. ' +
-        'Generate one with: openssl rand -base64 32'
-      );
-    }
+    requireDatabaseUrl(config);
+    requireEncryptionSalt(config);
+    requireGatewaySecret(config);
   }
+};
 
+const requireDatabaseUrl = (config: CombinedConfig): void => {
+  if (!config.database.url) {
+    throw new Error('DATABASE_URL is required in production');
+  }
+};
+
+const requireEncryptionSalt = (config: CombinedConfig): void => {
+  // M4: Require encryption salt in production for better security isolation.
+  if (!config.security.encryptionSalt) {
+    throw new Error(
+      'ENCRYPTION_SALT is required in production. ' +
+      'Generate one with: openssl rand -base64 16'
+    );
+  }
+};
+
+const requireGatewaySecret = (config: CombinedConfig): void => {
+  // M6: Require gateway secret in production for authenticated internal communication.
+  if (!config.security.gatewaySecret) {
+    throw new Error(
+      'GATEWAY_SECRET is required in production. ' +
+      'Generate one with: openssl rand -base64 32'
+    );
+  }
+};
+
+const validateWorkerConfig = (config: CombinedConfig): void => {
   if (!config.worker.healthUrl) {
     throw new Error('WORKER_HEALTH_URL is required');
   }
-}
+};
 
 // =============================================================================
 // Environment Parsing Helpers
 // =============================================================================
 
-function parseNodeEnv(): 'development' | 'production' | 'test' {
+const parseNodeEnv = (): 'development' | 'production' | 'test' => {
   const env = process.env.NODE_ENV || 'development';
   if (env === 'production' || env === 'test' || env === 'development') {
     return env;
   }
   return 'development';
-}
+};
 
-function parseBitcoinNetwork(): NetworkType {
+const parseBitcoinNetwork = (): NetworkType => {
   const network = process.env.BITCOIN_NETWORK || 'mainnet';
   if (network === 'mainnet' || network === 'testnet' || network === 'signet' || network === 'regtest') {
     return network;
   }
   return 'mainnet';
-}
+};
 
-function parseElectrumProtocol(): ElectrumProtocol {
+const parseElectrumProtocol = (): ElectrumProtocol => {
   const protocol = process.env.ELECTRUM_PROTOCOL || 'ssl';
   if (protocol === 'tcp' || protocol === 'ssl') {
     return protocol;
   }
   return 'ssl';
-}
+};
 
-function parseLogLevel(): LogLevel {
+const parseLogLevel = (): LogLevel => {
   const level = process.env.LOG_LEVEL?.toLowerCase();
   if (level === 'error' || level === 'warn' || level === 'info' || level === 'debug' || level === 'trace') {
     return level;
   }
   return 'info';
-}
+};
 
 // =============================================================================
 // Security Value Helpers (with validation)
@@ -346,7 +362,7 @@ function parseLogLevel(): LogLevel {
  * Get JWT secret with validation
  * Critical for security - never allow default in any environment
  */
-function getJwtSecret(): string {
+const getJwtSecret = (): string => {
   const secret = process.env.JWT_SECRET;
   if (!secret) {
     console.error('');
@@ -376,12 +392,12 @@ function getJwtSecret(): string {
   }
 
   return secret;
-}
+};
 
 /**
  * Get gateway secret for internal communication
  */
-function getGatewaySecret(): string {
+const getGatewaySecret = (): string => {
   const secret = process.env.GATEWAY_SECRET;
   if (!secret) {
     console.warn('');
@@ -398,12 +414,12 @@ function getGatewaySecret(): string {
     console.warn('');
   }
   return secret;
-}
+};
 
 /**
  * Get encryption key with validation
  */
-function getEncryptionKey(): string {
+const getEncryptionKey = (): string => {
   const key = process.env.ENCRYPTION_KEY;
   if (!key) {
     console.warn('');
@@ -414,18 +430,18 @@ function getEncryptionKey(): string {
     return '';
   }
   return key;
-}
+};
 
 /**
  * Parse CORS allowed origins from environment
  */
-function getCorsAllowedOrigins(): string[] {
+const getCorsAllowedOrigins = (): string[] => {
   const origins = process.env.CORS_ALLOWED_ORIGINS;
   if (!origins) {
     return []; // Empty array means allow all (for mobile apps)
   }
   return origins.split(',').map(o => o.trim()).filter(o => o.length > 0);
-}
+};
 
 // =============================================================================
 // Legacy Compatibility Export
