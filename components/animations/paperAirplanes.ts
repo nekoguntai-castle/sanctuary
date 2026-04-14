@@ -47,6 +47,417 @@ interface Bird {
   heading: number;
 }
 
+type CreatePaperAirplane = (w: number, h: number, colors: string[]) => PaperAirplane;
+type DrawPaperAirplane = (ctx: CanvasRenderingContext2D, plane: PaperAirplane) => void;
+
+const FULL_CIRCLE = Math.PI * 2;
+
+function randomSignedDirection() {
+  return Math.random() < 0.5 ? 1 : -1;
+}
+
+function drawAirplaneDartPath(ctx: CanvasRenderingContext2D, s: number, yOffset = 0) {
+  ctx.beginPath();
+  ctx.moveTo(s * 0.7, yOffset);
+  ctx.lineTo(-s * 0.35, s * 0.22 + yOffset);
+  ctx.lineTo(-s * 0.15, yOffset);
+  ctx.lineTo(-s * 0.35, -s * 0.22 + yOffset);
+  ctx.closePath();
+}
+
+function drawAirplaneShadow(ctx: CanvasRenderingContext2D, s: number, isClose: boolean) {
+  const shadowOffset = isClose ? 4 : 2;
+  const shadowOpacity = isClose ? 0.12 : 0.08;
+
+  drawAirplaneDartPath(ctx, s, shadowOffset);
+  ctx.fillStyle = `rgba(0, 0, 0, ${shadowOpacity})`;
+  ctx.fill();
+}
+
+function addAirplaneGradientStops(
+  grad: CanvasGradient,
+  paperColor: string,
+  darkMode: boolean,
+  isClose: boolean
+) {
+  if (isClose) {
+    grad.addColorStop(0, paperColor);
+    grad.addColorStop(0.3, darkMode ? '#f0e8e0' : '#ffffff');
+    grad.addColorStop(0.5, darkMode ? '#f5ede5' : '#fffefa');
+    grad.addColorStop(0.7, darkMode ? '#f0e8e0' : '#ffffff');
+    grad.addColorStop(1, paperColor);
+    return;
+  }
+
+  grad.addColorStop(0, paperColor);
+  grad.addColorStop(0.5, darkMode ? '#f5ede5' : '#ffffff');
+  grad.addColorStop(1, paperColor);
+}
+
+function drawAirplaneBody(
+  ctx: CanvasRenderingContext2D,
+  plane: PaperAirplane,
+  darkMode: boolean,
+  isClose: boolean,
+  isMedium: boolean
+) {
+  const s = plane.size;
+  const grad = ctx.createLinearGradient(-s * 0.3, -s * 0.25, s * 0.3, s * 0.25);
+
+  drawAirplaneDartPath(ctx, s);
+  addAirplaneGradientStops(grad, plane.color, darkMode, isClose);
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  ctx.strokeStyle = darkMode ? 'rgba(100, 90, 80, 0.3)' : 'rgba(180, 170, 160, 0.35)';
+  ctx.lineWidth = isClose ? 1.2 : (isMedium ? 0.9 : 0.6);
+  ctx.stroke();
+}
+
+function drawAirplaneCenterFold(
+  ctx: CanvasRenderingContext2D,
+  s: number,
+  darkMode: boolean,
+  isClose: boolean
+) {
+  ctx.beginPath();
+  ctx.moveTo(s * 0.7, 0);
+  ctx.lineTo(-s * 0.15, 0);
+  ctx.strokeStyle = darkMode ? 'rgba(100, 90, 80, 0.35)' : 'rgba(180, 170, 160, 0.4)';
+  ctx.lineWidth = isClose ? 1.0 : 0.7;
+  ctx.stroke();
+}
+
+function drawAirplaneWingCreases(
+  ctx: CanvasRenderingContext2D,
+  s: number,
+  darkMode: boolean,
+  isClose: boolean
+) {
+  ctx.beginPath();
+  ctx.moveTo(s * 0.3, 0);
+  ctx.lineTo(-s * 0.25, s * 0.15);
+  ctx.moveTo(s * 0.3, 0);
+  ctx.lineTo(-s * 0.25, -s * 0.15);
+  ctx.strokeStyle = darkMode ? 'rgba(100, 90, 80, 0.25)' : 'rgba(180, 170, 160, 0.3)';
+  ctx.lineWidth = isClose ? 0.8 : 0.5;
+  ctx.stroke();
+}
+
+function drawCloseAirplaneDetails(ctx: CanvasRenderingContext2D, s: number, darkMode: boolean) {
+  ctx.beginPath();
+  ctx.moveTo(s * 0.5, 0);
+  ctx.lineTo(-s * 0.28, s * 0.18);
+  ctx.moveTo(s * 0.5, 0);
+  ctx.lineTo(-s * 0.28, -s * 0.18);
+  ctx.strokeStyle = darkMode ? 'rgba(100, 90, 80, 0.15)' : 'rgba(180, 170, 160, 0.2)';
+  ctx.lineWidth = 0.5;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(s * 0.68, -0.5);
+  ctx.lineTo(-s * 0.33, -s * 0.21);
+  ctx.strokeStyle = darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.4)';
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+}
+
+function drawPaperAirplaneShape(
+  ctx: CanvasRenderingContext2D,
+  plane: PaperAirplane,
+  darkMode: boolean
+) {
+  ctx.save();
+  ctx.translate(plane.x, plane.y);
+  ctx.rotate(plane.heading);
+  ctx.scale(1, 0.5 + Math.cos(plane.bankAngle) * 0.5);
+
+  const s = plane.size;
+  const isClose = plane.z > 0.7;
+  const isMedium = plane.z > 0.4;
+
+  drawAirplaneShadow(ctx, s, isClose);
+  drawAirplaneBody(ctx, plane, darkMode, isClose, isMedium);
+  drawAirplaneCenterFold(ctx, s, darkMode, isClose);
+  drawAirplaneWingCreases(ctx, s, darkMode, isClose);
+
+  if (isClose) {
+    drawCloseAirplaneDetails(ctx, s, darkMode);
+  }
+
+  ctx.restore();
+}
+
+function setLoopTurn(plane: PaperAirplane) {
+  plane.targetTurnRate = randomSignedDirection() * (0.04 + Math.random() * 0.02);
+  plane.turnTimer = 80 + Math.random() * 40;
+}
+
+function setSwooperTurn(plane: PaperAirplane) {
+  plane.targetTurnRate = randomSignedDirection() * (0.012 + Math.random() * 0.015);
+  plane.turnTimer = 50 + Math.random() * 100;
+}
+
+function setCirclerTurn(plane: PaperAirplane) {
+  if (Math.random() < 0.2) {
+    plane.targetTurnRate = randomSignedDirection() * (0.006 + Math.random() * 0.01);
+  } else {
+    plane.targetTurnRate = plane.targetTurnRate * 0.9 + (Math.random() - 0.5) * 0.005;
+  }
+
+  plane.turnTimer = 80 + Math.random() * 120;
+}
+
+function setWandererTurn(plane: PaperAirplane) {
+  plane.targetTurnRate = (Math.random() - 0.5) * 0.025;
+  plane.turnTimer = 30 + Math.random() * 60;
+}
+
+function chooseAirplaneTurn(plane: PaperAirplane) {
+  if (Math.random() < 0.003 && plane.energyReserve > 0.8) {
+    setLoopTurn(plane);
+    return;
+  }
+
+  if (plane.flightStyle === 'swooper') {
+    setSwooperTurn(plane);
+    return;
+  }
+
+  if (plane.flightStyle === 'circler') {
+    setCirclerTurn(plane);
+    return;
+  }
+
+  setWandererTurn(plane);
+}
+
+function updateAirplaneTurn(plane: PaperAirplane) {
+  plane.turnTimer -= 1;
+
+  if (plane.turnTimer <= 0) {
+    chooseAirplaneTurn(plane);
+  }
+
+  plane.turnRate += (plane.targetTurnRate - plane.turnRate) * 0.03;
+  plane.heading += plane.turnRate;
+
+  const targetBank = plane.turnRate * 25;
+  plane.bankAngle += (targetBank - plane.bankAngle) * 0.08;
+}
+
+function updateAirplaneEnergy(plane: PaperAirplane) {
+  const verticalComponent = Math.sin(plane.heading);
+
+  if (verticalComponent > 0.05) {
+    const descentFactor = verticalComponent * 0.015;
+    plane.speed = Math.min(plane.baseSpeed * 2.0, plane.speed + descentFactor);
+    plane.energyReserve = Math.min(1.0, plane.energyReserve + descentFactor * 0.2);
+    return;
+  }
+
+  if (verticalComponent < -0.05) {
+    const climbFactor = Math.abs(verticalComponent) * 0.04;
+    plane.speed = Math.max(plane.baseSpeed * 0.3, plane.speed - climbFactor);
+    plane.energyReserve = Math.max(0, plane.energyReserve - climbFactor * 1.5);
+    return;
+  }
+
+  plane.speed += (plane.baseSpeed * 0.9 - plane.speed) * 0.015;
+  plane.energyReserve = Math.max(0, plane.energyReserve - 0.001);
+}
+
+function applyGravityToHeading(plane: PaperAirplane) {
+  const gravityStrength = 0.002;
+
+  if (plane.heading >= 0 && plane.heading < Math.PI) {
+    plane.heading += plane.heading < Math.PI / 2 ? gravityStrength : -gravityStrength * 0.5;
+    return;
+  }
+
+  plane.heading += plane.heading > Math.PI * 1.5 ? gravityStrength * 1.5 : -gravityStrength * 1.5;
+}
+
+function applyStallPull(plane: PaperAirplane) {
+  if (plane.energyReserve >= 0.2 && plane.speed >= plane.baseSpeed * 0.5) {
+    return;
+  }
+
+  plane.heading += plane.heading < Math.PI ? 0.006 : -0.006;
+}
+
+function updateAirplaneDepth(plane: PaperAirplane) {
+  if (Math.random() < 0.005) {
+    plane.zVelocity = (Math.random() - 0.5) * 0.006;
+  }
+
+  plane.z += plane.zVelocity;
+
+  if (plane.z < 0.08) {
+    plane.z = 0.08;
+    plane.zVelocity = Math.abs(plane.zVelocity) * 0.8;
+  }
+
+  if (plane.z > 1.0) {
+    plane.z = 1.0;
+    plane.zVelocity = -Math.abs(plane.zVelocity) * 0.8;
+  }
+
+  plane.size = plane.baseSize * (0.3 + plane.z * 1.5);
+}
+
+function moveAirplane(plane: PaperAirplane) {
+  plane.glidePhase += 0.008;
+
+  const glideY = Math.sin(plane.glidePhase) * 0.3;
+  const depthSpeedFactor = 0.6 + plane.z * 0.6;
+
+  plane.x += Math.cos(plane.heading) * plane.speed * depthSpeedFactor;
+  plane.y += Math.sin(plane.heading) * plane.speed * depthSpeedFactor + glideY;
+}
+
+function normalizeAirplaneHeading(plane: PaperAirplane) {
+  while (plane.heading < 0) {
+    plane.heading += FULL_CIRCLE;
+  }
+
+  while (plane.heading > FULL_CIRCLE) {
+    plane.heading -= FULL_CIRCLE;
+  }
+}
+
+function turnAwayFromHorizontalBoundary(
+  plane: PaperAirplane,
+  currentWidth: number,
+  margin: number,
+  turnStrength: number
+) {
+  if (plane.x < margin) {
+    plane.heading += plane.heading > Math.PI * 0.5 && plane.heading < Math.PI * 1.5
+      ? -turnStrength
+      : turnStrength;
+  }
+
+  if (plane.x > currentWidth - margin) {
+    plane.heading += plane.heading < Math.PI * 0.5 || plane.heading > Math.PI * 1.5
+      ? turnStrength
+      : -turnStrength;
+  }
+}
+
+function turnAwayFromVerticalBoundary(
+  plane: PaperAirplane,
+  currentHeight: number,
+  margin: number,
+  turnStrength: number
+) {
+  if (plane.y < margin) {
+    plane.heading += plane.heading > Math.PI ? -turnStrength : turnStrength;
+  }
+
+  if (plane.y > currentHeight - margin) {
+    plane.heading += plane.heading < Math.PI ? -turnStrength * 0.7 : turnStrength * 0.7;
+    plane.energyReserve = Math.min(0.4, plane.energyReserve + 0.003);
+  }
+}
+
+function guideAirplaneAwayFromEdges(
+  plane: PaperAirplane,
+  currentWidth: number,
+  currentHeight: number
+) {
+  const margin = 80;
+  const turnStrength = 0.008;
+
+  turnAwayFromHorizontalBoundary(plane, currentWidth, margin, turnStrength);
+  turnAwayFromVerticalBoundary(plane, currentHeight, margin, turnStrength);
+}
+
+function drawAirplaneTrail(ctx: CanvasRenderingContext2D, plane: PaperAirplane, darkMode: boolean) {
+  if (plane.trail.length <= 3) {
+    return;
+  }
+
+  ctx.beginPath();
+  ctx.moveTo(plane.trail[0].x, plane.trail[0].y);
+
+  for (let i = 1; i < plane.trail.length; i++) {
+    ctx.lineTo(plane.trail[i].x, plane.trail[i].y);
+  }
+
+  const trailOpacity = Math.min(0.15, (plane.speed / plane.baseSpeed - 1.3) * 0.1);
+  ctx.strokeStyle = darkMode
+    ? `rgba(150, 160, 170, ${trailOpacity * 0.5})`
+    : `rgba(255, 255, 255, ${trailOpacity})`;
+  ctx.lineWidth = 0.5;
+  ctx.stroke();
+}
+
+function updateAirplaneTrail(ctx: CanvasRenderingContext2D, plane: PaperAirplane, darkMode: boolean) {
+  if (plane.speed <= plane.baseSpeed * 1.3) {
+    if (plane.trail.length > 0) {
+      plane.trail.shift();
+    }
+
+    return;
+  }
+
+  plane.trail.push({ x: plane.x, y: plane.y, opacity: 0.1 });
+
+  if (plane.trail.length > 12) {
+    plane.trail.shift();
+  }
+
+  drawAirplaneTrail(ctx, plane, darkMode);
+}
+
+function drawAirplaneAtDepth(
+  ctx: CanvasRenderingContext2D,
+  plane: PaperAirplane,
+  drawPaperAirplane: DrawPaperAirplane
+) {
+  ctx.globalAlpha = Math.min(1.0, 0.4 + plane.z * 0.6);
+  drawPaperAirplane(ctx, plane);
+  ctx.globalAlpha = 1;
+}
+
+function shouldResetAirplane(plane: PaperAirplane, currentWidth: number, currentHeight: number) {
+  return (
+    plane.x < -150 ||
+    plane.x > currentWidth + 150 ||
+    plane.y < -150 ||
+    plane.y > currentHeight + 150
+  );
+}
+
+function updateAndDrawPaperAirplane(
+  ctx: CanvasRenderingContext2D,
+  plane: PaperAirplane,
+  index: number,
+  currentWidth: number,
+  currentHeight: number,
+  darkMode: boolean,
+  paperColors: string[],
+  airplanes: PaperAirplane[],
+  createAirplane: CreatePaperAirplane,
+  drawPaperAirplane: DrawPaperAirplane
+) {
+  updateAirplaneTurn(plane);
+  updateAirplaneEnergy(plane);
+  applyGravityToHeading(plane);
+  applyStallPull(plane);
+  updateAirplaneDepth(plane);
+  moveAirplane(plane);
+  normalizeAirplaneHeading(plane);
+  guideAirplaneAwayFromEdges(plane, currentWidth, currentHeight);
+  updateAirplaneTrail(ctx, plane, darkMode);
+  drawAirplaneAtDepth(ctx, plane, drawPaperAirplane);
+
+  if (shouldResetAirplane(plane, currentWidth, currentHeight)) {
+    airplanes[index] = createAirplane(currentWidth, currentHeight, paperColors);
+  }
+}
+
 export function usePaperAirplanes(
   canvasRef: React.RefObject<HTMLCanvasElement>,
   darkMode: boolean,
@@ -189,100 +600,7 @@ export function usePaperAirplanes(
     }
 
     const drawPaperAirplane = (ctx: CanvasRenderingContext2D, plane: PaperAirplane) => {
-      ctx.save();
-      ctx.translate(plane.x, plane.y);
-      ctx.rotate(plane.heading);
-
-      // Bank angle creates visual tilt during turns
-      const bankScale = Math.cos(plane.bankAngle);
-      ctx.scale(1, 0.5 + bankScale * 0.5);
-
-      const s = plane.size;
-      const isClose = plane.z > 0.7; // Close planes get extra detail
-      const isMedium = plane.z > 0.4;
-
-      // Shadow - larger and softer for close planes
-      const shadowOffset = isClose ? 4 : 2;
-      const shadowOpacity = isClose ? 0.12 : 0.08;
-      ctx.beginPath();
-      ctx.moveTo(s * 0.7, shadowOffset);
-      ctx.lineTo(-s * 0.35, s * 0.22 + shadowOffset);
-      ctx.lineTo(-s * 0.15, shadowOffset);
-      ctx.lineTo(-s * 0.35, -s * 0.22 + shadowOffset);
-      ctx.closePath();
-      ctx.fillStyle = `rgba(0, 0, 0, ${shadowOpacity})`;
-      ctx.fill();
-
-      // Main body - clean dart shape
-      ctx.beginPath();
-      ctx.moveTo(s * 0.7, 0); // Nose point
-      ctx.lineTo(-s * 0.35, s * 0.22); // Bottom wing tip
-      ctx.lineTo(-s * 0.15, 0); // Rear center
-      ctx.lineTo(-s * 0.35, -s * 0.22); // Top wing tip
-      ctx.closePath();
-
-      // Paper gradient - more nuanced for close planes
-      const grad = ctx.createLinearGradient(-s * 0.3, -s * 0.25, s * 0.3, s * 0.25);
-      if (isClose) {
-        grad.addColorStop(0, plane.color);
-        grad.addColorStop(0.3, darkMode ? '#f0e8e0' : '#ffffff');
-        grad.addColorStop(0.5, darkMode ? '#f5ede5' : '#fffefa');
-        grad.addColorStop(0.7, darkMode ? '#f0e8e0' : '#ffffff');
-        grad.addColorStop(1, plane.color);
-      } else {
-        grad.addColorStop(0, plane.color);
-        grad.addColorStop(0.5, darkMode ? '#f5ede5' : '#ffffff');
-        grad.addColorStop(1, plane.color);
-      }
-      ctx.fillStyle = grad;
-      ctx.fill();
-
-      // Outline - thicker for close planes
-      const outlineWidth = isClose ? 1.2 : (isMedium ? 0.9 : 0.6);
-      ctx.strokeStyle = darkMode ? 'rgba(100, 90, 80, 0.3)' : 'rgba(180, 170, 160, 0.35)';
-      ctx.lineWidth = outlineWidth;
-      ctx.stroke();
-
-      // Center fold line - more defined for close planes
-      ctx.beginPath();
-      ctx.moveTo(s * 0.7, 0);
-      ctx.lineTo(-s * 0.15, 0);
-      ctx.strokeStyle = darkMode ? 'rgba(100, 90, 80, 0.35)' : 'rgba(180, 170, 160, 0.4)';
-      ctx.lineWidth = isClose ? 1.0 : 0.7;
-      ctx.stroke();
-
-      // Wing creases
-      ctx.beginPath();
-      ctx.moveTo(s * 0.3, 0);
-      ctx.lineTo(-s * 0.25, s * 0.15);
-      ctx.moveTo(s * 0.3, 0);
-      ctx.lineTo(-s * 0.25, -s * 0.15);
-      ctx.strokeStyle = darkMode ? 'rgba(100, 90, 80, 0.25)' : 'rgba(180, 170, 160, 0.3)';
-      ctx.lineWidth = isClose ? 0.8 : 0.5;
-      ctx.stroke();
-
-      // Extra detail for close planes - secondary fold lines
-      if (isClose) {
-        ctx.beginPath();
-        // Wing edge highlights
-        ctx.moveTo(s * 0.5, 0);
-        ctx.lineTo(-s * 0.28, s * 0.18);
-        ctx.moveTo(s * 0.5, 0);
-        ctx.lineTo(-s * 0.28, -s * 0.18);
-        ctx.strokeStyle = darkMode ? 'rgba(100, 90, 80, 0.15)' : 'rgba(180, 170, 160, 0.2)';
-        ctx.lineWidth = 0.5;
-        ctx.stroke();
-
-        // Subtle highlight on top edge for 3D effect
-        ctx.beginPath();
-        ctx.moveTo(s * 0.68, -0.5);
-        ctx.lineTo(-s * 0.33, -s * 0.21);
-        ctx.strokeStyle = darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.4)';
-        ctx.lineWidth = 0.8;
-        ctx.stroke();
-      }
-
-      ctx.restore();
+      drawPaperAirplaneShape(ctx, plane, darkMode);
     };
 
     const drawCloud = (ctx: CanvasRenderingContext2D, cloud: Cloud) => {
@@ -392,225 +710,18 @@ export function usePaperAirplanes(
 
       // Update and draw airplanes
       airplanesRef.current.forEach((plane, index) => {
-        // Decrement turn timer
-        plane.turnTimer -= 1;
-
-        // Time to make a turn decision?
-        if (plane.turnTimer <= 0) {
-          const style = plane.flightStyle;
-
-          // Very rare chance of a loop (once per flight at most)
-          const doLoop = Math.random() < 0.003 && plane.energyReserve > 0.8;
-
-          if (doLoop) {
-            // Rare loop - dramatic but short-lived
-            const loopDir = Math.random() < 0.5 ? 1 : -1;
-            plane.targetTurnRate = loopDir * (0.04 + Math.random() * 0.02);
-            plane.turnTimer = 80 + Math.random() * 40; // Complete the loop then return to normal
-          } else if (style === 'swooper') {
-            // Swoopers make sweeping arcs, not full loops
-            const swoopDir = Math.random() < 0.5 ? 1 : -1;
-            plane.targetTurnRate = swoopDir * (0.012 + Math.random() * 0.015);
-            plane.turnTimer = 50 + Math.random() * 100;
-          } else if (style === 'circler') {
-            // Circlers now just curve more consistently, not full circles
-            // They tend to turn in one direction but not tight enough to loop
-            if (Math.random() < 0.2) {
-              // Occasionally change curve direction
-              plane.targetTurnRate = (Math.random() < 0.5 ? 1 : -1) * (0.006 + Math.random() * 0.01);
-            } else {
-              // Gentle consistent curve
-              plane.targetTurnRate = plane.targetTurnRate * 0.9 + (Math.random() - 0.5) * 0.005;
-            }
-            plane.turnTimer = 80 + Math.random() * 120;
-          } else {
-            // Wanderers - gentle curves that change frequently
-            plane.targetTurnRate = (Math.random() - 0.5) * 0.025;
-            plane.turnTimer = 30 + Math.random() * 60;
-          }
-        }
-
-        // Smooth turn rate adjustment
-        plane.turnRate += (plane.targetTurnRate - plane.turnRate) * 0.03;
-
-        // Apply turn to heading
-        plane.heading += plane.turnRate;
-
-        // Bank angle follows turn rate (visual effect)
-        const targetBank = plane.turnRate * 25;
-        plane.bankAngle += (targetBank - plane.bankAngle) * 0.08;
-
-        // Gravity effect - paper planes have no propulsion, gravity always wins
-        const verticalComponent = Math.sin(plane.heading);
-        const isDescending = verticalComponent > 0.05;
-        const isClimbing = verticalComponent < -0.05;
-
-        // Speed affected by climb/descent
-        if (isDescending) {
-          // Gain speed going down - steeper descent = faster gain
-          const descentFactor = verticalComponent * 0.015;
-          plane.speed = Math.min(plane.baseSpeed * 2.0, plane.speed + descentFactor);
-          // Energy recovery is slow even during descent
-          plane.energyReserve = Math.min(1.0, plane.energyReserve + descentFactor * 0.2);
-        } else if (isClimbing) {
-          // Climbing is very costly - steep climbs drain rapidly
-          const climbFactor = Math.abs(verticalComponent) * 0.04;
-          plane.speed = Math.max(plane.baseSpeed * 0.3, plane.speed - climbFactor);
-          plane.energyReserve = Math.max(0, plane.energyReserve - climbFactor * 1.5);
-        } else {
-          // Level flight - gradual speed decay (no propulsion)
-          plane.speed += (plane.baseSpeed * 0.9 - plane.speed) * 0.015;
-          plane.energyReserve = Math.max(0, plane.energyReserve - 0.001);
-        }
-
-        // Constant gravity pull - nose always wants to drop
-        // This is the key: paper planes naturally descend
-        const gravityStrength = 0.002;
-        // Pull toward downward heading (π/2 = straight down)
-        if (plane.heading >= 0 && plane.heading < Math.PI) {
-          // Heading is in lower half, pull toward π/2
-          if (plane.heading < Math.PI / 2) {
-            plane.heading += gravityStrength;
-          } else {
-            plane.heading -= gravityStrength * 0.5; // Less pull once past vertical
-          }
-        } else {
-          // Heading is in upper half (climbing direction), strong pull down
-          if (plane.heading > Math.PI * 1.5) {
-            plane.heading += gravityStrength * 1.5; // Pull toward 2π (then 0)
-          } else {
-            plane.heading -= gravityStrength * 1.5; // Pull toward π
-          }
-        }
-
-        // Extra gravity when low on energy or stalling
-        if (plane.energyReserve < 0.2 || plane.speed < plane.baseSpeed * 0.5) {
-          const stallPull = 0.006;
-          if (plane.heading < Math.PI) {
-            plane.heading += stallPull;
-          } else {
-            plane.heading -= stallPull;
-          }
-        }
-
-        // Gentle glide oscillation
-        plane.glidePhase += 0.008;
-        const glideY = Math.sin(plane.glidePhase) * 0.3;
-
-        // Z-axis movement (toward/away from camera)
-        // Occasionally change z direction
-        if (Math.random() < 0.005) {
-          plane.zVelocity = (Math.random() - 0.5) * 0.006;
-        }
-
-        plane.z += plane.zVelocity;
-
-        // Bounce z back if too far or too close
-        if (plane.z < 0.08) {
-          plane.z = 0.08;
-          plane.zVelocity = Math.abs(plane.zVelocity) * 0.8;
-        }
-        if (plane.z > 1.0) {
-          plane.z = 1.0;
-          plane.zVelocity = -Math.abs(plane.zVelocity) * 0.8;
-        }
-
-        // Update size based on depth (closer = much larger)
-        plane.size = plane.baseSize * (0.3 + plane.z * 1.5);
-
-        // Move plane (speed also affected by depth - closer planes appear faster)
-        const depthSpeedFactor = 0.6 + plane.z * 0.6;
-        plane.x += Math.cos(plane.heading) * plane.speed * depthSpeedFactor;
-        plane.y += Math.sin(plane.heading) * plane.speed * depthSpeedFactor + glideY;
-
-        // Keep heading in 0 to 2PI range
-        while (plane.heading < 0) plane.heading += Math.PI * 2;
-        while (plane.heading > Math.PI * 2) plane.heading -= Math.PI * 2;
-
-        // Soft boundary - turn away from edges instead of hard reset
-        const margin = 80;
-        const turnStrength = 0.008;
-
-        if (plane.x < margin) {
-          // Near left edge - encourage rightward heading
-          if (plane.heading > Math.PI * 0.5 && plane.heading < Math.PI * 1.5) {
-            plane.heading -= turnStrength;
-          } else {
-            plane.heading += turnStrength;
-          }
-        }
-        if (plane.x > currentWidth - margin) {
-          // Near right edge - encourage leftward heading
-          if (plane.heading < Math.PI * 0.5 || plane.heading > Math.PI * 1.5) {
-            plane.heading += turnStrength;
-          } else {
-            plane.heading -= turnStrength;
-          }
-        }
-        if (plane.y < margin) {
-          // Near top - encourage downward heading
-          if (plane.heading > Math.PI) {
-            plane.heading -= turnStrength;
-          } else {
-            plane.heading += turnStrength;
-          }
-        }
-        if (plane.y > currentHeight - margin) {
-          // Near bottom - encourage level/slight upward heading
-          // But climbing is still hard - just prevent straight-down crash
-          if (plane.heading < Math.PI) {
-            plane.heading -= turnStrength * 0.7;
-          } else {
-            plane.heading += turnStrength * 0.7;
-          }
-          // Minimal energy boost - climbing is still prohibitive
-          plane.energyReserve = Math.min(0.4, plane.energyReserve + 0.003);
-        }
-
-        // Trail only appears at high speed (diving/fast movement)
-        const isHighSpeed = plane.speed > plane.baseSpeed * 1.3;
-        if (isHighSpeed) {
-          plane.trail.push({ x: plane.x, y: plane.y, opacity: 0.1 });
-          if (plane.trail.length > 12) {
-            plane.trail.shift();
-          }
-
-          // Draw subtle trail only when fast
-          if (plane.trail.length > 3) {
-            ctx.beginPath();
-            ctx.moveTo(plane.trail[0].x, plane.trail[0].y);
-            for (let i = 1; i < plane.trail.length; i++) {
-              ctx.lineTo(plane.trail[i].x, plane.trail[i].y);
-            }
-            const trailOpacity = Math.min(0.15, (plane.speed / plane.baseSpeed - 1.3) * 0.1);
-            ctx.strokeStyle = darkMode
-              ? `rgba(150, 160, 170, ${trailOpacity * 0.5})`
-              : `rgba(255, 255, 255, ${trailOpacity})`;
-            ctx.lineWidth = 0.5;
-            ctx.stroke();
-          }
-        } else {
-          // Clear trail when slow
-          if (plane.trail.length > 0) {
-            plane.trail.shift();
-          }
-        }
-
-        // Depth affects opacity (far planes are fainter, close planes are solid)
-        const depthOpacity = 0.4 + plane.z * 0.6;
-        ctx.globalAlpha = Math.min(1.0, depthOpacity);
-        drawPaperAirplane(ctx, plane);
-        ctx.globalAlpha = 1;
-
-        // Hard reset if way off screen
-        if (
-          plane.x < -150 ||
-          plane.x > currentWidth + 150 ||
-          plane.y < -150 ||
-          plane.y > currentHeight + 150
-        ) {
-          airplanesRef.current[index] = createAirplane(currentWidth, currentHeight, paperColors);
-        }
+        updateAndDrawPaperAirplane(
+          ctx,
+          plane,
+          index,
+          currentWidth,
+          currentHeight,
+          darkMode,
+          paperColors,
+          airplanesRef.current,
+          createAirplane,
+          drawPaperAirplane
+        );
       });
 
       // Occasionally spawn new airplane
