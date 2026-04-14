@@ -41,6 +41,83 @@ const log = createLogger('urPsbt');
 
 // Maximum bytes per QR code fragment (lower = smaller QRs, more frames)
 const DEFAULT_MAX_FRAGMENT_LENGTH = 100;
+const PSBT_MAGIC_BYTES = [0x70, 0x73, 0x62, 0x74] as const;
+
+function hasPsbtMagic(bytes: Buffer): boolean {
+  return PSBT_MAGIC_BYTES.every((byte, index) => bytes[index] === byte);
+}
+
+function getPsbtBytesBase64(data: unknown): string | null {
+  if (!(data instanceof Uint8Array || Buffer.isBuffer(data))) {
+    return null;
+  }
+
+  const bytes = Buffer.from(data);
+  return hasPsbtMagic(bytes) ? bytes.toString('base64') : null;
+}
+
+function getDataPropertyBytes(data: unknown): Uint8Array | Buffer | null {
+  if (!data || typeof data !== 'object' || !('data' in data)) {
+    return null;
+  }
+
+  const bytes = (data as { data: unknown }).data;
+  return bytes instanceof Uint8Array || Buffer.isBuffer(bytes) ? bytes : null;
+}
+
+function decodeCryptoPsbtWrapper(cborData: unknown): string {
+  const cryptoPsbt = CryptoPSBT.fromCBOR(cborData as Buffer);
+  const psbtBuffer = cryptoPsbt.getPSBT();
+  log.debug('Decoded PSBT via CryptoPSBT wrapper');
+  return psbtBuffer.toString('base64');
+}
+
+function decodeCryptoPsbtPayload(cborData: unknown): string {
+  const rawPsbt = getPsbtBytesBase64(cborData);
+  if (rawPsbt) {
+    log.debug('Decoded raw PSBT bytes from crypto-psbt');
+    return rawPsbt;
+  }
+
+  try {
+    return decodeCryptoPsbtWrapper(cborData);
+  } catch (wrapperError) {
+    log.warn('CryptoPSBT.fromCBOR failed, trying raw extraction', { error: wrapperError });
+    const dataPropertyPsbt = getPsbtBytesBase64(getDataPropertyBytes(cborData));
+    if (dataPropertyPsbt) {
+      return dataPropertyPsbt;
+    }
+
+    throw wrapperError;
+  }
+}
+
+function decodeBytesPayload(rawBytes: unknown): string {
+  const bytes = Buffer.from(rawBytes as Uint8Array);
+  const rawPsbt = getPsbtBytesBase64(bytes);
+  if (rawPsbt) {
+    return rawPsbt;
+  }
+
+  const textDecoder = new TextDecoder('utf-8');
+  return textDecoder.decode(bytes);
+}
+
+function decodePsbtUrResult(ur: UR): string {
+  const urType = ur.type.toLowerCase();
+
+  log.debug('Decoding UR result', { type: urType });
+
+  if (urType === 'crypto-psbt') {
+    return decodeCryptoPsbtPayload(ur.decodeCBOR());
+  }
+
+  if (urType === 'bytes') {
+    return decodeBytesPayload(ur.decodeCBOR());
+  }
+
+  throw new Error(`Unsupported UR type: ${urType}`);
+}
 
 /**
  * Encode a base64 PSBT into UR format frames for animated QR display
@@ -185,63 +262,7 @@ export function getDecodedPsbt(decoder: URDecoder): string {
   }
 
   try {
-    const ur = decoder.resultUR();
-    const urType = ur.type.toLowerCase();
-
-    log.debug('Decoding UR result', { type: urType });
-
-    // Handle crypto-psbt type
-    if (urType === 'crypto-psbt') {
-      // The CBOR payload for crypto-psbt is just the raw PSBT bytes
-      // Some libraries wrap it, some don't - try both approaches
-      const cborData = ur.decodeCBOR();
-
-      // Check if cborData is already a Buffer/Uint8Array with PSBT magic
-      if (cborData instanceof Uint8Array || Buffer.isBuffer(cborData)) {
-        const bytes = Buffer.from(cborData);
-        // Check for PSBT magic bytes
-        if (bytes[0] === 0x70 && bytes[1] === 0x73 &&
-            bytes[2] === 0x62 && bytes[3] === 0x74) {
-          log.debug('Decoded raw PSBT bytes from crypto-psbt');
-          return bytes.toString('base64');
-        }
-      }
-
-      // Try CryptoPSBT wrapper as fallback
-      try {
-        const cryptoPsbt = CryptoPSBT.fromCBOR(cborData);
-        const psbtBuffer = cryptoPsbt.getPSBT();
-        log.debug('Decoded PSBT via CryptoPSBT wrapper');
-        return psbtBuffer.toString('base64');
-      } catch (wrapperError) {
-        log.warn('CryptoPSBT.fromCBOR failed, trying raw extraction', { error: wrapperError });
-        // If it's an object with a data property, try that
-        if (cborData && typeof cborData === 'object' && 'data' in cborData) {
-          const dataBytes = Buffer.from(cborData.data as Uint8Array);
-          if (dataBytes[0] === 0x70 && dataBytes[1] === 0x73 &&
-              dataBytes[2] === 0x62 && dataBytes[3] === 0x74) {
-            return dataBytes.toString('base64');
-          }
-        }
-        throw wrapperError;
-      }
-    }
-
-    // Handle raw bytes (some devices might use ur:bytes)
-    if (urType === 'bytes') {
-      const rawBytes = ur.decodeCBOR();
-      const bytes = Buffer.from(rawBytes as Uint8Array);
-      // Check if it looks like raw PSBT (starts with 'psbt' magic)
-      if (bytes[0] === 0x70 && bytes[1] === 0x73 &&
-          bytes[2] === 0x62 && bytes[3] === 0x74) {
-        return bytes.toString('base64');
-      }
-      // Otherwise treat as base64-encoded content
-      const textDecoder = new TextDecoder('utf-8');
-      return textDecoder.decode(bytes);
-    }
-
-    throw new Error(`Unsupported UR type: ${urType}`);
+    return decodePsbtUrResult(decoder.resultUR());
   } catch (error) {
     log.error('Failed to decode PSBT from UR', { error });
     throw new Error(`Failed to decode PSBT: ${error instanceof Error ? error.message : 'Unknown error'}`);
