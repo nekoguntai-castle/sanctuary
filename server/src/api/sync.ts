@@ -5,12 +5,18 @@
  */
 
 import { Router } from 'express';
+import { z } from 'zod';
 import { authenticate } from '../middleware/auth';
 import { rateLimitByUser } from '../middleware/rateLimit';
+import { validate } from '../middleware/validate';
 import { getSyncCoordinator, type SyncPriority } from '../services/sync/syncCoordinator';
 import { asyncHandler } from '../errors/errorHandler';
 
 const router = Router();
+
+const SyncPriorityBodySchema = z.object({
+  priority: z.unknown().optional(),
+}).passthrough().catch({});
 
 function readPriority(body: unknown): SyncPriority {
   if (!body || typeof body !== 'object') {
@@ -38,7 +44,9 @@ router.post('/wallet/:walletId', rateLimitByUser('sync:trigger'), asyncHandler(a
  * POST /api/v1/sync/queue/:walletId
  * Queue a wallet for background sync
  */
-router.post('/queue/:walletId', rateLimitByUser('sync:trigger'), asyncHandler(async (req, res) => {
+router.post('/queue/:walletId', rateLimitByUser('sync:trigger'), validate(
+  { body: SyncPriorityBodySchema }
+), asyncHandler(async (req, res) => {
   const userId = req.user!.userId;
   const { walletId } = req.params;
   const priority = readPriority(req.body);
@@ -73,7 +81,9 @@ router.get('/logs/:walletId', asyncHandler(async (req, res) => {
  * POST /api/v1/sync/user
  * Queue all user's wallets for background sync (called on login/page load)
  */
-router.post('/user', rateLimitByUser('sync:batch'), asyncHandler(async (req, res) => {
+router.post('/user', rateLimitByUser('sync:batch'), validate(
+  { body: SyncPriorityBodySchema }
+), asyncHandler(async (req, res) => {
   const userId = req.user!.userId;
   const priority = readPriority(req.body);
 
@@ -107,7 +117,9 @@ router.post('/resync/:walletId', rateLimitByUser('sync:trigger'), asyncHandler(a
  * POST /api/v1/sync/network/:network
  * Queue all user's wallets for a specific network
  */
-router.post('/network/:network', rateLimitByUser('sync:batch'), asyncHandler(async (req, res) => {
+router.post('/network/:network', rateLimitByUser('sync:batch'), validate(
+  { body: SyncPriorityBodySchema }
+), asyncHandler(async (req, res) => {
   const userId = req.user!.userId;
   const { network } = req.params;
   const priority = readPriority(req.body);
