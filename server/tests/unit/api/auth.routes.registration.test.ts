@@ -739,6 +739,16 @@ describe('Auth API Routes — Registration, Login, Password, Tokens', () => {
       expect(response.body.message).toContain('Username, password, and email are required');
     });
 
+    it('should reject invalid registration field types', async () => {
+      const response = await request(app)
+        .post('/api/v1/auth/register')
+        .send({ username: 42, password: 'StrongPassword123!', email: 'test@example.com' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.code).toBe('INVALID_INPUT');
+      expect(response.body.message).toContain('Username, password, and email are required');
+    });
+
     it('should reject weak password', async () => {
       mockPrismaClient.systemSetting.findUnique.mockResolvedValue({
         key: 'registrationEnabled',

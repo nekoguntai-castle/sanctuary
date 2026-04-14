@@ -6,6 +6,7 @@
 
 import { Router } from 'express';
 import type { RequestHandler } from 'express';
+import { z } from 'zod';
 import { userRepository, systemSettingRepository } from '../../repositories';
 import { createLogger } from '../../utils/logger';
 import { hashPassword, verifyPassword, validatePasswordStrength } from '../../utils/password';
@@ -18,7 +19,7 @@ import { isValidEmail } from '../../utils/validators';
 import { validate } from '../../middleware/validate';
 import { setAuthCookies } from '../../middleware/csrf';
 import { asyncHandler } from '../../errors/errorHandler';
-import { InvalidInputError, ValidationError, ConflictError, ForbiddenError } from '../../errors/ApiError';
+import { InvalidInputError, ValidationError, ConflictError, ForbiddenError, ErrorCodes } from '../../errors/ApiError';
 import { LoginSchema } from '../schemas/auth';
 import {
   isVerificationRequired,
@@ -28,6 +29,12 @@ import {
 
 const router = Router();
 const log = createLogger('AUTH_LOGIN:ROUTE');
+
+const RegisterPresenceSchema = z.object({
+  username: z.string().min(1),
+  password: z.string().min(1),
+  email: z.string().min(1),
+});
 
 /**
  * Create the login router with rate limiters
@@ -51,7 +58,10 @@ export function createLoginRouter(
    * POST /api/v1/auth/register
    * Register a new user
    */
-  router.post('/register', registerLimiter, asyncHandler(async (req, res) => {
+  router.post('/register', registerLimiter, validate(
+    { body: RegisterPresenceSchema },
+    { message: 'Username, password, and email are required', code: ErrorCodes.INVALID_INPUT }
+  ), asyncHandler(async (req, res) => {
     // Check if registration is enabled (default: disabled / admin-only)
     const registrationEnabled = await systemSettingRepository.getParsed('registrationEnabled', SystemSettingSchemas.boolean, false);
 
