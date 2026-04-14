@@ -33,15 +33,42 @@
  */
 
 import { Router } from 'express';
+import { z } from 'zod';
 import { pushDeviceRepository, auditLogRepository } from '../repositories';
 import { authenticate } from '../middleware/auth';
 import { verifyGatewayRequest } from '../middleware/gatewayAuth';
+import { validate } from '../middleware/validate';
 import { createLogger } from '../utils/logger';
 import { asyncHandler } from '../errors/errorHandler';
-import { InvalidInputError, NotFoundError } from '../errors/ApiError';
+import { ErrorCodes, InvalidInputError, NotFoundError } from '../errors/ApiError';
 
 const router = Router();
 const log = createLogger('PUSH:ROUTE');
+
+const PushRegisterBodySchema = z.object({
+  token: z.string().min(1),
+  platform: z.enum(['ios', 'android']),
+  deviceName: z.string().nullable().optional().transform((deviceName) => deviceName ?? undefined),
+});
+
+const PushUnregisterBodySchema = z.object({
+  token: z.string().min(1),
+});
+
+const GatewayAuditBodySchema = z.object({
+  event: z.string().min(1),
+}).passthrough();
+
+const pushRegisterValidationMessage = (issues: Array<{ path: string; message: string }>) => {
+  if (issues.some(issue => issue.path === 'token')) {
+    return 'Device token is required';
+  }
+  if (issues.some(issue => issue.path === 'deviceName')) {
+    return 'deviceName must be a string';
+  }
+  return 'Platform must be "ios" or "android"';
+};
+
 const GATEWAY_AUDIT_FAILURE_EVENT_TOKENS = [
   'BLOCKED',
   'DENIED',
@@ -104,18 +131,12 @@ function validateDeviceToken(token: string, platform: 'ios' | 'android'): Device
  * POST /api/v1/push/register
  * Register a device token for push notifications
  */
-router.post('/register', authenticate, asyncHandler(async (req, res) => {
+router.post('/register', authenticate, validate(
+  { body: PushRegisterBodySchema },
+  { message: pushRegisterValidationMessage, code: ErrorCodes.INVALID_INPUT }
+), asyncHandler(async (req, res) => {
   const userId = req.user!.userId;
   const { token, platform, deviceName } = req.body;
-
-  // Validation
-  if (!token || typeof token !== 'string') {
-    throw new InvalidInputError('Device token is required');
-  }
-
-  if (!platform || !['ios', 'android'].includes(platform)) {
-    throw new InvalidInputError('Platform must be "ios" or "android"');
-  }
 
   // SEC-008: Validate device token format
   const tokenValidation = validateDeviceToken(token, platform);
@@ -147,13 +168,12 @@ router.post('/register', authenticate, asyncHandler(async (req, res) => {
  * DELETE /api/v1/push/unregister
  * Remove a device token (called when user signs out of mobile app)
  */
-router.delete('/unregister', authenticate, asyncHandler(async (req, res) => {
+router.delete('/unregister', authenticate, validate(
+  { body: PushUnregisterBodySchema },
+  { message: 'Device token is required', code: ErrorCodes.INVALID_INPUT }
+), asyncHandler(async (req, res) => {
   const userId = req.user!.userId;
   const { token } = req.body;
-
-  if (!token || typeof token !== 'string') {
-    throw new InvalidInputError('Device token is required');
-  }
 
   // Find the device by token
   const device = await pushDeviceRepository.findByToken(token);
@@ -303,7 +323,10 @@ router.delete('/device/:deviceId', verifyGatewayRequest, asyncHandler(async (req
  *   - userId: string (optional) - User ID if authenticated
  *   - username: string (optional) - Username if known
  */
-router.post('/gateway-audit', verifyGatewayRequest, asyncHandler(async (req, res) => {
+router.post('/gateway-audit', verifyGatewayRequest, validate(
+  { body: GatewayAuditBodySchema },
+  { message: 'Event type is required', code: ErrorCodes.INVALID_INPUT }
+), asyncHandler(async (req, res) => {
   const {
     event,
     category,
@@ -314,11 +337,6 @@ router.post('/gateway-audit', verifyGatewayRequest, asyncHandler(async (req, res
     userId,
     username,
   } = req.body;
-
-  // Validate required fields
-  if (!event) {
-    throw new InvalidInputError('Event type is required');
-  }
 
   // Determine success based on common gateway security-event names.
   const isFailure = GATEWAY_AUDIT_FAILURE_EVENT_TOKENS.some((token) => event.includes(token));
