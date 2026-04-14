@@ -374,6 +374,21 @@ describe('Intelligence API Routes', () => {
       expect(getResponse().body).toEqual({ conversation: newConvo });
       expect(mockConversationService.createConversation).toHaveBeenCalledWith('test-user-123', 'wallet-1');
     });
+
+    it('returns 400 when walletId has an invalid type', async () => {
+      const req = createMockRequest({
+        user: { userId: 'test-user-123', username: 'testuser', isAdmin: false },
+        body: { walletId: 42 },
+      });
+      const { res, getResponse } = createMockResponse();
+
+      const handler = getRouteHandler(intelligenceRoutes, 'post', '/conversations');
+      await handler(req as any, res as any, vi.fn());
+
+      expect(getResponse().statusCode).toBe(400);
+      expect(getResponse().body.error).toContain('walletId');
+      expect(mockConversationService.createConversation).not.toHaveBeenCalled();
+    });
   });
 
   describe('GET /conversations/:id/messages', () => {
@@ -448,6 +463,22 @@ describe('Intelligence API Routes', () => {
         'What is my UTXO health?',
         { walletId: 'w1' },
       );
+    });
+
+    it('returns 400 when wallet context has an invalid type', async () => {
+      const req = createMockRequest({
+        user: { userId: 'test-user-123', username: 'testuser', isAdmin: false },
+        params: { id: 'conv-1' },
+        body: { content: 'What is my UTXO health?', walletContext: 'wallet-1' },
+      });
+      const { res, getResponse } = createMockResponse();
+
+      const handler = getRouteHandler(intelligenceRoutes, 'post', '/conversations/:id/messages');
+      await handler(req as any, res as any, vi.fn());
+
+      expect(getResponse().statusCode).toBe(400);
+      expect(getResponse().body.error).toContain('Invalid message request');
+      expect(mockConversationService.sendMessage).not.toHaveBeenCalled();
     });
   });
 
@@ -525,6 +556,22 @@ describe('Intelligence API Routes', () => {
         'wallet-1',
         { enabled: false, severityFilter: 'critical' },
       );
+    });
+
+    it('returns 400 for invalid settings field types', async () => {
+      const req = createMockRequest({
+        user: { userId: 'test-user-123', username: 'testuser', isAdmin: false },
+        params: { walletId: 'wallet-1' },
+        body: { enabled: 'false' },
+      });
+      const { res, getResponse } = createMockResponse();
+
+      const handler = getRouteHandler(intelligenceRoutes, 'patch', '/settings/:walletId');
+      await handler(req as any, res as any, vi.fn());
+
+      expect(getResponse().statusCode).toBe(400);
+      expect(getResponse().body.error).toContain('Invalid intelligence settings');
+      expect(mockIntelligenceSettings.updateWalletIntelligenceSettings).not.toHaveBeenCalled();
     });
   });
 });

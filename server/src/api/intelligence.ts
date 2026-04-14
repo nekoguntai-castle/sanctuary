@@ -17,6 +17,11 @@ import {
   conversationService,
   intelligenceSettings,
 } from '../services/intelligence';
+import {
+  INSIGHT_SEVERITY_VALUES,
+  INSIGHT_TYPE_VALUES,
+  INSIGHT_UPDATE_STATUS_VALUES,
+} from '../services/intelligence/types';
 import { findByIdWithAccess } from '../repositories/walletRepository';
 
 const router = Router();
@@ -30,6 +35,30 @@ const InsightPaginationSchema = z.object({
 const ConversationPaginationSchema = z.object({
   limit: z.coerce.number().int().catch(20).transform(v => Math.max(1, Math.min(v, 100))),
   offset: z.coerce.number().int().catch(0).transform(v => Math.max(0, v)),
+});
+
+const InsightUpdateBodySchema = z.object({
+  status: z.enum(INSIGHT_UPDATE_STATUS_VALUES),
+});
+
+const ConversationCreateBodySchema = z.preprocess(
+  (body) => body === undefined ? {} : body,
+  z.object({
+    walletId: z.string().optional(),
+  })
+);
+
+const ConversationMessageBodySchema = z.object({
+  content: z.string().min(1),
+  walletContext: z.record(z.string(), z.unknown()).optional(),
+});
+
+const IntelligenceSettingsUpdateBodySchema = z.object({
+  enabled: z.boolean().optional(),
+  notifyTelegram: z.boolean().optional(),
+  notifyPush: z.boolean().optional(),
+  severityFilter: z.enum(INSIGHT_SEVERITY_VALUES).optional(),
+  typeFilter: z.array(z.enum(INSIGHT_TYPE_VALUES)).optional(),
 });
 
 // All routes require both feature flags
@@ -117,11 +146,11 @@ router.get('/insights/count', asyncHandler(async (req, res) => {
 router.patch('/insights/:id', asyncHandler(async (req, res) => {
   const userId = req.user!.userId;
   const { id } = req.params;
-  const { status } = req.body;
-
-  if (!status || !['dismissed', 'acted_on'].includes(status)) {
+  const body = InsightUpdateBodySchema.safeParse(req.body);
+  if (!body.success) {
     return res.status(400).json({ error: 'status must be "dismissed" or "acted_on"' });
   }
+  const { status } = body.data;
 
   const existing = await insightService.getInsightById(id);
   if (!existing) {
@@ -164,7 +193,11 @@ router.get('/conversations', asyncHandler(async (req, res) => {
  */
 router.post('/conversations', asyncHandler(async (req, res) => {
   const userId = req.user!.userId;
-  const { walletId } = req.body;
+  const body = ConversationCreateBodySchema.safeParse(req.body);
+  if (!body.success) {
+    return res.status(400).json({ error: 'walletId must be a string' });
+  }
+  const { walletId } = body.data;
 
   const conversation = await conversationService.createConversation(userId, walletId);
   res.status(201).json({ conversation });
@@ -194,11 +227,12 @@ router.get('/conversations/:id/messages', asyncHandler(async (req, res) => {
 router.post('/conversations/:id/messages', asyncHandler(async (req, res) => {
   const userId = req.user!.userId;
   const { id } = req.params;
-  const { content, walletContext } = req.body;
-
-  if (!content || typeof content !== 'string') {
-    return res.status(400).json({ error: 'content required' });
+  const body = ConversationMessageBodySchema.safeParse(req.body);
+  if (!body.success) {
+    const hasContentIssue = body.error.issues.some(issue => issue.path[0] === 'content');
+    return res.status(400).json({ error: hasContentIssue ? 'content required' : 'Invalid message request' });
   }
+  const { content, walletContext } = body.data;
 
   const result = await conversationService.sendMessage(id, userId, content, walletContext);
   res.json(result);
@@ -243,7 +277,11 @@ router.get('/settings/:walletId', asyncHandler(async (req, res) => {
 router.patch('/settings/:walletId', asyncHandler(async (req, res) => {
   const userId = req.user!.userId;
   const { walletId } = req.params;
-  const updates = req.body;
+  const body = IntelligenceSettingsUpdateBodySchema.safeParse(req.body);
+  if (!body.success) {
+    return res.status(400).json({ error: 'Invalid intelligence settings' });
+  }
+  const updates = body.data;
 
   const settings = await intelligenceSettings.updateWalletIntelligenceSettings(userId, walletId, updates);
   res.json({ settings });
