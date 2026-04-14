@@ -5,7 +5,9 @@
  */
 
 import { Router } from 'express';
+import { z } from 'zod';
 import { authenticate, requireAdmin } from '../../middleware/auth';
+import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
 import { InvalidInputError } from '../../errors/ApiError';
 import { createLogger } from '../../utils/logger';
@@ -14,6 +16,14 @@ import { systemSettingRepository, SystemSettingKeys } from '../../repositories/s
 
 const router = Router();
 const log = createLogger('ADMIN_MONITORING:ROUTE');
+
+const MonitoringServiceUpdateBodySchema = z.object({
+  customUrl: z.unknown().optional(),
+}).passthrough().catch({});
+
+const GrafanaUpdateBodySchema = z.object({
+  anonymousAccess: z.unknown().optional(),
+}).passthrough().catch({});
 
 /**
  * Monitoring service configuration for frontend
@@ -112,7 +122,9 @@ router.get('/services', authenticate, requireAdmin, asyncHandler(async (req, res
  * PUT /api/v1/admin/monitoring/services/:serviceId
  * Update custom URL for a monitoring service
  */
-router.put('/services/:serviceId', authenticate, requireAdmin, asyncHandler(async (req, res) => {
+router.put('/services/:serviceId', authenticate, requireAdmin, validate(
+  { body: MonitoringServiceUpdateBodySchema }
+), asyncHandler(async (req, res) => {
   const { serviceId } = req.params;
   const { customUrl } = req.body;
 
@@ -175,7 +187,9 @@ router.get('/grafana', authenticate, requireAdmin, asyncHandler(async (_req, res
  * PUT /api/v1/admin/monitoring/grafana
  * Update Grafana settings (anonymous access)
  */
-router.put('/grafana', authenticate, requireAdmin, asyncHandler(async (req, res) => {
+router.put('/grafana', authenticate, requireAdmin, validate(
+  { body: GrafanaUpdateBodySchema }
+), asyncHandler(async (req, res) => {
   const { anonymousAccess } = req.body;
 
   if (typeof anonymousAccess === 'boolean') {
