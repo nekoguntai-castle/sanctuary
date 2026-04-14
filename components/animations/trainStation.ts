@@ -319,6 +319,149 @@ export function useTrainStation(
       ctx.restore();
     };
 
+    const movePassengersForArrivingTrain = (train: Train) => {
+      passengersRef.current.forEach(passenger => {
+        if (Math.abs(passenger.y - train.y - 20) >= 30) return;
+
+        if (Math.random() < 0.3) {
+          passenger.state = 'exiting';
+          passenger.targetX = passenger.x + (Math.random() - 0.5) * 200;
+          return;
+        }
+
+        if (Math.random() < 0.3) {
+          passenger.state = 'boarding';
+          passenger.targetX = train.x + train.length / 2;
+        }
+      });
+    };
+
+    const hasTrainReachedStop = (train: Train) => {
+      const stopX = train.direction > 0 ? canvas.width * 0.3 : canvas.width * 0.7;
+      return train.direction > 0 ? train.x > stopX : train.x < stopX;
+    };
+
+    const updateArrivingTrain = (train: Train) => {
+      train.speed += (train.targetSpeed - train.speed) * 0.02;
+      train.x += train.speed * train.direction;
+
+      if (!hasTrainReachedStop(train)) return;
+
+      train.state = 'stopped';
+      train.stateTimer = 200 + Math.random() * 200;
+      movePassengersForArrivingTrain(train);
+    };
+
+    const updateStoppedTrain = (train: Train) => {
+      train.speed *= 0.9;
+      train.stateTimer--;
+      if (train.stateTimer <= 0) {
+        train.state = 'departing';
+      }
+    };
+
+    const isTrainPastCanvas = (train: Train) => (
+      train.x < -train.length - 50 || train.x > canvas.width + train.length + 50
+    );
+
+    const updateDepartingTrain = (train: Train, index: number) => {
+      train.speed += train.targetSpeed * 0.01;
+      train.x += train.speed * train.direction;
+
+      if (isTrainPastCanvas(train)) {
+        trainsRef.current[index] = createTrain(canvas);
+      }
+    };
+
+    const trainUpdaters: Record<Train['state'], (train: Train, index: number) => void> = {
+      arriving: updateArrivingTrain,
+      stopped: updateStoppedTrain,
+      departing: updateDepartingTrain,
+      passing: () => undefined,
+    };
+
+    const updateAndDrawTrain = (
+      train: Train,
+      index: number,
+      opacityMultiplier: number
+    ) => {
+      trainUpdaters[train.state](train, index);
+      drawTrain(train, opacityMultiplier);
+    };
+
+    const platformHasTrain = (platformRatio: number) => (
+      trainsRef.current.some(train => Math.abs(train.y - canvas.height * platformRatio) < 20)
+    );
+
+    const spawnTrainForPlatform = (platformIndex: number, platformRatio: number) => {
+      if (platformHasTrain(platformRatio) || Math.random() >= 0.008) return;
+
+      trainsRef.current.push(createTrain(canvas, platformIndex));
+    };
+
+    const spawnPlatformTrains = () => {
+      spawnTrainForPlatform(0, 0.4);
+      spawnTrainForPlatform(1, 0.65);
+    };
+
+    const startPassengerWalking = (passenger: Passenger) => {
+      passenger.state = 'walking';
+      passenger.targetX = passenger.x + (Math.random() - 0.5) * 150;
+    };
+
+    const updateWaitingPassenger = (passenger: Passenger) => {
+      if (Math.random() < 0.002) {
+        startPassengerWalking(passenger);
+      }
+    };
+
+    const movePassengerTowardTarget = (
+      passenger: Passenger,
+      stopDistance: number
+    ) => {
+      const dx = passenger.targetX - passenger.x;
+      if (Math.abs(dx) <= stopDistance) return true;
+
+      passenger.direction = dx > 0 ? 1 : -1;
+      passenger.x += passenger.speed * passenger.direction;
+      return false;
+    };
+
+    const updateWalkingPassenger = (passenger: Passenger) => {
+      if (movePassengerTowardTarget(passenger, 2)) {
+        passenger.state = 'waiting';
+      }
+    };
+
+    const updateBoardingPassenger = (passenger: Passenger, index: number) => {
+      if (!movePassengerTowardTarget(passenger, 5)) return;
+
+      const platformY = platformsRef.current[Math.floor(Math.random() * platformsRef.current.length)].y;
+      passengersRef.current[index] = createPassenger(canvas, platformY);
+    };
+
+    const passengerUpdaters: Record<Passenger['state'], (passenger: Passenger, index: number) => void> = {
+      waiting: updateWaitingPassenger,
+      walking: updateWalkingPassenger,
+      exiting: updateWalkingPassenger,
+      boarding: updateBoardingPassenger,
+    };
+
+    const wrapPassengerToScreen = (passenger: Passenger) => {
+      if (passenger.x < 0) passenger.x = canvas.width;
+      if (passenger.x > canvas.width) passenger.x = 0;
+    };
+
+    const updateAndDrawPassenger = (
+      passenger: Passenger,
+      index: number,
+      opacityMultiplier: number
+    ) => {
+      passengerUpdaters[passenger.state](passenger, index);
+      wrapPassengerToScreen(passenger);
+      drawPassenger(passenger, opacityMultiplier);
+    };
+
     const animate = () => {
       if (!canvas || !ctx) return;
 
@@ -327,112 +470,10 @@ export function useTrainStation(
 
       const opacityMultiplier = opacity / 50;
 
-      // Draw platforms
       platformsRef.current.forEach(platform => drawPlatform(platform, opacityMultiplier));
-
-      // Update and draw trains
-      trainsRef.current.forEach((train, i) => {
-        // State machine
-        switch (train.state) {
-          case 'arriving':
-            train.speed += (train.targetSpeed - train.speed) * 0.02;
-            train.x += train.speed * train.direction;
-
-            // Check if should stop
-            const stopX = train.direction > 0 ? canvas.width * 0.3 : canvas.width * 0.7;
-            if ((train.direction > 0 && train.x > stopX) || (train.direction < 0 && train.x < stopX)) {
-              train.state = 'stopped';
-              train.stateTimer = 200 + Math.random() * 200;
-
-              // Passengers exit and board
-              passengersRef.current.forEach(p => {
-                if (Math.abs(p.y - train.y - 20) < 30) {
-                  if (Math.random() < 0.3) {
-                    p.state = 'exiting';
-                    p.targetX = p.x + (Math.random() - 0.5) * 200;
-                  } else if (Math.random() < 0.3) {
-                    p.state = 'boarding';
-                    p.targetX = train.x + train.length / 2;
-                  }
-                }
-              });
-            }
-            break;
-
-          case 'stopped':
-            train.speed *= 0.9;
-            train.stateTimer--;
-            if (train.stateTimer <= 0) {
-              train.state = 'departing';
-            }
-            break;
-
-          case 'departing':
-            train.speed += train.targetSpeed * 0.01;
-            train.x += train.speed * train.direction;
-
-            if (train.x < -train.length - 50 || train.x > canvas.width + train.length + 50) {
-              trainsRef.current[i] = createTrain(canvas);
-            }
-            break;
-        }
-
-        drawTrain(train, opacityMultiplier);
-      });
-
-      // Spawn new trains - ensure each platform has a train
-      const platform0HasTrain = trainsRef.current.some(t => Math.abs(t.y - canvas.height * 0.4) < 20);
-      const platform1HasTrain = trainsRef.current.some(t => Math.abs(t.y - canvas.height * 0.65) < 20);
-
-      if (!platform0HasTrain && Math.random() < 0.008) {
-        trainsRef.current.push(createTrain(canvas, 0));
-      }
-      if (!platform1HasTrain && Math.random() < 0.008) {
-        trainsRef.current.push(createTrain(canvas, 1));
-      }
-
-      // Update and draw passengers
-      passengersRef.current.forEach((passenger, i) => {
-        switch (passenger.state) {
-          case 'waiting':
-            // Occasionally start walking
-            if (Math.random() < 0.002) {
-              passenger.state = 'walking';
-              passenger.targetX = passenger.x + (Math.random() - 0.5) * 150;
-            }
-            break;
-
-          case 'walking':
-          case 'exiting':
-            const dx = passenger.targetX - passenger.x;
-            if (Math.abs(dx) > 2) {
-              passenger.direction = dx > 0 ? 1 : -1;
-              passenger.x += passenger.speed * passenger.direction;
-            } else {
-              passenger.state = 'waiting';
-            }
-            break;
-
-          case 'boarding':
-            // Move toward train
-            const bx = passenger.targetX - passenger.x;
-            if (Math.abs(bx) > 5) {
-              passenger.direction = bx > 0 ? 1 : -1;
-              passenger.x += passenger.speed * passenger.direction;
-            } else {
-              // Boarded - respawn as new passenger
-              const platformY = platformsRef.current[Math.floor(Math.random() * platformsRef.current.length)].y;
-              passengersRef.current[i] = createPassenger(canvas, platformY);
-            }
-            break;
-        }
-
-        // Keep passengers on screen
-        if (passenger.x < 0) passenger.x = canvas.width;
-        if (passenger.x > canvas.width) passenger.x = 0;
-
-        drawPassenger(passenger, opacityMultiplier);
-      });
+      trainsRef.current.forEach((train, i) => updateAndDrawTrain(train, i, opacityMultiplier));
+      spawnPlatformTrains();
+      passengersRef.current.forEach((passenger, i) => updateAndDrawPassenger(passenger, i, opacityMultiplier));
 
       animationRef.current = requestAnimationFrame(animate);
     };
