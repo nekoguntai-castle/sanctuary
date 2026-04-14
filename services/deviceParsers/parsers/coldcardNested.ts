@@ -9,14 +9,17 @@
 
 import type { DeviceParser, DeviceParseResult, DeviceAccount, FormatDetectionResult } from '../types';
 
+type SingleSigSection = { xpub?: string; _pub?: string; deriv?: string };
+type MultisigSection = { xpub?: string; deriv?: string };
+
 interface ColdcardNestedFormat {
   xfp?: string;
-  bip44?: { xpub?: string; _pub?: string; deriv?: string };
-  bip49?: { xpub?: string; _pub?: string; deriv?: string };
-  bip84?: { xpub?: string; _pub?: string; deriv?: string };
-  bip86?: { xpub?: string; _pub?: string; deriv?: string };
-  bip48_1?: { xpub?: string; deriv?: string }; // Nested segwit multisig (P2SH-P2WSH)
-  bip48_2?: { xpub?: string; deriv?: string }; // Native segwit multisig (P2WSH)
+  bip44?: SingleSigSection;
+  bip49?: SingleSigSection;
+  bip84?: SingleSigSection;
+  bip86?: SingleSigSection;
+  bip48_1?: MultisigSection; // Nested segwit multisig (P2SH-P2WSH)
+  bip48_2?: MultisigSection; // Native segwit multisig (P2WSH)
   name?: string;
   label?: string;
 }
@@ -33,6 +36,54 @@ function isColdcardNestedFormat(data: unknown): data is ColdcardNestedFormat {
     cc.bip48_2 !== undefined
   );
 }
+
+const isDefined = <T>(value: T | undefined): value is T => value !== undefined;
+
+const createSingleSigAccount = (
+  section: SingleSigSection | undefined,
+  fallbackPath: string,
+  scriptType: DeviceAccount['scriptType']
+): DeviceAccount | undefined => {
+  const xpub = section?._pub || section?.xpub || '';
+  if (!xpub) return undefined;
+
+  return {
+    xpub,
+    derivationPath: section?.deriv || fallbackPath,
+    purpose: 'single_sig',
+    scriptType,
+  };
+};
+
+const createMultisigAccount = (
+  section: MultisigSection | undefined,
+  fallbackPath: string,
+  scriptType: DeviceAccount['scriptType']
+): DeviceAccount | undefined => {
+  const xpub = section?.xpub || '';
+  if (!xpub) return undefined;
+
+  return {
+    xpub,
+    derivationPath: section?.deriv || fallbackPath,
+    purpose: 'multisig',
+    scriptType,
+  };
+};
+
+const getColdcardAccounts = (cc: ColdcardNestedFormat): DeviceAccount[] => [
+  createSingleSigAccount(cc.bip84, "m/84'/0'/0'", 'native_segwit'),
+  createSingleSigAccount(cc.bip86, "m/86'/0'/0'", 'taproot'),
+  createSingleSigAccount(cc.bip49, "m/49'/0'/0'", 'nested_segwit'),
+  createSingleSigAccount(cc.bip44, "m/44'/0'/0'", 'legacy'),
+  createMultisigAccount(cc.bip48_2, "m/48'/0'/0'/2'", 'native_segwit'),
+  createMultisigAccount(cc.bip48_1, "m/48'/0'/0'/1'", 'nested_segwit'),
+].filter(isDefined);
+
+const getPrimaryAccount = (accounts: DeviceAccount[]): DeviceAccount | undefined =>
+  accounts.find((account) => account.purpose === 'single_sig' && account.scriptType === 'native_segwit')
+  || accounts.find((account) => account.purpose === 'single_sig')
+  || accounts[0];
 
 export const coldcardNestedParser: DeviceParser = {
   id: 'coldcard-nested',
@@ -57,86 +108,8 @@ export const coldcardNestedParser: DeviceParser = {
 
   parse(data: unknown): DeviceParseResult {
     const cc = data as ColdcardNestedFormat;
-    const accounts: DeviceAccount[] = [];
-
-    // Extract all available single-sig accounts
-    if (cc.bip84) {
-      const xpub = cc.bip84._pub || cc.bip84.xpub || '';
-      if (xpub) {
-        accounts.push({
-          xpub,
-          derivationPath: cc.bip84.deriv || "m/84'/0'/0'",
-          purpose: 'single_sig',
-          scriptType: 'native_segwit',
-        });
-      }
-    }
-
-    if (cc.bip86) {
-      const xpub = cc.bip86._pub || cc.bip86.xpub || '';
-      if (xpub) {
-        accounts.push({
-          xpub,
-          derivationPath: cc.bip86.deriv || "m/86'/0'/0'",
-          purpose: 'single_sig',
-          scriptType: 'taproot',
-        });
-      }
-    }
-
-    if (cc.bip49) {
-      const xpub = cc.bip49._pub || cc.bip49.xpub || '';
-      if (xpub) {
-        accounts.push({
-          xpub,
-          derivationPath: cc.bip49.deriv || "m/49'/0'/0'",
-          purpose: 'single_sig',
-          scriptType: 'nested_segwit',
-        });
-      }
-    }
-
-    if (cc.bip44) {
-      const xpub = cc.bip44._pub || cc.bip44.xpub || '';
-      if (xpub) {
-        accounts.push({
-          xpub,
-          derivationPath: cc.bip44.deriv || "m/44'/0'/0'",
-          purpose: 'single_sig',
-          scriptType: 'legacy',
-        });
-      }
-    }
-
-    // Extract multisig accounts (BIP-48)
-    if (cc.bip48_2) {
-      const xpub = cc.bip48_2.xpub || '';
-      if (xpub) {
-        accounts.push({
-          xpub,
-          derivationPath: cc.bip48_2.deriv || "m/48'/0'/0'/2'",
-          purpose: 'multisig',
-          scriptType: 'native_segwit',
-        });
-      }
-    }
-
-    if (cc.bip48_1) {
-      const xpub = cc.bip48_1.xpub || '';
-      if (xpub) {
-        accounts.push({
-          xpub,
-          derivationPath: cc.bip48_1.deriv || "m/48'/0'/0'/1'",
-          purpose: 'multisig',
-          scriptType: 'nested_segwit',
-        });
-      }
-    }
-
-    // Primary account: prefer native segwit single-sig (bip84)
-    const primaryAccount = accounts.find(a => a.purpose === 'single_sig' && a.scriptType === 'native_segwit')
-      || accounts.find(a => a.purpose === 'single_sig')
-      || accounts[0];
+    const accounts = getColdcardAccounts(cc);
+    const primaryAccount = getPrimaryAccount(accounts);
 
     return {
       xpub: primaryAccount?.xpub || '',
