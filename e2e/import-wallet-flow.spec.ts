@@ -32,126 +32,273 @@ const ADMIN_USER = {
 const VALID_DESCRIPTOR = "wpkh([abcd1234/84'/0'/0']xpub6CUGRUonZSQ4TWtTMmzXdrXDtyPWKiLzXCTFHKEJR7TXPfdsg9aVjqYkZ4hCshELBgwMGxZVqV8Dqo3Fg5HsEqFFz5eMzCsvJk4ahGPeBTc/0/*)";
 const VALID_DESCRIPTOR_CHECKSUM = "wpkh([abcd1234/84'/0'/0']xpub6CUGRUonZSQ4TWtTMmzXdrXDtyPWKiLzXCTFHKEJR7TXPfdsg9aVjqYkZ4hCshELBgwMGxZVqV8Dqo3Fg5HsEqFFz5eMzCsvJk4ahGPeBTc/0/*)#abc12345";
 
+type MockApiFailure = {
+  status?: number;
+  body?: unknown;
+};
+
+type MockApiResponse = {
+  status?: number;
+  body: unknown;
+};
+
+type ParsedApiRoute = {
+  method: string;
+  path: string;
+  requestKey: string;
+};
+
+type ImportApiOptions = {
+  validationResponse?: Record<string, unknown>;
+  importError?: string;
+  failures?: Record<string, MockApiFailure>;
+};
+
+function mockResponse(body: unknown, status?: number): MockApiResponse {
+  return { body, status };
+}
+
+function parseApiRoute(route: Route): ParsedApiRoute {
+  const request = route.request();
+  const method = request.method();
+  const url = new URL(request.url());
+  const path = url.pathname.replace(/^\/api\/v1/, '');
+  return { method, path, requestKey: `${method} ${path}` };
+}
+
+async function maybeFulfillFailure(
+  route: Route,
+  failure?: MockApiFailure
+): Promise<boolean> {
+  if (!failure) {
+    return false;
+  }
+
+  await json(route, failure.body ?? { message: 'Injected failure' }, failure.status ?? 500);
+  return true;
+}
+
+const PRICE_RESPONSE = {
+  price: 95000,
+  currency: 'USD',
+  sources: [],
+  median: 95000,
+  average: 95000,
+  timestamp: '2026-03-11T00:00:00.000Z',
+  cached: true,
+  change24h: -1.5,
+};
+
+const BITCOIN_STATUS_RESPONSE = {
+  connected: true,
+  blockHeight: 900500,
+  explorerUrl: 'https://mempool.space',
+  confirmationThreshold: 1,
+  deepConfirmationThreshold: 6,
+  pool: {
+    enabled: true,
+    minConnections: 1,
+    maxConnections: 3,
+    stats: {
+      totalConnections: 2,
+      activeConnections: 2,
+      idleConnections: 0,
+      waitingRequests: 0,
+      totalAcquisitions: 30,
+      averageAcquisitionTimeMs: 8,
+      healthCheckFailures: 0,
+      serverCount: 1,
+      servers: [],
+    },
+  },
+};
+
+const DEFAULT_IMPORT_VALIDATION_RESPONSE = {
+  valid: true,
+  format: 'descriptor',
+  walletType: 'single_sig',
+  scriptType: 'native_segwit',
+  network: 'mainnet',
+  suggestedName: 'Imported Wallet',
+  devices: [{
+    fingerprint: 'abcd1234',
+    xpub: 'xpub6CUGRUonZSQ4TWtTMmzXdrXDtyPWKiLzXCTFHKEJR7TXPfdsg9aVjqYkZ4hCshELBgwMGxZVqV8Dqo3Fg5HsEqFFz5eMzCsvJk4ahGPeBTc',
+    derivationPath: "m/84'/0'/0'",
+    existingDeviceId: null,
+    existingDeviceLabel: null,
+    willCreate: true,
+    suggestedLabel: 'Imported Device',
+  }],
+};
+
+const IMPORT_SUCCESS_RESPONSE = {
+  wallet: {
+    id: IMPORTED_WALLET_ID,
+    name: 'Imported Wallet',
+    type: 'single_sig',
+    scriptType: 'native_segwit',
+    network: 'mainnet',
+  },
+  devicesCreated: 1,
+  devicesReused: 0,
+};
+
+const IMPORTED_WALLET_RESPONSE = {
+  id: IMPORTED_WALLET_ID,
+  name: 'Imported Wallet',
+  type: 'single_sig',
+  scriptType: 'native_segwit',
+  network: 'mainnet',
+  descriptor: VALID_DESCRIPTOR,
+  fingerprint: 'abcd1234',
+  balance: 0,
+  quorum: 1,
+  totalSigners: 1,
+  userRole: 'owner',
+  canEdit: true,
+  isShared: false,
+  sharedWith: [],
+  syncInProgress: false,
+  lastSyncedAt: null,
+  lastSyncStatus: null,
+};
+
+const WALLET_STATS_RESPONSE = {
+  totalCount: 0,
+  receivedCount: 0,
+  sentCount: 0,
+  consolidationCount: 0,
+  totalReceived: 0,
+  totalSent: 0,
+  totalFees: 0,
+  walletBalance: 0,
+};
+
+const WALLET_PRIVACY_RESPONSE = {
+  utxos: [],
+  summary: {
+    averageScore: 100,
+    grade: 'excellent',
+    utxoCount: 0,
+    addressReuseCount: 0,
+    roundAmountCount: 0,
+    clusterCount: 0,
+    recommendations: [],
+  },
+};
+
+const STATIC_IMPORT_API_RESPONSES: Record<string, MockApiResponse> = {
+  'GET /auth/me': mockResponse(ADMIN_USER),
+  'GET /auth/registration-status': mockResponse({ enabled: false }),
+  'GET /health': mockResponse({ status: 'ok' }),
+  'GET /wallets': mockResponse([]),
+  'GET /devices': mockResponse([]),
+  'GET /price': mockResponse(PRICE_RESPONSE),
+  'GET /bitcoin/status': mockResponse(BITCOIN_STATUS_RESPONSE),
+  'GET /bitcoin/fees': mockResponse({ fastest: 18, halfHour: 12, hour: 8, economy: 3 }),
+  'GET /bitcoin/mempool': mockResponse({
+    mempool: [],
+    blocks: [],
+    mempoolInfo: { count: 0, size: 0, totalFees: 0 },
+    queuedBlocksSummary: null,
+  }),
+  'GET /admin/version': mockResponse({ updateAvailable: false, currentVersion: '0.8.14' }),
+  'GET /transactions/recent': mockResponse([]),
+  'GET /transactions/balance-history': mockResponse([]),
+  'GET /devices/models': mockResponse([]),
+  'GET /ai/status': mockResponse({ available: false, containerAvailable: false }),
+  'GET /intelligence/status': mockResponse({ available: false, ollamaConfigured: false }),
+  'GET /admin/groups': mockResponse([]),
+  [`GET /wallets/${IMPORTED_WALLET_ID}`]: mockResponse(IMPORTED_WALLET_RESPONSE),
+  [`GET /wallets/${IMPORTED_WALLET_ID}/transactions`]: mockResponse([]),
+  [`GET /wallets/${IMPORTED_WALLET_ID}/transactions/pending`]: mockResponse([]),
+  [`GET /wallets/${IMPORTED_WALLET_ID}/transactions/stats`]: mockResponse(WALLET_STATS_RESPONSE),
+  [`GET /wallets/${IMPORTED_WALLET_ID}/utxos`]: mockResponse({ utxos: [], count: 0, totalBalance: 0 }),
+  [`GET /wallets/${IMPORTED_WALLET_ID}/privacy`]: mockResponse(WALLET_PRIVACY_RESPONSE),
+  [`GET /wallets/${IMPORTED_WALLET_ID}/addresses/summary`]: mockResponse({
+    totalAddresses: 0,
+    usedCount: 0,
+    unusedCount: 0,
+    totalBalance: 0,
+    usedBalance: 0,
+    unusedBalance: 0,
+  }),
+  [`GET /wallets/${IMPORTED_WALLET_ID}/addresses`]: mockResponse([]),
+  [`GET /wallets/${IMPORTED_WALLET_ID}/drafts`]: mockResponse([]),
+  [`GET /wallets/${IMPORTED_WALLET_ID}/share`]: mockResponse({ group: null, users: [] }),
+};
+
+function getImportMutationResponse(
+  requestKey: string,
+  options?: ImportApiOptions
+): MockApiResponse | null {
+  if (requestKey === 'POST /wallets/import/validate') {
+    return mockResponse(options?.validationResponse ?? DEFAULT_IMPORT_VALIDATION_RESPONSE);
+  }
+  if (requestKey === 'POST /wallets/import') {
+    return options?.importError
+      ? mockResponse({ message: options.importError }, 400)
+      : mockResponse(IMPORT_SUCCESS_RESPONSE, 201);
+  }
+  return null;
+}
+
+function getImportApiResponse(
+  parsedRoute: ParsedApiRoute,
+  options?: ImportApiOptions
+): MockApiResponse | null {
+  const mutationResponse = getImportMutationResponse(parsedRoute.requestKey, options);
+  if (mutationResponse) {
+    return mutationResponse;
+  }
+  const response = STATIC_IMPORT_API_RESPONSES[parsedRoute.requestKey];
+  if (response) {
+    return response;
+  }
+  if (parsedRoute.method === 'GET' && /^\/wallets\/[^/]+\/labels$/.test(parsedRoute.path)) {
+    return mockResponse([]);
+  }
+  return null;
+}
+
+function createImportApiRouteHandler(options: {
+  apiOptions?: ImportApiOptions;
+  unhandledRequests: string[];
+}) {
+  const apiRouteHandler = async (route: Route) => {
+    const parsedRoute = parseApiRoute(route);
+    const { method, path, requestKey } = parsedRoute;
+
+    if (await maybeFulfillFailure(route, options.apiOptions?.failures?.[requestKey])) {
+      return;
+    }
+
+    const response = getImportApiResponse(parsedRoute, options.apiOptions);
+    if (response) {
+      await json(route, response.body, response.status);
+      return;
+    }
+
+    options.unhandledRequests.push(requestKey);
+    await unmocked(route, method, path);
+  };
+
+  return apiRouteHandler;
+}
+
 async function mockImportApi(
   page: Page,
-  options?: {
-    validationResponse?: Record<string, unknown>;
-    importError?: string;
-    failures?: Record<string, { status?: number; body?: unknown }>;
-  }
+  options?: ImportApiOptions
 ) {
   await page.addInitScript(() => {
     localStorage.setItem('sanctuary_token', 'playwright-import-token');
   });
 
   const unhandledRequests: string[] = [];
-
-  const apiRouteHandler = async (route: Route) => {
-    const request = route.request();
-    const method = request.method();
-    const url = new URL(request.url());
-    const path = url.pathname.replace(/^\/api\/v1/, '');
-    const requestKey = `${method} ${path}`;
-
-    const failure = options?.failures?.[requestKey];
-    if (failure) {
-      return json(route, failure.body ?? { message: 'Injected failure' }, failure.status ?? 500);
-    }
-
-    // Auth
-    if (method === 'GET' && path === '/auth/me') return json(route, ADMIN_USER);
-    if (method === 'GET' && path === '/auth/registration-status') return json(route, { enabled: false });
-    if (method === 'GET' && path === '/health') return json(route, { status: 'ok' });
-
-    // Shared
-    if (method === 'GET' && path === '/wallets') return json(route, []);
-    if (method === 'GET' && path === '/devices') return json(route, []);
-    if (method === 'GET' && path === '/price') {
-      return json(route, { price: 95000, currency: 'USD', sources: [], median: 95000, average: 95000, timestamp: '2026-03-11T00:00:00.000Z', cached: true, change24h: -1.5 });
-    }
-    if (method === 'GET' && path === '/bitcoin/status') {
-      return json(route, { connected: true, blockHeight: 900500, explorerUrl: 'https://mempool.space', confirmationThreshold: 1, deepConfirmationThreshold: 6, pool: { enabled: true, minConnections: 1, maxConnections: 3, stats: { totalConnections: 2, activeConnections: 2, idleConnections: 0, waitingRequests: 0, totalAcquisitions: 30, averageAcquisitionTimeMs: 8, healthCheckFailures: 0, serverCount: 1, servers: [] } } });
-    }
-    if (method === 'GET' && path === '/bitcoin/fees') return json(route, { fastest: 18, halfHour: 12, hour: 8, economy: 3 });
-    if (method === 'GET' && path === '/bitcoin/mempool') return json(route, { mempool: [], blocks: [], mempoolInfo: { count: 0, size: 0, totalFees: 0 }, queuedBlocksSummary: null });
-    if (method === 'GET' && path === '/admin/version') return json(route, { updateAvailable: false, currentVersion: '0.8.14' });
-    if (method === 'GET' && path === '/transactions/recent') return json(route, []);
-    if (method === 'GET' && path === '/transactions/balance-history') return json(route, []);
-    if (method === 'GET' && path === '/devices/models') return json(route, []);
-    if (method === 'GET' && path === '/ai/status') return json(route, { available: false, containerAvailable: false });
-    if (method === 'GET' && path === '/intelligence/status') return json(route, { available: false, ollamaConfigured: false });
-    if (method === 'GET' && path === '/admin/groups') return json(route, []);
-
-    // Import validation
-    if (method === 'POST' && path === '/wallets/import/validate') {
-      return json(route, options?.validationResponse ?? {
-        valid: true,
-        format: 'descriptor',
-        walletType: 'single_sig',
-        scriptType: 'native_segwit',
-        network: 'mainnet',
-        suggestedName: 'Imported Wallet',
-        devices: [{
-          fingerprint: 'abcd1234',
-          xpub: 'xpub6CUGRUonZSQ4TWtTMmzXdrXDtyPWKiLzXCTFHKEJR7TXPfdsg9aVjqYkZ4hCshELBgwMGxZVqV8Dqo3Fg5HsEqFFz5eMzCsvJk4ahGPeBTc',
-          derivationPath: "m/84'/0'/0'",
-          existingDeviceId: null,
-          existingDeviceLabel: null,
-          willCreate: true,
-          suggestedLabel: 'Imported Device',
-        }],
-      });
-    }
-
-    // Import
-    if (method === 'POST' && path === '/wallets/import') {
-      if (options?.importError) {
-        return json(route, { message: options.importError }, 400);
-      }
-      return json(route, {
-        wallet: {
-          id: IMPORTED_WALLET_ID,
-          name: 'Imported Wallet',
-          type: 'single_sig',
-          scriptType: 'native_segwit',
-          network: 'mainnet',
-        },
-        devicesCreated: 1,
-        devicesReused: 0,
-      }, 201);
-    }
-
-    // Imported wallet detail
-    if (method === 'GET' && path === `/wallets/${IMPORTED_WALLET_ID}`) {
-      return json(route, {
-        id: IMPORTED_WALLET_ID, name: 'Imported Wallet', type: 'single_sig', scriptType: 'native_segwit',
-        network: 'mainnet', descriptor: VALID_DESCRIPTOR, fingerprint: 'abcd1234',
-        balance: 0, quorum: 1, totalSigners: 1, userRole: 'owner', canEdit: true,
-        isShared: false, sharedWith: [], syncInProgress: false, lastSyncedAt: null, lastSyncStatus: null,
-      });
-    }
-    if (method === 'GET' && path === `/wallets/${IMPORTED_WALLET_ID}/transactions`) return json(route, []);
-    if (method === 'GET' && path === `/wallets/${IMPORTED_WALLET_ID}/transactions/pending`) return json(route, []);
-    if (method === 'GET' && path === `/wallets/${IMPORTED_WALLET_ID}/transactions/stats`) {
-      return json(route, { totalCount: 0, receivedCount: 0, sentCount: 0, consolidationCount: 0, totalReceived: 0, totalSent: 0, totalFees: 0, walletBalance: 0 });
-    }
-    if (method === 'GET' && path === `/wallets/${IMPORTED_WALLET_ID}/utxos`) return json(route, { utxos: [], count: 0, totalBalance: 0 });
-    if (method === 'GET' && path === `/wallets/${IMPORTED_WALLET_ID}/privacy`) {
-      return json(route, { utxos: [], summary: { averageScore: 100, grade: 'excellent', utxoCount: 0, addressReuseCount: 0, roundAmountCount: 0, clusterCount: 0, recommendations: [] } });
-    }
-    if (method === 'GET' && path === `/wallets/${IMPORTED_WALLET_ID}/addresses/summary`) {
-      return json(route, { totalAddresses: 0, usedCount: 0, unusedCount: 0, totalBalance: 0, usedBalance: 0, unusedBalance: 0 });
-    }
-    if (method === 'GET' && path === `/wallets/${IMPORTED_WALLET_ID}/addresses`) return json(route, []);
-    if (method === 'GET' && path === `/wallets/${IMPORTED_WALLET_ID}/drafts`) return json(route, []);
-    if (method === 'GET' && path === `/wallets/${IMPORTED_WALLET_ID}/share`) return json(route, { group: null, users: [] });
-    if (method === 'GET' && path.match(/^\/wallets\/[^/]+\/labels$/)) return json(route, []);
-
-    unhandledRequests.push(requestKey);
-    return unmocked(route, method, path);
-  };
-
-  await registerApiRoutes(page, apiRouteHandler);
+  await registerApiRoutes(page, createImportApiRouteHandler({
+    apiOptions: options,
+    unhandledRequests,
+  }));
   return unhandledRequests;
 }
 
