@@ -98,10 +98,389 @@ const NODE_CONFIG = {
   proxyPort: 9050,
 };
 
+type MockApiFailure = {
+  status?: number;
+  body?: unknown;
+};
+
+type MockApiResponse = {
+  status?: number;
+  body: unknown;
+};
+
+type ParsedApiRoute = {
+  method: string;
+  path: string;
+  requestKey: string;
+};
+
+type FeatureFlag = {
+  key: string;
+  enabled: boolean;
+  description: string;
+  category: string;
+  source: string;
+  modifiedBy: string | null;
+  updatedAt: string | null;
+};
+
+type AdminOpsUser = {
+  id: string;
+  username: string;
+  email: string | null;
+  isAdmin: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type AdminOpsGroup = {
+  id: string;
+  name: string;
+  members: { id: string; username: string }[];
+};
+
+type AdminApiState = {
+  flagState: FeatureFlag[];
+  settingsState: typeof SYSTEM_SETTINGS;
+  usersState: AdminOpsUser[];
+  groupsState: AdminOpsGroup[];
+  nodeConfigState: Record<string, unknown>;
+};
+
+type AdminApiResponder = (
+  route: Route,
+  parsedRoute: ParsedApiRoute,
+  state: AdminApiState
+) => MockApiResponse | null;
+
+function mockResponse(body: unknown, status?: number): MockApiResponse {
+  return { body, status };
+}
+
+function parseApiRoute(route: Route): ParsedApiRoute {
+  const request = route.request();
+  const method = request.method();
+  const url = new URL(request.url());
+  const path = url.pathname.replace(/^\/api\/v1/, '');
+  return { method, path, requestKey: `${method} ${path}` };
+}
+
+function createAdminApiState(): AdminApiState {
+  return {
+    flagState: FEATURE_FLAGS.map(f => ({ ...f })),
+    settingsState: { ...SYSTEM_SETTINGS },
+    usersState: [
+      { id: ADMIN_USER.id, username: 'admin', email: null, isAdmin: true, createdAt: '2026-03-11T00:00:00.000Z', updatedAt: '2026-03-11T00:00:00.000Z' },
+      { ...REGULAR_USER },
+    ],
+    groupsState: [],
+    nodeConfigState: { ...NODE_CONFIG },
+  };
+}
+
+async function maybeFulfillFailure(
+  route: Route,
+  failure?: MockApiFailure
+): Promise<boolean> {
+  if (!failure) {
+    return false;
+  }
+
+  await json(route, failure.body ?? { message: 'Injected failure' }, failure.status ?? 500);
+  return true;
+}
+
+const PRICE_RESPONSE = {
+  price: 95000,
+  currency: 'USD',
+  sources: [],
+  median: 95000,
+  average: 95000,
+  timestamp: '2026-03-11T00:00:00.000Z',
+  cached: true,
+  change24h: -1.5,
+};
+
+const BITCOIN_STATUS_RESPONSE = {
+  connected: true,
+  blockHeight: 900500,
+  explorerUrl: 'https://mempool.space',
+  confirmationThreshold: 1,
+  deepConfirmationThreshold: 6,
+  pool: {
+    enabled: true,
+    minConnections: 1,
+    maxConnections: 3,
+    stats: {
+      totalConnections: 2,
+      activeConnections: 2,
+      idleConnections: 0,
+      waitingRequests: 0,
+      totalAcquisitions: 30,
+      averageAcquisitionTimeMs: 8,
+      healthCheckFailures: 0,
+      serverCount: 1,
+      servers: [],
+    },
+  },
+};
+
+const WEBSOCKET_STATS_RESPONSE = {
+  connections: { current: 1, max: 100, uniqueUsers: 1, maxPerUser: 10 },
+  subscriptions: { total: 1, channels: 1, channelList: ['global:price'] },
+  rateLimits: { maxMessagesPerSecond: 15 },
+  recentRateLimitEvents: [],
+};
+
+const STATIC_ADMIN_API_RESPONSES: Record<string, MockApiResponse> = {
+  'GET /auth/me': mockResponse(ADMIN_USER),
+  'GET /health': mockResponse({ status: 'ok' }),
+  'GET /wallets': mockResponse([]),
+  'GET /devices': mockResponse([]),
+  'GET /price': mockResponse(PRICE_RESPONSE),
+  'GET /bitcoin/status': mockResponse(BITCOIN_STATUS_RESPONSE),
+  'GET /bitcoin/fees': mockResponse({ fastest: 18, halfHour: 12, hour: 8, economy: 3 }),
+  'GET /bitcoin/mempool': mockResponse({
+    mempool: [],
+    blocks: [],
+    mempoolInfo: { count: 0, size: 0, totalFees: 0 },
+    queuedBlocksSummary: null,
+  }),
+  'GET /admin/version': mockResponse({ updateAvailable: false, currentVersion: '0.8.14' }),
+  'GET /transactions/recent': mockResponse([]),
+  'GET /transactions/balance-history': mockResponse([]),
+  'GET /admin/features/audit-log': mockResponse({ entries: [], total: 0, limit: 50, offset: 0 }),
+  'GET /admin/electrum-servers': mockResponse([]),
+  'GET /admin/tor-container/status': mockResponse({ available: true, exists: true, running: true, status: 'running' }),
+  'GET /admin/websocket/stats': mockResponse(WEBSOCKET_STATS_RESPONSE),
+  'GET /admin/audit-logs': mockResponse({ logs: [], total: 0, limit: 50, offset: 0 }),
+  'GET /admin/audit-logs/stats': mockResponse({
+    totalEvents: 0,
+    byCategory: {},
+    byAction: {},
+    failedEvents: 0,
+  }),
+  'GET /admin/monitoring/services': mockResponse({ enabled: true, services: [] }),
+  'GET /admin/monitoring/grafana': mockResponse({ username: 'admin', password: 'test', anonymousAccess: false }),
+  'GET /ai/status': mockResponse({ available: false, containerAvailable: false }),
+  'GET /ai/ollama-container/status': mockResponse({ available: true, exists: true, running: false, status: 'exited' }),
+  'GET /intelligence/status': mockResponse({ available: false, ollamaConfigured: false }),
+  'GET /admin/encryption-keys': mockResponse({ hasEncryptionKey: true, hasEncryptionSalt: true }),
+};
+
+function finalPathSegment(path: string) {
+  return path.split('/').pop();
+}
+
+function getRegistrationStatusResponse(
+  _route: Route,
+  { requestKey }: ParsedApiRoute,
+  state: AdminApiState
+): MockApiResponse | null {
+  return requestKey === 'GET /auth/registration-status'
+    ? mockResponse({ enabled: state.settingsState.registrationEnabled })
+    : null;
+}
+
+function getFeatureResponse(
+  route: Route,
+  { method, path, requestKey }: ParsedApiRoute,
+  state: AdminApiState
+): MockApiResponse | null {
+  if (requestKey === 'GET /admin/features') {
+    return mockResponse(state.flagState);
+  }
+  if (method === 'PUT' && /^\/admin\/features\//.test(path)) {
+    const flagKey = finalPathSegment(path);
+    const body = route.request().postDataJSON() as { enabled: boolean };
+    state.flagState = state.flagState.map(f =>
+      f.key === flagKey ? { ...f, enabled: body.enabled, modifiedBy: 'admin', updatedAt: new Date().toISOString() } : f
+    );
+    const updated = state.flagState.find(f => f.key === flagKey);
+    return mockResponse(updated ?? { message: 'Flag not found' }, updated ? 200 : 404);
+  }
+  return null;
+}
+
+function getUserResponse(
+  route: Route,
+  { method, path, requestKey }: ParsedApiRoute,
+  state: AdminApiState
+): MockApiResponse | null {
+  if (requestKey === 'GET /admin/users') {
+    return mockResponse(state.usersState);
+  }
+  if (requestKey === 'POST /admin/users') {
+    const body = route.request().postDataJSON() as Partial<AdminOpsUser>;
+    const newUser = {
+      id: `user-new-${Date.now()}`,
+      username: body.username ?? '',
+      email: body.email ?? null,
+      isAdmin: body.isAdmin ?? false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    state.usersState = [...state.usersState, newUser];
+    return mockResponse(newUser, 201);
+  }
+  if (method === 'PUT' && /^\/admin\/users\//.test(path)) {
+    const userId = finalPathSegment(path);
+    const body = route.request().postDataJSON() as Partial<AdminOpsUser>;
+    state.usersState = state.usersState.map(u =>
+      u.id === userId ? { ...u, ...body, updatedAt: new Date().toISOString() } : u
+    );
+    return mockResponse(state.usersState.find(u => u.id === userId));
+  }
+  if (method === 'DELETE' && /^\/admin\/users\//.test(path)) {
+    const userId = finalPathSegment(path);
+    state.usersState = state.usersState.filter(u => u.id !== userId);
+    return mockResponse({ message: 'User deleted' });
+  }
+  return null;
+}
+
+function getGroupResponse(
+  route: Route,
+  { method, path, requestKey }: ParsedApiRoute,
+  state: AdminApiState
+): MockApiResponse | null {
+  if (requestKey === 'GET /admin/groups') {
+    return mockResponse(state.groupsState);
+  }
+  if (requestKey === 'POST /admin/groups') {
+    const body = route.request().postDataJSON() as Pick<AdminOpsGroup, 'name'>;
+    const newGroup = { id: `group-new-${Date.now()}`, name: body.name, members: [] };
+    state.groupsState = [...state.groupsState, newGroup];
+    return mockResponse(newGroup, 201);
+  }
+  if (method === 'PUT' && /^\/admin\/groups\//.test(path)) {
+    const groupId = finalPathSegment(path);
+    const body = route.request().postDataJSON() as Partial<AdminOpsGroup>;
+    state.groupsState = state.groupsState.map(g =>
+      g.id === groupId ? { ...g, ...body } : g
+    );
+    return mockResponse(state.groupsState.find(g => g.id === groupId));
+  }
+  if (method === 'DELETE' && /^\/admin\/groups\//.test(path)) {
+    const groupId = finalPathSegment(path);
+    state.groupsState = state.groupsState.filter(g => g.id !== groupId);
+    return mockResponse({ message: 'Group deleted' });
+  }
+  return null;
+}
+
+function getSettingsResponse(
+  route: Route,
+  { requestKey }: ParsedApiRoute,
+  state: AdminApiState
+): MockApiResponse | null {
+  if (requestKey === 'GET /admin/settings') {
+    return mockResponse(state.settingsState);
+  }
+  if (requestKey === 'PUT /admin/settings') {
+    const body = route.request().postDataJSON() as Partial<typeof SYSTEM_SETTINGS>;
+    state.settingsState = { ...state.settingsState, ...body };
+    return mockResponse(state.settingsState);
+  }
+  return null;
+}
+
+function getNodeConfigResponse(
+  route: Route,
+  { requestKey }: ParsedApiRoute,
+  state: AdminApiState
+): MockApiResponse | null {
+  if (requestKey === 'GET /admin/node-config') {
+    return mockResponse(state.nodeConfigState);
+  }
+  if (requestKey === 'PUT /admin/node-config') {
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    state.nodeConfigState = { ...state.nodeConfigState, ...body };
+    return mockResponse(state.nodeConfigState);
+  }
+  return null;
+}
+
+function getBackupResponse(
+  _route: Route,
+  { requestKey }: ParsedApiRoute
+): MockApiResponse | null {
+  if (requestKey === 'POST /admin/backup') {
+    return mockResponse({
+      data: { users: [], wallets: [], devices: [] },
+      metadata: {
+        version: '0.8.14',
+        createdAt: new Date().toISOString(),
+        createdBy: 'admin',
+        description: 'E2E test backup',
+      },
+    });
+  }
+  if (requestKey === 'POST /admin/encryption-keys') {
+    return mockResponse({
+      encryptionKey: 'test-enc-key-abc123',
+      encryptionSalt: 'test-salt-xyz789',
+      hasEncryptionKey: true,
+      hasEncryptionSalt: true,
+    });
+  }
+  return null;
+}
+
+const ADMIN_API_RESPONDERS: AdminApiResponder[] = [
+  getRegistrationStatusResponse,
+  getFeatureResponse,
+  getUserResponse,
+  getGroupResponse,
+  getSettingsResponse,
+  getNodeConfigResponse,
+  getBackupResponse,
+];
+
+function getAdminApiResponse(
+  route: Route,
+  parsedRoute: ParsedApiRoute,
+  state: AdminApiState
+): MockApiResponse | null {
+  for (const responder of ADMIN_API_RESPONDERS) {
+    const response = responder(route, parsedRoute, state);
+    if (response) {
+      return response;
+    }
+  }
+  return STATIC_ADMIN_API_RESPONSES[parsedRoute.requestKey] ?? null;
+}
+
+function createAdminApiRouteHandler(options: {
+  failures?: Record<string, MockApiFailure>;
+  unhandledRequests: string[];
+}) {
+  const state = createAdminApiState();
+  const apiRouteHandler = async (route: Route) => {
+    const parsedRoute = parseApiRoute(route);
+    const { method, path, requestKey } = parsedRoute;
+
+    if (await maybeFulfillFailure(route, options.failures?.[requestKey])) {
+      return;
+    }
+
+    const response = getAdminApiResponse(route, parsedRoute, state);
+    if (response) {
+      await json(route, response.body, response.status);
+      return;
+    }
+
+    options.unhandledRequests.push(requestKey);
+    await unmocked(route, method, path);
+  };
+
+  return apiRouteHandler;
+}
+
 async function mockAdminApi(
   page: Page,
   options?: {
-    failures?: Record<string, { status?: number; body?: unknown }>;
+    failures?: Record<string, MockApiFailure>;
   }
 ) {
   await page.addInitScript(() => {
@@ -109,165 +488,10 @@ async function mockAdminApi(
   });
 
   const unhandledRequests: string[] = [];
-  let flagState = FEATURE_FLAGS.map(f => ({ ...f }));
-  let settingsState = { ...SYSTEM_SETTINGS };
-  let usersState = [
-    { id: ADMIN_USER.id, username: 'admin', email: null, isAdmin: true, createdAt: '2026-03-11T00:00:00.000Z', updatedAt: '2026-03-11T00:00:00.000Z' },
-    { ...REGULAR_USER },
-  ];
-  let groupsState: { id: string; name: string; members: { id: string; username: string }[] }[] = [];
-  let nodeConfigState = { ...NODE_CONFIG };
-
-  const apiRouteHandler = async (route: Route) => {
-    const request = route.request();
-    const method = request.method();
-    const url = new URL(request.url());
-    const path = url.pathname.replace(/^\/api\/v1/, '');
-    const requestKey = `${method} ${path}`;
-
-    const failure = options?.failures?.[requestKey];
-    if (failure) {
-      return json(route, failure.body ?? { message: 'Injected failure' }, failure.status ?? 500);
-    }
-
-    // Auth
-    if (method === 'GET' && path === '/auth/me') return json(route, ADMIN_USER);
-    if (method === 'GET' && path === '/auth/registration-status') return json(route, { enabled: settingsState.registrationEnabled });
-    if (method === 'GET' && path === '/health') return json(route, { status: 'ok' });
-
-    // Shared
-    if (method === 'GET' && path === '/wallets') return json(route, []);
-    if (method === 'GET' && path === '/devices') return json(route, []);
-    if (method === 'GET' && path === '/price') {
-      return json(route, { price: 95000, currency: 'USD', sources: [], median: 95000, average: 95000, timestamp: '2026-03-11T00:00:00.000Z', cached: true, change24h: -1.5 });
-    }
-    if (method === 'GET' && path === '/bitcoin/status') {
-      return json(route, { connected: true, blockHeight: 900500, explorerUrl: 'https://mempool.space', confirmationThreshold: 1, deepConfirmationThreshold: 6, pool: { enabled: true, minConnections: 1, maxConnections: 3, stats: { totalConnections: 2, activeConnections: 2, idleConnections: 0, waitingRequests: 0, totalAcquisitions: 30, averageAcquisitionTimeMs: 8, healthCheckFailures: 0, serverCount: 1, servers: [] } } });
-    }
-    if (method === 'GET' && path === '/bitcoin/fees') return json(route, { fastest: 18, halfHour: 12, hour: 8, economy: 3 });
-    if (method === 'GET' && path === '/bitcoin/mempool') return json(route, { mempool: [], blocks: [], mempoolInfo: { count: 0, size: 0, totalFees: 0 }, queuedBlocksSummary: null });
-    if (method === 'GET' && path === '/admin/version') return json(route, { updateAvailable: false, currentVersion: '0.8.14' });
-    if (method === 'GET' && path === '/transactions/recent') return json(route, []);
-    if (method === 'GET' && path === '/transactions/balance-history') return json(route, []);
-
-    // Feature flags
-    if (method === 'GET' && path === '/admin/features') return json(route, flagState);
-    if (method === 'GET' && path === '/admin/features/audit-log') return json(route, { entries: [], total: 0, limit: 50, offset: 0 });
-    if (method === 'PUT' && /^\/admin\/features\//.test(path)) {
-      const flagKey = path.split('/').pop();
-      const body = request.postDataJSON();
-      flagState = flagState.map(f =>
-        f.key === flagKey ? { ...f, enabled: body.enabled, modifiedBy: 'admin', updatedAt: new Date().toISOString() } : f
-      );
-      const updated = flagState.find(f => f.key === flagKey);
-      return json(route, updated ?? { message: 'Flag not found' }, updated ? 200 : 404);
-    }
-
-    // Users
-    if (method === 'GET' && path === '/admin/users') return json(route, usersState);
-    if (method === 'POST' && path === '/admin/users') {
-      const body = request.postDataJSON();
-      const newUser = {
-        id: `user-new-${Date.now()}`,
-        username: body.username,
-        email: body.email || null,
-        isAdmin: body.isAdmin || false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      usersState = [...usersState, newUser];
-      return json(route, newUser, 201);
-    }
-    if (method === 'PUT' && /^\/admin\/users\//.test(path)) {
-      const userId = path.split('/').pop();
-      const body = request.postDataJSON();
-      usersState = usersState.map(u =>
-        u.id === userId ? { ...u, ...body, updatedAt: new Date().toISOString() } : u
-      );
-      return json(route, usersState.find(u => u.id === userId));
-    }
-    if (method === 'DELETE' && /^\/admin\/users\//.test(path)) {
-      const userId = path.split('/').pop();
-      usersState = usersState.filter(u => u.id !== userId);
-      return json(route, { message: 'User deleted' });
-    }
-
-    // Groups
-    if (method === 'GET' && path === '/admin/groups') return json(route, groupsState);
-    if (method === 'POST' && path === '/admin/groups') {
-      const body = request.postDataJSON();
-      const newGroup = { id: `group-new-${Date.now()}`, name: body.name, members: [] };
-      groupsState = [...groupsState, newGroup];
-      return json(route, newGroup, 201);
-    }
-    if (method === 'PUT' && /^\/admin\/groups\//.test(path)) {
-      const groupId = path.split('/').pop();
-      const body = request.postDataJSON();
-      groupsState = groupsState.map(g =>
-        g.id === groupId ? { ...g, ...body } : g
-      );
-      return json(route, groupsState.find(g => g.id === groupId));
-    }
-    if (method === 'DELETE' && /^\/admin\/groups\//.test(path)) {
-      const groupId = path.split('/').pop();
-      groupsState = groupsState.filter(g => g.id !== groupId);
-      return json(route, { message: 'Group deleted' });
-    }
-
-    // Settings
-    if (method === 'GET' && path === '/admin/settings') return json(route, settingsState);
-    if (method === 'PUT' && path === '/admin/settings') {
-      const body = request.postDataJSON();
-      settingsState = { ...settingsState, ...body };
-      return json(route, settingsState);
-    }
-
-    // Node config
-    if (method === 'GET' && path === '/admin/node-config') return json(route, nodeConfigState);
-    if (method === 'PUT' && path === '/admin/node-config') {
-      const body = request.postDataJSON();
-      nodeConfigState = { ...nodeConfigState, ...body };
-      return json(route, nodeConfigState);
-    }
-    if (method === 'GET' && path === '/admin/electrum-servers') return json(route, []);
-    if (method === 'GET' && path === '/admin/tor-container/status') return json(route, { available: true, exists: true, running: true, status: 'running' });
-
-    // WebSocket stats
-    if (method === 'GET' && path === '/admin/websocket/stats') {
-      return json(route, { connections: { current: 1, max: 100, uniqueUsers: 1, maxPerUser: 10 }, subscriptions: { total: 1, channels: 1, channelList: ['global:price'] }, rateLimits: { maxMessagesPerSecond: 15 }, recentRateLimitEvents: [] });
-    }
-
-    // Backup
-    if (method === 'POST' && path === '/admin/backup') {
-      return json(route, { data: { users: [], wallets: [], devices: [] }, metadata: { version: '0.8.14', createdAt: new Date().toISOString(), createdBy: 'admin', description: 'E2E test backup' } });
-    }
-    if (method === 'POST' && path === '/admin/encryption-keys') {
-      return json(route, { encryptionKey: 'test-enc-key-abc123', encryptionSalt: 'test-salt-xyz789', hasEncryptionKey: true, hasEncryptionSalt: true });
-    }
-
-    // Audit logs
-    if (method === 'GET' && path === '/admin/audit-logs') return json(route, { logs: [], total: 0, limit: 50, offset: 0 });
-    if (method === 'GET' && path === '/admin/audit-logs/stats') return json(route, { totalEvents: 0, byCategory: {}, byAction: {}, failedEvents: 0 });
-
-    // Monitoring
-    if (method === 'GET' && path === '/admin/monitoring/services') return json(route, { enabled: true, services: [] });
-    if (method === 'GET' && path === '/admin/monitoring/grafana') return json(route, { username: 'admin', password: 'test', anonymousAccess: false });
-
-    // AI
-    if (method === 'GET' && path === '/ai/status') return json(route, { available: false, containerAvailable: false });
-    if (method === 'GET' && path === '/ai/ollama-container/status') return json(route, { available: true, exists: true, running: false, status: 'exited' });
-    if (method === 'GET' && path === '/intelligence/status') return json(route, { available: false, ollamaConfigured: false });
-
-    // Encryption keys
-    if (method === 'GET' && path === '/admin/encryption-keys') {
-      return json(route, { hasEncryptionKey: true, hasEncryptionSalt: true });
-    }
-
-    unhandledRequests.push(requestKey);
-    return unmocked(route, method, path);
-  };
-
-  await registerApiRoutes(page, apiRouteHandler);
+  await registerApiRoutes(page, createAdminApiRouteHandler({
+    failures: options?.failures,
+    unhandledRequests,
+  }));
   return unhandledRequests;
 }
 
