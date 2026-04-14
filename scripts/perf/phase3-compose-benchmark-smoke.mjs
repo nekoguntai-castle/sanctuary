@@ -2186,7 +2186,7 @@ function getWorkerScaleOutProofScript() {
   ].join('\n');
 }
 
-function getBackendScaleOutProofScript() {
+function getBackendScaleOutProofConfigScript() {
   return `
 const proofId = process.env.PHASE3_BACKEND_SCALE_OUT_PROOF_ID || String(Date.now());
 const timeoutMs = Number(process.env.PHASE3_BACKEND_SCALE_OUT_PROOF_TIMEOUT_MS || '60000');
@@ -2248,7 +2248,11 @@ function percentile(sortedValues, percentileValue) {
   const weight = index - lower;
   return Math.round((sortedValues[lower] * (1 - weight) + sortedValues[upper] * weight) * 100) / 100;
 }
+`;
+}
 
+function getBackendScaleOutProofApiScript() {
+  return `
 async function apiJson(target, path, options = {}, expectedStatuses = [200]) {
   const headers = { Accept: 'application/json' };
   let body;
@@ -2323,7 +2327,11 @@ async function createProofWallet(target, token) {
     addressCount: response.body.addressCount ?? null,
   };
 }
+`;
+}
 
+function getBackendScaleOutProofWebSocketScript() {
+  return `
 function connectSubscribedWebSocket(target, token, walletId, clientIndex) {
   return new Promise((resolve, reject) => {
     const channels = ['wallet:' + walletId, 'wallet:' + walletId + ':sync', 'sync:all'];
@@ -2482,7 +2490,11 @@ function connectSubscribedWebSocket(target, token, walletId, clientIndex) {
     });
   });
 }
+`;
+}
 
+function getBackendScaleOutProofExecutionScript() {
+  return `
 const token = await login(triggerTarget);
 const wallet = await createProofWallet(triggerTarget, token);
 const socketProofs = await Promise.all(
@@ -2535,4 +2547,13 @@ console.log(JSON.stringify({
   event: events[0] || null,
 }));
 `;
+}
+
+function getBackendScaleOutProofScript() {
+  return [
+    getBackendScaleOutProofConfigScript(),
+    getBackendScaleOutProofApiScript(),
+    getBackendScaleOutProofWebSocketScript(),
+    getBackendScaleOutProofExecutionScript(),
+  ].join('\n');
 }
