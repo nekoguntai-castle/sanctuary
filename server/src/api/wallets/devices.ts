@@ -5,12 +5,19 @@
  */
 
 import { Router } from 'express';
+import { z } from 'zod';
 import { requireWalletAccess } from '../../middleware/walletAccess';
+import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
-import { InvalidInputError } from '../../errors/ApiError';
+import { ErrorCodes } from '../../errors/ApiError';
 import * as walletService from '../../services/wallet';
 
 const router = Router();
+
+const WalletAddDeviceBodySchema = z.object({
+  deviceId: z.string().trim().min(1),
+  signerIndex: z.number().int().min(0).optional(),
+});
 
 /**
  * POST /api/v1/wallets/:id/addresses
@@ -29,19 +36,23 @@ router.post('/:id/addresses', requireWalletAccess('edit'), asyncHandler(async (r
  * POST /api/v1/wallets/:id/devices
  * Add a device to wallet (edit access - signer or owner)
  */
-router.post('/:id/devices', requireWalletAccess('edit'), asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
-  const walletId = req.walletId!;
-  const { deviceId, signerIndex } = req.body;
+router.post(
+  '/:id/devices',
+  requireWalletAccess('edit'),
+  validate(
+    { body: WalletAddDeviceBodySchema },
+    { message: 'deviceId is required', code: ErrorCodes.INVALID_INPUT }
+  ),
+  asyncHandler(async (req, res) => {
+    const userId = req.user!.userId;
+    const walletId = req.walletId!;
+    const { deviceId, signerIndex } = req.body;
 
-  if (!deviceId) {
-    throw new InvalidInputError('deviceId is required');
-  }
+    await walletService.addDeviceToWallet(walletId, deviceId, userId, signerIndex);
 
-  await walletService.addDeviceToWallet(walletId, deviceId, userId, signerIndex);
-
-  res.status(201).json({ message: 'Device added to wallet' });
-}));
+    res.status(201).json({ message: 'Device added to wallet' });
+  })
+);
 
 /**
  * POST /api/v1/wallets/:id/repair
