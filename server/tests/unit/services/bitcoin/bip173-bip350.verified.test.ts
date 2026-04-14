@@ -188,68 +188,111 @@ interface DecodedSegwit {
   program: Buffer;
 }
 
+type SegwitEncoding = 'bech32' | 'bech32m';
+type Bech32Decoded = ReturnType<typeof bech32.decode>;
+
+interface DecodedBech32Address {
+  decoded: Bech32Decoded;
+  encoding: SegwitEncoding;
+}
+
+interface SegwitDecoder {
+  encoding: SegwitEncoding;
+  decode(address: string): Bech32Decoded;
+}
+
+const SEGWIT_DECODERS: SegwitDecoder[] = [
+  { encoding: 'bech32', decode: bech32.decode },
+  { encoding: 'bech32m', decode: bech32m.decode },
+];
+
+const isMixedCase = (address: string): boolean => (
+  address !== address.toLowerCase() && address !== address.toUpperCase()
+);
+
+const getSegwitHrp = (lowerAddress: string): 'bc' | 'tb' | null => {
+  if (lowerAddress.startsWith('bc1')) {
+    return 'bc';
+  }
+
+  if (lowerAddress.startsWith('tb1')) {
+    return 'tb';
+  }
+
+  return null;
+};
+
+const decodeBech32Address = (lowerAddress: string): DecodedBech32Address | null => {
+  for (const decoder of SEGWIT_DECODERS) {
+    try {
+      return {
+        decoded: decoder.decode(lowerAddress),
+        encoding: decoder.encoding,
+      };
+    } catch {
+      // Try the next checksum variant.
+    }
+  }
+
+  return null;
+};
+
+const isValidWitnessEncoding = (version: number, encoding: SegwitEncoding): boolean => (
+  (version === 0 && encoding === 'bech32') || (version > 0 && encoding === 'bech32m')
+);
+
+const readWitnessProgram = (words: number[]): Buffer | null => {
+  try {
+    return Buffer.from(bech32.fromWords(words.slice(1)));
+  } catch {
+    // fromWords throws on invalid padding
+    return null;
+  }
+};
+
+const hasValidWitnessProgramLength = (version: number, program: Buffer): boolean => {
+  if (program.length < 2 || program.length > 40) {
+    return false;
+  }
+
+  return version !== 0 || program.length === 20 || program.length === 32;
+};
+
 /**
  * Decode a SegWit address per BIP-173/BIP-350 rules.
  * v0 must use bech32, v1+ must use bech32m.
  * Mixed case is rejected.
  */
 function decodeSegwitAddress(address: string): DecodedSegwit | null {
-  // Reject mixed case (bech32 spec requirement)
-  if (address !== address.toLowerCase() && address !== address.toUpperCase()) {
+  if (isMixedCase(address)) {
     return null;
   }
 
   const lower = address.toLowerCase();
-  const hrp = lower.startsWith('bc1')
-    ? 'bc'
-    : lower.startsWith('tb1')
-      ? 'tb'
-      : null;
-
-  if (!hrp) return null;
-
-  // Try bech32 first, then bech32m
-  let decoded;
-  let encoding: 'bech32' | 'bech32m';
-
-  try {
-    decoded = bech32.decode(lower);
-    encoding = 'bech32';
-  } catch {
-    try {
-      decoded = bech32m.decode(lower);
-      encoding = 'bech32m';
-    } catch {
-      return null;
-    }
-  }
-
-  if (decoded.prefix !== hrp) return null;
-  if (decoded.words.length < 1) return null;
-
-  const version = decoded.words[0];
-
-  // Version must be 0-16
-  if (version > 16) return null;
-
-  // Version 0 must use bech32, version 1+ must use bech32m
-  if (version === 0 && encoding !== 'bech32') return null;
-  if (version > 0 && encoding !== 'bech32m') return null;
-
-  // Convert 5-bit words to 8-bit program bytes
-  let program: Buffer;
-  try {
-    program = Buffer.from(bech32.fromWords(decoded.words.slice(1)));
-  } catch {
-    // fromWords throws on invalid padding
+  const hrp = getSegwitHrp(lower);
+  if (!hrp) {
     return null;
   }
 
-  // Program length validation: 2-40 bytes
-  if (program.length < 2 || program.length > 40) return null;
+  const bech32Address = decodeBech32Address(lower);
+  if (!bech32Address) {
+    return null;
+  }
 
-  // Version 0 program must be exactly 20 or 32 bytes
-  if (version === 0 && program.length !== 20 && program.length !== 32) return null;
+  const { decoded, encoding } = bech32Address;
+  if (decoded.prefix !== hrp || decoded.words.length < 1) {
+    return null;
+  }
+
+  const version = decoded.words[0];
+  if (version > 16 || !isValidWitnessEncoding(version, encoding)) {
+    return null;
+  }
+
+  const program = readWitnessProgram(decoded.words);
+  if (!program || !hasValidWitnessProgramLength(version, program)) {
+    return null;
+  }
 
   return { version, program };
 }
