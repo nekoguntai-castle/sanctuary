@@ -5,7 +5,9 @@
  */
 
 import { Router } from 'express';
+import { z } from 'zod';
 import { requireWalletAccess } from '../../middleware/walletAccess';
+import { validate } from '../../middleware/validate';
 import { utxoRepository } from '../../repositories';
 import { checkWalletAccess } from '../../services/accessControl';
 import { asyncHandler } from '../../errors/errorHandler';
@@ -13,6 +15,10 @@ import { NotFoundError, ForbiddenError, UnauthorizedError, ValidationError } fro
 import * as privacyService from '../../services/privacyService';
 
 const router = Router();
+
+const SpendAnalysisBodySchema = z.object({
+  utxoIds: z.array(z.unknown()),
+});
 
 /**
  * GET /api/v1/wallets/:walletId/privacy
@@ -68,13 +74,12 @@ router.get('/utxos/:utxoId/privacy', asyncHandler(async (req, res) => {
  * POST /api/v1/wallets/:walletId/privacy/spend-analysis
  * Analyze privacy impact of spending selected UTXOs together
  */
-router.post('/wallets/:walletId/privacy/spend-analysis', requireWalletAccess('view'), asyncHandler(async (req, res) => {
+router.post('/wallets/:walletId/privacy/spend-analysis', requireWalletAccess('view'), validate(
+  { body: SpendAnalysisBodySchema },
+  { message: 'utxoIds must be an array' }
+), asyncHandler(async (req, res) => {
   const walletId = req.walletId!;
   const { utxoIds } = req.body;
-
-  if (!Array.isArray(utxoIds)) {
-    throw new ValidationError('utxoIds must be an array');
-  }
 
   // Verify all UTXOs belong to this wallet
   const matchCount = await utxoRepository.countByIdsInWallet(utxoIds, walletId);

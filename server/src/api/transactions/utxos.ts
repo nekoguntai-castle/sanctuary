@@ -5,16 +5,22 @@
  */
 
 import { Router } from 'express';
+import { z } from 'zod';
 import { requireWalletAccess } from '../../middleware/walletAccess';
+import { validate } from '../../middleware/validate';
 import { systemSettingRepository, utxoRepository, transactionRepository } from '../../repositories';
 import { checkWalletAccess } from '../../services/accessControl';
 import { SystemSettingSchemas } from '../../utils/safeJson';
 import { bigIntToNumberOrZero } from '../../utils/errors';
 import { extractPagination, setTruncationHeaders } from '../../utils/pagination';
 import { asyncHandler } from '../../errors/errorHandler';
-import { ValidationError, NotFoundError, ForbiddenError } from '../../errors/ApiError';
+import { NotFoundError, ForbiddenError } from '../../errors/ApiError';
 
 const router = Router();
+
+const FreezeUtxoBodySchema = z.object({
+  frozen: z.boolean(),
+});
 
 /**
  * GET /api/v1/wallets/:walletId/utxos
@@ -77,15 +83,13 @@ router.get('/wallets/:walletId/utxos', requireWalletAccess('view'), asyncHandler
  * PATCH /api/v1/utxos/:utxoId/freeze
  * Toggle the frozen status of a UTXO (requires edit access: owner or signer)
  */
-router.patch('/utxos/:utxoId/freeze', asyncHandler(async (req, res) => {
+router.patch('/utxos/:utxoId/freeze', validate(
+  { body: FreezeUtxoBodySchema },
+  { message: 'frozen must be a boolean' }
+), asyncHandler(async (req, res) => {
   const userId = req.user!.userId;
   const { utxoId } = req.params;
   const { frozen } = req.body;
-
-  // Validate frozen parameter
-  if (typeof frozen !== 'boolean') {
-    throw new ValidationError('frozen must be a boolean');
-  }
 
   // Find the UTXO and verify user has access to the wallet
   const utxo = await utxoRepository.findByIdWithWalletAccess(utxoId, userId);
