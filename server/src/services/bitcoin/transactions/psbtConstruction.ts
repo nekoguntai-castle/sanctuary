@@ -233,6 +233,8 @@ interface InputUtxo {
   scriptPubKey: string;
 }
 
+type PsbtInputOptions = Parameters<bitcoin.Psbt['addInput']>[0];
+
 /**
  * Add PSBT inputs with BIP32 derivation info for both single-sig and multisig wallets.
  *
@@ -275,59 +277,84 @@ export function addInputsWithBip32(
     const derivationPath = addressPathMap.get(utxo.address) || '';
     inputPaths.push(derivationPath);
 
-    // Validate scriptPubKey is present for SegWit transactions
-    if (!isLegacy && (!utxo.scriptPubKey || utxo.scriptPubKey.length === 0)) {
-      throw new Error(
-        `UTXO ${utxo.txid}:${utxo.vout} is missing scriptPubKey data. ` +
-        `Please resync your wallet to fetch missing UTXO data.`
-      );
-    }
-
-    // Build base input data
-    // Legacy (P2PKH) requires nonWitnessUtxo (full previous tx)
-    // SegWit (P2WPKH, P2SH-P2WPKH, P2TR) uses witnessUtxo
-    const inputOptions: Parameters<typeof psbt.addInput>[0] = {
-      hash: utxo.txid,
-      index: utxo.vout,
-      sequence,
-    };
-
-    if (isLegacy) {
-      const rawTx = rawTxCache.get(utxo.txid);
-      if (rawTx) {
-        inputOptions.nonWitnessUtxo = rawTx;
-      } else {
-        throw new Error(`Failed to fetch raw transaction for ${utxo.txid}`);
-      }
-    } else {
-      inputOptions.witnessUtxo = {
-        script: Buffer.from(utxo.scriptPubKey, 'hex'),
-        value: BigInt(utxo.amount),
-      };
-    }
-
-    psbt.addInput(inputOptions);
-
-    // Add BIP32 derivation info
+    psbt.addInput(buildInputOptions(utxo, sequence, isLegacy, rawTxCache));
     const inputIndex = inputPaths.length - 1;
-
-    if (signingInfo.isMultisig && signingInfo.multisigKeys && signingInfo.multisigKeys.length > 0 && derivationPath) {
-      addMultisigBip32Info(psbt, inputIndex, derivationPath, signingInfo, networkObj, logPrefix);
-    } else if (signingInfo.masterFingerprint && derivationPath && accountNode) {
-      addSingleSigBip32Info(psbt, inputIndex, derivationPath, signingInfo.masterFingerprint, accountNode, logPrefix);
-    } else {
-      log.warn(`${logPrefix}BIP32 derivation skipped - missing required data`, {
-        inputIndex,
-        isMultisig: signingInfo.isMultisig,
-        hasMultisigKeys: !!signingInfo.multisigKeys && signingInfo.multisigKeys.length > 0,
-        hasMasterFingerprint: !!signingInfo.masterFingerprint,
-        hasDerivationPath: !!derivationPath,
-        hasAccountNode: !!accountNode,
-      });
-    }
+    addBip32Info(psbt, inputIndex, derivationPath, signingInfo, accountNode, networkObj, logPrefix);
   }
 
   return inputPaths;
+}
+
+function buildInputOptions(
+  utxo: InputUtxo,
+  sequence: number,
+  isLegacy: boolean,
+  rawTxCache: Map<string, Buffer>
+): PsbtInputOptions {
+  // Legacy (P2PKH) requires nonWitnessUtxo; SegWit uses witnessUtxo.
+  const inputOptions: PsbtInputOptions = {
+    hash: utxo.txid,
+    index: utxo.vout,
+    sequence,
+  };
+
+  if (isLegacy) {
+    inputOptions.nonWitnessUtxo = getLegacyRawTransaction(utxo.txid, rawTxCache);
+    return inputOptions;
+  }
+
+  validateSegwitScriptPubKey(utxo);
+  inputOptions.witnessUtxo = {
+    script: Buffer.from(utxo.scriptPubKey, 'hex'),
+    value: BigInt(utxo.amount),
+  };
+  return inputOptions;
+}
+
+function getLegacyRawTransaction(txid: string, rawTxCache: Map<string, Buffer>): Buffer {
+  const rawTx = rawTxCache.get(txid);
+  if (!rawTx) {
+    throw new Error(`Failed to fetch raw transaction for ${txid}`);
+  }
+  return rawTx;
+}
+
+function validateSegwitScriptPubKey(utxo: InputUtxo): void {
+  if (utxo.scriptPubKey && utxo.scriptPubKey.length > 0) return;
+
+  throw new Error(
+    `UTXO ${utxo.txid}:${utxo.vout} is missing scriptPubKey data. ` +
+    `Please resync your wallet to fetch missing UTXO data.`
+  );
+}
+
+function addBip32Info(
+  psbt: bitcoin.Psbt,
+  inputIndex: number,
+  derivationPath: string,
+  signingInfo: WalletSigningInfo,
+  accountNode: ReturnType<typeof bip32.fromBase58> | undefined,
+  networkObj: bitcoin.Network,
+  logPrefix: string
+): void {
+  if (signingInfo.isMultisig && signingInfo.multisigKeys && signingInfo.multisigKeys.length > 0 && derivationPath) {
+    addMultisigBip32Info(psbt, inputIndex, derivationPath, signingInfo, networkObj, logPrefix);
+    return;
+  }
+
+  if (signingInfo.masterFingerprint && derivationPath && accountNode) {
+    addSingleSigBip32Info(psbt, inputIndex, derivationPath, signingInfo.masterFingerprint, accountNode, logPrefix);
+    return;
+  }
+
+  log.warn(`${logPrefix}BIP32 derivation skipped - missing required data`, {
+    inputIndex,
+    isMultisig: signingInfo.isMultisig,
+    hasMultisigKeys: !!signingInfo.multisigKeys && signingInfo.multisigKeys.length > 0,
+    hasMasterFingerprint: !!signingInfo.masterFingerprint,
+    hasDerivationPath: !!derivationPath,
+    hasAccountNode: !!accountNode,
+  });
 }
 
 /**
