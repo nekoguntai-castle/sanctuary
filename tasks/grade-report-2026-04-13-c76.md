@@ -25,7 +25,7 @@ None. The explicit PEM-marker validation split into two groups:
 |-------------------------|-----------|---------------|
 | Correctness             | 20/20     | Tests + typecheck + lint pass; High suppression density; High completeness |
 | Reliability             | 12/15     | Typed errors + central timeouts; many middleware-guaranteed `!`, plus a few real typing gaps |
-| Maintainability         | 8/15      | lizard baseline measured at 83 warnings; jscpd measured at 2.33%; largest file 2825 LOC (test); clean architecture |
+| Maintainability         | 8/15      | lizard baseline measured at 83 warnings; jscpd measured at 2.33%; OpenAPI split complete, but largest non-generated TS/TSX file is now 2600 LOC (test); clean architecture |
 | Security                | 11/15     | 0 high CVEs; no JS eval/DOM injection; mixed input validation; new-commit secret gate clean |
 | Performance             | 4/10      | Cursor pagination + recent streaming; some in-loop N+1 risk |
 | Test Quality            | 13/15     | Thresholds 98–100% enforced; clear AAA structure; sleeps mostly intentional |
@@ -57,7 +57,7 @@ vs 2026-04-13 (`13efff91`): original validated report was **overall +7 (69→76)
 | coverage | ≥98% (enforced) | vitest thresholds in config (root 100, server 98–99, gateway 98–100); do not rely on stale coverage-summary artifacts for this grade | 6.1 → +5 |
 | security_high | 0 | `npm audit --audit-level=high` (17 total: 16 low, 1 moderate) | 4.1 → +5 |
 | secrets (effective) | 0 real in the new-commit gate | explicit PEM-marker search now finds 8 markers: 7 allowlisted fixture hits and 1 allowlisted prose hit (`tasks/grade-fix-plan.md`); `gitleaks git --log-opts -1` passed on the latest commit, while full-history/current-directory scans still surface legacy/test/ignored-file false positives | 4.2 → +2 (new-commit gate measured) |
-| largest_file_lines | 2825 | `server/tests/unit/api/openapi.test.ts` | 3.3 → 0 |
+| largest_file_lines | 2600 | `server/tests/unit/api/transactions.test.ts` after the OpenAPI contract split; next largest validated files include `server/tests/unit/api/admin.test.ts` at 2456 LOC and `server/tests/unit/services/policyEvaluationEngine.test.ts` at 2387 LOC | 3.3 → 0 |
 | lizard_warning_count | 83 | lizard 1.21.3 temporary `/tmp` install, CI command with current exclusions | 3.1 → +0 measured; enforced as no-increase baseline |
 | duplication_pct | 2.33% | `npm run quality` with temporary `/tmp` gitleaks/lizard installs and `GITLEAKS_LOG_OPTS=-1` | 3.2 → +3 |
 | deploy_artifact_count | 2 | Dockerfile + `.github/workflows/` (incl. new `quality.yml`) | 7.1 → +3 |
@@ -109,7 +109,7 @@ Every row below was checked against repository files or command output during th
 | Coverage | Valid as config thresholds: root 100%, server 98/99/99/99, gateway 100/98/100/100. Coverage-summary artifacts exist but may be stale/partial and should not be used as the grade source. | Keep threshold credit; do not cite stale coverage-summary totals. |
 | Audit | Valid: `npm audit --audit-level=high` exits clean while reporting 17 total lower-severity advisories: 16 low in the transitive `elliptic` chain and 1 moderate `follow-redirects`. | P2: run the nonbreaking `npm audit fix` path for `follow-redirects`; review the low `elliptic` chain separately because audit reports the available fix path as `npm audit fix --force` with a breaking `vite-plugin-node-polyfills` downgrade. Not a high-severity blocker. |
 | gitleaks/lizard/jscpd | Valid with correction: these tools were not installed globally, but temporary `/tmp` installs/binaries produced baselines. CI now runs all three as blocking regression gates; `.jscpd.json` exists and has been tuned to ignore local temp/report artifacts. | P1 implementation complete for regression gating; full-history gitleaks cleanup and lizard baseline reduction remain separate follow-ups. |
-| Largest file | Valid: `server/tests/unit/api/openapi.test.ts` is 2825 LOC and is the largest non-generated TS/TSX file found in the scoped search. | P1: split by OpenAPI domain. |
+| Largest file | Corrected after implementation: `server/tests/unit/api/openapi.test.ts` is now a 17-line suite registrar, with OpenAPI contract modules capped at 819 LOC. The current largest non-generated TS/TSX file found in the scoped search is `server/tests/unit/api/transactions.test.ts` at 2600 LOC; `server/tests/unit/api/admin.test.ts` is 2456 LOC. | OpenAPI P1 is complete; add a separate maintainability follow-up for remaining oversized API tests if 3.3 score movement is required. |
 | Health endpoint count | Corrected: 169 is a grep-hit count, not a route count. Real evidence includes `/health`, `/metrics`, `/api/v1/health` in `server/src/routes.ts` and `/health` in `gateway/src/index.ts`. | Keep ops credit but avoid calling 169 "routes." |
 | Suppression density | Corrected: direct source search found 25 suppressions, not 24, excluding generated Prisma files. Most have explanatory comments. | Keep as a low-risk maintainability note; lint can enforce future policy. |
 | Test-file count | Corrected: 771 TS/TSX test/spec files under `server/`, `gateway/`, and `tests/`; 785 when `e2e/` is included; 798 broader `.test`/`.spec` path matches. | Do not cite a single count without naming scope. |
@@ -129,7 +129,7 @@ Every row below was checked against repository files or command output during th
 ## Top Risks
 
 1. **CI quality signals are now blocking, but lizard is baseline-gated.** The new lint, gitleaks, lizard, and jscpd jobs are blocking in `.github/workflows/quality.yml`. `lizard` still has 83 existing warnings, so the immediate guardrail is "do not increase warning count"; reducing the baseline remains future maintainability work.
-2. **Largest file 2825 LOC** (`server/tests/unit/api/openapi.test.ts`) — test god-file, hurts analyzability; split by OpenAPI domain.
+2. **Remaining oversized API tests** — the OpenAPI god-file is split, but the current largest non-generated TS/TSX files are still tests: `server/tests/unit/api/transactions.test.ts` at 2600 LOC and `server/tests/unit/api/admin.test.ts` at 2456 LOC. This keeps criterion 3.3 at 0 until those are split or the scoring threshold is reframed.
 3. **Inconsistent input validation at mutation boundaries** — `server/src/api/ai/models.ts`, `server/src/api/ai/features.ts`, and `server/src/api/devices/accounts.ts` are now on the preferred Zod `validate({ body: ... })` pattern, but other handlers still read `req.body` and validate inline, e.g. `server/src/api/devices/sharing.ts:39-42` and `server/src/api/wallets/devices.ts:35-38`. A handler missing validation is a latent CWE-20.
 4. **Genuine typing gaps** remain in `listTransactions.ts:26` and `transactionDetail.ts:85` (`as any` and non-null assertions on repository/serialization results, distinct from middleware-guaranteed `req.user!`). The wallet-import `existingDeviceId!` assertions were fixed during the implementation pass.
 5. **Broader lint tightening remains.** The first-pass ESLint gate catches seeded violations for `console.log`, `catch (error: any)`, empty `catch`, and `@ts-ignore`; it does not yet enforce every `CLAUDE.md` rule such as raw `JSON.parse` because existing call sites need a separate baseline/fix pass.
@@ -156,9 +156,16 @@ Ordered by priority, not cost. The first two items are the ones that change the 
 - Baseline the current lizard/jscpd output, document any intentional deltas, then remove `continue-on-error: true` from each job in `quality.yml` **per-job, not as a batch**. Implemented with jscpd at 2.33%, lizard at an 83-warning no-increase baseline, and gitleaks scoped to PR/latest-commit regression scanning because full-history/current-directory scans include legacy/test/ignored-file false positives.
 - Score impact: net **0 points** in this pass. jscpd improved 3.2 from `+1 → +3`, while the measured lizard baseline moved 3.1 from optimistic unknown `+2 → +0`; Security 4.2 is now a measured regression gate, but not a full-history clean signal.
 
-### P1 — Split `server/tests/unit/api/openapi.test.ts` (2825 LOC) (~1 hr)
-- Partition by OpenAPI route domain (wallets, transactions, devices, auth, admin). Preserve every existing assertion verbatim.
-- Maintainability 3.3: `0 → +2` (**+2 points**).
+### Done — Split `server/tests/unit/api/openapi.test.ts` by OpenAPI domain
+- Replaced the 2825-line file with a 17-line suite registrar plus domain contract modules: core 417 LOC, wallet 462 LOC, admin-core 542 LOC, admin-ops 579 LOC, gateway 819 LOC, and shared helpers 113 LOC.
+- Preserved the executable test surface: before/after counts are `describe=1`, `it=42`, and `expect=584`; the OpenAPI `it` name set is unchanged.
+- Verification: `npx vitest run --config server/vitest.config.ts tests/unit/api/openapi.test.ts` passed with 42 tests.
+- Maintainability 3.3 score impact: **no numeric movement yet**. The OpenAPI god-file is gone, but `server/tests/unit/api/transactions.test.ts` is now the largest scoped TS/TSX file at 2600 LOC, so the repo-wide largest-file criterion remains at 0.
+
+### P1 — Split the remaining oversized API test files if chasing 3.3 score movement
+- Next validated targets: `server/tests/unit/api/transactions.test.ts` (2600 LOC) and `server/tests/unit/api/admin.test.ts` (2456 LOC).
+- Preserve assertions the same way as the OpenAPI split: keep one suite registrar if existing suite counts matter, move domain groups into contract modules, and verify before/after `describe`/`it`/`expect` counts.
+- Maintainability 3.3: `0 → +2` only after the scoped largest-file threshold is actually cleared or the scoring criterion is narrowed.
 
 ### P1 — Continue normalizing request-body validation on Zod (~2 hr across ~5 routes)
 - Use `server/src/api/transactions/addresses.ts` + `server/src/api/schemas/transactions.ts` as the template (`validate({ body: Schema })` middleware, cap bounds in the schema).
@@ -176,7 +183,7 @@ Ordered by priority, not cost. The first two items are the ones that change the 
 - Run the nonbreaking `npm audit fix` path for the moderate `follow-redirects <=1.15.11` advisory. No score impact at the high-severity gate, but keeps the advisory list tidy.
 - Review the low-severity `elliptic` transitive chain separately. Current `npm audit --audit-level=high` output reports a `npm audit fix --force` path that would install `vite-plugin-node-polyfills@0.2.0` as a breaking change, so do not force that under this quality-report cleanup.
 
-Combined low-effort ceiling from P1 items: **≈ 86 (B)**, assuming lizard/jscpd baselines are clean.
+Combined low-effort ceiling from the remaining P1 items: **≈ 86 (B)**, assuming lizard reduction, Zod normalization, and the remaining largest-test split are included rather than treating the OpenAPI-only split as sufficient for 3.3.
 
 ### Execution order & dependencies
 
@@ -184,7 +191,7 @@ The four P1 items can largely run in parallel, but there is one sequencing rule 
 
 1. **Install tools locally first** (`gitleaks`, `lizard`, `jscpd`). Do this before anything else — it unblocks a pre-push `scripts/quality.sh` and lets you baseline without round-tripping through CI. ~10 min.
 2. **Baseline the three existing CI jobs in a separate branch** before touching `continue-on-error`. If `lizard` or `jscpd` report pre-existing violations, triage them into either "fix now" or "document + add exclusion", then flip `continue-on-error: false` per-job only when each one is clean. Do NOT flip all three at once.
-3. **The first-pass lint gate has landed.** Use it as the guardrail for the remaining `openapi.test.ts` split and Zod sweep work.
+3. **The first-pass lint gate and OpenAPI split have landed.** Use them as the guardrails/pattern for the remaining oversized-test split and Zod sweep work.
 4. **Zod normalization sweep (P1 #4)** can now add a regression-prevention rule to `eslint.config.js` — e.g., an `no-restricted-syntax` rule flagging any function that references `req.body` without a nearby `validate({ body: … })` import, or a simpler taxonomy check that forbids destructuring `req.body` in handler function bodies. The rule should NOT try to force `validate({ body })` onto bodyless mutation handlers; it should trigger only when `req.body` is actually read.
 5. **P2 typing-gap work (item #5)** can slot in any time; it's a small, isolated patch.
 
@@ -194,7 +201,7 @@ The four P1 items can largely run in parallel, but there is one sequencing rule 
 |---|---|
 | Lint gate | Done locally: `npm run lint` exists in root + server + gateway, `.github/workflows/quality.yml` has a blocking `lint` job, and the rules fail on seeded violations for `console.log`, `catch (error: any)`, empty `catch`, and `@ts-ignore`. |
 | CI signals enforceable | Done for regression gating: `scripts/quality.sh` runs all three tools; `quality.yml`'s `gitleaks`, `lizard`, and `jscpd` jobs no longer use `continue-on-error`; gitleaks gates PR/latest commits, lizard gates no increase above 83 warnings, and jscpd gates the existing 5% threshold. |
-| openapi.test.ts split | No test file under `server/tests/unit/api/` exceeds 1000 LOC; total assertion count unchanged (verified by snapshot of `describe`/`it` counts before + after). |
+| openapi.test.ts split | Done: no OpenAPI contract/helper file exceeds 1000 LOC; `describe=1`, `it=42`, and `expect=584` are unchanged before/after; targeted OpenAPI Vitest suite passes. This does not claim all `server/tests/unit/api/` tests are under 1000 LOC, because `transactions.test.ts` and `admin.test.ts` remain oversized. |
 | Zod normalization | Every handler in `server/src/api/**` that reads `req.body` (directly or via destructure such as `const { x } = req.body`) is gated by a `validate({ body: Schema })` middleware on its route registration. Handlers with no request body (e.g. `DELETE /resource/:id`, action endpoints keyed only by URL/query params) are explicitly out of scope and do not need `validate({ body })`. The two original AI model offenders have been migrated; verify the remaining sweep by (a) reading each mutation handler that references `req.body` against its route registration, and (b) confirming remaining inline body guards have been replaced or intentionally documented. |
 
 ### Target state after P1 (projected)
@@ -218,13 +225,13 @@ Arithmetic check (rounded, no handwaving):
 - Best-case total: 20 + 12 + 15 + 15 + 4 + 13 + 10 = **89**
 - Mid-estimate (requires lizard baseline reduction + full Zod sweep + clean gitleaks regression gate): 20 + 12 + 13 + 14 + 4 + 13 + 10 = **86**
 
-**Maintainability range breakdown** — 3.1 and 3.2 are currently `unknown`, and the measured band depends on what the tools find. Only mid-case and best-case are carried into the range above; worst-case is off-plan (see the paragraph above the table):
+**Maintainability range breakdown** — 3.1 and 3.2 are now measured. Only mid-case and best-case are carried into the range above; worst-case is off-plan (see the paragraph above the table):
 
 | Criterion | Current | Worst-case measured (off-plan) | Mid-case measured | Best-case measured |
 |---|---|---|---|---|
-| 3.1 Cyclomatic complexity (lizard warnings) | +2 (unknown) | +0 (`>15`) | +3 (`1–5`) | +5 (`0`) |
-| 3.2 Duplication (jscpd %) | +1 (unknown) | 0 (`>5%`) | +3 (`<3%`) | +3 (`<3%`) |
-| 3.3 Largest file (after split) | 0 | +2 | +2 | +2 |
+| 3.1 Cyclomatic complexity (lizard warnings) | +0 (83 warnings) | +0 (`>15`) | +3 (`1–5`) | +5 (`0`) |
+| 3.2 Duplication (jscpd %) | +3 (2.33%) | +3 (`<3%`) | +3 (`<3%`) | +3 (`<3%`) |
+| 3.3 Largest file (after OpenAPI split) | 0 (`transactions.test.ts` 2600 LOC) | 0 | +2 | +2 |
 | 3.4 + 3.5 (unchanged) | +5 | +5 | +5 | +5 |
 | **Domain total** | **8** | **7** | **13** | **15** |
 
@@ -246,7 +253,7 @@ Deliberately not recommended from this evidence pass:
 
 ## Summary
 
-The repo climbed from **D (69) → C (76)** on the back of the typecheck fix (`350f67c1`); the recent performance/security commits (streamed exports, DoS cap, REPEATABLE READ snapshot) reinforce the existing Reliability score even though the static signals don't move. The biggest lever to reach B is now **reducing the measured lizard baseline and finishing the Zod validation sweep**: lint, gitleaks, lizard, and jscpd are blocking regression gates, but lizard still has 83 existing warnings and the largest test file remains 2825 LOC.
+The repo climbed from **D (69) → C (76)** on the back of the typecheck fix (`350f67c1`); the recent performance/security commits (streamed exports, DoS cap, REPEATABLE READ snapshot) reinforce the existing Reliability score even though the static signals don't move. The biggest lever to reach B is now **reducing the measured lizard baseline, finishing the Zod validation sweep, and splitting the remaining oversized API tests**: lint, gitleaks, lizard, and jscpd are blocking regression gates, but lizard still has 83 existing warnings and the largest test file remains 2600 LOC after the OpenAPI split.
 
 ---
 
@@ -271,7 +278,7 @@ Validation was done against repository files, not inferred from the report text.
 |---|---|---|---|
 | Done | Add a repo-owned lint gate: root `eslint.config.*`, `lint` npm script, and a CI job that runs it. | The original validation found no config/script; the implementation pass added `eslint.config.js`, root/server/gateway `lint` scripts, and a blocking `.github/workflows/quality.yml` lint job. | First-pass rules cover production-source `console.log`, `catch (error: any)`, empty `catch`, and `@ts-ignore`; broader rules remain future tightening. |
 | P1 | Keep the gitleaks/lizard/jscpd recommendation, but word it as “make the CI signals enforceable and available locally,” not “install them in CI.” | `.github/workflows/quality.yml` already installs/runs `lizard`, runs `gitleaks/gitleaks-action`, and runs `npx --yes jscpd@4 .`; each job is `continue-on-error: true`. Local `command -v` checks for all three tools returned not found. `.jscpd.json` already exists with threshold 5 and exclusions. | Next step should be baseline/tune, add local scripts/docs, then remove `continue-on-error` once noise is understood. |
-| P1 | Split `server/tests/unit/api/openapi.test.ts` by OpenAPI route/domain while preserving current assertions. | `server/tests/unit/api/openapi.test.ts` is 2825 LOC. Excluding generated/dist/node_modules files, it is the largest TS/TSX file found; the next largest files are also tests. | This is maintainability work, not a correctness blocker. |
+| Done | Split `server/tests/unit/api/openapi.test.ts` by OpenAPI route/domain while preserving current assertions. | `server/tests/unit/api/openapi.test.ts` was 2825 LOC and is now a 17-line registrar plus OpenAPI contract modules capped at 819 LOC. `describe=1`, `it=42`, and `expect=584` are unchanged; targeted OpenAPI Vitest passed. | This closes the OpenAPI god-file but not the broader largest-file criterion. The next validated oversized API tests are `transactions.test.ts` and `admin.test.ts`. |
 | P1 | Continue normalizing request-body validation onto Zod for mutation endpoints, starting with small inline checks. | `server/src/api/transactions/addresses.ts` uses `validate({ body: GenerateAddressesBodySchema })`; `server/src/api/schemas/transactions.ts` caps `count` at 1000. `server/src/api/ai/models.ts`, `server/src/api/ai/features.ts`, and `server/src/api/devices/accounts.ts` have now been migrated; remaining examples include `server/src/api/devices/sharing.ts` and `server/src/api/wallets/devices.ts`. | Use the address-generation schema pattern as the template. |
 | P2 | Reword the “crash-prone paths” finding before using it as a work item. | `rg` shows many `req.user!` and `req.walletId!` non-null assertions across authenticated/wallet-access routes, so “a few non-null assertions in prod” is not literally true. The specific `as any` hotspots in `server/src/api/transactions/walletTransactions/listTransactions.ts` and `server/src/api/transactions/transactionDetail.ts` are real. | Separate middleware-guaranteed request augmentations from unresolved repository/serialization typing gaps. |
 | P2 | Keep the moderate `follow-redirects` audit item, but do not call it a high-severity security blocker. | `npm audit --audit-level=high` exits successfully; audit output still lists `follow-redirects <=1.15.11` as moderate and fixable with `npm audit fix`. | Treat as routine dependency maintenance unless a higher-severity advisory appears. |
@@ -353,7 +360,7 @@ Not completed in this pass:
 
 - The CI `continue-on-error: true` flags were not flipped because the local `gitleaks` and `lizard` baselines cannot be run until those tools are installed. This was completed in the follow-up CI-signal enforcement pass below.
 - The full Zod normalization sweep remains pending; the next verified inline examples are `server/src/api/devices/sharing.ts` and `server/src/api/wallets/devices.ts`.
-- The `openapi.test.ts` split remains pending.
+- The OpenAPI split is complete; remaining largest-file work is now `server/tests/unit/api/transactions.test.ts` and `server/tests/unit/api/admin.test.ts`.
 
 ### CI-signal enforcement pass — 2026-04-13
 
@@ -372,3 +379,18 @@ Verification after CI-signal enforcement:
 - `PYTHONPATH=/tmp/sanctuary-quality/python python3 -m lizard ...` — failed as expected before baselining; measured 83 warnings.
 - `/tmp/sanctuary-quality/gitleaks git . --config .gitleaks.toml --redact --no-banner --log-opts -1` — passed: 1 commit scanned, no leaks found.
 - `/tmp/sanctuary-quality/gitleaks detect --source . --config .gitleaks.toml --redact --no-banner` — failed with 36 full-history findings; kept out of the strict gate because they are legacy/test-fixture history, not new leaks in the latest commit.
+
+### OpenAPI contract split pass — 2026-04-13
+
+Implemented the next maintainability recommendation:
+
+- Split `server/tests/unit/api/openapi.test.ts` from 2825 LOC into a 17-line suite registrar plus domain contract modules and shared helpers.
+- New OpenAPI file sizes: `openapi.helpers.ts` 113 LOC, `openapi.core.contracts.ts` 417 LOC, `openapi.wallet.contracts.ts` 462 LOC, `openapi.admin-core.contracts.ts` 542 LOC, `openapi.admin-ops.contracts.ts` 579 LOC, and `openapi.gateway.contracts.ts` 819 LOC.
+- Preserved the test surface: before/after counts are `describe=1`, `it=42`, and `expect=584`; the OpenAPI `it` name set is unchanged.
+- Corrected the acceptance wording: the OpenAPI files are now under 1000 LOC, but this does not make every `server/tests/unit/api/` test file under 1000 LOC. Validated next largest files are `server/tests/unit/api/transactions.test.ts` at 2600 LOC and `server/tests/unit/api/admin.test.ts` at 2456 LOC.
+
+Verification after OpenAPI split:
+
+- `git diff --check` — passed.
+- `npx vitest run --config server/vitest.config.ts tests/unit/api/openapi.test.ts` — passed: 1 file, 42 tests.
+- Top non-generated TS/TSX file scan — current largest is `server/tests/unit/api/transactions.test.ts` at 2600 LOC, followed by `server/tests/unit/api/admin.test.ts` at 2456 LOC and `server/tests/unit/services/policyEvaluationEngine.test.ts` at 2387 LOC.
