@@ -200,6 +200,37 @@ describe('Draft Routes', () => {
     expect(response.body).toEqual({ id: 'draft-created', serialized: true });
   });
 
+  it('rejects invalid create draft field types before calling the service', async () => {
+    const response = await request(app)
+      .post('/api/v1/wallets/wallet-1/drafts')
+      .send({ recipient: 42, amount: 1 });
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe(ErrorCodes.VALIDATION_ERROR);
+    expect(mockCreateDraft).not.toHaveBeenCalled();
+  });
+
+  it('accepts string-encoded numeric draft values', async () => {
+    const payload = {
+      recipient: 'tb1qrecipient',
+      amount: '10000',
+      feeRate: '5',
+      psbtBase64: 'cHNi',
+      fee: '210',
+      totalInput: '10210',
+      totalOutput: '10000',
+      changeAmount: '0',
+      effectiveAmount: '10000',
+    };
+
+    const response = await request(app)
+      .post('/api/v1/wallets/wallet-1/drafts')
+      .send(payload);
+
+    expect(response.status).toBe(201);
+    expect(mockCreateDraft).toHaveBeenCalledWith('wallet-1', 'user-1', payload);
+  });
+
   it('returns ApiError responses for create draft', async () => {
     mockCreateDraft.mockRejectedValue(
       new ApiError('Viewers cannot create draft transactions', 403, ErrorCodes.FORBIDDEN)
@@ -243,6 +274,16 @@ describe('Draft Routes', () => {
     expect(response.status).toBe(200);
     expect(mockUpdateDraft).toHaveBeenCalledWith('wallet-1', 'draft-1', patch);
     expect(response.body).toEqual({ id: 'draft-updated', serialized: true });
+  });
+
+  it('rejects invalid update draft field types before calling the service', async () => {
+    const response = await request(app)
+      .patch('/api/v1/wallets/wallet-1/drafts/draft-1')
+      .send({ signedDeviceId: 123 });
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe(ErrorCodes.VALIDATION_ERROR);
+    expect(mockUpdateDraft).not.toHaveBeenCalled();
   });
 
   it('returns ApiError responses for update draft', async () => {
