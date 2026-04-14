@@ -29,6 +29,21 @@ import { vaultPolicyService } from './vaultPolicyService';
 
 const log = createLogger('VAULT_POLICY:SVC_ENGINE');
 
+type EvaluationInput = PolicyEvaluationInput & { preview?: boolean };
+type TriggeredPolicy = PolicyEvaluationResult['triggered'][number];
+type TriggerAction = TriggeredPolicy['action'];
+
+interface EvaluationState {
+  walletId: string;
+  userId: string;
+  recipient: string;
+  amount: bigint;
+  outputs?: PolicyEvaluationInput['outputs'];
+  triggered: PolicyEvaluationResult['triggered'];
+  limits: NonNullable<PolicyEvaluationResult['limits']>;
+  blocked: boolean;
+}
+
 /**
  * Evaluate all active policies for a transaction.
  * Returns the combined result of all policy evaluations.
@@ -36,179 +51,271 @@ const log = createLogger('VAULT_POLICY:SVC_ENGINE');
  * @param input.preview - If true, skip event logging (for /evaluate endpoint)
  */
 export async function evaluatePolicies(
-  input: PolicyEvaluationInput & { preview?: boolean }
+  input: EvaluationInput
 ): Promise<PolicyEvaluationResult> {
-  const { walletId, userId, recipient, amount, preview } = input;
+  const state = createEvaluationState(input);
 
   // Get the wallet's group for inheritance
-  const wallet = await walletRepository.findById(walletId);
+  const wallet = await walletRepository.findById(input.walletId);
   const groupId = wallet?.groupId ?? null;
 
   // Fetch all active policies (system + group + wallet)
-  const policies = await vaultPolicyService.getActivePoliciesForWallet(walletId, groupId);
+  const policies = await vaultPolicyService.getActivePoliciesForWallet(input.walletId, groupId);
 
   if (policies.length === 0) {
     return { allowed: true, triggered: [] };
   }
 
-  const triggered: PolicyEvaluationResult['triggered'] = [];
-  const limits: PolicyEvaluationResult['limits'] = {};
-  let blocked = false;
-
   // Evaluate each policy in priority order
   for (const policy of policies) {
-    const config = policy.config as Record<string, unknown>;
-    const isMonitor = policy.enforcement === 'monitor';
-
-    try {
-      switch (policy.type) {
-        case 'spending_limit': {
-          const result = await evaluateSpendingLimit(
-            policy,
-            config as unknown as SpendingLimitConfig,
-            walletId,
-            userId,
-            amount
-          );
-          if (result.triggered) {
-            triggered.push({
-              policyId: policy.id,
-              policyName: policy.name,
-              type: 'spending_limit',
-              action: isMonitor ? 'monitored' : 'blocked',
-              reason: result.reason,
-            });
-            if (!isMonitor) blocked = true;
-          }
-          // Always populate limit info for UI
-          if (result.limits) {
-            Object.assign(limits, result.limits);
-          }
-          break;
-        }
-
-        case 'approval_required': {
-          const result = evaluateApprovalRequired(
-            config as unknown as ApprovalRequiredConfig,
-            amount
-          );
-          if (result.triggered) {
-            triggered.push({
-              policyId: policy.id,
-              policyName: policy.name,
-              type: 'approval_required',
-              action: isMonitor ? 'monitored' : 'approval_required',
-              reason: result.reason,
-            });
-            // approval_required doesn't block — it requires a workflow
-          }
-          break;
-        }
-
-        case 'address_control': {
-          const result = await evaluateAddressControl(
-            policy,
-            config as unknown as AddressControlConfig,
-            recipient,
-            input.outputs
-          );
-          if (result.triggered) {
-            triggered.push({
-              policyId: policy.id,
-              policyName: policy.name,
-              type: 'address_control',
-              action: isMonitor ? 'monitored' : 'blocked',
-              reason: result.reason,
-            });
-            if (!isMonitor) blocked = true;
-          }
-          break;
-        }
-
-        case 'velocity': {
-          const result = await evaluateVelocity(
-            policy,
-            config as unknown as VelocityConfig,
-            walletId,
-            userId
-          );
-          if (result.triggered) {
-            triggered.push({
-              policyId: policy.id,
-              policyName: policy.name,
-              type: 'velocity',
-              action: isMonitor ? 'monitored' : 'blocked',
-              reason: result.reason,
-            });
-            if (!isMonitor) blocked = true;
-          }
-          break;
-        }
-
-        case 'time_delay': {
-          // Time delay is evaluated post-approval, not pre-create.
-          // It's included in the triggered list so the UI knows about it.
-          const tdConfig = config as unknown as { trigger: { always?: boolean; amountAbove?: number } };
-          if (tdConfig.trigger?.always || (tdConfig.trigger?.amountAbove && amount > BigInt(tdConfig.trigger.amountAbove))) {
-            triggered.push({
-              policyId: policy.id,
-              policyName: policy.name,
-              type: 'time_delay',
-              action: isMonitor ? 'monitored' : 'approval_required',
-              reason: 'Transaction will enter a cooling period after approval',
-            });
-          }
-          break;
-        }
-      }
-    } catch (error) {
-      log.error('Policy evaluation error', {
-        policyId: policy.id,
-        policyType: policy.type,
-        error: getErrorMessage(error),
-      });
-
-      // Fail-CLOSED for enforce-mode policies: if we can't evaluate, block.
-      // Fail-open for monitor-mode policies: log and continue.
-      if (!isMonitor) {
-        blocked = true;
-        triggered.push({
-          policyId: policy.id,
-          policyName: policy.name,
-          type: policy.type as PolicyType,
-          action: 'blocked',
-          reason: 'Policy could not be evaluated; transaction blocked as a precaution',
-        });
-      }
-    }
+    await evaluatePolicySafely(policy, state);
   }
 
   // Log policy events (skip for preview evaluations to avoid side effects)
-  if (!preview) {
-    for (const t of triggered) {
-      policyRepository.createPolicyEvent({
-        policyId: t.policyId,
-        walletId,
-        userId,
-        eventType: t.action === 'monitored' ? 'evaluated' : 'triggered',
-        details: {
-          action: t.action,
-          reason: t.reason,
-          amount: amount.toString(),
-          recipient,
-        },
-      }).catch(err => {
-        log.warn('Failed to log policy event', { error: err instanceof Error ? err.message : String(err) });
-      });
-    }
+  if (!input.preview) {
+    logPolicyEvents(state);
   }
 
-  return {
-    allowed: !blocked,
-    triggered,
-    limits: Object.keys(limits).length > 0 ? limits : undefined,
-  };
+  return createEvaluationResult(state);
 }
+
+const createEvaluationState = (input: EvaluationInput): EvaluationState => ({
+  walletId: input.walletId,
+  userId: input.userId,
+  recipient: input.recipient,
+  amount: input.amount,
+  outputs: input.outputs,
+  triggered: [],
+  limits: {},
+  blocked: false,
+});
+
+const evaluatePolicySafely = async (
+  policy: VaultPolicy,
+  state: EvaluationState
+): Promise<void> => {
+  try {
+    await evaluatePolicy(policy, state);
+  } catch (error) {
+    handlePolicyEvaluationError(policy, state, error);
+  }
+};
+
+const evaluatePolicy = async (
+  policy: VaultPolicy,
+  state: EvaluationState
+): Promise<void> => {
+  const config = policy.config as Record<string, unknown>;
+
+  switch (policy.type) {
+    case 'spending_limit':
+      await applySpendingLimitPolicy(policy, config, state);
+      break;
+    case 'approval_required':
+      applyApprovalRequiredPolicy(policy, config, state);
+      break;
+    case 'address_control':
+      await applyAddressControlPolicy(policy, config, state);
+      break;
+    case 'velocity':
+      await applyVelocityPolicy(policy, config, state);
+      break;
+    case 'time_delay':
+      applyTimeDelayPolicy(policy, config, state);
+      break;
+  }
+};
+
+const applySpendingLimitPolicy = async (
+  policy: VaultPolicy,
+  config: Record<string, unknown>,
+  state: EvaluationState
+): Promise<void> => {
+  const result = await evaluateSpendingLimit(
+    policy,
+    config as unknown as SpendingLimitConfig,
+    state.walletId,
+    state.userId,
+    state.amount
+  );
+
+  if (result.triggered) {
+    addTriggeredPolicy(state, policy, 'spending_limit', getBlockingAction(policy), result.reason);
+    markBlockedWhenEnforced(state, policy);
+  }
+
+  // Always populate limit info for UI
+  if (result.limits) {
+    Object.assign(state.limits, result.limits);
+  }
+};
+
+const applyApprovalRequiredPolicy = (
+  policy: VaultPolicy,
+  config: Record<string, unknown>,
+  state: EvaluationState
+): void => {
+  const result = evaluateApprovalRequired(
+    config as unknown as ApprovalRequiredConfig,
+    state.amount
+  );
+
+  if (result.triggered) {
+    addTriggeredPolicy(
+      state,
+      policy,
+      'approval_required',
+      policy.enforcement === 'monitor' ? 'monitored' : 'approval_required',
+      result.reason
+    );
+    // approval_required doesn't block — it requires a workflow
+  }
+};
+
+const applyAddressControlPolicy = async (
+  policy: VaultPolicy,
+  config: Record<string, unknown>,
+  state: EvaluationState
+): Promise<void> => {
+  const result = await evaluateAddressControl(
+    policy,
+    config as unknown as AddressControlConfig,
+    state.recipient,
+    state.outputs
+  );
+
+  if (result.triggered) {
+    addTriggeredPolicy(state, policy, 'address_control', getBlockingAction(policy), result.reason);
+    markBlockedWhenEnforced(state, policy);
+  }
+};
+
+const applyVelocityPolicy = async (
+  policy: VaultPolicy,
+  config: Record<string, unknown>,
+  state: EvaluationState
+): Promise<void> => {
+  const result = await evaluateVelocity(
+    policy,
+    config as unknown as VelocityConfig,
+    state.walletId,
+    state.userId
+  );
+
+  if (result.triggered) {
+    addTriggeredPolicy(state, policy, 'velocity', getBlockingAction(policy), result.reason);
+    markBlockedWhenEnforced(state, policy);
+  }
+};
+
+const applyTimeDelayPolicy = (
+  policy: VaultPolicy,
+  config: Record<string, unknown>,
+  state: EvaluationState
+): void => {
+  // Time delay is evaluated post-approval, not pre-create.
+  // It's included in the triggered list so the UI knows about it.
+  const tdConfig = config as unknown as { trigger: { always?: boolean; amountAbove?: number } };
+
+  if (shouldTriggerTimeDelay(tdConfig, state.amount)) {
+    addTriggeredPolicy(
+      state,
+      policy,
+      'time_delay',
+      policy.enforcement === 'monitor' ? 'monitored' : 'approval_required',
+      'Transaction will enter a cooling period after approval'
+    );
+  }
+};
+
+const shouldTriggerTimeDelay = (
+  config: { trigger?: { always?: boolean; amountAbove?: number } },
+  amount: bigint
+): boolean =>
+  Boolean(
+    config.trigger?.always ||
+    (config.trigger?.amountAbove && amount > BigInt(config.trigger.amountAbove))
+  );
+
+const getBlockingAction = (policy: VaultPolicy): TriggerAction =>
+  policy.enforcement === 'monitor' ? 'monitored' : 'blocked';
+
+const markBlockedWhenEnforced = (
+  state: EvaluationState,
+  policy: VaultPolicy
+): void => {
+  if (policy.enforcement !== 'monitor') {
+    state.blocked = true;
+  }
+};
+
+const addTriggeredPolicy = (
+  state: EvaluationState,
+  policy: VaultPolicy,
+  type: PolicyType,
+  action: TriggerAction,
+  reason: string
+): void => {
+  state.triggered.push({
+    policyId: policy.id,
+    policyName: policy.name,
+    type,
+    action,
+    reason,
+  });
+};
+
+const handlePolicyEvaluationError = (
+  policy: VaultPolicy,
+  state: EvaluationState,
+  error: unknown
+): void => {
+  log.error('Policy evaluation error', {
+    policyId: policy.id,
+    policyType: policy.type,
+    error: getErrorMessage(error),
+  });
+
+  // Fail-CLOSED for enforce-mode policies: if we can't evaluate, block.
+  // Fail-open for monitor-mode policies: log and continue.
+  if (policy.enforcement !== 'monitor') {
+    state.blocked = true;
+    addTriggeredPolicy(
+      state,
+      policy,
+      policy.type as PolicyType,
+      'blocked',
+      'Policy could not be evaluated; transaction blocked as a precaution'
+    );
+  }
+};
+
+const logPolicyEvents = (state: EvaluationState): void => {
+  for (const triggered of state.triggered) {
+    policyRepository.createPolicyEvent({
+      policyId: triggered.policyId,
+      walletId: state.walletId,
+      userId: state.userId,
+      eventType: triggered.action === 'monitored' ? 'evaluated' : 'triggered',
+      details: {
+        action: triggered.action,
+        reason: triggered.reason,
+        amount: state.amount.toString(),
+        recipient: state.recipient,
+      },
+    }).catch(err => {
+      log.warn('Failed to log policy event', { error: err instanceof Error ? err.message : String(err) });
+    });
+  }
+};
+
+const createEvaluationResult = (
+  state: EvaluationState
+): PolicyEvaluationResult => ({
+  allowed: !state.blocked,
+  triggered: state.triggered,
+  limits: Object.keys(state.limits).length > 0 ? state.limits : undefined,
+});
 
 /**
  * Record usage after a successful broadcast.
