@@ -20,78 +20,120 @@ export const PUSH_EVENT_TYPES: BackendEventType[] = [
   'draft_approved',
 ];
 
+type Notification = push.PushNotification | null;
+
+const getWalletName = (event: BackendEvent): string => event.walletName || 'Wallet';
+
+const toTransactionNotificationType = (
+  type: NonNullable<BackendEvent['data']['type']>
+): 'received' | 'sent' => (type === 'consolidation' ? 'sent' : type);
+
+const formatTransactionEvent = (event: BackendEvent): Notification => {
+  const { data } = event;
+  if (!data.type || data.amount == null || !data.txid) return null;
+
+  return push.formatTransactionNotification(
+    toTransactionNotificationType(data.type),
+    getWalletName(event),
+    data.amount,
+    data.txid
+  );
+};
+
+const formatConfirmationEvent = (event: BackendEvent): Notification => {
+  const { data } = event;
+  if (data.confirmations !== 1 || !data.txid) return null;
+
+  return push.formatTransactionNotification(
+    'confirmed',
+    getWalletName(event),
+    data.amount || 0,
+    data.txid
+  );
+};
+
+const formatBroadcastSuccessEvent = (event: BackendEvent): Notification => {
+  if (!event.data.txid) return null;
+
+  return push.formatBroadcastNotification(
+    true,
+    getWalletName(event),
+    event.data.txid
+  );
+};
+
+const formatBroadcastFailedEvent = (event: BackendEvent): Notification =>
+  push.formatBroadcastNotification(
+    false,
+    getWalletName(event),
+    event.data.txid || '',
+    event.data.error
+  );
+
+const formatPsbtSigningEvent = (event: BackendEvent): Notification => {
+  const { data } = event;
+  if (!data.draftId || data.amount == null) return null;
+
+  return push.formatPsbtSigningNotification(
+    getWalletName(event),
+    data.draftId,
+    data.creatorName || 'Someone',
+    data.amount,
+    data.requiredSignatures ?? 2,
+    data.currentSignatures ?? 1
+  );
+};
+
+const formatDraftCreatedEvent = (event: BackendEvent): Notification => {
+  const { data } = event;
+  if (!data.draftId || data.amount == null) return null;
+
+  return push.formatDraftCreatedNotification(
+    getWalletName(event),
+    data.draftId,
+    data.creatorName || 'Someone',
+    data.amount
+  );
+};
+
+const formatDraftApprovedEvent = (event: BackendEvent): Notification => {
+  const { data } = event;
+  if (!data.draftId) return null;
+
+  return push.formatDraftApprovedNotification(
+    getWalletName(event),
+    data.draftId,
+    data.signerName || 'Someone',
+    data.currentSignatures ?? 0,
+    data.requiredSignatures ?? 0
+  );
+};
+
 /**
  * Format a push notification based on event type
  */
 export function formatNotificationForEvent(event: BackendEvent): push.PushNotification | null {
-  const walletName = event.walletName || 'Wallet';
-
   switch (event.type) {
     case 'transaction':
-      if (!event.data.type || event.data.amount == null || !event.data.txid) return null;
-      const txType = event.data.type === 'consolidation' ? 'sent' : event.data.type;
-      return push.formatTransactionNotification(
-        txType as 'received' | 'sent',
-        walletName,
-        event.data.amount,
-        event.data.txid
-      );
+      return formatTransactionEvent(event);
 
     case 'confirmation':
-      // Only notify on first confirmation
-      if (event.data.confirmations !== 1 || !event.data.txid) return null;
-      return push.formatTransactionNotification(
-        'confirmed',
-        walletName,
-        event.data.amount || 0,
-        event.data.txid
-      );
+      return formatConfirmationEvent(event);
 
     case 'broadcast_success':
-      if (!event.data.txid) return null;
-      return push.formatBroadcastNotification(
-        true,
-        walletName,
-        event.data.txid
-      );
+      return formatBroadcastSuccessEvent(event);
 
     case 'broadcast_failed':
-      return push.formatBroadcastNotification(
-        false,
-        walletName,
-        event.data.txid || '',
-        event.data.error
-      );
+      return formatBroadcastFailedEvent(event);
 
     case 'psbt_signing_required':
-      if (!event.data.draftId || event.data.amount == null) return null;
-      return push.formatPsbtSigningNotification(
-        walletName,
-        event.data.draftId,
-        event.data.creatorName || 'Someone',
-        event.data.amount,
-        event.data.requiredSignatures ?? 2,
-        event.data.currentSignatures ?? 1
-      );
+      return formatPsbtSigningEvent(event);
 
     case 'draft_created':
-      if (!event.data.draftId || event.data.amount == null) return null;
-      return push.formatDraftCreatedNotification(
-        walletName,
-        event.data.draftId,
-        event.data.creatorName || 'Someone',
-        event.data.amount
-      );
+      return formatDraftCreatedEvent(event);
 
     case 'draft_approved':
-      if (!event.data.draftId) return null;
-      return push.formatDraftApprovedNotification(
-        walletName,
-        event.data.draftId,
-        event.data.signerName || 'Someone',
-        event.data.currentSignatures ?? 0,
-        event.data.requiredSignatures ?? 0
-      );
+      return formatDraftApprovedEvent(event);
 
     default:
       return null;
