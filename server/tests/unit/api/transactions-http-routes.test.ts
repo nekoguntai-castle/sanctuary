@@ -797,6 +797,45 @@ describe('Transaction HTTP Routes', () => {
     expect(lines[0]).toContain('Transaction ID');
   });
 
+  it('wraps the streamed export in a REPEATABLE READ transaction for snapshot safety', async () => {
+    // Snapshot isolation is what makes the paginated read safe under
+    // concurrent wallet sync writes: without it, skip-based pagination
+    // between pages would shift offsets and either duplicate or miss
+    // rows. Unit tests can't verify PostgreSQL MVCC behavior, but they
+    // can assert the handler configures the transaction correctly.
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({ name: 'Snapshot Wallet' });
+    mockPrismaClient.transaction.findMany.mockResolvedValue([
+      {
+        txid: '1'.repeat(64),
+        type: 'received',
+        amount: BigInt(1000),
+        balanceAfter: BigInt(1000),
+        fee: null,
+        confirmations: 3,
+        label: null,
+        memo: null,
+        counterpartyAddress: null,
+        blockHeight: BigInt(850000),
+        blockTime: new Date('2025-03-01T00:00:00.000Z'),
+        createdAt: new Date('2025-03-01T00:00:00.000Z'),
+      },
+    ] as any);
+
+    const response = await request(app)
+      .get(`/api/v1/wallets/${walletId}/transactions/export`)
+      .query({ format: 'json' });
+
+    expect(response.status).toBe(200);
+    expect(mockPrismaClient.$transaction).toHaveBeenCalledTimes(1);
+    // First arg is the callback; second arg carries the isolation + timeout config.
+    const [, txOptions] = mockPrismaClient.$transaction.mock.calls[0];
+    expect(txOptions).toBeDefined();
+    expect(txOptions.isolationLevel).toBe('RepeatableRead');
+    expect(typeof txOptions.timeout).toBe('number');
+    expect(txOptions.timeout).toBeGreaterThanOrEqual(60_000);
+    expect(typeof txOptions.maxWait).toBe('number');
+  });
+
   it('recalculates wallet balances and returns final amount', async () => {
     mockPrismaClient.transaction.findFirst.mockResolvedValue({
       balanceAfter: BigInt(123456),

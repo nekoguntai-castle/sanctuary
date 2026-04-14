@@ -10,6 +10,8 @@ import { once } from 'node:events';
 import { requireWalletAccess } from '../../../middleware/walletAccess';
 import { walletRepository, transactionRepository } from '../../../repositories';
 import type { ExportTransactionRow } from '../../../repositories/transactionRepository';
+import prisma from '../../../models/prisma';
+import { Prisma } from '../../../generated/prisma/client';
 import { asyncHandler } from '../../../errors/errorHandler';
 import { createLogger } from '../../../utils/logger';
 import { getErrorMessage } from '../../../utils/errors';
@@ -23,6 +25,20 @@ const log = createLogger('TX:EXPORT');
  * result set is fetched.
  */
 const EXPORT_PAGE_SIZE = 500;
+
+/**
+ * Upper bound on total export duration. Large wallets (>100k tx) stream
+ * in chunks over a single interactive transaction, so we need to leave
+ * enough headroom for the slowest path: page read + serialize + wire
+ * write × N, plus client-side backpressure. Five minutes is generous
+ * relative to observed p99 and well under the default idle timeout.
+ */
+const EXPORT_TRANSACTION_TIMEOUT_MS = 5 * 60 * 1000;
+
+/**
+ * How long to wait for a free connection from the pool before giving up.
+ */
+const EXPORT_TRANSACTION_MAX_WAIT_MS = 10 * 1000;
 
 interface ExportRow {
   date: string;
@@ -137,56 +153,102 @@ export function createExportRouter(): Router {
     // because nothing has been written to the response yet.
     const wallet = await walletRepository.findByIdWithSelect(walletId, { name: true });
 
-    // Fetch the first page eagerly so that a DB error on the very first
-    // call still results in a clean 500/INTERNAL_ERROR response (preserves
-    // the pre-streaming error contract).
-    let page = await transactionRepository.findExportPage(walletId, activeFilter, 0, EXPORT_PAGE_SIZE);
-
     const walletName = wallet?.name?.replace(/[^a-zA-Z0-9]/g, '_') || 'wallet';
     const timestamp = new Date().toISOString().slice(0, 10);
     const isJson = format === 'json';
 
-    res.setHeader('Content-Type', isJson ? 'application/json' : 'text/csv');
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="${walletName}_transactions_${timestamp}.${isJson ? 'json' : 'csv'}"`,
-    );
+    // Track whether headers have been flushed. Before headers, errors
+    // propagate to the errorHandler (→ 500/INTERNAL_ERROR). After headers,
+    // the response is committed to 200 and we can only destroy the socket.
+    let headersSent = false;
 
-    // Committed to a 200 response from here on. Any error must end the
-    // stream (by destroying the socket) rather than trying to change
-    // status — the client has already seen headers.
     try {
-      if (isJson) {
-        await writeChunk(res, '[');
-        let isFirst = true;
-        let offset = 0;
-        while (page.length > 0) {
-          for (const tx of page) {
-            if (req.destroyed) return;
-            const prefix = isFirst ? '' : ',';
-            await writeChunk(res, prefix + JSON.stringify(toExportRow(tx)));
-            isFirst = false;
+      // Wrap the entire paged read in a single interactive transaction
+      // with REPEATABLE READ isolation. PostgreSQL MVCC gives this
+      // transaction a consistent snapshot at the first statement, so
+      // concurrent wallet sync inserts/deletes between page reads cannot
+      // shift the `skip` offset and cause duplicated or missed rows.
+      // Without this, skip-based pagination is not snapshot-safe under
+      // concurrent writes.
+      await prisma.$transaction(
+        async (tx) => {
+          // First page is fetched inside the transaction. A DB error here
+          // propagates out of $transaction and is caught by the outer
+          // try/catch — headersSent is still false so the errorHandler
+          // receives it cleanly.
+          let page = await transactionRepository.findExportPage(
+            walletId,
+            activeFilter,
+            0,
+            EXPORT_PAGE_SIZE,
+            tx,
+          );
+
+          res.setHeader('Content-Type', isJson ? 'application/json' : 'text/csv');
+          res.setHeader(
+            'Content-Disposition',
+            `attachment; filename="${walletName}_transactions_${timestamp}.${isJson ? 'json' : 'csv'}"`,
+          );
+          headersSent = true;
+
+          if (isJson) {
+            await writeChunk(res, '[');
+            let isFirst = true;
+            let offset = 0;
+            while (page.length > 0) {
+              for (const row of page) {
+                if (req.destroyed) return;
+                const prefix = isFirst ? '' : ',';
+                await writeChunk(res, prefix + JSON.stringify(toExportRow(row)));
+                isFirst = false;
+              }
+              if (page.length < EXPORT_PAGE_SIZE) break;
+              offset += page.length;
+              page = await transactionRepository.findExportPage(
+                walletId,
+                activeFilter,
+                offset,
+                EXPORT_PAGE_SIZE,
+                tx,
+              );
+            }
+            await writeChunk(res, ']');
+          } else {
+            await writeChunk(res, CSV_HEADERS.join(',') + '\n');
+            let offset = 0;
+            while (page.length > 0) {
+              for (const row of page) {
+                if (req.destroyed) return;
+                await writeChunk(res, toCsvRow(toExportRow(row)) + '\n');
+              }
+              if (page.length < EXPORT_PAGE_SIZE) break;
+              offset += page.length;
+              page = await transactionRepository.findExportPage(
+                walletId,
+                activeFilter,
+                offset,
+                EXPORT_PAGE_SIZE,
+                tx,
+              );
+            }
           }
-          if (page.length < EXPORT_PAGE_SIZE) break;
-          offset += page.length;
-          page = await transactionRepository.findExportPage(walletId, activeFilter, offset, EXPORT_PAGE_SIZE);
-        }
-        await writeChunk(res, ']');
-      } else {
-        await writeChunk(res, CSV_HEADERS.join(',') + '\n');
-        let offset = 0;
-        while (page.length > 0) {
-          for (const tx of page) {
-            if (req.destroyed) return;
-            await writeChunk(res, toCsvRow(toExportRow(tx)) + '\n');
-          }
-          if (page.length < EXPORT_PAGE_SIZE) break;
-          offset += page.length;
-          page = await transactionRepository.findExportPage(walletId, activeFilter, offset, EXPORT_PAGE_SIZE);
-        }
-      }
-      res.end();
+          res.end();
+        },
+        {
+          isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+          maxWait: EXPORT_TRANSACTION_MAX_WAIT_MS,
+          timeout: EXPORT_TRANSACTION_TIMEOUT_MS,
+        },
+      );
     } catch (err) {
+      if (!headersSent) {
+        // Pre-header error path: let asyncHandler → errorHandler produce
+        // the normal 500/INTERNAL_ERROR response.
+        throw err;
+      }
+      // Mid-stream error path: the response is already committed to 200
+      // and partial bytes are on the wire. All we can do is log and
+      // forcibly terminate the socket so the client notices.
       log.error('Transaction export stream failed mid-stream', {
         walletId,
         format,

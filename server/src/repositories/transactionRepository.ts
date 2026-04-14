@@ -4,7 +4,7 @@
  * Abstracts database operations for transactions.
  */
 
-import prisma from '../models/prisma';
+import prisma, { type PrismaTxClient } from '../models/prisma';
 import type { Transaction, Prisma } from '../generated/prisma/client';
 import type {
   TransactionPaginationOptions,
@@ -441,14 +441,21 @@ export interface ExportTransactionRow {
  * required — `(blockTime, id)` gives a stable total order even when
  * multiple transactions share a block time, and `id` breaks ties within
  * the pending (blockTime IS NULL) segment as well.
+ *
+ * Accepts an optional `client` argument so the handler can scope all
+ * paged reads to a single Prisma interactive transaction with
+ * REPEATABLE READ isolation — without that, concurrent writes (e.g. a
+ * background wallet sync inserting new rows) would shift the `skip`
+ * offset between pages and cause rows to be duplicated or missed.
  */
 export async function findExportPage(
   walletId: string,
   dateFilter: { gte?: Date; lte?: Date } | undefined,
   skip: number,
   take: number,
+  client: PrismaTxClient | typeof prisma = prisma,
 ): Promise<ExportTransactionRow[]> {
-  return prisma.transaction.findMany({
+  return client.transaction.findMany({
     where: {
       walletId,
       ...(dateFilter && Object.keys(dateFilter).length > 0 ? { blockTime: dateFilter } : {}),
