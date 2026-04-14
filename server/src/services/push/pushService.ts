@@ -29,6 +29,53 @@ export interface TransactionData {
   amount: bigint;
 }
 
+type WalletNotificationUser = Awaited<ReturnType<typeof userRepository.findByWalletAccess>>[number];
+type NotificationWallet = NonNullable<Awaited<ReturnType<typeof walletRepository.findNameById>>>;
+
+function getWalletPushSettings(
+  preferences: unknown,
+  walletId: string
+): WalletTelegramSettings | undefined {
+  const prefs = preferences as Record<string, unknown> | null;
+  const telegram = prefs?.telegram as {
+    wallets?: Record<string, WalletTelegramSettings>;
+  } | undefined;
+
+  return telegram?.wallets?.[walletId];
+}
+
+function shouldSendTransactionNotification(
+  tx: TransactionData,
+  walletSettings: WalletTelegramSettings
+): boolean {
+  switch (tx.type) {
+    case 'received':
+      return walletSettings.notifyReceived;
+    case 'sent':
+      return walletSettings.notifySent;
+    case 'consolidation':
+      return walletSettings.notifyConsolidation;
+    default:
+      return false;
+  }
+}
+
+function buildTransactionPushMessage(wallet: NotificationWallet, tx: TransactionData): PushMessage {
+  const amountBtc = (Number(tx.amount) / 100_000_000).toFixed(8);
+  const emoji = tx.type === 'received' ? '📥' : tx.type === 'sent' ? '📤' : '🔄';
+  const typeLabel = tx.type.charAt(0).toUpperCase() + tx.type.slice(1);
+
+  return {
+    title: `${emoji} ${typeLabel}`,
+    body: `${wallet.name}: ${amountBtc} BTC`,
+    data: {
+      walletId: wallet.id,
+      txid: tx.txid,
+      type: tx.type,
+    },
+  };
+}
+
 class PushService {
   private registry: ProviderRegistry<IPushProvider>;
   private initialized = false;
@@ -151,45 +198,33 @@ class PushService {
       const users = await userRepository.findByWalletAccess(walletId, { includePushDeviceCount: true });
 
       for (const user of users) {
-        // Skip if user has no push devices registered (count already fetched)
-        if (user._count.pushDevices === 0) continue;
-
-        // Use same wallet settings as Telegram
-        const prefs = user.preferences as Record<string, unknown> | null;
-        const telegram = prefs?.telegram as {
-          wallets?: Record<string, WalletTelegramSettings>;
-        } | undefined;
-        const walletSettings = telegram?.wallets?.[walletId];
-
-        // Skip if notifications not enabled for this wallet
-        if (!walletSettings?.enabled) continue;
-
-        // Send notification for each transaction that matches user's preferences
-        for (const tx of transactions) {
-          const shouldNotify =
-            (tx.type === 'received' && walletSettings.notifyReceived) ||
-            (tx.type === 'sent' && walletSettings.notifySent) ||
-            (tx.type === 'consolidation' && walletSettings.notifyConsolidation);
-
-          if (shouldNotify) {
-            const amountBtc = (Number(tx.amount) / 100_000_000).toFixed(8);
-            const emoji = tx.type === 'received' ? '📥' : tx.type === 'sent' ? '📤' : '🔄';
-            const typeLabel = tx.type.charAt(0).toUpperCase() + tx.type.slice(1);
-
-            await this.sendToUser(user.id, {
-              title: `${emoji} ${typeLabel}`,
-              body: `${wallet.name}: ${amountBtc} BTC`,
-              data: {
-                walletId: wallet.id,
-                txid: tx.txid,
-                type: tx.type,
-              },
-            });
-          }
-        }
+        await this.notifyUserNewTransactions(user, wallet, walletId, transactions);
       }
     } catch (err) {
       log.error(`Error sending push notifications: ${err}`);
+    }
+  }
+
+  private async notifyUserNewTransactions(
+    user: WalletNotificationUser,
+    wallet: NotificationWallet,
+    walletId: string,
+    transactions: TransactionData[]
+  ): Promise<void> {
+    // Skip if user has no push devices registered (count already fetched)
+    if (user._count.pushDevices === 0) return;
+
+    // Use same wallet settings as Telegram
+    const walletSettings = getWalletPushSettings(user.preferences, walletId);
+
+    // Skip if notifications not enabled for this wallet
+    if (!walletSettings?.enabled) return;
+
+    // Send notification for each transaction that matches user's preferences
+    for (const tx of transactions) {
+      if (shouldSendTransactionNotification(tx, walletSettings)) {
+        await this.sendToUser(user.id, buildTransactionPushMessage(wallet, tx));
+      }
     }
   }
 
