@@ -1962,7 +1962,7 @@ try {
 `;
 }
 
-function getWorkerScaleOutProofScript() {
+function getWorkerScaleOutProofConfigScript() {
   return `
 import { Queue, QueueEvents } from 'bullmq';
 
@@ -2006,7 +2006,11 @@ function parseJson(value) {
     return value;
   }
 }
+`;
+}
 
+function getWorkerScaleOutProofMetricsScript() {
+  return `
 async function readWorkerMetrics(target) {
   const response = await fetch('http://' + target.ip + ':3002/metrics', {
     headers: { Accept: 'application/json' },
@@ -2043,7 +2047,11 @@ async function waitForElectrumOwner() {
 
   return latest;
 }
+`;
+}
 
+function getWorkerScaleOutProofQueueScript() {
+  return `
 const connection = connectionFromEnv();
 const queueNames = ['sync', 'confirmations', 'maintenance'];
 const queues = new Map();
@@ -2103,7 +2111,11 @@ async function waitForJob(job, category) {
     returnvalue,
   };
 }
+`;
+}
 
+function getWorkerScaleOutProofExecutionScript() {
+  return `
 const metricsBefore = await readAllWorkerMetrics();
 const repeatableJobs = await readRepeatableJobs();
 const jobCount = Math.max(workers.length * 2, requestedJobCount);
@@ -2163,6 +2175,15 @@ console.log(JSON.stringify({
 await maintenanceEvents.close();
 await Promise.all([...queues.values()].map((queue) => queue.close()));
 `;
+}
+
+function getWorkerScaleOutProofScript() {
+  return [
+    getWorkerScaleOutProofConfigScript(),
+    getWorkerScaleOutProofMetricsScript(),
+    getWorkerScaleOutProofQueueScript(),
+    getWorkerScaleOutProofExecutionScript(),
+  ].join('\n');
 }
 
 function getBackendScaleOutProofScript() {
