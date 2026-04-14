@@ -62,7 +62,7 @@ vs 2026-04-13 (`13efff91`): original validated report was **overall +7 (69→76)
 | typecheck | pass | tsc | 1.2 → +4 |
 | lint | pass | ESLint flat config + root/server/gateway `lint` scripts + blocking CI lint job added during implementation | 1.3 → +3 |
 | coverage | ≥98% (enforced) | vitest thresholds in config (root 100, server 98–99, gateway 98–100); do not rely on stale coverage-summary artifacts for this grade | 6.1 → +5 |
-| security_high | 0 | `npm audit --audit-level=high` (17 total: 16 low, 1 moderate) | 4.1 → +5 |
+| security_high | 0 | `npm audit --audit-level=high` exits clean; full root audit reports 16 low upstream `elliptic` findings, while root production audit has 14 low and 0 moderate/high/critical after the non-forced `follow-redirects` update | 4.1 → +5 |
 | secrets (effective) | 0 real in latest-commit, tracked-tree, and full-history gates | explicit PEM-marker search finds only allowlisted fixture/prose hits; `gitleaks git --log-opts -1`, `scripts/gitleaks-tracked-tree.sh`, and full-history `gitleaks git .` all pass with narrow fixture allowlists plus four historical ignored-artifact fingerprints in `.gitleaksignore` | 4.2 → +4 measured |
 | largest_file_lines | 991 | `server/tests/unit/services/utxoSelectionService.test.ts` after the Electrum connection test split; next largest validated files are `server/tests/unit/api/wallets-policies-routes.test.ts` at 981 LOC and `server/tests/unit/api/ai-internal.test.ts` at 964 LOC when generated verified-vector files are excluded. `server/tests/unit/services/bitcoin/electrum.connection.test.ts` is now a 16-line registrar, with Electrum connection contract/harness modules capped at 284 LOC. | 3.3 → +2 |
 | api_body_validation | pass | `scripts/check-api-body-validation.mjs`, now run by `npm run lint:server` | 4.3 → +3 |
@@ -115,7 +115,7 @@ Every row below was checked against repository files or command output during th
 | Typecheck | Valid: `npm run typecheck` passed. | Keep Correctness credit. |
 | Lint | Implemented after the initial validation gap was confirmed: root `eslint.config.js`, root/server/gateway `lint` scripts, and a blocking `quality.yml` lint job now exist. | P1 lint gate is complete for the first-pass rule set; future tightening can add broader TypeScript policy rules after baseline cleanup. |
 | Coverage | Valid as config thresholds: root 100%, server 98/99/99/99, gateway 100/98/100/100. Coverage-summary artifacts exist but may be stale/partial and should not be used as the grade source. | Keep threshold credit; do not cite stale coverage-summary totals. |
-| Audit | Valid: `npm audit --audit-level=high` exits clean while reporting 17 total lower-severity advisories: 16 low in the transitive `elliptic` chain and 1 moderate `follow-redirects`. | P2: run the nonbreaking `npm audit fix` path for `follow-redirects`; review the low `elliptic` chain separately because audit reports the available fix path as `npm audit fix --force` with a breaking `vite-plugin-node-polyfills` downgrade. Not a high-severity blocker. |
+| Audit | Valid after dependency-maintenance pass: `npm audit --audit-level=high` exits clean with only low findings, `npm audit --omit=dev --audit-level=moderate` exits clean, and root production audit is down to 14 low upstream `elliptic` findings. The former moderate `follow-redirects <=1.15.11` finding is fixed by the non-forced `npm audit fix` lockfile update to `follow-redirects@1.16.0`. | P2 routine dependency maintenance is complete for the safe root fix. Keep accepting/monitoring the low `elliptic` chain because npm reports no non-force fix or a breaking force-fix path through hardware-wallet/polyfill dependencies. |
 | gitleaks/lizard/jscpd | Valid with correction: these tools were not installed globally, but temporary `/tmp` installs/binaries produced baselines. CI now runs all three as blocking regression gates; `.jscpd.json` exists and has been tuned to ignore local temp/report artifacts; gitleaks now also has a tracked-tree scan and full-history cleanup. | P1 implementation complete for regression gating, zero-warning lizard, tracked-tree gitleaks, and full-history gitleaks. |
 | Largest file | Corrected after implementation: prior oversized split passes are recorded in the implementation log below. After the Electrum connection split, `server/tests/unit/services/bitcoin/electrum.connection.test.ts` is a 16-line registrar with Electrum connection contract/harness modules capped at 284 LOC; the scoped largest-file scan now reports `server/tests/unit/services/utxoSelectionService.test.ts` at 991 LOC, followed by `server/tests/unit/api/wallets-policies-routes.test.ts` at 981 LOC and `server/tests/unit/api/ai-internal.test.ts` at 964 LOC when generated verified-vector files are excluded. | Largest-file criterion 3.3 can now claim `+2`; further file splits should be treated as buffer/maintainability work, not additional score movement under this criterion. |
 | Health endpoint count | Corrected: 169 is a grep-hit count, not a route count. Real evidence includes `/health`, `/metrics`, `/api/v1/health` in `server/src/routes.ts` and `/health` in `gateway/src/index.ts`. | Keep ops credit but avoid calling 169 "routes." |
@@ -142,7 +142,7 @@ Every row below was checked against repository files or command output during th
 
 **Not top risks** (but worth tracking):
 
-- `follow-redirects <=1.15.11` — moderate, not high. `npm audit --audit-level=high` exits clean. Routine dependency maintenance via `npm audit fix`; do not escalate unless severity climbs.
+- No longer open: the former `follow-redirects <=1.15.11` moderate advisory is fixed by the non-forced `npm audit fix` lockfile update to `follow-redirects@1.16.0`. Root production audit now has only the accepted low upstream `elliptic` chain.
 
 ---
 
@@ -240,9 +240,10 @@ Ordered by priority, not cost. The first two items are the ones that change the 
 - Middleware-guaranteed `req.user!`/`req.walletId!` assertions remain intentionally out of scope.
 - Does not move the numeric Reliability score on its own but materially reduces the specifically validated crash-prone surface.
 
-### P2 — Routine dependency maintenance
-- Run the nonbreaking `npm audit fix` path for the moderate `follow-redirects <=1.15.11` advisory. No score impact at the high-severity gate, but keeps the advisory list tidy.
-- Review the low-severity `elliptic` transitive chain separately. Current `npm audit --audit-level=high` output reports a `npm audit fix --force` path that would install `vite-plugin-node-polyfills@0.2.0` as a breaking change, so do not force that under this quality-report cleanup.
+### Done — Routine dependency maintenance
+- Ran the non-forced `npm audit fix` path for the moderate `follow-redirects <=1.15.11` advisory. `package-lock.json` now resolves the Trezor/Stellar/Axios chain to `follow-redirects@1.16.0`.
+- Verified `npm audit --omit=dev --audit-level=moderate` exits clean. Root production audit now has 14 low upstream `elliptic` findings and 0 moderate/high/critical findings.
+- Kept the low-severity `elliptic` transitive chain accepted/monitored. npm reports no non-force fix in the Trezor/Ledger chain and the remaining force-fix paths would be breaking dependency changes, so they are intentionally out of this cleanup.
 
 Combined low-effort ceiling from the original P1 items is now reached at **89/100 (B)**. The lizard baseline, scoped largest-file, API body-validation, and gitleaks false-positive criteria are cleared; further movement requires performance, scale, or operations evidence rather than local cleanup.
 
@@ -304,7 +305,7 @@ Deliberately not recommended from this evidence pass:
 
 - **Exact original heuristic counts** (`timeout_retry_count=1269`, `blocking_io_count=28`, `test_file_count=818`). Direct searches returned different numbers depending on scope, and no local generator script was found. The correct response is "name the scope next time", not "chase the heuristic".
 - **Middleware-guaranteed `req.user!`/`req.walletId!` assertions**. Safe-by-contract; rewriting them adds noise without reducing crash surface. Leave them alone.
-- **`follow-redirects` advisory**. Routine nonbreaking `npm audit fix`; not a P1.
+- **Former `follow-redirects` advisory**. Fixed by the non-forced dependency-maintenance pass; it is no longer an open item.
 - **Low `elliptic` transitive chain**. Current audit output says the available force-fix path is breaking; review separately instead of forcing it during this plan.
 - **Frontend architecture or styling rewrites**. Out of the quality-audit scope and not supported by the validated findings in this report.
 
@@ -326,7 +327,7 @@ Validation was done against repository files, not inferred from the report text.
 
 - `npm run typecheck` — passed.
 - `npm run test:run` — passed: 386 test files, 5483 tests.
-- `npm audit --audit-level=high` — passed for the high-severity gate; output still reports 17 advisories total: 16 low and 1 moderate (`follow-redirects`).
+- `npm audit --audit-level=high` — passed for the high-severity gate; at this checkpoint, output still reported 17 advisories total: 16 low and 1 moderate (`follow-redirects`). The later dependency-maintenance pass fixed the `follow-redirects` advisory.
 - `command -v gitleaks`, `command -v lizard`, and `command -v jscpd` — all returned not found in this environment.
 - `rg --files -g 'eslint.config.*' -g '.eslintrc*'` — no local ESLint config found before the later implementation pass.
 - `wc -l server/tests/unit/api/openapi.test.ts` — 2825 lines.
@@ -340,7 +341,7 @@ Validation was done against repository files, not inferred from the report text.
 | Done | Split the oversized API test files by route/domain while preserving current assertions. | `server/tests/unit/api/openapi.test.ts` was 2825 LOC and is now a 17-line registrar plus OpenAPI contract modules capped at 819 LOC. `server/tests/unit/api/transactions.test.ts` was 2600 LOC and is now a 25-line registrar plus transaction API modules capped at 821 LOC. `server/tests/unit/api/admin.test.ts` was 2456 LOC and is now a 26-line registrar plus admin API modules capped at 937 LOC. Before/after `describe`/`it`/`expect` counts were preserved for all three. Later passes split transaction HTTP route, auth registration, device API, Bitcoin API, Draft API, and Wallets API tests. | This closes the original API god-files but not the broader largest-file criterion; the next largest-file targets are service tests. |
 | P1 | Continue normalizing request-body validation onto Zod for mutation endpoints, starting with small inline checks. | `server/src/api/transactions/addresses.ts` uses `validate({ body: GenerateAddressesBodySchema })`; `server/src/api/schemas/transactions.ts` caps `count` at 1000. AI model/feature, device account/sharing, wallet sharing/device/CRUD/import/policy/settings/approval, Bitcoin mutation, label mutation, transaction UTXO selection/privacy/freeze, transaction batch drafting, price conversion/cache-duration, node connection-test, internal mobile-permission gateway-check, push register/unregister/gateway-audit, transfer create/decline, authenticated Payjoin parse/attempt, sync priority body, admin monitoring settings, admin policy create/update, admin node/proxy configuration, AI internal pull-progress, intelligence mutation, draft create/update, auth profile preference, auth registration presence, and auth refresh-token body fallback slices have now been migrated. | Continue by triaging remaining `rg -n "req\\.body" server/src/api -g '*.ts'` hits as parser-backed exceptions or future Zod targets. |
 | Done | Reword the “crash-prone paths” finding before using it as a work item. | `rg` shows many `req.user!` and `req.walletId!` non-null assertions across authenticated/wallet-access routes, so “a few non-null assertions in prod” is not literally true. The specific `as any` hotspots in `server/src/api/transactions/walletTransactions/listTransactions.ts` and `server/src/api/transactions/transactionDetail.ts` were real and are now fixed. | Middleware-guaranteed request augmentations remain separate from the resolved repository/serialization typing gaps. |
-| P2 | Keep the moderate `follow-redirects` audit item, but do not call it a high-severity security blocker. | `npm audit --audit-level=high` exits successfully; audit output still lists `follow-redirects <=1.15.11` as moderate and fixable with `npm audit fix`. | Treat as routine dependency maintenance unless a higher-severity advisory appears. |
+| Done | Keep the moderate `follow-redirects` audit item, but do not call it a high-severity security blocker. | At the validation checkpoint, `npm audit --audit-level=high` exited successfully while listing `follow-redirects <=1.15.11` as moderate and fixable with `npm audit fix`; the later dependency-maintenance pass ran the non-forced fix and updated the lockfile to `follow-redirects@1.16.0`. | Routine dependency maintenance is complete; continue monitoring for new moderate/high/critical advisories. |
 
 #### Report wording corrections applied above
 
@@ -356,7 +357,7 @@ Re-ran the executable checks and targeted evidence searches after updating the r
 
 - `npm run typecheck` — passed.
 - `npm run test:run` — passed: 386 test files, 5483 tests.
-- `npm audit --audit-level=high` — passed for the high-severity gate; still reports 17 lower-severity advisories: 16 low and 1 moderate (`follow-redirects`).
+- `npm audit --audit-level=high` — passed for the high-severity gate; at this checkpoint, it still reported 17 lower-severity advisories: 16 low and 1 moderate (`follow-redirects`). The later dependency-maintenance pass fixed the `follow-redirects` advisory.
 - `rg -n -o -- '-----BEGIN (RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----' ...` — now finds 7 allowlisted fixture PEM markers and 1 allowlisted prose marker after removing the literal PEM sentinel from `.gitleaks.toml` comments.
 - `rg -n '\b(readFileSync|writeFileSync|appendFileSync|existsSync|statSync|readdirSync|execSync|spawnSync|execFileSync|mkdirSync|rmSync)\s*\(' ...` — found 11 app-source sync FS/exec call sites, not the original `blocking_io_count=28`.
 - `rg --files -g 'eslint.config.*' -g '.eslintrc*'` and `rg -n '"lint"' -g 'package.json'` — found no project lint config or lint script before the later implementation pass.
@@ -371,7 +372,7 @@ Re-checked the remaining file/tool/count claims against the repo after the user 
 - `rg -n 'thresholds:|branches:|functions:|lines:|statements:' vitest.config.ts server/vitest.config.ts gateway/vitest.config.ts` — confirmed root/server/gateway coverage thresholds.
 - `npm run typecheck` — passed.
 - `npm run test:run` — passed: 386 test files, 5483 tests.
-- `npm audit --audit-level=high` — passed for the high-severity gate; still reports 17 lower-severity advisories: 16 low in the `elliptic` transitive chain and 1 moderate `follow-redirects`. The audit output says the low-chain force-fix path would be breaking, so it is not recommended as part of this cleanup.
+- `npm audit --audit-level=high` — passed for the high-severity gate; at this checkpoint, it still reported 17 lower-severity advisories: 16 low in the `elliptic` transitive chain and 1 moderate `follow-redirects`. The later dependency-maintenance pass fixed `follow-redirects`; the low-chain force-fix path remains breaking or unavailable, so it is not recommended as part of this cleanup.
 
 ### Implementation pass — 2026-04-13
 
@@ -3168,3 +3169,18 @@ Verification after gitleaks false-positive cleanup:
 - `GITLEAKS_BIN=/tmp/gitleaks bash scripts/gitleaks-tracked-tree.sh` — passed: no leaks found.
 - `/tmp/gitleaks git . --config .gitleaks.toml --redact --no-banner` — passed: 2053 commits scanned, no leaks found.
 - Raw `/tmp/gitleaks detect --no-git --config .gitleaks.toml --redact --no-banner` now reports only ignored local `.env` and generated SSL artifacts; this all-file scan is intentionally outside the tracked-tree quality signal.
+
+### Dependency audit maintenance pass — 2026-04-14
+
+Implemented the safe root audit-maintenance item:
+
+- Ran non-forced `npm audit fix` to clear the moderate `follow-redirects <=1.15.11` advisory without taking breaking force-fix paths.
+- Updated `package-lock.json` so the Trezor/Stellar/Axios chain resolves `follow-redirects@1.16.0`.
+- Left the remaining upstream `elliptic` chain accepted/monitored because npm reports no non-force fix in the Trezor/Ledger chain and remaining force-fix paths would be breaking dependency changes.
+- Updated `docs/DEPENDENCY_AUDIT_TRIAGE.md` and this report so routine dependency maintenance is marked complete.
+
+Verification after dependency audit maintenance:
+
+- `npm ls follow-redirects` — passed; `@stellar/stellar-sdk`/`axios` resolves `follow-redirects@1.16.0`.
+- `npm audit --audit-level=high` — passed; output reports only 16 low upstream `elliptic` findings.
+- `npm audit --omit=dev --audit-level=moderate` — passed; output reports 14 low upstream `elliptic` findings and 0 moderate/high/critical root production findings.

@@ -1,6 +1,6 @@
 # Dependency Audit Triage
 
-Snapshot date: 2026-04-12
+Snapshot date: 2026-04-14
 
 Commands run:
 - `npm audit --omit=dev` (repo root)
@@ -17,6 +17,7 @@ Commands run:
 
 Fixed in this refresh:
 - Transitive `axios` from the Trezor/Stellar SDK chain was updated in `package-lock.json` from `1.14.0` to `1.15.0`, clearing the critical Axios SSRF/header-injection advisories reported by `npm audit --omit=dev`.
+- Transitive `follow-redirects` from the Trezor/Stellar/Axios chain was updated in `package-lock.json` from `1.15.11` to `1.16.0` by the non-forced `npm audit fix` path, clearing the moderate custom-header redirect advisory.
 
 Main chains:
 - Trezor chain
@@ -57,10 +58,10 @@ Notes:
 
 ## Decision
 
-Disposition: `fix + monitor` for the root Axios critical advisory; `accept + monitor` for the remaining root low-severity transitive advisories and server Prisma dev-chain moderate advisory; gateway optional-dependency findings are mitigated in production via optional-dependency pruning.
+Disposition: `fix + monitor` for the root Axios critical and `follow-redirects` moderate advisories; `accept + monitor` for the remaining root low-severity transitive advisories and server Prisma dev-chain moderate advisory; gateway optional-dependency findings are mitigated in production via optional-dependency pruning.
 
 Reasoning:
-- No high/critical findings remain after the Axios lockfile update.
+- No moderate/high/critical root production findings remain after the Axios and `follow-redirects` lockfile updates.
 - Remaining proposed `npm audit` remediation paths are unavailable, force/downgrade, or major-change paths that increase functional regression risk.
 - Remaining root findings are in upstream hardware-wallet or browser-polyfill dependency trees where direct in-place fixes are unavailable or not safe.
 - The server moderate advisory is inherited through Prisma tooling, and npm's proposed remediation would downgrade Prisma across a major version.
