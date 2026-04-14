@@ -1137,7 +1137,21 @@ function summarizeBackendScaleOutProof(proof) {
 
 async function runSizedBackupRestoreProof() {
   const token = await loginForProof();
-  const backupCreate = await timedPublicApiJson(`${apiUrl}/api/v1/admin/backup`, {
+  const backupCreate = await createSizedBackup(token);
+  const backup = backupCreate.body;
+  const backupMetadata = getSizedBackupMetadata(backup);
+
+  const validation = await validateSizedBackup(token, backup);
+  assertSizedBackupValidation(validation);
+
+  const restore = await restoreSizedBackup(token, backup);
+  assertSizedBackupRestore(restore);
+
+  return buildSizedBackupRestoreProof(backupCreate, backupMetadata, validation, restore);
+}
+
+async function createSizedBackup(token) {
+  return timedPublicApiJson(`${apiUrl}/api/v1/admin/backup`, {
     method: 'POST',
     token,
     body: {
@@ -1145,7 +1159,9 @@ async function runSizedBackupRestoreProof() {
       description: `Phase 3 sized restore proof ${timestamp}`,
     },
   });
-  const backup = backupCreate.body;
+}
+
+function getSizedBackupMetadata(backup) {
   const serializedBackup = JSON.stringify(backup);
   const backupSizeBytes = Buffer.byteLength(serializedBackup, 'utf8');
   const recordCounts = backup?.meta?.recordCounts || {};
@@ -1153,16 +1169,30 @@ async function runSizedBackupRestoreProof() {
     sum + (Number.isFinite(Number(count)) ? Number(count) : 0)
   ), 0);
 
-  const validation = await timedPublicApiJson(`${apiUrl}/api/v1/admin/backup/validate`, {
+  return {
+    backup,
+    backupSizeBytes,
+    recordCounts,
+    totalRecords,
+  };
+}
+
+async function validateSizedBackup(token, backup) {
+  return timedPublicApiJson(`${apiUrl}/api/v1/admin/backup/validate`, {
     method: 'POST',
     token,
     body: { backup },
   });
+}
+
+function assertSizedBackupValidation(validation) {
   if (validation.body?.valid !== true) {
     throw new Error(`Sized backup validation failed: ${JSON.stringify(validation.body)}`);
   }
+}
 
-  const restore = await timedPublicApiJson(`${apiUrl}/api/v1/admin/restore`, {
+async function restoreSizedBackup(token, backup) {
+  return timedPublicApiJson(`${apiUrl}/api/v1/admin/restore`, {
     method: 'POST',
     token,
     body: {
@@ -1170,10 +1200,16 @@ async function runSizedBackupRestoreProof() {
       confirmationCode: 'CONFIRM_RESTORE',
     },
   });
+}
+
+function assertSizedBackupRestore(restore) {
   if (restore.body?.success !== true) {
     throw new Error(`Sized backup restore failed: ${JSON.stringify(restore.body)}`);
   }
+}
 
+function buildSizedBackupRestoreProof(backupCreate, backupMetadata, validation, restore) {
+  const { backup, backupSizeBytes, recordCounts, totalRecords } = backupMetadata;
   return {
     proofId: timestamp,
     backup: {
