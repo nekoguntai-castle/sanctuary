@@ -5,6 +5,7 @@
  */
 
 import { Router } from 'express';
+import { z } from 'zod';
 import { asyncHandler } from '../../errors/errorHandler';
 import { userRepository } from '../../repositories/userRepository';
 import { InvalidInputError, UnauthorizedError } from '../../errors/ApiError';
@@ -25,6 +26,13 @@ import { LogoutSchema } from '../schemas/auth';
 
 const router = Router();
 const log = createLogger('AUTH_TOKEN:ROUTE');
+
+const RefreshBodySchema = z.preprocess(
+  (body) => body === undefined ? {} : body,
+  z.object({
+    refreshToken: z.string().optional(),
+  }).passthrough()
+);
 
 /**
  * POST /api/v1/auth/refresh
@@ -60,7 +68,7 @@ const log = createLogger('AUTH_TOKEN:ROUTE');
  * mobile routes, so the precedence change does not affect the mobile path
  * (no cookie is ever present there).
  */
-router.post('/refresh', asyncHandler(async (req, res) => {
+router.post('/refresh', validate({ body: RefreshBodySchema }), asyncHandler(async (req, res) => {
   const bodyToken = typeof req.body?.refreshToken === 'string' ? req.body.refreshToken : null;
   const cookieToken = typeof req.cookies?.[SANCTUARY_REFRESH_COOKIE_NAME] === 'string'
     ? req.cookies[SANCTUARY_REFRESH_COOKIE_NAME]

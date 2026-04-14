@@ -1372,6 +1372,15 @@ describe('Auth API Routes — Registration, Login, Password, Tokens', () => {
       expect(response.body.message).toContain('Refresh token is required');
     });
 
+    it('should reject invalid refresh token body field types', async () => {
+      const response = await request(app)
+        .post('/api/v1/auth/refresh')
+        .send({ refreshToken: 42 });
+
+      expect(response.status).toBe(400);
+      expect(response.body.code).toBe('VALIDATION_ERROR');
+    });
+
     it('should reject invalid refresh token', async () => {
       const { verifyRefreshToken } = await import('../../../src/utils/jwt');
       const mockVerifyRefreshToken = vi.mocked(verifyRefreshToken);
