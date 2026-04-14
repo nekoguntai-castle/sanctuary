@@ -27,9 +27,9 @@ export interface CreateDraftInput {
   enableRBF: boolean;
   subtractFees: boolean;
   sendMax: boolean;
-  outputs?: Prisma.JsonValue;
-  inputs?: Prisma.JsonValue;
-  decoyOutputs?: Prisma.JsonValue;
+  outputs?: Prisma.InputJsonValue | null;
+  inputs?: Prisma.InputJsonValue | null;
+  decoyOutputs?: Prisma.InputJsonValue | null;
   payjoinUrl?: string | null;
   isRBF: boolean;
   label?: string | null;
@@ -56,6 +56,35 @@ export interface UpdateDraftInput {
   label?: string | null;
   memo?: string | null;
   expectedUpdatedAt?: Date;
+}
+
+type DraftCreateDefaults = Pick<
+  Prisma.DraftTransactionUncheckedCreateInput,
+  | 'outputs'
+  | 'inputs'
+  | 'decoyOutputs'
+  | 'payjoinUrl'
+  | 'label'
+  | 'memo'
+  | 'signedPsbtBase64'
+  | 'changeAddress'
+  | 'status'
+  | 'signedDeviceIds'
+>;
+
+function getDefaultDraftCreateValues(): DraftCreateDefaults {
+  return {
+    outputs: Prisma.DbNull,
+    inputs: Prisma.DbNull,
+    decoyOutputs: Prisma.DbNull,
+    payjoinUrl: null,
+    label: null,
+    memo: null,
+    signedPsbtBase64: null,
+    changeAddress: null,
+    status: 'unsigned',
+    signedDeviceIds: [],
+  };
 }
 
 /**
@@ -115,37 +144,54 @@ export async function findExpired(): Promise<DraftTransaction[]> {
  */
 export async function create(data: CreateDraftInput): Promise<DraftTransaction> {
   return prisma.draftTransaction.create({
-    data: {
-      walletId: data.walletId,
-      userId: data.userId,
-      recipient: data.recipient,
-      amount: data.amount,
-      feeRate: data.feeRate,
-      selectedUtxoIds: data.selectedUtxoIds,
-      enableRBF: data.enableRBF,
-      subtractFees: data.subtractFees,
-      sendMax: data.sendMax,
-      outputs: data.outputs ?? Prisma.DbNull,
-      inputs: data.inputs ?? Prisma.DbNull,
-      decoyOutputs: data.decoyOutputs ?? Prisma.DbNull,
-      payjoinUrl: data.payjoinUrl ?? null,
-      isRBF: data.isRBF,
-      label: data.label ?? null,
-      memo: data.memo ?? null,
-      psbtBase64: data.psbtBase64,
-      signedPsbtBase64: data.signedPsbtBase64 ?? null,
-      fee: data.fee,
-      totalInput: data.totalInput,
-      totalOutput: data.totalOutput,
-      changeAmount: data.changeAmount,
-      changeAddress: data.changeAddress ?? null,
-      effectiveAmount: data.effectiveAmount,
-      inputPaths: data.inputPaths,
-      status: 'unsigned',
-      signedDeviceIds: [],
-      expiresAt: data.expiresAt,
-    },
+    data: buildDraftCreateData(data),
   });
+}
+
+function buildDraftCreateData(data: CreateDraftInput): Prisma.DraftTransactionUncheckedCreateInput {
+  return {
+    ...getDefaultDraftCreateValues(),
+    ...compactNullish({
+      payjoinUrl: data.payjoinUrl,
+      label: data.label,
+      memo: data.memo,
+      signedPsbtBase64: data.signedPsbtBase64,
+      changeAddress: data.changeAddress,
+    }),
+    outputs: toDraftJsonCreateValue(data.outputs),
+    inputs: toDraftJsonCreateValue(data.inputs),
+    decoyOutputs: toDraftJsonCreateValue(data.decoyOutputs),
+    walletId: data.walletId,
+    userId: data.userId,
+    recipient: data.recipient,
+    amount: data.amount,
+    feeRate: data.feeRate,
+    selectedUtxoIds: data.selectedUtxoIds,
+    enableRBF: data.enableRBF,
+    subtractFees: data.subtractFees,
+    sendMax: data.sendMax,
+    isRBF: data.isRBF,
+    psbtBase64: data.psbtBase64,
+    fee: data.fee,
+    totalInput: data.totalInput,
+    totalOutput: data.totalOutput,
+    changeAmount: data.changeAmount,
+    effectiveAmount: data.effectiveAmount,
+    inputPaths: data.inputPaths,
+    expiresAt: data.expiresAt,
+  };
+}
+
+function toDraftJsonCreateValue(
+  value: Prisma.InputJsonValue | null | undefined
+): Prisma.NullableJsonNullValueInput | Prisma.InputJsonValue {
+  return value === undefined || value === null ? Prisma.DbNull : value;
+}
+
+function compactNullish<T extends Record<string, unknown>>(values: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(values).filter(([, value]) => value !== undefined && value !== null)
+  ) as Partial<T>;
 }
 
 /**

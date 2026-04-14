@@ -32,9 +32,9 @@ export interface CreateDraftInput {
   enableRBF?: boolean;
   subtractFees?: boolean;
   sendMax?: boolean;
-  outputs?: Prisma.JsonValue;
-  inputs?: Prisma.JsonValue;
-  decoyOutputs?: Prisma.JsonValue;
+  outputs?: Prisma.InputJsonValue | null;
+  inputs?: Prisma.InputJsonValue | null;
+  decoyOutputs?: Prisma.InputJsonValue | null;
   payjoinUrl?: string;
   isRBF?: boolean;
   label?: string;

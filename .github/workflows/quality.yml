@@ -100,14 +100,14 @@ jobs:
         run: python -m pip install --upgrade pip lizard
 
       - name: Run lizard
-        # McCabe / NIST / SonarQube: warn on CCN > 15. The first measured
-        # baseline is 78 warnings; fail the job if the count grows.
+        # McCabe / NIST / SonarQube: warn on CCN > 15. The current measured
+        # baseline is 77 warnings; fail the job if the count grows.
         # -l filters by language; `-x` excludes generated, vendored, and
         # test-fixture paths that skew the signal.
         run: |
           lizard \
             -w \
-            -i 78 \
+            -i 77 \
             -l javascript \
             -l typescript \
             -C 15 \

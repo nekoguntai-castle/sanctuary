@@ -124,6 +124,58 @@ describe('draftRepository', () => {
     });
   });
 
+  it('create preserves provided nullable and JSON fields', async () => {
+    const mockDraft = { id: 'draft-created-with-optionals' };
+    (prisma.draftTransaction.create as Mock).mockResolvedValue(mockDraft);
+
+    const outputs = [{ address: 'tb1qrecipient', amount: 1000 }];
+    const inputs = [{ txid: 'a'.repeat(64), vout: 0 }];
+    const decoyOutputs = [{ address: 'tb1qdecoy', amount: 100 }];
+
+    const result = await create({
+      walletId: 'wallet-1',
+      userId: 'user-1',
+      recipient: 'tb1qrecipient',
+      amount: BigInt(1000),
+      feeRate: 12,
+      selectedUtxoIds: ['u1'],
+      enableRBF: true,
+      subtractFees: false,
+      sendMax: false,
+      outputs,
+      inputs,
+      decoyOutputs,
+      payjoinUrl: 'https://example.com/payjoin',
+      isRBF: false,
+      label: 'Savings',
+      memo: 'memo text',
+      psbtBase64: 'psbt',
+      signedPsbtBase64: 'signed-psbt',
+      fee: BigInt(100),
+      totalInput: BigInt(1100),
+      totalOutput: BigInt(1000),
+      changeAmount: BigInt(0),
+      changeAddress: 'tb1qchange',
+      effectiveAmount: BigInt(1000),
+      inputPaths: ["m/84'/0'/0'/0/0"],
+      expiresAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+
+    expect(result).toBe(mockDraft);
+    expect(prisma.draftTransaction.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        outputs,
+        inputs,
+        decoyOutputs,
+        payjoinUrl: 'https://example.com/payjoin',
+        label: 'Savings',
+        memo: 'memo text',
+        signedPsbtBase64: 'signed-psbt',
+        changeAddress: 'tb1qchange',
+      }),
+    });
+  });
+
   it('update without expectedUpdatedAt performs direct update', async () => {
     const updated = { id: 'd1', status: 'partial' };
     (prisma.draftTransaction.update as Mock).mockResolvedValue(updated);
