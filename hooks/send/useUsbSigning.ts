@@ -7,7 +7,7 @@
 
 import { useCallback } from 'react';
 import * as draftsApi from '../../src/api/drafts';
-import { useHardwareWallet } from '../useHardwareWallet';
+import { useHardwareWallet, type UseHardwareWalletReturn } from '../useHardwareWallet';
 import { isMultisigType } from '../../types';
 import { createLogger } from '../../utils/logger';
 import type { Wallet, Device } from '../../types';
@@ -32,6 +32,170 @@ export interface UseUsbSigningDeps {
 export interface UseUsbSigningResult {
   signWithHardwareWallet: () => Promise<string | null>;
   signWithDevice: (device: Device) => Promise<boolean>;
+}
+
+type HardwareWalletType = NonNullable<ReturnType<typeof getHardwareWalletType>>;
+type SetSignedDevices = UseUsbSigningDeps['setSignedDevices'];
+type UsbSignResult = { psbt?: string; rawTx?: string };
+
+interface DeviceSigningParams {
+  device: Device;
+  hardwareWallet: UseHardwareWalletReturn;
+  hwType: HardwareWalletType;
+  psbtToSign: string;
+  txData: TransactionData | null;
+  wallet: Wallet;
+}
+
+interface ApplyDeviceSignResultParams {
+  signResult: UsbSignResult;
+  psbtToSign: string;
+  device: Device;
+  draftId: string | null;
+  walletId: string;
+  setUnsignedPsbt: (v: string | null) => void;
+  setSignedRawTx: (v: string | null) => void;
+  setSignedDevices: SetSignedDevices;
+}
+
+function getMultisigXpubs(wallet: Wallet): Record<string, string> | undefined {
+  return isMultisigType(wallet.type) ? extractXpubsFromDescriptor(wallet.descriptor) : undefined;
+}
+
+function getDescriptorPreview(wallet: Wallet): string {
+  return wallet.descriptor ? wallet.descriptor.substring(0, 200) + '...' : 'N/A';
+}
+
+function logHardwareSigningPreparation(wallet: Wallet, multisigXpubs: Record<string, string> | undefined): void {
+  log.info('signWithHardwareWallet: Prepared for signing', {
+    walletType: wallet.type,
+    isMultisig: isMultisigType(wallet.type),
+    hasDescriptor: !!wallet.descriptor,
+    descriptorPreview: getDescriptorPreview(wallet),
+    hasXpubs: !!multisigXpubs,
+    xpubFingerprints: multisigXpubs ? Object.keys(multisigXpubs) : [],
+  });
+}
+
+function logDeviceSigningPreparation(
+  device: Device,
+  wallet: Wallet,
+  multisigXpubs: Record<string, string> | undefined
+): void {
+  log.info('signWithDevice: Prepared for signing', {
+    deviceId: device.id,
+    walletType: wallet.type,
+    isMultisig: isMultisigType(wallet.type),
+    hasDescriptor: !!wallet.descriptor,
+    descriptorPreview: getDescriptorPreview(wallet),
+    hasXpubs: !!multisigXpubs,
+    xpubFingerprints: multisigXpubs ? Object.keys(multisigXpubs) : [],
+  });
+}
+
+function getPsbtToSign(unsignedPsbt: string | null, txData: TransactionData | null): string | null {
+  return unsignedPsbt || txData?.psbtBase64 || null;
+}
+
+function getUsbSigningDeviceError(device: Device, hwType: HardwareWalletType): string | null {
+  if (hwType === 'coldcard' || hwType === 'passport') {
+    return `${device.type} does not support USB signing. Please use PSBT file signing.`;
+  }
+  return null;
+}
+
+function failDeviceSigning(setError: (v: string | null) => void, message: string): false {
+  setError(message);
+  return false;
+}
+
+function hasSigningResult(signResult: UsbSignResult): boolean {
+  return Boolean(signResult.psbt || signResult.rawTx);
+}
+
+function getSignedPsbt(signResult: UsbSignResult, psbtToSign: string): string {
+  // Trezor can return a final raw transaction without a mutated PSBT; keep the current PSBT for local state.
+  return signResult.psbt || psbtToSign;
+}
+
+function storeSignedRawTxIfPresent(
+  signResult: UsbSignResult,
+  device: Device,
+  setSignedRawTx: (v: string | null) => void
+): void {
+  if (!signResult.rawTx) return;
+
+  log.info('Storing signed raw transaction from device', {
+    deviceId: device.id,
+    rawTxLength: signResult.rawTx.length,
+    rawTxPreview: signResult.rawTx.substring(0, 50) + '...',
+  });
+  setSignedRawTx(signResult.rawTx);
+}
+
+function markSignedDevice(setSignedDevices: SetSignedDevices, deviceId: string): void {
+  setSignedDevices(prev => new Set([...prev, deviceId]));
+}
+
+async function persistDeviceSignatureToDraft(
+  walletId: string,
+  draftId: string | null,
+  signedPsbt: string,
+  deviceId: string
+): Promise<void> {
+  if (!draftId) return;
+
+  try {
+    await draftsApi.updateDraft(walletId, draftId, {
+      signedPsbtBase64: signedPsbt,
+      signedDeviceId: deviceId,
+    });
+    log.info('Signature persisted to draft', { draftId, deviceId });
+  } catch (persistErr) {
+    // Draft persistence is best-effort; the signature remains valid in local state.
+    log.warn('Failed to persist signature to draft', { error: persistErr });
+  }
+}
+
+async function signPsbtWithDevice({
+  device,
+  hardwareWallet,
+  hwType,
+  psbtToSign,
+  txData,
+  wallet,
+}: DeviceSigningParams): Promise<UsbSignResult> {
+  log.info('Connecting to device for signing', { deviceId: device.id, type: device.type, hwType });
+  await hardwareWallet.connect(hwType);
+
+  const inputPaths = txData?.inputPaths || [];
+  const multisigXpubs = getMultisigXpubs(wallet);
+  logDeviceSigningPreparation(device, wallet, multisigXpubs);
+
+  return hardwareWallet.signPSBT(psbtToSign, inputPaths, multisigXpubs);
+}
+
+async function applyDeviceSignResult({
+  signResult,
+  psbtToSign,
+  device,
+  draftId,
+  walletId,
+  setUnsignedPsbt,
+  setSignedRawTx,
+  setSignedDevices,
+}: ApplyDeviceSignResultParams): Promise<void> {
+  const signedPsbt = getSignedPsbt(signResult, psbtToSign);
+  setUnsignedPsbt(signedPsbt);
+  storeSignedRawTxIfPresent(signResult, device, setSignedRawTx);
+  markSignedDevice(setSignedDevices, device.id);
+  await persistDeviceSignatureToDraft(walletId, draftId, signedPsbt, device.id);
+
+  log.info('Device signing successful', {
+    deviceId: device.id,
+    hasRawTx: !!signResult.rawTx,
+    hasPsbt: !!signResult.psbt,
+  });
 }
 
 export function useUsbSigning({
@@ -60,18 +224,8 @@ export function useUsbSigning({
 
     try {
       // For multisig wallets, extract xpubs from descriptor for Trezor signing
-      const multisigXpubs = isMultisigType(wallet.type)
-        ? extractXpubsFromDescriptor(wallet.descriptor)
-        : undefined;
-
-      log.info('signWithHardwareWallet: Prepared for signing', {
-        walletType: wallet.type,
-        isMultisig: isMultisigType(wallet.type),
-        hasDescriptor: !!wallet.descriptor,
-        descriptorPreview: wallet.descriptor ? wallet.descriptor.substring(0, 200) + '...' : 'N/A',
-        hasXpubs: !!multisigXpubs,
-        xpubFingerprints: multisigXpubs ? Object.keys(multisigXpubs) : [],
-      });
+      const multisigXpubs = getMultisigXpubs(wallet);
+      logHardwareSigningPreparation(wallet, multisigXpubs);
 
       const signResult = await hardwareWallet.signPSBT(
         txData.psbtBase64,
@@ -90,95 +244,52 @@ export function useUsbSigning({
 
   // Sign with a specific device (for multi-sig USB signing)
   const signWithDevice = useCallback(async (device: Device): Promise<boolean> => {
-    const psbtToSign = unsignedPsbt || txData?.psbtBase64;
+    const psbtToSign = getPsbtToSign(unsignedPsbt, txData);
     if (!psbtToSign) {
-      setError('No PSBT available to sign');
-      return false;
+      return failDeviceSigning(setError, 'No PSBT available to sign');
     }
 
-    // Map device type to hardware wallet type
     const hwType = getHardwareWalletType(device.type);
     if (!hwType) {
-      setError(`Unsupported device type: ${device.type}. Use PSBT file signing instead.`);
-      return false;
+      return failDeviceSigning(
+        setError,
+        `Unsupported device type: ${device.type}. Use PSBT file signing instead.`
+      );
     }
 
-    // Only support USB-capable devices
-    if (hwType === 'coldcard' || hwType === 'passport') {
-      setError(`${device.type} does not support USB signing. Please use PSBT file signing.`);
-      return false;
+    const deviceError = getUsbSigningDeviceError(device, hwType);
+    if (deviceError) {
+      return failDeviceSigning(setError, deviceError);
     }
 
     setIsSigning(true);
     setError(null);
 
     try {
-      log.info('Connecting to device for signing', { deviceId: device.id, type: device.type, hwType });
-
-      // Connect to the hardware wallet
-      await hardwareWallet.connect(hwType);
-
-      // Sign the PSBT
-      const inputPaths = txData?.inputPaths || [];
-      // For multisig wallets, extract xpubs from descriptor for Trezor signing
-      const multisigXpubs = isMultisigType(wallet.type)
-        ? extractXpubsFromDescriptor(wallet.descriptor)
-        : undefined;
-
-      log.info('signWithDevice: Prepared for signing', {
-        deviceId: device.id,
-        walletType: wallet.type,
-        isMultisig: isMultisigType(wallet.type),
-        hasDescriptor: !!wallet.descriptor,
-        descriptorPreview: wallet.descriptor ? wallet.descriptor.substring(0, 200) + '...' : 'N/A',
-        hasXpubs: !!multisigXpubs,
-        xpubFingerprints: multisigXpubs ? Object.keys(multisigXpubs) : [],
+      const signResult = await signPsbtWithDevice({
+        device,
+        hardwareWallet,
+        hwType,
+        psbtToSign,
+        txData,
+        wallet,
       });
 
-      const signResult = await hardwareWallet.signPSBT(psbtToSign, inputPaths, multisigXpubs);
-
-      if (signResult.psbt || signResult.rawTx) {
-        // Update the PSBT with signatures
-        const signedPsbt = signResult.psbt || psbtToSign;
-        setUnsignedPsbt(signedPsbt);
-
-        // Store raw transaction if returned (Trezor returns fully signed rawTx)
-        if (signResult.rawTx) {
-          log.info('Storing signed raw transaction from device', {
-            deviceId: device.id,
-            rawTxLength: signResult.rawTx.length,
-            rawTxPreview: signResult.rawTx.substring(0, 50) + '...',
-          });
-          setSignedRawTx(signResult.rawTx);
-        }
-
-        // Mark this device as signed
-        setSignedDevices(prev => new Set([...prev, device.id]));
-
-        // Persist signature to draft if we're in draft mode
-        if (draftId) {
-          try {
-            await draftsApi.updateDraft(walletId, draftId, {
-              signedPsbtBase64: signedPsbt,
-              signedDeviceId: device.id,
-            });
-            log.info('Signature persisted to draft', { draftId, deviceId: device.id });
-          } catch (persistErr) {
-            log.warn('Failed to persist signature to draft', { error: persistErr });
-            // Don't fail the signing - the signature is still valid locally
-          }
-        }
-
-        log.info('Device signing successful', {
-          deviceId: device.id,
-          hasRawTx: !!signResult.rawTx,
-          hasPsbt: !!signResult.psbt
-        });
-        return true;
-      } else {
-        setError('Signing did not produce a result');
-        return false;
+      if (!hasSigningResult(signResult)) {
+        return failDeviceSigning(setError, 'Signing did not produce a result');
       }
+
+      await applyDeviceSignResult({
+        signResult,
+        psbtToSign,
+        device,
+        draftId,
+        walletId,
+        setUnsignedPsbt,
+        setSignedRawTx,
+        setSignedDevices,
+      });
+      return true;
     } catch (err) {
       log.error('Device signing failed', { deviceId: device.id, error: err });
       setError(err instanceof Error ? err.message : 'Failed to sign with device');

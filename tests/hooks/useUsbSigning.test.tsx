@@ -160,6 +160,40 @@ describe('useUsbSigning', () => {
     expect(deps.setError).toHaveBeenCalledWith('No PSBT available to sign');
   });
 
+  it('signWithDevice fails for unsupported device types before connecting', async () => {
+    const deps = createDeps();
+    const { result } = renderHook(() => useUsbSigning(deps));
+
+    let ok = true;
+    await act(async () => {
+      ok = await result.current.signWithDevice({ id: 'dev-unknown', type: 'Unknown Hardware' } as any);
+    });
+
+    expect(ok).toBe(false);
+    expect(deps.setError).toHaveBeenCalledWith(
+      'Unsupported device type: Unknown Hardware. Use PSBT file signing instead.'
+    );
+    expect(mocks.hardwareWallet.connect).not.toHaveBeenCalled();
+    expect(mocks.hardwareWallet.disconnect).not.toHaveBeenCalled();
+  });
+
+  it('signWithDevice fails for devices that do not support USB signing', async () => {
+    const deps = createDeps();
+    const { result } = renderHook(() => useUsbSigning(deps));
+
+    let ok = true;
+    await act(async () => {
+      ok = await result.current.signWithDevice({ id: 'dev-coldcard', type: 'Coldcard Mk4' } as any);
+    });
+
+    expect(ok).toBe(false);
+    expect(deps.setError).toHaveBeenCalledWith(
+      'Coldcard Mk4 does not support USB signing. Please use PSBT file signing.'
+    );
+    expect(mocks.hardwareWallet.connect).not.toHaveBeenCalled();
+    expect(mocks.hardwareWallet.disconnect).not.toHaveBeenCalled();
+  });
+
   it('signWithDevice accepts rawTx-only result and tolerates draft persistence failures', async () => {
     mocks.hardwareWallet.signPSBT.mockResolvedValueOnce({ rawTx: 'rawtx-from-device' });
     mocks.updateDraft.mockRejectedValueOnce(new Error('persist failed'));
