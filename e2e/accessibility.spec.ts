@@ -62,69 +62,169 @@ const DEVICE = {
   model: { slug: 'ledger', manufacturer: 'Ledger', name: 'Nano X' },
 };
 
+type MockApiResponse = {
+  status?: number;
+  body: unknown;
+};
+
+type ParsedApiRoute = {
+  method: string;
+  path: string;
+  requestKey: string;
+};
+
+function mockResponse(body: unknown, status?: number): MockApiResponse {
+  return { body, status };
+}
+
+function parseApiRoute(route: Route): ParsedApiRoute {
+  const request = route.request();
+  const method = request.method();
+  const url = new URL(request.url());
+  const path = url.pathname.replace(/^\/api\/v1/, '');
+  return { method, path, requestKey: `${method} ${path}` };
+}
+
+const PRICE_RESPONSE = {
+  price: 95000,
+  currency: 'USD',
+  sources: [],
+  median: 95000,
+  average: 95000,
+  timestamp: '2026-03-11T00:00:00.000Z',
+  cached: true,
+  change24h: -1.5,
+};
+
+const BITCOIN_STATUS_RESPONSE = {
+  connected: true,
+  blockHeight: 900500,
+  explorerUrl: 'https://mempool.space',
+  confirmationThreshold: 1,
+  deepConfirmationThreshold: 6,
+  pool: {
+    enabled: true,
+    minConnections: 1,
+    maxConnections: 3,
+    stats: {
+      totalConnections: 2,
+      activeConnections: 2,
+      idleConnections: 0,
+      waitingRequests: 0,
+      totalAcquisitions: 30,
+      averageAcquisitionTimeMs: 8,
+      healthCheckFailures: 0,
+      serverCount: 1,
+      servers: [],
+    },
+  },
+};
+
+const WALLET_STATS_RESPONSE = {
+  totalCount: 0,
+  receivedCount: 0,
+  sentCount: 0,
+  consolidationCount: 0,
+  totalReceived: 0,
+  totalSent: 0,
+  totalFees: 0,
+  walletBalance: WALLET.balance,
+};
+
+const WALLET_PRIVACY_RESPONSE = {
+  utxos: [],
+  summary: {
+    averageScore: 100,
+    grade: 'excellent',
+    utxoCount: 0,
+    addressReuseCount: 0,
+    roundAmountCount: 0,
+    clusterCount: 0,
+    recommendations: [],
+  },
+};
+
+const A11Y_API_RESPONSES: Record<string, MockApiResponse> = {
+  'GET /auth/me': mockResponse(ADMIN_USER),
+  'GET /auth/registration-status': mockResponse({ enabled: false }),
+  'GET /health': mockResponse({ status: 'ok' }),
+  'GET /wallets': mockResponse([WALLET]),
+  'GET /devices': mockResponse([DEVICE]),
+  'GET /price': mockResponse(PRICE_RESPONSE),
+  'GET /bitcoin/status': mockResponse(BITCOIN_STATUS_RESPONSE),
+  'GET /bitcoin/fees': mockResponse({ fastest: 18, halfHour: 12, hour: 8, economy: 3 }),
+  'GET /bitcoin/mempool': mockResponse({
+    mempool: [],
+    blocks: [],
+    mempoolInfo: { count: 0, size: 0, totalFees: 0 },
+    queuedBlocksSummary: null,
+  }),
+  'GET /admin/version': mockResponse({ updateAvailable: false, currentVersion: '0.8.14' }),
+  'GET /transactions/recent': mockResponse([]),
+  'GET /transactions/balance-history': mockResponse([]),
+  'GET /ai/status': mockResponse({ available: false, containerAvailable: false }),
+  'GET /intelligence/status': mockResponse({ available: false, ollamaConfigured: false }),
+  'GET /admin/groups': mockResponse([]),
+  [`GET /wallets/${WALLET_ID}`]: mockResponse(WALLET),
+  [`GET /wallets/${WALLET_ID}/transactions`]: mockResponse([]),
+  [`GET /wallets/${WALLET_ID}/transactions/pending`]: mockResponse([]),
+  [`GET /wallets/${WALLET_ID}/transactions/stats`]: mockResponse(WALLET_STATS_RESPONSE),
+  [`GET /wallets/${WALLET_ID}/utxos`]: mockResponse({ utxos: [], count: 0, totalBalance: 0 }),
+  [`GET /wallets/${WALLET_ID}/privacy`]: mockResponse(WALLET_PRIVACY_RESPONSE),
+  [`GET /wallets/${WALLET_ID}/addresses/summary`]: mockResponse({
+    totalAddresses: 0,
+    usedCount: 0,
+    unusedCount: 0,
+    totalBalance: 0,
+    usedBalance: 0,
+    unusedBalance: 0,
+  }),
+  [`GET /wallets/${WALLET_ID}/addresses`]: mockResponse([]),
+  [`GET /wallets/${WALLET_ID}/drafts`]: mockResponse([]),
+  [`GET /wallets/${WALLET_ID}/share`]: mockResponse({ group: null, users: [] }),
+  [`GET /devices/${DEVICE_ID}`]: mockResponse(DEVICE),
+  [`GET /devices/${DEVICE_ID}/share`]: mockResponse({
+    users: [{ id: ADMIN_USER.id, username: ADMIN_USER.username, role: 'owner' }],
+    group: null,
+  }),
+  'GET /devices/models': mockResponse([]),
+};
+
+function getA11yApiResponse(method: string, path: string): MockApiResponse | null {
+  const response = A11Y_API_RESPONSES[`${method} ${path}`];
+  if (response) {
+    return response;
+  }
+  if (method === 'GET' && /^\/wallets\/[^/]+\/labels$/.test(path)) {
+    return mockResponse([]);
+  }
+  return null;
+}
+
+function createA11yApiRouteHandler(unhandledRequests: string[]) {
+  const apiRouteHandler = async (route: Route) => {
+    const { method, path, requestKey } = parseApiRoute(route);
+    const response = getA11yApiResponse(method, path);
+
+    if (response) {
+      await json(route, response.body, response.status);
+      return;
+    }
+
+    unhandledRequests.push(requestKey);
+    await unmocked(route, method, path);
+  };
+
+  return apiRouteHandler;
+}
+
 async function mockA11yApi(page: Page) {
   await page.addInitScript(() => {
     localStorage.setItem('sanctuary_token', 'playwright-a11y-token');
   });
 
   const unhandledRequests: string[] = [];
-
-  const apiRouteHandler = async (route: Route) => {
-    const request = route.request();
-    const method = request.method();
-    const url = new URL(request.url());
-    const path = url.pathname.replace(/^\/api\/v1/, '');
-
-    // Auth
-    if (method === 'GET' && path === '/auth/me') return json(route, ADMIN_USER);
-    if (method === 'GET' && path === '/auth/registration-status') return json(route, { enabled: false });
-    if (method === 'GET' && path === '/health') return json(route, { status: 'ok' });
-
-    // Shared
-    if (method === 'GET' && path === '/wallets') return json(route, [WALLET]);
-    if (method === 'GET' && path === '/devices') return json(route, [DEVICE]);
-    if (method === 'GET' && path === '/price') {
-      return json(route, { price: 95000, currency: 'USD', sources: [], median: 95000, average: 95000, timestamp: '2026-03-11T00:00:00.000Z', cached: true, change24h: -1.5 });
-    }
-    if (method === 'GET' && path === '/bitcoin/status') {
-      return json(route, { connected: true, blockHeight: 900500, explorerUrl: 'https://mempool.space', confirmationThreshold: 1, deepConfirmationThreshold: 6, pool: { enabled: true, minConnections: 1, maxConnections: 3, stats: { totalConnections: 2, activeConnections: 2, idleConnections: 0, waitingRequests: 0, totalAcquisitions: 30, averageAcquisitionTimeMs: 8, healthCheckFailures: 0, serverCount: 1, servers: [] } } });
-    }
-    if (method === 'GET' && path === '/bitcoin/fees') return json(route, { fastest: 18, halfHour: 12, hour: 8, economy: 3 });
-    if (method === 'GET' && path === '/bitcoin/mempool') return json(route, { mempool: [], blocks: [], mempoolInfo: { count: 0, size: 0, totalFees: 0 }, queuedBlocksSummary: null });
-    if (method === 'GET' && path === '/admin/version') return json(route, { updateAvailable: false, currentVersion: '0.8.14' });
-    if (method === 'GET' && path === '/transactions/recent') return json(route, []);
-    if (method === 'GET' && path === '/transactions/balance-history') return json(route, []);
-    if (method === 'GET' && path === '/ai/status') return json(route, { available: false, containerAvailable: false });
-    if (method === 'GET' && path === '/intelligence/status') return json(route, { available: false, ollamaConfigured: false });
-    if (method === 'GET' && path === '/admin/groups') return json(route, []);
-
-    // Wallet detail
-    if (method === 'GET' && path === `/wallets/${WALLET_ID}`) return json(route, WALLET);
-    if (method === 'GET' && path === `/wallets/${WALLET_ID}/transactions`) return json(route, []);
-    if (method === 'GET' && path === `/wallets/${WALLET_ID}/transactions/pending`) return json(route, []);
-    if (method === 'GET' && path === `/wallets/${WALLET_ID}/transactions/stats`) {
-      return json(route, { totalCount: 0, receivedCount: 0, sentCount: 0, consolidationCount: 0, totalReceived: 0, totalSent: 0, totalFees: 0, walletBalance: WALLET.balance });
-    }
-    if (method === 'GET' && path === `/wallets/${WALLET_ID}/utxos`) return json(route, { utxos: [], count: 0, totalBalance: 0 });
-    if (method === 'GET' && path === `/wallets/${WALLET_ID}/privacy`) {
-      return json(route, { utxos: [], summary: { averageScore: 100, grade: 'excellent', utxoCount: 0, addressReuseCount: 0, roundAmountCount: 0, clusterCount: 0, recommendations: [] } });
-    }
-    if (method === 'GET' && path === `/wallets/${WALLET_ID}/addresses/summary`) {
-      return json(route, { totalAddresses: 0, usedCount: 0, unusedCount: 0, totalBalance: 0, usedBalance: 0, unusedBalance: 0 });
-    }
-    if (method === 'GET' && path === `/wallets/${WALLET_ID}/addresses`) return json(route, []);
-    if (method === 'GET' && path === `/wallets/${WALLET_ID}/drafts`) return json(route, []);
-    if (method === 'GET' && path === `/wallets/${WALLET_ID}/share`) return json(route, { group: null, users: [] });
-    if (method === 'GET' && path.match(/^\/wallets\/[^/]+\/labels$/)) return json(route, []);
-    if (method === 'GET' && path === `/devices/${DEVICE_ID}`) return json(route, DEVICE);
-    if (method === 'GET' && path === `/devices/${DEVICE_ID}/share`) return json(route, { users: [{ id: ADMIN_USER.id, username: ADMIN_USER.username, role: 'owner' }], group: null });
-    if (method === 'GET' && path === '/devices/models') return json(route, []);
-
-    unhandledRequests.push(`${method} ${path}`);
-    return unmocked(route, method, path);
-  };
-
-  await registerApiRoutes(page, apiRouteHandler);
+  await registerApiRoutes(page, createA11yApiRouteHandler(unhandledRequests));
   return unhandledRequests;
 }
 
