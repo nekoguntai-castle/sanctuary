@@ -16,6 +16,39 @@ vi.mock('../../../../src/jobs/definitions/maintenance', () => mockJobs);
 
 import { maintenanceJobs } from '../../../../src/worker/jobs/maintenanceJobs';
 
+type ForwardedMaintenanceJob = {
+  handler: unknown;
+  options: unknown;
+};
+
+const FORWARDED_MAINTENANCE_JOBS: Array<{
+  name: string;
+  definition: ForwardedMaintenanceJob;
+}> = [
+  { name: 'cleanupAuditLogs', definition: mockJobs.cleanupAuditLogsJob },
+  { name: 'cleanupPriceData', definition: mockJobs.cleanupPriceDataJob },
+  { name: 'cleanupFeeEstimates', definition: mockJobs.cleanupFeeEstimatesJob },
+  { name: 'cleanupExpiredDrafts', definition: mockJobs.cleanupExpiredDraftsJob },
+  { name: 'cleanupExpiredTransfers', definition: mockJobs.cleanupExpiredTransfersJob },
+  { name: 'cleanupExpiredTokens', definition: mockJobs.cleanupExpiredTokensJob },
+  { name: 'weeklyVacuum', definition: mockJobs.weeklyVacuumJob },
+  { name: 'monthlyCleanup', definition: mockJobs.monthlyCleanupJob },
+];
+
+function maintenanceJobsByName() {
+  return new Map(maintenanceJobs.map(job => [job.name, job]));
+}
+
+function expectForwardedMaintenanceJob(
+  byName: ReturnType<typeof maintenanceJobsByName>,
+  name: string,
+  definition: ForwardedMaintenanceJob
+) {
+  const job = byName.get(name);
+  expect(job?.handler).toBe(definition.handler);
+  expect(job?.options).toBe(definition.options);
+}
+
 describe('worker maintenanceJobs', () => {
   it('exports all maintenance job handlers with queue and lock configuration', () => {
     expect(maintenanceJobs).toHaveLength(9);
@@ -63,23 +96,10 @@ describe('worker maintenanceJobs', () => {
   });
 
   it('forwards handler and options from shared maintenance definitions', () => {
-    const byName = new Map(maintenanceJobs.map(job => [job.name, job]));
+    const byName = maintenanceJobsByName();
 
-    expect(byName.get('cleanupAuditLogs')?.handler).toBe(mockJobs.cleanupAuditLogsJob.handler);
-    expect(byName.get('cleanupAuditLogs')?.options).toBe(mockJobs.cleanupAuditLogsJob.options);
-    expect(byName.get('cleanupPriceData')?.handler).toBe(mockJobs.cleanupPriceDataJob.handler);
-    expect(byName.get('cleanupPriceData')?.options).toBe(mockJobs.cleanupPriceDataJob.options);
-    expect(byName.get('cleanupFeeEstimates')?.handler).toBe(mockJobs.cleanupFeeEstimatesJob.handler);
-    expect(byName.get('cleanupFeeEstimates')?.options).toBe(mockJobs.cleanupFeeEstimatesJob.options);
-    expect(byName.get('cleanupExpiredDrafts')?.handler).toBe(mockJobs.cleanupExpiredDraftsJob.handler);
-    expect(byName.get('cleanupExpiredDrafts')?.options).toBe(mockJobs.cleanupExpiredDraftsJob.options);
-    expect(byName.get('cleanupExpiredTransfers')?.handler).toBe(mockJobs.cleanupExpiredTransfersJob.handler);
-    expect(byName.get('cleanupExpiredTransfers')?.options).toBe(mockJobs.cleanupExpiredTransfersJob.options);
-    expect(byName.get('cleanupExpiredTokens')?.handler).toBe(mockJobs.cleanupExpiredTokensJob.handler);
-    expect(byName.get('cleanupExpiredTokens')?.options).toBe(mockJobs.cleanupExpiredTokensJob.options);
-    expect(byName.get('weeklyVacuum')?.handler).toBe(mockJobs.weeklyVacuumJob.handler);
-    expect(byName.get('weeklyVacuum')?.options).toBe(mockJobs.weeklyVacuumJob.options);
-    expect(byName.get('monthlyCleanup')?.handler).toBe(mockJobs.monthlyCleanupJob.handler);
-    expect(byName.get('monthlyCleanup')?.options).toBe(mockJobs.monthlyCleanupJob.options);
+    for (const { name, definition } of FORWARDED_MAINTENANCE_JOBS) {
+      expectForwardedMaintenanceJob(byName, name, definition);
+    }
   });
 });
