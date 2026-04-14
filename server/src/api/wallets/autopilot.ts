@@ -13,6 +13,7 @@ import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
 import { ErrorCodes } from '../../errors/ApiError';
 import { DEFAULT_AUTOPILOT_SETTINGS } from '../../services/autopilot/types';
+import type { WalletAutopilotSettings } from '../../services/autopilot/types';
 import { getWalletAutopilotSettings, updateWalletAutopilotSettings } from '../../services/autopilot/settings';
 import { getUtxoHealthProfile } from '../../services/autopilot/utxoHealth';
 import { getLatestFeeSnapshot } from '../../services/autopilot/feeMonitor';
@@ -30,6 +31,21 @@ const AutopilotSettingsBodySchema = z.object({
   minDustCount: z.number().int().nonnegative().optional(),
   maxUtxoSize: z.number().int().nonnegative().optional(),
 });
+
+type AutopilotSettingsPatch = Partial<WalletAutopilotSettings>;
+
+function buildAutopilotSettingsUpdate(body: AutopilotSettingsPatch): WalletAutopilotSettings {
+  return {
+    ...DEFAULT_AUTOPILOT_SETTINGS,
+    ...compactNullishAutopilotSettings(body),
+  };
+}
+
+function compactNullishAutopilotSettings(body: AutopilotSettingsPatch): AutopilotSettingsPatch {
+  return Object.fromEntries(
+    Object.entries(body).filter(([, value]) => value !== undefined && value !== null)
+  ) as AutopilotSettingsPatch;
+}
 
 /**
  * GET /api/v1/wallets/:id/autopilot
@@ -66,29 +82,12 @@ router.patch(
   asyncHandler(async (req, res) => {
     const walletId = req.walletId!;
     const userId = req.user!.userId;
-    const {
-      enabled,
-      maxFeeRate,
-      minUtxoCount,
-      dustThreshold,
-      cooldownHours,
-      notifyTelegram,
-      notifyPush,
-      minDustCount,
-      maxUtxoSize,
-    } = req.body;
 
-    await updateWalletAutopilotSettings(userId, walletId, {
-      enabled: enabled ?? DEFAULT_AUTOPILOT_SETTINGS.enabled,
-      maxFeeRate: maxFeeRate ?? DEFAULT_AUTOPILOT_SETTINGS.maxFeeRate,
-      minUtxoCount: minUtxoCount ?? DEFAULT_AUTOPILOT_SETTINGS.minUtxoCount,
-      dustThreshold: dustThreshold ?? DEFAULT_AUTOPILOT_SETTINGS.dustThreshold,
-      cooldownHours: cooldownHours ?? DEFAULT_AUTOPILOT_SETTINGS.cooldownHours,
-      notifyTelegram: notifyTelegram ?? DEFAULT_AUTOPILOT_SETTINGS.notifyTelegram,
-      notifyPush: notifyPush ?? DEFAULT_AUTOPILOT_SETTINGS.notifyPush,
-      minDustCount: minDustCount ?? DEFAULT_AUTOPILOT_SETTINGS.minDustCount,
-      maxUtxoSize: maxUtxoSize ?? DEFAULT_AUTOPILOT_SETTINGS.maxUtxoSize,
-    });
+    await updateWalletAutopilotSettings(
+      userId,
+      walletId,
+      buildAutopilotSettingsUpdate(req.body)
+    );
 
     res.json({
       success: true,
