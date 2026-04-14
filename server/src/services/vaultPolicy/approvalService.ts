@@ -24,6 +24,9 @@ import type {
 
 const log = createLogger('VAULT_POLICY:SVC_APPROVAL');
 
+type ApprovalRequestWithVotes = ApprovalRequest & { votes: ApprovalVote[] };
+type ApprovalDraft = Awaited<ReturnType<typeof draftRepository.findById>>;
+
 // ========================================
 // CREATE APPROVAL REQUESTS
 // ========================================
@@ -102,7 +105,22 @@ export async function castVote(
   decision: VoteDecision,
   reason?: string
 ): Promise<{ vote: ApprovalVote; request: ApprovalRequest & { votes: ApprovalVote[] } }> {
-  // Fetch the request with votes
+  const request = await getPendingApprovalRequest(requestId);
+  await ensureUserHasNotVoted(requestId, userId);
+  const draft = await getDraftForAllowedVote(request, userId);
+  const vote = await createApprovalVote(requestId, userId, decision, reason);
+  const updatedRequest = await getApprovalRequestAfterVote(requestId);
+
+  // Check if the request should be resolved
+  await checkAndResolveRequest(updatedRequest);
+
+  // Log policy event
+  logApprovalVoteEvent(request, updatedRequest, draft, userId, decision, reason);
+
+  return { vote, request: updatedRequest };
+}
+
+async function getPendingApprovalRequest(requestId: string): Promise<ApprovalRequestWithVotes> {
   const request = await policyRepository.findApprovalRequestById(requestId);
   if (!request) {
     throw new NotFoundError('Approval request not found');
@@ -112,25 +130,39 @@ export async function castVote(
     throw new ConflictError(`Approval request is already ${request.status}`);
   }
 
-  // Check if expired
   if (request.expiresAt && new Date() > request.expiresAt) {
     await resolveRequest(requestId, 'expired');
     throw new ConflictError('Approval request has expired');
   }
 
-  // Check for existing vote
+  return request;
+}
+
+async function ensureUserHasNotVoted(requestId: string, userId: string): Promise<void> {
   const existingVote = await policyRepository.findVoteByUserAndRequest(requestId, userId);
   if (existingVote) {
     throw new ConflictError('You have already voted on this request');
   }
+}
 
-  // Check self-approval
+async function getDraftForAllowedVote(
+  request: ApprovalRequest,
+  userId: string
+): Promise<ApprovalDraft> {
   const draft = await draftRepository.findById(request.draftTransactionId);
   if (draft && draft.userId === userId && !request.allowSelfApproval) {
     throw new ForbiddenError('Self-approval is not allowed for this policy');
   }
 
-  // Record the vote
+  return draft;
+}
+
+async function createApprovalVote(
+  requestId: string,
+  userId: string,
+  decision: VoteDecision,
+  reason?: string
+): Promise<ApprovalVote> {
   const vote = await policyRepository.createVote({
     approvalRequestId: requestId,
     userId,
@@ -145,24 +177,34 @@ export async function castVote(
     voteId: vote.id,
   });
 
-  // Re-fetch request with updated votes
+  return vote;
+}
+
+async function getApprovalRequestAfterVote(requestId: string): Promise<ApprovalRequestWithVotes> {
   const updatedRequest = await policyRepository.findApprovalRequestById(requestId);
   if (!updatedRequest) {
     throw new NotFoundError('Approval request not found after vote');
   }
 
-  // Check if the request should be resolved
-  await checkAndResolveRequest(updatedRequest);
+  return updatedRequest;
+}
 
-  // Log policy event
+function logApprovalVoteEvent(
+  request: ApprovalRequest,
+  updatedRequest: ApprovalRequestWithVotes,
+  draft: ApprovalDraft,
+  userId: string,
+  decision: VoteDecision,
+  reason?: string
+): void {
   policyRepository.createPolicyEvent({
     policyId: request.policyId,
     walletId: draft?.walletId ?? '',
     draftTransactionId: request.draftTransactionId,
     userId,
-    eventType: decision === 'approve' ? 'approved' : decision === 'reject' ? 'rejected' : 'vetoed',
+    eventType: getVoteEventType(decision),
     details: {
-      requestId,
+      requestId: request.id,
       decision,
       reason: reason ?? null,
       currentApprovals: updatedRequest.votes.filter(v => v.decision === 'approve').length,
@@ -171,8 +213,17 @@ export async function castVote(
   }).catch(err => {
     log.warn('Failed to log approval event', { error: getErrorMessage(err) });
   });
+}
 
-  return { vote, request: updatedRequest };
+function getVoteEventType(decision: VoteDecision): 'approved' | 'rejected' | 'vetoed' {
+  switch (decision) {
+    case 'approve':
+      return 'approved';
+    case 'reject':
+      return 'rejected';
+    default:
+      return 'vetoed';
+  }
 }
 
 // ========================================
