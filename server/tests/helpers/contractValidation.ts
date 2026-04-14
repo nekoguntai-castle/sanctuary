@@ -64,6 +64,28 @@ function isBigIntString(value: unknown): boolean {
   return /^-?\d+$/.test(value);
 }
 
+type FieldValidationRule = {
+  field: string;
+  isValid: (value: unknown) => boolean;
+  message: string;
+};
+
+function nullable(isValid: (value: unknown) => boolean): (value: unknown) => boolean {
+  return (value: unknown) => value === null || isValid(value);
+}
+
+function validateFields(
+  data: Record<string, unknown>,
+  errors: string[],
+  rules: FieldValidationRule[]
+) {
+  for (const rule of rules) {
+    if (!rule.isValid(data[rule.field])) {
+      errors.push(rule.message);
+    }
+  }
+}
+
 // =============================================================================
 // Enum Validators
 // =============================================================================
@@ -82,6 +104,72 @@ function isEnumValue<T extends readonly string[]>(value: unknown, enumValues: T)
   return isString(value) && enumValues.includes(value as any);
 }
 
+const isNullableNumber = nullable(isNumber);
+const isNullableString = nullable(isString);
+const isNullableIsoDateString = nullable(isIsoDateString);
+
+function isWalletType(value: unknown): boolean {
+  return isEnumValue(value, WALLET_TYPES);
+}
+
+function isScriptType(value: unknown): boolean {
+  return isEnumValue(value, SCRIPT_TYPES);
+}
+
+function isNetwork(value: unknown): boolean {
+  return isEnumValue(value, NETWORKS);
+}
+
+function isWalletSyncStatus(value: unknown): boolean {
+  return isEnumValue(value, SYNC_STATUSES);
+}
+
+function isWalletRole(value: unknown): boolean {
+  return isEnumValue(value, WALLET_ROLES);
+}
+
+const WALLET_RESPONSE_RULES: FieldValidationRule[] = [
+  { field: 'id', isValid: isString, message: 'id must be a string' },
+  { field: 'name', isValid: isString, message: 'name must be a string' },
+  { field: 'type', isValid: isWalletType, message: `type must be one of: ${WALLET_TYPES.join(', ')}` },
+  { field: 'scriptType', isValid: isScriptType, message: `scriptType must be one of: ${SCRIPT_TYPES.join(', ')}` },
+  { field: 'network', isValid: isNetwork, message: `network must be one of: ${NETWORKS.join(', ')}` },
+  { field: 'syncStatus', isValid: isWalletSyncStatus, message: `syncStatus must be one of: ${SYNC_STATUSES.join(', ')}` },
+  { field: 'role', isValid: isWalletRole, message: `role must be one of: ${WALLET_ROLES.join(', ')}` },
+  { field: 'quorum', isValid: isNullableNumber, message: 'quorum must be a number or null' },
+  { field: 'totalSigners', isValid: isNullableNumber, message: 'totalSigners must be a number or null' },
+  { field: 'descriptor', isValid: isNullableString, message: 'descriptor must be a string or null' },
+  { field: 'balance', isValid: isBigIntString, message: 'balance must be a numeric string' },
+  { field: 'unconfirmedBalance', isValid: isBigIntString, message: 'unconfirmedBalance must be a numeric string' },
+  { field: 'lastSynced', isValid: isNullableIsoDateString, message: 'lastSynced must be an ISO date string or null' },
+  { field: 'createdAt', isValid: isIsoDateString, message: 'createdAt must be an ISO date string' },
+  { field: 'updatedAt', isValid: isIsoDateString, message: 'updatedAt must be an ISO date string' },
+  { field: 'deviceCount', isValid: isNumber, message: 'deviceCount must be a number' },
+  { field: 'isShared', isValid: isBoolean, message: 'isShared must be a boolean' },
+  { field: 'pendingConsolidation', isValid: isBoolean, message: 'pendingConsolidation must be a boolean' },
+  { field: 'pendingReceive', isValid: isBoolean, message: 'pendingReceive must be a boolean' },
+  { field: 'pendingSend', isValid: isBoolean, message: 'pendingSend must be a boolean' },
+  { field: 'hasPendingDraft', isValid: isBoolean, message: 'hasPendingDraft must be a boolean' },
+];
+
+const WALLET_GROUP_RULES: FieldValidationRule[] = [
+  { field: 'id', isValid: isString, message: 'group.id must be a string' },
+  { field: 'name', isValid: isString, message: 'group.name must be a string' },
+];
+
+function validateWalletGroup(group: unknown, errors: string[]) {
+  if (group === null) {
+    return;
+  }
+
+  if (!isObject(group)) {
+    errors.push('group must be an object or null');
+    return;
+  }
+
+  validateFields(group, errors, WALLET_GROUP_RULES);
+}
+
 // =============================================================================
 // Response Validators
 // =============================================================================
@@ -96,50 +184,8 @@ export function validateWalletResponse(data: unknown): ValidationResult {
     return { valid: false, errors: ['Response is not an object'] };
   }
 
-  // Required string fields
-  if (!isString(data.id)) errors.push('id must be a string');
-  if (!isString(data.name)) errors.push('name must be a string');
-  if (!isEnumValue(data.type, WALLET_TYPES)) errors.push(`type must be one of: ${WALLET_TYPES.join(', ')}`);
-  if (!isEnumValue(data.scriptType, SCRIPT_TYPES)) errors.push(`scriptType must be one of: ${SCRIPT_TYPES.join(', ')}`);
-  if (!isEnumValue(data.network, NETWORKS)) errors.push(`network must be one of: ${NETWORKS.join(', ')}`);
-  if (!isEnumValue(data.syncStatus, SYNC_STATUSES)) errors.push(`syncStatus must be one of: ${SYNC_STATUSES.join(', ')}`);
-  if (!isEnumValue(data.role, WALLET_ROLES)) errors.push(`role must be one of: ${WALLET_ROLES.join(', ')}`);
-
-  // Nullable number fields
-  if (data.quorum !== null && !isNumber(data.quorum)) errors.push('quorum must be a number or null');
-  if (data.totalSigners !== null && !isNumber(data.totalSigners)) errors.push('totalSigners must be a number or null');
-
-  // Nullable string fields
-  if (data.descriptor !== null && !isString(data.descriptor)) errors.push('descriptor must be a string or null');
-
-  // BigInt strings
-  if (!isBigIntString(data.balance)) errors.push('balance must be a numeric string');
-  if (!isBigIntString(data.unconfirmedBalance)) errors.push('unconfirmedBalance must be a numeric string');
-
-  // Date strings
-  if (data.lastSynced !== null && !isIsoDateString(data.lastSynced)) errors.push('lastSynced must be an ISO date string or null');
-  if (!isIsoDateString(data.createdAt)) errors.push('createdAt must be an ISO date string');
-  if (!isIsoDateString(data.updatedAt)) errors.push('updatedAt must be an ISO date string');
-
-  // Required number fields
-  if (!isNumber(data.deviceCount)) errors.push('deviceCount must be a number');
-
-  // Required boolean fields
-  if (!isBoolean(data.isShared)) errors.push('isShared must be a boolean');
-  if (!isBoolean(data.pendingConsolidation)) errors.push('pendingConsolidation must be a boolean');
-  if (!isBoolean(data.pendingReceive)) errors.push('pendingReceive must be a boolean');
-  if (!isBoolean(data.pendingSend)) errors.push('pendingSend must be a boolean');
-  if (!isBoolean(data.hasPendingDraft)) errors.push('hasPendingDraft must be a boolean');
-
-  // Group (nullable object)
-  if (data.group !== null) {
-    if (!isObject(data.group)) {
-      errors.push('group must be an object or null');
-    } else {
-      if (!isString(data.group.id)) errors.push('group.id must be a string');
-      if (!isString(data.group.name)) errors.push('group.name must be a string');
-    }
-  }
+  validateFields(data, errors, WALLET_RESPONSE_RULES);
+  validateWalletGroup(data.group, errors);
 
   return { valid: errors.length === 0, errors };
 }
