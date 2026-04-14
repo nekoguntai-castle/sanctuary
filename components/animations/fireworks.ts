@@ -21,6 +21,16 @@ interface Particle {
   friction: number;
 }
 
+interface ParticleBurstConfig {
+  angle: number;
+  speed: number;
+  gravity: number;
+  friction: number;
+  maxLife: number;
+  size: number;
+  color: string;
+}
+
 interface Rocket {
   x: number;
   y: number;
@@ -115,131 +125,192 @@ export function useFireworks(
       });
     };
 
-    const explodeRocket = (rocket: Rocket) => {
-      const baseColor = rocket.color;
+    const randomColor = (palette = colors) => (
+      palette[Math.floor(Math.random() * palette.length)]
+    );
 
-      // Create explosion pattern - more variety!
-      const pattern = Math.floor(Math.random() * 10);
+    const getParticleCount = (pattern: number) => {
+      if (pattern === 7) return 120 + Math.floor(Math.random() * 40);
+      if (pattern === 8) return 100 + Math.floor(Math.random() * 50);
+      if (pattern === 9) return 40;
 
-      // Different patterns have different particle counts
-      let particleCount: number;
-      switch (pattern) {
-        case 7: // Chrysanthemum - lots of thin trails
-          particleCount = 120 + Math.floor(Math.random() * 40);
-          break;
-        case 8: // Peony - large and fluffy
-          particleCount = 100 + Math.floor(Math.random() * 50);
-          break;
-        case 9: // Crossette - splits into clusters
-          particleCount = 40;
-          break;
-        default:
-          particleCount = 60 + Math.floor(Math.random() * 40);
-      }
+      return 60 + Math.floor(Math.random() * 40);
+    };
+
+    const createBaseParticleConfig = (baseColor: string): Omit<ParticleBurstConfig, 'angle' | 'speed'> => ({
+      gravity: 0.03,
+      friction: 0.98,
+      maxLife: 80 + Math.random() * 40,
+      size: 2 + Math.random() * 2,
+      color: Math.random() > 0.3 ? baseColor : randomColor(),
+    });
+
+    const circleParticle = (
+      i: number,
+      particleCount: number,
+      baseColor: string
+    ): ParticleBurstConfig => ({
+      ...createBaseParticleConfig(baseColor),
+      angle: (i / particleCount) * Math.PI * 2,
+      speed: 3 + Math.random() * 3,
+    });
+
+    const doubleRingParticle = (
+      i: number,
+      particleCount: number,
+      baseColor: string
+    ): ParticleBurstConfig => ({
+      ...createBaseParticleConfig(baseColor),
+      angle: (i / particleCount) * Math.PI * 2,
+      speed: i % 2 === 0 ? 3 + Math.random() * 2 : 5 + Math.random() * 2,
+    });
+
+    const scatterParticle = (baseColor: string): ParticleBurstConfig => ({
+      ...createBaseParticleConfig(baseColor),
+      angle: Math.random() * Math.PI * 2,
+      speed: 1 + Math.random() * 5,
+    });
+
+    const willowParticle = (
+      i: number,
+      particleCount: number,
+      baseColor: string
+    ): ParticleBurstConfig => ({
+      ...createBaseParticleConfig(baseColor),
+      angle: (i / particleCount) * Math.PI * 2,
+      speed: 2 + Math.random() * 2.5,
+      gravity: 0.06,
+      maxLife: 120 + Math.random() * 60,
+      friction: 0.99,
+    });
+
+    const heartParticle = (
+      i: number,
+      particleCount: number,
+      baseColor: string
+    ): ParticleBurstConfig => {
+      const t = (i / particleCount) * Math.PI * 2;
+      const heartX = 16 * Math.pow(Math.sin(t), 3);
+      const heartY = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+
+      return {
+        ...createBaseParticleConfig(baseColor),
+        angle: Math.atan2(-heartY, heartX),
+        speed: Math.sqrt(heartX * heartX + heartY * heartY) * 0.2 + Math.random() * 0.5,
+        color: randomColor(['#FF69B4', '#FF1493', '#FF6B6B', '#FFB6C1']),
+      };
+    };
+
+    const starParticle = (
+      i: number,
+      particleCount: number,
+      baseColor: string
+    ): ParticleBurstConfig => {
+      const starAngle = (i / particleCount) * Math.PI * 2;
+      const starRadius = i % 2 === 0 ? 1 : 0.4;
+
+      return {
+        ...createBaseParticleConfig(baseColor),
+        angle: starAngle,
+        speed: (3 + Math.random() * 2) * starRadius,
+        color: randomColor(['#FFD700', '#FFE66D', '#FFFFFF']),
+      };
+    };
+
+    const spiralParticle = (
+      i: number,
+      particleCount: number,
+      baseColor: string
+    ): ParticleBurstConfig => ({
+      ...createBaseParticleConfig(baseColor),
+      angle: (i / particleCount) * Math.PI * 6 + i * 0.1,
+      speed: 1.5 + (i / particleCount) * 4,
+      friction: 0.97,
+    });
+
+    const chrysanthemumParticle = (
+      i: number,
+      particleCount: number,
+      baseColor: string
+    ): ParticleBurstConfig => ({
+      ...createBaseParticleConfig(baseColor),
+      angle: (i / particleCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.2,
+      speed: 2 + Math.random() * 4,
+      size: 1 + Math.random() * 1.5,
+      maxLife: 100 + Math.random() * 50,
+      gravity: 0.04,
+      friction: 0.985,
+    });
+
+    const peonyParticle = (baseColor: string): ParticleBurstConfig => ({
+      ...createBaseParticleConfig(baseColor),
+      angle: Math.random() * Math.PI * 2,
+      speed: 1 + Math.random() * 4.5,
+      size: 2.5 + Math.random() * 2.5,
+      maxLife: 90 + Math.random() * 50,
+      gravity: 0.025,
+    });
+
+    const crossetteParticle = (
+      i: number,
+      particleCount: number,
+      baseColor: string
+    ): ParticleBurstConfig => ({
+      ...createBaseParticleConfig(baseColor),
+      angle: (i / particleCount) * Math.PI * 2,
+      speed: 4 + Math.random() * 2,
+      friction: 0.96,
+      maxLife: 50,
+    });
+
+    const particleBuilders: Record<number, (i: number, particleCount: number, baseColor: string) => ParticleBurstConfig> = {
+      0: circleParticle,
+      1: doubleRingParticle,
+      2: (_i, _particleCount, baseColor) => scatterParticle(baseColor),
+      3: willowParticle,
+      4: heartParticle,
+      5: starParticle,
+      6: spiralParticle,
+      7: chrysanthemumParticle,
+      8: (_i, _particleCount, baseColor) => peonyParticle(baseColor),
+      9: crossetteParticle,
+    };
+
+    const pushParticle = (
+      x: number,
+      y: number,
+      config: ParticleBurstConfig
+    ) => {
+      particlesRef.current.push({
+        x,
+        y,
+        vx: Math.cos(config.angle) * config.speed,
+        vy: Math.sin(config.angle) * config.speed,
+        color: config.color,
+        size: config.size,
+        life: 1,
+        maxLife: config.maxLife,
+        trail: [],
+        gravity: config.gravity,
+        friction: config.friction,
+      });
+    };
+
+    const addBurstParticles = (
+      rocket: Rocket,
+      pattern: number,
+      particleCount: number
+    ) => {
+      const builder = particleBuilders[pattern] ?? particleBuilders[2];
 
       for (let i = 0; i < particleCount; i++) {
-        let angle: number;
-        let speed: number;
-        let gravity = 0.03;
-        let friction = 0.98;
-        let maxLife = 80 + Math.random() * 40;
-        let size = 2 + Math.random() * 2;
-        let particleColor = Math.random() > 0.3 ? baseColor : colors[Math.floor(Math.random() * colors.length)];
-
-        switch (pattern) {
-          case 0: // Circle burst
-            angle = (i / particleCount) * Math.PI * 2;
-            speed = 3 + Math.random() * 3;
-            break;
-
-          case 1: // Double ring
-            angle = (i / particleCount) * Math.PI * 2;
-            speed = i % 2 === 0 ? 3 + Math.random() * 2 : 5 + Math.random() * 2;
-            break;
-
-          case 2: // Scatter spray
-            angle = Math.random() * Math.PI * 2;
-            speed = 1 + Math.random() * 5;
-            break;
-
-          case 3: // Willow (drooping graceful trails)
-            angle = (i / particleCount) * Math.PI * 2;
-            speed = 2 + Math.random() * 2.5;
-            gravity = 0.06;
-            maxLife = 120 + Math.random() * 60;
-            friction = 0.99;
-            break;
-
-          case 4: // Heart shape
-            const t = (i / particleCount) * Math.PI * 2;
-            const heartX = 16 * Math.pow(Math.sin(t), 3);
-            const heartY = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
-            angle = Math.atan2(-heartY, heartX);
-            speed = Math.sqrt(heartX * heartX + heartY * heartY) * 0.2 + Math.random() * 0.5;
-            particleColor = ['#FF69B4', '#FF1493', '#FF6B6B', '#FFB6C1'][Math.floor(Math.random() * 4)];
-            break;
-
-          case 5: // Star (5 points)
-            const starAngle = (i / particleCount) * Math.PI * 2;
-            const starRadius = (i % 2 === 0) ? 1 : 0.4;
-            angle = starAngle;
-            speed = (3 + Math.random() * 2) * starRadius;
-            particleColor = ['#FFD700', '#FFE66D', '#FFFFFF'][Math.floor(Math.random() * 3)];
-            break;
-
-          case 6: // Spiral
-            angle = (i / particleCount) * Math.PI * 6 + i * 0.1;
-            speed = 1.5 + (i / particleCount) * 4;
-            friction = 0.97;
-            break;
-
-          case 7: // Chrysanthemum (many thin trails)
-            angle = (i / particleCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.2;
-            speed = 2 + Math.random() * 4;
-            size = 1 + Math.random() * 1.5;
-            maxLife = 100 + Math.random() * 50;
-            gravity = 0.04;
-            friction = 0.985;
-            break;
-
-          case 8: // Peony (large fluffy burst)
-            angle = Math.random() * Math.PI * 2;
-            speed = 1 + Math.random() * 4.5;
-            size = 2.5 + Math.random() * 2.5;
-            maxLife = 90 + Math.random() * 50;
-            gravity = 0.025;
-            break;
-
-          case 9: // Crossette (splits into small clusters)
-            angle = (i / particleCount) * Math.PI * 2;
-            speed = 4 + Math.random() * 2;
-            friction = 0.96;
-            maxLife = 50;
-            // These particles will spawn more when they die
-            break;
-
-          default:
-            angle = Math.random() * Math.PI * 2;
-            speed = 2 + Math.random() * 4;
-        }
-
-        particlesRef.current.push({
-          x: rocket.x,
-          y: rocket.y,
-          vx: Math.cos(angle) * speed,
-          vy: Math.sin(angle) * speed,
-          color: particleColor,
-          size,
-          life: 1,
-          maxLife,
-          trail: [],
-          gravity,
-          friction,
-        });
+        pushParticle(rocket.x, rocket.y, builder(i, particleCount, rocket.color));
       }
+    };
 
-      // Add center flash (brighter for some patterns)
+    const addCenterFlash = (rocket: Rocket, pattern: number) => {
       const flashCount = [4, 5, 7, 8].includes(pattern) ? 12 : 8;
+
       for (let i = 0; i < flashCount; i++) {
         particlesRef.current.push({
           x: rocket.x,
@@ -255,37 +326,52 @@ export function useFireworks(
           friction: 0.95,
         });
       }
+    };
 
-      // Special: Crossette secondary explosions (add delayed mini-bursts)
-      if (pattern === 9) {
-        setTimeout(() => {
-          // Create 4-6 mini explosions at different points
-          for (let burst = 0; burst < 4 + Math.floor(Math.random() * 3); burst++) {
-            const burstAngle = Math.random() * Math.PI * 2;
-            const burstDist = 40 + Math.random() * 30;
-            const burstX = rocket.x + Math.cos(burstAngle) * burstDist;
-            const burstY = rocket.y + Math.sin(burstAngle) * burstDist - 20;
-
-            for (let j = 0; j < 15; j++) {
-              const miniAngle = (j / 15) * Math.PI * 2;
-              const miniSpeed = 1.5 + Math.random() * 2;
-              particlesRef.current.push({
-                x: burstX,
-                y: burstY,
-                vx: Math.cos(miniAngle) * miniSpeed,
-                vy: Math.sin(miniAngle) * miniSpeed,
-                color: colors[Math.floor(Math.random() * colors.length)],
-                size: 1.5 + Math.random() * 1.5,
-                life: 1,
-                maxLife: 50 + Math.random() * 30,
-                trail: [],
-                gravity: 0.04,
-                friction: 0.97,
-              });
-            }
-          }
-        }, 200);
+    const addCrossetteMiniBurst = (burstX: number, burstY: number) => {
+      for (let j = 0; j < 15; j++) {
+        const miniAngle = (j / 15) * Math.PI * 2;
+        const miniSpeed = 1.5 + Math.random() * 2;
+        particlesRef.current.push({
+          x: burstX,
+          y: burstY,
+          vx: Math.cos(miniAngle) * miniSpeed,
+          vy: Math.sin(miniAngle) * miniSpeed,
+          color: randomColor(),
+          size: 1.5 + Math.random() * 1.5,
+          life: 1,
+          maxLife: 50 + Math.random() * 30,
+          trail: [],
+          gravity: 0.04,
+          friction: 0.97,
+        });
       }
+    };
+
+    const addCrossetteMiniBursts = (rocket: Rocket) => {
+      for (let burst = 0; burst < 4 + Math.floor(Math.random() * 3); burst++) {
+        const burstAngle = Math.random() * Math.PI * 2;
+        const burstDist = 40 + Math.random() * 30;
+        const burstX = rocket.x + Math.cos(burstAngle) * burstDist;
+        const burstY = rocket.y + Math.sin(burstAngle) * burstDist - 20;
+
+        addCrossetteMiniBurst(burstX, burstY);
+      }
+    };
+
+    const scheduleCrossetteMiniBursts = (rocket: Rocket, pattern: number) => {
+      if (pattern === 9) {
+        setTimeout(() => addCrossetteMiniBursts(rocket), 200);
+      }
+    };
+
+    const explodeRocket = (rocket: Rocket) => {
+      const pattern = Math.floor(Math.random() * 10);
+      const particleCount = getParticleCount(pattern);
+
+      addBurstParticles(rocket, pattern, particleCount);
+      addCenterFlash(rocket, pattern);
+      scheduleCrossetteMiniBursts(rocket, pattern);
     };
 
     const drawBackground = () => {
