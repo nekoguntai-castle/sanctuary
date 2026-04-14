@@ -809,6 +809,29 @@ describe('transactionReducer', () => {
 
       expect(newState.selectedUTXOs).not.toBe(state.selectedUTXOs);
     });
+
+    it('should not mutate output entries when sendMax exclusivity changes', () => {
+      const state = createInitialState();
+      const firstOutput: OutputEntry = { address: 'bc1q1', amount: '1000', sendMax: true };
+      const secondOutput: OutputEntry = { address: 'bc1q2', amount: '2000', sendMax: false };
+      state.outputs = [firstOutput, secondOutput];
+
+      const action: TransactionAction = {
+        type: 'UPDATE_OUTPUT',
+        index: 1,
+        field: 'sendMax',
+        value: true,
+      };
+
+      const newState = transactionReducer(state, action);
+
+      expect(firstOutput.sendMax).toBe(true);
+      expect(secondOutput.sendMax).toBe(false);
+      expect(newState.outputs[0].sendMax).toBe(false);
+      expect(newState.outputs[1].sendMax).toBe(true);
+      expect(newState.outputs[0]).not.toBe(firstOutput);
+      expect(newState.outputs[1]).not.toBe(secondOutput);
+    });
   });
 
   describe('Default case', () => {
