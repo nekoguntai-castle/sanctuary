@@ -67,6 +67,7 @@ TEST_INSTALL_DIR=$(create_test_directory "/tmp" "sanctuary-install-test")
 HTTPS_PORT="${HTTPS_PORT:-8443}"
 HTTP_PORT="${HTTP_PORT:-8080}"
 API_BASE_URL="https://localhost:${HTTPS_PORT}"
+COOKIE_JAR="/tmp/sanctuary-test-cookies-${TEST_ID}.txt"
 
 # Test state
 TESTS_RUN=0
@@ -74,10 +75,25 @@ TESTS_PASSED=0
 TESTS_FAILED=0
 declare -a FAILED_TESTS
 
-# Shared authentication state (to avoid rate limiting)
-AUTH_TOKEN=""
+# Shared authentication state (cookie-based, Phase 6 auth)
+# The backend sets HttpOnly sanctuary_access + sanctuary_refresh cookies
+# and a readable sanctuary_csrf cookie. Subsequent requests flow cookies
+# via -b "$COOKIE_JAR"; mutations must echo the CSRF token in X-CSRF-Token.
+CSRF_TOKEN=""
 CURRENT_PASSWORD="sanctuary"
 LOGIN_RESPONSE=""
+
+# Extract the sanctuary_csrf cookie value from the Netscape-format cookie
+# jar. Fields are tab-separated: domain, HttpOnly, path, Secure, expiry,
+# name, value. We read the 7th field of the row whose 6th field equals
+# sanctuary_csrf. Sets CSRF_TOKEN (empty string if the cookie isn't set).
+extract_csrf_token() {
+    if [ ! -f "$COOKIE_JAR" ]; then
+        CSRF_TOKEN=""
+        return
+    fi
+    CSRF_TOKEN=$(awk -F'\t' '$6 == "sanctuary_csrf" { print $7 }' "$COOKIE_JAR" | tail -n 1)
+}
 
 # ============================================
 # Test Framework
@@ -151,6 +167,11 @@ teardown() {
     # Clean up test directory
     if [ -d "$TEST_INSTALL_DIR" ]; then
         rm -rf "$TEST_INSTALL_DIR"
+    fi
+
+    # Clean up cookie jar
+    if [ -f "$COOKIE_JAR" ]; then
+        rm -f "$COOKIE_JAR"
     fi
 }
 
@@ -552,28 +573,27 @@ test_api_health_endpoint() {
 test_login_with_default_credentials() {
     log_info "Testing login with default credentials..."
 
-    LOGIN_RESPONSE=$(curl -k -s -X POST \
+    # Clear any stale cookie jar from a previous run
+    rm -f "$COOKIE_JAR"
+
+    LOGIN_RESPONSE=$(curl -k -s -c "$COOKIE_JAR" -b "$COOKIE_JAR" -X POST \
         -H "Content-Type: application/json" \
         -d '{"username":"admin","password":"sanctuary"}' \
         "$API_BASE_URL/api/v1/auth/login")
 
     log_debug "Login response: $LOGIN_RESPONSE"
 
-    # Check for token in response
-    if ! echo "$LOGIN_RESPONSE" | grep -q '"token"'; then
-        log_error "Login failed - no token in response"
+    # Phase 6 cookie auth: success is a body containing "user" plus the
+    # sanctuary_access / sanctuary_csrf cookies being written to the jar.
+    if ! echo "$LOGIN_RESPONSE" | grep -q '"user"'; then
+        log_error "Login failed - no user in response"
         log_error "Response: $LOGIN_RESPONSE"
         return 1
     fi
 
-    # Extract and save token globally to avoid rate limiting in subsequent tests
-    AUTH_TOKEN=$(echo "$LOGIN_RESPONSE" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
-    if [ -z "$AUTH_TOKEN" ]; then
-        AUTH_TOKEN=$(echo "$LOGIN_RESPONSE" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
-    fi
-
-    if [ -z "$AUTH_TOKEN" ]; then
-        log_error "Failed to extract token from response"
+    extract_csrf_token
+    if [ -z "$CSRF_TOKEN" ]; then
+        log_error "Failed to capture sanctuary_csrf cookie from login"
         return 1
     fi
 
@@ -616,17 +636,17 @@ test_default_password_flag() {
 test_password_change_flow() {
     log_info "Testing password change flow..."
 
-    # Use the saved AUTH_TOKEN from test_login_with_default_credentials
-    if [ -z "$AUTH_TOKEN" ]; then
-        log_error "No saved auth token - cannot test password change"
+    # Must have an authenticated cookie jar + CSRF token from prior login
+    if [ ! -f "$COOKIE_JAR" ] || [ -z "$CSRF_TOKEN" ]; then
+        log_error "No saved auth cookies - cannot test password change"
         return 1
     fi
 
-    # Change password using saved token
+    # Change password using cookie auth + CSRF token (state-changing POST)
     local new_password="NewSecurePassword123!"
-    local change_response=$(curl -k -s -X POST \
+    local change_response=$(curl -k -s -b "$COOKIE_JAR" -c "$COOKIE_JAR" -X POST \
         -H "Content-Type: application/json" \
-        -H "Authorization: Bearer $AUTH_TOKEN" \
+        -H "X-CSRF-Token: $CSRF_TOKEN" \
         -d "{\"currentPassword\":\"$CURRENT_PASSWORD\",\"newPassword\":\"$new_password\"}" \
         "$API_BASE_URL/api/v1/auth/me/change-password")
 
@@ -642,21 +662,23 @@ test_password_change_flow() {
     # Update current password tracker
     CURRENT_PASSWORD="$new_password"
 
-    # Verify we can login with new password and get fresh token
-    local new_login_response=$(curl -k -s -X POST \
+    # Re-login with the new password; this rotates both the access cookie
+    # and the sanctuary_csrf cookie, so we must re-extract CSRF_TOKEN.
+    rm -f "$COOKIE_JAR"
+    local new_login_response=$(curl -k -s -c "$COOKIE_JAR" -b "$COOKIE_JAR" -X POST \
         -H "Content-Type: application/json" \
         -d "{\"username\":\"admin\",\"password\":\"$new_password\"}" \
         "$API_BASE_URL/api/v1/auth/login")
 
-    if ! echo "$new_login_response" | grep -q '"token"'; then
+    if ! echo "$new_login_response" | grep -q '"user"'; then
         log_error "Cannot login with new password"
         return 1
     fi
 
-    # Update AUTH_TOKEN for subsequent tests
-    AUTH_TOKEN=$(echo "$new_login_response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
-    if [ -z "$AUTH_TOKEN" ]; then
-        AUTH_TOKEN=$(echo "$new_login_response" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
+    extract_csrf_token
+    if [ -z "$CSRF_TOKEN" ]; then
+        log_error "Failed to capture sanctuary_csrf cookie after re-login"
+        return 1
     fi
 
     log_success "Password change flow working correctly"
@@ -670,17 +692,16 @@ test_password_change_flow() {
 test_basic_api_endpoints() {
     log_info "Testing basic API endpoints..."
 
-    # Use the saved AUTH_TOKEN (updated by password change test)
-    if [ -z "$AUTH_TOKEN" ]; then
-        log_error "No saved auth token - cannot test API endpoints"
+    # Use the saved cookie jar (updated by password change test)
+    if [ ! -f "$COOKIE_JAR" ]; then
+        log_error "No saved cookie jar - cannot test API endpoints"
         return 1
     fi
 
-    log_debug "Using saved auth token for API tests"
+    log_debug "Using saved cookie jar for API tests"
 
-    # Test /me endpoint
-    local me_response=$(curl -k -s \
-        -H "Authorization: Bearer $AUTH_TOKEN" \
+    # Test /me endpoint (GET — no CSRF token needed)
+    local me_response=$(curl -k -s -b "$COOKIE_JAR" \
         "$API_BASE_URL/api/v1/auth/me")
 
     if ! echo "$me_response" | grep -q '"username"'; then
@@ -691,8 +712,7 @@ test_basic_api_endpoints() {
     log_debug "GET /me: OK"
 
     # Test /wallets endpoint (should return empty list initially)
-    local wallets_response=$(curl -k -s \
-        -H "Authorization: Bearer $AUTH_TOKEN" \
+    local wallets_response=$(curl -k -s -b "$COOKIE_JAR" \
         "$API_BASE_URL/api/v1/wallets")
 
     # Should return an array (even if empty)
@@ -704,8 +724,7 @@ test_basic_api_endpoints() {
     log_debug "GET /wallets: OK"
 
     # Test /devices endpoint
-    local devices_response=$(curl -k -s \
-        -H "Authorization: Bearer $AUTH_TOKEN" \
+    local devices_response=$(curl -k -s -b "$COOKIE_JAR" \
         "$API_BASE_URL/api/v1/devices")
 
     if ! echo "$devices_response" | grep -qE '^\['; then

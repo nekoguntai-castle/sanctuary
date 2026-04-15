@@ -57,6 +57,7 @@ TEST_ID=$(generate_test_run_id)
 HTTPS_PORT="${HTTPS_PORT:-8443}"
 HTTP_PORT="${HTTP_PORT:-8080}"
 API_BASE_URL="https://localhost:${HTTPS_PORT}"
+COOKIE_JAR="/tmp/sanctuary-test-cookies-${TEST_ID}.txt"
 
 # State variables for testing
 ORIGINAL_JWT_SECRET=""
@@ -65,6 +66,22 @@ ORIGINAL_GATEWAY_SECRET=""
 ORIGINAL_POSTGRES_PASSWORD=""
 ORIGINAL_USER_PASSWORD=""
 TEST_WALLET_ID=""
+
+# Phase 6 cookie auth: the backend sets HttpOnly sanctuary_access +
+# sanctuary_refresh cookies and a readable sanctuary_csrf cookie. Mutations
+# must echo the CSRF token in X-CSRF-Token.
+CSRF_TOKEN=""
+
+# Extract the sanctuary_csrf cookie value from the Netscape-format cookie
+# jar. Fields are tab-separated: domain, HttpOnly, path, Secure, expiry,
+# name, value. Sets CSRF_TOKEN (empty string if the cookie isn't set).
+extract_csrf_token() {
+    if [ ! -f "$COOKIE_JAR" ]; then
+        CSRF_TOKEN=""
+        return
+    fi
+    CSRF_TOKEN=$(awk -F'\t' '$6 == "sanctuary_csrf" { print $7 }' "$COOKIE_JAR" | tail -n 1)
+}
 
 # Test counters
 TESTS_RUN=0
@@ -127,6 +144,11 @@ teardown() {
     else
         log_warning "Keeping containers running (--keep-containers specified)"
         get_container_status "$PROJECT_ROOT"
+    fi
+
+    # Clean up cookie jar
+    if [ -f "$COOKIE_JAR" ]; then
+        rm -f "$COOKIE_JAR"
     fi
 }
 
@@ -235,41 +257,54 @@ EOF
 test_create_pre_upgrade_data() {
     log_info "Creating test data before upgrade..."
 
-    # Login with admin
-    local login_response=$(curl -k -s -X POST \
+    # Login with default admin credentials (Phase 6 cookie auth)
+    rm -f "$COOKIE_JAR"
+    local login_response=$(curl -k -s -c "$COOKIE_JAR" -b "$COOKIE_JAR" -X POST \
         -H "Content-Type: application/json" \
         -d '{"username":"admin","password":"sanctuary"}' \
         "$API_BASE_URL/api/v1/auth/login")
 
-    local token=$(echo "$login_response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    if echo "$login_response" | grep -q '"user"'; then
+        extract_csrf_token
+        if [ -z "$CSRF_TOKEN" ]; then
+            log_error "Default login succeeded but sanctuary_csrf cookie missing"
+            return 1
+        fi
 
-    # If default password doesn't work, try our test password
-    if [ -z "$token" ]; then
-        login_response=$(curl -k -s -X POST \
-            -H "Content-Type: application/json" \
-            -d '{"username":"admin","password":"UpgradeTestPassword123!"}' \
-            "$API_BASE_URL/api/v1/auth/login")
-        token=$(echo "$login_response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
-        ORIGINAL_USER_PASSWORD="UpgradeTestPassword123!"
-    else
         # Change password to a known value for upgrade testing
         ORIGINAL_USER_PASSWORD="UpgradeTestPassword123!"
-        curl -k -s -X POST \
+        curl -k -s -b "$COOKIE_JAR" -c "$COOKIE_JAR" -X POST \
             -H "Content-Type: application/json" \
-            -H "Authorization: Bearer $token" \
+            -H "X-CSRF-Token: $CSRF_TOKEN" \
             -d "{\"currentPassword\":\"sanctuary\",\"newPassword\":\"$ORIGINAL_USER_PASSWORD\"}" \
             "$API_BASE_URL/api/v1/auth/me/change-password" >/dev/null
 
-        # Re-login with new password
-        login_response=$(curl -k -s -X POST \
+        # Re-login with new password (rotates cookies + CSRF)
+        rm -f "$COOKIE_JAR"
+        login_response=$(curl -k -s -c "$COOKIE_JAR" -b "$COOKIE_JAR" -X POST \
             -H "Content-Type: application/json" \
             -d "{\"username\":\"admin\",\"password\":\"$ORIGINAL_USER_PASSWORD\"}" \
             "$API_BASE_URL/api/v1/auth/login")
-        token=$(echo "$login_response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    else
+        # Default password didn't work (already changed on a prior run);
+        # try the test password directly.
+        rm -f "$COOKIE_JAR"
+        ORIGINAL_USER_PASSWORD="UpgradeTestPassword123!"
+        login_response=$(curl -k -s -c "$COOKIE_JAR" -b "$COOKIE_JAR" -X POST \
+            -H "Content-Type: application/json" \
+            -d "{\"username\":\"admin\",\"password\":\"$ORIGINAL_USER_PASSWORD\"}" \
+            "$API_BASE_URL/api/v1/auth/login")
     fi
 
-    if [ -z "$token" ]; then
-        log_error "Failed to get auth token"
+    if ! echo "$login_response" | grep -q '"user"'; then
+        log_error "Failed to authenticate after password setup"
+        log_error "Response: $login_response"
+        return 1
+    fi
+
+    extract_csrf_token
+    if [ -z "$CSRF_TOKEN" ]; then
+        log_error "Failed to capture sanctuary_csrf cookie"
         return 1
     fi
 
@@ -447,16 +482,19 @@ test_verify_data_preserved() {
     log_info "Verifying data preserved after upgrade..."
 
     # Try to login with the password we set before upgrade
-    local login_response=$(curl -k -s -X POST \
+    rm -f "$COOKIE_JAR"
+    local login_response=$(curl -k -s -c "$COOKIE_JAR" -b "$COOKIE_JAR" -X POST \
         -H "Content-Type: application/json" \
         -d "{\"username\":\"admin\",\"password\":\"$ORIGINAL_USER_PASSWORD\"}" \
         "$API_BASE_URL/api/v1/auth/login")
 
-    if ! echo "$login_response" | grep -q '"token"'; then
+    if ! echo "$login_response" | grep -q '"user"'; then
         log_error "Cannot login with pre-upgrade password"
         log_error "Response: $login_response"
         return 1
     fi
+
+    extract_csrf_token
 
     log_success "User data preserved after upgrade"
     return 0
@@ -505,22 +543,23 @@ test_verify_migration_on_upgrade() {
 test_verify_all_services() {
     log_info "Verifying all services are functional..."
 
-    # Login
-    local login_response=$(curl -k -s -X POST \
+    # Login (cookie-based)
+    rm -f "$COOKIE_JAR"
+    local login_response=$(curl -k -s -c "$COOKIE_JAR" -b "$COOKIE_JAR" -X POST \
         -H "Content-Type: application/json" \
         -d "{\"username\":\"admin\",\"password\":\"$ORIGINAL_USER_PASSWORD\"}" \
         "$API_BASE_URL/api/v1/auth/login")
 
-    local token=$(echo "$login_response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
-
-    if [ -z "$token" ]; then
-        log_error "Cannot get auth token"
+    if ! echo "$login_response" | grep -q '"user"'; then
+        log_error "Cannot authenticate after upgrade"
+        log_error "Response: $login_response"
         return 1
     fi
 
-    # Test /me endpoint
-    local me_response=$(curl -k -s \
-        -H "Authorization: Bearer $token" \
+    extract_csrf_token
+
+    # Test /me endpoint (GET — cookies only)
+    local me_response=$(curl -k -s -b "$COOKIE_JAR" \
         "$API_BASE_URL/api/v1/auth/me")
 
     if ! echo "$me_response" | grep -q '"username"'; then
@@ -529,8 +568,7 @@ test_verify_all_services() {
     fi
 
     # Test /wallets endpoint
-    local wallets_response=$(curl -k -s \
-        -H "Authorization: Bearer $token" \
+    local wallets_response=$(curl -k -s -b "$COOKIE_JAR" \
         "$API_BASE_URL/api/v1/wallets")
 
     if ! echo "$wallets_response" | grep -qE '^\['; then
@@ -585,16 +623,20 @@ test_force_rebuild_upgrade() {
     # Extra wait for backend to fully initialize
     sleep 5
 
-    # Verify login still works
-    local login_response=$(curl -k -s -X POST \
+    # Verify login still works (cookie-based)
+    rm -f "$COOKIE_JAR"
+    local login_response=$(curl -k -s -c "$COOKIE_JAR" -b "$COOKIE_JAR" -X POST \
         -H "Content-Type: application/json" \
         -d "{\"username\":\"admin\",\"password\":\"$ORIGINAL_USER_PASSWORD\"}" \
         "$API_BASE_URL/api/v1/auth/login")
 
-    if ! echo "$login_response" | grep -q '"token"'; then
+    if ! echo "$login_response" | grep -q '"user"'; then
         log_error "Login failed after force rebuild"
+        log_error "Response: $login_response"
         return 1
     fi
+
+    extract_csrf_token
 
     log_success "Force rebuild upgrade successful"
     return 0

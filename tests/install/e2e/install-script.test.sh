@@ -60,6 +60,8 @@ done
 HTTPS_PORT="${HTTPS_PORT:-8443}"
 HTTP_PORT="${HTTP_PORT:-8080}"
 API_BASE_URL="https://localhost:${HTTPS_PORT}"
+TEST_ID=$(generate_test_run_id)
+COOKIE_JAR="/tmp/sanctuary-test-cookies-${TEST_ID}.txt"
 
 # Test state
 TESTS_RUN=0
@@ -139,6 +141,11 @@ teardown() {
     else
         log_warning "Keeping containers running (--keep-containers specified)"
         get_container_status "$PROJECT_ROOT"
+    fi
+
+    # Clean up cookie jar
+    if [ -f "$COOKIE_JAR" ]; then
+        rm -f "$COOKIE_JAR"
     fi
 }
 
@@ -408,20 +415,23 @@ test_default_login() {
     log_info "Testing login with default credentials..."
 
     # Wait for migration/seed to complete (creates admin user)
-    # The migrate container runs after backend starts and may take time
+    # The migrate container runs after backend starts and may take time.
+    # Phase 6 cookie auth: success = 200 + body contains "user"; the
+    # sanctuary_access / sanctuary_csrf cookies land in $COOKIE_JAR.
     local max_attempts=30
     local attempt=0
+    local login_response=""
 
     while [ $attempt -lt $max_attempts ]; do
-        local login_response=$(curl -k -s -X POST \
+        rm -f "$COOKIE_JAR"
+        login_response=$(curl -k -s -c "$COOKIE_JAR" -b "$COOKIE_JAR" -X POST \
             -H "Content-Type: application/json" \
             -d '{"username":"admin","password":"sanctuary"}' \
             "$API_BASE_URL/api/v1/auth/login")
 
         log_debug "Login response: $login_response"
 
-        # Check for token in response
-        if echo "$login_response" | grep -q '"token"'; then
+        if echo "$login_response" | grep -q '"user"'; then
             log_success "Login with default credentials successful"
             return 0
         fi
