@@ -5,14 +5,11 @@
  */
 
 import { Router } from 'express';
-import { nodeConfigRepository } from '../../repositories/nodeConfigRepository';
-import type { ElectrumServer } from '../../generated/prisma/client';
 import { authenticate, requireAdmin } from '../../middleware/auth';
 import { asyncHandler } from '../../errors/errorHandler';
-import { InvalidInputError, NotFoundError, ConflictError } from '../../errors/ApiError';
+import { InvalidInputError } from '../../errors/ApiError';
 import { createLogger } from '../../utils/logger';
-import { testNodeConfig } from '../../services/bitcoin/nodeClient';
-import { reloadElectrumServers } from '../../services/bitcoin/electrumPool';
+import { adminElectrumServerService } from '../../services/adminElectrumServerService';
 import {
   CreateElectrumServerSchema,
   ReorderElectrumServersSchema,
@@ -26,47 +23,12 @@ const log = createLogger('ADMIN_ELECTRUM:ROUTE');
 const ELECTRUM_NETWORK_VALUES = ['mainnet', 'testnet', 'signet', 'regtest'] as const;
 const ELECTRUM_NETWORK_MESSAGE = `Invalid network. Must be one of: ${ELECTRUM_NETWORK_VALUES.join(', ')}`;
 
-type UpdateElectrumServerBody = {
-  label?: string;
-  host?: string;
-  port?: number;
-  useSsl?: boolean;
-  priority?: number;
-  enabled?: boolean;
-  network?: string;
-};
-
 function formatElectrumServerValidation(requiredMessage: string) {
   return (issues: Array<{ path: PropertyKey[]; message: string }>): string => {
     if (issues.some((issue) => issue.path[0] === 'network')) {
       return ELECTRUM_NETWORK_MESSAGE;
     }
     return requiredMessage;
-  };
-}
-
-function getElectrumUpdateTarget(server: ElectrumServer, body: UpdateElectrumServerBody) {
-  return {
-    host: body.host ?? server.host,
-    port: body.port ?? server.port,
-    network: body.network ?? server.network,
-  };
-}
-
-function buildElectrumServerUpdateData(
-  server: ElectrumServer,
-  body: UpdateElectrumServerBody,
-  network: string
-) {
-  return {
-    label: body.label ?? server.label,
-    host: body.host ?? server.host,
-    port: body.port ?? server.port,
-    useSsl: body.useSsl ?? server.useSsl,
-    priority: body.priority ?? server.priority,
-    enabled: body.enabled ?? server.enabled,
-    network,
-    updatedAt: new Date(),
   };
 }
 
@@ -79,18 +41,7 @@ function buildElectrumServerUpdateData(
 router.get('/', authenticate, requireAdmin, asyncHandler(async (req, res) => {
   const { network } = req.query;
 
-  const nodeConfig = await nodeConfigRepository.findDefault();
-
-  if (!nodeConfig) {
-    return res.json([]);
-  }
-
-  const servers = await nodeConfigRepository.electrumServer.findByConfig(
-    nodeConfig.id,
-    network ? { network: network as string } : undefined,
-  );
-
-  res.json(servers);
+  res.json(await adminElectrumServerService.listElectrumServers(network as string | undefined));
 }));
 
 /**
@@ -105,12 +56,7 @@ router.post('/test-connection', authenticate, requireAdmin, asyncHandler(async (
     'Host and port are required'
   );
 
-  // Test connection using nodeClient's testNodeConfig
-  const result = await testNodeConfig({
-    host,
-    port,
-    protocol: useSsl ? 'ssl' : 'tcp',
-  });
+  const result = await adminElectrumServerService.testElectrumConnection({ host, port, useSsl });
 
   log.info('Electrum connection test result', {
     host,
@@ -123,7 +69,7 @@ router.post('/test-connection', authenticate, requireAdmin, asyncHandler(async (
   res.json({
     success: result.success,
     message: result.message,
-    blockHeight: result.info?.blockHeight,
+    blockHeight: result.blockHeight,
   });
 }));
 
@@ -139,15 +85,8 @@ router.put('/reorder', authenticate, requireAdmin, asyncHandler(async (req, res)
     'serverIds must be an array'
   );
 
-  // Update priorities based on array order
-  await nodeConfigRepository.electrumServer.reorderPriorities(
-    serverIds.map((id: string, index: number) => ({ id, priority: index }))
-  );
-
+  await adminElectrumServerService.reorderElectrumServers(serverIds);
   log.info('Electrum servers reordered', { count: serverIds.length });
-
-  // Reload pool to pick up new order (more graceful than full reset)
-  await reloadElectrumServers();
 
   res.json({ success: true, message: 'Servers reordered' });
 }));
@@ -164,18 +103,7 @@ router.get('/:network', authenticate, requireAdmin, asyncHandler(async (req, res
     throw new InvalidInputError(ELECTRUM_NETWORK_MESSAGE);
   }
 
-  const nodeConfig = await nodeConfigRepository.findDefault();
-
-  if (!nodeConfig) {
-    return res.json([]);
-  }
-
-  const servers = await nodeConfigRepository.electrumServer.findByConfig(
-    nodeConfig.id,
-    { network },
-  );
-
-  res.json(servers);
+  res.json(await adminElectrumServerService.listElectrumServers(network));
 }));
 
 /**
@@ -193,46 +121,17 @@ router.post('/', authenticate, requireAdmin, asyncHandler(async (req, res) => {
 
   const serverNetwork = network;
 
-  // Check for duplicate (same host, port, and network)
-  const existingServer = await nodeConfigRepository.electrumServer.findByHostAndPort(
-    host,
-    port,
-    serverNetwork,
-  );
-
-  if (existingServer) {
-    throw new ConflictError(`A server with host ${host}, port ${port}, and network ${serverNetwork} already exists (${existingServer.label})`);
-  }
-
-  // Get or create default node config
-  const nodeConfig = await nodeConfigRepository.findOrCreateDefault({
-    id: 'default',
-    type: 'electrum',
-    network: serverNetwork,
-    host: host,
-    port,
-    useSsl,
-    isDefault: true,
-  });
-
-  // Get highest priority for this network to set new server at end if not specified
-  const maxPriority = await nodeConfigRepository.electrumServer.getMaxPriority(nodeConfig.id, serverNetwork);
-
-  const server = await nodeConfigRepository.electrumServer.create({
-    nodeConfig: { connect: { id: nodeConfig.id } },
-    network: serverNetwork,
+  const server = await adminElectrumServerService.createElectrumServer({
     label,
+    network: serverNetwork,
     host,
     port,
     useSsl,
-    priority: priority ?? (maxPriority + 1),
+    priority,
     enabled,
   });
 
   log.info('Electrum server added', { id: server.id, label, host, port, network: serverNetwork });
-
-  // Reload pool to pick up new server (more graceful than full reset)
-  await reloadElectrumServers();
 
   res.status(201).json(server);
 }));
@@ -244,41 +143,15 @@ router.post('/', authenticate, requireAdmin, asyncHandler(async (req, res) => {
 router.put('/:id', authenticate, requireAdmin, asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  const server = await nodeConfigRepository.electrumServer.findById(id);
-
-  if (!server) {
-    throw new NotFoundError('Electrum server not found');
-  }
-
   const body = parseAdminRequestBody(
     UpdateElectrumServerSchema,
     req.body,
     formatElectrumServerValidation('Invalid Electrum server update')
   );
 
-  const updateTarget = getElectrumUpdateTarget(server, body);
-
-  // Check for duplicate (same host, port, and network, excluding this server)
-  const existingServer = await nodeConfigRepository.electrumServer.findByHostAndPort(
-    updateTarget.host,
-    updateTarget.port,
-    updateTarget.network,
-    id,
-  );
-
-  if (existingServer) {
-    throw new ConflictError(`A server with host ${updateTarget.host}, port ${updateTarget.port}, and network ${updateTarget.network} already exists (${existingServer.label})`);
-  }
-
-  const updatedServer = await nodeConfigRepository.electrumServer.update(
-    id,
-    buildElectrumServerUpdateData(server, body, updateTarget.network)
-  );
+  const updatedServer = await adminElectrumServerService.updateElectrumServer(id, body);
 
   log.info('Electrum server updated', { id, label: updatedServer.label, network: updatedServer.network });
-
-  // Reload pool to pick up changes (more graceful than full reset)
-  await reloadElectrumServers();
 
   res.json(updatedServer);
 }));
@@ -290,18 +163,9 @@ router.put('/:id', authenticate, requireAdmin, asyncHandler(async (req, res) => 
 router.delete('/:id', authenticate, requireAdmin, asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  const server = await nodeConfigRepository.electrumServer.findById(id);
-
-  if (!server) {
-    throw new NotFoundError('Electrum server not found');
-  }
-
-  await nodeConfigRepository.electrumServer.delete(id);
+  const server = await adminElectrumServerService.deleteElectrumServer(id);
 
   log.info('Electrum server deleted', { id, label: server.label });
-
-  // Reload pool to pick up changes (more graceful than full reset)
-  await reloadElectrumServers();
 
   res.json({ success: true, message: 'Server deleted' });
 }));
@@ -313,30 +177,7 @@ router.delete('/:id', authenticate, requireAdmin, asyncHandler(async (req, res) 
 router.post('/:id/test', authenticate, requireAdmin, asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  const server = await nodeConfigRepository.electrumServer.findById(id);
-
-  if (!server) {
-    throw new NotFoundError('Electrum server not found');
-  }
-
-  // Test connection using nodeClient's testNodeConfig
-  const result = await testNodeConfig({
-    host: server.host,
-    port: server.port,
-    protocol: server.useSsl ? 'ssl' : 'tcp',
-  });
-
-  // Update health status and capability info based on test result
-  await nodeConfigRepository.electrumServer.updateHealth(id, {
-    isHealthy: result.success,
-    lastHealthCheck: new Date(),
-    lastHealthCheckError: result.success ? null : result.message,
-    healthCheckFails: result.success ? 0 : server.healthCheckFails + 1,
-    ...(result.info?.supportsVerbose !== undefined && {
-      supportsVerbose: result.info.supportsVerbose,
-      lastCapabilityCheck: new Date(),
-    }),
-  });
+  const result = await adminElectrumServerService.testSavedElectrumServer(id);
 
   log.info('Electrum server test result', {
     serverId: id,
@@ -349,7 +190,7 @@ router.post('/:id/test', authenticate, requireAdmin, asyncHandler(async (req, re
   res.json({
     success: result.success,
     message: result.message,
-    error: result.success ? undefined : result.message,
+    error: result.error,
     info: result.info,
   });
 }));

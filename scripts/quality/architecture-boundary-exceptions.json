@@ -1,15 +1,6 @@
 [
   {
     "rule": "server-api-runtime-repositories",
-    "file": "server/src/api/admin/electrumServers.ts",
-    "target": "server/src/repositories/nodeConfigRepository.ts",
-    "specifier": "../../repositories/nodeConfigRepository",
-    "owner": "backend-architecture",
-    "reason": "Existing admin route repository access predates the route/service/repository boundary.",
-    "removeWhen": "Route delegates data access through a service module."
-  },
-  {
-    "rule": "server-api-runtime-repositories",
     "file": "server/src/api/admin/nodeConfig.ts",
     "target": "server/src/repositories/index.ts",
     "specifier": "../../repositories",
