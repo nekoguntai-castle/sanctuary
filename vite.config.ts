@@ -1,7 +1,7 @@
 import path from 'path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { nodePolyfills } from 'vite-plugin-node-polyfills';
+import { nodePolyfillsWithoutDeprecatedEsbuild } from './vite.nodePolyfills';
 
 export default defineConfig(() => {
     return {
@@ -15,12 +15,12 @@ export default defineConfig(() => {
       },
       plugins: [
         react(),
-        nodePolyfills({
+        nodePolyfillsWithoutDeprecatedEsbuild({
           include: ['process', 'stream', 'util'],
           globals: {
-            Buffer: true,
-            process: true,
-            global: true,
+            Buffer: 'build',
+            process: 'build',
+            global: 'build',
           },
         }),
       ],

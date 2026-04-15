@@ -97,7 +97,7 @@ describe('Monitoring', () => {
 
     it('shows loading spinner initially', () => {
       vi.mocked(adminApi.getMonitoringServices).mockImplementation(
-        () => new Promise(resolve => setTimeout(() => resolve(mockServices as any), 100))
+        () => new Promise<never>(() => undefined)
       );
 
       render(<Monitoring />);

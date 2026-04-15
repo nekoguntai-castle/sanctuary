@@ -11,7 +11,12 @@ import type {
   DescriptorBuildOptions,
   Network,
 } from '../types';
-import { formatPathForDescriptor } from '../../../../../shared/utils/bitcoin';
+import {
+  buildBip48DerivationPath,
+  buildCoinTypeDerivationPath,
+  buildRangedKeyExpression,
+  supportsAnyScriptType,
+} from './descriptorHelpers';
 
 export const taprootHandler: ScriptTypeHandler = {
   id: 'taproot',
@@ -24,22 +29,16 @@ export const taprootHandler: ScriptTypeHandler = {
   aliases: ['p2tr', 'bech32m', 'tr'],
 
   getDerivationPath(network: Network, account: number = 0): string {
-    const coinType = network === 'mainnet' ? '0' : '1';
-    return `m/86'/${coinType}'/${account}'`;
+    return buildCoinTypeDerivationPath(86, network, account);
   },
 
   getMultisigDerivationPath(network: Network, account: number = 0): string {
-    // BIP48 script type 3 (proposed for taproot multisig)
-    const coinType = network === 'mainnet' ? '0' : '1';
-    return `m/48'/${coinType}'/${account}'/3'`;
+    return buildBip48DerivationPath(network, 3, account);
   },
 
   buildSingleSigDescriptor(device: DeviceKeyInfo, options: DescriptorBuildOptions): string {
     const derivationPath = device.derivationPath || this.getDerivationPath(options.network);
-    const formattedPath = formatPathForDescriptor(derivationPath);
-    const chain = options.change ? '1' : '0';
-    const keyExpression = `[${device.fingerprint}/${formattedPath}]${device.xpub}`;
-    return `tr(${keyExpression}/${chain}/*)`;
+    return `tr(${buildRangedKeyExpression(device, derivationPath, options)})`;
   },
 
   // Multisig not implemented - would require MuSig2 or script path spending
@@ -47,8 +46,6 @@ export const taprootHandler: ScriptTypeHandler = {
 
   validateDevice(deviceScriptTypes: string[]): boolean {
     const validTypes = ['taproot', 'p2tr', 'bech32m', 'tr'];
-    return deviceScriptTypes.some((type) =>
-      validTypes.includes(type.toLowerCase())
-    );
+    return supportsAnyScriptType(deviceScriptTypes, validTypes);
   },
 };

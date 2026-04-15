@@ -5,6 +5,15 @@ import { beforeEach,describe,expect,it,vi } from 'vitest';
 import { NetworkConnectionCard } from '../../../components/NetworkConnectionCard/NetworkConnectionCard';
 import * as adminApi from '../../../src/api/admin';
 
+vi.mock('../../../utils/logger', () => ({
+  createLogger: () => ({
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  }),
+}));
+
 vi.mock('../../../src/api/admin', () => ({
   addElectrumServer: vi.fn(),
   updateElectrumServer: vi.fn(),

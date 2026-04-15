@@ -108,10 +108,11 @@ describeIfDatabase('PushDeviceRepository Integration Tests', () => {
     it('should order by creation date descending', async () => {
       await withTestTransaction(async (tx) => {
         const user = await createTestUser(tx);
+        const firstCreatedAt = new Date('2024-01-01T00:00:00.000Z');
+        const secondCreatedAt = new Date('2024-01-01T00:00:01.000Z');
 
-        await createTestPushDevice(tx, user.id, { token: 'first' });
-        await new Promise((r) => setTimeout(r, 10));
-        await createTestPushDevice(tx, user.id, { token: 'second' });
+        await createTestPushDevice(tx, user.id, { token: 'first', createdAt: firstCreatedAt });
+        await createTestPushDevice(tx, user.id, { token: 'second', createdAt: secondCreatedAt });
 
         const devices = await tx.pushDevice.findMany({
           where: { userId: user.id },
@@ -226,14 +227,15 @@ describeIfDatabase('PushDeviceRepository Integration Tests', () => {
     it('should update last used timestamp', async () => {
       await withTestTransaction(async (tx) => {
         const user = await createTestUser(tx);
-        const device = await createTestPushDevice(tx, user.id);
+        const originalLastUsed = new Date('2024-01-01T00:00:00.000Z');
+        const nextLastUsed = new Date('2024-01-01T00:00:01.000Z');
+        const device = await createTestPushDevice(tx, user.id, { lastUsedAt: originalLastUsed });
 
-        const originalLastUsed = device.lastUsedAt;
-        await new Promise((r) => setTimeout(r, 10));
+        expect(device.lastUsedAt.getTime()).toBe(originalLastUsed.getTime());
 
         await tx.pushDevice.update({
           where: { id: device.id },
-          data: { lastUsedAt: new Date() },
+          data: { lastUsedAt: nextLastUsed },
         });
 
         const updated = await tx.pushDevice.findUnique({

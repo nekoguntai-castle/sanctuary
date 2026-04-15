@@ -9,6 +9,14 @@ vi.mock('../../../../src/services/supportPackage/collectors', () => ({
 
 import { generateSupportPackage } from '../../../../src/services/supportPackage/runner';
 
+const createDeferred = <T>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+};
+
 describe('generateSupportPackage', () => {
   beforeEach(() => {
     mockCollectors.clear();
@@ -103,9 +111,10 @@ describe('generateSupportPackage', () => {
 
   it('runs collectors in parallel', async () => {
     const order: string[] = [];
+    const slowCollector = createDeferred<Record<string, unknown>>();
 
     mockCollectors.set('slow', async () => {
-      await new Promise(r => setTimeout(r, 50));
+      await slowCollector.promise;
       order.push('slow');
       return { slow: true };
     });
@@ -114,7 +123,10 @@ describe('generateSupportPackage', () => {
       return { fast: true };
     });
 
-    await generateSupportPackage();
+    const packagePromise = generateSupportPackage();
+    await vi.waitFor(() => expect(order).toEqual(['fast']));
+    slowCollector.resolve({ slow: true });
+    await packagePromise;
 
     // Fast should complete before slow since they run in parallel
     expect(order[0]).toBe('fast');

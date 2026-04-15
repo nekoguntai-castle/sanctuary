@@ -9,7 +9,7 @@ vi.mock('../../../components/AnimatedBackground', () => ({
 }));
 
 describe('LoginBackground', () => {
-  it('renders children', () => {
+  it('renders children', async () => {
     render(
       <LoginBackground darkMode={false}>
         <span>Child content</span>
@@ -17,9 +17,10 @@ describe('LoginBackground', () => {
     );
 
     expect(screen.getByText('Child content')).toBeInTheDocument();
+    expect(await screen.findByTestId('animated-bg')).toBeInTheDocument();
   });
 
-  it('renders dust motes', () => {
+  it('renders dust motes', async () => {
     const { container } = render(
       <LoginBackground darkMode={false}>
         <span>Test</span>
@@ -28,6 +29,7 @@ describe('LoginBackground', () => {
 
     const motes = container.querySelectorAll('.dust-mote');
     expect(motes.length).toBe(10);
+    expect(await screen.findByTestId('animated-bg')).toBeInTheDocument();
   });
 
   it('passes zen-sand-garden pattern for light mode', async () => {

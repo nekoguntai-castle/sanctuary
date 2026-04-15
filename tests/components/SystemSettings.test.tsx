@@ -320,7 +320,7 @@ describe('SystemSettings', () => {
 
     it('shows loading state for websocket tab', async () => {
       vi.mocked(adminApi.getWebSocketStats).mockImplementation(
-        () => new Promise(resolve => setTimeout(() => resolve(mockWebSocketStats as any), 100))
+        () => new Promise<never>(() => undefined)
       );
 
       const user = userEvent.setup();

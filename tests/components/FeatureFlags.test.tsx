@@ -228,6 +228,7 @@ describe('FeatureFlags', () => {
     it('replaces prior success timeout and clears Saved after delay', async () => {
       const user = userEvent.setup();
       const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
+      const timeoutSpy = vi.spyOn(globalThis, 'setTimeout');
 
       try {
         render(<FeatureFlags />);
@@ -252,13 +253,18 @@ describe('FeatureFlags', () => {
         expect(clearTimeoutSpy).toHaveBeenCalled();
 
         await act(async () => {
-          await new Promise((resolve) => setTimeout(resolve, 3100));
+          const clearSavedCallback = timeoutSpy.mock.calls
+            .filter(([, delay]) => delay === 3000)
+            .at(-1)?.[0];
+          expect(clearSavedCallback).toEqual(expect.any(Function));
+          (clearSavedCallback as () => void)();
         });
 
         await waitFor(() => {
           expect(screen.queryByText('Saved')).not.toBeInTheDocument();
         });
       } finally {
+        timeoutSpy.mockRestore();
         clearTimeoutSpy.mockRestore();
       }
     }, 10000);

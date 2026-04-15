@@ -5,12 +5,22 @@
  * Covers connection lifecycle, authentication, subscription management, and event handling.
  */
 
+import { vi } from 'vitest';
 import { registerUseModelDownloadProgressTests } from './websocket/use-model-download-progress.contracts';
 import { registerUseWalletEventsTests } from './websocket/use-wallet-events.contracts';
 import { registerUseWalletLogsTests } from './websocket/use-wallet-logs.contracts';
 import { registerUseWebSocketEventTests } from './websocket/use-websocket-event.contracts';
 import { registerUseWebSocketQueryInvalidationTests } from './websocket/use-websocket-query-invalidation.contracts';
 import { registerUseWebSocketTests } from './websocket/use-websocket.contracts';
+
+vi.mock('../../utils/logger', () => ({
+  createLogger: () => ({
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  }),
+}));
 
 registerUseWebSocketTests();
 registerUseWebSocketEventTests();

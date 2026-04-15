@@ -11,6 +11,8 @@ import {
   parseLastSend,
 } from './clientServerLimitsTestHarness';
 
+const createTimeoutHandle = () => ({}) as NodeJS.Timeout;
+
 export const registerClientServerLimitMessageFlowContracts = () => {
   it('rejects token-auth connection when per-user limit has already been reached', async () => {
     process.env.MAX_WEBSOCKET_PER_USER = '1';
@@ -158,7 +160,7 @@ export const registerClientServerLimitMessageFlowContracts = () => {
     const server = new Server();
     activeServers.push(server);
     const client = createClient();
-    client.authTimeout = setTimeout(() => {}, 10_000);
+    client.authTimeout = createTimeoutHandle();
 
     await (server as any).handleAuth(client, { token: 'ok-token' });
 
@@ -198,7 +200,7 @@ export const registerClientServerLimitMessageFlowContracts = () => {
     const server = new Server();
     activeServers.push(server);
     const client = createClient();
-    client.authTimeout = setTimeout(() => {}, 10_000);
+    client.authTimeout = createTimeoutHandle();
 
     (server as any).handleDisconnect(client);
 

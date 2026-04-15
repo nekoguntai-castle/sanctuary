@@ -18,15 +18,21 @@
  */
 
 import express, { Request, Response, NextFunction } from 'express';
-import { RATE_LIMIT_WINDOW_MS, RATE_LIMIT_MAX_REQUESTS, AI_REQUEST_TIMEOUT_MS, AI_ANALYSIS_TIMEOUT_MS } from './constants';
+import { AI_REQUEST_TIMEOUT_MS, AI_ANALYSIS_TIMEOUT_MS } from './constants';
 import {
   extractErrorMessage,
   normalizeOllamaBaseUrl,
-  normalizeOllamaChatUrl,
   fetchFromBackend,
   BackendFetchResult,
 } from './utils';
 import { createLogger } from './logger';
+import { rateLimit } from './rateLimit';
+import {
+  callExternalAI,
+  callExternalAIWithMessages,
+  parseStructuredResponse,
+} from './aiClient';
+import { streamModelPull } from './modelPull';
 
 const log = createLogger('AI');
 
@@ -73,60 +79,6 @@ let aiConfig = {
   enabled: false,
   endpoint: '',
   model: '',
-};
-
-/**
- * Simple in-memory rate limiter
- * Limits requests per IP to prevent abuse
- */
-interface RateLimitEntry {
-  count: number;
-  windowStart: number;
-}
-
-const rateLimitStore = new Map<string, RateLimitEntry>();
-const CLEANUP_INTERVAL_MS = 300000; // 5 minutes
-
-// Periodic cleanup to prevent memory leak
-setInterval(() => {
-  const now = Date.now();
-  const cutoff = now - RATE_LIMIT_WINDOW_MS;
-  let cleaned = 0;
-  for (const [ip, e] of rateLimitStore.entries()) {
-    if (e.windowStart < cutoff) {
-      rateLimitStore.delete(ip);
-      cleaned++;
-    }
-  }
-  if (cleaned > 0) {
-    log.debug(`Rate limit cleanup: removed ${cleaned} expired entries`);
-  }
-}, CLEANUP_INTERVAL_MS);
-
-const rateLimit = (req: Request, res: Response, next: NextFunction) => {
-  const clientIp = req.socket.remoteAddress || 'unknown';
-  const now = Date.now();
-
-  let entry = rateLimitStore.get(clientIp);
-
-  if (!entry || now - entry.windowStart > RATE_LIMIT_WINDOW_MS) {
-    // New window
-    entry = { count: 1, windowStart: now };
-    rateLimitStore.set(clientIp, entry);
-  } else {
-    // Existing window
-    entry.count++;
-    if (entry.count > RATE_LIMIT_MAX_REQUESTS) {
-      log.warn(`Rate limit exceeded`, { clientIp });
-      const retryAfter = Math.ceil((entry.windowStart + RATE_LIMIT_WINDOW_MS - now) / 1000);
-      return res.status(429).json({
-        error: `Rate limit exceeded. AI requests are limited to ${RATE_LIMIT_MAX_REQUESTS} per minute. Please wait ${retryAfter}s before trying again.`,
-        retryAfter,
-      });
-    }
-  }
-
-  next();
 };
 
 app.use(express.json({ limit: '1mb' }));
@@ -186,137 +138,6 @@ app.get('/config', (_req: Request, res: Response) => {
     endpointConfigured: !!aiConfig.endpoint,
   });
 });
-
-/**
- * Call external AI endpoint
- */
-async function callExternalAI(prompt: string, timeout = AI_REQUEST_TIMEOUT_MS): Promise<string | null> {
-  if (!aiConfig.enabled || !aiConfig.endpoint || !aiConfig.model) {
-    return null;
-  }
-
-  try {
-    const endpoint = normalizeOllamaChatUrl(aiConfig.endpoint);
-
-    log.info('Calling external AI', { endpoint });
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: aiConfig.model,
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.7,
-        max_tokens: 500,
-      }),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      log.error('External AI error', { status: response.status });
-      return null;
-    }
-
-    const data = await response.json() as { choices?: Array<{ message: { content: string } }> };
-    if (!data.choices || data.choices.length === 0) {
-      log.error('No choices in response');
-      return null;
-    }
-
-    return data.choices[0].message.content.trim();
-  } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      log.error('Request timeout');
-    } else {
-      log.error('Request failed', { error: extractErrorMessage(error) });
-    }
-    return null;
-  }
-}
-
-/**
- * Call external AI with multi-message support (for analysis and chat)
- */
-async function callExternalAIWithMessages(
-  messages: Array<{ role: string; content: string }>,
-  timeout = AI_REQUEST_TIMEOUT_MS
-): Promise<string | null> {
-  if (!aiConfig.enabled || !aiConfig.endpoint || !aiConfig.model) {
-    return null;
-  }
-
-  try {
-    const endpoint = normalizeOllamaChatUrl(aiConfig.endpoint);
-    log.info('Calling external AI (multi-message)', { endpoint });
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: aiConfig.model,
-        messages,
-        temperature: 0.7,
-        max_tokens: 2000,
-      }),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      log.error('External AI error', { status: response.status });
-      return null;
-    }
-
-    const data = await response.json() as { choices?: Array<{ message: { content: string } }> };
-    if (!data.choices || data.choices.length === 0) {
-      log.error('No choices in response');
-      return null;
-    }
-
-    return data.choices[0].message.content.trim();
-  } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      log.error('Request timeout');
-    } else {
-      log.error('Request failed', { error: extractErrorMessage(error) });
-    }
-    return null;
-  }
-}
-
-/**
- * Parse structured JSON from AI response (handles markdown code blocks, comments, trailing commas)
- */
-function parseStructuredResponse(raw: string): Record<string, unknown> | null {
-  try {
-    let jsonStr = raw;
-    const codeBlockMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (codeBlockMatch) {
-      jsonStr = codeBlockMatch[1].trim();
-    }
-    const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return null;
-
-    const cleanJson = jsonMatch[0]
-      .replace(/\/\/[^\n]*/g, '')
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/,(\s*[}\]])/g, '$1')
-      .replace(/\n\s*\n/g, '\n');
-
-    return JSON.parse(cleanJson);
-  } catch {
-    return null;
-  }
-}
 
 /**
  * Fetch sanitized transaction data from backend
@@ -406,7 +227,7 @@ Transaction:
 Respond with ONLY the suggested label, nothing else.
 Examples: "Exchange Deposit", "Hardware Purchase", "Salary", "Gift"`;
 
-  const suggestion = await callExternalAI(prompt);
+  const suggestion = await callExternalAI(aiConfig, prompt);
 
   if (!suggestion) {
     return res.status(503).json({ error: 'AI endpoint not available' });
@@ -475,7 +296,7 @@ Q: "unconfirmed transactions" → {"type":"transactions","filter":{"confirmation
 User's question: "${query}"
 JSON:`;
 
-  const result = await callExternalAI(prompt);
+  const result = await callExternalAI(aiConfig, prompt);
 
   if (!result) {
     return res.status(503).json({ error: 'AI endpoint not available' });
@@ -524,7 +345,7 @@ app.post('/test', rateLimit, async (_req: Request, res: Response) => {
     });
   }
 
-  const result = await callExternalAI('Say "OK"', 10000);
+  const result = await callExternalAI(aiConfig, 'Say "OK"', 10000);
 
   res.json({
     available: result !== null,
@@ -646,113 +467,10 @@ app.post('/pull-model', rateLimit, async (req: Request, res: Response) => {
   res.json({ success: true, status: 'started', model });
 
   // Stream progress in background
-  streamModelPull(model, endpoint).catch(err => {
+  streamModelPull(model, endpoint, BACKEND_URL).catch(err => {
     log.error('Pull stream error', { error: err.message });
   });
 });
-
-/**
- * Stream model pull progress to backend
- */
-async function streamModelPull(model: string, ollamaEndpoint: string): Promise<void> {
-  const callbackUrl = `${BACKEND_URL}/internal/ai/pull-progress`;
-
-  // Helper to send progress to backend
-  const sendProgress = async (data: {
-    model: string;
-    status: string;
-    completed?: number;
-    total?: number;
-    digest?: string;
-    error?: string;
-  }) => {
-    try {
-      await fetch(callbackUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-        signal: AbortSignal.timeout(5000),
-      });
-    } catch (err) {
-      log.warn('Failed to send progress', { error: extractErrorMessage(err) });
-    }
-  };
-
-  try {
-    // Start with 'pulling' status
-    await sendProgress({ model, status: 'pulling' });
-
-    const response = await fetch(`${ollamaEndpoint}/api/pull`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: model, stream: true }),
-      signal: AbortSignal.timeout(600000), // 10 minute timeout
-    });
-
-    if (!response.ok) {
-      const error = await response.text();
-      log.error('Pull failed', { error });
-      await sendProgress({ model, status: 'error', error });
-      return;
-    }
-
-    if (!response.body) {
-      await sendProgress({ model, status: 'error', error: 'No response body' });
-      return;
-    }
-
-    // Read NDJSON stream
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || ''; // Keep incomplete line in buffer
-
-      for (const line of lines) {
-        if (!line.trim()) continue;
-
-        try {
-          const data = JSON.parse(line) as {
-            status?: string;
-            digest?: string;
-            total?: number;
-            completed?: number;
-          };
-
-          // Map Ollama status to our status
-          let status = 'downloading';
-          if (data.status === 'pulling manifest') status = 'pulling';
-          else if (data.status?.includes('verifying')) status = 'verifying';
-          else if (data.status === 'success') status = 'complete';
-
-          await sendProgress({
-            model,
-            status,
-            completed: data.completed || 0,
-            total: data.total || 0,
-            digest: data.digest,
-          });
-        } catch {
-          // Ignore malformed JSON lines
-        }
-      }
-    }
-
-    // Send completion
-    log.info('Pull completed', { model });
-    await sendProgress({ model, status: 'complete' });
-
-  } catch (error) {
-    log.error('Pull error', { error: extractErrorMessage(error) });
-    await sendProgress({ model, status: 'error', error: extractErrorMessage(error) });
-  }
-}
 
 /**
  * Delete a model from Ollama
@@ -851,7 +569,7 @@ Focus on: when to consolidate, how many UTXOs, expected savings, privacy conside
     { role: 'user', content: `Wallet data:\n${JSON.stringify(context, null, 2)}` },
   ];
 
-  const result = await callExternalAIWithMessages(messages, AI_ANALYSIS_TIMEOUT_MS);
+  const result = await callExternalAIWithMessages(aiConfig, messages, AI_ANALYSIS_TIMEOUT_MS);
 
   if (!result) {
     return res.status(503).json({ error: 'AI endpoint not available' });
@@ -899,7 +617,7 @@ app.post('/chat', rateLimit, async (req: Request, res: Response) => {
   };
 
   const aiMessages = [systemMessage, ...messages];
-  const result = await callExternalAIWithMessages(aiMessages, AI_REQUEST_TIMEOUT_MS);
+  const result = await callExternalAIWithMessages(aiConfig, aiMessages, AI_REQUEST_TIMEOUT_MS);
 
   if (!result) {
     return res.status(503).json({ error: 'AI endpoint not available' });
@@ -954,8 +672,7 @@ app.listen(PORT, () => {
   // SECURITY: Warn if using auto-generated secret
   if (IS_AUTO_GENERATED_SECRET) {
     log.warn('AI_CONFIG_SECRET not set - using auto-generated secret');
-    log.warn('Backend must be configured with the same secret to sync config');
-    log.warn('Auto-generated secret', { secret: CONFIG_SECRET });
+    log.warn('Backend config sync will be rejected unless it is configured with the same runtime secret');
   } else {
     log.info('Config secret: configured via environment');
   }

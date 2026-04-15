@@ -36,6 +36,7 @@ const excludedGeneratedPrefixes = [
 ];
 const codeFilePattern = /\.(?:cjs|js|mjs|ts|tsx)$/;
 const allowedCategories = new Set(['proof-harness', 'generated-output', 'test-fixture']);
+const reviewDatePattern = /^\d{4}-\d{2}-\d{2}$/;
 
 function isScannedCodeFile(filePath) {
   if (!codeFilePattern.test(filePath)) {
@@ -113,6 +114,18 @@ for (const [filePath, entry] of Object.entries(classifications)) {
 
   if (typeof entry.reason !== 'string' || entry.reason.trim().length < 20) {
     errors.push(`classified file needs a concrete reason: ${filePath}`);
+  }
+
+  if (typeof entry.owner !== 'string' || entry.owner.trim().length < 3) {
+    errors.push(`classified file needs a concrete owner: ${filePath}`);
+  }
+
+  if (typeof entry.reviewWhenTouched !== 'boolean') {
+    errors.push(`classified file needs reviewWhenTouched boolean: ${filePath}`);
+  }
+
+  if (typeof entry.lastReviewed !== 'string' || !reviewDatePattern.test(entry.lastReviewed)) {
+    errors.push(`classified file needs lastReviewed date YYYY-MM-DD: ${filePath}`);
   }
 }
 

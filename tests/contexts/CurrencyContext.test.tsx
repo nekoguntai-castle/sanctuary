@@ -168,9 +168,11 @@ describe('CurrencyContext', () => {
     });
 
     it('sets price loading state', async () => {
-      // Delay price response
+      let resolvePrice!: (price: Awaited<ReturnType<typeof priceApi.getPrice>>) => void;
       vi.mocked(priceApi.getPrice).mockImplementation(
-        () => new Promise(resolve => setTimeout(() => resolve(makeAggregatedPrice()), 100))
+        () => new Promise((resolve) => {
+          resolvePrice = resolve;
+        })
       );
 
       renderWithProviders(<TestConsumer />);
@@ -178,7 +180,8 @@ describe('CurrencyContext', () => {
       expect(screen.getByTestId('price-loading')).toHaveTextContent('true');
 
       await act(async () => {
-        vi.advanceTimersByTime(100);
+        resolvePrice(makeAggregatedPrice());
+        await Promise.resolve();
       });
 
       await waitFor(() => {

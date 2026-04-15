@@ -4,7 +4,7 @@
  * Tests user authentication, registration, and 2FA flows.
  */
 
-import { render,screen,waitFor } from '@testing-library/react';
+import { act,render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
@@ -322,10 +322,14 @@ describe('Login Component', () => {
     await renderLogin(Login);
 
     expect(document.documentElement.classList.contains('dark')).toBe(false);
-    changeHandler({ matches: true } as MediaQueryListEvent);
+    await act(async () => {
+      changeHandler({ matches: true } as MediaQueryListEvent);
+    });
     expect(document.documentElement.classList.contains('dark')).toBe(true);
 
-    changeHandler({ matches: false } as MediaQueryListEvent);
+    await act(async () => {
+      changeHandler({ matches: false } as MediaQueryListEvent);
+    });
     expect(document.documentElement.classList.contains('dark')).toBe(false);
   });
 
@@ -514,7 +518,9 @@ describe('Login Component - Loading branches', () => {
       expect(screen.getByRole('button', { name: /loading/i })).toBeDisabled();
     });
 
-    resolveLogin?.();
+    await act(async () => {
+      resolveLogin?.();
+    });
   });
 
   it('covers loading and error branches on 2FA screen', async () => {
@@ -554,7 +560,9 @@ describe('Login Component - Loading branches', () => {
       expect(screen.getByRole('button', { name: /loading/i })).toBeDisabled();
     });
 
-    resolveVerify?.();
+    await act(async () => {
+      resolveVerify?.();
+    });
   });
 
   it('covers loading branch while register mode is active', async () => {
@@ -595,6 +603,8 @@ describe('Login Component - Loading branches', () => {
       expect(screen.getByRole('button', { name: /loading/i })).toBeDisabled();
     });
 
-    resolveRegister?.();
+    await act(async () => {
+      resolveRegister?.();
+    });
   });
 });

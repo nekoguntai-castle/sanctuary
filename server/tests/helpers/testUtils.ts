@@ -163,13 +163,6 @@ export function generateRefreshTestToken(userId: string): string {
 }
 
 /**
- * Wait for a specified number of milliseconds
- */
-export function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/**
  * Create a promise that resolves after the current event loop
  */
 export function flushPromises(): Promise<void> {
@@ -345,7 +338,6 @@ export default {
   generateInvalidSignatureToken,
   generate2FATestToken,
   generateRefreshTestToken,
-  wait,
   flushPromises,
   expectAsyncError,
   withSuppressedConsole,

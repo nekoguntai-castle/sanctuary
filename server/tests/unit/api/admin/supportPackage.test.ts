@@ -105,26 +105,12 @@ describe('Admin Support Package Route', () => {
       () => new Promise((resolve) => { resolveFirst = resolve; }),
     );
 
-    // Fire both requests concurrently
-    const [first, second] = await Promise.all([
-      // This one enters the handler, sets generating=true, and waits
-      request(app).post('/api/v1/admin/support-package').then((res) => {
-        // Resolve won't be called until after both are fired,
-        // but supertest waits for response — so this resolves after resolveFirst
-        return res;
-      }),
-      // Small delay ensures second request arrives after first sets the flag
-      new Promise<request.Response>((resolve) => {
-        setTimeout(async () => {
-          const res = await request(app).post('/api/v1/admin/support-package');
-          resolve(res);
-        }, 50);
-      }).then((res) => {
-        // Once we get 429, resolve the first request
-        resolveFirst(fakePkg);
-        return res;
-      }),
-    ]);
+    const firstPromise = request(app).post('/api/v1/admin/support-package').then((res) => res);
+    await vi.waitFor(() => expect(mockGenerateSupportPackage).toHaveBeenCalledTimes(1));
+
+    const second = await request(app).post('/api/v1/admin/support-package');
+    resolveFirst(fakePkg);
+    const first = await firstPromise;
 
     expect(first.status).toBe(200);
     expect(second.status).toBe(429);

@@ -88,9 +88,7 @@ export function registerAISettingsModelPullContracts() {
 
     it('should show progress during pull', async () => {
       mockListModels.mockResolvedValue({ models: [] });
-      mockPullModel.mockImplementation(() => new Promise(resolve => {
-        setTimeout(() => resolve({ success: true }), 100);
-      }));
+      mockPullModel.mockImplementation(() => new Promise<never>(() => undefined));
       const user = userEvent.setup();
       render(<AISettings />);
 

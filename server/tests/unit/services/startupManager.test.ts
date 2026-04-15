@@ -55,18 +55,23 @@ describe('StartupManager', () => {
     });
 
     it('should track startup duration', async () => {
+      let now = 1_000;
+      const dateNowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
       const services: ServiceDefinition[] = [
         createService('service-a', {
           start: async () => {
-            await new Promise(resolve => setTimeout(resolve, 50));
+            now += 50;
           },
         }),
       ];
 
-      const results = await startAllServices(services);
+      try {
+        const results = await startAllServices(services);
 
-      // Allow slight timing variance in CI environments (49ms vs 50ms)
-      expect(results[0].duration).toBeGreaterThanOrEqual(45);
+        expect(results[0].duration).toBe(50);
+      } finally {
+        dateNowSpy.mockRestore();
+      }
     });
 
     it('should handle non-critical service failures gracefully', async () => {

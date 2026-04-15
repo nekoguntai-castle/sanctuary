@@ -270,21 +270,23 @@ describeIfDatabase('SessionRepository Integration Tests', () => {
         const user = await createTestUser(tx);
         const token = crypto.randomBytes(32).toString('hex');
         const tokenHash = hashToken(token);
+        const originalLastUsed = new Date('2024-01-01T00:00:00.000Z');
+        const nextLastUsed = new Date('2024-01-01T00:00:01.000Z');
 
         const session = await tx.refreshToken.create({
           data: {
             userId: user.id,
             tokenHash,
             expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+            lastUsedAt: originalLastUsed,
           },
         });
 
-        const originalLastUsed = session.lastUsedAt;
-        await new Promise((r) => setTimeout(r, 10));
+        expect(session.lastUsedAt.getTime()).toBe(originalLastUsed.getTime());
 
         await tx.refreshToken.update({
           where: { tokenHash },
-          data: { lastUsedAt: new Date() },
+          data: { lastUsedAt: nextLastUsed },
         });
 
         const updated = await tx.refreshToken.findUnique({

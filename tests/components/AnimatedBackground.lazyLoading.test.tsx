@@ -9,11 +9,28 @@
  */
 
 import { act, cleanup, render } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { useSakuraPetalsMock } = vi.hoisted(() => ({
-  useSakuraPetalsMock: vi.fn(),
-}));
+const { snowfallImportGate, useSakuraPetalsMock } = vi.hoisted(() => {
+  const createGate = () => {
+    let resolve!: () => void;
+    const promise = new Promise<void>((done) => {
+      resolve = done;
+    });
+
+    return { promise, resolve };
+  };
+
+  return {
+    snowfallImportGate: {
+      current: createGate(),
+      reset() {
+        this.current = createGate();
+      },
+    },
+    useSakuraPetalsMock: vi.fn(),
+  };
+});
 
 // Mock registry-backed animated detection to include a fake pattern with no matching animation file
 vi.mock('../../themes/patterns', () => {
@@ -31,9 +48,9 @@ vi.mock('../../components/animations/sakuraPetals.ts', () => ({
 }));
 
 // snowfall: async factory rejects after delay, reaching .catch() handler
-// The delay allows unmount tests to set cancelled=true before the catch fires
+// The import gate allows unmount tests to set cancelled=true before the catch fires
 vi.mock('../../components/animations/snowfall.ts', async () => {
-  await new Promise((r) => setTimeout(r, 100));
+  await snowfallImportGate.current.promise;
   throw new Error('Module load failed');
 });
 
@@ -54,9 +71,21 @@ vi.mock('../../utils/logger', () => ({
 import { AnimatedBackground } from '../../components/AnimatedBackground';
 
 /** Flush microtasks and pending React state updates */
-const flushAsync = () => act(() => new Promise((r) => setTimeout(r, 50)));
+const flushAsync = () => act(async () => {
+  await Promise.resolve();
+  await Promise.resolve();
+});
+
+const settleSnowfallImport = async () => {
+  snowfallImportGate.current.resolve();
+  await flushAsync();
+};
 
 describe('AnimatedBackground lazy loading edge cases', () => {
+  beforeEach(() => {
+    snowfallImportGate.reset();
+  });
+
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
@@ -91,8 +120,8 @@ describe('AnimatedBackground lazy loading edge cases', () => {
       <AnimatedBackground pattern="snowfall" darkMode={false} />
     );
 
-    // Wait for the delayed async mock to reject (~100ms) and catch to execute
-    await act(() => new Promise((r) => setTimeout(r, 200)));
+    // Release the async mock rejection and let the catch handler run.
+    await settleSnowfallImport();
 
     expect(container.querySelector('canvas')).not.toBeNull();
   });
@@ -106,7 +135,7 @@ describe('AnimatedBackground lazy loading edge cases', () => {
     unmount();
 
     // Allow microtasks to settle — no "state update on unmounted component" error
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await flushAsync();
   });
 
   it('skips catch-branch state update when component unmounted during failing import', async () => {
@@ -120,6 +149,6 @@ describe('AnimatedBackground lazy loading edge cases', () => {
     unmount();
 
     // Wait for the delayed rejection to settle; cancelled === true skips setActiveHook
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await settleSnowfallImport();
   });
 });

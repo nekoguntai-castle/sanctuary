@@ -1,15 +1,4 @@
-/**
- * Seasonal Theme
- *
- * A dynamic theme that changes colors and recommended backgrounds based on the current season.
- *
- * Spring: Cherry blossom pinks and fresh greens (sakura-petals background)
- * Summer: Warm golden yellows and sky blues (bitcoin-particles background)
- * Fall: Rich ambers, oranges, and burgundy (stacking-blocks background)
- * Winter: Cool blues, silvers, and whites (snowfall background)
- *
- * Author: Sanctuary Wallet Team
- */
+/** Dynamic seasonal theme colors and recommended backgrounds. */
 
 import type { ThemeDefinition, ThemeColors } from '../types';
 

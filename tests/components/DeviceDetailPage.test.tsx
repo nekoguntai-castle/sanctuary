@@ -1,211 +1,32 @@
 import { fireEvent,render,screen,waitFor,within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach,describe,expect,it,vi } from 'vitest';
-import { DeviceDetail } from '../../components/DeviceDetail';
+import { describe,expect,it } from 'vitest';
 
-const {
-  mockNavigate,
-  mockIsSecureContext,
-  mockHardwareConnect,
-  mockHardwareGetAllXpubs,
-  mockHardwareDisconnect,
-  mockGetAccountTypeInfo,
-} = vi.hoisted(() => ({
-  mockNavigate: vi.fn(),
-  mockIsSecureContext: vi.fn(() => false),
-  mockHardwareConnect: vi.fn(),
-  mockHardwareGetAllXpubs: vi.fn(),
-  mockHardwareDisconnect: vi.fn(),
-  mockGetAccountTypeInfo: vi.fn((_account?: any) => ({
-    title: 'Test',
-    description: '',
-    addressPrefix: '',
-  })),
-}));
+import {
+  DeviceDetailComponent as DeviceDetail,
+  deviceData,
+  mocks,
+  setupDeviceDetailHarness,
+} from './DeviceDetailPage/DeviceDetailPageTestHarness';
 
-let scannerScanPayload: { rawValue: string }[] = [{ rawValue: 'invalid' }];
-let scannerErrorPayload: unknown = new Error('camera failed');
-
-const mockCurrentUser = {
-  id: 'user-1',
-  username: 'alice',
-  isAdmin: false,
-  preferences: {},
-};
-
-vi.mock('react-router-dom', () => ({
-  useParams: () => ({ id: 'device-1' }),
-  useNavigate: () => mockNavigate,
-}));
-
-vi.mock('@yudiel/react-qr-scanner', () => ({
-  Scanner: ({ onScan, onError }: any) => (
-    <div data-testid="scanner">
-      <button onClick={() => onScan(scannerScanPayload)}>Emit scan</button>
-      <button onClick={() => onError(scannerErrorPayload)}>Emit error</button>
-    </div>
-  ),
-}));
-
-vi.mock('../../components/DeviceDetail/index', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../components/DeviceDetail/index')>();
-  return {
-    ...actual,
-    ManualAccountForm: () => <div data-testid="manual-account-form" />,
-    AccountList: () => <div data-testid="account-list" />,
-    getAccountTypeInfo: mockGetAccountTypeInfo,
-  };
-});
-
-vi.mock('../../components/TransferOwnershipModal', () => ({
-  TransferOwnershipModal: ({ onTransferInitiated, onClose }: any) => (
-    <div data-testid="transfer-modal">
-      <button onClick={onTransferInitiated}>Initiate transfer</button>
-      <button onClick={onClose}>Close transfer</button>
-    </div>
-  ),
-}));
-
-vi.mock('../../components/PendingTransfersPanel', () => ({
-  PendingTransfersPanel: ({ onTransferComplete }: any) => (
-    <div data-testid="pending-transfers">
-      <button onClick={onTransferComplete}>Complete transfer</button>
-    </div>
-  ),
-}));
-
-vi.mock('../../services/deviceParsers', () => ({
-  parseDeviceJson: vi.fn(),
-}));
-
-vi.mock('../../services/hardwareWallet/environment', () => ({
-  isSecureContext: () => mockIsSecureContext(),
-}));
-
-vi.mock('../../services/hardwareWallet/runtime', () => ({
-  hardwareWalletService: {
-    connect: mockHardwareConnect,
-    getAllXpubs: mockHardwareGetAllXpubs,
-    disconnect: mockHardwareDisconnect,
-  },
-}));
-
-vi.mock('../../components/ui/CustomIcons', () => ({
-  getDeviceIcon: () => <span data-testid="device-icon" />,
-  getWalletIcon: () => <span data-testid="wallet-icon" />,
-}));
-
-vi.mock('lucide-react', () => ({
-  Edit2: () => <span data-testid="edit-icon" />,
-  Save: () => <span data-testid="save-icon" />,
-  X: () => <span data-testid="x-icon" />,
-  ArrowLeft: () => <span data-testid="arrow-left" />,
-  ChevronDown: () => <span data-testid="chevron-down" />,
-  Users: () => <span data-testid="users-icon" />,
-  Shield: () => <span data-testid="shield-icon" />,
-  Send: () => <span data-testid="send-icon" />,
-  User: () => <span data-testid="user-icon" />,
-  Plus: () => <span data-testid="plus-icon" />,
-  Loader2: () => <span data-testid="loader-icon" />,
-  Usb: () => <span data-testid="usb-icon" />,
-  QrCode: () => <span data-testid="qr-icon" />,
-  HardDrive: () => <span data-testid="drive-icon" />,
-  Camera: () => <span data-testid="camera-icon" />,
-  Upload: () => <span data-testid="upload-icon" />,
-  AlertCircle: () => <span data-testid="alert-icon" />,
-  Check: () => <span data-testid="check-icon" />,
-  AlertTriangle: () => <span data-testid="alert-triangle-icon" />,
-}));
-
-vi.mock('../../contexts/UserContext', () => ({
-  useUser: () => ({
-    user: mockCurrentUser,
-  }),
-}));
-
-vi.mock('../../src/api/devices', () => ({
-  getDevice: vi.fn(),
-  updateDevice: vi.fn(),
-  getDeviceModels: vi.fn(),
-  getDeviceShareInfo: vi.fn(),
-  shareDeviceWithUser: vi.fn(),
-  removeUserFromDevice: vi.fn(),
-  shareDeviceWithGroup: vi.fn(),
-  addDeviceAccount: vi.fn(),
-}));
-
-vi.mock('../../src/api/auth', () => ({
-  getUserGroups: vi.fn().mockResolvedValue([]),
-  searchUsers: vi.fn().mockResolvedValue([]),
-}));
-
-vi.mock('../../src/api/admin', () => ({
-  getGroups: vi.fn().mockResolvedValue([]),
-}));
-
-vi.mock('../../utils/logger', () => ({
-  createLogger: () => ({
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  }),
-}));
-
-import * as deviceParsers from '../../services/deviceParsers';
-import * as authApi from '../../src/api/auth';
-import * as devicesApi from '../../src/api/devices';
-
-const mockGetDevice = vi.mocked(devicesApi.getDevice);
-const mockGetDeviceModels = vi.mocked(devicesApi.getDeviceModels);
-const mockUpdateDevice = vi.mocked(devicesApi.updateDevice);
-const mockGetDeviceShareInfo = vi.mocked(devicesApi.getDeviceShareInfo);
-const mockShareDeviceWithUser = vi.mocked(devicesApi.shareDeviceWithUser);
-const mockRemoveUserFromDevice = vi.mocked(devicesApi.removeUserFromDevice);
-const mockShareDeviceWithGroup = vi.mocked(devicesApi.shareDeviceWithGroup);
-const mockAddDeviceAccount = vi.mocked(devicesApi.addDeviceAccount);
-const mockSearchUsers = vi.mocked(authApi.searchUsers);
-const mockGetUserGroups = vi.mocked(authApi.getUserGroups);
-const mockParseDeviceJson = vi.mocked(deviceParsers.parseDeviceJson);
-
-const deviceData = {
-  id: 'device-1',
-  type: 'passport',
-  label: 'Passport One',
-  fingerprint: 'abcd1234',
-  isOwner: true,
-  userRole: 'owner',
-  wallets: [{ wallet: { id: 'wallet-1', name: 'Main Wallet', type: 'single_sig' } }],
-  accounts: [],
-};
+const mockNavigate = mocks.navigate;
+const mockIsSecureContext = mocks.isSecureContext;
+const mockHardwareConnect = mocks.hardwareConnect;
+const mockHardwareGetAllXpubs = mocks.hardwareGetAllXpubs;
+const mockHardwareDisconnect = mocks.hardwareDisconnect;
+const mockGetAccountTypeInfo = mocks.getAccountTypeInfo;
+const mockGetDevice = mocks.getDevice;
+const mockUpdateDevice = mocks.updateDevice;
+const mockGetDeviceShareInfo = mocks.getDeviceShareInfo;
+const mockShareDeviceWithUser = mocks.shareDeviceWithUser;
+const mockRemoveUserFromDevice = mocks.removeUserFromDevice;
+const mockShareDeviceWithGroup = mocks.shareDeviceWithGroup;
+const mockAddDeviceAccount = mocks.addDeviceAccount;
+const mockSearchUsers = mocks.searchUsers;
+const mockParseDeviceJson = mocks.parseDeviceJson;
 
 describe('DeviceDetail page', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockNavigate.mockReset();
-    mockIsSecureContext.mockReturnValue(false);
-    mockHardwareConnect.mockReset();
-    mockHardwareGetAllXpubs.mockReset();
-    mockHardwareDisconnect.mockReset();
-    mockHardwareDisconnect.mockResolvedValue(undefined);
-    mockGetAccountTypeInfo.mockReset();
-    mockGetAccountTypeInfo.mockReturnValue({ title: 'Test', description: '', addressPrefix: '' });
-    scannerScanPayload = [{ rawValue: 'invalid' }];
-    scannerErrorPayload = new Error('camera failed');
-    mockGetDevice.mockResolvedValue(deviceData as any);
-    mockGetDeviceModels.mockResolvedValue([{ slug: 'passport', manufacturer: 'Foundation', name: 'Passport' }] as any);
-    mockGetDeviceShareInfo.mockResolvedValue({
-      users: [{ id: 'user-1', username: 'alice', role: 'owner' }],
-      group: null,
-    } as any);
-    mockGetUserGroups.mockResolvedValue([{ id: 'g1', name: 'Team A' }] as any);
-    mockSearchUsers.mockResolvedValue([]);
-    mockShareDeviceWithUser.mockResolvedValue(undefined as any);
-    mockRemoveUserFromDevice.mockResolvedValue(undefined as any);
-    mockShareDeviceWithGroup.mockResolvedValue(undefined as any);
-    mockAddDeviceAccount.mockResolvedValue(undefined as any);
-    mockParseDeviceJson.mockReturnValue(null as any);
-  });
+  setupDeviceDetailHarness();
 
   it('renders device details after load', async () => {
     render(<DeviceDetail />);
@@ -634,7 +455,7 @@ describe('DeviceDetail page', () => {
   it('handles QR camera scan import and adds decoded account', async () => {
     const user = userEvent.setup();
 
-    scannerScanPayload = [{ rawValue: 'qr-payload' }];
+    mocks.scannerScanPayload = [{ rawValue: 'qr-payload' }];
     mockParseDeviceJson.mockReturnValue({
       format: 'json',
       fingerprint: 'abcd1234',
@@ -671,7 +492,7 @@ describe('DeviceDetail page', () => {
   it('shows camera permission denied message for NotAllowedError', async () => {
     const user = userEvent.setup();
 
-    scannerErrorPayload = Object.assign(new Error('Permission denied'), { name: 'NotAllowedError' });
+    mocks.scannerErrorPayload = Object.assign(new Error('Permission denied'), { name: 'NotAllowedError' });
 
     render(<DeviceDetail />);
 
@@ -770,7 +591,7 @@ describe('DeviceDetail page', () => {
   it('toggles QR modes, handles camera close, and non-Error camera failure', async () => {
     const user = userEvent.setup();
 
-    scannerErrorPayload = 'plain-camera-error';
+    mocks.scannerErrorPayload = 'plain-camera-error';
 
     render(<DeviceDetail />);
 
@@ -833,7 +654,7 @@ describe('DeviceDetail page', () => {
   it('shows QR parse error when scanned payload has no valid account data', async () => {
     const user = userEvent.setup();
 
-    scannerScanPayload = [{ rawValue: 'bad-qr-payload' }];
+    mocks.scannerScanPayload = [{ rawValue: 'bad-qr-payload' }];
     mockParseDeviceJson.mockReturnValue(null);
 
     render(<DeviceDetail />);

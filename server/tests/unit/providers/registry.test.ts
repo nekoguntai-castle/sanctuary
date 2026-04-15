@@ -236,21 +236,27 @@ describe('ProviderRegistry', () => {
   });
 
   it('uses cached health results and refreshes after ttl', async () => {
+    let now = 10_000;
+    const dateNowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
     registry = new ProviderRegistry<TestProvider>({
       name: 'cache-test',
       healthCacheTtlMs: 5,
     });
     const provider = makeProvider('cached', 1, true);
-    await registry.register(provider);
-    provider.healthCheck.mockClear();
+    try {
+      await registry.register(provider);
+      provider.healthCheck.mockClear();
 
-    await registry.getHealthy();
-    await registry.getHealthy();
-    expect(provider.healthCheck).toHaveBeenCalledTimes(0);
+      await registry.getHealthy();
+      await registry.getHealthy();
+      expect(provider.healthCheck).toHaveBeenCalledTimes(0);
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    await registry.getHealthy();
-    expect(provider.healthCheck).toHaveBeenCalledTimes(1);
+      now += 10;
+      await registry.getHealthy();
+      expect(provider.healthCheck).toHaveBeenCalledTimes(1);
+    } finally {
+      dateNowSpy.mockRestore();
+    }
   });
 
   it('triggers onHealthChange when refreshed health status changes', async () => {

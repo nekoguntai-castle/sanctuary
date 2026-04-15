@@ -1,35 +1,36 @@
 # Dependency Audit Triage
 
-Snapshot date: 2026-04-14 Pacific/Honolulu
+Snapshot date: 2026-04-15 Pacific/Honolulu
 
 Commands run:
-- `npm audit` (repo root, `server/`, and `gateway/`) for the quality-gate view
-- `npm audit --omit=dev` (repo root)
-- `npm audit --omit=dev` (`server/`)
-- `npm audit --omit=dev --omit=optional` (`gateway/`)
+- `npm run quality` for the full quality-gate view
+- `npm audit --omit=dev --json` (repo root)
+- `npm audit --json` and `npm audit --omit=dev --json` (`server/`)
+- `npm audit --json` and `npm audit --omit=dev --omit=optional --json` (`gateway/`)
 
 Latest freshness check:
-- Full unskipped `npm run quality` passed on 2026-04-14 Pacific/Honolulu. Its high-severity audit lane passed for root, server, and gateway while still surfacing the accepted lower-severity findings below.
-- `npm audit --omit=dev` at the repo root still reports `14 low` advisories in the hardware-wallet/browser-polyfill `elliptic` chain and no moderate/high/critical advisories.
-- `npm --prefix server audit --omit=dev` still reports `3 moderate` advisories through the Prisma tooling `@hono/node-server` chain. The only npm-proposed remediation remains a force/downgrade path to `prisma@6.19.3`.
-- `npm --prefix gateway audit --omit=dev --omit=optional` reports `0` vulnerabilities. This was rerun with registry access after a sandbox DNS failure.
-- Disposition is unchanged: `accept + monitor` for the remaining root low and server Prisma-tooling moderate advisories; gateway production optional-omitted install remains clean.
+- Full unskipped `npm run quality` passed on 2026-04-15 Pacific/Honolulu. Its high-severity audit lane passed for root, server, and gateway while still surfacing the accepted lower-severity findings below.
+- `npm audit --omit=dev --json` at the repo root reports `14 low` advisories in the hardware-wallet/browser-polyfill `elliptic` chain and no moderate/high/critical advisories.
+- `npm audit --json` and `npm audit --omit=dev --json` in `server/` report `0` vulnerabilities after the Prisma/tooling refresh and `@hono/node-server` override.
+- `npm audit --json` in `gateway/` reports `8 low` advisories through Firebase/Google optional dependency trees; `npm audit --omit=dev --omit=optional --json` reports `0` vulnerabilities.
+- Disposition is updated: `fixed` for the previous server Prisma-tooling moderate chain; `accept + monitor` for the remaining root low and gateway optional-dependency low advisories.
 
-## Current state
+## Current State
 
 - Root full install: `16 low`, `0 moderate`, `0 high`, `0 critical`
 - Root production install (`--omit=dev`): `14 low`, `0 moderate`, `0 high`, `0 critical`
-- Server full install and production install: `0 low`, `3 moderate`, `0 high`, `0 critical`
+- Server full install and production install: `0` vulnerabilities
 - Gateway full install: `8 low`, `0 moderate`, `0 high`, `0 critical`
 - Gateway production install (`--omit=dev --omit=optional`): `0` vulnerabilities
 
-## Root findings (14 production low, 16 full-install low)
+## Root Findings
 
-Fixed in this refresh:
-- Transitive `axios` from the Trezor/Stellar SDK chain was updated in `package-lock.json` from `1.14.0` to `1.15.0`, clearing the critical Axios SSRF/header-injection advisories reported by `npm audit --omit=dev`.
-- Transitive `follow-redirects` from the Trezor/Stellar/Axios chain was updated in `package-lock.json` from `1.15.11` to `1.16.0` by the non-forced `npm audit fix` path, clearing the moderate custom-header redirect advisory.
+Fixed in recent refreshes:
+- Transitive `axios` from the Trezor/Stellar SDK chain was updated from `1.14.0` to `1.15.0`, clearing the critical Axios SSRF/header-injection advisories reported by `npm audit --omit=dev`.
+- Transitive `follow-redirects` from the Trezor/Stellar/Axios chain was updated from `1.15.11` to `1.16.0`, clearing the moderate custom-header redirect advisory.
+- Safe non-forced package updates were applied across Ledger, React, router, virtualized-list, Stryker, and Node type packages. These kept the tree current without accepting npm's force/downgrade remediation paths.
 
-Main chains:
+Remaining chains:
 - Trezor chain
   - Direct: `@trezor/connect-web`
   - Transitive: `@trezor/connect` -> `@trezor/utxo-lib`/`@trezor/blockchain-link*` -> `tiny-secp256k1`/`crypto-browserify`
@@ -39,58 +40,59 @@ Main chains:
 - Browser polyfill chain
   - Direct: `vite-plugin-node-polyfills`
   - Transitive: `node-stdlib-browser` -> `crypto-browserify` -> `browserify-sign`/`create-ecdh`
+
 Notes:
 - Several findings in `@trezor/*` currently have no available fix in-place.
-- The remaining advisory is the low-severity `elliptic` primitive advisory inherited through hardware-wallet and browser-polyfill dependency trees; npm reports no non-force fix.
-- The two extra full-install-only root findings are in the dev-time `vite-plugin-node-polyfills` chain. npm proposes a major downgrade to `vite-plugin-node-polyfills@0.2.0`, so this is not a safe remediation path.
+- The Ledger audit remediation path proposes a major-version move to `@ledgerhq/hw-app-btc@6.7.0`, which is not a safe automatic fix from the current tree.
+- The remaining advisory is the low-severity `elliptic` primitive advisory inherited through hardware-wallet and browser-polyfill dependency trees.
+- The two extra full-install-only root findings are in the dev-time `vite-plugin-node-polyfills` chain. npm proposes a major downgrade to `vite-plugin-node-polyfills@0.2.0`, so this remains an unsafe remediation path.
 
-## Server findings (3 moderate)
+## Server Findings
 
 Fixed in this refresh:
-- Transitive `follow-redirects` from the server Axios chain was updated in `server/package-lock.json` from `1.15.11` to `1.16.0`, clearing the moderate custom-header redirect advisory without a forced package downgrade.
-
-Main chain:
-- Direct dev dependency: `prisma`
-- Transitive: `prisma` -> `@prisma/dev` -> `@hono/node-server`
+- Prisma and related server packages were refreshed on the current major line.
+- `server/package.json` now overrides `@hono/node-server` to `1.19.14`, clearing the Prisma dev-tooling moderate advisory without a forced downgrade to Prisma 6.
+- `npm audit --json` and `npm audit --omit=dev --json` in `server/` both report `0` vulnerabilities.
 
 Notes:
-- `npm audit --omit=dev` reports `@hono/node-server <1.19.13` through the Prisma dev tooling chain.
-- The suggested remediation is `npm audit fix --force`, which would install `prisma@6.19.3` and downgrade from the current Prisma 7 line. That is a breaking downgrade path, not a safe release fix.
-- The vulnerable package is not used as an application static-file server in Sanctuary; it is inherited through Prisma tooling.
+- The previous moderate chain was `prisma` -> `@prisma/dev` -> `@hono/node-server`.
+- npm's former proposed remediation path was a force/downgrade to `prisma@6.19.3`; that path is no longer needed.
+- Keep the override under review during Prisma upgrades so it can be removed once upstream pins a safe version directly.
 
-## Gateway findings
+## Gateway Findings
 
-Fixed in this refresh:
-- Transitive `follow-redirects` from the gateway Google/Firebase HTTP chain was updated in `gateway/package-lock.json` from `1.15.11` to `1.16.0`, clearing the moderate custom-header redirect advisory without a forced package downgrade.
+Fixed in recent refreshes:
+- Transitive `follow-redirects` from the gateway Google/Firebase HTTP chain was updated from `1.15.11` to `1.16.0`, clearing the moderate custom-header redirect advisory without a forced package downgrade.
+- Safe non-forced updates were applied to `firebase-admin`, `@parse/node-apn`, and Node type packages.
 
-Main chain:
+Remaining full-install chain:
 - Direct: `firebase-admin`
 - Transitive: `@google-cloud/firestore`, `@google-cloud/storage`, `google-gax`, `retry-request`, `teeny-request`, `http-proxy-agent`, `@tootallnate/once`
 
 Notes:
-- Full-install gateway audits have historically reported low findings in `firebase-admin` optional dependencies and suggested `firebase-admin@10.3.0`, which is a major backwards move, not a safe remediation path.
-- The advisory chain is in `firebase-admin` optional dependencies (`@google-cloud/firestore`/`@google-cloud/storage` subtree).
-- Production gateway image now prunes optional dependencies (`npm prune --production --omit=optional` in `gateway/Dockerfile`), which removes this chain from deployed runtime.
-- Validation command: `npm audit --omit=dev --omit=optional` in `gateway/` reports `0` vulnerabilities.
+- Full-install gateway audits still report low findings in `firebase-admin` optional dependency paths and suggest `firebase-admin@10.3.0`, which is a major backwards move.
+- Production gateway image pruning omits optional dependencies (`npm prune --production --omit=optional` in `gateway/Dockerfile`), which removes this advisory chain from deployed runtime.
+- Validation command: `npm audit --omit=dev --omit=optional --json` in `gateway/` reports `0` vulnerabilities.
 
 ## Decision
 
-Disposition: `fix + monitor` for the root, server, and gateway Axios/`follow-redirects` advisories that had non-forced remediation paths; `accept + monitor` for the remaining root low-severity transitive advisories and server Prisma dev-chain moderate advisory; gateway optional-dependency findings are mitigated in production via optional-dependency pruning.
+Disposition: `fixed` for the server Prisma-tooling moderate advisory; `fix + monitor` for already-remediated Axios/`follow-redirects` advisories; `accept + monitor` for the remaining root low-severity transitive advisories and gateway optional-dependency low advisories.
 
 Reasoning:
-- No moderate/high/critical root production findings remain after the Axios and `follow-redirects` lockfile updates.
-- Remaining proposed `npm audit` remediation paths are unavailable, force/downgrade, or major-change paths that increase functional regression risk.
-- Remaining root findings are in upstream hardware-wallet or browser-polyfill dependency trees where direct in-place fixes are unavailable or not safe.
-- The server moderate advisory is inherited through Prisma tooling, and npm's proposed remediation would downgrade Prisma across a major version.
-- The gateway low findings are in optional Firebase/Google dependency trees; the production install proof path omits optional dependencies and audits clean.
+- No high or critical findings remain in any audited package tree.
+- No moderate findings remain in the root production tree, server tree, or gateway tree.
+- Remaining root findings are low-severity upstream hardware-wallet or browser-polyfill dependency paths where npm's proposed remediations are unavailable, force/downgrade, or major-change paths.
+- Gateway low findings are in optional Firebase/Google dependency trees; the production install proof path omits optional dependencies and audits clean.
+- The former server moderate advisory is cleared without downgrading Prisma.
 
-## Revisit triggers
+## Revisit Triggers
 
 Re-triage immediately if any of the following occur:
 - Any root advisory severity rises above low.
-- Any server advisory severity rises above moderate or reaches a runtime-exposed dependency path.
+- Any gateway advisory reaches a runtime-exposed dependency path or severity rises above low.
 - A same-major, non-downgrade remediation path becomes available for `@ledgerhq/*`, `@trezor/*`, `vite-plugin-node-polyfills`, Prisma, or `firebase-admin`.
-- Planned upgrades touching hardware-wallet stack, polyfill stack, Prisma, or Firebase stack.
+- Planned upgrades touch the hardware-wallet stack, polyfill stack, Prisma, or Firebase stack.
+- The `@hono/node-server` override conflicts with a future Prisma upgrade or becomes redundant.
 
 Recommended cadence:
 - Re-run audits on each release branch cut and at least once per month.

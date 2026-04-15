@@ -79,7 +79,7 @@ describe('AILabelSuggestion', () => {
     it('should show loading state when fetching suggestion', async () => {
       // Delay the resolution to observe loading state
       mockSuggestLabel.mockImplementation(
-        () => new Promise(resolve => setTimeout(() => resolve({ suggestion: 'Test' }), 100))
+        () => new Promise<never>(() => undefined)
       );
 
       render(<AILabelSuggestion transaction={mockTransaction} />);
@@ -92,7 +92,7 @@ describe('AILabelSuggestion', () => {
 
     it('should disable button during loading', async () => {
       mockSuggestLabel.mockImplementation(
-        () => new Promise(resolve => setTimeout(() => resolve({ suggestion: 'Test' }), 100))
+        () => new Promise<never>(() => undefined)
       );
 
       render(<AILabelSuggestion transaction={mockTransaction} />);

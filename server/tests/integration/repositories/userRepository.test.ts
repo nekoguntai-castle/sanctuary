@@ -272,16 +272,19 @@ describeIfDatabase('UserRepository Integration Tests', () => {
         });
 
         const originalUpdatedAt = user.updatedAt;
-
-        // Wait a small amount to ensure timestamp difference
-        await new Promise((resolve) => setTimeout(resolve, 10));
+        const backdatedUpdatedAt = new Date('2024-01-01T00:00:00.000Z');
+        await tx.user.update({
+          where: { id: user.id },
+          data: { updatedAt: backdatedUpdatedAt },
+        });
 
         const updated = await tx.user.update({
           where: { id: user.id },
           data: { isAdmin: true },
         });
 
-        expect(updated.updatedAt.getTime()).toBeGreaterThan(originalUpdatedAt.getTime());
+        expect(updated.updatedAt.getTime()).toBeGreaterThan(backdatedUpdatedAt.getTime());
+        expect(updated.updatedAt.getTime()).toBeGreaterThanOrEqual(originalUpdatedAt.getTime());
       });
     });
   });

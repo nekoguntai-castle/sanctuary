@@ -181,17 +181,21 @@ describe('refresh module — proactive schedule', () => {
 
   it('schedules an immediate refresh when the expiry is already past the lead-time boundary', async () => {
     // Server says the access token expires in 10s, which is below our
-    // 60s lead time. The module should schedule a setTimeout(..., 0)
+    // 60s lead time. The module should schedule a zero-delay timer
     // so the refresh runs on the next tick.
-    const expiresSoon = isoInFuture(10_000);
-    mockFetch.mockResolvedValueOnce(authResponse(isoInFuture(3600_000)));
+    vi.useFakeTimers();
+    try {
+      const expiresSoon = isoInFuture(10_000);
+      mockFetch.mockResolvedValueOnce(authResponse(isoInFuture(3600_000)));
 
-    scheduleRefreshFromHeader(expiresSoon);
+      scheduleRefreshFromHeader(expiresSoon);
 
-    // Give the microtask queue a chance to run the scheduled timeout.
-    await new Promise((r) => setTimeout(r, 5));
+      await vi.advanceTimersByTimeAsync(0);
 
-    expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -467,26 +471,30 @@ describe('refresh module — defensive error handling', () => {
 describe('refresh module — scheduled refresh failure swallowing', () => {
   it('immediate-fire scheduled refresh swallows a terminal failure without crashing', async () => {
     // Server has revoked the refresh token. The "fireInMs <= 0" path
-    // schedules setTimeout(fn, 0) which calls refreshAccessToken; the
+    // schedules an immediate timer that calls refreshAccessToken; the
     // terminal failure rejects the promise. The .catch(() => {}) on the
     // scheduled timer must absorb it so the timer does not produce an
     // unhandled rejection.
-    mockFetch.mockResolvedValueOnce({
-      ok: false,
-      status: 401,
-      headers: { get: () => null },
-      json: async () => ({ message: 'Unauthorized' }),
-    });
+    vi.useFakeTimers();
+    try {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        headers: { get: () => null },
+        json: async () => ({ message: 'Unauthorized' }),
+      });
 
-    // Schedule with an expiry already past the lead-time boundary so
-    // the immediate-fire path is taken.
-    scheduleRefreshFromHeader(isoInFuture(10_000)); // 10s — under 60s LEAD_TIME
+      // Schedule with an expiry already past the lead-time boundary so
+      // the immediate-fire path is taken.
+      scheduleRefreshFromHeader(isoInFuture(10_000)); // 10s under 60s LEAD_TIME
 
-    // Let the setTimeout(0) microtask run.
-    await new Promise((r) => setTimeout(r, 5));
+      await vi.advanceTimersByTimeAsync(0);
 
-    // Did not crash. Listeners should have fired (terminal failure).
-    expect(mockFetch).toHaveBeenCalledTimes(1);
+      // Did not crash. Listeners should have fired (terminal failure).
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('normal-fire scheduled refresh swallows a terminal failure without crashing', async () => {

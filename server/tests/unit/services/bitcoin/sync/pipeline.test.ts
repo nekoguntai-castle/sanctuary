@@ -346,17 +346,22 @@ describe('Sync Pipeline', () => {
     });
 
     it('should measure elapsed time', async () => {
+      let now = 5_000;
+      const dateNowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
       const phases: SyncPhase[] = [
         createPhase('slowPhase', async (ctx) => {
-          await new Promise((r) => setTimeout(r, 50));
+          now += 50;
           return ctx;
         }),
       ];
 
-      const result = await executeSyncPipeline(walletId, phases);
+      try {
+        const result = await executeSyncPipeline(walletId, phases);
 
-      // Allow a small margin for timer granularity and scheduler jitter.
-      expect(result.elapsedMs).toBeGreaterThanOrEqual(45);
+        expect(result.elapsedMs).toBe(50);
+      } finally {
+        dateNowSpy.mockRestore();
+      }
     });
   });
 });

@@ -302,14 +302,17 @@ describe('WalletDetail', () => {
 
   describe('Loading state', () => {
     it('shows loading placeholder while fetching wallet', async () => {
-      // Mock a delayed response
+      let resolveWallet!: (wallet: any) => void;
       vi.mocked(walletsApi.getWallet).mockImplementation(
-        () => new Promise(resolve => setTimeout(() => resolve(mockWallet as any), 150))
+        () => new Promise<any>((resolve) => {
+          resolveWallet = resolve;
+        })
       );
 
       renderWalletDetail();
 
       expect(await screen.findByText('Loading wallet...')).toBeInTheDocument();
+      resolveWallet(mockWallet);
       await waitFor(() => expect(screen.getByText('Test Wallet')).toBeInTheDocument());
     });
   });

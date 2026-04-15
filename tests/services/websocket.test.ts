@@ -17,85 +17,23 @@ vi.mock('../../utils/logger', () => ({
   }),
 }));
 
-import type { EventCallback,WebSocketEvent } from '../../services/websocket';
+import {
+  getLastWs,
+  installMockWebSocket,
+  MockWebSocket,
+  mockWsInstances,
+  resetMockWebSocketInstances,
+} from './websocket/websocketTestHarness';
+import type { EventCallback } from '../../services/websocket';
 import { WebSocketClient } from '../../services/websocket';
-
-// Mock WebSocket
-class MockWebSocket {
-  static CONNECTING = 0;
-  static OPEN = 1;
-  static CLOSING = 2;
-  static CLOSED = 3;
-
-  readyState = MockWebSocket.CONNECTING;
-  onopen: (() => void) | null = null;
-  onclose: ((event: { code: number; reason: string }) => void) | null = null;
-  onmessage: ((event: { data: string }) => void) | null = null;
-  onerror: ((error: unknown) => void) | null = null;
-
-  url: string;
-  sentMessages: string[] = [];
-
-  constructor(url: string) {
-    this.url = url;
-  }
-
-  send(data: string) {
-    this.sentMessages.push(data);
-  }
-
-  close(code?: number, reason?: string) {
-    this.readyState = MockWebSocket.CLOSED;
-    if (this.onclose) {
-      this.onclose({ code: code ?? 1000, reason: reason ?? '' });
-    }
-  }
-
-  // Test helpers
-  simulateOpen() {
-    this.readyState = MockWebSocket.OPEN;
-    if (this.onopen) this.onopen();
-  }
-
-  simulateMessage(data: WebSocketEvent) {
-    if (this.onmessage) {
-      this.onmessage({ data: JSON.stringify(data) });
-    }
-  }
-
-  simulateError(error: unknown) {
-    if (this.onerror) this.onerror(error);
-  }
-
-  simulateClose(code = 1000, reason = '') {
-    this.readyState = MockWebSocket.CLOSED;
-    if (this.onclose) this.onclose({ code, reason });
-  }
-}
-
-// Track created WebSocket instances
-let mockWsInstances: MockWebSocket[] = [];
 
 describe('WebSocketClient', () => {
   let client: WebSocketClient;
 
   beforeEach(() => {
     vi.useFakeTimers();
-    mockWsInstances = [];
-
-    // Mock global WebSocket
-    vi.stubGlobal('WebSocket', class extends MockWebSocket {
-      constructor(url: string) {
-        super(url);
-        mockWsInstances.push(this);
-      }
-
-      // Expose static constants on instance for readyState comparisons
-      static CONNECTING = 0;
-      static OPEN = 1;
-      static CLOSING = 2;
-      static CLOSED = 3;
-    });
+    resetMockWebSocketInstances();
+    installMockWebSocket();
 
     client = new WebSocketClient('ws://localhost:3000/ws');
   });
@@ -104,11 +42,6 @@ describe('WebSocketClient', () => {
     vi.useRealTimers();
     vi.restoreAllMocks();
   });
-
-  // Helper to get the latest MockWebSocket instance
-  function getLastWs(): MockWebSocket {
-    return mockWsInstances[mockWsInstances.length - 1];
-  }
 
   // ========================================
   // Connection lifecycle

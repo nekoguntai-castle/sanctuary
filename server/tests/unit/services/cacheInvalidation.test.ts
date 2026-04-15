@@ -44,6 +44,13 @@ import {
 } from '../../../src/services/cacheInvalidation';
 import { eventBus } from '../../../src/events/eventBus';
 
+const waitForWalletCacheInvalidation = async (walletId: string) => {
+  await vi.waitFor(() => {
+    expect(mockWalletCache.deletePattern).toHaveBeenCalledWith(`balance-history:${walletId}:*`);
+    expect(mockWalletCache.delete).toHaveBeenCalledWith(`tx-stats:${walletId}`);
+  });
+};
+
 describe('CacheInvalidation', () => {
   beforeEach(() => {
     // Clean up any previous initialization
@@ -129,11 +136,7 @@ describe('CacheInvalidation', () => {
         duration: 500,
       });
 
-      // Wait for async handler to complete
-      await new Promise(resolve => setTimeout(resolve, 50));
-
-      expect(mockWalletCache.deletePattern).toHaveBeenCalledWith(`balance-history:${walletId}:*`);
-      expect(mockWalletCache.delete).toHaveBeenCalledWith(`tx-stats:${walletId}`);
+      await waitForWalletCacheInvalidation(walletId);
     });
 
     it('should invalidate caches on wallet:deleted event', async () => {
@@ -144,10 +147,7 @@ describe('CacheInvalidation', () => {
         userId: 'user-123',
       });
 
-      await new Promise(resolve => setTimeout(resolve, 50));
-
-      expect(mockWalletCache.deletePattern).toHaveBeenCalledWith(`balance-history:${walletId}:*`);
-      expect(mockWalletCache.delete).toHaveBeenCalledWith(`tx-stats:${walletId}`);
+      await waitForWalletCacheInvalidation(walletId);
     });
 
     it('should invalidate caches on wallet:balanceChanged event', async () => {
@@ -160,10 +160,7 @@ describe('CacheInvalidation', () => {
         difference: 50000n,
       });
 
-      await new Promise(resolve => setTimeout(resolve, 50));
-
-      expect(mockWalletCache.deletePattern).toHaveBeenCalledWith(`balance-history:${walletId}:*`);
-      expect(mockWalletCache.delete).toHaveBeenCalledWith(`tx-stats:${walletId}`);
+      await waitForWalletCacheInvalidation(walletId);
     });
   });
 
@@ -183,10 +180,7 @@ describe('CacheInvalidation', () => {
         confirmations: 0,
       });
 
-      await new Promise(resolve => setTimeout(resolve, 50));
-
-      expect(mockWalletCache.deletePattern).toHaveBeenCalledWith(`balance-history:${walletId}:*`);
-      expect(mockWalletCache.delete).toHaveBeenCalledWith(`tx-stats:${walletId}`);
+      await waitForWalletCacheInvalidation(walletId);
     });
 
     it('should invalidate caches on transaction:sent event', async () => {
@@ -200,10 +194,7 @@ describe('CacheInvalidation', () => {
         recipients: [{ address: 'bc1q...', amount: 5000n }],
       });
 
-      await new Promise(resolve => setTimeout(resolve, 50));
-
-      expect(mockWalletCache.deletePattern).toHaveBeenCalledWith(`balance-history:${walletId}:*`);
-      expect(mockWalletCache.delete).toHaveBeenCalledWith(`tx-stats:${walletId}`);
+      await waitForWalletCacheInvalidation(walletId);
     });
 
     it('should invalidate caches on transaction:confirmed event', async () => {
@@ -216,10 +207,7 @@ describe('CacheInvalidation', () => {
         blockHeight: 800000,
       });
 
-      await new Promise(resolve => setTimeout(resolve, 50));
-
-      expect(mockWalletCache.deletePattern).toHaveBeenCalledWith(`balance-history:${walletId}:*`);
-      expect(mockWalletCache.delete).toHaveBeenCalledWith(`tx-stats:${walletId}`);
+      await waitForWalletCacheInvalidation(walletId);
     });
   });
 
@@ -234,9 +222,7 @@ describe('CacheInvalidation', () => {
         source: 'coingecko',
       });
 
-      await new Promise(resolve => setTimeout(resolve, 50));
-
-      expect(mockPriceCache.clear).toHaveBeenCalled();
+      await vi.waitFor(() => expect(mockPriceCache.clear).toHaveBeenCalled());
     });
 
     it('should clear System 2 fee cache on blockchain:feeEstimateUpdated event', async () => {
@@ -247,9 +233,7 @@ describe('CacheInvalidation', () => {
         hourFee: 10,
       });
 
-      await new Promise(resolve => setTimeout(resolve, 50));
-
-      expect(mockFeeCache.clear).toHaveBeenCalled();
+      await vi.waitFor(() => expect(mockFeeCache.clear).toHaveBeenCalled());
     });
   });
 
@@ -271,11 +255,10 @@ describe('CacheInvalidation', () => {
         });
       }
 
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      // Each wallet event triggers deletePattern + delete
-      expect(mockWalletCache.deletePattern).toHaveBeenCalledTimes(3);
-      expect(mockWalletCache.delete).toHaveBeenCalledTimes(3);
+      await vi.waitFor(() => {
+        expect(mockWalletCache.deletePattern).toHaveBeenCalledTimes(3);
+        expect(mockWalletCache.delete).toHaveBeenCalledTimes(3);
+      });
       for (const walletId of walletIds) {
         expect(mockWalletCache.deletePattern).toHaveBeenCalledWith(`balance-history:${walletId}:*`);
         expect(mockWalletCache.delete).toHaveBeenCalledWith(`tx-stats:${walletId}`);
@@ -295,10 +278,10 @@ describe('CacheInvalidation', () => {
         });
       }
 
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      expect(mockWalletCache.deletePattern).toHaveBeenCalledTimes(5);
-      expect(mockWalletCache.delete).toHaveBeenCalledTimes(5);
+      await vi.waitFor(() => {
+        expect(mockWalletCache.deletePattern).toHaveBeenCalledTimes(5);
+        expect(mockWalletCache.delete).toHaveBeenCalledTimes(5);
+      });
     });
   });
 

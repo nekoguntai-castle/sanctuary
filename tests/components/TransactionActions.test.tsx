@@ -100,13 +100,35 @@ describe('TransactionActions', () => {
 
   describe('loading state', () => {
     it('shows loading spinner while checking RBF status', async () => {
+      let resolveRbfStatus!: (status: any) => void;
       vi.mocked(bitcoinApi.checkRBF).mockImplementation(
-        () => new Promise(resolve => setTimeout(() => resolve(mockRbfStatus as any), 100))
+        () => new Promise<any>((resolve) => {
+          resolveRbfStatus = resolve;
+        })
       );
 
       renderComponent();
 
       expect(document.querySelector('.animate-spin')).toBeInTheDocument();
+      resolveRbfStatus(mockRbfStatus);
+      await waitFor(() => {
+        expect(document.querySelector('.animate-spin')).not.toBeInTheDocument();
+      });
+    });
+
+    it('ignores RBF status resolution after unmount', async () => {
+      let resolveRbfStatus!: (status: any) => void;
+      vi.mocked(bitcoinApi.checkRBF).mockImplementation(
+        () => new Promise<any>((resolve) => {
+          resolveRbfStatus = resolve;
+        })
+      );
+
+      const { unmount } = renderComponent();
+
+      unmount();
+      resolveRbfStatus(mockRbfStatus);
+      await Promise.resolve();
     });
 
     it('handles RBF status check failures and still leaves loading state', async () => {

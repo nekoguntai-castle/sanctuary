@@ -313,10 +313,10 @@ export function createAiApiMockModule() {
 // ========================================
 
 /**
- * Create a delayed mock response
+ * Create an async mock response that resolves after the current microtask.
  */
-export function createDelayedMock<T>(response: T, delayMs: number = 100): () => Promise<T> {
-  return () => new Promise(resolve => setTimeout(() => resolve(response), delayMs));
+export function createDelayedMock<T>(response: T, _delayMs: number = 100): () => Promise<T> {
+  return () => new Promise(resolve => queueMicrotask(() => resolve(response)));
 }
 
 /**

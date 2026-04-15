@@ -141,7 +141,7 @@ describe('SendTransactionPage', () => {
     it('shows loading spinner while fetching data', async () => {
       // Delay the API response
       vi.mocked(walletsApi.getWallet).mockImplementation(
-        () => new Promise(resolve => setTimeout(() => resolve(mockWallet as any), 100))
+        () => new Promise<never>(() => undefined)
       );
 
       renderPage();
@@ -431,7 +431,7 @@ describe('SendTransactionPage', () => {
       renderPage();
 
       // Should not make API calls
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await Promise.resolve();
       expect(walletsApi.getWallet).not.toHaveBeenCalled();
     });
   });

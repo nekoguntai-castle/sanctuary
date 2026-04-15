@@ -1,8 +1,12 @@
 import { fireEvent,render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe,expect,it,vi } from 'vitest';
-import { createDeviceCellRenderers,type DeviceWithWallets } from '../../../components/cells/DeviceCells';
-import type { HardwareDeviceModel,TableColumnConfig } from '../../../types';
+import { createDeviceCellRenderers } from '../../../components/cells/DeviceCells';
+import {
+  baseColumn,
+  baseDevice,
+  makeDeviceModel,
+} from './deviceCellsTestFixtures';
 
 vi.mock('lucide-react', () => ({
   Edit2: () => <span data-testid="edit-icon" />,
@@ -17,38 +21,6 @@ vi.mock('../../../components/ui/CustomIcons', () => ({
   getDeviceIcon: (_name: string, _className?: string) => <span data-testid="device-icon" />,
   getWalletIcon: (_type: string, _className?: string) => <span data-testid="wallet-icon" />,
 }));
-
-const baseColumn: TableColumnConfig = { id: 'label', label: 'Label' };
-
-const makeDeviceModel = (overrides: Partial<HardwareDeviceModel> = {}): HardwareDeviceModel => ({
-  id: 'model-passport',
-  slug: 'passport',
-  manufacturer: 'Foundation',
-  name: 'Passport',
-  connectivity: ['usb'],
-  secureElement: true,
-  openSource: true,
-  airGapped: true,
-  supportsBitcoinOnly: true,
-  supportsMultisig: true,
-  supportsTaproot: true,
-  supportsPassphrase: true,
-  scriptTypes: ['native_segwit', 'nested_segwit', 'taproot'],
-  hasScreen: true,
-  integrationTested: true,
-  discontinued: false,
-  ...overrides,
-});
-
-const baseDevice: DeviceWithWallets = {
-  id: 'device-1',
-  type: 'passport',
-  label: 'Passport',
-  fingerprint: 'abcd1234',
-  isOwner: true,
-  accounts: [],
-  wallets: [],
-};
 
 describe('DeviceCells', () => {
   it('renders editable label cell and triggers save', async () => {

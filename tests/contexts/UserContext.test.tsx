@@ -1,10 +1,6 @@
-/**
- * Tests for UserContext
- *
- * Tests authentication, user management, and preference handling.
- */
+/** Tests authentication, user management, and preference handling in UserContext. */
 
-import { render,screen,waitFor } from '@testing-library/react';
+import { act,render,screen,waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 import {
@@ -209,7 +205,9 @@ describe('UserContext', () => {
 
       // Simulate a logout-broadcast delivered by refresh.ts.
       if (!capturedListener) throw new Error('terminal logout listener not captured');
-      (capturedListener as () => void)();
+      act(() => {
+        (capturedListener as () => void)();
+      });
 
       await waitFor(() => {
         expect(screen.getByTestId('user')).toHaveTextContent('null');

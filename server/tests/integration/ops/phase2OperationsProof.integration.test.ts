@@ -33,20 +33,15 @@ async function waitForAuditLog(
   action: string,
   username: string
 ) {
-  for (let attempt = 0; attempt < 40; attempt++) {
+  return vi.waitFor(async () => {
     const auditLog = await prisma.auditLog.findFirst({
       where: { action, username },
       orderBy: { createdAt: 'desc' },
     });
 
-    if (auditLog) {
-      return auditLog;
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-
-  throw new Error(`Timed out waiting for audit log ${action} by ${username}`);
+    expect(auditLog, `audit log ${action} by ${username}`).not.toBeNull();
+    return auditLog!;
+  }, { interval: 50, timeout: 2_000 });
 }
 
 function createUniqueId(prefix: string): string {

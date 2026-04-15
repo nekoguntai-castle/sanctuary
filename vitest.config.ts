@@ -1,12 +1,12 @@
 import path from 'path';
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
-import { nodePolyfills } from 'vite-plugin-node-polyfills';
+import { nodePolyfillsWithoutDeprecatedEsbuild } from './vite.nodePolyfills';
 
 export default defineConfig({
   plugins: [
     react(),
-    nodePolyfills({
+    nodePolyfillsWithoutDeprecatedEsbuild({
       include: ['buffer', 'process', 'stream', 'util'],
       globals: {
         Buffer: true,

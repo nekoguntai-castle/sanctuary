@@ -33,6 +33,10 @@ vi.mock('../../hooks/queries/useDevices', () => ({
   useDevices: vi.fn(),
 }));
 
+vi.mock('../../hooks/useAppCapabilities', () => ({
+  useAppCapabilities: () => ({ intelligence: false }),
+}));
+
 // Mock APIs
 vi.mock('../../src/api/bitcoin', () => ({
   getStatus: vi.fn(),
@@ -95,11 +99,8 @@ describe('Layout', () => {
     children: <div data-testid="page-content">Page Content</div>,
   };
 
-  afterEach(async () => {
+  afterEach(() => {
     cleanup();
-    // Flush pending microtasks so async effects (getStatus, getDrafts)
-    // settle before vitest tears down the worker RPC channel
-    await new Promise(resolve => setTimeout(resolve, 0));
   });
 
   beforeEach(() => {

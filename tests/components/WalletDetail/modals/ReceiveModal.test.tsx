@@ -89,7 +89,7 @@ vi.mock('../../../../hooks/useCopyToClipboard', () => ({
 // Mock payjoin API
 vi.mock('../../../../src/api/payjoin', () => ({
   getPayjoinStatus: vi.fn().mockResolvedValue({
-    enabled: true,
+    enabled: false,
     configured: true,
   }),
   getPayjoinUri: vi.fn().mockResolvedValue({
@@ -165,6 +165,15 @@ describe('ReceiveModal', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockIsCopied.mockReturnValue(false);
+    vi.mocked(payjoinApi.getPayjoinStatus).mockResolvedValue({
+      enabled: false,
+      configured: true,
+    });
+    vi.mocked(payjoinApi.getPayjoinUri).mockResolvedValue({
+      uri: 'bitcoin:bc1qtest?pj=https://payjoin.example.com',
+      address: 'bc1qtest',
+      payjoinUrl: 'https://payjoin.example.com',
+    });
   });
 
   describe('Rendering', () => {
@@ -206,6 +215,10 @@ describe('ReceiveModal', () => {
     });
 
     it('should render Payjoin section when feature is enabled and configured', async () => {
+      vi.mocked(payjoinApi.getPayjoinStatus).mockResolvedValueOnce({
+        enabled: true,
+        configured: true,
+      });
       render(<ReceiveModal {...defaultProps} />);
 
       await waitFor(() => {
@@ -464,6 +477,16 @@ describe('ReceiveModal', () => {
   });
 
   describe('Payjoin Toggle', () => {
+    beforeEach(() => {
+      vi.mocked(payjoinApi.getPayjoinStatus).mockResolvedValue({
+        enabled: true,
+        configured: true,
+      });
+      vi.mocked(payjoinApi.getPayjoinUri).mockImplementation(
+        () => new Promise(() => {})
+      );
+    });
+
     it('should have Payjoin disabled by default', async () => {
       render(<ReceiveModal {...defaultProps} />);
 
@@ -641,9 +664,7 @@ describe('ReceiveModal', () => {
         },
       ];
 
-      const mockFetch = vi.fn().mockImplementation(() =>
-        new Promise<Address[]>(resolve => setTimeout(() => resolve([]), 0))
-      );
+      const mockFetch = vi.fn().mockResolvedValue([]);
 
       render(
         <ReceiveModal {...defaultProps} addresses={usedAddresses} onFetchUnusedAddresses={mockFetch} />
@@ -675,20 +696,17 @@ describe('ReceiveModal', () => {
         used: true,
       }));
 
-      // The callback returns an unused address at index 54 (use setTimeout to ensure async flush)
-      const mockFetch = vi.fn().mockImplementation(() =>
-        new Promise<Address[]>(resolve => setTimeout(() => resolve([
-          {
-            id: 'addr-54',
-            address: 'bc1qunused54address',
-            derivationPath: "m/84'/0'/0'/0/54",
-            index: 54,
-            balance: 0,
-            isChange: false,
-            used: false,
-          },
-        ]), 0))
-      );
+      const mockFetch = vi.fn().mockResolvedValue([
+        {
+          id: 'addr-54',
+          address: 'bc1qunused54address',
+          derivationPath: "m/84'/0'/0'/0/54",
+          index: 54,
+          balance: 0,
+          isChange: false,
+          used: false,
+        },
+      ]);
 
       render(
         <ReceiveModal {...defaultProps} addresses={allUsedAddresses} onFetchUnusedAddresses={mockFetch} />

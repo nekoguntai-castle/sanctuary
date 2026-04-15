@@ -9,6 +9,9 @@
   "prisma": {
     "seed": "node --experimental-specifier-resolution=node dist/prisma/seed.js"
   },
+  "overrides": {
+    "@hono/node-server": "1.19.14"
+  },
   "scripts": {
     "postinstall": "prisma generate",
     "dev": "tsx watch src/index.ts",
@@ -85,9 +88,9 @@
   },
   "devDependencies": {
     "@faker-js/faker": "^10.4.0",
-    "@stryker-mutator/core": "^9.6.0",
-    "@stryker-mutator/typescript-checker": "^9.6.0",
-    "@stryker-mutator/vitest-runner": "^9.6.0",
+    "@stryker-mutator/core": "^9.6.1",
+    "@stryker-mutator/typescript-checker": "^9.6.1",
+    "@stryker-mutator/vitest-runner": "^9.6.1",
     "@types/compression": "^1.8.1",
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.17",

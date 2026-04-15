@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WorkerJobQueue } from '../../../src/worker/workerJobQueue';
 import { shutdownDistributedLock } from '../../../src/infrastructure/distributedLock';
 
@@ -15,9 +15,11 @@ function createDeferred<T = void>() {
 describe('worker job queue locking integration', () => {
   afterEach(() => {
     shutdownDistributedLock();
+    vi.useRealTimers();
   });
 
   it('does not run a second same-wallet sync while first long sync is still active', async () => {
+    vi.useFakeTimers();
     const queue = new WorkerJobQueue({
       concurrency: 1,
       queues: ['sync'],
@@ -57,8 +59,8 @@ describe('worker job queue locking integration', () => {
 
     await firstStarted.promise;
 
-    // Wait beyond initial TTL. Refresh should keep the lock alive.
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    // Advance beyond initial TTL. Refresh should keep the lock alive.
+    await vi.advanceTimersByTimeAsync(1500);
 
     const secondRunResult = await processJob('sync', {
       id: 'job-2',

@@ -95,7 +95,7 @@ describe('UsersGroups', () => {
 
     it('shows loading state initially', () => {
       vi.mocked(adminApi.getUsers).mockImplementation(
-        () => new Promise(resolve => setTimeout(() => resolve(mockUsers as any), 100))
+        () => new Promise<never>(() => undefined)
       );
 
       render(<UsersGroups />);

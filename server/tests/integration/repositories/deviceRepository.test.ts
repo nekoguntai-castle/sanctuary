@@ -180,9 +180,11 @@ describeIfDatabase('DeviceRepository Integration Tests', () => {
       await withTestTransaction(async (tx) => {
         const user = await createTestUser(tx);
         const device = await createTestDevice(tx, user.id);
-        const originalUpdatedAt = device.updatedAt;
-
-        await new Promise((resolve) => setTimeout(resolve, 10));
+        const originalUpdatedAt = new Date('2024-01-01T00:00:00.000Z');
+        await tx.device.update({
+          where: { id: device.id },
+          data: { updatedAt: originalUpdatedAt },
+        });
 
         const updated = await tx.device.update({
           where: { id: device.id },

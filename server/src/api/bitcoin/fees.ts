@@ -7,16 +7,12 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { validate } from '../../middleware/validate';
-import * as blockchain from '../../services/bitcoin/blockchain';
 import * as utils from '../../services/bitcoin/utils';
-import * as mempool from '../../services/bitcoin/mempool';
-import { nodeConfigRepository } from '../../repositories/nodeConfigRepository';
-import { createLogger } from '../../utils/logger';
 import { asyncHandler } from '../../errors/errorHandler';
 import * as advancedTx from '../../services/bitcoin/advancedTx';
+import { getCurrentFeeEstimates } from '../../services/bitcoin/feeService';
 
 const router = Router();
-const log = createLogger('BITCOIN_FEE:ROUTE');
 
 const EstimateFeeBodySchema = z.object({
   inputCount: z.number().int().positive(),
@@ -37,36 +33,7 @@ const EstimateOptimalFeeBodySchema = z.object({
  * Get current fee estimates from configured source (mempool.space API or Electrum)
  */
 router.get('/fees', asyncHandler(async (_req, res) => {
-  // Check configured fee estimator source
-  const nodeConfig = await nodeConfigRepository.findDefault();
-
-  const useMempoolApi = nodeConfig?.feeEstimatorUrl !== '' && nodeConfig?.feeEstimatorUrl !== undefined;
-
-  if (useMempoolApi) {
-    // Use mempool.space API (or configured URL)
-    try {
-      const mempoolFees = await mempool.getRecommendedFees();
-      res.json({
-        fastest: mempoolFees.fastestFee,
-        halfHour: mempoolFees.halfHourFee,
-        hour: mempoolFees.hourFee,
-        economy: mempoolFees.economyFee,
-        minimum: mempoolFees.minimumFee,
-        source: 'mempool',
-      });
-      return;
-    } catch (mempoolError) {
-      log.warn('Mempool API fee fetch failed, falling back to Electrum', { error: String(mempoolError) });
-    }
-  }
-
-  // Use Electrum server estimates
-  const fees = await blockchain.getFeeEstimates();
-  res.json({
-    ...fees,
-    minimum: fees.economy || 1,
-    source: 'electrum',
-  });
+  res.json(await getCurrentFeeEstimates());
 }));
 
 /**

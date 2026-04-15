@@ -378,7 +378,7 @@ describe('ChangePasswordModal', () => {
 
     it('shows loading state during submission', async () => {
       vi.mocked(authApi.changePassword).mockImplementation(
-        () => new Promise(resolve => setTimeout(() => resolve({} as any), 100))
+        () => new Promise<never>(() => undefined)
       );
 
       const user = userEvent.setup();

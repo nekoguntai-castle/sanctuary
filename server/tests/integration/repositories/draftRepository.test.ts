@@ -138,10 +138,11 @@ describeIfDatabase('DraftRepository Integration Tests', () => {
       await withTestTransaction(async (tx) => {
         const user = await createTestUser(tx);
         const wallet = await createTestWallet(tx, user.id);
+        const firstCreatedAt = new Date('2024-01-01T00:00:00.000Z');
+        const secondCreatedAt = new Date('2024-01-01T00:00:01.000Z');
 
-        await createTestDraft(tx, wallet.id, user.id);
-        await new Promise((r) => setTimeout(r, 10));
-        await createTestDraft(tx, wallet.id, user.id);
+        await createTestDraft(tx, wallet.id, user.id, { createdAt: firstCreatedAt });
+        await createTestDraft(tx, wallet.id, user.id, { createdAt: secondCreatedAt });
 
         const drafts = await tx.draftTransaction.findMany({
           where: { walletId: wallet.id },

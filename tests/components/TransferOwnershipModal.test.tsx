@@ -137,7 +137,7 @@ describe('TransferOwnershipModal', () => {
 
     it('shows loading spinner while searching', async () => {
       vi.mocked(authApi.searchUsers).mockImplementation(
-        () => new Promise(resolve => setTimeout(() => resolve(mockSearchResults as any), 200))
+        () => new Promise<never>(() => undefined)
       );
 
       const user = userEvent.setup();
@@ -417,7 +417,7 @@ describe('TransferOwnershipModal', () => {
 
     it('shows loading state during submission', async () => {
       vi.mocked(transfersApi.initiateTransfer).mockImplementation(
-        () => new Promise(resolve => setTimeout(() => resolve({} as any), 100))
+        () => new Promise<never>(() => undefined)
       );
 
       const user = userEvent.setup();

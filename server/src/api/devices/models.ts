@@ -7,7 +7,11 @@
 import { Router } from 'express';
 import { asyncHandler } from '../../errors/errorHandler';
 import { NotFoundError } from '../../errors/ApiError';
-import { deviceRepository } from '../../repositories';
+import {
+  getHardwareDeviceModel,
+  listHardwareDeviceManufacturers,
+  listHardwareDeviceModels,
+} from '../../services/deviceCatalogService';
 
 const router = Router();
 
@@ -18,7 +22,7 @@ const router = Router();
 router.get('/models', asyncHandler(async (req, res) => {
   const { manufacturer, airGapped, connectivity } = req.query;
 
-  const models = await deviceRepository.findHardwareModels({
+  const models = await listHardwareDeviceModels({
     manufacturer: manufacturer as string | undefined,
     airGapped: airGapped !== undefined ? airGapped === 'true' : undefined,
     connectivity: connectivity as string | undefined,
@@ -35,7 +39,7 @@ router.get('/models', asyncHandler(async (req, res) => {
 router.get('/models/:slug', asyncHandler(async (req, res) => {
   const { slug } = req.params;
 
-  const model = await deviceRepository.findHardwareModel(slug);
+  const model = await getHardwareDeviceModel(slug);
 
   if (!model) {
     throw new NotFoundError('Device model not found');
@@ -49,7 +53,7 @@ router.get('/models/:slug', asyncHandler(async (req, res) => {
  * Get list of all manufacturers (public endpoint)
  */
 router.get('/manufacturers', asyncHandler(async (_req, res) => {
-  const manufacturers = await deviceRepository.findManufacturers();
+  const manufacturers = await listHardwareDeviceManufacturers();
 
   res.json(manufacturers);
 }));

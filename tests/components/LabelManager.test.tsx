@@ -9,6 +9,15 @@ import { beforeEach,describe,expect,it,vi } from 'vitest';
 import { LabelManager } from '../../components/LabelManager';
 import type { Label } from '../../types';
 
+vi.mock('../../utils/logger', () => ({
+  createLogger: () => ({
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  }),
+}));
+
 // Mock mutation functions — each mutation gets its own mock
 const mockCreateMutateAsync = vi.fn();
 const mockUpdateMutateAsync = vi.fn();

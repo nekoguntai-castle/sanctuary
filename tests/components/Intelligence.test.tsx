@@ -159,6 +159,9 @@ describe('Intelligence', () => {
 
     const settingsButton = screen.getByText('Settings').closest('button');
     expect(settingsButton).toHaveClass('shadow-sm');
+    await waitFor(() => {
+      expect(screen.getByText('Intelligence Settings')).toBeInTheDocument();
+    });
   });
 
   it('should open wallet dropdown on click and show all wallets', async () => {

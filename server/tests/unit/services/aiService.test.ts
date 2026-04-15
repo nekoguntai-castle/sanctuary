@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { errJson, okJson, setting } from './aiServiceTestHarness';
 
 const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
@@ -20,24 +21,12 @@ vi.mock('../../../src/utils/logger', () => ({
   }),
 }));
 
-function setting(key: string, value: unknown) {
-  return { key, value: JSON.stringify(value) };
-}
-
-function okJson(body: unknown) {
-  return {
-    ok: true,
-    status: 200,
-    json: vi.fn().mockResolvedValue(body),
-  } as any;
-}
-
-function errJson(status: number, body: unknown) {
-  return {
-    ok: false,
-    status,
-    json: vi.fn().mockResolvedValue(body),
-  } as any;
+function mockConfiguredAiSettings() {
+  mocks.systemSettingFindMany.mockResolvedValue([
+    setting('aiEnabled', true),
+    setting('aiEndpoint', 'http://ollama:11434'),
+    setting('aiModel', 'llama3.2'),
+  ] as any);
 }
 
 describe('aiService', () => {
@@ -54,11 +43,7 @@ describe('aiService', () => {
   });
 
   it('returns enabled=true only when all required settings are configured', async () => {
-    mocks.systemSettingFindMany.mockResolvedValue([
-      setting('aiEnabled', true),
-      setting('aiEndpoint', 'http://ollama:11434'),
-      setting('aiModel', 'llama3.2'),
-    ] as any);
+    mockConfiguredAiSettings();
 
     const mod = await import('../../../src/services/aiService');
     await expect(mod.isEnabled()).resolves.toBe(true);
@@ -105,11 +90,7 @@ describe('aiService', () => {
   });
 
   it('reports container unavailable when /health check fails', async () => {
-    mocks.systemSettingFindMany.mockResolvedValue([
-      setting('aiEnabled', true),
-      setting('aiEndpoint', 'http://ollama:11434'),
-      setting('aiModel', 'llama3.2'),
-    ] as any);
+    mockConfiguredAiSettings();
     mocks.fetch.mockResolvedValueOnce(errJson(503, { error: 'down' }));
 
     const mod = await import('../../../src/services/aiService');
@@ -121,11 +102,7 @@ describe('aiService', () => {
   });
 
   it('syncs config and reports healthy AI container', async () => {
-    mocks.systemSettingFindMany.mockResolvedValue([
-      setting('aiEnabled', true),
-      setting('aiEndpoint', 'http://ollama:11434'),
-      setting('aiModel', 'llama3.2'),
-    ] as any);
+    mockConfiguredAiSettings();
     mocks.fetch
       .mockResolvedValueOnce(okJson({ status: 'ok' }))
       .mockResolvedValueOnce(okJson({ success: true }))
@@ -167,11 +144,7 @@ describe('aiService', () => {
   });
 
   it('reports unavailable when AI test endpoint fails', async () => {
-    mocks.systemSettingFindMany.mockResolvedValue([
-      setting('aiEnabled', true),
-      setting('aiEndpoint', 'http://ollama:11434'),
-      setting('aiModel', 'llama3.2'),
-    ] as any);
+    mockConfiguredAiSettings();
     mocks.fetch
       .mockResolvedValueOnce(okJson({ status: 'ok' }))
       .mockResolvedValueOnce(okJson({ success: true }))
@@ -190,11 +163,7 @@ describe('aiService', () => {
   });
 
   it('reports invalid response when AI test payload is malformed', async () => {
-    mocks.systemSettingFindMany.mockResolvedValue([
-      setting('aiEnabled', true),
-      setting('aiEndpoint', 'http://ollama:11434'),
-      setting('aiModel', 'llama3.2'),
-    ] as any);
+    mockConfiguredAiSettings();
     mocks.fetch
       .mockResolvedValueOnce(okJson({ status: 'ok' }))
       .mockResolvedValueOnce(okJson({ success: true }))

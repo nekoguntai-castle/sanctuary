@@ -1,8 +1,4 @@
-/**
- * Bitcoin API Path Definitions
- *
- * OpenAPI path definitions for Bitcoin network, sync, and price endpoints.
- */
+/** OpenAPI path definitions for Bitcoin network, sync, and price endpoints. */
 
 import { browserOrBearerAuth as bearerAuth } from '../security';
 

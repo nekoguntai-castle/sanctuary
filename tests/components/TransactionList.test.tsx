@@ -33,7 +33,7 @@ vi.mock('../../hooks/useAIStatus', () => ({
 
 // Mock APIs
 vi.mock('../../src/api/bitcoin', () => ({
-  getStatus: vi.fn().mockResolvedValue({ explorerUrl: 'https://mempool.space' } as any),
+  getStatus: vi.fn().mockResolvedValue({} as any),
 }));
 
 vi.mock('../../src/api/labels', () => ({
@@ -155,7 +155,7 @@ const mockWallet: Wallet = {
 describe('TransactionList Component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(bitcoinApi.getStatus).mockResolvedValue({ explorerUrl: 'https://mempool.space' } as any);
+    vi.mocked(bitcoinApi.getStatus).mockResolvedValue({} as any);
     vi.mocked(transactionsApi.getTransaction).mockResolvedValue({} as any);
     vi.mocked(labelsApi.setTransactionLabels).mockResolvedValue([]);
   });

@@ -10,6 +10,8 @@ import {
   type SyncServiceTestContext,
 } from './syncServiceTestHarness';
 
+const createTimeoutHandle = () => ({}) as NodeJS.Timeout;
+
 export function registerSyncServiceAddressMaintenanceTests(context: SyncServiceTestContext): void {
   describe('address subscriptions', () => {
     it('should subscribe to wallet addresses', async () => {
@@ -411,7 +413,7 @@ export function registerSyncServiceAddressMaintenanceTests(context: SyncServiceT
     it('should cancel pending retry timers', async () => {
       context.syncService['isRunning'] = true;
 
-      const timer = setTimeout(() => {}, 10000);
+      const timer = createTimeoutHandle();
       context.syncService['pendingRetries'].set('wallet-1', timer);
 
       await context.syncService.stop();

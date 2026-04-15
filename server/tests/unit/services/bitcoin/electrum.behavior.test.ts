@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'events';
 import * as bitcoin from 'bitcoinjs-lib';
 
+const createTimeoutHandle = () => ({}) as NodeJS.Timeout;
+
 const mockLogger = vi.hoisted(() => ({
   debug: vi.fn(),
   info: vi.fn(),
@@ -270,7 +272,7 @@ describe('ElectrumClient behavior', () => {
       address: testAddress,
     }));
 
-    const timeout = setTimeout(() => undefined, 1000);
+    const timeout = createTimeoutHandle();
     const resolve = vi.fn();
     const reject = vi.fn();
     (client as any).pendingRequests.set(10, { resolve, reject, timeoutId: timeout });
@@ -278,7 +280,7 @@ describe('ElectrumClient behavior', () => {
     (client as any).handleData(Buffer.from('{"jsonrpc":"2.0","id":10,"result":{"ok":true}}\n'));
     expect(resolve).toHaveBeenCalledWith({ ok: true });
 
-    (client as any).pendingRequests.set(11, { resolve, reject, timeoutId: setTimeout(() => undefined, 1000) });
+    (client as any).pendingRequests.set(11, { resolve, reject, timeoutId: createTimeoutHandle() });
     (client as any).handleData(Buffer.from('{"jsonrpc":"2.0","id":11,"error":{"message":"bad"}}\n'));
     expect(reject).toHaveBeenCalledWith(expect.any(Error));
 
@@ -309,7 +311,7 @@ describe('ElectrumClient behavior', () => {
     (client as any).pendingRequests.set(9, {
       resolve: vi.fn(),
       reject,
-      timeoutId: setTimeout(() => undefined, 1000),
+      timeoutId: createTimeoutHandle(),
     });
 
     (client as any).handleData(Buffer.from('{"jsonrpc":"2.0","result":"orphan"}\n'));
@@ -358,7 +360,7 @@ describe('ElectrumClient behavior', () => {
     (client as any).pendingRequests.set(22, {
       resolve: vi.fn(),
       reject,
-      timeoutId: setTimeout(() => undefined, 1000),
+      timeoutId: createTimeoutHandle(),
     });
     (client as any).handleData(
       Buffer.from('{"jsonrpc":"2.0","id":22,"error":{"code":-32000}}\n')
@@ -433,7 +435,7 @@ describe('ElectrumClient behavior', () => {
     (client as any).scriptHashToAddress.set('h', 'a');
 
     const reject = vi.fn();
-    const timeout = setTimeout(() => undefined, 1000);
+    const timeout = createTimeoutHandle();
     (client as any).pendingRequests.set(1, { resolve: vi.fn(), reject, timeoutId: timeout });
 
     expect(client.isConnected()).toBe(true);

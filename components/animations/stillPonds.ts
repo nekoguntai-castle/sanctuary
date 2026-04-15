@@ -6,69 +6,10 @@
  * Optimized for smooth, graceful movement.
  */
 
-import { useEffect, RefObject } from 'react';
+import { useEffect, type RefObject } from 'react';
 
-interface LilyPad {
-  x: number;
-  y: number;
-  size: number;
-  rotation: number;
-  rotationSpeed: number;
-  hasFlower: boolean;
-  flowerColor: string;
-  flowerPhase: number;
-  bobPhase: number;
-  bobSpeed: number;
-}
-
-interface Ripple {
-  x: number;
-  y: number;
-  radius: number;
-  maxRadius: number;
-  opacity: number;
-  speed: number;
-}
-
-interface Spot {
-  x: number;
-  y: number;
-  size: number;
-}
-
-interface KoiFish {
-  x: number;
-  y: number;
-  targetX: number;
-  targetY: number;
-  size: number;
-  speed: number;
-  baseSpeed: number;
-  angle: number;
-  targetAngle: number;
-  angularVelocity: number; // Current turning rate (momentum)
-  tailPhase: number;
-  tailAmplitude: number; // Dynamic amplitude based on swimming
-  bodyPhase: number; // For body wave animation
-  maxTurnRate: number; // Maximum turning speed (varies by fish)
-  color: 'orange' | 'white' | 'gold' | 'red';
-  pattern: 'solid' | 'spotted' | 'calico';
-  spots: Spot[];
-  depth: number;
-}
-
-interface Dragonfly {
-  x: number;
-  y: number;
-  targetX: number;
-  targetY: number;
-  wingPhase: number;
-  size: number;
-  color: string;
-  hoverTime: number;
-  state: 'flying' | 'hovering';
-}
-
+import { generateKoiSpots } from './stillPonds/koiSpots';
+import type { Dragonfly, KoiFish, LilyPad, Ripple } from './stillPonds/pondTypes';
 
 export function useStillPonds(
   canvasRef: RefObject<HTMLCanvasElement>,
@@ -105,68 +46,6 @@ export function useStillPonds(
           : width * 0.75 + Math.random() * width * 0.25;
       }
       return Math.random() * width;
-    };
-
-    // Calculate the body half-width at a given x position along the fish
-    // The body is tapered: widest at front, narrowing toward tail
-    const getBodyHalfWidthAtX = (x: number, size: number): number => {
-      // Body profile key points (x position -> half-width as fraction of size)
-      // Head area: x = 0.4 -> width ~0.10
-      // Widest: x = 0.25 -> width ~0.16
-      // Mid: x = 0.0 -> width ~0.14
-      // Back: x = -0.2 -> width ~0.11
-      // Rear: x = -0.35 -> width ~0.06
-      const xNorm = x / size;
-
-      if (xNorm > 0.4) return size * 0.08; // Head tip
-      if (xNorm > 0.25) {
-        // Head to widest: interpolate 0.10 -> 0.16
-        const t = (xNorm - 0.25) / 0.15;
-        return size * (0.16 - t * 0.06);
-      }
-      if (xNorm > 0.0) {
-        // Widest to mid: interpolate 0.16 -> 0.14
-        const t = (xNorm - 0.0) / 0.25;
-        return size * (0.14 + t * 0.02);
-      }
-      if (xNorm > -0.2) {
-        // Mid to back: interpolate 0.14 -> 0.11
-        const t = (xNorm - (-0.2)) / 0.2;
-        return size * (0.11 + t * 0.03);
-      }
-      if (xNorm > -0.35) {
-        // Back to rear: interpolate 0.11 -> 0.06
-        const t = (xNorm - (-0.35)) / 0.15;
-        return size * (0.06 + t * 0.05);
-      }
-      return size * 0.04; // Tail area
-    };
-
-    const generateSpots = (size: number, pattern: string): Spot[] => {
-      if (pattern === 'solid') return [];
-      const spots: Spot[] = [];
-      const count = pattern === 'calico' ? 5 : 3;
-      for (let i = 0; i < count; i++) {
-        // Place spots within the main body area only
-        // x: from head area to mid-body (avoiding tail)
-        const spotX = size * 0.2 - Math.random() * size * 0.5; // From 0.2 to -0.3 of size
-        const spotSize = size * 0.05 + Math.random() * size * 0.04; // Slightly smaller spots
-
-        // Calculate maximum y-offset based on body width at this x position
-        // Leave margin for the spot radius so spots don't exceed body edge
-        const bodyHalfWidth = getBodyHalfWidthAtX(spotX, size);
-        const maxYOffset = Math.max(0, bodyHalfWidth - spotSize - size * 0.01); // Small safety margin
-
-        // Generate y within the constrained range
-        const spotY = (Math.random() - 0.5) * 2 * maxYOffset;
-
-        spots.push({
-          x: spotX,
-          y: spotY,
-          size: spotSize,
-        });
-      }
-      return spots;
     };
 
     const initializeScene = () => {
@@ -216,7 +95,7 @@ export function useStillPonds(
           maxTurnRate: 0.012 + Math.random() * 0.008, // Gentle max turn rate
           color: ['orange', 'white', 'gold', 'red'][Math.floor(Math.random() * 4)] as KoiFish['color'],
           pattern,
-          spots: generateSpots(size, pattern),
+          spots: generateKoiSpots(size, pattern),
           depth: 0.3 + Math.random() * 0.5,
         });
       }

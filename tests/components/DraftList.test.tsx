@@ -12,6 +12,15 @@ import * as draftsApi from '../../src/api/drafts';
 import { WalletType } from '../../types';
 import * as downloadUtils from '../../utils/download';
 
+vi.mock('../../utils/logger', () => ({
+  createLogger: () => ({
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  }),
+}));
+
 // Mock navigate
 const mockNavigate = vi.fn();
 vi.mock('react-router-dom', async () => {
@@ -123,7 +132,7 @@ describe('DraftList', () => {
   describe('loading state', () => {
     it('shows loading state initially', () => {
       vi.mocked(draftsApi.getDrafts).mockImplementation(
-        () => new Promise(resolve => setTimeout(() => resolve(mockDrafts as any), 100))
+        () => new Promise<never>(() => undefined)
       );
 
       renderDraftList();

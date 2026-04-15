@@ -1,38 +1,9 @@
 /**
- * Electrum Connection Pool
+ * Electrum connection pool with multi-server load balancing, health checks,
+ * failover, subscription isolation, and acquisition queueing.
  *
- * Manages a pool of Electrum server connections for improved
- * performance and resilience. Provides:
- * - Multi-server support with load balancing
- * - Connection pooling with min/max limits
- * - Health checks and automatic reconnection
- * - Per-server health tracking and failover
- * - Dedicated subscription connection for real-time events
- * - Acquisition queue when pool is exhausted
- *
- * ## Connection Scaling
- *
- * The pool automatically adjusts connection limits based on server count:
- *
- * - **Effective Min** = max(configured_min, server_count)
- *   Ensures at least 1 connection per server at startup for even distribution.
- *
- * - **Effective Max** = max(configured_max, server_count)
- *   Ensures the pool can maintain at least 1 connection per server.
- *
- * Example with 3 servers:
- * - Configured: min=1, max=5
- * - Effective:  min=3, max=5 (min raised to match server count)
- *
- * Example with 10 servers:
- * - Configured: min=1, max=5
- * - Effective:  min=10, max=10 (both raised to match server count)
- *
- * ## Load Balancing Strategies
- *
- * - **round_robin**: Distributes connections evenly across all healthy servers
- * - **least_connections**: Prefers servers with fewer active connections
- * - **failover_only**: Uses primary server, fails over to others only when unhealthy
+ * Effective connection bounds are raised to at least the enabled server count
+ * so every configured server can maintain one connection.
  */
 
 import { EventEmitter } from 'events';
@@ -51,7 +22,6 @@ import type {
   WaitingRequest,
   ProxyConfig,
   BackoffConfig,
-  LoadBalancingStrategy,
   NetworkType,
 } from './types';
 import {
@@ -89,6 +59,11 @@ import {
 } from './acquisitionQueue';
 import { computePoolStats, exportMetrics } from './metricsExporter';
 import { getSubscriptionConnection as getSubscriptionConn } from './subscriptionConnection';
+import {
+  getLoadBalancingStrategy,
+  getProxyConfig,
+  mapEnabledServers,
+} from './nodeConfigMapper';
 
 const log = createLogger('ELECTRUM_POOL:SVC');
 
@@ -276,38 +251,16 @@ export class ElectrumPool extends EventEmitter {
       const nodeConfig = await nodeConfigRepository.findDefaultWithServers();
 
       if (nodeConfig && nodeConfig.type === 'electrum') {
-        // Filter to only enabled servers (findDefaultWithServers returns all servers)
-        const enabledServers = nodeConfig.servers.filter((s: { enabled: boolean }) => s.enabled);
-        const servers: ServerConfig[] = enabledServers.map((s: { id: string; label: string; host: string; port: number; useSsl: boolean; priority: number; enabled: boolean; supportsVerbose: boolean | null }) => ({
-          id: s.id,
-          label: s.label,
-          host: s.host,
-          port: s.port,
-          useSsl: s.useSsl,
-          priority: s.priority,
-          enabled: s.enabled,
-          supportsVerbose: s.supportsVerbose,
-        }));
+        const servers = mapEnabledServers(nodeConfig.servers);
 
         this.setServers(servers);
 
-        // Update load balancing strategy
-        if (nodeConfig.poolLoadBalancing) {
-          this.config.loadBalancing = nodeConfig.poolLoadBalancing as LoadBalancingStrategy;
+        const loadBalancing = getLoadBalancingStrategy(nodeConfig);
+        if (loadBalancing) {
+          this.config.loadBalancing = loadBalancing;
         }
 
-        // Update proxy config
-        if (nodeConfig.proxyEnabled && nodeConfig.proxyHost && nodeConfig.proxyPort) {
-          this.setProxyConfig({
-            enabled: true,
-            host: nodeConfig.proxyHost,
-            port: nodeConfig.proxyPort,
-            username: nodeConfig.proxyUsername ?? undefined,
-            password: nodeConfig.proxyPassword ?? undefined,
-          });
-        } else {
-          this.setProxyConfig(null);
-        }
+        this.setProxyConfig(getProxyConfig(nodeConfig));
 
         log.info(`Reloaded ${servers.length} servers from database`, {
           proxyEnabled: this.proxyConfig?.enabled ?? false,

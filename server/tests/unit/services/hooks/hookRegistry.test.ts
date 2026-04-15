@@ -352,9 +352,7 @@ describe('HookRegistry', () => {
       expect(result).toBe('result');
       expect(beforeHandler).toHaveBeenCalled();
       expect(operation).toHaveBeenCalledWith({ input: 'data' });
-      // After hooks are fire-and-forget, so we need a small delay
-      await new Promise(resolve => setTimeout(resolve, 10));
-      expect(afterHandler).toHaveBeenCalled();
+      await vi.waitFor(() => expect(afterHandler).toHaveBeenCalled());
     });
 
     it('should pass modified payload to operation', async () => {
@@ -380,14 +378,12 @@ describe('HookRegistry', () => {
 
       await expect(registry.wrap('test', {}, operation)).rejects.toThrow('Operation failed');
 
-      // After hooks are fire-and-forget
-      await new Promise(resolve => setTimeout(resolve, 10));
-      expect(afterHandler).toHaveBeenCalledWith(
+      await vi.waitFor(() => expect(afterHandler).toHaveBeenCalledWith(
         expect.objectContaining({
           error,
           success: false,
         })
-      );
+      ));
     });
 
     it('should pass userId through context', async () => {
@@ -403,10 +399,9 @@ describe('HookRegistry', () => {
       expect(beforeHandler).toHaveBeenCalledWith(
         expect.objectContaining({ userId: 'user123' })
       );
-      await new Promise(resolve => setTimeout(resolve, 10));
-      expect(afterHandler).toHaveBeenCalledWith(
+      await vi.waitFor(() => expect(afterHandler).toHaveBeenCalledWith(
         expect.objectContaining({ userId: 'user123' })
-      );
+      ));
     });
 
     it('logs when after hooks fail in error path', async () => {
@@ -415,7 +410,7 @@ describe('HookRegistry', () => {
       const operation = vi.fn().mockRejectedValue(new Error('operation failed'));
 
       await expect(registry.wrap('test', {}, operation)).rejects.toThrow('operation failed');
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await vi.waitFor(() => expect(registry.executeAfter).toHaveBeenCalled());
     });
 
     it('logs when after hooks fail in success path', async () => {
@@ -424,7 +419,7 @@ describe('HookRegistry', () => {
       const operation = vi.fn().mockResolvedValue('ok');
 
       await expect(registry.wrap('test', {}, operation)).resolves.toBe('ok');
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await vi.waitFor(() => expect(registry.executeAfter).toHaveBeenCalled());
     });
 
     it('converts non-Error operation throws for after-hook error context', async () => {
@@ -438,15 +433,14 @@ describe('HookRegistry', () => {
         })
       ).rejects.toBe('wrapped-string-error');
 
-      await new Promise(resolve => setTimeout(resolve, 10));
-      expect(afterHandler).toHaveBeenCalledWith(
+      await vi.waitFor(() => expect(afterHandler).toHaveBeenCalledWith(
         expect.objectContaining({
           error: expect.objectContaining({
             message: 'wrapped-string-error',
           }),
           success: false,
         })
-      );
+      ));
     });
   });
 

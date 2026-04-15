@@ -33,10 +33,7 @@ describe('useAIStatus', () => {
 
   describe('Initial Loading State', () => {
     it('should return loading state initially', () => {
-      // Delay the resolution to observe loading state
-      mockGetAIStatus.mockImplementation(
-        () => new Promise(resolve => setTimeout(() => resolve({ available: true, containerAvailable: true }), 100))
-      );
+      mockGetAIStatus.mockImplementation(() => new Promise<never>(() => undefined));
 
       const { result } = renderHook(() => useAIStatus());
 

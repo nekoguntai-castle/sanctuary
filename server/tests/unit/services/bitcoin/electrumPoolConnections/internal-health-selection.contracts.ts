@@ -5,6 +5,8 @@ import {
   type ElectrumPoolTestContext,
 } from './electrumPoolConnectionsTestHarness';
 
+const createTimeoutHandle = () => ({}) as NodeJS.Timeout;
+
 export function registerElectrumPoolInternalHealthSelectionTests(context: ElectrumPoolTestContext): void {
     it('getSubscriptionConnection handles dead existing subscription and allocates a new one', async () => {
       context.pool = createPool({ enabled: true, maxConnections: 1, minConnections: 0 });
@@ -367,7 +369,7 @@ export function registerElectrumPoolInternalHealthSelectionTests(context: Electr
       (context.pool as any).connections.set(idle.id, idle);
       const resolve = vi.fn();
       const reject = vi.fn();
-      const timeoutId = setTimeout(() => undefined, 1000);
+      const timeoutId = createTimeoutHandle();
       (context.pool as any).waitingQueue.push({
         resolve,
         reject,
@@ -386,7 +388,7 @@ export function registerElectrumPoolInternalHealthSelectionTests(context: Electr
       context.pool = createPool();
       const resolve = vi.fn();
       const reject = vi.fn();
-      const timeoutId = setTimeout(() => undefined, 1000);
+      const timeoutId = createTimeoutHandle();
       (context.pool as any).waitingQueue.push({
         resolve,
         reject,
@@ -405,7 +407,7 @@ export function registerElectrumPoolInternalHealthSelectionTests(context: Electr
       context.pool = createPool();
       const idle = makeConn({ id: 'idle-race', state: 'idle' });
       (context.pool as any).connections.set(idle.id, idle);
-      const timeoutId = setTimeout(() => undefined, 1000);
+      const timeoutId = createTimeoutHandle();
       (context.pool as any).waitingQueue.push({
         resolve: vi.fn(),
         reject: vi.fn(),

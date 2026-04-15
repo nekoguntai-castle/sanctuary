@@ -253,13 +253,10 @@ export function registerPolicyEvaluateErrorPreviewMultipleTests(context: PolicyE
         expect(result.allowed).toBe(true);
         expect(result.triggered).toHaveLength(1);
 
-        // Wait for the catch handler to fire
-        await new Promise(resolve => setTimeout(resolve, 10));
-
-        expect(mockLog.warn).toHaveBeenCalledWith(
+        await vi.waitFor(() => expect(mockLog.warn).toHaveBeenCalledWith(
           'Failed to log policy event',
           expect.objectContaining({ error: 'DB event write failed' }),
-        );
+        ));
       });
 
       it('handles createPolicyEvent failure with non-Error value', async () => {
@@ -286,12 +283,10 @@ export function registerPolicyEvaluateErrorPreviewMultipleTests(context: PolicyE
           amount: BigInt(100),
         });
 
-        await new Promise(resolve => setTimeout(resolve, 10));
-
-        expect(mockLog.warn).toHaveBeenCalledWith(
+        await vi.waitFor(() => expect(mockLog.warn).toHaveBeenCalledWith(
           'Failed to log policy event',
           expect.objectContaining({ error: 'string error' }),
-        );
+        ));
       });
     });
 

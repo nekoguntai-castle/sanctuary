@@ -255,7 +255,7 @@ describe('Async Utilities', () => {
     it('should handle zero timeout', async () => {
       const promise = withTimeout(sleep(10), 0);
 
-      // With fake timers, we need to advance to trigger setTimeout(0)
+      // With fake timers, advance once to trigger the zero-delay timer.
       vi.advanceTimersByTime(1);
 
       await expect(promise).rejects.toThrow('Operation timed out');

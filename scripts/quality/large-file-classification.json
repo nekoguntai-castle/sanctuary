@@ -7,25 +7,29 @@
       "category": "proof-harness",
       "owner": "performance-proof",
       "reason": "Full Compose performance and scale proof harness; splitting would reduce auditability of the scenario unless a measured maintenance problem appears.",
-      "reviewWhenTouched": true
+      "reviewWhenTouched": true,
+      "lastReviewed": "2026-04-15"
     },
     "scripts/perf/phase3-benchmark.mjs": {
       "category": "proof-harness",
       "owner": "performance-proof",
       "reason": "Benchmark scenario runner and report writer; keep cohesive while it remains a proof artifact rather than production runtime.",
-      "reviewWhenTouched": true
+      "reviewWhenTouched": true,
+      "lastReviewed": "2026-04-15"
     },
     "scripts/verify-addresses/output/verified-vectors.ts": {
       "category": "generated-output",
       "owner": "address-verification",
       "reason": "Generated verification vectors consumed by address proof tests; regenerate rather than manually refactor.",
-      "reviewWhenTouched": false
+      "reviewWhenTouched": false,
+      "lastReviewed": "2026-04-15"
     },
     "server/tests/fixtures/verified-address-vectors.ts": {
       "category": "test-fixture",
       "owner": "address-verification",
       "reason": "Checked-in fixture copy of verified address vectors for deterministic server tests.",
-      "reviewWhenTouched": false
+      "reviewWhenTouched": false,
+      "lastReviewed": "2026-04-15"
     }
   }
 }

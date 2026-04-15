@@ -39,6 +39,7 @@ export function useTransactionList({
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const [explorerUrl, setExplorerUrl] = useState('https://mempool.space');
   const [copied, setCopied] = useState(false);
+  const copiedResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Label editing state
   const [editingLabels, setEditingLabels] = useState(false);
@@ -106,6 +107,24 @@ export function useTransactionList({
     }
   }, [highlightedTxId, filteredTransactions]);
 
+  useEffect(() => {
+    return () => {
+      if (copiedResetTimerRef.current) {
+        clearTimeout(copiedResetTimerRef.current);
+      }
+    };
+  }, []);
+
+  const scheduleCopiedReset = () => {
+    if (copiedResetTimerRef.current) {
+      clearTimeout(copiedResetTimerRef.current);
+    }
+    copiedResetTimerRef.current = setTimeout(() => {
+      setCopied(false);
+      copiedResetTimerRef.current = null;
+    }, 2000);
+  };
+
   const getWallet = (id: string) => {
     return wallets.find(w => w.id === id);
   };
@@ -114,7 +133,7 @@ export function useTransactionList({
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      scheduleCopiedReset();
     } catch (err) {
       log.error('Failed to copy', { error: err });
       // Fallback for older browsers
@@ -125,7 +144,7 @@ export function useTransactionList({
       document.execCommand('copy');
       document.body.removeChild(textArea);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      scheduleCopiedReset();
     }
   };
 

@@ -103,16 +103,19 @@ describe('useTransactionList branches', () => {
     vi.mocked(bitcoinApi.getStatus).mockRejectedValueOnce(new Error('status failed'));
     vi.mocked(transactionsApi.getTransaction).mockRejectedValueOnce(new Error('details failed'));
     const timeoutCallbacks: Array<() => void> = [];
+    let timeoutId = 0;
     const realSetTimeout = globalThis.setTimeout;
     const setTimeoutSpy = vi
       .spyOn(globalThis, 'setTimeout')
       .mockImplementation(((cb: TimerHandler, ms?: number) => {
         if (typeof cb === 'function' && ms === 2000) {
           timeoutCallbacks.push(cb as () => void);
-          return 0 as unknown as ReturnType<typeof setTimeout>;
+          timeoutId += 1;
+          return timeoutId as unknown as ReturnType<typeof setTimeout>;
         }
         return realSetTimeout(cb, ms);
       }) as typeof setTimeout);
+    const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
 
     const writeText = vi.fn()
       .mockResolvedValueOnce(undefined)
@@ -145,16 +148,16 @@ describe('useTransactionList branches', () => {
       await result.current.copyToClipboard('txid-fail');
     });
     expect(result.current.copied).toBe(true);
-    act(() => timeoutCallbacks.shift()?.());
-    expect(result.current.copied).toBe(false);
 
     await act(async () => {
       await result.current.copyToClipboard('txid-fail');
     });
     expect(execCommand).toHaveBeenCalledWith('copy');
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(1);
     expect(result.current.copied).toBe(true);
-    act(() => timeoutCallbacks.shift()?.());
+    act(() => timeoutCallbacks.pop()?.());
     expect(result.current.copied).toBe(false);
+    clearTimeoutSpy.mockRestore();
     setTimeoutSpy.mockRestore();
   });
 

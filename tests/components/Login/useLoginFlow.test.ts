@@ -1,4 +1,4 @@
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 
 const mockLogin = vi.fn();
@@ -45,7 +45,12 @@ describe('useLoginFlow', () => {
     vi.restoreAllMocks();
   });
 
-  it('returns initial state', () => {
+  const waitForInitialChecks = async (result: ReturnType<typeof renderHook<ReturnType<typeof useLoginFlow>, unknown>>['result']) => {
+    await waitFor(() => expect(result.current.apiStatus).toBe('connected'));
+    await waitFor(() => expect(result.current.registrationEnabled).toBe(true));
+  };
+
+  it('returns initial state', async () => {
     const { result } = renderHook(() => useLoginFlow());
 
     expect(result.current.isRegisterMode).toBe(false);
@@ -53,10 +58,12 @@ describe('useLoginFlow', () => {
     expect(result.current.password).toBe('');
     expect(result.current.email).toBe('');
     expect(result.current.twoFactorCode).toBe('');
+    await waitForInitialChecks(result);
   });
 
-  it('toggleMode switches mode and clears fields', () => {
+  it('toggleMode switches mode and clears fields', async () => {
     const { result } = renderHook(() => useLoginFlow());
+    await waitForInitialChecks(result);
 
     act(() => result.current.setUsername('alice'));
     act(() => result.current.setPassword('pass'));
@@ -73,6 +80,7 @@ describe('useLoginFlow', () => {
 
   it('handleSubmit calls login in login mode', async () => {
     const { result } = renderHook(() => useLoginFlow());
+    await waitForInitialChecks(result);
 
     act(() => result.current.setUsername('alice'));
     act(() => result.current.setPassword('password123'));
@@ -87,6 +95,7 @@ describe('useLoginFlow', () => {
 
   it('handleSubmit calls register in register mode', async () => {
     const { result } = renderHook(() => useLoginFlow());
+    await waitForInitialChecks(result);
 
     act(() => result.current.toggleMode());
     act(() => result.current.setUsername('bob'));
@@ -101,6 +110,7 @@ describe('useLoginFlow', () => {
 
   it('handleSubmit calls register with undefined email when empty', async () => {
     const { result } = renderHook(() => useLoginFlow());
+    await waitForInitialChecks(result);
 
     act(() => result.current.toggleMode());
     act(() => result.current.setUsername('bob'));
@@ -114,6 +124,7 @@ describe('useLoginFlow', () => {
 
   it('handle2FASubmit calls verify2FA', async () => {
     const { result } = renderHook(() => useLoginFlow());
+    await waitForInitialChecks(result);
 
     act(() => result.current.setTwoFactorCode('123456'));
 
@@ -124,8 +135,9 @@ describe('useLoginFlow', () => {
     expect(mockClearError).toHaveBeenCalled();
   });
 
-  it('handleCancel2FA clears code and calls cancel2FA', () => {
+  it('handleCancel2FA clears code and calls cancel2FA', async () => {
     const { result } = renderHook(() => useLoginFlow());
+    await waitForInitialChecks(result);
 
     act(() => result.current.setTwoFactorCode('123456'));
     act(() => result.current.handleCancel2FA());
@@ -134,8 +146,9 @@ describe('useLoginFlow', () => {
     expect(mockCancel2FA).toHaveBeenCalled();
   });
 
-  it('setters update state correctly', () => {
+  it('setters update state correctly', async () => {
     const { result } = renderHook(() => useLoginFlow());
+    await waitForInitialChecks(result);
 
     act(() => result.current.setUsername('alice'));
     expect(result.current.username).toBe('alice');
@@ -156,6 +169,7 @@ describe('useLoginFlow', () => {
   it('handleSubmit returns early when UserContext is still boot-loading', async () => {
     mockUserContextState.isLoading = true;
     const { result } = renderHook(() => useLoginFlow());
+    await waitForInitialChecks(result);
 
     act(() => result.current.setUsername('alice'));
     act(() => result.current.setPassword('password123'));
@@ -174,6 +188,7 @@ describe('useLoginFlow', () => {
   it('handle2FASubmit returns early when UserContext is still boot-loading', async () => {
     mockUserContextState.isLoading = true;
     const { result } = renderHook(() => useLoginFlow());
+    await waitForInitialChecks(result);
 
     act(() => result.current.setTwoFactorCode('123456'));
 

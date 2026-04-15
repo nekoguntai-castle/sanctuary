@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "large-file-classification.schema.json",
+  "title": "Large File Classification",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["lineLimit", "warningLimit", "classifications"],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "lineLimit": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "warningLimit": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "classifications": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["category", "owner", "reason", "reviewWhenTouched", "lastReviewed"],
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": ["proof-harness", "generated-output", "test-fixture"]
+          },
+          "owner": {
+            "type": "string",
+            "minLength": 3
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 20
+          },
+          "reviewWhenTouched": {
+            "type": "boolean"
+          },
+          "lastReviewed": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          }
+        }
+      }
+    }
+  }
+}

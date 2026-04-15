@@ -7,6 +7,8 @@ import {
 import prisma from '../../../../../src/models/prisma';
 import { updateServerHealthInDb } from '../../../../../src/services/bitcoin/electrumPool/healthChecker';
 
+const createTimeoutHandle = () => ({}) as NodeJS.Timeout;
+
 export function registerElectrumPoolInternalLifecycleTests(context: ElectrumPoolTestContext): void {
     it('initialize returns early when already initialized or already initializing', async () => {
       context.pool = createPool();
@@ -302,7 +304,7 @@ export function registerElectrumPoolInternalLifecycleTests(context: ElectrumPool
     it('shutdown rejects waiting requests and tolerates disconnect errors', async () => {
       context.pool = createPool();
       (context.pool as any).isInitialized = true;
-      const timeout = setTimeout(() => undefined, 1000);
+      const timeout = createTimeoutHandle();
       let rejectionMessage = '';
       const queued = new Promise<void>((resolve, reject) => {
         (context.pool as any).waitingQueue.push({

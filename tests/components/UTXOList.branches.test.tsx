@@ -5,6 +5,15 @@ import * as currencyContext from '../../contexts/CurrencyContext';
 import * as bitcoinHooks from '../../hooks/queries/useBitcoin';
 import * as bitcoinApi from '../../src/api/bitcoin';
 
+vi.mock('../../utils/logger', () => ({
+  createLogger: () => ({
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  }),
+}));
+
 vi.mock('../../contexts/CurrencyContext', () => ({
   useCurrency: vi.fn(),
 }));

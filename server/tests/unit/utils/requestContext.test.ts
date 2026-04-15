@@ -96,18 +96,23 @@ describe('requestContext', () => {
   });
 
   describe('getDuration', () => {
-    it('should calculate duration', async () => {
+    it('should calculate duration', () => {
+      let now = 2_000;
+      const dateNowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
       const context = {
         requestId: 'test-123',
         startTime: Date.now(),
       };
 
-      await requestContext.run(context, async () => {
-        // Wait a small amount - allow variance for timer precision
-        await new Promise(resolve => setTimeout(resolve, 15));
-        const duration = requestContext.getDuration();
-        expect(duration).toBeGreaterThanOrEqual(10);
-      });
+      try {
+        requestContext.run(context, () => {
+          now += 15;
+          const duration = requestContext.getDuration();
+          expect(duration).toBe(15);
+        });
+      } finally {
+        dateNowSpy.mockRestore();
+      }
     });
 
     it('should return 0 when not in context', () => {

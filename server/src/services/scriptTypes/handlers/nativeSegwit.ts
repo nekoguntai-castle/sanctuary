@@ -12,7 +12,14 @@ import type {
   MultiSigBuildOptions,
   Network,
 } from '../types';
-import { formatPathForDescriptor } from '../../../../../shared/utils/bitcoin';
+import {
+  buildBip48DerivationPath,
+  buildCoinTypeDerivationPath,
+  buildMultiSigKeyExpressions,
+  buildRangedKeyExpression,
+  buildSortedMulti,
+  supportsAnyScriptType,
+} from './descriptorHelpers';
 
 export const nativeSegwitHandler: ScriptTypeHandler = {
   id: 'native_segwit',
@@ -25,38 +32,26 @@ export const nativeSegwitHandler: ScriptTypeHandler = {
   aliases: ['p2wpkh', 'bech32', 'segwit', 'wpkh'],
 
   getDerivationPath(network: Network, account: number = 0): string {
-    const coinType = network === 'mainnet' ? '0' : '1';
-    return `m/84'/${coinType}'/${account}'`;
+    return buildCoinTypeDerivationPath(84, network, account);
   },
 
   getMultisigDerivationPath(network: Network, account: number = 0): string {
-    const coinType = network === 'mainnet' ? '0' : '1';
-    return `m/48'/${coinType}'/${account}'/2'`; // BIP48 script type 2
+    return buildBip48DerivationPath(network, 2, account);
   },
 
   buildSingleSigDescriptor(device: DeviceKeyInfo, options: DescriptorBuildOptions): string {
     const derivationPath = device.derivationPath || this.getDerivationPath(options.network);
-    const formattedPath = formatPathForDescriptor(derivationPath);
-    const chain = options.change ? '1' : '0';
-    const keyExpression = `[${device.fingerprint}/${formattedPath}]${device.xpub}`;
-    return `wpkh(${keyExpression}/${chain}/*)`;
+    return `wpkh(${buildRangedKeyExpression(device, derivationPath, options)})`;
   },
 
   buildMultiSigDescriptor(devices: DeviceKeyInfo[], options: MultiSigBuildOptions): string {
-    const chain = options.change ? '1' : '0';
-    const keyExpressions = devices.map((device) => {
-      const derivationPath = device.derivationPath || this.getMultisigDerivationPath(options.network);
-      const formattedPath = formatPathForDescriptor(derivationPath);
-      return `[${device.fingerprint}/${formattedPath}]${device.xpub}/${chain}/*`;
-    });
-    const sortedMulti = `sortedmulti(${options.quorum},${keyExpressions.join(',')})`;
-    return `wsh(${sortedMulti})`;
+    const fallbackPath = this.getMultisigDerivationPath(options.network);
+    const keyExpressions = buildMultiSigKeyExpressions(devices, fallbackPath, options);
+    return `wsh(${buildSortedMulti(keyExpressions, options)})`;
   },
 
   validateDevice(deviceScriptTypes: string[]): boolean {
     const validTypes = ['native_segwit', 'p2wpkh', 'bech32', 'segwit', 'wpkh'];
-    return deviceScriptTypes.some((type) =>
-      validTypes.includes(type.toLowerCase())
-    );
+    return supportsAnyScriptType(deviceScriptTypes, validTypes);
   },
 };

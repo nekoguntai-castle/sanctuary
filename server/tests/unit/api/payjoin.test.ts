@@ -101,6 +101,8 @@ import {
   generateBip21Uri,
   attemptPayjoinSend,
 } from '../../../src/services/payjoinService';
+import { registerPayjoinBip78ErrorContracts } from './payjoin.bip78-errors.contracts';
+import { registerPayjoinSecurityContracts } from './payjoin.security.contracts';
 
 // Get typed references to mocked functions
 const mockPrisma = prisma as unknown as {
@@ -740,103 +742,19 @@ describe('Payjoin API Routes', () => {
     });
   });
 
-  describe('BIP78 Error Codes', () => {
-    it('should return version-unsupported for wrong version', async () => {
-      const res = await request(app)
-        .post(`/api/v1/payjoin/${TEST_ADDRESS_ID}?v=0`)
-        .set('Content-Type', 'text/plain')
-        .send(VALID_PSBT_BASE64);
-
-      expect(res.text).toBe('version-unsupported');
-    });
-
-    it('should return unavailable when service reports it', async () => {
-      mockProcessPayjoinRequest.mockResolvedValue({
-        success: false,
-        error: 'unavailable',
-        errorMessage: 'Address not found',
-      });
-
-      const res = await request(app)
-        .post(`/api/v1/payjoin/${TEST_ADDRESS_ID}?v=1`)
-        .set('Content-Type', 'text/plain')
-        .send(VALID_PSBT_BASE64);
-
-      expect(res.text).toBe('unavailable');
-    });
-
-    it('should return not-enough-money when no UTXOs', async () => {
-      mockProcessPayjoinRequest.mockResolvedValue({
-        success: false,
-        error: 'not-enough-money',
-        errorMessage: 'No suitable UTXOs',
-      });
-
-      const res = await request(app)
-        .post(`/api/v1/payjoin/${TEST_ADDRESS_ID}?v=1`)
-        .set('Content-Type', 'text/plain')
-        .send(VALID_PSBT_BASE64);
-
-      expect(res.text).toBe('not-enough-money');
-    });
-
-    it('should return original-psbt-rejected for invalid PSBT', async () => {
-      mockProcessPayjoinRequest.mockResolvedValue({
-        success: false,
-        error: 'original-psbt-rejected',
-        errorMessage: 'PSBT has no inputs',
-      });
-
-      const res = await request(app)
-        .post(`/api/v1/payjoin/${TEST_ADDRESS_ID}?v=1`)
-        .set('Content-Type', 'text/plain')
-        .send('invalid-psbt');
-
-      expect(res.text).toBe('original-psbt-rejected');
-    });
+  registerPayjoinBip78ErrorContracts({
+    getApp: () => app,
+    mockProcessPayjoinRequest,
+    testAddressId: TEST_ADDRESS_ID,
+    validPsbtBase64: VALID_PSBT_BASE64,
   });
 
-  describe('Security and Access Control', () => {
-    it('should allow unauthenticated access to BIP78 receiver endpoint', async () => {
-      mockProcessPayjoinRequest.mockResolvedValue({
-        success: true,
-        proposalPsbt: PROPOSAL_PSBT_BASE64,
-      });
-
-      // No Authorization header
-      const res = await request(app)
-        .post(`/api/v1/payjoin/${TEST_ADDRESS_ID}?v=1`)
-        .set('Content-Type', 'text/plain')
-        .send(VALID_PSBT_BASE64);
-
-      expect(res.status).toBe(200);
-    });
-
-    it('should require authentication for eligibility check', async () => {
-      const res = await request(app).get(`/api/v1/payjoin/eligibility/${TEST_WALLET_ID}`);
-
-      expect(res.status).toBe(401);
-    });
-
-    it('should require authentication for URI generation', async () => {
-      const res = await request(app).get(`/api/v1/payjoin/address/${TEST_ADDRESS_ID}/uri`);
-
-      expect(res.status).toBe(401);
-    });
-
-    it('should require authentication for URI parsing', async () => {
-      const res = await request(app).post('/api/v1/payjoin/parse-uri').send({ uri: 'bitcoin:...' });
-
-      expect(res.status).toBe(401);
-    });
-
-    it('should require authentication for Payjoin attempt', async () => {
-      const res = await request(app).post('/api/v1/payjoin/attempt').send({
-        psbt: VALID_PSBT_BASE64,
-        payjoinUrl: 'https://example.com/pj',
-      });
-
-      expect(res.status).toBe(401);
-    });
+  registerPayjoinSecurityContracts({
+    getApp: () => app,
+    mockProcessPayjoinRequest,
+    testAddressId: TEST_ADDRESS_ID,
+    testWalletId: TEST_WALLET_ID,
+    validPsbtBase64: VALID_PSBT_BASE64,
+    proposalPsbtBase64: PROPOSAL_PSBT_BASE64,
   });
 });

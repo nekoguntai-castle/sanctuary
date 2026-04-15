@@ -13,6 +13,8 @@ import prisma from '../../../../src/models/prisma';
 import { acquireLock, extendLock, releaseLock } from '../../../../src/infrastructure';
 import { closeAllElectrumClients } from '../../../../src/services/bitcoin/electrum';
 
+const createTimeoutHandle = () => ({}) as NodeJS.Timeout;
+
 export function registerElectrumManagerStandaloneContracts() {
   describe('standalone function behavior', () => {
     // Helper to get internal state
@@ -302,7 +304,7 @@ export function registerElectrumManagerStandaloneContracts() {
       const networks = getNetworks();
       const addressToWallet = getAddressToWallet();
 
-      const reconnectTimer = setTimeout(() => undefined, 10_000);
+      const reconnectTimer = createTimeoutHandle();
       const state: NetworkState = {
         network: 'mainnet',
         client: mockClient as any,
@@ -380,7 +382,7 @@ export function registerElectrumManagerStandaloneContracts() {
       const networks = getNetworks();
       const addressToWallet = getAddressToWallet();
       const clearTimeoutSpy = vi.spyOn(global, 'clearTimeout');
-      const reconnectTimer = setTimeout(() => undefined, 10_000);
+      const reconnectTimer = createTimeoutHandle();
 
       networks.set('mainnet', {
         network: 'mainnet',

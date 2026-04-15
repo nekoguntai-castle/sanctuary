@@ -12,7 +12,13 @@ import type {
   MultiSigBuildOptions,
   Network,
 } from '../types';
-import { formatPathForDescriptor } from '../../../../../shared/utils/bitcoin';
+import {
+  buildCoinTypeDerivationPath,
+  buildMultiSigKeyExpressions,
+  buildRangedKeyExpression,
+  buildSortedMulti,
+  supportsAnyScriptType,
+} from './descriptorHelpers';
 
 export const legacyHandler: ScriptTypeHandler = {
   id: 'legacy',
@@ -24,8 +30,7 @@ export const legacyHandler: ScriptTypeHandler = {
   aliases: ['p2pkh', 'pkh'],
 
   getDerivationPath(network: Network, account: number = 0): string {
-    const coinType = network === 'mainnet' ? '0' : '1';
-    return `m/44'/${coinType}'/${account}'`;
+    return buildCoinTypeDerivationPath(44, network, account);
   },
 
   getMultisigDerivationPath(_network: Network, account: number = 0): string {
@@ -35,27 +40,17 @@ export const legacyHandler: ScriptTypeHandler = {
 
   buildSingleSigDescriptor(device: DeviceKeyInfo, options: DescriptorBuildOptions): string {
     const derivationPath = device.derivationPath || this.getDerivationPath(options.network);
-    const formattedPath = formatPathForDescriptor(derivationPath);
-    const chain = options.change ? '1' : '0';
-    const keyExpression = `[${device.fingerprint}/${formattedPath}]${device.xpub}`;
-    return `pkh(${keyExpression}/${chain}/*)`;
+    return `pkh(${buildRangedKeyExpression(device, derivationPath, options)})`;
   },
 
   buildMultiSigDescriptor(devices: DeviceKeyInfo[], options: MultiSigBuildOptions): string {
-    const chain = options.change ? '1' : '0';
-    const keyExpressions = devices.map((device) => {
-      const derivationPath = device.derivationPath || this.getMultisigDerivationPath(options.network);
-      const formattedPath = formatPathForDescriptor(derivationPath);
-      return `[${device.fingerprint}/${formattedPath}]${device.xpub}/${chain}/*`;
-    });
-    const sortedMulti = `sortedmulti(${options.quorum},${keyExpressions.join(',')})`;
-    return `sh(${sortedMulti})`;
+    const fallbackPath = this.getMultisigDerivationPath(options.network);
+    const keyExpressions = buildMultiSigKeyExpressions(devices, fallbackPath, options);
+    return `sh(${buildSortedMulti(keyExpressions, options)})`;
   },
 
   validateDevice(deviceScriptTypes: string[]): boolean {
     const validTypes = ['legacy', 'p2pkh', 'pkh'];
-    return deviceScriptTypes.some((type) =>
-      validTypes.includes(type.toLowerCase())
-    );
+    return supportsAnyScriptType(deviceScriptTypes, validTypes);
   },
 };

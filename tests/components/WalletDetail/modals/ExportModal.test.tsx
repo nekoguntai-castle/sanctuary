@@ -560,7 +560,7 @@ describe('ExportModal', () => {
     it('should display loading state while fetching formats', async () => {
       const user = userEvent.setup();
       mockGetExportFormats.mockImplementation(
-        () => new Promise((resolve) => setTimeout(() => resolve({ formats: [] }), 100))
+        () => new Promise<never>(() => undefined)
       );
 
       render(<ExportModal {...multisigProps} />);

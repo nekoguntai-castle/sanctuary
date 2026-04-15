@@ -216,7 +216,7 @@ describe('TransactionExportModal', () => {
   describe('loading state', () => {
     it('shows loading state during export', async () => {
       vi.mocked(transactionsApi.exportTransactions).mockImplementation(
-        () => new Promise(resolve => setTimeout(() => resolve(undefined), 100))
+        () => new Promise<never>(() => undefined)
       );
 
       const user = userEvent.setup();
@@ -229,7 +229,7 @@ describe('TransactionExportModal', () => {
 
     it('disables export button while loading', async () => {
       vi.mocked(transactionsApi.exportTransactions).mockImplementation(
-        () => new Promise(resolve => setTimeout(() => resolve(undefined), 100))
+        () => new Promise<never>(() => undefined)
       );
 
       const user = userEvent.setup();

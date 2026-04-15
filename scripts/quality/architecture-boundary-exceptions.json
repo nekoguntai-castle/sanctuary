@@ -136,33 +136,6 @@
   },
   {
     "rule": "server-api-runtime-repositories",
-    "file": "server/src/api/bitcoin/fees.ts",
-    "target": "server/src/repositories/nodeConfigRepository.ts",
-    "specifier": "../../repositories/nodeConfigRepository",
-    "owner": "backend-architecture",
-    "reason": "Existing bitcoin route repository access predates the route/service/repository boundary.",
-    "removeWhen": "Route delegates data access through a bitcoin service module."
-  },
-  {
-    "rule": "server-api-runtime-repositories",
-    "file": "server/src/api/bitcoin/network.ts",
-    "target": "server/src/repositories/index.ts",
-    "specifier": "../../repositories",
-    "owner": "backend-architecture",
-    "reason": "Existing bitcoin route repository access predates the route/service/repository boundary.",
-    "removeWhen": "Route delegates data access through a bitcoin service module."
-  },
-  {
-    "rule": "server-api-runtime-repositories",
-    "file": "server/src/api/bitcoin/network.ts",
-    "target": "server/src/repositories/nodeConfigRepository.ts",
-    "specifier": "../../repositories/nodeConfigRepository",
-    "owner": "backend-architecture",
-    "reason": "Existing bitcoin route repository access predates the route/service/repository boundary.",
-    "removeWhen": "Route delegates node configuration access through a bitcoin service module."
-  },
-  {
-    "rule": "server-api-runtime-repositories",
     "file": "server/src/api/bitcoin/transactions.ts",
     "target": "server/src/repositories/index.ts",
     "specifier": "../../repositories",
@@ -182,15 +155,6 @@
   {
     "rule": "server-api-runtime-repositories",
     "file": "server/src/api/devices/crud.ts",
-    "target": "server/src/repositories/index.ts",
-    "specifier": "../../repositories",
-    "owner": "backend-architecture",
-    "reason": "Existing devices route repository access predates the route/service/repository boundary.",
-    "removeWhen": "Route delegates data access through a device service module."
-  },
-  {
-    "rule": "server-api-runtime-repositories",
-    "file": "server/src/api/devices/models.ts",
     "target": "server/src/repositories/index.ts",
     "specifier": "../../repositories",
     "owner": "backend-architecture",

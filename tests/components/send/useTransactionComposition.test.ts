@@ -3,6 +3,15 @@ import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
 import { useTransactionComposition } from '../../../components/send/steps/OutputsStep/hooks/useTransactionComposition';
 import * as txApi from '../../../src/api/transactions';
 
+vi.mock('../../../utils/logger', () => ({
+  createLogger: () => ({
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  }),
+}));
+
 vi.mock('../../../src/api/transactions', () => ({
   analyzeSpendPrivacy: vi.fn(),
   getWalletPrivacy: vi.fn(),

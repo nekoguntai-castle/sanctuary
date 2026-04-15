@@ -255,7 +255,7 @@ describe('AIQueryInput', () => {
   describe('Loading State', () => {
     it('should show loading state during query execution', async () => {
       mockExecuteNaturalQuery.mockImplementation(
-        () => new Promise(resolve => setTimeout(() => resolve(mockQueryResult), 100))
+        () => new Promise<never>(() => undefined)
       );
 
       render(<AIQueryInput walletId={testWalletId} />);
@@ -274,7 +274,7 @@ describe('AIQueryInput', () => {
 
     it('should disable input during loading', async () => {
       mockExecuteNaturalQuery.mockImplementation(
-        () => new Promise(resolve => setTimeout(() => resolve(mockQueryResult), 100))
+        () => new Promise<never>(() => undefined)
       );
 
       render(<AIQueryInput walletId={testWalletId} />);

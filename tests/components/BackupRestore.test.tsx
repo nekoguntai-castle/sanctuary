@@ -511,21 +511,7 @@ describe('BackupRestore Component - Advanced Flows', () => {
   });
 
   it('shows validating state while uploaded backup is being validated', async () => {
-    mockValidateBackup.mockImplementationOnce(
-      () =>
-        new Promise(resolve =>
-          setTimeout(
-            () =>
-              resolve({
-                valid: true,
-                issues: [],
-                warnings: [],
-                info: { totalRecords: 10, tables: ['users', 'wallets'] },
-              }),
-            100
-          )
-        ) as any
-    );
+    mockValidateBackup.mockImplementationOnce(() => new Promise<never>(() => undefined) as any);
 
     const backup = {
       meta: {

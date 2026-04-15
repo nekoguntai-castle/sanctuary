@@ -45,6 +45,16 @@ vi.mock('../../../../src/services/price', () => ({
   }),
 }));
 
+const createDeferred = <T>() => {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+};
+
 describe('warmCaches', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -90,15 +100,17 @@ describe('warmCaches', () => {
     });
 
     it('should track duration accurately', async () => {
-      // Add small delay to make duration measurable
-      mockGetBlockHeight.mockImplementation(
-        () => new Promise(resolve => setTimeout(() => resolve(850000), 10))
-      );
+      const dateNowSpy = vi.spyOn(Date, 'now')
+        .mockReturnValueOnce(1_000)
+        .mockReturnValueOnce(1_012);
 
-      const result = await warmCaches({ featureFlags: false, priceData: false });
+      try {
+        const result = await warmCaches({ featureFlags: false, priceData: false });
 
-      // Allow small scheduling jitter in CI/runtime timing.
-      expect(result.durationMs).toBeGreaterThanOrEqual(8);
+        expect(result.durationMs).toBe(12);
+      } finally {
+        dateNowSpy.mockRestore();
+      }
     });
   });
 
@@ -237,14 +249,15 @@ describe('warmCaches', () => {
     });
 
     it('should use Promise.allSettled for fault tolerance', async () => {
-      // One slow success, one fast failure
+      const blockHeight = createDeferred<number>();
       mockGetAllFlags.mockRejectedValue(new Error('Fast failure'));
-      mockGetBlockHeight.mockImplementation(
-        () => new Promise(resolve => setTimeout(() => resolve(850000), 50))
-      );
+      mockGetBlockHeight.mockImplementation(() => blockHeight.promise);
       mockGetPrice.mockResolvedValue({ usd: 50000 });
 
-      const result = await warmCaches();
+      const resultPromise = warmCaches();
+      await vi.waitFor(() => expect(mockGetBlockHeight).toHaveBeenCalled());
+      blockHeight.resolve(850000);
+      const result = await resultPromise;
 
       // Should still complete all tasks even though one failed immediately
       expect(result.warmed).toContain('blockHeight');
@@ -256,29 +269,35 @@ describe('warmCaches', () => {
   describe('concurrent execution', () => {
     it('should execute warming tasks in parallel', async () => {
       const executionOrder: string[] = [];
+      const featureFlags = createDeferred<Array<{ key: string; enabled: boolean }>>();
+      const blockHeight = createDeferred<number>();
+      const priceData = createDeferred<{ usd: number }>();
 
       mockGetAllFlags.mockImplementation(async () => {
         executionOrder.push('featureFlags:start');
-        await new Promise(resolve => setTimeout(resolve, 30));
+        await featureFlags.promise;
         executionOrder.push('featureFlags:end');
         return [{ key: 'test', enabled: true }];
       });
 
       mockGetBlockHeight.mockImplementation(async () => {
         executionOrder.push('blockHeight:start');
-        await new Promise(resolve => setTimeout(resolve, 20));
+        await blockHeight.promise;
         executionOrder.push('blockHeight:end');
         return 850000;
       });
 
       mockGetPrice.mockImplementation(async () => {
         executionOrder.push('priceData:start');
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await priceData.promise;
         executionOrder.push('priceData:end');
         return { usd: 50000 };
       });
 
-      await warmCaches();
+      const resultPromise = warmCaches();
+      await vi.waitFor(() => expect(executionOrder.filter(item => item.endsWith(':start'))).toHaveLength(3));
+      priceData.resolve({ usd: 50000 });
+      await vi.waitFor(() => expect(executionOrder).toContain('priceData:end'));
 
       // All should start before any ends (parallel execution)
       const startEndCounts = executionOrder.reduce(
@@ -298,6 +317,10 @@ describe('warmCaches', () => {
         .filter(item => item.endsWith(':start')).length;
 
       expect(startsBeforeFirstEnd).toBe(3); // All tasks started before first completed
+
+      blockHeight.resolve(850000);
+      featureFlags.resolve([{ key: 'test', enabled: true }]);
+      await resultPromise;
     });
   });
 });

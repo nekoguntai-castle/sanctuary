@@ -191,8 +191,7 @@ export function registerProcessTransactionNotificationsRbfTests(walletId: string
       });
 
       await processTransactionsPhase(ctx);
-      // Allow queued `.catch(...)` handler to run.
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await Promise.resolve();
       expect(notifyNewTransactions).toHaveBeenCalled();
     });
 

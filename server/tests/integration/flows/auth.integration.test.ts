@@ -20,6 +20,7 @@ import { createTestApp, resetTestApp } from '../setup/testServer';
 import { getTestUser, getTestAdmin, createTestUser, loginTestUser, extractAuthTokens } from '../setup/helpers';
 import { PrismaClient } from '../../../src/generated/prisma/client';
 import { Express } from 'express';
+import { mockElectrumForAuthIntegration } from './authIntegrationTestHarness';
 
 // Increase timeout for integration tests
 vi.setConfig(30000);
@@ -32,17 +33,7 @@ describeWithDb('Authentication Integration', () => {
   let prisma: PrismaClient;
 
   beforeAll(async () => {
-    // Mock external services before importing routes
-    vi.doMock('../../../src/services/bitcoin/electrum', () => ({
-      getElectrumClient: vi.fn().mockResolvedValue({
-        connect: vi.fn().mockResolvedValue(undefined),
-        isConnected: vi.fn().mockReturnValue(true),
-        blockchainScripthash_getBalance: vi.fn().mockResolvedValue({ confirmed: 0, unconfirmed: 0 }),
-        blockchainScripthash_listunspent: vi.fn().mockResolvedValue([]),
-        blockchainScripthash_getHistory: vi.fn().mockResolvedValue([]),
-      }),
-    }));
-
+    mockElectrumForAuthIntegration();
     prisma = await setupTestDatabase();
     app = createTestApp();
   });
