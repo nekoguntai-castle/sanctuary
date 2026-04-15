@@ -122,7 +122,12 @@ run_test() {
 # Issue a login request. Clears the cookie jar first so the new
 # sanctuary_access / sanctuary_refresh / sanctuary_csrf cookies fully replace
 # any prior session (re-logins after password changes are common in this file).
-# On success, the cookie jar is populated and CSRF_TOKEN is refreshed.
+# After the subshell-returned response is captured, callers must invoke
+# `extract_csrf_token` in the parent shell to refresh CSRF_TOKEN. The helper
+# itself cannot do that, because `$(make_login_request ...)` runs in a
+# subshell and any assignment to CSRF_TOKEN there is discarded on return —
+# the cookie jar file survives (curl -c writes it), but the parent's
+# CSRF_TOKEN stays stale until it re-reads the jar.
 make_login_request() {
     local username="$1"
     local password="$2"
@@ -133,14 +138,10 @@ make_login_request() {
 
     rm -f "$COOKIE_JAR"
 
-    local response
-    response=$(curl -k -s -c "$COOKIE_JAR" -b "$COOKIE_JAR" -X POST \
+    curl -k -s -c "$COOKIE_JAR" -b "$COOKIE_JAR" -X POST \
         -H "Content-Type: application/json" \
         -d "{\"username\":\"$username\",\"password\":\"$password\"}" \
-        "$API_BASE_URL/api/v1/auth/login")
-
-    extract_csrf_token
-    echo "$response"
+        "$API_BASE_URL/api/v1/auth/login"
 }
 
 # Issue an authenticated request using the saved cookie jar. Mutating verbs
@@ -193,6 +194,7 @@ test_login_default_credentials() {
     log_info "Testing login with default credentials..."
 
     local response=$(make_login_request "admin" "$DEFAULT_PASSWORD")
+    extract_csrf_token
     log_debug "Response: $response"
 
     if echo "$response" | grep -q '"user"'; then
@@ -293,6 +295,7 @@ test_invalid_credentials_rejected() {
 
     # Test wrong password — success would echo a "user" field in the body.
     local response=$(make_login_request "admin" "WrongPassword123!")
+    extract_csrf_token
     log_debug "Wrong password response: $response"
 
     if echo "$response" | grep -q '"user"'; then
@@ -326,6 +329,7 @@ test_using_default_password_flag() {
     fi
 
     local response=$(make_login_request "admin" "$DEFAULT_PASSWORD")
+    extract_csrf_token
     log_debug "Response: $response"
 
     if echo "$response" | grep -q '"usingDefaultPassword":true'; then
@@ -432,6 +436,7 @@ test_password_change() {
 
     # Login first — populates COOKIE_JAR and CSRF_TOKEN
     local login_response=$(make_login_request "admin" "$CURRENT_PASSWORD")
+    extract_csrf_token
 
     if ! echo "$login_response" | grep -q '"user"' || [ -z "$CSRF_TOKEN" ]; then
         log_error "Cannot get auth session for password change"
@@ -465,6 +470,7 @@ test_login_new_password() {
     log_info "Testing login with new password..."
 
     local response=$(make_login_request "admin" "$CURRENT_PASSWORD")
+    extract_csrf_token
     log_debug "Response: $response"
 
     if echo "$response" | grep -q '"user"'; then
@@ -489,6 +495,7 @@ test_old_password_invalid() {
     fi
 
     local response=$(make_login_request "admin" "$DEFAULT_PASSWORD")
+    extract_csrf_token
     log_debug "Response: $response"
 
     if echo "$response" | grep -q '"user"'; then
@@ -511,6 +518,7 @@ test_password_change_wrong_current() {
     # cookie jar holds a valid session (prior tests may have written stale or
     # failed-login cookies).
     local login_response=$(make_login_request "admin" "$CURRENT_PASSWORD")
+    extract_csrf_token
     if ! echo "$login_response" | grep -q '"user"' || [ -z "$CSRF_TOKEN" ]; then
         log_error "Cannot get auth session"
         return 1
@@ -529,6 +537,7 @@ test_password_change_wrong_current() {
 
     # If no error indicator, check if it actually succeeded (bad)
     local test_login=$(make_login_request "admin" "AnyPassword123!")
+    extract_csrf_token
     if echo "$test_login" | grep -q '"user"'; then
         log_error "Password was changed with wrong current password"
         return 1
@@ -547,6 +556,7 @@ test_password_complexity() {
 
     # Always re-establish a fresh authenticated session.
     local login_response=$(make_login_request "admin" "$CURRENT_PASSWORD")
+    extract_csrf_token
     if ! echo "$login_response" | grep -q '"user"' || [ -z "$CSRF_TOKEN" ]; then
         log_warning "Cannot get auth session, skipping complexity test"
         return 0
@@ -587,6 +597,7 @@ test_second_password_change() {
 
     # Login with current password — populates COOKIE_JAR + CSRF_TOKEN
     local login_response=$(make_login_request "admin" "$CURRENT_PASSWORD")
+    extract_csrf_token
     if ! echo "$login_response" | grep -q '"user"' || [ -z "$CSRF_TOKEN" ]; then
         log_error "Cannot get auth session"
         return 1
@@ -606,6 +617,7 @@ test_second_password_change() {
 
     # Verify new password works
     local test_login=$(make_login_request "admin" "$SECOND_PASSWORD")
+    extract_csrf_token
     if echo "$test_login" | grep -q '"user"'; then
         CURRENT_PASSWORD="$SECOND_PASSWORD"
         log_success "Second password change successful"
@@ -635,6 +647,7 @@ test_not_using_default_after_change() {
     fi
 
     local response=$(make_login_request "admin" "$CURRENT_PASSWORD")
+    extract_csrf_token
     log_debug "Response: $response"
 
     if echo "$response" | grep -q '"usingDefaultPassword":true'; then
@@ -705,6 +718,7 @@ cleanup_reset_password() {
 
     # Login with current password
     local login_response=$(make_login_request "admin" "$CURRENT_PASSWORD")
+    extract_csrf_token
 
     if ! echo "$login_response" | grep -q '"user"' || [ -z "$CSRF_TOKEN" ]; then
         log_warning "Cannot reset password - unable to login (may be rate limited)"
@@ -723,6 +737,7 @@ cleanup_reset_password() {
 
     # Verify
     local test_login=$(make_login_request "admin" "$DEFAULT_PASSWORD")
+    extract_csrf_token
     if echo "$test_login" | grep -q '"user"'; then
         log_success "Password reset to default"
     else
