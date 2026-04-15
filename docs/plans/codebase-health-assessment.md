@@ -49,6 +49,18 @@ Current `/grade` state:
 - Completed P1 items from the quality report: first-pass lint gate, blocking CI quality gates, scoped largest-file threshold, API body-validation guard, the named transaction typing gaps, zero-warning lizard baseline, and gitleaks false-positive cleanup.
 - Remaining score-moving work from this report requires environment evidence rather than broad local refactoring: durable production alert delivery is still pending; production-like runtime and repository-controlled generated performance/scale proof are now recorded.
 
+Current work ledger:
+
+| Status | Work item | Evidence / next action |
+| --- | --- | --- |
+| Done | Static-analysis and maintainability cleanup. | Lint is blocking, API body validation is guarded, largest-file threshold is cleared, lizard is at zero warnings, and gitleaks latest-commit/tracked-tree/full-history scans are clean. |
+| Done | Safe root dependency-audit maintenance. | `follow-redirects` was updated through the non-forced audit path; root production audit has only the accepted low upstream `elliptic` chain. |
+| Done | Privacy-safe generated scalability/performance proof. | `docs/plans/phase3-compose-benchmark-smoke-2026-04-15T00-12-26-208Z.md` proves 25,000 generated transactions, 100 history requests at concurrency 10, generated restore, worker proof, two-worker ownership, and 100/100 two-backend WebSocket fanout. |
+| Done | Production-like runtime evidence. | `docs/plans/phase2-production-like-runtime-review-2026-04-15T00-12-26-208Z.md` records a clean full-stack runtime window with healthy final containers and 0 failed benchmark/proof jobs. |
+| Remaining | Durable production external alert receiver delivery. | Choose a real notification channel, keep secrets out of Git, commit only secret-free Alertmanager/receiver configuration, document credential ownership, and deliver a production-safe test alert to that channel. |
+| Ongoing | Target-environment capacity calibration. | Required only when a release claims deployment-specific capacity or changes hardware/load-balancer/Postgres/Redis/worker sizing; use generated/regtest data or operator-owned testnet wallets, not third-party wallet histories. |
+| Ongoing | Release and architecture guardrails. | Keep OpenAPI/shared-schema/gateway whitelist coverage, redaction, release gates, accepted advisory tracking, and opportunistic large-file cleanup current as touched areas change. |
+
 Recommended next sequence:
 
 | Priority | Work | Start With | Exit Criteria |
