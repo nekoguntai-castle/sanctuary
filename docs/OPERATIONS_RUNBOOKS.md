@@ -1,7 +1,7 @@
 # Sanctuary Operations Runbooks
 
-Date: 2026-04-12 (Pacific/Honolulu)
-Status: Phase 2 operations proof baseline
+Date: 2026-04-14 (Pacific/Honolulu)
+Status: Phase 2 operations proof baseline with production-like runtime review
 
 This document maps the existing monitoring stack and alert rules to concrete triage steps. It intentionally starts with the alerts and failure modes already present in the repo instead of inventing new operational processes.
 
@@ -11,6 +11,7 @@ This document maps the existing monitoring stack and alert rules to concrete tri
 - 2026-04-12: `docs/plans/phase2-monitoring-smoke-2026-04-12T22-42-59-008Z.md` records a passing local monitoring stack smoke with Grafana, Prometheus, Alertmanager, Jaeger, Loki, Promtail container health, Prometheus rule loading, Promtail runtime log checks, and loopback-only host port bindings.
 - 2026-04-12: `docs/plans/phase2-gateway-audit-compose-smoke-2026-04-12T23-18-24-249Z.md` records a passing full Compose backend/gateway audit smoke with signed audit persistence, unsigned audit rejection, gateway delivery-log checks, and container health.
 - 2026-04-12: `docs/plans/phase2-alert-receiver-smoke-2026-04-12T23-33-46-561Z.md` records a passing disposable Alertmanager webhook receiver delivery smoke.
+- 2026-04-14: `docs/plans/phase2-production-like-runtime-review-2026-04-15T00-12-26-208Z.md` records a clean production-like runtime window from the generated-data full-stack Compose benchmark: all benchmark scenarios passed, all final containers were healthy, worker queues recorded 0 failed proof jobs, and the stack was removed after the proof.
 - Run repeatable local proof with `npm run test:ops:phase2`.
 - If local port `5433` is already allocated, run with an alternate host port, for example `TEST_POSTGRES_PORT=55433 npm run test:ops:phase2`.
 - Run repeatable monitoring proof with `npm run ops:monitoring:phase2` after starting the monitoring stack.

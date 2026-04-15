@@ -1,7 +1,7 @@
 # Sanctuary Release Gates
 
-Date: 2026-04-12 (Pacific/Honolulu)
-Status: Phase 4 release-gate baseline; frontend test typecheck now promoted to a required gate
+Date: 2026-04-14 (Pacific/Honolulu)
+Status: Phase 4 release-gate baseline; Phase 3 generated capacity proof is current
 
 This document records the checks that should protect the A-grade engineering goals in `docs/plans/codebase-health-assessment.md`. A release should not claim an A grade in a domain unless the matching gate has passed or the plan explicitly marks the gate as pending with an owner and date.
 
@@ -28,19 +28,16 @@ This document records the checks that should protect the A-grade engineering goa
 | Dependency security | Production advisory review | `npm audit --omit=dev` in root and `server/`; `cd gateway && npm audit --omit=dev --omit=optional`; plus documented accepted findings | Required before release |
 | Container/install validation | Fresh install, install script, container health, auth flow | `.github/workflows/install-test.yml` release gate | Required for release candidates/releases |
 | Operations supportability | Runbook coverage and proof for backup/restore, gateway audit persistence, alert receiver delivery, and monitoring stack behavior | `docs/OPERATIONS_RUNBOOKS.md` updated when alerts or operational flows change; `npm run test:ops:phase2` when backup/restore or in-process gateway audit paths are touched; `npm run ops:gateway-audit:phase2` when backend/gateway containers or gateway audit delivery paths are touched; `npm run ops:monitoring:phase2` when monitoring Compose, Prometheus/Loki/Grafana/Jaeger/Alertmanager, or Promtail paths are touched; `npm run ops:alert-receiver:phase2` when Alertmanager routing or receiver config is touched | Required when touched |
-| Performance and scale | Phase 3 benchmark harness in strict mode | `npm run perf:phase3:compose-smoke` for disposable local authenticated capacity proof; `SANCTUARY_BENCHMARK_STRICT=true npm run perf:phase3` with privacy-safe calibrated scenario inputs | Local proof complete; pending privacy-safe calibrated evidence |
+| Performance and scale | Phase 3 benchmark harness in strict mode | `npm run perf:phase3:compose-smoke` for disposable local authenticated generated-data capacity proof; `SANCTUARY_BENCHMARK_STRICT=true npm run perf:phase3` with operator-owned testnet/regtest or approved non-production scenario inputs for target-environment calibration | Generated proof complete; target-environment rerun required when topology/hardware differs |
 
-## Phase 3 Pending Privacy-Safe Evidence
+## Phase 3 Target-Environment Evidence
 
-These gates are required before the scalability/performance domain can move to A:
+Repository-controlled generated-data evidence is current enough for the local scalability/performance claim. These gates are required before broadening production scale-out support or claiming that a specific deployment topology has the same capacity:
 
-- Local authenticated capacity coverage now has disposable Compose proof in `docs/plans/phase3-compose-benchmark-smoke-2026-04-13T02-50-46-877Z.md`, with benchmark output in `docs/plans/phase3-benchmark-2026-04-13T02-51-11-475Z.md`; keep rerunning `npm run perf:phase3:compose-smoke` when Compose startup, seeded auth, benchmark provisioning, synthetic large-wallet history, WebSocket fanout, backup validation/restore, worker queue handler, worker scale-out, Electrum ownership, Redis-backed backend scale-out, backend fanout paths, Nginx backup payload limits, or Postgres/Redis capacity snapshot logic change.
-- Privacy-safe transaction history and wallet sync queue benchmarks with `SANCTUARY_TOKEN` and `SANCTUARY_WALLET_ID`, using generated/regtest data or operator-owned testnet wallets only; the local synthetic 10,000-transaction gate is repository-controlled regression evidence, not calibrated target-environment evidence.
-- Approved backup restore only in a restore-safe environment, with `SANCTUARY_ADMIN_TOKEN`, `SANCTUARY_BACKUP_FILE`, and `SANCTUARY_ALLOW_RESTORE=true`; the disposable Compose smoke proves a generated 6.53 MiB backup with 10,076 restored records, but not an approved support-size backup.
-- Privacy-safe WebSocket fanout with expected client counts and generated or operator-owned testnet sync/transaction events; the local Compose smoke now proves the authenticated wallet-specific subscription path and 64-client two-backend Redis bridge delivery.
-- Privacy-safe worker queue processing under generated sync, notification, maintenance, autopilot, and intelligence job volume; the local Compose smoke now proves a repeated 60-job handler profile and proves two-worker diagnostic processing/ownership.
-- Privacy-safe backend scale-out load/capacity evidence; the local 64-client two-backend Redis WebSocket smoke is recorded in `docs/plans/phase3-compose-benchmark-smoke-2026-04-13T02-50-46-877Z.md`.
-- Privacy-safe worker scale-out queue-load and Electrum subscription-volume evidence before production worker replica support is broadened beyond the local smoke boundary.
+- Current generated capacity evidence is `docs/plans/phase3-compose-benchmark-smoke-2026-04-15T00-12-26-208Z.md`, with benchmark output in `docs/plans/phase3-benchmark-2026-04-15T00-12-49-889Z.md`; keep rerunning `npm run perf:phase3:compose-smoke` when Compose startup, seeded auth, benchmark provisioning, synthetic large-wallet history, WebSocket fanout, backup validation/restore, worker queue handler, worker scale-out, Electrum ownership, Redis-backed backend scale-out, backend fanout paths, Nginx backup payload limits, or Postgres/Redis capacity snapshot logic change.
+- The current generated profile covers 25,000 synthetic transactions, 100 authenticated transaction-history requests at concurrency 10, p95 70 ms, p99 77.02 ms, a 16.3 MiB generated restore with 25,076 records, 30 worker proof jobs, two-worker diagnostic processing/ownership, 100/100 Redis-bridged WebSocket clients across two backend replicas, and Postgres/Redis capacity snapshots.
+- Repeat transaction history, wallet sync queue, WebSocket fanout, worker queue, backend scale-out, and worker scale-out checks on the target non-production topology when hardware, load balancer, Postgres, Redis, or worker sizing differs from the local Compose proof.
+- Use approved backup restore only in a restore-safe environment, with `SANCTUARY_ADMIN_TOKEN`, `SANCTUARY_BACKUP_FILE`, and `SANCTUARY_ALLOW_RESTORE=true`, when the supported backup size exceeds the 16.3 MiB generated proof.
 
 Do not benchmark third-party real-world wallets, addresses, or public wallet histories. Public testnet availability can be used for operator-owned fixture wallets, but scale should come from generated/regtest data or approved non-production testnet wallets rather than profiling someone else's wallet activity.
 

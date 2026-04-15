@@ -24,6 +24,7 @@ const workerScaleOutJobDelayMs = Number(process.env.PHASE3_WORKER_SCALE_OUT_JOB_
 const composeWorkerConcurrency = process.env.PHASE3_COMPOSE_WORKER_CONCURRENCY || process.env.WORKER_CONCURRENCY || '1';
 const backendScaleOutReplicas = Number(process.env.PHASE3_BACKEND_SCALE_OUT_REPLICAS || '2');
 const backendScaleOutProofTimeoutMs = Number(process.env.PHASE3_BACKEND_SCALE_OUT_PROOF_TIMEOUT_MS || '60000');
+const backendMaxPerUserConfigLimit = 100;
 const backendScaleOutWsClients = readPositiveInt(process.env.PHASE3_BACKEND_SCALE_OUT_WS_CLIENTS, 8);
 const backendScaleOutPerUserLimit = readPositiveInt(
   process.env.PHASE3_MAX_WEBSOCKET_PER_USER || process.env.MAX_WEBSOCKET_PER_USER,
@@ -40,6 +41,28 @@ const largeWalletHistoryPageSize = readPositiveInt(process.env.PHASE3_LARGE_WALL
 const largeWalletHistoryP95BudgetMs = readPositiveInt(process.env.PHASE3_LARGE_WALLET_HISTORY_P95_MS, 2000);
 const sizedBackupRestoreProofEnabled = process.env.PHASE3_SIZED_BACKUP_RESTORE_PROOF !== 'false';
 const capacitySnapshotsEnabled = process.env.PHASE3_CAPACITY_SNAPSHOTS !== 'false';
+
+if (backendScaleOutWsClients > backendMaxPerUserConfigLimit) {
+  throw new Error(
+    `PHASE3_BACKEND_SCALE_OUT_WS_CLIENTS=${backendScaleOutWsClients} exceeds the backend ` +
+      `MAX_WEBSOCKET_PER_USER schema ceiling of ${backendMaxPerUserConfigLimit}. ` +
+      'Use 100 or fewer clients, or change the backend config policy before raising this proof.'
+  );
+}
+
+if (backendScaleOutPerUserLimit > backendMaxPerUserConfigLimit) {
+  throw new Error(
+    `PHASE3_MAX_WEBSOCKET_PER_USER=${backendScaleOutPerUserLimit} exceeds the backend ` +
+      `MAX_WEBSOCKET_PER_USER schema ceiling of ${backendMaxPerUserConfigLimit}.`
+  );
+}
+
+if (backendScaleOutPerUserLimit < backendScaleOutWsClients) {
+  throw new Error(
+    `PHASE3_MAX_WEBSOCKET_PER_USER=${backendScaleOutPerUserLimit} is lower than ` +
+      `PHASE3_BACKEND_SCALE_OUT_WS_CLIENTS=${backendScaleOutWsClients}.`
+  );
+}
 
 const postgresUser = 'sanctuary';
 const postgresDb = 'sanctuary_phase3_benchmark';
@@ -2280,6 +2303,19 @@ async function apiJson(target, path, options = {}, expectedStatuses = [200]) {
     ? response.headers.getSetCookie()
     : response.headers.get('set-cookie');
   return { status: response.status, body: parsed, setCookie };
+}
+
+function extractAccessTokenFromSetCookie(setCookieHeaders) {
+  if (!setCookieHeaders) return null;
+  const cookies = Array.isArray(setCookieHeaders) ? setCookieHeaders : [setCookieHeaders];
+  for (const cookie of cookies) {
+    if (typeof cookie !== 'string') continue;
+    if (!cookie.startsWith('sanctuary_access=')) continue;
+    const firstAttr = cookie.split(';')[0];
+    const value = firstAttr.slice('sanctuary_access='.length);
+    if (value) return value;
+  }
+  return null;
 }
 
 async function login(target) {

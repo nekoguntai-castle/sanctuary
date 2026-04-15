@@ -1,7 +1,7 @@
 # Software Quality Report — 2026-04-13
 
-**Overall Score**: 89/100 (implementation-adjusted; original validated baseline was 76/100)
-**Grade**: B
+**Overall Score**: 92/100 (implementation-adjusted; original validated baseline was 76/100)
+**Grade**: A-
 **Confidence**: Low
 **Mode**: full
 **Commit**: `dd86dd2f`
@@ -27,16 +27,16 @@ None. The explicit PEM-marker validation split into two groups:
 | Reliability             | 12/15     | Typed errors + central timeouts; middleware-guaranteed `!` remains by contract; the previously called-out transaction typing gaps are now fixed |
 | Maintainability         | 15/15     | lizard baseline measured at 0 warnings after the syncAddress, Payjoin SSRF, device account normalization, policy create-data, draft create-data, intelligence settings, Telegram collector, wallet autopilot settings, admin Electrum update, transaction batch output validation, push notification preference/message, approval vote guard/event, Electrum reconciliation, Coldcard parser path-selection, multisig script parsing, Electrum server selection, confirmation address-id population, PSBT input construction, Payjoin proposal validation, multisig derivation, backup validation, transaction I/O, config validation, transaction classification, vault policy validation, policy evaluation dispatch, policy usage-recording, Trezor adapter connection, gateway backend event notification, Coldcard nested parser account, Keystone standard parser account, UR device decoder, UR PSBT decode, UTXO age, Trezor path utility, Jade path conversion, send transaction action, draft management, QR signing, USB signing, send reducer, verify-address vector generation, Phase 3 benchmark proof assertion, sized backup restore proof, Phase 3 benchmark Markdown rendering, worker scale-out proof-script, backend scale-out proof-script, UTXO edge-case fixture, BIP173/BIP350 SegWit decoder, UTXO selection fixture, maintenance jobs forwarding, wallet contract validation, device contract validation, transaction contract validation, draft contract validation, repository mock session seeding, repository scenario builder, render-regression API harness, admin drafts smoke API harness, error recovery API harness, user journeys API harness, accessibility API harness, dashboard price/block API harness, admin operations API harness, import wallet API harness, settings persistence API harness, create wallet API harness, paper boats animation, bunny meadow animation, train station animation, fireworks animation, duckling parade animation, paper airplanes animation, lavender fields animation, butterfly garden animation, and WalletDetail filter hook extraction passes; jscpd measured at 2.33%; the scoped largest-file threshold is now cleared after the Electrum connection test split; clean architecture |
 | Security                | 15/15     | 0 high CVEs; no JS eval/DOM injection; API body validation sweep is guarded; latest-commit, tracked-tree, and full-history secret gates clean |
-| Performance             | 4/10      | Cursor pagination + recent streaming; some in-loop N+1 risk |
+| Performance             | 7/10      | Cursor pagination + recent streaming plus current generated Phase 3 capacity proof; some in-loop N+1 risk remains |
 | Test Quality            | 13/15     | Thresholds 98–100% enforced; clear AAA structure; sleeps mostly intentional |
 | Operational Readiness   | 10/10     | Docker + CI + health/metrics endpoints + observability + structured logger |
-| **TOTAL**               | **89/100**|               |
+| **TOTAL**               | **92/100**|               |
 
 ---
 
 ## Trend
 
-vs 2026-04-13 (`13efff91`): original validated report was **overall +7 (69→76), grade D→C**, confidence Low→Low. The implementation-adjusted score is now **89/100** after the first-pass lint gate landed, the scoped largest-file threshold was cleared, the API body-validation sweep was guarded, the lizard baseline reached zero warnings, and the gitleaks false-positive backlog was cleaned up.
+vs 2026-04-13 (`13efff91`): original validated report was **overall +7 (69→76), grade D→C**, confidence Low→Low. The implementation-adjusted score is now **92/100** after the first-pass lint gate landed, the scoped largest-file threshold was cleared, the API body-validation sweep was guarded, the lizard baseline reached zero warnings, the gitleaks false-positive backlog was cleaned up, and the generated Phase 3 capacity proof moved Performance time-behaviour evidence to High.
 
 - **Correctness +4** (14→18): `typecheck=fail → pass` (commit `350f67c1` excluded `scripts/verify-addresses/` from root typecheck; `fc086954` stabilized coverage emission).
 - **Correctness +2 after implementation** (18→20): first-pass ESLint gate added and passing.
@@ -47,6 +47,7 @@ vs 2026-04-13 (`13efff91`): original validated report was **overall +7 (69→76)
 - **Maintainability +2 after final lizard reduction** (13→15): the WalletDetail filter hook extraction pass lowered the lizard baseline from 2 to 0 warnings, moving criterion 3.1 from `+3` to `+5`.
 - **Security +2 after implementation** (11→13): all `server/src/api` `req.body` readers are now covered by route-level `validate({ body })`, a shared Zod parser, direct `safeParse`, or a documented exception, and `npm run lint` now runs `scripts/check-api-body-validation.mjs` to prevent drift.
 - **Security +2 after gitleaks cleanup** (13→15): latest-commit, tracked-tree, and full-history gitleaks scans now pass without broadly allowlisting ignored local secret files.
+- **Performance +3 after generated capacity proof** (4→7): the strict Phase 3 Compose profile now records 25,000 generated transactions, 100 authenticated history requests at concurrency 10 with p95 70 ms / p99 77.02 ms, a 16.3 MiB generated restore, 30 worker proof jobs, two-worker proof, and 100/100 Redis-bridged WebSocket fanout across two backend replicas.
 - Other domains unchanged numerically; the remaining 7 commits delivered qualitative reliability/security/performance improvements (REPEATABLE READ snapshot on tx export, DoS cap on `POST /addresses/generate`, streamed tx export, halved device-route queries) that aren't captured by the static signal set.
 - Original heuristic deltas recorded in this report: `secrets` 7→8 (originally caused by `.gitleaks.toml` + `tasks/grade-fix-plan.md` PEM sentinel text — both false positives); `timeout_retry_count` 1264→1269 (+0.4%). After the implementation pass, `.gitleaks.toml` no longer contains a PEM sentinel string and grade task files are allowlisted. I could validate the commit history and the false-positive secret hits; I could not independently reproduce the exact timeout-count heuristic from repository files alone, and no local grade script was found in the repo.
 
@@ -68,6 +69,7 @@ vs 2026-04-13 (`13efff91`): original validated report was **overall +7 (69→76)
 | api_body_validation | pass | `scripts/check-api-body-validation.mjs`, now run by `npm run lint:server` | 4.3 → +3 |
 | lizard_warning_count | 0 | lizard 1.21.3 temporary `/tmp` install, CI command with current exclusions; `server/src/services/bitcoin/blockchain/syncAddress.ts`, `server/src/services/payjoin/ssrf.ts`, `server/src/services/deviceAccountConflicts.ts`, `server/src/repositories/policyRepository.ts`, `server/src/repositories/draftRepository.ts`, `server/src/services/intelligence/settings.ts`, `server/src/services/supportPackage/collectors/telegram.ts`, `server/src/api/wallets/autopilot.ts`, `server/src/api/admin/electrumServers.ts`, `server/src/api/transactions/drafting.ts`, `server/src/services/push/pushService.ts`, `server/src/services/vaultPolicy/approvalService.ts`, `server/src/worker/electrumManager/healthMonitoring.ts`, `server/src/services/bitcoin/descriptorParser/coldcardParser.ts`, `server/src/services/bitcoin/psbtBuilder/witnessScript.ts`, `server/src/services/bitcoin/electrumPool/serverSelector.ts`, `server/src/services/bitcoin/sync/confirmations/fieldPopulators.ts`, `server/src/services/bitcoin/transactions/psbtConstruction.ts`, `server/src/services/bitcoin/psbtValidation.ts`, `server/src/services/bitcoin/addressDerivation/multisigDerivation.ts`, `server/src/services/backupService/validation.ts`, `server/src/services/bitcoin/sync/phases/processTransactions/transactionIO.ts`, `server/src/config/index.ts`, `server/src/services/bitcoin/sync/phases/processTransactions/classification.ts`, `server/src/services/vaultPolicy/vaultPolicyService.ts`, `server/src/services/vaultPolicy/policyEvaluationEngine.ts`, `services/hardwareWallet/adapters/trezor/trezorAdapter.ts`, `gateway/src/services/backendEvents/notifications.ts`, `services/deviceParsers/parsers/coldcardNested.ts`, `services/deviceParsers/parsers/keystone.ts`, `utils/urDeviceDecoder.ts`, `utils/urPsbt.ts`, `utils/utxoAge.ts`, `services/hardwareWallet/adapters/trezor/pathUtils.ts`, `services/hardwareWallet/adapters/jade.ts`, `hooks/send/useSendTransactionActions.ts`, `hooks/send/useDraftManagement.ts`, `hooks/send/useQrSigning.ts`, `hooks/send/useUsbSigning.ts`, `contexts/send/reducer.ts`, `scripts/verify-addresses/generate-vectors.ts`, `server/tests/unit/services/bitcoin/industry/utxoEdgeCases.test.ts`, `server/tests/unit/services/bitcoin/bip173-bip350.verified.test.ts`, `server/tests/unit/services/bitcoin/utxoSelection.test.ts`, `server/tests/unit/worker/jobs/maintenanceJobs.test.ts`, `server/tests/helpers/contractValidation.ts` wallet/device/transaction/draft validation, `server/tests/mocks/repositories.ts` session seeding, `server/tests/integration/repositories/setup.ts` scenario building, `e2e/render-regression/renderRegressionHarness.ts` authenticated API mocking, `e2e/admin-drafts-smoke.spec.ts` API mocking, `e2e/error-recovery.spec.ts` API mocking, `e2e/user-journeys.spec.ts` API mocking, `e2e/accessibility.spec.ts` API mocking, `e2e/dashboard-price-blocks.spec.ts` API mocking, `e2e/admin-operations.spec.ts` API mocking, `e2e/import-wallet-flow.spec.ts` API mocking, `e2e/settings-persistence.spec.ts` API mocking, `e2e/create-wallet-flow.spec.ts` API mocking, `components/animations/paperBoats.ts` frame rendering, `components/animations/bunnyMeadow.ts` bunny drawing/state updates, `components/animations/trainStation.ts` frame orchestration, `components/animations/fireworks.ts` explosion particle creation, `components/animations/ducklingParade.ts` duck drawing/family updates, `components/animations/paperAirplanes.ts` airplane drawing/frame updates, `components/animations/lavenderFields.ts` butterfly state/drawing updates, `components/animations/butterflyGarden.ts` butterfly flight/drawing updates, `components/WalletDetail/hooks/useTransactionFilters.ts` manual filter predicates, and `components/WalletDetail/hooks/useAITransactionFilter.ts` AI filter/sort/aggregation helpers now have no lizard warnings after helper extraction; the prior `assertBenchmarkProof`, `runSizedBackupRestoreProof`, `buildMarkdown`, `getWorkerScaleOutProofScript`, and `getBackendScaleOutProofScript` warnings in `scripts/perf/phase3-compose-benchmark-smoke.mjs` are also removed | 3.1 → +5 measured; enforced as zero-warning baseline |
 | duplication_pct | 2.33% | `npm run quality` with temporary `/tmp` gitleaks/lizard installs and `GITLEAKS_LOG_OPTS=-1` | 3.2 → +3 |
+| phase3_generated_capacity_profile | pass | `PHASE3_LARGE_WALLET_TRANSACTION_COUNT=25000 PHASE3_LARGE_WALLET_HISTORY_REQUESTS=100 PHASE3_LARGE_WALLET_HISTORY_CONCURRENCY=10 PHASE3_BACKEND_SCALE_OUT_WS_CLIENTS=100 PHASE3_MAX_WEBSOCKET_PER_USER=100 PHASE3_MAX_WEBSOCKET_CONNECTIONS=1024 PHASE3_WORKER_QUEUE_PROOF_REPEATS=5 SANCTUARY_BENCHMARK_STRICT=true npm run perf:phase3:compose-smoke`; evidence in `docs/plans/phase3-compose-benchmark-smoke-2026-04-15T00-12-26-208Z.md` | 5.1 → +5 |
 | deploy_artifact_count | 2 | Dockerfile + `.github/workflows/` (incl. new `quality.yml`) | 7.1 → +3 |
 | health_endpoint_count | 169 grep hits | rg pattern match (NOT a route count) — real endpoints: `server/src/routes.ts` registers `/health`, `/metrics`, `/api/v1/health`; `gateway/src/index.ts` registers `/health`. The 169 figure includes docs, dashboards, workflows, and comments. | 7.2 → +2 |
 | observability_lib_present | 1 | `server/package.json` includes OpenTelemetry + `prom-client`; `server/src/routes.ts` exposes `/metrics` | 7.3 → +2 |
@@ -85,7 +87,7 @@ vs 2026-04-13 (`13efff91`): original validated report was **overall +7 (69→76)
 - **[3.5] Readability / naming — High → +2**: Standardized helpers (`createLogger`, `safeJsonParse`, `getErrorMessage`, `isPrismaError`), consistent TS naming. ISO Analyzability.
 - **[4.3] Input validation quality — High → +3**: Zod-backed route validation or parser-backed schema helpers now cover the `server/src/api` request-body surface: address generation, AI model pull/delete, AI suggest/query, device account creation/sharing, wallet sharing/device/CRUD/import/policy/settings/approval routes, Bitcoin and label mutation routes, price/node/mobile-permission/push/transfer/payjoin/sync/admin/AI-internal/intelligence/draft/auth slices, plus parser-backed admin/mobile/transaction helpers. `npm run check:api-body-validation` now passes and is invoked by `npm run lint:server`; the documented exceptions are the auth login rate-limiter key extractor and the BIP78 Payjoin raw `text/plain` receiver body. ISO Integrity.
 - **[4.4] Safe system/API usage — High → +3**: No JS `eval`, `innerHTML`, or `dangerouslySetInnerHTML` in app source; `execSync` only in `migrationService.ts:203`; Redis `eval()` is Lua-only at `infrastructure/distributedLock.ts:214` and in the Redis rate limiter. Prisma tagged `$queryRaw`/`$executeRaw` exists for health checks, aggregation, and maintenance; I found no unsafe string-built raw SQL (`queryRawUnsafe`/`executeRawUnsafe`). ISO Integrity.
-- **[5.1] Time Behaviour — Medium → +2**: Cursor pagination + block-height caching in `listTransactions.ts:25-67`; recent streaming export improvement; but dual sequential derivation loops in `addresses.ts:63-101`. ISO Time Behaviour.
+- **[5.1] Time Behaviour — High → +5**: Cursor pagination + block-height caching in `listTransactions.ts:25-67` and recent streaming export work now have current generated capacity evidence: the strict Phase 3 Compose profile inserted 25,000 synthetic transactions, passed 100 authenticated transaction-history requests at concurrency 10 with p95 70 ms / p99 77.02 ms, restored a 16.3 MiB generated backup with 25,076 records, completed 30 worker proof jobs with p95 16.2 ms, and delivered a Redis-bridged event to 100/100 WebSockets across two backend replicas. Some localized sequential loops remain, but the high-risk workflow budget is now measured. ISO Time Behaviour.
 - **[5.2] Data access patterns — Medium → +1**: `transactionRepository.ts:69-100` uses compound cursors; `mobilePermissionRepository.ts:112-133` avoids N+1 via join; still some sequential post-query enrichment in `addresses.ts:114-120`. ISO Resource Utilization.
 - **[5.3] Blocking in hot paths — Medium → +1**: The exact `blocking_io_count=28` number from the original report was not reproduced. Direct source search found 11 synchronous FS/exec call sites in app source, mostly startup/config/provider/migration paths (`gateway/src/index.ts`, `server/src/api/admin/version.ts`, push providers, `migrationService.ts`); none obviously execute per-request in the main wallet/transaction hot paths. ISO Resource Utilization.
 - **[6.2] Test structure — High → +4**: AAA pattern, `vi.hoisted()` for isolation, meaningful names (`addresses.test.ts:50-99`, `emailService.test.ts:72-90`). ISO Testability.
@@ -245,7 +247,14 @@ Ordered by priority, not cost. The first two items are the ones that change the 
 - Verified `npm audit --omit=dev --audit-level=moderate` exits clean. Root production audit now has 14 low upstream `elliptic` findings and 0 moderate/high/critical findings.
 - Kept the low-severity `elliptic` transitive chain accepted/monitored. npm reports no non-force fix in the Trezor/Ledger chain and the remaining force-fix paths would be breaking dependency changes, so they are intentionally out of this cleanup.
 
-Combined low-effort ceiling from the original P1 items is now reached at **89/100 (B)**. The lizard baseline, scoped largest-file, API body-validation, and gitleaks false-positive criteria are cleared; further movement requires performance, scale, or operations evidence rather than local cleanup.
+### Done — Record generated Phase 3 capacity proof
+- Repaired the generated backend scale-out proof script by restoring `sanctuary_access` cookie extraction inside the inline two-backend WebSocket proof.
+- Regenerated `package-lock.json` under npm 10 / Node 22 Alpine so container `npm ci` has the optional peer entries needed by `@bitcoinerlab/descriptors`.
+- Ran the strongest valid generated profile under the backend config ceiling: 25,000 synthetic transactions, 100 authenticated history requests at concurrency 10, 100 backend WebSocket clients, 2 backend replicas, 2 worker replicas, and 5 repeated worker queue proof profiles.
+- Evidence: `docs/plans/phase3-compose-benchmark-smoke-2026-04-15T00-12-26-208Z.md` and `docs/plans/phase3-benchmark-2026-04-15T00-12-49-889Z.md`.
+- Performance 5.1 moves from `+2` to `+5`; the implementation-adjusted score moves from 89/100 to 92/100.
+
+The original P1 cleanup ceiling was reached at **89/100 (B)**. The generated Phase 3 capacity proof now moves the implementation-adjusted score to **92/100 (A-)**. Further movement requires durable production alert delivery or deployment-specific evidence rather than local static-analysis cleanup.
 
 ### Execution order & dependencies
 
@@ -266,24 +275,24 @@ The four P1 items can largely run in parallel, but there is one sequencing rule 
 | API/test split backlog | Done for the original named API files and the later largest-file threshold backlog: OpenAPI, transaction API, and admin API suite registrars are 17, 25, and 26 LOC respectively; later passes split service, integration, frontend, gateway, and API tests down through `server/tests/unit/services/bitcoin/electrum.connection.test.ts`. The scoped largest-file criterion is now cleared, with `server/tests/unit/services/utxoSelectionService.test.ts` at 991 LOC as the current largest non-generated TS/TSX file. |
 | Zod normalization | Done: `server/src/api/**` `req.body` readers are covered by `validate({ body })`, shared parser-backed helpers, direct `safeParse`, or documented exceptions. `npm run check:api-body-validation` passes and is part of `npm run lint:server`. |
 
-### Target state after P1 (projected)
+### Target state after P1 and generated Phase 3 proof
 
-The "After P1" ranges below reflect the completed P1 cleanup. The largest-file threshold, Zod body-validation sweep, zero-warning lizard gate, and gitleaks false-positive cleanup are cleared; remaining score movement is outside this local cleanup plan.
+The "After current proof" column reflects the completed P1 cleanup plus the generated Phase 3 capacity proof. The largest-file threshold, Zod body-validation sweep, zero-warning lizard gate, gitleaks false-positive cleanup, and generated performance profile are cleared; remaining score movement is outside local static-analysis cleanup.
 
-| Domain | Current | After P1 (mid → best) | Delta | Driver |
+| Domain | Current | After current proof | Delta | Driver |
 |---|---|---|---|---|
 | Correctness | 20/20 | 20/20 | 0 | First-pass lint gate already landed |
 | Reliability | 12/15 | 12/15 | 0 | Unchanged (P2 typing gaps don't move the band) |
 | Maintainability | 15/15 | 15/15 | 0 | Lizard is now clean at zero warnings |
 | Security | 15/15 | 15/15 | 0 | gitleaks latest-commit/tracked-tree/full-history cleanup and Zod normalization are complete |
-| Performance | 4/10 | 4/10 | 0 | No P1 item targets Performance (see rationale below) |
+| Performance | 4/10 | 7/10 | +3 | Generated Phase 3 capacity profile moves 5.1 Time Behaviour to High |
 | Test Quality | 13/15 | 13/15 | 0 | No P1 item targets Test Quality |
 | Operational Readiness | 10/10 | 10/10 | 0 | At cap |
-| **TOTAL** | **89/100 (B)** | **89/100 (B)** | **0** | Remaining movement requires performance, scale, or operations evidence |
+| **TOTAL** | **89/100 (B)** | **92/100 (A-)** | **+3** | Remaining movement requires durable external alert delivery or target-deployment evidence |
 
 Arithmetic check (rounded, no handwaving):
 
-- Current total: 20 + 12 + 15 + 15 + 4 + 13 + 10 = **89**
+- Current total after generated proof: 20 + 12 + 15 + 15 + 7 + 13 + 10 = **92**
 
 **Maintainability range breakdown** — 3.1 and 3.2 are now measured, and 3.3 is now cleared:
 
@@ -297,7 +306,7 @@ Arithmetic check (rounded, no handwaving):
 
 **Security range assumption** — resolved. The `+4` on 4.2 now reflects latest-commit, tracked-tree, and full-history gitleaks scans. Raw all-file `detect --no-git` still sees ignored local `.env` and generated SSL artifacts, which are deliberately outside the tracked-tree quality signal.
 
-**Performance rationale** — 4/10 is low but not an oversight. The recent landed commits (streamed tx export with REPEATABLE READ, capped `POST /addresses/generate`, halved device-route queries) already raised the qualitative ceiling; the next move is real measurement (request-path profiling, query-log sampling, p99 latency observation against the `/metrics` Prometheus surface), not speculative rewrites. That's a separate initiative from this audit and belongs in its own plan.
+**Performance rationale** — 7/10 reflects real generated-data measurement for the highest-risk local workflows, not speculative rewrites. Remaining performance movement should come from target-deployment telemetry, supported backup-size proof beyond the 16.3 MiB generated restore if needed, or route-specific profiling if future metrics identify a bottleneck.
 
 ### Out of scope for this plan
 
@@ -313,7 +322,7 @@ Deliberately not recommended from this evidence pass:
 
 ## Summary
 
-The repo climbed from **D (69) → C (76)** on the back of the typecheck fix (`350f67c1`), and the implementation-adjusted score is now **89/100 (B)** after the lint gate, scoped largest-file threshold work, guarded API body-validation sweep, lizard baseline reduction to zero warnings, and gitleaks false-positive cleanup. The remaining score movement requires performance, scale, or operations evidence rather than local static-analysis cleanup. The largest scoped TS/TSX file is now `server/tests/unit/services/utxoSelectionService.test.ts` at 991 LOC.
+The repo climbed from **D (69) → C (76)** on the back of the typecheck fix (`350f67c1`), reached **89/100 (B)** after the lint gate, scoped largest-file threshold work, guarded API body-validation sweep, lizard baseline reduction to zero warnings, and gitleaks false-positive cleanup, and is now **92/100 (A-)** after the generated Phase 3 capacity proof. Remaining score movement requires durable production alert delivery or target-deployment evidence rather than local static-analysis cleanup. The largest scoped TS/TSX file is now `server/tests/unit/services/utxoSelectionService.test.ts` at 991 LOC.
 
 ---
 
@@ -3184,3 +3193,22 @@ Verification after dependency audit maintenance:
 - `npm ls follow-redirects` — passed; `@stellar/stellar-sdk`/`axios` resolves `follow-redirects@1.16.0`.
 - `npm audit --audit-level=high` — passed; output reports only 16 low upstream `elliptic` findings.
 - `npm audit --omit=dev --audit-level=moderate` — passed; output reports 14 low upstream `elliptic` findings and 0 moderate/high/critical root production findings.
+
+### Phase 3 generated capacity proof pass — 2026-04-14
+
+Implemented the remaining repository-controlled performance/scale evidence item:
+
+- Fixed `scripts/perf/phase3-compose-benchmark-smoke.mjs` after the backend scale-out proof extraction missed `extractAccessTokenFromSetCookie(...)` inside the inline generated backend proof script.
+- Added upfront validation so generated backend fanout profiles above the backend `MAX_WEBSOCKET_PER_USER <= 100` schema ceiling fail with a clear benchmark-profile error instead of surfacing later as an unhealthy backend container.
+- Regenerated the root `package-lock.json` under npm 10 / Node 22 Alpine so container `npm ci` has the optional peer entries needed by `@bitcoinerlab/descriptors`.
+- Ran the strongest valid generated-data profile under the backend `MAX_WEBSOCKET_PER_USER <= 100` schema ceiling.
+- Recorded generated evidence in `docs/plans/phase3-compose-benchmark-smoke-2026-04-15T00-12-26-208Z.md` and `docs/plans/phase3-benchmark-2026-04-15T00-12-49-889Z.md`.
+- Recorded production-like runtime evidence in `docs/plans/phase2-production-like-runtime-review-2026-04-15T00-12-26-208Z.md`.
+- Performance 5.1 moves from `+2` to `+5` because the high-risk local workflows now have strict generated-data timing evidence; the implementation-adjusted score moves from 89/100 to 92/100.
+
+Verification after Phase 3 generated capacity proof:
+
+- `docker build --target deps -t sanctuary-frontend-deps-check .` — passed; container `npm ci` succeeds with the refreshed lockfile.
+- `node --check scripts/perf/phase3-compose-benchmark-smoke.mjs` — passed.
+- `PHASE3_LARGE_WALLET_TRANSACTION_COUNT=25000 PHASE3_LARGE_WALLET_HISTORY_REQUESTS=100 PHASE3_LARGE_WALLET_HISTORY_CONCURRENCY=10 PHASE3_BACKEND_SCALE_OUT_WS_CLIENTS=100 PHASE3_MAX_WEBSOCKET_PER_USER=100 PHASE3_MAX_WEBSOCKET_CONNECTIONS=1024 PHASE3_WORKER_QUEUE_PROOF_REPEATS=5 SANCTUARY_BENCHMARK_STRICT=true npm run perf:phase3:compose-smoke` — passed.
+- The benchmark inserted 25,000 synthetic transactions, passed 100 authenticated transaction-history requests at concurrency 10 with p95 70 ms and p99 77.02 ms, restored a 16.3 MiB generated backup with 25,076 records in 12,533 ms, completed 30 worker proof jobs with p95 16.2 ms, proved two-worker diagnostic processing and one Electrum owner, delivered a Redis-bridged sync event to 100/100 WebSocket clients across two backend replicas with p95 23 ms, and captured Postgres/Redis capacity snapshots.
