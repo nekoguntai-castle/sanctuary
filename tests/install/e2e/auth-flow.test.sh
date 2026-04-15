@@ -45,8 +45,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Test configuration
+TEST_ID=$(generate_test_run_id)
 HTTPS_PORT="${HTTPS_PORT:-8443}"
 API_BASE_URL="https://localhost:${HTTPS_PORT}"
+COOKIE_JAR="/tmp/sanctuary-test-cookies-${TEST_ID}.txt"
 
 # Test passwords
 DEFAULT_PASSWORD="sanctuary"
@@ -59,9 +61,31 @@ TESTS_PASSED=0
 TESTS_FAILED=0
 declare -a FAILED_TESTS
 
-# State variables
+# Shared authentication state (cookie-based, Phase 6 auth)
+# The backend sets HttpOnly sanctuary_access + sanctuary_refresh cookies and
+# a readable sanctuary_csrf cookie. Subsequent requests flow cookies via
+# -b "$COOKIE_JAR"; mutations must echo the CSRF token in X-CSRF-Token.
 CURRENT_PASSWORD=""
-AUTH_TOKEN=""
+CSRF_TOKEN=""
+
+# Extract the sanctuary_csrf cookie value from the Netscape-format cookie jar.
+# Fields are tab-separated: domain, HttpOnly, path, Secure, expiry, name, value.
+# We read the 7th field of the row whose 6th field equals sanctuary_csrf.
+extract_csrf_token() {
+    if [ ! -f "$COOKIE_JAR" ]; then
+        CSRF_TOKEN=""
+        return
+    fi
+    CSRF_TOKEN=$(awk -F'\t' '$6 == "sanctuary_csrf" { print $7 }' "$COOKIE_JAR" | tail -n 1)
+}
+
+# Cleanup trap to remove the cookie jar when the script exits
+cleanup_cookie_jar() {
+    if [ -f "$COOKIE_JAR" ]; then
+        rm -f "$COOKIE_JAR"
+    fi
+}
+trap cleanup_cookie_jar EXIT
 
 # ============================================
 # Test Framework
@@ -95,6 +119,10 @@ run_test() {
 # Helper Functions
 # ============================================
 
+# Issue a login request. Clears the cookie jar first so the new
+# sanctuary_access / sanctuary_refresh / sanctuary_csrf cookies fully replace
+# any prior session (re-logins after password changes are common in this file).
+# On success, the cookie jar is populated and CSRF_TOKEN is refreshed.
 make_login_request() {
     local username="$1"
     local password="$2"
@@ -103,24 +131,33 @@ make_login_request() {
     # Rate limit is 5 attempts per 15 minutes, so we need to be careful
     sleep 1
 
-    curl -k -s -X POST \
+    rm -f "$COOKIE_JAR"
+
+    local response
+    response=$(curl -k -s -c "$COOKIE_JAR" -b "$COOKIE_JAR" -X POST \
         -H "Content-Type: application/json" \
         -d "{\"username\":\"$username\",\"password\":\"$password\"}" \
-        "$API_BASE_URL/api/v1/auth/login"
+        "$API_BASE_URL/api/v1/auth/login")
+
+    extract_csrf_token
+    echo "$response"
 }
 
-extract_token() {
-    local response="$1"
-    echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4
-}
-
+# Issue an authenticated request using the saved cookie jar. Mutating verbs
+# (POST/PUT/PATCH/DELETE) include the X-CSRF-Token header from CSRF_TOKEN to
+# satisfy the double-submit cookie middleware. GETs send no CSRF header.
 make_authenticated_request() {
     local method="$1"
     local endpoint="$2"
     local data="${3:-}"
-    local token="$AUTH_TOKEN"
 
-    local curl_opts=("-k" "-s" "-X" "$method" "-H" "Authorization: Bearer $token" "-H" "Content-Type: application/json")
+    local curl_opts=("-k" "-s" "-X" "$method" "-b" "$COOKIE_JAR" "-c" "$COOKIE_JAR" "-H" "Content-Type: application/json")
+
+    case "$method" in
+        POST|PUT|PATCH|DELETE)
+            curl_opts+=("-H" "X-CSRF-Token: $CSRF_TOKEN")
+            ;;
+    esac
 
     if [ -n "$data" ]; then
         curl_opts+=("-d" "$data")
@@ -158,8 +195,7 @@ test_login_default_credentials() {
     local response=$(make_login_request "admin" "$DEFAULT_PASSWORD")
     log_debug "Response: $response"
 
-    if echo "$response" | grep -q '"token"'; then
-        AUTH_TOKEN=$(extract_token "$response")
+    if echo "$response" | grep -q '"user"'; then
         CURRENT_PASSWORD="$DEFAULT_PASSWORD"
         log_success "Login successful with default credentials"
         return 0
@@ -178,43 +214,72 @@ test_login_default_credentials() {
 test_login_response_structure() {
     log_info "Testing login response structure..."
 
-    # Try with default or known password
+    # Try with default or known password. We bypass make_login_request here
+    # because we need to capture response headers (Set-Cookie) as well as the
+    # body to assert the Phase 6 contract end-to-end.
     local password="${CURRENT_PASSWORD:-$DEFAULT_PASSWORD}"
-    local response=$(make_login_request "admin" "$password")
+    local headers_file="/tmp/sanctuary-test-headers-${TEST_ID}.txt"
+
+    sleep 1
+    rm -f "$COOKIE_JAR" "$headers_file"
+
+    local response
+    response=$(curl -k -s -D "$headers_file" -c "$COOKIE_JAR" -b "$COOKIE_JAR" -X POST \
+        -H "Content-Type: application/json" \
+        -d "{\"username\":\"admin\",\"password\":\"$password\"}" \
+        "$API_BASE_URL/api/v1/auth/login")
+
+    extract_csrf_token
 
     if [ -z "$response" ]; then
         log_error "No response from login endpoint"
+        rm -f "$headers_file"
         return 1
     fi
 
     log_debug "Response: $response"
 
-    # Check for required fields
-    local has_token=$(echo "$response" | grep -q '"token"' && echo "yes" || echo "no")
-    local has_user=$(echo "$response" | grep -q '"user"' && echo "yes" || echo "no")
-
-    if [ "$has_token" = "no" ]; then
-        log_error "Response missing 'token' field"
+    # Phase 6 contract: body must contain expiresIn and user but NOT a token.
+    if echo "$response" | grep -q '"token"'; then
+        log_error "SECURITY: Response should not contain 'token' field (Phase 6 cookie auth)"
+        rm -f "$headers_file"
         return 1
     fi
 
-    if [ "$has_user" = "no" ]; then
+    if ! echo "$response" | grep -q '"expiresIn"'; then
+        log_error "Response missing 'expiresIn' field"
+        rm -f "$headers_file"
+        return 1
+    fi
+
+    if ! echo "$response" | grep -q '"user"'; then
         log_error "Response missing 'user' field"
+        rm -f "$headers_file"
         return 1
     fi
 
     # Check user object structure
     if ! echo "$response" | grep -q '"username"'; then
         log_error "Response missing 'username' in user object"
+        rm -f "$headers_file"
         return 1
     fi
 
     # Verify password is NOT in response
     if echo "$response" | grep -q '"password"'; then
         log_error "SECURITY: Password should not be in response"
+        rm -f "$headers_file"
         return 1
     fi
 
+    # Verify the server issued a sanctuary_access cookie via Set-Cookie header.
+    if ! grep -qi '^set-cookie:.*sanctuary_access=' "$headers_file"; then
+        log_error "Login response missing Set-Cookie: sanctuary_access"
+        rm -f "$headers_file"
+        return 1
+    fi
+
+    rm -f "$headers_file"
     log_success "Login response structure is correct"
     return 0
 }
@@ -226,11 +291,11 @@ test_login_response_structure() {
 test_invalid_credentials_rejected() {
     log_info "Testing invalid credentials are rejected..."
 
-    # Test wrong password
+    # Test wrong password — success would echo a "user" field in the body.
     local response=$(make_login_request "admin" "WrongPassword123!")
     log_debug "Wrong password response: $response"
 
-    if echo "$response" | grep -q '"token"'; then
+    if echo "$response" | grep -q '"user"'; then
         log_error "Login succeeded with wrong password"
         return 1
     fi
@@ -239,7 +304,7 @@ test_invalid_credentials_rejected() {
     response=$(make_login_request "nonexistent_user_xyz" "SomePassword123!")
     log_debug "Non-existent user response: $response"
 
-    if echo "$response" | grep -q '"token"'; then
+    if echo "$response" | grep -q '"user"'; then
         log_error "Login succeeded with non-existent user"
         return 1
     fi
@@ -280,29 +345,28 @@ test_using_default_password_flag() {
 # ============================================
 
 test_token_verification() {
-    log_info "Testing token verification..."
+    log_info "Testing session verification via /auth/me..."
 
-    if [ -z "$AUTH_TOKEN" ]; then
-        # Get a token first
+    # Ensure the cookie jar has a valid session (re-login if needed).
+    if [ ! -f "$COOKIE_JAR" ] || [ -z "$CSRF_TOKEN" ]; then
         local password="${CURRENT_PASSWORD:-$DEFAULT_PASSWORD}"
-        local response=$(make_login_request "admin" "$password")
-        AUTH_TOKEN=$(extract_token "$response")
+        make_login_request "admin" "$password" > /dev/null
     fi
 
-    if [ -z "$AUTH_TOKEN" ]; then
-        log_error "No auth token available"
+    if [ ! -f "$COOKIE_JAR" ]; then
+        log_error "No auth cookie jar available"
         return 1
     fi
 
-    # Test /me endpoint
+    # Test /me endpoint with the cookie jar (GET — no CSRF required)
     local me_response=$(make_authenticated_request "GET" "/api/v1/auth/me")
     log_debug "Me response: $me_response"
 
     if echo "$me_response" | grep -q '"username"'; then
-        log_success "Token verification successful"
+        log_success "Session verification successful"
         return 0
     else
-        log_error "Token verification failed"
+        log_error "Session verification failed"
         return 1
     fi
 }
@@ -312,22 +376,23 @@ test_token_verification() {
 # ============================================
 
 test_invalid_token_rejected() {
-    log_info "Testing invalid token is rejected..."
+    log_info "Testing invalid session cookie is rejected..."
 
-    # Test with invalid token
+    # Send a bogus sanctuary_access cookie (Phase 6 cookie auth) — the
+    # middleware should reject it just like an invalid Bearer token.
     local response=$(curl -k -s -X GET \
-        -H "Authorization: Bearer invalid.token.here" \
+        -H "Cookie: sanctuary_access=invalid.token.here" \
         -H "Content-Type: application/json" \
         "$API_BASE_URL/api/v1/auth/me")
 
-    log_debug "Invalid token response: $response"
+    log_debug "Invalid cookie response: $response"
 
     if echo "$response" | grep -q '"username"'; then
-        log_error "Request succeeded with invalid token"
+        log_error "Request succeeded with invalid session cookie"
         return 1
     fi
 
-    log_success "Invalid token correctly rejected"
+    log_success "Invalid session cookie correctly rejected"
     return 0
 }
 
@@ -365,16 +430,15 @@ test_password_change() {
         CURRENT_PASSWORD="$DEFAULT_PASSWORD"
     fi
 
-    # Login first
+    # Login first — populates COOKIE_JAR and CSRF_TOKEN
     local login_response=$(make_login_request "admin" "$CURRENT_PASSWORD")
-    AUTH_TOKEN=$(extract_token "$login_response")
 
-    if [ -z "$AUTH_TOKEN" ]; then
-        log_error "Cannot get auth token for password change"
+    if ! echo "$login_response" | grep -q '"user"' || [ -z "$CSRF_TOKEN" ]; then
+        log_error "Cannot get auth session for password change"
         return 1
     fi
 
-    # Change password
+    # Change password (POST → CSRF token attached automatically)
     local change_response=$(make_authenticated_request "POST" "/api/v1/auth/me/change-password" \
         "{\"currentPassword\":\"$CURRENT_PASSWORD\",\"newPassword\":\"$NEW_PASSWORD\"}")
 
@@ -403,8 +467,7 @@ test_login_new_password() {
     local response=$(make_login_request "admin" "$CURRENT_PASSWORD")
     log_debug "Response: $response"
 
-    if echo "$response" | grep -q '"token"'; then
-        AUTH_TOKEN=$(extract_token "$response")
+    if echo "$response" | grep -q '"user"'; then
         log_success "Login successful with new password"
         return 0
     else
@@ -428,7 +491,7 @@ test_old_password_invalid() {
     local response=$(make_login_request "admin" "$DEFAULT_PASSWORD")
     log_debug "Response: $response"
 
-    if echo "$response" | grep -q '"token"'; then
+    if echo "$response" | grep -q '"user"'; then
         log_error "Old password still works after change"
         return 1
     fi
@@ -444,13 +507,12 @@ test_old_password_invalid() {
 test_password_change_wrong_current() {
     log_info "Testing password change with wrong current password..."
 
-    if [ -z "$AUTH_TOKEN" ]; then
-        local response=$(make_login_request "admin" "$CURRENT_PASSWORD")
-        AUTH_TOKEN=$(extract_token "$response")
-    fi
-
-    if [ -z "$AUTH_TOKEN" ]; then
-        log_error "Cannot get auth token"
+    # Always re-login with the known-good current password to ensure the
+    # cookie jar holds a valid session (prior tests may have written stale or
+    # failed-login cookies).
+    local login_response=$(make_login_request "admin" "$CURRENT_PASSWORD")
+    if ! echo "$login_response" | grep -q '"user"' || [ -z "$CSRF_TOKEN" ]; then
+        log_error "Cannot get auth session"
         return 1
     fi
 
@@ -467,7 +529,7 @@ test_password_change_wrong_current() {
 
     # If no error indicator, check if it actually succeeded (bad)
     local test_login=$(make_login_request "admin" "AnyPassword123!")
-    if echo "$test_login" | grep -q '"token"'; then
+    if echo "$test_login" | grep -q '"user"'; then
         log_error "Password was changed with wrong current password"
         return 1
     fi
@@ -483,13 +545,10 @@ test_password_change_wrong_current() {
 test_password_complexity() {
     log_info "Testing password complexity requirements..."
 
-    if [ -z "$AUTH_TOKEN" ]; then
-        local response=$(make_login_request "admin" "$CURRENT_PASSWORD")
-        AUTH_TOKEN=$(extract_token "$response")
-    fi
-
-    if [ -z "$AUTH_TOKEN" ]; then
-        log_warning "Cannot get auth token, skipping complexity test"
+    # Always re-establish a fresh authenticated session.
+    local login_response=$(make_login_request "admin" "$CURRENT_PASSWORD")
+    if ! echo "$login_response" | grep -q '"user"' || [ -z "$CSRF_TOKEN" ]; then
+        log_warning "Cannot get auth session, skipping complexity test"
         return 0
     fi
 
@@ -507,7 +566,7 @@ test_password_complexity() {
         if ! echo "$response" | grep -qiE '"error"|"message":".*characters'; then
             # Verify password wasn't changed by trying to login
             local test_login=$(make_login_request "admin" "$weak_pass")
-            if echo "$test_login" | grep -q '"token"'; then
+            if echo "$test_login" | grep -q '"user"'; then
                 log_error "Short password '$weak_pass' was accepted"
                 CURRENT_PASSWORD="$weak_pass"  # Update for cleanup
                 return 1
@@ -526,12 +585,10 @@ test_password_complexity() {
 test_second_password_change() {
     log_info "Testing second password change..."
 
-    # Login with current password
+    # Login with current password — populates COOKIE_JAR + CSRF_TOKEN
     local login_response=$(make_login_request "admin" "$CURRENT_PASSWORD")
-    AUTH_TOKEN=$(extract_token "$login_response")
-
-    if [ -z "$AUTH_TOKEN" ]; then
-        log_error "Cannot get auth token"
+    if ! echo "$login_response" | grep -q '"user"' || [ -z "$CSRF_TOKEN" ]; then
+        log_error "Cannot get auth session"
         return 1
     fi
 
@@ -549,7 +606,7 @@ test_second_password_change() {
 
     # Verify new password works
     local test_login=$(make_login_request "admin" "$SECOND_PASSWORD")
-    if echo "$test_login" | grep -q '"token"'; then
+    if echo "$test_login" | grep -q '"user"'; then
         CURRENT_PASSWORD="$SECOND_PASSWORD"
         log_success "Second password change successful"
         return 0
@@ -594,26 +651,36 @@ test_not_using_default_after_change() {
 # ============================================
 
 test_token_format() {
-    log_info "Testing token format (JWT)..."
+    log_info "Testing sanctuary_access cookie format (JWT)..."
 
-    if [ -z "$AUTH_TOKEN" ]; then
-        local response=$(make_login_request "admin" "$CURRENT_PASSWORD")
-        AUTH_TOKEN=$(extract_token "$response")
+    # Make sure we have a fresh session in the cookie jar.
+    if [ ! -f "$COOKIE_JAR" ]; then
+        make_login_request "admin" "${CURRENT_PASSWORD:-$DEFAULT_PASSWORD}" > /dev/null
     fi
 
-    if [ -z "$AUTH_TOKEN" ]; then
-        log_error "No token available"
+    if [ ! -f "$COOKIE_JAR" ]; then
+        log_error "No cookie jar available"
+        return 1
+    fi
+
+    # Pull the sanctuary_access cookie value (Netscape jar — 6th field is name,
+    # 7th is value). Same awk pattern as extract_csrf_token.
+    local access_token
+    access_token=$(awk -F'\t' '$6 == "sanctuary_access" { print $7 }' "$COOKIE_JAR" | tail -n 1)
+
+    if [ -z "$access_token" ]; then
+        log_error "sanctuary_access cookie not found in jar"
         return 1
     fi
 
     # JWT tokens have 3 parts separated by dots
-    local parts=$(echo "$AUTH_TOKEN" | tr '.' '\n' | wc -l)
+    local parts=$(echo "$access_token" | tr '.' '\n' | wc -l)
 
     if [ "$parts" -eq 3 ]; then
-        log_success "Token is valid JWT format (3 parts)"
+        log_success "Cookie is valid JWT format (3 parts)"
         return 0
     else
-        log_error "Token is not valid JWT format (expected 3 parts, got $parts)"
+        log_error "Cookie is not valid JWT format (expected 3 parts, got $parts)"
         return 1
     fi
 }
@@ -638,9 +705,8 @@ cleanup_reset_password() {
 
     # Login with current password
     local login_response=$(make_login_request "admin" "$CURRENT_PASSWORD")
-    AUTH_TOKEN=$(extract_token "$login_response")
 
-    if [ -z "$AUTH_TOKEN" ]; then
+    if ! echo "$login_response" | grep -q '"user"' || [ -z "$CSRF_TOKEN" ]; then
         log_warning "Cannot reset password - unable to login (may be rate limited)"
         return 0
     fi
@@ -657,7 +723,7 @@ cleanup_reset_password() {
 
     # Verify
     local test_login=$(make_login_request "admin" "$DEFAULT_PASSWORD")
-    if echo "$test_login" | grep -q '"token"'; then
+    if echo "$test_login" | grep -q '"user"'; then
         log_success "Password reset to default"
     else
         log_warning "Could not reset password to default"
