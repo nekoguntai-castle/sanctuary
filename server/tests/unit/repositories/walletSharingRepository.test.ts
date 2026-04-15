@@ -25,7 +25,7 @@ vi.mock('../../../src/models/prisma', () => ({
   },
 }));
 
-vi.mock('../../../src/services/accessControl', () => ({
+vi.mock('../../../src/infrastructure/accessCache', () => ({
   invalidateWalletAccessCache: mockInvalidateWalletAccessCache,
   invalidateUserAccessCache: mockInvalidateUserAccessCache,
 }));

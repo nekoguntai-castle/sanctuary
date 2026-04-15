@@ -22,13 +22,10 @@ const {
   collectorMap: new Map<string, (ctx: any) => Promise<Record<string, unknown>>>(),
 }));
 
-vi.mock('../../../../src/api/health/systemChecks', () => ({
+vi.mock('../../../../src/services/health', () => ({
   checkDatabase: mockCheckDatabase,
   checkDiskSpace: mockCheckDiskSpace,
   checkMemory: mockCheckMemory,
-}));
-
-vi.mock('../../../../src/api/health/serviceChecks', () => ({
   checkElectrum: mockCheckElectrum,
   checkWebSocket: mockCheckWebSocket,
   checkSync: mockCheckSync,
