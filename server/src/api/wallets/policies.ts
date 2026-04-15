@@ -10,10 +10,8 @@ import { z } from 'zod';
 import { requireWalletAccess } from '../../middleware/walletAccess';
 import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
-import { ErrorCodes, InvalidInputError, NotFoundError } from '../../errors/ApiError';
+import { ErrorCodes } from '../../errors/ApiError';
 import { vaultPolicyService, policyEvaluationEngine } from '../../services/vaultPolicy';
-import { policyRepository } from '../../repositories/policyRepository';
-import { walletRepository } from '../../repositories/walletRepository';
 import { auditService, AuditAction, AuditCategory } from '../../services/auditService';
 import type { CreatePolicyInput, UpdatePolicyInput } from '../../services/vaultPolicy/types';
 
@@ -115,7 +113,7 @@ router.get('/:walletId/policies/events', requireWalletAccess('view'), asyncHandl
   const { limit: clampedLimit, offset: clampedOffset } = PolicyEventPaginationSchema.safeParse({ limit, offset }).data
     ?? { limit: 50, offset: 0 };
 
-  const result = await policyRepository.findPolicyEvents(walletId, {
+  const result = await vaultPolicyService.getWalletPolicyEvents(walletId, {
     policyId: policyId as string | undefined,
     eventType: eventType as string | undefined,
     from: from ? new Date(from as string) : undefined,
@@ -166,11 +164,8 @@ router.get('/:walletId/policies', requireWalletAccess('view'), asyncHandler(asyn
   const walletId = req.params.walletId;
   const includeInherited = req.query.includeInherited !== 'false';
 
-  const wallet = await walletRepository.findById(walletId);
-
-  const policies = await vaultPolicyService.getWalletPolicies(walletId, {
+  const policies = await vaultPolicyService.listWalletPolicies(walletId, {
     includeInherited,
-    walletGroupId: wallet?.groupId,
   });
 
   res.json({ policies });
@@ -277,11 +272,9 @@ router.get('/:walletId/policies/:policyId/addresses', requireWalletAccess('view'
   const { walletId, policyId } = req.params;
   const listType = req.query.listType as string | undefined;
 
-  // Verify policy belongs to this wallet
-  await vaultPolicyService.getPolicyInWallet(policyId, walletId);
-
-  const addresses = await policyRepository.findPolicyAddresses(
+  const addresses = await vaultPolicyService.listPolicyAddressesInWallet(
     policyId,
+    walletId,
     listType === 'allow' || listType === 'deny' ? listType : undefined
   );
 
@@ -298,21 +291,14 @@ router.post('/:walletId/policies/:policyId/addresses', requireWalletAccess('owne
   const { walletId, policyId } = req.params;
   const userId = req.user!.userId;
 
-  // Verify policy belongs to this wallet and is address_control type
-  const policy = await vaultPolicyService.getPolicyInWallet(policyId, walletId);
-  if (policy.type !== 'address_control') {
-    throw new InvalidInputError('Address lists can only be managed on address_control policies');
-  }
-
   const { address, label, listType } = req.body;
 
-  const policyAddress = await policyRepository.createPolicyAddress({
+  const policyAddress = await vaultPolicyService.createPolicyAddressInWallet(
     policyId,
-    address,
-    label,
-    listType,
-    addedBy: userId,
-  });
+    walletId,
+    userId,
+    { address, label, listType }
+  );
 
   res.status(201).json({ address: policyAddress });
 }));
@@ -323,16 +309,7 @@ router.post('/:walletId/policies/:policyId/addresses', requireWalletAccess('owne
 router.delete('/:walletId/policies/:policyId/addresses/:addressId', requireWalletAccess('owner'), asyncHandler(async (req, res) => {
   const { walletId, policyId, addressId } = req.params;
 
-  // Verify policy belongs to this wallet
-  await vaultPolicyService.getPolicyInWallet(policyId, walletId);
-
-  // Verify address belongs to this policy
-  const address = await policyRepository.findPolicyAddressById(addressId);
-  if (!address || address.policyId !== policyId) {
-    throw new NotFoundError('Address not found in this policy');
-  }
-
-  await policyRepository.removePolicyAddress(addressId);
+  await vaultPolicyService.removePolicyAddressFromWallet(policyId, walletId, addressId);
   res.json({ success: true });
 }));
 

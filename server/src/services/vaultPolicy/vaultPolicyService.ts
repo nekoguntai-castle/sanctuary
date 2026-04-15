@@ -4,8 +4,9 @@
  * Business logic for policy CRUD, inheritance resolution, and validation.
  */
 
-import type { VaultPolicy, Prisma } from '../../generated/prisma/client';
+import type { PolicyAddress, PolicyEvent, VaultPolicy, Prisma } from '../../generated/prisma/client';
 import { policyRepository } from '../../repositories/policyRepository';
+import { walletRepository } from '../../repositories/walletRepository';
 import { NotFoundError, ForbiddenError, InvalidInputError } from '../../errors';
 import { createLogger } from '../../utils/logger';
 import {
@@ -22,6 +23,7 @@ import type {
   TimeDelayConfig,
   AddressControlConfig,
   VelocityConfig,
+  AddressListType,
 } from './types';
 
 const log = createLogger('VAULT_POLICY:SVC');
@@ -68,6 +70,38 @@ export async function getActivePoliciesForWallet(
     walletGroupId,
   });
   return all.filter(p => p.enabled);
+}
+
+/**
+ * List wallet policies for an API caller without exposing wallet lookup details
+ * to the route layer.
+ */
+export async function listWalletPolicies(
+  walletId: string,
+  options?: { includeInherited?: boolean }
+): Promise<VaultPolicy[]> {
+  const wallet = await walletRepository.findById(walletId);
+  return getWalletPolicies(walletId, {
+    includeInherited: options?.includeInherited,
+    walletGroupId: wallet?.groupId,
+  });
+}
+
+/**
+ * List policy events for a wallet using the repository pagination/filter contract.
+ */
+export async function getWalletPolicyEvents(
+  walletId: string,
+  options?: {
+    policyId?: string;
+    eventType?: string;
+    from?: Date;
+    to?: Date;
+    limit?: number;
+    offset?: number;
+  }
+): Promise<{ events: PolicyEvent[]; total: number }> {
+  return policyRepository.findPolicyEvents(walletId, options);
 }
 
 /**
@@ -200,6 +234,59 @@ export async function deletePolicy(policyId: string, walletId?: string): Promise
   await policyRepository.removePolicy(policyId);
 
   log.info('Deleted vault policy', { policyId, walletId });
+}
+
+/**
+ * List allow/deny addresses after verifying the policy belongs to the wallet.
+ */
+export async function listPolicyAddressesInWallet(
+  policyId: string,
+  walletId: string,
+  listType?: AddressListType
+): Promise<PolicyAddress[]> {
+  await getPolicyInWallet(policyId, walletId);
+  return policyRepository.findPolicyAddresses(policyId, listType);
+}
+
+/**
+ * Add an allow/deny address to an address-control policy in the requested wallet.
+ */
+export async function createPolicyAddressInWallet(
+  policyId: string,
+  walletId: string,
+  userId: string,
+  input: { address: string; label?: string; listType: AddressListType }
+): Promise<PolicyAddress> {
+  const policy = await getPolicyInWallet(policyId, walletId);
+  if (policy.type !== 'address_control') {
+    throw new InvalidInputError('Address lists can only be managed on address_control policies');
+  }
+
+  return policyRepository.createPolicyAddress({
+    policyId,
+    address: input.address,
+    label: input.label,
+    listType: input.listType,
+    addedBy: userId,
+  });
+}
+
+/**
+ * Remove an address entry only when it belongs to the requested wallet policy.
+ */
+export async function removePolicyAddressFromWallet(
+  policyId: string,
+  walletId: string,
+  addressId: string
+): Promise<void> {
+  await getPolicyInWallet(policyId, walletId);
+
+  const address = await policyRepository.findPolicyAddressById(addressId);
+  if (!address || address.policyId !== policyId) {
+    throw new NotFoundError('Address not found in this policy');
+  }
+
+  await policyRepository.removePolicyAddress(addressId);
 }
 
 // ========================================
@@ -357,11 +444,16 @@ const hasPositiveLimit = (...limits: Array<number | undefined>): boolean =>
 export const vaultPolicyService = {
   getWalletPolicies,
   getActivePoliciesForWallet,
+  listWalletPolicies,
+  getWalletPolicyEvents,
   getPolicy,
   getPolicyInWallet,
   createPolicy,
   updatePolicy,
   deletePolicy,
+  listPolicyAddressesInWallet,
+  createPolicyAddressInWallet,
+  removePolicyAddressFromWallet,
   getSystemPolicies,
   getGroupPolicies,
 };

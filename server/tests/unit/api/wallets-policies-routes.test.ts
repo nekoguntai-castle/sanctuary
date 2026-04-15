@@ -1,34 +1,31 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import express, { type Express } from 'express';
 import request from 'supertest';
+import { InvalidInputError, NotFoundError } from '../../../src/errors/ApiError';
 
 const {
-  mockGetWalletPolicies,
+  mockListWalletPolicies,
+  mockGetWalletPolicyEvents,
   mockGetPolicyInWallet,
   mockCreatePolicy,
   mockUpdatePolicy,
   mockDeletePolicy,
   mockEvaluatePolicies,
-  mockFindPolicyEvents,
-  mockFindPolicyAddresses,
-  mockCreatePolicyAddress,
-  mockRemovePolicyAddress,
-  mockFindPolicyAddressById,
-  mockFindById,
+  mockListPolicyAddressesInWallet,
+  mockCreatePolicyAddressInWallet,
+  mockRemovePolicyAddressFromWallet,
   mockLogFromRequest,
 } = vi.hoisted(() => ({
-  mockGetWalletPolicies: vi.fn(),
+  mockListWalletPolicies: vi.fn(),
+  mockGetWalletPolicyEvents: vi.fn(),
   mockGetPolicyInWallet: vi.fn(),
   mockCreatePolicy: vi.fn(),
   mockUpdatePolicy: vi.fn(),
   mockDeletePolicy: vi.fn(),
   mockEvaluatePolicies: vi.fn(),
-  mockFindPolicyEvents: vi.fn(),
-  mockFindPolicyAddresses: vi.fn(),
-  mockCreatePolicyAddress: vi.fn(),
-  mockRemovePolicyAddress: vi.fn(),
-  mockFindPolicyAddressById: vi.fn(),
-  mockFindById: vi.fn(),
+  mockListPolicyAddressesInWallet: vi.fn(),
+  mockCreatePolicyAddressInWallet: vi.fn(),
+  mockRemovePolicyAddressFromWallet: vi.fn(),
   mockLogFromRequest: vi.fn(),
 }));
 
@@ -41,30 +38,18 @@ vi.mock('../../../src/middleware/walletAccess', () => ({
 
 vi.mock('../../../src/services/vaultPolicy', () => ({
   vaultPolicyService: {
-    getWalletPolicies: mockGetWalletPolicies,
+    listWalletPolicies: mockListWalletPolicies,
+    getWalletPolicyEvents: mockGetWalletPolicyEvents,
     getPolicyInWallet: mockGetPolicyInWallet,
     createPolicy: mockCreatePolicy,
     updatePolicy: mockUpdatePolicy,
     deletePolicy: mockDeletePolicy,
+    listPolicyAddressesInWallet: mockListPolicyAddressesInWallet,
+    createPolicyAddressInWallet: mockCreatePolicyAddressInWallet,
+    removePolicyAddressFromWallet: mockRemovePolicyAddressFromWallet,
   },
   policyEvaluationEngine: {
     evaluatePolicies: mockEvaluatePolicies,
-  },
-}));
-
-vi.mock('../../../src/repositories/policyRepository', () => ({
-  policyRepository: {
-    findPolicyEvents: mockFindPolicyEvents,
-    findPolicyAddresses: mockFindPolicyAddresses,
-    createPolicyAddress: mockCreatePolicyAddress,
-    removePolicyAddress: mockRemovePolicyAddress,
-    findPolicyAddressById: mockFindPolicyAddressById,
-  },
-}));
-
-vi.mock('../../../src/repositories/walletRepository', () => ({
-  walletRepository: {
-    findById: mockFindById,
   },
 }));
 
@@ -124,13 +109,13 @@ describe('Wallet Policies Routes', () => {
   describe('GET /:walletId/policies/events', () => {
     it('returns policy events with default pagination', async () => {
       const eventsResult = { events: [{ id: 'evt-1' }], total: 1 };
-      mockFindPolicyEvents.mockResolvedValue(eventsResult);
+      mockGetWalletPolicyEvents.mockResolvedValue(eventsResult);
 
       const response = await request(app).get('/api/v1/wallets/wallet-1/policies/events');
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual(eventsResult);
-      expect(mockFindPolicyEvents).toHaveBeenCalledWith('wallet-1', {
+      expect(mockGetWalletPolicyEvents).toHaveBeenCalledWith('wallet-1', {
         policyId: undefined,
         eventType: undefined,
         from: undefined,
@@ -141,7 +126,7 @@ describe('Wallet Policies Routes', () => {
     });
 
     it('passes query filters to findPolicyEvents', async () => {
-      mockFindPolicyEvents.mockResolvedValue({ events: [], total: 0 });
+      mockGetWalletPolicyEvents.mockResolvedValue({ events: [], total: 0 });
 
       const response = await request(app)
         .get('/api/v1/wallets/wallet-1/policies/events')
@@ -155,7 +140,7 @@ describe('Wallet Policies Routes', () => {
         });
 
       expect(response.status).toBe(200);
-      expect(mockFindPolicyEvents).toHaveBeenCalledWith('wallet-1', {
+      expect(mockGetWalletPolicyEvents).toHaveBeenCalledWith('wallet-1', {
         policyId: 'pol-1',
         eventType: 'trigger',
         from: new Date('2025-01-01T00:00:00Z'),
@@ -166,67 +151,67 @@ describe('Wallet Policies Routes', () => {
     });
 
     it('clamps limit to MAX_PAGE_LIMIT (200)', async () => {
-      mockFindPolicyEvents.mockResolvedValue({ events: [], total: 0 });
+      mockGetWalletPolicyEvents.mockResolvedValue({ events: [], total: 0 });
 
       await request(app)
         .get('/api/v1/wallets/wallet-1/policies/events')
         .query({ limit: '500' });
 
-      expect(mockFindPolicyEvents).toHaveBeenCalledWith('wallet-1',
+      expect(mockGetWalletPolicyEvents).toHaveBeenCalledWith('wallet-1',
         expect.objectContaining({ limit: 200 })
       );
     });
 
     it('clamps limit minimum to 1', async () => {
-      mockFindPolicyEvents.mockResolvedValue({ events: [], total: 0 });
+      mockGetWalletPolicyEvents.mockResolvedValue({ events: [], total: 0 });
 
       await request(app)
         .get('/api/v1/wallets/wallet-1/policies/events')
         .query({ limit: '0' });
 
-      expect(mockFindPolicyEvents).toHaveBeenCalledWith('wallet-1',
+      expect(mockGetWalletPolicyEvents).toHaveBeenCalledWith('wallet-1',
         expect.objectContaining({ limit: 1 })
       );
     });
 
     it('falls back to default limit when NaN', async () => {
-      mockFindPolicyEvents.mockResolvedValue({ events: [], total: 0 });
+      mockGetWalletPolicyEvents.mockResolvedValue({ events: [], total: 0 });
 
       await request(app)
         .get('/api/v1/wallets/wallet-1/policies/events')
         .query({ limit: 'abc' });
 
-      expect(mockFindPolicyEvents).toHaveBeenCalledWith('wallet-1',
+      expect(mockGetWalletPolicyEvents).toHaveBeenCalledWith('wallet-1',
         expect.objectContaining({ limit: 50 })
       );
     });
 
     it('falls back to default offset when NaN', async () => {
-      mockFindPolicyEvents.mockResolvedValue({ events: [], total: 0 });
+      mockGetWalletPolicyEvents.mockResolvedValue({ events: [], total: 0 });
 
       await request(app)
         .get('/api/v1/wallets/wallet-1/policies/events')
         .query({ offset: 'abc' });
 
-      expect(mockFindPolicyEvents).toHaveBeenCalledWith('wallet-1',
+      expect(mockGetWalletPolicyEvents).toHaveBeenCalledWith('wallet-1',
         expect.objectContaining({ offset: 0 })
       );
     });
 
     it('clamps negative offset to 0', async () => {
-      mockFindPolicyEvents.mockResolvedValue({ events: [], total: 0 });
+      mockGetWalletPolicyEvents.mockResolvedValue({ events: [], total: 0 });
 
       await request(app)
         .get('/api/v1/wallets/wallet-1/policies/events')
         .query({ offset: '-5' });
 
-      expect(mockFindPolicyEvents).toHaveBeenCalledWith('wallet-1',
+      expect(mockGetWalletPolicyEvents).toHaveBeenCalledWith('wallet-1',
         expect.objectContaining({ offset: 0 })
       );
     });
 
     it('returns 500 when findPolicyEvents throws', async () => {
-      mockFindPolicyEvents.mockRejectedValue(new Error('db failure'));
+      mockGetWalletPolicyEvents.mockRejectedValue(new Error('db failure'));
 
       const response = await request(app).get('/api/v1/wallets/wallet-1/policies/events');
 
@@ -240,7 +225,7 @@ describe('Wallet Policies Routes', () => {
   // ========================================
   describe('POST /:walletId/policies/evaluate', () => {
     it('evaluates policies for a valid request', async () => {
-      const evalResult = { allowed: true, triggeredPolicies: [] };
+      const evalResult = { allowed: true, triggered: [] };
       mockEvaluatePolicies.mockResolvedValue(evalResult);
 
       const response = await request(app)
@@ -384,50 +369,32 @@ describe('Wallet Policies Routes', () => {
   describe('GET /:walletId/policies', () => {
     it('lists policies including inherited by default', async () => {
       const policies = [{ id: 'pol-1', name: 'Spending Limit' }];
-      mockFindById.mockResolvedValue({ id: 'wallet-1', groupId: 'group-1' });
-      mockGetWalletPolicies.mockResolvedValue(policies);
+      mockListWalletPolicies.mockResolvedValue(policies);
 
       const response = await request(app).get('/api/v1/wallets/wallet-1/policies');
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual({ policies });
-      expect(mockFindById).toHaveBeenCalledWith('wallet-1');
-      expect(mockGetWalletPolicies).toHaveBeenCalledWith('wallet-1', {
+      expect(mockListWalletPolicies).toHaveBeenCalledWith('wallet-1', {
         includeInherited: true,
-        walletGroupId: 'group-1',
       });
     });
 
     it('excludes inherited when includeInherited=false', async () => {
-      mockFindById.mockResolvedValue({ id: 'wallet-1', groupId: null });
-      mockGetWalletPolicies.mockResolvedValue([]);
+      mockListWalletPolicies.mockResolvedValue([]);
 
       const response = await request(app)
         .get('/api/v1/wallets/wallet-1/policies')
         .query({ includeInherited: 'false' });
 
       expect(response.status).toBe(200);
-      expect(mockGetWalletPolicies).toHaveBeenCalledWith('wallet-1', {
+      expect(mockListWalletPolicies).toHaveBeenCalledWith('wallet-1', {
         includeInherited: false,
-        walletGroupId: null,
-      });
-    });
-
-    it('handles wallet not found (null from findById)', async () => {
-      mockFindById.mockResolvedValue(null);
-      mockGetWalletPolicies.mockResolvedValue([]);
-
-      const response = await request(app).get('/api/v1/wallets/wallet-1/policies');
-
-      expect(response.status).toBe(200);
-      expect(mockGetWalletPolicies).toHaveBeenCalledWith('wallet-1', {
-        includeInherited: true,
-        walletGroupId: undefined,
       });
     });
 
     it('returns 500 when service throws', async () => {
-      mockFindById.mockRejectedValue(new Error('db error'));
+      mockListWalletPolicies.mockRejectedValue(new Error('db error'));
 
       const response = await request(app).get('/api/v1/wallets/wallet-1/policies');
 
@@ -683,67 +650,51 @@ describe('Wallet Policies Routes', () => {
   describe('GET /:walletId/policies/:policyId/addresses', () => {
     it('lists addresses for a policy', async () => {
       const addresses = [{ id: 'addr-1', address: 'tb1qfoo', listType: 'allow' }];
-      mockGetPolicyInWallet.mockResolvedValue({ id: 'pol-1', walletId: 'wallet-1' });
-      mockFindPolicyAddresses.mockResolvedValue(addresses);
+      mockListPolicyAddressesInWallet.mockResolvedValue(addresses);
 
       const response = await request(app)
         .get('/api/v1/wallets/wallet-1/policies/pol-1/addresses');
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual({ addresses });
-      expect(mockGetPolicyInWallet).toHaveBeenCalledWith('pol-1', 'wallet-1');
-      expect(mockFindPolicyAddresses).toHaveBeenCalledWith('pol-1', undefined);
+      expect(mockListPolicyAddressesInWallet).toHaveBeenCalledWith('pol-1', 'wallet-1', undefined);
     });
 
     it('filters by listType=allow', async () => {
-      mockGetPolicyInWallet.mockResolvedValue({ id: 'pol-1' });
-      mockFindPolicyAddresses.mockResolvedValue([]);
+      mockListPolicyAddressesInWallet.mockResolvedValue([]);
 
       const response = await request(app)
         .get('/api/v1/wallets/wallet-1/policies/pol-1/addresses')
         .query({ listType: 'allow' });
 
       expect(response.status).toBe(200);
-      expect(mockFindPolicyAddresses).toHaveBeenCalledWith('pol-1', 'allow');
+      expect(mockListPolicyAddressesInWallet).toHaveBeenCalledWith('pol-1', 'wallet-1', 'allow');
     });
 
     it('filters by listType=deny', async () => {
-      mockGetPolicyInWallet.mockResolvedValue({ id: 'pol-1' });
-      mockFindPolicyAddresses.mockResolvedValue([]);
+      mockListPolicyAddressesInWallet.mockResolvedValue([]);
 
       const response = await request(app)
         .get('/api/v1/wallets/wallet-1/policies/pol-1/addresses')
         .query({ listType: 'deny' });
 
       expect(response.status).toBe(200);
-      expect(mockFindPolicyAddresses).toHaveBeenCalledWith('pol-1', 'deny');
+      expect(mockListPolicyAddressesInWallet).toHaveBeenCalledWith('pol-1', 'wallet-1', 'deny');
     });
 
     it('ignores invalid listType values', async () => {
-      mockGetPolicyInWallet.mockResolvedValue({ id: 'pol-1' });
-      mockFindPolicyAddresses.mockResolvedValue([]);
+      mockListPolicyAddressesInWallet.mockResolvedValue([]);
 
       const response = await request(app)
         .get('/api/v1/wallets/wallet-1/policies/pol-1/addresses')
         .query({ listType: 'invalid' });
 
       expect(response.status).toBe(200);
-      expect(mockFindPolicyAddresses).toHaveBeenCalledWith('pol-1', undefined);
+      expect(mockListPolicyAddressesInWallet).toHaveBeenCalledWith('pol-1', 'wallet-1', undefined);
     });
 
-    it('returns 500 when getPolicyInWallet throws', async () => {
-      mockGetPolicyInWallet.mockRejectedValue(new Error('not found'));
-
-      const response = await request(app)
-        .get('/api/v1/wallets/wallet-1/policies/pol-1/addresses');
-
-      expect(response.status).toBe(500);
-      expect(response.body.error).toBe('Internal');
-    });
-
-    it('returns 500 when findPolicyAddresses throws', async () => {
-      mockGetPolicyInWallet.mockResolvedValue({ id: 'pol-1' });
-      mockFindPolicyAddresses.mockRejectedValue(new Error('db error'));
+    it('returns 500 when the address service throws', async () => {
+      mockListPolicyAddressesInWallet.mockRejectedValue(new Error('db error'));
 
       const response = await request(app)
         .get('/api/v1/wallets/wallet-1/policies/pol-1/addresses');
@@ -758,9 +709,8 @@ describe('Wallet Policies Routes', () => {
   // ========================================
   describe('POST /:walletId/policies/:policyId/addresses', () => {
     it('adds an address to an address_control policy', async () => {
-      mockGetPolicyInWallet.mockResolvedValue({ id: 'pol-1', type: 'address_control' });
       const createdAddress = { id: 'addr-new', address: 'tb1qfoo', listType: 'allow', policyId: 'pol-1' };
-      mockCreatePolicyAddress.mockResolvedValue(createdAddress);
+      mockCreatePolicyAddressInWallet.mockResolvedValue(createdAddress);
 
       const response = await request(app)
         .post('/api/v1/wallets/wallet-1/policies/pol-1/addresses')
@@ -768,32 +718,38 @@ describe('Wallet Policies Routes', () => {
 
       expect(response.status).toBe(201);
       expect(response.body).toEqual({ address: createdAddress });
-      expect(mockGetPolicyInWallet).toHaveBeenCalledWith('pol-1', 'wallet-1');
-      expect(mockCreatePolicyAddress).toHaveBeenCalledWith({
-        policyId: 'pol-1',
-        address: 'tb1qfoo',
-        label: 'My Label',
-        listType: 'allow',
-        addedBy: 'user-1',
-      });
+      expect(mockCreatePolicyAddressInWallet).toHaveBeenCalledWith(
+        'pol-1',
+        'wallet-1',
+        'user-1',
+        {
+          address: 'tb1qfoo',
+          label: 'My Label',
+          listType: 'allow',
+        },
+      );
     });
 
     it('adds an address with deny listType', async () => {
-      mockGetPolicyInWallet.mockResolvedValue({ id: 'pol-1', type: 'address_control' });
-      mockCreatePolicyAddress.mockResolvedValue({ id: 'addr-new', listType: 'deny' });
+      mockCreatePolicyAddressInWallet.mockResolvedValue({ id: 'addr-new', listType: 'deny' });
 
       const response = await request(app)
         .post('/api/v1/wallets/wallet-1/policies/pol-1/addresses')
         .send({ address: 'tb1qbar', listType: 'deny' });
 
       expect(response.status).toBe(201);
-      expect(mockCreatePolicyAddress).toHaveBeenCalledWith(
+      expect(mockCreatePolicyAddressInWallet).toHaveBeenCalledWith(
+        'pol-1',
+        'wallet-1',
+        'user-1',
         expect.objectContaining({ listType: 'deny' })
       );
     });
 
     it('returns 400 when policy is not address_control type', async () => {
-      mockGetPolicyInWallet.mockResolvedValue({ id: 'pol-1', type: 'spending_limit' });
+      mockCreatePolicyAddressInWallet.mockRejectedValue(
+        new InvalidInputError('Address lists can only be managed on address_control policies'),
+      );
 
       const response = await request(app)
         .post('/api/v1/wallets/wallet-1/policies/pol-1/addresses')
@@ -804,8 +760,6 @@ describe('Wallet Policies Routes', () => {
     });
 
     it('returns 400 when address is missing', async () => {
-      mockGetPolicyInWallet.mockResolvedValue({ id: 'pol-1', type: 'address_control' });
-
       const response = await request(app)
         .post('/api/v1/wallets/wallet-1/policies/pol-1/addresses')
         .send({ listType: 'allow' });
@@ -815,8 +769,6 @@ describe('Wallet Policies Routes', () => {
     });
 
     it('returns 400 when listType is missing', async () => {
-      mockGetPolicyInWallet.mockResolvedValue({ id: 'pol-1', type: 'address_control' });
-
       const response = await request(app)
         .post('/api/v1/wallets/wallet-1/policies/pol-1/addresses')
         .send({ address: 'tb1qfoo' });
@@ -826,8 +778,6 @@ describe('Wallet Policies Routes', () => {
     });
 
     it('returns 400 when both address and listType are missing', async () => {
-      mockGetPolicyInWallet.mockResolvedValue({ id: 'pol-1', type: 'address_control' });
-
       const response = await request(app)
         .post('/api/v1/wallets/wallet-1/policies/pol-1/addresses')
         .send({});
@@ -837,8 +787,6 @@ describe('Wallet Policies Routes', () => {
     });
 
     it('returns 400 when address is not a string', async () => {
-      mockGetPolicyInWallet.mockResolvedValue({ id: 'pol-1', type: 'address_control' });
-
       const response = await request(app)
         .post('/api/v1/wallets/wallet-1/policies/pol-1/addresses')
         .send({ address: 12345, listType: 'allow' });
@@ -848,8 +796,6 @@ describe('Wallet Policies Routes', () => {
     });
 
     it('returns 400 when address exceeds 100 characters', async () => {
-      mockGetPolicyInWallet.mockResolvedValue({ id: 'pol-1', type: 'address_control' });
-
       const response = await request(app)
         .post('/api/v1/wallets/wallet-1/policies/pol-1/addresses')
         .send({ address: 'a'.repeat(101), listType: 'allow' });
@@ -859,8 +805,7 @@ describe('Wallet Policies Routes', () => {
     });
 
     it('accepts address at exactly 100 characters', async () => {
-      mockGetPolicyInWallet.mockResolvedValue({ id: 'pol-1', type: 'address_control' });
-      mockCreatePolicyAddress.mockResolvedValue({ id: 'addr-new' });
+      mockCreatePolicyAddressInWallet.mockResolvedValue({ id: 'addr-new' });
 
       const response = await request(app)
         .post('/api/v1/wallets/wallet-1/policies/pol-1/addresses')
@@ -870,8 +815,6 @@ describe('Wallet Policies Routes', () => {
     });
 
     it('returns 400 when listType is invalid', async () => {
-      mockGetPolicyInWallet.mockResolvedValue({ id: 'pol-1', type: 'address_control' });
-
       const response = await request(app)
         .post('/api/v1/wallets/wallet-1/policies/pol-1/addresses')
         .send({ address: 'tb1qfoo', listType: 'block' });
@@ -880,20 +823,8 @@ describe('Wallet Policies Routes', () => {
       expect(response.body.message).toBe('listType must be "allow" or "deny"');
     });
 
-    it('returns 500 when getPolicyInWallet throws', async () => {
-      mockGetPolicyInWallet.mockRejectedValue(new Error('not found'));
-
-      const response = await request(app)
-        .post('/api/v1/wallets/wallet-1/policies/pol-1/addresses')
-        .send({ address: 'tb1qfoo', listType: 'allow' });
-
-      expect(response.status).toBe(500);
-      expect(response.body.error).toBe('Internal');
-    });
-
-    it('returns 500 when createPolicyAddress throws', async () => {
-      mockGetPolicyInWallet.mockResolvedValue({ id: 'pol-1', type: 'address_control' });
-      mockCreatePolicyAddress.mockRejectedValue(new Error('db error'));
+    it('returns 500 when the address creation service throws', async () => {
+      mockCreatePolicyAddressInWallet.mockRejectedValue(new Error('db error'));
 
       const response = await request(app)
         .post('/api/v1/wallets/wallet-1/policies/pol-1/addresses')
@@ -909,23 +840,24 @@ describe('Wallet Policies Routes', () => {
   // ========================================
   describe('DELETE /:walletId/policies/:policyId/addresses/:addressId', () => {
     it('removes an address from a policy', async () => {
-      mockGetPolicyInWallet.mockResolvedValue({ id: 'pol-1', walletId: 'wallet-1' });
-      mockFindPolicyAddressById.mockResolvedValue({ id: 'addr-1', policyId: 'pol-1' });
-      mockRemovePolicyAddress.mockResolvedValue(undefined);
+      mockRemovePolicyAddressFromWallet.mockResolvedValue(undefined);
 
       const response = await request(app)
         .delete('/api/v1/wallets/wallet-1/policies/pol-1/addresses/addr-1');
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual({ success: true });
-      expect(mockGetPolicyInWallet).toHaveBeenCalledWith('pol-1', 'wallet-1');
-      expect(mockFindPolicyAddressById).toHaveBeenCalledWith('addr-1');
-      expect(mockRemovePolicyAddress).toHaveBeenCalledWith('addr-1');
+      expect(mockRemovePolicyAddressFromWallet).toHaveBeenCalledWith(
+        'pol-1',
+        'wallet-1',
+        'addr-1',
+      );
     });
 
     it('returns 404 when address is not found', async () => {
-      mockGetPolicyInWallet.mockResolvedValue({ id: 'pol-1', walletId: 'wallet-1' });
-      mockFindPolicyAddressById.mockResolvedValue(null);
+      mockRemovePolicyAddressFromWallet.mockRejectedValue(
+        new NotFoundError('Address not found in this policy'),
+      );
 
       const response = await request(app)
         .delete('/api/v1/wallets/wallet-1/policies/pol-1/addresses/addr-missing');
@@ -935,8 +867,9 @@ describe('Wallet Policies Routes', () => {
     });
 
     it('returns 404 when address belongs to a different policy', async () => {
-      mockGetPolicyInWallet.mockResolvedValue({ id: 'pol-1', walletId: 'wallet-1' });
-      mockFindPolicyAddressById.mockResolvedValue({ id: 'addr-1', policyId: 'pol-other' });
+      mockRemovePolicyAddressFromWallet.mockRejectedValue(
+        new NotFoundError('Address not found in this policy'),
+      );
 
       const response = await request(app)
         .delete('/api/v1/wallets/wallet-1/policies/pol-1/addresses/addr-1');
@@ -945,31 +878,8 @@ describe('Wallet Policies Routes', () => {
       expect(response.body.message).toBe('Address not found in this policy');
     });
 
-    it('returns 500 when getPolicyInWallet throws', async () => {
-      mockGetPolicyInWallet.mockRejectedValue(new Error('not found'));
-
-      const response = await request(app)
-        .delete('/api/v1/wallets/wallet-1/policies/pol-1/addresses/addr-1');
-
-      expect(response.status).toBe(500);
-      expect(response.body.error).toBe('Internal');
-    });
-
-    it('returns 500 when findPolicyAddressById throws', async () => {
-      mockGetPolicyInWallet.mockResolvedValue({ id: 'pol-1', walletId: 'wallet-1' });
-      mockFindPolicyAddressById.mockRejectedValue(new Error('db error'));
-
-      const response = await request(app)
-        .delete('/api/v1/wallets/wallet-1/policies/pol-1/addresses/addr-1');
-
-      expect(response.status).toBe(500);
-      expect(response.body.error).toBe('Internal');
-    });
-
-    it('returns 500 when removePolicyAddress throws', async () => {
-      mockGetPolicyInWallet.mockResolvedValue({ id: 'pol-1', walletId: 'wallet-1' });
-      mockFindPolicyAddressById.mockResolvedValue({ id: 'addr-1', policyId: 'pol-1' });
-      mockRemovePolicyAddress.mockRejectedValue(new Error('delete error'));
+    it('returns 500 when the address removal service throws', async () => {
+      mockRemovePolicyAddressFromWallet.mockRejectedValue(new Error('delete error'));
 
       const response = await request(app)
         .delete('/api/v1/wallets/wallet-1/policies/pol-1/addresses/addr-1');

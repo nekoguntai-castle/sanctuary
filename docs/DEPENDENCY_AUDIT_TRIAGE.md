@@ -1,12 +1,19 @@
 # Dependency Audit Triage
 
-Snapshot date: 2026-04-14
+Snapshot date: 2026-04-14 Pacific/Honolulu
 
 Commands run:
 - `npm audit` (repo root, `server/`, and `gateway/`) for the quality-gate view
 - `npm audit --omit=dev` (repo root)
 - `npm audit --omit=dev` (`server/`)
 - `npm audit --omit=dev --omit=optional` (`gateway/`)
+
+Latest freshness check:
+- Full unskipped `npm run quality` passed on 2026-04-14 Pacific/Honolulu. Its high-severity audit lane passed for root, server, and gateway while still surfacing the accepted lower-severity findings below.
+- `npm audit --omit=dev` at the repo root still reports `14 low` advisories in the hardware-wallet/browser-polyfill `elliptic` chain and no moderate/high/critical advisories.
+- `npm --prefix server audit --omit=dev` still reports `3 moderate` advisories through the Prisma tooling `@hono/node-server` chain. The only npm-proposed remediation remains a force/downgrade path to `prisma@6.19.3`.
+- `npm --prefix gateway audit --omit=dev --omit=optional` reports `0` vulnerabilities. This was rerun with registry access after a sandbox DNS failure.
+- Disposition is unchanged: `accept + monitor` for the remaining root low and server Prisma-tooling moderate advisories; gateway production optional-omitted install remains clean.
 
 ## Current state
 

@@ -8,9 +8,9 @@ Status: Draft
 **Grade**: A
 **Confidence**: High
 **Mode**: full
-**Commit**: working tree after 7a523585
+**Commit**: working tree after 4558470a
 
-The hard-fail caps from the prior run remain cleared. The score is unchanged from the last `91/A` working-tree assessment, but the evidence is stronger: oversized proof/generated files are classified, dependency advisory debt is triaged, full Docker install/upgrade e2e proof passed with external runtime secrets, browser-auth drift is executable, architecture dependency boundaries are enforced, Express route coverage is checked against OpenAPI in `npm run quality`, server background lifecycle wiring is tested, direct route-to-repository imports are blocked for new API routes, the route-to-repository exception baseline is lower after the admin settings, admin monitoring, and admin group service extractions, selected OpenAPI response-key parity guards cover `AdminSettings`, `AdminMonitoringServicesResponse`, `AdminGroup`, and `AdminGroupMember`, and the Phase 3 generated capacity proof passed after the lifecycle/startup change.
+The hard-fail caps from the prior run remain cleared. The score is unchanged from the last `91/A` working-tree assessment, but the evidence is stronger: oversized proof/generated files are classified, dependency advisory debt is freshly triaged, full Docker install/upgrade e2e proof passed with external runtime secrets, browser-auth drift is executable, architecture dependency boundaries are enforced, Express route coverage is checked against OpenAPI in `npm run quality`, server background lifecycle wiring is tested, direct route-to-repository imports are blocked for new API routes, the route-to-repository exception baseline is lower after the admin settings, admin monitoring, admin group, and wallet policy service extractions, selected OpenAPI response-key parity guards cover admin settings/monitoring/groups and wallet policy response envelopes, and the Phase 3 generated capacity proof passed after the lifecycle/startup change.
 
 ---
 
@@ -33,7 +33,7 @@ Notes:
 | --- | ---: | --- |
 | Correctness | 20/20 | Tests, typecheck, lint, browser-auth contract checks, architecture-boundary checks, OpenAPI route coverage, lifecycle wiring tests, and the browser-auth coverage gate pass. Suppression density remains low for the repo size and no active functional regression is visible in the measured suite. |
 | Reliability | 12/15 | Error handling and timeout/retry patterns are strong, including centralized auth-refresh policy and external-call backoff. Deductions remain for cold-path `process.exit` usage and some non-null assumptions in authenticated route code. |
-| Maintainability | 13/15 | Duplication is low at `2.22%`, the boundary checker passes `9` dependency rules across `1281` files and `5387` imports with `47` documented route-to-repository exceptions, naming is readable, and pinned `lizard 1.21.2` reports `0` warnings with `avg_ccn=1.35` and `max_ccn=15`. The largest physical file is now `2637` lines after the proof harness TLS fix, so mechanical god-file scoring remains capped even though every `>1000` line file is classified as proof/generated/test-fixture. |
+| Maintainability | 13/15 | Duplication is low at `2.21%`, the boundary checker passes `9` dependency rules across `1281` files and `5386` imports with `45` documented route-to-repository exceptions, naming is readable, and pinned `lizard 1.21.2` reports `0` warnings with `avg_ccn=1.35` and `max_ccn=15`. The largest physical file is now `2637` lines after the proof harness TLS fix, so mechanical god-file scoring remains capped even though every `>1000` line file is classified as proof/generated/test-fixture. |
 | Security | 14/15 | No high/critical audit findings and no `gitleaks` findings. Zod validation, CSRF/cookie policy, redaction, auth boundaries, and maintenance disk probing use safer fixed-argument paths; remaining deduction is for low/moderate dependency advisory debt. |
 | Performance | 9/10 | Request-facing paths use batching, async I/O, AbortSignal timeouts, retries, and backoff, and the Phase 3 generated capacity proof passed with 25k synthetic transactions and 100/100 two-backend WebSocket fanout. Remaining synchronous or shell/process work appears mostly in startup, admin, support, or maintenance paths. |
 | Test Quality | 13/15 | Coverage is now measured at `100%`, and the suite has broad behavioral and edge-case coverage. Notification toast timing and sidebar retry noise were reduced, but deductions remain for broader sleep/time patterns and recurring React `act(...)`/jsdom capability warnings. |
@@ -46,7 +46,7 @@ Notes:
 
 - vs 2026-04-14 (`cdfa959c`): overall `+22` (`69 -> 91`), grade `D -> A`, confidence `Medium -> High`.
 - vs latest full pre-follow-up report (`87/B`): overall `+4` from measured complexity and safer maintenance process execution.
-- vs prior working-tree report (`91/A`): overall `+0`; score is stable while evidence improved through large-file classification, dependency triage, Docker install/upgrade e2e proof, browser-auth contract checks, architecture-boundary checks, OpenAPI route coverage checks, lifecycle wiring tests, route-to-repository boundary enforcement, admin settings, admin monitoring, and admin group service extraction, selected admin settings/monitoring/group OpenAPI response-key parity, and fresh Phase 3 generated capacity proof.
+- vs prior working-tree report (`91/A`): overall `+0`; score is stable while evidence improved through large-file classification, dependency triage, Docker install/upgrade e2e proof, browser-auth contract checks, architecture-boundary checks, OpenAPI route coverage checks, lifecycle wiring tests, route-to-repository boundary enforcement, admin settings, admin monitoring, admin group, and wallet policy service extraction, selected admin/wallet policy OpenAPI response-key parity, reduced test-suite noise, and fresh Phase 3 generated capacity proof.
 - Hard-fail movement: `tests=fail -> pass`, `secrets=7 -> 0`, `coverage=unknown -> 100`.
 - Architecture-first movement: browser auth policy is centralized in `src/api/authPolicy.ts`; runtime secrets live outside the checkout by default; `docs/RUNTIME_SECRETS.md` defines the local runtime-secret contract; `server/src/services/maintenance/diskMonitoring.ts` uses `execFile` with fixed args; `server/src/infrastructure/accessCache.ts`, `server/src/validation/commonSchemas.ts`, and `server/src/services/health/` lower dependency direction; `npm run quality` owns repeatable quality and architecture evidence.
 
@@ -62,16 +62,18 @@ Notes:
 | lint | pass | `npm run lint` | Correctness 1.3 |
 | typecheck | pass | `npm run typecheck` | Correctness 1.2 |
 | browser_auth_contract | pass | `npm run check:browser-auth-contract`; `545` browser files scanned | Correctness 1.5 / Security 4.3 |
-| architecture_boundaries | pass | `npm run check:architecture-boundaries`; `1281` files / `5387` imports / `9` rules / `47` exceptions scanned | Maintainability 3.4 |
+| architecture_boundaries | pass | `npm run check:architecture-boundaries`; `1281` files / `5386` imports / `9` rules / `45` exceptions scanned | Maintainability 3.4 |
 | openapi_route_coverage | pass | `npm run check:openapi-route-coverage`; `288` Express routes / `284` OpenAPI operations / `4` documented exceptions | Correctness 1.5 / Maintainability 3.4 |
 | lifecycle_wiring | pass | `npm --prefix server run test:run -- tests/unit/services/serverBackgroundServices.test.ts tests/unit/services/serviceRegistry.test.ts tests/unit/services/startupManager.test.ts`; `31` tests | Reliability 2.2 / Maintainability 3.4 |
-| route_repository_boundary | pass | `npm run check:architecture-boundaries`; new direct API route-to-repository imports fail unless documented, current exception baseline `47` | Maintainability 3.4 |
+| route_repository_boundary | pass | `npm run check:architecture-boundaries`; new direct API route-to-repository imports fail unless documented, current exception baseline `45` | Maintainability 3.4 |
 | admin_settings_service_boundary | pass | `npm --prefix server run test:run -- tests/unit/services/adminSettingsService.test.ts`; settings defaults, redaction, encryption, cache clearing, and threshold validation live behind `server/src/services/adminSettingsService.ts` | Maintainability 3.4 / Security 4.3 |
 | admin_settings_openapi_runtime_key_parity | pass | `npx vitest run tests/unit/api/admin-routes.test.ts`; GET `/api/v1/admin/settings` asserts runtime response keys are documented by the `AdminSettings` OpenAPI schema | Correctness 1.5 |
 | admin_monitoring_service_boundary | pass | `npm --prefix server run test:run -- tests/unit/services/adminMonitoringService.test.ts`; monitoring URL overrides, Grafana settings, and health-status lookup live behind `server/src/services/adminMonitoringService.ts` | Maintainability 3.4 / Operational Readiness 7.4 |
 | admin_monitoring_openapi_runtime_key_parity | pass | `npx vitest run tests/unit/api/admin-monitoring-routes.test.ts`; GET `/api/v1/admin/monitoring/services` asserts response and service item runtime keys are documented by OpenAPI schemas | Correctness 1.5 |
 | admin_group_service_boundary | pass | `npm --prefix server run test:run -- tests/unit/services/adminGroupService.test.ts`; group persistence, member validation, membership mutation, and access-cache invalidation live behind `server/src/services/adminGroupService.ts` | Maintainability 3.4 / Security 4.3 |
 | admin_group_openapi_runtime_key_parity | pass | `npx vitest run tests/unit/api/admin-routes.test.ts`; GET `/api/v1/admin/groups` asserts group and member runtime keys are documented by OpenAPI schemas | Correctness 1.5 |
+| wallet_policy_service_boundary | pass | `npm --prefix server run test:run -- tests/unit/services/vaultPolicyService.test.ts`; wallet policy listing, event lookup, and address list mutations route through `server/src/services/vaultPolicy/vaultPolicyService.ts` | Maintainability 3.4 / Security 4.3 |
+| wallet_policy_openapi_runtime_key_parity | pass | `npx vitest run tests/unit/api/openapi.test.ts`; wallet policy event/evaluation/list/detail/address/delete response envelopes assert documented runtime keys | Correctness 1.5 |
 | phase3_compose_capacity_proof | pass | `docs/plans/phase3-compose-benchmark-smoke-2026-04-15T06-25-20-675Z.md`; 25k synthetic tx, p95 `70ms`, p99 `77.17ms`, 100/100 fanout | Performance 5.1 / Operational Readiness 7.1 |
 | coverage | 100% | `npm run test:coverage`; V8 coverage summary | Test Quality 6.1 |
 | security_high | 0 | `npm run quality` audit lane with `--audit-level=high` for root, server, and gateway; lower-severity advisories remain | Security 4.1 |
@@ -81,7 +83,7 @@ Notes:
 | lizard_warning_count | 0 | `npm run quality` with pinned `lizard==1.21.2` | Maintainability 3.1 |
 | lizard_avg_ccn | 1.35 | `lizard --csv` over quality-gate exclusions | Maintainability 3.1 |
 | lizard_max_ccn | 15 | `lizard --csv` over quality-gate exclusions | Maintainability 3.1 |
-| duplication_pct | 2.22 | `npm run quality` jscpd lane; `5126/230920` duplicated lines, `264` clones, `1487` files | Maintainability 3.2 |
+| duplication_pct | 2.21 | `npm run quality` jscpd lane; `5128/232007` duplicated lines, `264` clones, `1493` files | Maintainability 3.2 |
 | largest_file_lines | 2637 | `wc -l`; `scripts/perf/phase3-compose-benchmark-smoke.mjs` | Maintainability 3.3 |
 | large_file_classification | pass | `npm run quality`; `4` files over `1000` lines, all classified, `0` unclassified oversized files | Maintainability 3.3 |
 | docker_install_e2e | pass | `HTTPS_PORT=18443 HTTP_PORT=18080 ./tests/install/e2e/install-script.test.sh`; `9` tests | Operational Readiness 7.1 |
@@ -104,7 +106,7 @@ Notes:
 - **[2.1] Error handling quality - High -> +6**: `server/src/errors/errorHandler.ts`, gateway request logging, API client error wrapping, and service-level catch/log patterns provide contextual failures instead of silent drops.
 - **[2.2] Timeouts and retries - High -> +4**: `src/api/client.ts`, `src/api/refresh.ts`, `ai-proxy/src/index.ts`, Electrum clients/pools, and gateway backend calls use explicit retries, backoff, lock timeouts, or abort behavior.
 - **[2.3] Crash-prone paths - Medium -> +2**: production startup/shutdown code still uses `process.exit` in `server/src/index.ts`, `server/src/worker.ts`, `gateway/src/index.ts`, and `ai-proxy/src/index.ts`; most are controlled fatal paths, but not zero.
-- **[3.4] Architecture clarity - High -> +3**: frontend API policy, browser refresh behavior, gateway proxying, backend routes, repositories, workers, shared schemas, runtime-secret ownership, lifecycle wiring, dependency direction, route-to-repository exceptions, admin settings service ownership, admin monitoring service ownership, admin group service ownership, and route documentation now have executable boundaries through `scripts/check-browser-auth-contract.mjs`, `scripts/check-architecture-boundaries.mjs`, `scripts/check-openapi-route-coverage.mjs`, `server/tests/unit/services/serverBackgroundServices.test.ts`, `server/tests/unit/services/adminSettingsService.test.ts`, `server/tests/unit/services/adminMonitoringService.test.ts`, and `server/tests/unit/services/adminGroupService.test.ts`.
+- **[3.4] Architecture clarity - High -> +3**: frontend API policy, browser refresh behavior, gateway proxying, backend routes, repositories, workers, shared schemas, runtime-secret ownership, lifecycle wiring, dependency direction, route-to-repository exceptions, admin settings service ownership, admin monitoring service ownership, admin group service ownership, wallet policy service ownership, and route documentation now have executable boundaries through `scripts/check-browser-auth-contract.mjs`, `scripts/check-architecture-boundaries.mjs`, `scripts/check-openapi-route-coverage.mjs`, `server/tests/unit/services/serverBackgroundServices.test.ts`, `server/tests/unit/services/adminSettingsService.test.ts`, `server/tests/unit/services/adminMonitoringService.test.ts`, `server/tests/unit/services/adminGroupService.test.ts`, and `server/tests/unit/services/vaultPolicyService.test.ts`.
 - **[3.5] Readability/naming - High -> +2**: sampled modules such as `src/api/authPolicy.ts`, `src/api/refresh.ts`, `shared/utils/redact.ts`, and `gateway/src/middleware/validateRequest.ts` use direct names and comments only where policy or security behavior needs context.
 - **[4.3] Input validation quality - High -> +3**: gateway and backend trust boundaries use Zod schemas and validation middleware in `gateway/src/middleware/validateRequest.ts`, `server/src/middleware/validate.ts`, `shared/schemas/mobileApiRequests.ts`, and Electrum response validation.
 - **[4.4] Safe system/API usage - High -> +2**: no user-fed `eval` or DOM injection path was found, Redis Lua usage is fixed-script infrastructure, and `server/src/services/maintenance/diskMonitoring.ts` now uses `execFile` with fixed argument arrays for Docker and `df`.
@@ -113,7 +115,7 @@ Notes:
 - **[5.3] No blocking in hot paths - Medium -> +1**: synchronous reads and process calls exist mainly in startup, support package, admin/version, and maintenance code, while the main request paths remain async.
 - **[6.2] Test structure - High -> +4**: tests are split into API, component, hook, service, backend, gateway, install, e2e, and contract-focused suites with clear behavioral names.
 - **[6.3] Edge cases covered - High -> +3**: tests cover error branches, empty states, invalid input, retries, auth refresh, CSRF cookie parsing, hardware-wallet adapters, backup/restore, WebSocket behavior, and route contracts.
-- **[6.4] No flaky patterns - Medium -> +1**: targeted toast timer and sidebar API retry noise were reduced, but recurring React `act(...)`, jsdom canvas/navigation warnings, and remaining sleep/time patterns show the suite is strong but not cleanly deterministic/noise-free.
+- **[6.4] No flaky patterns - Medium -> +1**: targeted toast timer, sidebar API retry noise, jsdom canvas warnings, and stale OpenAPI push-route assertions were reduced, but recurring React `act(...)`, jsdom navigation/SVG warnings, and remaining sleep/time patterns show the suite is strong but not cleanly deterministic/noise-free.
 - **[7.4] Logging quality - High -> +3**: backend and gateway logging use module-scoped loggers with structured metadata and shared redaction helpers in `shared/utils/redact.ts`, `server/src/utils/logger.ts`, and `gateway/src/utils/logger.ts`.
 
 ### Missing
@@ -124,16 +126,16 @@ Notes:
 
 ## Top Risks
 
-1. Test suite noise can hide regressions - React `act(...)`, jsdom canvas/navigation warnings, and remaining sleep/time patterns make failure triage harder even when tests pass.
+1. Test suite noise can hide regressions - React `act(...)`, jsdom navigation/SVG warnings, expected error-log branches, and remaining sleep/time patterns make failure triage harder even when tests pass.
 2. Low/moderate dependency advisories remain accepted-risk items - root, server, and gateway have no high/critical findings, but root low and server Prisma-tooling moderate advisories still need monitoring.
-3. Direct route-to-repository debt is now visible but not gone - the boundary gate blocks new imports and stale exceptions, but `47` existing exceptions still need service-facade burn-down.
+3. Direct route-to-repository debt is now visible but not gone - the boundary gate blocks new imports and stale exceptions, but `45` existing exceptions still need service-facade burn-down.
 4. Production files near the warning threshold need ownership attention when touched - the quality gate classifies all `>1000` line files, but files such as `ai-proxy/src/index.ts` and `server/src/repositories/transactionRepository.ts` remain close to the limit.
 5. OpenAPI route coverage now checks path/method drift plus selected admin settings, monitoring, and group runtime response keys, but broader request/response schema parity is still selected-surface only.
 
 ## Fastest Improvements
 
 1. Pay down noisy/flaky test patterns - expected gain: Test Quality 6.4 can move from Medium to High - effort: medium, focused on React async assertions, jsdom capability shims, and remaining sleeps.
-2. Burn down the remaining `47` documented route-to-repository exceptions - expected gain: fewer route modules coupled to persistence details and a smaller architecture allowlist - effort: medium.
+2. Burn down the remaining `45` documented route-to-repository exceptions - expected gain: fewer route modules coupled to persistence details and a smaller architecture allowlist - effort: medium.
 3. Use the server background lifecycle module as the pattern for the next manual service migration - expected gain: reliability and operational confidence without startup-order regressions - effort: medium.
 4. Split production files near the `1000` line warning only when responsibility boundaries are already clear - expected gain: more reviewable changes and eventual god-file score improvement - effort: medium/high.
 5. Extend contract checks beyond the selected admin settings, monitoring, and group response-key parity guards to response/request schema parity where runtime serializers make that practical - expected gain: stronger correctness evidence - effort: medium/high.
@@ -151,9 +153,9 @@ Notes:
 | 6 | Reduce suite noise and timing fragility | Replace sleeps with fake timers/events and fix recurring React async assertions. | Common warning classes are removed and remaining sleep/time patterns trend down. | Test Quality +2 possible. |
 | 7 | Complete route contract coverage | Add OpenAPI route coverage drift checks. | New backend routes fail CI unless documented in OpenAPI or explicitly exempted. | Completed; correctness and maintainability confidence improved. |
 | 8 | Harden lifecycle wiring | Move a clear manual lifecycle hook into the service registry with dependency-order proof. | Token-revocation cleanup is managed by `serviceRegistry`; `sync` declares its worker-heartbeat dependency; lifecycle tests pass. | Completed; reliability evidence improved. |
-| 9 | Freeze route-to-repository debt | Add a route-to-repository dependency rule with owner/removal exceptions and remove easy exceptions. | Boundary gate passes with `47` exceptions and fails stale entries or new undocumented direct imports. | Completed; maintainability confidence improved. |
+| 9 | Freeze route-to-repository debt | Add a route-to-repository dependency rule with owner/removal exceptions and remove easy exceptions. | Boundary gate passes with `45` exceptions and fails stale entries or new undocumented direct imports. | Completed; maintainability confidence improved. |
 | 10 | Refresh generated scale proof | Rerun Phase 3 compose proof after startup/lifecycle changes. | 25k synthetic transaction proof, worker proof, two-worker proof, two-backend fanout, backup restore, and capacity snapshots pass. | Completed; performance/ops evidence improved. |
-| 11 | Deepen contract validation | Extend OpenAPI checks beyond route presence to selected request/response schema parity. | Selected guards pass for `AdminSettings`, `AdminMonitoringServicesResponse`, `AdminGroup`, and `AdminGroupMember` runtime response keys; broader schema parity remains follow-up work. | Completed for selected surfaces; correctness confidence improved. |
+| 11 | Deepen contract validation | Extend OpenAPI checks beyond route presence to selected request/response schema parity. | Selected guards pass for admin settings, monitoring, group, and wallet policy response-key parity; broader schema parity remains follow-up work. | Completed for selected surfaces; correctness confidence improved. |
 
 ## Strengths To Preserve
 
@@ -165,6 +167,7 @@ Notes:
 - Admin settings persistence, defaulting, SMTP password redaction/encryption, cache clearing, and confirmation-threshold validation now live behind `server/src/services/adminSettingsService.ts`.
 - Admin monitoring URL override persistence, Grafana settings, and optional monitoring health checks now live behind `server/src/services/adminMonitoringService.ts`.
 - Admin group persistence, member validation, membership mutation, and access-cache invalidation now live behind `server/src/services/adminGroupService.ts`.
+- Wallet policy list, event, and address-list persistence now route through `server/src/services/vaultPolicy/vaultPolicyService.ts`; `server/src/api/wallets/policies.ts` owns HTTP validation/orchestration instead of repository calls.
 - Runtime-secret ownership is documented in `docs/RUNTIME_SECRETS.md`, and fresh setup now writes env/TLS material outside the repo checkout by default.
 - Access-cache invalidation, common validation schemas, and reusable health checks now sit below API/service callers in `server/src/infrastructure/accessCache.ts`, `server/src/validation/commonSchemas.ts`, and `server/src/services/health/`.
 - Shared gateway/backend request schemas and validation are centered in `shared/schemas/mobileApiRequests.ts`, `gateway/src/middleware/validateRequest.ts`, and `server/src/middleware/validate.ts`.
@@ -181,6 +184,14 @@ Notes:
 
 ## Verification Notes
 
+- `npm run quality` passed end to end after the wallet policy service extraction, OpenAPI route-coverage checker complexity refactor, jsdom canvas shim, and stale push OpenAPI assertion cleanup. It passed lint, typecheck, browser-auth contract, architecture-boundary, OpenAPI route coverage, coverage (`388` files / `5505` tests / `100%` coverage), high-severity audits, all gitleaks modes, pinned lizard, jscpd (`2.21%`, `5128/232007`, `264` clones, `1493` files), and large-file classification.
+- `npm run check:architecture-boundaries` passed and scanned `1281` files, `5386` imports, `9` dependency-boundary rules, and `45` documented route-to-repository exceptions after the wallet policy route stopped importing `policyRepository` and `walletRepository`.
+- `npm --prefix server run test:run -- tests/unit/services/vaultPolicyService.test.ts` passed `56` vault policy service tests.
+- `npx vitest run tests/unit/api/wallets-policies-routes.test.ts` in `server/` passed `55` wallet policy route tests.
+- `npx vitest run tests/unit/api/openapi.test.ts` in `server/` passed `42` OpenAPI contract tests after wallet policy response-envelope parity assertions and the gateway-HMAC push-route contract update.
+- `npx vitest run tests/components/AnimatedBackground.test.tsx tests/components/AnimatedBackground.lazyLoading.test.tsx tests/components/Dashboard/PriceChart.test.tsx tests/components/qr/AnimatedQRCode.test.tsx` passed `89` frontend tests after adding the jsdom canvas shim and fixing the PriceChart Recharts mock.
+- Fresh dependency advisory checks were rerun. Root production audit still reports `14` low advisories; server production audit still reports `3` moderate advisories through Prisma tooling; gateway production audit with optional dependencies omitted reports `0` vulnerabilities. These match the accepted-risk triage in `docs/DEPENDENCY_AUDIT_TRIAGE.md`.
+- Target-environment calibration status was re-checked in `docs/RELEASE_GATES.md`: the local generated Phase 3 proof remains current, while release-specific capacity claims remain pending until an exact non-production topology and its required benchmark fields are recorded.
 - `npm run quality` passed end to end after adding the auth-contract and architecture-boundary lanes. It passed lint, typecheck, `check:browser-auth-contract`, `check:architecture-boundaries`, coverage, high-severity audits, full/latest/tracked gitleaks scans, pinned lizard, jscpd, and large-file classification.
 - `npm run check:openapi-route-coverage` passed after documenting five missing operations; it scanned `288` Express routes and `284` OpenAPI operations with `4` documented exceptions.
 - `QUALITY_SKIP_COVERAGE=1 QUALITY_SKIP_AUDIT=1 QUALITY_SKIP_GITLEAKS=1 QUALITY_SKIP_LIZARD=1 QUALITY_SKIP_JSCPD=1 QUALITY_SKIP_LARGE_FILES=1 npm run quality` passed lint, typecheck, browser-auth contract, architecture boundaries, and OpenAPI route coverage through the integrated gate.
@@ -215,7 +226,7 @@ Notes:
 - `npm run quality` gitleaks lane passed full-tree, latest-commit, and tracked-tree scans.
 - `npm run quality` pinned `lizard 1.21.2` lane passed with `0` warnings.
 - `.tmp/quality-tools/lizard-1.21.2/bin/lizard --csv ...` reported `28660` functions, `avg_ccn=1.35`, and `max_ccn=15` using the quality-gate exclusions.
-- `npm run quality` jscpd lane reported `2.22%` duplication (`5126` duplicated lines across `1487` scanned files, `264` clones).
+- `npm run quality` jscpd lane reported `2.22%` duplication (`5126` duplicated lines across `1487` scanned files, `264` clones) in the prior baseline; the latest full run reports `2.21%` (`5128/232007`, `264` clones, `1493` files).
 - `npm run quality` large-file classification lane reported `4` files over `1000` lines and `46` files over the `800` warning limit; all over-limit files are classified.
 - `bash tests/install/unit/install-script.test.sh` passed `73` installer unit tests after adding runtime-secret default assertions.
 - A non-start setup smoke with `SANCTUARY_RUNTIME_DIR=/tmp/...` created external `sanctuary.env` and `ssl/*.pem`, did not recreate repo-local `.env` or PEMs, and passed `docker compose config --quiet` with the external env.

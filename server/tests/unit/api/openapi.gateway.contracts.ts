@@ -429,20 +429,30 @@ export function registerOpenApiGatewayTests() {
       .not.toHaveProperty('content');
   });
 
-  it('documents gateway-exposed push routes without internal gateway routes', () => {
+  it('documents gateway-exposed and gateway-HMAC push routes', () => {
     const routes: Array<[OpenApiPathKey, string]> = [
       ['/push/register', 'post'],
       ['/push/unregister', 'delete'],
       ['/push/devices', 'get'],
       ['/push/devices/{id}', 'delete'],
+      ['/push/by-user/{userId}', 'get'],
+      ['/push/device/{deviceId}', 'delete'],
+      ['/push/gateway-audit', 'post'],
     ];
 
     for (const [path, method] of routes) {
       expectDocumentedMethod(path, method);
     }
 
-    expect(openApiSpec.paths).not.toHaveProperty('/push/by-user/{userId}');
-    expect(openApiSpec.paths).not.toHaveProperty('/push/gateway-audit');
+    expect(openApiSpec.paths['/push/by-user/{userId}'].get.security).toEqual([
+      { gatewaySignature: [], gatewayTimestamp: [] },
+    ]);
+    expect(openApiSpec.paths['/push/device/{deviceId}'].delete.security).toEqual([
+      { gatewaySignature: [], gatewayTimestamp: [] },
+    ]);
+    expect(openApiSpec.paths['/push/gateway-audit'].post.security).toEqual([
+      { gatewaySignature: [], gatewayTimestamp: [] },
+    ]);
     expect(openApiSpec.components.schemas.PushRegisterRequest).toBeDefined();
     expect(openApiSpec.components.schemas.PushRegisterRequest.properties.token).toMatchObject({
       minLength: MOBILE_API_REQUEST_LIMITS.deviceTokenMinLength,
@@ -453,6 +463,13 @@ export function registerOpenApiGatewayTests() {
       maxLength: MOBILE_API_REQUEST_LIMITS.deviceTokenMaxLength,
     });
     expect(openApiSpec.components.schemas.PushDevicesResponse).toBeDefined();
+    expect(openApiSpec.components.schemas.GatewayPushDevice.required).toEqual([
+      'id',
+      'platform',
+      'pushToken',
+      'userId',
+    ]);
+    expect(openApiSpec.components.schemas.GatewayAuditRequest.required).toEqual(['event']);
   });
 
   it('documents gateway-exposed mobile permission routes', () => {

@@ -417,6 +417,21 @@ export function registerOpenApiWalletPolicyTests() {
       type: 'string',
       pattern: '^\\d+$',
     });
+    expect(openApiSpec.paths['/wallets/{walletId}/policies/events'].get.responses[200].content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/PolicyEventsResponse',
+      });
+    expect(openApiSpec.components.schemas.PolicyEventsResponse.required).toEqual(['events', 'total']);
+    expect(openApiSpec.paths['/wallets/{walletId}/policies/evaluate'].post.responses[200].content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/PolicyEvaluationResponse',
+      });
+    expect(openApiSpec.components.schemas.PolicyEvaluationResponse.required).toEqual(['allowed', 'triggered']);
+    expect(openApiSpec.paths['/wallets/{walletId}/policies'].get.responses[200].content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/VaultPolicyListResponse',
+      });
+    expect(openApiSpec.components.schemas.VaultPolicyListResponse.required).toEqual(['policies']);
     expect(openApiSpec.paths['/wallets/{walletId}/policies/events'].get.parameters).toContainEqual(
       expect.objectContaining({
         name: 'limit',
@@ -427,9 +442,41 @@ export function registerOpenApiWalletPolicyTests() {
       .toEqual({
         $ref: '#/components/schemas/CreateVaultPolicyRequest',
       });
+    expect(openApiSpec.paths['/wallets/{walletId}/policies'].post.responses[201].content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/VaultPolicyResponse',
+      });
+    expect(openApiSpec.paths['/wallets/{walletId}/policies/{policyId}'].get.responses[200].content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/VaultPolicyResponse',
+      });
+    expect(openApiSpec.paths['/wallets/{walletId}/policies/{policyId}'].patch.responses[200].content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/VaultPolicyResponse',
+      });
+    expect(openApiSpec.components.schemas.VaultPolicyResponse.required).toEqual(['policy']);
+    expect(openApiSpec.paths['/wallets/{walletId}/policies/{policyId}'].delete.responses[200].content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/WalletPolicyDeleteResponse',
+      });
+    expect(openApiSpec.components.schemas.WalletPolicyDeleteResponse.required).toEqual(['success']);
+    expect(openApiSpec.paths['/wallets/{walletId}/policies/{policyId}/addresses'].get.responses[200].content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/PolicyAddressListResponse',
+      });
+    expect(openApiSpec.components.schemas.PolicyAddressListResponse.required).toEqual(['addresses']);
     expect(openApiSpec.paths['/wallets/{walletId}/policies/{policyId}/addresses'].post.requestBody.content['application/json'].schema)
       .toEqual({
         $ref: '#/components/schemas/CreatePolicyAddressRequest',
+      });
+    expect(openApiSpec.paths['/wallets/{walletId}/policies/{policyId}/addresses'].post.responses[201].content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/PolicyAddressResponse',
+      });
+    expect(openApiSpec.components.schemas.PolicyAddressResponse.required).toEqual(['address']);
+    expect(openApiSpec.paths['/wallets/{walletId}/policies/{policyId}/addresses/{addressId}'].delete.responses[200].content['application/json'].schema)
+      .toEqual({
+        $ref: '#/components/schemas/WalletPolicyDeleteResponse',
       });
     expect(openApiSpec.components.schemas.ApprovalVoteRequest.properties.decision.enum).toEqual([
       ...VALID_VOTE_DECISIONS,

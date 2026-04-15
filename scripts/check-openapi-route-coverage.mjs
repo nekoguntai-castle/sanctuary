@@ -386,64 +386,94 @@ function parseRouteDefinitionObject(objectNode) {
 }
 
 function collectOpenApiRoutes() {
-  const routes = [];
+  return dedupeRoutes(
+    walkOpenApiPathFiles(fullPath(openApiPathsDir)).flatMap(collectOpenApiRoutesFromFile)
+  );
+}
 
-  for (const relativePath of walkOpenApiPathFiles(fullPath(openApiPathsDir))) {
-    const sourceFile = parseSource(relativePath);
+function collectOpenApiRoutesFromFile(relativePath) {
+  return parseSource(relativePath).statements.flatMap((statement) => (
+    collectOpenApiRoutesFromStatement(statement, relativePath)
+  ));
+}
 
-    for (const statement of sourceFile.statements) {
-      if (!ts.isVariableStatement(statement) || !hasExportModifier(statement)) {
-        continue;
-      }
-
-      for (const declaration of statement.declarationList.declarations) {
-        if (!ts.isIdentifier(declaration.name) || !declaration.name.text.endsWith('Paths')) {
-          continue;
-        }
-        if (!declaration.initializer) {
-          continue;
-        }
-
-        const objectLiteral = unwrapAsConst(declaration.initializer);
-        if (!objectLiteral || !ts.isObjectLiteralExpression(objectLiteral)) {
-          continue;
-        }
-
-        for (const property of objectLiteral.properties) {
-          if (!ts.isPropertyAssignment(property)) {
-            continue;
-          }
-
-          const pathKey = propertyNameText(property.name);
-          if (!pathKey?.startsWith('/')) {
-            continue;
-          }
-
-          const pathObject = unwrapAsConst(property.initializer);
-          if (!pathObject || !ts.isObjectLiteralExpression(pathObject)) {
-            continue;
-          }
-
-          for (const methodProperty of pathObject.properties) {
-            if (!ts.isPropertyAssignment(methodProperty)) {
-              continue;
-            }
-
-            const method = propertyNameText(methodProperty.name);
-            if (method && httpMethods.has(method)) {
-              routes.push({
-                method: method.toUpperCase(),
-                path: openApiPathToApplicationPath(pathKey),
-                source: relativePath,
-              });
-            }
-          }
-        }
-      }
-    }
+function collectOpenApiRoutesFromStatement(statement, relativePath) {
+  if (!ts.isVariableStatement(statement) || !hasExportModifier(statement)) {
+    return [];
   }
 
-  return dedupeRoutes(routes);
+  return statement.declarationList.declarations.flatMap((declaration) => (
+    collectOpenApiRoutesFromDeclaration(declaration, relativePath)
+  ));
+}
+
+function collectOpenApiRoutesFromDeclaration(declaration, relativePath) {
+  if (!isOpenApiPathsDeclaration(declaration)) {
+    return [];
+  }
+
+  const objectLiteral = objectLiteralInitializer(declaration.initializer);
+  if (!objectLiteral) {
+    return [];
+  }
+
+  return objectLiteral.properties.flatMap((property) => (
+    collectOpenApiRoutesFromPathProperty(property, relativePath)
+  ));
+}
+
+function isOpenApiPathsDeclaration(declaration) {
+  return (
+    ts.isIdentifier(declaration.name) &&
+    declaration.name.text.endsWith('Paths') &&
+    Boolean(declaration.initializer)
+  );
+}
+
+function collectOpenApiRoutesFromPathProperty(property, relativePath) {
+  if (!ts.isPropertyAssignment(property)) {
+    return [];
+  }
+
+  const pathKey = propertyNameText(property.name);
+  if (!pathKey?.startsWith('/')) {
+    return [];
+  }
+
+  const pathObject = objectLiteralInitializer(property.initializer);
+  if (!pathObject) {
+    return [];
+  }
+
+  return collectOpenApiMethods(pathObject, pathKey, relativePath);
+}
+
+function collectOpenApiMethods(pathObject, pathKey, relativePath) {
+  return pathObject.properties.flatMap((methodProperty) => {
+    if (!ts.isPropertyAssignment(methodProperty)) {
+      return [];
+    }
+
+    const method = propertyNameText(methodProperty.name);
+    if (!method || !httpMethods.has(method)) {
+      return [];
+    }
+
+    return [{
+      method: method.toUpperCase(),
+      path: openApiPathToApplicationPath(pathKey),
+      source: relativePath,
+    }];
+  });
+}
+
+function objectLiteralInitializer(initializer) {
+  if (!initializer) {
+    return null;
+  }
+
+  const node = unwrapAsConst(initializer);
+  return ts.isObjectLiteralExpression(node) ? node : null;
 }
 
 function unwrapAsConst(node) {

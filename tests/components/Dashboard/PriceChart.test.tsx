@@ -12,7 +12,18 @@ vi.mock('recharts', () => ({
   ResponsiveContainer: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="responsive-container">{children}</div>
   ),
-  AreaChart: ({ children }: { children: React.ReactNode }) => <div data-testid="area-chart">{children}</div>,
+  AreaChart: ({ children }: { children: React.ReactNode }) => {
+    const childArray = React.Children.toArray(children);
+    const isSvgDefinition = (child: React.ReactNode) => (
+      React.isValidElement(child) && child.type === 'defs'
+    );
+    return (
+      <div data-testid="area-chart">
+        <svg data-testid="area-chart-svg">{childArray.filter(isSvgDefinition)}</svg>
+        {childArray.filter((child) => !isSvgDefinition(child))}
+      </div>
+    );
+  },
   Area: () => <span data-testid="area" />,
   XAxis: () => <span data-testid="x-axis" />,
   YAxis: () => <span data-testid="y-axis" />,

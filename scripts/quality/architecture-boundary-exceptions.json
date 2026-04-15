@@ -397,24 +397,6 @@
   },
   {
     "rule": "server-api-runtime-repositories",
-    "file": "server/src/api/wallets/policies.ts",
-    "target": "server/src/repositories/policyRepository.ts",
-    "specifier": "../../repositories/policyRepository",
-    "owner": "backend-architecture",
-    "reason": "Existing wallet route repository access predates the route/service/repository boundary.",
-    "removeWhen": "Route delegates policy access through a wallet service module."
-  },
-  {
-    "rule": "server-api-runtime-repositories",
-    "file": "server/src/api/wallets/policies.ts",
-    "target": "server/src/repositories/walletRepository.ts",
-    "specifier": "../../repositories/walletRepository",
-    "owner": "backend-architecture",
-    "reason": "Existing wallet route repository access predates the route/service/repository boundary.",
-    "removeWhen": "Route delegates wallet access through a wallet service module."
-  },
-  {
-    "rule": "server-api-runtime-repositories",
     "file": "server/src/api/wallets/sharing.ts",
     "target": "server/src/repositories/index.ts",
     "specifier": "../../repositories",

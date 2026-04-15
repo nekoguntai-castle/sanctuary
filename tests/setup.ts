@@ -80,6 +80,47 @@ class IntersectionObserverMock {
 }
 window.IntersectionObserver = IntersectionObserverMock as unknown as typeof IntersectionObserver;
 
+// jsdom intentionally does not implement canvas rendering. A minimal 2D context
+// keeps animation-mount tests from emitting "not implemented" noise while still
+// avoiding pixel assertions in unit tests.
+const canvasGradientMock = {
+  addColorStop: vi.fn(),
+};
+const canvasPatternMock = {};
+const canvasContextMethods = new Map<PropertyKey, ReturnType<typeof vi.fn>>();
+const canvasContext2dMock = new Proxy({}, {
+  get(_target, prop) {
+    if (prop === 'createLinearGradient' || prop === 'createRadialGradient') {
+      return vi.fn(() => canvasGradientMock);
+    }
+    if (prop === 'createPattern') {
+      return vi.fn(() => canvasPatternMock);
+    }
+    if (prop === 'measureText') {
+      return vi.fn((text: string) => ({ width: text.length * 8 }));
+    }
+    if (!canvasContextMethods.has(prop)) {
+      canvasContextMethods.set(prop, vi.fn());
+    }
+    return canvasContextMethods.get(prop);
+  },
+  set() {
+    return true;
+  },
+}) as unknown as CanvasRenderingContext2D;
+
+Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+  writable: true,
+  configurable: true,
+  value: vi.fn((contextId: string) => (contextId === '2d' ? canvasContext2dMock : null)),
+});
+
+Object.defineProperty(HTMLCanvasElement.prototype, 'toDataURL', {
+  writable: true,
+  configurable: true,
+  value: vi.fn(() => 'data:image/png;base64,'),
+});
+
 // Mock AudioContext for notification sounds
 class AudioContextMock {
   createOscillator = vi.fn(() => ({

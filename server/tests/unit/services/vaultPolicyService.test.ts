@@ -7,7 +7,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { faker } from '@faker-js/faker';
 
-const { mockLog, mockPolicyRepo } = vi.hoisted(() => ({
+const { mockLog, mockPolicyRepo, mockWalletRepo } = vi.hoisted(() => ({
   mockLog: {
     info: vi.fn(),
     error: vi.fn(),
@@ -25,6 +25,14 @@ const { mockLog, mockPolicyRepo } = vi.hoisted(() => ({
     updatePolicy: vi.fn(),
     removePolicy: vi.fn(),
     countPoliciesByWalletId: vi.fn(),
+    findPolicyEvents: vi.fn(),
+    findPolicyAddresses: vi.fn(),
+    createPolicyAddress: vi.fn(),
+    findPolicyAddressById: vi.fn(),
+    removePolicyAddress: vi.fn(),
+  },
+  mockWalletRepo: {
+    findById: vi.fn(),
   },
 }));
 
@@ -36,6 +44,10 @@ vi.mock('../../../src/utils/logger', () => ({
 // Mock the policy repository
 vi.mock('../../../src/repositories/policyRepository', () => ({
   policyRepository: mockPolicyRepo,
+}));
+
+vi.mock('../../../src/repositories/walletRepository', () => ({
+  walletRepository: mockWalletRepo,
 }));
 
 import {
@@ -377,6 +389,122 @@ describe('VaultPolicyService', () => {
 
       expect(mockPolicyRepo.findGroupPolicies).not.toHaveBeenCalled();
       expect(result).toHaveLength(0);
+    });
+  });
+
+  describe('listWalletPolicies', () => {
+    it('resolves the wallet group before listing inherited policies', async () => {
+      const walletPolicies = [{ id: '1', name: 'Wallet', walletId }];
+      const systemPolicies = [{ id: '2', name: 'System', walletId: null }];
+      const groupPolicies = [{ id: '3', name: 'Group', groupId }];
+
+      mockWalletRepo.findById.mockResolvedValue({ id: walletId, groupId });
+      mockPolicyRepo.findAllPoliciesForWallet.mockResolvedValue(walletPolicies);
+      mockPolicyRepo.findSystemPolicies.mockResolvedValue(systemPolicies);
+      mockPolicyRepo.findGroupPolicies.mockResolvedValue(groupPolicies);
+
+      const result = await vaultPolicyService.listWalletPolicies(walletId, {
+        includeInherited: true,
+      });
+
+      expect(mockWalletRepo.findById).toHaveBeenCalledWith(walletId);
+      expect(mockPolicyRepo.findGroupPolicies).toHaveBeenCalledWith(groupId);
+      expect(result).toEqual([...systemPolicies, ...groupPolicies, ...walletPolicies]);
+    });
+  });
+
+  describe('getWalletPolicyEvents', () => {
+    it('delegates wallet-scoped policy event queries to the repository', async () => {
+      const eventResult = { events: [{ id: 'evt-1' }], total: 1 };
+      const filters = {
+        policyId,
+        eventType: 'trigger',
+        limit: 25,
+        offset: 5,
+      };
+      mockPolicyRepo.findPolicyEvents.mockResolvedValue(eventResult);
+
+      const result = await vaultPolicyService.getWalletPolicyEvents(walletId, filters);
+
+      expect(result).toBe(eventResult);
+      expect(mockPolicyRepo.findPolicyEvents).toHaveBeenCalledWith(walletId, filters);
+    });
+  });
+
+  describe('policy address management', () => {
+    it('lists policy addresses after verifying the policy belongs to the wallet', async () => {
+      const addresses = [{ id: 'addr-1', policyId, listType: 'allow' }];
+
+      mockPolicyRepo.findPolicyByIdInWallet.mockResolvedValue({ id: policyId, walletId });
+      mockPolicyRepo.findPolicyAddresses.mockResolvedValue(addresses);
+
+      const result = await vaultPolicyService.listPolicyAddressesInWallet(policyId, walletId, 'allow');
+
+      expect(result).toBe(addresses);
+      expect(mockPolicyRepo.findPolicyByIdInWallet).toHaveBeenCalledWith(policyId, walletId);
+      expect(mockPolicyRepo.findPolicyAddresses).toHaveBeenCalledWith(policyId, 'allow');
+    });
+
+    it('creates an address for address_control policies', async () => {
+      const createdAddress = { id: 'addr-1', policyId, address: 'tb1qfoo', listType: 'allow' };
+
+      mockPolicyRepo.findPolicyByIdInWallet.mockResolvedValue({
+        id: policyId,
+        walletId,
+        type: 'address_control',
+      });
+      mockPolicyRepo.createPolicyAddress.mockResolvedValue(createdAddress);
+
+      const result = await vaultPolicyService.createPolicyAddressInWallet(policyId, walletId, userId, {
+        address: 'tb1qfoo',
+        label: 'Treasury',
+        listType: 'allow',
+      });
+
+      expect(result).toBe(createdAddress);
+      expect(mockPolicyRepo.createPolicyAddress).toHaveBeenCalledWith({
+        policyId,
+        address: 'tb1qfoo',
+        label: 'Treasury',
+        listType: 'allow',
+        addedBy: userId,
+      });
+    });
+
+    it('rejects address creation for non-address-control policies', async () => {
+      mockPolicyRepo.findPolicyByIdInWallet.mockResolvedValue({
+        id: policyId,
+        walletId,
+        type: 'spending_limit',
+      });
+
+      await expect(
+        vaultPolicyService.createPolicyAddressInWallet(policyId, walletId, userId, {
+          address: 'tb1qfoo',
+          listType: 'allow',
+        })
+      ).rejects.toThrow('Address lists can only be managed on address_control policies');
+      expect(mockPolicyRepo.createPolicyAddress).not.toHaveBeenCalled();
+    });
+
+    it('removes addresses only when they belong to the policy', async () => {
+      mockPolicyRepo.findPolicyByIdInWallet.mockResolvedValue({ id: policyId, walletId });
+      mockPolicyRepo.findPolicyAddressById.mockResolvedValue({ id: 'addr-1', policyId });
+      mockPolicyRepo.removePolicyAddress.mockResolvedValue(undefined);
+
+      await vaultPolicyService.removePolicyAddressFromWallet(policyId, walletId, 'addr-1');
+
+      expect(mockPolicyRepo.removePolicyAddress).toHaveBeenCalledWith('addr-1');
+    });
+
+    it('throws NotFoundError when removing an address from a different policy', async () => {
+      mockPolicyRepo.findPolicyByIdInWallet.mockResolvedValue({ id: policyId, walletId });
+      mockPolicyRepo.findPolicyAddressById.mockResolvedValue({ id: 'addr-1', policyId: 'other-policy' });
+
+      await expect(
+        vaultPolicyService.removePolicyAddressFromWallet(policyId, walletId, 'addr-1')
+      ).rejects.toThrow('Address not found in this policy');
+      expect(mockPolicyRepo.removePolicyAddress).not.toHaveBeenCalled();
     });
   });
 
