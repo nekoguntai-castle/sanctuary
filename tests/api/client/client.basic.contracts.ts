@@ -238,8 +238,8 @@ export const registerApiClientBasicContracts = () => {
       try {
         await apiClient.get('/bad-request');
       } catch (error) {
-        expect((error as ApiError).status).toBe(400);
-        expect((error as ApiError).message).toBe('Validation failed');
+        expect((error as InstanceType<typeof ApiError>).status).toBe(400);
+        expect((error as InstanceType<typeof ApiError>).message).toBe('Validation failed');
       }
     });
 
@@ -276,7 +276,7 @@ export const registerApiClientBasicContracts = () => {
       try {
         await apiClient.get('/forbidden');
       } catch (error) {
-        expect((error as ApiError).message).toContain('403');
+        expect((error as InstanceType<typeof ApiError>).message).toContain('403');
       }
     });
 
@@ -294,8 +294,8 @@ export const registerApiClientBasicContracts = () => {
       try {
         await apiClient.get('/rate-limited', undefined, { enabled: false });
       } catch (error) {
-        expect((error as ApiError).message).toBe('Too many requests');
-        expect((error as ApiError).status).toBe(429);
+        expect((error as InstanceType<typeof ApiError>).message).toBe('Too many requests');
+        expect((error as InstanceType<typeof ApiError>).status).toBe(429);
       }
     });
 
@@ -310,7 +310,7 @@ export const registerApiClientBasicContracts = () => {
       try {
         await apiClient.get('/empty-error', undefined, { enabled: false });
       } catch (error) {
-        expect((error as ApiError).message).toBe('HTTP 502: Unknown error');
+        expect((error as InstanceType<typeof ApiError>).message).toBe('HTTP 502: Unknown error');
       }
     });
   });

@@ -91,8 +91,13 @@ const createKeystoneAccount = (account: KeystoneAccount): DeviceAccount | undefi
 
 const isDefined = <T>(value: T | undefined): value is T => value !== undefined;
 
-const getKeystoneAccounts = (coin: KeystoneCoin): DeviceAccount[] =>
-  (coin.accounts || []).map(createKeystoneAccount).filter(isDefined);
+const getKeystoneAccounts = (coin: KeystoneCoin): DeviceAccount[] => {
+  // Callers gate on `coin.accounts?.length` before invoking, so the `|| []`
+  // fallback is defensive and unreachable from the public parse() entry points.
+  /* c8 ignore next */
+  const accounts = coin.accounts || [];
+  return accounts.map(createKeystoneAccount).filter(isDefined);
+};
 
 const getPrimaryAccount = (accounts: DeviceAccount[]): DeviceAccount | undefined =>
   accounts.find((account) => account.purpose === 'single_sig' && account.scriptType === 'native_segwit')

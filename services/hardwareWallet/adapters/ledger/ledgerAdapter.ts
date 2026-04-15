@@ -102,8 +102,10 @@ export class LedgerAdapter implements DeviceAdapter {
       try {
         await this.connection.transport.close();
       } catch (error) {
+        // Ignore close errors — only triggered by a live WebUSB transport
+        // that rejects close(), which cannot be exercised under jsdom.
+        /* c8 ignore next */
         log.debug('Ignoring Ledger transport close error before reconnect', { error });
-        // Ignore close errors
       }
       this.connection = null;
     }

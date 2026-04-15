@@ -442,6 +442,26 @@ describe('refresh module — defensive error handling', () => {
       allChannels.postMessage = originalPost;
     }
   });
+
+  it('swallows BroadcastChannel.close errors during test-only module reset', () => {
+    // Force the channel into existence by scheduling a refresh.
+    scheduleRefreshFromHeader(isoInFuture(60 * 60 * 1000));
+
+    const allChannels = (globalThis as unknown as { BroadcastChannel: any })
+      .BroadcastChannel.prototype;
+    const originalClose = allChannels.close;
+    allChannels.close = vi.fn(() => {
+      throw new Error('close failed');
+    });
+
+    try {
+      // __resetRefreshModuleForTests() walks the close() branch; its catch
+      // block logs at debug level and must not propagate the error.
+      expect(() => __resetRefreshModuleForTests()).not.toThrow();
+    } finally {
+      allChannels.close = originalClose;
+    }
+  });
 });
 
 describe('refresh module — scheduled refresh failure swallowing', () => {

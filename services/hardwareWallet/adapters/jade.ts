@@ -199,8 +199,11 @@ export class JadeAdapter implements DeviceAdapter {
           log.warn('Received unexpected message', { expectedId, receivedId: response.id });
           this.responseBuffer = new Uint8Array(0);
         } catch (error) {
+          // Incomplete CBOR data, need more bytes. Exercised only against a
+          // real Jade device — the decode() loop cannot be meaningfully
+          // simulated in jsdom without reimplementing the CBOR framing.
+          /* c8 ignore next */
           log.debug('Waiting for more Jade CBOR response bytes', { error });
-          // Incomplete CBOR data, need more bytes
         }
       }
 

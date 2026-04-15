@@ -133,7 +133,12 @@ async function applyPayjoinIfNeeded(
 
   try {
     const network = (walletNetwork || 'mainnet') as 'mainnet' | 'testnet' | 'regtest';
-    const payjoinResult = await payjoinApi.attemptPayjoin(result.psbtBase64, state.payjoinUrl ?? '', network);
+    // `shouldAttemptPayjoin` above already enforces `state.payjoinUrl` is truthy,
+    // but TypeScript doesn't narrow that guarantee across the helper boundary.
+    // The `?? ''` fallback is defensive and unreachable at runtime.
+    /* c8 ignore next */
+    const payjoinUrl = state.payjoinUrl ?? '';
+    const payjoinResult = await payjoinApi.attemptPayjoin(result.psbtBase64, payjoinUrl, network);
 
     if (payjoinResult.success && payjoinResult.proposalPsbt) {
       setPayjoinStatus('success');

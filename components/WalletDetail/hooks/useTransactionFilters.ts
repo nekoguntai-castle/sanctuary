@@ -124,6 +124,9 @@ const matchesConfirmationFilter = (
       return tx.confirmations >= deepConfirmationThreshold;
   }
 
+  // Defensive fallback — the switch above is exhaustive over ConfirmationFilter,
+  // so TypeScript narrows this branch to `never`. Unreachable at runtime.
+  /* c8 ignore next */
   return true;
 };
 

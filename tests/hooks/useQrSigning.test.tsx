@@ -41,9 +41,11 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
 function mockFileReader({
   bytes,
   fail,
+  nullResult,
 }: {
   bytes?: Uint8Array;
   fail?: boolean;
+  nullResult?: boolean;
 }) {
   class MockFileReader {
     onload: ((event: ProgressEvent<FileReader>) => void) | null = null;
@@ -52,6 +54,13 @@ function mockFileReader({
     readAsArrayBuffer(_file: Blob) {
       if (fail) {
         this.onerror?.({} as ProgressEvent<FileReader>);
+        return;
+      }
+
+      if (nullResult) {
+        this.onload?.({
+          target: { result: null },
+        } as unknown as ProgressEvent<FileReader>);
         return;
       }
 
@@ -141,6 +150,21 @@ describe('useQrSigning', () => {
     const file = new File(['dummy'], 'signed.psbt');
 
     await expect(result.current.uploadSignedPsbt(file)).rejects.toThrow('Failed to read file');
+  });
+
+  it('falls back to an empty ArrayBuffer when FileReader delivers a null result', async () => {
+    mockFileReader({ nullResult: true });
+    const deps = createDeps();
+    const { result } = renderHook(() => useQrSigning(deps));
+    const file = new File(['dummy'], 'signed.psbt');
+
+    // Empty buffer becomes an empty base64 string after the binary decode pipeline.
+    // The upload resolves without throwing, exercising the `|| new ArrayBuffer(0)` fallback.
+    await act(async () => {
+      await result.current.uploadSignedPsbt(file, 'device-null');
+    });
+
+    expect(deps.setUnsignedPsbt).toHaveBeenCalledWith('');
   });
 
   it('uploads binary PSBT, defaults device id, and persists to draft', async () => {

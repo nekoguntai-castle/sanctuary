@@ -91,6 +91,31 @@ describe('useAITransactionFilter', () => {
     expect(result.current.filteredTransactions.map((tx) => tx.txid)).toEqual(['txid-3']);
   });
 
+  it('falls back to empty string when tx.type is undefined so untyped txs do not match a typed filter', () => {
+    const withoutType = [
+      {
+        id: 'tx-none',
+        txid: 'txid-none',
+        amount: 1_000,
+        confirmations: 1,
+        timestamp: 1_700_000_050,
+      },
+      ...transactions,
+    ];
+    const { result } = renderHook(() => useAITransactionFilter({ transactions: withoutType as any }));
+
+    // Filter targets consolidations — the untyped tx hits the `tx.type ?? ''`
+    // fallback and resolves to '', which does not match 'consolidation'.
+    act(() => {
+      result.current.setAiQueryFilter({
+        type: 'transactions',
+        filter: { type: 'consolidation' as any },
+      });
+    });
+
+    expect(result.current.filteredTransactions.map((tx) => tx.txid)).toEqual(['txid-3']);
+  });
+
   it('handles label filter when labels are missing and matches case-insensitively', () => {
     const withMissingLabels = [
       ...transactions,

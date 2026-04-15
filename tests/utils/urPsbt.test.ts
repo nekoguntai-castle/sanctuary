@@ -324,6 +324,22 @@ describe('urPsbt', () => {
       );
     });
 
+    it('rethrows wrapped error when wrapper fails and data property is not a byte container', () => {
+      const decoder = createPsbtDecoder() as unknown as TestableDecoder;
+      decoder.complete = true;
+      decoder.success = true;
+      // `data` is present but is neither a Uint8Array nor a Buffer, so
+      // getDataPropertyBytes hits the `? bytes : null` false branch.
+      decoder.ur = new MockUR({ data: 'not-bytes' }, 'crypto-psbt');
+      MockCryptoPSBT.fromCBOR.mockImplementationOnce(() => {
+        throw new Error('wrapper failed');
+      });
+
+      expect(() => getDecodedPsbt(decoder as unknown as URDecoder)).toThrow(
+        'Failed to decode PSBT: wrapper failed'
+      );
+    });
+
     it('decodes bytes UR with raw psbt magic', () => {
       const decoder = createPsbtDecoder() as unknown as TestableDecoder;
       const raw = new Uint8Array([0x70, 0x73, 0x62, 0x74, 0x02]);

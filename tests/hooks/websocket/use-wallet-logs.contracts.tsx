@@ -1,32 +1,16 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   connectionChangeCallbacks,
   eventCallbacks,
-  flushPromises,
-  mockConnect,
-  mockDisconnect,
-  mockGetState,
   mockGetWalletLogs,
-  mockInvalidateQueries,
-  mockIsConnected,
   mockOff,
-  mockOffConnectionChange,
   mockOn,
-  mockOnConnectionChange,
-  mockSetQueryData,
   mockSubscribe,
-  mockSubscribeBatch,
   mockUnsubscribe,
-  mockUnsubscribeBatch,
 } from './useWebSocketTestHarness';
 import {
-  useModelDownloadProgress,
-  useWalletEvents,
   useWalletLogs,
-  useWebSocket,
-  useWebSocketEvent,
-  useWebSocketQueryInvalidation,
 } from '../../../hooks/websocket';
 
 export function registerUseWalletLogsTests(): void {
