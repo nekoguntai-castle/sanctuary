@@ -69,6 +69,15 @@ HTTP_PORT="${HTTP_PORT:-8080}"
 API_BASE_URL="https://localhost:${HTTPS_PORT}"
 COOKIE_JAR="/tmp/sanctuary-test-cookies-${TEST_ID}.txt"
 
+# The TLS material for the nginx frontend container is generated into
+# $TEST_INSTALL_DIR/runtime/ssl (outside the repo checkout). Export
+# SANCTUARY_SSL_DIR so every subsequent `docker compose` invocation
+# mounts the same directory where `test_ssl_certificate_generation`
+# writes fullchain.pem/privkey.pem — otherwise nginx falls back to
+# plain HTTP and the frontend container never becomes healthy.
+export SANCTUARY_SSL_DIR="$TEST_INSTALL_DIR/runtime/ssl"
+mkdir -p "$SANCTUARY_SSL_DIR"
+
 # Test state
 TESTS_RUN=0
 TESTS_PASSED=0
