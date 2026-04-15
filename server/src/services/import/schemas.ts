@@ -2,11 +2,11 @@
  * Import Format Zod Schemas
  *
  * Zod schemas for validating import formats, replacing hand-rolled type guards.
- * Reuses existing schemas from api/schemas/common.ts where possible.
+ * Reuses shared server validation schemas where possible.
  */
 
 import { z } from 'zod';
-import { FingerprintSchema, DerivationPathSchema } from '../../api/schemas/common';
+import { FingerprintSchema, DerivationPathSchema } from '../../validation/commonSchemas';
 
 // =============================================================================
 // JSON Import Config Schema

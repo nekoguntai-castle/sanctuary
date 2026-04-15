@@ -8,45 +8,103 @@ import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { safeJsonParseUntyped } from '../../utils/safeJson';
 import { auditService, AuditCategory } from '../auditService';
-import { exec } from 'child_process';
+import { execFile, type ExecFileOptionsWithStringEncoding } from 'child_process';
 import { promisify } from 'util';
 import type { MaintenanceServiceConfig } from './types';
 
 const log = createLogger('MAINTENANCE:SVC_DISK');
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile) as (
+  file: string,
+  args: readonly string[],
+  options: ExecFileOptionsWithStringEncoding,
+) => Promise<{ stdout: string; stderr: string }>;
+
+const COMMAND_TIMEOUT_MS = 5000;
+const EXEC_FILE_OPTIONS: ExecFileOptionsWithStringEncoding = {
+  encoding: 'utf8',
+  timeout: COMMAND_TIMEOUT_MS,
+};
+
+const DOCKER_VOLUME_NAMES = ['sanctuary_postgres_data', 'sanctuary_ollama_data'] as const;
+
+interface DiskUsageSnapshot {
+  usagePercent: number;
+  used: string;
+  available: string;
+  total: string;
+}
+
+function parseDfUsage(dfOutput: string): DiskUsageSnapshot | null {
+  const lines = dfOutput.trim().split(/\r?\n/).filter(Boolean);
+  const usageLine = lines.length > 1 ? lines[1] : lines[0];
+
+  if (!usageLine) {
+    return null;
+  }
+
+  const parts = usageLine.trim().split(/\s+/);
+
+  if (parts.length < 5) {
+    return null;
+  }
+
+  const usagePercent = Number.parseInt(parts[4].replace('%', ''), 10);
+
+  if (Number.isNaN(usagePercent)) {
+    return null;
+  }
+
+  return {
+    usagePercent,
+    used: parts[2],
+    available: parts[3],
+    total: parts[1],
+  };
+}
 
 /**
  * Check Docker volume disk usage and warn if threshold exceeded
  */
 export async function checkDiskUsage(config: MaintenanceServiceConfig): Promise<void> {
-  const volumes = ['sanctuary_postgres_data', 'sanctuary_ollama_data'];
-
   try {
     // Check if docker command is available
-    const { stdout: versionOutput } = await execAsync('docker --version').catch(() => ({ stdout: '' }));
+    const { stdout: versionOutput } = await execFileAsync('docker', ['--version'], EXEC_FILE_OPTIONS).catch(() => ({
+      stdout: '',
+      stderr: '',
+    }));
+
     if (!versionOutput) {
       log.debug('Docker not available for disk usage monitoring');
       return;
     }
 
-    for (const volumeName of volumes) {
+    for (const volumeName of DOCKER_VOLUME_NAMES) {
       try {
         // Use docker volume inspect to get the mountpoint
-        const { stdout: inspectOutput } = await execAsync(`docker volume inspect ${volumeName}`);
-        const volumeData = safeJsonParseUntyped<Array<{ Mountpoint: string }>>(inspectOutput, [], 'docker volume inspect');
+        const { stdout: inspectOutput } = await execFileAsync(
+          'docker',
+          ['volume', 'inspect', volumeName],
+          EXEC_FILE_OPTIONS,
+        );
+        const volumeData = safeJsonParseUntyped<Array<{ Mountpoint?: unknown }>>(
+          inspectOutput,
+          [],
+          'docker volume inspect',
+        );
 
         if (volumeData && volumeData.length > 0) {
-          const mountpoint = volumeData[0].Mountpoint;
+          const mountpoint = volumeData[0]?.Mountpoint;
 
-          // Get disk usage for the mountpoint using df
-          const { stdout: dfOutput } = await execAsync(`df -h "${mountpoint}" | tail -1`);
-          const parts = dfOutput.trim().split(/\s+/);
+          if (typeof mountpoint !== 'string' || mountpoint.length === 0) {
+            log.debug('Docker volume inspect did not include a mountpoint', { volume: volumeName });
+            continue;
+          }
 
-          if (parts.length >= 5) {
-            const usagePercent = parseInt(parts[4].replace('%', ''), 10);
-            const used = parts[2];
-            const available = parts[3];
-            const total = parts[1];
+          const { stdout: dfOutput } = await execFileAsync('df', ['-hP', mountpoint], EXEC_FILE_OPTIONS);
+          const usage = parseDfUsage(dfOutput);
+
+          if (usage) {
+            const { usagePercent, used, available, total } = usage;
 
             if (usagePercent >= config.diskWarningThresholdPercent) {
               log.warn('Docker volume disk usage exceeds threshold', {

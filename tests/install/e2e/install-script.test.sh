@@ -5,7 +5,7 @@
 #
 # This test actually runs install.sh to verify the complete
 # installation flow works correctly, including:
-#   - .env file creation before docker compose
+#   - external runtime env file creation before docker compose
 #   - --pull never flag for local builds
 #   - Secret generation
 #   - Container startup
@@ -61,6 +61,9 @@ HTTPS_PORT="${HTTPS_PORT:-8443}"
 HTTP_PORT="${HTTP_PORT:-8080}"
 API_BASE_URL="https://localhost:${HTTPS_PORT}"
 TEST_ID=$(generate_test_run_id)
+TEST_RUNTIME_DIR="${TEST_RUNTIME_DIR:-/tmp/sanctuary-install-runtime-${TEST_ID}}"
+TEST_ENV_FILE="$TEST_RUNTIME_DIR/sanctuary.env"
+TEST_SSL_DIR="$TEST_RUNTIME_DIR/ssl"
 COOKIE_JAR="/tmp/sanctuary-test-cookies-${TEST_ID}.txt"
 
 # Test state
@@ -68,6 +71,19 @@ TESTS_RUN=0
 TESTS_PASSED=0
 TESTS_FAILED=0
 declare -a FAILED_TESTS
+
+load_test_runtime_env() {
+    if [ ! -f "$TEST_ENV_FILE" ]; then
+        log_error "Runtime env file not found: $TEST_ENV_FILE"
+        return 1
+    fi
+
+    set -a
+    source "$TEST_ENV_FILE"
+    set +a
+    export SANCTUARY_ENV_FILE="$TEST_ENV_FILE"
+    export SANCTUARY_SSL_DIR="$TEST_SSL_DIR"
+}
 
 # ============================================
 # Test Framework
@@ -104,6 +120,7 @@ run_test() {
 setup() {
     log_info "Setting up install script test environment..."
     log_info "  Project Root:  $PROJECT_ROOT"
+    log_info "  Runtime Dir:   $TEST_RUNTIME_DIR"
     log_info "  HTTPS Port:    $HTTPS_PORT"
     log_info "  API Base URL:  $API_BASE_URL"
 
@@ -130,6 +147,8 @@ setup() {
         rm -f "$PROJECT_ROOT/docker/nginx/ssl/privkey.pem"
     fi
 
+    rm -rf "$TEST_RUNTIME_DIR"
+
     setup_cleanup_trap "teardown"
 }
 
@@ -146,6 +165,10 @@ teardown() {
     # Clean up cookie jar
     if [ -f "$COOKIE_JAR" ]; then
         rm -f "$COOKIE_JAR"
+    fi
+
+    if [ -d "$TEST_RUNTIME_DIR" ]; then
+        rm -rf "$TEST_RUNTIME_DIR"
     fi
 }
 
@@ -171,11 +194,11 @@ test_install_script_exists() {
 }
 
 # ============================================
-# Test: Install Script Creates .env File
+# Test: Install Script Creates Runtime Env File
 # ============================================
 
 test_install_script_creates_env() {
-    log_info "Testing that install.sh creates .env file before docker compose..."
+    log_info "Testing that install.sh creates runtime env before docker compose..."
 
     cd "$PROJECT_ROOT"
 
@@ -190,6 +213,9 @@ test_install_script_creates_env() {
     install_output=$(HTTPS_PORT="$HTTPS_PORT" HTTP_PORT="$HTTP_PORT" \
         ENABLE_MONITORING="no" ENABLE_TOR="no" \
         SANCTUARY_DIR="$PROJECT_ROOT" \
+        SANCTUARY_RUNTIME_DIR="$TEST_RUNTIME_DIR" \
+        SANCTUARY_ENV_FILE="$TEST_ENV_FILE" \
+        SANCTUARY_SSL_DIR="$TEST_SSL_DIR" \
         SKIP_GIT_CHECKOUT="true" \
         bash -x "$PROJECT_ROOT/install.sh" 2>&1) || {
         log_error "install.sh failed to run"
@@ -201,64 +227,69 @@ test_install_script_creates_env() {
         echo "$install_output"
     fi
 
-    # Verify .env file was created
-    if [ ! -f "$PROJECT_ROOT/.env" ]; then
-        log_error ".env file was not created by install.sh"
+    # Verify runtime env file was created outside the repo
+    if [ ! -f "$TEST_ENV_FILE" ]; then
+        log_error "Runtime env file was not created by install.sh"
         return 1
     fi
 
-    log_success ".env file created successfully"
+    if [ -f "$PROJECT_ROOT/.env" ]; then
+        log_error "Fresh install created legacy repo-root .env"
+        return 1
+    fi
+
+    log_success "Runtime env file created successfully"
     return 0
 }
 
 # ============================================
-# Test: .env File Contains Required Secrets
+# Test: Runtime Env File Contains Required Secrets
 # ============================================
 
 test_env_file_has_secrets() {
-    log_info "Testing that .env file contains all required secrets..."
+    log_info "Testing that runtime env file contains all required secrets..."
 
-    if [ ! -f "$PROJECT_ROOT/.env" ]; then
-        log_error ".env file not found"
+    if [ ! -f "$TEST_ENV_FILE" ]; then
+        log_error "Runtime env file not found"
         return 1
     fi
 
     local missing_vars=()
 
     # Check for JWT_SECRET
-    if ! grep -q "^JWT_SECRET=" "$PROJECT_ROOT/.env"; then
+    if ! grep -q "^JWT_SECRET=" "$TEST_ENV_FILE"; then
         missing_vars+=("JWT_SECRET")
     fi
 
     # Check for ENCRYPTION_KEY
-    if ! grep -q "^ENCRYPTION_KEY=" "$PROJECT_ROOT/.env"; then
+    if ! grep -q "^ENCRYPTION_KEY=" "$TEST_ENV_FILE"; then
         missing_vars+=("ENCRYPTION_KEY")
     fi
 
     # Check for GATEWAY_SECRET
-    if ! grep -q "^GATEWAY_SECRET=" "$PROJECT_ROOT/.env"; then
+    if ! grep -q "^GATEWAY_SECRET=" "$TEST_ENV_FILE"; then
         missing_vars+=("GATEWAY_SECRET")
     fi
 
     # Check for POSTGRES_PASSWORD
-    if ! grep -q "^POSTGRES_PASSWORD=" "$PROJECT_ROOT/.env"; then
+    if ! grep -q "^POSTGRES_PASSWORD=" "$TEST_ENV_FILE"; then
         missing_vars+=("POSTGRES_PASSWORD")
     fi
 
     # Check for REDIS_PASSWORD
-    if ! grep -q "^REDIS_PASSWORD=" "$PROJECT_ROOT/.env"; then
+    if ! grep -q "^REDIS_PASSWORD=" "$TEST_ENV_FILE"; then
         missing_vars+=("REDIS_PASSWORD")
     fi
 
     if [ ${#missing_vars[@]} -gt 0 ]; then
-        log_error "Missing required variables in .env: ${missing_vars[*]}"
-        log_error ".env contents:"
-        cat "$PROJECT_ROOT/.env"
+        log_error "Missing required variables in runtime env: ${missing_vars[*]}"
+        log_error "Runtime env contents:"
+        cat "$TEST_ENV_FILE"
         return 1
     fi
 
     # Verify secrets are not empty
-    source "$PROJECT_ROOT/.env"
+    source "$TEST_ENV_FILE"
 
     if [ -z "$JWT_SECRET" ]; then
         log_error "JWT_SECRET is empty"
@@ -270,7 +301,7 @@ test_env_file_has_secrets() {
         return 1
     fi
 
-    log_success "All required secrets present in .env"
+    log_success "All required secrets present in runtime env"
     return 0
 }
 
@@ -282,14 +313,22 @@ test_containers_started() {
     log_info "Testing that containers started successfully..."
 
     cd "$PROJECT_ROOT"
+    load_test_runtime_env || return 1
 
     # Check if containers are running
+    local compose_ps
+    if ! compose_ps=$(docker compose ps --format '{{.Service}} {{.State}}' 2>&1); then
+        log_error "docker compose ps failed"
+        echo "$compose_ps"
+        return 1
+    fi
+
     local running_containers
-    running_containers=$(docker compose ps --format '{{.Service}} {{.State}}' 2>/dev/null | grep -c "running" || echo "0")
+    running_containers=$(printf '%s\n' "$compose_ps" | grep -c "running" || true)
 
     if [ "$running_containers" -lt 4 ]; then
         log_error "Expected at least 4 running containers, found: $running_containers"
-        docker compose ps
+        echo "$compose_ps"
         return 1
     fi
 
@@ -305,8 +344,14 @@ test_database_healthy() {
     log_info "Testing database container health..."
 
     cd "$PROJECT_ROOT"
+    load_test_runtime_env || return 1
 
     local container=$(get_container_name "postgres")
+    if [ -z "$container" ]; then
+        log_error "Database container not found"
+        docker compose ps 2>&1 || true
+        return 1
+    fi
 
     # Wait for database to be healthy
     if ! wait_for_container_healthy "$container" 120; then
@@ -327,8 +372,14 @@ test_backend_healthy() {
     log_info "Testing backend container health..."
 
     cd "$PROJECT_ROOT"
+    load_test_runtime_env || return 1
 
     local container=$(get_container_name "backend")
+    if [ -z "$container" ]; then
+        log_error "Backend container not found"
+        docker compose ps 2>&1 || true
+        return 1
+    fi
 
     # Wait for backend to be healthy
     if ! wait_for_container_healthy "$container" 120; then
@@ -453,17 +504,18 @@ test_default_login() {
 # ============================================
 
 test_docker_compose_standalone() {
-    log_info "Testing that docker compose works standalone (using .env file)..."
+    log_info "Testing that docker compose works standalone with runtime env..."
 
     cd "$PROJECT_ROOT"
+    load_test_runtime_env || return 1
 
     # Stop containers first
     docker compose down 2>/dev/null || true
 
-    # Try to start using just docker compose (should read .env automatically)
+    # Try to start with the runtime env file exported, without relying on repo-root .env
     log_info "Starting containers with standalone docker compose..."
     if ! docker compose up -d 2>&1; then
-        log_error "docker compose up failed when using .env file"
+        log_error "docker compose up failed when using runtime env file"
         return 1
     fi
 
@@ -481,7 +533,7 @@ test_docker_compose_standalone() {
 
     # Even "running" or "starting" is acceptable - we just need it to not fail due to missing env vars
     if [[ "$postgres_status" == *"running"* ]] || [[ "$postgres_status" == *"starting"* ]] || [[ "$postgres_status" == *"healthy"* ]]; then
-        log_success "docker compose works standalone with .env file"
+        log_success "docker compose works standalone with runtime env file"
         return 0
     fi
 
@@ -509,7 +561,7 @@ main() {
 
     # Run tests in order
     run_test "Install Script Exists" test_install_script_exists
-    run_test "Install Script Creates .env" test_install_script_creates_env
+    run_test "Install Script Creates Runtime Env" test_install_script_creates_env
     run_test "Env File Has Required Secrets" test_env_file_has_secrets
     run_test "Containers Started" test_containers_started
     run_test "Database Healthy" test_database_healthy

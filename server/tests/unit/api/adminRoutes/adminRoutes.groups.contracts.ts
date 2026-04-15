@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { adminRoutesRequest, mockPrisma } from './adminRoutesTestHarness';
+import { openApiSpec } from '../openapi.helpers';
 
 export function registerAdminRoutesGroupContracts(): void {
   describe('GET /api/v1/admin/groups', () => {
@@ -25,6 +26,18 @@ export function registerAdminRoutesGroupContracts(): void {
       expect(response.body).toHaveLength(1);
       expect(response.body[0].name).toBe('Admins');
       expect(response.body[0].members).toHaveLength(1);
+
+      const documentedGroup = openApiSpec.components.schemas.AdminGroup.properties;
+      for (const key of Object.keys(response.body[0])) {
+        expect(documentedGroup, `AdminGroup OpenAPI schema must document runtime key ${key}`)
+          .toHaveProperty(key);
+      }
+
+      const documentedMember = openApiSpec.components.schemas.AdminGroupMember.properties;
+      for (const key of Object.keys(response.body[0].members[0])) {
+        expect(documentedMember, `AdminGroupMember OpenAPI schema must document runtime key ${key}`)
+          .toHaveProperty(key);
+      }
     });
 
     it('should handle database error', async () => {

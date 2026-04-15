@@ -24,8 +24,6 @@ import { registerRoutes } from './routes';
 import { errorHandler, notFoundHandler } from './errors/errorHandler';
 import { initializeWebSocketServer, initializeGatewayWebSocketServer } from './websocket/server';
 import { initializeRedisBridge, shutdownRedisBridge } from './websocket/redisBridge';
-import { notificationService } from './websocket/notifications';
-import { getSyncService } from './services/syncService';
 import { createLogger } from './utils/logger';
 import { getErrorMessage } from './utils/errors';
 import { validateEncryptionKey } from './utils/encryption';
@@ -36,8 +34,8 @@ import { doubleCsrfProtection } from './middleware/csrf';
 import { apiVersionMiddleware } from './middleware/apiVersion';
 import { migrationService } from './services/migrationService';
 import { getStartupStatus, isSystemDegraded } from './services/startupManager';
-import { registerService, startRegisteredServices, stopRegisteredServices } from './services/serviceRegistry';
-import { initializeRevocationService, shutdownRevocationService } from './services/tokenRevocation';
+import { startRegisteredServices, stopRegisteredServices } from './services/serviceRegistry';
+import { registerServerBackgroundServices } from './services/serverBackgroundServices';
 import { featureFlagService } from './services/featureFlagService';
 import { rateLimitService } from './services/rateLimiting';
 import { jobQueue } from './jobs';
@@ -52,7 +50,6 @@ import { cache, warmCaches } from './services/cache/cacheService';
 import { walletLogBuffer } from './services/walletLogBuffer';
 import { deadLetterQueue } from './services/deadLetterQueue';
 import { initializeCacheInvalidation, shutdownCacheInvalidation } from './services/cacheInvalidation';
-import { startWorkerHealthMonitor, stopWorkerHealthMonitor } from './services/workerHealth';
 import { updateActiveStatsMetrics } from './observability/metrics/helpers';
 import { getActiveStats } from './repositories/maintenanceRepository';
 
@@ -205,35 +202,8 @@ httpServer.on('upgrade', (request, socket, head) => {
   }
 });
 
-// Define background services with startup manager
-const syncService = getSyncService();
-
-registerService({
-  name: 'notifications',
-  start: () => notificationService.start(),
-  stop: () => notificationService.stop(),
-  critical: false,
-  maxRetries: 2,
-  backoffMs: [1000, 3000],
-});
-
-registerService({
-  name: 'worker-heartbeat',
-  start: () => startWorkerHealthMonitor(),
-  stop: () => stopWorkerHealthMonitor(),
-  critical: true,
-  maxRetries: 10,
-  backoffMs: [1000, 2000, 5000, 10000],
-});
-
-registerService({
-  name: 'sync',
-  start: () => syncService.start(),
-  stop: () => syncService.stop(),
-  critical: false,
-  maxRetries: 3,
-  backoffMs: [2000, 5000, 10000],
-});
+// Define background services with startup manager.
+registerServerBackgroundServices();
 log.info('Worker-owned architecture: in-process maintenance fallback disabled');
 
 // Run database connection and migrations before starting server
@@ -263,7 +233,6 @@ log.info('Worker-owned architecture: in-process maintenance fallback disabled');
     await Promise.all([
       // These run in parallel - no interdependencies
       (async () => { startDatabaseHealthCheck(); })(),
-      (async () => { initializeRevocationService(); })(),
       (async () => { metricsService.initialize(); })(),
       initializeRedis(), // Redis init
     ]);
@@ -295,7 +264,7 @@ log.info('Worker-owned architecture: in-process maintenance fallback disabled');
 
     // Warm caches after all services are initialized (reduces cold-start latency)
     // This runs before server starts accepting requests
-    await warmCaches();
+      await warmCaches();
 
     if (!migrationResult.success) {
       log.error('Database migration failed - server may not function correctly', {
@@ -303,6 +272,29 @@ log.info('Worker-owned architecture: in-process maintenance fallback disabled');
       });
       // Continue anyway - some functionality may still work
     }
+
+    // Start background services before accepting requests so health reflects
+    // the real startup state and critical dependencies fail before bind.
+    const startupResults = await startRegisteredServices();
+    const startupStatus = getStartupStatus();
+
+    for (const result of startupResults) {
+      if (result.started) {
+        log.info(`Service ${result.name} running`);
+      } else if (result.degraded) {
+        log.warn(`Service ${result.name} failed (degraded mode)`, { error: result.error });
+      }
+    }
+
+    if (isSystemDegraded()) {
+      log.warn('System running in degraded mode - some services failed to start');
+    }
+
+    log.info('All background services initialization complete', {
+      duration: startupStatus.duration,
+      started: startupResults.filter(r => r.started).length,
+      degraded: startupResults.filter(r => r.degraded).length,
+    });
 
     // Start listening
     httpServer.listen(config.port, async () => {
@@ -314,33 +306,6 @@ log.info('Worker-owned architecture: in-process maintenance fallback disabled');
       log.info(`Redis: ${isRedisConnected() ? 'connected' : 'in-memory fallback'}`);
       log.info(`HTTP Server running on port ${config.port}`);
       log.info(`WebSocket Server running on ws://localhost:${config.port}/ws`);
-
-      // Start background services with resilient startup manager
-      try {
-        const startupResults = await startRegisteredServices();
-        const startupStatus = getStartupStatus();
-
-        for (const result of startupResults) {
-          if (result.started) {
-            log.info(`Service ${result.name} running`);
-          } else if (result.degraded) {
-            log.warn(`Service ${result.name} failed (degraded mode)`, { error: result.error });
-          }
-        }
-
-        if (isSystemDegraded()) {
-          log.warn('System running in degraded mode - some services failed to start');
-        }
-
-        log.info('All background services initialization complete', {
-          duration: startupStatus.duration,
-          started: startupResults.filter(r => r.started).length,
-          degraded: startupResults.filter(r => r.degraded).length,
-        });
-      } catch (err) {
-        log.error('Critical service startup failure', { error: getErrorMessage(err) });
-        process.exit(1);
-      }
 
       // Periodically update active user/wallet gauges for Prometheus (every 60s)
       activeStatsTimer = setInterval(async () => {
@@ -401,7 +366,6 @@ const handleShutdown = async (signal: string) => {
   // Stop background services
   await stopRegisteredServices();
   stopDatabaseHealthCheck();
-  shutdownRevocationService();
   rateLimitService.shutdown();
 
   // Stop memory caches and buffers

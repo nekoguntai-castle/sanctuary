@@ -34,12 +34,21 @@ This document records the checks that should protect the A-grade engineering goa
 
 Repository-controlled generated-data evidence is current enough for the local scalability/performance claim. These gates are required before broadening production scale-out support or claiming that a specific deployment topology has the same capacity:
 
-- Current generated capacity evidence is `docs/plans/phase3-compose-benchmark-smoke-2026-04-15T00-12-26-208Z.md`, with benchmark output in `docs/plans/phase3-benchmark-2026-04-15T00-12-49-889Z.md`; keep rerunning `npm run perf:phase3:compose-smoke` when Compose startup, seeded auth, benchmark provisioning, synthetic large-wallet history, WebSocket fanout, backup validation/restore, worker queue handler, worker scale-out, Electrum ownership, Redis-backed backend scale-out, backend fanout paths, Nginx backup payload limits, or Postgres/Redis capacity snapshot logic change.
-- The current generated profile covers 25,000 synthetic transactions, 100 authenticated transaction-history requests at concurrency 10, p95 70 ms, p99 77.02 ms, a 16.3 MiB generated restore with 25,076 records, 30 worker proof jobs, two-worker diagnostic processing/ownership, 100/100 Redis-bridged WebSocket clients across two backend replicas, and Postgres/Redis capacity snapshots.
+- Current generated capacity evidence is `docs/plans/phase3-compose-benchmark-smoke-2026-04-15T06-25-20-675Z.md`, with benchmark output in `docs/plans/phase3-benchmark-2026-04-15T06-25-45-349Z.md`; keep rerunning `npm run perf:phase3:compose-smoke` when Compose startup, seeded auth, benchmark provisioning, synthetic large-wallet history, WebSocket fanout, backup validation/restore, worker queue handler, worker scale-out, Electrum ownership, Redis-backed backend scale-out, backend fanout paths, Nginx backup payload limits, runtime TLS material handling, or Postgres/Redis capacity snapshot logic change.
+- The current generated profile covers 25,000 synthetic transactions, 100 authenticated transaction-history requests at concurrency 10, p95 70 ms, p99 77.17 ms, a 16.3 MiB generated restore with 25,076 records, 6 worker queue proof jobs, two-worker diagnostic processing/ownership, 100/100 Redis-bridged WebSocket clients across two backend replicas, and Postgres/Redis capacity snapshots.
 - Repeat transaction history, wallet sync queue, WebSocket fanout, worker queue, backend scale-out, and worker scale-out checks on the target non-production topology when hardware, load balancer, Postgres, Redis, or worker sizing differs from the local Compose proof.
 - Use approved backup restore only in a restore-safe environment, with `SANCTUARY_ADMIN_TOKEN`, `SANCTUARY_BACKUP_FILE`, and `SANCTUARY_ALLOW_RESTORE=true`, when the supported backup size exceeds the 16.3 MiB generated proof.
 
 Do not benchmark third-party real-world wallets, addresses, or public wallet histories. Public testnet availability can be used for operator-owned fixture wallets, but scale should come from generated/regtest data or approved non-production testnet wallets rather than profiling someone else's wallet activity.
+
+Target-environment calibration is not complete until the release record names the exact non-production topology and captures all of the following:
+
+- Hardware or instance class, CPU count, memory, disk class, and network placement for backend, gateway, worker, Postgres, and Redis.
+- Replica counts and load-balancer behavior for frontend, backend, gateway, and worker containers.
+- Database and Redis connection limits, pool settings, and observed p95 latency during the run.
+- Benchmark input shape: generated transaction count, history request count/concurrency/page size, WebSocket client count, worker queue job count, worker replica count, backend replica count, and approved backup size if restore is claimed.
+- Strict-mode command and environment overrides, including whether the run used generated/regtest data or operator-owned testnet fixtures.
+- Pass/fail decision against the initial performance gates, with any release-specific thresholds called out explicitly.
 
 Record benchmark output under `docs/plans/` and link it from `docs/plans/codebase-health-assessment.md`.
 

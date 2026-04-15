@@ -3,17 +3,20 @@
 Snapshot date: 2026-04-14
 
 Commands run:
+- `npm audit` (repo root, `server/`, and `gateway/`) for the quality-gate view
 - `npm audit --omit=dev` (repo root)
 - `npm audit --omit=dev` (`server/`)
 - `npm audit --omit=dev --omit=optional` (`gateway/`)
 
 ## Current state
 
-- Root: `14 low`, `0 moderate`, `0 high`, `0 critical`
-- Server: `0 low`, `3 moderate`, `0 high`, `0 critical`
-- Gateway: `0` when optional deps are omitted for production (`--omit=optional`)
+- Root full install: `16 low`, `0 moderate`, `0 high`, `0 critical`
+- Root production install (`--omit=dev`): `14 low`, `0 moderate`, `0 high`, `0 critical`
+- Server full install and production install: `0 low`, `3 moderate`, `0 high`, `0 critical`
+- Gateway full install: `8 low`, `0 moderate`, `0 high`, `0 critical`
+- Gateway production install (`--omit=dev --omit=optional`): `0` vulnerabilities
 
-## Root findings (14 low)
+## Root findings (14 production low, 16 full-install low)
 
 Fixed in this refresh:
 - Transitive `axios` from the Trezor/Stellar SDK chain was updated in `package-lock.json` from `1.14.0` to `1.15.0`, clearing the critical Axios SSRF/header-injection advisories reported by `npm audit --omit=dev`.
@@ -32,8 +35,12 @@ Main chains:
 Notes:
 - Several findings in `@trezor/*` currently have no available fix in-place.
 - The remaining advisory is the low-severity `elliptic` primitive advisory inherited through hardware-wallet and browser-polyfill dependency trees; npm reports no non-force fix.
+- The two extra full-install-only root findings are in the dev-time `vite-plugin-node-polyfills` chain. npm proposes a major downgrade to `vite-plugin-node-polyfills@0.2.0`, so this is not a safe remediation path.
 
 ## Server findings (3 moderate)
+
+Fixed in this refresh:
+- Transitive `follow-redirects` from the server Axios chain was updated in `server/package-lock.json` from `1.15.11` to `1.16.0`, clearing the moderate custom-header redirect advisory without a forced package downgrade.
 
 Main chain:
 - Direct dev dependency: `prisma`
@@ -45,6 +52,9 @@ Notes:
 - The vulnerable package is not used as an application static-file server in Sanctuary; it is inherited through Prisma tooling.
 
 ## Gateway findings
+
+Fixed in this refresh:
+- Transitive `follow-redirects` from the gateway Google/Firebase HTTP chain was updated in `gateway/package-lock.json` from `1.15.11` to `1.16.0`, clearing the moderate custom-header redirect advisory without a forced package downgrade.
 
 Main chain:
 - Direct: `firebase-admin`
@@ -58,13 +68,14 @@ Notes:
 
 ## Decision
 
-Disposition: `fix + monitor` for the root Axios critical and `follow-redirects` moderate advisories; `accept + monitor` for the remaining root low-severity transitive advisories and server Prisma dev-chain moderate advisory; gateway optional-dependency findings are mitigated in production via optional-dependency pruning.
+Disposition: `fix + monitor` for the root, server, and gateway Axios/`follow-redirects` advisories that had non-forced remediation paths; `accept + monitor` for the remaining root low-severity transitive advisories and server Prisma dev-chain moderate advisory; gateway optional-dependency findings are mitigated in production via optional-dependency pruning.
 
 Reasoning:
 - No moderate/high/critical root production findings remain after the Axios and `follow-redirects` lockfile updates.
 - Remaining proposed `npm audit` remediation paths are unavailable, force/downgrade, or major-change paths that increase functional regression risk.
 - Remaining root findings are in upstream hardware-wallet or browser-polyfill dependency trees where direct in-place fixes are unavailable or not safe.
 - The server moderate advisory is inherited through Prisma tooling, and npm's proposed remediation would downgrade Prisma across a major version.
+- The gateway low findings are in optional Firebase/Google dependency trees; the production install proof path omits optional dependencies and audits clean.
 
 ## Revisit triggers
 

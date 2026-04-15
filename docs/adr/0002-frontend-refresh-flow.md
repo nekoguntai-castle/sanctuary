@@ -6,7 +6,7 @@
 - **Owner:** TBD
 - **Supersedes:** none
 - **Superseded by:** none
-- **Related:** `docs/adr/0001-browser-auth-token-storage.md` (HttpOnly cookie migration), `src/api/client.ts`, `server/src/api/auth/tokens.ts`, `contexts/UserContext.tsx`
+- **Related:** `docs/adr/0001-browser-auth-token-storage.md` (HttpOnly cookie migration), `src/api/authPolicy.ts`, `src/api/client.ts`, `server/src/api/auth/tokens.ts`, `contexts/UserContext.tsx`
 
 ## Context
 
@@ -118,6 +118,7 @@ This is a revision from the earlier draft of this ADR which recommended Option C
 
 Concretely:
 - The server returns an `X-Access-Expires-At` ISO 8601 timestamp header on every auth response (`/auth/login`, `/auth/2fa/verify`, `/auth/refresh`, `/auth/me`).
+- The browser refresh eligibility and CSRF header decisions are centralized in `src/api/authPolicy.ts` so ApiClient, direct fetch helpers, UserContext expectations, and tests share one contract.
 - The client tracks the latest known expiry in module-scoped memory (not in any persistent storage; the cookie itself is the source of truth, the expiry header is the schedule hint).
 - A `setTimeout` fires at `expiry - 60s` and triggers a refresh.
 - The `request` function in `src/api/client.ts` intercepts 401s, calls the same single-flight refresh, and retries the original request once. If the retry also returns 401, it surfaces as a normal error and the user is logged out.

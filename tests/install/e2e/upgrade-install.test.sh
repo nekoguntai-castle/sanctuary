@@ -6,7 +6,7 @@
 # This test simulates upgrading an existing Sanctuary installation
 # and verifies that:
 # - Existing data is preserved
-# - Secrets are reused from .env
+# - Secrets are reused from the runtime env file
 # - Database migrations run correctly
 # - Containers restart properly
 #
@@ -54,6 +54,9 @@ done
 
 # Test configuration
 TEST_ID=$(generate_test_run_id)
+TEST_RUNTIME_DIR="${SANCTUARY_RUNTIME_DIR:-/tmp/sanctuary-upgrade-runtime-${TEST_ID}}"
+TEST_ENV_FILE="${SANCTUARY_ENV_FILE:-$TEST_RUNTIME_DIR/sanctuary.env}"
+TEST_SSL_DIR="${SANCTUARY_SSL_DIR:-$TEST_RUNTIME_DIR/ssl}"
 HTTPS_PORT="${HTTPS_PORT:-8443}"
 HTTP_PORT="${HTTP_PORT:-8080}"
 API_BASE_URL="https://localhost:${HTTPS_PORT}"
@@ -71,6 +74,31 @@ TEST_WALLET_ID=""
 # sanctuary_refresh cookies and a readable sanctuary_csrf cookie. Mutations
 # must echo the CSRF token in X-CSRF-Token.
 CSRF_TOKEN=""
+
+resolve_env_file() {
+    if [ -f "$TEST_ENV_FILE" ]; then
+        echo "$TEST_ENV_FILE"
+    elif [ -f "$PROJECT_ROOT/.env" ]; then
+        echo "$PROJECT_ROOT/.env"
+    else
+        echo "$TEST_ENV_FILE"
+    fi
+}
+
+load_runtime_env() {
+    local env_file
+    env_file="$(resolve_env_file)"
+    if [ ! -f "$env_file" ]; then
+        log_error "Runtime env not found: $env_file"
+        return 1
+    fi
+
+    set -a
+    source "$env_file"
+    set +a
+    export SANCTUARY_ENV_FILE="$env_file"
+    export SANCTUARY_SSL_DIR="$TEST_SSL_DIR"
+}
 
 # Extract the sanctuary_csrf cookie value from the Netscape-format cookie
 # jar. Fields are tab-separated: domain, HttpOnly, path, Secure, expiry,
@@ -150,6 +178,10 @@ teardown() {
     if [ -f "$COOKIE_JAR" ]; then
         rm -f "$COOKIE_JAR"
     fi
+
+    if [ -d "$TEST_RUNTIME_DIR" ]; then
+        rm -rf "$TEST_RUNTIME_DIR"
+    fi
 }
 
 # ============================================
@@ -167,14 +199,13 @@ test_ensure_existing_installation() {
     if [ -n "$frontend_running" ]; then
         log_info "Found existing running installation"
 
-        # Get existing secrets from .env
-        if [ -f "$PROJECT_ROOT/.env" ]; then
-            source "$PROJECT_ROOT/.env"
+        # Get existing secrets from the runtime env, with legacy .env fallback
+        if load_runtime_env; then
             ORIGINAL_JWT_SECRET="$JWT_SECRET"
             ORIGINAL_ENCRYPTION_KEY="$ENCRYPTION_KEY"
             ORIGINAL_GATEWAY_SECRET="$GATEWAY_SECRET"
             ORIGINAL_POSTGRES_PASSWORD="$POSTGRES_PASSWORD"
-            log_info "Loaded existing secrets from .env"
+            log_info "Loaded existing secrets from $(resolve_env_file)"
         fi
 
         return 0
@@ -191,10 +222,11 @@ test_ensure_existing_installation() {
     ORIGINAL_AI_CONFIG_SECRET=$(openssl rand -hex 32)
     ORIGINAL_REDIS_PASSWORD=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
 
-    # Save to .env (Docker Compose's default file)
-    cat > "$PROJECT_ROOT/.env" << EOF
+    # Save to the runtime env outside the repository checkout.
+    mkdir -p "$(dirname "$TEST_ENV_FILE")"
+    cat > "$TEST_ENV_FILE" << EOF
 # Sanctuary Environment Configuration
-# This file is auto-loaded by docker compose
+# This file is loaded by tests before docker compose
 
 JWT_SECRET=$ORIGINAL_JWT_SECRET
 ENCRYPTION_KEY=$ORIGINAL_ENCRYPTION_KEY
@@ -206,13 +238,12 @@ REDIS_PASSWORD=$ORIGINAL_REDIS_PASSWORD
 HTTP_PORT=${HTTP_PORT:-8080}
 HTTPS_PORT=${HTTPS_PORT:-8443}
 EOF
+    chmod 600 "$TEST_ENV_FILE" 2>/dev/null || true
 
     # Generate SSL certs if needed
-    local ssl_dir="$PROJECT_ROOT/docker/nginx/ssl"
+    local ssl_dir="$TEST_SSL_DIR"
     if [ ! -f "$ssl_dir/fullchain.pem" ]; then
-        cd "$ssl_dir"
-        ./generate-certs.sh localhost 2>/dev/null || true
-        cd "$PROJECT_ROOT"
+        SANCTUARY_SSL_DIR="$ssl_dir" bash "$PROJECT_ROOT/docker/nginx/ssl/generate-certs.sh" localhost 2>/dev/null || true
     fi
 
     # Build images first (migrate container depends on backend image)
@@ -220,6 +251,7 @@ EOF
         GATEWAY_SECRET="$ORIGINAL_GATEWAY_SECRET" POSTGRES_PASSWORD="$ORIGINAL_POSTGRES_PASSWORD" \
         AI_CONFIG_SECRET="$ORIGINAL_AI_CONFIG_SECRET" REDIS_PASSWORD="$ORIGINAL_REDIS_PASSWORD" \
         HTTPS_PORT="$HTTPS_PORT" HTTP_PORT="$HTTP_PORT" \
+        SANCTUARY_ENV_FILE="$TEST_ENV_FILE" SANCTUARY_SSL_DIR="$TEST_SSL_DIR" \
         RATE_LIMIT_LOGIN=100 RATE_LIMIT_PASSWORD_CHANGE=100 \
         docker compose build 2>&1
 
@@ -228,6 +260,7 @@ EOF
         GATEWAY_SECRET="$ORIGINAL_GATEWAY_SECRET" POSTGRES_PASSWORD="$ORIGINAL_POSTGRES_PASSWORD" \
         AI_CONFIG_SECRET="$ORIGINAL_AI_CONFIG_SECRET" REDIS_PASSWORD="$ORIGINAL_REDIS_PASSWORD" \
         HTTPS_PORT="$HTTPS_PORT" HTTP_PORT="$HTTP_PORT" \
+        SANCTUARY_ENV_FILE="$TEST_ENV_FILE" SANCTUARY_SSL_DIR="$TEST_SSL_DIR" \
         RATE_LIMIT_LOGIN=100 RATE_LIMIT_PASSWORD_CHANGE=100 \
         docker compose up -d 2>&1
 
@@ -319,9 +352,8 @@ test_create_pre_upgrade_data() {
 test_capture_pre_upgrade_state() {
     log_info "Capturing pre-upgrade state..."
 
-    # Capture .env contents
-    if [ -f "$PROJECT_ROOT/.env" ]; then
-        source "$PROJECT_ROOT/.env"
+    # Capture runtime env contents
+    if load_runtime_env; then
         ORIGINAL_JWT_SECRET="$JWT_SECRET"
         ORIGINAL_ENCRYPTION_KEY="$ENCRYPTION_KEY"
         ORIGINAL_GATEWAY_SECRET="$GATEWAY_SECRET"
@@ -331,7 +363,7 @@ test_capture_pre_upgrade_state() {
         log_info "Captured GATEWAY_SECRET: ${ORIGINAL_GATEWAY_SECRET:0:8}..."
         log_info "Captured POSTGRES_PASSWORD: ${ORIGINAL_POSTGRES_PASSWORD:0:8}..."
     else
-        log_error ".env not found"
+        log_error "Runtime env not found"
         return 1
     fi
 
@@ -352,6 +384,7 @@ test_stop_containers_for_upgrade() {
     log_info "Stopping containers for upgrade simulation..."
 
     cd "$PROJECT_ROOT"
+    load_runtime_env || return 1
 
     docker compose stop 2>&1
 
@@ -402,14 +435,15 @@ test_restart_containers_after_upgrade() {
 
     cd "$PROJECT_ROOT"
 
-    # Load secrets from .env
-    source "$PROJECT_ROOT/.env"
+    # Load secrets from runtime env
+    load_runtime_env
 
     # Restart with existing secrets (all required)
     JWT_SECRET="$JWT_SECRET" ENCRYPTION_KEY="$ENCRYPTION_KEY" \
         GATEWAY_SECRET="$GATEWAY_SECRET" POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
         AI_CONFIG_SECRET="$AI_CONFIG_SECRET" REDIS_PASSWORD="$REDIS_PASSWORD" \
         HTTPS_PORT="$HTTPS_PORT" HTTP_PORT="$HTTP_PORT" \
+        SANCTUARY_ENV_FILE="$(resolve_env_file)" SANCTUARY_SSL_DIR="$TEST_SSL_DIR" \
         RATE_LIMIT_LOGIN=100 RATE_LIMIT_PASSWORD_CHANGE=100 \
         docker compose up -d 2>&1
 
@@ -439,8 +473,8 @@ test_restart_containers_after_upgrade() {
 test_verify_secrets_preserved() {
     log_info "Verifying secrets were preserved..."
 
-    # Reload .env
-    source "$PROJECT_ROOT/.env"
+    # Reload runtime env
+    load_runtime_env
 
     if [ "$JWT_SECRET" != "$ORIGINAL_JWT_SECRET" ]; then
         log_error "JWT_SECRET changed after upgrade"
@@ -590,7 +624,7 @@ test_force_rebuild_upgrade() {
     cd "$PROJECT_ROOT"
 
     # Load secrets
-    source "$PROJECT_ROOT/.env"
+    load_runtime_env
 
     # Force rebuild all containers with --no-cache to ensure fresh images
     # This mirrors what install.sh --upgrade and start.sh --rebuild do
@@ -598,6 +632,7 @@ test_force_rebuild_upgrade() {
         GATEWAY_SECRET="$GATEWAY_SECRET" POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
         AI_CONFIG_SECRET="$AI_CONFIG_SECRET" REDIS_PASSWORD="$REDIS_PASSWORD" \
         HTTPS_PORT="$HTTPS_PORT" HTTP_PORT="$HTTP_PORT" \
+        SANCTUARY_ENV_FILE="$(resolve_env_file)" SANCTUARY_SSL_DIR="$TEST_SSL_DIR" \
         RATE_LIMIT_LOGIN=100 RATE_LIMIT_PASSWORD_CHANGE=100 \
         docker compose build --no-cache 2>&1
 
@@ -605,6 +640,7 @@ test_force_rebuild_upgrade() {
         GATEWAY_SECRET="$GATEWAY_SECRET" POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
         AI_CONFIG_SECRET="$AI_CONFIG_SECRET" REDIS_PASSWORD="$REDIS_PASSWORD" \
         HTTPS_PORT="$HTTPS_PORT" HTTP_PORT="$HTTP_PORT" \
+        SANCTUARY_ENV_FILE="$(resolve_env_file)" SANCTUARY_SSL_DIR="$TEST_SSL_DIR" \
         RATE_LIMIT_LOGIN=100 RATE_LIMIT_PASSWORD_CHANGE=100 \
         docker compose up -d --force-recreate 2>&1
 

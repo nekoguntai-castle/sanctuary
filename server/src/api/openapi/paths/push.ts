@@ -6,8 +6,24 @@
 
 import { browserOrBearerAuth as bearerAuth } from '../security';
 
+const gatewayHmacAuth = [{ gatewaySignature: [], gatewayTimestamp: [] }] as const;
+
 const deviceIdParameter = {
   name: 'id',
+  in: 'path',
+  required: true,
+  schema: { type: 'string' },
+} as const;
+
+const gatewayDeviceIdParameter = {
+  name: 'deviceId',
+  in: 'path',
+  required: true,
+  schema: { type: 'string' },
+} as const;
+
+const userIdParameter = {
+  name: 'userId',
   in: 'path',
   required: true,
   schema: { type: 'string' },
@@ -111,6 +127,66 @@ export const pushPaths = {
         200: successResponse,
         401: apiErrorResponse,
         404: apiErrorResponse,
+      },
+    },
+  },
+  '/push/by-user/{userId}': {
+    get: {
+      tags: ['Push'],
+      summary: 'List push devices for gateway delivery',
+      description: 'Gateway-only HMAC-authenticated route used to fetch registered push devices for notification delivery.',
+      security: gatewayHmacAuth,
+      parameters: [userIdParameter],
+      responses: {
+        200: {
+          description: 'Gateway push devices',
+          content: {
+            'application/json': {
+              schema: {
+                type: 'array',
+                items: { $ref: '#/components/schemas/GatewayPushDevice' },
+              },
+            },
+          },
+        },
+        403: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+  },
+  '/push/device/{deviceId}': {
+    delete: {
+      tags: ['Push'],
+      summary: 'Delete invalid push device for gateway',
+      description: 'Gateway-only HMAC-authenticated route used to remove invalid push tokens after FCM/APNs rejection.',
+      security: gatewayHmacAuth,
+      parameters: [gatewayDeviceIdParameter],
+      responses: {
+        200: successResponse,
+        403: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+  },
+  '/push/gateway-audit': {
+    post: {
+      tags: ['Push'],
+      summary: 'Record gateway push audit event',
+      description: 'Gateway-only HMAC-authenticated route used to store gateway security and delivery audit events in the backend audit log.',
+      security: gatewayHmacAuth,
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: { $ref: '#/components/schemas/GatewayAuditRequest' },
+          },
+        },
+      },
+      responses: {
+        200: successResponse,
+        400: apiErrorResponse,
+        403: apiErrorResponse,
+        500: apiErrorResponse,
       },
     },
   },

@@ -20,11 +20,11 @@
  * inspects the response for that header and forwards it to
  * `src/api/refresh.ts` which schedules the next proactive refresh.
  *
- * On a 401 response, the client invokes the refresh primitive once and
- * retries the original request. Endpoints in the `AUTH_ENDPOINTS_EXEMPT`
- * list (login, 2FA verify, refresh, me, logout, register) bypass this
- * interceptor — they ARE the identity boundary and a 401 from them is
- * the intended outcome, not a signal to refresh.
+ * On a 401 response, the client asks `authPolicy.ts` whether the
+ * request is eligible for one refresh and retry. Credential-presentation
+ * endpoints such as login, registration, 2FA verification, and refresh
+ * bypass the interceptor; session-continuity endpoints such as /auth/me
+ * and logout intentionally remain refresh-eligible.
  *
  * Features:
  * - Automatic retry with exponential backoff for network errors and 5xx responses
@@ -39,6 +39,11 @@ import {
   scheduleRefreshFromHeader,
   RefreshFailedError,
 } from './refresh';
+import {
+  ACCESS_EXPIRES_AT_HEADER,
+  attachCsrfHeader,
+  shouldAttemptRefreshAfterUnauthorized,
+} from './authPolicy';
 
 const log = createLogger('ApiClient');
 
@@ -54,40 +59,6 @@ const FILE_TRANSFER_TIMEOUT_MS = 120_000;
 
 // Retryable HTTP status codes (server errors)
 const RETRYABLE_STATUS_CODES = [408, 429, 500, 502, 503, 504];
-
-// CSRF cookie + header names. Must stay in sync with the backend
-// constants in server/src/middleware/authCookieNames.ts.
-const CSRF_COOKIE_NAME = 'sanctuary_csrf';
-const CSRF_HEADER_NAME = 'X-CSRF-Token';
-const ACCESS_EXPIRES_AT_HEADER = 'X-Access-Expires-At';
-
-// HTTP methods that need a CSRF token. GET/HEAD/OPTIONS are exempt
-// (no state change → no CSRF risk).
-const STATE_CHANGING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
-
-// Auth identity-boundary endpoints that MUST NOT trigger the refresh
-// interceptor on a 401. A 401 from these means the credential being
-// presented is the problem itself — refreshing won't help and would
-// just produce noise (or recurse, in the case of /auth/refresh).
-//
-// Notably NOT exempt:
-//
-//   - /auth/me — this is the boot probe AND the mid-session
-//     "am I still authenticated?" check. A 401 with a stale access
-//     cookie + a valid refresh cookie is exactly the case that should
-//     trigger refresh + retry. Excluding it from the interceptor would
-//     force-logout users on every reload after access-token expiry.
-//
-//   - /auth/logout, /auth/logout-all — refreshing on 401 here lets the
-//     client actually revoke the server-side session even when the
-//     access token has already expired. The request is best-effort, and
-//     authApi.logout() catches any failure so local cleanup still runs.
-const AUTH_ENDPOINTS_EXEMPT_FROM_REFRESH_ON_401 = new Set<string>([
-  '/auth/login',
-  '/auth/register',
-  '/auth/2fa/verify',
-  '/auth/refresh',
-]);
 
 interface RetryOptions {
   maxRetries?: number;
@@ -196,38 +167,6 @@ const API_BASE_URL = getApiBaseUrl();
 export { API_BASE_URL };
 
 /**
- * Read the sanctuary_csrf cookie and return its value, or null if the
- * cookie is missing (fresh session before first login, or when the user
- * is not authenticated at all). Callers echo the value in the
- * X-CSRF-Token header on state-changing requests.
- */
-function readCsrfCookieValue(): string | null {
-  // Browser-only: document is always defined.
-  const raw = document.cookie;
-  if (!raw) return null;
-  for (const part of raw.split(';')) {
-    const [rawName, ...rest] = part.split('=');
-    if (rawName?.trim() === CSRF_COOKIE_NAME) {
-      return decodeURIComponent(rest.join('=')).trim();
-    }
-  }
-  return null;
-}
-
-/**
- * Normalize the endpoint path for the exemption check. Strips query
- * strings so `/auth/me?foo=bar` still matches `/auth/me`.
- */
-function normalizeEndpointForExemption(endpoint: string): string {
-  const qIndex = endpoint.indexOf('?');
-  return qIndex >= 0 ? endpoint.substring(0, qIndex) : endpoint;
-}
-
-function isAuthEndpointExemptFromRefreshOn401(endpoint: string): boolean {
-  return AUTH_ENDPOINTS_EXEMPT_FROM_REFRESH_ON_401.has(normalizeEndpointForExemption(endpoint));
-}
-
-/**
  * Inspect a response for the X-Access-Expires-At header and schedule the
  * next proactive refresh. No-op if the header is absent (non-auth routes)
  * or if the response does not expose a Headers-like `get` method (which
@@ -285,12 +224,7 @@ export class ApiClient {
     // available. A fresh unauthenticated session will not have the cookie
     // yet — the backend's skipCsrfProtection lets those requests through
     // because there is no sanctuary_access cookie either.
-    if (STATE_CHANGING_METHODS.has(method)) {
-      const csrf = readCsrfCookieValue();
-      if (csrf && !headers[CSRF_HEADER_NAME]) {
-        headers[CSRF_HEADER_NAME] = csrf;
-      }
-    }
+    attachCsrfHeader(headers, method);
 
     const performRequest = async (): Promise<T> => {
       const response = await fetch(url, {
@@ -329,9 +263,11 @@ export class ApiClient {
     } catch (error) {
       if (
         error instanceof ApiError
-        && error.status === 401
-        && !isRefreshRetry
-        && !isAuthEndpointExemptFromRefreshOn401(endpoint)
+        && shouldAttemptRefreshAfterUnauthorized({
+          endpoint,
+          status: error.status,
+          isRefreshRetry,
+        })
       ) {
         // Reactive refresh. Call refreshAccessToken and replay the
         // original request once. If the refresh itself fails terminally,
@@ -468,10 +404,7 @@ export class ApiClient {
 
     const method = (options.method ?? 'GET').toUpperCase();
     const headers: Record<string, string> = {};
-    if (STATE_CHANGING_METHODS.has(method)) {
-      const csrf = readCsrfCookieValue();
-      if (csrf) headers[CSRF_HEADER_NAME] = csrf;
-    }
+    attachCsrfHeader(headers, method);
 
     const response = await fetch(url, {
       method: options.method || 'GET',
@@ -511,10 +444,7 @@ export class ApiClient {
 
     const method = (options.method ?? 'GET').toUpperCase();
     const headers: Record<string, string> = {};
-    if (STATE_CHANGING_METHODS.has(method)) {
-      const csrf = readCsrfCookieValue();
-      if (csrf) headers[CSRF_HEADER_NAME] = csrf;
-    }
+    attachCsrfHeader(headers, method);
 
     const response = await fetch(url, {
       method: options.method || 'GET',
@@ -556,8 +486,7 @@ export class ApiClient {
 
     // Upload is always POST → always a state-changing request.
     const headers: Record<string, string> = {};
-    const csrf = readCsrfCookieValue();
-    if (csrf) headers[CSRF_HEADER_NAME] = csrf;
+    attachCsrfHeader(headers, 'POST');
 
     const performUpload = async (): Promise<T> => {
       const response = await fetch(url, {

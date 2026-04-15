@@ -88,6 +88,19 @@ detect_source() {
 # Configuration
 INSTALL_DIR="${SANCTUARY_DIR:-$HOME/sanctuary}"
 SKIP_GIT_CHECKOUT="${SKIP_GIT_CHECKOUT:-false}"  # Set to 'true' in CI to skip version checkout
+DEFAULT_RUNTIME_DIR="${SANCTUARY_RUNTIME_DIR:-$HOME/.config/sanctuary}"
+DEFAULT_ENV_FILE="$DEFAULT_RUNTIME_DIR/sanctuary.env"
+
+resolve_runtime_env_file() {
+    local candidate="${SANCTUARY_ENV_FILE:-$DEFAULT_ENV_FILE}"
+    local legacy="$INSTALL_DIR/.env"
+
+    if [ -z "${SANCTUARY_ENV_FILE:-}" ] && [ ! -f "$candidate" ] && [ -f "$legacy" ]; then
+        echo "$legacy"
+    else
+        echo "$candidate"
+    fi
+}
 
 # Detect source platform
 SOURCE_PLATFORM=$(detect_source "$@")
@@ -333,11 +346,14 @@ main() {
     echo -e "${GREEN}✓${NC} Repository ready"
     echo ""
 
-    # For upgrades, load existing secrets so setup.sh preserves them
-    if [ "$IS_UPGRADE" = true ] && [ -f "$INSTALL_DIR/.env" ]; then
+    # For upgrades, load existing secrets so setup.sh preserves them.
+    # Prefer the operator-owned runtime env, with repo-root .env kept as
+    # a backwards-compatible fallback for older installations.
+    UPGRADE_ENV_FILE="$(resolve_runtime_env_file)"
+    if [ "$IS_UPGRADE" = true ] && [ -f "$UPGRADE_ENV_FILE" ]; then
         echo -e "${GREEN}✓${NC} Loading existing configuration..."
         set -a
-        source "$INSTALL_DIR/.env"
+        source "$UPGRADE_ENV_FILE"
         set +a
         # Force overwrite since we're upgrading, and force clean rebuild
         SETUP_FLAGS="$SETUP_FLAGS --force --upgrade"

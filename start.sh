@@ -19,22 +19,47 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+DEFAULT_RUNTIME_DIR="${SANCTUARY_RUNTIME_DIR:-$HOME/.config/sanctuary}"
+EXTERNAL_ENV_FILE="${SANCTUARY_ENV_FILE:-$DEFAULT_RUNTIME_DIR/sanctuary.env}"
+DEFAULT_SSL_DIR="$SCRIPT_DIR/docker/nginx/ssl"
+EXTERNAL_SSL_DIR="${SANCTUARY_SSL_DIR:-$DEFAULT_RUNTIME_DIR/ssl}"
+
+if [ -f "$EXTERNAL_ENV_FILE" ]; then
+    ENV_FILE="$EXTERNAL_ENV_FILE"
+elif [ -f "$SCRIPT_DIR/.env" ]; then
+    ENV_FILE="$SCRIPT_DIR/.env"
+elif [ -f "$SCRIPT_DIR/.env.local" ]; then
+    ENV_FILE="$SCRIPT_DIR/.env.local"
+else
+    ENV_FILE="$EXTERNAL_ENV_FILE"
+fi
+
+if [ -n "${SANCTUARY_SSL_DIR:-}" ]; then
+    SSL_DIR="$SANCTUARY_SSL_DIR"
+elif [ -f "$EXTERNAL_SSL_DIR/fullchain.pem" ] || [ -f "$EXTERNAL_SSL_DIR/privkey.pem" ]; then
+    SSL_DIR="$EXTERNAL_SSL_DIR"
+else
+    SSL_DIR="$DEFAULT_SSL_DIR"
+fi
+
 # Default ports
 HTTPS_PORT="${HTTPS_PORT:-8443}"
 HTTP_PORT="${HTTP_PORT:-8080}"
 
-# Load environment from .env (Docker Compose's default file)
-# This ensures start.sh and docker compose use the same values
-if [ -f ".env" ]; then
+# Load environment from the operator-owned runtime env file first, with
+# root .env/.env.local kept as backwards-compatible fallbacks.
+if [ -f "$ENV_FILE" ]; then
     set -a  # Export all variables
-    source .env
-    set +a
-elif [ -f ".env.local" ]; then
-    # Fallback to .env.local for backwards compatibility
-    set -a  # Export all variables
-    source .env.local
+    source "$ENV_FILE"
     set +a
 fi
+
+if [ -n "${SANCTUARY_SSL_DIR:-}" ]; then
+    SSL_DIR="$SANCTUARY_SSL_DIR"
+fi
+
+export SANCTUARY_ENV_FILE="$ENV_FILE"
+export SANCTUARY_SSL_DIR="$SSL_DIR"
 
 # Check for required secrets
 MISSING_SECRETS=""
@@ -58,11 +83,11 @@ fi
 
 # Export for docker compose
 export JWT_SECRET ENCRYPTION_KEY GATEWAY_SECRET POSTGRES_PASSWORD AI_CONFIG_SECRET REDIS_PASSWORD
-export HTTPS_PORT HTTP_PORT ENABLE_MONITORING ENABLE_TOR
+export HTTPS_PORT HTTP_PORT ENABLE_MONITORING ENABLE_TOR SANCTUARY_ENV_FILE SANCTUARY_SSL_DIR
 
 # Check SSL certificate expiry
 check_ssl_expiry() {
-    local cert_file="$SCRIPT_DIR/docker/nginx/ssl/fullchain.pem"
+    local cert_file="$SSL_DIR/fullchain.pem"
 
     if [ -f "$cert_file" ] && command -v openssl &> /dev/null; then
         local expiry_date=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
@@ -111,7 +136,7 @@ check_ssl_expiry() {
                     fi
 
                     if [ "$is_self_signed" = true ]; then
-                        (cd "$SCRIPT_DIR/docker/nginx/ssl" && bash generate-certs.sh localhost)
+                        SANCTUARY_SSL_DIR="$SSL_DIR" bash "$SCRIPT_DIR/docker/nginx/ssl/generate-certs.sh" localhost
                         echo -e "\033[0;32mSSL certificate regenerated.\033[0m"
                         echo ""
                     fi
@@ -301,13 +326,12 @@ case "${1:-}" in
         echo "Rebuilding and starting Sanctuary..."
 
         # Generate SSL certificates if missing and openssl is available
-        SSL_DIR="$SCRIPT_DIR/docker/nginx/ssl"
         if [ ! -f "$SSL_DIR/fullchain.pem" ] || [ ! -f "$SSL_DIR/privkey.pem" ]; then
             if command -v openssl &>/dev/null; then
                 echo "Generating SSL certificates..."
                 mkdir -p "$SSL_DIR"
-                chmod +x "$SSL_DIR/generate-certs.sh" 2>/dev/null || true
-                if (cd "$SSL_DIR" && ./generate-certs.sh localhost); then
+                chmod +x "$SCRIPT_DIR/docker/nginx/ssl/generate-certs.sh" 2>/dev/null || true
+                if SANCTUARY_SSL_DIR="$SSL_DIR" bash "$SCRIPT_DIR/docker/nginx/ssl/generate-certs.sh" localhost; then
                     echo "SSL certificates generated successfully"
                 else
                     echo "Warning: Failed to generate SSL certificates"

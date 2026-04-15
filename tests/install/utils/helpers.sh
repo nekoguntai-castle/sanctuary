@@ -231,6 +231,11 @@ cleanup_containers() {
     log_info "Cleaning up Sanctuary containers..."
 
     cd "$project_dir"
+    if [ -n "${SANCTUARY_ENV_FILE:-}" ] && [ -f "$SANCTUARY_ENV_FILE" ]; then
+        set -a
+        source "$SANCTUARY_ENV_FILE"
+        set +a
+    fi
     docker compose down -v --remove-orphans 2>/dev/null || true
 
     # Remove any orphaned containers

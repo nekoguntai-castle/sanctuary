@@ -3,13 +3,14 @@
 # For production, replace these with real certificates from Let's Encrypt or your CA
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CERT_DIR="${SCRIPT_DIR}"
+CERT_DIR="${SANCTUARY_SSL_DIR:-${SCRIPT_DIR}}"
 
 # Certificate details
 DOMAIN="${1:-localhost}"
 DAYS=365
 
 echo "Generating self-signed SSL certificate for: ${DOMAIN}"
+mkdir -p "${CERT_DIR}"
 
 # Generate private key and certificate
 # Using 4096-bit RSA for stronger security (recommended for production)

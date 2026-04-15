@@ -1,5 +1,4 @@
-import { render,screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { act, fireEvent, render,screen } from '@testing-library/react';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
 import {
 NotificationContainer,
@@ -32,7 +31,9 @@ describe('NotificationToast', () => {
   });
 
   afterEach(() => {
-    vi.runOnlyPendingTimers();
+    act(() => {
+      vi.runOnlyPendingTimers();
+    });
     vi.useRealTimers();
   });
 
@@ -43,18 +44,16 @@ describe('NotificationToast', () => {
     expect(screen.getByTestId('down-icon')).toBeInTheDocument();
   });
 
-  it('dismisses when close button clicked', async () => {
-    vi.useRealTimers(); // Use real timers for this test since userEvent needs them
-    const user = userEvent.setup();
+  it('dismisses when close button clicked', () => {
     const onDismiss = vi.fn();
 
     render(<NotificationToast notification={baseNotification} onDismiss={onDismiss} />);
 
-    await user.click(screen.getByLabelText('Dismiss notification'));
-    // Wait for animation timeout
-    await new Promise((resolve) => setTimeout(resolve, 350));
+    fireEvent.click(screen.getByLabelText('Dismiss notification'));
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
     expect(onDismiss).toHaveBeenCalledWith('notif-1');
-    vi.useFakeTimers(); // Restore fake timers for other tests
   });
 
   it('auto-dismisses after duration', () => {
@@ -67,8 +66,10 @@ describe('NotificationToast', () => {
       />
     );
 
-    vi.advanceTimersByTime(500);
-    vi.advanceTimersByTime(300);
+    act(() => {
+      vi.advanceTimersByTime(500);
+      vi.advanceTimersByTime(300);
+    });
     expect(onDismiss).toHaveBeenCalledWith('notif-1');
   });
 

@@ -4,7 +4,7 @@
 #
 # The core setup script that handles all configuration:
 # - Prerequisite checks (Docker, Docker Compose, OpenSSL)
-# - Secret generation and .env file creation
+# - Secret generation and runtime environment file creation
 # - SSL certificate generation
 # - Optional features (monitoring, Tor)
 # - Service startup and health checking
@@ -14,7 +14,7 @@
 #   ./scripts/setup.sh [options]
 #
 # Options:
-#   --force              Overwrite existing .env without prompting
+#   --force              Overwrite existing runtime env without prompting
 #   --non-interactive    Don't prompt for any input (use defaults or env vars)
 #   --no-start           Don't start services after setup
 #   --upgrade            Force clean rebuild of Docker images (no cache)
@@ -30,6 +30,9 @@
 #     JWT_SECRET, ENCRYPTION_KEY, ENCRYPTION_SALT, GATEWAY_SECRET, POSTGRES_PASSWORD
 #
 #   Configuration:
+#     SANCTUARY_RUNTIME_DIR (default: ~/.config/sanctuary)
+#     SANCTUARY_ENV_FILE (default: $SANCTUARY_RUNTIME_DIR/sanctuary.env)
+#     SANCTUARY_SSL_DIR (default: $SANCTUARY_RUNTIME_DIR/ssl)
 #     HTTPS_PORT, HTTP_PORT, GATEWAY_PORT (default: 8443, 8080, 4000)
 #     ENABLE_MONITORING, ENABLE_TOR (yes/no)
 #
@@ -38,7 +41,29 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-ENV_FILE="$PROJECT_DIR/.env"
+DEFAULT_RUNTIME_DIR="${SANCTUARY_RUNTIME_DIR:-$HOME/.config/sanctuary}"
+DEFAULT_ENV_FILE="$DEFAULT_RUNTIME_DIR/sanctuary.env"
+LEGACY_ENV_FILE="$PROJECT_DIR/.env"
+LEGACY_LOCAL_ENV_FILE="$PROJECT_DIR/.env.local"
+DEFAULT_SSL_DIR="$DEFAULT_RUNTIME_DIR/ssl"
+LEGACY_SSL_DIR="$PROJECT_DIR/docker/nginx/ssl"
+
+ENV_FILE="${SANCTUARY_ENV_FILE:-$DEFAULT_ENV_FILE}"
+ENV_FILE_IS_LEGACY=false
+if [ -z "${SANCTUARY_ENV_FILE:-}" ] && [ ! -f "$ENV_FILE" ] && [ -f "$LEGACY_ENV_FILE" ]; then
+    ENV_FILE="$LEGACY_ENV_FILE"
+    ENV_FILE_IS_LEGACY=true
+fi
+
+SSL_DIR="${SANCTUARY_SSL_DIR:-$DEFAULT_SSL_DIR}"
+SSL_DIR_IS_LEGACY=false
+if [ -z "${SANCTUARY_SSL_DIR:-}" ] \
+    && [ ! -f "$SSL_DIR/fullchain.pem" ] \
+    && [ ! -f "$SSL_DIR/privkey.pem" ] \
+    && { [ -f "$LEGACY_SSL_DIR/fullchain.pem" ] || [ -f "$LEGACY_SSL_DIR/privkey.pem" ]; }; then
+    SSL_DIR="$LEGACY_SSL_DIR"
+    SSL_DIR_IS_LEGACY=true
+fi
 
 # ============================================
 # Default Options
@@ -381,22 +406,21 @@ prompt_optional_features() {
 # SSL Certificate Generation
 # ============================================
 generate_ssl_certificates() {
-    SSL_DIR="$PROJECT_DIR/docker/nginx/ssl"
-
     if [ ! -f "$SSL_DIR/fullchain.pem" ] || [ ! -f "$SSL_DIR/privkey.pem" ]; then
         echo -e "${GREEN}Generating SSL certificates...${NC}"
         if command -v openssl &> /dev/null; then
             mkdir -p "$SSL_DIR"
-            chmod +x "$SSL_DIR/generate-certs.sh" 2>/dev/null || true
-            if (cd "$SSL_DIR" && ./generate-certs.sh localhost); then
+            chmod 755 "$SSL_DIR" 2>/dev/null || true
+            chmod +x "$LEGACY_SSL_DIR/generate-certs.sh" 2>/dev/null || true
+            if SANCTUARY_SSL_DIR="$SSL_DIR" bash "$LEGACY_SSL_DIR/generate-certs.sh" localhost; then
                 echo -e "${GREEN}✓${NC} SSL certificates generated"
             else
                 echo -e "${YELLOW}⚠${NC} Could not generate SSL certificates"
-                echo "  Run manually: cd docker/nginx/ssl && ./generate-certs.sh localhost"
+                echo "  Run manually: SANCTUARY_SSL_DIR=\"$SSL_DIR\" bash docker/nginx/ssl/generate-certs.sh localhost"
             fi
         else
             echo -e "${YELLOW}⚠${NC} OpenSSL not found - cannot generate SSL certificates"
-            echo "  Install openssl and run: cd docker/nginx/ssl && ./generate-certs.sh localhost"
+            echo "  Install openssl and run: SANCTUARY_SSL_DIR=\"$SSL_DIR\" bash docker/nginx/ssl/generate-certs.sh localhost"
         fi
     else
         echo -e "${GREEN}✓${NC} SSL certificates already exist"
@@ -410,14 +434,14 @@ generate_ssl_certificates() {
 # ============================================
 load_or_generate_secrets() {
     # Check for .env.local migration (backwards compatibility)
-    if [ -f "$PROJECT_DIR/.env.local" ] && [ ! -f "$ENV_FILE" ]; then
-        echo -e "${YELLOW}!${NC} Migrating secrets from .env.local to .env"
+    if [ -f "$LEGACY_LOCAL_ENV_FILE" ] && [ ! -f "$ENV_FILE" ]; then
+        echo -e "${YELLOW}!${NC} Migrating secrets from .env.local to $ENV_FILE"
         set -a
-        source "$PROJECT_DIR/.env.local"
+        source "$LEGACY_LOCAL_ENV_FILE"
         set +a
     fi
 
-    # Load existing .env if present
+    # Load existing runtime env if present
     if [ -f "$ENV_FILE" ]; then
         set -a
         source "$ENV_FILE"
@@ -480,12 +504,19 @@ load_or_generate_secrets() {
 }
 
 # ============================================
-# .env File Creation
+# Runtime Env File Creation
 # ============================================
 write_env_file() {
     local https_port="${HTTPS_PORT:-8443}"
     local http_port="${HTTP_PORT:-8080}"
     local gateway_port="${GATEWAY_PORT:-4000}"
+
+    local env_dir
+    env_dir="$(dirname "$ENV_FILE")"
+    mkdir -p "$env_dir"
+    if [ "$env_dir" != "$PROJECT_DIR" ]; then
+        chmod 700 "$env_dir" 2>/dev/null || true
+    fi
 
     cat > "$ENV_FILE" << EOF
 # Sanctuary Bitcoin Wallet - Environment Configuration
@@ -538,15 +569,24 @@ BITCOIN_NETWORK=${BITCOIN_NETWORK:-mainnet}
 LOG_LEVEL=${LOG_LEVEL:-info}
 EOF
 
-    echo -e "${GREEN}✓${NC} Configuration saved to .env"
+    chmod 600 "$ENV_FILE" 2>/dev/null || true
+
+    echo -e "${GREEN}✓${NC} Configuration saved to $ENV_FILE"
 
     # Clean up old .env.local if we migrated
-    if [ -f "$PROJECT_DIR/.env.local" ]; then
-        rm -f "$PROJECT_DIR/.env.local"
+    if [ -f "$LEGACY_LOCAL_ENV_FILE" ]; then
+        rm -f "$LEGACY_LOCAL_ENV_FILE"
         echo -e "${GREEN}✓${NC} Cleaned up old .env.local"
     fi
 
     echo ""
+}
+
+export_runtime_environment() {
+    export SANCTUARY_ENV_FILE="$ENV_FILE"
+    export SANCTUARY_SSL_DIR="$SSL_DIR"
+    export JWT_SECRET ENCRYPTION_KEY ENCRYPTION_SALT GATEWAY_SECRET POSTGRES_PASSWORD AI_CONFIG_SECRET REDIS_PASSWORD
+    export HTTPS_PORT HTTP_PORT GATEWAY_PORT ENABLE_MONITORING ENABLE_TOR
 }
 
 # ============================================
@@ -558,6 +598,7 @@ start_services() {
     echo ""
 
     cd "$PROJECT_DIR"
+    export_runtime_environment
 
     # Build compose files list
     COMPOSE_FILES="-f docker-compose.yml"
@@ -669,7 +710,7 @@ wait_for_healthy() {
 show_completion_banner() {
     local https_port="${HTTPS_PORT:-8443}"
     local ssl_exists=false
-    [ -f "$PROJECT_DIR/docker/nginx/ssl/fullchain.pem" ] && ssl_exists=true
+    [ -f "$SSL_DIR/fullchain.pem" ] && ssl_exists=true
 
     echo -e "${BLUE}╔═══════════════════════════════════════════════════════════╗${NC}"
     echo -e "${BLUE}║${NC}                                                           ${BLUE}║${NC}"
@@ -716,7 +757,7 @@ show_completion_banner() {
         echo -e "${BLUE}║${NC}  Monitoring (Grafana):                                    ${BLUE}║${NC}"
         echo -e "${BLUE}║${NC}    ${GREEN}http://localhost:3000${NC}                                 ${BLUE}║${NC}"
         echo -e "${BLUE}║${NC}    Username: ${GREEN}admin${NC}                                        ${BLUE}║${NC}"
-        echo -e "${BLUE}║${NC}    Password: ${GREEN}(your ENCRYPTION_KEY from .env)${NC}             ${BLUE}║${NC}"
+        echo -e "${BLUE}║${NC}    Password: ${GREEN}(your ENCRYPTION_KEY from config)${NC}           ${BLUE}║${NC}"
         echo -e "${BLUE}║${NC}                                                           ${BLUE}║${NC}"
     fi
 
@@ -777,7 +818,7 @@ show_backup_reminder() {
     echo "└─────────────────────────────────────────────────────────────┘"
     echo ""
     echo "Back up options:"
-    echo "  1. Copy the .env file to a secure location"
+    echo "  1. Copy the runtime env file to a secure location"
     echo "  2. Save the keys above to a password manager"
     echo "  3. Print and store in a safe place"
     echo ""
@@ -809,18 +850,18 @@ main() {
         run_prerequisite_checks
     fi
 
-    # Check for existing .env
+    # Check for existing runtime env
     if [ -f "$ENV_FILE" ] && [ "$OPT_FORCE" != true ]; then
         if [ "$OPT_NON_INTERACTIVE" = true ]; then
-            echo -e "${YELLOW}Warning: .env file already exists. Use --force to overwrite.${NC}"
+            echo -e "${YELLOW}Warning: runtime env already exists at $ENV_FILE. Use --force to overwrite.${NC}"
             echo "Continuing with existing configuration..."
             echo ""
         elif [ -t 0 ]; then
-            echo -e "${YELLOW}Warning: .env file already exists.${NC}"
+            echo -e "${YELLOW}Warning: runtime env already exists at $ENV_FILE.${NC}"
             read -p "Overwrite with new secrets? (y/N): " -n 1 -r
             echo
             if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-                echo "Setup cancelled. Your existing .env is unchanged."
+                echo "Setup cancelled. Your existing runtime env is unchanged."
                 exit 0
             fi
             echo ""
@@ -836,8 +877,9 @@ main() {
     # Check for port conflicts
     check_all_ports
 
-    # Write .env file
+    # Write runtime env file
     write_env_file
+    export_runtime_environment
 
     # Generate SSL certificates
     if [ "$OPT_SKIP_SSL" != true ]; then

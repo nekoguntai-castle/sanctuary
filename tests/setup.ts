@@ -22,8 +22,12 @@ vi.mock('../src/api/intelligence', async () => {
 });
 
 const originalConsoleWarn = console.warn.bind(console);
+const suppressedApiRetryPrefixes = ['[API] Request failed', '[ApiClient] Request failed'];
 vi.spyOn(console, 'warn').mockImplementation((message?: unknown, ...args: unknown[]) => {
-  if (typeof message === 'string' && message.startsWith('[API] Request failed')) {
+  if (
+    typeof message === 'string' &&
+    suppressedApiRetryPrefixes.some(prefix => message.startsWith(prefix))
+  ) {
     return;
   }
   originalConsoleWarn(message, ...args);

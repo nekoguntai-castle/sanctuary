@@ -6,4 +6,4 @@
  */
 
 export { default } from './routes';
-export type { HealthStatus, ComponentHealth, HealthResponse } from './types';
+export type { HealthStatus, ComponentHealth, HealthResponse } from '../../services/health';

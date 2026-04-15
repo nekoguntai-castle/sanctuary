@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { adminRoutesRequest, mockClearTransporterCache, mockEncrypt, mockIsEncrypted, mockPrisma } from './adminRoutesTestHarness';
+import { openApiSpec } from '../openapi.helpers';
 
 export function registerAdminRoutesSettingsContracts(): void {
   describe('GET /api/v1/admin/settings', () => {
@@ -14,6 +15,12 @@ export function registerAdminRoutesSettingsContracts(): void {
       // Should have defaults merged with stored settings
       expect(response.body.registrationEnabled).toBe(true);
       expect(response.body.confirmationThreshold).toBeDefined();
+
+      const documentedSettings = openApiSpec.components.schemas.AdminSettings.properties;
+      for (const key of Object.keys(response.body)) {
+        expect(documentedSettings, `AdminSettings OpenAPI schema must document runtime key ${key}`)
+          .toHaveProperty(key);
+      }
     });
 
     it('should handle database error', async () => {

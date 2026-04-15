@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import express, { type Express } from 'express';
 import request from 'supertest';
 import { errorHandler } from '../../../src/errors/errorHandler';
+import { openApiSpec } from './openapi.helpers';
 
 const {
   mockGetConfig,
@@ -144,6 +145,20 @@ describe('Admin Monitoring Routes', () => {
         isCustomUrl: false,
       }),
     ]);
+
+    const documentedResponse = openApiSpec.components.schemas.AdminMonitoringServicesResponse.properties;
+    for (const key of Object.keys(response.body)) {
+      expect(documentedResponse, `AdminMonitoringServicesResponse must document runtime key ${key}`)
+        .toHaveProperty(key);
+    }
+
+    const documentedService = openApiSpec.components.schemas.AdminMonitoringService.properties;
+    for (const service of response.body.services) {
+      for (const key of Object.keys(service)) {
+        expect(documentedService, `AdminMonitoringService must document runtime key ${key}`)
+          .toHaveProperty(key);
+      }
+    }
   });
 
   it('returns custom URLs when service overrides exist', async () => {

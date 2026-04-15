@@ -62,6 +62,27 @@ export const draftPaths = {
         403: apiErrorResponse,
       },
     },
+    post: {
+      tags: ['Drafts'],
+      summary: 'Create draft',
+      description: 'Create a draft transaction for a wallet the user can edit.',
+      security: bearerAuth,
+      parameters: [walletIdParameter],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: { $ref: '#/components/schemas/CreateDraftRequest' },
+          },
+        },
+      },
+      responses: {
+        201: draftResponse,
+        400: apiErrorResponse,
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+      },
+    },
   },
   '/wallets/{walletId}/drafts/{draftId}': {
     get: {
@@ -72,6 +93,19 @@ export const draftPaths = {
       parameters: [walletIdParameter, draftIdParameter],
       responses: {
         200: draftResponse,
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        404: apiErrorResponse,
+      },
+    },
+    delete: {
+      tags: ['Drafts'],
+      summary: 'Delete draft',
+      description: 'Delete a draft transaction. The creator or wallet owner may delete it.',
+      security: bearerAuth,
+      parameters: [walletIdParameter, draftIdParameter],
+      responses: {
+        204: { description: 'Draft deleted' },
         401: apiErrorResponse,
         403: apiErrorResponse,
         404: apiErrorResponse,

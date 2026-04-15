@@ -257,14 +257,14 @@ test_repository_structure() {
 test_ssl_certificate_generation() {
     log_info "Testing SSL certificate generation..."
 
-    local ssl_dir="$PROJECT_ROOT/docker/nginx/ssl"
+    local ssl_dir="$TEST_INSTALL_DIR/runtime/ssl"
+    local cert_script="$PROJECT_ROOT/docker/nginx/ssl/generate-certs.sh"
 
     # Remove existing certificates for clean test
     rm -f "$ssl_dir/fullchain.pem" "$ssl_dir/privkey.pem" 2>/dev/null || true
 
     # Run certificate generation
-    cd "$ssl_dir"
-    if ! ./generate-certs.sh localhost 2>/dev/null; then
+    if ! SANCTUARY_SSL_DIR="$ssl_dir" bash "$cert_script" localhost 2>/dev/null; then
         log_error "Certificate generation script failed"
         return 1
     fi

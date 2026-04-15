@@ -49,9 +49,10 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // calling /auth/me and interpreting the response. 200 → hydrate the
   // user object and schedule the next refresh from the
   // X-Access-Expires-At header (ApiClient forwards it automatically).
-  // 401 → the user is not authenticated, render the login screen.
-  // The /auth/me route is in the ApiClient's exempt list so a 401
-  // does not trigger a refresh-on-401 cycle on boot.
+  // 401 after the ApiClient has attempted one refresh means the user is
+  // not authenticated, so render the login screen. /auth/me is
+  // refresh-eligible because it is both the boot probe and the
+  // mid-session continuity check.
   useEffect(() => {
     const checkAuth = async () => {
       try {

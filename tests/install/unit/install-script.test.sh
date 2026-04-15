@@ -548,11 +548,22 @@ test_install_script_uses_docker_compose() {
 }
 
 test_install_script_creates_env_file() {
-    # .env file creation is now in setup.sh (install.sh delegates to setup.sh)
-    if grep -q 'cat > "\$ENV_FILE"\|cat > .*\.env' "$SETUP_SCRIPT"; then
+    # Runtime env file creation is now in setup.sh (install.sh delegates to setup.sh)
+    if grep -q 'cat > "\$ENV_FILE"' "$SETUP_SCRIPT"; then
         return 0
     else
-        echo -e "${RED}ASSERTION FAILED:${NC} setup.sh should create .env file"
+        echo -e "${RED}ASSERTION FAILED:${NC} setup.sh should create the resolved runtime env file"
+        return 1
+    fi
+}
+
+test_install_script_loads_runtime_env_for_upgrades() {
+    if grep -q "resolve_runtime_env_file" "$INSTALL_SCRIPT" \
+        && grep -q "SANCTUARY_ENV_FILE" "$INSTALL_SCRIPT" \
+        && grep -q '\$INSTALL_DIR/\.env' "$INSTALL_SCRIPT"; then
+        return 0
+    else
+        echo -e "${RED}ASSERTION FAILED:${NC} install.sh should load runtime env first and legacy .env as upgrade fallback"
         return 1
     fi
 }
@@ -657,11 +668,12 @@ test_start_script_exports_secrets() {
 }
 
 test_start_script_sources_env_file() {
-    # start.sh should source .env as primary (Docker Compose's default)
-    if grep -q 'source .env' "$START_SCRIPT"; then
+    # start.sh should source the resolved env file, with support for
+    # SANCTUARY_ENV_FILE and legacy .env fallback.
+    if grep -q 'source "\$ENV_FILE"' "$START_SCRIPT" && grep -q 'SANCTUARY_ENV_FILE' "$START_SCRIPT" && grep -q '\.env' "$START_SCRIPT"; then
         return 0
     else
-        echo -e "${RED}ASSERTION FAILED:${NC} start.sh should source .env file"
+        echo -e "${RED}ASSERTION FAILED:${NC} start.sh should source the resolved env file"
         return 1
     fi
 }
@@ -677,27 +689,24 @@ test_start_script_has_env_local_fallback() {
 }
 
 test_start_script_env_local_has_set_a() {
-    # CRITICAL: .env.local fallback must use set -a to export variables
-    # Without this, docker compose won't receive the secrets
-    # The pattern should be: set -a; source .env.local; set +a (or similar)
+    # CRITICAL: the resolved env file loader covers both external env
+    # files and the .env.local fallback, and must export variables.
+    local env_loader_block=$(sed -n '/if.*-f.*"\$ENV_FILE"/,/^fi$/p' "$START_SCRIPT")
 
-    # Check that set -a appears before the .env.local source in the elif block
-    local env_local_block=$(sed -n '/elif.*\.env\.local/,/^fi$/p' "$START_SCRIPT")
-
-    if echo "$env_local_block" | grep -q "set -a"; then
+    if echo "$env_loader_block" | grep -q "set -a" && echo "$env_loader_block" | grep -q 'source "\$ENV_FILE"'; then
         return 0
     else
-        echo -e "${RED}ASSERTION FAILED:${NC} .env.local fallback must use 'set -a' to export variables"
+        echo -e "${RED}ASSERTION FAILED:${NC} resolved env loader must use 'set -a' to export variables"
         echo "  Without this, secrets won't be passed to docker compose"
         return 1
     fi
 }
 
 test_start_script_env_has_set_a() {
-    # Primary .env source must also use set -a
-    local env_block=$(sed -n '/if.*-f.*\.env/,/elif\|^fi$/p' "$START_SCRIPT" | head -10)
+    # Primary env source must also use set -a
+    local env_block=$(sed -n '/if.*-f.*"\$ENV_FILE"/,/^fi$/p' "$START_SCRIPT")
 
-    if echo "$env_block" | grep -q "set -a"; then
+    if echo "$env_block" | grep -q "set -a" && echo "$env_block" | grep -q 'source "\$ENV_FILE"'; then
         return 0
     else
         echo -e "${RED}ASSERTION FAILED:${NC} .env source must use 'set -a' to export variables"
@@ -931,6 +940,38 @@ test_setup_script_generates_48_char_secrets() {
     fi
 }
 
+test_setup_script_defaults_to_external_runtime_env() {
+    if grep -q 'DEFAULT_RUNTIME_DIR=.*\.config/sanctuary' "$SETUP_SCRIPT" \
+        && grep -q 'DEFAULT_ENV_FILE=.*sanctuary.env' "$SETUP_SCRIPT" \
+        && grep -q 'ENV_FILE=.*SANCTUARY_ENV_FILE' "$SETUP_SCRIPT"; then
+        return 0
+    else
+        echo -e "${RED}ASSERTION FAILED:${NC} setup.sh should default fresh env files outside the repo"
+        return 1
+    fi
+}
+
+test_setup_script_keeps_legacy_env_fallback() {
+    if grep -q 'LEGACY_ENV_FILE=.*PROJECT_DIR.*\.env' "$SETUP_SCRIPT" \
+        && grep -q 'ENV_FILE_IS_LEGACY' "$SETUP_SCRIPT"; then
+        return 0
+    else
+        echo -e "${RED}ASSERTION FAILED:${NC} setup.sh should keep legacy .env fallback for upgrades"
+        return 1
+    fi
+}
+
+test_setup_script_defaults_to_external_ssl_dir() {
+    if grep -q 'DEFAULT_SSL_DIR=.*DEFAULT_RUNTIME_DIR.*/ssl' "$SETUP_SCRIPT" \
+        && grep -q 'SSL_DIR=.*SANCTUARY_SSL_DIR' "$SETUP_SCRIPT" \
+        && grep -q 'LEGACY_SSL_DIR=.*docker/nginx/ssl' "$SETUP_SCRIPT"; then
+        return 0
+    else
+        echo -e "${RED}ASSERTION FAILED:${NC} setup.sh should default fresh SSL files outside the repo"
+        return 1
+    fi
+}
+
 # ============================================
 # Unit Tests: .env.example
 # ============================================
@@ -1056,6 +1097,7 @@ main() {
     run_test "install script generates POSTGRES_PASSWORD" test_install_script_generates_postgres_password
     run_test "install script uses docker compose" test_install_script_uses_docker_compose
     run_test "install script creates .env file" test_install_script_creates_env_file
+    run_test "install script loads runtime env for upgrades" test_install_script_loads_runtime_env_for_upgrades
     run_test "install script has silent openssl check" test_install_script_has_silent_openssl_check
     run_test "install script uses has_openssl for capture" test_install_script_uses_has_openssl_for_capture
     run_test "install script no hardcoded container names" test_install_script_no_hardcoded_container_names
@@ -1110,6 +1152,9 @@ main() {
     run_test "setup script exists" test_setup_script_exists
     run_test "setup script has secret fallbacks" test_setup_script_has_secret_fallbacks
     run_test "setup script generates 48-char secrets" test_setup_script_generates_48_char_secrets
+    run_test "setup script defaults to external runtime env" test_setup_script_defaults_to_external_runtime_env
+    run_test "setup script keeps legacy env fallback" test_setup_script_keeps_legacy_env_fallback
+    run_test "setup script defaults to external SSL dir" test_setup_script_defaults_to_external_ssl_dir
     echo ""
 
     echo -e "${YELLOW}Test Suite: .env.example${NC}"

@@ -7,9 +7,9 @@
 import { Router, Request, Response } from 'express';
 import { asyncHandler } from '../../errors/errorHandler';
 import { circuitBreakerRegistry } from '../../services/circuitBreaker';
-import type { ComponentHealth, HealthStatus, HealthResponse } from './types';
-import { checkDatabase, checkDiskSpace, checkMemory } from './systemChecks';
-import { checkElectrum, checkWebSocket, checkSync, checkRedis, checkJobQueue } from './serviceChecks';
+import type { ComponentHealth, HealthStatus, HealthResponse } from '../../services/health';
+import { checkDatabase, checkDiskSpace, checkMemory } from '../../services/health';
+import { checkElectrum, checkWebSocket, checkSync, checkRedis, checkJobQueue } from '../../services/health';
 import { checkCircuitBreakers, checkCacheInvalidation, checkStartup } from './infrastructureChecks';
 
 const router = Router();

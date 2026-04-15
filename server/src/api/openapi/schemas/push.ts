@@ -63,4 +63,29 @@ export const pushSchemas = {
     },
     required: ['devices'],
   },
+  GatewayPushDevice: {
+    type: 'object',
+    properties: {
+      id: { type: 'string' },
+      platform: { type: 'string', enum: ['ios', 'android'] },
+      pushToken: { type: 'string' },
+      userId: { type: 'string' },
+    },
+    required: ['id', 'platform', 'pushToken', 'userId'],
+  },
+  GatewayAuditRequest: {
+    type: 'object',
+    properties: {
+      event: { type: 'string', minLength: 1 },
+      category: { type: 'string' },
+      severity: { type: 'string' },
+      details: { type: 'object', additionalProperties: true },
+      ip: { type: 'string', nullable: true },
+      userAgent: { type: 'string', nullable: true },
+      userId: { type: 'string', nullable: true },
+      username: { type: 'string', nullable: true },
+    },
+    required: ['event'],
+    additionalProperties: true,
+  },
 } as const;

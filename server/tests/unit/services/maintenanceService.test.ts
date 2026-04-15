@@ -4,7 +4,7 @@ const {
   mockDb,
   mockAuditService,
   mockExpireOldTransfers,
-  mockExecAsync,
+  mockExecFileAsync,
   mockLog,
 } = vi.hoisted(() => ({
   mockDb: {
@@ -36,7 +36,7 @@ const {
     log: vi.fn(),
   },
   mockExpireOldTransfers: vi.fn(),
-  mockExecAsync: vi.fn(),
+  mockExecFileAsync: vi.fn(),
   mockLog: {
     debug: vi.fn(),
     info: vi.fn(),
@@ -83,9 +83,9 @@ vi.mock('../../../src/utils/logger', () => ({
 }));
 
 vi.mock('child_process', () => {
-  const exec = vi.fn();
-  (exec as any)[Symbol.for('nodejs.util.promisify.custom')] = mockExecAsync;
-  return { exec };
+  const execFile = vi.fn();
+  (execFile as any)[Symbol.for('nodejs.util.promisify.custom')] = mockExecFileAsync;
+  return { execFile };
 });
 
 import { maintenanceService } from '../../../src/services/maintenanceService';
@@ -143,7 +143,7 @@ describe('maintenanceService', () => {
     mockDb.feeEstimate.count.mockResolvedValue(0);
     mockDb.draftTransaction.count.mockResolvedValue(0);
     mockDb.$executeRaw.mockResolvedValue(0);
-    mockExecAsync.mockResolvedValue({ stdout: '', stderr: '' });
+    mockExecFileAsync.mockResolvedValue({ stdout: '', stderr: '' });
   });
 
   afterEach(() => {
@@ -313,20 +313,37 @@ describe('maintenanceService', () => {
   });
 
   it('checkDiskUsage exits early when docker is unavailable', async () => {
-    mockExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+    mockExecFileAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
     await expect(checkDiskUsage(testConfig)).resolves.toBeUndefined();
   });
 
   it('checkDiskUsage warns and audits when threshold is exceeded', async () => {
-    mockExecAsync
+    mockExecFileAsync
       .mockResolvedValueOnce({ stdout: 'Docker version 24.0.0', stderr: '' }) // docker --version
       .mockResolvedValueOnce({ stdout: '[{"Mountpoint":"/var/lib/docker/volumes/v1"}]', stderr: '' }) // inspect vol1
-      .mockResolvedValueOnce({ stdout: '/dev/sda1 100G 95G 5G 95% /var/lib/docker/volumes/v1\n', stderr: '' }) // df vol1
+      .mockResolvedValueOnce({
+        stdout: 'Filesystem Size Used Avail Use% Mounted on\n/dev/sda1 100G 95G 5G 95% /var/lib/docker/volumes/v1\n',
+        stderr: '',
+      }) // df vol1
       .mockResolvedValueOnce({ stdout: '[{"Mountpoint":"/var/lib/docker/volumes/v2"}]', stderr: '' }) // inspect vol2
-      .mockResolvedValueOnce({ stdout: '/dev/sda1 100G 20G 80G 20% /var/lib/docker/volumes/v2\n', stderr: '' }); // df vol2
+      .mockResolvedValueOnce({
+        stdout: 'Filesystem Size Used Avail Use% Mounted on\n/dev/sda1 100G 20G 80G 20% /var/lib/docker/volumes/v2\n',
+        stderr: '',
+      }); // df vol2
 
     await checkDiskUsage(testConfig);
 
+    expect(mockExecFileAsync).toHaveBeenCalledWith('docker', ['--version'], expect.any(Object));
+    expect(mockExecFileAsync).toHaveBeenCalledWith(
+      'docker',
+      ['volume', 'inspect', 'sanctuary_postgres_data'],
+      expect.any(Object),
+    );
+    expect(mockExecFileAsync).toHaveBeenCalledWith(
+      'df',
+      ['-hP', '/var/lib/docker/volumes/v1'],
+      expect.any(Object),
+    );
     expect(mockAuditService.log).toHaveBeenCalledWith(expect.objectContaining({
       action: 'maintenance.disk_warning',
       success: true,
@@ -334,18 +351,18 @@ describe('maintenanceService', () => {
   });
 
   it('checkDiskUsage swallows per-volume and outer errors', async () => {
-    mockExecAsync
+    mockExecFileAsync
       .mockResolvedValueOnce({ stdout: 'Docker version 24.0.0', stderr: '' })
       .mockRejectedValueOnce(new Error('volume missing'))
       .mockRejectedValueOnce(new Error('volume missing'));
     await expect(checkDiskUsage(testConfig)).resolves.toBeUndefined();
 
-    mockExecAsync.mockRejectedValueOnce(new Error('docker command failed'));
+    mockExecFileAsync.mockRejectedValueOnce(new Error('docker command failed'));
     await expect(checkDiskUsage(testConfig)).resolves.toBeUndefined();
   });
 
   it('checkDiskUsage handles empty inspect output and short df output safely', async () => {
-    mockExecAsync
+    mockExecFileAsync
       .mockResolvedValueOnce({ stdout: 'Docker version 24.0.0', stderr: '' }) // docker --version
       .mockResolvedValueOnce({ stdout: '[]', stderr: '' }) // inspect vol1
       .mockResolvedValueOnce({ stdout: '[{"Mountpoint":"/var/lib/docker/volumes/v2"}]', stderr: '' }) // inspect vol2
@@ -358,7 +375,7 @@ describe('maintenanceService', () => {
   });
 
   it('checkDiskUsage handles unexpected outer exceptions', async () => {
-    mockExecAsync.mockResolvedValueOnce(undefined as any);
+    mockExecFileAsync.mockResolvedValueOnce(undefined as any);
     await expect(checkDiskUsage(testConfig)).resolves.toBeUndefined();
     expect(mockLog.warn).toHaveBeenCalledWith('Disk usage check failed', expect.any(Object));
   });

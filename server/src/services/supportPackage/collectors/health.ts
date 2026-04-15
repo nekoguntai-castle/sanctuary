@@ -1,11 +1,19 @@
 /**
  * Health Collector
  *
- * Reuses existing health check functions to include current health status.
+ * Reuses service-owned health check functions to include current health status.
  */
 
-import { checkDatabase, checkDiskSpace, checkMemory } from '../../../api/health/systemChecks';
-import { checkElectrum, checkWebSocket, checkSync, checkRedis, checkJobQueue } from '../../../api/health/serviceChecks';
+import {
+  checkDatabase,
+  checkDiskSpace,
+  checkMemory,
+  checkElectrum,
+  checkWebSocket,
+  checkSync,
+  checkRedis,
+  checkJobQueue,
+} from '../../health';
 import { registerCollector } from './registry';
 
 registerCollector('health', async () => {

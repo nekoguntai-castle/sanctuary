@@ -43,6 +43,10 @@ vi.mock('../../../components/NotificationPanel', () => ({
   NotificationBell: () => <span data-testid="notification-bell" />,
 }));
 
+vi.mock('../../../components/Layout/BlockHeightIndicator', () => ({
+  BlockHeightIndicator: () => <span data-testid="block-height-indicator" />,
+}));
+
 vi.mock('../../../components/ui/CustomIcons', () => ({
   SanctuaryLogo: ({ className }: any) => <span data-testid="logo" className={className} />,
   getWalletIcon: (_type: any, className: string) => <span data-testid="wallet-icon" data-class={className} />,

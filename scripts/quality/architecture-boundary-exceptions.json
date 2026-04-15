@@ -1,0 +1,425 @@
+[
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/admin/electrumServers.ts",
+    "target": "server/src/repositories/nodeConfigRepository.ts",
+    "specifier": "../../repositories/nodeConfigRepository",
+    "owner": "backend-architecture",
+    "reason": "Existing admin route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates data access through a service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/admin/nodeConfig.ts",
+    "target": "server/src/repositories/index.ts",
+    "specifier": "../../repositories",
+    "owner": "backend-architecture",
+    "reason": "Existing admin route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates data access through a service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/admin/users.ts",
+    "target": "server/src/repositories/index.ts",
+    "specifier": "../../repositories",
+    "owner": "backend-architecture",
+    "reason": "Existing admin route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates data access through a service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/ai-internal.ts",
+    "target": "server/src/repositories/index.ts",
+    "specifier": "../repositories",
+    "owner": "backend-architecture",
+    "reason": "Existing AI internal route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates data access through a service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/ai-internal.ts",
+    "target": "server/src/repositories/accessControl.ts",
+    "specifier": "../repositories/accessControl",
+    "owner": "backend-architecture",
+    "reason": "Existing AI internal route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates access-control data access through a service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/ai-internal.ts",
+    "target": "server/src/repositories/intelligenceRepository.ts",
+    "specifier": "../repositories/intelligenceRepository",
+    "owner": "backend-architecture",
+    "reason": "Existing dynamic import predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates intelligence repository access through a service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/approvals.ts",
+    "target": "server/src/repositories/index.ts",
+    "specifier": "../repositories",
+    "owner": "backend-architecture",
+    "reason": "Existing approvals route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates data access through a service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/auth/email.ts",
+    "target": "server/src/repositories/index.ts",
+    "specifier": "../../repositories",
+    "owner": "backend-architecture",
+    "reason": "Existing auth route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates data access through an auth service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/auth/login.ts",
+    "target": "server/src/repositories/index.ts",
+    "specifier": "../../repositories",
+    "owner": "backend-architecture",
+    "reason": "Existing auth route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates data access through an auth service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/auth/password.ts",
+    "target": "server/src/repositories/index.ts",
+    "specifier": "../../repositories",
+    "owner": "backend-architecture",
+    "reason": "Existing auth route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates data access through an auth service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/auth/profile.ts",
+    "target": "server/src/repositories/index.ts",
+    "specifier": "../../repositories",
+    "owner": "backend-architecture",
+    "reason": "Existing auth route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates data access through an auth service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/auth/tokens.ts",
+    "target": "server/src/repositories/userRepository.ts",
+    "specifier": "../../repositories/userRepository",
+    "owner": "backend-architecture",
+    "reason": "Existing auth route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates data access through an auth service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/auth/twoFactor/management.ts",
+    "target": "server/src/repositories/index.ts",
+    "specifier": "../../../repositories",
+    "owner": "backend-architecture",
+    "reason": "Existing two-factor route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates data access through a two-factor service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/auth/twoFactor/setup.ts",
+    "target": "server/src/repositories/index.ts",
+    "specifier": "../../../repositories",
+    "owner": "backend-architecture",
+    "reason": "Existing two-factor route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates data access through a two-factor service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/auth/twoFactor/verify.ts",
+    "target": "server/src/repositories/index.ts",
+    "specifier": "../../../repositories",
+    "owner": "backend-architecture",
+    "reason": "Existing two-factor route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates data access through a two-factor service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/bitcoin/address.ts",
+    "target": "server/src/repositories/index.ts",
+    "specifier": "../../repositories",
+    "owner": "backend-architecture",
+    "reason": "Existing bitcoin route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates data access through a bitcoin service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/bitcoin/fees.ts",
+    "target": "server/src/repositories/nodeConfigRepository.ts",
+    "specifier": "../../repositories/nodeConfigRepository",
+    "owner": "backend-architecture",
+    "reason": "Existing bitcoin route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates data access through a bitcoin service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/bitcoin/network.ts",
+    "target": "server/src/repositories/index.ts",
+    "specifier": "../../repositories",
+    "owner": "backend-architecture",
+    "reason": "Existing bitcoin route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates data access through a bitcoin service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/bitcoin/network.ts",
+    "target": "server/src/repositories/nodeConfigRepository.ts",
+    "specifier": "../../repositories/nodeConfigRepository",
+    "owner": "backend-architecture",
+    "reason": "Existing bitcoin route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates node configuration access through a bitcoin service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/bitcoin/transactions.ts",
+    "target": "server/src/repositories/index.ts",
+    "specifier": "../../repositories",
+    "owner": "backend-architecture",
+    "reason": "Existing bitcoin route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates data access through a bitcoin service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/devices/accounts.ts",
+    "target": "server/src/repositories/index.ts",
+    "specifier": "../../repositories",
+    "owner": "backend-architecture",
+    "reason": "Existing devices route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates data access through a device service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/devices/crud.ts",
+    "target": "server/src/repositories/index.ts",
+    "specifier": "../../repositories",
+    "owner": "backend-architecture",
+    "reason": "Existing devices route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates data access through a device service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/devices/models.ts",
+    "target": "server/src/repositories/index.ts",
+    "specifier": "../../repositories",
+    "owner": "backend-architecture",
+    "reason": "Existing devices route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates data access through a device service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/intelligence.ts",
+    "target": "server/src/repositories/walletRepository.ts",
+    "specifier": "../repositories/walletRepository",
+    "owner": "backend-architecture",
+    "reason": "Existing intelligence route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates data access through an intelligence service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/intelligence.ts",
+    "target": "server/src/repositories/intelligenceRepository.ts",
+    "specifier": "../repositories/intelligenceRepository",
+    "owner": "backend-architecture",
+    "reason": "Existing dynamic import predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates intelligence repository access through a service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/payjoin.ts",
+    "target": "server/src/repositories/walletRepository.ts",
+    "specifier": "../repositories/walletRepository",
+    "owner": "backend-architecture",
+    "reason": "Existing payjoin route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates wallet access through a payjoin service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/payjoin.ts",
+    "target": "server/src/repositories/addressRepository.ts",
+    "specifier": "../repositories/addressRepository",
+    "owner": "backend-architecture",
+    "reason": "Existing payjoin route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates address access through a payjoin service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/payjoin.ts",
+    "target": "server/src/repositories/utxoRepository.ts",
+    "specifier": "../repositories/utxoRepository",
+    "owner": "backend-architecture",
+    "reason": "Existing payjoin route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates UTXO access through a payjoin service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/push.ts",
+    "target": "server/src/repositories/index.ts",
+    "specifier": "../repositories",
+    "owner": "backend-architecture",
+    "reason": "Existing push route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates data access through a push service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/transactions/addresses.ts",
+    "target": "server/src/repositories/index.ts",
+    "specifier": "../../repositories",
+    "owner": "backend-architecture",
+    "reason": "Existing transaction route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates data access through a transaction service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/transactions/coinSelection.ts",
+    "target": "server/src/repositories/index.ts",
+    "specifier": "../../repositories",
+    "owner": "backend-architecture",
+    "reason": "Existing transaction route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates data access through a transaction service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/transactions/crossWallet.ts",
+    "target": "server/src/repositories/index.ts",
+    "specifier": "../../repositories",
+    "owner": "backend-architecture",
+    "reason": "Existing transaction route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates data access through a transaction service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/transactions/crossWallet.ts",
+    "target": "server/src/repositories/accessControl.ts",
+    "specifier": "../../repositories/accessControl",
+    "owner": "backend-architecture",
+    "reason": "Existing transaction route access-control repository import predates the boundary.",
+    "removeWhen": "Route delegates access-control data access through a service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/transactions/drafting.ts",
+    "target": "server/src/repositories/walletRepository.ts",
+    "specifier": "../../repositories/walletRepository",
+    "owner": "backend-architecture",
+    "reason": "Existing transaction route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates wallet access through a transaction service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/transactions/privacy.ts",
+    "target": "server/src/repositories/index.ts",
+    "specifier": "../../repositories",
+    "owner": "backend-architecture",
+    "reason": "Existing transaction route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates data access through a transaction service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/transactions/transactionDetail.ts",
+    "target": "server/src/repositories/index.ts",
+    "specifier": "../../repositories",
+    "owner": "backend-architecture",
+    "reason": "Existing transaction route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates data access through a transaction service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/transactions/utxos.ts",
+    "target": "server/src/repositories/index.ts",
+    "specifier": "../../repositories",
+    "owner": "backend-architecture",
+    "reason": "Existing transaction route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates data access through a transaction service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/transactions/walletTransactions/exportTransactions.ts",
+    "target": "server/src/repositories/index.ts",
+    "specifier": "../../../repositories",
+    "owner": "backend-architecture",
+    "reason": "Existing wallet transaction route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates data access through a wallet transaction service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/transactions/walletTransactions/listTransactions.ts",
+    "target": "server/src/repositories/index.ts",
+    "specifier": "../../../repositories",
+    "owner": "backend-architecture",
+    "reason": "Existing wallet transaction route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates data access through a wallet transaction service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/transactions/walletTransactions/pending.ts",
+    "target": "server/src/repositories/index.ts",
+    "specifier": "../../../repositories",
+    "owner": "backend-architecture",
+    "reason": "Existing wallet transaction route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates data access through a wallet transaction service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/transactions/walletTransactions/recalculate.ts",
+    "target": "server/src/repositories/index.ts",
+    "specifier": "../../../repositories",
+    "owner": "backend-architecture",
+    "reason": "Existing wallet transaction route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates data access through a wallet transaction service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/transactions/walletTransactions/stats.ts",
+    "target": "server/src/repositories/index.ts",
+    "specifier": "../../../repositories",
+    "owner": "backend-architecture",
+    "reason": "Existing wallet transaction route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates data access through a wallet transaction service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/wallets/analytics.ts",
+    "target": "server/src/repositories/index.ts",
+    "specifier": "../../repositories",
+    "owner": "backend-architecture",
+    "reason": "Existing wallet route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates data access through a wallet service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/wallets/export.ts",
+    "target": "server/src/repositories/index.ts",
+    "specifier": "../../repositories",
+    "owner": "backend-architecture",
+    "reason": "Existing wallet route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates data access through a wallet service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/wallets/policies.ts",
+    "target": "server/src/repositories/policyRepository.ts",
+    "specifier": "../../repositories/policyRepository",
+    "owner": "backend-architecture",
+    "reason": "Existing wallet route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates policy access through a wallet service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/wallets/policies.ts",
+    "target": "server/src/repositories/walletRepository.ts",
+    "specifier": "../../repositories/walletRepository",
+    "owner": "backend-architecture",
+    "reason": "Existing wallet route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates wallet access through a wallet service module."
+  },
+  {
+    "rule": "server-api-runtime-repositories",
+    "file": "server/src/api/wallets/sharing.ts",
+    "target": "server/src/repositories/index.ts",
+    "specifier": "../../repositories",
+    "owner": "backend-architecture",
+    "reason": "Existing wallet route repository access predates the route/service/repository boundary.",
+    "removeWhen": "Route delegates data access through a wallet service module."
+  }
+]

@@ -11,8 +11,7 @@ import { asyncHandler } from '../../errors/errorHandler';
 import { createLogger } from '../../utils/logger';
 import { backupService, SanctuaryBackup } from '../../services/backupService';
 import { auditService, AuditAction, AuditCategory } from '../../services/auditService';
-import { userRepository } from '../../repositories';
-import { verifyPassword } from '../../utils/password';
+import { verifyAdminPassword } from '../../services/adminCredentialService';
 import {
   ConfirmRestoreSchema,
   CreateBackupSchema,
@@ -48,9 +47,7 @@ router.post('/encryption-keys', authenticate, requireAdmin, asyncHandler(async (
     'Password confirmation required to view encryption keys'
   );
 
-  const user = await userRepository.findByIdWithSelect(req.user!.userId, { password: true });
-
-  if (!user || !(await verifyPassword(password, user.password))) {
+  if (!(await verifyAdminPassword(req.user!.userId, password))) {
     return res.status(401).json({
       error: 'Unauthorized',
       message: 'Incorrect password',

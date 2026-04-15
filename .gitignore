@@ -44,6 +44,7 @@ junit.xml
 playwright-report/
 playwright-results.xml
 test-results/
+.tmp/
 .tmp-gh/
 
 # Quality tool reports (jscpd, lizard, etc.)

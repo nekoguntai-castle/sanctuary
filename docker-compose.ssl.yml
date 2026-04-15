@@ -2,18 +2,20 @@
 # Sanctuary Bitcoin Wallet - HTTPS Only
 # =============================================
 # Usage:
-#   HTTPS_PORT=8443 JWT_SECRET=your-secret docker compose -f docker-compose.yml -f docker-compose.ssl.yml up --build
+#   set -a; source "${SANCTUARY_ENV_FILE:-.env}"; set +a
+#   SANCTUARY_SSL_DIR="${SANCTUARY_SSL_DIR:-./docker/nginx/ssl}" HTTPS_PORT=8443 docker compose -f docker-compose.yml -f docker-compose.ssl.yml up --build
 #
 # Prerequisites:
 #   1. Generate certificates:
-#      cd docker/nginx/ssl && chmod +x generate-certs.sh && ./generate-certs.sh localhost
+#      SANCTUARY_SSL_DIR="${HOME}/.config/sanctuary/ssl" bash docker/nginx/ssl/generate-certs.sh localhost
 #   2. Or use mkcert for locally-trusted certificates:
 #      mkcert -install
-#      mkcert -key-file docker/nginx/ssl/privkey.pem -cert-file docker/nginx/ssl/fullchain.pem localhost 127.0.0.1
+#      mkcert -key-file "${SANCTUARY_SSL_DIR}/privkey.pem" -cert-file "${SANCTUARY_SSL_DIR}/fullchain.pem" localhost 127.0.0.1
 #
 # Environment variables:
 #   HTTPS_PORT - HTTPS port (default: 8443)
 #   HTTP_PORT - HTTP port for redirect (default: 8080)
+#   SANCTUARY_SSL_DIR - directory containing fullchain.pem and privkey.pem
 # =============================================
 
 services:
@@ -25,4 +27,4 @@ services:
       - "${HTTPS_PORT:-8443}:443"
       - "${HTTP_PORT:-8080}:80"
     volumes:
-      - ./docker/nginx/ssl:/etc/nginx/ssl:ro
+      - ${SANCTUARY_SSL_DIR:-./docker/nginx/ssl}:/etc/nginx/ssl:ro

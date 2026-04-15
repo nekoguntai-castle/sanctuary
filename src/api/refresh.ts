@@ -21,6 +21,7 @@
  */
 
 import { createLogger } from '../../utils/logger';
+import { ACCESS_EXPIRES_AT_HEADER, attachCsrfHeader } from './authPolicy';
 
 const log = createLogger('AuthRefresh');
 
@@ -30,10 +31,6 @@ const REFRESH_LEAD_TIME_MS = 60_000;
 
 const REFRESH_LOCK_NAME = 'sanctuary-auth-refresh';
 const BROADCAST_CHANNEL_NAME = 'sanctuary-auth';
-
-const CSRF_COOKIE_NAME = 'sanctuary_csrf';
-const CSRF_HEADER_NAME = 'X-CSRF-Token';
-const ACCESS_EXPIRES_AT_HEADER = 'X-Access-Expires-At';
 
 /**
  * Derive the API base URL the same way `./client.ts` does. Duplicated
@@ -170,7 +167,7 @@ function scheduleRefreshFromExpiryMs(expiresAtMs: number): void {
 export function scheduleRefreshFromHeader(expiresAtIso: string): void {
   const ms = Date.parse(expiresAtIso);
   if (Number.isNaN(ms)) {
-    log.debug('Ignoring invalid X-Access-Expires-At header', { value: expiresAtIso });
+    log.debug('Ignoring invalid access expiry header', { header: ACCESS_EXPIRES_AT_HEADER, value: expiresAtIso });
     return;
   }
   accessExpiresAtMs = ms;
@@ -190,32 +187,16 @@ export function getAccessExpiresAtMs(): number | null {
 // The refresh primitive.
 // -----------------------------------------------------------------------------
 
-function readCsrfCookie(): string | null {
-  // Browser-only: document is always defined.
-  const raw = document.cookie;
-  if (!raw) return null;
-  for (const part of raw.split(';')) {
-    const [rawName, ...rest] = part.split('=');
-    if (rawName?.trim() === CSRF_COOKIE_NAME) {
-      return decodeURIComponent(rest.join('=')).trim();
-    }
-  }
-  return null;
-}
-
 /**
  * Result of the actual POST /auth/refresh call. Separated from the
  * public-facing `refreshAccessToken` so the Web Lock + freshness check
  * can wrap it.
  */
 async function performRefreshRequest(): Promise<void> {
-  const csrfToken = readCsrfCookie();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
-  if (csrfToken) {
-    headers[CSRF_HEADER_NAME] = csrfToken;
-  }
+  attachCsrfHeader(headers, 'POST');
 
   const response = await fetch(`${getApiBaseUrl()}/auth/refresh`, {
     method: 'POST',

@@ -1,0 +1,25 @@
+{
+  "undocumentedRoutes": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "reason": "Root worker health endpoint outside the versioned JSON API contract; /api/v1/health is documented in OpenAPI."
+    },
+    {
+      "method": "GET",
+      "path": "/metrics",
+      "reason": "Prometheus scrape endpoint, not a JSON API operation."
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/docs",
+      "reason": "Swagger UI endpoint that serves the OpenAPI documentation itself."
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/docs/openapi.json",
+      "reason": "Raw OpenAPI document endpoint that exposes the contract being checked."
+    }
+  ],
+  "documentedOnlyRoutes": []
+}

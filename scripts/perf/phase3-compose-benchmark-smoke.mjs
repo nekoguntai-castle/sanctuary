@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -103,6 +104,9 @@ const apiUrl = `https://127.0.0.1:${httpsPort}`;
 const gatewayUrl = `http://127.0.0.1:${gatewayPort}`;
 const wsUrl = `wss://127.0.0.1:${httpsPort}/ws`;
 const composeArgs = ['compose', '-p', projectName, '-f', 'docker-compose.yml'];
+const sslDir = process.env.PHASE3_COMPOSE_SSL_DIR
+  || mkdtempSync(path.join(tmpdir(), `${projectName}-ssl-`));
+const ownsSslDir = !process.env.PHASE3_COMPOSE_SSL_DIR;
 const composeEnv = {
   ...process.env,
   NODE_ENV: 'production',
@@ -118,6 +122,7 @@ const composeEnv = {
   AI_CONFIG_SECRET: 'phase3-compose-benchmark-ai-config-secret-32-characters',
   HTTP_PORT: httpPort,
   HTTPS_PORT: httpsPort,
+  SANCTUARY_SSL_DIR: sslDir,
   GATEWAY_PORT: gatewayPort,
   GATEWAY_TLS_ENABLED: 'false',
   TLS_ENABLED: 'false',
@@ -188,6 +193,31 @@ function runDocker(args, options = {}) {
   }
 
   return result.stdout || '';
+}
+
+function ensureComposeSslCertificates() {
+  const fullchainPath = path.join(sslDir, 'fullchain.pem');
+  const privateKeyPath = path.join(sslDir, 'privkey.pem');
+  if (existsSync(fullchainPath) && existsSync(privateKeyPath)) {
+    return;
+  }
+
+  mkdirSync(sslDir, { recursive: true });
+  const result = spawnSync('bash', ['docker/nginx/ssl/generate-certs.sh', 'localhost'], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      SANCTUARY_SSL_DIR: sslDir,
+    },
+    maxBuffer: 1024 * 1024,
+  });
+
+  if (result.status !== 0) {
+    throw new Error(
+      `Failed to generate compose SSL certificates in ${sslDir}: ${result.stderr || result.stdout || 'unknown error'}`
+    );
+  }
 }
 
 function runCompose(args) {
@@ -1696,6 +1726,9 @@ let passed = false;
 let failureError = null;
 
 try {
+  ensureComposeSslCertificates();
+  recordStep('compose ssl certificates', true, `SANCTUARY_SSL_DIR=${sslDir}`);
+
   runCompose(['up', '-d', '--build', 'frontend', 'gateway', 'migrate']);
   recordStep('compose stack started', true, `project=${projectName} apiPort=${httpsPort} gatewayPort=${gatewayPort}`);
 
@@ -1799,6 +1832,7 @@ try {
     capacitySnapshots,
     composePs,
     keptStack: keepStack,
+    sslDir,
   };
 
   mkdirSync(outputDir, { recursive: true });
@@ -1819,6 +1853,14 @@ try {
     }
   } else {
     console.log(`Leaving compose project ${projectName} running because PHASE3_COMPOSE_BENCHMARK_KEEP_STACK=true`);
+  }
+
+  if (!keepStack && ownsSslDir) {
+    try {
+      rmSync(sslDir, { recursive: true, force: true });
+    } catch (error) {
+      console.warn(`Failed to clean up temporary SSL directory ${sslDir}: ${getErrorMessage(error)}`);
+    }
   }
 }
 
