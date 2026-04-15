@@ -423,6 +423,9 @@ jobs:
           ENCRYPTION_SALT: test-encryption-salt-for-ci
           NODE_ENV: test
           PORT: 3001
+          # E2E harness starts only the server, not the paired worker, so
+          # disable the critical worker-heartbeat startup gate.
+          WORKER_HEALTH_MONITOR_ENABLED: 'false'
 
       - name: Wait for backend to be ready
         run: |
@@ -717,6 +720,9 @@ jobs:
           ENCRYPTION_SALT: test-encryption-salt-for-ci
           NODE_ENV: test
           PORT: 3001
+          # E2E harness starts only the server, not the paired worker, so
+          # disable the critical worker-heartbeat startup gate.
+          WORKER_HEALTH_MONITOR_ENABLED: 'false'
 
       - name: Wait for backend to be ready
         run: |

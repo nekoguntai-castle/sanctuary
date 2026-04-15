@@ -48,6 +48,20 @@ const loadServerBackgroundServices = async () => {
 describe('serverBackgroundServices', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    delete process.env.WORKER_HEALTH_MONITOR_ENABLED;
+  });
+
+  it('skips worker-heartbeat and sync when WORKER_HEALTH_MONITOR_ENABLED=false', async () => {
+    process.env.WORKER_HEALTH_MONITOR_ENABLED = 'false';
+    const { registerServerBackgroundServices } = await loadServerBackgroundServices();
+
+    registerServerBackgroundServices();
+
+    const registered = mocks.registerService.mock.calls.map(([service]) => service);
+    expect(registered.map(service => service.name)).toEqual([
+      'token-revocation',
+      'notifications',
+    ]);
   });
 
   it('registers server background services with explicit lifecycle policy', async () => {
