@@ -65,6 +65,7 @@ vi.mock('os', () => ({
 }));
 
 vi.mock('../../../../src/middleware/auth', () => ({
+  requireAuthenticatedUser: (req: any) => req.user ?? { userId: 'test-user-id', username: 'testuser', isAdmin: false },
   authenticate: vi.fn((req: Request, res: Response, next: NextFunction) => {
     if (req.headers.authorization) {
       const isAdmin = req.headers['x-test-admin'] === 'true';

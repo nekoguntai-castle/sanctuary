@@ -11,6 +11,7 @@ import { asyncHandler } from '../../errors/errorHandler';
 import { ErrorCodes } from '../../errors/ApiError';
 import * as walletImport from '../../services/walletImport';
 import { importFormatRegistry } from '../../services/import';
+import { requireAuthenticatedUser } from '../../middleware/auth';
 
 const router = Router();
 
@@ -82,7 +83,7 @@ router.post('/import/validate', validate(
   { body: WalletImportValidateBodySchema },
   { message: walletImportValidationMessage, code: ErrorCodes.INVALID_INPUT }
 ), asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { descriptor, json } = req.body;
 
   const result = await walletImport.validateImport(userId, {
@@ -101,7 +102,7 @@ router.post('/import', validate(
   { body: WalletImportBodySchema },
   { message: walletImportValidationMessage, code: ErrorCodes.INVALID_INPUT }
 ), asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { data, name, network, deviceLabels } = req.body;
 
   const result = await walletImport.importWallet(userId, {

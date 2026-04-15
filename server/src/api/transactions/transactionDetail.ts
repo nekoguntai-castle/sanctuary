@@ -9,6 +9,7 @@ import { transactionRepository } from '../../repositories';
 import { createLogger } from '../../utils/logger';
 import { asyncHandler } from '../../errors/errorHandler';
 import { NotFoundError } from '../../errors/ApiError';
+import { requireAuthenticatedUser } from '../../middleware/auth';
 
 const router = Router();
 const log = createLogger('TX_DETAIL:ROUTE');
@@ -19,7 +20,7 @@ const log = createLogger('TX_DETAIL:ROUTE');
  * First checks database (with wallet access verification), then fetches from mempool.space if not found
  */
 router.get('/transactions/:txid/raw', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { txid } = req.params;
 
   // First, check if we have it in our database WITH wallet access verification
@@ -55,7 +56,7 @@ router.get('/transactions/:txid/raw', asyncHandler(async (req, res) => {
  * Get a specific transaction by txid
  */
 router.get('/transactions/:txid', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { txid } = req.params;
 
   const transaction = await transactionRepository.findByTxidWithAccess(txid, userId, {

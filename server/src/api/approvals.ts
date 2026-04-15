@@ -5,7 +5,7 @@
  */
 
 import { Router } from 'express';
-import { authenticate } from '../middleware/auth';
+import { authenticate, requireAuthenticatedUser } from '../middleware/auth';
 import { approvalService } from '../services/vaultPolicy/approvalService';
 import { walletSharingRepository } from '../repositories';
 import { asyncHandler } from '../errors/errorHandler';
@@ -19,7 +19,7 @@ router.use(authenticate);
  * Returns approvals for wallets where the user has owner or approver role.
  */
 router.get('/approvals/pending', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
 
   // Single query: get wallet IDs where user has approve-capable role (owner or approver)
   const approveWalletIds = await walletSharingRepository.findWalletIdsByUserRole(userId, ['owner', 'approver']);

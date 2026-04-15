@@ -68,6 +68,7 @@ vi.mock('../../../src/config', () => ({
 
 // Mock authentication middleware
 vi.mock('../../../src/middleware/auth', () => ({
+  requireAuthenticatedUser: (req: any) => req.user ?? { userId: 'test-user-id', username: 'testuser', isAdmin: false },
   authenticate: (req: express.Request, res: express.Response, next: express.NextFunction) => {
     (req as any).user = { userId: 'test-user-id', isAdmin: false };
     next();

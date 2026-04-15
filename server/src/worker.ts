@@ -24,6 +24,7 @@ import os from 'node:os';
 import { getConfig } from './config';
 import { createLogger } from './utils/logger';
 import { getErrorMessage } from './utils/errors';
+import { exitAfterDelay, exitNow } from './utils/processExit';
 // Initialize Prometheus metrics collection for the worker process
 import { metricsService } from './observability/metrics/registry';
 import { updateJobQueueMetrics } from './observability/metrics/helpers';
@@ -72,7 +73,7 @@ process.on('uncaughtException', (error: Error) => {
     error: error.message,
     stack: error.stack,
   });
-  setTimeout(() => process.exit(1), 1000);
+  exitAfterDelay(1, 1000);
 });
 
 process.on('unhandledRejection', (reason: unknown) => {
@@ -639,7 +640,7 @@ async function shutdown(signal: string): Promise<void> {
   }
 
   log.info('Worker shutdown complete');
-  process.exit(0);
+  exitNow(0);
 }
 
 // =============================================================================
@@ -649,7 +650,7 @@ async function shutdown(signal: string): Promise<void> {
 // Start the worker
 startWorker().catch((error) => {
   log.error('Worker startup failed', { error: error.message, stack: error.stack });
-  process.exit(1);
+  exitNow(1);
 });
 
 // Graceful shutdown handlers

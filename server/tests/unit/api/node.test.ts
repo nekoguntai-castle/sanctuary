@@ -74,6 +74,7 @@ vi.mock('../../../src/utils/logger', () => ({
 }));
 
 vi.mock('../../../src/middleware/auth', () => ({
+  requireAuthenticatedUser: (req: any) => req.user ?? { userId: 'test-user-id', username: 'testuser', isAdmin: false },
   authenticate: (req: Request, res: Response, next: NextFunction) => {
     const auth = req.headers.authorization;
     if (!auth) {

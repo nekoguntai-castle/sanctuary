@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   bitcoinLib as bitcoin,
-  constants,
   createBitBoxAdapter,
   mockGetKeypathFromString,
   mockIsErrorAbort,

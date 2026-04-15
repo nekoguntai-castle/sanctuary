@@ -5,7 +5,7 @@
  */
 
 import { Router } from 'express';
-import { authenticate } from '../../middleware/auth';
+import { authenticate, requireAuthenticatedUser } from '../../middleware/auth';
 import { getSyncCoordinator } from '../../services/sync/syncCoordinator';
 import { asyncHandler } from '../../errors/errorHandler';
 
@@ -19,7 +19,7 @@ router.use(authenticate);
  * Sync wallet with blockchain
  */
 router.post('/wallet/:walletId/sync', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { walletId } = req.params;
 
   res.json(await getSyncCoordinator().syncLegacyBitcoinWallet(userId, walletId));
@@ -30,7 +30,7 @@ router.post('/wallet/:walletId/sync', asyncHandler(async (req, res) => {
  * Update transaction confirmations for a wallet
  */
 router.post('/wallet/:walletId/update-confirmations', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { walletId } = req.params;
 
   res.json(await getSyncCoordinator().updateWalletConfirmations(userId, walletId));

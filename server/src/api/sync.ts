@@ -6,7 +6,7 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
-import { authenticate } from '../middleware/auth';
+import { authenticate, requireAuthenticatedUser } from '../middleware/auth';
 import { rateLimitByUser } from '../middleware/rateLimit';
 import { validate } from '../middleware/validate';
 import { getSyncCoordinator, type SyncPriority } from '../services/sync/syncCoordinator';
@@ -34,7 +34,7 @@ router.use(authenticate);
  * Trigger immediate sync for a wallet
  */
 router.post('/wallet/:walletId', rateLimitByUser('sync:trigger'), asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { walletId } = req.params;
 
   res.json(await getSyncCoordinator().syncWalletNow(userId, walletId));
@@ -47,7 +47,7 @@ router.post('/wallet/:walletId', rateLimitByUser('sync:trigger'), asyncHandler(a
 router.post('/queue/:walletId', rateLimitByUser('sync:trigger'), validate(
   { body: SyncPriorityBodySchema }
 ), asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { walletId } = req.params;
   const priority = readPriority(req.body);
 
@@ -59,7 +59,7 @@ router.post('/queue/:walletId', rateLimitByUser('sync:trigger'), validate(
  * Get sync status for a wallet
  */
 router.get('/status/:walletId', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { walletId } = req.params;
 
   res.json(await getSyncCoordinator().getWalletSyncStatus(userId, walletId));
@@ -71,7 +71,7 @@ router.get('/status/:walletId', asyncHandler(async (req, res) => {
  * Returns the most recent logs stored in memory (up to 200 entries)
  */
 router.get('/logs/:walletId', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { walletId } = req.params;
 
   res.json(await getSyncCoordinator().getWalletSyncLogs(userId, walletId));
@@ -84,7 +84,7 @@ router.get('/logs/:walletId', asyncHandler(async (req, res) => {
 router.post('/user', rateLimitByUser('sync:batch'), validate(
   { body: SyncPriorityBodySchema }
 ), asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const priority = readPriority(req.body);
 
   res.json(await getSyncCoordinator().queueUserWallets(userId, priority));
@@ -95,7 +95,7 @@ router.post('/user', rateLimitByUser('sync:batch'), validate(
  * Reset a stuck sync state
  */
 router.post('/reset/:walletId', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { walletId } = req.params;
 
   res.json(await getSyncCoordinator().resetWalletSyncState(userId, walletId));
@@ -107,7 +107,7 @@ router.post('/reset/:walletId', asyncHandler(async (req, res) => {
  * Use this to fix missing transactions (e.g., sent transactions)
  */
 router.post('/resync/:walletId', rateLimitByUser('sync:trigger'), asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { walletId } = req.params;
 
   res.json(await getSyncCoordinator().resyncWallet(userId, walletId));
@@ -120,7 +120,7 @@ router.post('/resync/:walletId', rateLimitByUser('sync:trigger'), asyncHandler(a
 router.post('/network/:network', rateLimitByUser('sync:batch'), validate(
   { body: SyncPriorityBodySchema }
 ), asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { network } = req.params;
   const priority = readPriority(req.body);
 
@@ -133,7 +133,7 @@ router.post('/network/:network', rateLimitByUser('sync:batch'), validate(
  * Requires X-Confirm-Resync: true header
  */
 router.post('/network/:network/resync', rateLimitByUser('sync:batch'), asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { network } = req.params;
   const confirmed = req.headers['x-confirm-resync'] === 'true';
 
@@ -145,7 +145,7 @@ router.post('/network/:network/resync', rateLimitByUser('sync:batch'), asyncHand
  * Get aggregate sync status for all wallets of a network
  */
 router.get('/network/:network/status', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { network } = req.params;
 
   res.json(await getSyncCoordinator().getNetworkSyncStatus(userId, network));

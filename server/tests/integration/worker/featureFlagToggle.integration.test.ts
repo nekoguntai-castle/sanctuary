@@ -242,6 +242,7 @@ describe('feature flag admin + worker integration', () => {
     }));
 
     vi.doMock('../../../src/middleware/auth', () => ({
+  requireAuthenticatedUser: (req: any) => req.user ?? { userId: 'test-user-id', username: 'testuser', isAdmin: false },
       authenticate: (req: any, _res: any, next: () => void) => {
         req.user = { userId: 'admin-1', username: 'admin', isAdmin: true };
         next();

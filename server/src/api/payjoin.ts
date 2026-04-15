@@ -8,7 +8,7 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
-import { authenticate } from '../middleware/auth';
+import { authenticate, requireAuthenticatedUser } from '../middleware/auth';
 import { requireFeature, isFeatureEnabledAsync } from '../middleware/featureGate';
 import { validate } from '../middleware/validate';
 import { asyncHandler } from '../errors/errorHandler';
@@ -96,7 +96,7 @@ router.get('/status', authenticate, asyncHandler(async (_req, res) => {
  */
 router.get('/eligibility/:walletId', authenticate, requireFeature('payjoinSupport'), asyncHandler(async (req, res) => {
   const { walletId } = req.params;
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
 
   // Verify wallet access
   const wallet = await findByIdWithAccess(walletId, userId);
@@ -147,7 +147,7 @@ router.get('/eligibility/:walletId', authenticate, requireFeature('payjoinSuppor
 router.get('/address/:addressId/uri', authenticate, requireFeature('payjoinSupport'), asyncHandler(async (req, res) => {
   const { addressId } = req.params;
   const { amount, label, message } = req.query;
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
 
   // Get address and verify access
   const address = await findAddressByIdWithAccess(addressId, userId);

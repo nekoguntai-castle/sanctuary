@@ -6,7 +6,7 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
-import { authenticate } from '../../middleware/auth';
+import { authenticate, requireAuthenticatedUser } from '../../middleware/auth';
 import { validate } from '../../middleware/validate';
 import * as blockchain from '../../services/bitcoin/blockchain';
 import { walletRepository } from '../../repositories';
@@ -97,7 +97,7 @@ router.post('/transaction/:txid/rbf', authenticate, validate(
   { body: RbfBodySchema },
   { message: 'newFeeRate and walletId are required' }
 ), asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { txid } = req.params;
   const { newFeeRate, walletId } = req.body;
 
@@ -134,7 +134,7 @@ router.post('/transaction/cpfp', authenticate, validate(
   { body: CpfpBodySchema },
   { message: 'parentTxid, parentVout, targetFeeRate, recipientAddress, and walletId are required' }
 ), asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const {
     parentTxid,
     parentVout,
@@ -176,7 +176,7 @@ router.post('/transaction/batch', authenticate, validate(
   { body: BatchTransactionBodySchema },
   { message: batchTransactionValidationMessage }
 ), asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const {
     recipients,
     feeRate,

@@ -23,6 +23,7 @@ vi.mock('../../../../src/repositories', () => ({
 }));
 
 vi.mock('../../../../src/middleware/auth', () => ({
+  requireAuthenticatedUser: (req: any) => req.user ?? { userId: 'test-user-id', username: 'testuser', isAdmin: false },
   authenticate: (req: Request, res: Response, next: NextFunction) => {
     if (req.headers.authorization) {
       const userId = (req.headers['x-test-user-id'] as string) || 'test-user-123';

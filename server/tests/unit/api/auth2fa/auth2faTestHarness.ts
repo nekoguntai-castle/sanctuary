@@ -88,6 +88,7 @@ vi.mock('../../../../src/middleware/rateLimit', () => ({
 }));
 
 vi.mock('../../../../src/middleware/auth', () => ({
+  requireAuthenticatedUser: (req: any) => req.user ?? { userId: 'test-user-id', username: 'testuser', isAdmin: false },
   authenticate: (req: any, _res: any, next: any) => {
     const omitUsername = req.headers['x-test-no-username'] === '1';
     req.user = omitUsername

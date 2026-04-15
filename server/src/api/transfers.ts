@@ -11,7 +11,7 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
-import { authenticate } from '../middleware/auth';
+import { authenticate, requireAuthenticatedUser } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { createLogger } from '../utils/logger';
 import { asyncHandler } from '../errors/errorHandler';
@@ -87,7 +87,7 @@ router.post('/', validate(
   { body: InitiateTransferBodySchema },
   { message: initiateTransferValidationMessage, code: ErrorCodes.INVALID_INPUT }
 ), asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { resourceType, resourceId, toUserId, message, keepExistingUsers, expiresInDays } = req.body;
 
   const input: InitiateTransferInput = {
@@ -122,7 +122,7 @@ router.post('/', validate(
  * - resourceType: 'wallet' | 'device' (optional)
  */
 router.get('/', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { role, status, resourceType } = req.query;
 
   const filters: TransferFilters = {};
@@ -149,7 +149,7 @@ router.get('/', asyncHandler(async (req, res) => {
  * Get counts for pending transfers
  */
 router.get('/counts', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
 
   const [pendingIncoming, awaitingConfirmation] = await Promise.all([
     getPendingIncomingCount(userId),
@@ -168,7 +168,7 @@ router.get('/counts', asyncHandler(async (req, res) => {
  * Get a specific transfer by ID
  */
 router.get('/:id', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { id } = req.params;
 
   const transfer = await getTransfer(id);
@@ -190,7 +190,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
  * Accept a pending transfer (recipient action)
  */
 router.post('/:id/accept', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { id } = req.params;
 
   const transfer = await acceptTransfer(userId, id);
@@ -205,7 +205,7 @@ router.post('/:id/accept', asyncHandler(async (req, res) => {
  * Decline a pending transfer (recipient action)
  */
 router.post('/:id/decline', validate({ body: DeclineTransferBodySchema }), asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { id } = req.params;
   const { reason } = req.body;
 
@@ -222,7 +222,7 @@ router.post('/:id/decline', validate({ body: DeclineTransferBodySchema }), async
  * Can cancel from pending or accepted state
  */
 router.post('/:id/cancel', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { id } = req.params;
 
   const transfer = await cancelTransfer(userId, id);
@@ -238,7 +238,7 @@ router.post('/:id/cancel', asyncHandler(async (req, res) => {
  * This is the final step that actually transfers ownership
  */
 router.post('/:id/confirm', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { id } = req.params;
 
   const transfer = await confirmTransfer(userId, id);

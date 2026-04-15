@@ -11,7 +11,7 @@ import { userRepository } from '../../repositories';
 import { verifyPassword } from '../../utils/password';
 import { VerifyEmailSchema, UpdateEmailSchema } from '../schemas/email';
 import { createLogger } from '../../utils/logger';
-import { authenticate } from '../../middleware/auth';
+import { authenticate, requireAuthenticatedUser } from '../../middleware/auth';
 import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
 import { NotFoundError, ValidationError, UnauthorizedError, ConflictError } from '../../errors/ApiError';
@@ -106,7 +106,7 @@ export function createEmailRouter(
     authenticate,
     resendLimiter,
     asyncHandler(async (req, res) => {
-      const userId = req.user!.userId;
+      const userId = requireAuthenticatedUser(req).userId;
 
       // Get user to retrieve email
       const user = await userRepository.findById(userId);
@@ -125,7 +125,7 @@ export function createEmailRouter(
       const { ipAddress, userAgent } = getClientInfo(req);
       await auditService.log({
         userId,
-        username: req.user!.username,
+        username: requireAuthenticatedUser(req).username,
         action: AuditAction.AUTH_EMAIL_VERIFICATION_SENT,
         category: AuditCategory.AUTH,
         success: true,
@@ -157,7 +157,7 @@ export function createEmailRouter(
     validate({ body: UpdateEmailSchema }, { message: 'Invalid request' }),
     asyncHandler(async (req, res) => {
       const { email, password } = req.body;
-      const userId = req.user!.userId;
+      const userId = requireAuthenticatedUser(req).userId;
 
       // Get full user record to verify password
       const user = await userRepository.findById(userId);

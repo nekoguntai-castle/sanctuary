@@ -25,6 +25,7 @@ vi.mock('../../../src/models/prisma', async () => {
 
 // Mock auth middleware to bypass JWT validation
 vi.mock('../../../src/middleware/auth', () => ({
+  requireAuthenticatedUser: (req: any) => req.user ?? { userId: 'test-user-id', username: 'testuser', isAdmin: false },
   authenticate: (req: any, res: any, next: any) => {
     req.user = { userId: 'test-user-id', username: 'testuser', isAdmin: false };
     next();

@@ -12,6 +12,7 @@ import { asyncHandler } from '../../errors/errorHandler';
 import { ErrorCodes, InvalidInputError, NotFoundError } from '../../errors/ApiError';
 import * as walletService from '../../services/wallet';
 import { isValidScriptType, scriptTypeRegistry } from '../../services/scriptTypes';
+import { requireAuthenticatedUser } from '../../middleware/auth';
 
 const router = Router();
 
@@ -48,7 +49,7 @@ const createWalletValidationMessage = (issues: Array<{ path: string }>) => {
  * Get all wallets for authenticated user
  */
 router.get('/', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const wallets = await walletService.getUserWallets(userId);
 
   res.json(wallets);
@@ -62,7 +63,7 @@ router.post('/', validate(
   { body: CreateWalletBodySchema },
   { message: createWalletValidationMessage, code: ErrorCodes.INVALID_INPUT }
 ), asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const {
     name,
     type,
@@ -101,7 +102,7 @@ router.post('/', validate(
  * Get a specific wallet by ID
  */
 router.get('/:id', requireWalletAccess('view'), asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const walletId = req.walletId!;
 
   const wallet = await walletService.getWalletById(walletId, userId);
@@ -118,7 +119,7 @@ router.get('/:id', requireWalletAccess('view'), asyncHandler(async (req, res) =>
  * Update a wallet (owner only)
  */
 router.patch('/:id', requireWalletAccess('owner'), validate({ body: UpdateWalletBodySchema }), asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const walletId = req.walletId!;
   const { name, descriptor } = req.body;
 
@@ -135,7 +136,7 @@ router.patch('/:id', requireWalletAccess('owner'), validate({ body: UpdateWallet
  * Delete a wallet (owner only)
  */
 router.delete('/:id', requireWalletAccess('owner'), asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const walletId = req.walletId!;
 
   await walletService.deleteWallet(walletId, userId);

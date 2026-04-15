@@ -12,6 +12,7 @@ import { NotFoundError } from '../../errors/ApiError';
 import { validate } from '../../middleware/validate';
 import { setAccessExpiresAtHeader } from '../../middleware/csrf';
 import { UserSearchQuerySchema } from '../schemas/auth';
+import { requireAuthenticatedUser } from '../../middleware/auth';
 
 const router = Router();
 
@@ -37,7 +38,7 @@ const PreferencesBodySchema = z.object({
  * Get current authenticated user
  */
 router.get('/me', asyncHandler(async (req, res) => {
-  const user = await userRepository.findByIdWithProfile(req.user!.userId);
+  const user = await userRepository.findByIdWithProfile(requireAuthenticatedUser(req).userId);
 
   if (!user) {
     throw new NotFoundError('User not found');
@@ -87,7 +88,7 @@ router.patch('/me/preferences', validate({ body: PreferencesBodySchema }), async
   };
 
   // First get current preferences to merge with
-  const currentUser = await userRepository.findById(req.user!.userId);
+  const currentUser = await userRepository.findById(requireAuthenticatedUser(req).userId);
 
   // Merge: defaults -> existing preferences -> new preferences
   const mergedPreferences = {
@@ -96,7 +97,7 @@ router.patch('/me/preferences', validate({ body: PreferencesBodySchema }), async
     ...newPreferences,
   };
 
-  const user = await userRepository.updatePreferences(req.user!.userId, mergedPreferences);
+  const user = await userRepository.updatePreferences(requireAuthenticatedUser(req).userId, mergedPreferences);
 
   res.json(user);
 }));
@@ -106,7 +107,7 @@ router.patch('/me/preferences', validate({ body: PreferencesBodySchema }), async
  * Get groups the current user is a member of
  */
 router.get('/me/groups', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
 
   const groups = await groupRepository.findByUserId(userId);
 

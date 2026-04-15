@@ -8,7 +8,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { getPriceService } from '../services/price';
 import { createLogger } from '../utils/logger';
-import { authenticate, requireAdmin } from '../middleware/auth';
+import { authenticate, requireAuthenticatedUser, requireAdmin } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { asyncHandler } from '../errors/errorHandler';
 import { ErrorCodes, InvalidInputError } from '../errors/ApiError';
@@ -164,7 +164,7 @@ router.get('/cache/stats', authenticate, requireAdmin, (_req: Request, res: Resp
  * Clear price cache (admin only)
  */
 router.post('/cache/clear', authenticate, requireAdmin, asyncHandler(async (req, res) => {
-  log.info('Cache cleared by admin', { userId: req.user!.userId });
+  log.info('Cache cleared by admin', { userId: requireAuthenticatedUser(req).userId });
   await priceService.clearCache();
   res.json({
     message: 'Cache cleared successfully',
@@ -181,7 +181,7 @@ router.post('/cache/duration', authenticate, requireAdmin, validate(
 ), (req: Request, res: Response) => {
   const { duration } = req.body;
 
-  log.info('Cache duration updated by admin', { userId: req.user!.userId, duration });
+  log.info('Cache duration updated by admin', { userId: requireAuthenticatedUser(req).userId, duration });
   priceService.setCacheDuration(duration);
 
   res.json({

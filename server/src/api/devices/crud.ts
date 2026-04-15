@@ -17,6 +17,7 @@ import {
   MobileCreateDeviceRequestSchema,
   MobileUpdateDeviceRequestSchema,
 } from '../../../../shared/schemas/mobileApiRequests';
+import { requireAuthenticatedUser } from '../../middleware/auth';
 
 const router = Router();
 const log = createLogger('DEVICE:ROUTE:CRUD');
@@ -43,7 +44,7 @@ function parseDeviceRequestBody<T>(schema: ZodType<T>, body: unknown): T {
  * Get all devices accessible by authenticated user (owned + shared)
  */
 router.get('/', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
 
   // Get all devices user has access to (owned + shared via user + shared via group)
   const devices = await getUserAccessibleDevices(userId);
@@ -65,7 +66,7 @@ router.get('/', asyncHandler(async (req, res) => {
  * - With merge=true: Adds new accounts to the existing device
  */
 router.post('/', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const request = parseDeviceRequestBody(MobileCreateDeviceRequestSchema, req.body);
   const result = await registerDevice(userId, request);
 
@@ -131,7 +132,7 @@ router.get('/:id', requireDeviceAccess('view'), asyncHandler(async (req, res) =>
  * Update a device (label, derivationPath, type, or model) - owner only
  */
 router.patch('/:id', requireDeviceAccess('owner'), asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { id } = req.params;
   const { label, derivationPath, type, modelSlug } = parseDeviceRequestBody(
     MobileUpdateDeviceRequestSchema,
@@ -168,7 +169,7 @@ router.patch('/:id', requireDeviceAccess('owner'), asyncHandler(async (req, res)
  * Remove a device (owner only, and only if not in use by any wallet)
  */
 router.delete('/:id', requireDeviceAccess('owner'), asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { id } = req.params;
 
   const device = await deviceRepository.findByIdWithWallets(id);

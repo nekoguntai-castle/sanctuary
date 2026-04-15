@@ -70,6 +70,7 @@ vi.mock('../../../../src/services/bitcoin/electrumPool', () => ({
   getElectrumPoolAsync: () => Promise.resolve(mockElectrumPool),
 }));
 vi.mock('../../../../src/middleware/auth', () => ({
+  requireAuthenticatedUser: (req: any) => req.user ?? { userId: 'test-user-id', username: 'testuser', isAdmin: false },
   authenticate: (req: express.Request, res: express.Response, next: express.NextFunction) => {
     (req as any).user = { userId: 'test-user-id', isAdmin: false };
     next();

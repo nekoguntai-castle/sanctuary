@@ -27,6 +27,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken, extractTokenFromHeader, JWTPayload, TokenAudience } from '../utils/jwt';
 import { requestContext } from '../utils/requestContext';
+import { UnauthorizedError } from '../errors/ApiError';
 import { SANCTUARY_ACCESS_COOKIE_NAME } from './authCookieNames';
 
 // Extend Express Request type to include user
@@ -36,6 +37,18 @@ declare global {
       user?: JWTPayload;
     }
   }
+}
+
+export interface AuthenticatedRequest extends Request {
+  user: JWTPayload;
+}
+
+export function requireAuthenticatedUser(req: Request): JWTPayload {
+  if (!req.user) {
+    throw new UnauthorizedError('Authentication required');
+  }
+
+  return req.user;
 }
 
 /**

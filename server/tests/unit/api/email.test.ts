@@ -68,6 +68,7 @@ vi.mock('../../../src/utils/password', () => ({
 }));
 
 vi.mock('../../../src/middleware/auth', () => ({
+  requireAuthenticatedUser: (req: any) => req.user ?? { userId: 'test-user-id', username: 'testuser', isAdmin: false },
   authenticate: vi.fn((req: express.Request, _res: express.Response, next: express.NextFunction) => {
     // Simulate authenticated user
     req.user = {

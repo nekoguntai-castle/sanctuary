@@ -5,6 +5,12 @@ import { AuditLogs } from '../../components/AuditLogs';
 import * as adminApi from '../../src/api/admin';
 
 const mockState = vi.hoisted(() => ({
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
   selectedLog: {
     id: 'log-1',
     createdAt: new Date().toISOString(),
@@ -21,6 +27,10 @@ const mockState = vi.hoisted(() => ({
 vi.mock('../../src/api/admin', () => ({
   getAuditLogs: vi.fn(),
   getAuditLogStats: vi.fn(),
+}));
+
+vi.mock('../../utils/logger', () => ({
+  createLogger: () => mockState.logger,
 }));
 
 vi.mock('../../components/AuditLogs/StatCards', () => ({
@@ -85,6 +95,9 @@ describe('AuditLogs branch coverage', () => {
     await waitFor(() => {
       expect(adminApi.getAuditLogs).toHaveBeenCalled();
       expect(adminApi.getAuditLogStats).toHaveBeenCalledWith(30);
+    });
+    expect(mockState.logger.error).toHaveBeenCalledWith('Failed to load audit stats', {
+      error: expect.any(Error),
     });
   });
 });

@@ -10,6 +10,7 @@ import { auditService, AuditAction, AuditCategory, getClientInfo } from '../../s
 import * as refreshTokenService from '../../services/refreshTokenService';
 import { asyncHandler } from '../../errors/errorHandler';
 import { NotFoundError } from '../../errors/ApiError';
+import { requireAuthenticatedUser } from '../../middleware/auth';
 
 const router = Router();
 
@@ -18,7 +19,7 @@ const router = Router();
  * List all active sessions for the current user
  */
 router.get('/sessions', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
 
   // Get current token hash to mark the current session
   // Client can send refresh token via X-Refresh-Token header to identify current session
@@ -49,7 +50,7 @@ router.get('/sessions', asyncHandler(async (req, res) => {
  * Revoke a specific session
  */
 router.delete('/sessions/:id', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const sessionId = req.params.id;
 
   const revoked = await refreshTokenService.revokeSession(sessionId, userId);

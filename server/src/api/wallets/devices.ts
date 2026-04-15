@@ -11,6 +11,7 @@ import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
 import { ErrorCodes } from '../../errors/ApiError';
 import * as walletService from '../../services/wallet';
+import { requireAuthenticatedUser } from '../../middleware/auth';
 
 const router = Router();
 
@@ -24,7 +25,7 @@ const WalletAddDeviceBodySchema = z.object({
  * Generate a new receiving address (edit access - signer or owner)
  */
 router.post('/:id/addresses', requireWalletAccess('edit'), asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const walletId = req.walletId!;
 
   const address = await walletService.generateAddress(walletId, userId);
@@ -44,7 +45,7 @@ router.post(
     { message: 'deviceId is required', code: ErrorCodes.INVALID_INPUT }
   ),
   asyncHandler(async (req, res) => {
-    const userId = req.user!.userId;
+    const userId = requireAuthenticatedUser(req).userId;
     const walletId = req.walletId!;
     const { deviceId, signerIndex } = req.body;
 
@@ -59,7 +60,7 @@ router.post(
  * Repair wallet descriptor - regenerate from attached devices
  */
 router.post('/:id/repair', requireWalletAccess('owner'), asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const walletId = req.walletId!;
 
   const result = await walletService.repairWalletDescriptor(walletId, userId);

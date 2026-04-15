@@ -10,6 +10,7 @@ import { transactionRepository, utxoRepository } from '../../repositories';
 import { asyncHandler } from '../../errors/errorHandler';
 import { walletCache } from '../../services/cache';
 import * as walletService from '../../services/wallet';
+import { requireAuthenticatedUser } from '../../middleware/auth';
 
 const router = Router();
 
@@ -18,7 +19,7 @@ const router = Router();
  * Get wallet statistics
  */
 router.get('/:id/stats', requireWalletAccess('view'), asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const walletId = req.walletId!;
 
   const stats = await walletService.getWalletStats(walletId, userId);

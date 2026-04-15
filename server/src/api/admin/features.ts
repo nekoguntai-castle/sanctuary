@@ -6,7 +6,7 @@
 
 import { Router, Request, Response } from 'express';
 import type { ZodError } from 'zod';
-import { authenticate, requireAdmin } from '../../middleware/auth';
+import { authenticate, requireAuthenticatedUser, requireAdmin } from '../../middleware/auth';
 import { asyncHandler } from '../../errors/errorHandler';
 import { NotFoundError } from '../../errors/ApiError';
 import { featureFlagService } from '../../services/featureFlagService';
@@ -115,7 +115,7 @@ router.patch('/:key', authenticate, requireAdmin, asyncHandler(async (req, res) 
   }
 
   await featureFlagService.setFlag(key, body.data.enabled, {
-    userId: req.user!.userId,
+    userId: requireAuthenticatedUser(req).userId,
     reason: body.data.reason,
     ipAddress: req.ip,
   });
@@ -139,7 +139,7 @@ router.post('/:key/reset', authenticate, requireAdmin, asyncHandler(async (req, 
   }
 
   await featureFlagService.resetToDefault(key, {
-    userId: req.user!.userId,
+    userId: requireAuthenticatedUser(req).userId,
     reason: 'Reset to environment default',
     ipAddress: req.ip,
   });

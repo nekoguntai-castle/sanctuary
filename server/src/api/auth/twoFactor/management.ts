@@ -9,7 +9,7 @@ import { userRepository } from '../../../repositories';
 import { verifyPassword } from '../../../utils/password';
 import * as twoFactorService from '../../../services/twoFactorService';
 import { auditService, AuditAction, AuditCategory } from '../../../services/auditService';
-import { authenticate } from '../../../middleware/auth';
+import { authenticate, requireAuthenticatedUser } from '../../../middleware/auth';
 import { validate } from '../../../middleware/validate';
 import { asyncHandler } from '../../../errors/errorHandler';
 import { NotFoundError, InvalidInputError, UnauthorizedError } from '../../../errors/ApiError';
@@ -32,7 +32,7 @@ export function createManagementRouter(): Router {
   router.post('/2fa/disable', authenticate, validate({ body: TwoFactorDisableSchema }, { message: 'Password and 2FA token are required' }), asyncHandler(async (req, res) => {
     const { password, token } = req.body;
 
-    const user = await userRepository.findById(req.user!.userId);
+    const user = await userRepository.findById(requireAuthenticatedUser(req).userId);
 
     if (!user) {
       throw new NotFoundError('User not found');
@@ -86,7 +86,7 @@ export function createManagementRouter(): Router {
   router.post('/2fa/backup-codes', authenticate, validate({ body: BackupCodesRequestSchema }, { message: 'Password is required' }), asyncHandler(async (req, res) => {
     const { password } = req.body;
 
-    const user = await userRepository.findById(req.user!.userId);
+    const user = await userRepository.findById(requireAuthenticatedUser(req).userId);
 
     if (!user) {
       throw new NotFoundError('User not found');
@@ -114,7 +114,7 @@ export function createManagementRouter(): Router {
   router.post('/2fa/backup-codes/regenerate', authenticate, validate({ body: BackupCodesRegenerateSchema }, { message: 'Password and 2FA token are required' }), asyncHandler(async (req, res) => {
     const { password, token } = req.body;
 
-    const user = await userRepository.findById(req.user!.userId);
+    const user = await userRepository.findById(requireAuthenticatedUser(req).userId);
 
     if (!user) {
       throw new NotFoundError('User not found');

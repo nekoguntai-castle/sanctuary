@@ -12,6 +12,7 @@ import { buildWalletAccessWhere } from '../../repositories/accessControl';
 import { asyncHandler } from '../../errors/errorHandler';
 import { bigIntToNumber, bigIntToNumberOrZero } from '../../utils/errors';
 import { getCachedBlockHeight, type Network } from '../../services/bitcoin/blockchain';
+import { requireAuthenticatedUser } from '../../middleware/auth';
 
 /** Pagination for recent transactions (max 50, default 10) */
 const RecentTxLimitSchema = z.coerce.number().int().catch(10).transform(v => Math.max(1, Math.min(v, 50)));
@@ -91,7 +92,7 @@ function getBucketConfig(timeframe: string): { unit: BucketUnit; label: (date: D
  * - walletIds: comma-separated list of wallet IDs to filter (optional)
  */
 router.get('/transactions/recent', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const limit = RecentTxLimitSchema.safeParse(req.query.limit).data ?? 10;
   const requestedWalletIds = req.query.walletIds
     ? (req.query.walletIds as string).split(',').filter(Boolean)
@@ -195,7 +196,7 @@ router.get('/transactions/recent', asyncHandler(async (req, res) => {
  * Query params: none
  */
 router.get('/transactions/pending', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
 
   // Get all wallet IDs the user has access to
   const accessibleWallets = await walletRepository.findAccessibleWithSelect(
@@ -269,7 +270,7 @@ router.get('/transactions/pending', asyncHandler(async (req, res) => {
  * - walletIds: comma-separated list of wallet IDs to filter (optional)
  */
 router.get('/transactions/balance-history', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const timeframe = (req.query.timeframe as string) || '1W';
   const totalBalance = TotalBalanceSchema.safeParse(req.query.totalBalance).data ?? 0;
   const requestedWalletIds = req.query.walletIds

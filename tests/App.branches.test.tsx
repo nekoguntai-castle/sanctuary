@@ -17,15 +17,21 @@ const {
   mockUseNotifications,
   mockGetCurrentUser,
   mockUseWebSocketQueryInvalidation,
+  mockReloadCurrentDocument,
 } = vi.hoisted(() => ({
   mockUseUser: vi.fn(),
   mockUseNotifications: vi.fn(),
   mockGetCurrentUser: vi.fn(),
   mockUseWebSocketQueryInvalidation: vi.fn(),
+  mockReloadCurrentDocument: vi.fn(),
 }));
 
 vi.mock('../hooks/websocket', () => ({
   useWebSocketQueryInvalidation: (...args: unknown[]) => mockUseWebSocketQueryInvalidation(...args),
+}));
+
+vi.mock('../src/app/browserNavigation', () => ({
+  reloadCurrentDocument: (...args: unknown[]) => mockReloadCurrentDocument(...args),
 }));
 
 vi.mock('../src/api/auth', () => ({
@@ -368,6 +374,7 @@ describe('App branch coverage', () => {
 
     await waitFor(() => {
       expect(mockGetCurrentUser).toHaveBeenCalledTimes(1);
+      expect(mockReloadCurrentDocument).toHaveBeenCalledTimes(1);
     });
     firstRender.unmount();
 
@@ -382,6 +389,7 @@ describe('App branch coverage', () => {
 
     await waitFor(() => {
       expect(mockGetCurrentUser).toHaveBeenCalledTimes(2);
+      expect(mockReloadCurrentDocument).toHaveBeenCalledTimes(2);
     });
 
     secondRender.unmount();

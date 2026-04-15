@@ -4,6 +4,7 @@ import { Layout } from './components/Layout';
 import { Login } from './components/Login';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { appRedirectRoutes, appRouteDefinitions, renderAppRouteElement } from './src/app/appRoutes';
+import { reloadCurrentDocument } from './src/app/browserNavigation';
 import { useUser } from './contexts/UserContext';
 import { NotificationContainer } from './components/NotificationToast';
 import { useNotifications } from './contexts/NotificationContext';
@@ -42,7 +43,7 @@ const AppRoutes: React.FC = () => {
     }
     // Force a page reload to ensure all user data is fresh
     setShowPasswordModal(false);
-    window.location.reload();
+    reloadCurrentDocument();
   };
 
   if (!isAuthenticated) {

@@ -74,6 +74,7 @@ vi.mock('../../../../src/models/prisma', async () => {
 });
 
 vi.mock('../../../../src/middleware/auth', () => ({
+  requireAuthenticatedUser: (req: any) => req.user ?? { userId: 'test-user-id', username: 'testuser', isAdmin: false },
   authenticate: (req: any, _res: any, next: any) => {
     req.user = { userId: 'test-user-id', username: 'testuser', isAdmin: false };
     next();

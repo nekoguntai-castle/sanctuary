@@ -26,6 +26,7 @@ import { initializeWebSocketServer, initializeGatewayWebSocketServer } from './w
 import { initializeRedisBridge, shutdownRedisBridge } from './websocket/redisBridge';
 import { createLogger } from './utils/logger';
 import { getErrorMessage } from './utils/errors';
+import { exitAfterDelay, exitNow } from './utils/processExit';
 import { validateEncryptionKey } from './utils/encryption';
 import { requestLogger } from './middleware/requestLogger';
 import { requestTimeout } from './middleware/requestTimeout';
@@ -66,7 +67,7 @@ process.on('uncaughtException', (error: Error) => {
     stack: error.stack,
   });
   // Give time for logs to flush
-  setTimeout(() => process.exit(1), 1000);
+  exitAfterDelay(1, 1000);
 });
 
 process.on('unhandledRejection', (reason: unknown, _promise: Promise<unknown>) => {
@@ -219,7 +220,7 @@ log.info('Worker-owned architecture: in-process maintenance fallback disabled');
         error: getErrorMessage(error),
         hint: 'Please set ENCRYPTION_KEY in your .env file (at least 32 characters)',
       });
-      process.exit(1);
+      exitNow(1);
     }
 
     // Wait for OpenTelemetry initialization (if enabled)
@@ -324,7 +325,7 @@ log.info('Worker-owned architecture: in-process maintenance fallback disabled');
     log.error('Failed to start server', {
       error: getErrorMessage(error),
     });
-    process.exit(1);
+    exitNow(1);
   }
 })();
 
@@ -347,7 +348,7 @@ const handleShutdown = async (signal: string) => {
   // Set a hard timeout - force exit if graceful shutdown takes too long
   const forceExitTimeout = setTimeout(() => {
     log.error('Graceful shutdown timed out, forcing exit');
-    process.exit(1);
+    exitNow(1);
   }, SHUTDOWN_TIMEOUT_MS);
 
   // Don't let this timeout keep the process alive if everything else closes
@@ -411,7 +412,7 @@ const handleShutdown = async (signal: string) => {
   httpServer.close(() => {
     clearTimeout(forceExitTimeout);
     log.info('Server closed gracefully');
-    process.exit(0);
+    exitNow(0);
   });
 };
 

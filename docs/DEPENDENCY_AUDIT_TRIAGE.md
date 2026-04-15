@@ -7,12 +7,14 @@ Commands run:
 - `npm audit --omit=dev --json` (repo root)
 - `npm audit --json` and `npm audit --omit=dev --json` (`server/`)
 - `npm audit --json` and `npm audit --omit=dev --omit=optional --json` (`gateway/`)
+- `npm audit --json` (`ai-proxy/`)
 
 Latest freshness check:
 - Full unskipped `npm run quality` passed on 2026-04-15 Pacific/Honolulu. Its high-severity audit lane passed for root, server, and gateway while still surfacing the accepted lower-severity findings below.
 - `npm audit --omit=dev --json` at the repo root reports `14 low` advisories in the hardware-wallet/browser-polyfill `elliptic` chain and no moderate/high/critical advisories.
 - `npm audit --json` and `npm audit --omit=dev --json` in `server/` report `0` vulnerabilities after the Prisma/tooling refresh and `@hono/node-server` override.
 - `npm audit --json` in `gateway/` reports `8 low` advisories through Firebase/Google optional dependency trees; `npm audit --omit=dev --omit=optional --json` reports `0` vulnerabilities.
+- `npm audit --json` in `ai-proxy/` reports `0` vulnerabilities after adding direct request-schema validation.
 - Disposition is updated: `fixed` for the previous server Prisma-tooling moderate chain; `accept + monitor` for the remaining root low and gateway optional-dependency low advisories.
 
 ## Current State
@@ -22,6 +24,7 @@ Latest freshness check:
 - Server full install and production install: `0` vulnerabilities
 - Gateway full install: `8 low`, `0 moderate`, `0 high`, `0 critical`
 - Gateway production install (`--omit=dev --omit=optional`): `0` vulnerabilities
+- AI proxy full install: `0` vulnerabilities
 
 ## Root Findings
 
@@ -74,6 +77,16 @@ Notes:
 - Production gateway image pruning omits optional dependencies (`npm prune --production --omit=optional` in `gateway/Dockerfile`), which removes this advisory chain from deployed runtime.
 - Validation command: `npm audit --omit=dev --omit=optional --json` in `gateway/` reports `0` vulnerabilities.
 
+## AI Proxy Findings
+
+Current state:
+- `zod@^4.3.4` is now a direct runtime dependency for request body schemas in `ai-proxy/src/requestSchemas.ts`.
+- `npm audit --json` reported `0` vulnerabilities for the AI proxy package.
+
+Notes:
+- Keep AI proxy on the same Zod major line as `server/` and `gateway/` unless a deliberate compatibility reason appears.
+- Re-run `npm audit --json` in `ai-proxy/` whenever AI proxy dependencies change; it is a small package and should stay at `0` advisories.
+
 ## Decision
 
 Disposition: `fixed` for the server Prisma-tooling moderate advisory; `fix + monitor` for already-remediated Axios/`follow-redirects` advisories; `accept + monitor` for the remaining root low-severity transitive advisories and gateway optional-dependency low advisories.
@@ -81,6 +94,7 @@ Disposition: `fixed` for the server Prisma-tooling moderate advisory; `fix + mon
 Reasoning:
 - No high or critical findings remain in any audited package tree.
 - No moderate findings remain in the root production tree, server tree, or gateway tree.
+- AI proxy remains clean after adding direct Zod validation.
 - Remaining root findings are low-severity upstream hardware-wallet or browser-polyfill dependency paths where npm's proposed remediations are unavailable, force/downgrade, or major-change paths.
 - Gateway low findings are in optional Firebase/Google dependency trees; the production install proof path omits optional dependencies and audits clean.
 - The former server moderate advisory is cleared without downgrading Prisma.
@@ -91,7 +105,7 @@ Re-triage immediately if any of the following occur:
 - Any root advisory severity rises above low.
 - Any gateway advisory reaches a runtime-exposed dependency path or severity rises above low.
 - A same-major, non-downgrade remediation path becomes available for `@ledgerhq/*`, `@trezor/*`, `vite-plugin-node-polyfills`, Prisma, or `firebase-admin`.
-- Planned upgrades touch the hardware-wallet stack, polyfill stack, Prisma, or Firebase stack.
+- Planned upgrades touch the hardware-wallet stack, polyfill stack, Prisma, Firebase stack, or AI proxy validation stack.
 - The `@hono/node-server` override conflicts with a future Prisma upgrade or becomes redundant.
 
 Recommended cadence:

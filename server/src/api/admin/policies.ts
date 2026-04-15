@@ -6,7 +6,7 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
-import { authenticate, requireAdmin } from '../../middleware/auth';
+import { authenticate, requireAuthenticatedUser, requireAdmin } from '../../middleware/auth';
 import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
 import { ForbiddenError } from '../../errors/ApiError';
@@ -61,7 +61,7 @@ router.get('/', authenticate, requireAdmin, asyncHandler(async (_req, res) => {
  * POST / - Create a system-wide policy
  */
 router.post('/', authenticate, requireAdmin, validate({ body: AdminCreatePolicyBodySchema }), asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
 
   const input: CreatePolicyInput = {
     // No walletId or groupId = system-wide
@@ -93,7 +93,7 @@ router.post('/', authenticate, requireAdmin, validate({ body: AdminCreatePolicyB
  */
 router.patch('/:policyId', authenticate, requireAdmin, validate({ body: AdminUpdatePolicyBodySchema }), asyncHandler(async (req, res) => {
   const { policyId } = req.params;
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
 
   // Verify this is a system-level policy
   const existing = await vaultPolicyService.getPolicy(policyId);

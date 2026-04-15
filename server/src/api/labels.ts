@@ -11,7 +11,7 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
-import { authenticate } from '../middleware/auth';
+import { authenticate, requireAuthenticatedUser } from '../middleware/auth';
 import { requireWalletAccess } from '../middleware/walletAccess';
 import { validate } from '../middleware/validate';
 import { labelService } from '../services/labelService';
@@ -135,7 +135,7 @@ router.delete('/wallets/:walletId/labels/:labelId', requireWalletAccess('edit'),
  * Get all labels for a transaction
  */
 router.get('/transactions/:transactionId/labels', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { transactionId } = req.params;
 
   const labels = await labelService.getTransactionLabels(transactionId, userId);
@@ -151,7 +151,7 @@ router.post('/transactions/:transactionId/labels', validate(
   { body: LabelIdsAddBodySchema },
   labelIdsValidationOptions
 ), asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { transactionId } = req.params;
   const { labelIds } = req.body;
 
@@ -168,7 +168,7 @@ router.put('/transactions/:transactionId/labels', validate(
   { body: LabelIdsReplaceBodySchema },
   labelIdsValidationOptions
 ), asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { transactionId } = req.params;
   const { labelIds } = req.body;
 
@@ -181,7 +181,7 @@ router.put('/transactions/:transactionId/labels', validate(
  * Remove a label from a transaction (requires edit access: owner or signer)
  */
 router.delete('/transactions/:transactionId/labels/:labelId', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { transactionId, labelId } = req.params;
 
   await labelService.removeTransactionLabel(transactionId, labelId, userId);
@@ -197,7 +197,7 @@ router.delete('/transactions/:transactionId/labels/:labelId', asyncHandler(async
  * Get all labels for an address
  */
 router.get('/addresses/:addressId/labels', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { addressId } = req.params;
 
   const labels = await labelService.getAddressLabels(addressId, userId);
@@ -213,7 +213,7 @@ router.post('/addresses/:addressId/labels', validate(
   { body: LabelIdsAddBodySchema },
   labelIdsValidationOptions
 ), asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { addressId } = req.params;
   const { labelIds } = req.body;
 
@@ -230,7 +230,7 @@ router.put('/addresses/:addressId/labels', validate(
   { body: LabelIdsReplaceBodySchema },
   labelIdsValidationOptions
 ), asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { addressId } = req.params;
   const { labelIds } = req.body;
 
@@ -243,7 +243,7 @@ router.put('/addresses/:addressId/labels', validate(
  * Remove a label from an address (requires edit access: owner or signer)
  */
 router.delete('/addresses/:addressId/labels/:labelId', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { addressId, labelId } = req.params;
 
   await labelService.removeAddressLabel(addressId, labelId, userId);

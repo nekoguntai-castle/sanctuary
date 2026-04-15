@@ -14,7 +14,7 @@ import { generateToken, verifyRefreshToken, decodeToken } from '../../utils/jwt'
 import { revokeToken, revokeAllUserTokens } from '../../services/tokenRevocation';
 import * as refreshTokenService from '../../services/refreshTokenService';
 import { auditService, AuditAction, AuditCategory, getClientInfo } from '../../services/auditService';
-import { authenticate } from '../../middleware/auth';
+import { authenticate, requireAuthenticatedUser } from '../../middleware/auth';
 import { validate } from '../../middleware/validate';
 import {
   SANCTUARY_ACCESS_COOKIE_NAME,
@@ -229,7 +229,7 @@ router.post('/logout', authenticate, validate({ body: LogoutSchema }), asyncHand
  * BroadcastChannel propagation in Phase 4.
  */
 router.post('/logout-all', authenticate, asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
 
   // Revoke all refresh tokens for this user
   const revokedCount = await refreshTokenService.revokeAllUserRefreshTokens(userId);

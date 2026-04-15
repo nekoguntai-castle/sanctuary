@@ -13,6 +13,7 @@ import { ErrorCodes, InvalidInputError, NotFoundError, ForbiddenError } from '..
 import { userRepository, walletSharingRepository } from '../../repositories';
 import { getDevicesToShareForWallet } from '../../services/deviceAccess';
 import { WALLET_SHARE_ROLE_VALUES } from '../../services/wallet/types';
+import { requireAuthenticatedUser } from '../../middleware/auth';
 
 const router = Router();
 
@@ -56,7 +57,7 @@ router.post(
     { message: walletShareGroupValidationMessage, code: ErrorCodes.INVALID_INPUT }
   ),
   asyncHandler(async (req, res) => {
-    const userId = req.user!.userId;
+    const userId = requireAuthenticatedUser(req).userId;
     const walletId = req.walletId!;
     const { groupId, role } = req.body;
 

@@ -28,6 +28,7 @@ vi.mock('../../../src/utils/logger', () => ({
 
 // Mock middleware
 vi.mock('../../../src/middleware/auth', () => ({
+  requireAuthenticatedUser: (req: any) => req.user ?? { userId: 'test-user-id', username: 'testuser', isAdmin: false },
   authenticate: (_req: any, _res: any, next: any) => {
     _req.user = { userId: 'test-user-123', username: 'testuser', isAdmin: false };
     next();

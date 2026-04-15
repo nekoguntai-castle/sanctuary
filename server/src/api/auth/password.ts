@@ -16,6 +16,7 @@ import { revokeAllUserTokens } from '../../services/tokenRevocation';
 import { getErrorMessage } from '../../utils/errors';
 import { validate } from '../../middleware/validate';
 import { ChangePasswordPresenceSchema } from '../schemas/auth';
+import { requireAuthenticatedUser } from '../../middleware/auth';
 
 const router = Router();
 const log = createLogger('AUTH_PASSWORD:ROUTE');
@@ -80,7 +81,7 @@ export function createPasswordRouter(passwordChangeLimiter: RequestHandler): Rou
     }
 
     // Get user
-    const user = await userRepository.findById(req.user!.userId);
+    const user = await userRepository.findById(requireAuthenticatedUser(req).userId);
 
     if (!user) {
       throw new NotFoundError('User not found');

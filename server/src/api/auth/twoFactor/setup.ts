@@ -8,7 +8,7 @@ import { Router } from 'express';
 import { userRepository } from '../../../repositories';
 import * as twoFactorService from '../../../services/twoFactorService';
 import { auditService, AuditAction, AuditCategory } from '../../../services/auditService';
-import { authenticate } from '../../../middleware/auth';
+import { authenticate, requireAuthenticatedUser } from '../../../middleware/auth';
 import { validate } from '../../../middleware/validate';
 import { asyncHandler } from '../../../errors/errorHandler';
 import { NotFoundError, InvalidInputError } from '../../../errors/ApiError';
@@ -25,7 +25,7 @@ export function createSetupRouter(): Router {
    * Start 2FA setup - generates secret and QR code
    */
   router.post('/2fa/setup', authenticate, asyncHandler(async (req, res) => {
-    const user = await userRepository.findById(req.user!.userId);
+    const user = await userRepository.findById(requireAuthenticatedUser(req).userId);
 
     if (!user) {
       throw new NotFoundError('User not found');
@@ -56,7 +56,7 @@ export function createSetupRouter(): Router {
   router.post('/2fa/enable', authenticate, validate({ body: TwoFactorEnableSchema }, { message: 'Verification token is required' }), asyncHandler(async (req, res) => {
     const { token } = req.body;
 
-    const user = await userRepository.findById(req.user!.userId);
+    const user = await userRepository.findById(requireAuthenticatedUser(req).userId);
 
     if (!user) {
       throw new NotFoundError('User not found');

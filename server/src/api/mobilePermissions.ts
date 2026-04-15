@@ -26,7 +26,7 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
-import { authenticate } from '../middleware/auth';
+import { authenticate, requireAuthenticatedUser } from '../middleware/auth';
 import { verifyGatewayRequest } from '../middleware/gatewayAuth';
 import { validate } from '../middleware/validate';
 import { createLogger } from '../utils/logger';
@@ -109,7 +109,7 @@ function validatePermissionInput(body: unknown): { valid: boolean; value?: Mobil
  * Get all mobile permissions for the authenticated user
  */
 publicRouter.get('/mobile-permissions', authenticate, asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
 
   const permissions = await mobilePermissionService.getUserMobilePermissions(userId);
 
@@ -147,7 +147,7 @@ publicRouter.get('/mobile-permissions', authenticate, asyncHandler(async (req, r
  * Get mobile permissions for a wallet
  */
 publicRouter.get('/wallets/:id/mobile-permissions', authenticate, asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { id: walletId } = req.params;
 
   // Get effective permissions for the requesting user
@@ -175,7 +175,7 @@ publicRouter.get('/wallets/:id/mobile-permissions', authenticate, asyncHandler(a
  * Update own mobile permissions for a wallet
  */
 publicRouter.patch('/wallets/:id/mobile-permissions', authenticate, asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { id: walletId } = req.params;
 
   // Validate input
@@ -214,7 +214,7 @@ publicRouter.patch('/wallets/:id/mobile-permissions', authenticate, asyncHandler
  * Set max permissions for a user (owner only)
  */
 publicRouter.patch('/wallets/:id/mobile-permissions/:userId', authenticate, asyncHandler(async (req, res) => {
-  const ownerId = req.user!.userId;
+  const ownerId = requireAuthenticatedUser(req).userId;
   const { id: walletId, userId: targetUserId } = req.params;
 
   // Validate input
@@ -254,7 +254,7 @@ publicRouter.patch('/wallets/:id/mobile-permissions/:userId', authenticate, asyn
  * Clear max permissions for a user (owner only)
  */
 publicRouter.delete('/wallets/:id/mobile-permissions/:userId/caps', authenticate, asyncHandler(async (req, res) => {
-  const ownerId = req.user!.userId;
+  const ownerId = requireAuthenticatedUser(req).userId;
   const { id: walletId, userId: targetUserId } = req.params;
 
   const result = await mobilePermissionService.clearMaxPermissions(
@@ -285,7 +285,7 @@ publicRouter.delete('/wallets/:id/mobile-permissions/:userId/caps', authenticate
  * Reset own mobile permissions to defaults
  */
 publicRouter.delete('/wallets/:id/mobile-permissions', authenticate, asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { id: walletId } = req.params;
 
   await mobilePermissionService.resetPermissions(walletId, userId);

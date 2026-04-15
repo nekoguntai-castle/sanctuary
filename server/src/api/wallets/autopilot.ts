@@ -17,6 +17,7 @@ import type { WalletAutopilotSettings } from '../../services/autopilot/types';
 import { getWalletAutopilotSettings, updateWalletAutopilotSettings } from '../../services/autopilot/settings';
 import { getUtxoHealthProfile } from '../../services/autopilot/utxoHealth';
 import { getLatestFeeSnapshot } from '../../services/autopilot/feeMonitor';
+import { requireAuthenticatedUser } from '../../middleware/auth';
 
 const router = Router();
 
@@ -57,7 +58,7 @@ router.get(
   requireWalletAccess('view'),
   asyncHandler(async (req, res) => {
     const walletId = req.walletId!;
-    const userId = req.user!.userId;
+    const userId = requireAuthenticatedUser(req).userId;
 
     const settings = await getWalletAutopilotSettings(userId, walletId);
 
@@ -81,7 +82,7 @@ router.patch(
   ),
   asyncHandler(async (req, res) => {
     const walletId = req.walletId!;
-    const userId = req.user!.userId;
+    const userId = requireAuthenticatedUser(req).userId;
 
     await updateWalletAutopilotSettings(
       userId,
@@ -106,7 +107,7 @@ router.get(
   requireWalletAccess('view'),
   asyncHandler(async (req, res) => {
     const walletId = req.walletId!;
-    const userId = req.user!.userId;
+    const userId = requireAuthenticatedUser(req).userId;
 
     const settings = await getWalletAutopilotSettings(userId, walletId);
     const dustThreshold = settings?.dustThreshold ?? DEFAULT_AUTOPILOT_SETTINGS.dustThreshold;

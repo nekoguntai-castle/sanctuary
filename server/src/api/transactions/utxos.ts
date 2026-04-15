@@ -15,6 +15,7 @@ import { bigIntToNumberOrZero } from '../../utils/errors';
 import { extractPagination, setTruncationHeaders } from '../../utils/pagination';
 import { asyncHandler } from '../../errors/errorHandler';
 import { NotFoundError, ForbiddenError } from '../../errors/ApiError';
+import { requireAuthenticatedUser } from '../../middleware/auth';
 
 const router = Router();
 
@@ -87,7 +88,7 @@ router.patch('/utxos/:utxoId/freeze', validate(
   { body: FreezeUtxoBodySchema },
   { message: 'frozen must be a boolean' }
 ), asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { utxoId } = req.params;
   const { frozen } = req.body;
 

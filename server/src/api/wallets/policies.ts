@@ -14,6 +14,7 @@ import { ErrorCodes } from '../../errors/ApiError';
 import { vaultPolicyService, policyEvaluationEngine } from '../../services/vaultPolicy';
 import { auditService, AuditAction, AuditCategory } from '../../services/auditService';
 import type { CreatePolicyInput, UpdatePolicyInput } from '../../services/vaultPolicy/types';
+import { requireAuthenticatedUser } from '../../middleware/auth';
 
 const router = Router();
 
@@ -138,7 +139,7 @@ router.post('/:walletId/policies/evaluate', requireWalletAccess('view'), validat
   { message: policyValidationMessage, code: ErrorCodes.INVALID_INPUT }
 ), asyncHandler(async (req, res) => {
   const walletId = req.params.walletId;
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { recipient, amount, outputs } = req.body;
 
   const result = await policyEvaluationEngine.evaluatePolicies({
@@ -184,7 +185,7 @@ router.get('/:walletId/policies/:policyId', requireWalletAccess('view'), asyncHa
  */
 router.post('/:walletId/policies', requireWalletAccess('owner'), validate({ body: PolicyMutationBodySchema }), asyncHandler(async (req, res) => {
   const walletId = req.params.walletId;
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
 
   const input: CreatePolicyInput = {
     walletId,
@@ -216,7 +217,7 @@ router.post('/:walletId/policies', requireWalletAccess('owner'), validate({ body
  */
 router.patch('/:walletId/policies/:policyId', requireWalletAccess('owner'), validate({ body: PolicyMutationBodySchema }), asyncHandler(async (req, res) => {
   const { walletId, policyId } = req.params;
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
 
   // Verify the policy belongs to this wallet
   await vaultPolicyService.getPolicyInWallet(policyId, walletId);
@@ -289,7 +290,7 @@ router.post('/:walletId/policies/:policyId/addresses', requireWalletAccess('owne
   { message: policyValidationMessage, code: ErrorCodes.INVALID_INPUT }
 ), asyncHandler(async (req, res) => {
   const { walletId, policyId } = req.params;
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
 
   const { address, label, listType } = req.body;
 

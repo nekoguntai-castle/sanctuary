@@ -16,6 +16,7 @@ import {
   removeUserFromDevice,
   shareDeviceWithGroup,
 } from '../../services/deviceAccess';
+import { requireAuthenticatedUser } from '../../middleware/auth';
 
 const router = Router();
 
@@ -52,7 +53,7 @@ router.post(
   ),
   asyncHandler(async (req, res) => {
     const { id } = req.params;
-    const ownerId = req.user!.userId;
+    const ownerId = requireAuthenticatedUser(req).userId;
     const { targetUserId } = req.body;
 
     const result = await shareDeviceWithUser(id, targetUserId, ownerId);
@@ -71,7 +72,7 @@ router.post(
  */
 router.delete('/:id/share/user/:targetUserId', requireDeviceAccess('owner'), asyncHandler(async (req, res) => {
   const { id, targetUserId } = req.params;
-  const ownerId = req.user!.userId;
+  const ownerId = requireAuthenticatedUser(req).userId;
 
   const result = await removeUserFromDevice(id, targetUserId, ownerId);
 
@@ -95,7 +96,7 @@ router.post(
   ),
   asyncHandler(async (req, res) => {
     const { id } = req.params;
-    const ownerId = req.user!.userId;
+    const ownerId = requireAuthenticatedUser(req).userId;
     const { groupId } = req.body; // null to remove group access
 
     const result = await shareDeviceWithGroup(id, groupId, ownerId);

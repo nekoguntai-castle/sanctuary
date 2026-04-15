@@ -6,7 +6,7 @@
 
 import { Router } from 'express';
 import express from 'express';
-import { authenticate, requireAdmin } from '../../middleware/auth';
+import { authenticate, requireAuthenticatedUser, requireAdmin } from '../../middleware/auth';
 import { asyncHandler } from '../../errors/errorHandler';
 import { createLogger } from '../../utils/logger';
 import { backupService, SanctuaryBackup } from '../../services/backupService';
@@ -47,7 +47,7 @@ router.post('/encryption-keys', authenticate, requireAdmin, asyncHandler(async (
     'Password confirmation required to view encryption keys'
   );
 
-  if (!(await verifyAdminPassword(req.user!.userId, password))) {
+  if (!(await verifyAdminPassword(requireAuthenticatedUser(req).userId, password))) {
     return res.status(401).json({
       error: 'Unauthorized',
       message: 'Incorrect password',

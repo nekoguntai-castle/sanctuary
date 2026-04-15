@@ -19,6 +19,7 @@ import http from 'http';
 import fs from 'fs';
 import { config, validateConfig } from './config';
 import { createLogger } from './utils/logger';
+import { exitAfterDelay, exitNow } from './utils/processExit';
 import { requestLogger } from './middleware/requestLogger';
 import { authRateLimiter, cleanupBackoffTracker } from './middleware/rateLimit';
 import proxyRoutes from './routes/proxy';
@@ -37,7 +38,7 @@ process.on('uncaughtException', (error: Error) => {
     error: error.message,
     stack: error.stack,
   });
-  setTimeout(() => process.exit(1), 1000);
+  exitAfterDelay(1, 1000);
 });
 
 process.on('unhandledRejection', (reason: unknown) => {
@@ -155,11 +156,11 @@ function loadTlsCertificates(): https.ServerOptions | null {
     // Check if certificate files exist
     if (!fs.existsSync(config.tls.certPath)) {
       log.error('TLS certificate file not found', { path: config.tls.certPath });
-      process.exit(1);
+      exitNow(1);
     }
     if (!fs.existsSync(config.tls.keyPath)) {
       log.error('TLS private key file not found', { path: config.tls.keyPath });
-      process.exit(1);
+      exitNow(1);
     }
 
     const cert = fs.readFileSync(config.tls.certPath, 'utf8');
@@ -194,7 +195,7 @@ function loadTlsCertificates(): https.ServerOptions | null {
     log.error('Failed to load TLS certificates', {
       error: error instanceof Error ? error.message : String(error),
     });
-    process.exit(1);
+    exitNow(1);
   }
 }
 
@@ -261,13 +262,13 @@ function shutdown(signal: string): void {
     }
 
     log.info('Gateway shutdown complete');
-    process.exit(0);
+    exitNow(0);
   });
 
   // Force exit after 10 seconds
   setTimeout(() => {
     log.error('Forced shutdown after timeout');
-    process.exit(1);
+    exitNow(1);
   }, 10000);
 }
 

@@ -38,6 +38,8 @@
  * See FCM and APNs sections below for service-specific config.
  */
 
+import { exitNow } from './utils/processExit';
+
 /**
  * Parse CORS allowed origins from environment
  */
@@ -150,6 +152,6 @@ export function validateConfig(): void {
   if (errors.length > 0) {
     console.error('Configuration errors:');
     errors.forEach((err) => console.error(`  - ${err}`));
-    process.exit(1);
+    exitNow(1);
   }
 }

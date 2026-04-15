@@ -7,7 +7,7 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
-import { authenticate } from '../middleware/auth';
+import { authenticate, requireAuthenticatedUser } from '../middleware/auth';
 import { requireAllFeatures } from '../middleware/featureGate';
 import { asyncHandler } from '../errors/errorHandler';
 import { NotFoundError } from '../errors/ApiError';
@@ -87,7 +87,7 @@ router.get('/status', asyncHandler(async (_req, res) => {
  * List insights for a wallet
  */
 router.get('/insights', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { walletId, status, type, severity, limit, offset } = req.query;
 
   if (!walletId || typeof walletId !== 'string') {
@@ -123,7 +123,7 @@ router.get('/insights', asyncHandler(async (req, res) => {
  * Get active insight count for a wallet
  */
 router.get('/insights/count', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { walletId } = req.query;
 
   if (!walletId || typeof walletId !== 'string') {
@@ -144,7 +144,7 @@ router.get('/insights/count', asyncHandler(async (req, res) => {
  * Update insight status (dismiss, mark acted_on)
  */
 router.patch('/insights/:id', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { id } = req.params;
   const body = InsightUpdateBodySchema.safeParse(req.body);
   if (!body.success) {
@@ -179,7 +179,7 @@ router.patch('/insights/:id', asyncHandler(async (req, res) => {
  * List user's conversations
  */
 router.get('/conversations', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { limit, offset } = ConversationPaginationSchema.safeParse(req.query).data
     ?? { limit: 20, offset: 0 };
 
@@ -192,7 +192,7 @@ router.get('/conversations', asyncHandler(async (req, res) => {
  * Create a new conversation
  */
 router.post('/conversations', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const body = ConversationCreateBodySchema.safeParse(req.body);
   if (!body.success) {
     return res.status(400).json({ error: 'walletId must be a string' });
@@ -208,7 +208,7 @@ router.post('/conversations', asyncHandler(async (req, res) => {
  * Get messages for a conversation
  */
 router.get('/conversations/:id/messages', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { id } = req.params;
 
   const conversation = await conversationService.getConversation(id, userId);
@@ -225,7 +225,7 @@ router.get('/conversations/:id/messages', asyncHandler(async (req, res) => {
  * Send a message and get AI response
  */
 router.post('/conversations/:id/messages', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { id } = req.params;
   const body = ConversationMessageBodySchema.safeParse(req.body);
   if (!body.success) {
@@ -243,7 +243,7 @@ router.post('/conversations/:id/messages', asyncHandler(async (req, res) => {
  * Delete a conversation
  */
 router.delete('/conversations/:id', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { id } = req.params;
 
   const deleted = await conversationService.deleteConversation(id, userId);
@@ -263,7 +263,7 @@ router.delete('/conversations/:id', asyncHandler(async (req, res) => {
  * Get per-wallet intelligence settings
  */
 router.get('/settings/:walletId', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { walletId } = req.params;
 
   const settings = await intelligenceSettings.getWalletIntelligenceSettings(userId, walletId);
@@ -275,7 +275,7 @@ router.get('/settings/:walletId', asyncHandler(async (req, res) => {
  * Update per-wallet intelligence settings
  */
 router.patch('/settings/:walletId', asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { walletId } = req.params;
   const body = IntelligenceSettingsUpdateBodySchema.safeParse(req.body);
   if (!body.success) {

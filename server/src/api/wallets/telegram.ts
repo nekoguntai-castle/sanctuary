@@ -11,6 +11,7 @@ import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
 import { ErrorCodes } from '../../errors/ApiError';
 import { getWalletTelegramSettings, updateWalletTelegramSettings } from '../../services/telegram/telegramService';
+import { requireAuthenticatedUser } from '../../middleware/auth';
 
 const router = Router();
 
@@ -28,7 +29,7 @@ const TelegramSettingsBodySchema = z.object({
  */
 router.get('/:id/telegram', requireWalletAccess('view'), asyncHandler(async (req, res) => {
   const walletId = req.walletId!;
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
 
   const settings = await getWalletTelegramSettings(userId, walletId);
 
@@ -52,7 +53,7 @@ router.patch('/:id/telegram', requireWalletAccess('view'), validate(
   { message: 'Invalid Telegram settings', code: ErrorCodes.INVALID_INPUT }
 ), asyncHandler(async (req, res) => {
   const walletId = req.walletId!;
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { enabled, notifyReceived, notifySent, notifyConsolidation, notifyDraft } = req.body;
 
   await updateWalletTelegramSettings(userId, walletId, {

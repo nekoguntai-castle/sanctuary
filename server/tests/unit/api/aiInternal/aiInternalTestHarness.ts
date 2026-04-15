@@ -50,6 +50,7 @@ vi.mock('../../../../src/websocket/notifications', () => ({
 }));
 
 vi.mock('../../../../src/middleware/auth', () => ({
+  requireAuthenticatedUser: (req: any) => req.user ?? { userId: 'test-user-id', username: 'testuser', isAdmin: false },
   authenticate: (req: Request, res: Response, next: NextFunction) => {
     if (req.headers.authorization) {
       req.user = { userId: 'test-user-123', username: 'testuser', isAdmin: false };

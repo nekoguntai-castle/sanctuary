@@ -27,6 +27,18 @@ import {
 } from './utils';
 import { createLogger } from './logger';
 import { rateLimit } from './rateLimit';
+import { exitAfterDelay } from './processExit';
+import {
+  AnalyzeBodySchema,
+  ChatBodySchema,
+  ConfigBodySchema,
+  DetectOllamaBodySchema,
+  ModelBodySchema,
+  QueryBodySchema,
+  SuggestLabelBodySchema,
+  parseRequestBody,
+  type AnalysisType,
+} from './requestSchemas';
 import {
   callExternalAI,
   callExternalAIWithMessages,
@@ -46,7 +58,7 @@ process.on('uncaughtException', (error: Error) => {
     error: error.message,
     stack: error.stack,
   });
-  setTimeout(() => process.exit(1), 1000);
+  exitAfterDelay(1, 1000);
 });
 
 process.on('unhandledRejection', (reason: unknown) => {
@@ -115,7 +127,10 @@ app.post('/config', (req: Request, res: Response) => {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const { enabled, endpoint, model } = req.body;
+  const body = parseRequestBody(ConfigBodySchema, req, res, 'Invalid configuration body');
+  if (!body) return;
+
+  const { enabled, endpoint, model } = body;
 
   aiConfig = {
     enabled: enabled ?? aiConfig.enabled,
@@ -176,12 +191,11 @@ async function fetchWalletContext(walletId: string, authToken: string): Promise<
  *   5. Return suggestion (user must confirm)
  */
 app.post('/suggest-label', rateLimit, async (req: Request, res: Response) => {
-  const { transactionId } = req.body;
-  const authToken = req.headers.authorization?.replace('Bearer ', '') || '';
+  const body = parseRequestBody(SuggestLabelBodySchema, req, res, 'transactionId required');
+  if (!body) return;
 
-  if (!transactionId) {
-    return res.status(400).json({ error: 'transactionId required' });
-  }
+  const { transactionId } = body;
+  const authToken = req.headers.authorization?.replace('Bearer ', '') || '';
 
   if (!aiConfig.enabled) {
     return res.status(503).json({ error: 'AI is not enabled' });
@@ -249,12 +263,11 @@ Examples: "Exchange Deposit", "Hardware Purchase", "Salary", "Gift"`;
  * Returns query structure, NOT actual data (backend executes the query)
  */
 app.post('/query', rateLimit, async (req: Request, res: Response) => {
-  const { query, walletId } = req.body;
-  const authToken = req.headers.authorization?.replace('Bearer ', '') || '';
+  const body = parseRequestBody(QueryBodySchema, req, res, 'query and walletId required');
+  if (!body) return;
 
-  if (!query || !walletId) {
-    return res.status(400).json({ error: 'query and walletId required' });
-  }
+  const { query, walletId } = body;
+  const authToken = req.headers.authorization?.replace('Bearer ', '') || '';
 
   if (!aiConfig.enabled) {
     return res.status(503).json({ error: 'AI is not enabled' });
@@ -359,6 +372,9 @@ app.post('/test', rateLimit, async (_req: Request, res: Response) => {
  * Returns the first working endpoint found
  */
 app.post('/detect-ollama', rateLimit, async (req: Request, res: Response) => {
+  const body = parseRequestBody(DetectOllamaBodySchema, req, res, 'Invalid Ollama detection body');
+  if (!body) return;
+
   // Common Ollama endpoints to check (bundled container first)
   const endpoints = [
     'http://ollama:11434',                 // Bundled Ollama container (./start.sh --with-ai)
@@ -368,12 +384,9 @@ app.post('/detect-ollama', rateLimit, async (req: Request, res: Response) => {
   ];
 
   // Support custom endpoints for remote/off-box Ollama
-  const customEndpoints = req.body?.customEndpoints;
-  if (Array.isArray(customEndpoints)) {
-    for (const ep of customEndpoints) {
-      if (typeof ep === 'string' && ep.startsWith('http') && !endpoints.includes(ep)) {
-        endpoints.push(ep);
-      }
+  for (const ep of body.customEndpoints ?? []) {
+    if (!endpoints.includes(ep)) {
+      endpoints.push(ep);
     }
   }
 
@@ -449,11 +462,10 @@ app.get('/list-models', rateLimit, async (_req: Request, res: Response) => {
  * Streams progress to backend via callback URL for real-time updates
  */
 app.post('/pull-model', rateLimit, async (req: Request, res: Response) => {
-  const { model } = req.body;
+  const body = parseRequestBody(ModelBodySchema, req, res, 'Model name required');
+  if (!body) return;
 
-  if (!model) {
-    return res.status(400).json({ error: 'Model name required' });
-  }
+  const { model } = body;
 
   if (!aiConfig.endpoint) {
     return res.status(400).json({ error: 'No AI endpoint configured' });
@@ -476,11 +488,10 @@ app.post('/pull-model', rateLimit, async (req: Request, res: Response) => {
  * Delete a model from Ollama
  */
 app.delete('/delete-model', rateLimit, async (req: Request, res: Response) => {
-  const { model } = req.body;
+  const body = parseRequestBody(ModelBodySchema, req, res, 'Model name required');
+  if (!body) return;
 
-  if (!model) {
-    return res.status(400).json({ error: 'Model name required' });
-  }
+  const { model } = body;
 
   if (!aiConfig.endpoint) {
     return res.status(400).json({ error: 'No AI endpoint configured' });
@@ -527,22 +538,16 @@ app.delete('/delete-model', rateLimit, async (req: Request, res: Response) => {
  *   4. Return insight data
  */
 app.post('/analyze', rateLimit, async (req: Request, res: Response) => {
-  const { type, context } = req.body;
+  const body = parseRequestBody(AnalyzeBodySchema, req, res, 'type and context required');
+  if (!body) return;
 
-  if (!type || !context) {
-    return res.status(400).json({ error: 'type and context required' });
-  }
+  const { type, context } = body;
 
   if (!aiConfig.enabled) {
     return res.status(503).json({ error: 'AI is not enabled' });
   }
 
-  const validTypes = ['utxo_health', 'fee_timing', 'anomaly', 'tax', 'consolidation'];
-  if (!validTypes.includes(type)) {
-    return res.status(400).json({ error: `Invalid type. Must be one of: ${validTypes.join(', ')}` });
-  }
-
-  const systemPrompts: Record<string, string> = {
+  const systemPrompts: Record<AnalysisType, string> = {
     utxo_health: `You are a Bitcoin treasury advisor analyzing UTXO health. Based on the wallet data, provide a concise analysis.
 Respond with a JSON object: {"title": "short title", "summary": "1-2 sentence summary", "severity": "info|warning|critical", "analysis": "detailed analysis paragraph"}
 Focus on: dust UTXOs, consolidation opportunities, fee savings potential.`,
@@ -601,11 +606,10 @@ Focus on: when to consolidate, how many UTXOs, expected savings, privacy conside
  * OUTPUT: Assistant response
  */
 app.post('/chat', rateLimit, async (req: Request, res: Response) => {
-  const { messages, walletContext } = req.body;
+  const body = parseRequestBody(ChatBodySchema, req, res, 'messages array required');
+  if (!body) return;
 
-  if (!messages || !Array.isArray(messages) || messages.length === 0) {
-    return res.status(400).json({ error: 'messages array required' });
-  }
+  const { messages, walletContext } = body;
 
   if (!aiConfig.enabled) {
     return res.status(503).json({ error: 'AI is not enabled' });

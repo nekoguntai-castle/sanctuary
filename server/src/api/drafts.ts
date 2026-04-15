@@ -10,7 +10,7 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
-import { authenticate } from '../middleware/auth';
+import { authenticate, requireAuthenticatedUser } from '../middleware/auth';
 import { requireWalletAccess } from '../middleware/walletAccess';
 import { validate } from '../middleware/validate';
 import { draftService } from '../services/draftService';
@@ -87,7 +87,7 @@ router.get('/wallets/:walletId/drafts/:draftId', requireWalletAccess('view'), as
 router.post('/wallets/:walletId/drafts', requireWalletAccess('edit'), validate(
   { body: CreateDraftBodySchema }
 ), asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { walletId } = req.params;
   const {
     recipient,
@@ -168,7 +168,7 @@ router.patch('/wallets/:walletId/drafts/:draftId', requireWalletAccess('edit'), 
  * Delete a draft transaction (creator or wallet owner only)
  */
 router.delete('/wallets/:walletId/drafts/:draftId', requireWalletAccess('view'), asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { walletId, draftId } = req.params;
 
   await draftService.deleteDraft(walletId, draftId, userId, req.walletRole);

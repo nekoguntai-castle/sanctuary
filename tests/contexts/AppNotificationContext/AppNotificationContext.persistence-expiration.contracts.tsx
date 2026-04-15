@@ -55,6 +55,7 @@ export const registerAppNotificationPersistenceExpirationContracts = () => {
     });
 
     it('handles JSON parse errors when loading notifications', async () => {
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       const getItemSpy = vi
         .spyOn(localStorage, 'getItem')
         .mockImplementation((key: string) =>
@@ -69,12 +70,19 @@ export const registerAppNotificationPersistenceExpirationContracts = () => {
 
         expect(getItemSpy).toHaveBeenCalledWith('sanctuary_app_notifications');
         expect(result.current.notifications).toHaveLength(0);
+        expect(
+          consoleErrorSpy.mock.calls.some(([message]) =>
+            String(message).includes('Failed to load notifications')
+          )
+        ).toBe(true);
       } finally {
         getItemSpy.mockRestore();
+        consoleErrorSpy.mockRestore();
       }
     });
 
     it('handles serialization errors when saving notifications', async () => {
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       const stringifySpy = vi.spyOn(JSON, 'stringify').mockImplementation(() => {
         throw new Error('serialization failed');
       });
@@ -93,8 +101,14 @@ export const registerAppNotificationPersistenceExpirationContracts = () => {
           await Promise.resolve();
         });
         expect(result.current.notifications).toHaveLength(1);
+        expect(
+          consoleErrorSpy.mock.calls.some(([message]) =>
+            String(message).includes('Failed to save notifications')
+          )
+        ).toBe(true);
       } finally {
         stringifySpy.mockRestore();
+        consoleErrorSpy.mockRestore();
       }
     });
   });

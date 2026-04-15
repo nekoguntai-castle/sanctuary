@@ -13,6 +13,7 @@ import { approvalService } from '../../services/vaultPolicy/approvalService';
 import { auditService, AuditAction, AuditCategory } from '../../services/auditService';
 import { asyncHandler } from '../../errors/errorHandler';
 import { ErrorCodes } from '../../errors/ApiError';
+import { requireAuthenticatedUser } from '../../middleware/auth';
 
 const router = Router();
 
@@ -52,7 +53,7 @@ router.post(
   ),
   asyncHandler(async (req, res) => {
     const { walletId, draftId, requestId } = req.params;
-    const userId = req.user!.userId;
+    const userId = requireAuthenticatedUser(req).userId;
     const { decision, reason } = req.body;
 
     const { vote, request } = await approvalService.castVote(requestId, userId, decision, reason);
@@ -95,7 +96,7 @@ router.post('/:walletId/drafts/:draftId/override', requireWalletAccess('owner'),
   { message: overrideValidationMessage, code: ErrorCodes.INVALID_INPUT }
 ), asyncHandler(async (req, res) => {
   const { walletId, draftId } = req.params;
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { reason } = req.body;
 
   await approvalService.ownerOverride(draftId, walletId, userId, reason);

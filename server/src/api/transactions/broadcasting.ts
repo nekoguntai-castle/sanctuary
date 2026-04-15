@@ -21,6 +21,7 @@ import {
   MobileTransactionBroadcastRequestSchema,
 } from '../../../../shared/schemas/mobileApiRequests';
 import { parseTransactionRequestBody } from './requestValidation';
+import { requireAuthenticatedUser } from '../../middleware/auth';
 
 const router = Router();
 const log = createLogger('TX_BROADCAST:ROUTE');
@@ -66,7 +67,7 @@ router.post('/wallets/:walletId/transactions/broadcast', requireWalletAccess('ed
   if (evalRecipient && evalAmount) {
     const policyResult = await policyEvaluationEngine.evaluatePolicies({
       walletId,
-      userId: req.user!.userId,
+      userId: requireAuthenticatedUser(req).userId,
       recipient: evalRecipient,
       amount: BigInt(evalAmount),
     });
@@ -99,7 +100,7 @@ router.post('/wallets/:walletId/transactions/broadcast', requireWalletAccess('ed
     // Record policy usage after successful broadcast
     const recordAmount = evalAmount || amount;
     if (recordAmount) {
-      policyEvaluationEngine.recordUsage(walletId, req.user!.userId, BigInt(recordAmount)).catch(err => {
+      policyEvaluationEngine.recordUsage(walletId, requireAuthenticatedUser(req).userId, BigInt(recordAmount)).catch(err => {
         log.warn('Failed to record policy usage', { error: getErrorMessage(err) });
       });
     }
@@ -158,7 +159,7 @@ router.post('/wallets/:walletId/psbt/broadcast', requireWalletAccess('edit'), as
   if (recipientAddress && amount > 0) {
     const policyResult = await policyEvaluationEngine.evaluatePolicies({
       walletId,
-      userId: req.user!.userId,
+      userId: requireAuthenticatedUser(req).userId,
       recipient: recipientAddress,
       amount: BigInt(amount),
     });
@@ -185,7 +186,7 @@ router.post('/wallets/:walletId/psbt/broadcast', requireWalletAccess('edit'), as
 
     // Record policy usage after successful broadcast
     if (amount > 0) {
-      policyEvaluationEngine.recordUsage(walletId, req.user!.userId, BigInt(amount)).catch(err => {
+      policyEvaluationEngine.recordUsage(walletId, requireAuthenticatedUser(req).userId, BigInt(amount)).catch(err => {
         log.warn('Failed to record policy usage', { error: getErrorMessage(err) });
       });
     }

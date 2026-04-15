@@ -6,7 +6,7 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
-import { authenticate } from '../../middleware/auth';
+import { authenticate, requireAuthenticatedUser } from '../../middleware/auth';
 import { validate } from '../../middleware/validate';
 import * as blockchain from '../../services/bitcoin/blockchain';
 import * as utils from '../../services/bitcoin/utils';
@@ -79,7 +79,7 @@ router.get('/address/:address', asyncHandler(async (req, res) => {
  * Sync single address with blockchain
  */
 router.post('/address/:addressId/sync', authenticate, asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { addressId } = req.params;
 
   // Check user has access to address's wallet
@@ -107,7 +107,7 @@ router.post('/address-lookup', authenticate, validate(
 ), asyncHandler(async (req, res) => {
   const { addresses } = req.body;
 
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
 
   // Find addresses that belong to wallets the user has access to
   const addressRecords = await addressRepository.findByAddressesForUser(addresses, userId);

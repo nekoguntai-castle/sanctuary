@@ -22,6 +22,7 @@ import {
   MobileTransactionEstimateRequestSchema,
 } from '../../../../shared/schemas/mobileApiRequests';
 import { parseTransactionRequestBody } from './requestValidation';
+import { requireAuthenticatedUser } from '../../middleware/auth';
 
 const router = Router();
 const log = createLogger('TX_DRAFT:ROUTE');
@@ -136,7 +137,7 @@ router.post('/wallets/:walletId/transactions/create', requireWalletAccess('edit'
   // Evaluate vault policies BEFORE creating the PSBT
   const policyResult = await policyEvaluationEngine.evaluatePolicies({
     walletId,
-    userId: req.user!.userId,
+    userId: requireAuthenticatedUser(req).userId,
     recipient,
     amount: BigInt(amount),
   });
@@ -219,7 +220,7 @@ router.post('/wallets/:walletId/transactions/batch', requireWalletAccess('edit')
   const totalAmount = validatedOutputs.reduce((sum, o) => sum + o.amount, 0);
   const policyResult = await policyEvaluationEngine.evaluatePolicies({
     walletId,
-    userId: req.user!.userId,
+    userId: requireAuthenticatedUser(req).userId,
     recipient: validatedOutputs[0].address,
     amount: BigInt(totalAmount),
     outputs: validatedOutputs,
@@ -298,7 +299,7 @@ router.post('/wallets/:walletId/psbt/create', requireWalletAccess('edit'), async
   // Evaluate vault policies BEFORE creating the PSBT
   const policyResult = await policyEvaluationEngine.evaluatePolicies({
     walletId,
-    userId: req.user!.userId,
+    userId: requireAuthenticatedUser(req).userId,
     recipient: address,
     amount: BigInt(amount),
   });

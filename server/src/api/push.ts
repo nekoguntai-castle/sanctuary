@@ -35,7 +35,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { pushDeviceRepository, auditLogRepository } from '../repositories';
-import { authenticate } from '../middleware/auth';
+import { authenticate, requireAuthenticatedUser } from '../middleware/auth';
 import { verifyGatewayRequest } from '../middleware/gatewayAuth';
 import { validate } from '../middleware/validate';
 import { createLogger } from '../utils/logger';
@@ -135,7 +135,7 @@ router.post('/register', authenticate, validate(
   { body: PushRegisterBodySchema },
   { message: pushRegisterValidationMessage, code: ErrorCodes.INVALID_INPUT }
 ), asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { token, platform, deviceName } = req.body;
 
   // SEC-008: Validate device token format
@@ -172,7 +172,7 @@ router.delete('/unregister', authenticate, validate(
   { body: PushUnregisterBodySchema },
   { message: 'Device token is required', code: ErrorCodes.INVALID_INPUT }
 ), asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { token } = req.body;
 
   // Find the device by token
@@ -201,7 +201,7 @@ router.delete('/unregister', authenticate, validate(
  * List all registered devices for the current user
  */
 router.get('/devices', authenticate, asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
 
   const devices = await pushDeviceRepository.findByUserId(userId);
 
@@ -221,7 +221,7 @@ router.get('/devices', authenticate, asyncHandler(async (req, res) => {
  * Remove a specific device by ID
  */
 router.delete('/devices/:id', authenticate, asyncHandler(async (req, res) => {
-  const userId = req.user!.userId;
+  const userId = requireAuthenticatedUser(req).userId;
   const { id } = req.params;
 
   // Find device (must be owned by user)
