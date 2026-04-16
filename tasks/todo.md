@@ -178,12 +178,12 @@ This is the biggest phase. It implements both ADR 0001 (cookies replace storage)
 
 Goal: the new model is captured in operations and release docs so the next operator does not have to read both ADRs to understand the system.
 
-- [x] `docs/OPERATIONS_RUNBOOKS.md`:
+- [x] `docs/how-to/operations-runbooks.md`:
   - [x] Add the cookie + Secure + TLS termination requirement.
   - [x] Document the CSRF token rotation behavior.
   - [x] Document the refresh token TTL and rotation.
   - [x] Document the BroadcastChannel cross-tab coordination so an operator debugging "why did all my tabs log out at once" knows where to look.
-- [x] `docs/RELEASE_GATES.md` — cookie/CSRF/refresh test suite added to the Browser auth and CSP gate; Phase 4 Browser Auth Gate section rewritten from "remaining architecture decision" to "resolved 2026-04-13".
+- [x] `docs/reference/release-gates.md` — cookie/CSRF/refresh test suite added to the Browser auth and CSP gate; Phase 4 Browser Auth Gate section rewritten from "remaining architecture decision" to "resolved 2026-04-13".
 - [x] `docs/plans/codebase-health-assessment.md`:
   - [x] Security row moved from B to A- (partial schema coverage + accepted dependency findings keep it from a clean A).
   - [x] HttpOnly-cookie ADR row removed from outstanding items table.
