@@ -7,11 +7,13 @@ This document maps the existing monitoring stack and alert rules to concrete tri
 
 ## Phase 2 Proof Records
 
-- 2026-04-12: `docs/plans/phase2-operations-proof-2026-04-12T08-44-39-1000.md` records a passing disposable PostgreSQL backup/restore drill and gateway audit persistence drill.
-- 2026-04-12: `docs/plans/phase2-monitoring-smoke-2026-04-12T22-42-59-008Z.md` records a passing local monitoring stack smoke with Grafana, Prometheus, Alertmanager, Jaeger, Loki, Promtail container health, Prometheus rule loading, Promtail runtime log checks, and loopback-only host port bindings.
-- 2026-04-12: `docs/plans/phase2-gateway-audit-compose-smoke-2026-04-12T23-18-24-249Z.md` records a passing full Compose backend/gateway audit smoke with signed audit persistence, unsigned audit rejection, gateway delivery-log checks, and container health.
-- 2026-04-12: `docs/plans/phase2-alert-receiver-smoke-2026-04-12T23-33-46-561Z.md` records a passing disposable Alertmanager webhook receiver delivery smoke.
-- 2026-04-14: `docs/plans/phase2-production-like-runtime-review-2026-04-15T00-12-26-208Z.md` records a clean production-like runtime window from the generated-data full-stack Compose benchmark: all benchmark scenarios passed, all final containers were healthy, worker queues recorded 0 failed proof jobs, and the stack was removed after the proof.
+Phase 2 proof artifacts were last generated 2026-04-12 through 2026-04-15 and are available in git history (removed from the repo as transient CI artifacts). The proofs covered:
+
+- PostgreSQL backup/restore drill and gateway audit persistence drill (2026-04-12)
+- Local monitoring stack smoke: Grafana, Prometheus, Alertmanager, Jaeger, Loki, Promtail container health, Prometheus rule loading, Promtail runtime log checks, loopback-only host port bindings (2026-04-12)
+- Full Compose backend/gateway audit smoke: signed audit persistence, unsigned audit rejection, gateway delivery-log checks, container health (2026-04-12)
+- Alertmanager webhook receiver delivery smoke (2026-04-12)
+- Production-like runtime window from generated-data full-stack Compose benchmark: all scenarios passed, all containers healthy, 0 failed worker queue proof jobs (2026-04-14)
 - Run repeatable local proof with `npm run test:ops:phase2`.
 - If local port `5433` is already allocated, run with an alternate host port, for example `TEST_POSTGRES_PORT=55433 npm run test:ops:phase2`.
 - Run repeatable monitoring proof with `npm run ops:monitoring:phase2` after starting the monitoring stack.
@@ -352,7 +354,7 @@ Phase 4 introduced cross-tab coordination for the refresh flow. Two primitives a
 
 ### Release gate
 
-See `docs/RELEASE_GATES.md` "Browser auth cookies and refresh flow" — the cookie/CSRF/refresh-flow test suite must run on any PR that touches `src/api/client.ts`, `src/api/refresh.ts`, `contexts/UserContext.tsx`, `services/websocket.ts`, `server/src/middleware/auth.ts`, `server/src/middleware/csrf.ts`, `server/src/api/auth/*`, or `server/src/websocket/auth.ts`.
+See `docs/reference/release-gates.md` "Browser auth cookies and refresh flow" — the cookie/CSRF/refresh-flow test suite must run on any PR that touches `src/api/client.ts`, `src/api/refresh.ts`, `contexts/UserContext.tsx`, `services/websocket.ts`, `server/src/middleware/auth.ts`, `server/src/middleware/csrf.ts`, `server/src/api/auth/*`, or `server/src/websocket/auth.ts`.
 
 ## Gateway Audit Failures
 
