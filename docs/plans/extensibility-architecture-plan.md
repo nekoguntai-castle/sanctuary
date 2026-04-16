@@ -4,7 +4,7 @@ Last updated: 2026-04-11
 
 ## Validation Baseline
 
-- `docs/EXTENSION_POINTS.md` identified sync/job queue ownership as a boundary risk before phase 1. The code validated this: sync routes mixed in-process `SyncService` calls, BullMQ worker enqueue calls, and direct blockchain sync through the legacy Bitcoin route.
+- `docs/explanation/extension-points.md` identified sync/job queue ownership as a boundary risk before phase 1. The code validated this: sync routes mixed in-process `SyncService` calls, BullMQ worker enqueue calls, and direct blockchain sync through the legacy Bitcoin route.
 - Frontend route gating was specific to Intelligence before phase 2. `AppNavFeature` only allowed `intelligence`, and the sidebar had custom Intelligence filtering logic.
 - `server/ARCHITECTURE.md` is stale in places. It describes an IoC-style service registry, while the actual service registry is a lifecycle registry for managed background services.
 - Existing registry patterns are real, but not all equivalent. Provider registration has health and failover semantics; import and device parser registries share priority/detect mechanics.

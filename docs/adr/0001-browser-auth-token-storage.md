@@ -113,7 +113,7 @@ Rationale:
 - The login response shape changes: tokens are no longer in the response body; they are in a Set-Cookie header. Existing tests for `server/src/api/auth/login.ts:187-313`, `server/src/api/auth/twoFactor/verify.ts:33-140`, and `server/src/api/auth/tokens.ts:28-125` need updating.
 - The backend must support **two** browser-callable routes shapes: the new cookie-based browser route and the existing `Authorization: Bearer` mobile/gateway route. The cleanest way is to read the cookie in `server/src/middleware/auth.ts` first, fall back to the Authorization header second, and require the CSRF token only when the request authenticated via cookie.
 - WebSocket auth gets a third token-source path (Authorization header → query parameter → cookie). The query parameter path is already deprecated in `server/src/websocket/auth.ts:62-69`; this is the right time to remove it.
-- Reverse-proxy and Compose deployments must keep Secure cookies working behind TLS. The Nginx config in this repo already terminates TLS, but documentation in `docs/OPERATIONS_RUNBOOKS.md` should call out the requirement.
+- Reverse-proxy and Compose deployments must keep Secure cookies working behind TLS. The Nginx config in this repo already terminates TLS, but documentation in `docs/how-to/operations-runbooks.md` should call out the requirement.
 - During the rollout window, users with active sessions in `sessionStorage` need a graceful migration. The simplest path: on the next API call, the legacy header still works (the backend keeps accepting both for one release), and the next login establishes the cookie.
 
 ### Neutral
@@ -147,8 +147,8 @@ This is a sketch. The implementation should fit into multiple PRs, each independ
    - `tests/api/client.test.ts`: replace the storage mode tests with `credentials: 'include'` and CSRF header tests.
 
 5. **Documentation.**
-   - Update `docs/OPERATIONS_RUNBOOKS.md` with the cookie/Secure/TLS requirement and the CSRF token rotation behavior.
-   - Update `docs/RELEASE_GATES.md` to reference the cookie tests.
+   - Update `docs/how-to/operations-runbooks.md` with the cookie/Secure/TLS requirement and the CSRF token rotation behavior.
+   - Update `docs/reference/release-gates.md` to reference the cookie tests.
    - Mark this ADR's status as Accepted (not Proposed) when the work merges.
 
 6. **Deprecation window and removal.**

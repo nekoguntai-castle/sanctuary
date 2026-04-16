@@ -49,7 +49,7 @@ Completed after the scored snapshot; the `94/A` score above has not been recalcu
 - Replaced authenticated-route `req.user!` non-null assertions with `requireAuthenticatedUser(req)` from `server/src/middleware/auth.ts`.
 - Centralized direct process exits behind small helpers in `server/`, `gateway/`, and `ai-proxy/`; `process.exit` now appears only in those helpers.
 - Added Zod request schemas for AI proxy mutable endpoints in `ai-proxy/src/requestSchemas.ts` and added direct `zod@^4.3.4` dependency coverage for the package.
-- Refreshed dependency triage in `docs/DEPENDENCY_AUDIT_TRIAGE.md`, including AI proxy audit state.
+- Refreshed dependency triage in `docs/plans/dependency-audit-triage.md`, including AI proxy audit state.
 - Muted/asserted expected frontend failure-path output in targeted tests by mocking app reload navigation and asserting intentional error logs.
 
 Focused verification after this cleanup:
