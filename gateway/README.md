@@ -2,6 +2,8 @@
 
 The Gateway is a public-facing API proxy for mobile app access to Sanctuary. It handles authentication, rate limiting, and push notifications while keeping the backend server private.
 
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the full architecture reference.
+
 ## Architecture Overview
 
 ```

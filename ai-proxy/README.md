@@ -2,6 +2,8 @@
 
 Security-isolated container for AI operations. This container handles all AI calls in a separate security domain, ensuring sensitive wallet data is never exposed to external AI services.
 
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the full architecture reference.
+
 ## Security Architecture
 
 ```

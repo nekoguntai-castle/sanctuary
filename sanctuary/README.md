@@ -1,6 +1,6 @@
 # Sanctuary - Umbrel App Package
 
-This directory contains the files needed to submit Sanctuary to the Umbrel App Store.
+This directory contains the files needed to submit Sanctuary to the Umbrel App Store. See [ARCHITECTURE.md](ARCHITECTURE.md) for the frontend architecture reference.
 
 ## Files
 
