@@ -61,6 +61,20 @@ describe('AI proxy request schemas', () => {
     }));
   });
 
+  it('treats missing request bodies as empty objects', () => {
+    const res = makeResponse();
+
+    const body = parseRequestBody(
+      ConfigBodySchema,
+      makeRequest(undefined),
+      res as any,
+      'Invalid configuration body'
+    );
+
+    expect(body).toEqual({});
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
   it('validates required transaction, query, and model inputs', () => {
     expect(SuggestLabelBodySchema.parse({ transactionId: ' tx-1 ' })).toEqual({ transactionId: 'tx-1' });
     expect(QueryBodySchema.parse({ query: ' largest receives ', walletId: ' wallet-1 ' })).toEqual({
