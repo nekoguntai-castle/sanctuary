@@ -21,7 +21,9 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../../../src/middleware/auth', () => ({
   authenticate: (req: any, _res: any, next: () => void) => {
-    req.user = { userId: 'admin-1', username: 'admin', isAdmin: true };
+    if (req.header('x-skip-user') !== '1') {
+      req.user = { userId: 'admin-1', username: 'admin', isAdmin: true };
+    }
     next();
   },
   requireAdmin: (_req: any, _res: any, next: () => void) => next(),
@@ -132,6 +134,41 @@ describe('Admin MCP key routes', () => {
         targetUserId: userId,
         walletScopeCount: 2,
         allowAuditLogs: true,
+      }),
+    });
+  });
+
+  it('creates an unscoped MCP API key with default audit and expiration fields', async () => {
+    mocks.mcpApiKeyRepository.create.mockImplementation(async input => ({
+      id: keyId,
+      userId: input.userId,
+      createdByUserId: input.createdByUserId,
+      name: input.name,
+      keyPrefix: input.keyPrefix,
+      scope: input.scope,
+      expiresAt: input.expiresAt,
+      createdAt: now,
+      revokedAt: null,
+    }));
+
+    await request(app)
+      .post('/api/v1/admin/mcp-keys')
+      .set('x-skip-user', '1')
+      .send({ userId, name: 'Unscoped' })
+      .expect(201);
+
+    expect(mocks.walletRepository.hasAccess).not.toHaveBeenCalled();
+    expect(mocks.mcpApiKeyRepository.create).toHaveBeenCalledWith(expect.objectContaining({
+      createdByUserId: null,
+      name: 'Unscoped',
+      scope: { allowAuditLogs: false },
+      expiresAt: null,
+    }));
+    expect(mocks.logFromRequest).toHaveBeenCalledWith(expect.anything(), 'mcp.key_create', 'mcp', {
+      details: expect.objectContaining({
+        walletScopeCount: 0,
+        allowAuditLogs: false,
+        expiresAt: undefined,
       }),
     });
   });

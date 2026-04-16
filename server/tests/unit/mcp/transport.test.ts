@@ -316,6 +316,23 @@ describe('MCP HTTP transport', () => {
       });
   });
 
+  it('does not double-send when transport fails after writing a response', async () => {
+    const app = createMcpHttpApp();
+    mocks.handleRequest.mockImplementationOnce((_req, res) => {
+      res.writeHead(204);
+      res.end();
+      throw new Error('after response');
+    });
+
+    await request(app)
+      .post('/mcp')
+      .set('mcp-protocol-version', '2025-03-26')
+      .send({ method: 'resources/read', params: { uri: 'bitcoin:wallet' } })
+      .expect(204);
+
+    expect(mocks.recordMcpRequest).toHaveBeenCalledWith('resource:bitcoin:', 500, expect.any(Number));
+  });
+
   it('uses the outer route catch when an unexpected rejection escapes the handler', async () => {
     const app = createMcpHttpApp();
     mocks.auditLog.mockRejectedValueOnce(new Error('audit down'));
@@ -327,5 +344,20 @@ describe('MCP HTTP transport', () => {
       .expect(response => {
         expect(response.body.error.message).toBe('Internal server error');
       });
+  });
+
+  it('does not double-send when final metrics fail after writing a response', async () => {
+    const app = createMcpHttpApp();
+    mocks.recordMcpRequest.mockImplementationOnce(() => {
+      throw new Error('metrics down');
+    });
+
+    await request(app)
+      .post('/mcp')
+      .set('mcp-protocol-version', '2025-11-25')
+      .send({ method: 'tools/list' })
+      .expect(202);
+
+    expect(mocks.recordMcpRequest).toHaveBeenCalledWith('tools/list', 202, expect.any(Number));
   });
 });
