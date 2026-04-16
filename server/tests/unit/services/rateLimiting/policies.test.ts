@@ -32,6 +32,9 @@ const mockConfig = vi.hoisted(() => ({
     wsConnectLimit: 20,
     wsMessageLimit: 100,
   },
+  mcp: {
+    rateLimitPerMinute: 120,
+  },
 }));
 
 vi.mock('../../../../src/config', () => ({
@@ -101,6 +104,12 @@ describe('Rate Limit Policies', () => {
       const policies = getRateLimitPolicies();
 
       expect(policies['admin:default']).toBeDefined();
+    });
+
+    it('should include MCP policies', () => {
+      const policies = getRateLimitPolicies();
+
+      expect(policies['mcp:default']).toBeDefined();
     });
 
     it('should include payjoin policies', () => {
@@ -289,6 +298,17 @@ describe('Rate Limit Policies', () => {
     });
   });
 
+  describe('MCP policies', () => {
+    it('should configure mcp:default correctly', () => {
+      const policy = getRateLimitPolicies()['mcp:default'];
+
+      expect(policy.name).toBe('mcp:default');
+      expect(policy.limit).toBe(120);
+      expect(policy.windowSeconds).toBe(60);
+      expect(policy.keyStrategy).toBe('api-key');
+    });
+  });
+
   describe('getPolicy', () => {
     it('should return policy by name', () => {
       const policy = getPolicy('auth:login');
@@ -319,6 +339,7 @@ describe('Rate Limit Policies', () => {
         'ai:analyze',
         'ai:summarize',
         'admin:default',
+        'mcp:default',
         'payjoin:create',
         'ws:connect',
         'ws:message',
@@ -384,6 +405,7 @@ describe('Rate Limit Policies', () => {
     it('should contain all policies', () => {
       expect(RATE_LIMIT_POLICIES['auth:login']).toBeDefined();
       expect(RATE_LIMIT_POLICIES['api:default']).toBeDefined();
+      expect(RATE_LIMIT_POLICIES['mcp:default']).toBeDefined();
       expect(RATE_LIMIT_POLICIES['ws:connect']).toBeDefined();
     });
 
@@ -408,6 +430,11 @@ describe('Rate Limit Policies', () => {
       expect(policies['api:default'].keyStrategy).toBe('user');
       expect(policies['tx:create'].keyStrategy).toBe('user');
       expect(policies['ai:analyze'].keyStrategy).toBe('user');
+    });
+
+    it('should use API key strategy for MCP endpoints', () => {
+      const policy = getRateLimitPolicies()['mcp:default'];
+      expect(policy.keyStrategy).toBe('api-key');
     });
 
     it('should use ip+user strategy for login', () => {
