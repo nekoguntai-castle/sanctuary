@@ -29,6 +29,8 @@ export default defineConfig({
         '**/types.ts',
         // Prisma client/model output is generated code; app behavior is covered through repositories/services.
         'src/generated/**',
+        // Side-effect-only daemon entrypoint; behavior is covered through MCP transport/auth modules.
+        'src/mcp-entry.ts',
         // Re-export shims preserving backward-compatible import paths (zero logic)
         'src/services/aiService.ts',
         'src/services/eventService.ts',
