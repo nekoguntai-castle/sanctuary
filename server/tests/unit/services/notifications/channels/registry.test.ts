@@ -1,4 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const mockAgentRepository = vi.hoisted(() => ({
+  findActiveAgentsByOperationalWalletId: vi.fn(),
+  updateAgent: vi.fn(),
+}));
+
+vi.mock('../../../../../src/repositories', () => ({
+  agentRepository: mockAgentRepository,
+}));
+
 import { NotificationChannelRegistry } from '../../../../../src/services/notifications/channels/registry';
 import type {
   DraftNotification,
@@ -54,6 +64,8 @@ describe('NotificationChannelRegistry', () => {
   beforeEach(() => {
     registry = new NotificationChannelRegistry();
     vi.restoreAllMocks();
+    mockAgentRepository.findActiveAgentsByOperationalWalletId.mockResolvedValue([]);
+    mockAgentRepository.updateAgent.mockResolvedValue(undefined);
   });
 
   it('registers handlers and supports lookup and unregister lifecycle', () => {
@@ -170,6 +182,35 @@ describe('NotificationChannelRegistry', () => {
       usersNotified: 0,
       errors: ['transaction boom'],
     });
+  });
+
+  it('enriches sent transaction notifications for linked operational wallet agents', async () => {
+    const enabled = createHandler({
+      id: 'enabled',
+      notifyTransactions: vi.fn().mockResolvedValue({ success: true, channelId: 'enabled', usersNotified: 1 }),
+    });
+    mockAgentRepository.findActiveAgentsByOperationalWalletId.mockResolvedValueOnce([
+      {
+        id: 'agent-1',
+        name: 'Treasury Agent',
+        notifyOnOperationalSpend: true,
+        pauseOnUnexpectedSpend: true,
+      },
+    ]);
+    registry.register(enabled);
+
+    await registry.notifyTransactions('operational-wallet', [
+      { txid: 'b'.repeat(64), type: 'sent', amount: -10_000n },
+    ]);
+
+    expect(enabled.notifyTransactions).toHaveBeenCalledWith('operational-wallet', [
+      expect.objectContaining({
+        agentId: 'agent-1',
+        agentName: 'Treasury Agent',
+        agentOperationalSpend: true,
+      }),
+    ]);
+    expect(mockAgentRepository.updateAgent).toHaveBeenCalledWith('agent-1', { status: 'paused' });
   });
 
   it('falls back to unknown transaction channel result when settled promise rejects', async () => {

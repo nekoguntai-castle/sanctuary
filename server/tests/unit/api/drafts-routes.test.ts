@@ -201,6 +201,24 @@ describe('Draft Routes', () => {
     expect(response.body).toEqual({ id: 'draft-created', serialized: true });
   });
 
+  it('passes initial signature fields through when creating a draft', async () => {
+    const payload = {
+      recipient: 'tb1qrecipient',
+      amount: 10000,
+      feeRate: 5,
+      psbtBase64: 'cHNi',
+      signedPsbtBase64: 'cHNidP8agentSigned',
+      signedDeviceId: 'device-agent',
+    };
+
+    const response = await request(app)
+      .post('/api/v1/wallets/wallet-1/drafts')
+      .send(payload);
+
+    expect(response.status).toBe(201);
+    expect(mockCreateDraft).toHaveBeenCalledWith('wallet-1', 'user-1', payload);
+  });
+
   it('rejects invalid create draft field types before calling the service', async () => {
     const response = await request(app)
       .post('/api/v1/wallets/wallet-1/drafts')

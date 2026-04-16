@@ -8,6 +8,8 @@
 import { adminCorePaths } from './admin/core';
 import { adminFeaturesAuditPaths } from './admin/features-audit';
 import { adminIdentityPolicyPaths } from './admin/identity-policy';
+import { adminAgentPaths } from './admin/agents';
+import { adminMcpKeyPaths } from './admin/mcp-keys';
 import { adminOperationsPaths } from './admin/operations';
 
 export const adminPaths = {
@@ -15,4 +17,6 @@ export const adminPaths = {
   ...adminOperationsPaths,
   ...adminIdentityPolicyPaths,
   ...adminFeaturesAuditPaths,
+  ...adminAgentPaths,
+  ...adminMcpKeyPaths,
 } as const;

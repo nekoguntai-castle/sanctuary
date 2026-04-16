@@ -45,6 +45,8 @@ const CreateDraftBodySchema = z.object({
   changeAddress: z.string().optional(),
   effectiveAmount: DraftNumericValueSchema.optional(),
   inputPaths: z.unknown().optional(),
+  signedPsbtBase64: z.string().min(1).optional(),
+  signedDeviceId: z.string().min(1).optional(),
 });
 
 const UpdateDraftBodySchema = z.object({
@@ -112,6 +114,8 @@ router.post('/wallets/:walletId/drafts', requireWalletAccess('edit'), validate(
     changeAddress,
     effectiveAmount,
     inputPaths,
+    signedPsbtBase64,
+    signedDeviceId,
   } = req.body;
 
   const draft = await draftService.createDraft(walletId, userId, {
@@ -137,6 +141,8 @@ router.post('/wallets/:walletId/drafts', requireWalletAccess('edit'), validate(
     changeAddress,
     effectiveAmount,
     inputPaths,
+    signedPsbtBase64,
+    signedDeviceId,
   });
 
   res.status(201).json(serializeDraftTransaction(draft));

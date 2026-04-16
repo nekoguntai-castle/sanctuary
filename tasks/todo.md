@@ -1,3 +1,280 @@
+# Current Task: Agent Wallet Funding Implementation
+
+Status: Fifth implementation slice complete
+
+Reference plan: `tasks/agent-wallet-funding-plan.md`
+
+## Active Implementation Slice
+
+Goal: support the first end-to-end server primitive for the agent multisig flow: a scoped non-human agent credential can submit an agent-signed funding draft to a linked multisig funding wallet, Sanctuary creates a normal partial draft, and human wallet parties are notified for review/signing. Sanctuary still does not store private keys or auto-sign.
+
+- [x] Load `AGENTS.md` and current project lessons into the session.
+- [x] Capture the agent funding architecture in `tasks/agent-wallet-funding-plan.md`.
+- [x] Inspect the existing draft creation API, service, repository, notification, and tests.
+- [x] Add server-side support for creating a draft with an initial signed PSBT and signer device id.
+- [x] Validate that initial signature metadata is scoped to a device associated with the wallet.
+- [x] Preserve existing draft notification behavior so human parties are alerted.
+- [x] Add focused tests for initial partially signed draft creation.
+- [x] Add `WalletAgent` and `AgentApiKey` schema models plus a migration for linked funding/operational wallets.
+- [x] Add scoped `agt_` bearer key generation, hashing, parsing, revocation/expiry checks, and funding-wallet access enforcement.
+- [x] Add repository support for agent profiles and API keys.
+- [x] Add a dedicated `POST /api/v1/agent/wallets/:fundingWalletId/funding-drafts` endpoint.
+- [x] Ensure the dedicated endpoint creates a normal partial draft using the registered agent signer device.
+- [x] Notify all eligible wallet parties for agent-created drafts instead of suppressing the owning human user.
+- [x] Audit-log agent funding draft submissions.
+- [x] Add OpenAPI coverage for the agent route and the previously undocumented admin MCP key routes.
+- [x] Remove direct Prisma access from the transaction export route by moving the transaction wrapper into the repository.
+- [x] Decode agent-submitted PSBTs and validate outputs against the linked operational wallet plus funding-wallet change.
+- [x] Validate agent-submitted PSBT inputs against funding-wallet UTXOs, spent/frozen state, and active draft locks.
+- [x] Validate the registered agent cosigner's actual partial signature on every input.
+- [x] Derive agent draft locking and display metadata from decoded PSBT contents.
+- [x] Run targeted and full server verification.
+- [x] Add a review section summarizing behavior, tests, edge cases, and follow-up work.
+- [x] Add admin/API agent management, policy gates, deduped agent notifications, operational spend alerts, and draft-row agent context.
+
+## Next Slices
+
+- [x] Add admin/API management flows for registering agents and issuing/revoking `agt_` keys.
+- [x] Decode and validate destination outputs against the linked operational wallet.
+- [x] Validate that the submitted signed PSBT really contains the registered agent cosigner's partial signature.
+- [x] Validate the PSBT spends only funding-wallet UTXOs and does not duplicate an active draft that locks the same UTXOs.
+- [x] Enforce agent funding policies and rate limits.
+- [x] Improve draft row and Telegram copy for agent funding requests.
+- [x] Add notification dedupe for repeated agent submissions.
+- [x] Add operational wallet monitoring alerts.
+- [x] Phase 8: Decisions and safety hardening.
+  - [x] Resolve address generation, over-cap behavior, approval semantics, and concurrent draft policy.
+  - [x] Guard policy evaluation, draft creation, UTXO locking, and agent cadence updates with a per-agent PostgreSQL advisory lock.
+  - [x] Record accepted and rejected agent funding attempts with reason codes.
+
+## Future Implementation Roadmap
+
+Detailed roadmap: `tasks/agent-wallet-funding-plan.md#future-work-roadmap`
+
+Recommended order:
+
+- [x] Phase 8: Decisions and safety hardening.
+  - Resolve address generation, over-cap behavior, approval semantics, and concurrent draft policy.
+  - Guard policy evaluation, draft creation, UTXO locking, and agent cadence updates with the per-agent PostgreSQL advisory lock.
+  - Record rejected agent funding attempts with reason codes.
+- [ ] Phase 9: Admin agent management UI.
+  - Add admin list/create/edit/revoke flows for agents.
+  - Add one-time `agt_` key creation display and key revocation UI.
+  - Add linked wallet labels in wallet detail views.
+- [ ] Phase 10: Operational monitoring and alert rules.
+  - Add refill/balance/large-spend/large-fee/repeated-failure alert policy.
+  - Store alert history and dedupe threshold alerts.
+- [ ] Phase 11: Agent Wallets dashboard.
+  - Show agent status, funding wallet, operational balance, pending drafts, recent spends, and alerts.
+  - Add pause/unpause, revoke key, review draft, and open linked wallet actions.
+- [ ] Phase 12: Operational address generation.
+  - Generate next operational receive address when Sanctuary has enough watch-only descriptor metadata.
+  - Preserve strict linked-address verification.
+- [ ] Phase 13: Owner override workflow.
+  - Keep default over-cap behavior as hard reject.
+  - Add bounded, human-created overrides with audit trail if needed.
+- [ ] Phase 14: Mobile approval foundation.
+  - Add mobile-safe pending agent draft listing, review metadata, comments/rejection, and signer integration path.
+- [ ] Phase 15: Operational runbooks and E2E coverage.
+  - Add docs, key compromise runbook, backup/restore expectations, release notes, and an e2e smoke path.
+
+Next recommended implementation slice:
+
+- [ ] Continue with Phase 9: Admin agent management UI. The server behavior and policy semantics are now stable enough for the UI to expose.
+
+## Review
+
+Fifth slice update:
+
+- Resolved Phase 8 policy semantics in the plan:
+  - Agent over-cap submissions remain hard rejected.
+  - Human multisig signature is the approval for normal in-policy funding.
+  - Agent-provided operational destinations are accepted only when Sanctuary verifies they belong to the linked operational wallet.
+  - Concurrent agent drafts are allowed only when they do not violate UTXO locks or aggregate policy caps.
+- Added `AgentFundingAttempt` persistence for accepted/rejected funding attempts, including agent id, key metadata, wallet ids, amount, fee rate, recipient, reason code/message, and request metadata.
+- Wrapped agent funding policy evaluation, draft creation, UTXO locking, and `lastFundingDraftAt` update in a per-agent PostgreSQL advisory lock.
+- Recorded rejected funding attempts on validation, policy, scope, PSBT, and lock failures without hiding the original API error.
+- Recorded accepted attempts after draft creation for monitoring symmetry.
+- Updated OpenAPI text for the agent funding endpoint to state that agents cannot request/apply owner overrides.
+- Added tests for advisory lock usage and funding attempt persistence/rejection recording.
+- Post-review hardening: capped in-memory draft notification dedupe to 1,000 keys, aligned the agent funding draft badge with the existing shared palette, and changed the autonomous-spend warning into the standard amber callout pattern.
+
+Verification run:
+
+- `cd server && npm run build` — passed.
+- `cd server && npm run check:prisma-imports` — passed.
+- `npm run check:api-body-validation` — passed.
+- `npm run check:openapi-route-coverage` — passed.
+- `cd server && npx vitest run tests/unit/api/agent-routes.test.ts tests/unit/repositories/agentRepository.test.ts tests/unit/services/agentFundingPolicy.test.ts tests/unit/api/openapi.test.ts` — 60 passed.
+- `cd server && npx vitest run tests/unit/api/admin-agents-routes.test.ts tests/unit/api/agent-routes.test.ts tests/unit/services/agentFundingDraftValidation.test.ts tests/unit/services/agentFundingPolicy.test.ts tests/unit/repositories/agentRepository.test.ts tests/unit/repositories/draftRepository.test.ts tests/unit/services/draftService.test.ts tests/unit/services/notifications/notificationService.test.ts tests/unit/services/notifications/channels/registry.test.ts tests/unit/services/notifications/channels/handlers.test.ts tests/unit/services/telegram/telegramService.test.ts` — 134 passed.
+- `cd server && npm run test:unit` — 363 files / 8834 tests passed. Existing Vitest hoist warning remains in `tests/unit/utils/tracing/tracer.test.ts`.
+- `npm run typecheck:app` — passed.
+- `npm run test:run` — 391 files / 5517 tests passed.
+- `cd server && npx vitest run tests/unit/services/notifications/notificationService.test.ts` — 6 passed.
+- `npx vitest run tests/components/DraftList/DraftRow.branches.test.tsx` — 6 passed.
+- `git diff --check` — passed.
+
+Edge case audit:
+
+- Rejected funding attempts are best-effort monitoring records; a failure to write the monitoring record does not mask the original validation/policy error.
+- Accepted funding attempt recording is also best-effort and does not make Sanctuary a signer or custodian.
+- The advisory lock serializes the critical section across app processes that share the same PostgreSQL database.
+- The lock does not refactor all draft writes into one transaction client; if a database failure occurs after draft creation but before cadence update, the API can still surface an error after a draft exists. Daily/weekly aggregate caps still include stored drafts, while cooldown depends on `lastFundingDraftAt`.
+- Address generation is intentionally deferred to Phase 12; Phase 8 keeps the stricter current behavior that only known linked operational addresses are returned/accepted.
+
+---
+
+Fourth slice update:
+
+- Added admin-only agent management endpoints for listing, creating, updating, and revoking wallet agents.
+- Added admin-only `agt_` key management endpoints for listing, issuing, and revoking scoped agent API keys. Full keys are returned only at creation time.
+- Agent creation validates that the target user can access both linked wallets, the funding wallet is multisig, the operational wallet is single-sig, both wallets use the same network, and the registered signer device belongs to the funding wallet.
+- Added per-agent policy fields and enforcement for per-request funding caps, operational-wallet balance caps, daily limits, weekly limits, cooldowns, active/revoked state, and linked destination wallet.
+- Added agent linked-wallet read endpoints for minimal wallet summary and the next known unused operational receive address.
+- Added an agent draft-signature update endpoint that lets an agent refresh the agent signature on its own draft while reusing the same PSBT validation path and existing draft lock.
+- Agent-created drafts now store `agentId` and `agentOperationalWalletId`, use a default agent funding label when none is provided, and surface agent metadata through the draft API/client type.
+- Telegram draft notifications now use agent-specific copy, include the linked operational wallet name when known, show whether the agent signature is present, warn about post-funding autonomy, and notify only owner/signer wallet parties for agent drafts.
+- Draft notification dedupe suppresses repeated agent funding notifications with the same agent/wallet/recipient/amount key for 10 minutes.
+- Operational-wallet outgoing transaction notifications are enriched as agent operational spends; configured agents can be auto-paused after such a spend.
+- The draft row now labels agent funding requests, shows the linked operational wallet destination context, shows agent signature state, and warns that the operational wallet can spend without multisig approval once funded.
+- OpenAPI coverage was added for the admin agent endpoints and agent read/update endpoints.
+
+Verification run:
+
+- `cd server && npx vitest run tests/unit/api/admin-agents-routes.test.ts tests/unit/api/agent-routes.test.ts tests/unit/services/agentFundingDraftValidation.test.ts tests/unit/services/agentFundingPolicy.test.ts tests/unit/repositories/agentRepository.test.ts tests/unit/repositories/draftRepository.test.ts tests/unit/services/draftService.test.ts tests/unit/services/notifications/notificationService.test.ts tests/unit/services/notifications/channels/registry.test.ts tests/unit/services/notifications/channels/handlers.test.ts tests/unit/services/telegram/telegramService.test.ts` — 131 passed.
+- `cd server && npm run build` — passed.
+- `cd server && npm run check:prisma-imports` — passed.
+- `npm run check:api-body-validation` — passed.
+- `npm run check:openapi-route-coverage` — passed.
+- `cd server && npx vitest run tests/unit/api/openapi.test.ts` — 43 passed.
+- `npm run typecheck:app` — passed.
+- `cd server && npm run test:unit` — 363 files / 8831 tests passed. Existing Vitest hoist warning remains in `tests/unit/utils/tracing/tracer.test.ts`.
+- `npm run test:run` — 391 files / 5517 tests passed.
+- `npx vitest run tests/components/DraftList/DraftRow.branches.test.tsx` — 6 passed.
+- `git diff --check` — passed.
+
+Edge case audit:
+
+- Null, blank, unknown, expired, malformed, and revoked agent API keys are rejected before route handlers run.
+- Agent profiles that are paused, revoked, or linked to different wallets cannot submit funding drafts.
+- Admin agent creation rejects same-wallet links, nonexistent users/wallets, wrong wallet types, network mismatches, inaccessible wallets, and signer devices not attached to the funding wallet.
+- Agent funding requests reject missing or malformed PSBTs, PSBT transaction mismatches, duplicate inputs, empty inputs/outputs, unknown outputs, missing recipient payment, amount mismatches, spent/frozen/locked UTXOs, and missing/invalid registered signer partial signatures.
+- Fee rate must be finite and inside Sanctuary's configured global min/max bounds.
+- Per-request, daily, weekly, cooldown, and operational balance caps reject over-limit requests before drafts are stored.
+- Agent signature refreshes are limited to the agent's own drafts and tolerate that draft's existing lock while still rejecting conflicting locks from other drafts.
+- Telegram agent draft notifications no longer reference a human creator and do not suppress the linked human owner/signer.
+- Viewer-only wallet users are not selected for Telegram agent funding draft notifications.
+- Duplicate agent draft notification keys are suppressed for a bounded TTL and old keys are pruned opportunistically.
+- Operational spend enrichment only runs for outgoing transactions and only for active agents linked to that operational wallet.
+- Residual concurrency risk: policy cap checks and draft creation are not wrapped in a serializable transaction, so simultaneous submissions could race on aggregate daily/weekly totals. UTXO draft locks still prevent double-spending the same inputs.
+
+Follow-up work:
+
+- Add a richer admin UI for agent profile/key management instead of API-only management.
+- Add an Agent Wallets dashboard section with funding wallet, operational balance, status, and alert summaries.
+- Decide whether operational receive addresses should be generated by Sanctuary on demand or only read from already-derived watch-only addresses.
+- Decide whether owner override for over-cap funding should exist or whether caps remain hard rejects.
+- Consider moving policy evaluation plus draft creation into one serializable database transaction if high-concurrency agent submissions become realistic.
+- Extend mobile approval once the mobile app exists.
+
+---
+
+Third slice update:
+
+- Added `agentFundingDraftValidation`, which decodes the unsigned and signed PSBTs before accepting an agent funding draft.
+- The signed PSBT must have the same unsigned transaction shape as the submitted draft PSBT.
+- Every input must be an available funding-wallet UTXO, and spent, frozen, missing, or draft-locked inputs are rejected.
+- Every output must be either a linked operational-wallet payment or funding-wallet change. Unknown outputs are rejected.
+- The submitted `recipient` must belong to the operational wallet and `amount` must equal the total paid to that wallet.
+- Draft display and locking metadata is now derived from the decoded PSBT: selected outpoints, inputs, outputs, fee, totals, change, RBF signaling, and signer input paths.
+- The agent route no longer trusts agent-provided `selectedUtxoIds`, output/input JSON, fee totals, change values, `payjoinUrl`, or `isRBF`; it always creates a non-RBF draft lock for agent funding submissions.
+- The signed PSBT must include a cryptographically valid partial signature from the registered agent signer fingerprint on every input.
+- Added repository support for exact outpoint lookup with spent/frozen/draft-lock state.
+
+Verification run:
+
+- `cd server && npx vitest run tests/unit/services/agentFundingDraftValidation.test.ts tests/unit/api/agent-routes.test.ts tests/unit/repositories/utxoRepository.test.ts` — 35 passed.
+- `cd server && npm run build` — passed.
+- `cd server && npm run check:prisma-imports` — passed.
+- `cd server && npm run test:unit` — 361 files / 8815 tests passed. Existing Vitest hoist warning remains in `tests/unit/utils/tracing/tracer.test.ts`.
+- `npm run typecheck:app` — passed.
+- `npm run check:api-body-validation` — passed.
+- `npm run check:openapi-route-coverage` — passed.
+- `git diff --check` — passed.
+
+Edge case audit:
+
+- Missing or malformed PSBTs: rejected.
+- Signed PSBT transaction mismatch from the unsigned draft PSBT: rejected.
+- Empty input or output sets: rejected.
+- Missing funding-wallet input UTXOs: rejected.
+- Already-spent, frozen, or draft-locked funding UTXOs: rejected.
+- Outputs to non-wallet addresses or non-standard scripts: rejected.
+- Recipient not in the linked operational wallet: rejected.
+- Declared amount differing from decoded operational-wallet payment total: rejected.
+- Invalid signer device fingerprint format: rejected.
+- Missing or invalid registered agent partial signature on any input: rejected.
+- Funding and operational wallet network mismatch or address overlap: rejected.
+
+Follow-up work:
+
+- Add admin/API management flows for registering agents and issuing/revoking `agt_` keys.
+- Add policy caps, fee-rate bounds, and rate limits for agent funding requests.
+- Improve human-visible draft and Telegram copy for linked operational-wallet destinations.
+- Add notification dedupe and operational wallet monitoring.
+
+---
+
+Implemented the second server slice for agent multisig funding:
+
+- `POST /api/v1/wallets/:walletId/drafts` now accepts `signedPsbtBase64` and `signedDeviceId` alongside the unsigned PSBT payload.
+- If one initial signature field is present without the other, draft creation is rejected.
+- If both are present, Sanctuary verifies the `signedDeviceId` is linked to the funding wallet before creating the draft.
+- Accepted initial signatures create a normal draft with `status = partial`, `signedPsbtBase64` set, and `signedDeviceIds = [signedDeviceId]`.
+- Added `WalletAgent` and `AgentApiKey` persistence, with `agt_` scoped bearer keys stored as hashes and separated from read-only MCP keys.
+- Added `/api/v1/agent/wallets/:fundingWalletId/funding-drafts`, scoped to one funding wallet, one operational wallet, and one signer device.
+- Agent-created drafts pass `notificationCreatedByUserId = null`, so Telegram draft notifications go to all eligible wallet parties and show the agent label as the creator.
+- Agent submissions are audit logged with agent id, key prefix, wallet ids, signer device id, draft id, amount, and fee rate.
+- OpenAPI now declares `agentBearerAuth` and documents the agent funding route. The pre-existing admin MCP key route coverage gap is also documented.
+- The Prisma import guardrail no longer needs the transaction export route exception because repeatable-read export transactions now go through the transaction repository.
+
+Verification run:
+
+- `cd server && npx vitest run tests/unit/agent/auth.test.ts tests/unit/repositories/agentRepository.test.ts tests/unit/api/agent-routes.test.ts tests/unit/routes.test.ts tests/unit/api/openapi.test.ts tests/unit/repositories/draftRepository.test.ts tests/unit/services/draftService.test.ts tests/unit/api/drafts-routes.test.ts` — 129 passed.
+- `cd server && npx vitest run tests/unit/services/notifications/notificationService.test.ts tests/unit/services/notifications/channels/handlers.test.ts` — 15 passed.
+- `cd server && npm run test:unit` — 360 files / 8807 tests passed. Existing Vitest hoist warning remains in `tests/unit/utils/tracing/tracer.test.ts`.
+- `cd server && npm run build` — passed.
+- `npm run typecheck:app` — passed.
+- `npm run check:api-body-validation` — passed.
+- `npm run check:openapi-route-coverage` — passed.
+- `cd server && npm run check:prisma-imports` — passed.
+- `git diff --check` — passed.
+
+Edge case audit:
+
+- Missing `signedPsbtBase64` or missing `signedDeviceId`: rejected.
+- Empty initial signature fields: rejected by route validation and service validation.
+- Unknown signer device id: rejected before persistence.
+- Wallet missing during signer validation: rejected.
+- Existing unsigned draft creation path stays unchanged.
+- RBF UTXO locking behavior stays unchanged.
+- Missing, malformed, unknown, revoked, or expired `agt_` keys: rejected.
+- Paused/revoked agent profile: rejected.
+- Funding wallet id mismatch: rejected.
+- Operational wallet id mismatch: rejected.
+- Agent key without `create_funding_draft` scope: rejected.
+- Agent-created drafts do not suppress notifications to the linked human user.
+- Empty route body and missing required agent funding fields: rejected before service calls.
+
+Follow-up work:
+
+- Validate PSBT contents against funding-wallet UTXOs and operational-wallet destination addresses.
+- Validate the agent cosigner's actual partial signature, not only the signer device metadata.
+- Add admin/UI flows for creating agents and issuing/revoking agent API keys.
+- Enforce agent-specific funding policy caps, rate limits, notification dedupe, and richer notification copy.
+
+---
+
 # HttpOnly cookie auth + refresh flow migration — implementation plan
 
 ADRs:

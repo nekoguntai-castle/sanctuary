@@ -39,6 +39,7 @@ export { draftLockRepository, default as draftLockRepo } from './draftLockReposi
 export { maintenanceRepository, default as maintenanceRepo } from './maintenanceRepository';
 export { mcpApiKeyRepository, default as mcpApiKeyRepo } from './mcpApiKeyRepository';
 export { mcpReadRepository, default as mcpReadRepo } from './mcpReadRepository';
+export { agentRepository, default as agentRepo } from './agentRepository';
 
 // Access control helpers
 export { buildWalletAccessWhere, buildDeviceAccessWhere } from './accessControl';
@@ -93,6 +94,15 @@ export type {
 export type {
   CreateMcpApiKeyInput,
 } from './mcpApiKeyRepository';
+
+export type {
+  CreateAgentApiKeyInput,
+  CreateAgentFundingAttemptInput,
+  CreateWalletAgentInput,
+  AgentApiKeyWithAgent,
+  UpdateWalletAgentInput,
+  WalletAgentWithDetails,
+} from './agentRepository';
 
 export { SystemSettingKeys } from './systemSettingRepository';
 export type { SystemSettingKey } from './systemSettingRepository';

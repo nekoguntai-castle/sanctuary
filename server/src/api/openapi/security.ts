@@ -25,3 +25,5 @@ export const browserOrBearerAuth = [
 ] as const;
 
 export const internalBearerAuth = [{ bearerAuth: [] }] as const;
+
+export const agentBearerAuth = [{ agentBearerAuth: [] }] as const;

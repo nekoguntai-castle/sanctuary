@@ -317,6 +317,60 @@ describe('UTXO Repository', () => {
     });
   });
 
+  describe('findByOutpointsForWallet', () => {
+    it('should find exact wallet UTXOs with draft lock state', async () => {
+      (prisma.uTXO.findMany as Mock).mockResolvedValue([
+        {
+          id: 'utxo-1',
+          txid: 'txid-1',
+          vout: 0,
+          address: 'tb1qfunding',
+          amount: BigInt(100000),
+          spent: false,
+          frozen: false,
+          draftLock: null,
+        },
+      ]);
+
+      const result = await utxoRepository.findByOutpointsForWallet('wallet-456', [
+        { txid: 'txid-1', vout: 0 },
+        { txid: 'txid-2', vout: 1 },
+      ]);
+
+      expect(result).toHaveLength(1);
+      expect(prisma.uTXO.findMany).toHaveBeenCalledWith({
+        where: {
+          walletId: 'wallet-456',
+          OR: [
+            { txid: 'txid-1', vout: 0 },
+            { txid: 'txid-2', vout: 1 },
+          ],
+        },
+        select: {
+          id: true,
+          txid: true,
+          vout: true,
+          address: true,
+          amount: true,
+          spent: true,
+          frozen: true,
+          draftLock: {
+            select: {
+              draftId: true,
+            },
+          },
+        },
+      });
+    });
+
+    it('should not query Prisma for an empty outpoint list', async () => {
+      const result = await utxoRepository.findByOutpointsForWallet('wallet-456', []);
+
+      expect(result).toEqual([]);
+      expect(prisma.uTXO.findMany).not.toHaveBeenCalled();
+    });
+  });
+
   describe('getConfirmedUnconfirmedBalance', () => {
     it('should return confirmed and unconfirmed balances separately', async () => {
       (prisma.uTXO.aggregate as Mock)

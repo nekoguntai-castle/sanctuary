@@ -251,6 +251,34 @@ describe('DraftRow branch coverage', () => {
     expect(screen.queryByText('Label: Urgent draft')).not.toBeInTheDocument();
   });
 
+  it('renders agent funding context and signature state', () => {
+    const { rerender } = renderRow({
+      agentId: 'agent-1',
+      agentOperationalWalletId: 'operational-wallet-1',
+      recipient: 'bc1q-agent-recipient',
+      outputs: [{ address: 'bc1q-agent-recipient', amount: 10000 }],
+      signedDeviceIds: ['agent-device-1'],
+    });
+
+    expect(screen.getByText('Agent funding request').closest('span')).toHaveClass('bg-shared-100');
+    expect(screen.getByText(/Linked operational wallet/)).toBeInTheDocument();
+    expect(screen.getByText('tr(bc1q-agent-recipient)')).toBeInTheDocument();
+    expect(screen.getByText('Agent signature: present')).toBeInTheDocument();
+    expect(screen.getByText(/the agent can spend from the operational wallet/).closest('div')).toHaveClass('border-amber-200');
+
+    rerender(
+      <DraftRow
+        {...defaultProps}
+        draft={makeDraft({
+          agentId: 'agent-1',
+          recipient: 'bc1q-agent-recipient',
+          signedDeviceIds: [],
+        })}
+      />
+    );
+    expect(screen.getByText('Agent signature: missing')).toBeInTheDocument();
+  });
+
   it('covers expired state, resume action, PSBT controls, and delete confirmation controls', async () => {
     const user = userEvent.setup();
     const { rerender, container } = renderRow();

@@ -65,6 +65,7 @@ export const browserOrBearerAuthSecurity = [
   { cookieAuth: [], csrfToken: [] },
 ];
 export const bearerOnlyAuthSecurity = [{ bearerAuth: [] }];
+export const agentBearerAuthSecurity = [{ agentBearerAuth: [] }];
 
 type HandlerResponse = {
   statusCode: number;

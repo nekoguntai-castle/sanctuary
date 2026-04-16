@@ -184,6 +184,66 @@ export const McpApiKeyIdParamSchema = z.object({
 });
 
 // =============================================================================
+// Wallet Agents
+// =============================================================================
+
+const AgentStatusSchema = z.enum(['active', 'paused', 'revoked']);
+const AgentSatsLimitSchema = z
+  .union([z.string(), z.number(), z.bigint()])
+  .refine((value) => {
+    if (typeof value === 'bigint') return value >= 0n;
+    if (typeof value === 'number') return Number.isSafeInteger(value) && value >= 0;
+    return /^\d+$/.test(value.trim());
+  }, 'Satoshi limits must be non-negative whole numbers')
+  .transform((value) => BigInt(value));
+const NullableAgentSatsLimitSchema = z.union([AgentSatsLimitSchema, z.null()]);
+
+export const CreateWalletAgentSchema = z.object({
+  userId: UuidSchema,
+  name: z.string().min(1, 'Agent name is required').max(100),
+  fundingWalletId: UuidSchema,
+  operationalWalletId: UuidSchema,
+  signerDeviceId: UuidSchema,
+  status: AgentStatusSchema.default('active'),
+  maxFundingAmountSats: AgentSatsLimitSchema.optional(),
+  maxOperationalBalanceSats: AgentSatsLimitSchema.optional(),
+  dailyFundingLimitSats: AgentSatsLimitSchema.optional(),
+  weeklyFundingLimitSats: AgentSatsLimitSchema.optional(),
+  cooldownMinutes: z.coerce.number().int().min(0).max(525600).optional(),
+  requireHumanApproval: z.boolean().default(true),
+  notifyOnOperationalSpend: z.boolean().default(true),
+  pauseOnUnexpectedSpend: z.boolean().default(false),
+});
+
+export const UpdateWalletAgentSchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  status: AgentStatusSchema.optional(),
+  maxFundingAmountSats: NullableAgentSatsLimitSchema.optional(),
+  maxOperationalBalanceSats: NullableAgentSatsLimitSchema.optional(),
+  dailyFundingLimitSats: NullableAgentSatsLimitSchema.optional(),
+  weeklyFundingLimitSats: NullableAgentSatsLimitSchema.optional(),
+  cooldownMinutes: z.union([z.coerce.number().int().min(0).max(525600), z.null()]).optional(),
+  requireHumanApproval: z.boolean().optional(),
+  notifyOnOperationalSpend: z.boolean().optional(),
+  pauseOnUnexpectedSpend: z.boolean().optional(),
+});
+
+export const CreateAgentApiKeySchema = z.object({
+  name: z.string().min(1, 'Key name is required').max(100),
+  allowedActions: z.array(z.string().min(1)).max(20).optional(),
+  expiresAt: z.coerce.date().optional(),
+});
+
+export const WalletAgentIdParamSchema = z.object({
+  agentId: UuidSchema,
+});
+
+export const AgentApiKeyIdParamSchema = z.object({
+  agentId: UuidSchema,
+  keyId: UuidSchema,
+});
+
+// =============================================================================
 // Feature Flags
 // =============================================================================
 
@@ -222,5 +282,8 @@ export type CreateGroupInput = z.infer<typeof CreateGroupSchema>;
 export type UpdateGroupInput = z.infer<typeof UpdateGroupSchema>;
 export type AuditLogFilter = z.infer<typeof AuditLogFilterSchema>;
 export type CreateMcpApiKeyInput = z.infer<typeof CreateMcpApiKeySchema>;
+export type CreateWalletAgentInput = z.infer<typeof CreateWalletAgentSchema>;
+export type UpdateWalletAgentInput = z.infer<typeof UpdateWalletAgentSchema>;
+export type CreateAgentApiKeyInput = z.infer<typeof CreateAgentApiKeySchema>;
 export type UpdateFeatureFlagInput = z.infer<typeof UpdateFeatureFlagSchema>;
 export type FeatureFlagAuditQuery = z.infer<typeof FeatureFlagAuditQuerySchema>;

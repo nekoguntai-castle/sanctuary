@@ -64,6 +64,8 @@ export interface DraftTransaction {
   // Signing status
   status: 'unsigned' | 'partial' | 'signed';
   signedDeviceIds: string[];
+  agentId?: string;
+  agentOperationalWalletId?: string;
 
   // Timestamps
   createdAt: string;
@@ -94,6 +96,8 @@ export interface CreateDraftRequest {
   changeAddress?: string;
   effectiveAmount?: number;
   inputPaths?: string[];
+  signedPsbtBase64?: string;
+  signedDeviceId?: string;
 }
 
 export interface UpdateDraftRequest {

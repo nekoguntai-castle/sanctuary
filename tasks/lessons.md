@@ -2,6 +2,17 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Do not reference unavailable Codex skills or slash commands
+
+**Rule:** Before adding a workflow step that names a Codex skill or slash command, verify that it exists in the current Codex skill list. If it does not exist, describe the concrete review activity instead.
+
+**Why:** The project workflow initially referenced `/simplify`, but Codex does not have that skill in this environment. The user corrected it and asked to remove the command. Keeping nonexistent commands in `AGENTS.md` creates false process requirements and wastes time at the end of tasks.
+
+**How to apply:**
+- Use "quality review", "edge case audit", or a specific command/test in task files instead of invented slash commands.
+- Only invoke a named skill when it appears in the session's available skills list.
+- If the user asks for a missing skill, state that it is unavailable and continue with the closest concrete workflow.
+
 ## E2E test fixtures must not collide with assertion selectors
 
 **Rule:** When adding a required form field value in a Playwright test, choose a value that does NOT contain the substring used by later `getByText(...)` assertions in the same flow. Or anchor the assertion with `{ exact: true }` / a precise locator from the start.

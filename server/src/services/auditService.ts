@@ -13,6 +13,7 @@
  *   - admin: Admin settings changes, node config
  *   - backup: Backup creation, restore operations
  *   - mcp: Model Context Protocol access and key operations
+ *   - wallet: Also includes agent funding draft submissions
  *   - system: System settings changes
  */
 
@@ -111,6 +112,12 @@ export enum AuditAction {
   TRANSACTION_SIGN = 'wallet.transaction_sign',
   TRANSACTION_BROADCAST = 'wallet.transaction_broadcast',
   TRANSACTION_BROADCAST_FAILED = 'wallet.transaction_broadcast_failed',
+  AGENT_FUNDING_DRAFT_SUBMIT = 'wallet.agent_funding_draft_submit',
+  AGENT_CREATE = 'wallet.agent_create',
+  AGENT_UPDATE = 'wallet.agent_update',
+  AGENT_REVOKE = 'wallet.agent_revoke',
+  AGENT_KEY_CREATE = 'wallet.agent_key_create',
+  AGENT_KEY_REVOKE = 'wallet.agent_key_revoke',
 
   // Address operations
   ADDRESS_GENERATE = 'wallet.address_generate',

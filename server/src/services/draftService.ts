@@ -7,7 +7,7 @@
 
 import type { DraftTransaction, Prisma } from '../generated/prisma/client';
 import * as bitcoin from 'bitcoinjs-lib';
-import { draftRepository, DraftStatus, systemSettingRepository } from '../repositories';
+import { draftRepository, DraftStatus, systemSettingRepository, walletRepository } from '../repositories';
 import { lockUtxosForDraft, resolveUtxoIds } from './draftLockService';
 import { notifyNewDraft } from './notifications/notificationService';
 import { NotFoundError, ForbiddenError, InvalidInputError, ConflictError } from '../errors';
@@ -47,8 +47,20 @@ export interface CreateDraftInput {
   changeAddress?: string;
   effectiveAmount?: number | string;
   inputPaths?: string[];
+  agentId?: string | null;
+  agentOperationalWalletId?: string | null;
+  signedPsbtBase64?: string;
+  signedDeviceId?: string;
+  notificationCreatedByUserId?: string | null;
+  notificationCreatedByLabel?: string;
   /** Policy evaluation result from transaction creation — used to create approval requests */
   policyEvaluation?: PolicyEvaluationResult;
+}
+
+interface InitialSigningState {
+  signedPsbtBase64: string | null;
+  signedDeviceIds: string[];
+  status: DraftStatus;
 }
 
 /**
@@ -67,6 +79,43 @@ export interface UpdateDraftInput {
  */
 async function getDraftExpirationDays(): Promise<number> {
   return systemSettingRepository.getParsed('draftExpirationDays', SystemSettingSchemas.number, DEFAULT_DRAFT_EXPIRATION_DAYS);
+}
+
+async function validateInitialSigningState(
+  walletId: string,
+  data: CreateDraftInput
+): Promise<InitialSigningState> {
+  const hasSignedPsbt = data.signedPsbtBase64 !== undefined;
+  const hasSignedDeviceId = data.signedDeviceId !== undefined;
+
+  if (!hasSignedPsbt && !hasSignedDeviceId) {
+    return { signedPsbtBase64: null, signedDeviceIds: [], status: 'unsigned' };
+  }
+
+  if (!hasSignedPsbt || !hasSignedDeviceId) {
+    throw new InvalidInputError('signedPsbtBase64 and signedDeviceId must be provided together');
+  }
+
+  const signedDeviceId = data.signedDeviceId?.trim();
+  if (!data.signedPsbtBase64?.trim() || !signedDeviceId) {
+    throw new InvalidInputError('signedPsbtBase64 and signedDeviceId must be non-empty');
+  }
+
+  const wallet = await walletRepository.findByIdWithSigningDevices(walletId);
+  if (!wallet) {
+    throw new NotFoundError('Wallet not found');
+  }
+
+  const walletDeviceIds = new Set((wallet.devices || []).map(device => device.deviceId));
+  if (!walletDeviceIds.has(signedDeviceId)) {
+    throw new InvalidInputError('signedDeviceId must belong to the wallet');
+  }
+
+  return {
+    signedPsbtBase64: data.signedPsbtBase64,
+    signedDeviceIds: [signedDeviceId],
+    status: 'partial',
+  };
 }
 
 // ========================================
@@ -116,6 +165,8 @@ export async function createDraft(
     throw new InvalidInputError('recipient, amount, feeRate, and psbtBase64 are required');
   }
 
+  const initialSigningState = await validateInitialSigningState(walletId, data);
+
   // Get expiration from system settings
   const expirationDays = await getDraftExpirationDays();
   const expiresAt = new Date();
@@ -139,6 +190,9 @@ export async function createDraft(
     label: data.label || null,
     memo: data.memo || null,
     psbtBase64: data.psbtBase64,
+    signedPsbtBase64: initialSigningState.signedPsbtBase64,
+    signedDeviceIds: initialSigningState.signedDeviceIds,
+    status: initialSigningState.status,
     fee: BigInt(data.fee || 0),
     totalInput: BigInt(data.totalInput || 0),
     totalOutput: BigInt(data.totalOutput || 0),
@@ -146,6 +200,8 @@ export async function createDraft(
     changeAddress: data.changeAddress || null,
     effectiveAmount: BigInt(data.effectiveAmount || data.amount),
     inputPaths: data.inputPaths || [],
+    agentId: data.agentId ?? null,
+    agentOperationalWalletId: data.agentOperationalWalletId ?? null,
     expiresAt,
   });
 
@@ -200,7 +256,14 @@ export async function createDraft(
     recipient: draft.recipient,
     label: draft.label,
     feeRate: draft.feeRate,
-  }, userId).catch(err => {
+    agentId: data.agentId ?? null,
+    agentName: data.agentId ? data.notificationCreatedByLabel ?? null : null,
+    agentOperationalWalletId: data.agentOperationalWalletId ?? null,
+    agentSigned: Boolean(data.agentId && data.signedDeviceId),
+    dedupeKey: data.agentId
+      ? `agent:${data.agentId}:${walletId}:${data.agentOperationalWalletId ?? ''}:${draft.recipient}:${draft.amount.toString()}`
+      : undefined,
+  }, data.notificationCreatedByUserId === undefined ? userId : data.notificationCreatedByUserId, data.notificationCreatedByLabel).catch(err => {
     log.warn('Failed to send draft notification', { error: getErrorMessage(err) });
   });
 

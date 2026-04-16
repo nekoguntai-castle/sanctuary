@@ -20,6 +20,7 @@ import { payjoinSchemas } from './schemas/payjoin';
 import { transferSchemas } from './schemas/transfers';
 import { intelligenceSchemas } from './schemas/intelligence';
 import { aiSchemas } from './schemas/ai';
+import { agentSchemas } from './schemas/agent';
 import { adminSchemas } from './schemas/admin';
 import { healthSchemas } from './schemas/health';
 import { internalSchemas } from './schemas/internal';
@@ -44,6 +45,7 @@ import { payjoinPaths } from './paths/payjoin';
 import { transferPaths } from './paths/transfers';
 import { intelligencePaths } from './paths/intelligence';
 import { aiPaths } from './paths/ai';
+import { agentPaths } from './paths/agent';
 import { adminPaths } from './paths/admin';
 import { healthPaths } from './paths/health';
 import { internalPaths } from './paths/internal';
@@ -84,6 +86,7 @@ export const openApiSpec = {
     { name: 'Transfers', description: 'Wallet and device ownership transfers' },
     { name: 'Intelligence', description: 'Treasury Intelligence insights and conversations' },
     { name: 'AI', description: 'AI assistant features and model management' },
+    { name: 'Agent', description: 'Scoped agent wallet operations' },
     { name: 'Admin', description: 'Administrative operations' },
     { name: 'Health', description: 'Health, readiness, and circuit breaker status' },
     { name: 'Internal', description: 'Root-mounted gateway and AI container contracts' },
@@ -111,6 +114,7 @@ export const openApiSpec = {
     ...transferPaths,
     ...intelligencePaths,
     ...aiPaths,
+    ...agentPaths,
     ...adminPaths,
     ...internalPaths,
   },
@@ -147,6 +151,12 @@ export const openApiSpec = {
         name: 'X-Gateway-Timestamp',
         description: 'Unix millisecond timestamp accepted within the gateway replay window.',
       },
+      agentBearerAuth: {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'agt_ API key',
+        description: 'Scoped agent API key for non-human funding-draft submission.',
+      },
     },
     schemas: {
       ...commonSchemas,
@@ -165,6 +175,7 @@ export const openApiSpec = {
       ...transferSchemas,
       ...intelligenceSchemas,
       ...aiSchemas,
+      ...agentSchemas,
       ...adminSchemas,
       ...healthSchemas,
       ...internalSchemas,

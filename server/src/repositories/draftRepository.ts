@@ -36,6 +36,8 @@ export interface CreateDraftInput {
   memo?: string | null;
   psbtBase64: string;
   signedPsbtBase64?: string | null;
+  signedDeviceIds?: string[];
+  status?: DraftStatus;
   fee: bigint;
   totalInput: bigint;
   totalOutput: bigint;
@@ -43,6 +45,8 @@ export interface CreateDraftInput {
   changeAddress?: string | null;
   effectiveAmount: bigint;
   inputPaths: string[];
+  agentId?: string | null;
+  agentOperationalWalletId?: string | null;
   expiresAt: Date;
 }
 
@@ -158,6 +162,8 @@ function buildDraftCreateData(data: CreateDraftInput): Prisma.DraftTransactionUn
       signedPsbtBase64: data.signedPsbtBase64,
       changeAddress: data.changeAddress,
     }),
+    ...(data.signedDeviceIds !== undefined && { signedDeviceIds: data.signedDeviceIds }),
+    ...(data.status !== undefined && { status: data.status }),
     outputs: toDraftJsonCreateValue(data.outputs),
     inputs: toDraftJsonCreateValue(data.inputs),
     decoyOutputs: toDraftJsonCreateValue(data.decoyOutputs),
@@ -178,6 +184,8 @@ function buildDraftCreateData(data: CreateDraftInput): Prisma.DraftTransactionUn
     changeAmount: data.changeAmount,
     effectiveAmount: data.effectiveAmount,
     inputPaths: data.inputPaths,
+    agentId: data.agentId ?? null,
+    agentOperationalWalletId: data.agentOperationalWalletId ?? null,
     expiresAt: data.expiresAt,
   };
 }

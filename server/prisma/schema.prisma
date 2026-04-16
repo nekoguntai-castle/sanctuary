@@ -46,6 +46,7 @@ model User {
   refreshTokens     RefreshToken[]
   revokedTokens     RevokedToken[]
   mcpApiKeys        McpApiKey[]
+  walletAgents      WalletAgent[]
 
   // Ownership transfers
   transfersInitiated OwnershipTransfer[] @relation("TransfersInitiated")
@@ -146,6 +147,8 @@ model Wallet {
   mobilePermissions MobilePermission[]
   vaultPolicies     VaultPolicy[]
   aiInsights        AIInsight[]
+  agentFundingLinks     WalletAgent[] @relation("AgentFundingWallet")
+  agentOperationalLinks WalletAgent[] @relation("AgentOperationalWallet")
 
   @@index([groupId])
   @@index([syncInProgress]) // For sync service startup & scheduling
@@ -245,6 +248,7 @@ model Device {
   users    DeviceUser[]         // Users with shared access
   group    Group?               @relation(fields: [groupId], references: [id])
   accounts DeviceAccount[]      // Multiple xpub accounts for different wallet types
+  agentSignerLinks WalletAgent[]
 
   @@index([userId])
   @@index([modelId]) // For device by model lookups
@@ -505,6 +509,10 @@ model DraftTransaction {
   status          String   @default("unsigned") // unsigned, partial, signed
   signedDeviceIds String[] // Device IDs that have signed
 
+  // Agent funding metadata
+  agentId                  String?
+  agentOperationalWalletId String?
+
   // Timestamps
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -523,6 +531,8 @@ model DraftTransaction {
 
   @@index([walletId, status])
   @@index([walletId, approvalStatus])
+  @@index([agentId, createdAt])
+  @@index([agentOperationalWalletId])
   @@index([userId])
   @@index([expiresAt]) // For hourly maintenance cleanup
   @@map("draft_transactions")
@@ -854,6 +864,99 @@ model McpApiKey {
   @@index([expiresAt])
   @@index([revokedAt])
   @@map("mcp_api_keys")
+}
+
+// Agent wallet profiles link a human-controlled funding wallet to an
+// agent-controlled operational wallet without storing private keys.
+model WalletAgent {
+  id                  String    @id @default(uuid())
+  userId              String
+  name                String
+  status              String    @default("active") // active, paused, revoked
+  fundingWalletId     String
+  operationalWalletId String
+  signerDeviceId      String
+  maxFundingAmountSats     BigInt?
+  maxOperationalBalanceSats BigInt?
+  dailyFundingLimitSats     BigInt?
+  weeklyFundingLimitSats    BigInt?
+  cooldownMinutes           Int?
+  requireHumanApproval      Boolean   @default(true)
+  notifyOnOperationalSpend  Boolean   @default(true)
+  pauseOnUnexpectedSpend    Boolean   @default(false)
+  lastFundingDraftAt        DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  revokedAt           DateTime?
+
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fundingWallet     Wallet        @relation("AgentFundingWallet", fields: [fundingWalletId], references: [id], onDelete: Cascade)
+  operationalWallet Wallet        @relation("AgentOperationalWallet", fields: [operationalWalletId], references: [id], onDelete: Cascade)
+  signerDevice      Device        @relation(fields: [signerDeviceId], references: [id], onDelete: Cascade)
+  apiKeys           AgentApiKey[]
+  fundingAttempts  AgentFundingAttempt[]
+
+  @@unique([fundingWalletId, operationalWalletId, signerDeviceId])
+  @@index([userId])
+  @@index([status])
+  @@index([fundingWalletId])
+  @@index([operationalWalletId])
+  @@index([signerDeviceId])
+  @@index([revokedAt])
+  @@index([lastFundingDraftAt])
+  @@map("wallet_agents")
+}
+
+// Scoped bearer credentials for agent funding-draft submission.
+model AgentApiKey {
+  id              String    @id @default(uuid())
+  agentId         String
+  createdByUserId String? // Denormalized audit metadata, not a FK
+  name            String
+  keyHash         String    @unique
+  keyPrefix       String
+  scope           Json?
+  lastUsedAt      DateTime?
+  lastUsedIp      String?
+  lastUsedAgent   String?
+  expiresAt       DateTime?
+  createdAt       DateTime  @default(now())
+  revokedAt       DateTime?
+
+  agent WalletAgent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId])
+  @@index([expiresAt])
+  @@index([revokedAt])
+  @@map("agent_api_keys")
+}
+
+// Immutable audit/monitoring records for accepted and rejected agent funding attempts.
+model AgentFundingAttempt {
+  id                    String   @id @default(uuid())
+  agentId               String
+  keyId                 String?
+  keyPrefix             String?
+  fundingWalletId       String
+  operationalWalletId   String?
+  draftId               String?
+  status                String // accepted, rejected
+  reasonCode            String?
+  reasonMessage         String?
+  amount                BigInt?
+  feeRate               Float?
+  recipient             String?
+  ipAddress             String?
+  userAgent             String?
+  createdAt             DateTime @default(now())
+
+  agent WalletAgent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, createdAt])
+  @@index([agentId, status, createdAt])
+  @@index([reasonCode])
+  @@index([draftId])
+  @@map("agent_funding_attempts")
 }
 
 // ========================================

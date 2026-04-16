@@ -8,6 +8,7 @@ import {
   Clock,
   CheckCircle2,
   AlertTriangle,
+  Bot,
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
@@ -113,6 +114,8 @@ export const DraftRow: React.FC<DraftRowProps> = ({
   const flowData = getFlowPreviewData(draft, getAddressLabel);
   const feeWarning = getFeeWarning(draft);
   const expired = isExpired(draft);
+  const isAgentFundingDraft = Boolean(draft.agentId);
+  const agentSignatureText = (draft.signedDeviceIds?.length || 0) > 0 ? 'present' : 'missing';
 
   return (
     <div
@@ -130,13 +133,26 @@ export const DraftRow: React.FC<DraftRowProps> = ({
             </span>
             {getStatusBadge(draft)}
             {getExpirationBadge(draft)}
+            {isAgentFundingDraft && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-shared-100 text-shared-800 dark:bg-shared-100 dark:text-shared-700">
+                <Bot className="w-3 h-3" />
+                Agent funding request
+              </span>
+            )}
           </div>
 
           <div className="mb-2">
             <span className="text-sm text-sanctuary-500 dark:text-sanctuary-400">
               To:{' '}
             </span>
-            {draft.outputs && draft.outputs.length > 0 ? (
+            {isAgentFundingDraft ? (
+              <span className="text-sm text-sanctuary-700 dark:text-sanctuary-300">
+                Linked operational wallet{' '}
+                <span className="font-mono text-sanctuary-500 dark:text-sanctuary-400">
+                  {truncateAddress(draft.recipient)}
+                </span>
+              </span>
+            ) : draft.outputs && draft.outputs.length > 0 ? (
               draft.outputs.length === 1 ? (
                 <span className="font-mono text-sm text-sanctuary-700 dark:text-sanctuary-300">
                   {truncateAddress(draft.outputs[0].address)}
@@ -186,6 +202,12 @@ export const DraftRow: React.FC<DraftRowProps> = ({
             </div>
           </div>
 
+          {isAgentFundingDraft && (
+            <div className="mt-2 text-sm text-sanctuary-600 dark:text-sanctuary-300">
+              Agent signature: {agentSignatureText}
+            </div>
+          )}
+
           {/* Fee Warning */}
           {feeWarning && (
             <div className={`mt-2 p-2 rounded-lg border flex items-center gap-2 ${
@@ -211,6 +233,15 @@ export const DraftRow: React.FC<DraftRowProps> = ({
           {draft.label && (
             <div className="mt-2 text-sm text-sanctuary-500 dark:text-sanctuary-400">
               Label: {draft.label}
+            </div>
+          )}
+
+          {isAgentFundingDraft && (
+            <div className="mt-2 p-2 rounded-lg border flex items-start gap-2 bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0 text-amber-500 mt-0.5" />
+              <span className="text-sm text-amber-700 dark:text-amber-300">
+                Once funded, the agent can spend from the operational wallet without multisig approval.
+              </span>
             </div>
           )}
         </div>

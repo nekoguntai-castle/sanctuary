@@ -9,6 +9,7 @@
  * - /settings -> ./admin/settings.ts
  * - /audit-logs -> ./admin/auditLogs.ts
  * - /mcp-keys -> ./admin/mcpKeys.ts
+ * - /agents -> ./admin/agents.ts
  * - /version -> ./admin/version.ts
  * - /backup, /restore, /encryption-keys -> ./admin/backup.ts
  * - /electrum-servers -> ./admin/electrumServers.ts
@@ -25,6 +26,7 @@ import groupsRouter from './admin/groups';
 import settingsRouter from './admin/settings';
 import auditLogsRouter from './admin/auditLogs';
 import mcpKeysRouter from './admin/mcpKeys';
+import agentsRouter from './admin/agents';
 import versionRouter from './admin/version';
 import backupRouter from './admin/backup';
 import electrumServersRouter from './admin/electrumServers';
@@ -44,6 +46,7 @@ router.use('/settings', settingsRouter);
 router.use('/features', featuresRouter);
 router.use('/audit-logs', auditLogsRouter);
 router.use('/mcp-keys', mcpKeysRouter);
+router.use('/agents', agentsRouter);
 router.use('/version', versionRouter);
 router.use('/', backupRouter);
 router.use('/electrum-servers', electrumServersRouter);

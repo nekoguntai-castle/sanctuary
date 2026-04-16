@@ -7,6 +7,7 @@
 
 import { createLogger } from '../../../utils/logger';
 import { getErrorMessage } from '../../../utils/errors';
+import { agentRepository } from '../../../repositories';
 import type {
   NotificationChannelHandler,
   TransactionNotification,
@@ -99,6 +100,7 @@ class NotificationChannelRegistry {
   ): Promise<NotificationResult[]> {
     if (transactions.length === 0) return [];
 
+    const enrichedTransactions = await enrichAgentOperationalTransactions(walletId, transactions);
     const handlers = this.getTransactionCapable();
     const results: NotificationResult[] = [];
 
@@ -114,7 +116,7 @@ class NotificationChannelRegistry {
           };
         }
 
-        return await handler.notifyTransactions(walletId, transactions);
+        return await handler.notifyTransactions(walletId, enrichedTransactions);
       } catch (err) {
         log.error(`Channel ${handler.id} notification failed`, { error: getErrorMessage(err) });
         return {
@@ -149,7 +151,8 @@ class NotificationChannelRegistry {
   async notifyDraft(
     walletId: string,
     draft: DraftNotification,
-    createdByUserId: string
+    createdByUserId: string | null,
+    createdByLabel?: string
   ): Promise<NotificationResult[]> {
     const handlers = this.getDraftCapable();
     const results: NotificationResult[] = [];
@@ -165,7 +168,7 @@ class NotificationChannelRegistry {
           };
         }
 
-        return await handler.notifyDraft(walletId, draft, createdByUserId);
+        return await handler.notifyDraft(walletId, draft, createdByUserId, createdByLabel);
       } catch (err) {
         log.error(`Channel ${handler.id} draft notification failed`, { error: getErrorMessage(err) });
         return {
@@ -257,6 +260,43 @@ class NotificationChannelRegistry {
   get count(): number {
     return this.handlers.size;
   }
+}
+
+async function enrichAgentOperationalTransactions(
+  walletId: string,
+  transactions: TransactionNotification[]
+): Promise<TransactionNotification[]> {
+  if (!transactions.some(tx => tx.type === 'sent')) {
+    return transactions;
+  }
+
+  const agents = await agentRepository.findActiveAgentsByOperationalWalletId(walletId);
+  const notifyingAgents = agents.filter(agent => agent.notifyOnOperationalSpend);
+  if (notifyingAgents.length === 0) {
+    return transactions;
+  }
+
+  const agentsToPause = notifyingAgents.filter(agent => agent.pauseOnUnexpectedSpend);
+  await Promise.all(agentsToPause.map(agent =>
+    agentRepository.updateAgent(agent.id, { status: 'paused' }).catch(err => {
+      log.warn('Failed to pause agent after operational spend', {
+        agentId: agent.id,
+        error: getErrorMessage(err),
+      });
+    })
+  ));
+
+  const agentNames = notifyingAgents.map(agent => agent.name).join(', ');
+  const agentIds = notifyingAgents.map(agent => agent.id).join(',');
+  return transactions.map(tx => tx.type === 'sent'
+    ? {
+        ...tx,
+        agentId: agentIds,
+        agentName: agentNames,
+        agentOperationalSpend: true,
+      }
+    : tx
+  );
 }
 
 // Singleton instance

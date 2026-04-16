@@ -40,7 +40,7 @@ describe('notification channel handlers', () => {
       ]);
 
       expect(mockTelegramService.notifyNewTransactions).toHaveBeenCalledWith('wallet-1', [
-        { txid: 'a'.repeat(64), type: 'received', amount: 10_000n },
+        expect.objectContaining({ txid: 'a'.repeat(64), type: 'received', amount: 10_000n }),
       ]);
       expect(result).toEqual({
         success: true,
@@ -84,7 +84,8 @@ describe('notification channel handlers', () => {
           recipient: 'tb1qexample',
           feeRate: 2,
         },
-        'user-1'
+        'user-1',
+        undefined
       );
       expect(result).toEqual({
         success: true,

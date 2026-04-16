@@ -18,6 +18,7 @@ const {
   mockDraftRoutes,
   mockPayjoinRoutes,
   mockAiRoutes,
+  mockAgentRoutes,
   mockAiInternalRoutes,
   mockHealthRoutes,
   mockTransferRoutes,
@@ -44,6 +45,7 @@ const {
     mockDraftRoutes: makeHandler(),
     mockPayjoinRoutes: makeHandler(),
     mockAiRoutes: makeHandler(),
+    mockAgentRoutes: makeHandler(),
     mockAiInternalRoutes: makeHandler(),
     mockHealthRoutes: makeHandler(),
     mockTransferRoutes: makeHandler(),
@@ -71,6 +73,7 @@ vi.mock('../../src/api/push', () => ({ __esModule: true, default: mockPushRoutes
 vi.mock('../../src/api/drafts', () => ({ __esModule: true, default: mockDraftRoutes }));
 vi.mock('../../src/api/payjoin', () => ({ __esModule: true, default: mockPayjoinRoutes }));
 vi.mock('../../src/api/ai', () => ({ __esModule: true, default: mockAiRoutes }));
+vi.mock('../../src/api/agent', () => ({ __esModule: true, default: mockAgentRoutes }));
 vi.mock('../../src/api/ai-internal', () => ({ __esModule: true, default: mockAiInternalRoutes }));
 vi.mock('../../src/api/health', () => ({ __esModule: true, default: mockHealthRoutes }));
 vi.mock('../../src/api/transfers', () => ({ __esModule: true, default: mockTransferRoutes }));
@@ -104,13 +107,14 @@ describe('registerRoutes', () => {
     registerRoutes(app);
 
     expect(app.get).toHaveBeenCalledTimes(2);
-    expect(app.use).toHaveBeenCalledTimes(22);
+    expect(app.use).toHaveBeenCalledTimes(23);
 
     expect(app.get).toHaveBeenCalledWith('/health', expect.any(Function));
     expect(app.get).toHaveBeenCalledWith('/metrics', mockMetricsHandler);
 
     expect(app.use).toHaveBeenCalledWith('/api/v1/auth', mockAuthRoutes);
     expect(app.use).toHaveBeenCalledWith('/api/v1/wallets', mockWalletRoutes);
+    expect(app.use).toHaveBeenCalledWith('/api/v1/agent', mockAgentRoutes);
     expect(app.use).toHaveBeenCalledWith('/internal/ai', mockAiInternalRoutes);
     expect(app.use).toHaveBeenCalledWith('/api/v1/docs', mockOpenApiRoutes);
   });

@@ -12,6 +12,9 @@ export interface TransactionNotification {
   txid: string;
   type: 'received' | 'sent' | 'consolidation' | 'self_transfer';
   amount: bigint;
+  agentId?: string | null;
+  agentName?: string | null;
+  agentOperationalSpend?: boolean;
 }
 
 /**
@@ -23,6 +26,12 @@ export interface DraftNotification {
   recipient: string;
   label?: string | null;
   feeRate: number;
+  agentId?: string | null;
+  agentName?: string | null;
+  agentOperationalWalletId?: string | null;
+  agentOperationalWalletName?: string | null;
+  agentSigned?: boolean;
+  dedupeKey?: string;
 }
 
 /**
@@ -114,13 +123,15 @@ export interface NotificationChannelHandler {
    * Send draft notification (optional)
    * @param walletId - The wallet the draft was created for
    * @param draft - The draft transaction data
-   * @param createdByUserId - The user who created the draft (won't be notified)
+   * @param createdByUserId - The user who created the draft (won't be notified). Null notifies all users.
+   * @param createdByLabel - Optional display label when the creator is not a human user.
    * @returns Result of the notification attempt
    */
   notifyDraft?(
     walletId: string,
     draft: DraftNotification,
-    createdByUserId: string
+    createdByUserId: string | null,
+    createdByLabel?: string
   ): Promise<NotificationResult>;
 
   /**

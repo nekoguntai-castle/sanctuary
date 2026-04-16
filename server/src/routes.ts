@@ -21,6 +21,7 @@ import draftRoutes from './api/drafts';
 import approvalRoutes from './api/approvals';
 import payjoinRoutes from './api/payjoin';
 import aiRoutes from './api/ai';
+import agentRoutes from './api/agent';
 import aiInternalRoutes from './api/ai-internal';
 import intelligenceRoutes from './api/intelligence';
 import healthRoutes from './api/health';
@@ -63,6 +64,7 @@ const routes: RouteDefinition[] = [
   { method: 'use', path: '/api/v1/push', handler: pushRoutes },
   { method: 'use', path: '/api/v1/transfers', handler: transferRoutes },
   { method: 'use', path: '/api/v1/ai', handler: aiRoutes },
+  { method: 'use', path: '/api/v1/agent', handler: agentRoutes },
   { method: 'use', path: '/api/v1/intelligence', handler: intelligenceRoutes },
   { method: 'use', path: '/api/v1', handler: mobilePermissionsRoutes },
   { method: 'use', path: '/internal/ai', handler: aiInternalRoutes },

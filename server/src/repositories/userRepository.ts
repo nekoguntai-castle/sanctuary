@@ -265,13 +265,20 @@ export async function emailExists(email: string): Promise<boolean> {
  */
 export async function findByWalletAccess(
   walletId: string,
-  options?: { includePushDeviceCount?: boolean }
+  options?: { includePushDeviceCount?: boolean; walletRoles?: string[] }
 ) {
+  const walletRoleFilter = options?.walletRoles?.length
+    ? { role: { in: options.walletRoles } }
+    : {};
+  const groupWalletRoleFilter = options?.walletRoles?.length
+    ? { groupRole: { in: options.walletRoles } }
+    : {};
+
   return prisma.user.findMany({
     where: {
       OR: [
-        { wallets: { some: { walletId } } },
-        { groupMemberships: { some: { group: { wallets: { some: { id: walletId } } } } } },
+        { wallets: { some: { walletId, ...walletRoleFilter } } },
+        { groupMemberships: { some: { group: { wallets: { some: { id: walletId, ...groupWalletRoleFilter } } } } } },
       ],
     },
     select: {

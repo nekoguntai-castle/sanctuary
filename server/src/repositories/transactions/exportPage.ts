@@ -1,4 +1,5 @@
 import prisma, { type PrismaTxClient } from '../../models/prisma';
+import { Prisma } from '../../generated/prisma/client';
 
 export interface ExportTransactionRow {
   id: string;
@@ -46,5 +47,16 @@ export async function findExportPage(
     orderBy: [{ blockTime: 'asc' }, { id: 'asc' }],
     skip,
     take,
+  });
+}
+
+export async function withRepeatableReadTransaction<T>(
+  fn: (tx: PrismaTxClient) => Promise<T>,
+  options: { maxWait: number; timeout: number }
+): Promise<T> {
+  return prisma.$transaction(fn, {
+    isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+    maxWait: options.maxWait,
+    timeout: options.timeout,
   });
 }

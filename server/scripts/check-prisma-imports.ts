@@ -73,7 +73,7 @@ export const ALLOWED_PATTERNS = [
 export const ALLOWED_DIRECT_PRISMA_IMPORTS: Record<string, string> = {
   'src/index.ts': 'API process database lifecycle and health-check startup',
   'src/worker.ts': 'Worker process database lifecycle',
-  'src/api/health/systemChecks.ts': 'System health diagnostics',
+  'src/services/health/systemChecks.ts': 'System health diagnostics',
   'src/jobs/definitions/maintenance.ts': 'Worker-owned maintenance job definitions',
   'src/services/backupService/creation.ts': 'Whole-database backup workflow',
   'src/services/backupService/restore.ts': 'Whole-database restore workflow',

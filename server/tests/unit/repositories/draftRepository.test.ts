@@ -151,6 +151,8 @@ describe('draftRepository', () => {
       memo: 'memo text',
       psbtBase64: 'psbt',
       signedPsbtBase64: 'signed-psbt',
+      signedDeviceIds: ['device-agent'],
+      status: 'partial',
       fee: BigInt(100),
       totalInput: BigInt(1100),
       totalOutput: BigInt(1000),
@@ -171,6 +173,8 @@ describe('draftRepository', () => {
         label: 'Savings',
         memo: 'memo text',
         signedPsbtBase64: 'signed-psbt',
+        signedDeviceIds: ['device-agent'],
+        status: 'partial',
         changeAddress: 'tb1qchange',
       }),
     });

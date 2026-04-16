@@ -28,6 +28,9 @@ vi.mock('../../../src/repositories', () => ({
   systemSettingRepository: {
     getParsed: vi.fn(),
   },
+  walletRepository: {
+    findByIdWithSigningDevices: vi.fn(),
+  },
   DraftStatus: {
     UNSIGNED: 'unsigned',
     PARTIAL: 'partial',
@@ -66,7 +69,7 @@ vi.mock('../../../src/constants', () => ({
 }));
 
 import prisma from '../../../src/models/prisma';
-import { draftRepository, systemSettingRepository } from '../../../src/repositories';
+import { draftRepository, systemSettingRepository, walletRepository } from '../../../src/repositories';
 import { lockUtxosForDraft, resolveUtxoIds } from '../../../src/services/draftLockService';
 import { notifyNewDraft } from '../../../src/services/notifications/notificationService';
 import * as bitcoin from 'bitcoinjs-lib';
@@ -157,6 +160,60 @@ describe('DraftService', () => {
       expect(result).toEqual(mockDraft);
     });
 
+    it('creates a partial draft when initial signed PSBT and signer device are provided', async () => {
+      (walletRepository.findByIdWithSigningDevices as Mock).mockResolvedValue({
+        id: walletId,
+        devices: [
+          { deviceId: 'device-agent' },
+          { deviceId: 'device-human' },
+        ],
+      });
+
+      await createDraft(walletId, userId, {
+        ...validInput,
+        signedPsbtBase64: 'agent-signed-psbt',
+        signedDeviceId: 'device-agent',
+      });
+
+      expect(walletRepository.findByIdWithSigningDevices).toHaveBeenCalledWith(walletId);
+      expect(draftRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          signedPsbtBase64: 'agent-signed-psbt',
+          signedDeviceIds: ['device-agent'],
+          status: 'partial',
+        })
+      );
+    });
+
+    it('rejects initial signed PSBT creation when signer metadata is incomplete', async () => {
+      await expect(
+        createDraft(walletId, userId, {
+          ...validInput,
+          signedPsbtBase64: 'agent-signed-psbt',
+        })
+      ).rejects.toThrow(InvalidInputError);
+
+      expect(walletRepository.findByIdWithSigningDevices).not.toHaveBeenCalled();
+      expect(draftRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects initial signed PSBT creation when signedDeviceId is not linked to the wallet', async () => {
+      (walletRepository.findByIdWithSigningDevices as Mock).mockResolvedValue({
+        id: walletId,
+        devices: [{ deviceId: 'device-human' }],
+      });
+
+      await expect(
+        createDraft(walletId, userId, {
+          ...validInput,
+          signedPsbtBase64: 'agent-signed-psbt',
+          signedDeviceId: 'device-agent',
+        })
+      ).rejects.toThrow(InvalidInputError);
+
+      expect(draftRepository.create).not.toHaveBeenCalled();
+    });
+
     it('should lock UTXOs when selectedUtxoIds provided', async () => {
       await createDraft(walletId, userId, validInput);
 
@@ -225,7 +282,8 @@ describe('DraftService', () => {
       expect(notifyNewDraft).toHaveBeenCalledWith(
         walletId,
         expect.objectContaining({ id: mockDraft.id }),
-        userId
+        userId,
+        undefined
       );
     });
 

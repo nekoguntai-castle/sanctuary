@@ -48,6 +48,9 @@ export interface TransactionData {
   txid: string;
   type: string;
   amount: bigint;
+  agentId?: string | null;
+  agentName?: string | null;
+  agentOperationalSpend?: boolean;
 }
 
 export interface DraftData {
@@ -56,4 +59,10 @@ export interface DraftData {
   recipient: string;
   label?: string | null;
   feeRate: number;
+  agentId?: string | null;
+  agentName?: string | null;
+  agentOperationalWalletId?: string | null;
+  agentOperationalWalletName?: string | null;
+  agentSigned?: boolean;
+  dedupeKey?: string;
 }

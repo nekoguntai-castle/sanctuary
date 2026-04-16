@@ -10,8 +10,6 @@ import { once } from 'node:events';
 import { requireWalletAccess } from '../../../middleware/walletAccess';
 import { walletRepository, transactionRepository } from '../../../repositories';
 import type { ExportTransactionRow } from '../../../repositories/transactionRepository';
-import prisma from '../../../models/prisma';
-import { Prisma } from '../../../generated/prisma/client';
 import { asyncHandler } from '../../../errors/errorHandler';
 import { createLogger } from '../../../utils/logger';
 import { getErrorMessage } from '../../../utils/errors';
@@ -170,7 +168,7 @@ export function createExportRouter(): Router {
       // shift the `skip` offset and cause duplicated or missed rows.
       // Without this, skip-based pagination is not snapshot-safe under
       // concurrent writes.
-      await prisma.$transaction(
+      await transactionRepository.withRepeatableReadTransaction(
         async (tx) => {
           // First page is fetched inside the transaction. A DB error here
           // propagates out of $transaction and is caught by the outer
@@ -235,7 +233,6 @@ export function createExportRouter(): Router {
           res.end();
         },
         {
-          isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
           maxWait: EXPORT_TRANSACTION_MAX_WAIT_MS,
           timeout: EXPORT_TRANSACTION_TIMEOUT_MS,
         },

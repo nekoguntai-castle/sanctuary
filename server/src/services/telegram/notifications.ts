@@ -103,23 +103,36 @@ export async function notifyNewTransactions(
 export async function notifyNewDraft(
   walletId: string,
   draft: DraftData,
-  createdByUserId: string
+  createdByUserId: string | null,
+  createdByLabel?: string
 ): Promise<void> {
   try {
     // Get wallet info
     const wallet = await walletRepository.findNameById(walletId);
     if (!wallet) return;
 
-    // Get creator's username
-    const creator = await userRepository.findByIdWithSelect(createdByUserId, { username: true });
-    const createdBy = creator?.username || 'Unknown';
+    // Get creator display name. Agent-submitted drafts pass a label and do not
+    // exclude any wallet user from notification.
+    const creator = createdByUserId
+      ? await userRepository.findByIdWithSelect(createdByUserId, { username: true })
+      : null;
+    const createdBy = creator?.username || createdByLabel || 'Unknown';
+    const operationalWallet = draft.agentOperationalWalletId
+      ? await walletRepository.findNameById(draft.agentOperationalWalletId)
+      : null;
+    const formattedDraft = operationalWallet
+      ? { ...draft, agentOperationalWalletName: operationalWallet.name }
+      : draft;
 
     // Get all users with access to this wallet
-    const users = await getWalletUsers(walletId);
+    const users = await getWalletUsers(
+      walletId,
+      draft.agentId ? { walletRoles: ['owner', 'signer'] } : undefined
+    );
 
     for (const user of users) {
       // Skip notifying the creator (they already know)
-      if (user.id === createdByUserId) continue;
+      if (createdByUserId && user.id === createdByUserId) continue;
 
       const prefs = user.preferences as Record<string, unknown> | null;
       const telegram = prefs?.telegram as TelegramConfig | undefined;
@@ -135,7 +148,7 @@ export async function notifyNewDraft(
         continue;
       }
 
-      const message = formatDraftMessage(draft, wallet, createdBy);
+      const message = formatDraftMessage(formattedDraft, wallet, createdBy);
       const result = await sendTelegramMessage(telegram.botToken, telegram.chatId, message);
 
       if (result.success) {

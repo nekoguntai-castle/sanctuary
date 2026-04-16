@@ -45,6 +45,9 @@ export const telegramChannelHandler: NotificationChannelHandler = {
         txid: tx.txid,
         type: tx.type,
         amount: tx.amount,
+        agentId: tx.agentId,
+        agentName: tx.agentName,
+        agentOperationalSpend: tx.agentOperationalSpend,
       }));
 
       await telegramService.notifyNewTransactions(walletId, txData);
@@ -67,10 +70,11 @@ export const telegramChannelHandler: NotificationChannelHandler = {
   async notifyDraft(
     walletId: string,
     draft: DraftNotification,
-    createdByUserId: string
+    createdByUserId: string | null,
+    createdByLabel?: string
   ): Promise<NotificationResult> {
     try {
-      await telegramService.notifyNewDraft(walletId, draft, createdByUserId);
+      await telegramService.notifyNewDraft(walletId, draft, createdByUserId, createdByLabel);
 
       return {
         success: true,

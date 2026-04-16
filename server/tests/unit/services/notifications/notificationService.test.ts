@@ -8,6 +8,7 @@ const { mockRegistry, mockLogger } = vi.hoisted(() => ({
   },
   mockLogger: {
     debug: vi.fn(),
+    info: vi.fn(),
     error: vi.fn(),
   },
 }));
@@ -80,9 +81,66 @@ describe('notificationService', () => {
         recipient: 'tb1qexample',
         feeRate: 3,
       },
-      'user-1'
+      'user-1',
+      undefined
     );
     expect(mockLogger.error).toHaveBeenCalledWith('telegram draft notification failed: draft failed');
+  });
+
+  it('dedupes repeated draft notifications when a dedupe key is supplied', async () => {
+    mockRegistry.notifyDraft.mockResolvedValue([]);
+
+    const draft = {
+      id: 'draft-1',
+      amount: 7_000n,
+      recipient: 'tb1qexample',
+      feeRate: 3,
+      dedupeKey: 'agent:agent-1:wallet-1:tb1qexample:7000',
+    };
+
+    await notifyNewDraft('wallet-1', draft, null, 'Agent');
+    await notifyNewDraft('wallet-1', { ...draft, id: 'draft-2' }, null, 'Agent');
+
+    expect(mockRegistry.notifyDraft).toHaveBeenCalledTimes(1);
+    expect(mockLogger.info).toHaveBeenCalledWith('Skipping duplicate draft notification', expect.objectContaining({
+      walletId: 'wallet-1',
+      draftId: 'draft-2',
+    }));
+  });
+
+  it('caps draft notification dedupe memory and evicts the oldest key', async () => {
+    mockRegistry.notifyDraft.mockResolvedValue([]);
+
+    for (let index = 0; index <= 1000; index++) {
+      await notifyNewDraft(
+        'wallet-1',
+        {
+          id: `draft-${index}`,
+          amount: BigInt(index + 1),
+          recipient: `tb1qrecipient${index}`,
+          feeRate: 3,
+          dedupeKey: `cap-test-${index}`,
+        },
+        null,
+        'Agent'
+      );
+    }
+
+    const callsAfterCapFill = mockRegistry.notifyDraft.mock.calls.length;
+    await notifyNewDraft(
+      'wallet-1',
+      {
+        id: 'draft-oldest-retry',
+        amount: 1n,
+        recipient: 'tb1qrecipient0',
+        feeRate: 3,
+        dedupeKey: 'cap-test-0',
+      },
+      null,
+      'Agent'
+    );
+
+    expect(mockRegistry.notifyDraft).toHaveBeenCalledTimes(callsAfterCapFill + 1);
   });
 
   it('returns available channel metadata from the registry', () => {

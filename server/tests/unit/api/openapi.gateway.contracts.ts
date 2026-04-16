@@ -2,6 +2,7 @@ import { expect, it } from 'vitest';
 
 import {
   openApiSpec,
+  agentBearerAuthSecurity,
   browserOrBearerAuthSecurity,
   expectDocumentedMethod,
   MOBILE_ACTIONS,
@@ -30,6 +31,30 @@ import type {
 } from './openapi.helpers';
 
 export function registerOpenApiGatewayTests() {
+  it('documents agent funding draft submission route with agent bearer auth', () => {
+    const route = openApiSpec.paths['/agent/wallets/{fundingWalletId}/funding-drafts'];
+
+    expect(route.post).toBeDefined();
+    expect(route.post.security).toEqual(agentBearerAuthSecurity);
+    expect(route.post.parameters).toContainEqual(expect.objectContaining({
+      name: 'fundingWalletId',
+      in: 'path',
+      required: true,
+    }));
+    expect(route.post.requestBody.content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/AgentFundingDraftRequest',
+    });
+    expect(openApiSpec.components.securitySchemes.agentBearerAuth).toBeDefined();
+    expect(openApiSpec.components.schemas.AgentFundingDraftRequest.required).toEqual(expect.arrayContaining([
+      'operationalWalletId',
+      'recipient',
+      'amount',
+      'feeRate',
+      'psbtBase64',
+      'signedPsbtBase64',
+    ]));
+  });
+
   it('documents implemented device item routes', () => {
     const deviceItemPath = openApiSpec.paths['/devices/{deviceId}'];
 

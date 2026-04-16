@@ -13,6 +13,9 @@ import { notificationChannelRegistry, type TransactionNotification, type DraftNo
 import { createLogger } from '../../utils/logger';
 
 const log = createLogger('NOTIFY:SVC');
+const DRAFT_NOTIFICATION_DEDUPE_TTL_MS = 10 * 60 * 1000;
+const DRAFT_NOTIFICATION_DEDUPE_MAX_KEYS = 1_000;
+const recentDraftNotificationKeys = new Map<string, number>();
 
 // Re-export types for backward compatibility
 export type TransactionData = TransactionNotification;
@@ -57,20 +60,28 @@ export async function notifyNewTransactions(
  *
  * @param walletId - The wallet the draft was created for
  * @param draft - The draft transaction data
- * @param createdByUserId - The user who created the draft (won't be notified)
+ * @param createdByUserId - The user who created the draft (won't be notified). Null notifies all users.
+ * @param createdByLabel - Optional display label when the creator is not a human user.
  */
 export async function notifyNewDraft(
   walletId: string,
   draft: DraftData,
-  createdByUserId: string
+  createdByUserId: string | null,
+  createdByLabel?: string
 ): Promise<void> {
   log.debug(`Sending draft notification for wallet ${walletId}`);
+
+  if (draft.dedupeKey && isRecentDraftNotification(draft.dedupeKey)) {
+    log.info('Skipping duplicate draft notification', { walletId, draftId: draft.id, dedupeKey: draft.dedupeKey });
+    return;
+  }
 
   // Dispatch to all registered channels that support drafts
   const results = await notificationChannelRegistry.notifyDraft(
     walletId,
     draft as DraftNotification,
-    createdByUserId
+    createdByUserId,
+    createdByLabel
   );
 
   // Log results
@@ -78,6 +89,35 @@ export async function notifyNewDraft(
     if (!result.success && result.errors?.length) {
       log.error(`${result.channelId} draft notification failed: ${result.errors.join(', ')}`);
     }
+  }
+}
+
+function isRecentDraftNotification(dedupeKey: string): boolean {
+  const now = Date.now();
+  pruneRecentDraftNotificationKeys(now);
+
+  const expiresAt = recentDraftNotificationKeys.get(dedupeKey);
+  if (expiresAt && expiresAt > now) {
+    return true;
+  }
+
+  recentDraftNotificationKeys.set(dedupeKey, now + DRAFT_NOTIFICATION_DEDUPE_TTL_MS);
+  return false;
+}
+
+function pruneRecentDraftNotificationKeys(now: number): void {
+  for (const [key, expiresAt] of recentDraftNotificationKeys.entries()) {
+    if (expiresAt <= now) {
+      recentDraftNotificationKeys.delete(key);
+    }
+  }
+
+  while (recentDraftNotificationKeys.size >= DRAFT_NOTIFICATION_DEDUPE_MAX_KEYS) {
+    const oldestKey = recentDraftNotificationKeys.keys().next().value;
+    if (oldestKey === undefined) {
+      return;
+    }
+    recentDraftNotificationKeys.delete(oldestKey);
   }
 }
 
