@@ -180,6 +180,17 @@ export interface PayjoinConfig {
   publicUrl: string;
 }
 
+export interface McpConfig {
+  enabled: boolean;
+  host: string;
+  port: number;
+  allowedHosts: string[];
+  rateLimitPerMinute: number;
+  defaultPageSize: number;
+  maxPageSize: number;
+  maxDateRangeDays: number;
+}
+
 export interface DockerConfig {
   proxyUrl: string;
 }
@@ -277,6 +288,7 @@ export interface AppConfig {
   websocket: WebSocketConfig;
   push: PushNotificationConfig;
   payjoin: PayjoinConfig;
+  mcp: McpConfig;
   docker: DockerConfig;
   worker: WorkerConfig;
   logging: LoggingConfig;

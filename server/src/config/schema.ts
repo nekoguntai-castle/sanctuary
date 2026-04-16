@@ -174,6 +174,17 @@ export const PayjoinConfigSchema = z.object({
   publicUrl: z.string(),
 });
 
+export const McpConfigSchema = z.object({
+  enabled: z.boolean(),
+  host: z.string().min(1),
+  port: z.number().int().min(1).max(65535),
+  allowedHosts: z.array(z.string().min(1)),
+  rateLimitPerMinute: z.number().int().min(1).max(10000),
+  defaultPageSize: z.number().int().min(1).max(1000),
+  maxPageSize: z.number().int().min(1).max(5000),
+  maxDateRangeDays: z.number().int().min(1).max(3650),
+});
+
 export const DockerConfigSchema = z.object({
   proxyUrl: z.string(),
 });
@@ -239,6 +250,7 @@ export const AppConfigSchema = z.object({
   websocket: WebSocketConfigSchema,
   push: PushNotificationConfigSchema,
   payjoin: PayjoinConfigSchema,
+  mcp: McpConfigSchema,
   docker: DockerConfigSchema,
   worker: WorkerConfigSchema,
   logging: LoggingConfigSchema,

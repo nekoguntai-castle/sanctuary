@@ -47,6 +47,7 @@ export const mockPrismaClient = {
   nodeConfig: createModelMock(),
   systemSetting: createModelMock(),
   auditLog: createModelMock(),
+  mcpApiKey: createModelMock(),
   draftTransaction: createModelMock(),
   pushSubscription: createModelMock(),
   pushDevice: createModelMock(),

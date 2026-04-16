@@ -139,6 +139,7 @@ export function camelToSnakeCase(modelName: string): string {
     'transactionLabel': 'transaction_labels',
     'addressLabel': 'address_labels',
     'auditLog': 'audit_logs',
+    'mcpApiKey': 'mcp_api_keys',
     'priceData': 'price_data',
     'feeEstimate': 'fee_estimates',
   };

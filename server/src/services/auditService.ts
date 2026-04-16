@@ -12,6 +12,7 @@
  *   - device: Device registration, removal
  *   - admin: Admin settings changes, node config
  *   - backup: Backup creation, restore operations
+ *   - mcp: Model Context Protocol access and key operations
  *   - system: System settings changes
  */
 
@@ -39,6 +40,7 @@ export enum AuditCategory {
   DEVICE = 'device',
   ADMIN = 'admin',
   BACKUP = 'backup',
+  MCP = 'mcp',
   SYSTEM = 'system',
 }
 
@@ -122,6 +124,12 @@ export enum AuditAction {
 
   // Support package
   SUPPORT_PACKAGE_GENERATE = 'admin.support_package_generate',
+
+  // MCP
+  MCP_KEY_CREATE = 'mcp.key_create',
+  MCP_KEY_REVOKE = 'mcp.key_revoke',
+  MCP_OPERATION = 'mcp.operation',
+  MCP_OPERATION_FAILED = 'mcp.operation_failed',
 }
 
 /**

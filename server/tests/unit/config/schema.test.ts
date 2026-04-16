@@ -133,6 +133,16 @@ function buildValidConfig() {
     payjoin: {
       publicUrl: '',
     },
+    mcp: {
+      enabled: false,
+      host: '127.0.0.1',
+      port: 3003,
+      allowedHosts: ['localhost', '127.0.0.1'],
+      rateLimitPerMinute: 120,
+      defaultPageSize: 100,
+      maxPageSize: 500,
+      maxDateRangeDays: 365,
+    },
     docker: {
       proxyUrl: 'http://docker-proxy:2375',
     },

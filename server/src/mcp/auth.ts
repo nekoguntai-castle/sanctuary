@@ -1,0 +1,131 @@
+import crypto from 'node:crypto';
+import type { Request } from 'express';
+import { mcpApiKeyRepository, walletRepository } from '../repositories';
+import { requireWalletAccess } from '../services/accessControl';
+import { getClientInfo } from '../services/auditService';
+import type { McpApiKeyScope, McpRequestContext } from './types';
+import { McpForbiddenError, McpUnauthorizedError } from './types';
+
+const MCP_KEY_PATTERN = /^mcp_[a-f0-9]{64}$/;
+const KEY_PREFIX_LENGTH = 16;
+const LAST_USED_THROTTLE_MS = 5 * 60 * 1000;
+
+export function generateMcpApiKey(): string {
+  return `mcp_${crypto.randomBytes(32).toString('hex')}`;
+}
+
+export function getMcpApiKeyPrefix(apiKey: string): string {
+  return apiKey.slice(0, KEY_PREFIX_LENGTH);
+}
+
+export function hashMcpApiKey(apiKey: string): string {
+  return crypto.createHash('sha256').update(apiKey, 'utf8').digest('hex');
+}
+
+export function validateMcpApiKeyFormat(apiKey: string): boolean {
+  return MCP_KEY_PATTERN.test(apiKey);
+}
+
+export function extractBearerToken(authorization: string | undefined): string | null {
+  if (!authorization) {
+    return null;
+  }
+
+  const [scheme, token, extra] = authorization.trim().split(/\s+/);
+  if (extra || !scheme || !token || scheme.toLowerCase() !== 'bearer') {
+    return null;
+  }
+  return token;
+}
+
+export function buildMcpKeyScope(input: {
+  walletIds?: string[];
+  allowAuditLogs?: boolean;
+}): McpApiKeyScope {
+  return {
+    ...(input.walletIds && input.walletIds.length > 0 ? { walletIds: Array.from(new Set(input.walletIds)) } : {}),
+    allowAuditLogs: input.allowAuditLogs === true,
+  };
+}
+
+export function parseMcpKeyScope(value: unknown): McpApiKeyScope {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+
+  const scope = value as Record<string, unknown>;
+  return {
+    ...(Array.isArray(scope.walletIds)
+      ? { walletIds: scope.walletIds.filter((id): id is string => typeof id === 'string') }
+      : {}),
+    allowAuditLogs: scope.allowAuditLogs === true,
+  };
+}
+
+function timingSafeEqualHex(left: string, right: string): boolean {
+  const leftBuffer = Buffer.from(left, 'hex');
+  const rightBuffer = Buffer.from(right, 'hex');
+  return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+export async function authenticateMcpRequest(req: Request): Promise<McpRequestContext> {
+  const token = extractBearerToken(req.headers.authorization);
+  if (!token || !validateMcpApiKeyFormat(token)) {
+    throw new McpUnauthorizedError('Valid MCP bearer token required');
+  }
+
+  const keyHash = hashMcpApiKey(token);
+  const key = await mcpApiKeyRepository.findByKeyHash(keyHash);
+  if (!key || !timingSafeEqualHex(keyHash, key.keyHash)) {
+    throw new McpUnauthorizedError('Invalid MCP API key');
+  }
+
+  if (key.revokedAt) {
+    throw new McpUnauthorizedError('MCP API key has been revoked');
+  }
+
+  if (key.expiresAt && key.expiresAt.getTime() <= Date.now()) {
+    throw new McpUnauthorizedError('MCP API key has expired');
+  }
+
+  const { ipAddress, userAgent } = getClientInfo(req);
+  await mcpApiKeyRepository.updateLastUsedIfStale(
+    key.id,
+    new Date(Date.now() - LAST_USED_THROTTLE_MS),
+    { lastUsedIp: ipAddress, lastUsedAgent: userAgent }
+  );
+
+  return {
+    keyId: key.id,
+    keyPrefix: key.keyPrefix,
+    userId: key.userId,
+    username: key.user.username,
+    isAdmin: key.user.isAdmin,
+    scope: parseMcpKeyScope(key.scope),
+  };
+}
+
+export async function validateMcpScopeWallets(userId: string, walletIds: string[] = []): Promise<void> {
+  for (const walletId of Array.from(new Set(walletIds))) {
+    const hasAccess = await walletRepository.hasAccess(walletId, userId);
+    if (!hasAccess) {
+      throw new McpForbiddenError(`User does not have access to wallet ${walletId}`);
+    }
+  }
+}
+
+export async function requireMcpWalletAccess(
+  walletId: string,
+  context: McpRequestContext
+): Promise<void> {
+  if (context.scope.walletIds && !context.scope.walletIds.includes(walletId)) {
+    throw new McpForbiddenError('MCP API key is not scoped for this wallet');
+  }
+  await requireWalletAccess(walletId, context.userId);
+}
+
+export function requireMcpAuditAccess(context: McpRequestContext): void {
+  if (!context.isAdmin || context.scope.allowAuditLogs !== true) {
+    throw new McpForbiddenError('MCP API key is not allowed to read audit logs');
+  }
+}

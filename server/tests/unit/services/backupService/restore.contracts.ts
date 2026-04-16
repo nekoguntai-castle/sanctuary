@@ -111,7 +111,7 @@ describe('restoreFromBackup', () => {
       const tables = [
         'user', 'wallet', 'walletUser', 'device', 'address', 'transaction',
         'uTXO', 'label', 'group', 'groupMember', 'nodeConfig', 'systemSetting',
-        'auditLog', 'hardwareDeviceModel', 'pushDevice', 'draftTransaction',
+        'auditLog', 'mcpApiKey', 'hardwareDeviceModel', 'pushDevice', 'draftTransaction',
         'walletDevice', 'transactionLabel', 'addressLabel',
       ];
 

@@ -16,6 +16,8 @@ export type AuditCategory =
   | 'wallet'
   | 'device'
   | 'admin'
+  | 'backup'
+  | 'mcp'
   | 'system';
 
 /**

@@ -37,6 +37,8 @@ export { transferRepository, default as transferRepo } from './transferRepositor
 export { featureFlagRepository, default as featureFlagRepo } from './featureFlagRepository';
 export { draftLockRepository, default as draftLockRepo } from './draftLockRepository';
 export { maintenanceRepository, default as maintenanceRepo } from './maintenanceRepository';
+export { mcpApiKeyRepository, default as mcpApiKeyRepo } from './mcpApiKeyRepository';
+export { mcpReadRepository, default as mcpReadRepo } from './mcpReadRepository';
 
 // Access control helpers
 export { buildWalletAccessWhere, buildDeviceAccessWhere } from './accessControl';
@@ -87,6 +89,10 @@ export type {
   AuditLogFilter,
   PaginationOptions,
 } from './auditLogRepository';
+
+export type {
+  CreateMcpApiKeyInput,
+} from './mcpApiKeyRepository';
 
 export { SystemSettingKeys } from './systemSettingRepository';
 export type { SystemSettingKey } from './systemSettingRepository';

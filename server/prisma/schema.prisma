@@ -45,6 +45,7 @@ model User {
   draftTransactions DraftTransaction[]
   refreshTokens     RefreshToken[]
   revokedTokens     RevokedToken[]
+  mcpApiKeys        McpApiKey[]
 
   // Ownership transfers
   transfersInitiated OwnershipTransfer[] @relation("TransfersInitiated")
@@ -829,6 +830,30 @@ model RevokedToken {
   @@index([expiresAt]) // For cleanup of expired revocations
   @@index([userId]) // For user-specific revocation queries
   @@map("revoked_tokens")
+}
+
+// MCP API keys for local read-only Model Context Protocol access
+model McpApiKey {
+  id              String    @id @default(uuid())
+  userId          String
+  createdByUserId String? // Denormalized audit metadata, not a FK
+  name            String
+  keyHash         String    @unique
+  keyPrefix       String
+  scope           Json?
+  lastUsedAt      DateTime?
+  lastUsedIp      String?
+  lastUsedAgent   String?
+  expiresAt       DateTime?
+  createdAt       DateTime  @default(now())
+  revokedAt       DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([revokedAt])
+  @@map("mcp_api_keys")
 }
 
 // ========================================

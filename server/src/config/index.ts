@@ -222,6 +222,20 @@ function loadConfig(): CombinedConfig {
       publicUrl: process.env.PAYJOIN_PUBLIC_URL || '',
     },
 
+    mcp: {
+      enabled: process.env.MCP_ENABLED === 'true',
+      host: process.env.MCP_HOST || '127.0.0.1',
+      port: parseInt(process.env.MCP_PORT || '3003', 10),
+      allowedHosts: (process.env.MCP_ALLOWED_HOSTS || 'localhost,127.0.0.1,[::1]')
+        .split(',')
+        .map(host => host.trim())
+        .filter(host => host.length > 0),
+      rateLimitPerMinute: parseInt(process.env.MCP_RATE_LIMIT_PER_MINUTE || process.env.MCP_RATE_LIMIT || '120', 10),
+      defaultPageSize: parseInt(process.env.MCP_DEFAULT_PAGE_SIZE || '100', 10),
+      maxPageSize: parseInt(process.env.MCP_MAX_PAGE_SIZE || '500', 10),
+      maxDateRangeDays: parseInt(process.env.MCP_MAX_DATE_RANGE_DAYS || '365', 10),
+    },
+
     docker: {
       proxyUrl: process.env.DOCKER_PROXY_URL || 'http://docker-proxy:2375',
     },

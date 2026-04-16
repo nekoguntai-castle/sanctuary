@@ -160,6 +160,14 @@ function buildPolicies(): Record<string, RateLimitPolicy> {
       message: 'Admin API rate limit exceeded.',
     },
 
+    'mcp:default': {
+      name: 'mcp:default',
+      limit: config.mcp.rateLimitPerMinute,
+      windowSeconds: 60,
+      keyStrategy: 'api-key',
+      message: 'MCP rate limit exceeded.',
+    },
+
     // Payjoin policies
     'payjoin:create': {
       name: 'payjoin:create',

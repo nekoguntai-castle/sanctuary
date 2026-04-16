@@ -9,6 +9,7 @@
 #   ./start.sh --with-ai        # Start with bundled AI (Ollama)
 #   ./start.sh --with-monitoring # Start with monitoring (Grafana/Loki)
 #   ./start.sh --with-tor       # Start with Tor proxy
+#   ./start.sh --with-mcp       # Start read-only MCP server for local LLMs
 #   ./start.sh --rebuild        # Rebuild containers (after updates)
 #   ./start.sh --stop           # Stop all services
 #   ./start.sh --logs           # View logs
@@ -83,7 +84,8 @@ fi
 
 # Export for docker compose
 export JWT_SECRET ENCRYPTION_KEY GATEWAY_SECRET POSTGRES_PASSWORD AI_CONFIG_SECRET REDIS_PASSWORD
-export HTTPS_PORT HTTP_PORT ENABLE_MONITORING ENABLE_TOR SANCTUARY_ENV_FILE SANCTUARY_SSL_DIR
+export HTTPS_PORT HTTP_PORT ENABLE_MONITORING ENABLE_TOR ENABLE_MCP SANCTUARY_ENV_FILE SANCTUARY_SSL_DIR
+export MCP_BIND_ADDRESS MCP_PORT MCP_ALLOWED_HOSTS MCP_RATE_LIMIT_PER_MINUTE MCP_DEFAULT_PAGE_SIZE MCP_MAX_PAGE_SIZE MCP_MAX_DATE_RANGE_DAYS
 
 # Check SSL certificate expiry
 check_ssl_expiry() {
@@ -223,6 +225,9 @@ check_docker_prerequisites() {
 # Run Docker checks
 check_docker_prerequisites
 
+MCP_PROFILE=""
+[ "$ENABLE_MCP" = "yes" ] && MCP_PROFILE="--profile mcp"
+
 # Check if local images exist - if not, we need to build
 NEED_BUILD="no"
 if ! docker image inspect sanctuary-backend:local &>/dev/null; then
@@ -240,9 +245,9 @@ case "${1:-}" in
         echo "Stopping Sanctuary..."
         # Stop monitoring stack if running
         if docker ps --format '{{.Names}}' | grep -qE '.*-(grafana|loki|promtail)'; then
-            docker compose -f docker-compose.yml -f docker-compose.monitoring.yml --profile ai down
+            docker compose -f docker-compose.yml -f docker-compose.monitoring.yml --profile ai --profile mcp down
         else
-            docker compose --profile ai down
+            docker compose --profile ai --profile mcp down
         fi
         echo "Sanctuary stopped."
         ;;
@@ -261,7 +266,7 @@ case "${1:-}" in
             echo "Local images not found - building..."
             BUILD_FLAG="--build"
         fi
-        docker compose --profile ai up -d $BUILD_FLAG
+        docker compose --profile ai $MCP_PROFILE up -d $BUILD_FLAG
         echo ""
         echo "Sanctuary is running at https://localhost:${HTTPS_PORT}"
         echo ""
@@ -270,6 +275,23 @@ case "${1:-}" in
         echo "  2. Enable AI Features"
         echo "  3. Click 'Detect' - it will find the bundled Ollama automatically"
         echo "  4. Pull a model (llama3.2:3b recommended for most systems)"
+        ;;
+    --with-mcp)
+        echo "Starting Sanctuary with read-only MCP server..."
+        echo ""
+        echo "MCP will bind to ${MCP_BIND_ADDRESS:-127.0.0.1}:${MCP_PORT:-3003}."
+        echo "Create an MCP API key from Admin before connecting an LLM client."
+        echo ""
+        # Auto-build if images are missing
+        BUILD_FLAG=""
+        if [ "$NEED_BUILD" = "yes" ]; then
+            echo "Local images not found - building..."
+            BUILD_FLAG="--build"
+        fi
+        docker compose --profile mcp up -d $BUILD_FLAG
+        echo ""
+        echo "Sanctuary is running at https://localhost:${HTTPS_PORT}"
+        echo "MCP endpoint: http://${MCP_BIND_ADDRESS:-127.0.0.1}:${MCP_PORT:-3003}/mcp"
         ;;
     --with-monitoring)
         echo "Starting Sanctuary with monitoring stack (Grafana/Loki/Promtail)..."
@@ -282,7 +304,7 @@ case "${1:-}" in
             echo "Local images not found - building..."
             BUILD_FLAG="--build"
         fi
-        docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d $BUILD_FLAG
+        docker compose -f docker-compose.yml -f docker-compose.monitoring.yml $MCP_PROFILE up -d $BUILD_FLAG
         echo ""
         echo "Sanctuary is running at https://localhost:${HTTPS_PORT}"
         echo ""
@@ -304,7 +326,7 @@ case "${1:-}" in
             echo "Local images not found - building..."
             BUILD_FLAG="--build"
         fi
-        docker compose -f docker-compose.yml -f docker-compose.tor.yml up -d $BUILD_FLAG
+        docker compose -f docker-compose.yml -f docker-compose.tor.yml $MCP_PROFILE up -d $BUILD_FLAG
         echo ""
         echo "Sanctuary is running at https://localhost:${HTTPS_PORT}"
         echo ""
@@ -346,9 +368,11 @@ case "${1:-}" in
         HAS_AI=$(docker ps -a --format '{{.Names}}' | grep -qE '.*-ollama-[0-9]+$' && echo "yes" || echo "no")
         HAS_MONITORING=$(docker ps -a --format '{{.Names}}' | grep -qE '.*-(grafana|loki|promtail)' && echo "yes" || echo "no")
         HAS_TOR=$(docker ps -a --format '{{.Names}}' | grep -qE '.*-tor' && echo "yes" || echo "no")
+        HAS_MCP=$(docker ps -a --format '{{.Names}}' | grep -qE '.*-mcp-[0-9]+$' && echo "yes" || echo "no")
         # Also check env preference from install
         [ "$ENABLE_MONITORING" = "yes" ] && HAS_MONITORING="yes"
         [ "$ENABLE_TOR" = "yes" ] && HAS_TOR="yes"
+        [ "$ENABLE_MCP" = "yes" ] && HAS_MCP="yes"
 
         COMPOSE_FILES="-f docker-compose.yml"
         [ "$HAS_MONITORING" = "yes" ] && COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.monitoring.yml"
@@ -358,8 +382,12 @@ case "${1:-}" in
         echo "Building fresh images (no cache)..."
         docker compose $COMPOSE_FILES build --no-cache
 
-        if [ "$HAS_AI" = "yes" ]; then
-            docker compose $COMPOSE_FILES --profile ai up -d
+        PROFILES=""
+        [ "$HAS_AI" = "yes" ] && PROFILES="$PROFILES --profile ai"
+        [ "$HAS_MCP" = "yes" ] && PROFILES="$PROFILES --profile mcp"
+
+        if [ -n "$PROFILES" ]; then
+            docker compose $COMPOSE_FILES $PROFILES up -d
         else
             docker compose $COMPOSE_FILES up -d
         fi
@@ -374,6 +402,7 @@ case "${1:-}" in
         echo "  --with-ai         Start with bundled AI (Ollama container)"
         echo "  --with-monitoring Start with monitoring (Grafana/Loki/Promtail)"
         echo "  --with-tor        Start with Tor proxy for privacy"
+        echo "  --with-mcp        Start read-only MCP server for local LLM clients"
         echo "  --rebuild         Rebuild containers (use after updates)"
         echo "  --stop            Stop all services"
         echo "  --logs            View container logs"
@@ -383,6 +412,8 @@ case "${1:-}" in
         echo "  HTTPS_PORT    HTTPS port (default: 8443)"
         echo "  HTTP_PORT     HTTP redirect port (default: 8080)"
         echo "  GRAFANA_PORT  Grafana port (default: 3000)"
+        echo "  MCP_PORT      MCP host port (default: 3003)"
+        echo "  MCP_BIND_ADDRESS Host bind address for MCP (default: 127.0.0.1)"
         echo ""
         echo "AI Setup:"
         echo "  Run './start.sh --with-ai' to enable bundled AI features."
@@ -395,6 +426,10 @@ case "${1:-}" in
         echo "Tor Privacy:"
         echo "  Run './start.sh --with-tor' to enable Tor proxy."
         echo "  Then enable in Admin → Node Configuration → Proxy / Tor."
+        echo ""
+        echo "MCP:"
+        echo "  Run './start.sh --with-mcp' to enable read-only MCP access."
+        echo "  Endpoint: http://127.0.0.1:3003/mcp"
         ;;
     *)
         echo "Starting Sanctuary..."
@@ -402,9 +437,11 @@ case "${1:-}" in
         HAS_AI=$(docker ps -a --format '{{.Names}}' | grep -qE '.*-ollama-[0-9]+$' && echo "yes" || echo "no")
         HAS_MONITORING=$(docker ps -a --format '{{.Names}}' | grep -qE '.*-(grafana|loki|promtail)' && echo "yes" || echo "no")
         HAS_TOR=$(docker ps -a --format '{{.Names}}' | grep -qE '.*-tor' && echo "yes" || echo "no")
+        HAS_MCP=$(docker ps -a --format '{{.Names}}' | grep -qE '.*-mcp-[0-9]+$' && echo "yes" || echo "no")
         # Also check env preference from install
         [ "$ENABLE_MONITORING" = "yes" ] && HAS_MONITORING="yes"
         [ "$ENABLE_TOR" = "yes" ] && HAS_TOR="yes"
+        [ "$ENABLE_MCP" = "yes" ] && HAS_MCP="yes"
 
         COMPOSE_FILES="-f docker-compose.yml"
         [ "$HAS_MONITORING" = "yes" ] && COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.monitoring.yml"
@@ -417,8 +454,12 @@ case "${1:-}" in
             BUILD_FLAG="--build"
         fi
 
-        if [ "$HAS_AI" = "yes" ]; then
-            docker compose $COMPOSE_FILES --profile ai up -d $BUILD_FLAG
+        PROFILES=""
+        [ "$HAS_AI" = "yes" ] && PROFILES="$PROFILES --profile ai"
+        [ "$HAS_MCP" = "yes" ] && PROFILES="$PROFILES --profile mcp"
+
+        if [ -n "$PROFILES" ]; then
+            docker compose $COMPOSE_FILES $PROFILES up -d $BUILD_FLAG
         else
             docker compose $COMPOSE_FILES up -d $BUILD_FLAG
         fi

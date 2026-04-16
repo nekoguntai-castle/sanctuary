@@ -29,7 +29,7 @@ const router = Router();
  *   - userId: Filter by user ID
  *   - username: Filter by username (partial match)
  *   - action: Filter by action (partial match)
- *   - category: Filter by category (auth, user, wallet, device, admin, backup, system)
+ *   - category: Filter by category (auth, user, wallet, device, admin, backup, mcp, system)
  *   - success: Filter by success status (true/false)
  *   - startDate: Filter by start date (ISO string)
  *   - endDate: Filter by end date (ISO string)

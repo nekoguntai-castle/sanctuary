@@ -159,12 +159,28 @@ export const ConfirmRestoreSchema = z.object({
 // =============================================================================
 
 export const AuditLogFilterSchema = PaginationSchema.extend({
-  category: z.enum(['auth', 'user', 'wallet', 'device', 'admin', 'system']).optional(),
+  category: z.enum(['auth', 'user', 'wallet', 'device', 'admin', 'backup', 'mcp', 'system']).optional(),
   action: z.string().optional(),
   userId: UuidSchema.optional(),
   success: z.coerce.boolean().optional(),
   startDate: z.coerce.date().optional(),
   endDate: z.coerce.date().optional(),
+});
+
+// =============================================================================
+// MCP API Keys
+// =============================================================================
+
+export const CreateMcpApiKeySchema = z.object({
+  userId: UuidSchema,
+  name: z.string().min(1, 'Key name is required').max(100),
+  walletIds: z.array(UuidSchema).max(100).optional(),
+  allowAuditLogs: z.boolean().default(false),
+  expiresAt: z.coerce.date().optional(),
+});
+
+export const McpApiKeyIdParamSchema = z.object({
+  keyId: UuidSchema,
 });
 
 // =============================================================================
@@ -205,5 +221,6 @@ export type UpdateUserInput = z.infer<typeof UpdateUserSchema>;
 export type CreateGroupInput = z.infer<typeof CreateGroupSchema>;
 export type UpdateGroupInput = z.infer<typeof UpdateGroupSchema>;
 export type AuditLogFilter = z.infer<typeof AuditLogFilterSchema>;
+export type CreateMcpApiKeyInput = z.infer<typeof CreateMcpApiKeySchema>;
 export type UpdateFeatureFlagInput = z.infer<typeof UpdateFeatureFlagSchema>;
 export type FeatureFlagAuditQuery = z.infer<typeof FeatureFlagAuditQuerySchema>;

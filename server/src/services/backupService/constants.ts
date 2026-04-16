@@ -19,6 +19,7 @@ export const TABLE_ORDER = [
   'systemSetting',
   'nodeConfig',
   'user',
+  'mcpApiKey',       // FK: userId
   'group',
 
   // First-level dependencies

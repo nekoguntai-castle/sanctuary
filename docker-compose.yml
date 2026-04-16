@@ -202,6 +202,9 @@ services:
       # Gateway secret (for gateway WebSocket connection)
       GATEWAY_SECRET: ${GATEWAY_SECRET:-}
 
+      # MCP read-only local server (disabled in backend process; separate profile service owns it)
+      MCP_ENABLED: "false"
+
       # WebSocket limits (configurable for local scale/fanout proof)
       MAX_WEBSOCKET_CONNECTIONS: ${MAX_WEBSOCKET_CONNECTIONS:-10000}
       MAX_WEBSOCKET_PER_USER: ${MAX_WEBSOCKET_PER_USER:-10}
@@ -340,6 +343,74 @@ services:
           memory: 256M
     mem_swappiness: 10
     memswap_limit: 1280M  # memory + 256M swap
+
+  # ============================================
+  # Model Context Protocol Server (Optional)
+  # ============================================
+  # Read-only MCP endpoint for local LLM clients. Starts only with
+  # the `mcp` Compose profile and is published to host loopback by default.
+  # ============================================
+  mcp:
+    image: sanctuary-backend:local
+    pull_policy: never  # Reuse image built by backend service
+    restart: unless-stopped
+    profiles:
+      - mcp
+    depends_on:
+      backend:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_OPTIONS: "--max-old-space-size=512"
+      NODE_ENV: ${NODE_ENV:-production}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+
+      DATABASE_URL: postgresql://${POSTGRES_USER:-sanctuary}:${POSTGRES_PASSWORD:-sanctuary}@postgres:5432/${POSTGRES_DB:-sanctuary}?schema=public&connection_limit=${DB_MCP_POOL_SIZE:-5}&pool_timeout=30&connect_timeout=10&statement_timeout=30000
+      REDIS_URL: redis://:${REDIS_PASSWORD:-}@redis:6379
+
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY is required (at least 32 chars)}
+      ENCRYPTION_SALT: ${ENCRYPTION_SALT:-sanctuary-node-config}
+      GATEWAY_SECRET: ${GATEWAY_SECRET:-}
+
+      BITCOIN_NETWORK: ${BITCOIN_NETWORK:-mainnet}
+      MCP_ENABLED: "true"
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 3003
+      MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-localhost,127.0.0.1,[::1]}
+      MCP_RATE_LIMIT_PER_MINUTE: ${MCP_RATE_LIMIT_PER_MINUTE:-120}
+      MCP_DEFAULT_PAGE_SIZE: ${MCP_DEFAULT_PAGE_SIZE:-100}
+      MCP_MAX_PAGE_SIZE: ${MCP_MAX_PAGE_SIZE:-500}
+      MCP_MAX_DATE_RANGE_DAYS: ${MCP_MAX_DATE_RANGE_DAYS:-365}
+    command: ["node", "dist/app/src/mcp-entry.js"]
+    ports:
+      - "${MCP_BIND_ADDRESS:-127.0.0.1}:${MCP_PORT:-3003}:3003"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - sanctuary-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    mem_swappiness: 10
+    memswap_limit: 640M
 
   # ============================================
   # Database Migrations & Seeding (one-time run)

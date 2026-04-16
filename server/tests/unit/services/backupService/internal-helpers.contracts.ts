@@ -41,6 +41,7 @@ describe('BackupService internal helpers', () => {
         nodeConfig: [],
         systemSetting: [],
         auditLog: [],
+        mcpApiKey: [],
         hardwareDeviceModel: [],
         pushDevice: [],
         draftTransaction: [],

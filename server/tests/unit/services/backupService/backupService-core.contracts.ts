@@ -325,7 +325,7 @@ describe('BackupService', () => {
       // Using type assertion to access dynamic properties
       const client = mockPrismaClient as any;
       const tables = [
-        'hardwareDeviceModel', 'systemSetting', 'nodeConfig', 'user', 'group',
+        'hardwareDeviceModel', 'systemSetting', 'nodeConfig', 'user', 'mcpApiKey', 'group',
         'groupMember', 'device', 'wallet', 'pushDevice', 'walletUser',
         'walletDevice', 'address', 'label', 'draftTransaction', 'transaction',
         'uTXO', 'transactionLabel', 'addressLabel', 'auditLog',
