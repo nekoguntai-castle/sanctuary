@@ -1,5 +1,14 @@
-import type { Request, Response } from 'express';
 import { z, type ZodIssue } from 'zod';
+
+interface RequestWithBody {
+  body?: unknown;
+}
+
+interface ResponseWithStatusJson {
+  status: (code: number) => {
+    json: (body: unknown) => unknown;
+  };
+}
 
 function isHttpUrl(value: string): boolean {
   try {
@@ -81,8 +90,8 @@ export const ChatBodySchema = z.object({
 
 export function parseRequestBody<TSchema extends z.ZodType>(
   schema: TSchema,
-  req: Request,
-  res: Response,
+  req: RequestWithBody,
+  res: ResponseWithStatusJson,
   error: string,
 ): z.infer<TSchema> | null {
   const result = schema.safeParse(req.body ?? {});
