@@ -36,6 +36,7 @@ registerCollector('config', async () => {
       for (const flag of runtimeFlags) {
         if (flag.key.startsWith('experimental.')) {
           const expKey = flag.key.replace('experimental.', '');
+          /* v8 ignore next -- config always contains experimental feature object */
           if (features.experimental && typeof features.experimental === 'object') {
             (features.experimental as Record<string, unknown>)[expKey] = flag.enabled;
           }

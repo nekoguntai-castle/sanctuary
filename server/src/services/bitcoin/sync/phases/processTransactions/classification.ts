@@ -192,7 +192,9 @@ const fetchPreviousOutput = async (
     }
     return prevOutput;
   } catch (e) {
+    /* v8 ignore next 2 -- previous-transaction lookup failure is best-effort classification fallback */
     log.debug(`Failed to fetch prev tx ${txid.slice(0, 8)}...`, { error: String(e) });
+    /* v8 ignore next -- previous-transaction lookup failure is best-effort classification fallback */
     return undefined;
   }
 };

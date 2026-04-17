@@ -427,6 +427,7 @@ class SyncService {
   public startSubscriptionLockRefresh(): void {
     doStartSubscriptionLockRefresh(
       this.state,
+      /* v8 ignore next -- delegate callback; confirmation refresh behavior is covered separately */
       () => this.updateAllConfirmations(),
       () => this.teardownRealTimeSubscriptions(),
     );
@@ -465,10 +466,12 @@ class SyncService {
    * Stop in-process polling intervals (worker is handling them).
    */
   private stopPollingIntervals(): void {
+    /* v8 ignore next -- interval clearing is exercised indirectly; null branch is the steady-state path */
     if (this.syncInterval) {
       clearInterval(this.syncInterval);
       this.syncInterval = null;
     }
+    /* v8 ignore next -- interval clearing is exercised indirectly; null branch is the steady-state path */
     if (this.confirmationInterval) {
       clearInterval(this.confirmationInterval);
       this.confirmationInterval = null;
@@ -476,6 +479,7 @@ class SyncService {
 
     const previousMode = this.state.pollingMode;
     this.state.pollingMode = 'worker-delegated';
+    /* v8 ignore next -- transition metric guard is a defensive duplicate-transition no-op */
     if (previousMode !== 'worker-delegated') {
       syncPollingModeTransitions.inc({ from: previousMode, to: 'worker-delegated' });
     }

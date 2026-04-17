@@ -573,6 +573,69 @@ export function registerTransactionHttpReadTests(): void {
     expect(mockPrismaClient.transaction.findMany.mock.calls[1][0].take).toBe(500);
   });
 
+  it('pages through large CSV export result sets', async () => {
+    const makeRow = (n: number) => ({
+      txid: String(n).padStart(64, '1'),
+      type: 'received',
+      amount: BigInt(n * 100),
+      balanceAfter: BigInt(n * 100),
+      fee: null,
+      confirmations: 1,
+      label: null,
+      memo: null,
+      counterpartyAddress: null,
+      blockHeight: BigInt(850000 + n),
+      blockTime: new Date('2025-01-01T00:00:00.000Z'),
+      createdAt: new Date('2025-01-01T00:00:00.000Z'),
+    });
+    const firstPage = Array.from({ length: 500 }, (_, i) => makeRow(i + 1));
+    const secondPage = [makeRow(501)];
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({ name: 'Paged CSV Wallet' });
+    mockPrismaClient.transaction.findMany
+      .mockResolvedValueOnce(firstPage as any)
+      .mockResolvedValueOnce(secondPage as any);
+
+    const response = await request(app).get(`/api/v1/wallets/${walletId}/transactions/export`);
+
+    expect(response.status).toBe(200);
+    expect(response.text.split('\n').filter(Boolean).length).toBe(502);
+    expect(mockPrismaClient.transaction.findMany).toHaveBeenCalledTimes(2);
+    expect(mockPrismaClient.transaction.findMany.mock.calls[1][0].skip).toBe(500);
+  });
+
+  it('destroys the response when export fails after streaming starts', async () => {
+    const firstPage = Array.from({ length: 500 }, (_, i) => ({
+      txid: String(i + 1).padStart(64, '2'),
+      type: 'received',
+      amount: BigInt(1000),
+      balanceAfter: BigInt(1000),
+      fee: null,
+      confirmations: 1,
+      label: null,
+      memo: null,
+      counterpartyAddress: null,
+      blockHeight: BigInt(850000 + i),
+      blockTime: new Date('2025-01-01T00:00:00.000Z'),
+      createdAt: new Date('2025-01-01T00:00:00.000Z'),
+    }));
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({ name: 'Broken Stream Wallet' });
+    mockPrismaClient.transaction.findMany
+      .mockResolvedValueOnce(firstPage as any)
+      .mockRejectedValueOnce(new Error('page two failed'));
+
+    let requestError: unknown;
+    try {
+      await request(app)
+        .get(`/api/v1/wallets/${walletId}/transactions/export`)
+        .query({ format: 'json' });
+    } catch (error) {
+      requestError = error;
+    }
+
+    expect(requestError).toBeDefined();
+    expect(mockPrismaClient.transaction.findMany).toHaveBeenCalledTimes(2);
+  });
+
   it('terminates export pagination when a page returns fewer rows than page size', async () => {
     // A page smaller than 500 is the end-of-results sentinel. The handler
     // must not issue a subsequent findMany call.

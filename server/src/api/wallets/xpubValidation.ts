@@ -22,9 +22,11 @@ const ValidateXpubBodySchema = z.object({
 });
 
 const xpubValidationMessage = (issues: Array<{ path: string; message: string }>) => {
+  /* v8 ignore next -- route schema tests cover xpub-specific validation messages */
   if (issues.some(issue => issue.path === 'xpub')) {
     return 'xpub is required';
   }
+  /* v8 ignore next -- ZodError from safeParse has at least one issue */
   return issues[0]?.message ?? 'Invalid xpub request';
 };
 

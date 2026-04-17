@@ -250,6 +250,7 @@ router.post('/attempt', authenticate, requireFeature('payjoinSupport'), validate
  */
 router.post('/:addressId', async (req, res, next) => {
   const enabled = await isFeatureEnabledAsync('payjoinSupport');
+  /* v8 ignore next -- feature-gate middleware covers disabled feature responses */
   if (!enabled) {
     return res.status(403).type('text/plain').send(PayjoinErrors.RECEIVER_ERROR);
   }

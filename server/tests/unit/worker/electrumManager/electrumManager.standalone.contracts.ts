@@ -480,6 +480,33 @@ export function registerElectrumManagerStandaloneContracts() {
       vi.useRealTimers();
     });
 
+    it('resubscribes through the manager reconnect callback after a reconnect succeeds', async () => {
+      vi.useFakeTimers();
+      const networks = getNetworks();
+      const addressToWallet = getAddressToWallet();
+
+      networks.set('mainnet', {
+        network: 'mainnet',
+        client: mockClient as any,
+        connected: true,
+        subscribedToHeaders: true,
+        subscribedAddresses: new Set<string>(),
+        lastBlockHeight: 0,
+        reconnectTimer: null,
+        reconnectAttempts: 0,
+      });
+      addressToWallet.set('addr-manager-reconnect', { walletId: 'wallet-reconnect', network: 'mainnet' });
+      (manager as any).isRunningFlag = true;
+
+      (manager as any).doScheduleReconnect('mainnet');
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(mockClient.subscribeAddressBatch).toHaveBeenCalledWith(['addr-manager-reconnect']);
+      expect(networks.get('mainnet')?.reconnectAttempts).toBe(0);
+
+      vi.useRealTimers();
+    });
+
     it('subscribes connected network batches during subscribeAllAddresses pagination', async () => {
       const networks = getNetworks();
       const addressToWallet = getAddressToWallet();

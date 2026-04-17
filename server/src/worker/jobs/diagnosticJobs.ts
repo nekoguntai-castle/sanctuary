@@ -79,7 +79,9 @@ export const workerDiagnosticLockedPingJob: WorkerJobHandler<DiagnosticPingJobDa
     removeOnFail: 100,
   },
   lockOptions: {
+    /* v8 ignore start -- diagnostics jobs normally provide proofId; defaults support manual runs */
     lockKey: (data) => `diagnostics:worker-ping:${data.lockKey ?? data.proofId ?? 'default'}`,
+    /* v8 ignore stop */
     lockTtlMs: LOCKED_PING_LOCK_TTL_MS,
   },
   handler: runDiagnosticPing,

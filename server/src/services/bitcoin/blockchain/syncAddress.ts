@@ -366,6 +366,7 @@ function getValidFee(sentInputs: SentInputClassification, outputTotals: OutputTo
   }
 
   const fee = sentInputs.totalSentFromWallet - outputTotals.totalToExternal - outputTotals.totalToWallet;
+  /* v8 ignore next -- negative fee indicates malformed upstream data and is defensively nulled */
   return fee >= 0 ? fee : null;
 }
 

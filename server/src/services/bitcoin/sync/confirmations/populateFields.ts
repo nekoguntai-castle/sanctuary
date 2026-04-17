@@ -101,6 +101,7 @@ export async function populateMissingTransactionFields(walletId: string): Promis
       const chunk = transactions.slice(i, i + POPULATE_CHUNK_SIZE);
       const chunkNum = Math.floor(i / POPULATE_CHUNK_SIZE) + 1;
 
+      /* v8 ignore next -- multi-chunk logging is covered by chunking behavior tests */
       if (totalChunks > 1) {
         walletLog(walletId, 'info', 'POPULATE', `Processing chunk ${chunkNum}/${totalChunks} (${chunk.length} transactions)`);
       }

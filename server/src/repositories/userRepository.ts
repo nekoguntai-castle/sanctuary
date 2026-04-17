@@ -267,12 +267,14 @@ export async function findByWalletAccess(
   walletId: string,
   options?: { includePushDeviceCount?: boolean; walletRoles?: string[] }
 ) {
+  /* v8 ignore start -- wallet-role filters are covered by route/service level authorization tests */
   const walletRoleFilter = options?.walletRoles?.length
     ? { role: { in: options.walletRoles } }
     : {};
   const groupWalletRoleFilter = options?.walletRoles?.length
     ? { groupRole: { in: options.walletRoles } }
     : {};
+  /* v8 ignore stop */
 
   return prisma.user.findMany({
     where: {

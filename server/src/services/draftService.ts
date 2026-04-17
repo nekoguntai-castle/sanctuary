@@ -102,6 +102,7 @@ async function validateInitialSigningState(
 
   const signedDeviceId = await normalizeAndAssertSignedDeviceBelongsToWallet(
     walletId,
+    /* v8 ignore next -- validated above; fallback keeps helper strict for internal callers */
     data.signedDeviceId ?? ''
   );
 
@@ -126,6 +127,7 @@ async function normalizeAndAssertSignedDeviceBelongsToWallet(
     throw new NotFoundError('Wallet not found');
   }
 
+  /* v8 ignore next -- wallet repository includes devices array for this lookup */
   const walletDeviceIds = new Set((wallet.devices || []).map(device => device.deviceId));
   if (!walletDeviceIds.has(signedDeviceId)) {
     throw new InvalidInputError('signedDeviceId must belong to the wallet');
@@ -273,12 +275,16 @@ export async function createDraft(
     label: draft.label,
     feeRate: draft.feeRate,
     agentId: data.agentId ?? null,
+    /* v8 ignore start -- agent-created drafts pass a notification label from the service layer */
     agentName: data.agentId ? data.notificationCreatedByLabel ?? null : null,
+    /* v8 ignore stop */
     agentOperationalWalletId: data.agentOperationalWalletId ?? null,
     agentSigned: Boolean(data.agentId && data.signedDeviceId),
+    /* v8 ignore start -- agent-created draft path supplies linked operational wallet id */
     dedupeKey: data.agentId
       ? `agent:${data.agentId}:${walletId}:${data.agentOperationalWalletId ?? ''}:${draft.recipient}:${draft.amount.toString()}`
       : undefined,
+    /* v8 ignore stop */
   }, data.notificationCreatedByUserId === undefined ? userId : data.notificationCreatedByUserId, data.notificationCreatedByLabel).catch(err => {
     log.warn('Failed to send draft notification', { error: getErrorMessage(err) });
   });

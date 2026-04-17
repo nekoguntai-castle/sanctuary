@@ -222,7 +222,7 @@ describe('Insight Service', () => {
     });
 
     it('should return 0 and log error when repository throws', async () => {
-      (intelligenceRepository.findExpiredInsights as Mock).mockRejectedValue(
+      (intelligenceRepository.expireActiveInsights as Mock).mockRejectedValue(
         new Error('Database connection lost')
       );
 

@@ -181,6 +181,24 @@ describe('Token Revocation Service', () => {
       );
     });
 
+    it('continues through database lookup when revocation cache read or write fails', async () => {
+      mockCache.get.mockRejectedValueOnce(new Error('cache read failed'));
+      mockCache.set.mockRejectedValueOnce(new Error('cache write failed'));
+      mockPrisma.revokedToken.findUnique.mockResolvedValueOnce(null);
+
+      const result = await isTokenRevoked(testJti);
+
+      expect(result).toBe(false);
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Revocation cache lookup failed, continuing to DB',
+        { error: 'cache read failed' }
+      );
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Failed to cache revocation status',
+        { error: 'cache write failed' }
+      );
+    });
+
     it('should fail secure on database error', async () => {
       mockCache.get.mockResolvedValueOnce(null);
       mockPrisma.revokedToken.findUnique.mockRejectedValue(new Error('DB error'));

@@ -52,6 +52,7 @@ const SIGNER_DEVICE_ID = 'agent-device';
 const AGENT_FINGERPRINT = 'aabbccdd';
 const HUMAN_FINGERPRINT = '11223344';
 const TXID = '11'.repeat(32);
+const TXID_ALT = '22'.repeat(32);
 
 interface Fixture {
   psbtBase64: string;
@@ -63,6 +64,13 @@ interface Fixture {
 
 interface FixtureOptions {
   foreignOutput?: boolean;
+  nonstandardOutput?: boolean;
+  noOutputs?: boolean;
+  omitChangeOutput?: boolean;
+  extraInput?: boolean;
+  recipientValue?: bigint;
+  changeValue?: bigint;
+  sequence?: number;
   signWith?: 'agent' | 'human';
 }
 
@@ -194,7 +202,242 @@ describe('agentFundingDraftValidation', () => {
       signedPsbtBase64: fixture.signedPsbtBase64,
     })).rejects.toThrow(InvalidInputError);
   });
+
+  it('rejects invalid wallet/device relationships before parsing PSBTs', async () => {
+    const fixture = buildFixture();
+
+    await expect(validateAgentFundingDraftSubmission({
+      fundingWalletId: FUNDING_WALLET_ID,
+      operationalWalletId: FUNDING_WALLET_ID,
+      signerDeviceId: SIGNER_DEVICE_ID,
+      recipient: fixture.recipientAddress,
+      amount: 80000,
+      psbtBase64: fixture.psbtBase64,
+      signedPsbtBase64: fixture.signedPsbtBase64,
+    })).rejects.toThrow('must be different');
+
+    setupRepositoryMocks(fixture);
+    mockFindWalletById.mockImplementationOnce(async () => null);
+    await expect(validSubmission(fixture)).rejects.toThrow('Funding wallet not found');
+
+    setupRepositoryMocks(fixture);
+    mockFindWalletById
+      .mockResolvedValueOnce({ id: FUNDING_WALLET_ID, type: 'multi_sig', network: 'testnet' })
+      .mockResolvedValueOnce(null);
+    await expect(validSubmission(fixture)).rejects.toThrow('Operational wallet not found');
+
+    setupRepositoryMocks(fixture);
+    mockFindDeviceById.mockResolvedValueOnce(null);
+    await expect(validSubmission(fixture)).rejects.toThrow('Signer device not found');
+
+    setupRepositoryMocks(fixture);
+    mockFindWalletById.mockImplementation(async (walletId: string) => {
+      if (walletId === FUNDING_WALLET_ID) {
+        return { id: FUNDING_WALLET_ID, type: 'single_sig', network: 'testnet' };
+      }
+      return { id: OPERATIONAL_WALLET_ID, type: 'single_sig', network: 'testnet' };
+    });
+    await expect(validSubmission(fixture)).rejects.toThrow('must be a multisig wallet');
+
+    setupRepositoryMocks(fixture);
+    mockFindWalletById.mockImplementation(async (walletId: string) => {
+      if (walletId === FUNDING_WALLET_ID) {
+        return { id: FUNDING_WALLET_ID, type: 'multi_sig', network: 'testnet' };
+      }
+      return { id: OPERATIONAL_WALLET_ID, type: 'single_sig', network: 'mainnet' };
+    });
+    await expect(validSubmission(fixture)).rejects.toThrow('same network');
+  });
+
+  it('rejects unsupported networks, malformed fingerprints, malformed amounts, and malformed PSBTs', async () => {
+    const fixture = buildFixture();
+
+    setupRepositoryMocks(fixture);
+    mockFindWalletById.mockImplementation(async (walletId: string) => {
+      if (walletId === FUNDING_WALLET_ID) {
+        return { id: FUNDING_WALLET_ID, type: 'multi_sig', network: 'signet' };
+      }
+      return { id: OPERATIONAL_WALLET_ID, type: 'single_sig', network: 'signet' };
+    });
+    await expect(validSubmission(fixture)).rejects.toThrow('Unsupported wallet network');
+
+    setupRepositoryMocks(fixture);
+    mockFindDeviceById.mockResolvedValueOnce({ id: SIGNER_DEVICE_ID, fingerprint: 'not-hex' });
+    await expect(validSubmission(fixture)).rejects.toThrow('fingerprint');
+
+    setupRepositoryMocks(fixture);
+    await expect(validSubmission(fixture, { amount: '  not-sats  ' })).rejects.toThrow('amount must be');
+
+    setupRepositoryMocks(fixture);
+    await expect(validSubmission(fixture, { amount: -1 })).rejects.toThrow('amount must be');
+
+    setupRepositoryMocks(fixture);
+    await expect(validSubmission(fixture, { psbtBase64: 'not-a-psbt' })).rejects.toThrow('psbtBase64 is not a valid PSBT');
+  });
+
+  it('accepts string satoshi amounts and funding-only change omission', async () => {
+    const fixture = buildFixture({ omitChangeOutput: true });
+    setupRepositoryMocks(fixture);
+
+    const result = await validSubmission(fixture, {
+      amount: ' 80000 ',
+    });
+
+    expect(result).toMatchObject({
+      amount: '80000',
+      changeAmount: '0',
+      changeAddress: undefined,
+      fee: '20000',
+    });
+  });
+
+  it('rejects signed PSBTs that do not match the original draft transaction', async () => {
+    const fixture = buildFixture();
+    const versionMismatch = mutateUnsignedPsbt(fixture, psbt => {
+      psbt.setVersion(1);
+    });
+    const outputMismatch = buildFixture({ foreignOutput: true });
+    const inputCountMismatch = buildFixture({ extraInput: true });
+    const inputMismatch = buildFixture({ sequence: 0xfffffffd });
+    const outputCountMismatch = buildFixture({ omitChangeOutput: true });
+    setupRepositoryMocks(fixture);
+
+    await expect(validSubmission(fixture, {
+      psbtBase64: versionMismatch,
+    })).rejects.toThrow('does not match');
+
+    setupRepositoryMocks(fixture);
+
+    await expect(validSubmission(fixture, {
+      signedPsbtBase64: outputMismatch.signedPsbtBase64,
+    })).rejects.toThrow('outputs do not match');
+
+    setupRepositoryMocks(fixture);
+    await expect(validSubmission(fixture, {
+      signedPsbtBase64: inputCountMismatch.signedPsbtBase64,
+    })).rejects.toThrow('input count does not match');
+
+    setupRepositoryMocks(fixture);
+    await expect(validSubmission(fixture, {
+      signedPsbtBase64: inputMismatch.signedPsbtBase64,
+    })).rejects.toThrow('inputs do not match');
+
+    setupRepositoryMocks(fixture);
+    await expect(validSubmission(fixture, {
+      signedPsbtBase64: outputCountMismatch.signedPsbtBase64,
+    })).rejects.toThrow('output count does not match');
+  });
+
+  it('rejects empty, missing, frozen, and over-spending funding input sets', async () => {
+    const fixture = buildFixture();
+    const emptyPsbt = new bitcoin.Psbt({ network }).toBase64();
+
+    setupRepositoryMocks(fixture);
+    await expect(validSubmission(fixture, {
+      psbtBase64: emptyPsbt,
+      signedPsbtBase64: emptyPsbt,
+    })).rejects.toThrow('at least one input');
+
+    setupRepositoryMocks(fixture);
+    mockFindByOutpointsForWallet.mockResolvedValueOnce([]);
+    await expect(validSubmission(fixture)).rejects.toThrow('funding-wallet UTXOs');
+
+    setupRepositoryMocks(fixture, { utxo: { frozen: true } });
+    await expect(validSubmission(fixture)).rejects.toThrow('frozen');
+
+    setupRepositoryMocks(fixture, { utxo: { amount: 90_000n } });
+    await expect(validSubmission(fixture)).rejects.toThrow('outputs exceed');
+
+  });
+
+  it('allows refreshing an existing draft lock and reports RBF/input metadata from the PSBT', async () => {
+    const fixture = buildFixture({ sequence: 0xfffffffd });
+    setupRepositoryMocks(fixture, {
+      utxo: {
+        draftLock: { draftId: 'draft-1' },
+      },
+    });
+
+    const result = await validSubmission(fixture, {
+      allowedDraftLockId: 'draft-1',
+    });
+
+    expect(result.enableRBF).toBe(true);
+    expect(result.selectedUtxoIds).toEqual([`${TXID}:0`]);
+  });
+
+  it('rejects linked wallet output edge cases', async () => {
+    const fixture = buildFixture();
+
+    setupRepositoryMocks(fixture);
+    mockFindAddressStrings.mockImplementation(async (walletId: string) => {
+      if (walletId === FUNDING_WALLET_ID) return [fixture.changeAddress, fixture.recipientAddress];
+      if (walletId === OPERATIONAL_WALLET_ID) return [fixture.recipientAddress];
+      return [];
+    });
+    await expect(validSubmission(fixture)).rejects.toThrow('must not share addresses');
+
+    setupRepositoryMocks(fixture);
+    await expect(validSubmission(fixture, {
+      recipient: fixture.changeAddress,
+    })).rejects.toThrow('recipient must belong');
+
+    const zeroOperationalAmount = buildFixture({ recipientValue: 0n, changeValue: 95_000n });
+    setupRepositoryMocks(zeroOperationalAmount);
+    await expect(validSubmission(zeroOperationalAmount, {
+      amount: 0,
+    })).rejects.toThrow('positive amount');
+
+    const missingRequestedRecipient = buildFixture();
+    const unusedOperationalAddress = bitcoin.payments.p2wpkh({
+      hash: Buffer.alloc(20, 9),
+      network,
+    }).address!;
+    setupRepositoryMocks(missingRequestedRecipient);
+    mockFindAddressStrings.mockImplementation(async (walletId: string) => {
+      if (walletId === FUNDING_WALLET_ID) return [missingRequestedRecipient.changeAddress];
+      if (walletId === OPERATIONAL_WALLET_ID) return [missingRequestedRecipient.recipientAddress, unusedOperationalAddress];
+      return [];
+    });
+    await expect(validSubmission(missingRequestedRecipient, {
+      recipient: unusedOperationalAddress,
+    })).rejects.toThrow('requested operational-wallet recipient');
+  });
+
+  it('rejects nonstandard, missing, or unsigned outputs and signer metadata gaps', async () => {
+    const fixture = buildFixture();
+
+    setupRepositoryMocks(fixture);
+    mockFindDeviceById.mockResolvedValueOnce({ id: SIGNER_DEVICE_ID, fingerprint: 'deadbeef' });
+    await expect(validSubmission(fixture)).rejects.toThrow('registered agent signer');
+
+    const missingOutputs = buildFixture({ noOutputs: true });
+    setupRepositoryMocks(missingOutputs);
+    await expect(validSubmission(missingOutputs)).rejects.toThrow('at least one output');
+
+    const nonstandardOutput = buildFixture({ nonstandardOutput: true });
+    setupRepositoryMocks(nonstandardOutput);
+    await expect(validSubmission(nonstandardOutput, {
+      amount: 0,
+    })).rejects.toThrow('standard wallet address');
+  });
 });
+
+function validSubmission(
+  fixture: Fixture,
+  overrides: Partial<Parameters<typeof validateAgentFundingDraftSubmission>[0]> = {}
+) {
+  return validateAgentFundingDraftSubmission({
+    fundingWalletId: FUNDING_WALLET_ID,
+    operationalWalletId: OPERATIONAL_WALLET_ID,
+    signerDeviceId: SIGNER_DEVICE_ID,
+    recipient: fixture.recipientAddress,
+    amount: 80000,
+    psbtBase64: fixture.psbtBase64,
+    signedPsbtBase64: fixture.signedPsbtBase64,
+    ...overrides,
+  });
+}
 
 function setupRepositoryMocks(
   fixture: Fixture,
@@ -202,6 +445,7 @@ function setupRepositoryMocks(
     utxo?: Partial<{
       spent: boolean;
       frozen: boolean;
+      amount: bigint;
       draftLock: { draftId: string } | null;
     }>;
   } = {}
@@ -274,13 +518,21 @@ function buildFixture(options: FixtureOptions = {}): Fixture {
   }).address!;
 
   const psbt = new bitcoin.Psbt({ network });
-  addFundingInput(psbt, p2wsh, p2ms, agentPubkey, humanPubkey);
-
-  psbt.addOutput({ address: recipientAddress, value: 80000n });
-  psbt.addOutput({
-    address: options.foreignOutput ? foreignAddress : changeAddress,
-    value: 15000n,
-  });
+  addFundingInput(psbt, p2wsh, p2ms, agentPubkey, humanPubkey, options.sequence);
+  if (options.extraInput) {
+    addFundingInput(psbt, p2wsh, p2ms, agentPubkey, humanPubkey, options.sequence, TXID_ALT);
+  }
+  if (options.nonstandardOutput) {
+    psbt.addOutput({ script: Buffer.from('6a', 'hex'), value: 0n });
+  } else if (!options.noOutputs) {
+    psbt.addOutput({ address: recipientAddress, value: options.recipientValue ?? 80000n });
+  }
+  if (!options.omitChangeOutput && !options.noOutputs && !options.nonstandardOutput) {
+    psbt.addOutput({
+      address: options.foreignOutput ? foreignAddress : changeAddress,
+      value: options.changeValue ?? 15000n,
+    });
+  }
 
   const psbtBase64 = psbt.toBase64();
   const signedPsbt = psbt.clone();
@@ -298,16 +550,25 @@ function buildFixture(options: FixtureOptions = {}): Fixture {
   };
 }
 
+function mutateUnsignedPsbt(fixture: Fixture, mutate: (psbt: bitcoin.Psbt) => void): string {
+  const psbt = bitcoin.Psbt.fromBase64(fixture.psbtBase64, { network });
+  mutate(psbt);
+  return psbt.toBase64();
+}
+
 function addFundingInput(
   psbt: bitcoin.Psbt,
   p2wsh: bitcoin.Payment,
   p2ms: bitcoin.Payment,
   agentPubkey: Buffer,
-  humanPubkey: Buffer
+  humanPubkey: Buffer,
+  sequence?: number,
+  txid = TXID
 ): void {
   psbt.addInput({
-    hash: TXID,
+    hash: txid,
     index: 0,
+    sequence,
     witnessUtxo: {
       script: p2wsh.output!,
       value: 100000n,

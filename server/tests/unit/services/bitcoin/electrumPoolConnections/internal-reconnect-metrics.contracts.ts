@@ -5,6 +5,7 @@ import {
   type ElectrumPoolTestContext,
 } from './electrumPoolConnectionsTestHarness';
 import { recordHealthCheckResult } from '../../../../../src/services/bitcoin/electrumPool/healthChecker';
+import { handleConnectionError } from '../../../../../src/services/bitcoin/electrumPool/connectionManager';
 
 export function registerElectrumPoolInternalReconnectMetricsTests(context: ElectrumPoolTestContext): void {
     it('handleConnectionError covers dedicated and non-dedicated branches', async () => {
@@ -49,6 +50,69 @@ export function registerElectrumPoolInternalReconnectMetricsTests(context: Elect
 
       expect((context.pool as any).connections.has(regular.id)).toBe(false);
       expect(createSpy).not.toHaveBeenCalled();
+    });
+
+    it('module handleConnectionError reconnects dedicated connections and creates default replacements', async () => {
+      context.pool = createPool({ maxReconnectAttempts: 1, connectionTimeoutMs: 100 });
+      const config = (context.pool as any).config;
+      const connections = new Map<string, any>();
+      const subscriptionConnectionId = { value: 'dedicated' };
+      const emitSubscriptionReconnected = vi.fn();
+
+      const dedicated = makeConn({
+        id: 'dedicated',
+        isDedicated: true,
+        client: {
+          connect: vi.fn().mockResolvedValue(undefined),
+          getServerVersion: vi.fn().mockResolvedValue({ server: 'ok', protocol: '1.4' }),
+          disconnect: vi.fn(),
+          isConnected: vi.fn().mockReturnValue(true),
+          on: vi.fn(),
+        },
+      });
+      connections.set(dedicated.id, dedicated);
+
+      await handleConnectionError(
+        dedicated,
+        connections,
+        config,
+        null,
+        2,
+        false,
+        subscriptionConnectionId,
+        emitSubscriptionReconnected,
+        vi.fn(),
+        () => null
+      );
+
+      expect(dedicated.state).toBe('idle');
+      expect(emitSubscriptionReconnected).toHaveBeenCalledWith(dedicated.client);
+
+      const regular = makeConn({
+        id: 'regular',
+        isDedicated: false,
+        client: {
+          disconnect: vi.fn(),
+          isConnected: vi.fn().mockReturnValue(false),
+        },
+      });
+      connections.set(regular.id, regular);
+
+      await handleConnectionError(
+        regular,
+        connections,
+        config,
+        null,
+        1,
+        false,
+        subscriptionConnectionId,
+        emitSubscriptionReconnected,
+        vi.fn(),
+        () => null
+      );
+      await new Promise(resolve => setImmediate(resolve));
+
+      expect(connections.has(regular.id)).toBe(false);
     });
 
     it('reconnectConnection success path restores idle state and emits subscription event', async () => {

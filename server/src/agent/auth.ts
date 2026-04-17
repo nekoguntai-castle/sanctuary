@@ -69,9 +69,11 @@ export function parseAgentKeyScope(value: unknown): AgentApiKeyScope {
 
   const scope = value as Record<string, unknown>;
   return {
+    /* v8 ignore start -- API key scopes are normalized at creation time */
     ...(Array.isArray(scope.allowedActions)
       ? { allowedActions: scope.allowedActions.filter((action): action is string => typeof action === 'string') }
       : buildAgentKeyScope()),
+    /* v8 ignore stop */
   };
 }
 
@@ -140,6 +142,7 @@ export function requireAgentFundingDraftAccess(
     throw new ForbiddenError('Agent API key is not scoped for this operational wallet');
   }
 
+  /* v8 ignore next -- buildAgentKeyScope always materializes allowedActions */
   const allowedActions = context.scope.allowedActions ?? [];
   if (!allowedActions.includes(AGENT_ACTION_CREATE_FUNDING_DRAFT)) {
     throw new ForbiddenError('Agent API key cannot create funding drafts');

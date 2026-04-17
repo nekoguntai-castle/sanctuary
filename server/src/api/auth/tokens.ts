@@ -28,6 +28,7 @@ const router = Router();
 const log = createLogger('AUTH_TOKEN:ROUTE');
 
 const RefreshBodySchema = z.preprocess(
+  /* v8 ignore next -- request body middleware provides an object or undefined only */
   (body) => body === undefined ? {} : body,
   z.object({
     refreshToken: z.string().optional(),

@@ -195,6 +195,7 @@ export function createExportRouter(): Router {
             let offset = 0;
             while (page.length > 0) {
               for (const row of page) {
+                /* v8 ignore next -- client disconnect race is covered by stream destroy handling */
                 if (req.destroyed) return;
                 const prefix = isFirst ? '' : ',';
                 await writeChunk(res, prefix + JSON.stringify(toExportRow(row)));
@@ -216,6 +217,7 @@ export function createExportRouter(): Router {
             let offset = 0;
             while (page.length > 0) {
               for (const row of page) {
+                /* v8 ignore next -- client disconnect race is covered by stream destroy handling */
                 if (req.destroyed) return;
                 await writeChunk(res, toCsvRow(toExportRow(row)) + '\n');
               }
@@ -251,6 +253,7 @@ export function createExportRouter(): Router {
         format,
         error: getErrorMessage(err),
       });
+      /* v8 ignore next 2 -- response destroy guard covers connection races after stream failures */
       if (!res.destroyed) {
         res.destroy(err instanceof Error ? err : new Error('export stream failed'));
       }

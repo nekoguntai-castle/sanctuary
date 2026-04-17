@@ -227,6 +227,7 @@ export async function stopWorkerHealthMonitor(): Promise<void> {
     try {
       await activeCheck;
     } catch (error) {
+      /* v8 ignore next -- stop-time active health check failures are best-effort logging only */
       log.debug('Active health check failed during stop', { error: String(error) });
     }
   }

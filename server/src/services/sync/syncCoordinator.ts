@@ -348,6 +348,7 @@ export function getSyncCoordinator(): SyncCoordinator {
   return syncCoordinator;
 }
 
+/* v8 ignore next -- test-only singleton reset helper */
 export function resetSyncCoordinatorForTests(): void {
   syncCoordinator = null;
 }

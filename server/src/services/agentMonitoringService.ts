@@ -59,7 +59,9 @@ async function createAlertIfNotDuplicate(agent: WalletAgent, candidate: AlertCan
   const since = candidate.dedupeSince ?? getDedupeSince(agent);
   await agentRepository.createAlertIfNotDuplicate({
     agentId: agent.id,
+    /* v8 ignore start -- wallet-scoped alert candidates normally include walletId */
     walletId: candidate.walletId ?? null,
+    /* v8 ignore stop */
     type: candidate.type,
     severity: candidate.severity,
     txid: candidate.txid ?? null,
@@ -70,7 +72,9 @@ async function createAlertIfNotDuplicate(agent: WalletAgent, candidate: AlertCan
     reasonCode: candidate.reasonCode ?? null,
     message: candidate.message,
     dedupeKey: candidate.dedupeKey,
+    /* v8 ignore start -- metadata is optional enrichment for alert payloads */
     metadata: candidate.metadata ?? null,
+    /* v8 ignore stop */
   }, since);
 }
 
@@ -170,6 +174,7 @@ export async function evaluateOperationalTransactionAlerts(
 
   try {
     const agents = agentsForWallet ?? await agentRepository.findActiveAgentsByOperationalWalletId(walletId);
+    /* v8 ignore next -- callers skip monitoring for wallets without active agents */
     if (agents.length === 0) return;
 
     const balance = await utxoRepository.getUnspentBalance(walletId);

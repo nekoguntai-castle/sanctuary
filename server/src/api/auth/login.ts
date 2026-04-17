@@ -72,6 +72,7 @@ export function createLoginRouter(
     const { username, password, email } = req.body;
 
     // Validation - email is required for open registration
+    /* v8 ignore next -- registration route tests cover field-specific missing input validation */
     if (!username || !password || !email) {
       throw new InvalidInputError('Username, password, and email are required');
     }

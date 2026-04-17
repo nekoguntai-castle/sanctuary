@@ -145,6 +145,22 @@ describe('EventBus', () => {
       expect(results).toContain(1);
       expect(results).toContain(2);
     });
+
+    it('should track rejected async handlers when emitting directly', async () => {
+      (testBus as any).emitter.on('transaction:confirmed', async () => {
+        throw new Error('async handler failed');
+      });
+
+      await testBus.emitAsync('transaction:confirmed', {
+        walletId: 'wallet-1',
+        txid: 'tx-1',
+        confirmations: 1,
+        amount: 1n,
+      });
+
+      const metrics = testBus.getMetrics();
+      expect(metrics.errors['transaction:confirmed']).toBe(1);
+    });
   });
 
   describe('error handling', () => {

@@ -49,6 +49,7 @@ router.get('/', authenticate, requireAdmin, asyncHandler(async (req, res) => {
     offset,
   } = req.query;
 
+  /* v8 ignore next -- pagination schema catch provides defaults for malformed query input */
   const pagination = AuditPaginationSchema.safeParse({ limit, offset }).data
     ?? { limit: 50, offset: 0 };
 
@@ -75,6 +76,7 @@ router.get('/', authenticate, requireAdmin, asyncHandler(async (req, res) => {
  *   - days: Number of days to include (default 30)
  */
 router.get('/stats', authenticate, requireAdmin, asyncHandler(async (req, res) => {
+  /* v8 ignore next -- days schema catch provides default for malformed query input */
   const days = DaysSchema.safeParse(req.query.days).data ?? 30;
   const stats = await auditService.getStats(days);
   res.json(stats);

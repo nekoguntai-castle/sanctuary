@@ -74,6 +74,7 @@ const gatewayPermissionCheckValidationMessage = (issues: Array<{ message: string
 function formatPermissionValidationError(error: z.ZodError): string {
   const issue = error.issues[0];
 
+  /* v8 ignore next -- ZodError from safeParse has at least one issue */
   if (!issue) {
     return 'Invalid mobile permission update';
   }

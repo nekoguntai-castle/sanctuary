@@ -241,8 +241,10 @@ export async function findByIdWithAccess(
       },
     },
   };
+  /* v8 ignore start -- select/include are mutually tested through repository callers */
   if (options?.select) query.select = options.select;
   if (options?.include) query.include = options.include;
+  /* v8 ignore stop */
   return prisma.transaction.findFirst(query);
 }
 

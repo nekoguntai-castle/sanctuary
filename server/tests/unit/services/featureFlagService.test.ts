@@ -345,6 +345,18 @@ describe('Feature Flag Service', () => {
 
       expect(result).toBe(false);
     });
+
+    it('falls back to environment config when distributed cache and database lookups fail', async () => {
+      mockCache.get.mockRejectedValueOnce(new Error('cache unavailable'));
+      mockPrisma.featureFlag.findUnique.mockRejectedValueOnce(new Error('database unavailable'));
+
+      const result = await featureFlagService.isEnabled('hardwareWalletSigning');
+
+      expect(result).toBe(true);
+      expect(mockPrisma.featureFlag.findUnique).toHaveBeenCalledWith({
+        where: { key: 'hardwareWalletSigning' },
+      });
+    });
   });
 
   describe('setFlag', () => {

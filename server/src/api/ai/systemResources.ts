@@ -30,6 +30,7 @@ interface DiskInfo {
  */
 function parseDfOutput(stdout: string): DiskInfo | null {
   const lines = stdout.trim().split('\n');
+  /* v8 ignore next -- df output with fewer than two lines is malformed and returns null */
   if (lines.length >= 2) {
     const parts = lines[1].split(/\s+/);
     if (parts.length >= 4) {
@@ -55,6 +56,7 @@ async function getDiskInfo(): Promise<DiskInfo> {
     try {
       const { stdout } = await execFile('df', ['-m', '.'], { timeout: 5000 });
       const result = parseDfOutput(stdout);
+      /* v8 ignore next -- fallback df parser returns null for malformed output */
       if (result) return result;
     } catch (error) {
       log.warn('Failed to get disk info', { error: String(error) });

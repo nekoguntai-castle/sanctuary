@@ -103,6 +103,41 @@ describe('agentMonitoringService', () => {
     }), new Date('2026-04-16T11:00:00.000Z'));
   });
 
+  it('returns early when there are no sent transactions or no active agents', async () => {
+    await evaluateOperationalTransactionAlerts('operational-wallet', [{
+      txid: 'd'.repeat(64),
+      type: 'received',
+      amount: 1_000n,
+    }]);
+    expect(mocks.agentRepository.findActiveAgentsByOperationalWalletId).not.toHaveBeenCalled();
+
+    mocks.agentRepository.findActiveAgentsByOperationalWalletId.mockResolvedValueOnce([]);
+    await evaluateOperationalTransactionAlerts('operational-wallet', [{
+      txid: 'e'.repeat(64),
+      type: 'sent',
+      amount: 1_000n,
+    }]);
+
+    expect(mocks.agentRepository.findActiveAgentsByOperationalWalletId).toHaveBeenCalledWith('operational-wallet');
+    expect(mocks.utxoRepository.getUnspentBalance).not.toHaveBeenCalled();
+  });
+
+  it('treats positive sent amounts as outgoing spend amounts', async () => {
+    await evaluateOperationalTransactionAlerts('operational-wallet', [{
+      txid: 'f'.repeat(64),
+      type: 'sent',
+      amount: 75_000n,
+      feeSats: null,
+    }], [
+      agentFixture({ largeOperationalSpendSats: 50_000n }),
+    ] as any);
+
+    expect(mocks.agentRepository.createAlertIfNotDuplicate).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'large_operational_spend',
+      amountSats: 75_000n,
+    }), new Date(0));
+  });
+
   it('creates a repeated rejected funding attempt alert when the threshold is reached', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-04-16T12:00:00.000Z'));
@@ -126,6 +161,27 @@ describe('agentMonitoringService', () => {
       observedCount: 3,
       reasonCode: 'policy_daily_limit',
       dedupeKey: 'agent:agent-1:repeated_failures:15:3',
+    }), new Date('2026-04-16T11:00:00.000Z'));
+  });
+
+  it('uses default failure lookback and null reason metadata when omitted', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-16T12:00:00.000Z'));
+    mocks.agentRepository.findAgentById.mockResolvedValue(agentFixture({
+      repeatedFailureThreshold: 2,
+      repeatedFailureLookbackMinutes: null,
+    }));
+    mocks.agentRepository.countRejectedFundingAttemptsSince.mockResolvedValue(2);
+
+    await evaluateRejectedFundingAttemptAlert('agent-1');
+
+    expect(mocks.agentRepository.countRejectedFundingAttemptsSince).toHaveBeenCalledWith(
+      'agent-1',
+      new Date('2026-04-16T11:00:00.000Z')
+    );
+    expect(mocks.agentRepository.createAlertIfNotDuplicate).toHaveBeenCalledWith(expect.objectContaining({
+      reasonCode: null,
+      dedupeKey: 'agent:agent-1:repeated_failures:60:2',
     }), new Date('2026-04-16T11:00:00.000Z'));
   });
 

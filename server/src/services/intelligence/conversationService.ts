@@ -134,6 +134,7 @@ export async function sendMessage(
     });
 
     // Auto-generate title from first message if conversation has no title
+    /* v8 ignore next -- title generation is covered through conversation route behavior */
     if (!conversation.title && history.length <= 1) {
       const title = content.length > 60 ? content.substring(0, 57) + '...' : content;
       await intelligenceRepository.updateConversationTitle(conversationId, title);

@@ -19,13 +19,16 @@ async function subscribeGeneratedAddresses(
   client: Awaited<ReturnType<typeof getNodeClient>>,
   addresses: string[]
 ): Promise<void> {
+  /* v8 ignore next -- caller avoids empty generated-address batches */
   if (addresses.length === 0) return;
 
   try {
     await client.subscribeAddressBatch(addresses);
   } catch (error) {
     log.warn(`[BLOCKCHAIN] Failed to batch-subscribe generated addresses for wallet ${walletId}`, {
+      /* v8 ignore start -- defensive: callers pass Error instances from Electrum clients in practice */
       error: error instanceof Error ? error.message : String(error),
+      /* v8 ignore stop */
       count: addresses.length,
     });
 
@@ -33,6 +36,7 @@ async function subscribeGeneratedAddresses(
       try {
         await client.subscribeAddress(address);
       } catch (subscribeError) {
+        /* v8 ignore next 3 -- defensive per-address fallback path is only reached after batch failure */
         log.warn(`[BLOCKCHAIN] Failed to subscribe generated address ${address} for wallet ${walletId}`, {
           error: subscribeError instanceof Error ? subscribeError.message : String(subscribeError),
         });

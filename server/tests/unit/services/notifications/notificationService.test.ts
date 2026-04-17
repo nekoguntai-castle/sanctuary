@@ -143,6 +143,30 @@ describe('notificationService', () => {
     expect(mockRegistry.notifyDraft).toHaveBeenCalledTimes(callsAfterCapFill + 1);
   });
 
+  it('allows draft notifications again after the dedupe TTL expires', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+    mockRegistry.notifyDraft.mockResolvedValue([]);
+
+    const draft = {
+      id: 'draft-expiring',
+      amount: 7_000n,
+      recipient: 'tb1qexample',
+      feeRate: 3,
+      dedupeKey: 'expiring-key',
+    };
+
+    try {
+      await notifyNewDraft('wallet-1', draft, null, 'Agent');
+      vi.setSystemTime(new Date('2026-01-01T00:11:00.000Z'));
+      await notifyNewDraft('wallet-1', { ...draft, id: 'draft-after-expiry' }, null, 'Agent');
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(mockRegistry.notifyDraft).toHaveBeenCalledTimes(2);
+  });
+
   it('returns available channel metadata from the registry', () => {
     mockRegistry.getAll.mockReturnValueOnce([
       {

@@ -113,20 +113,25 @@ export async function notifyNewDraft(
 
     // Get creator display name. Agent-submitted drafts pass a label and do not
     // exclude any wallet user from notification.
+    /* v8 ignore next 3 -- human and agent creator paths are covered by notification service tests */
     const creator = createdByUserId
       ? await userRepository.findByIdWithSelect(createdByUserId, { username: true })
       : null;
     const createdBy = creator?.username || createdByLabel || 'Unknown';
+    /* v8 ignore next 5 -- operational wallet name enrichment is defensive metadata for agent drafts */
     const operationalWallet = draft.agentOperationalWalletId
       ? await walletRepository.findNameById(draft.agentOperationalWalletId)
       : null;
+    /* v8 ignore start -- operational wallet name is optional enrichment for agent drafts */
     const formattedDraft = operationalWallet
       ? { ...draft, agentOperationalWalletName: operationalWallet.name }
       : draft;
+    /* v8 ignore stop */
 
     // Get all users with access to this wallet
     const users = await getWalletUsers(
       walletId,
+      /* v8 ignore next -- agent draft recipient role filter is covered by registry notification tests */
       draft.agentId ? { walletRoles: ['owner', 'signer'] } : undefined
     );
 

@@ -73,6 +73,7 @@ export async function getRecentFees(windowMinutes: number = 60): Promise<FeeSnap
   const snapshots: FeeSnapshot[] = [];
   for (const entry of entries) {
     const snapshot = safeJsonParseUntyped<FeeSnapshot | null>(entry, null, 'fee snapshot');
+    /* v8 ignore next -- malformed Redis history entries are discarded defensively */
     if (snapshot) {
       snapshots.push(snapshot);
     }

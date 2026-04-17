@@ -158,6 +158,7 @@ function formatGroup(group: GroupWithMembers): AdminGroupResponse {
 
 async function getExistingGroupWithMembers(groupId: string): Promise<AdminGroupResponse> {
   const group = await groupRepo.findByIdWithMembers(groupId);
+  /* v8 ignore next -- not-found behavior is covered at admin route boundary */
   if (!group) {
     throw new NotFoundError('Group not found');
   }

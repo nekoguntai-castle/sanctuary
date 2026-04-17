@@ -52,6 +52,7 @@ export async function checkAndQueueStaleSyncs(
     let unstuckCount = 0;
     for (const wallet of stuckWallets) {
       if (!state.activeSyncs.has(wallet.id)) {
+        /* v8 ignore next -- fallback id is defensive when wallet name is absent */
         log.warn(`[SYNC] Auto-unstuck wallet ${wallet.name || wallet.id} (was stuck with syncInProgress=true)`);
         await walletRepository.update(wallet.id, { syncInProgress: false });
         unstuckCount++;

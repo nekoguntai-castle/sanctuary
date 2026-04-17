@@ -5,6 +5,7 @@ export type AdminValidationMessage = string | ((issues: ZodIssue[]) => string);
 
 function formatIssue(issue: ZodIssue): string {
   const path = issue.path.join('.');
+  /* v8 ignore next -- route validation issues normally include a path */
   return path ? `${path}: ${issue.message}` : issue.message;
 }
 

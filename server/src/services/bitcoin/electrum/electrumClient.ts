@@ -169,6 +169,7 @@ class ElectrumClient extends EventEmitter {
       };
 
       const handleSuccess = () => {
+        /* v8 ignore next -- socket success/error race guard is defensive */
         if (settled) return;
         settled = true;
         cleanup();

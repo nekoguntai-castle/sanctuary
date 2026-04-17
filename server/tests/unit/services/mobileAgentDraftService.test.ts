@@ -149,6 +149,57 @@ describe('mobileAgentDraftService', () => {
       .resolves.toEqual([]);
   });
 
+  it('propagates non-permission errors while building list review contexts', async () => {
+    (draftRepository.findPendingAgentDraftsForUser as Mock).mockResolvedValue([makeDraft()]);
+    (mobilePermissionService.getEffectivePermissions as Mock).mockRejectedValue(new Error('permissions unavailable'));
+
+    await expect(mobileAgentDraftService.listPendingAgentFundingDrafts('user-1', 25))
+      .rejects.toThrow('permissions unavailable');
+  });
+
+  it('returns a single pending draft review with null-normalized optional JSON fields', async () => {
+    (draftRepository.findPendingAgentDraftByIdForUser as Mock).mockResolvedValue(makeDraft({
+      inputs: null,
+      outputs: undefined,
+      expiresAt: null,
+      memo: 'Review from phone',
+    }));
+
+    const result = await mobileAgentDraftService.getAgentFundingDraftForReview('user-1', 'draft-1');
+
+    expect(result).toMatchObject({
+      id: 'draft-1',
+      expiresAt: null,
+      memo: 'Review from phone',
+      summary: {
+        inputs: null,
+        outputs: null,
+      },
+    });
+  });
+
+  it('rejects draft records that are no longer associated with an agent', async () => {
+    (draftRepository.findPendingAgentDraftByIdForUser as Mock).mockResolvedValue(makeDraft({
+      agentId: null,
+    }));
+
+    await expect(mobileAgentDraftService.getAgentFundingDraftForReview('user-1', 'draft-1'))
+      .rejects.toThrow(NotFoundError);
+  });
+
+  it('denies direct draft review when mobile permissions cannot view transactions', async () => {
+    (draftRepository.findPendingAgentDraftByIdForUser as Mock).mockResolvedValue(makeDraft());
+    (mobilePermissionService.getEffectivePermissions as Mock).mockResolvedValue({
+      permissions: {
+        ...basePermissions,
+        viewTransactions: false,
+      },
+    });
+
+    await expect(mobileAgentDraftService.getAgentFundingDraftForReview('user-1', 'draft-1'))
+      .rejects.toThrow(ForbiddenError);
+  });
+
   it('skips list entries denied by mobile permission lookup without failing the whole list', async () => {
     (draftRepository.findPendingAgentDraftsForUser as Mock).mockResolvedValue([
       makeDraft({ id: 'draft-denied', walletId: 'wallet-denied' }),
@@ -179,6 +230,69 @@ describe('mobileAgentDraftService', () => {
         approvalStatus: 'rejected',
       },
     });
+  });
+
+  it('records approval and comment decisions without requiring mobile signing permission', async () => {
+    (draftRepository.findPendingAgentDraftByIdForUser as Mock).mockResolvedValue(makeDraft());
+    (mobilePermissionService.getEffectivePermissions as Mock).mockResolvedValue({
+      permissions: {
+        ...basePermissions,
+        signPsbt: false,
+        approveTransaction: true,
+      },
+    });
+
+    const approved = await mobileAgentDraftService.approveAgentFundingDraft('user-1', 'draft-1');
+    const commented = await mobileAgentDraftService.commentOnAgentFundingDraft('user-1', 'draft-1', 'Looks right');
+
+    expect(approved).toMatchObject({
+      decision: 'approve',
+      comment: null,
+      nextAction: 'none',
+      draft: {
+        signing: {
+          canSign: false,
+          signedPsbtUploadSupported: false,
+        },
+      },
+    });
+    expect(commented).toMatchObject({
+      decision: 'comment',
+      comment: 'Looks right',
+      nextAction: 'none',
+    });
+  });
+
+  it('returns sign as the next action for approval and comment decisions when signing is allowed', async () => {
+    (draftRepository.findPendingAgentDraftByIdForUser as Mock).mockResolvedValue(makeDraft());
+
+    const approved = await mobileAgentDraftService.approveAgentFundingDraft('user-1', 'draft-1', 'Approved');
+    const commented = await mobileAgentDraftService.commentOnAgentFundingDraft('user-1', 'draft-1', 'Ready to sign');
+
+    expect(approved).toMatchObject({
+      decision: 'approve',
+      comment: 'Approved',
+      nextAction: 'sign',
+    });
+    expect(commented).toMatchObject({
+      decision: 'comment',
+      comment: 'Ready to sign',
+      nextAction: 'sign',
+    });
+  });
+
+  it('denies approval when the mobile user can view but cannot review', async () => {
+    (draftRepository.findPendingAgentDraftByIdForUser as Mock).mockResolvedValue(makeDraft());
+    (mobilePermissionService.getEffectivePermissions as Mock).mockResolvedValue({
+      permissions: {
+        ...basePermissions,
+        signPsbt: false,
+        approveTransaction: false,
+      },
+    });
+
+    await expect(mobileAgentDraftService.approveAgentFundingDraft('user-1', 'draft-1'))
+      .rejects.toThrow(ForbiddenError);
   });
 
   it('submits signatures through the existing draft update path', async () => {
@@ -224,6 +338,14 @@ describe('mobileAgentDraftService', () => {
     (draftRepository.findPendingAgentDraftByIdForUser as Mock).mockResolvedValue(null);
 
     await expect(mobileAgentDraftService.getAgentFundingDraftForReview('user-1', 'missing'))
+      .rejects.toThrow(NotFoundError);
+  });
+
+  it('returns not found when a rejected draft cannot be loaded after status update', async () => {
+    (draftRepository.findPendingAgentDraftByIdForUser as Mock).mockResolvedValue(makeDraft());
+    (draftRepository.findAgentDraftByIdForUser as Mock).mockResolvedValue(null);
+
+    await expect(mobileAgentDraftService.rejectAgentFundingDraft('user-1', 'draft-1', 'No'))
       .rejects.toThrow(NotFoundError);
   });
 });

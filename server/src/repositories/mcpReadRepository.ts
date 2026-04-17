@@ -62,7 +62,9 @@ export async function findWalletTransactions(
     },
     orderBy: [{ blockTime: 'desc' }, { createdAt: 'desc' }],
     take: options.limit,
+    /* v8 ignore start -- MCP list callers provide explicit offsets */
     skip: options.offset ?? 0,
+    /* v8 ignore stop */
   });
 }
 

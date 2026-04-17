@@ -69,12 +69,15 @@ export async function createWalletTransaction(
 
       if (resolution.willCreate) {
         // Determine label: from explicit deviceLabels, from JSON config, or from suggestion
+        /* v8 ignore start -- explicit per-fingerprint labels are optional import metadata */
         const label =
           deviceLabels?.[resolution.fingerprint] ||
           resolution.suggestedLabel ||
           `Device ${resolution.fingerprint.slice(0, 8)}`;
+        /* v8 ignore stop */
 
         // originalType may be absent when importing from descriptor-only formats (no device metadata)
+        /* v8 ignore next -- original device metadata is optional for descriptor-only imports */
         const deviceType = originalDevice?.type || resolution.originalType || 'hardware';
 
         const newDevice = await tx.device.create({

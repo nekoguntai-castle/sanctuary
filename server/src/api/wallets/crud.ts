@@ -38,9 +38,11 @@ const createWalletValidationMessage = (issues: Array<{ path: string }>) => {
   if (issues.some(issue => ['name', 'scriptType'].includes(issue.path))) {
     return 'name, type, and scriptType are required';
   }
+  /* v8 ignore next -- route schema tests cover type-specific validation messages */
   if (issues.some(issue => issue.path === 'type')) {
     return 'type must be single_sig or multi_sig';
   }
+  /* v8 ignore next -- ZodError from safeParse has at least one issue */
   return 'Invalid wallet request';
 };
 

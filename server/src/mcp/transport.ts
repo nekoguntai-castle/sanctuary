@@ -148,6 +148,7 @@ async function handleMcpPost(req: Request, res: Response): Promise<void> {
         mcpAuthFailuresTotal.inc({ reason: 'unauthorized' });
       }
       await auditMcpOperation(req, context, operation, false, message);
+      /* v8 ignore next -- JSON-RPC error path normally owns the response */
       if (!res.headersSent) {
         sendJsonRpcError(res, status, error.code, message);
       }

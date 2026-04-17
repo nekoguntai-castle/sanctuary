@@ -42,6 +42,7 @@ const InsightUpdateBodySchema = z.object({
 });
 
 const ConversationCreateBodySchema = z.preprocess(
+  /* v8 ignore next -- request body middleware provides an object or undefined only */
   (body) => body === undefined ? {} : body,
   z.object({
     walletId: z.string().optional(),
@@ -105,6 +106,7 @@ router.get('/insights', asyncHandler(async (req, res) => {
   if (typeof type === 'string') filters.type = type as import('../services/intelligence/types').InsightType;
   if (typeof severity === 'string') filters.severity = severity as import('../services/intelligence/types').InsightSeverity;
 
+  /* v8 ignore next -- pagination schema catch provides defaults for malformed query input */
   const { limit: parsedLimit, offset: parsedOffset } = InsightPaginationSchema.safeParse({ limit, offset }).data
     ?? { limit: 50, offset: 0 };
 
@@ -180,6 +182,7 @@ router.patch('/insights/:id', asyncHandler(async (req, res) => {
  */
 router.get('/conversations', asyncHandler(async (req, res) => {
   const userId = requireAuthenticatedUser(req).userId;
+  /* v8 ignore next -- pagination schema catch provides defaults for malformed query input */
   const { limit, offset } = ConversationPaginationSchema.safeParse(req.query).data
     ?? { limit: 20, offset: 0 };
 

@@ -178,6 +178,7 @@ export async function subscribeWalletAddresses(
 
   if (!walletNetwork) return;
 
+  /* v8 ignore next -- walletNetwork fallback is defensive after early return */
   const network = (walletNetwork || 'mainnet') as BitcoinNetwork;
   const state = networks.get(network);
 

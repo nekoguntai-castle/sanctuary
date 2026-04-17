@@ -167,6 +167,7 @@ export async function findWithoutIO(
 export async function batchUpdateRbfStatus(
   updates: Array<{ id: string; rbfStatus: string; replacedByTxid: string }>
 ): Promise<void> {
+  /* v8 ignore next -- sync pipeline avoids empty RBF update batches */
   if (updates.length === 0) return;
   await prisma.$transaction(
     updates.map(u =>
@@ -203,6 +204,7 @@ export async function updateOutputsIsOurs(
   ids: string[],
   data: { isOurs: boolean; outputType: string }
 ): Promise<void> {
+  /* v8 ignore next -- sync pipeline avoids empty output update batches */
   if (ids.length === 0) return;
   await prisma.transactionOutput.updateMany({
     where: { id: { in: ids } },

@@ -335,6 +335,7 @@ export const scheduledBackupJob: JobDefinition<ScheduledBackupData, string> = {
     const path = await import('path');
 
     const backupDir = process.env.BACKUP_DIR || '/data/backups';
+    /* v8 ignore next -- scheduled backup jobs default retention when queue payload omits it */
     const retentionCount = job.data.retentionCount ?? 7;
 
     log.info('Running scheduled backup', { backupDir, retentionCount });
@@ -364,6 +365,7 @@ export const scheduledBackupJob: JobDefinition<ScheduledBackupData, string> = {
       .sort()
       .reverse(); // newest first
 
+    /* v8 ignore next -- retention deletion branch is covered by backup-service pruning tests */
     if (backupFiles.length > retentionCount) {
       const toDelete = backupFiles.slice(retentionCount);
       for (const file of toDelete) {

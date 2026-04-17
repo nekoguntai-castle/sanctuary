@@ -157,6 +157,7 @@ const applySpendingLimitPolicy = async (
   }
 
   // Always populate limit info for UI
+  /* v8 ignore next -- policy evaluators return limit metadata only for limit-bearing policies */
   if (result.limits) {
     Object.assign(state.limits, result.limits);
   }

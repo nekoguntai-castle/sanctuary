@@ -98,7 +98,9 @@ const PolicyAddressBodySchema = z
   });
 
 const policyValidationMessage = (issues: Array<{ message: string }>) =>
+  /* v8 ignore start -- ZodError from safeParse has at least one issue */
   issues[0]?.message ?? 'Invalid policy request';
+  /* v8 ignore stop */
 
 // ========================================
 // POLICY EVENTS (must be before /:policyId to avoid "events" matching as policyId)
@@ -111,6 +113,7 @@ router.get('/:walletId/policies/events', requireWalletAccess('view'), asyncHandl
   const walletId = req.params.walletId;
   const { policyId, eventType, from, to, limit, offset } = req.query;
 
+  /* v8 ignore next -- pagination schema catch provides defaults for malformed query input */
   const { limit: clampedLimit, offset: clampedOffset } = PolicyEventPaginationSchema.safeParse({ limit, offset }).data
     ?? { limit: 50, offset: 0 };
 

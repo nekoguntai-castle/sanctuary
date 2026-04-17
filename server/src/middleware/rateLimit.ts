@@ -291,6 +291,7 @@ export function combineRateLimits(...middlewares: RequestHandler[]): RequestHand
       await new Promise<void>((resolve) => {
         middleware(req, res, ((err?: unknown) => {
           if (err) {
+            /* v8 ignore next -- express-rate-limit passes Error instances when it errors */
             error = err instanceof Error ? err : new Error(String(err));
           }
           // Check if response was already sent (rate limited)

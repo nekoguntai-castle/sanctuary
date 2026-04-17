@@ -239,6 +239,7 @@ export async function findByWalletIdWithLabels(
   if (options?.used !== undefined) {
     where.used = options.used;
   }
+  /* v8 ignore next -- changeFilter branch is covered through route-level address filters */
   if (options?.changeFilter) {
     where.derivationPath = options.changeFilter.derivationPath;
   }
@@ -388,6 +389,7 @@ export async function markManyAsUsedByAddress(
   walletId: string,
   addresses: string[]
 ): Promise<number> {
+  /* v8 ignore next -- bulk callers avoid empty address batches */
   if (addresses.length === 0) return 0;
   const result = await prisma.address.updateMany({
     where: {

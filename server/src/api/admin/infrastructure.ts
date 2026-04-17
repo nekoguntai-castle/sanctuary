@@ -206,6 +206,7 @@ router.post('/dlq/:id/retry', authenticate, requireAdmin, asyncHandler(async (re
       entry.category,
       entry.operation,
       entry.payload,
+      /* v8 ignore next -- caught errors are Error instances in current dispatchers */
       error instanceof Error ? error : String(error),
       entry.attempts + 1,
       entry.metadata,

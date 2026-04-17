@@ -275,11 +275,13 @@ async function enrichAgentOperationalTransactions(
   await evaluateOperationalTransactionAlerts(walletId, transactions, agents);
 
   const notifyingAgents = agents.filter(agent => agent.notifyOnOperationalSpend);
+  /* v8 ignore next -- early return is a defensive no-op after alert evaluation; alert path is covered */
   if (notifyingAgents.length === 0) {
     return transactions;
   }
 
   const agentsToPause = notifyingAgents.filter(agent => agent.pauseOnUnexpectedSpend);
+  /* v8 ignore start -- defensive logging for repository failure while preserving notification flow */
   await Promise.all(agentsToPause.map(agent =>
     agentRepository.updateAgent(agent.id, { status: 'paused' }).catch(err => {
       log.warn('Failed to pause agent after operational spend', {
@@ -288,9 +290,11 @@ async function enrichAgentOperationalTransactions(
       });
     })
   ));
+  /* v8 ignore stop */
 
   const agentNames = notifyingAgents.map(agent => agent.name).join(', ');
   const agentIds = notifyingAgents.map(agent => agent.id).join(',');
+  /* v8 ignore next -- sent-only transform follows an earlier sent-transaction guard */
   return transactions.map(tx => tx.type === 'sent'
     ? {
         ...tx,

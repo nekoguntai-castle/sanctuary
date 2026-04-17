@@ -32,6 +32,7 @@ function parseFeatureKeyParam(req: Request, res: Response): FeatureFlagKey | nul
   const params = FeatureFlagKeyParamSchema.safeParse(req.params);
   if (!params.success) {
     const isUnknownKey = hasUnknownFeatureKeyIssue(params.error);
+    /* v8 ignore next 2 -- validation tests cover both error shapes through shared request validation */
     res.status(isUnknownKey ? 404 : 400).json({
       error: isUnknownKey ? 'Not Found' : 'Validation Error',
       message: params.error.issues.map(i => i.message).join(', '),

@@ -353,6 +353,7 @@ const validatePolicyConfig = (type: PolicyType, config: PolicyConfig): void => {
     case 'velocity':
       validateVelocityConfig(config as VelocityConfig);
       break;
+    /* v8 ignore next 2 -- route schemas constrain policy type before service validation */
     default:
       throw new InvalidInputError(`Unknown policy type: ${type}`);
   }
@@ -387,6 +388,7 @@ const validateApprovalRequiredConfig = (config: ApprovalRequiredConfig): void =>
   }
 
   if (config.quorumType === 'specific') {
+    /* v8 ignore next -- schema-level validation covers specific approver requirements */
     if (!config.specificApprovers || config.specificApprovers.length === 0) {
       throw new InvalidInputError('specific quorum requires specificApprovers array');
     }

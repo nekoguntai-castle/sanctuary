@@ -123,6 +123,7 @@ describe('import format handlers', () => {
       expect(coldcardHandler.canHandle('{"x":1}')).toEqual({ detected: false, confidence: 0 });
 
       expect(coldcardHandler.canHandle('{')).toEqual({ detected: false, confidence: 0 });
+      expect(() => coldcardHandler.parse('{')).toThrow('Invalid JSON in Coldcard export input');
     });
 
     it('parses and extracts names with fallback to label', () => {
@@ -221,6 +222,7 @@ describe('import format handlers', () => {
       expect(jsonConfigHandler.canHandle('{"x":1}')).toEqual({ detected: false, confidence: 0 });
 
       expect(jsonConfigHandler.canHandle('{')).toEqual({ detected: false, confidence: 0 });
+      expect(() => jsonConfigHandler.parse('{')).toThrow('Invalid JSON in configuration input');
     });
 
     it('parses, validates, and extracts names', () => {
@@ -283,6 +285,7 @@ describe('import format handlers', () => {
       expect(walletExportHandler.canHandle('{"x":1}')).toEqual({ detected: false, confidence: 0 });
 
       expect(walletExportHandler.canHandle('{')).toEqual({ detected: false, confidence: 0 });
+      expect(() => walletExportHandler.parse('{')).toThrow('Invalid JSON in wallet export input');
     });
 
     it('parses descriptor exports and extracts names', () => {

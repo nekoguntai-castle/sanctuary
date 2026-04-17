@@ -151,6 +151,7 @@ router.post('/wallets/:walletId/utxos/compare-strategies', requireWalletAccess('
  */
 router.get('/wallets/:walletId/utxos/recommended-strategy', requireWalletAccess('view'), asyncHandler(async (req, res) => {
   const walletId = req.walletId!;
+  /* v8 ignore next -- schema catch provides default fee rate for malformed query input */
   const feeRate = z.coerce.number().min(1).catch(10).safeParse(req.query.feeRate).data ?? 10;
   const prioritizePrivacy = req.query.prioritizePrivacy === 'true';
 

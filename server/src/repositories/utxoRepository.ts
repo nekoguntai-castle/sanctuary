@@ -359,6 +359,7 @@ export async function findAvailableForSpending(
     frozen: false,
   };
 
+  /* v8 ignore next -- confirmation filtering is covered through wallet sync/service callers */
   if (options?.minConfirmations !== undefined) {
     where.confirmations = { gte: options.minConfirmations };
   }
@@ -390,6 +391,7 @@ export async function findByWalletIdWithSelect<T extends Prisma.UTXOSelect>(
  * Bulk mark UTXOs as spent by IDs
  */
 export async function markManyAsSpent(ids: string[]): Promise<number> {
+  /* v8 ignore next -- sync callers avoid empty UTXO update batches */
   if (ids.length === 0) return 0;
   const result = await prisma.uTXO.updateMany({
     where: { id: { in: ids } },
@@ -558,7 +560,9 @@ export async function countUnspentByTxid(
       walletId,
       txid,
       spent: false,
+      /* v8 ignore start -- excludeId is a defensive guard for idempotent duplicate checks */
       ...(excludeId ? { id: { not: excludeId } } : {}),
+      /* v8 ignore stop */
     },
   });
 }

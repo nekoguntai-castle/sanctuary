@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { InvalidInputError } from '../../../src/errors';
+import { InvalidInputError, NotFoundError } from '../../../src/errors';
 
 const mocks = vi.hoisted(() => ({
   agentRepository: {
@@ -39,7 +39,32 @@ describe('agentFundingPolicy', () => {
     expect(mocks.utxoRepository.getUnspentBalance).toHaveBeenCalledWith('operational-wallet');
   });
 
+  it('allows funding when optional caps are unset and a completed cooldown has elapsed', async () => {
+    mocks.agentRepository.findAgentById.mockResolvedValueOnce(agentFixture({
+      maxFundingAmountSats: null,
+      maxOperationalBalanceSats: null,
+      dailyFundingLimitSats: null,
+      weeklyFundingLimitSats: null,
+      cooldownMinutes: 10,
+      lastFundingDraftAt: new Date('2026-04-16T11:00:00.000Z'),
+    }));
+
+    await expect(enforceAgentFundingPolicy('agent-1', 'operational-wallet', 50000n, now)).resolves.toEqual({
+      overrideId: null,
+    });
+
+    expect(mocks.utxoRepository.getUnspentBalance).not.toHaveBeenCalled();
+    expect(mocks.agentRepository.sumAgentDraftAmountsSince).not.toHaveBeenCalled();
+    expect(mocks.agentRepository.findUsableFundingOverride).not.toHaveBeenCalled();
+  });
+
   it('rejects inactive agents and destination mismatches', async () => {
+    mocks.agentRepository.findAgentById.mockResolvedValueOnce(null);
+    await expect(enforceAgentFundingPolicy('agent-1', 'operational-wallet', 1n, now)).rejects.toThrow(NotFoundError);
+
+    mocks.agentRepository.findAgentById.mockResolvedValueOnce(agentFixture({ revokedAt: new Date('2026-04-16T00:00:00.000Z') }));
+    await expect(enforceAgentFundingPolicy('agent-1', 'operational-wallet', 1n, now)).rejects.toThrow(InvalidInputError);
+
     mocks.agentRepository.findAgentById.mockResolvedValueOnce(agentFixture({ status: 'paused' }));
     await expect(enforceAgentFundingPolicy('agent-1', 'operational-wallet', 1n, now)).rejects.toThrow(InvalidInputError);
 
@@ -68,6 +93,22 @@ describe('agentFundingPolicy', () => {
       .mockResolvedValueOnce(0n)
       .mockResolvedValueOnce(490000n);
     await expect(enforceAgentFundingPolicy('agent-1', 'operational-wallet', 20000n, now)).rejects.toThrow('weekly funding limit');
+  });
+
+  it('calculates weekly funding windows from the previous Monday when now is Sunday', async () => {
+    const sunday = new Date('2026-04-19T12:00:00.000Z');
+    mocks.agentRepository.sumAgentDraftAmountsSince
+      .mockResolvedValueOnce(0n)
+      .mockResolvedValueOnce(490000n);
+
+    await expect(enforceAgentFundingPolicy('agent-1', 'operational-wallet', 20000n, sunday))
+      .rejects.toThrow('weekly funding limit');
+
+    expect(mocks.agentRepository.sumAgentDraftAmountsSince).toHaveBeenNthCalledWith(
+      2,
+      'agent-1',
+      new Date('2026-04-13T00:00:00.000Z')
+    );
   });
 
   it('allows cap violations when a valid owner override exists', async () => {

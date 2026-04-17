@@ -114,6 +114,10 @@ describe('NotificationService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetWebSocketServerIfInitialized.mockReturnValue({
+      broadcast: mockBroadcast,
+      getStats: mockGetStats,
+    });
     mockLogger.debug.mockImplementation(() => undefined);
     mockLogger.info.mockImplementation(() => undefined);
     mockLogger.warn.mockImplementation(() => undefined);
@@ -360,6 +364,59 @@ describe('NotificationService', () => {
   });
 
   describe('broadcastTransactionNotification', () => {
+    it('skips broadcast helpers when the websocket server is unavailable', () => {
+      mockGetWebSocketServerIfInitialized.mockReturnValue(null as any);
+
+      service.broadcastTransactionNotification({
+        txid: 'tx-offline',
+        walletId: 'wallet-123',
+        type: 'received',
+        amount: 100000,
+        confirmations: 0,
+        timestamp: new Date(),
+      });
+      service.broadcastBalanceUpdate({
+        walletId: 'wallet-123',
+        balance: 500000,
+        unconfirmed: 0,
+        change: 0,
+      });
+      service.broadcastBlockNotification({
+        height: 800000,
+        hash: 'blockhash123',
+        timestamp: new Date(),
+        transactionCount: 2500,
+      });
+      service.broadcastNewBlock({ height: 800001 });
+      service.broadcastMempoolNotification({
+        txid: 'mempool-tx-123',
+        fee: 5000,
+        size: 250,
+        feeRate: 20,
+      });
+      service.broadcastModelDownloadProgress({
+        model: 'llama2',
+        status: 'downloading',
+        completed: 10,
+        total: 100,
+        percent: 10,
+      });
+      service.broadcastConfirmationUpdate('wallet-123', {
+        txid: 'tx-abc',
+        confirmations: 6,
+      });
+      service.broadcastSyncStatus('wallet-123', {
+        inProgress: true,
+        status: 'started',
+      });
+
+      expect(mockBroadcast).not.toHaveBeenCalled();
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Skipping websocket broadcast; server not initialized',
+        expect.objectContaining({ type: 'transaction' })
+      );
+    });
+
     it('should broadcast transaction notification', () => {
       const notification: TransactionNotification = {
         txid: 'tx-abc',

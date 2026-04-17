@@ -93,6 +93,7 @@ function getBucketConfig(timeframe: string): { unit: BucketUnit; label: (date: D
  */
 router.get('/transactions/recent', asyncHandler(async (req, res) => {
   const userId = requireAuthenticatedUser(req).userId;
+  /* v8 ignore next -- schema catch provides default for malformed query input */
   const limit = RecentTxLimitSchema.safeParse(req.query.limit).data ?? 10;
   const requestedWalletIds = req.query.walletIds
     ? (req.query.walletIds as string).split(',').filter(Boolean)
@@ -144,6 +145,7 @@ router.get('/transactions/recent', asyncHandler(async (req, res) => {
   // Build frozen/locked state from unspent outputs created by each transaction.
   // This lets the UI show lock indicators in Recent Activity.
   const txids = [...new Set(transactions.map(tx => tx.txid))];
+  /* v8 ignore next -- no-transaction branch is a defensive empty-list optimization */
   const utxos = txids.length > 0
     ? await utxoRepository.findByTxidsUnspent(walletIds, txids)
     : [];
@@ -272,6 +274,7 @@ router.get('/transactions/pending', asyncHandler(async (req, res) => {
 router.get('/transactions/balance-history', asyncHandler(async (req, res) => {
   const userId = requireAuthenticatedUser(req).userId;
   const timeframe = (req.query.timeframe as string) || '1W';
+  /* v8 ignore next -- schema catch provides default for malformed query input */
   const totalBalance = TotalBalanceSchema.safeParse(req.query.totalBalance).data ?? 0;
   const requestedWalletIds = req.query.walletIds
     ? (req.query.walletIds as string).split(',').filter(Boolean)

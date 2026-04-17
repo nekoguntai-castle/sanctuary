@@ -176,6 +176,30 @@ describe('Access Control Service', () => {
       expect(prisma.walletUser.findFirst).not.toHaveBeenCalled();
       expect(prisma.wallet.findFirst).not.toHaveBeenCalled();
     });
+
+    it('continues through database lookup when access cache read or write fails', async () => {
+      mockCache.get.mockRejectedValueOnce(new Error('cache read failed'));
+      mockCache.set.mockRejectedValueOnce(new Error('cache write failed'));
+      vi.mocked(prisma.walletUser.findFirst).mockResolvedValue({
+        id: faker.string.uuid(),
+        walletId,
+        userId,
+        role: 'owner',
+        addedAt: new Date(),
+      });
+
+      const role = await getUserWalletRole(walletId, userId);
+
+      expect(role).toBe('owner');
+      expect(mockLog.debug).toHaveBeenCalledWith(
+        'Access cache lookup failed, continuing to DB',
+        { error: 'cache read failed' }
+      );
+      expect(mockLog.debug).toHaveBeenCalledWith(
+        'Failed to cache access role',
+        { error: 'cache write failed' }
+      );
+    });
   });
 
   describe('checkWalletAccess', () => {

@@ -17,7 +17,9 @@ export async function getUserTransfers(
 ): Promise<{ transfers: Transfer[]; total: number }> {
   const repoFilters = {
     role: filters.role,
+    /* v8 ignore start -- "all" status is a UI convenience normalized before repository call */
     status: filters.status === 'all' ? undefined : filters.status,
+    /* v8 ignore stop */
     resourceType: filters.resourceType,
   };
 

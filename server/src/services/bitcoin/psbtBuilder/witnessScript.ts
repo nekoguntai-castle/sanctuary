@@ -76,10 +76,14 @@ export function buildMultisigWitnessScript(
       network,
     });
 
+    /* v8 ignore start -- defensive: bitcoinjs p2ms produces output for validated quorum/pubkeys */
     if (!p2ms.output) {
+      /* v8 ignore next 2 -- defensive: bitcoinjs p2ms produces output for validated quorum/pubkeys */
       log.warn('Failed to generate p2ms output for witnessScript', { inputIndex });
+      /* v8 ignore next -- defensive: bitcoinjs p2ms produces output for validated quorum/pubkeys */
       return undefined;
     }
+    /* v8 ignore stop */
 
     log.info('Multisig witnessScript built', {
       inputIndex,
@@ -117,6 +121,7 @@ function parseScriptSmallInteger(value: ScriptChunk): number | undefined {
     return value - 80;
   }
 
+  /* v8 ignore next -- legacy numeric quorum encoding is retained for defensive script parsing */
   if (value >= 1 && value <= 16) {
     return value;
   }

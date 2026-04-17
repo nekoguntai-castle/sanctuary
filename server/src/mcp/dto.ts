@@ -187,6 +187,7 @@ function countDraftRecipients(draft: RecordLike): number {
   if (Array.isArray(draft.outputs)) {
     return draft.outputs.length;
   }
+  /* v8 ignore next -- legacy draft recipient fallback is retained for older stored records */
   return draft.recipient ? 1 : 0;
 }
 

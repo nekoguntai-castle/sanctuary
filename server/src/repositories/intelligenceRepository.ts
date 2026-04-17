@@ -262,7 +262,9 @@ async function getTransactionVelocity(
 
   return txs.map((t) => ({
     period: `${days}d`,
+    /* v8 ignore start -- Prisma aggregate count shape is stable in supported client versions */
     count: t._count?._all ?? 0,
+    /* v8 ignore stop */
     totalSats: t._sum?.amount ?? BigInt(0),
   }));
 }

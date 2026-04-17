@@ -10,6 +10,7 @@ import {
   mockReleaseLock,
   type SyncServiceTestContext,
 } from './syncServiceTestHarness';
+import { startSubscriptionLockRefresh } from '../../../../src/services/sync/subscriptionManager';
 
 export function registerSyncServiceRealtimeSubscriptionTests(context: SyncServiceTestContext): void {
   describe('real-time subscriptions and block handling', () => {
@@ -92,6 +93,35 @@ export function registerSyncServiceRealtimeSubscriptionTests(context: SyncServic
       expect(context.syncService['subscriptionOwnership']).toBe('disabled');
     });
 
+    it('wires electrum block and address callbacks during setup', async () => {
+      mockPrismaClient.address.findMany.mockResolvedValueOnce([
+        { address: 'addr-callback', walletId: 'wallet-callback' },
+      ]);
+      mockElectrumClient.subscribeAddressBatch.mockResolvedValueOnce(
+        new Map([['addr-callback', 'status-callback']])
+      );
+      const updateSpy = vi.spyOn(context.syncService as any, 'updateAllConfirmations').mockResolvedValue(undefined);
+      const queueSpy = vi.spyOn(context.syncService, 'queueSync').mockImplementation(() => undefined);
+
+      await context.syncService['setupRealTimeSubscriptions']();
+
+      const newBlockHandler = mockElectrumClient.on.mock.calls.find(([event]) => event === 'newBlock')?.[1] as
+        | ((block: { height: number; hex: string }) => void)
+        | undefined;
+      const addressActivityHandler = mockElectrumClient.on.mock.calls.find(([event]) => event === 'addressActivity')?.[1] as
+        | ((activity: { scriptHash: string; address?: string; status: string }) => void)
+        | undefined;
+
+      expect(newBlockHandler).toBeDefined();
+      expect(addressActivityHandler).toBeDefined();
+
+      newBlockHandler?.({ height: 123, hex: 'f'.repeat(80) });
+      addressActivityHandler?.({ scriptHash: 'hash-callback', address: 'addr-callback', status: 'changed' });
+
+      await vi.waitFor(() => expect(updateSpy).toHaveBeenCalled());
+      expect(queueSpy).toHaveBeenCalledWith('wallet-callback', 'high');
+    });
+
     it('handles setup errors after acquiring lock', async () => {
       mockGetNodeClient.mockRejectedValueOnce(new Error('node offline'));
 
@@ -151,6 +181,27 @@ export function registerSyncServiceRealtimeSubscriptionTests(context: SyncServic
 
       expect(mockExtendLock).not.toHaveBeenCalled();
       context.syncService['stopSubscriptionLockRefresh']();
+    });
+
+    it('tears down directly when a standalone lock refresh loses ownership', async () => {
+      const state = (context.syncService as any).state;
+      state.subscriptionLock = {
+        key: 'electrum:subscriptions',
+        token: 'token-direct',
+        expiresAt: Date.now() + 60000,
+        isLocal: true,
+      };
+      state.subscriptionOwnership = 'self';
+      state.addressToWalletMap.set('addr-direct-teardown', 'wallet-direct');
+      mockExtendLock.mockResolvedValueOnce(null);
+
+      startSubscriptionLockRefresh(state, async () => undefined);
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(state.subscriptionOwnership).toBe('external');
+      expect(state.subscriptionLock).toBeNull();
+      expect(state.addressToWalletMap.size).toBe(0);
+      expect(mockElectrumClient.unsubscribeAddress).toHaveBeenCalledWith('addr-direct-teardown');
     });
 
     it('batch-subscribes addresses and falls back to individual subscriptions on batch failure', async () => {
@@ -266,6 +317,33 @@ export function registerSyncServiceRealtimeSubscriptionTests(context: SyncServic
       await context.syncService['reconcileAddressToWalletMap']();
 
       expect(context.syncService['addressToWalletMap'].has('addr-keep')).toBe(true);
+    });
+
+    it('clears stale mappings when reconciliation finds no database addresses', async () => {
+      context.syncService['addressToWalletMap'].set('addr-stale', 'wallet-stale');
+      mockPrismaClient.address.findMany.mockResolvedValueOnce([]);
+
+      await context.syncService['reconcileAddressToWalletMap']();
+
+      expect(context.syncService['addressToWalletMap'].size).toBe(0);
+    });
+
+    it('falls back to individual subscriptions during reconciliation when batch subscribe fails', async () => {
+      context.syncService['subscriptionOwnership'] = 'self';
+      mockPrismaClient.address.findMany.mockResolvedValueOnce([
+        { address: 'addr-reconcile-1', walletId: 'wallet-reconcile-1' },
+        { address: 'addr-reconcile-2', walletId: 'wallet-reconcile-2' },
+      ]);
+      mockElectrumClient.subscribeAddressBatch.mockRejectedValueOnce(new Error('batch unsupported'));
+      mockElectrumClient.subscribeAddress
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new Error('addr-reconcile-2 failed'));
+
+      await context.syncService['reconcileAddressToWalletMap']();
+
+      expect(mockElectrumClient.subscribeAddress).toHaveBeenCalledTimes(2);
+      expect(context.syncService['addressToWalletMap'].get('addr-reconcile-1')).toBe('wallet-reconcile-1');
+      expect(context.syncService['addressToWalletMap'].has('addr-reconcile-2')).toBe(false);
     });
 
     it('handles new block success and confirmation-update failure paths', async () => {

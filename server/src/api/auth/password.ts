@@ -58,6 +58,7 @@ export async function clearInitialPasswordMarker(userId: string): Promise<void> 
   try {
     await systemSettingRepository.delete(`initialPassword_${userId}`);
   } catch (error) {
+    /* v8 ignore next -- best-effort cleanup logging only; delete failures must not block auth */
     log.error('Error clearing initial password marker', { error: getErrorMessage(error) });
   }
 }

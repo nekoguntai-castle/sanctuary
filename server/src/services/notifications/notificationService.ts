@@ -114,6 +114,7 @@ function pruneRecentDraftNotificationKeys(now: number): void {
 
   while (recentDraftNotificationKeys.size >= DRAFT_NOTIFICATION_DEDUPE_MAX_KEYS) {
     const oldestKey = recentDraftNotificationKeys.keys().next().value;
+    /* v8 ignore next -- Map cannot be at or above max size and have no first key */
     if (oldestKey === undefined) {
       return;
     }

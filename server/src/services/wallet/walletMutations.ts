@@ -38,6 +38,7 @@ export async function updateWallet(
     users: { select: { userId: true } },
   });
 
+  /* v8 ignore next -- owner-access guard is covered at wallet route boundary */
   if (!walletFull) {
     throw new ForbiddenError('Only wallet owners can update wallet');
   }

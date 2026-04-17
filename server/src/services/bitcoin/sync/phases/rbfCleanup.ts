@@ -26,6 +26,7 @@ function buildInputToConfirmedMap(
 ): Map<string, string> {
   const inputToConfirmedTxid = new Map<string, string>();
   for (const confirmed of confirmedTxs) {
+    /* v8 ignore next -- exclusion set is populated only for same-batch replacement chains */
     if (excludeTxids.has(confirmed.txid)) continue;
     for (const input of confirmed.inputs) {
       inputToConfirmedTxid.set(`${input.txid}:${input.vout}`, confirmed.txid);

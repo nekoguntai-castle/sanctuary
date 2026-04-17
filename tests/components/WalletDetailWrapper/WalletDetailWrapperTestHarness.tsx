@@ -43,6 +43,8 @@ const walletDetailMocks = vi.hoisted(() => ({
   setAddressLabels: vi.fn(),
   updateWallet: vi.fn(),
   deleteWallet: vi.fn(),
+  getWalletAgents: vi.fn(),
+  user: { id: 'user-1', username: 'owner', isAdmin: false } as any,
 }));
 
 export const mocks = walletDetailMocks;
@@ -76,7 +78,7 @@ vi.mock('../../../hooks/useErrorHandler', () => ({
 
 vi.mock('../../../contexts/UserContext', () => ({
   useUser: () => ({
-    user: { id: 'user-1', username: 'owner' },
+    user: walletDetailMocks.user,
   }),
 }));
 
@@ -146,6 +148,7 @@ vi.mock('../../../components/WalletDetail/hooks/useWalletWebSocket', () => ({
 vi.mock('../../../components/WalletDetail/WalletHeader', () => ({
   WalletHeader: (props: any) => (
     <div data-testid="wallet-header">
+      <span data-testid="wallet-agent-links">{props.agentLinks?.map((link: any) => `${link.role}:${link.linkedWalletName}`).join('|') || 'none'}</span>
       <button onClick={props.onReceive}>header-receive</button>
       <button onClick={props.onSend}>header-send</button>
       <button onClick={props.onSync}>header-sync</button>
@@ -301,6 +304,14 @@ vi.mock('../../../src/api/wallets', async (importOriginal) => {
   };
 });
 
+vi.mock('../../../src/api/admin', async (importOriginal) => {
+  const actual = await importOriginal() as any;
+  return {
+    ...actual,
+    getWalletAgents: walletDetailMocks.getWalletAgents,
+  };
+});
+
 vi.mock('../../../src/api/transactions', async (importOriginal) => {
   const actual = await importOriginal() as any;
   return {
@@ -433,6 +444,7 @@ export const setupWalletDetailWrapperHarness = () => {
     vi.clearAllMocks();
     mocks.routeId = 'wallet-1';
     mocks.locationState = {};
+    mocks.user = { id: 'user-1', username: 'owner', isAdmin: false };
 
     mocks.loadAddresses = vi.fn().mockResolvedValue(undefined);
     mocks.loadAddressSummary = vi.fn().mockResolvedValue(undefined);
@@ -482,5 +494,6 @@ export const setupWalletDetailWrapperHarness = () => {
     mocks.setAddressLabels.mockResolvedValue({} as any);
     mocks.updateWallet.mockResolvedValue({} as any);
     mocks.deleteWallet.mockResolvedValue({} as any);
+    mocks.getWalletAgents.mockResolvedValue([]);
   });
 };

@@ -170,6 +170,14 @@ vi.mock('../components/Intelligence', () => ({
   Intelligence: () => <div>Intelligence Page</div>,
 }));
 
+vi.mock('../components/AgentWalletDashboard', () => ({
+  AgentWalletDashboard: () => <div>Agent Wallets Page</div>,
+}));
+
+vi.mock('../components/AgentManagement', () => ({
+  AgentManagement: () => <div>Wallet Agents Page</div>,
+}));
+
 vi.mock('../components/NotificationToast', () => ({
   NotificationContainer: ({ notifications }: { notifications: unknown[] }) => (
     <div data-testid="notification-count">{notifications.length}</div>
@@ -337,6 +345,8 @@ describe('App branch coverage', () => {
       { hash: '#/admin/ai', text: 'AI Settings Page' },
       { hash: '#/admin/monitoring', text: 'Monitoring Page' },
       { hash: '#/admin/feature-flags', text: 'Feature Flags Page' },
+      { hash: '#/admin/agent-wallets', text: 'Agent Wallets Page' },
+      { hash: '#/admin/agents', text: 'Wallet Agents Page' },
       { hash: '#/intelligence', text: 'Intelligence Page' },
     ];
 

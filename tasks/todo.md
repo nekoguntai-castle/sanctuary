@@ -1,4 +1,44 @@
-# Current Task: Agent Wallet Funding Implementation
+# Current Task: 100% Coverage Gates
+
+Status: frontend and backend literal 100% coverage gates complete; server test tsconfig no longer references Jest types
+
+Goal: bring the enforced frontend and backend coverage gates to literal 100% with targeted tests where behavior is reachable, using narrowly justified exclusions only for non-runtime shims, type-only files, V8 instrumentation artifacts, or environment entrypoints that cannot be meaningfully unit-covered.
+
+## Coverage Checklist
+
+- [x] Reproduce current frontend and backend coverage failures locally.
+- [x] Identify every uncovered file/line that prevents the enforced gates from passing.
+- [x] Add focused tests for reachable branch, function, statement, and line gaps in the affected agent funding and WalletDetail surfaces.
+- [x] Tighten backend thresholds to 100% once the backend report is literally clean.
+- [x] Replace the stale Jest test type reference with Vitest globals in the server test tsconfig.
+- [x] Run frontend and backend coverage gates plus relevant type/build checks.
+- [x] Add a review section summarizing changes, edge cases, verification, and residual risks.
+- [x] Commit and push the coverage fix.
+
+## Coverage Review
+
+Changes made:
+
+- Added frontend route and WalletDetail wrapper coverage for lazy agent routes, admin wallet-agent badge loading, fallback badge labels, rejected fetches, and unmount cancellation.
+- Added backend tests around admin agent route validation, scoped agent route rejection metadata, agent funding draft PSBT edge cases, mobile draft review permissions, draft notification metadata, websocket broadcast skips, agent funding policy windows, monitoring alert early returns, middleware auth, Telegram formatting, and repository null/default paths.
+- Excluded `src/worker.ts` from backend unit coverage as a side-effect daemon entrypoint; worker behavior remains covered through worker module and worker entry tests.
+- Tightened backend Vitest thresholds to 100% for statements, branches, functions, and lines.
+- Updated `server/tsconfig.test.json` to use `vitest/globals` instead of missing Jest types, include shared test dependencies, and allow extension-bearing TypeScript imports for the existing test suite layout.
+
+Verification:
+
+- `npm run test:coverage` passed with frontend/root literal 100% coverage: statements 14257/14257, branches 10630/10630, functions 3625/3625, lines 13298/13298.
+- `cd server && npm run test:unit -- --coverage` passed with backend literal 100% coverage: statements 21669/21669, branches 10638/10638, functions 4256/4256, lines 20784/20784.
+- `npm run typecheck:tests` passed.
+- `cd server && npm run build` passed.
+- `cd server && npx tsc --noEmit -p tsconfig.test.json --pretty false` no longer fails on missing Jest types; it now exposes pre-existing server test type debt in fixtures, mock imports, Express router test helpers, and stale integration setup signatures.
+- `git diff --check` passed.
+
+Residual risk:
+
+- Server runtime build and coverage are green, but the dedicated server test typecheck is not yet clean because the test suite has broader non-Jest typing issues. The missing Jest types blocker is removed; finishing the remaining test type debt should be handled as a separate cleanup pass unless we want to expand this coverage task further.
+
+## Previous Task: Agent Wallet Funding Implementation
 
 Status: Phase 15 implementation and cross-phase corner-case audit complete
 

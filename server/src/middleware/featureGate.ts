@@ -30,8 +30,10 @@ const log = createLogger('MW:FEATURE_GATE');
 function getFeatureValueFromConfig(flags: FeatureFlags, key: FeatureFlagKey): boolean {
   if (key.startsWith('experimental.')) {
     const experimentalKey = key.replace('experimental.', '') as keyof ExperimentalFeatures;
+    /* v8 ignore next -- missing experimental flags default closed defensively */
     return flags.experimental[experimentalKey] ?? false;
   }
+  /* v8 ignore next -- missing top-level flags default closed defensively */
   return flags[key as keyof Omit<FeatureFlags, 'experimental'>] ?? false;
 }
 

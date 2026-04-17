@@ -10,6 +10,7 @@ vi.mock('../../../src/models/prisma', () => ({
   default: {
     walletUser: {
       findFirst: vi.fn(),
+      findMany: vi.fn(),
       findUnique: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
@@ -33,6 +34,10 @@ vi.mock('../../../src/infrastructure/accessCache', () => ({
 import prisma from '../../../src/models/prisma';
 import {
   addUserToWallet,
+  findWalletIdsByUserRole,
+  findWalletUserByCompositeKey,
+  findWalletUsersWithPreferences,
+  findWalletUsersWithUsername,
   findWalletUser,
   getGroupMember,
   getWalletSharingInfo,
@@ -200,6 +205,51 @@ describe('walletSharingRepository', () => {
           },
         },
       },
+    });
+  });
+
+  it('queries wallet-user list helpers with the expected selectors', async () => {
+    (prisma.walletUser.findMany as Mock)
+      .mockResolvedValueOnce([{ walletId: 'wallet-1' }, { walletId: 'wallet-2' }])
+      .mockResolvedValueOnce([{ id: 'wu-pref' }])
+      .mockResolvedValueOnce([{ id: 'wu-name' }]);
+    (prisma.walletUser.findUnique as Mock).mockResolvedValueOnce({ role: 'signer' });
+
+    await expect(findWalletIdsByUserRole('user-1', ['owner', 'signer'])).resolves.toEqual(['wallet-1', 'wallet-2']);
+    expect(prisma.walletUser.findMany).toHaveBeenNthCalledWith(1, {
+      where: {
+        userId: 'user-1',
+        role: { in: ['owner', 'signer'] },
+      },
+      select: { walletId: true },
+    });
+
+    await expect(findWalletUsersWithPreferences('wallet-1')).resolves.toEqual([{ id: 'wu-pref' }]);
+    expect(prisma.walletUser.findMany).toHaveBeenNthCalledWith(2, {
+      where: { walletId: 'wallet-1' },
+      include: {
+        user: {
+          select: { id: true, preferences: true },
+        },
+      },
+    });
+
+    await expect(findWalletUsersWithUsername('wallet-1')).resolves.toEqual([{ id: 'wu-name' }]);
+    expect(prisma.walletUser.findMany).toHaveBeenNthCalledWith(3, {
+      where: { walletId: 'wallet-1' },
+      include: {
+        user: {
+          select: { id: true, username: true },
+        },
+      },
+    });
+
+    await expect(findWalletUserByCompositeKey('wallet-1', 'user-1')).resolves.toEqual({ role: 'signer' });
+    expect(prisma.walletUser.findUnique).toHaveBeenCalledWith({
+      where: {
+        walletId_userId: { walletId: 'wallet-1', userId: 'user-1' },
+      },
+      select: { role: true },
     });
   });
 

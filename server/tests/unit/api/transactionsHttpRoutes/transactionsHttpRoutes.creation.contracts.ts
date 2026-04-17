@@ -162,6 +162,26 @@ export function registerTransactionHttpCreationTests(): void {
     );
   });
 
+  it('includes allowed policy evaluation metadata for triggered transaction creation policies', async () => {
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({ id: walletId, network: 'testnet' });
+    mockWalletFindById.mockResolvedValue({ id: walletId, network: 'testnet' });
+    mockEvaluatePolicies.mockResolvedValueOnce({
+      allowed: true,
+      triggered: [{ policyId: 'p1', policyName: 'Review', type: 'spending_limit', action: 'warn', reason: 'Near limit' }],
+    });
+
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/create`)
+      .send({
+        recipient: 'tb1qrecipient',
+        amount: 10000,
+        feeRate: 1,
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.policyEvaluation.triggered).toHaveLength(1);
+  });
+
   it('returns 403 when vault policy blocks transaction creation', async () => {
     mockPrismaClient.wallet.findUnique.mockResolvedValue({ id: walletId, network: 'mainnet' });
     mockWalletFindById.mockResolvedValue({ id: walletId, network: 'mainnet' });
@@ -354,6 +374,26 @@ export function registerTransactionHttpCreationTests(): void {
     expect(response.body.code).toBe('INTERNAL_ERROR');
   });
 
+  it('returns 403 when vault policy blocks batch transaction creation', async () => {
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({ id: walletId, network: 'mainnet' });
+    mockWalletFindById.mockResolvedValue({ id: walletId, network: 'mainnet' });
+    mockEvaluatePolicies.mockResolvedValueOnce({
+      allowed: false,
+      triggered: [{ policyId: 'p1', policyName: 'Batch Limit', type: 'spending_limit', action: 'blocked', reason: 'Over limit' }],
+    });
+
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/batch`)
+      .send({
+        feeRate: 1,
+        outputs: [{ address: 'tb1qone', amount: 10000 }],
+      });
+
+    expect(response.status).toBe(403);
+    expect(response.body.code).toBe('FORBIDDEN');
+    expect(mockCreateBatchTransaction).not.toHaveBeenCalled();
+  });
+
   it('rejects batch transaction when more than one output uses sendMax', async () => {
     mockPrismaClient.wallet.findUnique.mockResolvedValue({ id: walletId, network: 'mainnet' });
     mockWalletFindById.mockResolvedValue({ id: walletId, network: 'mainnet' });
@@ -394,5 +434,42 @@ export function registerTransactionHttpCreationTests(): void {
       1.2,
       expect.objectContaining({ enableRBF: true })
     );
+  });
+
+  it('includes allowed policy evaluation metadata for triggered batch policies', async () => {
+    mockPrismaClient.wallet.findUnique.mockResolvedValue({ id: walletId, network: 'testnet' });
+    mockWalletFindById.mockResolvedValue({ id: walletId, network: 'testnet' });
+    mockEvaluatePolicies.mockResolvedValueOnce({
+      allowed: true,
+      triggered: [{ policyId: 'p2', policyName: 'Batch Review', type: 'address_control', action: 'warn', reason: 'Watched address' }],
+    });
+
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/transactions/batch`)
+      .send({
+        feeRate: 1.2,
+        outputs: [{ address: 'tb1qone', amount: 10000 }],
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.policyEvaluation.triggered).toHaveLength(1);
+  });
+
+  it('returns 403 when vault policy blocks mobile PSBT creation', async () => {
+    mockEvaluatePolicies.mockResolvedValueOnce({
+      allowed: false,
+      triggered: [{ policyId: 'p3', policyName: 'PSBT Limit', type: 'spending_limit', action: 'blocked', reason: 'Over limit' }],
+    });
+
+    const response = await request(app)
+      .post(`/api/v1/wallets/${walletId}/psbt/create`)
+      .send({
+        recipients: [{ address: 'tb1qrecipient', amount: 10000 }],
+        feeRate: 1,
+      });
+
+    expect(response.status).toBe(403);
+    expect(response.body.code).toBe('FORBIDDEN');
+    expect(mockCreateTransaction).not.toHaveBeenCalled();
   });
 }

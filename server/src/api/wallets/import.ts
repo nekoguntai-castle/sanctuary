@@ -55,7 +55,9 @@ const WalletImportBodySchema = z
   });
 
 const walletImportValidationMessage = (issues: Array<{ message: string }>) =>
+  /* v8 ignore start -- ZodError from safeParse has at least one issue */
   issues[0]?.message ?? 'Invalid wallet import request';
+  /* v8 ignore stop */
 
 /**
  * GET /api/v1/wallets/import/formats

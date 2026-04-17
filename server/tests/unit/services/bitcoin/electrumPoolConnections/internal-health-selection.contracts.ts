@@ -4,6 +4,7 @@ import {
   makeConn,
   type ElectrumPoolTestContext,
 } from './electrumPoolConnectionsTestHarness';
+import { ensureMinimumConnections } from '../../../../../src/services/bitcoin/electrumPool/connectionManager';
 
 const createTimeoutHandle = () => ({}) as NodeJS.Timeout;
 
@@ -650,5 +651,36 @@ export function registerElectrumPoolInternalHealthSelectionTests(context: Electr
       await (context.pool as any).ensureMinimumConnections();
 
       expect(createSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it('module ensureMinimumConnections uses default connection creation when no factory is supplied', async () => {
+      context.pool = createPool({ enabled: true, connectionTimeoutMs: 100 });
+      const server = { id: 's1', label: 'S1', host: 'a', port: 1, useSsl: true, priority: 0, enabled: true };
+      context.pool!.setServers([server]);
+      const connections = new Map<string, any>();
+      const serverStats = (context.pool as any).serverStats as Map<string, any>;
+      const recordServerSuccess = vi.fn();
+      const recordServerFailure = vi.fn();
+      const recordHealthCheckResult = vi.fn();
+      const updateServerHealthInDb = vi.fn().mockResolvedValue(undefined);
+
+      await ensureMinimumConnections(
+        [server],
+        serverStats,
+        connections,
+        (context.pool as any).config,
+        null,
+        false,
+        vi.fn(),
+        recordServerSuccess,
+        recordServerFailure,
+        recordHealthCheckResult,
+        updateServerHealthInDb
+      );
+
+      expect(connections.size).toBe(1);
+      expect(recordServerSuccess).toHaveBeenCalledWith('s1');
+      expect(recordServerFailure).not.toHaveBeenCalled();
+      expect(updateServerHealthInDb).toHaveBeenCalledWith('s1', true, 0);
     });
 }

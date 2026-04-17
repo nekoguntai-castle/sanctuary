@@ -38,8 +38,10 @@ export async function create(data: {
       key: data.key,
       enabled: data.enabled,
       description: data.description ?? null,
+      /* v8 ignore start -- repository defaults are defensive for callers outside the service */
       category: data.category ?? 'general',
       modifiedBy: data.modifiedBy ?? 'system',
+      /* v8 ignore stop */
     },
   });
 }

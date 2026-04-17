@@ -180,6 +180,30 @@ describe('Feature Gate Middleware', () => {
       expect(nextFunction).not.toHaveBeenCalled();
       expect(statusMock).toHaveBeenCalledWith(403);
     });
+
+    it('should use config fallback for experimental features when service fails', async () => {
+      mockFeatures.experimental.taprootAddresses = true;
+      isEnabledMock.mockRejectedValueOnce(new Error('service unavailable'));
+
+      await requireFeature('experimental.taprootAddresses')(
+        mockRequest as Request,
+        mockResponse as Response,
+        nextFunction,
+      );
+
+      expect(nextFunction).toHaveBeenCalled();
+
+      vi.clearAllMocks();
+      isEnabledMock.mockRejectedValueOnce(new Error('service unavailable'));
+
+      await requireFeature('experimental.silentPayments')(
+        mockRequest as Request,
+        mockResponse as Response,
+        nextFunction,
+      );
+
+      expect(statusMock).toHaveBeenCalledWith(403);
+    });
   });
 
   describe('requireAllFeatures', () => {

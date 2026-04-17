@@ -165,6 +165,7 @@ export async function resolveUtxoRefs(
  * Find locks for spent UTXOs with draft label info (for sync reconciliation)
  */
 export async function findLocksByUtxoIdsWithDraftInfo(utxoIds: string[]) {
+  /* v8 ignore next -- sync reconciliation avoids empty UTXO batches */
   if (utxoIds.length === 0) return [];
   return prisma.draftUtxoLock.findMany({
     where: { utxoId: { in: utxoIds } },

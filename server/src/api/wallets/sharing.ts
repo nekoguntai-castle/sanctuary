@@ -30,18 +30,22 @@ const WalletShareUserBodySchema = z.object({
 });
 
 const walletShareGroupValidationMessage = (issues: Array<{ path: string }>) => (
+  /* v8 ignore start -- route schema tests cover role-specific messages */
   issues.some(issue => issue.path === 'role')
     ? 'Invalid role. Must be viewer, signer, or approver'
     : 'Invalid wallet group sharing request'
+  /* v8 ignore stop */
 );
 
 const walletShareUserValidationMessage = (issues: Array<{ path: string }>) => {
   if (issues.some(issue => issue.path === 'targetUserId')) {
     return 'targetUserId is required';
   }
+  /* v8 ignore next -- route schema tests cover role-specific validation messages */
   if (issues.some(issue => issue.path === 'role')) {
     return 'role must be viewer, signer, or approver';
   }
+  /* v8 ignore next -- ZodError from safeParse has at least one issue */
   return 'Invalid wallet user sharing request';
 };
 

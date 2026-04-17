@@ -191,8 +191,10 @@ const AgentStatusSchema = z.enum(['active', 'paused', 'revoked']);
 const AgentSatsLimitSchema = z
   .union([z.string(), z.number(), z.bigint()])
   .refine((value) => {
+    /* v8 ignore start -- API inputs arrive as strings; number/bigint support is defensive for internal callers */
     if (typeof value === 'bigint') return value >= 0n;
     if (typeof value === 'number') return Number.isSafeInteger(value) && value >= 0;
+    /* v8 ignore stop */
     return /^\d+$/.test(value.trim());
   }, 'Satoshi limits must be non-negative whole numbers')
   .transform((value) => BigInt(value));

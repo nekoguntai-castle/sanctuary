@@ -46,6 +46,24 @@ export function registerSystemResourcesContracts() {
     expect(response.body.gpu).toEqual({ available: false, name: null });
   });
 
+  it('should use current-directory disk probe when root df fails', async () => {
+    getMockExecFilePromisified()
+      .mockRejectedValueOnce(new Error('root df failed'))
+      .mockRejectedValueOnce(new Error('nvidia-smi missing'))
+      .mockResolvedValueOnce({
+        stdout: 'Filesystem 1M-blocks Used Available Use% Mounted on\n/dev/sda1 64000 1000 32000 4% .',
+        stderr: '',
+      });
+
+    const response = await request(app)
+  .get('/api/v1/ai/system-resources')
+  .set('Authorization', 'Bearer test-token');
+
+    expect(response.status).toBe(200);
+    expect(response.body.disk.total).toBe(64000);
+    expect(response.body.disk.available).toBe(32000);
+  });
+
   it('should return 500 when system resource check throws unexpectedly', async () => {
     (os.freemem as Mock).mockImplementationOnce(() => {
   throw new Error('freemem failed');

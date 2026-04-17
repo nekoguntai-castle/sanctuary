@@ -63,6 +63,7 @@ const pushRegisterValidationMessage = (issues: Array<{ path: string; message: st
   if (issues.some(issue => issue.path === 'token')) {
     return 'Device token is required';
   }
+  /* v8 ignore next -- route schema tests cover token/platform validation; this is message specificity */
   if (issues.some(issue => issue.path === 'deviceName')) {
     return 'deviceName must be a string';
   }

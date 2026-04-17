@@ -9,6 +9,7 @@ import {
 } from './walletImport.setup';
 import { mockPrismaClient } from '../../mocks/prisma';
 import * as walletImport from '../../../src/services/walletImport';
+import { createWalletTransaction } from '../../../src/services/walletImport/walletImportService';
 import type { Network } from '../../../src/services/bitcoin/descriptorParser';
 
 describe('Wallet Import Service - Operations', () => {
@@ -253,6 +254,39 @@ describe('Wallet Import Service - Operations', () => {
   });
 
   describe('Edge Cases', () => {
+    it('throws when reuse resolution is missing an existing device id', async () => {
+      await expect(createWalletTransaction(userId, {
+        name: 'Broken import',
+        network: 'mainnet',
+        parsed: {
+          type: 'single_sig',
+          scriptType: 'native_segwit',
+          devices: [],
+          network: 'mainnet',
+          isChange: false,
+        },
+        resolutions: [{
+          fingerprint: 'abcd1234',
+          xpub: 'xpub6Dz...',
+          derivationPath: "m/84'/0'/0'",
+          willCreate: false,
+          originalType: 'hardware',
+        } as any],
+      })).rejects.toThrow('missing device id');
+    });
+
+    it('throws when wallet export JSON lacks a descriptor', async () => {
+      mockParseImportInput.mockReturnValue({
+        format: 'wallet_export',
+        parsed: null,
+      });
+
+      await expect(walletImport.importWallet(userId, {
+        data: '{"name":"Export without descriptor"}',
+        name: 'Imported Wallet',
+      })).rejects.toThrow('Invalid JSON in wallet export data');
+    });
+
     it('should handle case-insensitive fingerprint matching', async () => {
       const descriptor = "wpkh([ABCD1234/84'/0'/0']xpub6Dz...)#checksum";
 

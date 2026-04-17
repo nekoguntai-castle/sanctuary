@@ -31,6 +31,8 @@ export default defineConfig({
         'src/generated/**',
         // Side-effect-only daemon entrypoint; behavior is covered through MCP transport/auth modules.
         'src/mcp-entry.ts',
+        // Side-effect-only worker daemon entrypoint; behavior is covered through worker job modules.
+        'src/worker.ts',
         // Re-export shims preserving backward-compatible import paths (zero logic)
         'src/services/aiService.ts',
         'src/services/eventService.ts',
@@ -41,16 +43,16 @@ export default defineConfig({
         'src/services/bitcoin/sync/confirmations.ts',
         'src/services/bitcoin/sync/phases/processTransactions.ts',
         'src/services/telegram/telegramService.ts',
+        // Route aggregator with no domain logic; subroutes are covered by route tests.
+        'src/api/transactions.ts',
         // BullMQ queue producer — requires live Redis, covered by integration tests
         'src/services/workerSyncQueue.ts',
       ],
       thresholds: {
-        // Coverage baseline locked to current observed total coverage.
-        // Remaining gaps are v8 arrow-function artifacts in delegate methods.
-        branches: 98,
-        functions: 99,
-        lines: 99,
-        statements: 99,
+        branches: 100,
+        functions: 100,
+        lines: 100,
+        statements: 100,
       },
     },
   },

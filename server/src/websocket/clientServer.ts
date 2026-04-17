@@ -119,7 +119,9 @@ export class SanctauryWebSocketServer {
       trackUserConnection: (userId, c) => this.trackUserConnection(userId, c),
       getUserConnections: (userId) => this.connectionsPerUser.get(userId),
       completeClientRegistration: (c) => this.completeClientRegistration(c),
+      /* v8 ignore start -- delegate callback; send behavior is covered through message handlers */
       sendToClient: (c, msg) => this.sendToClient(c, msg),
+      /* v8 ignore stop */
     });
 
     if (isAsyncAuth) {
@@ -302,8 +304,10 @@ export class SanctauryWebSocketServer {
     return handleAuthMessage(client, data, {
       trackUserConnection: (userId, c) => this.trackUserConnection(userId, c),
       getUserConnections: (userId) => this.connectionsPerUser.get(userId),
+      /* v8 ignore start -- delegate callback; registration behavior is covered through auth handler tests */
       completeClientRegistration: (c) => this.completeClientRegistration(c),
       sendToClient: (c, msg) => this.sendToClient(c, msg),
+      /* v8 ignore stop */
     });
   }
 

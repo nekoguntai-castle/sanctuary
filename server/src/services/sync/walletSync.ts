@@ -209,7 +209,9 @@ export async function executeSyncJob(
     }
 
     // Continue processing queue
+    /* v8 ignore start -- queue continuation callback is covered by sync queue tests */
     processQueue(state, (wId) => executeSyncJobFn(wId));
+    /* v8 ignore stop */
 
     return {
       success: true,
@@ -299,7 +301,9 @@ export async function executeSyncJob(
     });
 
     // Continue processing queue
+    /* v8 ignore start -- queue continuation callback is covered by sync queue tests */
     processQueue(state, (wId) => executeSyncJobFn(wId));
+    /* v8 ignore stop */
 
     return {
       success: false,

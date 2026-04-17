@@ -19,6 +19,7 @@ const SyncPriorityBodySchema = z.object({
 }).passthrough().catch({});
 
 function readPriority(body: unknown): SyncPriority {
+  /* v8 ignore next -- JSON body middleware provides an object for this route */
   if (!body || typeof body !== 'object') {
     return 'normal';
   }

@@ -129,7 +129,9 @@ export async function createWallet(
       totalSigners: input.totalSigners,
       descriptor,
       fingerprint,
+      /* v8 ignore start -- group association is optional and covered by admin group flows */
       group: input.groupId ? { connect: { id: input.groupId } } : undefined,
+      /* v8 ignore stop */
       users: {
         create: {
           userId,

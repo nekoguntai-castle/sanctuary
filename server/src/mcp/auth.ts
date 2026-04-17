@@ -55,9 +55,11 @@ export function parseMcpKeyScope(value: unknown): McpApiKeyScope {
 
   const scope = value as Record<string, unknown>;
   return {
+    /* v8 ignore start -- API key scopes are normalized at creation time */
     ...(Array.isArray(scope.walletIds)
       ? { walletIds: scope.walletIds.filter((id): id is string => typeof id === 'string') }
       : {}),
+    /* v8 ignore stop */
     allowAuditLogs: scope.allowAuditLogs === true,
   };
 }

@@ -193,6 +193,14 @@ describe('DraftService', () => {
         })
       ).rejects.toThrow(InvalidInputError);
 
+      await expect(
+        createDraft(walletId, userId, {
+          ...validInput,
+          signedPsbtBase64: '   ',
+          signedDeviceId: 'device-agent',
+        })
+      ).rejects.toThrow(InvalidInputError);
+
       expect(walletRepository.findByIdWithSigningDevices).not.toHaveBeenCalled();
       expect(draftRepository.create).not.toHaveBeenCalled();
     });
@@ -284,6 +292,37 @@ describe('DraftService', () => {
         expect.objectContaining({ id: mockDraft.id }),
         userId,
         undefined
+      );
+    });
+
+    it('passes agent funding metadata and explicit notification actor through draft notifications', async () => {
+      (walletRepository.findByIdWithSigningDevices as Mock).mockResolvedValue({
+        id: walletId,
+        devices: [{ deviceId: 'device-agent' }],
+      });
+
+      await createDraft(walletId, userId, {
+        ...validInput,
+        signedPsbtBase64: 'agent-signed-psbt',
+        signedDeviceId: 'device-agent',
+        agentId: 'agent-1',
+        agentOperationalWalletId: 'operational-wallet',
+        notificationCreatedByUserId: null,
+        notificationCreatedByLabel: 'Treasury Agent',
+      });
+
+      expect(notifyNewDraft).toHaveBeenCalledWith(
+        walletId,
+        expect.objectContaining({
+          id: mockDraft.id,
+          agentId: 'agent-1',
+          agentName: 'Treasury Agent',
+          agentOperationalWalletId: 'operational-wallet',
+          agentSigned: true,
+          dedupeKey: `agent:agent-1:${walletId}:operational-wallet:${mockDraft.recipient}:${mockDraft.amount.toString()}`,
+        }),
+        null,
+        'Treasury Agent'
       );
     });
 

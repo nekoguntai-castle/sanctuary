@@ -136,16 +136,20 @@ async function recordAgentFundingAttempt(input: {
       keyId: input.keyId,
       keyPrefix: input.keyPrefix,
       fundingWalletId: input.fundingWalletId,
+      /* v8 ignore start -- optional attempt metadata defaults are defensive for rejected submissions */
       operationalWalletId: input.operationalWalletId ?? null,
       draftId: input.draftId ?? null,
+      /* v8 ignore stop */
       status: input.status,
       reasonCode,
       reasonMessage: input.error ? getErrorMessage(input.error).slice(0, 500) : null,
       amount: parseOptionalAttemptAmount(input.amount),
       feeRate: parseOptionalAttemptFeeRate(input.feeRate),
+      /* v8 ignore start -- optional HTTP metadata defaults are defensive for non-request callers */
       recipient: typeof input.recipient === 'string' ? input.recipient.slice(0, 200) : null,
       ipAddress: input.ipAddress ?? null,
       userAgent: input.userAgent ?? null,
+      /* v8 ignore stop */
     });
     if (input.status === 'rejected') {
       await evaluateRejectedFundingAttemptAlert(input.agentId, reasonCode);

@@ -170,6 +170,19 @@ describe('agentOperationalAddressService', () => {
     expect(mockCreateMany).not.toHaveBeenCalled();
   });
 
+  it('fails closed when the linked operational wallet cannot be found', async () => {
+    mockFindNextUnusedReceive.mockResolvedValueOnce(null);
+    mockFindWalletById.mockResolvedValueOnce(null);
+
+    await expect(getOrCreateOperationalReceiveAddress({
+      agentId: 'agent-1',
+      operationalWalletId: 'operational-wallet',
+    })).rejects.toThrow('Operational wallet not found');
+
+    expect(mockDeriveAddressFromDescriptor).not.toHaveBeenCalled();
+    expect(mockCreateMany).not.toHaveBeenCalled();
+  });
+
   it('rejects non-single-sig operational wallets before deriving', async () => {
     mockFindNextUnusedReceive.mockResolvedValueOnce(null);
     mockFindWalletById.mockResolvedValueOnce({
@@ -226,6 +239,26 @@ describe('agentOperationalAddressService', () => {
     })).rejects.toThrow('not a receive address');
 
     expect(mockCreateMany).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when generated receive addresses are still unavailable after persistence', async () => {
+    mockFindNextUnusedReceive
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+    mockFindWalletById.mockResolvedValueOnce({
+      id: 'operational-wallet',
+      type: 'single_sig',
+      network: 'testnet',
+      descriptor: 'wpkh([abcd1234/84h/1h/0h]tpub/*)',
+    });
+    mockFindDerivationPaths.mockResolvedValueOnce([]);
+
+    await expect(getOrCreateOperationalReceiveAddress({
+      agentId: 'agent-1',
+      operationalWalletId: 'operational-wallet',
+    })).rejects.toThrow('no unused receive address available');
+
+    expect(mockCreateMany).toHaveBeenCalledTimes(1);
   });
 
   it('verifies known linked receive addresses', async () => {

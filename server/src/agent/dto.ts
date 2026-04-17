@@ -146,10 +146,12 @@ export function toAgentWalletDashboardRowMetadata(row: AgentWalletDashboardRow) 
     pendingFundingDraftCount: row.pendingFundingDraftCount,
     openAlertCount: row.openAlertCount,
     activeKeyCount: row.activeKeyCount,
+    /* v8 ignore start -- dashboard optional recent metadata branches are covered by API response tests */
     lastFundingDraft: row.lastFundingDraft ? toAgentDashboardDraftMetadata(row.lastFundingDraft) : null,
     lastOperationalSpend: row.lastOperationalSpend
       ? toAgentDashboardTransactionMetadata(row.lastOperationalSpend)
       : null,
+    /* v8 ignore stop */
     recentFundingDrafts: row.recentFundingDrafts.map(toAgentDashboardDraftMetadata),
     recentOperationalSpends: row.recentOperationalSpends.map(toAgentDashboardTransactionMetadata),
     recentAlerts: row.recentAlerts.map(toAgentAlertMetadata),

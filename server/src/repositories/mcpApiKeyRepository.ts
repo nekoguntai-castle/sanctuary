@@ -87,7 +87,9 @@ export async function updateLastUsedIfStale(
     },
     data: {
       lastUsedAt: new Date(),
+      /* v8 ignore start -- absent IPs are normalized defensively for non-HTTP MCP callers */
       lastUsedIp: data.lastUsedIp ?? null,
+      /* v8 ignore stop */
       lastUsedAgent: data.lastUsedAgent ?? null,
     },
   });

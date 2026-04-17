@@ -17,6 +17,7 @@ vi.mock('../../../src/models/prisma', () => ({
       findMany: vi.fn(),
       count: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
       deleteMany: vi.fn(),
     },
     aIConversation: {
@@ -303,6 +304,20 @@ describe('Intelligence Repository', () => {
           status: 'active',
           expiresAt: { lte: expect.any(Date) },
         },
+      });
+    });
+  });
+
+  describe('expireActiveInsights', () => {
+    it('should expire active insights with expired dates and return count', async () => {
+      (prisma.aIInsight.updateMany as Mock).mockResolvedValue({ count: 4 });
+
+      const result = await intelligenceRepository.expireActiveInsights();
+
+      expect(result).toBe(4);
+      expect(prisma.aIInsight.updateMany).toHaveBeenCalledWith({
+        where: { status: 'active', expiresAt: { lte: expect.any(Date) } },
+        data: { status: 'expired' },
       });
     });
   });

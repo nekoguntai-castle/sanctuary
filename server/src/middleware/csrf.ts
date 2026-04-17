@@ -86,6 +86,7 @@ function getCsrfInstance(): CsrfInstance {
       // Bind the CSRF token to the access cookie value so the token rotates
       // with the access token. Phase 2 will issue a new csrf cookie alongside
       // every new access cookie on login, 2FA verify, and refresh.
+      /* v8 ignore next -- cookie parser supplies req.cookies for browser session requests */
       return req.cookies?.[SANCTUARY_ACCESS_COOKIE_NAME] ?? '';
     },
     cookieName: SANCTUARY_CSRF_COOKIE_NAME,
@@ -188,6 +189,7 @@ export function setAuthCookies(
   // should never happen because we just generated the token, but defending
   // against a malformed token is cheaper than debugging a mismatch.
   const decoded = decodeToken(accessToken);
+  /* v8 ignore next 2 -- generated access tokens include exp; fallback is defensive */
   const accessExpiresAt = decoded?.exp
     ? new Date(decoded.exp * 1000)
     : new Date(Date.now() + 60 * 60 * 1000);
@@ -213,7 +215,9 @@ export function setAuthCookies(
   // of an authenticated browser session: login/refresh rotates the access
   // cookie and the csrf cookie in lockstep.
   req.cookies = {
+    /* v8 ignore start -- cookie parser supplies req.cookies for browser session requests */
     ...(req.cookies ?? {}),
+    /* v8 ignore stop */
     [SANCTUARY_ACCESS_COOKIE_NAME]: accessToken,
   };
   generateCsrfToken(req, res);
@@ -278,6 +282,7 @@ export function setAccessExpiresAtHeader(req: Request, res: Response): void {
   }
 
   const decoded = decodeToken(token);
+  /* v8 ignore next -- generated access tokens include exp */
   if (decoded?.exp) {
     res.setHeader(SANCTUARY_ACCESS_EXPIRES_AT_HEADER, new Date(decoded.exp * 1000).toISOString());
   }

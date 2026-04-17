@@ -80,6 +80,7 @@ const NodeConfigTestBodySchema = z.object({
 }).strict();
 
 function hasNodeConfigRequiredFields(body: unknown): boolean {
+  /* v8 ignore next -- JSON body middleware provides an object for this route */
   if (!body || typeof body !== 'object') return false;
   const candidate = body as Record<string, unknown>;
   return Boolean(candidate.type && candidate.host && candidate.port);

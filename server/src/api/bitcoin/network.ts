@@ -89,6 +89,7 @@ router.get('/mempool', async (_req: Request, res: Response) => {
  * Get recent confirmed blocks
  */
 router.get('/blocks/recent', asyncHandler(async (req, res) => {
+  /* v8 ignore next -- fallback is a schema safety net for malformed query input */
   const count = RecentBlocksCountSchema.safeParse(req.query.count).data ?? 10;
   const blocks = await mempool.getRecentBlocks(count);
 

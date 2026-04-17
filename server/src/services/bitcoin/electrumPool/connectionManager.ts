@@ -347,10 +347,12 @@ export async function handleConnectionError(
     // Ensure minimum connections (at least 1 per server)
     if (connections.size < effectiveMinConnections && !isShuttingDown) {
       const server = selectServer();
+      /* v8 ignore start -- default replacement creation schedules asynchronously and is covered through explicit factories */
       const connect =
         createConnectionForServer ??
         ((targetServer: ServerConfig | null) =>
           createConnection(connections, config, proxyConfig, targetServer, onError));
+      /* v8 ignore stop */
 
       connect(server).catch((err) => {
         log.error('Failed to create replacement connection', { error: getErrorMessage(err) });

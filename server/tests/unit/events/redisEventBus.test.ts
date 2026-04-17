@@ -183,6 +183,21 @@ describe('RedisEventBus', () => {
     expect(mockLogError).toHaveBeenCalled();
   });
 
+  it('logs distributed event processing errors', () => {
+    (bus as any).localEmitter.emit = vi.fn(() => {
+      throw new Error('local emit failed');
+    });
+
+    subscriber.emit('pmessage', '*', 'sanctuary:events:wallet:synced', JSON.stringify({
+      event: 'wallet:synced',
+      data: { walletId: 'w-error' },
+      instanceId: 'other-instance',
+      timestamp: Date.now(),
+    }));
+
+    expect(mockLogError).toHaveBeenCalledWith('Failed to process distributed event', expect.any(Object));
+  });
+
 
   it('handles publish failures in emit()', async () => {
     publisher.publish.mockRejectedValueOnce(new Error('publish failed'));
@@ -208,6 +223,17 @@ describe('RedisEventBus', () => {
 
     bus.removeAllListeners('transaction:broadcast' as any);
     expect(bus.listenerCount('transaction:broadcast' as any)).toBe(0);
+  });
+
+  it('tracks rejected raw listeners during emitAsync', async () => {
+    (bus as any).localEmitter.on('transaction:confirmed', async () => {
+      throw new Error('raw listener failed');
+    });
+
+    await bus.emitAsync('transaction:confirmed' as any, { txid: 'abc' } as any);
+
+    expect(bus.getMetrics().errors['transaction:confirmed']).toBe(1);
+    expect(mockLogError).toHaveBeenCalledWith('Error in async event handler for transaction:confirmed', expect.any(Object));
   });
 
   it('resets metrics and shuts down connections', async () => {

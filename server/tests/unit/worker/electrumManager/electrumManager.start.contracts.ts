@@ -20,6 +20,16 @@ export function registerElectrumManagerStartContracts() {
       expect(manager.getHealthMetrics().ownershipRetryActive).toBe(true);
     });
 
+    it('returns early when start is called while ownership retry is already scheduled', async () => {
+      vi.mocked(acquireLock).mockResolvedValueOnce(null);
+
+      await manager.start();
+      await manager.start();
+
+      expect(vi.mocked(acquireLock)).toHaveBeenCalledTimes(1);
+      expect(manager.getHealthMetrics().ownershipRetryActive).toBe(true);
+    });
+
     it('retries subscription ownership after an initial lock miss', async () => {
       vi.useFakeTimers();
       vi.mocked(acquireLock)
@@ -54,6 +64,29 @@ export function registerElectrumManagerStartContracts() {
       expect(vi.mocked(acquireLock)).toHaveBeenCalledTimes(1);
 
       vi.useRealTimers();
+    });
+
+    it('does not schedule ownership retry when explicitly stopped or already retrying', () => {
+      (manager as any).explicitlyStopped = true;
+
+      (manager as any).startSubscriptionOwnershipRetry();
+
+      expect(manager.getHealthMetrics().ownershipRetryActive).toBe(false);
+
+      (manager as any).explicitlyStopped = false;
+      (manager as any).subscriptionLockRetryTimer = {} as NodeJS.Timeout;
+
+      (manager as any).startSubscriptionOwnershipRetry();
+
+      expect(manager.getHealthMetrics().ownershipRetryActive).toBe(true);
+    });
+
+    it('skips retry lock acquisition while a retry attempt is already in flight', async () => {
+      (manager as any).subscriptionLockRetryInFlight = true;
+
+      await (manager as any).tryAcquireSubscriptionOwnership();
+
+      expect(vi.mocked(acquireLock)).not.toHaveBeenCalled();
     });
 
     it('releases a retry-acquired lock when explicit stop wins the race', async () => {

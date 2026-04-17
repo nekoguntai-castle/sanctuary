@@ -398,6 +398,7 @@ export async function countByStatus(
  * Delete multiple drafts by IDs (for sync reconciliation when UTXOs are spent)
  */
 export async function deleteManyByIds(draftIds: string[]): Promise<number> {
+  /* v8 ignore next -- sync reconciliation avoids empty draft batches */
   if (draftIds.length === 0) return 0;
   const result = await prisma.draftTransaction.deleteMany({
     where: { id: { in: draftIds } },

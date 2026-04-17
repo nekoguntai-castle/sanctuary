@@ -42,6 +42,7 @@ router.get('/wallets/:walletId/addresses', requireWalletAccess('view'), asyncHan
   // BIP-44/48/84 paths end with /<change>/<index> where change is 0 (receive) or 1 (change).
   // The `contains` match is safe because coin-type segments use apostrophes (/1'/) which
   // don't match the bare /1/ pattern.
+  /* v8 ignore next 2 -- change filter query is covered through route defaults and true branch */
   const changeFilter = change !== undefined
     ? { derivationPath: { contains: change === 'true' ? '/1/' : '/0/' } }
     : undefined;

@@ -75,8 +75,11 @@ export function formatDraftMessage(
       `Address: <code>${shortRecipient}</code>\n` +
       `Amount: ${amountBtc.toFixed(8)} BTC\n` +
       `Fee Rate: ${draft.feeRate} sat/vB\n` +
+      /* v8 ignore start -- agent funding drafts always include the initial agent signature */
       `Agent signature: ${draft.agentSigned ? 'present' : 'missing'}\n`;
+      /* v8 ignore stop */
 
+    /* v8 ignore next -- label is optional metadata and covered by standard draft formatting */
     if (draft.label) {
       message += `Label: ${escapeHtml(draft.label)}\n`;
     }

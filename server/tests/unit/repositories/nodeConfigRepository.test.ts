@@ -13,6 +13,8 @@ vi.mock('../../../src/models/prisma', () => ({
       findFirst: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
+      upsert: vi.fn(),
     },
     electrumServer: {
       findMany: vi.fn(),
@@ -169,6 +171,41 @@ describe('Node Config Repository', () => {
       expect(prisma.nodeConfig.update).toHaveBeenCalledWith({
         where: { id: 'default' },
         data: { name: 'Updated' },
+      });
+    });
+  });
+
+  describe('saveAsDefault', () => {
+    it('unsets existing default configs and upserts the new default connection', async () => {
+      (prisma.nodeConfig.updateMany as Mock).mockResolvedValue({ count: 1 });
+      (prisma.nodeConfig.upsert as Mock).mockResolvedValue(mockNodeConfig);
+
+      await nodeConfigRepository.saveAsDefault({
+        host: 'electrum.example.com',
+        port: 50002,
+        useSsl: true,
+      });
+
+      expect(prisma.nodeConfig.updateMany).toHaveBeenCalledWith({
+        where: { isDefault: true },
+        data: { isDefault: false },
+      });
+      expect(prisma.nodeConfig.upsert).toHaveBeenCalledWith({
+        where: { id: 'default' },
+        update: {
+          host: 'electrum.example.com',
+          port: 50002,
+          useSsl: true,
+          isDefault: true,
+        },
+        create: {
+          id: 'default',
+          type: 'electrum',
+          host: 'electrum.example.com',
+          port: 50002,
+          useSsl: true,
+          isDefault: true,
+        },
       });
     });
   });

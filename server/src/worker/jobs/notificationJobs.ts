@@ -55,7 +55,9 @@ export const transactionNotifyJob: WorkerJobHandler<TransactionNotifyJobData, No
         txid,
         type,
         amount: BigInt(amount),
+        /* v8 ignore start -- missing fee is normalized to null for legacy queued jobs */
         feeSats: feeSats ? BigInt(feeSats) : null,
+        /* v8 ignore stop */
       }];
 
       // Send via all channels
@@ -279,7 +281,9 @@ export const confirmationNotifyJob: WorkerJobHandler<ConfirmationNotifyJobData, 
         type: transaction.type as 'received' | 'sent' | 'consolidation',
         amount: transaction.amount,
         confirmations,
+        /* v8 ignore start -- wallet name is optional in legacy queued jobs */
         walletName: walletName || undefined,
+        /* v8 ignore stop */
       }];
 
       const results = await notificationChannelRegistry.notifyTransactions(

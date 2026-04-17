@@ -374,6 +374,34 @@ describe('maintenanceService', () => {
     }));
   });
 
+  it('checkDiskUsage ignores missing mountpoints and malformed df usage values', async () => {
+    mockExecFileAsync
+      .mockResolvedValueOnce({ stdout: 'Docker version 24.0.0', stderr: '' }) // docker --version
+      .mockResolvedValueOnce({ stdout: '[{}]', stderr: '' }) // inspect vol1 without mountpoint
+      .mockResolvedValueOnce({ stdout: '[{"Mountpoint":"/var/lib/docker/volumes/v2"}]', stderr: '' }) // inspect vol2
+      .mockResolvedValueOnce({
+        stdout: 'Filesystem Size Used Avail Use% Mounted on\n/dev/sda1 100G 95G 5G nope /var/lib/docker/volumes/v2\n',
+        stderr: '',
+      });
+
+    await expect(checkDiskUsage(testConfig)).resolves.toBeUndefined();
+    expect(mockAuditService.log).not.toHaveBeenCalledWith(expect.objectContaining({
+      action: 'maintenance.disk_warning',
+    }));
+
+    vi.clearAllMocks();
+    mockExecFileAsync
+      .mockResolvedValueOnce({ stdout: 'Docker version 24.0.0', stderr: '' })
+      .mockResolvedValueOnce({ stdout: '[{"Mountpoint":"/var/lib/docker/volumes/v1"}]', stderr: '' })
+      .mockResolvedValueOnce({ stdout: '', stderr: '' })
+      .mockResolvedValueOnce({ stdout: '[]', stderr: '' });
+
+    await expect(checkDiskUsage(testConfig)).resolves.toBeUndefined();
+    expect(mockAuditService.log).not.toHaveBeenCalledWith(expect.objectContaining({
+      action: 'maintenance.disk_warning',
+    }));
+  });
+
   it('checkDiskUsage handles unexpected outer exceptions', async () => {
     mockExecFileAsync.mockResolvedValueOnce(undefined as any);
     await expect(checkDiskUsage(testConfig)).resolves.toBeUndefined();

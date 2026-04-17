@@ -25,6 +25,7 @@ export function orderByDependencies<T extends ServiceLifecycleNode>(services: re
     }
 
     const service = serviceMap.get(name);
+    /* v8 ignore next -- graph construction uses service ids from the same service map */
     if (!service) {
       throw new Error(`Service dependency graph references missing service ${name}`);
     }

@@ -203,6 +203,33 @@ describe('Intelligence API Routes', () => {
         0,
       );
     });
+
+    it('passes type and severity filters and clamps invalid pagination', async () => {
+      mockFindByIdWithAccess.mockResolvedValueOnce({ id: 'wallet-1' } as any);
+      mockInsightService.getInsightsByWallet.mockResolvedValueOnce([]);
+
+      const req = createMockRequest({
+        user: { userId: 'test-user-123', username: 'testuser', isAdmin: false },
+        query: {
+          walletId: 'wallet-1',
+          type: 'fee_anomaly',
+          severity: 'critical',
+          limit: '999',
+          offset: '-10',
+        },
+      });
+      const { res } = createMockResponse();
+
+      const handler = getRouteHandler(intelligenceRoutes, 'get', '/insights');
+      await handler(req as any, res as any, vi.fn());
+
+      expect(mockInsightService.getInsightsByWallet).toHaveBeenCalledWith(
+        'wallet-1',
+        { type: 'fee_anomaly', severity: 'critical' },
+        100,
+        0,
+      );
+    });
   });
 
   describe('GET /insights/count', () => {
@@ -233,6 +260,19 @@ describe('Intelligence API Routes', () => {
       await handler(req as any, res as any, vi.fn());
 
       expect(getResponse().body).toEqual({ count: 7 });
+    });
+
+    it('throws NotFoundError when count wallet is not accessible', async () => {
+      mockFindByIdWithAccess.mockResolvedValueOnce(null);
+
+      const req = createMockRequest({
+        user: { userId: 'test-user-123', username: 'testuser', isAdmin: false },
+        query: { walletId: 'wallet-999' },
+      });
+      const { res } = createMockResponse();
+
+      const handler = getRouteHandler(intelligenceRoutes, 'get', '/insights/count');
+      await expect(handler(req as any, res as any, vi.fn())).rejects.toThrow('Wallet not found');
     });
   });
 
@@ -320,6 +360,21 @@ describe('Intelligence API Routes', () => {
 
       expect(getResponse().body).toEqual({ insight: updated });
       expect(mockInsightService.markActedOn).toHaveBeenCalledWith('insight-1');
+    });
+
+    it('throws NotFoundError when insight wallet is not accessible', async () => {
+      mockInsightService.getInsightById.mockResolvedValueOnce({ id: 'insight-1', walletId: 'wallet-denied' });
+      mockFindByIdWithAccess.mockResolvedValueOnce(null);
+
+      const req = createMockRequest({
+        user: { userId: 'test-user-123', username: 'testuser', isAdmin: false },
+        params: { id: 'insight-1' },
+        body: { status: 'dismissed' },
+      });
+      const { res } = createMockResponse();
+
+      const handler = getRouteHandler(intelligenceRoutes, 'patch', '/insights/:id');
+      await expect(handler(req as any, res as any, vi.fn())).rejects.toThrow('Insight not found');
     });
   });
 

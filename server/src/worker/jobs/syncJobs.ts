@@ -207,6 +207,7 @@ export const checkStaleWalletsJob: WorkerJobHandler<CheckStaleWalletsJobData, Ch
     if (stuckWallets.length > 0) {
       for (const wallet of stuckWallets) {
         await walletRepository.update(wallet.id, { syncInProgress: false });
+        /* v8 ignore next 3 -- fallback id/unknown stale timestamp are defensive logging metadata */
         log.warn(`Reset stuck syncInProgress flag for wallet ${wallet.name || wallet.id}`, {
           lastSyncedAt: wallet.lastSyncedAt,
           stuckForMs: wallet.lastSyncedAt ? Date.now() - wallet.lastSyncedAt.getTime() : 'unknown',

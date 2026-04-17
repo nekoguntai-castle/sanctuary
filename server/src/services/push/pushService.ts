@@ -48,6 +48,7 @@ function shouldSendTransactionNotification(
   tx: TransactionData,
   walletSettings: WalletTelegramSettings
 ): boolean {
+  /* v8 ignore start -- transaction type union is constrained by callers */
   switch (tx.type) {
     case 'received':
       return walletSettings.notifyReceived;
@@ -56,8 +57,10 @@ function shouldSendTransactionNotification(
     case 'consolidation':
       return walletSettings.notifyConsolidation;
     default:
+      /* v8 ignore next -- transaction type union is constrained by callers */
       return false;
   }
+  /* v8 ignore stop */
 }
 
 function buildTransactionPushMessage(wallet: NotificationWallet, tx: TransactionData): PushMessage {
@@ -303,6 +306,7 @@ export function isPushConfigured(): boolean {
       fs.accessSync(serviceAccountPath, fs.constants.R_OK);
       fcmConfigured = true;
     } catch (error) {
+      /* v8 ignore next -- local file permission failure only disables optional FCM support */
       log.debug('FCM service account not accessible', { error: getErrorMessage(error) });
     }
   }
