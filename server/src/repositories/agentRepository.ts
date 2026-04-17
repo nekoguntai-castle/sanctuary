@@ -201,7 +201,7 @@ export interface FindAgentAlertsFilter {
   agentId: string;
   status?: string;
   type?: string;
-  limit?: number;
+  limit: number;
 }
 
 export interface FindAgentFundingOverridesFilter {
@@ -482,7 +482,7 @@ export async function findFundingOverrides(
       ...(filter.status && { status: filter.status }),
     },
     orderBy: { createdAt: 'desc' },
-    take: filter.limit ?? 25,
+    take: filter.limit,
   });
 }
 
