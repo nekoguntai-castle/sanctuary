@@ -1,12 +1,12 @@
 # Current Task: Agent Wallet Funding Implementation
 
-Status: Tenth implementation slice complete
+Status: Phase 14 implementation slice complete
 
 Reference plan: `tasks/agent-wallet-funding-plan.md`
 
 ## Active Implementation Slice
 
-Goal: add a bounded owner override workflow for exceptional agent funding. Sanctuary should keep normal over-cap submissions rejected by default, allow only human-created one-time override windows, audit the override lifecycle, and make override-funded drafts visible during human review.
+Goal: add a mobile approval foundation for agent funding drafts without changing Sanctuary's security boundary. Mobile users should be able to list/review pending agent drafts, record audited approve/comment/reject decisions, and submit signed PSBTs through the existing draft signing path.
 
 - [x] Load `AGENTS.md` and current project lessons into the session.
 - [x] Capture the agent funding architecture in `tasks/agent-wallet-funding-plan.md`.
@@ -67,6 +67,14 @@ Goal: add a bounded owner override workflow for exceptional agent funding. Sanct
 - [x] Label override-funded drafts for human review.
 - [x] Add focused repository, service, route, DTO, OpenAPI, API binding, and component tests.
 - [x] Run Phase 13 targeted and broader verification.
+- [x] Add mobile-safe pending agent funding draft repository queries.
+- [x] Add mobile review DTOs with decoded draft summaries, linked operational wallet destination, signing metadata, and deep-link payloads.
+- [x] Add authenticated mobile endpoints for listing, detail review, approve intent, comment, reject, and signed PSBT submission.
+- [x] Enforce mobile wallet permissions before exposing draft details or accepting signatures.
+- [x] Route mobile signed PSBT submissions through the existing draft update/signature path.
+- [x] Add audit events for mobile approve, comment, reject, and sign actions.
+- [x] Add OpenAPI coverage and focused route, service, repository, and route-registration tests.
+- [x] Run Phase 14 targeted verification.
 
 ## Next Slices
 
@@ -109,16 +117,52 @@ Recommended order:
 - [x] Phase 13: Owner override workflow.
   - Keep default over-cap behavior as hard reject.
   - Add bounded, human-created overrides with audit trail if needed.
-- [ ] Phase 14: Mobile approval foundation.
+- [x] Phase 14: Mobile approval foundation.
   - Add mobile-safe pending agent draft listing, review metadata, comments/rejection, and signer integration path.
 - [ ] Phase 15: Operational runbooks and E2E coverage.
   - Add docs, key compromise runbook, backup/restore expectations, release notes, and an e2e smoke path.
 
 Next recommended implementation slice:
 
-- [ ] Continue with Phase 14: Mobile approval foundation. Add mobile-safe pending agent draft listing, review metadata, comments/rejection, and signer integration paths.
+- [ ] Continue with Phase 15: Operational runbooks and E2E coverage. Add operator docs, key compromise procedures, backup/restore expectations, release notes, and an e2e smoke path.
 
 ## Review
+
+Eleventh slice update:
+
+- Added `GET /api/v1/mobile/agent-funding-drafts` and `GET /api/v1/mobile/agent-funding-drafts/:draftId` for mobile-safe review of pending agent funding drafts.
+- Added mobile approve/comment/reject/signature routes under `/api/v1/mobile/agent-funding-drafts/:draftId/*`.
+- Returned decoded draft summary metadata from stored PSBT-derived draft fields, including inputs, outputs, selected UTXOs, totals, change, input paths, linked operational wallet id, and wallet metadata.
+- Added deep-link payloads that notification senders can reuse for `sanctuary://agent-funding-drafts/:draftId`, web review paths, and API review paths.
+- Enforced mobile wallet permissions: `viewTransactions` gates visibility, `signPsbt` gates signed PSBT submission, and review actions require either `signPsbt` or `approveTransaction`.
+- Kept approval semantics explicit: mobile approve records audited intent and next action, but it does not auto-sign, broadcast, or force policy approval.
+- Routed mobile signed PSBT submission through `draftService.updateDraft`, preserving the existing web signing update path and signed-device aggregation behavior.
+- Marked mobile rejections by setting draft `approvalStatus=rejected`, which removes the draft from future pending mobile review lists.
+- Added audit events for mobile approve, comment, reject, and sign actions without logging signed PSBT material.
+- Added OpenAPI schemas/paths and route registration for the new mobile agent draft API.
+
+Verification run:
+
+- `cd server && npx vitest run tests/unit/services/mobileAgentDraftService.test.ts tests/unit/api/mobile-agent-drafts-routes.test.ts tests/unit/repositories/draftRepository.test.ts tests/unit/routes.test.ts` — 33 passed.
+- `cd server && npm run build` — passed.
+- `npm run check:openapi-route-coverage` — passed.
+- `npm run check:api-body-validation` — passed.
+- `cd server && npm run check:prisma-imports` — passed.
+
+Edge case audit:
+
+- Draft list limits are validated and bounded to 1-100 with a default of 25.
+- Rejected, vetoed, expired, non-agent, and already-expired drafts are excluded from pending mobile review queries.
+- General rejected-draft lookup remains available internally after a reject so the API can return the rejected review payload.
+- BigInt satoshi values are serialized as decimal strings to avoid precision loss.
+- Missing or null JSON draft fields are normalized to `null` in mobile summaries.
+- A draft without `viewTransactions` mobile permission is not returned in lists or detail responses.
+- A per-draft mobile permission denial during cross-wallet listing skips that draft instead of failing the whole list.
+- Signature submission is denied unless mobile permissions allow `signPsbt`.
+- Approver-only users can record review intent but receive `nextAction=none` unless they can also sign.
+- Signed PSBT material is passed only to `draftService.updateDraft`; audit details record draft and device metadata, not PSBT content.
+- Empty approve/comment/reject bodies are rejected where a comment or reason is required, and comments/reasons are trimmed and capped at 1000 characters.
+- Residual follow-up: Phase 15 should add operational docs/runbooks and an e2e smoke test that exercises this flow from admin setup through agent draft submission and human review.
 
 Tenth slice update:
 

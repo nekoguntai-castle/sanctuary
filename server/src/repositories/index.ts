@@ -66,6 +66,7 @@ export type {
   DraftStatus,
   CreateDraftInput,
   UpdateDraftInput,
+  MobileAgentDraftRecord,
 } from './draftRepository';
 
 export type {

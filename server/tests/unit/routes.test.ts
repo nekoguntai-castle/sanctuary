@@ -23,6 +23,7 @@ const {
   mockHealthRoutes,
   mockTransferRoutes,
   mockOpenApiRoutes,
+  mockMobileAgentDraftRoutes,
   mockMobilePermissionsRoutes,
   mockMobilePermissionsInternalRoutes,
 } = vi.hoisted(() => {
@@ -50,6 +51,7 @@ const {
     mockHealthRoutes: makeHandler(),
     mockTransferRoutes: makeHandler(),
     mockOpenApiRoutes: makeHandler(),
+    mockMobileAgentDraftRoutes: makeHandler(),
     mockMobilePermissionsRoutes: makeHandler(),
     mockMobilePermissionsInternalRoutes: makeHandler(),
   };
@@ -78,6 +80,7 @@ vi.mock('../../src/api/ai-internal', () => ({ __esModule: true, default: mockAiI
 vi.mock('../../src/api/health', () => ({ __esModule: true, default: mockHealthRoutes }));
 vi.mock('../../src/api/transfers', () => ({ __esModule: true, default: mockTransferRoutes }));
 vi.mock('../../src/api/openapi', () => ({ __esModule: true, default: mockOpenApiRoutes }));
+vi.mock('../../src/api/mobileAgentDrafts', () => ({ __esModule: true, default: mockMobileAgentDraftRoutes }));
 vi.mock('../../src/api/mobilePermissions', () => ({
   __esModule: true,
   default: mockMobilePermissionsRoutes,
@@ -107,7 +110,7 @@ describe('registerRoutes', () => {
     registerRoutes(app);
 
     expect(app.get).toHaveBeenCalledTimes(2);
-    expect(app.use).toHaveBeenCalledTimes(23);
+    expect(app.use).toHaveBeenCalledTimes(24);
 
     expect(app.get).toHaveBeenCalledWith('/health', expect.any(Function));
     expect(app.get).toHaveBeenCalledWith('/metrics', mockMetricsHandler);
@@ -115,6 +118,7 @@ describe('registerRoutes', () => {
     expect(app.use).toHaveBeenCalledWith('/api/v1/auth', mockAuthRoutes);
     expect(app.use).toHaveBeenCalledWith('/api/v1/wallets', mockWalletRoutes);
     expect(app.use).toHaveBeenCalledWith('/api/v1/agent', mockAgentRoutes);
+    expect(app.use).toHaveBeenCalledWith('/api/v1/mobile', mockMobileAgentDraftRoutes);
     expect(app.use).toHaveBeenCalledWith('/internal/ai', mockAiInternalRoutes);
     expect(app.use).toHaveBeenCalledWith('/api/v1/docs', mockOpenApiRoutes);
   });

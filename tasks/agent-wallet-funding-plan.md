@@ -172,12 +172,12 @@ Example Agent  2-of-2 Treasury     82,000 sats              Active
 
 Design the review path so a mobile app can be added later.
 
-- [ ] List pending agent funding drafts.
-- [ ] Show decoded PSBT summary.
-- [ ] Show linked operational wallet destination.
-- [ ] Allow approve, reject, and comment.
-- [ ] Allow mobile signing when a supported signer exists.
-- [ ] Return a signed PSBT to Sanctuary or broadcast after policy checks.
+- [x] List pending agent funding drafts.
+- [x] Show decoded PSBT summary.
+- [x] Show linked operational wallet destination.
+- [x] Allow approve, reject, and comment.
+- [x] Allow mobile signing when a supported signer exists.
+- [x] Return a signed PSBT to Sanctuary or broadcast after policy checks.
 
 ## Security Constraints
 
@@ -412,22 +412,28 @@ Verification:
 
 Goal: prepare mobile review/signing without changing the core security boundary.
 
-- [ ] Add API support for listing pending agent funding drafts with decoded PSBT summaries.
-- [ ] Add mobile-friendly endpoints for approve/reject/comment metadata.
-- [ ] Add deep-link payloads from Telegram/push notifications to the mobile review screen.
-- [ ] Add mobile signing integration only when a supported signer is available.
-- [ ] Return signed PSBTs to Sanctuary through the same draft update/signature path used by web signing.
+- [x] Add API support for listing pending agent funding drafts with decoded PSBT summaries.
+- [x] Add mobile-friendly endpoints for approve/reject/comment metadata.
+- [x] Add deep-link payloads from Telegram/push notifications to the mobile review screen.
+- [x] Add mobile signing integration only when a supported signer is available.
+- [x] Return signed PSBTs to Sanctuary through the same draft update/signature path used by web signing.
 
 Acceptance criteria:
 
-- Mobile can review the same decoded transaction details as web.
-- Mobile approval alone does not broadcast or bypass multisig requirements.
-- Signing still requires the human signer device or supported mobile signer path.
+- [x] Mobile can review the same decoded transaction details as web.
+- [x] Mobile approval alone does not broadcast or bypass multisig requirements.
+- [x] Signing still requires the human signer device or supported mobile signer path.
 
 Verification:
 
-- API tests for pending draft listing, authorization, comment/reject actions, and PSBT summary shape.
-- Mobile client tests once the mobile app exists.
+- [x] API tests for pending draft listing, authorization, comment/reject actions, and PSBT summary shape.
+- [ ] Mobile client tests once the mobile app exists.
+
+Notes:
+
+- Mobile approval intent is audited but does not sign, broadcast, or force policy approval.
+- The signature endpoint accepts a mobile-produced signed PSBT only when mobile permissions allow `signPsbt`, then delegates to the existing draft update/signature path.
+- The mobile app and actual platform signer integration remain future client work.
 
 ### Phase 15: Operational Runbooks And E2E Coverage
 

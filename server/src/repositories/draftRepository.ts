@@ -8,6 +8,7 @@
 import prisma from '../models/prisma';
 import { Prisma } from '../generated/prisma/client';
 import type { DraftTransaction } from '../generated/prisma/client';
+import { buildWalletAccessWhere } from './accessControl';
 
 /**
  * Draft status types
@@ -61,6 +62,21 @@ export interface UpdateDraftInput {
   memo?: string | null;
   expectedUpdatedAt?: Date;
 }
+
+const mobileAgentDraftInclude = {
+  wallet: {
+    select: {
+      id: true,
+      name: true,
+      type: true,
+      network: true,
+    },
+  },
+} satisfies Prisma.DraftTransactionInclude;
+
+export type MobileAgentDraftRecord = Prisma.DraftTransactionGetPayload<{
+  include: typeof mobileAgentDraftInclude;
+}>;
 
 type DraftCreateDefaults = Pick<
   Prisma.DraftTransactionUncheckedCreateInput,
@@ -129,6 +145,75 @@ export async function findByUserId(userId: string): Promise<DraftTransaction[]> 
   return prisma.draftTransaction.findMany({
     where: { userId },
     orderBy: { createdAt: 'desc' },
+  });
+}
+
+function buildAgentDraftWhereForUser(
+  userId: string,
+  draftId?: string
+): Prisma.DraftTransactionWhereInput {
+  return {
+    ...(draftId !== undefined && { id: draftId }),
+    agentId: { not: null },
+    wallet: {
+      is: buildWalletAccessWhere(userId),
+    },
+  };
+}
+
+function buildPendingAgentDraftWhereForUser(
+  userId: string,
+  draftId?: string
+): Prisma.DraftTransactionWhereInput {
+  return {
+    ...buildAgentDraftWhereForUser(userId, draftId),
+    status: { in: ['unsigned', 'partial', 'signed'] },
+    approvalStatus: { notIn: ['rejected', 'vetoed', 'expired'] },
+    OR: [
+      { expiresAt: null },
+      { expiresAt: { gte: new Date() } },
+    ],
+  };
+}
+
+/**
+ * Find pending agent funding drafts visible to a user across accessible wallets.
+ */
+export async function findPendingAgentDraftsForUser(
+  userId: string,
+  limit: number
+): Promise<MobileAgentDraftRecord[]> {
+  return prisma.draftTransaction.findMany({
+    where: buildPendingAgentDraftWhereForUser(userId),
+    include: mobileAgentDraftInclude,
+    orderBy: { createdAt: 'desc' },
+    take: limit,
+  });
+}
+
+/**
+ * Find a pending agent funding draft visible to a user.
+ */
+export async function findPendingAgentDraftByIdForUser(
+  userId: string,
+  draftId: string
+): Promise<MobileAgentDraftRecord | null> {
+  return prisma.draftTransaction.findFirst({
+    where: buildPendingAgentDraftWhereForUser(userId, draftId),
+    include: mobileAgentDraftInclude,
+  });
+}
+
+/**
+ * Find an agent funding draft visible to a user, regardless of review status.
+ */
+export async function findAgentDraftByIdForUser(
+  userId: string,
+  draftId: string
+): Promise<MobileAgentDraftRecord | null> {
+  return prisma.draftTransaction.findFirst({
+    where: buildAgentDraftWhereForUser(userId, draftId),
+    include: mobileAgentDraftInclude,
   });
 }
 
@@ -326,6 +411,9 @@ export const draftRepository = {
   findById,
   findByIdInWallet,
   findByUserId,
+  findPendingAgentDraftsForUser,
+  findPendingAgentDraftByIdForUser,
+  findAgentDraftByIdForUser,
   findExpired,
   create,
   update,

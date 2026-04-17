@@ -27,6 +27,9 @@ import {
   draftRepository,
   findById,
   findByIdInWallet,
+  findAgentDraftByIdForUser,
+  findPendingAgentDraftByIdForUser,
+  findPendingAgentDraftsForUser,
   findByUserId,
   findByWalletId,
   findExpired,
@@ -80,6 +83,83 @@ describe('draftRepository', () => {
     expect(prisma.draftTransaction.findMany).toHaveBeenNthCalledWith(2, {
       where: { expiresAt: { lt: expect.any(Date) } },
     });
+  });
+
+  it('findPendingAgentDraftsForUser applies wallet access, pending filters, and limit', async () => {
+    (prisma.draftTransaction.findMany as Mock).mockResolvedValue([{ id: 'agent-draft-1' }]);
+
+    const result = await findPendingAgentDraftsForUser('user-1', 25);
+
+    expect(result).toEqual([{ id: 'agent-draft-1' }]);
+    expect(prisma.draftTransaction.findMany).toHaveBeenCalledWith({
+      where: {
+        agentId: { not: null },
+        status: { in: ['unsigned', 'partial', 'signed'] },
+        approvalStatus: { notIn: ['rejected', 'vetoed', 'expired'] },
+        OR: [
+          { expiresAt: null },
+          { expiresAt: { gte: expect.any(Date) } },
+        ],
+        wallet: {
+          is: {
+            OR: [
+              { users: { some: { userId: 'user-1' } } },
+              { group: { members: { some: { userId: 'user-1' } } } },
+            ],
+          },
+        },
+      },
+      include: {
+        wallet: {
+          select: {
+            id: true,
+            name: true,
+            type: true,
+            network: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 25,
+    });
+  });
+
+  it('findPendingAgentDraftByIdForUser applies draft id and pending review filters', async () => {
+    (prisma.draftTransaction.findFirst as Mock).mockResolvedValue({ id: 'draft-1' });
+
+    await expect(findPendingAgentDraftByIdForUser('user-1', 'draft-1')).resolves.toEqual({ id: 'draft-1' });
+
+    expect(prisma.draftTransaction.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        id: 'draft-1',
+        agentId: { not: null },
+        status: { in: ['unsigned', 'partial', 'signed'] },
+        approvalStatus: { notIn: ['rejected', 'vetoed', 'expired'] },
+      }),
+    }));
+  });
+
+  it('findAgentDraftByIdForUser keeps rejected drafts addressable after review decisions', async () => {
+    (prisma.draftTransaction.findFirst as Mock).mockResolvedValue({ id: 'draft-1', approvalStatus: 'rejected' });
+
+    await expect(findAgentDraftByIdForUser('user-1', 'draft-1')).resolves.toEqual({
+      id: 'draft-1',
+      approvalStatus: 'rejected',
+    });
+
+    expect(prisma.draftTransaction.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        id: 'draft-1',
+        agentId: { not: null },
+        wallet: expect.any(Object),
+      }),
+      include: expect.any(Object),
+    }));
+    expect(prisma.draftTransaction.findFirst).not.toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        approvalStatus: expect.any(Object),
+      }),
+    }));
   });
 
   it('create applies defaults for nullable and JSON fields', async () => {
@@ -311,5 +391,8 @@ describe('draftRepository', () => {
     expect(draftRepository.create).toBe(create);
     expect(draftRepository.update).toBe(update);
     expect(draftRepository.updateApprovalStatus).toBe(updateApprovalStatus);
+    expect(draftRepository.findPendingAgentDraftsForUser).toBe(findPendingAgentDraftsForUser);
+    expect(draftRepository.findPendingAgentDraftByIdForUser).toBe(findPendingAgentDraftByIdForUser);
+    expect(draftRepository.findAgentDraftByIdForUser).toBe(findAgentDraftByIdForUser);
   });
 });

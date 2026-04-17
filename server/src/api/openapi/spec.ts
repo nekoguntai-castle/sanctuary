@@ -13,6 +13,7 @@ import { deviceSchemas } from './schemas/device';
 import { syncSchemas, bitcoinSchemas, priceSchemas } from './schemas/bitcoin';
 import { transactionSchemas } from './schemas/transactions';
 import { pushSchemas } from './schemas/push';
+import { mobileAgentDraftSchemas } from './schemas/mobileAgentDrafts';
 import { mobilePermissionSchemas } from './schemas/mobilePermissions';
 import { labelSchemas } from './schemas/labels';
 import { draftSchemas } from './schemas/drafts';
@@ -38,6 +39,7 @@ import { devicePaths } from './paths/devices';
 import { syncPaths, bitcoinPaths, pricePaths } from './paths/bitcoin';
 import { transactionPaths } from './paths/transactions';
 import { pushPaths } from './paths/push';
+import { mobileAgentDraftPaths } from './paths/mobileAgentDrafts';
 import { mobilePermissionPaths } from './paths/mobilePermissions';
 import { labelPaths } from './paths/labels';
 import { draftPaths } from './paths/drafts';
@@ -81,6 +83,7 @@ export const openApiSpec = {
     { name: 'Node', description: 'Bitcoin node connectivity checks' },
     { name: 'Price', description: 'Price information' },
     { name: 'Push', description: 'Mobile push device registration' },
+    { name: 'Mobile Agent Drafts', description: 'Mobile review and signing for agent funding drafts' },
     { name: 'Mobile Permissions', description: 'Mobile wallet permission restrictions' },
     { name: 'Payjoin', description: 'BIP78 Payjoin sender and receiver operations' },
     { name: 'Transfers', description: 'Wallet and device ownership transfers' },
@@ -109,6 +112,7 @@ export const openApiSpec = {
     ...labelPaths,
     ...draftPaths,
     ...pushPaths,
+    ...mobileAgentDraftPaths,
     ...mobilePermissionPaths,
     ...payjoinPaths,
     ...transferPaths,
@@ -170,6 +174,7 @@ export const openApiSpec = {
       ...labelSchemas,
       ...draftSchemas,
       ...pushSchemas,
+      ...mobileAgentDraftSchemas,
       ...mobilePermissionSchemas,
       ...payjoinSchemas,
       ...transferSchemas,

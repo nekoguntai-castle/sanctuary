@@ -27,6 +27,7 @@ import intelligenceRoutes from './api/intelligence';
 import healthRoutes from './api/health';
 import transferRoutes from './api/transfers';
 import openApiRoutes from './api/openapi';
+import mobileAgentDraftRoutes from './api/mobileAgentDrafts';
 import mobilePermissionsRoutes, { mobilePermissionsInternalRoutes } from './api/mobilePermissions';
 import { metricsHandler } from './middleware/metrics';
 import { getWorkerHealthStatus } from './services/workerHealth';
@@ -66,6 +67,7 @@ const routes: RouteDefinition[] = [
   { method: 'use', path: '/api/v1/ai', handler: aiRoutes },
   { method: 'use', path: '/api/v1/agent', handler: agentRoutes },
   { method: 'use', path: '/api/v1/intelligence', handler: intelligenceRoutes },
+  { method: 'use', path: '/api/v1/mobile', handler: mobileAgentDraftRoutes },
   { method: 'use', path: '/api/v1', handler: mobilePermissionsRoutes },
   { method: 'use', path: '/internal/ai', handler: aiInternalRoutes },
   { method: 'use', path: '/internal', handler: mobilePermissionsInternalRoutes },
