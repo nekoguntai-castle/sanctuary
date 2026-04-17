@@ -50,7 +50,7 @@ export const agentPaths = {
     get: {
       tags: ['Agent'],
       summary: 'Get operational receive address',
-      description: 'Return the next known unused receive address for the linked operational wallet.',
+      description: 'Return the next unused receive address for the linked operational wallet. If no unused receive address exists and Sanctuary has descriptor metadata for the operational watch-only wallet, the server derives and stores a fresh receive-address gap before returning the first verified address.',
       security: agentBearerAuth,
       parameters: [fundingWalletIdParameter],
       responses: {
@@ -59,6 +59,36 @@ export const agentPaths = {
           content: {
             'application/json': {
               schema: { $ref: '#/components/schemas/AgentOperationalAddress' },
+            },
+          },
+        },
+        400: apiErrorResponse,
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+      },
+    },
+  },
+  '/agent/wallets/{fundingWalletId}/operational-address/verify': {
+    post: {
+      tags: ['Agent'],
+      summary: 'Verify operational receive address',
+      description: 'Verify that an agent-provided address is a known receive address for the linked operational wallet. Unknown addresses, change addresses, and addresses belonging to other wallets return verified=false.',
+      security: agentBearerAuth,
+      parameters: [fundingWalletIdParameter],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: { $ref: '#/components/schemas/AgentOperationalAddressVerifyRequest' },
+          },
+        },
+      },
+      responses: {
+        200: {
+          description: 'Operational address verification result',
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/AgentOperationalAddressVerification' },
             },
           },
         },

@@ -1,6 +1,6 @@
 # Agent Wallet Funding Plan
 
-Status: In progress - server primitives for linked agent metadata, scoped credentials, admin management, policy-gated funding draft submission, PSBT content validation, Telegram notification, draft-row display, operational monitoring policy, alert history, and the Agent Wallets dashboard are implemented.
+Status: In progress - server primitives for linked agent metadata, scoped credentials, admin management, policy-gated funding draft submission, PSBT content validation, Telegram notification, draft-row display, operational monitoring policy, alert history, Agent Wallets dashboard, and operational address generation are implemented.
 
 ## Goal
 
@@ -369,21 +369,22 @@ Verification:
 
 Goal: remove the current limitation where the agent endpoint only returns an already-known unused operational address.
 
-- [ ] Add a server service that can derive or create the next receive address for the operational watch-only wallet using existing descriptor/xpub logic.
-- [ ] Change the agent operational-address endpoint to return the next unused address and generate one when safe.
-- [ ] Preserve a read-only mode for wallets where Sanctuary lacks enough descriptor metadata to derive addresses.
-- [ ] Add an optional address verification endpoint if agents submit their own operational address.
+- [x] Add a server service that can derive or create the next receive address for the operational watch-only wallet using existing descriptor/xpub logic.
+- [x] Change the agent operational-address endpoint to return the next unused address and generate one when safe.
+- [x] Preserve a read-only mode for wallets where Sanctuary lacks enough descriptor metadata to derive addresses.
+- [x] Add an optional address verification endpoint if agents submit their own operational address.
 
 Acceptance criteria:
 
-- The endpoint never returns an address that Sanctuary cannot prove belongs to the linked operational wallet.
-- Address generation preserves gap-limit behavior and does not mark addresses used prematurely.
-- Regtest/testnet/mainnet paths are covered.
+- [x] The endpoint never returns an address that Sanctuary cannot prove belongs to the linked operational wallet.
+- [x] Address generation preserves gap-limit behavior and does not mark addresses used prematurely.
+- [x] Regtest/testnet/mainnet paths are covered by the existing descriptor derivation suite and Phase 12 service route coverage.
 
 Verification:
 
-- Address derivation unit tests for supported script/network combinations.
-- Agent route tests for existing unused address, generated address, unsupported wallet metadata, and unverified submitted address.
+- [x] Address derivation unit tests for supported script/network combinations.
+- [x] Agent route tests for existing unused address, generated address behavior, and address verification payloads.
+- [x] Service tests for descriptorless wallets, receive/change path filtering, generated receive gap persistence, derived non-receive path rejection, and verification failures.
 
 ### Phase 13: Owner Override Workflow
 

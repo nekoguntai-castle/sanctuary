@@ -36,8 +36,31 @@ export const agentSchemas = {
       address: { type: 'string' },
       derivationPath: { type: 'string' },
       index: { type: 'integer' },
+      generated: {
+        type: 'boolean',
+        description: 'True when Sanctuary derived and stored a fresh receive-address gap for this response.',
+      },
     },
-    required: ['walletId', 'address', 'derivationPath', 'index'],
+    required: ['walletId', 'address', 'derivationPath', 'index', 'generated'],
+  },
+  AgentOperationalAddressVerifyRequest: {
+    type: 'object',
+    properties: {
+      address: { type: 'string', minLength: 1 },
+    },
+    required: ['address'],
+    additionalProperties: false,
+  },
+  AgentOperationalAddressVerification: {
+    type: 'object',
+    properties: {
+      walletId: { type: 'string' },
+      address: { type: 'string' },
+      verified: { type: 'boolean' },
+      derivationPath: { type: 'string', nullable: true },
+      index: { type: 'integer', nullable: true },
+    },
+    required: ['walletId', 'address', 'verified', 'derivationPath', 'index'],
   },
   AgentFundingDraftRequest: {
     type: 'object',

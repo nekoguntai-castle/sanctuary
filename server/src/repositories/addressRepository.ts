@@ -82,6 +82,25 @@ export async function findNextUnused(
 }
 
 /**
+ * Find next unused external/receive address for a wallet.
+ * BIP paths end with /<change>/<index>, where change 0 is receive and
+ * change 1 is internal/change. Hardened coin-type segments use apostrophes
+ * (for example /1'/), so the bare /0/ match is safe for receive filtering.
+ */
+export async function findNextUnusedReceive(
+  walletId: string
+): Promise<Address | null> {
+  return prisma.address.findFirst({
+    where: {
+      walletId,
+      used: false,
+      derivationPath: { contains: '/0/' },
+    },
+    orderBy: { index: 'asc' },
+  });
+}
+
+/**
  * Find next unused change address (BIP44 derivation path containing /1/)
  */
 export async function findNextUnusedChange(
@@ -494,6 +513,7 @@ export const addressRepository = {
   findByWalletId,
   markAsUsed,
   findNextUnused,
+  findNextUnusedReceive,
   findNextUnusedChange,
   findUnusedChangeAddresses,
   findUnusedExcluding,

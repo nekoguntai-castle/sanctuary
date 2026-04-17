@@ -1,12 +1,12 @@
 # Current Task: Agent Wallet Funding Implementation
 
-Status: Eighth implementation slice complete
+Status: Ninth implementation slice complete
 
 Reference plan: `tasks/agent-wallet-funding-plan.md`
 
 ## Active Implementation Slice
 
-Goal: add an Agent Wallets dashboard so humans can see which agents are active, how much operational balance they control, which funding drafts need review, recent operational spends, open alerts, and key status from one place. Sanctuary still does not store private keys or auto-sign; dashboard actions only pause/unpause agents, revoke keys, and navigate humans to review/signing surfaces.
+Goal: add operational address generation for agent-linked watch-only operational wallets. Sanctuary should return an existing unused receive address when available, derive a new verified receive-address gap when descriptor metadata exists, and keep read-only behavior for wallets that cannot prove ownership of a new address.
 
 - [x] Load `AGENTS.md` and current project lessons into the session.
 - [x] Capture the agent funding architecture in `tasks/agent-wallet-funding-plan.md`.
@@ -54,6 +54,11 @@ Goal: add an Agent Wallets dashboard so humans can see which agents are active, 
 - [x] Add detail rows for policy, recent funding requests, operational spends, alerts, and key metadata.
 - [x] Add focused server, API binding, route, and component tests.
 - [x] Run targeted verification plus broader frontend/server checks.
+- [x] Add receive-address-specific repository helpers for agent operational address lookup.
+- [x] Add a server service that returns or derives verified linked operational receive addresses.
+- [x] Update the agent operational-address endpoint and OpenAPI schema.
+- [x] Add focused repository, service, and route tests.
+- [x] Run Phase 12 targeted verification and commit.
 
 ## Next Slices
 
@@ -90,7 +95,7 @@ Recommended order:
 - [x] Phase 11: Agent Wallets dashboard.
   - Show agent status, funding wallet, operational balance, pending drafts, recent spends, and alerts.
   - Add pause/unpause, revoke key, review draft, and open linked wallet actions.
-- [ ] Phase 12: Operational address generation.
+- [x] Phase 12: Operational address generation.
   - Generate next operational receive address when Sanctuary has enough watch-only descriptor metadata.
   - Preserve strict linked-address verification.
 - [ ] Phase 13: Owner override workflow.
@@ -103,9 +108,42 @@ Recommended order:
 
 Next recommended implementation slice:
 
-- [ ] Continue with Phase 12: Operational address generation. The agent endpoint still returns only already-known unused operational addresses; the next slice should derive or create verified watch-only receive addresses when Sanctuary has enough descriptor metadata.
+- [ ] Continue with Phase 13: Owner override workflow. Normal agent submissions remain hard rejected by default; the next slice should add bounded, human-created overrides with audit trail for exceptional funding.
 
 ## Review
+
+Ninth slice update:
+
+- Added a receive-address-specific address repository helper so agent operational address requests cannot return wallet change addresses.
+- Added `getOrCreateOperationalReceiveAddress`, which returns an existing unused operational receive address or, when the linked single-sig operational wallet has descriptor metadata, derives and stores a fresh receive-address gap.
+- Wrapped operational address generation in the existing per-agent advisory lock to avoid concurrent duplicate derivation for the same agent.
+- Kept descriptorless operational wallets in read-only mode: they still fail closed instead of accepting an unverified agent-provided address.
+- Updated `GET /api/v1/agent/wallets/:fundingWalletId/operational-address` to use the service and return `generated: true|false`.
+- Added `POST /api/v1/agent/wallets/:fundingWalletId/operational-address/verify` so agents can preflight whether a provided destination is a known linked operational receive address.
+- Updated OpenAPI docs/schema for the generated-address behavior.
+- Kept Sanctuary's boundary intact: the endpoint derives watch-only receive addresses only; it does not store private keys, sign, broadcast, mark addresses used, or accept unverified destinations.
+
+Verification run:
+
+- `cd server && npx vitest run tests/unit/services/agentOperationalAddressService.test.ts tests/unit/api/agent-routes.test.ts tests/unit/repositories/addressRepository.test.ts tests/unit/api/openapi.test.ts` — 86 passed.
+- `cd server && npm run build` — passed.
+- `npm run check:openapi-route-coverage` — passed.
+- `npm run check:api-body-validation` — passed.
+- `cd server && npm run test:unit` — 366 files / 8863 tests passed. Existing Vitest hoist warning remains in `tests/unit/utils/tracing/tracer.test.ts`.
+- `git diff --check` — passed.
+
+Edge case audit:
+
+- Null/missing descriptors fail closed with an explicit invalid-input error instead of falling back to agent-provided data.
+- Empty receive-address sets derive from index `0`; mixed receive/change history derives from the highest receive index plus one.
+- Change-address paths are filtered out when selecting an unused operational receive address.
+- Malformed derivation-path history is ignored for next-index calculation.
+- Generated addresses are persisted as unused and the endpoint does not mark them used prematurely.
+- The service validates derived paths are receive paths before storing a generated gap.
+- The verification endpoint returns `verified=false` without wallet metadata for unknown addresses, other-wallet addresses, and change addresses.
+- Unsupported operational wallet networks and non-single-sig operational wallets fail before derivation.
+- A duplicate insert race re-reads the next unused receive address after `createMany(..., { skipDuplicates: true })`.
+- Residual follow-up: Phase 13 will add human-created override workflows for exceptional over-cap funding; agent-created over-cap submissions remain rejected.
 
 Eighth slice update:
 

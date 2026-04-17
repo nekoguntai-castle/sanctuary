@@ -14,6 +14,8 @@ const {
   mockCreateDraft,
   mockGetDraft,
   mockUpdateDraft,
+  mockGetOrCreateOperationalReceiveAddress,
+  mockVerifyOperationalReceiveAddress,
   mockAuditLog,
   mockGetClientInfo,
   mockSerializeDraftTransaction,
@@ -29,6 +31,8 @@ const {
   mockCreateDraft: vi.fn(),
   mockGetDraft: vi.fn(),
   mockUpdateDraft: vi.fn(),
+  mockGetOrCreateOperationalReceiveAddress: vi.fn(),
+  mockVerifyOperationalReceiveAddress: vi.fn(),
   mockAuditLog: vi.fn(),
   mockGetClientInfo: vi.fn(),
   mockSerializeDraftTransaction: vi.fn(),
@@ -67,14 +71,16 @@ vi.mock('../../../src/services/agentFundingPolicy', () => ({
   enforceAgentFundingPolicy: mockEnforceAgentFundingPolicy,
 }));
 
+vi.mock('../../../src/services/agentOperationalAddressService', () => ({
+  getOrCreateOperationalReceiveAddress: mockGetOrCreateOperationalReceiveAddress,
+  verifyOperationalReceiveAddress: mockVerifyOperationalReceiveAddress,
+}));
+
 vi.mock('../../../src/services/agentMonitoringService', () => ({
   evaluateRejectedFundingAttemptAlert: mockEvaluateRejectedFundingAttemptAlert,
 }));
 
 vi.mock('../../../src/repositories', () => ({
-  addressRepository: {
-    findNextUnused: vi.fn(),
-  },
   agentRepository: {
     markAgentFundingDraftCreated: mockMarkAgentFundingDraftCreated,
     withAgentFundingLock: mockWithAgentFundingLock,
@@ -130,7 +136,7 @@ vi.mock('../../../src/utils/requestContext', () => ({
 
 import agentRouter from '../../../src/api/agent';
 import { ErrorCodes, errorHandler } from '../../../src/errors';
-import { addressRepository, utxoRepository, walletRepository } from '../../../src/repositories';
+import { utxoRepository, walletRepository } from '../../../src/repositories';
 
 describe('Agent Routes', () => {
   let app: Express;
@@ -182,8 +188,17 @@ describe('Agent Routes', () => {
     (utxoRepository.getUnspentBalance as any)
       .mockResolvedValueOnce(20000n)
       .mockResolvedValueOnce(5000n);
-    (addressRepository.findNextUnused as any).mockResolvedValue({
+    mockGetOrCreateOperationalReceiveAddress.mockResolvedValue({
+      walletId: 'operational-wallet',
       address: 'tb1qoperational',
+      derivationPath: "m/84'/1'/0'/0/0",
+      index: 0,
+      generated: false,
+    });
+    mockVerifyOperationalReceiveAddress.mockResolvedValue({
+      walletId: 'operational-wallet',
+      address: 'tb1qoperational',
+      verified: true,
       derivationPath: "m/84'/1'/0'/0/0",
       index: 0,
     });
@@ -223,12 +238,70 @@ describe('Agent Routes', () => {
       .set('Authorization', 'Bearer agt_test');
 
     expect(response.status).toBe(200);
+    expect(mockGetOrCreateOperationalReceiveAddress).toHaveBeenCalledWith({
+      agentId: 'agent-1',
+      operationalWalletId: 'operational-wallet',
+    });
     expect(response.body).toEqual({
       walletId: 'operational-wallet',
       address: 'tb1qoperational',
       derivationPath: "m/84'/1'/0'/0/0",
       index: 0,
+      generated: false,
     });
+  });
+
+  it('returns a generated operational receive address when the service derives one', async () => {
+    mockGetOrCreateOperationalReceiveAddress.mockResolvedValueOnce({
+      walletId: 'operational-wallet',
+      address: 'tb1qgenerated',
+      derivationPath: "m/84'/1'/0'/0/20",
+      index: 20,
+      generated: true,
+    });
+
+    const response = await request(app)
+      .get('/api/v1/agent/wallets/funding-wallet/operational-address')
+      .set('Authorization', 'Bearer agt_test');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      walletId: 'operational-wallet',
+      address: 'tb1qgenerated',
+      derivationPath: "m/84'/1'/0'/0/20",
+      index: 20,
+      generated: true,
+    });
+  });
+
+  it('verifies agent-provided operational receive addresses', async () => {
+    const response = await request(app)
+      .post('/api/v1/agent/wallets/funding-wallet/operational-address/verify')
+      .set('Authorization', 'Bearer agt_test')
+      .send({ address: 'tb1qoperational' });
+
+    expect(response.status).toBe(200);
+    expect(mockVerifyOperationalReceiveAddress).toHaveBeenCalledWith({
+      operationalWalletId: 'operational-wallet',
+      address: 'tb1qoperational',
+    });
+    expect(response.body).toEqual({
+      walletId: 'operational-wallet',
+      address: 'tb1qoperational',
+      verified: true,
+      derivationPath: "m/84'/1'/0'/0/0",
+      index: 0,
+    });
+  });
+
+  it('rejects empty operational address verification payloads', async () => {
+    const response = await request(app)
+      .post('/api/v1/agent/wallets/funding-wallet/operational-address/verify')
+      .set('Authorization', 'Bearer agt_test')
+      .send({ address: '' });
+
+    expect(response.status).toBe(400);
+    expect(mockVerifyOperationalReceiveAddress).not.toHaveBeenCalled();
   });
 
   it('lets an agent update its own funding draft signature', async () => {

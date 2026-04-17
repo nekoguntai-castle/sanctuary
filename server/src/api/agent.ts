@@ -15,10 +15,14 @@ import { authenticateAgent, requireAgentContext } from '../middleware/agentAuth'
 import { validate } from '../middleware/validate';
 import { validateAgentFundingDraftSubmission } from '../services/agentFundingDraftValidation';
 import { enforceAgentFundingPolicy } from '../services/agentFundingPolicy';
+import {
+  getOrCreateOperationalReceiveAddress,
+  verifyOperationalReceiveAddress,
+} from '../services/agentOperationalAddressService';
 import { evaluateRejectedFundingAttemptAlert } from '../services/agentMonitoringService';
 import { draftService } from '../services/draftService';
 import { auditService, AuditAction, AuditCategory, getClientInfo } from '../services/auditService';
-import { addressRepository, agentRepository, utxoRepository, walletRepository } from '../repositories';
+import { agentRepository, utxoRepository, walletRepository } from '../repositories';
 import { getErrorMessage } from '../utils/errors';
 import { createLogger } from '../utils/logger';
 import { serializeDraftTransaction } from '../utils/serialization';
@@ -39,6 +43,10 @@ const FundingDraftSignatureParamsSchema = FundingDraftParamsSchema.extend({
 
 const FundingDraftSignatureBodySchema = z.object({
   signedPsbtBase64: z.string().min(1),
+});
+
+const OperationalAddressVerifyBodySchema = z.object({
+  address: z.string().min(1),
 });
 
 const FundingDraftBodySchema = z.object({
@@ -206,7 +214,7 @@ router.get('/wallets/:fundingWalletId/summary', validate({
 
 /**
  * GET /api/v1/agent/wallets/:fundingWalletId/operational-address
- * Return the next known unused receive address for the linked operational wallet.
+ * Return or derive the next unused receive address for the linked operational wallet.
  */
 router.get('/wallets/:fundingWalletId/operational-address', validate({
   params: FundingDraftParamsSchema,
@@ -216,17 +224,39 @@ router.get('/wallets/:fundingWalletId/operational-address', validate({
 
   requireAgentFundingDraftAccess(context, fundingWalletId, context.operationalWalletId);
 
-  const address = await addressRepository.findNextUnused(context.operationalWalletId);
-  if (!address) {
-    throw new InvalidInputError('Linked operational wallet has no unused receive address available');
-  }
+  const address = await getOrCreateOperationalReceiveAddress({
+    agentId: context.agentId,
+    operationalWalletId: context.operationalWalletId,
+  });
 
   res.json({
-    walletId: context.operationalWalletId,
+    walletId: address.walletId,
     address: address.address,
     derivationPath: address.derivationPath,
     index: address.index,
+    generated: address.generated,
   });
+}));
+
+/**
+ * POST /api/v1/agent/wallets/:fundingWalletId/operational-address/verify
+ * Verify that an agent-provided destination is a linked operational receive address.
+ */
+router.post('/wallets/:fundingWalletId/operational-address/verify', validate({
+  body: OperationalAddressVerifyBodySchema,
+  params: FundingDraftParamsSchema,
+}), asyncHandler(async (req, res) => {
+  const context = requireAgentContext(req);
+  const { fundingWalletId } = req.params;
+
+  requireAgentFundingDraftAccess(context, fundingWalletId, context.operationalWalletId);
+
+  const result = await verifyOperationalReceiveAddress({
+    operationalWalletId: context.operationalWalletId,
+    address: req.body.address,
+  });
+
+  res.json(result);
 }));
 
 /**

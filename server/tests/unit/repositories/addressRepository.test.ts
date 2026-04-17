@@ -176,6 +176,32 @@ describe('Address Repository', () => {
     });
   });
 
+  describe('findNextUnusedReceive', () => {
+    it('should find next unused receive address', async () => {
+      (prisma.address.findFirst as Mock).mockResolvedValue(mockAddress);
+
+      const result = await addressRepository.findNextUnusedReceive('wallet-456');
+
+      expect(result).toEqual(mockAddress);
+      expect(prisma.address.findFirst).toHaveBeenCalledWith({
+        where: {
+          walletId: 'wallet-456',
+          used: false,
+          derivationPath: { contains: '/0/' },
+        },
+        orderBy: { index: 'asc' },
+      });
+    });
+
+    it('should return null when no unused receive address exists', async () => {
+      (prisma.address.findFirst as Mock).mockResolvedValue(null);
+
+      const result = await addressRepository.findNextUnusedReceive('wallet-456');
+
+      expect(result).toBeNull();
+    });
+  });
+
   describe('countByWalletId', () => {
     it('should count all addresses', async () => {
       (prisma.address.count as Mock).mockResolvedValue(200);
