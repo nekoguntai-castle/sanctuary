@@ -1,4 +1,4 @@
-import type { AgentApiKey, WalletAgent } from '../generated/prisma/client';
+import type { AgentAlert, AgentApiKey, WalletAgent } from '../generated/prisma/client';
 import type { WalletAgentWithDetails } from '../repositories/agentRepository';
 import { parseAgentKeyScope } from './auth';
 
@@ -37,6 +37,12 @@ export function toWalletAgentMetadata(agent: WalletAgent | WalletAgentWithDetail
     dailyFundingLimitSats: bigintToString(agent.dailyFundingLimitSats),
     weeklyFundingLimitSats: bigintToString(agent.weeklyFundingLimitSats),
     cooldownMinutes: agent.cooldownMinutes,
+    minOperationalBalanceSats: bigintToString(agent.minOperationalBalanceSats),
+    largeOperationalSpendSats: bigintToString(agent.largeOperationalSpendSats),
+    largeOperationalFeeSats: bigintToString(agent.largeOperationalFeeSats),
+    repeatedFailureThreshold: agent.repeatedFailureThreshold,
+    repeatedFailureLookbackMinutes: agent.repeatedFailureLookbackMinutes,
+    alertDedupeMinutes: agent.alertDedupeMinutes,
     requireHumanApproval: agent.requireHumanApproval,
     notifyOnOperationalSpend: agent.notifyOnOperationalSpend,
     pauseOnUnexpectedSpend: agent.pauseOnUnexpectedSpend,
@@ -49,5 +55,28 @@ export function toWalletAgentMetadata(agent: WalletAgent | WalletAgentWithDetail
     ...('operationalWallet' in agent && { operationalWallet: agent.operationalWallet }),
     ...('signerDevice' in agent && { signerDevice: agent.signerDevice }),
     ...('apiKeys' in agent && agent.apiKeys && { apiKeys: agent.apiKeys.map(toAgentApiKeyMetadata) }),
+  };
+}
+
+export function toAgentAlertMetadata(alert: AgentAlert) {
+  return {
+    id: alert.id,
+    agentId: alert.agentId,
+    walletId: alert.walletId,
+    type: alert.type,
+    severity: alert.severity,
+    status: alert.status,
+    txid: alert.txid,
+    amountSats: bigintToString(alert.amountSats),
+    feeSats: bigintToString(alert.feeSats),
+    thresholdSats: bigintToString(alert.thresholdSats),
+    observedCount: alert.observedCount,
+    reasonCode: alert.reasonCode,
+    message: alert.message,
+    dedupeKey: alert.dedupeKey,
+    metadata: alert.metadata,
+    createdAt: alert.createdAt,
+    acknowledgedAt: alert.acknowledgedAt,
+    resolvedAt: alert.resolvedAt,
   };
 }

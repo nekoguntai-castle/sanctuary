@@ -15,6 +15,7 @@ import { authenticateAgent, requireAgentContext } from '../middleware/agentAuth'
 import { validate } from '../middleware/validate';
 import { validateAgentFundingDraftSubmission } from '../services/agentFundingDraftValidation';
 import { enforceAgentFundingPolicy } from '../services/agentFundingPolicy';
+import { evaluateRejectedFundingAttemptAlert } from '../services/agentMonitoringService';
 import { draftService } from '../services/draftService';
 import { auditService, AuditAction, AuditCategory, getClientInfo } from '../services/auditService';
 import { addressRepository, agentRepository, utxoRepository, walletRepository } from '../repositories';
@@ -121,6 +122,7 @@ async function recordAgentFundingAttempt(input: {
   userAgent?: string | null;
 }): Promise<void> {
   try {
+    const reasonCode = input.error ? getAttemptReasonCode(input.error) : null;
     await agentRepository.createFundingAttempt({
       agentId: input.agentId,
       keyId: input.keyId,
@@ -129,7 +131,7 @@ async function recordAgentFundingAttempt(input: {
       operationalWalletId: input.operationalWalletId ?? null,
       draftId: input.draftId ?? null,
       status: input.status,
-      reasonCode: input.error ? getAttemptReasonCode(input.error) : null,
+      reasonCode,
       reasonMessage: input.error ? getErrorMessage(input.error).slice(0, 500) : null,
       amount: parseOptionalAttemptAmount(input.amount),
       feeRate: parseOptionalAttemptFeeRate(input.feeRate),
@@ -137,6 +139,9 @@ async function recordAgentFundingAttempt(input: {
       ipAddress: input.ipAddress ?? null,
       userAgent: input.userAgent ?? null,
     });
+    if (input.status === 'rejected') {
+      await evaluateRejectedFundingAttemptAlert(input.agentId, reasonCode);
+    }
   } catch (recordError) {
     log.warn('Failed to record agent funding attempt', {
       agentId: input.agentId,

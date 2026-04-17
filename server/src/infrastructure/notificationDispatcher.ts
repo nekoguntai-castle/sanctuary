@@ -56,6 +56,7 @@ export interface TransactionNotificationPayload {
   txid: string;
   type: 'received' | 'sent' | 'consolidation';
   amount: string;
+  feeSats?: string | null;
 }
 
 /**

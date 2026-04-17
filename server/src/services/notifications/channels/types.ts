@@ -12,6 +12,7 @@ export interface TransactionNotification {
   txid: string;
   type: 'received' | 'sent' | 'consolidation' | 'self_transfer';
   amount: bigint;
+  feeSats?: bigint | null;
   agentId?: string | null;
   agentName?: string | null;
   agentOperationalSpend?: boolean;

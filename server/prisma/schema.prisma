@@ -881,6 +881,12 @@ model WalletAgent {
   dailyFundingLimitSats     BigInt?
   weeklyFundingLimitSats    BigInt?
   cooldownMinutes           Int?
+  minOperationalBalanceSats BigInt?
+  largeOperationalSpendSats BigInt?
+  largeOperationalFeeSats   BigInt?
+  repeatedFailureThreshold  Int?
+  repeatedFailureLookbackMinutes Int?
+  alertDedupeMinutes        Int?
   requireHumanApproval      Boolean   @default(true)
   notifyOnOperationalSpend  Boolean   @default(true)
   pauseOnUnexpectedSpend    Boolean   @default(false)
@@ -895,6 +901,7 @@ model WalletAgent {
   signerDevice      Device        @relation(fields: [signerDeviceId], references: [id], onDelete: Cascade)
   apiKeys           AgentApiKey[]
   fundingAttempts  AgentFundingAttempt[]
+  alerts           AgentAlert[]
 
   @@unique([fundingWalletId, operationalWalletId, signerDeviceId])
   @@index([userId])
@@ -905,6 +912,38 @@ model WalletAgent {
   @@index([revokedAt])
   @@index([lastFundingDraftAt])
   @@map("wallet_agents")
+}
+
+// Persisted operational and funding-health alerts for linked wallet agents.
+model AgentAlert {
+  id             String   @id @default(uuid())
+  agentId        String
+  walletId       String?
+  type           String
+  severity       String
+  status         String   @default("open")
+  txid           String?
+  amountSats     BigInt?
+  feeSats        BigInt?
+  thresholdSats  BigInt?
+  observedCount  Int?
+  reasonCode     String?
+  message        String
+  dedupeKey      String?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+  acknowledgedAt DateTime?
+  resolvedAt     DateTime?
+
+  agent WalletAgent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, createdAt])
+  @@index([agentId, status, createdAt])
+  @@index([walletId])
+  @@index([type])
+  @@index([txid])
+  @@index([dedupeKey])
+  @@map("agent_alerts")
 }
 
 // Scoped bearer credentials for agent funding-draft submission.

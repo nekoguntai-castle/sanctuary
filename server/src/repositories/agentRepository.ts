@@ -7,7 +7,7 @@
  */
 
 import prisma from '../models/prisma';
-import { Prisma, type AgentApiKey, type AgentFundingAttempt, type WalletAgent } from '../generated/prisma/client';
+import { Prisma, type AgentAlert, type AgentApiKey, type AgentFundingAttempt, type WalletAgent } from '../generated/prisma/client';
 
 export const AGENT_ACTION_CREATE_FUNDING_DRAFT = 'create_funding_draft' as const;
 
@@ -23,6 +23,12 @@ export interface CreateWalletAgentInput {
   dailyFundingLimitSats?: bigint | null;
   weeklyFundingLimitSats?: bigint | null;
   cooldownMinutes?: number | null;
+  minOperationalBalanceSats?: bigint | null;
+  largeOperationalSpendSats?: bigint | null;
+  largeOperationalFeeSats?: bigint | null;
+  repeatedFailureThreshold?: number | null;
+  repeatedFailureLookbackMinutes?: number | null;
+  alertDedupeMinutes?: number | null;
   requireHumanApproval?: boolean;
   notifyOnOperationalSpend?: boolean;
   pauseOnUnexpectedSpend?: boolean;
@@ -53,6 +59,23 @@ export interface CreateAgentFundingAttemptInput {
   recipient?: string | null;
   ipAddress?: string | null;
   userAgent?: string | null;
+}
+
+export interface CreateAgentAlertInput {
+  agentId: string;
+  walletId?: string | null;
+  type: string;
+  severity: string;
+  status?: string;
+  txid?: string | null;
+  amountSats?: bigint | null;
+  feeSats?: bigint | null;
+  thresholdSats?: bigint | null;
+  observedCount?: number | null;
+  reasonCode?: string | null;
+  message: string;
+  dedupeKey?: string | null;
+  metadata?: Prisma.InputJsonValue | null;
 }
 
 export type AgentApiKeyWithAgent = AgentApiKey & {
@@ -95,6 +118,13 @@ export interface FindWalletAgentsFilter {
   walletId?: string;
 }
 
+export interface FindAgentAlertsFilter {
+  agentId: string;
+  status?: string;
+  type?: string;
+  limit?: number;
+}
+
 export interface UpdateWalletAgentInput {
   name?: string;
   status?: string;
@@ -103,6 +133,12 @@ export interface UpdateWalletAgentInput {
   dailyFundingLimitSats?: bigint | null;
   weeklyFundingLimitSats?: bigint | null;
   cooldownMinutes?: number | null;
+  minOperationalBalanceSats?: bigint | null;
+  largeOperationalSpendSats?: bigint | null;
+  largeOperationalFeeSats?: bigint | null;
+  repeatedFailureThreshold?: number | null;
+  repeatedFailureLookbackMinutes?: number | null;
+  alertDedupeMinutes?: number | null;
   requireHumanApproval?: boolean;
   notifyOnOperationalSpend?: boolean;
   pauseOnUnexpectedSpend?: boolean;
@@ -123,6 +159,12 @@ export async function createAgent(input: CreateWalletAgentInput): Promise<Wallet
       dailyFundingLimitSats: input.dailyFundingLimitSats ?? null,
       weeklyFundingLimitSats: input.weeklyFundingLimitSats ?? null,
       cooldownMinutes: input.cooldownMinutes ?? null,
+      minOperationalBalanceSats: input.minOperationalBalanceSats ?? null,
+      largeOperationalSpendSats: input.largeOperationalSpendSats ?? null,
+      largeOperationalFeeSats: input.largeOperationalFeeSats ?? null,
+      repeatedFailureThreshold: input.repeatedFailureThreshold ?? null,
+      repeatedFailureLookbackMinutes: input.repeatedFailureLookbackMinutes ?? null,
+      alertDedupeMinutes: input.alertDedupeMinutes ?? null,
       requireHumanApproval: input.requireHumanApproval ?? true,
       notifyOnOperationalSpend: input.notifyOnOperationalSpend ?? true,
       pauseOnUnexpectedSpend: input.pauseOnUnexpectedSpend ?? false,
@@ -210,6 +252,12 @@ export async function updateAgent(agentId: string, input: UpdateWalletAgentInput
     ...(input.dailyFundingLimitSats !== undefined && { dailyFundingLimitSats: input.dailyFundingLimitSats }),
     ...(input.weeklyFundingLimitSats !== undefined && { weeklyFundingLimitSats: input.weeklyFundingLimitSats }),
     ...(input.cooldownMinutes !== undefined && { cooldownMinutes: input.cooldownMinutes }),
+    ...(input.minOperationalBalanceSats !== undefined && { minOperationalBalanceSats: input.minOperationalBalanceSats }),
+    ...(input.largeOperationalSpendSats !== undefined && { largeOperationalSpendSats: input.largeOperationalSpendSats }),
+    ...(input.largeOperationalFeeSats !== undefined && { largeOperationalFeeSats: input.largeOperationalFeeSats }),
+    ...(input.repeatedFailureThreshold !== undefined && { repeatedFailureThreshold: input.repeatedFailureThreshold }),
+    ...(input.repeatedFailureLookbackMinutes !== undefined && { repeatedFailureLookbackMinutes: input.repeatedFailureLookbackMinutes }),
+    ...(input.alertDedupeMinutes !== undefined && { alertDedupeMinutes: input.alertDedupeMinutes }),
     ...(input.requireHumanApproval !== undefined && { requireHumanApproval: input.requireHumanApproval }),
     ...(input.notifyOnOperationalSpend !== undefined && { notifyOnOperationalSpend: input.notifyOnOperationalSpend }),
     ...(input.pauseOnUnexpectedSpend !== undefined && { pauseOnUnexpectedSpend: input.pauseOnUnexpectedSpend }),
@@ -240,6 +288,88 @@ export async function sumAgentDraftAmountsSince(agentId: string, since: Date): P
   });
 
   return result._sum.amount ?? 0n;
+}
+
+export async function countRejectedFundingAttemptsSince(agentId: string, since: Date): Promise<number> {
+  return prisma.agentFundingAttempt.count({
+    where: {
+      agentId,
+      status: 'rejected',
+      createdAt: { gte: since },
+    },
+  });
+}
+
+function buildAgentAlertCreateData(input: CreateAgentAlertInput) {
+  return {
+    agentId: input.agentId,
+    walletId: input.walletId ?? null,
+    type: input.type,
+    severity: input.severity,
+    status: input.status ?? 'open',
+    txid: input.txid ?? null,
+    amountSats: input.amountSats ?? null,
+    feeSats: input.feeSats ?? null,
+    thresholdSats: input.thresholdSats ?? null,
+    observedCount: input.observedCount ?? null,
+    reasonCode: input.reasonCode ?? null,
+    message: input.message,
+    dedupeKey: input.dedupeKey ?? null,
+    metadata: input.metadata ?? Prisma.DbNull,
+  };
+}
+
+export async function createAlert(input: CreateAgentAlertInput): Promise<AgentAlert> {
+  return prisma.agentAlert.create({
+    data: buildAgentAlertCreateData(input),
+  });
+}
+
+/**
+ * Create an alert unless the same dedupe key already exists since `since`.
+ * Returns `null` when the alert is suppressed as a duplicate.
+ */
+export async function createAlertIfNotDuplicate(
+  input: CreateAgentAlertInput,
+  since: Date
+): Promise<AgentAlert | null> {
+  if (!input.dedupeKey) {
+    return createAlert(input);
+  }
+
+  const lockKey = `agent-alert:${input.dedupeKey}`;
+  return prisma.$transaction(async (tx) => {
+    // Serialize same-key dedupe checks so concurrent monitor runs cannot both insert.
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
+
+    const duplicate = await tx.agentAlert.findFirst({
+      where: {
+        dedupeKey: input.dedupeKey,
+        createdAt: { gte: since },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (duplicate) return null;
+
+    return tx.agentAlert.create({
+      data: buildAgentAlertCreateData(input),
+    });
+  }, {
+    maxWait: 5_000,
+    timeout: 5_000,
+  });
+}
+
+export async function findAlerts(filter: FindAgentAlertsFilter): Promise<AgentAlert[]> {
+  return prisma.agentAlert.findMany({
+    where: {
+      agentId: filter.agentId,
+      ...(filter.status && { status: filter.status }),
+      ...(filter.type && { type: filter.type }),
+    },
+    orderBy: { createdAt: 'desc' },
+    take: filter.limit ?? 25,
+  });
 }
 
 export async function createApiKey(input: CreateAgentApiKeyInput): Promise<AgentApiKey> {
@@ -361,6 +491,10 @@ export const agentRepository = {
   updateAgent,
   markAgentFundingDraftCreated,
   sumAgentDraftAmountsSince,
+  countRejectedFundingAttemptsSince,
+  createAlert,
+  createAlertIfNotDuplicate,
+  findAlerts,
   createApiKey,
   findApiKeyByHash,
   findApiKeyById,

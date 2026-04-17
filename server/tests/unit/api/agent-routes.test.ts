@@ -10,6 +10,7 @@ const {
   mockMarkAgentFundingDraftCreated,
   mockWithAgentFundingLock,
   mockCreateFundingAttempt,
+  mockEvaluateRejectedFundingAttemptAlert,
   mockCreateDraft,
   mockGetDraft,
   mockUpdateDraft,
@@ -24,6 +25,7 @@ const {
   mockMarkAgentFundingDraftCreated: vi.fn(),
   mockWithAgentFundingLock: vi.fn(),
   mockCreateFundingAttempt: vi.fn(),
+  mockEvaluateRejectedFundingAttemptAlert: vi.fn(),
   mockCreateDraft: vi.fn(),
   mockGetDraft: vi.fn(),
   mockUpdateDraft: vi.fn(),
@@ -63,6 +65,10 @@ vi.mock('../../../src/services/agentFundingDraftValidation', () => ({
 
 vi.mock('../../../src/services/agentFundingPolicy', () => ({
   enforceAgentFundingPolicy: mockEnforceAgentFundingPolicy,
+}));
+
+vi.mock('../../../src/services/agentMonitoringService', () => ({
+  evaluateRejectedFundingAttemptAlert: mockEvaluateRejectedFundingAttemptAlert,
 }));
 
 vi.mock('../../../src/repositories', () => ({
@@ -374,6 +380,7 @@ describe('Agent Routes', () => {
       feeRate: 5,
       recipient: 'tb1qrecipient',
     }));
+    expect(mockEvaluateRejectedFundingAttemptAlert).toHaveBeenCalledWith('agent-1', 'policy_daily_limit');
   });
 
   it('returns forbidden when the agent credential is not scoped to the wallet pair', async () => {

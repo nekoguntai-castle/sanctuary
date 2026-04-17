@@ -302,6 +302,8 @@ export interface FeatureFlagAuditResult {
 // ========================================
 
 export type WalletAgentStatus = 'active' | 'paused' | 'revoked';
+export type AgentAlertSeverity = 'info' | 'warning' | 'critical';
+export type AgentAlertStatus = 'open' | 'acknowledged' | 'resolved';
 
 export interface AgentApiKeyScope {
   allowedActions?: string[];
@@ -348,6 +350,12 @@ export interface WalletAgentMetadata {
   dailyFundingLimitSats: string | null;
   weeklyFundingLimitSats: string | null;
   cooldownMinutes: number | null;
+  minOperationalBalanceSats: string | null;
+  largeOperationalSpendSats: string | null;
+  largeOperationalFeeSats: string | null;
+  repeatedFailureThreshold: number | null;
+  repeatedFailureLookbackMinutes: number | null;
+  alertDedupeMinutes: number | null;
   requireHumanApproval: boolean;
   notifyOnOperationalSpend: boolean;
   pauseOnUnexpectedSpend: boolean;
@@ -374,6 +382,12 @@ export interface CreateWalletAgentRequest {
   dailyFundingLimitSats?: string;
   weeklyFundingLimitSats?: string;
   cooldownMinutes?: number;
+  minOperationalBalanceSats?: string;
+  largeOperationalSpendSats?: string;
+  largeOperationalFeeSats?: string;
+  repeatedFailureThreshold?: number;
+  repeatedFailureLookbackMinutes?: number;
+  alertDedupeMinutes?: number;
   requireHumanApproval?: boolean;
   notifyOnOperationalSpend?: boolean;
   pauseOnUnexpectedSpend?: boolean;
@@ -387,6 +401,12 @@ export interface UpdateWalletAgentRequest {
   dailyFundingLimitSats?: string | null;
   weeklyFundingLimitSats?: string | null;
   cooldownMinutes?: number | null;
+  minOperationalBalanceSats?: string | null;
+  largeOperationalSpendSats?: string | null;
+  largeOperationalFeeSats?: string | null;
+  repeatedFailureThreshold?: number | null;
+  repeatedFailureLookbackMinutes?: number | null;
+  alertDedupeMinutes?: number | null;
   requireHumanApproval?: boolean;
   notifyOnOperationalSpend?: boolean;
   pauseOnUnexpectedSpend?: boolean;
@@ -400,6 +420,27 @@ export interface CreateAgentApiKeyRequest {
 
 export interface CreatedAgentApiKey extends AgentApiKeyMetadata {
   apiKey: string;
+}
+
+export interface AgentAlertMetadata {
+  id: string;
+  agentId: string;
+  walletId: string | null;
+  type: string;
+  severity: AgentAlertSeverity;
+  status: AgentAlertStatus;
+  txid: string | null;
+  amountSats: string | null;
+  feeSats: string | null;
+  thresholdSats: string | null;
+  observedCount: number | null;
+  reasonCode: string | null;
+  message: string;
+  dedupeKey: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+  acknowledgedAt: string | null;
+  resolvedAt: string | null;
 }
 
 export interface AgentOptionUser extends Pick<AdminUser, 'id' | 'username' | 'email' | 'emailVerified' | 'isAdmin' | 'createdAt' | 'updatedAt'> {}

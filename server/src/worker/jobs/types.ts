@@ -65,6 +65,8 @@ export interface TransactionNotifyJobData {
   type: 'received' | 'sent' | 'consolidation';
   /** Amount in satoshis (as string for BigInt serialization) */
   amount: string;
+  /** Fee in satoshis (as string for BigInt serialization) */
+  feeSats?: string | null;
 }
 
 export interface DraftNotifyJobData {

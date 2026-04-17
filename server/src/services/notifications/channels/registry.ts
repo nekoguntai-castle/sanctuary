@@ -8,6 +8,7 @@
 import { createLogger } from '../../../utils/logger';
 import { getErrorMessage } from '../../../utils/errors';
 import { agentRepository } from '../../../repositories';
+import { evaluateOperationalTransactionAlerts } from '../../agentMonitoringService';
 import type {
   NotificationChannelHandler,
   TransactionNotification,
@@ -271,6 +272,8 @@ async function enrichAgentOperationalTransactions(
   }
 
   const agents = await agentRepository.findActiveAgentsByOperationalWalletId(walletId);
+  await evaluateOperationalTransactionAlerts(walletId, transactions, agents);
+
   const notifyingAgents = agents.filter(agent => agent.notifyOnOperationalSpend);
   if (notifyingAgents.length === 0) {
     return transactions;

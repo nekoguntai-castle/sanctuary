@@ -55,6 +55,7 @@ describe('sendNotifications', () => {
       txid: 'tx1',
       type: 'received',
       amount: '50000',
+      feeSats: null,
     });
     expect(mockNotifyNewTransactions).not.toHaveBeenCalled();
     expect(mockBroadcast).toHaveBeenCalledTimes(2);

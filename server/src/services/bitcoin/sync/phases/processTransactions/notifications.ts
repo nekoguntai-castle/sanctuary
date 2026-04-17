@@ -30,6 +30,7 @@ export async function sendNotifications(
         txid: first.txid,
         type: first.type as 'received' | 'sent' | 'consolidation',
         amount: first.amount.toString(),
+        feeSats: first.fee?.toString() ?? null,
       });
 
       if (useQueue && newTransactions.length > 1) {
@@ -40,6 +41,7 @@ export async function sendNotifications(
             txid: tx.txid,
             type: tx.type as 'received' | 'sent' | 'consolidation',
             amount: tx.amount.toString(),
+            feeSats: tx.fee?.toString() ?? null,
           })
         ));
       }
@@ -52,6 +54,7 @@ export async function sendNotifications(
         txid: tx.txid,
         type: tx.type,
         amount: tx.amount,
+        feeSats: tx.fee ?? null,
       }))).catch(err => {
         log.warn(`[SYNC] Failed to send inline notification: ${err}`);
       });

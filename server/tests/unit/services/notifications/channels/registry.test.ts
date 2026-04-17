@@ -4,9 +4,14 @@ const mockAgentRepository = vi.hoisted(() => ({
   findActiveAgentsByOperationalWalletId: vi.fn(),
   updateAgent: vi.fn(),
 }));
+const mockEvaluateOperationalTransactionAlerts = vi.hoisted(() => vi.fn());
 
 vi.mock('../../../../../src/repositories', () => ({
   agentRepository: mockAgentRepository,
+}));
+
+vi.mock('../../../../../src/services/agentMonitoringService', () => ({
+  evaluateOperationalTransactionAlerts: mockEvaluateOperationalTransactionAlerts,
 }));
 
 import { NotificationChannelRegistry } from '../../../../../src/services/notifications/channels/registry';
@@ -66,6 +71,7 @@ describe('NotificationChannelRegistry', () => {
     vi.restoreAllMocks();
     mockAgentRepository.findActiveAgentsByOperationalWalletId.mockResolvedValue([]);
     mockAgentRepository.updateAgent.mockResolvedValue(undefined);
+    mockEvaluateOperationalTransactionAlerts.mockResolvedValue(undefined);
   });
 
   it('registers handlers and supports lookup and unregister lifecycle', () => {
@@ -209,6 +215,11 @@ describe('NotificationChannelRegistry', () => {
         agentName: 'Treasury Agent',
         agentOperationalSpend: true,
       }),
+    ]);
+    expect(mockEvaluateOperationalTransactionAlerts).toHaveBeenCalledWith('operational-wallet', [
+      { txid: 'b'.repeat(64), type: 'sent', amount: -10_000n },
+    ], [
+      expect.objectContaining({ id: 'agent-1' }),
     ]);
     expect(mockAgentRepository.updateAgent).toHaveBeenCalledWith('agent-1', { status: 'paused' });
   });

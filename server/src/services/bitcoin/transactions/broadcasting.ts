@@ -82,6 +82,7 @@ export async function broadcastAndSave(
         txid,
         type: persisted.txType,
         amount: BigInt(metadata.amount),
+        feeSats: BigInt(metadata.fee),
       }]).catch(err => {
         log.warn('Failed to send notifications', { error: getErrorMessage(err) });
       });

@@ -1,6 +1,6 @@
 # Agent Wallet Funding Plan
 
-Status: In progress - server primitives for linked agent metadata, scoped credentials, admin management, policy-gated funding draft submission, PSBT content validation, Telegram notification, draft-row display, and operational spend monitoring are implemented.
+Status: In progress - server primitives for linked agent metadata, scoped credentials, admin management, policy-gated funding draft submission, PSBT content validation, Telegram notification, draft-row display, operational monitoring policy, and alert history are implemented.
 
 ## Goal
 
@@ -153,11 +153,11 @@ Policy behavior:
 Because the operational wallet is single-sig and agent-controlled, monitoring and refill gates are the safety layer.
 
 - [x] Alert on outgoing transactions from the operational wallet.
-- [ ] Alert when balance falls below refill threshold.
-- [ ] Alert when balance exceeds expected maximum.
+- [x] Alert when balance falls below refill threshold.
+- [x] Alert when balance exceeds expected maximum.
 - [x] Alert on unconfirmed outgoing spend.
-- [ ] Alert on large fee spend.
-- [ ] Alert on repeated failed funding requests.
+- [x] Alert on large fee spend.
+- [x] Alert on repeated failed funding requests.
 - [ ] Surface unknown or suspicious self-transfer classification issues.
 - [ ] Add an Agent Wallets dashboard section with funding wallet, operational balance, and status.
 
@@ -305,30 +305,38 @@ Verification:
 
 Goal: convert passive operational wallet observation into actionable safety signals.
 
-- [ ] Add monitoring configuration to the agent profile:
+- [x] Add monitoring configuration to the agent profile:
   - `minOperationalBalanceSats` or `refillThresholdSats`
   - `largeOperationalSpendSats`
   - `largeOperationalFeeSats` and/or fee percent threshold
   - repeated failed funding request threshold and lookback window
-  - unknown-destination handling mode: notify only, pause agent, or both
-- [ ] Alert when operational balance falls below refill threshold.
-- [ ] Alert when operational balance exceeds expected maximum.
-- [ ] Alert on large outgoing operational spend.
-- [ ] Alert on large fee spend.
-- [ ] Alert on repeated failed funding requests.
+- [x] Alert when operational balance falls below refill threshold.
+- [x] Alert when operational balance exceeds expected maximum.
+- [x] Alert on large outgoing operational spend.
+- [x] Alert on large fee spend.
+- [x] Alert on repeated rejected agent funding attempts.
+- [x] Store alert history with dedupe keys and human-readable messages.
+- [x] Expose admin alert history APIs for future dashboard/mobile use.
+- [x] Add monitoring fields to the existing admin agent management UI.
+- [x] Alert on repeated failed funding requests.
+- [ ] Add unknown-destination handling mode: notify only, pause agent, or both.
 - [ ] Improve classification for self-transfer/change-like transactions from the operational wallet.
-- [ ] Store enough alert history to power dashboards without scraping logs.
+- [x] Store enough alert history to power dashboards without scraping logs.
 
 Acceptance criteria:
 
-- Alerts are deduped, testable, and routed through the existing notification registry.
+- Alerts are deduped with a repository-level advisory lock, testable, and evaluated through the existing operational transaction notification path.
 - Balance threshold alerts do not spam on every sync while the balance remains unchanged.
-- Unknown outgoing activity can optionally pause future funding without revoking keys or mutating wallet descriptors.
+- Operational outgoing activity can optionally pause future funding without revoking keys or mutating wallet descriptors.
 - Failed request alerts use stored rejection records, not log parsing.
 
 Verification:
 
-- Unit tests for balance threshold transitions, large-spend/fee classification, repeated failures, and dedupe.
+- [x] Unit tests for balance thresholds, large-spend/fee classification, repeated failures, and dedupe.
+- [x] API tests for admin alert history listing.
+- [x] Component/API binding tests for monitoring policy fields.
+- [x] `npm run test:run`
+- [x] `cd server && npm run test:unit`
 - Notification channel tests for Telegram/push payload shape once a push channel exists for this event.
 
 ### Phase 11: Agent Wallets Dashboard

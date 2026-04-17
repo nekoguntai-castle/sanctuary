@@ -197,6 +197,8 @@ const AgentSatsLimitSchema = z
   }, 'Satoshi limits must be non-negative whole numbers')
   .transform((value) => BigInt(value));
 const NullableAgentSatsLimitSchema = z.union([AgentSatsLimitSchema, z.null()]);
+const NullableAgentIntegerSchema = z.union([z.coerce.number().int().min(1).max(10080), z.null()]);
+const AgentAlertStatusSchema = z.enum(['open', 'acknowledged', 'resolved']);
 
 export const CreateWalletAgentSchema = z.object({
   userId: UuidSchema,
@@ -210,6 +212,12 @@ export const CreateWalletAgentSchema = z.object({
   dailyFundingLimitSats: AgentSatsLimitSchema.optional(),
   weeklyFundingLimitSats: AgentSatsLimitSchema.optional(),
   cooldownMinutes: z.coerce.number().int().min(0).max(525600).optional(),
+  minOperationalBalanceSats: AgentSatsLimitSchema.optional(),
+  largeOperationalSpendSats: AgentSatsLimitSchema.optional(),
+  largeOperationalFeeSats: AgentSatsLimitSchema.optional(),
+  repeatedFailureThreshold: z.coerce.number().int().min(1).max(100).optional(),
+  repeatedFailureLookbackMinutes: z.coerce.number().int().min(1).max(10080).optional(),
+  alertDedupeMinutes: z.coerce.number().int().min(1).max(10080).optional(),
   requireHumanApproval: z.boolean().default(true),
   notifyOnOperationalSpend: z.boolean().default(true),
   pauseOnUnexpectedSpend: z.boolean().default(false),
@@ -223,6 +231,12 @@ export const UpdateWalletAgentSchema = z.object({
   dailyFundingLimitSats: NullableAgentSatsLimitSchema.optional(),
   weeklyFundingLimitSats: NullableAgentSatsLimitSchema.optional(),
   cooldownMinutes: z.union([z.coerce.number().int().min(0).max(525600), z.null()]).optional(),
+  minOperationalBalanceSats: NullableAgentSatsLimitSchema.optional(),
+  largeOperationalSpendSats: NullableAgentSatsLimitSchema.optional(),
+  largeOperationalFeeSats: NullableAgentSatsLimitSchema.optional(),
+  repeatedFailureThreshold: NullableAgentIntegerSchema.optional(),
+  repeatedFailureLookbackMinutes: NullableAgentIntegerSchema.optional(),
+  alertDedupeMinutes: NullableAgentIntegerSchema.optional(),
   requireHumanApproval: z.boolean().optional(),
   notifyOnOperationalSpend: z.boolean().optional(),
   pauseOnUnexpectedSpend: z.boolean().optional(),
@@ -230,6 +244,12 @@ export const UpdateWalletAgentSchema = z.object({
 
 export const ListWalletAgentsQuerySchema = z.object({
   walletId: UuidSchema.optional(),
+});
+
+export const ListAgentAlertsQuerySchema = z.object({
+  status: AgentAlertStatusSchema.optional(),
+  type: z.string().min(1).max(100).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
 });
 
 export const CreateAgentApiKeySchema = z.object({

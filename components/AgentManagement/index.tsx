@@ -45,6 +45,12 @@ const DEFAULT_AGENT_FORM = {
   dailyFundingLimitSats: '',
   weeklyFundingLimitSats: '',
   cooldownMinutes: '',
+  minOperationalBalanceSats: '',
+  largeOperationalSpendSats: '',
+  largeOperationalFeeSats: '',
+  repeatedFailureThreshold: '',
+  repeatedFailureLookbackMinutes: '',
+  alertDedupeMinutes: '',
   requireHumanApproval: true,
   notifyOnOperationalSpend: true,
   pauseOnUnexpectedSpend: false,
@@ -66,6 +72,33 @@ const POLICY_FIELDS: Array<{
   { key: 'weeklyFundingLimitSats', label: 'Weekly cap', helper: 'Maximum accepted funding amount per UTC week.' },
 ];
 
+const MONITORING_SATS_FIELDS: Array<{
+  key: keyof Pick<
+    AgentFormState,
+    'minOperationalBalanceSats' | 'largeOperationalSpendSats' | 'largeOperationalFeeSats'
+  >;
+  label: string;
+  helper: string;
+}> = [
+  { key: 'minOperationalBalanceSats', label: 'Refill threshold', helper: 'Alert when the operational wallet drops below this balance.' },
+  { key: 'largeOperationalSpendSats', label: 'Large spend alert', helper: 'Alert when a single operational spend meets or exceeds this amount.' },
+  { key: 'largeOperationalFeeSats', label: 'Large fee alert', helper: 'Alert when an operational transaction fee meets or exceeds this amount.' },
+];
+
+const MONITORING_NUMBER_FIELDS: Array<{
+  key: keyof Pick<
+    AgentFormState,
+    'repeatedFailureThreshold' | 'repeatedFailureLookbackMinutes' | 'alertDedupeMinutes'
+  >;
+  label: string;
+  helper: string;
+  placeholder: string;
+}> = [
+  { key: 'repeatedFailureThreshold', label: 'Rejected attempt alert count', helper: 'Alert after this many rejected funding attempts in the lookback window.', placeholder: 'No alert' },
+  { key: 'repeatedFailureLookbackMinutes', label: 'Failure lookback minutes', helper: 'Window used for rejected attempt alerts. Defaults to 60 minutes.', placeholder: '60' },
+  { key: 'alertDedupeMinutes', label: 'Alert dedupe minutes', helper: 'Suppress duplicate threshold alerts for this many minutes. Defaults to 60 minutes.', placeholder: '60' },
+];
+
 function formatWalletType(type: string): string {
   return type === 'multi_sig' ? 'Multisig' : type === 'single_sig' ? 'Single sig' : type;
 }
@@ -77,6 +110,16 @@ function formatLimit(value: string | null): string {
   } catch {
     return `${value} sats`;
   }
+}
+
+function formatAlertLimit(value: string | null): string {
+  if (!value) return 'Off';
+  return formatLimit(value);
+}
+
+function formatNumberLimit(value: number | null, suffix: string): string {
+  if (!value) return 'Off';
+  return `${value.toLocaleString()} ${suffix}`;
 }
 
 function formatDateTime(value: string | null | undefined): string {
@@ -144,6 +187,12 @@ function buildCreatePayload(form: AgentFormState): adminApi.CreateWalletAgentReq
   const dailyFundingLimitSats = normalizeOptionalSats(form.dailyFundingLimitSats);
   const weeklyFundingLimitSats = normalizeOptionalSats(form.weeklyFundingLimitSats);
   const cooldownMinutes = normalizeOptionalNumber(form.cooldownMinutes);
+  const minOperationalBalanceSats = normalizeOptionalSats(form.minOperationalBalanceSats);
+  const largeOperationalSpendSats = normalizeOptionalSats(form.largeOperationalSpendSats);
+  const largeOperationalFeeSats = normalizeOptionalSats(form.largeOperationalFeeSats);
+  const repeatedFailureThreshold = normalizeOptionalNumber(form.repeatedFailureThreshold);
+  const repeatedFailureLookbackMinutes = normalizeOptionalNumber(form.repeatedFailureLookbackMinutes);
+  const alertDedupeMinutes = normalizeOptionalNumber(form.alertDedupeMinutes);
 
   return {
     userId: form.userId,
@@ -157,6 +206,12 @@ function buildCreatePayload(form: AgentFormState): adminApi.CreateWalletAgentReq
     ...(dailyFundingLimitSats && { dailyFundingLimitSats }),
     ...(weeklyFundingLimitSats && { weeklyFundingLimitSats }),
     ...(cooldownMinutes !== undefined && { cooldownMinutes }),
+    ...(minOperationalBalanceSats && { minOperationalBalanceSats }),
+    ...(largeOperationalSpendSats && { largeOperationalSpendSats }),
+    ...(largeOperationalFeeSats && { largeOperationalFeeSats }),
+    ...(repeatedFailureThreshold !== undefined && { repeatedFailureThreshold }),
+    ...(repeatedFailureLookbackMinutes !== undefined && { repeatedFailureLookbackMinutes }),
+    ...(alertDedupeMinutes !== undefined && { alertDedupeMinutes }),
     requireHumanApproval: form.requireHumanApproval,
     notifyOnOperationalSpend: form.notifyOnOperationalSpend,
     pauseOnUnexpectedSpend: form.pauseOnUnexpectedSpend,
@@ -172,6 +227,12 @@ function buildUpdatePayload(form: AgentFormState): UpdateWalletAgentRequest {
     dailyFundingLimitSats: normalizeNullableSats(form.dailyFundingLimitSats),
     weeklyFundingLimitSats: normalizeNullableSats(form.weeklyFundingLimitSats),
     cooldownMinutes: normalizeNullableNumber(form.cooldownMinutes),
+    minOperationalBalanceSats: normalizeNullableSats(form.minOperationalBalanceSats),
+    largeOperationalSpendSats: normalizeNullableSats(form.largeOperationalSpendSats),
+    largeOperationalFeeSats: normalizeNullableSats(form.largeOperationalFeeSats),
+    repeatedFailureThreshold: normalizeNullableNumber(form.repeatedFailureThreshold),
+    repeatedFailureLookbackMinutes: normalizeNullableNumber(form.repeatedFailureLookbackMinutes),
+    alertDedupeMinutes: normalizeNullableNumber(form.alertDedupeMinutes),
     requireHumanApproval: form.requireHumanApproval,
     notifyOnOperationalSpend: form.notifyOnOperationalSpend,
     pauseOnUnexpectedSpend: form.pauseOnUnexpectedSpend,
@@ -465,6 +526,14 @@ function AgentRow({
             <span>Cooldown: {agent.cooldownMinutes ?? 0} min</span>
           </div>
 
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-2 text-xs text-sanctuary-500 dark:text-sanctuary-400">
+            <span>Refill alert: {formatAlertLimit(agent.minOperationalBalanceSats)}</span>
+            <span>Large spend: {formatAlertLimit(agent.largeOperationalSpendSats)}</span>
+            <span>Large fee: {formatAlertLimit(agent.largeOperationalFeeSats)}</span>
+            <span>Failure alerts: {formatNumberLimit(agent.repeatedFailureThreshold, 'rejects')}</span>
+            <span>Dedupe: {agent.alertDedupeMinutes ? `${agent.alertDedupeMinutes} min` : 'Default'}</span>
+          </div>
+
           <div className="mt-3 flex flex-wrap gap-2 text-xs text-sanctuary-500 dark:text-sanctuary-400">
             <span>{activeKeys.length} active key{activeKeys.length === 1 ? '' : 's'}</span>
             <span>Last draft: {formatDateTime(agent.lastFundingDraftAt)}</span>
@@ -550,6 +619,12 @@ function AgentFormModal({
     dailyFundingLimitSats: agent.dailyFundingLimitSats ?? '',
     weeklyFundingLimitSats: agent.weeklyFundingLimitSats ?? '',
     cooldownMinutes: agent.cooldownMinutes?.toString() ?? '',
+    minOperationalBalanceSats: agent.minOperationalBalanceSats ?? '',
+    largeOperationalSpendSats: agent.largeOperationalSpendSats ?? '',
+    largeOperationalFeeSats: agent.largeOperationalFeeSats ?? '',
+    repeatedFailureThreshold: agent.repeatedFailureThreshold?.toString() ?? '',
+    repeatedFailureLookbackMinutes: agent.repeatedFailureLookbackMinutes?.toString() ?? '',
+    alertDedupeMinutes: agent.alertDedupeMinutes?.toString() ?? '',
     requireHumanApproval: agent.requireHumanApproval,
     notifyOnOperationalSpend: agent.notifyOnOperationalSpend,
     pauseOnUnexpectedSpend: agent.pauseOnUnexpectedSpend,
@@ -660,6 +735,7 @@ function AgentFormModal({
             <Input
               type="number"
               min={0}
+              aria-label="Cooldown minutes"
               value={form.cooldownMinutes}
               onChange={(event) => setField('cooldownMinutes', event.target.value)}
               placeholder="0"
@@ -674,13 +750,53 @@ function AgentFormModal({
               <Input
                 type="number"
                 min={0}
+                aria-label={field.label}
                 value={form[field.key]}
                 onChange={(event) => setField(field.key, event.target.value)}
                 placeholder="No cap"
               />
-              <p className="mt-1 text-xs text-sanctuary-500">{field.helper}</p>
+              <p className="mt-1 text-xs text-sanctuary-500 dark:text-sanctuary-400">{field.helper}</p>
             </div>
           ))}
+        </div>
+
+        <div className="space-y-3 border-t border-sanctuary-100 dark:border-sanctuary-800 pt-4">
+          <div>
+            <h3 className="text-sm font-medium text-sanctuary-800 dark:text-sanctuary-200">Operational alerts</h3>
+            <p className="mt-1 text-xs text-sanctuary-500 dark:text-sanctuary-400">
+              Persist alert history for balance drift, large operational transactions, and repeated rejected funding attempts.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {MONITORING_SATS_FIELDS.map(field => (
+              <div key={field.key}>
+                <label className="block text-sm font-medium text-sanctuary-700 dark:text-sanctuary-300 mb-1">{field.label}</label>
+                <Input
+                  type="number"
+                  min={0}
+                  aria-label={field.label}
+                  value={form[field.key]}
+                  onChange={(event) => setField(field.key, event.target.value)}
+                  placeholder="Off"
+                />
+                <p className="mt-1 text-xs text-sanctuary-500 dark:text-sanctuary-400">{field.helper}</p>
+              </div>
+            ))}
+            {MONITORING_NUMBER_FIELDS.map(field => (
+              <div key={field.key}>
+                <label className="block text-sm font-medium text-sanctuary-700 dark:text-sanctuary-300 mb-1">{field.label}</label>
+                <Input
+                  type="number"
+                  min={1}
+                  aria-label={field.label}
+                  value={form[field.key]}
+                  onChange={(event) => setField(field.key, event.target.value)}
+                  placeholder={field.placeholder}
+                />
+                <p className="mt-1 text-xs text-sanctuary-500 dark:text-sanctuary-400">{field.helper}</p>
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="space-y-3 border-t border-sanctuary-100 dark:border-sanctuary-800 pt-4">

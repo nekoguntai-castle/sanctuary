@@ -41,7 +41,7 @@ export const transactionNotifyJob: WorkerJobHandler<TransactionNotifyJobData, No
     backoff: { type: 'exponential', delay: 3000 },
   },
   handler: async (job: Job<TransactionNotifyJobData>): Promise<NotifyJobResult> => {
-    const { walletId, txid, type, amount } = job.data;
+    const { walletId, txid, type, amount, feeSats } = job.data;
 
     log.debug(`Sending transaction notification: ${txid}`, {
       walletId,
@@ -55,6 +55,7 @@ export const transactionNotifyJob: WorkerJobHandler<TransactionNotifyJobData, No
         txid,
         type,
         amount: BigInt(amount),
+        feeSats: feeSats ? BigInt(feeSats) : null,
       }];
 
       // Send via all channels

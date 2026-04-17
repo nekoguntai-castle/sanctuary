@@ -29,6 +29,12 @@ const agent = {
   dailyFundingLimitSats: null,
   weeklyFundingLimitSats: null,
   cooldownMinutes: 10,
+  minOperationalBalanceSats: '25000',
+  largeOperationalSpendSats: '75000',
+  largeOperationalFeeSats: '5000',
+  repeatedFailureThreshold: 3,
+  repeatedFailureLookbackMinutes: 60,
+  alertDedupeMinutes: 120,
   requireHumanApproval: true,
   notifyOnOperationalSpend: true,
   pauseOnUnexpectedSpend: false,
@@ -100,6 +106,8 @@ describe('AgentManagement', () => {
     expect(screen.getByText('Funding')).toBeInTheDocument();
     expect(screen.getByText('Operational')).toBeInTheDocument();
     expect(screen.getByText(/Request cap: 100,000 sats/)).toBeInTheDocument();
+    expect(screen.getByText(/Refill alert: 25,000 sats/)).toBeInTheDocument();
+    expect(screen.getByText(/Large spend: 75,000 sats/)).toBeInTheDocument();
     expect(screen.getByText(/Runtime/)).toBeInTheDocument();
   });
 
@@ -135,6 +143,12 @@ describe('AgentManagement', () => {
     await user.selectOptions(selects[3], 'operational-1');
     await user.selectOptions(selects[4], 'device-1');
     await user.type(screen.getByPlaceholderText('0'), '15');
+    await user.type(screen.getByLabelText('Refill threshold'), '20000');
+    await user.type(screen.getByLabelText('Large spend alert'), '90000');
+    await user.type(screen.getByLabelText('Large fee alert'), '4000');
+    await user.type(screen.getByLabelText('Rejected attempt alert count'), '4');
+    await user.type(screen.getByLabelText('Failure lookback minutes'), '45');
+    await user.type(screen.getByLabelText('Alert dedupe minutes'), '90');
 
     await user.click(screen.getAllByRole('button', { name: 'Create Agent' }).at(-1)!);
 
@@ -145,6 +159,12 @@ describe('AgentManagement', () => {
       operationalWalletId: 'operational-1',
       signerDeviceId: 'device-1',
       cooldownMinutes: 15,
+      minOperationalBalanceSats: '20000',
+      largeOperationalSpendSats: '90000',
+      largeOperationalFeeSats: '4000',
+      repeatedFailureThreshold: 4,
+      repeatedFailureLookbackMinutes: 45,
+      alertDedupeMinutes: 90,
       requireHumanApproval: true,
     })));
   });
@@ -160,11 +180,20 @@ describe('AgentManagement', () => {
     const capInput = screen.getByDisplayValue('100000');
     await user.clear(capInput);
     await user.type(capInput, '250000');
+    const refillInput = screen.getByDisplayValue('25000');
+    await user.clear(refillInput);
+    await user.type(refillInput, '30000');
     await user.click(screen.getByRole('button', { name: 'Save Agent' }));
 
     await waitFor(() => expect(adminApi.updateWalletAgent).toHaveBeenCalledWith('agent-1', expect.objectContaining({
       status: 'paused',
       maxFundingAmountSats: '250000',
+      minOperationalBalanceSats: '30000',
+      largeOperationalSpendSats: '75000',
+      largeOperationalFeeSats: '5000',
+      repeatedFailureThreshold: 3,
+      repeatedFailureLookbackMinutes: 60,
+      alertDedupeMinutes: 120,
     })));
 
     await user.click(screen.getByRole('button', { name: 'Issue Key' }));

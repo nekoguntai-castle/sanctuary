@@ -1,12 +1,12 @@
 # Current Task: Agent Wallet Funding Implementation
 
-Status: Sixth implementation slice complete
+Status: Seventh implementation slice complete
 
 Reference plan: `tasks/agent-wallet-funding-plan.md`
 
 ## Active Implementation Slice
 
-Goal: expose the existing agent funding/admin primitives in the Sanctuary UI so admins can register agents, manage scoped keys, update policy, and see linked funding/operational wallet context without manual API calls. Sanctuary still does not store private keys or auto-sign.
+Goal: persist operational monitoring policy and alert history for linked agent wallets. Sanctuary still does not store private keys or auto-sign; alerts observe funding attempts and operational-wallet activity so humans can pause, investigate, or adjust funding policy.
 
 - [x] Load `AGENTS.md` and current project lessons into the session.
 - [x] Capture the agent funding architecture in `tasks/agent-wallet-funding-plan.md`.
@@ -39,6 +39,13 @@ Goal: expose the existing agent funding/admin primitives in the Sanctuary UI so 
 - [x] Add linked agent wallet badges to wallet detail headers for admins.
 - [x] Add focused server, API binding, route, component, and wallet-header tests.
 - [x] Run targeted contract checks plus full frontend and server unit verification.
+- [x] Add agent operational monitoring policy fields.
+- [x] Add persisted agent alert history with dedupe.
+- [x] Trigger alerts for low/high operational balance, large operational spends, large operational fees, and repeated rejected funding attempts.
+- [x] Expose alert history through admin APIs.
+- [x] Add monitoring fields to Admin -> Wallet Agents create/edit UI.
+- [x] Add focused repository, service, route, API, and component tests.
+- [x] Run targeted contract checks plus full frontend and server unit verification.
 
 ## Next Slices
 
@@ -69,7 +76,7 @@ Recommended order:
   - Add admin list/create/edit/revoke flows for agents.
   - Add one-time `agt_` key creation display and key revocation UI.
   - Add linked wallet labels in wallet detail views.
-- [ ] Phase 10: Operational monitoring and alert rules.
+- [x] Phase 10: Operational monitoring and alert rules.
   - Add refill/balance/large-spend/large-fee/repeated-failure alert policy.
   - Store alert history and dedupe threshold alerts.
 - [ ] Phase 11: Agent Wallets dashboard.
@@ -88,9 +95,48 @@ Recommended order:
 
 Next recommended implementation slice:
 
-- [ ] Continue with Phase 10: Operational monitoring and alert rules. The admin UI can now expose agents and keys, so the next missing safety surface is persisted alert policy/history for operational wallets and repeated failures.
+- [ ] Continue with Phase 11: Agent Wallets dashboard. Phase 10 now persists alert policy/history; the next missing human surface is a consolidated operational view that shows balances, pending drafts, recent spends, and open alerts.
 
 ## Review
+
+Seventh slice update:
+
+- Added operational monitoring policy fields to wallet agents: refill threshold, large-spend threshold, large-fee threshold, repeated-failure threshold/lookback, and alert dedupe window.
+- Added persisted `AgentAlert` history with dedupe keys, severity/status, optional tx/amount/fee/threshold fields, rejected-attempt context, and JSON metadata for dashboard/mobile use.
+- Added a repository-level advisory lock around alert dedupe check/write so concurrent alert evaluation cannot duplicate rows inside the dedupe window.
+- Operational outgoing transaction notifications now also evaluate alert rules for linked active agents. Large spends and large fees dedupe per transaction; balance threshold alerts dedupe by agent/wallet/window.
+- Rejected agent funding attempts now evaluate repeated-failure alert rules from stored monitoring records instead of logs.
+- Added `GET /api/v1/admin/agents/:agentId/alerts` plus OpenAPI coverage and frontend admin API bindings.
+- Added monitoring fields to the Admin -> Wallet Agents create/edit UI and summary rows.
+- Kept Sanctuary's boundary intact: alerts observe and persist state only; they do not sign, broadcast, move funds, or store private keys.
+
+Verification run:
+
+- `cd server && npm run prisma:generate` — passed.
+- `cd server && npx vitest run tests/unit/repositories/agentRepository.test.ts tests/unit/services/agentMonitoringService.test.ts tests/unit/services/notifications/channels/registry.test.ts tests/unit/api/admin-agents-routes.test.ts tests/unit/api/agent-routes.test.ts` — 41 passed.
+- `npx vitest run tests/api/adminAgents.test.ts tests/components/AgentManagement.test.tsx` — 8 passed.
+- `npm run typecheck:app` — passed.
+- `cd server && npm run build` — passed.
+- `npm run check:openapi-route-coverage` — passed.
+- `npm run check:api-body-validation` — passed.
+- `npm run typecheck:tests` — passed.
+- `npm run test:run` — 393 files / 5528 tests passed.
+- `cd server && npm run test:unit` — 364 files / 8843 tests passed. Existing Vitest hoist warning remains in `tests/unit/utils/tracing/tracer.test.ts`.
+- Post-review targeted checks: `cd server && npx vitest run tests/unit/repositories/agentRepository.test.ts tests/unit/services/agentMonitoringService.test.ts tests/unit/agent/dto.test.ts tests/unit/services/bitcoin/transactionService.broadcast.test.ts` — 53 passed.
+- Post-review targeted check: `npx vitest run tests/components/AgentManagement.test.tsx` — 6 passed.
+
+Edge case audit:
+
+- Alert rule fields are optional; blank create fields are omitted, and cleared edit fields are sent as `null`.
+- Threshold values of `0`, `null`, or unset do not trigger alerts; positive thresholds are required before evaluation writes history.
+- Transaction-specific large-spend and large-fee alerts use txid-based dedupe from epoch so retries cannot duplicate the same tx alert.
+- Balance and repeated-failure alerts use a configurable dedupe window, defaulting to 60 minutes, to avoid writing on every sync.
+- Alert dedupe uses a PostgreSQL advisory transaction lock keyed by dedupe key, preserving repeat alerts after the configured window while preventing concurrent duplicate writes inside the window.
+- Monitoring failures are logged and swallowed so alert persistence cannot mask transaction notification delivery or agent API responses.
+- Repeated-failure alerts count stored rejected attempts in the configured lookback window.
+- Residual follow-up: unknown-destination/self-transfer classification and a dashboard/mobile alert review surface remain Phase 10 follow-up/Phase 11 work.
+
+---
 
 Sixth slice update:
 

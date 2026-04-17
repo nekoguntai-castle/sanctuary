@@ -40,6 +40,7 @@ export const registerBroadcastAndSaveNotificationContracts = () => {
       expect.arrayContaining([
         expect.objectContaining({
           type: 'sent',
+          feeSats: 1_000n,
         }),
       ])
     );

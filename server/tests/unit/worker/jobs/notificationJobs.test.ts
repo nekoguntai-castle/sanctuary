@@ -114,7 +114,7 @@ describe('Notification Jobs', () => {
 
       expect(mockNotificationChannelRegistry.notifyTransactions).toHaveBeenCalledWith(
         'wallet-123',
-        [{ txid: 'abc123def456', type: 'received', amount: BigInt(100000) }]
+        [{ txid: 'abc123def456', type: 'received', amount: BigInt(100000), feeSats: null }]
       );
     });
 

@@ -48,6 +48,7 @@ export interface TransactionData {
   txid: string;
   type: string;
   amount: bigint;
+  feeSats?: bigint | null;
   agentId?: string | null;
   agentName?: string | null;
   agentOperationalSpend?: boolean;

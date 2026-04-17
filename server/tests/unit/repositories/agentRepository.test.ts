@@ -17,6 +17,12 @@ const prisma = vi.hoisted(() => ({
   },
   agentFundingAttempt: {
     create: vi.fn(),
+    count: vi.fn(),
+  },
+  agentAlert: {
+    create: vi.fn(),
+    findFirst: vi.fn(),
+    findMany: vi.fn(),
   },
   draftTransaction: {
     aggregate: vi.fn(),
@@ -63,6 +69,12 @@ describe('agentRepository', () => {
         dailyFundingLimitSats: null,
         weeklyFundingLimitSats: null,
         cooldownMinutes: null,
+        minOperationalBalanceSats: null,
+        largeOperationalSpendSats: null,
+        largeOperationalFeeSats: null,
+        repeatedFailureThreshold: null,
+        repeatedFailureLookbackMinutes: null,
+        alertDedupeMinutes: null,
         requireHumanApproval: true,
         notifyOnOperationalSpend: true,
         pauseOnUnexpectedSpend: false,
@@ -124,6 +136,8 @@ describe('agentRepository', () => {
     await agentRepository.updateAgent('agent-1', {
       status: 'paused',
       maxFundingAmountSats: 100000n,
+      minOperationalBalanceSats: 25000n,
+      repeatedFailureThreshold: 3,
       cooldownMinutes: 10,
     });
 
@@ -132,6 +146,8 @@ describe('agentRepository', () => {
       data: expect.objectContaining({
         status: 'paused',
         maxFundingAmountSats: 100000n,
+        minOperationalBalanceSats: 25000n,
+        repeatedFailureThreshold: 3,
         cooldownMinutes: 10,
       }),
     });
@@ -269,6 +285,131 @@ describe('agentRepository', () => {
         ipAddress: '127.0.0.1',
         userAgent: 'agent-runtime',
       },
+    });
+  });
+
+  it('counts rejected funding attempts and stores deduped alert history', async () => {
+    const since = new Date('2026-04-16T00:00:00.000Z');
+    prisma.agentFundingAttempt.count.mockResolvedValue(3);
+
+    await expect(agentRepository.countRejectedFundingAttemptsSince('agent-1', since)).resolves.toBe(3);
+    expect(prisma.agentFundingAttempt.count).toHaveBeenCalledWith({
+      where: {
+        agentId: 'agent-1',
+        status: 'rejected',
+        createdAt: { gte: since },
+      },
+    });
+
+    prisma.agentAlert.create.mockResolvedValue({ id: 'alert-1' });
+    await expect(agentRepository.createAlert({
+      agentId: 'agent-1',
+      walletId: 'wallet-1',
+      type: 'large_operational_spend',
+      severity: 'critical',
+      txid: 'a'.repeat(64),
+      amountSats: 100000n,
+      thresholdSats: 75000n,
+      message: 'Large operational spend',
+      dedupeKey: 'agent:agent-1:large_spend:tx',
+      metadata: { thresholdSats: '75000' },
+    })).resolves.toEqual({ id: 'alert-1' });
+
+    expect(prisma.agentAlert.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        agentId: 'agent-1',
+        walletId: 'wallet-1',
+        type: 'large_operational_spend',
+        severity: 'critical',
+        status: 'open',
+        amountSats: 100000n,
+        thresholdSats: 75000n,
+        dedupeKey: 'agent:agent-1:large_spend:tx',
+        metadata: { thresholdSats: '75000' },
+      }),
+    });
+
+    prisma.agentAlert.findFirst.mockClear();
+    prisma.agentAlert.create.mockClear();
+    prisma.agentAlert.findFirst.mockResolvedValueOnce(null);
+    prisma.agentAlert.create.mockResolvedValueOnce({ id: 'alert-locked' });
+    await expect(agentRepository.createAlertIfNotDuplicate({
+      agentId: 'agent-1',
+      type: 'operational_balance_low',
+      severity: 'warning',
+      amountSats: 20000n,
+      thresholdSats: 25000n,
+      message: 'Balance below threshold',
+      dedupeKey: 'agent:agent-1:balance_low:wallet-1',
+    }, since)).resolves.toEqual({ id: 'alert-locked' });
+
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+      maxWait: 5000,
+      timeout: 5000,
+    });
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(prisma.agentAlert.findFirst).toHaveBeenCalledWith({
+      where: {
+        dedupeKey: 'agent:agent-1:balance_low:wallet-1',
+        createdAt: { gte: since },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(prisma.agentAlert.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        agentId: 'agent-1',
+        type: 'operational_balance_low',
+        dedupeKey: 'agent:agent-1:balance_low:wallet-1',
+      }),
+    });
+
+    prisma.agentAlert.findFirst.mockClear();
+    prisma.agentAlert.create.mockClear();
+    prisma.agentAlert.findFirst.mockResolvedValueOnce({ id: 'existing-alert' });
+    await expect(agentRepository.createAlertIfNotDuplicate({
+      agentId: 'agent-1',
+      type: 'operational_balance_low',
+      severity: 'warning',
+      message: 'Balance below threshold',
+      dedupeKey: 'agent:agent-1:balance_low:wallet-1',
+    }, since)).resolves.toBeNull();
+    expect(prisma.agentAlert.create).not.toHaveBeenCalled();
+
+    prisma.$transaction.mockClear();
+    prisma.$queryRaw.mockClear();
+    prisma.agentAlert.create.mockClear();
+    prisma.agentAlert.create.mockResolvedValueOnce({ id: 'alert-without-dedupe' });
+    await expect(agentRepository.createAlertIfNotDuplicate({
+      agentId: 'agent-1',
+      type: 'manual_review',
+      severity: 'info',
+      message: 'Manual review alert without dedupe',
+    }, since)).resolves.toEqual({ id: 'alert-without-dedupe' });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.$queryRaw).not.toHaveBeenCalled();
+    expect(prisma.agentAlert.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        agentId: 'agent-1',
+        type: 'manual_review',
+        dedupeKey: null,
+      }),
+    });
+
+    prisma.agentAlert.findMany.mockResolvedValue([{ id: 'alert-2' }]);
+    await expect(agentRepository.findAlerts({
+      agentId: 'agent-1',
+      status: 'open',
+      type: 'large_operational_fee',
+      limit: 10,
+    })).resolves.toEqual([{ id: 'alert-2' }]);
+    expect(prisma.agentAlert.findMany).toHaveBeenCalledWith({
+      where: {
+        agentId: 'agent-1',
+        status: 'open',
+        type: 'large_operational_fee',
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
     });
   });
 });

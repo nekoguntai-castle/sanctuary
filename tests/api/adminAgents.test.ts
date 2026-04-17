@@ -38,10 +38,16 @@ describe('admin wallet agents API', () => {
     });
     await adminAgentsApi.updateWalletAgent('agent-1', { status: 'paused' });
     await adminAgentsApi.revokeWalletAgent('agent-1');
+    await adminAgentsApi.getAgentAlerts('agent-1', { status: 'open', type: 'large_operational_spend', limit: 10 });
 
     expect(mockGet).toHaveBeenCalledWith('/admin/agents');
     expect(mockGet).toHaveBeenCalledWith('/admin/agents', { walletId: 'wallet-1' });
     expect(mockGet).toHaveBeenCalledWith('/admin/agents/options');
+    expect(mockGet).toHaveBeenCalledWith('/admin/agents/agent-1/alerts', {
+      status: 'open',
+      type: 'large_operational_spend',
+      limit: 10,
+    });
     expect(mockPost).toHaveBeenCalledWith('/admin/agents', {
       userId: 'user-1',
       name: 'Agent',

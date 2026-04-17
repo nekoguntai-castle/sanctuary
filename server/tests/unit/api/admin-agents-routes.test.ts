@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
     findAgentById: vi.fn(),
     findAgentByIdWithDetails: vi.fn(),
     updateAgent: vi.fn(),
+    findAlerts: vi.fn(),
     findApiKeysByAgentId: vi.fn(),
     createApiKey: vi.fn(),
     findApiKeyById: vi.fn(),
@@ -194,11 +195,18 @@ describe('Admin wallet agent routes', () => {
         operationalWalletId,
         signerDeviceId,
         maxFundingAmountSats: '100000',
+        minOperationalBalanceSats: '25000',
+        largeOperationalSpendSats: '75000',
+        largeOperationalFeeSats: '5000',
+        repeatedFailureThreshold: 3,
+        repeatedFailureLookbackMinutes: 60,
+        alertDedupeMinutes: 120,
         cooldownMinutes: 10,
       })
       .expect(201);
 
     expect(response.body.maxFundingAmountSats).toBe('100000');
+    expect(response.body.minOperationalBalanceSats).toBeNull();
     expect(mocks.walletRepository.hasAccess).toHaveBeenCalledTimes(2);
     expect(mocks.agentRepository.createAgent).toHaveBeenCalledWith(expect.objectContaining({
       userId,
@@ -207,6 +215,12 @@ describe('Admin wallet agent routes', () => {
       operationalWalletId,
       signerDeviceId,
       maxFundingAmountSats: 100000n,
+      minOperationalBalanceSats: 25000n,
+      largeOperationalSpendSats: 75000n,
+      largeOperationalFeeSats: 5000n,
+      repeatedFailureThreshold: 3,
+      repeatedFailureLookbackMinutes: 60,
+      alertDedupeMinutes: 120,
       cooldownMinutes: 10,
       requireHumanApproval: true,
     }));
@@ -247,7 +261,7 @@ describe('Admin wallet agent routes', () => {
 
     const response = await request(app)
       .patch(`/api/v1/admin/agents/${agentId}`)
-      .send({ status: 'paused', maxFundingAmountSats: null })
+      .send({ status: 'paused', maxFundingAmountSats: null, minOperationalBalanceSats: null })
       .expect(200);
 
     expect(response.body.status).toBe('paused');
@@ -255,6 +269,7 @@ describe('Admin wallet agent routes', () => {
     expect(mocks.agentRepository.updateAgent).toHaveBeenCalledWith(agentId, expect.objectContaining({
       status: 'paused',
       maxFundingAmountSats: null,
+      minOperationalBalanceSats: null,
       revokedAt: null,
     }));
 
@@ -268,6 +283,44 @@ describe('Admin wallet agent routes', () => {
       status: 'revoked',
       revokedAt: expect.any(Date),
     }));
+  });
+
+  it('lists persisted wallet agent alerts', async () => {
+    mocks.agentRepository.findAgentById.mockResolvedValue(agentFixture());
+    mocks.agentRepository.findAlerts.mockResolvedValue([
+      alertFixture({
+        type: 'large_operational_spend',
+        amountSats: 75000n,
+        thresholdSats: 50000n,
+      }),
+    ]);
+
+    const response = await request(app)
+      .get(`/api/v1/admin/agents/${agentId}/alerts?status=open&type=large_operational_spend&limit=10`)
+      .expect(200);
+
+    expect(response.body).toEqual([
+      expect.objectContaining({
+        id: '77777777-7777-4777-8777-777777777777',
+        agentId,
+        type: 'large_operational_spend',
+        severity: 'warning',
+        status: 'open',
+        amountSats: '75000',
+        thresholdSats: '50000',
+      }),
+    ]);
+    expect(mocks.agentRepository.findAlerts).toHaveBeenCalledWith({
+      agentId,
+      status: 'open',
+      type: 'large_operational_spend',
+      limit: 10,
+    });
+
+    await request(app).get(`/api/v1/admin/agents/${agentId}/alerts?limit=0`).expect(400);
+
+    mocks.agentRepository.findAgentById.mockResolvedValueOnce(null);
+    await request(app).get(`/api/v1/admin/agents/${agentId}/alerts`).expect(404);
   });
 
   it('creates, lists, and revokes scoped agent API keys', async () => {
@@ -322,6 +375,12 @@ function agentFixture(overrides: Record<string, unknown> = {}) {
     dailyFundingLimitSats: null,
     weeklyFundingLimitSats: null,
     cooldownMinutes: null,
+    minOperationalBalanceSats: null,
+    largeOperationalSpendSats: null,
+    largeOperationalFeeSats: null,
+    repeatedFailureThreshold: null,
+    repeatedFailureLookbackMinutes: null,
+    alertDedupeMinutes: null,
     requireHumanApproval: true,
     notifyOnOperationalSpend: true,
     pauseOnUnexpectedSpend: false,
@@ -334,6 +393,31 @@ function agentFixture(overrides: Record<string, unknown> = {}) {
     operationalWallet: { id: '33333333-3333-4333-8333-333333333333', name: 'Operational', type: 'single_sig', network: 'testnet' },
     signerDevice: { id: '44444444-4444-4444-8444-444444444444', label: 'Agent signer', fingerprint: 'aabbccdd' },
     apiKeys: [],
+    ...overrides,
+  };
+}
+
+function alertFixture(overrides: Record<string, unknown> = {}) {
+  const now = new Date('2026-04-16T00:00:00.000Z');
+  return {
+    id: '77777777-7777-4777-8777-777777777777',
+    agentId: '55555555-5555-4555-8555-555555555555',
+    walletId: '33333333-3333-4333-8333-333333333333',
+    type: 'operational_balance_low',
+    severity: 'warning',
+    status: 'open',
+    txid: null,
+    amountSats: 20000n,
+    feeSats: null,
+    thresholdSats: 25000n,
+    observedCount: null,
+    reasonCode: null,
+    message: 'Agent operational wallet balance is below threshold',
+    dedupeKey: 'agent:agent-1:balance_low:wallet',
+    metadata: { thresholdSats: '25000' },
+    createdAt: now,
+    acknowledgedAt: null,
+    resolvedAt: null,
     ...overrides,
   };
 }

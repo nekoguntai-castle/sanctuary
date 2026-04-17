@@ -96,10 +96,12 @@ export type {
 } from './mcpApiKeyRepository';
 
 export type {
+  CreateAgentAlertInput,
   CreateAgentApiKeyInput,
   CreateAgentFundingAttemptInput,
   CreateWalletAgentInput,
   AgentApiKeyWithAgent,
+  FindAgentAlertsFilter,
   UpdateWalletAgentInput,
   WalletAgentWithDetails,
 } from './agentRepository';

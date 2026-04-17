@@ -16,6 +16,7 @@ import {
   AgentApiKeyIdParamSchema,
   CreateAgentApiKeySchema,
   CreateWalletAgentSchema,
+  ListAgentAlertsQuerySchema,
   ListWalletAgentsQuerySchema,
   UpdateWalletAgentSchema,
   WalletAgentIdParamSchema,
@@ -27,7 +28,7 @@ import {
   getAgentApiKeyPrefix,
   hashAgentApiKey,
 } from '../../agent/auth';
-import { toAgentApiKeyMetadata, toWalletAgentMetadata } from '../../agent/dto';
+import { toAgentAlertMetadata, toAgentApiKeyMetadata, toWalletAgentMetadata } from '../../agent/dto';
 
 const router = Router();
 
@@ -241,6 +242,12 @@ router.post('/', authenticate, requireAdmin, asyncHandler(async (req, res) => {
     dailyFundingLimitSats: input.dailyFundingLimitSats ?? null,
     weeklyFundingLimitSats: input.weeklyFundingLimitSats ?? null,
     cooldownMinutes: input.cooldownMinutes ?? null,
+    minOperationalBalanceSats: input.minOperationalBalanceSats ?? null,
+    largeOperationalSpendSats: input.largeOperationalSpendSats ?? null,
+    largeOperationalFeeSats: input.largeOperationalFeeSats ?? null,
+    repeatedFailureThreshold: input.repeatedFailureThreshold ?? null,
+    repeatedFailureLookbackMinutes: input.repeatedFailureLookbackMinutes ?? null,
+    alertDedupeMinutes: input.alertDedupeMinutes ?? null,
     requireHumanApproval: input.requireHumanApproval,
     notifyOnOperationalSpend: input.notifyOnOperationalSpend,
     pauseOnUnexpectedSpend: input.pauseOnUnexpectedSpend,
@@ -280,6 +287,12 @@ router.patch('/:agentId', authenticate, requireAdmin, asyncHandler(async (req, r
     ...(input.dailyFundingLimitSats !== undefined && { dailyFundingLimitSats: input.dailyFundingLimitSats }),
     ...(input.weeklyFundingLimitSats !== undefined && { weeklyFundingLimitSats: input.weeklyFundingLimitSats }),
     ...(input.cooldownMinutes !== undefined && { cooldownMinutes: input.cooldownMinutes }),
+    ...(input.minOperationalBalanceSats !== undefined && { minOperationalBalanceSats: input.minOperationalBalanceSats }),
+    ...(input.largeOperationalSpendSats !== undefined && { largeOperationalSpendSats: input.largeOperationalSpendSats }),
+    ...(input.largeOperationalFeeSats !== undefined && { largeOperationalFeeSats: input.largeOperationalFeeSats }),
+    ...(input.repeatedFailureThreshold !== undefined && { repeatedFailureThreshold: input.repeatedFailureThreshold }),
+    ...(input.repeatedFailureLookbackMinutes !== undefined && { repeatedFailureLookbackMinutes: input.repeatedFailureLookbackMinutes }),
+    ...(input.alertDedupeMinutes !== undefined && { alertDedupeMinutes: input.alertDedupeMinutes }),
     ...(input.requireHumanApproval !== undefined && { requireHumanApproval: input.requireHumanApproval }),
     ...(input.notifyOnOperationalSpend !== undefined && { notifyOnOperationalSpend: input.notifyOnOperationalSpend }),
     ...(input.pauseOnUnexpectedSpend !== undefined && { pauseOnUnexpectedSpend: input.pauseOnUnexpectedSpend }),
@@ -321,6 +334,29 @@ router.delete('/:agentId', authenticate, requireAdmin, asyncHandler(async (req, 
   });
 
   res.json(toWalletAgentMetadata(revoked));
+}));
+
+/**
+ * GET /api/v1/admin/agents/:agentId/alerts
+ * List persisted operational monitoring alerts for a wallet agent.
+ */
+router.get('/:agentId/alerts', authenticate, requireAdmin, asyncHandler(async (req, res) => {
+  const agentId = parseAgentId(req.params);
+  const parsedQuery = ListAgentAlertsQuerySchema.safeParse(req.query);
+  if (!parsedQuery.success) {
+    throw new InvalidInputError('Invalid wallet agent alert list query');
+  }
+
+  const agent = await agentRepository.findAgentById(agentId);
+  if (!agent) {
+    throw new NotFoundError('Wallet agent not found');
+  }
+
+  const alerts = await agentRepository.findAlerts({
+    agentId,
+    ...parsedQuery.data,
+  });
+  res.json(alerts.map(toAgentAlertMetadata));
 }));
 
 /**

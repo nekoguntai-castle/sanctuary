@@ -8,6 +8,8 @@
 import apiClient from '../client';
 import type {
   AgentApiKeyMetadata,
+  AgentAlertMetadata,
+  AgentAlertStatus,
   AgentManagementOptions,
   CreateAgentApiKeyRequest,
   CreatedAgentApiKey,
@@ -43,6 +45,13 @@ export async function revokeWalletAgent(agentId: string): Promise<WalletAgentMet
 
 export async function getAgentApiKeys(agentId: string): Promise<AgentApiKeyMetadata[]> {
   return apiClient.get<AgentApiKeyMetadata[]>(`/admin/agents/${agentId}/keys`);
+}
+
+export async function getAgentAlerts(
+  agentId: string,
+  params?: { status?: AgentAlertStatus; type?: string; limit?: number }
+): Promise<AgentAlertMetadata[]> {
+  return apiClient.get<AgentAlertMetadata[]>(`/admin/agents/${agentId}/alerts`, params);
 }
 
 export async function createAgentApiKey(

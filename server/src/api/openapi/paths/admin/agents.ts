@@ -101,6 +101,42 @@ export const adminAgentPaths = {
       },
     },
   },
+  '/admin/agents/{agentId}/alerts': {
+    get: {
+      tags: ['Admin'],
+      summary: 'List agent alerts',
+      description: 'List persisted operational monitoring alerts for a wallet agent.',
+      security: bearerAuth,
+      parameters: [
+        adminAgentIdParameter,
+        {
+          name: 'status',
+          in: 'query',
+          required: false,
+          schema: { type: 'string', enum: ['open', 'acknowledged', 'resolved'] },
+        },
+        {
+          name: 'type',
+          in: 'query',
+          required: false,
+          schema: { type: 'string' },
+        },
+        {
+          name: 'limit',
+          in: 'query',
+          required: false,
+          schema: { type: 'integer', minimum: 1, maximum: 100, default: 25 },
+        },
+      ],
+      responses: {
+        200: jsonArrayResponse('Agent alert metadata', '#/components/schemas/AdminAgentAlert'),
+        400: apiErrorResponse,
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        404: apiErrorResponse,
+      },
+    },
+  },
   '/admin/agents/{agentId}/keys': {
     get: {
       tags: ['Admin'],
