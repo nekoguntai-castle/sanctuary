@@ -1,6 +1,6 @@
 # Current Task: Agent Wallet Funding Implementation
 
-Status: Phase 15 implementation slice complete
+Status: Phase 15 implementation and cross-phase corner-case audit complete
 
 Reference plan: `tasks/agent-wallet-funding-plan.md`
 
@@ -131,9 +131,28 @@ Recommended order:
 
 Next recommended implementation slice:
 
-- [ ] Run cross-phase corner-case audit from Phase 1 onward, then push all committed work.
+- [x] Run cross-phase corner-case audit from Phase 1 onward, then push all committed work.
 
 ## Review
+
+Cross-phase audit update:
+
+- Re-read the implementation surface from the first agent wallet funding commit through Phase 15, covering the server agent API, draft validation, policy enforcement, admin management, monitoring, dashboard, operational address generation, owner overrides, mobile review APIs, backup metadata, docs, and smoke coverage.
+- Fixed a signer metadata edge case found during audit: draft signature updates now validate that any submitted `signedDeviceId` belongs to the draft wallet before appending it to `signedDeviceIds`. This protects the web, mobile, and agent signature-update paths that all delegate through `draftService.updateDraft`.
+- Reconciled stale plan state: Phase 1 wallet role labels are implemented and tested, and the original open questions now point at the Phase 8, 12, 13, and 14 decisions.
+- Confirmed the intended security boundary is still intact: Sanctuary stores no private keys, agent credentials cannot broadcast or approve policies, mobile approval intent does not sign or broadcast, and owner overrides are human-created, bounded, one-time funding exceptions.
+- Remaining residual follow-up is deliberately outside this server-side phase set: robust unknown-destination/self-transfer classification for operational spends needs destination/counterparty detail in transaction notifications, and mobile client tests wait on the future mobile app.
+
+Verification run:
+
+- `cd server && npx vitest run tests/unit/services/draftService.test.ts` — 44 passed.
+- `cd server && npx vitest run tests/unit/services/draftService.test.ts tests/unit/api/drafts-routes.test.ts tests/unit/api/agent-routes.test.ts tests/unit/services/mobileAgentDraftService.test.ts tests/unit/api/mobile-agent-drafts-routes.test.ts tests/unit/api/agent-wallet-funding-smoke.test.ts tests/unit/services/backupService.test.ts tests/unit/services/agentFundingDraftValidation.test.ts tests/unit/services/agentFundingPolicy.test.ts tests/unit/repositories/agentRepository.test.ts tests/unit/repositories/draftRepository.test.ts tests/unit/services/agentOperationalAddressService.test.ts tests/unit/services/agentMonitoringService.test.ts` — 214 passed.
+- `cd server && npm run build` — passed.
+- `cd server && npm run check:prisma-imports` — passed.
+- `npm run check:openapi-route-coverage` — passed.
+- `npm run check:api-body-validation` — passed.
+- `npm run typecheck:tests` — passed.
+- `git diff --check` — passed.
 
 Twelfth slice update:
 

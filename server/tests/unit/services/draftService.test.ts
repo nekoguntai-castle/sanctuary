@@ -369,6 +369,17 @@ describe('DraftService', () => {
     beforeEach(() => {
       (draftRepository.findByIdInWallet as Mock).mockResolvedValue(mockDraft);
       (draftRepository.update as Mock).mockResolvedValue({ ...mockDraft, status: 'partial' });
+      (walletRepository.findByIdWithSigningDevices as Mock).mockResolvedValue({
+        id: walletId,
+        devices: [
+          { deviceId: 'device-1' },
+          { deviceId: 'device-first' },
+          { deviceId: 'device-retry' },
+          { deviceId: 'device-fail' },
+          { deviceId: 'device-missing' },
+          { deviceId: 'device-err' },
+        ],
+      });
     });
 
     it('should update draft status', async () => {
@@ -381,9 +392,45 @@ describe('DraftService', () => {
     it('should add signed device ID', async () => {
       await updateDraft(walletId, draftId,{ signedDeviceId: 'device-1' });
 
+      expect(walletRepository.findByIdWithSigningDevices).toHaveBeenCalledWith(walletId);
       expect(draftRepository.update).toHaveBeenCalledWith(draftId, expect.objectContaining({
         signedDeviceIds: ['device-1'],
       }));
+    });
+
+    it('trims valid signed device IDs before updating', async () => {
+      await updateDraft(walletId, draftId,{ signedDeviceId: '  device-1  ' });
+
+      expect(draftRepository.update).toHaveBeenCalledWith(draftId, expect.objectContaining({
+        signedDeviceIds: ['device-1'],
+      }));
+    });
+
+    it('rejects signed device updates for devices outside the wallet', async () => {
+      await expect(
+        updateDraft(walletId, draftId,{ signedDeviceId: 'device-other' })
+      ).rejects.toThrow(InvalidInputError);
+
+      expect(draftRepository.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects blank signed device updates', async () => {
+      await expect(
+        updateDraft(walletId, draftId,{ signedDeviceId: '   ' })
+      ).rejects.toThrow(InvalidInputError);
+
+      expect(walletRepository.findByIdWithSigningDevices).not.toHaveBeenCalled();
+      expect(draftRepository.update).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundError when signer validation cannot load the wallet', async () => {
+      (walletRepository.findByIdWithSigningDevices as Mock).mockResolvedValue(null);
+
+      await expect(
+        updateDraft(walletId, draftId,{ signedDeviceId: 'device-1' })
+      ).rejects.toThrow(NotFoundError);
+
+      expect(draftRepository.update).not.toHaveBeenCalled();
     });
 
     it('uses empty signed-device list when draft has no signedDeviceIds yet', async () => {

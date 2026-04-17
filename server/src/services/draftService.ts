@@ -96,9 +96,29 @@ async function validateInitialSigningState(
     throw new InvalidInputError('signedPsbtBase64 and signedDeviceId must be provided together');
   }
 
-  const signedDeviceId = data.signedDeviceId?.trim();
-  if (!data.signedPsbtBase64?.trim() || !signedDeviceId) {
+  if (!data.signedPsbtBase64?.trim()) {
     throw new InvalidInputError('signedPsbtBase64 and signedDeviceId must be non-empty');
+  }
+
+  const signedDeviceId = await normalizeAndAssertSignedDeviceBelongsToWallet(
+    walletId,
+    data.signedDeviceId ?? ''
+  );
+
+  return {
+    signedPsbtBase64: data.signedPsbtBase64,
+    signedDeviceIds: [signedDeviceId],
+    status: 'partial',
+  };
+}
+
+async function normalizeAndAssertSignedDeviceBelongsToWallet(
+  walletId: string,
+  signedDeviceIdInput: string
+): Promise<string> {
+  const signedDeviceId = signedDeviceIdInput.trim();
+  if (!signedDeviceId) {
+    throw new InvalidInputError('signedDeviceId must be non-empty');
   }
 
   const wallet = await walletRepository.findByIdWithSigningDevices(walletId);
@@ -111,11 +131,7 @@ async function validateInitialSigningState(
     throw new InvalidInputError('signedDeviceId must belong to the wallet');
   }
 
-  return {
-    signedPsbtBase64: data.signedPsbtBase64,
-    signedDeviceIds: [signedDeviceId],
-    status: 'partial',
-  };
+  return signedDeviceId;
 }
 
 // ========================================
@@ -291,7 +307,11 @@ export async function updateDraft(
     throw new InvalidInputError('Invalid status. Must be unsigned, partial, or signed');
   }
 
-  const requiresOptimisticRetry = data.signedPsbtBase64 !== undefined || !!data.signedDeviceId;
+  const signedDeviceId = data.signedDeviceId !== undefined
+    ? await normalizeAndAssertSignedDeviceBelongsToWallet(walletId, data.signedDeviceId)
+    : null;
+
+  const requiresOptimisticRetry = data.signedPsbtBase64 !== undefined || signedDeviceId !== null;
   let latestDraft = existingDraft;
   const maxAttempts = requiresOptimisticRetry ? MAX_SIGNATURE_UPDATE_RETRIES : 1;
 
@@ -376,11 +396,11 @@ export async function updateDraft(
       }
     }
 
-    if (data.signedDeviceId) {
+    if (signedDeviceId) {
       // Add device to signed list if not already there
       const currentSigned = latestDraft.signedDeviceIds || [];
-      if (!currentSigned.includes(data.signedDeviceId)) {
-        updateData.signedDeviceIds = [...currentSigned, data.signedDeviceId];
+      if (!currentSigned.includes(signedDeviceId)) {
+        updateData.signedDeviceIds = [...currentSigned, signedDeviceId];
       }
     }
 
