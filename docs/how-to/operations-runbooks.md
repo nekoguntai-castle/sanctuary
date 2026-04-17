@@ -299,6 +299,66 @@ Mitigation:
 - Preserve the failing backup file and backend logs for diagnosis.
 - Run a restore drill against a non-production database before retrying risky production restore paths.
 
+## Agent Wallet Funding Incidents
+
+Signals:
+
+- Unexpected agent funding draft appears in a funding wallet.
+- Repeated rejected agent funding attempts.
+- Operational wallet spend is larger than expected.
+- Operational wallet fee is larger than expected.
+- Agent API key prefix appears in logs, shell history, CI output, or an incident report.
+- A human reviewer reports a draft destination that is not the linked operational wallet.
+
+Immediate triage:
+
+- Open `Admin -> Agent Wallets` and find the affected agent row.
+- Pause the agent if any destination, amount, fee, signer, or cadence looks wrong.
+- Review recent funding attempts, open alerts, recent operational spends, and pending drafts.
+- Check audit logs for `wallet.agent_funding_draft_submit`, `wallet.agent_override_create`, `wallet.agent_override_use`, `wallet.mobile_agent_draft_reject`, and key create/revoke actions.
+- Confirm the draft destination belongs to the linked operational wallet and that the draft label does not hide an unexpected `(owner override)` marker.
+
+Suspected `agt_` key compromise:
+
+1. Pause the affected agent.
+2. Revoke the exposed agent API key from the agent management UI.
+3. Reject all pending agent funding drafts that were created after the suspected exposure time unless they are independently verified.
+4. Revoke any unused owner overrides for that agent.
+5. Review funding attempts by reason code and source IP/user agent.
+6. Rotate the runtime secret in the agent deployment.
+7. Issue a new `agt_` key only after the runtime host is clean.
+8. Resume the agent only after a successful non-production or low-value smoke submission.
+
+If the agent signer private key may be compromised:
+
+- Revoke the Sanctuary agent key immediately, but do not treat that as sufficient.
+- Stop using the funding wallet descriptor that includes the compromised signer.
+- Move funds to a new wallet descriptor with a fresh signer set after normal human approval.
+- Preserve audit logs, pending drafts, PSBTs, and runtime logs for investigation.
+
+If the operational wallet private key may be compromised:
+
+- Pause the agent and revoke agent API keys.
+- Treat the operational wallet balance as at risk because it is single-sig and agent-controlled.
+- Move any recoverable operational funds to a new wallet controlled by fresh keys.
+- Link a new watch-only operational wallet before resuming the agent.
+
+Verification:
+
+```bash
+cd server
+npx vitest run tests/unit/api/agent-wallet-funding-smoke.test.ts
+npx vitest run tests/unit/services/agentFundingPolicy.test.ts tests/unit/services/agentFundingDraftValidation.test.ts
+npx vitest run tests/unit/api/agent-routes.test.ts tests/unit/api/admin-agents-routes.test.ts tests/unit/api/mobile-agent-drafts-routes.test.ts
+```
+
+Backup and restore checks:
+
+- Agent profiles, key hashes and prefixes, alerts, funding attempts, and owner overrides are part of Sanctuary backups.
+- Raw `agt_` tokens and private keys are not recoverable from backup.
+- After restore, rotate any agent runtime key whose raw token is not available in the deployment secret store.
+- Before re-enabling agent runtimes after restore, run the agent wallet funding smoke test and verify `Admin -> Agent Wallets` shows the restored agent relationships.
+
 ## Browser Auth Cookies (ADR 0001 / ADR 0002)
 
 Since Phase 4 landed on 2026-04-13, browser authentication uses HttpOnly cookies with a double-submit CSRF token and a Web Locks-coordinated refresh flow. This section documents the operational requirements and failure modes.

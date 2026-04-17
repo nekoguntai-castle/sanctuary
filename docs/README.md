@@ -25,6 +25,7 @@ Conceptual docs: *why* things work the way they do.
 Procedural guides for operators and developers.
 
 - [Operations runbooks](how-to/operations-runbooks.md) — triage, monitoring, alert handling
+- [Agent wallet funding](how-to/agent-wallet-funding.md) — operate agent-funded multisig drafts with human review
 - [Runtime secrets](how-to/runtime-secrets.md) — runtime secret management
 
 ## Reference
@@ -46,6 +47,7 @@ Numbered, dated decisions with cross-links to source. New ADRs use the next avai
 Active strategic plans. Planning artifacts, not reference material. Plans that fail to execute move to `archive/`.
 
 - [Architecture-first quality improvement plan](plans/architecture-first-quality-improvement-plan.md)
+- [Agent wallet funding release notes](plans/agent-wallet-funding-release-notes.md)
 - [Codebase health assessment](plans/codebase-health-assessment.md)
 - [Dependency audit triage](plans/dependency-audit-triage.md)
 - [Extensibility architecture plan](plans/extensibility-architecture-plan.md)

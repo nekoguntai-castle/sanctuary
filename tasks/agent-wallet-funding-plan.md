@@ -439,14 +439,22 @@ Notes:
 
 Goal: make the feature operable and defensible before broader use.
 
-- [ ] Add operator docs for creating an agent, issuing a key, funding, pausing, revoking, and rotating keys.
-- [ ] Add a security runbook for suspected agent key compromise.
-- [ ] Add an e2e smoke path for admin creates agent -> creates key -> agent submits signed PSBT -> human sees draft metadata.
-- [ ] Add backup/restore expectations for agent metadata and API key hashes.
-- [ ] Add release notes that explain the single-sig operational wallet boundary.
+- [x] Add operator docs for creating an agent, issuing a key, funding, pausing, revoking, and rotating keys.
+- [x] Add a security runbook for suspected agent key compromise.
+- [x] Add an e2e smoke path for admin creates agent -> creates key -> agent submits signed PSBT -> human sees draft metadata.
+- [x] Add backup/restore expectations for agent metadata and API key hashes.
+- [x] Add release notes that explain the single-sig operational wallet boundary.
 
 Acceptance criteria:
 
-- A new operator can execute the happy path from docs without asking a developer.
-- A compromised `agt_` key can be revoked without wallet descriptor changes.
-- E2E coverage proves the main workflow does not regress.
+- [x] A new operator can execute the happy path from docs without asking a developer.
+- [x] A compromised `agt_` key can be revoked without wallet descriptor changes.
+- [x] A compromised agent signing key is treated as wallet-descriptor compromise, not just API-key compromise.
+- [x] Backup/restore expectations say agent metadata, key hashes, and alert history are included while raw `agt_` tokens and private keys are not.
+- [x] E2E coverage proves the main workflow does not regress.
+
+Verification:
+
+- [x] E2E-style route smoke with fixture PSBT metadata.
+- [x] Backup-service tests for agent profile, key hash, alert, attempt, and owner override export.
+- [x] Documentation review against security constraints.

@@ -7,6 +7,7 @@
  */
 
 import { registerBackupServiceCoreTests } from './backupService/backupService-core.contracts';
+import { registerBackupAgentWalletMetadataTests } from './backupService/agent-wallet-metadata.contracts';
 import { registerBackupDataStructureTests } from './backupService/data-structure.contracts';
 import { registerBackupEdgeCaseTests } from './backupService/edge-cases.contracts';
 import { registerBackupInternalHelperTests } from './backupService/internal-helpers.contracts';
@@ -18,6 +19,7 @@ import { registerBackupUser2faSecretTests } from './backupService/user-2fa-secre
 import { registerBackupValidationEdgeCaseTests } from './backupService/validation-edge-cases.contracts';
 
 registerBackupServiceCoreTests();
+registerBackupAgentWalletMetadataTests();
 registerBackupDataStructureTests();
 registerBackupRestoreTests();
 registerBackupRestoreErrorTests();

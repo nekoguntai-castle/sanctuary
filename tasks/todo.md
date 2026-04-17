@@ -1,12 +1,12 @@
 # Current Task: Agent Wallet Funding Implementation
 
-Status: Phase 14 implementation slice complete
+Status: Phase 15 implementation slice complete
 
 Reference plan: `tasks/agent-wallet-funding-plan.md`
 
 ## Active Implementation Slice
 
-Goal: add a mobile approval foundation for agent funding drafts without changing Sanctuary's security boundary. Mobile users should be able to list/review pending agent drafts, record audited approve/comment/reject decisions, and submit signed PSBTs through the existing draft signing path.
+Goal: make agent wallet funding operable and defensible with operator docs, incident runbooks, backup/restore coverage, release notes, and an end-to-end route smoke path.
 
 - [x] Load `AGENTS.md` and current project lessons into the session.
 - [x] Capture the agent funding architecture in `tasks/agent-wallet-funding-plan.md`.
@@ -75,6 +75,13 @@ Goal: add a mobile approval foundation for agent funding drafts without changing
 - [x] Add audit events for mobile approve, comment, reject, and sign actions.
 - [x] Add OpenAPI coverage and focused route, service, repository, and route-registration tests.
 - [x] Run Phase 14 targeted verification.
+- [x] Add operator docs for registering agents, issuing keys, submitting funding drafts, human review, owner overrides, monitoring, and restore checks.
+- [x] Add agent wallet funding incident runbooks for suspected `agt_` key compromise, agent signer compromise, and operational wallet compromise.
+- [x] Add release notes explaining the single-sig operational wallet boundary and human-review security model.
+- [x] Include agent profiles, API key hashes/prefixes, funding attempts, alerts, and owner overrides in backup/restore table ordering.
+- [x] Add backup-service tests for agent metadata export and ordering.
+- [x] Add an end-to-end route smoke path for admin creates agent -> creates key -> agent submits signed PSBT -> human sees mobile review metadata.
+- [x] Run Phase 15 targeted verification.
 
 ## Next Slices
 
@@ -119,14 +126,46 @@ Recommended order:
   - Add bounded, human-created overrides with audit trail if needed.
 - [x] Phase 14: Mobile approval foundation.
   - Add mobile-safe pending agent draft listing, review metadata, comments/rejection, and signer integration path.
-- [ ] Phase 15: Operational runbooks and E2E coverage.
+- [x] Phase 15: Operational runbooks and E2E coverage.
   - Add docs, key compromise runbook, backup/restore expectations, release notes, and an e2e smoke path.
 
 Next recommended implementation slice:
 
-- [ ] Continue with Phase 15: Operational runbooks and E2E coverage. Add operator docs, key compromise procedures, backup/restore expectations, release notes, and an e2e smoke path.
+- [ ] Run cross-phase corner-case audit from Phase 1 onward, then push all committed work.
 
 ## Review
+
+Twelfth slice update:
+
+- Added `docs/how-to/agent-wallet-funding.md` as the operator guide for registering agents, issuing runtime keys, validating agent funding drafts, human review, owner overrides, monitoring, backup/restore expectations, and targeted verification.
+- Added agent wallet funding incident guidance to `docs/how-to/operations-runbooks.md`, including suspected `agt_` key compromise, agent signer compromise, and operational wallet private-key compromise.
+- Added `docs/plans/agent-wallet-funding-release-notes.md` covering the release boundary, API surfaces, operator impact, backup/restore behavior, release gates, and known follow-up.
+- Updated the docs index to link the new operator guide and release notes.
+- Added agent metadata tables to backup/restore ordering: `walletAgent`, `agentApiKey`, `agentFundingOverride`, `agentAlert`, and `agentFundingAttempt`.
+- Extended the Prisma test mock with agent override and alert delegates so backup tests can exercise the new tables.
+- Added backup-service coverage proving agent profiles, API key hashes/prefixes, alerts, funding attempts, and owner overrides are exported with BigInt-safe serialization.
+- Added `tests/unit/api/agent-wallet-funding-smoke.test.ts`, which exercises the full route path: admin registers agent, admin issues a scoped key, agent submits a signed funding draft, and a human/mobile reviewer receives decoded draft metadata and deep-link payloads.
+
+Verification run:
+
+- `cd server && npx vitest run tests/unit/api/agent-wallet-funding-smoke.test.ts tests/unit/services/backupService.test.ts` — 71 passed.
+- `cd server && npx vitest run tests/unit/api/agent-wallet-funding-smoke.test.ts tests/unit/api/agent-routes.test.ts tests/unit/api/admin-agents-routes.test.ts tests/unit/api/mobile-agent-drafts-routes.test.ts tests/unit/services/agentFundingDraftValidation.test.ts tests/unit/services/agentFundingPolicy.test.ts tests/unit/services/mobileAgentDraftService.test.ts tests/unit/repositories/agentRepository.test.ts tests/unit/repositories/draftRepository.test.ts tests/unit/services/backupService.test.ts` — 149 passed.
+- `cd server && npm run build` — passed.
+- `npm run check:openapi-route-coverage` — passed.
+- `npm run check:api-body-validation` — passed.
+- `npm run typecheck:tests` — passed.
+- `git diff --check` — passed.
+
+Edge case audit:
+
+- Backups now include hashed agent credential records but still do not include raw `agt_` tokens.
+- Agent backup ordering restores wallet/user/device prerequisites before `walletAgent`, then restores key, alert, attempt, and override records after the agent profile.
+- Agent funding attempts and owner override amounts preserve satoshi precision through existing `__bigint__` backup serialization.
+- Operator docs explicitly distinguish `agt_` key compromise from agent signer private-key compromise; signer compromise is treated as wallet-descriptor compromise.
+- Operational wallet compromise is documented as single-sig agent-controlled funds-at-risk, not as a Sanctuary signing failure.
+- The smoke test asserts key hashes are not returned from key creation while the one-time `agt_` token is.
+- The smoke test verifies submitted agent drafts keep agent id, operational wallet id, and signed-device metadata through to the human/mobile review payload.
+- Residual follow-up: run the requested cross-phase audit before push.
 
 Eleventh slice update:
 

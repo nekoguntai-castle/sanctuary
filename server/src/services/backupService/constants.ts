@@ -34,9 +34,14 @@ export const TABLE_ORDER = [
   'walletDevice',    // FK: walletId, deviceId
   'address',         // FK: walletId
   'label',           // FK: walletId
+  'walletAgent',     // FK: userId, fundingWalletId, operationalWalletId, signerDeviceId
   'draftTransaction', // FK: walletId, userId
 
   // Third-level dependencies
+  'agentApiKey',          // FK: agentId
+  'agentFundingOverride', // FK: agentId
+  'agentAlert',           // FK: agentId
+  'agentFundingAttempt',  // FK: agentId
   'transaction',     // FK: walletId, userId, addressId
   'uTXO',            // FK: walletId
 
