@@ -237,6 +237,25 @@ describe('aiInsightsChannelHandler', () => {
       expect(result.usersNotified).toBe(1);
     });
 
+    it('defaults missing severity filter to info', async () => {
+      mockFindMany.mockResolvedValueOnce([makeWalletUser({
+        intelligence: {
+          wallets: {
+            'wallet-1': { enabled: true, notifyTelegram: true, typeFilter: ['utxo_health'] },
+          },
+        },
+      })] as any);
+      mockSendTelegram.mockResolvedValueOnce({ success: true });
+
+      const result = await aiInsightsChannelHandler.notifyAIInsight!(
+        'wallet-1',
+        makeInsight({ severity: 'info' }),
+      );
+
+      expect(result.usersNotified).toBe(1);
+      expect(mockSendTelegram).toHaveBeenCalledOnce();
+    });
+
     it('respects type filter - skips insight types not in filter', async () => {
       mockFindMany.mockResolvedValueOnce([
         makeWalletUser({
@@ -252,6 +271,37 @@ describe('aiInsightsChannelHandler', () => {
         'wallet-1',
         makeInsight({ type: 'utxo_health' }),
       );
+
+      expect(result.usersNotified).toBe(0);
+      expect(mockSendTelegram).not.toHaveBeenCalled();
+    });
+
+    it('defaults missing Telegram notification preference to enabled', async () => {
+      mockFindMany.mockResolvedValueOnce([makeWalletUser({
+        intelligence: {
+          wallets: {
+            'wallet-1': { enabled: true, severityFilter: 'info', typeFilter: ['utxo_health'] },
+          },
+        },
+      })] as any);
+      mockSendTelegram.mockResolvedValueOnce({ success: true });
+
+      const result = await aiInsightsChannelHandler.notifyAIInsight!('wallet-1', makeInsight());
+
+      expect(result.usersNotified).toBe(1);
+      expect(mockSendTelegram).toHaveBeenCalledOnce();
+    });
+
+    it('skips Telegram when the wallet setting disables insight notifications', async () => {
+      mockFindMany.mockResolvedValueOnce([makeWalletUser({
+        intelligence: {
+          wallets: {
+            'wallet-1': { enabled: true, notifyTelegram: false, severityFilter: 'info', typeFilter: ['utxo_health'] },
+          },
+        },
+      })] as any);
+
+      const result = await aiInsightsChannelHandler.notifyAIInsight!('wallet-1', makeInsight());
 
       expect(result.usersNotified).toBe(0);
       expect(mockSendTelegram).not.toHaveBeenCalled();
@@ -364,6 +414,29 @@ describe('aiInsightsChannelHandler', () => {
         const sentMessage = mockSendTelegram.mock.calls[0][2];
         expect(sentMessage).toContain(expectedIcon);
       }
+    });
+
+    it('falls back to generic formatting for unknown severity and type values', async () => {
+      mockFindMany.mockResolvedValueOnce([makeWalletUser({
+        intelligence: {
+          wallets: {
+            'wallet-1': { enabled: true, notifyTelegram: true, severityFilter: 'unknown' },
+          },
+        },
+      })] as any);
+      mockSendTelegram.mockResolvedValueOnce({ success: true });
+
+      await aiInsightsChannelHandler.notifyAIInsight!(
+        'wallet-1',
+        makeInsight({
+          severity: 'unknown' as AIInsightNotification['severity'],
+          type: 'custom_type' as AIInsightNotification['type'],
+        }),
+      );
+
+      const sentMessage = mockSendTelegram.mock.calls[0][2];
+      expect(sentMessage).toContain('\u2139\uFE0F');
+      expect(sentMessage).toContain('Type: custom_type');
     });
   });
 });

@@ -12,7 +12,9 @@ type LoadedPrismaModule = {
   connectMock: Mock;
   disconnectMock: Mock;
   queryRawMock: Mock;
+  transactionMock: Mock;
   observeMock: Mock;
+  adapterOptions: Array<{ connectionString: string }>;
   logger: {
     info: Mock;
     warn: Mock;
@@ -31,7 +33,9 @@ async function loadPrismaModule(): Promise<LoadedPrismaModule> {
   const connectMock = vi.fn();
   const disconnectMock = vi.fn();
   const queryRawMock = vi.fn();
+  const transactionMock = vi.fn((fn: (tx: unknown) => Promise<unknown>) => fn({ user: { findMany: vi.fn() } }));
   const observeMock = vi.fn();
+  const adapterOptions: Array<{ connectionString: string }> = [];
   const logger = {
     info: vi.fn(),
     warn: vi.fn(),
@@ -51,12 +55,15 @@ async function loadPrismaModule(): Promise<LoadedPrismaModule> {
       $connect = connectMock;
       $disconnect = disconnectMock;
       $queryRaw = queryRawMock;
+      $transaction = transactionMock;
     },
   }));
 
   vi.doMock('@prisma/adapter-pg', () => ({
     PrismaPg: class MockPrismaPg {
-      constructor() { /* no-op */ }
+      constructor(options: { connectionString: string }) {
+        adapterOptions.push(options);
+      }
     },
   }));
 
@@ -91,7 +98,9 @@ async function loadPrismaModule(): Promise<LoadedPrismaModule> {
     connectMock,
     disconnectMock,
     queryRawMock,
+    transactionMock,
     observeMock,
+    adapterOptions,
     logger,
     queryExtension,
     onHandlers,
@@ -100,13 +109,55 @@ async function loadPrismaModule(): Promise<LoadedPrismaModule> {
 }
 
 describe('models/prisma behavior', () => {
+  const originalDatabaseUrl = process.env.DATABASE_URL;
+  const restoreDatabaseUrl = () => {
+    if (originalDatabaseUrl === undefined) {
+      delete process.env.DATABASE_URL;
+      return;
+    }
+    process.env.DATABASE_URL = originalDatabaseUrl;
+  };
+
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
+    restoreDatabaseUrl();
   });
 
   afterEach(() => {
+    restoreDatabaseUrl();
     vi.useRealTimers();
+  });
+
+  it('initializes the Prisma adapter with the configured database URL', async () => {
+    process.env.DATABASE_URL = 'postgresql://sanctuary:test@localhost:5432/sanctuary';
+
+    const { adapterOptions, processOnSpy } = await loadPrismaModule();
+
+    expect(adapterOptions).toEqual([
+      { connectionString: 'postgresql://sanctuary:test@localhost:5432/sanctuary' },
+    ]);
+    processOnSpy.mockRestore();
+  });
+
+  it('initializes the Prisma adapter with an empty connection string when DATABASE_URL is absent', async () => {
+    delete process.env.DATABASE_URL;
+
+    const { adapterOptions, processOnSpy } = await loadPrismaModule();
+
+    expect(adapterOptions).toEqual([{ connectionString: '' }]);
+    processOnSpy.mockRestore();
+  });
+
+  it('withTransaction delegates callback execution to Prisma', async () => {
+    const { mod, transactionMock, processOnSpy } = await loadPrismaModule();
+    const callback = vi.fn().mockResolvedValue('tx-result');
+
+    await expect(mod.withTransaction(callback)).resolves.toBe('tx-result');
+
+    expect(transactionMock).toHaveBeenCalledWith(callback);
+    expect(callback).toHaveBeenCalledWith({ user: { findMany: expect.any(Function) } });
+    processOnSpy.mockRestore();
   });
 
   it('connectWithRetry succeeds immediately when connection works', async () => {

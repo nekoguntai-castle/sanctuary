@@ -218,6 +218,9 @@ jobs:
           DATABASE_URL: postgresql://test:test@localhost:5432/sanctuary_test?schema=public
         run: npx prisma migrate deploy
 
+      - name: Run server test typecheck
+        run: npm run typecheck:tests
+
       - name: Run related backend tests
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/sanctuary_test?schema=public
@@ -511,6 +514,9 @@ jobs:
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/sanctuary_test?schema=public
         run: npx prisma migrate deploy
+
+      - name: Run server test typecheck
+        run: npm run typecheck:tests
 
       - name: Run unit tests with coverage
         env:

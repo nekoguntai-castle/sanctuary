@@ -19,6 +19,7 @@ This document records the checks that should protect the A-grade engineering goa
 | Frontend correctness | Strict app and test typecheck | `npm run typecheck:app` and `npm run typecheck:tests`; the Test Suite quick/full frontend lanes run both before frontend tests | Required |
 | Frontend tests | Threshold-enforced coverage | `npm run test:coverage` or the `full-frontend-tests` CI job | Required for main/release |
 | Backend build | TypeScript build and Prisma generation | `cd server && npm run build` | Required |
+| Backend test typing | Server test-infrastructure typecheck | `cd server && npm run typecheck:tests`; `cd server && npm run typecheck:tests:full` tracks the broader historical test fixture debt until that full suite can become the required gate | Required for backend changes |
 | Backend tests | Unit and integration coverage | `cd server && npm run test:unit -- --coverage` and `cd server && npm run test:integration`, or the `full-backend-tests` CI job | Required for main/release |
 | Gateway build | TypeScript build | `cd gateway && npm run build` | Required |
 | Gateway tests | Threshold-enforced coverage | `cd gateway && npm run test:coverage` or the `full-gateway-tests` CI job | Required for main/release |
@@ -56,6 +57,27 @@ Record benchmark output under `docs/plans/` and link it from `docs/plans/codebas
 ## Phase 4 Typecheck Gate
 
 `npm run typecheck:tests` passed after the Phase 4 unused-symbol fixture cleanup and is now a required frontend correctness gate alongside `npm run typecheck:app`.
+
+## Backend Coverage Policy
+
+Backend unit coverage is enforced at literal 100% statements, branches, functions, and lines through `server/vitest.config.ts`. New reachable logic should be covered with focused unit tests before thresholds are updated or code is merged.
+
+Allowed backend coverage exclusions are limited to generated Prisma output, type-only files, zero-logic compatibility re-export shims, side-effect-only daemon entrypoints whose behavior is covered through modules they wire together, and external-service producers that require live infrastructure and are covered by integration tests. Any `v8 ignore` pragma must state the unreachable or externally covered condition in the comment. Prefer adding a test and removing the pragma whenever the branch is reachable without live infrastructure.
+
+The main backend coverage command is:
+
+```bash
+cd server && npm run test:unit -- --coverage
+```
+
+The server test type gate is intentionally split while historical fixture drift is paid down:
+
+```bash
+cd server && npm run typecheck:tests
+cd server && npm run typecheck:tests:full
+```
+
+The first command is the required CI gate for server test infrastructure and representative typed tests. The second command is the expansion target for the full server test suite and should be run during cleanup work that touches shared test fixtures, mocks, route harnesses, or DTO-heavy tests.
 
 ## Phase 4 Browser Auth Gate
 

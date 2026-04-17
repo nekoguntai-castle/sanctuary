@@ -1,4 +1,4 @@
-import { vi, Mock } from 'vitest';
+import { vi, type Mock } from 'vitest';
 /**
  * Repository Mocks
  *
@@ -7,7 +7,8 @@ import { vi, Mock } from 'vitest';
  */
 
 import type { AuditCategory } from '../../src/repositories/auditLogRepository';
-import type { PushDevice, PushDeviceUpsertInput } from '../../src/repositories/pushDeviceRepository';
+import type { PushDevice } from '../../src/generated/prisma/client';
+import type { CreatePushDeviceInput } from '../../src/repositories/pushDeviceRepository';
 
 // =============================================================================
 // Audit Log Repository Mock
@@ -243,7 +244,7 @@ export const mockSessionRepository = {
 const mockPushDevices: PushDevice[] = [];
 
 export const mockPushDeviceRepository = {
-  upsert: vi.fn().mockImplementation(async (input: PushDeviceUpsertInput) => {
+  upsert: vi.fn().mockImplementation(async (input: CreatePushDeviceInput) => {
     const existing = mockPushDevices.find((d) => d.token === input.token);
     if (existing) {
       existing.lastUsedAt = new Date();
@@ -257,6 +258,7 @@ export const mockPushDeviceRepository = {
       token: input.token,
       platform: input.platform,
       deviceName: input.deviceName || null,
+      appVersion: null,
       lastUsedAt: new Date(),
       createdAt: new Date(),
     };

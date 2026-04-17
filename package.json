@@ -39,6 +39,7 @@
     "typecheck": "npm run typecheck:app",
     "typecheck:app": "tsc --noEmit -p tsconfig.app.json --noUnusedLocals --noUnusedParameters",
     "typecheck:tests": "tsc --noEmit -p tsconfig.tests.json --noUnusedLocals --noUnusedParameters",
+    "typecheck:server:tests": "cd server && npm run typecheck:tests",
     "typecheck:scripts": "tsc --noEmit -p tsconfig.scripts.json --noUnusedLocals --noUnusedParameters",
     "lint": "npm run lint:app && npm run lint:server && npm run lint:gateway",
     "lint:app": "eslint \"App.tsx\" \"components/**/*.{ts,tsx}\" \"contexts/**/*.{ts,tsx}\" \"hooks/**/*.{ts,tsx}\" \"services/**/*.{ts,tsx}\" \"src/**/*.{ts,tsx}\" \"themes/**/*.{ts,tsx}\" \"utils/**/*.{ts,tsx}\" \"shared/**/*.ts\"",

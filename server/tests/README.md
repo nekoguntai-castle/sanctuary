@@ -152,29 +152,26 @@ The following coverage thresholds are enforced:
 ### Global Thresholds
 | Metric     | Threshold |
 |------------|-----------|
-| Branches   | 15%       |
-| Functions  | 20%       |
-| Lines      | 25%       |
-| Statements | 25%       |
-
-### Critical Path Thresholds
-Higher thresholds for security-critical and financial code:
-
-**transactionService.ts** (Bitcoin transaction handling):
-| Metric     | Threshold |
-|------------|-----------|
-| Branches   | 50%       |
-| Functions  | 70%       |
-| Lines      | 70%       |
-| Statements | 70%       |
-
-**encryption.ts** (Cryptographic operations):
-| Metric     | Threshold |
-|------------|-----------|
-| Branches   | 90%       |
+| Branches   | 100%      |
 | Functions  | 100%      |
-| Lines      | 95%       |
-| Statements | 95%       |
+| Lines      | 100%      |
+| Statements | 100%      |
+
+Exclusions in `server/vitest.config.ts` are limited to generated code, type-only files, zero-logic compatibility shims, side-effect-only daemon entrypoints, and live-infrastructure producers covered by integration tests. Reachable branches should get focused tests instead of new `v8 ignore` pragmas.
+
+Run the enforced backend coverage gate with:
+
+```bash
+npm run test:unit -- --coverage
+```
+
+Run the enforced server test typecheck with:
+
+```bash
+npm run typecheck:tests
+```
+
+`npm run typecheck:tests:full` tracks the broader historical test fixture and DTO drift; use it when cleaning up shared test harnesses.
 
 ## Writing Tests
 
@@ -185,7 +182,7 @@ Use the centralized Prisma mock from `tests/mocks/prisma.ts`:
 ```typescript
 import { mockPrismaClient, resetPrismaMocks } from '../../mocks/prisma';
 
-jest.mock('../../../src/models/prisma', () => ({
+vi.mock('../../../src/models/prisma', () => ({
   __esModule: true,
   default: mockPrismaClient,
 }));
@@ -202,8 +199,8 @@ Use the centralized Electrum mock from `tests/mocks/electrum.ts`:
 ```typescript
 import { mockElectrumClient, resetElectrumMocks, createMockTransaction } from '../../mocks/electrum';
 
-jest.mock('../../../src/services/bitcoin/electrum', () => ({
-  getElectrumClient: jest.fn().mockReturnValue(mockElectrumClient),
+vi.mock('../../../src/services/bitcoin/electrum', () => ({
+  getElectrumClient: vi.fn().mockReturnValue(mockElectrumClient),
 }));
 
 beforeEach(() => {
@@ -228,7 +225,7 @@ import {
 } from '../../mocks/repositories';
 
 // Mock the repositories module
-jest.mock('../../../src/repositories', () => ({
+vi.mock('../../../src/repositories', () => ({
   auditLogRepository: mockAuditLogRepository,
   sessionRepository: mockSessionRepository,
   pushDeviceRepository: mockPushDeviceRepository,
@@ -276,8 +273,8 @@ const mockReq = {
 } as unknown as Request;
 
 const mockRes = {
-  status: jest.fn().mockReturnThis(),
-  json: jest.fn(),
+  status: vi.fn().mockReturnThis(),
+  json: vi.fn(),
 } as unknown as Response;
 ```
 

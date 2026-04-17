@@ -2,9 +2,18 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "rootDir": "..",
+    "lib": ["ES2023"],
     "types": ["node", "vitest/globals"],
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "include": ["src/**/*", "tests/**/*", "../shared/**/*"]
+  "files": [
+    "tests/setup.ts",
+    "tests/helpers/testUtils.ts",
+    "tests/mocks/aiContainer.ts",
+    "tests/mocks/repositories.ts",
+    "tests/unit/models/prisma.behavior.test.ts",
+    "tests/unit/models/prisma.test.ts",
+    "tests/unit/services/notifications/channels/aiInsights.test.ts"
+  ]
 }

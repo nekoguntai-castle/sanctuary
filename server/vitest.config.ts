@@ -23,6 +23,9 @@ export default defineConfig({
       reporter: ['text', 'lcov', 'html', 'json-summary'],
       reportsDirectory: './coverage',
       include: ['src/**/*.ts'],
+      // Policy: backend unit coverage is held at literal 100%. Exclusions must be
+      // generated code, type-only files, zero-logic compatibility shims, daemon
+      // entrypoints, or dependencies that require live external services.
       exclude: [
         '**/*.d.ts',
         '**/index.ts',

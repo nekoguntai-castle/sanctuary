@@ -1,4 +1,57 @@
-# Current Task: 100% Coverage Gates
+# Current Task: Backend Coverage And Test Gate Follow-Up
+
+Status: complete
+
+Goal: finish the five follow-up items from the backend coverage pass: confirm remote CI, keep backend coverage at literal 100%, remove high-value reachable `v8 ignore` pragmas where practical, make server test type debt explicit and enforceable, and document the 100% coverage policy.
+
+## Follow-Up Checklist
+
+- [x] Confirm the latest remote CI result and diagnose any failure.
+- [x] Fix backend coverage drift found by CI.
+- [x] Clean up the server test typecheck blockers enough to add an enforceable gate.
+- [x] Add the server test typecheck gate to package scripts and CI.
+- [x] Replace high-value reachable `v8 ignore` pragmas with focused tests.
+- [x] Document the 100% coverage policy and allowed exclusion criteria.
+- [x] Run verification and review edge cases.
+- [x] Commit and push.
+
+## Follow-Up Review
+
+Remote CI diagnosis:
+
+- The latest `main` Test Suite run for commit `851a7f65` failed only in the backend coverage step.
+- The downloaded backend coverage artifact showed one missed branch in `server/src/models/prisma.ts`: the empty-string fallback in `process.env.DATABASE_URL || ''` was uncovered when CI supplied `DATABASE_URL`.
+
+Changes made:
+
+- Added Prisma model behavior tests for both configured and absent `DATABASE_URL` adapter initialization, plus direct `withTransaction` delegation coverage.
+- Removed the now-covered `v8 ignore` pragmas from `withTransaction`.
+- Added AI insight notification tests for default severity filtering, default Telegram notification preference, explicit notification disablement, and fallback formatting for unknown values.
+- Removed the corresponding reachable AI insight `v8 ignore` pragmas.
+- Added the missing `wait(ms)` helper exported from `tests/helpers/testUtils.ts`.
+- Fixed Vitest 4 custom matcher module augmentation by declaring matchers under `@vitest/expect`.
+- Fixed shared test mock typing for Vitest `Mock`, push-device generated types, and `appVersion`.
+- Added an enforced server test typecheck script and CI steps in quick/full backend jobs.
+- Added `server/tsconfig.test.full.json` so the broader historical full-suite test type debt remains measurable while the required gate covers setup, helpers, mocks, and representative typed tests.
+- Documented the literal 100% backend coverage policy, allowed exclusion criteria, server test type gates, and updated stale server test README Jest examples to Vitest examples.
+
+Verification:
+
+- `cd server && npx vitest run tests/unit/services/notifications/channels/aiInsights.test.ts tests/unit/models/prisma.behavior.test.ts tests/unit/models/prisma.test.ts` passed: 61 tests.
+- `npm run typecheck:server:tests` passed.
+- `cd server && npm run test:unit -- --coverage` passed: 372 files, 8996 tests, 100% statements, 100% branches, 100% functions, 100% lines.
+- `cd server && npm run build` passed.
+- `git diff --check` passed.
+
+Edge case audit:
+
+- Null/undefined and empty input handling: `DATABASE_URL` restoration handles both undefined and configured values; AI insight tests cover missing severity filter and missing Telegram preference.
+- Boundary values: the backend coverage gate now covers both sides of the `DATABASE_URL || ''` fallback that differed between local and CI.
+- Error handling: existing AI insight repository failure and per-user Telegram send failure tests still pass; new notification-disable tests prove no send occurs when disabled.
+- Race/async behavior: no new async scheduling or shared mutable runtime state beyond restoring `process.env.DATABASE_URL` in `afterEach`.
+- Residual risk: `npm run typecheck:tests:full` intentionally remains a debt tracker rather than a release gate. It still exposes historical DTO/fixture/router/mock drift across the full server test suite, so future cleanup should expand `server/tsconfig.test.json` as those files are fixed.
+
+## Previous Task: 100% Coverage Gates
 
 Status: frontend and backend literal 100% coverage gates complete; server test tsconfig no longer references Jest types
 

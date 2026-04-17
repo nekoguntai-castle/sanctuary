@@ -170,6 +170,13 @@ export function flushPromises(): Promise<void> {
 }
 
 /**
+ * Wait for a fixed amount of time.
+ */
+export function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
  * Assert that a function throws an error with a specific message
  */
 export async function expectAsyncError(
@@ -339,6 +346,7 @@ export default {
   generate2FATestToken,
   generateRefreshTestToken,
   flushPromises,
+  wait,
   expectAsyncError,
   withSuppressedConsole,
   deepClone,
