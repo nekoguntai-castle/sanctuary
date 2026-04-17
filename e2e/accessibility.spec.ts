@@ -160,6 +160,7 @@ const A11Y_API_RESPONSES: Record<string, MockApiResponse> = {
     queuedBlocksSummary: null,
   }),
   'GET /admin/version': mockResponse({ updateAvailable: false, currentVersion: '0.8.14' }),
+  'GET /admin/agents': mockResponse([]),
   'GET /transactions/recent': mockResponse([]),
   'GET /transactions/balance-history': mockResponse([]),
   'GET /ai/status': mockResponse({ available: false, containerAvailable: false }),

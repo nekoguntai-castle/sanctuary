@@ -199,6 +199,7 @@ const STATIC_DASHBOARD_API_RESPONSES: Record<string, MockApiResponse> = {
   'GET /devices': mockResponse([]),
   'GET /health': mockResponse({ status: 'ok' }),
   'GET /admin/version': mockResponse({ updateAvailable: false, currentVersion: '0.8.15' }),
+  'GET /admin/agents': mockResponse([]),
   'GET /bitcoin/status': mockResponse(BITCOIN_STATUS_RESPONSE),
   'GET /bitcoin/fees': mockResponse({ fastest: 18, halfHour: 12, hour: 8, economy: 3 }),
   'GET /transactions/recent': mockResponse([]),

@@ -565,6 +565,7 @@ const AUTHENTICATED_API_RESPONSES: Record<string, MockApiResponse> = {
     group: null,
   }),
   'GET /admin/groups': mockResponse(ADMIN_GROUPS),
+  'GET /admin/agents': mockResponse([]),
   'GET /admin/users': mockResponse(ADMIN_USERS),
   'GET /admin/settings': mockResponse(SYSTEM_SETTINGS),
   'PUT /admin/settings': mockResponse(SYSTEM_SETTINGS),

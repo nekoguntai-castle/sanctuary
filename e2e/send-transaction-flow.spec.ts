@@ -225,6 +225,7 @@ async function mockSendApi(
 
     // Admin
     if (method === 'GET' && path === '/admin/version') return json(route, { updateAvailable: false, currentVersion: '0.8.14' });
+    if (method === 'GET' && path === '/admin/agents') return json(route, []);
     if (method === 'GET' && path === '/transactions/recent') return json(route, []);
     if (method === 'GET' && path === '/transactions/balance-history') return json(route, []);
     if (method === 'GET' && path === '/ai/status') return json(route, { available: false, containerAvailable: false });

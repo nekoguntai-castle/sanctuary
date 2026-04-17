@@ -366,6 +366,7 @@ const AUTHENTICATED_STATIC_API_RESPONSES: Record<string, MockApiResponse> = {
     group: null,
   }),
   'GET /admin/groups': mockResponse([]),
+  'GET /admin/agents': mockResponse([]),
   'GET /admin/users': mockResponse([
     {
       id: ADMIN_USER.id,

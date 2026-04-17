@@ -232,6 +232,7 @@ async function mockShareApi(page: Page) {
     if (method === 'GET' && path === `/wallets/${WALLET_ID}/labels`) return json(route, []);
 
     // Admin endpoints needed by layout/feature flag checks
+    if (method === 'GET' && path === '/admin/agents') return json(route, []);
     if (method === 'GET' && path === '/admin/features') return json(route, []);
     if (method === 'GET' && path === '/admin/settings') {
       return json(route, { registrationEnabled: false, confirmationThreshold: 1, deepConfirmationThreshold: 6, dustThreshold: 546, aiEnabled: false });
