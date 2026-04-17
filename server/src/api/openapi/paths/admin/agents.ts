@@ -171,6 +171,12 @@ export const adminAgentPaths = {
           required: false,
           schema: { type: 'string', enum: ['active', 'used', 'revoked'] },
         },
+        {
+          name: 'limit',
+          in: 'query',
+          required: false,
+          schema: { type: 'integer', minimum: 1, maximum: 100, default: 25 },
+        },
       ],
       responses: {
         200: jsonArrayResponse('Agent funding override metadata', '#/components/schemas/AdminAgentFundingOverride'),

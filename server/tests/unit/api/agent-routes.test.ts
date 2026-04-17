@@ -418,7 +418,17 @@ describe('Agent Routes', () => {
   });
 
   it('marks owner overrides as used when policy enforcement returns an override', async () => {
+    const events: string[] = [];
     mockEnforceAgentFundingPolicy.mockResolvedValueOnce({ overrideId: 'override-1' });
+    mockWithAgentFundingLock.mockImplementationOnce(async (_agentId, fn) => {
+      events.push('lock-start');
+      const result = await fn();
+      events.push('lock-end');
+      return result;
+    });
+    mockMarkFundingOverrideUsed.mockImplementationOnce(async () => {
+      events.push('mark-used');
+    });
 
     const response = await request(app)
       .post('/api/v1/agent/wallets/funding-wallet/funding-drafts')
@@ -437,6 +447,7 @@ describe('Agent Routes', () => {
       label: 'Agent funding request: Treasury Agent (owner override)',
     }));
     expect(mockMarkFundingOverrideUsed).toHaveBeenCalledWith('override-1', 'draft-agent');
+    expect(events).toEqual(['lock-start', 'mark-used', 'lock-end']);
     expect(mockAuditLog).toHaveBeenCalledWith(expect.objectContaining({
       action: 'wallet.agent_override_use',
       details: expect.objectContaining({

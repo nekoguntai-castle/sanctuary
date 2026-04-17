@@ -128,17 +128,20 @@ Tenth slice update:
 - Marked the matching override used after draft creation and added an override-use audit event linked to the created draft.
 - Labeled override-funded agent drafts with `(owner override)` so human reviewers can distinguish exceptional funding from normal in-policy funding.
 - Added Admin -> Wallet Agents override management so humans can view active/used/revoked/expired override history, create bounded overrides, and revoke active overrides. Agent credentials cannot call these admin routes.
+- Post-commit hardening made override use conditional on `status=active`, `usedAt=null`, and `revokedAt=null`, bounded override listing to 25 rows by default, and documented the policy invariant that overrides waive caps only after status, destination, and cooldown checks pass.
 - Kept Sanctuary's boundary intact: overrides do not sign, broadcast, store private keys, move funds directly, or change wallet descriptors.
 
 Verification run:
 
 - `cd server && npx vitest run tests/unit/api/agent-routes.test.ts tests/unit/services/agentFundingPolicy.test.ts tests/unit/api/admin-agents-routes.test.ts tests/unit/repositories/agentRepository.test.ts tests/unit/agent/dto.test.ts tests/unit/api/openapi.test.ts` — 84 passed.
+- Post-hardening focused server check: `cd server && npx vitest run tests/unit/api/agent-routes.test.ts tests/unit/services/agentFundingPolicy.test.ts tests/unit/api/admin-agents-routes.test.ts tests/unit/repositories/agentRepository.test.ts tests/unit/api/openapi.test.ts` — 85 passed.
 - `cd server && npm run build` — passed.
 - `npm run check:openapi-route-coverage` — passed.
 - `npm run check:api-body-validation` — passed.
 - `cd server && npm run check:prisma-imports` — passed.
 - `cd server && npm run test:unit` — 366 files / 8870 tests passed. Existing Vitest hoist warning remains in `tests/unit/utils/tracing/tracer.test.ts`.
 - `npx vitest run tests/components/AgentManagement.test.tsx tests/api/adminAgents.test.ts` — 9 passed.
+- Post-hardening focused frontend check: `npx vitest run tests/components/AgentManagement.test.tsx tests/api/adminAgents.test.ts` — 10 passed.
 - `npm run typecheck:app` — passed.
 - `npm run typecheck:tests` — passed.
 - `npm run test:run` — 395 files / 5535 tests passed. Existing jsdom navigation warning remains in `tests/components/BackupRestore/useBackupHandlers.branches.test.tsx`.
@@ -150,6 +153,8 @@ Edge case audit:
 - Override amounts must be positive and are serialized as strings to avoid satoshi precision loss.
 - Expired overrides stay visible in history but cannot satisfy policy; the UI distinguishes expired active rows from currently usable overrides.
 - Used and revoked overrides cannot be reused by policy because lookup requires `status=active`, `usedAt=null`, and `revokedAt=null`.
+- Override consumption uses a conditional update so a stale or already-used row cannot be marked used a second time.
+- Override list responses are bounded to 25 rows by default and allow an explicit validated limit up to 100.
 - Cooldown enforcement runs before any override lookup, so an owner override cannot bypass agent cadence controls.
 - Wrong operational-wallet submissions fail before override lookup, even if a broad override exists for the same agent.
 - Revoked agents cannot receive new owner overrides.

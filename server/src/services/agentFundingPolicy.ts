@@ -8,6 +8,10 @@
 import { agentRepository, utxoRepository } from '../repositories';
 import { InvalidInputError, NotFoundError } from '../errors';
 
+/**
+ * If `overrideId` is set, the caller must mark that override used only after
+ * the funding draft has been created successfully.
+ */
 export interface AgentFundingPolicyDecision {
   overrideId: string | null;
 }
@@ -29,6 +33,7 @@ export async function enforceAgentFundingPolicy(
     throw new InvalidInputError('Funding draft destination is not the linked operational wallet');
   }
 
+  // Owner overrides can waive funding caps, but never agent status, destination, or cadence guards.
   if (agent.cooldownMinutes != null && agent.lastFundingDraftAt) {
     const cooldownMs = agent.cooldownMinutes * 60 * 1000;
     const nextAllowedAt = agent.lastFundingDraftAt.getTime() + cooldownMs;
@@ -39,6 +44,8 @@ export async function enforceAgentFundingPolicy(
 
   let capViolationMessage: string | null = null;
 
+  // Evaluate all cap checks, preserving the first user-facing failure message,
+  // then allow a single bounded owner override to cover the cap exception.
   if (agent.maxFundingAmountSats != null && fundingAmount > agent.maxFundingAmountSats) {
     capViolationMessage = 'Agent funding amount exceeds the per-request cap';
   }

@@ -64,7 +64,7 @@ export async function getAgentAlerts(
 
 export async function getAgentFundingOverrides(
   agentId: string,
-  params?: { status?: AgentFundingOverrideStatus }
+  params?: { status?: AgentFundingOverrideStatus; limit?: number }
 ): Promise<AgentFundingOverrideMetadata[]> {
   return apiClient.get<AgentFundingOverrideMetadata[]>(`/admin/agents/${agentId}/overrides`, params);
 }

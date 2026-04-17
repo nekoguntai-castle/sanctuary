@@ -7,6 +7,7 @@
  */
 
 import prisma from '../models/prisma';
+import { InvalidInputError, NotFoundError } from '../errors';
 import {
   Prisma,
   type AgentAlert,
@@ -206,6 +207,7 @@ export interface FindAgentAlertsFilter {
 export interface FindAgentFundingOverridesFilter {
   agentId: string;
   status?: string;
+  limit?: number;
 }
 
 export interface UpdateWalletAgentInput {
@@ -480,6 +482,7 @@ export async function findFundingOverrides(
       ...(filter.status && { status: filter.status }),
     },
     orderBy: { createdAt: 'desc' },
+    take: filter.limit ?? 25,
   });
 }
 
@@ -511,14 +514,28 @@ export async function markFundingOverrideUsed(
   id: string,
   draftId: string
 ): Promise<AgentFundingOverride> {
-  return prisma.agentFundingOverride.update({
-    where: { id },
+  const result = await prisma.agentFundingOverride.updateMany({
+    where: {
+      id,
+      status: 'active',
+      revokedAt: null,
+      usedAt: null,
+    },
     data: {
       status: 'used',
       usedAt: new Date(),
       usedDraftId: draftId,
     },
   });
+  if (result.count !== 1) {
+    throw new InvalidInputError('Agent funding override is no longer usable');
+  }
+
+  const override = await prisma.agentFundingOverride.findUnique({ where: { id } });
+  if (!override) {
+    throw new NotFoundError('Agent funding override not found');
+  }
+  return override;
 }
 
 export async function revokeFundingOverride(id: string): Promise<AgentFundingOverride> {

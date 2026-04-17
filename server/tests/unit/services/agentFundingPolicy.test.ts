@@ -92,6 +92,30 @@ describe('agentFundingPolicy', () => {
     });
   });
 
+  it('rejects cap violations when no usable owner override covers the request', async () => {
+    mocks.agentRepository.findUsableFundingOverride.mockResolvedValueOnce(null);
+
+    await expect(enforceAgentFundingPolicy('agent-1', 'operational-wallet', 150000n, now))
+      .rejects.toThrow('per-request cap');
+
+    expect(mocks.agentRepository.findUsableFundingOverride).toHaveBeenCalledWith({
+      agentId: 'agent-1',
+      operationalWalletId: 'operational-wallet',
+      amount: 150000n,
+      now,
+    });
+  });
+
+  it('preserves the first cap violation message when several caps fail', async () => {
+    mocks.utxoRepository.getUnspentBalance.mockResolvedValueOnce(190000n);
+    mocks.agentRepository.sumAgentDraftAmountsSince
+      .mockResolvedValueOnce(90000n)
+      .mockResolvedValueOnce(490000n);
+
+    await expect(enforceAgentFundingPolicy('agent-1', 'operational-wallet', 150000n, now))
+      .rejects.toThrow('per-request cap');
+  });
+
   it('does not use overrides for inactive agents, wrong destinations, or cooldowns', async () => {
     mocks.agentRepository.findUsableFundingOverride.mockResolvedValue({
       id: 'override-1',

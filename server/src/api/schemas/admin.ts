@@ -255,6 +255,7 @@ export const ListAgentAlertsQuerySchema = z.object({
 
 export const ListAgentFundingOverridesQuerySchema = z.object({
   status: AgentFundingOverrideStatusSchema.optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
 });
 
 export const CreateAgentFundingOverrideSchema = z.object({

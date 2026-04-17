@@ -26,6 +26,7 @@ const prisma = vi.hoisted(() => ({
     findUnique: vi.fn(),
     findFirst: vi.fn(),
     update: vi.fn(),
+    updateMany: vi.fn(),
   },
   agentAlert: {
     create: vi.fn(),
@@ -455,6 +456,7 @@ describe('agentRepository', () => {
     await expect(agentRepository.findFundingOverrides({
       agentId: 'agent-1',
       status: 'active',
+      limit: 10,
     })).resolves.toEqual([override]);
 
     expect(prisma.agentFundingOverride.findMany).toHaveBeenCalledWith({
@@ -463,6 +465,7 @@ describe('agentRepository', () => {
         status: 'active',
       },
       orderBy: { createdAt: 'desc' },
+      take: 10,
     });
 
     prisma.agentFundingOverride.findUnique.mockResolvedValue(override);
@@ -493,16 +496,25 @@ describe('agentRepository', () => {
       ],
     });
 
-    prisma.agentFundingOverride.update.mockResolvedValue({ ...override, status: 'used', usedDraftId: 'draft-1' });
+    prisma.agentFundingOverride.updateMany.mockResolvedValue({ count: 1 });
+    prisma.agentFundingOverride.findUnique.mockResolvedValue({ ...override, status: 'used', usedDraftId: 'draft-1' });
     await agentRepository.markFundingOverrideUsed('override-1', 'draft-1');
-    expect(prisma.agentFundingOverride.update).toHaveBeenCalledWith({
-      where: { id: 'override-1' },
+    expect(prisma.agentFundingOverride.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'override-1',
+        status: 'active',
+        revokedAt: null,
+        usedAt: null,
+      },
       data: {
         status: 'used',
         usedAt: expect.any(Date),
         usedDraftId: 'draft-1',
       },
     });
+
+    prisma.agentFundingOverride.updateMany.mockResolvedValueOnce({ count: 0 });
+    await expect(agentRepository.markFundingOverrideUsed('override-1', 'draft-2')).rejects.toThrow('no longer usable');
 
     prisma.agentFundingOverride.update.mockResolvedValue({ ...override, status: 'revoked', revokedAt: now });
     await agentRepository.revokeFundingOverride('override-1');

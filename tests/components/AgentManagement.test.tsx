@@ -257,6 +257,47 @@ describe('AgentManagement', () => {
     await waitFor(() => expect(adminApi.revokeAgentFundingOverride).toHaveBeenCalledWith('agent-1', 'override-1'));
   });
 
+  it('renders owner funding override history statuses', async () => {
+    const user = userEvent.setup();
+    vi.mocked(adminApi.getAgentFundingOverrides).mockResolvedValueOnce([
+      fundingOverride,
+      {
+        ...fundingOverride,
+        id: 'override-used',
+        reason: 'Used refill',
+        status: 'used',
+        usedAt: '2026-04-16T02:00:00.000Z',
+        usedDraftId: 'draft-1',
+      },
+      {
+        ...fundingOverride,
+        id: 'override-revoked',
+        reason: 'Revoked refill',
+        status: 'revoked',
+        revokedAt: '2026-04-16T03:00:00.000Z',
+      },
+      {
+        ...fundingOverride,
+        id: 'override-expired',
+        reason: 'Expired refill',
+        expiresAt: '2026-01-01T00:00:00.000Z',
+      },
+    ]);
+
+    render(<AgentManagement />);
+
+    await screen.findByText('Treasury Agent');
+    await user.click(screen.getByRole('button', { name: 'Overrides' }));
+
+    expect(await screen.findByText('Used refill')).toBeInTheDocument();
+    expect(screen.getByText('Revoked refill')).toBeInTheDocument();
+    expect(screen.getByText('Expired refill')).toBeInTheDocument();
+    expect(screen.getAllByText('Active').length).toBeGreaterThan(0);
+    expect(screen.getByText('Used')).toBeInTheDocument();
+    expect(screen.getByText('Revoked')).toBeInTheDocument();
+    expect(screen.getByText('Expired')).toBeInTheDocument();
+  });
+
   it('reports when a one-time key cannot be copied', async () => {
     const user = userEvent.setup();
     Object.defineProperty(navigator, 'clipboard', {

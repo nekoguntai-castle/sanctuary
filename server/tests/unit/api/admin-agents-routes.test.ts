@@ -402,6 +402,7 @@ describe('Admin wallet agent routes', () => {
     expect(mocks.agentRepository.findFundingOverrides).toHaveBeenCalledWith({
       agentId,
       status: 'active',
+      limit: 25,
     });
 
     const created = await request(app)
@@ -466,6 +467,59 @@ describe('Admin wallet agent routes', () => {
     await request(app)
       .get(`/api/v1/admin/agents/${agentId}/overrides`)
       .expect(404);
+  });
+
+  it('rejects owner overrides for revoked agents and protects revoke tenant boundaries', async () => {
+    const overrideId = '88888888-8888-4888-8888-888888888888';
+
+    mocks.agentRepository.findAgentById.mockResolvedValueOnce(agentFixture({
+      status: 'revoked',
+      revokedAt: now,
+    }));
+    await request(app)
+      .post(`/api/v1/admin/agents/${agentId}/overrides`)
+      .send({
+        maxAmountSats: '250000',
+        expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+        reason: 'revoked agent',
+      })
+      .expect(400);
+    expect(mocks.agentRepository.createFundingOverride).not.toHaveBeenCalled();
+
+    mocks.agentRepository.findFundingOverrideById.mockResolvedValueOnce(null);
+    await request(app)
+      .delete(`/api/v1/admin/agents/${agentId}/overrides/${overrideId}`)
+      .expect(404);
+
+    mocks.agentRepository.findFundingOverrideById.mockResolvedValueOnce(overrideFixture({
+      id: overrideId,
+      agentId: '99999999-9999-4999-8999-999999999999',
+    }));
+    await request(app)
+      .delete(`/api/v1/admin/agents/${agentId}/overrides/${overrideId}`)
+      .expect(404);
+  });
+
+  it('does not revoke an already inactive owner override a second time', async () => {
+    const overrideId = '88888888-8888-4888-8888-888888888888';
+    mocks.agentRepository.findFundingOverrideById.mockResolvedValueOnce(overrideFixture({
+      id: overrideId,
+      status: 'used',
+      usedAt: now,
+      usedDraftId: 'draft-1',
+    }));
+
+    await request(app)
+      .delete(`/api/v1/admin/agents/${agentId}/overrides/${overrideId}`)
+      .expect(200);
+
+    expect(mocks.agentRepository.revokeFundingOverride).not.toHaveBeenCalled();
+    expect(mocks.logFromRequest).toHaveBeenCalledWith(expect.anything(), 'wallet.agent_override_revoke', 'wallet', expect.objectContaining({
+      details: expect.objectContaining({
+        overrideId,
+        alreadyInactive: true,
+      }),
+    }));
   });
 
   it('creates, lists, and revokes scoped agent API keys', async () => {
