@@ -210,6 +210,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Link shared schema dependencies
+        run: node scripts/ensure-shared-module-resolution.mjs
+
       - name: Generate Prisma client
         run: npx prisma generate
 
@@ -267,6 +270,9 @@ jobs:
       - name: Install backend dependencies
         run: npm ci
 
+      - name: Link shared schema dependencies
+        run: node scripts/ensure-shared-module-resolution.mjs
+
       - name: Generate Prisma client
         run: npx prisma generate
 
@@ -308,6 +314,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Link shared schema dependencies
+        run: node scripts/ensure-shared-module-resolution.mjs
 
       - name: Run critical mutation gate
         run: npm run test:mutation:critical:gate
@@ -507,6 +516,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Link shared schema dependencies
+        run: node scripts/ensure-shared-module-resolution.mjs
+
       - name: Generate Prisma client
         run: npx prisma generate
 
@@ -638,6 +650,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Link shared schema dependencies
+        run: node scripts/ensure-shared-module-resolution.mjs
 
       - name: Run critical mutation gate
         run: npm run test:mutation:critical:gate

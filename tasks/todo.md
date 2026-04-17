@@ -21,6 +21,7 @@ Remote CI diagnosis:
 
 - The latest `main` Test Suite run for commit `851a7f65` failed only in the backend coverage step.
 - The downloaded backend coverage artifact showed one missed branch in `server/src/models/prisma.ts`: the empty-string fallback in `process.env.DATABASE_URL || ''` was uncovered when CI supplied `DATABASE_URL`.
+- The follow-up `main` Test Suite run for commit `4c3c8b4b` reached the new backend test typecheck gate and failed because backend-only CI installs do not create a repo-root `node_modules`. `shared/schemas/mobileApiRequests.ts` imports `zod` from the repo-root side of the tree, so unresolved `zod` caused parsed request DTOs to degrade to `unknown` and cascaded into route type errors.
 
 Changes made:
 
@@ -31,6 +32,9 @@ Changes made:
 - Added the missing `wait(ms)` helper exported from `tests/helpers/testUtils.ts`.
 - Fixed Vitest 4 custom matcher module augmentation by declaring matchers under `@vitest/expect`.
 - Fixed shared test mock typing for Vitest `Mock`, push-device generated types, and `appVersion`.
+- Added a backend script that creates a repo-root `node_modules` symlink to `server/node_modules` when the root install is absent, matching the existing Docker build strategy for shared TypeScript files.
+- Added that shared-module resolution step to backend build, runtime, test, mutation, server test typecheck scripts, and backend-only CI jobs.
+- Added explicit exported repository mock types and callback parameter types so the focused test typecheck does not infer non-portable Vitest internals.
 - Added an enforced server test typecheck script and CI steps in quick/full backend jobs.
 - Added `server/tsconfig.test.full.json` so the broader historical full-suite test type debt remains measurable while the required gate covers setup, helpers, mocks, and representative typed tests.
 - Documented the literal 100% backend coverage policy, allowed exclusion criteria, server test type gates, and updated stale server test README Jest examples to Vitest examples.
@@ -39,6 +43,7 @@ Verification:
 
 - `cd server && npx vitest run tests/unit/services/notifications/channels/aiInsights.test.ts tests/unit/models/prisma.behavior.test.ts tests/unit/models/prisma.test.ts` passed: 61 tests.
 - `npm run typecheck:server:tests` passed.
+- CI-shaped temporary checkout with no repo-root `node_modules` and only `server/node_modules` installed passed `cd server && npm run typecheck:tests`.
 - `cd server && npm run test:unit -- --coverage` passed: 372 files, 8996 tests, 100% statements, 100% branches, 100% functions, 100% lines.
 - `cd server && npm run build` passed.
 - `git diff --check` passed.
@@ -49,6 +54,7 @@ Edge case audit:
 - Boundary values: the backend coverage gate now covers both sides of the `DATABASE_URL || ''` fallback that differed between local and CI.
 - Error handling: existing AI insight repository failure and per-user Telegram send failure tests still pass; new notification-disable tests prove no send occurs when disabled.
 - Race/async behavior: no new async scheduling or shared mutable runtime state beyond restoring `process.env.DATABASE_URL` in `afterEach`.
+- System boundary handling: backend-only CI now resolves shared schema dependencies without requiring a root package install; the helper refuses to continue if `server/node_modules` is absent instead of silently hiding the install problem.
 - Residual risk: `npm run typecheck:tests:full` intentionally remains a debt tracker rather than a release gate. It still exposes historical DTO/fixture/router/mock drift across the full server test suite, so future cleanup should expand `server/tsconfig.test.json` as those files are fixed.
 
 ## Previous Task: 100% Coverage Gates

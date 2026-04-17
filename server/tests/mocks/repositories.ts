@@ -10,6 +10,105 @@ import type { AuditCategory } from '../../src/repositories/auditLogRepository';
 import type { PushDevice } from '../../src/generated/prisma/client';
 import type { CreatePushDeviceInput } from '../../src/repositories/pushDeviceRepository';
 
+type MockFn = Mock;
+type PaginationOptions = { offset?: number; limit?: number };
+
+type AuditLogCreateInput = {
+  userId?: string | null;
+  username: string;
+  action: string;
+  category: AuditCategory;
+  details?: Record<string, unknown> | null;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+  success: boolean;
+  errorMsg?: string | null;
+};
+
+type AuditLogFilters = Partial<
+  Pick<MockAuditLogEntry, 'category' | 'userId' | 'action' | 'success'>
+>;
+
+type CreateRefreshTokenInput = {
+  userId: string;
+  token: string;
+  expiresAt: Date;
+  deviceId?: string | null;
+  deviceName?: string | null;
+  userAgent?: string | null;
+  ipAddress?: string | null;
+};
+
+type CreateMockDeviceInput = {
+  type: string;
+  label: string;
+  fingerprint: string;
+  xpub: string;
+  derivationPath?: string | null;
+  modelSlug?: string | null;
+};
+
+type MockAuditLogRepository = {
+  create: MockFn;
+  findMany: MockFn;
+  findForUser: MockFn;
+  getFailedLogins: MockFn;
+  getAdminActions: MockFn;
+  deleteOlderThan: MockFn;
+  getStats: MockFn;
+};
+
+type MockSessionRepository = {
+  createRefreshToken: MockFn;
+  findRefreshToken: MockFn;
+  updateLastUsed: MockFn;
+  deleteSession: MockFn;
+  deleteByTokenHash: MockFn;
+  deleteAllForUser: MockFn;
+  findByUserId: MockFn;
+  countActiveForUser: MockFn;
+  deleteExpired: MockFn;
+};
+
+type MockPushDeviceRepository = {
+  upsert: MockFn;
+  findByToken: MockFn;
+  findById: MockFn;
+  findByUserId: MockFn;
+  deleteByToken: MockFn;
+  deleteById: MockFn;
+  deleteAllForUser: MockFn;
+};
+
+type MockSystemSettingRepository = {
+  get: MockFn;
+  set: MockFn;
+  getMany: MockFn;
+  setMany: MockFn;
+  delete: MockFn;
+  getAll: MockFn;
+};
+
+type MockDeviceRepository = {
+  create: MockFn;
+  findById: MockFn;
+  findByFingerprint: MockFn;
+  findByUserId: MockFn;
+  update: MockFn;
+  delete: MockFn;
+};
+
+type RepositoryMocks = {
+  mockAuditLogRepository: MockAuditLogRepository;
+  mockSessionRepository: MockSessionRepository;
+  mockPushDeviceRepository: MockPushDeviceRepository;
+  mockSystemSettingRepository: MockSystemSettingRepository;
+  mockDeviceRepository: MockDeviceRepository;
+  resetRepositoryMocks: typeof resetRepositoryMocks;
+  seedAuditLogs: typeof seedAuditLogs;
+  seedSessions: typeof seedSessions;
+};
+
 // =============================================================================
 // Audit Log Repository Mock
 // =============================================================================
@@ -30,8 +129,8 @@ export interface MockAuditLogEntry {
 
 const mockAuditLogs: MockAuditLogEntry[] = [];
 
-export const mockAuditLogRepository = {
-  create: vi.fn().mockImplementation(async (input) => {
+export const mockAuditLogRepository: MockAuditLogRepository = {
+  create: vi.fn().mockImplementation(async (input: AuditLogCreateInput) => {
     const entry: MockAuditLogEntry = {
       id: `audit-${Date.now()}`,
       userId: input.userId || null,
@@ -49,7 +148,7 @@ export const mockAuditLogRepository = {
     return entry;
   }),
 
-  findMany: vi.fn().mockImplementation(async (filters) => {
+  findMany: vi.fn().mockImplementation(async (filters?: AuditLogFilters) => {
     return mockAuditLogs.filter((log) => {
       if (filters?.category && log.category !== filters.category) return false;
       if (filters?.userId && log.userId !== filters.userId) return false;
@@ -59,27 +158,27 @@ export const mockAuditLogRepository = {
     });
   }),
 
-  findForUser: vi.fn().mockImplementation(async (userId, options) => {
+  findForUser: vi.fn().mockImplementation(async (userId: string, options?: PaginationOptions) => {
     const filtered = mockAuditLogs.filter((log) => log.userId === userId);
     const offset = options?.offset || 0;
     const limit = options?.limit || 50;
     return filtered.slice(offset, offset + limit);
   }),
 
-  getFailedLogins: vi.fn().mockImplementation(async (userId) => {
+  getFailedLogins: vi.fn().mockImplementation(async (userId: string) => {
     return mockAuditLogs.filter(
       (log) => log.userId === userId && log.action === 'auth.login' && !log.success
     );
   }),
 
-  getAdminActions: vi.fn().mockImplementation(async (options) => {
+  getAdminActions: vi.fn().mockImplementation(async (options?: PaginationOptions) => {
     const filtered = mockAuditLogs.filter((log) => log.category === 'admin');
     const offset = options?.offset || 0;
     const limit = options?.limit || 50;
     return filtered.slice(offset, offset + limit);
   }),
 
-  deleteOlderThan: vi.fn().mockImplementation(async (date) => {
+  deleteOlderThan: vi.fn().mockImplementation(async (date: Date) => {
     const initialLength = mockAuditLogs.length;
     const remaining = mockAuditLogs.filter((log) => log.createdAt > date);
     mockAuditLogs.length = 0;
@@ -161,8 +260,8 @@ function buildMockSession(session: Partial<MockSession>): MockSession {
   };
 }
 
-export const mockSessionRepository = {
-  createRefreshToken: vi.fn().mockImplementation(async (input) => {
+export const mockSessionRepository: MockSessionRepository = {
+  createRefreshToken: vi.fn().mockImplementation(async (input: CreateRefreshTokenInput) => {
     const session: MockSession = {
       id: `session-${Date.now()}`,
       userId: input.userId,
@@ -179,11 +278,11 @@ export const mockSessionRepository = {
     return session;
   }),
 
-  findRefreshToken: vi.fn().mockImplementation(async (token) => {
+  findRefreshToken: vi.fn().mockImplementation(async (token: string) => {
     return mockSessions.find((s) => s.tokenHash.includes(token.substring(0, 10))) || null;
   }),
 
-  updateLastUsed: vi.fn().mockImplementation(async (sessionId) => {
+  updateLastUsed: vi.fn().mockImplementation(async (sessionId: string) => {
     const session = mockSessions.find((s) => s.id === sessionId);
     if (session) {
       session.lastUsedAt = new Date();
@@ -191,7 +290,7 @@ export const mockSessionRepository = {
     return session || null;
   }),
 
-  deleteSession: vi.fn().mockImplementation(async (sessionId) => {
+  deleteSession: vi.fn().mockImplementation(async (sessionId: string) => {
     const index = mockSessions.findIndex((s) => s.id === sessionId);
     if (index >= 0) {
       mockSessions.splice(index, 1);
@@ -200,7 +299,7 @@ export const mockSessionRepository = {
     return false;
   }),
 
-  deleteByTokenHash: vi.fn().mockImplementation(async (tokenHash) => {
+  deleteByTokenHash: vi.fn().mockImplementation(async (tokenHash: string) => {
     const index = mockSessions.findIndex((s) => s.tokenHash === tokenHash);
     if (index >= 0) {
       mockSessions.splice(index, 1);
@@ -209,7 +308,7 @@ export const mockSessionRepository = {
     return false;
   }),
 
-  deleteAllForUser: vi.fn().mockImplementation(async (userId) => {
+  deleteAllForUser: vi.fn().mockImplementation(async (userId: string) => {
     const initialLength = mockSessions.length;
     const remaining = mockSessions.filter((s) => s.userId !== userId);
     mockSessions.length = 0;
@@ -217,11 +316,11 @@ export const mockSessionRepository = {
     return initialLength - remaining.length;
   }),
 
-  findByUserId: vi.fn().mockImplementation(async (userId) => {
+  findByUserId: vi.fn().mockImplementation(async (userId: string) => {
     return mockSessions.filter((s) => s.userId === userId);
   }),
 
-  countActiveForUser: vi.fn().mockImplementation(async (userId) => {
+  countActiveForUser: vi.fn().mockImplementation(async (userId: string) => {
     return mockSessions.filter(
       (s) => s.userId === userId && s.expiresAt > new Date()
     ).length;
@@ -243,7 +342,7 @@ export const mockSessionRepository = {
 
 const mockPushDevices: PushDevice[] = [];
 
-export const mockPushDeviceRepository = {
+export const mockPushDeviceRepository: MockPushDeviceRepository = {
   upsert: vi.fn().mockImplementation(async (input: CreatePushDeviceInput) => {
     const existing = mockPushDevices.find((d) => d.token === input.token);
     if (existing) {
@@ -266,19 +365,19 @@ export const mockPushDeviceRepository = {
     return device;
   }),
 
-  findByToken: vi.fn().mockImplementation(async (token) => {
+  findByToken: vi.fn().mockImplementation(async (token: string) => {
     return mockPushDevices.find((d) => d.token === token) || null;
   }),
 
-  findById: vi.fn().mockImplementation(async (id) => {
+  findById: vi.fn().mockImplementation(async (id: string) => {
     return mockPushDevices.find((d) => d.id === id) || null;
   }),
 
-  findByUserId: vi.fn().mockImplementation(async (userId) => {
+  findByUserId: vi.fn().mockImplementation(async (userId: string) => {
     return mockPushDevices.filter((d) => d.userId === userId);
   }),
 
-  deleteByToken: vi.fn().mockImplementation(async (token) => {
+  deleteByToken: vi.fn().mockImplementation(async (token: string) => {
     const index = mockPushDevices.findIndex((d) => d.token === token);
     if (index >= 0) {
       mockPushDevices.splice(index, 1);
@@ -287,7 +386,7 @@ export const mockPushDeviceRepository = {
     return false;
   }),
 
-  deleteById: vi.fn().mockImplementation(async (id) => {
+  deleteById: vi.fn().mockImplementation(async (id: string) => {
     const index = mockPushDevices.findIndex((d) => d.id === id);
     if (index >= 0) {
       mockPushDevices.splice(index, 1);
@@ -296,7 +395,7 @@ export const mockPushDeviceRepository = {
     return false;
   }),
 
-  deleteAllForUser: vi.fn().mockImplementation(async (userId) => {
+  deleteAllForUser: vi.fn().mockImplementation(async (userId: string) => {
     const initialLength = mockPushDevices.length;
     const remaining = mockPushDevices.filter((d) => d.userId !== userId);
     mockPushDevices.length = 0;
@@ -311,16 +410,16 @@ export const mockPushDeviceRepository = {
 
 const mockSystemSettings: Map<string, unknown> = new Map();
 
-export const mockSystemSettingRepository = {
-  get: vi.fn().mockImplementation(async (key) => {
+export const mockSystemSettingRepository: MockSystemSettingRepository = {
+  get: vi.fn().mockImplementation(async (key: string) => {
     return mockSystemSettings.get(key) ?? null;
   }),
 
-  set: vi.fn().mockImplementation(async (key, value) => {
+  set: vi.fn().mockImplementation(async (key: string, value: unknown) => {
     mockSystemSettings.set(key, value);
   }),
 
-  getMany: vi.fn().mockImplementation(async (keys) => {
+  getMany: vi.fn().mockImplementation(async (keys: string[]) => {
     const result: Record<string, unknown> = {};
     for (const key of keys) {
       const value = mockSystemSettings.get(key);
@@ -331,13 +430,13 @@ export const mockSystemSettingRepository = {
     return result;
   }),
 
-  setMany: vi.fn().mockImplementation(async (settings) => {
+  setMany: vi.fn().mockImplementation(async (settings: Record<string, unknown>) => {
     for (const [key, value] of Object.entries(settings)) {
       mockSystemSettings.set(key, value);
     }
   }),
 
-  delete: vi.fn().mockImplementation(async (key) => {
+  delete: vi.fn().mockImplementation(async (key: string) => {
     return mockSystemSettings.delete(key);
   }),
 
@@ -364,8 +463,8 @@ export interface MockDevice {
 
 const mockDevices: MockDevice[] = [];
 
-export const mockDeviceRepository = {
-  create: vi.fn().mockImplementation(async (input) => {
+export const mockDeviceRepository: MockDeviceRepository = {
+  create: vi.fn().mockImplementation(async (input: CreateMockDeviceInput) => {
     const device: MockDevice = {
       id: `device-${Date.now()}`,
       type: input.type,
@@ -381,20 +480,20 @@ export const mockDeviceRepository = {
     return device;
   }),
 
-  findById: vi.fn().mockImplementation(async (id) => {
+  findById: vi.fn().mockImplementation(async (id: string) => {
     return mockDevices.find((d) => d.id === id) || null;
   }),
 
-  findByFingerprint: vi.fn().mockImplementation(async (fingerprint) => {
+  findByFingerprint: vi.fn().mockImplementation(async (fingerprint: string) => {
     return mockDevices.find((d) => d.fingerprint === fingerprint) || null;
   }),
 
-  findByUserId: vi.fn().mockImplementation(async (userId) => {
+  findByUserId: vi.fn().mockImplementation(async (_userId: string) => {
     // In real implementation, this would join with DeviceUser
     return mockDevices;
   }),
 
-  update: vi.fn().mockImplementation(async (id, input) => {
+  update: vi.fn().mockImplementation(async (id: string, input: Partial<MockDevice>) => {
     const device = mockDevices.find((d) => d.id === id);
     if (device) {
       Object.assign(device, input, { updatedAt: new Date() });
@@ -403,7 +502,7 @@ export const mockDeviceRepository = {
     return null;
   }),
 
-  delete: vi.fn().mockImplementation(async (id) => {
+  delete: vi.fn().mockImplementation(async (id: string) => {
     const index = mockDevices.findIndex((d) => d.id === id);
     if (index >= 0) {
       mockDevices.splice(index, 1);
@@ -490,7 +589,7 @@ export function seedSessions(sessions: Partial<MockSession>[]): void {
   }
 }
 
-export default {
+const repositoryMocks: RepositoryMocks = {
   mockAuditLogRepository,
   mockSessionRepository,
   mockPushDeviceRepository,
@@ -500,3 +599,5 @@ export default {
   seedAuditLogs,
   seedSessions,
 };
+
+export default repositoryMocks;
