@@ -388,7 +388,7 @@ describe('Admin wallet agent routes', () => {
     }));
 
     const list = await request(app)
-      .get(`/api/v1/admin/agents/${agentId}/overrides?status=active`)
+      .get(`/api/v1/admin/agents/${agentId}/overrides?status=active&limit=10`)
       .expect(200);
 
     expect(list.body).toEqual([
@@ -402,7 +402,7 @@ describe('Admin wallet agent routes', () => {
     expect(mocks.agentRepository.findFundingOverrides).toHaveBeenCalledWith({
       agentId,
       status: 'active',
-      limit: 25,
+      limit: 10,
     });
 
     const created = await request(app)

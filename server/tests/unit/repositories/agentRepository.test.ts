@@ -516,6 +516,10 @@ describe('agentRepository', () => {
     prisma.agentFundingOverride.updateMany.mockResolvedValueOnce({ count: 0 });
     await expect(agentRepository.markFundingOverrideUsed('override-1', 'draft-2')).rejects.toThrow('no longer usable');
 
+    prisma.agentFundingOverride.updateMany.mockResolvedValueOnce({ count: 1 });
+    prisma.agentFundingOverride.findUnique.mockResolvedValueOnce(null);
+    await expect(agentRepository.markFundingOverrideUsed('override-1', 'draft-3')).rejects.toThrow('not found');
+
     prisma.agentFundingOverride.update.mockResolvedValue({ ...override, status: 'revoked', revokedAt: now });
     await agentRepository.revokeFundingOverride('override-1');
     expect(prisma.agentFundingOverride.update).toHaveBeenLastCalledWith({

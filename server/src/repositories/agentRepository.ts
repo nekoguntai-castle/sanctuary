@@ -207,7 +207,7 @@ export interface FindAgentAlertsFilter {
 export interface FindAgentFundingOverridesFilter {
   agentId: string;
   status?: string;
-  limit?: number;
+  limit: number;
 }
 
 export interface UpdateWalletAgentInput {
@@ -453,7 +453,7 @@ export async function findAlerts(filter: FindAgentAlertsFilter): Promise<AgentAl
       ...(filter.type && { type: filter.type }),
     },
     orderBy: { createdAt: 'desc' },
-    take: filter.limit ?? 25,
+    take: filter.limit,
   });
 }
 
@@ -514,6 +514,8 @@ export async function markFundingOverrideUsed(
   id: string,
   draftId: string
 ): Promise<AgentFundingOverride> {
+  // Conditional update claims the override atomically so concurrent draft
+  // creation or admin revocation cannot consume the same owner override twice.
   const result = await prisma.agentFundingOverride.updateMany({
     where: {
       id,
