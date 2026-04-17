@@ -35,6 +35,19 @@ export type {
   FeatureFlagInfo,
   FeatureFlagAuditEntry,
   FeatureFlagAuditResult,
+  AgentApiKeyMetadata,
+  AgentManagementOptions,
+  AgentOptionDevice,
+  AgentOptionUser,
+  AgentOptionWallet,
+  CreatedAgentApiKey,
+  CreateAgentApiKeyRequest,
+  CreateWalletAgentRequest,
+  UpdateWalletAgentRequest,
+  WalletAgentMetadata,
+  WalletAgentSignerDevice,
+  WalletAgentStatus,
+  WalletAgentWalletSummary,
 } from './types';
 
 // User management
@@ -98,6 +111,18 @@ export {
   resetFeatureFlag,
   getFeatureFlagAuditLog,
 } from './features';
+
+// Wallet agents
+export {
+  getWalletAgents,
+  getWalletAgentOptions,
+  createWalletAgent,
+  updateWalletAgent,
+  revokeWalletAgent,
+  getAgentApiKeys,
+  createAgentApiKey,
+  revokeAgentApiKey,
+} from './agents';
 
 // Support package
 export { downloadSupportPackage } from './supportPackage';

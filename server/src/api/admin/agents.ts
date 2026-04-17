@@ -16,6 +16,7 @@ import {
   AgentApiKeyIdParamSchema,
   CreateAgentApiKeySchema,
   CreateWalletAgentSchema,
+  ListWalletAgentsQuerySchema,
   UpdateWalletAgentSchema,
   WalletAgentIdParamSchema,
 } from '../schemas/admin';
@@ -99,12 +100,124 @@ async function validateAgentLink(input: {
   }
 }
 
+function collectWalletAccessUserIds(wallet: {
+  users: Array<{ userId: string }>;
+  group: { members: Array<{ userId: string }> } | null;
+}): string[] {
+  return [...new Set([
+    ...wallet.users.map(user => user.userId),
+    ...(wallet.group?.members.map(member => member.userId) ?? []),
+  ])];
+}
+
+/**
+ * GET /api/v1/admin/agents/options
+ * Return admin-visible user, wallet, and signer-device choices for agent forms.
+ */
+router.get('/options', authenticate, requireAdmin, asyncHandler(async (_req, res) => {
+  const [users, wallets] = await Promise.all([
+    userRepository.findAllSummary(),
+    walletRepository.findAllWithSelect({
+      id: true,
+      name: true,
+      type: true,
+      network: true,
+      users: {
+        select: {
+          userId: true,
+        },
+      },
+      group: {
+        select: {
+          members: {
+            select: { userId: true },
+          },
+        },
+      },
+      devices: {
+        select: {
+          deviceId: true,
+          device: {
+            select: {
+              id: true,
+              label: true,
+              fingerprint: true,
+              type: true,
+              userId: true,
+            },
+          },
+        },
+      },
+    }),
+  ]);
+
+  const deviceById = new Map<string, {
+    id: string;
+    label: string;
+    fingerprint: string;
+    type: string;
+    userId: string;
+    walletIds: Set<string>;
+  }>();
+
+  const walletOptions = wallets
+    .map(wallet => {
+      const accessUserIds = collectWalletAccessUserIds(wallet);
+      const deviceIds = wallet.devices.map(link => link.deviceId);
+
+      for (const link of wallet.devices) {
+        const current = deviceById.get(link.device.id) ?? {
+          id: link.device.id,
+          label: link.device.label,
+          fingerprint: link.device.fingerprint,
+          type: link.device.type,
+          userId: link.device.userId,
+          walletIds: new Set<string>(),
+        };
+        current.walletIds.add(wallet.id);
+        deviceById.set(current.id, current);
+      }
+
+      return {
+        id: wallet.id,
+        name: wallet.name,
+        type: wallet.type,
+        network: wallet.network,
+        accessUserIds,
+        deviceIds,
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const deviceOptions = [...deviceById.values()]
+    .map(device => ({
+      id: device.id,
+      label: device.label,
+      fingerprint: device.fingerprint,
+      type: device.type,
+      userId: device.userId,
+      walletIds: [...device.walletIds].sort(),
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+
+  res.json({
+    users,
+    wallets: walletOptions,
+    devices: deviceOptions,
+  });
+}));
+
 /**
  * GET /api/v1/admin/agents
  * List wallet agents and scoped key metadata. Full tokens and hashes are never returned.
  */
-router.get('/', authenticate, requireAdmin, asyncHandler(async (_req, res) => {
-  const agents = await agentRepository.findAgents();
+router.get('/', authenticate, requireAdmin, asyncHandler(async (req, res) => {
+  const parsedQuery = ListWalletAgentsQuerySchema.safeParse(req.query);
+  if (!parsedQuery.success) {
+    throw new InvalidInputError('Invalid wallet agent list query');
+  }
+
+  const agents = await agentRepository.findAgents(parsedQuery.data);
   res.json(agents.map(toWalletAgentMetadata));
 }));
 

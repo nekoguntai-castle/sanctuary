@@ -91,6 +91,10 @@ export type WalletAgentWithDetails = WalletAgent & {
   apiKeys?: AgentApiKey[];
 };
 
+export interface FindWalletAgentsFilter {
+  walletId?: string;
+}
+
 export interface UpdateWalletAgentInput {
   name?: string;
   status?: string;
@@ -127,8 +131,18 @@ export async function createAgent(input: CreateWalletAgentInput): Promise<Wallet
   });
 }
 
-export async function findAgents(): Promise<WalletAgentWithDetails[]> {
+export async function findAgents(filter: FindWalletAgentsFilter = {}): Promise<WalletAgentWithDetails[]> {
+  const where: Prisma.WalletAgentWhereInput | undefined = filter.walletId
+    ? {
+        OR: [
+          { fundingWalletId: filter.walletId },
+          { operationalWalletId: filter.walletId },
+        ],
+      }
+    : undefined;
+
   return prisma.walletAgent.findMany({
+    ...(where && { where }),
     orderBy: { createdAt: 'desc' },
     include: {
       user: {

@@ -1,12 +1,12 @@
 # Current Task: Agent Wallet Funding Implementation
 
-Status: Fifth implementation slice complete
+Status: Sixth implementation slice complete
 
 Reference plan: `tasks/agent-wallet-funding-plan.md`
 
 ## Active Implementation Slice
 
-Goal: support the first end-to-end server primitive for the agent multisig flow: a scoped non-human agent credential can submit an agent-signed funding draft to a linked multisig funding wallet, Sanctuary creates a normal partial draft, and human wallet parties are notified for review/signing. Sanctuary still does not store private keys or auto-sign.
+Goal: expose the existing agent funding/admin primitives in the Sanctuary UI so admins can register agents, manage scoped keys, update policy, and see linked funding/operational wallet context without manual API calls. Sanctuary still does not store private keys or auto-sign.
 
 - [x] Load `AGENTS.md` and current project lessons into the session.
 - [x] Capture the agent funding architecture in `tasks/agent-wallet-funding-plan.md`.
@@ -31,6 +31,14 @@ Goal: support the first end-to-end server primitive for the agent multisig flow:
 - [x] Run targeted and full server verification.
 - [x] Add a review section summarizing behavior, tests, edge cases, and follow-up work.
 - [x] Add admin/API agent management, policy gates, deduped agent notifications, operational spend alerts, and draft-row agent context.
+- [x] Add admin options API for user, wallet, and signer-device choices.
+- [x] Add frontend admin API bindings for agent profile and key management.
+- [x] Add Admin -> Wallet Agents route.
+- [x] Add admin list/create/edit/revoke flows for wallet agents.
+- [x] Add one-time `agt_` key creation display and key revocation UI.
+- [x] Add linked agent wallet badges to wallet detail headers for admins.
+- [x] Add focused server, API binding, route, component, and wallet-header tests.
+- [x] Run targeted contract checks plus full frontend and server unit verification.
 
 ## Next Slices
 
@@ -57,7 +65,7 @@ Recommended order:
   - Resolve address generation, over-cap behavior, approval semantics, and concurrent draft policy.
   - Guard policy evaluation, draft creation, UTXO locking, and agent cadence updates with the per-agent PostgreSQL advisory lock.
   - Record rejected agent funding attempts with reason codes.
-- [ ] Phase 9: Admin agent management UI.
+- [x] Phase 9: Admin agent management UI.
   - Add admin list/create/edit/revoke flows for agents.
   - Add one-time `agt_` key creation display and key revocation UI.
   - Add linked wallet labels in wallet detail views.
@@ -80,9 +88,45 @@ Recommended order:
 
 Next recommended implementation slice:
 
-- [ ] Continue with Phase 9: Admin agent management UI. The server behavior and policy semantics are now stable enough for the UI to expose.
+- [ ] Continue with Phase 10: Operational monitoring and alert rules. The admin UI can now expose agents and keys, so the next missing safety surface is persisted alert policy/history for operational wallets and repeated failures.
 
 ## Review
+
+Sixth slice update:
+
+- Added `GET /api/v1/admin/agents/options` so the admin UI can present valid user, funding-wallet, operational-wallet, and signer-device choices without ad hoc client-side discovery.
+- Added frontend admin agent API bindings and typed metadata for agent profiles, options, scoped keys, create/update payloads, and one-time key creation responses.
+- Added an Admin -> Wallet Agents section with summary stats, agent list rows, policy/status display, create/edit modals, revoke actions, scoped key issuance, one-time `agt_` token display, copy handling, and key revocation.
+- Added UI filtering that mirrors core server validation: funding wallets are multisig, operational wallets are single-sig on the same network, both are scoped to the target user, and signer devices must be linked to the funding wallet.
+- Added admin-only linked wallet badges in wallet detail headers for "Agent Funding Wallet" and "Agent Operational Wallet" context.
+- Hardened UI edge cases for optional numeric policy fields, invalid expiration dates, unavailable clipboard APIs, and stale form selections after user/wallet changes.
+- Post-review hardening: wallet detail now requests server-filtered agent links with `walletId`, admin badges align with the existing shared-wallet badge palette, key revoke text has a dark-mode state, and focused tests cover load errors, empty lists, clipboard failures, and admin-gated wallet-detail fetching.
+
+Verification run:
+
+- `npm run typecheck:app` — passed.
+- `npx vitest run tests/components/AgentManagement.test.tsx tests/components/WalletDetail.test.tsx tests/components/WalletDetail/WalletHeader.test.tsx tests/api/adminAgents.test.ts` — 39 passed.
+- `cd server && npx vitest run tests/unit/api/admin-agents-routes.test.ts tests/unit/repositories/agentRepository.test.ts tests/unit/api/openapi.test.ts` — 56 passed.
+- `npm run check:api-body-validation` — passed.
+- `npm run check:openapi-route-coverage` — passed.
+- `cd server && npm run check:prisma-imports` — passed.
+- `cd server && npm run build` — passed.
+- `npm run test:run` — 393 files / 5528 tests passed.
+- `cd server && npm run test:unit` — 363 files / 8837 tests passed. Existing Vitest hoist warning remains in `tests/unit/utils/tracing/tracer.test.ts`.
+- `git diff --check` — passed.
+
+Edge case audit:
+
+- Empty agent lists render a stable empty state, and loading/error states do not expose partial data.
+- Create submit stays disabled until a target user, funding wallet, operational wallet, signer, and non-empty name are selected.
+- Editing does not allow changing immutable linkage fields; it only updates name, status, policy caps, cooldown, and notification/pause settings.
+- Optional caps/cooldowns are omitted on create when blank and sent as `null` on update when cleared.
+- Clipboard copy reports an action error when the browser clipboard API is unavailable or denies the write.
+- Full `agt_` tokens are held only in the create-key modal state and are cleared when the modal closes.
+- Wallet detail agent badges are fetched only for admins; non-admin wallet detail views do not call the admin agent endpoint.
+- Residual follow-up: Phase 10 should add persisted alert thresholds/history for operational wallet monitoring beyond the current notification/pause behavior.
+
+---
 
 Fifth slice update:
 

@@ -45,6 +45,8 @@ import { useWalletMutations } from './hooks/useWalletMutations';
 
 import type { TabType, SettingsSubTab } from './types';
 import * as walletsApi from '../../src/api/wallets';
+import * as adminApi from '../../src/api/admin';
+import type { WalletAgentLinkBadge } from './WalletHeader';
 
 const log = createLogger('WalletDetail');
 
@@ -206,6 +208,7 @@ export const WalletDetail: React.FC = () => {
   const [accessSubTab, setAccessSubTab] = useState<'ownership' | 'sharing' | 'transfers'>('ownership');
   const [settingsSubTab, setSettingsSubTab] = useState<SettingsSubTab>('general');
   const [showDangerZone, setShowDangerZone] = useState(false);
+  const [walletAgentLinks, setWalletAgentLinks] = useState<WalletAgentLinkBadge[]>([]);
 
   // Update activeTab if navigation state changes
   useEffect(() => {
@@ -230,6 +233,49 @@ export const WalletDetail: React.FC = () => {
       setActiveTab(visibleActiveTab);
     }
   }, [activeTab, visibleActiveTab, wallet]);
+
+  useEffect(() => {
+    if (!id || !user?.isAdmin) {
+      setWalletAgentLinks([]);
+      return;
+    }
+
+    let cancelled = false;
+    adminApi.getWalletAgents({ walletId: id })
+      .then((agents) => {
+        if (cancelled) return;
+        setWalletAgentLinks(agents.flatMap((agent) => {
+          const links: WalletAgentLinkBadge[] = [];
+          if (agent.fundingWalletId === id) {
+            links.push({
+              agentId: agent.id,
+              agentName: agent.name,
+              role: 'funding',
+              linkedWalletName: agent.operationalWallet?.name ?? agent.operationalWalletId,
+              status: agent.status,
+            });
+          }
+          if (agent.operationalWalletId === id) {
+            links.push({
+              agentId: agent.id,
+              agentName: agent.name,
+              role: 'operational',
+              linkedWalletName: agent.fundingWallet?.name ?? agent.fundingWalletId,
+              status: agent.status,
+            });
+          }
+          return links;
+        }));
+      })
+      .catch((err) => {
+        logError(log, err, 'Failed to load wallet agent links', { silent: true });
+        if (!cancelled) setWalletAgentLinks([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id, user?.isAdmin]);
 
   // Export Modal State
   const [showExport, setShowExport] = useState(false);
@@ -353,6 +399,7 @@ export const WalletDetail: React.FC = () => {
     <div className="space-y-6 animate-fade-in">
       <WalletHeader
         wallet={wallet}
+        agentLinks={walletAgentLinks}
         syncing={syncing}
         syncRetryInfo={syncRetryInfo}
         onReceive={() => setShowReceive(true)}

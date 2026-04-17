@@ -97,6 +97,34 @@ describe('WalletHeader', () => {
     expect(screen.getByText('Shared')).toBeInTheDocument();
   });
 
+  it('renders linked agent wallet role badges', () => {
+    renderHeader({}, {
+      agentLinks: [
+        {
+          agentId: 'agent-1',
+          agentName: 'Treasury Agent',
+          role: 'funding',
+          linkedWalletName: 'Operational',
+          status: 'active',
+        },
+        {
+          agentId: 'agent-2',
+          agentName: 'Ops Agent',
+          role: 'operational',
+          linkedWalletName: 'Funding',
+          status: 'paused',
+        },
+      ],
+    });
+
+    expect(screen.getByText('Agent Funding Wallet')).toBeInTheDocument();
+    expect(screen.getByText('Agent Operational Wallet')).toBeInTheDocument();
+    expect(screen.getByText('Agent Funding Wallet').closest('span')).toHaveAttribute(
+      'title',
+      'Treasury Agent links this wallet to Operational'
+    );
+  });
+
   it('uses retrying defaults when status is retrying without retry metadata', () => {
     renderHeader({
       lastSyncStatus: 'retrying',

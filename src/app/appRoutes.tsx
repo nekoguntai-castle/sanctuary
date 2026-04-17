@@ -1,6 +1,7 @@
 import { lazy, Suspense, type ComponentType, type LazyExoticComponent, type ReactElement, type ReactNode } from 'react';
 import {
   Activity,
+  Bot,
   Brain,
   Cog,
   Cpu,
@@ -83,6 +84,7 @@ const AISettings = lazy(() => import('../../components/AISettings'));
 const Monitoring = lazy(() => import('../../components/Monitoring'));
 const FeatureFlags = lazy(async () => ({ default: (await import('../../components/FeatureFlags')).FeatureFlags }));
 const Intelligence = lazy(async () => ({ default: (await import('../../components/Intelligence')).Intelligence }));
+const AgentManagement = lazy(async () => ({ default: (await import('../../components/AgentManagement')).AgentManagement }));
 
 export const appRouteDefinitions: AppRouteDefinition[] = [
   {
@@ -284,6 +286,17 @@ export const appRouteDefinitions: AppRouteDefinition[] = [
     nav: {
       label: 'Feature Flags',
       icon: ToggleLeft,
+      section: 'admin',
+    },
+  },
+  {
+    id: 'admin-agents',
+    path: '/admin/agents',
+    component: AgentManagement,
+    fallback: <ListSkeleton />,
+    nav: {
+      label: 'Wallet Agents',
+      icon: Bot,
       section: 'admin',
     },
   },

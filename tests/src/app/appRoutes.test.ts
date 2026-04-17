@@ -28,6 +28,7 @@ describe('app route manifest', () => {
       '/admin/ai',
       '/admin/monitoring',
       '/admin/feature-flags',
+      '/admin/agents',
     ]);
     expect(appNavItems.every((item) => routePaths.has(item.to))).toBe(true);
   });
@@ -52,6 +53,7 @@ describe('app route manifest', () => {
       'AI Assistant',
       'Monitoring',
       'Feature Flags',
+      'Wallet Agents',
     ]);
 
     expect(getRequiredNavItem('wallets')).toMatchObject({

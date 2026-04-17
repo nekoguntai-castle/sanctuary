@@ -13,11 +13,21 @@ import {
   RefreshCw,
   RotateCcw,
   AlertCircle,
+  Bot,
 } from 'lucide-react';
 import type { SyncRetryInfo } from './types';
 
+export interface WalletAgentLinkBadge {
+  agentId: string;
+  agentName: string;
+  role: 'funding' | 'operational';
+  linkedWalletName: string;
+  status: string;
+}
+
 interface WalletHeaderProps {
   wallet: Wallet;
+  agentLinks?: WalletAgentLinkBadge[];
   syncing: boolean;
   syncRetryInfo: SyncRetryInfo | null;
   onReceive: () => void;
@@ -29,6 +39,7 @@ interface WalletHeaderProps {
 
 export const WalletHeader: React.FC<WalletHeaderProps> = ({
   wallet,
+  agentLinks = [],
   syncing,
   syncRetryInfo,
   onReceive,
@@ -106,6 +117,16 @@ export const WalletHeader: React.FC<WalletHeaderProps> = ({
               Shared
             </span>
           )}
+          {agentLinks.map(link => (
+            <span
+              key={`${link.agentId}-${link.role}`}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-shared-600 text-white dark:bg-shared-100 dark:text-shared-700"
+              title={`${link.agentName} links this wallet to ${link.linkedWalletName}`}
+            >
+              <Bot className="w-3 h-3" />
+              {link.role === 'funding' ? 'Agent Funding Wallet' : 'Agent Operational Wallet'}
+            </span>
+          ))}
         </div>
 
         {/* Row 2: Name + Balance */}

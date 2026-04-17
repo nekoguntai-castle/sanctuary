@@ -21,12 +21,34 @@ const adminAgentKeyIdParameter = {
 } as const;
 
 export const adminAgentPaths = {
+  '/admin/agents/options': {
+    get: {
+      tags: ['Admin'],
+      summary: 'List wallet agent form options',
+      description: 'Return admin-visible users, wallets, and signer devices for wallet agent registration forms.',
+      security: bearerAuth,
+      responses: {
+        200: jsonResponse('Wallet agent form options', '#/components/schemas/AdminAgentOptions'),
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+      },
+    },
+  },
   '/admin/agents': {
     get: {
       tags: ['Admin'],
       summary: 'List wallet agents',
       description: 'List linked wallet agent metadata and scoped key metadata. Full tokens and key hashes are never returned.',
       security: bearerAuth,
+      parameters: [
+        {
+          name: 'walletId',
+          in: 'query',
+          required: false,
+          schema: { type: 'string', format: 'uuid' },
+          description: 'Filter agents linked to this funding or operational wallet.',
+        },
+      ],
       responses: {
         200: jsonArrayResponse('Wallet agent metadata', '#/components/schemas/AdminWalletAgent'),
         401: apiErrorResponse,

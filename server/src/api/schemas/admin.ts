@@ -228,6 +228,10 @@ export const UpdateWalletAgentSchema = z.object({
   pauseOnUnexpectedSpend: z.boolean().optional(),
 });
 
+export const ListWalletAgentsQuerySchema = z.object({
+  walletId: UuidSchema.optional(),
+});
+
 export const CreateAgentApiKeySchema = z.object({
   name: z.string().min(1, 'Key name is required').max(100),
   allowedActions: z.array(z.string().min(1)).max(20).optional(),

@@ -17,11 +17,13 @@ const mocks = vi.hoisted(() => ({
   },
   userRepository: {
     findById: vi.fn(),
+    findAllSummary: vi.fn(),
   },
   walletRepository: {
     findById: vi.fn(),
     findByIdWithSigningDevices: vi.fn(),
     hasAccess: vi.fn(),
+    findAllWithSelect: vi.fn(),
   },
   logFromRequest: vi.fn(),
 }));
@@ -92,6 +94,59 @@ describe('Admin wallet agent routes', () => {
       devices: [{ deviceId: signerDeviceId }],
     });
     mocks.walletRepository.hasAccess.mockResolvedValue(true);
+    mocks.userRepository.findAllSummary.mockResolvedValue([
+      { id: userId, username: 'alice', email: 'alice@example.com', emailVerified: true, isAdmin: false, createdAt: now, updatedAt: now },
+    ]);
+    mocks.walletRepository.findAllWithSelect.mockResolvedValue([
+      {
+        id: fundingWalletId,
+        name: 'Funding',
+        type: 'multi_sig',
+        network: 'testnet',
+        users: [{ userId, role: 'owner' }],
+        group: null,
+        devices: [{
+          deviceId: signerDeviceId,
+          device: { id: signerDeviceId, label: 'Agent signer', fingerprint: 'aabbccdd', type: 'ledger', userId },
+        }],
+      },
+      {
+        id: operationalWalletId,
+        name: 'Operational',
+        type: 'single_sig',
+        network: 'testnet',
+        users: [],
+        group: { members: [{ userId }] },
+        devices: [],
+      },
+    ]);
+  });
+
+  it('lists admin-visible agent form options', async () => {
+    const response = await request(app).get('/api/v1/admin/agents/options').expect(200);
+
+    expect(response.body.users).toEqual([
+      expect.objectContaining({ id: userId, username: 'alice' }),
+    ]);
+    expect(response.body.wallets).toEqual([
+      expect.objectContaining({
+        id: fundingWalletId,
+        accessUserIds: [userId],
+        deviceIds: [signerDeviceId],
+      }),
+      expect.objectContaining({
+        id: operationalWalletId,
+        accessUserIds: [userId],
+        deviceIds: [],
+      }),
+    ]);
+    expect(response.body.devices).toEqual([
+      expect.objectContaining({
+        id: signerDeviceId,
+        label: 'Agent signer',
+        walletIds: [fundingWalletId],
+      }),
+    ]);
   });
 
   it('lists wallet agents without key secrets', async () => {
@@ -101,7 +156,9 @@ describe('Admin wallet agent routes', () => {
       }),
     ]);
 
-    const response = await request(app).get('/api/v1/admin/agents').expect(200);
+    const response = await request(app)
+      .get(`/api/v1/admin/agents?walletId=${fundingWalletId}`)
+      .expect(200);
 
     expect(response.body).toHaveLength(1);
     expect(response.body[0]).toMatchObject({
@@ -111,6 +168,12 @@ describe('Admin wallet agent routes', () => {
       apiKeys: [{ id: keyId, keyPrefix: 'agt_prefix' }],
     });
     expect(response.body[0].apiKeys[0].keyHash).toBeUndefined();
+    expect(mocks.agentRepository.findAgents).toHaveBeenCalledWith({ walletId: fundingWalletId });
+  });
+
+  it('rejects invalid wallet agent list filters', async () => {
+    await request(app).get('/api/v1/admin/agents?walletId=not-a-wallet-id').expect(400);
+    expect(mocks.agentRepository.findAgents).not.toHaveBeenCalled();
   });
 
   it('creates a wallet agent after validating wallet and signer relationships', async () => {

@@ -110,6 +110,16 @@ describe('agentRepository', () => {
       }),
     }));
 
+    await agentRepository.findAgents({ walletId: 'wallet-1' });
+    expect(prisma.walletAgent.findMany).toHaveBeenLastCalledWith(expect.objectContaining({
+      where: {
+        OR: [
+          { fundingWalletId: 'wallet-1' },
+          { operationalWalletId: 'wallet-1' },
+        ],
+      },
+    }));
+
     prisma.walletAgent.update.mockResolvedValue({ id: 'agent-1', status: 'paused' });
     await agentRepository.updateAgent('agent-1', {
       status: 'paused',

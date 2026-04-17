@@ -29,6 +29,52 @@ export const adminAgentSchemas = {
     },
     required: ['id', 'label', 'fingerprint'],
   },
+  AdminAgentOptionUser: {
+    type: 'object',
+    properties: {
+      id: { type: 'string' },
+      username: { type: 'string' },
+      email: { type: 'string', nullable: true },
+      emailVerified: { type: 'boolean' },
+      isAdmin: { type: 'boolean' },
+      createdAt: { type: 'string', format: 'date-time' },
+      updatedAt: { type: 'string', format: 'date-time' },
+    },
+    required: ['id', 'username', 'emailVerified', 'isAdmin', 'createdAt'],
+  },
+  AdminAgentOptionWallet: {
+    type: 'object',
+    properties: {
+      id: { type: 'string' },
+      name: { type: 'string' },
+      type: { type: 'string' },
+      network: { type: 'string' },
+      accessUserIds: { type: 'array', items: { type: 'string' } },
+      deviceIds: { type: 'array', items: { type: 'string' } },
+    },
+    required: ['id', 'name', 'type', 'network', 'accessUserIds', 'deviceIds'],
+  },
+  AdminAgentOptionDevice: {
+    type: 'object',
+    properties: {
+      id: { type: 'string' },
+      label: { type: 'string' },
+      fingerprint: { type: 'string' },
+      type: { type: 'string' },
+      userId: { type: 'string' },
+      walletIds: { type: 'array', items: { type: 'string' } },
+    },
+    required: ['id', 'label', 'fingerprint', 'type', 'userId', 'walletIds'],
+  },
+  AdminAgentOptions: {
+    type: 'object',
+    properties: {
+      users: { type: 'array', items: { $ref: '#/components/schemas/AdminAgentOptionUser' } },
+      wallets: { type: 'array', items: { $ref: '#/components/schemas/AdminAgentOptionWallet' } },
+      devices: { type: 'array', items: { $ref: '#/components/schemas/AdminAgentOptionDevice' } },
+    },
+    required: ['users', 'wallets', 'devices'],
+  },
   AdminAgentApiKeyScope: {
     type: 'object',
     properties: {

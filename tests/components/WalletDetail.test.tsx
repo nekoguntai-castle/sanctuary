@@ -14,6 +14,7 @@ import * as UserContext from '../../contexts/UserContext';
 import * as useBitcoinHooks from '../../hooks/queries/useBitcoin';
 import * as useAIStatusHook from '../../hooks/useAIStatus';
 import * as useWebSocketHooks from '../../hooks/websocket';
+import * as adminApi from '../../src/api/admin';
 import * as bitcoinApi from '../../src/api/bitcoin';
 import * as devicesApi from '../../src/api/devices';
 import * as draftsApi from '../../src/api/drafts';
@@ -133,6 +134,10 @@ vi.mock('../../src/api/drafts', () => ({
   getDrafts: vi.fn(),
 }));
 
+vi.mock('../../src/api/admin', () => ({
+  getWalletAgents: vi.fn(),
+}));
+
 // Mock child components
 vi.mock('../../components/TransactionList', () => ({
   TransactionList: () => <div data-testid="transaction-list">Transactions</div>,
@@ -204,7 +209,7 @@ describe('WalletDetail', () => {
 
     // Setup default context mocks
     vi.mocked(UserContext.useUser).mockReturnValue({
-      user: { id: 'user-1', username: 'testuser', role: 'user' },
+      user: { id: 'user-1', username: 'testuser', role: 'user', isAdmin: false },
       isLoading: false,
     } as any);
 
@@ -288,6 +293,9 @@ describe('WalletDetail', () => {
 
     // Mock drafts API
     vi.mocked(draftsApi.getDrafts).mockResolvedValue([]);
+
+    // Mock admin API
+    vi.mocked(adminApi.getWalletAgents).mockResolvedValue([]);
   });
 
   const renderWalletDetail = (walletId = 'wallet-1', state?: Record<string, unknown>) => {
@@ -341,6 +349,51 @@ describe('WalletDetail', () => {
         expect(screen.getByText('Send')).toBeInTheDocument();
         expect(screen.getByText('Receive')).toBeInTheDocument();
       });
+    });
+
+    it('does not fetch admin agent links for non-admin users', async () => {
+      renderWalletDetail();
+
+      await waitFor(() => {
+        expect(screen.getByText('Test Wallet')).toBeInTheDocument();
+      });
+      expect(adminApi.getWalletAgents).not.toHaveBeenCalled();
+      expect(screen.queryByText('Agent Operational Wallet')).not.toBeInTheDocument();
+    });
+
+    it('fetches server-filtered agent links and renders admin wallet badges', async () => {
+      vi.mocked(UserContext.useUser).mockReturnValue({
+        user: { id: 'admin-1', username: 'admin', role: 'admin', isAdmin: true },
+        isLoading: false,
+      } as any);
+      vi.mocked(adminApi.getWalletAgents).mockResolvedValue([{
+        id: 'agent-1',
+        userId: 'user-1',
+        name: 'Treasury Agent',
+        status: 'active',
+        fundingWalletId: 'funding-wallet',
+        operationalWalletId: 'wallet-1',
+        signerDeviceId: 'device-1',
+        maxFundingAmountSats: null,
+        maxOperationalBalanceSats: null,
+        dailyFundingLimitSats: null,
+        weeklyFundingLimitSats: null,
+        cooldownMinutes: null,
+        requireHumanApproval: true,
+        notifyOnOperationalSpend: true,
+        pauseOnUnexpectedSpend: false,
+        lastFundingDraftAt: null,
+        createdAt: '2026-04-16T00:00:00.000Z',
+        updatedAt: '2026-04-16T00:00:00.000Z',
+        revokedAt: null,
+        fundingWallet: { id: 'funding-wallet', name: 'Funding Wallet', type: 'multi_sig', network: 'mainnet' },
+        operationalWallet: { id: 'wallet-1', name: 'Test Wallet', type: 'single_sig', network: 'mainnet' },
+      } as any]);
+
+      renderWalletDetail();
+
+      expect(await screen.findByText('Agent Operational Wallet')).toBeInTheDocument();
+      expect(adminApi.getWalletAgents).toHaveBeenCalledWith({ walletId: 'wallet-1' });
     });
   });
 

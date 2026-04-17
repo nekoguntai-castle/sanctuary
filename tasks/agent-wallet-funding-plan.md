@@ -265,21 +265,21 @@ Verification:
 
 Goal: make the existing admin APIs usable without manual API calls.
 
-- [ ] Add an Admin -> Agents section.
-- [ ] List agents with status, linked user, funding wallet, operational wallet, signer device, policy caps, key count, last funding draft time, and revoked state.
-- [ ] Create agent flow:
+- [x] Add an Admin -> Agents section.
+- [x] List agents with status, linked user, funding wallet, operational wallet, signer device, policy caps, key count, last funding draft time, and revoked state.
+- [x] Create agent flow:
   - Select target user.
   - Select funding multisig wallet.
   - Select operational single-sig wallet on the same network.
   - Select signer device attached to the funding wallet.
   - Configure policy caps and notification flags.
-- [ ] Edit agent flow for name, status, policy caps, cooldown, operational-spend notification, and pause behavior.
-- [ ] Revoke agent flow with a clear warning that existing wallet descriptors are not changed.
-- [ ] API key management:
+- [x] Edit agent flow for name, status, policy caps, cooldown, operational-spend notification, and pause behavior.
+- [x] Revoke agent flow with a clear warning that existing wallet descriptors are not changed.
+- [x] API key management:
   - List key metadata only.
   - Create a new key and show the full `agt_` token exactly once.
   - Revoke keys idempotently.
-- [ ] Add wallet detail labels for "Agent Funding Wallet", "Agent Operational Wallet", and linked agent context.
+- [x] Add wallet detail labels for "Agent Funding Wallet", "Agent Operational Wallet", and linked agent context.
 
 Acceptance criteria:
 
@@ -290,9 +290,16 @@ Acceptance criteria:
 
 Verification:
 
-- `npm run typecheck:app`
-- Focused component tests for agent list, create/edit modal, one-time key display, and revoke confirmation.
-- Focused server route tests stay green.
+- [x] `npm run typecheck:app`
+- [x] `npx vitest run tests/components/AgentManagement.test.tsx tests/components/WalletDetail.test.tsx tests/components/WalletDetail/WalletHeader.test.tsx tests/api/adminAgents.test.ts`
+- [x] `cd server && npx vitest run tests/unit/api/admin-agents-routes.test.ts tests/unit/repositories/agentRepository.test.ts tests/unit/api/openapi.test.ts`
+- [x] `npm run check:api-body-validation`
+- [x] `npm run check:openapi-route-coverage`
+- [x] `cd server && npm run check:prisma-imports`
+- [x] `cd server && npm run build`
+- [x] `npm run test:run`
+- [x] `cd server && npm run test:unit`
+- [x] `git diff --check`
 
 ### Phase 10: Operational Monitoring And Alert Rules
 
