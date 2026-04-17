@@ -64,6 +64,7 @@ export const CACHE_TABLES = ['priceData', 'feeEstimate'] as const;
 export const LARGE_TABLES = new Set([
   'transaction', 'uTXO', 'transactionInput', 'transactionOutput',
   'address', 'auditLog', 'addressLabel', 'transactionLabel',
+  'agentFundingAttempt', 'agentAlert',
 ]);
 
 // Number of rows to fetch per cursor page during backup export

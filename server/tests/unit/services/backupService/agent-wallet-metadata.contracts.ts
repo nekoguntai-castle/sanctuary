@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import './backupServiceTestHarness';
 import { mockPrismaClient, resetPrismaMocks } from '../../../mocks/prisma';
 import { BackupService } from '../../../../src/services/backupService';
-import { TABLE_ORDER } from '../../../../src/services/backupService/constants';
+import { LARGE_TABLES, TABLE_ORDER } from '../../../../src/services/backupService/constants';
 
 export function registerBackupAgentWalletMetadataTests(): void {
   describe('Agent wallet backup metadata', () => {
@@ -26,6 +26,11 @@ export function registerBackupAgentWalletMetadataTests(): void {
       ] as const) {
         expect(TABLE_ORDER.indexOf(dependentTable)).toBeGreaterThan(walletAgentIndex);
       }
+    });
+
+    it('paginates append-only agent operational history during backup export', () => {
+      expect(LARGE_TABLES.has('agentFundingAttempt')).toBe(true);
+      expect(LARGE_TABLES.has('agentAlert')).toBe(true);
     });
 
     it('exports agent profiles, key hashes, alerts, attempts, and owner overrides', async () => {

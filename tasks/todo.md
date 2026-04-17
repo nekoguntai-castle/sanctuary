@@ -142,6 +142,7 @@ Twelfth slice update:
 - Added `docs/plans/agent-wallet-funding-release-notes.md` covering the release boundary, API surfaces, operator impact, backup/restore behavior, release gates, and known follow-up.
 - Updated the docs index to link the new operator guide and release notes.
 - Added agent metadata tables to backup/restore ordering: `walletAgent`, `agentApiKey`, `agentFundingOverride`, `agentAlert`, and `agentFundingAttempt`.
+- Marked append-only agent alert and funding attempt history as large backup tables so backup export uses cursor pagination instead of loading all rows at once.
 - Extended the Prisma test mock with agent override and alert delegates so backup tests can exercise the new tables.
 - Added backup-service coverage proving agent profiles, API key hashes/prefixes, alerts, funding attempts, and owner overrides are exported with BigInt-safe serialization.
 - Added `tests/unit/api/agent-wallet-funding-smoke.test.ts`, which exercises the full route path: admin registers agent, admin issues a scoped key, agent submits a signed funding draft, and a human/mobile reviewer receives decoded draft metadata and deep-link payloads.
@@ -150,6 +151,7 @@ Verification run:
 
 - `cd server && npx vitest run tests/unit/api/agent-wallet-funding-smoke.test.ts tests/unit/services/backupService.test.ts` — 71 passed.
 - `cd server && npx vitest run tests/unit/api/agent-wallet-funding-smoke.test.ts tests/unit/api/agent-routes.test.ts tests/unit/api/admin-agents-routes.test.ts tests/unit/api/mobile-agent-drafts-routes.test.ts tests/unit/services/agentFundingDraftValidation.test.ts tests/unit/services/agentFundingPolicy.test.ts tests/unit/services/mobileAgentDraftService.test.ts tests/unit/repositories/agentRepository.test.ts tests/unit/repositories/draftRepository.test.ts tests/unit/services/backupService.test.ts` — 149 passed.
+- Post-review backup hardening check: `cd server && npx vitest run tests/unit/services/backupService.test.ts` — 71 passed.
 - `cd server && npm run build` — passed.
 - `npm run check:openapi-route-coverage` — passed.
 - `npm run check:api-body-validation` — passed.
@@ -160,6 +162,7 @@ Edge case audit:
 
 - Backups now include hashed agent credential records but still do not include raw `agt_` tokens.
 - Agent backup ordering restores wallet/user/device prerequisites before `walletAgent`, then restores key, alert, attempt, and override records after the agent profile.
+- Agent alert and funding attempt histories use cursor-paginated backup export because they can grow like audit logs.
 - Agent funding attempts and owner override amounts preserve satoshi precision through existing `__bigint__` backup serialization.
 - Operator docs explicitly distinguish `agt_` key compromise from agent signer private-key compromise; signer compromise is treated as wallet-descriptor compromise.
 - Operational wallet compromise is documented as single-sig agent-controlled funds-at-risk, not as a Sanctuary signing failure.
