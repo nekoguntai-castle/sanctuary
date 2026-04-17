@@ -36,6 +36,7 @@ COPY shared ../shared
 
 # Copy only source files needed for build (better cache invalidation)
 COPY server/tsconfig.json ./
+COPY server/scripts ./scripts
 COPY server/src ./src
 
 # Shared TypeScript files live outside /app, so their package resolution walks
