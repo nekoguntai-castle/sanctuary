@@ -7,7 +7,14 @@
  */
 
 import prisma from '../models/prisma';
-import { Prisma, type AgentAlert, type AgentApiKey, type AgentFundingAttempt, type WalletAgent } from '../generated/prisma/client';
+import {
+  Prisma,
+  type AgentAlert,
+  type AgentApiKey,
+  type AgentFundingAttempt,
+  type AgentFundingOverride,
+  type WalletAgent,
+} from '../generated/prisma/client';
 
 export const AGENT_ACTION_CREATE_FUNDING_DRAFT = 'create_funding_draft' as const;
 
@@ -89,6 +96,23 @@ export interface CreateAgentFundingAttemptInput {
   recipient?: string | null;
   ipAddress?: string | null;
   userAgent?: string | null;
+}
+
+export interface CreateAgentFundingOverrideInput {
+  agentId: string;
+  fundingWalletId: string;
+  operationalWalletId: string;
+  createdByUserId?: string | null;
+  reason: string;
+  maxAmountSats: bigint;
+  expiresAt: Date;
+}
+
+export interface FindUsableAgentFundingOverrideInput {
+  agentId: string;
+  operationalWalletId: string;
+  amount: bigint;
+  now: Date;
 }
 
 export interface CreateAgentAlertInput {
@@ -177,6 +201,11 @@ export interface FindAgentAlertsFilter {
   status?: string;
   type?: string;
   limit?: number;
+}
+
+export interface FindAgentFundingOverridesFilter {
+  agentId: string;
+  status?: string;
 }
 
 export interface UpdateWalletAgentInput {
@@ -423,6 +452,82 @@ export async function findAlerts(filter: FindAgentAlertsFilter): Promise<AgentAl
     },
     orderBy: { createdAt: 'desc' },
     take: filter.limit ?? 25,
+  });
+}
+
+export async function createFundingOverride(
+  input: CreateAgentFundingOverrideInput
+): Promise<AgentFundingOverride> {
+  return prisma.agentFundingOverride.create({
+    data: {
+      agentId: input.agentId,
+      fundingWalletId: input.fundingWalletId,
+      operationalWalletId: input.operationalWalletId,
+      createdByUserId: input.createdByUserId ?? null,
+      reason: input.reason,
+      maxAmountSats: input.maxAmountSats,
+      expiresAt: input.expiresAt,
+    },
+  });
+}
+
+export async function findFundingOverrides(
+  filter: FindAgentFundingOverridesFilter
+): Promise<AgentFundingOverride[]> {
+  return prisma.agentFundingOverride.findMany({
+    where: {
+      agentId: filter.agentId,
+      ...(filter.status && { status: filter.status }),
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+}
+
+export async function findFundingOverrideById(id: string): Promise<AgentFundingOverride | null> {
+  return prisma.agentFundingOverride.findUnique({ where: { id } });
+}
+
+export async function findUsableFundingOverride(
+  input: FindUsableAgentFundingOverrideInput
+): Promise<AgentFundingOverride | null> {
+  return prisma.agentFundingOverride.findFirst({
+    where: {
+      agentId: input.agentId,
+      operationalWalletId: input.operationalWalletId,
+      status: 'active',
+      revokedAt: null,
+      usedAt: null,
+      expiresAt: { gt: input.now },
+      maxAmountSats: { gte: input.amount },
+    },
+    orderBy: [
+      { expiresAt: 'asc' },
+      { createdAt: 'asc' },
+    ],
+  });
+}
+
+export async function markFundingOverrideUsed(
+  id: string,
+  draftId: string
+): Promise<AgentFundingOverride> {
+  return prisma.agentFundingOverride.update({
+    where: { id },
+    data: {
+      status: 'used',
+      usedAt: new Date(),
+      usedDraftId: draftId,
+    },
+  });
+}
+
+export async function revokeFundingOverride(id: string): Promise<AgentFundingOverride> {
+  return prisma.agentFundingOverride.update({
+    where: { id },
+    data: {
+      status: 'revoked',
+      revokedAt: new Date(),
+    },
   });
 }
 
@@ -783,6 +888,12 @@ export const agentRepository = {
   markAgentFundingDraftCreated,
   sumAgentDraftAmountsSince,
   countRejectedFundingAttemptsSince,
+  createFundingOverride,
+  findFundingOverrides,
+  findFundingOverrideById,
+  findUsableFundingOverride,
+  markFundingOverrideUsed,
+  revokeFundingOverride,
   createAlert,
   createAlertIfNotDuplicate,
   findAlerts,

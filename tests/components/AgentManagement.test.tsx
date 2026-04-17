@@ -10,6 +10,9 @@ vi.mock('../../src/api/admin', () => ({
   createWalletAgent: vi.fn(),
   updateWalletAgent: vi.fn(),
   revokeWalletAgent: vi.fn(),
+  getAgentFundingOverrides: vi.fn(),
+  createAgentFundingOverride: vi.fn(),
+  revokeAgentFundingOverride: vi.fn(),
   createAgentApiKey: vi.fn(),
   revokeAgentApiKey: vi.fn(),
 }));
@@ -75,6 +78,23 @@ const options = {
   ],
 };
 
+const fundingOverride = {
+  id: 'override-1',
+  agentId: 'agent-1',
+  fundingWalletId: 'funding-1',
+  operationalWalletId: 'operational-1',
+  createdByUserId: 'admin-1',
+  reason: 'Emergency refill',
+  maxAmountSats: '150000',
+  expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+  status: 'active',
+  usedAt: null,
+  usedDraftId: null,
+  revokedAt: null,
+  createdAt: '2026-04-16T00:00:00.000Z',
+  updatedAt: '2026-04-16T00:00:00.000Z',
+} as any;
+
 describe('AgentManagement', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -83,6 +103,9 @@ describe('AgentManagement', () => {
     vi.mocked(adminApi.createWalletAgent).mockResolvedValue(agent);
     vi.mocked(adminApi.updateWalletAgent).mockResolvedValue({ ...agent, status: 'paused' });
     vi.mocked(adminApi.revokeWalletAgent).mockResolvedValue({ ...agent, status: 'revoked', revokedAt: '2026-04-16T01:00:00.000Z' });
+    vi.mocked(adminApi.getAgentFundingOverrides).mockResolvedValue([fundingOverride]);
+    vi.mocked(adminApi.createAgentFundingOverride).mockResolvedValue(fundingOverride);
+    vi.mocked(adminApi.revokeAgentFundingOverride).mockResolvedValue({ ...fundingOverride, status: 'revoked', revokedAt: '2026-04-16T01:00:00.000Z' });
     vi.mocked(adminApi.createAgentApiKey).mockResolvedValue({
       ...agent.apiKeys[0],
       id: 'key-2',
@@ -207,6 +230,31 @@ describe('AgentManagement', () => {
     expect(await screen.findByDisplayValue(/^agt_/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Copy' }));
     expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument();
+  });
+
+  it('creates and revokes owner funding overrides', async () => {
+    const user = userEvent.setup();
+    render(<AgentManagement />);
+
+    await screen.findByText('Treasury Agent');
+    await user.click(screen.getByRole('button', { name: 'Overrides' }));
+
+    expect(await screen.findByText('Emergency refill')).toBeInTheDocument();
+    expect(adminApi.getAgentFundingOverrides).toHaveBeenCalledWith('agent-1');
+
+    await user.type(screen.getByPlaceholderText('250000'), '250000');
+    await user.type(screen.getByLabelText('Expires at'), '2026-04-18T09:30');
+    await user.type(screen.getByPlaceholderText('Emergency refill'), '  Higher refill  ');
+    await user.click(screen.getByRole('button', { name: 'Create Override' }));
+
+    await waitFor(() => expect(adminApi.createAgentFundingOverride).toHaveBeenCalledWith('agent-1', {
+      maxAmountSats: '250000',
+      expiresAt: expect.any(String),
+      reason: 'Higher refill',
+    }));
+
+    await user.click(screen.getAllByRole('button', { name: 'Revoke' }).at(-1)!);
+    await waitFor(() => expect(adminApi.revokeAgentFundingOverride).toHaveBeenCalledWith('agent-1', 'override-1'));
   });
 
   it('reports when a one-time key cannot be copied', async () => {

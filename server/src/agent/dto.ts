@@ -1,4 +1,4 @@
-import type { AgentAlert, AgentApiKey, WalletAgent } from '../generated/prisma/client';
+import type { AgentAlert, AgentApiKey, AgentFundingOverride, WalletAgent } from '../generated/prisma/client';
 import type {
   AgentDashboardDraftSummary,
   AgentDashboardTransactionSummary,
@@ -83,6 +83,25 @@ export function toAgentAlertMetadata(alert: AgentAlert) {
     createdAt: alert.createdAt,
     acknowledgedAt: alert.acknowledgedAt,
     resolvedAt: alert.resolvedAt,
+  };
+}
+
+export function toAgentFundingOverrideMetadata(override: AgentFundingOverride) {
+  return {
+    id: override.id,
+    agentId: override.agentId,
+    fundingWalletId: override.fundingWalletId,
+    operationalWalletId: override.operationalWalletId,
+    createdByUserId: override.createdByUserId,
+    reason: override.reason,
+    maxAmountSats: bigintToString(override.maxAmountSats),
+    expiresAt: override.expiresAt,
+    status: override.status,
+    usedAt: override.usedAt,
+    usedDraftId: override.usedDraftId,
+    revokedAt: override.revokedAt,
+    createdAt: override.createdAt,
+    updatedAt: override.updatedAt,
   };
 }
 

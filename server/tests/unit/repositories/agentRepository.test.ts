@@ -20,6 +20,13 @@ const prisma = vi.hoisted(() => ({
     create: vi.fn(),
     count: vi.fn(),
   },
+  agentFundingOverride: {
+    create: vi.fn(),
+    findMany: vi.fn(),
+    findUnique: vi.fn(),
+    findFirst: vi.fn(),
+    update: vi.fn(),
+  },
   agentAlert: {
     create: vi.fn(),
     findFirst: vi.fn(),
@@ -397,6 +404,113 @@ describe('agentRepository', () => {
         recipient: 'tb1qrecipient',
         ipAddress: '127.0.0.1',
         userAgent: 'agent-runtime',
+      },
+    });
+  });
+
+  it('creates, lists, consumes, and revokes funding overrides', async () => {
+    const expiresAt = new Date('2026-04-17T00:00:00.000Z');
+    const now = new Date('2026-04-16T00:00:00.000Z');
+    const override = {
+      id: 'override-1',
+      agentId: 'agent-1',
+      fundingWalletId: 'funding-wallet',
+      operationalWalletId: 'operational-wallet',
+      createdByUserId: 'admin-1',
+      reason: 'emergency refill',
+      maxAmountSats: 250000n,
+      expiresAt,
+      status: 'active',
+      usedAt: null,
+      usedDraftId: null,
+      revokedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    prisma.agentFundingOverride.create.mockResolvedValue(override);
+    await expect(agentRepository.createFundingOverride({
+      agentId: 'agent-1',
+      fundingWalletId: 'funding-wallet',
+      operationalWalletId: 'operational-wallet',
+      createdByUserId: 'admin-1',
+      reason: 'emergency refill',
+      maxAmountSats: 250000n,
+      expiresAt,
+    })).resolves.toEqual(override);
+
+    expect(prisma.agentFundingOverride.create).toHaveBeenCalledWith({
+      data: {
+        agentId: 'agent-1',
+        fundingWalletId: 'funding-wallet',
+        operationalWalletId: 'operational-wallet',
+        createdByUserId: 'admin-1',
+        reason: 'emergency refill',
+        maxAmountSats: 250000n,
+        expiresAt,
+      },
+    });
+
+    prisma.agentFundingOverride.findMany.mockResolvedValue([override]);
+    await expect(agentRepository.findFundingOverrides({
+      agentId: 'agent-1',
+      status: 'active',
+    })).resolves.toEqual([override]);
+
+    expect(prisma.agentFundingOverride.findMany).toHaveBeenCalledWith({
+      where: {
+        agentId: 'agent-1',
+        status: 'active',
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    prisma.agentFundingOverride.findUnique.mockResolvedValue(override);
+    await expect(agentRepository.findFundingOverrideById('override-1')).resolves.toEqual(override);
+    expect(prisma.agentFundingOverride.findUnique).toHaveBeenCalledWith({ where: { id: 'override-1' } });
+
+    prisma.agentFundingOverride.findFirst.mockResolvedValue(override);
+    await expect(agentRepository.findUsableFundingOverride({
+      agentId: 'agent-1',
+      operationalWalletId: 'operational-wallet',
+      amount: 125000n,
+      now,
+    })).resolves.toEqual(override);
+
+    expect(prisma.agentFundingOverride.findFirst).toHaveBeenCalledWith({
+      where: {
+        agentId: 'agent-1',
+        operationalWalletId: 'operational-wallet',
+        status: 'active',
+        revokedAt: null,
+        usedAt: null,
+        expiresAt: { gt: now },
+        maxAmountSats: { gte: 125000n },
+      },
+      orderBy: [
+        { expiresAt: 'asc' },
+        { createdAt: 'asc' },
+      ],
+    });
+
+    prisma.agentFundingOverride.update.mockResolvedValue({ ...override, status: 'used', usedDraftId: 'draft-1' });
+    await agentRepository.markFundingOverrideUsed('override-1', 'draft-1');
+    expect(prisma.agentFundingOverride.update).toHaveBeenCalledWith({
+      where: { id: 'override-1' },
+      data: {
+        status: 'used',
+        usedAt: expect.any(Date),
+        usedDraftId: 'draft-1',
+      },
+    });
+
+    prisma.agentFundingOverride.update.mockResolvedValue({ ...override, status: 'revoked', revokedAt: now });
+    await agentRepository.revokeFundingOverride('override-1');
+    expect(prisma.agentFundingOverride.update).toHaveBeenLastCalledWith({
+      where: { id: 'override-1' },
+      data: {
+        status: 'revoked',
+        revokedAt: expect.any(Date),
       },
     });
   });

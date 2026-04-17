@@ -199,6 +199,7 @@ const AgentSatsLimitSchema = z
 const NullableAgentSatsLimitSchema = z.union([AgentSatsLimitSchema, z.null()]);
 const NullableAgentIntegerSchema = z.union([z.coerce.number().int().min(1).max(10080), z.null()]);
 const AgentAlertStatusSchema = z.enum(['open', 'acknowledged', 'resolved']);
+const AgentFundingOverrideStatusSchema = z.enum(['active', 'used', 'revoked']);
 
 export const CreateWalletAgentSchema = z.object({
   userId: UuidSchema,
@@ -252,6 +253,16 @@ export const ListAgentAlertsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(25),
 });
 
+export const ListAgentFundingOverridesQuerySchema = z.object({
+  status: AgentFundingOverrideStatusSchema.optional(),
+});
+
+export const CreateAgentFundingOverrideSchema = z.object({
+  maxAmountSats: AgentSatsLimitSchema.refine(value => value > 0n, 'Override amount must be greater than zero'),
+  expiresAt: z.coerce.date(),
+  reason: z.string().trim().min(1, 'Override reason is required').max(500),
+});
+
 export const CreateAgentApiKeySchema = z.object({
   name: z.string().min(1, 'Key name is required').max(100),
   allowedActions: z.array(z.string().min(1)).max(20).optional(),
@@ -265,6 +276,11 @@ export const WalletAgentIdParamSchema = z.object({
 export const AgentApiKeyIdParamSchema = z.object({
   agentId: UuidSchema,
   keyId: UuidSchema,
+});
+
+export const AgentFundingOverrideIdParamSchema = z.object({
+  agentId: UuidSchema,
+  overrideId: UuidSchema,
 });
 
 // =============================================================================
@@ -309,5 +325,6 @@ export type CreateMcpApiKeyInput = z.infer<typeof CreateMcpApiKeySchema>;
 export type CreateWalletAgentInput = z.infer<typeof CreateWalletAgentSchema>;
 export type UpdateWalletAgentInput = z.infer<typeof UpdateWalletAgentSchema>;
 export type CreateAgentApiKeyInput = z.infer<typeof CreateAgentApiKeySchema>;
+export type CreateAgentFundingOverrideInput = z.infer<typeof CreateAgentFundingOverrideSchema>;
 export type UpdateFeatureFlagInput = z.infer<typeof UpdateFeatureFlagSchema>;
 export type FeatureFlagAuditQuery = z.infer<typeof FeatureFlagAuditQuerySchema>;

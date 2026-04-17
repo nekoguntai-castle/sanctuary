@@ -443,6 +443,31 @@ export interface AgentAlertMetadata {
   resolvedAt: string | null;
 }
 
+export type AgentFundingOverrideStatus = 'active' | 'used' | 'revoked';
+
+export interface AgentFundingOverrideMetadata {
+  id: string;
+  agentId: string;
+  fundingWalletId: string;
+  operationalWalletId: string;
+  createdByUserId: string | null;
+  reason: string;
+  maxAmountSats: string;
+  expiresAt: string;
+  status: AgentFundingOverrideStatus;
+  usedAt: string | null;
+  usedDraftId: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateAgentFundingOverrideRequest {
+  maxAmountSats: string;
+  expiresAt: string;
+  reason: string;
+}
+
 export interface AgentWalletDashboardDraft {
   id: string;
   walletId: string;

@@ -40,6 +40,13 @@ describe('admin wallet agents API', () => {
     await adminAgentsApi.updateWalletAgent('agent-1', { status: 'paused' });
     await adminAgentsApi.revokeWalletAgent('agent-1');
     await adminAgentsApi.getAgentAlerts('agent-1', { status: 'open', type: 'large_operational_spend', limit: 10 });
+    await adminAgentsApi.getAgentFundingOverrides('agent-1', { status: 'active' });
+    await adminAgentsApi.createAgentFundingOverride('agent-1', {
+      maxAmountSats: '250000',
+      expiresAt: '2026-04-17T00:00:00.000Z',
+      reason: 'emergency refill',
+    });
+    await adminAgentsApi.revokeAgentFundingOverride('agent-1', 'override-1');
 
     expect(mockGet).toHaveBeenCalledWith('/admin/agents');
     expect(mockGet).toHaveBeenCalledWith('/admin/agents', { walletId: 'wallet-1' });
@@ -50,6 +57,7 @@ describe('admin wallet agents API', () => {
       type: 'large_operational_spend',
       limit: 10,
     });
+    expect(mockGet).toHaveBeenCalledWith('/admin/agents/agent-1/overrides', { status: 'active' });
     expect(mockPost).toHaveBeenCalledWith('/admin/agents', {
       userId: 'user-1',
       name: 'Agent',
@@ -59,6 +67,12 @@ describe('admin wallet agents API', () => {
     });
     expect(mockPatch).toHaveBeenCalledWith('/admin/agents/agent-1', { status: 'paused' });
     expect(mockDelete).toHaveBeenCalledWith('/admin/agents/agent-1');
+    expect(mockPost).toHaveBeenCalledWith('/admin/agents/agent-1/overrides', {
+      maxAmountSats: '250000',
+      expiresAt: '2026-04-17T00:00:00.000Z',
+      reason: 'emergency refill',
+    });
+    expect(mockDelete).toHaveBeenCalledWith('/admin/agents/agent-1/overrides/override-1');
   });
 
   it('calls agent API key endpoints', async () => {

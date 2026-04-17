@@ -8,6 +8,7 @@ const {
   mockValidateAgentFundingDraftSubmission,
   mockEnforceAgentFundingPolicy,
   mockMarkAgentFundingDraftCreated,
+  mockMarkFundingOverrideUsed,
   mockWithAgentFundingLock,
   mockCreateFundingAttempt,
   mockEvaluateRejectedFundingAttemptAlert,
@@ -25,6 +26,7 @@ const {
   mockValidateAgentFundingDraftSubmission: vi.fn(),
   mockEnforceAgentFundingPolicy: vi.fn(),
   mockMarkAgentFundingDraftCreated: vi.fn(),
+  mockMarkFundingOverrideUsed: vi.fn(),
   mockWithAgentFundingLock: vi.fn(),
   mockCreateFundingAttempt: vi.fn(),
   mockEvaluateRejectedFundingAttemptAlert: vi.fn(),
@@ -83,6 +85,7 @@ vi.mock('../../../src/services/agentMonitoringService', () => ({
 vi.mock('../../../src/repositories', () => ({
   agentRepository: {
     markAgentFundingDraftCreated: mockMarkAgentFundingDraftCreated,
+    markFundingOverrideUsed: mockMarkFundingOverrideUsed,
     withAgentFundingLock: mockWithAgentFundingLock,
     createFundingAttempt: mockCreateFundingAttempt,
   },
@@ -105,6 +108,7 @@ vi.mock('../../../src/services/draftService', () => ({
 vi.mock('../../../src/services/auditService', () => ({
   AuditAction: {
     AGENT_FUNDING_DRAFT_SUBMIT: 'wallet.agent_funding_draft_submit',
+    AGENT_OVERRIDE_USE: 'wallet.agent_override_use',
   },
   AuditCategory: {
     WALLET: 'wallet',
@@ -169,7 +173,7 @@ describe('Agent Routes', () => {
       feeRate: 5,
       signedPsbtBase64: 'cHNidP8agentSigned',
     });
-    mockEnforceAgentFundingPolicy.mockResolvedValue(undefined);
+    mockEnforceAgentFundingPolicy.mockResolvedValue({ overrideId: null });
     mockMarkAgentFundingDraftCreated.mockResolvedValue(undefined);
     mockWithAgentFundingLock.mockImplementation(async (_agentId, fn) => fn());
     mockCreateFundingAttempt.mockResolvedValue({ id: 'attempt-1' });
@@ -411,6 +415,36 @@ describe('Agent Routes', () => {
       }),
     }));
     expect(response.body).toEqual({ id: 'draft-agent', serialized: true });
+  });
+
+  it('marks owner overrides as used when policy enforcement returns an override', async () => {
+    mockEnforceAgentFundingPolicy.mockResolvedValueOnce({ overrideId: 'override-1' });
+
+    const response = await request(app)
+      .post('/api/v1/agent/wallets/funding-wallet/funding-drafts')
+      .set('Authorization', 'Bearer agt_test')
+      .send({
+        operationalWalletId: 'operational-wallet',
+        recipient: 'tb1qrecipient',
+        amount: 10000,
+        feeRate: 5,
+        psbtBase64: 'cHNi',
+        signedPsbtBase64: 'cHNidP8agentSigned',
+      });
+
+    expect(response.status).toBe(201);
+    expect(mockCreateDraft).toHaveBeenCalledWith('funding-wallet', 'user-1', expect.objectContaining({
+      label: 'Agent funding request: Treasury Agent (owner override)',
+    }));
+    expect(mockMarkFundingOverrideUsed).toHaveBeenCalledWith('override-1', 'draft-agent');
+    expect(mockAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'wallet.agent_override_use',
+      details: expect.objectContaining({
+        agentId: 'agent-1',
+        overrideId: 'override-1',
+        draftId: 'draft-agent',
+      }),
+    }));
   });
 
   it('rejects invalid funding draft payloads before calling the service', async () => {

@@ -283,6 +283,7 @@ router.post('/wallets/:fundingWalletId/funding-drafts', validate({
   } = req.body;
   const { ipAddress, userAgent } = getClientInfo(req);
   let draft: Awaited<ReturnType<typeof draftService.createDraft>> | null = null;
+  let usedOverrideId: string | null = null;
 
   try {
     requireAgentFundingDraftAccess(context, fundingWalletId, operationalWalletId);
@@ -305,7 +306,14 @@ router.post('/wallets/:fundingWalletId/funding-drafts', validate({
       : `Agent funding request: ${context.agentName}`;
 
     draft = await agentRepository.withAgentFundingLock(context.agentId, async () => {
-      await enforceAgentFundingPolicy(context.agentId, operationalWalletId, BigInt(validatedDraft.amount));
+      const policyDecision = await enforceAgentFundingPolicy(
+        context.agentId,
+        operationalWalletId,
+        BigInt(validatedDraft.amount)
+      );
+      const effectiveDraftLabel = policyDecision.overrideId
+        ? `${draftLabel} (owner override)`
+        : draftLabel;
 
       const createdDraft = await draftService.createDraft(fundingWalletId, context.userId, {
         recipient: validatedDraft.recipient,
@@ -318,7 +326,7 @@ router.post('/wallets/:fundingWalletId/funding-drafts', validate({
         outputs: validatedDraft.outputs,
         inputs: validatedDraft.inputs,
         isRBF: false,
-        label: draftLabel,
+        label: effectiveDraftLabel,
         memo,
         psbtBase64,
         signedPsbtBase64,
@@ -335,6 +343,12 @@ router.post('/wallets/:fundingWalletId/funding-drafts', validate({
         notificationCreatedByUserId: null,
         notificationCreatedByLabel: context.agentName,
       });
+
+      if (policyDecision.overrideId) {
+        await agentRepository.markFundingOverrideUsed(policyDecision.overrideId, createdDraft.id);
+        usedOverrideId = policyDecision.overrideId;
+      }
+
       await agentRepository.markAgentFundingDraftCreated(context.agentId);
       await recordAgentFundingAttempt({
         agentId: context.agentId,
@@ -392,8 +406,28 @@ router.post('/wallets/:fundingWalletId/funding-drafts', validate({
       draftId: draft.id,
       amount: draft.amount.toString(),
       feeRate: draft.feeRate,
+      overrideId: usedOverrideId,
     },
   });
+
+  if (usedOverrideId) {
+    await auditService.log({
+      userId: context.userId,
+      username: `agent:${context.agentName}`,
+      action: AuditAction.AGENT_OVERRIDE_USE,
+      category: AuditCategory.WALLET,
+      ipAddress,
+      userAgent,
+      details: {
+        agentId: context.agentId,
+        overrideId: usedOverrideId,
+        draftId: draft.id,
+        fundingWalletId,
+        operationalWalletId,
+        amount: draft.amount.toString(),
+      },
+    });
+  }
 
   res.status(201).json(serializeDraftTransaction(draft));
 }));

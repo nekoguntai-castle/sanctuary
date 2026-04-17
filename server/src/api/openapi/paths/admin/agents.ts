@@ -20,6 +20,13 @@ const adminAgentKeyIdParameter = {
   schema: { type: 'string' },
 } as const;
 
+const adminAgentOverrideIdParameter = {
+  name: 'overrideId',
+  in: 'path',
+  required: true,
+  schema: { type: 'string' },
+} as const;
+
 export const adminAgentPaths = {
   '/admin/agents/options': {
     get: {
@@ -143,6 +150,61 @@ export const adminAgentPaths = {
       ],
       responses: {
         200: jsonArrayResponse('Agent alert metadata', '#/components/schemas/AdminAgentAlert'),
+        400: apiErrorResponse,
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        404: apiErrorResponse,
+      },
+    },
+  },
+  '/admin/agents/{agentId}/overrides': {
+    get: {
+      tags: ['Admin'],
+      summary: 'List agent funding overrides',
+      description: 'List human-created exceptional funding overrides for a wallet agent.',
+      security: bearerAuth,
+      parameters: [
+        adminAgentIdParameter,
+        {
+          name: 'status',
+          in: 'query',
+          required: false,
+          schema: { type: 'string', enum: ['active', 'used', 'revoked'] },
+        },
+      ],
+      responses: {
+        200: jsonArrayResponse('Agent funding override metadata', '#/components/schemas/AdminAgentFundingOverride'),
+        400: apiErrorResponse,
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        404: apiErrorResponse,
+      },
+    },
+    post: {
+      tags: ['Admin'],
+      summary: 'Create agent funding override',
+      description: 'Create a bounded owner override for exceptional agent funding. Agent credentials cannot create, approve, extend, or revoke overrides.',
+      security: bearerAuth,
+      parameters: [adminAgentIdParameter],
+      requestBody: jsonRequestBody('#/components/schemas/AdminCreateAgentFundingOverrideRequest'),
+      responses: {
+        201: jsonResponse('Created agent funding override metadata', '#/components/schemas/AdminAgentFundingOverride'),
+        400: apiErrorResponse,
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        404: apiErrorResponse,
+      },
+    },
+  },
+  '/admin/agents/{agentId}/overrides/{overrideId}': {
+    delete: {
+      tags: ['Admin'],
+      summary: 'Revoke agent funding override',
+      description: 'Revoke an active owner override before it is consumed.',
+      security: bearerAuth,
+      parameters: [adminAgentIdParameter, adminAgentOverrideIdParameter],
+      responses: {
+        200: jsonResponse('Revoked agent funding override metadata', '#/components/schemas/AdminAgentFundingOverride'),
         400: apiErrorResponse,
         401: apiErrorResponse,
         403: apiErrorResponse,

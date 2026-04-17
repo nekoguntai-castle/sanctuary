@@ -10,9 +10,12 @@ import type {
   AgentApiKeyMetadata,
   AgentAlertMetadata,
   AgentAlertStatus,
+  AgentFundingOverrideMetadata,
+  AgentFundingOverrideStatus,
   AgentWalletDashboardRow,
   AgentManagementOptions,
   CreateAgentApiKeyRequest,
+  CreateAgentFundingOverrideRequest,
   CreatedAgentApiKey,
   CreateWalletAgentRequest,
   UpdateWalletAgentRequest,
@@ -57,6 +60,27 @@ export async function getAgentAlerts(
   params?: { status?: AgentAlertStatus; type?: string; limit?: number }
 ): Promise<AgentAlertMetadata[]> {
   return apiClient.get<AgentAlertMetadata[]>(`/admin/agents/${agentId}/alerts`, params);
+}
+
+export async function getAgentFundingOverrides(
+  agentId: string,
+  params?: { status?: AgentFundingOverrideStatus }
+): Promise<AgentFundingOverrideMetadata[]> {
+  return apiClient.get<AgentFundingOverrideMetadata[]>(`/admin/agents/${agentId}/overrides`, params);
+}
+
+export async function createAgentFundingOverride(
+  agentId: string,
+  data: CreateAgentFundingOverrideRequest
+): Promise<AgentFundingOverrideMetadata> {
+  return apiClient.post<AgentFundingOverrideMetadata>(`/admin/agents/${agentId}/overrides`, data);
+}
+
+export async function revokeAgentFundingOverride(
+  agentId: string,
+  overrideId: string
+): Promise<AgentFundingOverrideMetadata> {
+  return apiClient.delete<AgentFundingOverrideMetadata>(`/admin/agents/${agentId}/overrides/${overrideId}`);
 }
 
 export async function createAgentApiKey(

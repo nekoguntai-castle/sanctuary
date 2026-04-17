@@ -1,12 +1,12 @@
 # Current Task: Agent Wallet Funding Implementation
 
-Status: Ninth implementation slice complete
+Status: Tenth implementation slice complete
 
 Reference plan: `tasks/agent-wallet-funding-plan.md`
 
 ## Active Implementation Slice
 
-Goal: add operational address generation for agent-linked watch-only operational wallets. Sanctuary should return an existing unused receive address when available, derive a new verified receive-address gap when descriptor metadata exists, and keep read-only behavior for wallets that cannot prove ownership of a new address.
+Goal: add a bounded owner override workflow for exceptional agent funding. Sanctuary should keep normal over-cap submissions rejected by default, allow only human-created one-time override windows, audit the override lifecycle, and make override-funded drafts visible during human review.
 
 - [x] Load `AGENTS.md` and current project lessons into the session.
 - [x] Capture the agent funding architecture in `tasks/agent-wallet-funding-plan.md`.
@@ -59,6 +59,14 @@ Goal: add operational address generation for agent-linked watch-only operational
 - [x] Update the agent operational-address endpoint and OpenAPI schema.
 - [x] Add focused repository, service, and route tests.
 - [x] Run Phase 12 targeted verification and commit.
+- [x] Add an `AgentFundingOverride` schema model and migration.
+- [x] Add admin API routes for listing, creating, and revoking owner overrides.
+- [x] Enforce override eligibility in agent funding policy without bypassing inactive, wrong-destination, or cooldown guards.
+- [x] Mark overrides used after draft creation and audit override create/revoke/use events.
+- [x] Add admin UI/API bindings for owner override list/create/revoke flows.
+- [x] Label override-funded drafts for human review.
+- [x] Add focused repository, service, route, DTO, OpenAPI, API binding, and component tests.
+- [x] Run Phase 13 targeted and broader verification.
 
 ## Next Slices
 
@@ -98,7 +106,7 @@ Recommended order:
 - [x] Phase 12: Operational address generation.
   - Generate next operational receive address when Sanctuary has enough watch-only descriptor metadata.
   - Preserve strict linked-address verification.
-- [ ] Phase 13: Owner override workflow.
+- [x] Phase 13: Owner override workflow.
   - Keep default over-cap behavior as hard reject.
   - Add bounded, human-created overrides with audit trail if needed.
 - [ ] Phase 14: Mobile approval foundation.
@@ -108,9 +116,47 @@ Recommended order:
 
 Next recommended implementation slice:
 
-- [ ] Continue with Phase 13: Owner override workflow. Normal agent submissions remain hard rejected by default; the next slice should add bounded, human-created overrides with audit trail for exceptional funding.
+- [ ] Continue with Phase 14: Mobile approval foundation. Add mobile-safe pending agent draft listing, review metadata, comments/rejection, and signer integration paths.
 
 ## Review
+
+Tenth slice update:
+
+- Added `AgentFundingOverride` persistence for one-time owner-created funding windows bounded by agent, funding wallet, operational wallet, amount, expiry, and status.
+- Added admin override APIs: list, create, and revoke, with request validation, OpenAPI coverage, DTO serialization, and audit events for create/revoke.
+- Updated funding policy so inactive agents, wrong operational-wallet destinations, and cooldowns remain hard failures; cap violations can proceed only when a matching active, unused, unexpired owner override covers the requested amount.
+- Marked the matching override used after draft creation and added an override-use audit event linked to the created draft.
+- Labeled override-funded agent drafts with `(owner override)` so human reviewers can distinguish exceptional funding from normal in-policy funding.
+- Added Admin -> Wallet Agents override management so humans can view active/used/revoked/expired override history, create bounded overrides, and revoke active overrides. Agent credentials cannot call these admin routes.
+- Kept Sanctuary's boundary intact: overrides do not sign, broadcast, store private keys, move funds directly, or change wallet descriptors.
+
+Verification run:
+
+- `cd server && npx vitest run tests/unit/api/agent-routes.test.ts tests/unit/services/agentFundingPolicy.test.ts tests/unit/api/admin-agents-routes.test.ts tests/unit/repositories/agentRepository.test.ts tests/unit/agent/dto.test.ts tests/unit/api/openapi.test.ts` — 84 passed.
+- `cd server && npm run build` — passed.
+- `npm run check:openapi-route-coverage` — passed.
+- `npm run check:api-body-validation` — passed.
+- `cd server && npm run check:prisma-imports` — passed.
+- `cd server && npm run test:unit` — 366 files / 8870 tests passed. Existing Vitest hoist warning remains in `tests/unit/utils/tracing/tracer.test.ts`.
+- `npx vitest run tests/components/AgentManagement.test.tsx tests/api/adminAgents.test.ts` — 9 passed.
+- `npm run typecheck:app` — passed.
+- `npm run typecheck:tests` — passed.
+- `npm run test:run` — 395 files / 5535 tests passed. Existing jsdom navigation warning remains in `tests/components/BackupRestore/useBackupHandlers.branches.test.tsx`.
+- `git diff --check` — passed.
+
+Edge case audit:
+
+- Whitespace-only override reasons are trimmed before validation and rejected when empty.
+- Override amounts must be positive and are serialized as strings to avoid satoshi precision loss.
+- Expired overrides stay visible in history but cannot satisfy policy; the UI distinguishes expired active rows from currently usable overrides.
+- Used and revoked overrides cannot be reused by policy because lookup requires `status=active`, `usedAt=null`, and `revokedAt=null`.
+- Cooldown enforcement runs before any override lookup, so an owner override cannot bypass agent cadence controls.
+- Wrong operational-wallet submissions fail before override lookup, even if a broad override exists for the same agent.
+- Revoked agents cannot receive new owner overrides.
+- Override use is marked only after the draft is created, preventing a failed draft build from consuming the override.
+- A used override records the draft id and emits a separate audit event for review/history correlation.
+- Admin override UI handles empty, loading, error, create, revoke, expired, used, and revoked states without exposing the full agent API key material.
+- Residual follow-up: Phase 14 should expose mobile-safe pending agent draft review, comments/rejection, and signer handoff paths.
 
 Ninth slice update:
 

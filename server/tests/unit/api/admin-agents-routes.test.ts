@@ -12,6 +12,10 @@ const mocks = vi.hoisted(() => ({
     updateAgent: vi.fn(),
     findDashboardRows: vi.fn(),
     findAlerts: vi.fn(),
+    findFundingOverrides: vi.fn(),
+    createFundingOverride: vi.fn(),
+    findFundingOverrideById: vi.fn(),
+    revokeFundingOverride: vi.fn(),
     findApiKeysByAgentId: vi.fn(),
     createApiKey: vi.fn(),
     findApiKeyById: vi.fn(),
@@ -51,6 +55,8 @@ vi.mock('../../../src/services/auditService', () => ({
     AGENT_REVOKE: 'wallet.agent_revoke',
     AGENT_KEY_CREATE: 'wallet.agent_key_create',
     AGENT_KEY_REVOKE: 'wallet.agent_key_revoke',
+    AGENT_OVERRIDE_CREATE: 'wallet.agent_override_create',
+    AGENT_OVERRIDE_REVOKE: 'wallet.agent_override_revoke',
   },
   AuditCategory: {
     WALLET: 'wallet',
@@ -367,6 +373,101 @@ describe('Admin wallet agent routes', () => {
     await request(app).get(`/api/v1/admin/agents/${agentId}/alerts`).expect(404);
   });
 
+  it('creates, lists, and revokes owner funding overrides', async () => {
+    const overrideId = '88888888-8888-4888-8888-888888888888';
+    const expiresAt = new Date(Date.now() + 86_400_000).toISOString();
+
+    mocks.agentRepository.findAgentById.mockResolvedValue(agentFixture());
+    mocks.agentRepository.findFundingOverrides.mockResolvedValue([overrideFixture({ id: overrideId })]);
+    mocks.agentRepository.createFundingOverride.mockImplementation(async input => overrideFixture({
+      id: overrideId,
+      ...input,
+      status: 'active',
+      createdAt: now,
+      updatedAt: now,
+    }));
+
+    const list = await request(app)
+      .get(`/api/v1/admin/agents/${agentId}/overrides?status=active`)
+      .expect(200);
+
+    expect(list.body).toEqual([
+      expect.objectContaining({
+        id: overrideId,
+        agentId,
+        maxAmountSats: '150000',
+        status: 'active',
+      }),
+    ]);
+    expect(mocks.agentRepository.findFundingOverrides).toHaveBeenCalledWith({
+      agentId,
+      status: 'active',
+    });
+
+    const created = await request(app)
+      .post(`/api/v1/admin/agents/${agentId}/overrides`)
+      .send({
+        maxAmountSats: '250000',
+        expiresAt,
+        reason: '  emergency refill  ',
+      })
+      .expect(201);
+
+    expect(created.body).toEqual(expect.objectContaining({
+      id: overrideId,
+      maxAmountSats: '250000',
+      reason: 'emergency refill',
+      status: 'active',
+    }));
+    expect(mocks.agentRepository.createFundingOverride).toHaveBeenCalledWith(expect.objectContaining({
+      agentId,
+      fundingWalletId,
+      operationalWalletId,
+      createdByUserId: 'admin-1',
+      maxAmountSats: 250000n,
+      reason: 'emergency refill',
+      expiresAt: expect.any(Date),
+    }));
+    expect(mocks.logFromRequest).toHaveBeenCalledWith(expect.anything(), 'wallet.agent_override_create', 'wallet', expect.objectContaining({
+      details: expect.objectContaining({ overrideId }),
+    }));
+
+    mocks.agentRepository.findFundingOverrideById.mockResolvedValueOnce(overrideFixture({ id: overrideId }));
+    mocks.agentRepository.revokeFundingOverride.mockResolvedValueOnce(overrideFixture({
+      id: overrideId,
+      status: 'revoked',
+      revokedAt: now,
+    }));
+
+    await request(app)
+      .delete(`/api/v1/admin/agents/${agentId}/overrides/${overrideId}`)
+      .expect(200);
+
+    expect(mocks.agentRepository.revokeFundingOverride).toHaveBeenCalledWith(overrideId);
+    expect(mocks.logFromRequest).toHaveBeenCalledWith(expect.anything(), 'wallet.agent_override_revoke', 'wallet', expect.objectContaining({
+      details: expect.objectContaining({ overrideId }),
+    }));
+  });
+
+  it('rejects invalid owner funding override requests', async () => {
+    mocks.agentRepository.findAgentById.mockResolvedValue(agentFixture());
+
+    await request(app)
+      .post(`/api/v1/admin/agents/${agentId}/overrides`)
+      .send({ maxAmountSats: '0', expiresAt: new Date(Date.now() + 86_400_000).toISOString(), reason: 'zero' })
+      .expect(400);
+
+    await request(app)
+      .post(`/api/v1/admin/agents/${agentId}/overrides`)
+      .send({ maxAmountSats: '1000', expiresAt: new Date(Date.now() - 1000).toISOString(), reason: 'expired' })
+      .expect(400);
+
+    mocks.agentRepository.findAgentById.mockResolvedValueOnce(null);
+    await request(app)
+      .get(`/api/v1/admin/agents/${agentId}/overrides`)
+      .expect(404);
+  });
+
   it('creates, lists, and revokes scoped agent API keys', async () => {
     mocks.agentRepository.findAgentById.mockResolvedValue(agentFixture());
     mocks.agentRepository.findApiKeysByAgentId.mockResolvedValue([keyFixture()]);
@@ -496,6 +597,27 @@ function transactionFixture(overrides: Record<string, unknown> = {}) {
     blockTime: null,
     counterpartyAddress: 'tb1qrecipient',
     createdAt: now,
+    ...overrides,
+  };
+}
+
+function overrideFixture(overrides: Record<string, unknown> = {}) {
+  const now = new Date('2026-04-16T00:00:00.000Z');
+  return {
+    id: '88888888-8888-4888-8888-888888888888',
+    agentId: '55555555-5555-4555-8555-555555555555',
+    fundingWalletId: '22222222-2222-4222-8222-222222222222',
+    operationalWalletId: '33333333-3333-4333-8333-333333333333',
+    createdByUserId: 'admin-1',
+    reason: 'emergency refill',
+    maxAmountSats: 150000n,
+    expiresAt: new Date('2026-04-17T00:00:00.000Z'),
+    status: 'active',
+    usedAt: null,
+    usedDraftId: null,
+    revokedAt: null,
+    createdAt: now,
+    updatedAt: now,
     ...overrides,
   };
 }

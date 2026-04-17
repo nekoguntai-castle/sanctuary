@@ -1,6 +1,6 @@
 # Agent Wallet Funding Plan
 
-Status: In progress - server primitives for linked agent metadata, scoped credentials, admin management, policy-gated funding draft submission, PSBT content validation, Telegram notification, draft-row display, operational monitoring policy, alert history, Agent Wallets dashboard, and operational address generation are implemented.
+Status: In progress - server primitives for linked agent metadata, scoped credentials, admin management, policy-gated funding draft submission, PSBT content validation, Telegram notification, draft-row display, operational monitoring policy, alert history, Agent Wallets dashboard, operational address generation, and owner funding overrides are implemented.
 
 ## Goal
 
@@ -390,22 +390,23 @@ Verification:
 
 Goal: support exceptional funding without weakening the default agent guardrails.
 
-- [ ] Add an owner-initiated override flow for funding above normal caps.
-- [ ] Decide whether to reuse vault approvals or create an agent-specific override request type.
-- [ ] Require override reason, expiry, maximum amount, and target operational wallet.
-- [ ] Ensure the agent cannot create, approve, or extend an override.
-- [ ] Audit every override create/approve/reject/use event.
+- [x] Add an owner-initiated override flow for funding above normal caps.
+- [x] Decide whether to reuse vault approvals or create an agent-specific override request type.
+- [x] Require override reason, expiry, maximum amount, and target operational wallet.
+- [x] Ensure the agent cannot create, approve, or extend an override.
+- [x] Audit every override create/revoke/use event.
 
 Acceptance criteria:
 
-- Normal agent submissions remain hard rejected unless a valid human-created override exists.
-- Overrides are bounded by amount, wallet, agent, and expiry.
-- The human review screen clearly distinguishes normal in-policy funding from override funding.
+- [x] Normal agent submissions remain hard rejected unless a valid human-created override exists.
+- [x] Overrides are bounded by amount, wallet, agent, and expiry.
+- [x] The human review screen clearly distinguishes normal in-policy funding from override funding.
 
 Verification:
 
-- Policy tests for no override, valid override, expired override, wrong agent, wrong wallet, amount over override, and one-time-use behavior if selected.
-- Audit log tests for override lifecycle.
+- [x] Policy tests for no override, valid override, expired override, wrong agent, wrong wallet, amount over override, and one-time-use behavior if selected.
+- [x] Audit log tests for override lifecycle.
+- [x] Admin UI/API binding tests for listing, creating, and revoking overrides.
 
 ### Phase 14: Mobile Approval Foundation
 

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { toAgentAlertMetadata, toAgentWalletDashboardRowMetadata } from '../../../src/agent/dto';
+import {
+  toAgentAlertMetadata,
+  toAgentFundingOverrideMetadata,
+  toAgentWalletDashboardRowMetadata,
+} from '../../../src/agent/dto';
 
 describe('agent dto helpers', () => {
   it('serializes agent alert metadata without losing bigint or nullable fields', () => {
@@ -43,6 +47,43 @@ describe('agent dto helpers', () => {
       createdAt: now,
       acknowledgedAt: null,
       resolvedAt: null,
+    });
+  });
+
+  it('serializes agent funding override metadata without losing bigint fields', () => {
+    const now = new Date('2026-04-16T00:00:00.000Z');
+    const expiresAt = new Date('2026-04-17T00:00:00.000Z');
+
+    expect(toAgentFundingOverrideMetadata({
+      id: 'override-1',
+      agentId: 'agent-1',
+      fundingWalletId: 'funding-wallet',
+      operationalWalletId: 'operational-wallet',
+      createdByUserId: 'admin-1',
+      reason: 'emergency refill',
+      maxAmountSats: 250000n,
+      expiresAt,
+      status: 'active',
+      usedAt: null,
+      usedDraftId: null,
+      revokedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    } as any)).toEqual({
+      id: 'override-1',
+      agentId: 'agent-1',
+      fundingWalletId: 'funding-wallet',
+      operationalWalletId: 'operational-wallet',
+      createdByUserId: 'admin-1',
+      reason: 'emergency refill',
+      maxAmountSats: '250000',
+      expiresAt,
+      status: 'active',
+      usedAt: null,
+      usedDraftId: null,
+      revokedAt: null,
+      createdAt: now,
+      updatedAt: now,
     });
   });
 

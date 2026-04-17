@@ -902,6 +902,7 @@ model WalletAgent {
   apiKeys           AgentApiKey[]
   fundingAttempts  AgentFundingAttempt[]
   alerts           AgentAlert[]
+  fundingOverrides AgentFundingOverride[]
 
   @@unique([fundingWalletId, operationalWalletId, signerDeviceId])
   @@index([userId])
@@ -912,6 +913,34 @@ model WalletAgent {
   @@index([revokedAt])
   @@index([lastFundingDraftAt])
   @@map("wallet_agents")
+}
+
+// Human-created exceptional funding windows for an agent. Agents cannot create
+// or extend these; they are consumed by policy enforcement after draft creation.
+model AgentFundingOverride {
+  id                    String   @id @default(uuid())
+  agentId               String
+  fundingWalletId       String
+  operationalWalletId   String
+  createdByUserId       String?
+  reason                String
+  maxAmountSats         BigInt
+  expiresAt             DateTime
+  status                String   @default("active") // active, used, revoked
+  usedAt                DateTime?
+  usedDraftId           String?
+  revokedAt             DateTime?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  agent WalletAgent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, status, expiresAt])
+  @@index([fundingWalletId])
+  @@index([operationalWalletId])
+  @@index([createdByUserId])
+  @@index([usedDraftId])
+  @@map("agent_funding_overrides")
 }
 
 // Persisted operational and funding-health alerts for linked wallet agents.

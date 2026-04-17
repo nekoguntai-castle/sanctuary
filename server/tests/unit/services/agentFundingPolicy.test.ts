@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   agentRepository: {
     findAgentById: vi.fn(),
     sumAgentDraftAmountsSince: vi.fn(),
+    findUsableFundingOverride: vi.fn(),
   },
   utxoRepository: {
     getUnspentBalance: vi.fn(),
@@ -25,11 +26,14 @@ describe('agentFundingPolicy', () => {
     vi.clearAllMocks();
     mocks.agentRepository.findAgentById.mockResolvedValue(agentFixture());
     mocks.agentRepository.sumAgentDraftAmountsSince.mockResolvedValue(0n);
+    mocks.agentRepository.findUsableFundingOverride.mockResolvedValue(null);
     mocks.utxoRepository.getUnspentBalance.mockResolvedValue(0n);
   });
 
   it('allows funding when configured policy limits are not exceeded', async () => {
-    await expect(enforceAgentFundingPolicy('agent-1', 'operational-wallet', 50000n, now)).resolves.toBeUndefined();
+    await expect(enforceAgentFundingPolicy('agent-1', 'operational-wallet', 50000n, now)).resolves.toEqual({
+      overrideId: null,
+    });
 
     expect(mocks.agentRepository.sumAgentDraftAmountsSince).toHaveBeenCalledTimes(2);
     expect(mocks.utxoRepository.getUnspentBalance).toHaveBeenCalledWith('operational-wallet');
@@ -64,6 +68,47 @@ describe('agentFundingPolicy', () => {
       .mockResolvedValueOnce(0n)
       .mockResolvedValueOnce(490000n);
     await expect(enforceAgentFundingPolicy('agent-1', 'operational-wallet', 20000n, now)).rejects.toThrow('weekly funding limit');
+  });
+
+  it('allows cap violations when a valid owner override exists', async () => {
+    mocks.agentRepository.findUsableFundingOverride.mockResolvedValueOnce({
+      id: 'override-1',
+      agentId: 'agent-1',
+      operationalWalletId: 'operational-wallet',
+      maxAmountSats: 150000n,
+      expiresAt: new Date('2026-04-16T13:00:00.000Z'),
+      status: 'active',
+    });
+
+    await expect(enforceAgentFundingPolicy('agent-1', 'operational-wallet', 150000n, now)).resolves.toEqual({
+      overrideId: 'override-1',
+    });
+
+    expect(mocks.agentRepository.findUsableFundingOverride).toHaveBeenCalledWith({
+      agentId: 'agent-1',
+      operationalWalletId: 'operational-wallet',
+      amount: 150000n,
+      now,
+    });
+  });
+
+  it('does not use overrides for inactive agents, wrong destinations, or cooldowns', async () => {
+    mocks.agentRepository.findUsableFundingOverride.mockResolvedValue({
+      id: 'override-1',
+    });
+
+    mocks.agentRepository.findAgentById.mockResolvedValueOnce(agentFixture({ status: 'paused' }));
+    await expect(enforceAgentFundingPolicy('agent-1', 'operational-wallet', 150000n, now)).rejects.toThrow(InvalidInputError);
+
+    mocks.agentRepository.findAgentById.mockResolvedValueOnce(agentFixture());
+    await expect(enforceAgentFundingPolicy('agent-1', 'other-wallet', 150000n, now)).rejects.toThrow('linked operational wallet');
+
+    mocks.agentRepository.findAgentById.mockResolvedValueOnce(agentFixture({
+      lastFundingDraftAt: new Date('2026-04-16T11:55:00.000Z'),
+      cooldownMinutes: 10,
+    }));
+    await expect(enforceAgentFundingPolicy('agent-1', 'operational-wallet', 150000n, now)).rejects.toThrow('cooldown');
+    expect(mocks.agentRepository.findUsableFundingOverride).not.toHaveBeenCalled();
   });
 });
 

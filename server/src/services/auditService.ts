@@ -118,6 +118,9 @@ export enum AuditAction {
   AGENT_REVOKE = 'wallet.agent_revoke',
   AGENT_KEY_CREATE = 'wallet.agent_key_create',
   AGENT_KEY_REVOKE = 'wallet.agent_key_revoke',
+  AGENT_OVERRIDE_CREATE = 'wallet.agent_override_create',
+  AGENT_OVERRIDE_REVOKE = 'wallet.agent_override_revoke',
+  AGENT_OVERRIDE_USE = 'wallet.agent_override_use',
 
   // Address operations
   ADDRESS_GENERATE = 'wallet.address_generate',

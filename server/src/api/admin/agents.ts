@@ -14,9 +14,12 @@ import { auditService, AuditAction, AuditCategory } from '../../services/auditSe
 import { agentRepository, userRepository, walletRepository } from '../../repositories';
 import {
   AgentApiKeyIdParamSchema,
+  AgentFundingOverrideIdParamSchema,
+  CreateAgentFundingOverrideSchema,
   CreateAgentApiKeySchema,
   CreateWalletAgentSchema,
   ListAgentAlertsQuerySchema,
+  ListAgentFundingOverridesQuerySchema,
   ListWalletAgentsQuerySchema,
   UpdateWalletAgentSchema,
   WalletAgentIdParamSchema,
@@ -31,6 +34,7 @@ import {
 import {
   toAgentAlertMetadata,
   toAgentApiKeyMetadata,
+  toAgentFundingOverrideMetadata,
   toAgentWalletDashboardRowMetadata,
   toWalletAgentMetadata,
 } from '../../agent/dto';
@@ -49,6 +53,14 @@ function parseAgentKeyParams(params: unknown): { agentId: string; keyId: string 
   const parsed = AgentApiKeyIdParamSchema.safeParse(params);
   if (!parsed.success) {
     throw new InvalidInputError('Invalid wallet agent or API key id');
+  }
+  return parsed.data;
+}
+
+function parseAgentOverrideParams(params: unknown): { agentId: string; overrideId: string } {
+  const parsed = AgentFundingOverrideIdParamSchema.safeParse(params);
+  if (!parsed.success) {
+    throw new InvalidInputError('Invalid wallet agent or override id');
   }
   return parsed.data;
 }
@@ -371,6 +383,99 @@ router.get('/:agentId/alerts', authenticate, requireAdmin, asyncHandler(async (r
     ...parsedQuery.data,
   });
   res.json(alerts.map(toAgentAlertMetadata));
+}));
+
+/**
+ * GET /api/v1/admin/agents/:agentId/overrides
+ * List human-created exceptional funding overrides for a wallet agent.
+ */
+router.get('/:agentId/overrides', authenticate, requireAdmin, asyncHandler(async (req, res) => {
+  const agentId = parseAgentId(req.params);
+  const parsedQuery = ListAgentFundingOverridesQuerySchema.safeParse(req.query);
+  if (!parsedQuery.success) {
+    throw new InvalidInputError('Invalid wallet agent override list query');
+  }
+
+  const agent = await agentRepository.findAgentById(agentId);
+  if (!agent) {
+    throw new NotFoundError('Wallet agent not found');
+  }
+
+  const overrides = await agentRepository.findFundingOverrides({
+    agentId,
+    ...parsedQuery.data,
+  });
+  res.json(overrides.map(toAgentFundingOverrideMetadata));
+}));
+
+/**
+ * POST /api/v1/admin/agents/:agentId/overrides
+ * Create a bounded owner override for exceptional agent funding.
+ */
+router.post('/:agentId/overrides', authenticate, requireAdmin, asyncHandler(async (req, res) => {
+  const agentId = parseAgentId(req.params);
+  const input = parseAdminRequestBody(CreateAgentFundingOverrideSchema, req.body);
+  if (input.expiresAt.getTime() <= Date.now()) {
+    throw new InvalidInputError('expiresAt must be in the future');
+  }
+
+  const agent = await agentRepository.findAgentById(agentId);
+  if (!agent) {
+    throw new NotFoundError('Wallet agent not found');
+  }
+  if (agent.revokedAt || agent.status === 'revoked') {
+    throw new InvalidInputError('Cannot create funding overrides for a revoked agent');
+  }
+
+  const override = await agentRepository.createFundingOverride({
+    agentId,
+    fundingWalletId: agent.fundingWalletId,
+    operationalWalletId: agent.operationalWalletId,
+    createdByUserId: req.user?.userId ?? null,
+    reason: input.reason.trim(),
+    maxAmountSats: input.maxAmountSats,
+    expiresAt: input.expiresAt,
+  });
+
+  await auditService.logFromRequest(req, AuditAction.AGENT_OVERRIDE_CREATE, AuditCategory.WALLET, {
+    details: {
+      agentId,
+      overrideId: override.id,
+      fundingWalletId: override.fundingWalletId,
+      operationalWalletId: override.operationalWalletId,
+      maxAmountSats: override.maxAmountSats.toString(),
+      expiresAt: override.expiresAt.toISOString(),
+      reason: override.reason,
+    },
+  });
+
+  res.status(201).json(toAgentFundingOverrideMetadata(override));
+}));
+
+/**
+ * DELETE /api/v1/admin/agents/:agentId/overrides/:overrideId
+ * Revoke a still-active funding override.
+ */
+router.delete('/:agentId/overrides/:overrideId', authenticate, requireAdmin, asyncHandler(async (req, res) => {
+  const { agentId, overrideId } = parseAgentOverrideParams(req.params);
+  const existing = await agentRepository.findFundingOverrideById(overrideId);
+  if (!existing || existing.agentId !== agentId) {
+    throw new NotFoundError('Agent funding override not found');
+  }
+
+  const revoked = existing.status === 'active'
+    ? await agentRepository.revokeFundingOverride(overrideId)
+    : existing;
+
+  await auditService.logFromRequest(req, AuditAction.AGENT_OVERRIDE_REVOKE, AuditCategory.WALLET, {
+    details: {
+      agentId,
+      overrideId: revoked.id,
+      alreadyInactive: existing.status !== 'active',
+    },
+  });
+
+  res.json(toAgentFundingOverrideMetadata(revoked));
 }));
 
 /**
