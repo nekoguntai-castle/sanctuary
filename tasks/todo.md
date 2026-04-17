@@ -1,12 +1,12 @@
 # Current Task: Agent Wallet Funding Implementation
 
-Status: Seventh implementation slice complete
+Status: Eighth implementation slice complete
 
 Reference plan: `tasks/agent-wallet-funding-plan.md`
 
 ## Active Implementation Slice
 
-Goal: persist operational monitoring policy and alert history for linked agent wallets. Sanctuary still does not store private keys or auto-sign; alerts observe funding attempts and operational-wallet activity so humans can pause, investigate, or adjust funding policy.
+Goal: add an Agent Wallets dashboard so humans can see which agents are active, how much operational balance they control, which funding drafts need review, recent operational spends, open alerts, and key status from one place. Sanctuary still does not store private keys or auto-sign; dashboard actions only pause/unpause agents, revoke keys, and navigate humans to review/signing surfaces.
 
 - [x] Load `AGENTS.md` and current project lessons into the session.
 - [x] Capture the agent funding architecture in `tasks/agent-wallet-funding-plan.md`.
@@ -46,6 +46,14 @@ Goal: persist operational monitoring policy and alert history for linked agent w
 - [x] Add monitoring fields to Admin -> Wallet Agents create/edit UI.
 - [x] Add focused repository, service, route, API, and component tests.
 - [x] Run targeted contract checks plus full frontend and server unit verification.
+- [x] Add server-side Agent Wallets dashboard aggregation endpoint.
+- [x] Include agent status, funding wallet, operational wallet, operational balance, pending drafts, recent spends, open alerts, and key counts.
+- [x] Add frontend admin API bindings for dashboard metadata.
+- [x] Add Admin -> Agent Wallets dashboard route.
+- [x] Add pause/unpause, revoke key, review draft, and open linked wallet actions.
+- [x] Add detail rows for policy, recent funding requests, operational spends, alerts, and key metadata.
+- [x] Add focused server, API binding, route, and component tests.
+- [x] Run targeted verification plus broader frontend/server checks.
 
 ## Next Slices
 
@@ -79,7 +87,7 @@ Recommended order:
 - [x] Phase 10: Operational monitoring and alert rules.
   - Add refill/balance/large-spend/large-fee/repeated-failure alert policy.
   - Store alert history and dedupe threshold alerts.
-- [ ] Phase 11: Agent Wallets dashboard.
+- [x] Phase 11: Agent Wallets dashboard.
   - Show agent status, funding wallet, operational balance, pending drafts, recent spends, and alerts.
   - Add pause/unpause, revoke key, review draft, and open linked wallet actions.
 - [ ] Phase 12: Operational address generation.
@@ -95,9 +103,45 @@ Recommended order:
 
 Next recommended implementation slice:
 
-- [ ] Continue with Phase 11: Agent Wallets dashboard. Phase 10 now persists alert policy/history; the next missing human surface is a consolidated operational view that shows balances, pending drafts, recent spends, and open alerts.
+- [ ] Continue with Phase 12: Operational address generation. The agent endpoint still returns only already-known unused operational addresses; the next slice should derive or create verified watch-only receive addresses when Sanctuary has enough descriptor metadata.
 
 ## Review
+
+Eighth slice update:
+
+- Added `GET /api/v1/admin/agents/dashboard` for operational dashboard rows with agent metadata, operational UTXO balance, pending funding draft counts, last funding request, last operational spend, open alert counts, active key counts, recent drafts, recent spends, recent alerts, and key metadata.
+- Dashboard balances aggregate unspent operational wallet UTXOs from the database, so the totals come from the same source as wallet balance queries rather than cached UI state.
+- Recent funding requests, operational spends, and open alerts are fetched with windowed bulk queries instead of per-agent query fan-out.
+- Added frontend admin API bindings and an Admin -> Agent Wallets route.
+- Added the Agent Wallets dashboard with spend-ready totals, operational balance totals, pending drafts, open alerts, funding/operational wallet links, review-drafts navigation, pause/unpause actions, and per-key revocation actions.
+- Added expandable detail rows for policy settings, recent funding requests, operational spends, open alerts, and active keys.
+- Kept Sanctuary's boundary intact: the dashboard does not sign, broadcast, move funds, store private keys, or alter wallet descriptors. Pause/unpause only updates the agent status used by the existing agent API gate.
+
+Verification run:
+
+- `cd server && npx vitest run tests/unit/repositories/agentRepository.test.ts tests/unit/agent/dto.test.ts tests/unit/api/admin-agents-routes.test.ts` — 20 passed.
+- `npx vitest run tests/components/AgentWalletDashboard.test.tsx tests/components/ui/Button.test.tsx tests/components/ui/LinkButton.test.tsx tests/components/ui/EmptyState.test.tsx tests/api/adminAgents.test.ts tests/src/app/appRoutes.test.ts` — 28 passed.
+- `npm run typecheck:app` — passed.
+- `cd server && npm run build` — passed.
+- `npm run check:openapi-route-coverage` — passed.
+- `npm run check:api-body-validation` — passed.
+- `npm run typecheck:tests` — passed.
+- `npm run test:run` — 395 files / 5534 tests passed.
+- `cd server && npm run test:unit` — 365 files / 8849 tests passed. Existing Vitest hoist warning remains in `tests/unit/utils/tracing/tracer.test.ts`.
+- `git diff --check` — passed.
+
+Edge case audit:
+
+- Empty dashboard responses render a stable empty state.
+- Load failures render retry UI and do not expose stale partial data.
+- Dashboard date formatting handles missing values and invalid date strings.
+- Dashboard satoshi formatting handles empty or malformed string values without crashing the page.
+- Active key counts exclude revoked and expired keys on the server; the UI also filters inactive keys before showing revocation actions.
+- Pending draft counts exclude expired drafts and include unsigned, partial, and signed drafts that still need human review or broadcast follow-up.
+- Pause/unpause actions call the existing admin agent update endpoint, so paused agents are blocked by the existing agent API status checks.
+- Revoke-key actions require confirmation and call the existing scoped key revoke endpoint; wallet descriptors are unchanged.
+- Shared link-button styling has direct tests for default secondary links, custom variants/sizes, and forwarded React Router link props.
+- Residual follow-up: Phase 12 still needs operational address generation for watch-only wallets with sufficient descriptor metadata.
 
 Seventh slice update:
 

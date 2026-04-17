@@ -29,6 +29,7 @@ describe('admin wallet agents API', () => {
     await adminAgentsApi.getWalletAgents();
     await adminAgentsApi.getWalletAgents({ walletId: 'wallet-1' });
     await adminAgentsApi.getWalletAgentOptions();
+    await adminAgentsApi.getAgentWalletDashboard();
     await adminAgentsApi.createWalletAgent({
       userId: 'user-1',
       name: 'Agent',
@@ -43,6 +44,7 @@ describe('admin wallet agents API', () => {
     expect(mockGet).toHaveBeenCalledWith('/admin/agents');
     expect(mockGet).toHaveBeenCalledWith('/admin/agents', { walletId: 'wallet-1' });
     expect(mockGet).toHaveBeenCalledWith('/admin/agents/options');
+    expect(mockGet).toHaveBeenCalledWith('/admin/agents/dashboard');
     expect(mockGet).toHaveBeenCalledWith('/admin/agents/agent-1/alerts', {
       status: 'open',
       type: 'large_operational_spend',

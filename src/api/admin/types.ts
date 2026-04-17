@@ -443,6 +443,45 @@ export interface AgentAlertMetadata {
   resolvedAt: string | null;
 }
 
+export interface AgentWalletDashboardDraft {
+  id: string;
+  walletId: string;
+  recipient: string;
+  amountSats: string;
+  feeSats: string;
+  feeRate: number;
+  status: string;
+  approvalStatus: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AgentWalletDashboardTransaction {
+  id: string;
+  txid: string;
+  walletId: string;
+  type: string;
+  amountSats: string;
+  feeSats: string | null;
+  confirmations: number;
+  blockTime: string | null;
+  counterpartyAddress: string | null;
+  createdAt: string;
+}
+
+export interface AgentWalletDashboardRow {
+  agent: WalletAgentMetadata;
+  operationalBalanceSats: string;
+  pendingFundingDraftCount: number;
+  openAlertCount: number;
+  activeKeyCount: number;
+  lastFundingDraft: AgentWalletDashboardDraft | null;
+  lastOperationalSpend: AgentWalletDashboardTransaction | null;
+  recentFundingDrafts: AgentWalletDashboardDraft[];
+  recentOperationalSpends: AgentWalletDashboardTransaction[];
+  recentAlerts: AgentAlertMetadata[];
+}
+
 export interface AgentOptionUser extends Pick<AdminUser, 'id' | 'username' | 'email' | 'emailVerified' | 'isAdmin' | 'createdAt' | 'updatedAt'> {}
 
 export interface AgentOptionWallet {

@@ -1,6 +1,6 @@
 # Agent Wallet Funding Plan
 
-Status: In progress - server primitives for linked agent metadata, scoped credentials, admin management, policy-gated funding draft submission, PSBT content validation, Telegram notification, draft-row display, operational monitoring policy, and alert history are implemented.
+Status: In progress - server primitives for linked agent metadata, scoped credentials, admin management, policy-gated funding draft submission, PSBT content validation, Telegram notification, draft-row display, operational monitoring policy, alert history, and the Agent Wallets dashboard are implemented.
 
 ## Goal
 
@@ -159,7 +159,7 @@ Because the operational wallet is single-sig and agent-controlled, monitoring an
 - [x] Alert on large fee spend.
 - [x] Alert on repeated failed funding requests.
 - [ ] Surface unknown or suspicious self-transfer classification issues.
-- [ ] Add an Agent Wallets dashboard section with funding wallet, operational balance, and status.
+- [x] Add an Agent Wallets dashboard section with funding wallet, operational balance, and status.
 
 Example dashboard row:
 
@@ -343,26 +343,27 @@ Verification:
 
 Goal: give humans a single operational view for agent-controlled funds.
 
-- [ ] Add an Agent Wallets dashboard section.
-- [ ] Show agent name, status, funding wallet, operational wallet, operational balance, pending funding drafts, last funding request, last operational spend, and alert count.
-- [ ] Provide quick actions:
+- [x] Add an Agent Wallets dashboard section.
+- [x] Show agent name, status, funding wallet, operational wallet, operational balance, pending funding drafts, last funding request, last operational spend, and alert count.
+- [x] Provide quick actions:
   - Review pending funding drafts.
   - Pause or unpause an agent.
   - Revoke an agent key.
   - Open linked funding wallet and operational wallet.
-- [ ] Add detail view for agent policy, recent funding requests, operational spends, alerts, and key metadata.
+- [x] Add detail view for agent policy, recent funding requests, operational spends, alerts, and key metadata.
 
 Acceptance criteria:
 
-- A human can answer: "Which agents can spend right now, how much do they have, and what needs my attention?"
-- Dashboard totals match wallet UTXO balance queries.
-- Pausing an agent from the dashboard immediately blocks future agent API submissions.
+- [x] A human can answer: "Which agents can spend right now, how much do they have, and what needs my attention?"
+- [x] Dashboard totals match wallet UTXO balance queries.
+- [x] Pausing an agent from the dashboard immediately blocks future agent API submissions.
 
 Verification:
 
-- Component tests for empty/loading/error/populated states.
-- API tests for any new dashboard aggregation endpoint.
-- `npm run test:run` for frontend regression coverage.
+- [x] Component tests for empty/loading/error/populated states.
+- [x] Shared link-button tests for dashboard navigation actions.
+- [x] API tests for the new dashboard aggregation endpoint.
+- [x] `npm run test:run` for frontend regression coverage.
 
 ### Phase 12: Operational Address Generation
 

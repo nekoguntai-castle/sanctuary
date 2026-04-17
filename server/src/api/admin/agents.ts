@@ -28,7 +28,12 @@ import {
   getAgentApiKeyPrefix,
   hashAgentApiKey,
 } from '../../agent/auth';
-import { toAgentAlertMetadata, toAgentApiKeyMetadata, toWalletAgentMetadata } from '../../agent/dto';
+import {
+  toAgentAlertMetadata,
+  toAgentApiKeyMetadata,
+  toAgentWalletDashboardRowMetadata,
+  toWalletAgentMetadata,
+} from '../../agent/dto';
 
 const router = Router();
 
@@ -220,6 +225,15 @@ router.get('/', authenticate, requireAdmin, asyncHandler(async (req, res) => {
 
   const agents = await agentRepository.findAgents(parsedQuery.data);
   res.json(agents.map(toWalletAgentMetadata));
+}));
+
+/**
+ * GET /api/v1/admin/agents/dashboard
+ * Return operational dashboard rows for linked agent wallets.
+ */
+router.get('/dashboard', authenticate, requireAdmin, asyncHandler(async (_req, res) => {
+  const rows = await agentRepository.findDashboardRows();
+  res.json(rows.map(toAgentWalletDashboardRowMetadata));
 }));
 
 /**

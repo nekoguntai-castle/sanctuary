@@ -39,6 +39,9 @@ export type {
   AgentAlertMetadata,
   AgentAlertSeverity,
   AgentAlertStatus,
+  AgentWalletDashboardDraft,
+  AgentWalletDashboardRow,
+  AgentWalletDashboardTransaction,
   AgentManagementOptions,
   AgentOptionDevice,
   AgentOptionUser,
@@ -117,6 +120,7 @@ export {
 
 // Wallet agents
 export {
+  getAgentWalletDashboard,
   getWalletAgents,
   getWalletAgentOptions,
   createWalletAgent,

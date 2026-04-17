@@ -12,6 +12,7 @@ const prisma = vi.hoisted(() => ({
     create: vi.fn(),
     findMany: vi.fn(),
     findUnique: vi.fn(),
+    groupBy: vi.fn(),
     update: vi.fn(),
     updateMany: vi.fn(),
   },
@@ -23,9 +24,18 @@ const prisma = vi.hoisted(() => ({
     create: vi.fn(),
     findFirst: vi.fn(),
     findMany: vi.fn(),
+    groupBy: vi.fn(),
   },
   draftTransaction: {
     aggregate: vi.fn(),
+    findMany: vi.fn(),
+    groupBy: vi.fn(),
+  },
+  transaction: {
+    findMany: vi.fn(),
+  },
+  uTXO: {
+    groupBy: vi.fn(),
   },
   $queryRaw: vi.fn(),
   $transaction: vi.fn(),
@@ -163,6 +173,109 @@ describe('agentRepository', () => {
       'agent-1',
       new Date('2026-04-16T00:00:00.000Z')
     )).resolves.toBe(50000n);
+  });
+
+  it('builds dashboard rows from balances, drafts, spends, alerts, and key counts', async () => {
+    const now = new Date('2026-04-16T00:00:00.000Z');
+    const agent = {
+      id: 'agent-1',
+      name: 'Treasury Agent',
+      status: 'active',
+      fundingWalletId: 'funding-wallet',
+      operationalWalletId: 'operational-wallet',
+      signerDeviceId: 'device-1',
+      user: { id: 'user-1', username: 'alice', isAdmin: false },
+      fundingWallet: { id: 'funding-wallet', name: 'Funding', type: 'multi_sig', network: 'testnet' },
+      operationalWallet: { id: 'operational-wallet', name: 'Ops', type: 'single_sig', network: 'testnet' },
+      signerDevice: { id: 'device-1', label: 'Agent signer', fingerprint: 'aabbccdd' },
+      apiKeys: [],
+    };
+    const draft = {
+      id: 'draft-1',
+      walletId: 'funding-wallet',
+      recipient: 'tb1qops',
+      amount: 50000n,
+      fee: 250n,
+      feeRate: 2.5,
+      status: 'partial',
+      approvalStatus: 'not_required',
+      createdAt: now,
+      updatedAt: now,
+    };
+    const spend = {
+      id: 'tx-1',
+      txid: 'a'.repeat(64),
+      walletId: 'operational-wallet',
+      type: 'sent',
+      amount: 12000n,
+      fee: 350n,
+      confirmations: 0,
+      blockTime: null,
+      counterpartyAddress: 'tb1qrecipient',
+      createdAt: now,
+    };
+    const alert = {
+      id: 'alert-1',
+      agentId: 'agent-1',
+      status: 'open',
+      createdAt: now,
+    };
+
+    prisma.walletAgent.findMany.mockResolvedValue([agent]);
+    prisma.uTXO.groupBy.mockResolvedValue([{ walletId: 'operational-wallet', _sum: { amount: 82000n } }]);
+    prisma.draftTransaction.groupBy.mockResolvedValue([{ agentId: 'agent-1', _count: { _all: 1 } }]);
+    prisma.agentAlert.groupBy.mockResolvedValue([{ agentId: 'agent-1', _count: { _all: 2 } }]);
+    prisma.agentApiKey.groupBy.mockResolvedValue([{ agentId: 'agent-1', _count: { _all: 1 } }]);
+    prisma.$queryRaw
+      .mockResolvedValueOnce([{ ...draft, agentId: 'agent-1' }])
+      .mockResolvedValueOnce([spend])
+      .mockResolvedValueOnce([alert]);
+
+    await expect(agentRepository.findDashboardRows()).resolves.toEqual([
+      expect.objectContaining({
+        agent,
+        operationalBalanceSats: 82000n,
+        pendingFundingDraftCount: 1,
+        openAlertCount: 2,
+        activeKeyCount: 1,
+        lastFundingDraft: draft,
+        lastOperationalSpend: spend,
+        recentFundingDrafts: [draft],
+        recentOperationalSpends: [spend],
+        recentAlerts: [alert],
+      }),
+    ]);
+
+    expect(prisma.uTXO.groupBy).toHaveBeenCalledWith(expect.objectContaining({
+      by: ['walletId'],
+      where: { walletId: { in: ['operational-wallet'] }, spent: false },
+    }));
+    expect(prisma.draftTransaction.groupBy).toHaveBeenCalledWith(expect.objectContaining({
+      by: ['agentId'],
+      where: expect.objectContaining({
+        agentId: { in: ['agent-1'] },
+        status: { in: ['unsigned', 'partial', 'signed'] },
+      }),
+    }));
+    expect(prisma.agentApiKey.groupBy).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        agentId: { in: ['agent-1'] },
+        revokedAt: null,
+      }),
+    }));
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(3);
+  });
+
+  it('short-circuits dashboard aggregation when no agents are registered', async () => {
+    prisma.walletAgent.findMany.mockResolvedValue([]);
+
+    await expect(agentRepository.findDashboardRows()).resolves.toEqual([]);
+
+    expect(prisma.uTXO.groupBy).not.toHaveBeenCalled();
+    expect(prisma.draftTransaction.groupBy).not.toHaveBeenCalled();
+    expect(prisma.agentAlert.groupBy).not.toHaveBeenCalled();
+    expect(prisma.agentApiKey.groupBy).not.toHaveBeenCalled();
+    expect(prisma.$queryRaw).not.toHaveBeenCalled();
   });
 
   it('creates, finds, revokes, and updates agent API keys', async () => {

@@ -84,6 +84,7 @@ const AISettings = lazy(() => import('../../components/AISettings'));
 const Monitoring = lazy(() => import('../../components/Monitoring'));
 const FeatureFlags = lazy(async () => ({ default: (await import('../../components/FeatureFlags')).FeatureFlags }));
 const Intelligence = lazy(async () => ({ default: (await import('../../components/Intelligence')).Intelligence }));
+const AgentWalletDashboard = lazy(async () => ({ default: (await import('../../components/AgentWalletDashboard')).AgentWalletDashboard }));
 const AgentManagement = lazy(async () => ({ default: (await import('../../components/AgentManagement')).AgentManagement }));
 
 export const appRouteDefinitions: AppRouteDefinition[] = [
@@ -286,6 +287,17 @@ export const appRouteDefinitions: AppRouteDefinition[] = [
     nav: {
       label: 'Feature Flags',
       icon: ToggleLeft,
+      section: 'admin',
+    },
+  },
+  {
+    id: 'admin-agent-wallets',
+    path: '/admin/agent-wallets',
+    component: AgentWalletDashboard,
+    fallback: <ListSkeleton />,
+    nav: {
+      label: 'Agent Wallets',
+      icon: WalletIcon,
       section: 'admin',
     },
   },

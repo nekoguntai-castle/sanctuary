@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
     findAgentById: vi.fn(),
     findAgentByIdWithDetails: vi.fn(),
     updateAgent: vi.fn(),
+    findDashboardRows: vi.fn(),
     findAlerts: vi.fn(),
     findApiKeysByAgentId: vi.fn(),
     createApiKey: vi.fn(),
@@ -170,6 +171,49 @@ describe('Admin wallet agent routes', () => {
     });
     expect(response.body[0].apiKeys[0].keyHash).toBeUndefined();
     expect(mocks.agentRepository.findAgents).toHaveBeenCalledWith({ walletId: fundingWalletId });
+  });
+
+  it('lists agent wallet dashboard rows', async () => {
+    mocks.agentRepository.findDashboardRows.mockResolvedValue([
+      {
+        agent: agentFixture({ apiKeys: [keyFixture({ keyHash: 'secret' })] }),
+        operationalBalanceSats: 82000n,
+        pendingFundingDraftCount: 1,
+        openAlertCount: 2,
+        activeKeyCount: 1,
+        lastFundingDraft: draftFixture({ amount: 50000n }),
+        lastOperationalSpend: transactionFixture({ amount: 12000n, fee: 350n }),
+        recentFundingDrafts: [draftFixture({ amount: 50000n })],
+        recentOperationalSpends: [transactionFixture({ amount: 12000n, fee: 350n })],
+        recentAlerts: [alertFixture({ type: 'operational_balance_low' })],
+      },
+    ]);
+
+    const response = await request(app).get('/api/v1/admin/agents/dashboard').expect(200);
+
+    expect(response.body).toEqual([
+      expect.objectContaining({
+        operationalBalanceSats: '82000',
+        pendingFundingDraftCount: 1,
+        openAlertCount: 2,
+        activeKeyCount: 1,
+        agent: expect.objectContaining({
+          id: agentId,
+          apiKeys: [expect.objectContaining({ id: keyId, keyPrefix: 'agt_prefix' })],
+        }),
+        lastFundingDraft: expect.objectContaining({
+          amountSats: '50000',
+          feeSats: '250',
+        }),
+        lastOperationalSpend: expect.objectContaining({
+          amountSats: '12000',
+          feeSats: '350',
+        }),
+        recentAlerts: [expect.objectContaining({ type: 'operational_balance_low' })],
+      }),
+    ]);
+    expect(response.body[0].agent.apiKeys[0].keyHash).toBeUndefined();
+    expect(mocks.agentRepository.findDashboardRows).toHaveBeenCalledWith();
   });
 
   it('rejects invalid wallet agent list filters', async () => {
@@ -418,6 +462,40 @@ function alertFixture(overrides: Record<string, unknown> = {}) {
     createdAt: now,
     acknowledgedAt: null,
     resolvedAt: null,
+    ...overrides,
+  };
+}
+
+function draftFixture(overrides: Record<string, unknown> = {}) {
+  const now = new Date('2026-04-16T00:00:00.000Z');
+  return {
+    id: '88888888-8888-4888-8888-888888888888',
+    walletId: '22222222-2222-4222-8222-222222222222',
+    recipient: 'tb1qoperational',
+    amount: 100000n,
+    fee: 250n,
+    feeRate: 2.5,
+    status: 'partial',
+    approvalStatus: 'not_required',
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+}
+
+function transactionFixture(overrides: Record<string, unknown> = {}) {
+  const now = new Date('2026-04-16T00:00:00.000Z');
+  return {
+    id: '99999999-9999-4999-8999-999999999999',
+    txid: 'a'.repeat(64),
+    walletId: '33333333-3333-4333-8333-333333333333',
+    type: 'sent',
+    amount: 10000n,
+    fee: 300n,
+    confirmations: 0,
+    blockTime: null,
+    counterpartyAddress: 'tb1qrecipient',
+    createdAt: now,
     ...overrides,
   };
 }

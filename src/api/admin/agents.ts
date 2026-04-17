@@ -10,6 +10,7 @@ import type {
   AgentApiKeyMetadata,
   AgentAlertMetadata,
   AgentAlertStatus,
+  AgentWalletDashboardRow,
   AgentManagementOptions,
   CreateAgentApiKeyRequest,
   CreatedAgentApiKey,
@@ -26,6 +27,10 @@ export async function getWalletAgents(params?: { walletId?: string }): Promise<W
 
 export async function getWalletAgentOptions(): Promise<AgentManagementOptions> {
   return apiClient.get<AgentManagementOptions>('/admin/agents/options');
+}
+
+export async function getAgentWalletDashboard(): Promise<AgentWalletDashboardRow[]> {
+  return apiClient.get<AgentWalletDashboardRow[]>('/admin/agents/dashboard');
 }
 
 export async function createWalletAgent(data: CreateWalletAgentRequest): Promise<WalletAgentMetadata> {

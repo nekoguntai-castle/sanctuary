@@ -34,6 +34,19 @@ export const adminAgentPaths = {
       },
     },
   },
+  '/admin/agents/dashboard': {
+    get: {
+      tags: ['Admin'],
+      summary: 'List agent wallet dashboard rows',
+      description: 'Return operational dashboard rows with agent status, linked wallets, balances, pending drafts, recent spends, open alerts, and active key counts.',
+      security: bearerAuth,
+      responses: {
+        200: jsonArrayResponse('Agent wallet dashboard rows', '#/components/schemas/AdminAgentWalletDashboardRow'),
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+      },
+    },
+  },
   '/admin/agents': {
     get: {
       tags: ['Admin'],

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { toAgentAlertMetadata } from '../../../src/agent/dto';
+import { toAgentAlertMetadata, toAgentWalletDashboardRowMetadata } from '../../../src/agent/dto';
 
 describe('agent dto helpers', () => {
   it('serializes agent alert metadata without losing bigint or nullable fields', () => {
@@ -44,5 +44,109 @@ describe('agent dto helpers', () => {
       acknowledgedAt: null,
       resolvedAt: null,
     });
+  });
+
+  it('serializes agent wallet dashboard rows without exposing key hashes', () => {
+    const now = new Date('2026-04-16T00:00:00.000Z');
+    const row = toAgentWalletDashboardRowMetadata({
+      agent: {
+        id: 'agent-1',
+        userId: 'user-1',
+        name: 'Treasury Agent',
+        status: 'active',
+        fundingWalletId: 'funding-wallet',
+        operationalWalletId: 'operational-wallet',
+        signerDeviceId: 'device-1',
+        maxFundingAmountSats: 100000n,
+        maxOperationalBalanceSats: null,
+        dailyFundingLimitSats: null,
+        weeklyFundingLimitSats: null,
+        cooldownMinutes: null,
+        minOperationalBalanceSats: 25000n,
+        largeOperationalSpendSats: null,
+        largeOperationalFeeSats: null,
+        repeatedFailureThreshold: null,
+        repeatedFailureLookbackMinutes: null,
+        alertDedupeMinutes: null,
+        requireHumanApproval: true,
+        notifyOnOperationalSpend: true,
+        pauseOnUnexpectedSpend: false,
+        lastFundingDraftAt: now,
+        createdAt: now,
+        updatedAt: now,
+        revokedAt: null,
+        user: { id: 'user-1', username: 'alice', isAdmin: false },
+        fundingWallet: { id: 'funding-wallet', name: 'Funding', type: 'multi_sig', network: 'testnet' },
+        operationalWallet: { id: 'operational-wallet', name: 'Ops', type: 'single_sig', network: 'testnet' },
+        signerDevice: { id: 'device-1', label: 'Agent signer', fingerprint: 'aabbccdd' },
+        apiKeys: [{
+          id: 'key-1',
+          agentId: 'agent-1',
+          createdByUserId: 'admin-1',
+          name: 'Runtime',
+          keyHash: 'secret',
+          keyPrefix: 'agt_prefix',
+          scope: { allowedActions: ['create_funding_draft'] },
+          lastUsedAt: null,
+          lastUsedIp: null,
+          lastUsedAgent: null,
+          expiresAt: null,
+          createdAt: now,
+          revokedAt: null,
+        }],
+      } as any,
+      operationalBalanceSats: 82000n,
+      pendingFundingDraftCount: 1,
+      openAlertCount: 2,
+      activeKeyCount: 1,
+      lastFundingDraft: {
+        id: 'draft-1',
+        walletId: 'funding-wallet',
+        recipient: 'tb1qops',
+        amount: 50000n,
+        fee: 250n,
+        feeRate: 2.5,
+        status: 'partial',
+        approvalStatus: 'not_required',
+        createdAt: now,
+        updatedAt: now,
+      },
+      lastOperationalSpend: {
+        id: 'tx-1',
+        txid: 'a'.repeat(64),
+        walletId: 'operational-wallet',
+        type: 'sent',
+        amount: 12000n,
+        fee: 350n,
+        confirmations: 0,
+        blockTime: null,
+        counterpartyAddress: 'tb1qrecipient',
+        createdAt: now,
+      },
+      recentFundingDrafts: [],
+      recentOperationalSpends: [],
+      recentAlerts: [],
+    } as any);
+
+    expect(row).toMatchObject({
+      operationalBalanceSats: '82000',
+      pendingFundingDraftCount: 1,
+      openAlertCount: 2,
+      activeKeyCount: 1,
+      agent: {
+        maxFundingAmountSats: '100000',
+        minOperationalBalanceSats: '25000',
+        apiKeys: [{ id: 'key-1', keyPrefix: 'agt_prefix' }],
+      },
+      lastFundingDraft: {
+        amountSats: '50000',
+        feeSats: '250',
+      },
+      lastOperationalSpend: {
+        amountSats: '12000',
+        feeSats: '350',
+      },
+    });
+    expect(row.agent.apiKeys?.[0]).not.toHaveProperty('keyHash');
   });
 });

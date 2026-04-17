@@ -1,5 +1,10 @@
 import type { AgentAlert, AgentApiKey, WalletAgent } from '../generated/prisma/client';
-import type { WalletAgentWithDetails } from '../repositories/agentRepository';
+import type {
+  AgentDashboardDraftSummary,
+  AgentDashboardTransactionSummary,
+  AgentWalletDashboardRow,
+  WalletAgentWithDetails,
+} from '../repositories/agentRepository';
 import { parseAgentKeyScope } from './auth';
 
 function bigintToString(value: bigint | null | undefined): string | null {
@@ -78,5 +83,56 @@ export function toAgentAlertMetadata(alert: AgentAlert) {
     createdAt: alert.createdAt,
     acknowledgedAt: alert.acknowledgedAt,
     resolvedAt: alert.resolvedAt,
+  };
+}
+
+function toAgentDashboardDraftMetadata(draft: AgentDashboardDraftSummary) {
+  return {
+    id: draft.id,
+    walletId: draft.walletId,
+    recipient: draft.recipient,
+    amountSats: bigintToString(draft.amount),
+    feeSats: bigintToString(draft.fee),
+    feeRate: draft.feeRate,
+    status: draft.status,
+    approvalStatus: draft.approvalStatus,
+    createdAt: draft.createdAt,
+    updatedAt: draft.updatedAt,
+  };
+}
+
+function toAgentDashboardTransactionMetadata(transaction: AgentDashboardTransactionSummary) {
+  return {
+    id: transaction.id,
+    txid: transaction.txid,
+    walletId: transaction.walletId,
+    type: transaction.type,
+    amountSats: bigintToString(transaction.amount),
+    feeSats: bigintToString(transaction.fee),
+    confirmations: transaction.confirmations,
+    blockTime: transaction.blockTime,
+    counterpartyAddress: transaction.counterpartyAddress,
+    createdAt: transaction.createdAt,
+  };
+}
+
+/**
+ * Serialize the operational dashboard row while preserving large satoshi values
+ * as strings and reusing key metadata redaction from normal agent responses.
+ */
+export function toAgentWalletDashboardRowMetadata(row: AgentWalletDashboardRow) {
+  return {
+    agent: toWalletAgentMetadata(row.agent),
+    operationalBalanceSats: row.operationalBalanceSats.toString(),
+    pendingFundingDraftCount: row.pendingFundingDraftCount,
+    openAlertCount: row.openAlertCount,
+    activeKeyCount: row.activeKeyCount,
+    lastFundingDraft: row.lastFundingDraft ? toAgentDashboardDraftMetadata(row.lastFundingDraft) : null,
+    lastOperationalSpend: row.lastOperationalSpend
+      ? toAgentDashboardTransactionMetadata(row.lastOperationalSpend)
+      : null,
+    recentFundingDrafts: row.recentFundingDrafts.map(toAgentDashboardDraftMetadata),
+    recentOperationalSpends: row.recentOperationalSpends.map(toAgentDashboardTransactionMetadata),
+    recentAlerts: row.recentAlerts.map(toAgentAlertMetadata),
   };
 }
