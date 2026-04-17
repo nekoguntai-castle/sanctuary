@@ -9,10 +9,12 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 import { json, unmocked, registerApiRoutes } from './helpers';
 import {
   ADMIN_USER,
+  AGENT_MANAGEMENT_OPTIONS,
   FEATURE_FLAGS,
   NODE_CONFIG,
   REGULAR_USER,
   SYSTEM_SETTINGS,
+  WALLET_AGENTS,
 } from './adminOperationsFixtures';
 
 type MockApiFailure = {
@@ -165,6 +167,7 @@ const STATIC_ADMIN_API_RESPONSES: Record<string, MockApiResponse> = {
   }),
   'GET /admin/version': mockResponse({ updateAvailable: false, currentVersion: '0.8.14' }),
   'GET /admin/agents': mockResponse([]),
+  'GET /admin/agents/options': mockResponse(AGENT_MANAGEMENT_OPTIONS),
   'GET /transactions/recent': mockResponse([]),
   'GET /transactions/balance-history': mockResponse([]),
   'GET /admin/features/audit-log': mockResponse({ entries: [], total: 0, limit: 50, offset: 0 }),
@@ -371,6 +374,7 @@ function getAdminApiResponse(
 
 function createAdminApiRouteHandler(options: {
   failures?: Record<string, MockApiFailure>;
+  responseOverrides?: Record<string, MockApiResponse>;
   unhandledRequests: string[];
 }) {
   const state = createAdminApiState();
@@ -379,6 +383,12 @@ function createAdminApiRouteHandler(options: {
     const { method, path, requestKey } = parsedRoute;
 
     if (await maybeFulfillFailure(route, options.failures?.[requestKey])) {
+      return;
+    }
+
+    const override = options.responseOverrides?.[requestKey];
+    if (override) {
+      await json(route, override.body, override.status);
       return;
     }
 
@@ -399,6 +409,7 @@ async function mockAdminApi(
   page: Page,
   options?: {
     failures?: Record<string, MockApiFailure>;
+    responseOverrides?: Record<string, MockApiResponse>;
   }
 ) {
   await page.addInitScript(() => {
@@ -408,6 +419,7 @@ async function mockAdminApi(
   const unhandledRequests: string[] = [];
   await registerApiRoutes(page, createAdminApiRouteHandler({
     failures: options?.failures,
+    responseOverrides: options?.responseOverrides,
     unhandledRequests,
   }));
   return unhandledRequests;
@@ -584,6 +596,33 @@ test.describe('Admin operations', () => {
 
     // Groups section should be visible (may be empty)
     await expect(page.getByText(/Groups/i).first()).toBeVisible();
+
+    expect(unhandledRequests).toEqual([]);
+  });
+
+  test('wallet agents page renders populated agent registry', async ({ page }) => {
+    const unhandledRequests = await mockAdminApi(page, {
+      responseOverrides: {
+        'GET /admin/agents': mockResponse(WALLET_AGENTS),
+        'GET /admin/agents/options': mockResponse(AGENT_MANAGEMENT_OPTIONS),
+      },
+    });
+    const main = page.getByRole('main');
+
+    await page.goto('/#/admin/agents');
+
+    await expect(main.getByRole('heading', { name: 'Wallet Agents' })).toBeVisible();
+    await expect(main.getByText('Treasury Agent')).toBeVisible();
+    await expect(main.getByText('Agent Funding Vault')).toBeVisible();
+    await expect(main.getByText('Agent Operating Wallet')).toBeVisible();
+    await expect(main.getByText('Agent Signer')).toBeVisible();
+    await expect(main.getByText(/Request cap: 100[\s,.]?000 sats/)).toBeVisible();
+    await expect(main.getByText(/Balance cap: 250[\s,.]?000 sats/)).toBeVisible();
+    await expect(main.getByText(/Refill alert: 25[\s,.]?000 sats/)).toBeVisible();
+    await expect(main.getByText(/Large spend: 75[\s,.]?000 sats/)).toBeVisible();
+    await expect(main.getByText('Auto-pause on spend')).toBeVisible();
+    await expect(main.getByText('Runtime Key')).toBeVisible();
+    await expect(main.getByText('agt_ops')).toBeVisible();
 
     expect(unhandledRequests).toEqual([]);
   });

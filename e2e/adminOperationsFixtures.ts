@@ -26,6 +26,119 @@ export const REGULAR_USER = {
   updatedAt: '2026-03-11T00:00:00.000Z',
 };
 
+export const AGENT_SIGNER_DEVICE = {
+  id: 'device-agent-signer',
+  label: 'Agent Signer',
+  fingerprint: 'aabbccdd',
+  type: 'ledger',
+  userId: REGULAR_USER.id,
+  walletIds: ['wallet-agent-funding'],
+};
+
+export const AGENT_FUNDING_WALLET = {
+  id: 'wallet-agent-funding',
+  name: 'Agent Funding Vault',
+  type: 'multi_sig',
+  network: 'testnet',
+  accessUserIds: [REGULAR_USER.id],
+  deviceIds: [AGENT_SIGNER_DEVICE.id],
+};
+
+export const AGENT_OPERATIONAL_WALLET = {
+  id: 'wallet-agent-operational',
+  name: 'Agent Operating Wallet',
+  type: 'single_sig',
+  network: 'testnet',
+  accessUserIds: [REGULAR_USER.id],
+  deviceIds: [],
+};
+
+const AGENT_ID = 'agent-ops-treasury';
+
+export const WALLET_AGENTS = [
+  {
+    id: AGENT_ID,
+    userId: REGULAR_USER.id,
+    name: 'Treasury Agent',
+    status: 'active',
+    fundingWalletId: AGENT_FUNDING_WALLET.id,
+    operationalWalletId: AGENT_OPERATIONAL_WALLET.id,
+    signerDeviceId: AGENT_SIGNER_DEVICE.id,
+    maxFundingAmountSats: '100000',
+    maxOperationalBalanceSats: '250000',
+    dailyFundingLimitSats: '500000',
+    weeklyFundingLimitSats: '2000000',
+    cooldownMinutes: 10,
+    minOperationalBalanceSats: '25000',
+    largeOperationalSpendSats: '75000',
+    largeOperationalFeeSats: '5000',
+    repeatedFailureThreshold: 3,
+    repeatedFailureLookbackMinutes: 60,
+    alertDedupeMinutes: 120,
+    requireHumanApproval: true,
+    notifyOnOperationalSpend: true,
+    pauseOnUnexpectedSpend: true,
+    lastFundingDraftAt: '2026-03-11T00:10:00.000Z',
+    createdAt: '2026-03-11T00:00:00.000Z',
+    updatedAt: '2026-03-11T00:20:00.000Z',
+    revokedAt: null,
+    user: {
+      id: REGULAR_USER.id,
+      username: REGULAR_USER.username,
+      isAdmin: REGULAR_USER.isAdmin,
+    },
+    fundingWallet: {
+      id: AGENT_FUNDING_WALLET.id,
+      name: AGENT_FUNDING_WALLET.name,
+      type: AGENT_FUNDING_WALLET.type,
+      network: AGENT_FUNDING_WALLET.network,
+    },
+    operationalWallet: {
+      id: AGENT_OPERATIONAL_WALLET.id,
+      name: AGENT_OPERATIONAL_WALLET.name,
+      type: AGENT_OPERATIONAL_WALLET.type,
+      network: AGENT_OPERATIONAL_WALLET.network,
+    },
+    signerDevice: {
+      id: AGENT_SIGNER_DEVICE.id,
+      label: AGENT_SIGNER_DEVICE.label,
+      fingerprint: AGENT_SIGNER_DEVICE.fingerprint,
+    },
+    apiKeys: [
+      {
+        id: 'agent-key-runtime',
+        agentId: AGENT_ID,
+        createdByUserId: ADMIN_USER.id,
+        name: 'Runtime Key',
+        keyPrefix: 'agt_ops',
+        scope: { allowedActions: ['create_funding_draft'] },
+        lastUsedAt: '2026-03-11T00:30:00.000Z',
+        lastUsedIp: '127.0.0.1',
+        lastUsedAgent: 'sanctuary-agent-runtime',
+        expiresAt: null,
+        createdAt: '2026-03-11T00:05:00.000Z',
+        revokedAt: null,
+      },
+    ],
+  },
+];
+
+export const AGENT_MANAGEMENT_OPTIONS = {
+  users: [
+    {
+      id: REGULAR_USER.id,
+      username: REGULAR_USER.username,
+      email: REGULAR_USER.email,
+      emailVerified: true,
+      isAdmin: REGULAR_USER.isAdmin,
+      createdAt: REGULAR_USER.createdAt,
+      updatedAt: REGULAR_USER.updatedAt,
+    },
+  ],
+  wallets: [AGENT_FUNDING_WALLET, AGENT_OPERATIONAL_WALLET],
+  devices: [AGENT_SIGNER_DEVICE],
+};
+
 export const FEATURE_FLAGS = [
   {
     key: 'enhancedDashboard',
