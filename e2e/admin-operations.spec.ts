@@ -627,6 +627,18 @@ test.describe('Admin operations', () => {
     expect(unhandledRequests).toEqual([]);
   });
 
+  test('wallet agents page renders empty agent registry', async ({ page }) => {
+    const unhandledRequests = await mockAdminApi(page);
+    const main = page.getByRole('main');
+
+    await page.goto('/#/admin/agents');
+
+    await expect(main.getByRole('heading', { name: 'Wallet Agents' })).toBeVisible();
+    await expect(main.getByText('No wallet agents registered.')).toBeVisible();
+
+    expect(unhandledRequests).toEqual([]);
+  });
+
   test('shows error state when user creation fails', async ({ page }) => {
     const unhandledRequests = await mockAdminApi(page, {
       failures: {
