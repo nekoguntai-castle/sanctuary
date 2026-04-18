@@ -18,6 +18,18 @@
   <em>Don't trust. Verify.</em>
 </p>
 
+<p align="center">
+  <a href="https://nekoguntai.dev/sanctuary/"><strong>Website</strong></a>
+  &nbsp;·&nbsp;
+  <a href="https://nekoguntai.dev/sanctuary/features.html">Features</a>
+  &nbsp;·&nbsp;
+  <a href="https://nekoguntai.dev/sanctuary/install.html">Install</a>
+  &nbsp;·&nbsp;
+  <a href="https://nekoguntai.dev/sanctuary/security.html">Security</a>
+  &nbsp;·&nbsp;
+  <a href="https://nekoguntai.dev/sanctuary/faq.html">FAQ</a>
+</p>
+
 ---
 
 > **🚧 EXPERIMENTAL SOFTWARE**
