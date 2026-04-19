@@ -1,4 +1,45 @@
-# Next Task: DraftList Complexity Reduction
+# Next Task: LabelSelector Complexity Reduction
+
+Status: complete
+
+Goal: continue the maintainability roadmap by reducing the next tied high-CCN label selector component without changing label selection, creation, search, inline mode, or `LabelBadges` behavior.
+
+## LabelSelector Complexity Checklist
+
+- [x] Confirm pushed DraftList CI status and local baseline.
+- [x] Inspect current top lizard targets and LabelSelector test coverage.
+- [x] Split LabelSelector into focused controller/view modules while preserving the public import path and exports.
+- [x] Run focused tests, typecheck/lint, lizard, and coverage as needed.
+- [x] Update review notes and commit the change.
+
+## LabelSelector Complexity Review
+
+Changes:
+
+- Reduced `components/LabelSelector.tsx` to a 45-line public wrapper while preserving the default export, named export, `LabelBadges`, and public prop types.
+- Added focused modules under `components/LabelSelector/` for dropdown rendering, inline rendering, reusable label chips, badges, controller state, and shared types.
+- Preserved label selection/removal, search, create-label form behavior, outside-click close behavior, disabled state handling, inline mode behavior, and `LabelBadges` truncation behavior.
+- Updated the health assessment and grade history: full lizard warnings moved from 106 to 105, and `LabelSelector` dropped out of the current top lizard target list.
+
+Verification:
+
+- `npx vitest run tests/components/LabelSelector.test.tsx` passed: 1 file, 43 tests.
+- `npm run typecheck:app` passed.
+- `npm run lint:app` passed.
+- `npm run test:coverage` passed: 396 files, 5,556 tests, 100% statements/branches/functions/lines.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/LabelSelector.tsx components/LabelSelector` passed with no warnings.
+- Full lizard warning count is now 105; top remaining component targets are `SendTransactionPage`, `LabelManager`, `NotificationToast`, and `NotificationItem`.
+- `git diff --check`, grade-history JSONL parsing, large-file classification, and pinned gitleaks-only quality lane passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: `LabelBadges` still returns null for absent/empty labels; dropdown empty, loading, and search-no-results states remain covered.
+- Boundary values: create-label still trims blank names, preserves Escape behavior, and handles create failures through the existing mutation path.
+- System boundaries: public `LabelSelector` import path, props, exports, wallet-label hooks, and label type contracts are unchanged.
+- Async/race behavior: outside-click cleanup, dropdown/input refs, and create mutation loading state remain isolated in the controller.
+- Diff review: changes are scoped to LabelSelector presentation/controller extraction, health-report notes, trend metadata, and this task record.
+
+## Previous Task: DraftList Complexity Reduction
 
 Status: complete
 
