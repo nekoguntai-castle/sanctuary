@@ -245,6 +245,28 @@ export async function getAppliedMigrations(): Promise<PrismaMigration[]> {
   `;
 }
 
+/**
+ * Get the most recently applied migration (the schema "head").
+ * Returns null when the migrations table is empty or unreachable.
+ */
+export async function getMigrationHead(): Promise<{
+  migrationName: string;
+  finishedAt: Date;
+} | null> {
+  const rows = await prisma.$queryRaw<Array<{ migration_name: string; finished_at: Date }>>`
+    SELECT migration_name, finished_at FROM "_prisma_migrations"
+    WHERE finished_at IS NOT NULL
+      AND rolled_back_at IS NULL
+    ORDER BY finished_at DESC
+    LIMIT 1
+  `;
+  if (rows.length === 0) return null;
+  return {
+    migrationName: rows[0].migration_name,
+    finishedAt: rows[0].finished_at,
+  };
+}
+
 // ============================================================================
 // Token revocation
 // ============================================================================
@@ -369,6 +391,7 @@ export const maintenanceRepository = {
   getExistingTables,
   // Migrations
   getAppliedMigrations,
+  getMigrationHead,
   // Token revocation
   upsertRevokedToken,
   findRevokedToken,

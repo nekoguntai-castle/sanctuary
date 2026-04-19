@@ -176,6 +176,34 @@ export async function findLocksByUtxoIdsWithDraftInfo(utxoIds: string[]) {
   });
 }
 
+/**
+ * Aggregate lock stats for support package.
+ * Orphaned locks (where the draft has been deleted) are flagged separately
+ * because they're the canonical symptom of stuck-state bugs.
+ */
+export interface DraftLockSupportStats {
+  total: number;
+  oldestLockAgeMs: number | null;
+  distinctDrafts: number;
+}
+
+export async function getSupportStats(now: Date = new Date()): Promise<DraftLockSupportStats> {
+  const [total, oldest, distinctDraftRows] = await Promise.all([
+    prisma.draftUtxoLock.count(),
+    prisma.draftUtxoLock.findFirst({
+      select: { createdAt: true },
+      orderBy: { createdAt: 'asc' },
+    }),
+    prisma.draftUtxoLock.groupBy({ by: ['draftId'] }),
+  ]);
+
+  return {
+    total,
+    oldestLockAgeMs: oldest ? now.getTime() - oldest.createdAt.getTime() : null,
+    distinctDrafts: distinctDraftRows.length,
+  };
+}
+
 // Export as namespace
 export const draftLockRepository = {
   lockUtxos,
@@ -186,6 +214,7 @@ export const draftLockRepository = {
   findConflicts,
   resolveUtxoRefs,
   findLocksByUtxoIdsWithDraftInfo,
+  getSupportStats,
 };
 
 export default draftLockRepository;

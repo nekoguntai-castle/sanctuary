@@ -95,6 +95,48 @@ export async function updateLastUsedIfStale(
   });
 }
 
+export interface McpKeySupportStats {
+  total: number;
+  active: number;
+  revoked: number;
+  expired: number;
+  lastUsedBuckets: {
+    within24h: number;
+    within7d: number;
+    older: number;
+    never: number;
+  };
+}
+
+export async function getSupportStats(now: Date = new Date()): Promise<McpKeySupportStats> {
+  const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+  const [total, revoked, expired, within24h, within7d, older, never] = await Promise.all([
+    prisma.mcpApiKey.count(),
+    prisma.mcpApiKey.count({ where: { revokedAt: { not: null } } }),
+    prisma.mcpApiKey.count({
+      where: { revokedAt: null, expiresAt: { not: null, lte: now } },
+    }),
+    prisma.mcpApiKey.count({ where: { lastUsedAt: { gte: dayAgo } } }),
+    prisma.mcpApiKey.count({
+      where: { lastUsedAt: { gte: weekAgo, lt: dayAgo } },
+    }),
+    prisma.mcpApiKey.count({ where: { lastUsedAt: { lt: weekAgo } } }),
+    prisma.mcpApiKey.count({ where: { lastUsedAt: null } }),
+  ]);
+
+  const active = total - revoked - expired;
+
+  return {
+    total,
+    active,
+    revoked,
+    expired,
+    lastUsedBuckets: { within24h, within7d, older, never },
+  };
+}
+
 export const mcpApiKeyRepository = {
   create,
   findByKeyHash,
@@ -102,6 +144,7 @@ export const mcpApiKeyRepository = {
   findMany,
   revoke,
   updateLastUsedIfStale,
+  getSupportStats,
 };
 
 export default mcpApiKeyRepository;

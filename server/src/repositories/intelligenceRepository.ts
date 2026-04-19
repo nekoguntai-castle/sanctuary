@@ -312,6 +312,49 @@ async function getUtxoAgeDistribution(
 }
 
 // ========================================
+// Support Package Stats
+// ========================================
+
+export interface IntelligenceSupportStats {
+  conversationCount: number;
+  messageCountLast7d: number;
+  insightsByTypeStatus: Array<{ type: string; status: string; count: number }>;
+  insightsBySeverity: Record<string, number>;
+  activeInsightCount: number;
+}
+
+async function getSupportStats(now: Date = new Date()): Promise<IntelligenceSupportStats> {
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+  const [conversationCount, messageCount, typeStatusGroups, severityGroups, activeCount] = await Promise.all([
+    prisma.aIConversation.count(),
+    prisma.aIMessage.count({ where: { createdAt: { gte: sevenDaysAgo } } }),
+    prisma.aIInsight.groupBy({
+      by: ['type', 'status'],
+      _count: { _all: true },
+    }),
+    prisma.aIInsight.groupBy({
+      by: ['severity'],
+      where: { status: 'active' },
+      _count: { _all: true },
+    }),
+    prisma.aIInsight.count({ where: { status: 'active' } }),
+  ]);
+
+  return {
+    conversationCount,
+    messageCountLast7d: messageCount,
+    insightsByTypeStatus: typeStatusGroups.map(r => ({
+      type: r.type,
+      status: r.status,
+      count: r._count._all,
+    })),
+    insightsBySeverity: Object.fromEntries(severityGroups.map(r => [r.severity, r._count._all])),
+    activeInsightCount: activeCount,
+  };
+}
+
+// ========================================
 // Export
 // ========================================
 
@@ -344,6 +387,9 @@ export const intelligenceRepository = {
   // Analytics
   getTransactionVelocity,
   getUtxoAgeDistribution,
+
+  // Support package
+  getSupportStats,
 };
 
 export default intelligenceRepository;

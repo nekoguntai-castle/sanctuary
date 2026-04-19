@@ -501,6 +501,48 @@ export async function countPendingApprovalsByDraftId(draftTransactionId: string)
 }
 
 // ========================================
+// SUPPORT PACKAGE STATS
+// ========================================
+
+export interface PolicySupportStats {
+  totalPolicies: number;
+  enabledPolicies: number;
+  policiesByType: Record<string, number>;
+  policiesBySourceType: Record<string, number>;
+  approvalsByStatus: Record<string, number>;
+  eventsByTypeLast7d: Record<string, number>;
+  activeUsageWindows: number;
+}
+
+export async function getSupportStats(now: Date = new Date()): Promise<PolicySupportStats> {
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+  const [total, enabled, byType, bySource, approvals, events, activeWindows] = await Promise.all([
+    prisma.vaultPolicy.count(),
+    prisma.vaultPolicy.count({ where: { enabled: true } }),
+    prisma.vaultPolicy.groupBy({ by: ['type'], _count: { _all: true } }),
+    prisma.vaultPolicy.groupBy({ by: ['sourceType'], _count: { _all: true } }),
+    prisma.approvalRequest.groupBy({ by: ['status'], _count: { _all: true } }),
+    prisma.policyEvent.groupBy({
+      by: ['eventType'],
+      where: { createdAt: { gte: sevenDaysAgo } },
+      _count: { _all: true },
+    }),
+    prisma.policyUsageWindow.count({ where: { windowEnd: { gt: now } } }),
+  ]);
+
+  return {
+    totalPolicies: total,
+    enabledPolicies: enabled,
+    policiesByType: Object.fromEntries(byType.map(r => [r.type, r._count._all])),
+    policiesBySourceType: Object.fromEntries(bySource.map(r => [r.sourceType, r._count._all])),
+    approvalsByStatus: Object.fromEntries(approvals.map(r => [r.status, r._count._all])),
+    eventsByTypeLast7d: Object.fromEntries(events.map(r => [r.eventType, r._count._all])),
+    activeUsageWindows: activeWindows,
+  };
+}
+
+// ========================================
 // Export
 // ========================================
 
@@ -539,6 +581,8 @@ export const policyRepository = {
   findOrCreateUsageWindow,
   incrementUsageWindow,
   decrementUsageWindow,
+  // Support package
+  getSupportStats,
 };
 
 export default policyRepository;

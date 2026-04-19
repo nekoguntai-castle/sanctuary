@@ -1,13 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockQueryRaw, collectorMap } = vi.hoisted(() => ({
+const { mockQueryRaw, mockGetMigrationHead, collectorMap } = vi.hoisted(() => ({
   mockQueryRaw: vi.fn(),
+  mockGetMigrationHead: vi.fn(),
   collectorMap: new Map<string, (ctx: any) => Promise<Record<string, unknown>>>(),
 }));
 
 vi.mock('../../../../src/repositories', () => ({
   maintenanceRepository: {
     getTableStats: mockQueryRaw,
+    getMigrationHead: mockGetMigrationHead,
   },
 }));
 
@@ -36,6 +38,8 @@ function makeContext(): CollectorContext {
 describe('database collector', () => {
   beforeEach(() => {
     mockQueryRaw.mockReset();
+    mockGetMigrationHead.mockReset();
+    mockGetMigrationHead.mockResolvedValue(null);
   });
 
   const getCollector = () => {
@@ -69,5 +73,28 @@ describe('database collector', () => {
     const result = await getCollector()(makeContext());
     expect(result.error).toBe('connection refused');
     expect(result.tables).toEqual({});
+  });
+
+  it('includes migration head when available', async () => {
+    mockQueryRaw.mockResolvedValue([]);
+    mockGetMigrationHead.mockResolvedValue({
+      migrationName: '20260419_add_agent_wallets',
+      finishedAt: new Date('2026-04-19T10:00:00.000Z'),
+    });
+
+    const result = await getCollector()(makeContext());
+    expect(result.migrationHead).toEqual({
+      migrationName: '20260419_add_agent_wallets',
+      finishedAt: '2026-04-19T10:00:00.000Z',
+    });
+  });
+
+  it('isolates migration head failure from table stats success', async () => {
+    mockQueryRaw.mockResolvedValue([{ relname: 'users', n_live_tup: BigInt(1) }]);
+    mockGetMigrationHead.mockRejectedValue(new Error('migrations table missing'));
+
+    const result = await getCollector()(makeContext());
+    expect(result.tables).toEqual({ users: 1 });
+    expect(result.migrationHead).toEqual({ error: 'migrations table missing' });
   });
 });

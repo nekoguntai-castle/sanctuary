@@ -395,6 +395,38 @@ export async function countByStatus(
 }
 
 /**
+ * Aggregate draft stats for support package
+ */
+export interface DraftSupportStats {
+  total: number;
+  byStatus: Record<string, number>;
+  byApprovalStatus: Record<string, number>;
+  expired: number;
+  agentLinked: number;
+  rbf: number;
+}
+
+export async function getSupportStats(now: Date = new Date()): Promise<DraftSupportStats> {
+  const [total, statusGroups, approvalGroups, expired, agentLinked, rbf] = await Promise.all([
+    prisma.draftTransaction.count(),
+    prisma.draftTransaction.groupBy({ by: ['status'], _count: { _all: true } }),
+    prisma.draftTransaction.groupBy({ by: ['approvalStatus'], _count: { _all: true } }),
+    prisma.draftTransaction.count({ where: { expiresAt: { lt: now } } }),
+    prisma.draftTransaction.count({ where: { agentId: { not: null } } }),
+    prisma.draftTransaction.count({ where: { isRBF: true } }),
+  ]);
+
+  return {
+    total,
+    byStatus: Object.fromEntries(statusGroups.map(r => [r.status, r._count._all])),
+    byApprovalStatus: Object.fromEntries(approvalGroups.map(r => [r.approvalStatus, r._count._all])),
+    expired,
+    agentLinked,
+    rbf,
+  };
+}
+
+/**
  * Delete multiple drafts by IDs (for sync reconciliation when UTXOs are spent)
  */
 export async function deleteManyByIds(draftIds: string[]): Promise<number> {
@@ -424,6 +456,7 @@ export const draftRepository = {
   countByWalletId,
   countByStatus,
   deleteManyByIds,
+  getSupportStats,
 };
 
 export default draftRepository;

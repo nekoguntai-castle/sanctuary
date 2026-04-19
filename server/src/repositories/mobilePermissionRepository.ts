@@ -286,6 +286,59 @@ export async function countByWalletId(walletId: string): Promise<number> {
   });
 }
 
+/**
+ * Aggregate capability stats for the support package. Counts how many
+ * permission rows enable each capability so a support engineer can tell
+ * "is the mobile app restricted" at a glance.
+ */
+export interface MobilePermissionSupportStats {
+  totalRows: number;
+  distinctWallets: number;
+  distinctUsers: number;
+  capabilityEnabledCounts: Record<MobilePermissionCapability | string, number>;
+}
+
+export async function getSupportStats(): Promise<MobilePermissionSupportStats> {
+  const [total, wallets, users, capabilityRows] = await Promise.all([
+    prisma.mobilePermission.count(),
+    prisma.mobilePermission.groupBy({ by: ['walletId'] }),
+    prisma.mobilePermission.groupBy({ by: ['userId'] }),
+    prisma.mobilePermission.findMany({
+      select: {
+        canViewBalance: true,
+        canViewTransactions: true,
+        canViewUtxos: true,
+        canCreateTransaction: true,
+        canBroadcast: true,
+        canSignPsbt: true,
+        canGenerateAddress: true,
+        canManageLabels: true,
+        canManageDevices: true,
+        canShareWallet: true,
+        canDeleteWallet: true,
+        canApproveTransaction: true,
+        canManagePolicies: true,
+      },
+    }),
+  ]);
+
+  const capabilityEnabledCounts: Record<string, number> = {};
+  for (const row of capabilityRows) {
+    for (const [k, v] of Object.entries(row)) {
+      if (v === true) {
+        capabilityEnabledCounts[k] = (capabilityEnabledCounts[k] ?? 0) + 1;
+      }
+    }
+  }
+
+  return {
+    totalRows: total,
+    distinctWallets: wallets.length,
+    distinctUsers: users.length,
+    capabilityEnabledCounts,
+  };
+}
+
 // Export as namespace
 export const mobilePermissionRepository = {
   findById,
@@ -303,6 +356,7 @@ export const mobilePermissionRepository = {
   deleteByUserId,
   deleteByWalletId,
   countByWalletId,
+  getSupportStats,
 };
 
 export default mobilePermissionRepository;

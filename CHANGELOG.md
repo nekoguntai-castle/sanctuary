@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Support bundle collectors for vault policies, agent wallets, AI/intelligence, MCP, devices, drafts, backups, and mobile permissions
+- Support bundle database collector now reports Prisma migration head
+
 ### Changed
 
 - Reorganized documentation under the Diataxis framework (explanation, how-to, reference) with kebab-case naming
