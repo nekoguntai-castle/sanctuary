@@ -155,6 +155,17 @@ describe('Account branch coverage', () => {
     expect(screen.getByText('Administrator')).toBeInTheDocument();
   });
 
+  it('omits the email field when the account has no email', () => {
+    mockState.user = {
+      ...mockState.user,
+      email: undefined,
+    };
+
+    render(<Account />);
+
+    expect(screen.queryByText('tester@example.com')).not.toBeInTheDocument();
+  });
+
   it('covers setup fallback error, short-code guard, and verify ApiError branch', async () => {
     const user = userEvent.setup();
     mockState.setup2FA.mockRejectedValueOnce(new Error('network failure'));

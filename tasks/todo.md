@@ -1,6 +1,48 @@
-# Next Task: Lizard UI Batch 3 - Theme Section
+# Next Task: Lizard UI Batch 4 - Account
 
 Status: in_progress
+
+Goal: reduce the current top `Account` lizard finding without changing profile rendering, password validation/submission, 2FA setup/disable/regenerate flows, backup-code copy behavior, modal close/reset behavior, or public exports.
+
+## Lizard UI Batch 4 Checklist
+
+- [x] Confirm pushed ThemeSection CI status and clean local baseline.
+- [x] Inspect current top lizard target and Account test coverage.
+- [x] Split Account state/handlers and rendering while preserving the public import path.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [x] Update health/grade tracking and commit/push the batch after verification.
+
+## Lizard UI Batch 4 Review
+
+Changes:
+
+- Reduced `components/Account/Account.tsx` to an 18-line public wrapper and moved password state/submission into `components/Account/Account/usePasswordChangeController.ts`.
+- Moved 2FA setup, enable, disable, regenerate, modal reset, and backup-code copy state into `components/Account/Account/useTwoFactorController.ts` with small validation/error helpers.
+- Split profile rendering and modal wiring into `ProfileInformation`, `AccountView`, and `AccountModals` while preserving the existing child component contracts and `components/Account` public export.
+- Added a focused Account branch test for the no-email profile path needed by the 100% coverage gate.
+- Updated the health assessment and grade history: full lizard warnings moved from 94 to 93, and `Account` dropped out of the current top lizard target list.
+
+Verification:
+
+- `npx vitest run tests/components/Account.test.tsx tests/components/Account.branches.test.tsx tests/components/Account/PasswordForm.branches.test.tsx tests/components/Account/SetupTwoFactorModal.test.tsx tests/components/Account/DisableTwoFactorModal.branches.test.tsx tests/components/Account/BackupCodesModal.test.tsx` passed: 6 files, 39 tests.
+- `npm run typecheck:app` passed.
+- `npm run lint:app` passed.
+- `npm run test:coverage` passed: 396 files, 5,557 tests, 100% statements/branches/functions/lines.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/Account/Account.tsx components/Account/Account` passed with no warnings.
+- Full lizard warning count is now 93; top remaining component targets are `AgentManagement`, `TransactionList`, `NetworkConnectionCard`, and `DeviceDetail`.
+- `git diff --check`, grade-history JSONL parsing, large-file classification, and pinned gitleaks-only quality lane passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: missing user/email remains tolerated, empty password fields still fail through existing required inputs or guard logic, and absent backup codes still copy an empty joined string only through the existing copy-all path.
+- Boundary values: password mismatch and minimum length checks remain unchanged, setup verification still requires at least six characters, and disable/regenerate guards still require both password and token.
+- System boundaries: `authApi.changePassword`, `twoFactorApi` payload shapes, clipboard utility calls, modal prop names, and `components/Account` exports remain unchanged.
+- Async/race behavior: password success and copied-code timers still clear their visible state after the same 3000 ms and 2000 ms delays; loading flags still reset in `finally` blocks.
+- Diff review: changes are scoped to Account controller/view/helper extraction, one branch test, health-report notes, trend metadata, and this task record.
+
+## Previous Task: Lizard UI Batch 3 - Theme Section
+
+Status: complete
 
 Goal: batch the current ThemeSection lizard cluster by reducing `AppearanceTab` and `BackgroundsPanel` complexity without changing theme selection, background search/category/favorite behavior, seasonal background toggles, per-season configuration, visual settings, or public exports.
 
