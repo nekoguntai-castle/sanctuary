@@ -1,4 +1,47 @@
-# Next Task: SendTransactionPage Complexity Reduction
+# Next Task: Lizard UI Batch 1 - Labels And Notifications
+
+Status: in_progress
+
+Goal: batch the next top UI lizard findings by reducing `LabelManager`, `NotificationToast`, and `NotificationPanel`/`NotificationItem` complexity without changing label CRUD behavior, toast timing/styles, notification sorting/navigation, panel dismissal, or public exports.
+
+## Lizard UI Batch 1 Checklist
+
+- [x] Confirm pushed SendTransactionPage CI status and local baseline.
+- [x] Inspect current top lizard targets and focused test coverage.
+- [x] Split LabelManager into controller/view modules while preserving the public import path.
+- [x] Split notification toast/panel helpers and item views while preserving public exports.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [x] Update health/grade tracking and commit/push the batch after verification.
+
+## Lizard UI Batch 1 Review
+
+Changes:
+
+- Reduced `components/LabelManager.tsx` to a 10-line public wrapper and moved label CRUD state, mutation error handling, delete confirmation, and form behavior into focused controller/view modules under `components/LabelManager/`.
+- Reduced `components/NotificationToast.tsx` to the public toast/container exports and moved toast dismiss timing plus icon/color selection into focused modules under `components/NotificationToast/`.
+- Split `components/NotificationPanel.tsx` into a small public panel/bell entrypoint, a controller hook, frame/content rendering, item rendering, and notification helper rules under `components/NotificationPanel/`.
+- Preserved public import paths and exports for `LabelManager`, `NotificationToast`, `NotificationContainer`, `generateNotificationId`, `NotificationPanel`, and `NotificationBell`.
+- Updated the health assessment and grade history: full lizard warnings moved from 104 to 100, and `LabelManager`, `NotificationToast`, `NotificationPanel`, and `NotificationItem` dropped out of the current top lizard target list.
+
+Verification:
+
+- `npx vitest run tests/components/LabelManager.test.tsx tests/components/NotificationToast.test.tsx tests/components/NotificationToast.branches.test.tsx tests/components/NotificationPanel.test.tsx tests/components/NotificationPanel.branches.test.tsx` passed: 5 files, 95 tests.
+- `npm run typecheck:app` passed.
+- `npm run lint:app` passed.
+- `npm run test:coverage` passed: 396 files, 5,556 tests, 100% statements/branches/functions/lines.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/LabelManager.tsx components/LabelManager components/NotificationToast.tsx components/NotificationToast components/NotificationPanel.tsx components/NotificationPanel` passed with no warnings.
+- Full lizard warning count is now 100; top remaining component targets are `BlockVisualizer`, `AppearanceTab`, `Account`, and `AgentManagement`.
+- `git diff --check`, grade-history JSONL parsing, large-file classification, and pinned gitleaks-only quality lane passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: absent label data still renders an empty list, optional label descriptions/counts remain conditional, empty toast messages still omit message copy, and empty notification panels still render the "All caught up!" state.
+- Boundary values: toast overflow still uses the four-notification visible limit and singular/plural hidden count wording; notification bell count still caps at `9+`; label save remains disabled for trimmed blank names.
+- System boundaries: public component entrypoints, notification IDs, notification navigation state, label hook calls, and toast dismiss timing remain unchanged.
+- Async/race behavior: toast exit timers still clean up on repeated dismiss/unmount, auto-dismiss timers still clear on unmount, and notification panel outside-click/Escape listeners still register only while open.
+- Diff review: changes are scoped to label and notification presentation/controller extraction, health-report notes, trend metadata, and this task record.
+
+## Previous Task: SendTransactionPage Complexity Reduction
 
 Status: complete
 

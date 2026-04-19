@@ -1,145 +1,37 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { X, ArrowDownLeft, ArrowUpRight, CheckCircle, TrendingUp, Activity, AlertTriangle } from 'lucide-react';
+import { X } from 'lucide-react';
+import {
+  getNotificationColors,
+  getNotificationIcon,
+} from './NotificationToast/notificationToastHelpers';
+import type { Notification } from './NotificationToast/types';
+import { useToastDismiss } from './NotificationToast/useToastDismiss';
 
-export type NotificationType = 'transaction' | 'balance' | 'confirmation' | 'block' | 'success' | 'error' | 'warning' | 'info';
-
-/** Notification payload — shape varies by notification type */
-export interface NotificationData {
-  type?: string;
-  txid?: string;
-  amount?: number;
-  confirmations?: number;
-  previousConfirmations?: number;
-  walletId?: string;
-  balance?: number;
-  confirmed?: number;
-  unconfirmed?: number;
-  change?: number;
-  height?: number;
-  transactionCount?: number;
-  blockHeight?: number;
-  timestamp?: string;
-  hash?: string;
-}
-
-export interface Notification {
-  id: string;
-  type: NotificationType;
-  title: string;
-  message?: string;
-  duration?: number; // milliseconds, undefined = persistent
-  data?: NotificationData;
-}
+export type { Notification, NotificationData, NotificationType } from './NotificationToast/types';
 
 interface NotificationToastProps {
   notification: Notification;
   onDismiss: (id: string) => void;
 }
 
-export const NotificationToast: React.FC<NotificationToastProps> = ({ notification, onDismiss }) => {
-  const [isExiting, setIsExiting] = useState(false);
-  const exitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Cleanup exit timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (exitTimeoutRef.current) {
-        clearTimeout(exitTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  const handleDismiss = useCallback(() => {
-    setIsExiting(true);
-    // Clear any existing exit timeout
-    if (exitTimeoutRef.current) {
-      clearTimeout(exitTimeoutRef.current);
-    }
-    exitTimeoutRef.current = setTimeout(() => {
-      onDismiss(notification.id);
-    }, 300); // Match exit animation duration
-  }, [onDismiss, notification.id]);
-
-  useEffect(() => {
-    if (notification.duration) {
-      const timer = setTimeout(() => {
-        handleDismiss();
-      }, notification.duration);
-
-      return () => clearTimeout(timer);
-    }
-  }, [notification.duration, handleDismiss]);
-
-  const getIcon = () => {
-    // Transaction colors: receive=primary, sent=sent (theme-aware), consolidation=sent
-    switch (notification.type) {
-      case 'transaction':
-        if (notification.data?.type === 'received') {
-          return <ArrowDownLeft className="w-5 h-5 text-primary-600 dark:text-primary-400" />;
-        } else if (notification.data?.type === 'consolidation') {
-          return <ArrowUpRight className="w-5 h-5 text-sent-600 dark:text-sent-400" />;
-        } else {
-          // Sent transactions use theme-aware sent color
-          return <ArrowUpRight className="w-5 h-5 text-sent-600 dark:text-sent-400" />;
-        }
-      case 'balance':
-        return <TrendingUp className="w-5 h-5 text-primary-600 dark:text-primary-400" />;
-      case 'confirmation':
-        return <CheckCircle className="w-5 h-5 text-success-600 dark:text-success-400" />;
-      case 'block':
-        return <Activity className="w-5 h-5 text-primary-600 dark:text-primary-400" />;
-      case 'success':
-        return <CheckCircle className="w-5 h-5 text-success-600 dark:text-success-400" />;
-      case 'error':
-        return <X className="w-5 h-5 text-rose-600 dark:text-rose-400" />;
-      case 'warning':
-        return <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400" />;
-      default:
-        return <Activity className="w-5 h-5 text-primary-600 dark:text-primary-400" />;
-    }
-  };
-
-  const getColors = () => {
-    // Transaction colors: receive=primary, sent=sent (theme-aware), consolidation=sent
-    switch (notification.type) {
-      case 'transaction':
-        if (notification.data?.type === 'received') {
-          return 'bg-primary-50 dark:bg-primary-900/30 border-primary-200 dark:border-primary-700';
-        } else if (notification.data?.type === 'consolidation') {
-          return 'bg-sent-50 dark:bg-sent-900/30 border-sent-200 dark:border-sent-700';
-        } else {
-          // Sent transactions use theme-aware sent color
-          return 'bg-sent-50 dark:bg-sent-900/30 border-sent-200 dark:border-sent-700';
-        }
-      case 'balance':
-        return 'surface-secondary border-primary-200 dark:border-primary-700';
-      case 'confirmation':
-        return 'bg-success-50 dark:bg-success-900/30 border-success-200 dark:border-success-700';
-      case 'block':
-        return 'surface-secondary border-primary-200 dark:border-primary-700';
-      case 'success':
-        return 'bg-success-50 dark:bg-success-900/30 border-success-200 dark:border-success-700';
-      case 'error':
-        return 'bg-rose-50 dark:bg-rose-950/80 border-rose-300 dark:border-rose-700';
-      case 'warning':
-        return 'bg-amber-50 dark:bg-amber-900/30 border-amber-200 dark:border-amber-700';
-      default:
-        return 'surface-secondary border-primary-200 dark:border-primary-700';
-    }
-  };
+export const NotificationToast = ({ notification, onDismiss }: NotificationToastProps) => {
+  const { isExiting, handleDismiss } = useToastDismiss({
+    notificationId: notification.id,
+    duration: notification.duration,
+    onDismiss,
+  });
 
   return (
     <div
       className={`
         flex items-start space-x-3 p-4 rounded-lg border shadow-xl backdrop-blur-xl
-        ${getColors()}
+        ${getNotificationColors(notification)}
         ${isExiting ? 'animate-slide-out-right' : 'animate-slide-in-right'}
         transition-all duration-300
       `}
       style={{ WebkitBackdropFilter: 'blur(16px)' }}
       role="alert"
     >
-      <div className="flex-shrink-0 mt-0.5">{getIcon()}</div>
+      <div className="flex-shrink-0 mt-0.5">{getNotificationIcon(notification)}</div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-sanctuary-900 dark:text-sanctuary-50">
           {notification.title}
@@ -168,10 +60,10 @@ interface NotificationContainerProps {
 
 const MAX_VISIBLE_NOTIFICATIONS = 4;
 
-export const NotificationContainer: React.FC<NotificationContainerProps> = ({
+export const NotificationContainer = ({
   notifications,
   onDismiss,
-}) => {
+}: NotificationContainerProps) => {
   if (notifications.length === 0) return null;
 
   const visibleNotifications = notifications.slice(0, MAX_VISIBLE_NOTIFICATIONS);
@@ -201,7 +93,6 @@ export const NotificationContainer: React.FC<NotificationContainerProps> = ({
   );
 };
 
-// Utility function to generate notification ID
 export const generateNotificationId = (): string => {
   return `notification-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 };
