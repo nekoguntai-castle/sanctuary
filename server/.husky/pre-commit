@@ -17,17 +17,173 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
-# Agent stop flags (set to 1 if agent recommends stopping)
+# Agent stop flags — populated from marker files after parallel wait
 TEST_COVERAGE_STOP=0
 UI_CONSISTENCY_STOP=0
-ARCHITECTURE_STOP=0
-STABILITY_STOP=0
+BACKEND_QUALITY_STOP=0
 DOCUMENTATION_STOP=0
 
 echo "${YELLOW}Running pre-commit checks...${NC}"
 
 # Get the repository root
 REPO_ROOT=$(git rev-parse --show-toplevel)
+GIT_DIR=$(git rev-parse --git-dir)
+
+# =============================================
+# Agent telemetry + cache infrastructure
+# =============================================
+# Telemetry appends one JSONL record per agent run to .claude/agent-audit.jsonl
+# so verdicts can be reviewed periodically to tune prompts.
+# Cache short-circuits claude invocation when an identical staged diff has been
+# reviewed recently (common during `git commit --amend` and rebases).
+# Both live under .claude/ which is gitignored — state stays local per-dev.
+
+AGENT_LOG_DIR="$REPO_ROOT/.claude"
+AGENT_LOG_FILE="$AGENT_LOG_DIR/agent-audit.jsonl"
+AGENT_CACHE_DIR="$AGENT_LOG_DIR/agent-cache"
+# Bump when any agent prompt changes to invalidate cache globally.
+PROMPT_VERSION="v1"
+# Per-commit scratch dir for parallel agent outputs and stop markers.
+AGENT_TMP_DIR=$(mktemp -d -t sanctuary-agents-XXXXXX)
+trap 'rm -rf "$AGENT_TMP_DIR"' EXIT
+
+mkdir -p "$AGENT_LOG_DIR" "$AGENT_CACHE_DIR"
+
+# TTL-sweep cache entries older than 7 days so the directory doesn't grow
+# unbounded. Runs every commit — cheap operation, silent on empty cache.
+find "$AGENT_CACHE_DIR" -type f -mtime +7 -delete 2>/dev/null || true
+
+# Classify an agent's stdout. The prompts end with one of three
+# marker phrases; UNKNOWN signals the agent ignored the rubric
+# (itself useful for prompt tuning).
+extract_verdict() {
+    # $1 = path to agent output file
+    if grep -q "RECOMMEND STOP" "$1"; then
+        echo "STOP"
+    elif grep -q "SUGGEST REVIEW" "$1"; then
+        echo "REVIEW"
+    elif grep -q "RECOMMEND PROCEED" "$1"; then
+        echo "PROCEED"
+    else
+        echo "UNKNOWN"
+    fi
+}
+
+# Count non-empty lines in a newline-separated list ("" → 0).
+count_lines() {
+    if [ -z "$1" ]; then
+        echo 0
+    else
+        printf '%s\n' "$1" | wc -l | tr -d ' '
+    fi
+}
+
+# Append one JSONL record per agent invocation. Cache hits log duration_s=0.
+log_agent_run() {
+    # $1=agent_name $2=verdict $3=duration_s $4=file_count $5=output_file $6=cache_hit(0|1)
+    ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    head=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
+
+    if command -v jq >/dev/null 2>&1; then
+        jq -nc \
+            --arg ts "$ts" \
+            --arg head "$head" \
+            --arg agent "$1" \
+            --arg verdict "$2" \
+            --arg duration_s "$3" \
+            --arg file_count "$4" \
+            --arg cache_hit "$6" \
+            --rawfile output "$5" \
+            '{timestamp:$ts, head:$head, agent:$agent, verdict:$verdict,
+              duration_s:($duration_s|tonumber), file_count:($file_count|tonumber),
+              cache_hit:($cache_hit=="1"), output:$output}' >> "$AGENT_LOG_FILE" 2>/dev/null || true
+    else
+        {
+            echo "---"
+            echo "timestamp=$ts head=$head agent=$1 verdict=$2 duration_s=$3 file_count=$4 cache_hit=$6"
+            cat "$5"
+        } >> "$AGENT_LOG_FILE" 2>/dev/null || true
+    fi
+}
+
+# NOTE: DIFF_HASH is computed AFTER check_version_sync (below), because that
+# function may `git add` version files and thereby change the staged diff.
+# Computing it here would key the cache on the pre-sync diff while the agents
+# review the post-sync diff — a silent correctness bug.
+DIFF_HASH=""
+
+# Run the agent unless the same (diff, agent, prompt-version) tuple has a
+# cached verdict — in which case replay the cached output and skip claude.
+# $1=agent_name $2=claude_agent_type(empty=general) $3=prompt
+# $4=file_count $5=stop_marker_basename
+# Writes to stdout: the full agent display (header + output + trailer).
+# Touches $AGENT_TMP_DIR/$5.stop when the verdict is STOP.
+invoke_agent_with_cache() {
+    local agent_name="$1"
+    local claude_agent="$2"
+    local prompt="$3"
+    local file_count="$4"
+    local stop_name="$5"
+
+    local cache_file="$AGENT_CACHE_DIR/${PROMPT_VERSION}-${DIFF_HASH}-${agent_name}.txt"
+
+    if [ -f "$cache_file" ]; then
+        cat "$cache_file"
+        echo ""
+        echo "${CYAN}(cache hit — identical diff reviewed previously)${NC}"
+        local verdict
+        verdict=$(extract_verdict "$cache_file")
+        log_agent_run "$agent_name" "$verdict" 0 "$file_count" "$cache_file" 1
+        if [ "$verdict" = "STOP" ]; then
+            touch "$AGENT_TMP_DIR/${stop_name}.stop"
+        fi
+        return 0
+    fi
+
+    local start_time temp_output duration verdict
+    start_time=$(date +%s)
+    temp_output=$(mktemp)
+
+    # `|| true` prevents set -e from aborting if claude itself errors —
+    # we still want other agents to finish and a verdict of UNKNOWN logged.
+    if [ -n "$claude_agent" ]; then
+        echo "$prompt" | claude --agent "$claude_agent" --print > "$temp_output" 2>&1 || true
+    else
+        echo "$prompt" | claude --print > "$temp_output" 2>&1 || true
+    fi
+
+    cat "$temp_output"
+    duration=$(( $(date +%s) - start_time ))
+    verdict=$(extract_verdict "$temp_output")
+    log_agent_run "$agent_name" "$verdict" "$duration" "$file_count" "$temp_output" 0
+    cp "$temp_output" "$cache_file"
+
+    if [ "$verdict" = "STOP" ]; then
+        echo ""
+        echo "${RED}❌ ${agent_name} agent recommends stopping. Please address the issues above.${NC}"
+        echo "${YELLOW}To bypass: git commit --no-verify${NC}"
+        touch "$AGENT_TMP_DIR/${stop_name}.stop"
+    fi
+
+    rm -f "$temp_output"
+}
+
+# =============================================
+# Skip AI agents during non-interactive git ops
+# =============================================
+# Rebase/cherry-pick/merge replay commits without a human reviewing output,
+# so AI agent feedback is wasted compute. Still run tests + version sync.
+
+SKIP_AI_AGENTS=0
+# Note: REBASE_HEAD intentionally excluded — git leaves it behind after a
+# completed rebase, so it's unreliable. The rebase-merge/ and rebase-apply/
+# directories are the authoritative "rebase in progress" signals.
+if [ -f "$GIT_DIR/CHERRY_PICK_HEAD" ] \
+   || [ -f "$GIT_DIR/MERGE_HEAD" ] \
+   || [ -d "$GIT_DIR/rebase-merge" ] \
+   || [ -d "$GIT_DIR/rebase-apply" ]; then
+    SKIP_AI_AGENTS=1
+fi
 
 # =============================================
 # Version Sync Check & Auto-Fix
@@ -77,21 +233,24 @@ check_version_sync() {
 
 check_version_sync
 
+# Hash the (possibly just-modified) staged diff. Serves as the cache key so
+# amend-retry and identical rebase replays short-circuit claude invocation.
+# Must run AFTER check_version_sync — that step can `git add` version files
+# and change the staged diff.
+DIFF_HASH=$(git diff --cached | sha256sum | head -c 16)
+
 # =============================================
 # Test Coverage Analysis
 # =============================================
 # Analyze if tests need to be added, updated, or removed
 
 run_test_coverage_agent() {
-    # Check if claude is available
     if ! command -v claude >/dev/null 2>&1; then
         echo "${YELLOW}Claude CLI not found, skipping AI test analysis${NC}"
         return 0
     fi
 
-    # Get staged files
     STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.(ts|tsx)$' || true)
-
     if [ -z "$STAGED_FILES" ]; then
         return 0
     fi
@@ -102,10 +261,7 @@ run_test_coverage_agent() {
     echo "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
 
-    # Get the diff for context
     DIFF_CONTENT=$(git diff --cached)
-
-    # Create the prompt for test coverage analysis
     PROMPT="PRE-COMMIT TEST COVERAGE REVIEW
 
 Analyze these staged changes and determine if tests need to be built, updated, or removed.
@@ -126,43 +282,24 @@ End with one of:
 - ⚠️ SUGGEST REVIEW - minor test updates may be helpful
 - ❌ RECOMMEND STOP - tests should be updated before committing"
 
-    # Run claude with the qa-test-architect agent
-    # Output to stderr (visible in terminal) and capture to temp file
-    TEMP_OUTPUT=$(mktemp)
-    echo "$PROMPT" | claude --agent qa-test-architect --print 2>&1 | tee "$TEMP_OUTPUT" >&2
-    AGENT_OUTPUT=$(cat "$TEMP_OUTPUT")
-    rm -f "$TEMP_OUTPUT"
-
-    # Check if agent recommends stopping
-    if echo "$AGENT_OUTPUT" | grep -q "RECOMMEND STOP"; then
-        echo ""
-        echo "${RED}❌ Test coverage agent recommends stopping. Please address the issues above.${NC}"
-        echo "${YELLOW}To bypass: git commit --no-verify${NC}"
-        TEST_COVERAGE_STOP=1
-    fi
+    file_count=$(count_lines "$STAGED_FILES")
+    invoke_agent_with_cache "test-coverage" "qa-test-architect" "$PROMPT" "$file_count" "test-coverage"
 
     echo ""
     echo "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
 }
 
-# Run AI test coverage analysis
-run_test_coverage_agent
-
 # =============================================
 # UI Consistency & Style Analysis
 # =============================================
-# Use Claude to check UI changes fit existing patterns and use shared styles
 
 run_ui_consistency_agent() {
-    # Check if claude is available
     if ! command -v claude >/dev/null 2>&1; then
         return 0
     fi
 
-    # Get staged UI files (components, hooks with UI, contexts)
     UI_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^(components/|hooks/|contexts/).*\.tsx$' || true)
-
     if [ -z "$UI_FILES" ]; then
         return 0
     fi
@@ -173,10 +310,7 @@ run_ui_consistency_agent() {
     echo "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
 
-    # Get the diff for context
     UI_DIFF=$(git diff --cached -- $UI_FILES)
-
-    # Create the prompt for UI consistency analysis
     PROMPT="PRE-COMMIT UI CONSISTENCY REVIEW
 
 Analyze these UI changes for consistency with our existing codebase patterns.
@@ -205,211 +339,91 @@ End with one of:
 - ⚠️ SUGGEST REVIEW - minor style inconsistencies found
 - ❌ RECOMMEND STOP - significant UI pattern violations"
 
-    # Run claude with the ui-architect agent
-    # Output to stderr (visible in terminal) and capture to temp file
-    TEMP_OUTPUT=$(mktemp)
-    echo "$PROMPT" | claude --agent ui-architect --print 2>&1 | tee "$TEMP_OUTPUT" >&2
-    AGENT_OUTPUT=$(cat "$TEMP_OUTPUT")
-    rm -f "$TEMP_OUTPUT"
-
-    # Check if agent recommends stopping
-    if echo "$AGENT_OUTPUT" | grep -q "RECOMMEND STOP"; then
-        echo ""
-        echo "${RED}❌ UI consistency agent recommends stopping. Please address the issues above.${NC}"
-        echo "${YELLOW}To bypass: git commit --no-verify${NC}"
-        UI_CONSISTENCY_STOP=1
-    fi
+    file_count=$(count_lines "$UI_FILES")
+    invoke_agent_with_cache "ui-consistency" "ui-architect" "$PROMPT" "$file_count" "ui-consistency"
 
     echo ""
     echo "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
 }
 
-# Run UI consistency analysis
-run_ui_consistency_agent
-
 # =============================================
-# Architecture & Scalability Analysis
+# Backend Quality: Architecture + Stability (merged)
 # =============================================
-# Use Claude to validate scalability, extensibility, and cleanup patterns
 
-run_architecture_agent() {
-    # Check if claude is available
+run_backend_quality_agent() {
     if ! command -v claude >/dev/null 2>&1; then
         return 0
     fi
 
-    # Get staged source files (excluding tests)
     SOURCE_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.(ts|tsx)$' | grep -vE '(\.test\.|\.spec\.|/tests/)' || true)
-
     if [ -z "$SOURCE_FILES" ]; then
         return 0
     fi
 
     echo ""
     echo "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo "${BLUE}🏗️  Architecture & Scalability Analysis${NC}"
+    echo "${BLUE}🏗️  Architecture & Stability Analysis${NC}"
     echo "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
 
-    # Get the diff for context
-    ARCH_DIFF=$(git diff --cached -- $SOURCE_FILES)
+    QUALITY_DIFF=$(git diff --cached -- $SOURCE_FILES)
+    PROMPT="PRE-COMMIT BACKEND QUALITY REVIEW
 
-    # Create the prompt for architecture analysis
-    PROMPT="PRE-COMMIT ARCHITECTURE REVIEW
-
-Analyze these changes for scalability, extensibility, and operational robustness.
+Analyze these changes for architectural soundness AND stability in long-running
+operation. This codebase runs 24/7 without restarts, so both dimensions matter.
 
 STAGED SOURCE FILES:
 $SOURCE_FILES
 
 DIFF:
-$ARCH_DIFF
+$QUALITY_DIFF
 
-Our codebase requirements:
-- Must run perpetually without memory leaks or resource exhaustion
-- Services should have proper cleanup (intervals, subscriptions, connections)
-- Code should be extensible without modifying core logic
-- Database operations should be transactional where needed
-- WebSocket/event handlers must properly clean up on disconnect
+Codebase constraints:
+- Runs perpetually without restarts or memory growth
+- Services must clean up intervals, timers, subscriptions, connections on shutdown
+- External calls need circuit breakers, timeouts, or retry limits
+- Collections (Map/Set/Array) must be bounded; caches must have size limits
+- Code follows open/closed — extensible without modifying core logic
+- Database operations transactional where correctness requires it
 
 Answer concisely:
-1. SCALABILITY: Are there any patterns that won't scale (N+1 queries, unbounded arrays, blocking operations)?
-2. EXTENSIBILITY: Does the code follow open/closed principle? Can it be extended without modification?
-3. CLEANUP: Are intervals, timeouts, subscriptions, and connections properly cleaned up?
-4. PERPETUAL OPERATION: Any memory leaks, growing caches, or resources that aren't released?
+1. SCALABILITY: N+1 queries, unbounded iteration, blocking operations?
+2. MEMORY SAFETY: Unbounded collections, growing caches, closure leaks?
+3. RESOURCE CLEANUP: Intervals/timers/subscriptions/connections released?
+4. FAILURE HANDLING: Circuit breakers, timeouts, retry limits on external calls?
+5. EXTENSIBILITY: Open/closed violated? New code extending vs. modifying?
 
 End with one of:
-- ✅ RECOMMEND PROCEED - architecture is sound
-- ⚠️ SUGGEST REVIEW - minor architectural concerns
-- ❌ RECOMMEND STOP - significant architectural issues"
+- ✅ RECOMMEND PROCEED - architecture and stability are sound
+- ⚠️ SUGGEST REVIEW - minor concerns worth a look
+- ❌ RECOMMEND STOP - significant scalability, memory, cleanup, or resilience issues"
 
-    # Run claude with the lead-software-architect agent
-    # Output to stderr (visible in terminal) and capture to temp file
-    TEMP_OUTPUT=$(mktemp)
-    echo "$PROMPT" | claude --agent lead-software-architect --print 2>&1 | tee "$TEMP_OUTPUT" >&2
-    AGENT_OUTPUT=$(cat "$TEMP_OUTPUT")
-    rm -f "$TEMP_OUTPUT"
-
-    # Check if agent recommends stopping
-    if echo "$AGENT_OUTPUT" | grep -q "RECOMMEND STOP"; then
-        echo ""
-        echo "${RED}❌ Architecture agent recommends stopping. Please address the issues above.${NC}"
-        echo "${YELLOW}To bypass: git commit --no-verify${NC}"
-        ARCHITECTURE_STOP=1
-    fi
+    file_count=$(count_lines "$SOURCE_FILES")
+    invoke_agent_with_cache "backend-quality" "lead-software-architect" "$PROMPT" "$file_count" "backend-quality"
 
     echo ""
     echo "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
 }
-
-# Run architecture analysis
-run_architecture_agent
-
-# =============================================
-# Stability & Perpetual Operation Analysis
-# =============================================
-# Use Claude to validate stability patterns for long-running operation
-
-run_stability_agent() {
-    # Check if claude is available
-    if ! command -v claude >/dev/null 2>&1; then
-        return 0
-    fi
-
-    # Get staged server files (services, infrastructure, middleware)
-    STABILITY_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^server/src/(services|infrastructure|middleware|jobs|websocket)/' | grep -E '\.ts$' || true)
-
-    if [ -z "$STABILITY_FILES" ]; then
-        return 0
-    fi
-
-    echo ""
-    echo "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo "${BLUE}🔒 Stability & Perpetual Operation Analysis${NC}"
-    echo "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo ""
-
-    # Get the diff for context
-    STABILITY_DIFF=$(git diff --cached -- $STABILITY_FILES)
-
-    # Create the prompt for stability analysis
-    PROMPT="PRE-COMMIT STABILITY REVIEW FOR PERPETUAL OPERATION
-
-Analyze these changes for stability issues that could affect 24/7 continuous operation.
-
-STAGED FILES:
-$STABILITY_FILES
-
-DIFF:
-$STABILITY_DIFF
-
-STABILITY REQUIREMENTS:
-- Server must run indefinitely without restarts
-- No memory leaks from unbounded collections (Map, Set, Array)
-- All intervals/timers must be cleared on shutdown
-- External service calls need circuit breakers or retry limits
-- Graceful shutdown must release all resources
-- Rate limiters and caches must have size bounds
-
-Answer concisely:
-1. MEMORY SAFETY: Any unbounded collections, growing Maps/Sets/Arrays, or closure memory leaks?
-2. RESOURCE CLEANUP: Are all intervals, timers, event listeners, and connections properly cleaned up?
-3. FAILURE HANDLING: Do external calls have circuit breakers, timeouts, or retry limits?
-4. SHUTDOWN: Will graceful shutdown properly release all resources?
-5. BOUNDS CHECKING: Do queues, caches, and buffers have size limits?
-
-End with one of:
-- ✅ RECOMMEND PROCEED - no stability issues found
-- ⚠️ SUGGEST REVIEW - minor stability concerns worth checking
-- ❌ RECOMMEND STOP - stability issues that could cause crashes or memory exhaustion"
-
-    # Run claude with the lead-software-architect agent
-    # Output to stderr (visible in terminal) and capture to temp file
-    TEMP_OUTPUT=$(mktemp)
-    echo "$PROMPT" | claude --agent lead-software-architect --print 2>&1 | tee "$TEMP_OUTPUT" >&2
-    AGENT_OUTPUT=$(cat "$TEMP_OUTPUT")
-    rm -f "$TEMP_OUTPUT"
-
-    # Check if agent recommends stopping
-    if echo "$AGENT_OUTPUT" | grep -q "RECOMMEND STOP"; then
-        echo ""
-        echo "${RED}❌ Stability agent recommends stopping. Please address the issues above.${NC}"
-        echo "${YELLOW}To bypass: git commit --no-verify${NC}"
-        STABILITY_STOP=1
-    fi
-
-    echo ""
-    echo "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo ""
-}
-
-# Run stability analysis
-run_stability_agent
 
 # =============================================
 # Code Documentation Analysis
 # =============================================
-# Check if complex or security-critical code has adequate documentation
 
 run_documentation_agent() {
-    # Check if claude is available
     if ! command -v claude >/dev/null 2>&1; then
         return 0
     fi
 
-    # Get staged source files (focus on backend services and bitcoin-related code)
     DOC_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.(ts|tsx)$' | grep -vE '(\.test\.|\.spec\.|/tests/)' || true)
-
     if [ -z "$DOC_FILES" ]; then
         return 0
     fi
 
-    # Check if any security-critical files are being changed
     CRITICAL_FILES=$(echo "$DOC_FILES" | grep -E '(bitcoin|crypto|key|sign|wallet|descriptor|address|transaction|auth|password|token|secret)' || true)
 
-    # If no critical files, only run for large diffs
+    # Skip for small non-security diffs
     if [ -z "$CRITICAL_FILES" ]; then
         DIFF_LINES=$(git diff --cached --stat | tail -1 | grep -oE '[0-9]+ insertion' | grep -oE '[0-9]+' || echo "0")
         if [ "$DIFF_LINES" -lt 50 ]; then
@@ -423,10 +437,7 @@ run_documentation_agent() {
     echo "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
 
-    # Get the diff for context
     DOC_DIFF=$(git diff --cached -- $DOC_FILES)
-
-    # Create the prompt for documentation analysis
     PROMPT="PRE-COMMIT CODE DOCUMENTATION REVIEW
 
 Analyze these changes for adequate documentation, especially for complex or security-critical code.
@@ -458,31 +469,61 @@ End with one of:
 - ⚠️ SUGGEST REVIEW - minor documentation improvements recommended
 - ❌ RECOMMEND STOP - security-critical or complex code lacks essential documentation"
 
-    # Run claude with general-purpose agent for documentation review
-    # Output to stderr (visible in terminal) and capture to temp file
-    TEMP_OUTPUT=$(mktemp)
-    echo "$PROMPT" | claude --print 2>&1 | tee "$TEMP_OUTPUT" >&2
-    AGENT_OUTPUT=$(cat "$TEMP_OUTPUT")
-    rm -f "$TEMP_OUTPUT"
-
-    # Check if agent recommends stopping
-    if echo "$AGENT_OUTPUT" | grep -q "RECOMMEND STOP"; then
-        echo ""
-        echo "${RED}❌ Documentation agent recommends stopping. Please address the issues above.${NC}"
-        echo "${YELLOW}To bypass: git commit --no-verify${NC}"
-        DOCUMENTATION_STOP=1
-    fi
+    file_count=$(count_lines "$DOC_FILES")
+    # Empty claude_agent = use general-purpose
+    invoke_agent_with_cache "documentation" "" "$PROMPT" "$file_count" "documentation"
 
     echo ""
     echo "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
 }
 
-# Run documentation analysis
-run_documentation_agent
+# =============================================
+# Launch AI agents in parallel
+# =============================================
+# Each agent runs in a background subshell with its own output file.
+# Stop verdicts propagate via marker files in $AGENT_TMP_DIR (set -e +
+# subshells would otherwise swallow the signal). After `wait`, outputs
+# are replayed in deterministic order so the user sees consistent structure.
+# Warning: this spawns up to 4 concurrent `claude` CLI processes — if the
+# CLI ever imposes per-user concurrency limits this may need re-serialising.
+
+run_and_report() {
+    # $1 = function, $2 = order, $3 = display name
+    "$1" > "$AGENT_TMP_DIR/${2}-${3}.log" 2>&1
+    echo "${GREEN}✓${NC} ${3} complete" >&2
+}
+
+if [ "$SKIP_AI_AGENTS" = "1" ]; then
+    echo ""
+    echo "${YELLOW}Skipping AI agents — rebase/cherry-pick/merge in progress${NC}"
+    echo ""
+else
+    echo ""
+    echo "${CYAN}Running AI agents in parallel...${NC}"
+
+    run_and_report run_test_coverage_agent   1 test-coverage &
+    run_and_report run_ui_consistency_agent  2 ui-consistency &
+    run_and_report run_backend_quality_agent 3 backend-quality &
+    run_and_report run_documentation_agent   4 documentation &
+
+    wait
+
+    echo ""
+    # Replay outputs in deterministic order regardless of completion order.
+    for f in "$AGENT_TMP_DIR"/[0-9]-*.log; do
+        [ -s "$f" ] && cat "$f" >&2
+    done
+
+    # Harvest stop markers from subshells.
+    [ -f "$AGENT_TMP_DIR/test-coverage.stop" ]   && TEST_COVERAGE_STOP=1
+    [ -f "$AGENT_TMP_DIR/ui-consistency.stop" ]  && UI_CONSISTENCY_STOP=1
+    [ -f "$AGENT_TMP_DIR/backend-quality.stop" ] && BACKEND_QUALITY_STOP=1
+    [ -f "$AGENT_TMP_DIR/documentation.stop" ]   && DOCUMENTATION_STOP=1
+fi
 
 # Check if any agent recommended stopping
-if [ "$TEST_COVERAGE_STOP" = "1" ] || [ "$UI_CONSISTENCY_STOP" = "1" ] || [ "$ARCHITECTURE_STOP" = "1" ] || [ "$STABILITY_STOP" = "1" ] || [ "$DOCUMENTATION_STOP" = "1" ]; then
+if [ "$TEST_COVERAGE_STOP" = "1" ] || [ "$UI_CONSISTENCY_STOP" = "1" ] || [ "$BACKEND_QUALITY_STOP" = "1" ] || [ "$DOCUMENTATION_STOP" = "1" ]; then
     echo ""
     echo "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo "${RED}⛔ COMMIT BLOCKED - One or more agents recommend stopping${NC}"
