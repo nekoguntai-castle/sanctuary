@@ -213,6 +213,15 @@ describe('NotificationChannelRegistry', () => {
       shouldNotify: true,
       shouldPause: true,
       metadata: {},
+    }, {
+      agentId: 'agent-duplicate',
+      agentName: 'Duplicate Agent',
+      txid,
+      destinationClassification: 'external_spend',
+      unknownDestinationHandlingMode: 'notify_only',
+      shouldNotify: true,
+      shouldPause: false,
+      metadata: {},
     }]);
     registry.register(enabled);
 

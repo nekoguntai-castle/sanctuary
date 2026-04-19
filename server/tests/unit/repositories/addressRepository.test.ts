@@ -136,6 +136,45 @@ describe('Address Repository', () => {
     });
   });
 
+  describe('findWalletSummariesByAddresses', () => {
+    it('returns early for empty address lists', async () => {
+      const result = await addressRepository.findWalletSummariesByAddresses(['']);
+
+      expect(result).toEqual([]);
+      expect(prisma.address.findMany).not.toHaveBeenCalled();
+    });
+
+    it('deduplicates address strings before querying wallet summaries', async () => {
+      const rows = [{
+        address: 'bc1qknown',
+        wallet: { id: 'wallet-1', name: 'Known Wallet' },
+      }];
+      (prisma.address.findMany as Mock).mockResolvedValue(rows);
+
+      const result = await addressRepository.findWalletSummariesByAddresses([
+        'bc1qknown',
+        'bc1qknown',
+        '',
+      ]);
+
+      expect(result).toEqual(rows);
+      expect(prisma.address.findMany).toHaveBeenCalledWith({
+        where: {
+          address: { in: ['bc1qknown'] },
+        },
+        select: {
+          address: true,
+          wallet: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+    });
+  });
+
   describe('markAsUsed', () => {
     it('should mark address as used', async () => {
       const usedAddress = { ...mockAddress, used: true };

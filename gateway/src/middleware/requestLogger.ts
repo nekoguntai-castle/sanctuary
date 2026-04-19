@@ -224,10 +224,8 @@ export function logSecurityEvent(
   // Log locally
   log.warn(`SECURITY: ${event}`, eventDetails);
 
-  // Send to backend (async, fire-and-forget)
-  sendToBackendAudit(event, eventDetails).catch(() => {
-    // Errors already logged in sendToBackendAudit
-  });
+  // Send to backend (async, fire-and-forget); sendToBackendAudit logs and swallows transport errors.
+  void sendToBackendAudit(event, eventDetails);
 }
 
 /**

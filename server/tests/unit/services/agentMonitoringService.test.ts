@@ -30,6 +30,10 @@ import {
   evaluateOperationalTransactionAlerts,
   evaluateRejectedFundingAttemptAlert,
 } from '../../../src/services/agentMonitoringService';
+import {
+  buildDestinationMetadata,
+  getUnknownDestinationHandlingMode,
+} from '../../../src/services/agentMonitoring/destinationClassification';
 import type { TransactionNotification } from '../../../src/services/notifications/channels/types';
 
 describe('agentMonitoringService', () => {
@@ -53,8 +57,13 @@ describe('agentMonitoringService', () => {
     const knownWallets = new Map([
       ['tb1qopschange', { walletId: 'operational-wallet', walletName: 'Ops' }],
       ['tb1qknownwallet', { walletId: 'wallet-2', walletName: 'Savings' }],
+      ['tb1qnoname', { walletId: 'wallet-3' }],
     ]);
 
+    expect(getUnknownDestinationHandlingMode({
+      notifyOnOperationalSpend: false,
+      pauseOnUnexpectedSpend: false,
+    } as any)).toBe('record_only');
     expect(classifyOperationalSpendDestination('operational-wallet', {
       txid: 'empty',
       type: 'sent',
@@ -96,6 +105,77 @@ describe('agentMonitoringService', () => {
       counterpartyAddress: 'tb1qknownwallet',
       outputs: null,
     }, knownWallets).classification).toBe('known_self_transfer');
+    expect(classifyOperationalSpendDestination('operational-wallet', {
+      txid: 'self',
+      type: 'self_transfer',
+      outputs: [{ address: 'tb1qopschange', isOurs: true }],
+    }, knownWallets)).toEqual(expect.objectContaining({
+      classification: 'change_like_movement',
+      outputCount: 1,
+      classificationSource: 'outputs',
+    }));
+    expect(classifyOperationalSpendDestination('operational-wallet', {
+      txid: 'consolidation-no-outputs',
+      type: 'consolidation',
+      outputs: null,
+    })).toEqual(expect.objectContaining({
+      classification: 'change_like_movement',
+      outputCount: 0,
+      ownedOutputCount: 0,
+      classificationSource: 'counterparty',
+    }));
+    expect(classifyOperationalSpendDestination('operational-wallet', {
+      txid: 'current-counterparty',
+      type: 'sent',
+      counterpartyAddress: 'tb1qopschange',
+      outputs: null,
+    }, knownWallets)).toEqual(expect.objectContaining({
+      classification: 'change_like_movement',
+      knownDestinationWalletId: 'operational-wallet',
+      knownDestinationWalletName: 'Ops',
+    }));
+    expect(classifyOperationalSpendDestination('operational-wallet', {
+      txid: 'current-counterparty-no-name',
+      type: 'sent',
+      counterpartyAddress: 'tb1qcurrentnoname',
+      outputs: null,
+    }, new Map([
+      ['tb1qcurrentnoname', { walletId: 'operational-wallet' }],
+    ])).knownDestinationWalletName).toBeNull();
+    expect(classifyOperationalSpendDestination('operational-wallet', {
+      txid: 'external-counterparty',
+      type: 'sent',
+      counterpartyAddress: 'tb1qexternal',
+      outputs: null,
+    }, knownWallets).classification).toBe('external_spend');
+    const noNameKnown = classifyOperationalSpendDestination('operational-wallet', {
+      txid: 'known-no-name',
+      type: 'sent',
+      counterpartyAddress: 'tb1qnoname',
+      outputs: null,
+    }, knownWallets);
+    expect(noNameKnown.knownDestinationWalletName).toBeNull();
+    expect(buildDestinationMetadata(noNameKnown, 'record_only', {
+      shouldNotify: false,
+      shouldPause: false,
+    })).toEqual(expect.objectContaining({
+      destinationAddress: 'tb1qnoname',
+      knownDestinationWalletId: 'wallet-3',
+      unknownDestinationHandlingMode: 'record_only',
+    }));
+    expect(buildDestinationMetadata(
+      classifyOperationalSpendDestination('operational-wallet', {
+        txid: 'known-with-name',
+        type: 'sent',
+        counterpartyAddress: 'tb1qknownwallet',
+        outputs: null,
+      }, knownWallets),
+      'notify_only',
+      { shouldNotify: true, shouldPause: false }
+    )).toEqual(expect.objectContaining({
+      knownDestinationWalletName: 'Savings',
+      shouldNotify: true,
+    }));
   });
 
   it('creates operational spend, fee, and balance alerts with dedupe keys', async () => {
@@ -283,6 +363,70 @@ describe('agentMonitoringService', () => {
         }),
       }),
     ]));
+  });
+
+  it('records unknown destinations without notification or pause when both policies are disabled', async () => {
+    const txid = 'h'.repeat(64);
+    mocks.transactionRepository.findByWalletIdAndTxids.mockResolvedValueOnce([]);
+
+    const evaluations = await evaluateOperationalTransactionAlerts('operational-wallet', [{
+      txid,
+      type: 'sent',
+      amount: -12_000n,
+      feeSats: 450n,
+    }], [
+      agentFixture({
+        id: 'agent-record',
+        notifyOnOperationalSpend: false,
+        pauseOnUnexpectedSpend: false,
+      }),
+    ] as any);
+
+    expect(evaluations).toEqual([
+      expect.objectContaining({
+        agentId: 'agent-record',
+        destinationClassification: 'unknown_destination',
+        unknownDestinationHandlingMode: 'record_only',
+        shouldNotify: false,
+        shouldPause: false,
+      }),
+    ]);
+    expect(mocks.addressRepository.findWalletSummariesByAddresses).toHaveBeenCalledWith([]);
+  });
+
+  it('uses known address ownership rows when evaluating operational transactions', async () => {
+    const txid = 'i'.repeat(64);
+    mocks.transactionRepository.findByWalletIdAndTxids.mockResolvedValueOnce([{
+      txid,
+      type: 'sent',
+      counterpartyAddress: 'tb1qknownwallet',
+      outputs: [{ address: 'tb1qknownwallet', amount: 12_000n, isOurs: false }],
+    }]);
+    mocks.addressRepository.findWalletSummariesByAddresses.mockResolvedValueOnce([{
+      address: 'tb1qknownwallet',
+      wallet: { id: 'wallet-2', name: 'Savings' },
+    }]);
+
+    const evaluations = await evaluateOperationalTransactionAlerts('operational-wallet', [{
+      txid,
+      type: 'sent',
+      amount: -12_000n,
+    }], [
+      agentFixture({
+        notifyOnOperationalSpend: true,
+      }),
+    ] as any);
+
+    expect(mocks.addressRepository.findWalletSummariesByAddresses).toHaveBeenCalledWith(['tb1qknownwallet']);
+    expect(evaluations).toEqual([
+      expect.objectContaining({
+        destinationClassification: 'known_self_transfer',
+        metadata: expect.objectContaining({
+          knownDestinationWalletId: 'wallet-2',
+          knownDestinationWalletName: 'Savings',
+        }),
+      }),
+    ]);
   });
 
   it('creates a repeated rejected funding attempt alert when the threshold is reached', async () => {

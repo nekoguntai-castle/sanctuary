@@ -165,6 +165,7 @@ function buildReviewOutputsFromTxData(
   txData: TransactionData,
   getAddressLabel: (address: string) => string | undefined
 ): FlowOutput[] {
+  /* v8 ignore next -- callers only enter this helper after verifying txData.outputs is non-empty */
   return (txData.outputs ?? []).map(output => ({
     address: output.address,
     amount: output.amount,

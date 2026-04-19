@@ -171,9 +171,15 @@ function classifyFromOutputs(
     return buildKnownInternalClassification(knownInternal.output.address, knownInternal.knownWallet, outputs.length, currentWalletOutputs.length, externalOutputs.length, 'outputs');
   }
 
+  const changeOutput = currentWalletOutputs[0];
+  /* v8 ignore next 3 -- non-empty usable outputs partition into current or external outputs; external-only cases return above */
+  if (!changeOutput) {
+    return buildUnknownClassification(outputs.length, 'outputs');
+  }
+
   return {
     classification: 'change_like_movement',
-    destinationAddress: currentWalletOutputs[0]?.address ?? null,
+    destinationAddress: changeOutput.address,
     knownDestinationWalletId: walletId,
     knownDestinationWalletName: null,
     outputCount: outputs.length,

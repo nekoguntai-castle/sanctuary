@@ -298,6 +298,40 @@ describe('AgentManagement', () => {
     expect(screen.getByText('Expired')).toBeInTheDocument();
   });
 
+  it('surfaces owner funding override create and revoke failures', async () => {
+    const user = userEvent.setup();
+    vi.mocked(adminApi.createAgentFundingOverride).mockRejectedValueOnce(new Error('create failed'));
+    vi.mocked(adminApi.revokeAgentFundingOverride).mockRejectedValueOnce(new Error('revoke failed'));
+
+    render(<AgentManagement />);
+
+    await screen.findByText('Treasury Agent');
+    await user.click(screen.getByRole('button', { name: 'Overrides' }));
+
+    await user.type(await screen.findByPlaceholderText('250000'), '250000');
+    await user.type(screen.getByLabelText('Expires at'), '2026-04-18T09:30');
+    await user.type(screen.getByPlaceholderText('Emergency refill'), 'Higher refill');
+    await user.click(screen.getByRole('button', { name: 'Create Override' }));
+    expect(await screen.findByText('create failed')).toBeInTheDocument();
+
+    await user.click(screen.getAllByRole('button', { name: 'Revoke' }).at(-1)!);
+    expect(await screen.findByText('revoke failed')).toBeInTheDocument();
+  });
+
+  it('does not revoke owner funding overrides when confirmation is cancelled', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal('confirm', vi.fn(() => false));
+
+    render(<AgentManagement />);
+
+    await screen.findByText('Treasury Agent');
+    await user.click(screen.getByRole('button', { name: 'Overrides' }));
+    await screen.findByText('Emergency refill');
+    await user.click(screen.getAllByRole('button', { name: 'Revoke' }).at(-1)!);
+
+    expect(adminApi.revokeAgentFundingOverride).not.toHaveBeenCalled();
+  });
+
   it('reports when a one-time key cannot be copied', async () => {
     const user = userEvent.setup();
     Object.defineProperty(navigator, 'clipboard', {

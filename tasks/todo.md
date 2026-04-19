@@ -1,4 +1,47 @@
-# Next Task: Agent Wallet Funding Phase 16
+# Next Task: Restore 100% Coverage Gates
+
+Status: complete
+
+Goal: make the app, backend, and gateway coverage commands exit cleanly at the repository's 100% global thresholds without weakening the coverage policy.
+
+## Restore 100% Coverage Checklist
+
+- [x] Inspect exact uncovered app/backend statements, functions, and branches from current coverage artifacts.
+- [x] Add the smallest focused tests or narrow justified coverage annotations for legitimate unreachable fallback branches.
+- [x] Run app, backend, and gateway coverage commands until all pass.
+- [x] Run final quality, edge case, and self-review, then update this review section.
+
+## Restore 100% Coverage Review
+
+Changes:
+
+- Added focused app tests for formatter fallbacks, owner override load/create/revoke failures, import QR guard behavior, device preference defaults, node config control fallbacks, receive modal helpers, wallet draft notifications, and zero-pending balance display.
+- Added backend tests for agent destination classification modes, known-address ownership lookups, metadata formatting, Telegram operational-spend copy, address repository dedupe/empty input behavior, and admin agent creator defaults.
+- Simplified two legitimate dead/fallback coverage points: gateway audit fire-and-forget now relies on the sender's internal catch, and destination classification now documents the established non-empty current-output invariant with an explicit defensive guard.
+- Added narrow `v8 ignore` annotations only for UI-disabled guards and async unmount race guards that are intentionally retained for defensive correctness.
+
+Verification:
+
+- `npm run test:coverage` passed: 396 app test files, 5555 tests, 100% statements/branches/functions/lines.
+- `npm run test:backend:coverage` passed: 380 backend test files passed, 22 skipped; 9096 tests passed, 503 skipped; 100% statements/branches/functions/lines.
+- `npm run test:coverage` passed in `gateway`: 20 gateway test files, 513 tests, 100% statements/branches/functions/lines.
+- `npm run lint:app` passed.
+- `npm run lint:server` passed, including `check:api-body-validation`.
+- `npm run lint:gateway` passed.
+- `npm run typecheck:app` passed.
+- `npm run typecheck:tests` passed.
+- `npm run typecheck:server:tests` passed.
+- `git diff --check` passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: covered null user preferences, undefined wallet IDs, null shared users, missing receive candidates, null transaction outputs, empty address lists, and missing operational-spend metadata.
+- Boundary values: covered zero pending balance, invalid bigint formatter input, absent alert limits, all unknown-destination handling modes, and QR import data that is present but not yet scanned.
+- System boundaries: backend classification still derives from persisted transaction details and known wallet address ownership; notification formatting remains informational and does not sign, approve, or broadcast.
+- Async/race behavior: unmount guards for device loading, node config loading, and Payjoin URI loading remain intact; gateway audit dispatch remains fire-and-forget with errors handled inside the sender.
+- Diff review: changes are scoped to coverage tests, two small invariant simplifications, and explicit annotations for retained defensive guards. Existing grade-report files remain modified from the prior `$grade` work and were not reverted.
+
+## Previous Task: Agent Wallet Funding Phase 16
 
 Status: complete
 

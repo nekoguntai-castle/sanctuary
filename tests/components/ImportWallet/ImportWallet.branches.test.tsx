@@ -207,6 +207,22 @@ describe('ImportWallet guard branches', () => {
     expect(state.setStep).not.toHaveBeenCalledWith(3);
   });
 
+  it('skips QR validation when scanned data is incomplete', async () => {
+    const user = userEvent.setup();
+    const state = createState({
+      step: 2,
+      format: 'qr_code',
+      qrScanned: false,
+      importData: '{"descriptor":"..."}',
+    });
+    renderImportWalletWithState(state);
+
+    await user.click(screen.getByRole('button', { name: /Next Step/i }));
+
+    expect(mockValidateImportData).not.toHaveBeenCalled();
+    expect(state.setStep).not.toHaveBeenCalledWith(3);
+  });
+
   it('skips validation when generic step-2 input is empty', async () => {
     const user = userEvent.setup();
     const state = createState({

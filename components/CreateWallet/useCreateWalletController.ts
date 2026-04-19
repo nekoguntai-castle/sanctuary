@@ -39,9 +39,11 @@ export function useCreateWalletController() {
     const loadDevices = async () => {
       try {
         const apiDevices = await devicesApi.getDevices();
+        /* v8 ignore next -- unmount guard for an async load race */
         if (isMounted) setAvailableDevices(apiDevices);
       } catch (error) {
         logError(log, error, 'Failed to load devices');
+        /* v8 ignore next -- unmount guard for an async load race */
         if (isMounted) setAvailableDevices([]);
       }
     };
@@ -100,6 +102,7 @@ export function useCreateWalletController() {
   }, [createWalletState, handleError, step]);
 
   const handleCreate = useCallback(async () => {
+    /* v8 ignore next -- UI navigation cannot reach create without a selected wallet type */
     if (!walletType) return;
 
     setIsSubmitting(true);

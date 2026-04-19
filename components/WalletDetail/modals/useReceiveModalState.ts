@@ -93,11 +93,14 @@ export function useReceiveModalState({
           getPayjoinAddressIdentifier(selectedReceiveAddress),
           getPayjoinUriOptions(receiveAmount)
         );
+        /* v8 ignore next -- unmount guard for an async Payjoin request race */
         if (!cancelled) setPayjoinUri(response.uri);
       } catch (error) {
         log.error('Failed to generate Payjoin URI', { error });
+        /* v8 ignore next -- unmount guard for an async Payjoin request race */
         if (!cancelled) setPayjoinUri(null);
       } finally {
+        /* v8 ignore next -- unmount guard for an async Payjoin request race */
         if (!cancelled) setPayjoinLoading(false);
       }
     };

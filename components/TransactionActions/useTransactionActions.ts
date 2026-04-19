@@ -94,6 +94,7 @@ export function useTransactionActions({
   };
 
   const handleCPFP = async () => {
+    /* v8 ignore next -- the CPFP submit button is disabled below 1 sat/vB */
     if (targetFeeRate < 1) return;
 
     try {

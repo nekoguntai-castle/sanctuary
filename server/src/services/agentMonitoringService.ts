@@ -257,6 +257,7 @@ export async function evaluateOperationalTransactionAlerts(
 
     for (const agent of agents) {
       for (const tx of sentTransactions) {
+        /* v8 ignore next -- loadDestinationClassifications creates an entry for every sent txid */
         const classification = classificationsByTxid.get(tx.txid) ?? buildUnknownClassification(0, 'missing_details');
         const handlingMode = getUnknownDestinationHandlingMode(agent);
         const shouldNotify = agent.notifyOnOperationalSpend;

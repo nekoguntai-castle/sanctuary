@@ -21,6 +21,7 @@ export function useNodeConfigData() {
     async function loadData() {
       try {
         const [config, serverList, torStatus] = await loadNodeConfigSources();
+        /* v8 ignore next -- unmount guard for an async load race */
         if (cancelled) return;
 
         setNodeConfig(config);
@@ -30,8 +31,10 @@ export function useNodeConfigData() {
         void fetchPoolStats(setPoolStats);
       } catch (error) {
         log.error('Failed to load data', { error });
+        /* v8 ignore next -- unmount guard for an async load race */
         if (!cancelled) setNodeConfig(DEFAULT_NODE_CONFIG);
       } finally {
+        /* v8 ignore next -- unmount guard for an async load race */
         if (!cancelled) setLoading(false);
       }
     }
