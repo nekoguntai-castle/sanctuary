@@ -43,7 +43,9 @@ AGENT_LOG_FILE="$AGENT_LOG_DIR/agent-audit.jsonl"
 AGENT_CACHE_DIR="$AGENT_LOG_DIR/agent-cache"
 # Bump when ANY agent prompt changes to invalidate cache globally.
 # v2: switched agents from plaintext markers to structured JSON rubric + issues.
-PROMPT_VERSION="v2"
+# v3: verdict derived from rubric in shell (agents' self-reported verdict
+#     no longer trusted); old cache entries must be re-classified.
+PROMPT_VERSION="v3"
 # Per-commit scratch dir for parallel agent outputs and stop markers.
 AGENT_TMP_DIR=$(mktemp -d -t sanctuary-agents-XXXXXX)
 trap 'rm -rf "$AGENT_TMP_DIR"' EXIT
@@ -93,18 +95,54 @@ extract_json_object() {
     echo "null"
 }
 
-# Classify an agent's output. Prefers JSON `.verdict`; falls back to legacy
-# plaintext marker phrases so pre-v2 cache entries and off-format agents
-# still classify. UNKNOWN is itself a useful signal for prompt tuning.
+# Derive the verdict mechanically from the rubric. We do NOT trust the
+# agent's self-reported `.verdict` — an LLM can contradict its own rubric
+# (claiming "PROCEED" while marking a concern "BLOCK"). The rubric is the
+# ground truth; verdict is computed from it here in shell.
+#
+# Returns STOP / REVIEW / PROCEED / UNKNOWN.
+# When the rubric is empty or missing, falls back to the self-reported
+# verdict — better than UNKNOWN when the agent structured its response
+# without per-concern breakdown.
+derive_verdict_from_body() {
+    # $1 = JSON body
+    local values has_block has_warn has_any v
+    # Collect rubric values as an array
+    values=$(echo "$1" | jq -c '(.rubric // {}) | to_entries | map(.value | ascii_upcase)')
+    has_block=$(echo "$values" | jq -r 'any(. == "BLOCK")')
+    if [ "$has_block" = "true" ]; then
+        echo "STOP"
+        return
+    fi
+    has_warn=$(echo "$values" | jq -r 'any(. == "WARN")')
+    if [ "$has_warn" = "true" ]; then
+        echo "REVIEW"
+        return
+    fi
+    has_any=$(echo "$values" | jq -r 'length')
+    if [ "$has_any" -gt 0 ] 2>/dev/null; then
+        echo "PROCEED"
+        return
+    fi
+    # Empty/missing rubric → fall back to self-reported verdict
+    v=$(echo "$1" | jq -r '.verdict // "UNKNOWN"' | tr '[:lower:]' '[:upper:]')
+    case "$v" in
+        STOP|REVIEW|PROCEED) echo "$v" ;;
+        *) echo "UNKNOWN" ;;
+    esac
+}
+
+# Classify an agent's output. Prefers the derived verdict (from rubric);
+# falls back to legacy plaintext markers so pre-v2 cache entries and
+# agents that ignore the JSON format still classify. UNKNOWN is itself
+# a useful signal for prompt tuning.
 extract_verdict() {
     # $1 = path to agent output file
-    local body v
+    local body
     body=$(extract_json_object "$1")
     if [ "$body" != "null" ]; then
-        v=$(echo "$body" | jq -r '.verdict // "UNKNOWN"' | tr '[:lower:]' '[:upper:]')
-        case "$v" in
-            STOP|REVIEW|PROCEED) echo "$v"; return ;;
-        esac
+        derive_verdict_from_body "$body"
+        return
     fi
     # Plaintext fallback (legacy format)
     if grep -q "RECOMMEND STOP" "$1"; then echo "STOP"; return; fi
@@ -124,12 +162,18 @@ count_lines() {
 
 # Append one JSONL record per agent invocation. Cache hits log duration_s=0.
 # Includes the parsed JSON body (rubric + issues) when extractable so the
-# journal is queryable without re-parsing the raw output.
+# journal is queryable without re-parsing the raw output. Records both
+# `verdict` (derived from the rubric — used for gating) and `self_verdict`
+# (agent's self-reported value) so disagreements are queryable.
 log_agent_run() {
     # $1=agent_name $2=verdict $3=duration_s $4=file_count $5=output_file $6=cache_hit(0|1)
     ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
     head=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
     body=$(extract_json_object "$5")
+    self_verdict="UNKNOWN"
+    if [ "$body" != "null" ]; then
+        self_verdict=$(echo "$body" | jq -r '.verdict // "UNKNOWN"' | tr '[:lower:]' '[:upper:]')
+    fi
 
     if command -v jq >/dev/null 2>&1; then
         jq -nc \
@@ -137,18 +181,20 @@ log_agent_run() {
             --arg head "$head" \
             --arg agent "$1" \
             --arg verdict "$2" \
+            --arg self_verdict "$self_verdict" \
             --arg duration_s "$3" \
             --arg file_count "$4" \
             --arg cache_hit "$6" \
             --argjson body "$body" \
             --rawfile output "$5" \
             '{timestamp:$ts, head:$head, agent:$agent, verdict:$verdict,
+              self_verdict:$self_verdict, verdict_disagrees:($verdict != $self_verdict and $self_verdict != "UNKNOWN"),
               duration_s:($duration_s|tonumber), file_count:($file_count|tonumber),
               cache_hit:($cache_hit=="1"), body:$body, output:$output}' >> "$AGENT_LOG_FILE" 2>/dev/null || true
     else
         {
             echo "---"
-            echo "timestamp=$ts head=$head agent=$1 verdict=$2 duration_s=$3 file_count=$4 cache_hit=$6"
+            echo "timestamp=$ts head=$head agent=$1 verdict=$2 self_verdict=$self_verdict duration_s=$3 file_count=$4 cache_hit=$6"
             cat "$5"
         } >> "$AGENT_LOG_FILE" 2>/dev/null || true
     fi
@@ -166,13 +212,21 @@ render_agent_body() {
         return
     fi
 
-    verdict=$(echo "$body" | jq -r '.verdict // "UNKNOWN"' | tr '[:lower:]' '[:upper:]')
+    # Show the DERIVED verdict (from the rubric) in the banner — that's the
+    # one used for gating. If the agent self-reported a different verdict,
+    # surface the disagreement so the author can see the agent contradicted
+    # its own rubric.
+    verdict=$(derive_verdict_from_body "$body")
+    self_verdict=$(echo "$body" | jq -r '.verdict // "UNKNOWN"' | tr '[:lower:]' '[:upper:]')
     case "$verdict" in
         STOP)    printf '%b\n' "${RED}❌ RECOMMEND STOP${NC}" ;;
         REVIEW)  printf '%b\n' "${YELLOW}⚠️  SUGGEST REVIEW${NC}" ;;
         PROCEED) printf '%b\n' "${GREEN}✅ RECOMMEND PROCEED${NC}" ;;
         *)       printf '%b\n' "${YELLOW}Verdict: UNKNOWN (agent did not follow output format)${NC}" ;;
     esac
+    if [ "$self_verdict" != "UNKNOWN" ] && [ "$self_verdict" != "$verdict" ]; then
+        printf '%b\n' "${YELLOW}(agent self-reported ${self_verdict}; overridden by rubric-derived ${verdict})${NC}"
+    fi
 
     rubric_entries=$(echo "$body" | jq -r '.rubric // {} | to_entries[] | "\(.key)|\(.value)"')
     if [ -n "$rubric_entries" ]; then
