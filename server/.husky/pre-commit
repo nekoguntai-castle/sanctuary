@@ -329,10 +329,23 @@ verdict_blocks_commit() {
     esac
 }
 
-# Helper: if the verdict blocks, emit the reason + bypass hint and touch
-# the stop marker. Centralised so cache hits and fresh runs behave identically.
-maybe_set_stop() {
-    # $1=verdict $2=agent_name $3=stop_name
+# Split the gate decision into two functions. The marker is the ONLY
+# operation that must run for the gate to block — everything else is UI.
+# By touching the marker before render/log/cache, we guarantee that any
+# subsequent shell failure (render errors on weird output, log-file
+# permission issue, disk-full on cp) cannot silently drop a STOP/UNKNOWN
+# verdict. touch is wrapped in `|| true` for the same reason.
+ensure_gate_decision() {
+    # $1=verdict  $2=stop_marker_basename
+    if verdict_blocks_commit "$1"; then
+        touch "$AGENT_TMP_DIR/${2}.stop" 2>/dev/null || true
+    fi
+}
+
+# UI-only banner printed after the agent's rendered output, so the user
+# sees: rubric → issues → blocking notice in natural reading order.
+print_gate_banner() {
+    # $1=verdict  $2=agent_name
     if verdict_blocks_commit "$1"; then
         echo ""
         case "$1" in
@@ -340,7 +353,6 @@ maybe_set_stop() {
             UNKNOWN) printf '%b\n' "${RED}⛔ ${2} agent output was unparseable or malformed — failing closed.${NC}" ;;
         esac
         printf '%b\n' "${YELLOW}To bypass: git commit --no-verify${NC}"
-        touch "$AGENT_TMP_DIR/${3}.stop"
     fi
 }
 
@@ -360,13 +372,21 @@ invoke_agent_with_cache() {
     local cache_file="$AGENT_CACHE_DIR/${PROMPT_VERSION}-${DIFF_HASH}-${agent_name}.txt"
 
     if [ -f "$cache_file" ]; then
-        render_agent_body "$cache_file"
-        echo ""
-        printf '%b\n' "${CYAN}(cache hit — identical diff reviewed previously)${NC}"
         local verdict
         verdict=$(extract_verdict "$cache_file")
-        log_agent_run "$agent_name" "$verdict" 0 "$file_count" "$cache_file" 1
-        maybe_set_stop "$verdict" "$agent_name" "$stop_name"
+        # Defensive: extract_verdict always echoes a value, but if something
+        # goes catastrophically wrong default to UNKNOWN (fail closed).
+        verdict="${verdict:-UNKNOWN}"
+        # CRITICAL: set the gate marker before any UI/logging operation.
+        # Any failure below (render error, log write, etc.) must NOT drop
+        # the STOP/UNKNOWN signal.
+        ensure_gate_decision "$verdict" "$stop_name"
+
+        render_agent_body "$cache_file" || true
+        echo ""
+        printf '%b\n' "${CYAN}(cache hit — identical diff reviewed previously)${NC}"
+        print_gate_banner "$verdict" "$agent_name"
+        log_agent_run "$agent_name" "$verdict" 0 "$file_count" "$cache_file" 1 || true
         return 0
     fi
 
@@ -383,14 +403,19 @@ invoke_agent_with_cache() {
         echo "$prompt" | claude --print > "$temp_output" 2>&1 || true
     fi
 
-    render_agent_body "$temp_output"
     duration=$(( $(date +%s) - start_time ))
     verdict=$(extract_verdict "$temp_output")
-    log_agent_run "$agent_name" "$verdict" "$duration" "$file_count" "$temp_output" 0
-    cp "$temp_output" "$cache_file"
-    maybe_set_stop "$verdict" "$agent_name" "$stop_name"
+    verdict="${verdict:-UNKNOWN}"
+    # CRITICAL: gate marker BEFORE render/log/cache. Any failure in those
+    # downstream operations (render on weird output, disk-full on cp,
+    # journal write error) must not silently drop a blocking verdict.
+    ensure_gate_decision "$verdict" "$stop_name"
 
-    rm -f "$temp_output"
+    render_agent_body "$temp_output" || cat "$temp_output" 2>/dev/null || true
+    print_gate_banner "$verdict" "$agent_name"
+    log_agent_run "$agent_name" "$verdict" "$duration" "$file_count" "$temp_output" 0 || true
+    cp "$temp_output" "$cache_file" 2>/dev/null || true
+    rm -f "$temp_output" 2>/dev/null || true
 }
 
 # =============================================
