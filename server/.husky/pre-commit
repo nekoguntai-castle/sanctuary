@@ -55,7 +55,12 @@ AGENT_CACHE_DIR="$AGENT_LOG_DIR/agent-cache"
 #     longer falls back to self-reported verdict; plaintext marker
 #     fallback removed entirely. The only path to a non-UNKNOWN verdict
 #     is a non-empty rubric object with {OK,WARN,BLOCK} values.
-PROMPT_VERSION="v7"
+# v8: multi-object agent output now rejected at extraction time. Every
+#     extraction strategy enforces exactly-one-object via jq --slurp +
+#     length==1 check; a pre-scan rejects files with multiple candidate
+#     object openings. Closes the bypass where a leading "decoy" OK
+#     rubric could hide a real BLOCK in a later object.
+PROMPT_VERSION="v8"
 # Per-commit scratch dir for parallel agent outputs and stop markers.
 AGENT_TMP_DIR=$(mktemp -d -t sanctuary-agents-XXXXXX)
 trap 'rm -rf "$AGENT_TMP_DIR"' EXIT
@@ -66,38 +71,67 @@ mkdir -p "$AGENT_LOG_DIR" "$AGENT_CACHE_DIR"
 # unbounded. Runs every commit — cheap operation, silent on empty cache.
 find "$AGENT_CACHE_DIR" -type f -mtime +7 -delete 2>/dev/null || true
 
-# Extract the first well-formed JSON object from an agent's output file.
-# Agents are instructed to return only JSON, but LLMs sometimes wrap in
-# markdown fences or add stray prose — try several extraction strategies.
-# Echoes the JSON object (compact) on success, or "null" on failure.
+# Parse stdin and echo EXACTLY one top-level JSON object, or nothing.
+# Uses --slurp to wrap all top-level JSON values into an array, then
+# enforces length==1 && type=="object". This rejects:
+#   - multiple top-level JSON values (multi-object output)
+#   - non-object values (arrays, strings, numbers, booleans, null)
+#   - parse errors (invalid JSON stream)
+# Every extraction strategy pipes through this so a "decoy" leading
+# object cannot hide a BLOCK rubric in a later one.
+_parse_single_object() {
+    jq --slurp -c '
+        if length == 1 and (.[0] | type) == "object"
+        then .[0]
+        else empty
+        end
+    ' 2>/dev/null
+}
+
+# Extract the single well-formed JSON object from an agent's output file.
+# LLMs sometimes wrap responses in markdown fences or add stray prose —
+# we try several extraction strategies, but every one enforces the
+# single-object invariant. Echoes the JSON object (compact) on success,
+# or "null" on failure.
 extract_json_object() {
     # $1 = path to agent output file
-    local out
+    local out opening_count
 
-    # Strategy 1: whole file is valid JSON
-    out=$(jq -c . < "$1" 2>/dev/null)
-    if [ -n "$out" ] && [ "$out" != "null" ]; then
+    # PRE-CHECK: count lines starting with optional whitespace + '{'.
+    # More than one candidate object opening means the output is
+    # ambiguous — we cannot know which is authoritative. Reject so
+    # the gate fails closed rather than picking a potentially-decoy
+    # first object.
+    opening_count=$(grep -cE '^[[:space:]]*\{' "$1" 2>/dev/null || echo 0)
+    if [ -n "$opening_count" ] && [ "$opening_count" -gt 1 ] 2>/dev/null; then
+        echo "null"
+        return
+    fi
+
+    # Strategy 1: whole file is a single JSON object
+    out=$(_parse_single_object < "$1")
+    if [ -n "$out" ]; then
         echo "$out"
         return
     fi
 
     # Strategy 2: ```json ... ``` fenced block
-    out=$(sed -n '/^```json$/,/^```$/p' "$1" | sed '1d;$d' | jq -c . 2>/dev/null)
-    if [ -n "$out" ] && [ "$out" != "null" ]; then
+    out=$(sed -n '/^```json$/,/^```$/p' "$1" | sed '1d;$d' | _parse_single_object)
+    if [ -n "$out" ]; then
         echo "$out"
         return
     fi
 
     # Strategy 3: unlabelled ``` ... ``` fenced block
-    out=$(sed -n '/^```$/,/^```$/p' "$1" | sed '1d;$d' | jq -c . 2>/dev/null)
-    if [ -n "$out" ] && [ "$out" != "null" ]; then
+    out=$(sed -n '/^```$/,/^```$/p' "$1" | sed '1d;$d' | _parse_single_object)
+    if [ -n "$out" ]; then
         echo "$out"
         return
     fi
 
-    # Strategy 4: from first `{` at column 0 to last `}` at column 0
-    out=$(sed -n '/^{/,/^}$/p' "$1" | jq -c . 2>/dev/null)
-    if [ -n "$out" ] && [ "$out" != "null" ]; then
+    # Strategy 4: from first `{` at column 0 to first `}` at column 0
+    out=$(sed -n '/^{/,/^}$/p' "$1" | _parse_single_object)
+    if [ -n "$out" ]; then
         echo "$out"
         return
     fi
