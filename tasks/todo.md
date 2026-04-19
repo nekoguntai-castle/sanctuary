@@ -1,6 +1,48 @@
-# Next Task: Lizard UI Batch 1 - Labels And Notifications
+# Next Task: Lizard UI Batch 2 - Block Visualizer
 
 Status: in_progress
+
+Goal: batch the current BlockVisualizer lizard cluster by reducing `BlockVisualizer`, `Block`, `QueuedSummaryBlock`, and `PendingTxDot` complexity without changing mempool/confirmed block ordering, queued/stuck transaction display, explorer links, animation timing, compact layout, or public exports.
+
+## Lizard UI Batch 2 Checklist
+
+- [x] Confirm pushed Labels/Notifications CI status and clean local baseline.
+- [x] Inspect current top lizard targets and BlockVisualizer test coverage.
+- [x] Split BlockVisualizer orchestration/rendering while preserving public import paths.
+- [x] Split Block, queued-summary, and pending-dot rendering/helpers while preserving behavior.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [x] Update health/grade tracking and commit/push the batch after verification.
+
+## Lizard UI Batch 2 Review
+
+Changes:
+
+- Reduced `components/BlockVisualizer/BlockVisualizer.tsx` to a 24-line public wrapper and moved block animation state, pending/confirmed splitting, explorer navigation, and queue-summary selection into focused modules under `components/BlockVisualizer/BlockVisualizer/`.
+- Reduced `components/BlockVisualizer/Block.tsx` to a 10-line public wrapper and moved block view-model formatting, pending-transaction dot limits, fullness rendering, and tooltip rendering into focused modules under `components/BlockVisualizer/Block/`.
+- Split `components/BlockVisualizer/QueuedSummaryBlock.tsx` and `components/BlockVisualizer/PendingTxDot.tsx` into small entrypoints plus view/helper modules while preserving explorer links, stuck transaction indicators, compact rendering, and public imports.
+- Updated the health assessment and grade history: full lizard warnings moved from 100 to 96, and `BlockVisualizer`, `Block`, `QueuedSummaryBlock`, and `PendingTxDot` dropped out of the current top lizard target list.
+
+Verification:
+
+- `npx vitest run tests/components/BlockVisualizer/BlockVisualizer.branches.test.tsx tests/components/BlockVisualizer/Block.test.tsx tests/components/BlockVisualizer/QueuedSummaryBlock.test.tsx tests/components/BlockVisualizer/PendingTxDot.test.tsx tests/components/BlockVisualizer/blockUtils.test.ts` passed: 5 files, 38 tests.
+- `npm run typecheck:app` passed.
+- `npm run lint:app` passed.
+- `npm run test:coverage` passed: 396 files, 5,556 tests, 100% statements/branches/functions/lines.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/BlockVisualizer/BlockVisualizer.tsx components/BlockVisualizer/BlockVisualizer components/BlockVisualizer/Block.tsx components/BlockVisualizer/Block components/BlockVisualizer/QueuedSummaryBlock.tsx components/BlockVisualizer/QueuedSummaryBlock components/BlockVisualizer/PendingTxDot.tsx components/BlockVisualizer/PendingTxDot` passed with no warnings.
+- Full lizard warning count is now 96; top remaining component targets are `AppearanceTab`, `Account`, `AgentManagement`, and `TransactionList`.
+- `git diff --check`, grade-history JSONL parsing, large-file classification, and pinned gitleaks-only quality lane passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: missing blocks still show the loading state, absent queued summaries still render only when stuck transactions exist, optional pending transaction arrays still default empty, and absent recipient previews still omit the tooltip recipient row.
+- Boundary values: pending dot overflow still uses compact/non-compact limits of 3/5, block fullness remains capped at 100%, median fees below 1 sat/vB keep one decimal, and pending mempool block indices still count from the newest displayed pending block.
+- System boundaries: public `BlockVisualizer`, `Block`, `QueuedSummaryBlock`, and `PendingTxDot` import paths and prop contracts remain unchanged; explorer URLs still target block, mempool-block, and transaction routes.
+- Async/race behavior: block animation timeouts still clear on unmount and before new animations, and delayed display-block swaps still reset animation flags.
+- Diff review: changes are scoped to BlockVisualizer controller/view/helper extraction, health-report notes, trend metadata, and this task record.
+
+## Previous Task: Lizard UI Batch 1 - Labels And Notifications
+
+Status: complete
 
 Goal: batch the next top UI lizard findings by reducing `LabelManager`, `NotificationToast`, and `NotificationPanel`/`NotificationItem` complexity without changing label CRUD behavior, toast timing/styles, notification sorting/navigation, panel dismissal, or public exports.
 
