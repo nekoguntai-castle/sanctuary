@@ -47,7 +47,9 @@ AGENT_CACHE_DIR="$AGENT_LOG_DIR/agent-cache"
 #     no longer trusted); old cache entries must be re-classified.
 # v4: invalid rubric values (anything outside OK/WARN/BLOCK) now yield
 #     UNKNOWN instead of silently passing as PROCEED.
-PROMPT_VERSION="v4"
+# v5: non-object rubrics (array, string, number, boolean) now yield
+#     UNKNOWN instead of falling through to self-reported verdict.
+PROMPT_VERSION="v5"
 # Per-commit scratch dir for parallel agent outputs and stop markers.
 AGENT_TMP_DIR=$(mktemp -d -t sanctuary-agents-XXXXXX)
 trap 'rm -rf "$AGENT_TMP_DIR"' EXIT
@@ -103,47 +105,62 @@ extract_json_object() {
 # ground truth; verdict is computed from it here in shell.
 #
 # Precedence (in order):
-#   1. any rubric value = BLOCK → STOP (always conservative — a malformed
-#      rubric that still contains BLOCK should still stop the commit)
-#   2. any rubric value outside {OK,WARN,BLOCK} → UNKNOWN (can't trust
-#      the rest of the rubric; forces author to look)
-#   3. any rubric value = WARN → REVIEW
-#   4. all values = OK → PROCEED
-#   5. empty / non-object / missing rubric → fall back to self-reported
-#      verdict (better than UNKNOWN when the agent structured without a
-#      per-concern breakdown)
+#   1. rubric is non-object (array/string/number/boolean) → UNKNOWN
+#      (malformed shape — the agent tried structure but got it wrong,
+#      so nothing in it can be trusted, including any nested BLOCK)
+#   2. rubric is missing / explicit null → fall back to self-reported
+#      verdict (agent didn't attempt a per-concern breakdown)
+#   3. rubric is object with any value = BLOCK → STOP (BLOCK wins even
+#      alongside other invalid values — a stop is the safer error mode)
+#   4. rubric is object with any value outside {OK,WARN,BLOCK} → UNKNOWN
+#   5. rubric is object with any value = WARN → REVIEW
+#   6. rubric is object with all values = OK → PROCEED
+#   7. rubric is empty object → fall back to self-reported
 derive_verdict_from_body() {
     # $1 = JSON body
-    local values has_block has_invalid has_warn has_any v
-    # Safely collect rubric values as an uppercase string array. Guards
-    # against non-object rubrics and non-string values.
-    values=$(echo "$1" | jq -c '
-        (.rubric // {}) as $r
-        | if ($r | type) != "object" then []
-          else ($r | to_entries | map(
-              .value
-              | if type == "string" then ascii_upcase else tostring end
-          ))
-          end
-    ' 2>/dev/null || echo '[]')
+    local body="$1"
+    local rubric_type values has_block has_invalid has_warn has_any v
 
-    has_block=$(echo "$values" | jq -r 'any(. == "BLOCK")' 2>/dev/null || echo false)
-    if [ "$has_block" = "true" ]; then
-        echo "STOP"
-        return
-    fi
+    # Determine rubric shape first. "null" means missing or explicit null;
+    # "object" is the only acceptable shape; anything else (array, string,
+    # number, boolean) is malformed — the agent tried to provide structure
+    # but got the shape wrong, so we cannot trust any signal it contains.
+    rubric_type=$(echo "$body" | jq -r '.rubric | type' 2>/dev/null || echo "null")
 
-    has_invalid=$(echo "$values" | jq -r 'any(. != "OK" and . != "WARN" and . != "BLOCK")' 2>/dev/null || echo false)
-    if [ "$has_invalid" = "true" ]; then
+    if [ "$rubric_type" != "null" ] && [ "$rubric_type" != "object" ]; then
         echo "UNKNOWN"
         return
     fi
 
-    has_warn=$(echo "$values" | jq -r 'any(. == "WARN")' 2>/dev/null || echo false)
-    if [ "$has_warn" = "true" ]; then
-        echo "REVIEW"
+    if [ "$rubric_type" = "null" ]; then
+        # Missing / explicit-null rubric: agent didn't even try a per-concern
+        # breakdown, fall back to self-reported verdict.
+        v=$(echo "$body" | jq -r '.verdict // "UNKNOWN"' | tr '[:lower:]' '[:upper:]')
+        case "$v" in
+            STOP|REVIEW|PROCEED) echo "$v" ;;
+            *) echo "UNKNOWN" ;;
+        esac
         return
     fi
+
+    # Rubric is an object. Collect values as uppercase strings so comparison
+    # is case-insensitive; non-string values get stringified so they fall
+    # into the "invalid value" bucket below.
+    values=$(echo "$body" | jq -c '
+        .rubric | to_entries | map(
+            .value | if type == "string" then ascii_upcase else tostring end
+        )
+    ' 2>/dev/null || echo '[]')
+
+    # Precedence: BLOCK > invalid > WARN > OK > empty
+    has_block=$(echo "$values" | jq -r 'any(. == "BLOCK")' 2>/dev/null || echo false)
+    if [ "$has_block" = "true" ]; then echo "STOP"; return; fi
+
+    has_invalid=$(echo "$values" | jq -r 'any(. != "OK" and . != "WARN" and . != "BLOCK")' 2>/dev/null || echo false)
+    if [ "$has_invalid" = "true" ]; then echo "UNKNOWN"; return; fi
+
+    has_warn=$(echo "$values" | jq -r 'any(. == "WARN")' 2>/dev/null || echo false)
+    if [ "$has_warn" = "true" ]; then echo "REVIEW"; return; fi
 
     has_any=$(echo "$values" | jq -r 'length' 2>/dev/null || echo 0)
     if [ -n "$has_any" ] && [ "$has_any" -gt 0 ]; then
@@ -151,8 +168,8 @@ derive_verdict_from_body() {
         return
     fi
 
-    # Empty/missing rubric → fall back to self-reported verdict
-    v=$(echo "$1" | jq -r '.verdict // "UNKNOWN"' | tr '[:lower:]' '[:upper:]')
+    # Empty-object rubric: same treatment as missing — fall back to self-reported.
+    v=$(echo "$body" | jq -r '.verdict // "UNKNOWN"' | tr '[:lower:]' '[:upper:]')
     case "$v" in
         STOP|REVIEW|PROCEED) echo "$v" ;;
         *) echo "UNKNOWN" ;;
