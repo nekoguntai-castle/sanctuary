@@ -1,4 +1,45 @@
-# Next Task: Grade Improvements 3-5
+# Next Task: TransactionRow Complexity Reduction
+
+Status: complete
+
+Goal: continue the maintainability roadmap by reducing the next high-CCN transaction-list component without changing row behavior or weakening coverage gates.
+
+## TransactionRow Complexity Checklist
+
+- [x] Confirm pushed grade-improvements CI status and local baseline.
+- [x] Inspect current top lizard targets and TransactionRow test coverage.
+- [x] Split TransactionRow into focused row/cell modules while preserving the public import path.
+- [x] Run focused tests, typecheck/lint, lizard, and coverage as needed.
+- [x] Update review notes and commit the change.
+
+## TransactionRow Complexity Review
+
+Changes:
+
+- Kept `components/TransactionList/TransactionRow.tsx` as the public wrapper and reduced it to 52 lines.
+- Added focused cell helpers under `components/TransactionList/TransactionRow/` for date, type, amount, balance, confirmation, labels, and wallet badge rendering.
+- Added a branch test for the locked-without-draft-label fallback title that the split made visible to coverage.
+- Updated the health assessment and grade history: full lizard warnings moved from 108 to 107, and `TransactionRow` dropped out of the current top lizard target list.
+
+Verification:
+
+- `npx vitest run tests/components/TransactionList/TransactionRow.branches.test.tsx tests/components/TransactionList.test.tsx` passed: 2 files, 37 tests.
+- `npm run typecheck:app` passed.
+- `npm run lint:app` passed.
+- `npm run test:coverage` passed: 396 files, 5,556 tests, 100% statements/branches/functions/lines.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/TransactionList/TransactionRow.tsx components/TransactionList/TransactionRow` passed with no warnings.
+- Full lizard warning count is now 107; top remaining component targets are `DraftList`, `LabelSelector`, `LabelManager`, and `SendTransactionPage`.
+- `git diff --check` passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: row behavior still covers pending timestamps, empty labels, absent balance columns, absent wallet badges, and missing draft labels.
+- Boundary values: confirmation branches still cover pending, partial, threshold, and deep-confirmed states.
+- System boundaries: public import path and `TransactionRow` props are unchanged for `TransactionList`.
+- Async/race behavior: unchanged; row rendering remains synchronous and callback-driven.
+- Diff review: changes are scoped to TransactionRow presentation extraction, one focused branch test, health-report notes, trend metadata, and this task record.
+
+## Previous Task: Grade Improvements 3-5
 
 Status: complete
 

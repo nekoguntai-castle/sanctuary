@@ -139,6 +139,12 @@ describe('TransactionRow branch coverage', () => {
     expect(screen.getByText('1/6')).toBeInTheDocument();
   });
 
+  it('treats missing confirmations as pending for the confirmation title', () => {
+    renderRow({ confirmations: undefined as any });
+
+    expect(screen.getByTitle('Pending confirmation')).toBeInTheDocument();
+  });
+
   it('uses deep confirmation fallback when toLocaleString returns empty string', () => {
     const strangeConfirmations = {
       valueOf: () => 99,
@@ -254,5 +260,19 @@ describe('TransactionRow branch coverage', () => {
       </table>
     );
     expect(screen.getByText('Locked')).toBeInTheDocument();
+
+    rerender(
+      <table>
+        <tbody>
+          <tr>
+            <TransactionRow
+              {...props}
+              tx={{ ...props.tx, isFrozen: false, isLocked: true, lockedByDraftLabel: undefined }}
+            />
+          </tr>
+        </tbody>
+      </table>
+    );
+    expect(screen.getByText('Locked')).toHaveAttribute('title', 'Transaction has draft-locked UTXOs');
   });
 });
