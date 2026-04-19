@@ -36,11 +36,23 @@ describe('notification channel handlers', () => {
       mockTelegramService.notifyNewTransactions.mockResolvedValueOnce(undefined);
 
       const result = await telegramChannelHandler.notifyTransactions('wallet-1', [
-        { txid: 'a'.repeat(64), type: 'received', amount: 10_000n },
+        {
+          txid: 'a'.repeat(64),
+          type: 'sent',
+          amount: 10_000n,
+          agentDestinationClassification: 'unknown_destination',
+          agentUnknownDestinationHandlingMode: 'notify_only',
+        },
       ]);
 
       expect(mockTelegramService.notifyNewTransactions).toHaveBeenCalledWith('wallet-1', [
-        expect.objectContaining({ txid: 'a'.repeat(64), type: 'received', amount: 10_000n }),
+        expect.objectContaining({
+          txid: 'a'.repeat(64),
+          type: 'sent',
+          amount: 10_000n,
+          agentDestinationClassification: 'unknown_destination',
+          agentUnknownDestinationHandlingMode: 'notify_only',
+        }),
       ]);
       expect(result).toEqual({
         success: true,

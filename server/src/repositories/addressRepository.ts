@@ -360,6 +360,30 @@ export async function findByAddressesForUser(
 }
 
 /**
+ * Find wallet summaries for known address strings without applying a user access filter.
+ * Used by backend-only monitoring to classify whether a spend destination is internal.
+ */
+export async function findWalletSummariesByAddresses(addresses: string[]) {
+  const uniqueAddresses = Array.from(new Set(addresses.filter(Boolean)));
+  if (uniqueAddresses.length === 0) return [];
+
+  return prisma.address.findMany({
+    where: {
+      address: { in: uniqueAddresses },
+    },
+    select: {
+      address: true,
+      wallet: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+  });
+}
+
+/**
  * Find address strings for a wallet (lean query for sync operations)
  */
 export async function findAddressStrings(walletId: string): Promise<string[]> {
@@ -529,6 +553,7 @@ export const addressRepository = {
   getAddressSummary,
   findUtxoBalancesByAddresses,
   findByAddressesForUser,
+  findWalletSummariesByAddresses,
   findAddressStrings,
   findIdAndAddressByWalletId,
   // Sync pipeline methods

@@ -16,6 +16,8 @@ export interface TransactionNotification {
   agentId?: string | null;
   agentName?: string | null;
   agentOperationalSpend?: boolean;
+  agentDestinationClassification?: string | null;
+  agentUnknownDestinationHandlingMode?: string | null;
 }
 
 /**

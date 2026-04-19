@@ -173,6 +173,39 @@ describe('AgentWalletDashboard', () => {
     expect(screen.getByText(/Runtime/)).toBeInTheDocument();
   });
 
+  it('renders destination classification metadata in spend details and alert history', async () => {
+    const user = userEvent.setup();
+    vi.mocked(adminApi.getAgentWalletDashboard).mockResolvedValueOnce([
+      {
+        ...dashboardRow,
+        openAlertCount: 2,
+        recentAlerts: [
+          ...dashboardRow.recentAlerts,
+          {
+            ...dashboardRow.recentAlerts[0],
+            id: 'alert-unknown-destination',
+            type: 'operational_destination_unknown',
+            txid: 'a'.repeat(64),
+            message: 'Destination could not be classified',
+            metadata: {
+              destinationClassification: 'unknown_destination',
+              unknownDestinationHandlingMode: 'notify_and_pause',
+            },
+          },
+        ],
+      },
+    ]);
+
+    renderDashboard();
+    expect(await screen.findByText('Treasury Agent')).toBeInTheDocument();
+
+    await user.click(screen.getByText('Review details'));
+
+    expect(screen.getAllByText('Destination: Unknown destination')).toHaveLength(2);
+    expect(screen.getByText('Handling: Notify and pause')).toBeInTheDocument();
+    expect(screen.getByText('Destination could not be classified')).toBeInTheDocument();
+  });
+
   it('pauses agents and revokes keys from the dashboard', async () => {
     const user = userEvent.setup();
     renderDashboard();

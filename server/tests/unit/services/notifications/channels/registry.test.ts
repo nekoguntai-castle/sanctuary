@@ -195,6 +195,7 @@ describe('NotificationChannelRegistry', () => {
       id: 'enabled',
       notifyTransactions: vi.fn().mockResolvedValue({ success: true, channelId: 'enabled', usersNotified: 1 }),
     });
+    const txid = 'b'.repeat(64);
     mockAgentRepository.findActiveAgentsByOperationalWalletId.mockResolvedValueOnce([
       {
         id: 'agent-1',
@@ -203,10 +204,20 @@ describe('NotificationChannelRegistry', () => {
         pauseOnUnexpectedSpend: true,
       },
     ]);
+    mockEvaluateOperationalTransactionAlerts.mockResolvedValueOnce([{
+      agentId: 'agent-1',
+      agentName: 'Treasury Agent',
+      txid,
+      destinationClassification: 'unknown_destination',
+      unknownDestinationHandlingMode: 'notify_and_pause',
+      shouldNotify: true,
+      shouldPause: true,
+      metadata: {},
+    }]);
     registry.register(enabled);
 
     await registry.notifyTransactions('operational-wallet', [
-      { txid: 'b'.repeat(64), type: 'sent', amount: -10_000n },
+      { txid, type: 'sent', amount: -10_000n },
     ]);
 
     expect(enabled.notifyTransactions).toHaveBeenCalledWith('operational-wallet', [
@@ -214,14 +225,49 @@ describe('NotificationChannelRegistry', () => {
         agentId: 'agent-1',
         agentName: 'Treasury Agent',
         agentOperationalSpend: true,
+        agentDestinationClassification: 'unknown_destination',
+        agentUnknownDestinationHandlingMode: 'notify_and_pause',
       }),
     ]);
     expect(mockEvaluateOperationalTransactionAlerts).toHaveBeenCalledWith('operational-wallet', [
-      { txid: 'b'.repeat(64), type: 'sent', amount: -10_000n },
+      { txid, type: 'sent', amount: -10_000n },
     ], [
       expect.objectContaining({ id: 'agent-1' }),
     ]);
     expect(mockAgentRepository.updateAgent).toHaveBeenCalledWith('agent-1', { status: 'paused' });
+  });
+
+  it('pauses agents for pause-only unknown destination policy without notification enrichment', async () => {
+    const enabled = createHandler({
+      id: 'enabled',
+      notifyTransactions: vi.fn().mockResolvedValue({ success: true, channelId: 'enabled', usersNotified: 1 }),
+    });
+    const transaction = { txid: 'c'.repeat(64), type: 'sent' as const, amount: -10_000n };
+
+    mockAgentRepository.findActiveAgentsByOperationalWalletId.mockResolvedValueOnce([
+      {
+        id: 'agent-1',
+        name: 'Treasury Agent',
+        notifyOnOperationalSpend: false,
+        pauseOnUnexpectedSpend: true,
+      },
+    ]);
+    mockEvaluateOperationalTransactionAlerts.mockResolvedValueOnce([{
+      agentId: 'agent-1',
+      agentName: 'Treasury Agent',
+      txid: transaction.txid,
+      destinationClassification: 'unknown_destination',
+      unknownDestinationHandlingMode: 'pause_agent',
+      shouldNotify: false,
+      shouldPause: true,
+      metadata: {},
+    }]);
+    registry.register(enabled);
+
+    await registry.notifyTransactions('operational-wallet', [transaction]);
+
+    expect(mockAgentRepository.updateAgent).toHaveBeenCalledWith('agent-1', { status: 'paused' });
+    expect(enabled.notifyTransactions).toHaveBeenCalledWith('operational-wallet', [transaction]);
   });
 
   it('falls back to unknown transaction channel result when settled promise rejects', async () => {

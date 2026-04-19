@@ -30,11 +30,21 @@ export function formatTransactionMessage(
   const typeLabel = tx.type.charAt(0).toUpperCase() + tx.type.slice(1);
 
   if (tx.agentOperationalSpend && tx.agentName) {
+    const destinationLine = tx.agentDestinationClassification
+      ? `Destination: ${formatDestinationClassification(tx.agentDestinationClassification)}\n`
+      : '';
+    const handlingLine = tx.agentUnknownDestinationHandlingMode
+      ? `Handling: ${formatHandlingMode(tx.agentUnknownDestinationHandlingMode)}\n`
+      : '';
+
     return (
       `${emoji} <b>Agent Operational Spend</b>\n` +
       `Agent: ${escapeHtml(tx.agentName)}\n` +
       `Operational Wallet: ${escapeHtml(wallet.name)}\n` +
       `Amount: ${amountBtc.toFixed(8)} BTC\n\n` +
+      destinationLine +
+      handlingLine +
+      `<i>Review only. Sanctuary does not sign or broadcast operational wallet spends.</i>\n\n` +
       `<a href="${explorerUrl}/tx/${tx.txid}">View Transaction</a>`
     );
   }
@@ -45,6 +55,36 @@ export function formatTransactionMessage(
     `Amount: ${amountBtc.toFixed(8)} BTC\n\n` +
     `<a href="${explorerUrl}/tx/${tx.txid}">View Transaction</a>`
   );
+}
+
+function formatDestinationClassification(classification: string): string {
+  switch (classification) {
+    case 'external_spend':
+      return 'External spend';
+    case 'known_self_transfer':
+      return 'Known self-transfer';
+    case 'change_like_movement':
+      return 'Change-like movement';
+    case 'unknown_destination':
+      return 'Unknown destination';
+    default:
+      return classification.replace(/_/g, ' ');
+  }
+}
+
+function formatHandlingMode(mode: string): string {
+  switch (mode) {
+    case 'notify_only':
+      return 'Notify only';
+    case 'pause_agent':
+      return 'Pause agent';
+    case 'notify_and_pause':
+      return 'Notify and pause';
+    case 'record_only':
+      return 'Record only';
+    default:
+      return mode.replace(/_/g, ' ');
+  }
 }
 
 /**

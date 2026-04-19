@@ -7,17 +7,26 @@ const mocks = vi.hoisted(() => ({
     countRejectedFundingAttemptsSince: vi.fn(),
     createAlertIfNotDuplicate: vi.fn(),
   },
+  addressRepository: {
+    findWalletSummariesByAddresses: vi.fn(),
+  },
+  transactionRepository: {
+    findByWalletIdAndTxids: vi.fn(),
+  },
   utxoRepository: {
     getUnspentBalance: vi.fn(),
   },
 }));
 
 vi.mock('../../../src/repositories', () => ({
+  addressRepository: mocks.addressRepository,
   agentRepository: mocks.agentRepository,
+  transactionRepository: mocks.transactionRepository,
   utxoRepository: mocks.utxoRepository,
 }));
 
 import {
+  classifyOperationalSpendDestination,
   evaluateOperationalTransactionAlerts,
   evaluateRejectedFundingAttemptAlert,
 } from '../../../src/services/agentMonitoringService';
@@ -28,7 +37,65 @@ describe('agentMonitoringService', () => {
     vi.clearAllMocks();
     vi.useRealTimers();
     mocks.agentRepository.createAlertIfNotDuplicate.mockResolvedValue({ id: 'alert-1' });
+    mocks.addressRepository.findWalletSummariesByAddresses.mockResolvedValue([]);
+    mocks.transactionRepository.findByWalletIdAndTxids.mockImplementation((_walletId: string, txids: string[]) =>
+      Promise.resolve(txids.map(txid => ({
+        txid,
+        type: 'sent',
+        counterpartyAddress: 'tb1qexternal',
+        outputs: [{ address: 'tb1qexternal', amount: 75_000n, isOurs: false }],
+      })))
+    );
     mocks.utxoRepository.getUnspentBalance.mockResolvedValue(20_000n);
+  });
+
+  it('classifies operational spend destinations from outputs and counterparty metadata', () => {
+    const knownWallets = new Map([
+      ['tb1qopschange', { walletId: 'operational-wallet', walletName: 'Ops' }],
+      ['tb1qknownwallet', { walletId: 'wallet-2', walletName: 'Savings' }],
+    ]);
+
+    expect(classifyOperationalSpendDestination('operational-wallet', {
+      txid: 'empty',
+      type: 'sent',
+      outputs: [],
+      counterpartyAddress: null,
+    }).classification).toBe('unknown_destination');
+    expect(classifyOperationalSpendDestination('operational-wallet', {
+      txid: 'malformed',
+      type: 'sent',
+      outputs: [{ address: ' ', isOurs: false }],
+    }).classification).toBe('unknown_destination');
+    expect(classifyOperationalSpendDestination('operational-wallet', {
+      txid: 'external',
+      type: 'sent',
+      outputs: [
+        { address: 'tb1qopschange', isOurs: true },
+        { address: 'tb1qexternal', isOurs: false },
+      ],
+    }, knownWallets).classification).toBe('external_spend');
+    expect(classifyOperationalSpendDestination('operational-wallet', {
+      txid: 'known',
+      type: 'sent',
+      outputs: [
+        { address: 'tb1qopschange', isOurs: true },
+        { address: 'tb1qknownwallet', isOurs: false },
+      ],
+    }, knownWallets)).toEqual(expect.objectContaining({
+      classification: 'known_self_transfer',
+      knownDestinationWalletId: 'wallet-2',
+    }));
+    expect(classifyOperationalSpendDestination('operational-wallet', {
+      txid: 'change',
+      type: 'sent',
+      outputs: [{ address: 'tb1qopschange', isOurs: false }],
+    }, knownWallets).classification).toBe('change_like_movement');
+    expect(classifyOperationalSpendDestination('operational-wallet', {
+      txid: 'counterparty',
+      type: 'sent',
+      counterpartyAddress: 'tb1qknownwallet',
+      outputs: null,
+    }, knownWallets).classification).toBe('known_self_transfer');
   });
 
   it('creates operational spend, fee, and balance alerts with dedupe keys', async () => {
@@ -63,6 +130,10 @@ describe('agentMonitoringService', () => {
         amountSats: 75_000n,
         thresholdSats: 50_000n,
         dedupeKey: `agent:agent-1:large_spend:${'a'.repeat(64)}`,
+        metadata: expect.objectContaining({
+          destinationClassification: 'external_spend',
+          thresholdSats: '50000',
+        }),
       }),
       new Date(0)
     );
@@ -136,6 +207,82 @@ describe('agentMonitoringService', () => {
       type: 'large_operational_spend',
       amountSats: 75_000n,
     }), new Date(0));
+  });
+
+  it('evaluates notify-only, pause-only, and notify-plus-pause modes for unknown destinations', async () => {
+    const txid = 'g'.repeat(64);
+    mocks.transactionRepository.findByWalletIdAndTxids.mockResolvedValueOnce([{
+      txid,
+      type: 'sent',
+      counterpartyAddress: null,
+      outputs: [],
+    }]);
+
+    const evaluations = await evaluateOperationalTransactionAlerts('operational-wallet', [{
+      txid,
+      type: 'sent',
+      amount: -12_000n,
+      feeSats: 450n,
+    }], [
+      agentFixture({
+        id: 'agent-notify',
+        notifyOnOperationalSpend: true,
+        pauseOnUnexpectedSpend: false,
+      }),
+      agentFixture({
+        id: 'agent-pause',
+        notifyOnOperationalSpend: false,
+        pauseOnUnexpectedSpend: true,
+      }),
+      agentFixture({
+        id: 'agent-both',
+        notifyOnOperationalSpend: true,
+        pauseOnUnexpectedSpend: true,
+      }),
+    ] as any);
+
+    expect(evaluations).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        agentId: 'agent-notify',
+        destinationClassification: 'unknown_destination',
+        unknownDestinationHandlingMode: 'notify_only',
+        shouldNotify: true,
+        shouldPause: false,
+      }),
+      expect.objectContaining({
+        agentId: 'agent-pause',
+        destinationClassification: 'unknown_destination',
+        unknownDestinationHandlingMode: 'pause_agent',
+        shouldNotify: false,
+        shouldPause: true,
+      }),
+      expect.objectContaining({
+        agentId: 'agent-both',
+        destinationClassification: 'unknown_destination',
+        unknownDestinationHandlingMode: 'notify_and_pause',
+        shouldNotify: true,
+        shouldPause: true,
+      }),
+    ]));
+
+    const unknownAlertWrites = mocks.agentRepository.createAlertIfNotDuplicate.mock.calls
+      .map(([alert]) => alert)
+      .filter(alert => alert.type === 'operational_destination_unknown');
+
+    expect(unknownAlertWrites).toHaveLength(3);
+    expect(unknownAlertWrites).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        agentId: 'agent-pause',
+        severity: 'critical',
+        reasonCode: 'unknown_destination',
+        metadata: expect.objectContaining({
+          destinationClassification: 'unknown_destination',
+          unknownDestinationHandlingMode: 'pause_agent',
+          shouldNotify: false,
+          shouldPauseAgent: true,
+        }),
+      }),
+    ]));
   });
 
   it('creates a repeated rejected funding attempt alert when the threshold is reached', async () => {
@@ -223,7 +370,7 @@ describe('agentMonitoringService', () => {
       txid: 'c'.repeat(64),
       type: 'sent',
       amount: -1_000n,
-    }])).resolves.toBeUndefined();
+    }])).resolves.toEqual([]);
 
     mocks.agentRepository.findAgentById.mockRejectedValueOnce(new Error('agent lookup failed'));
     await expect(evaluateRejectedFundingAttemptAlert('agent-1')).resolves.toBeUndefined();

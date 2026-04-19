@@ -28,6 +28,19 @@ import { ErrorAlert } from '../ui/ErrorAlert';
 import { LinkButton } from '../ui/LinkButton';
 
 const log = createLogger('AgentWalletDashboard');
+const DESTINATION_CLASSIFICATION_LABELS: Record<string, string> = {
+  external_spend: 'External spend',
+  known_self_transfer: 'Known self-transfer',
+  change_like_movement: 'Change-like movement',
+  unknown_destination: 'Unknown destination',
+};
+
+const UNKNOWN_DESTINATION_HANDLING_LABELS: Record<string, string> = {
+  notify_only: 'Notify only',
+  pause_agent: 'Pause agent',
+  notify_and_pause: 'Notify and pause',
+  record_only: 'Record only',
+};
 
 function formatSats(value: string | null | undefined): string {
   if (!value) return '0 sats';
@@ -53,6 +66,31 @@ function formatWalletType(type: string | undefined): string {
 
 function formatTxid(txid: string): string {
   return txid.length > 16 ? `${txid.slice(0, 8)}...${txid.slice(-8)}` : txid;
+}
+
+function metadataString(metadata: Record<string, unknown> | null, key: string): string | null {
+  const value = metadata?.[key];
+  return typeof value === 'string' && value.trim() ? value : null;
+}
+
+function formatDestinationClassification(metadata: Record<string, unknown> | null): string | null {
+  const classification = metadataString(metadata, 'destinationClassification');
+  if (!classification) return null;
+  return DESTINATION_CLASSIFICATION_LABELS[classification] ?? classification.replace(/_/g, ' ');
+}
+
+function formatUnknownDestinationHandling(metadata: Record<string, unknown> | null): string | null {
+  const mode = metadataString(metadata, 'unknownDestinationHandlingMode');
+  if (!mode) return null;
+  return UNKNOWN_DESTINATION_HANDLING_LABELS[mode] ?? mode.replace(/_/g, ' ');
+}
+
+function findSpendDestinationClassification(
+  spend: AgentWalletDashboardTransaction,
+  alerts: AgentWalletDashboardRow['recentAlerts']
+): string | null {
+  const matchingAlert = alerts.find(alert => alert.txid === spend.txid && formatDestinationClassification(alert.metadata));
+  return matchingAlert ? formatDestinationClassification(matchingAlert.metadata) : null;
 }
 
 function isKeyActive(key: AgentApiKeyMetadata, now = Date.now()): boolean {
@@ -360,7 +398,7 @@ function AgentWalletRow({
         <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-4">
           <PolicyPanel agent={agent} />
           <DraftPanel drafts={row.recentFundingDrafts} />
-          <SpendPanel spends={row.recentOperationalSpends} />
+          <SpendPanel spends={row.recentOperationalSpends} alerts={row.recentAlerts} />
           <AlertAndKeyPanel
             alerts={row.recentAlerts}
             activeKeys={activeKeys}
@@ -439,21 +477,36 @@ function DraftPanel({ drafts }: { drafts: AgentWalletDashboardDraft[] }) {
   );
 }
 
-function SpendPanel({ spends }: { spends: AgentWalletDashboardTransaction[] }) {
+function SpendPanel({
+  spends,
+  alerts,
+}: {
+  spends: AgentWalletDashboardTransaction[];
+  alerts: AgentWalletDashboardRow['recentAlerts'];
+}) {
   return (
     <DetailPanel title="Operational Spends">
       {spends.length === 0 ? (
         <EmptyDetail text="No operational spends recorded." />
       ) : (
-        spends.map(spend => (
-          <div key={spend.id} className="rounded-md border border-sanctuary-100 p-2 text-xs dark:border-sanctuary-800">
-            <div className="font-medium text-sanctuary-800 dark:text-sanctuary-200">{formatSats(spend.amountSats)}</div>
-            <div className="text-sanctuary-500 dark:text-sanctuary-400">
-              {spend.feeSats ? `${formatSats(spend.feeSats)} fee · ` : ''}{spend.confirmations} conf
+        spends.map((spend) => {
+          const destinationClassification = findSpendDestinationClassification(spend, alerts);
+          return (
+            <div key={spend.id} className="rounded-md border border-sanctuary-100 p-2 text-xs dark:border-sanctuary-800">
+              <div className="font-medium text-sanctuary-800 dark:text-sanctuary-200">{formatSats(spend.amountSats)}</div>
+              <div className="text-sanctuary-500 dark:text-sanctuary-400">
+                {spend.feeSats ? `${formatSats(spend.feeSats)} fee · ` : ''}{spend.confirmations} conf
+              </div>
+              {destinationClassification && (
+                <div className="text-warning-700 dark:text-warning-300">Destination: {destinationClassification}</div>
+              )}
+              {spend.counterpartyAddress && (
+                <div className="truncate font-mono text-sanctuary-500 dark:text-sanctuary-400">{spend.counterpartyAddress}</div>
+              )}
+              <div className="font-mono text-sanctuary-500 dark:text-sanctuary-400">{formatTxid(spend.txid)}</div>
             </div>
-            <div className="font-mono text-sanctuary-500 dark:text-sanctuary-400">{formatTxid(spend.txid)}</div>
-          </div>
-        ))
+          );
+        })
       )}
     </DetailPanel>
   );
@@ -477,12 +530,18 @@ function AlertAndKeyPanel({
       {alerts.length === 0 ? (
         <EmptyDetail text="No open alerts." />
       ) : (
-        alerts.map(alert => (
-          <div key={alert.id} className="rounded-md border border-warning-200 bg-warning-50 p-2 text-xs text-warning-800 dark:border-warning-800 dark:bg-warning-900/20 dark:text-warning-300">
-            <div className="font-medium">{alert.type}</div>
-            <div>{alert.message}</div>
-          </div>
-        ))
+        alerts.map((alert) => {
+          const destinationClassification = formatDestinationClassification(alert.metadata);
+          const handlingMode = formatUnknownDestinationHandling(alert.metadata);
+          return (
+            <div key={alert.id} className="rounded-md border border-warning-200 bg-warning-50 p-2 text-xs text-warning-800 dark:border-warning-800 dark:bg-warning-900/20 dark:text-warning-300">
+              <div className="font-medium">{alert.type}</div>
+              <div>{alert.message}</div>
+              {destinationClassification && <div>Destination: {destinationClassification}</div>}
+              {handlingMode && <div>Handling: {handlingMode}</div>}
+            </div>
+          );
+        })
       )}
 
       <div className="border-t border-sanctuary-100 pt-3 dark:border-sanctuary-800">

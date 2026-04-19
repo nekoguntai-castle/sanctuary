@@ -1,18 +1,54 @@
 # Next Task: Agent Wallet Funding Phase 16
 
-Status: pending
+Status: complete
 
 Goal: close the remaining Phase 16 monitoring and client follow-up from `tasks/agent-wallet-funding-plan.md` without weakening the security boundary that Sanctuary coordinates, not signs or broadcasts, agent wallet activity.
 
 ## Agent Wallet Funding Phase 16 Checklist
 
-- [ ] Inspect operational-wallet alert classification, Agent Wallets dashboard alert history, notification copy, and mobile review API/client-test surface.
-- [ ] Add operational-wallet destination classification for external spend, known self-transfer, change-like movement, and unknown destination.
-- [ ] Add configured unknown-destination handling mode to alert evaluation: notify only, pause agent, or both.
-- [ ] Surface destination classifications in Agent Wallets dashboard detail and alert history.
-- [ ] Preserve notification security boundaries for web/mobile review links and multisig signing requirements.
-- [ ] Add available server/API/component tests now, and document mobile/deep-link tests that depend on a future client package.
-- [ ] Run final quality, edge case, and self-review, then update `tasks/agent-wallet-funding-plan.md`.
+- [x] Inspect operational-wallet alert classification, Agent Wallets dashboard alert history, notification copy, and mobile review API/client-test surface.
+- [x] Add operational-wallet destination classification for external spend, known self-transfer, change-like movement, and unknown destination.
+- [x] Add configured unknown-destination handling mode to alert evaluation: notify only, pause agent, or both.
+- [x] Surface destination classifications in Agent Wallets dashboard detail and alert history.
+- [x] Preserve notification security boundaries for web/mobile review links and multisig signing requirements.
+- [x] Add available server/API/component tests now, and document mobile/deep-link tests that depend on a future client package.
+- [x] Run final quality, edge case, and self-review, then update `tasks/agent-wallet-funding-plan.md`.
+
+## Agent Wallet Funding Phase 16 Review
+
+Changes:
+
+- Added operational destination classification for external spend, known self-transfer, change-like movement, and unknown destination using persisted transaction outputs, counterparty metadata, and known Sanctuary wallet address ownership.
+- Added `operational_destination_unknown` alerts with destination metadata, dedupe by txid, and per-agent handling metadata for notify-only, pause-agent, notify-and-pause, and record-only states.
+- Changed operational spend pausing so pause-only agents can pause on unknown destinations even when notifications are disabled, while notifications still only enrich agents with `notifyOnOperationalSpend`.
+- Added audit detail for agent policy updates, including the derived unknown-destination handling mode.
+- Surfaced destination classification and handling mode in the Agent Wallets dashboard spend details and alert history.
+- Added Telegram operational-spend destination/handling copy and an explicit review-only security boundary: Sanctuary does not sign or broadcast operational wallet spends.
+- Documented mobile/deep-link client tests as future work because this workspace has no mobile client package yet; existing server mobile review API tests remain in place.
+
+Verification:
+
+- `npx vitest run tests/unit/api/admin-agents-routes.test.ts tests/unit/services/agentMonitoringService.test.ts tests/unit/services/notifications/channels/registry.test.ts tests/unit/services/notifications/channels/handlers.test.ts tests/unit/services/telegram/formatting.test.ts` passed in `server`: 5 files, 60 tests.
+- `npm run test:unit` passed in `server`: 372 files, 8999 tests.
+- `npx vitest run tests/components/AgentWalletDashboard.test.tsx` passed: 1 file, 5 tests.
+- `npm run build` passed in `server`.
+- `npm run typecheck:server:tests` passed.
+- `npm run typecheck:app` passed.
+- `npm run typecheck:tests` passed.
+- `npm run lint:app` passed.
+- `npm run lint:server` passed, including API body validation.
+- `npm run check:architecture-boundaries` passed.
+- `npm run check:prisma-imports` passed in `server`.
+- `node scripts/quality/check-large-files.mjs` passed the classification check.
+- `git diff --check` passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: missing transaction rows, empty outputs, blank output addresses, missing counterparty addresses, no sent transactions, and wallets without active agents now no-op or classify as unknown destination without throwing.
+- Boundary values: positive and negative sent amounts still normalize to outgoing spend amounts; zero or unset alert thresholds remain disabled; unknown alerts dedupe by txid across retries.
+- System boundaries: classification reads stored outputs/address ownership only; notifications do not sign, approve, or broadcast; mobile review remains server/API-only until a client exists.
+- Async/race behavior: alert evaluation remains best-effort and returns policy evaluations for notification enrichment/pause decisions; pause failures are logged without blocking notification dispatch.
+- Diff review: changes are scoped to agent monitoring, notification enrichment, dashboard display, policy-audit metadata, and focused tests. The Phase 16 mobile/deep-link client checks are explicitly documented as future dependencies because no mobile app package is present in this repository.
 
 ## Previous Task: AccessTab CCN Remediation
 

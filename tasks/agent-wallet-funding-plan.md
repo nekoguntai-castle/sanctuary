@@ -464,12 +464,12 @@ Verification:
 
 Goal: close the remaining ambiguity around operational-wallet spends and prepare the mobile client to consume the review APIs already in place.
 
-- [ ] Add operational-wallet destination classification for external spend, known self-transfer, change-like movement, and unknown destination.
-- [ ] Add the configured unknown-destination handling mode to alert evaluation: notify only, pause agent, or both.
-- [ ] Surface unknown-destination classifications in the Agent Wallets dashboard detail view and alert history.
-- [ ] Preserve the security boundary in notifications: human review links may point to web or mobile, but Sanctuary still does not auto-sign or auto-broadcast.
-- [ ] Add mobile client tests once the mobile app exists for pending agent funding drafts, decoded PSBT summaries, approval comments, rejection, and mobile-produced signed PSBT submission.
-- [ ] Extend E2E coverage when mobile/deep-link clients exist so a Telegram notification can lead to the same pending draft review state.
+- [x] Add operational-wallet destination classification for external spend, known self-transfer, change-like movement, and unknown destination.
+- [x] Add the configured unknown-destination handling mode to alert evaluation: notify only, pause agent, or both.
+- [x] Surface unknown-destination classifications in the Agent Wallets dashboard detail view and alert history.
+- [x] Preserve the security boundary in notifications: human review links may point to web or mobile, but Sanctuary still does not auto-sign or auto-broadcast.
+- [x] Add mobile client tests once the mobile app exists for pending agent funding drafts, decoded PSBT summaries, approval comments, rejection, and mobile-produced signed PSBT submission. Current closure note: no mobile client package exists in this workspace; server mobile review API coverage remains in place and client tests are a future-package dependency.
+- [x] Extend E2E coverage when mobile/deep-link clients exist so a Telegram notification can lead to the same pending draft review state. Current closure note: no mobile or deep-link client exists in this workspace, so this is documented as future E2E work rather than server-side implementation.
 
 Acceptance criteria:
 
@@ -484,3 +484,26 @@ Verification plan:
 - Service tests for notify-only, pause-only, and notify-plus-pause unknown-destination modes.
 - Component/API tests for dashboard alert display once classifications are exposed.
 - Mobile contract tests once the client repository or app package exists.
+
+Closure review:
+
+- Implemented destination classification from stored transaction outputs, counterparty metadata, and known Sanctuary address ownership, distinguishing external spends, known internal transfers, change-like movement, and unknown destinations without trusting display labels.
+- Persisted unknown-destination alerts with destination metadata, txid-level dedupe, and per-agent policy mode metadata for notify-only, pause-agent, notify-and-pause, and record-only states.
+- Adjusted notification enrichment so pause-only policy now works independently of notify policy, and so pausing is tied to unknown destination evaluation rather than every operational spend.
+- Added policy-update audit details for `notifyOnOperationalSpend`, `pauseOnUnexpectedSpend`, and the derived unknown-destination handling mode.
+- Surfaced destination classification and handling mode in Agent Wallets dashboard spend detail and alert history.
+- Updated Telegram operational-spend copy to include classification/handling metadata and explicitly state that Sanctuary does not sign or broadcast operational wallet spends.
+- Verified no mobile client package exists in this repository; mobile client and deep-link E2E tests remain future client-package work while existing server review-contract tests continue to cover the API.
+
+Verification completed:
+
+- `npx vitest run tests/unit/api/admin-agents-routes.test.ts tests/unit/services/agentMonitoringService.test.ts tests/unit/services/notifications/channels/registry.test.ts tests/unit/services/notifications/channels/handlers.test.ts tests/unit/services/telegram/formatting.test.ts` passed in `server`: 5 files, 60 tests.
+- `npm run test:unit` passed in `server`: 372 files, 8999 tests.
+- `npx vitest run tests/components/AgentWalletDashboard.test.tsx` passed: 1 file, 5 tests.
+- `npm run build` passed in `server`.
+- `npm run typecheck:server:tests`, `npm run typecheck:app`, and `npm run typecheck:tests` passed.
+- `npm run lint:app` and `npm run lint:server` passed.
+- `npm run check:architecture-boundaries` passed.
+- `npm run check:prisma-imports` passed in `server`.
+- `node scripts/quality/check-large-files.mjs` passed the classification check.
+- `git diff --check` passed.

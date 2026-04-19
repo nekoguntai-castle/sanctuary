@@ -45,6 +45,7 @@ import {
   toAgentWalletDashboardRowMetadata,
   toWalletAgentMetadata,
 } from '../../agent/dto';
+import { getUnknownDestinationHandlingMode } from '../../services/agentMonitoring/destinationClassification';
 
 const router = Router();
 
@@ -137,6 +138,9 @@ router.patch('/:agentId', authenticate, requireAdmin, asyncHandler(async (req, r
     details: {
       agentId: updated.id,
       status: updated.status,
+      notifyOnOperationalSpend: updated.notifyOnOperationalSpend,
+      pauseOnUnexpectedSpend: updated.pauseOnUnexpectedSpend,
+      unknownDestinationHandlingMode: getUnknownDestinationHandlingMode(updated),
     },
   });
 

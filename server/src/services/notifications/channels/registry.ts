@@ -8,7 +8,10 @@
 import { createLogger } from '../../../utils/logger';
 import { getErrorMessage } from '../../../utils/errors';
 import { agentRepository } from '../../../repositories';
-import { evaluateOperationalTransactionAlerts } from '../../agentMonitoringService';
+import {
+  evaluateOperationalTransactionAlerts,
+  type OperationalTransactionEvaluation,
+} from '../../agentMonitoringService';
 import type {
   NotificationChannelHandler,
   TransactionNotification,
@@ -272,19 +275,14 @@ async function enrichAgentOperationalTransactions(
   }
 
   const agents = await agentRepository.findActiveAgentsByOperationalWalletId(walletId);
-  await evaluateOperationalTransactionAlerts(walletId, transactions, agents);
-
-  const notifyingAgents = agents.filter(agent => agent.notifyOnOperationalSpend);
-  /* v8 ignore next -- early return is a defensive no-op after alert evaluation; alert path is covered */
-  if (notifyingAgents.length === 0) {
-    return transactions;
-  }
-
-  const agentsToPause = notifyingAgents.filter(agent => agent.pauseOnUnexpectedSpend);
+  const evaluations = await evaluateOperationalTransactionAlerts(walletId, transactions, agents);
+  const agentsToPause = agents.filter(agent =>
+    evaluations.some(evaluation => evaluation.agentId === agent.id && evaluation.shouldPause)
+  );
   /* v8 ignore start -- defensive logging for repository failure while preserving notification flow */
   await Promise.all(agentsToPause.map(agent =>
     agentRepository.updateAgent(agent.id, { status: 'paused' }).catch(err => {
-      log.warn('Failed to pause agent after operational spend', {
+      log.warn('Failed to pause agent after unknown operational destination', {
         agentId: agent.id,
         error: getErrorMessage(err),
       });
@@ -292,18 +290,40 @@ async function enrichAgentOperationalTransactions(
   ));
   /* v8 ignore stop */
 
+  const notifyingAgents = agents.filter(agent => agent.notifyOnOperationalSpend);
+  /* v8 ignore next -- early return is a defensive no-op after alert evaluation; alert path is covered */
+  if (notifyingAgents.length === 0) {
+    return transactions;
+  }
+
   const agentNames = notifyingAgents.map(agent => agent.name).join(', ');
   const agentIds = notifyingAgents.map(agent => agent.id).join(',');
+  const evaluationByTxid = getFirstEvaluationByTxid(evaluations);
   /* v8 ignore next -- sent-only transform follows an earlier sent-transaction guard */
-  return transactions.map(tx => tx.type === 'sent'
-    ? {
-        ...tx,
-        agentId: agentIds,
-        agentName: agentNames,
-        agentOperationalSpend: true,
-      }
-    : tx
-  );
+  return transactions.map((tx) => {
+    if (tx.type !== 'sent') return tx;
+    const evaluation = evaluationByTxid.get(tx.txid);
+    return {
+      ...tx,
+      agentId: agentIds,
+      agentName: agentNames,
+      agentOperationalSpend: true,
+      agentDestinationClassification: evaluation?.destinationClassification ?? null,
+      agentUnknownDestinationHandlingMode: evaluation?.unknownDestinationHandlingMode ?? null,
+    };
+  });
+}
+
+function getFirstEvaluationByTxid(
+  evaluations: OperationalTransactionEvaluation[]
+): Map<string, OperationalTransactionEvaluation> {
+  const evaluationByTxid = new Map<string, OperationalTransactionEvaluation>();
+  for (const evaluation of evaluations) {
+    if (!evaluationByTxid.has(evaluation.txid)) {
+      evaluationByTxid.set(evaluation.txid, evaluation);
+    }
+  }
+  return evaluationByTxid;
 }
 
 // Singleton instance

@@ -48,6 +48,8 @@ export const telegramChannelHandler: NotificationChannelHandler = {
         agentId: tx.agentId,
         agentName: tx.agentName,
         agentOperationalSpend: tx.agentOperationalSpend,
+        agentDestinationClassification: tx.agentDestinationClassification,
+        agentUnknownDestinationHandlingMode: tx.agentUnknownDestinationHandlingMode,
       }));
 
       await telegramService.notifyNewTransactions(walletId, txData);

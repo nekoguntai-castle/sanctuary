@@ -52,6 +52,8 @@ export interface TransactionData {
   agentId?: string | null;
   agentName?: string | null;
   agentOperationalSpend?: boolean;
+  agentDestinationClassification?: string | null;
+  agentUnknownDestinationHandlingMode?: string | null;
 }
 
 export interface DraftData {

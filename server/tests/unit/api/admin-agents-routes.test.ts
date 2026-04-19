@@ -500,6 +500,20 @@ describe('Admin wallet agent routes', () => {
       pauseOnUnexpectedSpend: true,
       revokedAt: null,
     }));
+    expect(mocks.logFromRequest).toHaveBeenCalledWith(
+      expect.anything(),
+      'wallet.agent_update',
+      'wallet',
+      {
+        details: expect.objectContaining({
+          agentId,
+          status: 'active',
+          notifyOnOperationalSpend: false,
+          pauseOnUnexpectedSpend: true,
+          unknownDestinationHandlingMode: 'pause_agent',
+        }),
+      }
+    );
 
     await request(app).patch('/api/v1/admin/agents/not-a-uuid').send({ status: 'paused' }).expect(400);
     await request(app).delete('/api/v1/admin/agents/not-a-uuid').expect(400);

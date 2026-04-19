@@ -40,6 +40,8 @@ describe('telegram formatting helpers', () => {
         type: 'sent',
         agentOperationalSpend: true,
         agentName: 'Ops & Bot <1>',
+        agentDestinationClassification: 'unknown_destination',
+        agentUnknownDestinationHandlingMode: 'notify_and_pause',
       },
       { name: 'Agent <Ops>' },
       'https://example.test'
@@ -49,6 +51,9 @@ describe('telegram formatting helpers', () => {
     expect(message).toContain('Agent: Ops &amp; Bot &lt;1&gt;');
     expect(message).toContain('Operational Wallet: Agent &lt;Ops&gt;');
     expect(message).toContain('Amount: 1.23456789 BTC');
+    expect(message).toContain('Destination: Unknown destination');
+    expect(message).toContain('Handling: Notify and pause');
+    expect(message).toContain('Sanctuary does not sign or broadcast operational wallet spends');
     expect(message).toContain('https://example.test/tx/abc123');
   });
 
