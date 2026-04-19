@@ -10,6 +10,7 @@ import { json, unmocked, registerApiRoutes } from './helpers';
 import {
   ADMIN_USER,
   AGENT_MANAGEMENT_OPTIONS,
+  AGENT_WALLET_DASHBOARD_ROWS,
   FEATURE_FLAGS,
   NODE_CONFIG,
   REGULAR_USER,
@@ -26,6 +27,8 @@ type MockApiResponse = {
   status?: number;
   body: unknown;
 };
+
+type AgentDashboardRow = (typeof AGENT_WALLET_DASHBOARD_ROWS)[number];
 
 type ParsedApiRoute = {
   method: string;
@@ -167,6 +170,7 @@ const STATIC_ADMIN_API_RESPONSES: Record<string, MockApiResponse> = {
   }),
   'GET /admin/version': mockResponse({ updateAvailable: false, currentVersion: '0.8.14' }),
   'GET /admin/agents': mockResponse([]),
+  'GET /admin/agents/dashboard': mockResponse([]),
   'GET /admin/agents/options': mockResponse(AGENT_MANAGEMENT_OPTIONS),
   'GET /transactions/recent': mockResponse([]),
   'GET /transactions/balance-history': mockResponse([]),
@@ -191,6 +195,10 @@ const STATIC_ADMIN_API_RESPONSES: Record<string, MockApiResponse> = {
 
 function finalPathSegment(path: string) {
   return path.split('/').pop();
+}
+
+function cloneAgentDashboardRows(rows: AgentDashboardRow[]): AgentDashboardRow[] {
+  return structuredClone(rows) as AgentDashboardRow[];
 }
 
 function getRegistrationStatusResponse(
@@ -375,14 +383,49 @@ function getAdminApiResponse(
 function createAdminApiRouteHandler(options: {
   failures?: Record<string, MockApiFailure>;
   responseOverrides?: Record<string, MockApiResponse>;
+  agentDashboardRows?: AgentDashboardRow[];
   unhandledRequests: string[];
 }) {
   const state = createAdminApiState();
+  let agentDashboardRows = options.agentDashboardRows
+    ? cloneAgentDashboardRows(options.agentDashboardRows)
+    : null;
   const apiRouteHandler = async (route: Route) => {
     const parsedRoute = parseApiRoute(route);
     const { method, path, requestKey } = parsedRoute;
 
     if (await maybeFulfillFailure(route, options.failures?.[requestKey])) {
+      return;
+    }
+
+    if (agentDashboardRows && requestKey === 'GET /admin/agents/dashboard') {
+      await json(route, agentDashboardRows);
+      return;
+    }
+
+    if (agentDashboardRows && method === 'PATCH' && /^\/admin\/agents\/[^/]+$/.test(path)) {
+      const agentId = finalPathSegment(path);
+      const body = route.request().postDataJSON() as { status?: string };
+      let updatedAgent: AgentDashboardRow['agent'] | undefined;
+
+      agentDashboardRows = agentDashboardRows.map(row => {
+        if (row.agent.id !== agentId) {
+          return row;
+        }
+
+        updatedAgent = {
+          ...row.agent,
+          ...(body.status ? { status: body.status } : {}),
+          updatedAt: new Date().toISOString(),
+        };
+        return { ...row, agent: updatedAgent };
+      });
+
+      await json(
+        route,
+        updatedAgent ?? { message: 'Agent not found' },
+        updatedAgent ? 200 : 404
+      );
       return;
     }
 
@@ -410,6 +453,7 @@ async function mockAdminApi(
   options?: {
     failures?: Record<string, MockApiFailure>;
     responseOverrides?: Record<string, MockApiResponse>;
+    agentDashboardRows?: AgentDashboardRow[];
   }
 ) {
   await page.addInitScript(() => {
@@ -420,6 +464,7 @@ async function mockAdminApi(
   await registerApiRoutes(page, createAdminApiRouteHandler({
     failures: options?.failures,
     responseOverrides: options?.responseOverrides,
+    agentDashboardRows: options?.agentDashboardRows,
     unhandledRequests,
   }));
   return unhandledRequests;
@@ -623,6 +668,51 @@ test.describe('Admin operations', () => {
     await expect(main.getByText('Auto-pause on spend')).toBeVisible();
     await expect(main.getByText('Runtime Key')).toBeVisible();
     await expect(main.getByText('agt_ops')).toBeVisible();
+
+    expect(unhandledRequests).toEqual([]);
+  });
+
+  test('agent wallets page renders populated operational dashboard', async ({ page }) => {
+    const unhandledRequests = await mockAdminApi(page, {
+      responseOverrides: {
+        'GET /admin/agents/dashboard': mockResponse(AGENT_WALLET_DASHBOARD_ROWS),
+      },
+    });
+    const main = page.getByRole('main');
+
+    await page.goto('/#/admin/agent-wallets');
+
+    await expect(main.getByRole('heading', { name: 'Agent Wallets' })).toBeVisible();
+    await expect(main.getByText('Treasury Agent')).toBeVisible();
+    await expect(main.getByText(/82[\s,.]?000 sats/).first()).toBeVisible();
+    await expect(main.getByText('Pending drafts').first()).toBeVisible();
+    await expect(main.getByRole('link', { name: 'Review Drafts' })).toHaveAttribute('href', /wallet-agent-funding/);
+    await expect(main.getByRole('link', { name: 'Funding Wallet' })).toHaveAttribute('href', /wallet-agent-funding/);
+    await expect(main.getByRole('link', { name: 'Operational Wallet' })).toHaveAttribute('href', /wallet-agent-operational/);
+
+    await main.getByText('Review details').click();
+
+    await expect(main.getByText('Operational balance is below threshold')).toBeVisible();
+    await expect(main.getByText(/Runtime Key/)).toBeVisible();
+
+    expect(unhandledRequests).toEqual([]);
+  });
+
+  test('agent wallets page pauses and refreshes agent status', async ({ page }) => {
+    const unhandledRequests = await mockAdminApi(page, {
+      agentDashboardRows: AGENT_WALLET_DASHBOARD_ROWS,
+    });
+    const main = page.getByRole('main');
+
+    await page.goto('/#/admin/agent-wallets');
+
+    await expect(main.getByText('Treasury Agent')).toBeVisible();
+    await expect(main.getByText('Active', { exact: true })).toBeVisible();
+
+    await main.getByRole('button', { name: 'Pause' }).click();
+
+    await expect(main.getByText('Paused', { exact: true })).toBeVisible();
+    await expect(main.getByRole('button', { name: 'Unpause' })).toBeVisible();
 
     expect(unhandledRequests).toEqual([]);
   });

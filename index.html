@@ -7,9 +7,9 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="theme-color" content="#000000" />
     <meta name="description" content="Self-hosted Bitcoin wallet coordinator for hardware wallets" />
-    <script src="https://cdn.tailwindcss.com"></script>
     <script>
-      tailwind.config = {
+      window.tailwind = window.tailwind || {};
+      window.tailwind.config = {
         darkMode: 'class',
         theme: {
           extend: {
@@ -178,6 +178,22 @@
             }
           },
         },
+      }
+
+      const loadTailwind = () => {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.tailwindcss.com';
+        script.async = true;
+        script.onerror = () => {
+          console.warn('Tailwind CDN failed to load; continuing without runtime utilities.');
+        };
+        document.head.appendChild(script);
+      };
+
+      if (document.readyState === 'complete') {
+        loadTailwind();
+      } else {
+        window.addEventListener('load', loadTailwind, { once: true });
       }
     </script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">

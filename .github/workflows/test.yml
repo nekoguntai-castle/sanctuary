@@ -9,6 +9,7 @@ on:
       - main
     paths:
       - 'src/**'
+      - 'index.html'
       - 'components/**'
       - 'hooks/**'
       - 'contexts/**'
@@ -30,6 +31,7 @@ on:
       - 'server/vitest.config.ts'
       - 'gateway/vitest.config.ts'
       - 'playwright.config.ts'
+      - '.github/mutation-baseline.json'
       - '.github/workflows/test.yml'
   schedule:
     - cron: '0 7 * * *'
@@ -44,7 +46,7 @@ jobs:
   # ============================================
   detect-changes:
     name: Detect Changed Files
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
     runs-on: ubuntu-latest
     outputs:
       frontend_changed: ${{ steps.filter.outputs.frontend }}
@@ -71,6 +73,7 @@ jobs:
           filters: |
             frontend:
               - 'App.tsx'
+              - 'index.html'
               - 'index.tsx'
               - 'src/**'
               - 'components/**'
@@ -631,8 +634,9 @@ jobs:
 
   full-critical-mutation:
     name: Full Critical Mutation Gate
-    if: github.event_name != 'pull_request'
+    if: always() && github.event_name != 'pull_request' && (github.event_name != 'push' || needs.detect-changes.outputs.critical_mutation_changed == 'true')
     runs-on: ubuntu-latest
+    needs: [detect-changes]
     defaults:
       run:
         working-directory: server
@@ -842,6 +846,7 @@ jobs:
           path: gateway-results/
 
       - name: Download critical mutation report
+        if: needs.full-critical-mutation.result == 'success' || needs.full-critical-mutation.result == 'failure'
         uses: actions/download-artifact@v8
         with:
           name: critical-mutation-report
@@ -906,6 +911,9 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ "${{ needs.full-critical-mutation.result }}" = "success" ]; then
             echo "### Critical Mutation Gate: Passed" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.full-critical-mutation.result }}" = "skipped" ]; then
+            echo "### Critical Mutation Gate: Skipped" >> $GITHUB_STEP_SUMMARY
+            echo "No critical mutation paths changed on this push." >> $GITHUB_STEP_SUMMARY
           else
             echo "### Critical Mutation Gate: Failed" >> $GITHUB_STEP_SUMMARY
           fi

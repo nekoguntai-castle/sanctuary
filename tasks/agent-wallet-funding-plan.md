@@ -1,6 +1,6 @@
 # Agent Wallet Funding Plan
 
-Status: Complete through Phase 15 with cross-phase audit follow-up captured. Server primitives for linked agent metadata, scoped credentials, admin management, policy-gated funding draft submission, PSBT content validation, Telegram notification, draft-row display, operational monitoring policy, alert history, Agent Wallets dashboard, operational address generation, owner funding overrides, mobile review APIs, runbooks, backup coverage, and route smoke coverage are implemented.
+Status: Complete through Phase 15 with Phase 16 follow-up planned. Server primitives for linked agent metadata, scoped credentials, admin management, policy-gated funding draft submission, PSBT content validation, Telegram notification, draft-row display, operational monitoring policy, alert history, Agent Wallets dashboard, operational address generation, owner funding overrides, mobile review APIs, runbooks, backup coverage, and route smoke coverage are implemented.
 
 ## Goal
 
@@ -456,5 +456,31 @@ Acceptance criteria:
 Verification:
 
 - [x] E2E-style route smoke with fixture PSBT metadata.
+- [x] Admin E2E coverage for populated Agent Wallets dashboard rendering and pause/unpause refresh behavior.
 - [x] Backup-service tests for agent profile, key hash, alert, attempt, and owner override export.
 - [x] Documentation review against security constraints.
+
+### Phase 16: Remaining Monitoring And Client Follow-Up
+
+Goal: close the remaining ambiguity around operational-wallet spends and prepare the mobile client to consume the review APIs already in place.
+
+- [ ] Add operational-wallet destination classification for external spend, known self-transfer, change-like movement, and unknown destination.
+- [ ] Add the configured unknown-destination handling mode to alert evaluation: notify only, pause agent, or both.
+- [ ] Surface unknown-destination classifications in the Agent Wallets dashboard detail view and alert history.
+- [ ] Preserve the security boundary in notifications: human review links may point to web or mobile, but Sanctuary still does not auto-sign or auto-broadcast.
+- [ ] Add mobile client tests once the mobile app exists for pending agent funding drafts, decoded PSBT summaries, approval comments, rejection, and mobile-produced signed PSBT submission.
+- [ ] Extend E2E coverage when mobile/deep-link clients exist so a Telegram notification can lead to the same pending draft review state.
+
+Acceptance criteria:
+
+- Operational wallet alerts distinguish known internal movement from unknown or external spends without trusting labels alone.
+- Unknown-destination policy changes are audited and test-covered.
+- Mobile clients consume the same server review contract as web and cannot bypass multisig signing requirements.
+- Dashboard, Telegram, and future push surfaces use consistent agent, funding wallet, operational wallet, amount, fee, and draft identifiers.
+
+Verification plan:
+
+- Unit tests for transaction classification edge cases: empty outputs, multiple outputs, change-only movement, external recipient, known wallet recipient, malformed transaction metadata, and missing wallet ownership data.
+- Service tests for notify-only, pause-only, and notify-plus-pause unknown-destination modes.
+- Component/API tests for dashboard alert display once classifications are exposed.
+- Mobile contract tests once the client repository or app package exists.

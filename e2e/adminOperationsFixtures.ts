@@ -123,6 +123,68 @@ export const WALLET_AGENTS = [
   },
 ];
 
+const AGENT_FUNDING_DRAFT = {
+  id: 'draft-agent-funding-1',
+  walletId: AGENT_FUNDING_WALLET.id,
+  recipient: 'tb1qops',
+  amountSats: '50000',
+  feeSats: '250',
+  feeRate: 2.5,
+  status: 'partial',
+  approvalStatus: 'not_required',
+  createdAt: '2026-03-11T00:10:00.000Z',
+  updatedAt: '2026-03-11T00:12:00.000Z',
+};
+
+const AGENT_OPERATIONAL_SPEND = {
+  id: 'tx-agent-spend-1',
+  txid: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  walletId: AGENT_OPERATIONAL_WALLET.id,
+  type: 'sent',
+  amountSats: '12000',
+  feeSats: '350',
+  confirmations: 0,
+  blockTime: null,
+  counterpartyAddress: 'tb1qrecipient',
+  createdAt: '2026-03-11T00:25:00.000Z',
+};
+
+export const AGENT_WALLET_DASHBOARD_ROWS = [
+  {
+    agent: WALLET_AGENTS[0],
+    operationalBalanceSats: '82000',
+    pendingFundingDraftCount: 1,
+    openAlertCount: 1,
+    activeKeyCount: 1,
+    lastFundingDraft: AGENT_FUNDING_DRAFT,
+    lastOperationalSpend: AGENT_OPERATIONAL_SPEND,
+    recentFundingDrafts: [AGENT_FUNDING_DRAFT],
+    recentOperationalSpends: [AGENT_OPERATIONAL_SPEND],
+    recentAlerts: [
+      {
+        id: 'alert-agent-balance-low',
+        agentId: AGENT_ID,
+        walletId: AGENT_OPERATIONAL_WALLET.id,
+        type: 'operational_balance_low',
+        severity: 'warning',
+        status: 'open',
+        txid: null,
+        amountSats: '82000',
+        feeSats: null,
+        thresholdSats: '100000',
+        observedCount: null,
+        reasonCode: null,
+        message: 'Operational balance is below threshold',
+        dedupeKey: `${AGENT_ID}:balance_low:${AGENT_OPERATIONAL_WALLET.id}`,
+        metadata: {},
+        createdAt: '2026-03-11T00:20:00.000Z',
+        acknowledgedAt: null,
+        resolvedAt: null,
+      },
+    ],
+  },
+];
+
 export const AGENT_MANAGEMENT_OPTIONS = {
   users: [
     {
