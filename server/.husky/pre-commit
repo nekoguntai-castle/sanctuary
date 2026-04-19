@@ -49,7 +49,9 @@ AGENT_CACHE_DIR="$AGENT_LOG_DIR/agent-cache"
 #     UNKNOWN instead of silently passing as PROCEED.
 # v5: non-object rubrics (array, string, number, boolean) now yield
 #     UNKNOWN instead of falling through to self-reported verdict.
-PROMPT_VERSION="v5"
+# v6: fail-closed gate — UNKNOWN now blocks the commit (previously it was
+#     informational only, which meant malformed rubrics silently passed).
+PROMPT_VERSION="v6"
 # Per-commit scratch dir for parallel agent outputs and stop markers.
 AGENT_TMP_DIR=$(mktemp -d -t sanctuary-agents-XXXXXX)
 trap 'rm -rf "$AGENT_TMP_DIR"' EXIT
@@ -266,7 +268,7 @@ render_agent_body() {
         STOP)    printf '%b\n' "${RED}❌ RECOMMEND STOP${NC}" ;;
         REVIEW)  printf '%b\n' "${YELLOW}⚠️  SUGGEST REVIEW${NC}" ;;
         PROCEED) printf '%b\n' "${GREEN}✅ RECOMMEND PROCEED${NC}" ;;
-        *)       printf '%b\n' "${YELLOW}Verdict: UNKNOWN (agent did not follow output format)${NC}" ;;
+        *)       printf '%b\n' "${RED}⛔ UNKNOWN — malformed or unparseable output (blocking gate)${NC}" ;;
     esac
     if [ "$self_verdict" != "UNKNOWN" ] && [ "$self_verdict" != "$verdict" ]; then
         printf '%b\n' "${YELLOW}(agent self-reported ${self_verdict}; overridden by rubric-derived ${verdict})${NC}"
@@ -330,12 +332,39 @@ AGENT_OUTPUT_RULES='OUTPUT RULES (follow strictly):
 # review the post-sync diff — a silent correctness bug.
 DIFF_HASH=""
 
+# Fail-closed gate decision: STOP obviously blocks; UNKNOWN also blocks
+# because it's the result of a malformed rubric, malformed JSON, or an
+# agent that ignored the output format entirely. In any of those cases
+# we have no reliable signal — proceeding would silently skip real review.
+# REVIEW / PROCEED pass through.
+verdict_blocks_commit() {
+    case "$1" in
+        STOP|UNKNOWN) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Helper: if the verdict blocks, emit the reason + bypass hint and touch
+# the stop marker. Centralised so cache hits and fresh runs behave identically.
+maybe_set_stop() {
+    # $1=verdict $2=agent_name $3=stop_name
+    if verdict_blocks_commit "$1"; then
+        echo ""
+        case "$1" in
+            STOP)    printf '%b\n' "${RED}❌ ${2} agent recommends stopping.${NC}" ;;
+            UNKNOWN) printf '%b\n' "${RED}⛔ ${2} agent output was unparseable or malformed — failing closed.${NC}" ;;
+        esac
+        printf '%b\n' "${YELLOW}To bypass: git commit --no-verify${NC}"
+        touch "$AGENT_TMP_DIR/${3}.stop"
+    fi
+}
+
 # Run the agent unless the same (diff, agent, prompt-version) tuple has a
 # cached verdict — in which case replay the cached output and skip claude.
 # $1=agent_name $2=claude_agent_type(empty=general) $3=prompt
 # $4=file_count $5=stop_marker_basename
 # Writes to stdout: rendered verdict + rubric + issues (or raw output if
-# unparseable). Touches $AGENT_TMP_DIR/$5.stop when the verdict is STOP.
+# unparseable). Touches $AGENT_TMP_DIR/$5.stop when the verdict blocks.
 invoke_agent_with_cache() {
     local agent_name="$1"
     local claude_agent="$2"
@@ -352,9 +381,7 @@ invoke_agent_with_cache() {
         local verdict
         verdict=$(extract_verdict "$cache_file")
         log_agent_run "$agent_name" "$verdict" 0 "$file_count" "$cache_file" 1
-        if [ "$verdict" = "STOP" ]; then
-            touch "$AGENT_TMP_DIR/${stop_name}.stop"
-        fi
+        maybe_set_stop "$verdict" "$agent_name" "$stop_name"
         return 0
     fi
 
@@ -363,7 +390,8 @@ invoke_agent_with_cache() {
     temp_output=$(mktemp)
 
     # `|| true` prevents set -e from aborting if claude itself errors —
-    # we still want other agents to finish and a verdict of UNKNOWN logged.
+    # we still want other agents to finish and an UNKNOWN verdict logged
+    # (which will then block via the fail-closed policy).
     if [ -n "$claude_agent" ]; then
         echo "$prompt" | claude --agent "$claude_agent" --print > "$temp_output" 2>&1 || true
     else
@@ -375,13 +403,7 @@ invoke_agent_with_cache() {
     verdict=$(extract_verdict "$temp_output")
     log_agent_run "$agent_name" "$verdict" "$duration" "$file_count" "$temp_output" 0
     cp "$temp_output" "$cache_file"
-
-    if [ "$verdict" = "STOP" ]; then
-        echo ""
-        printf '%b\n' "${RED}❌ ${agent_name} agent recommends stopping.${NC}"
-        printf '%b\n' "${YELLOW}To bypass: git commit --no-verify${NC}"
-        touch "$AGENT_TMP_DIR/${stop_name}.stop"
-    fi
+    maybe_set_stop "$verdict" "$agent_name" "$stop_name"
 
     rm -f "$temp_output"
 }
