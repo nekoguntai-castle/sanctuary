@@ -45,7 +45,9 @@ AGENT_CACHE_DIR="$AGENT_LOG_DIR/agent-cache"
 # v2: switched agents from plaintext markers to structured JSON rubric + issues.
 # v3: verdict derived from rubric in shell (agents' self-reported verdict
 #     no longer trusted); old cache entries must be re-classified.
-PROMPT_VERSION="v3"
+# v4: invalid rubric values (anything outside OK/WARN/BLOCK) now yield
+#     UNKNOWN instead of silently passing as PROCEED.
+PROMPT_VERSION="v4"
 # Per-commit scratch dir for parallel agent outputs and stop markers.
 AGENT_TMP_DIR=$(mktemp -d -t sanctuary-agents-XXXXXX)
 trap 'rm -rf "$AGENT_TMP_DIR"' EXIT
@@ -100,30 +102,55 @@ extract_json_object() {
 # (claiming "PROCEED" while marking a concern "BLOCK"). The rubric is the
 # ground truth; verdict is computed from it here in shell.
 #
-# Returns STOP / REVIEW / PROCEED / UNKNOWN.
-# When the rubric is empty or missing, falls back to the self-reported
-# verdict — better than UNKNOWN when the agent structured its response
-# without per-concern breakdown.
+# Precedence (in order):
+#   1. any rubric value = BLOCK → STOP (always conservative — a malformed
+#      rubric that still contains BLOCK should still stop the commit)
+#   2. any rubric value outside {OK,WARN,BLOCK} → UNKNOWN (can't trust
+#      the rest of the rubric; forces author to look)
+#   3. any rubric value = WARN → REVIEW
+#   4. all values = OK → PROCEED
+#   5. empty / non-object / missing rubric → fall back to self-reported
+#      verdict (better than UNKNOWN when the agent structured without a
+#      per-concern breakdown)
 derive_verdict_from_body() {
     # $1 = JSON body
-    local values has_block has_warn has_any v
-    # Collect rubric values as an array
-    values=$(echo "$1" | jq -c '(.rubric // {}) | to_entries | map(.value | ascii_upcase)')
-    has_block=$(echo "$values" | jq -r 'any(. == "BLOCK")')
+    local values has_block has_invalid has_warn has_any v
+    # Safely collect rubric values as an uppercase string array. Guards
+    # against non-object rubrics and non-string values.
+    values=$(echo "$1" | jq -c '
+        (.rubric // {}) as $r
+        | if ($r | type) != "object" then []
+          else ($r | to_entries | map(
+              .value
+              | if type == "string" then ascii_upcase else tostring end
+          ))
+          end
+    ' 2>/dev/null || echo '[]')
+
+    has_block=$(echo "$values" | jq -r 'any(. == "BLOCK")' 2>/dev/null || echo false)
     if [ "$has_block" = "true" ]; then
         echo "STOP"
         return
     fi
-    has_warn=$(echo "$values" | jq -r 'any(. == "WARN")')
+
+    has_invalid=$(echo "$values" | jq -r 'any(. != "OK" and . != "WARN" and . != "BLOCK")' 2>/dev/null || echo false)
+    if [ "$has_invalid" = "true" ]; then
+        echo "UNKNOWN"
+        return
+    fi
+
+    has_warn=$(echo "$values" | jq -r 'any(. == "WARN")' 2>/dev/null || echo false)
     if [ "$has_warn" = "true" ]; then
         echo "REVIEW"
         return
     fi
-    has_any=$(echo "$values" | jq -r 'length')
-    if [ "$has_any" -gt 0 ] 2>/dev/null; then
+
+    has_any=$(echo "$values" | jq -r 'length' 2>/dev/null || echo 0)
+    if [ -n "$has_any" ] && [ "$has_any" -gt 0 ]; then
         echo "PROCEED"
         return
     fi
+
     # Empty/missing rubric → fall back to self-reported verdict
     v=$(echo "$1" | jq -r '.verdict // "UNKNOWN"' | tr '[:lower:]' '[:upper:]')
     case "$v" in
