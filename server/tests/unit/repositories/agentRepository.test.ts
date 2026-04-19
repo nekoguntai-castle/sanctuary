@@ -398,6 +398,32 @@ describe('agentRepository', () => {
     ]);
   });
 
+  it('uses zero dashboard balance when no wallet balance row exists', async () => {
+    const agent = {
+      id: 'agent-1',
+      operationalWalletId: 'operational-wallet',
+      fundingWalletId: 'funding-wallet',
+      apiKeys: [],
+    };
+
+    prisma.walletAgent.findMany.mockResolvedValue([agent]);
+    prisma.uTXO.groupBy.mockResolvedValue([]);
+    prisma.draftTransaction.groupBy.mockResolvedValue([]);
+    prisma.agentAlert.groupBy.mockResolvedValue([]);
+    prisma.agentApiKey.groupBy.mockResolvedValue([]);
+    prisma.$queryRaw
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    await expect(agentRepository.findDashboardRows()).resolves.toEqual([
+      expect.objectContaining({
+        agent,
+        operationalBalanceSats: 0n,
+      }),
+    ]);
+  });
+
   it('creates, finds, revokes, and updates agent API keys', async () => {
     prisma.agentApiKey.create.mockResolvedValue({ id: 'key-1' });
 

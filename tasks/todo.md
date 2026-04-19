@@ -1,4 +1,89 @@
-# Next Task: GitHub Actions Node 20 Annotation Cleanup
+# Next Task: Agent Repository Large File Remediation
+
+Status: complete
+
+Goal: fix the large-file quality gate by reducing `server/src/repositories/agentRepository.ts` below the 1,000-line limit without weakening the policy or changing agent dashboard behavior.
+
+## Agent Repository Large File Checklist
+
+- [x] Inspect large-file policy and agent repository dashboard responsibilities.
+- [x] Extract dashboard read-model code into a focused repository module while preserving existing public imports.
+- [x] Run focused agent repository/API tests and quality gates.
+- [x] Update task notes and self-review the diff.
+
+## Agent Repository Large File Review
+
+Changes:
+
+- Extracted admin agent dashboard read-model assembly from `server/src/repositories/agentRepository.ts` into `server/src/repositories/agentDashboardRepository.ts`.
+- Preserved `agentRepository.findDashboardRows` and the existing dashboard type exports for current callers.
+- Reduced `server/src/repositories/agentRepository.ts` from 1,006 lines to 720 lines; the new dashboard repository is 354 lines.
+- Added a focused dashboard default test for the missing wallet-balance aggregate row branch so backend coverage stays at 100%.
+- Updated the health assessment and grade history to reflect that the large-file policy is green again.
+
+Verification:
+
+- `npx vitest run tests/unit/repositories/agentRepository.test.ts tests/unit/api/admin-agents-routes.test.ts tests/unit/agent/dto.test.ts` passed: 3 files, 34 tests.
+- `npm run test:backend:coverage` passed outside the sandbox: 389 files passed, 22 skipped; 9,151 tests passed, 503 skipped; 100% statements/branches/functions/lines.
+- `npm run lint:server` passed, including `check:api-body-validation`.
+- `npm run typecheck:server:tests` passed.
+- `npm run check:architecture-boundaries` passed.
+- `node scripts/quality/check-large-files.mjs` passed.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w server/src/repositories/agentDashboardRepository.ts` passed with no warnings.
+- `git diff --check` passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: dashboard aggregation still short-circuits with no agents; absent balance/count/recent rows default to zero, null, or empty arrays.
+- Boundary values: `DASHBOARD_RECENT_LIMIT` remains unchanged at 3; pending draft statuses remain `unsigned`, `partial`, and `signed`.
+- System boundaries: raw SQL remains Prisma-tagged and parameterized; no route, DTO, or service API changed.
+- Async/race behavior: dashboard aggregation still runs independent grouped/windowed reads in one `Promise.all` and does not introduce shared mutable state.
+- Diff review: changes are scoped to dashboard repository extraction, one focused branch test, health-report status, trend metadata, and this task record.
+
+## Previous Task: Full Repository Quality Grade
+
+Status: complete
+
+Goal: run the `$grade` skill against the repository at HEAD, update `docs/plans/codebase-health-assessment.md` with evidence-backed ISO/IEC 25010 scores, and record trend history without changing unrelated code.
+
+## Full Repository Quality Grade Checklist
+
+- [x] Confirm repository state, audit mode, and grading standards.
+- [x] Run the grade skill's mechanical signal collectors.
+- [x] Inspect targeted files for judged reliability, maintainability, security, performance, test-quality, and operational-readiness criteria.
+- [x] Write/update the health assessment report and trend entry.
+- [x] Verify the report, task notes, and final workspace state.
+
+## Full Repository Quality Grade Review
+
+Changes:
+
+- Updated `docs/plans/codebase-health-assessment.md` with a full-mode ISO/IEC 25010-aligned grade for commit `d43680aa`.
+- Appended the 2026-04-19 full-mode trend entry to `docs/plans/grade-history/sanctuary_.jsonl`.
+- Recorded the current score as `92/100`, grade `A`, confidence `High`.
+
+Verification:
+
+- `bash /home/nekoguntai/.codex/skills/grade/grade.sh` completed with tests, lint, typecheck, and heuristic signals.
+- `npm run test:coverage` passed with 100% app statements, branches, functions, and lines.
+- `npm run test:backend:coverage` passed outside the sandbox with 100% backend statements, branches, functions, and lines after the sandbox run failed with `listen EPERM`.
+- `npm run test:coverage` in `gateway` passed outside the sandbox with 100% gateway statements, branches, functions, and lines after the sandbox run failed with `listen EPERM`.
+- `npm audit --json`, `npm --prefix server audit --json`, `npm --prefix gateway audit --json`, and `npm --prefix ai-proxy audit --json` found 0 high/critical advisories.
+- `gitleaks` completed clean after normalizing a prior grade-history metadata value to the documented schema.
+- `lizard` reported 110 CCN warnings, average CCN 1.4, and max CCN 67.
+- `jscpd` reported 2.1% duplication.
+- `npm run check:architecture-boundaries`, `npm run check:browser-auth-contract`, and `npm run check:openapi-route-coverage` passed.
+- `node scripts/quality/check-large-files.mjs` failed on unclassified oversized `server/src/repositories/agentRepository.ts`.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: judged validation and tests include request schema parsing, runtime config bounds, null/default schema cases, and empty-state behavior across sampled app/server/gateway tests.
+- Boundary values: coverage gates are back at the repository's 100% threshold; config schemas constrain ports, retry counts, timeouts, and batch sizes.
+- System boundaries: audits cover dependency advisories, clean gitleaks secret scanning, trust-boundary validation, browser auth contracts, OpenAPI route coverage, and architecture boundaries.
+- Async/race behavior: request timeout, retry/backoff, async utility, and local listener behavior were checked; backend/gateway coverage needed non-sandbox execution for `supertest` listener permissions.
+- Diff review: changes are scoped to grade documentation, trend history, and this task record.
+
+## Previous Task: GitHub Actions Node 20 Annotation Cleanup
 
 Status: complete
 
