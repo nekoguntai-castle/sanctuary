@@ -60,7 +60,12 @@ AGENT_CACHE_DIR="$AGENT_LOG_DIR/agent-cache"
 #     length==1 check; a pre-scan rejects files with multiple candidate
 #     object openings. Closes the bypass where a leading "decoy" OK
 #     rubric could hide a real BLOCK in a later object.
-PROMPT_VERSION="v8"
+# v9: dropped the "bare JSON embedded in prose" strategy entirely. It
+#     extracted a sub-range via sed and was inherently exploitable
+#     (attacker indents decoy vs real at different columns). Fence
+#     pre-check caps any file at one markdown block. Extraction now
+#     accepts only: pure JSON object, or exactly one fenced block.
+PROMPT_VERSION="v9"
 # Per-commit scratch dir for parallel agent outputs and stop markers.
 AGENT_TMP_DIR=$(mktemp -d -t sanctuary-agents-XXXXXX)
 trap 'rm -rf "$AGENT_TMP_DIR"' EXIT
@@ -89,55 +94,56 @@ _parse_single_object() {
 }
 
 # Extract the single well-formed JSON object from an agent's output file.
-# LLMs sometimes wrap responses in markdown fences or add stray prose —
-# we try several extraction strategies, but every one enforces the
-# single-object invariant. Echoes the JSON object (compact) on success,
-# or "null" on failure.
+# The prompts explicitly require pure JSON output (no prose, no fences),
+# but we tolerate a single markdown fence since LLMs often add one by
+# reflex. Any other shape — bare JSON with surrounding prose, multiple
+# objects, multiple fence blocks — is rejected so a "decoy" leading
+# object cannot hide a BLOCK rubric in a later position.
+#
+# Strategies are additive; each independently enforces the single-object
+# invariant via _parse_single_object. Returns the compact JSON object on
+# success, "null" on failure.
 extract_json_object() {
     # $1 = path to agent output file
-    local out opening_count
+    local out total_fences
 
-    # PRE-CHECK: count lines starting with '{' at column 0 (strict, no
-    # leading whitespace). Well-formatted multi-object files have each
-    # top-level '{' at column 0; nested object braces inside arrays are
-    # always indented. More than one such line means multiple top-level
-    # objects — reject as ambiguous so no strategy can pick a decoy first
-    # object. Indented-only top-level objects fall through to the
-    # strategies, where jq --slurp still enforces single-object via
-    # _parse_single_object.
-    opening_count=$(grep -c '^{' "$1" 2>/dev/null || echo 0)
-    if [ -n "$opening_count" ] && [ "$opening_count" -gt 1 ] 2>/dev/null; then
+    # PRE-CHECK: at most one markdown fence block is allowed. A fenced
+    # block opens and closes with a ``` line, so the total count of
+    # lines beginning with three backticks must be exactly 0 (no fence)
+    # or 2 (one fence). Anything higher means multiple fenced blocks —
+    # ambiguous, so reject before any extraction strategy can pick one.
+    total_fences=$(grep -c '^```' "$1" 2>/dev/null || echo 0)
+    if [ -n "$total_fences" ] && [ "$total_fences" -gt 2 ] 2>/dev/null; then
         echo "null"
         return
     fi
 
-    # Strategy 1: whole file is a single JSON object
+    # Strategy 1: whole file parses as exactly one JSON object
     out=$(_parse_single_object < "$1")
     if [ -n "$out" ]; then
         echo "$out"
         return
     fi
 
-    # Strategy 2: ```json ... ``` fenced block
+    # Strategy 2: ```json ... ``` fenced block containing one object
     out=$(sed -n '/^```json$/,/^```$/p' "$1" | sed '1d;$d' | _parse_single_object)
     if [ -n "$out" ]; then
         echo "$out"
         return
     fi
 
-    # Strategy 3: unlabelled ``` ... ``` fenced block
+    # Strategy 3: unlabelled ``` ... ``` fenced block containing one object
     out=$(sed -n '/^```$/,/^```$/p' "$1" | sed '1d;$d' | _parse_single_object)
     if [ -n "$out" ]; then
         echo "$out"
         return
     fi
 
-    # Strategy 4: from first `{` at column 0 to first `}` at column 0
-    out=$(sed -n '/^{/,/^}$/p' "$1" | _parse_single_object)
-    if [ -n "$out" ]; then
-        echo "$out"
-        return
-    fi
+    # No "bare JSON embedded in prose" strategy. That strategy extracted a
+    # sub-range via sed /^{/,/^}$/ — inherently exploitable, because an
+    # attacker could put a decoy OK object at column 0 and a real BLOCK
+    # object anywhere else (indented, fenced differently, before/after the
+    # decoy). The prompts forbid prose around JSON anyway; fail closed.
 
     echo "null"
 }
