@@ -1,4 +1,38 @@
-# Next Task: GitHub Permission Failure CI Fix
+# Next Task: GitHub Actions Node 20 Annotation Cleanup
+
+Status: complete
+
+Goal: remove the GitHub Actions Node.js 20 deprecation annotation by updating the changed-files action to a Node.js 24-compatible release without changing CI lane behavior.
+
+## GitHub Actions Node 20 Annotation Checklist
+
+- [x] Confirm the annotation source and current workflow usage.
+- [x] Verify the upstream `dorny/paths-filter` release that runs on Node.js 24.
+- [x] Patch `.github/workflows/test.yml` with the smallest compatible action update.
+- [x] Validate workflow diff, commit, push, and verify the new CI run.
+
+## GitHub Actions Node 20 Annotation Review
+
+Changes:
+
+- Confirmed the only Node.js 20 annotation source in this repository was `dorny/paths-filter@v3` in `.github/workflows/test.yml`.
+- Verified upstream `dorny/paths-filter` has a v4 release line and that `v4` declares `runs.using: node24`.
+- Updated the changed-files detection step from `dorny/paths-filter@v3` to `dorny/paths-filter@v4` without changing filters, outputs, permissions, or job gating logic.
+
+Verification:
+
+- `git diff --check` passed.
+- Parsed `.github/workflows/test.yml` with the repository's existing `js-yaml` dependency.
+- Confirmed there are no remaining `dorny/paths-filter@v3` references under `.github`.
+
+Edge case and self-review:
+
+- Null/empty inputs: workflow filter definitions and outputs are unchanged, so empty changed-file sets still follow the existing `false` output behavior.
+- Boundary values: PR and push event gating remains unchanged; scheduled runs still skip `detect-changes` through the existing job `if`.
+- System boundaries: no test commands, permissions, or checkout behavior changed; only the action runtime provider moved to the Node.js 24-compatible major version.
+- Diff review: changes are scoped to the one workflow action version and this task record.
+
+## Previous Task: GitHub Permission Failure CI Fix
 
 Status: complete
 
