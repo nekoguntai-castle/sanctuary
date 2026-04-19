@@ -1,15 +1,60 @@
-# Next Task: AccessTab CCN Remediation
+# Next Task: Agent Wallet Funding Phase 16
 
 Status: pending
+
+Goal: close the remaining Phase 16 monitoring and client follow-up from `tasks/agent-wallet-funding-plan.md` without weakening the security boundary that Sanctuary coordinates, not signs or broadcasts, agent wallet activity.
+
+## Agent Wallet Funding Phase 16 Checklist
+
+- [ ] Inspect operational-wallet alert classification, Agent Wallets dashboard alert history, notification copy, and mobile review API/client-test surface.
+- [ ] Add operational-wallet destination classification for external spend, known self-transfer, change-like movement, and unknown destination.
+- [ ] Add configured unknown-destination handling mode to alert evaluation: notify only, pause agent, or both.
+- [ ] Surface destination classifications in Agent Wallets dashboard detail and alert history.
+- [ ] Preserve notification security boundaries for web/mobile review links and multisig signing requirements.
+- [ ] Add available server/API/component tests now, and document mobile/deep-link tests that depend on a future client package.
+- [ ] Run final quality, edge case, and self-review, then update `tasks/agent-wallet-funding-plan.md`.
+
+## Previous Task: AccessTab CCN Remediation
+
+Status: complete
 
 Goal: reduce the next highest remaining component hotspot, `components/WalletDetail/tabs/AccessTab.tsx` at CCN 69, without changing wallet access display, owner/admin actions, sharing controls, transfer controls, or pending-transfer integration.
 
 ## AccessTab Checklist
 
-- [ ] Inspect AccessTab structure, wallet access helpers, and focused WalletDetail/access tests.
-- [ ] Extract access metadata, owner/admin action rendering, sharing sections, and transfer integration into focused modules.
-- [ ] Run focused AccessTab/WalletDetail tests, app lint/typecheck, lizard, architecture, large-file, and diff checks.
-- [ ] Run final quality, edge case, and self-review.
+- [x] Inspect AccessTab structure, wallet access helpers, and focused WalletDetail/access tests.
+- [x] Extract access metadata, owner/admin action rendering, sharing sections, and transfer integration into focused modules.
+- [x] Run focused AccessTab/WalletDetail tests, app lint/typecheck, lizard, architecture, large-file, and diff checks.
+- [x] Run final quality, edge case, and self-review.
+
+## AccessTab Review
+
+Changes:
+
+- Replaced the render-heavy `components/WalletDetail/tabs/AccessTab.tsx` body with a small orchestrator that keeps the public props and parent `WalletDetail` contract unchanged.
+- Added `components/WalletDetail/tabs/access/accessTabData.ts` for tab constants, owner display fallback data, shared-user filtering, and shared-access checks.
+- Added focused ownership, sharing, user-search, shared-access-list, sub-tab, and transfers components under `components/WalletDetail/tabs/access/`.
+- Preserved the legacy fallback where missing owner/user data renders owner name `You` but avatar initial `U`.
+- Reduced `components/WalletDetail/tabs/AccessTab.tsx` from CCN 69 to no focused warning, with all new access modules clean under the focused `-C 15` gate.
+
+Verification:
+
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/WalletDetail/tabs/AccessTab.tsx components/WalletDetail/tabs/access` passed with no warnings.
+- `npx vitest run tests/components/WalletDetail/tabs/AccessTab.test.tsx` passed: 1 file, 10 tests.
+- `npx vitest run tests/components/WalletDetail/tabs` passed: 13 files, 131 tests.
+- `npm run typecheck:app` passed.
+- `npm run lint:app` passed.
+- `npm run check:architecture-boundaries` passed.
+- `node scripts/quality/check-large-files.mjs` passed the classification check.
+- `git diff --check` passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: missing `walletShareInfo`, missing owner rows, missing current user, empty shared users, and absent groups preserve the previous ownership and empty-sharing fallbacks.
+- Boundary values: owner-only controls remain hidden for non-owners; selected group controls still render role buttons only when a group is selected; user search loading and empty result states are unchanged.
+- System boundaries: `PendingTransfersPanel`, wallet share callbacks, group/user role update callbacks, and transfer completion callback contracts are unchanged.
+- Async/race behavior: no async behavior moved into the new components; loading flags still only disable the same sharing buttons/selects.
+- Diff review: changes are local to AccessTab rendering decomposition and task tracking. The next tracked plan item is Agent Wallet Funding Phase 16 from `tasks/agent-wallet-funding-plan.md`.
 
 ## Previous Task: PendingTransfersPanel CCN Remediation
 
