@@ -6,13 +6,16 @@ cd "$ROOT"
 
 QUALITY_TOOLS_DIR="${QUALITY_TOOLS_DIR:-$ROOT/.tmp/quality-tools}"
 LIZARD_VERSION="${LIZARD_VERSION:-1.21.2}"
+GITLEAKS_VERSION="${GITLEAKS_VERSION:-8.30.1}"
 LIZARD_REQUIREMENTS_FILE="$ROOT/scripts/quality/lizard-requirements.txt"
 LIZARD_VENV="$QUALITY_TOOLS_DIR/lizard-$LIZARD_VERSION"
+GITLEAKS_DIR="$QUALITY_TOOLS_DIR/gitleaks-$GITLEAKS_VERSION"
 LIZARD_WARNING_BASELINE="${LIZARD_WARNING_BASELINE:-0}"
 GITLEAKS_LOG_OPTS="${GITLEAKS_LOG_OPTS:--1}"
 QUALITY_COVERAGE_SCRIPT="${QUALITY_COVERAGE_SCRIPT:-test:coverage}"
 QUALITY_TYPECHECK_SCRIPT="${QUALITY_TYPECHECK_SCRIPT:-typecheck}"
 QUALITY_BOOTSTRAP_TOOLS="${QUALITY_BOOTSTRAP_TOOLS:-1}"
+GITLEAKS_BIN_RESOLVED=""
 LIZARD_BIN_RESOLVED=""
 
 truthy() {
@@ -41,10 +44,73 @@ run_step() {
   "$@"
 }
 
-resolve_gitleaks_bin() {
+resolve_executable() {
+  local candidate="$1"
+
+  if [[ -x "$candidate" ]]; then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+
+  if command -v "$candidate" >/dev/null 2>&1; then
+    command -v "$candidate"
+    return 0
+  fi
+
+  return 127
+}
+
+gitleaks_asset_platform() {
+  local os
+  local arch
+
+  case "$(uname -s)" in
+    Linux)
+      os="linux"
+      ;;
+    Darwin)
+      os="darwin"
+      ;;
+    *)
+      printf 'Unsupported gitleaks bootstrap OS: %s\n' "$(uname -s)" >&2
+      return 127
+      ;;
+  esac
+
+  case "$(uname -m)" in
+    x86_64|amd64)
+      arch="x64"
+      ;;
+    arm64|aarch64)
+      arch="arm64"
+      ;;
+    *)
+      printf 'Unsupported gitleaks bootstrap architecture: %s\n' "$(uname -m)" >&2
+      return 127
+      ;;
+  esac
+
+  printf '%s_%s\n' "$os" "$arch"
+}
+
+install_gitleaks() {
+  local platform
+  local archive
+  local url
+
+  platform="$(gitleaks_asset_platform)"
+  archive="$GITLEAKS_DIR/gitleaks.tar.gz"
+  url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_${platform}.tar.gz"
+
+  mkdir -p "$GITLEAKS_DIR"
+  curl -fsSL -o "$archive" "$url"
+  tar -xzf "$archive" -C "$GITLEAKS_DIR" gitleaks
+  chmod +x "$GITLEAKS_DIR/gitleaks"
+}
+
+ensure_gitleaks_bin() {
   if [[ -n "${GITLEAKS_BIN:-}" ]]; then
-    if command -v "$GITLEAKS_BIN" >/dev/null 2>&1 || [[ -x "$GITLEAKS_BIN" ]]; then
-      printf '%s\n' "$GITLEAKS_BIN"
+    if GITLEAKS_BIN_RESOLVED="$(resolve_executable "$GITLEAKS_BIN")"; then
       return 0
     fi
 
@@ -52,18 +118,27 @@ resolve_gitleaks_bin() {
     return 127
   fi
 
-  if command -v gitleaks >/dev/null 2>&1; then
-    command -v gitleaks
+  GITLEAKS_BIN_RESOLVED="$GITLEAKS_DIR/gitleaks"
+  if [[ -x "$GITLEAKS_BIN_RESOLVED" ]]; then
+    return 0
+  fi
+
+  if truthy "$QUALITY_BOOTSTRAP_TOOLS"; then
+    install_gitleaks
+    return 0
+  fi
+
+  if GITLEAKS_BIN_RESOLVED="$(resolve_executable gitleaks)"; then
     return 0
   fi
 
   if [[ -x /tmp/gitleaks ]]; then
-    printf '/tmp/gitleaks\n'
+    GITLEAKS_BIN_RESOLVED="/tmp/gitleaks"
     return 0
   fi
 
   printf 'Missing required quality tool: gitleaks\n' >&2
-  printf 'Install gitleaks or set GITLEAKS_BIN to an executable path.\n' >&2
+  printf 'Run with QUALITY_BOOTSTRAP_TOOLS=1, install gitleaks, or set GITLEAKS_BIN to an executable path.\n' >&2
   return 127
 }
 
@@ -96,12 +171,12 @@ ensure_lizard_bin() {
 }
 
 run_gitleaks() {
-  local gitleaks_bin
-  gitleaks_bin="$(resolve_gitleaks_bin)"
+  ensure_gitleaks_bin
 
-  "$gitleaks_bin" detect --source . --no-git --redact --config .gitleaks.toml
-  "$gitleaks_bin" git . --config .gitleaks.toml --redact --no-banner --log-opts "$GITLEAKS_LOG_OPTS"
-  GITLEAKS_BIN="$gitleaks_bin" bash scripts/gitleaks-tracked-tree.sh
+  "$GITLEAKS_BIN_RESOLVED" version
+  "$GITLEAKS_BIN_RESOLVED" detect --source . --no-git --redact --config .gitleaks.toml
+  "$GITLEAKS_BIN_RESOLVED" git . --config .gitleaks.toml --redact --no-banner --log-opts "$GITLEAKS_LOG_OPTS"
+  GITLEAKS_BIN="$GITLEAKS_BIN_RESOLVED" bash scripts/gitleaks-tracked-tree.sh
 }
 
 run_lizard() {

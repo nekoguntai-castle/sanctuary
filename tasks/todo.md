@@ -1,4 +1,49 @@
-# Next Task: Agent Repository Large File Remediation
+# Next Task: Grade Improvements 3-5
+
+Status: complete
+
+Goal: after pushing the large-file gate fix, address the next grade improvement set: reduce complexity debt, improve warning-band file-size pressure where practical, and make gitleaks grading more reproducible.
+
+## Grade Improvements 3-5 Checklist
+
+- [x] Push the agent repository large-file gate fix.
+- [x] Inspect top lizard complexity targets and warning-band file-size targets.
+- [x] Inspect current gitleaks availability/tooling path.
+- [x] Implement the smallest safe improvement that advances items 3-5.
+- [x] Run focused verification and update review notes.
+
+## Grade Improvements 3-5 Review
+
+Changes:
+
+- Split `components/WalletStats.tsx` into a 52-line wrapper plus focused summary-card, chart, and data-helper modules under `components/WalletStats/`.
+- Moved dashboard repository aggregation tests from `server/tests/unit/repositories/agentRepository.test.ts` into `server/tests/unit/repositories/agentDashboardRepository.test.ts`, reducing `agentRepository.test.ts` from 890 lines to 724 lines.
+- Added pinned gitleaks resolution/bootstrap to `scripts/quality.sh` using `GITLEAKS_VERSION=8.30.1` and `.tmp/quality-tools/gitleaks-8.30.1/gitleaks`, while preserving explicit `GITLEAKS_BIN`.
+- Confirmed the pushed large-file fix has Build Dev Images, Release, and Install Tests green; Test Suite was still in progress during local remediation.
+
+Verification:
+
+- `npx vitest run tests/components/WalletStats.test.tsx` passed: 23 tests.
+- `npx vitest run tests/unit/repositories/agentRepository.test.ts tests/unit/repositories/agentDashboardRepository.test.ts` passed: 2 files, 13 tests.
+- `npm run test:coverage` passed: 396 files, 5,555 tests, 100% statements/branches/functions/lines.
+- `npm run test:backend:coverage` passed: 390 files passed, 22 skipped; 9,151 tests passed, 503 skipped; 100% statements/branches/functions/lines.
+- `npm run typecheck:app` and `npm run typecheck:server:tests` passed.
+- `npm run lint:app` and `npm run lint:server` passed.
+- `bash -n scripts/quality.sh` passed.
+- `QUALITY_SKIP_* ... QUALITY_BOOTSTRAP_TOOLS=0 npm run quality` passed the gitleaks-only lane through the pinned `.tmp/quality-tools/gitleaks-8.30.1/gitleaks` path.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/WalletStats.tsx components/WalletStats ...` passed for the touched files; full lizard warning count moved from 110 to 108 and max CCN from 67 to 65.
+- `node scripts/quality/check-large-files.mjs` passed with warning-band files reduced to 9.
+- `git diff --check` passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: WalletStats still handles empty UTXOs, empty transactions, missing UTXO dates, null fiat values, and missing BTC price through existing tests.
+- Boundary values: UTXO age buckets still cover `< 1m`, `1-6m`, `6-12m`, and `> 1y`; accumulation history still keeps the last balance per display date.
+- System boundaries: dashboard repository behavior is unchanged; tests now import the dashboard repository directly while `agentRepository.findDashboardRows` remains exported for callers.
+- Async/race behavior: chart rendering still waits on `useDelayedRender`; gitleaks tooling resolution is synchronous before scans start.
+- Diff review: changes are scoped to the WalletStats split, dashboard test relocation, pinned gitleaks quality tooling, health-report notes, and this task record.
+
+## Previous Task: Agent Repository Large File Remediation
 
 Status: complete
 
