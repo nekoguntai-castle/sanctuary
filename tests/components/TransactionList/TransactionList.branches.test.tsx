@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 import { TransactionList } from '../../../components/TransactionList/TransactionList';
+import { getOwnAddressValue } from '../../../components/TransactionList/TransactionList/detailsModel';
 import type { Transaction } from '../../../types';
 
 const useTransactionListMock = vi.fn();
@@ -306,6 +307,7 @@ describe('TransactionList branch coverage', () => {
     expect(screen.queryByText('Recipient Address')).not.toBeInTheDocument();
     expect(screen.queryByText('Your Receiving Address')).not.toBeInTheDocument();
     expect(screen.queryByText('Your Sending Address')).not.toBeInTheDocument();
+    expect(getOwnAddressValue({ ...baseTx, address: undefined as any })).toBe('');
   });
 
   it('executes modal close handlers from backdrop, header close, action menu, and label cancel', async () => {

@@ -1,4 +1,46 @@
-# Next Task: Lizard UI Batch 5 - Agent Management
+# Next Task: Lizard UI Batch 6 - Transaction List
+
+Status: complete
+
+Goal: reduce the current TransactionList lizard cluster by splitting the transaction statistics, virtual table, details modal, label editor, and flow-preview mapping helpers without changing row click behavior, label editing, AI suggestions, transaction details status/type/address rendering, wallet badges, running balance columns, or public exports.
+
+## Lizard UI Batch 6 Checklist
+
+- [x] Confirm pushed AgentManagement CI status and clean local baseline.
+- [x] Inspect current top lizard targets and TransactionList test coverage.
+- [x] Split TransactionList statistics/table/details modal helpers while preserving visible copy and callbacks.
+- [x] Split LabelEditor and FlowPreview warning helpers while preserving label and flow rendering.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [x] Update health/grade tracking and commit/push the batch after verification.
+
+## Lizard UI Batch 6 Review
+
+Changes:
+
+- Reduced `components/TransactionList/TransactionList.tsx` to a 167-line orchestration module and moved stats, virtual-table rendering, table headers, details modal, amount/status hero, metadata cards, address blocks, and modal helpers into focused modules under `components/TransactionList/TransactionList/`.
+- Split `components/TransactionList/LabelEditor.tsx` into header, editing, read-only, and shared type modules while preserving edit/save/cancel, selected-label toggles, AI suggestions, legacy labels, and no-label rendering.
+- Split `components/TransactionList/FlowPreview.tsx` mapping, total, and guard helpers into `components/TransactionList/FlowPreview/flowPreviewModel.ts`, preserving loading, empty-input, output-label, change-output, fee, and total rendering behavior.
+- Added focused branch coverage for the extracted own-address null guard and updated health tracking: full lizard warnings moved from 91 to 88, and `TransactionList`, `LabelEditor`, and `FlowPreview` dropped out of the current top lizard target list.
+
+Verification:
+
+- `npx vitest run tests/components/TransactionList.test.tsx tests/components/TransactionList/TransactionList.branches.test.tsx tests/components/TransactionList/LabelEditor.test.tsx tests/components/TransactionList/FlowPreview.branches.test.tsx tests/components/TransactionList/useTransactionList.branches.test.tsx` passed: 5 files, 53 tests.
+- `npm run typecheck:app` passed.
+- `npm run lint:app` passed.
+- `npm run test:coverage` passed: 397 files, 5,561 tests, 100% statements/branches/functions/lines.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/TransactionList/TransactionList.tsx components/TransactionList/TransactionList components/TransactionList/LabelEditor.tsx components/TransactionList/LabelEditor components/TransactionList/FlowPreview.tsx components/TransactionList/FlowPreview tests/components/TransactionList/TransactionList.branches.test.tsx` passed with no warnings.
+- Full lizard warning count is now 88; top remaining component targets are `AddressesTab`, `NetworkConnectionCard`, `DeviceDetail`, and `QRSigningModal`.
+- `git diff --check`, grade-history JSONL parsing, large-file classification, and pinned gitleaks-only quality lane passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: missing full transaction details, empty flow inputs, missing outputs, absent counterparty address, absent own address, missing timestamp, zero block height, and empty label inventories are covered.
+- Boundary values: 0 confirmations, partial confirmations, deep confirmations, 0 fees, positive fees, receive/send amounts, and self-transfer consolidation address titles remain covered.
+- System boundaries: `TransactionList`, `LabelEditor`, and `FlowPreview` public imports remain unchanged; hook payloads, row click callbacks, label callbacks, AI suggestions, action-menu wiring, wallet badges, running balance columns, explorer copy behavior, and user-facing copy remain unchanged.
+- Async/race behavior: no new async state model was introduced; existing details loading, label saving, and copy flows still run through the same hook handlers.
+- Diff review: changes are scoped to TransactionList extraction, one branch assertion, health-report notes, trend metadata, and this task record.
+
+## Previous Task: Lizard UI Batch 5 - Agent Management
 
 Status: complete
 
