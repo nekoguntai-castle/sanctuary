@@ -69,7 +69,12 @@ AGENT_CACHE_DIR="$AGENT_LOG_DIR/agent-cache"
 #      OUTSIDE the fence block. Without this, an attacker could put a
 #      real BLOCK rubric before/after a decoy OK inside the fence and
 #      fence-based extraction would silently surface the decoy.
-PROMPT_VERSION="v10"
+# v11: fence-marker patterns in grep/awk tightened to match sed exactly:
+#      only '^```$' or '^```json$' count as fence markers. A permissive
+#      '^```' pattern let lines like '```foo {"x":"BLOCK"}' pose as
+#      fence markers while silently absorbing embedded JSON content as
+#      "inside the fence", bypassing the gate. Strict markers close that.
+PROMPT_VERSION="v11"
 # Per-commit scratch dir for parallel agent outputs and stop markers.
 AGENT_TMP_DIR=$(mktemp -d -t sanctuary-agents-XXXXXX)
 trap 'rm -rf "$AGENT_TMP_DIR"' EXIT
@@ -120,22 +125,29 @@ extract_json_object() {
         return
     fi
 
-    # Fenced strategies require exactly two fence-marker lines (one opening,
-    # one closing). More means multiple blocks (reject); fewer means no
-    # fence at all (also reject, since strategy 1 already tried pure JSON).
-    total_fences=$(grep -c '^```' "$1" 2>/dev/null || echo 0)
+    # Fenced strategies require exactly two STRICT fence-marker lines:
+    # a line that is exactly "```" or exactly "```json" — no trailing
+    # content, no trailing whitespace, no other language tags.
+    #
+    # The strict match is critical: a permissive pattern like ^```
+    # would treat lines such as '```foo {"x":"BLOCK"}' as fence markers
+    # and then silently absorb the embedded JSON as "inside the fence",
+    # letting a BLOCK rubric bypass the gate. By aligning this pattern
+    # with what sed strategies 2 and 3 actually extract, a line the
+    # pre-check counts as a fence is guaranteed to be one that sed
+    # recognises as a fence — no sleight-of-hand via marker-line payloads.
+    total_fences=$(grep -cE '^```$|^```json$' "$1" 2>/dev/null || echo 0)
     if [ "$total_fences" != "2" ]; then
         echo "null"
         return
     fi
 
     # CRITICAL: verify nothing but whitespace lives outside the fence.
-    # awk toggles `inside` on every fence line (the `next` skips the
-    # marker itself from output); `!inside` prints only lines OUTSIDE
-    # the fence. If any non-whitespace escapes, there's content we'd
-    # be silently ignoring — reject so a pre-/post-fence BLOCK decoy
-    # can't hide behind an OK-inside-fence response.
-    outside_nonspace=$(awk '/^```/{inside = !inside; next} !inside' "$1" | tr -d '[:space:]')
+    # Uses the same strict regex as grep above — if a malformed "```foo"
+    # line leaks content, it MUST surface in this outside check rather
+    # than being silently classified as a fence marker. Any non-whitespace
+    # outside the fence → reject.
+    outside_nonspace=$(awk '/^```$/ || /^```json$/ { inside = !inside; next } !inside' "$1" | tr -d '[:space:]')
     if [ -n "$outside_nonspace" ]; then
         echo "null"
         return
