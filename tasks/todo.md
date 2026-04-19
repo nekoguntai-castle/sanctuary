@@ -1,4 +1,45 @@
-# Next Task: Lizard UI Batch 6 - Transaction List
+# Next Task: Lizard UI Batch 7 - Network Connection Card
+
+Status: complete
+
+Goal: reduce the current `NetworkConnectionCard` lizard finding by splitting connection-mode rendering and server-action controller logic without changing singleton/pool mode selection, preset loading, add/update/delete/toggle/reorder behavior, connection testing, advanced pool settings, pool stats lookup, or public exports.
+
+## Lizard UI Batch 7 Checklist
+
+- [x] Confirm pushed TransactionList CI status and clean local baseline.
+- [x] Inspect current top lizard targets and NetworkConnectionCard test coverage.
+- [x] Split NetworkConnectionCard mode selector and controller helpers while preserving visible copy and callbacks.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [x] Update health/grade tracking and commit/push the batch after verification.
+
+## Lizard UI Batch 7 Review
+
+Changes:
+
+- Reduced `components/NetworkConnectionCard/NetworkConnectionCard.tsx` to an 82-line orchestration module and moved connection-mode rendering into `ConnectionModeSelector`.
+- Moved singleton/pool config derivation, server action state, add/update/delete/toggle/reorder handlers, test status handling, preset loading, and pool stats lookup into `useNetworkConnectionCardController`.
+- Reduced `components/NetworkConnectionCard/ServerForm.tsx` to a 53-line wrapper and moved input fields, port parsing, SSL toggle, preset buttons, and submit button state into focused modules under `components/NetworkConnectionCard/ServerForm/`.
+- Updated the health assessment and grade history: full lizard warnings moved from 88 to 86, and `NetworkConnectionCard` plus `ServerForm` dropped out of the current top lizard target list.
+
+Verification:
+
+- `npx vitest run tests/components/NetworkConnectionCard.test.tsx tests/components/NetworkConnectionCard/NetworkConnectionCard.branches.test.tsx tests/components/NetworkConnectionCard/SingletonConfig.branches.test.tsx tests/components/NetworkConnectionCard/PoolConfig.branches.test.tsx tests/components/NetworkConnectionCard/ServerRow.branches.test.tsx tests/components/NetworkConnectionCard/ServerForm.branches.test.tsx tests/components/NetworkConnectionCard/HealthHistoryBlocks.test.tsx tests/components/NetworkConnectionCard/networkConfigHelpers.test.ts` passed: 8 files, 55 tests.
+- `npm run typecheck:app` passed.
+- `npm run lint:app` passed.
+- `npm run test:coverage` passed: 397 files, 5,561 tests, 100% statements/branches/functions/lines.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/NetworkConnectionCard/NetworkConnectionCard.tsx components/NetworkConnectionCard/NetworkConnectionCard components/NetworkConnectionCard/ServerForm.tsx components/NetworkConnectionCard/ServerForm components/NetworkConnectionCard/SingletonConfig.tsx components/NetworkConnectionCard/PoolConfig.tsx components/NetworkConnectionCard/ServerRow.tsx components/NetworkConnectionCard/networkConfigHelpers.ts` passed with no warnings.
+- Full lizard warning count is now 86; top remaining component targets are `AddressesTab`, `DeviceDetail`, `QRSigningModal`, and `DeviceDetailsForm`.
+- `git diff --check`, grade-history JSONL parsing, large-file classification, and pinned gitleaks-only quality lane passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: absent pool stats, missing server stats, add/update guards for blank label or host, no editing server ID, and empty server forms are covered.
+- Boundary values: first-server move up, last-server move down, missing server ID, middle-server reorder, failed/successful singleton tests, failed/successful server tests, and invalid port fallback remain covered.
+- System boundaries: `NetworkConnectionCard`, `ServerForm`, `SingletonConfig`, and `PoolConfig` public imports remain unchanged; admin API payloads, node-config field names, server priority updates, callback props, and visible button copy remain unchanged.
+- Async/race behavior: no new async state model was introduced; test status timers, server action loading resets, and error logging stay on the same handler paths.
+- Diff review: changes are scoped to NetworkConnectionCard and ServerForm extraction, health-report notes, trend metadata, and this task record.
+
+# Previous Task: Lizard UI Batch 6 - Transaction List
 
 Status: complete
 
