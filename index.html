@@ -8,8 +8,7 @@
     <meta name="theme-color" content="#000000" />
     <meta name="description" content="Self-hosted Bitcoin wallet coordinator for hardware wallets" />
     <script>
-      window.tailwind = window.tailwind || {};
-      window.tailwind.config = {
+      const sanctuaryTailwindConfig = {
         darkMode: 'class',
         theme: {
           extend: {
@@ -178,12 +177,18 @@
             }
           },
         },
-      }
+      };
+
+      window.tailwind = window.tailwind || {};
+      window.tailwind.config = sanctuaryTailwindConfig;
 
       const loadTailwind = () => {
         const script = document.createElement('script');
-        script.src = 'https://cdn.tailwindcss.com';
+        script.src = 'https://cdn.tailwindcss.com/3.4.17';
         script.async = true;
+        script.onload = () => {
+          window.tailwind.config = sanctuaryTailwindConfig;
+        };
         script.onerror = () => {
           console.warn('Tailwind CDN failed to load; continuing without runtime utilities.');
         };

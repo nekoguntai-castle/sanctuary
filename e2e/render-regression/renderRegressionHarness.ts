@@ -12,10 +12,90 @@ export const VISUAL_ASSERTION_OPTIONS = {
   maxDiffPixelRatio: 0.01,
 };
 
+const THEME_UTILITY_PROBE_ATTRIBUTE = 'data-render-theme-utility-probe';
+const THEME_UTILITY_PROBE_CLASS = 'bg-primary-800';
+const THEME_UTILITY_TIMEOUT_MS = 15_000;
+const REQUIRED_THEME_VARIABLES = ['--color-primary-800', '--color-primary-600', '--color-bg-50'];
+
+// Tailwind's CDN runtime generates custom theme utilities asynchronously.
+// Screenshots wait for the themed primary background to paint so controls do
+// not capture the white-on-white fallback state seen in CI.
+async function waitForThemeUtilityPaint(page: Page): Promise<void> {
+  await page.evaluate(({ attributeName, probeClass }) => {
+    if (!document.body || document.querySelector(`[${attributeName}="true"]`)) {
+      return;
+    }
+
+    const probe = document.createElement('span');
+    probe.setAttribute(attributeName, 'true');
+    probe.setAttribute('aria-hidden', 'true');
+    probe.className = probeClass;
+    probe.style.cssText =
+      'position: fixed; top: -100px; left: 0; width: 1px; height: 1px; pointer-events: none;';
+    document.body.appendChild(probe);
+  }, {
+    attributeName: THEME_UTILITY_PROBE_ATTRIBUTE,
+    probeClass: THEME_UTILITY_PROBE_CLASS,
+  });
+
+  try {
+    await page.waitForFunction(
+      ({ attributeName, requiredVariables }) => {
+        if (!document.body) {
+          return false;
+        }
+
+        const probe = document.querySelector(`[${attributeName}="true"]`);
+        if (!(probe instanceof HTMLElement)) {
+          return false;
+        }
+
+        const rootStyles = getComputedStyle(document.documentElement);
+        const cssVariablesReady = requiredVariables.every(
+          variableName => rootStyles.getPropertyValue(variableName).trim() !== ''
+        );
+        const themeClassReady = Array.from(document.body.classList).some(className =>
+          className.startsWith('theme-')
+        );
+
+        if (!cssVariablesReady || !themeClassReady) {
+          return false;
+        }
+
+        const styles = getComputedStyle(probe);
+        return (
+          styles.backgroundColor !== '' &&
+          styles.backgroundColor !== 'transparent' &&
+          styles.backgroundColor !== 'rgba(0, 0, 0, 0)'
+        );
+      },
+      {
+        attributeName: THEME_UTILITY_PROBE_ATTRIBUTE,
+        requiredVariables: REQUIRED_THEME_VARIABLES,
+      },
+      { timeout: THEME_UTILITY_TIMEOUT_MS }
+    );
+  } finally {
+    await page
+      .evaluate(attributeName => {
+        document.querySelector(`[${attributeName}="true"]`)?.remove();
+      }, THEME_UTILITY_PROBE_ATTRIBUTE)
+      .catch(() => undefined);
+  }
+
+  await page.evaluate(
+    () =>
+      new Promise<void>(resolve => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      })
+  );
+}
+
 export async function expectChromiumMainScreenshot(page: Page, filename: string) {
   if (test.info().project.name !== 'chromium') {
     return;
   }
+  await waitForThemeUtilityPaint(page);
   await expect(page.getByRole('main')).toHaveScreenshot(filename, VISUAL_ASSERTION_OPTIONS);
 }
 

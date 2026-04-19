@@ -1,4 +1,40 @@
-# Next Task: Restore 100% Coverage Gates
+# Next Task: GitHub Permission Failure CI Fix
+
+Status: complete
+
+Goal: fix the failing GitHub Actions E2E run that presents as missing permissions by addressing the render-regression screenshots where primary controls paint white-on-white before theme utilities are ready.
+
+## GitHub Permission Failure Checklist
+
+- [x] Inspect the failing GitHub Actions run and confirm the actual failing job/log lines.
+- [x] Patch the render regression path so screenshots wait for theme variables and Tailwind theme utilities.
+- [x] Run targeted local validation for the render regression suite and relevant static checks.
+- [x] Commit, push, and verify the new GitHub run.
+
+## GitHub Permission Failure Review
+
+Changes:
+
+- Confirmed the failing GitHub job was `Full E2E Tests`, specifically Chromium render-regression screenshots where primary controls rendered white-on-white.
+- Fixed the Tailwind CDN load path so the project config is retained after the CDN script replaces `window.tailwind`, and pinned the CDN URL to the v3.4.17 runtime the unversioned URL already redirects to.
+- Added a render-regression readiness gate that waits for theme CSS variables, a `theme-*` body class, and a generated `bg-primary-800` utility before taking Chromium screenshots.
+
+Verification:
+
+- One-off browser runtime inspection confirmed `window.tailwind.config` now contains the custom `primary` color config and generated CSS includes custom theme utilities.
+- `npm run test:e2e:render` passed: 43 Chromium render-regression tests.
+- `npm run typecheck:tests` passed.
+- `npm run build` passed.
+- `git diff --check` passed.
+
+Edge case and self-review:
+
+- Null/undefined and missing DOM state: the screenshot readiness gate returns false until `document.body`, theme variables, theme class, and the probe element exist.
+- Async/race behavior: the probe stays mounted long enough for Tailwind CDN's mutation observer to generate the class, is removed in a `finally` block, and screenshots wait two animation frames after readiness.
+- System boundaries: the fix does not change wallet permissions, API auth, or role data; it restores theme utility generation and makes visual assertions wait for the same styling state users see.
+- Diff review: changes are scoped to Tailwind CDN config loading, visual-regression readiness, and this task record.
+
+## Previous Task: Restore 100% Coverage Gates
 
 Status: complete
 
