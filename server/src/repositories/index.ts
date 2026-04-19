@@ -108,6 +108,7 @@ export type {
   AgentWalletDashboardRow,
   FindAgentAlertsFilter,
   FindAgentFundingOverridesFilter,
+  FindWalletAgentsFilter,
   FindUsableAgentFundingOverrideInput,
   UpdateWalletAgentInput,
   WalletAgentWithDetails,

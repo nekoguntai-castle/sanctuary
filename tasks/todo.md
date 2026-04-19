@@ -1,4 +1,660 @@
-# Current Task: Backend Coverage And Test Gate Follow-Up
+# Next Task: AccessTab CCN Remediation
+
+Status: pending
+
+Goal: reduce the next highest remaining component hotspot, `components/WalletDetail/tabs/AccessTab.tsx` at CCN 69, without changing wallet access display, owner/admin actions, sharing controls, transfer controls, or pending-transfer integration.
+
+## AccessTab Checklist
+
+- [ ] Inspect AccessTab structure, wallet access helpers, and focused WalletDetail/access tests.
+- [ ] Extract access metadata, owner/admin action rendering, sharing sections, and transfer integration into focused modules.
+- [ ] Run focused AccessTab/WalletDetail tests, app lint/typecheck, lizard, architecture, large-file, and diff checks.
+- [ ] Run final quality, edge case, and self-review.
+
+## Previous Task: PendingTransfersPanel CCN Remediation
+
+Status: complete
+
+Goal: reduce the next highest remaining component hotspot, `components/PendingTransfersPanel.tsx` at CCN 73, without changing pending-transfer display, accept/reject actions, ownership transfer behavior, or loading/error states.
+
+## PendingTransfersPanel Checklist
+
+- [x] Inspect PendingTransfersPanel structure, transfer-card helpers, and focused transfer tests.
+- [x] Extract transfer metadata formatting, accept/reject handlers, state sections, and card rendering into focused modules.
+- [x] Run focused PendingTransfersPanel tests, app lint/typecheck, lizard, architecture, large-file, and diff checks.
+- [x] Run final quality, edge case, and self-review.
+
+## PendingTransfersPanel Review
+
+Changes:
+
+- Replaced the legacy root `components/PendingTransfersPanel.tsx` implementation with a compatibility export to the existing split `components/PendingTransfersPanel/PendingTransfersPanel.tsx` implementation, preserving the public import path.
+- Exported `PendingTransfersPanelProps` from the split panel so the root type export remains available.
+- Added `transferCardData.ts`, `TransferDirection.tsx`, `TransferMessage.tsx`, `TransferTimestamp.tsx`, and `TransferCardActions.tsx` to separate transfer-card variant metadata, direction labels, message rendering, expiry/timestamp rendering, and action buttons.
+- Reduced `components/PendingTransfersPanel.tsx` from CCN 73 to no focused warning, and cleared the related `TransferCard.tsx` CCN 35 warning under the focused `-C 15` gate.
+
+Verification:
+
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/PendingTransfersPanel.tsx components/PendingTransfersPanel` passed with no warnings.
+- `npm run lint:app` passed.
+- `npm run typecheck:app` passed.
+- `npx vitest run tests/components/PendingTransfersPanel.test.tsx tests/components/PendingTransfersPanel.branches.test.tsx tests/components/PendingTransfersPanel/PendingTransfersPanel.test.tsx tests/components/PendingTransfersPanel/TransferCard.test.tsx tests/components/PendingTransfersPanel/TransferConfirmationModal.test.tsx tests/components/PendingTransfersPanel/useTransferActions.test.ts tests/components/PendingTransfersPanel/transferTimeUtils.test.ts` passed: 7 files, 96 tests.
+- `node scripts/quality/check-large-files.mjs` passed the classification check.
+- `npm run check:architecture-boundaries` passed.
+- `git diff --check` passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: missing usernames, missing transfer messages, no active transfers, and optional `onTransferComplete` still follow the existing split implementation behavior; null messages remain hidden.
+- Boundary values: accepted transfers still fall back from `acceptedAt` to `updatedAt`, expiry text still handles expired/hour/day cases through `transferTimeUtils`, and action loading still disables only the matching transfer.
+- System boundaries: `transfersApi` calls, root `components/PendingTransfersPanel` imports, `useUser`, `useLoadingState`, and transfer completion callbacks are unchanged.
+- Async/race behavior: action loading and error clearing still live in `useTransferActions`; successful accept/decline/cancel/confirm still refresh transfers and close the modal in the same places.
+- Diff review: changes are local to PendingTransfersPanel rendering/export wiring and preserve the public `PendingTransfersPanel` export. The next highest remaining single-component warning is `components/WalletDetail/tabs/AccessTab.tsx` at CCN 69.
+
+## Previous Task: DraftRow CCN Remediation
+
+Status: complete
+
+Goal: reduce one of the next tied component hotspots, `components/DraftList/DraftRow.tsx` at CCN 73, without changing draft status display, signing/resume actions, labels, or delete behavior.
+
+## DraftRow Checklist
+
+- [x] Inspect DraftRow structure, draft-list helpers, and focused DraftList tests.
+- [x] Extract draft metadata formatting, status/action rendering, labels, and row action handlers into focused modules.
+- [x] Run focused DraftList/DraftRow tests, app lint/typecheck, lizard, architecture, large-file, and diff checks.
+- [x] Run final quality, edge case, and self-review.
+
+## DraftRow Review
+
+Changes:
+
+- Added `components/DraftList/draftRowData.ts` for row class selection, signature counts, agent-funding checks, PSBT control visibility, and PSBT file selection handling.
+- Added `DraftStatusBadges.tsx`, `DraftRecipientSummary.tsx`, `DraftAmountSummary.tsx`, `DraftWarnings.tsx`, `DraftRowActions.tsx`, and `DraftFlowToggle.tsx` to split status/expiration badges, recipient/output rendering, amount/fee rendering, warning/agent/label sections, row actions, and flow preview toggle.
+- Reduced `components/DraftList/DraftRow.tsx` from CCN 73 to no focused warning, with all extracted DraftRow modules clean under the focused `-C 15` gate.
+
+Verification:
+
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/DraftList/DraftRow.tsx components/DraftList/DraftStatusBadges.tsx components/DraftList/DraftRecipientSummary.tsx components/DraftList/DraftAmountSummary.tsx components/DraftList/DraftWarnings.tsx components/DraftList/DraftRowActions.tsx components/DraftList/DraftFlowToggle.tsx components/DraftList/draftRowData.ts` passed with no warnings.
+- `npm run lint:app` passed.
+- `npm run typecheck:app` passed.
+- `npx vitest run tests/components/DraftList.test.tsx tests/components/DraftList/DraftRow.branches.test.tsx tests/components/DraftList/DraftList.branches.test.tsx tests/components/DraftList/utils.branches.test.ts` passed: 4 files, 43 tests.
+- `node scripts/quality/check-large-files.mjs` passed the classification check.
+- `npm run check:architecture-boundaries` passed.
+- `git diff --check` passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: missing outputs still fall back to `draft.recipient`; missing expiration info still renders no expiration badge; missing quorum still falls back to one required signature.
+- Boundary values: partial signatures still show `0 of 1` or configured quorum counts; send-max outputs still show `MAX` without fiat; expired drafts still disable resume while keeping other row controls consistent.
+- System boundaries: `getFlowPreviewData`, `getFeeWarning`, `getExpirationInfo`, `onResume`, `onDelete`, `onDownloadPsbt`, `onUploadPsbt`, and `onToggleExpand` contracts are unchanged.
+- Async/race behavior: file-input change handling still calls upload at most once for a selected file and clears the input value; DraftList upload/delete/load flows were not changed.
+- Diff review: changes are local to DraftRow rendering and keep the public `DraftRow` export unchanged. The next highest remaining single-component warning is `components/PendingTransfersPanel.tsx` at CCN 73.
+
+## Previous Task: Send ReviewStep CCN Remediation
+
+Status: complete
+
+Goal: reduce the next highest remaining single-component hotspot, the anonymous review block in `components/send/steps/ReviewStep.tsx` at CCN 75, without changing transaction review, signing, file upload, or broadcast behavior.
+
+## Send ReviewStep Checklist
+
+- [x] Inspect ReviewStep structure, signing flow helpers, and focused send-step tests.
+- [x] Extract review summary rendering, signing/file upload actions, PSBT display, and broadcast state sections into focused modules.
+- [x] Run focused send/ReviewStep tests, app lint/typecheck, lizard, architecture, large-file, and diff checks.
+- [x] Run final quality, edge case, and self-review.
+
+## Send ReviewStep Review
+
+Changes:
+
+- Added `components/send/steps/review/reviewStepData.ts` for address lookup inputs, change amount, known-address labels, transaction type labels, required signature calculation, broadcast gating, and flow-data assembly.
+- Added `components/send/steps/review/useReviewAddressLookup.ts` to isolate wallet-label lookup side effects and lookup failure logging.
+- Added `components/send/steps/review/useReviewStepUploads.ts` to isolate single-sig and per-device PSBT upload handling, input reset behavior, upload progress state, and error surfacing.
+- Reduced `components/send/steps/ReviewStep.tsx` from focused warnings at CCN 75, 19, and 17 to no focused warning under the review-step `-C 15` gate.
+
+Verification:
+
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/send/steps/ReviewStep.tsx components/send/steps/review/reviewStepData.ts components/send/steps/review/useReviewAddressLookup.ts components/send/steps/review/useReviewStepUploads.ts` passed with no warnings.
+- `npm run lint:app` passed.
+- `npm run typecheck:app` passed.
+- `npx vitest run tests/components/send/ReviewStep.test.tsx tests/components/send/ReviewStep.branches.test.tsx tests/components/send/TransactionSummary.test.tsx tests/components/send/SigningFlow.test.tsx tests/components/send/steps/review/DraftActions.branches.test.tsx tests/components/send/steps/review/UsbSigning.branches.test.tsx` passed: 6 files, 71 tests.
+- `node scripts/quality/check-large-files.mjs` passed the classification check.
+- `npm run check:architecture-boundaries` passed.
+- `git diff --check` passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: empty output addresses still skip wallet-label lookup; missing txData still builds flow data from selected or spendable UTXOs; missing selected UTXO matches still fall back to empty address and zero amount.
+- Boundary values: send-max outputs still zero change and use selected total minus fee; quorum `0` still falls back to `1`; multisig broadcast still requires the configured signature count; uploaded signed PSBT still enables broadcast through `psbt-signed`.
+- System boundaries: `lookupAddresses`, `onUploadSignedPsbt`, `onSignWithDevice`, `onProcessQrSignedPsbt`, and child review component props are unchanged.
+- Async/race behavior: lookup failures still log warnings without blocking render; upload progress still clears in `finally`; device file inputs and single-sig file inputs still reset after success, skip, or failure.
+- Diff review: changes are local to the send review step and keep the public `ReviewStep` export unchanged. The next highest remaining warnings are tied: `components/DraftList/DraftRow.tsx` and `components/PendingTransfersPanel.tsx` at CCN 73.
+
+## Previous Task: ReceiveModal CCN Remediation
+
+Status: complete
+
+Goal: reduce the next highest remaining single-component hotspot, `components/WalletDetail/modals/ReceiveModal.tsx` at CCN 81, without changing receive-address generation, QR display, copy behavior, or modal close behavior.
+
+## ReceiveModal Checklist
+
+- [x] Inspect ReceiveModal structure, wallet detail modal contracts, and focused modal tests.
+- [x] Extract receive-address actions, QR rendering, address display, and empty/loading/error states into focused modules.
+- [x] Run focused ReceiveModal/WalletDetail tests, app lint/typecheck, lizard, architecture, large-file, and diff checks.
+- [x] Run final quality, edge case, and self-review.
+
+## ReceiveModal Review
+
+Changes:
+
+- Added `components/WalletDetail/modals/useReceiveModalState.ts` to isolate unused-address fetching, selected-address fallback, Payjoin status, Payjoin URI generation, copy handling, close reset, and settings navigation.
+- Added `components/WalletDetail/modals/receiveModalData.ts` for unused receive-address filtering, fetch gating, selected-address fallback, Payjoin amount conversion, display labels, and copy/help text.
+- Added `ReceiveModalContent.tsx`, `ReceiveAddressPanel.tsx`, `ReceiveQrCode.tsx`, `ReceiveAddressSelector.tsx`, `ReceiveAmountInput.tsx`, `ReceiveValueBox.tsx`, `ReceiveLoadingState.tsx`, and `ReceiveEmptyState.tsx` to split modal rendering into focused pieces.
+- Reduced `components/WalletDetail/modals/ReceiveModal.tsx` from CCN 81 to no focused warning, with all extracted ReceiveModal modules clean under the focused `-C 15` gate.
+
+Verification:
+
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/WalletDetail/modals/ReceiveModal.tsx components/WalletDetail/modals/receiveModalData.ts components/WalletDetail/modals/useReceiveModalState.ts components/WalletDetail/modals/ReceiveQrCode.tsx components/WalletDetail/modals/ReceiveAddressSelector.tsx components/WalletDetail/modals/ReceiveAmountInput.tsx components/WalletDetail/modals/ReceiveValueBox.tsx components/WalletDetail/modals/ReceiveAddressPanel.tsx components/WalletDetail/modals/ReceiveLoadingState.tsx components/WalletDetail/modals/ReceiveEmptyState.tsx components/WalletDetail/modals/ReceiveModalContent.tsx` passed with no warnings.
+- `npm run lint:app` passed.
+- `npm run typecheck:app` passed.
+- `npx vitest run tests/components/WalletDetail/modals/ReceiveModal.test.tsx tests/components/WalletDetail/WalletDetailModals.test.tsx` passed: 2 files, 46 tests.
+- `node scripts/quality/check-large-files.mjs` passed the classification check.
+- `npm run check:architecture-boundaries` passed.
+- `git diff --check` passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: empty address lists still show the settings empty state; missing selected IDs still fall back to the first unused receive address; missing address IDs still fall back to the raw address for Payjoin URI generation.
+- Boundary values: all-used address lists still trigger one fetch attempt when a callback exists; fetch returning `[]` still shows the empty state; zero, negative, invalid, or empty Payjoin amounts still omit the amount option.
+- System boundaries: `payjoinApi.getPayjoinStatus`, `payjoinApi.getPayjoinUri`, `useCopyToClipboard`, and `onFetchUnusedAddresses` contracts are unchanged.
+- Async/race behavior: address exhaustion fetches still clear loading in `finally`, rejected fetches still land in the empty state, Payjoin status failures still hide Payjoin, and Payjoin URI generation now ignores late responses after dependency changes.
+- Diff review: changes are local to ReceiveModal and keep the public `ReceiveModal` export unchanged.
+
+## Previous Task: CreateWallet CCN Remediation
+
+Status: complete
+
+Goal: reduce the next highest remaining component hotspot, `components/CreateWallet/CreateWallet.tsx` at CCN 87, without changing wallet creation, signer selection, policy configuration, or review behavior.
+
+## CreateWallet Checklist
+
+- [x] Inspect CreateWallet structure, subcomponents, hooks, and focused tests.
+- [x] Extract wallet creation flow state/actions, step rendering, validation helpers, and footer/progress rendering into focused modules.
+- [x] Run focused CreateWallet tests, app lint/typecheck, lizard, architecture, large-file, and diff checks.
+- [x] Run final quality, edge case, and self-review.
+
+## CreateWallet Review
+
+Changes:
+
+- Added `components/CreateWallet/useCreateWalletController.ts` to isolate device loading, wallet form state, navigation, signer toggling, wallet creation, and async error handling.
+- Added `components/CreateWallet/createWalletData.ts` for device compatibility, display-account lookup, next-step validation, device-selection updates, continue-button gating, and wallet creation payload construction.
+- Added `components/CreateWallet/CreateWalletProgress.tsx`, `CreateWalletStepContent.tsx`, and `CreateWalletFooter.tsx` so the public `CreateWallet` component coordinates the wizard only.
+- Added `components/CreateWallet/SignerCompatibilityWarning.tsx`, `SignerDeviceCard.tsx`, `SignerSelectionMessages.tsx`, and `signerSelectionData.ts` to split signer warning, device-card, empty-state, hint, and label text rendering.
+- Reduced `components/CreateWallet/CreateWallet.tsx` from CCN 87 to no focused warning, and cleared the related `SignerSelectionStep.tsx` CCN 21 warning under the focused CreateWallet `-C 15` gate.
+
+Verification:
+
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/CreateWallet` passed with no warnings.
+- `npm run lint:app` passed.
+- `npm run typecheck:app` passed.
+- `npx vitest run tests/components/CreateWallet.test.tsx tests/components/CreateWallet` passed: 5 files, 27 tests.
+- `node scripts/quality/check-large-files.mjs` passed the classification check.
+- `npm run check:architecture-boundaries` passed.
+- `git diff --check` passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: failed device loads still fall back to an empty list; missing wallet type still prevents step advancement and wallet creation; absent device accounts still use the legacy derivation-path compatibility check.
+- Boundary values: zero selected signers still blocks step 2, one multisig signer still emits the existing validation error, single-sig selection still behaves like a radio button, and multisig selection still toggles devices on/off.
+- System boundaries: `devicesApi.getDevices`, `useCreateWallet().mutateAsync`, `useErrorHandler`, and wallet creation payload fields remain unchanged.
+- Async/race behavior: device loading now ignores late updates after unmount; submit state still clears in `finally`; create failures still log and route through `handleError`.
+- Diff review: changes are local to CreateWallet and keep the public `CreateWallet`, step component, and type exports unchanged.
+
+## Previous Task: TransactionActions CCN Remediation
+
+Status: complete
+
+Goal: reduce the next highest remaining component hotspot, `components/TransactionActions.tsx` at CCN 91, without changing transaction approval, broadcast, cancel, replace, or export behavior.
+
+## TransactionActions Checklist
+
+- [x] Inspect TransactionActions structure, API boundaries, and focused tests.
+- [x] Extract transaction action state/handlers, status helpers, and rendering sections into focused modules.
+- [x] Run focused TransactionActions tests, app lint/typecheck, lizard, architecture, large-file, and diff checks.
+- [x] Run final quality, edge case, and self-review.
+
+## TransactionActions Review
+
+Changes:
+
+- Added `components/TransactionActions/useTransactionActions.ts` to isolate RBF status loading, RBF draft creation, CPFP creation, navigation, callback handling, and async error state.
+- Added `components/TransactionActions/transactionActionsData.ts` for RBF draft payload construction, fallback RBF labels, CPFP success messages, and generic error-message mapping.
+- Added `components/TransactionActions/TransactionActionsPanel.tsx` for success/error banners, action buttons, RBF current fee display, CPFP availability, and non-replaceable status reasons.
+- Added `components/TransactionActions/TransactionActionModals.tsx`, `RBFModal.tsx`, `CPFPModal.tsx`, and `TransactionModalShared.tsx` to split modal composition and shared modal/info box structure.
+- Reduced `components/TransactionActions.tsx` from CCN 91 to no focused warning, with all extracted TransactionActions modules clean under the focused `-C 15` gate.
+
+Verification:
+
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/TransactionActions.tsx components/TransactionActions` passed with no warnings.
+- `npm run lint:app` passed.
+- `npm run typecheck:app` passed.
+- `npx vitest run tests/components/TransactionActions.test.tsx` passed: 29 tests.
+- `node scripts/quality/check-large-files.mjs` passed the classification check.
+- `npm run check:architecture-boundaries` passed.
+- `git diff --check` passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: confirmed transactions still skip RBF checks and render null; missing optional `onActionComplete` still no-ops; non-replaceable RBF state still shows only the reason.
+- Boundary values: RBF fee rate `0` still no-ops, missing `minNewFeeRate` still falls back to `0.1`, and CPFP target fee below `1` now stays guarded in the handler as well as the disabled button.
+- System boundaries: `bitcoinApi.checkRBF`, `bitcoinApi.createRBFTransaction`, `bitcoinApi.createCPFPTransaction`, `transactionsApi.getTransaction`, and `draftsApi.createDraft` payload shapes are unchanged.
+- Async/race behavior: RBF status still ignores late updates after unmount, processing flags still clear in `finally`, and RBF/CPFP error messages preserve the existing fallback behavior.
+- Diff review: changes are local to TransactionActions and keep the public `TransactionActions` export unchanged.
+
+## Previous Task: TelegramSection CCN Remediation
+
+Status: complete
+
+Goal: reduce the next highest remaining component hotspot, `components/Settings/sections/TelegramSection.tsx` at CCN 103, without changing Telegram bot configuration, recipient notification, or wallet override behavior.
+
+## TelegramSection Checklist
+
+- [x] Inspect TelegramSection structure, supporting settings tests, and notification/wallet override flows.
+- [x] Extract Telegram status/data helpers, recipient actions, wallet override rendering, and section-level form rendering into focused modules.
+- [x] Run focused settings/Telegram tests, app lint/typecheck, lizard, architecture, large-file, and diff checks.
+- [x] Run final quality, edge case, and self-review.
+
+## TelegramSection Review
+
+Changes:
+
+- Added `components/Settings/sections/telegramSectionData.ts` for Telegram preference payload construction, wallet override preservation, chat ID success messages, and test/fetch result mapping.
+- Added `components/Settings/sections/useTelegramSettings.ts` for bot token/chat ID form state, test/fetch/save/toggle actions, timeout cleanup, and error mapping.
+- Added `components/Settings/sections/TelegramSectionPanel.tsx` for the Telegram notification UI sections: intro links, bot token field, chat ID field, result/error/success alerts, action buttons, enabled toggle, and per-wallet note.
+- Reduced `components/Settings/sections/TelegramSection.tsx` from CCN 103 to no focused warning.
+
+Verification:
+
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/Settings/sections/TelegramSection.tsx components/Settings/sections/TelegramSectionPanel.tsx components/Settings/sections/useTelegramSettings.ts components/Settings/sections/telegramSectionData.ts` passed with no warnings.
+- `npm run lint:app` passed.
+- `npm run typecheck:app` passed.
+- `npx vitest run tests/components/Settings/sections/TelegramSection.branches.test.tsx tests/components/Settings.interactions.test.tsx tests/components/Settings.test.tsx tests/components/Settings/sections/NotificationsSection.branches.test.tsx` passed: 4 files, 16 tests.
+- `node scripts/quality/check-large-files.mjs` passed the classification check.
+- `npm run check:architecture-boundaries` passed.
+- `git diff --check` passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: missing token/chat ID guards still show the same messages; omitted Telegram wallet overrides still fall back to `{}`; unconfigured Telegram still disables the global toggle.
+- Boundary values: repeated saves still clear the previous success timeout; unmount still clears the pending timeout; failed toggle still reverts the optimistic enabled state.
+- System boundaries: `authApi.testTelegramConfig`, `authApi.fetchTelegramChatId`, and `updatePreferences` payload shape are unchanged.
+- Async/race behavior: test/fetch/save/toggle loading flags still clear in `finally`, and API failures still route through `logError` with the original fallback messages.
+- Diff review: changes are local to the Telegram settings section and keep the public `TelegramSettings` export unchanged.
+
+## Previous Task: ImportWallet CCN Remediation
+
+Status: complete
+
+Goal: reduce the next highest remaining component hotspot, `components/ImportWallet/ImportWallet.tsx` at CCN 105, without changing wallet import behavior across descriptor, hardware, QR, and metadata flows.
+
+## ImportWallet Checklist
+
+- [x] Inspect ImportWallet structure, step modules, hooks, and focused tests.
+- [x] Extract import-step state, derived summaries, completion handlers, and rendering decisions into focused ImportWallet-local modules.
+- [x] Run focused ImportWallet tests, app lint/typecheck, lizard, architecture, large-file, and diff checks.
+- [x] Run final quality, edge case, and self-review.
+
+## ImportWallet Review
+
+Changes:
+
+- Added `components/ImportWallet/useImportWalletActions.ts` to isolate validation, next/back navigation, hardware descriptor creation, import mutation, and import error mapping.
+- Added `components/ImportWallet/ImportWalletProgress.tsx`, `components/ImportWallet/ImportWalletStepContent.tsx`, and `components/ImportWallet/ImportWalletFooter.tsx` so the top-level `ImportWallet` component coordinates hooks and layout only.
+- Added `components/ImportWallet/steps/useDescriptorInputHandlers.ts` and `components/ImportWallet/steps/DescriptorInputSections.tsx` for file validation, paste validation, textarea rendering, JSON help, and validation error display.
+- Added `components/ImportWallet/steps/useHardwareImportActions.ts` and `components/ImportWallet/steps/HardwareImportSections.tsx` for hardware device selection, connect/fetch xpub actions, connected-device sections, script/account controls, and xpub/error rendering.
+- Added `components/ImportWallet/steps/useQrScanHandlers.ts` and `components/ImportWallet/steps/QrScanSections.tsx` for camera error mapping, UR:BYTES decoding, JSON/descriptor QR handling, scanner panels, progress overlay, success/error states, and supported-format help.
+- Reduced `components/ImportWallet/ImportWallet.tsx` from CCN 105 to no focused warning, and cleared the related `DescriptorInput`, `HardwareImport`, and `QrScanStep` warnings under the focused ImportWallet `-C 15` gate.
+
+Verification:
+
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/ImportWallet` passed with no warnings.
+- `npm run lint:app` passed.
+- `npm run typecheck:app` passed.
+- `npx vitest run tests/components/ImportWallet.test.tsx tests/components/ImportWallet` passed: 10 files, 104 tests.
+- `node scripts/quality/check-large-files.mjs` passed the classification check.
+- `npm run check:architecture-boundaries` passed.
+- `git diff --check` passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: missing uploaded files still no-op, missing hardware xpub data still blocks advancement, empty descriptor/JSON input still disables next, and empty QR scan results still no-op.
+- Boundary values: oversized files/text still return the same size errors, account index still clamps to zero or greater, UR progress still resets on complete/stop, and unsupported UR types still surface validation errors.
+- System boundaries: wallet validation/import APIs, hardware wallet runtime calls, QR scanner contract, and import state hook contract are unchanged.
+- Async/race behavior: validation and import loading flags still clear in `finally`, hardware connect/fetch errors still map to inline messages, and UR decoder state is reset after stop/failure/success.
+- Diff review: changes are local to ImportWallet and keep the public `ImportWallet`, `DescriptorInput`, `HardwareImport`, and `QrScanStep` exports unchanged.
+
+## Previous Task: NodeConfig CCN Remediation
+
+Status: complete
+
+Goal: reduce the next highest remaining component hotspot, `components/NodeConfig/NodeConfig.tsx` at CCN 111, without changing node/proxy/Tor configuration behavior.
+
+## NodeConfig Checklist
+
+- [x] Inspect NodeConfig structure, subcomponents, and focused tests.
+- [x] Extract load/save, proxy/Tor, server filtering, and summary logic into focused NodeConfig-local modules.
+- [x] Run focused NodeConfig tests, app lint/typecheck, lizard, architecture, large-file, and diff checks.
+- [x] Run final quality, edge case, and self-review.
+
+## NodeConfig Review
+
+Changes:
+
+- Added `components/NodeConfig/nodeConfigData.ts` for default config, network server filtering/replacement, proxy visibility, and section summaries.
+- Added `components/NodeConfig/useNodeConfigData.ts`, `components/NodeConfig/useNodeConfigSave.ts`, `components/NodeConfig/useElectrumServerControls.ts`, and `components/NodeConfig/useProxyTorControls.ts` to isolate loading, saving, Electrum test/server updates, proxy tests, proxy presets, and Tor container actions.
+- Added `components/NodeConfig/NodeConfigStatusMessages.tsx`, `components/NodeConfig/NetworkTabsRow.tsx`, `components/NodeConfig/ProxyTorHeader.tsx`, `components/NodeConfig/BundledTorContainerCard.tsx`, `components/NodeConfig/CustomProxyControls.tsx`, and `components/NodeConfig/ProxyTestControls.tsx` to split status, network tabs, proxy header, bundled Tor, custom proxy, and proxy verification rendering.
+- Reduced `components/NodeConfig/NodeConfig.tsx` from CCN 111 to no focused warning, and cleared the related NodeConfig section warnings under the focused `-C 15` lizard gate.
+- Fixed the extracted Electrum connection handler to `await` `adminApi.testElectrumConnection` inside its `try/catch`, preserving rejected-promise conversion into an inline failure message.
+
+Verification:
+
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/NodeConfig` passed with no warnings.
+- `npm run lint:app` passed.
+- `npm run typecheck:app` passed.
+- `npx vitest run tests/components/NodeConfig.test.tsx tests/components/NodeConfig.branches.test.tsx tests/components/NodeConfig.interactions.test.tsx tests/components/NodeConfig.secondpass.test.tsx tests/components/NodeConfig/ExternalServicesSection.test.tsx tests/components/NodeConfig/NetworkConnectionsSection.branches.test.tsx tests/components/NodeConfig/ProxyTorSection.branches.test.tsx` passed: 7 files, 65 tests.
+- `node scripts/quality/check-large-files.mjs` passed the classification check.
+- `npm run check:architecture-boundaries` passed.
+- `git diff --check` passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: failed config/server/Tor loads still fall back to defaults or empty lists; unavailable Tor status still hides the bundled card; empty proxy credentials still normalize to `undefined`.
+- Boundary values: empty or invalid proxy port input still clears the numeric port; zero Electrum servers still leaves the tab count blank; disabled testnet/signet still show `(off)` through the extracted tab badge logic.
+- System boundaries: admin API, bitcoin API, and NetworkConnectionCard contracts are unchanged; the refactor only moved orchestration and rendering into NodeConfig-local modules.
+- Async/race behavior: load cancellation still prevents late state writes after unmount, save/proxy/Tor timeouts still clear their messages, and rejected Electrum tests now stay handled.
+- Diff review: changes are local to NodeConfig and keep the public `NodeConfig`, `NetworkConnectionsSection`, and `ProxyTorSection` exports unchanged.
+
+## Previous Task: WalletDetail CCN Assessment
+
+Status: complete
+
+Goal: inspect and safely reduce the current highest remaining component hotspot, `components/WalletDetail/WalletDetail.tsx` at CCN 135, without destabilizing the wallet detail workflow.
+
+## WalletDetail Checklist
+
+- [x] Refresh post-WalletList lizard ranking and identify WalletDetail as the new top hotspot.
+- [x] Inspect WalletDetail structure and available focused tests.
+- [x] Extract tab-content routing and local side-effect/state helpers where behavior-preserving.
+- [x] Run focused WalletDetail tests plus lint/type/lizard/quality gates for the code changes.
+- [x] Document the result and remaining blocker.
+
+## WalletDetail Review
+
+Changes:
+
+- Added `components/WalletDetail/WalletDetailTabContent.tsx` to isolate tab routing and tab component rendering from the main container.
+- Added `components/WalletDetail/hooks/useWalletDetailTabs.ts` for URL/location-driven tab state and role-based tab visibility correction.
+- Added `components/WalletDetail/hooks/useWalletAgentLinks.ts` for admin wallet-agent badge loading and cancellation handling.
+- Added `components/WalletDetail/hooks/useWalletDetailAddressActions.ts` for address pagination, address generation, and unused receive-address fetching.
+- Added `components/WalletDetail/hooks/useWalletDetailModalState.ts` for export, transaction export, receive, QR, delete, and transfer modal state plus wallet delete handling.
+- Added `components/WalletDetail/hooks/useWalletDraftNotifications.ts` for pending-draft notification updates.
+- Reduced `components/WalletDetail/WalletDetail.tsx` from CCN 135 to CCN 47. This is a material reduction, but not a full clear.
+
+Verification:
+
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/WalletDetail/WalletDetail.tsx components/WalletDetail/WalletDetailTabContent.tsx components/WalletDetail/hooks/useWalletDetailTabs.ts components/WalletDetail/hooks/useWalletAgentLinks.ts components/WalletDetail/hooks/useWalletDetailModalState.ts components/WalletDetail/hooks/useWalletDetailAddressActions.ts components/WalletDetail/hooks/useWalletDraftNotifications.ts` now reports the main file at CCN 47, down from 135.
+- `npm run lint:app` passed.
+- `npm run typecheck:app` passed.
+- `npx vitest run tests/components/WalletDetail.test.tsx tests/components/WalletDetail.wrapper.test.tsx tests/components/WalletDetail` passed: 40 files, 502 tests.
+- `git diff --check` passed.
+
+Remaining blocker:
+
+- Fully clearing `WalletDetail.tsx` under `-C 15` now requires a broader tab-props context split. The remaining complexity is mostly dense prop assembly for eight tab surfaces and modal wiring, not isolated algorithms. That should be a dedicated pass because it touches high-fanout props for transactions, UTXOs, addresses, drafts, access, settings, logs, and modals.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: absent wallet IDs still short-circuit delete/address actions; invalid location tab state still falls back through existing tab guards; missing wallet data still renders loading state.
+- Boundary values: zero pending drafts now removes notifications, positive draft counts preserve singular/plural titles, empty unused receive-address results still trigger address generation, and one-point sparkline behavior was not touched.
+- System boundaries: API calls remain the same and are now behind local hooks; no wallet, transaction, admin, or notification API contract changed.
+- Async/race behavior: admin-agent loading still uses cancellation, address generation still refreshes summary and first page, and wallet delete still navigates only after successful deletion.
+- Diff review: changes are local to WalletDetail and keep the public `WalletDetail` export unchanged.
+
+## Previous Task: WalletList CCN Remediation
+
+Status: complete
+
+Goal: reduce the current highest focused lizard hotspot, `components/WalletList/WalletList.tsx` at CCN 178, and clear the local `WalletGridView` warning without changing wallet list behavior.
+
+## WalletList Checklist
+
+- [x] Refresh remaining CCN hotspot evidence and identify WalletList as the next slice.
+- [x] Inspect WalletList structure and focused WalletList tests.
+- [x] Extract wallet-list preference, network, derivation, and content rendering logic into focused modules.
+- [x] Extract grid-card balance, sparkline, badge, and metadata rendering into focused modules.
+- [x] Run focused WalletList tests, app lint/typecheck, lizard, architecture, large-file, and diff checks.
+- [x] Run final quality, edge case, and self-review.
+
+## WalletList Review
+
+Changes:
+
+- Added `components/WalletList/walletListData.ts` for network validation, wallet filtering/counts/sorting, pending-transaction aggregation, and pending-data attachment.
+- Added `components/WalletList/useWalletListPreferences.ts`, `components/WalletList/useWalletNetworkParam.ts`, and `components/WalletList/useWalletListData.ts` for preference updates, URL-backed network selection, React Query data, and derived wallet state.
+- Added `components/WalletList/WalletListContent.tsx`, `components/WalletList/WalletListHeader.tsx`, and `components/WalletList/WalletListEmptyState.tsx` to move rendering out of the container.
+- Split `WalletGridView` card rendering into `WalletGridCard.tsx`, `WalletGridCardTop.tsx`, `WalletGridCardBalance.tsx`, `WalletGridCardSparkline.tsx`, `WalletGridCardMetadata.tsx`, and `walletGridCardStyles.ts`.
+- Added WalletList shared types in `components/WalletList/types.ts`, including the `string | null` formatter return contract used by fiat formatting.
+- Reduced `components/WalletList/WalletList.tsx` from a CCN 178 lizard hotspot to no focused warning; `components/WalletList/WalletGridView.tsx` and its extracted card modules also no longer warn under `-C 15`.
+
+Verification:
+
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/WalletList` passed with no warnings.
+- `npm run lint:app` passed.
+- `npm run typecheck:app` passed.
+- `npx vitest run tests/components/WalletList.test.tsx tests/components/WalletList.branches.test.tsx tests/components/WalletList/WalletGridView.test.tsx` passed: 46 tests.
+- `node scripts/quality/check-large-files.mjs` passed.
+- `npm run check:architecture-boundaries` passed.
+- `git diff --check` passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: invalid or absent `network` URL params still default to mainnet; missing wallet networks are filtered out of tab views; missing device counts still render as `0 devices`; empty wallet lists keep the existing empty state.
+- Boundary values: sort toggles preserve asc/desc behavior, unsupported sort fields remain stable, pending transaction net zero hides the net badge, and sparkline arrays with fewer than two points still render the same empty real-sparkline paths.
+- System boundaries: wallet API query hooks and invalidation hooks are unchanged; the refactor only moves calling/derivation/rendering into WalletList-local modules.
+- Async/race behavior: React Query data flow, pending transaction refresh inputs, sparkline inputs, and sync invalidation callbacks are behavior-preserving.
+- Diff review: decomposition is local to WalletList and keeps the public `WalletList` and `WalletGridView` exports unchanged.
+
+## Previous Task: DeviceList CCN Follow-Up
+
+Status: complete
+
+Goal: finish the DeviceList complexity pass by decomposing the remaining `DeviceList`, `DeviceListHeader`, and `DeviceGroupedView` render/state hotspots without changing behavior.
+
+## DeviceList Checklist
+
+- [x] Inspect `DeviceList` structure, existing subcomponents, and focused tests.
+- [x] Extract device-list data derivation and sorting helpers.
+- [x] Extract user preference wiring into a hook.
+- [x] Extract wallet filter banner and main content rendering.
+- [x] Extract header controls into focused components.
+- [x] Extract grouped device cards into focused components.
+- [x] Extract record loading/edit/delete state and derived table/grouped data into hooks.
+- [x] Run focused DeviceList tests, app lint/typecheck, architecture, large-file, lizard, and diff checks.
+- [x] Run final quality, edge case, and self-review.
+
+## DeviceList Review
+
+Changes:
+
+- Added `components/DeviceList/deviceListData.ts` for wallet counts, wallet options, stale wallet filter resolution, filtering/sorting, exclusive-device IDs, grouping, and display-name lookup.
+- Added `components/DeviceList/useDeviceListPreferences.ts` for device view preferences, sort/filter setters, and column configuration updates.
+- Added `components/DeviceList/WalletFilterBanner.tsx` for wallet and unassigned filter summary banners.
+- Added `components/DeviceList/DeviceListContent.tsx` for the presentational header/banner/table/grouped rendering.
+- Added `components/DeviceList/DeviceListHeaderControls.tsx` for ownership, wallet-filter dropdown, and view/column controls.
+- Added `components/DeviceList/DeviceGroupedCards.tsx` for grouped type cards, device title/edit/delete controls, and wallet badges.
+- Added `components/DeviceList/useDeviceListRecords.ts` and `components/DeviceList/useDeviceListDerivedData.ts` so the top-level component is now only a coordinator.
+- Added shared DeviceList edit/delete state interfaces to `components/DeviceList/types.ts`.
+- Reduced `components/DeviceList/DeviceList.tsx` from a 304 CCN lizard hotspot to no focused warning; `DeviceListHeader` and `DeviceGroupedView` also no longer warn under `-C 15`.
+
+Verification:
+
+- `npm run lint:app` passed.
+- `npm run typecheck:app` passed.
+- `npx vitest run tests/components/DeviceList.test.tsx tests/components/DeviceList/DeviceList.branches.test.tsx tests/components/DeviceList/DeviceListHeader.branches.test.tsx tests/components/DeviceList/DeviceGroupedView.test.tsx tests/components/DeviceList/EmptyState.test.tsx` passed: 54 tests.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/DeviceList` passed with no warnings.
+- `node scripts/quality/check-large-files.mjs` passed.
+- `npm run check:architecture-boundaries` passed.
+- `git diff --check` passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: helper extraction preserves walletCount/wallets fallbacks, stale wallet filter fallback, unknown device display names, empty-device rendering, and missing wallet type fallback.
+- Boundary values: singular/plural wallet-count text, exclusive-device badge gating, unknown sort field fallback, unassigned filters, and zero-wallet delete affordance remain covered by existing tests.
+- System boundaries: no API contracts changed; `getDevices`, `getDeviceModels`, `updateDevice`, and `deleteDevice` remain behind the DeviceList record hook.
+- Async/race behavior: loading, update, delete, dropdown dismissal, and preference-update paths are behavior-preserving extractions.
+- Diff review: decomposition is local to DeviceList and keeps the public `DeviceList`, `DeviceListHeader`, and `DeviceGroupedView` exports unchanged.
+
+## Previous Task: Grade Remediation 4-5
+
+Status: complete
+
+Goal: continue the grade remediation by clearing the oversized production file governance failure and reducing targeted maintainability risk where feasible.
+
+## Remediation Checklist
+
+- [x] Refresh large-file and maintainability blocker evidence.
+- [x] Split `components/AgentManagement/index.tsx` instead of classifying product UI as an exception.
+- [x] Re-run large-file governance check.
+- [x] Re-run app lint/typecheck and targeted tests or build checks.
+- [x] Assess highest-CCN remediation feasibility after the large-file gate is green.
+- [x] Run final quality, edge case, and self-review.
+
+## Remediation Review
+
+Changes:
+
+- Split the funding override modal out of `components/AgentManagement/index.tsx` into `components/AgentManagement/AgentOverridesModal.tsx`.
+- Moved shared agent-management display formatting into `components/AgentManagement/formatters.ts`.
+- Reduced `components/AgentManagement/index.tsx` from 1,173 lines to 936 lines, clearing the production oversized-file policy failure without adding an exception.
+- Updated `docs/plans/codebase-health-assessment.md` with a remediation note for the large-file gate.
+
+Verification:
+
+- `node scripts/quality/check-large-files.mjs` passed; no unclassified files remain above the 1,000-line limit.
+- `npm run lint:app` passed.
+- `npm run typecheck:app` passed.
+- `npx vitest run tests/components/AgentManagement.test.tsx` passed: 8 tests.
+- `npm run check:architecture-boundaries` passed.
+- `git diff --check` passed.
+
+CCN assessment:
+
+- Focused lizard check still reports broad component CCN warnings in `DeviceList`, `WalletList`, `WalletDetail`, and remaining AgentManagement render sections.
+- The highest CCN offenders are large JSX/state-machine components, not isolated helper functions. Reducing the full warning count safely needs a separate behavior-preserving component decomposition pass with screenshots or component tests around each surface.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: the split modal preserves existing empty amount/reason/date validation and error display.
+- Boundary values: the override amount/date checks are unchanged; the large-file boundary now has `AgentManagement/index.tsx` below the 1,000-line failure threshold.
+- System boundaries: no API contract or data-fetching behavior changed; the modal still uses the same admin API calls and metadata types.
+- Async/race behavior: override load/create/revoke state transitions were moved intact, including `finally` cleanup of loading and busy state.
+- Diff review: extraction is presentational and verified by the existing AgentManagement component test suite.
+
+## Previous Task: Grade Remediation 1-3
+
+Status: complete
+
+Goal: complete the first three grade remediation items: clear high/critical dependency advisories, fix the two empty-catch lint failures, and restore API/repository architecture boundaries.
+
+## Remediation Checklist
+
+- [x] Review current worktree, package metadata, and grade blockers.
+- [x] Clear high/critical npm audit findings in root, server, and gateway without unsafe downgrades.
+- [x] Fix empty catch lint failures in frontend and server production code.
+- [x] Move direct repository access out of the three flagged API route modules.
+- [x] Run audits, lint, architecture checks, typechecks, and focused tests.
+- [x] Run final quality, edge case, and self-review.
+
+## Remediation Review
+
+Changes:
+
+- Added dependency overrides so vulnerable hard-fail paths resolve to patched versions: root and gateway force `protobufjs@7.5.5`; server forces `protobufjs@7.5.5`, `hono@4.12.14`, and keeps `@hono/node-server@1.19.14`.
+- Replaced the two lint-blocking silent catches with contextual debug logging in `components/AgentWalletDashboard/index.tsx` and `server/src/services/agentFundingDraftValidation.ts`.
+- Moved repository-backed work out of `server/src/api/admin/agents.ts`, `server/src/api/admin/mcpKeys.ts`, and `server/src/api/agent.ts` into new service modules.
+- Added a remediation note to `docs/plans/codebase-health-assessment.md` so the original grade snapshot remains distinguishable from this follow-up.
+
+Verification:
+
+- `npm audit --audit-level=high` passed in root; residual findings are low severity only.
+- `npm audit --audit-level=high` passed in `server`; zero vulnerabilities.
+- `npm audit --audit-level=high` passed in `gateway`; residual findings are low severity only.
+- `npm run check:architecture-boundaries` passed.
+- `npm run lint:app`, `npm run lint:server`, and `npm run lint:gateway` passed.
+- `npm run typecheck:app` passed.
+- `npm run build` in `server` passed.
+- `npm run typecheck:server:tests` passed.
+- `npx vitest run tests/unit/api/agent-wallet-funding-smoke.test.ts` in `server` passed.
+- `git diff --check` passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: route schemas still validate request bodies before the new services run; nullable draft `memo` is normalized to `undefined` at the `draftService` boundary.
+- Boundary values: existing fee-rate min/max enforcement moved unchanged into `agentApiService`; high/critical audit checks confirmed patched dependency versions are installed in root/server/gateway trees.
+- System boundaries: API routes still own request parsing and audit logging; repository access and key material creation now sit behind service functions.
+- Race/async behavior: agent funding draft locking and override consumption stay inside the existing `withAgentFundingLock` flow.
+- Diff review: new services preserve the previous response/audit contracts and the focused route smoke test covers admin agent creation, agent key issuance, funding draft submission, and mobile review metadata.
+
+## Previous Task: Repository Quality Grade
+
+Status: complete
+
+Goal: run the `$grade` full-repository audit, collect mechanical and judged quality evidence, update trend history, and write `docs/plans/codebase-health-assessment.md`.
+
+## Grade Checklist
+
+- [x] Load grade skill instructions, standards, git status, and project lessons.
+- [x] Capture repository provenance and previous grade trend entry.
+- [x] Run the project-wide grade signal collector.
+- [x] Inspect evidence for judged ISO/IEC 25010 criteria.
+- [x] Score domains, hard-fail gates, confidence, risks, and fastest improvements.
+- [x] Append grade trend history.
+- [x] Write `docs/plans/codebase-health-assessment.md`.
+- [x] Run final quality, edge case, and self-review.
+
+## Grade Review
+
+Results:
+
+- Overall grade is `69/100 D` with High confidence. Raw score is `79/100`, capped to D by the hard-fail gate for high/critical dependency advisories.
+- Hard-fail blocker: npm audit currently reports root `8 critical`, server `1 critical`, and gateway `1 critical`; AI proxy is clean.
+- Secondary gate regressions: lint fails on two production empty catches, architecture boundaries fail on three API-to-repository imports, lizard reports 122 CCN warnings, and large-file policy fails on unclassified `components/AgentManagement/index.tsx`.
+- Strengths preserved: root tests pass, typecheck passes, gitleaks is clean, root/backend line coverage is 100%, gateway line/branch coverage is 100%, OpenAPI route coverage passes, API body validation passes, and browser auth contract passes.
+
+Verification:
+
+- `bash /home/nekoguntai/.codex/skills/grade/grade.sh` completed.
+- `npm run lint` failed as expected from the two empty-catch lint errors; `npm run lint:gateway` passed.
+- `npm run check:browser-auth-contract` passed.
+- `npm run check:architecture-boundaries` failed with three direct repository imports from API routes.
+- `npm run check:openapi-route-coverage` passed.
+- `npm run check:api-body-validation` passed.
+- `npm run typecheck:server:tests` passed.
+- Root/server/gateway/AI proxy npm audits ran; AI proxy needed an escalated rerun after sandbox DNS failure.
+- `/tmp/gitleaks` full-tree/latest-commit/tracked-tree scans found no leaks.
+- Lizard, jscpd, and large-file checks ran; lizard and large-file policy report the maintainability blockers above.
+- `npm run test:backend:coverage` and `npm --prefix gateway run test:coverage` passed after rerunning outside socket-binding sandbox limits.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: sampled request schema and refresh tests cover missing bodies, invalid headers, empty message arrays, and invalid expiry headers.
+- Boundary values: coverage and sampled tests cover zero-delay refresh, invalid/locked/spent agent funding inputs, and rate/amount validation paths.
+- System boundaries: API body validation, OpenAPI coverage, gitleaks, npm audit, and architecture-boundary checks were all run or explicitly reported failing.
+- Async/race behavior: refresh single-flight/Web Locks and backend coverage passed; no new runtime code was edited during the audit.
+- Diff review: only the report, trend JSONL, and task log were changed.
+
+## Previous Task: Backend Coverage And Test Gate Follow-Up
 
 Status: complete
 

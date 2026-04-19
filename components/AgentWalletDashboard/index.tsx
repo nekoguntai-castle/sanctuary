@@ -21,10 +21,13 @@ import type {
   WalletAgentMetadata,
 } from '../../src/api/admin';
 import { extractErrorMessage } from '../../utils/errorHandler';
+import { createLogger } from '../../utils/logger';
 import { Button } from '../ui/Button';
 import { EmptyState } from '../ui/EmptyState';
 import { ErrorAlert } from '../ui/ErrorAlert';
 import { LinkButton } from '../ui/LinkButton';
+
+const log = createLogger('AgentWalletDashboard');
 
 function formatSats(value: string | null | undefined): string {
   if (!value) return '0 sats';
@@ -138,8 +141,12 @@ export function AgentWalletDashboard() {
       acc.openAlerts += row.openAlertCount;
       try {
         acc.operationalBalance += BigInt(row.operationalBalanceSats);
-      } catch {
-        // Ignore malformed server values so one row cannot break dashboard totals.
+      } catch (error) {
+        log.debug('Ignoring malformed operational balance in agent dashboard totals', {
+          agentId: row.agent.id,
+          operationalBalanceSats: row.operationalBalanceSats,
+          error: extractErrorMessage(error, 'Invalid operational balance'),
+        });
       }
       return acc;
     }, {

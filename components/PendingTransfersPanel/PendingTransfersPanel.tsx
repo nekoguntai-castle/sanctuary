@@ -12,7 +12,7 @@ import { TransferConfirmationModal } from './TransferConfirmationModal';
 import { useTransferActions } from './useTransferActions';
 import type { TransferAction } from './useTransferActions';
 
-interface PendingTransfersPanelProps {
+export interface PendingTransfersPanelProps {
   resourceType: 'wallet' | 'device';
   resourceId: string;
   onTransferComplete?: () => void;

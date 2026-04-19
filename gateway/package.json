@@ -1,10 +1,13 @@
 {
   "name": "sanctuary-gateway",
-  "version": "0.8.35",
+  "version": "0.8.36",
   "description": "Public API gateway for Sanctuary mobile apps",
   "main": "dist/index.js",
   "engines": {
     "node": ">=22 <23"
+  },
+  "overrides": {
+    "protobufjs": "7.5.5"
   },
   "scripts": {
     "build": "tsc",

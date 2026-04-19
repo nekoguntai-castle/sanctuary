@@ -11,8 +11,11 @@ import type { Prisma } from '../generated/prisma/client';
 import { addressRepository, deviceRepository, utxoRepository, walletRepository } from '../repositories';
 import { ConflictError, InvalidInputError, InvalidPsbtError, NotFoundError } from '../errors';
 import { getErrorMessage } from '../utils/errors';
+import { createLogger } from '../utils/logger';
 import { getNetwork } from './bitcoin/utils';
 import { getPsbtInputs, parsePsbt, type PsbtInput } from './bitcoin/psbtValidation';
+
+const log = createLogger('AGENT:FUNDING_VALIDATION');
 
 type SupportedNetwork = 'mainnet' | 'testnet' | 'regtest';
 
@@ -293,8 +296,12 @@ function inputHasValidSignerSignature(
       if (psbt.validateSignaturesOfInput(inputIndex, SIGNATURE_VALIDATOR, partialSig.pubkey)) {
         return true;
       }
-    } catch {
-      // Keep scanning in case another matching partial signature is valid.
+    } catch (error) {
+      log.debug('Agent partial signature validation failed while scanning signer signatures', {
+        inputIndex,
+        signerFingerprint,
+        error: getErrorMessage(error),
+      });
     }
   }
 

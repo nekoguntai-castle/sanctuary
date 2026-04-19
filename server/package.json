@@ -1,6 +1,6 @@
 {
   "name": "sanctuary-server",
-  "version": "0.8.35",
+  "version": "0.8.36",
   "description": "Backend API server for Sanctuary Bitcoin Wallet",
   "main": "dist/server/src/index.js",
   "engines": {
@@ -10,7 +10,9 @@
     "seed": "node --experimental-specifier-resolution=node dist/prisma/seed.js"
   },
   "overrides": {
-    "@hono/node-server": "1.19.14"
+    "@hono/node-server": "1.19.14",
+    "hono": "4.12.14",
+    "protobufjs": "7.5.5"
   },
   "scripts": {
     "postinstall": "prisma generate",

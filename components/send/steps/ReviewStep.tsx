@@ -5,20 +5,30 @@
  * Shows transaction summary and handles signing/broadcasting.
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useSendTransaction } from '../../../contexts/send';
 import { useCurrency } from '../../../contexts/CurrencyContext';
 import { createLogger } from '../../../utils/logger';
-import { lookupAddresses, type AddressLookupResult } from '../../../src/api/bitcoin';
 import type { TransactionData } from '../../../hooks/send/useSendTransactionActions';
 import { isMultisigType } from '../../../types';
 import type { Device } from '../../../types';
-import type { FlowInput, FlowOutput } from '../../TransactionFlowPreview';
 import { TransactionSummary } from './review/TransactionSummary';
 import { SigningFlow } from './review/SigningFlow';
 import { UsbSigning } from './review/UsbSigning';
 import { QrSigning } from './review/QrSigning';
 import { DraftActions } from './review/DraftActions';
+import { useReviewAddressLookup } from './review/useReviewAddressLookup';
+import { useReviewStepUploads } from './review/useReviewStepUploads';
+import {
+  buildReviewFlowData,
+  canBroadcastReviewTransaction,
+  getKnownAddressSet,
+  getRequiredSignatures,
+  getReviewAddressLabel,
+  getReviewChangeAmount,
+  getReviewTransactionTypeLabel,
+  hasEnoughReviewSignatures,
+} from './review/reviewStepData';
 
 const log = createLogger('ReviewStep');
 
@@ -88,148 +98,41 @@ export function ReviewStep({
   const [signingDeviceId, setSigningDeviceId] = useState<string | null>(null);
   const [qrSigningDevice, setQrSigningDevice] = useState<Device | null>(null);
   const [uploadingDeviceId, setUploadingDeviceId] = useState<string | null>(null);
-  const [addressLookup, setAddressLookup] = useState<Record<string, AddressLookupResult>>({});
-
-  // Fetch wallet labels for output addresses (to detect internal transfers)
-  useEffect(() => {
-    const addresses = state.outputs
-      .map(o => o.address)
-      .filter(addr => addr && addr.length > 0);
-
-    // Also include change/decoy addresses if available
-    if (txData?.changeAddress) {
-      addresses.push(txData.changeAddress);
-    }
-    if (txData?.decoyOutputs) {
-      addresses.push(...txData.decoyOutputs.map(d => d.address));
-    }
-
-    if (addresses.length === 0) return;
-
-    lookupAddresses(addresses)
-      .then(response => {
-        setAddressLookup(response.lookup);
-      })
-      .catch(err => {
-        log.warn('Failed to lookup addresses', { error: String(err) });
-      });
-  }, [state.outputs, txData?.changeAddress, txData?.decoyOutputs]);
+  const addressLookup = useReviewAddressLookup(state.outputs, txData);
 
   // Calculate change amount
   const changeAmount = useMemo(() => {
-    if (state.outputs.some(o => o.sendMax)) {
-      return 0;
-    }
-    return Math.max(0, selectedTotal - totalOutputAmount - estimatedFee);
+    return getReviewChangeAmount(state.outputs, selectedTotal, totalOutputAmount, estimatedFee);
   }, [selectedTotal, totalOutputAmount, estimatedFee, state.outputs]);
 
   // Create a set of known wallet addresses for quick lookup
   const knownAddresses = useMemo(() => {
-    return new Set(walletAddresses.map(wa => wa.address));
+    return getKnownAddressSet(walletAddresses);
   }, [walletAddresses]);
 
   // Helper to get label for an address if it belongs to any wallet in the app
   const getAddressLabel = useCallback((address: string): string | undefined => {
-    // First check if it's from the current (sending) wallet
-    if (knownAddresses.has(address)) {
-      return wallet.name;
-    }
-    // Then check if it belongs to another wallet (from the lookup)
-    const lookupResult = addressLookup[address];
-    if (lookupResult) {
-      return lookupResult.walletName;
-    }
-    return undefined;
+    return getReviewAddressLabel(address, knownAddresses, wallet.name, addressLookup);
   }, [knownAddresses, wallet.name, addressLookup]);
 
   // Build flow visualization data
   const flowData = useMemo(() => {
-    // Get selected UTXOs for inputs
-    const selectedUtxoIds = state.selectedUTXOs;
-    const inputUtxos = selectedUtxoIds.size > 0
-      ? utxos.filter(u => selectedUtxoIds.has(`${u.txid}:${u.vout}`))
-      : spendableUtxos;
-
-    // Build inputs from actual txData if available, otherwise estimate from UTXOs
-    const inputs: FlowInput[] = txData?.utxos
-      ? txData.utxos.map(u => {
-          // Use data from txData if available (draft mode includes address/amount)
-          // Fall back to lookup from utxos array if needed
-          const hasData = u.address && u.amount;
-          const utxo = hasData ? null : utxos.find(ux => ux.txid === u.txid && ux.vout === u.vout);
-          const address = u.address || utxo?.address || '';
-          return {
-            txid: u.txid,
-            vout: u.vout,
-            address,
-            amount: u.amount || utxo?.amount || 0,
-            label: getAddressLabel(address),
-          };
-        })
-      : inputUtxos.map(u => ({
-          txid: u.txid,
-          vout: u.vout,
-          address: u.address,
-          amount: u.amount,
-          label: getAddressLabel(u.address),
-        }));
-
-    // Build outputs - prefer txData.outputs (includes decoys) over state.outputs
-    const outputs: FlowOutput[] = txData?.outputs && txData.outputs.length > 0
-      ? txData.outputs.map(o => ({
-          address: o.address,
-          amount: o.amount,
-          isChange: false,
-          label: getAddressLabel(o.address),
-        }))
-      : state.outputs.map(o => ({
-          address: o.address,
-          amount: o.sendMax
-            ? selectedTotal - (txData?.fee || estimatedFee)
-            : parseInt(o.amount, 10) || 0,
-          isChange: false,
-          label: getAddressLabel(o.address),
-        }));
-
-    // Add decoy outputs if present (these are change outputs distributed for privacy)
-    // Or add single change output if no decoys
-    const actualChangeAmount = txData?.changeAmount ?? changeAmount;
-    if (txData?.decoyOutputs && txData.decoyOutputs.length > 0) {
-      txData.decoyOutputs.forEach(decoy => {
-        outputs.push({
-          address: decoy.address,
-          amount: decoy.amount,
-          isChange: true,
-          label: getAddressLabel(decoy.address),
-        });
-      });
-    } else if (actualChangeAmount > 0) {
-      const changeAddr = txData?.changeAddress || 'Change address';
-      outputs.push({
-        address: changeAddr,
-        amount: actualChangeAmount,
-        isChange: true,
-        label: getAddressLabel(changeAddr),
-      });
-    }
-
-    const totalInput = txData?.totalInput ?? selectedTotal;
-    const totalOutput = txData?.totalOutput ?? (totalOutputAmount + actualChangeAmount);
-    const fee = txData?.fee ?? estimatedFee;
-
-    return { inputs, outputs, totalInput, totalOutput, fee };
+    return buildReviewFlowData({
+      state,
+      utxos,
+      spendableUtxos,
+      txData,
+      selectedTotal,
+      totalOutputAmount,
+      estimatedFee,
+      changeAmount,
+      getAddressLabel,
+    });
   }, [state.outputs, state.selectedUTXOs, utxos, spendableUtxos, txData, selectedTotal, totalOutputAmount, estimatedFee, changeAmount, getAddressLabel]);
 
   // Transaction type label
   const txTypeLabel = useMemo(() => {
-    switch (state.transactionType) {
-      case 'consolidation':
-        return 'Consolidation';
-      case 'sweep':
-        return 'Sweep';
-      default:
-        return 'Standard Send';
-    }
+    return getReviewTransactionTypeLabel(state.transactionType);
   }, [state.transactionType]);
 
   // Check if multi-sig
@@ -247,61 +150,25 @@ export function ReviewStep({
   });
 
   // Get required signatures
-  const requiredSignatures = typeof wallet.quorum === 'object'
-    ? wallet.quorum.m
-    : wallet.quorum || 1;
-
-  // Handle file upload (single-sig)
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file && onUploadSignedPsbt) {
-      await onUploadSignedPsbt(file);
-    }
-    // Reset input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
-
-  // Handle per-device file upload (multisig)
-  const handleDeviceFileUpload = async (event: React.ChangeEvent<HTMLInputElement>, deviceId: string) => {
-    const device = devices.find(d => d.id === deviceId);
-    const fingerprint = device?.fingerprint;
-    log.debug('handleDeviceFileUpload called', { deviceId, fingerprint, hasFile: !!event.target.files?.[0], hasCallback: !!onUploadSignedPsbt });
-    const file = event.target.files?.[0];
-    if (file && onUploadSignedPsbt) {
-      log.debug('Calling onUploadSignedPsbt', { fileName: file.name, fileSize: file.size, fingerprint });
-      setUploadingDeviceId(deviceId);
-      try {
-        // Pass deviceId and fingerprint to validate and track which device signed
-        await onUploadSignedPsbt(file, deviceId, fingerprint);
-        log.debug('onUploadSignedPsbt completed');
-      } catch (err: unknown) {
-        log.error('onUploadSignedPsbt failed', { error: err });
-        // Show error to user
-        if (err instanceof Error) {
-          alert(err.message);
-        }
-      } finally {
-        setUploadingDeviceId(null);
-      }
-    } else {
-      log.debug('Upload skipped - no file or no callback');
-    }
-    // Reset input
-    const inputRef = deviceFileInputRefs.current[deviceId];
-    if (inputRef) {
-      inputRef.value = '';
-    }
-  };
+  const requiredSignatures = getRequiredSignatures(wallet.quorum);
+  const { handleFileUpload, handleDeviceFileUpload } = useReviewStepUploads({
+    devices,
+    onUploadSignedPsbt,
+    fileInputRef,
+    deviceFileInputRefs,
+    setUploadingDeviceId,
+  });
 
   // Check if we have enough signatures for multi-sig
-  const hasEnoughSignatures = isMultiSig
-    ? signedDevices.size >= requiredSignatures
-    : signedDevices.size > 0 || (hardwareWallet?.isConnected && hardwareWallet?.device);
+  const hasEnoughSignatures = hasEnoughReviewSignatures(
+    isMultiSig,
+    signedDevices,
+    requiredSignatures,
+    hardwareWallet
+  );
 
   // Can broadcast?
-  const canBroadcast = txData && (hasEnoughSignatures || signedDevices.has('psbt-signed'));
+  const canBroadcast = canBroadcastReviewTransaction(txData, hasEnoughSignatures, signedDevices);
 
   return (
     <div className="space-y-6">
