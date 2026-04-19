@@ -1,6 +1,48 @@
-# Next Task: Lizard UI Batch 4 - Account
+# Next Task: Lizard UI Batch 5 - Agent Management
 
-Status: in_progress
+Status: complete
+
+Goal: reduce the current AgentManagement lizard cluster by splitting `AgentRow` and `AgentFormModal` rendering/controller helpers without changing agent CRUD, scoped key issue/revoke, owner funding overrides, wallet/device filtering, policy/monitoring fields, or public exports.
+
+## Lizard UI Batch 5 Checklist
+
+- [x] Confirm pushed Account CI status and clean local baseline.
+- [x] Inspect current top lizard targets and AgentManagement test coverage.
+- [x] Split AgentRow details/key/action rendering while preserving callbacks and labels.
+- [x] Split AgentFormModal initialization/filtering/rendering helpers while preserving form behavior.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [x] Update health/grade tracking and commit/push the batch after verification.
+
+## Lizard UI Batch 5 Review
+
+Changes:
+
+- Reduced `components/AgentManagement/index.tsx` to a 427-line orchestration/key-modal module and moved the row rendering into focused `AgentRow`, header, info-grid, summary, key-list, action-button, and view-model modules.
+- Moved `AgentFormModal` initialization, wallet/device filtering, selection reconciliation, fields, toggles, and form sections into focused modules under `components/AgentManagement/AgentManagement/`.
+- Added `tests/components/AgentManagement.extracted.branches.test.tsx` to cover extracted status badges, empty/active key rendering, row view-model fallbacks, invalid form selection reconciliation, null form initialization values, and toggled modal booleans.
+- Updated the health assessment and grade history: full lizard warnings moved from 93 to 91, max CCN moved from 55 to 53, and `AgentManagement` dropped out of the current top lizard target list.
+
+Verification:
+
+- `npx vitest run tests/components/AgentManagement.extracted.branches.test.tsx tests/components/AgentManagement.test.tsx tests/api/adminAgents.test.ts tests/components/AgentWalletDashboard.test.tsx` passed: 4 files, 21 tests.
+- `npm run typecheck:app` passed.
+- `npm run lint:app` passed.
+- `npm run test:coverage` passed: 397 files, 5,561 tests, 100% statements/branches/functions/lines.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/AgentManagement/index.tsx components/AgentManagement/AgentManagement tests/components/AgentManagement.extracted.branches.test.tsx` passed with no warnings.
+- Full TSX-aware lizard warning count is now 91; top remaining component targets are `TransactionList`, `NetworkConnectionCard`, `AddressesTab`, and `DeviceDetail`.
+- `git diff --check`, grade-history JSONL parsing, large-file classification, and pinned gitleaks-only quality lane passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: absent `apiKeys`, missing agent user/wallet/device summaries, null policy and monitoring values, and create-form defaults are covered.
+- Boundary values: 0 active keys, 1 active key, plural active-key text, blank required form fields, invalid downstream wallet/device selections, and null numeric initialization are covered.
+- System boundaries: `AgentManagement` public export, admin API payload builders, key issue/revoke behavior, owner override modal wiring, labels, and user-facing copy remain unchanged.
+- Async/race behavior: no new async state model was introduced; existing create/update/key/override flows and load refreshes still run through the same `runAction`/`loadData` paths.
+- Diff review: changes are scoped to AgentManagement extraction, focused branch coverage, health-report notes, trend metadata, and this task record.
+
+## Previous Task: Lizard UI Batch 4 - Account
+
+Status: complete
 
 Goal: reduce the current top `Account` lizard finding without changing profile rendering, password validation/submission, 2FA setup/disable/regenerate flows, backup-code copy behavior, modal close/reset behavior, or public exports.
 
