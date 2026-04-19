@@ -1,4 +1,45 @@
-# Next Task: TransactionRow Complexity Reduction
+# Next Task: DraftList Complexity Reduction
+
+Status: complete
+
+Goal: continue the maintainability roadmap by reducing the current top high-CCN draft-list component without changing draft ordering, PSBT import/export behavior, or coverage thresholds.
+
+## DraftList Complexity Checklist
+
+- [x] Confirm the pushed TransactionRow slice started clean CI and inspect the next lizard target.
+- [x] Extract DraftList sorting, PSBT parsing, download helpers, and controller logic into focused modules with low per-function CCN.
+- [x] Run focused DraftList tests, typecheck/lint, lizard, and coverage as needed.
+- [x] Update health/grade tracking and commit the change after verification.
+
+## DraftList Complexity Review
+
+Changes:
+
+- Reduced `components/DraftList/DraftList.tsx` to a 107-line render surface.
+- Added `components/DraftList/draftListHelpers.ts` for expiration sorting, PSBT blob/filename helpers, signed-status selection, and PSBT file parsing.
+- Added `components/DraftList/useDraftListController.ts` for draft loading, delete, resume, PSBT download/upload, address labeling, and expansion state.
+- Preserved the existing DraftList public export and child component contracts.
+- Updated the health assessment and grade history: full lizard warnings moved from 107 to 106, and `DraftList` dropped out of the current top lizard target list.
+
+Verification:
+
+- `npx vitest run tests/components/DraftList.test.tsx tests/components/DraftList/DraftList.branches.test.tsx tests/components/DraftList/DraftRow.branches.test.tsx tests/components/DraftList/utils.branches.test.ts` passed: 4 files, 43 tests.
+- `npm run typecheck:app` passed.
+- `npm run lint:app` passed.
+- `npm run test:coverage` passed: 396 files, 5,556 tests, 100% statements/branches/functions/lines.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/DraftList/DraftList.tsx components/DraftList/draftListHelpers.ts components/DraftList/useDraftListController.ts` passed with no warnings.
+- Full lizard warning count is now 106; top remaining component targets are `LabelSelector`, `LabelManager`, `SendTransactionPage`, and `NotificationToast`.
+- `git diff --check`, grade-history JSONL parsing, large-file classification, and pinned gitleaks-only quality lane passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: empty draft lists, absent expiration, absent wallet labels, missing draft upload targets, and optional signed PSBT fallback behavior remain covered.
+- Boundary values: expiration ordering still covers expired, critical, warning, normal, and no-expiration drafts; binary/base64/hex/invalid PSBT upload paths remain covered.
+- System boundaries: public `DraftList` export, props, row callbacks, API calls, and download behavior are unchanged.
+- Async/race behavior: load/delete/upload still go through `useLoadingState`; file upload still reloads drafts only after a non-null operation result.
+- Diff review: changes are scoped to DraftList orchestration extraction, helper reuse, health-report notes, trend metadata, and this task record.
+
+## Previous Task: TransactionRow Complexity Reduction
 
 Status: complete
 
