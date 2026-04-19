@@ -33,7 +33,7 @@ GIT_DIR=$(git rev-parse --git-dir)
 # Agent telemetry + cache infrastructure
 # =============================================
 # Telemetry appends one JSONL record per agent run to .claude/agent-audit.jsonl
-# so verdicts can be reviewed periodically to tune prompts.
+# so verdicts (and now rubric + issues) can be reviewed to tune prompts.
 # Cache short-circuits claude invocation when an identical staged diff has been
 # reviewed recently (common during `git commit --amend` and rebases).
 # Both live under .claude/ which is gitignored — state stays local per-dev.
@@ -41,8 +41,9 @@ GIT_DIR=$(git rev-parse --git-dir)
 AGENT_LOG_DIR="$REPO_ROOT/.claude"
 AGENT_LOG_FILE="$AGENT_LOG_DIR/agent-audit.jsonl"
 AGENT_CACHE_DIR="$AGENT_LOG_DIR/agent-cache"
-# Bump when any agent prompt changes to invalidate cache globally.
-PROMPT_VERSION="v1"
+# Bump when ANY agent prompt changes to invalidate cache globally.
+# v2: switched agents from plaintext markers to structured JSON rubric + issues.
+PROMPT_VERSION="v2"
 # Per-commit scratch dir for parallel agent outputs and stop markers.
 AGENT_TMP_DIR=$(mktemp -d -t sanctuary-agents-XXXXXX)
 trap 'rm -rf "$AGENT_TMP_DIR"' EXIT
@@ -53,20 +54,63 @@ mkdir -p "$AGENT_LOG_DIR" "$AGENT_CACHE_DIR"
 # unbounded. Runs every commit — cheap operation, silent on empty cache.
 find "$AGENT_CACHE_DIR" -type f -mtime +7 -delete 2>/dev/null || true
 
-# Classify an agent's stdout. The prompts end with one of three
-# marker phrases; UNKNOWN signals the agent ignored the rubric
-# (itself useful for prompt tuning).
+# Extract the first well-formed JSON object from an agent's output file.
+# Agents are instructed to return only JSON, but LLMs sometimes wrap in
+# markdown fences or add stray prose — try several extraction strategies.
+# Echoes the JSON object (compact) on success, or "null" on failure.
+extract_json_object() {
+    # $1 = path to agent output file
+    local out
+
+    # Strategy 1: whole file is valid JSON
+    out=$(jq -c . < "$1" 2>/dev/null)
+    if [ -n "$out" ] && [ "$out" != "null" ]; then
+        echo "$out"
+        return
+    fi
+
+    # Strategy 2: ```json ... ``` fenced block
+    out=$(sed -n '/^```json$/,/^```$/p' "$1" | sed '1d;$d' | jq -c . 2>/dev/null)
+    if [ -n "$out" ] && [ "$out" != "null" ]; then
+        echo "$out"
+        return
+    fi
+
+    # Strategy 3: unlabelled ``` ... ``` fenced block
+    out=$(sed -n '/^```$/,/^```$/p' "$1" | sed '1d;$d' | jq -c . 2>/dev/null)
+    if [ -n "$out" ] && [ "$out" != "null" ]; then
+        echo "$out"
+        return
+    fi
+
+    # Strategy 4: from first `{` at column 0 to last `}` at column 0
+    out=$(sed -n '/^{/,/^}$/p' "$1" | jq -c . 2>/dev/null)
+    if [ -n "$out" ] && [ "$out" != "null" ]; then
+        echo "$out"
+        return
+    fi
+
+    echo "null"
+}
+
+# Classify an agent's output. Prefers JSON `.verdict`; falls back to legacy
+# plaintext marker phrases so pre-v2 cache entries and off-format agents
+# still classify. UNKNOWN is itself a useful signal for prompt tuning.
 extract_verdict() {
     # $1 = path to agent output file
-    if grep -q "RECOMMEND STOP" "$1"; then
-        echo "STOP"
-    elif grep -q "SUGGEST REVIEW" "$1"; then
-        echo "REVIEW"
-    elif grep -q "RECOMMEND PROCEED" "$1"; then
-        echo "PROCEED"
-    else
-        echo "UNKNOWN"
+    local body v
+    body=$(extract_json_object "$1")
+    if [ "$body" != "null" ]; then
+        v=$(echo "$body" | jq -r '.verdict // "UNKNOWN"' | tr '[:lower:]' '[:upper:]')
+        case "$v" in
+            STOP|REVIEW|PROCEED) echo "$v"; return ;;
+        esac
     fi
+    # Plaintext fallback (legacy format)
+    if grep -q "RECOMMEND STOP" "$1"; then echo "STOP"; return; fi
+    if grep -q "SUGGEST REVIEW" "$1"; then echo "REVIEW"; return; fi
+    if grep -q "RECOMMEND PROCEED" "$1"; then echo "PROCEED"; return; fi
+    echo "UNKNOWN"
 }
 
 # Count non-empty lines in a newline-separated list ("" → 0).
@@ -79,10 +123,13 @@ count_lines() {
 }
 
 # Append one JSONL record per agent invocation. Cache hits log duration_s=0.
+# Includes the parsed JSON body (rubric + issues) when extractable so the
+# journal is queryable without re-parsing the raw output.
 log_agent_run() {
     # $1=agent_name $2=verdict $3=duration_s $4=file_count $5=output_file $6=cache_hit(0|1)
     ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
     head=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
+    body=$(extract_json_object "$5")
 
     if command -v jq >/dev/null 2>&1; then
         jq -nc \
@@ -93,10 +140,11 @@ log_agent_run() {
             --arg duration_s "$3" \
             --arg file_count "$4" \
             --arg cache_hit "$6" \
+            --argjson body "$body" \
             --rawfile output "$5" \
             '{timestamp:$ts, head:$head, agent:$agent, verdict:$verdict,
               duration_s:($duration_s|tonumber), file_count:($file_count|tonumber),
-              cache_hit:($cache_hit=="1"), output:$output}' >> "$AGENT_LOG_FILE" 2>/dev/null || true
+              cache_hit:($cache_hit=="1"), body:$body, output:$output}' >> "$AGENT_LOG_FILE" 2>/dev/null || true
     else
         {
             echo "---"
@@ -105,6 +153,78 @@ log_agent_run() {
         } >> "$AGENT_LOG_FILE" 2>/dev/null || true
     fi
 }
+
+# Render a parsed JSON agent response as friendly coloured output.
+# Falls back to the raw file contents if JSON couldn't be extracted —
+# important so off-format responses don't vanish into the void.
+render_agent_body() {
+    # $1 = path to agent output file
+    local body verdict rubric_entries issue_count
+    body=$(extract_json_object "$1")
+    if [ "$body" = "null" ]; then
+        cat "$1"
+        return
+    fi
+
+    verdict=$(echo "$body" | jq -r '.verdict // "UNKNOWN"' | tr '[:lower:]' '[:upper:]')
+    case "$verdict" in
+        STOP)    printf '%b\n' "${RED}❌ RECOMMEND STOP${NC}" ;;
+        REVIEW)  printf '%b\n' "${YELLOW}⚠️  SUGGEST REVIEW${NC}" ;;
+        PROCEED) printf '%b\n' "${GREEN}✅ RECOMMEND PROCEED${NC}" ;;
+        *)       printf '%b\n' "${YELLOW}Verdict: UNKNOWN (agent did not follow output format)${NC}" ;;
+    esac
+
+    rubric_entries=$(echo "$body" | jq -r '.rubric // {} | to_entries[] | "\(.key)|\(.value)"')
+    if [ -n "$rubric_entries" ]; then
+        echo ""
+        printf '%b\n' "${BLUE}Rubric:${NC}"
+        echo "$rubric_entries" | while IFS='|' read -r concern status; do
+            case "$status" in
+                OK)    printf '  %b✓%b %s: OK\n' "$GREEN" "$NC" "$concern" ;;
+                WARN)  printf '  %b!%b %s: WARN\n' "$YELLOW" "$NC" "$concern" ;;
+                BLOCK) printf '  %b✗%b %s: BLOCK\n' "$RED" "$NC" "$concern" ;;
+                *)     printf '  ? %s: %s\n' "$concern" "$status" ;;
+            esac
+        done
+    fi
+
+    issue_count=$(echo "$body" | jq -r '.issues // [] | length')
+    if [ "$issue_count" -gt 0 ]; then
+        echo ""
+        printf '%b\n' "${BLUE}Issues (${issue_count}):${NC}"
+        echo "$body" | jq -r '.issues[] | "  [\(.severity // "?")] \(.file // "?"):\(.line // 0) — \(.note // "")"'
+    fi
+}
+
+# Shared prompt prefix: output rules + schema + verdict derivation.
+# Used verbatim in every agent prompt so rubric structure is consistent
+# and verdict computation is mechanical (not left to LLM judgement).
+# Anti-sycophancy clauses:
+#  - Forbid prose/summaries — agents often waste tokens narrating the diff.
+#  - Forbid markdown fences — complicates JSON extraction.
+#  - Specify file:line for every issue — agents will otherwise produce
+#    vague commentary that can't be acted on.
+AGENT_OUTPUT_RULES='OUTPUT RULES (follow strictly):
+
+1. Return ONLY a JSON object. No markdown fences. No prose before or after. No explanation of what the code does. No summary of the diff.
+
+2. Schema:
+{
+  "rubric": { "<concern_name>": "OK" | "WARN" | "BLOCK" },
+  "verdict": "STOP" | "REVIEW" | "PROCEED",
+  "issues": [
+    { "file": "<path>", "line": <int>, "severity": "high" | "medium" | "low", "note": "<one sentence>" }
+  ]
+}
+
+3. Verdict is MECHANICAL, not judgment:
+   - any rubric value = BLOCK  → verdict = STOP
+   - any rubric value = WARN   → verdict = REVIEW
+   - all rubric values = OK    → verdict = PROCEED
+
+4. issues[] must reference a real file and line visible in the diff. Empty array is correct when there are no concrete issues. Do not invent issues to fill the list. Do not list stylistic nits. Do not restate what the code does.
+
+5. Use BLOCK sparingly — only for changes that will cause a production incident, security vulnerability, data loss, or make the code unmaintainable. WARN is for concerns the author should consider; OK means no concern.'
 
 # NOTE: DIFF_HASH is computed AFTER check_version_sync (below), because that
 # function may `git add` version files and thereby change the staged diff.
@@ -116,8 +236,8 @@ DIFF_HASH=""
 # cached verdict — in which case replay the cached output and skip claude.
 # $1=agent_name $2=claude_agent_type(empty=general) $3=prompt
 # $4=file_count $5=stop_marker_basename
-# Writes to stdout: the full agent display (header + output + trailer).
-# Touches $AGENT_TMP_DIR/$5.stop when the verdict is STOP.
+# Writes to stdout: rendered verdict + rubric + issues (or raw output if
+# unparseable). Touches $AGENT_TMP_DIR/$5.stop when the verdict is STOP.
 invoke_agent_with_cache() {
     local agent_name="$1"
     local claude_agent="$2"
@@ -128,9 +248,9 @@ invoke_agent_with_cache() {
     local cache_file="$AGENT_CACHE_DIR/${PROMPT_VERSION}-${DIFF_HASH}-${agent_name}.txt"
 
     if [ -f "$cache_file" ]; then
-        cat "$cache_file"
+        render_agent_body "$cache_file"
         echo ""
-        echo "${CYAN}(cache hit — identical diff reviewed previously)${NC}"
+        printf '%b\n' "${CYAN}(cache hit — identical diff reviewed previously)${NC}"
         local verdict
         verdict=$(extract_verdict "$cache_file")
         log_agent_run "$agent_name" "$verdict" 0 "$file_count" "$cache_file" 1
@@ -152,7 +272,7 @@ invoke_agent_with_cache() {
         echo "$prompt" | claude --print > "$temp_output" 2>&1 || true
     fi
 
-    cat "$temp_output"
+    render_agent_body "$temp_output"
     duration=$(( $(date +%s) - start_time ))
     verdict=$(extract_verdict "$temp_output")
     log_agent_run "$agent_name" "$verdict" "$duration" "$file_count" "$temp_output" 0
@@ -160,8 +280,8 @@ invoke_agent_with_cache() {
 
     if [ "$verdict" = "STOP" ]; then
         echo ""
-        echo "${RED}❌ ${agent_name} agent recommends stopping. Please address the issues above.${NC}"
-        echo "${YELLOW}To bypass: git commit --no-verify${NC}"
+        printf '%b\n' "${RED}❌ ${agent_name} agent recommends stopping.${NC}"
+        printf '%b\n' "${YELLOW}To bypass: git commit --no-verify${NC}"
         touch "$AGENT_TMP_DIR/${stop_name}.stop"
     fi
 
@@ -242,7 +362,6 @@ DIFF_HASH=$(git diff --cached | sha256sum | head -c 16)
 # =============================================
 # Test Coverage Analysis
 # =============================================
-# Analyze if tests need to be added, updated, or removed
 
 run_test_coverage_agent() {
     if ! command -v claude >/dev/null 2>&1; then
@@ -262,25 +381,23 @@ run_test_coverage_agent() {
     echo ""
 
     DIFF_CONTENT=$(git diff --cached)
-    PROMPT="PRE-COMMIT TEST COVERAGE REVIEW
+    PROMPT="PRE-COMMIT TEST COVERAGE REVIEW.
 
-Analyze these staged changes and determine if tests need to be built, updated, or removed.
+$AGENT_OUTPUT_RULES
+
+RUBRIC CONCERNS:
+- new_tests: are there new functions/classes/branches in this diff that need tests?
+- updated_tests: do existing tests need updates because behaviour under test changed?
+- removed_tests: are there tests that still reference deleted code?
+
+Use BLOCK if: new non-trivial functionality has zero test coverage; or existing tests will clearly fail; or tests reference deleted symbols.
+Use WARN if: test additions would meaningfully improve confidence but aren't strictly required.
 
 STAGED FILES:
 $STAGED_FILES
 
 DIFF:
-$DIFF_CONTENT
-
-Answer concisely:
-1. Do any NEW tests need to be written? If so, what should they test?
-2. Do any EXISTING tests need to be updated to match the changes?
-3. Should any tests be REMOVED (e.g., testing deleted functionality)?
-
-End with one of:
-- ✅ RECOMMEND PROCEED - no test changes needed
-- ⚠️ SUGGEST REVIEW - minor test updates may be helpful
-- ❌ RECOMMEND STOP - tests should be updated before committing"
+$DIFF_CONTENT"
 
     file_count=$(count_lines "$STAGED_FILES")
     invoke_agent_with_cache "test-coverage" "qa-test-architect" "$PROMPT" "$file_count" "test-coverage"
@@ -311,33 +428,28 @@ run_ui_consistency_agent() {
     echo ""
 
     UI_DIFF=$(git diff --cached -- $UI_FILES)
-    PROMPT="PRE-COMMIT UI CONSISTENCY REVIEW
+    PROMPT="PRE-COMMIT UI CONSISTENCY REVIEW.
 
-Analyze these UI changes for consistency with our existing codebase patterns.
+$AGENT_OUTPUT_RULES
+
+CODEBASE PATTERNS:
+- Tailwind CSS with 'sanctuary' and 'primary' custom palettes, dark mode via dark: prefix
+- IMPORTANT: the 'primary', 'warning', 'success', 'sent', 'shared' palettes have INVERTED dark-mode scales: low numbers (50-200) = dark, high numbers (800-950) = light. Do NOT flag dark:bg-primary-100 as wrong. 'sanctuary', 'emerald', 'rose' use standard Tailwind scales.
+- Custom pixel sizes text-[9px], text-[10px], text-[11px] are INTENTIONAL for compact UI. Do NOT flag them.
+- Shared components live under components/; buttons/cards/modals have established patterns.
+
+RUBRIC CONCERNS:
+- pattern_adherence: does the change fit existing component/layout patterns?
+- dark_mode: are dark: variants correctly applied (remembering the inverted scales)?
+- shared_components: does the change reuse shared components instead of inventing one-offs?
+
+Use BLOCK for wholly custom reinventions of existing shared components, or broken dark mode.
 
 STAGED UI FILES:
 $UI_FILES
 
 DIFF:
-$UI_DIFF
-
-Our codebase uses:
-- Tailwind CSS with custom 'sanctuary' and 'primary' color palettes
-- Dark mode support via 'dark:' prefix classes
-- Consistent patterns: sanctuary-50 to sanctuary-950, primary-50 to primary-950
-- Surface components and shared UI patterns in components/
-- Common button styles, card layouts, modal patterns
-
-Answer concisely:
-1. Do the changes FIT the existing UI flow and component patterns?
-2. Are there ONE-OFF custom styles that should use existing Tailwind classes or shared components instead?
-3. Are dark mode styles properly implemented (dark: variants)?
-4. Could any new UI be TEMPLATIZED using existing patterns?
-
-End with one of:
-- ✅ RECOMMEND PROCEED - UI changes are consistent
-- ⚠️ SUGGEST REVIEW - minor style inconsistencies found
-- ❌ RECOMMEND STOP - significant UI pattern violations"
+$UI_DIFF"
 
     file_count=$(count_lines "$UI_FILES")
     invoke_agent_with_cache "ui-consistency" "ui-architect" "$PROMPT" "$file_count" "ui-consistency"
@@ -368,36 +480,32 @@ run_backend_quality_agent() {
     echo ""
 
     QUALITY_DIFF=$(git diff --cached -- $SOURCE_FILES)
-    PROMPT="PRE-COMMIT BACKEND QUALITY REVIEW
+    PROMPT="PRE-COMMIT BACKEND QUALITY REVIEW.
 
-Analyze these changes for architectural soundness AND stability in long-running
-operation. This codebase runs 24/7 without restarts, so both dimensions matter.
+$AGENT_OUTPUT_RULES
+
+CODEBASE CONSTRAINTS:
+- Runs 24/7 perpetually without restarts — memory leaks and unbounded growth are release-blocking.
+- Services must clean up intervals/timers/subscriptions/connections on shutdown.
+- External calls need circuit breakers, timeouts, or retry bounds.
+- Repository layer wraps Prisma. Routes and services should NEVER import Prisma directly — flag any such import as BLOCK.
+
+RUBRIC CONCERNS:
+- scalability: N+1 queries, unbounded iteration over user data, blocking sync operations?
+- memory_safety: unbounded Map/Set/Array growth, growing caches without eviction, closure leaks?
+- resource_cleanup: intervals/timers/subscriptions/connections released on shutdown?
+- failure_handling: external calls protected by circuit breaker, timeout, or retry limit?
+- extensibility: new behaviour extends cleanly or does it require modifying core logic?
+
+FILE PRIORITY (spend attention here):
+  HIGH — server/src/services/, server/src/bitcoin/, server/src/repositories/, server/src/middleware/, server/src/jobs/, server/src/websocket/
+  LOW  — server/src/types/, server/src/constants/, server/src/generated/, *.d.ts files
 
 STAGED SOURCE FILES:
 $SOURCE_FILES
 
 DIFF:
-$QUALITY_DIFF
-
-Codebase constraints:
-- Runs perpetually without restarts or memory growth
-- Services must clean up intervals, timers, subscriptions, connections on shutdown
-- External calls need circuit breakers, timeouts, or retry limits
-- Collections (Map/Set/Array) must be bounded; caches must have size limits
-- Code follows open/closed — extensible without modifying core logic
-- Database operations transactional where correctness requires it
-
-Answer concisely:
-1. SCALABILITY: N+1 queries, unbounded iteration, blocking operations?
-2. MEMORY SAFETY: Unbounded collections, growing caches, closure leaks?
-3. RESOURCE CLEANUP: Intervals/timers/subscriptions/connections released?
-4. FAILURE HANDLING: Circuit breakers, timeouts, retry limits on external calls?
-5. EXTENSIBILITY: Open/closed violated? New code extending vs. modifying?
-
-End with one of:
-- ✅ RECOMMEND PROCEED - architecture and stability are sound
-- ⚠️ SUGGEST REVIEW - minor concerns worth a look
-- ❌ RECOMMEND STOP - significant scalability, memory, cleanup, or resilience issues"
+$QUALITY_DIFF"
 
     file_count=$(count_lines "$SOURCE_FILES")
     invoke_agent_with_cache "backend-quality" "lead-software-architect" "$PROMPT" "$file_count" "backend-quality"
@@ -438,39 +546,39 @@ run_documentation_agent() {
     echo ""
 
     DOC_DIFF=$(git diff --cached -- $DOC_FILES)
-    PROMPT="PRE-COMMIT CODE DOCUMENTATION REVIEW
+    PROMPT="PRE-COMMIT DOCUMENTATION REVIEW.
 
-Analyze these changes for adequate documentation, especially for complex or security-critical code.
+$AGENT_OUTPUT_RULES
 
-STAGED FILES:
-$DOC_FILES
+REVIEW STANDARDS:
+- Security-critical code (crypto, keys, signing, auth) MUST be documented with the WHY, not the what.
+- Complex algorithms or non-obvious invariants need explanatory comments.
+- New exported functions/types should have JSDoc.
+- Bitcoin-specific logic (descriptors, derivation paths, BIP standards, script types) needs documentation.
+- DO NOT flag missing docs for obvious code — well-named identifiers document themselves.
+- DO NOT flag absence of comments that would just restate the code.
+
+RUBRIC CONCERNS:
+- security_docs: crypto/key/auth/signing code has clear WHY documentation?
+- complexity_docs: complex or non-obvious logic has explanatory comments?
+- api_docs: new exported functions/types have JSDoc?
+- bitcoin_docs: Bitcoin-specific logic references the relevant BIPs and derivation conventions?
+
+FILE PRIORITY:
+  HIGH — files matching: bitcoin, crypto, key, sign, descriptor, auth, token, secret, wallet
+  LOW  — types, constants, tests, fixtures
 
 SECURITY-CRITICAL FILES DETECTED:
 $CRITICAL_FILES
 
+STAGED FILES:
+$DOC_FILES
+
 DIFF:
-$DOC_DIFF
-
-DOCUMENTATION REQUIREMENTS:
-- Security-critical code (crypto, keys, signing, auth) MUST have clear documentation
-- Complex algorithms or non-obvious logic should have explanatory comments
-- Exported functions/types should have JSDoc describing purpose and parameters
-- Bitcoin-specific logic (descriptors, derivation paths, script types) needs documentation
-- Error handling rationale should be documented for non-obvious cases
-
-Answer concisely:
-1. SECURITY DOCUMENTATION: Is security-critical code (crypto, keys, auth, signing) adequately documented?
-2. COMPLEXITY DOCUMENTATION: Are complex algorithms or non-obvious logic explained?
-3. API DOCUMENTATION: Do new exported functions/types have JSDoc comments?
-4. BITCOIN DOCUMENTATION: Is Bitcoin-specific logic (BIP standards, script types, derivation) documented?
-
-End with one of:
-- ✅ RECOMMEND PROCEED - documentation is adequate
-- ⚠️ SUGGEST REVIEW - minor documentation improvements recommended
-- ❌ RECOMMEND STOP - security-critical or complex code lacks essential documentation"
+$DOC_DIFF"
 
     file_count=$(count_lines "$DOC_FILES")
-    # Empty claude_agent = use general-purpose
+    # Empty claude_agent = use general-purpose agent
     invoke_agent_with_cache "documentation" "" "$PROMPT" "$file_count" "documentation"
 
     echo ""
