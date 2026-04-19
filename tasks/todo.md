@@ -1,4 +1,45 @@
-# Next Task: LabelSelector Complexity Reduction
+# Next Task: SendTransactionPage Complexity Reduction
+
+Status: complete
+
+Goal: continue the maintainability roadmap by reducing the current top high-CCN send transaction page without changing wallet loading, draft resume, preselected UTXO, viewer redirect, device matching, fee, mempool, or wizard behavior.
+
+## SendTransactionPage Complexity Checklist
+
+- [x] Confirm pushed LabelSelector CI status and local baseline.
+- [x] Inspect current top lizard targets and SendTransactionPage test coverage.
+- [x] Split SendTransactionPage into focused controller/helper/view modules while preserving the public import path and exports.
+- [x] Run focused tests, typecheck/lint, lizard, and coverage as needed.
+- [x] Update health/grade tracking and commit the change after verification.
+
+## SendTransactionPage Complexity Review
+
+Changes:
+
+- Reduced `components/send/SendTransactionPage.tsx` to a 48-line public wrapper that chooses loading, error, and wizard render states.
+- Added focused modules under `components/send/SendTransactionPage/` for loading/error views, route/controller orchestration, API loading, shared page types, and formatting/draft/preselected-UTXO helpers.
+- Preserved viewer redirect, wallet formatting, fee formatting, UTXO mapping, mempool fallback, address mapping, wallet-device association and descriptor-fingerprint matching, draft resume, RBF selected-UTXO preservation, unavailable-UTXO warnings, preselected frozen-UTXO removal, and wizard props.
+- Updated the health assessment and grade history: full lizard warnings moved from 105 to 104, and `SendTransactionPage` dropped out of the current top lizard target list.
+
+Verification:
+
+- `npx vitest run tests/components/send/SendTransactionPage.test.tsx tests/components/send/SendTransactionPage.branches.test.tsx` passed: 2 files, 32 tests.
+- `npm run typecheck:app` passed.
+- `npm run lint:app` passed.
+- `npm run test:coverage` passed: 396 files, 5,556 tests, 100% statements/branches/functions/lines.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/send/SendTransactionPage.tsx components/send/SendTransactionPage` passed with no warnings.
+- Full lizard warning count is now 104; top remaining component targets are `LabelManager`, `NotificationToast`, `NotificationItem`, and `BlockVisualizer`.
+- `git diff --check`, grade-history JSONL parsing, large-file classification, and pinned gitleaks-only quality lane passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: absent user/id still avoids API fetches; empty/failed mempool, address, and device calls preserve fallback arrays/nulls; empty address data still skips label lookup addresses.
+- Boundary values: minimum fee fallback remains `1`; preselected frozen-UTXO warnings still use singular/plural wording; all-frozen preselection leaves initial state empty.
+- System boundaries: public `SendTransactionPage` import path, wizard prop names, API modules, route state shape, and transaction state serialization shape are unchanged.
+- Async/race behavior: unmount during parallel requests still avoids setting page data after the mounted guard flips false.
+- Diff review: changes are scoped to SendTransactionPage orchestration extraction, health-report notes, trend metadata, and this task record.
+
+## Previous Task: LabelSelector Complexity Reduction
 
 Status: complete
 
