@@ -51,7 +51,11 @@ AGENT_CACHE_DIR="$AGENT_LOG_DIR/agent-cache"
 #     UNKNOWN instead of falling through to self-reported verdict.
 # v6: fail-closed gate — UNKNOWN now blocks the commit (previously it was
 #     informational only, which meant malformed rubrics silently passed).
-PROMPT_VERSION="v6"
+# v7: closed remaining bypass channels — empty/missing/null rubric no
+#     longer falls back to self-reported verdict; plaintext marker
+#     fallback removed entirely. The only path to a non-UNKNOWN verdict
+#     is a non-empty rubric object with {OK,WARN,BLOCK} values.
+PROMPT_VERSION="v7"
 # Per-commit scratch dir for parallel agent outputs and stop markers.
 AGENT_TMP_DIR=$(mktemp -d -t sanctuary-agents-XXXXXX)
 trap 'rm -rf "$AGENT_TMP_DIR"' EXIT
@@ -102,59 +106,54 @@ extract_json_object() {
 }
 
 # Derive the verdict mechanically from the rubric. We do NOT trust the
-# agent's self-reported `.verdict` — an LLM can contradict its own rubric
-# (claiming "PROCEED" while marking a concern "BLOCK"). The rubric is the
-# ground truth; verdict is computed from it here in shell.
+# agent's self-reported `.verdict` anywhere in this function — if we did,
+# a malformed rubric could be rescued by the self-reported verdict and
+# silently bypass the gate. Self-reported is journaled only (for detecting
+# disagreement).
 #
-# Precedence (in order):
-#   1. rubric is non-object (array/string/number/boolean) → UNKNOWN
-#      (malformed shape — the agent tried structure but got it wrong,
-#      so nothing in it can be trusted, including any nested BLOCK)
-#   2. rubric is missing / explicit null → fall back to self-reported
-#      verdict (agent didn't attempt a per-concern breakdown)
-#   3. rubric is object with any value = BLOCK → STOP (BLOCK wins even
-#      alongside other invalid values — a stop is the safer error mode)
-#   4. rubric is object with any value outside {OK,WARN,BLOCK} → UNKNOWN
-#   5. rubric is object with any value = WARN → REVIEW
-#   6. rubric is object with all values = OK → PROCEED
-#   7. rubric is empty object → fall back to self-reported
+# The rubric MUST be a non-empty object of {OK,WARN,BLOCK} values to produce
+# a non-blocking verdict. Anything else → UNKNOWN (which fails the gate
+# closed via the verdict_blocks_commit policy).
+#
+# Precedence:
+#   1. rubric is not a non-empty object → UNKNOWN
+#      (covers: missing, null, array, string, number, boolean, empty object)
+#   2. any value = BLOCK → STOP (wins even alongside invalid values —
+#      a stop is the safer error mode)
+#   3. any value outside {OK,WARN,BLOCK} → UNKNOWN
+#   4. any value = WARN → REVIEW
+#   5. all values = OK → PROCEED
 derive_verdict_from_body() {
     # $1 = JSON body
     local body="$1"
-    local rubric_type values has_block has_invalid has_warn has_any v
+    local rubric_length values has_block has_invalid has_warn
 
-    # Determine rubric shape first. "null" means missing or explicit null;
-    # "object" is the only acceptable shape; anything else (array, string,
-    # number, boolean) is malformed — the agent tried to provide structure
-    # but got the shape wrong, so we cannot trust any signal it contains.
-    rubric_type=$(echo "$body" | jq -r '.rubric | type' 2>/dev/null || echo "null")
+    # Single jq expression to detect any shape other than non-empty object.
+    # Emits the object's length for valid shapes, -1 otherwise. Fallback -1
+    # on jq error so a broken body is treated the same as malformed.
+    rubric_length=$(echo "$body" | jq -r '
+        if (.rubric // null) | type == "object"
+        then (.rubric | length)
+        else -1
+        end
+    ' 2>/dev/null || echo -1)
 
-    if [ "$rubric_type" != "null" ] && [ "$rubric_type" != "object" ]; then
+    # Missing / null / non-object / empty-object → fail closed.
+    if [ -z "$rubric_length" ] || [ "$rubric_length" = "-1" ] || [ "$rubric_length" = "0" ]; then
         echo "UNKNOWN"
         return
     fi
 
-    if [ "$rubric_type" = "null" ]; then
-        # Missing / explicit-null rubric: agent didn't even try a per-concern
-        # breakdown, fall back to self-reported verdict.
-        v=$(echo "$body" | jq -r '.verdict // "UNKNOWN"' | tr '[:lower:]' '[:upper:]')
-        case "$v" in
-            STOP|REVIEW|PROCEED) echo "$v" ;;
-            *) echo "UNKNOWN" ;;
-        esac
-        return
-    fi
-
-    # Rubric is an object. Collect values as uppercase strings so comparison
-    # is case-insensitive; non-string values get stringified so they fall
-    # into the "invalid value" bucket below.
+    # Rubric is a non-empty object. Collect values as uppercase strings so
+    # comparison is case-insensitive; non-string values get stringified so
+    # they land in the "invalid" bucket.
     values=$(echo "$body" | jq -c '
         .rubric | to_entries | map(
             .value | if type == "string" then ascii_upcase else tostring end
         )
     ' 2>/dev/null || echo '[]')
 
-    # Precedence: BLOCK > invalid > WARN > OK > empty
+    # Precedence: BLOCK > invalid > WARN > OK
     has_block=$(echo "$values" | jq -r 'any(. == "BLOCK")' 2>/dev/null || echo false)
     if [ "$has_block" = "true" ]; then echo "STOP"; return; fi
 
@@ -164,37 +163,23 @@ derive_verdict_from_body() {
     has_warn=$(echo "$values" | jq -r 'any(. == "WARN")' 2>/dev/null || echo false)
     if [ "$has_warn" = "true" ]; then echo "REVIEW"; return; fi
 
-    has_any=$(echo "$values" | jq -r 'length' 2>/dev/null || echo 0)
-    if [ -n "$has_any" ] && [ "$has_any" -gt 0 ]; then
-        echo "PROCEED"
-        return
-    fi
-
-    # Empty-object rubric: same treatment as missing — fall back to self-reported.
-    v=$(echo "$body" | jq -r '.verdict // "UNKNOWN"' | tr '[:lower:]' '[:upper:]')
-    case "$v" in
-        STOP|REVIEW|PROCEED) echo "$v" ;;
-        *) echo "UNKNOWN" ;;
-    esac
+    # Non-empty, all valid, no BLOCK, no WARN → all OK.
+    echo "PROCEED"
 }
 
-# Classify an agent's output. Prefers the derived verdict (from rubric);
-# falls back to legacy plaintext markers so pre-v2 cache entries and
-# agents that ignore the JSON format still classify. UNKNOWN is itself
-# a useful signal for prompt tuning.
+# Classify an agent's output: derive from JSON body if extractable, else
+# UNKNOWN. No plaintext fallback — an agent that produces plaintext
+# "RECOMMEND PROCEED" is off-format and cannot be trusted to have
+# actually reviewed the diff; falling closed forces the author to look.
 extract_verdict() {
     # $1 = path to agent output file
     local body
     body=$(extract_json_object "$1")
     if [ "$body" != "null" ]; then
         derive_verdict_from_body "$body"
-        return
+    else
+        echo "UNKNOWN"
     fi
-    # Plaintext fallback (legacy format)
-    if grep -q "RECOMMEND STOP" "$1"; then echo "STOP"; return; fi
-    if grep -q "SUGGEST REVIEW" "$1"; then echo "REVIEW"; return; fi
-    if grep -q "RECOMMEND PROCEED" "$1"; then echo "PROCEED"; return; fi
-    echo "UNKNOWN"
 }
 
 # Count non-empty lines in a newline-separated list ("" → 0).
