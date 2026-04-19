@@ -1,6 +1,48 @@
-# Next Task: Lizard UI Batch 2 - Block Visualizer
+# Next Task: Lizard UI Batch 3 - Theme Section
 
 Status: in_progress
+
+Goal: batch the current ThemeSection lizard cluster by reducing `AppearanceTab` and `BackgroundsPanel` complexity without changing theme selection, background search/category/favorite behavior, seasonal background toggles, per-season configuration, visual settings, or public exports.
+
+## Lizard UI Batch 3 Checklist
+
+- [x] Confirm pushed BlockVisualizer CI status and clean local baseline.
+- [x] Inspect current top lizard targets and ThemeSection test coverage.
+- [x] Split AppearanceTab data/controller/view helpers while preserving the public import path.
+- [x] Split BackgroundsPanel search, category, grid, and seasonal rendering/helpers while preserving behavior.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [x] Update health/grade tracking and commit/push the batch after verification.
+
+## Lizard UI Batch 3 Review
+
+Changes:
+
+- Reduced `components/Settings/sections/ThemeSection/AppearanceTab.tsx` to a 9-line public wrapper and moved preference derivation, theme/background mapping, favorite toggles, and seasonal updates into focused modules under `components/Settings/sections/ThemeSection/AppearanceTab/`.
+- Reduced `components/Settings/sections/ThemeSection/panels/BackgroundsPanel.tsx` to a 21-line public wrapper and moved category filtering, search filtering, counts, tile view models, seasonal toggle state, and seasonal rows into focused modules under `components/Settings/sections/ThemeSection/panels/BackgroundsPanel/`.
+- Preserved public `AppearanceTab` and `BackgroundsPanel` exports plus theme selection, background selection, favorites, search clear, category empty states, seasonal enable/disable, and per-season background updates.
+- Updated the health assessment and grade history: full lizard warnings moved from 96 to 94, and `AppearanceTab` plus `BackgroundsPanel` dropped out of the current top lizard target list.
+
+Verification:
+
+- `npx vitest run tests/components/Settings/sections/ThemeSection/AppearanceTab.branches.test.tsx tests/components/Settings/sections/ThemeSection/panels/BackgroundsPanel.branches.test.tsx tests/components/ThemeSection.test.tsx` passed: 3 files, 10 tests.
+- `npm run typecheck:app` passed.
+- `npm run lint:app` passed.
+- `npm run test:coverage` passed: 396 files, 5,556 tests, 100% statements/branches/functions/lines.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/Settings/sections/ThemeSection/AppearanceTab.tsx components/Settings/sections/ThemeSection/AppearanceTab components/Settings/sections/ThemeSection/panels/BackgroundsPanel.tsx components/Settings/sections/ThemeSection/panels/BackgroundsPanel` passed with no warnings.
+- Full lizard warning count is now 94; top remaining component targets are `Account`, `AgentManagement`, `TransactionList`, and `NetworkConnectionCard`.
+- `git diff --check`, grade-history JSONL parsing, large-file classification, and pinned gitleaks-only quality lane passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: missing user preferences still fall back to `sanctuary`, `zen`, non-dark mode, empty favorites, and default visual settings; missing seasonal maps still use registry defaults; empty favorites/search/category states still render the same messages.
+- Boundary values: category counts still exclude favorite IDs that are not available backgrounds, opacity/contrast values pass through unchanged, and the seasonal toggle still falls back to `minimal` when disabling the current seasonal background.
+- System boundaries: public ThemeSection exports, panel props, user preference update shapes, theme registry calls, and icon mapping calls remain unchanged.
+- Async/race behavior: this batch does not add async work; state changes remain local React state updates or existing `updatePreferences` calls.
+- Diff review: changes are scoped to ThemeSection controller/view/helper extraction, health-report notes, trend metadata, and this task record.
+
+## Previous Task: Lizard UI Batch 2 - Block Visualizer
+
+Status: complete
 
 Goal: batch the current BlockVisualizer lizard cluster by reducing `BlockVisualizer`, `Block`, `QueuedSummaryBlock`, and `PendingTxDot` complexity without changing mempool/confirmed block ordering, queued/stuck transaction display, explorer links, animation timing, compact layout, or public exports.
 
