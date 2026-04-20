@@ -1,4 +1,44 @@
-# Next Task: CI/CD Optimization and PR/Merge Workflow Plan
+# Next Task: Lizard UI Batch 11 - Device Details Form
+
+Status: in progress
+
+Goal: reduce the current `DeviceDetailsForm` lizard finding by splitting the selected-device form shell, placeholder state, identity fields, parsed-account selector, single-account fields, save/status messaging, and QR import details without changing manual entry behavior, USB/QR/scanned read-only behavior, account selection, save-button gating, warnings/errors, QR details toggle behavior, visible copy, or the public `DeviceDetailsForm` export.
+
+## Lizard UI Batch 11 Checklist
+
+- [x] Start from updated `main` after the first PR-flow validation and docs PR.
+- [x] Confirm `DeviceDetailsForm` is the current top UI target at 51 CCN.
+- [x] Split DeviceDetailsForm render sections into focused helpers while preserving callbacks and copy.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+
+## Lizard UI Batch 11 Review
+
+Changes:
+
+- Reduced `components/ConnectDevice/DeviceDetailsForm.tsx` to an 86-line form shell and moved placeholder, identity fields, parsed-account selection, single-account fields, QR import details, and save/status messaging into focused helpers under `components/ConnectDevice/DeviceDetailsForm/`.
+- Preserved manual entry callbacks, USB/QR scanned read-only behavior, account selection toggles, save-button gating, QR details toggle behavior, warning/error copy, helper text, and the public `DeviceDetailsForm` export.
+- Updated the health assessment and grade history: full lizard warnings moved from 83 to 82, max CCN moved from 51 to 49, and `DeviceDetailsForm` dropped out of the current top lizard target list.
+
+Verification so far:
+
+- `npx vitest run tests/components/ConnectDevice/DeviceDetailsForm.test.tsx tests/components/ConnectDevice/DeviceDetailsForm.branches.test.tsx` passed: 2 files, 8 tests.
+- `npm run typecheck:app` passed.
+- `npm run lint:app` passed.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/ConnectDevice/DeviceDetailsForm.tsx components/ConnectDevice/DeviceDetailsForm` passed with no warnings.
+- `npm run test:coverage` passed: 398 files, 5,564 tests, 100% statements/branches/functions/lines.
+- `git diff --check`, grade-history JSONL parsing, large-file classification, and the local Code Quality subset passed. The Code Quality subset covered lint, gitleaks, CI-scope lizard baseline, jscpd, and large-file classification.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: no selected model, no connection method, empty xpub/fingerprint, no parsed accounts, no selected parsed accounts, missing QR fields, and absent QR details remain covered by the same render branches.
+- Boundary values: selected-account count at 0 and nonzero, parsed-account count at 0 and nonzero, scanned/non-manual read-only state, and save-button disabled/enabled transitions remain covered.
+- System boundaries: `Input`, `Button`, lucide icons, `onFormDataChange`, `onToggleAccount`, `onToggleQrDetails`, and `onSave` keep the same contracts and are only passed through extracted components.
+- Async/race behavior: no new async state or effects were introduced; all extracted helpers are pure render components.
+- Diff review: changes are scoped to DeviceDetailsForm extraction, health-report notes, trend metadata, and this task record.
+
+# Previous Task: CI/CD Optimization and PR/Merge Workflow Plan
 
 Status: implemented and first PR validated; merge-queue ready, but GitHub does not currently allow enforcement on this user-owned repository
 
