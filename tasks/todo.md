@@ -1,6 +1,51 @@
-# Next Task: Lizard UI Batch 16 - Users and Groups
+# Next Task: Lizard UI Batch 17 - AI Query Input
 
 Status: in progress
+
+Goal: reduce the current `AIQueryInput` lizard finding by splitting natural-language query state, submit/error handling, result formatting, example dropdown rendering, result display, and error display while preserving query trimming, loading state, examples focus/blur behavior, clear behavior, result callback behavior, error copy, visible copy, and public default/named exports.
+
+## Lizard UI Batch 17 Checklist
+
+- [x] Start from updated `main` after Batch 16 PR and post-merge full lane are green.
+- [x] Confirm `AIQueryInput` is the current top UI target at 43 CCN.
+- [x] Split AIQueryInput controller/render branches into focused helpers while preserving callbacks and copy.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+
+## Lizard UI Batch 17 Review
+
+Changes:
+
+- Reduced `components/AIQueryInput.tsx` from the 43-CCN query component to a 44-line public shell.
+- Moved query state, submit handling, API error classification, result state, clear behavior, and error dismissal into `components/AIQueryInput/useAIQueryInputController.ts`.
+- Split example rendering, input controls, result display, and error display into focused helpers under `components/AIQueryInput/`.
+- Preserved query trimming, loading state, examples focus/blur behavior, clear behavior, result callback behavior, error copy, visible copy, and public default/named exports.
+- Updated the health assessment and grade history: `AIQueryInput` drops out of the current lizard warning list; broad lizard warning count is now 76 and max CCN is now 41 with `Layout`, `SidebarContent`, and `ChartTooltip` tied as the top component targets.
+
+Verification so far:
+
+- PR #15 merged as `785aa53a`; the post-merge `main` backstop passed the full test summary, full E2E, full build, full frontend, full backend, full gateway, install summary, release check, and dev image build checks.
+- Fresh post-Batch-16 focused lizard measurement from `main` (`785aa53a`) reports `AIQueryInput` at 43 CCN.
+- `npx vitest run tests/components/AIQueryInput.test.tsx` passed: 1 file, 41 tests.
+- `npm run typecheck:app` passed.
+- `npm run lint:app` passed.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/AIQueryInput.tsx components/AIQueryInput` passed with no warnings.
+- Full broad lizard warning count is now 76; `AIQueryInput` has no remaining lizard warnings and max CCN is now 41.
+- `npm run test:coverage` passed: 398 files, 5,564 tests, 100% statements/branches/functions/lines.
+- `git diff --check`, grade-history JSONL parsing, large-file classification, full lint, CI-scope lizard baseline, and `npx --yes jscpd@4 .` passed.
+- Staged diff checks and gitleaks tracked-tree scan passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: empty query, whitespace-only query, absent result, absent error, absent optional callback, and no selected example remain guarded on the same paths as before.
+- Boundary values: trimmed query submission, disabled submit while loading or blank, focus/blur example timing, query clear resetting result/error, and result fields with absent or empty filter/sort/limit/aggregation remain preserved.
+- System boundaries: `aiApi.executeNaturalQuery`, `NaturalQueryResult`, lucide icons, logger behavior, and the public `AIQueryInput` default/named exports keep the same contracts.
+- Async/race behavior: loading still clears in `finally`, failed requests still clear result and set classified error copy, successful requests still set result before invoking `onQueryResult`, and examples still hide through the existing 200ms blur timeout.
+
+# Previous Task: Lizard UI Batch 16 - Users and Groups
+
+Status: complete
 
 Goal: reduce the current `UsersGroups` lizard finding by splitting admin API/loading state, user CRUD handlers, group CRUD handlers, modal state, and page rendering while preserving user/group loading, create/update/delete behavior, confirmation prompts, error handling, modal open/close behavior, visible copy, and the public `UsersGroups` export.
 
@@ -10,8 +55,8 @@ Goal: reduce the current `UsersGroups` lizard finding by splitting admin API/loa
 - [x] Confirm `UsersGroups` is the current top UI target at 43 CCN.
 - [x] Split UsersGroups controller/render branches into focused helpers while preserving callbacks and copy.
 - [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
-- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
-- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+- [x] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [x] Merge after required checks pass, then wait for the post-merge `main` backstop.
 
 ## Lizard UI Batch 16 Review
 
@@ -22,6 +67,7 @@ Changes:
 - Moved loaded page rendering and existing panel/modal wiring into `components/UsersGroups/UsersGroupsLoadedView.tsx`.
 - Preserved user/group loading, create/update/delete behavior, confirmation prompts, error handling, modal open/close behavior, visible copy, and the public `UsersGroups` export.
 - Updated the health assessment and grade history: `UsersGroups` drops out of the current lizard warning list; broad lizard warning count remains measured at 77 and max CCN remains 43 with `AIQueryInput` now the top component target.
+- PR #15 merged as `785aa53a`; the post-merge `main` backstop passed the full test summary, full E2E, full build, full frontend, full backend, full gateway, install summary, release check, and dev image build checks.
 
 Verification so far:
 
@@ -34,6 +80,7 @@ Verification so far:
 - Full broad lizard warning count remains 77; `UsersGroups` has no remaining lizard warnings and `AIQueryInput` is now the top component target at 43 CCN.
 - `npm run test:coverage` passed: 398 files, 5,564 tests, 100% statements/branches/functions/lines.
 - `git diff --check`, grade-history JSONL parsing, large-file classification, full lint, CI-scope lizard baseline, and `npx --yes jscpd@4 .` passed.
+- Staged diff checks, gitleaks tracked-tree scan, pre-commit static reviewers, pre-commit frontend tests, PR required checks, PR code-quality checks, PR quick checks, and post-merge full-lane checks passed.
 
 Edge case and self-review:
 
