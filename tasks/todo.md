@@ -1,6 +1,57 @@
-# Next Task: Lizard UI Batch 33 - Wallet Detail Tabs
+# Next Task: Lizard UI Batch 34 - Configurable Table Controls
 
 Status: in progress
+
+Goal: reduce the shared table lizard findings by splitting table column derivation/header/body rendering and column configuration dropdown state/panel pieces while preserving dynamic column ordering and visibility, sortable header behavior and indicators, custom cell renderers, row click behavior, empty-table copy, dropdown open/close behavior, outside-click/Escape dismissal, drag reorder callbacks, visibility toggles, reset disabled/enabled state, and the public `ConfigurableTable` and `ColumnConfigButton` import paths.
+
+## Lizard UI Batch 34 Checklist
+
+- [x] Start from updated `main` after Batch 33 PR and post-merge full lane are green.
+- [x] Confirm grouped shared-table targets: `ConfigurableTable` at 30 CCN and `ColumnConfigButton` at 21 CCN.
+- [x] Split table and column-config render branches into focused helpers while preserving callbacks and visible behavior.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+
+## Lizard UI Batch 34 Review
+
+Plan:
+
+- Keep `components/ui/ConfigurableTable.tsx` and `components/ui/ColumnConfigButton.tsx` as the public exports.
+- Move ordered-column derivation, alignment classes, empty state, sortable header/icon rendering, table body rows/cells, dropdown lifecycle hooks, trigger rendering, draggable column list, and reset action rendering into focused local helpers.
+- Treat this as one bounded shared-table surface: leave `FeatureTable`, wallet/device list integrations, and column cell renderers for later unless type or test boundaries require small compatibility updates.
+- Preserve `tests/components/ui/ConfigurableTable.test.tsx` and `tests/components/ui/ColumnConfigButton.test.tsx`; add focused assertions only if extraction exposes untested unknown-column, missing-renderer, sortable-without-callback, or reset-state boundaries.
+- Verify focused lizard against the two public files, extracted helper directories, and focused tests before running broader guardrails.
+
+Verification so far:
+
+- PR #32 merged as `90d57672`; the post-merge `main` backstop passed release `24685643366`, dev image build `24685643327`, install tests `24685643382`, and test suite `24685643340`, including full backend, full frontend, full gateway, full build, full E2E, and full test summary jobs.
+- Fresh grouped lizard measurement from `main` (`90d57672`) reported `components/ui/ConfigurableTable.tsx:34` at 30 CCN and `components/ui/ColumnConfigButton.tsx:50` at 21 CCN.
+- Reduced `ConfigurableTable` to a 71-line public table shell and `ColumnConfigButton` to a 60-line public dropdown shell.
+- Moved ordered-column derivation, alignment classes, empty state, sortable header/icon rendering, table body rows/cells, dropdown dismissal effects, trigger rendering, drag reorder handling, draggable column list rendering, and reset action rendering into focused local helpers.
+- Preserved dynamic column ordering and visibility, sortable header callbacks and indicators, custom cell renderers, missing-renderer empty cells, row click behavior, empty-table copy, dropdown open/close behavior, outside-click/Escape dismissal, drag reorder callbacks, visibility toggles, reset disabled/enabled state, required public import paths, and `CellRendererProps` re-export compatibility.
+- Focused shared-table tests passed: `npx vitest run tests/components/ui/ConfigurableTable.test.tsx tests/components/ui/ColumnConfigButton.test.tsx` passed: 2 files, 15 tests.
+- Focused lizard passed for the two public files, extracted helper directories, and focused tests.
+- `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, and `npm run lint` passed.
+- `npm run test:coverage` passed: 401 files, 5,590 tests, 100% statements/branches/functions/lines.
+- Broad lizard now reports 52 warnings, average CCN 1.3, max CCN 33; `ConfigurableTable` and `ColumnConfigButton` are no longer in the warning list.
+- CI-scope lizard passed with the expected 9 server warnings.
+- `npx --yes jscpd@4 .` passed at 2.01% duplication, 276 clones, and 5,289 duplicated lines.
+- `node scripts/quality/check-large-files.mjs`, `git diff --check`, and tracked-tree gitleaks detect passed.
+
+Edge case and self-review notes:
+
+- Empty data still returns only the empty message shell and avoids header/body rendering.
+- Unknown ordered column IDs remain filtered out for both table rendering and column config rendering.
+- Missing cell renderers still render empty table cells rather than throwing.
+- Sort callbacks remain guarded by `sortable`, `sortKey`, and `onSort`; active ascending/descending and inactive sort indicators remain covered.
+- Dropdown dismissal remains active only while open, closes on outside mousedown and Escape, and ignores non-Escape keys and inside clicks.
+- Drag reorder still no-ops for missing or unchanged targets and emits reordered column IDs for valid drags.
+- Reset disabled state still compares ordered columns exactly and visible columns as an unordered set.
+
+# Previous Task: Lizard UI Batch 33 - Wallet Detail Tabs
+
+Status: complete
 
 Goal: reduce the related `WalletDetail` lizard findings by splitting sync-log filtering/rendering, transactions-tab header/filter/summary/load-more rendering, and modal gating helpers while preserving log auto-scroll behavior, level/module/Tor display, sync/full-resync/pause/clear controls, AI query callbacks and aggregation copy, transaction export/load-more behavior, transaction stats suppression when filtered, modal visibility guards, and the public `LogTab`, `TransactionsTab`, and `WalletDetailModals` import paths.
 
@@ -10,8 +61,8 @@ Goal: reduce the related `WalletDetail` lizard findings by splitting sync-log fi
 - [x] Confirm grouped WalletDetail targets: `LogTab` at 31 CCN, `TransactionsTab` at 27 CCN, and `WalletDetailModals` at 21 CCN.
 - [x] Split WalletDetail tab/modal render branches into focused helpers while preserving callbacks and visible behavior.
 - [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
-- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
-- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+- [x] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [x] Merge after required checks pass, then wait for the post-merge `main` backstop.
 
 ## Lizard UI Batch 33 Review
 
@@ -39,6 +90,8 @@ Verification so far:
 - CI-scope lizard passed with the expected 9 server warnings.
 - `npx --yes jscpd@4 .` passed at 2.02% duplication, 277 clones, and 5,300 duplicated lines.
 - `node scripts/quality/check-large-files.mjs`, `git diff --check`, and tracked-tree gitleaks detect passed.
+- PR #32 checks passed: `PR Required Checks`, `Code Quality Required Checks`, Quick Frontend, Quick E2E, Quick Test Hygiene, lizard, jscpd, gitleaks, lint, and Docker builds. `Full Test Summary` was skipped as intended on PR.
+- PR #32 merged as `90d57672`; the post-merge `main` backstop passed release `24685643366`, dev image build `24685643327`, install tests `24685643382`, and test suite `24685643340`, including full backend, full frontend, full gateway, full build, full E2E, and full test summary jobs.
 
 Edge case and self-review notes:
 
