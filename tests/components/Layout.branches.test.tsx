@@ -376,6 +376,42 @@ describe('Layout branch coverage', () => {
     setTimeoutSpy.mockRestore();
   });
 
+  it('clears pending clipboard feedback timers on repeated copy and unmount', async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const timeoutIds = [101, 102];
+    const realSetTimeout = globalThis.setTimeout;
+    let timeoutIndex = 0;
+    const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
+    const setTimeoutSpy = vi
+      .spyOn(globalThis, 'setTimeout')
+      .mockImplementation(((cb: TimerHandler, ms?: number) => {
+        if (typeof cb === 'function' && ms === 2000) {
+          return timeoutIds[timeoutIndex++] as unknown as ReturnType<typeof setTimeout>;
+        }
+        return realSetTimeout(cb, ms);
+      }) as typeof setTimeout);
+
+    Object.defineProperty(window.navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+
+    const { unmount } = renderLayout();
+
+    await user.click(screen.getByText('version-click'));
+    await user.click(screen.getByText('copy-btc'));
+    await user.click(screen.getByText('copy-btc'));
+
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(timeoutIds[0]);
+
+    unmount();
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(timeoutIds[1]);
+
+    setTimeoutSpy.mockRestore();
+    clearTimeoutSpy.mockRestore();
+  });
+
   it('handles clipboard failure path', async () => {
     const user = userEvent.setup();
     const writeText = vi.fn().mockRejectedValue(new Error('copy failed'));
