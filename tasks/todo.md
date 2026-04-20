@@ -1,6 +1,51 @@
-# Next Task: Lizard UI Batch 24 - Wallet Telegram Settings
+# Next Task: Lizard UI Batch 25 - App Routes
 
 Status: in progress
+
+Goal: reduce the current `AppRoutes` lizard finding by splitting authenticated-shell state, default-password modal behavior, animated background rendering, route/redirect rendering, notification container wiring, and theme toggle derivation while preserving unauthenticated login gating, `useWebSocketQueryInvalidation` execution, default-password modal trigger, password-change refresh/reload behavior, dark-mode fallback, animated-background pattern/opacity behavior, route manifest rendering, redirect behavior, notification dismissal, and public `App` export.
+
+## Lizard UI Batch 25 Checklist
+
+- [x] Start from updated `main` after Batch 24 PR and post-merge full lane are green.
+- [x] Confirm `AppRoutes` is the current top UI target at 37 CCN.
+- [x] Split AppRoutes controller/render branches into focused helpers while preserving callbacks and visible behavior.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+
+## Lizard UI Batch 25 Review
+
+Plan:
+
+- Keep `App.tsx` as the public `App` export and move authenticated shell rendering plus controller state under a small `src/app/AppRoutes/` helper set.
+- Extract app preference derivation, password-change handling, animated background rendering, route list rendering, and notification container wiring into focused functions/components.
+- Preserve `tests/App.branches.test.tsx` and `tests/src/app/appRoutes.test.ts` first; add focused branch tests only if extraction exposes missing behavior.
+- Verify focused lizard against `App.tsx` and the extracted helper directory before running the broader guardrails.
+
+Verification so far:
+
+- PR #23 merged as `eda556b8`; the post-merge `main` backstop passed the full test summary, full E2E, full build, full frontend, full backend, full gateway, install summary, release check, and dev image build checks.
+- Fresh focused lizard measurement from `main` (`eda556b8`) reports `App.tsx:20` `AppRoutes` at 37 CCN.
+- Split `App.tsx` to a 15-line public router/provider shell and moved authenticated app state, preference derivation, password-change refresh/reload handling, animated background selection, route/redirect rendering, and notification wiring under `src/app/AppRoutes/`.
+- Preserved default-password modal behavior, unauthenticated login gating, `useWebSocketQueryInvalidation` execution, dark-mode/background fallbacks, animated-background opacity handling, route manifest redirects, notification dismissal, and the public `App` export.
+- `npx vitest run tests/App.branches.test.tsx tests/src/app/appRoutes.test.ts` passed: 2 files, 9 tests.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w App.tsx src/app/AppRoutes` passed with no focused warnings.
+- `npm run typecheck:app` and `npm run lint:app` passed.
+- Broad lizard now reports 68 warnings, average CCN 1.4, max CCN 35; `AppRoutes` is no longer in the warning list.
+- `npm run test:coverage` passed: 399 files, 5,567 tests, 100% statements/branches/functions/lines.
+- `npx --yes jscpd@4 .` completed: 2.03% duplication, 276 clones, 5,283 duplicated lines.
+
+Edge case and self-review notes:
+
+- Empty/unauthenticated user state still returns `Login` before rendering the authenticated shell.
+- Missing preferences still derive `false` dark mode, `minimal` background pattern, and `50` opacity through the existing defaults.
+- Password-change refresh failures remain caught and logged before closing the modal and reloading the document.
+- Animated backgrounds render only for animated background patterns; non-animated patterns return no background component.
+- Route and redirect rendering still comes from the existing app route manifest, avoiding manual path drift.
+
+# Previous Task: Lizard UI Batch 24 - Wallet Telegram Settings
+
+Status: complete
 
 Goal: reduce the current `WalletTelegramSettings` lizard finding by splitting wallet Telegram settings loading/saving state, Telegram availability warnings, wallet enable toggle, notification checkbox list, shell/header rendering, and shared settings model while preserving default settings, fetch-error fallback behavior, Telegram configured/global-enabled gating, optimistic save payloads, save-error revert behavior, API error copy, generic error copy, success timeout behavior, disabled controls while saving, visible copy, and public `WalletTelegramSettings` import path.
 
@@ -10,8 +55,8 @@ Goal: reduce the current `WalletTelegramSettings` lizard finding by splitting wa
 - [x] Confirm `WalletTelegramSettings` is tied as the current top UI target at 37 CCN.
 - [x] Split WalletTelegramSettings controller/render branches into focused helpers while preserving callbacks and visible copy.
 - [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
-- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
-- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+- [x] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [x] Merge after required checks pass, then wait for the post-merge `main` backstop.
 
 ## Lizard UI Batch 24 Review
 
@@ -44,6 +89,9 @@ Verification so far:
 - Full broad lizard warning count is now 69; `WalletTelegramSettings` has no remaining lizard warnings and max CCN is now 37.
 - `npm run test:coverage` passed: 399 files, 5,567 tests, 100% statements/branches/functions/lines.
 - `npx --yes jscpd@4 .` passed: 2.03% duplication, 276 clones, 5,283 duplicated lines.
+- `git diff --check`, grade-history JSONL parsing, large-file classification, full lint, CI-scope lizard baseline, tracked-tree gitleaks, and staged gitleaks passed.
+- PR #23 checks passed: `PR Required Checks`, `Code Quality Required Checks`, Quick Frontend, Quick E2E, lizard, jscpd, gitleaks, lint, and Docker builds.
+- PR #23 merged as `eda556b8`; the post-merge `main` backstop passed `Full Test Summary`, full backend, full frontend, full gateway, full E2E, full build, install tests, release, and dev image builds.
 
 Edge case and self-review:
 
