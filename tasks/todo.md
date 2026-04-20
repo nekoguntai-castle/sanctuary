@@ -1,6 +1,54 @@
-# Next Task: Lizard UI Batch 36 - UTXO Send Controls
+# Next Task: Lizard UI Batch 37 - Send Wizard Signing Flow
 
 Status: in progress
+
+Goal: reduce the related send-flow lizard findings by splitting send wizard draft initialization, review-step routing, sign/broadcast action branches, production signing-device row actions, and focused test doubles while preserving draft PSBT initialization, output/UTXO fallback data, review auto-create/reset behavior, single-sig broadcast paths, multisig sign-only behavior, save-draft gating, current-step rendering, signing method availability, upload/download/QR controls, loading labels, and the public `SendTransactionWizard` and `SigningFlow` import paths.
+
+## Lizard UI Batch 37 Checklist
+
+- [x] Start from updated `main` after Batch 36 PR and post-merge full lane are green.
+- [x] Confirm grouped send-flow targets: `SendTransactionWizard` warnings at 21/23/22 CCN, production `SigningFlow` at 25 CCN, `ReviewStep.branches` test `SigningFlow` double at 19 CCN, and `SendTransactionPage.branches` test `SendTransactionWizard` double at 30 CCN.
+- [x] Split send wizard/signing flow render and action branches into focused helpers while preserving callbacks and visible behavior.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+
+## Lizard UI Batch 37 Review
+
+Plan:
+
+- Keep `components/send/SendTransactionWizard.tsx` and `components/send/steps/review/SigningFlow.tsx` as the public exports.
+- Move draft transaction data derivation, review step prop assembly, sign/broadcast branch handling, wizard shell/header/error/navigation, signing row state/actions, and signing method controls into focused local helpers.
+- Keep test-double refactors scoped to the two branch tests that lizard flags; avoid changing the production API to serve test structure.
+- Preserve `tests/components/send/SendTransactionWizard.test.tsx`, `tests/components/send/SendTransactionWizard.branches.test.tsx`, `tests/components/send/SigningFlow.test.tsx`, `tests/components/send/ReviewStep.branches.test.tsx`, and `tests/components/send/SendTransactionPage.branches.test.tsx`; add focused assertions only if extraction exposes untested signed raw transaction, no txData, no signer, QR, airgap, or file-ref cleanup boundaries.
+- Verify focused lizard against the two public files, extracted helper directories, and focused tests before running broader guardrails.
+
+Verification so far:
+
+- Reduced `SendTransactionWizard` to a 149-line public orchestrator shell and `SigningFlow` to a 50-line public signing list shell.
+- Moved draft transaction data derivation, review reset/autocreate effects, single-sig sign/broadcast branch handling, multisig sign-only handling, save-draft handling, wizard shell/header/error/navigation, current-step rendering, signing device identity/status/method controls, USB sign action handling, QR controls, and airgap download/upload controls into focused local helpers.
+- Reduced the two flagged branch-test doubles by moving device-upload/file-ref handling and send-wizard display value derivation into smaller test helpers while preserving the same assertions.
+- Preserved draft PSBT initialization, output/UTXO fallback data, review auto-create/reset behavior, signed-raw-tx broadcast, create-before-sign fallback, connected hardware-wallet signing, uploaded signed-PSBT broadcast, multisig sign-only behavior, save-draft gating, step rendering, signing method availability, QR gating on unsigned PSBT, airgap file input refs, upload loading labels, and the public `SendTransactionWizard` and `SigningFlow` import paths.
+- Focused send tests passed: `npx vitest run tests/components/send/SendTransactionWizard.test.tsx tests/components/send/SendTransactionWizard.branches.test.tsx tests/components/send/SigningFlow.test.tsx tests/components/send/ReviewStep.branches.test.tsx tests/components/send/SendTransactionPage.branches.test.tsx` passed: 5 files, 56 tests.
+- Focused lizard passed for the two public files, extracted helper directories, and focused tests.
+- `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, and `npm run lint` passed.
+- `npm run test:coverage` passed: 401 files, 5,591 tests, 100% statements/branches/functions/lines.
+- Broad lizard now reports 40 warnings; `SendTransactionWizard`, production `SigningFlow`, and the two branch-test doubles are no longer in the warning list.
+- CI-scope lizard passed with the expected 9 server warnings.
+- `npx --yes jscpd@4 .` passed at 1.99% duplication, 275 clones, and 5,260 duplicated lines.
+- `node scripts/quality/check-large-files.mjs`, `git diff --check`, grade-history JSONL parsing, and tracked-tree gitleaks detect passed.
+
+Edge case and self-review notes:
+
+- Draft mode still requires `state.isDraftMode`, draft transaction data, and an unsigned PSBT before constructing initial transaction data.
+- Draft UTXO fallback still keeps missing full UTXO data as empty address and zero amount; output parsing still falls back invalid or empty amounts to zero.
+- Review-step navigation still resets created transaction data only when leaving review outside draft mode, and auto-create still stops when already creating, already created, errored, draft mode, or not ready to sign.
+- Single-sig broadcast still prioritizes an existing signed raw transaction, then creates missing tx data, then connected hardware-wallet signing, then uploaded signed PSBT broadcast, and finally PSBT creation for external signing.
+- Signing rows still show signed devices as complete, gate QR buttons on `unsignedPsbt`, disable USB while signing, clear signing device state in `finally`, and keep upload input refs keyed by device ID.
+
+# Previous Task: Lizard UI Batch 36 - UTXO Send Controls
+
+Status: complete
 
 Goal: reduce the related UTXO/send lizard findings by splitting UTXO list state/header/privacy detail rendering, coin-control panel sections, and send UTXO row display branches while preserving selected amount/send behavior, explorer URL fallback/loading, fee-rate fallback dust calculations, privacy detail panel routing, selectable/frozen/locked guards, coin-control expand/select/clear/enable behavior, remaining-needed warning, spend privacy card gating, frozen/draft locked summaries, and the public `UTXOList`, `CoinControlPanel`, and `UtxoRow` import paths.
 
@@ -10,8 +58,8 @@ Goal: reduce the related UTXO/send lizard findings by splitting UTXO list state/
 - [x] Confirm grouped UTXO/send targets: `UTXOList` at 29 CCN, `CoinControlPanel` at 29 CCN, and send `UtxoRow` at 19 CCN.
 - [x] Split UTXO list, coin-control, and send UTXO row render branches into focused helpers while preserving callbacks and visible behavior.
 - [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
-- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
-- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+- [x] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [x] Merge after required checks pass, then wait for the post-merge `main` backstop.
 
 ## Lizard UI Batch 36 Review
 
@@ -38,6 +86,8 @@ Verification so far:
 - CI-scope lizard passed with the expected 9 server warnings.
 - `npx --yes jscpd@4 .` passed at 1.99% duplication, 275 clones, and 5,260 duplicated lines.
 - `node scripts/quality/check-large-files.mjs`, `git diff --check`, grade-history JSONL parsing, and tracked-tree gitleaks detect passed.
+- PR #35 checks passed: `PR Required Checks`, `Code Quality Required Checks`, Quick Frontend, Quick E2E, Quick Test Hygiene, lizard, jscpd, gitleaks, lint, and Docker builds. `Full Test Summary` was skipped as intended on PR.
+- PR #35 merged as `29f0f6ab`; the post-merge `main` backstop passed release `24690147814`, dev image build `24690147825`, install tests `24690147808`, and test suite `24690147777`, including full backend, full frontend, full gateway, full build, full E2E, and full test summary jobs.
 
 Edge case and self-review notes:
 
