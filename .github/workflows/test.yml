@@ -4,6 +4,9 @@ on:
   pull_request:
     branches:
       - main
+  merge_group:
+    types:
+      - checks_requested
   push:
     branches:
       - main
@@ -36,6 +39,10 @@ on:
   schedule:
     - cron: '0 7 * * *'
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'merge_group' }}
 
 env:
   NODE_VERSION: '22'
@@ -479,6 +486,71 @@ jobs:
           NODE_ENV: test
           VITE_API_URL: http://localhost:3001
 
+  pr-required-checks:
+    name: PR Required Checks
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    needs:
+      - detect-changes
+      - quick-test-hygiene
+      - quick-frontend-tests
+      - quick-backend-tests
+      - quick-backend-integration-smoke
+      - quick-critical-mutation
+      - quick-gateway-tests
+      - quick-e2e-smoke
+    steps:
+      - name: Check PR quick lane results
+        env:
+          DETECT_CHANGES: ${{ needs.detect-changes.result }}
+          QUICK_TEST_HYGIENE: ${{ needs.quick-test-hygiene.result }}
+          QUICK_FRONTEND_TESTS: ${{ needs.quick-frontend-tests.result }}
+          QUICK_BACKEND_TESTS: ${{ needs.quick-backend-tests.result }}
+          QUICK_BACKEND_INTEGRATION_SMOKE: ${{ needs.quick-backend-integration-smoke.result }}
+          QUICK_CRITICAL_MUTATION: ${{ needs.quick-critical-mutation.result }}
+          QUICK_GATEWAY_TESTS: ${{ needs.quick-gateway-tests.result }}
+          QUICK_E2E_SMOKE: ${{ needs.quick-e2e-smoke.result }}
+        run: |
+          failed=false
+
+          require_success() {
+            name="$1"
+            result="$2"
+            if [ "$result" != "success" ]; then
+              echo "::error::$name result was $result; expected success"
+              failed=true
+            else
+              echo "$name: $result"
+            fi
+          }
+
+          allow_success_or_skipped() {
+            name="$1"
+            result="$2"
+            case "$result" in
+              success|skipped)
+                echo "$name: $result"
+                ;;
+              *)
+                echo "::error::$name result was $result; expected success or skipped"
+                failed=true
+                ;;
+            esac
+          }
+
+          require_success "Detect Changed Files" "$DETECT_CHANGES"
+          allow_success_or_skipped "Quick Test Hygiene" "$QUICK_TEST_HYGIENE"
+          allow_success_or_skipped "Quick Frontend Tests" "$QUICK_FRONTEND_TESTS"
+          allow_success_or_skipped "Quick Backend Tests" "$QUICK_BACKEND_TESTS"
+          allow_success_or_skipped "Quick Backend Integration Smoke" "$QUICK_BACKEND_INTEGRATION_SMOKE"
+          allow_success_or_skipped "Quick Critical Mutation Gate" "$QUICK_CRITICAL_MUTATION"
+          allow_success_or_skipped "Quick Gateway Tests" "$QUICK_GATEWAY_TESTS"
+          allow_success_or_skipped "Quick E2E Smoke" "$QUICK_E2E_SMOKE"
+
+          if [ "$failed" = "true" ]; then
+            exit 1
+          fi
+
   # ============================================
   # Full Lane (main/nightly/manual)
   # ============================================
@@ -824,7 +896,7 @@ jobs:
     name: Full Test Summary
     if: always() && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-    needs: [full-backend-tests, full-frontend-tests, full-gateway-tests, full-critical-mutation, full-build-check]
+    needs: [full-backend-tests, full-frontend-tests, full-gateway-tests, full-critical-mutation, full-e2e-tests, full-build-check]
 
     steps:
       - name: Download backend coverage
@@ -909,6 +981,15 @@ jobs:
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ needs.full-e2e-tests.result }}" = "success" ]; then
+            echo "### E2E: Passed" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.full-e2e-tests.result }}" = "skipped" ]; then
+            echo "### E2E: Skipped" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### E2E: Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
           if [ "${{ needs.full-critical-mutation.result }}" = "success" ]; then
             echo "### Critical Mutation Gate: Passed" >> $GITHUB_STEP_SUMMARY
           elif [ "${{ needs.full-critical-mutation.result }}" = "skipped" ]; then
@@ -916,4 +997,51 @@ jobs:
             echo "No critical mutation paths changed on this push." >> $GITHUB_STEP_SUMMARY
           else
             echo "### Critical Mutation Gate: Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Check full lane result
+        env:
+          FULL_BACKEND_TESTS: ${{ needs.full-backend-tests.result }}
+          FULL_FRONTEND_TESTS: ${{ needs.full-frontend-tests.result }}
+          FULL_GATEWAY_TESTS: ${{ needs.full-gateway-tests.result }}
+          FULL_CRITICAL_MUTATION: ${{ needs.full-critical-mutation.result }}
+          FULL_E2E_TESTS: ${{ needs.full-e2e-tests.result }}
+          FULL_BUILD_CHECK: ${{ needs.full-build-check.result }}
+        run: |
+          failed=false
+
+          require_success() {
+            name="$1"
+            result="$2"
+            if [ "$result" != "success" ]; then
+              echo "::error::$name result was $result; expected success"
+              failed=true
+            else
+              echo "$name: $result"
+            fi
+          }
+
+          allow_success_or_skipped() {
+            name="$1"
+            result="$2"
+            case "$result" in
+              success|skipped)
+                echo "$name: $result"
+                ;;
+              *)
+                echo "::error::$name result was $result; expected success or skipped"
+                failed=true
+                ;;
+            esac
+          }
+
+          require_success "Full Backend Tests" "$FULL_BACKEND_TESTS"
+          require_success "Full Frontend Tests" "$FULL_FRONTEND_TESTS"
+          require_success "Full Gateway Tests" "$FULL_GATEWAY_TESTS"
+          require_success "Full E2E Tests" "$FULL_E2E_TESTS"
+          require_success "Full Build Check" "$FULL_BUILD_CHECK"
+          allow_success_or_skipped "Full Critical Mutation Gate" "$FULL_CRITICAL_MUTATION"
+
+          if [ "$failed" = "true" ]; then
+            exit 1
           fi

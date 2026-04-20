@@ -12,20 +12,57 @@ on:
     branches:
       - main
     paths:
+      - 'App.tsx'
       - 'components/**'
+      - 'contexts/**'
+      - 'hooks/**'
+      - 'index.html'
+      - 'index.tsx'
+      - 'providers/**'
+      - 'services/**'
       - 'src/**'
+      - 'themes/**'
       - 'utils/**'
       - 'shared/**'
       - 'server/**'
       - 'docker/**'
       - 'Dockerfile'
+      - '.dockerignore'
       - 'docker-compose.yml'
       - 'package*.json'
+      - 'tsconfig*.json'
+      - 'vite*.ts'
       - '.github/workflows/docker-build.yml'
   pull_request:
     branches:
       - main
+    paths:
+      - 'App.tsx'
+      - 'components/**'
+      - 'contexts/**'
+      - 'hooks/**'
+      - 'index.html'
+      - 'index.tsx'
+      - 'providers/**'
+      - 'services/**'
+      - 'src/**'
+      - 'themes/**'
+      - 'utils/**'
+      - 'shared/**'
+      - 'server/**'
+      - 'docker/**'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'docker-compose.yml'
+      - 'package*.json'
+      - 'tsconfig*.json'
+      - 'vite*.ts'
+      - '.github/workflows/docker-build.yml'
   workflow_dispatch:  # Allow manual trigger
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
 
 env:
   REGISTRY: ghcr.io

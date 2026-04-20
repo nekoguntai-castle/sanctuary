@@ -2,6 +2,17 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## GitHub feature eligibility depends on owner type, not just paid status
+
+**Rule:** When enabling GitHub repository features, verify both account plan and repository owner type. Do not assume a paid personal account has the same feature surface as an organization-owned repository.
+
+**Why:** The user clarified that `nekoguntai/sanctuary` is under a paid personal GitHub account. GitHub merge queue still rejected the repository-level `merge_queue` ruleset because the repository owner type is `User`; current GitHub docs limit merge queues to organization-owned repositories for the relevant public/private cases.
+
+**How to apply:**
+- Check `gh api repos/OWNER/REPO --jq '{owner:{login:.owner.login,type:.owner.type},visibility,private}'` before planning owner-type-sensitive GitHub features.
+- Treat "GitHub Pro" and "organization-owned" as separate axes in docs and recommendations.
+- If merge queue is desired for a personal repo, present "transfer to an eligible organization" as the concrete unlock path.
+
 ## Future-date test fixtures must be relative or time-frozen
 
 **Rule:** When a test needs an input that must be "in the future," derive it from `Date.now()` or freeze time with fake timers. Do not use a calendar-fixed timestamp unless the test is explicitly about that calendar boundary.

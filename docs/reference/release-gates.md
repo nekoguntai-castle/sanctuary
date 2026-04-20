@@ -1,7 +1,7 @@
 # Sanctuary Release Gates
 
-Date: 2026-04-14 (Pacific/Honolulu)
-Status: Phase 4 release-gate baseline; Phase 3 generated capacity proof is current
+Date: 2026-04-19 (Pacific/Honolulu)
+Status: Phase 4 release-gate baseline; Phase 3 generated capacity proof is current; PR-first CI/CD strategy active; merge-queue ready but blocked by current user-owned repository eligibility
 
 This document records the checks that should protect the A-grade engineering goals in `docs/plans/codebase-health-assessment.md`. A release should not claim an A grade in a domain unless the matching gate has passed or the plan explicitly marks the gate as pending with an owner and date.
 
@@ -11,6 +11,7 @@ This document records the checks that should protect the A-grade engineering goa
 - Pending gates do not prove an A-grade claim yet. They are tracked here so skipped data-dependent work is visible instead of silently ignored.
 - Area-specific gates are required when the release touches that area or when the release notes claim an improvement in that area.
 - Accepted dependency findings must remain documented in `docs/plans/dependency-audit-triage.md`; new high or critical production advisories require a fix or explicit risk acceptance before release.
+- CI/CD tiering, required aggregate checks, merge-queue behavior, and emergency hotfix rules are documented in `docs/reference/ci-cd-strategy.md`.
 
 ## Required Gates
 
