@@ -1,6 +1,53 @@
-# Next Task: Lizard UI Batch 25 - App Routes
+# Next Task: Lizard UI Batch 26 - Login Form
 
 Status: in progress
+
+Goal: reduce the current `LoginForm` lizard finding by splitting login form header, credential field rendering, form actions, footer status copy, and card tilt wiring while preserving login/register copy, email reveal, password hint reveal, disabled boot submit behavior, loading labels, registration toggle visibility, API status copy, error alert, field callbacks, submit/toggle callbacks, card tilt behavior, and public `LoginForm` import path.
+
+## Lizard UI Batch 26 Checklist
+
+- [x] Start from updated `main` after Batch 25 PR and post-merge full lane are green.
+- [x] Confirm `LoginForm` is tied as the current top UI target at 35 CCN.
+- [x] Split LoginForm render branches into focused helpers while preserving callbacks and visible behavior.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+
+## Lizard UI Batch 26 Review
+
+Plan:
+
+- Keep `components/Login/LoginForm.tsx` as the public `LoginForm` export and move header, fields, actions, footer, shared props, and visual tilt hook under `components/Login/LoginForm/`.
+- Extract submit label, mode subtitle, registration toggle visibility, API status display, and footer copy into small helpers so the render layer no longer owns every branch.
+- Preserve `tests/components/Login/LoginForm.test.tsx` first; add focused branch tests only if extraction exposes missing behavior.
+- Verify focused lizard against `components/Login/LoginForm.tsx` and the extracted helper directory before running the broader guardrails.
+
+Verification so far:
+
+- PR #24 merged as `b1f24a73`; the post-merge `main` backstop passed the full test summary, full E2E, full build, full frontend, full backend, full gateway, install summary, release check, and dev image build checks.
+- Fresh focused lizard measurement from `main` (`b1f24a73`) reports `components/Login/LoginForm.tsx:77` anonymous render function at 35 CCN, tied with `components/AILabelSuggestion.tsx`.
+- Reduced `components/Login/LoginForm.tsx` to a 63-line public shell and moved header, credential fields, actions, footer status/copy, shared prop types, and visual tilt behavior under `components/Login/LoginForm/`.
+- Preserved login/register copy, email reveal, password hint reveal, disabled boot submit behavior, loading labels, registration toggle visibility, API status copy, error alert, field callbacks, submit/toggle callbacks, card tilt behavior, and the public `LoginForm` import path.
+- Added a focused assertion that boot loading disables the submit button without changing the login label.
+- `npx vitest run tests/components/Login/LoginForm.test.tsx tests/components/Login.test.tsx tests/components/ui/Button.test.tsx` passed: 3 files, 47 tests.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/Login/LoginForm.tsx components/Login/LoginForm tests/components/Login/LoginForm.test.tsx` passed with no focused warnings.
+- `npm run typecheck:app`, `npm run lint:app`, and `npm run lint` passed.
+- Broad lizard now reports 67 warnings, average CCN 1.4, max CCN 35; `LoginForm` is no longer in the warning list and `AILabelSuggestion` is the next top JSX target.
+- `npm run test:coverage` passed: 399 files, 5,568 tests, 100% statements/branches/functions/lines.
+- `npx --yes jscpd@4 .` completed: 2.03% duplication, 276 clones, 5,283 duplicated lines.
+- `git diff --check`, grade-history updates, `node scripts/quality/check-large-files.mjs`, and the CI-scope lizard baseline passed.
+
+Edge case and self-review notes:
+
+- Empty/null error state still renders no visible alert while non-empty errors render through `ErrorAlert`.
+- Login and registration modes still cover both static and loading submit labels, hidden and visible email fields, hidden and visible password hints, and disabled boot-submit state.
+- Registration-disabled login mode still hides the toggle, while registration mode still exposes the sign-in toggle even when new registrations are disabled.
+- API status rendering is now table-driven for the three allowed statuses and the focused tests cover `checking`, `connected`, and `error`.
+- Card tilt still guards null refs before reading layout or mutating transforms, and the visual-only hook remains coverage-ignored.
+
+# Previous Task: Lizard UI Batch 25 - App Routes
+
+Status: complete
 
 Goal: reduce the current `AppRoutes` lizard finding by splitting authenticated-shell state, default-password modal behavior, animated background rendering, route/redirect rendering, notification container wiring, and theme toggle derivation while preserving unauthenticated login gating, `useWebSocketQueryInvalidation` execution, default-password modal trigger, password-change refresh/reload behavior, dark-mode fallback, animated-background pattern/opacity behavior, route manifest rendering, redirect behavior, notification dismissal, and public `App` export.
 
@@ -10,8 +57,8 @@ Goal: reduce the current `AppRoutes` lizard finding by splitting authenticated-s
 - [x] Confirm `AppRoutes` is the current top UI target at 37 CCN.
 - [x] Split AppRoutes controller/render branches into focused helpers while preserving callbacks and visible behavior.
 - [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
-- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
-- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+- [x] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [x] Merge after required checks pass, then wait for the post-merge `main` backstop.
 
 ## Lizard UI Batch 25 Review
 
@@ -34,6 +81,8 @@ Verification so far:
 - Broad lizard now reports 68 warnings, average CCN 1.4, max CCN 35; `AppRoutes` is no longer in the warning list.
 - `npm run test:coverage` passed: 399 files, 5,567 tests, 100% statements/branches/functions/lines.
 - `npx --yes jscpd@4 .` completed: 2.03% duplication, 276 clones, 5,283 duplicated lines.
+- PR #24 checks passed: `PR Required Checks`, `Code Quality Required Checks`, Quick Frontend, Quick E2E, Quick Test Hygiene, lizard, jscpd, gitleaks, lint, and Docker builds. `Full Test Summary` was skipped as intended on PR.
+- PR #24 merged as `b1f24a73`; the post-merge `main` backstop passed release `24663495601`, dev image build `24663495592`, install tests `24663495579`, and test suite `24663495589`, including full backend, full gateway, full frontend, full build, full E2E, and full test summary jobs.
 
 Edge case and self-review notes:
 

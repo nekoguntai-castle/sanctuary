@@ -68,6 +68,11 @@ describe('LoginForm', () => {
     expect(screen.getByRole('button', { name: /Creating account/i })).toBeInTheDocument();
   });
 
+  it('disables submit during boot loading without changing the login label', () => {
+    renderForm({ isBootLoading: true });
+    expect(screen.getByRole('button', { name: 'Sign In' })).toBeDisabled();
+  });
+
   it('calls onUsernameChange when username input changes', () => {
     const onUsernameChange = vi.fn();
     renderForm({ onUsernameChange });
