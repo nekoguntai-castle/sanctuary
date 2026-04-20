@@ -1,6 +1,50 @@
-# Next Task: Lizard UI Batch 15 - Chat Tab
+# Next Task: Lizard UI Batch 16 - Users and Groups
 
 Status: in progress
+
+Goal: reduce the current `UsersGroups` lizard finding by splitting admin API/loading state, user CRUD handlers, group CRUD handlers, modal state, and page rendering while preserving user/group loading, create/update/delete behavior, confirmation prompts, error handling, modal open/close behavior, visible copy, and the public `UsersGroups` export.
+
+## Lizard UI Batch 16 Checklist
+
+- [x] Start from updated `main` after Batch 15 PR and post-merge full lane are green.
+- [x] Confirm `UsersGroups` is the current top UI target at 43 CCN.
+- [x] Split UsersGroups controller/render branches into focused helpers while preserving callbacks and copy.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+
+## Lizard UI Batch 16 Review
+
+Changes:
+
+- Reduced `components/UsersGroups/UsersGroups.tsx` from the 43-CCN page component to a 13-line public shell.
+- Moved admin user/group loading, create/update/delete handlers, confirmation prompts, API error handling, modal state, and group draft state into `components/UsersGroups/useUsersGroupsController.ts`.
+- Moved loaded page rendering and existing panel/modal wiring into `components/UsersGroups/UsersGroupsLoadedView.tsx`.
+- Preserved user/group loading, create/update/delete behavior, confirmation prompts, error handling, modal open/close behavior, visible copy, and the public `UsersGroups` export.
+- Updated the health assessment and grade history: `UsersGroups` drops out of the current lizard warning list; broad lizard warning count remains measured at 77 and max CCN remains 43 with `AIQueryInput` now the top component target.
+
+Verification so far:
+
+- PR #14 merged as `f76cfa87`; the post-merge `main` backstop passed the full test summary, full E2E, full build, full frontend, full backend, full gateway, install summary, release check, and dev image build checks.
+- Fresh post-Batch-15 focused lizard measurement from `main` (`f76cfa87`) reports `UsersGroups` at 43 CCN.
+- `npx vitest run tests/components/UsersGroups.test.tsx tests/components/UsersGroups.branches.test.tsx tests/components/UsersGroups/CreateUserModal.test.tsx tests/components/UsersGroups/EditUserModal.branches.test.tsx tests/components/UsersGroups/GroupPanel.branches.test.tsx tests/components/UsersGroups/EditGroupModal.branches.test.tsx` passed: 6 files, 43 tests.
+- `npm run typecheck:app` passed.
+- `npm run lint:app` passed.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/UsersGroups` passed with no warnings.
+- Full broad lizard warning count remains 77; `UsersGroups` has no remaining lizard warnings and `AIQueryInput` is now the top component target at 43 CCN.
+- `npm run test:coverage` passed: 398 files, 5,564 tests, 100% statements/branches/functions/lines.
+- `git diff --check`, grade-history JSONL parsing, large-file classification, full lint, CI-scope lizard baseline, and `npx --yes jscpd@4 .` passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: empty users/groups, absent editing user/group, no selected modal record, whitespace-only create-user fields, whitespace-only group names, missing user email, and empty group member lists remain guarded on the same paths as before.
+- Boundary values: no-change user update payloads, email clear-to-undefined, admin toggle changes, optional password updates, selected versus unselected group members, confirmation cancel, and failed create/update branches remain preserved.
+- System boundaries: `adminApi.getUsers`, `getGroups`, `createUser`, `updateUser`, `deleteUser`, `createGroup`, `updateGroup`, `deleteGroup`, `useLoadingState`, `useErrorHandler`, existing panels, and existing modals keep the same contracts.
+- Async/race behavior: load/create/update loading flags still flow through `useLoadingState`, failed create/update operations keep modals open, successful mutations reload data, and delete failures still log and call the shared error handler.
+
+# Previous Task: Lizard UI Batch 15 - Chat Tab
+
+Status: complete
 
 Goal: reduce the current `ChatTab` lizard finding by splitting chat API/controller state, conversation list rendering, message panel rendering, and input composer behavior without changing conversation load/create/delete behavior, selected-conversation semantics, message load/clear behavior, optimistic send/rollback behavior, Enter-to-send behavior, scroll-to-bottom behavior, visible copy, or public `ChatTab` exports.
 
@@ -10,8 +54,8 @@ Goal: reduce the current `ChatTab` lizard finding by splitting chat API/controll
 - [x] Confirm `ChatTab` is the current top UI target at 45 CCN.
 - [x] Split ChatTab controller/render branches into focused helpers while preserving callbacks and copy.
 - [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
-- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
-- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+- [x] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [x] Merge after required checks pass, then wait for the post-merge `main` backstop.
 
 ## Lizard UI Batch 15 Review
 
@@ -21,6 +65,7 @@ Changes:
 - Moved conversation loading, selected-conversation state, message loading/clearing, optimistic send/rollback, Enter-to-send handling, scroll refs, focus refs, and API error logging into `components/Intelligence/tabs/useChatTabController.ts`.
 - Split conversation list rendering, message pane rendering, and input composer rendering into focused helpers under `components/Intelligence/tabs/`.
 - Preserved conversation load/create/delete behavior, selected-conversation semantics, message load/clear behavior, optimistic send/rollback behavior, Enter-to-send behavior, scroll-to-bottom behavior, visible copy, and the public `ChatTab` export.
+- PR #14 merged as `f76cfa87`; the post-merge `main` backstop passed the full test summary, full E2E, full build, full frontend, full backend, full gateway, install summary, release check, and dev image build checks.
 
 Verification so far:
 
@@ -32,6 +77,7 @@ Verification so far:
 - Full TSX-aware lizard warning count is now 77; max CCN is now 43 with `UsersGroups` and `AIQueryInput` as the next top component targets.
 - `npm run test:coverage` passed: 398 files, 5,564 tests, 100% statements/branches/functions/lines.
 - `git diff --check`, grade-history JSONL parsing, large-file classification, full lint, CI-scope lizard baseline, and `npx --yes jscpd@4 .` passed.
+- Staged diff checks, gitleaks tracked-tree scan, pre-commit static reviewers, pre-commit frontend tests, PR required checks, PR code-quality checks, PR quick checks, and post-merge full-lane checks passed.
 
 Edge case and self-review:
 

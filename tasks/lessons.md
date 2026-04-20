@@ -2,6 +2,17 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Keep approval prefixes stable for GitHub CLI commands
+
+**Rule:** Do not wrap `gh` commands with per-command environment prefixes such as `TMPDIR=...` unless there is a concrete failure that requires it. Prefer plain `gh pr ...`, `gh run ...`, or `gh api ...` so approval rules match stable command prefixes.
+
+**Why:** The user corrected the workflow after repeated `TMPDIR=/home/nekoguntai/sanctuary/.tmp-gh gh ...` commands required changing approvals for each PR/check/run variant.
+
+**How to apply:**
+- First try plain `gh pr checks <number>`, `gh run list`, `gh run view <id>`, and `gh api ...`.
+- If a GitHub command needs escalation for network access, request approval for the stable `gh` prefix, not a one-off environment-prefixed shell command.
+- Only add `TMPDIR` when diagnosing an actual temp-directory failure, and explain why that exception is needed.
+
 ## GitHub feature eligibility depends on owner type, not just paid status
 
 **Rule:** When enabling GitHub repository features, verify both account plan and repository owner type. Do not assume a paid personal account has the same feature surface as an organization-owned repository.
