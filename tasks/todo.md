@@ -1,6 +1,57 @@
-# Next Task: Lizard UI Batch 30 - QR Scanner Panel
+# Next Task: Lizard UI Batch 31 - Device Access Ownership
 
 Status: in progress
+
+Goal: reduce the related `DeviceDetail` access/ownership lizard findings by splitting device sharing controls, owner summary rendering, and ownership transfer modal state/view pieces while preserving owner-only controls, shared group/user display and removal behavior, user search behavior, loading/empty states, transfer recipient selection, message and keep-viewers options, transfer submission payloads, API error copy, close/initiation callbacks, and the public `SharingSection`, `OwnershipSection`, and `TransferOwnershipModal` import paths.
+
+## Lizard UI Batch 31 Checklist
+
+- [x] Start from updated `main` after Batch 30 PR and post-merge full lane are green.
+- [x] Confirm grouped access/ownership targets: `SharingSection` at 33 CCN, `OwnershipSection` at 23 CCN, and `TransferOwnershipModal` at 31 CCN.
+- [x] Split device access and transfer modal render/state branches into focused helpers while preserving callbacks and visible behavior.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+
+## Lizard UI Batch 31 Review
+
+Plan:
+
+- Keep `components/DeviceDetail/access/SharingSection.tsx`, `components/DeviceDetail/access/OwnershipSection.tsx`, and `components/TransferOwnershipModal.tsx` as the public exports.
+- Move device sharing group controls, user search/results, current access rows, owner display derivation, and transfer modal header/warning/recipient/options/actions into focused helpers under local component directories.
+- Treat this as one bounded access/ownership surface, not a broad DeviceDetail cleanup: leave account import, wallet access tabs, and unrelated modal flows for later batches.
+- Preserve `tests/components/DeviceDetailPage.test.tsx`, `tests/components/DeviceDetail/access/OwnershipSection.branches.test.tsx`, and `tests/components/TransferOwnershipModal.test.tsx`; add direct `SharingSection` tests if extraction exposes untested owner/non-owner or empty/current-access behavior.
+- Verify focused lizard against the three public files, extracted helper directories, and focused tests before running the broader guardrails.
+
+Verification so far:
+
+- PR #29 merged as `51d60c31`; the post-merge `main` backstop passed release `24680513079`, dev image build `24680513103`, install tests `24680513090`, and test suite `24680513077`, including full backend, full frontend, full gateway, full build, full E2E, and full test summary jobs.
+- Fresh grouped lizard measurement from `main` (`51d60c31`) reports `components/DeviceDetail/access/SharingSection.tsx:43` at 33 CCN, `components/DeviceDetail/access/OwnershipSection.tsx:17` at 23 CCN, and `components/TransferOwnershipModal.tsx:33` at 31 CCN.
+- Reduced `SharingSection` to a 79-line public access shell, `OwnershipSection` to a 26-line owner shell, and `TransferOwnershipModal` to a 35-line modal shell.
+- Moved owner display derivation, shared group/user rows, sharing controls, transfer modal state, header, warning, recipient selector, options, actions, and form layout into focused local helpers while preserving the existing public import paths.
+- Preserved owner-only sharing controls, group selection and add callbacks, user search threshold/results, shared access removal behavior, empty/current-access copy, owner transfer button behavior, wallet/device transfer resource labels, selected-recipient clearing, message trimming and 500-character counter, keep-existing-viewers default, submit disable/error behavior, API error copy, loading state, close/cancel callbacks, and successful `onTransferInitiated` callbacks.
+- Fixed a coverage teardown regression in `useBackupHandlers` by clearing pending copied-key reset, backup success reset, and restore reload timers on unmount; added a regression test for the copied-key timeout cleanup.
+- `npx vitest run tests/components/DeviceDetail/access/OwnershipSection.branches.test.tsx tests/components/DeviceDetail/access/SharingSection.branches.test.tsx tests/components/TransferOwnershipModal.test.tsx` passed: 3 files, 36 tests.
+- `npx vitest run tests/components/DeviceDetailPage.test.tsx tests/components/WalletDetail/WalletDetailModals.test.tsx` passed: 2 files, 34 tests.
+- `npx vitest run tests/components/BackupRestore/useBackupHandlers.branches.test.tsx` passed: 1 file, 10 tests.
+- Focused lizard passed for the device access public files, extracted access helpers, transfer modal shell/helper directory, focused tests, `useBackupHandlers`, and the backup handler branch test.
+- `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, and `npm run lint` passed.
+- `npm run test:coverage` passed after the timer cleanup: 401 files, 5,584 tests, 100% statements/branches/functions/lines.
+- Broad lizard now reports 60 warnings, average CCN 1.3, max CCN 33; `SharingSection`, `OwnershipSection`, and `TransferOwnershipModal` are no longer in the warning list, and the top remaining production JSX targets are down to 31 CCN.
+- CI-scope lizard passed with the expected 9 server warnings.
+- `npx --yes jscpd@4 .` passed at 2.04% duplication, 279 clones, and 5,337 duplicated lines; the new local helper overlap with wallet access remains below threshold and is bounded to the access UI surface.
+- `node scripts/quality/check-large-files.mjs`, `git diff --check`, grade-history JSONL parsing, and full working-tree gitleaks passed.
+
+Edge case and self-review notes:
+
+- Null/empty ownership inputs remain guarded: absent owner data falls back to the current username, then `You`; owner initials fall back to the current username initial, then `U`; and transfer controls only render when the viewer is the owner.
+- Sharing boundaries remain explicit: non-owners see no add/remove controls, empty shared access renders the existing empty copy, group rows only render when groups exist, user rows only render for shared users, and user search/add controls preserve their disabled/loading states.
+- Transfer boundaries remain preserved: no selected recipient disables submission and sets the existing recipient error, message payloads are trimmed or omitted when blank, the 500-character limit is still enforced by the textarea, API errors prefer server copy, and fallback errors keep the previous text.
+- Async timer cleanup now prevents pending backup/restore UI timers from firing after the hook unmounts or the test environment tears down.
+
+# Previous Task: Lizard UI Batch 30 - QR Scanner Panel
+
+Status: complete
 
 Goal: reduce the current `QrScannerPanel` lizard finding by splitting QR mode toggle rendering, camera idle/active/error states, animated-QR progress rendering, file upload/parsing states, and success rendering while preserving camera/file mode callbacks, secure-origin warning copy, scanner props and callbacks, stop-camera behavior, progress and positioning copy, file upload behavior, parsing state, fingerprint fallback copy, and the public `QrScannerPanel` import path.
 
@@ -10,8 +61,8 @@ Goal: reduce the current `QrScannerPanel` lizard finding by splitting QR mode to
 - [x] Confirm `QrScannerPanel` is a current top JSX target at 33 CCN.
 - [x] Split QrScannerPanel render branches into focused helpers while preserving callbacks and visible behavior.
 - [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
-- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
-- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+- [x] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [x] Merge after required checks pass, then wait for the post-merge `main` backstop.
 
 ## Lizard UI Batch 30 Review
 
@@ -37,6 +88,8 @@ Verification so far:
 - CI-scope lizard passed with the expected 9 server warnings.
 - `npx --yes jscpd@4 .` completed: 2.02% duplication, 276 clones, 5,288 duplicated lines.
 - `node scripts/quality/check-large-files.mjs`, `git diff --check`, and full working-tree gitleaks passed.
+- PR #29 checks passed: `PR Required Checks`, `Code Quality Required Checks`, Quick Frontend, Quick E2E, Quick Test Hygiene, lizard, jscpd, gitleaks, lint, and Docker builds. `Full Test Summary` was skipped as intended on PR.
+- PR #29 merged as `51d60c31`; the post-merge `main` backstop passed release `24680513079`, dev image build `24680513103`, install tests `24680513090`, and test suite `24680513077`, including full backend, full frontend, full gateway, full build, full E2E, and full test summary jobs.
 
 Edge case and self-review notes:
 

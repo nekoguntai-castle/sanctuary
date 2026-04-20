@@ -250,6 +250,24 @@ describe('useBackupHandlers branch coverage', () => {
     expect(loggerSpies.error).toHaveBeenCalled();
   });
 
+  it('cleans pending copied-key timeout on unmount', async () => {
+    const { result, unmount } = renderHook(() => useBackupHandlers(encryptionKeys));
+
+    await act(async () => {
+      await result.current.copyToClipboard('secret-value', 'ENCRYPTION_KEY');
+    });
+
+    expect(result.current.copiedKey).toBe('ENCRYPTION_KEY');
+    expect(vi.getTimerCount()).toBe(1);
+
+    unmount();
+
+    expect(vi.getTimerCount()).toBe(0);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+  });
+
   it('covers backup success timeout reset, validate failure catch, and clear-upload handler', async () => {
     const { result } = renderHook(() => useBackupHandlers(encryptionKeys));
 

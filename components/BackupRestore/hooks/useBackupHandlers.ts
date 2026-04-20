@@ -4,7 +4,8 @@
  * Extracts all backup/restore handler callbacks and related state management.
  */
 
-import { useState, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { MutableRefObject } from 'react';
 import * as adminApi from '../../../src/api/admin';
 import type { SanctuaryBackup, ValidationResult, EncryptionKeysResponse } from '../../../src/api/admin';
 import { createLogger } from '../../../utils/logger';
@@ -15,6 +16,15 @@ const log = createLogger('BackupRestore');
 
 // Local storage key for "don't show again" preference
 const BACKUP_MODAL_DISMISSED_KEY = 'sanctuary_backup_modal_dismissed';
+
+type TimeoutHandle = ReturnType<typeof setTimeout>;
+
+function clearPendingTimeout(timeoutRef: MutableRefObject<TimeoutHandle | null>) {
+  if (timeoutRef.current) {
+    clearTimeout(timeoutRef.current);
+    timeoutRef.current = null;
+  }
+}
 
 export function useBackupHandlers(encryptionKeys: EncryptionKeysResponse | null) {
   const { addNotification } = useAppNotifications();
@@ -45,6 +55,15 @@ export function useBackupHandlers(encryptionKeys: EncryptionKeysResponse | null)
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const copiedKeyResetTimeoutRef = useRef<TimeoutHandle | null>(null);
+  const backupSuccessTimeoutRef = useRef<TimeoutHandle | null>(null);
+  const restoreReloadTimeoutRef = useRef<TimeoutHandle | null>(null);
+
+  useEffect(() => () => {
+    clearPendingTimeout(copiedKeyResetTimeoutRef);
+    clearPendingTimeout(backupSuccessTimeoutRef);
+    clearPendingTimeout(restoreReloadTimeoutRef);
+  }, []);
 
   /**
    * Copy text to clipboard
@@ -53,7 +72,11 @@ export function useBackupHandlers(encryptionKeys: EncryptionKeysResponse | null)
     try {
       await navigator.clipboard.writeText(text);
       setCopiedKey(keyName);
-      setTimeout(() => setCopiedKey(null), 2000);
+      clearPendingTimeout(copiedKeyResetTimeoutRef);
+      copiedKeyResetTimeoutRef.current = setTimeout(() => {
+        setCopiedKey(null);
+        copiedKeyResetTimeoutRef.current = null;
+      }, 2000);
     } catch (error) {
       log.error('Failed to copy to clipboard', { error });
     }
@@ -115,7 +138,11 @@ ENCRYPTION_SALT=${encryptionKeys.encryptionSalt}
         setShowBackupCompleteModal(true);
       }
 
-      setTimeout(() => setBackupSuccess(false), 5000);
+      clearPendingTimeout(backupSuccessTimeoutRef);
+      backupSuccessTimeoutRef.current = setTimeout(() => {
+        setBackupSuccess(false);
+        backupSuccessTimeoutRef.current = null;
+      }, 5000);
     } catch (error) {
       log.error('Backup failed', { error });
       setBackupError(error instanceof Error ? error.message : 'Failed to create backup');
@@ -208,8 +235,10 @@ ENCRYPTION_SALT=${encryptionKeys.encryptionSalt}
         }
 
         // Reload the page after successful restore to refresh all data
-        setTimeout(() => {
+        clearPendingTimeout(restoreReloadTimeoutRef);
+        restoreReloadTimeoutRef.current = setTimeout(() => {
           window.location.reload();
+          restoreReloadTimeoutRef.current = null;
         }, 3000);
       } else {
         setRestoreError(result.error || 'Restore failed');
