@@ -1,6 +1,57 @@
-# Next Task: Lizard UI Batch 34 - Configurable Table Controls
+# Next Task: Lizard UI Batch 35 - Connect Device Flow
 
 Status: in progress
+
+Goal: reduce the related ConnectDevice lizard findings by splitting the top-level connection flow rendering, USB connection state rendering, and conflict-dialog account summary/actions while preserving model selection, available-method routing, save/merge guards, QR parse branches, account selection toggles, save/merge payload paths, USB initial/error/scanning/success states, conflict-dialog merge/view/cancel behavior, conflict warnings, and the public `ConnectDevice`, `UsbConnectionPanel`, and `ConflictDialog` import paths.
+
+## Lizard UI Batch 35 Checklist
+
+- [x] Start from updated `main` after Batch 34 PR and post-merge full lane are green.
+- [x] Confirm grouped ConnectDevice targets: `ConnectDevice` at 29 CCN, `UsbConnectionPanel` at 27 CCN, and `ConflictDialog` at 21 CCN.
+- [x] Split connection flow, USB state, and conflict-dialog render branches into focused helpers while preserving callbacks and visible behavior.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+
+## Lizard UI Batch 35 Review
+
+Plan:
+
+- Keep `components/ConnectDevice/ConnectDevice.tsx`, `components/ConnectDevice/UsbConnectionPanel.tsx`, and `components/ConnectDevice/ConflictDialog.tsx` as the public exports.
+- Move loading/back/header/layout sections, connection action routing, USB state panes, conflict account summary panes, and conflict action/error/warning rendering into focused local helpers.
+- Treat this as one bounded ConnectDevice surface: leave `DeviceDetailsForm`, model selection internals, QR scanner internals, file upload internals, and `useDeviceForm` for later unless extraction requires small compatibility types.
+- Preserve `tests/components/ConnectDevice.test.tsx`, `tests/components/ConnectDevice/ConnectDevice.branches.test.tsx`, `tests/components/ConnectDevice/UsbConnectionPanel.test.tsx`, and `tests/components/ConnectDevice/ConflictDialog.test.tsx`; add focused assertions only if extraction exposes untested zero-total USB progress, no-new-account, or conflict-only dialog boundaries.
+- Verify focused lizard against the three public files, extracted helper directories, and focused tests before running broader guardrails.
+
+Verification so far:
+
+- PR #33 merged as `85efc7ff`; the post-merge `main` backstop passed release `24686884035`, dev image build `24686884048`, install tests `24686884041`, and test suite `24686884013`, including full backend, full frontend, full gateway, full build, full E2E, and full test summary jobs.
+- Fresh grouped lizard measurement from `main` (`85efc7ff`) reports `components/ConnectDevice/ConnectDevice.tsx:40` at 29 CCN, `components/ConnectDevice/UsbConnectionPanel.tsx:23` at 27 CCN, and `components/ConnectDevice/ConflictDialog.tsx:21` at 21 CCN.
+- Reduced `ConnectDevice` to a 36-line public orchestrator shell, `UsbConnectionPanel` to a 42-line public USB state shell, and `ConflictDialog` to a 40-line public modal shell.
+- Moved model/method layout rendering, connection action routing, loading/header UI, USB initial/error/scanning/success panes, progress percent clamping, conflict header/existing-device summary, account comparison sections, merge/view/cancel actions, error copy, and conflict warning copy into focused local helpers.
+- Preserved model selection, available-method routing, save/merge guards, QR parse branches, account selection toggles, save/merge payload paths, USB initial/error/scanning/success behavior, conflict-dialog merge/view/cancel callbacks, conflict warnings, required public import paths, and conflict-device navigation.
+- Added a focused USB progress assertion for the zero-total boundary so malformed progress cannot render `Infinity%`.
+- Focused ConnectDevice tests passed: `npx vitest run tests/components/ConnectDevice.test.tsx tests/components/ConnectDevice/ConnectDevice.branches.test.tsx tests/components/ConnectDevice/UsbConnectionPanel.test.tsx tests/components/ConnectDevice/ConflictDialog.test.tsx` passed: 4 files, 41 tests.
+- Focused lizard passed for the three public files, extracted helper directories, and focused tests.
+- `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, and `npm run lint` passed.
+- `npm run test:coverage` passed: 401 files, 5,591 tests, 100% statements/branches/functions/lines.
+- Broad lizard now reports 49 warnings, average CCN 1.3, max CCN 33; `ConnectDevice`, `UsbConnectionPanel`, and `ConflictDialog` are no longer in the warning list.
+- CI-scope lizard passed with the expected 9 server warnings.
+- `npx --yes jscpd@4 .` passed at 2.01% duplication, 276 clones, and 5,289 duplicated lines.
+- `node scripts/quality/check-large-files.mjs` passed.
+
+Edge case and self-review notes:
+
+- Loading state still short-circuits the shell before model, method, details, or conflict UI render.
+- Connection method routing remains explicit for USB, SD card, QR code, and manual modes; selected-model and method guards still suppress method/action panels until prerequisites exist.
+- QR scanner props still receive the current secure-context value, camera toggles, scanner callbacks, file upload handler, and stop-camera callback.
+- USB state flags preserve the original overlapping-state behavior: scanning can render while scanned state is true, and success still requires `scanned` with no error.
+- USB progress now clamps zero or negative totals to `0%` and normal progress keeps the existing percentage behavior.
+- Conflict dialog still hides merge when there are no new accounts, disables merge while merging or conflicting accounts exist, shows API errors independently, and keeps the conflict warning visible for conflicting accounts.
+
+# Previous Task: Lizard UI Batch 34 - Configurable Table Controls
+
+Status: complete
 
 Goal: reduce the shared table lizard findings by splitting table column derivation/header/body rendering and column configuration dropdown state/panel pieces while preserving dynamic column ordering and visibility, sortable header behavior and indicators, custom cell renderers, row click behavior, empty-table copy, dropdown open/close behavior, outside-click/Escape dismissal, drag reorder callbacks, visibility toggles, reset disabled/enabled state, and the public `ConfigurableTable` and `ColumnConfigButton` import paths.
 
@@ -10,8 +61,8 @@ Goal: reduce the shared table lizard findings by splitting table column derivati
 - [x] Confirm grouped shared-table targets: `ConfigurableTable` at 30 CCN and `ColumnConfigButton` at 21 CCN.
 - [x] Split table and column-config render branches into focused helpers while preserving callbacks and visible behavior.
 - [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
-- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
-- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+- [x] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [x] Merge after required checks pass, then wait for the post-merge `main` backstop.
 
 ## Lizard UI Batch 34 Review
 
@@ -23,7 +74,7 @@ Plan:
 - Preserve `tests/components/ui/ConfigurableTable.test.tsx` and `tests/components/ui/ColumnConfigButton.test.tsx`; add focused assertions only if extraction exposes untested unknown-column, missing-renderer, sortable-without-callback, or reset-state boundaries.
 - Verify focused lizard against the two public files, extracted helper directories, and focused tests before running broader guardrails.
 
-Verification so far:
+Verification:
 
 - PR #32 merged as `90d57672`; the post-merge `main` backstop passed release `24685643366`, dev image build `24685643327`, install tests `24685643382`, and test suite `24685643340`, including full backend, full frontend, full gateway, full build, full E2E, and full test summary jobs.
 - Fresh grouped lizard measurement from `main` (`90d57672`) reported `components/ui/ConfigurableTable.tsx:34` at 30 CCN and `components/ui/ColumnConfigButton.tsx:50` at 21 CCN.
@@ -37,7 +88,9 @@ Verification so far:
 - Broad lizard now reports 52 warnings, average CCN 1.3, max CCN 33; `ConfigurableTable` and `ColumnConfigButton` are no longer in the warning list.
 - CI-scope lizard passed with the expected 9 server warnings.
 - `npx --yes jscpd@4 .` passed at 2.01% duplication, 276 clones, and 5,289 duplicated lines.
-- `node scripts/quality/check-large-files.mjs`, `git diff --check`, and tracked-tree gitleaks detect passed.
+- `node scripts/quality/check-large-files.mjs`, `git diff --check`, grade-history JSONL parsing, and tracked-tree gitleaks detect passed.
+- PR #33 checks passed: `PR Required Checks`, `Code Quality Required Checks`, Quick Frontend, Quick E2E, Quick Test Hygiene, lizard, jscpd, gitleaks, lint, and Docker builds. `Full Test Summary` was skipped as intended on PR.
+- PR #33 merged as `85efc7ff`; the post-merge `main` backstop passed release `24686884035`, dev image build `24686884048`, install tests `24686884041`, and test suite `24686884013`, including full backend, full frontend, full gateway, full build, full E2E, and full test summary jobs.
 
 Edge case and self-review notes:
 
