@@ -54,7 +54,9 @@ function makeAgent(overrides: Partial<WalletAgentMetadata> = {}): WalletAgentMet
   } as WalletAgentMetadata;
 }
 
-function makeRow(overrides: Partial<AgentWalletDashboardRow> & { agent?: Partial<WalletAgentMetadata> } = {}): AgentWalletDashboardRow {
+function makeRow(
+  overrides: Omit<Partial<AgentWalletDashboardRow>, 'agent'> & { agent?: Partial<WalletAgentMetadata> } = {},
+): AgentWalletDashboardRow {
   const { agent: agentOverrides, ...rowOverrides } = overrides;
 
   return {

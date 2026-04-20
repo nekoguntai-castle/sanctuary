@@ -29,6 +29,7 @@ Verification so far:
 - Reduced `components/AgentWalletDashboard/index.tsx` to an 8-line public shell and moved loading/error/dashboard rendering, row rendering, row actions, row metrics/links, detail panels, status badges, controller state, and pure dashboard model helpers under `components/AgentWalletDashboard/`.
 - Preserved dashboard load/retry behavior, row ordering by attention then name, total aggregation, spend-ready eligibility, active-key filtering, pause/unpause/revoke behavior, confirmation gating, action error display, wallet links, status badges, metadata labels, no-cap/off/fallback copy, empty detail states, and the public `AgentWalletDashboard` import path.
 - `npx vitest run tests/components/AgentWalletDashboard.test.tsx tests/components/AgentWalletDashboard/agentWalletDashboardModel.test.ts` passed: 2 files, 12 tests.
+- `npm run typecheck:tests` passed after tightening the dashboard model test helper to omit `agent` before layering partial agent overrides; this fixes PR #28's first `Quick Frontend Tests` failure.
 - `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/AgentWalletDashboard tests/components/AgentWalletDashboard.test.tsx tests/components/AgentWalletDashboard/agentWalletDashboardModel.test.ts` passed with no focused warnings.
 - `npm run typecheck:app`, `npm run lint:app`, and `npm run lint` passed.
 - `npm run test:coverage` passed: 400 files, 5,578 tests, 100% statements/branches/functions/lines.
