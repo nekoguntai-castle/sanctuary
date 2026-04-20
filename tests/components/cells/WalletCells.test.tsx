@@ -232,4 +232,36 @@ describe('WalletCells', () => {
     expect(screen.getByText('$1.00')).toBeInTheDocument();
     expect(screen.getByText('(+$0.05)')).toBeInTheDocument();
   });
+
+  it('omits balance deltas when pending data is absent or zero', () => {
+    const renderers = createWalletCellRenderers({
+      format: (sats) => `${sats} sats`,
+      formatFiat: (sats) => `$${(sats / 100000).toFixed(2)}`,
+      showFiat: true,
+    });
+
+    const { rerender } = render(
+      <renderers.balance item={baseWallet} column={baseColumn} />
+    );
+
+    expect(screen.getByText('100000 sats')).toBeInTheDocument();
+    expect(screen.getByText('$1.00')).toBeInTheDocument();
+    expect(screen.queryByText('(+0 sats)')).not.toBeInTheDocument();
+    expect(screen.queryByText('(+$0.00)')).not.toBeInTheDocument();
+
+    rerender(
+      <renderers.balance
+        item={{
+          ...baseWallet,
+          pendingData: { net: 0, count: 1, hasIncoming: false, hasOutgoing: false },
+        }}
+        column={baseColumn}
+      />
+    );
+
+    expect(screen.getByText('100000 sats')).toBeInTheDocument();
+    expect(screen.getByText('$1.00')).toBeInTheDocument();
+    expect(screen.queryByText('(0 sats)')).not.toBeInTheDocument();
+    expect(screen.queryByText('($0.00)')).not.toBeInTheDocument();
+  });
 });

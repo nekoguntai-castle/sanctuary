@@ -1,6 +1,55 @@
-# Next Task: Lizard UI Batch 39 - UI Display And Settings Components
+# Next Task: Lizard UI Batch 40 - Wallet Dashboard Renderers
 
-Status: verification complete; PR flow pending
+Status: in progress
+
+Goal: reduce five independent wallet/dashboard UI lizard findings by splitting wallet table cell renderers, dashboard wallet distribution/table rendering, mempool header/state rendering, wallet autopilot settings/status sections, and animated-background module loading helpers while preserving public import paths, wallet navigation, hover highlighting, sync/status labels and tooltips, mempool refresh/WebSocket status behavior, testnet/signet empty-state routing, autopilot load/save/error/notification gating, animation lazy-loading cancellation, and canvas visibility semantics.
+
+## Lizard UI Batch 40 Checklist
+
+- [x] Start from updated `main` after Batch 39 PR and post-merge full lane are green.
+- [x] Confirm grouped targets: `WalletCells` at 25 CCN, `WalletSummary` at 17 CCN, `MempoolSection` at 17 CCN, `WalletAutopilotSettings` at 19 CCN, and `AnimatedBackground` at 19 CCN.
+- [x] Split the selected wallet/dashboard renderers into focused helpers while preserving callbacks and visible behavior.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+
+## Lizard UI Batch 40 Review
+
+Plan:
+
+- Keep `components/cells/WalletCells.tsx`, `components/Dashboard/WalletSummary.tsx`, `components/Dashboard/MempoolSection.tsx`, `components/WalletDetail/WalletAutopilotSettings.tsx`, and `components/AnimatedBackground.tsx` as the public exports.
+- Move wallet cell badge/sync/pending/balance render helpers, wallet summary distribution-bar/table rows, mempool header/non-mainnet state, autopilot cards/number fields/status rows, and animated-background pattern import resolution into focused colocated helpers.
+- Treat this as aggressive but bounded: all five targets are UI render/model extractions with existing focused tests, and no server/test-contract warning is mixed into this PR.
+- Preserve focused tests: `tests/components/cells/WalletCells.test.tsx`, `tests/components/Dashboard/WalletSummary.test.tsx`, `tests/components/Dashboard/MempoolSection.test.tsx`, `tests/components/WalletDetail/WalletAutopilotSettings.test.tsx`, `tests/components/AnimatedBackground.test.tsx`, and `tests/components/AnimatedBackground.lazyLoading.test.tsx`; add assertions only if extraction exposes untested empty, zero, fallback, failure, or cancellation boundaries.
+- Verify focused lizard against the five public files and any extracted helper directories before running broader guardrails.
+
+Verification so far:
+
+- Split `WalletCells` into identity, sync, pending/balance, and shared type helpers; `WalletCells.tsx` remains the public renderer factory.
+- Split `WalletSummary` into distribution bar, tooltip, row, sync-status, and table helpers while preserving wallet navigation and hover highlighting.
+- Split `MempoolSection` into header/status/content helpers while preserving refresh behavior, WebSocket state labels, and non-mainnet configure-node routing.
+- Split `WalletAutopilotSettings` into loading/unavailable cards, settings card sections, health status card rows, and a controller hook while preserving load/save/error/success and notification gating.
+- Split `AnimatedBackground` lazy module path/hook lookup and async hook loading into colocated helpers while preserving stale-hook clearing, cancellation, null-pattern rendering, and canvas runner behavior.
+- Added a wallet balance assertion for absent and zero pending deltas so the extracted `PendingBalanceDelta` and `PendingFiatDelta` early returns remain covered.
+- Focused UI tests passed: `npx vitest run tests/components/cells/WalletCells.test.tsx tests/components/Dashboard/WalletSummary.test.tsx tests/components/Dashboard/MempoolSection.test.tsx tests/components/WalletDetail/WalletAutopilotSettings.test.tsx tests/components/AnimatedBackground.test.tsx tests/components/AnimatedBackground.lazyLoading.test.tsx` passed with 112 tests after the added wallet-cell assertion.
+- Focused lizard passed for the five public files and extracted helper directories.
+- `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, and `npm run lint` passed.
+- `npm run test:coverage` passed: 401 files, 5,593 tests, 100% statements/branches/functions/lines.
+- Broad lizard now reports 28 warnings; `WalletCells`, `WalletSummary`, `MempoolSection`, `WalletAutopilotSettings`, and `AnimatedBackground` are no longer in the warning list.
+- `npx --yes jscpd@4 .` passed at 1.97% duplication, 274 clones, and 5,237 duplicated lines.
+- `node scripts/quality/check-large-files.mjs`, tracked-tree gitleaks detect, and `git diff --check` passed.
+
+Edge case and self-review notes:
+
+- Wallet cell pending display still renders the em dash when pending data is absent, inbound/outbound icons are unchanged, and balance deltas now explicitly cover negative, positive, absent, and zero pending nets.
+- Wallet summary still keeps empty wallet copy, distribution tooltips, selected-row hover classes, sync labels, fiat/network labels, and route construction unchanged.
+- Mempool section still gates refresh by mainnet, keeps `Live`/`Connecting`/`Offline` copy, and routes non-mainnet configuration through `/settings/node`.
+- Autopilot settings still treats 404/403 as feature unavailable, keeps status fetch optional, reverts optimistic saves on API error, and derives notification availability from configured and enabled Telegram preferences.
+- Animated background still clears active animation hooks before loading a new pattern so React hook counts cannot mismatch, ignores stale async completions after cleanup, and renders no canvas for non-animated patterns.
+
+# Previous Task: Lizard UI Batch 39 - UI Display And Settings Components
+
+Status: complete
 
 Goal: reduce several independent UI display/settings lizard findings in one more aggressive batch by splitting backup encryption-key reveal/copy rendering, WebSocket stats sections, notification sound settings sections, privacy badge summary rendering, and notification badge class derivation while preserving password reveal gating, copy/download callbacks, WebSocket loading/error/refresh behavior, channel/rate-limit grouping, sound preference updates and previews, badge accessibility, size/severity styling, score/warning summaries, and the public import paths.
 
@@ -10,8 +59,8 @@ Goal: reduce several independent UI display/settings lizard findings in one more
 - [x] Confirm grouped targets: `EncryptionKeyDisplay` at 29 CCN, `WebSocketStatsCard` at 25 CCN, `NotificationSoundSettings` at 25 CCN, `PrivacyBadge` at 25 CCN, and `NotificationBadge` at 19 CCN.
 - [x] Split the selected display/settings components into focused helpers while preserving callbacks and visible behavior.
 - [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
-- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
-- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+- [x] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [x] Merge after required checks pass, then wait for the post-merge `main` backstop.
 
 ## Lizard UI Batch 39 Review
 
@@ -36,6 +85,8 @@ Verification so far:
 - CI-scope lizard passed with the expected 9 server warnings.
 - `npx --yes jscpd@4 .` passed at 1.98% duplication, 274 clones, and 5,237 duplicated lines.
 - `node scripts/quality/check-large-files.mjs`, `git diff --check`, grade-history JSONL parsing, and tracked-tree gitleaks detect passed.
+- PR #38 checks passed: `PR Required Checks`, `Code Quality Required Checks`, Quick Frontend, Quick E2E, Quick Test Hygiene, lizard, jscpd, gitleaks, lint, and Docker builds. `Full Test Summary` was skipped as intended on PR.
+- PR #38 merged as `3d7c9eb0`; the post-merge `main` backstop passed release `24694245917`, dev image build `24694245920`, install tests `24694245935`, and test suite `24694245918`, including full backend, full frontend, full gateway, full build, full E2E, and full test summary jobs.
 
 Edge case and self-review notes:
 
