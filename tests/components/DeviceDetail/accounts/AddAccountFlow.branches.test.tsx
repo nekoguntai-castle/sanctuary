@@ -281,6 +281,18 @@ describe('AddAccountFlow branch coverage', () => {
     }
   });
 
+  it('hides USB option for insecure or unsupported devices', () => {
+    isSecureContextMock.mockReturnValue(false);
+    const insecureView = renderFlow({ type: 'ledger' });
+    expect(screen.queryByText('Connect via USB')).not.toBeInTheDocument();
+    insecureView.unmount();
+
+    isSecureContextMock.mockReturnValue(true);
+    const unsupportedView = renderFlow({ type: 'paper-wallet' });
+    expect(screen.queryByText('Connect via USB')).not.toBeInTheDocument();
+    unsupportedView.unmount();
+  });
+
   it('processes file imports across matching/new, no-new, conflicting, parse-fail, and read-error branches', async () => {
     const user = userEvent.setup();
 

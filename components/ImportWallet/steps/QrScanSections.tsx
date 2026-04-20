@@ -1,6 +1,6 @@
-import { Scanner } from '@yudiel/react-qr-scanner';
-import { AlertCircle, Camera, CheckCircle, Loader2, X } from 'lucide-react';
+import { AlertCircle, Camera, CheckCircle, Loader2 } from 'lucide-react';
 import { Button } from '../../ui/Button';
+import { QrScannerFrame } from '../../qr/QrScannerFrame';
 import { isSecureContext } from '../../../services/hardwareWallet/environment';
 import type { QrScanResult } from './useQrScanHandlers';
 
@@ -92,27 +92,15 @@ function ActiveQrScanner({
   onStopCamera: () => void;
 }) {
   return (
-    <div className="relative">
-      <div className="aspect-square max-w-sm mx-auto">
-        <Scanner
-          onScan={onQrScan}
-          onError={onCameraError}
-          constraints={{ facingMode: 'environment' }}
-          scanDelay={100}
-          styles={{
-            container: { width: '100%', height: '100%' },
-            video: { width: '100%', height: '100%', objectFit: 'cover' },
-          }}
-        />
-      </div>
-      <button
-        onClick={onStopCamera}
-        className="absolute top-2 right-2 p-2 bg-black/50 rounded-full text-white hover:bg-black/70 transition-colors z-10"
-      >
-        <X className="w-4 h-4" />
-      </button>
+    <QrScannerFrame
+      maxWidthClassName="max-w-sm"
+      stopCameraLabel="Stop camera"
+      onQrScan={onQrScan}
+      onCameraError={onCameraError}
+      onStopCamera={onStopCamera}
+    >
       <QrScanProgress urProgress={urProgress} />
-    </div>
+    </QrScannerFrame>
   );
 }
 
