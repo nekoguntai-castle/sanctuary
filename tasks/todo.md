@@ -1,6 +1,56 @@
-# Next Task: Lizard UI Batch 18 - Layout Shell
+# Next Task: Lizard UI Batch 19 - Sidebar Content
 
 Status: in progress
+
+Goal: reduce the current `SidebarContent` lizard finding by splitting primary navigation, wallet section rendering, device section rendering, system/admin rendering, footer/profile utilities, and small mapping helpers while preserving capability filtering, admin visibility, wallet/device alphabetical sorting, multisig/single-sig icon colors, wallet sync status dots, notification badges, empty states, theme toggle, logout, notification bell, block height indicator, version click behavior, and public `SidebarContent` import path.
+
+## Lizard UI Batch 19 Checklist
+
+- [x] Start from updated `main` after Batch 18 PR and post-merge full lane are green.
+- [x] Confirm `SidebarContent` is tied as the current top UI target at 41 CCN.
+- [x] Split SidebarContent section/render branches into focused helpers while preserving callbacks and visible copy.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+
+## Lizard UI Batch 19 Review
+
+Plan:
+
+- Keep `components/Layout/SidebarContent.tsx` as the public shell and move section-level rendering into `components/Layout/SidebarContent/` helpers.
+- Extract wallet rendering into deterministic helper functions for sorted wallets, wallet type/icon color, notification badge count, and sync status.
+- Extract device rendering into deterministic helper functions for sorted devices and notification badge count.
+- Extract system/admin/footer rendering so capability checks and user/admin gates stay explicit but no single component owns all branches.
+- Preserve the current tests first, then add focused coverage only if extraction introduces new branch surfaces.
+
+Changes:
+
+- Reduced `components/Layout/SidebarContent.tsx` from the 41-CCN sidebar renderer to a 94-line public shell.
+- Split header, primary navigation, wallet section, device section, system/admin section, footer utilities, and item mapping helpers under `components/Layout/SidebarContent/`.
+- Preserved capability filtering, admin visibility, wallet/device alphabetical sorting, multisig/single-sig icon colors, wallet sync status dots, notification badges, empty states, theme toggle, logout, notification bell, block height indicator, version click behavior, and public `SidebarContent` import path.
+- Updated quality tracking: `SidebarContent` drops out of the current lizard warning list; broad lizard warning count is now 74 and max CCN remains 41 with `ChartTooltip` as the top UI target.
+
+Verification so far:
+
+- PR #17 merged as `b8b2d104`; the post-merge `main` backstop passed the full test summary, full E2E, full build, full frontend, full backend, full gateway, install summary, release check, and dev image build checks.
+- Fresh post-Batch-18 focused lizard measurement from `main` (`b8b2d104`) reports `SidebarContent` and `ChartTooltip` tied at 41 CCN, with `SidebarContent` first in the measured target set.
+- `npx vitest run tests/components/Layout/SidebarContent.branches.test.tsx tests/components/Layout.test.tsx tests/components/Layout.branches.test.tsx` passed: 3 files, 53 tests.
+- `npm run typecheck:app` passed.
+- `npm run lint:app` passed.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/Layout/SidebarContent.tsx components/Layout/SidebarContent` passed with no warnings.
+- Full broad lizard warning count is now 74; `SidebarContent` has no remaining lizard warnings and max CCN remains 41.
+- `npm run test:coverage` passed: 398 files, 5,565 tests, 100% statements/branches/functions/lines.
+- `git diff --check`, grade-history JSONL parsing, large-file classification, full lint, CI-scope lizard baseline, and `npx --yes jscpd@4 .` passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: no user, empty username, no wallets, no devices, hidden capability-gated sections, non-admin user, collapsed sections, and absent optional capabilities remain guarded on the same paths as before.
+- Boundary values: wallet/device alphabetical sorting, wallet multisig versus single-sig styling, sync status precedence, wallet/device notification badge counts, admin expansion, settings visibility, dark versus light theme icon/title, and version click handling remain preserved.
+- System boundaries: `appRoutes`, capability checks, `NavItem`, `SubNavItem`, `EmptyState`, `NotificationBell`, `BlockHeightIndicator`, `getWalletIcon`, and `getDeviceIcon` keep the same contracts.
+
+# Previous Task: Lizard UI Batch 18 - Layout Shell
+
+Status: complete
 
 Goal: reduce the current `Layout` lizard finding by splitting route expansion state, version modal state, draft notification polling, Electrum connection polling, sidebar layout surfaces, mobile header/menu rendering, default-password banner rendering, and modal wiring while preserving sidebar props, wallet/device/admin expansion behavior, draft notifications, connection-error notifications, version copy/loading behavior, clipboard feedback, mobile menu behavior, visible copy, and public `Layout` exports.
 
@@ -10,8 +60,8 @@ Goal: reduce the current `Layout` lizard finding by splitting route expansion st
 - [x] Confirm `Layout` is one of the current top UI targets at 41 CCN.
 - [x] Split Layout controller/render branches into focused helpers while preserving callbacks and copy.
 - [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
-- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
-- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+- [x] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [x] Merge after required checks pass, then wait for the post-merge `main` backstop.
 
 ## Lizard UI Batch 18 Review
 
@@ -23,6 +73,7 @@ Changes:
 - Preserved sidebar props, wallet/device/admin expansion behavior, draft notifications, connection-error notifications, version copy/loading behavior, clipboard feedback, mobile menu behavior, visible copy, and public `Layout` exports.
 - Cleared the clipboard feedback timeout on repeated copy attempts and controller unmount so delayed feedback cannot update after teardown.
 - Updated the health assessment and grade history: `Layout` drops out of the current lizard warning list; broad lizard warning count is now 75 and max CCN remains 41 with `SidebarContent` and `ChartTooltip` tied as the top component targets.
+- PR #17 merged as `b8b2d104`; the post-merge `main` backstop passed the full test summary, full E2E, full build, full frontend, full backend, full gateway, install summary, release check, and dev image build checks.
 
 Verification so far:
 
@@ -35,6 +86,9 @@ Verification so far:
 - Full broad lizard warning count is now 75; `Layout` has no remaining lizard warnings and max CCN remains 41.
 - `npm run test:coverage` passed: 398 files, 5,565 tests, 100% statements/branches/functions/lines.
 - `git diff --check`, grade-history JSONL parsing, large-file classification, full lint, CI-scope lizard baseline, and `npx --yes jscpd@4 .` passed.
+- Staged diff checks and gitleaks tracked-tree scan passed.
+- Pre-commit static reviewers and pre-commit frontend tests passed.
+- PR required checks, PR code-quality checks, PR quick checks, and post-merge full-lane checks passed.
 
 Edge case and self-review:
 
