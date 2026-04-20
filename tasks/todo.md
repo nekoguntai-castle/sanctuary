@@ -1,6 +1,55 @@
-# Next Task: Lizard UI Batch 37 - Send Wizard Signing Flow
+# Next Task: Lizard UI Batch 38 - Intelligence Tabs
 
 Status: in progress
+
+Goal: reduce the paired Treasury Intelligence lizard findings by splitting wallet/page shell rendering, wallet selector/tab routing, insights filter/content rendering, severity grouping, and status-update helpers while preserving wallet loading/empty states, first-wallet auto-selection, dropdown open/close/outside-click behavior, selected-wallet switching, tab navigation, insight filter API payloads, loading/empty/data states, severity grouping order, status-update removal behavior, error logging, and the public `Intelligence` and `InsightsTab` import paths.
+
+## Lizard UI Batch 38 Checklist
+
+- [x] Start from updated `main` after Batch 37 PR and post-merge full lane are green.
+- [x] Confirm grouped Intelligence targets: `Intelligence` at 25 CCN and `InsightsTab` at 28 CCN.
+- [x] Split Intelligence shell and insights render/update branches into focused helpers while preserving callbacks and visible behavior.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+
+## Lizard UI Batch 38 Review
+
+Plan:
+
+- Keep `components/Intelligence/Intelligence.tsx` and `components/Intelligence/tabs/InsightsTab.tsx` as the public exports.
+- Move wallet loading/empty states, header/wallet selector, tab navigation/content routing, insight filter controls, grouped insight sections, severity labels/icons, and update-status handling into focused local helpers.
+- Treat this as one bounded Intelligence surface: leave chat, settings, insight-card internals, API client behavior, and app capability routing for later unless type boundaries require small compatibility helpers.
+- Preserve `tests/components/Intelligence.test.tsx`, `tests/components/Intelligence.tabs.test.tsx`, and `tests/components/IntelligenceTabs/insightsTab.contracts.tsx`; add focused assertions only if extraction exposes untested empty status-filter, unknown wallet, no-group, or update-failure boundaries.
+- Verify focused lizard against the two public files, extracted helper directories, and focused tests before running broader guardrails.
+
+Verification so far:
+
+- Batch 37 PR #36 merged as `a8459854`; the post-merge `main` backstop passed test suite `24691694339`, including full backend, full frontend, full gateway, full build, full E2E, and full test summary jobs.
+- Fresh grouped lizard measurement from `main` reported `components/Intelligence/Intelligence.tsx:17` at 25 CCN and `components/Intelligence/tabs/InsightsTab.tsx:36` at 28 CCN.
+- Reduced `Intelligence` to a 30-line public page shell and `InsightsTab` to a 24-line public tab shell.
+- Moved wallet loading/empty states, wallet auto-selection, dropdown outside-click handling, header/wallet selector, tab navigation/content routing, insight filter option rendering, API filter payload assembly, severity grouping, severity header icons/labels, insight content loading/empty/data states, and update-status removal handling into focused local helpers.
+- Preserved wallet loading/empty states, first-wallet auto-selection, dropdown open/close/outside-click behavior, selected-wallet switching, tab navigation, insight filter API payloads, loading/empty/data states, severity grouping order, status-update removal behavior, error logging, and the public `Intelligence` and `InsightsTab` import paths.
+- Focused Intelligence tests passed: `npx vitest run tests/components/Intelligence.test.tsx tests/components/Intelligence.tabs.test.tsx` passed: 2 files, 85 tests.
+- Focused lizard passed for the two public files and extracted helper directories.
+- `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, and `npm run lint` passed.
+- `npm run test:coverage` passed: 401 files, 5,591 tests, 100% statements/branches/functions/lines.
+- Broad lizard now reports 38 warnings; `Intelligence` and `InsightsTab` are no longer in the warning list.
+- CI-scope lizard passed with the expected 9 server warnings.
+- `npx --yes jscpd@4 .` passed at 1.99% duplication, 275 clones, and 5,260 duplicated lines.
+- `node scripts/quality/check-large-files.mjs`, `git diff --check`, and tracked-tree gitleaks detect passed.
+
+Edge case and self-review notes:
+
+- Wallet selection still only auto-selects when the current selected ID is empty, preserving the existing fallback to `Select wallet` if the selected wallet disappears.
+- The wallet dropdown still closes from the document click listener only while open, and wallet item selection still closes the dropdown after updating the selected ID.
+- Insight API filters still omit empty `status`, `type`, and `severity` values, while the default status remains `active`.
+- Loading still wraps only the insight content area after filters render, and empty content still depends on the raw insight list rather than grouped sections.
+- Dismiss and acted-on actions still remove the insight only after the API call succeeds; failures continue to log and leave the insight visible.
+
+# Previous Task: Lizard UI Batch 37 - Send Wizard Signing Flow
+
+Status: complete
 
 Goal: reduce the related send-flow lizard findings by splitting send wizard draft initialization, review-step routing, sign/broadcast action branches, production signing-device row actions, and focused test doubles while preserving draft PSBT initialization, output/UTXO fallback data, review auto-create/reset behavior, single-sig broadcast paths, multisig sign-only behavior, save-draft gating, current-step rendering, signing method availability, upload/download/QR controls, loading labels, and the public `SendTransactionWizard` and `SigningFlow` import paths.
 
@@ -10,8 +59,8 @@ Goal: reduce the related send-flow lizard findings by splitting send wizard draf
 - [x] Confirm grouped send-flow targets: `SendTransactionWizard` warnings at 21/23/22 CCN, production `SigningFlow` at 25 CCN, `ReviewStep.branches` test `SigningFlow` double at 19 CCN, and `SendTransactionPage.branches` test `SendTransactionWizard` double at 30 CCN.
 - [x] Split send wizard/signing flow render and action branches into focused helpers while preserving callbacks and visible behavior.
 - [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
-- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
-- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+- [x] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [x] Merge after required checks pass, then wait for the post-merge `main` backstop.
 
 ## Lizard UI Batch 37 Review
 
@@ -37,6 +86,8 @@ Verification so far:
 - CI-scope lizard passed with the expected 9 server warnings.
 - `npx --yes jscpd@4 .` passed at 1.99% duplication, 275 clones, and 5,260 duplicated lines.
 - `node scripts/quality/check-large-files.mjs`, `git diff --check`, grade-history JSONL parsing, and tracked-tree gitleaks detect passed.
+- PR #36 checks passed: `PR Required Checks`, `Code Quality Required Checks`, Quick Frontend, Quick E2E, Quick Test Hygiene, lizard, jscpd, gitleaks, lint, and Docker builds. `Full Test Summary` was skipped as intended on PR.
+- PR #36 merged as `a8459854`; the post-merge `main` backstop passed release `24691694338`, dev image build `24691694374`, install tests `24691694340`, and test suite `24691694339`, including full backend, full frontend, full gateway, full build, full E2E, and full test summary jobs.
 
 Edge case and self-review notes:
 
