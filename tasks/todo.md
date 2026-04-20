@@ -1,6 +1,52 @@
-# Next Task: Lizard UI Batch 26 - Login Form
+# Next Task: Lizard UI Batch 27 - AI Label Suggestion
 
 Status: in progress
+
+Goal: reduce the current `AILabelSuggestion` lizard finding by splitting AI suggestion controller state, API error message mapping, suggest button rendering, suggestion result rendering, and error alert rendering while preserving transaction-id request payloads, loading/reset behavior, all user-facing error copy, accept/dismiss behavior, className passthrough, callback behavior, and public `AILabelSuggestion` import path.
+
+## Lizard UI Batch 27 Checklist
+
+- [x] Start from updated `main` after Batch 26 PR and post-merge full lane are green.
+- [x] Confirm `AILabelSuggestion` is the current top JSX target at 35 CCN.
+- [x] Split AILabelSuggestion controller/render branches into focused helpers while preserving callbacks and visible behavior.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+
+## Lizard UI Batch 27 Review
+
+Plan:
+
+- Keep `components/AILabelSuggestion.tsx` as the public `AILabelSuggestion` export and move controller state, error mapping, button/result/error renderers, and shared prop types under `components/AILabelSuggestion/`.
+- Extract API error message selection into a pure helper so the async handler no longer owns every branch.
+- Preserve `tests/components/AILabelSuggestion.test.tsx` first; add focused branch tests only if extraction exposes missing behavior.
+- Verify focused lizard against `components/AILabelSuggestion.tsx` and the extracted helper directory before running the broader guardrails.
+
+Verification so far:
+
+- PR #25 merged as `3aa542db`; the post-merge `main` backstop passed release `24664782827`, dev image build `24664782838`, install tests `24664782835`, and test suite `24664782837`, including full backend, full frontend, full gateway, full build, full E2E, and full test summary jobs.
+- Fresh focused target selection from Batch 26 shows broad lizard at 67 warnings, average CCN 1.4, max CCN 35; `AILabelSuggestion` is the next top JSX target.
+- Reduced `components/AILabelSuggestion.tsx` to a 48-line public shell and moved async suggestion state, transaction-id request handling, accepted-suggestion callback logic, error-message mapping, suggest button rendering, suggestion card rendering, error card rendering, and shared prop types under `components/AILabelSuggestion/`.
+- Preserved transaction-id request payloads, loading/reset behavior, all user-facing error copy, accept/dismiss behavior, error dismiss behavior, className passthrough, optional accept callback behavior, transaction-change state persistence, and the public `AILabelSuggestion` import path.
+- `npx vitest run tests/components/AILabelSuggestion.test.tsx` passed: 1 file, 29 tests.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/AILabelSuggestion.tsx components/AILabelSuggestion tests/components/AILabelSuggestion.test.tsx` passed with no focused warnings.
+- `npm run typecheck:app`, `npm run lint:app`, and `npm run lint` passed.
+- Broad lizard now reports 66 warnings, average CCN 1.4, max CCN 33; `AILabelSuggestion` is no longer in the warning list.
+- `npm run test:coverage` passed: 399 files, 5,568 tests, 100% statements/branches/functions/lines.
+- `npx --yes jscpd@4 .` completed: 2.03% duplication, 276 clones, 5,283 duplicated lines.
+- `git diff --check`, grade-history updates, `node scripts/quality/check-large-files.mjs`, and the CI-scope lizard baseline passed.
+
+Edge case and self-review notes:
+
+- Unknown and non-`Error` API failures still map to the generic message, while 503/not-enabled, 429/rate-limit, timeout, and lowercase network/fetch failures keep their specific copy.
+- Rapid repeated clicks still produce one API call because loading disables the suggest button.
+- Accepting with a callback still calls `onSuggestionAccepted` and clears the suggestion; accepting without a callback still leaves the suggestion visible.
+- Dismiss paths independently clear suggestions and errors, making the suggest button visible again after either state is dismissed.
+- Transaction prop changes still preserve the current suggestion until the user dismisses or requests again, matching the existing behavior.
+
+# Previous Task: Lizard UI Batch 26 - Login Form
+
+Status: complete
 
 Goal: reduce the current `LoginForm` lizard finding by splitting login form header, credential field rendering, form actions, footer status copy, and card tilt wiring while preserving login/register copy, email reveal, password hint reveal, disabled boot submit behavior, loading labels, registration toggle visibility, API status copy, error alert, field callbacks, submit/toggle callbacks, card tilt behavior, and public `LoginForm` import path.
 
@@ -10,8 +56,8 @@ Goal: reduce the current `LoginForm` lizard finding by splitting login form head
 - [x] Confirm `LoginForm` is tied as the current top UI target at 35 CCN.
 - [x] Split LoginForm render branches into focused helpers while preserving callbacks and visible behavior.
 - [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
-- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
-- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+- [x] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [x] Merge after required checks pass, then wait for the post-merge `main` backstop.
 
 ## Lizard UI Batch 26 Review
 
@@ -36,6 +82,8 @@ Verification so far:
 - `npm run test:coverage` passed: 399 files, 5,568 tests, 100% statements/branches/functions/lines.
 - `npx --yes jscpd@4 .` completed: 2.03% duplication, 276 clones, 5,283 duplicated lines.
 - `git diff --check`, grade-history updates, `node scripts/quality/check-large-files.mjs`, and the CI-scope lizard baseline passed.
+- PR #25 checks passed: `PR Required Checks`, `Code Quality Required Checks`, Quick Frontend, Quick E2E, Quick Test Hygiene, lizard, jscpd, gitleaks, lint, and Docker builds. `Full Test Summary` was skipped as intended on PR.
+- PR #25 merged as `3aa542db`; the post-merge `main` backstop passed release `24664782827`, dev image build `24664782838`, install tests `24664782835`, and test suite `24664782837`, including full backend, full frontend, full gateway, full build, full E2E, and full test summary jobs.
 
 Edge case and self-review notes:
 
