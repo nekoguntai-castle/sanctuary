@@ -1,6 +1,52 @@
-# Next Task: Lizard UI Batch 29 - Agent Wallet Dashboard
+# Next Task: Lizard UI Batch 30 - QR Scanner Panel
 
 Status: in progress
+
+Goal: reduce the current `QrScannerPanel` lizard finding by splitting QR mode toggle rendering, camera idle/active/error states, animated-QR progress rendering, file upload/parsing states, and success rendering while preserving camera/file mode callbacks, secure-origin warning copy, scanner props and callbacks, stop-camera behavior, progress and positioning copy, file upload behavior, parsing state, fingerprint fallback copy, and the public `QrScannerPanel` import path.
+
+## Lizard UI Batch 30 Checklist
+
+- [x] Start from updated `main` after Batch 29 PR and post-merge full lane are green.
+- [x] Confirm `QrScannerPanel` is a current top JSX target at 33 CCN.
+- [x] Split QrScannerPanel render branches into focused helpers while preserving callbacks and visible behavior.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+
+## Lizard UI Batch 30 Review
+
+Plan:
+
+- Keep `components/ConnectDevice/QrScannerPanel.tsx` as the public `QrScannerPanel` export and move scanner-specific view pieces under `components/ConnectDevice/QrScannerPanel/`.
+- Extract mode toggle styling, camera idle/error/active rendering, progress overlay copy, file upload idle/parsing rendering, and success/fingerprint display into small components so the root component becomes branch orchestration only.
+- Preserve `tests/components/ConnectDevice/QrScannerPanel.test.tsx`; add focused assertions only if extraction exposes untested behavior around scanner callback props, inactive scanned states, progress boundary values, or file input attributes.
+- Verify focused lizard against `components/ConnectDevice/QrScannerPanel.tsx`, the extracted helper directory, and the focused test before running the broader guardrails.
+
+Verification so far:
+
+- PR #28 merged as `a7ff5c5e`; the post-merge `main` backstop passed release `24677999452`, dev image build `24677999451`, install tests `24677999449`, and test suite `24677999722`, including full backend, full gateway, full frontend, full build, full E2E, and full test summary jobs.
+- Fresh focused lizard measurement from `main` (`a7ff5c5e`) reports `components/ConnectDevice/QrScannerPanel.tsx:30` `QrScannerPanel` at 33 CCN.
+- Reduced `components/ConnectDevice/QrScannerPanel.tsx` to a 57-line public shell and moved camera idle/active/error rendering, animated QR progress rendering, file upload/parsing rendering, mode toggle rendering, and success rendering under `components/ConnectDevice/QrScannerPanel/`.
+- Preserved camera/file mode callbacks, secure-origin warning copy, scanner callback props and constraints, stop-camera behavior, progress and positioning copy, file upload behavior, parsing state, fingerprint fallback copy, and the public `QrScannerPanel` import path.
+- Added focused assertions for secure-origin warning absence, completed animated QR progress hiding transient copy, and non-empty fingerprint success copy.
+- `npx vitest run tests/components/ConnectDevice/QrScannerPanel.test.tsx` passed: 1 file, 8 tests.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/ConnectDevice/QrScannerPanel.tsx components/ConnectDevice/QrScannerPanel tests/components/ConnectDevice/QrScannerPanel.test.tsx` passed with no focused warnings.
+- `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, and `npm run lint` passed.
+- `npm run test:coverage` passed: 400 files, 5,580 tests, 100% statements/branches/functions/lines.
+- Broad lizard now reports 63 warnings, average CCN 1.3, max CCN 33; `QrScannerPanel` is no longer in the warning list.
+- CI-scope lizard passed with the expected 9 server warnings.
+- `npx --yes jscpd@4 .` completed: 2.02% duplication, 276 clones, 5,288 duplicated lines.
+- `node scripts/quality/check-large-files.mjs`, `git diff --check`, and full working-tree gitleaks passed.
+
+Edge case and self-review notes:
+
+- Null/empty success copy remains guarded: empty fingerprint renders `Not provided`, while populated fingerprints render unchanged.
+- Progress boundaries remain explicit: `0` shows the positioning hint, `1..99` shows animated QR progress, and `100` hides both transient progress and positioning copy.
+- Camera and file boundaries remain preserved: secure origins omit the HTTPS warning, insecure origins show it, camera error retry reactivates the camera, stop camera still calls `onStopCamera`, and file upload keeps the `.json,.txt` accept list and existing change callback.
+
+# Previous Task: Lizard UI Batch 29 - Agent Wallet Dashboard
+
+Status: complete
 
 Goal: reduce the current `AgentWalletDashboard` lizard finding by splitting dashboard state/model derivation, loading/error shell rendering, summary tiles, row header/actions, wallet links, and detail panels while preserving dashboard load/retry behavior, row ordering, totals, spend-ready eligibility, status badges, pause/unpause/revoke behavior, confirm gating, active-key filtering, empty states, wallet links, metadata labels, formatting fallbacks, and the public `AgentWalletDashboard` import path.
 
@@ -10,8 +56,8 @@ Goal: reduce the current `AgentWalletDashboard` lizard finding by splitting dash
 - [x] Confirm `AgentWalletDashboard` is tied as a current top JSX target at 33 CCN.
 - [x] Split AgentWalletDashboard render/status branches into focused helpers while preserving callbacks and visible behavior.
 - [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
-- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
-- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+- [x] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [x] Merge after required checks pass, then wait for the post-merge `main` backstop.
 
 ## Lizard UI Batch 29 Review
 
@@ -37,6 +83,8 @@ Verification so far:
 - CI-scope lizard passed with the expected 9 server warnings.
 - `npx --yes jscpd@4 .` completed: 2.02% duplication, 276 clones, 5,283 duplicated lines.
 - `node scripts/quality/check-large-files.mjs`, `git diff --check`, and full working-tree gitleaks passed.
+- PR #28 checks passed after follow-up commit `31847425`: `PR Required Checks`, `Code Quality Required Checks`, Quick Frontend, Quick E2E, Quick Test Hygiene, lizard, jscpd, gitleaks, lint, and Docker builds. `Full Test Summary` was skipped as intended on PR.
+- PR #28 merged as `a7ff5c5e`; the post-merge `main` backstop passed release `24677999452`, dev image build `24677999451`, install tests `24677999449`, and test suite `24677999722`, including full backend, full frontend, full gateway, full build, full E2E, and full test summary jobs.
 
 Edge case and self-review notes:
 
