@@ -1,6 +1,59 @@
-# Next Task: Lizard UI Batch 21 - Restore Panel
+# Next Task: Lizard UI Batch 22 - Variables
 
 Status: in progress
+
+Goal: reduce the current `Variables` lizard finding by splitting system-settings loading/saving state, numeric threshold field rendering, advanced warning/info copy, save feedback, and threshold validation while preserving default fallbacks, input coercion, validation copy, save payload shape, success timeout cleanup, load-error fallback behavior, visible copy, and public `Variables` import path.
+
+## Lizard UI Batch 22 Checklist
+
+- [x] Start from updated `main` after Batch 21 PR and post-merge full lane are green.
+- [x] Confirm `Variables` is tied as the current top UI target at 39 CCN.
+- [x] Split Variables controller/render branches into focused helpers while preserving callbacks and visible copy.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+
+## Lizard UI Batch 22 Review
+
+Plan:
+
+- Keep `components/Variables.tsx` as the public shell and move threshold inputs, warning/info panels, save feedback, and controller helpers under `components/Variables/`.
+- Extract settings defaults/coercion and validation into small pure helpers so the render layer does not own every branch.
+- Preserve `tests/components/Variables.test.tsx` first; add focused branch tests only if extraction exposes missing behavior.
+- Verify focused lizard against `components/Variables.tsx` and the extracted helper directory before running the broader guardrails.
+
+Verification so far:
+
+- PR #20 merged as `546e9255`; the post-merge `main` backstop passed the full test summary, full E2E, full build, full frontend, full backend, full gateway, install summary, release check, and dev image build checks.
+- Fresh focused lizard measurement from `main` (`546e9255`) reports `components/Variables.tsx:6` `Variables` at 39 CCN, tied with `UTXOGarden` and ahead of `WalletTelegramSettings`/`AppRoutes`.
+
+Changes:
+
+- Reduced `components/Variables.tsx` from the 39-CCN variables renderer/controller to a 12-line public shell.
+- Split settings defaults/coercion/validation, controller state, threshold inputs, warning/info copy, threshold card rendering, and save feedback under `components/Variables/`.
+- Preserved default fallbacks, input coercion, validation copy, save payload shape, save success timeout cleanup, load-error fallback behavior, visible copy, and public `Variables` import path.
+- Updated quality tracking: `Variables` drops out of the current lizard warning list; broad lizard warning count is now 71 and max CCN remains 39 with `UTXOGarden` as the top UI target.
+
+Verification so far:
+
+- `npx vitest run tests/components/Variables.test.tsx` passed: 1 file, 27 tests.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/Variables.tsx components/Variables` passed with no warnings.
+- `npm run typecheck:app` passed.
+- `npm run lint:app` passed.
+- Full broad lizard warning count is now 71; `Variables` has no remaining lizard warnings and max CCN remains 39.
+- `npm run test:coverage` passed: 399 files, 5,566 tests, 100% statements/branches/functions/lines.
+- `git diff --check`, grade-history JSONL parsing, large-file classification, full lint, CI-scope lizard baseline, tracked-tree gitleaks, and `npx --yes jscpd@4 .` passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: null/undefined settings values, empty numeric input strings, load failures, save failures, null validation error, and false save success remain guarded on the same paths as before.
+- Boundary values: confirmation threshold `0`, dust threshold negative values, empty dust fallback to 546, deep-confirmation empty fallback to 1, deep confirmation below confirmation, and the valid save path remain covered by the existing Variables tests.
+- System boundaries: `adminApi.getSystemSettings`, `adminApi.updateSystemSettings`, `useLoadingState`, numeric inputs, and the public `Variables` import path keep the same contracts.
+- Async/race behavior: success timeout replacement and unmount cleanup remain preserved; load and save timing still flows through `useLoadingState`.
+
+# Previous Task: Lizard UI Batch 21 - Restore Panel
+
+Status: complete
 
 Goal: reduce the current `RestorePanel` lizard finding by splitting warning/upload states, uploaded backup details, validation status, success/error alerts, and confirmation modal rendering while preserving file selection, clear upload, validation states, warning/error/success copy, restore button disabled behavior, confirmation text normalization, cancel/reset behavior, and public `RestorePanel` import path.
 
@@ -10,8 +63,8 @@ Goal: reduce the current `RestorePanel` lizard finding by splitting warning/uplo
 - [x] Confirm `RestorePanel` is the current top UI target at 39 CCN.
 - [x] Split RestorePanel upload, details, validation, alerts, and confirmation-modal helpers while preserving callbacks and visible copy.
 - [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
-- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
-- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+- [x] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [x] Merge after required checks pass, then wait for the post-merge `main` backstop.
 
 ## Lizard UI Batch 21 Review
 
@@ -43,6 +96,8 @@ Verification so far:
 - Full broad lizard warning count is now 72; `RestorePanel` has no remaining lizard warnings and max CCN remains 39.
 - `npm run test:coverage` passed: 399 files, 5,566 tests, 100% statements/branches/functions/lines.
 - `git diff --check`, grade-history JSONL parsing, large-file classification, full lint, CI-scope lizard baseline, tracked-tree gitleaks, and `npx --yes jscpd@4 .` passed.
+- PR #20 checks passed: `PR Required Checks`, `Code Quality Required Checks`, Quick Frontend, Quick E2E, lizard, jscpd, gitleaks, lint, and Docker builds.
+- PR #20 merged as `546e9255`; the post-merge `main` backstop passed `Full Test Summary`, full backend, full frontend, full gateway, full E2E, full build, install tests, release, and dev image builds.
 
 Edge case and self-review:
 
