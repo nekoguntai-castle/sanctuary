@@ -64,6 +64,16 @@ The first PR after enabling this strategy should be treated as a process validat
 - Confirm docs-only or workflow-only PRs do not wait on absent Docker, install, or vector checks.
 - After merge, confirm the push-to-`main` full lane runs as the merge confidence backstop.
 
+## First PR Validation Result
+
+Validated on 2026-04-19 HST with PR #8, `ci-pr-flow-aggregates`, merged as `72bdce96`.
+
+- `PR Required Checks` passed on the PR.
+- `Code Quality Required Checks` passed on the PR.
+- `Full Test Summary` appeared on the PR and completed as skipped, satisfying branch protection without running the full lane before merge.
+- Path-gated workflow checks behaved correctly: Docker build, install tests, and vector verification ran because this PR changed their workflow files; they were not global requirements for unrelated PRs.
+- The post-merge `main` backstop passed: `Full Test Summary`, full backend, full frontend, full gateway, full E2E, full build, install summary, release check, and dev image build completed successfully.
+
 ## Lizard Remediation PR Loop
 
 The lizard cleanup loop now uses the same PR-first workflow as other development:

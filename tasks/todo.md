@@ -1,6 +1,6 @@
 # Next Task: CI/CD Optimization and PR/Merge Workflow Plan
 
-Status: implemented locally; first PR validation pending; merge-queue ready, but GitHub does not currently allow enforcement on this user-owned repository
+Status: implemented and first PR validated; merge-queue ready, but GitHub does not currently allow enforcement on this user-owned repository
 
 Goal: optimize GitHub CI/CD so day-to-day commits get fast, relevant feedback without weakening the merge/release safety net. Evaluate whether the current pipeline runs too much on each commit, and decide whether moving from direct commits on `main` to PR-and-merge should be part of the maturity plan.
 
@@ -129,11 +129,13 @@ Target: validate installation, upgrade, image publishing, and release-note autom
 
 ## First PR Validation Checklist
 
-- [ ] Confirm `PR Required Checks` runs on the pull request and fails only when a quick-lane child fails.
-- [ ] Confirm `Code Quality Required Checks` runs on the pull request and reflects lint, gitleaks, lizard, and jscpd.
-- [ ] Confirm `Full Test Summary` is present on the pull request as skipped/success, so branch protection does not wait on the full lane.
-- [ ] Confirm docs-only or workflow-only PRs do not wait on absent Docker, install, or vector checks.
-- [ ] After merge, confirm the push-to-`main` full lane runs as the merge confidence backstop.
+- [x] Confirm `PR Required Checks` runs on the pull request and fails only when a quick-lane child fails.
+- [x] Confirm `Code Quality Required Checks` runs on the pull request and reflects lint, gitleaks, lizard, and jscpd.
+- [x] Confirm `Full Test Summary` is present on the pull request as skipped/success, so branch protection does not wait on the full lane.
+- [x] Confirm docs-only or workflow-only PRs do not wait on absent Docker, install, or vector checks.
+- [x] After merge, confirm the push-to-`main` full lane runs as the merge confidence backstop.
+
+Observed result: PR #8, `ci-pr-flow-aggregates`, passed the required PR checks and merged as `72bdce96`. The post-merge `main` backstop passed `Full Test Summary`, full backend, full frontend, full gateway, full E2E, full build, install summary, release check, and dev image build.
 
 ## Lizard Remediation PR Loop
 
@@ -176,8 +178,8 @@ Target: validate installation, upgrade, image publishing, and release-note autom
 - [x] Confirm GitHub rejects `merge_queue` enforcement for the current user-owned repository.
 - [x] Tune post-merge aggregate behavior so full E2E is included in the full-lane summary.
 - [x] Document CI tiering and emergency hotfix process.
-- [ ] Open the CI/branch-protection changes through the new PR flow.
-- [ ] Validate the first PR run required-check behavior.
+- [x] Open the CI/branch-protection changes through the new PR flow.
+- [x] Validate the first PR run required-check behavior.
 - [ ] Re-measure CI after 10-20 PRs and adjust gates based on failures and wall time.
 
 ## Edge Case Audit For CI Design
@@ -207,7 +209,6 @@ Implemented so far:
 
 Remaining follow-up:
 
-- Open and merge this change through the new branch-to-PR flow, then validate the first PR run carefully. Required check expectations: `PR Required Checks` passes, `Code Quality Required Checks` passes, and `Full Test Summary` is present as skipped/success on the PR.
 - Lower the blocking `LIZARD_WARNING_BASELINE` whenever the CI-scope lizard warning count drops below 9.
 - Merge queue is desired now, but cannot currently be enforced on this paid personal user-owned public repository. The GitHub rulesets API rejected the `merge_queue` rule with HTTP 422, `Invalid rule 'merge_queue'`. Move the repository under an eligible organization, then enable a repository-level queue for `main` using squash merge, build concurrency `3`, group size `1`, all-green entries, 60-minute status timeout, and the existing required checks.
 - Re-measure CI after 10-20 PRs and tune gates based on escaped defects, queue time, and cancellation data.
