@@ -172,4 +172,29 @@ describe('WebSocketStatsCard branch coverage', () => {
     await waitFor(() => expect(screen.getByText(/Wallets \(1\)/)).toBeInTheDocument());
     expect(screen.getByText('base, txs')).toBeInTheDocument();
   });
+
+  it('handles global-only channels and zero max connections', async () => {
+    vi.mocked(adminApi.getWebSocketStats).mockResolvedValue(
+      createStats({
+        connections: {
+          current: 0,
+          max: 0,
+          maxPerUser: 5,
+          uniqueUsers: 4,
+        },
+        subscriptions: {
+          total: 1,
+          channels: 1,
+          channelList: ['blocks'],
+        },
+      }) as never
+    );
+
+    const { container } = render(<WebSocketStatsCard />);
+
+    await waitFor(() => expect(screen.getByText(/Active Channels \(1\)/)).toBeInTheDocument());
+    expect(screen.getByText('blocks')).toBeInTheDocument();
+    expect(screen.queryByText(/Wallets \(/)).not.toBeInTheDocument();
+    expect(container.querySelector('[style="width: 0%;"]')).toBeInTheDocument();
+  });
 });

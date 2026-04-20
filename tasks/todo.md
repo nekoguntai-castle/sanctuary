@@ -1,6 +1,53 @@
-# Next Task: Lizard UI Batch 38 - Intelligence Tabs
+# Next Task: Lizard UI Batch 39 - UI Display And Settings Components
 
-Status: in progress
+Status: verification complete; PR flow pending
+
+Goal: reduce several independent UI display/settings lizard findings in one more aggressive batch by splitting backup encryption-key reveal/copy rendering, WebSocket stats sections, notification sound settings sections, privacy badge summary rendering, and notification badge class derivation while preserving password reveal gating, copy/download callbacks, WebSocket loading/error/refresh behavior, channel/rate-limit grouping, sound preference updates and previews, badge accessibility, size/severity styling, score/warning summaries, and the public import paths.
+
+## Lizard UI Batch 39 Checklist
+
+- [x] Start from updated `main` after Batch 38 PR and post-merge full lane are green.
+- [x] Confirm grouped targets: `EncryptionKeyDisplay` at 29 CCN, `WebSocketStatsCard` at 25 CCN, `NotificationSoundSettings` at 25 CCN, `PrivacyBadge` at 25 CCN, and `NotificationBadge` at 19 CCN.
+- [x] Split the selected display/settings components into focused helpers while preserving callbacks and visible behavior.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+
+## Lizard UI Batch 39 Review
+
+Plan:
+
+- Keep `components/BackupRestore/EncryptionKeyDisplay.tsx`, `components/SystemSettings/WebSocketStatsCard.tsx`, `components/Settings/sections/SoundSection.tsx`, `components/PrivacyBadge.tsx`, and `components/NotificationBadge.tsx` as the public exports.
+- Move encryption key field/action/form rendering, WebSocket stat sections/channel grouping/rate-limit-event display, sound event rows and preference handlers, privacy badge/card/summary helper maps, and notification badge class/count helpers into local focused helpers.
+- Treat this as a broad but low-coupling UI batch: avoid shared abstractions across unrelated components, and keep extracted helpers colocated with their owning component.
+- Preserve focused tests: `tests/components/BackupRestore/EncryptionKeyDisplay.branches.test.tsx`, `tests/components/SystemSettings/WebSocketStatsCard.branches.test.tsx`, `tests/components/Settings/sections/SoundSection.branches.test.tsx`, `tests/components/PrivacyBadge.test.tsx`, and `tests/components/NotificationBadge.test.tsx`; add assertions only if extraction exposes untested empty, zero, missing event, or keyboard boundaries.
+- Verify focused lizard against the five public files and extracted helper directories before running broader guardrails.
+
+Verification so far:
+
+- Batch 38 PR #37 merged as `f228eaf4`; the post-merge `main` backstop passed release `24692698891`, dev image build `24692698875`, install tests `24692698921`, and test suite `24692698918`, including full backend, full frontend, full gateway, full build, full E2E, and full test summary jobs.
+- Split `EncryptionKeyDisplay`, `WebSocketStatsCard`, `NotificationSoundSettings`, `PrivacyBadge`, and `NotificationBadge` into smaller render/model helpers while preserving their public import paths. `WebSocketStatsCard` is now a 50-line public shell with 355 lines of colocated focused helpers.
+- Added a WebSocket branch assertion for global-only channels and zero maximum connections so the extracted channel grouping and percentage guard stay covered.
+- Focused UI tests passed: `npx vitest run tests/components/BackupRestore/EncryptionKeyDisplay.branches.test.tsx tests/components/SystemSettings/WebSocketStatsCard.branches.test.tsx tests/components/Settings/sections/SoundSection.branches.test.tsx tests/components/PrivacyBadge.test.tsx tests/components/NotificationBadge.test.tsx` passed before the added WebSocket branch; the updated WebSocket branch suite then passed separately with 6 tests.
+- Focused lizard passed for the five public files and the extracted WebSocket helper directory.
+- `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, and `npm run lint` passed.
+- `npm run test:coverage` passed: 401 files, 5,592 tests, 100% statements/branches/functions/lines.
+- Broad lizard now reports 33 warnings; `EncryptionKeyDisplay`, `WebSocketStatsCard`, `NotificationSoundSettings`, `PrivacyBadge`, and `NotificationBadge` are no longer in the warning list.
+- CI-scope lizard passed with the expected 9 server warnings.
+- `npx --yes jscpd@4 .` passed at 1.98% duplication, 274 clones, and 5,237 duplicated lines.
+- `node scripts/quality/check-large-files.mjs`, `git diff --check`, grade-history JSONL parsing, and tracked-tree gitleaks detect passed.
+
+Edge case and self-review notes:
+
+- Encryption-key reveal still requires a non-blank password, clears the reveal password after submit, and keeps copy/download actions gated to revealed key values.
+- WebSocket stats still preserve initial loading, error rendering, manual refresh, and polling behavior; a `max=0` connection budget now renders a 0% bar instead of dividing by zero, and null/undefined rate-limit user IDs are accepted.
+- Sound preference updates preserve the existing enabled/master-enabled semantics, keep volume values numeric in update payloads, and only preview configured non-`none` sounds.
+- Privacy badges preserve title derivation, size/grade styling, clickable keyboard activation via Enter/Space, score metrics, warnings, and recommendations.
+- Notification badges preserve zero-count hiding, count capping, dot rendering, and severity/size class composition without expanding the public API.
+
+# Previous Task: Lizard UI Batch 38 - Intelligence Tabs
+
+Status: complete
 
 Goal: reduce the paired Treasury Intelligence lizard findings by splitting wallet/page shell rendering, wallet selector/tab routing, insights filter/content rendering, severity grouping, and status-update helpers while preserving wallet loading/empty states, first-wallet auto-selection, dropdown open/close/outside-click behavior, selected-wallet switching, tab navigation, insight filter API payloads, loading/empty/data states, severity grouping order, status-update removal behavior, error logging, and the public `Intelligence` and `InsightsTab` import paths.
 
@@ -10,8 +57,8 @@ Goal: reduce the paired Treasury Intelligence lizard findings by splitting walle
 - [x] Confirm grouped Intelligence targets: `Intelligence` at 25 CCN and `InsightsTab` at 28 CCN.
 - [x] Split Intelligence shell and insights render/update branches into focused helpers while preserving callbacks and visible behavior.
 - [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
-- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
-- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+- [x] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [x] Merge after required checks pass, then wait for the post-merge `main` backstop.
 
 ## Lizard UI Batch 38 Review
 
@@ -38,6 +85,8 @@ Verification so far:
 - CI-scope lizard passed with the expected 9 server warnings.
 - `npx --yes jscpd@4 .` passed at 1.99% duplication, 275 clones, and 5,260 duplicated lines.
 - `node scripts/quality/check-large-files.mjs`, `git diff --check`, and tracked-tree gitleaks detect passed.
+- PR #37 checks passed: `PR Required Checks`, `Code Quality Required Checks`, Quick Frontend, Quick E2E, Quick Test Hygiene, lizard, jscpd, gitleaks, lint, and Docker builds. `Full Test Summary` was skipped as intended on PR.
+- PR #37 merged as `f228eaf4`; the post-merge `main` backstop passed release `24692698891`, dev image build `24692698875`, install tests `24692698921`, and test suite `24692698918`, including full backend, full frontend, full gateway, full build, full E2E, and full test summary jobs.
 
 Edge case and self-review notes:
 
