@@ -1,6 +1,48 @@
-# Next Task: Lizard UI Batch 14 - Wallet Detail
+# Next Task: Lizard UI Batch 15 - Chat Tab
 
 Status: in progress
+
+Goal: reduce the current `ChatTab` lizard finding by splitting chat API/controller state, conversation list rendering, message panel rendering, and input composer behavior without changing conversation load/create/delete behavior, selected-conversation semantics, message load/clear behavior, optimistic send/rollback behavior, Enter-to-send behavior, scroll-to-bottom behavior, visible copy, or public `ChatTab` exports.
+
+## Lizard UI Batch 15 Checklist
+
+- [x] Start from updated `main` after Batch 14 PR and post-merge full lane are green.
+- [x] Confirm `ChatTab` is the current top UI target at 45 CCN.
+- [x] Split ChatTab controller/render branches into focused helpers while preserving callbacks and copy.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+
+## Lizard UI Batch 15 Review
+
+Changes:
+
+- Reduced `components/Intelligence/tabs/ChatTab.tsx` from the 45-CCN tab component to a 38-line public shell.
+- Moved conversation loading, selected-conversation state, message loading/clearing, optimistic send/rollback, Enter-to-send handling, scroll refs, focus refs, and API error logging into `components/Intelligence/tabs/useChatTabController.ts`.
+- Split conversation list rendering, message pane rendering, and input composer rendering into focused helpers under `components/Intelligence/tabs/`.
+- Preserved conversation load/create/delete behavior, selected-conversation semantics, message load/clear behavior, optimistic send/rollback behavior, Enter-to-send behavior, scroll-to-bottom behavior, visible copy, and the public `ChatTab` export.
+
+Verification so far:
+
+- Fresh post-Batch-14 TSX-aware lizard measurement from `main` (`72783376`) reports `ChatTab` as the top current target at 45 CCN with 78 warnings remaining.
+- `npx vitest run tests/components/Intelligence.tabs.test.tsx tests/components/Intelligence.test.tsx tests/components/IntelligenceTabs/chatTab.contracts.tsx` passed: 2 direct test files, 85 tests.
+- `npm run typecheck:app` passed.
+- `npm run lint:app` passed.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/Intelligence/tabs/ChatTab.tsx components/Intelligence/tabs/ChatConversationList.tsx components/Intelligence/tabs/ChatInputComposer.tsx components/Intelligence/tabs/ChatMessagePane.tsx components/Intelligence/tabs/useChatTabController.ts` passed with no warnings.
+- Full TSX-aware lizard warning count is now 77; max CCN is now 43 with `UsersGroups` and `AIQueryInput` as the next top component targets.
+- `npm run test:coverage` passed: 398 files, 5,564 tests, 100% statements/branches/functions/lines.
+- `git diff --check`, grade-history JSONL parsing, large-file classification, full lint, CI-scope lizard baseline, and `npx --yes jscpd@4 .` passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: no conversations, missing conversation title, no selected conversation, empty message lists, whitespace-only input, and API failure paths remain guarded on the same paths as before.
+- Boundary values: Enter versus Shift+Enter, selected versus unselected conversation deletion, disabled send while empty/sending, and temporary-message replacement/removal remain preserved.
+- System boundaries: `intelligenceApi.getConversations`, `getConversationMessages`, `createConversation`, `deleteConversation`, `sendChatMessage`, `ChatMessage`, lucide icons, logger behavior, and text-area refs keep the same contracts.
+- Async/race behavior: load flags still clear in `finally`, selection clearing still resets messages, send still gates on `sending`, failed sends still remove only the temp message and restore input, and scroll-to-bottom still runs after message updates.
+
+# Previous Task: Lizard UI Batch 14 - Wallet Detail
+
+Status: complete
 
 Goal: reduce the current `WalletDetail` lizard finding by splitting the route/page state shell, hook orchestration, loaded wallet view, tab prop assembly, and modal prop assembly without changing wallet data loading, sync/repair behavior, transaction filtering, sharing flows, label editing, UTXO actions, modal behavior, tab routing, WebSocket updates, visible copy, or public `WalletDetail` exports.
 
@@ -10,8 +52,8 @@ Goal: reduce the current `WalletDetail` lizard finding by splitting the route/pa
 - [x] Confirm `WalletDetail` is the current top UI target at 47 CCN.
 - [x] Split WalletDetail controller/render branches into focused helpers while preserving callbacks and copy.
 - [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
-- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
-- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+- [x] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [x] Merge after required checks pass, then wait for the post-merge `main` backstop.
 
 ## Lizard UI Batch 14 Review
 
@@ -22,6 +64,7 @@ Changes:
 - Moved loaded wallet rendering plus tab and modal prop assembly into `components/WalletDetail/WalletDetailLoadedView.tsx` with focused prop-builder helpers.
 - Preserved wallet data loading, sync/repair behavior, transaction filtering, sharing flows, label editing, UTXO actions, modal behavior, tab routing, WebSocket updates, visible copy, and the public `WalletDetail` export.
 - Updated the health assessment and grade history: TSX-aware lizard warnings moved from 79 to 78, max CCN moved from 47 to 45, and `WalletDetail` dropped out of the current top lizard target list.
+- PR #13 merged as `72783376`; the post-merge `main` backstop passed the full test summary, full E2E, full build, full frontend, full backend, full gateway, install summary, release check, and dev image build checks.
 
 Verification so far:
 
@@ -33,6 +76,7 @@ Verification so far:
 - Full TSX-aware lizard warning count is now 78; top remaining component targets are `ChatTab`, `UsersGroups`, `AIQueryInput`, and `SidebarContent`.
 - `npm run test:coverage` passed: 398 files, 5,564 tests, 100% statements/branches/functions/lines.
 - `git diff --check`, grade-history JSONL parsing, large-file classification, full lint, CI-scope lizard baseline, and `npx --yes jscpd@4 .` passed.
+- Staged diff checks, gitleaks tracked-tree scan, pre-commit static reviewers, and pre-commit frontend tests passed.
 
 Edge case and self-review:
 
