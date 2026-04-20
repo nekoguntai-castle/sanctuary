@@ -1,4 +1,45 @@
-# Next Task: Lizard UI Batch 7 - Network Connection Card
+# Next Task: Lizard UI Batch 8 - Addresses Tab
+
+Status: complete
+
+Goal: reduce the current `AddressesTab` lizard finding by splitting address grouping, summary cards, empty state, sub-tabs, table rows, label editing, and footer helpers without changing receive/change classification, copy/QR/explorer actions, label edit/save/cancel behavior, generated-address controls, or public exports.
+
+## Lizard UI Batch 8 Checklist
+
+- [x] Confirm pushed NetworkConnectionCard CI status and clean local baseline.
+- [x] Inspect current top lizard targets and AddressesTab test coverage.
+- [x] Split AddressesTab grouping/view helpers while preserving visible copy and callbacks.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [x] Update health/grade tracking and commit/push the batch after verification.
+
+## Lizard UI Batch 8 Review
+
+Changes:
+
+- Reduced `components/WalletDetail/tabs/AddressesTab.tsx` to an 87-line orchestration module and moved address grouping, summary cards, empty state, sub-tab controls, address table, row cells, label editing, actions, and footer rendering into focused helpers under `components/WalletDetail/tabs/AddressesTab/`.
+- Preserved receive/change classification semantics, including explicit `isChange` precedence, derivation-path fallback, short-path receive fallback, copy/QR/explorer actions, edit/save/cancel label behavior, generated-address controls, and public `AddressesTab` exports.
+- Added direct helper coverage for receive/change partitioning and balance display fallbacks, and restored the BIP derivation-path contract comment on the extracted model helper.
+- Updated the health assessment and grade history: full lizard warnings moved from 86 to 85, and `AddressesTab` dropped out of the current top lizard target list.
+
+Verification:
+
+- `npx vitest run tests/components/WalletDetail/tabs/AddressesTab.test.tsx tests/components/WalletDetail/tabs/AddressesTab/addressModel.test.ts` passed: 2 files, 16 tests.
+- `npm run typecheck:app` passed.
+- `npm run lint:app` passed.
+- `npm run test:coverage` passed: 398 files, 5,564 tests, 100% statements/branches/functions/lines.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/WalletDetail/tabs/AddressesTab.tsx components/WalletDetail/tabs/AddressesTab tests/components/WalletDetail/tabs/AddressesTab.test.tsx tests/components/WalletDetail/tabs/AddressesTab/addressModel.test.ts` passed with no warnings.
+- Full lizard warning count is now 85; top remaining component targets are `DeviceDetail`, `QRSigningModal`, `DeviceDetailsForm`, and `NetworkSyncActions`.
+- `git diff --check`, grade-history JSONL parsing, large-file classification, and pinned gitleaks-only quality lane passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: empty address arrays, empty selected receive/change tabs, missing labels, missing explorer network, absent summary/footer data, and read-only label states remain covered.
+- Boundary values: explicit `isChange` values, short derivation paths, change-path fallback, copied-state rendering, all-loaded footer state, and loading generate controls remain covered.
+- System boundaries: `AddressesTab` props, label callbacks, QR modal callback, copy hook usage, explorer URL construction, generated-address callback, visible copy, and public import path remain unchanged.
+- Async/race behavior: no new async state model was introduced; copy, label save, and generate actions still run through the existing callback props/hooks.
+- Diff review: changes are scoped to AddressesTab extraction, health-report notes, trend metadata, and this task record.
+
+# Previous Task: Lizard UI Batch 7 - Network Connection Card
 
 Status: complete
 
