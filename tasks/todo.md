@@ -1,4 +1,45 @@
-# Next Task: Lizard UI Batch 9 - Device Detail
+# Next Task: Lizard UI Batch 10 - QR Signing Modal
+
+Status: complete
+
+Goal: reduce the current `QRSigningModal` lizard finding by splitting QR scan parsing, signed-PSBT file import parsing, modal state/callback control, display-step rendering, scan-step rendering, scanner progress/error UI, and upload fallback helpers without changing modal open/close behavior, raw base64 PSBT scans, UR decoding progress/errors, camera retry behavior, binary/base64/hex file upload behavior, or the public default/named exports.
+
+## Lizard UI Batch 10 Checklist
+
+- [x] Confirm pushed DeviceDetail CI status and clean local baseline.
+- [x] Inspect current top lizard targets and QRSigningModal test coverage.
+- [x] Split QRSigningModal scan/upload/render helpers while preserving visible copy and callbacks.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [x] Update health/grade tracking and commit/push the batch after verification.
+
+## Lizard UI Batch 10 Review
+
+Changes:
+
+- Reduced `components/qr/QRSigningModal.tsx` to an 86-line modal shell and moved display-step rendering, scan-step rendering, scanner progress/error UI, upload fallback UI, QR scan parsing, signed-PSBT file import parsing, and modal state/callback control into focused helpers under `components/qr/QRSigningModal/`.
+- Preserved modal open/close behavior, backdrop and close-button reset behavior, raw base64 PSBT scan handling, UR decoder progress/error handling, camera retry behavior, binary/base64/hex PSBT file imports, hidden input reset, user-facing copy, and default/named exports.
+- Kept the extracted FileReader assumptions aligned with the pre-extraction implementation so the 100% coverage gate did not require synthetic defensive branches.
+- Updated the health assessment and grade history: full lizard warnings moved from 84 to 83, and `QRSigningModal` dropped out of the current top lizard target list.
+
+Verification:
+
+- `npx vitest run tests/components/qr/QRSigningModal.test.tsx tests/hooks/useQrSigning.test.tsx tests/components/send/QrSigning.test.tsx tests/components/qr/AnimatedQRCode.test.tsx` passed: 4 files, 58 tests.
+- `npm run typecheck:app` passed.
+- `npm run lint:app` passed.
+- `npm run test:coverage` passed after branch simplification: 398 files, 5,564 tests, 100% statements/branches/functions/lines.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/qr/QRSigningModal.tsx components/qr/QRSigningModal tests/components/qr/QRSigningModal.test.tsx tests/hooks/useQrSigning.test.tsx tests/components/send/QrSigning.test.tsx` passed with no warnings.
+- Full lizard warning count is now 83; top remaining component targets are `DeviceDetailsForm`, `NetworkSyncActions`, `Monitoring`, and `WalletDetail`.
+- `git diff --check`, grade-history JSONL parsing, large-file classification, and pinned gitleaks-only quality lane passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: closed modal, empty scan payloads, no file selected, camera non-Error payloads, invalid QR payloads, invalid uploaded content, and FileReader read failures remain covered.
+- Boundary values: scan progress at partial percentages, complete UR decode, decoder errors, raw base64 PSBT scans, binary PSBT magic bytes, base64 text PSBT, hex text PSBT, and hidden file-input reset remain covered.
+- System boundaries: `@yudiel/react-qr-scanner`, `AnimatedQRCode`, UR decoder utilities, FileReader, `onSignedPsbt`, `onClose`, and public `QRSigningModal` imports remain on the same contracts.
+- Async/race behavior: no new external async state model was introduced; scan processing, file import callbacks, close/reset, and retry flows still resolve through the same modal state transitions.
+- Diff review: changes are scoped to QRSigningModal extraction, health-report notes, trend metadata, and this task record.
+
+# Previous Task: Lizard UI Batch 9 - Device Detail
 
 Status: complete
 
