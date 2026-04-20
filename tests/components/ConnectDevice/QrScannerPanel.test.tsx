@@ -63,15 +63,28 @@ describe('QrScannerPanel', () => {
     expect(props.onCameraActiveChange).toHaveBeenCalledWith(true);
   });
 
+  it('omits the secure-origin warning when camera access is already secure', () => {
+    render(<QrScannerPanel {...createProps()} />);
+
+    expect(screen.queryByText(/requires HTTPS/i)).not.toBeInTheDocument();
+  });
+
   it('renders active camera with scanner, progress, and stop control', async () => {
     const user = userEvent.setup();
     const props = createProps({ cameraActive: true, urProgress: 45 });
+    scannerPropsSpy.mockClear();
+
     const { container } = render(<QrScannerPanel {...props} />);
 
     expect(screen.getByTestId('qr-scanner')).toBeInTheDocument();
     expect(screen.getByText('45%')).toBeInTheDocument();
     expect(screen.getByText(/Keep camera pointed at animated QR code/i)).toBeInTheDocument();
     expect(scannerPropsSpy).toHaveBeenCalled();
+    const scannerProps = scannerPropsSpy.mock.calls[scannerPropsSpy.mock.calls.length - 1]![0];
+    expect(scannerProps.onScan).toBe(props.onQrScan);
+    expect(scannerProps.onError).toBe(props.onCameraError);
+    expect(scannerProps.constraints).toEqual({ facingMode: 'environment' });
+    expect(scannerProps.scanDelay).toBe(100);
 
     const stopButton = container.querySelector('button.absolute') as HTMLButtonElement;
     expect(stopButton).not.toBeNull();
@@ -84,6 +97,14 @@ describe('QrScannerPanel', () => {
     render(<QrScannerPanel {...props} />);
 
     expect(screen.getByText(/Position the QR code within the frame/i)).toBeInTheDocument();
+  });
+
+  it('hides progress and positioning copy after animated QR progress completes', () => {
+    const props = createProps({ cameraActive: true, urProgress: 100 });
+    render(<QrScannerPanel {...props} />);
+
+    expect(screen.queryByText(/Scanning animated QR/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Position the QR code within the frame/i)).not.toBeInTheDocument();
   });
 
   it('renders camera error and retries activation', async () => {
@@ -112,10 +133,13 @@ describe('QrScannerPanel', () => {
     expect(screen.getByText(/Parsing file/i)).toBeInTheDocument();
   });
 
-  it('renders success state with fallback fingerprint text', () => {
-    render(<QrScannerPanel {...createProps({ scanned: true, fingerprint: '' })} />);
+  it('renders success state with fingerprint and fallback fingerprint text', () => {
+    const { rerender } = render(<QrScannerPanel {...createProps({ scanned: true })} />);
 
     expect(screen.getByText(/QR Code Scanned Successfully/i)).toBeInTheDocument();
+    expect(screen.getByText(/Fingerprint: deadbeef/i)).toBeInTheDocument();
+
+    rerender(<QrScannerPanel {...createProps({ scanned: true, fingerprint: '' })} />);
     expect(screen.getByText(/Fingerprint: Not provided/i)).toBeInTheDocument();
   });
 });
