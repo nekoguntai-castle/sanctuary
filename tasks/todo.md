@@ -1,6 +1,50 @@
-# Next Task: Lizard UI Batch 13 - Monitoring
+# Next Task: Lizard UI Batch 14 - Wallet Detail
 
 Status: in progress
+
+Goal: reduce the current `WalletDetail` lizard finding by splitting the route/page state shell, hook orchestration, loaded wallet view, tab prop assembly, and modal prop assembly without changing wallet data loading, sync/repair behavior, transaction filtering, sharing flows, label editing, UTXO actions, modal behavior, tab routing, WebSocket updates, visible copy, or public `WalletDetail` exports.
+
+## Lizard UI Batch 14 Checklist
+
+- [x] Start from updated `main` after Batch 13 PR and post-merge full lane are green.
+- [x] Confirm `WalletDetail` is the current top UI target at 47 CCN.
+- [x] Split WalletDetail controller/render branches into focused helpers while preserving callbacks and copy.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+
+## Lizard UI Batch 14 Review
+
+Changes:
+
+- Reduced `components/WalletDetail/WalletDetail.tsx` from the 47-CCN page component to a 28-line public shell.
+- Moved route params, navigation, location state, user/app notification context, data hooks, sync/repair hooks, transaction filtering, AI filtering, sharing hooks, label editing, UTXO actions, wallet mutation state, tab state, WebSocket hooks, log hooks, address actions, draft notifications, and modal state into `components/WalletDetail/useWalletDetailController.ts`.
+- Moved loaded wallet rendering plus tab and modal prop assembly into `components/WalletDetail/WalletDetailLoadedView.tsx` with focused prop-builder helpers.
+- Preserved wallet data loading, sync/repair behavior, transaction filtering, sharing flows, label editing, UTXO actions, modal behavior, tab routing, WebSocket updates, visible copy, and the public `WalletDetail` export.
+- Updated the health assessment and grade history: TSX-aware lizard warnings moved from 79 to 78, max CCN moved from 47 to 45, and `WalletDetail` dropped out of the current top lizard target list.
+
+Verification so far:
+
+- Fresh post-Batch-13 TSX-aware lizard measurement from `main` (`898c2f36`) reports `WalletDetail` as the top current target at 47 CCN.
+- `npx vitest run tests/components/WalletDetail.test.tsx tests/components/WalletDetail.wrapper.test.tsx tests/components/WalletDetail tests/components/WalletDetailWrapper` passed: 41 files, 505 tests.
+- `npm run typecheck:app` passed.
+- `npm run lint:app` passed.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/WalletDetail/WalletDetail.tsx components/WalletDetail/WalletDetailLoadedView.tsx components/WalletDetail/useWalletDetailController.ts` passed with no warnings.
+- Full TSX-aware lizard warning count is now 78; top remaining component targets are `ChatTab`, `UsersGroups`, `AIQueryInput`, and `SidebarContent`.
+- `npm run test:coverage` passed: 398 files, 5,564 tests, 100% statements/branches/functions/lines.
+- `git diff --check`, grade-history JSONL parsing, large-file classification, full lint, CI-scope lizard baseline, and `npx --yes jscpd@4 .` passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: missing route wallet ID, absent wallet, loading state, error state, missing wallet network, missing descriptor, empty UTXO stats, absent bitcoin status, and absent modal wallet ID remain guarded on the same paths as before.
+- Boundary values: viewer/editor/owner tab visibility, single-sig versus multisig draft type, empty-string descriptor fallback, stats-tab first-load behavior, and `canEdit=false` transaction controls remain preserved.
+- System boundaries: existing hooks remain the only integration points for wallet API loading, sync/repair, sharing, labels, UTXOs, wallet mutation, WebSocket updates, logs, and draft notifications.
+- Async/race behavior: stats loading still only starts when the stats tab opens and no UTXO stats are loaded/loading, refresh callbacks still call `fetchData(true)`, and modal delete/transfer flows still delegate through the existing modal-state hook.
+- Diff review: changes are scoped to WalletDetail extraction, health-report notes, trend metadata, and this task record.
+
+# Previous Task: Lizard UI Batch 13 - Monitoring
+
+Status: complete
 
 Goal: reduce the current `Monitoring` lizard finding by splitting service loading/controller state, header/refresh controls, disabled-stack and error banners, service grid props, about copy, and URL-modal wiring without changing monitoring API calls, Grafana config fallback behavior, anonymous-access toggling, refresh behavior, hostname fallback, URL edit/save semantics, visible copy, or public `Monitoring` exports.
 
@@ -10,8 +54,8 @@ Goal: reduce the current `Monitoring` lizard finding by splitting service loadin
 - [x] Confirm `Monitoring` is the current top UI target at 49 CCN.
 - [x] Split Monitoring controller/render branches into focused helpers while preserving callbacks and copy.
 - [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
-- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
-- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+- [x] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [x] Merge after required checks pass, then wait for the post-merge `main` backstop.
 
 ## Lizard UI Batch 13 Review
 
@@ -22,6 +66,7 @@ Changes:
 - Split the loading state, header/refresh button, disabled-stack banner, error banner, services grid, and about section into focused helpers under `components/Monitoring/`.
 - Preserved monitoring API calls, Grafana config non-fatal fallback behavior, anonymous-access update semantics, refresh behavior, hostname fallback, URL edit/save/null behavior, visible copy, and the public default/named `Monitoring` exports.
 - Updated the health assessment and grade history: full lizard warnings moved from 81 to 80, max CCN moved from 49 to 47, and `Monitoring` dropped out of the current top lizard target list.
+- PR #12 merged as `898c2f36`; the post-merge `main` backstop passed the full test summary, full E2E, full build, full frontend, full backend, full gateway, install summary, release check, and dev image build checks.
 
 Verification so far:
 
@@ -31,6 +76,7 @@ Verification so far:
 - `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/Monitoring/Monitoring.tsx components/Monitoring tests/components/Monitoring.test.tsx tests/components/Monitoring.branches.test.tsx tests/components/Monitoring/ServiceCard.branches.test.tsx` passed with no warnings.
 - Full TSX-aware lizard warning count is now 80; top remaining component targets are `WalletDetail`, `ChatTab`, `UsersGroups`, and `AIQueryInput`.
 - `npm run test:coverage` passed: 398 files, 5,564 tests, 100% statements/branches/functions/lines.
+- `git diff --check`, grade-history JSONL parsing, large-file classification, full lint, CI-scope lizard baseline, `npx --yes jscpd@4 .`, staged diff checks, gitleaks tracked-tree scan, pre-commit static reviewers, and pre-commit frontend tests passed.
 
 Edge case and self-review:
 
