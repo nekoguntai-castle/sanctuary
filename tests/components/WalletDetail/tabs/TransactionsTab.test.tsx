@@ -146,6 +146,21 @@ describe('TransactionsTab', () => {
     expect(screen.getByText('Showing 1 of 2 transactions')).toBeInTheDocument();
   });
 
+  it('shows aggregation results without an aggregation label when none is provided', () => {
+    render(
+      <TransactionsTab
+        {...baseProps}
+        aiEnabled={true}
+        aiQueryFilter={{ type: 'transactions', aggregation: null }}
+        aiAggregationResult={7}
+      />
+    );
+
+    expect(screen.getByText('7 sats')).toBeInTheDocument();
+    expect(screen.queryByText('(count)')).not.toBeInTheDocument();
+    expect(screen.queryByText('(sum)')).not.toBeInTheDocument();
+  });
+
   it('omits transactionStats when hasActiveFilters is true', () => {
     render(
       <TransactionsTab
@@ -160,6 +175,31 @@ describe('TransactionsTab', () => {
   it('renders filter bar when there are transactions', () => {
     render(<TransactionsTab {...baseProps} />);
     expect(screen.getByTestId('filter-bar')).toBeInTheDocument();
+  });
+
+  it('omits export, filters, and pagination when there are no transactions', () => {
+    render(
+      <TransactionsTab
+        {...baseProps}
+        transactions={[]}
+        filteredTransactions={[]}
+      />
+    );
+
+    expect(screen.queryByText('Export')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('filter-bar')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Load More/)).not.toBeInTheDocument();
+  });
+
+  it('omits pagination when there are no more transactions', () => {
+    render(
+      <TransactionsTab
+        {...baseProps}
+        hasMoreTx={false}
+      />
+    );
+
+    expect(screen.queryByText(/Load More/)).not.toBeInTheDocument();
   });
 
   it('falls back transactionStats prop to undefined when no filter and stats are null', () => {

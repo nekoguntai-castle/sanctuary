@@ -1,6 +1,55 @@
-# Next Task: Lizard UI Batch 32 - Device Account Import
+# Next Task: Lizard UI Batch 33 - Wallet Detail Tabs
 
 Status: in progress
+
+Goal: reduce the related `WalletDetail` lizard findings by splitting sync-log filtering/rendering, transactions-tab header/filter/summary/load-more rendering, and modal gating helpers while preserving log auto-scroll behavior, level/module/Tor display, sync/full-resync/pause/clear controls, AI query callbacks and aggregation copy, transaction export/load-more behavior, transaction stats suppression when filtered, modal visibility guards, and the public `LogTab`, `TransactionsTab`, and `WalletDetailModals` import paths.
+
+## Lizard UI Batch 33 Checklist
+
+- [x] Start from updated `main` after Batch 32 PR and post-merge full lane are green.
+- [x] Confirm grouped WalletDetail targets: `LogTab` at 31 CCN, `TransactionsTab` at 27 CCN, and `WalletDetailModals` at 21 CCN.
+- [x] Split WalletDetail tab/modal render branches into focused helpers while preserving callbacks and visible behavior.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+
+## Lizard UI Batch 33 Review
+
+Plan:
+
+- Keep `components/WalletDetail/LogTab.tsx`, `components/WalletDetail/tabs/TransactionsTab.tsx`, and `components/WalletDetail/WalletDetailModals.tsx` as the public exports.
+- Move log-level filtering, controls, content states, log row badges/details, transaction tab header/filter summary/load-more rendering, and modal visibility guards into focused local helpers.
+- Treat this as one bounded WalletDetail surface: leave `WalletDetailLoadedView`, transaction list internals, export modal internals, websocket hooks, and unrelated WalletDetail settings for later batches.
+- Preserve `tests/components/WalletDetail/LogTab.test.tsx`, `tests/components/WalletDetail/LogTab.branches.test.tsx`, `tests/components/WalletDetail/tabs/TransactionsTab.test.tsx`, and `tests/components/WalletDetail/WalletDetailModals.test.tsx`; add focused assertions only if extraction exposes untested behavior boundaries.
+- Verify focused lizard against the three public files, extracted helper directories, and focused tests before running broader guardrails.
+
+Verification so far:
+
+- PR #31 merged as `3940e3fb`; the post-merge `main` backstop passed release `24684018341`, dev image build `24684018256`, install tests `24684018302`, and test suite `24684018271`, including full backend, full frontend, full gateway, full build, full E2E, and full test summary jobs.
+- Fresh grouped lizard measurement from `main` (`3940e3fb`) reports `components/WalletDetail/LogTab.tsx:31` at 31 CCN, `components/WalletDetail/tabs/TransactionsTab.tsx:78` at 27 CCN, and `components/WalletDetail/WalletDetailModals.tsx:94` at 21 CCN.
+- Reduced `LogTab` to an 82-line public sync-log shell, `TransactionsTab` to a 99-line transaction tab shell, and `WalletDetailModals` to a 103-line modal mount shell.
+- Moved log filtering, controls, content states, row badge/detail rendering, transaction header/filter/AI summary/load-more rendering, transaction stats suppression, and modal visibility guards into focused local helpers.
+- Preserved log auto-scroll and scroll-position toggle behavior, level/module/Tor display, sync/full-resync/pause/clear callbacks, AI query callbacks and aggregation copy, export/load-more behavior, transaction stats suppression for AI/manual filters, modal wallet-id guards, and the public `LogTab`, `TransactionsTab`, and `WalletDetailModals` import paths.
+- Added focused transaction-tab assertions for aggregation results without an aggregation label, no-transaction export/filter/pagination suppression, and no-more pagination suppression.
+- Focused WalletDetail tests passed: `npx vitest run tests/components/WalletDetail/LogTab.test.tsx tests/components/WalletDetail/LogTab.branches.test.tsx tests/components/WalletDetail/tabs/TransactionsTab.test.tsx tests/components/WalletDetail/WalletDetailModals.test.tsx` passed: 4 files, 25 tests.
+- Focused lizard passed for the three public files, extracted helper directories, and focused tests.
+- `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, and `npm run lint` passed.
+- `npm run test:coverage` passed: 401 files, 5,590 tests, 100% statements/branches/functions/lines.
+- Broad lizard now reports 54 warnings, average CCN 1.3, max CCN 33; `LogTab`, `TransactionsTab`, and `WalletDetailModals` are no longer in the warning list.
+- CI-scope lizard passed with the expected 9 server warnings.
+- `npx --yes jscpd@4 .` passed at 2.02% duplication, 277 clones, and 5,300 duplicated lines.
+- `node scripts/quality/check-large-files.mjs`, `git diff --check`, and tracked-tree gitleaks detect passed.
+
+Edge case and self-review notes:
+
+- Empty log state, loading log state, filtered log row rendering, pause/sync disabled states, auto-scroll checkbox/scroll-position transitions, and details without `viaTor` display remain covered by focused tests.
+- Empty transactions now explicitly suppress export, filter bar, and load-more controls; `hasMoreTx=false` suppresses pagination even when transactions exist.
+- AI aggregation summary boundaries are covered for count, non-count sats formatting, null aggregation labels, and no aggregation result fallback copy.
+- Modal visibility remains wallet-id guarded for wallet-bound modals, while address QR, device-share prompt, and delete confirmation retain their original non-wallet-id guards.
+
+# Previous Task: Lizard UI Batch 32 - Device Account Import
+
+Status: complete
 
 Goal: reduce the related `DeviceDetail` account import lizard findings by splitting manual derivation-path form logic, add-account modal method routing, and QR import camera/file states while preserving account purpose/script path defaults, manual field updates, submit disabled/loading behavior, import method selection, close/back reset behavior, parsed-account review routing, USB/SD/QR/manual flows, QR mode toggles, camera retry/stop behavior, animated-QR progress display, file upload parsing state, scanner props, and the public `ManualAccountForm`, `AddAccountFlow`, and `QrImport` import paths.
 
@@ -10,8 +59,8 @@ Goal: reduce the related `DeviceDetail` account import lizard findings by splitt
 - [x] Confirm grouped account import targets: `ManualAccountForm` at 31 CCN, `AddAccountFlow` at 23 CCN, and `QrImport` at 21 CCN.
 - [x] Split account import render/state branches into focused helpers while preserving callbacks and visible behavior.
 - [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
-- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
-- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+- [x] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [x] Merge after required checks pass, then wait for the post-merge `main` backstop.
 
 ## Lizard UI Batch 32 Review
 
@@ -41,6 +90,8 @@ Verification so far:
 - CI-scope lizard passed with the expected 9 server warnings.
 - `npx --yes jscpd@4 .` passed at 2.02% duplication, 277 clones, and 5,300 duplicated lines after sharing the QR scanner frame.
 - `node scripts/quality/check-large-files.mjs` passed.
+- PR #31 checks passed: `PR Required Checks`, `Code Quality Required Checks`, Quick Frontend, Quick E2E, Quick Test Hygiene, lizard, jscpd, gitleaks, lint, and Docker builds. `Full Test Summary` was skipped as intended on PR.
+- PR #31 merged as `3940e3fb`; the post-merge `main` backstop passed release `24684018341`, dev image build `24684018256`, install tests `24684018302`, and test suite `24684018271`, including full backend, full frontend, full gateway, full build, full E2E, and full test summary jobs.
 
 Edge case and self-review notes:
 
