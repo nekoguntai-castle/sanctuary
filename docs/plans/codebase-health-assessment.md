@@ -8,7 +8,7 @@ Status: Draft
 **Grade**: A
 **Confidence**: High
 **Mode**: full
-**Commit**: c58e4073 + working tree
+**Commit**: eda556b8 + working tree
 
 ---
 
@@ -29,7 +29,7 @@ None.
 | --- | ---: | --- |
 | Correctness | 20/20 | Tests, lint, typecheck, browser auth contract, OpenAPI route coverage, and API body validation pass. |
 | Reliability | 15/15 | Error handling, request timeouts, retry/backoff, typed validation, and shutdown paths are consistent by inspection. |
-| Maintainability | 7/15 | Architecture and duplication are strong, and the large-file policy is green again; lizard now reports 69 CCN warnings and the largest file is a classified 2,637-line proof harness. |
+| Maintainability | 7/15 | Architecture and duplication are strong, and the large-file policy is green again; lizard now reports 68 CCN warnings and the largest file is a classified 2,637-line proof harness. |
 | Security | 15/15 | No high/critical advisories, gitleaks is clean, trust-boundary validation is present, and sampled unsafe API patterns are controlled. |
 | Performance | 10/10 | Request-facing I/O is async/bounded; sampled data-access paths use grouped/windowed queries instead of per-row fan-out. |
 | Test Quality | 15/15 | App, backend, and gateway coverage gates are green at 100% statements/branches/functions/lines. |
@@ -43,7 +43,7 @@ None.
 - vs 2026-04-18 (`219e2d98`): overall `+/-0` (`92 -> 92`), grade `A -> A`, confidence `High -> High`.
 - Positive movement: app/backend/gateway coverage gates are now green at 100%.
 - Post-audit remediation: large-file classification is green again after extracting dashboard read-model code from `server/src/repositories/agentRepository.ts` into `server/src/repositories/agentDashboardRepository.ts`.
-- Current remediation: `WalletStats`, `TransactionRow`, `TransactionList`, `LabelEditor`, `FlowPreview`, `NetworkConnectionCard`, `ServerForm`, `AddressesTab`, `DeviceDetail`, `QRSigningModal`, `DeviceDetailsForm`, `NetworkSyncActions`, `Monitoring`, `WalletDetail`, `WalletTelegramSettings`, `ChatTab`, `UsersGroups`, `AIQueryInput`, `Layout`, `SidebarContent`, `PriceChart`, `RestorePanel`, `Variables`, `UTXOGarden`, `DraftList`, `LabelSelector`, `SendTransactionPage`, `LabelManager`, `NotificationToast`, `NotificationPanel`/`NotificationItem`, `BlockVisualizer`, `Block`, `QueuedSummaryBlock`, `PendingTxDot`, `AppearanceTab`, `BackgroundsPanel`, `Account`, and `AgentManagement` are no longer top lizard findings; warning-band file pressure dropped by splitting dashboard repository tests, AgentManagement views, TransactionList helpers, NetworkConnectionCard controller/form helpers, AddressesTab address-list helpers, DeviceDetail page helpers, QR signing modal scan/upload helpers, DeviceDetailsForm render helpers, NetworkSyncActions sync/resync helpers, Monitoring controller/render helpers, WalletDetail controller/view helpers, wallet Telegram settings controller/render helpers, ChatTab controller/render helpers, UsersGroups controller/render helpers, AIQueryInput controller/render helpers, Layout controller/render helpers, SidebarContent section helpers, PriceChart tooltip/animated-price helpers, RestorePanel state/modal helpers, Variables controller/render helpers, and UTXOGarden dot/model helpers, and gitleaks now has a pinned project-tooling path.
+- Current remediation: `WalletStats`, `TransactionRow`, `TransactionList`, `LabelEditor`, `FlowPreview`, `NetworkConnectionCard`, `ServerForm`, `AddressesTab`, `DeviceDetail`, `QRSigningModal`, `DeviceDetailsForm`, `NetworkSyncActions`, `Monitoring`, `WalletDetail`, `WalletTelegramSettings`, `AppRoutes`, `ChatTab`, `UsersGroups`, `AIQueryInput`, `Layout`, `SidebarContent`, `PriceChart`, `RestorePanel`, `Variables`, `UTXOGarden`, `DraftList`, `LabelSelector`, `SendTransactionPage`, `LabelManager`, `NotificationToast`, `NotificationPanel`/`NotificationItem`, `BlockVisualizer`, `Block`, `QueuedSummaryBlock`, `PendingTxDot`, `AppearanceTab`, `BackgroundsPanel`, `Account`, and `AgentManagement` are no longer top lizard findings; warning-band file pressure dropped by splitting dashboard repository tests, AgentManagement views, TransactionList helpers, NetworkConnectionCard controller/form helpers, AddressesTab address-list helpers, DeviceDetail page helpers, QR signing modal scan/upload helpers, DeviceDetailsForm render helpers, NetworkSyncActions sync/resync helpers, Monitoring controller/render helpers, WalletDetail controller/view helpers, wallet Telegram settings controller/render helpers, AppRoutes controller/shell helpers, ChatTab controller/render helpers, UsersGroups controller/render helpers, AIQueryInput controller/render helpers, Layout controller/render helpers, SidebarContent section helpers, PriceChart tooltip/animated-price helpers, RestorePanel state/modal helpers, Variables controller/render helpers, and UTXOGarden dot/model helpers, and gitleaks now has a pinned project-tooling path.
 
 ---
 
@@ -67,9 +67,9 @@ None.
 | ai_proxy_audit | 0 vulnerabilities | `npm --prefix ai-proxy audit --json` | Security 4.1 context |
 | secrets | 0 | `scripts/quality.sh` gitleaks lane with pinned `.tmp/quality-tools/gitleaks-8.30.1/gitleaks`; prior `/tmp/gitleaks-grade/gitleaks` scan was also clean | Security 4.2 |
 | rg_secret_fallback | 8 raw PEM/API-shaped hits; treated as weaker fallback evidence | `grade.sh` regex fallback | Security 4.2 context |
-| lizard_warning_count | 69 functions with CCN > 15 | `.tmp/quality-tools/lizard-1.21.2/bin/lizard -w .` | Maintainability 3.1 |
+| lizard_warning_count | 68 functions with CCN > 15 | `.tmp/quality-tools/lizard-1.21.2/bin/lizard -w .` | Maintainability 3.1 |
 | lizard_avg_ccn | 1.4 | `.tmp/quality-tools/lizard-1.21.2/bin/lizard .` | Maintainability 3.1 context |
-| lizard_max_ccn | 37; current top JSX component is `AppRoutes` | lizard CSV sort | Maintainability 3.1 context |
+| lizard_max_ccn | 35; current top JSX components are `LoginForm` and `AILabelSuggestion` | lizard CSV sort | Maintainability 3.1 context |
 | duplication_pct | 2.03%; 276 clones, 5,283 duplicated lines | `npx --yes jscpd@4 .` | Maintainability 3.2 |
 | largest_file_lines | 2,637 | `grade.sh`; `scripts/perf/phase3-compose-benchmark-smoke.mjs` | Maintainability 3.3 |
 | large_file_classification | pass; `server/src/repositories/agentRepository.ts` is 720 lines, dashboard repository tests are split, and warning-band files are down to 8 | `node scripts/quality/check-large-files.mjs` | Maintainability 3.3 context |
@@ -93,7 +93,7 @@ None.
 - **[2.2] Timeouts and retries - High -> +4**: ISO Availability/Fault Tolerance is strong across `src/api/client.ts`, `server/src/middleware/requestTimeout.ts`, `server/src/models/prisma.ts`, Electrum clients, gateway request logging, and AI/admin monitoring calls.
 - **[2.3] Crash-prone paths - High -> +5**: ISO Fault Tolerance is strong because process exits are centralized in process-exit helpers and sampled production code avoids broad panic/assert-style paths.
 - **[3.4] Architecture clarity - High -> +3**: ISO Modularity is strong because `check:architecture-boundaries` passes and root/server/gateway/shared boundaries are enforced.
-- **[3.5] Readability/naming - Medium -> +1**: ISO Analyzability is mixed because naming is generally clear, but 69 lizard warnings and oversized files make review/change analysis harder.
+- **[3.5] Readability/naming - Medium -> +1**: ISO Analyzability is mixed because naming is generally clear, but 68 lizard warnings and oversized files make review/change analysis harder.
 - **[4.3] Input validation quality - High -> +3**: ISO Integrity is strong because Zod schemas validate request bodies, params, query data, and runtime config at trust boundaries.
 - **[4.4] Safe system/API usage - High -> +3**: ISO Integrity is strong because inspected `eval` hits in Redis locking/rate-limiting are fixed Lua scripts, Prisma raw SQL uses tagged templates, and browser `innerHTML` hits are test-only.
 - **[5.1] Hot-path efficiency - High -> +5**: ISO Time Behaviour is strong because request-facing HTTP, DB, Redis, Electrum, and AI paths use async calls, timeouts, and bounded retry/backoff patterns.
@@ -116,7 +116,7 @@ None.
 
 ## Top Risks
 
-1. Complexity remains the largest score drag - lizard reports 69 functions above CCN 15, led by `App.tsx`.
+1. Complexity remains the largest score drag - lizard reports 68 functions above CCN 15, led by `LoginForm` and `AILabelSuggestion` among JSX components.
 2. File-size pressure remains in the warning band - the hard large-file policy is green, but `server/tests/unit/api/admin-agents-routes.test.ts`, `e2e/admin-operations.spec.ts`, and several other production/test files remain above 800 lines.
 3. Secret scanning now has pinned project-tooling support, but the weaker regex fallback still reports fixture/doc-shaped hits.
 4. Low-severity dependency advisories remain - root has 16 low advisories and gateway has 8 low advisories; suggested fixes include behavior-risky major-version changes.
@@ -124,7 +124,7 @@ None.
 
 ## Fastest Improvements
 
-1. Reduce top lizard components - expected gain: up to +5 Maintainability if warnings reach 0; effort: high, with `AppRoutes` as the clear next starting point.
+1. Reduce top lizard components - expected gain: up to +5 Maintainability if warnings reach 0; effort: high, with `LoginForm` and `AILabelSuggestion` as the clear next starting points.
 2. Continue shrinking warning-band production/test files where ownership and reviewability improve - expected gain: maintainability stability; effort: medium.
 3. Keep pinned gitleaks project tooling exercised in CI/local quality runs - expected gain: stable secret-scan reproducibility; effort: small.
 4. Continue low-advisory triage without unsafe major downgrades - expected gain: security posture stability; effort: medium.
@@ -134,7 +134,7 @@ None.
 | Phase | Target | Work | Exit Criteria | Expected Score Movement |
 | --- | --- | --- | --- | --- |
 | 0 | Maintain green large-file policy | Keep `agentRepository.ts` and new dashboard repository under 1,000 lines; avoid classifying production files. | `node scripts/quality/check-large-files.mjs` exits 0. | Score stays about `92/A`, but gate remains green. |
-| 1 | Reduce complexity concentration | Extract top JSX decision/render helpers from the highest CCN components. | lizard warnings trend below 15. | `+1` to `+3`; `WalletStats`, `TransactionRow`, `TransactionList`, `NetworkConnectionCard`, `AddressesTab`, `DeviceDetail`, `QRSigningModal`, `DeviceDetailsForm`, `NetworkSyncActions`, `Monitoring`, `WalletDetail`, `WalletTelegramSettings`, `ChatTab`, `UsersGroups`, `AIQueryInput`, `Layout`, `SidebarContent`, `PriceChart`, `RestorePanel`, `Variables`, `UTXOGarden`, `DraftList`, `LabelSelector`, `SendTransactionPage`, `LabelManager`, `NotificationToast`, `NotificationPanel`, `BlockVisualizer`, `ThemeSection`, `Account`, and `AgentManagement` extractions have started this trend. |
+| 1 | Reduce complexity concentration | Extract top JSX decision/render helpers from the highest CCN components. | lizard warnings trend below 15. | `+1` to `+3`; `WalletStats`, `TransactionRow`, `TransactionList`, `NetworkConnectionCard`, `AddressesTab`, `DeviceDetail`, `QRSigningModal`, `DeviceDetailsForm`, `NetworkSyncActions`, `Monitoring`, `WalletDetail`, `WalletTelegramSettings`, `AppRoutes`, `ChatTab`, `UsersGroups`, `AIQueryInput`, `Layout`, `SidebarContent`, `PriceChart`, `RestorePanel`, `Variables`, `UTXOGarden`, `DraftList`, `LabelSelector`, `SendTransactionPage`, `LabelManager`, `NotificationToast`, `NotificationPanel`, `BlockVisualizer`, `ThemeSection`, `Account`, and `AgentManagement` extractions have started this trend. |
 | 2 | Clear complexity threshold | Continue focused extractions until no function exceeds CCN 15. | `lizard_warning_count=0`. | Up to `+5`, about `97/A`. |
 | 3 | Harden audit reproducibility | Keep pinned gitleaks project tooling and grade-history metadata on the documented schema. | gitleaks scans report zero raw findings without manual triage. | Confidence stays High with less manual interpretation; pinned local tooling is now in place. |
 | 4 | Keep gates green | Preserve 100% coverage, lint/typecheck, architecture, route, auth, and validation checks. | All quality gates pass repeatedly in CI and local audit. | Preserves A-grade stability. |
@@ -161,8 +161,8 @@ None.
 - `npm audit --json`, `npm --prefix server audit --json`, `npm --prefix gateway audit --json`, and `npm --prefix ai-proxy audit --json` completed with `security_high=0`.
 - `/tmp/gitleaks-grade/gitleaks detect --source . --no-git --redact --report-format json` completed clean after normalizing prior grade-history metadata to the documented schema value.
 - `scripts/quality.sh` gitleaks-only lane completed clean through pinned `.tmp/quality-tools/gitleaks-8.30.1/gitleaks` with `QUALITY_BOOTSTRAP_TOOLS=0`.
-- `.tmp/quality-tools/lizard-1.21.2/bin/lizard .` and `-w .` completed after current remediation: 69 warnings, average CCN 1.4, max CCN 37.
-- `npx --yes jscpd@4 .` completed: 2.03% duplication.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard .` and `-w .` completed after current remediation: 68 warnings, average CCN 1.4, max CCN 35.
+- `npx --yes jscpd@4 .` completed: 2.03% duplication, 276 clones, 5,283 duplicated lines.
 - `npm run test:coverage` passed after current remediation: 399 app test files, 5,567 tests, 100% statements/branches/functions/lines.
 - `npm run test:backend:coverage` passed after current remediation: 390 backend test files passed, 22 skipped; 9,151 tests passed, 503 skipped; 100% statements/branches/functions/lines.
 - `npm run test:coverage` in `gateway` passed outside the sandbox: 20 files, 513 tests, 100% statements/branches/functions/lines.
@@ -183,6 +183,7 @@ None.
 - Variables batch focused checks passed: `npx vitest run tests/components/Variables.test.tsx`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/Variables.tsx components/Variables`, `npm run typecheck:app`, and `npm run lint:app`.
 - UTXOGarden batch focused checks passed: `npx vitest run tests/components/UTXOList/UTXOGarden.test.tsx tests/components/UTXOList.branches.test.tsx`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/UTXOList/UTXOGarden.tsx components/UTXOList/UTXOGarden`, `npm run typecheck:app`, and `npm run lint:app`.
 - WalletTelegramSettings batch focused checks passed: `npx vitest run tests/components/WalletDetail/WalletTelegramSettings.test.tsx`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/WalletDetail/WalletTelegramSettings.tsx components/WalletDetail/WalletTelegramSettings`, `npm run typecheck:app`, and `npm run lint:app`.
+- AppRoutes batch focused checks passed: `npx vitest run tests/App.branches.test.tsx tests/src/app/appRoutes.test.ts` (9 tests), `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w App.tsx src/app/AppRoutes`, `npm run typecheck:app`, and `npm run lint:app`.
 - UsersGroups batch focused checks passed: `npx vitest run tests/components/UsersGroups.test.tsx tests/components/UsersGroups.branches.test.tsx tests/components/UsersGroups/CreateUserModal.test.tsx tests/components/UsersGroups/EditUserModal.branches.test.tsx tests/components/UsersGroups/GroupPanel.branches.test.tsx tests/components/UsersGroups/EditGroupModal.branches.test.tsx`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/UsersGroups`, `npm run typecheck:app`, and `npm run lint:app`.
 - AIQueryInput batch focused checks passed: `npx vitest run tests/components/AIQueryInput.test.tsx`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/AIQueryInput.tsx components/AIQueryInput`, `npm run typecheck:app`, and `npm run lint:app`.
 - Layout batch focused checks passed: `npx vitest run tests/components/Layout.test.tsx tests/components/Layout.branches.test.tsx` (45 tests), `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/Layout/Layout.tsx components/Layout/LayoutShell.tsx components/Layout/useLayoutController.ts`, `npm run typecheck:app`, and `npm run lint:app`.
