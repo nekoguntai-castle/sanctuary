@@ -273,4 +273,110 @@ describe('AgentWalletDashboard', () => {
 
     expect(screen.getByText('No active keys.')).toBeInTheDocument();
   });
+
+  it('renders fallback row values and empty detail sections', async () => {
+    const user = userEvent.setup();
+    vi.mocked(adminApi.getAgentWalletDashboard).mockResolvedValueOnce([
+      {
+        ...dashboardRow,
+        operationalBalanceSats: '0',
+        pendingFundingDraftCount: 0,
+        openAlertCount: 0,
+        activeKeyCount: 0,
+        lastFundingDraft: null,
+        lastOperationalSpend: {
+          ...dashboardRow.lastOperationalSpend,
+          blockTime: 'not-a-date',
+          createdAt: '2026-04-16T00:10:00.000Z',
+        },
+        recentFundingDrafts: [],
+        recentOperationalSpends: [],
+        recentAlerts: [],
+        agent: {
+          ...agent,
+          maxFundingAmountSats: null,
+          maxOperationalBalanceSats: null,
+          dailyFundingLimitSats: '150000',
+          weeklyFundingLimitSats: '450000',
+          minOperationalBalanceSats: null,
+          cooldownMinutes: null,
+          fundingWallet: null,
+          operationalWallet: null,
+          apiKeys: [],
+        },
+      },
+    ]);
+
+    renderDashboard();
+
+    expect(await screen.findByText('Treasury Agent')).toBeInTheDocument();
+    expect(screen.queryByText('Operational funds available')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Review Drafts' })).not.toBeInTheDocument();
+    expect(screen.getAllByText('0 sats')).not.toHaveLength(0);
+    expect(screen.getByText('Never')).toBeInTheDocument();
+    expect(screen.getByText('Unknown')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'funding-1' })).toHaveAttribute('href', '/wallets/funding-1');
+    expect(screen.getByRole('link', { name: 'operational-1' })).toHaveAttribute('href', '/wallets/operational-1');
+    expect(screen.getAllByText('Wallet')).toHaveLength(2);
+
+    await user.click(screen.getByText('Review details'));
+
+    expect(screen.getAllByText('No cap')).toHaveLength(2);
+    expect(screen.getByText('150,000 sats')).toBeInTheDocument();
+    expect(screen.getByText('450,000 sats')).toBeInTheDocument();
+    expect(screen.getByText('Off')).toBeInTheDocument();
+    expect(screen.getByText('0 min')).toBeInTheDocument();
+    expect(screen.getByText('No recent funding requests.')).toBeInTheDocument();
+    expect(screen.getByText('No operational spends recorded.')).toBeInTheDocument();
+    expect(screen.getByText('No open alerts.')).toBeInTheDocument();
+    expect(screen.getByText('No active keys.')).toBeInTheDocument();
+  });
+
+  it('renders operational spend details without optional fee or address fields', async () => {
+    const user = userEvent.setup();
+    vi.mocked(adminApi.getAgentWalletDashboard).mockResolvedValueOnce([
+      {
+        ...dashboardRow,
+        recentOperationalSpends: [{
+          ...dashboardRow.lastOperationalSpend,
+          id: 'tx-no-fee',
+          txid: 'shorttx',
+          feeSats: null,
+          counterpartyAddress: null,
+        }],
+      },
+    ]);
+
+    renderDashboard();
+
+    expect(await screen.findByText('Treasury Agent')).toBeInTheDocument();
+    await user.click(screen.getByText('Review details'));
+
+    expect(screen.getByText('0 conf')).toBeInTheDocument();
+    expect(screen.getByText('shorttx')).toBeInTheDocument();
+    expect(screen.queryByText('tb1qrecipient')).not.toBeInTheDocument();
+  });
+
+  it('skips cancelled key revocation and reports action failures', async () => {
+    const user = userEvent.setup();
+    const confirm = vi.fn().mockReturnValueOnce(false).mockReturnValueOnce(true);
+    vi.stubGlobal('confirm', confirm);
+    vi.mocked(adminApi.revokeAgentApiKey).mockRejectedValueOnce(new Error('revoke failed'));
+
+    renderDashboard();
+
+    expect(await screen.findByText('Treasury Agent')).toBeInTheDocument();
+    await user.click(screen.getByText('Review details'));
+
+    const revokeButton = screen.getByRole('button', { name: 'Revoke' });
+    await user.click(revokeButton);
+
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(adminApi.revokeAgentApiKey).not.toHaveBeenCalled();
+
+    await user.click(revokeButton);
+
+    await waitFor(() => expect(adminApi.revokeAgentApiKey).toHaveBeenCalledWith('agent-1', 'key-1'));
+    expect(await screen.findByText('revoke failed')).toBeInTheDocument();
+  });
 });

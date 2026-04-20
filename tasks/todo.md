@@ -1,6 +1,53 @@
-# Next Task: Lizard UI Batch 28 - UTXO Row
+# Next Task: Lizard UI Batch 29 - Agent Wallet Dashboard
 
 Status: in progress
+
+Goal: reduce the current `AgentWalletDashboard` lizard finding by splitting dashboard state/model derivation, loading/error shell rendering, summary tiles, row header/actions, wallet links, and detail panels while preserving dashboard load/retry behavior, row ordering, totals, spend-ready eligibility, status badges, pause/unpause/revoke behavior, confirm gating, active-key filtering, empty states, wallet links, metadata labels, formatting fallbacks, and the public `AgentWalletDashboard` import path.
+
+## Lizard UI Batch 29 Checklist
+
+- [x] Start from updated `main` after Batch 28 PR and post-merge full lane are green.
+- [x] Confirm `AgentWalletDashboard` is tied as a current top JSX target at 33 CCN.
+- [x] Split AgentWalletDashboard render/status branches into focused helpers while preserving callbacks and visible behavior.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+
+## Lizard UI Batch 29 Review
+
+Plan:
+
+- Keep `components/AgentWalletDashboard/index.tsx` as the public `AgentWalletDashboard` export and move dashboard controller/model helpers plus row/detail render pieces under `components/AgentWalletDashboard/`.
+- Extract row state derivation, active-key filtering, spend-ready checks, total aggregation, row ordering, status badge rendering, and dashboard shell states into focused helpers so the row component no longer owns every branch.
+- Preserve `tests/components/AgentWalletDashboard.test.tsx` first; add focused branch tests only if extraction exposes missing behavior around invalid balances, invalid dates, revoked/expired keys, unknown metadata labels, empty sections, or cancelled revocation.
+- Verify focused lizard against `components/AgentWalletDashboard/index.tsx`, the extracted helper directory, and the focused test before running the broader guardrails.
+
+Verification so far:
+
+- PR #27 merged as `4f68be9a`; the post-merge `main` backstop passed release `24675976724`, dev image build `24675976716`, install tests `24675976681`, and test suite `24675976713`, including full backend, full gateway, full frontend, full build, full E2E, and full test summary jobs.
+- Fresh focused lizard measurement from `main` (`4f68be9a`) reports `components/AgentWalletDashboard/index.tsx:326` anonymous row render at 33 CCN.
+- Reduced `components/AgentWalletDashboard/index.tsx` to an 8-line public shell and moved loading/error/dashboard rendering, row rendering, row actions, row metrics/links, detail panels, status badges, controller state, and pure dashboard model helpers under `components/AgentWalletDashboard/`.
+- Preserved dashboard load/retry behavior, row ordering by attention then name, total aggregation, spend-ready eligibility, active-key filtering, pause/unpause/revoke behavior, confirmation gating, action error display, wallet links, status badges, metadata labels, no-cap/off/fallback copy, empty detail states, and the public `AgentWalletDashboard` import path.
+- `npx vitest run tests/components/AgentWalletDashboard.test.tsx tests/components/AgentWalletDashboard/agentWalletDashboardModel.test.ts` passed: 2 files, 12 tests.
+- `npm run typecheck:tests` passed after tightening the dashboard model test helper to omit `agent` before layering partial agent overrides; this fixes PR #28's first `Quick Frontend Tests` failure.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/AgentWalletDashboard tests/components/AgentWalletDashboard.test.tsx tests/components/AgentWalletDashboard/agentWalletDashboardModel.test.ts` passed with no focused warnings.
+- `npm run typecheck:app`, `npm run lint:app`, and `npm run lint` passed.
+- `npm run test:coverage` passed: 400 files, 5,578 tests, 100% statements/branches/functions/lines.
+- Broad lizard now reports 64 warnings, average CCN 1.3, max CCN 33; `AgentWalletDashboard` is no longer in the warning list.
+- CI-scope lizard passed with the expected 9 server warnings.
+- `npx --yes jscpd@4 .` completed: 2.02% duplication, 276 clones, 5,283 duplicated lines.
+- `node scripts/quality/check-large-files.mjs`, `git diff --check`, and full working-tree gitleaks passed.
+
+Edge case and self-review notes:
+
+- Null/undefined optional inputs remain guarded: absent wallet names fall back to wallet IDs, absent wallet types render `Wallet`, absent funding drafts render `Never`, empty draft/spend/alert/key sections render their empty copy, and absent API keys filter to an empty active-key list.
+- Numeric/date boundaries remain explicit: malformed sats display their raw value where appropriate, malformed operational balances count as zero in totals and not spend-ready, zero balances are not spend-ready, expired/revoked keys are inactive, invalid expiry dates are inactive, and invalid timestamps render `Unknown`.
+- Action boundaries remain preserved: cancelled key revocation does not call the API, successful status/key actions reload data, failed actions show the extracted error copy, and revoked agents cannot be paused.
+- Metadata fallbacks remain preserved for known labels and unknown underscore-delimited labels across spend details and alert history.
+
+# Previous Task: Lizard UI Batch 28 - UTXO Row
+
+Status: complete
 
 Goal: reduce the current `UTXORow` lizard finding by splitting row state modeling, selection control rendering, amount/privacy/dust rendering, explorer links, labels/locked badges, freeze action, and age/transaction detail rendering while preserving row status priority, checkbox visibility and optional callback behavior, dust detection/spend-cost copy, privacy detail callback behavior, explorer link targets, freeze callback behavior, age/confirmation display, locked draft fallback copy, and public `UTXORow` import path.
 
@@ -10,8 +57,8 @@ Goal: reduce the current `UTXORow` lizard finding by splitting row state modelin
 - [x] Confirm `UTXORow` is tied as a current top JSX target at 33 CCN.
 - [x] Split UTXORow render/status branches into focused helpers while preserving callbacks and visible behavior.
 - [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
-- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
-- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+- [x] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [x] Merge after required checks pass, then wait for the post-merge `main` backstop.
 
 ## Lizard UI Batch 28 Review
 
@@ -36,6 +83,8 @@ Verification so far:
 - `npm run test:coverage` passed: 399 files, 5,571 tests, 100% statements/branches/functions/lines.
 - `npx --yes jscpd@4 .` completed: 2.03% duplication, 276 clones, 5,283 duplicated lines.
 - `node scripts/quality/check-large-files.mjs`, `git diff --check`, grade-history JSONL parsing, and full working-tree gitleaks passed.
+- PR #27 checks passed: `PR Required Checks`, `Code Quality Required Checks`, Quick Frontend, Quick E2E, Quick Test Hygiene, lizard, jscpd, gitleaks, lint, and Docker builds. `Full Test Summary` was skipped as intended on PR.
+- PR #27 merged as `4f68be9a`; the post-merge `main` backstop passed release `24675976724`, dev image build `24675976716`, install tests `24675976681`, and test suite `24675976713`, including full backend, full gateway, full frontend, full build, full E2E, and full test summary jobs.
 
 Edge case and self-review notes:
 
