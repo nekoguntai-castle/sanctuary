@@ -185,6 +185,46 @@ describe('WalletTelegramSettings', () => {
     expect(await screen.findByText('Failed to update settings')).toBeInTheDocument();
   });
 
+  it('ignores settings load completion after unmount', async () => {
+    let resolveSettings!: (settings: Awaited<ReturnType<typeof walletsApi.getWalletTelegramSettings>>) => void;
+
+    vi.mocked(useUser).mockReturnValue({
+      user: {
+        id: 'u1',
+        preferences: {
+          telegram: {
+            botToken: 'token',
+            chatId: 'chat-id',
+            enabled: true,
+          },
+        },
+      },
+      isLoading: false,
+    } as never);
+
+    vi.mocked(walletsApi.getWalletTelegramSettings).mockReturnValue(
+      new Promise((resolve) => {
+        resolveSettings = resolve;
+      })
+    );
+
+    const { unmount } = render(<WalletTelegramSettings walletId={walletId} />);
+
+    unmount();
+
+    await act(async () => {
+      resolveSettings({
+        enabled: true,
+        notifyReceived: false,
+        notifySent: false,
+        notifyConsolidation: false,
+        notifyDraft: false,
+      });
+    });
+
+    expect(walletsApi.getWalletTelegramSettings).toHaveBeenCalledWith(walletId);
+  });
+
   it('covers remaining notification toggles and success-timeout reset', async () => {
     const user = userEvent.setup();
     const timeoutSpy = vi.spyOn(globalThis, 'setTimeout');

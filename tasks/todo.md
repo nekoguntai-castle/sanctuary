@@ -1,6 +1,60 @@
-# Next Task: Lizard UI Batch 23 - UTXO Garden
+# Next Task: Lizard UI Batch 24 - Wallet Telegram Settings
 
 Status: in progress
+
+Goal: reduce the current `WalletTelegramSettings` lizard finding by splitting wallet Telegram settings loading/saving state, Telegram availability warnings, wallet enable toggle, notification checkbox list, shell/header rendering, and shared settings model while preserving default settings, fetch-error fallback behavior, Telegram configured/global-enabled gating, optimistic save payloads, save-error revert behavior, API error copy, generic error copy, success timeout behavior, disabled controls while saving, visible copy, and public `WalletTelegramSettings` import path.
+
+## Lizard UI Batch 24 Checklist
+
+- [x] Start from updated `main` after Batch 23 PR and post-merge full lane are green.
+- [x] Confirm `WalletTelegramSettings` is tied as the current top UI target at 37 CCN.
+- [x] Split WalletTelegramSettings controller/render branches into focused helpers while preserving callbacks and visible copy.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+
+## Lizard UI Batch 24 Review
+
+Plan:
+
+- Keep `components/WalletDetail/WalletTelegramSettings.tsx` as the public shell and move controller logic, availability notices, setting toggles, and shared model helpers under `components/WalletDetail/WalletTelegramSettings/`.
+- Extract default settings, Telegram availability derivation, toggle labels, and save-error message mapping into small helpers so the render layer no longer owns every branch.
+- Preserve `tests/components/WalletDetail/WalletTelegramSettings.test.tsx` first; add focused branch tests only if extraction exposes missing behavior.
+- Verify focused lizard against `components/WalletDetail/WalletTelegramSettings.tsx` and the extracted helper directory before running the broader guardrails.
+
+Verification so far:
+
+- PR #22 merged as `c58e4073`; the post-merge `main` backstop passed the full test summary, full E2E, full build, full frontend, full backend, full gateway, install summary, release check, and dev image build checks.
+- Fresh focused lizard measurement from `main` (`c58e4073`) reports `components/WalletDetail/WalletTelegramSettings.tsx:22` `WalletTelegramSettings` at 37 CCN, tied with `AppRoutes`.
+
+Changes:
+
+- Reduced `components/WalletDetail/WalletTelegramSettings.tsx` from the 37-CCN wallet Telegram renderer/controller to a 12-line public shell.
+- Split default settings, Telegram availability derivation, save-error mapping, async controller state, availability warning cards, wallet enable toggle, notification checkbox list, loading card, and shell/header rendering under `components/WalletDetail/WalletTelegramSettings/`.
+- Added a focused unmount branch test for pending settings loads so the safer async guard keeps 100% branch coverage.
+- Preserved default settings, fetch-error fallback behavior, Telegram configured/global-enabled gating, optimistic save payloads, save-error revert behavior, API error copy, generic error copy, success timeout behavior, disabled controls while saving, visible copy, and public `WalletTelegramSettings` import path.
+- Updated quality tracking: `WalletTelegramSettings` drops out of the current lizard warning list; broad lizard warning count is now 69 and max CCN remains 37 with `AppRoutes` as the top UI target.
+
+Verification so far:
+
+- `npx vitest run tests/components/WalletDetail/WalletTelegramSettings.test.tsx` passed: 1 file, 7 tests.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/WalletDetail/WalletTelegramSettings.tsx components/WalletDetail/WalletTelegramSettings` passed with no warnings.
+- `npm run typecheck:app` passed.
+- `npm run lint:app` passed.
+- Full broad lizard warning count is now 69; `WalletTelegramSettings` has no remaining lizard warnings and max CCN is now 37.
+- `npm run test:coverage` passed: 399 files, 5,567 tests, 100% statements/branches/functions/lines.
+- `npx --yes jscpd@4 .` passed: 2.03% duplication, 276 clones, 5,283 duplicated lines.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: absent user, absent preferences, absent Telegram settings, missing bot token, missing chat ID, fetch failures, null save errors, and hidden notification rows while wallet notifications are disabled remain guarded.
+- Boundary values: Telegram configured versus globally disabled versus available states, enabled versus disabled wallet toggle, every notification key, repeated success timeout replacement, pending-load unmount, and saving-disabled controls remain covered by the focused tests.
+- System boundaries: `useUser`, `walletsApi.getWalletTelegramSettings`, `walletsApi.updateWalletTelegramSettings`, `ApiError`, `Toggle`, and the public `WalletTelegramSettings` import path keep the same contracts.
+- Async/race behavior: pending load completion after unmount no longer sets state, success timeout is cleared on unmount, and save handling still optimistically updates then reverts on failure.
+
+# Previous Task: Lizard UI Batch 23 - UTXO Garden
+
+Status: complete
 
 Goal: reduce the current `UTXOGarden` lizard finding by splitting UTXO garden item modeling, status/style selection, dot rendering, and legend rendering while preserving age color buckets, size scaling, frozen/locked/dust priority, title text, click guards, privacy legend visibility, format callbacks, and public `UTXOGarden` import path.
 
@@ -10,8 +64,8 @@ Goal: reduce the current `UTXOGarden` lizard finding by splitting UTXO garden it
 - [x] Confirm `UTXOGarden` is the current top UI target at 39 CCN.
 - [x] Split UTXOGarden item model/render branches into focused helpers while preserving callbacks and visible copy.
 - [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
-- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
-- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+- [x] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [x] Merge after required checks pass, then wait for the post-merge `main` backstop.
 
 ## Lizard UI Batch 23 Review
 
@@ -43,6 +97,8 @@ Verification so far:
 - Full broad lizard warning count is now 70; `UTXOGarden` has no remaining lizard warnings and max CCN is now 37.
 - `npm run test:coverage` passed: 399 files, 5,566 tests, 100% statements/branches/functions/lines.
 - `git diff --check`, grade-history JSONL parsing, large-file classification, full lint, CI-scope lizard baseline, tracked-tree gitleaks, and `npx --yes jscpd@4 .` passed.
+- PR #22 checks passed: `PR Required Checks`, `Code Quality Required Checks`, Quick Frontend, Quick E2E, lizard, jscpd, gitleaks, lint, and Docker builds.
+- PR #22 merged as `c58e4073`; the post-merge `main` backstop passed `Full Test Summary`, full backend, full frontend, full gateway, full E2E, full build, install tests, release, and dev image builds.
 
 Edge case and self-review:
 
