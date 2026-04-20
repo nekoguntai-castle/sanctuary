@@ -1,4 +1,221 @@
-# Next Task: Lizard UI Batch 10 - QR Signing Modal
+# Next Task: CI/CD Optimization and PR/Merge Workflow Plan
+
+Status: implemented locally; first PR validation pending; merge-queue ready, but GitHub does not currently allow enforcement on this user-owned repository
+
+Goal: optimize GitHub CI/CD so day-to-day commits get fast, relevant feedback without weakening the merge/release safety net. Evaluate whether the current pipeline runs too much on each commit, and decide whether moving from direct commits on `main` to PR-and-merge should be part of the maturity plan.
+
+## Current Judgment
+
+We are running the right *kinds* of tests for a wallet/security-sensitive repo, but too much of the expensive validation is attached to direct pushes on `main`.
+
+The existing `.github/workflows/test.yml` already has the right idea structurally: PRs use a changed-files quick lane, while non-PR events use a full lane. The problem is workflow practice, not only workflow YAML: recent history shows commits landing directly on `main`, so every source-touching commit pays the full post-merge cost immediately.
+
+Recommendation: switch normal development to PR-and-merge, protect `main`, and treat the current full suite as a merge/main confidence gate. Keep expensive Docker install, full E2E, mutation, perf, ops, and vector validation off the default per-commit path except when path filters or release gates make them relevant.
+
+## Evidence From Audit
+
+- Current branch is `main`, and recent history shows direct pushes such as `Refactor QR signing modal complexity`, `Refactor device detail complexity`, and `Fix admin agent service date-boundary test`.
+- Recent GitHub runs show four workflows on source-touching pushes to `main`: `Test Suite`, `Build Dev Images`, `Install Tests`, and `Release`. `Install Tests` and `Release` often finish quickly because they skip/no-op; `Test Suite` is the real cost.
+- A successful recent `Test Suite` push run, `24643866168`, took about 13m37s wall time. Long poles were `Full Frontend Tests` at about 6m15s and `Full E2E Tests` at about 7m17s. `Full Backend Tests` took about 4m43s. `Full Gateway Tests` was about 15s.
+- A failed recent direct-push `Test Suite` run, `24642824339`, failed in `Full Backend Tests` after the commit was already on `main`. That is exactly the failure mode PR gating should prevent.
+- Test inventory is large enough to justify tiering: 844 test/spec files total, including 398 root frontend/shared tests, 383 backend unit tests, 28 backend integration tests, 20 gateway tests, and 14 Playwright specs.
+- None of the inspected workflows currently define `concurrency`, so superseded pushes/PR updates can keep consuming CI minutes.
+- `docker-build.yml` runs on every PR to `main` without PR path filters, even though its push path filter is narrower. That is likely waste for docs/test-only/backend-only changes that do not affect image build surfaces.
+- `release.yml` runs a push-to-main `Release Check` no-op purely as a status check. That is cheap, but it should be documented or replaced by a clearer required-check aggregator.
+- Release validation intentionally duplicates some install validation: `release.yml` waits for `Install Tests`, then calls `release-candidate.yml`. That is acceptable for releases, but it should not influence normal commit gating.
+
+## Target Development Model
+
+- Use short-lived feature branches for all non-emergency work.
+- Open PRs into `main`; require CI before merge.
+- Disable direct pushes to `main` for humans through GitHub branch protection or repository rulesets.
+- Allow only automation/release workflows to write to `main`, and only when explicitly needed.
+- Prefer squash merge or rebase merge so `main` stays linear and each merged change has one clear CI result.
+- Prefer GitHub merge queue as the long-term model. Current blocker: `nekoguntai/sanctuary` is a public repository owned by a paid personal user account. GitHub Pro/personal billing still leaves the repository owner type as `User`, and GitHub merge queue is currently available for public organization-owned repositories or private organization-owned repositories on Enterprise Cloud. The workflows are merge-queue ready, but enforcement must wait until the repository is under an eligible organization or GitHub expands availability.
+
+## Proposed CI Tiers
+
+### Tier 0 - Local Developer Loop
+
+Use focused local commands before pushing:
+
+- Frontend/UI changes: `npm run typecheck:app`, `npm run typecheck:tests`, focused `npx vitest run ...`, then `npm run test:coverage` only before PR readiness when coverage-affecting.
+- Backend changes: `cd server && npm run typecheck:tests`, focused `npx vitest run ...`, targeted integration only when DB/API flow behavior changes.
+- Gateway changes: `cd gateway && npm run test:run` or focused gateway tests.
+- Docker/install changes: focused `tests/install/*` script locally when practical; otherwise rely on PR install gate.
+
+### Tier 1 - Required PR Quick Gate
+
+Target: fast enough for repeated PR updates; broad enough to block obvious regressions before merge.
+
+- Always run secret scan and lint policy checks.
+- Run changed-file detection once and route to relevant quick jobs.
+- Frontend changes: strict app/test typecheck plus `vitest related`.
+- Backend changes: server test typecheck plus related non-integration Vitest tests; keep the two-file backend integration smoke for backend changes.
+- Gateway changes: related gateway tests.
+- E2E/frontend surface changes: keep Chromium smoke/render subset, not full multi-browser E2E.
+- Critical Bitcoin/auth paths: keep `test:mutation:critical:gate` only for those paths.
+- Docker/install paths: run install workflow via existing path filters.
+- Docker image build: run on PR only when Docker/image-impacting paths change.
+
+Implementation detail: create a single always-running required status, for example `PR Required Checks`, that depends on conditional quick jobs and fails if any non-skipped required child job fails. This avoids brittle branch protection on path-conditional job names.
+
+### Tier 2 - Merge/Main Confidence Gate
+
+Target: full confidence once per merge, not once per local-sized direct commit.
+
+- Full frontend coverage with 100% thresholds.
+- Full backend unit coverage plus backend integration suite.
+- Full gateway coverage.
+- Full build check.
+- Chromium Playwright E2E on the merge/main path.
+- Critical mutation gate when critical paths changed.
+- Build dev images on `main` only after merge and only for image-impacting paths.
+
+If GitHub merge queue becomes available, keep the existing `merge_group` triggers and run this tier on the merge-group SHA. Then reduce push-to-main `Test Suite` to a backstop/summary where safe, because the merge queue already validated the exact merge candidate.
+
+Until merge queue is enforceable, keep the push-to-main full lane as the backstop, but direct human pushes to `main` must be blocked so it only runs after reviewed PR merges.
+
+### Tier 3 - Nightly/Weekly Deep Validation
+
+Target: catch expensive, flaky, environment-sensitive, or low-probability regressions without blocking every PR update.
+
+- Full Playwright matrix across Chromium, Firefox, WebKit, mobile Chrome, and mobile Safari.
+- Full or broader Stryker mutation testing.
+- Bitcoin vector verification and regeneration checks.
+- Docker install/upgrade full suite when not release-blocking.
+- Ops smoke proofs and perf benchmarks.
+- Duplication and complexity trend reporting can stay blocking on PR while the lizard cleanup project is active; revisit after the warning count reaches the target baseline.
+
+### Tier 4 - Release Gate
+
+Target: validate installation, upgrade, image publishing, and release-note automation with deliberate redundancy.
+
+- Keep release candidate validation separate from routine merge validation.
+- Run full install and upgrade tests before stable release promotion.
+- Keep multi-arch Docker builds and manifest creation release-only.
+- Keep release workflow waiting for install validation, but consider de-duplicating install checks later by making one release-candidate workflow the source of truth.
+
+## Workflow Changes To Implement
+
+- Add `concurrency` to all workflows:
+  - PR group: workflow name plus PR number.
+  - Push group: workflow name plus ref.
+  - `cancel-in-progress: true` for PRs and branch pushes.
+  - Avoid canceling release/tag workflows unless explicitly safe.
+- Add `merge_group` triggers to `test.yml`, `quality.yml`, and any workflow selected as a required merge-queue check.
+- Add PR path filters to `docker-build.yml` to match its push intent.
+- Add or document a required-check aggregator so branch protection does not depend on conditional/skipped job names.
+- Decide whether `release.yml` needs the push-to-main no-op status. If yes, rename/comment it as a branch-protection compatibility check. If no, remove the push-to-main branch trigger.
+- Reduce duplicate build work in `test.yml`:
+  - `full-build-check` builds frontend/backend.
+  - `full-e2e-tests` also builds frontend/backend.
+  - Keep both only if they catch distinct failure modes; otherwise make E2E consume the build path or make build check the single build gate.
+- Keep `install-test.yml` path-gated; add concurrency and retain release tag behavior.
+- Keep `verify-vectors.yml` path-gated for PRs and scheduled weekly.
+- Add documentation in `docs/reference/release-gates.md` or a new `docs/reference/ci-cd-strategy.md` explaining which checks are PR-required, merge-required, nightly, and release-only.
+
+## Branch Protection / Repository Rules
+
+- Require PR before merging into `main`.
+- Require the stable aggregate checks `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- Expect `Full Test Summary` to appear as skipped/success on PRs; the full lane is a merge/main backstop.
+- Keep install/docker/vector checks path-gated instead of globally required so docs-only and unrelated PRs do not wait on absent workflows. Include each workflow file in its own path filter so workflow edits still validate their target workflow.
+- Require branch to be up to date before merging if merge queue is not enabled.
+- Enable merge queue as soon as the repository is under an eligible GitHub organization or GitHub expands merge queue support to personal repositories.
+- Restrict direct pushes to `main`; allow GitHub Actions bot only where release automation needs it.
+- Require linear history via squash or rebase merge.
+- Keep emergency hotfix escape hatch documented: temporary admin bypass plus follow-up PR, not routine direct commit.
+
+## First PR Validation Checklist
+
+- [ ] Confirm `PR Required Checks` runs on the pull request and fails only when a quick-lane child fails.
+- [ ] Confirm `Code Quality Required Checks` runs on the pull request and reflects lint, gitleaks, lizard, and jscpd.
+- [ ] Confirm `Full Test Summary` is present on the pull request as skipped/success, so branch protection does not wait on the full lane.
+- [ ] Confirm docs-only or workflow-only PRs do not wait on absent Docker, install, or vector checks.
+- [ ] After merge, confirm the push-to-`main` full lane runs as the merge confidence backstop.
+
+## Lizard Remediation PR Loop
+
+- [ ] Start each batch from updated `main` on a short-lived branch.
+- [ ] Refactor the next highest-value complexity target with focused tests and local lizard verification.
+- [ ] Update `docs/plans/codebase-health-assessment.md`, grade history, and this task log with the new warning count and verification evidence.
+- [ ] Open a PR and wait for `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [ ] Merge only after required checks pass, then wait for the post-merge full lane on `main`.
+- [ ] Rebase or recreate the next batch branch from the updated `main`.
+
+## Measurement Plan
+
+- Baseline current wall time from recent runs:
+  - `Test Suite` push: about 13-14 minutes when full path runs.
+  - `Build Dev Images` push: about 1 minute.
+  - `Install Tests` skip/no-op on non-install changes: about 10-15 seconds.
+  - `Release` push-to-main no-op: about 5-7 seconds.
+- Track p50/p90 for PR quick gate, merge gate, and nightly jobs separately.
+- Target PR quick gate:
+  - Non-E2E frontend/backend PRs: under 8 minutes p50.
+  - Gateway-only PRs: under 3 minutes p50.
+  - Docker/install PRs can be slower but should be path-limited.
+- Target merge/main gate: under 15 minutes p50 while retaining full confidence.
+- Track canceled runs after adding concurrency; expected outcome is fewer wasted runs on force-push/rebase cycles.
+- Track escaped defects: if a category starts failing only on main after PRs pass, promote the missing check from merge/nightly into the PR quick gate.
+
+## Implementation Checklist
+
+- [x] Audit workflow triggers, jobs, path filters, caches, artifacts, and missing concurrency.
+- [x] Map test scripts into unit, integration, e2e, install, ops, perf, mutation, vector, and release tiers.
+- [x] Pull recent GitHub run data to estimate real current cost.
+- [x] Evaluate PR-and-merge versus direct commits to `main`.
+- [x] Review this plan before changing workflow files.
+- [x] Implement workflow concurrency and safe PR path-filter improvements first.
+- [x] Add PR required-check aggregator.
+- [x] Configure branch protection/repository rules for PR-only `main`.
+- [x] Set the blocking Code Quality lizard gate to the current CI-scope warning baseline so the first PR is not deadlocked while the broader lizard backlog is still being reduced.
+- [x] Decide whether to enable merge queue now or after one PR-only trial period.
+- [x] Attempt merge queue enablement through the GitHub repository rulesets API.
+- [x] Confirm GitHub rejects `merge_queue` enforcement for the current user-owned repository.
+- [x] Tune post-merge aggregate behavior so full E2E is included in the full-lane summary.
+- [x] Document CI tiering and emergency hotfix process.
+- [ ] Open the CI/branch-protection changes through the new PR flow.
+- [ ] Validate the first PR run required-check behavior.
+- [ ] Re-measure CI after 10-20 PRs and adjust gates based on failures and wall time.
+
+## Edge Case Audit For CI Design
+
+- Empty or docs-only PRs: should not run full test suites; should still get a cheap required aggregate result.
+- Path-filtered jobs: skipped jobs must not leave required checks pending.
+- Forked PRs: secret-dependent jobs must not assume write permissions or private tokens.
+- Release/tag workflows: concurrency must not cancel a publishing run unexpectedly.
+- Merge commits: changed-file detection must compare the correct base for PRs, pushes, and merge queue events.
+- Critical-path files: Bitcoin/auth/security changes should promote to stronger gates automatically.
+- Generated files and workflow-only changes: changes to workflow/test config should force relevant CI validation even if app source did not change.
+- Failed quick lane followed by force-push: older run should cancel cleanly and not block the latest commit.
+
+## Review
+
+Implemented so far:
+
+- Added `merge_group` support to `test.yml` and `quality.yml` so merge queue can validate the same required workflow surfaces.
+- Added workflow concurrency to `test.yml`, `quality.yml`, `docker-build.yml`, `install-test.yml`, and `verify-vectors.yml`, with release/tag install runs protected from cancellation.
+- Added `PR Required Checks` in `test.yml` as a stable required-check target for path-conditional quick jobs.
+- Added `Code Quality Required Checks` in `quality.yml` as a stable aggregate target for lint, gitleaks, lizard, and jscpd.
+- Set the Code Quality lizard gate to the current measured CI-scope baseline of 9 warnings. The broader lizard cleanup tracker remains separate and currently has 83 warnings to keep reducing batch by batch.
+- Updated `Full Test Summary` to wait for `Full E2E Tests` and to fail when any required full-lane job fails. Critical mutation remains allowed to skip when no critical path changed.
+- Added PR path filters to `docker-build.yml` and expanded the image-impacting path set for both PR and push triggers.
+- Added `docs/reference/ci-cd-strategy.md` and linked it from `docs/reference/release-gates.md`.
+- Configured GitHub branch protection for `main`: PRs required, required checks are `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`, strict up-to-date checks enabled, admin enforcement enabled, linear history required, force pushes/deletions disabled, and conversation resolution required.
+
+Remaining follow-up:
+
+- Open and merge this change through the new branch-to-PR flow, then validate the first PR run carefully. Required check expectations: `PR Required Checks` passes, `Code Quality Required Checks` passes, and `Full Test Summary` is present as skipped/success on the PR.
+- Lower the blocking `LIZARD_WARNING_BASELINE` whenever the CI-scope lizard warning count drops below 9.
+- Merge queue is desired now, but cannot currently be enforced on this paid personal user-owned public repository. The GitHub rulesets API rejected the `merge_queue` rule with HTTP 422, `Invalid rule 'merge_queue'`. Move the repository under an eligible organization, then enable a repository-level queue for `main` using squash merge, build concurrency `3`, group size `1`, all-green entries, 60-minute status timeout, and the existing required checks.
+- Re-measure CI after 10-20 PRs and tune gates based on escaped defects, queue time, and cancellation data.
+- Watch docs-only, workflow-only, Docker, install, and vector path filters for absent-check surprises so unrelated PRs do not get stuck.
+
+The elegant version is not "run fewer tests"; it is "run each test at the cheapest point where it provides useful information." The current suite is appropriate for merge confidence, but not ideal as the default loop for direct commits. Moving to PR-and-merge lets us keep the existing high bar while shifting most repeated feedback to the quick lane that already exists.
+
+# Previous Task: Lizard UI Batch 10 - QR Signing Modal
 
 Status: complete
 
