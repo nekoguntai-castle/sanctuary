@@ -1,6 +1,59 @@
-# Next Task: Lizard UI Batch 20 - Price Chart
+# Next Task: Lizard UI Batch 21 - Restore Panel
 
 Status: in progress
+
+Goal: reduce the current `RestorePanel` lizard finding by splitting warning/upload states, uploaded backup details, validation status, success/error alerts, and confirmation modal rendering while preserving file selection, clear upload, validation states, warning/error/success copy, restore button disabled behavior, confirmation text normalization, cancel/reset behavior, and public `RestorePanel` import path.
+
+## Lizard UI Batch 21 Checklist
+
+- [x] Start from updated `main` after Batch 20 PR and post-merge full lane are green.
+- [x] Confirm `RestorePanel` is the current top UI target at 39 CCN.
+- [x] Split RestorePanel upload, details, validation, alerts, and confirmation-modal helpers while preserving callbacks and visible copy.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+
+## Lizard UI Batch 21 Review
+
+Plan:
+
+- Keep `components/BackupRestore/RestorePanel.tsx` as the public shell and move section-level rendering into `components/BackupRestore/RestorePanel/` helpers.
+- Extract file upload/selected-file display, backup metadata details, validation status/warnings, restore success/error alerts, and confirmation modal into focused components.
+- Preserve the existing `BackupRestore` tests first; add focused branch tests only if extraction exposes missing behavior.
+- Verify focused lizard against `components/BackupRestore/RestorePanel.tsx` and the extracted helper directory before running the broader guardrails.
+
+Verification so far:
+
+- PR #19 merged as `f172a2a1`; the post-merge `main` backstop passed the full test summary, full E2E, full build, full frontend, full backend, full gateway, install summary, release check, and dev image build checks.
+- Fresh focused lizard measurement from `main` (`f172a2a1`) reports `components/BackupRestore/RestorePanel.tsx:54` `RestorePanel` at 39 CCN.
+
+Changes:
+
+- Reduced `components/BackupRestore/RestorePanel.tsx` from the 39-CCN restore renderer to a 72-line public shell.
+- Split file upload, selected backup summary, metadata grid, validation status, restore action button, status alerts, and confirmation modal under `components/BackupRestore/RestorePanel/`.
+- Preserved file selection, clear upload, validation states, warning/error/success copy, restore button disabled behavior, confirmation text normalization, cancel/reset behavior, and public `RestorePanel` import path.
+- Updated quality tracking: `RestorePanel` drops out of the current lizard warning list; broad lizard warning count is now 72 and max CCN remains 39 with `Variables` and `UTXOGarden` as the top UI targets.
+
+Verification so far:
+
+- `npx vitest run tests/components/BackupRestore.test.tsx tests/components/BackupRestore/useBackupHandlers.branches.test.tsx tests/components/BackupRestore/RestorePanel.branches.test.tsx` passed: 3 files, 33 tests.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/BackupRestore/RestorePanel.tsx components/BackupRestore/RestorePanel` passed with no warnings.
+- `npm run typecheck:app` passed.
+- `npm run lint:app` passed.
+- Full broad lizard warning count is now 72; `RestorePanel` has no remaining lizard warnings and max CCN remains 39.
+- `npm run test:coverage` passed: 399 files, 5,566 tests, 100% statements/branches/functions/lines.
+- `git diff --check`, grade-history JSONL parsing, large-file classification, full lint, CI-scope lizard baseline, tracked-tree gitleaks, and `npx --yes jscpd@4 .` passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: absent upload, uploaded backup without `meta`, null validation result, empty warnings/issues, null restore error, false restore success, closed confirmation modal, and null file input ref remain guarded on the same paths as before.
+- Boundary values: valid versus invalid validation results, zero-warning versus warning validation results, validating versus idle state, restoring versus idle button copy, exact `RESTORE` confirmation, and cancel/reset behavior remain preserved.
+- System boundaries: `SanctuaryBackup`, `ValidationResult`, file input events, `Button`, lucide icons, and the public `RestorePanel` import path keep the same contracts.
+- Async/race behavior: this extraction is render-only; restore, validation, upload, and reload timing remain owned by the existing backup handler layer.
+
+# Previous Task: Lizard UI Batch 20 - Price Chart
+
+Status: complete
 
 Goal: reduce the current `ChartTooltip`/`PriceChart` lizard finding by splitting tooltip rendering, animated price behavior, timeframe controls, and chart body rendering while preserving total-balance display, timeframe callbacks, chart-ready gating, tooltip active/inactive states, price placeholder, up/down animation indicators, animation cleanup, visible copy, and the public `PriceChart`/`AnimatedPrice` exports.
 
@@ -10,8 +63,8 @@ Goal: reduce the current `ChartTooltip`/`PriceChart` lizard finding by splitting
 - [x] Confirm `ChartTooltip`/`PriceChart` is the current top UI target at 41 CCN.
 - [x] Split PriceChart tooltip, animated price, timeframe controls, and chart body helpers while preserving callbacks and visible copy.
 - [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
-- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
-- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+- [x] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [x] Merge after required checks pass, then wait for the post-merge `main` backstop.
 
 ## Lizard UI Batch 20 Review
 
@@ -45,6 +98,8 @@ Verification so far:
 - Full broad lizard warning count is now 73; `PriceChart` has no remaining lizard warnings and max CCN is now 39.
 - `npm run test:coverage` passed: 398 files, 5,565 tests, 100% statements/branches/functions/lines.
 - `git diff --check`, grade-history JSONL parsing, large-file classification, full lint, CI-scope lizard baseline, tracked-tree gitleaks, and `npx --yes jscpd@4 .` passed.
+- PR #19 checks passed: `PR Required Checks`, `Code Quality Required Checks`, Quick Frontend, Quick E2E, lizard, jscpd, gitleaks, lint, and Docker builds.
+- PR #19 merged as `f172a2a1`; the post-merge `main` backstop passed `Full Test Summary`, full backend, full frontend, full gateway, full E2E, full build, install tests, release, and dev image builds.
 
 Edge case and self-review:
 
