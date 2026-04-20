@@ -1,6 +1,48 @@
-# Next Task: Lizard UI Batch 12 - Network Sync Actions
+# Next Task: Lizard UI Batch 13 - Monitoring
 
 Status: in progress
+
+Goal: reduce the current `Monitoring` lizard finding by splitting service loading/controller state, header/refresh controls, disabled-stack and error banners, service grid props, about copy, and URL-modal wiring without changing monitoring API calls, Grafana config fallback behavior, anonymous-access toggling, refresh behavior, hostname fallback, URL edit/save semantics, visible copy, or public `Monitoring` exports.
+
+## Lizard UI Batch 13 Checklist
+
+- [x] Start from updated `main` after Batch 12 PR and post-merge full lane are green.
+- [x] Confirm `Monitoring` is the current top UI target at 49 CCN.
+- [x] Split Monitoring controller/render branches into focused helpers while preserving callbacks and copy.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+
+## Lizard UI Batch 13 Review
+
+Changes:
+
+- Reduced `components/Monitoring/Monitoring.tsx` from the 49-CCN page component to a 58-line public shell.
+- Moved service loading, Grafana config fallback, anonymous-access toggling, credential lookup, URL edit/save state, refresh state, and hostname fallback into `components/Monitoring/useMonitoringController.ts`.
+- Split the loading state, header/refresh button, disabled-stack banner, error banner, services grid, and about section into focused helpers under `components/Monitoring/`.
+- Preserved monitoring API calls, Grafana config non-fatal fallback behavior, anonymous-access update semantics, refresh behavior, hostname fallback, URL edit/save/null behavior, visible copy, and the public default/named `Monitoring` exports.
+- Updated the health assessment and grade history: full lizard warnings moved from 81 to 80, max CCN moved from 49 to 47, and `Monitoring` dropped out of the current top lizard target list.
+
+Verification so far:
+
+- `npx vitest run tests/components/Monitoring.test.tsx tests/components/Monitoring.branches.test.tsx tests/components/Monitoring/ServiceCard.branches.test.tsx` passed: 3 files, 44 tests.
+- `npm run typecheck:app` passed.
+- `npm run lint:app` passed.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/Monitoring/Monitoring.tsx components/Monitoring tests/components/Monitoring.test.tsx tests/components/Monitoring.branches.test.tsx tests/components/Monitoring/ServiceCard.branches.test.tsx` passed with no warnings.
+- Full TSX-aware lizard warning count is now 80; top remaining component targets are `WalletDetail`, `ChatTab`, `UsersGroups`, and `AIQueryInput`.
+- `npm run test:coverage` passed: 398 files, 5,564 tests, 100% statements/branches/functions/lines.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: no data, absent Grafana config, absent edit service, empty edit URL, null result from loading helpers, and missing service credentials remain guarded.
+- Boundary values: enabled/disabled monitoring stack state, Grafana versus non-Grafana service IDs, custom/default URL state, and empty-string-to-null URL save behavior remain covered.
+- System boundaries: `adminApi.getMonitoringServices`, `adminApi.getGrafanaConfig`, `adminApi.updateGrafanaConfig`, `adminApi.updateMonitoringServiceUrl`, `useLoadingState`, `ServiceCard`, and `EditUrlModal` keep the same contracts and module boundaries.
+- Async/race behavior: refresh state still clears after `runLoad`, Grafana config lookup remains non-fatal, save still reloads services before closing the modal, and failed anonymous toggle still avoids local state update.
+- Diff review: changes are scoped to Monitoring extraction, health-report notes, trend metadata, and this task record.
+
+# Previous Task: Lizard UI Batch 12 - Network Sync Actions
+
+Status: complete
 
 Goal: reduce the current `NetworkSyncActions` lizard finding by splitting async sync/resync state, compact/full button surfaces, the shared resync confirmation dialog, result messaging, and style helpers without changing sync/resync API calls, disabled states, dialog copy, compact/full behavior, timer behavior, success/error messages, callback behavior, or the public `NetworkSyncActions` export.
 
@@ -10,8 +52,8 @@ Goal: reduce the current `NetworkSyncActions` lizard finding by splitting async 
 - [x] Confirm `NetworkSyncActions` is the current top UI target at 49 CCN.
 - [x] Split NetworkSyncActions render/action branches into focused helpers while preserving callbacks and copy.
 - [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
-- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
-- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+- [x] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [x] Merge after required checks pass, then wait for the post-merge `main` backstop.
 
 ## Parallel Batch Policy
 
@@ -28,6 +70,7 @@ Changes:
 - Split compact buttons, full buttons, result rendering, resync confirmation dialog, shared types, and style-state helpers under `components/NetworkSyncActions/`.
 - Preserved sync/resync API calls, `onSyncStarted` behavior, success/error copy, compact titles, disabled/loading states, dialog copy, cancel/X behavior, result clearing timers, and the public default/named `NetworkSyncActions` exports.
 - Updated the health assessment and grade history: full lizard warnings moved from 82 to 81, max CCN remains 49, and `NetworkSyncActions` dropped out of the current top lizard target list.
+- PR #11 merged as `0328ea68`; the post-merge `main` backstop passed the full test summary, full E2E, full build, full frontend, full backend, full gateway, install summary, release check, and dev image build checks.
 
 Verification so far:
 
