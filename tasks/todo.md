@@ -1,4 +1,45 @@
-# Next Task: Lizard UI Batch 8 - Addresses Tab
+# Next Task: Lizard UI Batch 9 - Device Detail
+
+Status: complete
+
+Goal: reduce the current `DeviceDetail` lizard finding by splitting page states, header/edit controls, registered-account rendering, add-account controls, tab navigation, tab content, and transfer modal helpers without changing data loading, edit/save/cancel behavior, owner/viewer badges, shared-by display, account cards, add-derivation flow, tab switching, transfer modal behavior, or public exports.
+
+## Lizard UI Batch 9 Checklist
+
+- [x] Confirm pushed AddressesTab and CI-fix commits have green CI and clean local baseline.
+- [x] Inspect current top lizard targets and DeviceDetail test coverage.
+- [x] Split DeviceDetail render helpers while preserving visible copy and callbacks.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [x] Update health/grade tracking and commit/push the batch after verification.
+
+## Lizard UI Batch 9 Review
+
+Changes:
+
+- Reduced `components/DeviceDetail/DeviceDetail.tsx` to a 114-line orchestration module and moved loading/not-found states, header/edit controls, registered-account rendering, add-account controls, tab navigation/content routing, and transfer-modal wiring into focused helpers under `components/DeviceDetail/DeviceDetail/`.
+- Preserved the existing layout and visible copy for the overview card, owner/viewer badge, shared-by indicator, device-type editor, account cards, legacy derivation/xpub fallback, Add Derivation Path flow, details/access tabs, and ownership-transfer modal.
+- Kept data loading and mutations on the existing `useDeviceData` controller and preserved the public `components/DeviceDetail` export.
+- Updated the health assessment and grade history: full lizard warnings moved from 85 to 84, max CCN moved from 53 to 51, and `DeviceDetail` dropped out of the current top lizard target list.
+
+Verification:
+
+- `npx vitest run tests/components/DeviceDetailPage.test.tsx tests/components/DeviceDetail.test.ts tests/components/DeviceDetail/tabs/DetailsTab.branches.test.tsx tests/components/DeviceDetail/AccountList.test.tsx` passed: 4 files, 76 tests.
+- `npm run typecheck:app` passed.
+- `npm run lint:app` passed.
+- `npm run test:coverage` passed: 398 files, 5,564 tests, 100% statements/branches/functions/lines.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/DeviceDetail/DeviceDetail.tsx components/DeviceDetail/DeviceDetail tests/components/DeviceDetailPage.test.tsx tests/components/DeviceDetail.test.ts` passed with no warnings.
+- Full lizard warning count is now 84; top remaining component targets are `QRSigningModal`, `DeviceDetailsForm`, `NetworkSyncActions`, and `Monitoring`.
+- `git diff --check`, grade-history JSONL parsing, large-file classification, and pinned gitleaks-only quality lane passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: loading and not-found states, missing username, null share info, empty groups/search results, absent account arrays, legacy derivation/xpub fallback, and optional `sharedBy` rendering remain covered.
+- Boundary values: owner versus viewer badges, single versus plural account counts, empty account count fallback, single-sig versus multisig badges, recommended account badge, tab switching, and modal open/close paths remain covered.
+- System boundaries: `useDeviceData` callback wiring, `AddAccountFlow`, `DetailsTab`, `AccessTab`, `TransferOwnershipModal`, route navigation, and public import paths remain unchanged.
+- Async/race behavior: no new async state model was introduced; save/cancel, add-account close/update, sharing, group, transfer, and search flows still run through the same controller callbacks.
+- Diff review: self-review caught and fixed the extracted account-section slot so it remains aligned inside the original header flex column; changes are scoped to DeviceDetail extraction, health-report notes, trend metadata, and this task record.
+
+# Previous Task: Lizard UI Batch 8 - Addresses Tab
 
 Status: complete
 
