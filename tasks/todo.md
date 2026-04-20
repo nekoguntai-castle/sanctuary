@@ -1,6 +1,51 @@
-# Next Task: Lizard UI Batch 17 - AI Query Input
+# Next Task: Lizard UI Batch 18 - Layout Shell
 
 Status: in progress
+
+Goal: reduce the current `Layout` lizard finding by splitting route expansion state, version modal state, draft notification polling, Electrum connection polling, sidebar layout surfaces, mobile header/menu rendering, default-password banner rendering, and modal wiring while preserving sidebar props, wallet/device/admin expansion behavior, draft notifications, connection-error notifications, version copy/loading behavior, clipboard feedback, mobile menu behavior, visible copy, and public `Layout` exports.
+
+## Lizard UI Batch 18 Checklist
+
+- [x] Start from updated `main` after Batch 17 PR and post-merge full lane are green.
+- [x] Confirm `Layout` is one of the current top UI targets at 41 CCN.
+- [x] Split Layout controller/render branches into focused helpers while preserving callbacks and copy.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+
+## Lizard UI Batch 18 Review
+
+Changes:
+
+- Reduced `components/Layout/Layout.tsx` from the 41-CCN page shell to a 32-line public shell.
+- Moved route expansion state, version modal state, clipboard feedback, draft notification polling, Electrum connection polling, and sidebar data loading into `components/Layout/useLayoutController.ts`.
+- Split desktop sidebar framing, mobile header/menu overlay, default-password banner, main content frame, and AboutModal wiring into `components/Layout/LayoutShell.tsx`.
+- Preserved sidebar props, wallet/device/admin expansion behavior, draft notifications, connection-error notifications, version copy/loading behavior, clipboard feedback, mobile menu behavior, visible copy, and public `Layout` exports.
+- Cleared the clipboard feedback timeout on repeated copy attempts and controller unmount so delayed feedback cannot update after teardown.
+- Updated the health assessment and grade history: `Layout` drops out of the current lizard warning list; broad lizard warning count is now 75 and max CCN remains 41 with `SidebarContent` and `ChartTooltip` tied as the top component targets.
+
+Verification so far:
+
+- PR #16 merged as `ffb9e982`; the post-merge `main` backstop passed the full test summary, full E2E, full build, full frontend, full backend, full gateway, install summary, release check, and dev image build checks.
+- Fresh post-Batch-17 focused lizard measurement from `main` (`ffb9e982`) reports `Layout`, `SidebarContent`, and `ChartTooltip` tied at 41 CCN, with `Layout` first in the measured target set.
+- `npx vitest run tests/components/Layout.test.tsx tests/components/Layout.branches.test.tsx` passed: 2 files, 45 tests.
+- `npm run typecheck:app` passed.
+- `npm run lint:app` passed.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/Layout/Layout.tsx components/Layout/LayoutShell.tsx components/Layout/useLayoutController.ts` passed with no warnings.
+- Full broad lizard warning count is now 75; `Layout` has no remaining lizard warnings and max CCN remains 41.
+- `npm run test:coverage` passed: 398 files, 5,565 tests, 100% statements/branches/functions/lines.
+- `git diff --check`, grade-history JSONL parsing, large-file classification, full lint, CI-scope lizard baseline, and `npx --yes jscpd@4 .` passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: no user, no wallets, absent version info, absent copied address, closed mobile menu, and falsey default-password flags remain guarded on the same paths as before.
+- Boundary values: wallet/detail route expansion versus list routes, device/detail route expansion versus list routes, admin route expansion, singular versus plural draft titles, connected versus disconnected Electrum status, and first versus repeated version clicks remain preserved.
+- System boundaries: `useUser`, `useWallets`, `useDevices`, `useAppNotifications`, `useAppCapabilities`, `adminApi.checkVersion`, `bitcoinApi.getStatus`, `getDrafts`, `SidebarContent`, and `AboutModal` keep the same contracts.
+- Async/race behavior: version loading still clears in `finally`, clipboard feedback still clears after 2000ms with timeout cleanup on repeated copies and unmount, draft fetch failures still continue to other wallets, connection checks still run immediately and every 60 seconds, and interval cleanup still happens on effect teardown.
+
+# Previous Task: Lizard UI Batch 17 - AI Query Input
+
+Status: complete
 
 Goal: reduce the current `AIQueryInput` lizard finding by splitting natural-language query state, submit/error handling, result formatting, example dropdown rendering, result display, and error display while preserving query trimming, loading state, examples focus/blur behavior, clear behavior, result callback behavior, error copy, visible copy, and public default/named exports.
 
@@ -10,8 +55,8 @@ Goal: reduce the current `AIQueryInput` lizard finding by splitting natural-lang
 - [x] Confirm `AIQueryInput` is the current top UI target at 43 CCN.
 - [x] Split AIQueryInput controller/render branches into focused helpers while preserving callbacks and copy.
 - [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
-- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
-- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+- [x] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [x] Merge after required checks pass, then wait for the post-merge `main` backstop.
 
 ## Lizard UI Batch 17 Review
 
@@ -22,6 +67,7 @@ Changes:
 - Split example rendering, input controls, result display, and error display into focused helpers under `components/AIQueryInput/`.
 - Preserved query trimming, loading state, examples focus/blur behavior, clear behavior, result callback behavior, error copy, visible copy, and public default/named exports.
 - Updated the health assessment and grade history: `AIQueryInput` drops out of the current lizard warning list; broad lizard warning count is now 76 and max CCN is now 41 with `Layout`, `SidebarContent`, and `ChartTooltip` tied as the top component targets.
+- PR #16 merged as `ffb9e982`; the post-merge `main` backstop passed the full test summary, full E2E, full build, full frontend, full backend, full gateway, install summary, release check, and dev image build checks.
 
 Verification so far:
 
@@ -35,6 +81,8 @@ Verification so far:
 - `npm run test:coverage` passed: 398 files, 5,564 tests, 100% statements/branches/functions/lines.
 - `git diff --check`, grade-history JSONL parsing, large-file classification, full lint, CI-scope lizard baseline, and `npx --yes jscpd@4 .` passed.
 - Staged diff checks and gitleaks tracked-tree scan passed.
+- Pre-commit static reviewers and pre-commit frontend tests passed.
+- PR required checks, PR code-quality checks, PR quick checks, and post-merge full-lane checks passed; the first Quick E2E attempt failed only because `npm ci` hit `ECONNRESET` during setup, and the rerun passed.
 
 Edge case and self-review:
 
