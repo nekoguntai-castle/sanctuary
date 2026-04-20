@@ -41,7 +41,7 @@ describe('adminAgentService', () => {
   it('defaults funding override creator to null when no user id is provided', async () => {
     await createAgentFundingOverride('agent-1', {
       maxAmountSats: 25_000n,
-      expiresAt: new Date('2026-04-20T00:00:00.000Z'),
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
       reason: '  temporary refill  ',
     });
 

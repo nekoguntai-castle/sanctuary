@@ -2,6 +2,17 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Future-date test fixtures must be relative or time-frozen
+
+**Rule:** When a test needs an input that must be "in the future," derive it from `Date.now()` or freeze time with fake timers. Do not use a calendar-fixed timestamp unless the test is explicitly about that calendar boundary.
+
+**Why:** `server/tests/unit/services/adminAgentService.test.ts` used `2026-04-20T00:00:00.000Z` while asserting default creator metadata. That date passed locally before the boundary but failed in CI once UTC time reached April 20, 2026 because production code correctly rejected expired `expiresAt` values.
+
+**How to apply:**
+- For validation-neutral future values, use `new Date(Date.now() + N)` with a clear duration.
+- For tests that need exact timestamps, use fake timers and restore them in cleanup.
+- Before committing hard-coded dates, ask whether the date's relationship to current time matters.
+
 ## Do not reference unavailable Codex skills or slash commands
 
 **Rule:** Before adding a workflow step that names a Codex skill or slash command, verify that it exists in the current Codex skill list. If it does not exist, describe the concrete review activity instead.

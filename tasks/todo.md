@@ -27,6 +27,7 @@ Verification:
 - `npm run typecheck:app` passed.
 - `npm run lint:app` passed.
 - `npm run test:coverage` passed: 398 files, 5,564 tests, 100% statements/branches/functions/lines.
+- CI follow-up: fixed `server/tests/unit/services/adminAgentService.test.ts` to use a relative future `expiresAt`; `npx vitest run tests/unit/services/adminAgentService.test.ts`, `npm run typecheck:server:tests`, and escalated `npm run test:backend:coverage` passed.
 - `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/WalletDetail/tabs/AddressesTab.tsx components/WalletDetail/tabs/AddressesTab tests/components/WalletDetail/tabs/AddressesTab.test.tsx tests/components/WalletDetail/tabs/AddressesTab/addressModel.test.ts` passed with no warnings.
 - Full lizard warning count is now 85; top remaining component targets are `DeviceDetail`, `QRSigningModal`, `DeviceDetailsForm`, and `NetworkSyncActions`.
 - `git diff --check`, grade-history JSONL parsing, large-file classification, and pinned gitleaks-only quality lane passed.
