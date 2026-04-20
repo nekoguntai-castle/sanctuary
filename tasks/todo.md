@@ -1,6 +1,58 @@
-# Next Task: Lizard UI Batch 35 - Connect Device Flow
+# Next Task: Lizard UI Batch 36 - UTXO Send Controls
 
 Status: in progress
+
+Goal: reduce the related UTXO/send lizard findings by splitting UTXO list state/header/privacy detail rendering, coin-control panel sections, and send UTXO row display branches while preserving selected amount/send behavior, explorer URL fallback/loading, fee-rate fallback dust calculations, privacy detail panel routing, selectable/frozen/locked guards, coin-control expand/select/clear/enable behavior, remaining-needed warning, spend privacy card gating, frozen/draft locked summaries, and the public `UTXOList`, `CoinControlPanel`, and `UtxoRow` import paths.
+
+## Lizard UI Batch 36 Checklist
+
+- [x] Start from updated `main` after Batch 35 PR and post-merge full lane are green.
+- [x] Confirm grouped UTXO/send targets: `UTXOList` at 29 CCN, `CoinControlPanel` at 29 CCN, and send `UtxoRow` at 19 CCN.
+- [x] Split UTXO list, coin-control, and send UTXO row render branches into focused helpers while preserving callbacks and visible behavior.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+
+## Lizard UI Batch 36 Review
+
+Plan:
+
+- Keep `components/UTXOList/UTXOList.tsx`, `components/send/steps/OutputsStep/CoinControlPanel.tsx`, and `components/send/steps/OutputsStep/UtxoRow.tsx` as the public exports.
+- Move UTXO list header, selected-send derivation, privacy map/detail lookup, explorer URL loading, dust stats derivation, coin-control header/actions/available list/status sections, and send UTXO row amount/age/selection display into focused local helpers.
+- Treat this as one bounded UTXO/send surface: leave `UTXORow` in the wallet UTXO list, `UTXOGarden`, `UTXOSummaryBanners`, `OutputsStep`, and transaction composition hooks for later unless type boundaries require small compatibility helpers.
+- Preserve `tests/components/UTXOList.test.tsx`, `tests/components/UTXOList.branches.test.tsx`, `tests/components/send/CoinControlPanelOutputsStep.test.tsx`, and `tests/components/send/UtxoRow.branches.test.tsx`; add focused assertions only if extraction exposes untested empty, no-fiat, privacy-score, or over-two summary boundaries.
+- Verify focused lizard against the three public files, extracted helper directories, and focused tests before running broader guardrails.
+
+Verification so far:
+
+- PR #34 merged as `c21d7969`; the post-merge `main` backstop passed release `24688783018`, dev image build `24688783027`, install tests `24688783061`, and test suite `24688783028`, including full backend, full frontend, full gateway, full build, full E2E, and full test summary jobs.
+- Fresh grouped lizard measurement from `main` (`c21d7969`) reported `components/UTXOList/UTXOList.tsx:44` at 29 CCN, `components/send/steps/OutputsStep/CoinControlPanel.tsx:52` at 29 CCN, and `components/send/steps/OutputsStep/UtxoRow.tsx:31` at 19 CCN.
+- Reduced `UTXOList` to a 119-line public list shell, `CoinControlPanel` to a 73-line public panel shell, and send `UtxoRow` to a 55-line public row shell.
+- Moved UTXO list header/count/send rendering, selected amount derivation, privacy map/detail lookup, explorer URL loading, dust stats derivation, coin-control header/actions/available list/status sections/privacy card gating/locked summaries, and send UTXO row amount/age/selection display into focused local helpers.
+- Preserved selected amount/send behavior, explorer URL fallback/loading, fee-rate fallback dust calculations, privacy detail panel routing, selectable/frozen/locked guards, coin-control expand/select/clear/enable behavior, remaining-needed warning, spend privacy card gating, frozen/draft locked summaries, send row low-confirmation and aged display, privacy badge rendering, no-fiat suppression, and the public `UTXOList`, `CoinControlPanel`, and `UtxoRow` import paths.
+- Focused UTXO/send tests passed: `npx vitest run tests/components/UTXOList.test.tsx tests/components/UTXOList.branches.test.tsx tests/components/send/CoinControlPanelOutputsStep.test.tsx tests/components/send/UtxoRow.branches.test.tsx` passed: 4 files, 30 tests.
+- Focused lizard passed for the three public files, extracted helper directories, and focused tests.
+- `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, and `npm run lint` passed.
+- `npm run test:coverage` passed: 401 files, 5,591 tests, 100% statements/branches/functions/lines.
+- Broad lizard now reports 46 warnings, average CCN 1.3, max CCN 33; `UTXOList`, `CoinControlPanel`, and send `UtxoRow` are no longer in the warning list.
+- CI-scope lizard passed with the expected 9 server warnings.
+- `npx --yes jscpd@4 .` passed at 1.99% duplication, 275 clones, and 5,260 duplicated lines.
+- `node scripts/quality/check-large-files.mjs`, `git diff --check`, grade-history JSONL parsing, and tracked-tree gitleaks detect passed.
+
+Edge case and self-review notes:
+
+- Empty UTXO arrays still show `0 UTXOs`, an empty available-list message inside coin control, and no privacy detail panel.
+- Selected amount still derives only from selected IDs present in the current UTXO set, and the send button remains gated by selectable mode, selected count, and `onSendSelected`.
+- Explorer URL loading still falls back to `https://mempool.space` and logs fetch failures without breaking rendering.
+- Dust stats still exclude frozen and draft-locked UTXOs and use the hour fee rate fallback of `1 sat/vB`.
+- Privacy detail rendering still requires both matching privacy data and a matching UTXO, and closing clears the selected detail ID.
+- Coin-control warning/card sections remain gated by `showCoinControl`, positive remaining amount, selected count, and available privacy analysis.
+- Frozen and draft-locked summaries still render only when populated, show the first two rows, and preserve the `+N more` copy for additional rows.
+- Send UTXO rows still do not toggle when not selectable, show the lock icon for frozen non-selectable rows, and render low-confirmation versus aged branches independently of fiat availability.
+
+# Previous Task: Lizard UI Batch 35 - Connect Device Flow
+
+Status: complete
 
 Goal: reduce the related ConnectDevice lizard findings by splitting the top-level connection flow rendering, USB connection state rendering, and conflict-dialog account summary/actions while preserving model selection, available-method routing, save/merge guards, QR parse branches, account selection toggles, save/merge payload paths, USB initial/error/scanning/success states, conflict-dialog merge/view/cancel behavior, conflict warnings, and the public `ConnectDevice`, `UsbConnectionPanel`, and `ConflictDialog` import paths.
 
@@ -10,8 +62,8 @@ Goal: reduce the related ConnectDevice lizard findings by splitting the top-leve
 - [x] Confirm grouped ConnectDevice targets: `ConnectDevice` at 29 CCN, `UsbConnectionPanel` at 27 CCN, and `ConflictDialog` at 21 CCN.
 - [x] Split connection flow, USB state, and conflict-dialog render branches into focused helpers while preserving callbacks and visible behavior.
 - [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
-- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
-- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+- [x] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [x] Merge after required checks pass, then wait for the post-merge `main` backstop.
 
 ## Lizard UI Batch 35 Review
 
@@ -39,6 +91,8 @@ Verification so far:
 - CI-scope lizard passed with the expected 9 server warnings.
 - `npx --yes jscpd@4 .` passed at 2.01% duplication, 276 clones, and 5,289 duplicated lines.
 - `node scripts/quality/check-large-files.mjs` passed.
+- PR #34 checks passed: `PR Required Checks`, `Code Quality Required Checks`, Quick Frontend, Quick E2E, Quick Test Hygiene, lizard, jscpd, gitleaks, lint, and Docker builds. `Full Test Summary` was skipped as intended on PR.
+- PR #34 merged as `c21d7969`; the post-merge `main` backstop passed release `24688783018`, dev image build `24688783027`, install tests `24688783061`, and test suite `24688783028`, including full backend, full frontend, full gateway, full build, full E2E, and full test summary jobs.
 
 Edge case and self-review notes:
 
