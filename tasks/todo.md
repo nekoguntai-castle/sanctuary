@@ -1,6 +1,55 @@
-# Next Task: Lizard UI Batch 11 - Device Details Form
+# Next Task: Lizard UI Batch 12 - Network Sync Actions
 
 Status: in progress
+
+Goal: reduce the current `NetworkSyncActions` lizard finding by splitting async sync/resync state, compact/full button surfaces, the shared resync confirmation dialog, result messaging, and style helpers without changing sync/resync API calls, disabled states, dialog copy, compact/full behavior, timer behavior, success/error messages, callback behavior, or the public `NetworkSyncActions` export.
+
+## Lizard UI Batch 12 Checklist
+
+- [x] Start from updated `main` after Batch 11 PR and post-merge full lane are green.
+- [x] Confirm `NetworkSyncActions` is the current top UI target at 49 CCN.
+- [x] Split NetworkSyncActions render/action branches into focused helpers while preserving callbacks and copy.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+
+## Parallel Batch Policy
+
+- Code prep can overlap with a previous PR's CI only when the next target has a disjoint code ownership area.
+- Integration stays serialized: each branch rebases from updated `main`, updates shared docs/history/task tracking once, then opens its own PR.
+- Shared files such as `tasks/todo.md`, `docs/plans/codebase-health-assessment.md`, and `docs/plans/grade-history/sanctuary_.jsonl` are updated only in the branch currently being integrated to avoid churn and conflicts.
+
+## Lizard UI Batch 12 Review
+
+Changes:
+
+- Reduced `components/NetworkSyncActions.tsx` from the 49-CCN render/action component to a 41-line public shell.
+- Moved sync/resync API state, success/error result creation, disabled state, timer behavior, and dialog toggles into `components/NetworkSyncActions/useNetworkSyncActions.ts`.
+- Split compact buttons, full buttons, result rendering, resync confirmation dialog, shared types, and style-state helpers under `components/NetworkSyncActions/`.
+- Preserved sync/resync API calls, `onSyncStarted` behavior, success/error copy, compact titles, disabled/loading states, dialog copy, cancel/X behavior, result clearing timers, and the public default/named `NetworkSyncActions` exports.
+- Updated the health assessment and grade history: full lizard warnings moved from 82 to 81, max CCN remains 49, and `NetworkSyncActions` dropped out of the current top lizard target list.
+
+Verification so far:
+
+- `npx vitest run tests/components/NetworkSyncActions.test.tsx tests/components/NetworkSyncActions.branches.test.tsx` passed: 2 files, 27 tests.
+- `npm run typecheck:app` passed.
+- `npm run lint:app` passed.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/NetworkSyncActions.tsx components/NetworkSyncActions tests/components/NetworkSyncActions.test.tsx tests/components/NetworkSyncActions.branches.test.tsx` passed with no warnings.
+- Full TSX-aware lizard warning count is now 81; top remaining component targets are `Monitoring`, `WalletDetail`, `ChatTab`, and `UsersGroups`.
+- `npm run test:coverage` passed: 398 files, 5,564 tests, 100% statements/branches/functions/lines.
+- `git diff --check`, grade-history JSONL parsing, large-file classification, full lint, CI-scope lizard baseline, and `npx --yes jscpd@4 .` passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: `onSyncStarted` remains optional, `result` can be null, and `walletCount=0` still disables both buttons.
+- Boundary values: `queued=1` and non-1 pluralization, `walletCount=1` dialog copy, `walletCount=0`, and compact/full modes remain covered by existing tests.
+- System boundaries: `syncApi.syncNetworkWallets`, `syncApi.resyncNetworkWallets`, `extractErrorMessage`, lucide icons, timers, and callback contracts are isolated in the same behavioral paths as before.
+- Async/race behavior: sync and resync loading flags still clear in `finally`, result timers still use the original 5s/8s windows, and resync still closes the confirmation dialog before starting the API call.
+- Diff review: changes are scoped to NetworkSyncActions extraction, health-report notes, trend metadata, and this task record.
+
+# Previous Task: Lizard UI Batch 11 - Device Details Form
+
+Status: complete
 
 Goal: reduce the current `DeviceDetailsForm` lizard finding by splitting the selected-device form shell, placeholder state, identity fields, parsed-account selector, single-account fields, save/status messaging, and QR import details without changing manual entry behavior, USB/QR/scanned read-only behavior, account selection, save-button gating, warnings/errors, QR details toggle behavior, visible copy, or the public `DeviceDetailsForm` export.
 
@@ -10,8 +59,8 @@ Goal: reduce the current `DeviceDetailsForm` lizard finding by splitting the sel
 - [x] Confirm `DeviceDetailsForm` is the current top UI target at 51 CCN.
 - [x] Split DeviceDetailsForm render sections into focused helpers while preserving callbacks and copy.
 - [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
-- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
-- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+- [x] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [x] Merge after required checks pass, then wait for the post-merge `main` backstop.
 
 ## Lizard UI Batch 11 Review
 
@@ -20,6 +69,7 @@ Changes:
 - Reduced `components/ConnectDevice/DeviceDetailsForm.tsx` to an 86-line form shell and moved placeholder, identity fields, parsed-account selection, single-account fields, QR import details, and save/status messaging into focused helpers under `components/ConnectDevice/DeviceDetailsForm/`.
 - Preserved manual entry callbacks, USB/QR scanned read-only behavior, account selection toggles, save-button gating, QR details toggle behavior, warning/error copy, helper text, and the public `DeviceDetailsForm` export.
 - Updated the health assessment and grade history: full lizard warnings moved from 83 to 82, max CCN moved from 51 to 49, and `DeviceDetailsForm` dropped out of the current top lizard target list.
+- PR #10 merged as `8f38de4d`; the post-merge `main` backstop passed the full test summary and supporting full-lane checks.
 
 Verification so far:
 
