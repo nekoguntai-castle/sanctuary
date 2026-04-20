@@ -86,6 +86,15 @@ describe('UTXORow', () => {
     expect(onToggleSelect).toHaveBeenCalledWith('abc123def456:0');
   });
 
+  it('shows selected checkbox styling without requiring a selection callback', () => {
+    const { container } = renderRow({ isSelected: true, onToggleSelect: undefined });
+
+    const checkbox = container.querySelector('.cursor-pointer.w-5.h-5');
+    expect(checkbox).toHaveClass('bg-sanctuary-800');
+    expect(container.querySelector('.bg-zen-gold\\/10')).toBeInTheDocument();
+    expect(() => fireEvent.click(checkbox!)).not.toThrow();
+  });
+
   it('hides checkbox when not selectable', () => {
     const { container } = renderRow({ selectable: false });
     expect(container.querySelector('.w-5.h-5.rounded.border.cursor-pointer')).not.toBeInTheDocument();
@@ -115,6 +124,7 @@ describe('UTXORow', () => {
     // native_segwit: 68 * 1000 = 68000 > 50000 = dust
     renderRow({ currentFeeRate: 1000, utxo: makeUtxo({ amount: 500 }) });
     expect(screen.getByText('DUST')).toBeInTheDocument();
+    expect(screen.getByTitle('Costs 68000 sats to spend at current fees')).toBeInTheDocument();
   });
 
   it('does not show DUST badge for non-dust UTXOs', () => {
@@ -153,6 +163,11 @@ describe('UTXORow', () => {
     expect(screen.queryByTestId('privacy-badge')).not.toBeInTheDocument();
   });
 
+  it('does not render privacy badge when privacy info is missing', () => {
+    renderRow({ showPrivacy: true, privacyInfo: undefined });
+    expect(screen.queryByTestId('privacy-badge')).not.toBeInTheDocument();
+  });
+
   it('calls onShowPrivacyDetail when privacy badge is clicked', () => {
     const onShowPrivacyDetail = vi.fn();
     renderRow({
@@ -163,5 +178,18 @@ describe('UTXORow', () => {
 
     fireEvent.click(screen.getByTestId('privacy-badge'));
     expect(onShowPrivacyDetail).toHaveBeenCalledWith('abc123def456:0');
+  });
+
+  it('keeps frozen styling priority while still showing locked draft context', () => {
+    const { container } = renderRow({
+      utxo: makeUtxo({
+        frozen: true,
+        lockedByDraftId: 'draft-1',
+        lockedByDraftLabel: 'My Draft',
+      }),
+    });
+
+    expect(container.querySelector('.bg-zen-vermilion\\/5')).toBeInTheDocument();
+    expect(screen.getByText('My Draft')).toBeInTheDocument();
   });
 });

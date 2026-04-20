@@ -1,6 +1,52 @@
-# Next Task: Lizard UI Batch 27 - AI Label Suggestion
+# Next Task: Lizard UI Batch 28 - UTXO Row
 
 Status: in progress
+
+Goal: reduce the current `UTXORow` lizard finding by splitting row state modeling, selection control rendering, amount/privacy/dust rendering, explorer links, labels/locked badges, freeze action, and age/transaction detail rendering while preserving row status priority, checkbox visibility and optional callback behavior, dust detection/spend-cost copy, privacy detail callback behavior, explorer link targets, freeze callback behavior, age/confirmation display, locked draft fallback copy, and public `UTXORow` import path.
+
+## Lizard UI Batch 28 Checklist
+
+- [x] Start from updated `main` after Batch 27 PR and post-merge full lane are green.
+- [x] Confirm `UTXORow` is tied as a current top JSX target at 33 CCN.
+- [x] Split UTXORow render/status branches into focused helpers while preserving callbacks and visible behavior.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+
+## Lizard UI Batch 28 Review
+
+Plan:
+
+- Keep `components/UTXOList/UTXORow.tsx` as the public `UTXORow` export and move row state/class derivation plus focused render pieces under `components/UTXOList/UTXORow/`.
+- Extract visual-state priority into a model helper so frozen, locked, dust, selected, and default row styling remain table-driven and easier to verify.
+- Preserve `tests/components/UTXOList/UTXORow.test.tsx` first; add focused branch tests for selection callback absence, selected styling, privacy-without-data, dust spend-cost copy, and frozen-over-locked priority.
+- Verify focused lizard against `components/UTXOList/UTXORow.tsx`, the extracted helper directory, and the focused test before running the broader guardrails.
+
+Verification so far:
+
+- PR #26 merged as `bdf96786`; the post-merge `main` backstop passed release `24666055251`, dev image build `24666055262`, install tests `24666055259`, and test suite `24666055256`, including full backend, full frontend, full gateway, full build, full E2E, and full test summary jobs.
+- Fresh focused target selection from Batch 27 shows `components/UTXOList/UTXORow.tsx:39` at 33 CCN.
+- Reduced `components/UTXOList/UTXORow.tsx` to a 64-line public shell and moved row status/class modeling, selection control rendering, amount/privacy/dust rendering, address link rendering, label/locked draft badges, freeze button behavior, and age/transaction details under `components/UTXOList/UTXORow/`.
+- Preserved frozen/locked/dust/selected/default visual priority, checkbox visibility when no selection callback is provided, dust spend-cost title copy, privacy detail callback behavior, address and transaction explorer targets, freeze callback behavior, age/confirmation display, locked draft fallback copy, and the public `UTXORow` import path.
+- `npx vitest run tests/components/UTXOList/UTXORow.test.tsx` passed: 1 file, 20 tests.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/UTXOList/UTXORow.tsx components/UTXOList/UTXORow tests/components/UTXOList/UTXORow.test.tsx` passed with no focused warnings.
+- `npm run typecheck:app`, `npm run lint:app`, and `npm run lint` passed.
+- Broad lizard now reports 65 warnings, average CCN 1.4, max CCN 33; `UTXORow` is no longer in the warning list.
+- CI-scope lizard passed with the expected 9 server warnings.
+- `npm run test:coverage` passed: 399 files, 5,571 tests, 100% statements/branches/functions/lines.
+- `npx --yes jscpd@4 .` completed: 2.03% duplication, 276 clones, 5,283 duplicated lines.
+- `node scripts/quality/check-large-files.mjs`, `git diff --check`, grade-history JSONL parsing, and full working-tree gitleaks passed.
+
+Edge case and self-review notes:
+
+- Null/undefined optional inputs remain guarded: absent `onToggleSelect` leaves a visible no-op checkbox, absent privacy info renders no badge, absent UTXO label renders no label badge, and absent draft label still renders `Pending Draft`.
+- Status boundary priority remains frozen over locked, locked over dust, dust over selected, selected over default.
+- Dust boundary behavior still uses the existing `isDustUtxo`/`getSpendCost` helpers and only shows dust copy when the UTXO is neither frozen nor draft-locked.
+- Event boundary behavior still stops propagation for address links, transaction links, privacy badge wrapper, and freeze actions.
+
+# Previous Task: Lizard UI Batch 27 - AI Label Suggestion
+
+Status: complete
 
 Goal: reduce the current `AILabelSuggestion` lizard finding by splitting AI suggestion controller state, API error message mapping, suggest button rendering, suggestion result rendering, and error alert rendering while preserving transaction-id request payloads, loading/reset behavior, all user-facing error copy, accept/dismiss behavior, className passthrough, callback behavior, and public `AILabelSuggestion` import path.
 
@@ -10,8 +56,8 @@ Goal: reduce the current `AILabelSuggestion` lizard finding by splitting AI sugg
 - [x] Confirm `AILabelSuggestion` is the current top JSX target at 35 CCN.
 - [x] Split AILabelSuggestion controller/render branches into focused helpers while preserving callbacks and visible behavior.
 - [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
-- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
-- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+- [x] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [x] Merge after required checks pass, then wait for the post-merge `main` backstop.
 
 ## Lizard UI Batch 27 Review
 
@@ -35,6 +81,8 @@ Verification so far:
 - `npm run test:coverage` passed: 399 files, 5,568 tests, 100% statements/branches/functions/lines.
 - `npx --yes jscpd@4 .` completed: 2.03% duplication, 276 clones, 5,283 duplicated lines.
 - `git diff --check`, grade-history updates, `node scripts/quality/check-large-files.mjs`, and the CI-scope lizard baseline passed.
+- PR #26 checks passed: `PR Required Checks`, `Code Quality Required Checks`, Quick Frontend, Quick E2E, Quick Test Hygiene, lizard, jscpd, gitleaks, lint, and Docker builds. `Full Test Summary` was skipped as intended on PR.
+- PR #26 merged as `bdf96786`; the post-merge `main` backstop passed release `24666055251`, dev image build `24666055262`, install tests `24666055259`, and test suite `24666055256`, including full backend, full frontend, full gateway, full build, full E2E, and full test summary jobs.
 
 Edge case and self-review notes:
 
