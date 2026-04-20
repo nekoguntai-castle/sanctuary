@@ -11,6 +11,29 @@ import * as walletsApi from '../../../src/api/wallets';
 const mockNavigate = vi.fn();
 const showInfoMock = vi.fn();
 
+const wizardMockHelpers = vi.hoisted(() => ({
+  getLoadedDataValues(props: any) {
+    return [
+      ['wallet-type', props.wallet?.type ?? ''],
+      ['device-count', props.devices?.length ?? 0],
+      ['address-count', props.walletAddresses?.length ?? 0],
+      ['min-fee', props.fees?.minimumFee ?? ''],
+      ['mempool-count', props.mempoolBlocks?.length ?? 0],
+      ['draft-fee', props.draftTxData?.fee ?? ''],
+    ] as Array<[string, string | number]>;
+  },
+
+  getInitialStateValues(initialState: any) {
+    return [
+      ['tx-type', initialState?.transactionType ?? ''],
+      ['selected-utxos', (initialState?.selectedUTXOs ?? []).join(',')],
+      ['show-coin-control', String(!!initialState?.showCoinControl)],
+      ['signed-devices', (initialState?.signedDevices ?? []).length],
+      ['outputs-valid-count', (initialState?.outputsValid ?? []).length],
+    ] as Array<[string, string | number]>;
+  },
+}));
+
 vi.mock('../../../utils/logger', () => ({
   createLogger: () => ({
     debug: vi.fn(),
@@ -58,22 +81,21 @@ vi.mock('../../../src/api/devices', () => ({
 }));
 
 vi.mock('../../../components/send/SendTransactionWizard', () => ({
-  SendTransactionWizard: (props: any) => (
-    <div data-testid="wizard">
-      <span data-testid="wallet-type">{props.wallet?.type}</span>
-      <span data-testid="device-count">{props.devices?.length ?? 0}</span>
-      <span data-testid="address-count">{props.walletAddresses?.length ?? 0}</span>
-      <span data-testid="min-fee">{props.fees?.minimumFee ?? ''}</span>
-      <span data-testid="tx-type">{props.initialState?.transactionType ?? ''}</span>
-      <span data-testid="selected-utxos">{(props.initialState?.selectedUTXOs ?? []).join(',')}</span>
-      <span data-testid="show-coin-control">{String(!!props.initialState?.showCoinControl)}</span>
-      <span data-testid="signed-devices">{(props.initialState?.signedDevices ?? []).length}</span>
-      <span data-testid="mempool-count">{props.mempoolBlocks?.length ?? 0}</span>
-      <span data-testid="draft-fee">{props.draftTxData?.fee ?? ''}</span>
-      <span data-testid="outputs-valid-count">{(props.initialState?.outputsValid ?? []).length}</span>
-      <button onClick={props.onCancel}>cancel</button>
-    </div>
-  ),
+  SendTransactionWizard: (props: any) => {
+    const values = [
+      ...wizardMockHelpers.getLoadedDataValues(props),
+      ...wizardMockHelpers.getInitialStateValues(props.initialState),
+    ];
+
+    return (
+      <div data-testid="wizard">
+        {values.map(([testId, value]) => (
+          <span key={testId} data-testid={testId}>{value}</span>
+        ))}
+        <button onClick={props.onCancel}>cancel</button>
+      </div>
+    );
+  },
 }));
 
 describe('SendTransactionPage branch coverage', () => {

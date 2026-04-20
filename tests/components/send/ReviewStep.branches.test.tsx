@@ -43,48 +43,81 @@ vi.mock('../../../components/send/steps/review/TransactionSummary', () => ({
   },
 }));
 
-vi.mock('../../../components/send/steps/review/SigningFlow', () => ({
-  SigningFlow: ({ onDeviceFileUpload, deviceFileInputRefs }: any) => {
+vi.mock('../../../components/send/steps/review/SigningFlow', () => {
+  function createUploadEvent(files: File[]) {
+    return { target: { files } };
+  }
+
+  function captureDeviceRefValue(deviceFileInputRefs: any, deviceId: string) {
+    capture.deviceRefValueAfterUpload = deviceFileInputRefs.current[deviceId]?.value ?? null;
+  }
+
+  function createDeviceUploadHandler(
+    onDeviceFileUpload: any,
+    deviceFileInputRefs: any,
+    deviceId: string,
+    files: File[],
+  ) {
+    return async () => {
+      await onDeviceFileUpload(createUploadEvent(files), deviceId);
+      captureDeviceRefValue(deviceFileInputRefs, deviceId);
+    };
+  }
+
+  function MockDeviceUploadButton({
+    children,
+    onClick,
+    testId,
+  }: {
+    children: string;
+    onClick: () => Promise<void>;
+    testId: string;
+  }) {
+    return (
+      <button data-testid={testId} onClick={onClick}>
+        {children}
+      </button>
+    );
+  }
+
+  function SigningFlow({ onDeviceFileUpload, deviceFileInputRefs }: any) {
     deviceFileInputRefs.current['device-1'] = { value: 'before-device-upload' };
     return (
       <div>
-        <button
-          data-testid="device-upload"
-          onClick={async () => {
-            await onDeviceFileUpload(
-              { target: { files: [new File(['signed'], 'multi.psbt')] } },
-              'device-1',
-            );
-            capture.deviceRefValueAfterUpload = deviceFileInputRefs.current['device-1']?.value ?? null;
-          }}
+        <MockDeviceUploadButton
+          testId="device-upload"
+          onClick={createDeviceUploadHandler(
+            onDeviceFileUpload,
+            deviceFileInputRefs,
+            'device-1',
+            [new File(['signed'], 'multi.psbt')],
+          )}
         >
           Device Upload
-        </button>
-        <button
-          data-testid="device-upload-empty"
-          onClick={async () => {
-            await onDeviceFileUpload({ target: { files: [] } }, 'device-1');
-            capture.deviceRefValueAfterUpload = deviceFileInputRefs.current['device-1']?.value ?? null;
-          }}
+        </MockDeviceUploadButton>
+        <MockDeviceUploadButton
+          testId="device-upload-empty"
+          onClick={createDeviceUploadHandler(onDeviceFileUpload, deviceFileInputRefs, 'device-1', [])}
         >
           Device Upload Empty
-        </button>
-        <button
-          data-testid="device-upload-no-ref"
-          onClick={async () => {
-            await onDeviceFileUpload(
-              { target: { files: [new File(['signed'], 'multi-no-ref.psbt')] } },
-              'missing-device',
-            );
-            capture.deviceRefValueAfterUpload = deviceFileInputRefs.current['missing-device']?.value ?? null;
-          }}
+        </MockDeviceUploadButton>
+        <MockDeviceUploadButton
+          testId="device-upload-no-ref"
+          onClick={createDeviceUploadHandler(
+            onDeviceFileUpload,
+            deviceFileInputRefs,
+            'missing-device',
+            [new File(['signed'], 'multi-no-ref.psbt')],
+          )}
         >
           Device Upload No Ref
-        </button>
+        </MockDeviceUploadButton>
       </div>
     );
-  },
-}));
+  }
+
+  return { SigningFlow };
+});
 
 vi.mock('../../../components/send/steps/review/UsbSigning', () => ({
   UsbSigning: ({ onFileUpload, fileInputRef }: any) => {
