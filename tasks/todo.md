@@ -1,6 +1,59 @@
-# Next Task: Lizard UI Batch 22 - Variables
+# Next Task: Lizard UI Batch 23 - UTXO Garden
 
 Status: in progress
+
+Goal: reduce the current `UTXOGarden` lizard finding by splitting UTXO garden item modeling, status/style selection, dot rendering, and legend rendering while preserving age color buckets, size scaling, frozen/locked/dust priority, title text, click guards, privacy legend visibility, format callbacks, and public `UTXOGarden` import path.
+
+## Lizard UI Batch 23 Checklist
+
+- [x] Start from updated `main` after Batch 22 PR and post-merge full lane are green.
+- [x] Confirm `UTXOGarden` is the current top UI target at 39 CCN.
+- [x] Split UTXOGarden item model/render branches into focused helpers while preserving callbacks and visible copy.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+
+## Lizard UI Batch 23 Review
+
+Plan:
+
+- Keep `components/UTXOList/UTXOGarden.tsx` as the public shell and move dot modeling/rendering plus legend rows under `components/UTXOList/UTXOGarden/`.
+- Extract age color, size, status label, disabled state, visual pattern style, and click eligibility into small helpers with the same frozen/locked/dust precedence as the current component.
+- Preserve `tests/components/UTXOList/UTXOGarden.test.tsx` and the existing `UTXOList.branches` coverage first; add focused branch tests only if extraction exposes missing behavior.
+- Verify focused lizard against `components/UTXOList/UTXOGarden.tsx` and the extracted helper directory before running the broader guardrails.
+
+Verification so far:
+
+- PR #21 merged as `67eff884`; the post-merge `main` backstop passed the full test summary, full E2E, full build, full frontend, full backend, full gateway, install summary, release check, and dev image build checks.
+- Fresh focused lizard measurement from `main` (`67eff884`) reports `components/UTXOList/UTXOGarden.tsx:48` anonymous render function at 39 CCN, ahead of `WalletTelegramSettings` and `AppRoutes`.
+
+Changes:
+
+- Reduced `components/UTXOList/UTXOGarden.tsx` from the 39-CCN garden renderer to a 38-line public shell.
+- Split UTXO dot model creation, status/style selection, dot rendering, legend rendering, and shared props under `components/UTXOList/UTXOGarden/`.
+- Preserved age color buckets, size scaling, frozen/locked/dust priority, title text, click guards, privacy legend visibility, format callbacks, and public `UTXOGarden` import path.
+- Updated quality tracking: `UTXOGarden` drops out of the current lizard warning list; broad lizard warning count is now 70 and max CCN drops to 37 with `WalletTelegramSettings` and `AppRoutes` as the top UI targets.
+
+Verification so far:
+
+- `npx vitest run tests/components/UTXOList/UTXOGarden.test.tsx tests/components/UTXOList.branches.test.tsx` passed: 2 files, 15 tests.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/UTXOList/UTXOGarden.tsx components/UTXOList/UTXOGarden` passed with no warnings.
+- `npm run typecheck:app` passed.
+- `npm run lint:app` passed.
+- Full broad lizard warning count is now 70; `UTXOGarden` has no remaining lizard warnings and max CCN is now 37.
+- `npm run test:coverage` passed: 399 files, 5,566 tests, 100% statements/branches/functions/lines.
+- `git diff --check`, grade-history JSONL parsing, large-file classification, full lint, CI-scope lizard baseline, tracked-tree gitleaks, and `npx --yes jscpd@4 .` passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: empty UTXO arrays, absent `date`, absent labels, absent locked draft labels, absent `onToggleSelect`, false `showPrivacy`, and default no-status labels remain guarded on the same paths as before.
+- Boundary values: fresh/month/year/ancient age buckets, minimum size fallback when there are no UTXOs, selected versus unselected dots, frozen versus locked versus dust precedence, dust spend cost copy, and disabled click guards remain preserved.
+- System boundaries: `UTXO`, `calculateUTXOAge`, `isDustUtxo`, `getSpendCost`, format callbacks, and the public `UTXOGarden` import path keep the same contracts.
+- Async/race behavior: this extraction is render/model-only; there are no async effects or timers in the garden path.
+
+# Previous Task: Lizard UI Batch 22 - Variables
+
+Status: complete
 
 Goal: reduce the current `Variables` lizard finding by splitting system-settings loading/saving state, numeric threshold field rendering, advanced warning/info copy, save feedback, and threshold validation while preserving default fallbacks, input coercion, validation copy, save payload shape, success timeout cleanup, load-error fallback behavior, visible copy, and public `Variables` import path.
 
@@ -10,8 +63,8 @@ Goal: reduce the current `Variables` lizard finding by splitting system-settings
 - [x] Confirm `Variables` is tied as the current top UI target at 39 CCN.
 - [x] Split Variables controller/render branches into focused helpers while preserving callbacks and visible copy.
 - [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
-- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
-- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+- [x] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [x] Merge after required checks pass, then wait for the post-merge `main` backstop.
 
 ## Lizard UI Batch 22 Review
 
@@ -43,6 +96,8 @@ Verification so far:
 - Full broad lizard warning count is now 71; `Variables` has no remaining lizard warnings and max CCN remains 39.
 - `npm run test:coverage` passed: 399 files, 5,566 tests, 100% statements/branches/functions/lines.
 - `git diff --check`, grade-history JSONL parsing, large-file classification, full lint, CI-scope lizard baseline, tracked-tree gitleaks, and `npx --yes jscpd@4 .` passed.
+- PR #21 checks passed: `PR Required Checks`, `Code Quality Required Checks`, Quick Frontend, Quick E2E, lizard, jscpd, gitleaks, lint, and Docker builds.
+- PR #21 merged as `67eff884`; the post-merge `main` backstop passed `Full Test Summary`, full backend, full frontend, full gateway, full E2E, full build, install tests, release, and dev image builds.
 
 Edge case and self-review:
 
