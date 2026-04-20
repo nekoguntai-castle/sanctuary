@@ -85,6 +85,10 @@ The lizard cleanup loop now uses the same PR-first workflow as other development
 5. Merge only after required checks pass, then wait for the post-merge full lane on `main`.
 6. Rebase or recreate the next batch branch from the updated `main`.
 
+Validated loop sample: PR #18, `lizard/sidebar-content`, passed `PR Required Checks`, `Code Quality Required Checks`, Quick Frontend, Quick E2E, lizard, jscpd, gitleaks, lint, and Docker builds before merge. `Full Test Summary` appeared as skipped/success on the PR. After merge, the push-to-`main` backstop passed `Full Test Summary`, full backend, full frontend, full gateway, full E2E, full build, install tests, release, and dev image builds.
+
+Operational note: scheduled `Test Suite` runs share the same `main` concurrency group as push backstops. During PR #18 validation, a scheduled run began immediately before the merge and blocked the push backstop until it was canceled. If a scheduled run is already being canceled in favor of a higher-priority push run but a long-running job delays handoff, cancel the scheduled run and keep the merge backstop as the source of truth.
+
 ## CI Tiers
 
 ### Tier 0 - Local Loop

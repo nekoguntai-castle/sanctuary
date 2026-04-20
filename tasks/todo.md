@@ -1,6 +1,61 @@
-# Next Task: Lizard UI Batch 19 - Sidebar Content
+# Next Task: Lizard UI Batch 20 - Price Chart
 
 Status: in progress
+
+Goal: reduce the current `ChartTooltip`/`PriceChart` lizard finding by splitting tooltip rendering, animated price behavior, timeframe controls, and chart body rendering while preserving total-balance display, timeframe callbacks, chart-ready gating, tooltip active/inactive states, price placeholder, up/down animation indicators, animation cleanup, visible copy, and the public `PriceChart`/`AnimatedPrice` exports.
+
+## Lizard UI Batch 20 Checklist
+
+- [x] Start from updated `main` after Batch 19 PR and post-merge full lane are green.
+- [x] Confirm `ChartTooltip`/`PriceChart` is the current top UI target at 41 CCN.
+- [x] Split PriceChart tooltip, animated price, timeframe controls, and chart body helpers while preserving callbacks and visible copy.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+
+## Lizard UI Batch 20 Review
+
+Plan:
+
+- Keep `components/Dashboard/PriceChart.tsx` as the public export surface for `PriceChart` and `AnimatedPrice`.
+- Move chart tooltip rendering, timeframe controls, chart body wiring, and animated price behavior into focused helpers under `components/Dashboard/PriceChart/`.
+- Preserve the existing `tests/components/Dashboard/PriceChart.test.tsx` expectations first, then add branch tests only if extraction exposes missing behavior.
+- Verify focused lizard against `components/Dashboard/PriceChart.tsx` and the extracted helper directory before running the broader guardrails.
+
+Baseline and PR-loop notes:
+
+- PR #18 merged as `c0397865`; the post-merge `main` backstop passed the full test summary, full E2E, full build, full frontend, full backend, full gateway, install summary, release check, and dev image build checks.
+- The Batch 19 PR check behavior matched the new PR flow: `PR Required Checks` and `Code Quality Required Checks` passed, and `Full Test Summary` appeared as skipped/success on the PR.
+- Fresh focused lizard measurement from `main` (`c0397865`) reports `components/Dashboard/PriceChart.tsx:7` `ChartTooltip` at 41 CCN.
+- Baseline `npx vitest run tests/components/Dashboard/PriceChart.test.tsx` passed: 1 file, 9 tests.
+
+Changes:
+
+- Reduced `components/Dashboard/PriceChart.tsx` from the 41-CCN chart module to a 37-line public shell.
+- Split `AnimatedPrice`, chart tooltip rendering, chart body wiring, timeframe controls, animated-price helpers, and shared types under `components/Dashboard/PriceChart/`.
+- Preserved total-balance display, timeframe callbacks, chart-ready gating, tooltip active/inactive states, price placeholder, up/down animation indicators, animation cleanup, visible copy, and the public `PriceChart`/`AnimatedPrice` exports.
+- Updated quality tracking: `PriceChart` drops out of the current lizard warning list; broad lizard warning count is now 73 and max CCN is now 39 with `RestorePanel`, `Variables`, and `UTXOGarden` as the top UI targets.
+
+Verification so far:
+
+- `npx vitest run tests/components/Dashboard/PriceChart.test.tsx` passed: 1 file, 9 tests.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/Dashboard/PriceChart.tsx components/Dashboard/PriceChart` passed with no warnings.
+- `npm run typecheck:app` passed.
+- `npm run lint:app` passed.
+- Full broad lizard warning count is now 73; `PriceChart` has no remaining lizard warnings and max CCN is now 39.
+- `npm run test:coverage` passed: 398 files, 5,565 tests, 100% statements/branches/functions/lines.
+- `git diff --check`, grade-history JSONL parsing, large-file classification, full lint, CI-scope lizard baseline, tracked-tree gitleaks, and `npx --yes jscpd@4 .` passed.
+
+Edge case and self-review:
+
+- Null/undefined and empty inputs: inactive tooltip, empty tooltip payload, absent tooltip label, `chartReady=false`, empty chart data, `value=null`, and initial null-to-number price transitions remain guarded on the same paths as before.
+- Boundary values: selected versus unselected timeframe buttons, upward versus downward versus unchanged price direction, animation completion, animation id `0`, and unmount cleanup remain covered by the existing `PriceChart`/`AnimatedPrice` tests.
+- System boundaries: `Amount`, Recharts `ResponsiveContainer`/`AreaChart`/`Tooltip`, `Timeframe`, and the public `PriceChart`/`AnimatedPrice` exports keep the same contracts.
+- Async/race behavior: animation frame cleanup still cancels truthy request IDs on effect cleanup, preserves the existing no-cancel behavior for request id `0`, and updates the previous price only after the animation completes.
+
+# Previous Task: Lizard UI Batch 19 - Sidebar Content
+
+Status: complete
 
 Goal: reduce the current `SidebarContent` lizard finding by splitting primary navigation, wallet section rendering, device section rendering, system/admin rendering, footer/profile utilities, and small mapping helpers while preserving capability filtering, admin visibility, wallet/device alphabetical sorting, multisig/single-sig icon colors, wallet sync status dots, notification badges, empty states, theme toggle, logout, notification bell, block height indicator, version click behavior, and public `SidebarContent` import path.
 
@@ -10,8 +65,8 @@ Goal: reduce the current `SidebarContent` lizard finding by splitting primary na
 - [x] Confirm `SidebarContent` is tied as the current top UI target at 41 CCN.
 - [x] Split SidebarContent section/render branches into focused helpers while preserving callbacks and visible copy.
 - [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
-- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
-- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+- [x] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [x] Merge after required checks pass, then wait for the post-merge `main` backstop.
 
 ## Lizard UI Batch 19 Review
 
@@ -41,6 +96,9 @@ Verification so far:
 - Full broad lizard warning count is now 74; `SidebarContent` has no remaining lizard warnings and max CCN remains 41.
 - `npm run test:coverage` passed: 398 files, 5,565 tests, 100% statements/branches/functions/lines.
 - `git diff --check`, grade-history JSONL parsing, large-file classification, full lint, CI-scope lizard baseline, and `npx --yes jscpd@4 .` passed.
+- PR #18 checks passed: `PR Required Checks`, `Code Quality Required Checks`, Quick Frontend, Quick E2E, lizard, jscpd, gitleaks, lint, and Docker builds.
+- PR #18 merged as `c0397865`; the post-merge `main` backstop passed `Full Test Summary`, full backend, full frontend, full gateway, full E2E, full build, install tests, release, and dev image builds.
+- The scheduled Test Suite that started immediately before the merge was manually canceled after GitHub had already marked several jobs for cancellation in favor of the higher-priority push run; this released the `main` test concurrency group so the post-merge push backstop could run.
 
 Edge case and self-review:
 
