@@ -1,6 +1,57 @@
-# Next Task: Lizard UI Batch 31 - Device Access Ownership
+# Next Task: Lizard UI Batch 32 - Device Account Import
 
 Status: in progress
+
+Goal: reduce the related `DeviceDetail` account import lizard findings by splitting manual derivation-path form logic, add-account modal method routing, and QR import camera/file states while preserving account purpose/script path defaults, manual field updates, submit disabled/loading behavior, import method selection, close/back reset behavior, parsed-account review routing, USB/SD/QR/manual flows, QR mode toggles, camera retry/stop behavior, animated-QR progress display, file upload parsing state, scanner props, and the public `ManualAccountForm`, `AddAccountFlow`, and `QrImport` import paths.
+
+## Lizard UI Batch 32 Checklist
+
+- [x] Start from updated `main` after Batch 31 PR and post-merge full lane are green.
+- [x] Confirm grouped account import targets: `ManualAccountForm` at 31 CCN, `AddAccountFlow` at 23 CCN, and `QrImport` at 21 CCN.
+- [x] Split account import render/state branches into focused helpers while preserving callbacks and visible behavior.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+
+## Lizard UI Batch 32 Review
+
+Plan:
+
+- Keep `components/DeviceDetail/ManualAccountForm.tsx`, `components/DeviceDetail/accounts/AddAccountFlow.tsx`, and `components/DeviceDetail/accounts/QrImport.tsx` as the public exports.
+- Move derivation-path selection, manual form fields/actions, add-account method option rendering, modal header/back/error controls, and QR camera/file panes into focused local helpers.
+- Treat this as one bounded DeviceDetail account-import surface, not a broader hardware-wallet import refactor: leave hook internals, parser behavior, review-table behavior, and unrelated DeviceDetail panels for later batches.
+- Preserve `tests/components/DeviceDetail/ManualAccountForm.test.tsx`, `tests/components/DeviceDetail/accounts/AddAccountFlow.branches.test.tsx`, `tests/components/DeviceDetail/accounts/AddAccountFlow.fallback.test.tsx`, `tests/components/DeviceDetail/accounts/AddAccountFlow.lazyHardwareImport.test.tsx`, and `tests/components/DeviceDetail/accounts/QrImport.test.tsx`; add direct helper tests only if extraction exposes untested path, reset, or camera/file boundaries.
+- Verify focused lizard against the three public files, extracted helper directories, and focused tests before running the broader guardrails.
+
+Verification so far:
+
+- PR #30 merged as `fcdaa7dd`; the post-merge `main` backstop passed release `24682333934`, dev image build `24682333936`, install tests `24682333926`, and test suite `24682333935`, including full backend, full frontend, full gateway, full build, full E2E, and full test summary jobs.
+- Fresh grouped lizard measurement from `main` (`fcdaa7dd`) reports `components/DeviceDetail/ManualAccountForm.tsx:30` at 31 CCN, `components/DeviceDetail/accounts/AddAccountFlow.tsx:12` at 23 CCN, and `components/DeviceDetail/accounts/QrImport.tsx:38` at 21 CCN.
+- Reduced `ManualAccountForm` to a 64-line public form shell, `AddAccountFlow` to a 50-line modal-flow shell, and `QrImport` to a 62-line QR shell.
+- Moved derivation-path defaults into map-backed helpers, manual form fields/actions into focused components, add-account modal chrome/method picker/method panel into local helpers, and QR camera/file states into local helpers.
+- Extracted a shared `components/qr/QrScannerFrame.tsx` for the scanner viewport and stop-camera control used by both device account import and wallet import QR flows, removing the new QR scanner duplication found during self-review.
+- Preserved account purpose/script path defaults, manual derivation/xpub updates, submit disabled/loading behavior, USB/SD/QR/manual method selection, close/back reset behavior, parsed-account review precedence, QR mode toggles, camera start/retry/stop behavior, decoder ref reset, animated-QR progress display, file upload parsing state, scanner props, and the public `ManualAccountForm`, `AddAccountFlow`, and `QrImport` import paths.
+- Added branch assertions for hidden USB options on insecure/unsupported devices, QR mode state cleanup, idle insecure-camera warning, retry behavior, and stop-camera decoder reset.
+- Focused account-import tests passed: `npx vitest run tests/components/DeviceDetail/ManualAccountForm.test.tsx tests/components/DeviceDetail/accounts/AddAccountFlow.branches.test.tsx tests/components/DeviceDetail/accounts/AddAccountFlow.fallback.test.tsx tests/components/DeviceDetail/accounts/AddAccountFlow.lazyHardwareImport.test.tsx tests/components/DeviceDetail/accounts/QrImport.test.tsx` passed: 5 files, 49 tests.
+- Shared QR frame focused tests passed: `npx vitest run tests/components/DeviceDetail/accounts/QrImport.test.tsx tests/components/ImportWallet/QrScanStep.test.tsx tests/components/ImportWallet/ImportWallet.branches.test.tsx tests/components/DeviceDetail/accounts/AddAccountFlow.branches.test.tsx` passed: 4 files, 33 tests.
+- Focused lizard passed for the account import public files, extracted helper directories, shared QR scanner frame, import-wallet QR section, and focused tests.
+- `npm run typecheck:app`, `npm run typecheck:tests`, and `npm run lint:app` passed after the shared frame extraction.
+- `npm run test:coverage` passed: 401 files, 5,587 tests, 100% statements/branches/functions/lines.
+- Broad lizard now reports 57 warnings, average CCN 1.3, max CCN 33; `ManualAccountForm`, `AddAccountFlow`, and `QrImport` are no longer in the warning list.
+- CI-scope lizard passed with the expected 9 server warnings.
+- `npx --yes jscpd@4 .` passed at 2.02% duplication, 277 clones, and 5,300 duplicated lines after sharing the QR scanner frame.
+- `node scripts/quality/check-large-files.mjs` passed.
+
+Edge case and self-review notes:
+
+- Null/empty manual inputs remain guarded by the submit disabled state: missing `xpub`, missing derivation path, or loading state keeps submission disabled.
+- Derivation boundaries remain map-backed and covered for multisig native/nested/fallback suffixes and single-sig BIP-44/49/84/86 script paths.
+- Method selection boundaries remain explicit: insecure or unsupported devices do not show USB, SD/QR selection resets import state, close/back clear import state, and parsed accounts continue to take precedence over method panels.
+- QR boundaries remain preserved: camera/file mode switches clear the previous camera state, camera retry clears prior errors, stop-camera resets animated QR progress plus both decoder refs, file mode preserves `.json,.txt`, and partial progress renders only for values between 0 and 100.
+
+# Previous Task: Lizard UI Batch 31 - Device Access Ownership
+
+Status: complete
 
 Goal: reduce the related `DeviceDetail` access/ownership lizard findings by splitting device sharing controls, owner summary rendering, and ownership transfer modal state/view pieces while preserving owner-only controls, shared group/user display and removal behavior, user search behavior, loading/empty states, transfer recipient selection, message and keep-viewers options, transfer submission payloads, API error copy, close/initiation callbacks, and the public `SharingSection`, `OwnershipSection`, and `TransferOwnershipModal` import paths.
 
@@ -10,8 +61,8 @@ Goal: reduce the related `DeviceDetail` access/ownership lizard findings by spli
 - [x] Confirm grouped access/ownership targets: `SharingSection` at 33 CCN, `OwnershipSection` at 23 CCN, and `TransferOwnershipModal` at 31 CCN.
 - [x] Split device access and transfer modal render/state branches into focused helpers while preserving callbacks and visible behavior.
 - [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
-- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
-- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+- [x] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [x] Merge after required checks pass, then wait for the post-merge `main` backstop.
 
 ## Lizard UI Batch 31 Review
 
@@ -41,6 +92,8 @@ Verification so far:
 - CI-scope lizard passed with the expected 9 server warnings.
 - `npx --yes jscpd@4 .` passed at 2.04% duplication, 279 clones, and 5,337 duplicated lines; the new local helper overlap with wallet access remains below threshold and is bounded to the access UI surface.
 - `node scripts/quality/check-large-files.mjs`, `git diff --check`, grade-history JSONL parsing, and full working-tree gitleaks passed.
+- PR #30 checks passed: `PR Required Checks`, `Code Quality Required Checks`, Quick Frontend, Quick E2E, Quick Test Hygiene, lizard, jscpd, gitleaks, lint, and Docker builds. `Full Test Summary` was skipped as intended on PR.
+- PR #30 merged as `fcdaa7dd`; the post-merge `main` backstop passed release `24682333934`, dev image build `24682333936`, install tests `24682333926`, and test suite `24682333935`, including full backend, full frontend, full gateway, full build, full E2E, and full test summary jobs.
 
 Edge case and self-review notes:
 
