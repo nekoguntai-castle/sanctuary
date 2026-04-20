@@ -85,6 +85,15 @@ describe('UsbConnectionPanel', () => {
     expect(screen.getByText(/Confirm each path on your device/i)).toBeInTheDocument();
   });
 
+  it('guards zero-total scanning progress', () => {
+    renderPanel({
+      scanning: true,
+      usbProgress: { current: 0, total: 0, name: "m/84'/0'/0'" },
+    });
+
+    expect(screen.getByTestId('usb-progress-bar')).toHaveStyle({ width: '0%' });
+  });
+
   it('renders generic connecting text when scanning without progress', () => {
     renderPanel({ scanning: true, usbProgress: null });
 
