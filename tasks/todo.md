@@ -1,6 +1,6 @@
-# Current Task: File Size Batch - Production Support Helpers
+# Completed Task: File Size Batch - Production Support Helpers
 
-Status: in progress
+Status: complete
 
 Goal: reduce the remaining three unclassified production warning-band files, `server/src/repositories/deviceRepository.ts`, `server/src/repositories/agentRepository.ts`, and `server/src/services/bitcoin/electrumPool/electrumPool.ts`, below the 800-line warning threshold with narrow helper extractions and no public behavior changes.
 
@@ -11,7 +11,7 @@ Goal: reduce the remaining three unclassified production warning-band files, `se
 - [x] Move repository support-stat implementations into focused helpers while preserving repository exports.
 - [x] Move Electrum pool circuit-breaker construction into a focused helper while preserving events and thresholds.
 - [x] Run focused backend tests, file-size, lizard, lint/typecheck, coverage, duplication, and diff checks.
-- [ ] Commit, push, open a PR, validate checks, and merge if green.
+- [x] Commit, push, open a PR, validate checks, and merge if green.
 
 ## Review
 
@@ -26,6 +26,10 @@ Goal: reduce the remaining three unclassified production warning-band files, `se
 - `npm run lint:server`, `npm run typecheck:server:tests`, `git diff --check`, and `npx --yes jscpd@4 .` passed.
 - Backend coverage remained at 100% statements/branches/functions/lines: 391 passed files, 22 skipped; 9,156 passed tests, 503 skipped.
 - jscpd remained under the configured threshold at 1.97% duplication, 274 clones, and 5,261 duplicated lines.
+- PR #48 merged to `main` as `8b719f9a Extract production warning helpers (#48)`.
+- PR #48 checks passed before merge: `PR Required Checks`, `Code Quality Required Checks`, Quick Backend, Quick Backend Integration Smoke, Quick Test Hygiene, lizard, jscpd, gitleaks, lint, and Docker builds. PR-only full lanes skipped as intended.
+- Post-merge `main` backstop passed: `Install Tests` `24704371234`, `Build Dev Images` `24704371211`, `Release` `24704371200`, and `Test Suite` `24704371203`.
+- Large-file guardrail on merged `main` reports zero unclassified warning-band files. The only remaining warning-limit files are the four pre-classified proof/generated/fixture files: two performance proof harnesses and two address-verification vector fixtures.
 
 # Completed Task: File Size Batch - Test Fixture Helpers
 
