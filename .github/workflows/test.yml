@@ -488,7 +488,12 @@ jobs:
 
   pr-required-checks:
     name: PR Required Checks
-    if: always() && github.event_name == 'pull_request'
+    # Runs on pull_request and merge_group. On pull_request it aggregates
+    # the quick lane; on merge_group it's a no-op (Full Test Summary is the
+    # authoritative gate there), but it must still report a conclusion so
+    # branch protection doesn't rely on GitHub's "skipped == success"
+    # semantics for merge-queue eligibility.
+    if: always() && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
     runs-on: ubuntu-latest
     needs:
       - detect-changes
@@ -500,7 +505,15 @@ jobs:
       - quick-gateway-tests
       - quick-e2e-smoke
     steps:
+      - name: Merge group no-op
+        if: github.event_name == 'merge_group'
+        run: |
+          echo "PR Required Checks aggregates the pull_request quick lane."
+          echo "On merge_group events, Full Test Summary (full lane) is the authoritative gate."
+          echo "Reporting success so branch-protection required-checks are explicitly satisfied."
+
       - name: Check PR quick lane results
+        if: github.event_name == 'pull_request'
         env:
           DETECT_CHANGES: ${{ needs.detect-changes.result }}
           QUICK_TEST_HYGIENE: ${{ needs.quick-test-hygiene.result }}
