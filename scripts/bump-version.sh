@@ -143,10 +143,11 @@ done
 sed -i "s/^version: \"[0-9]*\.[0-9]*\.[0-9]*\"/version: \"$NEW_VERSION\"/" sanctuary/umbrel-app.yml
 echo -e "  ${GREEN}✓${NC} sanctuary/umbrel-app.yml"
 
-# Update release notes date
+# Update release notes (full line — date AND trailing /tag/vX.Y.Z URL)
 TODAY=$(date +%Y-%m-%d)
-sed -i "s/releaseNotes: \"Version [0-9]*\.[0-9]*\.[0-9]* released on [0-9-]*/releaseNotes: \"Version $NEW_VERSION released on $TODAY/" sanctuary/umbrel-app.yml
-echo -e "  ${GREEN}✓${NC} Updated release notes date"
+REPO_PATH=$(git config --get remote.origin.url | sed -E 's|.*github\.com[:/]||; s|\.git$||')
+sed -i "s|^releaseNotes: .*|releaseNotes: \"Version $NEW_VERSION released on $TODAY. See https://github.com/$REPO_PATH/releases/tag/v$NEW_VERSION for details.\"|" sanctuary/umbrel-app.yml
+echo -e "  ${GREEN}✓${NC} Updated release notes (date + tag URL)"
 
 echo ""
 echo -e "${GREEN}Version updated to $NEW_VERSION${NC}"
