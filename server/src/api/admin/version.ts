@@ -68,7 +68,7 @@ router.get('/', asyncHandler(async (_req, res) => {
   if (!releaseCache || (now - releaseCache.checkedAt) > RELEASE_CACHE_TTL) {
     try {
       const response = await fetch(
-        'https://api.github.com/repos/nekoguntai/sanctuary/releases/latest',
+        'https://api.github.com/repos/nekoguntai-castle/sanctuary/releases/latest',
         {
           headers: {
             'Accept': 'application/vnd.github.v3+json',
@@ -120,7 +120,7 @@ router.get('/', asyncHandler(async (_req, res) => {
     currentVersion,
     latestVersion,
     updateAvailable,
-    releaseUrl: releaseCache?.releaseUrl || `https://github.com/nekoguntai/sanctuary/releases`,
+    releaseUrl: releaseCache?.releaseUrl || `https://github.com/nekoguntai-castle/sanctuary/releases`,
     releaseName: releaseCache?.releaseName || '',
     publishedAt: releaseCache?.publishedAt || '',
     releaseNotes: releaseCache?.body || '',

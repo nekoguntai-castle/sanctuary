@@ -106,7 +106,7 @@ export const AboutModal: React.FC<AboutModalProps> = ({
             </h3>
             <div className="space-y-2">
               <a
-                href="https://github.com/nekoguntai/sanctuary"
+                href="https://github.com/nekoguntai-castle/sanctuary"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center justify-between p-3 rounded-lg surface-secondary hover:bg-sanctuary-100 dark:hover:bg-sanctuary-700 transition-colors"
@@ -120,7 +120,7 @@ export const AboutModal: React.FC<AboutModalProps> = ({
                 <ExternalLink className="h-4 w-4 text-sanctuary-400" />
               </a>
               <a
-                href="https://github.com/nekoguntai/sanctuary/releases"
+                href="https://github.com/nekoguntai-castle/sanctuary/releases"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center justify-between p-3 rounded-lg surface-secondary hover:bg-sanctuary-100 dark:hover:bg-sanctuary-700 transition-colors"

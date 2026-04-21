@@ -15,7 +15,7 @@ import type { PopularModel } from '../types';
 const log = createLogger('AISettings:useModelManagement');
 
 // URL to fetch popular models list
-const POPULAR_MODELS_URL = 'https://raw.githubusercontent.com/nekoguntai/sanctuary/main/config/popular-models.json';
+const POPULAR_MODELS_URL = 'https://raw.githubusercontent.com/nekoguntai-castle/sanctuary/main/config/popular-models.json';
 
 interface UseModelManagementParams {
   aiEndpoint: string;

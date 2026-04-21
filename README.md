@@ -109,13 +109,13 @@
 
 **Option 1: One-liner** (downloads, clones, and installs automatically)
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nekoguntai/sanctuary/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/nekoguntai-castle/sanctuary/main/install.sh | bash
 ```
 This installs the **latest release** to `~/sanctuary` by default. Set `SANCTUARY_DIR` to customize the location.
 
 **Option 2: Clone first** (if you want to choose the directory)
 ```bash
-git clone https://github.com/nekoguntai/sanctuary.git
+git clone https://github.com/nekoguntai-castle/sanctuary.git
 cd sanctuary
 ./install.sh
 ```
@@ -199,7 +199,7 @@ If you're running [Umbrel](https://umbrel.com/), you can install Sanctuary as a 
 1. Open the **App Store** in your Umbrel
 2. Click the **⋯** menu in the upper right corner
 3. Select **Community App Stores**
-4. Paste: `https://github.com/nekoguntai/sanctuary`
+4. Paste: `https://github.com/nekoguntai-castle/sanctuary`
 5. Click **Add**
 6. Find **Sanctuary** in the App Store and click **Install**
 
@@ -422,7 +422,7 @@ If you prefer to run the commands yourself:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/nekoguntai/sanctuary.git
+git clone https://github.com/nekoguntai-castle/sanctuary.git
 cd sanctuary
 
 # 2. Run setup script (generates secrets, SSL certs, builds and starts services)
@@ -458,7 +458,7 @@ The setup script automatically:
 
 3. **Clone and run**
    ```powershell
-   git clone https://github.com/nekoguntai/sanctuary.git
+   git clone https://github.com/nekoguntai-castle/sanctuary.git
    cd sanctuary
    wsl ./scripts/setup.sh  # Generates secrets, SSL certs, builds and starts
    ```
@@ -482,7 +482,7 @@ For users who prefer not to use Docker Desktop:
 
 3. **Clone and run** (still in the Ubuntu/Linux terminal)
    ```bash
-   git clone https://github.com/nekoguntai/sanctuary.git
+   git clone https://github.com/nekoguntai-castle/sanctuary.git
    cd sanctuary
    ./scripts/setup.sh  # Generates secrets, SSL certs, builds and starts
    ```
@@ -502,7 +502,7 @@ For users who prefer not to use Docker Desktop:
 
 2. **Clone and run**
    ```bash
-   git clone https://github.com/nekoguntai/sanctuary.git
+   git clone https://github.com/nekoguntai-castle/sanctuary.git
    cd sanctuary
    ./scripts/setup.sh  # Generates secrets, SSL certs, builds and starts
    ```
@@ -523,7 +523,7 @@ For users who prefer a lighter-weight solution:
 
 3. **Clone and run**
    ```bash
-   git clone https://github.com/nekoguntai/sanctuary.git
+   git clone https://github.com/nekoguntai-castle/sanctuary.git
    cd sanctuary
    ./scripts/setup.sh  # Generates secrets, SSL certs, builds and starts
    ```
@@ -558,7 +558,7 @@ For users who prefer a lighter-weight solution:
 
 2. **Clone and run**
    ```bash
-   git clone https://github.com/nekoguntai/sanctuary.git
+   git clone https://github.com/nekoguntai-castle/sanctuary.git
    cd sanctuary
    ./scripts/setup.sh  # Generates secrets, SSL certs, builds and starts
    ```
@@ -578,7 +578,7 @@ For systems where you can't or don't want to run Docker:
 
 2. **Clone and run**
    ```bash
-   git clone https://github.com/nekoguntai/sanctuary.git
+   git clone https://github.com/nekoguntai-castle/sanctuary.git
    cd sanctuary
    ./scripts/setup.sh --no-start  # Generates secrets and SSL certs (but don't start with docker)
    podman-compose up -d           # Use podman-compose instead

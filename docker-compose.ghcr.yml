@@ -4,7 +4,7 @@
 # Usage: Pull pre-built images from GitHub Container Registry
 #   docker-compose -f docker-compose.ghcr.yml up -d
 #
-# Note: Set GITHUB_REPOSITORY to your repo (e.g., nekoguntai/sanctuary)
+# Note: Set GITHUB_REPOSITORY to your repo (e.g., nekoguntai-castle/sanctuary)
 # =============================================
 
 services:
@@ -53,7 +53,7 @@ services:
   # Backend API Server (from GHCR)
   # ============================================
   backend:
-    image: ghcr.io/${GITHUB_REPOSITORY:-nekoguntai/sanctuary}-backend:${IMAGE_TAG:-latest}
+    image: ghcr.io/${GITHUB_REPOSITORY:-nekoguntai-castle/sanctuary}-backend:${IMAGE_TAG:-latest}
     container_name: sanctuary-backend
     restart: unless-stopped
     depends_on:
@@ -113,7 +113,7 @@ services:
   # Background Worker (from GHCR)
   # ============================================
   worker:
-    image: ghcr.io/${GITHUB_REPOSITORY:-nekoguntai/sanctuary}-backend:${IMAGE_TAG:-latest}
+    image: ghcr.io/${GITHUB_REPOSITORY:-nekoguntai-castle/sanctuary}-backend:${IMAGE_TAG:-latest}
     container_name: sanctuary-worker
     restart: unless-stopped
     depends_on:
@@ -154,7 +154,7 @@ services:
   # Database Migrations & Seeding (one-time run)
   # ============================================
   migrate:
-    image: ghcr.io/${GITHUB_REPOSITORY:-nekoguntai/sanctuary}-backend:${IMAGE_TAG:-latest}
+    image: ghcr.io/${GITHUB_REPOSITORY:-nekoguntai-castle/sanctuary}-backend:${IMAGE_TAG:-latest}
     container_name: sanctuary-migrate
     depends_on:
       postgres:
@@ -170,7 +170,7 @@ services:
   # Frontend (Nginx + React) (from GHCR)
   # ============================================
   frontend:
-    image: ghcr.io/${GITHUB_REPOSITORY:-nekoguntai/sanctuary}-frontend:${IMAGE_TAG:-latest}
+    image: ghcr.io/${GITHUB_REPOSITORY:-nekoguntai-castle/sanctuary}-frontend:${IMAGE_TAG:-latest}
     container_name: sanctuary-frontend
     restart: unless-stopped
     depends_on:

@@ -411,12 +411,12 @@ jobs:
 
           # Update releaseNotes in umbrel-app.yml
           RELEASE_DATE=$(date +"%Y-%m-%d")
-          sed -i "s/^releaseNotes: .*/releaseNotes: \"Version $VERSION released on $RELEASE_DATE. See https:\/\/github.com\/nekoguntai\/sanctuary\/releases\/tag\/v$VERSION for details.\"/" sanctuary/umbrel-app.yml
+          sed -i "s/^releaseNotes: .*/releaseNotes: \"Version $VERSION released on $RELEASE_DATE. See https:\/\/github.com\/nekoguntai-castle\/sanctuary\/releases\/tag\/v$VERSION for details.\"/" sanctuary/umbrel-app.yml
 
           # Update docker-compose.yml with new image tags and digests
           # Handle both with and without existing @sha256 suffix
-          sed -i "s|ghcr.io/nekoguntai/sanctuary-frontend:[^[:space:]]*|ghcr.io/nekoguntai/sanctuary-frontend:v$VERSION@$FRONTEND_DIGEST|g" sanctuary/docker-compose.yml
-          sed -i "s|ghcr.io/nekoguntai/sanctuary-backend:[^[:space:]]*|ghcr.io/nekoguntai/sanctuary-backend:v$VERSION@$BACKEND_DIGEST|g" sanctuary/docker-compose.yml
+          sed -i "s|ghcr.io/nekoguntai-castle/sanctuary-frontend:[^[:space:]]*|ghcr.io/nekoguntai-castle/sanctuary-frontend:v$VERSION@$FRONTEND_DIGEST|g" sanctuary/docker-compose.yml
+          sed -i "s|ghcr.io/nekoguntai-castle/sanctuary-backend:[^[:space:]]*|ghcr.io/nekoguntai-castle/sanctuary-backend:v$VERSION@$BACKEND_DIGEST|g" sanctuary/docker-compose.yml
 
           echo "Updated files:"
           grep -E "version:|releaseNotes:" sanctuary/umbrel-app.yml
@@ -483,7 +483,7 @@ jobs:
           **Prerequisites:** Docker and Docker Compose
 
           ```bash
-          git clone https://github.com/nekoguntai/sanctuary.git
+          git clone https://github.com/nekoguntai-castle/sanctuary.git
           cd sanctuary
           ./install.sh
           ```
@@ -517,7 +517,7 @@ jobs:
 
           1. Open the App Store in your Umbrel
           2. Click the **...** menu and select **Community App Stores**
-          3. Paste: `https://github.com/nekoguntai/sanctuary`
+          3. Paste: `https://github.com/nekoguntai-castle/sanctuary`
           4. Click **Add**, then find Sanctuary and install
 
           </details>

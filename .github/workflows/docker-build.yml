@@ -4,8 +4,8 @@ name: Build Dev Images
 # For versioned release images, see release.yml
 #
 # Images built:
-#   - ghcr.io/nekoguntai/sanctuary-frontend:main
-#   - ghcr.io/nekoguntai/sanctuary-backend:main
+#   - ghcr.io/nekoguntai-castle/sanctuary-frontend:main
+#   - ghcr.io/nekoguntai-castle/sanctuary-backend:main
 
 on:
   push:

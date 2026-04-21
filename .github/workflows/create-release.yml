@@ -76,13 +76,13 @@ jobs:
           **Prerequisites:** Docker and Docker Compose
 
           ```bash
-          curl -fsSL https://raw.githubusercontent.com/nekoguntai/sanctuary/main/install.sh | bash
+          curl -fsSL https://raw.githubusercontent.com/nekoguntai-castle/sanctuary/main/install.sh | bash
           ```
 
           Or manually:
 
           ```bash
-          git clone https://github.com/nekoguntai/sanctuary.git
+          git clone https://github.com/nekoguntai-castle/sanctuary.git
           cd sanctuary
           ./install.sh
           ```

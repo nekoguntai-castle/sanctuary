@@ -200,7 +200,7 @@ case "$SOURCE_PLATFORM" in
         REPO_URL="https://gitlab.com/narusegawa-nekoworks/sanctuary.git"
         ;;
     github|*)
-        REPO_URL="https://github.com/nekoguntai/sanctuary.git"
+        REPO_URL="https://github.com/nekoguntai-castle/sanctuary.git"
         ;;
 esac
 
@@ -260,7 +260,7 @@ has_openssl() {
 # Get latest release (simplified for testing)
 get_latest_release() {
     if command -v curl &> /dev/null; then
-        local tag=$(curl -fsSL "https://api.github.com/repos/nekoguntai/sanctuary/releases/latest" 2>/dev/null | grep '"tag_name"' | head -1 | cut -d'"' -f4)
+        local tag=$(curl -fsSL "https://api.github.com/repos/nekoguntai-castle/sanctuary/releases/latest" 2>/dev/null | grep '"tag_name"' | head -1 | cut -d'"' -f4)
         if [ -n "$tag" ]; then
             echo "$tag"
             return 0
