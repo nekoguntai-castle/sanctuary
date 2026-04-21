@@ -8,7 +8,7 @@ Status: Draft
 **Grade**: A
 **Confidence**: High
 **Mode**: full
-**Commit**: b70603bf + working tree
+**Commit**: 461240a1
 
 ---
 
@@ -210,3 +210,4 @@ None.
 - `node scripts/quality/check-large-files.mjs` passed after current remediation; `server/src/repositories/agentRepository.ts` is now 808 lines.
 - Agent funding batch focused checks passed: `npx vitest run tests/components/AgentManagement.test.tsx tests/components/coverageFallbacks.test.tsx` (21 tests), `cd server && npx vitest run tests/unit/services/agentApiService.test.ts tests/unit/services/adminAgentService.test.ts tests/unit/repositories/agentRepository.test.ts tests/unit/api/agent-routes.test.ts` (40 tests), `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/AgentManagement/AgentOverridesModal.tsx server/src/services/adminAgentService.ts server/src/repositories/agentRepository.ts server/src/services/agentApiService.ts`, `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint`, `npm run test:coverage`, `npm run test:backend:coverage`, broad lizard, `npx --yes jscpd@4 .`, `node scripts/quality/check-large-files.mjs`, `git diff --check`, and gitleaks direct/latest-commit/tracked-tree scans.
 - Final lizard warning cleanup focused checks passed: `npx vitest run tests/hooks/useWebSocket.test.tsx tests/hooks/useHardwareWallet.test.tsx tests/contexts/send/SendTransactionContext.test.tsx tests/contexts/UserContext.test.tsx tests/components/Layout.branches.test.tsx tests/components/NodeConfig.secondpass.test.tsx tests/components/Dashboard/AnimatedFeeRate.test.tsx tests/components/Settings.interactions.test.tsx` (202 tests), `cd server && npx vitest run tests/unit/services/telegram/telegramService.test.ts tests/unit/services/agentMonitoringService.test.ts tests/unit/mcp/transport.test.ts` (47 tests), `cd server && npx vitest run tests/unit/services/agentMonitoringService.test.ts` (14 tests after the non-positive-threshold branch assertion), focused lizard for all Batch 43 targets, broad `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w .`, `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint`, `npm run test:coverage`, `npm run test:backend:coverage`, `npx --yes jscpd@4 .`, `node scripts/quality/check-large-files.mjs`, `git diff --check`, and gitleaks direct/latest-commit/tracked-tree scans.
+- Final lizard warning cleanup PR #42 merged as `461240a1`; PR `PR Required Checks`, `Code Quality Required Checks`, quick checks, vector verification, and Docker builds passed before merge, and the post-merge `main` backstop passed `Build Dev Images` `24700593317`, `Install Tests` `24700593305`, `Release` `24700593298`, and `Test Suite` `24700593316`.
