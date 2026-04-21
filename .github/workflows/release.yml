@@ -458,7 +458,38 @@ jobs:
               --head "$BRANCH"
           fi
 
-          gh pr merge "$BRANCH" --squash --auto --delete-branch
+          PR_NUM=$(gh pr view "$BRANCH" --json number --jq .number)
+          gh pr merge "$PR_NUM" --squash --auto --delete-branch
+
+          # Wait for auto-merge to complete, handling branch-behind stalls
+          # that arise from `strict: true` branch protection when main advances
+          # while this PR is waiting. Timeout-bounded; treats stall as warning,
+          # not release failure, since the images are already published.
+          DEADLINE=$(($(date +%s) + 900))  # 15 min
+          while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+            sleep 30
+            STATE=$(gh pr view "$PR_NUM" --json state --jq .state 2>/dev/null || echo "")
+            MERGE_STATE=$(gh pr view "$PR_NUM" --json mergeStateStatus --jq .mergeStateStatus 2>/dev/null || echo "")
+            echo "PR $PR_NUM state=$STATE merge_state=$MERGE_STATE"
+
+            case "$STATE" in
+              MERGED)
+                echo "✓ Umbrel update PR merged"
+                exit 0
+                ;;
+              CLOSED)
+                echo "::error::Umbrel update PR was closed without merging"
+                exit 1
+                ;;
+            esac
+
+            if [ "$MERGE_STATE" = "BEHIND" ]; then
+              echo "Branch behind main; calling update-branch..."
+              gh api --method PUT "/repos/$GITHUB_REPOSITORY/pulls/$PR_NUM/update-branch" || true
+            fi
+          done
+
+          echo "::warning::Umbrel PR $PR_NUM did not auto-merge within 15 min; leaving open for manual merge"
 
   update-release:
     name: Update Release Notes
