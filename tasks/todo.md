@@ -1,3 +1,31 @@
+# Current Task: File Size Batch - Admin Agent Route Tests
+
+Status: local complete, ready for PR flow
+
+Goal: reduce the largest unclassified warning-band file, `server/tests/unit/api/admin-agents-routes.test.ts`, below the 800-line warning threshold without changing route behavior or assertion coverage.
+
+## Checklist
+
+- [x] Confirm current large-file warning set and select the smallest safe first target.
+- [x] Extract admin-agent route test IDs, fixtures, and default mock setup into a colocated helper.
+- [x] Keep route assertions in `admin-agents-routes.test.ts` and preserve mocked repository behavior.
+- [x] Run focused admin-agent route tests.
+- [x] Run file-size, lizard, lint/typecheck, coverage, duplication, and diff checks.
+- [x] Prepare the branch for the protected-main PR flow.
+
+## Review
+
+- Starting file size: `server/tests/unit/api/admin-agents-routes.test.ts` at 962 lines.
+- Current large-file policy still passes, but this file is the largest unclassified warning-band test file.
+- Chosen approach: mechanical fixture/setup extraction rather than splitting assertions across multiple files, so test intent remains easy to scan.
+- Current split result: `admin-agents-routes.test.ts` is 798 lines and `admin-agents-routes.fixtures.ts` is 242 lines.
+- Focused route test passed: `npx vitest run tests/unit/api/admin-agents-routes.test.ts` in `server` (18 tests).
+- Large-file guardrail passed; the warning-band count dropped from 10 to 9 and `admin-agents-routes.test.ts` no longer appears in the warning list.
+- Focused lizard passed for `admin-agents-routes.test.ts` and `admin-agents-routes.fixtures.ts`.
+- Server lint, server test typecheck, `git diff --check`, backend coverage, and jscpd passed.
+- Backend coverage remained at 100% statements/branches/functions/lines: 391 passed files, 22 skipped; 9,156 passed tests, 503 skipped.
+- jscpd remained under the configured threshold at 1.95% duplication, 272 clones, and 5,213 duplicated lines.
+
 # Completed Task: Grade Report And Vitest Warning PR
 
 Status: complete
