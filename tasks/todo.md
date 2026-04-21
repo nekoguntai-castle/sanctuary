@@ -1,3 +1,68 @@
+# Active Task: Rename org `nekoguntai` → `nekoguntai-castle`
+
+Status: complete
+
+Goal: the repo was transferred from `github.com/nekoguntai/sanctuary` to `github.com/nekoguntai-castle/sanctuary`. Update every in-repo reference to the new org, including GitHub URLs and GHCR container image paths. GHCR has no external consumers yet so image paths can change freely.
+
+## Scope decisions
+
+- Update Category A (GitHub URLs) and Category B (GHCR images) — no user-facing breakage risk.
+- Leave historical artifacts unchanged: `CHANGELOG.md` compare links, `tasks/` entries, `docs/plans/` archived docs.
+- Leave person-identity fields alone: `server/package.json` `author`, `umbrel-app.yml` `submitter`.
+- `docs/reference/ci-cd-strategy.md` section on the merge-queue blocker is now obsolete — update to reflect the move and note merge queue can now be enabled.
+
+## Checklist
+
+### Category A — GitHub URLs (redirect works, update for cleanliness)
+- [ ] `README.md` — 7 clone URLs + 1 Umbrel paste URL
+- [ ] `sanctuary/README.md` — header repo reference
+- [ ] `sanctuary/umbrel-app.yml` — `icon`, `website`, `repo`, `support`, `releaseNotes` URLs (leave `submitter`)
+- [ ] `sanctuary/docker-compose.yml` — header comment
+- [ ] `components/Layout/AboutModal.tsx` — 2 hrefs
+- [ ] `components/AISettings/hooks/useModelManagement.ts` — `POPULAR_MODELS_URL` raw-content URL
+- [ ] `server/src/api/admin/version.ts` — fallback `releaseUrl`
+- [ ] `server/tests/unit/api/admin-version-routes.test.ts` — 2 test fixtures
+- [ ] `server/tests/unit/api/admin/admin.audit-version-electrum.contracts.ts` — 1 test fixture
+- [ ] `install.sh` — clone URL
+- [ ] `tests/install/unit/install-script.test.sh` — test expectation
+- [ ] `scripts/generate-readme.sh` — 2 URL constants
+- [ ] `.github/workflows/create-release.yml` — clone URL
+- [ ] `.github/workflows/release.yml` — clone URL + Umbrel paste instructions
+
+### Category B — GHCR images (no users; safe to rename)
+- [ ] `sanctuary/docker-compose.yml` — 4 pinned image references (frontend + 3 backend)
+- [ ] `sanctuary/README.md` — 4 image references in build/verify instructions
+- [ ] `.github/workflows/docker-build.yml` — comment header (the `${{ github.repository }}` path auto-updates)
+- [ ] `.github/workflows/release.yml` — 2 `sed` image replacements in bump step
+- [ ] `scripts/bump-version.sh` — grep pattern for digest extraction
+- [ ] `docker-compose.ghcr.yml` — 4 fallback values in `${GITHUB_REPOSITORY:-...}`
+
+### Category C — documentation drift
+- [ ] `docs/reference/ci-cd-strategy.md` — update merge-queue blocker section (now resolved by move)
+
+### Local repo hygiene (separate, outside the PR)
+- [ ] `git remote set-url origin git@github.com:nekoguntai-castle/sanctuary.git`
+
+## Verification
+
+- [ ] `grep -r "nekoguntai/sanctuary"` returns only CHANGELOG, tasks/, docs/plans/ archived entries.
+- [ ] `grep -r "ghcr.io/nekoguntai"` returns zero matches.
+- [ ] `npx tsc --noEmit` in root (frontend) and `server/` both pass.
+- [ ] Run affected test files: `admin-version-routes.test.ts`, `admin.audit-version-electrum.contracts.ts`, `install-script.test.sh`.
+- [ ] `/simplify` pass over the diff before committing.
+
+## Review
+
+- Replaced `nekoguntai/sanctuary` → `nekoguntai-castle/sanctuary` across 18 files via unambiguous `replace_all` substitutions. Person-identity fields (`server/package.json` `author`, `umbrel-app.yml` `submitter`) were untouched because they are bare `nekoguntai` without the `/sanctuary` suffix.
+- `docs/reference/ci-cd-strategy.md` merge-queue blocker paragraph rewritten to reflect that the user→org move resolved the HTTP 422 `Invalid rule 'merge_queue'` limitation; merge queue is now enable-able.
+- Historical references intentionally left as-is: `CHANGELOG.md` compare links, `tasks/lessons.md`, `docs/plans/v0.8.10-announcement.md`. GitHub redirects handle these.
+- Local git remote updated: `origin` now `git@github.com:nekoguntai-castle/sanctuary.git`.
+- Verification: `npx tsc --noEmit` passed in root and `server/`; `admin-version-routes.test.ts` (6/6), full `admin.test.ts` which registers the contracts file (71/71), and `install-script.test.sh` (73/73) all green. Residual grep for `nekoguntai/sanctuary` only matches historical files as expected.
+- Not committed — awaiting user direction on PR vs direct-to-main + whether to keep CHANGELOG as-is.
+- **Codex stop-hook follow-up fix:** `.github/workflows/release.yml:414` contained the URL with backslash-escaped slashes (`nekoguntai\/sanctuary`) inside a sed command — the first-pass `replace_all` matched the literal substring `nekoguntai/sanctuary`, not `nekoguntai\/sanctuary`, so that one line was missed. This would have caused the release workflow to rewrite `umbrel-app.yml` releaseNotes back to the old org URL on the next release. Fixed by explicit Edit on that line. Final sweep confirms all remaining `nekoguntai` matches in-repo are either historical (CHANGELOG/tasks/docs-plans), personal identity (`author`, `submitter`), filesystem paths (`/home/nekoguntai/...`), or the personal website domain (`nekoguntai.dev/sanctuary`) — all intentional.
+
+---
+
 # Completed Task: Grade Audit - Worthwhile Findings Review
 
 Status: complete

@@ -4,7 +4,7 @@
 # ============================================
 #
 # One-liner installation (GitHub):
-#   curl -fsSL https://raw.githubusercontent.com/nekoguntai/sanctuary/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/nekoguntai-castle/sanctuary/main/install.sh | bash
 #
 # Or download and run:
 #   ./install.sh
@@ -113,8 +113,8 @@ case "$SOURCE_PLATFORM" in
         PLATFORM_NAME="GitLab"
         ;;
     github|*)
-        REPO_URL="https://github.com/nekoguntai/sanctuary.git"
-        API_URL="https://api.github.com/repos/nekoguntai/sanctuary/releases/latest"
+        REPO_URL="https://github.com/nekoguntai-castle/sanctuary.git"
+        API_URL="https://api.github.com/repos/nekoguntai-castle/sanctuary/releases/latest"
         PLATFORM_NAME="GitHub"
         ;;
 esac

@@ -35,7 +35,7 @@ get_version() {
 
 get_umbrel_image_versions() {
   local image=$1
-  grep "ghcr.io/nekoguntai/sanctuary-${image}:v" sanctuary/docker-compose.yml \
+  grep "ghcr.io/nekoguntai-castle/sanctuary-${image}:v" sanctuary/docker-compose.yml \
     | sed -E 's/.*sanctuary-[^:]+:v([0-9]+\.[0-9]+\.[0-9]+).*/\1/' \
     | sort -u
 }

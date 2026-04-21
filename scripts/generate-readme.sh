@@ -18,9 +18,9 @@ fi
 
 case "$PLATFORM" in
     github)
-        REPO_URL="https://github.com/nekoguntai/sanctuary"
-        CLONE_URL="https://github.com/nekoguntai/sanctuary.git"
-        RAW_URL="https://raw.githubusercontent.com/nekoguntai/sanctuary/main"
+        REPO_URL="https://github.com/nekoguntai-castle/sanctuary"
+        CLONE_URL="https://github.com/nekoguntai-castle/sanctuary.git"
+        RAW_URL="https://raw.githubusercontent.com/nekoguntai-castle/sanctuary/main"
         PLATFORM_NAME="GitHub"
         ;;
     gitlab)

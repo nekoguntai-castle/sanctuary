@@ -23,9 +23,9 @@ Because this repository currently has a single human collaborator, the branch pr
 
 Merge queue is the preferred long-term merge model once GitHub makes it available for this repository. The required workflows already include `merge_group` triggers, and the full confidence lane is ready to validate the queued merge-group SHA.
 
-Current blocker: `nekoguntai/sanctuary` is a public repository owned by a paid personal user account. GitHub Pro/personal billing still leaves the repository owner type as `User`, not `Organization`. GitHub currently limits pull request merge queues to public repositories owned by organizations, or private repositories owned by organizations using GitHub Enterprise Cloud. An API attempt to add a repository ruleset with a `merge_queue` rule failed with HTTP 422, `Invalid rule 'merge_queue'`, which matches that availability limit.
+The repository lives at `nekoguntai-castle/sanctuary`, a public repository owned by an organization, which makes it eligible for pull request merge queues. The previous user-owned limitation (HTTP 422, `Invalid rule 'merge_queue'`) no longer applies.
 
-When the repository is moved under an eligible organization, enable a repository-level merge queue for `main` with:
+Enable a repository-level merge queue for `main` with:
 
 - Merge method: squash.
 - Build concurrency: `3`.

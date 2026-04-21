@@ -99,7 +99,7 @@ describe('Admin Version Routes', () => {
   it('returns release info and uses cache for repeated checks', async () => {
     const releaseJson = {
       tag_name: 'v1.4.0',
-      html_url: 'https://github.com/nekoguntai/sanctuary/releases/tag/v1.4.0',
+      html_url: 'https://github.com/nekoguntai-castle/sanctuary/releases/tag/v1.4.0',
       name: 'v1.4.0',
       published_at: '2026-01-01T00:00:00.000Z',
       body: 'Release notes',
@@ -147,7 +147,7 @@ describe('Admin Version Routes', () => {
       currentVersion: '1.2.3',
       latestVersion: '0.0.0',
       updateAvailable: false,
-      releaseUrl: 'https://github.com/nekoguntai/sanctuary/releases',
+      releaseUrl: 'https://github.com/nekoguntai-castle/sanctuary/releases',
       releaseName: '',
       publishedAt: '',
       releaseNotes: '',

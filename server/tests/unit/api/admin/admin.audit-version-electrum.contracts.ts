@@ -165,7 +165,7 @@ export function registerAdminAuditVersionElectrumTests(): void {
           ok: true,
           json: async () => ({
             tag_name: 'v1.1.0',
-            html_url: 'https://github.com/nekoguntai/sanctuary/releases/tag/v1.1.0',
+            html_url: 'https://github.com/nekoguntai-castle/sanctuary/releases/tag/v1.1.0',
             name: 'Release 1.1.0',
             published_at: '2024-01-01T00:00:00Z',
             body: 'Release notes',

@@ -24,7 +24,7 @@ docker buildx create --use --name sanctuary-builder
 # Build and push frontend
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
-  -t ghcr.io/nekoguntai/sanctuary-frontend:v0.8.7 \
+  -t ghcr.io/nekoguntai-castle/sanctuary-frontend:v0.8.7 \
   -f Dockerfile \
   --push \
   .
@@ -32,7 +32,7 @@ docker buildx build \
 # Build and push backend
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
-  -t ghcr.io/nekoguntai/sanctuary-backend:v0.8.7 \
+  -t ghcr.io/nekoguntai-castle/sanctuary-backend:v0.8.7 \
   -f server/Dockerfile \
   --push \
   ./server
@@ -44,10 +44,10 @@ After pushing, get the image digests:
 
 ```bash
 # Get frontend digest
-docker buildx imagetools inspect ghcr.io/nekoguntai/sanctuary-frontend:v0.8.7 --format '{{json .Manifest.Digest}}'
+docker buildx imagetools inspect ghcr.io/nekoguntai-castle/sanctuary-frontend:v0.8.7 --format '{{json .Manifest.Digest}}'
 
 # Get backend digest
-docker buildx imagetools inspect ghcr.io/nekoguntai/sanctuary-backend:v0.8.7 --format '{{json .Manifest.Digest}}'
+docker buildx imagetools inspect ghcr.io/nekoguntai-castle/sanctuary-backend:v0.8.7 --format '{{json .Manifest.Digest}}'
 ```
 
 Update `docker-compose.yml` with the actual SHA256 digests:
