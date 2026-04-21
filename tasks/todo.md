@@ -1,6 +1,55 @@
-# Next Task: Lizard UI Batch 40 - Wallet Dashboard Renderers
+# Next Task: Lizard UI Batch 41 - Admin And Account UI
 
 Status: in progress
+
+Goal: reduce six independent admin/account UI lizard findings by splitting audit log shell/detail rendering, password form field/alert rendering, two-factor status/action cards, access-control settings sections, and feature-flag list/audit rendering while preserving public import paths, audit filter/query behavior, modal close/detail/fallback rendering, password visibility and validation messaging, 2FA enable/disable/backup-code actions, access-control optimistic save feedback and cleanup, feature-flag toggle/reset success handling, and audit-history expand/collapse behavior.
+
+## Lizard UI Batch 41 Checklist
+
+- [x] Confirm Batch 40 PR #39 post-merge `main` backstop is green, including test suite run `24695771236`.
+- [x] Confirm grouped targets: `AuditLogs` at 17 CCN, `LogDetailModal` at 17 CCN, `PasswordForm` at 19 CCN, `TwoFactorSection` at 21 CCN, `AccessControlTab` at 17 CCN, and `FeatureFlags` at 19 CCN.
+- [x] Split the selected admin/account UI modules into focused helpers while preserving callbacks and visible behavior.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+
+## Lizard UI Batch 41 Review
+
+Plan:
+
+- Keep `components/AuditLogs/AuditLogs.tsx`, `components/AuditLogs/LogDetailModal.tsx`, `components/Account/PasswordForm.tsx`, `components/Account/TwoFactorSection.tsx`, `components/SystemSettings/AccessControlTab.tsx`, and `components/FeatureFlags/index.tsx` as the public exports.
+- Move audit query/filter assembly, audit header/action controls, modal info/status/detail sections, password field chrome and inline alerts, two-factor status/backup-code cards, access-control status/save-feedback sections, and feature-flag rows/audit-history rendering into focused colocated helpers.
+- Treat this as an aggressive but still coherent admin/settings batch: the targets are all UI-only and already have direct or owning-component tests, while `AgentOverridesModal` is intentionally deferred because it lacks a focused branch suite today.
+- Preserve focused tests: `tests/components/AuditLogs.test.tsx`, `tests/components/AuditLogs.branches.test.tsx`, `tests/components/AuditLogs/LogDetailModal.branches.test.tsx`, `tests/components/Account.test.tsx`, `tests/components/Account.branches.test.tsx`, `tests/components/Account/PasswordForm.branches.test.tsx`, `tests/components/SystemSettings/AccessControlTab.branches.test.tsx`, and `tests/components/FeatureFlags.test.tsx`; add direct `TwoFactorSection` coverage only if the extraction exposes untested enabled/disabled/loading/error boundaries.
+- Verify focused lizard against the six public files and any extracted helper directories before running broader guardrails.
+
+Verification so far:
+
+- Batch 40 PR #39 merged as `027ae304`; `Build Dev Images` run `24695771226`, `Release` run `24695771246`, and `Install Tests` run `24695771257` passed on `main`.
+- Batch 40 `Test Suite` run `24695771236` passed on `main`, including `Full Backend Tests`, `Full Gateway Tests`, `Full Frontend Tests`, `Full Build Check`, `Full E2E Tests`, and `Full Test Summary`.
+- Confirmed strong existing coverage for the grouped batch in `AuditLogs`, `Account`, `AccessControlTab`, and `FeatureFlags`; `TwoFactorSection` can pick up a direct branch test if helper extraction creates uncovered state combinations.
+- `AgentOverridesModal` remains a good next-batch candidate, but it is deliberately excluded here because it currently only has fallback coverage via `tests/components/coverageFallbacks.test.tsx`.
+- Split `AuditLogs`, `LogDetailModal`, `PasswordForm`, `TwoFactorSection`, `AccessControlTab`, and `FeatureFlags` into smaller local/grouped helpers while preserving public import paths and behavior.
+- Focused UI tests passed: `npx vitest run tests/components/AuditLogs.test.tsx tests/components/AuditLogs.branches.test.tsx tests/components/AuditLogs/LogDetailModal.branches.test.tsx tests/components/Account.test.tsx tests/components/Account.branches.test.tsx tests/components/Account/PasswordForm.branches.test.tsx tests/components/SystemSettings/AccessControlTab.branches.test.tsx tests/components/FeatureFlags.test.tsx` passed with 81 tests.
+- Focused lizard passed for the six public files plus the new feature-flag helper files.
+- `npm run typecheck:app`, `npm run typecheck:tests`, and `npm run lint` passed.
+- `npm run test:coverage` passed: 401 files, 5,593 tests, 100% statements/branches/functions/lines.
+- Broad lizard now reports 22 warnings; `AuditLogs`, `LogDetailModal`, `PasswordForm`, `TwoFactorSection`, `AccessControlTab`, and `FeatureFlags` are no longer in the warning list.
+- `npx --yes jscpd@4 .` passed at 1.96% duplication, 273 clones, and 5,225 duplicated lines.
+- `node scripts/quality/check-large-files.mjs`, `git diff --check`, and gitleaks direct plus tracked-tree scans passed.
+
+Edge case and self-review notes:
+
+- Keep audit filters omitting empty values while preserving page reset and filter-count badge behavior.
+- Preserve audit detail fallbacks for missing `userId`, `ipAddress`, `details`, `errorMsg`, and `userAgent`, including unknown-category badge styling.
+- Keep password field visibility toggles, success/disable submit behavior, and inline validation/error/success messaging unchanged.
+- Preserve 2FA loading/error state transitions, enabled/disabled action labels, and backup-code regeneration affordances.
+- Maintain access-control save timeout replacement and cleanup-on-unmount semantics.
+- Keep feature-flag success timeout replacement, audit-history collapse behavior, side-effect warnings, and non-system modifier metadata intact.
+
+# Previous Task: Lizard UI Batch 40 - Wallet Dashboard Renderers
+
+Status: complete
 
 Goal: reduce five independent wallet/dashboard UI lizard findings by splitting wallet table cell renderers, dashboard wallet distribution/table rendering, mempool header/state rendering, wallet autopilot settings/status sections, and animated-background module loading helpers while preserving public import paths, wallet navigation, hover highlighting, sync/status labels and tooltips, mempool refresh/WebSocket status behavior, testnet/signet empty-state routing, autopilot load/save/error/notification gating, animation lazy-loading cancellation, and canvas visibility semantics.
 
@@ -10,8 +59,8 @@ Goal: reduce five independent wallet/dashboard UI lizard findings by splitting w
 - [x] Confirm grouped targets: `WalletCells` at 25 CCN, `WalletSummary` at 17 CCN, `MempoolSection` at 17 CCN, `WalletAutopilotSettings` at 19 CCN, and `AnimatedBackground` at 19 CCN.
 - [x] Split the selected wallet/dashboard renderers into focused helpers while preserving callbacks and visible behavior.
 - [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
-- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
-- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+- [x] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [x] Merge after required checks pass, then wait for the post-merge `main` backstop.
 
 ## Lizard UI Batch 40 Review
 
@@ -38,6 +87,8 @@ Verification so far:
 - Broad lizard now reports 28 warnings; `WalletCells`, `WalletSummary`, `MempoolSection`, `WalletAutopilotSettings`, and `AnimatedBackground` are no longer in the warning list.
 - `npx --yes jscpd@4 .` passed at 1.97% duplication, 274 clones, and 5,237 duplicated lines.
 - `node scripts/quality/check-large-files.mjs`, tracked-tree gitleaks detect, and `git diff --check` passed.
+- PR #39 checks passed: `PR Required Checks`, `Code Quality Required Checks`, Quick Frontend, Quick E2E, Quick Test Hygiene, lizard, jscpd, gitleaks, lint, and Docker builds. `Full Test Summary` was skipped as intended on the PR.
+- PR #39 merged as `027ae304`; the post-merge `main` backstop passed release `24695771246`, dev image build `24695771226`, install tests `24695771257`, and test suite `24695771236`, including full backend, full frontend, full gateway, full build, full E2E, and full test summary jobs.
 
 Edge case and self-review notes:
 
