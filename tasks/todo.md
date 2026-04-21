@@ -1,6 +1,6 @@
-# Current Task: Grade Report And Vitest Warning PR
+# Completed Task: Grade Report And Vitest Warning PR
 
-Status: in progress
+Status: complete
 
 Goal: finish the `$grade` follow-up by resolving the Vitest future-compatibility warning, refreshing the grade report/history, and shipping the work through the protected-main PR flow.
 
@@ -11,7 +11,7 @@ Goal: finish the `$grade` follow-up by resolving the Vitest future-compatibility
 - [x] Run focused tracing tests.
 - [x] Run backend coverage to confirm the warning is gone and coverage remains 100%.
 - [x] Update the grade report/history to remove the resolved warning risk.
-- [ ] Commit, push, open a PR, and check required PR status.
+- [x] Commit, push, open a PR, and check required PR status.
 
 ## Review
 
@@ -21,6 +21,9 @@ Goal: finish the `$grade` follow-up by resolving the Vitest future-compatibility
 - Backend coverage passed: `npm run test:backend:coverage` (391 passed files, 22 skipped; 9,156 passed tests, 503 skipped; 100% statements/branches/functions/lines).
 - The prior Vitest nested-`vi.unmock` warning no longer appears in focused or backend coverage output.
 - Grade report now records the follow-up scope as `working-tree-after-8993389b`; grade history includes a follow-up entry with `vitest_future_warning=resolved`.
+- PR #44 merged to `main` as `72fd452f Resolve grade follow-up warning (#44)`.
+- PR #44 checks passed before merge: `PR Required Checks`, `Code Quality Required Checks`, lizard, jscpd, lint, gitleaks, quick backend lanes, and Docker builds; PR-only full lanes skipped as intended.
+- Post-merge `main` backstop passed: `Release` `24702116927`, `Install Tests` `24702116892`, `Build Dev Images` `24702116897`, and `Test Suite` `24702116916`.
 
 # Completed Task: Lizard Batch 43 - Final Warning Cleanup
 
