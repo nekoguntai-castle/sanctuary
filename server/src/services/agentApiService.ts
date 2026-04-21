@@ -55,35 +55,48 @@ export interface SubmitAgentFundingDraftResult {
   usedOverrideId: string | null;
 }
 
-function parseOptionalAttemptAmount(value: unknown): bigint | null {
-  if (typeof value === 'number') {
-    return Number.isSafeInteger(value) && value >= 0 ? BigInt(value) : null;
+const ATTEMPT_REASON_MESSAGE_CODES: ReadonlyArray<readonly [needle: string, code: string]> = [
+  ['feerate', 'fee_rate_out_of_bounds'],
+  ['per-request cap', 'policy_max_funding_amount'],
+  ['balance cap', 'policy_operational_balance_cap'],
+  ['cooldown', 'policy_cooldown'],
+  ['daily funding limit', 'policy_daily_limit'],
+  ['weekly funding limit', 'policy_weekly_limit'],
+  ['not active', 'agent_inactive'],
+  ['linked operational wallet', 'policy_destination_mismatch'],
+  ['frozen', 'utxo_frozen'],
+];
+
+const parseOptionalAttemptAmount = (value: unknown): bigint | null => {
+  switch (typeof value) {
+    case 'number':
+      return Number.isSafeInteger(value) && value >= 0 ? BigInt(value) : null;
+    case 'string': {
+      const trimmed = value.trim();
+      return /^\d+$/.test(trimmed) ? BigInt(trimmed) : null;
+    }
+    default:
+      return null;
   }
+};
 
-  if (typeof value === 'string' && /^\d+$/.test(value.trim())) {
-    return BigInt(value.trim());
-  }
-
-  return null;
-}
-
-function parseOptionalAttemptFeeRate(value: unknown): number | null {
+const parseOptionalAttemptFeeRate = (value: unknown): number | null => {
   const feeRate = Number(value);
   return Number.isFinite(feeRate) ? feeRate : null;
-}
+};
 
-function getAttemptReasonCode(error: unknown): string {
+const getAttemptReasonCodeFromMessage = (message: string): string | null => {
+  for (const [needle, code] of ATTEMPT_REASON_MESSAGE_CODES) {
+    if (message.includes(needle)) return code;
+  }
+  return null;
+};
+
+const getAttemptReasonCode = (error: unknown): string => {
   const message = getErrorMessage(error).toLowerCase();
+  const reasonCode = getAttemptReasonCodeFromMessage(message);
 
-  if (message.includes('feeRate'.toLowerCase())) return 'fee_rate_out_of_bounds';
-  if (message.includes('per-request cap')) return 'policy_max_funding_amount';
-  if (message.includes('balance cap')) return 'policy_operational_balance_cap';
-  if (message.includes('cooldown')) return 'policy_cooldown';
-  if (message.includes('daily funding limit')) return 'policy_daily_limit';
-  if (message.includes('weekly funding limit')) return 'policy_weekly_limit';
-  if (message.includes('not active')) return 'agent_inactive';
-  if (message.includes('linked operational wallet')) return 'policy_destination_mismatch';
-  if (message.includes('frozen')) return 'utxo_frozen';
+  if (reasonCode) return reasonCode;
   if (error instanceof ConflictError || message.includes('locked')) return 'utxo_locked';
   if (error instanceof InvalidPsbtError) return 'invalid_psbt';
   if (error instanceof ForbiddenError) return 'forbidden_scope';
@@ -91,7 +104,7 @@ function getAttemptReasonCode(error: unknown): string {
   if (error instanceof InvalidInputError) return 'invalid_input';
   if (error instanceof ApiError) return error.code.toLowerCase();
   return 'unexpected_error';
-}
+};
 
 export async function recordAgentFundingAttempt(input: AgentFundingAttemptInput): Promise<void> {
   try {

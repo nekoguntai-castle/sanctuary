@@ -147,6 +147,59 @@ describe('agentRepository', () => {
     });
   });
 
+  it('creates wallet agents with explicit policy and monitoring fields', async () => {
+    prisma.walletAgent.create.mockResolvedValue({ id: 'agent-2', status: 'paused' });
+
+    await agentRepository.createAgent({
+      userId: 'user-2',
+      name: 'Configured Agent',
+      fundingWalletId: 'funding-wallet',
+      operationalWalletId: 'operational-wallet',
+      signerDeviceId: 'agent-device',
+      status: 'paused',
+      maxFundingAmountSats: 100000n,
+      maxOperationalBalanceSats: 200000n,
+      dailyFundingLimitSats: 300000n,
+      weeklyFundingLimitSats: 900000n,
+      cooldownMinutes: 15,
+      minOperationalBalanceSats: 25000n,
+      largeOperationalSpendSats: 75000n,
+      largeOperationalFeeSats: 5000n,
+      repeatedFailureThreshold: 3,
+      repeatedFailureLookbackMinutes: 60,
+      alertDedupeMinutes: 120,
+      requireHumanApproval: false,
+      notifyOnOperationalSpend: false,
+      pauseOnUnexpectedSpend: true,
+    });
+
+    expect(prisma.walletAgent.create).toHaveBeenLastCalledWith({
+      data: {
+        userId: 'user-2',
+        name: 'Configured Agent',
+        fundingWalletId: 'funding-wallet',
+        operationalWalletId: 'operational-wallet',
+        signerDeviceId: 'agent-device',
+        status: 'paused',
+        maxFundingAmountSats: 100000n,
+        maxOperationalBalanceSats: 200000n,
+        dailyFundingLimitSats: 300000n,
+        weeklyFundingLimitSats: 900000n,
+        cooldownMinutes: 15,
+        minOperationalBalanceSats: 25000n,
+        largeOperationalSpendSats: 75000n,
+        largeOperationalFeeSats: 5000n,
+        repeatedFailureThreshold: 3,
+        repeatedFailureLookbackMinutes: 60,
+        alertDedupeMinutes: 120,
+        requireHumanApproval: false,
+        notifyOnOperationalSpend: false,
+        pauseOnUnexpectedSpend: true,
+        revokedAt: null,
+      },
+    });
+  });
+
   it('lists, updates, and tracks wallet agent policy metadata', async () => {
     prisma.walletAgent.findMany.mockResolvedValue([{ id: 'agent-1' }]);
     await agentRepository.findAgents();
