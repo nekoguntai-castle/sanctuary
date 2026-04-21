@@ -87,6 +87,8 @@ jobs:
           ./install.sh
           ```
 
+          For Umbrel: install via the [`sanctuary-umbrel`](https://github.com/nekoguntai-castle/sanctuary-umbrel) community app store (auto-updates digests on every stable release).
+
           Open **https://localhost:8443** and log in with:
           - **Username:** `admin`
           - **Password:** `sanctuary`

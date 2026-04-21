@@ -365,143 +365,47 @@ jobs:
           DIGEST=$(docker buildx imagetools inspect ${IMAGE}:v${VERSION} --format '{{json .Manifest.Digest}}' | tr -d '"')
           echo "digest=${DIGEST}" >> $GITHUB_OUTPUT
 
-  update-umbrel:
-    name: Update Umbrel Package
+  notify-umbrel-repo:
+    name: Notify Umbrel Repo
     needs: create-manifests
     runs-on: ubuntu-latest
     if: |
       always() && needs.create-manifests.result == 'success' &&
       (github.event_name == 'release' || github.event_name == 'workflow_dispatch' ||
        (github.event_name == 'push' && github.ref_type == 'tag'))
-    permissions:
-      contents: write
-      pull-requests: write
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-        with:
-          ref: main
-          token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Check if stable release
         id: check-stable
         run: |
           VERSION="${{ needs.create-manifests.outputs.version }}"
           if [[ "$VERSION" == *-rc* || "$VERSION" == *-alpha* || "$VERSION" == *-beta* ]]; then
             echo "is_stable=false" >> $GITHUB_OUTPUT
-            echo "⏭ Skipping Umbrel update for pre-release version: $VERSION"
+            echo "⏭ Skipping sanctuary-umbrel notification for pre-release version: $VERSION"
           else
             echo "is_stable=true" >> $GITHUB_OUTPUT
-            echo "✓ Proceeding with Umbrel update for stable version: $VERSION"
           fi
 
-      - name: Update Umbrel package files
-        if: steps.check-stable.outputs.is_stable == 'true'
-        run: |
-          VERSION="${{ needs.create-manifests.outputs.version }}"
-          FRONTEND_DIGEST="${{ needs.create-manifests.outputs.frontend_digest }}"
-          BACKEND_DIGEST="${{ needs.create-manifests.outputs.backend_digest }}"
-
-          echo "Updating Umbrel package to v$VERSION"
-          echo "Frontend digest: $FRONTEND_DIGEST"
-          echo "Backend digest: $BACKEND_DIGEST"
-
-          # Update umbrel-app.yml version
-          sed -i "s/^version: .*/version: \"$VERSION\"/" sanctuary/umbrel-app.yml
-
-          # Update releaseNotes in umbrel-app.yml
-          RELEASE_DATE=$(date +"%Y-%m-%d")
-          sed -i "s/^releaseNotes: .*/releaseNotes: \"Version $VERSION released on $RELEASE_DATE. See https:\/\/github.com\/nekoguntai-castle\/sanctuary\/releases\/tag\/v$VERSION for details.\"/" sanctuary/umbrel-app.yml
-
-          # Update docker-compose.yml with new image tags and digests
-          # Handle both with and without existing @sha256 suffix
-          sed -i "s|ghcr.io/nekoguntai-castle/sanctuary-frontend:[^[:space:]]*|ghcr.io/nekoguntai-castle/sanctuary-frontend:v$VERSION@$FRONTEND_DIGEST|g" sanctuary/docker-compose.yml
-          sed -i "s|ghcr.io/nekoguntai-castle/sanctuary-backend:[^[:space:]]*|ghcr.io/nekoguntai-castle/sanctuary-backend:v$VERSION@$BACKEND_DIGEST|g" sanctuary/docker-compose.yml
-
-          echo "Updated files:"
-          grep -E "version:|releaseNotes:" sanctuary/umbrel-app.yml
-          grep "image:" sanctuary/docker-compose.yml
-
-      - name: Open Umbrel update PR
+      - name: Send image-published dispatch to sanctuary-umbrel
         if: steps.check-stable.outputs.is_stable == 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.UMBREL_DISPATCH_TOKEN }}
           VERSION: ${{ needs.create-manifests.outputs.version }}
+          FRONTEND_DIGEST: ${{ needs.create-manifests.outputs.frontend_digest }}
+          BACKEND_DIGEST: ${{ needs.create-manifests.outputs.backend_digest }}
         run: |
-          if git diff --quiet sanctuary/; then
-            echo "No Umbrel package changes to commit"
-            exit 0
-          fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          BRANCH="chore/update-umbrel-package-v${VERSION}"
-          git checkout -B "$BRANCH"
-          git add sanctuary/
-          git commit -m "chore: update Umbrel package to v${VERSION}
-
-          - Updated Docker image tags with SHA256 digests
-          - Updated release notes
-
-          🤖 Automated release update"
-          git push --force -u origin "$BRANCH"
-
-          if gh pr view "$BRANCH" --json state --jq .state 2>/dev/null | grep -q OPEN; then
-            echo "PR for $BRANCH already open; branch updated"
-          else
-            gh pr create \
-              --title "chore: update Umbrel package to v${VERSION}" \
-              --body "Automated release update for v${VERSION}. Updates \`sanctuary/docker-compose.yml\` image pins and \`sanctuary/umbrel-app.yml\` releaseNotes after release.yml published the v${VERSION} GHCR images. Safe to merge once required checks pass." \
-              --base main \
-              --head "$BRANCH"
-          fi
-
-          PR_NUM=$(gh pr view "$BRANCH" --json number --jq .number)
-          gh pr merge "$PR_NUM" --squash --auto --delete-branch
-
-          # Wait for auto-merge to complete. Aligned with the main-merge-queue
-          # ruleset's check_response_timeout_minutes=60 so a slow queue run
-          # doesn't time out before the queue itself does. Timeout is a hard
-          # failure so the release is not marked complete with a dangling
-          # manifest PR — the GHCR images are published by this point, but
-          # the release isn't truly "done" until docker-compose.yml + umbrel-app.yml
-          # are on main.
-          DEADLINE=$(($(date +%s) + 3600))  # 60 min
-          while [ "$(date +%s)" -lt "$DEADLINE" ]; do
-            sleep 30
-            STATE=$(gh pr view "$PR_NUM" --json state --jq .state 2>/dev/null || echo "")
-            MERGE_STATE=$(gh pr view "$PR_NUM" --json mergeStateStatus --jq .mergeStateStatus 2>/dev/null || echo "")
-            echo "PR $PR_NUM state=$STATE merge_state=$MERGE_STATE"
-
-            case "$STATE" in
-              MERGED)
-                echo "✓ Umbrel update PR merged"
-                exit 0
-                ;;
-              CLOSED)
-                echo "::error::Umbrel update PR was closed without merging"
-                exit 1
-                ;;
-            esac
-
-            if [ "$MERGE_STATE" = "BEHIND" ]; then
-              echo "Branch behind main; calling update-branch..."
-              gh api --method PUT "/repos/$GITHUB_REPOSITORY/pulls/$PR_NUM/update-branch" || true
-            fi
-          done
-
-          echo "::error::Umbrel PR $PR_NUM did not merge within 60 min; release is incomplete"
-          echo "::error::GHCR images for v${VERSION} are published, but sanctuary/docker-compose.yml on main still references the previous version. Investigate the open PR and merge manually."
-          exit 1
+          gh api -X POST /repos/nekoguntai-castle/sanctuary-umbrel/dispatches \
+            -f event_type=image-published \
+            -f "client_payload[version]=$VERSION" \
+            -f "client_payload[frontend_digest]=$FRONTEND_DIGEST" \
+            -f "client_payload[backend_digest]=$BACKEND_DIGEST"
+          echo "✓ Dispatched image-published event to sanctuary-umbrel for v$VERSION"
 
   update-release:
     name: Update Release Notes
-    needs: [create-manifests, update-umbrel]
+    needs: create-manifests
     runs-on: ubuntu-latest
     if: |
-      always() && needs.update-umbrel.result == 'success' &&
+      always() && needs.create-manifests.result == 'success' &&
       (github.event_name == 'release' || github.event_name == 'workflow_dispatch' ||
        (github.event_name == 'push' && github.ref_type == 'tag'))
     permissions:
@@ -577,7 +481,7 @@ jobs:
 
           1. Open the App Store in your Umbrel
           2. Click the **...** menu and select **Community App Stores**
-          3. Paste: `https://github.com/nekoguntai-castle/sanctuary`
+          3. Paste: `https://github.com/nekoguntai-castle/sanctuary-umbrel`
           4. Click **Add**, then find Sanctuary and install
 
           </details>

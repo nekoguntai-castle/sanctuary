@@ -515,18 +515,18 @@ check_version_sync() {
     # Check each file
     SERVER_VER=$(grep '"version"' server/package.json | head -1 | sed 's/.*"version": "\([^"]*\)".*/\1/')
     GATEWAY_VER=$(grep '"version"' gateway/package.json | head -1 | sed 's/.*"version": "\([^"]*\)".*/\1/')
-    UMBREL_VER=$(grep '^version:' sanctuary/umbrel-app.yml | sed 's/version: "\([^"]*\)"/\1/')
+    AI_PROXY_VER=$(grep '"version"' ai-proxy/package.json | head -1 | sed 's/.*"version": "\([^"]*\)".*/\1/')
 
-    if [ "$ROOT_VER" != "$SERVER_VER" ] || [ "$ROOT_VER" != "$GATEWAY_VER" ] || [ "$ROOT_VER" != "$UMBREL_VER" ]; then
+    if [ "$ROOT_VER" != "$SERVER_VER" ] || [ "$ROOT_VER" != "$GATEWAY_VER" ] || [ "$ROOT_VER" != "$AI_PROXY_VER" ]; then
         echo ""
         echo "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
         echo "${YELLOW}🔄 Version Mismatch Detected - Auto-syncing...${NC}"
         echo "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
         echo ""
-        echo "  package.json:             $ROOT_VER"
-        echo "  server/package.json:      $SERVER_VER"
-        echo "  gateway/package.json:     $GATEWAY_VER"
-        echo "  sanctuary/umbrel-app.yml: $UMBREL_VER"
+        echo "  package.json:           $ROOT_VER"
+        echo "  server/package.json:    $SERVER_VER"
+        echo "  gateway/package.json:   $GATEWAY_VER"
+        echo "  ai-proxy/package.json:  $AI_PROXY_VER"
         echo ""
         echo "${CYAN}Syncing all versions to $ROOT_VER...${NC}"
 
@@ -535,7 +535,7 @@ check_version_sync() {
             echo "${GREEN}✓ Versions synced to $ROOT_VER${NC}"
 
             # Stage the updated version files
-            git add package.json server/package.json gateway/package.json sanctuary/umbrel-app.yml
+            git add package.json server/package.json gateway/package.json ai-proxy/package.json
             echo "${GREEN}✓ Version files staged for commit${NC}"
         else
             echo "${RED}Failed to sync versions. Please run manually:${NC}"
