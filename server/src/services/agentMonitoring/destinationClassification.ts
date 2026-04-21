@@ -118,15 +118,15 @@ export function buildDestinationMetadata(
   };
 }
 
-function normalizeAddress(address: string | null | undefined): string | null {
+const normalizeAddress = (address: string | null | undefined): string | null => {
   const trimmed = address?.trim();
   return trimmed ? trimmed : null;
-}
+};
 
-function buildChangeLikeClassification(
+const buildChangeLikeClassification = (
   walletId: string,
   details: OperationalTransactionDetails
-): OperationalDestinationClassificationResult {
+): OperationalDestinationClassificationResult => {
   return {
     classification: 'change_like_movement',
     destinationAddress: null,
@@ -137,13 +137,13 @@ function buildChangeLikeClassification(
     externalOutputCount: 0,
     classificationSource: details.outputs?.length ? 'outputs' : 'counterparty',
   };
-}
+};
 
-function classifyFromOutputs(
+const classifyFromOutputs = (
   walletId: string,
   outputs: OperationalDestinationOutput[],
   knownWalletsByAddress: Map<string, OperationalDestinationWallet>
-): OperationalDestinationClassificationResult {
+): OperationalDestinationClassificationResult => {
   const usableOutputs = outputs
     .map(output => normalizeOutput(output))
     .filter((output): output is OperationalDestinationOutput & { address: string } => output !== null);
@@ -187,13 +187,13 @@ function classifyFromOutputs(
     externalOutputCount: externalOutputs.length,
     classificationSource: 'outputs',
   };
-}
+};
 
-function classifyFromCounterparty(
+const classifyFromCounterparty = (
   walletId: string,
   counterpartyAddress: string | null | undefined,
   knownWalletsByAddress: Map<string, OperationalDestinationWallet>
-): OperationalDestinationClassificationResult {
+): OperationalDestinationClassificationResult => {
   const normalizedCounterparty = normalizeAddress(counterpartyAddress);
   if (!normalizedCounterparty) {
     return buildUnknownClassification(0, 'missing_details');
@@ -218,14 +218,14 @@ function classifyFromCounterparty(
   }
 
   return buildExternalClassification(normalizedCounterparty, 0, 0, 1, 'counterparty');
-}
+};
 
-function normalizeOutput(
+const normalizeOutput = (
   output: OperationalDestinationOutput
-): (OperationalDestinationOutput & { address: string }) | null {
+): (OperationalDestinationOutput & { address: string }) | null => {
   const address = normalizeAddress(output.address);
   return address ? { ...output, address } : null;
-}
+};
 
 function getKnownWalletForAddress(
   knownWalletsByAddress: Map<string, OperationalDestinationWallet>,

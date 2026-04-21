@@ -15,35 +15,40 @@ import {
   useModelDownloadProgress,
 } from '../../../hooks/websocket';
 
-export function registerUseModelDownloadProgressTests(): void {
-  describe('useModelDownloadProgress', () => {
-    beforeEach(() => {
-      vi.clearAllMocks();
-      connectionChangeCallbacks.clear();
-      eventCallbacks.clear();
+const resetUseModelDownloadProgressHarness = (): void => {
+  vi.clearAllMocks();
+  connectionChangeCallbacks.clear();
+  eventCallbacks.clear();
 
-      mockIsConnected.mockReturnValue(true);
-      mockGetState.mockReturnValue('connected');
+  mockIsConnected.mockReturnValue(true);
+  mockGetState.mockReturnValue('connected');
 
-      mockOnConnectionChange.mockImplementation((callback: (connected: boolean) => void) => {
-        connectionChangeCallbacks.add(callback);
-      });
+  mockOnConnectionChange.mockImplementation((callback: (connected: boolean) => void) => {
+    connectionChangeCallbacks.add(callback);
+  });
 
-      mockOn.mockImplementation((eventType: string, callback: (event: any) => void) => {
-        if (!eventCallbacks.has(eventType)) {
-          eventCallbacks.set(eventType, new Set());
-        }
-        eventCallbacks.get(eventType)!.add(callback);
-      });
+  mockOn.mockImplementation((eventType: string, callback: (event: any) => void) => {
+    if (!eventCallbacks.has(eventType)) {
+      eventCallbacks.set(eventType, new Set());
+    }
+    eventCallbacks.get(eventType)!.add(callback);
+  });
 
-      mockOff.mockImplementation((eventType: string, callback: (event: any) => void) => {
-        const callbacks = eventCallbacks.get(eventType);
-        if (callbacks) {
-          callbacks.delete(callback);
-        }
-      });
-    });
+  mockOff.mockImplementation((eventType: string, callback: (event: any) => void) => {
+    const callbacks = eventCallbacks.get(eventType);
+    if (callbacks) {
+      callbacks.delete(callback);
+    }
+  });
+};
 
+const emitModelDownloadEvent = (event: unknown): void => {
+  act(() => {
+    eventCallbacks.get('modelDownload')?.forEach(cb => cb(event));
+  });
+};
+
+const registerModelDownloadSubscriptionTests = (): void => {
     it('should subscribe to system channel when connected', () => {
       mockIsConnected.mockReturnValue(true);
 
@@ -69,7 +74,9 @@ export function registerUseModelDownloadProgressTests(): void {
 
       expect(mockUnsubscribe).toHaveBeenCalledWith('system');
     });
+};
 
+const registerModelDownloadProgressTests = (): void => {
     it('should receive modelDownload events and update progress', async () => {
       mockIsConnected.mockReturnValue(true);
 
@@ -87,9 +94,7 @@ export function registerUseModelDownloadProgressTests(): void {
         },
       };
 
-      act(() => {
-        eventCallbacks.get('modelDownload')?.forEach(cb => cb(progressEvent));
-      });
+      emitModelDownloadEvent(progressEvent);
 
       await waitFor(() => {
         expect(result.current.progress).toEqual(progressEvent.data);
@@ -113,9 +118,7 @@ export function registerUseModelDownloadProgressTests(): void {
         },
       };
 
-      act(() => {
-        eventCallbacks.get('modelDownload')?.forEach(cb => cb(progressEvent));
-      });
+      emitModelDownloadEvent(progressEvent);
 
       await waitFor(() => {
         expect(onProgress).toHaveBeenCalledWith(progressEvent.data);
@@ -133,9 +136,7 @@ export function registerUseModelDownloadProgressTests(): void {
         data: { txid: 'tx123' },
       };
 
-      act(() => {
-        eventCallbacks.get('modelDownload')?.forEach(cb => cb(transactionEvent));
-      });
+      emitModelDownloadEvent(transactionEvent);
 
       // Should not update progress or call callback
       expect(result.current.progress).toBeNull();
@@ -169,17 +170,13 @@ export function registerUseModelDownloadProgressTests(): void {
         },
       };
 
-      act(() => {
-        eventCallbacks.get('modelDownload')?.forEach(cb => cb(model1Event));
-      });
+      emitModelDownloadEvent(model1Event);
 
       await waitFor(() => {
         expect(result.current.progress?.model).toBe('llama3.2:1b');
       });
 
-      act(() => {
-        eventCallbacks.get('modelDownload')?.forEach(cb => cb(model2Event));
-      });
+      emitModelDownloadEvent(model2Event);
 
       await waitFor(() => {
         expect(result.current.progress?.model).toBe('llama3.2:3b');
@@ -204,9 +201,7 @@ export function registerUseModelDownloadProgressTests(): void {
         },
       };
 
-      act(() => {
-        eventCallbacks.get('modelDownload')?.forEach(cb => cb(errorEvent));
-      });
+      emitModelDownloadEvent(errorEvent);
 
       await waitFor(() => {
         expect(result.current.progress?.status).toBe('error');
@@ -231,16 +226,16 @@ export function registerUseModelDownloadProgressTests(): void {
         },
       };
 
-      act(() => {
-        eventCallbacks.get('modelDownload')?.forEach(cb => cb(verifyingEvent));
-      });
+      emitModelDownloadEvent(verifyingEvent);
 
       await waitFor(() => {
         expect(result.current.progress?.status).toBe('verifying');
         expect(result.current.progress?.digest).toBe('sha256:xyz789');
       });
     });
+};
 
+const registerModelDownloadConnectionTests = (): void => {
     it('should return null progress initially', () => {
       mockIsConnected.mockReturnValue(true);
 
@@ -267,5 +262,14 @@ export function registerUseModelDownloadProgressTests(): void {
         expect(mockSubscribe).toHaveBeenCalledWith('system');
       });
     });
+};
+
+export function registerUseModelDownloadProgressTests(): void {
+  describe('useModelDownloadProgress', () => {
+    beforeEach(resetUseModelDownloadProgressHarness);
+
+    registerModelDownloadSubscriptionTests();
+    registerModelDownloadProgressTests();
+    registerModelDownloadConnectionTests();
   });
 }

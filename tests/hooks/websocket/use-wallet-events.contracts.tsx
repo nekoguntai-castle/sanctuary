@@ -15,35 +15,34 @@ import {
   useWalletEvents,
 } from '../../../hooks/websocket';
 
-export function registerUseWalletEventsTests(): void {
-  describe('useWalletEvents', () => {
-    beforeEach(() => {
-      vi.clearAllMocks();
-      connectionChangeCallbacks.clear();
-      eventCallbacks.clear();
+const resetUseWalletEventsHarness = (): void => {
+  vi.clearAllMocks();
+  connectionChangeCallbacks.clear();
+  eventCallbacks.clear();
 
-      mockIsConnected.mockReturnValue(true);
-      mockGetState.mockReturnValue('connected');
+  mockIsConnected.mockReturnValue(true);
+  mockGetState.mockReturnValue('connected');
 
-      mockOnConnectionChange.mockImplementation((callback: (connected: boolean) => void) => {
-        connectionChangeCallbacks.add(callback);
-      });
+  mockOnConnectionChange.mockImplementation((callback: (connected: boolean) => void) => {
+    connectionChangeCallbacks.add(callback);
+  });
 
-      mockOn.mockImplementation((eventType: string, callback: (event: any) => void) => {
-        if (!eventCallbacks.has(eventType)) {
-          eventCallbacks.set(eventType, new Set());
-        }
-        eventCallbacks.get(eventType)!.add(callback);
-      });
+  mockOn.mockImplementation((eventType: string, callback: (event: any) => void) => {
+    if (!eventCallbacks.has(eventType)) {
+      eventCallbacks.set(eventType, new Set());
+    }
+    eventCallbacks.get(eventType)!.add(callback);
+  });
 
-      mockOff.mockImplementation((eventType: string, callback: (event: any) => void) => {
-        const callbacks = eventCallbacks.get(eventType);
-        if (callbacks) {
-          callbacks.delete(callback);
-        }
-      });
-    });
+  mockOff.mockImplementation((eventType: string, callback: (event: any) => void) => {
+    const callbacks = eventCallbacks.get(eventType);
+    if (callbacks) {
+      callbacks.delete(callback);
+    }
+  });
+};
 
+const registerWalletEventSubscriptionTests = (): void => {
     it('should subscribe to wallet on mount', () => {
       const callbacks = {
         onTransaction: vi.fn(),
@@ -88,7 +87,9 @@ export function registerUseWalletEventsTests(): void {
 
       expect(mockSubscribeBatch).not.toHaveBeenCalled();
     });
+};
 
+const registerWalletEventCallbackTests = (): void => {
     it('should call onTransaction callback when transaction event is received', async () => {
       const onTransaction = vi.fn();
       const callbacks = { onTransaction };
@@ -184,11 +185,13 @@ export function registerUseWalletEventsTests(): void {
         eventCallbacks.get('sync')?.forEach(cb => cb(syncEvent));
       });
 
-      await waitFor(() => {
-        expect(onTransaction).not.toHaveBeenCalled();
-      });
+    await waitFor(() => {
+      expect(onTransaction).not.toHaveBeenCalled();
     });
+  });
+};
 
+const registerWalletEventUpdateTests = (): void => {
     it('should use latest callbacks without resubscribing', async () => {
       const onTransaction1 = vi.fn();
       const onTransaction2 = vi.fn();
@@ -254,5 +257,14 @@ export function registerUseWalletEventsTests(): void {
         'wallet:wallet-new:sync',
       ]);
     });
+};
+
+export function registerUseWalletEventsTests(): void {
+  describe('useWalletEvents', () => {
+    beforeEach(resetUseWalletEventsHarness);
+
+    registerWalletEventSubscriptionTests();
+    registerWalletEventCallbackTests();
+    registerWalletEventUpdateTests();
   });
 }

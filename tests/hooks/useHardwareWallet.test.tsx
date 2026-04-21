@@ -81,7 +81,8 @@ describe('useHardwareWallet', () => {
     return hook;
   };
 
-  describe('Initial State', () => {
+  function registerInitialStateTests(): void {
+    describe('Initial State', () => {
     it('should return initial state with no device connected', async () => {
       const { result } = await renderHardwareWallet();
 
@@ -103,9 +104,11 @@ describe('useHardwareWallet', () => {
         expect(result.current.devices).toEqual([mockDevice]);
       });
     });
-  });
+    });
+  }
 
-  describe('connect', () => {
+  function registerConnectionTests(): void {
+    describe('connect', () => {
     it('should connect to a device successfully', async () => {
       mockConnect.mockResolvedValue(mockDevice);
       mockGetDevices.mockResolvedValue([mockDevice]);
@@ -185,9 +188,11 @@ describe('useHardwareWallet', () => {
       expect(caughtError).toBe('String error');
       expect(result.current.error).toBe('Failed to connect to device');
     });
-  });
+    });
+  }
 
-  describe('disconnect', () => {
+  function registerDisconnectionTests(): void {
+    describe('disconnect', () => {
     it('should disconnect from device', async () => {
       mockConnect.mockResolvedValue(mockDevice);
       mockGetDevices.mockResolvedValue([mockDevice]);
@@ -235,9 +240,11 @@ describe('useHardwareWallet', () => {
       expect(result.current.device).toBeNull();
       expect(result.current.error).toBeNull();
     });
-  });
+    });
+  }
 
-  describe('signTransaction', () => {
+  function registerTransactionSigningTests(): void {
+    describe('signTransaction', () => {
     const mockTx = {
       walletId: 'wallet-123',
       recipient: 'tb1qtest...',
@@ -364,9 +371,11 @@ describe('useHardwareWallet', () => {
       expect(result.current.error).toBe('Failed to sign transaction');
       expect(result.current.signing).toBe(false);
     });
-  });
+    });
+  }
 
-  describe('signPSBT', () => {
+  function registerPsbtSigningTests(): void {
+    describe('signPSBT', () => {
     const mockPsbt = 'cHNidP8BAH...';
     const mockInputPaths = ["m/84'/0'/0'/0/0", "m/84'/0'/0'/0/1"];
 
@@ -503,9 +512,11 @@ describe('useHardwareWallet', () => {
       expect(result.current.error).toBe('Failed to sign PSBT');
       expect(result.current.signing).toBe(false);
     });
-  });
+    });
+  }
 
-  describe('refreshDevices', () => {
+  function registerDeviceRefreshTests(): void {
+    describe('refreshDevices', () => {
     it('should refresh device list', async () => {
       mockGetDevices
         .mockResolvedValueOnce([])
@@ -545,9 +556,11 @@ describe('useHardwareWallet', () => {
       // Devices should remain unchanged
       expect(result.current.devices).toEqual([]);
     });
-  });
+    });
+  }
 
-  describe('clearError', () => {
+  function registerClearErrorTests(): void {
+    describe('clearError', () => {
     it('should clear error state', async () => {
       mockConnect.mockRejectedValue(new Error('Connection failed'));
 
@@ -571,18 +584,22 @@ describe('useHardwareWallet', () => {
 
       expect(result.current.error).toBeNull();
     });
-  });
+    });
+  }
 
-  describe('isSupported', () => {
+  function registerSupportStateTests(): void {
+    describe('isSupported', () => {
     it('should reflect hardware wallet support', async () => {
       const { result } = await renderHardwareWallet();
 
       // Our mock returns true
       expect(result.current.isSupported).toBe(true);
     });
-  });
+    });
+  }
 
-  describe('isConnected derived state', () => {
+  function registerDerivedConnectionStateTests(): void {
+    describe('isConnected derived state', () => {
     it('should be true when device is connected', async () => {
       mockConnect.mockResolvedValue(mockDevice);
       mockGetDevices.mockResolvedValue([mockDevice]);
@@ -615,5 +632,16 @@ describe('useHardwareWallet', () => {
 
       expect(result.current.isConnected).toBe(false);
     });
-  });
+    });
+  }
+
+  registerInitialStateTests();
+  registerConnectionTests();
+  registerDisconnectionTests();
+  registerTransactionSigningTests();
+  registerPsbtSigningTests();
+  registerDeviceRefreshTests();
+  registerClearErrorTests();
+  registerSupportStateTests();
+  registerDerivedConnectionStateTests();
 });

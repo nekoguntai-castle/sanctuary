@@ -1,6 +1,57 @@
-# Next Task: Lizard Batch 42 - Agent Funding Paths
+# Next Task: Lizard Batch 43 - Final Warning Cleanup
 
-Status: in progress
+Status: ready for PR
+
+Goal: reduce the remaining 16 lizard warnings by splitting the final warning-band script helper, frontend test harness files, and small server production helpers while preserving address-vector verification behavior, websocket/hook contract assertions, hardware-wallet/send/user/dashboard/layout/settings component test coverage, Telegram notification formatting, agent monitoring address normalization, bigint coercion, and MCP JSON-RPC error responses.
+
+## Batch 43 Checklist
+
+- [x] Start from green `main` after Batch 42 PR #41 and post-merge backstop.
+- [x] Confirm remaining warning set: `deriveSingleSig`, four websocket contract files, `useHardwareWallet.test.tsx`, `SendTransactionContext.test.tsx`, `UserContext.test.tsx`, `AnimatedFeeRate.test.tsx`, `Layout.branches.test.tsx`, `NodeConfig.secondpass.test.tsx`, `Settings.interactions.test.tsx`, `notifyNewDraft`, `normalizeAddress`, `positiveBigInt`, and `sendJsonRpcError`.
+- [x] Split the selected warning-band helpers/tests while preserving test intent and production behavior.
+- [x] Run focused tests, Go/script validation where applicable, lizard, coverage, and quality guardrails.
+- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+
+## Batch 43 Review
+
+Plan:
+
+- Treat this as an aggressive final-warning batch, but avoid cross-file abstractions unless they already exist locally.
+- Keep test refactors inside their owning test files or colocated test helpers so assertion coverage remains readable.
+- Split the four production helpers with narrow local parsing/formatting helpers and keep public exports/routes unchanged.
+- Verify focused lizard on all 16 target files before broader coverage/quality checks.
+
+Verification so far:
+
+- Batch 42 PR #41 merged to `main` as `b70603bf Refactor agent funding path complexity (#41)`.
+- Batch 42 PR checks passed: `PR Required Checks`, `Code Quality Required Checks`, Quick Frontend, Quick Backend, Quick Backend Integration Smoke, Quick E2E Smoke, Quick Test Hygiene, lizard, jscpd, gitleaks, lint, and Docker builds. `Full Test Summary` stayed skipped as intended on PR.
+- Batch 42 post-merge `main` backstop passed: `Build Dev Images` `24698998175`, `Install Tests` `24698998177`, `Release` `24698998173`, and `Test Suite` `24698998182`.
+- `Test Suite` `24698998182` passed with `Full Backend Tests`, `Full Gateway Tests`, `Full Frontend Tests`, `Full Build Check`, `Full E2E Tests`, and `Full Test Summary`.
+- Broad lizard on `main` confirms 16 warnings remain after Batch 42.
+- Split Batch 43 production/script helpers in `go-verify.go`, Telegram draft notifications, agent-monitoring destination/threshold helpers, and MCP transport JSON-RPC error handling while preserving public behavior.
+- Split Batch 43 test registration callbacks for websocket contracts, hardware wallet, send transaction context, user context, layout branch coverage, NodeConfig second-pass coverage, animated fee rate, and settings interactions while preserving assertions.
+- Focused frontend tests passed: `npx vitest run tests/hooks/useWebSocket.test.tsx tests/hooks/useHardwareWallet.test.tsx tests/contexts/send/SendTransactionContext.test.tsx tests/contexts/UserContext.test.tsx tests/components/Layout.branches.test.tsx tests/components/NodeConfig.secondpass.test.tsx tests/components/Dashboard/AnimatedFeeRate.test.tsx tests/components/Settings.interactions.test.tsx` (8 files, 202 tests).
+- Focused server tests passed: `npx vitest run tests/unit/services/telegram/telegramService.test.ts tests/unit/services/agentMonitoringService.test.ts tests/unit/mcp/transport.test.ts` (47 tests) and `npx vitest run tests/unit/services/agentMonitoringService.test.ts` (14 tests after adding non-positive threshold branch coverage).
+- `npm run typecheck:app`, `npm run typecheck:tests`, and `npm run lint` passed.
+- `npm run test:coverage` passed: 401 files, 5,593 tests, 100% statements/branches/functions/lines.
+- `npm run test:backend:coverage` passed after the added agent-monitoring threshold test: 391 passed files, 22 skipped; 9,156 passed tests, 503 skipped; 100% statements/branches/functions/lines.
+- Focused and broad lizard passed; broad `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w .` now reports 0 warnings.
+- `npx --yes jscpd@4 .` passed at 1.95% duplication with 272 clones and 5,213 duplicated lines.
+- `node scripts/quality/check-large-files.mjs`, `git diff --check`, gitleaks direct, latest-commit, and tracked-tree scans passed.
+- Go verifier compile/runtime validation could not run locally because `go` is not installed in this environment.
+
+Edge case and self-review notes:
+
+- Preserve exact websocket event payload expectations, invalid-message branches, query invalidation contracts, and hook cleanup assertions.
+- Preserve hardware wallet adapter/runtime mocks, send reducer transitions, user-session/auth refresh expectations, and UI branch assertions.
+- Preserve Telegram notification draft formatting and fallback behavior.
+- Preserve address normalization boundary behavior for BIP21/invalid/empty inputs and bigint coercion for string/number/null-ish values.
+- Preserve MCP JSON-RPC error codes, ids, headers, and serialization failure handling.
+
+# Previous Task: Lizard Batch 42 - Agent Funding Paths
+
+Status: complete
 
 Goal: reduce the remaining agent-domain lizard findings by splitting the owner override modal shell, agent creation input mapping, funding-attempt persistence payload builders, and agent draft attempt parsing while preserving public imports, create/update agent behavior, funding-attempt recording, override modal validation/loading/revoke flows, and existing admin/agent route behavior.
 
@@ -10,8 +61,8 @@ Goal: reduce the remaining agent-domain lizard findings by splitting the owner o
 - [x] Confirm grouped targets: `AgentOverridesModal` at 19 CCN, `createWalletAgent` at 25 CCN, `createAgent` at 32 CCN, `buildAgentAlertCreateData` at 21 CCN, `createFundingAttempt` at 23 CCN, and `parseOptionalAttemptAmount` at 23 CCN.
 - [x] Split the selected agent-management modules/helpers while preserving UI callbacks and service/repository behavior.
 - [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
-- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
-- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+- [x] Open PR #41 and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [x] Merge after required checks pass, then wait for the post-merge `main` backstop.
 
 ## Batch 42 Review
 
@@ -37,6 +88,10 @@ Verification so far:
 - `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint`, `npm run test:coverage`, and `npm run test:backend:coverage` all passed; both app and backend coverage remain at 100% statements/branches/functions/lines.
 - `npx --yes jscpd@4 .` passed at 1.95% duplication with 272 clones and 5,213 duplicated lines.
 - `node scripts/quality/check-large-files.mjs`, `git diff --check`, `.tmp/quality-tools/gitleaks-8.30.1/gitleaks detect --source . --no-git --redact --config .gitleaks.toml --no-banner`, `.tmp/quality-tools/gitleaks-8.30.1/gitleaks git . --config .gitleaks.toml --redact --no-banner --log-opts -1`, and the tracked-tree gitleaks scan all passed.
+- PR #41 merged to `main` as `b70603bf Refactor agent funding path complexity (#41)`.
+- PR #41 required checks passed before merge: `PR Required Checks`, `Code Quality Required Checks`, Quick Frontend, Quick Backend, Quick Backend Integration Smoke, Quick E2E Smoke, Quick Test Hygiene, lizard, jscpd, gitleaks, lint, and Docker builds. `Full Test Summary` stayed skipped as intended on the PR path.
+- Post-merge `main` backstop passed: `Build Dev Images` `24698998175`, `Install Tests` `24698998177`, `Release` `24698998173`, and `Test Suite` `24698998182`.
+- `Test Suite` `24698998182` passed with `Full Backend Tests`, `Full Gateway Tests`, `Full Frontend Tests`, `Full Build Check`, `Full E2E Tests`, and `Full Test Summary`.
 
 Edge case and self-review notes:
 

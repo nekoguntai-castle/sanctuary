@@ -167,7 +167,8 @@ describe('Layout branch coverage', () => {
     vi.useRealTimers();
   });
 
-  it('returns early when user is null for drafts and connection checks', async () => {
+  function registerDraftNotificationTests(): void {
+    it('returns early when user is null for drafts and connection checks', async () => {
     vi.mocked(UserContext.useUser).mockReturnValue({
       user: null,
       logout,
@@ -212,9 +213,11 @@ describe('Layout branch coverage', () => {
       expect(draftsApi.getDrafts).toHaveBeenCalledTimes(2);
       expect(removeNotificationsByType).toHaveBeenCalledWith('pending_drafts', 'wallet-2');
     });
-  });
+    });
+  }
 
-  it('uses fallback message and no admin action for disconnected non-admin status', async () => {
+  function registerConnectionNotificationTests(): void {
+    it('uses fallback message and no admin action for disconnected non-admin status', async () => {
     vi.mocked(bitcoinApi.getStatus).mockResolvedValue({
       connected: false,
       error: '',
@@ -303,9 +306,11 @@ describe('Layout branch coverage', () => {
     expect(call).toBeDefined();
     expect(call).not.toHaveProperty('actionUrl');
     expect(call).not.toHaveProperty('actionLabel');
-  });
+    });
+  }
 
-  it('fetches version info only on first version click and supports close callback', async () => {
+  function registerVersionModalTests(): void {
+    it('fetches version info only on first version click and supports close callback', async () => {
     const user = userEvent.setup();
     renderLayout();
 
@@ -335,9 +340,11 @@ describe('Layout branch coverage', () => {
     await waitFor(() => {
       expect(adminApi.checkVersion).toHaveBeenCalledTimes(1);
     });
-  });
+    });
+  }
 
-  it('handles clipboard success path', async () => {
+  function registerClipboardTests(): void {
+    it('handles clipboard success path', async () => {
     const user = userEvent.setup();
     const writeText = vi.fn().mockResolvedValue(undefined);
     const timeoutCallbacks: Array<() => void> = [];
@@ -429,9 +436,11 @@ describe('Layout branch coverage', () => {
       expect(writeText).toHaveBeenCalledWith('bc1q-test-address');
       expect(screen.getByTestId('copied-address')).toHaveTextContent('none');
     });
-  });
+    });
+  }
 
-  it('toggles mobile overlay and closes it through backdrop click', async () => {
+  function registerMobileAndSecurityTests(): void {
+    it('toggles mobile overlay and closes it through backdrop click', async () => {
     const user = userEvent.setup();
     const { container } = renderLayout();
 
@@ -461,5 +470,12 @@ describe('Layout branch coverage', () => {
     expect(
       screen.getByText('Security Warning: You are using the default password.')
     ).toBeInTheDocument();
-  });
+    });
+  }
+
+  registerDraftNotificationTests();
+  registerConnectionNotificationTests();
+  registerVersionModalTests();
+  registerClipboardTests();
+  registerMobileAndSecurityTests();
 });

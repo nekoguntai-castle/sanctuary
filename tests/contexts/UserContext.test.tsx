@@ -124,7 +124,8 @@ describe('UserContext', () => {
     document.documentElement.classList.remove('dark');
   });
 
-  describe('Provider initialization', () => {
+  function registerProviderInitializationTests(): void {
+    describe('Provider initialization', () => {
     it('initializes with unauthenticated state when /auth/me returns 401', async () => {
       // Phase 4: UserContext calls /auth/me on mount. A 401 means the
       // user is not authenticated (or never was) — render login.
@@ -226,9 +227,11 @@ describe('UserContext', () => {
 
       expect(document.documentElement.classList.contains('dark')).toBe(true);
     });
-  });
+    });
+  }
 
-  describe('Login', () => {
+  function registerLoginTests(): void {
+    describe('Login', () => {
     it('logs in successfully', async () => {
       const user = userEvent.setup();
       vi.mocked(authApi.login).mockResolvedValue({ user: mockUser });
@@ -302,9 +305,11 @@ describe('UserContext', () => {
         expect(screen.getByTestId('authenticated')).toHaveTextContent('false');
       });
     });
-  });
+    });
+  }
 
-  describe('Two-Factor Authentication', () => {
+  function registerTwoFactorTests(): void {
+    describe('Two-Factor Authentication', () => {
     it('verifies 2FA code successfully', async () => {
       const user = userEvent.setup();
 
@@ -428,9 +433,11 @@ describe('UserContext', () => {
         expect(screen.getByTestId('error')).toHaveTextContent('No 2FA verification pending');
       });
     });
-  });
+    });
+  }
 
-  describe('Registration', () => {
+  function registerRegistrationTests(): void {
+    describe('Registration', () => {
     it('registers successfully', async () => {
       const user = userEvent.setup();
       vi.mocked(authApi.register).mockResolvedValue({ user: mockUser });
@@ -482,9 +489,11 @@ describe('UserContext', () => {
         expect(screen.getByTestId('error')).toHaveTextContent('Registration failed');
       });
     });
-  });
+    });
+  }
 
-  describe('Logout', () => {
+  function registerLogoutTests(): void {
+    describe('Logout', () => {
     it('logs out user', async () => {
       const user = userEvent.setup();
       vi.mocked(authApi.login).mockResolvedValue({ user: mockUser });
@@ -514,9 +523,11 @@ describe('UserContext', () => {
       expect(screen.getByTestId('authenticated')).toHaveTextContent('false');
       expect(screen.getByTestId('user')).toHaveTextContent('null');
     });
-  });
+    });
+  }
 
-  describe('Preferences', () => {
+  function registerPreferenceTests(): void {
+    describe('Preferences', () => {
     it('updates preferences optimistically', async () => {
       const user = userEvent.setup();
       vi.mocked(authApi.login).mockResolvedValue({ user: mockUser });
@@ -611,9 +622,11 @@ describe('UserContext', () => {
         expect(screen.getByTestId('error')).toHaveTextContent('Failed to update preferences');
       });
     });
-  });
+    });
+  }
 
-  describe('Error handling', () => {
+  function registerErrorHandlingTests(): void {
+    describe('Error handling', () => {
     it('clears error', async () => {
       const user = userEvent.setup();
       vi.mocked(authApi.login).mockRejectedValue(new ApiError('Error', 500));
@@ -634,9 +647,11 @@ describe('UserContext', () => {
 
       expect(screen.getByTestId('error')).toHaveTextContent('null');
     });
-  });
+    });
+  }
 
-  describe('useUser hook', () => {
+  function registerUseUserHookTests(): void {
+    describe('useUser hook', () => {
     it('throws when used outside provider', () => {
       const TestComponent = () => {
         useUser();
@@ -651,9 +666,11 @@ describe('UserContext', () => {
 
       consoleSpy.mockRestore();
     });
-  });
+    });
+  }
 
-  describe('Specialized hooks', () => {
+  function registerSpecializedHookTests(): void {
+    describe('Specialized hooks', () => {
     it('useAuth returns auth-related values', async () => {
       const user = userEvent.setup();
 
@@ -740,9 +757,11 @@ describe('UserContext', () => {
         expect(screen.getByTestId('pending')).toHaveTextContent('no');
       });
     });
-  });
+    });
+  }
 
-  describe('Theme application', () => {
+  function registerThemeApplicationTests(): void {
+    describe('Theme application', () => {
     beforeEach(async () => {
       // Clear theme registry mocks before each theme test
       const { themeRegistry } = await import('../../themes');
@@ -795,5 +814,17 @@ describe('UserContext', () => {
       });
       expect(document.documentElement.classList.contains('dark')).toBe(false);
     });
-  });
+    });
+  }
+
+  registerProviderInitializationTests();
+  registerLoginTests();
+  registerTwoFactorTests();
+  registerRegistrationTests();
+  registerLogoutTests();
+  registerPreferenceTests();
+  registerErrorHandlingTests();
+  registerUseUserHookTests();
+  registerSpecializedHookTests();
+  registerThemeApplicationTests();
 });

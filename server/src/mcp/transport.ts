@@ -21,18 +21,24 @@ type McpExpressRequest = Request & IncomingMessage & {
   auth?: ReturnType<typeof toMcpAuthInfo>;
 };
 
-function sendJsonRpcError(res: Response, status: number, code: number, message: string): void {
-  res.status(status).json({
+function createJsonRpcError(code: number, message: string): Record<string, unknown> {
+  return {
     jsonrpc: '2.0',
     error: {
       code,
       message,
     },
     id: null,
-  });
+  };
 }
 
-function validateProtocolHeader(req: Request): void {
+const sendJsonRpcError = (res: Response, status: number, code: number, message: string): void => {
+  res.status(status).json({
+    ...createJsonRpcError(code, message),
+  });
+};
+
+const validateProtocolHeader = (req: Request): void => {
   const version = req.header('mcp-protocol-version');
   if (!version) {
     throw new McpHttpError(400, 'MCP-Protocol-Version header is required');
@@ -40,9 +46,9 @@ function validateProtocolHeader(req: Request): void {
   if (!SUPPORTED_PROTOCOL_VERSIONS.has(version)) {
     throw new McpHttpError(400, `Unsupported MCP protocol version: ${version}`);
   }
-}
+};
 
-function classifyMcpOperation(body: unknown): string {
+const classifyMcpOperation = (body: unknown): string => {
   if (Array.isArray(body)) {
     return 'batch';
   }
@@ -69,15 +75,15 @@ function classifyMcpOperation(body: unknown): string {
     return `prompt:${message.params.name}`;
   }
   return message.method;
-}
+};
 
-async function auditMcpOperation(
+const auditMcpOperation = async (
   req: Request,
   context: McpRequestContext | null,
   operation: string,
   success: boolean,
   errorMsg?: string
-): Promise<void> {
+): Promise<void> => {
   const { ipAddress, userAgent } = getClientInfo(req);
   await auditService.log({
     userId: context?.userId,
@@ -94,7 +100,7 @@ async function auditMcpOperation(
       keyPrefix: context?.keyPrefix,
     },
   });
-}
+};
 
 async function handleMcpPost(req: Request, res: Response): Promise<void> {
   const operation = classifyMcpOperation(req.body);

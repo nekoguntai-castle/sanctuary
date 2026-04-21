@@ -166,7 +166,8 @@ describe('SendTransactionContext', () => {
     vi.clearAllMocks();
   });
 
-  describe('Provider initialization', () => {
+  function registerProviderInitializationTests(): void {
+    describe('Provider initialization', () => {
     it('initializes with default state', () => {
       renderWithProvider(<TestConsumer />);
 
@@ -217,9 +218,11 @@ describe('SendTransactionContext', () => {
 
       expect(screen.getByTestId('selected-total')).toHaveTextContent('500000');
     });
-  });
+    });
+  }
 
-  describe('Navigation', () => {
+  function registerNavigationTests(): void {
+    describe('Navigation', () => {
     it('cannot go back from first step', () => {
       renderWithProvider(<TestConsumer />);
 
@@ -274,9 +277,11 @@ describe('SendTransactionContext', () => {
       expect(screen.getByTestId('current-step')).toHaveTextContent('outputs');
       expect(screen.getByTestId('can-go-next')).toHaveTextContent('false');
     });
-  });
+    });
+  }
 
-  describe('Transaction type selection', () => {
+  function registerTransactionTypeTests(): void {
+    describe('Transaction type selection', () => {
     it('sets standard transaction type', async () => {
       const user = userEvent.setup();
       renderWithProvider(<TestConsumer />);
@@ -296,9 +301,11 @@ describe('SendTransactionContext', () => {
       // Consolidation creates a single sendMax output - check via rendered DOM
       expect(screen.getByTestId('first-output-sendmax')).toHaveTextContent('true');
     });
-  });
+    });
+  }
 
-  describe('Output management', () => {
+  function registerOutputManagementTests(): void {
+    describe('Output management', () => {
     it('starts with one empty output', () => {
       renderWithProvider(<TestConsumer />);
 
@@ -329,9 +336,11 @@ describe('SendTransactionContext', () => {
       await user.click(screen.getByTestId('remove-output'));
       expect(screen.getByTestId('outputs-count')).toHaveTextContent('1');
     });
-  });
+    });
+  }
 
-  describe('Fee and RBF settings', () => {
+  function registerFeeAndRbfTests(): void {
+    describe('Fee and RBF settings', () => {
     it('toggles RBF', async () => {
       const user = userEvent.setup();
       renderWithProvider(<TestConsumer />);
@@ -344,9 +353,11 @@ describe('SendTransactionContext', () => {
       await user.click(screen.getByTestId('toggle-rbf'));
       expect(screen.getByTestId('rbf-enabled')).toHaveTextContent('true');
     });
-  });
+    });
+  }
 
-  describe('Coin control', () => {
+  function registerCoinControlTests(): void {
+    describe('Coin control', () => {
     it('selects all UTXOs', async () => {
       const user = userEvent.setup();
       renderWithProvider(<TestConsumer />);
@@ -377,9 +388,11 @@ describe('SendTransactionContext', () => {
       await user.click(screen.getByTestId('toggle-coin-control'));
       expect(screen.getByTestId('show-coin-control')).toHaveTextContent('true');
     });
-  });
+    });
+  }
 
-  describe('Reset', () => {
+  function registerResetTests(): void {
+    describe('Reset', () => {
     it('resets state to initial values', async () => {
       const user = userEvent.setup();
       renderWithProvider(<TestConsumer />);
@@ -400,9 +413,11 @@ describe('SendTransactionContext', () => {
       expect(screen.getByTestId('outputs-count')).toHaveTextContent('1');
       expect(screen.getByTestId('rbf-enabled')).toHaveTextContent('true');
     });
-  });
+    });
+  }
 
-  describe('Draft loading', () => {
+  function registerDraftLoadingTests(): void {
+    describe('Draft loading', () => {
     it('loads initial state from draft', () => {
       const initialState = {
         transactionType: 'standard' as const,
@@ -420,9 +435,11 @@ describe('SendTransactionContext', () => {
       expect(contextValue?.state.outputs[0].address).toBe('bc1qtest');
       expect(contextValue?.state.feeRate).toBe(15);
     });
-  });
+    });
+  }
 
-  describe('useSendTransactionDispatch hook', () => {
+  function registerDispatchHookTests(): void {
+    describe('useSendTransactionDispatch hook', () => {
     it('throws when used outside provider', () => {
       // Component that uses the hook without provider
       const TestComponent = () => {
@@ -452,9 +469,11 @@ describe('SendTransactionContext', () => {
       await user.click(screen.getByTestId('dispatch-standard'));
       expect(screen.getByTestId('tx-type')).toHaveTextContent('standard');
     });
-  });
+    });
+  }
 
-  describe('useSendTransaction hook', () => {
+  function registerContextHookTests(): void {
+    describe('useSendTransaction hook', () => {
     it('throws when used outside provider', () => {
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
@@ -464,9 +483,11 @@ describe('SendTransactionContext', () => {
 
       consoleSpy.mockRestore();
     });
-  });
+    });
+  }
 
-  describe('Computed values', () => {
+  function registerComputedValueTests(): void {
+    describe('Computed values', () => {
     it('calculates estimated fee based on inputs and outputs', () => {
       let contextValue: ReturnType<typeof useSendTransaction> | undefined;
       renderWithProvider(
@@ -498,9 +519,11 @@ describe('SendTransactionContext', () => {
 
       expect(screen.getByTestId('is-send-max')).toHaveTextContent('true');
     });
-  });
+    });
+  }
 
-  describe('Step validation', () => {
+  function registerStepValidationTests(): void {
+    describe('Step validation', () => {
     it('reports step completion status', async () => {
       const user = userEvent.setup();
       renderWithProvider(<TestConsumer />);
@@ -521,9 +544,11 @@ describe('SendTransactionContext', () => {
       // On type step without selection
       expect(contextValue?.stepErrors).toContain('Please select a transaction type');
     });
-  });
+    });
+  }
 
-  describe('Serialization', () => {
+  function registerSerializationTests(): void {
+    describe('Serialization', () => {
     it('returns serializable state', async () => {
       const user = userEvent.setup();
 
@@ -544,9 +569,11 @@ describe('SendTransactionContext', () => {
       // Should be JSON serializable
       expect(() => JSON.stringify(serialized)).not.toThrow();
     });
-  });
+    });
+  }
 
-  describe('Custom fee calculation', () => {
+  function registerCustomFeeTests(): void {
+    describe('Custom fee calculation', () => {
     it('uses provided calculateFee function', () => {
       const customCalculateFee = vi.fn().mockReturnValue(1000);
 
@@ -560,9 +587,11 @@ describe('SendTransactionContext', () => {
       expect(contextValue?.estimatedFee).toBe(1000);
       expect(customCalculateFee).toHaveBeenCalled();
     });
-  });
+    });
+  }
 
-  describe('Additional callbacks', () => {
+  function registerAdditionalCallbackTests(): void {
+    describe('Additional callbacks', () => {
     it('covers navigation and convenience action wrappers', async () => {
       const user = userEvent.setup();
       renderWithProvider(<TestConsumer />);
@@ -607,5 +636,22 @@ describe('SendTransactionContext', () => {
       expect(screen.getByTestId('first-output-address')).toHaveTextContent('bc1qdraft');
       expect(screen.getByTestId('first-output-amount')).toHaveTextContent('777');
     });
-  });
+    });
+  }
+
+  registerProviderInitializationTests();
+  registerNavigationTests();
+  registerTransactionTypeTests();
+  registerOutputManagementTests();
+  registerFeeAndRbfTests();
+  registerCoinControlTests();
+  registerResetTests();
+  registerDraftLoadingTests();
+  registerDispatchHookTests();
+  registerContextHookTests();
+  registerComputedValueTests();
+  registerStepValidationTests();
+  registerSerializationTests();
+  registerCustomFeeTests();
+  registerAdditionalCallbackTests();
 });

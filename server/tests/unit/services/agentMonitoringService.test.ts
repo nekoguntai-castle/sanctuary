@@ -289,6 +289,26 @@ describe('agentMonitoringService', () => {
     }), new Date(0));
   });
 
+  it('ignores non-positive operational alert thresholds', async () => {
+    await evaluateOperationalTransactionAlerts('operational-wallet', [{
+      txid: '0'.repeat(64),
+      type: 'sent',
+      amount: -75_000n,
+      feeSats: 4_000n,
+    }], [
+      agentFixture({
+        notifyOnOperationalSpend: false,
+        pauseOnUnexpectedSpend: false,
+        largeOperationalSpendSats: 0n,
+        largeOperationalFeeSats: -1n,
+        minOperationalBalanceSats: 0n,
+        maxOperationalBalanceSats: -1n,
+      }),
+    ] as any);
+
+    expect(mocks.agentRepository.createAlertIfNotDuplicate).not.toHaveBeenCalled();
+  });
+
   it('evaluates notify-only, pause-only, and notify-plus-pause modes for unknown destinations', async () => {
     const txid = 'g'.repeat(64);
     mocks.transactionRepository.findByWalletIdAndTxids.mockResolvedValueOnce([{

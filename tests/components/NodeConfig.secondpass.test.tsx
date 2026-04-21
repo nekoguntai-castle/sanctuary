@@ -179,7 +179,8 @@ describe('NodeConfig second-pass branches', () => {
     vi.useRealTimers();
   });
 
-  it('covers null tor-status load path and same-section collapse toggles', async () => {
+  function registerInitialAndProxyBranchTests(): void {
+    it('covers null tor-status load path and same-section collapse toggles', async () => {
     vi.mocked(adminApi.getTorContainerStatus).mockResolvedValue(null as any);
 
     render(<NodeConfig />);
@@ -243,9 +244,11 @@ describe('NodeConfig second-pass branches', () => {
     await waitFor(() => {
       expect(screen.getByText('proxy throw')).toBeInTheDocument();
     });
-  });
+    });
+  }
 
-  it('executes save-success timeout callback and clears success banner', async () => {
+  function registerMessageTimeoutAndSaveTests(): void {
+    it('executes save-success timeout callback and clears success banner', async () => {
     const timeoutCallbacks: Array<() => void | Promise<void>> = [];
     const realSetTimeout = globalThis.setTimeout;
     const setTimeoutSpy = vi
@@ -324,9 +327,11 @@ describe('NodeConfig second-pass branches', () => {
 
     fireEvent.click(screen.getByText('Save All Settings'));
     expect(adminApi.updateNodeConfig).not.toHaveBeenCalled();
-  });
+    });
+  }
 
-  it('covers tor toggle early return without status plus install branch and null refresh status', async () => {
+  function registerTorStatusRefreshTests(): void {
+    it('covers tor toggle early return without status plus install branch and null refresh status', async () => {
     vi.mocked(adminApi.getTorContainerStatus)
       .mockResolvedValueOnce(null as any)
       .mockResolvedValueOnce({ available: true, exists: false, running: false, status: 'exited' } as any)
@@ -412,9 +417,11 @@ describe('NodeConfig second-pass branches', () => {
     } finally {
       setTimeoutSpy.mockRestore();
     }
-  });
+    });
+  }
 
-  it('disables proxy when stopping bundled tor and skips null post-toggle refresh', async () => {
+  function registerTorProxyStopTests(): void {
+    it('disables proxy when stopping bundled tor and skips null post-toggle refresh', async () => {
     vi.mocked(adminApi.getNodeConfig).mockResolvedValueOnce({
       ...baseConfig,
       proxyEnabled: true,
@@ -555,5 +562,11 @@ describe('NodeConfig second-pass branches', () => {
     });
 
     expect(adminApi.stopTorContainer).toHaveBeenCalled();
-  });
+    });
+  }
+
+  registerInitialAndProxyBranchTests();
+  registerMessageTimeoutAndSaveTests();
+  registerTorStatusRefreshTests();
+  registerTorProxyStopTests();
 });

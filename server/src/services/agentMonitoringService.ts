@@ -38,51 +38,55 @@ const DEFAULT_LOOKBACK_MINUTES = 60;
 const DEFAULT_DEDUPE_MINUTES = 60;
 // Transaction alerts should dedupe by txid across all future sync retries.
 const TX_DEDUPE_EPOCH = new Date(0);
+const ZERO_SATS = BigInt(0);
 
 type AlertSeverity = 'info' | 'warning' | 'critical';
 
-function positiveBigInt(value: bigint | null | undefined): bigint | null {
-  return value !== null && value !== undefined && value > 0n ? value : null;
-}
+const positiveBigInt = (value: bigint | null | undefined): bigint | null => {
+  if (value === null || value === undefined) return null;
+  return value > ZERO_SATS ? value : null;
+};
 
-function positiveInt(value: number | null | undefined): number | null {
+const positiveInt = (value: number | null | undefined): number | null => {
   return value !== null && value !== undefined && value > 0 ? value : null;
-}
+};
 
-function minutesAgo(minutes: number): Date {
+const minutesAgo = (minutes: number): Date => {
   return new Date(Date.now() - minutes * 60_000);
-}
+};
 
-function getDedupeSince(agent: WalletAgent): Date {
+const getDedupeSince = (agent: WalletAgent): Date => {
   return minutesAgo(positiveInt(agent.alertDedupeMinutes) ?? DEFAULT_DEDUPE_MINUTES);
-}
+};
 
-function outgoingAmount(tx: TransactionNotification): bigint {
+const outgoingAmount = (tx: TransactionNotification): bigint => {
   return tx.amount < 0n ? -tx.amount : tx.amount;
-}
+};
 
-async function createAlertIfNotDuplicate(agent: WalletAgent, candidate: AlertCandidate): Promise<void> {
+const nullableAlertValue = <T>(value: T | null | undefined): T | null => value ?? null;
+
+const createAlertIfNotDuplicate = async (agent: WalletAgent, candidate: AlertCandidate): Promise<void> => {
   const since = candidate.dedupeSince ?? getDedupeSince(agent);
   await agentRepository.createAlertIfNotDuplicate({
     agentId: agent.id,
     /* v8 ignore start -- wallet-scoped alert candidates normally include walletId */
-    walletId: candidate.walletId ?? null,
+    walletId: nullableAlertValue(candidate.walletId),
     /* v8 ignore stop */
     type: candidate.type,
     severity: candidate.severity,
-    txid: candidate.txid ?? null,
-    amountSats: candidate.amountSats ?? null,
-    feeSats: candidate.feeSats ?? null,
-    thresholdSats: candidate.thresholdSats ?? null,
-    observedCount: candidate.observedCount ?? null,
-    reasonCode: candidate.reasonCode ?? null,
+    txid: nullableAlertValue(candidate.txid),
+    amountSats: nullableAlertValue(candidate.amountSats),
+    feeSats: nullableAlertValue(candidate.feeSats),
+    thresholdSats: nullableAlertValue(candidate.thresholdSats),
+    observedCount: nullableAlertValue(candidate.observedCount),
+    reasonCode: nullableAlertValue(candidate.reasonCode),
     message: candidate.message,
     dedupeKey: candidate.dedupeKey,
     /* v8 ignore start -- metadata is optional enrichment for alert payloads */
-    metadata: candidate.metadata ?? null,
+    metadata: nullableAlertValue(candidate.metadata),
     /* v8 ignore stop */
   }, since);
-}
+};
 
 function buildTransactionAlertCandidates(
   agent: WalletAgent,

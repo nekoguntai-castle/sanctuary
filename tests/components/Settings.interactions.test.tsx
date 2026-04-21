@@ -165,51 +165,51 @@ vi.mock('../../components/ui/CustomIcons', () => ({
   SatsIcon: () => <span data-testid="sats-icon" />,
 }));
 
-describe('Settings interactions', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+const resetSettingsMocks = (): void => {
+  vi.clearAllMocks();
 
-    mockState.user = {
-      id: 'user-1',
-      username: 'tester',
-      preferences: {
-        theme: 'sanctuary',
-        background: 'minimal',
-        seasonalBackgrounds: { spring: 'snowfall' },
-        darkMode: false,
-        telegram: {
-          enabled: false,
-          botToken: '',
-          chatId: '',
-          wallets: {},
-        },
-        notificationSounds: {
-          enabled: true,
-          volume: 50,
-          confirmation: { enabled: true, sound: 'chime' },
-          receive: { enabled: true, sound: 'chime' },
-          send: { enabled: false, sound: 'none' },
-        },
+  mockState.user = {
+    id: 'user-1',
+    username: 'tester',
+    preferences: {
+      theme: 'sanctuary',
+      background: 'minimal',
+      seasonalBackgrounds: { spring: 'snowfall' },
+      darkMode: false,
+      telegram: {
+        enabled: false,
+        botToken: '',
+        chatId: '',
+        wallets: {},
       },
-    };
+      notificationSounds: {
+        enabled: true,
+        volume: 50,
+        confirmation: { enabled: true, sound: 'chime' },
+        receive: { enabled: true, sound: 'chime' },
+        send: { enabled: false, sound: 'none' },
+      },
+    },
+  };
 
-    mockState.updatePreferences.mockResolvedValue({});
-    mockState.logError.mockReturnValue('Handled error');
+  mockState.updatePreferences.mockResolvedValue({});
+  mockState.logError.mockReturnValue('Handled error');
 
-    mockState.getEventConfig.mockImplementation((eventId: 'confirmation' | 'receive' | 'send') => {
-      const settings = mockState.user.preferences.notificationSounds;
-      return settings[eventId] ?? { enabled: true, sound: 'none' };
-    });
-
-    vi.mocked(authApi.fetchTelegramChatId).mockResolvedValue({
-      success: true,
-      chatId: '987654321',
-      username: 'satoshi',
-    });
-
-    vi.mocked(authApi.testTelegramConfig).mockResolvedValue({ success: true });
+  mockState.getEventConfig.mockImplementation((eventId: 'confirmation' | 'receive' | 'send') => {
+    const settings = mockState.user.preferences.notificationSounds;
+    return settings[eventId] ?? { enabled: true, sound: 'none' };
   });
 
+  vi.mocked(authApi.fetchTelegramChatId).mockResolvedValue({
+    success: true,
+    chatId: '987654321',
+    username: 'satoshi',
+  });
+
+  vi.mocked(authApi.testTelegramConfig).mockResolvedValue({ success: true });
+};
+
+const registerSoundDisplayAndServicesTest = (): void => {
   it('handles sound settings and display/services controls', async () => {
     const user = userEvent.setup();
     const { container } = render(<Settings />);
@@ -276,7 +276,9 @@ describe('Settings interactions', () => {
     expect(mockState.refreshPrice).toHaveBeenCalled();
     expect(container.textContent).toContain('$50,000');
   });
+};
 
+const registerTelegramHappyPathTest = (): void => {
   it('handles Telegram happy path flows', async () => {
     const user = userEvent.setup();
     render(<Settings />);
@@ -333,7 +335,9 @@ describe('Settings interactions', () => {
       });
     });
   });
+};
 
+const registerTelegramErrorTest = (): void => {
   it('shows Telegram errors for API failures', async () => {
     const user = userEvent.setup();
 
@@ -368,4 +372,12 @@ describe('Settings interactions', () => {
 
     expect(await screen.findByText('Failed to update settings')).toBeInTheDocument();
   });
+};
+
+describe('Settings interactions', () => {
+  beforeEach(resetSettingsMocks);
+
+  registerSoundDisplayAndServicesTest();
+  registerTelegramHappyPathTest();
+  registerTelegramErrorTest();
 });
