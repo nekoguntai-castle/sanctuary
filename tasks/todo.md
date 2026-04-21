@@ -1,6 +1,35 @@
-# Current Task: File Size Batch - Admin Agent Route Tests
+# Current Task: File Size Batch - Test Fixture Helpers
 
 Status: local complete, ready for PR flow
+
+Goal: reduce two independent test-only large-file warnings, `tests/contexts/UserContext.test.tsx` and `e2e/admin-operations.spec.ts`, below the 800-line warning threshold without changing assertions, mocked API behavior, or covered workflows.
+
+## Checklist
+
+- [x] Confirm PR #46 merged and the post-merge `main` backstop passed.
+- [x] Select low-coupling test-only targets for a grouped batch.
+- [x] Extract `UserContext` test fixtures and shared consumer component into a colocated helper.
+- [x] Extract admin-operations API mock response/state data into an E2E helper.
+- [x] Run focused tests, file-size, lizard, lint/typecheck, coverage, duplication, and diff checks.
+- [x] Prepare the branch for the protected-main PR flow.
+
+## Review
+
+- Starting file sizes: `tests/contexts/UserContext.test.tsx` at 830 lines and `e2e/admin-operations.spec.ts` at 903 lines.
+- Current split result: `UserContext.test.tsx` is 779 lines and `UserContext.test.fixtures.tsx` is 56 lines.
+- Current split result: `admin-operations.spec.ts` is 769 lines and `adminOperationsApiState.ts` is 149 lines.
+- Chosen approach: keep test assertions/workflows in their original files and move only reusable fixture/state/mock data.
+- Focused `UserContext` test passed: `npx vitest run tests/contexts/UserContext.test.tsx` (31 tests).
+- Focused admin E2E passed after scoping two mobile/WebKit text assertions to the visible `main` region: `npx playwright test e2e/admin-operations.spec.ts` (115 tests).
+- Large-file guardrail passed; the warning-band count dropped from 9 to 7 and only the three small production warning files remain unclassified.
+- Focused lizard passed for the two split tests and their new helpers.
+- `npm run lint`, `npm run typecheck:tests`, `git diff --check`, and `npx --yes jscpd@4 .` passed.
+- Frontend coverage remained at 100% statements/branches/functions/lines: 401 passed files and 5,593 passed tests.
+- jscpd remained under the configured threshold at 1.97% duplication, 274 clones, and 5,261 duplicated lines.
+
+# Completed Task: File Size Batch - Admin Agent Route Tests
+
+Status: complete
 
 Goal: reduce the largest unclassified warning-band file, `server/tests/unit/api/admin-agents-routes.test.ts`, below the 800-line warning threshold without changing route behavior or assertion coverage.
 
@@ -25,6 +54,9 @@ Goal: reduce the largest unclassified warning-band file, `server/tests/unit/api/
 - Server lint, server test typecheck, `git diff --check`, backend coverage, and jscpd passed.
 - Backend coverage remained at 100% statements/branches/functions/lines: 391 passed files, 22 skipped; 9,156 passed tests, 503 skipped.
 - jscpd remained under the configured threshold at 1.95% duplication, 272 clones, and 5,213 duplicated lines.
+- PR #46 merged to `main` as `c702cb42 Refactor admin agent route test fixtures (#46)`.
+- PR #46 checks passed before merge: `PR Required Checks`, `Code Quality Required Checks`, Quick Backend, Quick Backend Integration Smoke, Quick Test Hygiene, lizard, jscpd, gitleaks, lint, and Docker builds. PR-only full lanes skipped as intended.
+- Post-merge `main` backstop passed: `Install Tests` `24702870774`, `Release` `24702870771`, `Build Dev Images` `24702870767`, and `Test Suite` `24702870757`.
 
 # Completed Task: Grade Report And Vitest Warning PR
 
