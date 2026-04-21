@@ -474,17 +474,7 @@ jobs:
 
           ---
 
-          <details>
-          <summary><strong>Umbrel Installation</strong> (alternative method)</summary>
-
-          > **Note:** Umbrel serves apps over HTTP, so WebUSB hardware wallet connections and QR code webcam scanning will not work. Use the Quick Install method above for full feature support.
-
-          1. Open the App Store in your Umbrel
-          2. Click the **...** menu and select **Community App Stores**
-          3. Paste: `https://github.com/nekoguntai-castle/sanctuary-umbrel`
-          4. Click **Add**, then find Sanctuary and install
-
-          </details>
+          For Umbrel, install via the [`sanctuary-umbrel`](https://github.com/nekoguntai-castle/sanctuary-umbrel) community app store. Limitations and full instructions there.
 
           ---
           EOF

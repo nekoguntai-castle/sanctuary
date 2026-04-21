@@ -63,7 +63,7 @@
 
 - [Quick Install](#quick-install)
 - [First Run](#first-run)
-- [Umbrel Installation](#umbrel-installation)
+- [Umbrel](#umbrel)
 - [Overview](#overview)
 - [Screenshots](#screenshots)
 - [Features](#features)
@@ -180,32 +180,9 @@ After installation, follow these steps to set up your Sanctuary:
 
 ---
 
-## Umbrel Installation
+## Umbrel
 
-> **⚠️ Limited Functionality:** Umbrel serves apps over HTTP (not HTTPS), which means:
-> - **WebUSB hardware wallets will not work** (Ledger, Trezor USB connections require HTTPS)
-> - **QR code camera scanning will not work** (camera access requires HTTPS)
->
-> You can still use Sanctuary on Umbrel for:
-> - Importing wallets via output descriptors or JSON files
-> - Viewing balances and transaction history
-> - Creating unsigned PSBTs for air-gapped signing
-> - Importing signed PSBTs via file upload (MicroSD workflow)
->
-> For full functionality including USB hardware wallets and QR camera scanning, use the [Quick Install](#quick-install) method which enables HTTPS.
-
-If you're running [Umbrel](https://umbrel.com/), you can install Sanctuary as a Community App:
-
-1. Open the **App Store** in your Umbrel
-2. Click the **⋯** menu in the upper right corner
-3. Select **Community App Stores**
-4. Paste: `https://github.com/nekoguntai-castle/sanctuary-umbrel`
-5. Click **Add**
-6. Find **Sanctuary** in the App Store and click **Install**
-
-Sanctuary will automatically connect to your Umbrel's Electrum server.
-
-> The Umbrel app manifest, `docker-compose.yml`, and icon live in a dedicated repo, [`nekoguntai-castle/sanctuary-umbrel`](https://github.com/nekoguntai-castle/sanctuary-umbrel). It auto-updates on every stable release of this repo.
+Running [Umbrel](https://umbrel.com/)? Install via the [`nekoguntai-castle/sanctuary-umbrel`](https://github.com/nekoguntai-castle/sanctuary-umbrel) community app store. Note: Umbrel runs apps over HTTP, which limits WebUSB hardware-wallet support and QR camera scanning — see the [sanctuary-umbrel README](https://github.com/nekoguntai-castle/sanctuary-umbrel#limitations-on-umbrel) for the full list of what works and what doesn't, plus the standalone HTTPS install if you need full functionality.
 
 ---
 
