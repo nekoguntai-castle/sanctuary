@@ -13,9 +13,10 @@ vi.mock('../../../../src/utils/logger', () => ({
   createLogger: () => mockLogger,
 }));
 
+vi.unmock('../../../../src/utils/requestContext');
+
 const loadTracer = async () => {
   vi.resetModules();
-  vi.unmock('../../../../src/utils/requestContext');
   return import('../../../../src/utils/tracing/tracer');
 };
 

@@ -8,7 +8,7 @@ Status: Draft
 **Grade**: A
 **Confidence**: High
 **Mode**: full
-**Commit**: 461240a1
+**Commit**: working-tree-after-8993389b
 
 ---
 
@@ -19,7 +19,7 @@ None.
 - `tests=pass`: native and coverage test suites pass.
 - `typecheck=pass`: TypeScript checks pass.
 - `security_high=0`: no high or critical npm advisories across root, server, gateway, or AI proxy audits.
-- `secrets=0`: gitleaks found no leaks after normalizing a prior grade-history metadata value to the documented schema.
+- `secrets=0`: pinned gitleaks direct, latest-commit, and tracked-tree scans found no leaks.
 
 ---
 
@@ -40,14 +40,17 @@ None.
 
 ## Trend
 
-- vs 2026-04-18 (`219e2d98`): overall `+5` (`92 -> 97`), grade `A -> A`, confidence `High -> High`.
+- vs 2026-04-20 (`461240a1`): overall `+0` (`97 -> 97`), grade `A -> A`, confidence `High -> High`.
+- Longer trend vs 2026-04-18 (`219e2d98`): overall `+5` (`92 -> 97`), grade `A -> A`, confidence `High -> High`.
 - Positive movement: app/backend/gateway coverage gates are now green at 100%.
 - Post-audit remediation: large-file classification is green again after extracting dashboard read-model code from `server/src/repositories/agentRepository.ts` into `server/src/repositories/agentDashboardRepository.ts`.
 - Latest wallet/dashboard remediation: `WalletCells`, `WalletSummary`, `MempoolSection`, `WalletAutopilotSettings`, and `AnimatedBackground` are no longer top lizard findings after splitting table cells, dashboard renderers, autopilot controller/cards, and animation lazy-loading helpers while keeping public import paths stable.
 - Latest admin/account remediation: `AuditLogs`, `LogDetailModal`, `PasswordForm`, `TwoFactorSection`, `AccessControlTab`, and `FeatureFlags` are no longer top lizard findings after extracting audit filter/header helpers, modal sections, password/2FA cards, access-control save-feedback sections, and feature-flag group/audit-history renderers.
 - Latest agent funding remediation: `AgentOverridesModal`, `createWalletAgent`, `createAgent`, `buildAgentAlertCreateData`, `createFundingAttempt`, and `parseOptionalAttemptAmount` are no longer top lizard findings after extracting override-modal state/render helpers, agent-create payload mappers, alert/funding-attempt data builders, and funding-attempt amount/reason parsing helpers.
 - Latest final-warning remediation: `deriveSingleSig`, the websocket contract registration files, `useHardwareWallet`, `SendTransactionContext`, `UserContext`, `Layout.branches`, `NodeConfig.secondpass`, `AnimatedFeeRate`, `Settings.interactions`, `notifyNewDraft`, `normalizeAddress`, `positiveBigInt`, and `sendJsonRpcError` are no longer lizard findings after splitting script encoders, test registration harnesses, Telegram draft notification helpers, agent-monitoring helpers, and MCP JSON-RPC error helpers.
-- Current remediation: `WalletStats`, `TransactionRow`, `TransactionList`, `LabelEditor`, `FlowPreview`, `NetworkConnectionCard`, `ServerForm`, `AddressesTab`, `DeviceDetail`, `SharingSection`, `OwnershipSection`, `TransferOwnershipModal`, `ManualAccountForm`, `AddAccountFlow`, `QrImport`, `QRSigningModal`, `DeviceDetailsForm`, `NetworkSyncActions`, `Monitoring`, `WalletDetail`, `LogTab`, `TransactionsTab`, `WalletDetailModals`, `WalletTelegramSettings`, `AppRoutes`, `LoginForm`, `AILabelSuggestion`, `ChatTab`, `InsightsTab`, `Intelligence`, `UsersGroups`, `AIQueryInput`, `Layout`, `SidebarContent`, `PriceChart`, `RestorePanel`, `Variables`, `UTXOGarden`, `UTXOList`, `UTXORow`, `CoinControlPanel`, send `UtxoRow`, `SendTransactionWizard`, production `SigningFlow`, `AgentWalletDashboard`, `QrScannerPanel`, `DraftList`, `LabelSelector`, `SendTransactionPage`, `LabelManager`, `NotificationToast`, `NotificationPanel`/`NotificationItem`, `BlockVisualizer`, `Block`, `QueuedSummaryBlock`, `PendingTxDot`, `AppearanceTab`, `BackgroundsPanel`, `Account`, `AgentManagement`, `ConfigurableTable`, `ColumnConfigButton`, `ConnectDevice`, `UsbConnectionPanel`, `ConflictDialog`, `EncryptionKeyDisplay`, `WebSocketStatsCard`, `NotificationSoundSettings`, `PrivacyBadge`, `NotificationBadge`, `WalletCells`, `WalletSummary`, `MempoolSection`, `WalletAutopilotSettings`, and `AnimatedBackground` are no longer top lizard findings; warning-band file pressure dropped by splitting dashboard repository tests, AgentManagement views, TransactionList helpers, NetworkConnectionCard controller/form helpers, AddressesTab address-list helpers, DeviceDetail page helpers, device access/ownership sharing helpers, transfer ownership modal helpers, account-import form/method/QR helpers, QR scanner shared frame helpers, QR signing modal scan/upload helpers, DeviceDetailsForm render helpers, NetworkSyncActions sync/resync helpers, Monitoring controller/render helpers, WalletDetail controller/view helpers, WalletDetail log/transaction/modal helpers, wallet Telegram settings controller/render helpers, AppRoutes controller/shell helpers, LoginForm header/field/action/footer helpers, AI label suggestion controller/render helpers, ChatTab controller/render helpers, Intelligence shell/insights helpers, UsersGroups controller/render helpers, AIQueryInput controller/render helpers, Layout controller/render helpers, SidebarContent section helpers, PriceChart tooltip/animated-price helpers, RestorePanel state/modal helpers, Variables controller/render helpers, UTXOGarden dot/model helpers, UTXO list state/render helpers, UTXORow state/render helpers, send coin-control helpers, send UTXO row helpers, send wizard draft/action/shell helpers, production signing-flow row/method helpers, AgentWalletDashboard controller/model/detail helpers, QrScannerPanel scanner-state helpers, shared table/control helpers, ConnectDevice flow/USB/conflict helpers, wallet dashboard render helpers, wallet autopilot cards/controller helpers, and animated-background lazy-loading helpers; backup/restore timers now clean up on hook unmount; and gitleaks now has a pinned project-tooling path.
+- Completed remediation: `WalletStats`, `TransactionRow`, `TransactionList`, `LabelEditor`, `FlowPreview`, `NetworkConnectionCard`, `ServerForm`, `AddressesTab`, `DeviceDetail`, `SharingSection`, `OwnershipSection`, `TransferOwnershipModal`, `ManualAccountForm`, `AddAccountFlow`, `QrImport`, `QRSigningModal`, `DeviceDetailsForm`, `NetworkSyncActions`, `Monitoring`, `WalletDetail`, `LogTab`, `TransactionsTab`, `WalletDetailModals`, `WalletTelegramSettings`, `AppRoutes`, `LoginForm`, `AILabelSuggestion`, `ChatTab`, `InsightsTab`, `Intelligence`, `UsersGroups`, `AIQueryInput`, `Layout`, `SidebarContent`, `PriceChart`, `RestorePanel`, `Variables`, `UTXOGarden`, `UTXOList`, `UTXORow`, `CoinControlPanel`, send `UtxoRow`, `SendTransactionWizard`, production `SigningFlow`, `AgentWalletDashboard`, `QrScannerPanel`, `DraftList`, `LabelSelector`, `SendTransactionPage`, `LabelManager`, `NotificationToast`, `NotificationPanel`/`NotificationItem`, `BlockVisualizer`, `Block`, `QueuedSummaryBlock`, `PendingTxDot`, `AppearanceTab`, `BackgroundsPanel`, `Account`, `AgentManagement`, `ConfigurableTable`, `ColumnConfigButton`, `ConnectDevice`, `UsbConnectionPanel`, `ConflictDialog`, `EncryptionKeyDisplay`, `WebSocketStatsCard`, `NotificationSoundSettings`, `PrivacyBadge`, `NotificationBadge`, `WalletCells`, `WalletSummary`, `MempoolSection`, `WalletAutopilotSettings`, and `AnimatedBackground` are no longer top lizard findings; warning-band file pressure dropped by splitting dashboard repository tests, AgentManagement views, TransactionList helpers, NetworkConnectionCard controller/form helpers, AddressesTab address-list helpers, DeviceDetail page helpers, device access/ownership sharing helpers, transfer ownership modal helpers, account-import form/method/QR helpers, QR scanner shared frame helpers, QR signing modal scan/upload helpers, DeviceDetailsForm render helpers, NetworkSyncActions sync/resync helpers, Monitoring controller/render helpers, WalletDetail controller/view helpers, WalletDetail log/transaction/modal helpers, wallet Telegram settings controller/render helpers, AppRoutes controller/shell helpers, LoginForm header/field/action/footer helpers, AI label suggestion controller/render helpers, ChatTab controller/render helpers, Intelligence shell/insights helpers, UsersGroups controller/render helpers, AIQueryInput controller/render helpers, Layout controller/render helpers, SidebarContent section helpers, PriceChart tooltip/animated-price helpers, RestorePanel state/modal helpers, Variables controller/render helpers, UTXOGarden dot/model helpers, UTXO list state/render helpers, UTXORow state/render helpers, send coin-control helpers, send UTXO row helpers, send wizard draft/action/shell helpers, production signing-flow row/method helpers, AgentWalletDashboard controller/model/detail helpers, QrScannerPanel scanner-state helpers, shared table/control helpers, ConnectDevice flow/USB/conflict helpers, wallet dashboard render helpers, wallet autopilot cards/controller helpers, and animated-background lazy-loading helpers; backup/restore timers now clean up on hook unmount; and gitleaks now has a pinned project-tooling path.
+- Current grade rerun at `8993389b` is a docs-closeout audit: no score movement from the final lizard cleanup merge, and all previously green score-bearing gates stayed green.
+- Current follow-up resolves the only non-blocking Vitest annotation from the grade run by moving the tracing test's `vi.unmock("../../../../src/utils/requestContext")` call to top level; focused tracing tests and backend coverage no longer emit the warning.
 
 ---
 
@@ -58,35 +61,35 @@ None.
 | Signal | Value | Tool | Scoring criterion |
 | --- | --- | --- | --- |
 | tests | pass; app 401 files/5,593 tests; backend 391 passed/22 skipped files with 9,156 passed/503 skipped tests after current remediation; gateway 20 files/513 tests | `grade.sh`; `npm run test:coverage`; `npm run test:backend:coverage`; `npm run test:coverage` in `gateway` | Correctness 1.1 |
-| typecheck | pass | `grade.sh`; native TypeScript check | Correctness 1.2 |
+| typecheck | pass | `grade.sh`; `npx --no-install tsc --noEmit` | Correctness 1.2 |
 | lint | pass | `grade.sh`; `npm run lint` | Correctness 1.3 |
-| browser_auth_contract | pass; 663 browser files scanned | `npm run check:browser-auth-contract` | Correctness 1.5 |
+| browser_auth_contract | pass; 1,047 browser files scanned | `npm run check:browser-auth-contract` | Correctness 1.5 |
 | openapi_route_coverage | pass; 315 Express routes, 311 OpenAPI operations, 4 documented exceptions | `npm run check:openapi-route-coverage` | Correctness 1.5 |
 | api_body_validation | pass | `grade.sh`; `npm run check:api-body-validation` through lint | Security 4.3 |
 | coverage | app 100%, backend 100%, gateway 100% statements/branches/functions/lines | V8/Vitest coverage summaries | Test Quality 6.1 |
-| security_high | 0 high/critical | `npm audit --json`; `npm --prefix server audit --json`; `npm --prefix gateway audit --json`; `npm --prefix ai-proxy audit --json` | Security 4.1 |
+| security_high | 0 high/critical | `npm audit --json` in root, `server`, `gateway`, and `ai-proxy` | Security 4.1 |
 | root_audit | 16 low, 0 moderate, 0 high, 0 critical | `npm audit --json` | Security 4.1 context |
-| server_audit | 0 vulnerabilities | `npm --prefix server audit --json` | Security 4.1 context |
-| gateway_audit | 8 low, 0 moderate, 0 high, 0 critical | `npm --prefix gateway audit --json` | Security 4.1 context |
-| ai_proxy_audit | 0 vulnerabilities | `npm --prefix ai-proxy audit --json` | Security 4.1 context |
-| secrets | 0 | `scripts/quality.sh` gitleaks lane with pinned `.tmp/quality-tools/gitleaks-8.30.1/gitleaks`; prior `/tmp/gitleaks-grade/gitleaks` scan was also clean | Security 4.2 |
+| server_audit | 0 vulnerabilities | `npm audit --json` in `server` | Security 4.1 context |
+| gateway_audit | 8 low, 0 moderate, 0 high, 0 critical | `npm audit --json` in `gateway` | Security 4.1 context |
+| ai_proxy_audit | 0 vulnerabilities | `npm audit --json` in `ai-proxy` | Security 4.1 context |
+| secrets | 0 | pinned `.tmp/quality-tools/gitleaks-8.30.1/gitleaks` direct working-tree scan, latest-commit scan, and tracked-tree scan | Security 4.2 |
 | rg_secret_fallback | 8 raw PEM/API-shaped hits; treated as weaker fallback evidence | `grade.sh` regex fallback | Security 4.2 context |
-| lizard_warning_count | 0 functions with CCN > 15 | `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w .`; `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 .` | Maintainability 3.1 |
+| lizard_warning_count | 0 functions with CCN > 15 | `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w .`; `.tmp/quality-tools/lizard-1.21.2/bin/lizard .` | Maintainability 3.1 |
 | lizard_avg_ccn | 1.3 | `.tmp/quality-tools/lizard-1.21.2/bin/lizard .` | Maintainability 3.1 context |
 | lizard_threshold_status | no thresholds exceeded; max observed CCN is at or below 15 | lizard warning scan | Maintainability 3.1 context |
 | duplication_pct | 1.95%; 272 clones, 5,213 duplicated lines | `npx --yes jscpd@4 .` | Maintainability 3.2 |
 | largest_file_lines | 2,637 | `grade.sh`; `scripts/perf/phase3-compose-benchmark-smoke.mjs` | Maintainability 3.3 |
 | large_file_classification | pass; 4 files exceed 1,000 lines with accepted classifications and 10 files remain over the 800-line warning limit | `node scripts/quality/check-large-files.mjs` | Maintainability 3.3 context |
-| architecture_boundaries | pass; 1,465 files, 6,093 imports, 9 rules, 40 exceptions | `npm run check:architecture-boundaries` | Maintainability 3.4 |
+| architecture_boundaries | pass; 1,849 files, 7,148 imports, 9 rules, 40 exceptions | `npm run check:architecture-boundaries` | Maintainability 3.4 |
 | deploy_artifact_count | 2 | `grade.sh`; Docker/Compose and GitHub Actions present | Operational Readiness 7.1 |
 | health_endpoint_count | 180 | `grade.sh` heuristic | Operational Readiness 7.2 |
 | observability_lib_present | 1 | `grade.sh` heuristic | Operational Readiness 7.3 |
 | validation_lib_present | 1 | `grade.sh` heuristic | Security 4.3 |
 | suppression_count | 22 | `grade.sh` heuristic | Correctness 1.4 |
-| timeout_retry_count | 1,209 | `grade.sh` heuristic | Reliability 2.2 |
+| timeout_retry_count | 1,214 | `grade.sh` heuristic | Reliability 2.2 |
 | blocking_io_count | 36 | `grade.sh` heuristic | Performance 5.1/5.3 |
 | logging_call_count | 319 | `grade.sh` heuristic | Operational Readiness 7.4 |
-| test_file_count | 1,201 | `grade.sh` heuristic | Test Quality 6.2 |
+| test_file_count | 1,203 | `grade.sh` heuristic | Test Quality 6.2 |
 | test_sleep_count | 10 | `grade.sh` heuristic; direct hits concentrated in async helper tests and UI timers | Test Quality 6.4 |
 
 ### Judged Findings
@@ -97,7 +100,7 @@ None.
 - **[2.2] Timeouts and retries - High -> +4**: ISO Availability/Fault Tolerance is strong across `src/api/client.ts`, `server/src/middleware/requestTimeout.ts`, `server/src/models/prisma.ts`, Electrum clients, gateway request logging, and AI/admin monitoring calls.
 - **[2.3] Crash-prone paths - High -> +5**: ISO Fault Tolerance is strong because process exits are centralized in process-exit helpers and sampled production code avoids broad panic/assert-style paths.
 - **[3.4] Architecture clarity - High -> +3**: ISO Modularity is strong because `check:architecture-boundaries` passes and root/server/gateway/shared boundaries are enforced.
-- **[3.5] Readability/naming - High -> +4**: ISO Analyzability is stronger because lizard reports 0 functions above CCN 15; remaining review pressure is concentrated in warning-band file sizes rather than per-function complexity.
+- **[3.5] Readability/naming - Medium -> +1**: ISO Analyzability is stronger because lizard reports 0 functions above CCN 15, but the maintained score keeps pressure on warning-band file sizes and repeated schema/UI patterns.
 - **[4.3] Input validation quality - High -> +3**: ISO Integrity is strong because Zod schemas validate request bodies, params, query data, and runtime config at trust boundaries.
 - **[4.4] Safe system/API usage - High -> +3**: ISO Integrity is strong because inspected `eval` hits in Redis locking/rate-limiting are fixed Lua scripts, Prisma raw SQL uses tagged templates, and browser `innerHTML` hits are test-only.
 - **[5.1] Hot-path efficiency - High -> +5**: ISO Time Behaviour is strong because request-facing HTTP, DB, Redis, Electrum, and AI paths use async calls, timeouts, and bounded retry/backoff patterns.
@@ -111,10 +114,10 @@ None.
 ### Missing
 
 - No scoring signal remains unknown.
-- Reproducibility note: `scripts/quality.sh` now resolves gitleaks through explicit `GITLEAKS_BIN`, pinned `.tmp/quality-tools/gitleaks-8.30.1/gitleaks`, or bootstrap from `GITLEAKS_VERSION=8.30.1`; the pinned-path gitleaks-only quality lane passed with `QUALITY_BOOTSTRAP_TOOLS=0`.
-- Environment note: backend and gateway coverage needed escalated execution because sandboxed `supertest` listeners failed with `listen EPERM 0.0.0.0`; escalated reruns passed.
+- Reproducibility note: `scripts/quality.sh` resolves gitleaks through explicit `GITLEAKS_BIN`, pinned `.tmp/quality-tools/gitleaks-8.30.1/gitleaks`, or bootstrap from `GITLEAKS_VERSION=8.30.1`; current direct, latest-commit, and tracked-tree gitleaks scans are clean.
+- Environment note: current app, backend, and gateway coverage reruns completed without sandbox listener failures; current npm audits completed without DNS retry.
 - The bundled `grade.sh` did not auto-detect the repo's `test:coverage` script name; coverage was measured directly with app, backend, and gateway coverage commands.
-- The bundled `grade.sh` root `npm audit` attempt hit sandbox DNS (`EAI_AGAIN`); direct npm audits were rerun with network approval and succeeded.
+- The prior backend coverage future-compatibility warning from `server/tests/unit/utils/tracing/tracer.test.ts` is resolved; the `vi.unmock` call now lives at top level and the warning no longer appears in focused or backend coverage output.
 
 ---
 
@@ -123,7 +126,7 @@ None.
 1. File-size pressure remains in the warning band - the hard large-file policy is green, but `server/tests/unit/api/admin-agents-routes.test.ts`, `e2e/admin-operations.spec.ts`, and several other production/test files remain above 800 lines.
 2. Secret scanning now has pinned project-tooling support, but the weaker regex fallback still reports fixture/doc-shaped hits.
 3. Low-severity dependency advisories remain - root has 16 low advisories and gateway has 8 low advisories; suggested fixes include behavior-risky major-version changes.
-4. Verification friction remains in sandboxed environments - backend/gateway supertest coverage needs local listener permissions.
+4. Verification remains expensive because the score-bearing app, backend, and gateway coverage gates are broad 100% suites.
 
 ## Fastest Improvements
 
@@ -160,14 +163,15 @@ None.
 
 - `git rev-parse --show-toplevel`, `git status --short --branch`, `git rev-parse --short HEAD`, `trend.sh prev sanctuary_ full`, and `trend.sh append sanctuary_ ... full` completed.
 - `bash /home/nekoguntai/.codex/skills/grade/grade.sh` completed: tests pass, lint pass, typecheck pass, heuristic signals collected; coverage/audit/secrets/complexity/duplication needed direct supplemental commands as noted above.
-- `npm audit --json`, `npm --prefix server audit --json`, `npm --prefix gateway audit --json`, and `npm --prefix ai-proxy audit --json` completed with `security_high=0`.
-- `/tmp/gitleaks-grade/gitleaks detect --source . --no-git --redact --report-format json` completed clean after normalizing prior grade-history metadata to the documented schema value.
-- `scripts/quality.sh` gitleaks-only lane completed clean through pinned `.tmp/quality-tools/gitleaks-8.30.1/gitleaks` with `QUALITY_BOOTSTRAP_TOOLS=0`.
-- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -w .` completed after current remediation: 28 warnings, average CCN 1.3, max CCN 33.
+- Current `npm audit --json` reruns in root, `server`, `gateway`, and `ai-proxy` completed with `security_high=0`.
+- Current pinned gitleaks direct working-tree, latest-commit, and tracked-tree scans completed clean.
+- Current `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w .` and `.tmp/quality-tools/lizard-1.21.2/bin/lizard .` completed: 0 warnings, average CCN 1.3, no thresholds exceeded.
 - `npx --yes jscpd@4 .` completed: 1.95% duplication, 272 clones, 5,213 duplicated lines.
-- `npm run test:coverage` passed after current remediation: 401 app test files, 5,593 tests, 100% statements/branches/functions/lines.
-- `npm run test:backend:coverage` passed after current remediation: 391 backend test files passed, 22 skipped; 9,155 tests passed, 503 skipped; 100% statements/branches/functions/lines.
-- `npm run test:coverage` in `gateway` passed outside the sandbox: 20 files, 513 tests, 100% statements/branches/functions/lines.
+- Current `npm run lint`, `npx --no-install tsc --noEmit`, `npm run check:architecture-boundaries`, `npm run check:browser-auth-contract`, and `npm run check:openapi-route-coverage` passed.
+- Current focused tracing warning fix passed: `npx vitest run tests/unit/utils/tracing/tracer.test.ts tests/unit/utils/tracing/otel.test.ts` in `server` completed with 2 files and 17 tests.
+- Current `npm run test:coverage` passed: 401 app test files, 5,593 tests, 100% statements/branches/functions/lines.
+- Current `npm run test:backend:coverage` passed after moving the tracing test `vi.unmock` to top level: 391 backend test files passed, 22 skipped; 9,156 tests passed, 503 skipped; 100% statements/branches/functions/lines.
+- Current `npm run test:coverage` in `gateway` passed: 20 files, 513 tests, 100% statements/branches/functions/lines.
 - Focused remediation checks passed: `npx vitest run tests/unit/repositories/agentRepository.test.ts tests/unit/api/admin-agents-routes.test.ts tests/unit/agent/dto.test.ts`, `npx vitest run tests/components/WalletStats.test.tsx`, `npx vitest run tests/components/TransactionList/TransactionRow.branches.test.tsx tests/components/TransactionList.test.tsx`, `npx vitest run tests/components/DraftList.test.tsx tests/components/DraftList/DraftList.branches.test.tsx tests/components/DraftList/DraftRow.branches.test.tsx tests/components/DraftList/utils.branches.test.ts`, `npx vitest run tests/components/LabelSelector.test.tsx`, `npx vitest run tests/components/send/SendTransactionPage.test.tsx tests/components/send/SendTransactionPage.branches.test.tsx`, `npx vitest run tests/components/LabelManager.test.tsx tests/components/NotificationToast.test.tsx tests/components/NotificationToast.branches.test.tsx tests/components/NotificationPanel.test.tsx tests/components/NotificationPanel.branches.test.tsx`, `npx vitest run tests/components/BlockVisualizer/BlockVisualizer.branches.test.tsx tests/components/BlockVisualizer/Block.test.tsx tests/components/BlockVisualizer/QueuedSummaryBlock.test.tsx tests/components/BlockVisualizer/PendingTxDot.test.tsx tests/components/BlockVisualizer/blockUtils.test.ts`, `npx vitest run tests/components/Settings/sections/ThemeSection/AppearanceTab.branches.test.tsx tests/components/Settings/sections/ThemeSection/panels/BackgroundsPanel.branches.test.tsx tests/components/ThemeSection.test.tsx`, `npx vitest run tests/components/Account.test.tsx tests/components/Account.branches.test.tsx tests/components/Account/PasswordForm.branches.test.tsx tests/components/Account/SetupTwoFactorModal.test.tsx tests/components/Account/DisableTwoFactorModal.branches.test.tsx tests/components/Account/BackupCodesModal.test.tsx`, `npx vitest run tests/unit/repositories/agentRepository.test.ts tests/unit/repositories/agentDashboardRepository.test.ts`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/WalletStats.tsx components/WalletStats server/tests/unit/repositories/agentRepository.test.ts server/tests/unit/repositories/agentDashboardRepository.test.ts scripts/quality.sh`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/TransactionList/TransactionRow.tsx components/TransactionList/TransactionRow`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/DraftList/DraftList.tsx components/DraftList/draftListHelpers.ts components/DraftList/useDraftListController.ts`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/LabelSelector.tsx components/LabelSelector`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/send/SendTransactionPage.tsx components/send/SendTransactionPage`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/LabelManager.tsx components/LabelManager components/NotificationToast.tsx components/NotificationToast components/NotificationPanel.tsx components/NotificationPanel`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/BlockVisualizer/BlockVisualizer.tsx components/BlockVisualizer/BlockVisualizer components/BlockVisualizer/Block.tsx components/BlockVisualizer/Block components/BlockVisualizer/QueuedSummaryBlock.tsx components/BlockVisualizer/QueuedSummaryBlock components/BlockVisualizer/PendingTxDot.tsx components/BlockVisualizer/PendingTxDot`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/Settings/sections/ThemeSection/AppearanceTab.tsx components/Settings/sections/ThemeSection/AppearanceTab components/Settings/sections/ThemeSection/panels/BackgroundsPanel.tsx components/Settings/sections/ThemeSection/panels/BackgroundsPanel`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/Account/Account.tsx components/Account/Account`, `npm run lint:app`, `npm run lint:server`, `npm run typecheck:app`, and `npm run typecheck:server:tests`.
 - AgentManagement batch focused checks passed: `npx vitest run tests/components/AgentManagement.extracted.branches.test.tsx tests/components/AgentManagement.test.tsx tests/api/adminAgents.test.ts tests/components/AgentWalletDashboard.test.tsx`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/AgentManagement/index.tsx components/AgentManagement/AgentManagement tests/components/AgentManagement.extracted.branches.test.tsx`, `npm run typecheck:app`, and `npm run lint:app`.
 - TransactionList batch focused checks passed: `npx vitest run tests/components/TransactionList.test.tsx tests/components/TransactionList/TransactionList.branches.test.tsx tests/components/TransactionList/LabelEditor.test.tsx tests/components/TransactionList/FlowPreview.branches.test.tsx tests/components/TransactionList/useTransactionList.branches.test.tsx`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/TransactionList/TransactionList.tsx components/TransactionList/TransactionList components/TransactionList/LabelEditor.tsx components/TransactionList/LabelEditor components/TransactionList/FlowPreview.tsx components/TransactionList/FlowPreview tests/components/TransactionList/TransactionList.branches.test.tsx`, `npm run typecheck:app`, and `npm run lint:app`.
