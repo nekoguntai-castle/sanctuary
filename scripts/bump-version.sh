@@ -2,7 +2,9 @@
 #
 # Version Bump Script
 #
-# Updates version across all package files and umbrel config.
+# Updates version across all package.json files. The Umbrel manifest
+# (umbrel-app.yml + docker-compose.yml) lives in nekoguntai-castle/sanctuary-umbrel
+# and updates itself via repository_dispatch from this repo's release.yml.
 #
 # Usage:
 #   ./scripts/bump-version.sh 0.7.20      # Set explicit version
@@ -24,32 +26,26 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
+PACKAGE_FILES=(
+  package.json
+  server/package.json
+  gateway/package.json
+  ai-proxy/package.json
+)
+
 get_version() {
   local file=$1
-  if [[ "$file" == *.yml ]]; then
-    grep '^version:' "$file" | sed 's/version: "\([^"]*\)"/\1/'
-  else
-    grep '"version"' "$file" | head -1 | sed 's/.*"version": "\([^"]*\)".*/\1/'
-  fi
-}
-
-get_umbrel_image_versions() {
-  local image=$1
-  grep "ghcr.io/nekoguntai-castle/sanctuary-${image}:v" sanctuary/docker-compose.yml \
-    | sed -E 's/.*sanctuary-[^:]+:v([0-9]+\.[0-9]+\.[0-9]+).*/\1/' \
-    | sort -u
+  grep '"version"' "$file" | head -1 | sed 's/.*"version": "\([^"]*\)".*/\1/'
 }
 
 check_versions() {
   local root_ver=$(get_version "package.json")
   local all_match=true
-  local frontend_versions
-  local backend_versions
 
   echo -e "${YELLOW}Checking version sync...${NC}"
   echo ""
 
-  for file in package.json server/package.json gateway/package.json ai-proxy/package.json sanctuary/umbrel-app.yml; do
+  for file in "${PACKAGE_FILES[@]}"; do
     local ver=$(get_version "$file")
     if [[ "$ver" == "$root_ver" ]]; then
       echo -e "  ${GREEN}✓${NC} $file: $ver"
@@ -58,23 +54,6 @@ check_versions() {
       all_match=false
     fi
   done
-
-  frontend_versions=$(get_umbrel_image_versions "frontend" | paste -sd ', ' -)
-  backend_versions=$(get_umbrel_image_versions "backend" | paste -sd ', ' -)
-
-  if [[ "$frontend_versions" == "$root_ver" ]]; then
-    echo -e "  ${GREEN}✓${NC} sanctuary/docker-compose.yml frontend image: $frontend_versions"
-  else
-    echo -e "  ${RED}✗${NC} sanctuary/docker-compose.yml frontend image: ${frontend_versions:-missing} (expected $root_ver)"
-    all_match=false
-  fi
-
-  if [[ "$backend_versions" == "$root_ver" ]]; then
-    echo -e "  ${GREEN}✓${NC} sanctuary/docker-compose.yml backend images: $backend_versions"
-  else
-    echo -e "  ${RED}✗${NC} sanctuary/docker-compose.yml backend images: ${backend_versions:-missing} (expected $root_ver)"
-    all_match=false
-  fi
 
   echo ""
   if $all_match; then
@@ -133,21 +112,10 @@ fi
 echo -e "${YELLOW}Bumping version: $CURRENT -> $NEW_VERSION${NC}"
 echo ""
 
-# Update all package.json files
-for file in package.json server/package.json gateway/package.json ai-proxy/package.json; do
+for file in "${PACKAGE_FILES[@]}"; do
   sed -i "s/\"version\": \"[0-9]*\.[0-9]*\.[0-9]*\"/\"version\": \"$NEW_VERSION\"/" "$file"
   echo -e "  ${GREEN}✓${NC} $file"
 done
-
-# Update umbrel-app.yml
-sed -i "s/^version: \"[0-9]*\.[0-9]*\.[0-9]*\"/version: \"$NEW_VERSION\"/" sanctuary/umbrel-app.yml
-echo -e "  ${GREEN}✓${NC} sanctuary/umbrel-app.yml"
-
-# Update release notes (full line — date AND trailing /tag/vX.Y.Z URL)
-TODAY=$(date +%Y-%m-%d)
-REPO_PATH=$(git config --get remote.origin.url | sed -E 's|.*github\.com[:/]||; s|\.git$||')
-sed -i "s|^releaseNotes: .*|releaseNotes: \"Version $NEW_VERSION released on $TODAY. See https://github.com/$REPO_PATH/releases/tag/v$NEW_VERSION for details.\"|" sanctuary/umbrel-app.yml
-echo -e "  ${GREEN}✓${NC} Updated release notes (date + tag URL)"
 
 echo ""
 echo -e "${GREEN}Version updated to $NEW_VERSION${NC}"
@@ -157,11 +125,12 @@ echo "  1. Update lock files:"
 echo "     npm install --package-lock-only"
 echo "     cd server && npm install --package-lock-only"
 echo "     cd gateway && npm install --package-lock-only"
-echo "  2. Update sanctuary/docker-compose.yml image tags to v$NEW_VERSION"
-echo "     with the matching GHCR digests once the images are published"
-echo "  3. Commit: git add -A && git commit -m 'Bump version to $NEW_VERSION'"
-echo "  4. Tag: git tag v$NEW_VERSION"
-echo "  5. Push: git push origin main --tags"
+echo "     cd ai-proxy && npm install --package-lock-only"
+echo "  2. Commit: git add -A && git commit -m 'chore: bump version to $NEW_VERSION'"
+echo "  3. Open PR, merge through queue"
+echo "  4. Tag: git tag v$NEW_VERSION-rc1 && git push origin v$NEW_VERSION-rc1  # RC smoke"
+echo "  5. After RC install-test passes: git tag v$NEW_VERSION && git push origin v$NEW_VERSION"
 echo ""
-echo "NOTE: ./scripts/bump-version.sh --check now verifies the Umbrel image tags"
-echo "      in sanctuary/docker-compose.yml match the release version."
+echo "release.yml will build + push GHCR images and dispatch an"
+echo "image-published event to nekoguntai-castle/sanctuary-umbrel, which"
+echo "auto-updates its manifest and tags its own release."

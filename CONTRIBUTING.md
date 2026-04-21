@@ -72,7 +72,7 @@ Write a non-regression test first, then fix the bug.
 
 ### Theme system
 
-The dark mode theme uses inverted color scales for `primary`, `warning`, `success`, `sent`, and `shared` palettes. In dark mode, low numbers (50-200) are dark and high numbers (800-950) are light -- the opposite of standard Tailwind. `sanctuary-*`, `emerald-*`, and `rose-*` follow standard Tailwind conventions. See [`sanctuary/ARCHITECTURE.md`](sanctuary/ARCHITECTURE.md) for full details.
+The dark mode theme uses inverted color scales for `primary`, `warning`, `success`, `sent`, and `shared` palettes. In dark mode, low numbers (50-200) are dark and high numbers (800-950) are light -- the opposite of standard Tailwind. `sanctuary-*`, `emerald-*`, and `rose-*` follow standard Tailwind conventions. See [`docs/reference/frontend-architecture.md`](docs/reference/frontend-architecture.md) for full details.
 
 Small font sizes (`text-[9px]`, `text-[10px]`, `text-[11px]`) are intentional for the compact UI. Do not replace them with named Tailwind sizes.
 
@@ -89,7 +89,7 @@ Coverage threshold failures are the most common CI blocker. Run coverage locally
 
 ### Version management
 
-Versions must stay synchronized across `package.json`, `server/package.json`, `gateway/package.json`, and `sanctuary/umbrel-app.yml`. Use `./scripts/bump-version.sh` to bump all at once.
+Versions must stay synchronized across `package.json`, `server/package.json`, `gateway/package.json`, and `ai-proxy/package.json`. Use `./scripts/bump-version.sh` to bump all at once. (The Umbrel manifest in [`nekoguntai-castle/sanctuary-umbrel`](https://github.com/nekoguntai-castle/sanctuary-umbrel) updates itself via `repository_dispatch` from this repo's release workflow.)
 
 Never bump the version to fix a CI failure. Fix on the current version.
 
@@ -131,7 +131,7 @@ For decisions with non-obvious tradeoffs, create an ADR in `docs/adr/` using the
 sanctuary/                  # monorepo root
   server/                   # Node.js/Express backend (API, business logic, Bitcoin)
   gateway/                  # Mobile API gateway (rate limiting, push notifications)
-  sanctuary/                # React/Vite frontend + Umbrel app
+  components/, hooks/, src/ # React/Vite frontend (lives at root of monorepo)
   ai-proxy/                 # AI proxy service
   themes/                   # Theme definitions
   docs/                     # Project documentation (Diataxis framework)

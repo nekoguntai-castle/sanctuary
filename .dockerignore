@@ -44,9 +44,6 @@ Thumbs.db
 # Claude/AI files
 .claude
 
-# Umbrel package (not needed in container)
-sanctuary/
-
 # Docker compose files
 docker-compose*.yml
 

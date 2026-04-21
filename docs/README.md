@@ -76,8 +76,9 @@ Package-scoped docs live next to their code — not in `docs/`. Start at each pa
 
 - [server](../server/README.md) — backend API server ([architecture](../server/ARCHITECTURE.md), [API](../server/API.md))
 - [gateway](../gateway/README.md) — mobile API gateway ([architecture](../gateway/ARCHITECTURE.md))
-- [sanctuary](../sanctuary/README.md) — React/Vite frontend + Umbrel app ([architecture](../sanctuary/ARCHITECTURE.md))
+- React/Vite frontend — lives at the monorepo root (no subdirectory). See [`docs/reference/frontend-architecture.md`](reference/frontend-architecture.md).
 - [ai-proxy](../ai-proxy/README.md) — AI proxy service ([architecture](../ai-proxy/ARCHITECTURE.md))
+- [`nekoguntai-castle/sanctuary-umbrel`](https://github.com/nekoguntai-castle/sanctuary-umbrel) — Umbrel community app store (separate repo; auto-updates from this repo's release pipeline)
 - [themes](../themes/README.md) — theme system reference
 
 ## Documentation standards

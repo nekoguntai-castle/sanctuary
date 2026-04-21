@@ -199,11 +199,13 @@ If you're running [Umbrel](https://umbrel.com/), you can install Sanctuary as a 
 1. Open the **App Store** in your Umbrel
 2. Click the **⋯** menu in the upper right corner
 3. Select **Community App Stores**
-4. Paste: `https://github.com/nekoguntai-castle/sanctuary`
+4. Paste: `https://github.com/nekoguntai-castle/sanctuary-umbrel`
 5. Click **Add**
 6. Find **Sanctuary** in the App Store and click **Install**
 
 Sanctuary will automatically connect to your Umbrel's Electrum server.
+
+> The Umbrel app manifest, `docker-compose.yml`, and icon live in a dedicated repo, [`nekoguntai-castle/sanctuary-umbrel`](https://github.com/nekoguntai-castle/sanctuary-umbrel). It auto-updates on every stable release of this repo.
 
 ---
 
