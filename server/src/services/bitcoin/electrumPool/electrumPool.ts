@@ -10,7 +10,7 @@ import { EventEmitter } from 'events';
 import { createLogger } from '../../../utils/logger';
 import { getErrorMessage } from '../../../utils/errors';
 import { nodeConfigRepository } from '../../../repositories';
-import { CircuitBreaker, createCircuitBreaker } from '../../circuitBreaker';
+import type { CircuitBreaker } from '../../circuitBreaker';
 import type {
   ElectrumPoolConfig,
   ServerConfig,
@@ -64,6 +64,7 @@ import {
   getProxyConfig,
   mapEnabledServers,
 } from './nodeConfigMapper';
+import { createElectrumPoolCircuitBreaker } from './poolCircuitBreaker';
 
 const log = createLogger('ELECTRUM_POOL:SVC');
 
@@ -114,16 +115,9 @@ export class ElectrumPool extends EventEmitter {
     super();
     this.config = { ...DEFAULT_POOL_CONFIG, ...poolConfig };
 
-    // Initialize circuit breaker for pool acquisition
-    this.circuitBreaker = createCircuitBreaker<PooledConnectionHandle>({
-      name: 'electrum-pool',
-      failureThreshold: 8,
-      recoveryTimeout: 15000,
-      successThreshold: 2,
-      onStateChange: (newState, oldState) => {
-        log.info(`Electrum pool circuit breaker: ${oldState} → ${newState}`);
-        this.emit('circuitStateChange', { newState, oldState });
-      },
+    this.circuitBreaker = createElectrumPoolCircuitBreaker((newState, oldState) => {
+      log.info(`Electrum pool circuit breaker: ${oldState} → ${newState}`);
+      this.emit('circuitStateChange', { newState, oldState });
     });
   }
 

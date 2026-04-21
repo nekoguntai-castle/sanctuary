@@ -1,6 +1,35 @@
-# Current Task: File Size Batch - Test Fixture Helpers
+# Current Task: File Size Batch - Production Support Helpers
 
-Status: local complete, ready for PR flow
+Status: in progress
+
+Goal: reduce the remaining three unclassified production warning-band files, `server/src/repositories/deviceRepository.ts`, `server/src/repositories/agentRepository.ts`, and `server/src/services/bitcoin/electrumPool/electrumPool.ts`, below the 800-line warning threshold with narrow helper extractions and no public behavior changes.
+
+## Checklist
+
+- [x] Confirm PR #47 merged and the post-merge `main` backstop passed.
+- [x] Select the remaining unclassified production warning files as one grouped batch.
+- [x] Move repository support-stat implementations into focused helpers while preserving repository exports.
+- [x] Move Electrum pool circuit-breaker construction into a focused helper while preserving events and thresholds.
+- [x] Run focused backend tests, file-size, lizard, lint/typecheck, coverage, duplication, and diff checks.
+- [ ] Commit, push, open a PR, validate checks, and merge if green.
+
+## Review
+
+- Starting file sizes: `deviceRepository.ts` at 817 lines, `agentRepository.ts` at 808 lines, and `electrumPool.ts` at 801 lines.
+- Chosen approach: extract low-coupling support-stat and constructor setup helpers rather than splitting public repository methods or pool lifecycle behavior.
+- Current split result: `deviceRepository.ts` is 783 lines and `deviceSupportStatsRepository.ts` is 38 lines.
+- Current split result: `agentRepository.ts` is 738 lines and `agentSupportStatsRepository.ts` is 74 lines.
+- Current split result: `electrumPool.ts` is 795 lines and `poolCircuitBreaker.ts` is 18 lines.
+- Focused backend tests passed: `npx vitest run tests/unit/repositories/supportStats.test.ts tests/unit/services/bitcoin/electrumPool.connections.test.ts` in `server` (104 tests).
+- Large-file guardrail passed; no unclassified warning-band files remain, and only the four pre-classified proof/generated files are above the warning threshold.
+- Focused and broad lizard checks passed with no warnings for this batch.
+- `npm run lint:server`, `npm run typecheck:server:tests`, `git diff --check`, and `npx --yes jscpd@4 .` passed.
+- Backend coverage remained at 100% statements/branches/functions/lines: 391 passed files, 22 skipped; 9,156 passed tests, 503 skipped.
+- jscpd remained under the configured threshold at 1.97% duplication, 274 clones, and 5,261 duplicated lines.
+
+# Completed Task: File Size Batch - Test Fixture Helpers
+
+Status: complete
 
 Goal: reduce two independent test-only large-file warnings, `tests/contexts/UserContext.test.tsx` and `e2e/admin-operations.spec.ts`, below the 800-line warning threshold without changing assertions, mocked API behavior, or covered workflows.
 
@@ -26,6 +55,9 @@ Goal: reduce two independent test-only large-file warnings, `tests/contexts/User
 - `npm run lint`, `npm run typecheck:tests`, `git diff --check`, and `npx --yes jscpd@4 .` passed.
 - Frontend coverage remained at 100% statements/branches/functions/lines: 401 passed files and 5,593 passed tests.
 - jscpd remained under the configured threshold at 1.97% duplication, 274 clones, and 5,261 duplicated lines.
+- PR #47 merged to `main` as `37b96eb8 Extract test warning fixtures (#47)`.
+- PR #47 checks passed before merge: `PR Required Checks`, `Code Quality Required Checks`, Quick Frontend, Quick E2E Smoke, Quick Test Hygiene, lizard, jscpd, gitleaks, and lint. PR-only full lanes skipped as intended.
+- Post-merge `main` backstop passed: `Install Tests` `24703668110`, `Release` `24703668103`, and `Test Suite` `24703668098`.
 
 # Completed Task: File Size Batch - Admin Agent Route Tests
 
