@@ -1,14 +1,14 @@
 # Software Quality Report
 
-Date: 2026-04-20 (Pacific/Honolulu)
+Date: 2026-04-20 19:17 HST
 Owner: TBD
-Status: Draft
+Status: Current
 
 **Overall Score**: 97/100
 **Grade**: A
 **Confidence**: High
 **Mode**: full
-**Commit**: working-tree-after-8993389b
+**Commit**: 24e4cff2
 
 ---
 
@@ -16,9 +16,10 @@ Status: Draft
 
 None.
 
-- `tests=pass`: native and coverage test suites pass.
+- `tests=pass`: app, backend, and gateway suites pass.
 - `typecheck=pass`: TypeScript checks pass.
-- `security_high=0`: no high or critical npm advisories across root, server, gateway, or AI proxy audits.
+- `lint=pass`: lint passes.
+- `security_high=0`: root, server, gateway, and AI proxy audits report no high or critical advisories.
 - `secrets=0`: pinned gitleaks direct, latest-commit, and tracked-tree scans found no leaks.
 
 ---
@@ -27,11 +28,11 @@ None.
 
 | Domain | Score | Notes |
 | --- | ---: | --- |
-| Correctness | 20/20 | Tests, lint, typecheck, browser auth contract, OpenAPI route coverage, and API body validation pass. |
-| Reliability | 15/15 | Error handling, request timeouts, retry/backoff, typed validation, and shutdown paths are consistent by inspection. |
-| Maintainability | 12/15 | Architecture and duplication are strong, the large-file policy is green, and lizard now reports 0 CCN warnings above the enforced threshold; the largest file is a classified 2,637-line proof harness. |
-| Security | 15/15 | No high/critical advisories, gitleaks is clean, trust-boundary validation is present, and sampled unsafe API patterns are controlled. |
-| Performance | 10/10 | Request-facing I/O is async/bounded; sampled data-access paths use grouped/windowed queries instead of per-row fan-out. |
+| Correctness | 20/20 | Tests, lint, typecheck, browser auth contract, OpenAPI route coverage, and architecture checks are green. |
+| Reliability | 15/15 | Error handling, request timeouts, retry/backoff, typed validation, and shutdown paths remain consistent by inspection. |
+| Maintainability | 12/15 | Lizard reports 0 warnings and duplication is low; score loss is from classified proof/generated files above 1,000 lines. |
+| Security | 15/15 | No high/critical advisories, no detected secrets, trust-boundary validation is present, and sampled unsafe API patterns are controlled. |
+| Performance | 10/10 | Request-facing I/O is async/bounded; sampled data-access paths use grouped/windowed queries rather than per-row fan-out. |
 | Test Quality | 15/15 | App, backend, and gateway coverage gates are green at 100% statements/branches/functions/lines. |
 | Operational Readiness | 10/10 | Docker/Compose, CI, health endpoints, observability libraries, and contextual logging are present. |
 | **TOTAL** | **97/100** | Grade A; no hard-fail cap applied. |
@@ -40,178 +41,114 @@ None.
 
 ## Trend
 
-- vs 2026-04-20 (`461240a1`): overall `+0` (`97 -> 97`), grade `A -> A`, confidence `High -> High`.
-- Longer trend vs 2026-04-18 (`219e2d98`): overall `+5` (`92 -> 97`), grade `A -> A`, confidence `High -> High`.
-- Positive movement: app/backend/gateway coverage gates are now green at 100%.
-- Post-audit remediation: large-file classification is green again after extracting dashboard read-model code from `server/src/repositories/agentRepository.ts` into `server/src/repositories/agentDashboardRepository.ts`.
-- Latest wallet/dashboard remediation: `WalletCells`, `WalletSummary`, `MempoolSection`, `WalletAutopilotSettings`, and `AnimatedBackground` are no longer top lizard findings after splitting table cells, dashboard renderers, autopilot controller/cards, and animation lazy-loading helpers while keeping public import paths stable.
-- Latest admin/account remediation: `AuditLogs`, `LogDetailModal`, `PasswordForm`, `TwoFactorSection`, `AccessControlTab`, and `FeatureFlags` are no longer top lizard findings after extracting audit filter/header helpers, modal sections, password/2FA cards, access-control save-feedback sections, and feature-flag group/audit-history renderers.
-- Latest agent funding remediation: `AgentOverridesModal`, `createWalletAgent`, `createAgent`, `buildAgentAlertCreateData`, `createFundingAttempt`, and `parseOptionalAttemptAmount` are no longer top lizard findings after extracting override-modal state/render helpers, agent-create payload mappers, alert/funding-attempt data builders, and funding-attempt amount/reason parsing helpers.
-- Latest final-warning remediation: `deriveSingleSig`, the websocket contract registration files, `useHardwareWallet`, `SendTransactionContext`, `UserContext`, `Layout.branches`, `NodeConfig.secondpass`, `AnimatedFeeRate`, `Settings.interactions`, `notifyNewDraft`, `normalizeAddress`, `positiveBigInt`, and `sendJsonRpcError` are no longer lizard findings after splitting script encoders, test registration harnesses, Telegram draft notification helpers, agent-monitoring helpers, and MCP JSON-RPC error helpers.
-- Completed remediation: `WalletStats`, `TransactionRow`, `TransactionList`, `LabelEditor`, `FlowPreview`, `NetworkConnectionCard`, `ServerForm`, `AddressesTab`, `DeviceDetail`, `SharingSection`, `OwnershipSection`, `TransferOwnershipModal`, `ManualAccountForm`, `AddAccountFlow`, `QrImport`, `QRSigningModal`, `DeviceDetailsForm`, `NetworkSyncActions`, `Monitoring`, `WalletDetail`, `LogTab`, `TransactionsTab`, `WalletDetailModals`, `WalletTelegramSettings`, `AppRoutes`, `LoginForm`, `AILabelSuggestion`, `ChatTab`, `InsightsTab`, `Intelligence`, `UsersGroups`, `AIQueryInput`, `Layout`, `SidebarContent`, `PriceChart`, `RestorePanel`, `Variables`, `UTXOGarden`, `UTXOList`, `UTXORow`, `CoinControlPanel`, send `UtxoRow`, `SendTransactionWizard`, production `SigningFlow`, `AgentWalletDashboard`, `QrScannerPanel`, `DraftList`, `LabelSelector`, `SendTransactionPage`, `LabelManager`, `NotificationToast`, `NotificationPanel`/`NotificationItem`, `BlockVisualizer`, `Block`, `QueuedSummaryBlock`, `PendingTxDot`, `AppearanceTab`, `BackgroundsPanel`, `Account`, `AgentManagement`, `ConfigurableTable`, `ColumnConfigButton`, `ConnectDevice`, `UsbConnectionPanel`, `ConflictDialog`, `EncryptionKeyDisplay`, `WebSocketStatsCard`, `NotificationSoundSettings`, `PrivacyBadge`, `NotificationBadge`, `WalletCells`, `WalletSummary`, `MempoolSection`, `WalletAutopilotSettings`, and `AnimatedBackground` are no longer top lizard findings; warning-band file pressure dropped by splitting dashboard repository tests, AgentManagement views, TransactionList helpers, NetworkConnectionCard controller/form helpers, AddressesTab address-list helpers, DeviceDetail page helpers, device access/ownership sharing helpers, transfer ownership modal helpers, account-import form/method/QR helpers, QR scanner shared frame helpers, QR signing modal scan/upload helpers, DeviceDetailsForm render helpers, NetworkSyncActions sync/resync helpers, Monitoring controller/render helpers, WalletDetail controller/view helpers, WalletDetail log/transaction/modal helpers, wallet Telegram settings controller/render helpers, AppRoutes controller/shell helpers, LoginForm header/field/action/footer helpers, AI label suggestion controller/render helpers, ChatTab controller/render helpers, Intelligence shell/insights helpers, UsersGroups controller/render helpers, AIQueryInput controller/render helpers, Layout controller/render helpers, SidebarContent section helpers, PriceChart tooltip/animated-price helpers, RestorePanel state/modal helpers, Variables controller/render helpers, UTXOGarden dot/model helpers, UTXO list state/render helpers, UTXORow state/render helpers, send coin-control helpers, send UTXO row helpers, send wizard draft/action/shell helpers, production signing-flow row/method helpers, AgentWalletDashboard controller/model/detail helpers, QrScannerPanel scanner-state helpers, shared table/control helpers, ConnectDevice flow/USB/conflict helpers, wallet dashboard render helpers, wallet autopilot cards/controller helpers, and animated-background lazy-loading helpers; backup/restore timers now clean up on hook unmount; and gitleaks now has a pinned project-tooling path.
-- Current grade rerun at `8993389b` is a docs-closeout audit: no score movement from the final lizard cleanup merge, and all previously green score-bearing gates stayed green.
-- Current follow-up resolves the only non-blocking Vitest annotation from the grade run by moving the tracing test's `vi.unmock("../../../../src/utils/requestContext")` call to top level; focused tracing tests and backend coverage no longer emit the warning.
+- vs 2026-04-20 (`working-tree-after-8993389b`): overall `+0` (`97 -> 97`), grade `A -> A`, confidence `High -> High`.
+- vs 2026-04-18 (`219e2d98`): overall `+5` (`92 -> 97`), grade `A -> A`, confidence `High -> High`.
+- The lizard cleanup loop remains complete: broad lizard reports 0 warnings.
+- The large-file cleanup loop remains complete for unclassified files: only four pre-classified proof/generated/vector-fixture files exceed the warning limit.
+- The prior Vitest future-compatibility warning remains resolved.
+- No new P0/P1 remediation candidate was found in this audit.
 
 ---
 
 ## Evidence
 
-### Mechanical
+### Mechanical Signals
 
-| Signal | Value | Tool | Scoring criterion |
+| Signal | Value | Tool | Scoring Criterion |
 | --- | --- | --- | --- |
-| tests | pass; app 401 files/5,593 tests; backend 391 passed/22 skipped files with 9,156 passed/503 skipped tests after current remediation; gateway 20 files/513 tests | `grade.sh`; `npm run test:coverage`; `npm run test:backend:coverage`; `npm run test:coverage` in `gateway` | Correctness 1.1 |
-| typecheck | pass | `grade.sh`; `npx --no-install tsc --noEmit` | Correctness 1.2 |
-| lint | pass | `grade.sh`; `npm run lint` | Correctness 1.3 |
+| tests | pass; app 401 files/5,593 tests; backend 391 passed/22 skipped files with 9,156 passed/503 skipped tests; gateway 20 files/513 tests | `grade.sh`; coverage commands | Correctness 1.1 |
+| typecheck | pass | `grade.sh`; TypeScript project checks | Correctness 1.2 |
+| lint | pass | `grade.sh`; npm lint scripts | Correctness 1.3 |
 | browser_auth_contract | pass; 1,047 browser files scanned | `npm run check:browser-auth-contract` | Correctness 1.5 |
 | openapi_route_coverage | pass; 315 Express routes, 311 OpenAPI operations, 4 documented exceptions | `npm run check:openapi-route-coverage` | Correctness 1.5 |
-| api_body_validation | pass | `grade.sh`; `npm run check:api-body-validation` through lint | Security 4.3 |
+| architecture_boundaries | pass; 1,852 files, 7,159 imports, 9 rules, 40 exceptions | `npm run check:architecture-boundaries` | Maintainability 3.4 |
 | coverage | app 100%, backend 100%, gateway 100% statements/branches/functions/lines | V8/Vitest coverage summaries | Test Quality 6.1 |
 | security_high | 0 high/critical | `npm audit --json` in root, `server`, `gateway`, and `ai-proxy` | Security 4.1 |
 | root_audit | 16 low, 0 moderate, 0 high, 0 critical | `npm audit --json` | Security 4.1 context |
 | server_audit | 0 vulnerabilities | `npm audit --json` in `server` | Security 4.1 context |
 | gateway_audit | 8 low, 0 moderate, 0 high, 0 critical | `npm audit --json` in `gateway` | Security 4.1 context |
 | ai_proxy_audit | 0 vulnerabilities | `npm audit --json` in `ai-proxy` | Security 4.1 context |
-| secrets | 0 | pinned `.tmp/quality-tools/gitleaks-8.30.1/gitleaks` direct working-tree scan, latest-commit scan, and tracked-tree scan | Security 4.2 |
-| rg_secret_fallback | 8 raw PEM/API-shaped hits; treated as weaker fallback evidence | `grade.sh` regex fallback | Security 4.2 context |
-| lizard_warning_count | 0 functions with CCN > 15 | `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w .`; `.tmp/quality-tools/lizard-1.21.2/bin/lizard .` | Maintainability 3.1 |
+| secrets | 0 | pinned gitleaks direct, latest-commit, and tracked-tree scans | Security 4.2 |
+| rg_secret_fallback | 8 raw PEM/API-shaped hits; treated as weak fallback evidence only | `grade.sh` regex fallback | Security 4.2 context |
+| lizard_warning_count | 0 functions with CCN > 15 | `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w .` | Maintainability 3.1 |
 | lizard_avg_ccn | 1.3 | `.tmp/quality-tools/lizard-1.21.2/bin/lizard .` | Maintainability 3.1 context |
-| lizard_threshold_status | no thresholds exceeded; max observed CCN is at or below 15 | lizard warning scan | Maintainability 3.1 context |
-| duplication_pct | 1.95%; 272 clones, 5,213 duplicated lines | `npx --yes jscpd@4 .` | Maintainability 3.2 |
-| largest_file_lines | 2,637 | `grade.sh`; `scripts/perf/phase3-compose-benchmark-smoke.mjs` | Maintainability 3.3 |
-| large_file_classification | pass; 4 files exceed 1,000 lines with accepted classifications and 10 files remain over the 800-line warning limit | `node scripts/quality/check-large-files.mjs` | Maintainability 3.3 context |
-| architecture_boundaries | pass; 1,849 files, 7,148 imports, 9 rules, 40 exceptions | `npm run check:architecture-boundaries` | Maintainability 3.4 |
-| deploy_artifact_count | 2 | `grade.sh`; Docker/Compose and GitHub Actions present | Operational Readiness 7.1 |
+| duplication_pct | 1.97%; 274 clones, 5,261 duplicated lines | `npx --yes jscpd@4 .` | Maintainability 3.2 |
+| largest_file_lines | 2,637 | `scripts/perf/phase3-compose-benchmark-smoke.mjs` | Maintainability 3.3 |
+| large_file_classification | pass; 4 files over warning limit, all classified | `node scripts/quality/check-large-files.mjs` | Maintainability 3.3 context |
+| deploy_artifact_count | 2 | `grade.sh` | Operational Readiness 7.1 |
 | health_endpoint_count | 180 | `grade.sh` heuristic | Operational Readiness 7.2 |
 | observability_lib_present | 1 | `grade.sh` heuristic | Operational Readiness 7.3 |
 | validation_lib_present | 1 | `grade.sh` heuristic | Security 4.3 |
 | suppression_count | 22 | `grade.sh` heuristic | Correctness 1.4 |
-| timeout_retry_count | 1,214 | `grade.sh` heuristic | Reliability 2.2 |
+| timeout_retry_count | 1,216 | `grade.sh` heuristic | Reliability 2.2 |
 | blocking_io_count | 36 | `grade.sh` heuristic | Performance 5.1/5.3 |
 | logging_call_count | 319 | `grade.sh` heuristic | Operational Readiness 7.4 |
-| test_file_count | 1,203 | `grade.sh` heuristic | Test Quality 6.2 |
-| test_sleep_count | 10 | `grade.sh` heuristic; direct hits concentrated in async helper tests and UI timers | Test Quality 6.4 |
+| test_file_count | 1,205 | `grade.sh` heuristic | Test Quality 6.2 |
+| test_sleep_count | 10 | `grade.sh` heuristic | Test Quality 6.4 |
 
 ### Judged Findings
 
-- **[1.4] Suppression density - High -> +4**: ISO Functional Appropriateness is strong because `suppression_count=22` is low for the repository size and inspected suppressions are targeted.
-- **[1.5] Functional completeness - High -> +3**: ISO Functional Completeness is strong because native tests pass and browser-auth, OpenAPI-route, architecture, and API-body validation contracts are green.
-- **[2.1] Error handling quality - High -> +6**: ISO Fault Tolerance is strong in `src/api/client.ts`, `server/src/middleware/validate.ts`, `server/src/errors/errorHandler.ts`, and gateway validation paths, with typed error conversion and contextual logging.
-- **[2.2] Timeouts and retries - High -> +4**: ISO Availability/Fault Tolerance is strong across `src/api/client.ts`, `server/src/middleware/requestTimeout.ts`, `server/src/models/prisma.ts`, Electrum clients, gateway request logging, and AI/admin monitoring calls.
-- **[2.3] Crash-prone paths - High -> +5**: ISO Fault Tolerance is strong because process exits are centralized in process-exit helpers and sampled production code avoids broad panic/assert-style paths.
-- **[3.4] Architecture clarity - High -> +3**: ISO Modularity is strong because `check:architecture-boundaries` passes and root/server/gateway/shared boundaries are enforced.
-- **[3.5] Readability/naming - Medium -> +1**: ISO Analyzability is stronger because lizard reports 0 functions above CCN 15, but the maintained score keeps pressure on warning-band file sizes and repeated schema/UI patterns.
-- **[4.3] Input validation quality - High -> +3**: ISO Integrity is strong because Zod schemas validate request bodies, params, query data, and runtime config at trust boundaries.
-- **[4.4] Safe system/API usage - High -> +3**: ISO Integrity is strong because inspected `eval` hits in Redis locking/rate-limiting are fixed Lua scripts, Prisma raw SQL uses tagged templates, and browser `innerHTML` hits are test-only.
-- **[5.1] Hot-path efficiency - High -> +5**: ISO Time Behaviour is strong because request-facing HTTP, DB, Redis, Electrum, and AI paths use async calls, timeouts, and bounded retry/backoff patterns.
-- **[5.2] Data access patterns - High -> +3**: ISO Resource Utilization is strong in `server/src/repositories/agentDashboardRepository.ts`: dashboard data uses `groupBy`, `Promise.all`, and windowed SQL rather than per-agent fan-out.
-- **[5.3] No blocking in hot paths - High -> +2**: ISO Capacity is strong because blocking-I/O heuristic hits are concentrated in scripts, startup, shutdown, support, or maintenance paths.
-- **[6.2] Test structure - High -> +4**: ISO Testability is strong because app, server, and gateway tests are organized by behavior, API/service/repository layer, contract, and branch coverage.
-- **[6.3] Edge cases covered - High -> +3**: Functional Completeness is strong because sampled tests cover invalid payloads, auth refresh failures, rate-limit boundaries, coverage policy, null/default schemas, wallet access, and async timeout utilities.
-- **[6.4] No flaky patterns - High -> +3**: ISO Testability is strong because direct sleeps are isolated to async utility tests and local UI timers; main suites use deterministic assertions and fake timers where appropriate.
-- **[7.4] Logging quality - High -> +3**: Availability support is strong because `server/src/utils/logger.ts`, gateway request logging, request context, and redaction utilities provide contextual, redacted logs.
-
-### Missing
-
-- No scoring signal remains unknown.
-- Reproducibility note: `scripts/quality.sh` resolves gitleaks through explicit `GITLEAKS_BIN`, pinned `.tmp/quality-tools/gitleaks-8.30.1/gitleaks`, or bootstrap from `GITLEAKS_VERSION=8.30.1`; current direct, latest-commit, and tracked-tree gitleaks scans are clean.
-- Environment note: current app, backend, and gateway coverage reruns completed without sandbox listener failures; current npm audits completed without DNS retry.
-- The bundled `grade.sh` did not auto-detect the repo's `test:coverage` script name; coverage was measured directly with app, backend, and gateway coverage commands.
-- The prior backend coverage future-compatibility warning from `server/tests/unit/utils/tracing/tracer.test.ts` is resolved; the `vi.unmock` call now lives at top level and the warning no longer appears in focused or backend coverage output.
+- **[1.4] Suppression density - High -> +4**: suppressions are low relative to repository size and are mostly targeted dynamic Prisma, overloaded response, or test-override cases.
+- **[1.5] Functional completeness - High -> +3**: native tests and contract checks cover the primary app/server/gateway behavior surfaces.
+- **[2.1] Error handling quality - High -> +6**: `src/api/client.ts`, `server/src/middleware/validate.ts`, `server/src/errors/errorHandler.ts`, and gateway validation paths use typed errors and contextual logging.
+- **[2.2] Timeouts and retries - High -> +4**: request timeout middleware, API clients, Prisma setup, Electrum paths, gateway middleware, and monitoring calls have bounded timeout/retry behavior.
+- **[2.3] Crash-prone paths - High -> +5**: process-exit behavior is centralized and sampled production code avoids broad panic/assert-style paths.
+- **[3.4] Architecture clarity - High -> +3**: architecture boundary checks pass across root/server/gateway/shared imports.
+- **[3.5] Readability/naming - Medium -> +1**: complexity is clean, but the score intentionally keeps pressure on classified proof-harness size and repeated schema/UI patterns.
+- **[4.3] Input validation quality - High -> +3**: Zod schemas validate request bodies, params, query data, and runtime config at trust boundaries.
+- **[4.4] Safe system/API usage - High -> +3**: inspected `eval` hits are fixed Redis Lua scripts, Prisma raw SQL uses tagged templates, child-process usage is bounded to scripts/admin checks, and browser `innerHTML` hits are test-only.
+- **[5.1] Hot-path efficiency - High -> +5**: request-facing HTTP, DB, Redis, Electrum, and AI paths use async calls, timeouts, and bounded retry/backoff patterns.
+- **[5.2] Data access patterns - High -> +3**: dashboard/support repositories use grouped/windowed queries and `Promise.all` rather than obvious per-row fan-out.
+- **[5.3] No blocking in hot paths - High -> +2**: blocking I/O hits are concentrated in scripts, startup, shutdown, support, tests, or maintenance paths.
+- **[6.2] Test structure - High -> +4**: tests are organized by behavior, API/service/repository layer, contracts, and branch coverage.
+- **[6.3] Edge cases covered - High -> +3**: sampled tests cover invalid payloads, auth refresh failures, rate-limit boundaries, coverage policy, null/default schemas, wallet access, and async timeout utilities.
+- **[6.4] No flaky patterns - High -> +3**: timer-heavy tests use fake timers; direct sleeps are isolated to async helper tests.
+- **[7.4] Logging quality - High -> +3**: app/server/gateway logging includes request context and redaction utilities.
 
 ---
 
-## Top Risks
+## Worthwhile Findings
 
-1. File-size pressure remains in the warning band - the hard large-file policy is green, but `server/tests/unit/api/admin-agents-routes.test.ts`, `e2e/admin-operations.spec.ts`, and several other production/test files remain above 800 lines.
-2. Secret scanning now has pinned project-tooling support, but the weaker regex fallback still reports fixture/doc-shaped hits.
-3. Low-severity dependency advisories remain - root has 16 low advisories and gateway has 8 low advisories; suggested fixes include behavior-risky major-version changes.
-4. Verification remains expensive because the score-bearing app, backend, and gateway coverage gates are broad 100% suites.
+No code remediation is recommended from this audit.
 
-## Fastest Improvements
+- The only score loss is `largest_file_lines`, but every file above the warning limit is already classified as proof harness, generated output, or vector fixture. Splitting these now would mainly create churn and review overhead.
+- Root and gateway low-severity audit advisories remain, but current npm fix paths involve behavior-risky major downgrades or no safe non-downgrade fix. They should stay tracked, not forced.
+- Duplication is below the configured threshold at 1.97%.
+- Complexity is below threshold with 0 lizard warnings.
+- Contract checks, coverage, lint, typecheck, gitleaks, and large-file classification are all green.
 
-1. Continue shrinking warning-band production/test files where ownership and reviewability improve - expected gain: maintainability stability; effort: medium.
-2. Keep pinned gitleaks project tooling exercised in CI/local quality runs - expected gain: stable secret-scan reproducibility; effort: small.
-3. Continue low-advisory triage without unsafe major downgrades - expected gain: security posture stability; effort: medium.
+## Top Risks To Track
 
-## Roadmap To Stronger A
-
-| Phase | Target | Work | Exit Criteria | Expected Score Movement |
-| --- | --- | --- | --- | --- |
-| 0 | Maintain green large-file policy | Keep `agentRepository.ts` and new dashboard repository under 1,000 lines; avoid classifying production files. | `node scripts/quality/check-large-files.mjs` exits 0. | Score stays about `92/A`, but gate remains green. |
-| 1 | Reduce complexity concentration | Extract top JSX decision/render helpers from the highest CCN components. | lizard warnings trend below 15. | Complete; lizard now reports 0 functions above CCN 15. |
-| 2 | Clear complexity threshold | Continue focused extractions until no function exceeds CCN 15. | `lizard_warning_count=0`. | Complete; Maintainability improved to 12/15 and overall score to about `97/A`. |
-| 3 | Harden audit reproducibility | Keep pinned gitleaks project tooling and grade-history metadata on the documented schema. | gitleaks scans report zero raw findings without manual triage. | Confidence stays High with less manual interpretation; pinned local tooling is now in place. |
-| 4 | Keep gates green | Preserve 100% coverage, lint/typecheck, architecture, route, auth, and validation checks. | All quality gates pass repeatedly in CI and local audit. | Preserves A-grade stability. |
-
-## Strengths To Preserve
-
-- App, backend, and gateway coverage gates are all green at 100%.
-- High/critical dependency risk, lint, typecheck, route coverage, architecture-boundary drift, browser auth contracts, and API body validation are green.
-- Request validation, runtime config validation, request context, and redacted logging are strong system-boundary controls.
-- Agent dashboard data access is isolated in `server/src/repositories/agentDashboardRepository.ts` and uses grouped/windowed queries, which avoids obvious fan-out regressions as agent counts grow.
-- Operational readiness is mature: Docker/Compose, GitHub Actions, health endpoints, observability packages, request context, and redacted logging are present.
+1. Classified proof/generated files can still be hard to review if they change often, especially `scripts/perf/phase3-compose-benchmark-smoke.mjs`.
+2. Low-severity dependency advisories in root and gateway should be revisited when upstream packages publish safe upgrade paths.
+3. The 100% coverage gates are valuable but expensive; keep the fast PR/full post-merge split under observation.
 
 ## Work To Defer Or Avoid
 
-- Do not lower coverage thresholds; the current 100% gates are passing.
+- Do not split generated/vector/proof artifacts purely to recover the remaining 3 maintainability points.
 - Do not accept npm audit suggestions that downgrade hardware-wallet or Firebase packages without behavior proof.
-- Do not split generated/proof artifacts purely for score unless ownership and reviewability improve.
-- Do not relax lizard, architecture, lint, route coverage, or validation gates to preserve the A grade.
+- Do not relax coverage, lizard, architecture, lint, route coverage, validation, or gitleaks gates.
+
+## Next Review Triggers
+
+- A classified large file starts receiving frequent hand-edits.
+- npm audit reports a moderate/high/critical advisory, or a safe minor/patch upgrade clears the current low advisory chains.
+- PR checks become materially slower or begin missing failures that appear only after merge.
+
+---
 
 ## Verification Notes
 
-- `git rev-parse --show-toplevel`, `git status --short --branch`, `git rev-parse --short HEAD`, `trend.sh prev sanctuary_ full`, and `trend.sh append sanctuary_ ... full` completed.
-- `bash /home/nekoguntai/.codex/skills/grade/grade.sh` completed: tests pass, lint pass, typecheck pass, heuristic signals collected; coverage/audit/secrets/complexity/duplication needed direct supplemental commands as noted above.
-- Current `npm audit --json` reruns in root, `server`, `gateway`, and `ai-proxy` completed with `security_high=0`.
-- Current pinned gitleaks direct working-tree, latest-commit, and tracked-tree scans completed clean.
-- Current `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w .` and `.tmp/quality-tools/lizard-1.21.2/bin/lizard .` completed: 0 warnings, average CCN 1.3, no thresholds exceeded.
-- `npx --yes jscpd@4 .` completed: 1.95% duplication, 272 clones, 5,213 duplicated lines.
-- Current `npm run lint`, `npx --no-install tsc --noEmit`, `npm run check:architecture-boundaries`, `npm run check:browser-auth-contract`, and `npm run check:openapi-route-coverage` passed.
-- Current focused tracing warning fix passed: `npx vitest run tests/unit/utils/tracing/tracer.test.ts tests/unit/utils/tracing/otel.test.ts` in `server` completed with 2 files and 17 tests.
-- Current `npm run test:coverage` passed: 401 app test files, 5,593 tests, 100% statements/branches/functions/lines.
-- Current `npm run test:backend:coverage` passed after moving the tracing test `vi.unmock` to top level: 391 backend test files passed, 22 skipped; 9,156 tests passed, 503 skipped; 100% statements/branches/functions/lines.
-- Current `npm run test:coverage` in `gateway` passed: 20 files, 513 tests, 100% statements/branches/functions/lines.
-- Focused remediation checks passed: `npx vitest run tests/unit/repositories/agentRepository.test.ts tests/unit/api/admin-agents-routes.test.ts tests/unit/agent/dto.test.ts`, `npx vitest run tests/components/WalletStats.test.tsx`, `npx vitest run tests/components/TransactionList/TransactionRow.branches.test.tsx tests/components/TransactionList.test.tsx`, `npx vitest run tests/components/DraftList.test.tsx tests/components/DraftList/DraftList.branches.test.tsx tests/components/DraftList/DraftRow.branches.test.tsx tests/components/DraftList/utils.branches.test.ts`, `npx vitest run tests/components/LabelSelector.test.tsx`, `npx vitest run tests/components/send/SendTransactionPage.test.tsx tests/components/send/SendTransactionPage.branches.test.tsx`, `npx vitest run tests/components/LabelManager.test.tsx tests/components/NotificationToast.test.tsx tests/components/NotificationToast.branches.test.tsx tests/components/NotificationPanel.test.tsx tests/components/NotificationPanel.branches.test.tsx`, `npx vitest run tests/components/BlockVisualizer/BlockVisualizer.branches.test.tsx tests/components/BlockVisualizer/Block.test.tsx tests/components/BlockVisualizer/QueuedSummaryBlock.test.tsx tests/components/BlockVisualizer/PendingTxDot.test.tsx tests/components/BlockVisualizer/blockUtils.test.ts`, `npx vitest run tests/components/Settings/sections/ThemeSection/AppearanceTab.branches.test.tsx tests/components/Settings/sections/ThemeSection/panels/BackgroundsPanel.branches.test.tsx tests/components/ThemeSection.test.tsx`, `npx vitest run tests/components/Account.test.tsx tests/components/Account.branches.test.tsx tests/components/Account/PasswordForm.branches.test.tsx tests/components/Account/SetupTwoFactorModal.test.tsx tests/components/Account/DisableTwoFactorModal.branches.test.tsx tests/components/Account/BackupCodesModal.test.tsx`, `npx vitest run tests/unit/repositories/agentRepository.test.ts tests/unit/repositories/agentDashboardRepository.test.ts`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/WalletStats.tsx components/WalletStats server/tests/unit/repositories/agentRepository.test.ts server/tests/unit/repositories/agentDashboardRepository.test.ts scripts/quality.sh`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/TransactionList/TransactionRow.tsx components/TransactionList/TransactionRow`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/DraftList/DraftList.tsx components/DraftList/draftListHelpers.ts components/DraftList/useDraftListController.ts`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/LabelSelector.tsx components/LabelSelector`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/send/SendTransactionPage.tsx components/send/SendTransactionPage`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/LabelManager.tsx components/LabelManager components/NotificationToast.tsx components/NotificationToast components/NotificationPanel.tsx components/NotificationPanel`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/BlockVisualizer/BlockVisualizer.tsx components/BlockVisualizer/BlockVisualizer components/BlockVisualizer/Block.tsx components/BlockVisualizer/Block components/BlockVisualizer/QueuedSummaryBlock.tsx components/BlockVisualizer/QueuedSummaryBlock components/BlockVisualizer/PendingTxDot.tsx components/BlockVisualizer/PendingTxDot`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/Settings/sections/ThemeSection/AppearanceTab.tsx components/Settings/sections/ThemeSection/AppearanceTab components/Settings/sections/ThemeSection/panels/BackgroundsPanel.tsx components/Settings/sections/ThemeSection/panels/BackgroundsPanel`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/Account/Account.tsx components/Account/Account`, `npm run lint:app`, `npm run lint:server`, `npm run typecheck:app`, and `npm run typecheck:server:tests`.
-- AgentManagement batch focused checks passed: `npx vitest run tests/components/AgentManagement.extracted.branches.test.tsx tests/components/AgentManagement.test.tsx tests/api/adminAgents.test.ts tests/components/AgentWalletDashboard.test.tsx`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/AgentManagement/index.tsx components/AgentManagement/AgentManagement tests/components/AgentManagement.extracted.branches.test.tsx`, `npm run typecheck:app`, and `npm run lint:app`.
-- TransactionList batch focused checks passed: `npx vitest run tests/components/TransactionList.test.tsx tests/components/TransactionList/TransactionList.branches.test.tsx tests/components/TransactionList/LabelEditor.test.tsx tests/components/TransactionList/FlowPreview.branches.test.tsx tests/components/TransactionList/useTransactionList.branches.test.tsx`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/TransactionList/TransactionList.tsx components/TransactionList/TransactionList components/TransactionList/LabelEditor.tsx components/TransactionList/LabelEditor components/TransactionList/FlowPreview.tsx components/TransactionList/FlowPreview tests/components/TransactionList/TransactionList.branches.test.tsx`, `npm run typecheck:app`, and `npm run lint:app`.
-- NetworkConnectionCard batch focused checks passed: `npx vitest run tests/components/NetworkConnectionCard.test.tsx tests/components/NetworkConnectionCard/NetworkConnectionCard.branches.test.tsx tests/components/NetworkConnectionCard/SingletonConfig.branches.test.tsx tests/components/NetworkConnectionCard/PoolConfig.branches.test.tsx tests/components/NetworkConnectionCard/ServerRow.branches.test.tsx tests/components/NetworkConnectionCard/ServerForm.branches.test.tsx tests/components/NetworkConnectionCard/HealthHistoryBlocks.test.tsx tests/components/NetworkConnectionCard/networkConfigHelpers.test.ts`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/NetworkConnectionCard/NetworkConnectionCard.tsx components/NetworkConnectionCard/NetworkConnectionCard components/NetworkConnectionCard/ServerForm.tsx components/NetworkConnectionCard/ServerForm components/NetworkConnectionCard/SingletonConfig.tsx components/NetworkConnectionCard/PoolConfig.tsx components/NetworkConnectionCard/ServerRow.tsx components/NetworkConnectionCard/networkConfigHelpers.ts`, `npm run typecheck:app`, and `npm run lint:app`.
-- AddressesTab batch focused checks passed: `npx vitest run tests/components/WalletDetail/tabs/AddressesTab.test.tsx tests/components/WalletDetail/tabs/AddressesTab/addressModel.test.ts`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/WalletDetail/tabs/AddressesTab.tsx components/WalletDetail/tabs/AddressesTab tests/components/WalletDetail/tabs/AddressesTab.test.tsx tests/components/WalletDetail/tabs/AddressesTab/addressModel.test.ts`, `npm run typecheck:app`, and `npm run lint:app`.
-- DeviceDetail batch focused checks passed: `npx vitest run tests/components/DeviceDetailPage.test.tsx tests/components/DeviceDetail.test.ts tests/components/DeviceDetail/tabs/DetailsTab.branches.test.tsx tests/components/DeviceDetail/AccountList.test.tsx`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/DeviceDetail/DeviceDetail.tsx components/DeviceDetail/DeviceDetail tests/components/DeviceDetailPage.test.tsx tests/components/DeviceDetail.test.ts`, `npm run typecheck:app`, and `npm run lint:app`.
-- Device account import batch focused checks passed: `npx vitest run tests/components/DeviceDetail/ManualAccountForm.test.tsx tests/components/DeviceDetail/accounts/AddAccountFlow.branches.test.tsx tests/components/DeviceDetail/accounts/AddAccountFlow.fallback.test.tsx tests/components/DeviceDetail/accounts/AddAccountFlow.lazyHardwareImport.test.tsx tests/components/DeviceDetail/accounts/QrImport.test.tsx`, `npx vitest run tests/components/DeviceDetail/accounts/QrImport.test.tsx tests/components/ImportWallet/QrScanStep.test.tsx tests/components/ImportWallet/ImportWallet.branches.test.tsx tests/components/DeviceDetail/accounts/AddAccountFlow.branches.test.tsx`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/DeviceDetail/ManualAccountForm.tsx components/DeviceDetail/ManualAccountForm components/DeviceDetail/accounts/AddAccountFlow.tsx components/DeviceDetail/accounts/AddAccountFlow components/DeviceDetail/accounts/QrImport.tsx components/DeviceDetail/accounts/QrImport components/qr/QrScannerFrame.tsx components/ImportWallet/steps/QrScanSections.tsx`, `npm run typecheck:app`, `npm run typecheck:tests`, and `npm run lint:app`.
-- WalletDetail tabs batch focused checks passed: `npx vitest run tests/components/WalletDetail/LogTab.test.tsx tests/components/WalletDetail/LogTab.branches.test.tsx tests/components/WalletDetail/tabs/TransactionsTab.test.tsx tests/components/WalletDetail/WalletDetailModals.test.tsx` (25 tests), `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/WalletDetail/LogTab.tsx components/WalletDetail/LogTab components/WalletDetail/tabs/TransactionsTab.tsx components/WalletDetail/tabs/TransactionsTab components/WalletDetail/WalletDetailModals.tsx components/WalletDetail/WalletDetailModals tests/components/WalletDetail/LogTab.test.tsx tests/components/WalletDetail/LogTab.branches.test.tsx tests/components/WalletDetail/tabs/TransactionsTab.test.tsx tests/components/WalletDetail/WalletDetailModals.test.tsx`, `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, and `npm run lint`.
-- Configurable table controls batch focused checks passed: `npx vitest run tests/components/ui/ConfigurableTable.test.tsx tests/components/ui/ColumnConfigButton.test.tsx` (15 tests), `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/ui/ConfigurableTable.tsx components/ui/ConfigurableTable components/ui/ColumnConfigButton.tsx components/ui/ColumnConfigButton tests/components/ui/ConfigurableTable.test.tsx tests/components/ui/ColumnConfigButton.test.tsx`, `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, and `npm run lint`.
-- ConnectDevice flow batch focused checks passed: `npx vitest run tests/components/ConnectDevice.test.tsx tests/components/ConnectDevice/ConnectDevice.branches.test.tsx tests/components/ConnectDevice/UsbConnectionPanel.test.tsx tests/components/ConnectDevice/ConflictDialog.test.tsx` (41 tests), `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/ConnectDevice/ConnectDevice.tsx components/ConnectDevice/ConnectDeviceFlow components/ConnectDevice/UsbConnectionPanel.tsx components/ConnectDevice/UsbConnectionPanel components/ConnectDevice/ConflictDialog.tsx components/ConnectDevice/ConflictDialog tests/components/ConnectDevice.test.tsx tests/components/ConnectDevice/ConnectDevice.branches.test.tsx tests/components/ConnectDevice/UsbConnectionPanel.test.tsx tests/components/ConnectDevice/ConflictDialog.test.tsx`, `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, and `npm run lint`.
-- UTXO send controls batch focused checks passed: `npx vitest run tests/components/UTXOList.test.tsx tests/components/UTXOList.branches.test.tsx tests/components/send/CoinControlPanelOutputsStep.test.tsx tests/components/send/UtxoRow.branches.test.tsx` (30 tests), `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/UTXOList/UTXOList.tsx components/UTXOList/UTXOList components/send/steps/OutputsStep/CoinControlPanel.tsx components/send/steps/OutputsStep/CoinControlPanel components/send/steps/OutputsStep/UtxoRow.tsx components/send/steps/OutputsStep/UtxoRow tests/components/UTXOList.test.tsx tests/components/UTXOList.branches.test.tsx tests/components/send/CoinControlPanelOutputsStep.test.tsx tests/components/send/UtxoRow.branches.test.tsx`, `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, and `npm run lint`.
-- Send wizard signing-flow batch focused checks passed: `npx vitest run tests/components/send/SendTransactionWizard.test.tsx tests/components/send/SendTransactionWizard.branches.test.tsx tests/components/send/SigningFlow.test.tsx tests/components/send/ReviewStep.branches.test.tsx tests/components/send/SendTransactionPage.branches.test.tsx` (56 tests), `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/send/SendTransactionWizard.tsx components/send/SendTransactionWizard components/send/steps/review/SigningFlow.tsx components/send/steps/review/SigningFlow tests/components/send/ReviewStep.branches.test.tsx tests/components/send/SendTransactionPage.branches.test.tsx`, `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, and `npm run lint`.
-- Intelligence tabs batch focused checks passed: `npx vitest run tests/components/Intelligence.test.tsx tests/components/Intelligence.tabs.test.tsx` (85 tests), `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/Intelligence/Intelligence.tsx components/Intelligence/IntelligenceShell components/Intelligence/tabs/InsightsTab.tsx components/Intelligence/tabs/InsightsTab`, `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, and `npm run lint`.
-- UI display/settings batch focused checks passed: `npx vitest run tests/components/BackupRestore/EncryptionKeyDisplay.branches.test.tsx tests/components/SystemSettings/WebSocketStatsCard.branches.test.tsx tests/components/Settings/sections/SoundSection.branches.test.tsx tests/components/PrivacyBadge.test.tsx tests/components/NotificationBadge.test.tsx` (90 tests before the added WebSocket branch assertion), `npx vitest run tests/components/SystemSettings/WebSocketStatsCard.branches.test.tsx` (6 tests after adding the zero-max/global-only assertion), `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/BackupRestore/EncryptionKeyDisplay.tsx components/SystemSettings/WebSocketStatsCard.tsx components/SystemSettings/WebSocketStatsCard components/Settings/sections/SoundSection.tsx components/PrivacyBadge.tsx components/NotificationBadge.tsx`, `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, `npm run lint`, `npm run test:coverage`, CI-scope lizard, `npx --yes jscpd@4 .`, `node scripts/quality/check-large-files.mjs`, `git diff --check`, grade-history JSONL parsing, and tracked-tree gitleaks detect.
-- Wallet/dashboard renderer batch focused checks passed: `npx vitest run tests/components/cells/WalletCells.test.tsx tests/components/Dashboard/WalletSummary.test.tsx tests/components/Dashboard/MempoolSection.test.tsx tests/components/WalletDetail/WalletAutopilotSettings.test.tsx tests/components/AnimatedBackground.test.tsx tests/components/AnimatedBackground.lazyLoading.test.tsx` (112 tests after adding the zero/absent pending-delta assertion), `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/cells/WalletCells.tsx components/cells/WalletCells components/Dashboard/WalletSummary.tsx components/Dashboard/MempoolSection.tsx components/WalletDetail/WalletAutopilotSettings.tsx components/WalletDetail/WalletAutopilotSettings components/AnimatedBackground.tsx components/AnimatedBackground`, `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, `npm run lint`, `npm run test:coverage`, broad lizard, `npx --yes jscpd@4 .`, `node scripts/quality/check-large-files.mjs`, `git diff --check`, and tracked-tree gitleaks detect.
-- Admin/account UI batch focused checks passed: `npx vitest run tests/components/AuditLogs.test.tsx tests/components/AuditLogs.branches.test.tsx tests/components/AuditLogs/LogDetailModal.branches.test.tsx tests/components/Account.test.tsx tests/components/Account.branches.test.tsx tests/components/Account/PasswordForm.branches.test.tsx tests/components/SystemSettings/AccessControlTab.branches.test.tsx tests/components/FeatureFlags.test.tsx` (81 tests), `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/AuditLogs/AuditLogs.tsx components/AuditLogs/LogDetailModal.tsx components/Account/PasswordForm.tsx components/Account/TwoFactorSection.tsx components/SystemSettings/AccessControlTab.tsx components/FeatureFlags/index.tsx components/FeatureFlags/FeatureFlagGroup.tsx components/FeatureFlags/FeatureFlagAuditHistory.tsx`, `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint`, `npm run test:coverage`, broad lizard, `npx --yes jscpd@4 .`, `node scripts/quality/check-large-files.mjs`, `git diff --check`, and gitleaks direct plus tracked-tree scans.
-- QRSigningModal batch focused checks passed: `npx vitest run tests/components/qr/QRSigningModal.test.tsx tests/hooks/useQrSigning.test.tsx tests/components/send/QrSigning.test.tsx tests/components/qr/AnimatedQRCode.test.tsx`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/qr/QRSigningModal.tsx components/qr/QRSigningModal tests/components/qr/QRSigningModal.test.tsx tests/hooks/useQrSigning.test.tsx tests/components/send/QrSigning.test.tsx`, `npm run typecheck:app`, and `npm run lint:app`.
-- DeviceDetailsForm batch focused checks passed: `npx vitest run tests/components/ConnectDevice/DeviceDetailsForm.test.tsx tests/components/ConnectDevice/DeviceDetailsForm.branches.test.tsx`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/ConnectDevice/DeviceDetailsForm.tsx components/ConnectDevice/DeviceDetailsForm`, `npm run typecheck:app`, and `npm run lint:app`.
-- NetworkSyncActions batch focused checks passed: `npx vitest run tests/components/NetworkSyncActions.test.tsx tests/components/NetworkSyncActions.branches.test.tsx`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/NetworkSyncActions.tsx components/NetworkSyncActions tests/components/NetworkSyncActions.test.tsx tests/components/NetworkSyncActions.branches.test.tsx`, `npm run typecheck:app`, and `npm run lint:app`.
-- Monitoring batch focused checks passed: `npx vitest run tests/components/Monitoring.test.tsx tests/components/Monitoring.branches.test.tsx tests/components/Monitoring/ServiceCard.branches.test.tsx`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/Monitoring/Monitoring.tsx components/Monitoring tests/components/Monitoring.test.tsx tests/components/Monitoring.branches.test.tsx tests/components/Monitoring/ServiceCard.branches.test.tsx`, `npm run typecheck:app`, and `npm run lint:app`.
-- WalletDetail batch focused checks passed: `npx vitest run tests/components/WalletDetail.test.tsx tests/components/WalletDetail.wrapper.test.tsx tests/components/WalletDetail tests/components/WalletDetailWrapper`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/WalletDetail/WalletDetail.tsx components/WalletDetail/WalletDetailLoadedView.tsx components/WalletDetail/useWalletDetailController.ts`, `npm run typecheck:app`, and `npm run lint:app`.
-- ChatTab batch focused checks passed: `npx vitest run tests/components/Intelligence.tabs.test.tsx tests/components/Intelligence.test.tsx tests/components/IntelligenceTabs/chatTab.contracts.tsx`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/Intelligence/tabs/ChatTab.tsx components/Intelligence/tabs/ChatConversationList.tsx components/Intelligence/tabs/ChatInputComposer.tsx components/Intelligence/tabs/ChatMessagePane.tsx components/Intelligence/tabs/useChatTabController.ts`, `npm run typecheck:app`, and `npm run lint:app`.
-- PriceChart batch focused checks passed: `npx vitest run tests/components/Dashboard/PriceChart.test.tsx`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/Dashboard/PriceChart.tsx components/Dashboard/PriceChart`, `npm run typecheck:app`, and `npm run lint:app`.
-- RestorePanel batch focused checks passed: `npx vitest run tests/components/BackupRestore.test.tsx tests/components/BackupRestore/useBackupHandlers.branches.test.tsx tests/components/BackupRestore/RestorePanel.branches.test.tsx`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/BackupRestore/RestorePanel.tsx components/BackupRestore/RestorePanel`, `npm run typecheck:app`, and `npm run lint:app`.
-- Variables batch focused checks passed: `npx vitest run tests/components/Variables.test.tsx`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/Variables.tsx components/Variables`, `npm run typecheck:app`, and `npm run lint:app`.
-- UTXOGarden batch focused checks passed: `npx vitest run tests/components/UTXOList/UTXOGarden.test.tsx tests/components/UTXOList.branches.test.tsx`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/UTXOList/UTXOGarden.tsx components/UTXOList/UTXOGarden`, `npm run typecheck:app`, and `npm run lint:app`.
-- WalletTelegramSettings batch focused checks passed: `npx vitest run tests/components/WalletDetail/WalletTelegramSettings.test.tsx`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/WalletDetail/WalletTelegramSettings.tsx components/WalletDetail/WalletTelegramSettings`, `npm run typecheck:app`, and `npm run lint:app`.
-- AppRoutes batch focused checks passed: `npx vitest run tests/App.branches.test.tsx tests/src/app/appRoutes.test.ts` (9 tests), `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w App.tsx src/app/AppRoutes`, `npm run typecheck:app`, and `npm run lint:app`.
-- LoginForm batch focused checks passed: `npx vitest run tests/components/Login/LoginForm.test.tsx tests/components/Login.test.tsx tests/components/ui/Button.test.tsx` (47 tests), `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/Login/LoginForm.tsx components/Login/LoginForm tests/components/Login/LoginForm.test.tsx`, `npm run typecheck:app`, and `npm run lint:app`.
-- AILabelSuggestion batch focused checks passed: `npx vitest run tests/components/AILabelSuggestion.test.tsx` (29 tests), `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/AILabelSuggestion.tsx components/AILabelSuggestion tests/components/AILabelSuggestion.test.tsx`, `npm run typecheck:app`, and `npm run lint:app`.
-- UTXORow batch focused checks passed: `npx vitest run tests/components/UTXOList/UTXORow.test.tsx` (20 tests), `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/UTXOList/UTXORow.tsx components/UTXOList/UTXORow tests/components/UTXOList/UTXORow.test.tsx`, `npm run typecheck:app`, and `npm run lint:app`.
-- AgentWalletDashboard batch focused checks passed: `npx vitest run tests/components/AgentWalletDashboard.test.tsx tests/components/AgentWalletDashboard/agentWalletDashboardModel.test.ts` (12 tests), `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/AgentWalletDashboard tests/components/AgentWalletDashboard.test.tsx tests/components/AgentWalletDashboard/agentWalletDashboardModel.test.ts`, `npm run typecheck:app`, and `npm run lint:app`.
-- QrScannerPanel batch focused checks passed: `npx vitest run tests/components/ConnectDevice/QrScannerPanel.test.tsx` (8 tests), `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/ConnectDevice/QrScannerPanel.tsx components/ConnectDevice/QrScannerPanel tests/components/ConnectDevice/QrScannerPanel.test.tsx`, `npm run typecheck:app`, `npm run typecheck:tests`, and `npm run lint:app`.
-- Device access ownership batch focused checks passed: `npx vitest run tests/components/DeviceDetail/access/OwnershipSection.branches.test.tsx tests/components/DeviceDetail/access/SharingSection.branches.test.tsx tests/components/TransferOwnershipModal.test.tsx` (36 tests), `npx vitest run tests/components/DeviceDetailPage.test.tsx tests/components/WalletDetail/WalletDetailModals.test.tsx` (34 tests), `npx vitest run tests/components/BackupRestore/useBackupHandlers.branches.test.tsx` (10 tests), focused lizard for the extracted access/transfer/backup files, `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, and `npm run lint`.
-- UsersGroups batch focused checks passed: `npx vitest run tests/components/UsersGroups.test.tsx tests/components/UsersGroups.branches.test.tsx tests/components/UsersGroups/CreateUserModal.test.tsx tests/components/UsersGroups/EditUserModal.branches.test.tsx tests/components/UsersGroups/GroupPanel.branches.test.tsx tests/components/UsersGroups/EditGroupModal.branches.test.tsx`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/UsersGroups`, `npm run typecheck:app`, and `npm run lint:app`.
-- AIQueryInput batch focused checks passed: `npx vitest run tests/components/AIQueryInput.test.tsx`, `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/AIQueryInput.tsx components/AIQueryInput`, `npm run typecheck:app`, and `npm run lint:app`.
-- Layout batch focused checks passed: `npx vitest run tests/components/Layout.test.tsx tests/components/Layout.branches.test.tsx` (45 tests), `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/Layout/Layout.tsx components/Layout/LayoutShell.tsx components/Layout/useLayoutController.ts`, `npm run typecheck:app`, and `npm run lint:app`.
-- SidebarContent batch focused checks passed: `npx vitest run tests/components/Layout/SidebarContent.branches.test.tsx tests/components/Layout.test.tsx tests/components/Layout.branches.test.tsx` (53 tests), `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/Layout/SidebarContent.tsx components/Layout/SidebarContent`, `npm run typecheck:app`, and `npm run lint:app`.
-- `npm run check:architecture-boundaries`, `npm run check:browser-auth-contract`, and `npm run check:openapi-route-coverage` passed.
-- `node scripts/quality/check-large-files.mjs` passed after current remediation; `server/src/repositories/agentRepository.ts` is now 808 lines.
-- Agent funding batch focused checks passed: `npx vitest run tests/components/AgentManagement.test.tsx tests/components/coverageFallbacks.test.tsx` (21 tests), `cd server && npx vitest run tests/unit/services/agentApiService.test.ts tests/unit/services/adminAgentService.test.ts tests/unit/repositories/agentRepository.test.ts tests/unit/api/agent-routes.test.ts` (40 tests), `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w components/AgentManagement/AgentOverridesModal.tsx server/src/services/adminAgentService.ts server/src/repositories/agentRepository.ts server/src/services/agentApiService.ts`, `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint`, `npm run test:coverage`, `npm run test:backend:coverage`, broad lizard, `npx --yes jscpd@4 .`, `node scripts/quality/check-large-files.mjs`, `git diff --check`, and gitleaks direct/latest-commit/tracked-tree scans.
-- Final lizard warning cleanup focused checks passed: `npx vitest run tests/hooks/useWebSocket.test.tsx tests/hooks/useHardwareWallet.test.tsx tests/contexts/send/SendTransactionContext.test.tsx tests/contexts/UserContext.test.tsx tests/components/Layout.branches.test.tsx tests/components/NodeConfig.secondpass.test.tsx tests/components/Dashboard/AnimatedFeeRate.test.tsx tests/components/Settings.interactions.test.tsx` (202 tests), `cd server && npx vitest run tests/unit/services/telegram/telegramService.test.ts tests/unit/services/agentMonitoringService.test.ts tests/unit/mcp/transport.test.ts` (47 tests), `cd server && npx vitest run tests/unit/services/agentMonitoringService.test.ts` (14 tests after the non-positive-threshold branch assertion), focused lizard for all Batch 43 targets, broad `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w .`, `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint`, `npm run test:coverage`, `npm run test:backend:coverage`, `npx --yes jscpd@4 .`, `node scripts/quality/check-large-files.mjs`, `git diff --check`, and gitleaks direct/latest-commit/tracked-tree scans.
-- Final lizard warning cleanup PR #42 merged as `461240a1`; PR `PR Required Checks`, `Code Quality Required Checks`, quick checks, vector verification, and Docker builds passed before merge, and the post-merge `main` backstop passed `Build Dev Images` `24700593317`, `Install Tests` `24700593305`, `Release` `24700593298`, and `Test Suite` `24700593316`.
+- `bash /home/nekoguntai/.codex/skills/grade/grade.sh` completed: tests pass, lint pass, typecheck pass, and heuristic signals collected.
+- `npm run test:coverage` passed: 401 app test files, 5,593 tests, 100% statements/branches/functions/lines.
+- `npm run test:backend:coverage` passed: 391 backend test files passed, 22 skipped; 9,156 tests passed, 503 skipped; 100% statements/branches/functions/lines.
+- `npm run test:coverage` in `gateway` passed: 20 files, 513 tests, 100% statements/branches/functions/lines.
+- `npm audit --json` completed in root, `server`, `gateway`, and `ai-proxy`; high/critical count is 0.
+- Pinned gitleaks direct working-tree, latest-commit, and tracked-tree scans completed clean.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w .` completed with 0 warnings.
+- `.tmp/quality-tools/lizard-1.21.2/bin/lizard .` completed with average CCN 1.3 and no thresholds exceeded.
+- `npx --yes jscpd@4 .` completed at 1.97% duplication.
+- `node scripts/quality/check-large-files.mjs` passed with 4 classified files over the warning limit.
+- `npm run check:architecture-boundaries` passed.
+- `npm run check:browser-auth-contract` passed.
+- `npm run check:openapi-route-coverage` passed.
