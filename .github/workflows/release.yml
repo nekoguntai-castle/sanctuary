@@ -461,11 +461,14 @@ jobs:
           PR_NUM=$(gh pr view "$BRANCH" --json number --jq .number)
           gh pr merge "$PR_NUM" --squash --auto --delete-branch
 
-          # Wait for auto-merge to complete, handling branch-behind stalls
-          # that arise from `strict: true` branch protection when main advances
-          # while this PR is waiting. Timeout-bounded; treats stall as warning,
-          # not release failure, since the images are already published.
-          DEADLINE=$(($(date +%s) + 900))  # 15 min
+          # Wait for auto-merge to complete. Aligned with the main-merge-queue
+          # ruleset's check_response_timeout_minutes=60 so a slow queue run
+          # doesn't time out before the queue itself does. Timeout is a hard
+          # failure so the release is not marked complete with a dangling
+          # manifest PR — the GHCR images are published by this point, but
+          # the release isn't truly "done" until docker-compose.yml + umbrel-app.yml
+          # are on main.
+          DEADLINE=$(($(date +%s) + 3600))  # 60 min
           while [ "$(date +%s)" -lt "$DEADLINE" ]; do
             sleep 30
             STATE=$(gh pr view "$PR_NUM" --json state --jq .state 2>/dev/null || echo "")
@@ -489,7 +492,9 @@ jobs:
             fi
           done
 
-          echo "::warning::Umbrel PR $PR_NUM did not auto-merge within 15 min; leaving open for manual merge"
+          echo "::error::Umbrel PR $PR_NUM did not merge within 60 min; release is incomplete"
+          echo "::error::GHCR images for v${VERSION} are published, but sanctuary/docker-compose.yml on main still references the previous version. Investigate the open PR and merge manually."
+          exit 1
 
   update-release:
     name: Update Release Notes
