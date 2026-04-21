@@ -446,7 +446,7 @@ jobs:
           - Updated release notes
 
           🤖 Automated release update"
-          git push --force-with-lease -u origin "$BRANCH"
+          git push --force -u origin "$BRANCH"
 
           if gh pr view "$BRANCH" --json state --jq .state 2>/dev/null | grep -q OPEN; then
             echo "PR for $BRANCH already open; branch updated"
