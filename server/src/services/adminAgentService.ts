@@ -158,6 +158,51 @@ function toAgentUpdateInput(
   };
 }
 
+function toCreateAgentPolicyInput(input: CreateWalletAgentServiceInput) {
+  return {
+    maxFundingAmountSats: input.maxFundingAmountSats ?? null,
+    maxOperationalBalanceSats: input.maxOperationalBalanceSats ?? null,
+    dailyFundingLimitSats: input.dailyFundingLimitSats ?? null,
+    weeklyFundingLimitSats: input.weeklyFundingLimitSats ?? null,
+    cooldownMinutes: input.cooldownMinutes ?? null,
+    minOperationalBalanceSats: input.minOperationalBalanceSats ?? null,
+  };
+}
+
+function toCreateAgentAlertInput(input: CreateWalletAgentServiceInput) {
+  return {
+    largeOperationalSpendSats: input.largeOperationalSpendSats ?? null,
+    largeOperationalFeeSats: input.largeOperationalFeeSats ?? null,
+    repeatedFailureThreshold: input.repeatedFailureThreshold ?? null,
+    repeatedFailureLookbackMinutes: input.repeatedFailureLookbackMinutes ?? null,
+    alertDedupeMinutes: input.alertDedupeMinutes ?? null,
+  };
+}
+
+function toCreateAgentBehaviorInput(input: CreateWalletAgentServiceInput) {
+  return {
+    requireHumanApproval: input.requireHumanApproval,
+    notifyOnOperationalSpend: input.notifyOnOperationalSpend,
+    pauseOnUnexpectedSpend: input.pauseOnUnexpectedSpend,
+  };
+}
+
+function toCreateAgentInput(
+  input: CreateWalletAgentServiceInput
+): Parameters<typeof agentRepository.createAgent>[0] {
+  return {
+    userId: input.userId,
+    name: input.name.trim(),
+    fundingWalletId: input.fundingWalletId,
+    operationalWalletId: input.operationalWalletId,
+    signerDeviceId: input.signerDeviceId,
+    status: input.status,
+    ...toCreateAgentPolicyInput(input),
+    ...toCreateAgentAlertInput(input),
+    ...toCreateAgentBehaviorInput(input),
+  };
+}
+
 export async function getAgentOptions() {
   const [users, wallets] = await Promise.all([
     userRepository.findAllSummary(),
@@ -264,28 +309,7 @@ export function getAgentDashboardRows() {
 export async function createWalletAgent(input: CreateWalletAgentServiceInput) {
   await validateAgentLink(input);
 
-  const agent = await agentRepository.createAgent({
-    userId: input.userId,
-    name: input.name.trim(),
-    fundingWalletId: input.fundingWalletId,
-    operationalWalletId: input.operationalWalletId,
-    signerDeviceId: input.signerDeviceId,
-    status: input.status,
-    maxFundingAmountSats: input.maxFundingAmountSats ?? null,
-    maxOperationalBalanceSats: input.maxOperationalBalanceSats ?? null,
-    dailyFundingLimitSats: input.dailyFundingLimitSats ?? null,
-    weeklyFundingLimitSats: input.weeklyFundingLimitSats ?? null,
-    cooldownMinutes: input.cooldownMinutes ?? null,
-    minOperationalBalanceSats: input.minOperationalBalanceSats ?? null,
-    largeOperationalSpendSats: input.largeOperationalSpendSats ?? null,
-    largeOperationalFeeSats: input.largeOperationalFeeSats ?? null,
-    repeatedFailureThreshold: input.repeatedFailureThreshold ?? null,
-    repeatedFailureLookbackMinutes: input.repeatedFailureLookbackMinutes ?? null,
-    alertDedupeMinutes: input.alertDedupeMinutes ?? null,
-    requireHumanApproval: input.requireHumanApproval,
-    notifyOnOperationalSpend: input.notifyOnOperationalSpend,
-    pauseOnUnexpectedSpend: input.pauseOnUnexpectedSpend,
-  });
+  const agent = await agentRepository.createAgent(toCreateAgentInput(input));
 
   const created = await agentRepository.findAgentByIdWithDetails(agent.id);
   return created ?? agent;

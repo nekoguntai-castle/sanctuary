@@ -183,31 +183,83 @@ export interface UpdateWalletAgentInput {
   revokedAt?: Date | null;
 }
 
+function nullableBigInt(value?: bigint | null): bigint | null {
+  return value ?? null;
+}
+
+function nullableNumber(value?: number | null): number | null {
+  return value ?? null;
+}
+
+function nullableString(value?: string | null): string | null {
+  return value ?? null;
+}
+
+function toCreateAgentPolicyData(input: CreateWalletAgentInput): Pick<
+  Prisma.WalletAgentUncheckedCreateInput,
+  | 'maxFundingAmountSats'
+  | 'maxOperationalBalanceSats'
+  | 'dailyFundingLimitSats'
+  | 'weeklyFundingLimitSats'
+  | 'cooldownMinutes'
+  | 'minOperationalBalanceSats'
+> {
+  return {
+    maxFundingAmountSats: nullableBigInt(input.maxFundingAmountSats),
+    maxOperationalBalanceSats: nullableBigInt(input.maxOperationalBalanceSats),
+    dailyFundingLimitSats: nullableBigInt(input.dailyFundingLimitSats),
+    weeklyFundingLimitSats: nullableBigInt(input.weeklyFundingLimitSats),
+    cooldownMinutes: nullableNumber(input.cooldownMinutes),
+    minOperationalBalanceSats: nullableBigInt(input.minOperationalBalanceSats),
+  };
+}
+
+function toCreateAgentAlertData(input: CreateWalletAgentInput): Pick<
+  Prisma.WalletAgentUncheckedCreateInput,
+  | 'largeOperationalSpendSats'
+  | 'largeOperationalFeeSats'
+  | 'repeatedFailureThreshold'
+  | 'repeatedFailureLookbackMinutes'
+  | 'alertDedupeMinutes'
+> {
+  return {
+    largeOperationalSpendSats: nullableBigInt(input.largeOperationalSpendSats),
+    largeOperationalFeeSats: nullableBigInt(input.largeOperationalFeeSats),
+    repeatedFailureThreshold: nullableNumber(input.repeatedFailureThreshold),
+    repeatedFailureLookbackMinutes: nullableNumber(input.repeatedFailureLookbackMinutes),
+    alertDedupeMinutes: nullableNumber(input.alertDedupeMinutes),
+  };
+}
+
+function toCreateAgentBehaviorData(input: CreateWalletAgentInput): Pick<
+  Prisma.WalletAgentUncheckedCreateInput,
+  'requireHumanApproval' | 'notifyOnOperationalSpend' | 'pauseOnUnexpectedSpend' | 'revokedAt'
+> {
+  return {
+    requireHumanApproval: input.requireHumanApproval ?? true,
+    notifyOnOperationalSpend: input.notifyOnOperationalSpend ?? true,
+    pauseOnUnexpectedSpend: input.pauseOnUnexpectedSpend ?? false,
+    revokedAt: input.status === 'revoked' ? new Date() : null,
+  };
+}
+
+function toCreateAgentData(input: CreateWalletAgentInput): Prisma.WalletAgentUncheckedCreateInput {
+  return {
+    userId: input.userId,
+    name: input.name,
+    fundingWalletId: input.fundingWalletId,
+    operationalWalletId: input.operationalWalletId,
+    signerDeviceId: input.signerDeviceId,
+    status: input.status ?? 'active',
+    ...toCreateAgentPolicyData(input),
+    ...toCreateAgentAlertData(input),
+    ...toCreateAgentBehaviorData(input),
+  };
+}
+
 export async function createAgent(input: CreateWalletAgentInput): Promise<WalletAgent> {
   return prisma.walletAgent.create({
-    data: {
-      userId: input.userId,
-      name: input.name,
-      fundingWalletId: input.fundingWalletId,
-      operationalWalletId: input.operationalWalletId,
-      signerDeviceId: input.signerDeviceId,
-      status: input.status ?? 'active',
-      maxFundingAmountSats: input.maxFundingAmountSats ?? null,
-      maxOperationalBalanceSats: input.maxOperationalBalanceSats ?? null,
-      dailyFundingLimitSats: input.dailyFundingLimitSats ?? null,
-      weeklyFundingLimitSats: input.weeklyFundingLimitSats ?? null,
-      cooldownMinutes: input.cooldownMinutes ?? null,
-      minOperationalBalanceSats: input.minOperationalBalanceSats ?? null,
-      largeOperationalSpendSats: input.largeOperationalSpendSats ?? null,
-      largeOperationalFeeSats: input.largeOperationalFeeSats ?? null,
-      repeatedFailureThreshold: input.repeatedFailureThreshold ?? null,
-      repeatedFailureLookbackMinutes: input.repeatedFailureLookbackMinutes ?? null,
-      alertDedupeMinutes: input.alertDedupeMinutes ?? null,
-      requireHumanApproval: input.requireHumanApproval ?? true,
-      notifyOnOperationalSpend: input.notifyOnOperationalSpend ?? true,
-      pauseOnUnexpectedSpend: input.pauseOnUnexpectedSpend ?? false,
-      revokedAt: input.status === 'revoked' ? new Date() : null,
-    },
+    data: toCreateAgentData(input),
   });
 }
 
@@ -338,22 +390,40 @@ export async function countRejectedFundingAttemptsSince(agentId: string, since: 
   });
 }
 
-function buildAgentAlertCreateData(input: CreateAgentAlertInput) {
+function toAgentAlertOptionalData(input: CreateAgentAlertInput): Pick<
+  Prisma.AgentAlertUncheckedCreateInput,
+  'walletId' | 'status' | 'reasonCode' | 'dedupeKey' | 'metadata'
+> {
+  return {
+    walletId: nullableString(input.walletId),
+    status: input.status ?? 'open',
+    reasonCode: nullableString(input.reasonCode),
+    dedupeKey: nullableString(input.dedupeKey),
+    metadata: input.metadata ?? Prisma.DbNull,
+  };
+}
+
+function toAgentAlertMetricData(input: CreateAgentAlertInput): Pick<
+  Prisma.AgentAlertUncheckedCreateInput,
+  'txid' | 'amountSats' | 'feeSats' | 'thresholdSats' | 'observedCount'
+> {
+  return {
+    txid: nullableString(input.txid),
+    amountSats: nullableBigInt(input.amountSats),
+    feeSats: nullableBigInt(input.feeSats),
+    thresholdSats: nullableBigInt(input.thresholdSats),
+    observedCount: nullableNumber(input.observedCount),
+  };
+}
+
+function buildAgentAlertCreateData(input: CreateAgentAlertInput): Prisma.AgentAlertUncheckedCreateInput {
   return {
     agentId: input.agentId,
-    walletId: input.walletId ?? null,
     type: input.type,
     severity: input.severity,
-    status: input.status ?? 'open',
-    txid: input.txid ?? null,
-    amountSats: input.amountSats ?? null,
-    feeSats: input.feeSats ?? null,
-    thresholdSats: input.thresholdSats ?? null,
-    observedCount: input.observedCount ?? null,
-    reasonCode: input.reasonCode ?? null,
     message: input.message,
-    dedupeKey: input.dedupeKey ?? null,
-    metadata: input.metadata ?? Prisma.DbNull,
+    ...toAgentAlertOptionalData(input),
+    ...toAgentAlertMetricData(input),
   };
 }
 
@@ -663,25 +733,43 @@ export async function getSupportStats(now: Date = new Date()): Promise<AgentSupp
   };
 }
 
+function toFundingAttemptIdentityData(input: CreateAgentFundingAttemptInput): Pick<
+  Prisma.AgentFundingAttemptUncheckedCreateInput,
+  'agentId' | 'keyId' | 'keyPrefix' | 'fundingWalletId' | 'operationalWalletId' | 'draftId'
+> {
+  return {
+    agentId: input.agentId,
+    keyId: nullableString(input.keyId),
+    keyPrefix: nullableString(input.keyPrefix),
+    fundingWalletId: input.fundingWalletId,
+    operationalWalletId: nullableString(input.operationalWalletId),
+    draftId: nullableString(input.draftId),
+  };
+}
+
+function toFundingAttemptDetailData(input: CreateAgentFundingAttemptInput): Pick<
+  Prisma.AgentFundingAttemptUncheckedCreateInput,
+  'status' | 'reasonCode' | 'reasonMessage' | 'amount' | 'feeRate' | 'recipient' | 'ipAddress' | 'userAgent'
+> {
+  return {
+    status: input.status,
+    reasonCode: nullableString(input.reasonCode),
+    reasonMessage: nullableString(input.reasonMessage),
+    amount: nullableBigInt(input.amount),
+    feeRate: nullableNumber(input.feeRate),
+    recipient: nullableString(input.recipient),
+    ipAddress: nullableString(input.ipAddress),
+    userAgent: nullableString(input.userAgent),
+  };
+}
+
 export async function createFundingAttempt(
   input: CreateAgentFundingAttemptInput
 ): Promise<AgentFundingAttempt> {
   return prisma.agentFundingAttempt.create({
     data: {
-      agentId: input.agentId,
-      keyId: input.keyId ?? null,
-      keyPrefix: input.keyPrefix ?? null,
-      fundingWalletId: input.fundingWalletId,
-      operationalWalletId: input.operationalWalletId ?? null,
-      draftId: input.draftId ?? null,
-      status: input.status,
-      reasonCode: input.reasonCode ?? null,
-      reasonMessage: input.reasonMessage ?? null,
-      amount: input.amount ?? null,
-      feeRate: input.feeRate ?? null,
-      recipient: input.recipient ?? null,
-      ipAddress: input.ipAddress ?? null,
-      userAgent: input.userAgent ?? null,
+      ...toFundingAttemptIdentityData(input),
+      ...toFundingAttemptDetailData(input),
     },
   });
 }

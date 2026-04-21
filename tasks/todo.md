@@ -1,6 +1,53 @@
-# Next Task: Lizard UI Batch 41 - Admin And Account UI
+# Next Task: Lizard Batch 42 - Agent Funding Paths
 
 Status: in progress
+
+Goal: reduce the remaining agent-domain lizard findings by splitting the owner override modal shell, agent creation input mapping, funding-attempt persistence payload builders, and agent draft attempt parsing while preserving public imports, create/update agent behavior, funding-attempt recording, override modal validation/loading/revoke flows, and existing admin/agent route behavior.
+
+## Batch 42 Checklist
+
+- [x] Confirm Batch 41 PR #40 post-merge `main` backstop is green, including test suite run `24696874602`.
+- [x] Confirm grouped targets: `AgentOverridesModal` at 19 CCN, `createWalletAgent` at 25 CCN, `createAgent` at 32 CCN, `buildAgentAlertCreateData` at 21 CCN, `createFundingAttempt` at 23 CCN, and `parseOptionalAttemptAmount` at 23 CCN.
+- [x] Split the selected agent-management modules/helpers while preserving UI callbacks and service/repository behavior.
+- [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
+- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+
+## Batch 42 Review
+
+Plan:
+
+- Keep `components/AgentManagement/AgentOverridesModal.tsx`, `server/src/services/adminAgentService.ts`, `server/src/repositories/agentRepository.ts`, and `server/src/services/agentApiService.ts` as the public module entry points.
+- Move override modal form actions/history rendering, agent-create payload assembly, alert/funding-attempt data builders, and amount parsing branches into focused local helpers without changing call sites.
+- Keep this batch inside the agent-management domain rather than mixing in unrelated MCP or Telegram warnings.
+- Reuse existing coverage in `tests/components/AgentManagement.test.tsx`, `server/tests/unit/services/adminAgentService.test.ts`, `server/tests/unit/repositories/agentRepository.test.ts`, and `server/tests/unit/api/agent-routes.test.ts`; add focused tests only where the extractions expose uncovered branches.
+
+Verification so far:
+
+- Batch 41 PR #40 merged to `main` as `0d0b6807 Refactor admin and account UI complexity (#40)`.
+- Batch 41 post-merge `main` backstop passed: `Build Dev Images` `24696874596`, `Install Tests` `24696874601`, `Release` `24696874613`, and `Test Suite` `24696874602`.
+- `Test Suite` `24696874602` passed with `Full Backend Tests`, `Full Gateway Tests`, `Full Frontend Tests`, `Full Build Check`, `Full E2E Tests`, and `Full Test Summary`.
+- Focused lizard confirms the current Batch 42 warning set: `AgentOverridesModal` 19 CCN, `createWalletAgent` 25 CCN, `createAgent` 32 CCN, `buildAgentAlertCreateData` 21 CCN, `createFundingAttempt` 23 CCN, and `parseOptionalAttemptAmount` 23 CCN.
+- Existing direct/focused coverage already exercises the agent-management domain enough to keep this batch aggressive without mixing in unrelated files.
+- Split `AgentOverridesModal` into a state hook plus focused form/history/loading helpers while keeping the public modal shell, validation behavior, submit/reload flow, and revoke actions intact.
+- Extracted local create-agent/input/data-builder helpers in `adminAgentService`, `agentRepository`, and `agentApiService` so agent creation, alert persistence, funding-attempt writes, and amount/reason parsing stay behaviorally stable with lower per-function CCN.
+- Added targeted backend assertions in `server/tests/unit/services/adminAgentService.test.ts`, `server/tests/unit/repositories/agentRepository.test.ts`, and the new `server/tests/unit/services/agentApiService.test.ts` to cover the extracted mapping/default branches.
+- Focused tests passed: `npx vitest run tests/components/AgentManagement.test.tsx tests/components/coverageFallbacks.test.tsx` (21 tests) and `cd server && npx vitest run tests/unit/services/agentApiService.test.ts tests/unit/services/adminAgentService.test.ts tests/unit/repositories/agentRepository.test.ts tests/unit/api/agent-routes.test.ts` (40 tests).
+- Focused lizard passed for `components/AgentManagement/AgentOverridesModal.tsx`, `server/src/services/adminAgentService.ts`, `server/src/repositories/agentRepository.ts`, and `server/src/services/agentApiService.ts`; broad lizard now reports 16 warnings, down from 22, and the Batch 42 targets are gone from the warning list.
+- `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint`, `npm run test:coverage`, and `npm run test:backend:coverage` all passed; both app and backend coverage remain at 100% statements/branches/functions/lines.
+- `npx --yes jscpd@4 .` passed at 1.95% duplication with 272 clones and 5,213 duplicated lines.
+- `node scripts/quality/check-large-files.mjs`, `git diff --check`, `.tmp/quality-tools/gitleaks-8.30.1/gitleaks detect --source . --no-git --redact --config .gitleaks.toml --no-banner`, `.tmp/quality-tools/gitleaks-8.30.1/gitleaks git . --config .gitleaks.toml --redact --no-banner --log-opts -1`, and the tracked-tree gitleaks scan all passed.
+
+Edge case and self-review notes:
+
+- Preserve override create validation, busy-state handling, reload-on-success behavior, revoke confirmation, and active/used/revoked/expired status derivation.
+- Preserve trimmed-name/default policy mapping for agent creation and the existing revoked-at behavior split between create and update paths.
+- Preserve null/default handling for alert and funding-attempt payload writes, including optional request metadata and bigint/string parsing behavior.
+- Keep route-observable behavior intact for agent funding attempts and admin agent flows; prefer helper extraction over API changes.
+
+# Previous Task: Lizard UI Batch 41 - Admin And Account UI
+
+Status: complete
 
 Goal: reduce six independent admin/account UI lizard findings by splitting audit log shell/detail rendering, password form field/alert rendering, two-factor status/action cards, access-control settings sections, and feature-flag list/audit rendering while preserving public import paths, audit filter/query behavior, modal close/detail/fallback rendering, password visibility and validation messaging, 2FA enable/disable/backup-code actions, access-control optimistic save feedback and cleanup, feature-flag toggle/reset success handling, and audit-history expand/collapse behavior.
 
@@ -10,8 +57,8 @@ Goal: reduce six independent admin/account UI lizard findings by splitting audit
 - [x] Confirm grouped targets: `AuditLogs` at 17 CCN, `LogDetailModal` at 17 CCN, `PasswordForm` at 19 CCN, `TwoFactorSection` at 21 CCN, `AccessControlTab` at 17 CCN, and `FeatureFlags` at 19 CCN.
 - [x] Split the selected admin/account UI modules into focused helpers while preserving callbacks and visible behavior.
 - [x] Run focused tests, typecheck/lint, lizard, coverage, and quality guardrails.
-- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
-- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+- [x] Open PR #40 and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [x] Merge after required checks pass, then wait for the post-merge `main` backstop.
 
 ## Lizard UI Batch 41 Review
 
@@ -27,6 +74,10 @@ Verification so far:
 
 - Batch 40 PR #39 merged as `027ae304`; `Build Dev Images` run `24695771226`, `Release` run `24695771246`, and `Install Tests` run `24695771257` passed on `main`.
 - Batch 40 `Test Suite` run `24695771236` passed on `main`, including `Full Backend Tests`, `Full Gateway Tests`, `Full Frontend Tests`, `Full Build Check`, `Full E2E Tests`, and `Full Test Summary`.
+- PR #40 merged to `main` as `0d0b6807 Refactor admin and account UI complexity (#40)`.
+- PR #40 required checks passed before merge: `PR Required Checks`, `Code Quality Required Checks`, `Quick Frontend Tests`, `Quick E2E Smoke`, `Quick Test Hygiene`, lizard, jscpd, gitleaks, lint, and Docker builds. `Full Test Summary` stayed skipped as intended on the PR path.
+- Post-merge `main` backstop passed: `Build Dev Images` `24696874596`, `Install Tests` `24696874601`, `Release` `24696874613`, and `Test Suite` `24696874602`.
+- `Test Suite` `24696874602` passed with `Full Backend Tests`, `Full Gateway Tests`, `Full Frontend Tests`, `Full Build Check`, `Full E2E Tests`, and `Full Test Summary`.
 - Confirmed strong existing coverage for the grouped batch in `AuditLogs`, `Account`, `AccessControlTab`, and `FeatureFlags`; `TwoFactorSection` can pick up a direct branch test if helper extraction creates uncovered state combinations.
 - `AgentOverridesModal` remains a good next-batch candidate, but it is deliberately excluded here because it currently only has fallback coverage via `tests/components/coverageFallbacks.test.tsx`.
 - Split `AuditLogs`, `LogDetailModal`, `PasswordForm`, `TwoFactorSection`, `AccessControlTab`, and `FeatureFlags` into smaller local/grouped helpers while preserving public import paths and behavior.
