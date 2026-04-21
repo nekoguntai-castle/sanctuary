@@ -1,3 +1,27 @@
+# Current Task: Grade Report And Vitest Warning PR
+
+Status: in progress
+
+Goal: finish the `$grade` follow-up by resolving the Vitest future-compatibility warning, refreshing the grade report/history, and shipping the work through the protected-main PR flow.
+
+## Checklist
+
+- [x] Start a dedicated branch from current `main` with the existing grade report/history edits.
+- [x] Move the nested `vi.unmock("../../../../src/utils/requestContext")` in `server/tests/unit/utils/tracing/tracer.test.ts` to top level.
+- [x] Run focused tracing tests.
+- [x] Run backend coverage to confirm the warning is gone and coverage remains 100%.
+- [x] Update the grade report/history to remove the resolved warning risk.
+- [ ] Commit, push, open a PR, and check required PR status.
+
+## Review
+
+- Current grade before this follow-up: `97/100`, grade `A`, confidence `High` at `8993389b`.
+- This task should not change production behavior; it is a test-file compatibility cleanup plus grade documentation update.
+- Focused tracing tests passed: `npx vitest run tests/unit/utils/tracing/tracer.test.ts tests/unit/utils/tracing/otel.test.ts` in `server` (2 files, 17 tests).
+- Backend coverage passed: `npm run test:backend:coverage` (391 passed files, 22 skipped; 9,156 passed tests, 503 skipped; 100% statements/branches/functions/lines).
+- The prior Vitest nested-`vi.unmock` warning no longer appears in focused or backend coverage output.
+- Grade report now records the follow-up scope as `working-tree-after-8993389b`; grade history includes a follow-up entry with `vitest_future_warning=resolved`.
+
 # Completed Task: Lizard Batch 43 - Final Warning Cleanup
 
 Status: complete
