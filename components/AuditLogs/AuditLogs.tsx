@@ -17,6 +17,107 @@ import { PAGE_SIZE } from './constants';
 
 const log = createLogger('AuditLogs');
 
+interface AuditLogFilterInputs {
+  action: string;
+  category: string;
+  success: string;
+  username: string;
+}
+
+function buildAuditLogQuery(filters: AuditLogQuery, currentPage: number): AuditLogQuery {
+  return {
+    ...filters,
+    limit: PAGE_SIZE,
+    offset: (currentPage - 1) * PAGE_SIZE,
+  };
+}
+
+function buildAppliedFilters({
+  action,
+  category,
+  success,
+  username,
+}: AuditLogFilterInputs): AuditLogQuery {
+  const newFilters: AuditLogQuery = {};
+  if (username) newFilters.username = username;
+  if (category) newFilters.category = category;
+  if (action) newFilters.action = action;
+  if (success !== '') newFilters.success = success === 'true';
+  return newFilters;
+}
+
+function countActiveFilters(filters: AuditLogQuery): number {
+  return Object.keys(filters).length;
+}
+
+interface AuditLogsHeaderProps {
+  activeFilterCount: number;
+  loading: boolean;
+  onRefresh: () => void;
+  onToggleFilters: () => void;
+  showFilters: boolean;
+}
+
+function AuditLogsHeader({
+  activeFilterCount,
+  loading,
+  onRefresh,
+  onToggleFilters,
+  showFilters,
+}: AuditLogsHeaderProps) {
+  const hasActiveFilters = activeFilterCount > 0;
+
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div>
+        <h2 className="text-2xl font-medium text-sanctuary-900 dark:text-sanctuary-50">
+          Audit Logs
+        </h2>
+        <p className="text-sanctuary-500">
+          Security and activity logs for the system
+        </p>
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={onToggleFilters}
+          className={`flex items-center px-3 py-2 text-sm rounded-lg border transition-colors ${
+            showFilters || hasActiveFilters
+              ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/20 dark:text-primary-400'
+              : 'border-sanctuary-200 dark:border-sanctuary-700 text-sanctuary-600 dark:text-sanctuary-400 hover:bg-sanctuary-50 dark:hover:bg-sanctuary-800'
+          }`}
+        >
+          <Filter className="w-4 h-4 mr-2" />
+          Filters
+          {hasActiveFilters && (
+            <span className="ml-2 px-1.5 py-0.5 text-xs rounded-full bg-primary-500 text-white">
+              {activeFilterCount}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={onRefresh}
+          disabled={loading}
+          className="flex items-center px-3 py-2 text-sm rounded-lg border border-sanctuary-200 dark:border-sanctuary-700 text-sanctuary-600 dark:text-sanctuary-400 hover:bg-sanctuary-50 dark:hover:bg-sanctuary-800 disabled:opacity-50"
+        >
+          <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+          Refresh
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AuditLogsError({ error }: { error: string | null }) {
+  if (!error) return null;
+
+  return (
+    <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 flex items-center space-x-2">
+      <AlertCircle className="w-4 h-4 flex-shrink-0" />
+      <span className="text-sm">{error}</span>
+    </div>
+  );
+}
+
 export const AuditLogs: React.FC = () => {
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [stats, setStats] = useState<AuditLogStats | null>(null);
@@ -36,12 +137,7 @@ export const AuditLogs: React.FC = () => {
   const { loading, error, execute: runLoad } = useLoadingState({ initialLoading: true });
 
   const fetchLogs = () => runLoad(async () => {
-    const query: AuditLogQuery = {
-      ...filters,
-      limit: PAGE_SIZE,
-      offset: (currentPage - 1) * PAGE_SIZE,
-    };
-    const result = await getAuditLogs(query);
+    const result = await getAuditLogs(buildAuditLogQuery(filters, currentPage));
     setLogs(result.logs);
     setTotal(result.total);
   });
@@ -56,17 +152,17 @@ export const AuditLogs: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchLogs();
-    fetchStats();
+    void fetchLogs();
+    void fetchStats();
   }, [currentPage, filters]);
 
   const applyFilters = () => {
-    const newFilters: AuditLogQuery = {};
-    if (filterUsername) newFilters.username = filterUsername;
-    if (filterCategory) newFilters.category = filterCategory;
-    if (filterAction) newFilters.action = filterAction;
-    if (filterSuccess !== '') newFilters.success = filterSuccess === 'true';
-    setFilters(newFilters);
+    setFilters(buildAppliedFilters({
+      action: filterAction,
+      category: filterCategory,
+      success: filterSuccess,
+      username: filterUsername,
+    }));
     setCurrentPage(1);
   };
 
@@ -79,55 +175,25 @@ export const AuditLogs: React.FC = () => {
     setCurrentPage(1);
   };
 
-  const hasActiveFilters = Object.keys(filters).length > 0;
+  const activeFilterCount = countActiveFilters(filters);
+
+  const handleRefresh = () => {
+    void fetchLogs();
+    void fetchStats();
+  };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-medium text-sanctuary-900 dark:text-sanctuary-50">
-            Audit Logs
-          </h2>
-          <p className="text-sanctuary-500">
-            Security and activity logs for the system
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={`flex items-center px-3 py-2 text-sm rounded-lg border transition-colors ${
-              showFilters || hasActiveFilters
-                ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/20 dark:text-primary-400'
-                : 'border-sanctuary-200 dark:border-sanctuary-700 text-sanctuary-600 dark:text-sanctuary-400 hover:bg-sanctuary-50 dark:hover:bg-sanctuary-800'
-            }`}
-          >
-            <Filter className="w-4 h-4 mr-2" />
-            Filters
-            {hasActiveFilters && (
-              <span className="ml-2 px-1.5 py-0.5 text-xs rounded-full bg-primary-500 text-white">
-                {Object.keys(filters).length}
-              </span>
-            )}
-          </button>
-          <button
-            onClick={() => {
-              fetchLogs();
-              fetchStats();
-            }}
-            disabled={loading}
-            className="flex items-center px-3 py-2 text-sm rounded-lg border border-sanctuary-200 dark:border-sanctuary-700 text-sanctuary-600 dark:text-sanctuary-400 hover:bg-sanctuary-50 dark:hover:bg-sanctuary-800 disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
-          </button>
-        </div>
-      </div>
+      <AuditLogsHeader
+        activeFilterCount={activeFilterCount}
+        loading={loading}
+        onRefresh={handleRefresh}
+        onToggleFilters={() => setShowFilters(!showFilters)}
+        showFilters={showFilters}
+      />
 
-      {/* Stats Overview */}
       {stats && <StatCards stats={stats} />}
 
-      {/* Filters Panel */}
       <FilterPanel
         isOpen={showFilters}
         filterUsername={filterUsername}
@@ -142,15 +208,8 @@ export const AuditLogs: React.FC = () => {
         onClear={clearFilters}
       />
 
-      {/* Error */}
-      {error && (
-        <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 flex items-center space-x-2">
-          <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          <span className="text-sm">{error}</span>
-        </div>
-      )}
+      <AuditLogsError error={error} />
 
-      {/* Logs Table */}
       <LogTable
         logs={logs}
         loading={loading}
@@ -161,7 +220,6 @@ export const AuditLogs: React.FC = () => {
         onSelectLog={setSelectedLog}
       />
 
-      {/* Detail Modal */}
       <LogDetailModal
         log={selectedLog}
         onClose={() => setSelectedLog(null)}

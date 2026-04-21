@@ -8,6 +8,112 @@ interface LogDetailModalProps {
   onClose: () => void;
 }
 
+function LogDetailField({
+  children,
+  label,
+}: {
+  children: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <div>
+      <label className="text-xs text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-wider">
+        {label}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+function LogUserField({ log }: { log: AuditLogEntry }) {
+  return (
+    <p className="text-sanctuary-900 dark:text-sanctuary-100">
+      {log.username}
+      {log.userId && (
+        <span className="text-sanctuary-500 text-sm ml-2">
+          ({log.userId.slice(0, 8)}...)
+        </span>
+      )}
+    </p>
+  );
+}
+
+function LogCategoryBadge({ category }: { category: string }) {
+  return (
+    <span
+      className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+        categoryColors[category] || categoryColors.system
+      }`}
+    >
+      {categoryIcons[category]}
+      <span className="ml-1">{category}</span>
+    </span>
+  );
+}
+
+function LogStatusBadge({ success }: { success: boolean }) {
+  if (success) {
+    return (
+      <span className="inline-flex items-center text-success-600 dark:text-success-400">
+        <CheckCircle className="w-4 h-4 mr-1" />
+        Success
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center text-red-600 dark:text-red-400">
+      <XCircle className="w-4 h-4 mr-1" />
+      Failed
+    </span>
+  );
+}
+
+function LogErrorMessage({ errorMsg }: { errorMsg: string | null }) {
+  if (!errorMsg) return null;
+
+  return (
+    <div>
+      <label className="text-xs text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-wider">
+        Error Message
+      </label>
+      <p className="text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-2 rounded-lg mt-1">
+        {errorMsg}
+      </p>
+    </div>
+  );
+}
+
+function LogDetailsSection({ details }: { details: AuditLogEntry['details'] }) {
+  if (!details || Object.keys(details).length === 0) return null;
+
+  return (
+    <div>
+      <label className="text-xs text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-wider">
+        Details
+      </label>
+      <pre className="mt-1 p-3 rounded-lg bg-sanctuary-50 dark:bg-sanctuary-800 text-sm text-sanctuary-700 dark:text-sanctuary-300 overflow-x-auto">
+        {JSON.stringify(details, null, 2)}
+      </pre>
+    </div>
+  );
+}
+
+function LogUserAgent({ userAgent }: { userAgent: string | null }) {
+  if (!userAgent) return null;
+
+  return (
+    <div>
+      <label className="text-xs text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-wider">
+        User Agent
+      </label>
+      <p className="text-sanctuary-600 dark:text-sanctuary-400 text-sm break-all">
+        {userAgent}
+      </p>
+    </div>
+  );
+}
+
 /**
  * Modal showing detailed information about a single audit log entry.
  */
@@ -34,110 +140,39 @@ export const LogDetailModal: React.FC<LogDetailModalProps> = ({ log, onClose }) 
         </div>
         <div className="p-4 space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-wider">
-                Timestamp
-              </label>
+            <LogDetailField label="Timestamp">
               <p className="text-sanctuary-900 dark:text-sanctuary-100">
                 {new Date(log.createdAt).toLocaleString()}
               </p>
-            </div>
-            <div>
-              <label className="text-xs text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-wider">
-                User
-              </label>
-              <p className="text-sanctuary-900 dark:text-sanctuary-100">
-                {log.username}
-                {log.userId && (
-                  <span className="text-sanctuary-500 text-sm ml-2">
-                    ({log.userId.slice(0, 8)}...)
-                  </span>
-                )}
-              </p>
-            </div>
-            <div>
-              <label className="text-xs text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-wider">
-                Category
-              </label>
+            </LogDetailField>
+            <LogDetailField label="User">
+              <LogUserField log={log} />
+            </LogDetailField>
+            <LogDetailField label="Category">
               <p>
-                <span
-                  className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                    categoryColors[log.category] || categoryColors.system
-                  }`}
-                >
-                  {categoryIcons[log.category]}
-                  <span className="ml-1">{log.category}</span>
-                </span>
+                <LogCategoryBadge category={log.category} />
               </p>
-            </div>
-            <div>
-              <label className="text-xs text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-wider">
-                Action
-              </label>
+            </LogDetailField>
+            <LogDetailField label="Action">
               <p className="text-sanctuary-900 dark:text-sanctuary-100">
                 {formatAction(log.action)}
               </p>
-            </div>
-            <div>
-              <label className="text-xs text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-wider">
-                Status
-              </label>
+            </LogDetailField>
+            <LogDetailField label="Status">
               <p>
-                {log.success ? (
-                  <span className="inline-flex items-center text-success-600 dark:text-success-400">
-                    <CheckCircle className="w-4 h-4 mr-1" />
-                    Success
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center text-red-600 dark:text-red-400">
-                    <XCircle className="w-4 h-4 mr-1" />
-                    Failed
-                  </span>
-                )}
+                <LogStatusBadge success={log.success} />
               </p>
-            </div>
-            <div>
-              <label className="text-xs text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-wider">
-                IP Address
-              </label>
+            </LogDetailField>
+            <LogDetailField label="IP Address">
               <p className="text-sanctuary-900 dark:text-sanctuary-100 font-mono">
                 {log.ipAddress || '-'}
               </p>
-            </div>
+            </LogDetailField>
           </div>
 
-          {log.errorMsg && (
-            <div>
-              <label className="text-xs text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-wider">
-                Error Message
-              </label>
-              <p className="text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-2 rounded-lg mt-1">
-                {log.errorMsg}
-              </p>
-            </div>
-          )}
-
-          {log.details && Object.keys(log.details).length > 0 && (
-            <div>
-              <label className="text-xs text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-wider">
-                Details
-              </label>
-              <pre className="mt-1 p-3 rounded-lg bg-sanctuary-50 dark:bg-sanctuary-800 text-sm text-sanctuary-700 dark:text-sanctuary-300 overflow-x-auto">
-                {JSON.stringify(log.details, null, 2)}
-              </pre>
-            </div>
-          )}
-
-          {log.userAgent && (
-            <div>
-              <label className="text-xs text-sanctuary-500 dark:text-sanctuary-400 uppercase tracking-wider">
-                User Agent
-              </label>
-              <p className="text-sanctuary-600 dark:text-sanctuary-400 text-sm break-all">
-                {log.userAgent}
-              </p>
-            </div>
-          )}
+          <LogErrorMessage errorMsg={log.errorMsg} />
+          <LogDetailsSection details={log.details} />
+          <LogUserAgent userAgent={log.userAgent} />
         </div>
       </div>
     </div>
