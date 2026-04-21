@@ -1,6 +1,6 @@
-# Next Task: Lizard Batch 43 - Final Warning Cleanup
+# Completed Task: Lizard Batch 43 - Final Warning Cleanup
 
-Status: ready for PR
+Status: complete
 
 Goal: reduce the remaining 16 lizard warnings by splitting the final warning-band script helper, frontend test harness files, and small server production helpers while preserving address-vector verification behavior, websocket/hook contract assertions, hardware-wallet/send/user/dashboard/layout/settings component test coverage, Telegram notification formatting, agent monitoring address normalization, bigint coercion, and MCP JSON-RPC error responses.
 
@@ -10,8 +10,8 @@ Goal: reduce the remaining 16 lizard warnings by splitting the final warning-ban
 - [x] Confirm remaining warning set: `deriveSingleSig`, four websocket contract files, `useHardwareWallet.test.tsx`, `SendTransactionContext.test.tsx`, `UserContext.test.tsx`, `AnimatedFeeRate.test.tsx`, `Layout.branches.test.tsx`, `NodeConfig.secondpass.test.tsx`, `Settings.interactions.test.tsx`, `notifyNewDraft`, `normalizeAddress`, `positiveBigInt`, and `sendJsonRpcError`.
 - [x] Split the selected warning-band helpers/tests while preserving test intent and production behavior.
 - [x] Run focused tests, Go/script validation where applicable, lizard, coverage, and quality guardrails.
-- [ ] Open a PR and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
-- [ ] Merge after required checks pass, then wait for the post-merge `main` backstop.
+- [x] Open PR #42 and validate `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [x] Merge after required checks pass, then wait for the post-merge `main` backstop.
 
 ## Batch 43 Review
 
@@ -40,6 +40,11 @@ Verification so far:
 - `npx --yes jscpd@4 .` passed at 1.95% duplication with 272 clones and 5,213 duplicated lines.
 - `node scripts/quality/check-large-files.mjs`, `git diff --check`, gitleaks direct, latest-commit, and tracked-tree scans passed.
 - Go verifier compile/runtime validation could not run locally because `go` is not installed in this environment.
+- PR #42 merged to `main` as `461240a1 Clear remaining lizard warnings (#42)`.
+- PR #42 required checks passed before merge: `PR Required Checks`, `Code Quality Required Checks`, Quick Frontend, Quick Backend, Quick Backend Integration Smoke, Quick E2E Smoke, Quick Test Hygiene, lizard, jscpd, gitleaks, lint, vector verification, and Docker builds. `Full Test Summary` stayed skipped as intended on the PR path.
+- Post-merge `main` backstop passed: `Build Dev Images` `24700593317`, `Install Tests` `24700593305`, `Release` `24700593298`, and `Test Suite` `24700593316`.
+- `Test Suite` `24700593316` passed with `Full Backend Tests`, `Full Gateway Tests`, `Full Frontend Tests`, `Full Build Check`, `Full E2E Tests`, and `Full Test Summary`.
+- The lizard cleanup loop is complete: broad lizard on `main` now reports 0 warnings.
 
 Edge case and self-review notes:
 
