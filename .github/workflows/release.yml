@@ -375,6 +375,7 @@ jobs:
        (github.event_name == 'push' && github.ref_type == 'tag'))
     permissions:
       contents: write
+      pull-requests: write
 
     steps:
       - name: Checkout repository
@@ -422,19 +423,42 @@ jobs:
           grep -E "version:|releaseNotes:" sanctuary/umbrel-app.yml
           grep "image:" sanctuary/docker-compose.yml
 
-      - name: Commit and push Umbrel updates
+      - name: Open Umbrel update PR
         if: steps.check-stable.outputs.is_stable == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.create-manifests.outputs.version }}
         run: |
+          if git diff --quiet sanctuary/; then
+            echo "No Umbrel package changes to commit"
+            exit 0
+          fi
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          BRANCH="chore/update-umbrel-package-v${VERSION}"
+          git checkout -B "$BRANCH"
           git add sanctuary/
-          git diff --staged --quiet || git commit -m "Update Umbrel package to v${{ needs.create-manifests.outputs.version }}
+          git commit -m "chore: update Umbrel package to v${VERSION}
 
           - Updated Docker image tags with SHA256 digests
           - Updated release notes
 
           🤖 Automated release update"
-          git push
+          git push --force-with-lease -u origin "$BRANCH"
+
+          if gh pr view "$BRANCH" --json state --jq .state 2>/dev/null | grep -q OPEN; then
+            echo "PR for $BRANCH already open; branch updated"
+          else
+            gh pr create \
+              --title "chore: update Umbrel package to v${VERSION}" \
+              --body "Automated release update for v${VERSION}. Updates \`sanctuary/docker-compose.yml\` image pins and \`sanctuary/umbrel-app.yml\` releaseNotes after release.yml published the v${VERSION} GHCR images. Safe to merge once required checks pass." \
+              --base main \
+              --head "$BRANCH"
+          fi
+
+          gh pr merge "$BRANCH" --squash --auto --delete-branch
 
   update-release:
     name: Update Release Notes
