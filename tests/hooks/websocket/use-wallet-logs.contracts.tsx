@@ -13,39 +13,44 @@ import {
   useWalletLogs,
 } from '../../../hooks/websocket';
 
-export function registerUseWalletLogsTests(): void {
-  describe('useWalletLogs', () => {
-    beforeEach(() => {
-      vi.clearAllMocks();
-      connectionChangeCallbacks.clear();
-      eventCallbacks.clear();
+const resetUseWalletLogsHarness = (): void => {
+  vi.clearAllMocks();
+  connectionChangeCallbacks.clear();
+  eventCallbacks.clear();
 
-      // Mock getWalletLogs to return empty array by default
-      mockGetWalletLogs.mockResolvedValue([]);
+  // Mock getWalletLogs to return empty array by default
+  mockGetWalletLogs.mockResolvedValue([]);
 
-      mockOn.mockImplementation((eventType: string, callback: (event: any) => void) => {
-        if (!eventCallbacks.has(eventType)) {
-          eventCallbacks.set(eventType, new Set());
-        }
-        eventCallbacks.get(eventType)!.add(callback);
-      });
+  mockOn.mockImplementation((eventType: string, callback: (event: any) => void) => {
+    if (!eventCallbacks.has(eventType)) {
+      eventCallbacks.set(eventType, new Set());
+    }
+    eventCallbacks.get(eventType)!.add(callback);
+  });
 
-      mockOff.mockImplementation((eventType: string, callback: (event: any) => void) => {
-        const callbacks = eventCallbacks.get(eventType);
-        if (callbacks) {
-          callbacks.delete(callback);
-        }
-      });
-    });
+  mockOff.mockImplementation((eventType: string, callback: (event: any) => void) => {
+    const callbacks = eventCallbacks.get(eventType);
+    if (callbacks) {
+      callbacks.delete(callback);
+    }
+  });
+};
 
-    const renderWalletLogs = async (walletId?: string, options?: { enabled?: boolean; maxEntries?: number }) => {
-      const hook = renderHook(() => useWalletLogs(walletId as any, options));
-      await waitFor(() => {
-        expect(hook.result.current.isLoading).toBe(false);
-      });
-      return hook;
-    };
+const renderWalletLogs = async (walletId?: string, options?: { enabled?: boolean; maxEntries?: number }) => {
+  const hook = renderHook(() => useWalletLogs(walletId as any, options));
+  await waitFor(() => {
+    expect(hook.result.current.isLoading).toBe(false);
+  });
+  return hook;
+};
 
+const emitWalletLogEvent = (event: unknown): void => {
+  act(() => {
+    eventCallbacks.get('log')?.forEach(cb => cb(event));
+  });
+};
+
+const registerWalletLogSubscriptionTests = (): void => {
     it('should subscribe to wallet log channel when enabled', async () => {
       await renderWalletLogs('wallet-123', { enabled: true });
 
@@ -71,7 +76,9 @@ export function registerUseWalletLogsTests(): void {
 
       expect(mockUnsubscribe).toHaveBeenCalledWith('wallet:wallet-456:log');
     });
+};
 
+const registerWalletLogEventTests = (): void => {
     it('should accumulate log entries', async () => {
       const { result } = await renderWalletLogs('wallet-789');
 
@@ -99,18 +106,14 @@ export function registerUseWalletLogsTests(): void {
         },
       };
 
-      act(() => {
-        eventCallbacks.get('log')?.forEach(cb => cb(logEvent1));
-      });
+      emitWalletLogEvent(logEvent1);
 
       await waitFor(() => {
         expect(result.current.logs).toHaveLength(1);
         expect(result.current.logs[0]).toEqual(logEvent1.data);
       });
 
-      act(() => {
-        eventCallbacks.get('log')?.forEach(cb => cb(logEvent2));
-      });
+      emitWalletLogEvent(logEvent2);
 
       await waitFor(() => {
         expect(result.current.logs).toHaveLength(2);
@@ -166,9 +169,7 @@ export function registerUseWalletLogsTests(): void {
         },
       };
 
-      act(() => {
-        eventCallbacks.get('log')?.forEach(cb => cb(logEvent));
-      });
+      emitWalletLogEvent(logEvent);
 
       // Should not add log from different wallet
       expect(result.current.logs).toHaveLength(0);
@@ -183,9 +184,7 @@ export function registerUseWalletLogsTests(): void {
         data: { txid: 'tx123' },
       };
 
-      act(() => {
-        eventCallbacks.get('log')?.forEach(cb => cb(transactionEvent));
-      });
+      emitWalletLogEvent(transactionEvent);
 
       expect(result.current.logs).toHaveLength(0);
     });
@@ -207,9 +206,7 @@ export function registerUseWalletLogsTests(): void {
 
       // Add 5 logs
       for (let i = 1; i <= 5; i++) {
-        act(() => {
-          eventCallbacks.get('log')?.forEach(cb => cb(createLog(i)));
-        });
+        emitWalletLogEvent(createLog(i));
       }
 
       await waitFor(() => {
@@ -220,7 +217,9 @@ export function registerUseWalletLogsTests(): void {
         expect(result.current.logs[2].id).toBe('log-5');
       });
     });
+};
 
+const registerWalletLogStateTests = (): void => {
     it('should clear logs when clearLogs is called', async () => {
       const { result } = await renderWalletLogs('wallet-jkl');
 
@@ -236,9 +235,7 @@ export function registerUseWalletLogsTests(): void {
         },
       };
 
-      act(() => {
-        eventCallbacks.get('log')?.forEach(cb => cb(logEvent));
-      });
+      emitWalletLogEvent(logEvent);
 
       await waitFor(() => {
         expect(result.current.logs).toHaveLength(1);
@@ -288,9 +285,7 @@ export function registerUseWalletLogsTests(): void {
         },
       };
 
-      act(() => {
-        eventCallbacks.get('log')?.forEach(cb => cb(logEvent));
-      });
+      emitWalletLogEvent(logEvent);
 
       // Should not add log when paused
       expect(result.current.logs).toHaveLength(0);
@@ -302,7 +297,9 @@ export function registerUseWalletLogsTests(): void {
       // This just checks that the hook renders without error
       expect(result.current.logs).toEqual([]);
     });
+};
 
+const registerWalletLogHistoryTests = (): void => {
     it('should skip history state updates when request resolves after unmount', async () => {
       let resolveLogs!: (value: any[]) => void;
       const pendingLogs = new Promise<any[]>((resolve) => {
@@ -341,5 +338,15 @@ export function registerUseWalletLogsTests(): void {
       expect(mockGetWalletLogs).toHaveBeenCalledWith('wallet-failed-history');
       expect(result.current.logs).toEqual([]);
     });
+};
+
+export function registerUseWalletLogsTests(): void {
+  describe('useWalletLogs', () => {
+    beforeEach(resetUseWalletLogsHarness);
+
+    registerWalletLogSubscriptionTests();
+    registerWalletLogEventTests();
+    registerWalletLogStateTests();
+    registerWalletLogHistoryTests();
   });
 }

@@ -145,14 +145,21 @@ func convertToStandardXpub(xpub string, network string) string {
 
 func deriveSingleSig(xpub string, index uint32, scriptType string, change bool, network string) (string, error) {
 	net := getNetwork(network)
+	pubKeyBytes, err := deriveSingleSigPubKeyBytes(xpub, index, change, network)
+	if err != nil {
+		return "", err
+	}
+	return encodeSingleSigAddress(pubKeyBytes, scriptType, net)
+}
 
+func deriveSingleSigPubKeyBytes(xpub string, index uint32, change bool, network string) ([]byte, error) {
 	// Convert to standard format
 	standardXpub := convertToStandardXpub(xpub, network)
 
 	// Parse extended key
 	extKey, err := hdkeychain.NewKeyFromString(standardXpub)
 	if err != nil {
-		return "", fmt.Errorf("failed to parse xpub: %v", err)
+		return nil, fmt.Errorf("failed to parse xpub: %v", err)
 	}
 
 	// Derive: change / index
@@ -163,72 +170,84 @@ func deriveSingleSig(xpub string, index uint32, scriptType string, change bool, 
 
 	childKey, err := extKey.Derive(changeIdx)
 	if err != nil {
-		return "", fmt.Errorf("failed to derive change: %v", err)
+		return nil, fmt.Errorf("failed to derive change: %v", err)
 	}
 
 	derivedKey, err := childKey.Derive(index)
 	if err != nil {
-		return "", fmt.Errorf("failed to derive index: %v", err)
+		return nil, fmt.Errorf("failed to derive index: %v", err)
 	}
 
 	pubKey, err := derivedKey.ECPubKey()
 	if err != nil {
-		return "", fmt.Errorf("failed to get public key: %v", err)
+		return nil, fmt.Errorf("failed to get public key: %v", err)
 	}
 
-	pubKeyBytes := pubKey.SerializeCompressed()
+	return pubKey.SerializeCompressed(), nil
+}
 
+func encodeSingleSigAddress(pubKeyBytes []byte, scriptType string, net *chaincfg.Params) (string, error) {
 	switch scriptType {
 	case "legacy":
-		// P2PKH
-		pubKeyHash := btcutil.Hash160(pubKeyBytes)
-		addr, err := btcutil.NewAddressPubKeyHash(pubKeyHash, net)
-		if err != nil {
-			return "", err
-		}
-		return addr.EncodeAddress(), nil
+		return encodeLegacyAddress(pubKeyBytes, net)
 
 	case "nested_segwit":
-		// P2SH-P2WPKH
-		pubKeyHash := btcutil.Hash160(pubKeyBytes)
-		witAddr, err := btcutil.NewAddressWitnessPubKeyHash(pubKeyHash, net)
-		if err != nil {
-			return "", err
-		}
-		// Wrap in P2SH
-		script, err := txscript.PayToAddrScript(witAddr)
-		if err != nil {
-			return "", err
-		}
-		scriptHash := btcutil.Hash160(script)
-		addr, err := btcutil.NewAddressScriptHashFromHash(scriptHash, net)
-		if err != nil {
-			return "", err
-		}
-		return addr.EncodeAddress(), nil
+		return encodeNestedSegwitAddress(pubKeyBytes, net)
 
 	case "native_segwit":
-		// P2WPKH
-		pubKeyHash := btcutil.Hash160(pubKeyBytes)
-		addr, err := btcutil.NewAddressWitnessPubKeyHash(pubKeyHash, net)
-		if err != nil {
-			return "", err
-		}
-		return addr.EncodeAddress(), nil
+		return encodeNativeSegwitAddress(pubKeyBytes, net)
 
 	case "taproot":
-		// P2TR - use x-only pubkey
-		// btcd's Taproot support
-		xOnlyPubKey := pubKeyBytes[1:33] // Remove prefix byte
-		addr, err := btcutil.NewAddressTaproot(xOnlyPubKey, net)
-		if err != nil {
-			return "", err
-		}
-		return addr.EncodeAddress(), nil
+		return encodeTaprootAddress(pubKeyBytes, net)
 
 	default:
 		return "", fmt.Errorf("unknown script type: %s", scriptType)
 	}
+}
+
+func encodeLegacyAddress(pubKeyBytes []byte, net *chaincfg.Params) (string, error) {
+	pubKeyHash := btcutil.Hash160(pubKeyBytes)
+	addr, err := btcutil.NewAddressPubKeyHash(pubKeyHash, net)
+	if err != nil {
+		return "", err
+	}
+	return addr.EncodeAddress(), nil
+}
+
+func encodeNestedSegwitAddress(pubKeyBytes []byte, net *chaincfg.Params) (string, error) {
+	pubKeyHash := btcutil.Hash160(pubKeyBytes)
+	witAddr, err := btcutil.NewAddressWitnessPubKeyHash(pubKeyHash, net)
+	if err != nil {
+		return "", err
+	}
+	script, err := txscript.PayToAddrScript(witAddr)
+	if err != nil {
+		return "", err
+	}
+	scriptHash := btcutil.Hash160(script)
+	addr, err := btcutil.NewAddressScriptHashFromHash(scriptHash, net)
+	if err != nil {
+		return "", err
+	}
+	return addr.EncodeAddress(), nil
+}
+
+func encodeNativeSegwitAddress(pubKeyBytes []byte, net *chaincfg.Params) (string, error) {
+	pubKeyHash := btcutil.Hash160(pubKeyBytes)
+	addr, err := btcutil.NewAddressWitnessPubKeyHash(pubKeyHash, net)
+	if err != nil {
+		return "", err
+	}
+	return addr.EncodeAddress(), nil
+}
+
+func encodeTaprootAddress(pubKeyBytes []byte, net *chaincfg.Params) (string, error) {
+	xOnlyPubKey := pubKeyBytes[1:33] // Remove prefix byte
+	addr, err := btcutil.NewAddressTaproot(xOnlyPubKey, net)
+	if err != nil {
+		return "", err
+	}
+	return addr.EncodeAddress(), nil
 }
 
 func deriveMultisig(xpubs []string, threshold int, index uint32, scriptType string, change bool, network string) (string, error) {

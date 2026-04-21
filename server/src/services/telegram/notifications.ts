@@ -14,6 +14,70 @@ import type { TelegramConfig, TransactionData, DraftData } from './types';
 
 const log = createLogger('TELEGRAM:SVC_NOTIFY');
 
+type TelegramDraftRecipient = Awaited<ReturnType<typeof getWalletUsers>>[number];
+
+async function getDraftCreatorName(createdByUserId: string | null, createdByLabel?: string): Promise<string> {
+  /* v8 ignore next 3 -- human and agent creator paths are covered by notification service tests */
+  const creator = createdByUserId
+    ? await userRepository.findByIdWithSelect(createdByUserId, { username: true })
+    : null;
+  return creator?.username || createdByLabel || 'Unknown';
+}
+
+async function withOperationalWalletName(draft: DraftData): Promise<DraftData> {
+  /* v8 ignore next 5 -- operational wallet name enrichment is defensive metadata for agent drafts */
+  const operationalWallet = draft.agentOperationalWalletId
+    ? await walletRepository.findNameById(draft.agentOperationalWalletId)
+    : null;
+  /* v8 ignore start -- operational wallet name is optional enrichment for agent drafts */
+  return operationalWallet
+    ? { ...draft, agentOperationalWalletName: operationalWallet.name }
+    : draft;
+  /* v8 ignore stop */
+}
+
+function getDraftRecipientFilter(draft: DraftData): Parameters<typeof getWalletUsers>[1] {
+  /* v8 ignore next -- agent draft recipient role filter is covered by registry notification tests */
+  return draft.agentId ? { walletRoles: ['owner', 'signer'] } : undefined;
+}
+
+function getUserTelegramConfig(user: TelegramDraftRecipient): TelegramConfig | undefined {
+  const prefs = user.preferences as Record<string, unknown> | null;
+  return prefs?.telegram as TelegramConfig | undefined;
+}
+
+function getDraftNotificationTelegram(
+  user: TelegramDraftRecipient,
+  walletId: string,
+  createdByUserId: string | null
+): TelegramConfig | null {
+  if (createdByUserId && user.id === createdByUserId) return null;
+
+  const telegram = getUserTelegramConfig(user);
+  if (!telegram?.enabled || !telegram?.botToken || !telegram?.chatId) return null;
+
+  const walletSettings = telegram.wallets?.[walletId];
+  return walletSettings?.enabled && walletSettings.notifyDraft ? telegram : null;
+}
+
+async function sendDraftNotification(
+  walletId: string,
+  user: TelegramDraftRecipient,
+  telegram: TelegramConfig,
+  message: string
+): Promise<void> {
+  const result = await sendTelegramMessage(telegram.botToken, telegram.chatId, message);
+
+  if (result.success) {
+    log.debug(`Sent draft notification to ${user.username}`);
+    walletLog(walletId, 'info', 'TELEGRAM', `Sent draft notification to ${user.username}`);
+    return;
+  }
+
+  log.warn(`Failed to send draft notification to ${user.username}: ${result.error}`);
+  walletLog(walletId, 'warn', 'TELEGRAM', `Failed to send draft notification to ${user.username}: ${result.error}`);
+}
+
 /**
  * Notify all eligible users about new transactions
  */
@@ -111,58 +175,18 @@ export async function notifyNewDraft(
     const wallet = await walletRepository.findNameById(walletId);
     if (!wallet) return;
 
-    // Get creator display name. Agent-submitted drafts pass a label and do not
-    // exclude any wallet user from notification.
-    /* v8 ignore next 3 -- human and agent creator paths are covered by notification service tests */
-    const creator = createdByUserId
-      ? await userRepository.findByIdWithSelect(createdByUserId, { username: true })
-      : null;
-    const createdBy = creator?.username || createdByLabel || 'Unknown';
-    /* v8 ignore next 5 -- operational wallet name enrichment is defensive metadata for agent drafts */
-    const operationalWallet = draft.agentOperationalWalletId
-      ? await walletRepository.findNameById(draft.agentOperationalWalletId)
-      : null;
-    /* v8 ignore start -- operational wallet name is optional enrichment for agent drafts */
-    const formattedDraft = operationalWallet
-      ? { ...draft, agentOperationalWalletName: operationalWallet.name }
-      : draft;
-    /* v8 ignore stop */
+    const createdBy = await getDraftCreatorName(createdByUserId, createdByLabel);
+    const formattedDraft = await withOperationalWalletName(draft);
 
     // Get all users with access to this wallet
-    const users = await getWalletUsers(
-      walletId,
-      /* v8 ignore next -- agent draft recipient role filter is covered by registry notification tests */
-      draft.agentId ? { walletRoles: ['owner', 'signer'] } : undefined
-    );
+    const users = await getWalletUsers(walletId, getDraftRecipientFilter(draft));
 
     for (const user of users) {
-      // Skip notifying the creator (they already know)
-      if (createdByUserId && user.id === createdByUserId) continue;
-
-      const prefs = user.preferences as Record<string, unknown> | null;
-      const telegram = prefs?.telegram as TelegramConfig | undefined;
-
-      // Skip if Telegram not configured or not enabled
-      if (!telegram?.enabled || !telegram?.botToken || !telegram?.chatId) {
-        continue;
-      }
-
-      // Get wallet-specific settings
-      const walletSettings = telegram.wallets?.[walletId];
-      if (!walletSettings?.enabled || !walletSettings?.notifyDraft) {
-        continue;
-      }
+      const telegram = getDraftNotificationTelegram(user, walletId, createdByUserId);
+      if (!telegram) continue;
 
       const message = formatDraftMessage(formattedDraft, wallet, createdBy);
-      const result = await sendTelegramMessage(telegram.botToken, telegram.chatId, message);
-
-      if (result.success) {
-        log.debug(`Sent draft notification to ${user.username}`);
-        walletLog(walletId, 'info', 'TELEGRAM', `Sent draft notification to ${user.username}`);
-      } else {
-        log.warn(`Failed to send draft notification to ${user.username}: ${result.error}`);
-        walletLog(walletId, 'warn', 'TELEGRAM', `Failed to send draft notification to ${user.username}: ${result.error}`);
-      }
+      await sendDraftNotification(walletId, user, telegram, message);
     }
   } catch (err) {
     log.error(`Error sending draft notifications: ${err}`);
