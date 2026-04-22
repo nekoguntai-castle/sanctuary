@@ -145,7 +145,7 @@ describe('Logger', () => {
       expect(capturedLogs[0]).toContain('payload=[Object]');
     });
 
-    it('escapes control characters from messages and context before writing a log line', () => {
+    it('removes line breaks and escapes other control characters before writing a log line', () => {
       const log = createLogger('TEST');
 
       log.info('first line\nsecond line\rthird line', {
@@ -157,8 +157,8 @@ describe('Logger', () => {
       expect(line).not.toContain('\n');
       expect(line).not.toContain('\r');
       expect(line).not.toContain('\t');
-      expect(line).toContain('first line\\nsecond line\\rthird line');
-      expect(line).toContain('bad\\nkey=alpha\\nbeta\\r\\ngamma');
+      expect(line).toContain('first linesecond linethird line');
+      expect(line).toContain('badkey=alphabetagamma');
       expect(line).toContain('tabbed=before\\tafter');
     });
   });

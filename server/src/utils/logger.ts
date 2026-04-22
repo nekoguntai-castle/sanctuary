@@ -108,8 +108,7 @@ const colors = {
 
 const sanitizeLogText = (value: unknown): string =>
   String(value)
-    .replace(/\r/g, '\\r')
-    .replace(/\n/g, '\\n')
+    .replace(/\n|\r/g, '')
     .replace(/\t/g, '\\t')
     .replace(OTHER_LOG_CONTROL_CHARS, (char) =>
       `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`
@@ -229,9 +228,7 @@ const log = (
 
   // Format: [timestamp] LEVEL [PREFIX] [REQ_ID] [TRACE_ID] message context
   const line = `${colors.gray}[${timestamp}]${colors.reset} ${color}${levelName}${colors.reset} ${colors.cyan}[${sanitizeLogText(prefix)}]${colors.reset}${requestIdStr}${traceIdStr} ${sanitizeLogText(message)}${contextStr}`;
-  console.log(
-    line.replace(/[\r\n]/g, ' ')
-  );
+  console.log(line);
 };
 
 // Logger interface imported from shared types above

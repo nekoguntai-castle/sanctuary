@@ -256,7 +256,16 @@ Checklist:
 - [x] Add or update focused regression coverage where the touched modules already have tests.
 - [x] Run focused local validation for the touched packages and scripts.
 - [x] Re-query open PRs before pushing; handle any visible Dependabot PR before opening this CodeQL PR.
-- [ ] Commit, push, open one PR, wait for required checks, merge through the protected flow, and sync `main`.
+- [x] Commit, push, and open PR #103.
+- [ ] Wait for required PR checks to finish, merge through the protected flow, and sync `main`.
+
+Review:
+- PR #103 is open as `Harden sanitizer and logger bounds` with auto-merge enabled using squash merge.
+- The branch contains the sanitizer/logging/bounds changes plus a required-check workflow fix so `Full Test Summary` emits an explicit success conclusion on pull requests.
+- Local validation passed for the touched frontend utility test, backend logger/address-derivation tests, AI proxy build, server/app lint and typecheck, script syntax checks, and the server critical mutation gate.
+- Current GitHub status as of 2026-04-22T22:43Z: all PR #103 checks pass or are intentionally skipped except `Quick Critical Mutation Gate`, which is still in progress.
+- Open PR re-check found only PR #103. `gh pr list --author app/dependabot` returned no open Dependabot PRs, and an org-wide open Dependabot PR search also returned no results.
+- Dependabot still reports two open low-severity `elliptic` alerts in `package-lock.json` and `scripts/verify-addresses/package-lock.json`; those are alerts, not currently backed by an open PR.
 
 Review:
 - Local validation passed: root `tests/utils/deviceConnection.test.ts`, server `logger.test.ts` and `addressDerivation.branches.test.ts`, AI proxy `npm run build`, script `node --check` checks, root app lint/typecheck/test typecheck, server lint, server test typecheck, and `git diff --check`.
@@ -265,7 +274,7 @@ Review:
 - PR #103 opened with commit `f96d2cad`; PR CodeQL passed, including JavaScript/TypeScript and Go analysis.
 - PR #103 exposed a branch-protection workflow gap: `Full Test Summary` was configured as a required check but skipped on pull requests. The follow-up commit makes that required context report success as a pull-request no-op while keeping full-lane validation on merge-group/main runs, and adds explicit 45-minute timeouts to critical mutation jobs.
 - GitHub Quick Critical Mutation passed in 31m57s. A local rerun of `cd server && npm run test:mutation:critical:gate` also passed with raw `53.61%` and weighted `48.47%`.
-- GitHub Advanced Security still commented on the logger sinks after the helper-only sanitizer change. The follow-up logger patch applies a literal CR/LF replacement at the final `console.log` sink so CodeQL can recognize the log-injection sanitizer directly.
+- GitHub Advanced Security still reported open logger sink alerts after the helper-only sanitizer and final-line replacement attempts. The next logger patch removes CR/LF at each logged value using the CodeQL-documented `String.prototype.replace(/\n|\r/g, '')` pattern before composing the final log line.
 
 ---
 

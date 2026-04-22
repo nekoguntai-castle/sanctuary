@@ -37,8 +37,7 @@ const colors = {
 
 function sanitizeLogText(value: unknown): string {
   return String(value)
-    .replace(/\r/g, '\\r')
-    .replace(/\n/g, '\\n')
+    .replace(/\n|\r/g, '')
     .replace(/\t/g, '\\t')
     .replace(OTHER_LOG_CONTROL_CHARS, (char) =>
       `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`
@@ -69,9 +68,7 @@ function log(level: number, levelName: string, color: string, prefix: string, me
   if (level < currentLevel) return;
   const ts = new Date().toISOString();
   const line = `${colors.gray}[${ts}]${colors.reset} ${color}${levelName}${colors.reset} ${colors.cyan}[${sanitizeLogText(prefix)}]${colors.reset} ${sanitizeLogText(message)}${formatContext(context)}`;
-  console.log(
-    line.replace(/[\r\n]/g, ' ')
-  );
+  console.log(line);
 }
 
 export function createLogger(prefix: string): Logger {
