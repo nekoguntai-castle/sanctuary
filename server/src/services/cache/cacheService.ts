@@ -68,6 +68,20 @@ export interface ICacheService {
 
 // Default maximum cache entries before FIFO eviction kicks in
 const DEFAULT_MAX_CACHE_SIZE = 10_000;
+const REGEXP_SPECIAL_CHARS = /[.*+?^${}()|[\]\\]/g;
+
+function escapeRegExpLiteral(value: string): string {
+  return value.replace(REGEXP_SPECIAL_CHARS, '\\$&');
+}
+
+function cachePatternToRegExp(pattern: string): RegExp {
+  const escapedPattern = pattern
+    .split('*')
+    .map(escapeRegExpLiteral)
+    .join('.*');
+
+  return new RegExp(`^${escapedPattern}$`);
+}
 
 /**
  * In-memory cache with TTL support and max size eviction
@@ -163,7 +177,7 @@ class MemoryCache implements ICacheService {
 
   async deletePattern(pattern: string): Promise<number> {
     const fullPattern = this.getFullKey(pattern);
-    const regex = new RegExp('^' + fullPattern.replace(/\*/g, '.*') + '$');
+    const regex = cachePatternToRegExp(fullPattern);
     let count = 0;
 
     for (const key of this.cache.keys()) {

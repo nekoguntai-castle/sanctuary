@@ -119,7 +119,7 @@ export class RedisCache implements ICacheService {
         const [newCursor, keys] = await this.redis.scan(
           cursor,
           'MATCH',
-          fullPattern.replace(/\*/g, '*'),
+          fullPattern,
           'COUNT',
           100
         );

@@ -120,6 +120,7 @@ describe('RedisCache', () => {
 
     const deleted = await cache.deletePattern('user:*');
     expect(deleted).toBe(3);
+    expect(redis.scan).toHaveBeenNthCalledWith(1, '0', 'MATCH', 'sanctuary:test:user:*', 'COUNT', 100);
     expect(cache.getStats().deletes).toBe(3);
   });
 

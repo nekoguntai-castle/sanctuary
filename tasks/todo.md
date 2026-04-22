@@ -20,7 +20,7 @@ Goal: reduce the open CodeQL inventory through focused, reviewable batches inste
 - [x] Pin all external workflow `uses:` references to current commit SHAs.
 - [x] Verify no mutable external action tag references remain.
 - [x] Run workflow syntax/sanity checks available locally.
-- [ ] Commit, push, open a PR, and verify required checks.
+- [x] Commit, push, open PR #87, verify required checks, and merge through the queue.
 
 ## Review
 
@@ -29,6 +29,17 @@ Goal: reduce the open CodeQL inventory through focused, reviewable batches inste
 - Larger `js/missing-rate-limiting` bucket needs a separate architecture pass because the repo already has custom rate limiting and CodeQL appears unable to infer some custom middleware use.
 - Pinned all 86 external workflow action references to immutable 40-character commit SHAs. The only remaining `uses:` without an external SHA is the local reusable workflow call in `release.yml`.
 - Validation passed: no mutable external `uses:` references were found, all workflow YAML files parse via `js-yaml`, and `git diff --check` passed.
+- PR #87 merged through the protected-main merge queue on 2026-04-22 as `9358e84a Pin workflow action references (#87)`.
+
+## Follow-up Batch: Cache Pattern Safety
+
+- [x] Select small production CodeQL cache findings: `js/regex-injection` in in-memory cache deletion and `js/identity-replacement` in Redis pattern deletion.
+- [x] Escape literal regex metacharacters before translating `*` cache globs into in-memory regular expressions.
+- [x] Remove Redis's no-op wildcard replacement and keep the explicit SCAN glob unchanged.
+- [x] Add regression coverage for literal regex metacharacters and Redis SCAN pattern construction.
+- [x] Run focused cache unit tests and server test typecheck.
+- [x] Commit, push, and open follow-up PR #88 after #87 landed.
+- [ ] Verify PR #88 required checks and merge through the queue if green.
 
 ---
 
