@@ -1,7 +1,7 @@
 # Sanctuary CI/CD Strategy
 
-Date: 2026-04-19 (Pacific/Honolulu)
-Status: Active baseline for PR-first development; merge-queue ready, but not currently enforceable on this user-owned repository
+Date: 2026-04-22 (Pacific/Honolulu)
+Status: Active baseline for PR-first development with protected `main` and merge queue enabled
 
 This document explains which checks should run at each point in development. The goal is not to run fewer tests; it is to run each test at the cheapest point where it gives useful signal.
 
@@ -9,23 +9,21 @@ This document explains which checks should run at each point in development. The
 
 Normal development happens on short-lived branches and enters `main` through pull requests. Direct human pushes to `main` are reserved for documented emergencies only.
 
-`main` should be protected with:
+`main` is protected with:
 
 - Pull requests required before merge.
 - Required status checks enabled.
 - Linear history required.
 - Force pushes and branch deletion disabled.
-- The branch required to be up to date before merge unless GitHub merge queue is enabled.
+- Merge queue enabled for the final merge candidate.
 
 Because this repository currently has a single human collaborator, the branch protection baseline requires a PR but does not require an external approving review. If additional maintainers are added, raise `required_approving_review_count` to `1` and enable stale-review dismissal.
 
 ## Merge Queue Status
 
-Merge queue is the preferred long-term merge model once GitHub makes it available for this repository. The required workflows already include `merge_group` triggers, and the full confidence lane is ready to validate the queued merge-group SHA.
+Merge queue is the active merge model for protected `main`. The required workflows include `merge_group` triggers, and the full confidence lane validates the queued merge-group SHA before GitHub merges the pull request.
 
-The repository lives at `nekoguntai-castle/sanctuary`, a public repository owned by an organization, which makes it eligible for pull request merge queues. The previous user-owned limitation (HTTP 422, `Invalid rule 'merge_queue'`) no longer applies.
-
-Enable a repository-level merge queue for `main` with:
+The queue is configured with:
 
 - Merge method: squash.
 - Build concurrency: `3`.
@@ -73,6 +71,22 @@ Validated on 2026-04-19 HST with PR #8, `ci-pr-flow-aggregates`, merged as `72bd
 - `Full Test Summary` appeared on the PR and completed as skipped, satisfying branch protection without running the full lane before merge.
 - Path-gated workflow checks behaved correctly: Docker build, install tests, and vector verification ran because this PR changed their workflow files; they were not global requirements for unrelated PRs.
 - The post-merge `main` backstop passed: `Full Test Summary`, full backend, full frontend, full gateway, full E2E, full build, install summary, release check, and dev image build completed successfully.
+
+Revalidated after organization migration and protected-main rollout on 2026-04-22 HST:
+
+- PR #87, `security/codeql-alert-triage`, passed PR required checks, entered the merge queue, passed merge-group `Code Quality` and `Test Suite`, and merged as `9358e84a`.
+- PR #88, `security/cache-codeql-fixes`, passed PR required checks, entered the merge queue, passed merge-group `Code Quality` and `Test Suite`, and merged as `50d54aad`.
+- On both merge-group runs, quick-lane jobs skipped correctly while `Full Test Summary` represented the full-lane result.
+- After PR #87 merged, the push-to-`main` backstop passed Release, Build Dev Images, Install Tests, and Test Suite.
+
+## Repository Actions Permissions
+
+Repository workflow permissions are intentionally narrow:
+
+- Default `GITHUB_TOKEN` permission: `read`.
+- GitHub Actions pull-request creation/approval setting: disabled.
+- Workflow files request write scopes only for jobs that need them, such as release editing, package publishing, or check inspection.
+- Umbrel automation no longer needs this repository token to create PRs. Stable releases dispatch an `image-published` event to `nekoguntai-castle/sanctuary-umbrel` through `UMBREL_DISPATCH_TOKEN`; that repository owns its own PR/update workflow.
 
 ## Lizard Remediation PR Loop
 
@@ -157,7 +171,7 @@ Release validation intentionally duplicates some install and image-building evid
 
 - `Install Tests` validates fresh install, install script flow, container health, auth flow, and upgrade on release-critical paths.
 - `Release Candidate Validation` is the deliberate pre-release install validation pass.
-- `Release` builds and publishes multi-arch images, creates manifests, updates Umbrel metadata, and updates release notes.
+- `Release` builds and publishes multi-arch images, creates manifests, notifies the separate Umbrel repository for stable releases, and updates release notes.
 
 Release/tag workflows must not use broad cancellation rules. A superseded PR run can be canceled; a publishing run should not be canceled unless an operator does so intentionally.
 

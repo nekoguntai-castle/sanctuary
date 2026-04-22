@@ -39,7 +39,12 @@ Goal: reduce the open CodeQL inventory through focused, reviewable batches inste
 - [x] Add regression coverage for literal regex metacharacters and Redis SCAN pattern construction.
 - [x] Run focused cache unit tests and server test typecheck.
 - [x] Commit, push, and open follow-up PR #88 after #87 landed.
-- [ ] Verify PR #88 required checks and merge through the queue if green.
+- [x] Verify PR #88 required checks and merge through the queue if green.
+
+### Review
+
+- PR #88 passed the required PR checks, merge-group `Code Quality`, and merge-group `Test Suite`.
+- PR #88 merged through the protected-main merge queue on 2026-04-22 as `50d54aad Harden cache pattern deletion (#88)`.
 
 ## Follow-up Batch: Gateway Trailing Slash ReDoS
 
@@ -48,7 +53,15 @@ Goal: reduce the open CodeQL inventory through focused, reviewable batches inste
 - [x] Replace the regex URL rewrite with bounded string slicing.
 - [x] Update the unit test to import the production middleware instead of mirroring it.
 - [x] Run focused gateway trailing slash test, gateway build, and diff checks.
-- [ ] Commit, push, and open the follow-up PR after #88 lands.
+- [x] Rebase the committed follow-up branch onto `origin/main` after #88 landed.
+- [ ] Push and open the follow-up PR after #88 lands.
+
+## Repository Settings Cleanup While Waiting
+
+- [x] Disable the GitHub wiki so repo docs remain the canonical, versioned documentation surface.
+- [x] Keep repository workflow default token permissions at `read`.
+- [x] Disable GitHub Actions pull-request creation/approval setting; Umbrel updates now dispatch to the separate `sanctuary-umbrel` repo instead of using this repo token to create PRs.
+- [x] Update the CI/CD strategy docs with the active merge-queue status and current repository Actions permission posture.
 
 ---
 
