@@ -1,4 +1,38 @@
-# Active Task: Rename org `nekoguntai` → `nekoguntai-castle`
+# Active Task: CodeQL Alert Triage And First Remediation Batch
+
+Status: in progress
+
+Goal: reduce the open CodeQL inventory through focused, reviewable batches instead of treating the 346-alert count as one undifferentiated task. Start with the low-risk workflow supply-chain alerts, then use the triage data to plan the larger application-code batches.
+
+## Current CodeQL Inventory
+
+- 346 open alerts as of 2026-04-22.
+- 273 alerts are `js/missing-rate-limiting`, mostly in `server/src/api/**` plus `gateway/src/routes/proxy/index.ts`.
+- 18 alerts are `actions/unpinned-tag` in GitHub workflows.
+- The remaining 55 alerts cover smaller high-signal groups: ReDoS, user-controlled auth bypass, remote property injection, insecure temp files, TLS validation bypass, CORS, clear-text logging, password hashing cost, Go integer conversions, and test/script-only findings.
+
+## Checklist
+
+- [x] Confirm latest `main` is green after PR #86: Release, Build Dev Images, Install Tests, and Test Suite all succeeded.
+- [x] Re-query open PRs after Dependabot rebased against Node 24.
+- [x] Re-query CodeQL open alert count and group by rule.
+- [x] Select first low-risk remediation batch: pin external GitHub Actions to immutable SHAs.
+- [x] Pin all external workflow `uses:` references to current commit SHAs.
+- [x] Verify no mutable external action tag references remain.
+- [x] Run workflow syntax/sanity checks available locally.
+- [ ] Commit, push, open a PR, and verify required checks.
+
+## Review
+
+- Chosen first batch is `actions/unpinned-tag` because it removes real supply-chain risk with minimal runtime blast radius.
+- Dependabot already has a `github-actions` updater configured, so pinned action references remain maintainable through the normal dependency-update flow.
+- Larger `js/missing-rate-limiting` bucket needs a separate architecture pass because the repo already has custom rate limiting and CodeQL appears unable to infer some custom middleware use.
+- Pinned all 86 external workflow action references to immutable 40-character commit SHAs. The only remaining `uses:` without an external SHA is the local reusable workflow call in `release.yml`.
+- Validation passed: no mutable external `uses:` references were found, all workflow YAML files parse via `js-yaml`, and `git diff --check` passed.
+
+---
+
+# Completed Task: Rename org `nekoguntai` → `nekoguntai-castle`
 
 Status: complete
 
@@ -97,9 +131,9 @@ Goal: remediate the highest-value open security findings after the repo security
 
 ---
 
-# Task: Node Runtime And Dependabot Major-Update Triage
+# Completed Task: Node Runtime And Dependabot Major-Update Triage
 
-Status: in progress
+Status: complete
 
 Goal: move the project from Node 22 to the best currently supported production runtime, stop Dependabot from opening unsafe runtime-major PRs automatically, and supersede the Node 25 Docker/type PR lane with a deliberate LTS migration.
 
@@ -110,7 +144,7 @@ Goal: move the project from Node 22 to the best currently supported production r
 - [x] Update engines, CI Node versions, Docker base images, and Node type packages to the chosen runtime.
 - [x] Configure Dependabot to leave Node runtime majors to manual migration PRs.
 - [x] Run focused install/build/typecheck validation.
-- [ ] Commit, push, open a PR, and verify required checks.
+- [x] Commit, push, open a PR, and verify required checks.
 
 ## Review
 
@@ -124,6 +158,9 @@ Goal: move the project from Node 22 to the best currently supported production r
 - Target-runtime validation passed in a patched temp clone under `node:24-alpine`: root/server/gateway/ai-proxy `npm ci --ignore-scripts`, root/server/gateway/ai-proxy builds, root app typecheck, and root script typecheck.
 - Docker build validation passed for frontend, server, gateway, and ai-proxy images with Node 24 base images.
 - `scripts/verify-addresses` direct TypeScript check remains pre-existing noisy because that helper package lacks declarations for several Bitcoin libraries and is not currently part of the repo typecheck script.
+- PR #86 merged through the protected-main merge queue on 2026-04-22 as `262388c1 Adopt Node 24 LTS runtime (#86)`.
+- Post-merge `main` backstop passed: Release `24758596818`, Build Dev Images `24758596834`, Install Tests `24758596811`, and Test Suite `24758596812`.
+- Dependabot automatically closed the superseded Node 25 runtime PRs after the Node 24 LTS migration landed.
 
 ---
 
