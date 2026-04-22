@@ -273,8 +273,12 @@ describe('Worker Health Server', () => {
     expect(JSON.parse(res.body)).toEqual(
       expect.objectContaining({
         status: 'error',
-        error: 'health exploded',
+        error: 'Health check failed',
       })
+    );
+    expect(mockLogError).toHaveBeenCalledWith(
+      'Health check error',
+      expect.objectContaining({ error: 'health exploded' })
     );
   });
 

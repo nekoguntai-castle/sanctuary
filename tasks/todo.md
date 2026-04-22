@@ -82,9 +82,9 @@ Goal: reduce the open CodeQL inventory through focused, reviewable batches inste
 
 ## Current CodeQL Inventory
 
-- 323 open alerts as of 2026-04-22 after PRs #87-#91 and #96 landed.
+- 305 open alerts as of 2026-04-22 after PR #97 landed and the post-merge CodeQL run completed successfully.
 - 273 alerts are `js/missing-rate-limiting`, mostly in `server/src/api/**` plus `gateway/src/routes/proxy/index.ts`.
-- The remaining 50 alerts cover smaller high-signal groups: user-controlled auth bypass, remote property injection, insecure temp files, TLS validation bypass, CORS, clear-text logging, password hashing cost, Go integer conversions, and test/script-only findings.
+- The remaining 32 alerts cover smaller high-signal groups: user-controlled auth bypass, remote property injection, TLS validation bypass, CORS, clear-text logging, password hashing cost, Go integer conversions, stack-trace exposure, missing token validation, and script-only file/URL sanitization findings.
 
 ## Checklist
 
@@ -172,6 +172,24 @@ Goal: reduce the open CodeQL inventory through focused, reviewable batches inste
 - [x] Replace test fixture `Math.random()` IDs with `randomUUID()`.
 - [x] Wire auth route unit-test helper through the real CSRF middleware and update cookie-auth tests to send valid CSRF tokens.
 - [x] Run focused frontend and server tests, test typechecks, lint, and diff checks locally.
+
+### Review
+
+- PR #97 passed required PR checks and merge-queue checks, then merged as `febba6d4 Clean up test-only CodeQL findings (#97)`.
+- Post-merge CodeQL on `main` completed successfully and reduced the open inventory from 323 to 305 alerts.
+- Cleared the targeted insecure temp path, unanchored test regex, insecure random fixture ID, and FCM URL substring findings.
+
+## Follow-up Batch: Production Object Safety And Health Errors
+
+- [x] Select low-risk production findings: `js/remote-property-injection` in redaction and intelligence settings, plus `js/stack-trace-exposure` in the worker health endpoint.
+- [x] Replace dynamic property assignment in redaction with an own-data-property setter that cannot mutate object prototypes.
+- [x] Replace dynamic wallet settings assignment with a safe own-data-property write.
+- [x] Return a generic worker health error response while keeping detailed diagnostics in logs.
+- [x] Add regression coverage for prototype-pollution keys and generic health errors.
+- [x] Run focused server tests, server test typecheck, lint, and diff checks locally.
+- [x] Reproduce and fix merge-group backend coverage failure; full backend unit coverage is back to 100% branches.
+- [x] Remove the mistakenly persisted broad `rm -rf` approval and document the destructive-command approval rule.
+- [ ] Commit, push, open one PR, wait for required checks, merge through the queue, and sync `main`.
 
 ---
 
