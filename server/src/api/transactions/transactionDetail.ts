@@ -8,11 +8,20 @@ import { Router } from 'express';
 import { transactionRepository } from '../../repositories';
 import { createLogger } from '../../utils/logger';
 import { asyncHandler } from '../../errors/errorHandler';
-import { NotFoundError } from '../../errors/ApiError';
+import { InvalidInputError, NotFoundError } from '../../errors/ApiError';
 import { requireAuthenticatedUser } from '../../middleware/auth';
 
 const router = Router();
 const log = createLogger('TX_DETAIL:ROUTE');
+const TXID_PATTERN = /^[0-9a-fA-F]{64}$/;
+
+function requireValidTxid(txid: string): string {
+  if (!TXID_PATTERN.test(txid)) {
+    throw new InvalidInputError('Invalid transaction id', 'txid');
+  }
+
+  return txid.toLowerCase();
+}
 
 /**
  * GET /api/v1/transactions/:txid/raw
@@ -21,7 +30,7 @@ const log = createLogger('TX_DETAIL:ROUTE');
  */
 router.get('/transactions/:txid/raw', asyncHandler(async (req, res) => {
   const userId = requireAuthenticatedUser(req).userId;
-  const { txid } = req.params;
+  const txid = requireValidTxid(req.params.txid);
 
   // First, check if we have it in our database WITH wallet access verification
   const transaction = await transactionRepository.findByTxidWithAccess(txid, userId, {
@@ -57,7 +66,7 @@ router.get('/transactions/:txid/raw', asyncHandler(async (req, res) => {
  */
 router.get('/transactions/:txid', asyncHandler(async (req, res) => {
   const userId = requireAuthenticatedUser(req).userId;
-  const { txid } = req.params;
+  const txid = requireValidTxid(req.params.txid);
 
   const transaction = await transactionRepository.findByTxidWithAccess(txid, userId, {
     include: {

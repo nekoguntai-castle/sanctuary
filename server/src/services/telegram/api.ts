@@ -12,6 +12,16 @@ import type { TelegramErrorResponse, TelegramGetUpdatesResponse } from './types'
 const log = createLogger('TELEGRAM:SVC_API');
 
 export const TELEGRAM_API = 'https://api.telegram.org/bot';
+const TELEGRAM_API_ORIGIN = 'https://api.telegram.org';
+const TELEGRAM_BOT_TOKEN_PATTERN = /^\d+:[A-Za-z0-9_-]{35,}$/;
+
+function buildTelegramApiUrl(botToken: string, method: 'sendMessage' | 'getUpdates'): string | null {
+  if (!TELEGRAM_BOT_TOKEN_PATTERN.test(botToken)) {
+    return null;
+  }
+
+  return new URL(`/bot${botToken}/${method}`, TELEGRAM_API_ORIGIN).toString();
+}
 
 // Circuit breaker: 5 failures -> open for 60s -> half-open probe
 const telegramCircuit = createCircuitBreaker<{ success: boolean; chatId?: string; username?: string; error?: string }>({
@@ -28,10 +38,16 @@ export async function sendTelegramMessage(
   chatId: string,
   message: string
 ): Promise<{ success: boolean; error?: string }> {
+  const telegramUrl = buildTelegramApiUrl(botToken, 'sendMessage');
+  if (!telegramUrl) {
+    log.warn('Invalid Telegram bot token format');
+    return { success: false, error: 'Invalid Telegram bot token' };
+  }
+
   try {
     return await telegramCircuit.execute(async () => {
       const response = await fetch(
-        `${TELEGRAM_API}${botToken}/sendMessage`,
+        telegramUrl,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -83,9 +99,18 @@ export async function sendTelegramMessage(
 export async function getChatIdFromBot(
   botToken: string
 ): Promise<{ success: boolean; chatId?: string; username?: string; error?: string }> {
+  const telegramUrl = buildTelegramApiUrl(botToken, 'getUpdates');
+  if (!telegramUrl) {
+    log.warn('Invalid Telegram bot token format');
+    return { success: false, error: 'Invalid Telegram bot token' };
+  }
+
   try {
     return await telegramCircuit.execute(async () => {
-      const response = await fetch(`${TELEGRAM_API}${botToken}/getUpdates?limit=10`, {
+      const url = new URL(telegramUrl);
+      url.searchParams.set('limit', '10');
+
+      const response = await fetch(url.toString(), {
         signal: AbortSignal.timeout(10_000),
       });
 

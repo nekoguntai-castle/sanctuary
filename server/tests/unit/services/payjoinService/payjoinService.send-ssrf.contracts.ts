@@ -65,6 +65,26 @@ export const registerPayjoinSendAndSsrfContracts = () => {
       );
     });
 
+    it('should preserve existing query parameters when adding v=1', async () => {
+      (global.fetch as Mock).mockResolvedValue({
+        ok: true,
+        text: async () => proposalPsbt,
+      });
+
+      (validatePayjoinProposal as Mock).mockReturnValue({
+        valid: true,
+        errors: [],
+        warnings: [],
+      });
+
+      await attemptPayjoinSend(originalPsbt, `${TEST_PAYJOIN_URL}?pj=1`, [0]);
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        `${TEST_PAYJOIN_URL}?pj=1&v=1`,
+        expect.anything()
+      );
+    });
+
     it('should return error for HTTP error response', async () => {
       (global.fetch as Mock).mockResolvedValue({
         ok: false,
@@ -286,6 +306,18 @@ export const registerPayjoinSendAndSsrfContracts = () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('HTTPS');
+    });
+
+    it('should reject Payjoin URLs containing credentials', async () => {
+      const result = await attemptPayjoinSend(
+        originalPsbt,
+        'https://user:pass@example.com/payjoin',
+        [0]
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('credentials');
+      expect(global.fetch).not.toHaveBeenCalled();
     });
 
     it('should reject ::1 (IPv6 localhost)', async () => {

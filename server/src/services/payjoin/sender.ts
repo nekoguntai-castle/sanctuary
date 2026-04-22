@@ -43,12 +43,16 @@ export async function attemptPayjoinSend(
       return {
         success: false,
         isPayjoin: false,
-        error: urlValidation.error!,
+        error: urlValidation.error,
       };
     }
 
+    const requestUrl = new URL(urlValidation.url.toString());
+    requestUrl.searchParams.set('v', '1');
+
     // POST original PSBT to receiver
-    const response = await fetch(payjoinUrl + '?v=1', {
+    // BIP78 requires a receiver-provided HTTPS endpoint; validatePayjoinUrl enforces SSRF controls before this request.
+    const response = await fetch(requestUrl.toString(), { // lgtm[js/request-forgery]
       method: 'POST',
       headers: {
         'Content-Type': 'text/plain',

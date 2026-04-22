@@ -27,6 +27,13 @@ vi.mock('../../../src/utils/logger', () => ({
 import { errorHandler } from '../../../src/errors/errorHandler';
 import transactionDetailRouter from '../../../src/api/transactions/transactionDetail';
 
+const TXID_WITH_RAW = 'a'.repeat(64);
+const TXID_TESTNET = 'b'.repeat(64);
+const TXID_MISSING = 'c'.repeat(64);
+const TXID_ERROR = 'd'.repeat(64);
+const TXID_DETAIL = 'e'.repeat(64);
+const TXID_NULL_FIELDS = 'f'.repeat(64);
+
 describe('Transactions Detail Routes', () => {
   let app: Express;
 
@@ -59,7 +66,7 @@ describe('Transactions Detail Routes', () => {
       wallet: { network: 'mainnet' },
     });
 
-    const response = await request(app).get('/api/v1/transactions/tx-1/raw');
+    const response = await request(app).get(`/api/v1/transactions/${TXID_WITH_RAW}/raw`);
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ hex: '020000000001deadbeef' });
@@ -76,11 +83,11 @@ describe('Transactions Detail Routes', () => {
       text: async () => '020000000001testnethex',
     });
 
-    const response = await request(app).get('/api/v1/transactions/tx-test/raw');
+    const response = await request(app).get(`/api/v1/transactions/${TXID_TESTNET}/raw`);
 
     expect(response.status).toBe(200);
     expect(mockFetch).toHaveBeenCalledWith(
-      'https://mempool.space/testnet/api/tx/tx-test/hex',
+      `https://mempool.space/testnet/api/tx/${TXID_TESTNET}/hex`,
       expect.any(Object)
     );
     expect(response.body).toEqual({ hex: '020000000001testnethex' });
@@ -90,11 +97,11 @@ describe('Transactions Detail Routes', () => {
     mockPrismaClient.transaction.findFirst.mockResolvedValue(null);
     mockFetch.mockResolvedValue({ ok: false, status: 404 });
 
-    const response = await request(app).get('/api/v1/transactions/missing/raw');
+    const response = await request(app).get(`/api/v1/transactions/${TXID_MISSING}/raw`);
 
     expect(response.status).toBe(404);
     expect(mockFetch).toHaveBeenCalledWith(
-      'https://mempool.space/api/tx/missing/hex',
+      `https://mempool.space/api/tx/${TXID_MISSING}/hex`,
       expect.any(Object)
     );
     expect(response.body.code).toBe('NOT_FOUND');
@@ -103,16 +110,25 @@ describe('Transactions Detail Routes', () => {
   it('returns 500 when raw transaction lookup throws', async () => {
     mockPrismaClient.transaction.findFirst.mockRejectedValue(new Error('db offline'));
 
-    const response = await request(app).get('/api/v1/transactions/tx-err/raw');
+    const response = await request(app).get(`/api/v1/transactions/${TXID_ERROR}/raw`);
 
     expect(response.status).toBe(500);
     expect(response.body.code).toBe('INTERNAL_ERROR');
   });
 
+  it('rejects malformed txids before external raw transaction lookup', async () => {
+    const response = await request(app).get('/api/v1/transactions/not-a-txid/raw');
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe('INVALID_INPUT');
+    expect(mockPrismaClient.transaction.findFirst).not.toHaveBeenCalled();
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
   it('returns serialized transaction details with numeric bigint fields and labels', async () => {
     mockPrismaClient.transaction.findFirst.mockResolvedValue({
       id: 'tx-1',
-      txid: 'tx-1',
+      txid: TXID_DETAIL,
       amount: BigInt(-12000),
       fee: BigInt(150),
       balanceAfter: BigInt(88000),
@@ -139,12 +155,12 @@ describe('Transactions Detail Routes', () => {
       ],
     });
 
-    const response = await request(app).get('/api/v1/transactions/tx-1');
+    const response = await request(app).get(`/api/v1/transactions/${TXID_DETAIL}`);
 
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
       id: 'tx-1',
-      txid: 'tx-1',
+      txid: TXID_DETAIL,
       amount: -12000,
       fee: 150,
       balanceAfter: 88000,
@@ -161,7 +177,7 @@ describe('Transactions Detail Routes', () => {
   it('preserves null fee, balanceAfter, and blockHeight during serialization', async () => {
     mockPrismaClient.transaction.findFirst.mockResolvedValue({
       id: 'tx-null',
-      txid: 'tx-null',
+      txid: TXID_NULL_FIELDS,
       amount: BigInt(5000),
       fee: null,
       balanceAfter: null,
@@ -173,7 +189,7 @@ describe('Transactions Detail Routes', () => {
       outputs: [],
     });
 
-    const response = await request(app).get('/api/v1/transactions/tx-null');
+    const response = await request(app).get(`/api/v1/transactions/${TXID_NULL_FIELDS}`);
 
     expect(response.status).toBe(200);
     expect(response.body.fee).toBeNull();
@@ -185,16 +201,24 @@ describe('Transactions Detail Routes', () => {
   it('returns 404 when transaction details are not found', async () => {
     mockPrismaClient.transaction.findFirst.mockResolvedValue(null);
 
-    const response = await request(app).get('/api/v1/transactions/missing');
+    const response = await request(app).get(`/api/v1/transactions/${TXID_MISSING}`);
 
     expect(response.status).toBe(404);
     expect(response.body.code).toBe('NOT_FOUND');
   });
 
+  it('rejects malformed txids before transaction detail lookup', async () => {
+    const response = await request(app).get('/api/v1/transactions/not-a-txid');
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe('INVALID_INPUT');
+    expect(mockPrismaClient.transaction.findFirst).not.toHaveBeenCalled();
+  });
+
   it('returns 500 when transaction detail lookup fails unexpectedly', async () => {
     mockPrismaClient.transaction.findFirst.mockRejectedValue(new Error('query failed'));
 
-    const response = await request(app).get('/api/v1/transactions/tx-err');
+    const response = await request(app).get(`/api/v1/transactions/${TXID_ERROR}`);
 
     expect(response.status).toBe(500);
     expect(response.body.code).toBe('INTERNAL_ERROR');

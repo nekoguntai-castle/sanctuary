@@ -10,6 +10,7 @@ import { sampleUsers, sampleWallets, testnetAddresses } from '../../fixtures/bit
 
 // Save original fetch
 const originalFetch = global.fetch;
+const VALID_BOT_TOKEN = '123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi';
 
 // Mock Prisma
 vi.mock('../../../src/models/prisma', () => ({
@@ -56,7 +57,7 @@ describe('Notification Services', () => {
         global.fetch = mockFetch as unknown as typeof fetch;
 
         const result = await sendTelegramMessage(
-          'test-bot-token',
+          VALID_BOT_TOKEN,
           '123456789',
           'Test message'
         );
@@ -76,7 +77,7 @@ describe('Notification Services', () => {
         global.fetch = mockFetch as unknown as typeof fetch;
 
         const result = await sendTelegramMessage(
-          'test-bot-token',
+          VALID_BOT_TOKEN,
           'invalid-chat-id',
           'Test message'
         );
@@ -89,7 +90,7 @@ describe('Notification Services', () => {
         global.fetch = vi.fn().mockRejectedValue(new Error('Network error'));
 
         const result = await sendTelegramMessage(
-          'test-bot-token',
+          VALID_BOT_TOKEN,
           '123456789',
           'Test message'
         );
@@ -103,7 +104,7 @@ describe('Notification Services', () => {
         global.fetch = mockFetch as unknown as typeof fetch;
 
         await sendTelegramMessage(
-          'test-bot-token',
+          VALID_BOT_TOKEN,
           '123456789',
           '<b>Bold</b> message'
         );
@@ -139,7 +140,7 @@ describe('Notification Services', () => {
           }),
         });
 
-        const result = await getChatIdFromBot('test-bot-token');
+        const result = await getChatIdFromBot(VALID_BOT_TOKEN);
 
         expect(result.success).toBe(true);
         expect(result.chatId).toBe('987654321');
@@ -155,7 +156,7 @@ describe('Notification Services', () => {
           }),
         });
 
-        const result = await getChatIdFromBot('test-bot-token');
+        const result = await getChatIdFromBot(VALID_BOT_TOKEN);
 
         expect(result.success).toBe(false);
         expect(result.error).toContain('No messages');
@@ -171,7 +172,7 @@ describe('Notification Services', () => {
           }),
         });
 
-        const result = await getChatIdFromBot('invalid-token');
+        const result = await getChatIdFromBot(VALID_BOT_TOKEN);
 
         expect(result.success).toBe(false);
         expect(result.error).toContain('Unauthorized');
@@ -183,7 +184,7 @@ describe('Notification Services', () => {
         const mockFetch = createTelegramApiMock();
         global.fetch = mockFetch as unknown as typeof fetch;
 
-        const result = await testTelegramConfig('test-bot-token', '123456789');
+        const result = await testTelegramConfig(VALID_BOT_TOKEN, '123456789');
 
         expect(result.success).toBe(true);
         expect(mockFetch).toHaveBeenCalledWith(
@@ -238,7 +239,7 @@ describe('Notification Services', () => {
             preferences: {
               telegram: {
                 enabled: true,
-                botToken: 'test-token',
+                botToken: VALID_BOT_TOKEN,
                 chatId: '123456',
                 wallets: {
                   [walletId]: {
@@ -287,7 +288,7 @@ describe('Notification Services', () => {
             preferences: {
               telegram: {
                 enabled: true,
-                botToken: 'test-token',
+                botToken: VALID_BOT_TOKEN,
                 chatId: '123456',
                 wallets: {
                   [walletId]: {
@@ -318,7 +319,7 @@ describe('Notification Services', () => {
             preferences: {
               telegram: {
                 enabled: true,
-                botToken: 'test-token',
+                botToken: VALID_BOT_TOKEN,
                 chatId: '123456',
                 wallets: {
                   [walletId]: {
@@ -372,7 +373,7 @@ describe('Notification Services', () => {
             preferences: {
               telegram: {
                 enabled: true,
-                botToken: 'test-token',
+                botToken: VALID_BOT_TOKEN,
                 chatId: '123456',
                 wallets: {
                   [walletId]: {
@@ -413,7 +414,7 @@ describe('Notification Services', () => {
             preferences: {
               telegram: {
                 enabled: true,
-                botToken: 'test-token',
+                botToken: VALID_BOT_TOKEN,
                 chatId: '123456',
                 wallets: {
                   [walletId]: {
@@ -443,7 +444,7 @@ describe('Notification Services', () => {
           preferences: {
             telegram: {
               enabled: true,
-              botToken: 'test-token',
+              botToken: VALID_BOT_TOKEN,
               chatId: '123456',
               wallets: {},
             },
@@ -490,7 +491,7 @@ describe('Notification Services', () => {
           preferences: {
             telegram: {
               enabled: true,
-              botToken: 'test-token',
+              botToken: VALID_BOT_TOKEN,
               chatId: '123456',
               wallets: {
                 [walletId]: settings,
@@ -582,7 +583,7 @@ describe('Notification Services', () => {
           preferences: {
             telegram: {
               enabled: true,
-              botToken: 'test-token',
+              botToken: VALID_BOT_TOKEN,
               chatId: '123456',
               wallets: {
                 'wallet-id': {
@@ -625,7 +626,7 @@ describe('Notification Services', () => {
           preferences: {
             telegram: {
               enabled: true,
-              botToken: 'test-token',
+              botToken: VALID_BOT_TOKEN,
               chatId: '123456',
               wallets: {
                 'wallet-id': {
@@ -651,4 +652,3 @@ describe('Notification Services', () => {
     });
   });
 });
-

@@ -35,6 +35,7 @@ vi.mock('../../../../src/websocket/notifications', () => ({
 }));
 
 const loadService = async () => import('../../../../src/services/telegram/telegramService');
+const VALID_BOT_TOKEN = '123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi';
 
 describe('telegramService', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
@@ -64,15 +65,24 @@ describe('telegramService', () => {
     });
     const { sendTelegramMessage } = await loadService();
 
-    const result = await sendTelegramMessage('bot-token', 'chat-id', 'hello');
+    const result = await sendTelegramMessage(VALID_BOT_TOKEN, 'chat-id', 'hello');
 
     expect(result).toEqual({ success: true });
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://api.telegram.org/botbot-token/sendMessage',
+      `https://api.telegram.org/bot${VALID_BOT_TOKEN}/sendMessage`,
       expect.objectContaining({
         method: 'POST',
       })
     );
+  });
+
+  it('sendTelegramMessage rejects malformed bot tokens before calling Telegram', async () => {
+    const { sendTelegramMessage } = await loadService();
+
+    const result = await sendTelegramMessage('bot-token', 'chat-id', 'hello');
+
+    expect(result).toEqual({ success: false, error: 'Invalid Telegram bot token' });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('sendTelegramMessage returns client errors without tripping the caller', async () => {
@@ -83,7 +93,7 @@ describe('telegramService', () => {
     });
     const { sendTelegramMessage } = await loadService();
 
-    const result = await sendTelegramMessage('bad-token', 'chat-id', 'hello');
+    const result = await sendTelegramMessage(VALID_BOT_TOKEN, 'chat-id', 'hello');
 
     expect(result).toEqual({ success: false, error: 'Unauthorized' });
   });
@@ -96,7 +106,7 @@ describe('telegramService', () => {
     });
     const { sendTelegramMessage } = await loadService();
 
-    const result = await sendTelegramMessage('bot-token', 'chat-id', 'hello');
+    const result = await sendTelegramMessage(VALID_BOT_TOKEN, 'chat-id', 'hello');
 
     expect(result).toEqual({ success: false, error: 'HTTP 404' });
   });
@@ -109,7 +119,7 @@ describe('telegramService', () => {
     });
     const { sendTelegramMessage } = await loadService();
 
-    const result = await sendTelegramMessage('bot-token', 'chat-id', 'hello');
+    const result = await sendTelegramMessage(VALID_BOT_TOKEN, 'chat-id', 'hello');
     expect(result).toEqual({ success: false, error: 'HTTP 418' });
   });
 
@@ -121,7 +131,7 @@ describe('telegramService', () => {
     });
     const { sendTelegramMessage } = await loadService();
 
-    await expect(sendTelegramMessage('bot-token', 'chat-id', 'hello')).resolves.toEqual(
+    await expect(sendTelegramMessage(VALID_BOT_TOKEN, 'chat-id', 'hello')).resolves.toEqual(
       expect.objectContaining({
         success: false,
         error: expect.stringContaining('Telegram API error'),
@@ -130,7 +140,7 @@ describe('telegramService', () => {
 
     const { CircuitOpenError } = await import('../../../../src/services/circuitBreaker');
     fetchMock.mockRejectedValueOnce(new CircuitOpenError('telegram', 2000));
-    await expect(sendTelegramMessage('bot-token', 'chat-id', 'hello')).resolves.toEqual({
+    await expect(sendTelegramMessage(VALID_BOT_TOKEN, 'chat-id', 'hello')).resolves.toEqual({
       success: false,
       error: 'Telegram service unavailable, will retry shortly',
     });
@@ -147,7 +157,7 @@ describe('telegramService', () => {
         result: [{ update_id: 1, my_chat_member: { chat: { id: 777, first_name: 'Neko' } } }],
       }),
     });
-    await expect(getChatIdFromBot('bot-token')).resolves.toEqual({
+    await expect(getChatIdFromBot(VALID_BOT_TOKEN)).resolves.toEqual({
       success: true,
       chatId: '777',
       username: 'Neko',
@@ -161,7 +171,7 @@ describe('telegramService', () => {
         result: [{ update_id: 2, message: {} }],
       }),
     });
-    await expect(getChatIdFromBot('bot-token')).resolves.toEqual({
+    await expect(getChatIdFromBot(VALID_BOT_TOKEN)).resolves.toEqual({
       success: false,
       error: 'Could not extract chat ID from messages. Please send /start to your bot.',
     });
@@ -174,10 +184,20 @@ describe('telegramService', () => {
         result: [],
       }),
     });
-    await expect(getChatIdFromBot('bot-token')).resolves.toEqual({
+    await expect(getChatIdFromBot(VALID_BOT_TOKEN)).resolves.toEqual({
       success: false,
       error: 'No messages found. Please send /start to your bot first.',
     });
+  });
+
+  it('getChatIdFromBot rejects malformed bot tokens before calling Telegram', async () => {
+    const { getChatIdFromBot } = await loadService();
+
+    await expect(getChatIdFromBot('bot-token')).resolves.toEqual({
+      success: false,
+      error: 'Invalid Telegram bot token',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('getChatIdFromBot handles 5xx and circuit-open responses', async () => {
@@ -188,7 +208,7 @@ describe('telegramService', () => {
       status: 502,
       json: vi.fn().mockResolvedValue({ description: 'Bad gateway' }),
     });
-    await expect(getChatIdFromBot('bot-token')).resolves.toEqual(
+    await expect(getChatIdFromBot(VALID_BOT_TOKEN)).resolves.toEqual(
       expect.objectContaining({
         success: false,
         error: expect.stringContaining('Telegram API error'),
@@ -197,7 +217,7 @@ describe('telegramService', () => {
 
     const { CircuitOpenError } = await import('../../../../src/services/circuitBreaker');
     fetchMock.mockRejectedValueOnce(new CircuitOpenError('telegram', 2000));
-    await expect(getChatIdFromBot('bot-token')).resolves.toEqual({
+    await expect(getChatIdFromBot(VALID_BOT_TOKEN)).resolves.toEqual({
       success: false,
       error: 'Telegram service unavailable, will retry shortly',
     });
@@ -211,7 +231,7 @@ describe('telegramService', () => {
       status: 400,
       json: vi.fn().mockResolvedValue({}),
     });
-    await expect(getChatIdFromBot('bot-token')).resolves.toEqual({
+    await expect(getChatIdFromBot(VALID_BOT_TOKEN)).resolves.toEqual({
       success: false,
       error: 'HTTP 400',
     });
@@ -223,7 +243,7 @@ describe('telegramService', () => {
         ok: true,
       }),
     });
-    await expect(getChatIdFromBot('bot-token')).resolves.toEqual({
+    await expect(getChatIdFromBot(VALID_BOT_TOKEN)).resolves.toEqual({
       success: false,
       error: 'No messages found. Please send /start to your bot first.',
     });
@@ -236,7 +256,7 @@ describe('telegramService', () => {
         result: [{ update_id: 3, message: { chat: { id: 999 } } }],
       }),
     });
-    await expect(getChatIdFromBot('bot-token')).resolves.toEqual({
+    await expect(getChatIdFromBot(VALID_BOT_TOKEN)).resolves.toEqual({
       success: true,
       chatId: '999',
       username: undefined,
@@ -251,7 +271,7 @@ describe('telegramService', () => {
       json: vi.fn().mockRejectedValue(new Error('invalid json')),
     });
 
-    await expect(getChatIdFromBot('bot-token')).resolves.toEqual({
+    await expect(getChatIdFromBot(VALID_BOT_TOKEN)).resolves.toEqual({
       success: false,
       error: 'HTTP 429',
     });
@@ -265,7 +285,7 @@ describe('telegramService', () => {
       json: vi.fn(),
     });
 
-    await expect(testTelegramConfig('bot-token', 'chat-id')).resolves.toEqual({ success: true });
+    await expect(testTelegramConfig(VALID_BOT_TOKEN, 'chat-id')).resolves.toEqual({ success: true });
 
     const [, options] = fetchMock.mock.calls[0] as [string, { body: string }];
     const payload = JSON.parse(options.body);
@@ -305,7 +325,7 @@ describe('telegramService', () => {
         preferences: {
           telegram: {
             enabled: true,
-            botToken: 'bot',
+            botToken: VALID_BOT_TOKEN,
             chatId: 'chat',
             wallets: {
               w1: {
@@ -350,7 +370,7 @@ describe('telegramService', () => {
         preferences: {
           telegram: {
             enabled: true,
-            botToken: 'bot',
+            botToken: VALID_BOT_TOKEN,
             chatId: 'chat',
             wallets: {
               w1: {
@@ -388,7 +408,7 @@ describe('telegramService', () => {
         preferences: {
           telegram: {
             enabled: true,
-            botToken: 'bot',
+            botToken: VALID_BOT_TOKEN,
             chatId: 'chat',
             wallets: {
               w1: {
@@ -441,7 +461,7 @@ describe('telegramService', () => {
         preferences: {
           telegram: {
             enabled: true,
-            botToken: 'bot',
+            botToken: VALID_BOT_TOKEN,
             chatId: 'chat',
             wallets: {
               w1: {
@@ -461,7 +481,7 @@ describe('telegramService', () => {
         preferences: {
           telegram: {
             enabled: true,
-            botToken: 'bot',
+            botToken: VALID_BOT_TOKEN,
             chatId: 'chat',
             wallets: {
               w1: {
@@ -536,7 +556,7 @@ describe('telegramService', () => {
         preferences: {
           telegram: {
             enabled: true,
-            botToken: 'bot',
+            botToken: VALID_BOT_TOKEN,
             chatId: 'chat',
             wallets: {
               w1: {
@@ -611,7 +631,7 @@ describe('telegramService', () => {
       preferences: {
         locale: 'en',
         telegram: {
-          botToken: 'bot-token',
+          botToken: VALID_BOT_TOKEN,
           chatId: 'chat-id',
           enabled: true,
         },
@@ -631,7 +651,7 @@ describe('telegramService', () => {
       {
         locale: 'en',
         telegram: {
-          botToken: 'bot-token',
+          botToken: VALID_BOT_TOKEN,
           chatId: 'chat-id',
           enabled: true,
           wallets: {
@@ -662,7 +682,7 @@ describe('telegramService', () => {
     (mockUserRepo.findByIdWithSelect as Mock).mockResolvedValueOnce({
       preferences: {
         telegram: {
-          botToken: 'bot',
+          botToken: VALID_BOT_TOKEN,
           chatId: 'chat',
           enabled: true,
           wallets: {

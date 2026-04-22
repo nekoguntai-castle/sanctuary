@@ -14,6 +14,10 @@ const log = createLogger('PAYJOIN:SVC_SSRF');
 const dnsLookup = promisify(dns.lookup);
 type IPv4RangePredicate = (parts: number[]) => boolean;
 
+type PayjoinUrlValidationResult =
+  | { valid: true; url: URL }
+  | { valid: false; error: string };
+
 const privateIpv4Ranges: IPv4RangePredicate[] = [
   // Loopback: 127.0.0.0/8
   parts => parts[0] === 127,
@@ -35,7 +39,9 @@ function normalizeIpv4MappedAddress(ip: string): string {
 
 function parseIpv4Parts(ip: string): number[] | null {
   const parts = ip.split('.').map(Number);
-  return parts.length === 4 && !parts.some(part => Number.isNaN(part)) ? parts : null;
+  return parts.length === 4 && parts.every(part => Number.isInteger(part) && part >= 0 && part <= 255)
+    ? parts
+    : null;
 }
 
 /**
@@ -59,7 +65,7 @@ export function isPrivateIP(ip: string): boolean {
 /**
  * Validate a Payjoin URL to prevent SSRF attacks
  */
-export async function validatePayjoinUrl(urlString: string): Promise<{ valid: boolean; error?: string }> {
+export async function validatePayjoinUrl(urlString: string): Promise<PayjoinUrlValidationResult> {
   try {
     const url = new URL(urlString);
 
@@ -68,9 +74,14 @@ export async function validatePayjoinUrl(urlString: string): Promise<{ valid: bo
       return { valid: false, error: 'Payjoin URL must use HTTPS' };
     }
 
+    if (url.username || url.password) {
+      return { valid: false, error: 'Payjoin URL cannot contain credentials' };
+    }
+
     // Block localhost and common internal hostnames
     const blockedHosts = ['localhost', '127.0.0.1', '0.0.0.0', '::1', 'internal', 'local'];
-    if (blockedHosts.some(h => url.hostname.toLowerCase() === h || url.hostname.toLowerCase().endsWith('.' + h))) {
+    const hostname = url.hostname.toLowerCase();
+    if (blockedHosts.some(h => hostname === h || hostname.endsWith('.' + h))) {
       return { valid: false, error: 'Payjoin URL cannot point to localhost or internal hosts' };
     }
 
@@ -86,7 +97,7 @@ export async function validatePayjoinUrl(urlString: string): Promise<{ valid: bo
       return { valid: false, error: 'Could not resolve Payjoin URL hostname' };
     }
 
-    return { valid: true };
+    return { valid: true, url };
   } catch (parseError) {
     return { valid: false, error: 'Invalid Payjoin URL format' };
   }
