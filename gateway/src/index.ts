@@ -22,6 +22,7 @@ import { createLogger } from './utils/logger';
 import { exitAfterDelay, exitNow } from './utils/processExit';
 import { requestLogger } from './middleware/requestLogger';
 import { authRateLimiter, cleanupBackoffTracker } from './middleware/rateLimit';
+import { normalizeTrailingSlash } from './middleware/trailingSlash';
 import proxyRoutes from './routes/proxy';
 import { initializePushServices, shutdownPushServices } from './services/push';
 import { startBackendEvents, stopBackendEvents } from './services/backendEvents';
@@ -91,15 +92,8 @@ app.use(express.json({ limit: '1mb' }));
 // Request logging - captures all requests for auditing
 app.use(requestLogger);
 
-// Strip trailing slashes for consistent routing
-// Mobile clients may add trailing slashes which won't match our route patterns
-app.use((req, _res, next) => {
-  if (req.path !== '/' && req.path.endsWith('/')) {
-    // Remove trailing slashes before query string (?), hash (#), or end of URL
-    req.url = req.url.replace(/\/+(?=\?|#|$)/, '') || '/';
-  }
-  next();
-});
+// Strip trailing slashes for consistent routing.
+app.use(normalizeTrailingSlash);
 
 // Health check (no auth required)
 app.get('/health', (_req, res) => {
