@@ -206,7 +206,32 @@ Goal: reduce the open CodeQL inventory through focused, reviewable batches inste
 - [x] Preserve native mobile/no-origin gateway requests while requiring configured browser origins in production and limiting development browser origins to loopback unless an allowlist is set.
 - [x] Add focused server and gateway CORS origin guard coverage.
 - [x] Run focused CORS tests, server/gateway lint and type/build checks, gateway coverage, backend coverage, and diff checks locally.
-- [ ] Commit, push, open one PR, wait for required checks, merge through the queue, and sync `main`.
+- [x] Commit, push, open one PR, wait for required checks, merge through the queue, and sync `main`.
+
+### Review
+
+- PR #99 merged through the protected-main merge queue on 2026-04-22 as `f250d928 Harden CORS origin guards (#99)`.
+- Merge-group `Code Quality` passed, and merge-group `Test Suite` passed in 11m51s with Full Backend, Full Gateway, Full E2E, Full Build, and Full Test Summary all green.
+- Local `main` was fast-forwarded to `origin/main` after the merge.
+
+## Follow-up Batch: Exposure-Aware Rate Limit Boundaries
+
+Goal: address the large `js/missing-rate-limiting` CodeQL bucket without imposing aggressive public-internet throttles on a mostly private/self-hosted app.
+
+Policy:
+- Keep the existing Redis-backed route policies as the canonical fine-grained controls for auth, sync, transaction, AI, MCP, gateway mobile operations, and other sensitive flows.
+- Add coarse `express-rate-limit` guards at exposed Express boundaries because CodeQL models that package directly and does not infer the custom middleware.
+- Use private-network-friendly ceilings by default, mounted before body parsing so abusive request volume is rejected before JSON parsing work.
+- Preserve stricter gateway/auth/mobile operation limits where they already exist; the new guard is a safety valve, not the main UX policy.
+
+Checklist:
+- [x] Confirm CodeQL inventory: 273 open `js/missing-rate-limiting` alerts before this batch.
+- [x] Confirm the query's modeled limiter expectation and the repo's existing custom limiter gap.
+- [x] Add direct `express-rate-limit` dependency to the backend package because the backend will import it directly.
+- [x] Mount a high-ceiling backend guard on `/api` and `/internal` before body parsing.
+- [x] Mount a high-ceiling gateway guard on `/api` before body parsing while preserving existing stricter route limiters.
+- [x] Run server/gateway build, lint, coverage, and diff checks locally before pushing.
+- [ ] Open one PR, wait for required checks and CodeQL, merge through the queue, sync `main`, then re-query the alert count.
 
 ---
 

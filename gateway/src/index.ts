@@ -12,6 +12,7 @@
  */
 
 import express from 'express';
+import expressRateLimit from 'express-rate-limit';
 import cors from 'cors';
 import helmet from 'helmet';
 import https from 'https';
@@ -29,6 +30,7 @@ import { initializePushServices, shutdownPushServices } from './services/push';
 import { startBackendEvents, stopBackendEvents } from './services/backendEvents';
 
 const log = createLogger('GATEWAY');
+const COARSE_GATEWAY_LIMIT_MULTIPLIER = 10;
 
 // ========================================
 // GLOBAL EXCEPTION HANDLERS
@@ -75,6 +77,20 @@ if (config.corsAllowedOrigins.length === 0) {
 }
 
 app.use(cors(corsOptions));
+
+// Public gateway requests keep route-specific mobile limits below; this guard
+// is only a coarse safety valve for any exposed API path before body parsing.
+app.use('/api', expressRateLimit({
+  windowMs: config.rateLimit.windowMs,
+  max: config.rateLimit.maxRequests * COARSE_GATEWAY_LIMIT_MULTIPLIER,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.method === 'OPTIONS',
+  message: {
+    error: 'Too Many Requests',
+    message: 'Gateway request rate limit exceeded. Please slow down.',
+  },
+}));
 
 // Body parsing
 app.use(express.json({ limit: '1mb' }));
