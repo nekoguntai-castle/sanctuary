@@ -18,12 +18,11 @@ function isDerivationPathCharacter(character: string): boolean {
   return character === '/' || character === '*' || (character >= '0' && character <= '9');
 }
 
-function extractDerivationPathAfterXpub(descriptor: string, xpub: string): string {
-  const xpubStart = descriptor.indexOf(xpub);
-  if (xpubStart === -1) {
-    return DEFAULT_DERIVATION_PATH;
-  }
-
+function extractDerivationPathAfterXpub(
+  descriptor: string,
+  xpubStart: number,
+  xpub: string
+): string {
   const pathStart = xpubStart + xpub.length;
   if (descriptor[pathStart] !== '/') {
     return DEFAULT_DERIVATION_PATH;
@@ -66,11 +65,11 @@ export function parseDescriptor(descriptor: string): ParsedDescriptor {
   }
 
   // Extract the key expression [fingerprint/path]xpub
-  const keyExpressionMatch = descriptor.match(/\[([a-f0-9]{8})\/([^\]]+)\]([xyztuvYZTUV]pub[a-zA-Z0-9]+)/);
+  const keyExpressionMatch = /\[([a-f0-9]{8})\/([^\]]+)\]([xyztuvYZTUV]pub[a-zA-Z0-9]+)/.exec(descriptor);
 
   if (!keyExpressionMatch) {
     // Try without fingerprint
-    const simpleMatch = descriptor.match(/([xyztuvYZTUV]pub[a-zA-Z0-9]+)/);
+    const simpleMatch = /([xyztuvYZTUV]pub[a-zA-Z0-9]+)/.exec(descriptor);
     if (!simpleMatch) {
       throw new Error('Could not parse xpub from descriptor');
     }
@@ -78,14 +77,15 @@ export function parseDescriptor(descriptor: string): ParsedDescriptor {
     return {
       type,
       xpub: simpleMatch[1],
-      path: extractDerivationPathAfterXpub(descriptor, simpleMatch[1]),
+      path: extractDerivationPathAfterXpub(descriptor, simpleMatch.index, simpleMatch[1]),
     };
   }
 
   const [, fingerprint, accountPath, xpub] = keyExpressionMatch;
 
   // Extract the derivation path after xpub (e.g., /0/*)
-  const path = extractDerivationPathAfterXpub(descriptor, xpub);
+  const xpubStart = keyExpressionMatch.index + keyExpressionMatch[0].lastIndexOf(xpub);
+  const path = extractDerivationPathAfterXpub(descriptor, xpubStart, xpub);
 
   return {
     type,
