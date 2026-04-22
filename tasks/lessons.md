@@ -38,6 +38,32 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 - If GitHub catches a failure that can be reproduced locally, add that local command to the pre-push checklist before retrying.
 - Do not disable branch protection to move faster. Speed comes from local-first validation, scoped batches, and path-aware CI, while GitHub remains the final gate.
 
+## Match DoS controls to the deployment exposure model
+
+**Rule:** Do not turn CodeQL `missing-rate-limiting` cleanup into aggressive public-internet throttling by default. Sanctuary is usually deployed on private/self-hosted networks, so default limits should be generous safety valves; tighter ceilings belong behind an explicit public-exposure configuration or existing route-specific controls.
+
+**Why:** The user clarified during the CodeQL rate-limit batch that the app is generally not put on the public internet. Heavy global throttles could create self-inflicted reliability issues on LAN/private deployments while adding little practical protection. The right split is exposure-aware: high-ceiling coarse guards for generic request volume, plus stricter existing controls on auth, mobile, AI, MCP, transaction, sync, and other sensitive flows.
+
+**How to apply:**
+- Classify each boundary as public internet, private/LAN, loopback/internal, or trusted service-to-service before choosing limits.
+- Keep broad Express-boundary limiters coarse and private-network-friendly unless the repo has an explicit public-exposure mode.
+- Preserve or strengthen route-specific limits where abuse has real security or cost impact, such as login, token refresh, wallet operations, AI calls, MCP, sync, and gateway mobile operations.
+- Mount volume guards before body parsing when practical so they shed abusive request floods cheaply without changing normal private-network UX.
+- Document any CodeQL-driven limiter that primarily exists because the scanner models a known package but not the repo's custom limiter.
+
+## Pause bulk alert dismissal when confidence is questioned
+
+**Rule:** If the user challenges whether a dismissed security alert is truly safe, stop bulk dismissal immediately and re-audit the evidence before clearing more alerts.
+
+**Why:** During the CodeQL rate-limit cleanup, PR #100 added production boundary guards but default-branch CodeQL still reported modular router alerts. Bulk dismissal started with a false-positive rationale, then the user asked whether we were sure it was not an issue going forward. That was the right prompt to pause: even when the current production boundary is covered, the "going forward" question can surface config/docs gaps such as gateway rate-limit env var drift or multi-instance public deployment caveats.
+
+**How to apply:**
+- Stop the loop first; do not keep dismissing while answering.
+- Count what was already dismissed and what remains open.
+- Re-check production route mounting, middleware order, proxy/client-IP assumptions, multi-instance behavior, and operator-facing configuration names.
+- Fix or document any real forward-looking gap before resuming alert closure.
+- Use a short standardized dismissal comment that names the code change and the scanner limitation.
+
 ## Inspect merge-group jobs directly when queue status looks inconsistent
 
 **Rule:** If a merge-group run is still `in_progress` but the user or GitHub UI indicates a job failed, inspect the run jobs directly with `gh run view <run-id>` or `gh run view <run-id> --json jobs`. Do not rely only on the PR-level check rollup.
