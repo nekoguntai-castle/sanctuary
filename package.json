@@ -82,7 +82,7 @@
     "regenerator-runtime": "^0.14.1"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.4",
+    "@eslint/js": "^10.0.1",
     "@faker-js/faker": "^10.4.0",
     "@playwright/test": "^1.49.1",
     "@stryker-mutator/core": "^9.6.0",
