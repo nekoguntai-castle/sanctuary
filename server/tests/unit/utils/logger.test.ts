@@ -151,6 +151,7 @@ describe('Logger', () => {
       log.info('first line\nsecond line\rthird line', {
         'bad\nkey': 'alpha\nbeta\r\ngamma',
         tabbed: 'before\tafter',
+        control: 'start\u0001end',
       });
 
       const line = capturedLogs[0];
@@ -160,6 +161,7 @@ describe('Logger', () => {
       expect(line).toContain('first linesecond linethird line');
       expect(line).toContain('badkey=alphabetagamma');
       expect(line).toContain('tabbed=before\\tafter');
+      expect(line).toContain('control=start\\u0001end');
     });
   });
 

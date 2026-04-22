@@ -275,6 +275,7 @@ Review:
 - PR #103 exposed a branch-protection workflow gap: `Full Test Summary` was configured as a required check but skipped on pull requests. The follow-up commit makes that required context report success as a pull-request no-op while keeping full-lane validation on merge-group/main runs, and adds explicit 45-minute timeouts to critical mutation jobs.
 - GitHub Quick Critical Mutation passed in 31m57s. A local rerun of `cd server && npm run test:mutation:critical:gate` also passed with raw `53.61%` and weighted `48.47%`.
 - GitHub Advanced Security still reported open logger sink alerts after the helper-only sanitizer and final-line replacement attempts. The next logger patch removes CR/LF at each logged value using the CodeQL-documented `String.prototype.replace(/\n|\r/g, '')` pattern before composing the final log line.
+- The first merge-group run for PR #103 failed full backend coverage because the logger control-character callback line was not covered. Added a regression assertion for non-tab control characters and locally verified backend coverage at 100% using an alternate report directory because the default `server/coverage` directory is owned by `nobody`.
 
 ---
 
