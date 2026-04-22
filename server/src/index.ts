@@ -14,6 +14,7 @@ import { initializeOpenTelemetry } from './utils/tracing/otel';
 const otelPromise = initializeOpenTelemetry();
 
 import express, { Express, Request, Response, NextFunction } from 'express';
+import expressRateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import cors from 'cors';
 import compression from 'compression';
@@ -56,6 +57,7 @@ import { updateActiveStatsMetrics } from './observability/metrics/helpers';
 import { getActiveStats } from './repositories/maintenanceRepository';
 
 const log = createLogger('SERVER');
+const COARSE_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 
 // ========================================
 // GLOBAL EXCEPTION HANDLERS
@@ -119,6 +121,32 @@ app.use(cors({
     nodeEnv: config.nodeEnv,
   }),
   credentials: true,
+}));
+
+// Coarse per-IP safety valve for private/self-hosted deployments. The
+// Redis-backed route policies remain the canonical fine-grained controls.
+app.use('/api', expressRateLimit({
+  windowMs: COARSE_RATE_LIMIT_WINDOW_MS,
+  max: config.rateLimit.apiDefaultLimit,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.method === 'OPTIONS',
+  message: {
+    error: 'Too Many Requests',
+    message: 'API request rate limit exceeded. Please slow down.',
+  },
+}));
+
+app.use('/internal', expressRateLimit({
+  windowMs: COARSE_RATE_LIMIT_WINDOW_MS,
+  max: config.rateLimit.apiDefaultLimit,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.method === 'OPTIONS',
+  message: {
+    error: 'Too Many Requests',
+    message: 'Internal API request rate limit exceeded. Please slow down.',
+  },
 }));
 
 // Response compression (gzip/deflate) - reduces API response sizes by 60-80%
