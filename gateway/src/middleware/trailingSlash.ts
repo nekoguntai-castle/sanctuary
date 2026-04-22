@@ -19,7 +19,7 @@ function stripTrailingSlashesBeforeSuffix(url: string): string {
     pathEnd--;
   }
 
-  return `${path.slice(0, pathEnd)}${suffix}` || '/';
+  return `${path.slice(0, pathEnd)}${suffix}`;
 }
 
 export function normalizeTrailingSlash(req: Request, _res: Response, next: NextFunction): void {

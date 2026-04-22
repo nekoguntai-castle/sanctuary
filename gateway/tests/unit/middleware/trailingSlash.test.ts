@@ -102,6 +102,17 @@ describe('Trailing Slash Middleware', () => {
       expect(req.url).toBe('/api/v1/docs#section');
       expect(next).toHaveBeenCalled();
     });
+
+    it('should preserve query parameters before hash fragments', () => {
+      const req = createMockRequest('/api/v1/docs/', '/api/v1/docs/?tab=overview#section');
+      const res = createMockResponse();
+      const next = vi.fn();
+
+      normalizeTrailingSlash(req as Request, res as Response, next);
+
+      expect(req.url).toBe('/api/v1/docs?tab=overview#section');
+      expect(next).toHaveBeenCalled();
+    });
   });
 
   describe('edge cases', () => {
