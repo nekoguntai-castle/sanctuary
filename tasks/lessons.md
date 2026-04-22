@@ -87,6 +87,17 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 - If a GitHub command needs escalation for network access, request approval for the stable `gh` prefix, not a one-off environment-prefixed shell command.
 - Only add `TMPDIR` when diagnosing an actual temp-directory failure, and explain why that exception is needed.
 
+## Required branch-protection checks must emit explicit conclusions
+
+**Rule:** If branch protection requires a check context, the workflow must create that check with an explicit success/failure conclusion on every event where merges depend on it. Do not rely on a required job being skipped.
+
+**Why:** PR #103 had all substantive checks green, but `main` still blocked the merge because `Full Test Summary` was listed as a required status check while the job had `if: github.event_name != 'pull_request'`. GitHub showed the job as skipped, but the required context was not merge-satisfying for that pull-request shape.
+
+**How to apply:**
+- For required aggregate checks, prefer an always-running aggregator job with event-specific no-op steps where another lane is authoritative.
+- Validate required contexts on the actual pull request with `gh pr checks <number>` and `gh pr view <number> --json mergeStateStatus,statusCheckRollup`, not only by reading workflow YAML.
+- If a job can run for a long time, add an explicit `timeout-minutes` so a stuck runner fails visibly instead of blocking the queue indefinitely.
+
 ## GitHub feature eligibility depends on owner type, not just paid status
 
 **Rule:** When enabling GitHub repository features, verify both account plan and repository owner type. Do not assume a paid personal account has the same feature surface as an organization-owned repository.
