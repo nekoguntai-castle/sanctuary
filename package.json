@@ -4,7 +4,7 @@
   "version": "0.8.39",
   "type": "module",
   "engines": {
-    "node": ">=22 <23"
+    "node": ">=24 <25"
   },
   "overrides": {
     "protobufjs": "7.5.5"
@@ -90,7 +90,7 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.1",
     "@testing-library/user-event": "^14.6.1",
-    "@types/node": "^25.5.2",
+    "@types/node": "^24.12.2",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@types/w3c-web-hid": "^1.0.6",

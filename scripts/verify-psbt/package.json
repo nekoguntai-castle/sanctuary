@@ -11,7 +11,7 @@
     "bitcoinjs-lib": "^7.0.1"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
+    "@types/node": "^24.12.2",
     "tsx": "^4.0.0",
     "typescript": "~6.0.2"
   }

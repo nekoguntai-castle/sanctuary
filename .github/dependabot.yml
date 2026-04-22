@@ -30,6 +30,10 @@ updates:
     versioning-strategy: "increase-if-necessary"
     commit-message:
       prefix: "deps(root)"
+    ignore:
+      - dependency-name: "@types/node"
+        update-types:
+          - "version-update:semver-major"
     groups:
       root-npm-minor-patch:
         patterns:
@@ -49,6 +53,10 @@ updates:
     versioning-strategy: "increase-if-necessary"
     commit-message:
       prefix: "deps(server)"
+    ignore:
+      - dependency-name: "@types/node"
+        update-types:
+          - "version-update:semver-major"
     groups:
       server-npm-minor-patch:
         patterns:
@@ -68,6 +76,10 @@ updates:
     versioning-strategy: "increase-if-necessary"
     commit-message:
       prefix: "deps(gateway)"
+    ignore:
+      - dependency-name: "@types/node"
+        update-types:
+          - "version-update:semver-major"
     groups:
       gateway-npm-minor-patch:
         patterns:
@@ -87,6 +99,10 @@ updates:
     versioning-strategy: "increase-if-necessary"
     commit-message:
       prefix: "deps(ai-proxy)"
+    ignore:
+      - dependency-name: "@types/node"
+        update-types:
+          - "version-update:semver-major"
     groups:
       ai-proxy-npm-minor-patch:
         patterns:
@@ -106,6 +122,10 @@ updates:
     versioning-strategy: "increase-if-necessary"
     commit-message:
       prefix: "deps(verify-addresses)"
+    ignore:
+      - dependency-name: "@types/node"
+        update-types:
+          - "version-update:semver-major"
     groups:
       verify-addresses-npm-minor-patch:
         patterns:
@@ -125,6 +145,10 @@ updates:
     versioning-strategy: "increase-if-necessary"
     commit-message:
       prefix: "deps(verify-psbt)"
+    ignore:
+      - dependency-name: "@types/node"
+        update-types:
+          - "version-update:semver-major"
     groups:
       verify-psbt-npm-minor-patch:
         patterns:
@@ -161,6 +185,10 @@ updates:
     open-pull-requests-limit: 3
     commit-message:
       prefix: "deps(docker)"
+    ignore:
+      - dependency-name: "node"
+        update-types:
+          - "version-update:semver-major"
 
   - package-ecosystem: "docker"
     directory: "/server"
@@ -172,6 +200,10 @@ updates:
     open-pull-requests-limit: 3
     commit-message:
       prefix: "deps(server-docker)"
+    ignore:
+      - dependency-name: "node"
+        update-types:
+          - "version-update:semver-major"
 
   - package-ecosystem: "docker"
     directory: "/gateway"
@@ -183,6 +215,10 @@ updates:
     open-pull-requests-limit: 3
     commit-message:
       prefix: "deps(gateway-docker)"
+    ignore:
+      - dependency-name: "node"
+        update-types:
+          - "version-update:semver-major"
 
   - package-ecosystem: "docker"
     directory: "/ai-proxy"
@@ -194,6 +230,10 @@ updates:
     open-pull-requests-limit: 3
     commit-message:
       prefix: "deps(ai-proxy-docker)"
+    ignore:
+      - dependency-name: "node"
+        update-types:
+          - "version-update:semver-major"
 
   - package-ecosystem: "docker"
     directory: "/scripts/bitcoin-core-docker"

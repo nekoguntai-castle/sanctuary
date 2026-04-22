@@ -4,7 +4,7 @@
   "description": "Backend API server for Sanctuary Bitcoin Wallet",
   "main": "dist/server/src/index.js",
   "engines": {
-    "node": ">=22 <23"
+    "node": ">=24 <25"
   },
   "prisma": {
     "seed": "node --experimental-specifier-resolution=node dist/prisma/seed.js"
@@ -118,7 +118,7 @@
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.5",
-    "@types/node": "^25.5.2",
+    "@types/node": "^24.12.2",
     "@types/nodemailer": "^8.0.0",
     "@types/qrcode": "^1.5.6",
     "@types/supertest": "^7.2.0",
