@@ -12,6 +12,32 @@
 
 import type { ParsedDescriptor, MultisigKeyInfo } from './types';
 
+const DEFAULT_DERIVATION_PATH = '0/*';
+
+function isDerivationPathCharacter(character: string): boolean {
+  return character === '/' || character === '*' || (character >= '0' && character <= '9');
+}
+
+function extractDerivationPathAfterXpub(descriptor: string, xpub: string): string {
+  const xpubStart = descriptor.indexOf(xpub);
+  if (xpubStart === -1) {
+    return DEFAULT_DERIVATION_PATH;
+  }
+
+  const pathStart = xpubStart + xpub.length;
+  if (descriptor[pathStart] !== '/') {
+    return DEFAULT_DERIVATION_PATH;
+  }
+
+  let pathEnd = pathStart + 1;
+  while (pathEnd < descriptor.length && isDerivationPathCharacter(descriptor[pathEnd])) {
+    pathEnd += 1;
+  }
+
+  const path = descriptor.slice(pathStart + 1, pathEnd);
+  return path.length > 0 ? path : DEFAULT_DERIVATION_PATH;
+}
+
 /**
  * Parse output descriptor to extract xpub and derivation info
  */
@@ -52,15 +78,14 @@ export function parseDescriptor(descriptor: string): ParsedDescriptor {
     return {
       type,
       xpub: simpleMatch[1],
-      path: '0/*', // Default to external chain
+      path: extractDerivationPathAfterXpub(descriptor, simpleMatch[1]),
     };
   }
 
   const [, fingerprint, accountPath, xpub] = keyExpressionMatch;
 
   // Extract the derivation path after xpub (e.g., /0/*)
-  const pathMatch = descriptor.match(/[xyztuvYZTUV]pub[a-zA-Z0-9]+\/([0-9/*]+)/);
-  const path = pathMatch ? pathMatch[1] : '0/*';
+  const path = extractDerivationPathAfterXpub(descriptor, xpub);
 
   return {
     type,

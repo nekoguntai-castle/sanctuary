@@ -83,6 +83,14 @@ Goal: reduce the open CodeQL inventory through focused, reviewable batches inste
 - [x] Push and open follow-up PR #89 after #88 landed.
 - [ ] Verify PR #89 required checks and merge through the queue if green.
 
+## Follow-up Batch: Descriptor Parser ReDoS
+
+- [x] Select the remaining production descriptor-parser CodeQL ReDoS finding in `server/src/services/bitcoin/addressDerivation/descriptorParser.ts`.
+- [x] Replace regex-based derivation suffix extraction with a bounded string scan after the already-parsed xpub.
+- [x] Add regression coverage for no-origin single-sig descriptor path extraction.
+- [x] Run focused address-derivation parser tests, server test typecheck, and diff checks.
+- [ ] Commit locally, then rebase/push/open the follow-up PR after #89 lands.
+
 ## Repository Settings Cleanup While Waiting
 
 - [x] Disable the GitHub wiki so repo docs remain the canonical, versioned documentation surface.
