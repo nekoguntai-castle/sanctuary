@@ -92,6 +92,7 @@ export const bitcoinjsImpl: AddressDeriver = {
     if (!derived.publicKey) {
       throw new Error('Failed to derive public key');
     }
+    const publicKey = Buffer.from(derived.publicKey);
 
     let address: string | undefined;
 
@@ -99,7 +100,7 @@ export const bitcoinjsImpl: AddressDeriver = {
       case 'legacy': {
         // P2PKH
         const payment = bitcoin.payments.p2pkh({
-          pubkey: derived.publicKey,
+          pubkey: publicKey,
           network: networkObj,
         });
         address = payment.address;
@@ -110,7 +111,7 @@ export const bitcoinjsImpl: AddressDeriver = {
         // P2SH-P2WPKH
         const payment = bitcoin.payments.p2sh({
           redeem: bitcoin.payments.p2wpkh({
-            pubkey: derived.publicKey,
+            pubkey: publicKey,
             network: networkObj,
           }),
           network: networkObj,
@@ -122,7 +123,7 @@ export const bitcoinjsImpl: AddressDeriver = {
       case 'native_segwit': {
         // P2WPKH
         const payment = bitcoin.payments.p2wpkh({
-          pubkey: derived.publicKey,
+          pubkey: publicKey,
           network: networkObj,
         });
         address = payment.address;
@@ -132,7 +133,7 @@ export const bitcoinjsImpl: AddressDeriver = {
       case 'taproot': {
         // P2TR - use x-only pubkey (32 bytes, no prefix)
         const payment = bitcoin.payments.p2tr({
-          internalPubkey: derived.publicKey.slice(1, 33),
+          internalPubkey: publicKey.subarray(1, 33),
           network: networkObj,
         });
         address = payment.address;
@@ -172,7 +173,7 @@ export const bitcoinjsImpl: AddressDeriver = {
         throw new Error('Failed to derive public key');
       }
 
-      pubkeys.push(derived.publicKey);
+      pubkeys.push(Buffer.from(derived.publicKey));
     }
 
     // Sort public keys lexicographically (BIP-67)

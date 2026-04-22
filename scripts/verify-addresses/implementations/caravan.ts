@@ -12,6 +12,7 @@
 
 import * as bitcoin from 'bitcoinjs-lib';
 import * as ecc from 'tiny-secp256k1';
+import type { BitcoinNetwork as CaravanNetwork } from '@caravan/bitcoin';
 import type { AddressDeriver, ScriptType, MultisigScriptType, Network } from '../types.js';
 
 // Initialize bitcoinjs-lib with secp256k1
@@ -46,8 +47,8 @@ function mapMultisigScriptTypeToCaravan(scriptType: MultisigScriptType): string 
 /**
  * Map our network to Caravan's network constants
  */
-function mapNetworkToCaravan(network: Network): string {
-  return network === 'mainnet' ? 'mainnet' : 'testnet';
+function mapNetworkToCaravan(network: Network): CaravanNetwork {
+  return (network === 'mainnet' ? 'mainnet' : 'testnet') as CaravanNetwork;
 }
 
 /**
@@ -59,7 +60,7 @@ function getBitcoinJsNetwork(network: Network): bitcoin.Network {
 
 export const caravanImpl: AddressDeriver = {
   name: 'Caravan',
-  version: '0.4.3',
+  version: '0.4.5',
 
   async deriveSingleSig(
     xpub: string,
@@ -156,23 +157,29 @@ export const caravanImpl: AddressDeriver = {
       lib.deriveChildPublicKey(xpub, bip32Path, caravanNetwork)
     );
 
-    // Sort public keys (Caravan's sortPublicKeys for BIP67 compliance)
-    const sortedPubKeys = lib.sortPublicKeys(publicKeys);
+    // Caravan 0.4.5 expects callers to sort for sortedmulti/BIP67 compatibility.
+    const sortedPubKeys = [...publicKeys].sort();
 
     // Build multisig address
     const addressType = mapMultisigScriptTypeToCaravan(scriptType);
 
-    const multisigConfig = {
-      network: caravanNetwork,
+    const result = lib.generateMultisigFromPublicKeys(
+      caravanNetwork,
       addressType,
-      requiredSigners: threshold,
-      publicKeys: sortedPubKeys,
-    };
+      threshold,
+      ...sortedPubKeys
+    );
 
-    // Generate multisig address using Caravan's function
-    const result = lib.generateMultisigFromPublicKeys(multisigConfig);
+    if (!result) {
+      throw new Error('Failed to generate Caravan multisig address');
+    }
 
-    return result.address;
+    const address = lib.multisigAddress(result);
+    if (typeof address !== 'string' || address.length === 0) {
+      throw new Error('Failed to read Caravan multisig address');
+    }
+
+    return address;
   },
 
   async isAvailable(): Promise<boolean> {
