@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { mkdtempSync } from 'fs';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
@@ -23,7 +24,7 @@ vi.mock('../../../../src/services/supportPackage/collectors/registry', () => ({
 
 // Set BACKUP_DIR before importing the collector so its module-level constant
 // resolves to the test directory.
-const tmpDir = path.join(os.tmpdir(), `sanctuary-backup-test-${Date.now()}`);
+const tmpDir = mkdtempSync(path.join(os.tmpdir(), 'sanctuary-backup-test-'));
 process.env.BACKUP_DIR = tmpDir;
 
 import '../../../../src/services/supportPackage/collectors/backups';

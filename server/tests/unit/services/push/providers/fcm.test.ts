@@ -38,6 +38,9 @@ vi.stubGlobal('fetch', mockFetch);
 import { FCMPushProvider, isFCMConfigured, _resetFCMConfiguredCache } from '../../../../../src/services/push/providers/fcm';
 import type { PushMessage } from '../../../../../src/services/push/types';
 
+const OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+const FCM_SEND_URL = 'https://fcm.googleapis.com/v1/projects/test-project-123/messages:send';
+
 describe('FCMPushProvider', () => {
   let provider: FCMPushProvider;
   const originalEnv = { ...process.env };
@@ -122,7 +125,7 @@ describe('FCMPushProvider', () => {
     beforeEach(() => {
       // Mock OAuth token response
       mockFetch.mockImplementation(async (url: string) => {
-        if (url.includes('oauth2.googleapis.com/token')) {
+        if (url === OAUTH_TOKEN_URL) {
           return {
             ok: true,
             json: async () => ({
@@ -161,18 +164,18 @@ describe('FCMPushProvider', () => {
 
       // Find the FCM API call (not OAuth)
       const fcmCall = mockFetch.mock.calls.find(call =>
-        call[0].includes('fcm.googleapis.com')
+        call[0] === FCM_SEND_URL
       );
-      expect(fcmCall[0]).toContain('projects/test-project-123/messages:send');
+      expect(fcmCall?.[0]).toBe(FCM_SEND_URL);
     });
 
     it('should include authorization header with access token', async () => {
       await provider.send('device-token', testMessage);
 
       const fcmCall = mockFetch.mock.calls.find(call =>
-        call[0].includes('fcm.googleapis.com')
+        call[0] === FCM_SEND_URL
       );
-      expect(fcmCall[1].headers.Authorization).toBe('Bearer mock-access-token');
+      expect(fcmCall?.[1].headers.Authorization).toBe('Bearer mock-access-token');
     });
 
     it('should include correct payload structure', async () => {
@@ -183,9 +186,9 @@ describe('FCMPushProvider', () => {
       });
 
       const fcmCall = mockFetch.mock.calls.find(call =>
-        call[0].includes('fcm.googleapis.com')
+        call[0] === FCM_SEND_URL
       );
-      const body = JSON.parse(fcmCall[1].body);
+      const body = JSON.parse(fcmCall?.[1].body);
 
       expect(body.message.token).toBe('device-token-xyz');
       expect(body.message.notification.title).toBe('My Title');
@@ -201,16 +204,16 @@ describe('FCMPushProvider', () => {
       });
 
       const fcmCall = mockFetch.mock.calls.find(call =>
-        call[0].includes('fcm.googleapis.com')
+        call[0] === FCM_SEND_URL
       );
-      const body = JSON.parse(fcmCall[1].body);
+      const body = JSON.parse(fcmCall?.[1].body);
 
       expect(body.message.data).toEqual({});
     });
 
     it('should handle OAuth error', async () => {
       mockFetch.mockImplementation(async (url: string) => {
-        if (url.includes('oauth2.googleapis.com/token')) {
+        if (url === OAUTH_TOKEN_URL) {
           return {
             ok: false,
             status: 401,
@@ -228,7 +231,7 @@ describe('FCMPushProvider', () => {
 
     it('should handle FCM API error response', async () => {
       mockFetch.mockImplementation(async (url: string) => {
-        if (url.includes('oauth2.googleapis.com/token')) {
+        if (url === OAUTH_TOKEN_URL) {
           return {
             ok: true,
             json: async () => ({ access_token: 'token', expires_in: 3600 }),
@@ -251,7 +254,7 @@ describe('FCMPushProvider', () => {
 
     it('should handle non-JSON FCM error response', async () => {
       mockFetch.mockImplementation(async (url: string) => {
-        if (url.includes('oauth2.googleapis.com/token')) {
+        if (url === OAUTH_TOKEN_URL) {
           return {
             ok: true,
             json: async () => ({ access_token: 'token', expires_in: 3600 }),
@@ -272,7 +275,7 @@ describe('FCMPushProvider', () => {
 
     it('should fall back to HTTP status message when FCM error body is empty', async () => {
       mockFetch.mockImplementation(async (url: string) => {
-        if (url.includes('oauth2.googleapis.com/token')) {
+        if (url === OAUTH_TOKEN_URL) {
           return {
             ok: true,
             json: async () => ({ access_token: 'token', expires_in: 3600 }),
@@ -307,7 +310,7 @@ describe('FCMPushProvider', () => {
 
       // OAuth should only be called once
       const oauthCalls = mockFetch.mock.calls.filter(call =>
-        call[0].includes('oauth2.googleapis.com')
+        call[0] === OAUTH_TOKEN_URL
       );
       expect(oauthCalls).toHaveLength(1);
     });

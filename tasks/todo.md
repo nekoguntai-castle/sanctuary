@@ -78,14 +78,13 @@ Goal: close the current PR queue before opening additional CodeQL remediation PR
 
 Status: in progress
 
-Goal: reduce the open CodeQL inventory through focused, reviewable batches instead of treating the 346-alert count as one undifferentiated task. Start with the low-risk workflow supply-chain alerts, then use the triage data to plan the larger application-code batches.
+Goal: reduce the open CodeQL inventory through focused, reviewable batches instead of treating the alert count as one undifferentiated task. Keep clearing small, reviewable groups first, then address the large rate-limiting architecture bucket.
 
 ## Current CodeQL Inventory
 
-- 346 open alerts as of 2026-04-22.
+- 323 open alerts as of 2026-04-22 after PRs #87-#91 and #96 landed.
 - 273 alerts are `js/missing-rate-limiting`, mostly in `server/src/api/**` plus `gateway/src/routes/proxy/index.ts`.
-- 18 alerts are `actions/unpinned-tag` in GitHub workflows.
-- The remaining 55 alerts cover smaller high-signal groups: ReDoS, user-controlled auth bypass, remote property injection, insecure temp files, TLS validation bypass, CORS, clear-text logging, password hashing cost, Go integer conversions, and test/script-only findings.
+- The remaining 50 alerts cover smaller high-signal groups: user-controlled auth bypass, remote property injection, insecure temp files, TLS validation bypass, CORS, clear-text logging, password hashing cost, Go integer conversions, and test/script-only findings.
 
 ## Checklist
 
@@ -164,6 +163,15 @@ Goal: reduce the open CodeQL inventory through focused, reviewable batches inste
 - [x] Keep repository workflow default token permissions at `read`.
 - [x] Disable GitHub Actions pull-request creation/approval setting; Umbrel updates now dispatch to the separate `sanctuary-umbrel` repo instead of using this repo token to create PRs.
 - [x] Update the CI/CD strategy docs with the active merge-queue status and current repository Actions permission posture.
+
+## Follow-up Batch: Test-only CodeQL Cleanup
+
+- [x] Select low-risk test-only findings: insecure temp fixture paths, unanchored regex assertions, insecure random fixture IDs, URL-substring checks in FCM tests, and the auth route helper missing production CSRF wiring.
+- [x] Replace predictable temp fixture directory setup with `mkdtempSync`.
+- [x] Replace targeted substring/regex test lookups with exact URL/text expectations.
+- [x] Replace test fixture `Math.random()` IDs with `randomUUID()`.
+- [x] Wire auth route unit-test helper through the real CSRF middleware and update cookie-auth tests to send valid CSRF tokens.
+- [x] Run focused frontend and server tests, test typechecks, lint, and diff checks locally.
 
 ---
 

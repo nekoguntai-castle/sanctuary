@@ -388,7 +388,7 @@ describe('Monitoring', () => {
       await user.click(settingsButtons[0]);
 
       await waitFor(() => {
-        expect(screen.getByPlaceholderText(/grafana\.yourdomain\.com/)).toBeInTheDocument();
+        expect(screen.getByPlaceholderText('https://grafana.yourdomain.com')).toBeInTheDocument();
       });
     });
 
@@ -404,7 +404,7 @@ describe('Monitoring', () => {
       await user.click(settingsButtons[0]);
 
       await waitFor(() => {
-        expect(screen.getByText(/Default:.*:3000/)).toBeInTheDocument();
+        expect(screen.getByText('Default: http://localhost:3000')).toBeInTheDocument();
       });
     });
 
@@ -419,7 +419,7 @@ describe('Monitoring', () => {
       const settingsButtons = screen.getAllByTitle('Configure URL');
       await user.click(settingsButtons[0]);
 
-      const input = screen.getByPlaceholderText(/grafana\.yourdomain\.com/);
+      const input = screen.getByPlaceholderText('https://grafana.yourdomain.com');
       await user.type(input, 'https://grafana.example.com');
 
       await user.click(screen.getByText('Save'));
@@ -509,7 +509,7 @@ describe('Monitoring', () => {
       const settingsButtons = screen.getAllByTitle('Configure URL');
       await user.click(settingsButtons[0]);
 
-      const input = screen.getByPlaceholderText(/grafana\.yourdomain\.com/);
+      const input = screen.getByPlaceholderText('https://grafana.yourdomain.com');
       await user.type(input, 'https://grafana.example.com');
 
       await user.click(screen.getByText('Save'));
