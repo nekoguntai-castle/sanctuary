@@ -30,6 +30,15 @@ Goal: reduce the open CodeQL inventory through focused, reviewable batches inste
 - Pinned all 86 external workflow action references to immutable 40-character commit SHAs. The only remaining `uses:` without an external SHA is the local reusable workflow call in `release.yml`.
 - Validation passed: no mutable external `uses:` references were found, all workflow YAML files parse via `js-yaml`, and `git diff --check` passed.
 
+## Follow-up Batch: Cache Pattern Safety
+
+- [x] Select small production CodeQL cache findings: `js/regex-injection` in in-memory cache deletion and `js/identity-replacement` in Redis pattern deletion.
+- [x] Escape literal regex metacharacters before translating `*` cache globs into in-memory regular expressions.
+- [x] Remove Redis's no-op wildcard replacement and keep the explicit SCAN glob unchanged.
+- [x] Add regression coverage for literal regex metacharacters and Redis SCAN pattern construction.
+- [x] Run focused cache unit tests and server test typecheck.
+- [ ] Commit, push, open the follow-up PR after #87 lands.
+
 ---
 
 # Completed Task: Rename org `nekoguntai` → `nekoguntai-castle`

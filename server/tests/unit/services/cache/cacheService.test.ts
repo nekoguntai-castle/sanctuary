@@ -160,6 +160,19 @@ describe('Cache Service', () => {
 
         expect(count).toBe(0);
       });
+
+      it('should treat non-wildcard regex characters literally', async () => {
+        await cache.set('wallet.1', 'dot');
+        await cache.set('walletx1', 'plain');
+        await cache.set('wallet.2', 'dot-two');
+
+        const count = await cache.deletePattern('wallet.*');
+
+        expect(count).toBe(2);
+        expect(await cache.get('wallet.1')).toBeNull();
+        expect(await cache.get('wallet.2')).toBeNull();
+        expect(await cache.get('walletx1')).toBe('plain');
+      });
     });
 
     describe('has', () => {
