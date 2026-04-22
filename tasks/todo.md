@@ -82,9 +82,9 @@ Goal: reduce the open CodeQL inventory through focused, reviewable batches inste
 
 ## Current CodeQL Inventory
 
-- 305 open alerts as of 2026-04-22 after PR #97 landed and the post-merge CodeQL run completed successfully.
+- 300 open alerts as of 2026-04-22 after PR #98 landed and the post-merge CodeQL run completed successfully.
 - 273 alerts are `js/missing-rate-limiting`, mostly in `server/src/api/**` plus `gateway/src/routes/proxy/index.ts`.
-- The remaining 32 alerts cover smaller high-signal groups: user-controlled auth bypass, remote property injection, TLS validation bypass, CORS, clear-text logging, password hashing cost, Go integer conversions, stack-trace exposure, missing token validation, and script-only file/URL sanitization findings.
+- The remaining 27 alerts cover smaller high-signal groups: user-controlled auth bypass, TLS validation bypass, CORS, clear-text logging, password hashing cost, Go integer conversions, missing token validation, and script-only file/URL sanitization findings.
 
 ## Checklist
 
@@ -189,6 +189,23 @@ Goal: reduce the open CodeQL inventory through focused, reviewable batches inste
 - [x] Run focused server tests, server test typecheck, lint, and diff checks locally.
 - [x] Reproduce and fix merge-group backend coverage failure; full backend unit coverage is back to 100% branches.
 - [x] Remove the mistakenly persisted broad `rm -rf` approval and document the destructive-command approval rule.
+- [x] Commit, push, open one PR, wait for required checks, merge through the queue, and sync `main`.
+
+### Review
+
+- PR #98 merged through the protected-main merge queue on 2026-04-22 as `fdd915e5 Harden object writes and health errors (#98)`.
+- Merge-group `Code Quality` passed, and merge-group `Test Suite` passed in 12m35s.
+- The previous backend coverage failure was fixed: merge-group `Full Backend Tests` passed in 4m21s and uploaded `backend-coverage`.
+- PR JavaScript CodeQL passed after the redaction/settings object writes were rebuilt with entry reconstruction instead of dynamic property writes.
+- The broad accidental Codex permission rule `prefix_rule(pattern=["rm", "-rf"], decision="allow")` was removed from `/home/nekoguntai/.codex/rules/default.rules`; future destructive cleanup commands require exact one-off permission.
+
+## Follow-up Batch: CORS Origin Guards
+
+- [x] Select the three `js/cors-permissive-configuration` findings in gateway, backend, and integration-test CORS setup.
+- [x] Replace literal `origin: true` / open fallback CORS configuration with explicit callback guards.
+- [x] Preserve native mobile/no-origin gateway requests while requiring configured browser origins in production and limiting development browser origins to loopback unless an allowlist is set.
+- [x] Add focused server and gateway CORS origin guard coverage.
+- [x] Run focused CORS tests, server/gateway lint and type/build checks, gateway coverage, backend coverage, and diff checks locally.
 - [ ] Commit, push, open one PR, wait for required checks, merge through the queue, and sync `main`.
 
 ---

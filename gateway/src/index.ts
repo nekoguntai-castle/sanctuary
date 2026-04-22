@@ -23,6 +23,7 @@ import { exitAfterDelay, exitNow } from './utils/processExit';
 import { requestLogger } from './middleware/requestLogger';
 import { authRateLimiter, cleanupBackoffTracker } from './middleware/rateLimit';
 import { normalizeTrailingSlash } from './middleware/trailingSlash';
+import { createGatewayCorsOriginGuard } from './middleware/corsOrigin';
 import proxyRoutes from './routes/proxy';
 import { initializePushServices, shutdownPushServices } from './services/push';
 import { startBackendEvents, stopBackendEvents } from './services/backendEvents';
@@ -59,29 +60,18 @@ app.use(helmet());
 
 // SEC-004: CORS configuration with configurable allowlist
 const corsOptions: cors.CorsOptions = {
-  origin: config.corsAllowedOrigins.length > 0
-    ? (origin, callback) => {
-        // Allow requests with no origin (mobile apps, curl, etc.)
-        if (!origin) {
-          callback(null, true);
-          return;
-        }
-        // Check if origin is in allowlist
-        if (config.corsAllowedOrigins.includes(origin)) {
-          callback(null, true);
-        } else {
-          callback(new Error('Not allowed by CORS'));
-        }
-      }
-    : true, // Allow all origins if no allowlist configured (for mobile apps)
+  origin: createGatewayCorsOriginGuard({
+    allowedOrigins: config.corsAllowedOrigins,
+    nodeEnv: config.nodeEnv,
+  }),
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Device-Id'],
 };
 
-// Warn if CORS is wide open
+// Warn if browser origins are not explicitly configured.
 if (config.corsAllowedOrigins.length === 0) {
-  log.warn('CORS is configured to allow all origins. Set CORS_ALLOWED_ORIGINS to restrict access.');
+  log.warn('CORS_ALLOWED_ORIGINS is empty. Browser-origin gateway requests are limited to loopback development origins; native mobile requests without an Origin header remain allowed.');
 }
 
 app.use(cors(corsOptions));

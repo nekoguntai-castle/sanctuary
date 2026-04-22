@@ -32,6 +32,7 @@ import { requestLogger } from './middleware/requestLogger';
 import { requestTimeout } from './middleware/requestTimeout';
 import { defaultJsonParser, defaultUrlencodedParser } from './middleware/bodyParsing';
 import { doubleCsrfProtection } from './middleware/csrf';
+import { createServerCorsOriginGuard } from './middleware/corsOrigin';
 import { apiVersionMiddleware } from './middleware/apiVersion';
 import { migrationService } from './services/migrationService';
 import { getStartupStatus, isSystemDegraded } from './services/startupManager';
@@ -112,7 +113,11 @@ app.use(helmet({
 
 // CORS configuration
 app.use(cors({
-  origin: config.nodeEnv === 'development' ? true : config.clientUrl,
+  origin: createServerCorsOriginGuard({
+    allowedOrigins: config.corsAllowedOrigins,
+    clientUrl: config.clientUrl,
+    nodeEnv: config.nodeEnv,
+  }),
   credentials: true,
 }));
 

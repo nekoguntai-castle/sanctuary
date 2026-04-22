@@ -139,7 +139,7 @@ The gateway terminates TLS directly — no nginx or reverse proxy is required in
 | `TLS_MIN_VERSION` | No | `TLSv1.2` | `TLSv1.2` or `TLSv1.3` |
 | `RATE_LIMIT_WINDOW_MS` | No | `60000` | Default rate limit window (ms) |
 | `RATE_LIMIT_MAX` | No | `60` | Max requests per default window |
-| `CORS_ALLOWED_ORIGINS` | No | (all) | Comma-separated origin allowlist; empty = allow all |
+| `CORS_ALLOWED_ORIGINS` | No | — | Comma-separated browser origin allowlist; empty still allows native/no-origin requests plus loopback development origins |
 | `FCM_PROJECT_ID` | No | — | Firebase project ID (Android push) |
 | `FCM_PRIVATE_KEY` | No | — | Firebase service account private key |
 | `FCM_CLIENT_EMAIL` | No | — | Firebase service account email |

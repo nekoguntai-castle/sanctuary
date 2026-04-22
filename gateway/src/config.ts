@@ -32,7 +32,8 @@
  * - Exponential backoff: retry-after doubles with each violation (60s → 120s → 240s → max 3600s)
  *
  * ### CORS
- * - `CORS_ALLOWED_ORIGINS` - Comma-separated list of allowed origins (default: all)
+ * - `CORS_ALLOWED_ORIGINS` - Comma-separated list of allowed browser origins
+ *   (default: native/no-origin requests plus loopback development origins)
  *
  * ### Push Notifications
  * See FCM and APNs sections below for service-specific config.
@@ -46,7 +47,7 @@ import { exitNow } from './utils/processExit';
 function getCorsAllowedOrigins(): string[] {
   const origins = process.env.CORS_ALLOWED_ORIGINS;
   if (!origins) {
-    return []; // Empty array means allow all (for mobile apps)
+    return [];
   }
   return origins.split(',').map(o => o.trim()).filter(o => o.length > 0);
 }
