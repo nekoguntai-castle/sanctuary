@@ -216,7 +216,7 @@ Goal: reduce the open CodeQL inventory through focused, reviewable batches inste
 
 ## Follow-up Batch: Exposure-Aware Rate Limit Boundaries
 
-Goal: address the large `js/missing-rate-limiting` CodeQL bucket without imposing aggressive public-internet throttles on a mostly private/self-hosted app.
+Goal: address the large `js/missing-rate-limiting` CodeQL bucket without imposing aggressive public-internet throttles on a mostly private/self-hosted app. Treat exposure as a policy input: public-facing deployments can tighten limits, while default private/LAN deployments should keep generous safety-valve ceilings and rely on existing route-specific controls for sensitive operations.
 
 Policy:
 - Keep the existing Redis-backed route policies as the canonical fine-grained controls for auth, sync, transaction, AI, MCP, gateway mobile operations, and other sensitive flows.
@@ -231,7 +231,19 @@ Checklist:
 - [x] Mount a high-ceiling backend guard on `/api` and `/internal` before body parsing.
 - [x] Mount a high-ceiling gateway guard on `/api` before body parsing while preserving existing stricter route limiters.
 - [x] Run server/gateway build, lint, coverage, and diff checks locally before pushing.
-- [ ] Open one PR, wait for required checks and CodeQL, merge through the queue, sync `main`, then re-query the alert count.
+- [x] Open one PR, wait for required checks and CodeQL, merge through the queue, and sync `main`.
+- [x] Wait for post-merge default-branch CodeQL, then re-query the alert count.
+- [ ] Finish the exposure/config audit, then dismiss only the remaining false-positive rate-limit alerts with the documented rationale.
+
+Review:
+- PR #100 merged on 2026-04-22 as `3ad03584`.
+- Merge-group gates passed: Code Quality 1m02s; Test Suite 12m11s including Full Backend Tests 4m32s, Full Gateway Tests 14s, Full E2E Tests 7m12s, Full Build Check 1m01s, and Full Test Summary 6s.
+- Local `main` fast-forwarded to `3ad03584`.
+- Post-merge default-branch CodeQL is still the measurement gate for whether GitHub closes the `js/missing-rate-limiting` bucket.
+- Post-merge CodeQL completed successfully but left all 273 `js/missing-rate-limiting` alerts open. CodeQL did not associate the modular router alert sites with the app-level `/api` and `/internal` `express-rate-limit` guards.
+- Dismissal paused after 58 rate-limit alerts were marked false positive so the exposure model could be rechecked. The remaining 215 stay open until the audit/docs/config follow-up lands.
+- Follow-up audit found one real forward-looking gap: gateway docs referenced `RATE_LIMIT_MAX_REQUESTS`, while code only read `RATE_LIMIT_MAX`. The current branch adds backward-compatible alias support, tests, and public/private exposure docs before the remaining rate-limit alerts are dismissed.
+- New Dependabot PR #101 is open for a gateway `fast-xml-parser` lockfile-only transitive bump from 5.5.10 to 5.7.1. PR checks are green; local gateway validation and merge should be handled before opening another unrelated remediation PR.
 
 ---
 

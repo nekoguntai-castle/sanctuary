@@ -41,6 +41,29 @@ Recommended remote access:
 - If browser access is required, expose only Grafana through authenticated HTTPS and keep Prometheus, Alertmanager, Jaeger, Loki, and OTLP ingestion private.
 - Keep `GRAFANA_ANONYMOUS_ENABLED=false` for production.
 
+## API And Gateway Exposure
+
+Sanctuary's default deployment posture is private/self-hosted. The backend now
+has coarse `express-rate-limit` guards on `/api` and `/internal`, mounted before
+body parsing, while existing Redis-backed route policies remain the stricter
+controls for auth, sync, AI, MCP, transaction, mobile permission, and other
+sensitive flows.
+
+Use different controls for different exposures:
+
+- Private or LAN deployments: keep the default high-ceiling backend safety valve
+  unless normal local clients are being throttled.
+- Public backend exposure: prefer an authenticated reverse proxy or VPN. If the
+  backend must be internet-facing, lower `RATE_LIMIT_API_DEFAULT`, keep TLS and
+  CORS allowlists explicit, and monitor 429s and auth failures.
+- Public gateway exposure: tune `RATE_LIMIT_MAX` and route-specific mobile
+  limits for the expected client profile. The built-in gateway limiters are
+  process-local, so multiple gateway instances multiply effective limits unless
+  an edge limiter or shared store is added.
+- Loopback/internal service exposure: avoid tight global throttles that can
+  break maintenance jobs; rely on authentication, HMAC, and route-specific
+  policies.
+
 ## Monitoring Stack Exercise
 
 Start the local monitoring stack before running the smoke:

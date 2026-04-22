@@ -29,6 +29,7 @@
  * ### Rate Limiting
  * - `RATE_LIMIT_WINDOW_MS` - Time window in ms (default: 60000 = 1 minute)
  * - `RATE_LIMIT_MAX` - Max requests per window (default: 60)
+ * - `RATE_LIMIT_MAX_REQUESTS` - Backward-compatible alias for `RATE_LIMIT_MAX`
  * - Exponential backoff: retry-after doubles with each violation (60s → 120s → 240s → max 3600s)
  *
  * ### CORS
@@ -50,6 +51,10 @@ function getCorsAllowedOrigins(): string[] {
     return [];
   }
   return origins.split(',').map(o => o.trim()).filter(o => o.length > 0);
+}
+
+function getGatewayRateLimitMax(): string {
+  return process.env.RATE_LIMIT_MAX ?? process.env.RATE_LIMIT_MAX_REQUESTS ?? '60';
 }
 
 export const config = {
@@ -83,7 +88,7 @@ export const config = {
   // Rate limiting
   rateLimit: {
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000', 10), // 1 minute
-    maxRequests: parseInt(process.env.RATE_LIMIT_MAX || '60', 10), // 60 requests per minute
+    maxRequests: parseInt(getGatewayRateLimitMax(), 10), // 60 requests per minute
     // Exponential backoff settings
     backoff: {
       baseRetryAfter: 60, // Start with 1 minute

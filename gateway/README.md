@@ -145,13 +145,20 @@ WebSocket client that connects to the backend to receive transaction events.
 | `BACKEND_WS_URL` | Yes | - | Backend WebSocket URL (e.g., `ws://backend:3001`) |
 | `JWT_SECRET` | Yes | - | Must match backend JWT_SECRET |
 | `RATE_LIMIT_WINDOW_MS` | No | `60000` | Rate limit window (ms) |
-| `RATE_LIMIT_MAX_REQUESTS` | No | `60` | Max requests per window |
+| `RATE_LIMIT_MAX` | No | `60` | Max requests per window |
+| `RATE_LIMIT_MAX_REQUESTS` | No | `60` | Compatibility alias used only when `RATE_LIMIT_MAX` is unset |
 | `FCM_ENABLED` | No | `false` | Enable Firebase Cloud Messaging |
 | `APNS_ENABLED` | No | `false` | Enable Apple Push Notifications |
 | `APNS_KEY_ID` | If APNs | - | APNs key ID |
 | `APNS_TEAM_ID` | If APNs | - | Apple Developer Team ID |
 | `APNS_BUNDLE_ID` | If APNs | - | iOS app bundle identifier |
 | `APNS_PRODUCTION` | No | `false` | Use APNs production server |
+
+For public gateway deployments, tune `RATE_LIMIT_MAX` and the route-specific
+limits for the expected mobile traffic profile. The built-in gateway limiters
+are process-local; if multiple gateway instances sit behind a load balancer,
+enforce any strict global public-internet cap at the edge or add a shared store
+before treating per-instance counters as a global limit.
 
 ### Firebase Setup (Android Push)
 

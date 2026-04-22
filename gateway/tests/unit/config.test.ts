@@ -213,12 +213,27 @@ describe('Gateway Config', () => {
 
       it('should use default max requests of 60', async () => {
         delete process.env.RATE_LIMIT_MAX;
+        delete process.env.RATE_LIMIT_MAX_REQUESTS;
         const { config } = await import('../../src/config');
         expect(config.rateLimit.maxRequests).toBe(60);
       });
 
       it('should parse RATE_LIMIT_MAX from environment', async () => {
         process.env.RATE_LIMIT_MAX = '100';
+        const { config } = await import('../../src/config');
+        expect(config.rateLimit.maxRequests).toBe(100);
+      });
+
+      it('should parse RATE_LIMIT_MAX_REQUESTS as a compatibility alias', async () => {
+        delete process.env.RATE_LIMIT_MAX;
+        process.env.RATE_LIMIT_MAX_REQUESTS = '75';
+        const { config } = await import('../../src/config');
+        expect(config.rateLimit.maxRequests).toBe(75);
+      });
+
+      it('should prefer RATE_LIMIT_MAX over RATE_LIMIT_MAX_REQUESTS when both are set', async () => {
+        process.env.RATE_LIMIT_MAX = '100';
+        process.env.RATE_LIMIT_MAX_REQUESTS = '75';
         const { config } = await import('../../src/config');
         expect(config.rateLimit.maxRequests).toBe(100);
       });
