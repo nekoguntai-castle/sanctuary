@@ -68,8 +68,9 @@ function formatContext(context?: Record<string, unknown>): string {
 function log(level: number, levelName: string, color: string, prefix: string, message: string, context?: Record<string, unknown>): void {
   if (level < currentLevel) return;
   const ts = new Date().toISOString();
+  const line = `${colors.gray}[${ts}]${colors.reset} ${color}${levelName}${colors.reset} ${colors.cyan}[${sanitizeLogText(prefix)}]${colors.reset} ${sanitizeLogText(message)}${formatContext(context)}`;
   console.log(
-    `${colors.gray}[${ts}]${colors.reset} ${color}${levelName}${colors.reset} ${colors.cyan}[${sanitizeLogText(prefix)}]${colors.reset} ${sanitizeLogText(message)}${formatContext(context)}`
+    line.replace(/[\r\n]/g, ' ')
   );
 }
 

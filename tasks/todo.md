@@ -265,6 +265,7 @@ Review:
 - PR #103 opened with commit `f96d2cad`; PR CodeQL passed, including JavaScript/TypeScript and Go analysis.
 - PR #103 exposed a branch-protection workflow gap: `Full Test Summary` was configured as a required check but skipped on pull requests. The follow-up commit makes that required context report success as a pull-request no-op while keeping full-lane validation on merge-group/main runs, and adds explicit 45-minute timeouts to critical mutation jobs.
 - GitHub Quick Critical Mutation passed in 31m57s. A local rerun of `cd server && npm run test:mutation:critical:gate` also passed with raw `53.61%` and weighted `48.47%`.
+- GitHub Advanced Security still commented on the logger sinks after the helper-only sanitizer change. The follow-up logger patch applies a literal CR/LF replacement at the final `console.log` sink so CodeQL can recognize the log-injection sanitizer directly.
 
 ---
 

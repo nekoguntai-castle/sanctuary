@@ -228,8 +228,9 @@ const log = (
   const contextStr = formatContext(enrichedContext);
 
   // Format: [timestamp] LEVEL [PREFIX] [REQ_ID] [TRACE_ID] message context
+  const line = `${colors.gray}[${timestamp}]${colors.reset} ${color}${levelName}${colors.reset} ${colors.cyan}[${sanitizeLogText(prefix)}]${colors.reset}${requestIdStr}${traceIdStr} ${sanitizeLogText(message)}${contextStr}`;
   console.log(
-    `${colors.gray}[${timestamp}]${colors.reset} ${color}${levelName}${colors.reset} ${colors.cyan}[${sanitizeLogText(prefix)}]${colors.reset}${requestIdStr}${traceIdStr} ${sanitizeLogText(message)}${contextStr}`
+    line.replace(/[\r\n]/g, ' ')
   );
 };
 
