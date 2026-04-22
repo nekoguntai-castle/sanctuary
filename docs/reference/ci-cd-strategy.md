@@ -48,7 +48,7 @@ Required for merge/main confidence, and for merge queue when available:
 - `Full Test Summary`
 - `Code Quality Required Checks`
 
-`PR Required Checks` and `Full Test Summary` live in the same `Test Suite` workflow. On PRs, the quick-lane aggregate is meaningful and the full-lane aggregate is skipped. On merge-queue events, the full-lane aggregate is meaningful and the PR aggregate is skipped. GitHub treats skipped jobs as successful checks, so both names can safely exist in branch protection now and remain valid when merge queue is enabled.
+`PR Required Checks` and `Full Test Summary` live in the same `Test Suite` workflow. On PRs, the quick-lane aggregate is meaningful and the full-lane aggregate is skipped. On merge-queue events, the full-lane aggregate is meaningful, path-aware, and the PR aggregate is skipped. GitHub treats skipped jobs as successful checks, so both names can safely exist in branch protection now and remain valid when merge queue is enabled.
 
 Do not globally require `Build Dev Images`, `Install Test Summary`, or `Verify Bitcoin Vectors`. Those workflows are intentionally path-gated or release-gated. They should run when their trigger paths match, including changes to their own workflow files, but requiring them globally would block unrelated PRs where the workflow never starts.
 
@@ -60,6 +60,7 @@ The first PR after enabling this strategy should be treated as a process validat
 - Confirm `Code Quality Required Checks` runs on the pull request and reflects lint, gitleaks, lizard, and jscpd.
 - Confirm `Full Test Summary` is present on the pull request as skipped/success, so branch protection does not wait on the full lane.
 - Confirm docs-only or workflow-only PRs do not wait on absent Docker, install, or vector checks.
+- Confirm merge-queue full-lane jobs run only for the touched package unless the test workflow, schedule, or manual dispatch requires an exhaustive run.
 - After merge, confirm the push-to-`main` full lane runs as the merge confidence backstop.
 
 ## First PR Validation Result
@@ -140,17 +141,17 @@ The CI lizard job currently gates a measured CI-scope baseline of 9 warnings. Th
 
 The merge/main gate exists to prove the final candidate, not every local-sized commit.
 
-`Test Suite` full lane runs on `main`, schedule, manual dispatch, and merge queue:
+`Test Suite` full lane runs on `main`, schedule, manual dispatch, and merge queue. On merge-queue and push events, it first classifies changed paths and runs only the relevant full lanes. Schedule and manual dispatch set `full_scan=true` and remain exhaustive.
 
-- Full backend unit coverage and integration tests.
-- Full frontend typecheck and threshold-enforced coverage.
-- Full gateway coverage.
-- Critical mutation gate when critical paths changed on push, and on non-push full-lane events.
-- Chromium Playwright E2E.
-- Full frontend/backend build check.
+- Full backend unit coverage and integration tests for backend changes, E2E changes, test-workflow changes, or exhaustive runs.
+- Full frontend typecheck and threshold-enforced coverage for frontend changes, E2E changes, test-workflow changes, or exhaustive runs.
+- Full gateway coverage for gateway changes, test-workflow changes, or exhaustive runs.
+- Critical mutation gate for critical mutation paths or exhaustive runs.
+- Chromium Playwright E2E for frontend, backend, or E2E changes, test-workflow changes, or exhaustive runs.
+- Full frontend/backend build check for frontend, backend, or E2E changes, test-workflow changes, or exhaustive runs.
 - `Full Test Summary` aggregate, which fails if any required full-lane child fails.
 
-When merge queue is available, use the merge-queue SHA as the authoritative merge candidate and treat push-to-main full-lane runs as a backstop.
+When merge queue is available, use the merge-queue SHA as the authoritative merge candidate. Push-to-main full-lane runs are a path-aware backstop for the final merged commit; scheduled and manual runs provide the periodic exhaustive proof.
 
 ### Tier 3 - Scheduled Deep Validation
 

@@ -2,6 +2,18 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Use GitHub Actions as the final gate, not the iteration loop
+
+**Rule:** Run the relevant full local gate before pushing or queueing a PR. GitHub Actions should be the protected-branch proof after local validation is already green, not the first place we discover local-reproducible coverage, build, or mutation failures.
+
+**Why:** The user corrected the pipeline after merge-queue runs repeated the same expensive suites for small CodeQL batches. PR #89 also showed the failure mode directly: focused local tests passed, but the merge-group `Full Gateway Tests` job found a gateway coverage gap that `cd gateway && npm run test:coverage` would have caught locally. Fixing after queueing forced another long GitHub cycle.
+
+**How to apply:**
+- Before the first push for a batch, run the full local gate for the touched package: gateway coverage/build for gateway changes, server focused tests plus typecheck and critical mutation when touching critical server paths, frontend typechecks plus coverage for frontend changes.
+- Push once per batch after local validation is green. Let PR checks run once, then enter merge queue once.
+- If GitHub catches a failure that can be reproduced locally, add that local command to the pre-push checklist before retrying.
+- Do not disable branch protection to move faster. Speed comes from local-first validation, scoped batches, and path-aware CI, while GitHub remains the final gate.
+
 ## Keep approval prefixes stable for GitHub CLI commands
 
 **Rule:** Do not wrap `gh` commands with per-command environment prefixes such as `TMPDIR=...` unless there is a concrete failure that requires it. Prefer plain `gh pr ...`, `gh run ...`, or `gh api ...` so approval rules match stable command prefixes.
