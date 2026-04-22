@@ -1,3 +1,28 @@
+# Active Task: Path-Aware Merge Queue Test Suite
+
+Status: in progress
+
+Goal: keep protected `main` and the merge queue enabled while cutting repeated GitHub Actions time. Local validation remains the primary iteration loop; GitHub Actions should be the final branch-protection proof for the queued merge candidate.
+
+## Checklist
+
+- [x] Replace third-party PR-only path filtering with repo-owned changed-file classification that also supports `merge_group`.
+- [x] Make merge/main full-lane jobs path-aware so unrelated packages are skipped on scoped PRs.
+- [x] Keep schedule and manual dispatch exhaustive so nightly/manual runs still exercise the whole suite.
+- [x] Make `Full Test Summary` tolerate intentionally skipped full-lane jobs while still failing when a relevant lane fails or is unexpectedly skipped.
+- [x] Update CI/CD docs and lessons with the local-first, GitHub-final rule.
+- [x] Validate workflow syntax/logic locally before pushing.
+- [ ] Commit, push, open the CI PR, and let GitHub Actions run once as the final gate.
+
+## Review
+
+- Added `scripts/ci/classify-test-changes.sh` so changed-file classification is repo-owned, locally runnable, and not dependent on `dorny/paths-filter`.
+- The workflow now runs all full lanes for schedule/manual dispatch and test-suite changes, but scoped merge-group/push candidates only require the relevant backend/frontend/gateway/E2E/mutation/build lanes.
+- Local validation: workflow YAML parses, classifier shell syntax passes `bash -n`, workflow run blocks pass `bash -n`, workflow-dispatch classifier output sets `full_scan=true`, no-change PR output leaves all package flags false, this CI branch sets only `test_suite_changed=true`, the gateway PR shape sets only gateway/test files, and `git diff --check` is clean.
+- Critical mutation is now reserved for critical mutation paths and exhaustive schedule/manual runs, so workflow-only queue entries validate the workflow and normal full lanes without spending a Stryker cycle.
+
+---
+
 # Active Task: CodeQL Alert Triage And First Remediation Batch
 
 Status: in progress
