@@ -54,7 +54,8 @@ Goal: reduce the open CodeQL inventory through focused, reviewable batches inste
 - [x] Update the unit test to import the production middleware instead of mirroring it.
 - [x] Run focused gateway trailing slash test, gateway build, and diff checks.
 - [x] Rebase the committed follow-up branch onto `origin/main` after #88 landed.
-- [ ] Push and open the follow-up PR after #88 lands.
+- [x] Push and open follow-up PR #89 after #88 landed.
+- [ ] Verify PR #89 required checks and merge through the queue if green.
 
 ## Repository Settings Cleanup While Waiting
 
