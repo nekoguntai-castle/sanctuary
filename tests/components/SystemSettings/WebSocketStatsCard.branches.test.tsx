@@ -48,9 +48,11 @@ describe('WebSocketStatsCard branch coverage', () => {
     vi.mocked(adminApi.getWebSocketStats).mockResolvedValue(null as never);
     const { container } = render(<WebSocketStatsCard />);
 
-    await waitFor(() => expect(adminApi.getWebSocketStats).toHaveBeenCalledTimes(1));
-    expect(screen.queryByText('WebSocket Status')).not.toBeInTheDocument();
-    expect(container.firstChild).toBeNull();
+    await waitFor(() => {
+      expect(adminApi.getWebSocketStats).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText('WebSocket Status')).not.toBeInTheDocument();
+      expect(container.firstChild).toBeNull();
+    });
   });
 
   it('covers auto-refresh interval callback path', async () => {
