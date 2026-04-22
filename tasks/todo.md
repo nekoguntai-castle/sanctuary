@@ -1,6 +1,6 @@
-# Active Task: Path-Aware Merge Queue Test Suite
+# Completed Task: Path-Aware Merge Queue Test Suite
 
-Status: in progress
+Status: complete
 
 Goal: keep protected `main` and the merge queue enabled while cutting repeated GitHub Actions time. Local validation remains the primary iteration loop; GitHub Actions should be the final branch-protection proof for the queued merge candidate.
 
@@ -12,7 +12,7 @@ Goal: keep protected `main` and the merge queue enabled while cutting repeated G
 - [x] Make `Full Test Summary` tolerate intentionally skipped full-lane jobs while still failing when a relevant lane fails or is unexpectedly skipped.
 - [x] Update CI/CD docs and lessons with the local-first, GitHub-final rule.
 - [x] Validate workflow syntax/logic locally before pushing.
-- [ ] Commit, push, open the CI PR, and let GitHub Actions run once as the final gate.
+- [x] Commit, push, open the CI PR, and let GitHub Actions run once as the final gate.
 
 ## Review
 
@@ -20,6 +20,8 @@ Goal: keep protected `main` and the merge queue enabled while cutting repeated G
 - The workflow now runs all full lanes for schedule/manual dispatch and test-suite changes, but scoped merge-group/push candidates only require the relevant backend/frontend/gateway/E2E/mutation/build lanes.
 - Local validation: workflow YAML parses, classifier shell syntax passes `bash -n`, workflow run blocks pass `bash -n`, workflow-dispatch classifier output sets `full_scan=true`, no-change PR output leaves all package flags false, this CI branch sets only `test_suite_changed=true`, the gateway PR shape sets only gateway/test files, and `git diff --check` is clean.
 - Critical mutation is now reserved for critical mutation paths and exhaustive schedule/manual runs, so workflow-only queue entries validate the workflow and normal full lanes without spending a Stryker cycle.
+- PR #90 passed PR `Test Suite`, `Code Quality`, and CodeQL; merged through the queue as `13f7c2d9`.
+- Merge-group `Test Suite` completed in 14m03s with `Full Critical Mutation Gate` skipped. The post-merge `main` backstop completed in 14m09s with the same skip behavior.
 
 ---
 
@@ -81,7 +83,30 @@ Goal: reduce the open CodeQL inventory through focused, reviewable batches inste
 - [x] Run full gateway coverage and cover the query-plus-hash suffix branch.
 - [x] Rebase the committed follow-up branch onto `origin/main` after #88 landed.
 - [x] Push and open follow-up PR #89 after #88 landed.
-- [ ] Verify PR #89 required checks and merge through the queue if green.
+- [x] Verify PR #89 required checks and merge through the queue if green.
+
+## Follow-up Batch: Descriptor Parser ReDoS
+
+- [x] Select the remaining production descriptor-parser CodeQL ReDoS finding in `server/src/services/bitcoin/addressDerivation/descriptorParser.ts`.
+- [x] Replace regex-based derivation suffix extraction with a bounded string scan after the already-parsed xpub.
+- [x] Add regression coverage for no-origin single-sig descriptor path extraction.
+- [x] Run focused address-derivation parser tests, server test typecheck, and diff checks.
+- [x] Run explicit Bitcoin unit suite and local critical mutation gate before pushing.
+- [x] Commit locally on a stacked branch.
+- [x] Rebase the follow-up branch after #89 and #90 landed.
+- [ ] Push/open the follow-up PR.
+
+### Review
+
+- Rebased onto `origin/main` after PR #89 and PR #90 landed.
+- Post-rebase local gate passed: focused address-derivation parser tests, `npm run typecheck:server:tests`, `cd server && npm run test:bitcoin`, `cd server && npm run test:mutation:critical:gate`, and `git diff --check origin/main...HEAD`.
+
+## Local-First PR Process Correction
+
+- [x] Capture the lesson from PR #89: run the package's full local coverage/build gate before pushing or entering the merge queue.
+- [x] Update CI/CD strategy docs so GitHub Actions is treated as branch protection, not the first place local-reproducible package failures are found.
+- [x] Apply the rule to the next pushed batch locally before push: focused parser tests, server test typecheck, Bitcoin unit suite, and critical mutation gate all passed.
+- [ ] Push the descriptor batch once, wait for one PR check run, then queue once.
 
 ## Repository Settings Cleanup While Waiting
 

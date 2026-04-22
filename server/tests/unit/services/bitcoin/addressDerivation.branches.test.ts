@@ -146,6 +146,25 @@ describe('Address Derivation Service additional branch coverage', () => {
     expect(parsed.path).toBe('0/*');
   });
 
+  it('defaults descriptor path to 0/* when derivation suffix is empty', () => {
+    const descriptor = `wpkh(${testXpubs.mainnet.bip44}/)`;
+    const parsed = parseDescriptor(descriptor);
+    expect(parsed.path).toBe('0/*');
+  });
+
+  it('extracts descriptor path from the matched key when origin text repeats the xpub', () => {
+    const xpub = testXpubs.mainnet.bip44;
+    const descriptor = `wpkh([d34db33f/84h/${xpub}/0h]${xpub}/1/*)`;
+    const parsed = parseDescriptor(descriptor);
+    expect(parsed.path).toBe('1/*');
+  });
+
+  it('extracts descriptor path from no-origin single-sig descriptors', () => {
+    const descriptor = `wpkh(${testXpubs.mainnet.bip44}/1/*)`;
+    const parsed = parseDescriptor(descriptor);
+    expect(parsed.path).toBe('1/*');
+  });
+
   it('throws when multisig descriptor has invalid quorum syntax', () => {
     const tpub = testXpubs.testnet.bip84;
     const descriptor = `wsh(sortedmulti(x,[aabbccdd/84h/1h/0h]${tpub}/0/*))`;

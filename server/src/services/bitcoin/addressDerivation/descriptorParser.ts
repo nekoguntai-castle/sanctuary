@@ -12,6 +12,31 @@
 
 import type { ParsedDescriptor, MultisigKeyInfo } from './types';
 
+const DEFAULT_DERIVATION_PATH = '0/*';
+
+function isDerivationPathCharacter(character: string): boolean {
+  return character === '/' || character === '*' || (character >= '0' && character <= '9');
+}
+
+function extractDerivationPathAfterXpub(
+  descriptor: string,
+  xpubStart: number,
+  xpub: string
+): string {
+  const pathStart = xpubStart + xpub.length;
+  if (descriptor[pathStart] !== '/') {
+    return DEFAULT_DERIVATION_PATH;
+  }
+
+  let pathEnd = pathStart + 1;
+  while (pathEnd < descriptor.length && isDerivationPathCharacter(descriptor[pathEnd])) {
+    pathEnd += 1;
+  }
+
+  const path = descriptor.slice(pathStart + 1, pathEnd);
+  return path.length > 0 ? path : DEFAULT_DERIVATION_PATH;
+}
+
 /**
  * Parse output descriptor to extract xpub and derivation info
  */
@@ -40,11 +65,11 @@ export function parseDescriptor(descriptor: string): ParsedDescriptor {
   }
 
   // Extract the key expression [fingerprint/path]xpub
-  const keyExpressionMatch = descriptor.match(/\[([a-f0-9]{8})\/([^\]]+)\]([xyztuvYZTUV]pub[a-zA-Z0-9]+)/);
+  const keyExpressionMatch = /\[([a-f0-9]{8})\/([^\]]+)\]([xyztuvYZTUV]pub[a-zA-Z0-9]+)/.exec(descriptor);
 
   if (!keyExpressionMatch) {
     // Try without fingerprint
-    const simpleMatch = descriptor.match(/([xyztuvYZTUV]pub[a-zA-Z0-9]+)/);
+    const simpleMatch = /([xyztuvYZTUV]pub[a-zA-Z0-9]+)/.exec(descriptor);
     if (!simpleMatch) {
       throw new Error('Could not parse xpub from descriptor');
     }
@@ -52,15 +77,15 @@ export function parseDescriptor(descriptor: string): ParsedDescriptor {
     return {
       type,
       xpub: simpleMatch[1],
-      path: '0/*', // Default to external chain
+      path: extractDerivationPathAfterXpub(descriptor, simpleMatch.index, simpleMatch[1]),
     };
   }
 
   const [, fingerprint, accountPath, xpub] = keyExpressionMatch;
 
   // Extract the derivation path after xpub (e.g., /0/*)
-  const pathMatch = descriptor.match(/[xyztuvYZTUV]pub[a-zA-Z0-9]+\/([0-9/*]+)/);
-  const path = pathMatch ? pathMatch[1] : '0/*';
+  const xpubStart = keyExpressionMatch.index + keyExpressionMatch[0].lastIndexOf(xpub);
+  const path = extractDerivationPathAfterXpub(descriptor, xpubStart, xpub);
 
   return {
     type,
