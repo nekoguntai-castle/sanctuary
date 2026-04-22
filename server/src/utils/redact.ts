@@ -129,23 +129,27 @@ export function redactObject<T extends Record<string, unknown>>(
   }
   seen.add(obj);
 
-  const result: Record<string, unknown> = {};
+  const redactedEntries: Array<[string, unknown]> = [];
   const additionalSet = new Set(additionalFields.map((f) => f.toLowerCase()));
 
   for (const [key, value] of Object.entries(obj)) {
     const lowerKey = key.toLowerCase();
 
     if (isSensitiveField(key) || additionalSet.has(lowerKey)) {
-      result[key] = redact(value);
+      redactedEntries.push([key, redact(value)]);
     } else if (value && typeof value === 'object' && !Array.isArray(value)) {
       // Recursively redact nested objects
-      result[key] = redactObject(value as Record<string, unknown>, additionalFields, seen);
+      redactedEntries.push([
+        key,
+        redactObject(value as Record<string, unknown>, additionalFields, seen),
+      ]);
     } else {
-      result[key] = value;
+      redactedEntries.push([key, value]);
     }
   }
 
-  return result;
+  // Object.fromEntries keeps keys such as "__proto__" as own data properties.
+  return Object.fromEntries(redactedEntries);
 }
 
 /**
@@ -181,16 +185,17 @@ export function redactDeep<T>(obj: T, maxDepth: number = 5): T {
       return value.map((item) => recurse(item, depth + 1));
     }
 
-    const result: Record<string, unknown> = {};
+    const redactedEntries: Array<[string, unknown]> = [];
     for (const [key, val] of Object.entries(value)) {
       if (isSensitiveField(key)) {
-        result[key] = redact(val);
+        redactedEntries.push([key, redact(val)]);
       } else {
-        result[key] = recurse(val, depth + 1);
+        redactedEntries.push([key, recurse(val, depth + 1)]);
       }
     }
 
-    return result;
+    // Object.fromEntries keeps keys such as "__proto__" as own data properties.
+    return Object.fromEntries(redactedEntries);
   }
 
   return recurse(obj, 0) as T;

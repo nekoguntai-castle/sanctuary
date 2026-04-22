@@ -30,7 +30,7 @@ export async function getWalletIntelligenceSettings(
 
     const prefs = user.preferences as Record<string, unknown>;
     const intelligence = prefs.intelligence as IntelligenceConfig | undefined;
-    const walletSettings = intelligence?.wallets?.[walletId];
+    const walletSettings = getOwnWalletSettings(intelligence?.wallets, walletId);
 
     if (!walletSettings) return { ...DEFAULT_INTELLIGENCE_SETTINGS };
 
@@ -77,11 +77,20 @@ const getPreferenceRecord = (preferences: unknown): PreferenceRecord =>
 const getIntelligenceConfig = (prefs: PreferenceRecord): IntelligenceConfig =>
   (prefs.intelligence as IntelligenceConfig) ?? { wallets: {} };
 
+// Wallet IDs can come from route params; only treat persisted own fields as settings.
+const getOwnWalletSettings = (
+  wallets: IntelligenceConfig['wallets'] | undefined,
+  walletId: string
+): WalletIntelligenceSettings | undefined => {
+  const descriptor = wallets ? Object.getOwnPropertyDescriptor(wallets, walletId) : undefined;
+  return descriptor?.value as WalletIntelligenceSettings | undefined;
+};
+
 const getExistingWalletSettings = (
   intelligence: IntelligenceConfig,
   walletId: string
 ): WalletIntelligenceSettings =>
-  intelligence.wallets?.[walletId] ?? { ...DEFAULT_INTELLIGENCE_SETTINGS };
+  getOwnWalletSettings(intelligence.wallets, walletId) ?? { ...DEFAULT_INTELLIGENCE_SETTINGS };
 
 const mergeWalletSettings = (
   existing: WalletIntelligenceSettings,
@@ -100,9 +109,11 @@ const setWalletSettings = (
   walletId: string,
   settings: WalletIntelligenceSettings
 ): void => {
-  /* v8 ignore next -- preferences migration initializes intelligence wallets before writes */
-  intelligence.wallets = intelligence.wallets ?? {};
-  intelligence.wallets[walletId] = settings;
+  // Object.fromEntries keeps prototype-like wallet IDs as own JSON fields.
+  intelligence.wallets = Object.fromEntries([
+    ...Object.entries(intelligence.wallets ?? {}),
+    [walletId, settings],
+  ]) as IntelligenceConfig['wallets'];
   prefs.intelligence = intelligence;
 };
 

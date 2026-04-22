@@ -185,6 +185,22 @@ describe('Redact Utilities', () => {
       expect(result.jwt).toBe('[REDACTED]');
       expect(result.auth).toBe('[REDACTED]');
     });
+
+    it('should preserve prototype-like keys as own properties', () => {
+      const input = JSON.parse(
+        '{"__proto__":{"password":"secret"},"constructor":{"token":"abc"},"safe":"ok"}'
+      );
+
+      const result = redactObject(input);
+
+      expect(Object.getPrototypeOf(result)).toBe(Object.prototype);
+      expect(Object.prototype.hasOwnProperty.call(result, '__proto__')).toBe(true);
+      expect(Object.getOwnPropertyDescriptor(result, '__proto__')?.value).toEqual({
+        password: '[REDACTED]',
+      });
+      expect(result.constructor).toEqual({ token: '[REDACTED]' });
+      expect(result.safe).toBe('ok');
+    });
   });
 
   describe('redactDeep', () => {
@@ -262,6 +278,19 @@ describe('Redact Utilities', () => {
       expect(redactDeep(123)).toBe(123);
       expect(redactDeep(true)).toBe(true);
       expect(redactDeep(null)).toBe(null);
+    });
+
+    it('should deeply preserve prototype-like keys as own properties', () => {
+      const input = JSON.parse('{"__proto__":{"token":"secret"},"safe":"ok"}');
+
+      const result = redactDeep(input) as Record<string, unknown>;
+
+      expect(Object.getPrototypeOf(result)).toBe(Object.prototype);
+      expect(Object.prototype.hasOwnProperty.call(result, '__proto__')).toBe(true);
+      expect(Object.getOwnPropertyDescriptor(result, '__proto__')?.value).toEqual({
+        token: '[REDACTED]',
+      });
+      expect(result.safe).toBe('ok');
     });
   });
 

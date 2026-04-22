@@ -157,9 +157,10 @@ export function startHealthServer(options: HealthServerOptions): HealthServerHan
     } catch (error) {
       log.error('Health check error', { error: getErrorMessage(error) });
       res.writeHead(500, { 'Content-Type': 'application/json' });
+      // Keep detailed failure information in logs; health responses are probe-visible.
       res.end(JSON.stringify({
         status: 'error',
-        error: getErrorMessage(error, 'Unknown error'),
+        error: 'Health check failed',
       }));
     }
   });

@@ -2,6 +2,18 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Never persist broad approvals for destructive commands
+
+**Rule:** Do not request or rely on persistent approval prefixes for destructive commands, especially `rm -rf`. Each destructive cleanup needs exact one-off permission, and broad accidental approvals must be removed immediately.
+
+**Why:** The user corrected the workflow after a cleanup of local coverage output accidentally persisted `prefix_rule(pattern=["rm", "-rf"], decision="allow")`. That would let future Codex sessions delete arbitrary trees without a fresh permission check.
+
+**How to apply:**
+- Never pass `prefix_rule` for `rm -rf`, `git clean`, reset/checkout cleanup, or similar destructive operations.
+- Prefer writing generated artifacts to ignored, task-specific temp paths that do not require cleanup during the same turn.
+- If cleanup is necessary, request one-off approval for the exact path and command only.
+- After a mistaken approval, remove the matching line from `/home/nekoguntai/.codex/rules/default.rules` and verify no broad destructive rule remains.
+
 ## Treat open PRs as a managed queue before adding more PRs
 
 **Rule:** Before opening another remediation PR, query the open PR list and classify each item as active, mergeable after local validation, needs grouped migration, or close/supersede. Track that queue in `tasks/todo.md`.
@@ -25,6 +37,18 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 - Push once per batch after local validation is green. Let PR checks run once, then enter merge queue once.
 - If GitHub catches a failure that can be reproduced locally, add that local command to the pre-push checklist before retrying.
 - Do not disable branch protection to move faster. Speed comes from local-first validation, scoped batches, and path-aware CI, while GitHub remains the final gate.
+
+## Inspect merge-group jobs directly when queue status looks inconsistent
+
+**Rule:** If a merge-group run is still `in_progress` but the user or GitHub UI indicates a job failed, inspect the run jobs directly with `gh run view <run-id>` or `gh run view <run-id> --json jobs`. Do not rely only on the PR-level check rollup.
+
+**Why:** In PR #98, the PR check rollup still looked mostly green while the merge-group `Full Backend Tests` job had already failed its coverage step. The run stayed in progress because later full-lane jobs were still executing, so `gh pr view` did not make the backend failure obvious.
+
+**How to apply:**
+- When a queued PR appears stuck or suspicious, query `gh run list --limit 12` and identify the `merge_group` run.
+- Use `gh run view <run-id>` to see failed/skipped/in-progress jobs even before the whole workflow completes.
+- If logs are not available through `gh run view --job=<job-id> --log` while the run is still active, use the Actions job logs API for the specific job ID.
+- Add the missing local gate to the branch before requeueing. For backend coverage failures, run the exact full command locally, not only changed-file pre-commit tests.
 
 ## Keep approval prefixes stable for GitHub CLI commands
 

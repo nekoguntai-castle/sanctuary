@@ -137,6 +137,51 @@ describe('Treasury Intelligence Settings', () => {
       expect(result.typeFilter).toEqual(DEFAULT_INTELLIGENCE_SETTINGS.typeFilter);
     });
 
+    it('should read prototype-like wallet IDs only from own settings', async () => {
+      const wallets = {};
+      Object.defineProperty(wallets, '__proto__', {
+        value: {
+          enabled: true,
+          notifyTelegram: false,
+          notifyPush: true,
+          severityFilter: 'critical',
+          typeFilter: ['tax'],
+        },
+        enumerable: true,
+      });
+      (mockUserRepo.findByIdWithSelect as Mock).mockResolvedValue({
+        preferences: {
+          intelligence: {
+            wallets,
+          },
+        },
+      });
+
+      const result = await getWalletIntelligenceSettings('user-1', '__proto__');
+
+      expect(result).toEqual({
+        enabled: true,
+        notifyTelegram: false,
+        notifyPush: true,
+        severityFilter: 'critical',
+        typeFilter: ['tax'],
+      });
+    });
+
+    it('should not read inherited prototype-like wallet settings', async () => {
+      (mockUserRepo.findByIdWithSelect as Mock).mockResolvedValue({
+        preferences: {
+          intelligence: {
+            wallets: {},
+          },
+        },
+      });
+
+      const result = await getWalletIntelligenceSettings('user-1', '__proto__');
+
+      expect(result).toEqual(DEFAULT_INTELLIGENCE_SETTINGS);
+    });
+
     it('should return default settings when findUnique throws', async () => {
       (mockUserRepo.findByIdWithSelect as Mock).mockRejectedValue(new Error('DB error'));
 
@@ -292,6 +337,55 @@ describe('Treasury Intelligence Settings', () => {
           theme: 'dark',
           intelligence: expect.any(Object),
         }),
+      );
+    });
+
+    it('should create wallets map when intelligence exists without wallets key', async () => {
+      (mockUserRepo.findByIdWithSelect as Mock).mockResolvedValue({
+        preferences: {
+          intelligence: {},
+        },
+      });
+      (mockUserRepo.updatePreferences as Mock).mockResolvedValue({});
+
+      const result = await updateWalletIntelligenceSettings('user-1', 'wallet-1', {
+        enabled: true,
+      });
+
+      expect(result.enabled).toBe(true);
+      expect(mockUserRepo.updatePreferences).toHaveBeenCalledWith(
+        'user-1',
+        {
+          intelligence: {
+            wallets: {
+              'wallet-1': expect.objectContaining({ enabled: true }),
+            },
+          },
+        },
+      );
+    });
+
+    it('should store prototype-like wallet IDs as own settings', async () => {
+      (mockUserRepo.findByIdWithSelect as Mock).mockResolvedValue({
+        preferences: {
+          intelligence: {
+            wallets: {},
+          },
+        },
+      });
+      (mockUserRepo.updatePreferences as Mock).mockResolvedValue({});
+
+      const result = await updateWalletIntelligenceSettings('user-1', '__proto__', {
+        enabled: true,
+      });
+
+      expect(result.enabled).toBe(true);
+      const updatedPrefs = mockUserRepo.updatePreferences.mock.calls[0][1] as any;
+      const updatedWallets = updatedPrefs.intelligence.wallets;
+      expect(Object.getPrototypeOf(updatedWallets)).toBe(Object.prototype);
+      expect(Object.prototype.hasOwnProperty.call(updatedWallets, '__proto__')).toBe(true);
+      expect(Object.getOwnPropertyDescriptor(updatedWallets, '__proto__')?.value).toEqual(
+        expect.objectContaining({ enabled: true })
       );
     });
   });
