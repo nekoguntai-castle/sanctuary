@@ -98,7 +98,7 @@
     "@types/w3c-web-usb": "^1.0.13",
     "@vitejs/plugin-react": "^6.0.1",
     "@vitest/coverage-v8": "^4.1.4",
-    "eslint": "^9.39.4",
+    "eslint": "^10.2.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "jsdom": "^29.0.1",
     "typescript": "~6.0.2",
