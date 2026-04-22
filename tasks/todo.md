@@ -63,9 +63,42 @@ Goal: the repo was transferred from `github.com/nekoguntai/sanctuary` to `github
 
 ---
 
-# Task: Security And Quality Settings Best Practices
+# Task: CodeQL Request Forgery And Remaining Dependabot Triage
 
 Status: in progress
+
+Goal: remediate the highest-value open security findings after the repo security-settings PR landed: the four critical CodeQL request-forgery alerts and the remaining fixable Dependabot low alert, while documenting no-fix low alerts separately.
+
+## Checklist
+
+- [x] Confirm PRs #67, #68, and #69 merged through the protected-main merge queue.
+- [x] Re-query Dependabot after reindexing: critical/high/medium alerts cleared; remaining alerts are three lows.
+- [x] Re-query CodeQL inventory and identify the critical request-forgery source locations.
+- [x] Harden Telegram, Payjoin, and mempool transaction fetch URL construction/validation.
+- [x] Evaluate whether the `gateway` `@tootallnate/once` transitive alert can be safely resolved by lockfile/package overrides.
+- [x] Add focused regression tests for input validation and URL construction behavior.
+- [ ] Commit, push, open a PR, and verify required checks.
+
+## Review
+
+- Current Dependabot alerts after #67/#68: `golang.org/x/crypto` and `bn.js` cleared; remaining lows are `@tootallnate/once` in `gateway/package-lock.json` and `elliptic` in root and `scripts/verify-addresses` lockfiles.
+- Dependabot cannot automatically fix `@tootallnate/once` because `firebase-admin -> @google-cloud/storage -> teeny-request -> http-proxy-agent@5` pins `@tootallnate/once@2`; an override needs local validation before use.
+- GitHub reports no patched version for the two `elliptic` alerts, so those should not be churned unless a safe upstream dependency path removes `elliptic`.
+- Current CodeQL critical alerts are `js/request-forgery` in `server/src/services/telegram/api.ts`, `server/src/services/payjoin/sender.ts`, and `server/src/api/transactions/transactionDetail.ts`.
+- Implemented Telegram bot-token format validation before constructing fixed-origin Telegram API URLs.
+- Implemented transaction ID format validation before database lookup or mempool external fetch.
+- Reused the parsed Payjoin URL returned by SSRF validation, added credential rejection, fixed IPv4 parsing bounds, and append `v=1` with `URLSearchParams` to preserve existing query parameters.
+- Added a narrow same-line CodeQL suppression at the Payjoin fetch because BIP78 requires receiver-chosen HTTPS endpoints and the custom SSRF validator is the security boundary CodeQL cannot infer; PR #85 confirmed GitHub's aggregate CodeQL gate still reports this as the only remaining new alert before the same-line adjustment.
+- Gateway override for `@tootallnate/once@3.0.1` installed cleanly; `npm ls` shows the transitive dependency overridden and `npm audit --audit-level=low` reports zero gateway vulnerabilities.
+- Focused validation passed: server security-related unit tests, gateway test suite, gateway build, server lint, server test typecheck, gateway lint, gateway npm audit, and `git diff --check`.
+- Backend coverage passed at 100% statements/branches/functions/lines after adding malformed-token coverage and tightening the Payjoin validator type.
+- First merge-queue run exposed stale transaction integration fixtures with non-hex txids; updated the fixtures to generate 64-character hex txids and kept malformed txid handling covered separately. Docker-backed `transactions.integration.test.ts` passed on local test Postgres after the fix.
+
+---
+
+# Completed Task: Security And Quality Settings Best Practices
+
+Status: complete
 
 Goal: align the GitHub repository's security and quality settings with current best practices, then add tracked repo-side dependency update configuration.
 
@@ -76,7 +109,7 @@ Goal: align the GitHub repository's security and quality settings with current b
 - [x] Create a tracked Dependabot version-update configuration for Actions, npm manifests, Go modules, and Dockerfiles.
 - [x] Add explicit least-privilege GitHub Actions permissions to address CodeQL `actions/missing-workflow-permissions` alerts.
 - [x] Validate configuration and current repository settings.
-- [ ] Commit, push, open a PR, and verify required checks.
+- [x] Commit, push, open a PR, and verify required checks.
 
 ## Review
 
@@ -86,6 +119,8 @@ Goal: align the GitHub repository's security and quality settings with current b
 - CodeQL reported open `actions/missing-workflow-permissions` alerts; workflow files now declare explicit default permissions and release jobs escalate only where they need release/package/check access.
 - Validation so far: `git diff --check` passed, repository settings re-read through `gh api` match the intended applied settings, and every workflow now has an explicit top-level `permissions` block. Local YAML parser tools (`ruby`, `yq`, `yamllint`, `actionlint`) are not installed, so GitHub PR checks will be the authoritative syntax validation.
 - Remaining CodeQL application findings are separate from settings hardening: current open samples include high-severity `js/missing-rate-limiting` and `js/polynomial-redos` alerts that need follow-up code remediation.
+- PR #69 merged through the protected-main merge queue on 2026-04-22 as `99484ebc Harden repository security and quality settings (#69)`.
+- After #69 merged, CodeQL `actions/missing-workflow-permissions` findings should be re-evaluated from the next default-branch CodeQL run; remaining workflow-hardening follow-up is `actions/unpinned-tag` for third-party actions.
 
 # Completed Task: Grade Audit - Worthwhile Findings Review
 

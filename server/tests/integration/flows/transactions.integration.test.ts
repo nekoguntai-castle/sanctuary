@@ -70,10 +70,16 @@ describeWithDb('Transaction API Integration', () => {
     await cleanupTestData();
   });
 
-  // Generate unique txid (64 hex characters) using random UUID
+  let txidCounter = 0;
+
+  // Generate unique txid (64 hex characters)
   function uniqueTxid(prefix: string): string {
-    const random = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-    const base = `${prefix}${random}`;
+    const prefixHex = Array.from(prefix)
+      .map(char => char.charCodeAt(0).toString(16).padStart(2, '0'))
+      .join('');
+    const counterHex = (txidCounter++).toString(16).padStart(4, '0');
+    const randomHex = Array.from({ length: 4 }, () => Math.random().toString(16).slice(2)).join('');
+    const base = `${prefixHex}${counterHex}${randomHex}`;
     return base.padEnd(64, '0').substring(0, 64);
   }
 
@@ -291,6 +297,10 @@ describeWithDb('Transaction API Integration', () => {
     it('should return pending transactions', async () => {
       const { userId, token } = await createAndLoginUser(app, prisma);
       const walletId = await createWalletWithData(app, token, userId);
+      const pendingTransaction = await prisma.transaction.findFirstOrThrow({
+        where: { walletId, confirmations: 0 },
+        select: { txid: true },
+      });
 
       const response = await request(app)
         .get(`/api/v1/transactions/wallets/${walletId}/transactions/pending`)
@@ -300,8 +310,7 @@ describeWithDb('Transaction API Integration', () => {
       expect(Array.isArray(response.body)).toBe(true);
       // Should only return pending transactions (confirmations = 0)
       expect(response.body.length).toBe(1);
-      // Txid starts with 'tx4' (uniqueTxid prefix)
-      expect(response.body[0].txid).toMatch(/^tx4/);
+      expect(response.body[0].txid).toBe(pendingTransaction.txid);
     });
 
     it('should return empty array when no pending transactions', async () => {
@@ -311,7 +320,7 @@ describeWithDb('Transaction API Integration', () => {
       // Add only confirmed transaction
       await prisma.transaction.create({
         data: {
-          txid: 'confirmed' + '0'.repeat(56),
+          txid: uniqueTxid('confirmed'),
           walletId,
           type: 'received',
           amount: BigInt(10000),
@@ -700,7 +709,7 @@ describeWithDb('Transaction API Integration', () => {
       const { token } = await createAndLoginUser(app, prisma);
 
       await request(app)
-        .get('/api/v1/transactions/transactions/nonexistent' + '0'.repeat(56))
+        .get(`/api/v1/transactions/transactions/${uniqueTxid('missing')}`)
         .set(authHeader(token))
         .expect(404);
     });
