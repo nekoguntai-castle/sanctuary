@@ -10,8 +10,8 @@
     "stop-bitcoind": "docker compose down"
   },
   "dependencies": {
-    "@caravan/bitcoin": "^0.4.3",
-    "bip32": "^4.0.0",
+    "@caravan/bitcoin": "^0.4.5",
+    "bip32": "^5.0.1",
     "bip39": "^3.1.0",
     "bitcoinjs-lib": "^7.0.1",
     "bs58check": "^3.0.1",
