@@ -60,6 +60,9 @@ on:
       - '.github/workflows/docker-build.yml'
   workflow_dispatch:  # Allow manual trigger
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
