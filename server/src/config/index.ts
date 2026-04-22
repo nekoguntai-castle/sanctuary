@@ -452,7 +452,7 @@ const getEncryptionKey = (): string => {
 const getCorsAllowedOrigins = (): string[] => {
   const origins = process.env.CORS_ALLOWED_ORIGINS;
   if (!origins) {
-    return []; // Empty array means allow all (for mobile apps)
+    return [];
   }
   return origins.split(',').map(o => o.trim()).filter(o => o.length > 0);
 };

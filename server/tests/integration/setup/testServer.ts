@@ -8,6 +8,7 @@
 import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
 import { errorHandler } from '../../../src/errors/errorHandler';
+import { createServerCorsOriginGuard } from '../../../src/middleware/corsOrigin';
 
 // Import routes
 import authRoutes from '../../../src/api/auth';
@@ -32,7 +33,13 @@ export function createTestApp(): Express {
   const app = express();
 
   // Middleware
-  app.use(cors({ origin: true, credentials: true }));
+  app.use(cors({
+    origin: createServerCorsOriginGuard({
+      clientUrl: 'http://localhost',
+      nodeEnv: 'development',
+    }),
+    credentials: true,
+  }));
   app.use(express.json({ limit: '50mb' }));
 
   // API routes
