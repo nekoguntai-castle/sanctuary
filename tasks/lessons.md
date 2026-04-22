@@ -2,6 +2,18 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Treat open PRs as a managed queue before adding more PRs
+
+**Rule:** Before opening another remediation PR, query the open PR list and classify each item as active, mergeable after local validation, needs grouped migration, or close/supersede. Track that queue in `tasks/todo.md`.
+
+**Why:** The user corrected the workflow after the CodeQL remediation loop kept opening one PR at a time while 9 Dependabot PRs stayed open. That hides risk and makes the repo look unattended even when the current security batch is useful.
+
+**How to apply:**
+- Run `gh pr list --state open --limit 50 --json number,title,author,headRefName,mergeStateStatus,updatedAt,url` before starting a new PR-producing batch.
+- Burn down existing safe PRs first when they are already open and relevant, especially Dependabot minor/patch updates.
+- Handle related major dependency PRs as one deliberate migration, not as separate automatic merges.
+- Only open new CodeQL remediation PRs while the queue is non-empty if the change directly unblocks a queued PR or fixes an urgent security issue.
+
 ## Use GitHub Actions as the final gate, not the iteration loop
 
 **Rule:** Run the relevant full local gate before pushing or queueing a PR. GitHub Actions should be the protected-branch proof after local validation is already green, not the first place we discover local-reproducible coverage, build, or mutation failures.

@@ -25,7 +25,56 @@ Goal: keep protected `main` and the merge queue enabled while cutting repeated G
 
 ---
 
-# Active Task: CodeQL Alert Triage And First Remediation Batch
+# Completed Task: Open PR Burn-down Before More CodeQL Batches
+
+Status: complete
+
+Goal: close the current PR queue before opening additional CodeQL remediation PRs, then return to CodeQL/code-scanning until the alert inventory is cleared or each remaining alert has a documented no-fix/blocker rationale. End state: no open PRs, no unresolved actionable code-scanning alerts, and local `main` synced with `origin/main`.
+
+## Current Open PR Queue
+
+- [x] PR #96 `Group ESLint 10 dependency updates` — replacement for #82/#83; local Node 24 install/lint/typecheck/test-hygiene/build passed; merged through the queue.
+- [x] PR #95 `deps(go): btcec/v2 2.3.6` — new Dependabot follow-up after #92 merged; merged as `323ac8c3`.
+- [x] PR #94 `Stabilize root dependency update coverage` — replacement for #81; merged as `973c7b34`.
+- [x] PR #91 `Avoid descriptor path regex backtracking` — merged through the queue after the descriptor coverage fix.
+- [x] PR #93 `Update verify-addresses dependency compatibility` — replacement for #74/#78; merged as `feb7409a`.
+- [x] PR #92 `Add verify-addresses Go module sums` — replacement for #77; merged as `b84de8c5`.
+- [x] PR #84 `deps(server): server-npm-minor-patch group` — merged as `5c54d71b`; earlier merge-group coverage failure traced to #91's descriptor parser coverage miss, not the server dependency update.
+- [x] PR #83 `deps(root): @eslint/js 10.0.1` — closed as superseded by PR #96.
+- [x] PR #82 `deps(root): eslint 10.2.1` — closed as superseded by PR #96.
+- [x] PR #81 `deps(root): root-npm-minor-patch group` — closed as superseded by PR #94 after merge-group frontend coverage exposed an async settling race in `WebSocketStatsCard` coverage.
+- [x] PR #80 `deps(gateway): gateway-npm-minor-patch group` — merged through the queue.
+- [x] PR #78 `deps(verify-addresses): bip32 5.0.1` — closed as superseded by PR #93.
+- [x] PR #77 `deps(go): verify-addresses-go-minor-patch group` — closed as superseded by PR #92.
+- [x] PR #75 `deps(ai-proxy): TypeScript 6.0.3` — merged through the queue.
+- [x] PR #74 `deps(verify-addresses): @caravan/bitcoin 0.4.5` — closed as superseded by PR #93.
+
+## Replacement Tracks
+
+- [x] Create and validate a replacement Go modules PR for #77 that includes the generated `scripts/verify-addresses/implementations/go.sum` — PR #92.
+- [x] Create and validate a replacement root dependency PR for #81 that stabilizes the merge-group frontend coverage failure — PR #94.
+- [x] Create and validate a grouped ESLint 10 migration PR that supersedes #82 and #83 — PR #96.
+- [x] Create and validate a grouped verify-addresses compatibility PR that supersedes #74 and #78 — PR #93.
+- [x] Close superseded Dependabot PRs only after their replacement PR is opened and green, or after the replacement has merged if branch protection makes that safer.
+
+## Execution Rules
+
+- [x] Do not open new CodeQL remediation PRs while this PR queue remains open, except for fixes needed to unblock one of the queued PRs.
+- [x] Validate each Dependabot PR locally in its affected package before relying on GitHub Actions.
+- [x] Merge safe minor/patch PRs after local validation and required checks.
+- [x] Treat major updates as deliberate compatibility work; close/supersede automatic PRs if a grouped migration is cleaner.
+- [x] After the PR queue is closed, re-query code-scanning alerts and continue focused remediation batches until no actionable alerts remain.
+- [x] Finish by syncing local `main` to `origin/main` and confirming the open PR list is empty.
+
+## Review
+
+- `gh pr list` returned no open PRs after PR #96 merged.
+- Superseded Dependabot PRs were closed only after their grouped replacements merged or were ready to replace them.
+- The repo can now move back to the CodeQL/code-scanning backlog.
+
+---
+
+# Active Task: CodeQL Alert Triage And Remediation
 
 Status: in progress
 
@@ -94,19 +143,20 @@ Goal: reduce the open CodeQL inventory through focused, reviewable batches inste
 - [x] Run explicit Bitcoin unit suite and local critical mutation gate before pushing.
 - [x] Commit locally on a stacked branch.
 - [x] Rebase the follow-up branch after #89 and #90 landed.
-- [ ] Push/open the follow-up PR.
+- [x] Push/open the follow-up PR.
 
 ### Review
 
 - Rebased onto `origin/main` after PR #89 and PR #90 landed.
 - Post-rebase local gate passed: focused address-derivation parser tests, `npm run typecheck:server:tests`, `cd server && npm run test:bitcoin`, `cd server && npm run test:mutation:critical:gate`, and `git diff --check origin/main...HEAD`.
+- PR #91 opened as `Avoid descriptor path regex backtracking`; required checks passed after the local coverage follow-up and the PR merged through the queue.
 
 ## Local-First PR Process Correction
 
 - [x] Capture the lesson from PR #89: run the package's full local coverage/build gate before pushing or entering the merge queue.
 - [x] Update CI/CD strategy docs so GitHub Actions is treated as branch protection, not the first place local-reproducible package failures are found.
 - [x] Apply the rule to the next pushed batch locally before push: focused parser tests, server test typecheck, Bitcoin unit suite, and critical mutation gate all passed.
-- [ ] Push the descriptor batch once, wait for one PR check run, then queue once.
+- [x] Push the descriptor batch once, wait for one PR check run, then queue once.
 
 ## Repository Settings Cleanup While Waiting
 
