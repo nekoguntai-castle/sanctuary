@@ -63,9 +63,9 @@ Goal: the repo was transferred from `github.com/nekoguntai/sanctuary` to `github
 
 ---
 
-# Task: CodeQL Request Forgery And Remaining Dependabot Triage
+# Completed Task: CodeQL Request Forgery And Remaining Dependabot Triage
 
-Status: in progress
+Status: complete
 
 Goal: remediate the highest-value open security findings after the repo security-settings PR landed: the four critical CodeQL request-forgery alerts and the remaining fixable Dependabot low alert, while documenting no-fix low alerts separately.
 
@@ -77,7 +77,7 @@ Goal: remediate the highest-value open security findings after the repo security
 - [x] Harden Telegram, Payjoin, and mempool transaction fetch URL construction/validation.
 - [x] Evaluate whether the `gateway` `@tootallnate/once` transitive alert can be safely resolved by lockfile/package overrides.
 - [x] Add focused regression tests for input validation and URL construction behavior.
-- [ ] Commit, push, open a PR, and verify required checks.
+- [x] Commit, push, open a PR, and verify required checks.
 
 ## Review
 
@@ -93,6 +93,37 @@ Goal: remediate the highest-value open security findings after the repo security
 - Focused validation passed: server security-related unit tests, gateway test suite, gateway build, server lint, server test typecheck, gateway lint, gateway npm audit, and `git diff --check`.
 - Backend coverage passed at 100% statements/branches/functions/lines after adding malformed-token coverage and tightening the Payjoin validator type.
 - First merge-queue run exposed stale transaction integration fixtures with non-hex txids; updated the fixtures to generate 64-character hex txids and kept malformed txid handling covered separately. Docker-backed `transactions.integration.test.ts` passed on local test Postgres after the fix.
+- PR #85 merged through the protected-main merge queue on 2026-04-22 as `a4d1dd7e Harden external security fetch paths (#85)`.
+
+---
+
+# Task: Node Runtime And Dependabot Major-Update Triage
+
+Status: in progress
+
+Goal: move the project from Node 22 to the best currently supported production runtime, stop Dependabot from opening unsafe runtime-major PRs automatically, and supersede the Node 25 Docker/type PR lane with a deliberate LTS migration.
+
+## Checklist
+
+- [x] Confirm Node release status and production guidance.
+- [x] Test Node 24 and Node 25 install/build compatibility in disposable Docker workspaces.
+- [x] Update engines, CI Node versions, Docker base images, and Node type packages to the chosen runtime.
+- [x] Configure Dependabot to leave Node runtime majors to manual migration PRs.
+- [x] Run focused install/build/typecheck validation.
+- [ ] Commit, push, open a PR, and verify required checks.
+
+## Review
+
+- Node.js upstream marks v25 as Current and v24 as LTS; upstream guidance says production applications should use Active or Maintenance LTS releases.
+- Disposable Docker validation pulled `node:24-alpine` (`v24.15.0`) and `node:25-alpine` (`v25.9.0`).
+- Root, server, gateway, and ai-proxy installs succeeded under Node 24 and Node 25 when scripts were ignored, but all current manifests warn because engines still say `>=22 <23`.
+- Root/frontend, server, gateway, and ai-proxy builds passed under both Node 24 and Node 25 in temporary full-repo Docker clones.
+- Node 25 is not the right production target yet: `@parse/node-apn@8.1.0`, used by the gateway, declares supported engines as `20 || 22 || 24`, and latest npm metadata has no newer release with Node 25 support.
+- Updated engines, CI `NODE_VERSION`, verify-vector setup-node versions, Docker base images, docker-compose test images, and Node type packages to Node 24 / `@types/node@24.12.2`.
+- Added Dependabot ignore rules so `@types/node` and Docker `node` semver-major updates are handled by deliberate runtime migration PRs instead of automatic PR noise.
+- Target-runtime validation passed in a patched temp clone under `node:24-alpine`: root/server/gateway/ai-proxy `npm ci --ignore-scripts`, root/server/gateway/ai-proxy builds, root app typecheck, and root script typecheck.
+- Docker build validation passed for frontend, server, gateway, and ai-proxy images with Node 24 base images.
+- `scripts/verify-addresses` direct TypeScript check remains pre-existing noisy because that helper package lacks declarations for several Bitcoin libraries and is not currently part of the repo typecheck script.
 
 ---
 

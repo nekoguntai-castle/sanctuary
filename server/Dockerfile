@@ -4,7 +4,7 @@
 # =============================================
 
 # Stage 1: Dependencies
-FROM node:22-alpine AS deps
+FROM node:24-alpine AS deps
 WORKDIR /app
 
 # Only openssl needed for Prisma (no python/make/g++ since bcryptjs is pure JS)
@@ -22,7 +22,7 @@ RUN npm ci
 RUN npx prisma generate
 
 # Stage 2: Builder
-FROM node:22-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 
 # Copy dependencies from deps stage
@@ -54,7 +54,7 @@ RUN npx tsc prisma/seed.ts --outDir dist/prisma --esModuleInterop --skipLibCheck
 RUN npm prune --production
 
 # Stage 3: Production
-FROM node:22-alpine AS runner
+FROM node:24-alpine AS runner
 WORKDIR /app
 
 # Install dumb-init for proper signal handling and OpenSSL for Prisma

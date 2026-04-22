@@ -4,7 +4,7 @@
 # =============================================
 
 # Stage 1: Dependencies
-FROM node:22-alpine AS deps
+FROM node:24-alpine AS deps
 WORKDIR /app
 
 # Install Python and build tools for native modules (required for @trezor/connect-web usb dependency)
@@ -17,7 +17,7 @@ COPY package*.json ./
 RUN npm ci
 
 # Stage 2: Builder
-FROM node:22-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 
 # Copy dependencies from deps stage
