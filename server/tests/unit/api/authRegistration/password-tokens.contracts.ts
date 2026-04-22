@@ -3,6 +3,7 @@ import { app } from './authRegistrationTestHarness';
 import request from 'supertest';
 import { hashPassword } from '../../../../src/utils/password';
 import { mockPrismaClient } from '../../../mocks/prisma';
+import { createCsrfTokenForAccessCookie } from '../auth.testHelpers';
 
 export function registerAuthPasswordTokenTests(): void {
   describe('POST /auth/me/change-password - Change Password', () => {
@@ -311,13 +312,15 @@ export function registerAuthPasswordTokenTests(): void {
 
       const { rotateRefreshToken } = await import('../../../../src/services/refreshTokenService');
       vi.mocked(rotateRefreshToken).mockResolvedValueOnce(null);
+      const csrfToken = await createCsrfTokenForAccessCookie('live-access-cookie');
 
       const response = await request(app)
         .post('/api/v1/auth/refresh')
+        .set('X-CSRF-Token', csrfToken)
         .set('Cookie', [
           'sanctuary_access=live-access-cookie',
           'sanctuary_refresh=live-refresh-cookie',
-          'sanctuary_csrf=live-csrf-cookie',
+          `sanctuary_csrf=${csrfToken}`,
         ])
         .send({ refreshToken: 'valid-token' });
 

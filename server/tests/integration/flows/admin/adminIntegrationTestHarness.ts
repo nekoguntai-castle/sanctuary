@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import { randomUUID } from 'crypto';
 import type { Express } from 'express';
 import request from 'supertest';
 import type { PrismaClient } from '../../../../src/generated/prisma/client';
@@ -13,7 +14,7 @@ export function setAdminIntegrationContext(nextApp: Express, nextPrisma: PrismaC
 }
 
 export function uniqueUsername(prefix: string): string {
-  return `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+  return `${prefix}_${Date.now()}_${randomUUID().slice(0, 8)}`;
 }
 
 export async function createAdminAndLogin(): Promise<{ adminId: string; token: string }> {

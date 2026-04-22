@@ -8,13 +8,14 @@ import request from 'supertest';
 import { Express } from 'express';
 import { PrismaClient } from '../../../src/generated/prisma/client';
 import bcrypt from 'bcryptjs';
+import { randomUUID } from 'crypto';
 
 /**
  * Generate unique test user credentials
  * Uses timestamp + random suffix to avoid conflicts in parallel tests
  */
 function generateUniqueId(): string {
-  return `${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+  return `${Date.now()}_${randomUUID().slice(0, 8)}`;
 }
 
 export function getTestUser() {

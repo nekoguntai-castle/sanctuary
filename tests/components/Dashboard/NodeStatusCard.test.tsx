@@ -163,7 +163,7 @@ describe('NodeStatusCard', () => {
       );
 
       expect(screen.getByText('Host:')).toBeInTheDocument();
-      expect(screen.getByText(/electrum\.example\.com/)).toBeInTheDocument();
+      expect(screen.getByText('electrum.example.com')).toBeInTheDocument();
     });
 
     it('shows host without SSL indicator when useSsl is false', () => {

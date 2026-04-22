@@ -3,7 +3,7 @@ import { app } from './authRegistrationTestHarness';
 import request from 'supertest';
 import { hashPassword } from '../../../../src/utils/password';
 import { mockPrismaClient } from '../../../mocks/prisma';
-import { mockIsVerificationRequired } from '../auth.testHelpers';
+import { createCsrfTokenForAccessCookie, mockIsVerificationRequired } from '../auth.testHelpers';
 
 export function registerAuthCookieExpiryTests(): void {
   describe('Phase 2 — cookies and expiry header', () => {
@@ -303,12 +303,15 @@ export function registerAuthCookieExpiryTests(): void {
       const { revokeToken } = await import('../../../../src/services/tokenRevocation');
       const mockRevokeToken = vi.mocked(revokeToken);
       mockRevokeToken.mockClear();
+      const csrfToken = await createCsrfTokenForAccessCookie('cookie-access-token');
 
       const response = await request(app)
         .post('/api/v1/auth/logout')
+        .set('X-CSRF-Token', csrfToken)
         .set('Cookie', [
           'sanctuary_access=cookie-access-token',
           'sanctuary_refresh=cookie-refresh-token',
+          `sanctuary_csrf=${csrfToken}`,
         ])
         .send({});
 
