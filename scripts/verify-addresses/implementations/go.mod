@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/btcsuite/btcd v0.25.0
-	github.com/btcsuite/btcd/btcec/v2 v2.3.5
+	github.com/btcsuite/btcd/btcec/v2 v2.3.6
 	github.com/btcsuite/btcd/btcutil v1.1.6
 	golang.org/x/crypto v0.50.0
 )
