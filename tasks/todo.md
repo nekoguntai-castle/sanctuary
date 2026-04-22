@@ -89,7 +89,14 @@ Goal: reduce the open CodeQL inventory through focused, reviewable batches inste
 - [x] Replace regex-based derivation suffix extraction with a bounded string scan after the already-parsed xpub.
 - [x] Add regression coverage for no-origin single-sig descriptor path extraction.
 - [x] Run focused address-derivation parser tests, server test typecheck, and diff checks.
-- [ ] Commit locally, then rebase/push/open the follow-up PR after #89 lands.
+- [x] Commit locally on a stacked branch.
+- [ ] Rebase/push/open the follow-up PR after #89 lands.
+
+## Local-First PR Process Correction
+
+- [x] Capture the lesson from PR #89: run the package's full local coverage/build gate before pushing or entering the merge queue.
+- [x] Update CI/CD strategy docs so GitHub Actions is treated as branch protection, not the first place local-reproducible package failures are found.
+- [ ] Apply the rule to the next pushed batch: one local full gate, one push, one PR check run, one merge-queue run.
 
 ## Repository Settings Cleanup While Waiting
 

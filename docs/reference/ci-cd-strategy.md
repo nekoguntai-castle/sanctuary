@@ -115,7 +115,13 @@ Run focused commands before pushing:
 - Gateway: `cd gateway && npm run test:run` or focused gateway tests.
 - Docker/install: relevant `tests/install/*` scripts when practical.
 
-Run full coverage locally when the change affects coverage policy, broadly shared code, auth, Bitcoin transaction logic, or release readiness.
+Before opening or updating a PR, run the full local gate for the touched package so GitHub Actions is a protection layer, not the first place basic package coverage/build failures are discovered:
+
+- Gateway changes: `cd gateway && npm run test:coverage && npm run build`.
+- Server security, Bitcoin, auth, access-control, or shared-service changes: focused tests, `npm run typecheck:server:tests`, and the broader changed-server test gate when paths are critical.
+- Frontend changes: strict app/test typechecks plus the relevant coverage command for the changed surface.
+
+Push once per batch after the relevant local gate is green. Let PR checks run once, then enter merge queue once. If CI finds a reproducible local gap, add that command to this Tier 0 checklist before retrying.
 
 ### Tier 1 - PR Quick Gate
 
