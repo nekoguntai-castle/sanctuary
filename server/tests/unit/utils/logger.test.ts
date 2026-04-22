@@ -144,6 +144,23 @@ describe('Logger', () => {
 
       expect(capturedLogs[0]).toContain('payload=[Object]');
     });
+
+    it('escapes control characters from messages and context before writing a log line', () => {
+      const log = createLogger('TEST');
+
+      log.info('first line\nsecond line\rthird line', {
+        'bad\nkey': 'alpha\nbeta\r\ngamma',
+        tabbed: 'before\tafter',
+      });
+
+      const line = capturedLogs[0];
+      expect(line).not.toContain('\n');
+      expect(line).not.toContain('\r');
+      expect(line).not.toContain('\t');
+      expect(line).toContain('first line\\nsecond line\\rthird line');
+      expect(line).toContain('bad\\nkey=alpha\\nbeta\\r\\ngamma');
+      expect(line).toContain('tabbed=before\\tafter');
+    });
   });
 
   describe('automatic redaction', () => {

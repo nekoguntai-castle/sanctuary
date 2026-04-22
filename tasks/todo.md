@@ -82,9 +82,8 @@ Goal: reduce the open CodeQL inventory through focused, reviewable batches inste
 
 ## Current CodeQL Inventory
 
-- 300 open alerts as of 2026-04-22 after PR #98 landed and the post-merge CodeQL run completed successfully.
-- 273 alerts are `js/missing-rate-limiting`, mostly in `server/src/api/**` plus `gateway/src/routes/proxy/index.ts`.
-- The remaining 27 alerts cover smaller high-signal groups: user-controlled auth bypass, TLS validation bypass, CORS, clear-text logging, password hashing cost, Go integer conversions, missing token validation, and script-only file/URL sanitization findings.
+- 24 open alerts as of 2026-04-22 after PR #102 landed and the rate-limit false positives were dismissed.
+- The remaining alerts cover smaller high-signal groups: incomplete sanitization, user-controlled auth bypass, TLS validation bypass, log/clear-text logging, password hashing cost, Go integer conversions, file/HTTP data-flow findings, and missing token validation.
 
 ## Checklist
 
@@ -233,17 +232,36 @@ Checklist:
 - [x] Run server/gateway build, lint, coverage, and diff checks locally before pushing.
 - [x] Open one PR, wait for required checks and CodeQL, merge through the queue, and sync `main`.
 - [x] Wait for post-merge default-branch CodeQL, then re-query the alert count.
-- [ ] Finish the exposure/config audit, then dismiss only the remaining false-positive rate-limit alerts with the documented rationale.
+- [x] Finish the exposure/config audit, then dismiss only the remaining false-positive rate-limit alerts with the documented rationale.
 
 Review:
 - PR #100 merged on 2026-04-22 as `3ad03584`.
 - Merge-group gates passed: Code Quality 1m02s; Test Suite 12m11s including Full Backend Tests 4m32s, Full Gateway Tests 14s, Full E2E Tests 7m12s, Full Build Check 1m01s, and Full Test Summary 6s.
 - Local `main` fast-forwarded to `3ad03584`.
-- Post-merge default-branch CodeQL is still the measurement gate for whether GitHub closes the `js/missing-rate-limiting` bucket.
 - Post-merge CodeQL completed successfully but left all 273 `js/missing-rate-limiting` alerts open. CodeQL did not associate the modular router alert sites with the app-level `/api` and `/internal` `express-rate-limit` guards.
 - Dismissal paused after 58 rate-limit alerts were marked false positive so the exposure model could be rechecked. The remaining 215 stay open until the audit/docs/config follow-up lands.
-- Follow-up audit found one real forward-looking gap: gateway docs referenced `RATE_LIMIT_MAX_REQUESTS`, while code only read `RATE_LIMIT_MAX`. The current branch adds backward-compatible alias support, tests, and public/private exposure docs before the remaining rate-limit alerts are dismissed.
-- New Dependabot PR #101 is open for a gateway `fast-xml-parser` lockfile-only transitive bump from 5.5.10 to 5.7.1. PR checks are green; local gateway validation and merge should be handled before opening another unrelated remediation PR.
+- Follow-up audit found one real forward-looking gap: gateway docs referenced `RATE_LIMIT_MAX_REQUESTS`, while code only read `RATE_LIMIT_MAX`. PR #102 added backward-compatible alias support, tests, and public/private exposure docs.
+- Dependabot PR #101 for the gateway `fast-xml-parser` lockfile-only transitive bump from 5.5.10 to 5.7.1 merged before the remaining CodeQL work resumed.
+- The remaining 215 rate-limit alerts were dismissed as false positives after PR #102 merged and default-branch CodeQL passed. The current open CodeQL inventory is 24 alerts, with no `js/missing-rate-limiting` alerts remaining open.
+- `gh pr list` and the repository PR API returned no open Sanctuary PRs before starting the next CodeQL batch. An org-wide open Dependabot PR search also returned no results; re-check before pushing in case a new Dependabot PR appears.
+
+## Follow-up Batch: Sanitization, Logging, And Bounds
+
+Goal: clear the next low-risk mechanical CodeQL cluster without changing runtime policy: one-line log safety, complete Markdown/path sanitization, and integer bounds checks in verify-addresses.
+
+Checklist:
+- [x] Fix Go address verifier integer parsing so user-provided child indexes cannot wrap when converted to `uint32`.
+- [x] Fix incomplete sanitization in Markdown table escaping and derivation/path parsing helpers.
+- [x] Sanitize newline/control characters from structured console logger output in backend and AI proxy logging utilities.
+- [x] Add or update focused regression coverage where the touched modules already have tests.
+- [x] Run focused local validation for the touched packages and scripts.
+- [x] Re-query open PRs before pushing; handle any visible Dependabot PR before opening this CodeQL PR.
+- [ ] Commit, push, open one PR, wait for required checks, merge through the protected flow, and sync `main`.
+
+Review:
+- Local validation passed: root `tests/utils/deviceConnection.test.ts`, server `logger.test.ts` and `addressDerivation.branches.test.ts`, AI proxy `npm run build`, script `node --check` checks, root app lint/typecheck/test typecheck, server lint, server test typecheck, and `git diff --check`.
+- Pre-push PR queue check returned no open Sanctuary PRs and no org-wide open Dependabot PRs.
+- Go toolchain is unavailable in the current Codex environment (`gofmt` not found), so the Go verifier change was manually reviewed and will rely on GitHub's Go-capable checks as the final compile gate.
 
 ---
 

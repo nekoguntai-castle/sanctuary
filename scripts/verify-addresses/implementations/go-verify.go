@@ -29,6 +29,8 @@ import (
 	"golang.org/x/crypto/ripemd160"
 )
 
+const maxChildIndex = uint64(4294967295)
+
 type Result struct {
 	Address   string `json:"address,omitempty"`
 	Error     string `json:"error,omitempty"`
@@ -59,12 +61,16 @@ func main() {
 			return
 		}
 		xpub := os.Args[2]
-		index, _ := strconv.Atoi(os.Args[3])
+		index, err := parseUint32Arg("index", os.Args[3])
+		if err != nil {
+			outputError(err.Error())
+			return
+		}
 		scriptType := os.Args[4]
 		change := os.Args[5] == "true"
 		network := os.Args[6]
 
-		address, err := deriveSingleSig(xpub, uint32(index), scriptType, change, network)
+		address, err := deriveSingleSig(xpub, index, scriptType, change, network)
 		if err != nil {
 			outputError(err.Error())
 			return
@@ -81,13 +87,21 @@ func main() {
 			outputError("Failed to parse xpubs: " + err.Error())
 			return
 		}
-		threshold, _ := strconv.Atoi(os.Args[3])
-		index, _ := strconv.Atoi(os.Args[4])
+		threshold, err := parsePositiveIntArg("threshold", os.Args[3])
+		if err != nil {
+			outputError(err.Error())
+			return
+		}
+		index, err := parseUint32Arg("index", os.Args[4])
+		if err != nil {
+			outputError(err.Error())
+			return
+		}
 		scriptType := os.Args[5]
 		change := os.Args[6] == "true"
 		network := os.Args[7]
 
-		address, err := deriveMultisig(xpubs, threshold, uint32(index), scriptType, change, network)
+		address, err := deriveMultisig(xpubs, threshold, index, scriptType, change, network)
 		if err != nil {
 			outputError(err.Error())
 			return
@@ -97,6 +111,22 @@ func main() {
 	default:
 		outputError("Unknown command: " + command)
 	}
+}
+
+func parseUint32Arg(name string, value string) (uint32, error) {
+	parsed, err := strconv.ParseUint(value, 10, 32)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s: must be an integer between 0 and %d", name, maxChildIndex)
+	}
+	return uint32(parsed), nil
+}
+
+func parsePositiveIntArg(name string, value string) (int, error) {
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed < 1 {
+		return 0, fmt.Errorf("invalid %s: must be a positive integer", name)
+	}
+	return parsed, nil
 }
 
 func outputJSON(r Result) {

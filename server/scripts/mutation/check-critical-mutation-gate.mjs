@@ -112,7 +112,10 @@ const summaryLines = [
 if (topSurvivors.length > 0) {
   summaryLines.push('', '### Top Surviving Mutants', '', '| Weight | File | Line | Mutator | Replacement |', '|---:|---|---:|---|---|');
   for (const item of topSurvivors) {
-    const replacement = item.replacement.replace(/\|/g, '\\|').replace(/\n/g, ' ');
+    const replacement = item.replacement
+      .replace(/\\/g, '\\\\')
+      .replace(/\|/g, '\\|')
+      .replace(/[\r\n]+/g, ' ');
     summaryLines.push(
       `| ${item.weight} | \`${item.filePath}\` | ${item.line} | \`${item.mutatorName}\` | \`${replacement}\` |`
     );
@@ -141,4 +144,3 @@ if (weightedScore < weightedScoreMin) {
   console.error(`Mutation gate failed: weighted score ${weightedScore}% < ${weightedScoreMin}%`);
   process.exit(1);
 }
-

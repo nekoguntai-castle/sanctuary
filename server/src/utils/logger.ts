@@ -93,6 +93,8 @@ const getLogLevel = (): LogLevel => {
 
 let currentLogLevel = getLogLevel();
 
+const OTHER_LOG_CONTROL_CHARS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g;
+
 // Color codes for terminal output (ANSI escape codes)
 const colors = {
   reset: '\x1b[0m',
@@ -103,6 +105,15 @@ const colors = {
   cyan: '\x1b[36m',
   gray: '\x1b[90m',
 };
+
+const sanitizeLogText = (value: unknown): string =>
+  String(value)
+    .replace(/\r/g, '\\r')
+    .replace(/\n/g, '\\n')
+    .replace(/\t/g, '\\t')
+    .replace(OTHER_LOG_CONTROL_CHARS, (char) =>
+      `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`
+    );
 
 /**
  * Get ISO timestamp for log entries
@@ -167,17 +178,18 @@ const formatContext = (context?: Record<string, any>): string => {
 
   const formatted = Object.entries(prepared)
     .map(([key, value]) => {
+      const safeKey = sanitizeLogText(key);
       if (value === undefined || value === null) {
-        return `${key}=null`;
+        return `${safeKey}=null`;
       }
       if (typeof value === 'object') {
         try {
-          return `${key}=${safeStringify(value)}`;
+          return `${safeKey}=${sanitizeLogText(safeStringify(value))}`;
         } catch {
-          return `${key}=[Object]`;
+          return `${safeKey}=[Object]`;
         }
       }
-      return `${key}=${value}`;
+      return `${safeKey}=${sanitizeLogText(value)}`;
     })
     .join(' ');
 
@@ -204,8 +216,8 @@ const log = (
   const reqCtx = requestContext.get();
   const requestId = reqCtx?.requestId;
   const traceId = reqCtx?.traceId;
-  const requestIdStr = requestId ? ` ${colors.dim}[${requestId}]${colors.reset}` : '';
-  const traceIdStr = traceId ? ` ${colors.dim}[trace:${traceId.substring(0, 8)}]${colors.reset}` : '';
+  const requestIdStr = requestId ? ` ${colors.dim}[${sanitizeLogText(requestId)}]${colors.reset}` : '';
+  const traceIdStr = traceId ? ` ${colors.dim}[trace:${sanitizeLogText(traceId.substring(0, 8))}]${colors.reset}` : '';
 
   // Merge request context into log context
   const enrichedContext = {
@@ -217,7 +229,7 @@ const log = (
 
   // Format: [timestamp] LEVEL [PREFIX] [REQ_ID] [TRACE_ID] message context
   console.log(
-    `${colors.gray}[${timestamp}]${colors.reset} ${color}${levelName}${colors.reset} ${colors.cyan}[${prefix}]${colors.reset}${requestIdStr}${traceIdStr} ${message}${contextStr}`
+    `${colors.gray}[${timestamp}]${colors.reset} ${color}${levelName}${colors.reset} ${colors.cyan}[${sanitizeLogText(prefix)}]${colors.reset}${requestIdStr}${traceIdStr} ${sanitizeLogText(message)}${contextStr}`
   );
 };
 

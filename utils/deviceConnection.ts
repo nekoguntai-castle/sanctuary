@@ -67,7 +67,7 @@ export function normalizeDerivationPath(path: string): string {
   if (parts.length < 2) return normalized;
 
   // Check if this looks like a standard BIP path (44, 49, 84, 86, 48)
-  const purposePart = parts[1]?.replace("'", '');
+  const purposePart = parts[1]?.replace(/'/g, '');
   const standardPurposes = ['44', '49', '84', '86', '48'];
 
   if (standardPurposes.includes(purposePart)) {
