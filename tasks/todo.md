@@ -41,6 +41,15 @@ Goal: reduce the open CodeQL inventory through focused, reviewable batches inste
 - [x] Commit, push, and open follow-up PR #88 after #87 landed.
 - [ ] Verify PR #88 required checks and merge through the queue if green.
 
+## Follow-up Batch: Gateway Trailing Slash ReDoS
+
+- [x] Select small gateway CodeQL ReDoS findings in trailing slash normalization.
+- [x] Move trailing slash normalization into a real gateway middleware module.
+- [x] Replace the regex URL rewrite with bounded string slicing.
+- [x] Update the unit test to import the production middleware instead of mirroring it.
+- [x] Run focused gateway trailing slash test, gateway build, and diff checks.
+- [ ] Commit, push, and open the follow-up PR after #88 lands.
+
 ---
 
 # Completed Task: Rename org `nekoguntai` → `nekoguntai-castle`

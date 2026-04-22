@@ -6,19 +6,8 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { Request, Response, NextFunction } from 'express';
-
-/**
- * Extracted middleware logic for testing
- * This mirrors the implementation in src/index.ts
- */
-function trailingSlashMiddleware(req: Request, _res: Response, next: NextFunction): void {
-  if (req.path !== '/' && req.path.endsWith('/')) {
-    // Remove trailing slashes before query string (?), hash (#), or end of URL
-    req.url = req.url.replace(/\/+(?=\?|#|$)/, '') || '/';
-  }
-  next();
-}
+import { Request, Response } from 'express';
+import { normalizeTrailingSlash } from '../../../src/middleware/trailingSlash';
 
 describe('Trailing Slash Middleware', () => {
   function createMockRequest(path: string, url?: string): Partial<Request> {
@@ -38,7 +27,7 @@ describe('Trailing Slash Middleware', () => {
       const res = createMockResponse();
       const next = vi.fn();
 
-      trailingSlashMiddleware(req as Request, res as Response, next);
+      normalizeTrailingSlash(req as Request, res as Response, next);
 
       expect(req.url).toBe('/api/v1/wallets');
       expect(next).toHaveBeenCalled();
@@ -49,7 +38,7 @@ describe('Trailing Slash Middleware', () => {
       const res = createMockResponse();
       const next = vi.fn();
 
-      trailingSlashMiddleware(req as Request, res as Response, next);
+      normalizeTrailingSlash(req as Request, res as Response, next);
 
       expect(req.url).toBe('/api/v1/wallets');
       expect(next).toHaveBeenCalled();
@@ -60,7 +49,7 @@ describe('Trailing Slash Middleware', () => {
       const res = createMockResponse();
       const next = vi.fn();
 
-      trailingSlashMiddleware(req as Request, res as Response, next);
+      normalizeTrailingSlash(req as Request, res as Response, next);
 
       expect(req.url).toBe('/api/v1/wallets');
       expect(next).toHaveBeenCalled();
@@ -71,7 +60,7 @@ describe('Trailing Slash Middleware', () => {
       const res = createMockResponse();
       const next = vi.fn();
 
-      trailingSlashMiddleware(req as Request, res as Response, next);
+      normalizeTrailingSlash(req as Request, res as Response, next);
 
       expect(req.url).toBe('/');
       expect(next).toHaveBeenCalled();
@@ -82,11 +71,8 @@ describe('Trailing Slash Middleware', () => {
       const res = createMockResponse();
       const next = vi.fn();
 
-      trailingSlashMiddleware(req as Request, res as Response, next);
+      normalizeTrailingSlash(req as Request, res as Response, next);
 
-      // The regex only strips trailing slashes, query string comes after
-      // URL: /api/v1/wallets/?page=1&limit=10 -> /api/v1/wallets?page=1&limit=10
-      // Note: The slash before ? is what gets stripped
       expect(req.url).toBe('/api/v1/wallets?page=1&limit=10');
       expect(next).toHaveBeenCalled();
     });
@@ -99,7 +85,7 @@ describe('Trailing Slash Middleware', () => {
       const res = createMockResponse();
       const next = vi.fn();
 
-      trailingSlashMiddleware(req as Request, res as Response, next);
+      normalizeTrailingSlash(req as Request, res as Response, next);
 
       expect(req.url).toBe('/api/v1/wallets/123/transactions/456');
       expect(next).toHaveBeenCalled();
@@ -110,7 +96,7 @@ describe('Trailing Slash Middleware', () => {
       const res = createMockResponse();
       const next = vi.fn();
 
-      trailingSlashMiddleware(req as Request, res as Response, next);
+      normalizeTrailingSlash(req as Request, res as Response, next);
 
       // Hash fragments typically aren't sent to server, but test the behavior
       expect(req.url).toBe('/api/v1/docs#section');
@@ -132,7 +118,7 @@ describe('Trailing Slash Middleware', () => {
         const res = createMockResponse();
         const next = vi.fn();
 
-        trailingSlashMiddleware(req as Request, res as Response, next);
+        normalizeTrailingSlash(req as Request, res as Response, next);
 
         expect(next).toHaveBeenCalled();
       });
@@ -144,7 +130,7 @@ describe('Trailing Slash Middleware', () => {
       const res = createMockResponse();
       const next = vi.fn();
 
-      trailingSlashMiddleware(req as Request, res as Response, next);
+      normalizeTrailingSlash(req as Request, res as Response, next);
 
       // Empty path doesn't end with '/', so URL unchanged
       expect(req.url).toBe('/');
@@ -157,7 +143,7 @@ describe('Trailing Slash Middleware', () => {
       const res = createMockResponse();
       const next = vi.fn();
 
-      trailingSlashMiddleware(req as Request, res as Response, next);
+      normalizeTrailingSlash(req as Request, res as Response, next);
 
       expect(req.url).toBe('/api/v1/test');
       expect(next).toHaveBeenCalled();
