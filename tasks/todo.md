@@ -63,6 +63,30 @@ Goal: the repo was transferred from `github.com/nekoguntai/sanctuary` to `github
 
 ---
 
+# Task: Security And Quality Settings Best Practices
+
+Status: in progress
+
+Goal: align the GitHub repository's security and quality settings with current best practices, then add tracked repo-side dependency update configuration.
+
+## Checklist
+
+- [x] Inspect current GitHub security analysis, branch protection, rulesets, code scanning, Dependabot, and local quality config.
+- [x] Enable available repo-level best-practice settings without weakening the protected-main PR flow.
+- [x] Create a tracked Dependabot version-update configuration for Actions, npm manifests, Go modules, and Dockerfiles.
+- [x] Add explicit least-privilege GitHub Actions permissions to address CodeQL `actions/missing-workflow-permissions` alerts.
+- [x] Validate configuration and current repository settings.
+- [ ] Commit, push, open a PR, and verify required checks.
+
+## Review
+
+- Repo-level settings applied so far: Dependabot security updates enabled, auto-merge enabled, update-branch enabled, squash-only merge options aligned with the merge queue.
+- Already enabled before this task: vulnerability alerts, secret scanning, secret scanning push protection, private vulnerability reporting, CodeQL default setup, protected `main`, merge queue, strict required checks, conversation resolution, linear history, no force pushes, and no deletions.
+- GitHub did not enable secret-scanning non-provider patterns or validity checks through the repository API; those settings remain disabled and may be account/feature gated.
+- CodeQL reported open `actions/missing-workflow-permissions` alerts; workflow files now declare explicit default permissions and release jobs escalate only where they need release/package/check access.
+- Validation so far: `git diff --check` passed, repository settings re-read through `gh api` match the intended applied settings, and every workflow now has an explicit top-level `permissions` block. Local YAML parser tools (`ruby`, `yq`, `yamllint`, `actionlint`) are not installed, so GitHub PR checks will be the authoritative syntax validation.
+- Remaining CodeQL application findings are separate from settings hardening: current open samples include high-severity `js/missing-rate-limiting` and `js/polynomial-redos` alerts that need follow-up code remediation.
+
 # Completed Task: Grade Audit - Worthwhile Findings Review
 
 Status: complete

@@ -1,0 +1,207 @@
+version: 2
+
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Pacific/Honolulu"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps(actions)"
+    groups:
+      github-actions-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:15"
+      timezone: "Pacific/Honolulu"
+    open-pull-requests-limit: 5
+    versioning-strategy: "increase-if-necessary"
+    commit-message:
+      prefix: "deps(root)"
+    groups:
+      root-npm-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "npm"
+    directory: "/server"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:30"
+      timezone: "Pacific/Honolulu"
+    open-pull-requests-limit: 5
+    versioning-strategy: "increase-if-necessary"
+    commit-message:
+      prefix: "deps(server)"
+    groups:
+      server-npm-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "npm"
+    directory: "/gateway"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:45"
+      timezone: "Pacific/Honolulu"
+    open-pull-requests-limit: 5
+    versioning-strategy: "increase-if-necessary"
+    commit-message:
+      prefix: "deps(gateway)"
+    groups:
+      gateway-npm-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "npm"
+    directory: "/ai-proxy"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "10:00"
+      timezone: "Pacific/Honolulu"
+    open-pull-requests-limit: 3
+    versioning-strategy: "increase-if-necessary"
+    commit-message:
+      prefix: "deps(ai-proxy)"
+    groups:
+      ai-proxy-npm-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "npm"
+    directory: "/scripts/verify-addresses"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "10:15"
+      timezone: "Pacific/Honolulu"
+    open-pull-requests-limit: 3
+    versioning-strategy: "increase-if-necessary"
+    commit-message:
+      prefix: "deps(verify-addresses)"
+    groups:
+      verify-addresses-npm-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "npm"
+    directory: "/scripts/verify-psbt"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "10:30"
+      timezone: "Pacific/Honolulu"
+    open-pull-requests-limit: 3
+    versioning-strategy: "increase-if-necessary"
+    commit-message:
+      prefix: "deps(verify-psbt)"
+    groups:
+      verify-psbt-npm-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "gomod"
+    directory: "/scripts/verify-addresses/implementations"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "10:45"
+      timezone: "Pacific/Honolulu"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "deps(go)"
+    groups:
+      verify-addresses-go-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "11:00"
+      timezone: "Pacific/Honolulu"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "deps(docker)"
+
+  - package-ecosystem: "docker"
+    directory: "/server"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "11:15"
+      timezone: "Pacific/Honolulu"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "deps(server-docker)"
+
+  - package-ecosystem: "docker"
+    directory: "/gateway"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "11:30"
+      timezone: "Pacific/Honolulu"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "deps(gateway-docker)"
+
+  - package-ecosystem: "docker"
+    directory: "/ai-proxy"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "11:45"
+      timezone: "Pacific/Honolulu"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "deps(ai-proxy-docker)"
+
+  - package-ecosystem: "docker"
+    directory: "/scripts/bitcoin-core-docker"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "12:00"
+      timezone: "Pacific/Honolulu"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "deps(bitcoin-core-docker)"

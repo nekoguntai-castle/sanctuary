@@ -18,6 +18,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ${{ github.repository }}
@@ -66,6 +69,8 @@ jobs:
     name: Verify Pre-release
     runs-on: ubuntu-latest
     if: github.event_name == 'release'
+    permissions:
+      contents: write
     steps:
       - name: Ensure release is a pre-release
         env:
@@ -105,6 +110,9 @@ jobs:
         (github.event_name == 'workflow_dispatch') ||
         (github.event_name == 'push' && github.ref_type == 'tag' && needs.resolve-tag.outputs.is_stable == 'true')
       )
+    permissions:
+      checks: read
+      contents: read
     outputs:
       sha: ${{ steps.resolve-sha.outputs.sha }}
       version: ${{ steps.resolve-sha.outputs.version }}
