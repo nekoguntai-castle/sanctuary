@@ -154,42 +154,51 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          CHECK_NAME="Install Test Summary"
+          # Pin the poller to the specific Install Tests workflow run for THIS tag push.
+          # The prior implementation queried /commits/<sha>/check-runs by name, which
+          # accepted the RC tag's older successful summary as proof the stable tag passed
+          # (both tags share one SHA). See v0.8.40 post-mortem.
+          SHA="${{ steps.resolve-sha.outputs.sha }}"
+          TAG_REF="v${{ steps.resolve-sha.outputs.version }}"
           MAX_ATTEMPTS=60  # 30 minutes at 30-second intervals
           ATTEMPT=0
-          SHA="${{ steps.resolve-sha.outputs.sha }}"
+          RUN_ID=""
 
-          echo "Waiting for '$CHECK_NAME' check to complete on $SHA..."
+          echo "Waiting for Install Tests run on $TAG_REF@$SHA..."
 
           while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
             ATTEMPT=$((ATTEMPT + 1))
 
-            # Query for check runs - get the most recent one (first in array)
-            # Using [0] to handle cases where multiple checks exist with the same name
-            RESULT=$(gh api repos/${{ github.repository }}/commits/${SHA}/check-runs \
-              --jq "[.check_runs[] | select(.name == \"$CHECK_NAME\")] | .[0] // {} | {status: .status, conclusion: .conclusion}" 2>/dev/null || echo "{}")
-
-            STATUS=$(echo "$RESULT" | jq -r '.status // "not_found"')
-            CONCLUSION=$(echo "$RESULT" | jq -r '.conclusion // "null"')
-
-            if [ "$STATUS" == "not_found" ] || [ "$STATUS" == "null" ]; then
-              echo "[$ATTEMPT/$MAX_ATTEMPTS] Check '$CHECK_NAME' not found yet, waiting..."
-            elif [ "$STATUS" == "completed" ]; then
-              if [ "$CONCLUSION" == "success" ]; then
-                echo "✓ Install tests passed!"
-                exit 0
-              else
-                echo "✗ Install tests failed with conclusion: $CONCLUSION"
-                exit 1
+            if [ -z "$RUN_ID" ]; then
+              RUN_ID=$(gh api "repos/${{ github.repository }}/actions/workflows/install-test.yml/runs?head_sha=${SHA}&event=push&per_page=20" \
+                --jq "[.workflow_runs[] | select(.head_branch == \"$TAG_REF\")] | .[0].id // empty" 2>/dev/null || echo "")
+              if [ -z "$RUN_ID" ]; then
+                echo "[$ATTEMPT/$MAX_ATTEMPTS] No Install Tests run registered for $TAG_REF yet, waiting..."
+                sleep 30
+                continue
               fi
-            else
-              echo "[$ATTEMPT/$MAX_ATTEMPTS] Check status: $STATUS, waiting..."
+              echo "Tracking run: https://github.com/${{ github.repository }}/actions/runs/$RUN_ID"
             fi
 
+            RESULT=$(gh api "repos/${{ github.repository }}/actions/runs/${RUN_ID}" \
+              --jq '{status: .status, conclusion: .conclusion}' 2>/dev/null || echo "{}")
+            STATUS=$(echo "$RESULT" | jq -r '.status // "unknown"')
+            CONCLUSION=$(echo "$RESULT" | jq -r '.conclusion // "null"')
+
+            if [ "$STATUS" == "completed" ]; then
+              if [ "$CONCLUSION" == "success" ]; then
+                echo "✓ Install tests passed (run $RUN_ID)"
+                exit 0
+              fi
+              echo "::error::Install tests finished with conclusion: $CONCLUSION (run $RUN_ID)"
+              exit 1
+            fi
+
+            echo "[$ATTEMPT/$MAX_ATTEMPTS] Install Tests run status: $STATUS"
             sleep 30
           done
 
-          echo "✗ Timed out waiting for Install Test Summary after 30 minutes"
+          echo "::error::Timed out waiting for Install Tests after 30 minutes"
           exit 1
 
   # ============================================
