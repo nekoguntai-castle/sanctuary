@@ -5057,3 +5057,14 @@ Goal: remove the rollback safety net once we are confident the cookie + refresh 
 - The mobile gateway path (`gateway/`, `shared/utils/gatewayAuth.ts`) must remain untouched in functionality. Every phase should run `cd gateway && npm run build` and the gateway request-validation/proxy/HMAC tests as a regression check.
 - The 100% frontend coverage gate is non-negotiable. If a refactor removes coverage, the missing branches must be added back in the same PR.
 - Per the "no cutting corners" working rule: if a step would be easier by deferring a related concern, push back on the deferral first. The right question is "is the long-term solution healthier?" not "is this slice smaller?"
+
+## Follow-up Batch: Grade Lizard Regression Cleanup
+
+Goal: restore the latest full-grade maintainability score by clearing the two lizard warnings found in the 2026-04-22 grade run, then update the report/history and merge through the PR flow.
+
+- [x] Refactor `gateway/src/middleware/auth.ts` payload validation so `assertJwtPayload` no longer exceeds the lizard CCN threshold.
+- [x] Refactor `scripts/perf/phase3-benchmark.mjs` fixture provisioning so `provisionBenchmarkFixture` no longer exceeds the lizard CCN threshold.
+- [x] Run focused tests for gateway auth and the benchmark script syntax/smoke surface.
+- [x] Run lizard, lint/typecheck, and the relevant local quality checks.
+- [x] Update `docs/plans/codebase-health-assessment.md` and `docs/plans/grade-history/sanctuary_.jsonl` if maintainability returns to the prior baseline.
+- [ ] Commit, push, open PR, confirm checks, and merge through the protected branch flow.
