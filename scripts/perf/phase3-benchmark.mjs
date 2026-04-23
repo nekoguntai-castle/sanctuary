@@ -209,6 +209,7 @@ async function run() {
 
   const jsonPath = join(outputDir, `phase3-benchmark-${runId}.json`);
   const mdPath = join(outputDir, `phase3-benchmark-${runId}.md`);
+  // codeql[js/http-to-file-access] Benchmark reports persist sanitized aggregate status/count/latency metadata only; raw response bodies are intentionally omitted.
   await writeFile(jsonPath, `${JSON.stringify(result, null, 2)}\n`);
   await writeFile(mdPath, renderMarkdown(result));
 
@@ -441,9 +442,10 @@ async function measureHttpScenario(options) {
       const response = await fetch(url, {
         method,
         headers,
+        // codeql[js/file-access-to-http] Backup payload uploads are restricted to loopback/private targets by default and require an explicit operator override for external targets.
         body: encodedBody,
         signal: controller.signal,
-      }); // lgtm[js/file-access-to-http] Backup uploads are restricted to loopback/private targets unless explicitly overridden.
+      });
       records.push({
         ok: expectedStatuses.includes(response.status),
         status: response.status,

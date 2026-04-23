@@ -325,9 +325,32 @@ Dependabot security queue:
 - [x] Confirm no upstream non-vulnerable dependency graph is currently available from `bullmq`, `firebase-admin`, or the Google Cloud transitive packages.
 - [x] Add package-level npm `overrides` for `uuid@14.0.0` in `server` and `gateway`.
 - [x] Validate the override locally before pushing.
-- [ ] Push the `deps/uuid-14-overrides` PR and verify GitHub required checks.
+- [x] Push the `deps/uuid-14-overrides` PR and verify GitHub required checks.
 - Dependabot cannot auto-open PRs for these alerts: server is constrained by `bullmq@5.75.2 -> uuid@11.1.0`; gateway is constrained by `firebase-admin@13.8.0` and Google transitive dependencies, with the updater reporting no non-vulnerable resolvable `uuid` path.
 - Local validation passed before this PR: `npm install` in server/gateway, `npm audit` in both affected packages reported 0 vulnerabilities, `npm ls uuid --all` showed all affected transitives deduped to `uuid@14.0.0`, server and gateway builds passed, focused BullMQ/notification and FCM/push tests passed, runtime import probes for `bullmq`, `firebase-admin`, and `uuid` passed, full gateway coverage stayed at 100%, and the full server unit suite passed.
+- PR #105 merged through the protected merge queue on 2026-04-23 as `7828463b`. The merge-group `Test Suite` and post-merge backstop both passed. The live Dependabot alert list now contains only the two low `elliptic <= 6.6.1` alerts without a patched release.
+
+## Follow-up Batch: Final CodeQL Modeling Alerts
+
+Goal: close or document the six remaining CodeQL alerts after PR #104 and PR #105 landed. These are false-positive modeling alerts in already-bounded code paths, so this batch keeps runtime behavior unchanged and adds line-local suppression rationale where the scanner reports the issue.
+
+Current inventory after PR #105:
+- 1 `js/file-access-to-http` in the perf benchmark backup-upload path.
+- 2 `js/http-to-file-access` in sanitized perf/ops report writing.
+- 1 `js/missing-token-validation` in the auth route unit-test harness.
+- 2 `js/user-controlled-bypass` in the server auth middleware.
+
+Checklist:
+- [x] Re-query open PRs, Dependabot alerts, and CodeQL alerts before starting.
+- [x] Add standalone exact-line CodeQL suppressions for the auth middleware false positives: absent-token denial and optional public-request annotation.
+- [x] Add standalone exact-line CodeQL suppression for the auth test helper false positive: cookie parsing is immediately followed by `doubleCsrfProtection` before mounting the auth router.
+- [x] Add standalone exact-line CodeQL suppressions for perf/ops script data-flow false positives: reports persist sanitized aggregate evidence only, and backup payload upload is bounded to loopback/private targets unless the operator explicitly opts into external upload.
+- [x] Run local syntax/tests/type checks.
+- [ ] Commit, push, open one PR, and verify CodeQL clears the six alerts.
+
+Review:
+- Local validation passed: `node --check` for both touched scripts, focused auth middleware/API tests, `npm run typecheck:tests` in `server`, `npm run typecheck:scripts`, `npm run lint:server`, and `git diff --check`.
+- PR #106's first CodeQL status check failed because the suppression rationale was placed as trailing inline `lgtm[...]` comments. The comments were converted to standalone `codeql[...]` lines immediately before each alert location, matching GitHub CodeQL's supported suppression form.
 
 ---
 
