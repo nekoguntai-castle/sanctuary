@@ -196,6 +196,29 @@ describe('createServerCorsOriginGuard', () => {
     });
   });
 
+  it('rejects browser origins when the current request host is missing', () => {
+    const result = evaluateDelegatedOrigin(createRequestLike({
+      protocol: 'https',
+    }), 'https://10.0.0.5:8443');
+
+    expect(result.value).toBeUndefined();
+    expect(result.error).toBeInstanceOf(ForbiddenError);
+    expect((result.error as ForbiddenError).statusCode).toBe(403);
+    expect(result.error?.message).toBe('Not allowed by CORS');
+  });
+
+  it('rejects browser origins when the current request host cannot form a valid origin', () => {
+    const result = evaluateDelegatedOrigin(createRequestLike({
+      host: 'not a valid host',
+      protocol: 'https',
+    }), 'https://10.0.0.5:8443');
+
+    expect(result.value).toBeUndefined();
+    expect(result.error).toBeInstanceOf(ForbiddenError);
+    expect((result.error as ForbiddenError).statusCode).toBe(403);
+    expect(result.error?.message).toBe('Not allowed by CORS');
+  });
+
   it('rejects browser origins that do not match the current request origin in production', () => {
     const result = evaluateDelegatedOrigin(createRequestLike({
       host: '10.0.0.5:8443',

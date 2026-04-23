@@ -5077,7 +5077,7 @@ Goal: identify and fix the latest release regression where browser login and ref
 - [x] Inspect recent auth/login/refresh/cookie changes and isolate the root cause rather than treating browser-extension console noise as the bug.
 - [x] Implement the backend/frontend fix and add focused regression coverage for the failing path.
 - [x] Fix the CLI support-package helper so operators can collect diagnostics even when UI login is blocked.
-- [ ] Run the relevant local auth, backend, gateway, and login-flow validation needed to prove the regression is fixed.
+- [x] Run the relevant local auth, backend, gateway, and login-flow validation needed to prove the regression is fixed.
 - [ ] Update `tasks/lessons.md` with any workflow lesson from the user correction, then commit/push/PR/merge through the protected flow.
 
 ### Findings
@@ -5088,7 +5088,9 @@ Goal: identify and fix the latest release regression where browser login and ref
 
 ### Local validation completed
 
-- `npm --prefix server run test:run -- tests/unit/middleware/corsOrigin.test.ts` passed with 11 tests after adding request-derived same-origin coverage.
+- `npm --prefix server run test:run -- tests/unit/middleware/corsOrigin.test.ts` passed with 13 tests after adding request-derived same-origin coverage plus the missing fallback-branch coverage for `getRequestOrigin`.
+- `npm --prefix server run test:unit -- --coverage` passed with 385 files / 9108 tests and restored backend coverage to 100% statements, branches, functions, and lines.
+- `npm --prefix gateway run test:run -- tests/unit/middleware/auth.test.ts` passed with 21 tests as a focused gateway auth regression check.
 - `npm --prefix server run build` passed after switching the backend to the request-aware CORS delegate.
 - `bash -n scripts/support-package.sh` passed.
 - `git diff --check` passed.
