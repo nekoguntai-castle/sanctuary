@@ -351,6 +351,28 @@ Checklist:
 Review:
 - Local validation passed: `node --check` for both touched scripts, focused auth middleware/API tests, `npm run typecheck:tests` in `server`, `npm run typecheck:scripts`, `npm run lint:server`, and `git diff --check`.
 - PR #106's first CodeQL status check failed because the suppression rationale was placed as trailing inline `lgtm[...]` comments. The comments were converted to standalone `codeql[...]` lines immediately before each alert location, matching GitHub CodeQL's supported suppression form.
+- PR #106 merged through the protected merge queue on 2026-04-23 as `8d764758`. Merge-group and post-merge `main` checks passed, including CodeQL and the full Test Suite.
+- The six remaining CodeQL modeling alerts were dismissed with explicit false-positive or test-only rationale after the post-merge default-branch CodeQL run stayed green.
+
+## Follow-up Batch: Dependabot Elliptic No-Patch Triage
+
+Goal: resolve the final two low Dependabot alerts for `elliptic <= 6.6.1` without removing hardware-wallet or verification functionality.
+
+Checklist:
+- [x] Re-query open PRs, CodeQL alerts, and Dependabot alerts.
+- [x] Trace the root `package-lock.json` `elliptic` paths.
+- [x] Trace the `scripts/verify-addresses/package-lock.json` `elliptic` paths.
+- [x] Verify whether npm publishes a patched `elliptic` version.
+- [x] Check current parent-package versions for a safe non-breaking replacement path.
+- [x] Dismiss the remaining Dependabot alerts with explicit no-patch rationale.
+
+Review:
+- `npm view elliptic version` returned `6.6.1`; GitHub also reports `first_patched_version: null` for GHSA-848j-6mx2-7j84 / CVE-2025-14505.
+- Root `package-lock.json` pulls `elliptic` through `browserify-sign`, `create-ecdh`, and old `tiny-secp256k1` paths owned by current Trezor/Ledger hardware-wallet dependencies and browser crypto polyfills.
+- `scripts/verify-addresses/package-lock.json` pulls `elliptic` through `@caravan/bitcoin` and its `bitcoinjs-lib` v5 comparison implementation, which is used for local address-derivation verification.
+- Current upstream packages still carry these paths or require feature-impacting replacement. `npm audit` only suggested force/review-required changes, not a safe patched `elliptic` upgrade.
+- Dependabot alerts #2 and #7 were dismissed as `tolerable_risk` with comments naming the no-patch state and affected paths.
+- After dismissal, live GitHub security inventory reported 0 open CodeQL alerts and 0 open Dependabot alerts.
 
 ---
 
