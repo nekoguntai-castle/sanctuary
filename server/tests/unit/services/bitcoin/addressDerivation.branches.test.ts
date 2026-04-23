@@ -32,6 +32,7 @@ import {
   convertXpubToFormat,
   deriveAddress,
   deriveAddressFromDescriptor,
+  deriveAddressFromParsedDescriptor,
   parseDescriptor,
   validateXpub,
 } from '../../../../src/services/bitcoin/addressDerivation';
@@ -221,6 +222,37 @@ describe('Address Derivation Service additional branch coverage', () => {
     expect(wildcard.address).toMatch(/^tb1q/);
     expect(sparse.address).toMatch(/^tb1q/);
     expect(nonNumeric.address).toMatch(/^tb1q/);
+  });
+
+  it('replaces every wildcard segment in a multisig derivation path', () => {
+    const derivedIndexes: number[] = [];
+    const fakeNode: any = {
+      publicKey: Buffer.from('0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798', 'hex'),
+      derive: vi.fn((idx: number) => {
+        derivedIndexes.push(idx);
+        return fakeNode;
+      }),
+    };
+
+    deriveAddressFromParsedDescriptor(
+      {
+        type: 'wsh-sortedmulti',
+        quorum: 1,
+        keys: [
+          {
+            fingerprint: 'aabbccdd',
+            accountPath: "84'/1'/0'",
+            xpub: testXpubs.testnet.bip84,
+            derivationPath: '0/*/*',
+          },
+        ],
+      },
+      4,
+      { network: 'testnet', change: true },
+      { fromBase58: () => fakeNode }
+    );
+
+    expect(derivedIndexes).toEqual([1, 4, 4]);
   });
 
   it('uses nested segwit account path for Zpub when nested script type is requested', () => {

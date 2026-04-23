@@ -1161,7 +1161,10 @@ function sanitizeUrl(value) {
 }
 
 function escapeCell(value) {
-  return String(value).replace(/\|/g, '\\|');
+  return String(value)
+    .replace(/\\/g, '\\\\')
+    .replace(/\|/g, '\\|')
+    .replace(/[\r\n]+/g, ' ');
 }
 
 function round(value) {

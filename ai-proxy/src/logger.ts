@@ -23,6 +23,8 @@ const LOG_LEVELS: Record<LogLevel, number> = {
 
 const currentLevel: number = LOG_LEVELS[(process.env.LOG_LEVEL?.toLowerCase() as LogLevel) || 'info'] ?? LOG_LEVELS.info;
 
+const OTHER_LOG_CONTROL_CHARS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g;
+
 const colors = {
   reset: '\x1b[0m',
   dim: '\x1b[2m',
@@ -33,10 +35,31 @@ const colors = {
   gray: '\x1b[90m',
 };
 
+function sanitizeLogText(value: unknown): string {
+  return String(value)
+    .replace(/\n|\r/g, '')
+    .replace(/\t/g, '\\t')
+    .replace(OTHER_LOG_CONTROL_CHARS, (char) =>
+      `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`
+    );
+}
+
+function stringifyContextValue(value: unknown): string {
+  if (value === undefined || value === null) return 'null';
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value) ?? String(value);
+    } catch {
+      return '[Object]';
+    }
+  }
+  return String(value);
+}
+
 function formatContext(context?: Record<string, unknown>): string {
   if (!context || Object.keys(context).length === 0) return '';
   const parts = Object.entries(context)
-    .map(([k, v]) => `${k}=${typeof v === 'object' ? JSON.stringify(v) : v}`)
+    .map(([k, v]) => `${sanitizeLogText(k)}=${sanitizeLogText(stringifyContextValue(v))}`)
     .join(' ');
   return ` ${colors.dim}${parts}${colors.reset}`;
 }
@@ -44,9 +67,8 @@ function formatContext(context?: Record<string, unknown>): string {
 function log(level: number, levelName: string, color: string, prefix: string, message: string, context?: Record<string, unknown>): void {
   if (level < currentLevel) return;
   const ts = new Date().toISOString();
-  console.log(
-    `${colors.gray}[${ts}]${colors.reset} ${color}${levelName}${colors.reset} ${colors.cyan}[${prefix}]${colors.reset} ${message}${formatContext(context)}`
-  );
+  const line = `${colors.gray}[${ts}]${colors.reset} ${color}${levelName}${colors.reset} ${colors.cyan}[${sanitizeLogText(prefix)}]${colors.reset} ${sanitizeLogText(message)}${formatContext(context)}`;
+  console.log(line);
 }
 
 export function createLogger(prefix: string): Logger {

@@ -122,7 +122,7 @@ const resolveDerivationPath = (
     pathStr = `${changeIndex}/${index}`;
   }
 
-  return pathStr.replace('*', String(index));
+  return pathStr.replace(/\*/g, String(index));
 };
 
 const derivePath = (node: DerivationNode, pathStr: string): DerivationNode => {
