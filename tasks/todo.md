@@ -306,7 +306,7 @@ Checklist:
 - [x] Handle or document the remaining test-helper CSRF modeling alert after the code changes land.
 - [x] Run focused local tests and local quality gates before pushing.
 - [x] Push and open one consolidated PR.
-- [ ] Wait for required PR checks, merge through the protected flow, and sync `main`.
+- [x] Wait for required PR checks, merge through the protected flow, and sync `main`.
 
 Review:
 - Implemented one consolidated CodeQL security batch covering all 15 remaining alert categories visible on the default branch before this work.
@@ -314,12 +314,20 @@ Review:
 - TLS behavior: benchmark scripts no longer disable Node TLS globally; the Compose wrapper passes the generated certificate through `NODE_EXTRA_CA_CERTS`, and the Electrum test endpoint verifies certificates unless `allowSelfSignedCertificate` is explicitly requested.
 - Report safety: benchmark and alert-receiver smoke reports no longer persist raw HTTP/webhook bodies, and benchmark password output is redacted before logging/report tails.
 - Local validation passed: touched script `node --check`, `npm run typecheck:scripts`, focused server/gateway tests, `npm run typecheck:tests` in `server`, `npm run build` in `gateway`, server/gateway lint, full backend coverage at 100%, full gateway coverage at 100%, and `git diff --check`.
-- PR #104 is open as `Address remaining CodeQL security alerts`; PR-only full suites are intentionally skipped with `Full Test Summary` passing while quick checks, code quality, Docker builds, and CodeQL finish.
+- PR #104 opened as `Address remaining CodeQL security alerts`; PR-only full suites were intentionally skipped with `Full Test Summary` passing while quick checks, code quality, Docker builds, and CodeQL ran.
 - First PR code-scanning status found three PR alerts: gateway optional auth control flow, legacy API-key SHA-256 compatibility lookup, and the changed auth test-helper cookie-parser line. Follow-up removes the ineffective suppression comments, reshapes optional auth so `next()` is unconditional, and keeps the test-helper false positive unchanged for dismissal/audit outside the PR diff.
+- PR #104 passed PR CodeQL, code quality, Docker builds, quick backend/gateway checks, and the quick critical mutation gate in 33m07s.
+- PR #104 merged through the protected merge queue on 2026-04-23 as `a7527200`. The merge-group `Test Suite` passed, including full backend, frontend, gateway, E2E, build, full critical mutation, and `Full Test Summary`.
+- Post-merge CodeQL on `main` is the source of truth for which default-branch alerts remain; re-query after that run completes before dismissing or opening more CodeQL work.
 
 Dependabot security queue:
-- [ ] Triage new medium `uuid < 14.0.0` alerts in `server/package-lock.json` and `gateway/package-lock.json`.
+- [x] Triage new medium `uuid < 14.0.0` alerts in `server/package-lock.json` and `gateway/package-lock.json`.
+- [x] Confirm no upstream non-vulnerable dependency graph is currently available from `bullmq`, `firebase-admin`, or the Google Cloud transitive packages.
+- [x] Add package-level npm `overrides` for `uuid@14.0.0` in `server` and `gateway`.
+- [x] Validate the override locally before pushing.
+- [ ] Push the `deps/uuid-14-overrides` PR and verify GitHub required checks.
 - Dependabot cannot auto-open PRs for these alerts: server is constrained by `bullmq@5.75.2 -> uuid@11.1.0`; gateway is constrained by `firebase-admin@13.8.0` and Google transitive dependencies, with the updater reporting no non-vulnerable resolvable `uuid` path.
+- Local validation passed before this PR: `npm install` in server/gateway, `npm audit` in both affected packages reported 0 vulnerabilities, `npm ls uuid --all` showed all affected transitives deduped to `uuid@14.0.0`, server and gateway builds passed, focused BullMQ/notification and FCM/push tests passed, runtime import probes for `bullmq`, `firebase-admin`, and `uuid` passed, full gateway coverage stayed at 100%, and the full server unit suite passed.
 
 ---
 
