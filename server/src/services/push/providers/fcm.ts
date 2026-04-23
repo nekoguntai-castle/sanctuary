@@ -22,6 +22,17 @@ interface ServiceAccount {
   project_id: string;
 }
 
+const FCM_PROJECT_ID_PATTERN = /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/;
+
+function buildFcmSendUrl(projectId: string): string {
+  const normalizedProjectId = projectId.trim();
+  if (!FCM_PROJECT_ID_PATTERN.test(normalizedProjectId)) {
+    throw new Error('FCM service account project_id is invalid');
+  }
+
+  return new URL(`/v1/projects/${normalizedProjectId}/messages:send`, 'https://fcm.googleapis.com').toString();
+}
+
 export class FCMPushProvider extends BasePushProvider {
   private accessToken: { token: string; expires: number } | null = null;
   private serviceAccountCache: ServiceAccount | null = null;
@@ -148,8 +159,7 @@ export class FCMPushProvider extends BasePushProvider {
   ): Promise<PushResult> {
     return this.fcmCircuit.execute(async () => {
       const serviceAccount = this.getServiceAccount();
-      const projectId = serviceAccount.project_id;
-      const url = `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`;
+      const url = buildFcmSendUrl(serviceAccount.project_id);
 
       const payload = {
         message: {

@@ -109,7 +109,7 @@ vi.mock('../../../src/middleware/rateLimit', () => ({
 }));
 
 // Import JWT utilities and password utilities after mocks
-import { generateToken, verifyToken, extractTokenFromHeader } from '../../../src/utils/jwt';
+import { generateToken, generate2FAToken, verifyToken, verify2FAToken, extractTokenFromHeader } from '../../../src/utils/jwt';
 import { hashPassword, verifyPassword } from '../../../src/utils/password';
 
 describe('Authentication', () => {
@@ -486,17 +486,15 @@ describe('Authentication', () => {
       mockPrismaClient.user.findUnique.mockResolvedValue(user);
 
       // When 2FA is enabled, first step returns pending token
-      const tempToken = generateToken(
+      const tempToken = generate2FAToken(
         {
           userId: user.id,
           username: user.username,
           isAdmin: user.isAdmin,
-          pending2FA: true,
         },
-        '5m'
       );
 
-      const decoded = await verifyToken(tempToken);
+      const decoded = await verify2FAToken(tempToken);
       expect(decoded.pending2FA).toBe(true);
       expect(decoded.userId).toBe(user.id);
     });

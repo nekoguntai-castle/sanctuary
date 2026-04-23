@@ -2,6 +2,8 @@
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { request as httpRequest } from 'node:http';
+import { request as httpsRequest } from 'node:https';
 import net from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -140,7 +142,7 @@ const benchmarkEnv = {
   SANCTUARY_API_URL: apiUrl,
   SANCTUARY_GATEWAY_URL: gatewayUrl,
   SANCTUARY_WS_URL: wsUrl,
-  SANCTUARY_INSECURE_TLS: 'true',
+  NODE_EXTRA_CA_CERTS: path.join(sslDir, 'fullchain.pem'),
   SANCTUARY_BENCHMARK_PROVISION: 'true',
   SANCTUARY_BENCHMARK_CREATE_BACKUP: 'true',
   SANCTUARY_BENCHMARK_STRICT: 'true',
@@ -158,15 +160,25 @@ const benchmarkEnv = {
 
 const steps = [];
 
+function redactSensitiveText(value) {
+  const text = String(value ?? '');
+  if (!adminPassword) {
+    return text;
+  }
+
+  return text.split(adminPassword).join('[redacted:benchmark-password]');
+}
+
 function recordStep(name, passed, summary, extra = {}) {
+  const safeSummary = redactSensitiveText(summary);
   const step = {
     name,
     passed,
-    summary,
+    summary: safeSummary,
     ...extra,
   };
   steps.push(step);
-  console.log(`${passed ? 'PASS' : 'FAIL'} ${name}: ${summary}`);
+  console.log(`${passed ? 'PASS' : 'FAIL'} ${name}: ${safeSummary}`); // lgtm[js/clear-text-logging]
   return step;
 }
 
@@ -186,9 +198,9 @@ function runDocker(args, options = {}) {
 
   if (result.status !== 0) {
     throw new Error([
-      `docker ${args.join(' ')} exited with ${result.status}`,
-      result.stdout?.trim(),
-      result.stderr?.trim(),
+      redactSensitiveText(`docker ${args.join(' ')} exited with ${result.status}`),
+      redactSensitiveText(result.stdout?.trim()),
+      redactSensitiveText(result.stderr?.trim()),
     ].filter(Boolean).join('\n'));
   }
 
@@ -379,26 +391,60 @@ async function waitForServiceReplicaHealth(serviceName, expectedCount) {
   throw new Error(`Service ${serviceName} did not reach ${expectedCount} healthy replicas: ${JSON.stringify({ count: latestContainers.length, unhealthy })}`);
 }
 
+function readComposeCaCertificate() {
+  const caPath = path.join(sslDir, 'fullchain.pem');
+  return existsSync(caPath) ? readFileSync(caPath) : undefined;
+}
+
+function requestText(url) {
+  const parsed = new URL(url);
+  const client = parsed.protocol === 'https:' ? httpsRequest : httpRequest;
+  const options = {
+    headers: { Accept: 'application/json' },
+    timeout: 5000,
+    ...(parsed.protocol === 'https:' ? { ca: readComposeCaCertificate() } : {}),
+  };
+
+  return new Promise((resolve, reject) => {
+    const req = client(parsed, options, (response) => {
+      let body = '';
+      response.setEncoding('utf8');
+      response.on('data', (chunk) => {
+        body += chunk;
+      });
+      response.on('end', () => {
+        resolve({
+          status: response.statusCode || 0,
+          ok: response.statusCode ? response.statusCode >= 200 && response.statusCode < 300 : false,
+          body,
+        });
+      });
+    });
+
+    req.on('error', reject);
+    req.on('timeout', () => {
+      req.destroy(new Error('HTTP request timeout'));
+    });
+    req.end();
+  });
+}
+
 async function waitForHttpOk(name, url) {
   const deadline = Date.now() + timeoutMs;
   let latestError;
 
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(url, {
-        headers: { Accept: 'application/json' },
-        signal: AbortSignal.timeout(5000),
-      });
-      const body = await response.text();
+      const response = await requestText(url);
 
       if (response.ok) {
         return {
           status: response.status,
-          body: parseJson(body),
+          body: parseJson(response.body),
         };
       }
 
-      latestError = new Error(`${name} returned HTTP ${response.status}: ${body.slice(0, 200)}`);
+      latestError = new Error(`${name} returned HTTP ${response.status}: ${response.body.slice(0, 200)}`);
     } catch (error) {
       latestError = error;
     }
@@ -417,11 +463,13 @@ function runBenchmarkHarness() {
     maxBuffer: 1024 * 1024 * 60,
   });
 
-  const output = [result.stdout, result.stderr].filter(Boolean).join('\n');
+  const stdout = redactSensitiveText(result.stdout || '');
+  const stderr = redactSensitiveText(result.stderr || '');
+  const output = [stdout, stderr].filter(Boolean).join('\n');
 
   if (result.status !== 0) {
     throw new Error([
-      `npm run perf:phase3 exited with ${result.status}`,
+      redactSensitiveText(`npm run perf:phase3 exited with ${result.status}`),
       output.trim(),
     ].filter(Boolean).join('\n'));
   }
@@ -429,8 +477,8 @@ function runBenchmarkHarness() {
   return {
     status: result.status,
     output,
-    stdout: result.stdout || '',
-    stderr: result.stderr || '',
+    stdout,
+    stderr,
   };
 }
 
@@ -1713,8 +1761,6 @@ function readCommit() {
   }
 }
 
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-
 let composePs = [];
 let benchmarkRun = null;
 let benchmarkEvidence = null;
@@ -1869,7 +1915,7 @@ try {
 
 if (!passed) {
   if (failureError) {
-    console.error(getErrorMessage(failureError));
+    console.error(redactSensitiveText(getErrorMessage(failureError))); // lgtm[js/clear-text-logging]
   }
   process.exitCode = 1;
 }

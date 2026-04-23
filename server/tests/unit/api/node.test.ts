@@ -375,6 +375,35 @@ describe('Node API Routes', () => {
           expect.objectContaining({
             host: 'electrum.example.com',
             port: 50002,
+            rejectUnauthorized: true,
+          })
+        );
+      });
+
+      it('should allow self-signed SSL certificates only when explicitly requested', async () => {
+        const responsePromise = startAuthedRequest(app, {
+          host: 'electrum.example.com',
+          port: 50002,
+          protocol: 'ssl',
+          allowSelfSignedCertificate: true,
+        });
+
+        const tlsSocket = await getLastSocket(mockTlsConnect);
+        await waitForListener(() => tlsSocket, 'connect');
+        tlsSocket.emit('connect');
+        tlsSocket.emit(
+          'data',
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            result: ['ElectrumX 1.16.0', '1.4'],
+          }) + '\n'
+        );
+
+        const response = await responsePromise;
+        expect(response.status).toBe(200);
+        expect(mockTlsConnect).toHaveBeenCalledWith(
+          expect.objectContaining({
             rejectUnauthorized: false,
           })
         );

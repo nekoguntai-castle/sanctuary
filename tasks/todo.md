@@ -257,7 +257,7 @@ Checklist:
 - [x] Run focused local validation for the touched packages and scripts.
 - [x] Re-query open PRs before pushing; handle any visible Dependabot PR before opening this CodeQL PR.
 - [x] Commit, push, and open PR #103.
-- [ ] Wait for required PR checks to finish, merge through the protected flow, and sync `main`.
+- [x] Wait for required PR checks to finish, merge through the protected flow, and sync `main`.
 
 Review:
 - PR #103 is open as `Harden sanitizer and logger bounds` with auto-merge enabled using squash merge.
@@ -276,6 +276,50 @@ Review:
 - GitHub Quick Critical Mutation passed in 31m57s. A local rerun of `cd server && npm run test:mutation:critical:gate` also passed with raw `53.61%` and weighted `48.47%`.
 - GitHub Advanced Security still reported open logger sink alerts after the helper-only sanitizer and final-line replacement attempts. The next logger patch removes CR/LF at each logged value using the CodeQL-documented `String.prototype.replace(/\n|\r/g, '')` pattern before composing the final log line.
 - The first merge-group run for PR #103 failed full backend coverage because the logger control-character callback line was not covered. Added a regression assertion for non-tab control characters and locally verified backend coverage at 100% using an alternate report directory because the default `server/coverage` directory is owned by `nobody`.
+- PR #103 was dequeued, updated with the coverage regression, requeued, and merged on 2026-04-23 as `068a1edc`.
+- Merge-group checks passed after the fix: `Code Quality` passed in 45s and `Test Suite` passed in 31m24s, including `Full Backend Tests`, `Full E2E Tests`, `Full Critical Mutation Gate`, and `Full Test Summary`.
+- Post-merge `main` backstop passed: `Release`, `Install Tests`, `Build Dev Images`, CodeQL, and `Test Suite` all completed successfully.
+- Default-branch CodeQL after the merge reduced the open inventory from 24 to 15 by clearing the Go integer conversion, incomplete sanitization, and log-injection groups.
+
+## Follow-up Batch: Remaining CodeQL Security Alerts
+
+Goal: address the remaining 15 open CodeQL alerts in one consolidated security PR where the fixes are low-risk and mechanically verifiable. Keep behavior compatible for private/LAN deployments, but make unsafe exceptions explicit, bounded, or opt-in where CodeQL is correctly flagging a real boundary.
+
+Current inventory after PR #103:
+- 2 `js/clear-text-logging`
+- 3 `js/disabling-certificate-validation`
+- 2 `js/file-access-to-http`
+- 2 `js/http-to-file-access`
+- 2 `js/insufficient-password-hash`
+- 1 `js/missing-token-validation`
+- 3 `js/user-controlled-bypass`
+
+Checklist:
+- [x] Remove benchmark-wide `NODE_TLS_REJECT_UNAUTHORIZED=0`; trust the generated Compose certificate via `NODE_EXTRA_CA_CERTS` and bounded HTTPS request helpers instead.
+- [x] Make `/api/v1/node/test` verify TLS by default, with an explicit `allowSelfSignedCertificate` request flag for private/self-hosted Electrum probes.
+- [x] Redact benchmark passwords from perf script output before logging or persisting process output tails.
+- [x] Stop persisting raw HTTP/webhook response bodies in benchmark smoke reports; keep only sanitized status/count/proof summaries.
+- [x] Validate file-derived FCM project IDs before constructing the send URL.
+- [x] Guard backup-file uploads so local benchmark data is only posted to loopback/private targets unless an explicit external-upload override is set.
+- [x] Store newly-created agent/MCP API-key lookup hashes as keyed HMACs while retaining legacy SHA-256 lookup compatibility for existing keys.
+- [x] Move pending-2FA rejection into verified token parsing so middleware no longer authorizes based on a direct decoded-claim branch.
+- [x] Handle or document the remaining test-helper CSRF modeling alert after the code changes land.
+- [x] Run focused local tests and local quality gates before pushing.
+- [x] Push and open one consolidated PR.
+- [ ] Wait for required PR checks, merge through the protected flow, and sync `main`.
+
+Review:
+- Implemented one consolidated CodeQL security batch covering all 15 remaining alert categories visible on the default branch before this work.
+- API-key compatibility: newly-created MCP and agent keys now use keyed HMAC lookup hashes; existing SHA-256 rows still authenticate through a legacy fallback so current clients are not broken.
+- TLS behavior: benchmark scripts no longer disable Node TLS globally; the Compose wrapper passes the generated certificate through `NODE_EXTRA_CA_CERTS`, and the Electrum test endpoint verifies certificates unless `allowSelfSignedCertificate` is explicitly requested.
+- Report safety: benchmark and alert-receiver smoke reports no longer persist raw HTTP/webhook bodies, and benchmark password output is redacted before logging/report tails.
+- Local validation passed: touched script `node --check`, `npm run typecheck:scripts`, focused server/gateway tests, `npm run typecheck:tests` in `server`, `npm run build` in `gateway`, server/gateway lint, full backend coverage at 100%, full gateway coverage at 100%, and `git diff --check`.
+- PR #104 is open as `Address remaining CodeQL security alerts`; PR-only full suites are intentionally skipped with `Full Test Summary` passing while quick checks, code quality, Docker builds, and CodeQL finish.
+- First PR code-scanning status found three PR alerts: gateway optional auth control flow, legacy API-key SHA-256 compatibility lookup, and the changed auth test-helper cookie-parser line. Follow-up removes the ineffective suppression comments, reshapes optional auth so `next()` is unconditional, and keeps the test-helper false positive unchanged for dismissal/audit outside the PR diff.
+
+Dependabot security queue:
+- [ ] Triage new medium `uuid < 14.0.0` alerts in `server/package-lock.json` and `gateway/package-lock.json`.
+- Dependabot cannot auto-open PRs for these alerts: server is constrained by `bullmq@5.75.2 -> uuid@11.1.0`; gateway is constrained by `firebase-admin@13.8.0` and Google transitive dependencies, with the updater reporting no non-vulnerable resolvable `uuid` path.
 
 ---
 
