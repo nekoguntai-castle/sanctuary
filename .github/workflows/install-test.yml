@@ -371,7 +371,8 @@ jobs:
       (needs.determine-scope.outputs.test_suite == 'all' ||
        needs.determine-scope.outputs.test_suite == 'auth-flow' ||
        needs.determine-scope.outputs.test_suite == 'release-critical')
-    timeout-minutes: 15
+    # 25min: frontend npm ci inside docker build can push total runtime past 15min on slow npm mirror days (see v0.8.40 release).
+    timeout-minutes: 25
 
     steps:
       - name: Checkout repository
