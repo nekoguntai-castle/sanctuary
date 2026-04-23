@@ -226,72 +226,93 @@ async function run() {
 async function provisionBenchmarkFixture() {
   try {
     assertLocalProvisionTarget();
-
-    if (!token) {
-      const login = await apiJson(`${apiBaseUrl}/api/v1/auth/login`, {
-        method: 'POST',
-        body: {
-          username: benchmarkUsername,
-          password: benchmarkPassword,
-        },
-      });
-
-      if (login && typeof login === 'object' && login.requires2FA) {
-        skipScenario('local fixture login', 'benchmark user requires 2FA; provide SANCTUARY_TOKEN instead');
-        return;
-      }
-
-      // Phase 6: the login response body no longer carries a `token`
-      // field. The access JWT is in the sanctuary_access Set-Cookie
-      // header, which apiJson attaches as a non-enumerable property.
-      const extractedToken = extractAccessTokenFromSetCookie(login && login.__setCookie);
-      if (!extractedToken) {
-        throw new Error('login response did not include an access token in Set-Cookie');
-      }
-
-      token = extractedToken;
-      fixture.tokenSource = 'local-login';
-      notes.push({
-        type: 'fixture',
-        action: 'login',
-        username: benchmarkUsername,
-      });
-    }
-
-    if (!adminToken) {
-      adminToken = token;
-      fixture.adminTokenSource = fixture.tokenSource;
-    }
-
-    if (!walletId && token) {
-      walletId = await ensureBenchmarkWallet(token);
-    }
-
-    if (createBenchmarkBackup && !backupFile && !generatedBackup && adminToken) {
-      try {
-        generatedBackup = await apiJson(`${apiBaseUrl}/api/v1/admin/backup`, {
-          method: 'POST',
-          token: adminToken,
-          body: {
-            includeCache: false,
-            description: `Phase 3 benchmark fixture ${runId}`,
-          },
-        });
-        fixture.backupSource = 'local-admin-api';
-        notes.push({
-          type: 'fixture',
-          action: 'backup-create',
-        });
-      } catch (error) {
-        const reason = getErrorMessage(error);
-        fixture.backupError = reason;
-        skipScenario('local fixture backup', reason);
-      }
-    }
+    await ensureBenchmarkToken();
+    ensureBenchmarkAdminToken();
+    await ensureBenchmarkWalletId();
+    await maybeCreateBenchmarkBackup();
   } catch (error) {
     const reason = getErrorMessage(error);
     fixture.error = reason;
     skipScenario('local fixture provisioning', reason);
+  }
+}
+
+async function ensureBenchmarkToken() {
+  if (token) return;
+
+  const login = await loginBenchmarkUser();
+  if (loginRequiresTwoFactor(login)) {
+    skipScenario('local fixture login', 'benchmark user requires 2FA; provide SANCTUARY_TOKEN instead');
+    return;
+  }
+
+  // Phase 6: the login response body no longer carries a `token`
+  // field. The access JWT is in the sanctuary_access Set-Cookie
+  // header, which apiJson attaches as a non-enumerable property.
+  const extractedToken = extractAccessTokenFromSetCookie(login && login.__setCookie);
+  if (!extractedToken) {
+    throw new Error('login response did not include an access token in Set-Cookie');
+  }
+
+  token = extractedToken;
+  fixture.tokenSource = 'local-login';
+  notes.push({
+    type: 'fixture',
+    action: 'login',
+    username: benchmarkUsername,
+  });
+}
+
+function loginBenchmarkUser() {
+  return apiJson(`${apiBaseUrl}/api/v1/auth/login`, {
+    method: 'POST',
+    body: {
+      username: benchmarkUsername,
+      password: benchmarkPassword,
+    },
+  });
+}
+
+function loginRequiresTwoFactor(login) {
+  return Boolean(login && typeof login === 'object' && login.requires2FA);
+}
+
+function ensureBenchmarkAdminToken() {
+  if (adminToken || !token) return;
+  adminToken = token;
+  fixture.adminTokenSource = fixture.tokenSource;
+}
+
+async function ensureBenchmarkWalletId() {
+  if (walletId || !token) return;
+  walletId = await ensureBenchmarkWallet(token);
+}
+
+function shouldCreateBenchmarkBackupFixture() {
+  return createBenchmarkBackup && !backupFile && !generatedBackup && Boolean(adminToken);
+}
+
+async function maybeCreateBenchmarkBackup() {
+  if (!shouldCreateBenchmarkBackupFixture()) return;
+
+  try {
+    generatedBackup = await apiJson(`${apiBaseUrl}/api/v1/admin/backup`, {
+      method: 'POST',
+      token: adminToken,
+      body: {
+        includeCache: false,
+        description: `Phase 3 benchmark fixture ${runId}`,
+      },
+    });
+    fixture.backupSource = 'local-admin-api';
+    notes.push({
+      type: 'fixture',
+      action: 'backup-create',
+    });
+  } catch (error) {
+    const reason = getErrorMessage(error);
+    fixture.backupError = reason;
+    skipScenario('local fixture backup', reason);
   }
 }
 

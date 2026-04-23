@@ -74,18 +74,21 @@ function assertJwtPayload(value: unknown): asserts value is JwtPayload {
   }
 
   const payload = value as Partial<JwtPayload>;
-  /* v8 ignore next 11 -- malformed claim branches are covered by focused auth tests; V8 maps the OR chain unevenly. */
-  if (
-    typeof payload.userId !== 'string' ||
-    payload.userId.length === 0 ||
-    typeof payload.username !== 'string' ||
-    payload.username.length === 0 ||
-    typeof payload.isAdmin !== 'boolean' ||
-    typeof payload.iat !== 'number' ||
-    typeof payload.exp !== 'number' ||
-    (payload.jti !== undefined && typeof payload.jti !== 'string') ||
-    (payload.pending2FA !== undefined && typeof payload.pending2FA !== 'boolean')
-  ) {
+  const requiredStrings = [payload.userId, payload.username];
+  const requiredNumbers = [payload.iat, payload.exp];
+  const invalidRequiredString = requiredStrings.some(
+    (claim) => typeof claim !== 'string' || claim.length === 0
+  );
+  const invalidRequiredNumber = requiredNumbers.some((claim) => typeof claim !== 'number');
+  const invalidClaims = [
+    invalidRequiredString,
+    invalidRequiredNumber,
+    typeof payload.isAdmin !== 'boolean',
+    payload.jti !== undefined && typeof payload.jti !== 'string',
+    payload.pending2FA !== undefined && typeof payload.pending2FA !== 'boolean',
+  ];
+
+  if (invalidClaims.some(Boolean)) {
     throw new jwt.JsonWebTokenError('Invalid token payload');
   }
 }
