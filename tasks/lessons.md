@@ -218,6 +218,18 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 **How to apply:**
 - Whenever you write a skip rule for a cross-cutting middleware, identify which middleware's decision you are shadowing. Import and call its source-selection function directly.
 - The check must be `if (otherMiddlewareWillUseHeader) skip` not `if (headerLooksPresent) skip`. Header presence and "header was actually used" are different things.
+
+## Check live origin policy before blaming auth when browser login starts returning 500
+
+**Rule:** When browser login or refresh suddenly returns `500`, inspect live backend logs for CORS/origin rejection before assuming the auth route, cookie path, or CSRF path regressed. If the origin policy rejects the browser, surface it as a real `403`-class error and verify the deployment's `CLIENT_URL` / `CORS_ALLOWED_ORIGINS` values against the actual browser origin.
+
+**Why:** The 2026-04-23 login outage looked like `/api/v1/auth/login` and `/api/v1/auth/refresh` were throwing server errors, but backend logs showed `middleware/corsOrigin` rejecting the browser origin with `Error: Not allowed by CORS`. Because the guard threw a plain `Error`, the centralized error handler translated the deployment misconfiguration into a misleading `500`. The same investigation also exposed that the operator `scripts/support-package.sh` helper had drifted from the backend container's compiled path layout, which slowed diagnosis when UI login was already unavailable.
+
+**How to apply:**
+- For browser login incidents, pull live backend logs first and grep for `Not allowed by CORS`, `Origin`, and auth route paths before chasing auth internals.
+- Compare the actual browser origin (`scheme://host:port`) to `CLIENT_URL` and any `CORS_ALLOWED_ORIGINS` entries exactly; CORS matching is strict and scheme/port differences matter.
+- Use an `ApiError` subclass for policy rejections that should map to a non-500 client response.
+- For operator scripts that execute built code inside a container, resolve the module path against the container build layout, not the repo-local `dist` layout.
 - Add a regression test that combines the two sources and verifies the right one wins. The test must construct the contended state (header + cookie + no CSRF token) and assert success.
 - Add the inverse test: malformed header that would not authenticate, plus cookie, plus no CSRF token → must enforce CSRF (403).
 - Generalizes to: audit logging that tags requests as "authenticated via header" vs "authenticated via cookie," rate limiting that scopes per source, request logging that marks the auth source. All must use the same selector.

@@ -33,7 +33,7 @@ import { requestLogger } from './middleware/requestLogger';
 import { requestTimeout } from './middleware/requestTimeout';
 import { defaultJsonParser, defaultUrlencodedParser } from './middleware/bodyParsing';
 import { doubleCsrfProtection } from './middleware/csrf';
-import { createServerCorsOriginGuard } from './middleware/corsOrigin';
+import { createServerCorsOptionsDelegate } from './middleware/corsOrigin';
 import { apiVersionMiddleware } from './middleware/apiVersion';
 import { migrationService } from './services/migrationService';
 import { getStartupStatus, isSystemDegraded } from './services/startupManager';
@@ -114,14 +114,11 @@ app.use(helmet({
 }));
 
 // CORS configuration
-app.use(cors({
-  origin: createServerCorsOriginGuard({
-    allowedOrigins: config.corsAllowedOrigins,
-    clientUrl: config.clientUrl,
-    nodeEnv: config.nodeEnv,
-  }),
-  credentials: true,
-}));
+app.use(cors(createServerCorsOptionsDelegate({
+  allowedOrigins: config.corsAllowedOrigins,
+  clientUrl: config.clientUrl,
+  nodeEnv: config.nodeEnv,
+})));
 
 // Coarse per-IP safety valve for private/self-hosted deployments. The
 // Redis-backed route policies remain the canonical fine-grained controls.
