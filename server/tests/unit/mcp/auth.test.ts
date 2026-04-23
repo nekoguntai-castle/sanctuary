@@ -40,6 +40,7 @@ import {
   validateMcpScopeWallets,
 } from '../../../src/mcp/auth';
 import { McpForbiddenError, McpUnauthorizedError, type McpRequestContext } from '../../../src/mcp/types';
+import { hashLegacyApiKeyLookup } from '../../../src/utils/apiKeyHash';
 
 function reqWithAuth(authorization?: string): Request {
   return {
@@ -138,6 +139,29 @@ describe('MCP auth helpers', () => {
       expect.any(Date),
       { lastUsedIp: '127.0.0.1', lastUsedAgent: 'agent' }
     );
+  });
+
+  it('authenticates legacy SHA-256 key hashes for existing MCP clients', async () => {
+    const apiKey = 'mcp_' + 'e'.repeat(64);
+    const legacyHash = hashLegacyApiKeyLookup(apiKey);
+    mocks.mcpApiKeyRepository.findByKeyHash
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 'key-legacy',
+        keyPrefix: 'mcp_eeeeeeeeeee',
+        keyHash: legacyHash,
+        userId: 'user-1',
+        user: { username: 'alice', isAdmin: true },
+        scope: { allowAuditLogs: true },
+        revokedAt: null,
+        expiresAt: null,
+      });
+
+    const result = await authenticateMcpRequest(reqWithAuth(`Bearer ${apiKey}`));
+
+    expect(result.keyId).toBe('key-legacy');
+    expect(mocks.mcpApiKeyRepository.findByKeyHash).toHaveBeenNthCalledWith(1, hashMcpApiKey(apiKey));
+    expect(mocks.mcpApiKeyRepository.findByKeyHash).toHaveBeenNthCalledWith(2, legacyHash);
   });
 
   it('validates wallet scope with de-duplicated wallet ids', async () => {

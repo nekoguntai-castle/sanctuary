@@ -23,6 +23,7 @@ const NodeTestBodySchema = z.object({
   host: z.string().min(1),
   port: z.union([z.number(), z.string()]),
   protocol: z.enum(['tcp', 'ssl']),
+  allowSelfSignedCertificate: z.boolean().optional().default(false),
 }).superRefine((data, ctx) => {
   if (data.nodeType && data.nodeType !== 'electrum') {
     ctx.addIssue({
@@ -62,6 +63,7 @@ interface ElectrumTestConfig {
   host: string;
   port: number;
   protocol: 'tcp' | 'ssl';
+  allowSelfSignedCertificate: boolean;
 }
 
 /**
@@ -69,7 +71,7 @@ interface ElectrumTestConfig {
  */
 async function testElectrumConnection(config: ElectrumTestConfig): Promise<{ success: boolean; message: string; serverInfo?: Record<string, unknown> }> {
   return new Promise((resolve) => {
-    const { host, port, protocol } = config;
+    const { host, port, protocol, allowSelfSignedCertificate } = config;
     let socket: net.Socket | tls.TLSSocket;
     let buffer = '';
     let resolved = false;
@@ -102,7 +104,8 @@ async function testElectrumConnection(config: ElectrumTestConfig): Promise<{ suc
         socket = tls.connect({
           host,
           port,
-          rejectUnauthorized: false, // Allow self-signed certs
+          // lgtm[js/disabling-certificate-validation] Explicit operator opt-in for private self-signed Electrum probes.
+          rejectUnauthorized: !allowSelfSignedCertificate,
           timeout: 10000,
         });
       } else {
@@ -190,9 +193,9 @@ router.post('/test', validate(
   { body: NodeTestBodySchema },
   { message: nodeTestValidationMessage, code: ErrorCodes.INVALID_INPUT }
 ), asyncHandler(async (req, res) => {
-  const { nodeType, host, port, protocol } = req.body;
+  const { nodeType, host, port, protocol, allowSelfSignedCertificate } = req.body;
 
-  log.debug('Testing connection', { nodeType, host, port, protocol });
+  log.debug('Testing connection', { nodeType, host, port, protocol, allowSelfSignedCertificate });
 
   const portNum = parseInt(port, 10);
 
@@ -200,6 +203,7 @@ router.post('/test', validate(
     host,
     port: portNum,
     protocol: protocol as 'tcp' | 'ssl',
+    allowSelfSignedCertificate,
   });
 
   log.debug('Test result', { result });

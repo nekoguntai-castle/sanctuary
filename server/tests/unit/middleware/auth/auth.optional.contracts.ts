@@ -86,13 +86,9 @@ export function registerOptionalAuthMiddlewareContracts() {
 
       it('should not attach user for 2FA pending tokens', async () => {
         const token = '2fa-pending-token';
-        const pending2FAPayload = {
-          ...validPayload,
-          pending2FA: true,
-        };
 
         (extractTokenFromHeader as Mock).mockReturnValue(token);
-        (verifyToken as Mock).mockResolvedValue(pending2FAPayload);
+        (verifyToken as Mock).mockRejectedValue(new Error('2FA verification required'));
 
         const req = createMockRequest({
           headers: { authorization: `Bearer ${token}` },
@@ -241,7 +237,7 @@ export function registerOptionalAuthMiddlewareContracts() {
       it('should not attach 2FA pending users delivered via cookie', async () => {
         const cookieToken = '2fa-cookie-token';
         (extractTokenFromHeader as Mock).mockReturnValue(null);
-        (verifyToken as Mock).mockResolvedValue({ ...validPayload, pending2FA: true });
+        (verifyToken as Mock).mockRejectedValue(new Error('2FA verification required'));
 
         const req = createMockRequest({
           headers: {},

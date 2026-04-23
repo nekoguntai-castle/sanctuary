@@ -25,7 +25,7 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
-import { verifyToken, extractTokenFromHeader, JWTPayload, TokenAudience } from '../utils/jwt';
+import { verifyToken, extractTokenFromHeader, JWTPayload, TokenAudience, TWO_FACTOR_REQUIRED_MESSAGE } from '../utils/jwt';
 import { requestContext } from '../utils/requestContext';
 import { UnauthorizedError } from '../errors/ApiError';
 import { SANCTUARY_ACCESS_COOKIE_NAME } from './authCookieNames';
@@ -84,14 +84,6 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
     // SEC-006: Verify token with expected audience
     const payload = await verifyToken(token, TokenAudience.ACCESS);
 
-    // SEC-006: Reject 2FA pending tokens for regular endpoints
-    if (payload.pending2FA) {
-      return res.status(401).json({
-        error: 'Unauthorized',
-        message: '2FA verification required',
-      });
-    }
-
     // Attach user to request
     req.user = payload;
 
@@ -100,6 +92,13 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
 
     next();
   } catch (error) {
+    if (error instanceof Error && error.message === TWO_FACTOR_REQUIRED_MESSAGE) {
+      return res.status(401).json({
+        error: 'Unauthorized',
+        message: TWO_FACTOR_REQUIRED_MESSAGE,
+      });
+    }
+
     return res.status(401).json({
       error: 'Unauthorized',
       message: 'Invalid or expired token',
@@ -144,12 +143,9 @@ export async function optionalAuth(req: Request, _res: Response, next: NextFunct
       // SEC-006: Verify with expected audience
       const payload = await verifyToken(token, TokenAudience.ACCESS);
 
-      // Don't set user for 2FA pending tokens
-      if (!payload.pending2FA) {
-        req.user = payload;
-        // Set user in request context for logging correlation
-        requestContext.setUser(payload.userId, payload.username);
-      }
+      req.user = payload;
+      // Set user in request context for logging correlation
+      requestContext.setUser(payload.userId, payload.username);
     }
 
     next();

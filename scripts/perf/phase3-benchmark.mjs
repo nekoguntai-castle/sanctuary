@@ -30,6 +30,7 @@ const allowRestore = process.env.SANCTUARY_ALLOW_RESTORE === 'true';
 const strictMode = process.env.SANCTUARY_BENCHMARK_STRICT === 'true';
 const provisionLocalFixture = process.env.SANCTUARY_BENCHMARK_PROVISION === 'true';
 const allowPrivateProvisionTarget = process.env.SANCTUARY_BENCHMARK_ALLOW_PRIVATE_PROVISION === 'true';
+const allowExternalBackupUpload = process.env.SANCTUARY_BENCHMARK_ALLOW_EXTERNAL_BACKUP_UPLOAD === 'true';
 const createBenchmarkBackup = process.env.SANCTUARY_BENCHMARK_CREATE_BACKUP === 'true';
 const benchmarkUsername = process.env.SANCTUARY_BENCHMARK_USERNAME || 'admin';
 const benchmarkPassword = process.env.SANCTUARY_BENCHMARK_PASSWORD || 'sanctuary';
@@ -37,10 +38,6 @@ const benchmarkWalletName = process.env.SANCTUARY_BENCHMARK_WALLET_NAME || 'Phas
 const benchmarkWalletNetwork = process.env.SANCTUARY_BENCHMARK_WALLET_NETWORK || 'testnet';
 const benchmarkWalletDescriptor = process.env.SANCTUARY_BENCHMARK_WALLET_DESCRIPTOR
   || "wpkh([aabbccdd/84'/1'/0']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*)";
-
-if (shouldAllowInsecureTls(apiBaseUrl, gatewayBaseUrl)) {
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-}
 
 const timestamp = new Date().toISOString();
 const runId = timestamp.replace(/[:.]/g, '-');
@@ -87,16 +84,14 @@ async function run() {
     expectedStatuses: [200],
   });
 
-  const apiHealth = await measureHttpScenario({
+  await measureHttpScenario({
     name: 'api health',
     method: 'GET',
     url: `${apiBaseUrl}/api/v1/health`,
     requests: requestCount,
     expectedStatuses: [200, 503],
     allowDegradedStatus: true,
-    captureBody: true,
   });
-  recordHealthSnapshot(apiHealth);
 
   if (provisionLocalFixture) {
     await provisionBenchmarkFixture();
@@ -154,6 +149,9 @@ async function run() {
   }
 
   if (adminToken && (backupFile || generatedBackup)) {
+    if (backupFile) {
+      assertBackupUploadTarget();
+    }
     const backup = generatedBackup || await readBackup(backupFile);
     await measureHttpScenario({
       name: 'backup validate',
@@ -197,7 +195,7 @@ async function run() {
       wsClients,
       wsFanoutClients,
       timeoutMs,
-      insecureTls: process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0',
+      trustedExtraCa: Boolean(process.env.NODE_EXTRA_CA_CERTS),
       authenticatedHttp: Boolean(token),
       adminBackupInput: Boolean(adminToken && (backupFile || generatedBackup)),
       allowRestore,
@@ -256,7 +254,6 @@ async function provisionBenchmarkFixture() {
         type: 'fixture',
         action: 'login',
         username: benchmarkUsername,
-        usingDefaultPassword: Boolean(login.user?.usingDefaultPassword),
       });
     }
 
@@ -283,7 +280,6 @@ async function provisionBenchmarkFixture() {
         notes.push({
           type: 'fixture',
           action: 'backup-create',
-          recordCounts: generatedBackup?.meta?.recordCounts || null,
         });
       } catch (error) {
         const reason = getErrorMessage(error);
@@ -310,7 +306,6 @@ async function ensureBenchmarkWallet(bearerToken) {
       notes.push({
         type: 'fixture',
         action: 'wallet-reuse',
-        walletId: existing.id,
         walletName: benchmarkWalletName,
       });
       return existing.id;
@@ -337,10 +332,8 @@ async function ensureBenchmarkWallet(bearerToken) {
   notes.push({
     type: 'fixture',
     action: 'wallet-create',
-    walletId: wallet.id,
-    walletName: wallet.name,
-    network: wallet.network,
-    addressCount: wallet.addressCount,
+    walletName: benchmarkWalletName,
+    network: benchmarkWalletNetwork,
   });
   return wallet.id;
 }
@@ -406,7 +399,7 @@ async function apiJson(url, options = {}, expectedStatuses = [200]) {
     }
 
     if (!expectedStatuses.includes(response.status)) {
-      throw new Error(`${options.method || 'GET'} ${sanitizeUrl(url)} returned ${response.status}: ${formatBodyForError(parsed)}`);
+      throw new Error(`${options.method || 'GET'} ${sanitizeUrl(url)} returned ${response.status}`);
     }
 
     return parsed;
@@ -426,7 +419,6 @@ async function measureHttpScenario(options) {
     expectedStatuses,
     optional = false,
     allowDegradedStatus = false,
-    captureBody = false,
   } = options;
   const records = [];
 
@@ -451,13 +443,11 @@ async function measureHttpScenario(options) {
         headers,
         body: encodedBody,
         signal: controller.signal,
-      });
-      const responseBody = await response.text();
+      }); // lgtm[js/file-access-to-http] Backup uploads are restricted to loopback/private targets unless explicitly overridden.
       records.push({
         ok: expectedStatuses.includes(response.status),
         status: response.status,
         durationMs: performance.now() - startedAt,
-        body: captureBody ? parseJson(responseBody) : undefined,
       });
     } catch (error) {
       records.push({
@@ -470,7 +460,7 @@ async function measureHttpScenario(options) {
     }
   });
 
-  const summary = summarizeHttp(name, method, url, records, expectedStatuses, optional, allowDegradedStatus, captureBody);
+  const summary = summarizeHttp(name, method, url, records, expectedStatuses, optional, allowDegradedStatus);
   const recordedSummary = { ...summary };
   delete recordedSummary.sampleBodies;
   scenarios.push(recordedSummary);
@@ -563,10 +553,9 @@ async function measureWebSocketSubscriptionFanout() {
       signal: AbortSignal.timeout(timeoutMs),
     });
     triggerStatus = response.status;
-    const text = await response.text();
 
     if (!response.ok) {
-      triggerError = `POST ${sanitizeUrl(triggerUrl)} returned ${response.status}: ${formatBodyForError(parseJson(text))}`;
+      triggerError = `POST ${sanitizeUrl(triggerUrl)} returned ${response.status}`;
     }
   } catch (error) {
     triggerError = getErrorMessage(error);
@@ -855,28 +844,7 @@ async function readBackup(path) {
   }
 }
 
-function recordHealthSnapshot(apiHealth) {
-  const firstResponse = apiHealth.sampleBodies.find(Boolean);
-  if (!firstResponse || typeof firstResponse !== 'object') {
-    return;
-  }
-
-  const components = firstResponse.components && typeof firstResponse.components === 'object'
-    ? firstResponse.components
-    : {};
-  notes.push({
-    type: 'health',
-    status: firstResponse.status,
-    components: Object.fromEntries(
-      Object.entries(components).map(([name, value]) => [
-        name,
-        value && typeof value === 'object' && 'status' in value ? value.status : 'unknown',
-      ])
-    ),
-  });
-}
-
-function summarizeHttp(name, method, url, records, expectedStatuses, optional, allowDegradedStatus, captureBody) {
+function summarizeHttp(name, method, url, records, expectedStatuses, optional, allowDegradedStatus) {
   const successes = records.filter((record) => record.ok);
   const failed = records.filter((record) => !record.ok);
   const statusCounts = {};
@@ -902,12 +870,7 @@ function summarizeHttp(name, method, url, records, expectedStatuses, optional, a
     expectedStatuses,
     statusCounts,
     latency: summarizeDurations(records.map((record) => record.durationMs)),
-    sampleBodies: captureBody
-      ? records
-        .map((record) => record.body)
-        .filter(Boolean)
-        .slice(0, 2)
-      : [],
+    sampleBodies: [],
     failures: failed
       .map((record) => record.error || `status ${record.status}`)
       .slice(0, 5),
@@ -1048,16 +1011,6 @@ function deriveWebSocketUrl(baseUrl) {
   return parsed.toString();
 }
 
-function shouldAllowInsecureTls(...urls) {
-  const setting = process.env.SANCTUARY_INSECURE_TLS;
-  if (setting === 'true') return true;
-  if (setting === 'false') return false;
-
-  return urls
-    .filter(Boolean)
-    .some((value) => isLocalUrl(value));
-}
-
 function assertLocalProvisionTarget() {
   if (isLocalUrl(apiBaseUrl)) {
     return;
@@ -1070,6 +1023,14 @@ function assertLocalProvisionTarget() {
     ? '; set SANCTUARY_BENCHMARK_ALLOW_PRIVATE_PROVISION=true only for private non-production targets'
     : '';
   throw new Error(`SANCTUARY_BENCHMARK_PROVISION=true is only allowed for localhost, 127.0.0.1, or ::1 API targets by default${privateHint}`);
+}
+
+function assertBackupUploadTarget() {
+  if (isLocalUrl(apiBaseUrl) || isPrivateNetworkUrl(apiBaseUrl) || allowExternalBackupUpload) {
+    return;
+  }
+
+  throw new Error('SANCTUARY_BACKUP_FILE uploads are only allowed to loopback/private API targets by default; set SANCTUARY_BENCHMARK_ALLOW_EXTERNAL_BACKUP_UPLOAD=true only for an operator-owned non-production target');
 }
 
 function getDatasetLabel() {
@@ -1086,12 +1047,6 @@ function getDatasetLabel() {
   }
 
   return 'operator-provided privacy-safe authenticated dataset';
-}
-
-function formatBodyForError(body) {
-  if (body === null || body === undefined) return '';
-  const value = typeof body === 'string' ? body : JSON.stringify(body);
-  return value.length > 300 ? `${value.slice(0, 300)}...` : value;
 }
 
 function isLocalUrl(value) {

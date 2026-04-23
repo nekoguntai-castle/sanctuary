@@ -3,6 +3,7 @@ import type { Request } from 'express';
 import { agentRepository, AGENT_ACTION_CREATE_FUNDING_DRAFT } from '../repositories/agentRepository';
 import { ForbiddenError, UnauthorizedError } from '../errors/ApiError';
 import { getClientInfo } from '../services/auditService';
+import { hashApiKeyLookup, hashLegacyApiKeyLookup } from '../utils/apiKeyHash';
 
 const AGENT_KEY_PATTERN = /^agt_[a-f0-9]{64}$/;
 const KEY_PREFIX_LENGTH = 16;
@@ -35,7 +36,7 @@ export function getAgentApiKeyPrefix(apiKey: string): string {
 }
 
 export function hashAgentApiKey(apiKey: string): string {
-  return crypto.createHash('sha256').update(apiKey, 'utf8').digest('hex');
+  return hashApiKeyLookup(apiKey, 'agent');
 }
 
 export function validateAgentApiKeyFormat(apiKey: string): boolean {
@@ -83,17 +84,29 @@ function timingSafeEqualHex(left: string, right: string): boolean {
   return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
 }
 
+async function findAgentApiKeyForToken(token: string) {
+  const candidateHashes = [hashAgentApiKey(token), hashLegacyApiKeyLookup(token)];
+  for (const candidateHash of candidateHashes) {
+    // eslint-disable-next-line no-await-in-loop -- fallback lookup must preserve exact precedence.
+    const key = await agentRepository.findApiKeyByHash(candidateHash);
+    if (key && timingSafeEqualHex(candidateHash, key.keyHash)) {
+      return { key, keyHash: candidateHash };
+    }
+  }
+  return null;
+}
+
 export async function authenticateAgentRequest(req: Request): Promise<AgentRequestContext> {
   const token = extractBearerToken(req.headers.authorization);
   if (!token || !validateAgentApiKeyFormat(token)) {
     throw new UnauthorizedError('Valid agent bearer token required');
   }
 
-  const keyHash = hashAgentApiKey(token);
-  const key = await agentRepository.findApiKeyByHash(keyHash);
-  if (!key || !timingSafeEqualHex(keyHash, key.keyHash)) {
+  const match = await findAgentApiKeyForToken(token);
+  if (!match) {
     throw new UnauthorizedError('Invalid agent API key');
   }
+  const { key } = match;
 
   if (key.revokedAt) {
     throw new UnauthorizedError('Agent API key has been revoked');

@@ -31,6 +31,7 @@ import {
   type AgentRequestContext,
 } from '../../../src/agent/auth';
 import { ForbiddenError, UnauthorizedError } from '../../../src/errors/ApiError';
+import { hashLegacyApiKeyLookup } from '../../../src/utils/apiKeyHash';
 
 function reqWithAuth(authorization?: string): Request {
   return {
@@ -140,6 +141,38 @@ describe('agent auth helpers', () => {
       expect.any(Date),
       { lastUsedIp: '127.0.0.1', lastUsedAgent: 'agent-runtime' }
     );
+  });
+
+  it('authenticates legacy SHA-256 key hashes for existing agent clients', async () => {
+    const apiKey = 'agt_' + 'e'.repeat(64);
+    const legacyHash = hashLegacyApiKeyLookup(apiKey);
+    mocks.agentRepository.findApiKeyByHash
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 'key-legacy',
+        keyPrefix: 'agt_eeeeeeeeeee',
+        keyHash: legacyHash,
+        revokedAt: null,
+        expiresAt: null,
+        scope: { allowedActions: ['create_funding_draft'] },
+        agent: {
+          id: 'agent-legacy',
+          name: 'Legacy Agent',
+          status: 'active',
+          revokedAt: null,
+          userId: 'user-1',
+          fundingWalletId: 'funding-wallet',
+          operationalWalletId: 'operational-wallet',
+          signerDeviceId: 'agent-device',
+          user: { id: 'user-1', username: 'alice', isAdmin: false },
+        },
+      });
+
+    const result = await authenticateAgentRequest(reqWithAuth(`Bearer ${apiKey}`));
+
+    expect(result.keyId).toBe('key-legacy');
+    expect(mocks.agentRepository.findApiKeyByHash).toHaveBeenNthCalledWith(1, hashAgentApiKey(apiKey));
+    expect(mocks.agentRepository.findApiKeyByHash).toHaveBeenNthCalledWith(2, legacyHash);
   });
 
   it('rejects inactive agents and unscoped funding draft requests', async () => {

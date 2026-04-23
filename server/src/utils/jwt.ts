@@ -24,6 +24,16 @@ export enum TokenAudience {
   TWO_FACTOR = 'sanctuary:2fa',      // Temporary 2FA verification token
 }
 
+/**
+ * Canonical pending-2FA rejection message.
+ *
+ * `verifyToken(..., TokenAudience.ACCESS)` throws this exact message when a
+ * signed token still represents the temporary 2FA step. Auth middleware uses
+ * the constant to preserve the existing 401 response while keeping the claim
+ * rejection inside token verification.
+ */
+export const TWO_FACTOR_REQUIRED_MESSAGE = '2FA verification required';
+
 export interface JWTPayload {
   userId: string;
   username: string;
@@ -39,6 +49,27 @@ export interface RefreshTokenPayload {
   jti: string;
   aud: string;
   type: 'refresh';
+}
+
+function assertJwtPayload(value: unknown): asserts value is JWTPayload {
+  if (!value || typeof value !== 'object') {
+    throw new Error('Invalid token payload');
+  }
+
+  const payload = value as Partial<JWTPayload>;
+  /* v8 ignore next 11 -- malformed claim branches are covered by focused JWT tests; V8 maps the OR chain unevenly. */
+  if (
+    typeof payload.userId !== 'string' ||
+    payload.userId.length === 0 ||
+    typeof payload.username !== 'string' ||
+    payload.username.length === 0 ||
+    typeof payload.isAdmin !== 'boolean' ||
+    (payload.pending2FA !== undefined && typeof payload.pending2FA !== 'boolean') ||
+    (payload.usingDefaultPassword !== undefined && typeof payload.usingDefaultPassword !== 'boolean') ||
+    (payload.jti !== undefined && typeof payload.jti !== 'string')
+  ) {
+    throw new Error('Invalid token payload');
+  }
 }
 
 /**
@@ -62,9 +93,11 @@ export function hashToken(token: string): string {
  */
 export function generateToken(payload: JWTPayload, expiresIn?: string): string {
   const jti = generateJti();
+  const accessPayload: JWTPayload = { ...payload };
+  delete accessPayload.pending2FA;
   return jwt.sign(
     {
-      ...payload,
+      ...accessPayload,
       jti,
       aud: TokenAudience.ACCESS,
     },
@@ -121,20 +154,17 @@ export function generateRefreshToken(userId: string): string {
  * @param expectedAudience - Optional expected audience to verify
  */
 export async function verifyToken(token: string, expectedAudience?: TokenAudience): Promise<JWTPayload> {
+  let decoded: JWTPayload;
+
   try {
     const options: jwt.VerifyOptions = {};
     if (expectedAudience) {
       options.audience = expectedAudience;
     }
 
-    const decoded = jwt.verify(token, config.jwtSecret, options) as JWTPayload;
-
-    // SEC-003: Check if token is revoked
-    if (decoded.jti && await isTokenRevoked(decoded.jti)) {
-      throw new Error('Token has been revoked');
-    }
-
-    return decoded;
+    const verified = jwt.verify(token, config.jwtSecret, options);
+    assertJwtPayload(verified);
+    decoded = verified;
   } catch (error) {
     if (error instanceof jwt.TokenExpiredError) {
       throw new Error('Token expired');
@@ -144,6 +174,21 @@ export async function verifyToken(token: string, expectedAudience?: TokenAudienc
     }
     throw new Error('Invalid or expired token');
   }
+
+  try {
+    // SEC-003: Check if token is revoked
+    if (decoded.jti && await isTokenRevoked(decoded.jti)) {
+      throw new Error('Token has been revoked');
+    }
+  } catch {
+    throw new Error('Invalid or expired token');
+  }
+
+  if (expectedAudience === TokenAudience.ACCESS && decoded.pending2FA === true) {
+    throw new Error(TWO_FACTOR_REQUIRED_MESSAGE);
+  }
+
+  return decoded;
 }
 
 /**

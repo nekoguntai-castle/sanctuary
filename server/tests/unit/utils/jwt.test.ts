@@ -209,6 +209,72 @@ describe('JWT Utilities', () => {
       expect(decoded.userId).toBe('user-123');
     });
 
+    it('should reject pending 2FA claims for access audience tokens', async () => {
+      const token = jwt.sign(
+        {
+          ...mockPayload,
+          pending2FA: true,
+          aud: TokenAudience.ACCESS,
+        },
+        mockConfig.jwtSecret,
+        { expiresIn: '1h' }
+      );
+
+      await expect(verifyToken(token, TokenAudience.ACCESS)).rejects.toThrow('2FA verification required');
+    });
+
+    it('should reject malformed access payloads after signature verification', async () => {
+      const token = jwt.sign(
+        {
+          userId: 'user-123',
+          username: 'testuser',
+          isAdmin: 'false',
+          aud: TokenAudience.ACCESS,
+        },
+        mockConfig.jwtSecret,
+        { expiresIn: '1h' }
+      );
+
+      await expect(verifyToken(token, TokenAudience.ACCESS)).rejects.toThrow('Invalid or expired token');
+    });
+
+    it('should reject empty user ids after signature verification', async () => {
+      const token = jwt.sign(
+        {
+          userId: '',
+          username: 'testuser',
+          isAdmin: false,
+          aud: TokenAudience.ACCESS,
+        },
+        mockConfig.jwtSecret,
+        { expiresIn: '1h' }
+      );
+
+      await expect(verifyToken(token, TokenAudience.ACCESS)).rejects.toThrow('Invalid or expired token');
+    });
+
+    it('should reject missing user ids after signature verification', async () => {
+      const token = jwt.sign(
+        {
+          username: 'testuser',
+          isAdmin: false,
+          aud: TokenAudience.ACCESS,
+        },
+        mockConfig.jwtSecret,
+        { expiresIn: '1h' }
+      );
+
+      await expect(verifyToken(token, TokenAudience.ACCESS)).rejects.toThrow('Invalid or expired token');
+    });
+
+    it('should reject non-object JWT payloads after signature verification', async () => {
+      const verifySpy = vi.spyOn(jwt, 'verify').mockReturnValue('not-an-object' as never);
+
+      await expect(verifyToken('string-payload-token')).rejects.toThrow('Invalid or expired token');
+
+      verifySpy.mockRestore();
+    });
+
     it('should throw for wrong audience', async () => {
       const token = generateToken(mockPayload);
 
@@ -485,12 +551,12 @@ describe('JWT Utilities', () => {
       expect(decoded.isAdmin).toBe(true);
     });
 
-    it('should preserve pending2FA flag', () => {
+    it('should not carry pending2FA into access tokens', () => {
       const payload2FA = { ...mockPayload, pending2FA: true };
       const token = generateToken(payload2FA);
       const decoded = jwt.decode(token) as any;
 
-      expect(decoded.pending2FA).toBe(true);
+      expect(decoded.pending2FA).toBeUndefined();
     });
 
     it('should preserve usingDefaultPassword flag', () => {

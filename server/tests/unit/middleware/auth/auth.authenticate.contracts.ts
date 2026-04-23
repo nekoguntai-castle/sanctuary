@@ -312,7 +312,7 @@ export function registerAuthenticateMiddlewareContracts() {
       it('should reject 2FA pending tokens delivered via cookie', async () => {
         const cookieToken = '2fa-cookie-token';
         (extractTokenFromHeader as Mock).mockReturnValue(null);
-        (verifyToken as Mock).mockResolvedValue({ ...validPayload, pending2FA: true });
+        (verifyToken as Mock).mockRejectedValue(new Error('2FA verification required'));
 
         const req = createMockRequest({
           headers: {},
@@ -334,13 +334,9 @@ export function registerAuthenticateMiddlewareContracts() {
     describe('2FA Token Handling', () => {
       it('should reject 2FA pending tokens for regular endpoints', async () => {
         const token = '2fa-pending-token';
-        const pending2FAPayload = {
-          ...validPayload,
-          pending2FA: true,
-        };
 
         (extractTokenFromHeader as Mock).mockReturnValue(token);
-        (verifyToken as Mock).mockResolvedValue(pending2FAPayload);
+        (verifyToken as Mock).mockRejectedValue(new Error('2FA verification required'));
 
         const req = createMockRequest({
           headers: { authorization: `Bearer ${token}` },

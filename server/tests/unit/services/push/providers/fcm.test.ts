@@ -169,6 +169,20 @@ describe('FCMPushProvider', () => {
       expect(fcmCall?.[0]).toBe(FCM_SEND_URL);
     });
 
+    it('should reject invalid service account project IDs before sending', async () => {
+      mockReadFileSync.mockReturnValue(JSON.stringify({
+        ...mockServiceAccount,
+        project_id: '../metadata',
+      }));
+      const invalidProjectProvider = new FCMPushProvider();
+
+      const result = await invalidProjectProvider.send('device-token', testMessage);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('project_id is invalid');
+      expect(mockFetch).not.toHaveBeenCalledWith(expect.stringContaining('fcm.googleapis.com'), expect.anything());
+    });
+
     it('should include authorization header with access token', async () => {
       await provider.send('device-token', testMessage);
 

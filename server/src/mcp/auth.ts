@@ -3,6 +3,7 @@ import type { Request } from 'express';
 import { mcpApiKeyRepository, walletRepository } from '../repositories';
 import { requireWalletAccess } from '../services/accessControl';
 import { getClientInfo } from '../services/auditService';
+import { hashApiKeyLookup, hashLegacyApiKeyLookup } from '../utils/apiKeyHash';
 import type { McpApiKeyScope, McpRequestContext } from './types';
 import { McpForbiddenError, McpUnauthorizedError } from './types';
 
@@ -19,7 +20,7 @@ export function getMcpApiKeyPrefix(apiKey: string): string {
 }
 
 export function hashMcpApiKey(apiKey: string): string {
-  return crypto.createHash('sha256').update(apiKey, 'utf8').digest('hex');
+  return hashApiKeyLookup(apiKey, 'mcp');
 }
 
 export function validateMcpApiKeyFormat(apiKey: string): boolean {
@@ -70,17 +71,29 @@ function timingSafeEqualHex(left: string, right: string): boolean {
   return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
 }
 
+async function findMcpApiKeyForToken(token: string) {
+  const candidateHashes = [hashMcpApiKey(token), hashLegacyApiKeyLookup(token)];
+  for (const candidateHash of candidateHashes) {
+    // eslint-disable-next-line no-await-in-loop -- fallback lookup must preserve exact precedence.
+    const key = await mcpApiKeyRepository.findByKeyHash(candidateHash);
+    if (key && timingSafeEqualHex(candidateHash, key.keyHash)) {
+      return { key, keyHash: candidateHash };
+    }
+  }
+  return null;
+}
+
 export async function authenticateMcpRequest(req: Request): Promise<McpRequestContext> {
   const token = extractBearerToken(req.headers.authorization);
   if (!token || !validateMcpApiKeyFormat(token)) {
     throw new McpUnauthorizedError('Valid MCP bearer token required');
   }
 
-  const keyHash = hashMcpApiKey(token);
-  const key = await mcpApiKeyRepository.findByKeyHash(keyHash);
-  if (!key || !timingSafeEqualHex(keyHash, key.keyHash)) {
+  const match = await findMcpApiKeyForToken(token);
+  if (!match) {
     throw new McpUnauthorizedError('Invalid MCP API key');
   }
+  const { key } = match;
 
   if (key.revokedAt) {
     throw new McpUnauthorizedError('MCP API key has been revoked');

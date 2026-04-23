@@ -149,6 +149,76 @@ describe('Auth Middleware', () => {
       expect(mockNext).not.toHaveBeenCalled();
     });
 
+    it('should reject verified tokens with non-object payloads', () => {
+      mockReq.headers = { authorization: 'Bearer string-payload-token' };
+      const verifySpy = vi.spyOn(jwt, 'verify').mockReturnValue('not-an-object' as never);
+
+      authenticate(mockReq as AuthenticatedRequest, mockRes as Response, mockNext);
+
+      expect(statusMock).toHaveBeenCalledWith(401);
+      expect(jsonMock).toHaveBeenCalledWith({
+        error: 'Unauthorized',
+        message: 'Invalid token',
+      });
+      expect(mockNext).not.toHaveBeenCalled();
+
+      verifySpy.mockRestore();
+    });
+
+    it('should reject verified tokens with malformed access claims', () => {
+      const malformedToken = jwt.sign(
+        { userId: 'test', username: 'test', isAdmin: 'false' },
+        JWT_SECRET,
+        { expiresIn: '1h', audience: 'sanctuary:access' }
+      );
+      mockReq.headers = { authorization: `Bearer ${malformedToken}` };
+
+      authenticate(mockReq as AuthenticatedRequest, mockRes as Response, mockNext);
+
+      expect(statusMock).toHaveBeenCalledWith(401);
+      expect(jsonMock).toHaveBeenCalledWith({
+        error: 'Unauthorized',
+        message: 'Invalid token',
+      });
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('should reject verified tokens missing user identity claims', () => {
+      const malformedToken = jwt.sign(
+        { username: 'test', isAdmin: false },
+        JWT_SECRET,
+        { expiresIn: '1h', audience: 'sanctuary:access' }
+      );
+      mockReq.headers = { authorization: `Bearer ${malformedToken}` };
+
+      authenticate(mockReq as AuthenticatedRequest, mockRes as Response, mockNext);
+
+      expect(statusMock).toHaveBeenCalledWith(401);
+      expect(jsonMock).toHaveBeenCalledWith({
+        error: 'Unauthorized',
+        message: 'Invalid token',
+      });
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('should reject verified tokens with empty user identity claims', () => {
+      const malformedToken = jwt.sign(
+        { userId: '', username: 'test', isAdmin: false },
+        JWT_SECRET,
+        { expiresIn: '1h', audience: 'sanctuary:access' }
+      );
+      mockReq.headers = { authorization: `Bearer ${malformedToken}` };
+
+      authenticate(mockReq as AuthenticatedRequest, mockRes as Response, mockNext);
+
+      expect(statusMock).toHaveBeenCalledWith(401);
+      expect(jsonMock).toHaveBeenCalledWith({
+        error: 'Unauthorized',
+        message: 'Invalid token',
+      });
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
     it('should return 500 on unexpected verification errors', () => {
       mockReq.headers = { authorization: 'Bearer any-token' };
       const verifySpy = vi.spyOn(jwt, 'verify').mockImplementation(() => {
