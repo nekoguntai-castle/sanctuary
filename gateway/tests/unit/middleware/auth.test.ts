@@ -219,6 +219,24 @@ describe('Auth Middleware', () => {
       expect(mockNext).not.toHaveBeenCalled();
     });
 
+    it('should reject verified tokens with malformed optional claims', () => {
+      const malformedToken = jwt.sign(
+        { userId: 'test', username: 'test', isAdmin: false, jti: 123 },
+        JWT_SECRET,
+        { expiresIn: '1h', audience: 'sanctuary:access' }
+      );
+      mockReq.headers = { authorization: `Bearer ${malformedToken}` };
+
+      authenticate(mockReq as AuthenticatedRequest, mockRes as Response, mockNext);
+
+      expect(statusMock).toHaveBeenCalledWith(401);
+      expect(jsonMock).toHaveBeenCalledWith({
+        error: 'Unauthorized',
+        message: 'Invalid token',
+      });
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
     it('should return 500 on unexpected verification errors', () => {
       mockReq.headers = { authorization: 'Bearer any-token' };
       const verifySpy = vi.spyOn(jwt, 'verify').mockImplementation(() => {
