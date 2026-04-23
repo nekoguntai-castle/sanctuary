@@ -16,7 +16,7 @@ import { vi } from 'vitest';
 
 import request from 'supertest';
 import { setupTestDatabase, cleanupTestData, teardownTestDatabase, canRunIntegrationTests } from '../setup/testDatabase';
-import { createTestApp, resetTestApp } from '../setup/testServer';
+import { createIsolatedTestApp, createTestApp, resetTestApp } from '../setup/testServer';
 import { getTestUser, getTestAdmin, createTestUser, loginTestUser, extractAuthTokens } from '../setup/helpers';
 import { PrismaClient } from '../../../src/generated/prisma/client';
 import { Express } from 'express';
@@ -96,6 +96,47 @@ describeWithDb('Authentication Integration', () => {
         .expect(401);
 
       expect(response.body.error).toBeDefined();
+    });
+
+    it('allows request-derived same-origin browser login in production mode', async () => {
+      const testUser = getTestUser();
+      await createTestUser(prisma, testUser);
+      const productionApp = createIsolatedTestApp({
+        clientUrl: 'https://configured.example:8443',
+        nodeEnv: 'production',
+      });
+
+      const response = await request(productionApp)
+        .post('/api/v1/auth/login')
+        .set('Host', '10.0.0.5:8443')
+        .set('Origin', 'https://10.0.0.5:8443')
+        .set('X-Forwarded-Proto', 'https')
+        .send({
+          username: testUser.username,
+          password: testUser.password,
+        })
+        .expect(200);
+
+      expect(response.headers['access-control-allow-origin']).toBe('https://10.0.0.5:8443');
+      expect(response.headers['access-control-allow-credentials']).toBe('true');
+      expect(extractAuthTokens(response).token).toBeTruthy();
+      expect(response.body.user.username).toBe(testUser.username);
+    });
+
+    it('returns 403 instead of 500 when a production browser origin does not match the current request host', async () => {
+      const response = await request(createIsolatedTestApp({
+        clientUrl: 'https://configured.example:8443',
+        nodeEnv: 'production',
+      }))
+        .get('/api/v1/auth/registration-status')
+        .set('Host', '10.0.0.5:8443')
+        .set('Origin', 'https://evil.example.com')
+        .set('X-Forwarded-Proto', 'https')
+        .expect(403);
+
+      expect(response.body.error).toBe('Forbidden');
+      expect(response.body.code).toBe('FORBIDDEN');
+      expect(response.body.message).toBe('Not allowed by CORS');
     });
   });
 

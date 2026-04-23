@@ -24,22 +24,22 @@ import priceRoutes from '../../../src/api/price';
 
 let testApp: Express | null = null;
 
-/**
- * Create a test Express app instance
- */
-export function createTestApp(): Express {
-  if (testApp) return testApp;
+interface TestAppOptions {
+  clientUrl?: string;
+  nodeEnv?: string;
+}
 
+function buildTestApp(options: TestAppOptions = {}): Express {
   const app = express();
 
-  // Middleware
+  app.set('trust proxy', 1);
+
   app.use(cors(createServerCorsOptionsDelegate({
-    clientUrl: 'http://localhost',
-    nodeEnv: 'development',
+    clientUrl: options.clientUrl ?? 'http://localhost',
+    nodeEnv: options.nodeEnv ?? 'development',
   })));
   app.use(express.json({ limit: '50mb' }));
 
-  // API routes
   app.use('/api/v1/auth', authRoutes);
   app.use('/api/v1/wallets', walletRoutes);
   app.use('/api/v1/devices', deviceRoutes);
@@ -51,16 +51,26 @@ export function createTestApp(): Express {
   app.use('/api/v1/drafts', draftRoutes);
   app.use('/api/v1/price', priceRoutes);
 
-  // Health check
   app.get('/health', (_req: Request, res: Response) => {
     res.json({ status: 'ok' });
   });
 
-  // Error handler
   app.use(errorHandler);
 
-  testApp = app;
   return app;
+}
+
+/**
+ * Create a test Express app instance
+ */
+export function createTestApp(): Express {
+  if (testApp) return testApp;
+  testApp = buildTestApp();
+  return testApp;
+}
+
+export function createIsolatedTestApp(options: TestAppOptions = {}): Express {
+  return buildTestApp(options);
 }
 
 /**
