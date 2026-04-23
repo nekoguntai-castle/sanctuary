@@ -24,8 +24,25 @@ fi
 echo "Generating support package..."
 
 docker compose -f "$PROJECT_DIR/docker-compose.yml" exec -T backend node -e "
-  require('./dist/services/supportPackage').generateSupportPackage()
-    .then(pkg => process.stdout.write(JSON.stringify(pkg, null, 2)))
+  const candidates = [
+    './dist/app/src/services/supportPackage',
+    './dist/server/src/services/supportPackage',
+    './dist/services/supportPackage',
+  ];
+  const modulePath = candidates.find((candidate) => {
+    try {
+      require.resolve(candidate);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+  if (!modulePath) {
+    process.stderr.write('Error: could not locate compiled support package module\n');
+    process.exit(1);
+  }
+  require(modulePath).generateSupportPackage()
+    .then((pkg) => process.stdout.write(JSON.stringify(pkg, null, 2)))
     .catch(err => { process.stderr.write('Error: ' + err.message + '\n'); process.exit(1); });
 " > "$OUTPUT_FILE"
 

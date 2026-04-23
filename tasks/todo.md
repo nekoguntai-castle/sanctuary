@@ -5068,3 +5068,30 @@ Goal: restore the latest full-grade maintainability score by clearing the two li
 - [x] Run lizard, lint/typecheck, and the relevant local quality checks.
 - [x] Update `docs/plans/codebase-health-assessment.md` and `docs/plans/grade-history/sanctuary_.jsonl` if maintainability returns to the prior baseline.
 - [ ] Commit, push, open PR, confirm checks, and merge through the protected branch flow.
+
+## Follow-up Batch: Login Regression Investigation
+
+Goal: identify and fix the latest release regression where browser login and refresh return 500s, then prove the login flow works again before shipping.
+
+- [x] Reproduce `POST /api/v1/auth/login` and `POST /api/v1/auth/refresh` failures locally against the current release code and capture the server-side error path.
+- [x] Inspect recent auth/login/refresh/cookie changes and isolate the root cause rather than treating browser-extension console noise as the bug.
+- [x] Implement the backend/frontend fix and add focused regression coverage for the failing path.
+- [x] Fix the CLI support-package helper so operators can collect diagnostics even when UI login is blocked.
+- [x] Run the relevant local auth, backend, gateway, and login-flow validation needed to prove the regression is fixed.
+- [ ] Update `tasks/lessons.md` with any workflow lesson from the user correction, then commit/push/PR/merge through the protected flow.
+
+### Findings
+
+- The live login failure is not an auth-route logic regression. The backend is rejecting the browser origin in `middleware/corsOrigin` before the request reaches `/api/v1/auth/login` or `/api/v1/auth/refresh`.
+- Because the CORS guard currently throws a plain `Error('Not allowed by CORS')`, the centralized error handler surfaces the rejection as a generic `500` instead of a `403`-class configuration failure.
+- The operator support-bundle helper is stale: inside the backend container the compiled code lives under `dist/app/src/...`, so `scripts/support-package.sh` cannot currently load `generateSupportPackage`.
+
+### Local validation completed
+
+- `npm --prefix server run test:run -- tests/unit/middleware/corsOrigin.test.ts` passed with 13 tests after adding request-derived same-origin coverage plus the missing fallback-branch coverage for `getRequestOrigin`.
+- `npm --prefix server run test:unit -- --coverage` passed with 385 files / 9108 tests and restored backend coverage to 100% statements, branches, functions, and lines.
+- `npm --prefix gateway run test:run -- tests/unit/middleware/auth.test.ts` passed with 21 tests as a focused gateway auth regression check.
+- `npm --prefix server run build` passed after switching the backend to the request-aware CORS delegate.
+- `bash -n scripts/support-package.sh` passed.
+- `git diff --check` passed.
+- `npm --prefix server run typecheck:tests` currently fails on a pre-existing generated Prisma path mismatch in `tsconfig.test.json` (`src/generated/prisma/internal/prismaNamespaceBrowser.ts` missing) unrelated to this CORS/support-package patch.
