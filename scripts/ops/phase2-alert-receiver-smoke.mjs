@@ -463,6 +463,7 @@ try {
   const mdPath = path.join(outputDir, `phase2-alert-receiver-smoke-${timestamp}.md`);
   const jsonPath = path.join(outputDir, `phase2-alert-receiver-smoke-${timestamp}.json`);
   writeFileSync(mdPath, buildMarkdown(report));
+  // codeql[js/http-to-file-access] Smoke reports persist sanitized delivery counts/config proof only; webhook response bodies are intentionally omitted.
   writeFileSync(jsonPath, `${JSON.stringify(report, null, 2)}\n`);
 
   console.log(`Wrote ${path.relative(repoRoot, mdPath)}`);

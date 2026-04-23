@@ -37,6 +37,7 @@ export const createAuthTestApp = async () => {
   // cookie-parser mirrors the production wiring in server/src/index.ts so
   // Phase 2 cookie-source tests can exercise req.cookies without rolling a
   // separate parsing path in each test.
+  // codeql[js/missing-token-validation] Test harness mirrors production cookie parsing and mounts doubleCsrfProtection before the dynamically imported auth router below.
   app.use(cookieParser());
   app.use(doubleCsrfProtection);
 

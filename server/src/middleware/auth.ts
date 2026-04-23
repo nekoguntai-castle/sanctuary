@@ -74,6 +74,7 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
   try {
     const token = extractAccessToken(req);
 
+    // codeql[js/user-controlled-bypass] This auth gate denies absent tokens and only calls next() after verifyToken validates signature, audience, payload shape, and revocation.
     if (!token) {
       return res.status(401).json({
         error: 'Unauthorized',
@@ -139,6 +140,7 @@ export async function optionalAuth(req: Request, _res: Response, next: NextFunct
   try {
     const token = extractAccessToken(req);
 
+    // codeql[js/user-controlled-bypass] Optional auth only annotates public requests; protected routes still require authenticate/requireAdmin.
     if (token) {
       // SEC-006: Verify with expected audience
       const payload = await verifyToken(token, TokenAudience.ACCESS);
