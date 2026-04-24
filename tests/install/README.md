@@ -92,7 +92,8 @@ tests/install/
 ├── unit/
 │   ├── install-script.test.sh   # Unit tests for setup/install behavior
 │   ├── reset-user-2fa-script.test.sh # Unit tests for host-side 2FA recovery
-│   └── upgrade-helpers.test.sh  # Unit tests for upgrade refs, fixtures, artifacts
+│   ├── upgrade-helpers.test.sh  # Unit tests for upgrade refs, fixtures, artifacts
+│   └── install-scope.test.sh    # Unit tests for install workflow path scoping
 ├── e2e/
 │   ├── fresh-install.test.sh    # Fresh installation E2E test
 │   ├── upgrade-install.test.sh  # Upgrade scenario tests
@@ -100,6 +101,7 @@ tests/install/
 │   └── auth-flow.test.sh        # Authentication flow tests
 ├── utils/
 │   ├── helpers.sh         # Shared test utilities
+│   ├── classify-install-scope.sh # GitHub Actions install-test scope classifier
 │   ├── upgrade-assertions.sh # User-visible post-upgrade assertions
 │   ├── upgrade-fixtures.sh   # Upgrade fixture selection and defaults
 │   ├── upgrade-source-refs.sh # Stable tag/source-ref alias resolution
@@ -267,11 +269,12 @@ This workflow runs automatically on:
 | Nightly schedule | Upgrade matrix | Yes | No |
 | Manual dispatch | Configurable | Configurable | No |
 
+PR runs are scoped by `tests/install/utils/classify-install-scope.sh` instead of running every install lane for every install-related path. Unit/docs-only changes run unit checks, installer changes run installer checks, compose/docker changes run a reusable stack plus container health, auth-flow changes run a reusable stack plus auth flow, and upgrade/migration changes run the upgrade lane. Container-health and auth-flow share one stack when both are relevant.
+
 **Release-critical tests** include:
 - Unit tests, including install-script, 2FA reset-script, and upgrade-helper safety checks (~5 seconds)
 - Fresh install E2E (~5-10 min)
-- Container health (~2 min)
-- Auth flow (~2 min)
+- Container health and auth flow on a reusable stack (~2-5 min)
 - Upgrade matrix: `latest-stable/baseline`, `n-2/baseline`, `latest-stable/browser-origin-ip`, and `latest-stable/legacy-runtime-env` (~10-20 min per lane)
 
 Total release validation time: ~25-60 minutes depending on upgrade matrix concurrency and image build cache.

@@ -94,7 +94,7 @@ is_workflow_file() {
 
 is_ci_classifier_file() {
   case "$1" in
-    scripts/ci/*|tests/ci/*)
+    scripts/ci/*|tests/ci/*|.github/workflows/test.yml|.github/workflows/install-test.yml|.github/workflows/codeql.yml)
       return 0
       ;;
   esac

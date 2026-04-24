@@ -99,6 +99,7 @@ jobs:
           ./tests/install/unit/install-script.test.sh
           ./tests/install/unit/reset-user-2fa-script.test.sh
           ./tests/install/unit/upgrade-helpers.test.sh
+          ./tests/install/unit/install-scope.test.sh
 
   # ============================================
   # Fresh Install E2E Test

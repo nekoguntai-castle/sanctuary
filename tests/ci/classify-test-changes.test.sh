@@ -83,6 +83,9 @@ EOF_DOC
   assert_exact_output "$output_file" "test_suite_changed" "false"
   assert_exact_output "$output_file" "frontend_changed" "false"
   assert_exact_output "$output_file" "backend_changed" "false"
+  assert_exact_output "$output_file" "browser_smoke_changed" "false"
+  assert_exact_output "$output_file" "render_changed" "false"
+  assert_exact_output "$output_file" "build_changed" "false"
   assert_exact_output "$output_file" "test_files" ""
 
   base_sha="$head_sha"
@@ -97,6 +100,9 @@ EOF_DOC
   assert_exact_output "$output_file" "frontend_changed" "false"
   assert_exact_output "$output_file" "backend_changed" "false"
   assert_exact_output "$output_file" "gateway_changed" "false"
+  assert_exact_output "$output_file" "browser_smoke_changed" "false"
+  assert_exact_output "$output_file" "render_changed" "false"
+  assert_exact_output "$output_file" "build_changed" "false"
 
   base_sha="$head_sha"
   mkdir -p "$repo_dir/.github/workflows"
@@ -107,6 +113,9 @@ EOF_DOC
 
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
   assert_exact_output "$output_file" "test_suite_changed" "true"
+  assert_exact_output "$output_file" "browser_smoke_changed" "true"
+  assert_exact_output "$output_file" "render_changed" "true"
+  assert_exact_output "$output_file" "build_changed" "true"
 
   base_sha="$head_sha"
   mkdir -p "$repo_dir/tests/components"
@@ -119,6 +128,70 @@ EOF_DOC
   assert_exact_output "$output_file" "frontend_changed" "true"
   assert_contains_output "$output_file" "frontend_files" "tests/components/example.test.tsx"
   assert_contains_output "$output_file" "test_files" "tests/components/example.test.tsx"
+
+  base_sha="$head_sha"
+  mkdir -p "$repo_dir/services/hardwareWallet"
+  printf 'export const helper = true;\n' > "$repo_dir/services/hardwareWallet/service.ts"
+  git -C "$repo_dir" add services/hardwareWallet/service.ts
+  git -C "$repo_dir" commit -qm "frontend service helper"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_exact_output "$output_file" "frontend_changed" "true"
+  assert_exact_output "$output_file" "browser_smoke_changed" "false"
+  assert_exact_output "$output_file" "render_changed" "false"
+  assert_exact_output "$output_file" "build_changed" "false"
+
+  base_sha="$head_sha"
+  mkdir -p "$repo_dir/src/api"
+  printf 'export const login = true;\n' > "$repo_dir/src/api/auth.ts"
+  git -C "$repo_dir" add src/api/auth.ts
+  git -C "$repo_dir" commit -qm "auth api client"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_exact_output "$output_file" "frontend_changed" "true"
+  assert_exact_output "$output_file" "browser_smoke_changed" "true"
+  assert_exact_output "$output_file" "render_changed" "false"
+  assert_exact_output "$output_file" "build_changed" "false"
+
+  base_sha="$head_sha"
+  mkdir -p "$repo_dir/components/Dashboard"
+  printf 'export const Dashboard = () => null;\n' > "$repo_dir/components/Dashboard/Dashboard.tsx"
+  git -C "$repo_dir" add components/Dashboard/Dashboard.tsx
+  git -C "$repo_dir" commit -qm "visual component"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_exact_output "$output_file" "frontend_changed" "true"
+  assert_exact_output "$output_file" "browser_smoke_changed" "false"
+  assert_exact_output "$output_file" "render_changed" "true"
+  assert_exact_output "$output_file" "build_changed" "false"
+
+  base_sha="$head_sha"
+  printf 'export default {};\n' > "$repo_dir/vite.config.ts"
+  git -C "$repo_dir" add vite.config.ts
+  git -C "$repo_dir" commit -qm "build config"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_exact_output "$output_file" "frontend_changed" "false"
+  assert_exact_output "$output_file" "browser_smoke_changed" "false"
+  assert_exact_output "$output_file" "render_changed" "false"
+  assert_exact_output "$output_file" "build_changed" "true"
+
+  base_sha="$head_sha"
+  mkdir -p "$repo_dir/e2e/render-regression"
+  printf 'export const fixture = true;\n' > "$repo_dir/e2e/render-regression/renderRegressionHarness.ts"
+  git -C "$repo_dir" add e2e/render-regression/renderRegressionHarness.ts
+  git -C "$repo_dir" commit -qm "render e2e"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_exact_output "$output_file" "e2e_changed" "true"
+  assert_exact_output "$output_file" "browser_smoke_changed" "false"
+  assert_exact_output "$output_file" "render_changed" "true"
+  assert_exact_output "$output_file" "build_changed" "false"
 
   echo "classify-test-changes regression checks passed"
 }

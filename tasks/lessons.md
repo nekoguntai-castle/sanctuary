@@ -2,6 +2,17 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Add classifier tests before adding expensive CI triggers
+
+**Rule:** Every new expensive CI path trigger must land with a classifier test that proves both the intended run case and at least one intended skip case.
+
+**Why:** Path-aware CI speedups only hold if workflow YAML and classifier scripts stay aligned. Without executable fixtures, a broad pattern can quietly turn frontend helper, docs, or workflow-only changes back into browser, build, install, or CodeQL-heavy runs.
+
+**How to apply:**
+- Add or update the relevant classifier test in `tests/ci/` or `tests/install/unit/` in the same commit as the workflow trigger.
+- Include a positive fixture for the expensive lane and a negative fixture for a nearby path that must stay cheap.
+- Keep aggregate required-check logic based on the same classifier outputs used by the job `if:` conditions.
+
 ## Isolate work when another agent owns the active files
 
 **Rule:** If the user says a problem is being worked in parallel, stop touching that problem's files and shared task tracker state. Move unrelated work into a separate worktree or branch before continuing.

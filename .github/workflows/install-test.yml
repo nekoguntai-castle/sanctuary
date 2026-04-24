@@ -12,10 +12,13 @@ on:
     paths:
       - 'install.sh'
       - 'docker-compose.yml'
+      - 'docker-compose.*.yml'
       - 'Dockerfile'
       - 'server/Dockerfile'
       - 'server/prisma/**'
       - 'docker/**'
+      - 'scripts/setup.sh'
+      - 'scripts/reset-user-2fa.sh'
       - 'tests/install/**'
       - '.github/workflows/install-test.yml'
   schedule:
@@ -69,76 +72,31 @@ jobs:
       test_suite: ${{ steps.check.outputs.test_suite }}
       run_upgrade: ${{ steps.check.outputs.run_upgrade }}
       should_run: ${{ steps.check.outputs.should_run }}
+      run_unit: ${{ steps.check.outputs.run_unit }}
+      run_fresh_install: ${{ steps.check.outputs.run_fresh_install }}
+      run_install_script: ${{ steps.check.outputs.run_install_script }}
+      run_container_health: ${{ steps.check.outputs.run_container_health }}
+      run_auth_flow: ${{ steps.check.outputs.run_auth_flow }}
+      run_reuse_stack: ${{ steps.check.outputs.run_reuse_stack }}
+      scope: ${{ steps.check.outputs.scope }}
+      reason: ${{ steps.check.outputs.reason }}
     steps:
       - name: Checkout for path filtering
-        if: github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
-      - name: Check for relevant changes
-        id: paths
-        if: github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')
-        run: |
-          # Check if any install-relevant files changed
-          CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
-          RELEVANT_PATTERNS="install.sh|docker-compose.yml|Dockerfile|server/Dockerfile|server/prisma/|docker/|tests/install/|.github/workflows/install-test.yml"
-          if echo "$CHANGED" | grep -qE "$RELEVANT_PATTERNS"; then
-            echo "changed=true" >> $GITHUB_OUTPUT
-            echo "Relevant files changed:"
-            echo "$CHANGED" | grep -E "$RELEVANT_PATTERNS" || true
-          else
-            echo "changed=false" >> $GITHUB_OUTPUT
-            echo "No install-relevant files changed"
-          fi
-
-      - name: Check trigger type
+      - name: Classify install test scope
         id: check
-        run: |
-          # Check if this is a release tag
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            echo "is_release=true" >> $GITHUB_OUTPUT
-            echo "test_suite=release-critical" >> $GITHUB_OUTPUT
-            echo "run_upgrade=true" >> $GITHUB_OUTPUT
-            echo "should_run=true" >> $GITHUB_OUTPUT
-            echo "Triggered by release tag: ${{ github.ref }}"
-          elif [[ "${{ github.event.inputs.test_suite }}" != "" ]]; then
-            # Manual workflow_dispatch - always run
-            echo "is_release=false" >> $GITHUB_OUTPUT
-            echo "test_suite=${{ github.event.inputs.test_suite }}" >> $GITHUB_OUTPUT
-            echo "should_run=true" >> $GITHUB_OUTPUT
-            if [[ "${{ github.event.inputs.test_suite }}" == "all" || "${{ github.event.inputs.test_suite }}" == "upgrade" ]]; then
-              echo "run_upgrade=true" >> $GITHUB_OUTPUT
-            else
-              echo "run_upgrade=false" >> $GITHUB_OUTPUT
-            fi
-            echo "Triggered manually with suite: ${{ github.event.inputs.test_suite }}"
-          elif [[ "${{ github.event_name }}" == "schedule" ]]; then
-            echo "is_release=false" >> $GITHUB_OUTPUT
-            echo "test_suite=upgrade" >> $GITHUB_OUTPUT
-            echo "run_upgrade=true" >> $GITHUB_OUTPUT
-            echo "should_run=true" >> $GITHUB_OUTPUT
-            echo "Triggered by schedule - running upgrade matrix"
-          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            # PR - always run (paths filter already applied in trigger)
-            echo "is_release=false" >> $GITHUB_OUTPUT
-            echo "test_suite=all" >> $GITHUB_OUTPUT
-            echo "run_upgrade=false" >> $GITHUB_OUTPUT
-            echo "should_run=true" >> $GITHUB_OUTPUT
-            echo "Triggered by PR - running standard suite"
-          else
-            # Branch push - check if relevant files changed
-            echo "is_release=false" >> $GITHUB_OUTPUT
-            echo "test_suite=all" >> $GITHUB_OUTPUT
-            echo "run_upgrade=false" >> $GITHUB_OUTPUT
-            if [[ "${{ steps.paths.outputs.changed }}" == "true" ]]; then
-              echo "should_run=true" >> $GITHUB_OUTPUT
-              echo "Triggered by push with install-relevant changes"
-            else
-              echo "should_run=false" >> $GITHUB_OUTPUT
-              echo "Skipping - no install-relevant files changed"
-            fi
-          fi
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF: ${{ github.ref }}
+          WORKFLOW_INPUT_TEST_SUITE: ${{ github.event.inputs.test_suite }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: bash tests/install/utils/classify-install-scope.sh
 
   # ============================================
   # Unit Tests for install.sh
@@ -149,9 +107,7 @@ jobs:
     needs: determine-scope
     if: |
       needs.determine-scope.outputs.should_run == 'true' &&
-      (needs.determine-scope.outputs.test_suite == 'all' ||
-       needs.determine-scope.outputs.test_suite == 'unit' ||
-       needs.determine-scope.outputs.test_suite == 'release-critical')
+      needs.determine-scope.outputs.run_unit == 'true'
 
     steps:
       - name: Checkout repository
@@ -167,6 +123,7 @@ jobs:
           ./tests/install/unit/install-script.test.sh
           ./tests/install/unit/reset-user-2fa-script.test.sh
           ./tests/install/unit/upgrade-helpers.test.sh
+          ./tests/install/unit/install-scope.test.sh
 
   # ============================================
   # Fresh Install E2E Test
@@ -177,9 +134,7 @@ jobs:
     needs: determine-scope
     if: |
       needs.determine-scope.outputs.should_run == 'true' &&
-      (needs.determine-scope.outputs.test_suite == 'all' ||
-       needs.determine-scope.outputs.test_suite == 'fresh-install' ||
-       needs.determine-scope.outputs.test_suite == 'release-critical')
+      needs.determine-scope.outputs.run_fresh_install == 'true'
     timeout-minutes: 30
 
     steps:
@@ -250,9 +205,7 @@ jobs:
     needs: determine-scope
     if: |
       needs.determine-scope.outputs.should_run == 'true' &&
-      (needs.determine-scope.outputs.test_suite == 'all' ||
-       needs.determine-scope.outputs.test_suite == 'fresh-install' ||
-       needs.determine-scope.outputs.test_suite == 'release-critical')
+      needs.determine-scope.outputs.run_install_script == 'true'
     timeout-minutes: 30
 
     steps:
@@ -306,6 +259,83 @@ jobs:
           docker system prune -f || true
 
   # ============================================
+  # Reusable Stack Smoke Test
+  # ============================================
+  install-stack-smoke:
+    name: Install Stack Smoke
+    runs-on: ubuntu-latest
+    needs: determine-scope
+    if: |
+      needs.determine-scope.outputs.should_run == 'true' &&
+      needs.determine-scope.outputs.run_reuse_stack == 'true' &&
+      (needs.determine-scope.outputs.run_container_health == 'true' ||
+       needs.determine-scope.outputs.run_auth_flow == 'true')
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
+
+      - name: Check Docker
+        run: |
+          docker --version
+          docker compose version
+
+      - name: Make test scripts executable
+        run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh
+
+      - name: Start reusable stack
+        env:
+          HTTPS_PORT: ${{ env.HTTPS_PORT }}
+          HTTP_PORT: ${{ env.HTTP_PORT }}
+        run: |
+          JWT_SECRET=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
+          ENCRYPTION_KEY=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
+          GATEWAY_SECRET=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
+          POSTGRES_PASSWORD=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
+          AI_CONFIG_SECRET=$(openssl rand -hex 32)
+          REDIS_PASSWORD=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
+
+          cd docker/nginx/ssl && ./generate-certs.sh localhost && cd ../../..
+
+          JWT_SECRET="$JWT_SECRET" ENCRYPTION_KEY="$ENCRYPTION_KEY" \
+            GATEWAY_SECRET="$GATEWAY_SECRET" POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+            AI_CONFIG_SECRET="$AI_CONFIG_SECRET" REDIS_PASSWORD="$REDIS_PASSWORD" \
+            HTTPS_PORT=$HTTPS_PORT HTTP_PORT=$HTTP_PORT \
+            RATE_LIMIT_LOGIN=100 RATE_LIMIT_PASSWORD_CHANGE=100 \
+            docker compose up -d --build
+
+          timeout 120 bash -c 'until docker compose ps migrate --format "{{.Status}}" 2>/dev/null | grep -q "Exited"; do sleep 5; done' || true
+          sleep 30
+
+      - name: Run container health tests
+        if: needs.determine-scope.outputs.run_container_health == 'true'
+        env:
+          HTTPS_PORT: ${{ env.HTTPS_PORT }}
+        run: ./tests/install/e2e/container-health.test.sh --verbose
+
+      - name: Run auth flow tests
+        if: needs.determine-scope.outputs.run_auth_flow == 'true'
+        env:
+          HTTPS_PORT: ${{ env.HTTPS_PORT }}
+        run: ./tests/install/e2e/auth-flow.test.sh --verbose
+
+      - name: Show container logs on failure
+        if: failure()
+        run: |
+          docker compose ps || true
+          docker compose logs --tail 100 postgres 2>&1 || true
+          docker compose logs --tail 100 backend 2>&1 || true
+          docker compose logs --tail 100 frontend 2>&1 || true
+
+      - name: Cleanup
+        if: always() && github.event.inputs.keep_containers != 'true'
+        run: docker compose down -v --remove-orphans || true
+
+  # ============================================
   # Container Health Test
   # ============================================
   container-health-test:
@@ -316,9 +346,8 @@ jobs:
       always() &&
       needs.determine-scope.outputs.should_run == 'true' &&
       needs.fresh-install-test.result == 'success' &&
-      (needs.determine-scope.outputs.test_suite == 'all' ||
-       needs.determine-scope.outputs.test_suite == 'container-health' ||
-       needs.determine-scope.outputs.test_suite == 'release-critical')
+      needs.determine-scope.outputs.run_container_health == 'true' &&
+      needs.determine-scope.outputs.run_reuse_stack != 'true'
     timeout-minutes: 15
 
     steps:
@@ -385,9 +414,8 @@ jobs:
       always() &&
       needs.determine-scope.outputs.should_run == 'true' &&
       needs.fresh-install-test.result == 'success' &&
-      (needs.determine-scope.outputs.test_suite == 'all' ||
-       needs.determine-scope.outputs.test_suite == 'auth-flow' ||
-       needs.determine-scope.outputs.test_suite == 'release-critical')
+      needs.determine-scope.outputs.run_auth_flow == 'true' &&
+      needs.determine-scope.outputs.run_reuse_stack != 'true'
     # 25min: frontend npm ci inside docker build can push total runtime past 15min on slow npm mirror days (see v0.8.40 release).
     timeout-minutes: 25
 
@@ -517,7 +545,7 @@ jobs:
   test-summary:
     name: Install Test Summary
     runs-on: ubuntu-latest
-    needs: [determine-scope, unit-tests, fresh-install-test, install-script-test, container-health-test, auth-flow-test, upgrade-test]
+    needs: [determine-scope, unit-tests, fresh-install-test, install-script-test, install-stack-smoke, container-health-test, auth-flow-test, upgrade-test]
     if: always()
 
     steps:
@@ -526,6 +554,8 @@ jobs:
           IS_RELEASE: ${{ needs.determine-scope.outputs.is_release }}
           TEST_SUITE: ${{ needs.determine-scope.outputs.test_suite }}
           SHOULD_RUN: ${{ needs.determine-scope.outputs.should_run }}
+          SCOPE: ${{ needs.determine-scope.outputs.scope }}
+          REASON: ${{ needs.determine-scope.outputs.reason }}
         run: |
           echo "## Install Test Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -537,9 +567,9 @@ jobs:
             echo "> No install-relevant files changed. Tests were skipped." >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "Install tests run when these files change:" >> $GITHUB_STEP_SUMMARY
-            echo "- \`install.sh\`, \`docker-compose.yml\`, \`Dockerfile\`" >> $GITHUB_STEP_SUMMARY
-            echo "- \`server/Dockerfile\`, \`server/prisma/**\`" >> $GITHUB_STEP_SUMMARY
-            echo "- \`docker/**\`, \`tests/install/**\`" >> $GITHUB_STEP_SUMMARY
+            echo "- \`install.sh\`, \`scripts/setup.sh\`, \`scripts/reset-user-2fa.sh\`" >> $GITHUB_STEP_SUMMARY
+            echo "- \`docker-compose*.yml\`, \`Dockerfile\`, \`server/Dockerfile\`, \`docker/**\`" >> $GITHUB_STEP_SUMMARY
+            echo "- \`server/prisma/**\`, \`tests/install/**\`" >> $GITHUB_STEP_SUMMARY
             echo "- \`.github/workflows/install-test.yml\`" >> $GITHUB_STEP_SUMMARY
             exit 0
           fi
@@ -552,6 +582,9 @@ jobs:
           else
             echo "### Test Suite: $TEST_SUITE" >> $GITHUB_STEP_SUMMARY
           fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Scope: \`$SCOPE\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Reason: $REASON" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           # Unit tests
@@ -579,6 +612,15 @@ jobs:
             echo "- Install Script E2E: :arrow_right: Skipped" >> $GITHUB_STEP_SUMMARY
           else
             echo "- Install Script E2E: :x: Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Reusable stack smoke
+          if [ "${{ needs.install-stack-smoke.result }}" == "success" ]; then
+            echo "- Install Stack Smoke: :white_check_mark: Passed" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.install-stack-smoke.result }}" == "skipped" ]; then
+            echo "- Install Stack Smoke: :arrow_right: Skipped" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- Install Stack Smoke: :x: Failed" >> $GITHUB_STEP_SUMMARY
           fi
 
           # Container health
@@ -618,11 +660,15 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "---" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
+            STACK_OK=false
+            if [ "${{ needs.install-stack-smoke.result }}" == "success" ] || \
+               { [ "${{ needs.container-health-test.result }}" == "success" ] && [ "${{ needs.auth-flow-test.result }}" == "success" ]; }; then
+              STACK_OK=true
+            fi
             if [ "${{ needs.unit-tests.result }}" == "success" ] && \
                [ "${{ needs.fresh-install-test.result }}" == "success" ] && \
                [ "${{ needs.install-script-test.result }}" == "success" ] && \
-               [ "${{ needs.container-health-test.result }}" == "success" ] && \
-               [ "${{ needs.auth-flow-test.result }}" == "success" ] && \
+               [ "$STACK_OK" == "true" ] && \
                [ "${{ needs.upgrade-test.result }}" == "success" ]; then
               echo ":rocket: **Release validation passed!** Installation has been verified." >> $GITHUB_STEP_SUMMARY
             else
@@ -649,6 +695,12 @@ jobs:
 
           if [ "${{ needs.install-script-test.result }}" != "success" ]; then
             echo "::error::Install script test failed - release blocked"
+            FAILED=true
+          fi
+
+          if [ "${{ needs.install-stack-smoke.result }}" != "success" ] && \
+             { [ "${{ needs.container-health-test.result }}" != "success" ] || [ "${{ needs.auth-flow-test.result }}" != "success" ]; }; then
+            echo "::error::Install stack smoke failed - release blocked"
             FAILED=true
           fi
 

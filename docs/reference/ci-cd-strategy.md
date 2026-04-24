@@ -52,6 +52,8 @@ Required for merge/main confidence, and for merge queue when available:
 
 Do not globally require `Build Dev Images`, `Install Test Summary`, or `Verify Bitcoin Vectors`. Those workflows are intentionally path-gated or release-gated. They should run when their trigger paths match, including changes to their own workflow files, but requiring them globally would block unrelated PRs where the workflow never starts.
 
+`CodeQL Required Checks` is emitted by the repo-owned advanced CodeQL workflow, but it is not a branch-protection requirement while GitHub default setup remains enabled. Keep default setup as the backstop until the explicit workflow has proven stable on Actions, JavaScript/TypeScript, Go, and Python path fixtures; then disable default setup and decide whether to promote the aggregate CodeQL context.
+
 ## First PR Validation Checklist
 
 The first PR after enabling this strategy should be treated as a process validation, not only a code change.
@@ -134,7 +136,8 @@ The PR quick gate is optimized for repeated branch updates.
 - Backend test typecheck plus related non-integration Vitest tests.
 - Backend integration smoke for backend changes.
 - Gateway related tests.
-- Chromium E2E smoke/render checks for frontend or E2E changes.
+- Chromium browser smoke only for browser-flow-relevant paths such as app routing, auth/API clients, selected shell routes, server API/routing/auth middleware, and non-render E2E specs.
+- Chromium render regression only for visual/rendering paths such as app shell, components, hooks, providers, themes, utilities, and render-regression fixtures/snapshots.
 - Critical mutation gate for critical Bitcoin/auth/access-control paths.
 
 `PR Required Checks` fails if any required quick-lane child fails, and allows skipped path-conditional children.
@@ -153,8 +156,8 @@ The merge/main gate exists to prove the final candidate, not every local-sized c
 - Full frontend typecheck and threshold-enforced coverage for frontend changes, E2E changes, test-workflow changes, or exhaustive runs.
 - Full gateway coverage for gateway changes, test-workflow changes, or exhaustive runs.
 - Critical mutation gate for critical mutation paths or exhaustive runs.
-- Chromium Playwright E2E for frontend, backend, or E2E changes, test-workflow changes, or exhaustive runs.
-- Full frontend/backend build check for frontend, backend, or E2E changes, test-workflow changes, or exhaustive runs.
+- Chromium Playwright E2E for browser-flow/render-relevant changes, E2E changes, test-workflow changes, or exhaustive runs. Frontend helper/service-only changes still get full frontend coverage but do not automatically run full browser E2E.
+- Full frontend/backend build check for package, build config, Docker/image entrypoint, Prisma, test-workflow, or exhaustive runs. Typecheck and coverage remain the primary source-level compile gate for ordinary frontend/backend source changes.
 - `Full Test Summary` aggregate, which fails if any required full-lane child fails.
 
 When merge queue is available, use the merge-queue SHA as the authoritative merge candidate. Push-to-main full-lane runs are a path-aware backstop for the final merged commit; scheduled and manual runs provide the periodic exhaustive proof.
@@ -177,6 +180,7 @@ Promote a scheduled check into the PR quick gate only when escaped defects show 
 Release validation intentionally duplicates some install and image-building evidence:
 
 - `Install Tests` validates fresh install, install script flow, container health, auth flow, and upgrade on release-critical paths.
+- Pull-request install tests are scoped by `tests/install/utils/classify-install-scope.sh`: unit-only, installer, compose/docker, auth-flow, upgrade, or release-critical. Container-health and auth-flow reuse one stack when both are relevant; release tags, schedules, and manual release-critical/all/upgrade runs stay full.
 - `Release Candidate Validation` is the deliberate pre-release install validation pass.
 - `Release` builds and publishes multi-arch images, creates manifests, notifies the separate Umbrel repository for stable releases, and updates release notes.
 
@@ -204,6 +208,14 @@ Track CI health by lane, not as one blended number:
 - Cancellation count after force-push/rebase updates.
 - Failures caught only after merge.
 - Nightly/deep-check failures that should move earlier.
+
+Use the duration helper when tuning a completed run:
+
+```bash
+bash scripts/ci/report-workflow-durations.sh <run-id>
+```
+
+The helper uses `gh run view --json jobs` and prints the longest jobs first. When adding any new expensive CI trigger, add or update a classifier test in the same change so the path policy stays executable instead of living only in workflow comments.
 
 Initial targets:
 
