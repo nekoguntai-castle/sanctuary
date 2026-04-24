@@ -2,17 +2,18 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
-## Encode docs-only CI behavior in workflow filters, not PR narration
+## Respect required check semantics when optimizing docs-only CI
 
-**Rule:** If the user says docs should not trigger tests, fix the workflow triggers and path classification instead of merely calling the PR "docs-only" in comments or summaries.
+**Rule:** Before adding `paths-ignore` or other workflow-level skip logic for docs-only PRs, inspect the branch protection required contexts. Required workflows must still report their summary checks; only non-required workflows can be skipped entirely.
 
-**Why:** The auth-drift docs follow-up still triggered `Install Tests` and the `Test Suite` shell because `tests/install/README.md` matched broad workflow patterns. Trimming the PR helped immediately, but the durable fix is workflow-level path filtering plus classifier hardening.
+**Why:** The first docs-only CI pass correctly stopped `Install Tests`, but it also made `Test Suite` skip at workflow entry even though `main` requires `PR Required Checks` and `Full Test Summary`. That design risks leaving required checks unreported on docs-only PRs. The durable fix is to keep required workflows lightweight but present, while only non-required workflows get true trigger-level skips.
 
 **How to apply:**
-- Check both workflow entry conditions and any downstream changed-file classifier before declaring a docs PR "safe."
-- Exclude markdown/docs-only paths at the workflow trigger when possible so the workflow never starts.
+- Query required checks first with `gh api repos/<owner>/<repo>/branches/main/protection/required_status_checks`.
+- Use workflow-level `paths-ignore` only for non-required workflows.
+- For required workflows, keep a tiny scope or summary job that always reports, and put docs-only skipping on the heavy jobs underneath it.
 - Narrow broad `tests/*` style classifiers so documentation files under test directories do not look like executable test changes.
-- Verify the result by checking that docs-only PRs show skipped test lanes instead of pending shells.
+- Treat secret scanning separately from code-quality jobs; docs can still leak secrets even when they should skip lint/test work.
 
 ## Avoid per-command env prefixes that defeat saved approvals
 

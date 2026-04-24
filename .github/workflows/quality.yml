@@ -36,9 +36,33 @@ env:
   LIZARD_WARNING_BASELINE: '9'
 
 jobs:
+  determine-scope:
+    name: Determine Quality Scope
+    runs-on: ubuntu-latest
+    outputs:
+      run_repo_quality: ${{ steps.classify.outputs.run_repo_quality }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 0
+
+      - name: Classify quality scope
+        id: classify
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          MERGE_GROUP_HEAD_SHA: ${{ github.event.merge_group.head_sha }}
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: bash scripts/ci/classify-quality-scope.sh
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    needs: [determine-scope]
+    if: github.event_name != 'pull_request' || needs.determine-scope.outputs.run_repo_quality == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -58,6 +82,7 @@ jobs:
   gitleaks:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-latest
+    needs: [determine-scope]
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -100,6 +125,8 @@ jobs:
   lizard:
     name: Cyclomatic complexity (lizard)
     runs-on: ubuntu-latest
+    needs: [determine-scope]
+    if: github.event_name != 'pull_request' || needs.determine-scope.outputs.run_repo_quality == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -148,6 +175,8 @@ jobs:
   jscpd:
     name: Duplication (jscpd)
     runs-on: ubuntu-latest
+    needs: [determine-scope]
+    if: github.event_name != 'pull_request' || needs.determine-scope.outputs.run_repo_quality == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -175,10 +204,11 @@ jobs:
     name: Code Quality Required Checks
     runs-on: ubuntu-latest
     if: always()
-    needs: [lint, gitleaks, lizard, jscpd]
+    needs: [determine-scope, lint, gitleaks, lizard, jscpd]
     steps:
       - name: Check quality job results
         env:
+          RUN_REPO_QUALITY: ${{ needs.determine-scope.outputs.run_repo_quality }}
           LINT: ${{ needs.lint.result }}
           GITLEAKS: ${{ needs.gitleaks.result }}
           LIZARD: ${{ needs.lizard.result }}
@@ -197,10 +227,28 @@ jobs:
             fi
           }
 
-          require_success "Lint" "$LINT"
           require_success "Secret scan (gitleaks)" "$GITLEAKS"
-          require_success "Cyclomatic complexity (lizard)" "$LIZARD"
-          require_success "Duplication (jscpd)" "$JSCPD"
+
+          allow_success_or_skipped() {
+            name="$1"
+            result="$2"
+            if [ "$result" != "success" ] && [ "$result" != "skipped" ]; then
+              echo "::error::$name result was $result; expected success or skipped"
+              failed=true
+            else
+              echo "$name: $result"
+            fi
+          }
+
+          if [ "$RUN_REPO_QUALITY" = "true" ]; then
+            require_success "Lint" "$LINT"
+            require_success "Cyclomatic complexity (lizard)" "$LIZARD"
+            require_success "Duplication (jscpd)" "$JSCPD"
+          else
+            allow_success_or_skipped "Lint" "$LINT"
+            allow_success_or_skipped "Cyclomatic complexity (lizard)" "$LIZARD"
+            allow_success_or_skipped "Duplication (jscpd)" "$JSCPD"
+          fi
 
           if [ "$failed" = "true" ]; then
             exit 1
