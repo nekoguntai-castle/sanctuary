@@ -34,6 +34,8 @@ This document records the checks that should protect the A-grade engineering goa
 
 Upgrade-path note: the install/release workflows now include a real "older ref/tag -> current checkout" core lane in `tests/install/e2e/upgrade-install.test.sh --mode core`. The script's `--mode full` path keeps the older recovery scenarios available for local or manual stress passes without diluting the primary release signal. The workflow lane remains warning-level while the supported upgrade matrix and false-positive rate are still being established; promote it to a hard release blocker once that stability data is in hand.
 
+Container/install note: PostgreSQL upgrade auth checks must validate over the same Compose-network path the app uses (`backend`/`worker`/`migrate` -> `postgres:5432`), not only via localhost checks from inside the database container. See `docs/reference/upgrade-postgres-auth-drift-findings.md` for the failure mode, manual recovery, and the regression this gate protects.
+
 ## Phase 3 Target-Environment Evidence
 
 Repository-controlled generated-data evidence is current enough for the local scalability/performance claim. These gates are required before broadening production scale-out support or claiming that a specific deployment topology has the same capacity:

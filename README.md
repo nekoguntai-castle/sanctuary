@@ -1011,6 +1011,8 @@ docker compose up -d
 
 > **Note:** Both `./install.sh` and the manual upgrade check out a release **tag**, which puts Git in "detached HEAD" state. This is normal — it pins you to a specific release. However, it means `git pull` will not work afterward. Always use `./install.sh` or the manual steps above to upgrade, not `git pull`.
 
+> **If a previous upgrade already failed with PostgreSQL auth errors:** See [Upgrade PostgreSQL auth drift findings](docs/reference/upgrade-postgres-auth-drift-findings.md) for the `P1000` / `password authentication failed for user "sanctuary"` recovery path and the root cause.
+
 ### Checking Your Current Version
 
 ```bash
@@ -1157,6 +1159,14 @@ If you need to get back on the `main` branch (e.g., for development):
 git checkout main
 git pull
 ```
+
+### Upgrade fails with PostgreSQL `P1000` or `password authentication failed`
+
+This usually means the runtime `POSTGRES_PASSWORD` in `~/.config/sanctuary/sanctuary.env` drifted from the password stored for the persisted PostgreSQL role during an older upgrade path.
+
+- Symptoms: `migrate` exits with `P1000`, `worker` restarts, or `backend` logs repeated Prisma authentication failures.
+- Detailed diagnosis and the manual recovery commands live in [Upgrade PostgreSQL auth drift findings](docs/reference/upgrade-postgres-auth-drift-findings.md).
+- New releases after the hotfix validate PostgreSQL credentials over the same Compose-network path the app actually uses, instead of relying on a misleading localhost-only check.
 
 ### Container won't start
 ```bash
