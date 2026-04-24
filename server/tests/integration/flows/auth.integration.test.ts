@@ -119,7 +119,7 @@ describeWithDb('Authentication Integration', () => {
 
       expect(response.headers['access-control-allow-origin']).toBe('https://10.0.0.5:8443');
       expect(response.headers['access-control-allow-credentials']).toBe('true');
-      expect(extractAuthTokens(response).token).toBeTruthy();
+      expect(extractAuthTokens(response).token).not.toBe('');
       expect(response.body.user.username).toBe(testUser.username);
     });
 
@@ -196,7 +196,7 @@ describeWithDb('Authentication Integration', () => {
         .expect(200);
 
       // Phase 6: token is in the Set-Cookie header.
-      expect(extractAuthTokens(loginResponse).token).toBeTruthy();
+      expect(extractAuthTokens(loginResponse).token).not.toBe('');
     });
 
     it('should reject password change with wrong current password', async () => {
@@ -244,7 +244,7 @@ describeWithDb('Authentication Integration', () => {
         .expect(200);
 
       // Phase 6: token is in the Set-Cookie header.
-      expect(extractAuthTokens(loginResponse).token).toBeTruthy();
+      expect(extractAuthTokens(loginResponse).token).not.toBe('');
     });
 
     it('should not allow non-admin to create user', async () => {
@@ -321,8 +321,8 @@ describeWithDb('Authentication Integration', () => {
 
       // Phase 6: rotated tokens are delivered via Set-Cookie.
       const rotated = extractAuthTokens(refreshResponse);
-      expect(rotated.token).toBeTruthy();
-      expect(rotated.refreshToken).toBeTruthy();
+      expect(rotated.token).not.toBe('');
+      expect(rotated.refreshToken).not.toBe('');
       expect(rotated.refreshToken).not.toBe(refreshToken);
       expect(refreshResponse.body.token).toBeUndefined();
       expect(refreshResponse.body.refreshToken).toBeUndefined();

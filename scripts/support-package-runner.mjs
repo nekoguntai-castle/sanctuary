@@ -44,6 +44,10 @@ export function loadSupportPackageGenerator({
   return loadedModule.generateSupportPackage;
 }
 
+/**
+ * @param {NodeJS.WritableStream} [output]
+ * @param {{ resolveCandidate?: (candidate: string) => string, loadModule?: (modulePath: string) => unknown }} [dependencies]
+ */
 export async function writeSupportPackageJson(
   output = process.stdout,
   dependencies = {},
