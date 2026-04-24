@@ -110,7 +110,7 @@ git rev-parse --verify "$head_sha^{commit}" >/dev/null
 
 is_frontend_file() {
   case "$1" in
-    App.tsx|index.html|index.tsx|src/*|components/*|hooks/*|contexts/*|providers/*|services/*|themes/*|utils/*|shared/*|tests/*|vitest.config.ts|package.json|package-lock.json)
+    App.tsx|index.html|index.tsx|src/*|components/*|hooks/*|contexts/*|providers/*|services/*|themes/*|utils/*|shared/*|vitest.config.ts|package.json|package-lock.json|tests/*.ts|tests/*.tsx|tests/*.mts|tests/*.cts|tests/*.js|tests/*.jsx|tests/*.mjs|tests/*.cjs|tests/*.json)
       return 0
       ;;
   esac

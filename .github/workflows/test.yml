@@ -4,6 +4,9 @@ on:
   pull_request:
     branches:
       - main
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
   merge_group:
     types:
       - checks_requested
@@ -22,6 +25,8 @@ on:
       - 'utils/**'
       - 'shared/**'
       - 'tests/**'
+      - '!tests/*.md'
+      - '!tests/**/*.md'
       - 'ai-proxy/**'
       - 'server/**'
       - 'gateway/**'
