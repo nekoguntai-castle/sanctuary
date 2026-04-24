@@ -1,198 +1,192 @@
-# Active Task: Branch-Protection-Safe Docs-Only CI Gating
+# Queued Task: Ledger Nano S Plus Xpub Fetch Failure
 
-Status: complete
+Status: queued
 
-Goal: keep required checks reportable on docs-only PRs while preventing those PRs from running unnecessary test and quality jobs.
+Goal: troubleshoot and fix the Add Device USB flow where a Ledger Nano S Plus connects through the browser but ends with `Failed to fetch any xpubs from device` before any backend device-save request is made.
 
-## Checklist
+## Current Evidence
 
-- [x] Confirm which checks are actually required on `main` before changing workflow triggers.
-- [x] Rework `Test Suite` so docs-only PRs keep only the lightweight required summary jobs and skip heavy test jobs.
-- [x] Rework `Code Quality` so docs-only PRs still report the required summary while skipping code-centric quality jobs.
-- [x] Add focused regression coverage for any new scope-classification script.
-- [x] Run focused verification for the touched workflow logic and shell scripts.
-- [x] Record the branch-protection lesson so future workflow changes avoid `paths-ignore` on required contexts.
+- User can access the local instance over HTTPS, so WebUSB secure-context gating should be satisfied.
+- Backend/nginx logs show normal page/API traffic and no device-save request during the failure window, which points to a browser-side hardware-wallet fetch failure.
+- `hardwareWalletService.getAllXpubs()` tries six standard paths and suppresses per-path errors; the generic error appears only when every path fails.
+- Current Ledger adapter fetches account xpubs through `AppBtc.getWalletXpub(...)`; the already-installed `@ledgerhq/ledger-bitcoin` client exposes `AppClient.getExtendedPubkey(path)`, and that client is already used elsewhere for Ledger signing.
+
+## Fix Queue
+
+- [ ] Capture the exact browser console/device error from the failed flow, including which derivation paths fail, without logging full xpubs or secrets.
+- [ ] Improve Ledger readiness checks so connect fails with a specific message when the device is locked, the Bitcoin app is not open, Ledger Live is holding the USB session, or WebUSB permission is denied.
+- [ ] Prefer `AppClient.getExtendedPubkey(path)` for Ledger xpub reads and keep `AppBtc.getWalletXpub(...)` only as a compatibility fallback if needed.
+- [ ] Replace the generic all-path failure message with an aggregated, user-actionable error that preserves the dominant Ledger/WebUSB cause.
+- [ ] Keep partial-success behavior: if at least one standard account path returns an xpub, proceed with those accounts and report skipped paths non-fatally.
+- [ ] Review the default Ledger scan path set for Nano S Plus compatibility; consider fetching common single-sig paths first and treating Taproot/BIP48 as optional follow-ups.
+- [ ] Add focused tests for Ledger xpub fallback behavior, all-path failure aggregation, partial path success, rejected-on-device errors, and Bitcoin-app-not-open errors.
+- [ ] Manually verify with Chrome or Edge at `https://localhost:8443` using an unlocked Ledger Nano S Plus with the Bitcoin app open and Ledger Live closed.
 
 ## Review
 
-- Queried `main` branch protection directly and confirmed the required contexts are `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
-- `Test Suite` no longer skips docs-only PRs at workflow entry; instead it keeps the required summary jobs and skips `Quick Test Hygiene` when no actual test files changed.
-- Added `scripts/ci/classify-quality-scope.sh` plus `tests/ci/classify-quality-scope.test.sh` so docs-only PRs can skip `lint`, `lizard`, and `jscpd` while still running `gitleaks` and reporting `Code Quality Required Checks`.
-- Local verification completed with:
-  - `bash -n scripts/ci/classify-quality-scope.sh`
-  - `bash -n tests/ci/classify-quality-scope.test.sh`
-  - `bash tests/ci/classify-quality-scope.test.sh`
-  - `bash -n scripts/ci/classify-test-changes.sh`
-  - `bash -n tests/ci/classify-test-changes.test.sh`
-  - `bash tests/ci/classify-test-changes.test.sh`
-  - `git diff --check`
-- `Install Tests` remains safe to skip at workflow entry for markdown-only install docs because it is not a required status check on `main`.
-- GitHub CodeQL is configured via repository default setup, not a repo workflow file, so docs-only CodeQL skipping would require a repository-settings change or replacing default setup with a repo-owned workflow.
+- Pending implementation. No code changes made yet.
 
 ---
 
-# Active Task: Docs-Only CI Trigger Hardening
-
-Status: superseded
-
-Goal: make docs-only PRs skip the test-suite and install-test workflow shells entirely, while cleaning up the stale docs follow-up branches that are no longer needed.
-
-## Checklist
-
-- [x] Reproduce the current trigger paths for docs-only changes in `test.yml`, `install-test.yml`, and `scripts/ci/classify-test-changes.sh`.
-- [x] Tighten workflow filters so markdown/docs-only pull requests do not start the test workflows.
-- [x] Harden changed-file classification so docs under `tests/` do not masquerade as frontend test changes.
-- [x] Add focused regression coverage for the changed-file classifier behavior.
-- [x] Run focused verification for the touched workflows/scripts.
-- [x] Delete stale local and remote docs branches: `docs/upgrade-postgres-auth-docs` and `docs/upgrade-postgres-auth-docs-v2`.
-
-## Review
-
-- Superseded by the follow-up task above: required checks on `main` mean `test.yml` cannot safely skip entire docs-only PRs at workflow entry.
-- `install-test.yml` now excludes markdown docs under `tests/install/` for PR triggers and strips markdown files from the `push`-time relevance check.
-- `scripts/ci/classify-test-changes.sh` no longer treats arbitrary files under `tests/` as frontend changes; only executable test/config file extensions match.
-- Added `tests/ci/classify-test-changes.test.sh` to prove `tests/install/README.md` stays out of frontend/test classification while real frontend test files still classify correctly.
-- Local verification completed with:
-  - `bash -n scripts/ci/classify-test-changes.sh`
-  - `bash -n tests/ci/classify-test-changes.test.sh`
-  - `bash tests/ci/classify-test-changes.test.sh`
-  - `git diff --check`
-- Deleted stale local branches `docs/upgrade-postgres-auth-docs` and `docs/upgrade-postgres-auth-docs-v2`, removed the old `/tmp/sanctuary-docs` worktree, deleted `origin/docs/upgrade-postgres-auth-docs`, and pruned the already-merged `origin/docs/upgrade-postgres-auth-docs-v2` tracking ref.
-
-# Completed Task: Upgrade Testing Phases 2-6
+# Active Task: Local Sanctuary Instance Rebuild
 
 Status: complete
 
-Goal: finish the roadmap after the merged Phase 1 baseline by turning the upgrade harness into a fixture-driven system, adding post-upgrade smoke coverage, broadening historical/workflow lanes, capturing failure artifacts, and promoting the latest-stable upgrade path into a real release gate.
+Goal: rebuild the local Docker-backed Sanctuary instance from the current workspace and verify the running services are healthy.
 
 ## Checklist
 
-- [x] Phase 2: extract reusable upgrade fixture hooks and move the baseline password-change seed into a named fixture.
-- [x] Phase 2: add non-baseline deployment-shape fixtures for legacy runtime env, IP-origin browser access, optional profiles, and seeded persistent app state.
-- [x] Phase 3: add post-upgrade browser/auth/websocket smoke coverage and worker/support-package smoke coverage.
-- [x] Phase 4: wire `latest-stable`, `n-1`, and `n-2` upgrade lanes into the install/release workflows and the local master runner.
-- [x] Phase 5: upload upgrade failure artifacts and preserve the context needed to debug failed source/target transitions.
-- [x] Phase 6: make the `latest-stable -> candidate` upgrade lane a required release signal while keeping `n-1` / `n-2` as warning-level historical coverage.
-- [x] Re-run the risky optional-profile lane after isolating monitoring ports, compose files, and monitoring container names across old/new refs.
-- [x] Re-run the full extended baseline lane after the refactor to prove the original recovery scenarios still pass.
-- [x] Update the install-test and release-gate docs to match the new lanes, fixtures, and artifact behavior.
+- [x] Review local rebuild instructions and runtime configuration.
+- [x] Capture current Docker/Compose state before rebuilding.
+- [x] Run the documented local rebuild command.
+- [x] Verify containers, frontend health, backend health, and gateway health after startup.
+- [x] Self-review logs/status for obvious regressions before reporting completion.
 
 ## Review
 
-- Added fixture infrastructure:
-  - `tests/install/utils/upgrade-fixtures.sh`
-  - `tests/install/utils/upgrade-source-refs.sh`
-  - `tests/install/utils/upgrade-assertions.sh`
-  - `tests/install/utils/collect-upgrade-artifacts.sh`
-- Added concrete fixtures:
-  - `tests/install/fixtures/upgrade/baseline.sh`
-  - `tests/install/fixtures/upgrade/browser-origin-ip.sh`
-  - `tests/install/fixtures/upgrade/legacy-runtime-env.sh`
-  - `tests/install/fixtures/upgrade/optional-profiles.sh`
-  - `tests/install/fixtures/upgrade/seeded-app-state.sh`
-- Added post-upgrade smoke tests:
-  - `tests/install/e2e/upgrade-browser-smoke.test.sh`
-  - `tests/install/e2e/upgrade-worker-smoke.test.sh`
-- Hardened the harness so optional profiles behave like real installs/upgrades:
-  - `tests/install/utils/helpers.sh` now runs compose commands with the same file set as the install path.
-  - `tests/install/utils/helpers.sh` now cleans up stale `sanctuary-upgrade-test-*` compose projects so repeated local upgrade runs do not collide with leftover test stacks.
-  - `docker-compose.monitoring.yml` now supports env-driven container names so concurrent monitoring-enabled upgrade runs do not collide.
-  - `tests/install/e2e/upgrade-install.test.sh` now forwards monitoring ports/container names, supports CLI port overrides, collects artifact context, and uses the shared compose wrapper for stop/cleanup/recovery flows.
-  - `tests/install/utils/upgrade-fixtures.sh` and `tests/install/fixtures/upgrade/browser-origin-ip.sh` now allow fixtures to claim an isolated gateway port along with HTTPS/HTTP.
-- Extended the local runner and CI workflows:
-  - `tests/install/run-all-tests.sh` forwards upgrade source-ref / fixture / mode overrides.
-  - `.github/workflows/install-test.yml` now runs the required `latest-stable` upgrade lane, supports manual fixture selection, and uploads artifacts on failure.
-  - `.github/workflows/release-candidate.yml` now runs the required `latest-stable` lane plus warning-level `n-1` / `n-2` lanes with artifact upload and explicit summary/gating behavior.
-- Updated operator docs:
-  - `tests/install/README.md`
-  - `docs/reference/release-gates.md`
-- Tightened the support-package regression helper:
-  - `scripts/support-package-runner.mjs`
-  - `tests/scripts/support-package-runner.test.ts`
-- Validation completed during this phase:
-  - `bash -n tests/install/e2e/upgrade-install.test.sh tests/install/e2e/upgrade-browser-smoke.test.sh tests/install/e2e/upgrade-worker-smoke.test.sh tests/install/utils/helpers.sh tests/install/utils/upgrade-fixtures.sh tests/install/utils/upgrade-assertions.sh tests/install/utils/upgrade-source-refs.sh tests/install/utils/collect-upgrade-artifacts.sh tests/install/fixtures/upgrade/baseline.sh tests/install/fixtures/upgrade/browser-origin-ip.sh tests/install/fixtures/upgrade/legacy-runtime-env.sh tests/install/fixtures/upgrade/optional-profiles.sh tests/install/fixtures/upgrade/seeded-app-state.sh tests/install/run-all-tests.sh`
-  - `node --check scripts/support-package-runner.mjs`
-  - `docker compose -f docker-compose.yml -f docker-compose.monitoring.yml config >/dev/null`
-  - `bash tests/install/unit/install-script.test.sh`
-  - `./tests/install/e2e/upgrade-install.test.sh --mode core --source-ref v0.8.40 --fixture browser-origin-ip`
-  - `./tests/install/e2e/upgrade-install.test.sh --mode core --source-ref v0.8.40 --fixture legacy-runtime-env --https-port 18443 --http-port 18080 --gateway-port 14000`
-  - `./tests/install/e2e/upgrade-install.test.sh --mode core --source-ref v0.8.40 --fixture seeded-app-state --https-port 18443 --http-port 18080 --gateway-port 14000`
-  - `./tests/install/e2e/upgrade-install.test.sh --mode core --source-ref v0.8.40 --fixture optional-profiles --https-port 18443 --http-port 18080 --gateway-port 14000`
-  - `./tests/install/e2e/upgrade-install.test.sh --mode full --source-ref v0.8.40 --fixture baseline --https-port 18443 --http-port 18080 --gateway-port 14000`
-- Known local environment caveat:
-  - `npx vitest run tests/scripts/support-package-runner.test.ts` was not rerun in `/tmp/sanctuary-upgrade-phase1` because the temporary worktree does not have the root dev dependencies installed. The harness and script validations above passed in this worktree.
+- Rebuilt with `./start.sh --rebuild`; stack is available at `https://localhost:8443`.
+- Health checks passed for postgres, redis, worker, backend, frontend, gateway, and ai; migration exited `0`.
+- Follow-up issues observed but not fixed in this rebuild task: scheduled worker backup volume is root-owned and the worker queue rejects colon-delimited custom job IDs.
 
 ---
 
-# Active Task: Phase 1 Upgrade Recovery Validation
-
-Status: complete
-
-Goal: validate and harden the merged password-drift upgrade recovery path on post-merge `main`, using the real extended upgrade harness and the documented production failure mode as the acceptance bar.
-
-## Checklist
-
-- [x] Re-read the merged `main` implementation for `scripts/setup.sh`, the extended upgrade harness, and the postgres auth-drift findings before changing anything.
-- [x] Run `./tests/install/e2e/upgrade-install.test.sh --mode full --source-ref v0.8.40` on the merged codebase to measure the current Phase 1 baseline.
-- [x] If the full upgrade recovery lane fails, isolate whether the gap is in `scripts/setup.sh`, the harness, or the assertions and fix only that layer.
-- [x] Re-run the focused local validation needed for the Phase 1 fix set.
-- [x] Update upgrade-test documentation if the execution path or recovery expectations changed.
-- [x] Record the Phase 1 result and remaining risks in this file.
-
-## Review
-
-- Clean execution worktree created at `/tmp/sanctuary-upgrade-phase1` from `origin/main` (`9a71617b`) so local roadmap notes in the original checkout do not leak into Phase 1 edits.
-- Current merged baseline already contains:
-  - Compose-network PostgreSQL password validation in `scripts/setup.sh`
-  - password-repair logic that does not assume a `postgres` DB role
-  - extended upgrade test `test_recover_postgres_password_drift`
-  - unit assertions covering the setup-script recovery path
-- Verification run completed successfully on merged `main`:
-  - `./tests/install/e2e/upgrade-install.test.sh --mode full --source-ref v0.8.40`
-- Result:
-  - source install from `v0.8.40` passed
-  - real ref-to-ref upgrade into `v0.8.41-4-g9a71617b` passed
-  - `Recover PostgreSQL Password Drift` passed
-  - `Verify All Services` passed
-  - `Force Rebuild Upgrade` passed
-  - `Volume Data Persistence` passed
-  - final summary: `13 passed, 0 failed`
-- No code or doc changes were needed for Phase 1 after validating the merged baseline.
-- Remaining roadmap work now starts at Phase 2: reusable upgrade fixtures and broader deployment-shape coverage.
-
----
-
-# Active Task: Release Upgrade Postgres Auth Drift Hotfix
+# Active Task: Bulletproof Upgrade Release Gate
 
 Status: in progress
 
-Goal: ship the PostgreSQL upgrade auth-drift fix in a reviewable PR, merge it, and capture the incident findings in a reusable document for future upgrade automation and diagnostics.
+Goal: make the next release upgrade path release-grade by adding fixture-driven upgrade scenarios, browser/proxy-facing smoke assertions, historical source-ref matrix support, and automatic failure artifacts before cutting a tag.
+
+## Current Repo Context
+
+- Branch: `upgrade-path-hardening`.
+- Open PR queue: empty at session check time.
+- Existing core lane already proves encrypted 2FA preservation and recovery across v0.8.39-v0.8.42.
 
 ## Checklist
 
-- [x] Isolate the hotfix work on a clean branch/worktree so unrelated in-flight changes do not leak into the release fix.
-- [x] Fix `scripts/setup.sh` so password validation uses the same Compose-network path as the app and password repair does not assume a `postgres` DB role exists.
-- [x] Add focused regression coverage for the new validation/repair paths.
-- [x] Write a findings document that explains the incident, the misleading checks, the reliable checks, and the manual recovery path.
-- [x] Run local verification for the touched scripts and focused tests.
-- [ ] Push the hotfix branch, open a PR, and watch the required checks.
-- [ ] Fix any CI or review issues that surface while the PR is open.
-- [ ] Merge the PR and confirm the final branch/PR state.
+- [x] Re-read current upgrade harness, install workflows, roadmap, and open PR queue before editing shared files.
+- [x] Add reusable upgrade fixture plumbing with `--fixture` support and documented fixture names.
+- [x] Move source-ref alias resolution (`latest-stable`, `n-1`, `n-2`) into a reusable helper and wire it into the harness/workflows.
+- [x] Add post-upgrade smoke assertions that exercise browser-visible API traffic through nginx: login, `/auth/me`, `/auth/refresh`, CSRF-protected mutation, worker health, and support package generation.
+- [x] Add failure artifact collection for upgrade jobs: install logs, compose status, service logs, redacted runtime env, and metadata.
+- [x] Expand release-candidate/install workflows with historical upgrade matrix lanes and artifact upload.
+- [x] Update install docs and roadmap with release-gate policy and local commands.
+- [x] Add centralized upgrade-test network defaults so local fixture lanes use isolated ports without inline shell env prefixes.
+- [x] Run focused unit/syntax/YAML checks, lizard, and fixture-backed core upgrade lanes locally.
+- [x] Self-review edge cases: legacy env paths, optional profiles, missing source refs, artifact redaction, cleanup behavior, and CI runtime cost.
 
 ## Review
 
-- Hotfix branch: `fix/upgrade-postgres-auth-drift`
-- Committed local changes:
-  - `scripts/setup.sh`
-  - `tests/install/unit/install-script.test.sh`
-  - `docs/reference/upgrade-postgres-auth-drift-findings.md`
-- Local verification already completed:
-  - `bash -n scripts/setup.sh`
-  - `bash -n tests/install/unit/install-script.test.sh`
-  - `bash tests/install/unit/install-script.test.sh`
-  - `git diff --check -- scripts/setup.sh tests/install/unit/install-script.test.sh docs/reference/upgrade-postgres-auth-drift-findings.md`
-- End-to-end repro validated in a temporary Compose project by drifting `POSTGRES_PASSWORD`, running `scripts/setup.sh`, and confirming the repaired password works over the Compose network.
-- Pending release operations: push, PR creation, checks, merge, and final follow-up notes.
+- Added `tests/install/utils/upgrade-test-defaults.sh` so upgrade E2E runs default to disposable local ports (`9443`/`9080`/`4400`) without requiring `VAR=value command` prefixes. CI can still override the ports through job env.
+- Added unit coverage proving upgrade fixture defaults compose with the new network defaults and that explicit overrides are preserved.
+- Refactored the upgrade harness install/setup/rebuild calls to export test env inside subshells instead of relying on command-prefixed env assignments.
+- Local upgrade proofs now passed:
+  - `v0.8.42 / baseline`: 17/17
+  - `v0.8.42 / browser-origin-ip`: 17/17
+  - `v0.8.42 / legacy-runtime-env`: 17/17
+  - `v0.8.41 / baseline`: 17/17
+- Reran `v0.8.42 / baseline` after centralizing upgrade-test network defaults and removing command-prefixed env usage from the touched harness paths: 17/17.
+- Removed remaining command-prefixed test/quality command paths in docs/workflows/scripts; targeted grep now has no command-prefix hits in the relevant test/workflow/doc paths.
+- Final validation passed: shell syntax, workflow YAML parsing, install unit suite 76/76, reset-2FA unit suite 6/6, upgrade-helper unit suite 7/7, focused server CSRF/error tests 27/27, `git diff --check`, and lizard with one allowed pre-existing shell-heredoc parser warning in `tests/install/unit/install-script.test.sh`.
+- Cleanup verified after E2E runs: no upgrade test containers or worktrees left, no repo-root `.env`, and the local `sanctuary-*` instance remained healthy on `8443`/`4000`.
+
+---
+
+# Active Task: 2FA Recovery CLI And Upgrade Coverage
+
+Status: complete
+
+Goal: convert the 0.8.42 2FA lockout incident into durable recovery tooling and release-gate coverage so encrypted 2FA state cannot silently break across upgrades.
+
+## Checklist
+
+- [x] Capture incident lessons: encrypted 2FA secrets are upgrade-critical state, and remote recovery commands must avoid fragile heredocs.
+- [x] Add a supported CLI script to inspect and reset a user's 2FA state from the host with automatic backup and explicit confirmation.
+- [x] Add focused shell/unit tests for the CLI script's safety behavior, argument parsing, backup requirement, and generated SQL shape.
+- [x] Extend upgrade testing to seed a 2FA-enabled admin before upgrade and verify post-upgrade 2FA login succeeds.
+- [x] Extend upgrade testing to verify backup-code login, normalized backup-code input, wrong encryption material rejection, reset recovery, and re-enrollment.
+- [x] Extend upgrade testing to cover multiple 2FA users, including an encrypted secondary user and a legacy plaintext 2FA secret.
+- [x] Fix setup upgrade behavior for existing envs with `ENCRYPTION_KEY` but missing `ENCRYPTION_SALT`.
+- [x] Add unit coverage for the existing-key/missing-salt upgrade edge case.
+- [x] Add unit coverage proving fresh installs still generate a unique salt rather than using the legacy default.
+- [x] Add server encryption coverage proving ciphertext created with the missing-salt legacy default decrypts after `ENCRYPTION_SALT=sanctuary-node-config` is materialized.
+- [x] Run historical core upgrade lanes from v0.8.39, v0.8.40, v0.8.41, and v0.8.42.
+- [x] Run final syntax, lint-style, and focused server regression checks.
+
+## Review
+
+- Added `scripts/reset-user-2fa.sh`; it defaults to status-only, requires `--yes` to update, backs up the current 2FA row to a 0600 JSON file, and clears only `twoFactorEnabled`, `twoFactorSecret`, and `twoFactorBackupCodes`.
+- Added `tests/install/unit/reset-user-2fa-script.test.sh` and wired it into `tests/install/run-all-tests.sh`, `.github/workflows/install-test.yml`, and `.github/workflows/release-candidate.yml`.
+- Extended `tests/install/e2e/upgrade-install.test.sh` so the core lane seeds encrypted admin 2FA, encrypted secondary-user 2FA, and legacy plaintext 2FA before upgrade, preserves `ENCRYPTION_KEY` and `ENCRYPTION_SALT`, decrypts and logs in after upgrade, verifies backup-code one-time semantics, rejects drifted encryption material, then resets and re-enrolls through the API.
+- Updated `scripts/setup.sh` so fresh installs still get a random `ENCRYPTION_SALT`, but existing encrypted installs with `ENCRYPTION_KEY` and no salt materialize `sanctuary-node-config` to preserve decryptability.
+- Historical core upgrade matrix passed so far: v0.8.39, v0.8.40, v0.8.41, and v0.8.42 each passed 14/14.
+- Final validation passed: shell syntax, `git diff --check`, workflow YAML parsing, focused lizard, install unit suite 76/76, reset 2FA unit suite 6/6, and focused server encryption/2FA suite 77/77.
+
+---
+
+# Active Task: 0.8.42 2FA Regression Hotfix
+
+Status: complete
+
+Goal: identify why an upgraded 0.8.42 node accepts the CORS fix but no longer completes 2FA, apply the smallest safe node-side fix if available, then package the confirmed fix into a release patch.
+
+## Checklist
+
+- [x] Confirm whether the failure is at `/auth/2fa/verify` routing/CORS/CSRF, TOTP validation, or post-verify cookie/session hydration.
+- [x] Inspect local release diff and focused 2FA tests for auth-code regressions.
+- [x] Inspect running node evidence for auth, CORS, CSRF, TOTP, and encryption-material failure indicators.
+- [x] Apply a runtime recovery on the node: old encryption material is unavailable, so back up and clear the undecryptable 2FA state for `admin`, then re-enroll.
+- [x] Add focused regression coverage and code changes if the evidence points to a repo bug.
+- [x] Verify login plus 2FA end-to-end before release packaging through the upgrade core lane and reset/re-enroll flow.
+
+## Findings
+
+- `v0.8.39..v0.8.42` does not change `server/src/services/twoFactorService.ts`, `/auth/2fa/verify`, login 2FA handoff, or frontend 2FA API/UserContext code.
+- Focused TOTP service tests pass locally under Node 22 and inside `node:24-alpine` (`v24.15.0`), so the Node 24 runtime move is not currently reproducing as a TOTP verifier failure.
+- Route-level 2FA tests pass when the sandbox allows supertest to bind a local port.
+- The remote node proves the failure is encrypted-secret state, not CORS/CSRF/routing: `admin` has 2FA enabled, but `decryptIfEncrypted(twoFactorSecret)` fails with `Unsupported state or unable to authenticate data`.
+- Immediate recovery is either restore the previous `ENCRYPTION_KEY`/`ENCRYPTION_SALT`, or clear 2FA for `admin` and re-enroll after login.
+- User confirmed the old encryption material is unavailable, so the existing TOTP secret is cryptographically unrecoverable. Proceed with reset-and-re-enroll.
+- First pasted heredoc backup command closed early and failed with `SyntaxError: Unexpected end of input`; no DB update ran. Use one-line `node -e` recovery commands next.
+- SQL reset completed on the node: `UPDATE 1`; verification returned `admin|f|t|t`, meaning 2FA disabled and both secret/backup-code fields are null.
+- Regression coverage now seeds a real encrypted 2FA secret before a ref-to-ref upgrade, preserves `ENCRYPTION_KEY` and `ENCRYPTION_SALT`, decrypts the secret after upgrade, and completes the post-upgrade 2FA verification flow.
+- Likely repo-side upgrade bug class found and fixed: setup generated a new salt when an existing env had `ENCRYPTION_KEY` but no `ENCRYPTION_SALT`; for legacy installs this changes the derived encryption key and breaks encrypted 2FA.
+- Release packaging should include the setup salt-preservation fix, the reset CLI, and the expanded upgrade tests.
+
+---
+
+# Active Task: Upgrade Testing Expansion Roadmap
+
+Status: in progress
+
+Goal: turn the first real ref-to-ref upgrade lane into an accurate upgrade-testing program that reflects actual operator states, supported source versions, and browser/proxy/runtime behavior as Sanctuary changes.
+
+## Current repo context
+
+- Open PRs at roadmap time:
+  - #117 `test/login-regression-hardening`
+  - #119 `fix/nginx-cors-host-forwarding`
+  - #120 `test: add real ref-to-ref upgrade lane`
+- Do not assume the upgrade harness, nginx templates, or auth/login helpers are stable until those PRs land or are rebased deliberately.
+
+## Checklist
+
+- [x] Re-read the current upgrade harness, install/release workflows, and open PR queue before drafting the next plan.
+- [x] Write a concrete roadmap with exact files, workflow jobs, fixtures, and gate-promotion steps in [docs/plans/upgrade-testing-roadmap.md](/home/nekoguntai/sanctuary/docs/plans/upgrade-testing-roadmap.md).
+- [ ] After PR #120 merges, implement Phase 1 from the roadmap: stabilize the password-drift recovery path in `scripts/setup.sh` and re-run `upgrade-install.test.sh --mode full`.
+- [ ] After PR #119 merges, implement Phase 2 and Phase 3 from the roadmap: reusable fixtures plus browser/proxy-facing post-upgrade smoke coverage.
+- [ ] Add the Phase 4/5 workflow matrix and failure artifact collection once the fixture/assertion layers are stable.
+- [ ] Promote `latest-stable -> candidate` upgrade coverage to a required release-candidate gate only after soak data exists.
+
+## Review
+
+- The roadmap is intentionally sequenced around the live PR queue so we do not stack more edits onto files already under review.
+- Exact implementation targets are now documented, including:
+  - fixture files under `tests/install/fixtures/upgrade/`
+  - helper files under `tests/install/utils/`
+  - workflow jobs to add or rename in `install-test.yml` and `release-candidate.yml`
+  - the gating path from warning-level upgrade checks to a real required release gate
+- The current upgrade baseline is captured as: core ref-to-ref lane exists, extended recovery scenarios exist locally, and historical-version/deployment-shape coverage is the next missing layer.
 
 ---
 
@@ -5293,23 +5287,3 @@ Goal: identify and fix the latest release regression where browser login and ref
 - `bash -n scripts/support-package.sh` passed.
 - `git diff --check` passed.
 - `npm --prefix server run typecheck:tests` currently fails on a pre-existing generated Prisma path mismatch in `tsconfig.test.json` (`src/generated/prisma/internal/prismaNamespaceBrowser.ts` missing) unrelated to this CORS/support-package patch.
-
-## Follow-up Batch: Login Regression Test Hardening
-
-Goal: close the two remaining test gaps from the 2026-04-23 login outage follow-up without blocking the already-merged production fix.
-
-- [x] Add an integration test that proves a real auth route accepts request-derived same-origin browser access in production mode even when `CLIENT_URL` does not match the current host.
-- [x] Add a support-package helper regression test that proves the script resolves the first available compiled module path instead of assuming a single `dist` layout.
-- [x] Run focused validation for the new integration and script tests, then update this tracker with the results.
-
-### Local validation completed
-
-- `npm run test:run -- tests/scripts/support-package-runner.test.ts` passed with 4 tests for candidate ordering, first-match resolution, missing-module failure, and JSON emission.
-- `bash -n scripts/support-package.sh` passed after switching the helper to stream the checked-in runner module into the backend container.
-- `npm --prefix server run test:run -- tests/unit/middleware/corsOrigin.test.ts` remained green with 13 tests after the integration-helper changes.
-- `TEST_POSTGRES_PORT=55433 docker compose -f docker-compose.test.yml up -d test-db` started a disposable Postgres instance for focused integration validation.
-- `TEST_DATABASE_URL=postgresql://test:test@localhost:55433/sanctuary_test?schema=public ... npx prisma migrate deploy` passed against the disposable integration database.
-- `TEST_DATABASE_URL=postgresql://test:test@localhost:55433/sanctuary_test?schema=public ... npx vitest run --no-file-parallelism --maxWorkers 1 tests/integration/flows/auth.integration.test.ts` passed with 42 tests, including the new request-derived same-origin auth regression and the `403` CORS rejection regression.
-- `npm run typecheck:tests` passed.
-- `git diff --check` passed.
-- `docker compose -f docker-compose.test.yml down --remove-orphans` cleaned up the disposable integration database afterward.

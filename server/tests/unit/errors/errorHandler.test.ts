@@ -199,6 +199,28 @@ describe('errorHandler', () => {
     expect(res.status).toHaveBeenCalledWith(500);
   });
 
+  it('maps csrf-csrf forbidden errors to a 403 API response', () => {
+    const res = makeRes();
+    const err = Object.assign(new Error('invalid csrf token'), {
+      name: 'ForbiddenError',
+      statusCode: 403,
+    });
+
+    errorHandler(err, {} as Request, res, vi.fn() as NextFunction);
+
+    expect(mockLogWarn).toHaveBeenCalledWith('API Error: FORBIDDEN', expect.objectContaining({
+      message: 'Invalid CSRF token',
+      statusCode: 403,
+    }));
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      error: 'Forbidden',
+      code: ErrorCodes.FORBIDDEN,
+      message: 'Invalid CSRF token',
+      requestId: 'req-123',
+    }));
+  });
+
   it('handles unknown errors', () => {
     const res = makeRes();
     const err = new Error('boom');

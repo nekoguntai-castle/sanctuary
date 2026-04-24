@@ -6,7 +6,7 @@ Comprehensive test suite for verifying the Sanctuary installation process works 
 
 This test suite covers:
 
-1. **Unit Tests** - Test individual functions in `install.sh`
+1. **Unit Tests** - Test individual functions in `install.sh` and host recovery helpers
 2. **Fresh Install E2E** - Complete fresh installation process
 3. **Upgrade Tests** - Upgrading an existing installation
 4. **Container Health** - Verify all containers start and are healthy
@@ -54,27 +54,17 @@ This test suite covers:
 # Upgrade scenario tests
 ./tests/install/e2e/upgrade-install.test.sh
 
-# Core release lane: upgrade from the newest stable tag to the current checkout
-./tests/install/e2e/upgrade-install.test.sh --mode core --source-ref latest-stable
+# Core release lane: upgrade from a specific older ref/tag to the current checkout
+./tests/install/e2e/upgrade-install.test.sh --mode core --source-ref v0.8.39
 
 # Full local suite: include extended recovery scenarios after the core upgrade
-./tests/install/e2e/upgrade-install.test.sh --mode full --source-ref latest-stable
+./tests/install/e2e/upgrade-install.test.sh --mode full --source-ref v0.8.39
 
-# Full local suite with an explicit fixture
-./tests/install/e2e/upgrade-install.test.sh --mode full --source-ref latest-stable --fixture baseline
+# Fixture-backed release lane from the newest stable tag before this checkout
+./tests/install/e2e/upgrade-install.test.sh --mode core --source-ref latest-stable --fixture baseline
 
-# Historical upgrade lanes
-./tests/install/e2e/upgrade-install.test.sh --mode core --source-ref n-1 --fixture baseline
-./tests/install/e2e/upgrade-install.test.sh --mode core --source-ref n-2 --fixture baseline
-
-# Historical upgrade lane on alternate local ports
-./tests/install/e2e/upgrade-install.test.sh --mode core --source-ref latest-stable --fixture baseline --https-port 18443 --http-port 18080 --gateway-port 14000
-
-# Local master runner with upgrade overrides
-./tests/install/run-all-tests.sh --upgrade-source-ref latest-stable --upgrade-fixture optional-profiles --upgrade-mode core
-
-# Local master runner on alternate ports
-./tests/install/run-all-tests.sh --upgrade-source-ref latest-stable --upgrade-fixture baseline --upgrade-mode full --https-port 18443 --http-port 18080 --gateway-port 14000
+# Browser/proxy shape: IP origin through the disposable upgrade-test port set
+./tests/install/e2e/upgrade-install.test.sh --mode core --source-ref latest-stable --fixture browser-origin-ip
 ```
 
 ## Prerequisites
@@ -100,40 +90,36 @@ tests/install/
 ├── README.md              # This file
 ├── run-all-tests.sh       # Master test runner
 ├── unit/
-│   └── install-script.test.sh   # Unit tests for install.sh functions
+│   ├── install-script.test.sh   # Unit tests for setup/install behavior
+│   ├── reset-user-2fa-script.test.sh # Unit tests for host-side 2FA recovery
+│   └── upgrade-helpers.test.sh  # Unit tests for upgrade refs, fixtures, artifacts
 ├── e2e/
 │   ├── fresh-install.test.sh    # Fresh installation E2E test
 │   ├── upgrade-install.test.sh  # Upgrade scenario tests
-│   ├── upgrade-browser-smoke.test.sh  # Post-upgrade browser/auth smoke
-│   ├── upgrade-worker-smoke.test.sh   # Post-upgrade worker/support smoke
-│   ├── container-health.test.sh       # Container health verification
-│   └── auth-flow.test.sh              # Authentication flow tests
+│   ├── container-health.test.sh # Container health verification
+│   └── auth-flow.test.sh        # Authentication flow tests
 ├── utils/
-│   ├── helpers.sh                   # Shared test utilities
-│   ├── upgrade-assertions.sh        # Cookie/auth/support-package upgrade checks
-│   ├── upgrade-fixtures.sh          # Fixture loading and common fixture helpers
-│   ├── upgrade-source-refs.sh       # latest-stable / n-1 / n-2 source resolution
-│   └── collect-upgrade-artifacts.sh # Failure artifact capture for upgrade jobs
-└── fixtures/
-    └── upgrade/
-        ├── baseline.sh
-        ├── browser-origin-ip.sh
-        ├── legacy-runtime-env.sh
-        ├── optional-profiles.sh
-        └── seeded-app-state.sh
+│   ├── helpers.sh         # Shared test utilities
+│   ├── upgrade-assertions.sh # User-visible post-upgrade assertions
+│   ├── upgrade-fixtures.sh   # Upgrade fixture selection and defaults
+│   ├── upgrade-source-refs.sh # Stable tag/source-ref alias resolution
+│   └── collect-upgrade-artifacts.sh # Redacted failed-upgrade diagnostics
+└── fixtures/              # Test fixtures (if needed)
 ```
 
 ## Test Descriptions
 
 ### Unit Tests (`unit/install-script.test.sh`)
 
-Tests individual functions from `install.sh` without requiring Docker:
+Tests setup/install behavior and host recovery helpers without requiring Docker:
 
 - `generate_secret()` - Secret generation
 - `check_docker()` - Docker availability check
 - `check_git()` - Git availability check
 - `check_openssl()` - OpenSSL availability check
 - Environment variable handling
+- Fresh installs generate a unique `ENCRYPTION_SALT`; legacy encrypted installs with existing `ENCRYPTION_KEY` plus missing `ENCRYPTION_SALT` keep the legacy default salt instead of rotating encryption material
+- `reset-user-2fa.sh` status/reset SQL generation, explicit confirmation, backup creation, file permissions, and abort behavior
 - Script structure validation
 
 ### Fresh Install E2E (`e2e/fresh-install.test.sh`)
@@ -157,41 +143,39 @@ Tests upgrading an existing installation:
 
 `--mode core` is the focused release/CI lane:
 
-1. Resolves an older source ref (explicit `--source-ref`, one of `latest-stable` / `n-1` / `n-2`, or the newest stable tag not equal to the current commit)
+1. Resolves an older source ref (explicit `--source-ref` or the newest stable tag not equal to the current commit)
 2. Creates an initial installation from that source checkout
-3. Applies the selected upgrade fixture after the source install
+3. Creates test data (changes password, enables encrypted admin 2FA, seeds an encrypted secondary 2FA user, and preserves a legacy plaintext 2FA user)
 4. Captures pre-upgrade state
 5. Stops the source containers and switches to the current checkout
 6. Runs the current checkout's installer in upgrade mode against the shared runtime env
-7. Verifies secrets preserved
+7. Verifies secrets preserved, including both `ENCRYPTION_KEY` and `ENCRYPTION_SALT`
 8. Verifies data preserved
-9. Verifies migrations completed after the upgrade
-10. Verifies browser-visible auth, websocket reachability, worker health, and support-package generation after the upgrade
+9. Verifies post-upgrade 2FA login with the preserved admin TOTP secret
+10. Verifies multi-user 2FA preservation, including encrypted and legacy plaintext secret storage
+11. Verifies backup-code login accepts normalized input, marks the code used, and rejects replay
+12. Verifies encrypted 2FA state rejects drifted `ENCRYPTION_KEY` and drifted `ENCRYPTION_SALT`
+13. Verifies host-side 2FA reset recovery and API re-enrollment
+14. Verifies fixture runtime shape, including legacy repo-root `.env` mode and optional profile flags when selected
+15. Verifies representative app state survives: group ownership, wallet metadata, labels, node config, and mutable settings
+16. Verifies migrations completed after the upgrade
+17. Verifies user-visible post-upgrade traffic through nginx: login, `/auth/me`, `/auth/refresh`, CSRF-protected support-package generation, and direct worker health
+
+Source refs support exact refs/tags and aliases:
+
+- `latest-stable`, `auto`, and `n-1`: newest `vX.Y.Z` tag before the target commit
+- `n-2`: previous stable tag
+- `n-3`: third most recent stable tag
+
+Upgrade fixtures can be comma-separated:
+
+- `baseline`: changed admin password, encrypted 2FA, seeded app state, and browser-path smoke
+- `browser-origin-ip`: baseline plus `127.0.0.1` browser-visible origin
+- `legacy-runtime-env`: baseline using the repo-root `.env` compatibility path across source and target checkouts
+- `optional-profiles`: baseline with monitoring and Tor enabled through setup/start paths
+- `seeded-app-state`: explicit representative persisted state fixture, useful when combined with other fixture names
 
 `--mode full` runs the core lane and then continues into the older recovery scenarios such as password-drift recovery, rebuild, and volume-persistence checks.
-
-Fixtures:
-
-- `baseline` (current default)
-  - changes the admin password to a known test value
-  - preserves the existing generic secret/data/migration assertions
-  - keeps the extended password-drift recovery checks enabled in `--mode full`
-- `browser-origin-ip`
-  - upgrades through a non-default HTTPS/HTTP port pair
-  - drives the post-upgrade browser smoke through an IP-based origin instead of `localhost`
-- `legacy-runtime-env`
-  - converts the source installation to a legacy repo-root `.env`
-  - verifies the upgraded checkout continues to resolve the repo-local env layout
-- `optional-profiles`
-  - enables the monitoring profile before the source install
-  - verifies the monitoring env flag and profile containers survive the upgrade
-- `seeded-app-state`
-  - seeds persistent admin-visible state directly into Postgres on the source ref
-  - verifies users, groups, settings, and node config still exist after the upgrade
-
-The harness exposes fixture hooks before source install, after source install, before upgrade, and after upgrade so deployment-shape coverage can grow without rewriting the main test flow again.
-
-When `SANCTUARY_UPGRADE_ARTIFACTS_DIR` is set, failing upgrade runs also collect a redacted runtime env, source/target install logs, `docker compose ps`, per-service logs, and support-package output when available.
 
 ### Container Health (`e2e/container-health.test.sh`)
 
@@ -228,12 +212,7 @@ Tests authentication and password management:
 | `--skip-cleanup` | Keep containers after tests |
 | `--verbose` | Show detailed output |
 | `--fast` | Skip slow tests (upgrade) |
-| `--upgrade-source-ref <ref>` | Forward an older tag/ref or named lane (`latest-stable`, `n-1`, `n-2`) into the upgrade lane |
-| `--upgrade-fixture <name>` | Forward an upgrade fixture into the upgrade lane |
-| `--upgrade-mode <mode>` | Forward `core` or `full` into the upgrade lane |
-| `--https-port <port>` | Override the HTTPS port used by install E2E tests |
-| `--http-port <port>` | Override the HTTP port used by install E2E tests |
-| `--gateway-port <port>` | Override the gateway port used by install E2E tests |
+| `--upgrade-fixture FIXTURE[,FIXTURE...]` | Fixture list for `upgrade-install.test.sh` |
 | `--help` | Show help |
 
 ### Individual Test Scripts
@@ -243,13 +222,10 @@ Tests authentication and password management:
 | `--verbose`, `-v` | Show detailed output |
 | `--keep-containers` | Don't cleanup containers after test |
 | `--mode core|full` | Choose the focused ref-to-ref upgrade lane or the extended local suite |
-| `--source-ref <ref>` | Use an explicit tag/ref or the named lanes `latest-stable`, `n-1`, or `n-2` |
-| `--fixture <name>` | Choose the upgrade fixture script to apply (`baseline`, `browser-origin-ip`, `legacy-runtime-env`, `optional-profiles`, `seeded-app-state`) |
-| `--https-port <port>` | Override the HTTPS port used for the browser/API side of the upgrade run |
-| `--http-port <port>` | Override the HTTP port used by the upgrade run |
-| `--gateway-port <port>` | Override the gateway port used by the upgrade run |
 | `--core-only` | Shortcut for `--mode core` |
 | `--full-suite` | Shortcut for `--mode full` |
+| `--source-ref REF` | Older source ref/tag/alias to install before upgrading |
+| `--fixture FIXTURE[,FIXTURE...]` | Upgrade fixture list |
 | `--skip-cleanup` | Skip initial cleanup |
 | `--slow` | Use longer timeouts |
 | `--keep-state` | Don't reset password after auth tests |
@@ -261,10 +237,14 @@ Tests authentication and password management:
 | `HTTPS_PORT` | 8443 | HTTPS port for tests |
 | `HTTP_PORT` | 8080 | HTTP port for tests |
 | `GATEWAY_PORT` | 4000 | Gateway API port |
-| `SANCTUARY_UPGRADE_SOURCE_REF` | auto | Older ref/tag or named lane (`latest-stable`, `n-1`, `n-2`) to install before upgrading |
+| `UPGRADE_TEST_DEFAULT_HTTPS_PORT` | 9443 | Default HTTPS port used by `upgrade-install.test.sh` when `HTTPS_PORT` is unset |
+| `UPGRADE_TEST_DEFAULT_HTTP_PORT` | 9080 | Default HTTP port used by `upgrade-install.test.sh` when `HTTP_PORT` is unset |
+| `UPGRADE_TEST_DEFAULT_GATEWAY_PORT` | 4400 | Default gateway port used by `upgrade-install.test.sh` when `GATEWAY_PORT` is unset |
+| `SANCTUARY_UPGRADE_SOURCE_REF` | auto | Older ref/tag to install before upgrading |
 | `SANCTUARY_UPGRADE_TEST_MODE` | full | Upgrade suite mode (`core` for the focused ref-to-ref lane, `full` for extended recovery scenarios) |
-| `SANCTUARY_UPGRADE_FIXTURE` | baseline | Upgrade fixture to apply during the source-install and post-upgrade hooks |
-| `SANCTUARY_UPGRADE_ARTIFACTS_DIR` | unset | Failure artifact directory for upgrade logs, env snapshots, and support-package output |
+| `SANCTUARY_UPGRADE_FIXTURE` | baseline | Upgrade fixture list |
+| `SANCTUARY_UPGRADE_ARTIFACT_DIR` | `.tmp/upgrade-artifacts/<test-id>` | Directory for failed-upgrade diagnostics |
+| `SANCTUARY_2FA_RESET_BACKUP_DIR` | `$HOME/.config/sanctuary/recovery` | Backup directory used by `scripts/reset-user-2fa.sh` |
 | `CONTAINER_STARTUP_TIMEOUT` | 300 | Seconds to wait for containers |
 | `HEALTH_CHECK_TIMEOUT` | 120 | Seconds to wait for health checks |
 | `DEBUG` | false | Enable debug output |
@@ -283,16 +263,18 @@ This workflow runs automatically on:
 |---------|------------|---------------|--------------|
 | Push to main (install paths) | All except upgrade | No | No |
 | PR to main (install paths) | All except upgrade | No | No |
-| Release tag (`v*.*.*`) | Release-critical + required `latest-stable` core upgrade lane | Yes (blocking) | **Yes** |
-| Manual dispatch | Configurable | `latest-stable` or explicit `upgrade_source_ref` | No |
+| Release tag (`v*.*.*`) | Release-critical + blocking upgrade matrix | Yes | **Yes** |
+| Nightly schedule | Upgrade matrix | Yes | No |
+| Manual dispatch | Configurable | Configurable | No |
 
 **Release-critical tests** include:
-- Unit tests (~5 seconds)
+- Unit tests, including install-script, 2FA reset-script, and upgrade-helper safety checks (~5 seconds)
 - Fresh install E2E (~5-10 min)
 - Container health (~2 min)
 - Auth flow (~2 min)
+- Upgrade matrix: `latest-stable/baseline`, `n-2/baseline`, `latest-stable/browser-origin-ip`, and `latest-stable/legacy-runtime-env` (~10-20 min per lane)
 
-Total release validation time: ~15-20 minutes
+Total release validation time: ~25-60 minutes depending on upgrade matrix concurrency and image build cache.
 
 **Manual trigger options:**
 ```yaml
@@ -300,24 +282,21 @@ workflow_dispatch:
   inputs:
     test_suite: all|unit|fresh-install|upgrade|container-health|auth-flow|release-critical
     keep_containers: true|false
-    upgrade_source_ref: latest-stable|n-1|n-2|v0.8.39
-    upgrade_fixture: baseline|browser-origin-ip|legacy-runtime-env|optional-profiles|seeded-app-state
+    upgrade_source_ref: v0.8.39 # optional override for the matrix source ref
 ```
 
 #### 2. Release Candidate Validation (`.github/workflows/release-candidate.yml`)
 
-Use this workflow **before cutting a release** to run the full test suite including the required `latest-stable` core upgrade lane plus the historical `n-1` and `n-2` lanes.
+Use this workflow **before cutting a release** to run the full test suite including the blocking historical upgrade matrix.
 
 **Recommended release process:**
 1. Run the Release Candidate workflow on the commit you plan to release
-   - Let it auto-upgrade from the newest stable tag, or provide `upgrade_source_ref` for a specific source version you care about
-   - Use `upgrade_fixture` when you want the RC workflow to exercise a specific deployment shape
+   - Let it auto-upgrade from the matrix source aliases, or provide `upgrade_source_ref` for a specific source version you care about
    - The workflow uses `upgrade-install.test.sh --mode core`; run `--mode full` locally when you want the extended recovery scenarios too
-2. Wait for Unit, Fresh Install, and the required `latest-stable` upgrade lane to pass
-3. Review any `n-1` / `n-2` warnings and uploaded upgrade artifacts before cutting the tag
-4. Create the release tag
-5. The Install Tests workflow will run release-critical tests plus the required `latest-stable` upgrade lane on the tag
-6. If all tests pass, Docker images will be built and pushed
+2. Wait for all tests to pass, including the upgrade matrix
+3. Create the release tag
+4. The Install Tests workflow will run release-critical tests and the blocking upgrade matrix on the tag
+5. If all tests pass, Docker images will be built and pushed
 
 **Manual trigger:**
 ```yaml
@@ -325,14 +304,13 @@ workflow_dispatch:
   inputs:
     ref: 'main'  # Git ref to test (branch, tag, or SHA)
     version: '0.5.0'  # Optional version for logging
-    upgrade_source_ref: 'latest-stable'  # Optional older ref/tag or named lane
-    upgrade_fixture: 'baseline'  # Optional upgrade fixture
+    upgrade_source_ref: 'v0.8.39'  # Optional older ref/tag to install before upgrading
 ```
 
 ### Release Blocking
 
 When a release tag (`v*.*.*`) is pushed:
-- Install tests automatically run the `release-critical` suite
+- Install tests automatically run the `release-critical` suite and blocking upgrade matrix
 - Failed tests will block the release (workflow fails)
 - The test summary clearly indicates pass/fail status
 
@@ -345,11 +323,11 @@ To configure as a required status check:
 ### Local CI Simulation
 
 ```bash
-# Run like CI would (excludes upgrade history lanes for speed)
-./tests/install/run-all-tests.sh --verbose
+# Run most local install checks without the long upgrade lane
+./tests/install/run-all-tests.sh --verbose --fast
 
-# Full suite with an explicit historical lane
-./tests/install/run-all-tests.sh --verbose --upgrade-source-ref latest-stable --upgrade-fixture baseline --upgrade-mode full --https-port 18443 --http-port 18080 --gateway-port 14000
+# Full local suite including one upgrade fixture lane
+./tests/install/run-all-tests.sh --verbose
 ```
 
 ## Debugging Failed Tests
@@ -382,12 +360,12 @@ docker exec -it sanctuary-db psql -U sanctuary -d sanctuary
 ### Enable Debug Mode
 
 ```bash
-DEBUG=true ./tests/install/run-all-tests.sh --verbose
+./tests/install/run-all-tests.sh --verbose
 ```
 
 ### Common Issues
 
-1. **Port conflicts**: Change `HTTPS_PORT` and `HTTP_PORT` environment variables
+1. **Port conflicts**: Change `HTTPS_PORT`, `HTTP_PORT`, and `GATEWAY_PORT`; upgrade tests also support `UPGRADE_TEST_DEFAULT_*` overrides
 2. **Timeout errors**: Use `--slow` option for slower systems
 3. **Build failures**: Check Docker disk space with `docker system df`
 4. **Network issues**: Ensure Docker networking is working with `docker network ls`
@@ -464,7 +442,7 @@ wait_for_migration_complete timeout
 | Default password flag | E2E + Auth |
 | Password change | E2E + Auth |
 | API authentication | Auth |
-| Upgrade preservation | Upgrade |
+| Upgrade preservation | Upgrade: secrets, encrypted 2FA, backup codes, representative app state, browser/proxy smoke |
 | Volume persistence | Upgrade |
 
 ## Performance
@@ -477,8 +455,8 @@ Approximate test duration:
 | Fresh Install | ~5-10 minutes (first build) |
 | Container Health | ~2 minutes |
 | Auth Flow | ~2 minutes |
-| Upgrade Install | ~10-15 minutes |
-| **All Tests** | ~20-30 minutes |
+| Upgrade Install | ~10-20 minutes per fixture lane |
+| **All Tests** | ~25-60 minutes depending on upgrade matrix concurrency and image cache |
 
 Note: First run is slower due to Docker image building. Subsequent runs are faster due to caching.
 

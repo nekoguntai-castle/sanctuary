@@ -7,11 +7,28 @@
 
 import { Request, Response, NextFunction, RequestHandler } from 'express';
 import { Prisma } from '../generated/prisma/client';
-import { ApiError, InternalError, ConflictError, NotFoundError, ValidationError, ErrorCodes } from './ApiError';
+import {
+  ApiError,
+  InternalError,
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+  ValidationError,
+  ErrorCodes,
+} from './ApiError';
 import { createLogger } from '../utils/logger';
 import { requestContext } from '../utils/requestContext';
 
 const log = createLogger('MW:ERROR_HANDLER');
+
+function isCsrfForbiddenError(error: Error): boolean {
+  const statusError = error as Error & { status?: number; statusCode?: number };
+  return (
+    error.name === 'ForbiddenError'
+    && error.message === 'invalid csrf token'
+    && (statusError.status === 403 || statusError.statusCode === 403)
+  );
+}
 
 /**
  * Map Prisma errors to API errors
@@ -113,6 +130,16 @@ export function errorHandler(
     }
 
     res.status(error.statusCode).json(error.toResponse(requestId));
+    return;
+  }
+
+  if (isCsrfForbiddenError(error)) {
+    const apiError = new ForbiddenError('Invalid CSRF token');
+    log.warn(`API Error: ${apiError.code}`, {
+      message: apiError.message,
+      statusCode: apiError.statusCode,
+    });
+    res.status(apiError.statusCode).json(apiError.toResponse(requestId));
     return;
   }
 

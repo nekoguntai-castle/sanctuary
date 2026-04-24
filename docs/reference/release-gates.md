@@ -1,7 +1,7 @@
 # Sanctuary Release Gates
 
-Date: 2026-04-19 (Pacific/Honolulu)
-Status: Phase 4 release-gate baseline; Phase 3 generated capacity proof is current; PR-first CI/CD strategy active; merge-queue ready but blocked by current user-owned repository eligibility
+Date: 2026-04-24 (Pacific/Honolulu)
+Status: Phase 4 release-gate baseline; upgrade matrix promoted to release-blocking; Phase 3 generated capacity proof is current; PR-first CI/CD strategy active; merge-queue ready but blocked by current user-owned repository eligibility
 
 This document records the checks that should protect the A-grade engineering goals in `docs/plans/codebase-health-assessment.md`. A release should not claim an A grade in a domain unless the matching gate has passed or the plan explicitly marks the gate as pending with an owner and date.
 
@@ -29,12 +29,11 @@ This document records the checks that should protect the A-grade engineering goa
 | API/gateway contracts | Contract and drift-prone boundary tests | Targeted tests for gateway HMAC, WebSocket auth, mobile permission, request logging, body parsing, gateway whitelist, and new/touched schemas | Required when touched |
 | Dependency security | Production advisory review | `npm audit --omit=dev` in root and `server/`; `cd gateway && npm audit --omit=dev --omit=optional`; plus documented accepted findings | Required before release |
 | Container/install validation | Fresh install, install script, container health, auth flow | `.github/workflows/install-test.yml` release gate | Required for release candidates/releases |
+| Upgrade preservation | Historical ref-to-ref upgrade matrix with fixture-backed user-visible smoke | `.github/workflows/release-candidate.yml` and release-tag `.github/workflows/install-test.yml` run `tests/install/e2e/upgrade-install.test.sh --mode core` across `latest-stable/baseline`, `n-2/baseline`, `latest-stable/browser-origin-ip`, and `latest-stable/legacy-runtime-env`; failed lanes upload redacted upgrade artifacts | Required for release candidates/releases |
 | Operations supportability | Runbook coverage and proof for backup/restore, gateway audit persistence, alert receiver delivery, and monitoring stack behavior | `docs/how-to/operations-runbooks.md` updated when alerts or operational flows change; `npm run test:ops:phase2` when backup/restore or in-process gateway audit paths are touched; `npm run ops:gateway-audit:phase2` when backend/gateway containers or gateway audit delivery paths are touched; `npm run ops:monitoring:phase2` when monitoring Compose, Prometheus/Loki/Grafana/Jaeger/Alertmanager, or Promtail paths are touched; `npm run ops:alert-receiver:phase2` when Alertmanager routing or receiver config is touched | Required when touched |
 | Performance and scale | Phase 3 benchmark harness in strict mode | `npm run perf:phase3:compose-smoke` for disposable local authenticated generated-data capacity proof; `SANCTUARY_BENCHMARK_STRICT=true npm run perf:phase3` with operator-owned testnet/regtest or approved non-production scenario inputs for target-environment calibration | Generated proof complete; target-environment rerun required when topology/hardware differs |
 
-Upgrade-path note: the install/release workflows now include a real "older ref/tag -> current checkout" core lane in `tests/install/e2e/upgrade-install.test.sh --mode core`. The required release signal is now the `latest-stable -> candidate` lane, while Release Candidate history lanes for `n-1` and `n-2` run in warning-level mode to keep broader upgrade drift visible without blocking on less-proven source windows. The script's `--mode full` path keeps the older recovery scenarios available for local or manual stress passes without diluting the primary release signal.
-
-Container/install note: PostgreSQL upgrade auth checks must validate over the same Compose-network path the app uses (`backend`/`worker`/`migrate` -> `postgres:5432`), not only via localhost checks from inside the database container. See `docs/reference/upgrade-postgres-auth-drift-findings.md` for the failure mode, manual recovery, and the regression this gate protects.
+Upgrade-path policy: upgrade regressions can lock operators out of existing nodes, so the ref-to-ref upgrade matrix is now a release-blocking gate. The core lane preserves encrypted admin 2FA, encrypted secondary-user 2FA, legacy plaintext 2FA, backup-code state, representative app data, runtime secrets, legacy `.env` compatibility, browser/proxy login and refresh, CSRF-protected support-package generation, worker health, and migration completion. The script's `--mode full` path remains available for local stress passes that include older recovery scenarios such as password drift, rebuild, and volume persistence.
 
 ## Phase 3 Target-Environment Evidence
 

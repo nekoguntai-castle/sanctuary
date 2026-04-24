@@ -2,53 +2,51 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
-## Respect required check semantics when optimizing docs-only CI
+## Treat encrypted operational state as upgrade-critical data
 
-**Rule:** Before adding `paths-ignore` or other workflow-level skip logic for docs-only PRs, inspect the branch protection required contexts. Required workflows must still report their summary checks; only non-required workflows can be skipped entirely.
+**Rule:** Upgrade tests must prove encrypted runtime state can still be read after upgrade, not only that the env file values look preserved.
 
-**Why:** The first docs-only CI pass correctly stopped `Install Tests`, but it also made `Test Suite` skip at workflow entry even though `main` requires `PR Required Checks` and `Full Test Summary`. That design risks leaving required checks unreported on docs-only PRs. The durable fix is to keep required workflows lightweight but present, while only non-required workflows get true trigger-level skips.
-
-**How to apply:**
-- Query required checks first with `gh api repos/<owner>/<repo>/branches/main/protection/required_status_checks`.
-- Use workflow-level `paths-ignore` only for non-required workflows.
-- For required workflows, keep a tiny scope or summary job that always reports, and put docs-only skipping on the heavy jobs underneath it.
-- Narrow broad `tests/*` style classifiers so documentation files under test directories do not look like executable test changes.
-- Treat secret scanning separately from code-quality jobs; docs can still leak secrets even when they should skip lint/test work.
-
-## Avoid per-command env prefixes that defeat saved approvals
-
-**Rule:** Do not prepend routine `gh` commands with disposable environment prefixes like `TMPDIR=...` unless the env change is actually required for the task.
-
-**Why:** The user corrected the merge workflow after repeated `TMPDIR=... gh ...` commands forced fresh approvals because the command prefix no longer matched the saved approval rule.
+**Why:** A node upgraded to `0.8.42` preserved enough auth behavior to fix CORS and allow password login, but existing 2FA failed because the stored TOTP secret could not be decrypted with the current `ENCRYPTION_KEY`/`ENCRYPTION_SALT`. The route code and TOTP verifier were fine; the failure was encrypted state continuity.
 
 **How to apply:**
-- Prefer the plain approved command form first, such as `gh pr view`, `gh pr checks`, or `gh pr merge`.
-- Add an environment prefix only when the command genuinely fails without it and the failure matters to the task.
-- When a prefixed command becomes necessary, expect a fresh approval and keep the reason explicit.
+- For every encrypted persisted field, seed a realistic value before upgrade and perform the real post-upgrade operation that decrypts it.
+- For 2FA specifically, seed/enable 2FA before upgrade, then after upgrade verify password login returns `requires2FA` and `/auth/2fa/verify` succeeds with a fresh TOTP code.
+- Add operator recovery tooling for encrypted-state lockouts instead of relying on ad hoc SQL or chat-pasted commands.
+- Document that losing `ENCRYPTION_KEY`/`ENCRYPTION_SALT` makes existing 2FA secrets unrecoverable; recovery means reset and re-enroll.
 
-## Keep local Docker upgrade loops isolated and self-cleaning
+## Prefer one-line remote recovery commands over heredocs
 
-**Rule:** Local upgrade E2E runs must claim isolated test ports and automatically clean stale test compose projects before starting. Do not rely on whichever ports or containers happen to be free on the host.
+**Rule:** For urgent operator recovery steps on a remote node, prefer short `docker compose exec ... node -e '...'` commands or clearly separated scripts over long heredocs.
 
-**Why:** The upgrade fixture loop lost a large amount of time to false failures from leftover `sanctuary-upgrade-test-*` stacks that still owned `8443/8080/4000` or the alternate `18443/18080/14000` ports. The product code was fine; the harness kept colliding with old test state.
-
-**How to apply:**
-- Prefer explicit CLI port flags for local upgrade runs so approvals stay stable and the run is visibly isolated.
-- Have the harness clean stale test compose projects by prefix before starting a new run.
-- When a fixture changes browser-visible ports, give it an isolated gateway port too; partial isolation still leaves room for fake failures.
-- Use the test ladder `syntax -> unit/script -> one core baseline -> one full baseline -> affected fixtures -> final full lane` instead of rerunning the whole matrix after each small harness edit.
-
-## Treat released installer behavior as source of truth during upgrade triage
-
-**Rule:** When the user says they are upgrading with the shipped `./install.sh`, treat any missing setup behavior as a release gap until the released script proves otherwise. Do not assume a local patch, dirty worktree change, or another agent's branch is already present on the user's machine.
-
-**Why:** During the PostgreSQL upgrade auth-drift incident, the user clarified that they were only running the released installer. The local debug result `patch-missing` therefore meant the release really lacked the fix; continuing to reason as if the patch "should already be there" would have blurred the root cause and the release decision.
+**Why:** A 2FA reset recovery command was pasted only through the opening of a heredoc body, then closed early with `NODE`, causing Node to run an incomplete script and fail before any recovery action.
 
 **How to apply:**
-- Ask what exact installer path or release artifact the user ran before assuming local branch changes are relevant.
-- Verify the released script contents directly with `grep` or `git show <release-tag>:path` when the distinction matters.
-- If the live machine shows `patch-missing`, treat that as evidence about the shipped release, not as user setup error, unless there is concrete proof they ran a modified checkout.
-- Frame the outcome clearly: "the host is recovered manually, but the release still needs a new cut because the shipped installer lacks the fix."
+- Use one command per operation when the user is copying into a live shell.
+- If a heredoc is necessary, explicitly say to paste the full block without pressing Enter at the closing marker until the whole body is present.
+- For destructive or account-recovery DB updates, run a backup command first and keep the update command separate.
+
+## Missing encryption salt on legacy envs must not rotate encryption material
+
+**Rule:** If an existing runtime env already has `ENCRYPTION_KEY` but lacks `ENCRYPTION_SALT`, setup must keep the historical default salt (`sanctuary-node-config`) instead of generating a new random salt.
+
+**Why:** Older installs could derive encrypted-field keys from `ENCRYPTION_KEY` plus the implicit default salt. Writing a random salt during upgrade preserves the env shape but changes the derived key, so encrypted 2FA secrets become undecryptable even though the configured key appears unchanged.
+
+**How to apply:**
+- Treat `ENCRYPTION_KEY` and `ENCRYPTION_SALT` as one versioned encryption-material pair.
+- Fresh installs can generate a random salt; upgrades of existing-key/no-salt envs must materialize the legacy default.
+- Add upgrade tests that exercise the real decrypting operation after setup, not just presence of both env variables.
+- When diagnosing encrypted-state regressions, check whether the salt was newly added during setup before assuming the application verifier changed.
+
+## Re-read live repo and PR state before drafting shared-file plans
+
+**Rule:** When the user says the codebase has changed or PRs are still moving, inspect the current branch, worktree, and open PR queue before drafting a roadmap or editing shared planning files.
+
+**Why:** Upgrade-testing planning was about to be written against earlier assumptions, but the repo already had open PRs touching the harness, nginx proxy behavior, and login-regression coverage. Planning against stale state creates the wrong sequencing and encourages overlapping edits on already-reviewed files.
+
+**How to apply:**
+- Run `git status --short`, `git show -s --format='%h %D %s' HEAD`, and `gh pr list --limit 20` before planning shared work.
+- Re-open the exact workflow, harness, and tracker files that the plan will mention.
+- Call out the current PR/file ownership map explicitly in the roadmap so later batches know what must merge or rebase first.
 
 ## Never persist broad approvals for destructive commands
 
@@ -297,8 +295,15 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 
 ## Pre-existing CLAUDE.md rules referenced
 - "When fixing CI failures, check ALL test files and workflow files for the same issue pattern before committing. Do not fix one file at a time and re-push — batch all related fixes together." — would have caught this if I'd grepped for `getByText('newuser'` after picking the email value.
-# 2026-04-23: Keep approval command prefixes stable
 
-- When a command may need approval, do not prepend ad hoc environment variable assignments like `HTTPS_PORT=...`.
-- Prefer real script flags, checked-in wrapper scripts, or stable helper commands so the approval prefix stays reusable.
-- This matters especially for long-running test commands where repeated one-off approvals create avoidable friction.
+## Do not rely on shell-prefixed env vars for repeatable local test lanes
+
+**Rule:** For recurring local test lanes, put default ports and test-only environment constants in a sourced helper file or script-owned defaults. Do not require operators or future Codex runs to remember `VAR=value command` prefixes for safety-critical isolation.
+
+**Why:** While validating upgrade fixtures with a local Sanctuary instance already running on `8443`/`4000`, I invoked the legacy-runtime upgrade lane with only `GATEWAY_PORT=4400` in front of the command. The harness fell back to `HTTPS_PORT=8443`, collided with the user's live local instance, and had to be stopped as a test-only compose project. The real fix is to make the harness default to disposable upgrade-test ports (`9443`/`9080`/`4400`) and reserve inline env prefixes for exceptional overrides.
+
+**How to apply:**
+- If a test lane needs non-production-local ports to be safe, make those ports the lane's defaults.
+- Keep per-lane constants in one helper, then source it from the harness and unit tests.
+- Local docs should show ordinary commands first. Put env overrides in an "only when needed" section.
+- When a user corrects command style, patch the harness or docs so the corrected behavior becomes automatic rather than a memory burden.

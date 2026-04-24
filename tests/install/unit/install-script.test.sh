@@ -982,6 +982,89 @@ test_setup_script_defaults_to_external_ssl_dir() {
     fi
 }
 
+test_setup_script_preserves_legacy_default_salt_for_existing_key() {
+    local env_file="$TEST_TMP_DIR/legacy-missing-salt.env"
+    local ssl_dir="$TEST_TMP_DIR/ssl"
+    local output=""
+
+    cat > "$env_file" << 'EOF'
+JWT_SECRET=legacy-jwt-secret-value-for-upgrade-tests
+ENCRYPTION_KEY=legacy-encryption-key-value-for-upgrade-tests-123456
+GATEWAY_SECRET=legacy-gateway-secret-value-for-upgrade-tests
+POSTGRES_PASSWORD=legacy-postgres-password
+AI_CONFIG_SECRET=legacy-ai-config-secret
+REDIS_PASSWORD=legacy-redis-password
+HTTPS_PORT=58443
+HTTP_PORT=58080
+GATEWAY_PORT=54000
+ENABLE_MONITORING=no
+ENABLE_TOR=no
+EOF
+
+    output=$(
+        export SANCTUARY_ENV_FILE="$env_file"
+        export SANCTUARY_SSL_DIR="$ssl_dir"
+        export HTTPS_PORT=58443
+        export HTTP_PORT=58080
+        export GATEWAY_PORT=54000
+        export ENABLE_MONITORING=no
+        export ENABLE_TOR=no
+        bash "$SETUP_SCRIPT" --force --non-interactive --no-start --skip-ssl --skip-prereqs 2>&1
+    ) || {
+        echo -e "${RED}ASSERTION FAILED:${NC} setup.sh should handle legacy env missing ENCRYPTION_SALT"
+        echo "$output"
+        return 1
+    }
+
+    if ! grep -q '^ENCRYPTION_SALT=sanctuary-node-config$' "$env_file"; then
+        echo -e "${RED}ASSERTION FAILED:${NC} setup.sh should write the legacy default salt for existing encrypted installs"
+        echo "  Env file:"
+        cat "$env_file"
+        return 1
+    fi
+
+    assert_contains "$output" "using legacy default for existing encryption key" \
+        "setup.sh should explain legacy salt preservation"
+}
+
+test_setup_script_generates_unique_salt_for_fresh_install() {
+    local env_file="$TEST_TMP_DIR/fresh-random-salt.env"
+    local ssl_dir="$TEST_TMP_DIR/fresh-ssl"
+    local output=""
+    local generated_salt=""
+
+    output=$(
+        export SANCTUARY_ENV_FILE="$env_file"
+        export SANCTUARY_SSL_DIR="$ssl_dir"
+        export HTTPS_PORT=58444
+        export HTTP_PORT=58081
+        export GATEWAY_PORT=54001
+        export ENABLE_MONITORING=no
+        export ENABLE_TOR=no
+        bash "$SETUP_SCRIPT" --force --non-interactive --no-start --skip-ssl --skip-prereqs 2>&1
+    ) || {
+        echo -e "${RED}ASSERTION FAILED:${NC} setup.sh should handle fresh env generation"
+        echo "$output"
+        return 1
+    }
+
+    generated_salt=$(sed -n 's/^ENCRYPTION_SALT=//p' "$env_file")
+    if [ -z "$generated_salt" ]; then
+        echo -e "${RED}ASSERTION FAILED:${NC} setup.sh should write ENCRYPTION_SALT for fresh installs"
+        echo "  Env file:"
+        cat "$env_file"
+        return 1
+    fi
+
+    if [ "$generated_salt" = "sanctuary-node-config" ]; then
+        echo -e "${RED}ASSERTION FAILED:${NC} fresh installs should not use the legacy default salt"
+        return 1
+    fi
+
+    assert_contains "$output" "ENCRYPTION_SALT: generated" \
+        "setup.sh should report generated salt for fresh installs"
+}
+
 # ============================================
 # Unit Tests: .env.example
 # ============================================
@@ -1166,6 +1249,8 @@ main() {
     run_test "setup script defaults to external runtime env" test_setup_script_defaults_to_external_runtime_env
     run_test "setup script keeps legacy env fallback" test_setup_script_keeps_legacy_env_fallback
     run_test "setup script defaults to external SSL dir" test_setup_script_defaults_to_external_ssl_dir
+    run_test "setup script preserves legacy default salt for existing key" test_setup_script_preserves_legacy_default_salt_for_existing_key
+    run_test "setup script generates unique salt for fresh install" test_setup_script_generates_unique_salt_for_fresh_install
     echo ""
 
     echo -e "${YELLOW}Test Suite: .env.example${NC}"

@@ -356,6 +356,30 @@ describe('Encryption Utilities', async () => {
       }
     });
 
+    it('decrypts default-salt ciphertext after legacy default salt is materialized', async () => {
+      const originalSalt = process.env.ENCRYPTION_SALT;
+      delete process.env.ENCRYPTION_SALT;
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      try {
+        const legacyModule = await getEncryptionModule();
+        const plaintext = 'legacy two factor secret';
+        const encrypted = legacyModule.encrypt(plaintext);
+
+        process.env.ENCRYPTION_SALT = 'sanctuary-node-config';
+        const upgradedModule = await getEncryptionModule();
+
+        expect(upgradedModule.decrypt(encrypted)).toBe(plaintext);
+      } finally {
+        warnSpy.mockRestore();
+        if (originalSalt) {
+          process.env.ENCRYPTION_SALT = originalSalt;
+        } else {
+          delete process.env.ENCRYPTION_SALT;
+        }
+      }
+    });
+
     it('should use custom ENCRYPTION_SALT when set', async () => {
       const originalSalt = process.env.ENCRYPTION_SALT;
       process.env.ENCRYPTION_SALT = 'custom-test-salt-value';

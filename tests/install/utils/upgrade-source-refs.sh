@@ -1,45 +1,61 @@
 #!/bin/bash
+# Helpers for resolving upgrade source references.
+
+is_stable_release_tag() {
+    local ref="$1"
+    [[ "$ref" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+}
 
 list_upgrade_source_tags() {
-    local repo_root="${1:-.}"
-    local target_commit="${2:-$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo "")}"
-    local tag=""
-    local tag_commit=""
+    local repo_root="$1"
+    local target_commit="${2:-}"
 
     while IFS= read -r tag; do
-        [ -z "$tag" ] && continue
-        if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        [ -n "$tag" ] || continue
+        is_stable_release_tag "$tag" || continue
+
+        local tag_commit
+        tag_commit=$(git -C "$repo_root" rev-list -n 1 "$tag" 2>/dev/null || echo "")
+        if [ -n "$target_commit" ] && [ "$tag_commit" = "$target_commit" ]; then
             continue
         fi
 
-        tag_commit="$(git -C "$repo_root" rev-list -n 1 "$tag" 2>/dev/null || echo "")"
-        if [ -n "$tag_commit" ] && [ "$tag_commit" != "$target_commit" ]; then
-            echo "$tag"
-        fi
+        echo "$tag"
     done < <(git -C "$repo_root" tag --sort=-v:refname)
 }
 
-resolve_named_upgrade_source_ref() {
-    local requested_ref="$1"
-    local repo_root="${2:-.}"
-    local target_commit="${3:-$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo "")}"
-    local line_number=""
+resolve_upgrade_source_ref() {
+    local repo_root="$1"
+    local selector="${2:-latest-stable}"
+    local target_commit="${3:-}"
+    local index=0
 
-    case "$requested_ref" in
-        ""|latest-stable)
-            line_number=1
+    case "$selector" in
+        ""|auto|latest-stable|n-1|N-1)
+            index=0
             ;;
-        n-1)
-            line_number=2
+        n-2|N-2)
+            index=1
             ;;
-        n-2)
-            line_number=3
+        n-3|N-3)
+            index=2
             ;;
         *)
-            echo "$requested_ref"
-            return 0
+            if git -C "$repo_root" rev-parse --verify "$selector" >/dev/null 2>&1; then
+                echo "$selector"
+                return 0
+            fi
+            return 1
             ;;
     esac
 
-    list_upgrade_source_tags "$repo_root" "$target_commit" | sed -n "${line_number}p"
+    local tags=()
+    mapfile -t tags < <(list_upgrade_source_tags "$repo_root" "$target_commit")
+
+    if [ "${#tags[@]}" -gt "$index" ]; then
+        echo "${tags[$index]}"
+        return 0
+    fi
+
+    return 1
 }

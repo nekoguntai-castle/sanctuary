@@ -120,7 +120,8 @@ jobs:
               --no-banner \
               --log-opts -1
           fi
-          GITLEAKS_BIN=/tmp/gitleaks bash scripts/gitleaks-tracked-tree.sh
+          export GITLEAKS_BIN=/tmp/gitleaks
+          bash scripts/gitleaks-tracked-tree.sh
 
   lizard:
     name: Cyclomatic complexity (lizard)

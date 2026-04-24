@@ -14,7 +14,7 @@
 #   - Git tags or an explicit --source-ref for a real ref-to-ref upgrade path
 #   - Docker and Docker Compose v2
 #
-# Run: ./upgrade-install.test.sh [--keep-containers] [--source-ref <git-ref>] [--mode <core|full>] [--https-port <port>] [--http-port <port>] [--gateway-port <port>]
+# Run: ./upgrade-install.test.sh [--keep-containers] [--source-ref <git-ref>] [--mode <core|full>]
 # ============================================
 
 set -e
@@ -26,7 +26,11 @@ PROJECT_ROOT="$TARGET_PROJECT_ROOT"
 
 # Source helpers
 source "$SCRIPT_DIR/../utils/helpers.sh"
+source "$SCRIPT_DIR/../utils/upgrade-test-defaults.sh"
 source "$SCRIPT_DIR/../utils/upgrade-source-refs.sh"
+source "$SCRIPT_DIR/../utils/upgrade-fixtures.sh"
+source "$SCRIPT_DIR/../utils/upgrade-assertions.sh"
+source "$SCRIPT_DIR/../utils/collect-upgrade-artifacts.sh"
 
 # ============================================
 # Configuration
@@ -37,12 +41,15 @@ VERBOSE=false
 UPGRADE_SOURCE_REF="${SANCTUARY_UPGRADE_SOURCE_REF:-}"
 UPGRADE_TEST_MODE="${SANCTUARY_UPGRADE_TEST_MODE:-full}"
 UPGRADE_FIXTURE="${SANCTUARY_UPGRADE_FIXTURE:-baseline}"
-UPGRADE_FIXTURE_LABEL=""
-UPGRADE_ARTIFACTS_DIR="${SANCTUARY_UPGRADE_ARTIFACTS_DIR:-}"
-UPGRADE_ARTIFACTS_CAPTURED=false
-HTTPS_PORT="${HTTPS_PORT:-8443}"
-HTTP_PORT="${HTTP_PORT:-8080}"
-GATEWAY_PORT="${GATEWAY_PORT:-4000}"
+
+usage() {
+    cat <<EOF
+Usage:
+  $0 [--keep-containers] [--source-ref REF|latest-stable|n-1|n-2] [--mode core|full] [--fixture FIXTURE[,FIXTURE...]]
+
+EOF
+    upgrade_fixture_usage
+}
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -80,30 +87,6 @@ while [[ $# -gt 0 ]]; do
             UPGRADE_FIXTURE="${1#*=}"
             shift
             ;;
-        --https-port)
-            HTTPS_PORT="$2"
-            shift 2
-            ;;
-        --https-port=*)
-            HTTPS_PORT="${1#*=}"
-            shift
-            ;;
-        --http-port)
-            HTTP_PORT="$2"
-            shift 2
-            ;;
-        --http-port=*)
-            HTTP_PORT="${1#*=}"
-            shift
-            ;;
-        --gateway-port)
-            GATEWAY_PORT="$2"
-            shift 2
-            ;;
-        --gateway-port=*)
-            GATEWAY_PORT="${1#*=}"
-            shift
-            ;;
         --core-only)
             UPGRADE_TEST_MODE="core"
             shift
@@ -111,6 +94,10 @@ while [[ $# -gt 0 ]]; do
         --full-suite)
             UPGRADE_TEST_MODE="full"
             shift
+            ;;
+        --help|-h)
+            usage
+            exit 0
             ;;
         *)
             log_error "Unknown option: $1"
@@ -129,44 +116,54 @@ case "$UPGRADE_TEST_MODE" in
         ;;
 esac
 
-for port_name in HTTPS_PORT HTTP_PORT GATEWAY_PORT; do
-    port_value="${!port_name}"
-    case "$port_value" in
-        ''|*[!0-9]*)
-            log_error "Invalid ${port_name}: $port_value"
-            exit 1
-            ;;
-    esac
-done
-
-source "$SCRIPT_DIR/../utils/upgrade-fixtures.sh"
-
-if ! initialize_upgrade_fixture; then
+if ! validate_upgrade_fixture "$UPGRADE_FIXTURE"; then
+    usage
     exit 1
 fi
+
+apply_upgrade_fixture_defaults "$UPGRADE_FIXTURE"
+apply_upgrade_test_network_defaults
 
 # Test configuration
 TEST_ID=$(generate_test_run_id)
 export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-sanctuary-upgrade-${TEST_ID}}"
 TEST_RUNTIME_DIR="${SANCTUARY_RUNTIME_DIR:-/tmp/sanctuary-upgrade-runtime-${TEST_ID}}"
-TEST_ENV_FILE="${SANCTUARY_ENV_FILE:-$TEST_RUNTIME_DIR/sanctuary.env}"
 TEST_SSL_DIR="${SANCTUARY_SSL_DIR:-$TEST_RUNTIME_DIR/ssl}"
 API_BASE_URL="https://localhost:${HTTPS_PORT}"
-UPGRADE_BROWSER_BASE_URL="${UPGRADE_BROWSER_BASE_URL:-$API_BASE_URL}"
-UPGRADE_BROWSER_ORIGIN="${UPGRADE_BROWSER_ORIGIN:-$UPGRADE_BROWSER_BASE_URL}"
+BROWSER_BASE_URL="https://${UPGRADE_BROWSER_HOST}:${HTTPS_PORT}"
 COOKIE_JAR="/tmp/sanctuary-test-cookies-${TEST_ID}.txt"
 UPGRADE_SOURCE_CHECKOUT="/tmp/sanctuary-upgrade-source-${TEST_ID}/sanctuary"
+LEGACY_TARGET_ENV_FILE="$TARGET_PROJECT_ROOT/.env"
+if [ "$UPGRADE_USE_LEGACY_RUNTIME_ENV" = "true" ] && [ -z "${SANCTUARY_ENV_FILE:-}" ]; then
+    TEST_ENV_FILE="$UPGRADE_SOURCE_CHECKOUT/.env"
+else
+    TEST_ENV_FILE="${SANCTUARY_ENV_FILE:-$TEST_RUNTIME_DIR/sanctuary.env}"
+fi
 UPGRADE_SOURCE_CREATED=false
+UPGRADE_CREATED_TARGET_LEGACY_ENV=false
 UPGRADE_SOURCE_LABEL=""
 UPGRADE_TARGET_LABEL="$(git -C "$TARGET_PROJECT_ROOT" describe --tags --always 2>/dev/null || git -C "$TARGET_PROJECT_ROOT" rev-parse --short HEAD 2>/dev/null || echo "current-checkout")"
+UPGRADE_ARTIFACT_DIR="${SANCTUARY_UPGRADE_ARTIFACT_DIR:-$TARGET_PROJECT_ROOT/.tmp/upgrade-artifacts/${TEST_ID}}"
 
 # State variables for testing
 ORIGINAL_JWT_SECRET=""
 ORIGINAL_ENCRYPTION_KEY=""
+ORIGINAL_ENCRYPTION_SALT=""
 ORIGINAL_GATEWAY_SECRET=""
 ORIGINAL_POSTGRES_PASSWORD=""
 ORIGINAL_USER_PASSWORD=""
+ORIGINAL_TWO_FACTOR_SECRET=""
+ORIGINAL_TWO_FACTOR_BACKUP_CODE=""
+OPERATOR_TWO_FACTOR_USERNAME="operator2fa"
+OPERATOR_TWO_FACTOR_PASSWORD="OperatorUpgradePassword123!"
+OPERATOR_TWO_FACTOR_SECRET=""
+LEGACY_TWO_FACTOR_USERNAME="legacy2fa"
+LEGACY_TWO_FACTOR_PASSWORD="LegacyUpgradePassword123!"
+LEGACY_TWO_FACTOR_SECRET=""
 TEST_WALLET_ID=""
+TEST_LABEL_NAME="upgrade-fixture-label"
+TEST_SETTING_KEY="upgrade.fixture.marker"
+TEST_NODE_CONFIG_ID=""
 
 # Phase 6 cookie auth: the backend sets HttpOnly sanctuary_access +
 # sanctuary_refresh cookies and a readable sanctuary_csrf cookie. Mutations
@@ -174,14 +171,10 @@ TEST_WALLET_ID=""
 CSRF_TOKEN=""
 
 resolve_env_file() {
-    local project_dir="${1:-$PROJECT_ROOT}"
-
-    if [ "$UPGRADE_ENV_LAYOUT" = "legacy-repo-env" ] && [ -f "$project_dir/.env" ]; then
-        echo "$project_dir/.env"
-    elif [ -f "$TEST_ENV_FILE" ]; then
+    if [ -f "$TEST_ENV_FILE" ]; then
         echo "$TEST_ENV_FILE"
-    elif [ -f "$project_dir/.env" ]; then
-        echo "$project_dir/.env"
+    elif [ -f "$PROJECT_ROOT/.env" ]; then
+        echo "$PROJECT_ROOT/.env"
     else
         echo "$TEST_ENV_FILE"
     fi
@@ -189,11 +182,7 @@ resolve_env_file() {
 
 load_runtime_env() {
     local env_file
-    local project_dir="${1:-$PROJECT_ROOT}"
-    local requested_https_port="$HTTPS_PORT"
-    local requested_http_port="$HTTP_PORT"
-    local requested_gateway_port="$GATEWAY_PORT"
-    env_file="$(resolve_env_file "$project_dir")"
+    env_file="$(resolve_env_file)"
     if [ ! -f "$env_file" ]; then
         log_error "Runtime env not found: $env_file"
         return 1
@@ -202,15 +191,6 @@ load_runtime_env() {
     set -a
     source "$env_file"
     set +a
-
-    set_upgrade_ports "$requested_https_port" "$requested_http_port"
-    GATEWAY_PORT="$requested_gateway_port"
-    if ! sync_runtime_env_ports "$env_file"; then
-        log_error "Failed to synchronize requested test ports into $env_file"
-        return 1
-    fi
-
-    export HTTPS_PORT HTTP_PORT GATEWAY_PORT
     export SANCTUARY_ENV_FILE="$env_file"
     export SANCTUARY_SSL_DIR="$TEST_SSL_DIR"
 }
@@ -226,10 +206,6 @@ extract_csrf_token() {
     CSRF_TOKEN=$(awk -F'\t' '$6 == "sanctuary_csrf" { print $7 }' "$COOKIE_JAR" | tail -n 1)
 }
 
-wait_for_browser_auth_ready() {
-    wait_for_http_endpoint "$API_BASE_URL/api/v1/auth/registration-status" 60 200
-}
-
 describe_checkout_ref() {
     local repo_root="$1"
 
@@ -239,12 +215,10 @@ describe_checkout_ref() {
 }
 
 discover_upgrade_source_ref() {
-    if [ -n "$UPGRADE_SOURCE_REF" ]; then
-        resolve_named_upgrade_source_ref "$UPGRADE_SOURCE_REF" "$TARGET_PROJECT_ROOT"
-        return 0
-    fi
+    local target_commit
+    target_commit=$(git -C "$TARGET_PROJECT_ROOT" rev-parse HEAD 2>/dev/null || echo "")
 
-    resolve_named_upgrade_source_ref "latest-stable" "$TARGET_PROJECT_ROOT"
+    resolve_upgrade_source_ref "$TARGET_PROJECT_ROOT" "${UPGRADE_SOURCE_REF:-latest-stable}" "$target_commit"
 }
 
 prepare_upgrade_source_checkout() {
@@ -285,71 +259,25 @@ run_install_script() {
     local checkout_name
     checkout_name="$(basename "$project_dir")"
     local install_log="$TEST_RUNTIME_DIR/install-${checkout_name}.log"
-    local resolved_env_file=""
-    local resolved_ssl_dir="$TEST_SSL_DIR"
-    local -a install_env
-    local -a env_command
 
     mkdir -p "$TEST_RUNTIME_DIR"
 
-    resolved_env_file="$(resolve_env_file "$project_dir")"
-    env_command=(env)
-    install_env=(
-        "HTTPS_PORT=$HTTPS_PORT"
-        "HTTP_PORT=$HTTP_PORT"
-        "GATEWAY_PORT=$GATEWAY_PORT"
-        "ENABLE_MONITORING=$UPGRADE_ENABLE_MONITORING"
-        "ENABLE_TOR=$UPGRADE_ENABLE_TOR"
-        "SANCTUARY_DIR=$project_dir"
-        "SANCTUARY_RUNTIME_DIR=$TEST_RUNTIME_DIR"
-        "SANCTUARY_SSL_DIR=$resolved_ssl_dir"
-        "SKIP_GIT_CHECKOUT=true"
-        "RATE_LIMIT_LOGIN=100"
-        "RATE_LIMIT_PASSWORD_CHANGE=100"
-    )
-
-    if [ -n "$UPGRADE_GRAFANA_PORT" ]; then
-        install_env+=(
-            "MONITORING_BIND_ADDR=$UPGRADE_MONITORING_BIND_ADDR"
-            "GRAFANA_PORT=$UPGRADE_GRAFANA_PORT"
-            "PROMETHEUS_PORT=$UPGRADE_PROMETHEUS_PORT"
-            "ALERTMANAGER_PORT=$UPGRADE_ALERTMANAGER_PORT"
-            "LOKI_PORT=$UPGRADE_LOKI_PORT"
-            "JAEGER_UI_PORT=$UPGRADE_JAEGER_UI_PORT"
-            "JAEGER_OTLP_GRPC_PORT=$UPGRADE_JAEGER_OTLP_GRPC_PORT"
-            "JAEGER_OTLP_HTTP_PORT=$UPGRADE_JAEGER_OTLP_HTTP_PORT"
-        )
-    fi
-
-    if [ -n "$UPGRADE_GRAFANA_CONTAINER_NAME" ]; then
-        install_env+=(
-            "GRAFANA_CONTAINER_NAME=$UPGRADE_GRAFANA_CONTAINER_NAME"
-            "PROMETHEUS_CONTAINER_NAME=$UPGRADE_PROMETHEUS_CONTAINER_NAME"
-            "ALERTMANAGER_CONTAINER_NAME=$UPGRADE_ALERTMANAGER_CONTAINER_NAME"
-            "LOKI_CONTAINER_NAME=$UPGRADE_LOKI_CONTAINER_NAME"
-            "PROMTAIL_CONTAINER_NAME=$UPGRADE_PROMTAIL_CONTAINER_NAME"
-            "JAEGER_CONTAINER_NAME=$UPGRADE_JAEGER_CONTAINER_NAME"
-        )
-    fi
-
-    if [ "$UPGRADE_ENV_LAYOUT" != "legacy-repo-env" ] || [ ! -f "$project_dir/.env" ]; then
-        install_env+=("SANCTUARY_ENV_FILE=$resolved_env_file")
-    else
-        env_command+=(-u SANCTUARY_ENV_FILE)
-    fi
-
-    if ! sync_runtime_env_ports "$resolved_env_file"; then
-        log_error "Failed to synchronize test port overrides into $resolved_env_file"
-        return 1
-    fi
-
-    if [ "$VERBOSE" = "true" ] && [ -f "$resolved_env_file" ]; then
-        log_info "Preseeded runtime env ports in $resolved_env_file:"
-        grep -E '^(HTTPS_PORT|HTTP_PORT|GATEWAY_PORT)=' "$resolved_env_file" || true
-    fi
-
     set +e
-    "${env_command[@]}" "${install_env[@]}" bash "$project_dir/install.sh" </dev/null 2>&1 | tee "$install_log"
+    (
+        export HTTPS_PORT
+        export HTTP_PORT
+        export GATEWAY_PORT
+        export ENABLE_MONITORING="$UPGRADE_ENABLE_MONITORING"
+        export ENABLE_TOR="$UPGRADE_ENABLE_TOR"
+        export SANCTUARY_DIR="$project_dir"
+        export SANCTUARY_RUNTIME_DIR="$TEST_RUNTIME_DIR"
+        export SANCTUARY_ENV_FILE="$TEST_ENV_FILE"
+        export SANCTUARY_SSL_DIR="$TEST_SSL_DIR"
+        export SKIP_GIT_CHECKOUT="true"
+        export RATE_LIMIT_LOGIN=100
+        export RATE_LIMIT_PASSWORD_CHANGE=100
+        bash "$project_dir/install.sh" </dev/null
+    ) 2>&1 | tee "$install_log"
     local exit_code=${PIPESTATUS[0]}
     set -e
 
@@ -359,65 +287,7 @@ run_install_script() {
         return 1
     fi
 
-    if ! sync_runtime_env_ports "$resolved_env_file"; then
-        log_error "Failed to synchronize test port overrides into $resolved_env_file"
-        return 1
-    fi
-
     return 0
-}
-
-run_upgrade_runtime_command() {
-    local project_dir="${1:-$PROJECT_ROOT}"
-    shift
-
-    local resolved_env_file=""
-    local -a env_command=(env)
-
-    resolved_env_file="$(resolve_env_file "$project_dir")"
-    if ! sync_runtime_env_ports "$resolved_env_file"; then
-        log_error "Failed to synchronize test port overrides into $resolved_env_file"
-        return 1
-    fi
-
-    env_command+=(
-        "COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT_NAME"
-        "SANCTUARY_ENV_FILE=$resolved_env_file"
-        "SANCTUARY_SSL_DIR=$TEST_SSL_DIR"
-        "HTTPS_PORT=$HTTPS_PORT"
-        "HTTP_PORT=$HTTP_PORT"
-        "GATEWAY_PORT=$GATEWAY_PORT"
-        "ENABLE_MONITORING=$UPGRADE_ENABLE_MONITORING"
-        "ENABLE_TOR=$UPGRADE_ENABLE_TOR"
-        "RATE_LIMIT_LOGIN=100"
-        "RATE_LIMIT_PASSWORD_CHANGE=100"
-    )
-
-    if [ -n "$UPGRADE_GRAFANA_PORT" ]; then
-        env_command+=(
-            "MONITORING_BIND_ADDR=$UPGRADE_MONITORING_BIND_ADDR"
-            "GRAFANA_PORT=$UPGRADE_GRAFANA_PORT"
-            "PROMETHEUS_PORT=$UPGRADE_PROMETHEUS_PORT"
-            "ALERTMANAGER_PORT=$UPGRADE_ALERTMANAGER_PORT"
-            "LOKI_PORT=$UPGRADE_LOKI_PORT"
-            "JAEGER_UI_PORT=$UPGRADE_JAEGER_UI_PORT"
-            "JAEGER_OTLP_GRPC_PORT=$UPGRADE_JAEGER_OTLP_GRPC_PORT"
-            "JAEGER_OTLP_HTTP_PORT=$UPGRADE_JAEGER_OTLP_HTTP_PORT"
-        )
-    fi
-
-    if [ -n "$UPGRADE_GRAFANA_CONTAINER_NAME" ]; then
-        env_command+=(
-            "GRAFANA_CONTAINER_NAME=$UPGRADE_GRAFANA_CONTAINER_NAME"
-            "PROMETHEUS_CONTAINER_NAME=$UPGRADE_PROMETHEUS_CONTAINER_NAME"
-            "ALERTMANAGER_CONTAINER_NAME=$UPGRADE_ALERTMANAGER_CONTAINER_NAME"
-            "LOKI_CONTAINER_NAME=$UPGRADE_LOKI_CONTAINER_NAME"
-            "PROMTAIL_CONTAINER_NAME=$UPGRADE_PROMTAIL_CONTAINER_NAME"
-            "JAEGER_CONTAINER_NAME=$UPGRADE_JAEGER_CONTAINER_NAME"
-        )
-    fi
-
-    "${env_command[@]}" "$@"
 }
 
 # Test counters
@@ -464,11 +334,10 @@ setup() {
     log_info "  Target Root:   $TARGET_PROJECT_ROOT"
     log_info "  Target Ref:    $UPGRADE_TARGET_LABEL"
     log_info "  Test Mode:     $UPGRADE_TEST_MODE"
-    log_info "  Fixture:       ${UPGRADE_FIXTURE_LABEL:-$UPGRADE_FIXTURE}"
+    log_info "  Fixture:       $UPGRADE_FIXTURE"
     log_info "  Compose Proj:  $COMPOSE_PROJECT_NAME"
     log_info "  HTTPS Port:    $HTTPS_PORT"
-    log_info "  HTTP Port:     $HTTP_PORT"
-    log_info "  Gateway Port:  $GATEWAY_PORT"
+    log_info "  Browser URL:   $BROWSER_BASE_URL"
 
     # Verify prerequisites
     if ! check_docker_available; then
@@ -479,7 +348,6 @@ setup() {
     export SANCTUARY_ENV_FILE="$TEST_ENV_FILE"
     export SANCTUARY_SSL_DIR="$TEST_SSL_DIR"
 
-    cleanup_compose_projects_by_prefix "sanctuary-upgrade-test-" "$COMPOSE_PROJECT_NAME" 2>/dev/null || true
     cleanup_containers "$TARGET_PROJECT_ROOT" 2>/dev/null || true
 
     if ! prepare_upgrade_source_checkout; then
@@ -511,33 +379,15 @@ teardown() {
         rm -f "$COOKIE_JAR"
     fi
 
+    if [ "$UPGRADE_CREATED_TARGET_LEGACY_ENV" = "true" ] && [ -f "$LEGACY_TARGET_ENV_FILE" ]; then
+        rm -f "$LEGACY_TARGET_ENV_FILE"
+    fi
+
     if [ -d "$TEST_RUNTIME_DIR" ]; then
         rm -rf "$TEST_RUNTIME_DIR"
     fi
 
     cleanup_upgrade_source_checkout
-}
-
-collect_upgrade_artifacts_if_requested() {
-    if [ "$UPGRADE_ARTIFACTS_CAPTURED" = "true" ] || [ -z "$UPGRADE_ARTIFACTS_DIR" ]; then
-        return 0
-    fi
-
-    mkdir -p "$UPGRADE_ARTIFACTS_DIR"
-    SANCTUARY_UPGRADE_JOB_NAME="${SANCTUARY_UPGRADE_JOB_NAME:-manual}" \
-    SANCTUARY_UPGRADE_SOURCE_REF_LABEL="$UPGRADE_SOURCE_LABEL" \
-    SANCTUARY_UPGRADE_FIXTURE_LABEL="${UPGRADE_FIXTURE_LABEL:-$UPGRADE_FIXTURE}" \
-    SANCTUARY_UPGRADE_TEST_MODE="$UPGRADE_TEST_MODE" \
-    SANCTUARY_UPGRADE_RUNTIME_DIR="$TEST_RUNTIME_DIR" \
-    SANCTUARY_ENV_FILE="$(resolve_env_file "$PROJECT_ROOT")" \
-    GRAFANA_CONTAINER_NAME="$UPGRADE_GRAFANA_CONTAINER_NAME" \
-    PROMETHEUS_CONTAINER_NAME="$UPGRADE_PROMETHEUS_CONTAINER_NAME" \
-    LOKI_CONTAINER_NAME="$UPGRADE_LOKI_CONTAINER_NAME" \
-    PROMTAIL_CONTAINER_NAME="$UPGRADE_PROMTAIL_CONTAINER_NAME" \
-    ALERTMANAGER_CONTAINER_NAME="$UPGRADE_ALERTMANAGER_CONTAINER_NAME" \
-    JAEGER_CONTAINER_NAME="$UPGRADE_JAEGER_CONTAINER_NAME" \
-    "$SCRIPT_DIR/../utils/collect-upgrade-artifacts.sh" "$UPGRADE_ARTIFACTS_DIR" "$PROJECT_ROOT" || true
-    UPGRADE_ARTIFACTS_CAPTURED=true
 }
 
 # ============================================
@@ -547,16 +397,7 @@ collect_upgrade_artifacts_if_requested() {
 test_ensure_existing_installation() {
     log_info "Creating source installation from $UPGRADE_SOURCE_LABEL..."
 
-    if [ "$VERBOSE" = "true" ]; then
-        log_info "Current requested ports before source install: HTTPS=$HTTPS_PORT HTTP=$HTTP_PORT GATEWAY=$GATEWAY_PORT"
-    fi
-
     cd "$PROJECT_ROOT"
-
-    if ! run_upgrade_fixture_hook upgrade_fixture_before_source_install; then
-        log_error "Upgrade fixture '${UPGRADE_FIXTURE_LABEL:-$UPGRADE_FIXTURE}' failed before the source installation"
-        return 1
-    fi
 
     if ! run_install_script "$PROJECT_ROOT"; then
         return 1
@@ -577,14 +418,10 @@ test_ensure_existing_installation() {
     # Extra wait for backend to fully initialize
     sleep 5
 
-    if ! wait_for_browser_auth_ready; then
-        log_error "Browser auth endpoint did not become ready after the source installation"
-        return 1
-    fi
-
     if load_runtime_env; then
         ORIGINAL_JWT_SECRET="$JWT_SECRET"
         ORIGINAL_ENCRYPTION_KEY="$ENCRYPTION_KEY"
+        ORIGINAL_ENCRYPTION_SALT="$ENCRYPTION_SALT"
         ORIGINAL_GATEWAY_SECRET="$GATEWAY_SECRET"
         ORIGINAL_POSTGRES_PASSWORD="$POSTGRES_PASSWORD"
         log_info "Loaded initial secrets from $(resolve_env_file)"
@@ -598,15 +435,69 @@ test_ensure_existing_installation() {
 # Test: Create Test Data Before Upgrade
 # ============================================
 
-test_apply_upgrade_fixture_after_source_install() {
-    log_info "Applying upgrade fixture '${UPGRADE_FIXTURE_LABEL:-$UPGRADE_FIXTURE}' after source installation..."
+test_create_pre_upgrade_data() {
+    log_info "Creating test data before upgrade..."
 
-    if ! run_upgrade_fixture_hook upgrade_fixture_after_source_install; then
-        log_error "Upgrade fixture '${UPGRADE_FIXTURE_LABEL:-$UPGRADE_FIXTURE}' failed after the source installation"
+    # Login with default admin credentials (Phase 6 cookie auth)
+    rm -f "$COOKIE_JAR"
+    local login_response=$(curl -k -s -c "$COOKIE_JAR" -b "$COOKIE_JAR" -X POST \
+        -H "Content-Type: application/json" \
+        -d '{"username":"admin","password":"sanctuary"}' \
+        "$API_BASE_URL/api/v1/auth/login")
+
+    if echo "$login_response" | grep -q '"user"'; then
+        extract_csrf_token
+        if [ -z "$CSRF_TOKEN" ]; then
+            log_error "Default login succeeded but sanctuary_csrf cookie missing"
+            return 1
+        fi
+
+        # Change password to a known value for upgrade testing
+        ORIGINAL_USER_PASSWORD="UpgradeTestPassword123!"
+        curl -k -s -b "$COOKIE_JAR" -c "$COOKIE_JAR" -X POST \
+            -H "Content-Type: application/json" \
+            -H "X-CSRF-Token: $CSRF_TOKEN" \
+            -d "{\"currentPassword\":\"sanctuary\",\"newPassword\":\"$ORIGINAL_USER_PASSWORD\"}" \
+            "$API_BASE_URL/api/v1/auth/me/change-password" >/dev/null
+
+        # Re-login with new password (rotates cookies + CSRF)
+        rm -f "$COOKIE_JAR"
+        login_response=$(curl -k -s -c "$COOKIE_JAR" -b "$COOKIE_JAR" -X POST \
+            -H "Content-Type: application/json" \
+            -d "{\"username\":\"admin\",\"password\":\"$ORIGINAL_USER_PASSWORD\"}" \
+            "$API_BASE_URL/api/v1/auth/login")
+    else
+        # Default password didn't work (already changed on a prior run);
+        # try the test password directly.
+        rm -f "$COOKIE_JAR"
+        ORIGINAL_USER_PASSWORD="UpgradeTestPassword123!"
+        login_response=$(curl -k -s -c "$COOKIE_JAR" -b "$COOKIE_JAR" -X POST \
+            -H "Content-Type: application/json" \
+            -d "{\"username\":\"admin\",\"password\":\"$ORIGINAL_USER_PASSWORD\"}" \
+            "$API_BASE_URL/api/v1/auth/login")
+    fi
+
+    if ! echo "$login_response" | grep -q '"user"'; then
+        log_error "Failed to authenticate after password setup"
+        log_error "Response: $login_response"
         return 1
     fi
 
-    log_success "Upgrade fixture '${UPGRADE_FIXTURE_LABEL:-$UPGRADE_FIXTURE}' applied"
+    extract_csrf_token
+    if [ -z "$CSRF_TOKEN" ]; then
+        log_error "Failed to capture sanctuary_csrf cookie"
+        return 1
+    fi
+
+    if ! seed_admin_two_factor_fixture; then
+        return 1
+    fi
+
+    if [ "$UPGRADE_SEED_APP_STATE" = "true" ] && ! seed_representative_app_state_fixture; then
+        return 1
+    fi
+
+    log_success "Test data created (password changed to test password, 2FA enabled)"
     return 0
 }
 
@@ -621,10 +512,12 @@ test_capture_pre_upgrade_state() {
     if load_runtime_env; then
         ORIGINAL_JWT_SECRET="$JWT_SECRET"
         ORIGINAL_ENCRYPTION_KEY="$ENCRYPTION_KEY"
+        ORIGINAL_ENCRYPTION_SALT="$ENCRYPTION_SALT"
         ORIGINAL_GATEWAY_SECRET="$GATEWAY_SECRET"
         ORIGINAL_POSTGRES_PASSWORD="$POSTGRES_PASSWORD"
         log_info "Captured JWT_SECRET: ${ORIGINAL_JWT_SECRET:0:8}..."
         log_info "Captured ENCRYPTION_KEY: ${ORIGINAL_ENCRYPTION_KEY:0:8}..."
+        log_info "Captured ENCRYPTION_SALT: ${ORIGINAL_ENCRYPTION_SALT:0:8}..."
         log_info "Captured GATEWAY_SECRET: ${ORIGINAL_GATEWAY_SECRET:0:8}..."
         log_info "Captured POSTGRES_PASSWORD: ${ORIGINAL_POSTGRES_PASSWORD:0:8}..."
     else
@@ -641,19 +534,11 @@ test_capture_pre_upgrade_state() {
     return 0
 }
 
-upsert_env_value() {
+replace_env_value() {
     local key="$1"
     local value="$2"
     local file="$3"
     local tmp_file="${file}.tmp"
-
-    mkdir -p "$(dirname "$file")"
-
-    if [ ! -f "$file" ]; then
-        printf '%s=%s\n' "$key" "$value" > "$file"
-        chmod 600 "$file" 2>/dev/null || true
-        return 0
-    fi
 
     awk -F= -v key="$key" -v value="$value" '
         BEGIN { updated = 0 }
@@ -665,7 +550,7 @@ upsert_env_value() {
         { print }
         END {
             if (updated == 0) {
-                print key "=" value
+                exit 1
             }
         }
     ' "$file" > "$tmp_file" || {
@@ -677,12 +562,1028 @@ upsert_env_value() {
     chmod 600 "$file" 2>/dev/null || true
 }
 
-sync_runtime_env_ports() {
-    local env_file="$1"
+seed_admin_two_factor_fixture() {
+    log_info "Seeding 2FA fixtures before upgrade..."
 
-    upsert_env_value "HTTPS_PORT" "$HTTPS_PORT" "$env_file" || return 1
-    upsert_env_value "HTTP_PORT" "$HTTP_PORT" "$env_file" || return 1
-    upsert_env_value "GATEWAY_PORT" "${GATEWAY_PORT:-4000}" "$env_file" || return 1
+    local seed_output=""
+    seed_output=$(docker compose -f "$PROJECT_ROOT/docker-compose.yml" exec -T \
+        -e "OPERATOR_TWO_FACTOR_USERNAME=$OPERATOR_TWO_FACTOR_USERNAME" \
+        -e "OPERATOR_TWO_FACTOR_PASSWORD=$OPERATOR_TWO_FACTOR_PASSWORD" \
+        -e "LEGACY_TWO_FACTOR_USERNAME=$LEGACY_TWO_FACTOR_USERNAME" \
+        -e "LEGACY_TWO_FACTOR_PASSWORD=$LEGACY_TWO_FACTOR_PASSWORD" \
+        backend node -e '
+const { generateSecret, generateSync } = require("otplib");
+const bcrypt = require("bcryptjs");
+
+function loadModule(candidates) {
+  for (const candidate of candidates) {
+    try {
+      return require(candidate);
+    } catch {
+      // try the next compiled path
+    }
+  }
+  throw new Error(`Could not load any of: ${candidates.join(", ")}`);
+}
+
+const encryption = loadModule([
+  "./dist/app/src/utils/encryption.js",
+  "./dist/server/src/utils/encryption.js",
+  "./dist/src/utils/encryption.js",
+]);
+const prismaModule = loadModule([
+  "./dist/app/src/models/prisma.js",
+  "./dist/server/src/models/prisma.js",
+  "./dist/src/models/prisma.js",
+]);
+const prisma = prismaModule.default || prismaModule;
+
+(async () => {
+  await encryption.validateEncryptionKey();
+  const adminSecret = generateSecret();
+  const adminEncryptedSecret = encryption.encrypt(adminSecret);
+  const adminBackupCode = "UPG2FA01";
+  const adminBackupCodes = [{
+    hash: await bcrypt.hash(adminBackupCode, 10),
+    used: false,
+  }];
+  const operatorSecret = generateSecret();
+  const operatorEncryptedSecret = encryption.encrypt(operatorSecret);
+  const legacySecret = generateSecret();
+
+  const admin = await prisma.user.update({
+    where: { username: "admin" },
+    data: {
+      twoFactorEnabled: true,
+      twoFactorSecret: adminEncryptedSecret,
+      twoFactorBackupCodes: JSON.stringify(adminBackupCodes),
+    },
+    select: {
+      username: true,
+      twoFactorEnabled: true,
+      twoFactorSecret: true,
+    },
+  });
+
+  const operator = await prisma.user.upsert({
+    where: { username: process.env.OPERATOR_TWO_FACTOR_USERNAME },
+    update: {
+      password: await bcrypt.hash(process.env.OPERATOR_TWO_FACTOR_PASSWORD, 10),
+      twoFactorEnabled: true,
+      twoFactorSecret: operatorEncryptedSecret,
+      twoFactorBackupCodes: null,
+    },
+    create: {
+      username: process.env.OPERATOR_TWO_FACTOR_USERNAME,
+      password: await bcrypt.hash(process.env.OPERATOR_TWO_FACTOR_PASSWORD, 10),
+      emailVerified: true,
+      twoFactorEnabled: true,
+      twoFactorSecret: operatorEncryptedSecret,
+      twoFactorBackupCodes: null,
+    },
+    select: {
+      username: true,
+      twoFactorEnabled: true,
+      twoFactorSecret: true,
+      twoFactorBackupCodes: true,
+    },
+  });
+
+  const legacy = await prisma.user.upsert({
+    where: { username: process.env.LEGACY_TWO_FACTOR_USERNAME },
+    update: {
+      password: await bcrypt.hash(process.env.LEGACY_TWO_FACTOR_PASSWORD, 10),
+      twoFactorEnabled: true,
+      twoFactorSecret: legacySecret,
+      twoFactorBackupCodes: null,
+    },
+    create: {
+      username: process.env.LEGACY_TWO_FACTOR_USERNAME,
+      password: await bcrypt.hash(process.env.LEGACY_TWO_FACTOR_PASSWORD, 10),
+      emailVerified: true,
+      twoFactorEnabled: true,
+      twoFactorSecret: legacySecret,
+      twoFactorBackupCodes: null,
+    },
+    select: {
+      username: true,
+      twoFactorEnabled: true,
+      twoFactorSecret: true,
+      twoFactorBackupCodes: true,
+    },
+  });
+
+  const expected = [
+    {
+      user: admin,
+      secret: adminSecret,
+      encrypted: true,
+      backupCodesRequired: true,
+    },
+    {
+      user: operator,
+      secret: operatorSecret,
+      encrypted: true,
+      backupCodesRequired: false,
+    },
+    {
+      user: legacy,
+      secret: legacySecret,
+      encrypted: false,
+      backupCodesRequired: false,
+    },
+  ];
+
+  for (const fixture of expected) {
+    if (!fixture.user.twoFactorEnabled) {
+      throw new Error(`${fixture.user.username} 2FA fixture was not enabled`);
+    }
+    const decryptResult = encryption.decryptIfEncrypted(fixture.user.twoFactorSecret || "");
+    if (decryptResult !== fixture.secret) {
+      throw new Error(`${fixture.user.username} 2FA secret did not round-trip`);
+    }
+    if (fixture.encrypted !== encryption.isEncrypted(fixture.user.twoFactorSecret || "")) {
+      throw new Error(`${fixture.user.username} 2FA storage encryption shape is wrong`);
+    }
+    if (!fixture.backupCodesRequired && fixture.user.twoFactorBackupCodes !== null) {
+      throw new Error(`${fixture.user.username} should not have backup codes`);
+    }
+  }
+
+  process.stdout.write(`adminSecret=${adminSecret}\n`);
+  process.stdout.write(`adminBackupCode=${adminBackupCode}\n`);
+  process.stdout.write(`adminToken=${generateSync({ secret: adminSecret })}\n`);
+  process.stdout.write(`operatorSecret=${operatorSecret}\n`);
+  process.stdout.write(`legacySecret=${legacySecret}\n`);
+})()
+  .then(() => prisma.$disconnect())
+  .catch(async (error) => {
+    console.error(error);
+    try {
+      await prisma.$disconnect();
+    } catch {}
+    process.exit(1);
+  });
+' 2>/dev/null) || {
+        log_error "Failed to seed 2FA fixtures"
+        return 1
+    }
+
+    ORIGINAL_TWO_FACTOR_SECRET=$(echo "$seed_output" | sed -n 's/^adminSecret=//p' | tail -n 1)
+    ORIGINAL_TWO_FACTOR_BACKUP_CODE=$(echo "$seed_output" | sed -n 's/^adminBackupCode=//p' | tail -n 1)
+    OPERATOR_TWO_FACTOR_SECRET=$(echo "$seed_output" | sed -n 's/^operatorSecret=//p' | tail -n 1)
+    LEGACY_TWO_FACTOR_SECRET=$(echo "$seed_output" | sed -n 's/^legacySecret=//p' | tail -n 1)
+    if [ -z "$ORIGINAL_TWO_FACTOR_SECRET" ]; then
+        log_error "2FA fixture seed did not return an admin plaintext secret for test verification"
+        log_error "Output: $seed_output"
+        return 1
+    fi
+    if [ -z "$ORIGINAL_TWO_FACTOR_BACKUP_CODE" ]; then
+        log_error "2FA fixture seed did not return an admin backup code for test verification"
+        log_error "Output: $seed_output"
+        return 1
+    fi
+    if [ -z "$OPERATOR_TWO_FACTOR_SECRET" ]; then
+        log_error "2FA fixture seed did not return an operator plaintext secret for test verification"
+        log_error "Output: $seed_output"
+        return 1
+    fi
+    if [ -z "$LEGACY_TWO_FACTOR_SECRET" ]; then
+        log_error "2FA fixture seed did not return a legacy plaintext secret for test verification"
+        log_error "Output: $seed_output"
+        return 1
+    fi
+
+    log_success "2FA fixtures seeded for admin, operator, and legacy plaintext user"
+    return 0
+}
+
+seed_representative_app_state_fixture() {
+    log_info "Seeding representative app state before upgrade..."
+
+    local seed_output
+    seed_output=$(docker compose -f "$PROJECT_ROOT/docker-compose.yml" exec -T \
+        -e "UPGRADE_LABEL_NAME=$TEST_LABEL_NAME" \
+        -e "UPGRADE_SETTING_KEY=$TEST_SETTING_KEY" \
+        backend node -e '
+function loadModule(candidates) {
+  for (const candidate of candidates) {
+    try {
+      return require(candidate);
+    } catch {
+      // try the next compiled path
+    }
+  }
+  throw new Error(`Could not load any of: ${candidates.join(", ")}`);
+}
+
+const prismaModule = loadModule([
+  "./dist/app/src/models/prisma.js",
+  "./dist/server/src/models/prisma.js",
+  "./dist/src/models/prisma.js",
+]);
+const prisma = prismaModule.default || prismaModule;
+
+(async () => {
+  const admin = await prisma.user.findUnique({
+    where: { username: "admin" },
+    select: { id: true },
+  });
+  if (!admin) {
+    throw new Error("admin user missing");
+  }
+
+  const group = await prisma.group.create({
+    data: {
+      name: `Upgrade Fixture Group ${Date.now()}`,
+      description: "Seeded before upgrade to prove group state survives",
+      purpose: "upgrade-testing",
+    },
+    select: { id: true },
+  });
+
+  const wallet = await prisma.wallet.create({
+    data: {
+      name: "Upgrade Fixture Wallet",
+      type: "single_sig",
+      scriptType: "native_segwit",
+      network: "testnet",
+      descriptor: "wpkh([d34db33f/84h/1h/0h]tpubD6NzVbkrYhZ4X5n7fixture/0/*)",
+      fingerprint: "d34db33f",
+      groupId: group.id,
+      groupRole: "viewer",
+      users: {
+        create: {
+          userId: admin.id,
+          role: "owner",
+        },
+      },
+      labels: {
+        create: {
+          name: process.env.UPGRADE_LABEL_NAME,
+          color: "#22c55e",
+          description: "Seeded before upgrade",
+        },
+      },
+    },
+    select: { id: true },
+  });
+
+  const nodeConfig = await prisma.nodeConfig.create({
+    data: {
+      isDefault: false,
+      explorerUrl: "https://mempool.space/testnet",
+      feeEstimatorUrl: "https://mempool.space/testnet/api/v1/fees/recommended",
+      mempoolEstimator: "mempool_space",
+      testnetEnabled: true,
+      testnetMode: "singleton",
+      testnetSingletonHost: "electrum.fixture.invalid",
+      testnetSingletonPort: 50002,
+      testnetSingletonSsl: true,
+      proxyEnabled: false,
+      servers: {
+        create: {
+          network: "testnet",
+          label: "Upgrade Fixture Electrum",
+          host: "electrum.fixture.invalid",
+          port: 50002,
+          useSsl: true,
+          priority: 42,
+          enabled: false,
+          isHealthy: false,
+          supportsVerbose: false,
+        },
+      },
+    },
+    select: { id: true },
+  });
+
+  await prisma.systemSetting.upsert({
+    where: { key: process.env.UPGRADE_SETTING_KEY },
+    update: { value: JSON.stringify({ fixture: "upgrade", preserved: true }) },
+    create: {
+      key: process.env.UPGRADE_SETTING_KEY,
+      value: JSON.stringify({ fixture: "upgrade", preserved: true }),
+    },
+  });
+
+  process.stdout.write(`walletId=${wallet.id}\n`);
+  process.stdout.write(`nodeConfigId=${nodeConfig.id}\n`);
+})()
+  .then(() => prisma.$disconnect())
+  .catch(async (error) => {
+    console.error(error);
+    try {
+      await prisma.$disconnect();
+    } catch {}
+    process.exit(1);
+  });
+' 2>/dev/null) || {
+        log_error "Failed to seed representative app state"
+        return 1
+    }
+
+    TEST_WALLET_ID=$(echo "$seed_output" | sed -n 's/^walletId=//p' | tail -n 1)
+    TEST_NODE_CONFIG_ID=$(echo "$seed_output" | sed -n 's/^nodeConfigId=//p' | tail -n 1)
+
+    if [ -z "$TEST_WALLET_ID" ] || [ -z "$TEST_NODE_CONFIG_ID" ]; then
+        log_error "App-state fixture did not return required IDs"
+        log_error "Output: $seed_output"
+        return 1
+    fi
+
+    log_success "Representative app state seeded before upgrade"
+    return 0
+}
+
+generate_totp_code() {
+    local secret="$1"
+
+    if [ -z "$secret" ]; then
+        log_error "No pre-upgrade 2FA secret is available"
+        return 1
+    fi
+
+    docker compose -f "$PROJECT_ROOT/docker-compose.yml" exec -T \
+        -e "SANCTUARY_TOTP_SECRET=$secret" \
+        backend node -e '
+const { generateSync } = require("otplib");
+const secret = process.env.SANCTUARY_TOTP_SECRET;
+if (!secret) {
+  process.stderr.write("SANCTUARY_TOTP_SECRET is required\n");
+  process.exit(1);
+}
+process.stdout.write(generateSync({ secret }));
+'
+}
+
+generate_upgrade_totp_code() {
+    generate_totp_code "$ORIGINAL_TWO_FACTOR_SECRET"
+}
+
+login_with_two_factor_fixture() {
+    local username="$1"
+    local password="$2"
+    local secret="$3"
+    local require_two_factor="${4:-false}"
+    local override_code="${5:-}"
+    local reject_two_factor="${6:-false}"
+
+    rm -f "$COOKIE_JAR"
+    local login_response
+    login_response=$(curl -k -s -c "$COOKIE_JAR" -b "$COOKIE_JAR" -X POST \
+        -H "Content-Type: application/json" \
+        -d "{\"username\":\"$username\",\"password\":\"$password\"}" \
+        "$API_BASE_URL/api/v1/auth/login")
+
+    if echo "$login_response" | grep -q '"user"'; then
+        if [ "$require_two_factor" = "true" ]; then
+            log_error "Login succeeded without the expected 2FA challenge"
+            return 1
+        fi
+        extract_csrf_token
+        return 0
+    fi
+
+    if [ "$reject_two_factor" = "true" ]; then
+        log_error "Login returned an unexpected 2FA challenge"
+        log_error "Response: $login_response"
+        return 1
+    fi
+
+    if ! echo "$login_response" | grep -q '"requires2FA":true'; then
+        log_error "Login did not return a user or a 2FA challenge"
+        log_error "Response: $login_response"
+        return 1
+    fi
+
+    local temp_token code verify_response
+    temp_token=$(echo "$login_response" | sed -n 's/.*"tempToken":"\([^"]*\)".*/\1/p')
+    if [ -z "$temp_token" ]; then
+        log_error "2FA challenge did not include a tempToken"
+        log_error "Response: $login_response"
+        return 1
+    fi
+
+    if [ -n "$override_code" ]; then
+        code="$override_code"
+    else
+        code=$(generate_totp_code "$secret")
+    fi
+    if [ -z "$code" ]; then
+        log_error "Failed to generate TOTP code for upgrade fixture"
+        return 1
+    fi
+
+    verify_response=$(curl -k -s -c "$COOKIE_JAR" -b "$COOKIE_JAR" -X POST \
+        -H "Content-Type: application/json" \
+        -d "{\"tempToken\":\"$temp_token\",\"code\":\"$code\"}" \
+        "$API_BASE_URL/api/v1/auth/2fa/verify")
+
+    if ! echo "$verify_response" | grep -q '"user"'; then
+        log_error "2FA verification failed after password login"
+        log_error "Response: $verify_response"
+        return 1
+    fi
+
+    extract_csrf_token
+    return 0
+}
+
+login_as_upgrade_user() {
+    local require_two_factor="${1:-false}"
+    local override_code="${2:-}"
+    local reject_two_factor="${3:-false}"
+
+    login_with_two_factor_fixture \
+        "admin" \
+        "$ORIGINAL_USER_PASSWORD" \
+        "$ORIGINAL_TWO_FACTOR_SECRET" \
+        "$require_two_factor" \
+        "$override_code" \
+        "$reject_two_factor"
+}
+
+verify_admin_two_factor_secret_decrypts() {
+    log_info "Verifying admin 2FA secret decrypts after upgrade..."
+
+    local output
+    output=$(compose_exec backend node -e '
+function loadModule(candidates) {
+  for (const candidate of candidates) {
+    try {
+      return require(candidate);
+    } catch {
+      // try the next compiled path
+    }
+  }
+  throw new Error(`Could not load any of: ${candidates.join(", ")}`);
+}
+
+const encryption = loadModule([
+  "./dist/app/src/utils/encryption.js",
+  "./dist/server/src/utils/encryption.js",
+  "./dist/src/utils/encryption.js",
+]);
+const prismaModule = loadModule([
+  "./dist/app/src/models/prisma.js",
+  "./dist/server/src/models/prisma.js",
+  "./dist/src/models/prisma.js",
+]);
+const prisma = prismaModule.default || prismaModule;
+
+(async () => {
+  await encryption.validateEncryptionKey();
+  const user = await prisma.user.findUnique({
+    where: { username: "admin" },
+    select: { twoFactorEnabled: true, twoFactorSecret: true },
+  });
+  if (!user || !user.twoFactorEnabled || !user.twoFactorSecret) {
+    throw new Error("admin 2FA fixture is missing after upgrade");
+  }
+  const secret = encryption.decryptIfEncrypted(user.twoFactorSecret);
+  process.stdout.write(`secretLength=${secret.length}\n`);
+})()
+  .then(() => prisma.$disconnect())
+  .catch(async (error) => {
+    console.error(error);
+    try {
+      await prisma.$disconnect();
+    } catch {}
+    process.exit(1);
+  });
+' 2>/dev/null) || {
+        log_error "Admin 2FA secret could not be decrypted after upgrade"
+        return 1
+    }
+
+    if ! echo "$output" | grep -q '^secretLength=[1-9][0-9]*$'; then
+        log_error "Unexpected 2FA decrypt verification output: $output"
+        return 1
+    fi
+
+    log_success "Admin 2FA secret decrypts after upgrade"
+    return 0
+}
+
+verify_seeded_two_factor_users_decrypt() {
+    log_info "Verifying all seeded 2FA user rows after upgrade..."
+
+    local output
+    output=$(docker compose -f "$PROJECT_ROOT/docker-compose.yml" exec -T \
+        -e "ADMIN_TWO_FACTOR_SECRET=$ORIGINAL_TWO_FACTOR_SECRET" \
+        -e "OPERATOR_TWO_FACTOR_USERNAME=$OPERATOR_TWO_FACTOR_USERNAME" \
+        -e "OPERATOR_TWO_FACTOR_SECRET=$OPERATOR_TWO_FACTOR_SECRET" \
+        -e "LEGACY_TWO_FACTOR_USERNAME=$LEGACY_TWO_FACTOR_USERNAME" \
+        -e "LEGACY_TWO_FACTOR_SECRET=$LEGACY_TWO_FACTOR_SECRET" \
+        backend node -e '
+function loadModule(candidates) {
+  for (const candidate of candidates) {
+    try {
+      return require(candidate);
+    } catch {
+      // try the next compiled path
+    }
+  }
+  throw new Error(`Could not load any of: ${candidates.join(", ")}`);
+}
+
+const encryption = loadModule([
+  "./dist/app/src/utils/encryption.js",
+  "./dist/server/src/utils/encryption.js",
+  "./dist/src/utils/encryption.js",
+]);
+const twoFactorService = loadModule([
+  "./dist/app/src/services/twoFactorService.js",
+  "./dist/server/src/services/twoFactorService.js",
+  "./dist/src/services/twoFactorService.js",
+]);
+const prismaModule = loadModule([
+  "./dist/app/src/models/prisma.js",
+  "./dist/server/src/models/prisma.js",
+  "./dist/src/models/prisma.js",
+]);
+const prisma = prismaModule.default || prismaModule;
+const service = twoFactorService.default || twoFactorService;
+
+(async () => {
+  await encryption.validateEncryptionKey();
+  const expected = [
+    {
+      username: "admin",
+      secret: process.env.ADMIN_TWO_FACTOR_SECRET,
+      encrypted: true,
+      backupCount: 1,
+    },
+    {
+      username: process.env.OPERATOR_TWO_FACTOR_USERNAME,
+      secret: process.env.OPERATOR_TWO_FACTOR_SECRET,
+      encrypted: true,
+      backupCount: 0,
+    },
+    {
+      username: process.env.LEGACY_TWO_FACTOR_USERNAME,
+      secret: process.env.LEGACY_TWO_FACTOR_SECRET,
+      encrypted: false,
+      backupCount: 0,
+    },
+  ];
+
+  for (const fixture of expected) {
+    const user = await prisma.user.findUnique({
+      where: { username: fixture.username },
+      select: {
+        username: true,
+        twoFactorEnabled: true,
+        twoFactorSecret: true,
+        twoFactorBackupCodes: true,
+      },
+    });
+    if (!user || !user.twoFactorEnabled || !user.twoFactorSecret) {
+      throw new Error(`${fixture.username} 2FA fixture is missing after upgrade`);
+    }
+    const decrypted = encryption.decryptIfEncrypted(user.twoFactorSecret);
+    if (decrypted !== fixture.secret) {
+      throw new Error(`${fixture.username} 2FA secret changed during upgrade`);
+    }
+    if (encryption.isEncrypted(user.twoFactorSecret) !== fixture.encrypted) {
+      throw new Error(`${fixture.username} 2FA storage shape changed during upgrade`);
+    }
+    const backupCount = service.getRemainingBackupCodeCount(user.twoFactorBackupCodes);
+    if (backupCount !== fixture.backupCount) {
+      throw new Error(`${fixture.username} backup-code count changed during upgrade`);
+    }
+  }
+
+  process.stdout.write(`verified=${expected.length}\n`);
+})()
+  .then(() => prisma.$disconnect())
+  .catch(async (error) => {
+    console.error(error);
+    try {
+      await prisma.$disconnect();
+    } catch {}
+    process.exit(1);
+  });
+' 2>/dev/null) || {
+        log_error "Seeded 2FA user rows could not be verified after upgrade"
+        return 1
+    }
+
+    if ! echo "$output" | grep -q '^verified=3$'; then
+        log_error "Unexpected seeded 2FA user verification output: $output"
+        return 1
+    fi
+
+    log_success "All seeded 2FA user rows survived upgrade"
+    return 0
+}
+
+verify_representative_app_state_preserved() {
+    if [ "$UPGRADE_SEED_APP_STATE" != "true" ]; then
+        log_info "Skipping representative app-state verification for fixture: $UPGRADE_FIXTURE"
+        return 0
+    fi
+
+    log_info "Verifying representative app state after upgrade..."
+
+    local output
+    output=$(docker compose -f "$PROJECT_ROOT/docker-compose.yml" exec -T \
+        -e "UPGRADE_WALLET_ID=$TEST_WALLET_ID" \
+        -e "UPGRADE_LABEL_NAME=$TEST_LABEL_NAME" \
+        -e "UPGRADE_SETTING_KEY=$TEST_SETTING_KEY" \
+        -e "UPGRADE_NODE_CONFIG_ID=$TEST_NODE_CONFIG_ID" \
+        backend node -e '
+function loadModule(candidates) {
+  for (const candidate of candidates) {
+    try {
+      return require(candidate);
+    } catch {
+      // try the next compiled path
+    }
+  }
+  throw new Error(`Could not load any of: ${candidates.join(", ")}`);
+}
+
+const prismaModule = loadModule([
+  "./dist/app/src/models/prisma.js",
+  "./dist/server/src/models/prisma.js",
+  "./dist/src/models/prisma.js",
+]);
+const prisma = prismaModule.default || prismaModule;
+
+(async () => {
+  const wallet = await prisma.wallet.findUnique({
+    where: { id: process.env.UPGRADE_WALLET_ID },
+    select: {
+      name: true,
+      type: true,
+      network: true,
+      users: { select: { role: true, user: { select: { username: true } } } },
+      labels: { select: { name: true, color: true } },
+      group: { select: { purpose: true } },
+    },
+  });
+  if (!wallet || wallet.name !== "Upgrade Fixture Wallet") {
+    throw new Error("seeded wallet missing after upgrade");
+  }
+  if (!wallet.users.some((entry) => entry.role === "owner" && entry.user.username === "admin")) {
+    throw new Error("seeded wallet owner missing after upgrade");
+  }
+  if (!wallet.labels.some((label) => label.name === process.env.UPGRADE_LABEL_NAME && label.color === "#22c55e")) {
+    throw new Error("seeded label missing after upgrade");
+  }
+  if (wallet.group?.purpose !== "upgrade-testing") {
+    throw new Error("seeded group relation missing after upgrade");
+  }
+
+  const setting = await prisma.systemSetting.findUnique({
+    where: { key: process.env.UPGRADE_SETTING_KEY },
+    select: { value: true },
+  });
+  if (!setting || !setting.value.includes("preserved")) {
+    throw new Error("seeded system setting missing after upgrade");
+  }
+
+  const nodeConfig = await prisma.nodeConfig.findUnique({
+    where: { id: process.env.UPGRADE_NODE_CONFIG_ID },
+    select: {
+      testnetEnabled: true,
+      testnetSingletonHost: true,
+      servers: { select: { label: true, enabled: true, priority: true } },
+    },
+  });
+  if (!nodeConfig || !nodeConfig.testnetEnabled || nodeConfig.testnetSingletonHost !== "electrum.fixture.invalid") {
+    throw new Error("seeded node config missing after upgrade");
+  }
+  if (!nodeConfig.servers.some((server) => server.label === "Upgrade Fixture Electrum" && server.enabled === false && server.priority === 42)) {
+    throw new Error("seeded electrum server missing after upgrade");
+  }
+
+  process.stdout.write("appStatePreserved=true\n");
+})()
+  .then(() => prisma.$disconnect())
+  .catch(async (error) => {
+    console.error(error);
+    try {
+      await prisma.$disconnect();
+    } catch {}
+    process.exit(1);
+  });
+' 2>/dev/null) || {
+        log_error "Representative app state was not preserved"
+        return 1
+    }
+
+    if ! echo "$output" | grep -q '^appStatePreserved=true$'; then
+        log_error "Unexpected app-state verification output: $output"
+        return 1
+    fi
+
+    log_success "Representative app state preserved after upgrade"
+    return 0
+}
+
+capture_admin_two_factor_secret() {
+    local output
+    output=$(compose_exec backend node -e '
+function loadModule(candidates) {
+  for (const candidate of candidates) {
+    try {
+      return require(candidate);
+    } catch {
+      // try the next compiled path
+    }
+  }
+  throw new Error(`Could not load any of: ${candidates.join(", ")}`);
+}
+
+const encryption = loadModule([
+  "./dist/app/src/utils/encryption.js",
+  "./dist/server/src/utils/encryption.js",
+  "./dist/src/utils/encryption.js",
+]);
+const prismaModule = loadModule([
+  "./dist/app/src/models/prisma.js",
+  "./dist/server/src/models/prisma.js",
+  "./dist/src/models/prisma.js",
+]);
+const prisma = prismaModule.default || prismaModule;
+
+(async () => {
+  await encryption.validateEncryptionKey();
+  const user = await prisma.user.findUnique({
+    where: { username: "admin" },
+    select: { twoFactorSecret: true },
+  });
+  if (!user || !user.twoFactorSecret) {
+    throw new Error("admin 2FA secret is missing");
+  }
+  const secret = encryption.decryptIfEncrypted(user.twoFactorSecret);
+  process.stdout.write(`secret=${secret}\n`);
+})()
+  .then(() => prisma.$disconnect())
+  .catch(async (error) => {
+    console.error(error);
+    try {
+      await prisma.$disconnect();
+    } catch {}
+    process.exit(1);
+  });
+' 2>/dev/null) || {
+        log_error "Failed to capture admin 2FA secret"
+        return 1
+    }
+
+    ORIGINAL_TWO_FACTOR_SECRET=$(echo "$output" | sed -n 's/^secret=//p' | tail -n 1)
+    if [ -z "$ORIGINAL_TWO_FACTOR_SECRET" ]; then
+        log_error "2FA secret capture returned no plaintext secret"
+        log_error "Output: $output"
+        return 1
+    fi
+
+    return 0
+}
+
+verify_admin_backup_code_count() {
+    local expected_count="$1"
+    local output
+    output=$(compose_exec backend node -e '
+function loadModule(candidates) {
+  for (const candidate of candidates) {
+    try {
+      return require(candidate);
+    } catch {
+      // try the next compiled path
+    }
+  }
+  throw new Error(`Could not load any of: ${candidates.join(", ")}`);
+}
+
+const twoFactorService = loadModule([
+  "./dist/app/src/services/twoFactorService.js",
+  "./dist/server/src/services/twoFactorService.js",
+  "./dist/src/services/twoFactorService.js",
+]);
+const prismaModule = loadModule([
+  "./dist/app/src/models/prisma.js",
+  "./dist/server/src/models/prisma.js",
+  "./dist/src/models/prisma.js",
+]);
+const prisma = prismaModule.default || prismaModule;
+
+(async () => {
+  const user = await prisma.user.findUnique({
+    where: { username: "admin" },
+    select: { twoFactorBackupCodes: true },
+  });
+  if (!user) {
+    throw new Error("admin user is missing");
+  }
+  const service = twoFactorService.default || twoFactorService;
+  const count = service.getRemainingBackupCodeCount(user.twoFactorBackupCodes);
+  process.stdout.write(`count=${count}\n`);
+})()
+  .then(() => prisma.$disconnect())
+  .catch(async (error) => {
+    console.error(error);
+    try {
+      await prisma.$disconnect();
+    } catch {}
+    process.exit(1);
+  });
+' 2>/dev/null) || {
+        log_error "Failed to inspect admin 2FA backup code count"
+        return 1
+    }
+
+    if ! echo "$output" | grep -q "^count=${expected_count}$"; then
+        log_error "Unexpected backup code count after upgrade"
+        log_error "Expected: $expected_count"
+        log_error "Output: $output"
+        return 1
+    fi
+
+    return 0
+}
+
+expect_admin_two_factor_decrypt_rejected_with_env() {
+    local env_name="$1"
+    local env_value="$2"
+    local label="$3"
+    local output
+    output=$(docker compose -f "$PROJECT_ROOT/docker-compose.yml" exec -T \
+        -e "${env_name}=${env_value}" \
+        backend node -e '
+function loadModule(candidates) {
+  for (const candidate of candidates) {
+    try {
+      return require(candidate);
+    } catch {
+      // try the next compiled path
+    }
+  }
+  throw new Error(`Could not load any of: ${candidates.join(", ")}`);
+}
+
+const encryption = loadModule([
+  "./dist/app/src/utils/encryption.js",
+  "./dist/server/src/utils/encryption.js",
+  "./dist/src/utils/encryption.js",
+]);
+const prismaModule = loadModule([
+  "./dist/app/src/models/prisma.js",
+  "./dist/server/src/models/prisma.js",
+  "./dist/src/models/prisma.js",
+]);
+const prisma = prismaModule.default || prismaModule;
+
+(async () => {
+  await encryption.validateEncryptionKey();
+  const user = await prisma.user.findUnique({
+    where: { username: "admin" },
+    select: { twoFactorSecret: true },
+  });
+  if (!user || !user.twoFactorSecret) {
+    throw new Error("admin 2FA secret is missing");
+  }
+
+  try {
+    encryption.decryptIfEncrypted(user.twoFactorSecret);
+  } catch {
+    process.stdout.write("decryptRejected=true\n");
+    return;
+  }
+  throw new Error("2FA secret decrypted with drifted ENCRYPTION_SALT");
+})()
+  .then(() => prisma.$disconnect())
+  .catch(async (error) => {
+    console.error(error);
+    try {
+      await prisma.$disconnect();
+    } catch {}
+    process.exit(1);
+  });
+' 2>/dev/null) || {
+        log_error "Drifted encryption material verification command failed for $label"
+        return 1
+    }
+
+    if ! echo "$output" | grep -q '^decryptRejected=true$'; then
+        log_error "Unexpected drifted encryption material verification output for $label: $output"
+        return 1
+    fi
+
+    return 0
+}
+
+verify_admin_two_factor_rejects_drifted_material() {
+    log_info "Verifying admin 2FA secret rejects drifted encryption material..."
+
+    if ! expect_admin_two_factor_decrypt_rejected_with_env \
+        "ENCRYPTION_SALT" \
+        "drifted-${TEST_ID}" \
+        "drifted ENCRYPTION_SALT"; then
+        return 1
+    fi
+
+    if ! expect_admin_two_factor_decrypt_rejected_with_env \
+        "ENCRYPTION_KEY" \
+        "drifted-key-${TEST_ID}-012345678901234567890123456789" \
+        "drifted ENCRYPTION_KEY"; then
+        return 1
+    fi
+
+    log_success "Admin 2FA secret rejects drifted encryption material"
+    return 0
+}
+
+expect_backup_code_reuse_rejected() {
+    local code="$1"
+
+    rm -f "$COOKIE_JAR"
+    local login_response
+    login_response=$(curl -k -s -c "$COOKIE_JAR" -b "$COOKIE_JAR" -X POST \
+        -H "Content-Type: application/json" \
+        -d "{\"username\":\"admin\",\"password\":\"$ORIGINAL_USER_PASSWORD\"}" \
+        "$API_BASE_URL/api/v1/auth/login")
+
+    if ! echo "$login_response" | grep -q '"requires2FA":true'; then
+        log_error "Backup-code replay check did not receive a 2FA challenge"
+        log_error "Response: $login_response"
+        return 1
+    fi
+
+    local temp_token verify_response
+    temp_token=$(echo "$login_response" | sed -n 's/.*"tempToken":"\([^"]*\)".*/\1/p')
+    if [ -z "$temp_token" ]; then
+        log_error "Backup-code replay challenge did not include a tempToken"
+        return 1
+    fi
+
+    verify_response=$(curl -k -s -c "$COOKIE_JAR" -b "$COOKIE_JAR" -X POST \
+        -H "Content-Type: application/json" \
+        -d "{\"tempToken\":\"$temp_token\",\"code\":\"$code\"}" \
+        "$API_BASE_URL/api/v1/auth/2fa/verify")
+
+    if echo "$verify_response" | grep -q '"user"'; then
+        log_error "Already-used backup code was accepted"
+        return 1
+    fi
+
+    return 0
+}
+
+reenroll_admin_two_factor_via_api() {
+    log_info "Re-enrolling admin 2FA through the API..."
+
+    if ! login_as_upgrade_user false "" true; then
+        log_error "Cannot authenticate without 2FA before re-enrollment"
+        return 1
+    fi
+
+    if [ -z "$CSRF_TOKEN" ]; then
+        log_error "Password-only login did not provide a sanctuary_csrf cookie"
+        return 1
+    fi
+
+    local setup_response
+    setup_response=$(curl -k -s -b "$COOKIE_JAR" -c "$COOKIE_JAR" -X POST \
+        -H "Content-Type: application/json" \
+        -H "X-CSRF-Token: $CSRF_TOKEN" \
+        "$API_BASE_URL/api/v1/auth/2fa/setup")
+
+    if ! echo "$setup_response" | grep -q '"qrCodeDataUrl"'; then
+        log_error "2FA setup did not return a QR code"
+        log_error "Response: $setup_response"
+        return 1
+    fi
+
+    if ! capture_admin_two_factor_secret; then
+        return 1
+    fi
+
+    local token enable_response
+    token=$(generate_upgrade_totp_code)
+    if [ -z "$token" ]; then
+        log_error "Failed to generate TOTP token for re-enrollment"
+        return 1
+    fi
+
+    enable_response=$(curl -k -s -b "$COOKIE_JAR" -c "$COOKIE_JAR" -X POST \
+        -H "Content-Type: application/json" \
+        -H "X-CSRF-Token: $CSRF_TOKEN" \
+        -d "{\"token\":\"$token\"}" \
+        "$API_BASE_URL/api/v1/auth/2fa/enable")
+
+    if ! echo "$enable_response" | grep -q '"success":true'; then
+        log_error "2FA enable did not succeed during re-enrollment"
+        log_error "Response: $enable_response"
+        return 1
+    fi
+
+    log_success "Admin 2FA re-enrolled through the API"
+    return 0
 }
 
 # ============================================
@@ -695,7 +1596,7 @@ test_stop_containers_for_upgrade() {
     cd "$PROJECT_ROOT"
     load_runtime_env || return 1
 
-    run_project_compose "$PROJECT_ROOT" stop 2>&1
+    docker compose stop 2>&1
 
     # Verify containers stopped
     local running=$(docker ps --filter "name=${COMPOSE_PROJECT_NAME}-" --filter "status=running" -q | wc -l)
@@ -731,6 +1632,20 @@ test_simulate_git_update() {
 
     PROJECT_ROOT="$TARGET_PROJECT_ROOT"
 
+    if [ "$UPGRADE_USE_LEGACY_RUNTIME_ENV" = "true" ]; then
+        if [ -e "$LEGACY_TARGET_ENV_FILE" ] && [ "$UPGRADE_CREATED_TARGET_LEGACY_ENV" != "true" ]; then
+            log_error "Cannot run legacy-runtime-env fixture because target .env already exists: $LEGACY_TARGET_ENV_FILE"
+            return 1
+        fi
+
+        cp "$TEST_ENV_FILE" "$LEGACY_TARGET_ENV_FILE"
+        chmod 600 "$LEGACY_TARGET_ENV_FILE" 2>/dev/null || true
+        TEST_ENV_FILE="$LEGACY_TARGET_ENV_FILE"
+        export SANCTUARY_ENV_FILE="$TEST_ENV_FILE"
+        UPGRADE_CREATED_TARGET_LEGACY_ENV=true
+        log_info "Moved legacy runtime env path to target checkout .env"
+    fi
+
     if [ "$current_commit" = "$target_commit" ]; then
         log_warning "Source and target resolve to the same commit; upgrade lane is running as a restart fallback"
     else
@@ -750,12 +1665,7 @@ test_restart_containers_after_upgrade() {
 
     cd "$PROJECT_ROOT"
 
-    if ! run_upgrade_fixture_hook upgrade_fixture_before_upgrade; then
-        log_error "Upgrade fixture '${UPGRADE_FIXTURE_LABEL:-$UPGRADE_FIXTURE}' failed while preparing the target upgrade"
-        return 1
-    fi
-
-    # Load secrets from the env layout that will actually drive the upgrade.
+    # Load secrets from runtime env
     load_runtime_env || return 1
 
     if ! run_install_script "$PROJECT_ROOT"; then
@@ -789,7 +1699,7 @@ test_verify_secrets_preserved() {
     log_info "Verifying secrets were preserved..."
 
     # Reload runtime env
-    load_runtime_env || return 1
+    load_runtime_env
 
     if [ "$JWT_SECRET" != "$ORIGINAL_JWT_SECRET" ]; then
         log_error "JWT_SECRET changed after upgrade"
@@ -802,6 +1712,13 @@ test_verify_secrets_preserved() {
         log_error "ENCRYPTION_KEY changed after upgrade"
         log_error "  Original: ${ORIGINAL_ENCRYPTION_KEY:0:8}..."
         log_error "  Current:  ${ENCRYPTION_KEY:0:8}..."
+        return 1
+    fi
+
+    if [ "$ENCRYPTION_SALT" != "$ORIGINAL_ENCRYPTION_SALT" ]; then
+        log_error "ENCRYPTION_SALT changed after upgrade"
+        log_error "  Original: ${ORIGINAL_ENCRYPTION_SALT:0:8}..."
+        log_error "  Current:  ${ENCRYPTION_SALT:0:8}..."
         return 1
     fi
 
@@ -819,7 +1736,33 @@ test_verify_secrets_preserved() {
         return 1
     fi
 
-    log_success "All 4 secrets preserved correctly"
+    log_success "All 5 secrets preserved correctly"
+    return 0
+}
+
+test_verify_fixture_runtime_shape() {
+    log_info "Verifying fixture runtime shape..."
+
+    load_runtime_env || return 1
+
+    if [ "$UPGRADE_USE_LEGACY_RUNTIME_ENV" = "true" ]; then
+        if [ "$(resolve_env_file)" != "$LEGACY_TARGET_ENV_FILE" ]; then
+            log_error "legacy-runtime-env fixture did not use target .env"
+            log_error "Resolved env: $(resolve_env_file)"
+            return 1
+        fi
+    fi
+
+    if [ "$UPGRADE_EXPECT_OPTIONAL_PROFILES" = "true" ]; then
+        if [ "${ENABLE_MONITORING:-}" != "yes" ] || [ "${ENABLE_TOR:-}" != "yes" ]; then
+            log_error "optional-profiles fixture did not persist monitoring/Tor flags"
+            log_error "ENABLE_MONITORING=${ENABLE_MONITORING:-unset}"
+            log_error "ENABLE_TOR=${ENABLE_TOR:-unset}"
+            return 1
+        fi
+    fi
+
+    log_success "Fixture runtime shape verified"
     return 0
 }
 
@@ -830,27 +1773,180 @@ test_verify_secrets_preserved() {
 test_verify_data_preserved() {
     log_info "Verifying data preserved after upgrade..."
 
-    if ! wait_for_browser_auth_ready; then
-        log_error "Browser auth endpoint did not become ready after upgrade"
-        return 1
-    fi
-
-    # Try to login with the password we set before upgrade
-    rm -f "$COOKIE_JAR"
-    local login_response=$(curl -k -s -c "$COOKIE_JAR" -b "$COOKIE_JAR" -X POST \
-        -H "Content-Type: application/json" \
-        -d "{\"username\":\"admin\",\"password\":\"$ORIGINAL_USER_PASSWORD\"}" \
-        "$API_BASE_URL/api/v1/auth/login")
-
-    if ! echo "$login_response" | grep -q '"user"'; then
+    if ! login_as_upgrade_user; then
         log_error "Cannot login with pre-upgrade password"
-        log_error "Response: $login_response"
         return 1
     fi
-
-    extract_csrf_token
 
     log_success "User data preserved after upgrade"
+    return 0
+}
+
+# ============================================
+# Test: Verify Representative App State
+# ============================================
+
+test_verify_representative_app_state_preserved() {
+    verify_representative_app_state_preserved
+}
+
+# ============================================
+# Test: Verify 2FA Preserved After Upgrade
+# ============================================
+
+test_verify_two_factor_preserved() {
+    log_info "Verifying 2FA state preserved after upgrade..."
+
+    if ! verify_admin_two_factor_secret_decrypts; then
+        return 1
+    fi
+
+    if ! login_as_upgrade_user true; then
+        log_error "Pre-upgrade 2FA secret could not complete post-upgrade login"
+        return 1
+    fi
+
+    if [ -z "$CSRF_TOKEN" ]; then
+        log_error "2FA login succeeded but sanctuary_csrf cookie missing"
+        return 1
+    fi
+
+    log_success "2FA challenge and verification succeeded after upgrade"
+    return 0
+}
+
+# ============================================
+# Test: Verify Multiple 2FA Users Preserved After Upgrade
+# ============================================
+
+test_verify_multiple_two_factor_users_preserved() {
+    log_info "Verifying multiple 2FA users and legacy plaintext secret after upgrade..."
+
+    if ! verify_seeded_two_factor_users_decrypt; then
+        return 1
+    fi
+
+    if ! login_with_two_factor_fixture \
+        "$OPERATOR_TWO_FACTOR_USERNAME" \
+        "$OPERATOR_TWO_FACTOR_PASSWORD" \
+        "$OPERATOR_TWO_FACTOR_SECRET" \
+        true; then
+        log_error "Encrypted operator 2FA user could not complete post-upgrade login"
+        return 1
+    fi
+
+    if ! login_with_two_factor_fixture \
+        "$LEGACY_TWO_FACTOR_USERNAME" \
+        "$LEGACY_TWO_FACTOR_PASSWORD" \
+        "$LEGACY_TWO_FACTOR_SECRET" \
+        true; then
+        log_error "Legacy plaintext 2FA user could not complete post-upgrade login"
+        return 1
+    fi
+
+    log_success "Multiple encrypted and legacy plaintext 2FA users completed post-upgrade login"
+    return 0
+}
+
+# ============================================
+# Test: Verify 2FA Backup Code Preserved After Upgrade
+# ============================================
+
+format_backup_code_for_login() {
+    local code="$1"
+    local lower_code
+
+    lower_code=$(printf '%s' "$code" | tr '[:upper:]' '[:lower:]')
+    printf '%s-%s' "${lower_code:0:3}" "${lower_code:3}"
+}
+
+test_verify_two_factor_backup_code_preserved() {
+    log_info "Verifying 2FA backup code preserved after upgrade..."
+
+    if [ -z "$ORIGINAL_TWO_FACTOR_BACKUP_CODE" ]; then
+        log_error "No pre-upgrade 2FA backup code is available"
+        return 1
+    fi
+
+    local formatted_backup_code
+    formatted_backup_code=$(format_backup_code_for_login "$ORIGINAL_TWO_FACTOR_BACKUP_CODE")
+
+    if ! login_as_upgrade_user true "$formatted_backup_code"; then
+        log_error "Pre-upgrade 2FA backup code could not complete post-upgrade login"
+        return 1
+    fi
+
+    if ! verify_admin_backup_code_count 0; then
+        return 1
+    fi
+
+    if ! expect_backup_code_reuse_rejected "$formatted_backup_code"; then
+        return 1
+    fi
+
+    log_success "2FA backup code survived upgrade, accepts normalized input, was marked used, and cannot be replayed"
+    return 0
+}
+
+# ============================================
+# Test: Verify Drifted Encryption Material Rejected
+# ============================================
+
+test_verify_two_factor_rejects_drifted_material() {
+    if ! verify_admin_two_factor_rejects_drifted_material; then
+        return 1
+    fi
+
+    log_success "2FA encrypted state rejects drifted encryption material"
+    return 0
+}
+
+# ============================================
+# Test: Reset 2FA And Re-Enroll After Upgrade
+# ============================================
+
+test_reset_two_factor_and_reenroll() {
+    log_info "Testing 2FA reset recovery and re-enrollment after upgrade..."
+
+    local recovery_dir reset_output
+    recovery_dir="$TEST_RUNTIME_DIR/recovery"
+    reset_output=$(
+        export SANCTUARY_2FA_RESET_BACKUP_DIR="$recovery_dir"
+        "$TARGET_PROJECT_ROOT/scripts/reset-user-2fa.sh" --username admin --yes 2>&1
+    ) || {
+        log_error "2FA reset recovery script failed"
+        log_error "Output: $reset_output"
+        return 1
+    }
+
+    if ! echo "$reset_output" | grep -q "2FA reset complete"; then
+        log_error "2FA reset recovery script did not report completion"
+        log_error "Output: $reset_output"
+        return 1
+    fi
+
+    local backup_file
+    backup_file=$(find "$recovery_dir" -name 'admin-2fa-before-reset-*.json' -type f | head -n 1)
+    if [ -z "$backup_file" ] || [ ! -s "$backup_file" ]; then
+        log_error "2FA reset recovery script did not create a non-empty backup"
+        return 1
+    fi
+
+    if ! login_as_upgrade_user false "" true; then
+        log_error "Password-only login failed after 2FA reset"
+        return 1
+    fi
+
+    if ! reenroll_admin_two_factor_via_api; then
+        return 1
+    fi
+
+    if ! login_as_upgrade_user true; then
+        log_error "Freshly re-enrolled 2FA could not complete login"
+        return 1
+    fi
+
+    log_success "2FA reset recovery and re-enrollment succeeded after upgrade"
     return 0
 }
 
@@ -890,6 +1986,15 @@ test_verify_migration_on_upgrade() {
     fi
 }
 
+test_post_upgrade_user_visible_smoke() {
+    if [ "$UPGRADE_RUN_BROWSER_SMOKE" != "true" ]; then
+        log_info "Skipping browser/user-visible smoke for fixture: $UPGRADE_FIXTURE"
+        return 0
+    fi
+
+    assert_post_upgrade_user_smoke "$BROWSER_BASE_URL"
+}
+
 test_recover_postgres_password_drift() {
     log_info "Testing PostgreSQL password synchronization during setup..."
 
@@ -899,29 +2004,30 @@ test_recover_postgres_password_drift() {
     local original_password="$POSTGRES_PASSWORD"
     local drifted_password="drifted-${TEST_ID}-postgres-password"
     local setup_output=""
-    local -a services_to_stop=(backend worker frontend gateway ai migrate)
 
     if [ "$drifted_password" = "$original_password" ]; then
         drifted_password="${drifted_password}-x"
     fi
 
-    if ! upsert_env_value "POSTGRES_PASSWORD" "$drifted_password" "$TEST_ENV_FILE"; then
+    if ! replace_env_value "POSTGRES_PASSWORD" "$drifted_password" "$TEST_ENV_FILE"; then
         log_error "Failed to inject a drifted POSTGRES_PASSWORD into the runtime env"
         return 1
     fi
 
     # Keep postgres running so setup.sh can recover the real password from the
     # existing container and volume, then restart the application stack.
-    if [ "$UPGRADE_ENABLE_MONITORING" = "yes" ]; then
-        services_to_stop+=(grafana prometheus loki promtail alertmanager jaeger)
-    fi
-    if [ "$UPGRADE_ENABLE_TOR" = "yes" ]; then
-        services_to_stop+=(tor)
-    fi
-    run_project_compose "$PROJECT_ROOT" stop "${services_to_stop[@]}" 2>&1 || true
+    docker compose stop backend worker frontend gateway ai migrate 2>&1 || true
 
-    setup_output=$(run_upgrade_runtime_command "$PROJECT_ROOT" \
-        bash "$PROJECT_ROOT/scripts/setup.sh" --force --non-interactive --skip-ssl 2>&1) || {
+    setup_output=$(
+        export SANCTUARY_ENV_FILE="$TEST_ENV_FILE"
+        export SANCTUARY_SSL_DIR="$TEST_SSL_DIR"
+        export HTTPS_PORT
+        export HTTP_PORT
+        export GATEWAY_PORT
+        export ENABLE_MONITORING="$UPGRADE_ENABLE_MONITORING"
+        export ENABLE_TOR="$UPGRADE_ENABLE_TOR"
+        bash "$PROJECT_ROOT/scripts/setup.sh" --force --non-interactive --skip-ssl 2>&1
+    ) || {
         log_error "setup.sh failed while recovering the PostgreSQL password drift"
         log_error "Output: $setup_output"
         return 1
@@ -950,15 +2056,10 @@ test_recover_postgres_password_drift() {
         return 1
     fi
 
-    if ! wait_for_browser_auth_ready; then
-        log_error "Browser auth endpoint did not become ready after PostgreSQL password recovery"
-        return 1
-    fi
-
     local postgres_container=""
     local postgres_network=""
     local db_check=""
-    postgres_container="$(run_project_compose "$PROJECT_ROOT" ps -q postgres)"
+    postgres_container="$(docker compose ps -q postgres)"
     postgres_network=$(docker inspect --format '{{range $k, $v := .NetworkSettings.Networks}}{{println $k}}{{end}}' \
         "$postgres_container" | head -n 1)
     db_check=$(docker run --rm --network "$postgres_network" -e "PGPASSWORD=$drifted_password" \
@@ -970,38 +2071,13 @@ test_recover_postgres_password_drift() {
         return 1
     fi
 
-    rm -f "$COOKIE_JAR"
-    local login_response=$(curl -k -s -c "$COOKIE_JAR" -b "$COOKIE_JAR" -X POST \
-        -H "Content-Type: application/json" \
-        -d "{\"username\":\"admin\",\"password\":\"$ORIGINAL_USER_PASSWORD\"}" \
-        "$API_BASE_URL/api/v1/auth/login")
-
-    if ! echo "$login_response" | grep -q '"user"'; then
+    if ! login_as_upgrade_user; then
         log_error "Login failed after PostgreSQL password recovery"
-        log_error "Response: $login_response"
         return 1
     fi
 
     log_success "setup.sh synchronized the PostgreSQL password drift"
     return 0
-}
-
-test_browser_auth_smoke() {
-    log_info "Running browser-visible auth smoke checks..."
-
-    UPGRADE_BROWSER_BASE_URL="$UPGRADE_BROWSER_BASE_URL" \
-    UPGRADE_BROWSER_ORIGIN="$UPGRADE_BROWSER_ORIGIN" \
-    UPGRADE_SMOKE_PASSWORD="$ORIGINAL_USER_PASSWORD" \
-    UPGRADE_EXPECT_WEBSOCKET="$UPGRADE_EXPECT_WEBSOCKET" \
-    bash "$SCRIPT_DIR/upgrade-browser-smoke.test.sh"
-}
-
-test_worker_smoke() {
-    log_info "Running worker/support-package smoke checks..."
-
-    SANCTUARY_PROJECT_ROOT="$PROJECT_ROOT" \
-    SANCTUARY_UPGRADE_SUPPORT_PACKAGE_FILE="$TEST_RUNTIME_DIR/support-package.json" \
-    bash "$SCRIPT_DIR/upgrade-worker-smoke.test.sh"
 }
 
 run_extended_upgrade_scenarios() {
@@ -1023,25 +2099,10 @@ run_extended_upgrade_scenarios() {
 test_verify_all_services() {
     log_info "Verifying all services are functional..."
 
-    if ! wait_for_browser_auth_ready; then
-        log_error "Browser auth endpoint did not become ready before service verification"
-        return 1
-    fi
-
-    # Login (cookie-based)
-    rm -f "$COOKIE_JAR"
-    local login_response=$(curl -k -s -c "$COOKIE_JAR" -b "$COOKIE_JAR" -X POST \
-        -H "Content-Type: application/json" \
-        -d "{\"username\":\"admin\",\"password\":\"$ORIGINAL_USER_PASSWORD\"}" \
-        "$API_BASE_URL/api/v1/auth/login")
-
-    if ! echo "$login_response" | grep -q '"user"'; then
+    if ! login_as_upgrade_user; then
         log_error "Cannot authenticate after upgrade"
-        log_error "Response: $login_response"
         return 1
     fi
-
-    extract_csrf_token
 
     # Test /me endpoint (GET — cookies only)
     local me_response=$(curl -k -s -b "$COOKIE_JAR" \
@@ -1065,18 +2126,6 @@ test_verify_all_services() {
     return 0
 }
 
-test_verify_upgrade_fixture_after_upgrade() {
-    log_info "Verifying upgrade fixture '${UPGRADE_FIXTURE_LABEL:-$UPGRADE_FIXTURE}' after upgrade..."
-
-    if ! run_upgrade_fixture_hook upgrade_fixture_after_upgrade; then
-        log_error "Upgrade fixture '${UPGRADE_FIXTURE_LABEL:-$UPGRADE_FIXTURE}' failed after upgrade"
-        return 1
-    fi
-
-    log_success "Upgrade fixture '${UPGRADE_FIXTURE_LABEL:-$UPGRADE_FIXTURE}' verified"
-    return 0
-}
-
 # ============================================
 # Test: Force Rebuild Upgrade
 # ============================================
@@ -1091,8 +2140,16 @@ test_force_rebuild_upgrade() {
 
     local rebuild_output=""
     set +e
-    rebuild_output=$(run_upgrade_runtime_command "$PROJECT_ROOT" \
-        bash "$PROJECT_ROOT/start.sh" --rebuild 2>&1)
+    rebuild_output=$(
+        export HTTPS_PORT
+        export HTTP_PORT
+        export GATEWAY_PORT
+        export SANCTUARY_ENV_FILE="$(resolve_env_file)"
+        export SANCTUARY_SSL_DIR="$TEST_SSL_DIR"
+        export RATE_LIMIT_LOGIN=100
+        export RATE_LIMIT_PASSWORD_CHANGE=100
+        bash "$PROJECT_ROOT/start.sh" --rebuild 2>&1
+    )
     local exit_code=$?
     set -e
 
@@ -1121,25 +2178,10 @@ test_force_rebuild_upgrade() {
     # Extra wait for backend to fully initialize
     sleep 5
 
-    if ! wait_for_browser_auth_ready; then
-        log_error "Browser auth endpoint did not become ready after force rebuild"
-        return 1
-    fi
-
-    # Verify login still works (cookie-based)
-    rm -f "$COOKIE_JAR"
-    local login_response=$(curl -k -s -c "$COOKIE_JAR" -b "$COOKIE_JAR" -X POST \
-        -H "Content-Type: application/json" \
-        -d "{\"username\":\"admin\",\"password\":\"$ORIGINAL_USER_PASSWORD\"}" \
-        "$API_BASE_URL/api/v1/auth/login")
-
-    if ! echo "$login_response" | grep -q '"user"'; then
+    if ! login_as_upgrade_user; then
         log_error "Login failed after force rebuild"
-        log_error "Response: $login_response"
         return 1
     fi
-
-    extract_csrf_token
 
     log_success "Force rebuild upgrade successful"
     return 0
@@ -1216,7 +2258,7 @@ main() {
 
     # Phase 1: Prepare existing installation
     run_test "Ensure Existing Installation" test_ensure_existing_installation
-    run_test "Apply Upgrade Fixture" test_apply_upgrade_fixture_after_source_install
+    run_test "Create Pre-Upgrade Data" test_create_pre_upgrade_data
     run_test "Capture Pre-Upgrade State" test_capture_pre_upgrade_state
 
     # Phase 2: Simulate upgrade
@@ -1226,15 +2268,28 @@ main() {
 
     # Phase 3: Verify upgrade success
     run_test "Verify Secrets Preserved" test_verify_secrets_preserved
+    run_test "Verify Fixture Runtime Shape" test_verify_fixture_runtime_shape
     run_test "Verify Data Preserved" test_verify_data_preserved
+    run_test "Verify Representative App State Preserved" test_verify_representative_app_state_preserved
+    run_test "Verify 2FA Preserved" test_verify_two_factor_preserved
+    run_test "Verify Multiple 2FA Users Preserved" test_verify_multiple_two_factor_users_preserved
+    run_test "Verify 2FA Backup Code Preserved" test_verify_two_factor_backup_code_preserved
+    run_test "Verify 2FA Rejects Drifted Encryption Material" test_verify_two_factor_rejects_drifted_material
+    run_test "Reset 2FA And Re-Enroll" test_reset_two_factor_and_reenroll
     run_test "Verify Migration on Upgrade" test_verify_migration_on_upgrade
-    run_test "Browser Auth Smoke" test_browser_auth_smoke
-    run_test "Worker Support Smoke" test_worker_smoke
-    run_test "Verify Upgrade Fixture" test_verify_upgrade_fixture_after_upgrade
+    run_test "Post-Upgrade User-Visible Smoke" test_post_upgrade_user_visible_smoke
     run_extended_upgrade_scenarios
 
     if [ $TESTS_FAILED -gt 0 ]; then
-        collect_upgrade_artifacts_if_requested
+        collect_upgrade_artifacts \
+            "$UPGRADE_ARTIFACT_DIR" \
+            "$PROJECT_ROOT" \
+            "$TEST_RUNTIME_DIR" \
+            "$(resolve_env_file)" \
+            "$UPGRADE_SOURCE_LABEL" \
+            "$UPGRADE_TARGET_LABEL" \
+            "$UPGRADE_FIXTURE" \
+            "$UPGRADE_TEST_MODE" || true
     fi
 
     # Teardown

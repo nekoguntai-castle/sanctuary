@@ -176,7 +176,8 @@ run_gitleaks() {
   "$GITLEAKS_BIN_RESOLVED" version
   "$GITLEAKS_BIN_RESOLVED" detect --source . --no-git --redact --config .gitleaks.toml
   "$GITLEAKS_BIN_RESOLVED" git . --config .gitleaks.toml --redact --no-banner --log-opts "$GITLEAKS_LOG_OPTS"
-  GITLEAKS_BIN="$GITLEAKS_BIN_RESOLVED" bash scripts/gitleaks-tracked-tree.sh
+  export GITLEAKS_BIN="$GITLEAKS_BIN_RESOLVED"
+  bash scripts/gitleaks-tracked-tree.sh
 }
 
 run_lizard() {
