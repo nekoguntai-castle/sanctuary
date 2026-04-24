@@ -39,6 +39,10 @@ on:
         required: false
         default: false
         type: boolean
+      upgrade_source_ref:
+        description: 'Optional older git ref or tag to install before upgrading to the checked-out ref'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -144,6 +148,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 0
 
       - name: Make test scripts executable
         run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh
@@ -452,11 +458,12 @@ jobs:
       - name: Make test scripts executable
         run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh
 
-      - name: Run upgrade test
+      - name: Run core upgrade test
         env:
           HTTPS_PORT: ${{ env.HTTPS_PORT }}
           HTTP_PORT: ${{ env.HTTP_PORT }}
-        run: ./tests/install/e2e/upgrade-install.test.sh --verbose
+          SANCTUARY_UPGRADE_SOURCE_REF: ${{ github.event.inputs.upgrade_source_ref }}
+        run: ./tests/install/e2e/upgrade-install.test.sh --mode core --verbose
 
       - name: Show container logs on failure
         if: failure()

@@ -23,6 +23,10 @@ on:
         description: 'Version being validated'
         required: false
         type: string
+      upgrade_source_ref:
+        description: 'Optional older git ref or tag to install before upgrading to the candidate ref'
+        required: false
+        type: string
   workflow_dispatch:
     inputs:
       ref:
@@ -32,6 +36,10 @@ on:
         type: string
       version:
         description: 'Version being validated (for logging only)'
+        required: false
+        type: string
+      upgrade_source_ref:
+        description: 'Optional older git ref or tag to install before upgrading to the candidate ref'
         required: false
         type: string
 
@@ -77,6 +85,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           ref: ${{ github.event.inputs.ref || 'main' }}
+          fetch-depth: 0
 
       - name: Make test scripts executable
         run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh
@@ -331,11 +340,12 @@ jobs:
       - name: Make test scripts executable
         run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh
 
-      - name: Run upgrade test
+      - name: Run core upgrade test
         env:
           HTTPS_PORT: ${{ env.HTTPS_PORT }}
           HTTP_PORT: ${{ env.HTTP_PORT }}
-        run: ./tests/install/e2e/upgrade-install.test.sh --verbose
+          SANCTUARY_UPGRADE_SOURCE_REF: ${{ github.event.inputs.upgrade_source_ref || inputs.upgrade_source_ref }}
+        run: ./tests/install/e2e/upgrade-install.test.sh --mode core --verbose
 
       - name: Show container logs on failure
         if: failure()
@@ -430,8 +440,8 @@ jobs:
               echo "" >> $GITHUB_STEP_SUMMARY
               echo "Core tests (Unit + Fresh Install) passed. Extended tests have non-blocking failures." >> $GITHUB_STEP_SUMMARY
               echo "" >> $GITHUB_STEP_SUMMARY
-              echo "> **Note:** Extended test failures may indicate CI-specific issues (rate limiting, SQL query timing)." >> $GITHUB_STEP_SUMMARY
-              echo "> Review failed tests but they don't block release." >> $GITHUB_STEP_SUMMARY
+              echo "> **Note:** Extended test failures may indicate upgrade-specific or environment-specific risk." >> $GITHUB_STEP_SUMMARY
+              echo "> Review failed tests before release even though they do not yet hard-block this workflow." >> $GITHUB_STEP_SUMMARY
             fi
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "**Next steps:**" >> $GITHUB_STEP_SUMMARY

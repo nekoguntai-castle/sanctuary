@@ -568,6 +568,16 @@ test_install_script_loads_runtime_env_for_upgrades() {
     fi
 }
 
+test_install_script_detects_skip_checkout_upgrade_mode() {
+    if grep -q 'SKIP_GIT_CHECKOUT' "$INSTALL_SCRIPT" \
+        && grep -q "Existing runtime env detected" "$INSTALL_SCRIPT"; then
+        return 0
+    else
+        echo -e "${RED}ASSERTION FAILED:${NC} install.sh should detect upgrade mode when skipping git checkout with an existing runtime env"
+        return 1
+    fi
+}
+
 test_install_script_has_silent_openssl_check() {
     # setup.sh uses command -v openssl for silent checks
     # This test verifies setup.sh can check openssl availability silently
@@ -972,6 +982,27 @@ test_setup_script_defaults_to_external_ssl_dir() {
     fi
 }
 
+test_setup_script_validates_postgres_password_from_compose_network() {
+    if grep -q 'docker run --rm' "$SETUP_SCRIPT" \
+        && grep -q -- '--network "\$network_name"' "$SETUP_SCRIPT" \
+        && grep -q 'psql -w -h postgres -U "\$db_user" -d "\$db_name"' "$SETUP_SCRIPT"; then
+        return 0
+    else
+        echo -e "${RED}ASSERTION FAILED:${NC} setup.sh should validate PostgreSQL passwords from the Compose network path"
+        return 1
+    fi
+}
+
+test_setup_script_can_sync_postgres_password_without_postgres_role() {
+    if grep -q 'get_container_env_value' "$SETUP_SCRIPT" \
+        && grep -q 'psql -w -h 127.0.0.1 -U "\$db_user" -d "\$db_name"' "$SETUP_SCRIPT"; then
+        return 0
+    else
+        echo -e "${RED}ASSERTION FAILED:${NC} setup.sh should be able to sync PostgreSQL passwords without depending on a postgres role"
+        return 1
+    fi
+}
+
 # ============================================
 # Unit Tests: .env.example
 # ============================================
@@ -1098,6 +1129,7 @@ main() {
     run_test "install script uses docker compose" test_install_script_uses_docker_compose
     run_test "install script creates .env file" test_install_script_creates_env_file
     run_test "install script loads runtime env for upgrades" test_install_script_loads_runtime_env_for_upgrades
+    run_test "install script detects skip-checkout upgrade mode" test_install_script_detects_skip_checkout_upgrade_mode
     run_test "install script has silent openssl check" test_install_script_has_silent_openssl_check
     run_test "install script uses has_openssl for capture" test_install_script_uses_has_openssl_for_capture
     run_test "install script no hardcoded container names" test_install_script_no_hardcoded_container_names
@@ -1155,6 +1187,8 @@ main() {
     run_test "setup script defaults to external runtime env" test_setup_script_defaults_to_external_runtime_env
     run_test "setup script keeps legacy env fallback" test_setup_script_keeps_legacy_env_fallback
     run_test "setup script defaults to external SSL dir" test_setup_script_defaults_to_external_ssl_dir
+    run_test "setup script validates Postgres password from compose network" test_setup_script_validates_postgres_password_from_compose_network
+    run_test "setup script syncs Postgres password without postgres role" test_setup_script_can_sync_postgres_password_without_postgres_role
     echo ""
 
     echo -e "${YELLOW}Test Suite: .env.example${NC}"
