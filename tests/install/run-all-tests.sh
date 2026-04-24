@@ -14,12 +14,7 @@
 #   --skip-cleanup     Keep containers after tests
 #   --verbose          Show detailed output
 #   --fast             Skip slow tests
-#   --upgrade-source-ref <ref>  Older tag/ref or named lane (latest-stable, n-1, n-2)
-#   --upgrade-fixture <name>    Upgrade fixture to apply during the upgrade lane
-#   --upgrade-mode <mode>       Upgrade lane mode (core or full)
-#   --https-port <port>         Override the HTTPS port used by install E2E tests
-#   --http-port <port>          Override the HTTP port used by install E2E tests
-#   --gateway-port <port>       Override the gateway port used by install E2E tests
+#   --upgrade-fixture  Fixture list to pass to upgrade-install.test.sh
 #
 # ============================================
 
@@ -40,12 +35,7 @@ RUN_E2E=true
 SKIP_CLEANUP=false
 VERBOSE=""
 FAST_MODE=false
-UPGRADE_SOURCE_REF=""
-UPGRADE_FIXTURE=""
-UPGRADE_MODE=""
-HTTPS_PORT_OVERRIDE=""
-HTTP_PORT_OVERRIDE=""
-GATEWAY_PORT_OVERRIDE=""
+UPGRADE_FIXTURE="${SANCTUARY_UPGRADE_FIXTURE:-baseline}"
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -71,52 +61,12 @@ while [[ $# -gt 0 ]]; do
             FAST_MODE=true
             shift
             ;;
-        --upgrade-source-ref)
-            UPGRADE_SOURCE_REF="$2"
-            shift 2
-            ;;
-        --upgrade-source-ref=*)
-            UPGRADE_SOURCE_REF="${1#*=}"
-            shift
-            ;;
         --upgrade-fixture)
             UPGRADE_FIXTURE="$2"
             shift 2
             ;;
         --upgrade-fixture=*)
             UPGRADE_FIXTURE="${1#*=}"
-            shift
-            ;;
-        --upgrade-mode)
-            UPGRADE_MODE="$2"
-            shift 2
-            ;;
-        --upgrade-mode=*)
-            UPGRADE_MODE="${1#*=}"
-            shift
-            ;;
-        --https-port)
-            HTTPS_PORT_OVERRIDE="$2"
-            shift 2
-            ;;
-        --https-port=*)
-            HTTPS_PORT_OVERRIDE="${1#*=}"
-            shift
-            ;;
-        --http-port)
-            HTTP_PORT_OVERRIDE="$2"
-            shift 2
-            ;;
-        --http-port=*)
-            HTTP_PORT_OVERRIDE="${1#*=}"
-            shift
-            ;;
-        --gateway-port)
-            GATEWAY_PORT_OVERRIDE="$2"
-            shift 2
-            ;;
-        --gateway-port=*)
-            GATEWAY_PORT_OVERRIDE="${1#*=}"
             shift
             ;;
         --help|-h)
@@ -128,12 +78,8 @@ while [[ $# -gt 0 ]]; do
             echo "  --skip-cleanup   Keep containers after tests"
             echo "  --verbose        Show detailed output"
             echo "  --fast           Skip slow tests (upgrade)"
-            echo "  --upgrade-source-ref <ref>  Older tag/ref or named lane (latest-stable, n-1, n-2)"
-            echo "  --upgrade-fixture <name>    Upgrade fixture to apply during the upgrade lane"
-            echo "  --upgrade-mode <mode>       Upgrade lane mode (core or full)"
-            echo "  --https-port <port>         Override the HTTPS port used by install E2E tests"
-            echo "  --http-port <port>          Override the HTTP port used by install E2E tests"
-            echo "  --gateway-port <port>       Override the gateway port used by install E2E tests"
+            echo "  --upgrade-fixture FIXTURE[,FIXTURE...]"
+            echo "                   Fixture list for upgrade tests"
             echo "  --help           Show this help"
             exit 0
             ;;
@@ -142,14 +88,6 @@ while [[ $# -gt 0 ]]; do
             exit 1
             ;;
     esac
-done
-
-for port_name in HTTPS_PORT_OVERRIDE HTTP_PORT_OVERRIDE GATEWAY_PORT_OVERRIDE; do
-    port_value="${!port_name}"
-    if [ -n "$port_value" ] && [[ ! "$port_value" =~ ^[0-9]+$ ]]; then
-        log_error "Invalid ${port_name}: $port_value"
-        exit 1
-    fi
 done
 
 # Track results
@@ -193,6 +131,63 @@ run_test_suite() {
     return $exit_code
 }
 
+run_unit_suites() {
+    local suite_failed=false
+
+    if ! run_test_suite "Unit Tests" "$SCRIPT_DIR/unit/install-script.test.sh"; then
+        suite_failed=true
+    fi
+    if ! run_test_suite "Reset 2FA Script Unit Tests" "$SCRIPT_DIR/unit/reset-user-2fa-script.test.sh"; then
+        suite_failed=true
+    fi
+    if ! run_test_suite "Upgrade Helper Unit Tests" "$SCRIPT_DIR/unit/upgrade-helpers.test.sh"; then
+        suite_failed=true
+    fi
+
+    [ "$suite_failed" = "false" ]
+}
+
+run_e2e_suites() {
+    local suite_failed=false
+    local cleanup_arg=""
+
+    if [ "$SKIP_CLEANUP" = "true" ]; then
+        cleanup_arg="--keep-containers"
+    fi
+
+    if ! run_test_suite "Fresh Install E2E" "$SCRIPT_DIR/e2e/fresh-install.test.sh" "$cleanup_arg"; then
+        suite_failed=true
+    fi
+
+    if [ "$suite_failed" = "false" ] || [ "$SKIP_CLEANUP" = "true" ]; then
+        if ! run_test_suite "Container Health" "$SCRIPT_DIR/e2e/container-health.test.sh"; then
+            suite_failed=true
+        fi
+    fi
+
+    if [ "$suite_failed" = "false" ] || [ "$SKIP_CLEANUP" = "true" ]; then
+        if ! run_test_suite "Auth Flow" "$SCRIPT_DIR/e2e/auth-flow.test.sh"; then
+            suite_failed=true
+        fi
+    fi
+
+    if [ "$FAST_MODE" = "false" ]; then
+        local upgrade_args="$cleanup_arg --fixture $UPGRADE_FIXTURE"
+        if ! run_test_suite "Upgrade Install" "$SCRIPT_DIR/e2e/upgrade-install.test.sh" "$upgrade_args"; then
+            suite_failed=true
+        fi
+    else
+        log_info "Skipping upgrade test (fast mode)"
+    fi
+
+    if [ "$SKIP_CLEANUP" = "false" ]; then
+        log_info "Cleaning up containers..."
+        cleanup_containers "$(cd "$SCRIPT_DIR/../.." && pwd)" 2>/dev/null || true
+    fi
+
+    [ "$suite_failed" = "false" ]
+}
+
 # ============================================
 # Main
 # ============================================
@@ -208,12 +203,7 @@ main() {
     echo "  Run E2E Tests:   $RUN_E2E"
     echo "  Skip Cleanup:    $SKIP_CLEANUP"
     echo "  Fast Mode:       $FAST_MODE"
-    echo "  Upgrade Source:  ${UPGRADE_SOURCE_REF:-auto}"
-    echo "  Upgrade Fixture: ${UPGRADE_FIXTURE:-default}"
-    echo "  Upgrade Mode:    ${UPGRADE_MODE:-default}"
-    echo "  HTTPS Port:      ${HTTPS_PORT_OVERRIDE:-default}"
-    echo "  HTTP Port:       ${HTTP_PORT_OVERRIDE:-default}"
-    echo "  Gateway Port:    ${GATEWAY_PORT_OVERRIDE:-default}"
+    echo "  Upgrade Fixture: $UPGRADE_FIXTURE"
     echo ""
 
     # Check prerequisites
@@ -225,72 +215,15 @@ main() {
     local start_time=$(date +%s)
     local failed=false
 
-    # Unit tests
     if [ "$RUN_UNIT" = "true" ]; then
-        if ! run_test_suite "Unit Tests" "$SCRIPT_DIR/unit/install-script.test.sh"; then
+        if ! run_unit_suites; then
             failed=true
         fi
     fi
 
-    # E2E tests
     if [ "$RUN_E2E" = "true" ]; then
-        # Fresh install test
-        local cleanup_arg=""
-        if [ "$SKIP_CLEANUP" = "true" ]; then
-            cleanup_arg="--keep-containers"
-        fi
-
-        if ! run_test_suite "Fresh Install E2E" "$SCRIPT_DIR/e2e/fresh-install.test.sh" "$cleanup_arg"; then
+        if ! run_e2e_suites; then
             failed=true
-        fi
-
-        # Container health test (only if fresh install passed or --skip-cleanup)
-        if [ "$failed" = "false" ] || [ "$SKIP_CLEANUP" = "true" ]; then
-            if ! run_test_suite "Container Health" "$SCRIPT_DIR/e2e/container-health.test.sh"; then
-                failed=true
-            fi
-        fi
-
-        # Auth flow test
-        if [ "$failed" = "false" ] || [ "$SKIP_CLEANUP" = "true" ]; then
-            if ! run_test_suite "Auth Flow" "$SCRIPT_DIR/e2e/auth-flow.test.sh"; then
-                failed=true
-            fi
-        fi
-
-        # Upgrade test (skip in fast mode)
-        if [ "$FAST_MODE" = "false" ]; then
-            local upgrade_args="$cleanup_arg"
-            if [ -n "$UPGRADE_SOURCE_REF" ]; then
-                upgrade_args="$upgrade_args --source-ref $UPGRADE_SOURCE_REF"
-            fi
-            if [ -n "$UPGRADE_FIXTURE" ]; then
-                upgrade_args="$upgrade_args --fixture $UPGRADE_FIXTURE"
-            fi
-            if [ -n "$UPGRADE_MODE" ]; then
-                upgrade_args="$upgrade_args --mode $UPGRADE_MODE"
-            fi
-            if [ -n "$HTTPS_PORT_OVERRIDE" ]; then
-                upgrade_args="$upgrade_args --https-port $HTTPS_PORT_OVERRIDE"
-            fi
-            if [ -n "$HTTP_PORT_OVERRIDE" ]; then
-                upgrade_args="$upgrade_args --http-port $HTTP_PORT_OVERRIDE"
-            fi
-            if [ -n "$GATEWAY_PORT_OVERRIDE" ]; then
-                upgrade_args="$upgrade_args --gateway-port $GATEWAY_PORT_OVERRIDE"
-            fi
-
-            if ! run_test_suite "Upgrade Install" "$SCRIPT_DIR/e2e/upgrade-install.test.sh" "$upgrade_args"; then
-                failed=true
-            fi
-        else
-            log_info "Skipping upgrade test (fast mode)"
-        fi
-
-        # Cleanup unless skipped
-        if [ "$SKIP_CLEANUP" = "false" ]; then
-            log_info "Cleaning up containers..."
-            cleanup_containers "$(cd "$SCRIPT_DIR/../.." && pwd)" 2>/dev/null || true
         fi
     fi
 

@@ -47,6 +47,7 @@ LEGACY_ENV_FILE="$PROJECT_DIR/.env"
 LEGACY_LOCAL_ENV_FILE="$PROJECT_DIR/.env.local"
 DEFAULT_SSL_DIR="$DEFAULT_RUNTIME_DIR/ssl"
 LEGACY_SSL_DIR="$PROJECT_DIR/docker/nginx/ssl"
+LEGACY_DEFAULT_ENCRYPTION_SALT="sanctuary-node-config"
 
 ENV_FILE="${SANCTUARY_ENV_FILE:-$DEFAULT_ENV_FILE}"
 ENV_FILE_IS_LEGACY=false
@@ -615,6 +616,8 @@ load_or_generate_secrets() {
     # Use existing secrets from environment, or generate new ones
     echo -e "${GREEN}Configuring secrets...${NC}"
 
+    local had_existing_encryption_key=false
+
     if [ -n "$JWT_SECRET" ]; then
         echo "  - JWT_SECRET: using existing"
     else
@@ -623,6 +626,7 @@ load_or_generate_secrets() {
     fi
 
     if [ -n "$ENCRYPTION_KEY" ]; then
+        had_existing_encryption_key=true
         echo "  - ENCRYPTION_KEY: using existing"
     else
         ENCRYPTION_KEY=$(generate_secret)
@@ -631,6 +635,9 @@ load_or_generate_secrets() {
 
     if [ -n "$ENCRYPTION_SALT" ]; then
         echo "  - ENCRYPTION_SALT: using existing"
+    elif [ "$had_existing_encryption_key" = true ]; then
+        ENCRYPTION_SALT="$LEGACY_DEFAULT_ENCRYPTION_SALT"
+        echo "  - ENCRYPTION_SALT: using legacy default for existing encryption key"
     else
         ENCRYPTION_SALT=$(openssl rand -base64 16 2>/dev/null || generate_password)
         echo "  - ENCRYPTION_SALT: generated"

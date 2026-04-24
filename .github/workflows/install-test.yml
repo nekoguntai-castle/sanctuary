@@ -17,9 +17,9 @@ on:
       - 'server/prisma/**'
       - 'docker/**'
       - 'tests/install/**'
-      - '!tests/install/*.md'
-      - '!tests/install/**/*.md'
       - '.github/workflows/install-test.yml'
+  schedule:
+    - cron: '17 10 * * *'
   workflow_dispatch:
     inputs:
       test_suite:
@@ -42,13 +42,8 @@ on:
         default: false
         type: boolean
       upgrade_source_ref:
-        description: 'Optional older git ref/tag or named lane (latest-stable, n-1, n-2) to install before upgrading to the checked-out ref'
+        description: 'Optional older git ref or tag to install before upgrading to the checked-out ref'
         required: false
-        type: string
-      upgrade_fixture:
-        description: 'Upgrade fixture to apply during the source-install and post-upgrade hooks'
-        required: false
-        default: 'baseline'
         type: string
 
 permissions:
@@ -87,12 +82,11 @@ jobs:
         run: |
           # Check if any install-relevant files changed
           CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
-          CHANGED_NON_DOCS=$(printf '%s\n' "$CHANGED" | grep -vE '\.md$' || true)
           RELEVANT_PATTERNS="install.sh|docker-compose.yml|Dockerfile|server/Dockerfile|server/prisma/|docker/|tests/install/|.github/workflows/install-test.yml"
-          if echo "$CHANGED_NON_DOCS" | grep -qE "$RELEVANT_PATTERNS"; then
+          if echo "$CHANGED" | grep -qE "$RELEVANT_PATTERNS"; then
             echo "changed=true" >> $GITHUB_OUTPUT
             echo "Relevant files changed:"
-            echo "$CHANGED_NON_DOCS" | grep -E "$RELEVANT_PATTERNS" || true
+            echo "$CHANGED" | grep -E "$RELEVANT_PATTERNS" || true
           else
             echo "changed=false" >> $GITHUB_OUTPUT
             echo "No install-relevant files changed"
@@ -119,6 +113,12 @@ jobs:
               echo "run_upgrade=false" >> $GITHUB_OUTPUT
             fi
             echo "Triggered manually with suite: ${{ github.event.inputs.test_suite }}"
+          elif [[ "${{ github.event_name }}" == "schedule" ]]; then
+            echo "is_release=false" >> $GITHUB_OUTPUT
+            echo "test_suite=upgrade" >> $GITHUB_OUTPUT
+            echo "run_upgrade=true" >> $GITHUB_OUTPUT
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "Triggered by schedule - running upgrade matrix"
           elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
             # PR - always run (paths filter already applied in trigger)
             echo "is_release=false" >> $GITHUB_OUTPUT
@@ -163,7 +163,10 @@ jobs:
         run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh
 
       - name: Run unit tests
-        run: ./tests/install/unit/install-script.test.sh
+        run: |
+          ./tests/install/unit/install-script.test.sh
+          ./tests/install/unit/reset-user-2fa-script.test.sh
+          ./tests/install/unit/upgrade-helpers.test.sh
 
   # ============================================
   # Fresh Install E2E Test
@@ -444,21 +447,35 @@ jobs:
         run: docker compose down -v --remove-orphans || true
 
   # ============================================
-  # Upgrade Test (Required for releases, optional elsewhere)
+  # Upgrade Test Matrix (Long Running)
   # ============================================
   upgrade-test:
-    name: Upgrade Install Test (latest-stable)
+    name: Upgrade ${{ matrix.source_ref }} / ${{ matrix.fixture }}
     runs-on: ubuntu-latest
     needs: determine-scope
     if: |
       needs.determine-scope.outputs.should_run == 'true' &&
       (needs.determine-scope.outputs.run_upgrade == 'true' ||
        needs.determine-scope.outputs.test_suite == 'upgrade')
-    timeout-minutes: 45
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - source_ref: latest-stable
+            fixture: baseline
+          - source_ref: n-2
+            fixture: baseline
+          - source_ref: latest-stable
+            fixture: browser-origin-ip
+          - source_ref: latest-stable
+            fixture: legacy-runtime-env
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 0
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
@@ -470,20 +487,10 @@ jobs:
         env:
           HTTPS_PORT: ${{ env.HTTPS_PORT }}
           HTTP_PORT: ${{ env.HTTP_PORT }}
-          SANCTUARY_UPGRADE_SOURCE_REF: ${{ github.event.inputs.upgrade_source_ref || 'latest-stable' }}
-          SANCTUARY_UPGRADE_FIXTURE: ${{ github.event.inputs.upgrade_fixture || 'baseline' }}
-          SANCTUARY_UPGRADE_ARTIFACTS_DIR: ${{ runner.temp }}/upgrade-latest-stable
-          SANCTUARY_UPGRADE_JOB_NAME: install-test-upgrade-latest-stable
-        run: ./tests/install/e2e/upgrade-install.test.sh --mode core --verbose
-
-      - name: Upload upgrade artifacts on failure
-        if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: install-test-upgrade-latest-stable-artifacts
-          path: ${{ runner.temp }}/upgrade-latest-stable
-          if-no-files-found: ignore
-          retention-days: 7
+          SANCTUARY_UPGRADE_SOURCE_REF: ${{ github.event.inputs.upgrade_source_ref || matrix.source_ref }}
+          SANCTUARY_UPGRADE_FIXTURE: ${{ matrix.fixture }}
+          SANCTUARY_UPGRADE_ARTIFACT_DIR: .tmp/upgrade-artifacts/${{ matrix.source_ref }}-${{ matrix.fixture }}
+        run: ./tests/install/e2e/upgrade-install.test.sh --mode core --fixture "${{ matrix.fixture }}" --verbose
 
       - name: Show container logs on failure
         if: failure()
@@ -491,6 +498,14 @@ jobs:
           docker compose ps || true
           docker compose logs --tail 50 postgres 2>&1 || true
           docker compose logs --tail 100 backend 2>&1 || true
+
+      - name: Upload upgrade artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: upgrade-${{ matrix.source_ref }}-${{ matrix.fixture }}
+          path: .tmp/upgrade-artifacts/${{ matrix.source_ref }}-${{ matrix.fixture }}
+          if-no-files-found: ignore
 
       - name: Cleanup
         if: always()
@@ -586,11 +601,11 @@ jobs:
 
           # Upgrade test
           if [ "${{ needs.upgrade-test.result }}" == "success" ]; then
-            echo "- Upgrade Install (latest-stable): :white_check_mark: Passed" >> $GITHUB_STEP_SUMMARY
+            echo "- Upgrade Install: :white_check_mark: Passed" >> $GITHUB_STEP_SUMMARY
           elif [ "${{ needs.upgrade-test.result }}" == "skipped" ]; then
-            echo "- Upgrade Install (latest-stable): :arrow_right: Skipped" >> $GITHUB_STEP_SUMMARY
+            echo "- Upgrade Install: :arrow_right: Skipped" >> $GITHUB_STEP_SUMMARY
           else
-            echo "- Upgrade Install (latest-stable): :x: Failed" >> $GITHUB_STEP_SUMMARY
+            echo "- Upgrade Install: :x: Failed" >> $GITHUB_STEP_SUMMARY
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -648,7 +663,7 @@ jobs:
           fi
 
           if [ "${{ needs.upgrade-test.result }}" != "success" ]; then
-            echo "::error::Latest-stable upgrade test failed - release blocked"
+            echo "::error::Upgrade matrix failed - release blocked"
             FAILED=true
           fi
 

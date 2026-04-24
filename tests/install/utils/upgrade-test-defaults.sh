@@ -1,0 +1,21 @@
+#!/bin/bash
+# Shared constants for disposable upgrade-test installations.
+
+# Keep upgrade tests away from the default local development ports. CI can still
+# override these through job env when it runs on an isolated runner.
+UPGRADE_TEST_DEFAULT_HTTPS_PORT="${UPGRADE_TEST_DEFAULT_HTTPS_PORT:-9443}"
+UPGRADE_TEST_DEFAULT_HTTP_PORT="${UPGRADE_TEST_DEFAULT_HTTP_PORT:-9080}"
+UPGRADE_TEST_DEFAULT_GATEWAY_PORT="${UPGRADE_TEST_DEFAULT_GATEWAY_PORT:-4400}"
+UPGRADE_TEST_DEFAULT_BROWSER_HOST="${UPGRADE_TEST_DEFAULT_BROWSER_HOST:-localhost}"
+
+apply_upgrade_test_network_defaults() {
+    HTTPS_PORT="${HTTPS_PORT:-$UPGRADE_TEST_DEFAULT_HTTPS_PORT}"
+    HTTP_PORT="${HTTP_PORT:-$UPGRADE_TEST_DEFAULT_HTTP_PORT}"
+    GATEWAY_PORT="${GATEWAY_PORT:-$UPGRADE_TEST_DEFAULT_GATEWAY_PORT}"
+    UPGRADE_BROWSER_HOST="${UPGRADE_BROWSER_HOST:-$UPGRADE_TEST_DEFAULT_BROWSER_HOST}"
+
+    export HTTPS_PORT
+    export HTTP_PORT
+    export GATEWAY_PORT
+    export UPGRADE_BROWSER_HOST
+}
