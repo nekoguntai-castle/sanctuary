@@ -1,6 +1,6 @@
 # Active Task: Path-Aware CI Speed Optimization
 
-Status: in progress
+Status: complete
 
 Goal: reduce GitHub Actions time by replacing broad/default test gates with path-aware, explicitly useful checks while preserving merge-queue protection and release confidence.
 
@@ -58,10 +58,10 @@ Goal: reduce GitHub Actions time by replacing broad/default test gates with path
 ### Delivery
 
 - [x] Run focused local validation: shell syntax, classifier tests, workflow YAML parsing/actionlint-compatible checks, `git diff --check`, and touched-file lizard where useful.
-- [ ] Commit and push `ci/path-aware-speedups`.
-- [ ] Open a PR, monitor checks, fix any CI errors, and merge successfully.
-- [ ] Clean up temporary worktrees and task artifacts created for this CI optimization batch.
-- [ ] After merge, re-analyze additional ways to optimize tests further.
+- [x] Commit and push `ci/path-aware-speedups`.
+- [x] Open a PR, monitor checks, fix any CI errors, and merge successfully.
+- [x] Clean up temporary worktrees and task artifacts created for this CI optimization batch.
+- [x] After merge, re-analyze additional ways to optimize tests further.
 
 ## Verification Strategy
 
@@ -77,6 +77,9 @@ Goal: reduce GitHub Actions time by replacing broad/default test gates with path
 - Replaced install-test ad hoc path filtering with a tested scope classifier and a reusable container-health/auth-flow stack lane.
 - Added `scripts/ci/report-workflow-durations.sh` plus CI docs/lessons so future expensive triggers require executable classifier coverage.
 - Local validation passed: shell syntax checks, CI/install classifier tests, install unit umbrella, actionlint on touched workflows, `git diff --check`, and touched-file lizard.
+- PR #131 merged successfully through the merge queue at `2026-04-24T23:02:45Z`; PR and merge-group CodeQL, Code Quality, Test Suite, and release-critical Install Tests passed.
+- Post-merge duration review found the remaining highest-cost lanes are merge-group full E2E (~7m50s), full frontend coverage (~5m17s), full backend coverage (~4m17s), and release-critical install upgrade lanes (~7m26s-7m43s each).
+- Additional optimization candidates: split full E2E into route groups, reduce frontend coverage cold-start/build duplication, cache or prebuild server setup for backend/full E2E, and make install upgrade fixture selection more path-aware while keeping release tags full.
 
 ---
 
