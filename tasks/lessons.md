@@ -84,6 +84,18 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 - If GitHub catches a failure that can be reproduced locally, add that local command to the pre-push checklist before retrying.
 - Do not disable branch protection to move faster. Speed comes from local-first validation, scoped batches, and path-aware CI, while GitHub remains the final gate.
 
+## Cancel superseded PR runs after force-pushes
+
+**Rule:** After amending or force-pushing a PR branch, immediately cancel any still-running GitHub Actions runs for the previous head SHA before waiting on the new checks.
+
+**Why:** During PR #127, the first pushed SHA started the same expensive PR workflows, then the branch was amended for a gitleaks false positive. Waiting on obsolete runs wasted runner time and made the new required runs look like duplicate work.
+
+**How to apply:**
+- Before force-pushing, note the current head SHA and any in-progress run IDs for the PR branch.
+- After the push, run `gh run list --limit 20 --json databaseId,headBranch,headSha,status,workflowName,displayTitle,url` and identify in-progress runs whose `headSha` is no longer the PR head.
+- Cancel only obsolete in-progress runs with `gh run cancel <run-id>`. Do not cancel current-head checks or merge-queue checks unless intentionally stopping the PR.
+- Use single-shot `gh pr checks <number>` polling instead of long `--watch` output when discussing status with the user.
+
 ## Match DoS controls to the deployment exposure model
 
 **Rule:** Do not turn CodeQL `missing-rate-limiting` cleanup into aggressive public-internet throttling by default. Sanctuary is usually deployed on private/self-hosted networks, so default limits should be generous safety valves; tighter ceilings belong behind an explicit public-exposure configuration or existing route-specific controls.

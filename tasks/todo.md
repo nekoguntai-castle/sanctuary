@@ -1,3 +1,25 @@
+# Active Task: Cancel Superseded CI Runs
+
+Status: in progress
+
+Goal: reduce wasted GitHub Actions time after amended/force-pushed changes by relying on workflow-level concurrency where it is missing.
+
+## Checklist
+
+- [x] Inspect existing workflow concurrency coverage before changing CI.
+- [x] Confirm PR-triggered workflows already cancel stale pull-request runs.
+- [x] Add cancellation for repeat release-candidate validation runs on the same ref.
+- [x] Validate workflow YAML without running expensive app/test suites.
+- [ ] Commit, push, and use the lightest GitHub check path available.
+
+## Review
+
+- Existing PR-triggered workflows already had PR concurrency cancellation.
+- Added release-candidate concurrency so repeat validation for the same ref cancels superseded runs.
+- Local validation intentionally stayed light: workflow YAML parse and `git diff --check`.
+
+---
+
 # Queued Task: Ledger Nano S Plus Xpub Fetch Failure
 
 Status: queued
