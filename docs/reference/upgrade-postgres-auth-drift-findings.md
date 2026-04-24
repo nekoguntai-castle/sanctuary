@@ -1,5 +1,7 @@
 # Upgrade Findings: PostgreSQL Auth Drift On Release Upgrade
 
+Status: fixed on `main` by `2d59029776e942fc3b44ef1947195e98ac8505f4`; relevant when diagnosing upgrades performed with releases older than that hotfix.
+
 ## Summary
 
 Upgrading from `v0.8.40` to `v0.8.41` can fail even when `./install.sh` preserves the existing runtime env file. The failure mode is PostgreSQL authentication drift between the operator's runtime env and the existing database user password.

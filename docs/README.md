@@ -34,6 +34,7 @@ Lookup tables, checklists, and specs.
 
 - [Hardware wallet integration](reference/hardware-wallet-integration.md) — hardware wallet feature specification
 - [Release gates](reference/release-gates.md) — release criteria and verification checklist
+- [Upgrade PostgreSQL auth drift findings](reference/upgrade-postgres-auth-drift-findings.md) — incident notes, reliable checks, and manual recovery
 
 ## Architecture Decision Records
 
