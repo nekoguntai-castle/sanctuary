@@ -14,6 +14,12 @@
 #   --skip-cleanup     Keep containers after tests
 #   --verbose          Show detailed output
 #   --fast             Skip slow tests
+#   --upgrade-source-ref <ref>  Older tag/ref or named lane (latest-stable, n-1, n-2)
+#   --upgrade-fixture <name>    Upgrade fixture to apply during the upgrade lane
+#   --upgrade-mode <mode>       Upgrade lane mode (core or full)
+#   --https-port <port>         Override the HTTPS port used by install E2E tests
+#   --http-port <port>          Override the HTTP port used by install E2E tests
+#   --gateway-port <port>       Override the gateway port used by install E2E tests
 #
 # ============================================
 
@@ -34,6 +40,12 @@ RUN_E2E=true
 SKIP_CLEANUP=false
 VERBOSE=""
 FAST_MODE=false
+UPGRADE_SOURCE_REF=""
+UPGRADE_FIXTURE=""
+UPGRADE_MODE=""
+HTTPS_PORT_OVERRIDE=""
+HTTP_PORT_OVERRIDE=""
+GATEWAY_PORT_OVERRIDE=""
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -59,6 +71,54 @@ while [[ $# -gt 0 ]]; do
             FAST_MODE=true
             shift
             ;;
+        --upgrade-source-ref)
+            UPGRADE_SOURCE_REF="$2"
+            shift 2
+            ;;
+        --upgrade-source-ref=*)
+            UPGRADE_SOURCE_REF="${1#*=}"
+            shift
+            ;;
+        --upgrade-fixture)
+            UPGRADE_FIXTURE="$2"
+            shift 2
+            ;;
+        --upgrade-fixture=*)
+            UPGRADE_FIXTURE="${1#*=}"
+            shift
+            ;;
+        --upgrade-mode)
+            UPGRADE_MODE="$2"
+            shift 2
+            ;;
+        --upgrade-mode=*)
+            UPGRADE_MODE="${1#*=}"
+            shift
+            ;;
+        --https-port)
+            HTTPS_PORT_OVERRIDE="$2"
+            shift 2
+            ;;
+        --https-port=*)
+            HTTPS_PORT_OVERRIDE="${1#*=}"
+            shift
+            ;;
+        --http-port)
+            HTTP_PORT_OVERRIDE="$2"
+            shift 2
+            ;;
+        --http-port=*)
+            HTTP_PORT_OVERRIDE="${1#*=}"
+            shift
+            ;;
+        --gateway-port)
+            GATEWAY_PORT_OVERRIDE="$2"
+            shift 2
+            ;;
+        --gateway-port=*)
+            GATEWAY_PORT_OVERRIDE="${1#*=}"
+            shift
+            ;;
         --help|-h)
             echo "Usage: $0 [options]"
             echo ""
@@ -68,6 +128,12 @@ while [[ $# -gt 0 ]]; do
             echo "  --skip-cleanup   Keep containers after tests"
             echo "  --verbose        Show detailed output"
             echo "  --fast           Skip slow tests (upgrade)"
+            echo "  --upgrade-source-ref <ref>  Older tag/ref or named lane (latest-stable, n-1, n-2)"
+            echo "  --upgrade-fixture <name>    Upgrade fixture to apply during the upgrade lane"
+            echo "  --upgrade-mode <mode>       Upgrade lane mode (core or full)"
+            echo "  --https-port <port>         Override the HTTPS port used by install E2E tests"
+            echo "  --http-port <port>          Override the HTTP port used by install E2E tests"
+            echo "  --gateway-port <port>       Override the gateway port used by install E2E tests"
             echo "  --help           Show this help"
             exit 0
             ;;
@@ -76,6 +142,14 @@ while [[ $# -gt 0 ]]; do
             exit 1
             ;;
     esac
+done
+
+for port_name in HTTPS_PORT_OVERRIDE HTTP_PORT_OVERRIDE GATEWAY_PORT_OVERRIDE; do
+    port_value="${!port_name}"
+    if [ -n "$port_value" ] && [[ ! "$port_value" =~ ^[0-9]+$ ]]; then
+        log_error "Invalid ${port_name}: $port_value"
+        exit 1
+    fi
 done
 
 # Track results
@@ -134,6 +208,12 @@ main() {
     echo "  Run E2E Tests:   $RUN_E2E"
     echo "  Skip Cleanup:    $SKIP_CLEANUP"
     echo "  Fast Mode:       $FAST_MODE"
+    echo "  Upgrade Source:  ${UPGRADE_SOURCE_REF:-auto}"
+    echo "  Upgrade Fixture: ${UPGRADE_FIXTURE:-default}"
+    echo "  Upgrade Mode:    ${UPGRADE_MODE:-default}"
+    echo "  HTTPS Port:      ${HTTPS_PORT_OVERRIDE:-default}"
+    echo "  HTTP Port:       ${HTTP_PORT_OVERRIDE:-default}"
+    echo "  Gateway Port:    ${GATEWAY_PORT_OVERRIDE:-default}"
     echo ""
 
     # Check prerequisites
@@ -180,7 +260,27 @@ main() {
 
         # Upgrade test (skip in fast mode)
         if [ "$FAST_MODE" = "false" ]; then
-            if ! run_test_suite "Upgrade Install" "$SCRIPT_DIR/e2e/upgrade-install.test.sh" "$cleanup_arg"; then
+            local upgrade_args="$cleanup_arg"
+            if [ -n "$UPGRADE_SOURCE_REF" ]; then
+                upgrade_args="$upgrade_args --source-ref $UPGRADE_SOURCE_REF"
+            fi
+            if [ -n "$UPGRADE_FIXTURE" ]; then
+                upgrade_args="$upgrade_args --fixture $UPGRADE_FIXTURE"
+            fi
+            if [ -n "$UPGRADE_MODE" ]; then
+                upgrade_args="$upgrade_args --mode $UPGRADE_MODE"
+            fi
+            if [ -n "$HTTPS_PORT_OVERRIDE" ]; then
+                upgrade_args="$upgrade_args --https-port $HTTPS_PORT_OVERRIDE"
+            fi
+            if [ -n "$HTTP_PORT_OVERRIDE" ]; then
+                upgrade_args="$upgrade_args --http-port $HTTP_PORT_OVERRIDE"
+            fi
+            if [ -n "$GATEWAY_PORT_OVERRIDE" ]; then
+                upgrade_args="$upgrade_args --gateway-port $GATEWAY_PORT_OVERRIDE"
+            fi
+
+            if ! run_test_suite "Upgrade Install" "$SCRIPT_DIR/e2e/upgrade-install.test.sh" "$upgrade_args"; then
                 failed=true
             fi
         else

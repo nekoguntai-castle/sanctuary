@@ -59,6 +59,107 @@ Goal: make docs-only PRs skip the test-suite and install-test workflow shells en
   - `git diff --check`
 - Deleted stale local branches `docs/upgrade-postgres-auth-docs` and `docs/upgrade-postgres-auth-docs-v2`, removed the old `/tmp/sanctuary-docs` worktree, deleted `origin/docs/upgrade-postgres-auth-docs`, and pruned the already-merged `origin/docs/upgrade-postgres-auth-docs-v2` tracking ref.
 
+# Completed Task: Upgrade Testing Phases 2-6
+
+Status: complete
+
+Goal: finish the roadmap after the merged Phase 1 baseline by turning the upgrade harness into a fixture-driven system, adding post-upgrade smoke coverage, broadening historical/workflow lanes, capturing failure artifacts, and promoting the latest-stable upgrade path into a real release gate.
+
+## Checklist
+
+- [x] Phase 2: extract reusable upgrade fixture hooks and move the baseline password-change seed into a named fixture.
+- [x] Phase 2: add non-baseline deployment-shape fixtures for legacy runtime env, IP-origin browser access, optional profiles, and seeded persistent app state.
+- [x] Phase 3: add post-upgrade browser/auth/websocket smoke coverage and worker/support-package smoke coverage.
+- [x] Phase 4: wire `latest-stable`, `n-1`, and `n-2` upgrade lanes into the install/release workflows and the local master runner.
+- [x] Phase 5: upload upgrade failure artifacts and preserve the context needed to debug failed source/target transitions.
+- [x] Phase 6: make the `latest-stable -> candidate` upgrade lane a required release signal while keeping `n-1` / `n-2` as warning-level historical coverage.
+- [x] Re-run the risky optional-profile lane after isolating monitoring ports, compose files, and monitoring container names across old/new refs.
+- [x] Re-run the full extended baseline lane after the refactor to prove the original recovery scenarios still pass.
+- [x] Update the install-test and release-gate docs to match the new lanes, fixtures, and artifact behavior.
+
+## Review
+
+- Added fixture infrastructure:
+  - `tests/install/utils/upgrade-fixtures.sh`
+  - `tests/install/utils/upgrade-source-refs.sh`
+  - `tests/install/utils/upgrade-assertions.sh`
+  - `tests/install/utils/collect-upgrade-artifacts.sh`
+- Added concrete fixtures:
+  - `tests/install/fixtures/upgrade/baseline.sh`
+  - `tests/install/fixtures/upgrade/browser-origin-ip.sh`
+  - `tests/install/fixtures/upgrade/legacy-runtime-env.sh`
+  - `tests/install/fixtures/upgrade/optional-profiles.sh`
+  - `tests/install/fixtures/upgrade/seeded-app-state.sh`
+- Added post-upgrade smoke tests:
+  - `tests/install/e2e/upgrade-browser-smoke.test.sh`
+  - `tests/install/e2e/upgrade-worker-smoke.test.sh`
+- Hardened the harness so optional profiles behave like real installs/upgrades:
+  - `tests/install/utils/helpers.sh` now runs compose commands with the same file set as the install path.
+  - `tests/install/utils/helpers.sh` now cleans up stale `sanctuary-upgrade-test-*` compose projects so repeated local upgrade runs do not collide with leftover test stacks.
+  - `docker-compose.monitoring.yml` now supports env-driven container names so concurrent monitoring-enabled upgrade runs do not collide.
+  - `tests/install/e2e/upgrade-install.test.sh` now forwards monitoring ports/container names, supports CLI port overrides, collects artifact context, and uses the shared compose wrapper for stop/cleanup/recovery flows.
+  - `tests/install/utils/upgrade-fixtures.sh` and `tests/install/fixtures/upgrade/browser-origin-ip.sh` now allow fixtures to claim an isolated gateway port along with HTTPS/HTTP.
+- Extended the local runner and CI workflows:
+  - `tests/install/run-all-tests.sh` forwards upgrade source-ref / fixture / mode overrides.
+  - `.github/workflows/install-test.yml` now runs the required `latest-stable` upgrade lane, supports manual fixture selection, and uploads artifacts on failure.
+  - `.github/workflows/release-candidate.yml` now runs the required `latest-stable` lane plus warning-level `n-1` / `n-2` lanes with artifact upload and explicit summary/gating behavior.
+- Updated operator docs:
+  - `tests/install/README.md`
+  - `docs/reference/release-gates.md`
+- Tightened the support-package regression helper:
+  - `scripts/support-package-runner.mjs`
+  - `tests/scripts/support-package-runner.test.ts`
+- Validation completed during this phase:
+  - `bash -n tests/install/e2e/upgrade-install.test.sh tests/install/e2e/upgrade-browser-smoke.test.sh tests/install/e2e/upgrade-worker-smoke.test.sh tests/install/utils/helpers.sh tests/install/utils/upgrade-fixtures.sh tests/install/utils/upgrade-assertions.sh tests/install/utils/upgrade-source-refs.sh tests/install/utils/collect-upgrade-artifacts.sh tests/install/fixtures/upgrade/baseline.sh tests/install/fixtures/upgrade/browser-origin-ip.sh tests/install/fixtures/upgrade/legacy-runtime-env.sh tests/install/fixtures/upgrade/optional-profiles.sh tests/install/fixtures/upgrade/seeded-app-state.sh tests/install/run-all-tests.sh`
+  - `node --check scripts/support-package-runner.mjs`
+  - `docker compose -f docker-compose.yml -f docker-compose.monitoring.yml config >/dev/null`
+  - `bash tests/install/unit/install-script.test.sh`
+  - `./tests/install/e2e/upgrade-install.test.sh --mode core --source-ref v0.8.40 --fixture browser-origin-ip`
+  - `./tests/install/e2e/upgrade-install.test.sh --mode core --source-ref v0.8.40 --fixture legacy-runtime-env --https-port 18443 --http-port 18080 --gateway-port 14000`
+  - `./tests/install/e2e/upgrade-install.test.sh --mode core --source-ref v0.8.40 --fixture seeded-app-state --https-port 18443 --http-port 18080 --gateway-port 14000`
+  - `./tests/install/e2e/upgrade-install.test.sh --mode core --source-ref v0.8.40 --fixture optional-profiles --https-port 18443 --http-port 18080 --gateway-port 14000`
+  - `./tests/install/e2e/upgrade-install.test.sh --mode full --source-ref v0.8.40 --fixture baseline --https-port 18443 --http-port 18080 --gateway-port 14000`
+- Known local environment caveat:
+  - `npx vitest run tests/scripts/support-package-runner.test.ts` was not rerun in `/tmp/sanctuary-upgrade-phase1` because the temporary worktree does not have the root dev dependencies installed. The harness and script validations above passed in this worktree.
+
+---
+
+# Active Task: Phase 1 Upgrade Recovery Validation
+
+Status: complete
+
+Goal: validate and harden the merged password-drift upgrade recovery path on post-merge `main`, using the real extended upgrade harness and the documented production failure mode as the acceptance bar.
+
+## Checklist
+
+- [x] Re-read the merged `main` implementation for `scripts/setup.sh`, the extended upgrade harness, and the postgres auth-drift findings before changing anything.
+- [x] Run `./tests/install/e2e/upgrade-install.test.sh --mode full --source-ref v0.8.40` on the merged codebase to measure the current Phase 1 baseline.
+- [x] If the full upgrade recovery lane fails, isolate whether the gap is in `scripts/setup.sh`, the harness, or the assertions and fix only that layer.
+- [x] Re-run the focused local validation needed for the Phase 1 fix set.
+- [x] Update upgrade-test documentation if the execution path or recovery expectations changed.
+- [x] Record the Phase 1 result and remaining risks in this file.
+
+## Review
+
+- Clean execution worktree created at `/tmp/sanctuary-upgrade-phase1` from `origin/main` (`9a71617b`) so local roadmap notes in the original checkout do not leak into Phase 1 edits.
+- Current merged baseline already contains:
+  - Compose-network PostgreSQL password validation in `scripts/setup.sh`
+  - password-repair logic that does not assume a `postgres` DB role
+  - extended upgrade test `test_recover_postgres_password_drift`
+  - unit assertions covering the setup-script recovery path
+- Verification run completed successfully on merged `main`:
+  - `./tests/install/e2e/upgrade-install.test.sh --mode full --source-ref v0.8.40`
+- Result:
+  - source install from `v0.8.40` passed
+  - real ref-to-ref upgrade into `v0.8.41-4-g9a71617b` passed
+  - `Recover PostgreSQL Password Drift` passed
+  - `Verify All Services` passed
+  - `Force Rebuild Upgrade` passed
+  - `Volume Data Persistence` passed
+  - final summary: `13 passed, 0 failed`
+- No code or doc changes were needed for Phase 1 after validating the merged baseline.
+- Remaining roadmap work now starts at Phase 2: reusable upgrade fixtures and broader deployment-shape coverage.
+
 ---
 
 # Active Task: Release Upgrade Postgres Auth Drift Hotfix

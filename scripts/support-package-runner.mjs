@@ -44,6 +44,26 @@ export function loadSupportPackageGenerator({
   return loadedModule.generateSupportPackage;
 }
 
+async function withSuppressedStdout(callback) {
+  const originalWrite = process.stdout.write.bind(process.stdout);
+
+  process.stdout.write = (...args) => {
+    const callbackArg = typeof args[args.length - 1] === 'function'
+      ? args[args.length - 1]
+      : null;
+    if (callbackArg) {
+      callbackArg();
+    }
+    return true;
+  };
+
+  try {
+    return await callback();
+  } finally {
+    process.stdout.write = originalWrite;
+  }
+}
+
 /**
  * @param {NodeJS.WritableStream} [output]
  * @param {{ resolveCandidate?: (candidate: string) => string, loadModule?: (modulePath: string) => unknown }} [dependencies]
@@ -52,8 +72,10 @@ export async function writeSupportPackageJson(
   output = process.stdout,
   dependencies = {},
 ) {
-  const generateSupportPackage = loadSupportPackageGenerator(dependencies);
-  const supportPackage = await generateSupportPackage();
+  const supportPackage = await withSuppressedStdout(async () => {
+    const generateSupportPackage = loadSupportPackageGenerator(dependencies);
+    return generateSupportPackage();
+  });
   output.write(JSON.stringify(supportPackage, null, 2));
 }
 

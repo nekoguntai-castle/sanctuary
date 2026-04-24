@@ -42,8 +42,13 @@ on:
         default: false
         type: boolean
       upgrade_source_ref:
-        description: 'Optional older git ref or tag to install before upgrading to the checked-out ref'
+        description: 'Optional older git ref/tag or named lane (latest-stable, n-1, n-2) to install before upgrading to the checked-out ref'
         required: false
+        type: string
+      upgrade_fixture:
+        description: 'Upgrade fixture to apply during the source-install and post-upgrade hooks'
+        required: false
+        default: 'baseline'
         type: string
 
 permissions:
@@ -439,10 +444,10 @@ jobs:
         run: docker compose down -v --remove-orphans || true
 
   # ============================================
-  # Upgrade Test (Optional - Long Running)
+  # Upgrade Test (Required for releases, optional elsewhere)
   # ============================================
   upgrade-test:
-    name: Upgrade Install Test
+    name: Upgrade Install Test (latest-stable)
     runs-on: ubuntu-latest
     needs: determine-scope
     if: |
@@ -465,8 +470,20 @@ jobs:
         env:
           HTTPS_PORT: ${{ env.HTTPS_PORT }}
           HTTP_PORT: ${{ env.HTTP_PORT }}
-          SANCTUARY_UPGRADE_SOURCE_REF: ${{ github.event.inputs.upgrade_source_ref }}
+          SANCTUARY_UPGRADE_SOURCE_REF: ${{ github.event.inputs.upgrade_source_ref || 'latest-stable' }}
+          SANCTUARY_UPGRADE_FIXTURE: ${{ github.event.inputs.upgrade_fixture || 'baseline' }}
+          SANCTUARY_UPGRADE_ARTIFACTS_DIR: ${{ runner.temp }}/upgrade-latest-stable
+          SANCTUARY_UPGRADE_JOB_NAME: install-test-upgrade-latest-stable
         run: ./tests/install/e2e/upgrade-install.test.sh --mode core --verbose
+
+      - name: Upload upgrade artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: install-test-upgrade-latest-stable-artifacts
+          path: ${{ runner.temp }}/upgrade-latest-stable
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Show container logs on failure
         if: failure()
@@ -569,11 +586,11 @@ jobs:
 
           # Upgrade test
           if [ "${{ needs.upgrade-test.result }}" == "success" ]; then
-            echo "- Upgrade Install: :white_check_mark: Passed" >> $GITHUB_STEP_SUMMARY
+            echo "- Upgrade Install (latest-stable): :white_check_mark: Passed" >> $GITHUB_STEP_SUMMARY
           elif [ "${{ needs.upgrade-test.result }}" == "skipped" ]; then
-            echo "- Upgrade Install: :arrow_right: Skipped" >> $GITHUB_STEP_SUMMARY
+            echo "- Upgrade Install (latest-stable): :arrow_right: Skipped" >> $GITHUB_STEP_SUMMARY
           else
-            echo "- Upgrade Install: :x: Failed" >> $GITHUB_STEP_SUMMARY
+            echo "- Upgrade Install (latest-stable): :x: Failed" >> $GITHUB_STEP_SUMMARY
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -590,7 +607,8 @@ jobs:
                [ "${{ needs.fresh-install-test.result }}" == "success" ] && \
                [ "${{ needs.install-script-test.result }}" == "success" ] && \
                [ "${{ needs.container-health-test.result }}" == "success" ] && \
-               [ "${{ needs.auth-flow-test.result }}" == "success" ]; then
+               [ "${{ needs.auth-flow-test.result }}" == "success" ] && \
+               [ "${{ needs.upgrade-test.result }}" == "success" ]; then
               echo ":rocket: **Release validation passed!** Installation has been verified." >> $GITHUB_STEP_SUMMARY
             else
               echo ":stop_sign: **Release validation FAILED!** Do not proceed with release until issues are resolved." >> $GITHUB_STEP_SUMMARY
@@ -626,6 +644,11 @@ jobs:
 
           if [ "${{ needs.auth-flow-test.result }}" != "success" ] && [ "${{ needs.auth-flow-test.result }}" != "skipped" ]; then
             echo "::error::Auth flow test failed - release blocked"
+            FAILED=true
+          fi
+
+          if [ "${{ needs.upgrade-test.result }}" != "success" ]; then
+            echo "::error::Latest-stable upgrade test failed - release blocked"
             FAILED=true
           fi
 

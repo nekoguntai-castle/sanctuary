@@ -26,6 +26,18 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 - Add an environment prefix only when the command genuinely fails without it and the failure matters to the task.
 - When a prefixed command becomes necessary, expect a fresh approval and keep the reason explicit.
 
+## Keep local Docker upgrade loops isolated and self-cleaning
+
+**Rule:** Local upgrade E2E runs must claim isolated test ports and automatically clean stale test compose projects before starting. Do not rely on whichever ports or containers happen to be free on the host.
+
+**Why:** The upgrade fixture loop lost a large amount of time to false failures from leftover `sanctuary-upgrade-test-*` stacks that still owned `8443/8080/4000` or the alternate `18443/18080/14000` ports. The product code was fine; the harness kept colliding with old test state.
+
+**How to apply:**
+- Prefer explicit CLI port flags for local upgrade runs so approvals stay stable and the run is visibly isolated.
+- Have the harness clean stale test compose projects by prefix before starting a new run.
+- When a fixture changes browser-visible ports, give it an isolated gateway port too; partial isolation still leaves room for fake failures.
+- Use the test ladder `syntax -> unit/script -> one core baseline -> one full baseline -> affected fixtures -> final full lane` instead of rerunning the whole matrix after each small harness edit.
+
 ## Treat released installer behavior as source of truth during upgrade triage
 
 **Rule:** When the user says they are upgrading with the shipped `./install.sh`, treat any missing setup behavior as a release gap until the released script proves otherwise. Do not assume a local patch, dirty worktree change, or another agent's branch is already present on the user's machine.
@@ -285,3 +297,8 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 
 ## Pre-existing CLAUDE.md rules referenced
 - "When fixing CI failures, check ALL test files and workflow files for the same issue pattern before committing. Do not fix one file at a time and re-push — batch all related fixes together." — would have caught this if I'd grepped for `getByText('newuser'` after picking the email value.
+# 2026-04-23: Keep approval command prefixes stable
+
+- When a command may need approval, do not prepend ad hoc environment variable assignments like `HTTPS_PORT=...`.
+- Prefer real script flags, checked-in wrapper scripts, or stable helper commands so the approval prefix stays reusable.
+- This matters especially for long-running test commands where repeated one-off approvals create avoidable friction.

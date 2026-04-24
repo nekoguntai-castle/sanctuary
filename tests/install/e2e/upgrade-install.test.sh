@@ -14,7 +14,7 @@
 #   - Git tags or an explicit --source-ref for a real ref-to-ref upgrade path
 #   - Docker and Docker Compose v2
 #
-# Run: ./upgrade-install.test.sh [--keep-containers] [--source-ref <git-ref>] [--mode <core|full>]
+# Run: ./upgrade-install.test.sh [--keep-containers] [--source-ref <git-ref>] [--mode <core|full>] [--https-port <port>] [--http-port <port>] [--gateway-port <port>]
 # ============================================
 
 set -e
@@ -26,6 +26,7 @@ PROJECT_ROOT="$TARGET_PROJECT_ROOT"
 
 # Source helpers
 source "$SCRIPT_DIR/../utils/helpers.sh"
+source "$SCRIPT_DIR/../utils/upgrade-source-refs.sh"
 
 # ============================================
 # Configuration
@@ -35,6 +36,13 @@ KEEP_CONTAINERS=false
 VERBOSE=false
 UPGRADE_SOURCE_REF="${SANCTUARY_UPGRADE_SOURCE_REF:-}"
 UPGRADE_TEST_MODE="${SANCTUARY_UPGRADE_TEST_MODE:-full}"
+UPGRADE_FIXTURE="${SANCTUARY_UPGRADE_FIXTURE:-baseline}"
+UPGRADE_FIXTURE_LABEL=""
+UPGRADE_ARTIFACTS_DIR="${SANCTUARY_UPGRADE_ARTIFACTS_DIR:-}"
+UPGRADE_ARTIFACTS_CAPTURED=false
+HTTPS_PORT="${HTTPS_PORT:-8443}"
+HTTP_PORT="${HTTP_PORT:-8080}"
+GATEWAY_PORT="${GATEWAY_PORT:-4000}"
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -64,6 +72,38 @@ while [[ $# -gt 0 ]]; do
             UPGRADE_TEST_MODE="${1#*=}"
             shift
             ;;
+        --fixture)
+            UPGRADE_FIXTURE="$2"
+            shift 2
+            ;;
+        --fixture=*)
+            UPGRADE_FIXTURE="${1#*=}"
+            shift
+            ;;
+        --https-port)
+            HTTPS_PORT="$2"
+            shift 2
+            ;;
+        --https-port=*)
+            HTTPS_PORT="${1#*=}"
+            shift
+            ;;
+        --http-port)
+            HTTP_PORT="$2"
+            shift 2
+            ;;
+        --http-port=*)
+            HTTP_PORT="${1#*=}"
+            shift
+            ;;
+        --gateway-port)
+            GATEWAY_PORT="$2"
+            shift 2
+            ;;
+        --gateway-port=*)
+            GATEWAY_PORT="${1#*=}"
+            shift
+            ;;
         --core-only)
             UPGRADE_TEST_MODE="core"
             shift
@@ -89,15 +129,31 @@ case "$UPGRADE_TEST_MODE" in
         ;;
 esac
 
+for port_name in HTTPS_PORT HTTP_PORT GATEWAY_PORT; do
+    port_value="${!port_name}"
+    case "$port_value" in
+        ''|*[!0-9]*)
+            log_error "Invalid ${port_name}: $port_value"
+            exit 1
+            ;;
+    esac
+done
+
+source "$SCRIPT_DIR/../utils/upgrade-fixtures.sh"
+
+if ! initialize_upgrade_fixture; then
+    exit 1
+fi
+
 # Test configuration
 TEST_ID=$(generate_test_run_id)
 export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-sanctuary-upgrade-${TEST_ID}}"
 TEST_RUNTIME_DIR="${SANCTUARY_RUNTIME_DIR:-/tmp/sanctuary-upgrade-runtime-${TEST_ID}}"
 TEST_ENV_FILE="${SANCTUARY_ENV_FILE:-$TEST_RUNTIME_DIR/sanctuary.env}"
 TEST_SSL_DIR="${SANCTUARY_SSL_DIR:-$TEST_RUNTIME_DIR/ssl}"
-HTTPS_PORT="${HTTPS_PORT:-8443}"
-HTTP_PORT="${HTTP_PORT:-8080}"
 API_BASE_URL="https://localhost:${HTTPS_PORT}"
+UPGRADE_BROWSER_BASE_URL="${UPGRADE_BROWSER_BASE_URL:-$API_BASE_URL}"
+UPGRADE_BROWSER_ORIGIN="${UPGRADE_BROWSER_ORIGIN:-$UPGRADE_BROWSER_BASE_URL}"
 COOKIE_JAR="/tmp/sanctuary-test-cookies-${TEST_ID}.txt"
 UPGRADE_SOURCE_CHECKOUT="/tmp/sanctuary-upgrade-source-${TEST_ID}/sanctuary"
 UPGRADE_SOURCE_CREATED=false
@@ -118,10 +174,14 @@ TEST_WALLET_ID=""
 CSRF_TOKEN=""
 
 resolve_env_file() {
-    if [ -f "$TEST_ENV_FILE" ]; then
+    local project_dir="${1:-$PROJECT_ROOT}"
+
+    if [ "$UPGRADE_ENV_LAYOUT" = "legacy-repo-env" ] && [ -f "$project_dir/.env" ]; then
+        echo "$project_dir/.env"
+    elif [ -f "$TEST_ENV_FILE" ]; then
         echo "$TEST_ENV_FILE"
-    elif [ -f "$PROJECT_ROOT/.env" ]; then
-        echo "$PROJECT_ROOT/.env"
+    elif [ -f "$project_dir/.env" ]; then
+        echo "$project_dir/.env"
     else
         echo "$TEST_ENV_FILE"
     fi
@@ -129,7 +189,11 @@ resolve_env_file() {
 
 load_runtime_env() {
     local env_file
-    env_file="$(resolve_env_file)"
+    local project_dir="${1:-$PROJECT_ROOT}"
+    local requested_https_port="$HTTPS_PORT"
+    local requested_http_port="$HTTP_PORT"
+    local requested_gateway_port="$GATEWAY_PORT"
+    env_file="$(resolve_env_file "$project_dir")"
     if [ ! -f "$env_file" ]; then
         log_error "Runtime env not found: $env_file"
         return 1
@@ -138,6 +202,15 @@ load_runtime_env() {
     set -a
     source "$env_file"
     set +a
+
+    set_upgrade_ports "$requested_https_port" "$requested_http_port"
+    GATEWAY_PORT="$requested_gateway_port"
+    if ! sync_runtime_env_ports "$env_file"; then
+        log_error "Failed to synchronize requested test ports into $env_file"
+        return 1
+    fi
+
+    export HTTPS_PORT HTTP_PORT GATEWAY_PORT
     export SANCTUARY_ENV_FILE="$env_file"
     export SANCTUARY_SSL_DIR="$TEST_SSL_DIR"
 }
@@ -153,6 +226,10 @@ extract_csrf_token() {
     CSRF_TOKEN=$(awk -F'\t' '$6 == "sanctuary_csrf" { print $7 }' "$COOKIE_JAR" | tail -n 1)
 }
 
+wait_for_browser_auth_ready() {
+    wait_for_http_endpoint "$API_BASE_URL/api/v1/auth/registration-status" 60 200
+}
+
 describe_checkout_ref() {
     local repo_root="$1"
 
@@ -163,27 +240,11 @@ describe_checkout_ref() {
 
 discover_upgrade_source_ref() {
     if [ -n "$UPGRADE_SOURCE_REF" ]; then
-        echo "$UPGRADE_SOURCE_REF"
+        resolve_named_upgrade_source_ref "$UPGRADE_SOURCE_REF" "$TARGET_PROJECT_ROOT"
         return 0
     fi
 
-    local target_commit
-    target_commit=$(git -C "$TARGET_PROJECT_ROOT" rev-parse HEAD 2>/dev/null || echo "")
-
-    while IFS= read -r tag; do
-        [ -z "$tag" ] && continue
-        if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            continue
-        fi
-        local tag_commit
-        tag_commit=$(git -C "$TARGET_PROJECT_ROOT" rev-list -n 1 "$tag" 2>/dev/null || echo "")
-        if [ -n "$tag_commit" ] && [ "$tag_commit" != "$target_commit" ]; then
-            echo "$tag"
-            return 0
-        fi
-    done < <(git -C "$TARGET_PROJECT_ROOT" tag --sort=-v:refname)
-
-    return 1
+    resolve_named_upgrade_source_ref "latest-stable" "$TARGET_PROJECT_ROOT"
 }
 
 prepare_upgrade_source_checkout() {
@@ -224,19 +285,71 @@ run_install_script() {
     local checkout_name
     checkout_name="$(basename "$project_dir")"
     local install_log="$TEST_RUNTIME_DIR/install-${checkout_name}.log"
+    local resolved_env_file=""
+    local resolved_ssl_dir="$TEST_SSL_DIR"
+    local -a install_env
+    local -a env_command
 
     mkdir -p "$TEST_RUNTIME_DIR"
 
+    resolved_env_file="$(resolve_env_file "$project_dir")"
+    env_command=(env)
+    install_env=(
+        "HTTPS_PORT=$HTTPS_PORT"
+        "HTTP_PORT=$HTTP_PORT"
+        "GATEWAY_PORT=$GATEWAY_PORT"
+        "ENABLE_MONITORING=$UPGRADE_ENABLE_MONITORING"
+        "ENABLE_TOR=$UPGRADE_ENABLE_TOR"
+        "SANCTUARY_DIR=$project_dir"
+        "SANCTUARY_RUNTIME_DIR=$TEST_RUNTIME_DIR"
+        "SANCTUARY_SSL_DIR=$resolved_ssl_dir"
+        "SKIP_GIT_CHECKOUT=true"
+        "RATE_LIMIT_LOGIN=100"
+        "RATE_LIMIT_PASSWORD_CHANGE=100"
+    )
+
+    if [ -n "$UPGRADE_GRAFANA_PORT" ]; then
+        install_env+=(
+            "MONITORING_BIND_ADDR=$UPGRADE_MONITORING_BIND_ADDR"
+            "GRAFANA_PORT=$UPGRADE_GRAFANA_PORT"
+            "PROMETHEUS_PORT=$UPGRADE_PROMETHEUS_PORT"
+            "ALERTMANAGER_PORT=$UPGRADE_ALERTMANAGER_PORT"
+            "LOKI_PORT=$UPGRADE_LOKI_PORT"
+            "JAEGER_UI_PORT=$UPGRADE_JAEGER_UI_PORT"
+            "JAEGER_OTLP_GRPC_PORT=$UPGRADE_JAEGER_OTLP_GRPC_PORT"
+            "JAEGER_OTLP_HTTP_PORT=$UPGRADE_JAEGER_OTLP_HTTP_PORT"
+        )
+    fi
+
+    if [ -n "$UPGRADE_GRAFANA_CONTAINER_NAME" ]; then
+        install_env+=(
+            "GRAFANA_CONTAINER_NAME=$UPGRADE_GRAFANA_CONTAINER_NAME"
+            "PROMETHEUS_CONTAINER_NAME=$UPGRADE_PROMETHEUS_CONTAINER_NAME"
+            "ALERTMANAGER_CONTAINER_NAME=$UPGRADE_ALERTMANAGER_CONTAINER_NAME"
+            "LOKI_CONTAINER_NAME=$UPGRADE_LOKI_CONTAINER_NAME"
+            "PROMTAIL_CONTAINER_NAME=$UPGRADE_PROMTAIL_CONTAINER_NAME"
+            "JAEGER_CONTAINER_NAME=$UPGRADE_JAEGER_CONTAINER_NAME"
+        )
+    fi
+
+    if [ "$UPGRADE_ENV_LAYOUT" != "legacy-repo-env" ] || [ ! -f "$project_dir/.env" ]; then
+        install_env+=("SANCTUARY_ENV_FILE=$resolved_env_file")
+    else
+        env_command+=(-u SANCTUARY_ENV_FILE)
+    fi
+
+    if ! sync_runtime_env_ports "$resolved_env_file"; then
+        log_error "Failed to synchronize test port overrides into $resolved_env_file"
+        return 1
+    fi
+
+    if [ "$VERBOSE" = "true" ] && [ -f "$resolved_env_file" ]; then
+        log_info "Preseeded runtime env ports in $resolved_env_file:"
+        grep -E '^(HTTPS_PORT|HTTP_PORT|GATEWAY_PORT)=' "$resolved_env_file" || true
+    fi
+
     set +e
-    HTTPS_PORT="$HTTPS_PORT" HTTP_PORT="$HTTP_PORT" \
-        ENABLE_MONITORING="no" ENABLE_TOR="no" \
-        SANCTUARY_DIR="$project_dir" \
-        SANCTUARY_RUNTIME_DIR="$TEST_RUNTIME_DIR" \
-        SANCTUARY_ENV_FILE="$TEST_ENV_FILE" \
-        SANCTUARY_SSL_DIR="$TEST_SSL_DIR" \
-        SKIP_GIT_CHECKOUT="true" \
-        RATE_LIMIT_LOGIN=100 RATE_LIMIT_PASSWORD_CHANGE=100 \
-        bash "$project_dir/install.sh" </dev/null 2>&1 | tee "$install_log"
+    "${env_command[@]}" "${install_env[@]}" bash "$project_dir/install.sh" </dev/null 2>&1 | tee "$install_log"
     local exit_code=${PIPESTATUS[0]}
     set -e
 
@@ -246,7 +359,65 @@ run_install_script() {
         return 1
     fi
 
+    if ! sync_runtime_env_ports "$resolved_env_file"; then
+        log_error "Failed to synchronize test port overrides into $resolved_env_file"
+        return 1
+    fi
+
     return 0
+}
+
+run_upgrade_runtime_command() {
+    local project_dir="${1:-$PROJECT_ROOT}"
+    shift
+
+    local resolved_env_file=""
+    local -a env_command=(env)
+
+    resolved_env_file="$(resolve_env_file "$project_dir")"
+    if ! sync_runtime_env_ports "$resolved_env_file"; then
+        log_error "Failed to synchronize test port overrides into $resolved_env_file"
+        return 1
+    fi
+
+    env_command+=(
+        "COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT_NAME"
+        "SANCTUARY_ENV_FILE=$resolved_env_file"
+        "SANCTUARY_SSL_DIR=$TEST_SSL_DIR"
+        "HTTPS_PORT=$HTTPS_PORT"
+        "HTTP_PORT=$HTTP_PORT"
+        "GATEWAY_PORT=$GATEWAY_PORT"
+        "ENABLE_MONITORING=$UPGRADE_ENABLE_MONITORING"
+        "ENABLE_TOR=$UPGRADE_ENABLE_TOR"
+        "RATE_LIMIT_LOGIN=100"
+        "RATE_LIMIT_PASSWORD_CHANGE=100"
+    )
+
+    if [ -n "$UPGRADE_GRAFANA_PORT" ]; then
+        env_command+=(
+            "MONITORING_BIND_ADDR=$UPGRADE_MONITORING_BIND_ADDR"
+            "GRAFANA_PORT=$UPGRADE_GRAFANA_PORT"
+            "PROMETHEUS_PORT=$UPGRADE_PROMETHEUS_PORT"
+            "ALERTMANAGER_PORT=$UPGRADE_ALERTMANAGER_PORT"
+            "LOKI_PORT=$UPGRADE_LOKI_PORT"
+            "JAEGER_UI_PORT=$UPGRADE_JAEGER_UI_PORT"
+            "JAEGER_OTLP_GRPC_PORT=$UPGRADE_JAEGER_OTLP_GRPC_PORT"
+            "JAEGER_OTLP_HTTP_PORT=$UPGRADE_JAEGER_OTLP_HTTP_PORT"
+        )
+    fi
+
+    if [ -n "$UPGRADE_GRAFANA_CONTAINER_NAME" ]; then
+        env_command+=(
+            "GRAFANA_CONTAINER_NAME=$UPGRADE_GRAFANA_CONTAINER_NAME"
+            "PROMETHEUS_CONTAINER_NAME=$UPGRADE_PROMETHEUS_CONTAINER_NAME"
+            "ALERTMANAGER_CONTAINER_NAME=$UPGRADE_ALERTMANAGER_CONTAINER_NAME"
+            "LOKI_CONTAINER_NAME=$UPGRADE_LOKI_CONTAINER_NAME"
+            "PROMTAIL_CONTAINER_NAME=$UPGRADE_PROMTAIL_CONTAINER_NAME"
+            "JAEGER_CONTAINER_NAME=$UPGRADE_JAEGER_CONTAINER_NAME"
+        )
+    fi
+
+    "${env_command[@]}" "$@"
 }
 
 # Test counters
@@ -293,8 +464,11 @@ setup() {
     log_info "  Target Root:   $TARGET_PROJECT_ROOT"
     log_info "  Target Ref:    $UPGRADE_TARGET_LABEL"
     log_info "  Test Mode:     $UPGRADE_TEST_MODE"
+    log_info "  Fixture:       ${UPGRADE_FIXTURE_LABEL:-$UPGRADE_FIXTURE}"
     log_info "  Compose Proj:  $COMPOSE_PROJECT_NAME"
     log_info "  HTTPS Port:    $HTTPS_PORT"
+    log_info "  HTTP Port:     $HTTP_PORT"
+    log_info "  Gateway Port:  $GATEWAY_PORT"
 
     # Verify prerequisites
     if ! check_docker_available; then
@@ -305,6 +479,7 @@ setup() {
     export SANCTUARY_ENV_FILE="$TEST_ENV_FILE"
     export SANCTUARY_SSL_DIR="$TEST_SSL_DIR"
 
+    cleanup_compose_projects_by_prefix "sanctuary-upgrade-test-" "$COMPOSE_PROJECT_NAME" 2>/dev/null || true
     cleanup_containers "$TARGET_PROJECT_ROOT" 2>/dev/null || true
 
     if ! prepare_upgrade_source_checkout; then
@@ -343,6 +518,28 @@ teardown() {
     cleanup_upgrade_source_checkout
 }
 
+collect_upgrade_artifacts_if_requested() {
+    if [ "$UPGRADE_ARTIFACTS_CAPTURED" = "true" ] || [ -z "$UPGRADE_ARTIFACTS_DIR" ]; then
+        return 0
+    fi
+
+    mkdir -p "$UPGRADE_ARTIFACTS_DIR"
+    SANCTUARY_UPGRADE_JOB_NAME="${SANCTUARY_UPGRADE_JOB_NAME:-manual}" \
+    SANCTUARY_UPGRADE_SOURCE_REF_LABEL="$UPGRADE_SOURCE_LABEL" \
+    SANCTUARY_UPGRADE_FIXTURE_LABEL="${UPGRADE_FIXTURE_LABEL:-$UPGRADE_FIXTURE}" \
+    SANCTUARY_UPGRADE_TEST_MODE="$UPGRADE_TEST_MODE" \
+    SANCTUARY_UPGRADE_RUNTIME_DIR="$TEST_RUNTIME_DIR" \
+    SANCTUARY_ENV_FILE="$(resolve_env_file "$PROJECT_ROOT")" \
+    GRAFANA_CONTAINER_NAME="$UPGRADE_GRAFANA_CONTAINER_NAME" \
+    PROMETHEUS_CONTAINER_NAME="$UPGRADE_PROMETHEUS_CONTAINER_NAME" \
+    LOKI_CONTAINER_NAME="$UPGRADE_LOKI_CONTAINER_NAME" \
+    PROMTAIL_CONTAINER_NAME="$UPGRADE_PROMTAIL_CONTAINER_NAME" \
+    ALERTMANAGER_CONTAINER_NAME="$UPGRADE_ALERTMANAGER_CONTAINER_NAME" \
+    JAEGER_CONTAINER_NAME="$UPGRADE_JAEGER_CONTAINER_NAME" \
+    "$SCRIPT_DIR/../utils/collect-upgrade-artifacts.sh" "$UPGRADE_ARTIFACTS_DIR" "$PROJECT_ROOT" || true
+    UPGRADE_ARTIFACTS_CAPTURED=true
+}
+
 # ============================================
 # Test: Verify Existing Installation or Create One
 # ============================================
@@ -350,7 +547,16 @@ teardown() {
 test_ensure_existing_installation() {
     log_info "Creating source installation from $UPGRADE_SOURCE_LABEL..."
 
+    if [ "$VERBOSE" = "true" ]; then
+        log_info "Current requested ports before source install: HTTPS=$HTTPS_PORT HTTP=$HTTP_PORT GATEWAY=$GATEWAY_PORT"
+    fi
+
     cd "$PROJECT_ROOT"
+
+    if ! run_upgrade_fixture_hook upgrade_fixture_before_source_install; then
+        log_error "Upgrade fixture '${UPGRADE_FIXTURE_LABEL:-$UPGRADE_FIXTURE}' failed before the source installation"
+        return 1
+    fi
 
     if ! run_install_script "$PROJECT_ROOT"; then
         return 1
@@ -371,6 +577,11 @@ test_ensure_existing_installation() {
     # Extra wait for backend to fully initialize
     sleep 5
 
+    if ! wait_for_browser_auth_ready; then
+        log_error "Browser auth endpoint did not become ready after the source installation"
+        return 1
+    fi
+
     if load_runtime_env; then
         ORIGINAL_JWT_SECRET="$JWT_SECRET"
         ORIGINAL_ENCRYPTION_KEY="$ENCRYPTION_KEY"
@@ -387,61 +598,15 @@ test_ensure_existing_installation() {
 # Test: Create Test Data Before Upgrade
 # ============================================
 
-test_create_pre_upgrade_data() {
-    log_info "Creating test data before upgrade..."
+test_apply_upgrade_fixture_after_source_install() {
+    log_info "Applying upgrade fixture '${UPGRADE_FIXTURE_LABEL:-$UPGRADE_FIXTURE}' after source installation..."
 
-    # Login with default admin credentials (Phase 6 cookie auth)
-    rm -f "$COOKIE_JAR"
-    local login_response=$(curl -k -s -c "$COOKIE_JAR" -b "$COOKIE_JAR" -X POST \
-        -H "Content-Type: application/json" \
-        -d '{"username":"admin","password":"sanctuary"}' \
-        "$API_BASE_URL/api/v1/auth/login")
-
-    if echo "$login_response" | grep -q '"user"'; then
-        extract_csrf_token
-        if [ -z "$CSRF_TOKEN" ]; then
-            log_error "Default login succeeded but sanctuary_csrf cookie missing"
-            return 1
-        fi
-
-        # Change password to a known value for upgrade testing
-        ORIGINAL_USER_PASSWORD="UpgradeTestPassword123!"
-        curl -k -s -b "$COOKIE_JAR" -c "$COOKIE_JAR" -X POST \
-            -H "Content-Type: application/json" \
-            -H "X-CSRF-Token: $CSRF_TOKEN" \
-            -d "{\"currentPassword\":\"sanctuary\",\"newPassword\":\"$ORIGINAL_USER_PASSWORD\"}" \
-            "$API_BASE_URL/api/v1/auth/me/change-password" >/dev/null
-
-        # Re-login with new password (rotates cookies + CSRF)
-        rm -f "$COOKIE_JAR"
-        login_response=$(curl -k -s -c "$COOKIE_JAR" -b "$COOKIE_JAR" -X POST \
-            -H "Content-Type: application/json" \
-            -d "{\"username\":\"admin\",\"password\":\"$ORIGINAL_USER_PASSWORD\"}" \
-            "$API_BASE_URL/api/v1/auth/login")
-    else
-        # Default password didn't work (already changed on a prior run);
-        # try the test password directly.
-        rm -f "$COOKIE_JAR"
-        ORIGINAL_USER_PASSWORD="UpgradeTestPassword123!"
-        login_response=$(curl -k -s -c "$COOKIE_JAR" -b "$COOKIE_JAR" -X POST \
-            -H "Content-Type: application/json" \
-            -d "{\"username\":\"admin\",\"password\":\"$ORIGINAL_USER_PASSWORD\"}" \
-            "$API_BASE_URL/api/v1/auth/login")
-    fi
-
-    if ! echo "$login_response" | grep -q '"user"'; then
-        log_error "Failed to authenticate after password setup"
-        log_error "Response: $login_response"
+    if ! run_upgrade_fixture_hook upgrade_fixture_after_source_install; then
+        log_error "Upgrade fixture '${UPGRADE_FIXTURE_LABEL:-$UPGRADE_FIXTURE}' failed after the source installation"
         return 1
     fi
 
-    extract_csrf_token
-    if [ -z "$CSRF_TOKEN" ]; then
-        log_error "Failed to capture sanctuary_csrf cookie"
-        return 1
-    fi
-
-    log_success "Test data created (password changed to test password)"
+    log_success "Upgrade fixture '${UPGRADE_FIXTURE_LABEL:-$UPGRADE_FIXTURE}' applied"
     return 0
 }
 
@@ -476,11 +641,19 @@ test_capture_pre_upgrade_state() {
     return 0
 }
 
-replace_env_value() {
+upsert_env_value() {
     local key="$1"
     local value="$2"
     local file="$3"
     local tmp_file="${file}.tmp"
+
+    mkdir -p "$(dirname "$file")"
+
+    if [ ! -f "$file" ]; then
+        printf '%s=%s\n' "$key" "$value" > "$file"
+        chmod 600 "$file" 2>/dev/null || true
+        return 0
+    fi
 
     awk -F= -v key="$key" -v value="$value" '
         BEGIN { updated = 0 }
@@ -492,7 +665,7 @@ replace_env_value() {
         { print }
         END {
             if (updated == 0) {
-                exit 1
+                print key "=" value
             }
         }
     ' "$file" > "$tmp_file" || {
@@ -502,6 +675,14 @@ replace_env_value() {
 
     mv "$tmp_file" "$file"
     chmod 600 "$file" 2>/dev/null || true
+}
+
+sync_runtime_env_ports() {
+    local env_file="$1"
+
+    upsert_env_value "HTTPS_PORT" "$HTTPS_PORT" "$env_file" || return 1
+    upsert_env_value "HTTP_PORT" "$HTTP_PORT" "$env_file" || return 1
+    upsert_env_value "GATEWAY_PORT" "${GATEWAY_PORT:-4000}" "$env_file" || return 1
 }
 
 # ============================================
@@ -514,7 +695,7 @@ test_stop_containers_for_upgrade() {
     cd "$PROJECT_ROOT"
     load_runtime_env || return 1
 
-    docker compose stop 2>&1
+    run_project_compose "$PROJECT_ROOT" stop 2>&1
 
     # Verify containers stopped
     local running=$(docker ps --filter "name=${COMPOSE_PROJECT_NAME}-" --filter "status=running" -q | wc -l)
@@ -569,7 +750,12 @@ test_restart_containers_after_upgrade() {
 
     cd "$PROJECT_ROOT"
 
-    # Load secrets from runtime env
+    if ! run_upgrade_fixture_hook upgrade_fixture_before_upgrade; then
+        log_error "Upgrade fixture '${UPGRADE_FIXTURE_LABEL:-$UPGRADE_FIXTURE}' failed while preparing the target upgrade"
+        return 1
+    fi
+
+    # Load secrets from the env layout that will actually drive the upgrade.
     load_runtime_env || return 1
 
     if ! run_install_script "$PROJECT_ROOT"; then
@@ -603,7 +789,7 @@ test_verify_secrets_preserved() {
     log_info "Verifying secrets were preserved..."
 
     # Reload runtime env
-    load_runtime_env
+    load_runtime_env || return 1
 
     if [ "$JWT_SECRET" != "$ORIGINAL_JWT_SECRET" ]; then
         log_error "JWT_SECRET changed after upgrade"
@@ -643,6 +829,11 @@ test_verify_secrets_preserved() {
 
 test_verify_data_preserved() {
     log_info "Verifying data preserved after upgrade..."
+
+    if ! wait_for_browser_auth_ready; then
+        log_error "Browser auth endpoint did not become ready after upgrade"
+        return 1
+    fi
 
     # Try to login with the password we set before upgrade
     rm -f "$COOKIE_JAR"
@@ -708,23 +899,28 @@ test_recover_postgres_password_drift() {
     local original_password="$POSTGRES_PASSWORD"
     local drifted_password="drifted-${TEST_ID}-postgres-password"
     local setup_output=""
+    local -a services_to_stop=(backend worker frontend gateway ai migrate)
 
     if [ "$drifted_password" = "$original_password" ]; then
         drifted_password="${drifted_password}-x"
     fi
 
-    if ! replace_env_value "POSTGRES_PASSWORD" "$drifted_password" "$TEST_ENV_FILE"; then
+    if ! upsert_env_value "POSTGRES_PASSWORD" "$drifted_password" "$TEST_ENV_FILE"; then
         log_error "Failed to inject a drifted POSTGRES_PASSWORD into the runtime env"
         return 1
     fi
 
     # Keep postgres running so setup.sh can recover the real password from the
     # existing container and volume, then restart the application stack.
-    docker compose stop backend worker frontend gateway ai migrate 2>&1 || true
+    if [ "$UPGRADE_ENABLE_MONITORING" = "yes" ]; then
+        services_to_stop+=(grafana prometheus loki promtail alertmanager jaeger)
+    fi
+    if [ "$UPGRADE_ENABLE_TOR" = "yes" ]; then
+        services_to_stop+=(tor)
+    fi
+    run_project_compose "$PROJECT_ROOT" stop "${services_to_stop[@]}" 2>&1 || true
 
-    setup_output=$(SANCTUARY_ENV_FILE="$TEST_ENV_FILE" SANCTUARY_SSL_DIR="$TEST_SSL_DIR" \
-        HTTPS_PORT="$HTTPS_PORT" HTTP_PORT="$HTTP_PORT" \
-        ENABLE_MONITORING="no" ENABLE_TOR="no" \
+    setup_output=$(run_upgrade_runtime_command "$PROJECT_ROOT" \
         bash "$PROJECT_ROOT/scripts/setup.sh" --force --non-interactive --skip-ssl 2>&1) || {
         log_error "setup.sh failed while recovering the PostgreSQL password drift"
         log_error "Output: $setup_output"
@@ -754,10 +950,15 @@ test_recover_postgres_password_drift() {
         return 1
     fi
 
+    if ! wait_for_browser_auth_ready; then
+        log_error "Browser auth endpoint did not become ready after PostgreSQL password recovery"
+        return 1
+    fi
+
     local postgres_container=""
     local postgres_network=""
     local db_check=""
-    postgres_container="$(docker compose ps -q postgres)"
+    postgres_container="$(run_project_compose "$PROJECT_ROOT" ps -q postgres)"
     postgres_network=$(docker inspect --format '{{range $k, $v := .NetworkSettings.Networks}}{{println $k}}{{end}}' \
         "$postgres_container" | head -n 1)
     db_check=$(docker run --rm --network "$postgres_network" -e "PGPASSWORD=$drifted_password" \
@@ -785,6 +986,24 @@ test_recover_postgres_password_drift() {
     return 0
 }
 
+test_browser_auth_smoke() {
+    log_info "Running browser-visible auth smoke checks..."
+
+    UPGRADE_BROWSER_BASE_URL="$UPGRADE_BROWSER_BASE_URL" \
+    UPGRADE_BROWSER_ORIGIN="$UPGRADE_BROWSER_ORIGIN" \
+    UPGRADE_SMOKE_PASSWORD="$ORIGINAL_USER_PASSWORD" \
+    UPGRADE_EXPECT_WEBSOCKET="$UPGRADE_EXPECT_WEBSOCKET" \
+    bash "$SCRIPT_DIR/upgrade-browser-smoke.test.sh"
+}
+
+test_worker_smoke() {
+    log_info "Running worker/support-package smoke checks..."
+
+    SANCTUARY_PROJECT_ROOT="$PROJECT_ROOT" \
+    SANCTUARY_UPGRADE_SUPPORT_PACKAGE_FILE="$TEST_RUNTIME_DIR/support-package.json" \
+    bash "$SCRIPT_DIR/upgrade-worker-smoke.test.sh"
+}
+
 run_extended_upgrade_scenarios() {
     if [ "$UPGRADE_TEST_MODE" != "full" ]; then
         log_info "Skipping extended recovery scenarios in core mode"
@@ -803,6 +1022,11 @@ run_extended_upgrade_scenarios() {
 
 test_verify_all_services() {
     log_info "Verifying all services are functional..."
+
+    if ! wait_for_browser_auth_ready; then
+        log_error "Browser auth endpoint did not become ready before service verification"
+        return 1
+    fi
 
     # Login (cookie-based)
     rm -f "$COOKIE_JAR"
@@ -841,6 +1065,18 @@ test_verify_all_services() {
     return 0
 }
 
+test_verify_upgrade_fixture_after_upgrade() {
+    log_info "Verifying upgrade fixture '${UPGRADE_FIXTURE_LABEL:-$UPGRADE_FIXTURE}' after upgrade..."
+
+    if ! run_upgrade_fixture_hook upgrade_fixture_after_upgrade; then
+        log_error "Upgrade fixture '${UPGRADE_FIXTURE_LABEL:-$UPGRADE_FIXTURE}' failed after upgrade"
+        return 1
+    fi
+
+    log_success "Upgrade fixture '${UPGRADE_FIXTURE_LABEL:-$UPGRADE_FIXTURE}' verified"
+    return 0
+}
+
 # ============================================
 # Test: Force Rebuild Upgrade
 # ============================================
@@ -855,9 +1091,7 @@ test_force_rebuild_upgrade() {
 
     local rebuild_output=""
     set +e
-    rebuild_output=$(HTTPS_PORT="$HTTPS_PORT" HTTP_PORT="$HTTP_PORT" \
-        SANCTUARY_ENV_FILE="$(resolve_env_file)" SANCTUARY_SSL_DIR="$TEST_SSL_DIR" \
-        RATE_LIMIT_LOGIN=100 RATE_LIMIT_PASSWORD_CHANGE=100 \
+    rebuild_output=$(run_upgrade_runtime_command "$PROJECT_ROOT" \
         bash "$PROJECT_ROOT/start.sh" --rebuild 2>&1)
     local exit_code=$?
     set -e
@@ -886,6 +1120,11 @@ test_force_rebuild_upgrade() {
 
     # Extra wait for backend to fully initialize
     sleep 5
+
+    if ! wait_for_browser_auth_ready; then
+        log_error "Browser auth endpoint did not become ready after force rebuild"
+        return 1
+    fi
 
     # Verify login still works (cookie-based)
     rm -f "$COOKIE_JAR"
@@ -977,7 +1216,7 @@ main() {
 
     # Phase 1: Prepare existing installation
     run_test "Ensure Existing Installation" test_ensure_existing_installation
-    run_test "Create Pre-Upgrade Data" test_create_pre_upgrade_data
+    run_test "Apply Upgrade Fixture" test_apply_upgrade_fixture_after_source_install
     run_test "Capture Pre-Upgrade State" test_capture_pre_upgrade_state
 
     # Phase 2: Simulate upgrade
@@ -989,7 +1228,14 @@ main() {
     run_test "Verify Secrets Preserved" test_verify_secrets_preserved
     run_test "Verify Data Preserved" test_verify_data_preserved
     run_test "Verify Migration on Upgrade" test_verify_migration_on_upgrade
+    run_test "Browser Auth Smoke" test_browser_auth_smoke
+    run_test "Worker Support Smoke" test_worker_smoke
+    run_test "Verify Upgrade Fixture" test_verify_upgrade_fixture_after_upgrade
     run_extended_upgrade_scenarios
+
+    if [ $TESTS_FAILED -gt 0 ]; then
+        collect_upgrade_artifacts_if_requested
+    fi
 
     # Teardown
     teardown

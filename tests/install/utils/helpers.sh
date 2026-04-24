@@ -52,6 +52,23 @@ log_debug() {
 # Docker Helper Functions
 # ============================================
 
+run_project_compose() {
+    local project_dir="${1:-.}"
+    shift
+
+    local -a compose_cmd=(docker compose -f "$project_dir/docker-compose.yml")
+
+    if [ "${ENABLE_MONITORING:-no}" = "yes" ] && [ -f "$project_dir/docker-compose.monitoring.yml" ]; then
+        compose_cmd+=(-f "$project_dir/docker-compose.monitoring.yml")
+    fi
+
+    if [ "${ENABLE_TOR:-no}" = "yes" ] && [ -f "$project_dir/docker-compose.tor.yml" ]; then
+        compose_cmd+=(-f "$project_dir/docker-compose.tor.yml")
+    fi
+
+    "${compose_cmd[@]}" "$@"
+}
+
 # Get container name for a service (supports dynamic project names)
 # Usage: get_container_name "postgres" -> returns "sanctuary-postgres-1" or "{project}-postgres-1"
 get_container_name() {
@@ -220,7 +237,7 @@ get_container_status() {
     echo ""
     echo "Container Status:"
     echo "================="
-    docker compose -f "$project_dir/docker-compose.yml" ps 2>/dev/null || \
+    run_project_compose "$project_dir" ps 2>/dev/null || \
         docker ps --filter "name=${project}-" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
     echo ""
 }
@@ -232,18 +249,62 @@ cleanup_containers() {
 
     log_info "Cleaning up Sanctuary containers..."
 
-    cd "$project_dir"
-    if [ -n "${SANCTUARY_ENV_FILE:-}" ] && [ -f "$SANCTUARY_ENV_FILE" ]; then
-        set -a
-        source "$SANCTUARY_ENV_FILE"
-        set +a
-    fi
-    docker compose down -v --remove-orphans 2>/dev/null || true
+    (
+        cd "$project_dir"
+        if [ -n "${SANCTUARY_ENV_FILE:-}" ] && [ -f "$SANCTUARY_ENV_FILE" ]; then
+            set -a
+            source "$SANCTUARY_ENV_FILE"
+            set +a
+        elif [ -f "$project_dir/.env" ]; then
+            set -a
+            source "$project_dir/.env"
+            set +a
+        fi
+        run_project_compose "$project_dir" down -v --remove-orphans 2>/dev/null || true
+    )
 
     # Remove any orphaned containers
     docker ps -a --filter "name=${project}-" -q | xargs -r docker rm -f 2>/dev/null || true
 
     log_success "Cleanup complete"
+}
+
+cleanup_compose_project_resources() {
+    local project="$1"
+
+    [ -n "$project" ] || return 0
+
+    docker ps -a --filter "label=com.docker.compose.project=$project" -q | xargs -r docker rm -f 2>/dev/null || true
+    docker network ls --filter "label=com.docker.compose.project=$project" -q | xargs -r docker network rm 2>/dev/null || true
+    docker volume ls --filter "label=com.docker.compose.project=$project" -q | xargs -r docker volume rm -f 2>/dev/null || true
+}
+
+cleanup_compose_projects_by_prefix() {
+    local prefix="$1"
+    local exclude_project="${2:-}"
+    local projects=""
+
+    projects="$(
+        {
+            docker ps -a --format '{{.Label "com.docker.compose.project"}}'
+            docker network ls --format '{{.Label "com.docker.compose.project"}}'
+            docker volume ls --format '{{.Label "com.docker.compose.project"}}'
+        } 2>/dev/null | grep -E "^${prefix}" | sort -u
+    )"
+
+    [ -n "$projects" ] || return 0
+
+    while IFS= read -r project; do
+        [ -n "$project" ] || continue
+        if [ -n "$exclude_project" ] && [ "$project" = "$exclude_project" ]; then
+            continue
+        fi
+
+        log_info "Cleaning up stale compose project: $project"
+        cleanup_compose_project_resources "$project"
+    done <<EOF
+$projects
+EOF
 }
 
 # ============================================
