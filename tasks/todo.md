@@ -1,22 +1,82 @@
-# Active Task: Cancel Superseded CI Runs
+# Active Task: Path-Aware CI Speed Optimization
 
 Status: in progress
 
-Goal: reduce wasted GitHub Actions time after amended/force-pushed changes by relying on workflow-level concurrency where it is missing.
+Goal: reduce GitHub Actions time by replacing broad/default test gates with path-aware, explicitly useful checks while preserving merge-queue protection and release confidence.
 
-## Checklist
+## Current Evidence
 
-- [x] Inspect existing workflow concurrency coverage before changing CI.
-- [x] Confirm PR-triggered workflows already cancel stale pull-request runs.
-- [x] Add cancellation for repeat release-candidate validation runs on the same ref.
-- [x] Validate workflow YAML without running expensive app/test suites.
-- [ ] Commit, push, and use the lightest GitHub check path available.
+- PR #129 proved workflow/CI-only changes can skip app test lanes: final PR Test Suite was about 19s and merge-group Test Suite was about 15s with app jobs skipped.
+- Default CodeQL remains broad: the main push after PR #130 still ran JS/TS for about 4m19s, Go for about 1m14s, Actions for about 1m00s, and Python for about 0m53s.
+- Ledger PR #130 showed frontend changes are currently expensive: PR quick E2E was about 3m45s; merge-group full frontend was about 5m40s; merge-group full E2E was about 7m04s; full build was about 1m05s.
+- PR #130 also proved full frontend coverage is still useful for frontend-touching changes, so the speedup must be narrower than "skip frontend coverage."
+
+## Implementation Checklist
+
+### Phase 1 - Repo-Owned Path-Aware CodeQL
+
+- [x] Inspect current CodeQL/default-setup/branch-protection required check contexts.
+- [x] Add `.github/workflows/codeql.yml` with concurrency and a classifier job.
+- [x] Classify CodeQL languages:
+  - actions for `.github/workflows/**`, `.github/actions/**`
+  - javascript-typescript for root/server/gateway/shared TS/JS and package/config files
+  - go for `scripts/verify-addresses/implementations/**`, `go.mod`, `go.sum`
+  - python for Python files and requirements
+- [x] Keep full multi-language CodeQL on schedule/manual; keep PR/merge/main push path-aware, with GitHub default setup disabled because advanced CodeQL uploads cannot be processed while default setup is enabled.
+- [x] Add an always-concluding aggregate check so branch protection can require one stable CodeQL context later if desired.
+- [x] Validate with workflow-only, JS/TS, Go, and Python path fixtures.
+
+### Phase 2 - Test Suite Classifier: Browser/E2E Relevance
+
+- [x] Add classifier outputs for `browser_smoke_changed`, `render_changed`, and `build_changed`.
+- [x] Stop running quick E2E for every frontend change; run browser/render lanes only for relevant paths.
+- [x] Stop running full E2E on merge_group for frontend helper/service-only changes.
+- [x] Keep full frontend coverage for frontend code/test changes.
+- [x] Narrow full build check to build/config/package/backend-build paths.
+- [x] Add classifier tests for Ledger-like service changes, auth/API/routing changes, visual/render changes, and build-config changes.
+
+### Phase 3 - E2E Job Split and Playwright Cache
+
+- [x] Split quick E2E into targeted browser-flow smoke and render-regression jobs.
+- [x] Cache Playwright browser downloads.
+- [x] Avoid duplicated full build work when only frontend helper/service changes are present.
+- [x] Validate timing behavior on classifier fixtures for frontend service-only and browser-flow changes.
+
+### Phase 4 - Install Workflow Scope and Stack Reuse
+
+- [x] Replace ad hoc install-test path grep with a tested classifier.
+- [x] Split install PR scopes into unit-only, installer, compose/docker, auth-flow, and upgrade/release.
+- [x] Reuse one stack for container-health/auth-flow when the scoped install lane needs both.
+- [x] Keep release tags, schedules, and release-candidate validation full.
+
+### Phase 5 - Measurement and Policy
+
+- [x] Add a manual CI duration report helper using `gh run view --json jobs`.
+- [x] Document which paths trigger which expensive gates.
+- [x] Update lessons/docs with the rule: add a classifier test before adding any new expensive CI trigger.
+
+### Delivery
+
+- [x] Run focused local validation: shell syntax, classifier tests, workflow YAML parsing/actionlint-compatible checks, `git diff --check`, and touched-file lizard where useful.
+- [ ] Commit and push `ci/path-aware-speedups`.
+- [ ] Open a PR, monitor checks, fix any CI errors, and merge successfully.
+- [ ] Clean up temporary worktrees and task artifacts created for this CI optimization batch.
+- [ ] After merge, re-analyze additional ways to optimize tests further.
+
+## Verification Strategy
+
+- For each phase, run local shell/YAML/actionlint checks plus classifier unit tests.
+- Use PR checks to prove irrelevant jobs skip and relevant jobs still run.
+- Merge through the queue only after the PR run has already demonstrated the intended reduced check set.
+- Cancel obsolete runs immediately after any amendment/force-push.
 
 ## Review
 
-- Existing PR-triggered workflows already had PR concurrency cancellation.
-- Added release-candidate concurrency so repeat validation for the same ref cancels superseded runs.
-- Local validation intentionally stayed light: workflow YAML parse and `git diff --check`.
+- Implemented repo-owned path-aware CodeQL with tested language classification and an aggregate `CodeQL Required Checks` context; GitHub default setup had to be disabled because GitHub rejects advanced CodeQL uploads while default setup is enabled.
+- Split frontend browser checks into browser-flow smoke and render-regression lanes, scoped full E2E/build gates to relevant path classes, and kept full frontend coverage for ordinary frontend changes.
+- Replaced install-test ad hoc path filtering with a tested scope classifier and a reusable container-health/auth-flow stack lane.
+- Added `scripts/ci/report-workflow-durations.sh` plus CI docs/lessons so future expensive triggers require executable classifier coverage.
+- Local validation passed: shell syntax checks, CI/install classifier tests, install unit umbrella, actionlint on touched workflows, `git diff --check`, and touched-file lizard.
 
 ---
 

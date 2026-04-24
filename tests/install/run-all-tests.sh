@@ -143,6 +143,9 @@ run_unit_suites() {
     if ! run_test_suite "Upgrade Helper Unit Tests" "$SCRIPT_DIR/unit/upgrade-helpers.test.sh"; then
         suite_failed=true
     fi
+    if ! run_test_suite "Install Scope Classifier Unit Tests" "$SCRIPT_DIR/unit/install-scope.test.sh"; then
+        suite_failed=true
+    fi
 
     [ "$suite_failed" = "false" ]
 }
@@ -206,10 +209,12 @@ main() {
     echo "  Upgrade Fixture: $UPGRADE_FIXTURE"
     echo ""
 
-    # Check prerequisites
-    if ! check_docker_available; then
-        log_error "Docker is not available"
-        exit 1
+    # Docker is required only for E2E suites; unit-only runs are host-script checks.
+    if [ "$RUN_E2E" = "true" ]; then
+        if ! check_docker_available; then
+            log_error "Docker is not available"
+            exit 1
+        fi
     fi
 
     local start_time=$(date +%s)

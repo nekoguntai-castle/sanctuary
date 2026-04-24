@@ -162,10 +162,14 @@ jobs:
       - name: Run CI classifier tests
         run: |
           bash -n scripts/ci/classify-test-changes.sh
+          bash -n scripts/ci/classify-codeql-languages.sh
           bash -n scripts/ci/classify-quality-scope.sh
+          bash -n scripts/ci/report-workflow-durations.sh
           bash -n tests/ci/classify-test-changes.test.sh
+          bash -n tests/ci/classify-codeql-languages.test.sh
           bash -n tests/ci/classify-quality-scope.test.sh
           bash tests/ci/classify-test-changes.test.sh
+          bash tests/ci/classify-codeql-languages.test.sh
           bash tests/ci/classify-quality-scope.test.sh
 
   lizard:

@@ -13,6 +13,9 @@ backend_changed=false
 critical_mutation_changed=false
 gateway_changed=false
 e2e_changed=false
+browser_smoke_changed=false
+render_changed=false
+build_changed=false
 
 frontend_files=''
 backend_files=''
@@ -45,6 +48,9 @@ emit_outputs() {
     echo "gateway_changed=$gateway_changed"
     echo "gateway_files=$gateway_files"
     echo "e2e_changed=$e2e_changed"
+    echo "browser_smoke_changed=$browser_smoke_changed"
+    echo "render_changed=$render_changed"
+    echo "build_changed=$build_changed"
     echo "test_files=$test_files"
   } >> "$output_file"
 }
@@ -56,6 +62,9 @@ mark_full_scan() {
   critical_mutation_changed=true
   gateway_changed=true
   e2e_changed=true
+  browser_smoke_changed=true
+  render_changed=true
+  build_changed=true
 }
 
 if [ "$event_name" = "schedule" ] || [ "$event_name" = "workflow_dispatch" ]; then
@@ -153,6 +162,62 @@ is_e2e_file() {
   return 1
 }
 
+is_browser_smoke_file() {
+  case "$1" in
+    App.tsx|index.tsx|index.html|playwright.config.ts)
+      return 0
+      ;;
+    src/app/*|src/api/*|components/Layout/*|components/Login/*|components/DraftList/*|components/AuditLogs/*|components/Monitoring/*|components/WalletDetail/*)
+      return 0
+      ;;
+    e2e/*.spec.ts|e2e/helpers.ts|e2e/adminOperationsApiState.ts|e2e/adminOperationsFixtures.ts|e2e/userJourneyApi.ts)
+      case "$1" in
+        e2e/render-regression.spec.ts|e2e/render-regression/*|e2e/render-regression.spec.ts-snapshots/*)
+          return 1
+          ;;
+      esac
+      return 0
+      ;;
+    server/src/api/*|server/src/routes.ts|server/src/index.ts|server/prisma/*)
+      return 0
+      ;;
+    server/src/middleware/auth.ts|server/src/middleware/csrf.ts|server/src/middleware/corsOrigin.ts|server/src/middleware/bodyParsing.ts|server/src/middleware/validate.ts)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+is_render_file() {
+  case "$1" in
+    App.tsx|index.tsx|index.html|package.json|package-lock.json|playwright.config.ts)
+      return 0
+      ;;
+    src/app/*|components/*|hooks/*|contexts/*|providers/*|themes/*|utils/*)
+      return 0
+      ;;
+    e2e/render-regression.spec.ts|e2e/render-regression/*|e2e/render-regression.spec.ts-snapshots/*)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+is_build_file() {
+  case "$1" in
+    package.json|package-lock.json|server/package.json|server/package-lock.json)
+      return 0
+      ;;
+    Dockerfile|server/Dockerfile|vite.config.*|tsconfig*.json|server/tsconfig*.json)
+      return 0
+      ;;
+    App.tsx|index.tsx|index.html|server/src/index.ts|server/prisma/*)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
 is_test_file() {
   case "$1" in
     tests/*.test.ts|tests/*.test.tsx|tests/*.spec.ts|tests/*.spec.tsx|server/tests/*.test.ts|server/tests/*.spec.ts|gateway/tests/*.test.ts|gateway/tests/*.spec.ts|e2e/*.spec.ts)
@@ -176,6 +241,9 @@ while IFS= read -r file; do
 
   if is_test_suite_file "$file"; then
     test_suite_changed=true
+    browser_smoke_changed=true
+    render_changed=true
+    build_changed=true
   fi
 
   if is_frontend_file "$file"; then
@@ -200,6 +268,18 @@ while IFS= read -r file; do
 
   if is_e2e_file "$file"; then
     e2e_changed=true
+  fi
+
+  if is_browser_smoke_file "$file"; then
+    browser_smoke_changed=true
+  fi
+
+  if is_render_file "$file"; then
+    render_changed=true
+  fi
+
+  if is_build_file "$file"; then
+    build_changed=true
   fi
 
   if is_test_file "$file"; then

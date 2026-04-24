@@ -96,6 +96,17 @@ main() {
   assert_exact_output "$output_file" "run_ci_classifier_tests" "false"
 
   base_sha="$head_sha"
+  printf 'name: CodeQL\non: pull_request\njobs: {}\n' > "$repo_dir/.github/workflows/codeql.yml"
+  git -C "$repo_dir" add .github/workflows/codeql.yml
+  git -C "$repo_dir" commit -qm "codeql workflow change"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_exact_output "$output_file" "run_repo_quality" "false"
+  assert_exact_output "$output_file" "run_workflow_quality" "true"
+  assert_exact_output "$output_file" "run_ci_classifier_tests" "true"
+
+  base_sha="$head_sha"
   mkdir -p "$repo_dir/scripts/ci"
   printf '#!/usr/bin/env bash\necho classifier\n' > "$repo_dir/scripts/ci/classify-quality-scope.sh"
   git -C "$repo_dir" add scripts/ci/classify-quality-scope.sh

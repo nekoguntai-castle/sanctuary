@@ -32,10 +32,15 @@ on:
       - 'package*.json'
       - 'server/package*.json'
       - 'gateway/package*.json'
+      - 'vite.config.ts'
+      - 'tsconfig*.json'
+      - 'server/tsconfig*.json'
       - 'vitest.config.ts'
       - 'server/vitest.config.ts'
       - 'gateway/vitest.config.ts'
       - 'playwright.config.ts'
+      - 'Dockerfile'
+      - 'server/Dockerfile'
       - '.github/mutation-baseline.json'
       - '.github/workflows/test.yml'
   schedule:
@@ -72,6 +77,9 @@ jobs:
       gateway_changed: ${{ steps.classify.outputs.gateway_changed }}
       gateway_files: ${{ steps.classify.outputs.gateway_files }}
       e2e_changed: ${{ steps.classify.outputs.e2e_changed }}
+      browser_smoke_changed: ${{ steps.classify.outputs.browser_smoke_changed }}
+      render_changed: ${{ steps.classify.outputs.render_changed }}
+      build_changed: ${{ steps.classify.outputs.build_changed }}
       test_files: ${{ steps.classify.outputs.test_files }}
     steps:
       - name: Checkout repository
@@ -333,36 +341,11 @@ jobs:
           JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
         run: npx vitest related --run --passWithNoTests ${{ needs.detect-changes.outputs.gateway_files }}
 
-  quick-e2e-smoke:
-    name: Quick E2E Smoke
-    if: github.event_name == 'pull_request' && (needs.detect-changes.outputs.e2e_changed == 'true' || needs.detect-changes.outputs.frontend_changed == 'true')
+  quick-browser-smoke:
+    name: Quick Browser Smoke
+    if: github.event_name == 'pull_request' && needs.detect-changes.outputs.browser_smoke_changed == 'true'
     runs-on: ubuntu-latest
     needs: [detect-changes]
-
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: sanctuary_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
 
     steps:
       - name: Checkout repository
@@ -378,6 +361,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Cache Playwright browsers
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
@@ -386,68 +377,53 @@ jobs:
         env:
           VITE_API_URL: http://localhost:3001
 
-      - name: Setup backend
-        working-directory: server
-        run: |
-          npm ci
-          npx prisma generate
-          npx prisma migrate deploy
-        env:
-          DATABASE_URL: postgresql://test:test@localhost:5432/sanctuary_test?schema=public
-
-      - name: Build backend
-        working-directory: server
-        run: npm run build
-
-      - name: Start backend server
-        working-directory: server
-        run: npm run start &
-        env:
-          DATABASE_URL: postgresql://test:test@localhost:5432/sanctuary_test?schema=public
-          REDIS_URL: redis://localhost:6379
-          JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
-          ENCRYPTION_KEY: test-encryption-key-32-chars-long!
-          GATEWAY_SECRET: test-gateway-secret-for-ci-minimum-32-chars
-          ENCRYPTION_SALT: test-encryption-salt-for-ci
-          NODE_ENV: test
-          PORT: 3001
-          # E2E harness starts only the server, not the paired worker, so
-          # disable the critical worker-heartbeat startup gate.
-          WORKER_HEALTH_MONITOR_ENABLED: 'false'
-
-      - name: Wait for backend to be ready
-        run: |
-          echo "Waiting for backend server..."
-          for i in {1..30}; do
-            if curl -s http://localhost:3001/health > /dev/null 2>&1; then
-              echo "Backend is ready!"
-              exit 0
-            fi
-            echo "Attempt $i: Backend not ready yet..."
-            sleep 2
-          done
-          echo "Backend failed to start"
-          exit 1
-
       - name: Run smoke E2E tests
         run: npm run test:e2e -- --project=chromium e2e/admin-drafts-smoke.spec.ts
         env:
           CI: 'true'
-          DATABASE_URL: postgresql://test:test@localhost:5432/sanctuary_test?schema=public
-          REDIS_URL: redis://localhost:6379
-          JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
-          ENCRYPTION_KEY: test-encryption-key-32-chars-long!
           NODE_ENV: test
+          VITE_API_URL: http://localhost:3001
+
+  quick-render-regression:
+    name: Quick Render Regression
+    if: github.event_name == 'pull_request' && needs.detect-changes.outputs.render_changed == 'true'
+    runs-on: ubuntu-latest
+    needs: [detect-changes]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Build frontend
+        run: npm run build
+        env:
           VITE_API_URL: http://localhost:3001
 
       - name: Run render regression E2E tests
         run: npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts
         env:
           CI: 'true'
-          DATABASE_URL: postgresql://test:test@localhost:5432/sanctuary_test?schema=public
-          REDIS_URL: redis://localhost:6379
-          JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
-          ENCRYPTION_KEY: test-encryption-key-32-chars-long!
           NODE_ENV: test
           VITE_API_URL: http://localhost:3001
 
@@ -468,7 +444,8 @@ jobs:
       - quick-backend-integration-smoke
       - quick-critical-mutation
       - quick-gateway-tests
-      - quick-e2e-smoke
+      - quick-browser-smoke
+      - quick-render-regression
     steps:
       - name: Merge group no-op
         if: github.event_name == 'merge_group'
@@ -487,7 +464,8 @@ jobs:
           QUICK_BACKEND_INTEGRATION_SMOKE: ${{ needs.quick-backend-integration-smoke.result }}
           QUICK_CRITICAL_MUTATION: ${{ needs.quick-critical-mutation.result }}
           QUICK_GATEWAY_TESTS: ${{ needs.quick-gateway-tests.result }}
-          QUICK_E2E_SMOKE: ${{ needs.quick-e2e-smoke.result }}
+          QUICK_BROWSER_SMOKE: ${{ needs.quick-browser-smoke.result }}
+          QUICK_RENDER_REGRESSION: ${{ needs.quick-render-regression.result }}
         run: |
           failed=false
 
@@ -523,7 +501,8 @@ jobs:
           allow_success_or_skipped "Quick Backend Integration Smoke" "$QUICK_BACKEND_INTEGRATION_SMOKE"
           allow_success_or_skipped "Quick Critical Mutation Gate" "$QUICK_CRITICAL_MUTATION"
           allow_success_or_skipped "Quick Gateway Tests" "$QUICK_GATEWAY_TESTS"
-          allow_success_or_skipped "Quick E2E Smoke" "$QUICK_E2E_SMOKE"
+          allow_success_or_skipped "Quick Browser Smoke" "$QUICK_BROWSER_SMOKE"
+          allow_success_or_skipped "Quick Render Regression" "$QUICK_RENDER_REGRESSION"
 
           if [ "$failed" = "true" ]; then
             exit 1
@@ -751,9 +730,9 @@ jobs:
       github.event_name != 'pull_request' &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
-       needs.detect-changes.outputs.frontend_changed == 'true' ||
-       needs.detect-changes.outputs.backend_changed == 'true' ||
-       needs.detect-changes.outputs.e2e_changed == 'true')
+       needs.detect-changes.outputs.e2e_changed == 'true' ||
+       needs.detect-changes.outputs.browser_smoke_changed == 'true' ||
+       needs.detect-changes.outputs.render_changed == 'true')
     runs-on: ubuntu-latest
     needs: [detect-changes, full-backend-tests, full-frontend-tests, full-gateway-tests]
 
@@ -794,6 +773,14 @@ jobs:
 
       - name: Install frontend dependencies
         run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
@@ -882,9 +869,7 @@ jobs:
       github.event_name != 'pull_request' &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
-       needs.detect-changes.outputs.frontend_changed == 'true' ||
-       needs.detect-changes.outputs.backend_changed == 'true' ||
-       needs.detect-changes.outputs.e2e_changed == 'true')
+       needs.detect-changes.outputs.build_changed == 'true')
     runs-on: ubuntu-latest
     needs: [detect-changes, full-backend-tests, full-frontend-tests]
 
@@ -1045,6 +1030,9 @@ jobs:
           CRITICAL_MUTATION_CHANGED: ${{ needs.detect-changes.outputs.critical_mutation_changed }}
           GATEWAY_CHANGED: ${{ needs.detect-changes.outputs.gateway_changed }}
           E2E_CHANGED: ${{ needs.detect-changes.outputs.e2e_changed }}
+          BROWSER_SMOKE_CHANGED: ${{ needs.detect-changes.outputs.browser_smoke_changed }}
+          RENDER_CHANGED: ${{ needs.detect-changes.outputs.render_changed }}
+          BUILD_CHANGED: ${{ needs.detect-changes.outputs.build_changed }}
           FULL_BACKEND_TESTS: ${{ needs.full-backend-tests.result }}
           FULL_FRONTEND_TESTS: ${{ needs.full-frontend-tests.result }}
           FULL_GATEWAY_TESTS: ${{ needs.full-gateway-tests.result }}
@@ -1121,14 +1109,10 @@ jobs:
 
           if is_true "$BACKEND_CHANGED"; then
             backend_required=true
-            e2e_required=true
-            build_required=true
           fi
 
           if is_true "$FRONTEND_CHANGED"; then
             frontend_required=true
-            e2e_required=true
-            build_required=true
           fi
 
           if is_true "$GATEWAY_CHANGED"; then
@@ -1140,9 +1124,14 @@ jobs:
           fi
 
           if is_true "$E2E_CHANGED"; then
-            backend_required=true
-            frontend_required=true
             e2e_required=true
+          fi
+
+          if is_true "$BROWSER_SMOKE_CHANGED" || is_true "$RENDER_CHANGED"; then
+            e2e_required=true
+          fi
+
+          if is_true "$BUILD_CHANGED"; then
             build_required=true
           fi
 
