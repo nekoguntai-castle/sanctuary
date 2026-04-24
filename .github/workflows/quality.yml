@@ -3,6 +3,7 @@ name: Code Quality
 # Universal quality signals that aren't covered by the main test workflow:
 # - lint:     repo-owned TypeScript policy gate for production source
 # - gitleaks: secret scanning (layered over .gitleaks.toml allowlist)
+# - actionlint: GitHub Actions workflow syntax/expression validation
 # - lizard:   cyclomatic complexity (McCabe, NIST SP 500-235 thresholds)
 # - jscpd:    duplicate-block detection (SonarQube 3% default)
 #
@@ -33,6 +34,8 @@ env:
   NODE_VERSION: '24'
   PYTHON_VERSION: '3.12'
   GITLEAKS_VERSION: '8.30.1'
+  ACTIONLINT_VERSION: '1.7.12'
+  ACTIONLINT_LINUX_AMD64_SHA256: '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8'
   LIZARD_WARNING_BASELINE: '9'
 
 jobs:
@@ -41,6 +44,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       run_repo_quality: ${{ steps.classify.outputs.run_repo_quality }}
+      run_workflow_quality: ${{ steps.classify.outputs.run_workflow_quality }}
+      run_ci_classifier_tests: ${{ steps.classify.outputs.run_ci_classifier_tests }}
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -62,7 +67,7 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     needs: [determine-scope]
-    if: github.event_name != 'pull_request' || needs.determine-scope.outputs.run_repo_quality == 'true'
+    if: needs.determine-scope.outputs.run_repo_quality == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -123,11 +128,51 @@ jobs:
           export GITLEAKS_BIN=/tmp/gitleaks
           bash scripts/gitleaks-tracked-tree.sh
 
+  workflow-lint:
+    name: Workflow lint (actionlint)
+    runs-on: ubuntu-latest
+    needs: [determine-scope]
+    if: needs.determine-scope.outputs.run_workflow_quality == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Install actionlint
+        run: |
+          curl -sSL \
+            -o /tmp/actionlint.tar.gz \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          printf '%s  /tmp/actionlint.tar.gz\n' "${ACTIONLINT_LINUX_AMD64_SHA256}" > /tmp/actionlint.sha256
+          sha256sum -c /tmp/actionlint.sha256
+          tar -xzf /tmp/actionlint.tar.gz -C /tmp actionlint
+          /tmp/actionlint -version
+
+      - name: Run actionlint
+        run: /tmp/actionlint -color -shellcheck=
+
+  ci-classifier-tests:
+    name: CI classifier tests
+    runs-on: ubuntu-latest
+    needs: [determine-scope]
+    if: needs.determine-scope.outputs.run_ci_classifier_tests == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Run CI classifier tests
+        run: |
+          bash -n scripts/ci/classify-test-changes.sh
+          bash -n scripts/ci/classify-quality-scope.sh
+          bash -n tests/ci/classify-test-changes.test.sh
+          bash -n tests/ci/classify-quality-scope.test.sh
+          bash tests/ci/classify-test-changes.test.sh
+          bash tests/ci/classify-quality-scope.test.sh
+
   lizard:
     name: Cyclomatic complexity (lizard)
     runs-on: ubuntu-latest
     needs: [determine-scope]
-    if: github.event_name != 'pull_request' || needs.determine-scope.outputs.run_repo_quality == 'true'
+    if: needs.determine-scope.outputs.run_repo_quality == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -177,7 +222,7 @@ jobs:
     name: Duplication (jscpd)
     runs-on: ubuntu-latest
     needs: [determine-scope]
-    if: github.event_name != 'pull_request' || needs.determine-scope.outputs.run_repo_quality == 'true'
+    if: needs.determine-scope.outputs.run_repo_quality == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -205,13 +250,17 @@ jobs:
     name: Code Quality Required Checks
     runs-on: ubuntu-latest
     if: always()
-    needs: [determine-scope, lint, gitleaks, lizard, jscpd]
+    needs: [determine-scope, lint, gitleaks, workflow-lint, ci-classifier-tests, lizard, jscpd]
     steps:
       - name: Check quality job results
         env:
           RUN_REPO_QUALITY: ${{ needs.determine-scope.outputs.run_repo_quality }}
+          RUN_WORKFLOW_QUALITY: ${{ needs.determine-scope.outputs.run_workflow_quality }}
+          RUN_CI_CLASSIFIER_TESTS: ${{ needs.determine-scope.outputs.run_ci_classifier_tests }}
           LINT: ${{ needs.lint.result }}
           GITLEAKS: ${{ needs.gitleaks.result }}
+          WORKFLOW_LINT: ${{ needs.workflow-lint.result }}
+          CI_CLASSIFIER_TESTS: ${{ needs.ci-classifier-tests.result }}
           LIZARD: ${{ needs.lizard.result }}
           JSCPD: ${{ needs.jscpd.result }}
         run: |
@@ -249,6 +298,18 @@ jobs:
             allow_success_or_skipped "Lint" "$LINT"
             allow_success_or_skipped "Cyclomatic complexity (lizard)" "$LIZARD"
             allow_success_or_skipped "Duplication (jscpd)" "$JSCPD"
+          fi
+
+          if [ "$RUN_WORKFLOW_QUALITY" = "true" ]; then
+            require_success "Workflow lint (actionlint)" "$WORKFLOW_LINT"
+          else
+            allow_success_or_skipped "Workflow lint (actionlint)" "$WORKFLOW_LINT"
+          fi
+
+          if [ "$RUN_CI_CLASSIFIER_TESTS" = "true" ]; then
+            require_success "CI classifier tests" "$CI_CLASSIFIER_TESTS"
+          else
+            allow_success_or_skipped "CI classifier tests" "$CI_CLASSIFIER_TESTS"
           fi
 
           if [ "$failed" = "true" ]; then
