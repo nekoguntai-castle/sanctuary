@@ -276,12 +276,17 @@ main() {
     # Track if this is an upgrade
     IS_UPGRADE=false
     SETUP_FLAGS="--from-install"
+    UPGRADE_ENV_FILE="$(resolve_runtime_env_file)"
 
     # Get the latest release tag (skip in CI to test current code)
     if [ "$SKIP_GIT_CHECKOUT" = "true" ]; then
         echo -e "${GREEN}✓${NC} Skipping git checkout (SKIP_GIT_CHECKOUT=true)"
         RELEASE_TAG=""
         cd "$INSTALL_DIR"
+        if [ -f "$UPGRADE_ENV_FILE" ]; then
+            IS_UPGRADE=true
+            echo -e "${GREEN}✓${NC} Existing runtime env detected: $UPGRADE_ENV_FILE"
+        fi
     else
         echo "Fetching latest release..."
         RELEASE_TAG=$(get_latest_release)
@@ -349,7 +354,6 @@ main() {
     # For upgrades, load existing secrets so setup.sh preserves them.
     # Prefer the operator-owned runtime env, with repo-root .env kept as
     # a backwards-compatible fallback for older installations.
-    UPGRADE_ENV_FILE="$(resolve_runtime_env_file)"
     if [ "$IS_UPGRADE" = true ] && [ -f "$UPGRADE_ENV_FILE" ]; then
         echo -e "${GREEN}✓${NC} Loading existing configuration..."
         set -a

@@ -568,6 +568,16 @@ test_install_script_loads_runtime_env_for_upgrades() {
     fi
 }
 
+test_install_script_detects_skip_checkout_upgrade_mode() {
+    if grep -q 'SKIP_GIT_CHECKOUT' "$INSTALL_SCRIPT" \
+        && grep -q "Existing runtime env detected" "$INSTALL_SCRIPT"; then
+        return 0
+    else
+        echo -e "${RED}ASSERTION FAILED:${NC} install.sh should detect upgrade mode when skipping git checkout with an existing runtime env"
+        return 1
+    fi
+}
+
 test_install_script_has_silent_openssl_check() {
     # setup.sh uses command -v openssl for silent checks
     # This test verifies setup.sh can check openssl availability silently
@@ -1119,6 +1129,7 @@ main() {
     run_test "install script uses docker compose" test_install_script_uses_docker_compose
     run_test "install script creates .env file" test_install_script_creates_env_file
     run_test "install script loads runtime env for upgrades" test_install_script_loads_runtime_env_for_upgrades
+    run_test "install script detects skip-checkout upgrade mode" test_install_script_detects_skip_checkout_upgrade_mode
     run_test "install script has silent openssl check" test_install_script_has_silent_openssl_check
     run_test "install script uses has_openssl for capture" test_install_script_uses_has_openssl_for_capture
     run_test "install script no hardcoded container names" test_install_script_no_hardcoded_container_names

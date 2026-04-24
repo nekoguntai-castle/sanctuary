@@ -215,18 +215,20 @@ wait_for_all_containers_healthy() {
 # Get container status summary
 get_container_status() {
     local project_dir="${1:-.}"
+    local project="${COMPOSE_PROJECT_NAME:-sanctuary}"
 
     echo ""
     echo "Container Status:"
     echo "================="
     docker compose -f "$project_dir/docker-compose.yml" ps 2>/dev/null || \
-        docker ps --filter "name=sanctuary" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+        docker ps --filter "name=${project}-" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
     echo ""
 }
 
 # Stop and remove all Sanctuary containers
 cleanup_containers() {
     local project_dir="${1:-.}"
+    local project="${COMPOSE_PROJECT_NAME:-sanctuary}"
 
     log_info "Cleaning up Sanctuary containers..."
 
@@ -239,7 +241,7 @@ cleanup_containers() {
     docker compose down -v --remove-orphans 2>/dev/null || true
 
     # Remove any orphaned containers
-    docker ps -a --filter "name=sanctuary" -q | xargs -r docker rm -f 2>/dev/null || true
+    docker ps -a --filter "name=${project}-" -q | xargs -r docker rm -f 2>/dev/null || true
 
     log_success "Cleanup complete"
 }

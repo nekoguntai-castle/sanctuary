@@ -53,6 +53,12 @@ This test suite covers:
 
 # Upgrade scenario tests
 ./tests/install/e2e/upgrade-install.test.sh
+
+# Core release lane: upgrade from a specific older ref/tag to the current checkout
+./tests/install/e2e/upgrade-install.test.sh --mode core --source-ref v0.8.39
+
+# Full local suite: include extended recovery scenarios after the core upgrade
+./tests/install/e2e/upgrade-install.test.sh --mode full --source-ref v0.8.39
 ```
 
 ## Prerequisites
@@ -121,13 +127,19 @@ Simulates a complete fresh installation:
 
 Tests upgrading an existing installation:
 
-1. Creates initial installation (if needed)
-2. Creates test data (changes password)
-3. Captures pre-upgrade state
-4. Simulates upgrade (stop, update, restart)
-5. Verifies secrets preserved
-6. Verifies data preserved
-7. Tests force rebuild scenario
+`--mode core` is the focused release/CI lane:
+
+1. Resolves an older source ref (explicit `--source-ref` or the newest stable tag not equal to the current commit)
+2. Creates an initial installation from that source checkout
+3. Creates test data (changes password)
+4. Captures pre-upgrade state
+5. Stops the source containers and switches to the current checkout
+6. Runs the current checkout's installer in upgrade mode against the shared runtime env
+7. Verifies secrets preserved
+8. Verifies data preserved
+9. Verifies migrations completed after the upgrade
+
+`--mode full` runs the core lane and then continues into the older recovery scenarios such as password-drift recovery, rebuild, and volume-persistence checks.
 
 ### Container Health (`e2e/container-health.test.sh`)
 
@@ -172,6 +184,9 @@ Tests authentication and password management:
 |--------|-------------|
 | `--verbose`, `-v` | Show detailed output |
 | `--keep-containers` | Don't cleanup containers after test |
+| `--mode core|full` | Choose the focused ref-to-ref upgrade lane or the extended local suite |
+| `--core-only` | Shortcut for `--mode core` |
+| `--full-suite` | Shortcut for `--mode full` |
 | `--skip-cleanup` | Skip initial cleanup |
 | `--slow` | Use longer timeouts |
 | `--keep-state` | Don't reset password after auth tests |
@@ -183,6 +198,8 @@ Tests authentication and password management:
 | `HTTPS_PORT` | 8443 | HTTPS port for tests |
 | `HTTP_PORT` | 8080 | HTTP port for tests |
 | `GATEWAY_PORT` | 4000 | Gateway API port |
+| `SANCTUARY_UPGRADE_SOURCE_REF` | auto | Older ref/tag to install before upgrading |
+| `SANCTUARY_UPGRADE_TEST_MODE` | full | Upgrade suite mode (`core` for the focused ref-to-ref lane, `full` for extended recovery scenarios) |
 | `CONTAINER_STARTUP_TIMEOUT` | 300 | Seconds to wait for containers |
 | `HEALTH_CHECK_TIMEOUT` | 120 | Seconds to wait for health checks |
 | `DEBUG` | false | Enable debug output |
@@ -201,7 +218,7 @@ This workflow runs automatically on:
 |---------|------------|---------------|--------------|
 | Push to main (install paths) | All except upgrade | No | No |
 | PR to main (install paths) | All except upgrade | No | No |
-| Release tag (`v*.*.*`) | Release-critical | No | **Yes** |
+| Release tag (`v*.*.*`) | Release-critical + real core upgrade lane | Yes (non-blocking) | **Yes** |
 | Manual dispatch | Configurable | Configurable | No |
 
 **Release-critical tests** include:
@@ -218,14 +235,17 @@ workflow_dispatch:
   inputs:
     test_suite: all|unit|fresh-install|upgrade|container-health|auth-flow|release-critical
     keep_containers: true|false
+    upgrade_source_ref: v0.8.39
 ```
 
 #### 2. Release Candidate Validation (`.github/workflows/release-candidate.yml`)
 
-Use this workflow **before cutting a release** to run the full test suite including upgrade tests.
+Use this workflow **before cutting a release** to run the full test suite including the real older-version-to-current core upgrade lane.
 
 **Recommended release process:**
 1. Run the Release Candidate workflow on the commit you plan to release
+   - Let it auto-upgrade from the newest stable tag, or provide `upgrade_source_ref` for a specific source version you care about
+   - The workflow uses `upgrade-install.test.sh --mode core`; run `--mode full` locally when you want the extended recovery scenarios too
 2. Wait for all tests to pass (~25-35 minutes total)
 3. Create the release tag
 4. The Install Tests workflow will run release-critical tests on the tag
@@ -237,6 +257,7 @@ workflow_dispatch:
   inputs:
     ref: 'main'  # Git ref to test (branch, tag, or SHA)
     version: '0.5.0'  # Optional version for logging
+    upgrade_source_ref: 'v0.8.39'  # Optional older ref/tag to install before upgrading
 ```
 
 ### Release Blocking
