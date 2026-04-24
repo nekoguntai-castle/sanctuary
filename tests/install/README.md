@@ -107,7 +107,6 @@ Tests individual functions from `install.sh` without requiring Docker:
 - `check_openssl()` - OpenSSL availability check
 - Environment variable handling
 - Script structure validation
-- `setup.sh` PostgreSQL auth-drift safeguards, including Compose-network validation and password-repair compatibility when no `postgres` role exists
 
 ### Fresh Install E2E (`e2e/fresh-install.test.sh`)
 

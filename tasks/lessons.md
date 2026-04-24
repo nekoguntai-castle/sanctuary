@@ -2,18 +2,6 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
-## Keep docs-only PR validation proportional
-
-**Rule:** For docs-only changes, do not present or imply a test matrix unless the docs change executable examples, scripts, or behavior that actually needs runtime verification. Use lightweight validation such as `git diff --check` and a content review instead.
-
-**Why:** During the PostgreSQL upgrade auth-drift documentation follow-up, the user explicitly corrected the assumption that a docs-only PR should carry test expectations. The right bar is accurate documentation and clean formatting, not performative test noise.
-
-**How to apply:**
-- State clearly when a change is docs-only.
-- Prefer `git diff --check`, link verification when practical, and a manual content scan.
-- Only run or cite tests for docs when the patch changes executable snippets, commands, generated examples, or test-owned docs that drive automation.
-- In PR bodies and final summaries, say `No tests run (docs-only)` instead of inventing a test requirement.
-
 ## Treat released installer behavior as source of truth during upgrade triage
 
 **Rule:** When the user says they are upgrading with the shipped `./install.sh`, treat any missing setup behavior as a release gap until the released script proves otherwise. Do not assume a local patch, dirty worktree change, or another agent's branch is already present on the user's machine.

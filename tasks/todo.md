@@ -1,6 +1,6 @@
 # Active Task: Release Upgrade Postgres Auth Drift Hotfix
 
-Status: complete
+Status: in progress
 
 Goal: ship the PostgreSQL upgrade auth-drift fix in a reviewable PR, merge it, and capture the incident findings in a reusable document for future upgrade automation and diagnostics.
 
@@ -11,9 +11,9 @@ Goal: ship the PostgreSQL upgrade auth-drift fix in a reviewable PR, merge it, a
 - [x] Add focused regression coverage for the new validation/repair paths.
 - [x] Write a findings document that explains the incident, the misleading checks, the reliable checks, and the manual recovery path.
 - [x] Run local verification for the touched scripts and focused tests.
-- [x] Push the hotfix branch, open a PR, and watch the required checks.
-- [x] Fix any CI or review issues that surface while the PR is open.
-- [x] Merge the PR and confirm the final branch/PR state.
+- [ ] Push the hotfix branch, open a PR, and watch the required checks.
+- [ ] Fix any CI or review issues that surface while the PR is open.
+- [ ] Merge the PR and confirm the final branch/PR state.
 
 ## Review
 
@@ -28,8 +28,7 @@ Goal: ship the PostgreSQL upgrade auth-drift fix in a reviewable PR, merge it, a
   - `bash tests/install/unit/install-script.test.sh`
   - `git diff --check -- scripts/setup.sh tests/install/unit/install-script.test.sh docs/reference/upgrade-postgres-auth-drift-findings.md`
 - End-to-end repro validated in a temporary Compose project by drifting `POSTGRES_PASSWORD`, running `scripts/setup.sh`, and confirming the repaired password works over the Compose network.
-- PR #118 merged through the queue as `2d590297`.
-- Follow-up documentation now links the findings doc from the main README, docs index, release gates, and install-test README so operators and future upgrade automation can find it quickly.
+- Pending release operations: push, PR creation, checks, merge, and final follow-up notes.
 
 ---
 
