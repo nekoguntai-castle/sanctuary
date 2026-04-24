@@ -301,6 +301,22 @@ describe('HardwareWalletService', () => {
     expect(results.every(r => r.xpub.startsWith('xpub-'))).toBe(true);
   });
 
+  it('fetches all standard xpubs when every path succeeds', async () => {
+    const service = new HardwareWalletService();
+    const { adapter } = createMockAdapter('ledger', {
+      getXpub: vi.fn(async (path: string) => ({ xpub: `xpub-${path}`, fingerprint: 'f1f1f1f1', path })),
+    });
+    service.registerAdapter(adapter);
+    await service.connect('ledger');
+
+    const results = await service.getAllXpubs();
+
+    expect(results).toHaveLength(HardwareWalletService.STANDARD_PATHS.length);
+    expect(results.map(result => result.path)).toEqual(
+      HardwareWalletService.STANDARD_PATHS.map(standardPath => standardPath.path)
+    );
+  });
+
   it('throws an actionable aggregated error if all standard xpub paths fail', async () => {
     const service = new HardwareWalletService();
     const { adapter } = createMockAdapter('ledger', {
@@ -316,6 +332,42 @@ describe('HardwareWalletService', () => {
 
     await expect(service.getAllXpubs()).rejects.toThrow(
       /Failed to fetch any xpubs from device after trying 6\/6 standard account paths.*Most common error: Bitcoin app not open on Ledger.*Native SegWit/
+    );
+  });
+
+  it('handles an empty standard path set defensively', async () => {
+    const originalPaths = HardwareWalletService.STANDARD_PATHS;
+    (HardwareWalletService as any).STANDARD_PATHS = [];
+
+    try {
+      const service = new HardwareWalletService();
+      const { adapter } = createMockAdapter('ledger');
+      service.registerAdapter(adapter);
+      await service.connect('ledger');
+
+      await expect(service.getAllXpubs()).rejects.toThrow(
+        'Failed to fetch any xpubs from device after trying 0/0 standard account paths. Most common error: Unknown error.'
+      );
+    } finally {
+      (HardwareWalletService as any).STANDARD_PATHS = originalPaths;
+    }
+  });
+
+  it('normalizes string and unknown standard xpub failures in the aggregated error', async () => {
+    const service = new HardwareWalletService();
+    const { adapter } = createMockAdapter('ledger', {
+      getXpub: vi.fn(async (path: string) => {
+        if (path === "m/84'/0'/0'") {
+          throw 'usb session busy';
+        }
+        throw { code: 'opaque-failure' };
+      }),
+    });
+    service.registerAdapter(adapter);
+    await service.connect('ledger');
+
+    await expect(service.getAllXpubs()).rejects.toThrow(
+      /Most common error: Unknown error.*Native SegWit/
     );
   });
 

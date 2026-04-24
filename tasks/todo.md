@@ -54,6 +54,7 @@ Goal: troubleshoot and fix the Add Device USB flow where a Ledger Nano S Plus co
 - Rebuilt the local Docker stack with `./start.sh --rebuild`; the frontend container includes the new Ledger asset and the updated aggregated xpub error message.
 - Running-stack verification passed: `https://localhost:8443` returned `200`, `https://localhost:8443/health` returned `200`, `https://localhost:8443/api/v1/health` returned `200` with overall `healthy`, all Sanctuary containers are healthy, and migration exited `0`.
 - User verified the rebuilt Add Device flow now pulls xpubs successfully from the Ledger Nano S Plus.
+- Merge-queue full frontend coverage initially exposed uncovered defensive Ledger branches; added targeted tests and reran `npm run test:coverage` to 100% statements, branches, functions, and lines.
 - Build warning observed but unrelated to this change: direct `eval` in `node_modules/@protobufjs/inquire/index.js`.
 
 ---
