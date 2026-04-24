@@ -2,6 +2,18 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Treat released installer behavior as source of truth during upgrade triage
+
+**Rule:** When the user says they are upgrading with the shipped `./install.sh`, treat any missing setup behavior as a release gap until the released script proves otherwise. Do not assume a local patch, dirty worktree change, or another agent's branch is already present on the user's machine.
+
+**Why:** During the PostgreSQL upgrade auth-drift incident, the user clarified that they were only running the released installer. The local debug result `patch-missing` therefore meant the release really lacked the fix; continuing to reason as if the patch "should already be there" would have blurred the root cause and the release decision.
+
+**How to apply:**
+- Ask what exact installer path or release artifact the user ran before assuming local branch changes are relevant.
+- Verify the released script contents directly with `grep` or `git show <release-tag>:path` when the distinction matters.
+- If the live machine shows `patch-missing`, treat that as evidence about the shipped release, not as user setup error, unless there is concrete proof they ran a modified checkout.
+- Frame the outcome clearly: "the host is recovered manually, but the release still needs a new cut because the shipped installer lacks the fix."
+
 ## Never persist broad approvals for destructive commands
 
 **Rule:** Do not request or rely on persistent approval prefixes for destructive commands, especially `rm -rf`. Each destructive cleanup needs exact one-off permission, and broad accidental approvals must be removed immediately.
