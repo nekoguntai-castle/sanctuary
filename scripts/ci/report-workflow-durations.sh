@@ -26,7 +26,11 @@ gh run view "$run_id" --json jobs --jq '
     if . == null then null else fromdateiso8601 end;
 
   def seconds_between($started; $completed):
-    (($completed | to_epoch) - ($started | to_epoch));
+    if $started == null or $completed == null then null
+    else
+      (($completed | to_epoch) - ($started | to_epoch)) as $seconds
+      | if $seconds < 0 then 0 else $seconds end
+    end;
 
   def format_seconds:
     if . == null then "n/a"
@@ -48,5 +52,5 @@ gh run view "$run_id" --json jobs --jq '
   | sort_by(.seconds // -1)
   | reverse
   | (["Duration | Conclusion | Job", "--- | --- | ---"]
-      + (.[] | ["\(.duration) | \(.conclusion) | \(.name)"]))
+      + map("\(.duration) | \(.conclusion) | \(.name)"))
   | .[]'
