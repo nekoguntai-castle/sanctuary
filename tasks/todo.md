@@ -1,6 +1,39 @@
-# Active Task: Docs-Only CI Trigger Hardening
+# Active Task: Branch-Protection-Safe Docs-Only CI Gating
 
 Status: complete
+
+Goal: keep required checks reportable on docs-only PRs while preventing those PRs from running unnecessary test and quality jobs.
+
+## Checklist
+
+- [x] Confirm which checks are actually required on `main` before changing workflow triggers.
+- [x] Rework `Test Suite` so docs-only PRs keep only the lightweight required summary jobs and skip heavy test jobs.
+- [x] Rework `Code Quality` so docs-only PRs still report the required summary while skipping code-centric quality jobs.
+- [x] Add focused regression coverage for any new scope-classification script.
+- [x] Run focused verification for the touched workflow logic and shell scripts.
+- [x] Record the branch-protection lesson so future workflow changes avoid `paths-ignore` on required contexts.
+
+## Review
+
+- Queried `main` branch protection directly and confirmed the required contexts are `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- `Test Suite` no longer skips docs-only PRs at workflow entry; instead it keeps the required summary jobs and skips `Quick Test Hygiene` when no actual test files changed.
+- Added `scripts/ci/classify-quality-scope.sh` plus `tests/ci/classify-quality-scope.test.sh` so docs-only PRs can skip `lint`, `lizard`, and `jscpd` while still running `gitleaks` and reporting `Code Quality Required Checks`.
+- Local verification completed with:
+  - `bash -n scripts/ci/classify-quality-scope.sh`
+  - `bash -n tests/ci/classify-quality-scope.test.sh`
+  - `bash tests/ci/classify-quality-scope.test.sh`
+  - `bash -n scripts/ci/classify-test-changes.sh`
+  - `bash -n tests/ci/classify-test-changes.test.sh`
+  - `bash tests/ci/classify-test-changes.test.sh`
+  - `git diff --check`
+- `Install Tests` remains safe to skip at workflow entry for markdown-only install docs because it is not a required status check on `main`.
+- GitHub CodeQL is configured via repository default setup, not a repo workflow file, so docs-only CodeQL skipping would require a repository-settings change or replacing default setup with a repo-owned workflow.
+
+---
+
+# Active Task: Docs-Only CI Trigger Hardening
+
+Status: superseded
 
 Goal: make docs-only PRs skip the test-suite and install-test workflow shells entirely, while cleaning up the stale docs follow-up branches that are no longer needed.
 
@@ -15,7 +48,7 @@ Goal: make docs-only PRs skip the test-suite and install-test workflow shells en
 
 ## Review
 
-- `test.yml` now ignores docs-only PRs at workflow entry and excludes markdown-only files under `tests/` from `push` path matching.
+- Superseded by the follow-up task above: required checks on `main` mean `test.yml` cannot safely skip entire docs-only PRs at workflow entry.
 - `install-test.yml` now excludes markdown docs under `tests/install/` for PR triggers and strips markdown files from the `push`-time relevance check.
 - `scripts/ci/classify-test-changes.sh` no longer treats arbitrary files under `tests/` as frontend changes; only executable test/config file extensions match.
 - Added `tests/ci/classify-test-changes.test.sh` to prove `tests/install/README.md` stays out of frontend/test classification while real frontend test files still classify correctly.
