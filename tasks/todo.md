@@ -1,3 +1,37 @@
+# Active Task: Release Upgrade Postgres Auth Drift Hotfix
+
+Status: in progress
+
+Goal: ship the PostgreSQL upgrade auth-drift fix in a reviewable PR, merge it, and capture the incident findings in a reusable document for future upgrade automation and diagnostics.
+
+## Checklist
+
+- [x] Isolate the hotfix work on a clean branch/worktree so unrelated in-flight changes do not leak into the release fix.
+- [x] Fix `scripts/setup.sh` so password validation uses the same Compose-network path as the app and password repair does not assume a `postgres` DB role exists.
+- [x] Add focused regression coverage for the new validation/repair paths.
+- [x] Write a findings document that explains the incident, the misleading checks, the reliable checks, and the manual recovery path.
+- [x] Run local verification for the touched scripts and focused tests.
+- [ ] Push the hotfix branch, open a PR, and watch the required checks.
+- [ ] Fix any CI or review issues that surface while the PR is open.
+- [ ] Merge the PR and confirm the final branch/PR state.
+
+## Review
+
+- Hotfix branch: `fix/upgrade-postgres-auth-drift`
+- Committed local changes:
+  - `scripts/setup.sh`
+  - `tests/install/unit/install-script.test.sh`
+  - `docs/reference/upgrade-postgres-auth-drift-findings.md`
+- Local verification already completed:
+  - `bash -n scripts/setup.sh`
+  - `bash -n tests/install/unit/install-script.test.sh`
+  - `bash tests/install/unit/install-script.test.sh`
+  - `git diff --check -- scripts/setup.sh tests/install/unit/install-script.test.sh docs/reference/upgrade-postgres-auth-drift-findings.md`
+- End-to-end repro validated in a temporary Compose project by drifting `POSTGRES_PASSWORD`, running `scripts/setup.sh`, and confirming the repaired password works over the Compose network.
+- Pending release operations: push, PR creation, checks, merge, and final follow-up notes.
+
+---
+
 # Completed Task: Path-Aware Merge Queue Test Suite
 
 Status: complete
