@@ -25,6 +25,9 @@
 #     Override host ports when defaults are already allocated.
 #   - JAEGER_OTLP_GRPC_PORT, JAEGER_OTLP_HTTP_PORT:
 #     Override Jaeger OTLP ingestion host ports when defaults are already allocated.
+#   - *_CONTAINER_NAME:
+#     Override monitoring container names when multiple monitoring-enabled stacks
+#     need to run on the same host.
 #
 # =============================================
 
@@ -37,7 +40,7 @@ services:
   # ============================================
   jaeger:
     image: jaegertracing/all-in-one:1.53
-    container_name: sanctuary-jaeger
+    container_name: ${JAEGER_CONTAINER_NAME:-sanctuary-jaeger}
     restart: unless-stopped
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
@@ -74,7 +77,7 @@ services:
   # ============================================
   loki:
     image: grafana/loki:2.9.0
-    container_name: sanctuary-loki
+    container_name: ${LOKI_CONTAINER_NAME:-sanctuary-loki}
     restart: unless-stopped
     ports:
       - "${MONITORING_BIND_ADDR:-127.0.0.1}:${LOKI_PORT:-3100}:3100"
@@ -112,7 +115,7 @@ services:
   # ============================================
   promtail:
     image: grafana/promtail:3.5.0
-    container_name: sanctuary-promtail
+    container_name: ${PROMTAIL_CONTAINER_NAME:-sanctuary-promtail}
     restart: unless-stopped
     depends_on:
       - loki
@@ -152,7 +155,7 @@ services:
   # ============================================
   prometheus:
     image: prom/prometheus:v2.47.0
-    container_name: sanctuary-prometheus
+    container_name: ${PROMETHEUS_CONTAINER_NAME:-sanctuary-prometheus}
     restart: unless-stopped
     ports:
       - "${MONITORING_BIND_ADDR:-127.0.0.1}:${PROMETHEUS_PORT:-9090}:9090"
@@ -204,7 +207,7 @@ services:
   # ============================================
   alertmanager:
     image: prom/alertmanager:v0.26.0
-    container_name: sanctuary-alertmanager
+    container_name: ${ALERTMANAGER_CONTAINER_NAME:-sanctuary-alertmanager}
     restart: unless-stopped
     ports:
       - "${MONITORING_BIND_ADDR:-127.0.0.1}:${ALERTMANAGER_PORT:-9093}:9093"
@@ -254,7 +257,7 @@ services:
 
   grafana:
     image: grafana/grafana:10.2.0
-    container_name: sanctuary-grafana
+    container_name: ${GRAFANA_CONTAINER_NAME:-sanctuary-grafana}
     restart: unless-stopped
     depends_on:
       - loki

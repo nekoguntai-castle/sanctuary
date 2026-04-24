@@ -1,13 +1,15 @@
 name: Release Candidate Validation
 
-# This workflow runs the FULL install test suite including upgrade tests.
-# Use this before cutting a release to thoroughly validate the installation process.
+# This workflow runs the full install test suite plus the required
+# latest-stable upgrade lane and the warning-level n-1 / n-2 history lanes.
+# Use this before cutting a release to validate the installation path.
 #
 # Recommended workflow:
 # 1. Run this workflow manually on the commit you plan to release
-# 2. Wait for all tests to pass (including upgrade tests)
-# 3. Create the release tag
-# 4. The regular install-test workflow will run release-critical tests on the tag
+# 2. Wait for unit, fresh-install, and latest-stable upgrade to pass
+# 3. Review n-1 / n-2 warnings and uploaded upgrade artifacts
+# 4. Create the release tag
+# 5. The regular install-test workflow will run release-critical tests plus the required latest-stable lane on the tag
 #
 # Total runtime: ~25-35 minutes
 
@@ -24,8 +26,13 @@ on:
         required: false
         type: string
       upgrade_source_ref:
-        description: 'Optional older git ref or tag to install before upgrading to the candidate ref'
+        description: 'Optional older git ref/tag or named lane (latest-stable, n-1, n-2) to install before upgrading to the candidate ref'
         required: false
+        type: string
+      upgrade_fixture:
+        description: 'Upgrade fixture to apply during the source-install and post-upgrade hooks'
+        required: false
+        default: 'baseline'
         type: string
   workflow_dispatch:
     inputs:
@@ -39,8 +46,13 @@ on:
         required: false
         type: string
       upgrade_source_ref:
-        description: 'Optional older git ref or tag to install before upgrading to the candidate ref'
+        description: 'Optional older git ref/tag or named lane (latest-stable, n-1, n-2) to install before upgrading to the candidate ref'
         required: false
+        type: string
+      upgrade_fixture:
+        description: 'Upgrade fixture to apply during the source-install and post-upgrade hooks'
+        required: false
+        default: 'baseline'
         type: string
 
 permissions:
@@ -64,12 +76,12 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Git Ref | \`${{ github.event.inputs.ref || 'main' }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Version | ${{ github.event.inputs.version || 'N/A' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Git Ref | \`${{ github.event.inputs.ref || inputs.ref || 'main' }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Version | ${{ github.event.inputs.version || inputs.version || 'N/A' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Triggered By | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Time | $(date -u '+%Y-%m-%d %H:%M:%S UTC') |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "This workflow runs the **full** install test suite including upgrade tests." >> $GITHUB_STEP_SUMMARY
+          echo "This workflow runs the **full** install test suite plus the required latest-stable upgrade lane and the warning-level n-1 / n-2 history lanes." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "---" >> $GITHUB_STEP_SUMMARY
 
@@ -84,7 +96,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
-          ref: ${{ github.event.inputs.ref || 'main' }}
+          ref: ${{ github.event.inputs.ref || inputs.ref || 'main' }}
           fetch-depth: 0
 
       - name: Make test scripts executable
@@ -105,7 +117,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
-          ref: ${{ github.event.inputs.ref || 'main' }}
+          ref: ${{ github.event.inputs.ref || inputs.ref || 'main' }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
@@ -157,7 +169,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
-          ref: ${{ github.event.inputs.ref || 'main' }}
+          ref: ${{ github.event.inputs.ref || inputs.ref || 'main' }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
@@ -243,7 +255,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
-          ref: ${{ github.event.inputs.ref || 'main' }}
+          ref: ${{ github.event.inputs.ref || inputs.ref || 'main' }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
@@ -319,20 +331,19 @@ jobs:
         run: docker compose down -v --remove-orphans || true
 
   # ============================================
-  # Upgrade Test (FULL - takes 10-15 min, non-blocking)
+  # Upgrade Test (required lane)
   # ============================================
   upgrade-test:
-    name: Upgrade Install
+    name: Upgrade Install (latest-stable)
     runs-on: ubuntu-latest
     needs: fresh-install-test
-    continue-on-error: true  # Non-blocking - failures are warnings
     timeout-minutes: 45
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
-          ref: ${{ github.event.inputs.ref || 'main' }}
+          ref: ${{ github.event.inputs.ref || inputs.ref || 'main' }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
@@ -344,8 +355,126 @@ jobs:
         env:
           HTTPS_PORT: ${{ env.HTTPS_PORT }}
           HTTP_PORT: ${{ env.HTTP_PORT }}
-          SANCTUARY_UPGRADE_SOURCE_REF: ${{ github.event.inputs.upgrade_source_ref || inputs.upgrade_source_ref }}
+          SANCTUARY_UPGRADE_SOURCE_REF: ${{ github.event.inputs.upgrade_source_ref || inputs.upgrade_source_ref || 'latest-stable' }}
+          SANCTUARY_UPGRADE_FIXTURE: ${{ github.event.inputs.upgrade_fixture || inputs.upgrade_fixture || 'baseline' }}
+          SANCTUARY_UPGRADE_ARTIFACTS_DIR: ${{ runner.temp }}/upgrade-latest-stable
+          SANCTUARY_UPGRADE_JOB_NAME: release-candidate-upgrade-latest-stable
         run: ./tests/install/e2e/upgrade-install.test.sh --mode core --verbose
+
+      - name: Upload upgrade artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: release-candidate-upgrade-latest-stable-artifacts
+          path: ${{ runner.temp }}/upgrade-latest-stable
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Show container logs on failure
+        if: failure()
+        run: |
+          docker compose ps || true
+          docker compose logs --tail 50 postgres 2>&1 || true
+          docker compose logs --tail 100 backend 2>&1 || true
+
+      - name: Cleanup
+        if: always()
+        run: docker compose down -v --remove-orphans || true
+
+  # ============================================
+  # Upgrade Test History Lane (n-1)
+  # ============================================
+  upgrade-test-n-1:
+    name: Upgrade Install (n-1)
+    runs-on: ubuntu-latest
+    needs: fresh-install-test
+    if: ${{ (github.event.inputs.upgrade_source_ref || inputs.upgrade_source_ref || '') == '' }}
+    continue-on-error: true
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ github.event.inputs.ref || inputs.ref || 'main' }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
+
+      - name: Make test scripts executable
+        run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh
+
+      - name: Run n-1 core upgrade test
+        env:
+          HTTPS_PORT: ${{ env.HTTPS_PORT }}
+          HTTP_PORT: ${{ env.HTTP_PORT }}
+          SANCTUARY_UPGRADE_SOURCE_REF: n-1
+          SANCTUARY_UPGRADE_FIXTURE: ${{ github.event.inputs.upgrade_fixture || inputs.upgrade_fixture || 'baseline' }}
+          SANCTUARY_UPGRADE_ARTIFACTS_DIR: ${{ runner.temp }}/upgrade-n-1
+          SANCTUARY_UPGRADE_JOB_NAME: release-candidate-upgrade-n-1
+        run: ./tests/install/e2e/upgrade-install.test.sh --mode core --verbose
+
+      - name: Upload upgrade artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: release-candidate-upgrade-n-1-artifacts
+          path: ${{ runner.temp }}/upgrade-n-1
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Show container logs on failure
+        if: failure()
+        run: |
+          docker compose ps || true
+          docker compose logs --tail 50 postgres 2>&1 || true
+          docker compose logs --tail 100 backend 2>&1 || true
+
+      - name: Cleanup
+        if: always()
+        run: docker compose down -v --remove-orphans || true
+
+  # ============================================
+  # Upgrade Test History Lane (n-2)
+  # ============================================
+  upgrade-test-n-2:
+    name: Upgrade Install (n-2)
+    runs-on: ubuntu-latest
+    needs: fresh-install-test
+    if: ${{ (github.event.inputs.upgrade_source_ref || inputs.upgrade_source_ref || '') == '' }}
+    continue-on-error: true
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ github.event.inputs.ref || inputs.ref || 'main' }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
+
+      - name: Make test scripts executable
+        run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh
+
+      - name: Run n-2 core upgrade test
+        env:
+          HTTPS_PORT: ${{ env.HTTPS_PORT }}
+          HTTP_PORT: ${{ env.HTTP_PORT }}
+          SANCTUARY_UPGRADE_SOURCE_REF: n-2
+          SANCTUARY_UPGRADE_FIXTURE: ${{ github.event.inputs.upgrade_fixture || inputs.upgrade_fixture || 'baseline' }}
+          SANCTUARY_UPGRADE_ARTIFACTS_DIR: ${{ runner.temp }}/upgrade-n-2
+          SANCTUARY_UPGRADE_JOB_NAME: release-candidate-upgrade-n-2
+        run: ./tests/install/e2e/upgrade-install.test.sh --mode core --verbose
+
+      - name: Upload upgrade artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: release-candidate-upgrade-n-2-artifacts
+          path: ${{ runner.temp }}/upgrade-n-2
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Show container logs on failure
         if: failure()
@@ -364,7 +493,7 @@ jobs:
   validation-summary:
     name: Validation Summary
     runs-on: ubuntu-latest
-    needs: [unit-tests, fresh-install-test, container-health-test, auth-flow-test, upgrade-test]
+    needs: [unit-tests, fresh-install-test, container-health-test, auth-flow-test, upgrade-test, upgrade-test-n-1, upgrade-test-n-2]
     if: always()
 
     steps:
@@ -411,11 +540,29 @@ jobs:
             ALL_PASSED=false
           fi
 
-          # Upgrade test
+          # Required upgrade test
           if [ "${{ needs.upgrade-test.result }}" == "success" ]; then
-            echo "| Upgrade Install | :white_check_mark: Passed | ~10-15m |" >> $GITHUB_STEP_SUMMARY
+            echo "| Upgrade Install (latest-stable/custom) | :white_check_mark: Passed | ~10-15m |" >> $GITHUB_STEP_SUMMARY
           else
-            echo "| Upgrade Install | :x: Failed | - |" >> $GITHUB_STEP_SUMMARY
+            echo "| Upgrade Install (latest-stable/custom) | :x: Failed | - |" >> $GITHUB_STEP_SUMMARY
+            ALL_PASSED=false
+          fi
+
+          if [ "${{ needs.upgrade-test-n-1.result }}" == "success" ]; then
+            echo "| Upgrade Install (n-1) | :white_check_mark: Passed | ~10-15m |" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.upgrade-test-n-1.result }}" == "skipped" ]; then
+            echo "| Upgrade Install (n-1) | :arrow_right: Skipped | custom ref override |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Upgrade Install (n-1) | :warning: Failed (non-blocking) | - |" >> $GITHUB_STEP_SUMMARY
+            ALL_PASSED=false
+          fi
+
+          if [ "${{ needs.upgrade-test-n-2.result }}" == "success" ]; then
+            echo "| Upgrade Install (n-2) | :white_check_mark: Passed | ~10-15m |" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.upgrade-test-n-2.result }}" == "skipped" ]; then
+            echo "| Upgrade Install (n-2) | :arrow_right: Skipped | custom ref override |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Upgrade Install (n-2) | :warning: Failed (non-blocking) | - |" >> $GITHUB_STEP_SUMMARY
             ALL_PASSED=false
           fi
 
@@ -426,7 +573,8 @@ jobs:
           # Core tests determine release approval
           CORE_PASSED=true
           if [ "${{ needs.unit-tests.result }}" != "success" ] || \
-             [ "${{ needs.fresh-install-test.result }}" != "success" ]; then
+             [ "${{ needs.fresh-install-test.result }}" != "success" ] || \
+             [ "${{ needs.upgrade-test.result }}" != "success" ]; then
             CORE_PASSED=false
           fi
 
@@ -438,7 +586,7 @@ jobs:
             else
               echo "## :rocket: Release Candidate APPROVED (with warnings)" >> $GITHUB_STEP_SUMMARY
               echo "" >> $GITHUB_STEP_SUMMARY
-              echo "Core tests (Unit + Fresh Install) passed. Extended tests have non-blocking failures." >> $GITHUB_STEP_SUMMARY
+              echo "Core tests (Unit + Fresh Install + latest-stable/custom upgrade) passed. Extended tests have non-blocking failures." >> $GITHUB_STEP_SUMMARY
               echo "" >> $GITHUB_STEP_SUMMARY
               echo "> **Note:** Extended test failures may indicate upgrade-specific or environment-specific risk." >> $GITHUB_STEP_SUMMARY
               echo "> Review failed tests before release even though they do not yet hard-block this workflow." >> $GITHUB_STEP_SUMMARY
@@ -460,7 +608,8 @@ jobs:
         run: |
           # Core tests that MUST pass for release
           if [ "${{ needs.unit-tests.result }}" != "success" ] || \
-             [ "${{ needs.fresh-install-test.result }}" != "success" ]; then
+             [ "${{ needs.fresh-install-test.result }}" != "success" ] || \
+             [ "${{ needs.upgrade-test.result }}" != "success" ]; then
             echo "::error::Release candidate validation FAILED - core tests did not pass."
             exit 1
           fi
@@ -476,7 +625,15 @@ jobs:
             WARNINGS=$((WARNINGS + 1))
           fi
           if [ "${{ needs.upgrade-test.result }}" != "success" ]; then
-            echo "::warning::Upgrade test failed (non-blocking)"
+            echo "::warning::Required latest-stable/custom upgrade test failed"
+            WARNINGS=$((WARNINGS + 1))
+          fi
+          if [ "${{ needs.upgrade-test-n-1.result }}" != "success" ] && [ "${{ needs.upgrade-test-n-1.result }}" != "skipped" ]; then
+            echo "::warning::n-1 upgrade history lane failed (non-blocking)"
+            WARNINGS=$((WARNINGS + 1))
+          fi
+          if [ "${{ needs.upgrade-test-n-2.result }}" != "success" ] && [ "${{ needs.upgrade-test-n-2.result }}" != "skipped" ]; then
+            echo "::warning::n-2 upgrade history lane failed (non-blocking)"
             WARNINGS=$((WARNINGS + 1))
           fi
 

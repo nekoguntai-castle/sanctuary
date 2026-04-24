@@ -71,4 +71,40 @@ describe('support-package-runner', () => {
       modulePath: supportPackageModuleCandidates[2],
     }, null, 2));
   });
+
+  it('suppresses incidental stdout noise while generating the support package', async () => {
+    const chunks: string[] = [];
+    const observedStdout: string[] = [];
+    const originalWrite = process.stdout.write.bind(process.stdout);
+
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      observedStdout.push(String(chunk));
+      return true;
+    }) as typeof process.stdout.write;
+
+    try {
+      await writeSupportPackageJson(
+        {
+          write(chunk: string) {
+            chunks.push(chunk);
+            return true;
+          },
+        } as NodeJS.WritableStream,
+        {
+          resolveCandidate: () => '/app/dist/app/src/services/supportPackage',
+          loadModule: () => ({
+            generateSupportPackage: async () => {
+              process.stdout.write('◇ injected env (0) from dist/app/.env');
+              return { ok: true };
+            },
+          }),
+        },
+      );
+    } finally {
+      process.stdout.write = originalWrite;
+    }
+
+    expect(observedStdout).toEqual([]);
+    expect(chunks.join('')).toBe(JSON.stringify({ ok: true }, null, 2));
+  });
 });
