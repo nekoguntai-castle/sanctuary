@@ -20,9 +20,9 @@ Goal: reduce wasted GitHub Actions time after amended/force-pushed changes by re
 
 ---
 
-# Queued Task: Ledger Nano S Plus Xpub Fetch Failure
+# Active Task: Ledger Nano S Plus Xpub Fetch Failure
 
-Status: queued
+Status: complete
 
 Goal: troubleshoot and fix the Add Device USB flow where a Ledger Nano S Plus connects through the browser but ends with `Failed to fetch any xpubs from device` before any backend device-save request is made.
 
@@ -35,18 +35,26 @@ Goal: troubleshoot and fix the Add Device USB flow where a Ledger Nano S Plus co
 
 ## Fix Queue
 
-- [ ] Capture the exact browser console/device error from the failed flow, including which derivation paths fail, without logging full xpubs or secrets.
-- [ ] Improve Ledger readiness checks so connect fails with a specific message when the device is locked, the Bitcoin app is not open, Ledger Live is holding the USB session, or WebUSB permission is denied.
-- [ ] Prefer `AppClient.getExtendedPubkey(path)` for Ledger xpub reads and keep `AppBtc.getWalletXpub(...)` only as a compatibility fallback if needed.
-- [ ] Replace the generic all-path failure message with an aggregated, user-actionable error that preserves the dominant Ledger/WebUSB cause.
-- [ ] Keep partial-success behavior: if at least one standard account path returns an xpub, proceed with those accounts and report skipped paths non-fatally.
-- [ ] Review the default Ledger scan path set for Nano S Plus compatibility; consider fetching common single-sig paths first and treating Taproot/BIP48 as optional follow-ups.
-- [ ] Add focused tests for Ledger xpub fallback behavior, all-path failure aggregation, partial path success, rejected-on-device errors, and Bitcoin-app-not-open errors.
-- [ ] Manually verify with Chrome or Edge at `https://localhost:8443` using an unlocked Ledger Nano S Plus with the Bitcoin app open and Ledger Live closed.
+- [x] Capture the exact browser console/device error only if the rebuilt stack still fails on real hardware; not needed because the manual Ledger retry succeeded.
+- [x] Improve Ledger readiness checks so connect fails with a specific message when the device is locked, the Bitcoin app is not open, Ledger Live is holding the USB session, or WebUSB permission is denied.
+- [x] Prefer `AppClient.getExtendedPubkey(path)` for Ledger xpub reads and keep `AppBtc.getWalletXpub(...)` only as a compatibility fallback if needed.
+- [x] Replace the generic all-path failure message with an aggregated, user-actionable error that preserves the dominant Ledger/WebUSB cause.
+- [x] Keep partial-success behavior: if at least one standard account path returns an xpub, proceed with those accounts and report skipped paths non-fatally.
+- [x] Review the default Ledger scan path set for Nano S Plus compatibility; no path-set change for this fix because partial-success handling already makes unsupported paths non-fatal.
+- [x] Add focused tests for Ledger xpub fallback behavior, all-path failure aggregation, partial path success, rejected-on-device errors, and Bitcoin-app-not-open errors.
+- [x] Manually verify with Chrome or Edge at `https://localhost:8443` using an unlocked Ledger Nano S Plus with the Bitcoin app open and Ledger Live closed.
 
 ## Review
 
-- Pending implementation. No code changes made yet.
+- Implemented the Ledger xpub read path in `services/hardwareWallet/adapters/ledger/ledgerAdapter.ts` using `AppClient.getExtendedPubkey(path)` first, with the old `AppBtc.getWalletXpub(...)` API retained as a compatibility fallback only for non-actionable failures.
+- Added friendly Ledger/WebUSB error mapping for access denial, locked device, Bitcoin app not open, USB session already claimed, user rejection, and disconnect states.
+- Updated `services/hardwareWallet/service.ts` so all-path failures report the dominant per-path cause and the tried account names instead of only `Failed to fetch any xpubs from device`; partial successes still proceed.
+- Added focused coverage in `tests/services/hardwareWallet.ledgerAdapter.test.ts` and `tests/services/hardwareWallet.service.test.ts`.
+- Local verification passed: focused Vitest suite 46/46, app typecheck, test typecheck, touched-file lizard (`CCN <= 15`, `nloc <= 200`), and production `npm run build`.
+- Rebuilt the local Docker stack with `./start.sh --rebuild`; the frontend container includes the new Ledger asset and the updated aggregated xpub error message.
+- Running-stack verification passed: `https://localhost:8443` returned `200`, `https://localhost:8443/health` returned `200`, `https://localhost:8443/api/v1/health` returned `200` with overall `healthy`, all Sanctuary containers are healthy, and migration exited `0`.
+- User verified the rebuilt Add Device flow now pulls xpubs successfully from the Ledger Nano S Plus.
+- Build warning observed but unrelated to this change: direct `eval` in `node_modules/@protobufjs/inquire/index.js`.
 
 ---
 

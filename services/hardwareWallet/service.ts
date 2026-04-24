@@ -23,6 +23,51 @@ import type {
 
 const log = createLogger('HardwareWalletService');
 type AdapterLoader = () => Promise<DeviceAdapter>;
+type StandardXpubResult = XpubResult & {
+  purpose: 'single_sig' | 'multisig';
+  scriptType: 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy';
+};
+type XpubFetchFailure = {
+  name: string;
+  path: string;
+  message: string;
+};
+
+function getXpubFetchErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  return 'Unknown error';
+}
+
+function getMostCommonFailure(failures: XpubFetchFailure[]): string {
+  const counts = new Map<string, number>();
+  for (const failure of failures) {
+    counts.set(failure.message, (counts.get(failure.message) ?? 0) + 1);
+  }
+
+  let mostCommon = failures[0]?.message ?? 'Unknown error';
+  let highestCount = 0;
+  for (const [message, count] of counts.entries()) {
+    if (count > highestCount) {
+      mostCommon = message;
+      highestCount = count;
+    }
+  }
+
+  return mostCommon;
+}
+
+function buildAllXpubsFailedMessage(failures: XpubFetchFailure[], totalPaths: number): string {
+  const commonFailure = getMostCommonFailure(failures);
+  const attemptedNames = failures.map(failure => failure.name).join(', ');
+
+  return [
+    `Failed to fetch any xpubs from device after trying ${failures.length}/${totalPaths} standard account paths.`,
+    `Most common error: ${commonFailure}.`,
+    `Tried: ${attemptedNames}.`,
+    'Check that the device is unlocked, the Bitcoin app is open, Ledger Live is closed, and public-key export prompts are approved.',
+  ].join(' ');
+}
 
 /**
  * Hardware Wallet Service
@@ -231,12 +276,13 @@ export class HardwareWalletService {
    */
   async getAllXpubs(
     onProgress?: (current: number, total: number, path: string) => void
-  ): Promise<Array<XpubResult & { purpose: 'single_sig' | 'multisig'; scriptType: 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy' }>> {
+  ): Promise<StandardXpubResult[]> {
     if (!this.activeAdapter) {
       throw new Error('No device connected');
     }
 
-    const results: Array<XpubResult & { purpose: 'single_sig' | 'multisig'; scriptType: 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy' }> = [];
+    const results: StandardXpubResult[] = [];
+    const failures: XpubFetchFailure[] = [];
     const paths = HardwareWalletService.STANDARD_PATHS;
 
     for (let i = 0; i < paths.length; i++) {
@@ -256,13 +302,23 @@ export class HardwareWalletService {
         });
         log.info(`Successfully fetched ${name}`, { fingerprint: xpubResult.fingerprint });
       } catch (error) {
+        const message = getXpubFetchErrorMessage(error);
         // Log but continue - some paths may not be supported by all devices
-        log.warn(`Failed to fetch ${name}, skipping`, { path, error });
+        failures.push({ name, path, message });
+        log.warn(`Failed to fetch ${name}, skipping`, { path, error: message });
       }
     }
 
     if (results.length === 0) {
-      throw new Error('Failed to fetch any xpubs from device');
+      throw new Error(buildAllXpubsFailedMessage(failures, paths.length));
+    }
+
+    if (failures.length > 0) {
+      log.warn('Some xpub paths were skipped', {
+        fetched: results.length,
+        failed: failures.length,
+        failures,
+      });
     }
 
     return results;

@@ -301,17 +301,22 @@ describe('HardwareWalletService', () => {
     expect(results.every(r => r.xpub.startsWith('xpub-'))).toBe(true);
   });
 
-  it('throws if all standard xpub paths fail', async () => {
+  it('throws an actionable aggregated error if all standard xpub paths fail', async () => {
     const service = new HardwareWalletService();
     const { adapter } = createMockAdapter('ledger', {
-      getXpub: vi.fn(async () => {
-        throw new Error('all failed');
+      getXpub: vi.fn(async (path: string) => {
+        if (path === "m/86'/0'/0'") {
+          throw new Error('taproot unsupported');
+        }
+        throw new Error('Bitcoin app not open on Ledger. Open the Bitcoin app and try again.');
       }),
     });
     service.registerAdapter(adapter);
     await service.connect('ledger');
 
-    await expect(service.getAllXpubs()).rejects.toThrow('Failed to fetch any xpubs from device');
+    await expect(service.getAllXpubs()).rejects.toThrow(
+      /Failed to fetch any xpubs from device after trying 6\/6 standard account paths.*Most common error: Bitcoin app not open on Ledger.*Native SegWit/
+    );
   });
 
   it('executes full signTransaction flow via backend and adapter', async () => {
