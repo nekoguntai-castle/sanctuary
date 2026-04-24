@@ -17,6 +17,8 @@ on:
       - 'server/prisma/**'
       - 'docker/**'
       - 'tests/install/**'
+      - '!tests/install/*.md'
+      - '!tests/install/**/*.md'
       - '.github/workflows/install-test.yml'
   workflow_dispatch:
     inputs:
@@ -80,11 +82,12 @@ jobs:
         run: |
           # Check if any install-relevant files changed
           CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
+          CHANGED_NON_DOCS=$(printf '%s\n' "$CHANGED" | grep -vE '\.md$' || true)
           RELEVANT_PATTERNS="install.sh|docker-compose.yml|Dockerfile|server/Dockerfile|server/prisma/|docker/|tests/install/|.github/workflows/install-test.yml"
-          if echo "$CHANGED" | grep -qE "$RELEVANT_PATTERNS"; then
+          if echo "$CHANGED_NON_DOCS" | grep -qE "$RELEVANT_PATTERNS"; then
             echo "changed=true" >> $GITHUB_OUTPUT
             echo "Relevant files changed:"
-            echo "$CHANGED" | grep -E "$RELEVANT_PATTERNS" || true
+            echo "$CHANGED_NON_DOCS" | grep -E "$RELEVANT_PATTERNS" || true
           else
             echo "changed=false" >> $GITHUB_OUTPUT
             echo "No install-relevant files changed"

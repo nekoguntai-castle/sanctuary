@@ -2,6 +2,29 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Encode docs-only CI behavior in workflow filters, not PR narration
+
+**Rule:** If the user says docs should not trigger tests, fix the workflow triggers and path classification instead of merely calling the PR "docs-only" in comments or summaries.
+
+**Why:** The auth-drift docs follow-up still triggered `Install Tests` and the `Test Suite` shell because `tests/install/README.md` matched broad workflow patterns. Trimming the PR helped immediately, but the durable fix is workflow-level path filtering plus classifier hardening.
+
+**How to apply:**
+- Check both workflow entry conditions and any downstream changed-file classifier before declaring a docs PR "safe."
+- Exclude markdown/docs-only paths at the workflow trigger when possible so the workflow never starts.
+- Narrow broad `tests/*` style classifiers so documentation files under test directories do not look like executable test changes.
+- Verify the result by checking that docs-only PRs show skipped test lanes instead of pending shells.
+
+## Avoid per-command env prefixes that defeat saved approvals
+
+**Rule:** Do not prepend routine `gh` commands with disposable environment prefixes like `TMPDIR=...` unless the env change is actually required for the task.
+
+**Why:** The user corrected the merge workflow after repeated `TMPDIR=... gh ...` commands forced fresh approvals because the command prefix no longer matched the saved approval rule.
+
+**How to apply:**
+- Prefer the plain approved command form first, such as `gh pr view`, `gh pr checks`, or `gh pr merge`.
+- Add an environment prefix only when the command genuinely fails without it and the failure matters to the task.
+- When a prefixed command becomes necessary, expect a fresh approval and keep the reason explicit.
+
 ## Treat released installer behavior as source of truth during upgrade triage
 
 **Rule:** When the user says they are upgrading with the shipped `./install.sh`, treat any missing setup behavior as a release gap until the released script proves otherwise. Do not assume a local patch, dirty worktree change, or another agent's branch is already present on the user's machine.

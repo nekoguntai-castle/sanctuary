@@ -1,3 +1,33 @@
+# Active Task: Docs-Only CI Trigger Hardening
+
+Status: complete
+
+Goal: make docs-only PRs skip the test-suite and install-test workflow shells entirely, while cleaning up the stale docs follow-up branches that are no longer needed.
+
+## Checklist
+
+- [x] Reproduce the current trigger paths for docs-only changes in `test.yml`, `install-test.yml`, and `scripts/ci/classify-test-changes.sh`.
+- [x] Tighten workflow filters so markdown/docs-only pull requests do not start the test workflows.
+- [x] Harden changed-file classification so docs under `tests/` do not masquerade as frontend test changes.
+- [x] Add focused regression coverage for the changed-file classifier behavior.
+- [x] Run focused verification for the touched workflows/scripts.
+- [x] Delete stale local and remote docs branches: `docs/upgrade-postgres-auth-docs` and `docs/upgrade-postgres-auth-docs-v2`.
+
+## Review
+
+- `test.yml` now ignores docs-only PRs at workflow entry and excludes markdown-only files under `tests/` from `push` path matching.
+- `install-test.yml` now excludes markdown docs under `tests/install/` for PR triggers and strips markdown files from the `push`-time relevance check.
+- `scripts/ci/classify-test-changes.sh` no longer treats arbitrary files under `tests/` as frontend changes; only executable test/config file extensions match.
+- Added `tests/ci/classify-test-changes.test.sh` to prove `tests/install/README.md` stays out of frontend/test classification while real frontend test files still classify correctly.
+- Local verification completed with:
+  - `bash -n scripts/ci/classify-test-changes.sh`
+  - `bash -n tests/ci/classify-test-changes.test.sh`
+  - `bash tests/ci/classify-test-changes.test.sh`
+  - `git diff --check`
+- Deleted stale local branches `docs/upgrade-postgres-auth-docs` and `docs/upgrade-postgres-auth-docs-v2`, removed the old `/tmp/sanctuary-docs` worktree, deleted `origin/docs/upgrade-postgres-auth-docs`, and pruned the already-merged `origin/docs/upgrade-postgres-auth-docs-v2` tracking ref.
+
+---
+
 # Active Task: Release Upgrade Postgres Auth Drift Hotfix
 
 Status: in progress
