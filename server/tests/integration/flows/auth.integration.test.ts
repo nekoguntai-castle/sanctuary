@@ -16,7 +16,7 @@ import { vi } from 'vitest';
 
 import request from 'supertest';
 import { setupTestDatabase, cleanupTestData, teardownTestDatabase, canRunIntegrationTests } from '../setup/testDatabase';
-import { createTestApp, resetTestApp } from '../setup/testServer';
+import { createIsolatedTestApp, createTestApp, resetTestApp } from '../setup/testServer';
 import { getTestUser, getTestAdmin, createTestUser, loginTestUser, extractAuthTokens } from '../setup/helpers';
 import { PrismaClient } from '../../../src/generated/prisma/client';
 import { Express } from 'express';
@@ -97,6 +97,47 @@ describeWithDb('Authentication Integration', () => {
 
       expect(response.body.error).toBeDefined();
     });
+
+    it('allows request-derived same-origin browser login in production mode', async () => {
+      const testUser = getTestUser();
+      await createTestUser(prisma, testUser);
+      const productionApp = createIsolatedTestApp({
+        clientUrl: 'https://configured.example:8443',
+        nodeEnv: 'production',
+      });
+
+      const response = await request(productionApp)
+        .post('/api/v1/auth/login')
+        .set('Host', '10.0.0.5:8443')
+        .set('Origin', 'https://10.0.0.5:8443')
+        .set('X-Forwarded-Proto', 'https')
+        .send({
+          username: testUser.username,
+          password: testUser.password,
+        })
+        .expect(200);
+
+      expect(response.headers['access-control-allow-origin']).toBe('https://10.0.0.5:8443');
+      expect(response.headers['access-control-allow-credentials']).toBe('true');
+      expect(extractAuthTokens(response).token).not.toBe('');
+      expect(response.body.user.username).toBe(testUser.username);
+    });
+
+    it('returns 403 instead of 500 when a production browser origin does not match the current request host', async () => {
+      const response = await request(createIsolatedTestApp({
+        clientUrl: 'https://configured.example:8443',
+        nodeEnv: 'production',
+      }))
+        .get('/api/v1/auth/registration-status')
+        .set('Host', '10.0.0.5:8443')
+        .set('Origin', 'https://evil.example.com')
+        .set('X-Forwarded-Proto', 'https')
+        .expect(403);
+
+      expect(response.body.error).toBe('Forbidden');
+      expect(response.body.code).toBe('FORBIDDEN');
+      expect(response.body.message).toBe('Not allowed by CORS');
+    });
   });
 
   describe('Token Verification', () => {
@@ -155,7 +196,7 @@ describeWithDb('Authentication Integration', () => {
         .expect(200);
 
       // Phase 6: token is in the Set-Cookie header.
-      expect(extractAuthTokens(loginResponse).token).toBeTruthy();
+      expect(extractAuthTokens(loginResponse).token).not.toBe('');
     });
 
     it('should reject password change with wrong current password', async () => {
@@ -203,7 +244,7 @@ describeWithDb('Authentication Integration', () => {
         .expect(200);
 
       // Phase 6: token is in the Set-Cookie header.
-      expect(extractAuthTokens(loginResponse).token).toBeTruthy();
+      expect(extractAuthTokens(loginResponse).token).not.toBe('');
     });
 
     it('should not allow non-admin to create user', async () => {
@@ -280,8 +321,8 @@ describeWithDb('Authentication Integration', () => {
 
       // Phase 6: rotated tokens are delivered via Set-Cookie.
       const rotated = extractAuthTokens(refreshResponse);
-      expect(rotated.token).toBeTruthy();
-      expect(rotated.refreshToken).toBeTruthy();
+      expect(rotated.token).not.toBe('');
+      expect(rotated.refreshToken).not.toBe('');
       expect(rotated.refreshToken).not.toBe(refreshToken);
       expect(refreshResponse.body.token).toBeUndefined();
       expect(refreshResponse.body.refreshToken).toBeUndefined();

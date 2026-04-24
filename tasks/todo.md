@@ -5129,3 +5129,23 @@ Goal: identify and fix the latest release regression where browser login and ref
 - `bash -n scripts/support-package.sh` passed.
 - `git diff --check` passed.
 - `npm --prefix server run typecheck:tests` currently fails on a pre-existing generated Prisma path mismatch in `tsconfig.test.json` (`src/generated/prisma/internal/prismaNamespaceBrowser.ts` missing) unrelated to this CORS/support-package patch.
+
+## Follow-up Batch: Login Regression Test Hardening
+
+Goal: close the two remaining test gaps from the 2026-04-23 login outage follow-up without blocking the already-merged production fix.
+
+- [x] Add an integration test that proves a real auth route accepts request-derived same-origin browser access in production mode even when `CLIENT_URL` does not match the current host.
+- [x] Add a support-package helper regression test that proves the script resolves the first available compiled module path instead of assuming a single `dist` layout.
+- [x] Run focused validation for the new integration and script tests, then update this tracker with the results.
+
+### Local validation completed
+
+- `npm run test:run -- tests/scripts/support-package-runner.test.ts` passed with 4 tests for candidate ordering, first-match resolution, missing-module failure, and JSON emission.
+- `bash -n scripts/support-package.sh` passed after switching the helper to stream the checked-in runner module into the backend container.
+- `npm --prefix server run test:run -- tests/unit/middleware/corsOrigin.test.ts` remained green with 13 tests after the integration-helper changes.
+- `TEST_POSTGRES_PORT=55433 docker compose -f docker-compose.test.yml up -d test-db` started a disposable Postgres instance for focused integration validation.
+- `TEST_DATABASE_URL=postgresql://test:test@localhost:55433/sanctuary_test?schema=public ... npx prisma migrate deploy` passed against the disposable integration database.
+- `TEST_DATABASE_URL=postgresql://test:test@localhost:55433/sanctuary_test?schema=public ... npx vitest run --no-file-parallelism --maxWorkers 1 tests/integration/flows/auth.integration.test.ts` passed with 42 tests, including the new request-derived same-origin auth regression and the `403` CORS rejection regression.
+- `npm run typecheck:tests` passed.
+- `git diff --check` passed.
+- `docker compose -f docker-compose.test.yml down --remove-orphans` cleaned up the disposable integration database afterward.
