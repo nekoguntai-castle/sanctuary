@@ -7,17 +7,23 @@ workflow_sha="${WORKFLOW_SHA:-${GITHUB_SHA:-HEAD}}"
 origin_main_ref="${ORIGIN_MAIN_REF:-origin/main}"
 
 run_repo_quality=true
+run_workflow_quality=false
+run_ci_classifier_tests=false
 
 emit_outputs() {
   echo "run_repo_quality=$run_repo_quality" >> "$output_file"
+  echo "run_workflow_quality=$run_workflow_quality" >> "$output_file"
+  echo "run_ci_classifier_tests=$run_ci_classifier_tests" >> "$output_file"
 }
 
 mark_full_quality() {
   run_repo_quality=true
+  run_workflow_quality=true
+  run_ci_classifier_tests=true
 }
 
 case "$event_name" in
-  schedule|workflow_dispatch|merge_group)
+  schedule|workflow_dispatch)
     mark_full_quality
     emit_outputs
     exit 0
@@ -32,6 +38,10 @@ case "$event_name" in
   pull_request)
     base_sha="${PR_BASE_SHA:-}"
     head_sha="${PR_HEAD_SHA:-$workflow_sha}"
+    ;;
+  merge_group)
+    base_sha="${MERGE_GROUP_BASE_SHA:-}"
+    head_sha="${MERGE_GROUP_HEAD_SHA:-$workflow_sha}"
     ;;
   push)
     base_sha="${PUSH_BEFORE_SHA:-}"
@@ -64,9 +74,27 @@ ensure_commit "$head_sha"
 git rev-parse --verify "$base_sha^{commit}" >/dev/null
 git rev-parse --verify "$head_sha^{commit}" >/dev/null
 
-is_docs_only_file() {
+is_repo_quality_exempt_file() {
   case "$1" in
-    *.md|docs/*)
+    *.md|docs/*|.github/workflows/*.yml|.github/workflows/*.yaml)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+is_workflow_file() {
+  case "$1" in
+    .github/workflows/*.yml|.github/workflows/*.yaml)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+is_ci_classifier_file() {
+  case "$1" in
+    scripts/ci/*|tests/ci/*)
       return 0
       ;;
   esac
@@ -74,12 +102,19 @@ is_docs_only_file() {
 }
 
 run_repo_quality=false
+run_workflow_quality=false
+run_ci_classifier_tests=false
 
 while IFS= read -r file; do
   [ -n "$file" ] || continue
-  if ! is_docs_only_file "$file"; then
+  if is_workflow_file "$file"; then
+    run_workflow_quality=true
+  fi
+  if is_ci_classifier_file "$file"; then
+    run_ci_classifier_tests=true
+  fi
+  if ! is_repo_quality_exempt_file "$file"; then
     run_repo_quality=true
-    break
   fi
 done < <(git diff --name-only "$base_sha" "$head_sha")
 

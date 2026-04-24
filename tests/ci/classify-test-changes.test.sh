@@ -52,10 +52,10 @@ run_classifier() {
   : > "$output_file"
   (
     cd "$repo_dir"
-    EVENT_NAME=push \
-    PUSH_BEFORE_SHA="$base_sha" \
-    WORKFLOW_SHA="$head_sha" \
-    GITHUB_OUTPUT="$output_file" \
+    export EVENT_NAME=push
+    export GITHUB_OUTPUT="$output_file"
+    export PUSH_BEFORE_SHA="$base_sha"
+    export WORKFLOW_SHA="$head_sha"
     bash "$CLASSIFIER_SCRIPT"
   )
 }
@@ -80,9 +80,33 @@ EOF_DOC
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
 
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_exact_output "$output_file" "test_suite_changed" "false"
   assert_exact_output "$output_file" "frontend_changed" "false"
   assert_exact_output "$output_file" "backend_changed" "false"
   assert_exact_output "$output_file" "test_files" ""
+
+  base_sha="$head_sha"
+  mkdir -p "$repo_dir/scripts/ci"
+  printf '#!/usr/bin/env bash\necho classifier\n' > "$repo_dir/scripts/ci/classify-quality-scope.sh"
+  git -C "$repo_dir" add scripts/ci/classify-quality-scope.sh
+  git -C "$repo_dir" commit -qm "ci classifier script"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_exact_output "$output_file" "test_suite_changed" "false"
+  assert_exact_output "$output_file" "frontend_changed" "false"
+  assert_exact_output "$output_file" "backend_changed" "false"
+  assert_exact_output "$output_file" "gateway_changed" "false"
+
+  base_sha="$head_sha"
+  mkdir -p "$repo_dir/.github/workflows"
+  printf 'name: Test Suite\non: pull_request\njobs: {}\n' > "$repo_dir/.github/workflows/test.yml"
+  git -C "$repo_dir" add .github/workflows/test.yml
+  git -C "$repo_dir" commit -qm "test workflow"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_exact_output "$output_file" "test_suite_changed" "true"
 
   base_sha="$head_sha"
   mkdir -p "$repo_dir/tests/components"

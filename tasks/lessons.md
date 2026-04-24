@@ -2,6 +2,18 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Isolate work when another agent owns the active files
+
+**Rule:** If the user says a problem is being worked in parallel, stop touching that problem's files and shared task tracker state. Move unrelated work into a separate worktree or branch before continuing.
+
+**Why:** During CI optimization cleanup, the main worktree had active Ledger adapter and `tasks/todo.md` edits from parallel work. Continuing to stash, sync, or rewrite shared files there would risk trampling another agent's in-flight changes.
+
+**How to apply:**
+- Treat uncommitted files for the parallel task as user-owned until proven otherwise.
+- Use `git worktree add` from the current remote base for unrelated follow-up work.
+- Do not edit `tasks/todo.md` for the unrelated task if it is part of the active parallel work state.
+- Before final cleanup, report any intentionally untouched local changes rather than trying to "fix" them.
+
 ## Treat encrypted operational state as upgrade-critical data
 
 **Rule:** Upgrade tests must prove encrypted runtime state can still be read after upgrade, not only that the env file values look preserved.
