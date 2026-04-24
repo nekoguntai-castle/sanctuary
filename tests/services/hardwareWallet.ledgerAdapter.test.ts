@@ -11,6 +11,7 @@ const {
   mockGetWalletXpub,
   mockGetWalletPublicKey,
   mockGetMasterFingerprint,
+  mockGetExtendedPubkey,
   MockAppBtc,
   MockAppClient,
   MockDefaultWalletPolicy,
@@ -22,6 +23,7 @@ const {
   const mockGetWalletXpub = vi.fn();
   const mockGetWalletPublicKey = vi.fn();
   const mockGetMasterFingerprint = vi.fn();
+  const mockGetExtendedPubkey = vi.fn();
   const mockPsbtFromBase64 = vi.fn();
 
   const MockAppBtc = vi.fn(function MockAppBtc(this: any) {
@@ -31,7 +33,7 @@ const {
 
   const MockAppClient = vi.fn(function MockAppClient(this: any) {
     this.getMasterFingerprint = (...args: unknown[]) => mockGetMasterFingerprint(...args);
-    this.getExtendedPubkey = vi.fn();
+    this.getExtendedPubkey = (...args: unknown[]) => mockGetExtendedPubkey(...args);
     this.signPsbt = vi.fn();
   });
 
@@ -47,6 +49,7 @@ const {
     mockGetWalletXpub,
     mockGetWalletPublicKey,
     mockGetMasterFingerprint,
+    mockGetExtendedPubkey,
     MockAppBtc,
     MockAppClient,
     MockDefaultWalletPolicy,
@@ -152,6 +155,7 @@ describe('LedgerAdapter', () => {
     mockGetWalletXpub.mockReset();
     mockGetWalletPublicKey.mockReset();
     mockGetMasterFingerprint.mockReset();
+    mockGetExtendedPubkey.mockReset();
     mockPsbtFromBase64.mockReset();
     MockAppBtc.mockClear();
     MockAppClient.mockClear();
@@ -160,6 +164,7 @@ describe('LedgerAdapter', () => {
     mockUsbGetDevices.mockResolvedValue([]);
     mockTransportClose.mockResolvedValue(undefined);
     mockGetMasterFingerprint.mockResolvedValue('f00dbabe');
+    mockGetExtendedPubkey.mockResolvedValue('xpub-mock');
     mockGetWalletXpub.mockResolvedValue('xpub-mock');
     mockGetWalletPublicKey.mockResolvedValue({});
     mockPsbtFromBase64.mockReturnValue({
@@ -284,19 +289,46 @@ describe('LedgerAdapter', () => {
     expect(MockAppClient).toHaveBeenCalledTimes(1);
   });
 
-  it('continues connect when fingerprint fetch fails', async () => {
+  it('continues connect when an unknown fingerprint fetch error occurs', async () => {
     const transport = {
       close: (...args: unknown[]) => mockTransportClose(...args),
       device: makeUsbDevice({ productId: 0x0007 }),
     };
     mockTransportCreate.mockResolvedValue(transport);
-    mockGetMasterFingerprint.mockRejectedValueOnce(new Error('Bitcoin app not open'));
+    mockGetMasterFingerprint.mockRejectedValueOnce(new Error('fingerprint read failed'));
 
     const adapter = new LedgerAdapter();
     const device = await adapter.connect();
 
     expect(device.name).toBe('Ledger Flex');
     expect(device.fingerprint).toBeUndefined();
+  });
+
+  it('fails connect with an actionable message when the Bitcoin app is not ready', async () => {
+    const transport = {
+      close: (...args: unknown[]) => mockTransportClose(...args),
+      device: makeUsbDevice({ productId: 0x0005 }),
+    };
+    mockTransportCreate.mockResolvedValue(transport);
+    mockGetMasterFingerprint.mockRejectedValueOnce(new Error('CLA_NOT_SUPPORTED 0x6e00'));
+
+    const adapter = new LedgerAdapter();
+
+    await expect(adapter.connect()).rejects.toThrow('open the Bitcoin app');
+    expect(mockTransportClose).toHaveBeenCalled();
+  });
+
+  it('keeps the Ledger readiness error if transport close also fails', async () => {
+    const transport = {
+      close: (...args: unknown[]) => mockTransportClose(...args),
+      device: makeUsbDevice({ productId: 0x0005 }),
+    };
+    mockTransportCreate.mockResolvedValue(transport);
+    mockGetMasterFingerprint.mockRejectedValueOnce(new Error('CLA_NOT_SUPPORTED 0x6e00'));
+    mockTransportClose.mockRejectedValueOnce(new Error('close failed'));
+
+    await expect(new LedgerAdapter().connect()).rejects.toThrow('open the Bitcoin app');
+    expect(mockTransportClose).toHaveBeenCalled();
   });
 
   it('disconnects and clears internal device state', async () => {
@@ -334,8 +366,40 @@ describe('LedgerAdapter', () => {
   it('requires connection for xpub/address/sign operations', async () => {
     const adapter = new LedgerAdapter();
     await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow('No device connected');
+    await expect((adapter as any).getLedgerXpub("m/84'/0'/0'", 0x0488b21e)).rejects.toThrow('No device connected');
+    await expect((adapter as any).getMasterFingerprint()).resolves.toBe('');
     await expect(adapter.verifyAddress("m/84'/0'/0'/0/0", 'bc1qxyz')).rejects.toThrow('No device connected');
     await expect(adapter.signPSBT({ psbt: 'not-a-psbt', inputPaths: [] })).rejects.toThrow('No device connected');
+  });
+
+  it('uses a cached fingerprint when returning an xpub', async () => {
+    const adapter = new LedgerAdapter();
+    (adapter as any).connection = {
+      app: {
+        getWalletXpub: (...args: unknown[]) => mockGetWalletXpub(...args),
+      },
+      appClient: {
+        getMasterFingerprint: (...args: unknown[]) => mockGetMasterFingerprint(...args),
+        getExtendedPubkey: (...args: unknown[]) => mockGetExtendedPubkey(...args),
+      },
+      transport: { close: vi.fn() },
+      device: makeUsbDevice(),
+    };
+    (adapter as any).connectedDevice = {
+      id: 'ledger-1',
+      type: 'ledger',
+      name: 'Ledger',
+      model: 'Ledger',
+      connected: true,
+      fingerprint: 'cafebabe',
+    };
+
+    mockGetExtendedPubkey.mockResolvedValueOnce('xpub-cached-fingerprint');
+
+    const result = await adapter.getXpub("m/84'/0'/0'");
+
+    expect(result.fingerprint).toBe('cafebabe');
+    expect(mockGetMasterFingerprint).not.toHaveBeenCalled();
   });
 
   it('returns xpub and maps getXpub/verify error branches', async () => {
@@ -347,6 +411,7 @@ describe('LedgerAdapter', () => {
       },
       appClient: {
         getMasterFingerprint: (...args: unknown[]) => mockGetMasterFingerprint(...args),
+        getExtendedPubkey: (...args: unknown[]) => mockGetExtendedPubkey(...args),
       },
       transport: { close: vi.fn() },
       device: makeUsbDevice(),
@@ -360,31 +425,42 @@ describe('LedgerAdapter', () => {
       fingerprint: '',
     };
 
-    mockGetWalletXpub.mockResolvedValueOnce('tpub-testnet');
+    mockGetExtendedPubkey.mockResolvedValueOnce('tpub-testnet');
     const result = await adapter.getXpub("m/84'/1'/0'");
     expect(result).toEqual({
       xpub: 'tpub-testnet',
       fingerprint: 'f00dbabe',
       path: "m/84'/1'/0'",
     });
+    expect(mockGetExtendedPubkey).toHaveBeenCalledWith("m/84'/1'/0'");
+    expect(mockGetWalletXpub).not.toHaveBeenCalled();
+
+    mockGetExtendedPubkey.mockRejectedValueOnce(new Error('new API unavailable'));
+    mockGetWalletXpub.mockResolvedValueOnce('xpub-fallback');
+    const fallbackResult = await adapter.getXpub("m/84'/0'/0'");
+    expect(fallbackResult.xpub).toBe('xpub-fallback');
     expect(mockGetWalletXpub).toHaveBeenCalledWith({
-      path: "m/84'/1'/0'",
-      xpubVersion: 0x043587cf,
+      path: "m/84'/0'/0'",
+      xpubVersion: 0x0488b21e,
     });
 
     mockGetMasterFingerprint.mockRejectedValueOnce(new Error('fp read fail'));
-    mockGetWalletXpub.mockResolvedValueOnce('xpub-mainnet');
+    mockGetExtendedPubkey.mockResolvedValueOnce('xpub-mainnet');
     const noFpResult = await adapter.getXpub("m/84'/0'/0'");
     expect(noFpResult.fingerprint).toBe('');
 
-    mockGetWalletXpub.mockRejectedValueOnce(new Error('0x6985 denied'));
-    await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow('Request rejected on device');
+    mockGetExtendedPubkey.mockRejectedValueOnce(new Error('0x6985 denied'));
+    await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow('Request rejected on Ledger');
 
-    mockGetWalletXpub.mockRejectedValueOnce(new Error('0x6d00'));
-    await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow('Bitcoin app not open on device');
+    mockGetExtendedPubkey.mockRejectedValueOnce(new Error('0x6d00'));
+    await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow('Bitcoin app not open on Ledger');
 
+    mockGetExtendedPubkey.mockRejectedValueOnce(new Error('new API unavailable'));
     mockGetWalletXpub.mockRejectedValueOnce(new Error('xpub failed'));
     await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow('Failed to get xpub: xpub failed');
+
+    mockGetExtendedPubkey.mockResolvedValueOnce('');
+    await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow('Ledger returned an empty xpub');
 
     await expect(adapter.verifyAddress("m/84'/0'/0'/0/0", 'bc1qabc')).resolves.toBe(true);
 
@@ -401,7 +477,7 @@ describe('LedgerAdapter', () => {
       app: {},
       appClient: {
         getMasterFingerprint: (...args: unknown[]) => mockGetMasterFingerprint(...args),
-        getExtendedPubkey: vi.fn(),
+        getExtendedPubkey: (...args: unknown[]) => mockGetExtendedPubkey(...args),
         signPsbt: vi.fn(),
       },
       transport: { close: vi.fn() },
@@ -457,7 +533,7 @@ describe('LedgerAdapter', () => {
       },
       appClient: {
         getMasterFingerprint: (...args: unknown[]) => mockGetMasterFingerprint(...args),
-        getExtendedPubkey: vi.fn(),
+        getExtendedPubkey: (...args: unknown[]) => mockGetExtendedPubkey(...args),
         signPsbt: vi.fn(),
       },
       transport: { close: vi.fn() },
@@ -472,7 +548,8 @@ describe('LedgerAdapter', () => {
       fingerprint: '',
     };
 
-    mockGetWalletXpub.mockRejectedValueOnce('xpub-non-error' as any);
+    mockGetExtendedPubkey.mockRejectedValueOnce('xpub-non-error' as any);
+    mockGetWalletXpub.mockRejectedValueOnce('fallback-non-error' as any);
     await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow('Failed to get xpub: Unknown error');
 
     mockGetWalletPublicKey.mockRejectedValueOnce(42 as any);

@@ -22,12 +22,88 @@ import { signPsbt } from './signPsbt';
 
 const log = createLogger('LedgerAdapter');
 
+type LedgerErrorContext = 'connect' | 'xpub';
+type LedgerFriendlyErrorRule = {
+  patterns: readonly string[];
+  connect: string;
+  xpub: string;
+};
+
+const LEDGER_FRIENDLY_PREFIXES = [
+  'Access denied.',
+  'Ledger is locked.',
+  'Please open the Bitcoin app',
+  'Bitcoin app not open',
+  'Ledger is already connected',
+  'Request rejected on Ledger.',
+  'Ledger disconnected.',
+];
+
+const LEDGER_FRIENDLY_ERROR_RULES: LedgerFriendlyErrorRule[] = [
+  {
+    patterns: ['notallowed', 'access denied', 'denied access', 'permission denied'],
+    connect: 'Access denied. Please allow USB access and try again.',
+    xpub: 'Access denied. Please allow USB access and try again.',
+  },
+  {
+    patterns: ['0x6982', 'locked'],
+    connect: 'Ledger is locked. Please unlock with your PIN.',
+    xpub: 'Ledger is locked. Unlock it with your PIN and try again.',
+  },
+  {
+    patterns: ['0x6d00', '0x6e00', 'cla_not_supported', 'ins_not_supported', 'bitcoin app not open'],
+    connect: 'Please open the Bitcoin app on your Ledger device.',
+    xpub: 'Bitcoin app not open on Ledger. Open the Bitcoin app and try again.',
+  },
+  {
+    patterns: ['already open', 'already claimed', 'interface claimed', 'libusb_error_busy', 'busy'],
+    connect: 'Ledger is already connected to another app. Close Ledger Live and other browser tabs, then try again.',
+    xpub: 'Ledger is already connected to another app. Close Ledger Live and other browser tabs, then try again.',
+  },
+  {
+    patterns: ['0x6985', 'rejected', 'denied by user'],
+    connect: 'Request rejected on Ledger. Approve the public key export on the device to import accounts.',
+    xpub: 'Request rejected on Ledger. Approve the public key export on the device to import accounts.',
+  },
+  {
+    patterns: ['no device', 'disconnected'],
+    connect: 'Ledger disconnected. Reconnect it and try again.',
+    xpub: 'Ledger disconnected. Reconnect it and try again.',
+  },
+];
+
 // Connection state
 interface LedgerConnection {
   transport: TransportWebUSB;
   app: AppBtc;
   appClient: AppClient;
   device: USBDevice;
+}
+
+function getLedgerErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  return 'Unknown error';
+}
+
+function matchesAnyPattern(message: string, patterns: readonly string[]): boolean {
+  return patterns.some(pattern => message.includes(pattern));
+}
+
+function getLedgerFriendlyError(error: unknown, context: LedgerErrorContext): string | null {
+  const message = getLedgerErrorMessage(error);
+  if (LEDGER_FRIENDLY_PREFIXES.some(prefix => message.startsWith(prefix))) return message;
+
+  const normalized = message.toLowerCase();
+  for (const rule of LEDGER_FRIENDLY_ERROR_RULES) {
+    if (matchesAnyPattern(normalized, rule.patterns)) return rule[context];
+  }
+
+  return null;
+}
+
+function shouldTryLegacyXpubFallback(error: unknown): boolean {
+  return getLedgerFriendlyError(error, 'xpub') === null;
 }
 
 /**
@@ -125,6 +201,15 @@ export class LedgerAdapter implements DeviceAdapter {
         fingerprint = await appClient.getMasterFingerprint();
         log.info('Got master fingerprint from device', { fingerprint });
       } catch (error) {
+        const friendlyError = getLedgerFriendlyError(error, 'connect');
+        if (friendlyError) {
+          try {
+            await transport.close();
+          } catch (closeError) {
+            log.debug('Ignoring Ledger transport close error after failed readiness check', { error: closeError });
+          }
+          throw new Error(friendlyError);
+        }
         log.warn('Could not get fingerprint - Bitcoin app may not be open', { error });
       }
 
@@ -142,16 +227,9 @@ export class LedgerAdapter implements DeviceAdapter {
       return this.connectedDevice;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
+      const friendlyError = getLedgerFriendlyError(error, 'connect');
 
-      if (message.includes('denied') || message.includes('NotAllowed')) {
-        throw new Error('Access denied. Please allow USB access and try again.');
-      }
-      if (message.includes('0x6d00') || message.includes('0x6e00')) {
-        throw new Error('Please open the Bitcoin app on your Ledger device.');
-      }
-      if (message.includes('locked') || message.includes('0x6982')) {
-        throw new Error('Ledger is locked. Please unlock with your PIN.');
-      }
+      if (friendlyError) throw new Error(friendlyError);
 
       throw new Error(`Failed to connect: ${message}`);
     }
@@ -184,23 +262,18 @@ export class LedgerAdapter implements DeviceAdapter {
       const isTestnet = path.includes("/1'/") || path.includes("/1h/");
       const xpubVersion = isTestnet ? TPUB_VERSION : XPUB_VERSION;
 
-      const xpub = await this.connection.app.getWalletXpub({
-        path,
-        xpubVersion,
-      });
+      const xpub = await this.getLedgerXpub(path, xpubVersion);
 
-      let fingerprint = '';
-      try {
-        fingerprint = await this.connection.appClient.getMasterFingerprint();
-      } catch (fpError) {
-        log.warn('Could not get fingerprint', { error: fpError });
+      if (!xpub) {
+        throw new Error(`Ledger returned an empty xpub for ${path}`);
       }
+
+      const fingerprint = await this.getMasterFingerprint();
 
       log.info('getXpub result', {
         path,
-        xpubVersion: xpubVersion.toString(16),
         hasXpub: !!xpub,
-        xpubPrefix: xpub?.substring(0, 10),
+        xpubLength: xpub.length,
         fingerprint,
       });
 
@@ -211,15 +284,50 @@ export class LedgerAdapter implements DeviceAdapter {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
+      const friendlyError = getLedgerFriendlyError(error, 'xpub');
 
-      if (message.includes('0x6985') || message.includes('denied')) {
-        throw new Error('Request rejected on device');
-      }
-      if (message.includes('0x6d00') || message.includes('0x6e00')) {
-        throw new Error('Bitcoin app not open on device');
-      }
+      if (friendlyError) throw new Error(friendlyError);
 
       throw new Error(`Failed to get xpub: ${message}`);
+    }
+  }
+
+  private async getLedgerXpub(path: string, xpubVersion: number): Promise<string> {
+    if (!this.connection) {
+      throw new Error('No device connected');
+    }
+
+    try {
+      return await this.connection.appClient.getExtendedPubkey(path);
+    } catch (error) {
+      if (!shouldTryLegacyXpubFallback(error)) {
+        throw error;
+      }
+
+      log.warn('Ledger AppClient xpub read failed, falling back to legacy BTC API', {
+        path,
+        error: getLedgerErrorMessage(error),
+      });
+
+      return this.connection.app.getWalletXpub({
+        path,
+        xpubVersion,
+      });
+    }
+  }
+
+  private async getMasterFingerprint(): Promise<string> {
+    if (!this.connection) return '';
+
+    if (this.connectedDevice?.fingerprint) {
+      return this.connectedDevice.fingerprint;
+    }
+
+    try {
+      return await this.connection.appClient.getMasterFingerprint();
+    } catch (fpError) {
+      log.warn('Could not get fingerprint', { error: fpError });
+      return '';
     }
   }
 
