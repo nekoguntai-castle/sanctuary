@@ -22,7 +22,7 @@ Goal: reduce GitHub Actions time by replacing broad/default test gates with path
   - javascript-typescript for root/server/gateway/shared TS/JS and package/config files
   - go for `scripts/verify-addresses/implementations/**`, `go.mod`, `go.sum`
   - python for Python files and requirements
-- [x] Keep full multi-language CodeQL on schedule/manual; keep PR/merge/main push path-aware while default setup remains enabled as a temporary backstop.
+- [x] Keep full multi-language CodeQL on schedule/manual; keep PR/merge/main push path-aware, with GitHub default setup disabled because advanced CodeQL uploads cannot be processed while default setup is enabled.
 - [x] Add an always-concluding aggregate check so branch protection can require one stable CodeQL context later if desired.
 - [x] Validate with workflow-only, JS/TS, Go, and Python path fixtures.
 
@@ -72,7 +72,7 @@ Goal: reduce GitHub Actions time by replacing broad/default test gates with path
 
 ## Review
 
-- Implemented repo-owned path-aware CodeQL with tested language classification and an aggregate `CodeQL Required Checks` context while leaving GitHub default setup enabled as the temporary security backstop.
+- Implemented repo-owned path-aware CodeQL with tested language classification and an aggregate `CodeQL Required Checks` context; GitHub default setup had to be disabled because GitHub rejects advanced CodeQL uploads while default setup is enabled.
 - Split frontend browser checks into browser-flow smoke and render-regression lanes, scoped full E2E/build gates to relevant path classes, and kept full frontend coverage for ordinary frontend changes.
 - Replaced install-test ad hoc path filtering with a tested scope classifier and a reusable container-health/auth-flow stack lane.
 - Added `scripts/ci/report-workflow-durations.sh` plus CI docs/lessons so future expensive triggers require executable classifier coverage.

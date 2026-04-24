@@ -52,7 +52,7 @@ Required for merge/main confidence, and for merge queue when available:
 
 Do not globally require `Build Dev Images`, `Install Test Summary`, or `Verify Bitcoin Vectors`. Those workflows are intentionally path-gated or release-gated. They should run when their trigger paths match, including changes to their own workflow files, but requiring them globally would block unrelated PRs where the workflow never starts.
 
-`CodeQL Required Checks` is emitted by the repo-owned advanced CodeQL workflow, but it is not a branch-protection requirement while GitHub default setup remains enabled. Keep default setup as the backstop until the explicit workflow has proven stable on Actions, JavaScript/TypeScript, Go, and Python path fixtures; then disable default setup and decide whether to promote the aggregate CodeQL context.
+`CodeQL Required Checks` is emitted by the repo-owned advanced CodeQL workflow, but it is not a branch-protection requirement yet. GitHub default setup must stay disabled for this repository because GitHub rejects advanced CodeQL uploads while default setup is enabled; keep the aggregate context observed for Actions, JavaScript/TypeScript, Go, and Python path fixtures before deciding whether to promote it to branch protection.
 
 ## First PR Validation Checklist
 
