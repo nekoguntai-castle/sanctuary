@@ -1,6 +1,39 @@
-# Active Task: CI/CD Test Speed Batch 3 - Backend Typecheck Scope
+# Active Task: CI/CD Test Speed Batch 4 - Docker Image Scope
 
 Status: in progress
+
+Goal: build only the dev image affected by a Docker-relevant change instead of always building both frontend and backend images.
+
+## Plan
+
+- [x] Work in an isolated worktree from updated `origin/main`.
+- [x] Add a Docker image-scope classifier with frontend/backend outputs.
+- [x] Split the Docker workflow into frontend and backend image build jobs gated by classifier outputs.
+- [x] Keep manual dispatch and shared image inputs building both images.
+- [x] Add classifier regression fixtures and wire them into Code Quality.
+- [x] Update CI/CD strategy docs and task tracker history.
+- [x] Run classifier tests, workflow lint, shell complexity, and diff check.
+- [ ] Deliver through PR, monitor checks, merge safely, and verify the merge.
+
+## Review
+
+- Added `scripts/ci/classify-docker-build-images.sh` with explicit frontend/backend image impact outputs.
+- Split `Build Dev Images` into `Build frontend image` and `Build backend image` jobs gated by the classifier.
+- Manual dispatch and shared image inputs still build both images.
+- Frontend-only inputs build only the frontend image; backend-only inputs build only the backend image; monitoring-only Docker config and docs-only paths build neither.
+- Wired the new classifier regression test into Code Quality's CI classifier test job.
+- Verification passed:
+  - `bash -n scripts/ci/classify-docker-build-images.sh tests/ci/classify-docker-build-images.test.sh`
+  - `bash tests/ci/classify-docker-build-images.test.sh`
+  - `/tmp/actionlint-1.7.12/actionlint -color -shellcheck= .github/workflows/docker-build.yml .github/workflows/quality.yml`
+  - `/home/nekoguntai/sanctuary/.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -l shell scripts/ci/classify-docker-build-images.sh tests/ci/classify-docker-build-images.test.sh`
+  - `git diff --check`
+
+---
+
+# Active Task: CI/CD Test Speed Batch 3 - Backend Typecheck Scope
+
+Status: complete
 
 Goal: remove unnecessary Postgres startup and migration work from backend typecheck jobs while preserving DB-backed backend test coverage where tests need it.
 
@@ -13,7 +46,7 @@ Goal: remove unnecessary Postgres startup and migration work from backend typech
 - [x] Update backend aggregate checks to require typecheck and unit coverage when source scope is relevant.
 - [x] Update CI/CD strategy docs and task tracker history.
 - [x] Run backend typecheck proof, workflow lint, and diff check.
-- [ ] Deliver through PR, monitor checks, merge safely, and verify the merge.
+- [x] Deliver through PR, monitor checks, merge safely, and verify the merge.
 
 ## Review
 
@@ -27,6 +60,7 @@ Goal: remove unnecessary Postgres startup and migration work from backend typech
   - `npm --prefix server run typecheck:tests`
   - `/tmp/actionlint-1.7.12/actionlint -color -shellcheck= .github/workflows/test.yml`
   - `git diff --check`
+- Delivered in PR #163; merge-group Test Suite and CodeQL passed, and `origin/main` advanced to merge commit `88f0652c`.
 
 ---
 

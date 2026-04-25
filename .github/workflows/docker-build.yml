@@ -80,23 +80,37 @@ env:
   IMAGE_PREFIX: ${{ github.repository }}
 
 jobs:
-  build:
+  detect-image-scope:
+    name: Detect Image Scope
     runs-on: ubuntu-latest
+    outputs:
+      frontend_image: ${{ steps.classify.outputs.frontend_image }}
+      backend_image: ${{ steps.classify.outputs.backend_image }}
+      reason: ${{ steps.classify.outputs.reason }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 0
+
+      - name: Classify image scope
+        id: classify
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: bash scripts/ci/classify-docker-build-images.sh
+
+  build-frontend:
+    name: Build frontend image
+    if: needs.detect-image-scope.outputs.frontend_image == 'true'
+    runs-on: ubuntu-latest
+    needs: [detect-image-scope]
     permissions:
       contents: read
       packages: write
-
-    # Build frontend and backend in parallel using matrix
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: frontend
-            context: .
-            file: ./Dockerfile
-          - name: backend
-            context: .
-            file: ./server/Dockerfile
 
     steps:
       - name: Checkout repository
@@ -122,30 +136,84 @@ jobs:
         id: meta
         uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.name }}
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend
           tags: |
             type=ref,event=branch
             type=sha,prefix=
 
-      - name: Build and push ${{ matrix.name }}
+      - name: Build and push frontend
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
         with:
-          context: ${{ matrix.context }}
-          file: ${{ matrix.file }}
+          context: .
+          file: ./Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ matrix.name }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+
+  build-backend:
+    name: Build backend image
+    if: needs.detect-image-scope.outputs.backend_image == 'true'
+    runs-on: ubuntu-latest
+    needs: [detect-image-scope]
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Generate platform-specific README
+        run: |
+          chmod +x scripts/generate-readme.sh
+          ./scripts/generate-readme.sh github
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
+
+      - name: Log in to Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=
+
+      - name: Build and push backend
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
+        with:
+          context: .
+          file: ./server/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
 
   summary:
     runs-on: ubuntu-latest
-    needs: build
+    needs: [detect-image-scope, build-frontend, build-backend]
     if: always() && github.event_name != 'pull_request'
     steps:
       - name: Summary
         run: |
           echo "## Dev Images Built" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Reason: ${{ needs.detect-image-scope.outputs.reason }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Frontend image: ${{ needs.build-frontend.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Backend image: ${{ needs.build-backend.result }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Bleeding-edge images from \`main\` branch:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
