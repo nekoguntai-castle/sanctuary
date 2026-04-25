@@ -156,7 +156,7 @@ The merge/main gate exists to prove the final candidate, not every local-sized c
 - Full frontend typecheck and threshold-enforced coverage for frontend changes, E2E changes, test-workflow changes, or exhaustive runs.
 - Full gateway coverage for gateway changes, test-workflow changes, or exhaustive runs.
 - Critical mutation gate for critical mutation paths or exhaustive runs.
-- Full browser-flow Playwright E2E for browser/API/route/non-render E2E paths, test-workflow changes, or exhaustive runs. This lane starts from path classification instead of waiting behind full coverage lanes, so relevant browser flows prove the merge candidate earlier.
+- Full browser-flow Playwright E2E for browser/API/route/non-render E2E paths, test-workflow changes, or exhaustive runs. This lane starts from path classification instead of waiting behind full coverage lanes and runs deterministic spec groups in parallel, so relevant browser flows prove the merge candidate earlier.
 - Full render-regression Playwright E2E for visual/rendering paths and render fixtures/snapshots, test-workflow changes, or exhaustive runs. This lane is frontend-only and does not start backend services.
 - Full frontend/backend build check for package, build config, Docker/image entrypoint, Prisma, test-workflow, or exhaustive runs. It also starts from path classification instead of waiting behind coverage. Typecheck and coverage remain the primary source-level compile gate for ordinary frontend/backend source changes.
 - `Full Test Summary` aggregate, which fails if any required full-lane child fails.
@@ -216,7 +216,15 @@ Use the duration helper when tuning a completed run:
 bash scripts/ci/report-workflow-durations.sh <run-id>
 ```
 
-The helper uses `gh run view --json jobs` and prints the longest jobs first. When adding any new expensive CI trigger, add or update a classifier test in the same change so the path policy stays executable instead of living only in workflow comments.
+The helper uses `gh run view --json jobs` and prints the longest jobs first. The full frontend and backend jobs also wrap their long typecheck, coverage, and integration steps with `scripts/ci/time-command.sh`, so use the job log timing notices to decide whether the next split should target frontend coverage, backend integration tests, or setup overhead.
+
+Full browser-flow E2E uses deterministic spec groups in `scripts/ci/browser-e2e-groups.sh`. Run the group check after adding, removing, or renaming a top-level browser spec:
+
+```bash
+bash scripts/ci/browser-e2e-groups.sh --check
+```
+
+When adding any new expensive CI trigger, add or update a classifier test in the same change so the path policy stays executable instead of living only in workflow comments.
 
 Initial targets:
 

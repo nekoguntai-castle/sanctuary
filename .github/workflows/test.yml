@@ -567,7 +567,7 @@ jobs:
         run: npx prisma migrate deploy
 
       - name: Run server test typecheck
-        run: npm run typecheck:tests
+        run: ${{ github.workspace }}/scripts/ci/time-command.sh "server test typecheck" npm run typecheck:tests
 
       - name: Run unit tests with coverage
         env:
@@ -575,7 +575,7 @@ jobs:
           JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
           ENCRYPTION_KEY: test-encryption-key-32-chars-long!
           NODE_ENV: test
-        run: npm run test:unit -- --coverage
+        run: ${{ github.workspace }}/scripts/ci/time-command.sh "backend unit coverage" npm run test:unit -- --coverage
 
       - name: Run integration tests
         working-directory: ${{ github.workspace }}/server
@@ -584,7 +584,7 @@ jobs:
           JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
           ENCRYPTION_KEY: test-encryption-key-32-chars-long!
           NODE_ENV: test
-        run: npm run test:integration
+        run: ${{ github.workspace }}/scripts/ci/time-command.sh "backend integration tests" npm run test:integration
 
       - name: Upload backend coverage
         if: always()
@@ -623,13 +623,13 @@ jobs:
         run: npm ci
 
       - name: Run strict app typecheck
-        run: npm run typecheck:app
+        run: scripts/ci/time-command.sh "frontend app typecheck" npm run typecheck:app
 
       - name: Run strict test typecheck
-        run: npm run typecheck:tests
+        run: scripts/ci/time-command.sh "frontend test typecheck" npm run typecheck:tests
 
       - name: Run frontend coverage (threshold-enforced)
-        run: npm run test:coverage
+        run: scripts/ci/time-command.sh "frontend coverage" npm run test:coverage
 
       - name: Upload frontend coverage
         if: always()
@@ -724,7 +724,7 @@ jobs:
           retention-days: 14
 
   full-browser-e2e-tests:
-    name: Full Browser E2E Tests
+    name: Full Browser E2E Tests (${{ matrix.group }})
     if: >-
       always() &&
       github.event_name != 'pull_request' &&
@@ -733,6 +733,13 @@ jobs:
        needs.detect-changes.outputs.browser_smoke_changed == 'true')
     runs-on: ubuntu-latest
     needs: [detect-changes]
+    strategy:
+      fail-fast: false
+      matrix:
+        group:
+          - admin-auth
+          - wallet-flows
+          - wallet-experience
 
     services:
       postgres:
@@ -833,11 +840,13 @@ jobs:
 
       - name: Run browser-flow E2E tests
         run: |
-          mapfile -t browser_specs < <(find e2e -maxdepth 1 -name '*.spec.ts' ! -name 'render-regression.spec.ts' | sort)
+          mapfile -t browser_specs < <(scripts/ci/browser-e2e-groups.sh "${{ matrix.group }}")
           if [ "${#browser_specs[@]}" -eq 0 ]; then
-            echo "No browser-flow E2E specs found."
+            echo "No browser-flow E2E specs found for ${{ matrix.group }}."
             exit 0
           fi
+          printf 'Running browser-flow E2E group %s:\n' "${{ matrix.group }}"
+          printf '  %s\n' "${browser_specs[@]}"
           npm run test:e2e -- --project=chromium "${browser_specs[@]}"
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/sanctuary_test?schema=public
@@ -853,7 +862,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: playwright-report-browser
+          name: playwright-report-browser-${{ matrix.group }}
           path: playwright-report/
           retention-days: 14
 
@@ -861,7 +870,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: playwright-results-browser
+          name: playwright-results-browser-${{ matrix.group }}
           path: test-results/
           if-no-files-found: ignore
           retention-days: 14
