@@ -191,6 +191,7 @@ Release validation intentionally duplicates some install and image-building evid
 
 - `Install Tests` validates fresh install, install script flow, container health, auth flow, and upgrade on release-critical paths.
 - Pull-request and main-branch install tests are scoped by `tests/install/utils/classify-install-scope.sh`: unit-only, installer, compose/docker, auth-flow, upgrade-baseline, upgrade, or release-critical. Container-health and auth-flow reuse one stack when both are relevant. Prisma/migration-only changes run the baseline upgrade matrix, while upgrade harness/fixture changes, release tags, schedules, install workflow edits, and manual release-critical/all/upgrade runs include both baseline and extended upgrade fixtures. Install Markdown/MDX changes are docs-only and should not run install tests.
+- `Build Dev Images` is scoped by `scripts/ci/classify-docker-build-images.sh`. Frontend-only image inputs build only the frontend dev image, backend-only image inputs build only the backend dev image, and shared image inputs such as `.dockerignore`, `shared/`, Compose files, or the Docker workflow build both. Monitoring-only Docker config and docs-only paths should not build either image.
 - `Release Candidate Validation` is the deliberate pre-release install validation pass.
 - `Release` builds and publishes multi-arch images, creates manifests, notifies the separate Umbrel repository for stable releases, and updates release notes.
 

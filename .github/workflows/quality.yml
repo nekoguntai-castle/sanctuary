@@ -162,6 +162,7 @@ jobs:
       - name: Run CI classifier tests
         run: |
           bash -n scripts/ci/classify-test-changes.sh
+          bash -n scripts/ci/classify-docker-build-images.sh
           bash -n scripts/ci/classify-codeql-languages.sh
           bash -n scripts/ci/classify-quality-scope.sh
           bash -n scripts/ci/browser-e2e-groups.sh
@@ -173,6 +174,7 @@ jobs:
           bash -n scripts/ci/report-workflow-trends.sh
           bash -n tests/ci/playwright-timing-reporter.test.sh
           bash -n tests/ci/classify-test-changes.test.sh
+          bash -n tests/ci/classify-docker-build-images.test.sh
           bash -n tests/ci/classify-codeql-languages.test.sh
           bash -n tests/ci/classify-quality-scope.test.sh
           bash -n tests/ci/browser-e2e-groups.test.sh
@@ -181,6 +183,7 @@ jobs:
           bash -n tests/ci/report-workflow-trends.test.sh
           bash tests/ci/playwright-timing-reporter.test.sh
           bash tests/ci/classify-test-changes.test.sh
+          bash tests/ci/classify-docker-build-images.test.sh
           bash tests/ci/classify-codeql-languages.test.sh
           bash tests/ci/classify-quality-scope.test.sh
           bash tests/ci/browser-e2e-groups.test.sh
