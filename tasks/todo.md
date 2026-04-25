@@ -1,3 +1,44 @@
+# Active Task: CI/CD Test Speed Phase 5 - Backend Full Integration Scope
+
+Status: in progress
+
+Goal: keep backend merge/main confidence path-aware by running DB-backed integration groups only for integration-sensitive backend changes, test workflow changes, or exhaustive runs.
+
+## Plan
+
+- [x] Work in an isolated worktree from `origin/main` after Phase 4 merged.
+- [x] Split backend full-lane execution into source tests and integration tests.
+- [x] Keep `Full Backend Tests` as the aggregate backend job consumed by `Full Test Summary`.
+- [x] Use the existing `backend_integration_changed` classifier output for DB-backed integration group relevance.
+- [x] Preserve stable backend coverage artifact upload from the unit coverage source target.
+- [x] Update CI/CD strategy docs with the source/integration full-lane policy.
+- [x] Run classifier tests, backend group tests, workflow lint, diff check, and touched-file lizard if available.
+- [ ] Deliver through PR, monitor required checks, merge safely, and verify the merge.
+
+## Review
+
+- Split the old backend full-lane matrix into `Full Backend Source Tests` and `Full Backend Integration Tests`.
+- Kept `Full Backend Tests` as the aggregate backend job consumed by `Full Test Summary`.
+- Backend source tests run for backend changes, test workflow changes, and full scans.
+- Backend integration tests run only for `backend_integration_changed`, test workflow changes, and full scans.
+- The `backend-coverage` artifact remains produced by the unit coverage source target, so downstream summary behavior stays stable.
+- Updated CI/CD strategy docs with the full-lane backend source/integration policy.
+- Verification passed:
+  - `bash -n scripts/ci/classify-test-changes.sh scripts/ci/classify-codeql-languages.sh scripts/ci/classify-quality-scope.sh scripts/ci/browser-e2e-groups.sh scripts/ci/backend-integration-groups.sh scripts/ci/frontend-coverage-shard.sh scripts/ci/frontend-coverage-merge.sh scripts/ci/time-command.sh scripts/ci/report-workflow-durations.sh scripts/ci/report-workflow-trends.sh tests/ci/classify-test-changes.test.sh tests/ci/classify-codeql-languages.test.sh tests/ci/classify-quality-scope.test.sh tests/ci/browser-e2e-groups.test.sh tests/ci/backend-integration-groups.test.sh tests/ci/frontend-coverage-scripts.test.sh tests/ci/report-workflow-trends.test.sh tests/ci/playwright-timing-reporter.test.sh`
+  - `bash tests/ci/classify-test-changes.test.sh`
+  - `bash tests/ci/classify-codeql-languages.test.sh`
+  - `bash tests/ci/classify-quality-scope.test.sh`
+  - `bash tests/ci/browser-e2e-groups.test.sh`
+  - `bash tests/ci/backend-integration-groups.test.sh`
+  - `bash tests/ci/playwright-timing-reporter.test.sh`
+  - `bash tests/ci/frontend-coverage-scripts.test.sh`
+  - `bash tests/ci/report-workflow-trends.test.sh`
+  - `/tmp/actionlint-1.7.12/actionlint -color -shellcheck= .github/workflows/test.yml`
+  - `git diff --check`
+- Touched-file lizard was not applicable: this phase changed workflow YAML, docs, and task tracking, with no supported source/script file changes.
+
+---
+
 # Active Task: CI/CD Test Speed Phase 4 - E2E Source Lane Scope
 
 Status: in progress

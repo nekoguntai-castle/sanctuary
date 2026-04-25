@@ -513,8 +513,8 @@ jobs:
   # ============================================
   # Full Lane (main/nightly/manual)
   # ============================================
-  full-backend-tests:
-    name: Full Backend Tests (${{ matrix.target }})
+  full-backend-source-tests:
+    name: Full Backend Source Tests (${{ matrix.target }})
     if: >-
       always() &&
       github.event_name != 'pull_request' &&
@@ -532,10 +532,6 @@ jobs:
         target:
           - typecheck
           - unit-coverage
-          - integration-flows
-          - integration-repositories-core
-          - integration-repositories-sharing
-          - integration-ops-workers
 
     services:
       postgres:
@@ -590,28 +586,6 @@ jobs:
           NODE_ENV: test
         run: ${{ github.workspace }}/scripts/ci/time-command.sh "backend unit coverage" npm run test:unit -- --coverage
 
-      - name: Run integration tests
-        if: startsWith(matrix.target, 'integration-')
-        working-directory: ${{ github.workspace }}/server
-        env:
-          DATABASE_URL: postgresql://test:test@localhost:5432/sanctuary_test?schema=public
-          JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
-          ENCRYPTION_KEY: test-encryption-key-32-chars-long!
-          NODE_ENV: test
-        run: |
-          target="${{ matrix.target }}"
-          group="${target#integration-}"
-          mapfile -t specs < <("${{ github.workspace }}/scripts/ci/backend-integration-groups.sh" "$group")
-
-          if [ "${#specs[@]}" -eq 0 ]; then
-            echo "::error::No backend integration specs found for group ${group}"
-            exit 1
-          fi
-
-          "${{ github.workspace }}/scripts/ci/time-command.sh" \
-            "backend integration ${group}" \
-            npx vitest run --no-file-parallelism --maxWorkers 1 "${specs[@]}"
-
       - name: Upload backend coverage
         if: always() && matrix.target == 'unit-coverage'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -621,6 +595,171 @@ jobs:
             server/coverage/
             server/junit.xml
           retention-days: 14
+
+  full-backend-integration-tests:
+    name: Full Backend Integration Tests (${{ matrix.group }})
+    if: >-
+      always() &&
+      github.event_name != 'pull_request' &&
+      (needs.detect-changes.outputs.full_scan == 'true' ||
+       needs.detect-changes.outputs.test_suite_changed == 'true' ||
+       needs.detect-changes.outputs.backend_integration_changed == 'true')
+    runs-on: ubuntu-latest
+    needs: [detect-changes]
+    defaults:
+      run:
+        working-directory: server
+    strategy:
+      fail-fast: false
+      matrix:
+        group:
+          - flows
+          - repositories-core
+          - repositories-sharing
+          - ops-workers
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: sanctuary_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Link shared schema dependencies
+        run: node scripts/ensure-shared-module-resolution.mjs
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Run database migrations
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/sanctuary_test?schema=public
+        run: npx prisma migrate deploy
+
+      - name: Run integration tests
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/sanctuary_test?schema=public
+          JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
+          ENCRYPTION_KEY: test-encryption-key-32-chars-long!
+          NODE_ENV: test
+        run: |
+          mapfile -t specs < <("${{ github.workspace }}/scripts/ci/backend-integration-groups.sh" "${{ matrix.group }}")
+
+          if [ "${#specs[@]}" -eq 0 ]; then
+            echo "::error::No backend integration specs found for group ${{ matrix.group }}"
+            exit 1
+          fi
+
+          "${{ github.workspace }}/scripts/ci/time-command.sh" \
+            "backend integration ${{ matrix.group }}" \
+            npx vitest run --no-file-parallelism --maxWorkers 1 "${specs[@]}"
+
+  full-backend-tests:
+    name: Full Backend Tests
+    if: >-
+      always() &&
+      github.event_name != 'pull_request' &&
+      (needs.detect-changes.outputs.full_scan == 'true' ||
+       needs.detect-changes.outputs.test_suite_changed == 'true' ||
+       needs.detect-changes.outputs.backend_changed == 'true' ||
+       needs.detect-changes.outputs.backend_integration_changed == 'true')
+    runs-on: ubuntu-latest
+    needs: [detect-changes, full-backend-source-tests, full-backend-integration-tests]
+    steps:
+      - name: Check backend lane result
+        env:
+          FULL_SCAN: ${{ needs.detect-changes.outputs.full_scan }}
+          TEST_SUITE_CHANGED: ${{ needs.detect-changes.outputs.test_suite_changed }}
+          BACKEND_CHANGED: ${{ needs.detect-changes.outputs.backend_changed }}
+          BACKEND_INTEGRATION_CHANGED: ${{ needs.detect-changes.outputs.backend_integration_changed }}
+          BACKEND_SOURCE_TESTS: ${{ needs.full-backend-source-tests.result }}
+          BACKEND_INTEGRATION_TESTS: ${{ needs.full-backend-integration-tests.result }}
+        run: |
+          failed=false
+
+          require_success() {
+            name="$1"
+            result="$2"
+
+            if [ "$result" != "success" ]; then
+              echo "::error::$name result was $result; expected success"
+              failed=true
+            else
+              echo "$name: $result"
+            fi
+          }
+
+          allow_success_or_skipped() {
+            name="$1"
+            result="$2"
+
+            case "$result" in
+              success|skipped)
+                echo "$name: $result"
+                ;;
+              *)
+                echo "::error::$name result was $result; expected success or skipped"
+                failed=true
+                ;;
+            esac
+          }
+
+          require_when_relevant() {
+            name="$1"
+            result="$2"
+            relevant="$3"
+
+            if [ "$relevant" = "true" ]; then
+              require_success "$name" "$result"
+            else
+              allow_success_or_skipped "$name" "$result"
+            fi
+          }
+
+          source_required=false
+          integration_required=false
+
+          if [ "$FULL_SCAN" = "true" ] || [ "$TEST_SUITE_CHANGED" = "true" ]; then
+            source_required=true
+            integration_required=true
+          fi
+
+          if [ "$BACKEND_CHANGED" = "true" ]; then
+            source_required=true
+          fi
+
+          if [ "$BACKEND_INTEGRATION_CHANGED" = "true" ]; then
+            integration_required=true
+          fi
+
+          require_when_relevant "Full Backend Source Tests" "$BACKEND_SOURCE_TESTS" "$source_required"
+          require_when_relevant "Full Backend Integration Tests" "$BACKEND_INTEGRATION_TESTS" "$integration_required"
+
+          if [ "$failed" = "true" ]; then
+            exit 1
+          fi
 
   full-frontend-typechecks:
     name: Full Frontend Typecheck (${{ matrix.target }})
