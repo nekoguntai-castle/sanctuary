@@ -1,3 +1,41 @@
+# Active Task: CI/CD Test Speed Phase 1 - Timing Baseline Tooling
+
+Status: in progress
+
+Goal: start the CI/CD speed implementation with measured workflow trend tooling so later test-skip and sharding decisions are based on p50/p90 evidence instead of single-run intuition.
+
+## Plan
+
+- [x] Work in an isolated worktree from `origin/main` because the primary checkout has unrelated local grade/task edits.
+- [x] Add a workflow trend reporter that summarizes successful workflow runs by wall time, runner time, p50/p90, and longest job.
+- [x] Add fixture-mode regression coverage for the trend reporter.
+- [x] Wire the new script/test into Code Quality CI classifier checks.
+- [x] Update CI/CD strategy docs with trend usage and stop-condition guidance.
+- [x] Run shell syntax checks, focused CI script tests, actionlint, diff check, and touched-file lizard if available.
+- [ ] Deliver through PR, monitor required checks, merge safely, and verify the merge.
+
+## Review
+
+- Added `scripts/ci/report-workflow-trends.sh`, which summarizes successful workflow runs by p50/p90 wall time, p50/p90 runner time, and longest job.
+- Added fixture-mode regression coverage in `tests/ci/report-workflow-trends.test.sh`.
+- Wired the new script/test into the Code Quality CI classifier syntax/regression checks.
+- Updated `docs/reference/ci-cd-strategy.md` with trend-helper usage and a stop-condition rule for future CI optimization.
+- Verification passed:
+  - `bash -n scripts/ci/report-workflow-trends.sh tests/ci/report-workflow-trends.test.sh scripts/ci/report-workflow-durations.sh`
+  - `bash tests/ci/report-workflow-trends.test.sh`
+  - `bash tests/ci/classify-test-changes.test.sh`
+  - `bash tests/ci/classify-codeql-languages.test.sh`
+  - `bash tests/ci/classify-quality-scope.test.sh`
+  - `bash tests/ci/browser-e2e-groups.test.sh`
+  - `bash tests/ci/backend-integration-groups.test.sh`
+  - `bash tests/ci/frontend-coverage-scripts.test.sh`
+  - `bash scripts/ci/report-workflow-trends.sh --workflow test.yml --event merge_group --limit 2`
+  - `/tmp/actionlint-1.7.12/actionlint -color -shellcheck= .github/workflows/quality.yml`
+  - `git diff --check`
+- Touched-file lizard did not run: `npx lizard -C 15 -l shell scripts/ci/report-workflow-trends.sh tests/ci/report-workflow-trends.test.sh` failed because npm could not determine an executable for `lizard`.
+
+---
+
 # Active Task: Integration Test File Warning Reduction
 
 Status: complete
