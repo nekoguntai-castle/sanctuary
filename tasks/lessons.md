@@ -36,6 +36,18 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 - Do not edit `tasks/todo.md` for the unrelated task if it is part of the active parallel work state.
 - Before final cleanup, report any intentionally untouched local changes rather than trying to "fix" them.
 
+## Continue follow-up batches in a worktree when the primary tree is dirty
+
+**Rule:** If the primary worktree has unrelated local edits and the user asks to continue, create a separate worktree from `origin/main` and do all planning, implementation, commits, PRs, and verification there.
+
+**Why:** After PR #139, the primary worktree had an unrelated `tasks/todo.md` triage edit. Continuing in that tree would mix the new CI batch with another local task and make cleanup/sync unsafe.
+
+**How to apply:**
+- Start with `git status --short --branch`, `git fetch origin main`, and `git worktree list`.
+- Create a task-specific worktree and branch from `origin/main`.
+- Keep task tracker and lessons updates inside that worktree's branch.
+- Do not stash, reset, pull over, or rewrite the dirty primary tree unless the user explicitly asks for that cleanup.
+
 ## Treat encrypted operational state as upgrade-critical data
 
 **Rule:** Upgrade tests must prove encrypted runtime state can still be read after upgrade, not only that the env file values look preserved.

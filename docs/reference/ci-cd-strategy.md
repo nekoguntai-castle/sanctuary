@@ -152,8 +152,8 @@ The merge/main gate exists to prove the final candidate, not every local-sized c
 
 `Test Suite` full lane runs on `main`, schedule, manual dispatch, and merge queue. On merge-queue and push events, it first classifies changed paths and runs only the relevant full lanes. Schedule and manual dispatch set `full_scan=true` and remain exhaustive.
 
-- Full backend unit coverage and integration tests for backend changes, E2E changes, test-workflow changes, or exhaustive runs.
-- Full frontend typecheck and threshold-enforced coverage for frontend changes, E2E changes, test-workflow changes, or exhaustive runs.
+- Full backend typecheck, unit coverage, and integration tests for backend changes, E2E changes, test-workflow changes, or exhaustive runs. These run as parallel matrix targets under the `full-backend-tests` job ID so unit coverage and integration no longer wait behind each other.
+- Full frontend app typecheck, test typecheck, and threshold-enforced coverage for frontend changes, E2E changes, test-workflow changes, or exhaustive runs. These run as parallel matrix targets under the `full-frontend-tests` job ID so coverage no longer waits behind typechecks.
 - Full gateway coverage for gateway changes, test-workflow changes, or exhaustive runs.
 - Critical mutation gate for critical mutation paths or exhaustive runs.
 - Full browser-flow Playwright E2E for browser/API/route/non-render E2E paths, test-workflow changes, or exhaustive runs. This lane starts from path classification instead of waiting behind full coverage lanes and runs deterministic spec groups in parallel, so relevant browser flows prove the merge candidate earlier.
@@ -217,6 +217,8 @@ bash scripts/ci/report-workflow-durations.sh <run-id>
 ```
 
 The helper uses `gh run view --json jobs` and prints the longest jobs first. The full frontend and backend jobs also wrap their long typecheck, coverage, and integration steps with `scripts/ci/time-command.sh`, so use the job log timing notices to decide whether the next split should target frontend coverage, backend integration tests, or setup overhead.
+
+The frontend/backend matrix split intentionally trades extra runner minutes for lower merge-queue wall time. Keep coverage artifact names stable (`frontend-coverage`, `backend-coverage`) so `Full Test Summary` remains the branch-protection aggregate, and only add deeper Vitest sharding after timing shows one matrix target has become the new long pole.
 
 Full browser-flow E2E uses deterministic spec groups in `scripts/ci/browser-e2e-groups.sh`. Run the group check after adding, removing, or renaming a top-level browser spec:
 
