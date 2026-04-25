@@ -723,18 +723,16 @@ jobs:
           path: server/reports/mutation/
           retention-days: 14
 
-  full-e2e-tests:
-    name: Full E2E Tests
+  full-browser-e2e-tests:
+    name: Full Browser E2E Tests
     if: >-
       always() &&
       github.event_name != 'pull_request' &&
       (needs.detect-changes.outputs.full_scan == 'true' ||
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
-       needs.detect-changes.outputs.e2e_changed == 'true' ||
-       needs.detect-changes.outputs.browser_smoke_changed == 'true' ||
-       needs.detect-changes.outputs.render_changed == 'true')
+       needs.detect-changes.outputs.browser_smoke_changed == 'true')
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-backend-tests, full-frontend-tests, full-gateway-tests]
+    needs: [detect-changes]
 
     services:
       postgres:
@@ -833,8 +831,14 @@ jobs:
           echo "Backend failed to start"
           exit 1
 
-      - name: Run E2E tests
-        run: npm run test:e2e -- --project=chromium
+      - name: Run browser-flow E2E tests
+        run: |
+          mapfile -t browser_specs < <(find e2e -maxdepth 1 -name '*.spec.ts' ! -name 'render-regression.spec.ts' | sort)
+          if [ "${#browser_specs[@]}" -eq 0 ]; then
+            echo "No browser-flow E2E specs found."
+            exit 0
+          fi
+          npm run test:e2e -- --project=chromium "${browser_specs[@]}"
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/sanctuary_test?schema=public
           REDIS_URL: redis://localhost:6379
@@ -849,7 +853,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: playwright-report
+          name: playwright-report-browser
           path: playwright-report/
           retention-days: 14
 
@@ -857,7 +861,72 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: playwright-results
+          name: playwright-results-browser
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  full-render-e2e-tests:
+    name: Full Render E2E Tests
+    if: >-
+      always() &&
+      github.event_name != 'pull_request' &&
+      (needs.detect-changes.outputs.full_scan == 'true' ||
+       needs.detect-changes.outputs.test_suite_changed == 'true' ||
+       needs.detect-changes.outputs.render_changed == 'true')
+    runs-on: ubuntu-latest
+    needs: [detect-changes]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Build frontend
+        run: npm run build
+        env:
+          VITE_API_URL: http://localhost:3001
+
+      - name: Run render regression E2E tests
+        run: npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts
+        env:
+          CI: 'true'
+          NODE_ENV: test
+          VITE_API_URL: http://localhost:3001
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: playwright-report-render
+          path: playwright-report/
+          retention-days: 14
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: playwright-results-render
           path: test-results/
           if-no-files-found: ignore
           retention-days: 14
@@ -871,7 +940,7 @@ jobs:
        needs.detect-changes.outputs.test_suite_changed == 'true' ||
        needs.detect-changes.outputs.build_changed == 'true')
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-backend-tests, full-frontend-tests]
+    needs: [detect-changes]
 
     steps:
       - name: Checkout repository
@@ -898,7 +967,7 @@ jobs:
     name: Full Test Summary
     if: always()
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-backend-tests, full-frontend-tests, full-gateway-tests, full-critical-mutation, full-e2e-tests, full-build-check]
+    needs: [detect-changes, full-backend-tests, full-frontend-tests, full-gateway-tests, full-critical-mutation, full-browser-e2e-tests, full-render-e2e-tests, full-build-check]
 
     steps:
       - name: Pull request no-op
@@ -1001,12 +1070,21 @@ jobs:
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ needs.full-e2e-tests.result }}" = "success" ]; then
-            echo "### E2E: Passed" >> $GITHUB_STEP_SUMMARY
-          elif [ "${{ needs.full-e2e-tests.result }}" = "skipped" ]; then
-            echo "### E2E: Skipped" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ needs.full-browser-e2e-tests.result }}" = "success" ]; then
+            echo "### Browser E2E: Passed" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.full-browser-e2e-tests.result }}" = "skipped" ]; then
+            echo "### Browser E2E: Skipped" >> $GITHUB_STEP_SUMMARY
           else
-            echo "### E2E: Failed" >> $GITHUB_STEP_SUMMARY
+            echo "### Browser E2E: Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ needs.full-render-e2e-tests.result }}" = "success" ]; then
+            echo "### Render E2E: Passed" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.full-render-e2e-tests.result }}" = "skipped" ]; then
+            echo "### Render E2E: Skipped" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### Render E2E: Failed" >> $GITHUB_STEP_SUMMARY
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -1029,7 +1107,6 @@ jobs:
           BACKEND_CHANGED: ${{ needs.detect-changes.outputs.backend_changed }}
           CRITICAL_MUTATION_CHANGED: ${{ needs.detect-changes.outputs.critical_mutation_changed }}
           GATEWAY_CHANGED: ${{ needs.detect-changes.outputs.gateway_changed }}
-          E2E_CHANGED: ${{ needs.detect-changes.outputs.e2e_changed }}
           BROWSER_SMOKE_CHANGED: ${{ needs.detect-changes.outputs.browser_smoke_changed }}
           RENDER_CHANGED: ${{ needs.detect-changes.outputs.render_changed }}
           BUILD_CHANGED: ${{ needs.detect-changes.outputs.build_changed }}
@@ -1037,7 +1114,8 @@ jobs:
           FULL_FRONTEND_TESTS: ${{ needs.full-frontend-tests.result }}
           FULL_GATEWAY_TESTS: ${{ needs.full-gateway-tests.result }}
           FULL_CRITICAL_MUTATION: ${{ needs.full-critical-mutation.result }}
-          FULL_E2E_TESTS: ${{ needs.full-e2e-tests.result }}
+          FULL_BROWSER_E2E_TESTS: ${{ needs.full-browser-e2e-tests.result }}
+          FULL_RENDER_E2E_TESTS: ${{ needs.full-render-e2e-tests.result }}
           FULL_BUILD_CHECK: ${{ needs.full-build-check.result }}
         run: |
           failed=false
@@ -1087,7 +1165,8 @@ jobs:
           frontend_required=false
           gateway_required=false
           critical_mutation_required=false
-          e2e_required=false
+          browser_e2e_required=false
+          render_e2e_required=false
           build_required=false
 
           if is_true "$FULL_SCAN"; then
@@ -1095,7 +1174,8 @@ jobs:
             frontend_required=true
             gateway_required=true
             critical_mutation_required=true
-            e2e_required=true
+            browser_e2e_required=true
+            render_e2e_required=true
             build_required=true
           fi
 
@@ -1103,7 +1183,8 @@ jobs:
             backend_required=true
             frontend_required=true
             gateway_required=true
-            e2e_required=true
+            browser_e2e_required=true
+            render_e2e_required=true
             build_required=true
           fi
 
@@ -1123,12 +1204,12 @@ jobs:
             critical_mutation_required=true
           fi
 
-          if is_true "$E2E_CHANGED"; then
-            e2e_required=true
+          if is_true "$BROWSER_SMOKE_CHANGED"; then
+            browser_e2e_required=true
           fi
 
-          if is_true "$BROWSER_SMOKE_CHANGED" || is_true "$RENDER_CHANGED"; then
-            e2e_required=true
+          if is_true "$RENDER_CHANGED"; then
+            render_e2e_required=true
           fi
 
           if is_true "$BUILD_CHANGED"; then
@@ -1140,7 +1221,8 @@ jobs:
           require_when_relevant "Full Frontend Tests" "$FULL_FRONTEND_TESTS" "$frontend_required"
           require_when_relevant "Full Gateway Tests" "$FULL_GATEWAY_TESTS" "$gateway_required"
           require_when_relevant "Full Critical Mutation Gate" "$FULL_CRITICAL_MUTATION" "$critical_mutation_required"
-          require_when_relevant "Full E2E Tests" "$FULL_E2E_TESTS" "$e2e_required"
+          require_when_relevant "Full Browser E2E Tests" "$FULL_BROWSER_E2E_TESTS" "$browser_e2e_required"
+          require_when_relevant "Full Render E2E Tests" "$FULL_RENDER_E2E_TESTS" "$render_e2e_required"
           require_when_relevant "Full Build Check" "$FULL_BUILD_CHECK" "$build_required"
 
           if [ "$failed" = "true" ]; then

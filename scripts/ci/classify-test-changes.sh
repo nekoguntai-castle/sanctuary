@@ -170,7 +170,7 @@ is_browser_smoke_file() {
     src/app/*|src/api/*|components/Layout/*|components/Login/*|components/DraftList/*|components/AuditLogs/*|components/Monitoring/*|components/WalletDetail/*)
       return 0
       ;;
-    e2e/*.spec.ts|e2e/helpers.ts|e2e/adminOperationsApiState.ts|e2e/adminOperationsFixtures.ts|e2e/userJourneyApi.ts)
+    e2e/*)
       case "$1" in
         e2e/render-regression.spec.ts|e2e/render-regression/*|e2e/render-regression.spec.ts-snapshots/*)
           return 1

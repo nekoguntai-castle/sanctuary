@@ -263,19 +263,20 @@ This workflow runs automatically on:
 
 | Trigger | Test Suite | Upgrade Tests | Release Gate |
 |---------|------------|---------------|--------------|
-| Push to main (install paths) | All except upgrade | No | No |
-| PR to main (install paths) | All except upgrade | No | No |
-| Release tag (`v*.*.*`) | Release-critical + blocking upgrade matrix | Yes | **Yes** |
-| Nightly schedule | Upgrade matrix | Yes | No |
+| Push to main (install paths) | Scoped install lanes | Path-scoped | No |
+| PR to main (install paths) | Scoped install lanes | Path-scoped | No |
+| Release tag (`v*.*.*`) | Release-critical + blocking upgrade matrix | Baseline + extended | **Yes** |
+| Nightly schedule | Upgrade matrix | Baseline + extended | No |
 | Manual dispatch | Configurable | Configurable | No |
 
-PR runs are scoped by `tests/install/utils/classify-install-scope.sh` instead of running every install lane for every install-related path. Unit/docs-only changes run unit checks, installer changes run installer checks, compose/docker changes run a reusable stack plus container health, auth-flow changes run a reusable stack plus auth flow, and upgrade/migration changes run the upgrade lane. Container-health and auth-flow share one stack when both are relevant.
+PR runs are scoped by `tests/install/utils/classify-install-scope.sh` instead of running every install lane for every install-related path. Unit/docs-only changes run unit checks, installer changes run installer checks, compose/docker changes run a reusable stack plus container health, auth-flow changes run a reusable stack plus auth flow, and Prisma/migration-only changes run the baseline upgrade matrix. Upgrade harness, fixture, workflow, release, scheduled, and manual `all`/`upgrade`/`release-critical` changes run both baseline and extended upgrade lanes. Container-health and auth-flow share one stack when both are relevant.
 
 **Release-critical tests** include:
 - Unit tests, including install-script, 2FA reset-script, and upgrade-helper safety checks (~5 seconds)
 - Fresh install E2E (~5-10 min)
 - Container health and auth flow on a reusable stack (~2-5 min)
-- Upgrade matrix: `latest-stable/baseline`, `n-2/baseline`, `latest-stable/browser-origin-ip`, and `latest-stable/legacy-runtime-env` (~10-20 min per lane)
+- Baseline upgrade matrix: `latest-stable/baseline` and `n-2/baseline` (~10-20 min per lane)
+- Extended upgrade fixtures: `latest-stable/browser-origin-ip` and `latest-stable/legacy-runtime-env` (~10-20 min per lane)
 
 Total release validation time: ~25-60 minutes depending on upgrade matrix concurrency and image build cache.
 

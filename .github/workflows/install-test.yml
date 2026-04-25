@@ -78,6 +78,8 @@ jobs:
       run_container_health: ${{ steps.check.outputs.run_container_health }}
       run_auth_flow: ${{ steps.check.outputs.run_auth_flow }}
       run_reuse_stack: ${{ steps.check.outputs.run_reuse_stack }}
+      run_upgrade_baseline: ${{ steps.check.outputs.run_upgrade_baseline }}
+      run_upgrade_extended: ${{ steps.check.outputs.run_upgrade_extended }}
       scope: ${{ steps.check.outputs.scope }}
       reason: ${{ steps.check.outputs.reason }}
     steps:
@@ -477,14 +479,13 @@ jobs:
   # ============================================
   # Upgrade Test Matrix (Long Running)
   # ============================================
-  upgrade-test:
-    name: Upgrade ${{ matrix.source_ref }} / ${{ matrix.fixture }}
+  upgrade-baseline-test:
+    name: Upgrade Baseline ${{ matrix.source_ref }}
     runs-on: ubuntu-latest
     needs: determine-scope
     if: |
       needs.determine-scope.outputs.should_run == 'true' &&
-      (needs.determine-scope.outputs.run_upgrade == 'true' ||
-       needs.determine-scope.outputs.test_suite == 'upgrade')
+      needs.determine-scope.outputs.run_upgrade_baseline == 'true'
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -494,6 +495,59 @@ jobs:
             fixture: baseline
           - source_ref: n-2
             fixture: baseline
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
+
+      - name: Make test scripts executable
+        run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh
+
+      - name: Run baseline upgrade test
+        env:
+          HTTPS_PORT: ${{ env.HTTPS_PORT }}
+          HTTP_PORT: ${{ env.HTTP_PORT }}
+          SANCTUARY_UPGRADE_SOURCE_REF: ${{ github.event.inputs.upgrade_source_ref || matrix.source_ref }}
+          SANCTUARY_UPGRADE_FIXTURE: ${{ matrix.fixture }}
+          SANCTUARY_UPGRADE_ARTIFACT_DIR: .tmp/upgrade-artifacts/${{ matrix.source_ref }}-${{ matrix.fixture }}
+        run: ./tests/install/e2e/upgrade-install.test.sh --mode core --fixture "${{ matrix.fixture }}" --verbose
+
+      - name: Show container logs on failure
+        if: failure()
+        run: |
+          docker compose ps || true
+          docker compose logs --tail 50 postgres 2>&1 || true
+          docker compose logs --tail 100 backend 2>&1 || true
+
+      - name: Upload upgrade artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: upgrade-${{ matrix.source_ref }}-${{ matrix.fixture }}
+          path: .tmp/upgrade-artifacts/${{ matrix.source_ref }}-${{ matrix.fixture }}
+          if-no-files-found: ignore
+
+      - name: Cleanup
+        if: always()
+        run: docker compose down -v --remove-orphans || true
+
+  upgrade-extended-test:
+    name: Upgrade Extended ${{ matrix.fixture }}
+    runs-on: ubuntu-latest
+    needs: determine-scope
+    if: |
+      needs.determine-scope.outputs.should_run == 'true' &&
+      needs.determine-scope.outputs.run_upgrade_extended == 'true'
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
           - source_ref: latest-stable
             fixture: browser-origin-ip
           - source_ref: latest-stable
@@ -511,7 +565,7 @@ jobs:
       - name: Make test scripts executable
         run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh
 
-      - name: Run core upgrade test
+      - name: Run extended upgrade test
         env:
           HTTPS_PORT: ${{ env.HTTPS_PORT }}
           HTTP_PORT: ${{ env.HTTP_PORT }}
@@ -545,7 +599,7 @@ jobs:
   test-summary:
     name: Install Test Summary
     runs-on: ubuntu-latest
-    needs: [determine-scope, unit-tests, fresh-install-test, install-script-test, install-stack-smoke, container-health-test, auth-flow-test, upgrade-test]
+    needs: [determine-scope, unit-tests, fresh-install-test, install-script-test, install-stack-smoke, container-health-test, auth-flow-test, upgrade-baseline-test, upgrade-extended-test]
     if: always()
 
     steps:
@@ -641,13 +695,21 @@ jobs:
             echo "- Auth Flow: :x: Failed" >> $GITHUB_STEP_SUMMARY
           fi
 
-          # Upgrade test
-          if [ "${{ needs.upgrade-test.result }}" == "success" ]; then
-            echo "- Upgrade Install: :white_check_mark: Passed" >> $GITHUB_STEP_SUMMARY
-          elif [ "${{ needs.upgrade-test.result }}" == "skipped" ]; then
-            echo "- Upgrade Install: :arrow_right: Skipped" >> $GITHUB_STEP_SUMMARY
+          # Upgrade tests
+          if [ "${{ needs.upgrade-baseline-test.result }}" == "success" ]; then
+            echo "- Baseline Upgrade Install: :white_check_mark: Passed" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.upgrade-baseline-test.result }}" == "skipped" ]; then
+            echo "- Baseline Upgrade Install: :arrow_right: Skipped" >> $GITHUB_STEP_SUMMARY
           else
-            echo "- Upgrade Install: :x: Failed" >> $GITHUB_STEP_SUMMARY
+            echo "- Baseline Upgrade Install: :x: Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ needs.upgrade-extended-test.result }}" == "success" ]; then
+            echo "- Extended Upgrade Fixtures: :white_check_mark: Passed" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.upgrade-extended-test.result }}" == "skipped" ]; then
+            echo "- Extended Upgrade Fixtures: :arrow_right: Skipped" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- Extended Upgrade Fixtures: :x: Failed" >> $GITHUB_STEP_SUMMARY
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -669,7 +731,8 @@ jobs:
                [ "${{ needs.fresh-install-test.result }}" == "success" ] && \
                [ "${{ needs.install-script-test.result }}" == "success" ] && \
                [ "$STACK_OK" == "true" ] && \
-               [ "${{ needs.upgrade-test.result }}" == "success" ]; then
+               [ "${{ needs.upgrade-baseline-test.result }}" == "success" ] && \
+               [ "${{ needs.upgrade-extended-test.result }}" == "success" ]; then
               echo ":rocket: **Release validation passed!** Installation has been verified." >> $GITHUB_STEP_SUMMARY
             else
               echo ":stop_sign: **Release validation FAILED!** Do not proceed with release until issues are resolved." >> $GITHUB_STEP_SUMMARY
@@ -714,8 +777,13 @@ jobs:
             FAILED=true
           fi
 
-          if [ "${{ needs.upgrade-test.result }}" != "success" ]; then
-            echo "::error::Upgrade matrix failed - release blocked"
+          if [ "${{ needs.upgrade-baseline-test.result }}" != "success" ]; then
+            echo "::error::Baseline upgrade matrix failed - release blocked"
+            FAILED=true
+          fi
+
+          if [ "${{ needs.upgrade-extended-test.result }}" != "success" ]; then
+            echo "::error::Extended upgrade fixtures failed - release blocked"
             FAILED=true
           fi
 
