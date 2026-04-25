@@ -68,7 +68,9 @@ assert_scope() {
   local run_container_health="$6"
   local run_auth_flow="$7"
   local run_upgrade="$8"
-  local run_reuse_stack="$9"
+  local run_upgrade_baseline="$9"
+  local run_upgrade_extended="${10}"
+  local run_reuse_stack="${11}"
 
   assert_exact_output "$output_file" "should_run" "$should_run"
   assert_exact_output "$output_file" "run_unit" "$run_unit"
@@ -77,6 +79,8 @@ assert_scope() {
   assert_exact_output "$output_file" "run_container_health" "$run_container_health"
   assert_exact_output "$output_file" "run_auth_flow" "$run_auth_flow"
   assert_exact_output "$output_file" "run_upgrade" "$run_upgrade"
+  assert_exact_output "$output_file" "run_upgrade_baseline" "$run_upgrade_baseline"
+  assert_exact_output "$output_file" "run_upgrade_extended" "$run_upgrade_extended"
   assert_exact_output "$output_file" "run_reuse_stack" "$run_reuse_stack"
 }
 
@@ -94,37 +98,43 @@ main() {
   commit_file "$repo_dir" "docs/install.md" "# docs" "irrelevant docs"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_scope "$output_file" "false" "false" "false" "false" "false" "false" "false" "false"
+  assert_scope "$output_file" "false" "false" "false" "false" "false" "false" "false" "false" "false" "false"
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "tests/install/unit/install-script.test.sh" "echo unit" "unit"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_scope "$output_file" "true" "true" "false" "false" "false" "false" "false" "false"
+  assert_scope "$output_file" "true" "true" "false" "false" "false" "false" "false" "false" "false" "false"
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "install.sh" "#!/usr/bin/env bash" "installer"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_scope "$output_file" "true" "true" "false" "true" "false" "false" "false" "false"
+  assert_scope "$output_file" "true" "true" "false" "true" "false" "false" "false" "false" "false" "false"
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "docker-compose.yml" "services: {}" "compose"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_scope "$output_file" "true" "true" "true" "false" "true" "false" "false" "true"
+  assert_scope "$output_file" "true" "true" "true" "false" "true" "false" "false" "false" "false" "true"
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "tests/install/e2e/auth-flow.test.sh" "echo auth" "auth"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_scope "$output_file" "true" "true" "true" "false" "false" "true" "false" "true"
+  assert_scope "$output_file" "true" "true" "true" "false" "false" "true" "false" "false" "false" "true"
 
   base_sha="$head_sha"
   commit_file "$repo_dir" "server/prisma/schema.prisma" "datasource db {}" "migration"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
-  assert_scope "$output_file" "true" "true" "false" "false" "false" "false" "true" "false"
+  assert_scope "$output_file" "true" "true" "false" "false" "false" "false" "true" "true" "false" "false"
+
+  base_sha="$head_sha"
+  commit_file "$repo_dir" "tests/install/e2e/upgrade-install.test.sh" "echo upgrade" "upgrade harness"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_scope "$output_file" "true" "true" "false" "false" "false" "false" "true" "true" "true" "false"
 
   : > "$output_file"
   (
@@ -135,7 +145,7 @@ main() {
     export WORKFLOW_SHA="$head_sha"
     bash "$CLASSIFIER_SCRIPT"
   )
-  assert_scope "$output_file" "true" "true" "true" "true" "true" "true" "true" "true"
+  assert_scope "$output_file" "true" "true" "true" "true" "true" "true" "true" "true" "true" "true"
 
   : > "$output_file"
   (
@@ -148,7 +158,7 @@ main() {
   )
   assert_exact_output "$output_file" "is_release" "true"
   assert_exact_output "$output_file" "test_suite" "release-critical"
-  assert_scope "$output_file" "true" "true" "true" "true" "true" "true" "true" "true"
+  assert_scope "$output_file" "true" "true" "true" "true" "true" "true" "true" "true" "true" "true"
 
   echo "install scope classifier regression checks passed"
 }
