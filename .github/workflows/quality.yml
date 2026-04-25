@@ -171,6 +171,7 @@ jobs:
           bash -n scripts/ci/time-command.sh
           bash -n scripts/ci/report-workflow-durations.sh
           bash -n scripts/ci/report-workflow-trends.sh
+          bash -n tests/ci/playwright-timing-reporter.test.sh
           bash -n tests/ci/classify-test-changes.test.sh
           bash -n tests/ci/classify-codeql-languages.test.sh
           bash -n tests/ci/classify-quality-scope.test.sh
@@ -178,6 +179,7 @@ jobs:
           bash -n tests/ci/backend-integration-groups.test.sh
           bash -n tests/ci/frontend-coverage-scripts.test.sh
           bash -n tests/ci/report-workflow-trends.test.sh
+          bash tests/ci/playwright-timing-reporter.test.sh
           bash tests/ci/classify-test-changes.test.sh
           bash tests/ci/classify-codeql-languages.test.sh
           bash tests/ci/classify-quality-scope.test.sh
