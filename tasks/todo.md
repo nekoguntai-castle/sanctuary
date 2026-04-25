@@ -1,6 +1,6 @@
 # Active Task: Next CI Target Optimization Batch
 
-Status: in progress
+Status: complete
 
 Goal: reduce remaining CI wall time after PR #135 by parallelizing the longest merge/full lanes and adding measurement hooks before deeper stack or test-suite surgery.
 
@@ -34,8 +34,8 @@ Goal: reduce remaining CI wall time after PR #135 by parallelizing the longest m
 ### Delivery
 
 - [x] Run local validation: shell syntax, browser grouping check, actionlint on touched workflows, `git diff --check`, and focused lizard if touched scripts grow.
-- [ ] Commit, push, open PR, monitor checks, and merge through merge queue without deleting the branch early.
-- [ ] Sync `main`, clean stale local branches/worktrees only after merge verification, and record post-merge timings.
+- [x] Commit, push, open PR, monitor checks, and merge through merge queue without deleting the branch early.
+- [x] Sync `main`, clean stale local branches/worktrees only after merge verification, and record post-merge timings.
 
 ## Review
 
@@ -43,6 +43,21 @@ Goal: reduce remaining CI wall time after PR #135 by parallelizing the longest m
 - Edge case audit: `scripts/ci/browser-e2e-groups.sh --check` fails on duplicate, missing, or unknown top-level browser spec assignments and explicitly keeps `e2e/render-regression.spec.ts` in the render lane.
 - Install stack review: Fresh Install, Install Script E2E, and Install Stack Smoke already run in parallel and need isolated runtime state. Reusing a single stack would either serialize currently parallel jobs or weaken the install-script proof, so this batch keeps release-critical install coverage unchanged.
 - Local validation passed: browser group shell syntax/check/test, existing CI classifier tests, actionlint on touched workflows, `git diff --check`, and focused lizard on new CI scripts.
+- PR #138 merged through merge queue at 2026-04-25 01:15:38 UTC as `afe7f03e`; `main` was fast-forwarded, the local feature branch was removed only after verifying an empty diff against `main`, and stale worktree metadata was pruned.
+
+## Post-Merge Measurement
+
+- PR #138 merge-group Test Suite completed successfully. Longest wall-time jobs were Full Frontend 5m40s, Full Backend 3m45s, Browser E2E admin-auth 3m07s, Browser E2E wallet-experience 3m01s, Browser E2E wallet-flows 2m59s, and Full Render E2E 2m32s.
+- The browser split reduced the prior single Full Browser E2E critical path from 5m29s on PR #135 to about 3m07s on PR #138, making frontend coverage the new longest Test Suite lane.
+- Backend improved from 4m26s on PR #135 to 3m45s on PR #138 in this run, but integration tests still form the backend tail after unit coverage.
+
+## Additional Optimization Analysis
+
+- Highest next value: split or isolate frontend coverage. Full Frontend is now the longest merge-group Test Suite job at 5m40s, so the next useful measurement should capture per-file or per-project Vitest timing before sharding.
+- Next backend target: measure backend integration files directly. Full Backend still took 3m45s, and the queue logs show the tail in integration tests after unit coverage, so slow integration specs are the likely lever.
+- Browser target: keep the three-group split, then inspect per-spec Playwright timings before adding more shards. Current browser groups are balanced around 2m59s-3m07s, so extra shards may spend more runner minutes without much wall-time gain.
+- Install target remains release-workflow specific: upgrade lanes and install stack smoke are the long poles, but stack reuse was not changed because the current jobs are parallel and require isolated runtime state. The safer next move is timing and fixture scoping inside each install lane, not shared-stack coupling.
+- Keep unchanged: full frontend coverage for frontend changes and full release-critical install/upgrade coverage. Recent frontend and release work showed those gates still provide useful protection.
 
 ---
 
