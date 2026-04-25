@@ -20,6 +20,7 @@ export default defineConfig({
   reporter: [
     ['html', { outputFolder: 'playwright-report' }],
     ['junit', { outputFile: 'playwright-results.xml' }],
+    ['./scripts/ci/playwright-timing-reporter.cjs'],
   ],
 
   use: {

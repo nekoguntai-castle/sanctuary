@@ -1,3 +1,44 @@
+# Active Task: CI/CD Test Speed Phase 3 - Playwright Timing Artifacts
+
+Status: in progress
+
+Goal: make browser-flow and render-regression E2E cost visible at the spec level before changing grouping, retries, browser count, or shared setup.
+
+## Plan
+
+- [x] Work in an isolated worktree from `origin/main` after Phase 2 merged.
+- [x] Add a Playwright reporter that writes timing JSON and Markdown into the existing `test-results/` artifact path.
+- [x] Add regression coverage for timing aggregation, sorting, status counts, retry metadata, and Markdown output.
+- [x] Wire the reporter regression test into the Code Quality CI classifier test job.
+- [x] Update CI/CD strategy docs with the per-spec artifact usage.
+- [x] Run focused reporter tests, CI classifier tests, workflow lint, diff check, and touched-file lizard if available.
+- [ ] Deliver through PR, monitor required checks, merge safely, and verify the merge.
+
+## Review
+
+- Added `scripts/ci/playwright-timing-reporter.cjs`, which records Playwright test results by spec and writes `test-results/playwright-timing.json` plus `test-results/playwright-timing.md`.
+- Wired the reporter into `playwright.config.ts`; existing Playwright artifact uploads already include `test-results/`, so no extra upload step was needed.
+- Added regression coverage for aggregation, status counts, retry metadata, sorting, duration formatting, empty/default records, and Markdown output.
+- Wired the reporter regression test into the Code Quality CI classifier test job.
+- Updated the CI/CD strategy docs to use Playwright timing artifacts before changing group membership, browser count, retries, or shared setup.
+- Verification passed:
+  - `bash -n tests/ci/playwright-timing-reporter.test.sh`
+  - `bash tests/ci/playwright-timing-reporter.test.sh`
+  - `bash -n scripts/ci/classify-test-changes.sh scripts/ci/classify-codeql-languages.sh scripts/ci/classify-quality-scope.sh scripts/ci/browser-e2e-groups.sh scripts/ci/backend-integration-groups.sh scripts/ci/frontend-coverage-shard.sh scripts/ci/frontend-coverage-merge.sh scripts/ci/time-command.sh scripts/ci/report-workflow-durations.sh scripts/ci/report-workflow-trends.sh tests/ci/classify-test-changes.test.sh tests/ci/classify-codeql-languages.test.sh tests/ci/classify-quality-scope.test.sh tests/ci/browser-e2e-groups.test.sh tests/ci/backend-integration-groups.test.sh tests/ci/frontend-coverage-scripts.test.sh tests/ci/report-workflow-trends.test.sh`
+  - `bash tests/ci/classify-test-changes.test.sh`
+  - `bash tests/ci/classify-codeql-languages.test.sh`
+  - `bash tests/ci/classify-quality-scope.test.sh`
+  - `bash tests/ci/browser-e2e-groups.test.sh`
+  - `bash tests/ci/backend-integration-groups.test.sh`
+  - `bash tests/ci/frontend-coverage-scripts.test.sh`
+  - `bash tests/ci/report-workflow-trends.test.sh`
+  - `/tmp/actionlint-1.7.12/actionlint -color -shellcheck= .github/workflows/quality.yml`
+  - `npx playwright test --list --project=chromium e2e/render-regression.spec.ts`
+  - `/home/nekoguntai/sanctuary/.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -l javascript scripts/ci/playwright-timing-reporter.cjs tests/ci/playwright-timing-reporter.test.mjs`
+  - `git diff --check`
+
+---
+
 # Active Task: CI/CD Test Speed Phase 2 - Backend Integration Impact Scope
 
 Status: in progress
