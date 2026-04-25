@@ -1,6 +1,35 @@
-# Active Task: CI/CD Test Speed Batch 4 - Docker Image Scope
+# Active Task: CI/CD Test Speed Batch 5 - E2E Timing Instrumentation
 
 Status: in progress
+
+Goal: measure E2E setup, build, backend preparation, and Playwright runtime separately so the next CI speed change can target the actual long pole.
+
+## Plan
+
+- [x] Work in an isolated worktree from updated `origin/main`.
+- [x] Wrap quick browser smoke setup/build/run steps with `scripts/ci/time-command.sh`.
+- [x] Wrap quick render regression setup/build/run steps with `scripts/ci/time-command.sh`.
+- [x] Wrap full browser E2E frontend setup, backend setup/build, and grouped Playwright run steps with `scripts/ci/time-command.sh`.
+- [x] Wrap full render E2E setup/build/run steps with `scripts/ci/time-command.sh`.
+- [x] Update CI/CD strategy docs and task tracker history.
+- [x] Run workflow lint and diff check.
+- [ ] Deliver through PR, monitor checks, merge safely, and verify the merge.
+
+## Review
+
+- Wrapped quick browser smoke dependency install, Playwright browser install, frontend build, and smoke test run with CI timing notices.
+- Wrapped quick render regression dependency install, Playwright browser install, frontend build, and render test run with CI timing notices.
+- Wrapped full browser E2E frontend setup, backend dependency install, Prisma generation/migration, backend build, and grouped Playwright runs with CI timing notices.
+- Wrapped full render E2E dependency install, Playwright browser install, frontend build, and render test run with CI timing notices.
+- Verification passed:
+  - `/tmp/actionlint-1.7.12/actionlint -color -shellcheck= .github/workflows/test.yml`
+  - `git diff --check`
+
+---
+
+# Active Task: CI/CD Test Speed Batch 4 - Docker Image Scope
+
+Status: complete
 
 Goal: build only the dev image affected by a Docker-relevant change instead of always building both frontend and backend images.
 
@@ -13,7 +42,7 @@ Goal: build only the dev image affected by a Docker-relevant change instead of a
 - [x] Add classifier regression fixtures and wire them into Code Quality.
 - [x] Update CI/CD strategy docs and task tracker history.
 - [x] Run classifier tests, workflow lint, shell complexity, and diff check.
-- [ ] Deliver through PR, monitor checks, merge safely, and verify the merge.
+- [x] Deliver through PR, monitor checks, merge safely, and verify the merge.
 
 ## Review
 
@@ -28,6 +57,7 @@ Goal: build only the dev image affected by a Docker-relevant change instead of a
   - `/tmp/actionlint-1.7.12/actionlint -color -shellcheck= .github/workflows/docker-build.yml .github/workflows/quality.yml`
   - `/home/nekoguntai/sanctuary/.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -l shell scripts/ci/classify-docker-build-images.sh tests/ci/classify-docker-build-images.test.sh`
   - `git diff --check`
+- Delivered in PR #165; merge-group Test Suite, Code Quality, and CodeQL passed, and `origin/main` advanced to merge commit `7548ebd3`.
 
 ---
 
