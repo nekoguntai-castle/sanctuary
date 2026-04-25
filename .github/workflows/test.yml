@@ -512,7 +512,7 @@ jobs:
   # Full Lane (main/nightly/manual)
   # ============================================
   full-backend-tests:
-    name: Full Backend Tests
+    name: Full Backend Tests (${{ matrix.target }})
     if: >-
       always() &&
       github.event_name != 'pull_request' &&
@@ -525,6 +525,13 @@ jobs:
     defaults:
       run:
         working-directory: server
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - typecheck
+          - unit-coverage
+          - integration
 
     services:
       postgres:
@@ -567,9 +574,11 @@ jobs:
         run: npx prisma migrate deploy
 
       - name: Run server test typecheck
+        if: matrix.target == 'typecheck'
         run: ${{ github.workspace }}/scripts/ci/time-command.sh "server test typecheck" npm run typecheck:tests
 
       - name: Run unit tests with coverage
+        if: matrix.target == 'unit-coverage'
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/sanctuary_test?schema=public
           JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
@@ -578,6 +587,7 @@ jobs:
         run: ${{ github.workspace }}/scripts/ci/time-command.sh "backend unit coverage" npm run test:unit -- --coverage
 
       - name: Run integration tests
+        if: matrix.target == 'integration'
         working-directory: ${{ github.workspace }}/server
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/sanctuary_test?schema=public
@@ -587,7 +597,7 @@ jobs:
         run: ${{ github.workspace }}/scripts/ci/time-command.sh "backend integration tests" npm run test:integration
 
       - name: Upload backend coverage
-        if: always()
+        if: always() && matrix.target == 'unit-coverage'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: backend-coverage
@@ -597,7 +607,7 @@ jobs:
           retention-days: 14
 
   full-frontend-tests:
-    name: Full Frontend Tests
+    name: Full Frontend Tests (${{ matrix.target }})
     if: >-
       always() &&
       github.event_name != 'pull_request' &&
@@ -607,6 +617,13 @@ jobs:
        needs.detect-changes.outputs.e2e_changed == 'true')
     runs-on: ubuntu-latest
     needs: [detect-changes]
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - app-typecheck
+          - test-typecheck
+          - coverage
 
     steps:
       - name: Checkout repository
@@ -623,16 +640,19 @@ jobs:
         run: npm ci
 
       - name: Run strict app typecheck
+        if: matrix.target == 'app-typecheck'
         run: scripts/ci/time-command.sh "frontend app typecheck" npm run typecheck:app
 
       - name: Run strict test typecheck
+        if: matrix.target == 'test-typecheck'
         run: scripts/ci/time-command.sh "frontend test typecheck" npm run typecheck:tests
 
       - name: Run frontend coverage (threshold-enforced)
+        if: matrix.target == 'coverage'
         run: scripts/ci/time-command.sh "frontend coverage" npm run test:coverage
 
       - name: Upload frontend coverage
-        if: always()
+        if: always() && matrix.target == 'coverage'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: frontend-coverage

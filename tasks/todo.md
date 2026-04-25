@@ -1,3 +1,55 @@
+# Active Task: Full Lane Typecheck/Coverage Parallelization
+
+Status: in progress
+
+Goal: reduce the remaining merge-queue Test Suite wall time after PR #138 by parallelizing independent frontend and backend full-lane substeps while preserving the same aggregate gates and coverage artifacts.
+
+## Worktree Constraint
+
+- This batch runs in `/tmp/sanctuary-ci-timing` on `ci/frontend-backend-test-timing` so the dirty primary worktree at `/home/nekoguntai/sanctuary` remains untouched.
+- The primary worktree currently has an unrelated local `tasks/todo.md` edit. Do not stash, reset, or rewrite it from this batch.
+
+## Current Evidence
+
+- PR #138 merge-group Test Suite made `Full Frontend Tests` the longest lane at 5m40s.
+- `Full Backend Tests` was next at 3m45s after the browser E2E split lowered browser-flow groups to about 3m.
+- Frontend and backend full jobs already have independent command boundaries with `scripts/ci/time-command.sh`; the next low-risk optimization is to run those boundaries in parallel matrix legs before deeper Vitest sharding.
+
+## Implementation Checklist
+
+### Phase 1 - Frontend Full-Lane Matrix
+
+- [x] Split the full frontend lane into parallel `app-typecheck`, `test-typecheck`, and `coverage` matrix targets.
+- [x] Upload the existing `frontend-coverage` artifact only from the coverage target so `Full Test Summary` remains compatible.
+- [x] Keep the same path-aware relevance rules and aggregate `Full Test Summary` behavior.
+
+### Phase 2 - Backend Full-Lane Matrix
+
+- [x] Split the full backend lane into parallel `typecheck`, `unit-coverage`, and `integration` matrix targets.
+- [x] Keep database setup and environment semantics unchanged for backend targets.
+- [x] Upload the existing `backend-coverage` artifact only from the unit coverage target so summary reporting remains compatible.
+
+### Phase 3 - Documentation And Process Guard
+
+- [x] Document the new full-lane matrix shape and the runner-minute tradeoff in CI strategy docs.
+- [x] Update lessons with the worktree isolation rule from this correction.
+- [x] Re-read the workflow diff for branch-protection aggregate compatibility and artifact edge cases.
+
+### Delivery
+
+- [x] Run local validation: workflow syntax/actionlint, `git diff --check`, and focused workflow/script checks.
+- [ ] Commit, push, open PR, monitor checks, and merge through merge queue without deleting the branch early.
+- [ ] Record post-merge durations and leave the primary dirty worktree untouched.
+
+## Review
+
+- Quality review: kept existing full-lane job IDs (`full-frontend-tests`, `full-backend-tests`) so `Full Test Summary` still consumes the same aggregate `needs.*.result` values; only leaf check names expand by matrix target.
+- Edge case audit: `frontend-coverage` and `backend-coverage` artifact names remain unchanged and are uploaded only by the coverage-producing matrix targets, avoiding artifact-name collisions across matrix legs.
+- Tradeoff: this reduces merge-queue wall time by running independent commands in parallel, but it intentionally spends more runner minutes because each matrix target performs its own checkout/setup/install.
+- Local validation passed: shell syntax for CI scripts/tests, CI classifier regression tests, actionlint on `.github/workflows/test.yml`, and `git diff --check`.
+
+---
+
 # Active Task: Next CI Target Optimization Batch
 
 Status: complete
