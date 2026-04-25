@@ -29,6 +29,12 @@ export interface TelegramUpdate {
   my_chat_member?: { chat: TelegramChat };
 }
 
+export interface TelegramNotificationSummary {
+  usersNotified: number;
+  attempted: number;
+  errors: string[];
+}
+
 export interface TelegramConfig {
   botToken: string;
   chatId: string;

@@ -58,3 +58,13 @@ export const jobProcessingDuration = new Histogram({
   buckets: [0.1, 0.5, 1, 5, 10, 30, 60, 300],
   registers: [registry],
 });
+
+/**
+ * Notification job result counter
+ */
+export const notificationJobResultsTotal = new Counter({
+  name: 'sanctuary_notification_job_results_total',
+  help: 'Total notification job outcomes by job and result',
+  labelNames: ['job_name', 'result'],
+  registers: [registry],
+});

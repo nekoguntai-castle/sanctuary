@@ -15,15 +15,7 @@ registerCollector('deadLetterQueue', async (context: CollectorContext) => {
 
   // Anonymize IDs in entry payloads
   const anonymizedEntries = entries.map(entry => {
-    const payload = redactDeep(entry.payload) as Record<string, unknown>;
-
-    // Anonymize known ID fields in payload
-    if (typeof payload.walletId === 'string') {
-      payload.walletId = context.anonymize('wallet', payload.walletId);
-    }
-    if (typeof payload.userId === 'string') {
-      payload.userId = context.anonymize('user', payload.userId);
-    }
+    const payload = anonymizeKnownPayloadIds(redactDeep(entry.payload), context);
 
     return {
       id: entry.id,
@@ -42,3 +34,32 @@ registerCollector('deadLetterQueue', async (context: CollectorContext) => {
     recentEntries: anonymizedEntries,
   };
 });
+
+function anonymizeKnownPayloadIds(value: unknown, context: CollectorContext): unknown {
+  if (Array.isArray(value)) {
+    return value.map(item => anonymizeKnownPayloadIds(item, context));
+  }
+
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+
+  const result: Record<string, unknown> = {};
+  for (const [key, nestedValue] of Object.entries(value)) {
+    result[key] = anonymizePayloadField(key, nestedValue, context);
+  }
+  return result;
+}
+
+function anonymizePayloadField(
+  key: string,
+  value: unknown,
+  context: CollectorContext
+): unknown {
+  if (typeof value === 'string') {
+    if (key === 'walletId') return context.anonymize('wallet', value);
+    if (key === 'userId') return context.anonymize('user', value);
+  }
+
+  return anonymizeKnownPayloadIds(value, context);
+}

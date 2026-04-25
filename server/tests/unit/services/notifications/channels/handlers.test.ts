@@ -33,7 +33,11 @@ describe('notification channel handlers', () => {
     });
 
     it('forwards transaction notifications and returns success result', async () => {
-      mockTelegramService.notifyNewTransactions.mockResolvedValueOnce(undefined);
+      mockTelegramService.notifyNewTransactions.mockResolvedValueOnce({
+        usersNotified: 2,
+        attempted: 2,
+        errors: [],
+      });
 
       const result = await telegramChannelHandler.notifyTransactions('wallet-1', [
         {
@@ -57,7 +61,26 @@ describe('notification channel handlers', () => {
       expect(result).toEqual({
         success: true,
         channelId: 'telegram',
-        usersNotified: 1,
+        usersNotified: 2,
+      });
+    });
+
+    it('returns failed transaction result when Telegram reports send errors', async () => {
+      mockTelegramService.notifyNewTransactions.mockResolvedValueOnce({
+        usersNotified: 0,
+        attempted: 1,
+        errors: ['Chat not found'],
+      });
+
+      const result = await telegramChannelHandler.notifyTransactions('wallet-1', [
+        { txid: 'b'.repeat(64), type: 'received', amount: 8_000n },
+      ]);
+
+      expect(result).toEqual({
+        success: false,
+        channelId: 'telegram',
+        usersNotified: 0,
+        errors: ['Chat not found'],
       });
     });
 
@@ -216,9 +239,47 @@ describe('notification channel handlers', () => {
       const [, , firstMessage] = mockTelegramService.sendTelegramMessage.mock.calls[0];
       expect(firstMessage).not.toContain('Estimated savings:');
       expect(result).toEqual({
-        success: true,
+        success: false,
         channelId: 'telegram',
         usersNotified: 1,
+        errors: ['chat blocked'],
+      });
+    });
+
+    it('reports unknown consolidation send failures without dropping later recipients', async () => {
+      mockTelegramService.getWalletUsers.mockResolvedValueOnce([
+        {
+          username: 'alice',
+          preferences: { telegram: { enabled: true, botToken: 'bot-1', chatId: 'chat-1' } },
+        },
+      ]);
+      mockTelegramService.sendTelegramMessage.mockResolvedValueOnce({ success: false });
+
+      const result = await telegramChannelHandler.notifyConsolidationSuggestion!(
+        'wallet-1',
+        {
+          walletId: 'wallet-1',
+          walletName: 'Treasury',
+          feeRate: 6,
+          utxoHealth: {
+            totalUtxos: 14,
+            dustCount: 0,
+            dustValue: 0n,
+            totalValue: 700000n,
+            avgUtxoSize: 50_000n,
+            smallestUtxo: 5000n,
+            largestUtxo: 250000n,
+          },
+          estimatedSavings: 'minimal savings',
+          reason: 'Fees are low',
+        }
+      );
+
+      expect(result).toEqual({
+        success: false,
+        channelId: 'telegram',
+        usersNotified: 0,
+        errors: ['Unknown Telegram send failure'],
       });
     });
 

@@ -28,7 +28,9 @@ export {
 } from './distributedLock';
 
 export {
+  queueConsolidationSuggestionNotification,
   queueTransactionNotification,
   shutdownNotificationDispatcher,
+  type ConsolidationSuggestionNotificationPayload,
   type TransactionNotificationPayload,
 } from './notificationDispatcher';

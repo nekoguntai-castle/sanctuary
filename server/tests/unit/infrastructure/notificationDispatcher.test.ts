@@ -29,10 +29,34 @@ vi.mock('../../../src/utils/logger', () => ({
 }));
 
 import {
+  queueConsolidationSuggestionNotification,
   queueTransactionNotification,
   shutdownNotificationDispatcher,
 } from '../../../src/infrastructure/notificationDispatcher';
 import { getRedisClient, isRedisConnected } from '../../../src/infrastructure/redis';
+
+function createConsolidationSuggestionPayload() {
+  return {
+    walletId: 'w1',
+    walletName: 'Treasury',
+    feeRate: 5,
+    utxoHealth: {
+      totalUtxos: 20,
+      dustCount: 3,
+      dustValue: '15000',
+      totalValue: '500000',
+      avgUtxoSize: '25000',
+      smallestUtxo: '500',
+      largestUtxo: '100000',
+      consolidationCandidates: 20,
+    },
+    estimatedSavings: '~20,400 sats',
+    reason: 'Fees are low.',
+    notifyTelegram: true,
+    notifyPush: false,
+    queuedAt: '2026-04-25T00:00:00.000Z',
+  };
+}
 
 describe('notificationDispatcher', () => {
   beforeEach(() => {
@@ -55,6 +79,35 @@ describe('notificationDispatcher', () => {
       { walletId: 'w1', txid: 'tx1', type: 'received', amount: '100000' },
       { jobId: 'txnotify:w1:tx1' },
     );
+  });
+
+  it('queues a consolidation suggestion notification and returns true', async () => {
+    const result = await queueConsolidationSuggestionNotification(
+      createConsolidationSuggestionPayload()
+    );
+
+    expect(result).toBe(true);
+    expect(mockQueueAdd).toHaveBeenCalledWith(
+      'consolidation-suggestion-notify',
+      expect.objectContaining({
+        walletId: 'w1',
+        walletName: 'Treasury',
+        notifyTelegram: true,
+        notifyPush: false,
+      }),
+      { jobId: 'consolidation-suggestion:w1:2026-04-25T00:00:00.000Z' },
+    );
+  });
+
+  it('returns false for consolidation suggestions when Redis is not connected', async () => {
+    vi.mocked(isRedisConnected).mockReturnValueOnce(false);
+
+    const result = await queueConsolidationSuggestionNotification(
+      createConsolidationSuggestionPayload()
+    );
+
+    expect(result).toBe(false);
+    expect(mockQueueAdd).not.toHaveBeenCalled();
   });
 
   it('returns false when Redis is not connected', async () => {
@@ -80,6 +133,22 @@ describe('notificationDispatcher', () => {
       type: 'received',
       amount: '100000',
     });
+
+    expect(result).toBe(false);
+  });
+
+  it('returns false when consolidation suggestion queue add fails', async () => {
+    await queueTransactionNotification({
+      walletId: 'w1',
+      txid: 'tx-ok',
+      type: 'received',
+      amount: '100',
+    });
+    mockQueueAdd.mockRejectedValueOnce(new Error('Redis timeout'));
+
+    const result = await queueConsolidationSuggestionNotification(
+      createConsolidationSuggestionPayload()
+    );
 
     expect(result).toBe(false);
   });

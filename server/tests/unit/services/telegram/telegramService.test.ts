@@ -55,6 +55,7 @@ describe('telegramService', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.doUnmock('../../../../src/services/telegram/api');
   });
 
   it('sendTelegramMessage returns success on 200 responses', async () => {
@@ -305,13 +306,21 @@ describe('telegramService', () => {
   it('notifyNewTransactions returns early for empty inputs and missing wallets', async () => {
     const { notifyNewTransactions } = await loadService();
 
-    await notifyNewTransactions('w1', []);
+    await expect(notifyNewTransactions('w1', [])).resolves.toEqual({
+      usersNotified: 0,
+      attempted: 0,
+      errors: [],
+    });
     expect(mockWalletRepo.findNameById).not.toHaveBeenCalled();
 
     (mockWalletRepo.findNameById as Mock).mockResolvedValueOnce(null);
-    await notifyNewTransactions('w1', [
+    await expect(notifyNewTransactions('w1', [
       { txid: 'txid1', type: 'received', amount: BigInt(10_000) },
-    ]);
+    ])).resolves.toEqual({
+      usersNotified: 0,
+      attempted: 0,
+      errors: [],
+    });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -346,13 +355,14 @@ describe('telegramService', () => {
       json: vi.fn(),
     });
 
-    await notifyNewTransactions('w1', [
+    const summary = await notifyNewTransactions('w1', [
       { txid: 'senttxid', type: 'sent', amount: BigInt(12_345) },
       { txid: 'constxid', type: 'consolidation', amount: BigInt(20_000) },
       { txid: 'unknowntxid', type: 'other', amount: BigInt(30_000) },
     ]);
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(summary).toEqual({ usersNotified: 2, attempted: 2, errors: [] });
     const sentPayload = JSON.parse((fetchMock.mock.calls[0][1] as { body: string }).body);
     const consolidationPayload = JSON.parse((fetchMock.mock.calls[1][1] as { body: string }).body);
     expect(sentPayload.text).toContain('<b>Sent</b>');
@@ -429,10 +439,11 @@ describe('telegramService', () => {
       json: vi.fn().mockResolvedValue({ description: 'Chat not found' }),
     });
 
-    await notifyNewTransactions('w1', [
+    const summary = await notifyNewTransactions('w1', [
       { txid: 'abcd1234', type: 'received', amount: BigInt(1000) },
     ]);
 
+    expect(summary).toEqual({ usersNotified: 0, attempted: 1, errors: ['Chat not found'] });
     expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('Failed to send Telegram to alice'));
 
     (mockWalletRepo.findNameById as Mock).mockRejectedValueOnce(new Error('db offline'));
@@ -440,6 +451,48 @@ describe('telegramService', () => {
       { txid: 'deadbeef', type: 'sent', amount: BigInt(1000) },
     ]);
     expect(mockLogger.error).toHaveBeenCalledWith(expect.stringContaining('Error sending Telegram notifications'));
+  });
+
+  it('notifyNewTransactions records a generic error when the send result lacks details', async () => {
+    vi.doMock('../../../../src/services/telegram/api', () => ({
+      sendTelegramMessage: vi.fn().mockResolvedValue({ success: false }),
+      getChatIdFromBot: vi.fn(),
+      testTelegramConfig: vi.fn(),
+    }));
+
+    const { notifyNewTransactions } = await loadService();
+    (mockUserRepo.findByWalletAccess as Mock).mockResolvedValue([
+      {
+        id: 'u1',
+        username: 'alice',
+        preferences: {
+          telegram: {
+            enabled: true,
+            botToken: VALID_BOT_TOKEN,
+            chatId: 'chat',
+            wallets: {
+              w1: {
+                enabled: true,
+                notifyReceived: true,
+                notifySent: false,
+                notifyConsolidation: false,
+                notifyDraft: false,
+              },
+            },
+          },
+        },
+      },
+    ]);
+
+    const summary = await notifyNewTransactions('w1', [
+      { txid: 'abcd1234', type: 'received', amount: BigInt(1000) },
+    ]);
+
+    expect(summary).toEqual({
+      usersNotified: 0,
+      attempted: 1,
+      errors: ['Unknown Telegram send failure'],
+    });
   });
 
   it('notifyNewDraft skips ineligible users, warns on send failure, and catches errors', async () => {

@@ -83,6 +83,27 @@ export interface ConfirmationNotifyJobData {
   previousConfirmations: number;
 }
 
+export interface ConsolidationSuggestionNotifyJobData {
+  walletId: string;
+  walletName: string;
+  feeRate: number;
+  utxoHealth: {
+    totalUtxos: number;
+    dustCount: number;
+    dustValue: string;
+    totalValue: string;
+    avgUtxoSize?: string;
+    smallestUtxo?: string;
+    largestUtxo?: string;
+    consolidationCandidates?: number;
+  };
+  estimatedSavings: string;
+  reason: string;
+  notifyTelegram: boolean;
+  notifyPush: boolean;
+  queuedAt: string;
+}
+
 /**
  * Sync job results
  */

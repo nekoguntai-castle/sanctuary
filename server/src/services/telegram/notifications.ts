@@ -10,11 +10,22 @@ import { getErrorMessage } from '../../utils/errors';
 import { walletLog } from '../../websocket/notifications';
 import { sendTelegramMessage } from './api';
 import { getWalletUsers, formatTransactionMessage, formatDraftMessage } from './formatting';
-import type { TelegramConfig, TransactionData, DraftData } from './types';
+import type {
+  TelegramConfig,
+  TelegramNotificationSummary,
+  TransactionData,
+  DraftData,
+} from './types';
 
 const log = createLogger('TELEGRAM:SVC_NOTIFY');
 
-type TelegramDraftRecipient = Awaited<ReturnType<typeof getWalletUsers>>[number];
+type TelegramRecipient = Awaited<ReturnType<typeof getWalletUsers>>[number];
+type TelegramWallet = NonNullable<Awaited<ReturnType<typeof walletRepository.findNameById>>>;
+
+type TransactionTelegramRecipient = {
+  telegram: TelegramConfig;
+  walletSettings: TelegramConfig['wallets'][string];
+};
 
 async function getDraftCreatorName(createdByUserId: string | null, createdByLabel?: string): Promise<string> {
   /* v8 ignore next 3 -- human and agent creator paths are covered by notification service tests */
@@ -41,13 +52,13 @@ function getDraftRecipientFilter(draft: DraftData): Parameters<typeof getWalletU
   return draft.agentId ? { walletRoles: ['owner', 'signer'] } : undefined;
 }
 
-function getUserTelegramConfig(user: TelegramDraftRecipient): TelegramConfig | undefined {
+function getUserTelegramConfig(user: TelegramRecipient): TelegramConfig | undefined {
   const prefs = user.preferences as Record<string, unknown> | null;
   return prefs?.telegram as TelegramConfig | undefined;
 }
 
 function getDraftNotificationTelegram(
-  user: TelegramDraftRecipient,
+  user: TelegramRecipient,
   walletId: string,
   createdByUserId: string | null
 ): TelegramConfig | null {
@@ -60,9 +71,86 @@ function getDraftNotificationTelegram(
   return walletSettings?.enabled && walletSettings.notifyDraft ? telegram : null;
 }
 
+async function getExplorerUrl(): Promise<string> {
+  try {
+    const nodeConfig = await nodeConfigRepository.findDefault();
+    return nodeConfig?.explorerUrl || 'https://mempool.space';
+  } catch (error) {
+    log.debug('Failed to load explorer URL from node config, using default', { error: getErrorMessage(error) });
+    return 'https://mempool.space';
+  }
+}
+
+function getTransactionTelegramRecipient(
+  user: TelegramRecipient,
+  walletId: string
+): TransactionTelegramRecipient | null {
+  const telegram = getUserTelegramConfig(user);
+
+  // Skip if Telegram not configured or not enabled
+  if (!telegram?.enabled || !telegram?.botToken || !telegram?.chatId) {
+    log.debug(`Telegram not configured for user ${user.username}, skipping`);
+    return null;
+  }
+
+  const walletSettings = telegram.wallets?.[walletId];
+  if (!walletSettings?.enabled) {
+    log.debug(`Telegram wallet notifications disabled for user ${user.username} on wallet ${walletId}`);
+    return null;
+  }
+
+  return { telegram, walletSettings };
+}
+
+function shouldNotifyTransaction(
+  tx: TransactionData,
+  walletSettings: TelegramConfig['wallets'][string]
+): boolean {
+  return (tx.type === 'received' && walletSettings.notifyReceived) ||
+    (tx.type === 'sent' && walletSettings.notifySent) ||
+    (tx.type === 'consolidation' && walletSettings.notifyConsolidation);
+}
+
+async function sendTransactionNotification(
+  walletId: string,
+  user: TelegramRecipient,
+  telegram: TelegramConfig,
+  wallet: TelegramWallet,
+  explorerUrl: string,
+  tx: TransactionData,
+  summary: TelegramNotificationSummary
+): Promise<void> {
+  const message = formatTransactionMessage(tx, wallet, explorerUrl);
+  const result = await sendTelegramMessage(telegram.botToken, telegram.chatId, message);
+  summary.attempted += 1;
+
+  if (result.success) {
+    summary.usersNotified += 1;
+    log.debug(`Sent Telegram notification to ${user.username} for tx ${tx.txid.slice(0, 8)}...`);
+    walletLog(walletId, 'info', 'TELEGRAM', `Sent ${tx.type} notification to ${user.username}`, {
+      txid: tx.txid.slice(0, 12),
+    });
+    return;
+  }
+
+  summary.errors.push(result.error ?? 'Unknown Telegram send failure');
+  log.warn(`Failed to send Telegram to ${user.username}: ${result.error}`);
+  walletLog(walletId, 'warn', 'TELEGRAM', `Failed to send ${tx.type} notification to ${user.username}: ${result.error}`, {
+    txid: tx.txid.slice(0, 12),
+  });
+}
+
+function createNotificationSummary(): TelegramNotificationSummary {
+  return {
+    usersNotified: 0,
+    attempted: 0,
+    errors: [],
+  };
+}
+
 async function sendDraftNotification(
   walletId: string,
-  user: TelegramDraftRecipient,
+  user: TelegramRecipient,
   telegram: TelegramConfig,
   message: string
 ): Promise<void> {
@@ -84,81 +172,53 @@ async function sendDraftNotification(
 export async function notifyNewTransactions(
   walletId: string,
   transactions: TransactionData[]
-): Promise<void> {
-  if (transactions.length === 0) return;
+): Promise<TelegramNotificationSummary> {
+  const summary = createNotificationSummary();
+  if (transactions.length === 0) return summary;
 
   try {
     // Get wallet info
     const wallet = await walletRepository.findNameById(walletId);
-    if (!wallet) return;
+    if (!wallet) return summary;
 
-    // Get explorer URL from node config
-    let explorerUrl = 'https://mempool.space';
-    try {
-      const nodeConfig = await nodeConfigRepository.findDefault();
-      if (nodeConfig?.explorerUrl) {
-        explorerUrl = nodeConfig.explorerUrl;
-      }
-    } catch (error) {
-      log.debug('Failed to load explorer URL from node config, using default', { error: getErrorMessage(error) });
-    }
+    const explorerUrl = await getExplorerUrl();
 
     // Get all users with access to this wallet
     const users = await getWalletUsers(walletId);
 
     if (users.length === 0) {
       log.debug(`No users found for wallet ${walletId}, skipping Telegram notifications`);
-      return;
+      return summary;
     }
 
     for (const user of users) {
-      const prefs = user.preferences as Record<string, unknown> | null;
-      const telegram = prefs?.telegram as TelegramConfig | undefined;
-
-      // Skip if Telegram not configured or not enabled
-      if (!telegram?.enabled || !telegram?.botToken || !telegram?.chatId) {
-        log.debug(`Telegram not configured for user ${user.username}, skipping`);
-        continue;
-      }
-
-      // Get wallet-specific settings
-      const walletSettings = telegram.wallets?.[walletId];
-      if (!walletSettings?.enabled) {
-        log.debug(`Telegram wallet notifications disabled for user ${user.username} on wallet ${walletId}`);
-        continue;
-      }
+      const recipient = getTransactionTelegramRecipient(user, walletId);
+      if (!recipient) continue;
 
       // Send notification for each transaction that matches user's preferences
       for (const tx of transactions) {
-        const shouldNotify =
-          (tx.type === 'received' && walletSettings.notifyReceived) ||
-          (tx.type === 'sent' && walletSettings.notifySent) ||
-          (tx.type === 'consolidation' && walletSettings.notifyConsolidation);
-
-        if (shouldNotify) {
-          const message = formatTransactionMessage(tx, wallet, explorerUrl);
-          const result = await sendTelegramMessage(telegram.botToken, telegram.chatId, message);
-
-          if (result.success) {
-            log.debug(`Sent Telegram notification to ${user.username} for tx ${tx.txid.slice(0, 8)}...`);
-            walletLog(walletId, 'info', 'TELEGRAM', `Sent ${tx.type} notification to ${user.username}`, {
-              txid: tx.txid.slice(0, 12),
-            });
-          } else {
-            log.warn(`Failed to send Telegram to ${user.username}: ${result.error}`);
-            walletLog(walletId, 'warn', 'TELEGRAM', `Failed to send ${tx.type} notification to ${user.username}: ${result.error}`, {
-              txid: tx.txid.slice(0, 12),
-            });
-          }
+        if (shouldNotifyTransaction(tx, recipient.walletSettings)) {
+          await sendTransactionNotification(
+            walletId,
+            user,
+            recipient.telegram,
+            wallet,
+            explorerUrl,
+            tx,
+            summary
+          );
         } else {
-          log.debug(`Skipping Telegram for tx ${tx.txid.slice(0, 8)} (type=${tx.type}, notifyReceived=${walletSettings.notifyReceived}, notifySent=${walletSettings.notifySent}, notifyConsolidation=${walletSettings.notifyConsolidation})`);
+          log.debug(`Skipping Telegram for tx ${tx.txid.slice(0, 8)} (type=${tx.type}, notifyReceived=${recipient.walletSettings.notifyReceived}, notifySent=${recipient.walletSettings.notifySent}, notifyConsolidation=${recipient.walletSettings.notifyConsolidation})`);
         }
       }
     }
   } catch (err) {
+    summary.errors.push(getErrorMessage(err));
     log.error(`Error sending Telegram notifications: ${err}`);
     walletLog(walletId, 'error', 'TELEGRAM', `Error sending notifications: ${err}`);
   }
+
+  return summary;
 }
 
 /**

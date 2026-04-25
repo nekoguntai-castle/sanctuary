@@ -24,6 +24,7 @@ export {
   cacheOperationsTotal,
   jobQueueDepth,
   jobProcessingDuration,
+  notificationJobResultsTotal,
   dbQueryDuration,
   dbConnectionPool,
   // Electrum pool metrics

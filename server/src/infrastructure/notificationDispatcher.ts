@@ -59,6 +59,27 @@ export interface TransactionNotificationPayload {
   feeSats?: string | null;
 }
 
+export interface ConsolidationSuggestionNotificationPayload {
+  walletId: string;
+  walletName: string;
+  feeRate: number;
+  utxoHealth: {
+    totalUtxos: number;
+    dustCount: number;
+    dustValue: string;
+    totalValue: string;
+    avgUtxoSize?: string;
+    smallestUtxo?: string;
+    largestUtxo?: string;
+    consolidationCandidates?: number;
+  };
+  estimatedSavings: string;
+  reason: string;
+  notifyTelegram: boolean;
+  notifyPush: boolean;
+  queuedAt: string;
+}
+
 /**
  * Queue a transaction notification for retry-capable delivery.
  * Returns true if the job was queued, false if Redis was unavailable.
@@ -82,6 +103,34 @@ export async function queueTransactionNotification(
     log.warn('Failed to queue transaction notification, caller should fall back to inline', {
       error: getErrorMessage(error),
       txid: payload.txid,
+    });
+    return false;
+  }
+}
+
+/**
+ * Queue a low-fee consolidation suggestion notification for retry-capable delivery.
+ * Returns true if the job was queued, false if Redis was unavailable.
+ */
+export async function queueConsolidationSuggestionNotification(
+  payload: ConsolidationSuggestionNotificationPayload,
+): Promise<boolean> {
+  const queue = getQueue();
+  if (!queue) return false;
+
+  try {
+    await queue.add('consolidation-suggestion-notify', payload, {
+      jobId: `consolidation-suggestion:${payload.walletId}:${payload.queuedAt}`,
+    });
+    log.debug('Consolidation suggestion notification queued', {
+      walletId: payload.walletId,
+      feeRate: payload.feeRate,
+    });
+    return true;
+  } catch (error) {
+    log.warn('Failed to queue consolidation suggestion notification, caller should fall back to inline', {
+      error: getErrorMessage(error),
+      walletId: payload.walletId,
     });
     return false;
   }

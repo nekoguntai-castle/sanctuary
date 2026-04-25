@@ -11,6 +11,7 @@
 
 export type {
   TelegramConfig,
+  TelegramNotificationSummary,
   WalletTelegramSettings,
   TransactionData,
   DraftData,

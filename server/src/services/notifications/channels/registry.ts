@@ -17,6 +17,7 @@ import type {
   TransactionNotification,
   DraftNotification,
   AIInsightNotification,
+  ConsolidationSuggestionNotification,
   NotificationResult,
 } from './types';
 
@@ -93,6 +94,15 @@ class NotificationChannelRegistry {
    */
   getDraftCapable(): NotificationChannelHandler[] {
     return this.getAll().filter((h) => h.capabilities.supportsDrafts && h.notifyDraft);
+  }
+
+  /**
+   * Get channels that support consolidation suggestion notifications
+   */
+  getConsolidationSuggestionCapable(): NotificationChannelHandler[] {
+    return this.getAll().filter((h) =>
+      h.capabilities.supportsConsolidationSuggestions && h.notifyConsolidationSuggestion
+    );
   }
 
   /**
@@ -198,6 +208,49 @@ class NotificationChannelRegistry {
       }
     }
 
+    return results;
+  }
+
+  /**
+   * Dispatch consolidation suggestion notifications to enabled channels.
+   */
+  async notifyConsolidationSuggestion(
+    walletId: string,
+    suggestion: ConsolidationSuggestionNotification,
+    channelIds?: string[]
+  ): Promise<NotificationResult[]> {
+    const allowedChannelIds = channelIds ? new Set(channelIds) : null;
+    const handlers = this.getConsolidationSuggestionCapable().filter((handler) =>
+      !allowedChannelIds || allowedChannelIds.has(handler.id)
+    );
+    const results: NotificationResult[] = [];
+
+    const promises = handlers.map(async (handler) => {
+      try {
+        const isEnabled = await handler.isEnabled();
+        if (!isEnabled || !handler.notifyConsolidationSuggestion) {
+          return {
+            success: true,
+            channelId: handler.id,
+            usersNotified: 0,
+          };
+        }
+
+        return await handler.notifyConsolidationSuggestion(walletId, suggestion);
+      } catch (err) {
+        log.error(`Channel ${handler.id} consolidation suggestion notification failed`, {
+          error: getErrorMessage(err),
+        });
+        return {
+          success: false,
+          channelId: handler.id,
+          usersNotified: 0,
+          errors: [getErrorMessage(err)],
+        };
+      }
+    });
+
+    results.push(...await Promise.all(promises));
     return results;
   }
 
