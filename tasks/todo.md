@@ -1,3 +1,56 @@
+# Active Task: Grade Technical Debt Remediation
+
+Status: complete
+
+Goal: fix the grade blockers instead of only documenting them: stop upgrade artifact logs from tripping gitleaks, remove the current ignored-artifact findings, and restore the large-file quality gate for notification job tests.
+
+## Remediation Plan
+
+- [x] Re-read the grade report, current worktree state, upgrade artifact collector, and oversized notification worker test.
+- [x] Add durable redaction for collected upgrade logs and cover it with install-helper tests.
+- [x] Redact the current ignored `.tmp/upgrade-artifacts/.../worker.log` findings without relying on destructive cleanup.
+- [x] Split `server/tests/unit/worker/jobs/notificationJobs.test.ts` into smaller focused test modules with shared setup.
+- [x] Run focused notification tests, install-helper tests, gitleaks scans, large-file check, lizard, and `git diff --check`.
+- [x] Update the quality report and task review with the new score/blocker status.
+
+## Review
+
+- Fixed the upgrade artifact redactor so secret-like assignment keys, JSON keys, headers, and queue/job-id fields are redacted case-insensitively.
+- Redacted the existing ignored `.tmp/upgrade-artifacts/test-20260424-084047-2958226/logs/worker.log` artifact in place rather than deleting it.
+- Split the 1,108-line notification worker test into focused files; the largest split file is 336 lines and the shared setup uses runtime mocks before dynamic job imports.
+- Verification passed: focused notification tests (51), server test typecheck, upgrade helper unit tests (7), full working-tree/latest-commit/tracked-tree gitleaks scans, large-file classification, focused lizard, and `git diff --check`.
+- Updated `docs/plans/codebase-health-assessment.md` to `97/100` (`A`) with no hard-fail blockers and appended a post-remediation grade-history entry.
+
+---
+
+# Active Task: Full Codebase Grade Audit
+
+Status: complete
+
+Goal: run the `$grade` full-repository software quality audit at the current working tree, write `docs/plans/codebase-health-assessment.md`, append grade trend history, and summarize the evidence-backed score.
+
+## Audit Plan
+
+- [x] Confirm repository root, clean/dirty status, current commit, local date, grade skill instructions, standards rubric, and relevant repo lessons.
+- [x] Run project-wide mechanical signal collection with the bundled `grade.sh`.
+- [x] Read trend baseline for the full-mode grade history.
+- [x] Inspect targeted source, test, and operational files for judged ISO/IEC 25010 criteria.
+- [x] Apply mechanical thresholds and judged scoring, including hard-fail gates and confidence level.
+- [x] Append a v1 JSON trend entry through `trend.sh`.
+- [x] Write `docs/plans/codebase-health-assessment.md` with evidence, risks, improvements, roadmap, and verification notes.
+- [x] Review generated artifacts for accuracy, edge cases, and unintended changes.
+
+## Review
+
+- Wrote `docs/plans/codebase-health-assessment.md` for full-mode `$grade` at commit `9f8247aa`.
+- Overall score is `69/100` (`D`, high confidence), with raw domain score `93/100` capped by the hard-fail secret gate.
+- Hard-fail blocker: pinned gitleaks full working-tree scan found 8 `generic-api-key` findings in ignored `.tmp/upgrade-artifacts/test-20260424-084047-2958226/logs/worker.log`; tracked-tree and latest-commit gitleaks scans found no leaks.
+- Native verification passed: tests, lint, typecheck, app/backend/gateway coverage, root/server/gateway/ai-proxy high-severity audits, architecture boundaries, browser auth contract, OpenAPI route coverage, lizard, and jscpd.
+- Quality context: `node scripts/quality/check-large-files.mjs` failed because `server/tests/unit/worker/jobs/notificationJobs.test.ts` is now an unclassified 1,108-line test file.
+- Appended the full-mode trend entry under `docs/plans/grade-history/sanctuary_.jsonl`.
+
+---
+
 # Active Task: Telegram Received Transaction Notification Deep Dive
 
 Status: complete
