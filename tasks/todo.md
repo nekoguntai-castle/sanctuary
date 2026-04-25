@@ -1,6 +1,6 @@
 # Active Task: Frontend Coverage Sharding
 
-Status: in progress
+Status: complete
 
 Goal: reduce the current Test Suite long pole by splitting root Vitest frontend coverage into parallel shard jobs, then merge the coverage blobs once so the existing 100% coverage gate and `frontend-coverage` artifact remain intact.
 
@@ -39,12 +39,30 @@ Goal: reduce the current Test Suite long pole by splitting root Vitest frontend 
 
 - [x] Run local validation: shell syntax, new script tests, actionlint on touched workflows, focused lizard on new shell scripts, and `git diff --check`.
 - [x] Run a local shard/merge proof for frontend coverage if dependency setup succeeds in the worktree.
-- [ ] Commit, push, open PR, monitor checks, fix failures, and merge successfully.
-- [ ] Verify merge, record durations, clean up the PR branch/worktree safely, and leave the primary dirty worktree untouched.
+- [x] Commit, push, open PR, monitor checks, fix failures, and merge successfully.
+- [x] Verify merge, record durations, clean up the PR branch/worktree safely, and leave the primary dirty worktree untouched.
 
 ## Review
 
-- Pending.
+- Quality review: kept the final `full-frontend-tests` aggregate job and `frontend-coverage` artifact stable while moving coverage execution behind two blob-producing shard jobs plus one threshold-enforcing merge job.
+- Edge case audit: shard wrappers reject missing, zero, non-numeric, and out-of-range shard inputs; the merge wrapper fails clearly for missing or empty blob directories; hidden `.vitest-reports/` artifacts are explicitly uploadable; local shard runs keep other shard blobs intact for sequential proof runs.
+- Local validation passed: shell syntax checks, frontend coverage script tests, all CI classifier tests, actionlint on touched workflows, `git diff --check`, focused lizard on new shell scripts, `npm run typecheck:app`, `npm run typecheck:tests`, `npm run test:coverage:shard -- 1 2`, `npm run test:coverage:shard -- 2 2`, and `npm run test:coverage:merge -- .vitest-reports`.
+- PR #143 merged through merge queue at 2026-04-25 03:24:25 UTC as squash commit `90bf454f`; the temporary worktree and local branch were removed after merge verification.
+- The primary checkout at `/home/nekoguntai/sanctuary` was not fast-forwarded because it still has a pre-existing local `tasks/todo.md` edit; `origin/main` is current and the primary tree was left untouched.
+
+## Post-Merge Measurement
+
+- PR #143 merge-group Test Suite completed successfully. Longest jobs were Full Backend integration 3m23s, Browser E2E wallet-experience 3m05s, Browser E2E wallet-flows 3m03s, Frontend Coverage shard 2/2 2m59s, Frontend Coverage shard 1/2 2m56s, Browser E2E admin-auth 2m44s, Full Render E2E 2m42s, and Backend unit coverage 2m20s.
+- The frontend coverage critical path improved from the prior single 5m20s job on PR #140 to about 3m49s: max shard 2m59s, coverage merge job 44s, and the aggregate/summary steps after that.
+- Coverage merge itself took only 3s inside the merge job; the rest of the 44s merge job was checkout/setup, artifact download, and final `frontend-coverage` upload.
+- The `frontend-coverage` artifact was downloaded by `Full Test Summary`, and the merged coverage summary stayed at 100% statements, branches, functions, and lines.
+
+## Additional Optimization Analysis
+
+- Highest next test target: backend integration. The job is now the longest Test Suite job at 3m23s, with the timed integration command taking 2m12s. Add per-file timing or split integration specs into deterministic groups before sharding blindly, because each shard would duplicate Postgres setup and migrations.
+- Next frontend target: keep the two coverage shards for now. They are well balanced at 2m56s and 2m59s, and the remaining 44s merge/upload overhead means a third shard would save less than the raw test split suggests while spending another runner setup.
+- Browser target: the three browser-flow groups are still balanced around 2m44s-3m05s. Further splitting is lower value than measuring repeated build/backend startup overhead across browser jobs.
+- Cross-lane target: CodeQL JavaScript/TypeScript finished at about 4m03s and was the overall merge gate tail, but that is outside the Test Suite. Keep path-aware CodeQL skipping intact, and only tune CodeQL separately if workflow/config-heavy PRs remain common.
 
 ---
 
