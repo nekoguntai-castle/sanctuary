@@ -1,6 +1,6 @@
 # Active Task: Next CI Test Optimization Batch
 
-Status: in progress
+Status: complete
 
 Goal: reduce remaining expensive CI wall time after PR #131/#132 without touching the in-progress release version files or weakening release/tag validation.
 
@@ -34,19 +34,35 @@ Goal: reduce remaining expensive CI wall time after PR #131/#132 without touchin
 
 - [x] Update CI docs with the split full E2E and scoped upgrade lane policy.
 - [x] Add classifier tests for baseline-only upgrade changes and full upgrade workflow/release cases.
-- [ ] Re-run duration helper after merge to confirm the new shape.
+- [x] Re-run duration helper after merge to confirm the new shape.
 
 ### Delivery
 
 - [x] Run local validation: shell syntax, classifier tests, actionlint on touched workflows, `git diff --check`, and focused lizard if useful.
-- [ ] Commit, push, open PR, monitor checks, fix CI errors, merge successfully.
-- [ ] Sync `main`, clean temporary worktree/branches, and leave the release branch edits untouched.
+- [x] Commit, push, open PR, monitor checks, fix CI errors, merge successfully.
+- [x] Sync `main`, clean temporary worktree/branches, and leave the release branch edits untouched.
 
 ## Review
 
 - Quality review: workflow job IDs, aggregate summary requirements, classifier outputs, and docs were re-read after edits; stale combined E2E references were removed.
 - Edge case audit: render-only E2E fixtures trigger only render E2E; non-render E2E helpers trigger browser E2E; Prisma-only install changes trigger baseline upgrade only; release/manual/workflow install scopes still trigger baseline and extended upgrade lanes.
 - Local validation passed: shell syntax checks, classifier regression tests, actionlint on touched workflows, `git diff --check`, and focused lizard on touched shell scripts.
+- PR #135 merged through merge queue at 2026-04-25 00:47:49 UTC as `eb3464de`, then `main` fast-forwarded to `06a0094d` after PR #136.
+
+## Post-Merge Measurement
+
+- PR #135 quick Test Suite: Quick Render Regression 2m38s, Quick Browser Smoke 57s, all full lanes skipped.
+- PR #135 install workflow: baseline/extended upgrade lanes ran in parallel at 7m16s-7m54s; Install Stack Smoke was 6m28s; Install Script E2E was 4m26s; Fresh Install E2E was 3m30s.
+- PR #135 merge-group Test Suite: Full Browser E2E 5m29s, Full Backend 4m26s, Full Frontend 4m18s, Full Render E2E 2m44s, Full Build 1m03s, Full Gateway 20s.
+- Main push after PR #136 proved path-aware skipping still works for classifier-only changes: Test Suite summary completed in 6s with full app lanes skipped.
+
+## Additional Optimization Analysis
+
+- Highest next value: split Full Browser E2E specs into two or three parallel groups if wall time matters more than runner minutes. The merged split cut the old combined E2E lane, but browser-flow E2E is still the longest merge-group Test Suite job at 5m29s.
+- Next install target: reduce duplicate stack startup across Fresh Install, Install Script E2E, and Install Stack Smoke. The release-critical install wall time is now bounded by ~8m upgrade lanes plus ~6m stack smoke; merging compatible stack proofs would save wall time only if it avoids another rebuild/start without serializing unrelated checks.
+- Frontend target: inspect Vitest coverage cost inside Full Frontend. Typecheck finished before coverage in the merge group, and the full job still took 4m18s; splitting coverage shards or isolating slow suites could help, but only after measuring per-suite times.
+- Backend target: inspect integration-test duration inside Full Backend. The job took 4m26s and spent its tail in integration tests after unit coverage, so slow integration files are the likely next lever.
+- Keep unchanged: full frontend coverage for frontend changes and full release-critical install/upgrade coverage. Recent Ledger and release work showed those gates still catch useful regressions.
 
 ---
 
