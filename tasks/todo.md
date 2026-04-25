@@ -1,3 +1,41 @@
+# Active Task: CI/CD Test Speed Phase 4 - E2E Source Lane Scope
+
+Status: in progress
+
+Goal: stop E2E-only changes from launching full backend and frontend source-test lanes on merge/main while preserving browser/render E2E confidence and broad runs for workflow or exhaustive validation.
+
+## Plan
+
+- [x] Work in an isolated worktree from `origin/main` after Phase 3 merged.
+- [x] Remove `e2e_changed` from full backend and full frontend source-lane job conditions.
+- [x] Keep browser-flow and render-regression full E2E lane conditions unchanged.
+- [x] Add classifier fixtures proving E2E and Playwright config paths are not backend/frontend source changes.
+- [x] Update CI/CD strategy docs with the E2E-only full-lane policy.
+- [x] Run classifier tests, workflow lint, diff check, and touched-file lizard if available.
+- [ ] Deliver through PR, monitor required checks, merge safely, and verify the merge.
+
+## Review
+
+- Full backend and full frontend source-lane jobs no longer start solely because `e2e_changed=true`; they still run for full scans, test workflow changes, and their own source changes.
+- Full browser-flow and render-regression E2E conditions are unchanged, so E2E-only merge candidates still run the relevant E2E confidence lanes.
+- Added classifier fixtures for render E2E, browser E2E, and `playwright.config.ts` paths proving those paths are E2E scoped and not backend/frontend source scoped.
+- Updated CI/CD strategy docs to spell out that E2E-only changes skip backend integration, backend unit coverage, and frontend unit coverage.
+- Verification passed:
+  - `bash -n scripts/ci/classify-test-changes.sh tests/ci/classify-test-changes.test.sh`
+  - `bash tests/ci/classify-test-changes.test.sh`
+  - `bash tests/ci/classify-codeql-languages.test.sh`
+  - `bash tests/ci/classify-quality-scope.test.sh`
+  - `bash tests/ci/backend-integration-groups.test.sh`
+  - `bash tests/ci/browser-e2e-groups.test.sh`
+  - `bash tests/ci/playwright-timing-reporter.test.sh`
+  - `bash tests/ci/frontend-coverage-scripts.test.sh`
+  - `bash tests/ci/report-workflow-trends.test.sh`
+  - `/tmp/actionlint-1.7.12/actionlint -color -shellcheck= .github/workflows/test.yml`
+  - `/home/nekoguntai/sanctuary/.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -l shell scripts/ci/classify-test-changes.sh tests/ci/classify-test-changes.test.sh`
+  - `git diff --check`
+
+---
+
 # Active Task: CI/CD Test Speed Phase 3 - Playwright Timing Artifacts
 
 Status: in progress
