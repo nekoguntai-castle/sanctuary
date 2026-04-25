@@ -1,6 +1,38 @@
-# Active Task: CI/CD Test Speed Batch 2 - AI Proxy Scope
+# Active Task: CI/CD Test Speed Batch 3 - Backend Typecheck Scope
 
 Status: in progress
+
+Goal: remove unnecessary Postgres startup and migration work from backend typecheck jobs while preserving DB-backed backend test coverage where tests need it.
+
+## Plan
+
+- [x] Work in an isolated worktree from updated `origin/main`.
+- [x] Split PR backend typecheck into its own DB-free quick job.
+- [x] Keep PR related backend tests DB-backed.
+- [x] Split full backend typecheck from DB-backed unit coverage.
+- [x] Update backend aggregate checks to require typecheck and unit coverage when source scope is relevant.
+- [x] Update CI/CD strategy docs and task tracker history.
+- [x] Run backend typecheck proof, workflow lint, and diff check.
+- [ ] Deliver through PR, monitor checks, merge safely, and verify the merge.
+
+## Review
+
+- Added `Quick Backend Typecheck` as a DB-free PR job.
+- Kept `Quick Backend Tests` DB-backed for related non-integration Vitest tests, but removed typecheck from that DB-backed job.
+- Replaced the full backend source matrix with separate `Full Backend Typecheck` and `Full Backend Unit Coverage` jobs.
+- Kept backend unit coverage DB-backed and preserving the `backend-coverage` artifact.
+- Updated `Full Backend Tests` to require both backend typecheck and backend unit coverage when backend source scope is relevant.
+- Verification passed:
+  - `npm --prefix server ci`
+  - `npm --prefix server run typecheck:tests`
+  - `/tmp/actionlint-1.7.12/actionlint -color -shellcheck= .github/workflows/test.yml`
+  - `git diff --check`
+
+---
+
+# Active Task: CI/CD Test Speed Batch 2 - AI Proxy Scope
+
+Status: complete
 
 Goal: add explicit ai-proxy CI classification and validation so ai-proxy changes run only the ai-proxy build/tests instead of unrelated frontend/backend lanes.
 
@@ -13,7 +45,7 @@ Goal: add explicit ai-proxy CI classification and validation so ai-proxy changes
 - [x] Wire ai-proxy results into required aggregate checks.
 - [x] Add classifier fixtures and CI strategy docs.
 - [x] Run focused classifier tests, ai-proxy build/tests, workflow lint, diff check, and shell complexity checks.
-- [ ] Deliver through PR, monitor checks, merge safely, and verify the merge.
+- [x] Deliver through PR, monitor checks, merge safely, and verify the merge.
 
 ## Review
 
@@ -32,6 +64,7 @@ Goal: add explicit ai-proxy CI classification and validation so ai-proxy changes
   - `/tmp/actionlint-1.7.12/actionlint -color -shellcheck= .github/workflows/test.yml`
   - `/home/nekoguntai/sanctuary/.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -l shell scripts/ci/classify-test-changes.sh tests/ci/classify-test-changes.test.sh`
   - `git diff --check`
+- Delivered in PR #162; merge-group Test Suite and CodeQL passed, and `origin/main` advanced to merge commit `a8980f9b`.
 
 ---
 

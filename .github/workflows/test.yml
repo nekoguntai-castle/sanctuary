@@ -170,6 +170,38 @@ jobs:
       - name: Run related frontend tests
         run: npx vitest related --run --passWithNoTests ${{ needs.detect-changes.outputs.frontend_files }}
 
+  quick-backend-typecheck:
+    name: Quick Backend Typecheck
+    if: github.event_name == 'pull_request' && needs.detect-changes.outputs.backend_changed == 'true'
+    runs-on: ubuntu-latest
+    needs: [detect-changes]
+    defaults:
+      run:
+        working-directory: server
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Link shared schema dependencies
+        run: node scripts/ensure-shared-module-resolution.mjs
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Run server test typecheck
+        run: npm run typecheck:tests
+
   quick-backend-tests:
     name: Quick Backend Tests
     if: github.event_name == 'pull_request' && needs.detect-changes.outputs.backend_changed == 'true'
@@ -218,9 +250,6 @@ jobs:
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/sanctuary_test?schema=public
         run: npx prisma migrate deploy
-
-      - name: Run server test typecheck
-        run: npm run typecheck:tests
 
       - name: Run related backend tests
         env:
@@ -487,6 +516,7 @@ jobs:
       - detect-changes
       - quick-test-hygiene
       - quick-frontend-tests
+      - quick-backend-typecheck
       - quick-backend-tests
       - quick-backend-integration-smoke
       - quick-critical-mutation
@@ -508,6 +538,7 @@ jobs:
           DETECT_CHANGES: ${{ needs.detect-changes.result }}
           QUICK_TEST_HYGIENE: ${{ needs.quick-test-hygiene.result }}
           QUICK_FRONTEND_TESTS: ${{ needs.quick-frontend-tests.result }}
+          QUICK_BACKEND_TYPECHECK: ${{ needs.quick-backend-typecheck.result }}
           QUICK_BACKEND_TESTS: ${{ needs.quick-backend-tests.result }}
           QUICK_BACKEND_INTEGRATION_SMOKE: ${{ needs.quick-backend-integration-smoke.result }}
           QUICK_CRITICAL_MUTATION: ${{ needs.quick-critical-mutation.result }}
@@ -546,6 +577,7 @@ jobs:
           require_success "Detect Changed Files" "$DETECT_CHANGES"
           allow_success_or_skipped "Quick Test Hygiene" "$QUICK_TEST_HYGIENE"
           allow_success_or_skipped "Quick Frontend Tests" "$QUICK_FRONTEND_TESTS"
+          allow_success_or_skipped "Quick Backend Typecheck" "$QUICK_BACKEND_TYPECHECK"
           allow_success_or_skipped "Quick Backend Tests" "$QUICK_BACKEND_TESTS"
           allow_success_or_skipped "Quick Backend Integration Smoke" "$QUICK_BACKEND_INTEGRATION_SMOKE"
           allow_success_or_skipped "Quick Critical Mutation Gate" "$QUICK_CRITICAL_MUTATION"
@@ -561,8 +593,8 @@ jobs:
   # ============================================
   # Full Lane (main/nightly/manual)
   # ============================================
-  full-backend-source-tests:
-    name: Full Backend Source Tests (${{ matrix.target }})
+  full-backend-typecheck:
+    name: Full Backend Typecheck
     if: >-
       always() &&
       github.event_name != 'pull_request' &&
@@ -574,12 +606,43 @@ jobs:
     defaults:
       run:
         working-directory: server
-    strategy:
-      fail-fast: false
-      matrix:
-        target:
-          - typecheck
-          - unit-coverage
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Link shared schema dependencies
+        run: node scripts/ensure-shared-module-resolution.mjs
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Run server test typecheck
+        run: ${{ github.workspace }}/scripts/ci/time-command.sh "server test typecheck" npm run typecheck:tests
+
+  full-backend-unit-coverage:
+    name: Full Backend Unit Coverage
+    if: >-
+      always() &&
+      github.event_name != 'pull_request' &&
+      (needs.detect-changes.outputs.full_scan == 'true' ||
+       needs.detect-changes.outputs.test_suite_changed == 'true' ||
+       needs.detect-changes.outputs.backend_changed == 'true')
+    runs-on: ubuntu-latest
+    needs: [detect-changes]
+    defaults:
+      run:
+        working-directory: server
 
     services:
       postgres:
@@ -621,12 +684,7 @@ jobs:
           DATABASE_URL: postgresql://test:test@localhost:5432/sanctuary_test?schema=public
         run: npx prisma migrate deploy
 
-      - name: Run server test typecheck
-        if: matrix.target == 'typecheck'
-        run: ${{ github.workspace }}/scripts/ci/time-command.sh "server test typecheck" npm run typecheck:tests
-
       - name: Run unit tests with coverage
-        if: matrix.target == 'unit-coverage'
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/sanctuary_test?schema=public
           JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
@@ -635,7 +693,7 @@ jobs:
         run: ${{ github.workspace }}/scripts/ci/time-command.sh "backend unit coverage" npm run test:unit -- --coverage
 
       - name: Upload backend coverage
-        if: always() && matrix.target == 'unit-coverage'
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: backend-coverage
@@ -734,7 +792,7 @@ jobs:
        needs.detect-changes.outputs.backend_changed == 'true' ||
        needs.detect-changes.outputs.backend_integration_changed == 'true')
     runs-on: ubuntu-latest
-    needs: [detect-changes, full-backend-source-tests, full-backend-integration-tests]
+    needs: [detect-changes, full-backend-typecheck, full-backend-unit-coverage, full-backend-integration-tests]
     steps:
       - name: Check backend lane result
         env:
@@ -742,7 +800,8 @@ jobs:
           TEST_SUITE_CHANGED: ${{ needs.detect-changes.outputs.test_suite_changed }}
           BACKEND_CHANGED: ${{ needs.detect-changes.outputs.backend_changed }}
           BACKEND_INTEGRATION_CHANGED: ${{ needs.detect-changes.outputs.backend_integration_changed }}
-          BACKEND_SOURCE_TESTS: ${{ needs.full-backend-source-tests.result }}
+          BACKEND_TYPECHECK: ${{ needs.full-backend-typecheck.result }}
+          BACKEND_UNIT_COVERAGE: ${{ needs.full-backend-unit-coverage.result }}
           BACKEND_INTEGRATION_TESTS: ${{ needs.full-backend-integration-tests.result }}
         run: |
           failed=false
@@ -802,7 +861,8 @@ jobs:
             integration_required=true
           fi
 
-          require_when_relevant "Full Backend Source Tests" "$BACKEND_SOURCE_TESTS" "$source_required"
+          require_when_relevant "Full Backend Typecheck" "$BACKEND_TYPECHECK" "$source_required"
+          require_when_relevant "Full Backend Unit Coverage" "$BACKEND_UNIT_COVERAGE" "$source_required"
           require_when_relevant "Full Backend Integration Tests" "$BACKEND_INTEGRATION_TESTS" "$integration_required"
 
           if [ "$failed" = "true" ]; then
