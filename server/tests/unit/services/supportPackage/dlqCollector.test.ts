@@ -141,4 +141,58 @@ describe('deadLetterQueue collector', () => {
     expect(entries[0].payload.userId).toBeUndefined();
     expect(entries[0].payload.message).toBe('hello');
   });
+
+  it('anonymizes nested BullMQ job data IDs', async () => {
+    const realWalletId = 'nested-wallet-id';
+
+    mockGetAll.mockReturnValue([{
+      id: 'dlq-5',
+      category: 'notification',
+      operation: 'notifications:transaction-notify',
+      payload: {
+        jobId: 'job-1',
+        jobName: 'transaction-notify',
+        data: { walletId: realWalletId, txid: 'abc123' },
+      },
+      error: 'No transaction notification channels registered',
+      attempts: 5,
+      firstFailedAt: new Date('2026-04-01'),
+      lastFailedAt: new Date('2026-04-02'),
+    }]);
+
+    const result = await getCollector()(makeContext());
+    const entries = result.recentEntries as any[];
+
+    expect(entries[0].payload.data.walletId).toMatch(/^wallet-[a-f0-9]{8}$/);
+    expect(JSON.stringify(result)).not.toContain(realWalletId);
+    expect(entries[0].payload.data.txid).toBe('abc123');
+  });
+
+  it('anonymizes IDs inside nested arrays in DLQ payloads', async () => {
+    const realWalletId = 'array-wallet-id';
+    const realUserId = 'array-user-id';
+
+    mockGetAll.mockReturnValue([{
+      id: 'dlq-6',
+      category: 'notification',
+      operation: 'notifications:transaction-notify',
+      payload: {
+        attempts: [
+          { walletId: realWalletId, userId: realUserId },
+        ],
+      },
+      error: 'delivery failed',
+      attempts: 1,
+      firstFailedAt: new Date('2026-04-01'),
+      lastFailedAt: new Date('2026-04-02'),
+    }]);
+
+    const result = await getCollector()(makeContext());
+    const entries = result.recentEntries as any[];
+
+    expect(entries[0].payload.attempts[0].walletId).toMatch(/^wallet-[a-f0-9]{8}$/);
+    expect(entries[0].payload.attempts[0].userId).toMatch(/^user-[a-f0-9]{8}$/);
+    expect(JSON.stringify(result)).not.toContain(realWalletId);
+    expect(JSON.stringify(result)).not.toContain(realUserId);
+  });
 });

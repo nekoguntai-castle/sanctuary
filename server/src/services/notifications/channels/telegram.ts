@@ -52,12 +52,13 @@ export const telegramChannelHandler: NotificationChannelHandler = {
         agentUnknownDestinationHandlingMode: tx.agentUnknownDestinationHandlingMode,
       }));
 
-      await telegramService.notifyNewTransactions(walletId, txData);
+      const summary = await telegramService.notifyNewTransactions(walletId, txData);
 
       return {
-        success: true,
+        success: summary.errors.length === 0,
         channelId: 'telegram',
-        usersNotified: 1, // Telegram service handles user lookup internally
+        usersNotified: summary.usersNotified,
+        errors: summary.errors.length > 0 ? summary.errors : undefined,
       };
     } catch (err) {
       return {
@@ -103,6 +104,7 @@ export const telegramChannelHandler: NotificationChannelHandler = {
 
       const users = await getWalletUsers(walletId);
       let notified = 0;
+      const errors: string[] = [];
 
       for (const user of users) {
         const prefs = user.preferences as Record<string, unknown> | null;
@@ -125,14 +127,17 @@ export const telegramChannelHandler: NotificationChannelHandler = {
         if (result.success) {
           notified++;
         } else {
-          log.warn(`Failed to send consolidation suggestion to ${user.username}`, { error: result.error });
+          const error = result.error ?? 'Unknown Telegram send failure';
+          errors.push(error);
+          log.warn(`Failed to send consolidation suggestion to ${user.username}`, { error });
         }
       }
 
       return {
-        success: true,
+        success: errors.length === 0,
         channelId: 'telegram',
         usersNotified: notified,
+        errors: errors.length > 0 ? errors : undefined,
       };
     } catch (err) {
       return {

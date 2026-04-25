@@ -14,12 +14,25 @@ import type {
   TransactionNotifyJobData,
   DraftNotifyJobData,
   ConfirmationNotifyJobData,
+  ConsolidationSuggestionNotifyJobData,
   NotifyJobResult,
 } from './types';
 import { draftRepository, transactionRepository, walletRepository } from '../../repositories';
-import { notificationChannelRegistry } from '../../services/notifications/channels/registry';
+import { notificationChannelRegistry } from '../../services/notifications/channels';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
+import {
+  NotificationJobDispatchError,
+  buildConsolidationSuggestion,
+  createNotificationJobFailure,
+  getConsolidationCapableChannelIds,
+  getEnabledConsolidationChannelIds,
+  getSupportedConsolidationChannelIds,
+  recordNotificationJobResult,
+  recordNotificationSummary,
+  shouldFailBullMqNotificationJob,
+  summarizeNotificationResults,
+} from './notificationJobHelpers';
 
 const log = createLogger('JOB:NOTIFY');
 
@@ -66,22 +79,20 @@ export const transactionNotifyJob: WorkerJobHandler<TransactionNotifyJobData, No
         transactions
       );
 
-      // Check results
-      let channelsNotified = 0;
-      const errors: string[] = [];
-
-      for (const result of results) {
-        if (result.success) {
-          channelsNotified += result.usersNotified;
-        } else if (result.errors) {
-          errors.push(...result.errors);
-        }
-      }
+      const summary = summarizeNotificationResults(
+        results,
+        'No transaction notification channels registered'
+      );
+      recordNotificationSummary(
+        transactionNotifyJob.name,
+        summary,
+        'No transaction notification channels registered'
+      );
 
       // Log failures
-      if (errors.length > 0) {
+      if (summary.errors?.length) {
         log.warn(`Transaction notification had errors: ${txid}`, {
-          errors,
+          errors: summary.errors,
           attemptsMade: job.attemptsMade,
         });
 
@@ -90,31 +101,36 @@ export const transactionNotifyJob: WorkerJobHandler<TransactionNotifyJobData, No
           log.error('Transaction notification permanently failed', {
             walletId,
             txid,
-            errors,
+            errors: summary.errors,
             totalAttempts: job.attemptsMade + 1,
           });
         }
       }
 
-      if (channelsNotified > 0) {
+      if (shouldFailBullMqNotificationJob(summary)) {
+        throw createNotificationJobFailure(summary, 'Transaction notification failed');
+      }
+
+      if (summary.channelsNotified > 0) {
         log.info(`Transaction notification sent: ${txid}`, {
-          channelsNotified,
+          channelsNotified: summary.channelsNotified,
           type,
         });
       }
 
-      return {
-        success: errors.length === 0,
-        channelsNotified,
-        errors: errors.length > 0 ? errors : undefined,
-      };
+      return summary;
     } catch (error) {
+      if (error instanceof NotificationJobDispatchError) {
+        throw error;
+      }
+
       const errorMsg = getErrorMessage(error);
 
       log.error(`Transaction notification failed: ${txid}`, {
         error: errorMsg,
         attemptsMade: job.attemptsMade,
       });
+      recordNotificationJobResult(transactionNotifyJob.name, 'exception');
 
       // Log final failure for monitoring
       if (job.attemptsMade >= (job.opts.attempts ?? 5) - 1) {
@@ -126,11 +142,7 @@ export const transactionNotifyJob: WorkerJobHandler<TransactionNotifyJobData, No
         });
       }
 
-      return {
-        success: false,
-        channelsNotified: 0,
-        errors: [errorMsg],
-      };
+      throw error instanceof Error ? error : new Error(errorMsg);
     }
   },
 };
@@ -166,6 +178,7 @@ export const draftNotifyJob: WorkerJobHandler<DraftNotifyJobData, NotifyJobResul
 
       if (!draft) {
         log.warn(`Draft not found: ${draftId}`);
+        recordNotificationJobResult(draftNotifyJob.name, 'skipped');
         return { success: true, channelsNotified: 0 };
       }
 
@@ -186,43 +199,42 @@ export const draftNotifyJob: WorkerJobHandler<DraftNotifyJobData, NotifyJobResul
         creatorUserId
       );
 
-      // Check results
-      let channelsNotified = 0;
-      const errors: string[] = [];
+      const summary = summarizeNotificationResults(
+        results,
+        'No draft notification channels registered'
+      );
+      recordNotificationSummary(
+        draftNotifyJob.name,
+        summary,
+        'No draft notification channels registered'
+      );
 
-      for (const result of results) {
-        if (result.success) {
-          channelsNotified += result.usersNotified;
-        } else if (result.errors) {
-          errors.push(...result.errors);
-        }
+      if (shouldFailBullMqNotificationJob(summary)) {
+        throw createNotificationJobFailure(summary, 'Draft notification failed');
       }
 
-      if (channelsNotified > 0) {
+      if (summary.channelsNotified > 0) {
         log.info(`Draft notification sent: ${draftId}`, {
-          channelsNotified,
+          channelsNotified: summary.channelsNotified,
           walletId,
         });
       }
 
-      return {
-        success: errors.length === 0,
-        channelsNotified,
-        errors: errors.length > 0 ? errors : undefined,
-      };
+      return summary;
     } catch (error) {
+      if (error instanceof NotificationJobDispatchError) {
+        throw error;
+      }
+
       const errorMsg = getErrorMessage(error);
 
       log.error(`Draft notification failed: ${draftId}`, {
         error: errorMsg,
         attemptsMade: job.attemptsMade,
       });
+      recordNotificationJobResult(draftNotifyJob.name, 'exception');
 
-      return {
-        success: false,
-        channelsNotified: 0,
-        errors: [errorMsg],
-      };
+      throw error instanceof Error ? error : new Error(errorMsg);
     }
   },
 };
@@ -253,6 +265,7 @@ export const confirmationNotifyJob: WorkerJobHandler<ConfirmationNotifyJobData, 
       !MILESTONES.includes(previousConfirmations);
 
     if (!isNewMilestone) {
+      recordNotificationJobResult(confirmationNotifyJob.name, 'skipped');
       return { success: true, channelsNotified: 0 };
     }
 
@@ -268,6 +281,7 @@ export const confirmationNotifyJob: WorkerJobHandler<ConfirmationNotifyJobData, 
 
       if (!transaction) {
         log.warn(`Transaction not found: ${txid}`);
+        recordNotificationJobResult(confirmationNotifyJob.name, 'skipped');
         return { success: true, channelsNotified: 0 };
       }
 
@@ -291,30 +305,33 @@ export const confirmationNotifyJob: WorkerJobHandler<ConfirmationNotifyJobData, 
         transactions
       );
 
-      let channelsNotified = 0;
-      const errors: string[] = [];
+      const summary = summarizeNotificationResults(
+        results,
+        'No transaction notification channels registered'
+      );
+      recordNotificationSummary(
+        confirmationNotifyJob.name,
+        summary,
+        'No transaction notification channels registered'
+      );
 
-      for (const result of results) {
-        if (result.success) {
-          channelsNotified += result.usersNotified;
-        } else if (result.errors) {
-          errors.push(...result.errors);
-        }
+      if (shouldFailBullMqNotificationJob(summary)) {
+        throw createNotificationJobFailure(summary, 'Confirmation notification failed');
       }
 
-      if (channelsNotified > 0) {
+      if (summary.channelsNotified > 0) {
         log.info(`Confirmation notification sent: ${txid}`, {
           confirmations,
-          channelsNotified,
+          channelsNotified: summary.channelsNotified,
         });
       }
 
-      return {
-        success: errors.length === 0,
-        channelsNotified,
-        errors: errors.length > 0 ? errors : undefined,
-      };
+      return summary;
     } catch (error) {
+      if (error instanceof NotificationJobDispatchError) {
+        throw error;
+      }
+
       const errorMsg = getErrorMessage(error);
 
       log.error(`Confirmation notification failed: ${txid}`, {
@@ -322,12 +339,121 @@ export const confirmationNotifyJob: WorkerJobHandler<ConfirmationNotifyJobData, 
         confirmations,
         attemptsMade: job.attemptsMade,
       });
+      recordNotificationJobResult(confirmationNotifyJob.name, 'exception');
 
-      return {
+      throw error instanceof Error ? error : new Error(errorMsg);
+    }
+  },
+};
+
+// =============================================================================
+// Consolidation Suggestion Notification Job
+// =============================================================================
+
+/**
+ * Send a low-fee consolidation suggestion through the shared notification worker.
+ */
+export const consolidationSuggestionNotifyJob: WorkerJobHandler<
+  ConsolidationSuggestionNotifyJobData,
+  NotifyJobResult
+> = {
+  name: 'consolidation-suggestion-notify',
+  queue: 'notifications',
+  options: {
+    attempts: 3,
+    backoff: { type: 'exponential', delay: 3000 },
+  },
+  handler: async (job: Job<ConsolidationSuggestionNotifyJobData>): Promise<NotifyJobResult> => {
+    const { walletId, feeRate } = job.data;
+    const enabledChannelIds = getEnabledConsolidationChannelIds(job.data);
+
+    log.debug('Sending consolidation suggestion notification', {
+      walletId,
+      feeRate,
+      jobId: job.id,
+      enabledChannelIds,
+    });
+
+    if (enabledChannelIds.length === 0) {
+      recordNotificationJobResult(consolidationSuggestionNotifyJob.name, 'skipped');
+      return { success: true, channelsNotified: 0 };
+    }
+
+    const capableChannelIds = getConsolidationCapableChannelIds();
+    if (capableChannelIds.length === 0) {
+      const summary: NotifyJobResult = {
         success: false,
         channelsNotified: 0,
-        errors: [errorMsg],
+        errors: ['No consolidation suggestion notification channels registered'],
       };
+      recordNotificationSummary(
+        consolidationSuggestionNotifyJob.name,
+        summary,
+        'No consolidation suggestion notification channels registered'
+      );
+      throw createNotificationJobFailure(summary, 'Consolidation suggestion notification failed');
+    }
+
+    const supportedChannelIds = getSupportedConsolidationChannelIds(
+      enabledChannelIds,
+      capableChannelIds
+    );
+    if (supportedChannelIds.length === 0) {
+      recordNotificationJobResult(consolidationSuggestionNotifyJob.name, 'skipped');
+      log.warn('No enabled channels support consolidation suggestion notifications', {
+        walletId,
+        enabledChannelIds,
+      });
+      return { success: true, channelsNotified: 0 };
+    }
+
+    try {
+      const suggestion = buildConsolidationSuggestion(job.data);
+      const results = await notificationChannelRegistry.notifyConsolidationSuggestion(
+        walletId,
+        suggestion,
+        supportedChannelIds
+      );
+
+      const summary = summarizeNotificationResults(
+        results,
+        'No consolidation suggestion notification channels registered'
+      );
+      recordNotificationSummary(
+        consolidationSuggestionNotifyJob.name,
+        summary,
+        'No consolidation suggestion notification channels registered'
+      );
+
+      if (shouldFailBullMqNotificationJob(summary)) {
+        throw createNotificationJobFailure(summary, 'Consolidation suggestion notification failed');
+      }
+
+      if (summary.channelsNotified > 0) {
+        log.info('Consolidation suggestion notification sent', {
+          walletId,
+          channelsNotified: summary.channelsNotified,
+          feeRate,
+        });
+      }
+
+      return summary;
+    } catch (error) {
+      if (error instanceof NotificationJobDispatchError) {
+        throw error;
+      }
+
+      const errorMsg = getErrorMessage(error);
+
+      log.error('Consolidation suggestion notification failed', {
+        walletId,
+        feeRate,
+        error: errorMsg,
+        attemptsMade: job.attemptsMade,
+      });
+      recordNotificationJobResult(consolidationSuggestionNotifyJob.name, 'exception');
+
+      throw error instanceof Error ? error : new Error(errorMsg);
     }
   },
 };
@@ -340,4 +466,5 @@ export const notificationJobs: WorkerJobHandler<unknown, unknown>[] = [
   transactionNotifyJob as WorkerJobHandler<unknown, unknown>,
   draftNotifyJob as WorkerJobHandler<unknown, unknown>,
   confirmationNotifyJob as WorkerJobHandler<unknown, unknown>,
+  consolidationSuggestionNotifyJob as WorkerJobHandler<unknown, unknown>,
 ];

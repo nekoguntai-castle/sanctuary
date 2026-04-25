@@ -19,6 +19,7 @@ import {
   updateJobQueueMetrics,
   updateElectrumPoolMetrics,
   updateActiveStatsMetrics,
+  notificationJobResultsTotal,
 } from '../../../src/observability/metrics';
 
 describe('observability/metrics', () => {
@@ -72,6 +73,19 @@ describe('observability/metrics', () => {
     expect(metricsText).toContain('sanctuary_job_queue_depth{queue="sync",state="active"} 2');
     expect(metricsText).toContain('sanctuary_job_queue_depth{queue="sync",state="delayed"} 1');
     expect(metricsText).toContain('sanctuary_job_queue_depth{queue="sync",state="failed"} 4');
+  });
+
+  it('records notification job result metrics', async () => {
+    notificationJobResultsTotal.inc({
+      job_name: 'transaction-notify',
+      result: 'no_channels',
+    });
+
+    const metricsText = await metricsService.getMetrics();
+
+    expect(metricsText).toContain(
+      'sanctuary_notification_job_results_total{job_name="transaction-notify",result="no_channels"} 1'
+    );
   });
 
   it('updates active users and wallets gauges', async () => {

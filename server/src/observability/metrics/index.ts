@@ -62,6 +62,7 @@ export {
   cacheOperationsTotal,
   jobQueueDepth,
   jobProcessingDuration,
+  notificationJobResultsTotal,
 } from './infrastructureMetrics';
 
 // Electrum pool metrics

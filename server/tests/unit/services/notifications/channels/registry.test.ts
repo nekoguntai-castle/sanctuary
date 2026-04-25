@@ -16,6 +16,7 @@ vi.mock('../../../../../src/services/agentMonitoringService', () => ({
 
 import { NotificationChannelRegistry } from '../../../../../src/services/notifications/channels/registry';
 import type {
+  ConsolidationSuggestionNotification,
   DraftNotification,
   NotificationChannelHandler,
   NotificationResult,
@@ -64,6 +65,20 @@ describe('NotificationChannelRegistry', () => {
     amount: BigInt(25_000),
     recipient: 'tb1qexampleaddress',
     feeRate: 2,
+  };
+
+  const consolidationSuggestion: ConsolidationSuggestionNotification = {
+    walletId: 'wallet-1',
+    walletName: 'Treasury',
+    feeRate: 5,
+    utxoHealth: {
+      totalUtxos: 20,
+      dustCount: 3,
+      dustValue: 15000n,
+      totalValue: 500000n,
+    },
+    estimatedSavings: '~20,400 sats',
+    reason: 'Fees are low.',
   };
 
   beforeEach(() => {
@@ -372,6 +387,135 @@ describe('NotificationChannelRegistry', () => {
       errors: ['draft boom'],
     });
     expect(results).toContainEqual({ success: true, channelId: 'draft-missing-method', usersNotified: 0 });
+  });
+
+  it('filters consolidation-suggestion-capable handlers correctly', () => {
+    const capable = createHandler({
+      id: 'telegram',
+      capabilities: {
+        supportsTransactions: true,
+        supportsDrafts: true,
+        supportsConsolidationSuggestions: true,
+        supportsAIInsights: false,
+        supportsRichFormatting: false,
+        supportsImages: false,
+      },
+      notifyConsolidationSuggestion: vi.fn(),
+    });
+    const noMethod = createHandler({
+      id: 'missing-method',
+      capabilities: {
+        supportsTransactions: true,
+        supportsDrafts: true,
+        supportsConsolidationSuggestions: true,
+        supportsAIInsights: false,
+        supportsRichFormatting: false,
+        supportsImages: false,
+      },
+      notifyConsolidationSuggestion: undefined,
+    });
+
+    registry.register(capable);
+    registry.register(noMethod);
+
+    expect(registry.getConsolidationSuggestionCapable().map(handler => handler.id)).toEqual([
+      'telegram',
+    ]);
+  });
+
+  it('notifies consolidation suggestion channels with channel preference filtering', async () => {
+    const telegram = createHandler({
+      id: 'telegram',
+      capabilities: {
+        supportsTransactions: true,
+        supportsDrafts: true,
+        supportsConsolidationSuggestions: true,
+        supportsAIInsights: false,
+        supportsRichFormatting: false,
+        supportsImages: false,
+      },
+      notifyConsolidationSuggestion: vi.fn().mockResolvedValue({
+        success: true,
+        channelId: 'telegram',
+        usersNotified: 2,
+      }),
+    });
+    const push = createHandler({
+      id: 'push',
+      capabilities: {
+        supportsTransactions: true,
+        supportsDrafts: false,
+        supportsConsolidationSuggestions: true,
+        supportsAIInsights: false,
+        supportsRichFormatting: false,
+        supportsImages: false,
+      },
+      notifyConsolidationSuggestion: vi.fn().mockResolvedValue({
+        success: true,
+        channelId: 'push',
+        usersNotified: 1,
+      }),
+    });
+
+    registry.register(telegram);
+    registry.register(push);
+
+    const results = await registry.notifyConsolidationSuggestion(
+      'wallet-1',
+      consolidationSuggestion,
+      ['telegram']
+    );
+
+    expect(results).toEqual([{ success: true, channelId: 'telegram', usersNotified: 2 }]);
+    expect(telegram.notifyConsolidationSuggestion).toHaveBeenCalledWith(
+      'wallet-1',
+      consolidationSuggestion
+    );
+    expect(push.notifyConsolidationSuggestion).not.toHaveBeenCalled();
+  });
+
+  it('handles disabled and failing consolidation suggestion channels', async () => {
+    const disabled = createHandler({
+      id: 'disabled',
+      capabilities: {
+        supportsTransactions: true,
+        supportsDrafts: true,
+        supportsConsolidationSuggestions: true,
+        supportsAIInsights: false,
+        supportsRichFormatting: false,
+        supportsImages: false,
+      },
+      isEnabled: vi.fn().mockResolvedValue(false),
+      notifyConsolidationSuggestion: vi.fn(),
+    });
+    const failing = createHandler({
+      id: 'failing',
+      capabilities: {
+        supportsTransactions: true,
+        supportsDrafts: true,
+        supportsConsolidationSuggestions: true,
+        supportsAIInsights: false,
+        supportsRichFormatting: false,
+        supportsImages: false,
+      },
+      notifyConsolidationSuggestion: vi.fn().mockRejectedValue(new Error('suggestion boom')),
+    });
+
+    registry.register(disabled);
+    registry.register(failing);
+
+    const results = await registry.notifyConsolidationSuggestion(
+      'wallet-1',
+      consolidationSuggestion
+    );
+
+    expect(results).toContainEqual({ success: true, channelId: 'disabled', usersNotified: 0 });
+    expect(results).toContainEqual({
+      success: false,
+      channelId: 'failing',
+      usersNotified: 0,
+      errors: ['suggestion boom'],
+    });
   });
 
   it('falls back to unknown draft channel result when settled promise rejects', async () => {

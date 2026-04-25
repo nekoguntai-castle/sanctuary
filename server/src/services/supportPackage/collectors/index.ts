@@ -21,6 +21,7 @@ import './wallets';
 import './walletLogs';
 import './electrumPool';
 import './jobQueue';
+import './workerHealth';
 import './auditLog';
 import './cache';
 import './push';

@@ -1,3 +1,101 @@
+# Active Task: Telegram Received Transaction Notification Deep Dive
+
+Status: complete
+
+Goal: fix the remote-install class of bugs where one Telegram notification type works while wallet received-transaction Telegram notifications do not. The release-quality fix should make notification delivery architecture consistent: separate event producers are acceptable, but delivery must go through one queue-backed pipeline with shared channel registration, retry, telemetry, DLQ, and support-bundle diagnostics.
+
+## Current Findings
+
+- Root cause found: `server/src/worker/jobs/notificationJobs.ts` imported the raw notification registry singleton from `services/notifications/channels/registry`, while handler registration happens in the `services/notifications/channels` barrel. Worker transaction notification jobs could therefore run with zero registered channels.
+- Why low-fee Telegram consolidation opportunity notifications could still work before this refactor: Treasury Autopilot imported the registered channel barrel and dispatched low-fee consolidation suggestions inline via `notifyConsolidationSuggestion`. That proved Telegram credentials and the old low-fee path worked, but it did not prove the worker transaction-notification path worked.
+- Why the old split was risky: transaction notifications were queue-backed and retry-sensitive; low-fee consolidation suggestions were direct/inline. The producers differ for good reason, but delivery observability and channel registration should not differ.
+- Additional bug class found: notification jobs returning `{ success: false }` do not make BullMQ retry or DLQ the job. BullMQ retries only when the handler throws, so zero-delivery failures must throw after metrics/logging.
+- Worktree note: partial hardening edits exist from the initial root-cause fix and should be folded into the architecture refactor rather than treated as the final patch.
+
+## Architecture Decision
+
+- The right design is one delivery pipeline with multiple producers:
+  - Blockchain sync produces transaction notification jobs.
+  - Confirmation processing produces confirmation notification jobs.
+  - Draft creation produces draft notification jobs.
+  - Treasury Autopilot produces low-fee consolidation suggestion notification jobs.
+- All notification delivery jobs use the registered notification channel barrel, common queue dispatch semantics, common retry/DLQ behavior, common Prometheus result metrics, and common support-bundle diagnostics.
+- Inline delivery remains only a fallback for producer-side queue unavailability, not as the normal path for any notification type.
+- This is a release-quality architecture refactor, so implementation should avoid broad unrelated cleanup and keep tests focused on delivery behavior.
+
+## Proposed Implementation Plan
+
+### Phase 1 - Baseline And Refactor Shape
+
+- [x] Re-read current notification producer call sites and worker job registration to confirm the unified job data model.
+- [x] Decide whether consolidation suggestion job payload should carry the full suggestion snapshot or rehydrate by wallet ID. Prefer full snapshot because it preserves the evaluation decision and avoids a second UTXO/fee read in the worker.
+- [x] Confirm queue fallback behavior for low-fee suggestions: if the notification queue is unavailable, call the same delivery helper inline and record fallback telemetry/logs.
+
+### Phase 2 - Shared Dispatcher And Worker Job
+
+- [x] Add `queueConsolidationSuggestionNotification` to `server/src/infrastructure/notificationDispatcher.ts`.
+- [x] Add a `consolidation-suggestion-notify` worker job to `server/src/worker/jobs/notificationJobs.ts`.
+- [x] Extend worker job types for consolidation suggestion payloads without leaking BigInt serialization problems across BullMQ.
+- [x] Reuse a shared notification result summarizer that treats zero registered channels as failure and all-channel failures as thrown errors so BullMQ retries and DLQs.
+- [x] Keep legitimate no-recipient outcomes successful but visible with metrics, because no enabled recipients is a configuration state, not a transport failure.
+
+### Phase 3 - Move Autopilot Onto Shared Delivery
+
+- [x] Replace inline channel iteration in `server/src/services/autopilot/evaluator.ts` with dispatcher usage.
+- [x] Preserve per-wallet Autopilot channel preferences (`notifyTelegram`, `notifyPush`) in the queued payload or equivalent delivery context.
+- [x] Keep wallet log behavior for the Autopilot decision, but separate it from delivery success so a queued notification does not falsely imply delivery.
+- [x] Keep cooldown semantics intentional: set cooldown after the suggestion is queued or inline fallback is accepted, not after Telegram confirms delivery, unless we choose a larger behavioral change.
+
+### Phase 4 - Observability And Support Bundle
+
+- [x] Add/keep `sanctuary_notification_job_results_total{job_name,result}` with low-cardinality labels only.
+- [x] Add support-bundle worker-health diagnostics and transaction/consolidation notification DLQ counts under the Telegram/support diagnostics.
+- [x] Ensure dead-letter support-bundle payload anonymization handles nested BullMQ job payloads such as `payload.data.walletId`.
+- [x] Make support bundle expose that transaction jobs and low-fee consolidation suggestion jobs now share the same worker delivery system.
+
+### Phase 5 - Tests And Edge Cases
+
+- [x] Add worker job tests for transaction, draft, confirmation, and low-fee consolidation suggestion delivery.
+- [x] Add dispatcher tests for queueing low-fee consolidation suggestions and fallback behavior when Redis/queue is unavailable.
+- [x] Add Autopilot evaluator tests proving it queues low-fee suggestions instead of directly calling channels.
+- [x] Add channel handler tests proving Telegram transaction delivery returns actual delivery counts/errors rather than unconditional success.
+- [x] Add support-bundle tests for notification DLQ detection, worker health, and nested ID redaction.
+- [x] Cover edge cases: no registered channels, no recipients, channel disabled, per-wallet flag disabled, Telegram send failure, queue unavailable, duplicate job IDs/cooldown, BigInt serialization, missing wallet/transaction/draft records, and partial channel success.
+
+### Phase 6 - Verification
+
+- [x] Run focused Vitest suites for worker notification jobs, notification dispatcher, Autopilot evaluator, Telegram channel handlers/service, and support-package collectors.
+- [x] Run `npm --prefix server run typecheck:tests`.
+- [x] Run touched-file lizard checks with `CCN <= 15`.
+- [x] Run `git diff --check`.
+- [x] Self-review diff for architectural consistency, edge cases, and accidental behavior changes before final response.
+
+## Open Decisions Before Coding
+
+- Cooldown timing: queue acceptance versus confirmed channel delivery. Recommendation: queue acceptance, because the worker owns retries and DLQ; otherwise Autopilot would repeatedly enqueue the same suggestion while delivery is retrying.
+- Fallback behavior: keep inline fallback only when queue creation/add fails. Recommendation: yes, to preserve notifications on Redis-unavailable single-process deployments.
+- Scope of unification: include low-fee consolidation suggestions now; leave AI insights and other specialized notifications for later unless they already touch this path. Recommendation: include only low-fee consolidation suggestions because that is the user-observed split.
+
+## Review
+
+- Root cause fixed: worker notification jobs now import the registered channel barrel instead of the raw registry singleton, so Telegram/Push handlers are available in worker delivery.
+- Architecture fixed for the user-observed split: low-fee Treasury Autopilot consolidation opportunity notifications now enqueue `consolidation-suggestion-notify` jobs through the same `notifications` worker queue used by transaction/draft/confirmation notifications. Inline delivery remains only as queue-add fallback.
+- Worker failure semantics fixed: zero registered channels and all-channel zero-delivery failures now throw so BullMQ retries and exhausted jobs reach the notification DLQ. Legitimate no-recipient/skipped states stay successful but are counted.
+- Telegram transaction and consolidation handlers now report actual delivery counts/errors instead of unconditional success.
+- Support bundle now includes worker health, notification DLQ counts for transaction and low-fee consolidation suggestion jobs, and nested BullMQ job payload ID anonymization.
+- Support bundle now exposes the notification delivery topology: both `transaction-notify` and `consolidation-suggestion-notify` use the shared `notifications` worker queue, with inline consolidation fallback only for queue-add failure.
+- Telemetry added: `sanctuary_notification_job_results_total{job_name,result}` with low-cardinality result labels.
+- No tests were pruned. Existing tests that assumed direct/inline low-fee delivery were updated to assert queue-first delivery plus queue-failure inline fallback; additional edge-case tests were added to preserve 100% backend coverage.
+- Validation passed:
+  - `npm run test:coverage` (404 files, 5,620 tests, 100% statements/branches/functions/lines)
+  - `npm run test:backend:coverage` (393 files, 9,239 tests, 100% statements/branches/functions/lines)
+  - `npx vitest run tests/unit/worker/jobs/notificationJobs.test.ts tests/unit/infrastructure/notificationDispatcher.test.ts tests/unit/services/autopilot/evaluator.test.ts tests/unit/services/notifications/channels/handlers.test.ts tests/unit/services/notifications/channels/registry.test.ts tests/unit/services/telegram/telegramService.test.ts tests/unit/services/supportPackage/telegramCollector.test.ts tests/unit/services/supportPackage/dlqCollector.test.ts tests/unit/services/supportPackage/workerHealthCollector.test.ts tests/unit/observability/metrics.test.ts tests/unit/services/bitcoin/sync/phases/processTransactions/notifications.test.ts tests/unit/services/notifications/notificationService.test.ts tests/unit/services/notifications/channels/aiInsights.test.ts`
+  - `npm --prefix server run typecheck:tests`
+  - `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -w -l typescript ...touched production files...`
+  - `git diff --check`
+
+---
+
 # Actionable Backlog: Valid Follow-Up Work
 
 Status: ready

@@ -8,7 +8,8 @@ const {
   mockGetUtxoHealthProfile,
   mockGetEnabledAutopilotWallets,
   mockWalletLog,
-  mockGetAllChannels,
+  mockQueueConsolidationSuggestionNotification,
+  mockNotifyConsolidationSuggestion,
   mockLogger,
   redis,
 } = vi.hoisted(() => {
@@ -27,7 +28,8 @@ const {
     mockGetUtxoHealthProfile: vi.fn(),
     mockGetEnabledAutopilotWallets: vi.fn(),
     mockWalletLog: vi.fn(),
-    mockGetAllChannels: vi.fn(),
+    mockQueueConsolidationSuggestionNotification: vi.fn(),
+    mockNotifyConsolidationSuggestion: vi.fn(),
     mockLogger: {
       debug: vi.fn(),
       info: vi.fn(),
@@ -41,6 +43,7 @@ const {
 vi.mock('../../../../src/infrastructure', () => ({
   getRedisClient: mockGetRedisClient,
   isRedisConnected: mockIsRedisConnected,
+  queueConsolidationSuggestionNotification: mockQueueConsolidationSuggestionNotification,
 }));
 
 vi.mock('../../../../src/services/autopilot/feeMonitor', () => ({
@@ -61,7 +64,7 @@ vi.mock('../../../../src/websocket/notifications', () => ({
 
 vi.mock('../../../../src/services/notifications/channels', () => ({
   notificationChannelRegistry: {
-    getAll: mockGetAllChannels,
+    notifyConsolidationSuggestion: mockNotifyConsolidationSuggestion,
   },
 }));
 
@@ -117,7 +120,8 @@ describe('autopilot evaluator', () => {
       consolidationCandidates: 20,
     });
     (mockGetEnabledAutopilotWallets as Mock).mockResolvedValue([]);
-    (mockGetAllChannels as Mock).mockReturnValue([]);
+    (mockQueueConsolidationSuggestionNotification as Mock).mockResolvedValue(true);
+    (mockNotifyConsolidationSuggestion as Mock).mockResolvedValue([]);
   });
 
   describe('evaluateWallet', () => {
@@ -296,10 +300,6 @@ describe('autopilot evaluator', () => {
     });
 
     it('suppresses notifications during cooldown', async () => {
-      const pushNotify = vi.fn().mockResolvedValue(undefined);
-      (mockGetAllChannels as Mock).mockReturnValue([
-        { id: 'push', notifyConsolidationSuggestion: pushNotify },
-      ]);
       (mockGetEnabledAutopilotWallets as Mock).mockResolvedValueOnce([
         { walletId: 'wallet-1', walletName: 'Treasury', userId: 'u1', settings: baseSettings },
       ]);
@@ -307,15 +307,11 @@ describe('autopilot evaluator', () => {
 
       await evaluateAllWallets();
 
-      expect(pushNotify).not.toHaveBeenCalled();
+      expect(mockQueueConsolidationSuggestionNotification).not.toHaveBeenCalled();
       expect(redis.incr).not.toHaveBeenCalled();
     });
 
     it('requires stability threshold before notifying', async () => {
-      const pushNotify = vi.fn().mockResolvedValue(undefined);
-      (mockGetAllChannels as Mock).mockReturnValue([
-        { id: 'push', notifyConsolidationSuggestion: pushNotify },
-      ]);
       (mockGetEnabledAutopilotWallets as Mock).mockResolvedValueOnce([
         { walletId: 'wallet-1', walletName: 'Treasury', userId: 'u1', settings: baseSettings },
       ]);
@@ -324,18 +320,11 @@ describe('autopilot evaluator', () => {
 
       await evaluateAllWallets();
 
-      expect(pushNotify).not.toHaveBeenCalled();
+      expect(mockQueueConsolidationSuggestionNotification).not.toHaveBeenCalled();
       expect(redis.expire).toHaveBeenCalledWith('autopilot:stability:wallet-1', 1800);
     });
 
-    it('sends notifications respecting channel preferences and sets cooldown', async () => {
-      const telegramNotify = vi.fn().mockResolvedValue(undefined);
-      const pushNotify = vi.fn().mockResolvedValue(undefined);
-
-      (mockGetAllChannels as Mock).mockReturnValue([
-        { id: 'telegram', notifyConsolidationSuggestion: telegramNotify },
-        { id: 'push', notifyConsolidationSuggestion: pushNotify },
-      ]);
+    it('queues notifications respecting channel preferences and sets cooldown', async () => {
       (mockGetEnabledAutopilotWallets as Mock).mockResolvedValueOnce([
         {
           walletId: 'wallet-1',
@@ -361,16 +350,27 @@ describe('autopilot evaluator', () => {
         expect.stringContaining('Fees are low'),
         expect.objectContaining({ feeRate: 5, totalUtxos: 20, dustCount: 2 })
       );
-      expect(telegramNotify).not.toHaveBeenCalled();
-      expect(pushNotify).toHaveBeenCalledTimes(1);
+      expect(mockQueueConsolidationSuggestionNotification).toHaveBeenCalledWith(
+        expect.objectContaining({
+          walletId: 'wallet-1',
+          walletName: 'Treasury',
+          notifyTelegram: false,
+          notifyPush: true,
+          utxoHealth: expect.objectContaining({
+            dustValue: '5000',
+            totalValue: '200000',
+          }),
+        })
+      );
+      expect(mockNotifyConsolidationSuggestion).not.toHaveBeenCalled();
       expect(redis.set).toHaveBeenCalledWith('autopilot:cooldown:wallet-1', '1', 'EX', 43_200);
       expect(redis.del).toHaveBeenCalledWith('autopilot:stability:wallet-1');
     });
 
-    it('continues when one channel fails to send', async () => {
-      const pushNotify = vi.fn().mockRejectedValue(new Error('push send failed'));
-      (mockGetAllChannels as Mock).mockReturnValue([
-        { id: 'push', notifyConsolidationSuggestion: pushNotify },
+    it('falls back to inline delivery when queueing fails and logs channel errors', async () => {
+      (mockQueueConsolidationSuggestionNotification as Mock).mockResolvedValueOnce(false);
+      (mockNotifyConsolidationSuggestion as Mock).mockResolvedValueOnce([
+        { success: false, channelId: 'telegram', usersNotified: 0, errors: ['telegram send failed'] },
       ]);
       (mockGetEnabledAutopilotWallets as Mock).mockResolvedValueOnce([
         { walletId: 'wallet-1', walletName: 'Treasury', userId: 'u1', settings: baseSettings },
@@ -379,25 +379,46 @@ describe('autopilot evaluator', () => {
       redis.incr.mockResolvedValueOnce(2);
 
       await expect(evaluateAllWallets()).resolves.toBeUndefined();
+      expect(mockNotifyConsolidationSuggestion).toHaveBeenCalledWith(
+        'wallet-1',
+        expect.objectContaining({ walletId: 'wallet-1', walletName: 'Treasury' }),
+        ['telegram', 'push']
+      );
       expect(redis.set).toHaveBeenCalled();
       expect(mockLogger.error).toHaveBeenCalledWith(
-        expect.stringContaining('Failed to send consolidation notification via push'),
-        expect.objectContaining({ walletId: 'wallet-1' })
+        expect.stringContaining('Failed to send consolidation notification via telegram'),
+        expect.objectContaining({ walletId: 'wallet-1', errors: ['telegram send failed'] })
+      );
+    });
+
+    it('falls back inline without logging channel errors when delivery succeeds', async () => {
+      (mockQueueConsolidationSuggestionNotification as Mock).mockResolvedValueOnce(false);
+      (mockNotifyConsolidationSuggestion as Mock).mockResolvedValueOnce([
+        { success: true, channelId: 'telegram', usersNotified: 1 },
+      ]);
+      (mockGetEnabledAutopilotWallets as Mock).mockResolvedValueOnce([
+        { walletId: 'wallet-1', walletName: 'Treasury', userId: 'u1', settings: baseSettings },
+      ]);
+      redis.exists.mockResolvedValueOnce(0);
+      redis.incr.mockResolvedValueOnce(2);
+
+      await evaluateAllWallets();
+
+      expect(mockNotifyConsolidationSuggestion).toHaveBeenCalled();
+      expect(mockLogger.error).not.toHaveBeenCalledWith(
+        expect.stringContaining('Failed to send consolidation notification via telegram'),
+        expect.anything()
       );
     });
 
     it('does not notify when redis is disconnected for stability checks', async () => {
-      const pushNotify = vi.fn().mockResolvedValue(undefined);
-      (mockGetAllChannels as Mock).mockReturnValue([
-        { id: 'push', notifyConsolidationSuggestion: pushNotify },
-      ]);
       (mockGetEnabledAutopilotWallets as Mock).mockResolvedValueOnce([
         { walletId: 'wallet-1', walletName: 'Treasury', userId: 'u1', settings: baseSettings },
       ]);
       (mockIsRedisConnected as Mock).mockReturnValueOnce(false);
 
       await evaluateAllWallets();
-      expect(pushNotify).not.toHaveBeenCalled();
+      expect(mockQueueConsolidationSuggestionNotification).not.toHaveBeenCalled();
     });
 
     it('catches per-wallet errors and continues to next wallet', async () => {
@@ -448,14 +469,7 @@ describe('autopilot evaluator', () => {
       expect(suggestion!.estimatedSavings).toMatch(/~[\d.]+ BTC in potential fee savings/);
     });
 
-    it('skips push channel when notifyPush is false', async () => {
-      const pushNotify = vi.fn().mockResolvedValue(undefined);
-      const telegramNotify = vi.fn().mockResolvedValue(undefined);
-
-      (mockGetAllChannels as Mock).mockReturnValue([
-        { id: 'push', notifyConsolidationSuggestion: pushNotify },
-        { id: 'telegram', notifyConsolidationSuggestion: telegramNotify },
-      ]);
+    it('preserves channel preferences when notifyPush is false', async () => {
       (mockGetEnabledAutopilotWallets as Mock).mockResolvedValueOnce([
         {
           walletId: 'wallet-1',
@@ -473,17 +487,17 @@ describe('autopilot evaluator', () => {
 
       await evaluateAllWallets();
 
-      expect(pushNotify).not.toHaveBeenCalled();
-      expect(telegramNotify).toHaveBeenCalledTimes(1);
+      expect(mockQueueConsolidationSuggestionNotification).toHaveBeenCalledWith(
+        expect.objectContaining({
+          walletId: 'wallet-1',
+          notifyPush: false,
+          notifyTelegram: true,
+        })
+      );
     });
 
-    it('skips channels without notifyConsolidationSuggestion method', async () => {
-      const telegramNotify = vi.fn().mockResolvedValue(undefined);
-
-      (mockGetAllChannels as Mock).mockReturnValue([
-        { id: 'telegram', notifyConsolidationSuggestion: telegramNotify },
-        { id: 'webhook' }, // Channel without notifyConsolidationSuggestion
-      ]);
+    it('falls back inline with only enabled channels when queueing fails', async () => {
+      (mockQueueConsolidationSuggestionNotification as Mock).mockResolvedValueOnce(false);
       (mockGetEnabledAutopilotWallets as Mock).mockResolvedValueOnce([
         {
           walletId: 'wallet-1',
@@ -497,8 +511,86 @@ describe('autopilot evaluator', () => {
 
       await evaluateAllWallets();
 
-      expect(telegramNotify).toHaveBeenCalledTimes(1);
-      // webhook channel has no notifyConsolidationSuggestion so it's simply skipped
+      expect(mockNotifyConsolidationSuggestion).toHaveBeenCalledWith(
+        'wallet-1',
+        expect.objectContaining({ walletId: 'wallet-1' }),
+        ['telegram', 'push']
+      );
+    });
+
+    it('does not fall back inline when queueing fails and no channels are enabled', async () => {
+      (mockQueueConsolidationSuggestionNotification as Mock).mockResolvedValueOnce(false);
+      (mockGetEnabledAutopilotWallets as Mock).mockResolvedValueOnce([
+        {
+          walletId: 'wallet-1',
+          walletName: 'Treasury',
+          userId: 'u1',
+          settings: {
+            ...baseSettings,
+            notifyTelegram: false,
+            notifyPush: false,
+          },
+        },
+      ]);
+      redis.exists.mockResolvedValueOnce(0);
+      redis.incr.mockResolvedValueOnce(2);
+
+      await evaluateAllWallets();
+
+      expect(mockNotifyConsolidationSuggestion).not.toHaveBeenCalled();
+      expect(redis.set).toHaveBeenCalledWith('autopilot:cooldown:wallet-1', '1', 'EX', 86_400);
+    });
+
+    it('falls back inline with only telegram when push notifications are disabled', async () => {
+      (mockQueueConsolidationSuggestionNotification as Mock).mockResolvedValueOnce(false);
+      (mockGetEnabledAutopilotWallets as Mock).mockResolvedValueOnce([
+        {
+          walletId: 'wallet-1',
+          walletName: 'Treasury',
+          userId: 'u1',
+          settings: {
+            ...baseSettings,
+            notifyTelegram: true,
+            notifyPush: false,
+          },
+        },
+      ]);
+      redis.exists.mockResolvedValueOnce(0);
+      redis.incr.mockResolvedValueOnce(2);
+
+      await evaluateAllWallets();
+
+      expect(mockNotifyConsolidationSuggestion).toHaveBeenCalledWith(
+        'wallet-1',
+        expect.objectContaining({ walletId: 'wallet-1' }),
+        ['telegram']
+      );
+    });
+
+    it('falls back inline with only push when telegram notifications are disabled', async () => {
+      (mockQueueConsolidationSuggestionNotification as Mock).mockResolvedValueOnce(false);
+      (mockGetEnabledAutopilotWallets as Mock).mockResolvedValueOnce([
+        {
+          walletId: 'wallet-1',
+          walletName: 'Treasury',
+          userId: 'u1',
+          settings: {
+            ...baseSettings,
+            notifyTelegram: false,
+            notifyPush: true,
+          },
+        },
+      ]);
+      redis.exists.mockResolvedValueOnce(0);
+      redis.incr.mockResolvedValueOnce(2);
+
+      await evaluateAllWallets();
+
+      expect(mockNotifyConsolidationSuggestion).toHaveBeenCalledWith(
+        'wallet-1',
+        expect.objectContaining({ walletId: 'wallet-1' }),
+        ['push']
+      );
     });
 
     it('omits dust mention in reason when dustCount is zero', async () => {

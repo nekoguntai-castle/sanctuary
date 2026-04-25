@@ -5,7 +5,12 @@
  * Checks stability (2 consecutive hits) and cooldowns to avoid notification spam.
  */
 
-import { getRedisClient, isRedisConnected } from '../../infrastructure';
+import {
+  getRedisClient,
+  isRedisConnected,
+  queueConsolidationSuggestionNotification,
+  type ConsolidationSuggestionNotificationPayload,
+} from '../../infrastructure';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { walletLog } from '../../websocket/notifications';
@@ -216,25 +221,71 @@ async function sendConsolidationNotification(
     estimatedSavings: suggestion.estimatedSavings,
   });
 
-  // Dispatch via notification channel registry
-  const channels = notificationChannelRegistry.getAll();
-
-  for (const channel of channels) {
-    // Respect user's per-channel preferences
-    if (channel.id === 'telegram' && !settings.notifyTelegram) continue;
-    if (channel.id === 'push' && !settings.notifyPush) continue;
-
-    if (channel.notifyConsolidationSuggestion) {
-      try {
-        await channel.notifyConsolidationSuggestion(walletId, suggestion);
-      } catch (error) {
-        log.error(`Failed to send consolidation notification via ${channel.id}`, {
-          walletId,
-          error: getErrorMessage(error),
-        });
-      }
-    }
+  const queued = await queueConsolidationSuggestionNotification(
+    buildConsolidationSuggestionPayload(suggestion, settings)
+  );
+  if (queued) {
+    return;
   }
+
+  log.warn('Falling back to inline consolidation suggestion notification delivery', { walletId });
+  await sendConsolidationNotificationInline(suggestion, settings);
+}
+
+function buildConsolidationSuggestionPayload(
+  suggestion: ConsolidationSuggestion,
+  settings: WalletAutopilotSettings
+): ConsolidationSuggestionNotificationPayload {
+  return {
+    walletId: suggestion.walletId,
+    walletName: suggestion.walletName,
+    feeRate: suggestion.feeRate,
+    utxoHealth: {
+      totalUtxos: suggestion.utxoHealth.totalUtxos,
+      dustCount: suggestion.utxoHealth.dustCount,
+      dustValue: suggestion.utxoHealth.dustValue.toString(),
+      totalValue: suggestion.utxoHealth.totalValue.toString(),
+      avgUtxoSize: suggestion.utxoHealth.avgUtxoSize.toString(),
+      smallestUtxo: suggestion.utxoHealth.smallestUtxo.toString(),
+      largestUtxo: suggestion.utxoHealth.largestUtxo.toString(),
+      consolidationCandidates: suggestion.utxoHealth.consolidationCandidates,
+    },
+    estimatedSavings: suggestion.estimatedSavings,
+    reason: suggestion.reason,
+    notifyTelegram: settings.notifyTelegram,
+    notifyPush: settings.notifyPush,
+    queuedAt: new Date().toISOString(),
+  };
+}
+
+async function sendConsolidationNotificationInline(
+  suggestion: ConsolidationSuggestion,
+  settings: WalletAutopilotSettings
+): Promise<void> {
+  const channelIds = getEnabledConsolidationChannelIds(settings);
+  if (channelIds.length === 0) return;
+
+  const results = await notificationChannelRegistry.notifyConsolidationSuggestion(
+    suggestion.walletId,
+    suggestion,
+    channelIds
+  );
+
+  for (const result of results) {
+    if (result.success) continue;
+
+    log.error(`Failed to send consolidation notification via ${result.channelId}`, {
+      walletId: suggestion.walletId,
+      errors: result.errors,
+    });
+  }
+}
+
+function getEnabledConsolidationChannelIds(settings: WalletAutopilotSettings): string[] {
+  const channelIds: string[] = [];
+  if (settings.notifyTelegram) channelIds.push('telegram');
+  if (settings.notifyPush) channelIds.push('push');
+  return channelIds;
 }
 
 /**

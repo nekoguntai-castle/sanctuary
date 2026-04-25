@@ -8,7 +8,7 @@
 
 import { userRepository, walletRepository } from '../../../repositories';
 import { circuitBreakerRegistry } from '../../circuitBreaker';
-import { deadLetterQueue } from '../../deadLetterQueue';
+import { deadLetterQueue, type DeadLetterEntry } from '../../deadLetterQueue';
 import { registerCollector } from './registry';
 import type { CollectorContext } from '../types';
 import type { TelegramConfig, WalletTelegramSettings } from '../../telegram/types';
@@ -40,6 +40,14 @@ type WalletSettingFlags = {
   notifySent: boolean;
   notifyConsolidation: boolean;
   notifyDraft: boolean;
+};
+
+const workerDeliveryTopology = {
+  queue: 'notifications',
+  transactionJob: 'transaction-notify',
+  consolidationSuggestionJob: 'consolidation-suggestion-notify',
+  sharedWorkerDelivery: true,
+  consolidationInlineFallback: 'queue-add-failure-only',
 };
 
 registerCollector('telegram', async (context: CollectorContext) => {
@@ -161,16 +169,48 @@ registerCollector('telegram', async (context: CollectorContext) => {
     commonIssues.push(`${telegramDlqEntries.length} telegram entries in dead letter queue`);
   }
 
+  const notificationDlqEntries = deadLetterQueue.getByCategory('notification');
+  const transactionNotificationDlqEntries = notificationDlqEntries.filter(isTransactionNotificationDlqEntry);
+  const consolidationSuggestionDlqEntries = notificationDlqEntries.filter(
+    isConsolidationSuggestionNotificationDlqEntry
+  );
+  if (transactionNotificationDlqEntries.length > 0) {
+    commonIssues.push(
+      `${transactionNotificationDlqEntries.length} transaction notification jobs in dead letter queue`
+    );
+  }
+  if (consolidationSuggestionDlqEntries.length > 0) {
+    commonIssues.push(
+      `${consolidationSuggestionDlqEntries.length} consolidation suggestion notification jobs in dead letter queue`
+    );
+  }
+
   return {
     users: userResults,
     walletUserAssociations,
     circuitBreaker: telegramBreaker ?? { state: 'no-breaker-registered', failures: 0 },
     dlqTelegramEntries: telegramDlqEntries.length,
+    dlqNotificationEntries: notificationDlqEntries.length,
+    transactionNotificationDlqEntries: transactionNotificationDlqEntries.length,
+    consolidationSuggestionDlqEntries: consolidationSuggestionDlqEntries.length,
+    workerDeliveryTopology,
     diagnostics: {
       commonIssues,
     },
   };
 });
+
+function isTransactionNotificationDlqEntry(entry: DeadLetterEntry): boolean {
+  const payload = entry.payload ?? {};
+  return entry.operation === 'notifications:transaction-notify' ||
+    payload.jobName === 'transaction-notify';
+}
+
+function isConsolidationSuggestionNotificationDlqEntry(entry: DeadLetterEntry): boolean {
+  const payload = entry.payload ?? {};
+  return entry.operation === 'notifications:consolidation-suggestion-notify' ||
+    payload.jobName === 'consolidation-suggestion-notify';
+}
 
 function buildWalletSettingDiagnostic(
   input: WalletSettingDiagnosticInput

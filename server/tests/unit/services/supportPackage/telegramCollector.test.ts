@@ -63,7 +63,7 @@ describe('telegram collector', () => {
   beforeEach(() => {
     mockFindAllWithSelectUsers.mockResolvedValue([]);
     mockGetAllHealth.mockReturnValue([]);
-    mockGetByCategory.mockReturnValue([]);
+    mockGetByCategory.mockImplementation(() => []);
     mockFindAllWithSelectWallets.mockResolvedValue([]);
   });
 
@@ -84,6 +84,13 @@ describe('telegram collector', () => {
     expect(result.users).toEqual([]);
     expect(result.walletUserAssociations).toEqual([]);
     expect(result.dlqTelegramEntries).toBe(0);
+    expect(result.workerDeliveryTopology).toEqual({
+      queue: 'notifications',
+      transactionJob: 'transaction-notify',
+      consolidationSuggestionJob: 'consolidation-suggestion-notify',
+      sharedWorkerDelivery: true,
+      consolidationInlineFallback: 'queue-add-failure-only',
+    });
     expect((result.diagnostics as any).commonIssues).toEqual([]);
   });
 
@@ -217,15 +224,85 @@ describe('telegram collector', () => {
 
   it('detects DLQ telegram entries', async () => {
     mockFindAllWithSelectUsers.mockResolvedValue([]);
-    mockGetByCategory.mockReturnValue([
-      { id: 'dlq-1', category: 'telegram' },
-      { id: 'dlq-2', category: 'telegram' },
-    ]);
+    mockGetByCategory.mockImplementation((category: string) => category === 'telegram'
+      ? [
+          { id: 'dlq-1', category: 'telegram', payload: {} },
+          { id: 'dlq-2', category: 'telegram', payload: {} },
+        ]
+      : []);
 
     const result = await getTelegramCollector()(makeContext());
     expect(result.dlqTelegramEntries).toBe(2);
     const issues = (result.diagnostics as any).commonIssues as string[];
     expect(issues.some((i: string) => i.includes('dead letter queue'))).toBe(true);
+  });
+
+  it('reports transaction notification DLQ entries from the worker queue', async () => {
+    mockFindAllWithSelectUsers.mockResolvedValue([]);
+    mockGetByCategory.mockImplementation((category: string) => category === 'notification'
+      ? [
+          {
+            id: 'dlq-tx',
+            category: 'notification',
+            operation: 'notifications:transaction-notify',
+            payload: { jobName: 'transaction-notify' },
+          },
+          {
+            id: 'dlq-draft',
+            category: 'notification',
+            operation: 'notifications:draft-notify',
+            payload: { jobName: 'draft-notify' },
+          },
+          {
+            id: 'dlq-consolidation',
+            category: 'notification',
+            operation: 'notifications:consolidation-suggestion-notify',
+            payload: { jobName: 'consolidation-suggestion-notify' },
+          },
+        ]
+      : []);
+
+    const result = await getTelegramCollector()(makeContext());
+
+    expect(result.dlqNotificationEntries).toBe(3);
+    expect(result.transactionNotificationDlqEntries).toBe(1);
+    expect(result.consolidationSuggestionDlqEntries).toBe(1);
+    const issues = (result.diagnostics as any).commonIssues as string[];
+    expect(issues).toContain('1 transaction notification jobs in dead letter queue');
+    expect(issues).toContain('1 consolidation suggestion notification jobs in dead letter queue');
+  });
+
+  it('detects notification DLQ entries by operation or payload jobName', async () => {
+    mockFindAllWithSelectUsers.mockResolvedValue([]);
+    mockGetByCategory.mockImplementation((category: string) => category === 'notification'
+      ? [
+          {
+            id: 'dlq-tx-operation',
+            category: 'notification',
+            operation: 'notifications:transaction-notify',
+          },
+          {
+            id: 'dlq-tx-payload',
+            category: 'notification',
+            operation: 'notifications:unknown',
+            payload: { jobName: 'transaction-notify' },
+          },
+          {
+            id: 'dlq-consolidation-payload',
+            category: 'notification',
+            operation: 'notifications:unknown',
+            payload: { jobName: 'consolidation-suggestion-notify' },
+          },
+        ]
+      : []);
+
+    const result = await getTelegramCollector()(makeContext());
+
+    expect(result.transactionNotificationDlqEntries).toBe(2);
+    expect(result.consolidationSuggestionDlqEntries).toBe(1);
+    const issues = (result.diagnostics as any).commonIssues as string[];
+    expect(issues).toContain('2 transaction notification jobs in dead letter queue');
+    expect(issues).toContain('1 consolidation suggestion notification jobs in dead letter queue');
   });
 
   it('includes wallet-user associations', async () => {
