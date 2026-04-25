@@ -105,6 +105,34 @@ EOF_DOC
   assert_exact_output "$output_file" "build_changed" "false"
 
   base_sha="$head_sha"
+  printf '#!/usr/bin/env bash\necho shard\n' > "$repo_dir/scripts/ci/frontend-coverage-shard.sh"
+  git -C "$repo_dir" add scripts/ci/frontend-coverage-shard.sh
+  git -C "$repo_dir" commit -qm "frontend coverage shard script"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_exact_output "$output_file" "test_suite_changed" "false"
+  assert_exact_output "$output_file" "frontend_changed" "true"
+  assert_exact_output "$output_file" "backend_changed" "false"
+  assert_exact_output "$output_file" "gateway_changed" "false"
+  assert_exact_output "$output_file" "browser_smoke_changed" "false"
+  assert_exact_output "$output_file" "render_changed" "false"
+  assert_exact_output "$output_file" "build_changed" "false"
+
+  base_sha="$head_sha"
+  printf 'export default {};\n' > "$repo_dir/vitest.coverage-shard.config.ts"
+  git -C "$repo_dir" add vitest.coverage-shard.config.ts
+  git -C "$repo_dir" commit -qm "frontend coverage shard config"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_exact_output "$output_file" "frontend_changed" "true"
+  assert_contains_output "$output_file" "frontend_files" "vitest.coverage-shard.config.ts"
+  assert_exact_output "$output_file" "browser_smoke_changed" "false"
+  assert_exact_output "$output_file" "render_changed" "false"
+  assert_exact_output "$output_file" "build_changed" "false"
+
+  base_sha="$head_sha"
   mkdir -p "$repo_dir/.github/workflows"
   printf 'name: Test Suite\non: pull_request\njobs: {}\n' > "$repo_dir/.github/workflows/test.yml"
   git -C "$repo_dir" add .github/workflows/test.yml

@@ -16,6 +16,8 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:coverage:shard": "bash scripts/ci/frontend-coverage-shard.sh",
+    "test:coverage:merge": "bash scripts/ci/frontend-coverage-merge.sh",
     "test:coverage:full": "npm run test:coverage && npm run test:backend:coverage && cd gateway && npm run test:coverage",
     "test:integration": "./scripts/run-integration-tests.sh",
     "test:ops:phase2": "./scripts/run-integration-tests.sh tests/integration/ops/phase2OperationsProof.integration.test.ts",

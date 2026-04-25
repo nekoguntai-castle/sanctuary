@@ -1,3 +1,53 @@
+# Active Task: Frontend Coverage Sharding
+
+Status: in progress
+
+Goal: reduce the current Test Suite long pole by splitting root Vitest frontend coverage into parallel shard jobs, then merge the coverage blobs once so the existing 100% coverage gate and `frontend-coverage` artifact remain intact.
+
+## Worktree Constraint
+
+- This batch runs in `/tmp/sanctuary-frontend-coverage` on `ci/frontend-coverage-sharding` so the dirty primary worktree at `/home/nekoguntai/sanctuary` remains untouched.
+- The primary worktree has unrelated local task-tracker state. Do not stash, reset, pull over, or rewrite it from this batch.
+
+## Current Evidence
+
+- PR #140 merge-group Test Suite made root frontend coverage the long pole at 5m20s.
+- Frontend app and test typechecks are already split and short at about 49s and 46s.
+- Vitest 4.1.x supports `--shard`, blob reporting, and `--mergeReports`, so we can parallelize test execution while enforcing thresholds once at merge time.
+
+## Implementation Checklist
+
+### Phase 1 - Shard Runner
+
+- [x] Add a frontend coverage shard Vitest config that emits blob reports without enforcing partial-shard thresholds.
+- [x] Add a small CI wrapper for validated `index/total` shard execution.
+- [x] Add script-level tests for invalid shard arguments and empty merge inputs.
+
+### Phase 2 - Merge Gate
+
+- [x] Add a merge wrapper that consumes shard blob reports, generates the normal `coverage/` output, and enforces existing coverage thresholds once.
+- [x] Keep the final artifact named `frontend-coverage` so `Full Test Summary` remains compatible.
+- [x] Preserve the existing full frontend aggregate job id as the required check surface.
+
+### Phase 3 - Workflow And Docs
+
+- [x] Split full frontend typechecks and frontend coverage shards into separate jobs with an aggregate `full-frontend-tests` result.
+- [x] Update Code Quality CI classifier syntax checks for the new scripts/tests.
+- [x] Document the sharded coverage shape and runner-minute tradeoff.
+
+### Delivery
+
+- [x] Run local validation: shell syntax, new script tests, actionlint on touched workflows, focused lizard on new shell scripts, and `git diff --check`.
+- [x] Run a local shard/merge proof for frontend coverage if dependency setup succeeds in the worktree.
+- [ ] Commit, push, open PR, monitor checks, fix failures, and merge successfully.
+- [ ] Verify merge, record durations, clean up the PR branch/worktree safely, and leave the primary dirty worktree untouched.
+
+## Review
+
+- Pending.
+
+---
+
 # Active Task: Full Lane Typecheck/Coverage Parallelization
 
 Status: complete

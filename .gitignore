@@ -39,6 +39,7 @@ sanctuary-backup-*.json
 # Test outputs
 coverage/
 coverage-*/
+.vitest-reports/
 junit.xml
 *.lcov
 playwright-report/
