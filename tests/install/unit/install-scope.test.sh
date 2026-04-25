@@ -83,6 +83,9 @@ assert_scope() {
 main() {
   local temp_dir repo_dir output_file base_sha head_sha
 
+  unset GITHUB_REF GITHUB_EVENT_NAME GITHUB_SHA \
+    WORKFLOW_INPUT_TEST_SUITE PR_BASE_SHA PR_HEAD_SHA
+
   temp_dir="$(mktemp -d)"
   trap 'rm -rf "'"$temp_dir"'"' EXIT
   repo_dir="$temp_dir/repo"
