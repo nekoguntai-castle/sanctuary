@@ -9,21 +9,25 @@ redact_stream() {
     awk '
     {
         line = $0
-        while (match(line, /[A-Za-z0-9_]*(SECRET|PASSWORD|TOKEN|KEY|SALT|COOKIE|CREDENTIAL)[A-Za-z0-9_]*=[^[:space:]|",;<]+/)) {
+        lower_line = tolower(line)
+        while (match(lower_line, /[a-z0-9_]*(secret|password|token|key|salt|cookie|credential|jobid|job_id)[a-z0-9_]*=[^[:space:]|",;<]+/)) {
             token = substr(line, RSTART, RLENGTH)
             key = token
             sub(/=.*/, "", key)
             line = substr(line, 1, RSTART - 1) key "=<redacted>" substr(line, RSTART + RLENGTH)
+            lower_line = tolower(line)
         }
-        while (match(line, /"[A-Za-z0-9_]*(SECRET|PASSWORD|TOKEN|KEY|SALT|COOKIE|CREDENTIAL)[A-Za-z0-9_]*"[[:space:]]*:[[:space:]]*"[^"<]*"/)) {
+        while (match(lower_line, /"[a-z0-9_]*(secret|password|token|key|salt|cookie|credential|jobid|job_id)[a-z0-9_]*"[[:space:]]*:[[:space:]]*"[^"<]*"/)) {
             token = substr(line, RSTART, RLENGTH)
             sub(/:[[:space:]]*"[^"]*"$/, ": \"<redacted>\"", token)
             line = substr(line, 1, RSTART - 1) token substr(line, RSTART + RLENGTH)
+            lower_line = tolower(line)
         }
-        while (match(line, /(Authorization|authorization|Cookie|cookie|X-CSRF-Token|x-csrf-token):[[:space:]]*[^[:space:]",;<]+/)) {
+        while (match(lower_line, /(authorization|cookie|x-csrf-token):[[:space:]]*[^[:space:]",;<]+/)) {
             token = substr(line, RSTART, RLENGTH)
             sub(/:.*/, ": <redacted>", token)
             line = substr(line, 1, RSTART - 1) token substr(line, RSTART + RLENGTH)
+            lower_line = tolower(line)
         }
         print line
     }'

@@ -216,21 +216,32 @@ ENCRYPTION_KEY=key-material
 POSTGRES_PASSWORD=db-password
 {"JWT_SECRET":"json-secret","HTTPS_PORT":"8443"}
 Request header X-CSRF-Token: csrf-token
+Worker queue cleanup oldKey=repeat:sync:mainnet:*/5 newJobId=repeat:sync:mainnet:*/5
+{"apiKey":"json-api-key","safe":"visible"}
 EOF
 
   redact_file "$log_file" "$redacted_file"
 
   local redacted
+  local failures=0
   redacted="$(cat "$redacted_file")"
 
-  assert_contains "$redacted" "ENCRYPTION_KEY=<redacted>" "key material should be redacted in logs"
-  assert_contains "$redacted" "POSTGRES_PASSWORD=<redacted>" "password should be redacted in logs"
-  assert_contains "$redacted" '"JWT_SECRET": "<redacted>"' "JSON secret should be redacted in logs"
-  assert_contains "$redacted" '"HTTPS_PORT":"8443"' "non-secret JSON fields should remain visible"
-  assert_not_contains "$redacted" "key-material" "raw key material must not leak"
-  assert_not_contains "$redacted" "db-password" "raw password must not leak"
-  assert_not_contains "$redacted" "json-secret" "raw JSON secret must not leak"
-  assert_not_contains "$redacted" "csrf-token" "CSRF token must not leak"
+  assert_contains "$redacted" "ENCRYPTION_KEY=<redacted>" "key material should be redacted in logs" || failures=1
+  assert_contains "$redacted" "POSTGRES_PASSWORD=<redacted>" "password should be redacted in logs" || failures=1
+  assert_contains "$redacted" '"JWT_SECRET": "<redacted>"' "JSON secret should be redacted in logs" || failures=1
+  assert_contains "$redacted" "oldKey=<redacted>" "camelCase key fields should be redacted in logs" || failures=1
+  assert_contains "$redacted" "newJobId=<redacted>" "job ID fields should be redacted in logs" || failures=1
+  assert_contains "$redacted" '"apiKey": "<redacted>"' "camelCase JSON key fields should be redacted in logs" || failures=1
+  assert_contains "$redacted" '"HTTPS_PORT":"8443"' "non-secret JSON fields should remain visible" || failures=1
+  assert_contains "$redacted" '"safe":"visible"' "non-secret JSON fields should remain visible" || failures=1
+  assert_not_contains "$redacted" "key-material" "raw key material must not leak" || failures=1
+  assert_not_contains "$redacted" "db-password" "raw password must not leak" || failures=1
+  assert_not_contains "$redacted" "json-secret" "raw JSON secret must not leak" || failures=1
+  assert_not_contains "$redacted" "json-api-key" "raw camelCase JSON key material must not leak" || failures=1
+  assert_not_contains "$redacted" "repeat:sync:mainnet" "raw queue key material must not leak" || failures=1
+  assert_not_contains "$redacted" "csrf-token" "CSRF token must not leak" || failures=1
+
+  return "$failures"
 }
 
 test_browser_refresh_smoke_sends_csrf_header() {
