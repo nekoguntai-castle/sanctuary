@@ -152,7 +152,9 @@ The merge/main gate exists to prove the final candidate, not every local-sized c
 
 `Test Suite` full lane runs on `main`, schedule, manual dispatch, and merge queue. On merge-queue and push events, it first classifies changed paths and runs only the relevant full lanes. Schedule and manual dispatch set `full_scan=true` and remain exhaustive.
 
-- Full backend typecheck, unit coverage, and integration tests for backend changes, test-workflow changes, or exhaustive runs. These run as parallel matrix targets under the `full-backend-tests` job ID so unit coverage and integration no longer wait behind each other. Backend integration tests run as deterministic groups from `scripts/ci/backend-integration-groups.sh`, while the aggregate `full-backend-tests` result and `backend-coverage` artifact name stay stable for branch protection and summaries.
+- Full backend source tests for backend changes, test-workflow changes, or exhaustive runs. Typecheck and unit coverage run as parallel matrix targets, and the unit coverage target keeps publishing the stable `backend-coverage` artifact.
+- Full backend integration tests for integration-sensitive backend changes, test-workflow changes, or exhaustive runs. Integration-sensitive paths include API routes, middleware, repositories, Prisma migrations, worker/queue infrastructure, package/config files, and integration tests. Clearly unit-scoped backend helpers skip the DB-backed integration groups on merge/main but still run backend source tests.
+- `Full Backend Tests` remains the aggregate backend result consumed by `Full Test Summary`, so branch protection does not depend on path-conditional source or integration leaf jobs.
 - Full frontend app typecheck, test typecheck, and threshold-enforced coverage for frontend changes, test-workflow changes, or exhaustive runs. Typechecks run in a small matrix, while frontend coverage runs as two Vitest shard jobs that upload blob reports. A merge job then combines those blobs, generates the normal `coverage/` output, and enforces the existing coverage thresholds once. The `full-frontend-tests` job remains the aggregate result consumed by `Full Test Summary`.
 - Full gateway coverage for gateway changes, test-workflow changes, or exhaustive runs.
 - Critical mutation gate for critical mutation paths or exhaustive runs.
@@ -217,7 +219,7 @@ Use the duration helper when tuning a completed run:
 bash scripts/ci/report-workflow-durations.sh <run-id>
 ```
 
-The helper uses `gh run view --json jobs` and prints the longest jobs first. The full frontend and backend jobs also wrap their long typecheck, coverage, and integration steps with `scripts/ci/time-command.sh`, so use the job log timing notices to decide whether the next split should target frontend coverage, backend integration tests, or setup overhead.
+The helper uses `gh run view --json jobs` and prints the longest jobs first. The full frontend jobs and the backend source/integration jobs also wrap their long typecheck, coverage, and integration steps with `scripts/ci/time-command.sh`, so use the job log timing notices to decide whether the next split should target frontend coverage, backend integration tests, or setup overhead.
 
 Use the trend helper before changing a workflow shape:
 
