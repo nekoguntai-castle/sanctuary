@@ -105,6 +105,21 @@ EOF_DOC
   assert_exact_output "$output_file" "build_changed" "false"
 
   base_sha="$head_sha"
+  printf '#!/usr/bin/env bash\necho integration groups\n' > "$repo_dir/scripts/ci/backend-integration-groups.sh"
+  git -C "$repo_dir" add scripts/ci/backend-integration-groups.sh
+  git -C "$repo_dir" commit -qm "backend integration groups script"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_exact_output "$output_file" "test_suite_changed" "true"
+  assert_exact_output "$output_file" "frontend_changed" "false"
+  assert_exact_output "$output_file" "backend_changed" "false"
+  assert_exact_output "$output_file" "gateway_changed" "false"
+  assert_exact_output "$output_file" "browser_smoke_changed" "true"
+  assert_exact_output "$output_file" "render_changed" "true"
+  assert_exact_output "$output_file" "build_changed" "true"
+
+  base_sha="$head_sha"
   printf '#!/usr/bin/env bash\necho shard\n' > "$repo_dir/scripts/ci/frontend-coverage-shard.sh"
   git -C "$repo_dir" add scripts/ci/frontend-coverage-shard.sh
   git -C "$repo_dir" commit -qm "frontend coverage shard script"
