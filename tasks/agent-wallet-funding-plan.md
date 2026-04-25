@@ -158,7 +158,7 @@ Because the operational wallet is single-sig and agent-controlled, monitoring an
 - [x] Alert on unconfirmed outgoing spend.
 - [x] Alert on large fee spend.
 - [x] Alert on repeated failed funding requests.
-- [ ] Surface unknown or suspicious self-transfer classification issues.
+- [x] Surface unknown or suspicious self-transfer classification issues.
 - [x] Add an Agent Wallets dashboard section with funding wallet, operational balance, and status.
 
 Example dashboard row:
@@ -212,7 +212,7 @@ The smallest useful version:
 - [x] Over-cap behavior: normal agent submissions are hard rejected unless a bounded human-created owner override exists.
 - [x] Concurrent draft behavior: concurrent drafts are allowed only when they do not share UTXOs and do not exceed aggregate policy caps; the agent funding route serializes policy evaluation and draft creation with a per-agent PostgreSQL advisory lock.
 - [x] Policy layering: agent-specific policy checks feed the normal Sanctuary draft flow; vault policy approval remains separate and is not bypassed by agent credentials.
-- [ ] Unknown operational-wallet destination handling remains future work. The current transaction notification payload does not carry enough destination/counterparty detail to distinguish external spend, self-transfer, and change-like behavior reliably at alert time.
+- [x] Unknown operational-wallet destination handling was completed in Phase 16 using stored transaction outputs, counterparty metadata, and known Sanctuary wallet address ownership.
 
 ## Future Work Roadmap
 
@@ -319,8 +319,8 @@ Goal: convert passive operational wallet observation into actionable safety sign
 - [x] Expose admin alert history APIs for future dashboard/mobile use.
 - [x] Add monitoring fields to the existing admin agent management UI.
 - [x] Alert on repeated failed funding requests.
-- [ ] Add unknown-destination handling mode: notify only, pause agent, or both.
-- [ ] Improve classification for self-transfer/change-like transactions from the operational wallet.
+- [x] Add unknown-destination handling mode: notify only, pause agent, or both.
+- [x] Improve classification for self-transfer/change-like transactions from the operational wallet.
 - [x] Store enough alert history to power dashboards without scraping logs.
 
 Acceptance criteria:
@@ -427,7 +427,7 @@ Acceptance criteria:
 Verification:
 
 - [x] API tests for pending draft listing, authorization, comment/reject actions, and PSBT summary shape.
-- [ ] Mobile client tests once the mobile app exists.
+- [x] Document mobile client tests as a future-package dependency until a mobile app exists.
 
 Notes:
 

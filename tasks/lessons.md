@@ -365,3 +365,25 @@ Patterns to remember from CI corrections, surprising debugs, and reviews. Writte
 - Keep per-lane constants in one helper, then source it from the harness and unit tests.
 - Local docs should show ordinary commands first. Put env overrides in an "only when needed" section.
 - When a user corrects command style, patch the harness or docs so the corrected behavior becomes automatic rather than a memory burden.
+
+## Completed task logs must not keep live-task markers
+
+**Rule:** After a PR, release, or cleanup task is merged and verified, update `tasks/todo.md` in the same cleanup pass: change `Active Task` to `Completed Task`, mark delivery checkboxes complete, and remove or annotate stale "pending" language.
+
+**Why:** I reported that stash cleanup was done while `tasks/todo.md` still had historical sections labeled active and old unchecked delivery items. That made the task tracker look like there was live work even though the referenced PRs and fixes had already merged.
+
+**How to apply:**
+- Before answering "next steps," run `rg -n "Status: in progress|^- \\[ \\]|Active Task|pending|awaiting" tasks/todo.md` and classify each hit.
+- If a referenced PR has merged, record the PR number/merge evidence and mark the task complete instead of leaving a stale checkbox.
+- Keep genuine backlog as prose or a fresh task, not as old phase checkboxes from already-implemented plans.
+
+## Valid follow-up notes need explicit backlog shape
+
+**Rule:** When completed task reviews still contain valid follow-up ideas, promote them into one explicit backlog section with scope, guardrails, verification, and start conditions instead of leaving them buried as scattered "next" prose.
+
+**Why:** I cleaned stale task markers but initially left useful CI and test-debt follow-ups only inside old review notes. That made it hard to tell which ideas were current work candidates and which were historical context.
+
+**How to apply:**
+- Re-scan `tasks/todo.md` for `follow-up`, `next target`, `residual`, `future work`, and unchecked boxes after stale cleanup.
+- Promote still-valid items to a top-level backlog with concrete exit criteria and source-aware constraints.
+- Mark resolved or blocked items as historical or conditional so they do not look like active work.
