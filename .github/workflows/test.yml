@@ -36,6 +36,7 @@ on:
       - 'tsconfig*.json'
       - 'server/tsconfig*.json'
       - 'vitest.config.ts'
+      - 'vitest.coverage-shard.config.ts'
       - 'server/vitest.config.ts'
       - 'gateway/vitest.config.ts'
       - 'playwright.config.ts'
@@ -606,8 +607,8 @@ jobs:
             server/junit.xml
           retention-days: 14
 
-  full-frontend-tests:
-    name: Full Frontend Tests (${{ matrix.target }})
+  full-frontend-typechecks:
+    name: Full Frontend Typecheck (${{ matrix.target }})
     if: >-
       always() &&
       github.event_name != 'pull_request' &&
@@ -623,7 +624,6 @@ jobs:
         target:
           - app-typecheck
           - test-typecheck
-          - coverage
 
     steps:
       - name: Checkout repository
@@ -647,17 +647,140 @@ jobs:
         if: matrix.target == 'test-typecheck'
         run: scripts/ci/time-command.sh "frontend test typecheck" npm run typecheck:tests
 
-      - name: Run frontend coverage (threshold-enforced)
-        if: matrix.target == 'coverage'
-        run: scripts/ci/time-command.sh "frontend coverage" npm run test:coverage
+  full-frontend-coverage-shards:
+    name: Full Frontend Coverage (shard ${{ matrix.shard }}/2)
+    if: >-
+      always() &&
+      github.event_name != 'pull_request' &&
+      (needs.detect-changes.outputs.full_scan == 'true' ||
+       needs.detect-changes.outputs.test_suite_changed == 'true' ||
+       needs.detect-changes.outputs.frontend_changed == 'true' ||
+       needs.detect-changes.outputs.e2e_changed == 'true')
+    runs-on: ubuntu-latest
+    needs: [detect-changes]
+    strategy:
+      fail-fast: false
+      matrix:
+        shard:
+          - 1
+          - 2
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run frontend coverage shard
+        run: scripts/ci/time-command.sh "frontend coverage shard ${{ matrix.shard }}/2" npm run test:coverage:shard -- ${{ matrix.shard }} 2
+
+      - name: Upload frontend coverage blob
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: frontend-coverage-blob-${{ matrix.shard }}
+          path: .vitest-reports/blob-${{ matrix.shard }}-2.json
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
+
+  full-frontend-coverage-merge:
+    name: Full Frontend Coverage Merge
+    if: >-
+      always() &&
+      github.event_name != 'pull_request' &&
+      needs.full-frontend-coverage-shards.result == 'success' &&
+      (needs.detect-changes.outputs.full_scan == 'true' ||
+       needs.detect-changes.outputs.test_suite_changed == 'true' ||
+       needs.detect-changes.outputs.frontend_changed == 'true' ||
+       needs.detect-changes.outputs.e2e_changed == 'true')
+    runs-on: ubuntu-latest
+    needs: [detect-changes, full-frontend-coverage-shards]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download frontend coverage shard 1
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: frontend-coverage-blob-1
+          path: .vitest-reports/
+
+      - name: Download frontend coverage shard 2
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: frontend-coverage-blob-2
+          path: .vitest-reports/
+
+      - name: Merge frontend coverage (threshold-enforced)
+        run: scripts/ci/time-command.sh "frontend coverage merge" npm run test:coverage:merge -- .vitest-reports
 
       - name: Upload frontend coverage
-        if: always() && matrix.target == 'coverage'
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: frontend-coverage
           path: coverage/
+          if-no-files-found: ignore
           retention-days: 14
+
+  full-frontend-tests:
+    name: Full Frontend Tests
+    if: >-
+      always() &&
+      github.event_name != 'pull_request' &&
+      (needs.detect-changes.outputs.full_scan == 'true' ||
+       needs.detect-changes.outputs.test_suite_changed == 'true' ||
+       needs.detect-changes.outputs.frontend_changed == 'true' ||
+       needs.detect-changes.outputs.e2e_changed == 'true')
+    runs-on: ubuntu-latest
+    needs: [detect-changes, full-frontend-typechecks, full-frontend-coverage-merge]
+
+    steps:
+      - name: Check frontend lane result
+        env:
+          FRONTEND_TYPECHECKS: ${{ needs.full-frontend-typechecks.result }}
+          FRONTEND_COVERAGE: ${{ needs.full-frontend-coverage-merge.result }}
+        run: |
+          failed=false
+
+          require_success() {
+            name="$1"
+            result="$2"
+
+            if [ "$result" != "success" ]; then
+              echo "::error::$name result was $result; expected success"
+              failed=true
+            else
+              echo "$name: $result"
+            fi
+          }
+
+          require_success "Full Frontend Typechecks" "$FRONTEND_TYPECHECKS"
+          require_success "Full Frontend Coverage Merge" "$FRONTEND_COVERAGE"
+
+          if [ "$failed" = "true" ]; then
+            exit 1
+          fi
 
   full-gateway-tests:
     name: Full Gateway Tests
