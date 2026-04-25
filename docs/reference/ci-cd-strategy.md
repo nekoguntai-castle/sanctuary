@@ -218,6 +218,15 @@ bash scripts/ci/report-workflow-durations.sh <run-id>
 
 The helper uses `gh run view --json jobs` and prints the longest jobs first. The full frontend and backend jobs also wrap their long typecheck, coverage, and integration steps with `scripts/ci/time-command.sh`, so use the job log timing notices to decide whether the next split should target frontend coverage, backend integration tests, or setup overhead.
 
+Use the trend helper before changing a workflow shape:
+
+```bash
+bash scripts/ci/report-workflow-trends.sh --workflow test.yml --event merge_group --limit 20
+bash scripts/ci/report-workflow-trends.sh --workflow install-test.yml --limit 20
+```
+
+The trend helper fetches recent successful runs, sums job durations as runner time, reports wall-time and runner-time p50/p90, and lists the longest job per run. Keep PR quick gates, merge-group gates, release/install gates, and scheduled/manual runs separate; a combined average hides the cost model. Do not shard or add setup reuse for a lane unless the p90 trend shows it is still a real tail.
+
 The frontend/backend matrix split intentionally trades extra runner minutes for lower merge-queue wall time. Keep coverage artifact names stable (`frontend-coverage`, `backend-coverage`) so `Full Test Summary` remains the branch-protection aggregate. Frontend coverage now shards execution with Vitest blob reports and enforces thresholds only in the merge job; if it becomes the long pole again, increase the shard count only after measuring shard balance and merge overhead from workflow durations.
 
 Backend integration tests now use deterministic groups in `scripts/ci/backend-integration-groups.sh`. Run the group check after adding, removing, or renaming an integration spec:
