@@ -251,8 +251,25 @@ EOF_DOC
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
 
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_exact_output "$output_file" "frontend_changed" "false"
+  assert_exact_output "$output_file" "backend_changed" "false"
   assert_exact_output "$output_file" "e2e_changed" "true"
   assert_exact_output "$output_file" "browser_smoke_changed" "false"
+  assert_exact_output "$output_file" "render_changed" "true"
+  assert_exact_output "$output_file" "build_changed" "false"
+
+  base_sha="$head_sha"
+  printf 'export default {};\n' > "$repo_dir/playwright.config.ts"
+  git -C "$repo_dir" add playwright.config.ts
+  git -C "$repo_dir" commit -qm "playwright config"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_exact_output "$output_file" "frontend_changed" "false"
+  assert_exact_output "$output_file" "backend_changed" "false"
+  assert_exact_output "$output_file" "backend_integration_changed" "false"
+  assert_exact_output "$output_file" "e2e_changed" "true"
+  assert_exact_output "$output_file" "browser_smoke_changed" "true"
   assert_exact_output "$output_file" "render_changed" "true"
   assert_exact_output "$output_file" "build_changed" "false"
 
@@ -264,6 +281,8 @@ EOF_DOC
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
 
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_exact_output "$output_file" "frontend_changed" "false"
+  assert_exact_output "$output_file" "backend_changed" "false"
   assert_exact_output "$output_file" "e2e_changed" "true"
   assert_exact_output "$output_file" "browser_smoke_changed" "true"
   assert_exact_output "$output_file" "render_changed" "false"
