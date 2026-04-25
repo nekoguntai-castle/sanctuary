@@ -165,6 +165,7 @@ jobs:
           bash -n scripts/ci/classify-codeql-languages.sh
           bash -n scripts/ci/classify-quality-scope.sh
           bash -n scripts/ci/browser-e2e-groups.sh
+          bash -n scripts/ci/backend-integration-groups.sh
           bash -n scripts/ci/frontend-coverage-shard.sh
           bash -n scripts/ci/frontend-coverage-merge.sh
           bash -n scripts/ci/time-command.sh
@@ -173,11 +174,13 @@ jobs:
           bash -n tests/ci/classify-codeql-languages.test.sh
           bash -n tests/ci/classify-quality-scope.test.sh
           bash -n tests/ci/browser-e2e-groups.test.sh
+          bash -n tests/ci/backend-integration-groups.test.sh
           bash -n tests/ci/frontend-coverage-scripts.test.sh
           bash tests/ci/classify-test-changes.test.sh
           bash tests/ci/classify-codeql-languages.test.sh
           bash tests/ci/classify-quality-scope.test.sh
           bash tests/ci/browser-e2e-groups.test.sh
+          bash tests/ci/backend-integration-groups.test.sh
           bash tests/ci/frontend-coverage-scripts.test.sh
 
   lizard:

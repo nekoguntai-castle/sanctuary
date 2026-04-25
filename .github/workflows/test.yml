@@ -532,7 +532,10 @@ jobs:
         target:
           - typecheck
           - unit-coverage
-          - integration
+          - integration-flows
+          - integration-repositories-core
+          - integration-repositories-sharing
+          - integration-ops-workers
 
     services:
       postgres:
@@ -588,14 +591,26 @@ jobs:
         run: ${{ github.workspace }}/scripts/ci/time-command.sh "backend unit coverage" npm run test:unit -- --coverage
 
       - name: Run integration tests
-        if: matrix.target == 'integration'
+        if: startsWith(matrix.target, 'integration-')
         working-directory: ${{ github.workspace }}/server
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/sanctuary_test?schema=public
           JWT_SECRET: test-jwt-secret-for-ci-minimum-32-chars
           ENCRYPTION_KEY: test-encryption-key-32-chars-long!
           NODE_ENV: test
-        run: ${{ github.workspace }}/scripts/ci/time-command.sh "backend integration tests" npm run test:integration
+        run: |
+          target="${{ matrix.target }}"
+          group="${target#integration-}"
+          mapfile -t specs < <("${{ github.workspace }}/scripts/ci/backend-integration-groups.sh" "$group")
+
+          if [ "${#specs[@]}" -eq 0 ]; then
+            echo "::error::No backend integration specs found for group ${group}"
+            exit 1
+          fi
+
+          "${{ github.workspace }}/scripts/ci/time-command.sh" \
+            "backend integration ${group}" \
+            npx vitest run --no-file-parallelism --maxWorkers 1 "${specs[@]}"
 
       - name: Upload backend coverage
         if: always() && matrix.target == 'unit-coverage'

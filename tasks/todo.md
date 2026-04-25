@@ -1,3 +1,64 @@
+# Active Task: Backend Integration Group Split
+
+Status: in progress
+
+Goal: reduce the current Test Suite long pole by splitting full backend integration tests into deterministic parallel groups while preserving the existing `full-backend-tests` aggregate gate and backend coverage artifact behavior.
+
+## Worktree Constraint
+
+- This batch runs in `/tmp/sanctuary-backend-integration` on `ci/backend-integration-groups` so the dirty primary worktree at `/home/nekoguntai/sanctuary` remains untouched.
+- The primary worktree has unrelated local `tasks/todo.md` state and an unrelated active `/tmp/sanctuary-stash-followup` worktree. Do not stash, reset, pull over, or rewrite either from this batch.
+
+## Current Evidence
+
+- PR #143 merge-group Test Suite made `Full Backend Tests (integration)` the longest Test Suite job at 3m23s.
+- The timed integration command inside that job took 2m12s; setup, migrations, and teardown accounted for the remainder.
+- Frontend coverage is now balanced enough after sharding at 2m56s and 2m59s, so backend integration is the next useful Test Suite target.
+
+## Implementation Checklist
+
+### Phase 1 - Deterministic Integration Groups
+
+- [x] Add a backend integration grouping script with stable group names and server-relative spec paths.
+- [x] Add a group coverage check that fails on duplicate, missing, or unknown integration spec assignments.
+- [x] Add a focused shell regression test for the grouping script.
+
+### Phase 2 - Workflow Split
+
+- [x] Replace the single backend `integration` matrix target with parallel integration group targets.
+- [x] Keep `full-backend-tests` as the aggregate result consumed by `Full Test Summary`.
+- [x] Keep backend unit coverage artifact upload unchanged and unique to the unit coverage target.
+
+### Phase 3 - Documentation And Validation
+
+- [x] Update Code Quality CI classifier syntax checks for the new grouping script/test.
+- [x] Document the backend integration group split and runner-minute tradeoff in CI strategy docs.
+- [x] Run local validation: shell syntax, grouping regression tests, actionlint on touched workflows, `git diff --check`, and focused lizard on new shell scripts.
+
+### Delivery
+
+- [ ] Commit, push, open PR, monitor checks, fix failures, and merge successfully using `pr-delivery`.
+- [ ] Verify merge, record durations, clean up the PR branch/worktree safely, and leave the primary dirty worktree untouched.
+
+## Review
+
+- Local validation passed:
+  - `bash -n scripts/ci/backend-integration-groups.sh tests/ci/backend-integration-groups.test.sh scripts/ci/classify-test-changes.sh tests/ci/classify-test-changes.test.sh`
+  - `bash scripts/ci/backend-integration-groups.sh --check`
+  - `bash tests/ci/backend-integration-groups.test.sh`
+  - `bash tests/ci/classify-test-changes.test.sh`
+  - `bash tests/ci/classify-codeql-languages.test.sh`
+  - `bash tests/ci/classify-quality-scope.test.sh`
+  - `bash tests/ci/browser-e2e-groups.test.sh`
+  - `bash tests/ci/frontend-coverage-scripts.test.sh`
+  - `/tmp/actionlint-1.7.12/actionlint -color -shellcheck= .github/workflows/test.yml .github/workflows/quality.yml`
+  - `git diff --check`
+  - `PYTHONPATH=/tmp/sanctuary-lizard-local python3 -m lizard -C 15 -l shell scripts/ci/backend-integration-groups.sh tests/ci/backend-integration-groups.test.sh`
+- Full backend integration execution is intentionally left to merge-queue CI because this worktree does not have local Node dependencies installed and the change is the CI partitioning layer rather than backend test behavior.
+- PR delivery is pending.
+
+---
+
 # Active Task: Stash-Derived Settings Accessibility Follow-Up
 
 Status: complete
