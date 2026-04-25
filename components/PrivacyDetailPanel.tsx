@@ -9,6 +9,12 @@ import React, { useState, useEffect } from 'react';
 import { X, Shield, AlertTriangle, ChevronDown, ChevronUp, Info, ExternalLink } from 'lucide-react';
 import type { UtxoPrivacyInfo, PrivacyFactor } from '../src/api/transactions';
 import { useCurrency } from '../contexts/CurrencyContext';
+import {
+  normalizePrivacyGrade,
+  normalizePrivacyList,
+  normalizePrivacyScore,
+  type PrivacyGrade,
+} from './privacyScoreUtils';
 
 interface PrivacyDetailPanelProps {
   utxo: {
@@ -54,7 +60,7 @@ const FACTOR_DESCRIPTIONS: Record<string, { name: string; description: string }>
 /**
  * Get the grade label and color configuration
  */
-function getGradeConfig(grade: 'excellent' | 'good' | 'fair' | 'poor') {
+function getGradeConfig(grade: PrivacyGrade) {
   const configs = {
     excellent: {
       label: 'Excellent',
@@ -92,8 +98,9 @@ function getGradeConfig(grade: 'excellent' | 'good' | 'fair' | 'poor') {
  * Privacy Score Gauge Component
  * Displays a horizontal progress bar showing the score position on a 0-100 scale
  */
-function PrivacyScoreGauge({ score, grade }: { score: number; grade: 'excellent' | 'good' | 'fair' | 'poor' }) {
+function PrivacyScoreGauge({ score, grade }: { score: number; grade: PrivacyGrade }) {
   const config = getGradeConfig(grade);
+  const normalizedScore = normalizePrivacyScore(score);
 
   return (
     <div className="w-full">
@@ -119,14 +126,14 @@ function PrivacyScoreGauge({ score, grade }: { score: number; grade: 'excellent'
         {/* Score indicator */}
         <div
           className={`absolute top-0 bottom-0 ${config.progressColor} transition-all duration-500 ease-out rounded-full`}
-          style={{ width: `${Math.min(100, Math.max(0, score))}%` }}
+          style={{ width: `${normalizedScore}%` }}
         />
 
         {/* Score position marker */}
         <div
           className="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-white dark:bg-sanctuary-900 border-2 shadow-sm transition-all duration-500 ease-out"
           style={{
-            left: `calc(${Math.min(100, Math.max(0, score))}% - 8px)`,
+            left: `calc(${normalizedScore}% - 8px)`,
             borderColor: 'currentColor',
           }}
         >
@@ -250,7 +257,11 @@ export function PrivacyDetailPanel({ utxo, privacyInfo, onClose }: PrivacyDetail
   const { format } = useCurrency();
   const [isVisible, setIsVisible] = useState(false);
 
-  const { score, grade, factors, warnings } = privacyInfo.score;
+  const scoreData = privacyInfo?.score;
+  const score = normalizePrivacyScore(scoreData?.score);
+  const grade = normalizePrivacyGrade(scoreData?.grade);
+  const factors = normalizePrivacyList<PrivacyFactor>(scoreData?.factors);
+  const warnings = normalizePrivacyList<string>(scoreData?.warnings);
   const config = getGradeConfig(grade);
 
   // Animate in on mount

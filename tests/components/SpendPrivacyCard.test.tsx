@@ -35,6 +35,12 @@ describe('SpendPrivacyCard', () => {
 
       expect(screen.getByText('100')).toBeInTheDocument();
     });
+
+    it('normalizes invalid runtime score values', () => {
+      render(<SpendPrivacyCard analysis={createMockAnalysis({ score: 155 })} />);
+
+      expect(screen.getByText('100')).toBeInTheDocument();
+    });
   });
 
   describe('Grade badge display', () => {
@@ -58,6 +64,12 @@ describe('SpendPrivacyCard', () => {
 
     it('shows "Poor" badge for poor grade', () => {
       render(<SpendPrivacyCard analysis={createMockAnalysis({ grade: 'poor' })} />);
+
+      expect(screen.getByText('Poor')).toBeInTheDocument();
+    });
+
+    it('falls back to poor for invalid runtime grades', () => {
+      render(<SpendPrivacyCard analysis={createMockAnalysis({ grade: 'invalid' as any })} />);
 
       expect(screen.getByText('Poor')).toBeInTheDocument();
     });
@@ -138,6 +150,19 @@ describe('SpendPrivacyCard', () => {
       );
 
       expect(screen.getByText('Warnings')).toBeInTheDocument();
+    });
+
+    it('normalizes invalid runtime warnings to an empty list', () => {
+      render(
+        <SpendPrivacyCard
+          analysis={createMockAnalysis({
+            warnings: null as any,
+          })}
+        />
+      );
+
+      expect(screen.queryByText('Warnings')).not.toBeInTheDocument();
+      expect(screen.queryByText(/Show.*More/)).not.toBeInTheDocument();
     });
   });
 

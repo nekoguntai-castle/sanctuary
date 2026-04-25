@@ -43,6 +43,16 @@ describe('AddressesTab address helpers', () => {
     expect(isChangeAddress(address({ derivationPath: 'm' }))).toBe(false);
   });
 
+  it('treats malformed missing derivation paths as receive addresses', () => {
+    const malformed = address({ derivationPath: undefined as unknown as string });
+
+    expect(isChangeAddress(malformed)).toBe(false);
+    expect(splitAddresses([malformed])).toEqual({
+      receiveAddresses: [malformed],
+      changeAddresses: [],
+    });
+  });
+
   it('formats positive balances, used-zero balances, and unused fallbacks', () => {
     const format = (sats: number) => `${sats} sats`;
 
