@@ -83,6 +83,7 @@ EOF_DOC
   assert_exact_output "$output_file" "test_suite_changed" "false"
   assert_exact_output "$output_file" "frontend_changed" "false"
   assert_exact_output "$output_file" "backend_changed" "false"
+  assert_exact_output "$output_file" "backend_integration_changed" "false"
   assert_exact_output "$output_file" "browser_smoke_changed" "false"
   assert_exact_output "$output_file" "render_changed" "false"
   assert_exact_output "$output_file" "build_changed" "false"
@@ -99,6 +100,7 @@ EOF_DOC
   assert_exact_output "$output_file" "test_suite_changed" "false"
   assert_exact_output "$output_file" "frontend_changed" "false"
   assert_exact_output "$output_file" "backend_changed" "false"
+  assert_exact_output "$output_file" "backend_integration_changed" "false"
   assert_exact_output "$output_file" "gateway_changed" "false"
   assert_exact_output "$output_file" "browser_smoke_changed" "false"
   assert_exact_output "$output_file" "render_changed" "false"
@@ -114,6 +116,7 @@ EOF_DOC
   assert_exact_output "$output_file" "test_suite_changed" "true"
   assert_exact_output "$output_file" "frontend_changed" "false"
   assert_exact_output "$output_file" "backend_changed" "false"
+  assert_exact_output "$output_file" "backend_integration_changed" "false"
   assert_exact_output "$output_file" "gateway_changed" "false"
   assert_exact_output "$output_file" "browser_smoke_changed" "true"
   assert_exact_output "$output_file" "render_changed" "true"
@@ -129,6 +132,7 @@ EOF_DOC
   assert_exact_output "$output_file" "test_suite_changed" "true"
   assert_exact_output "$output_file" "frontend_changed" "false"
   assert_exact_output "$output_file" "backend_changed" "false"
+  assert_exact_output "$output_file" "backend_integration_changed" "false"
   assert_exact_output "$output_file" "gateway_changed" "false"
   assert_exact_output "$output_file" "browser_smoke_changed" "true"
   assert_exact_output "$output_file" "render_changed" "true"
@@ -144,6 +148,7 @@ EOF_DOC
   assert_exact_output "$output_file" "test_suite_changed" "false"
   assert_exact_output "$output_file" "frontend_changed" "true"
   assert_exact_output "$output_file" "backend_changed" "false"
+  assert_exact_output "$output_file" "backend_integration_changed" "false"
   assert_exact_output "$output_file" "gateway_changed" "false"
   assert_exact_output "$output_file" "browser_smoke_changed" "false"
   assert_exact_output "$output_file" "render_changed" "false"
@@ -263,6 +268,43 @@ EOF_DOC
   assert_exact_output "$output_file" "browser_smoke_changed" "true"
   assert_exact_output "$output_file" "render_changed" "false"
   assert_exact_output "$output_file" "build_changed" "false"
+
+  base_sha="$head_sha"
+  mkdir -p "$repo_dir/server/src/services/notifications"
+  printf 'export const normalize = true;\n' > "$repo_dir/server/src/services/notifications/normalizeNotification.ts"
+  git -C "$repo_dir" add server/src/services/notifications/normalizeNotification.ts
+  git -C "$repo_dir" commit -qm "backend unit scoped helper"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_exact_output "$output_file" "backend_changed" "true"
+  assert_exact_output "$output_file" "backend_integration_changed" "false"
+  assert_contains_output "$output_file" "backend_files" "server/src/services/notifications/normalizeNotification.ts"
+
+  base_sha="$head_sha"
+  mkdir -p "$repo_dir/server/src/api/wallets"
+  printf 'export const route = true;\n' > "$repo_dir/server/src/api/wallets/settings.ts"
+  git -C "$repo_dir" add server/src/api/wallets/settings.ts
+  git -C "$repo_dir" commit -qm "backend api route"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_exact_output "$output_file" "backend_changed" "true"
+  assert_exact_output "$output_file" "backend_integration_changed" "true"
+  assert_exact_output "$output_file" "browser_smoke_changed" "true"
+
+  base_sha="$head_sha"
+  mkdir -p "$repo_dir/server/prisma/migrations/20260425000000_example"
+  printf 'SELECT 1;\n' > "$repo_dir/server/prisma/migrations/20260425000000_example/migration.sql"
+  git -C "$repo_dir" add server/prisma/migrations/20260425000000_example/migration.sql
+  git -C "$repo_dir" commit -qm "backend migration"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_exact_output "$output_file" "backend_changed" "true"
+  assert_exact_output "$output_file" "backend_integration_changed" "true"
+  assert_exact_output "$output_file" "browser_smoke_changed" "true"
+  assert_exact_output "$output_file" "build_changed" "true"
 
   echo "classify-test-changes regression checks passed"
 }

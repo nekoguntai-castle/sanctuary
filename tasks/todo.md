@@ -1,3 +1,38 @@
+# Active Task: CI/CD Test Speed Phase 2 - Backend Integration Impact Scope
+
+Status: in progress
+
+Goal: avoid DB-backed backend integration smoke on PRs where the changed backend files are clearly unit-scoped, while preserving the smoke for API, middleware, repository, Prisma, worker/queue, config, package, and integration-test surfaces.
+
+## Plan
+
+- [x] Work in an isolated worktree from `origin/main` after Phase 1 merged.
+- [x] Add a `backend_integration_changed` classifier output.
+- [x] Use that output for `Quick Backend Integration Smoke` instead of broad `backend_changed`.
+- [x] Add classifier fixtures for docs-only, backend unit-scoped helper, backend API route, and Prisma migration behavior.
+- [x] Update CI/CD strategy docs with the narrower PR smoke policy.
+- [x] Run classifier tests, workflow lint, diff check, and touched-file lizard if available.
+- [ ] Deliver through PR, monitor required checks, merge safely, and verify the merge.
+
+## Review
+
+- Added `backend_integration_changed` to `scripts/ci/classify-test-changes.sh`.
+- `Quick Backend Integration Smoke` now keys off `backend_integration_changed`, so unit-scoped backend helper changes still run backend related tests but skip the extra DB-backed smoke lane.
+- Integration-sensitive backend paths still trigger the smoke: package/config, Prisma, integration tests, API routes, middleware, repositories, infrastructure, and worker paths.
+- Added classifier fixtures for docs-only, CI-only, backend unit helper, backend API route, and Prisma migration behavior.
+- Verification passed:
+  - `bash -n scripts/ci/classify-test-changes.sh tests/ci/classify-test-changes.test.sh`
+  - `bash tests/ci/classify-test-changes.test.sh`
+  - `bash tests/ci/classify-codeql-languages.test.sh`
+  - `bash tests/ci/classify-quality-scope.test.sh`
+  - `bash tests/ci/backend-integration-groups.test.sh`
+  - `bash tests/ci/report-workflow-trends.test.sh`
+  - `/tmp/actionlint-1.7.12/actionlint -color -shellcheck= .github/workflows/test.yml`
+  - `git diff --check`
+- Touched-file lizard did not run: `npx lizard -C 15 -l shell scripts/ci/classify-test-changes.sh tests/ci/classify-test-changes.test.sh` failed because npm could not determine an executable for `lizard`.
+
+---
+
 # Active Task: CI/CD Test Speed Phase 1 - Timing Baseline Tooling
 
 Status: in progress

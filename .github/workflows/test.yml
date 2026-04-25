@@ -72,6 +72,7 @@ jobs:
       frontend_changed: ${{ steps.classify.outputs.frontend_changed }}
       frontend_files: ${{ steps.classify.outputs.frontend_files }}
       backend_changed: ${{ steps.classify.outputs.backend_changed }}
+      backend_integration_changed: ${{ steps.classify.outputs.backend_integration_changed }}
       backend_files: ${{ steps.classify.outputs.backend_files }}
       critical_mutation_changed: ${{ steps.classify.outputs.critical_mutation_changed }}
       critical_mutation_files: ${{ steps.classify.outputs.critical_mutation_files }}
@@ -217,7 +218,7 @@ jobs:
 
   quick-backend-integration-smoke:
     name: Quick Backend Integration Smoke
-    if: github.event_name == 'pull_request' && needs.detect-changes.outputs.backend_changed == 'true'
+    if: github.event_name == 'pull_request' && needs.detect-changes.outputs.backend_integration_changed == 'true'
     runs-on: ubuntu-latest
     needs: [detect-changes]
     defaults:

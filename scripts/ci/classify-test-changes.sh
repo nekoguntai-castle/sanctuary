@@ -10,6 +10,7 @@ full_scan=false
 test_suite_changed=false
 frontend_changed=false
 backend_changed=false
+backend_integration_changed=false
 critical_mutation_changed=false
 gateway_changed=false
 e2e_changed=false
@@ -42,6 +43,7 @@ emit_outputs() {
     echo "frontend_changed=$frontend_changed"
     echo "frontend_files=$frontend_files"
     echo "backend_changed=$backend_changed"
+    echo "backend_integration_changed=$backend_integration_changed"
     echo "backend_files=$backend_files"
     echo "critical_mutation_changed=$critical_mutation_changed"
     echo "critical_mutation_files=$critical_mutation_files"
@@ -59,6 +61,7 @@ mark_full_scan() {
   full_scan=true
   frontend_changed=true
   backend_changed=true
+  backend_integration_changed=true
   critical_mutation_changed=true
   gateway_changed=true
   e2e_changed=true
@@ -129,6 +132,27 @@ is_frontend_file() {
 is_backend_file() {
   case "$1" in
     server/*)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+is_backend_integration_file() {
+  case "$1" in
+    server/package.json|server/package-lock.json|server/vitest.config.ts|server/tsconfig*.json)
+      return 0
+      ;;
+    server/prisma/*|server/tests/integration/*)
+      return 0
+      ;;
+    server/src/api/*|server/src/routes.ts|server/src/index.ts)
+      return 0
+      ;;
+    server/src/middleware/*|server/src/repositories/*)
+      return 0
+      ;;
+    server/src/infrastructure/*|server/src/worker*|server/src/worker/*)
       return 0
       ;;
   esac
@@ -254,6 +278,10 @@ while IFS= read -r file; do
   if is_backend_file "$file"; then
     backend_changed=true
     append_file backend_files "$file"
+  fi
+
+  if is_backend_integration_file "$file"; then
+    backend_integration_changed=true
   fi
 
   if is_critical_mutation_file "$file"; then
