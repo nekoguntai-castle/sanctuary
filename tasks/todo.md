@@ -1,6 +1,6 @@
 # Active Task: CI/CD Test Speed Phase 5 - Backend Full Integration Scope
 
-Status: in progress
+Status: complete
 
 Goal: keep backend merge/main confidence path-aware by running DB-backed integration groups only for integration-sensitive backend changes, test workflow changes, or exhaustive runs.
 
@@ -13,7 +13,7 @@ Goal: keep backend merge/main confidence path-aware by running DB-backed integra
 - [x] Preserve stable backend coverage artifact upload from the unit coverage source target.
 - [x] Update CI/CD strategy docs with the source/integration full-lane policy.
 - [x] Run classifier tests, backend group tests, workflow lint, diff check, and touched-file lizard if available.
-- [ ] Deliver through PR, monitor required checks, merge safely, and verify the merge.
+- [x] Deliver through PR, monitor required checks, merge safely, and verify the merge.
 
 ## Review
 
@@ -36,12 +36,13 @@ Goal: keep backend merge/main confidence path-aware by running DB-backed integra
   - `/tmp/actionlint-1.7.12/actionlint -color -shellcheck= .github/workflows/test.yml`
   - `git diff --check`
 - Touched-file lizard was not applicable: this phase changed workflow YAML, docs, and task tracking, with no supported source/script file changes.
+- Delivered in PR #159; merge-group and post-merge `main` push checks completed successfully.
 
 ---
 
 # Active Task: CI/CD Test Speed Phase 4 - E2E Source Lane Scope
 
-Status: in progress
+Status: complete
 
 Goal: stop E2E-only changes from launching full backend and frontend source-test lanes on merge/main while preserving browser/render E2E confidence and broad runs for workflow or exhaustive validation.
 
@@ -53,7 +54,7 @@ Goal: stop E2E-only changes from launching full backend and frontend source-test
 - [x] Add classifier fixtures proving E2E and Playwright config paths are not backend/frontend source changes.
 - [x] Update CI/CD strategy docs with the E2E-only full-lane policy.
 - [x] Run classifier tests, workflow lint, diff check, and touched-file lizard if available.
-- [ ] Deliver through PR, monitor required checks, merge safely, and verify the merge.
+- [x] Deliver through PR, monitor required checks, merge safely, and verify the merge.
 
 ## Review
 
@@ -74,12 +75,13 @@ Goal: stop E2E-only changes from launching full backend and frontend source-test
   - `/tmp/actionlint-1.7.12/actionlint -color -shellcheck= .github/workflows/test.yml`
   - `/home/nekoguntai/sanctuary/.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -l shell scripts/ci/classify-test-changes.sh tests/ci/classify-test-changes.test.sh`
   - `git diff --check`
+- Delivered in PR #158; merge-group and post-merge `main` push checks completed successfully.
 
 ---
 
 # Active Task: CI/CD Test Speed Phase 3 - Playwright Timing Artifacts
 
-Status: in progress
+Status: complete
 
 Goal: make browser-flow and render-regression E2E cost visible at the spec level before changing grouping, retries, browser count, or shared setup.
 
@@ -91,7 +93,7 @@ Goal: make browser-flow and render-regression E2E cost visible at the spec level
 - [x] Wire the reporter regression test into the Code Quality CI classifier test job.
 - [x] Update CI/CD strategy docs with the per-spec artifact usage.
 - [x] Run focused reporter tests, CI classifier tests, workflow lint, diff check, and touched-file lizard if available.
-- [ ] Deliver through PR, monitor required checks, merge safely, and verify the merge.
+- [x] Deliver through PR, monitor required checks, merge safely, and verify the merge.
 
 ## Review
 
@@ -115,12 +117,13 @@ Goal: make browser-flow and render-regression E2E cost visible at the spec level
   - `npx playwright test --list --project=chromium e2e/render-regression.spec.ts`
   - `/home/nekoguntai/sanctuary/.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -l javascript scripts/ci/playwright-timing-reporter.cjs tests/ci/playwright-timing-reporter.test.mjs`
   - `git diff --check`
+- Delivered in PR #157; merge-group and post-merge `main` push checks completed successfully.
 
 ---
 
 # Active Task: CI/CD Test Speed Phase 2 - Backend Integration Impact Scope
 
-Status: in progress
+Status: complete
 
 Goal: avoid DB-backed backend integration smoke on PRs where the changed backend files are clearly unit-scoped, while preserving the smoke for API, middleware, repository, Prisma, worker/queue, config, package, and integration-test surfaces.
 
@@ -132,7 +135,7 @@ Goal: avoid DB-backed backend integration smoke on PRs where the changed backend
 - [x] Add classifier fixtures for docs-only, backend unit-scoped helper, backend API route, and Prisma migration behavior.
 - [x] Update CI/CD strategy docs with the narrower PR smoke policy.
 - [x] Run classifier tests, workflow lint, diff check, and touched-file lizard if available.
-- [ ] Deliver through PR, monitor required checks, merge safely, and verify the merge.
+- [x] Deliver through PR, monitor required checks, merge safely, and verify the merge.
 
 ## Review
 
@@ -150,12 +153,13 @@ Goal: avoid DB-backed backend integration smoke on PRs where the changed backend
   - `/tmp/actionlint-1.7.12/actionlint -color -shellcheck= .github/workflows/test.yml`
   - `git diff --check`
 - Touched-file lizard did not run: `npx lizard -C 15 -l shell scripts/ci/classify-test-changes.sh tests/ci/classify-test-changes.test.sh` failed because npm could not determine an executable for `lizard`.
+- Delivered in PR #155; merge-group and post-merge `main` push checks completed successfully.
 
 ---
 
 # Active Task: CI/CD Test Speed Phase 1 - Timing Baseline Tooling
 
-Status: in progress
+Status: complete
 
 Goal: start the CI/CD speed implementation with measured workflow trend tooling so later test-skip and sharding decisions are based on p50/p90 evidence instead of single-run intuition.
 
@@ -167,7 +171,7 @@ Goal: start the CI/CD speed implementation with measured workflow trend tooling 
 - [x] Wire the new script/test into Code Quality CI classifier checks.
 - [x] Update CI/CD strategy docs with trend usage and stop-condition guidance.
 - [x] Run shell syntax checks, focused CI script tests, actionlint, diff check, and touched-file lizard if available.
-- [ ] Deliver through PR, monitor required checks, merge safely, and verify the merge.
+- [x] Deliver through PR, monitor required checks, merge safely, and verify the merge.
 
 ## Review
 
@@ -188,6 +192,7 @@ Goal: start the CI/CD speed implementation with measured workflow trend tooling 
   - `/tmp/actionlint-1.7.12/actionlint -color -shellcheck= .github/workflows/quality.yml`
   - `git diff --check`
 - Touched-file lizard did not run: `npx lizard -C 15 -l shell scripts/ci/report-workflow-trends.sh tests/ci/report-workflow-trends.test.sh` failed because npm could not determine an executable for `lizard`.
+- Delivered in PR #154; merge-group and post-merge `main` push checks completed successfully.
 
 ---
 
