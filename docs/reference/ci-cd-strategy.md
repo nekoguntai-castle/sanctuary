@@ -253,7 +253,7 @@ Full browser-flow E2E uses deterministic spec groups in `scripts/ci/browser-e2e-
 bash scripts/ci/browser-e2e-groups.sh --check
 ```
 
-Playwright runs also emit per-spec timing files under the existing `test-results/` artifact directory: `playwright-timing.json` for machine-readable history and `playwright-timing.md` for quick review. Use those artifacts to find slow browser-flow or render-regression specs before changing group membership, browser count, retries, or shared setup.
+Playwright runs also emit per-spec timing files under the existing `test-results/` artifact directory: `playwright-timing.json` for machine-readable history and `playwright-timing.md` for quick review. The quick and full E2E jobs also wrap dependency install, Playwright browser install, frontend build, backend setup/build, and the Playwright command itself with `scripts/ci/time-command.sh`. Use those notices to separate setup cost from spec runtime before changing group membership, browser count, retries, or shared setup.
 
 When adding any new expensive CI trigger, add or update a classifier test in the same change so the path policy stays executable instead of living only in workflow comments.
 

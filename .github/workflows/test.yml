@@ -435,7 +435,7 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: scripts/ci/time-command.sh "quick browser npm ci" npm ci
 
       - name: Cache Playwright browsers
         uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809
@@ -446,15 +446,15 @@ jobs:
             ${{ runner.os }}-playwright-
 
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: scripts/ci/time-command.sh "quick browser playwright install" npx playwright install --with-deps chromium
 
       - name: Build frontend
-        run: npm run build
+        run: scripts/ci/time-command.sh "quick browser frontend build" npm run build
         env:
           VITE_API_URL: http://localhost:3001
 
       - name: Run smoke E2E tests
-        run: npm run test:e2e -- --project=chromium e2e/admin-drafts-smoke.spec.ts
+        run: scripts/ci/time-command.sh "quick browser smoke" npm run test:e2e -- --project=chromium e2e/admin-drafts-smoke.spec.ts
         env:
           CI: 'true'
           NODE_ENV: test
@@ -478,7 +478,7 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: scripts/ci/time-command.sh "quick render npm ci" npm ci
 
       - name: Cache Playwright browsers
         uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809
@@ -489,15 +489,15 @@ jobs:
             ${{ runner.os }}-playwright-
 
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: scripts/ci/time-command.sh "quick render playwright install" npx playwright install --with-deps chromium
 
       - name: Build frontend
-        run: npm run build
+        run: scripts/ci/time-command.sh "quick render frontend build" npm run build
         env:
           VITE_API_URL: http://localhost:3001
 
       - name: Run render regression E2E tests
-        run: npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts
+        run: scripts/ci/time-command.sh "quick render regression" npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts
         env:
           CI: 'true'
           NODE_ENV: test
@@ -1215,7 +1215,7 @@ jobs:
           cache: 'npm'
 
       - name: Install frontend dependencies
-        run: npm ci
+        run: scripts/ci/time-command.sh "browser npm ci" npm ci
 
       - name: Cache Playwright browsers
         uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809
@@ -1226,25 +1226,25 @@ jobs:
             ${{ runner.os }}-playwright-
 
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: scripts/ci/time-command.sh "browser playwright install" npx playwright install --with-deps chromium
 
       - name: Build frontend
-        run: npm run build
+        run: scripts/ci/time-command.sh "browser frontend build" npm run build
         env:
           VITE_API_URL: http://localhost:3001
 
       - name: Setup backend
         working-directory: server
         run: |
-          npm ci
-          npx prisma generate
-          npx prisma migrate deploy
+          "${{ github.workspace }}/scripts/ci/time-command.sh" "browser backend npm ci" npm ci
+          "${{ github.workspace }}/scripts/ci/time-command.sh" "browser prisma generate" npx prisma generate
+          "${{ github.workspace }}/scripts/ci/time-command.sh" "browser prisma migrate" npx prisma migrate deploy
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/sanctuary_test?schema=public
 
       - name: Build backend
         working-directory: server
-        run: npm run build
+        run: ${{ github.workspace }}/scripts/ci/time-command.sh "browser backend build" npm run build
 
       - name: Start backend server
         working-directory: server
@@ -1285,7 +1285,7 @@ jobs:
           fi
           printf 'Running browser-flow E2E group %s:\n' "${{ matrix.group }}"
           printf '  %s\n' "${browser_specs[@]}"
-          npm run test:e2e -- --project=chromium "${browser_specs[@]}"
+          scripts/ci/time-command.sh "browser-flow E2E ${{ matrix.group }}" npm run test:e2e -- --project=chromium "${browser_specs[@]}"
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/sanctuary_test?schema=public
           REDIS_URL: redis://localhost:6379
@@ -1336,7 +1336,7 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: scripts/ci/time-command.sh "render npm ci" npm ci
 
       - name: Cache Playwright browsers
         uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809
@@ -1347,15 +1347,15 @@ jobs:
             ${{ runner.os }}-playwright-
 
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: scripts/ci/time-command.sh "render playwright install" npx playwright install --with-deps chromium
 
       - name: Build frontend
-        run: npm run build
+        run: scripts/ci/time-command.sh "render frontend build" npm run build
         env:
           VITE_API_URL: http://localhost:3001
 
       - name: Run render regression E2E tests
-        run: npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts
+        run: scripts/ci/time-command.sh "render regression E2E" npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts
         env:
           CI: 'true'
           NODE_ENV: test
