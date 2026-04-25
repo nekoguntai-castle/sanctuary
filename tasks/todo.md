@@ -1,6 +1,6 @@
 # Active Task: Full Lane Typecheck/Coverage Parallelization
 
-Status: in progress
+Status: complete
 
 Goal: reduce the remaining merge-queue Test Suite wall time after PR #138 by parallelizing independent frontend and backend full-lane substeps while preserving the same aggregate gates and coverage artifacts.
 
@@ -38,8 +38,8 @@ Goal: reduce the remaining merge-queue Test Suite wall time after PR #138 by par
 ### Delivery
 
 - [x] Run local validation: workflow syntax/actionlint, `git diff --check`, and focused workflow/script checks.
-- [ ] Commit, push, open PR, monitor checks, and merge through merge queue without deleting the branch early.
-- [ ] Record post-merge durations and leave the primary dirty worktree untouched.
+- [x] Commit, push, open PR, monitor checks, and merge through merge queue without deleting the branch early.
+- [x] Record post-merge durations and leave the primary dirty worktree untouched.
 
 ## Review
 
@@ -47,6 +47,20 @@ Goal: reduce the remaining merge-queue Test Suite wall time after PR #138 by par
 - Edge case audit: `frontend-coverage` and `backend-coverage` artifact names remain unchanged and are uploaded only by the coverage-producing matrix targets, avoiding artifact-name collisions across matrix legs.
 - Tradeoff: this reduces merge-queue wall time by running independent commands in parallel, but it intentionally spends more runner minutes because each matrix target performs its own checkout/setup/install.
 - Local validation passed: shell syntax for CI scripts/tests, CI classifier regression tests, actionlint on `.github/workflows/test.yml`, and `git diff --check`.
+- PR #140 merged through merge queue at 2026-04-25 02:31:59 UTC as `f8b763e5`; the primary worktree remained untouched.
+
+## Post-Merge Measurement
+
+- PR #140 merge-group Test Suite completed successfully. Longest jobs were Full Frontend coverage 5m20s, Browser E2E wallet-experience 3m11s, Browser E2E wallet-flows 2m59s, Browser E2E admin-auth 2m48s, Full Render E2E 2m39s, Backend integration 2m31s, and Backend unit coverage 2m25s.
+- Backend wall time improved from the prior combined 3m45s lane on PR #138 to a 2m31s max backend matrix target on PR #140.
+- Frontend typecheck work no longer extends the critical path: app typecheck finished in 49s, test typecheck in 46s, and coverage remained the long frontend target at 5m20s.
+
+## Additional Optimization Analysis
+
+- Highest next value: frontend coverage remains the Test Suite long pole at 5m20s. The next batch should measure or shard Vitest coverage itself rather than splitting more wrapper steps.
+- Backend is now balanced enough for the current target: integration and unit coverage are close at 2m31s and 2m25s, so more backend sharding should wait for per-file timing evidence.
+- Browser groups remain acceptable at 2m48s-3m11s; deeper browser sharding is lower value than frontend coverage unless browser timing regresses.
+- The backend typecheck matrix target still pays the shared backend setup cost for simplicity and aggregate compatibility. If runner-minute cost matters more than wall time later, move backend typecheck to a lighter separate job or conditional setup path.
 
 ---
 
