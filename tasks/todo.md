@@ -1,6 +1,6 @@
 # Active Task: Browser E2E Wallet Flow Split
 
-Status: in progress
+Status: complete
 
 Goal: reduce the current Test Suite tail by splitting the longest full browser-flow E2E group while avoiding a shared build-artifact dependency that would likely increase wall time.
 
@@ -38,8 +38,8 @@ Goal: reduce the current Test Suite tail by splitting the longest full browser-f
 
 ### Delivery
 
-- [ ] Commit, push, open PR, monitor checks, fix failures, and merge successfully.
-- [ ] Verify merge, record durations, clean up the PR branch/worktree safely, and leave the primary dirty checkout untouched.
+- [x] Commit, push, open PR, monitor checks, fix failures, and merge successfully.
+- [x] Verify merge, record durations, clean up the PR branch/worktree safely, and leave the primary dirty checkout untouched.
 
 ## Review
 
@@ -53,8 +53,22 @@ Goal: reduce the current Test Suite tail by splitting the longest full browser-f
   - `/tmp/actionlint-1.7.12/actionlint -color -shellcheck= .github/workflows/test.yml`
   - `git diff --check`
   - `PYTHONPATH=/tmp/sanctuary-lizard-local python3 -m lizard -C 15 -l shell scripts/ci/browser-e2e-groups.sh tests/ci/browser-e2e-groups.test.sh scripts/ci/classify-test-changes.sh tests/ci/classify-test-changes.test.sh`
-- Full browser-flow execution is left to merge-queue CI because this change is CI grouping/policy and the merge-group lane is the authoritative proof for the new matrix shape.
-- PR delivery is pending.
+- Full browser-flow execution was left to merge-queue CI because this change is CI grouping/policy and the merge-group lane is the authoritative proof for the new matrix shape.
+- PR #148 merged through merge queue at 2026-04-25 05:02:30 UTC as squash commit `d2d30fa2`; the merge-group Test Suite run `24923080304` passed.
+- The primary checkout at `/home/nekoguntai/sanctuary` was left untouched during implementation because it had unrelated local task-tracker state.
+
+## Post-Merge Measurement
+
+- PR #148 merge-group Test Suite passed. Longest jobs were Browser E2E wallet-experience 2m57s, Frontend Coverage shard 2/2 2m56s, Browser E2E admin-auth 2m50s, Browser E2E wallet-lifecycle 2m46s, Browser E2E wallet-transactions 2m44s, Full Render E2E 2m42s, and Frontend Coverage shard 1/2 2m41s.
+- The old wallet-flows browser group from PR #146 was 3m19s. After the split, its replacement groups ran at 2m46s and 2m44s, so the wallet-flow tail dropped by about 33 seconds.
+- Browser E2E is now balanced enough that wallet-experience is only one second slower than frontend coverage shard 2/2. More browser splitting would mostly duplicate setup unless per-spec timing shows a new outlier.
+
+## Additional Optimization Analysis
+
+- Highest next test target: frontend coverage and browser E2E are now tied as the merge-gate tail at roughly 2m56s-2m57s. Do not add another frontend shard yet without measuring merge/upload overhead, because the current coverage merge still costs about 35 seconds.
+- Browser follow-up: add per-spec Playwright timing capture before more group changes. A fifth browser group would spend another full setup stack, so the next browser optimization should target setup reuse only if step timings show artifact reuse or a prebuilt test image beats the added dependency/download cost.
+- Backend follow-up: backend unit coverage is now a secondary tail at 2m22s. If the frontend/browser tail drops below about 2m30s, evaluate backend unit coverage sharding with one threshold-enforcing merge artifact.
+- Cross-lane follow-up: the merge-group Test Suite completed in 3m55s, so current Test Suite wall time is below the 15m target. Further work should use p50/p90 trends rather than single-run tuning.
 
 ---
 
