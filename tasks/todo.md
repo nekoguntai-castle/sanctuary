@@ -1,3 +1,35 @@
+# Active Task: CI/CD Test Speed Batch 1 - Docs-Only Scope
+
+Status: in progress
+
+Goal: ensure docs-only changes, including package-local docs, do not start source tests, DB-backed tests, install tests, E2E lanes, or image builds.
+
+## Plan
+
+- [x] Work in an isolated worktree from `origin/main`.
+- [x] Treat Markdown/MDX as docs-only in the Test Suite classifier.
+- [x] Treat install Markdown/MDX changes as docs-only in the Install Tests classifier.
+- [x] Add workflow path exclusions for package-local docs on main/push and path-gated workflows.
+- [x] Add classifier fixtures for server, gateway, ai-proxy, and install docs paths.
+- [x] Run focused classifier tests, workflow lint, diff check, and shell complexity checks.
+- [ ] Deliver through PR, monitor checks, merge safely, and verify the merge.
+
+## Review
+
+- Markdown/MDX changes are docs-only in the Test Suite classifier.
+- Install Markdown/MDX changes are docs-only in the Install Tests classifier.
+- Main/push path filters now exclude package-local docs for test, install, and Docker image workflows while leaving PR aggregate checks available where branch protection expects them.
+- Added regression fixtures for `server/src/services/DEPENDENCIES.md`, `gateway/README.md`, `ai-proxy/README.md`, `tests/install/README.md`, and `tests/install/utils/README.md`.
+- Verification passed:
+  - `bash -n scripts/ci/classify-test-changes.sh tests/ci/classify-test-changes.test.sh tests/install/utils/classify-install-scope.sh tests/install/unit/install-scope.test.sh`
+  - `bash tests/ci/classify-test-changes.test.sh`
+  - `bash tests/install/unit/install-scope.test.sh`
+  - `/tmp/actionlint-1.7.12/actionlint -color -shellcheck= .github/workflows/test.yml .github/workflows/install-test.yml .github/workflows/docker-build.yml`
+  - `/home/nekoguntai/sanctuary/.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -l shell scripts/ci/classify-test-changes.sh tests/ci/classify-test-changes.test.sh tests/install/utils/classify-install-scope.sh tests/install/unit/install-scope.test.sh`
+  - `git diff --check`
+
+---
+
 # Active Task: CI/CD Test Speed Phase 5 - Backend Full Integration Scope
 
 Status: complete

@@ -90,6 +90,60 @@ EOF_DOC
   assert_exact_output "$output_file" "test_files" ""
 
   base_sha="$head_sha"
+  mkdir -p "$repo_dir/server/src/services"
+  printf '# Server Notes\n' > "$repo_dir/server/src/services/DEPENDENCIES.md"
+  git -C "$repo_dir" add server/src/services/DEPENDENCIES.md
+  git -C "$repo_dir" commit -qm "server docs only"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_exact_output "$output_file" "test_suite_changed" "false"
+  assert_exact_output "$output_file" "frontend_changed" "false"
+  assert_exact_output "$output_file" "backend_changed" "false"
+  assert_exact_output "$output_file" "backend_integration_changed" "false"
+  assert_exact_output "$output_file" "gateway_changed" "false"
+  assert_exact_output "$output_file" "browser_smoke_changed" "false"
+  assert_exact_output "$output_file" "render_changed" "false"
+  assert_exact_output "$output_file" "build_changed" "false"
+  assert_exact_output "$output_file" "test_files" ""
+
+  base_sha="$head_sha"
+  mkdir -p "$repo_dir/gateway"
+  printf '# Gateway Notes\n' > "$repo_dir/gateway/README.md"
+  git -C "$repo_dir" add gateway/README.md
+  git -C "$repo_dir" commit -qm "gateway docs only"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_exact_output "$output_file" "test_suite_changed" "false"
+  assert_exact_output "$output_file" "frontend_changed" "false"
+  assert_exact_output "$output_file" "backend_changed" "false"
+  assert_exact_output "$output_file" "backend_integration_changed" "false"
+  assert_exact_output "$output_file" "gateway_changed" "false"
+  assert_exact_output "$output_file" "browser_smoke_changed" "false"
+  assert_exact_output "$output_file" "render_changed" "false"
+  assert_exact_output "$output_file" "build_changed" "false"
+  assert_exact_output "$output_file" "test_files" ""
+
+  base_sha="$head_sha"
+  mkdir -p "$repo_dir/ai-proxy"
+  printf '# AI Proxy Notes\n' > "$repo_dir/ai-proxy/README.md"
+  git -C "$repo_dir" add ai-proxy/README.md
+  git -C "$repo_dir" commit -qm "ai proxy docs only"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_exact_output "$output_file" "test_suite_changed" "false"
+  assert_exact_output "$output_file" "frontend_changed" "false"
+  assert_exact_output "$output_file" "backend_changed" "false"
+  assert_exact_output "$output_file" "backend_integration_changed" "false"
+  assert_exact_output "$output_file" "gateway_changed" "false"
+  assert_exact_output "$output_file" "browser_smoke_changed" "false"
+  assert_exact_output "$output_file" "render_changed" "false"
+  assert_exact_output "$output_file" "build_changed" "false"
+  assert_exact_output "$output_file" "test_files" ""
+
+  base_sha="$head_sha"
   mkdir -p "$repo_dir/scripts/ci"
   printf '#!/usr/bin/env bash\necho classifier\n' > "$repo_dir/scripts/ci/classify-quality-scope.sh"
   git -C "$repo_dir" add scripts/ci/classify-quality-scope.sh

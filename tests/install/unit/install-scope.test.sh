@@ -104,6 +104,18 @@ main() {
   assert_scope "$output_file" "false" "false" "false" "false" "false" "false" "false" "false" "false" "false"
 
   base_sha="$head_sha"
+  commit_file "$repo_dir" "tests/install/README.md" "# install docs" "install docs"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_scope "$output_file" "false" "false" "false" "false" "false" "false" "false" "false" "false" "false"
+
+  base_sha="$head_sha"
+  commit_file "$repo_dir" "tests/install/utils/README.md" "# utility docs" "install utility docs"
+  head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
+  run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
+  assert_scope "$output_file" "false" "false" "false" "false" "false" "false" "false" "false" "false" "false"
+
+  base_sha="$head_sha"
   commit_file "$repo_dir" "tests/install/unit/install-script.test.sh" "echo unit" "unit"
   head_sha="$(git -C "$repo_dir" rev-parse HEAD)"
   run_classifier "$repo_dir" "$base_sha" "$head_sha" "$output_file"
