@@ -260,8 +260,21 @@ is_test_suite_file() {
   return 1
 }
 
+is_docs_only_file() {
+  case "$1" in
+    *.md|*.mdx)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
 while IFS= read -r file; do
   [ -n "$file" ] || continue
+
+  if is_docs_only_file "$file"; then
+    continue
+  fi
 
   if is_test_suite_file "$file"; then
     test_suite_changed=true

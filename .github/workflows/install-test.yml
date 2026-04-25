@@ -6,6 +6,22 @@ on:
       - main
     tags:
       - 'v*.*.*'
+    paths:
+      - 'install.sh'
+      - 'docker-compose.yml'
+      - 'docker-compose.*.yml'
+      - 'Dockerfile'
+      - 'server/Dockerfile'
+      - 'server/prisma/**'
+      - 'docker/**'
+      - 'scripts/setup.sh'
+      - 'scripts/reset-user-2fa.sh'
+      - 'tests/install/**'
+      - '!tests/install/*.md'
+      - '!tests/install/**/*.md'
+      - '!tests/install/*.mdx'
+      - '!tests/install/**/*.mdx'
+      - '.github/workflows/install-test.yml'
   pull_request:
     branches:
       - main
@@ -20,6 +36,10 @@ on:
       - 'scripts/setup.sh'
       - 'scripts/reset-user-2fa.sh'
       - 'tests/install/**'
+      - '!tests/install/*.md'
+      - '!tests/install/**/*.md'
+      - '!tests/install/*.mdx'
+      - '!tests/install/**/*.mdx'
       - '.github/workflows/install-test.yml'
   schedule:
     - cron: '17 10 * * *'

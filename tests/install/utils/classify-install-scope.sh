@@ -239,12 +239,14 @@ while IFS= read -r file; do
   [ -n "$file" ] || continue
 
   case "$file" in
+    *.md|*.mdx)
+      ;;
     .github/workflows/install-test.yml)
       enable_release_critical
       add_scope workflow
       reason="Install workflow changed"
       ;;
-    tests/install/README.md|tests/install/unit/*|tests/install/utils/classify-install-scope.sh)
+    tests/install/unit/*|tests/install/utils/classify-install-scope.sh)
       enable_unit
       add_scope unit-only
       reason="Install unit/docs scope changed"
