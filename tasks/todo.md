@@ -64,6 +64,62 @@ Goal: reduce the remaining merge-queue Test Suite wall time after PR #138 by par
 
 ---
 
+# Active Task: Stash-Derived Privacy And Address Hardening
+
+Status: complete
+
+Goal: recover the still-valid ideas from the old frontend stash in an isolated worktree, while leaving the shared checkout available for the other active agent.
+
+## Scope
+
+- Worktree: `/tmp/sanctuary-stash-hardening`
+- Branch: `fix/privacy-address-hardening`
+- Base: `origin/main` at `76ec2eee`
+- In scope:
+  - make address receive/change classification tolerate malformed API records without throwing
+  - normalize privacy grades/scores/lists at UI boundaries so bad privacy payloads degrade predictably
+  - add focused tests for malformed/empty/boundary values
+- Out of scope:
+  - applying the old stash wholesale
+  - Ledger dependency cleanup
+  - Vite/polyfill package changes
+  - Playwright locator stabilizers unless a current focused run reproduces a flake
+
+## Checklist
+
+- [x] Create isolated worktree from `origin/main`.
+- [x] Re-read current address/privacy files and existing tests in the worktree.
+- [x] Add small normalization helpers and use them in privacy UI components.
+- [x] Harden address classification against missing/invalid derivation paths.
+- [x] Add focused tests for invalid grades, NaN/negative/over-100 scores, missing warning/factor arrays, and missing derivation paths.
+- [x] Run focused unit tests, typecheck for touched app/test code, diff check, and touched-file lizard if available.
+- [x] Self-review the diff for stale stash assumptions and unintended package/test-runner changes.
+
+## Review
+
+- Added `components/privacyScoreUtils.ts` with shared grade, score, and list normalization.
+- Updated privacy UI boundaries in:
+  - `components/PrivacyBadge.tsx`
+  - `components/PrivacyDetailPanel.tsx`
+  - `components/SpendPrivacyCard.tsx`
+- Hardened `components/WalletDetail/tabs/AddressesTab/addressModel.ts` so malformed address records without a string `derivationPath` classify as receive instead of throwing.
+- Added focused regression coverage in:
+  - `tests/components/privacyScoreUtils.test.ts`
+  - `tests/components/PrivacyBadge.test.tsx`
+  - `tests/components/PrivacyDetailPanel.test.tsx`
+  - `tests/components/SpendPrivacyCard.test.tsx`
+  - `tests/components/WalletDetail/tabs/AddressesTab/addressModel.test.ts`
+- Verification passed:
+  - `npx vitest run tests/components/privacyScoreUtils.test.ts tests/components/WalletDetail/tabs/AddressesTab/addressModel.test.ts tests/components/PrivacyBadge.test.tsx tests/components/PrivacyDetailPanel.test.tsx tests/components/SpendPrivacyCard.test.tsx` passed with 5 files / 114 tests.
+  - `npm run typecheck:app` passed.
+  - `npm run typecheck:tests` passed.
+  - `git diff --check` passed.
+  - `npm run test:coverage` passed with 404 files / 5619 tests and 100% statements, branches, functions, and lines.
+- `npx lizard components/privacyScoreUtils.ts components/PrivacyBadge.tsx components/PrivacyDetailPanel.tsx components/SpendPrivacyCard.tsx components/WalletDetail/tabs/AddressesTab/addressModel.ts` could not run because npm could not determine an executable for `lizard` in this environment.
+- No package, Ledger, Vite/polyfill, or Playwright changes were made.
+
+---
+
 # Active Task: Next CI Target Optimization Batch
 
 Status: complete

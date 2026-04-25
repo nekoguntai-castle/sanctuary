@@ -9,6 +9,12 @@
 import React, { useState } from 'react';
 import { Shield, ShieldAlert, ShieldCheck, ShieldX, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react';
 import type { SpendPrivacyAnalysis } from '../src/api/transactions';
+import {
+  normalizePrivacyGrade,
+  normalizePrivacyList,
+  normalizePrivacyScore,
+  type PrivacyGrade,
+} from './privacyScoreUtils';
 
 interface SpendPrivacyCardProps {
   analysis: SpendPrivacyAnalysis;
@@ -21,7 +27,13 @@ const SpendPrivacyCard: React.FC<SpendPrivacyCardProps> = ({
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const gradeConfig = {
+  const gradeConfig: Record<PrivacyGrade, {
+    Icon: typeof Shield;
+    color: string;
+    bgColor: string;
+    borderColor: string;
+    label: string;
+  }> = {
     excellent: {
       Icon: ShieldCheck,
       color: 'text-zen-matcha',
@@ -52,11 +64,14 @@ const SpendPrivacyCard: React.FC<SpendPrivacyCardProps> = ({
     },
   };
 
-  const config = gradeConfig[analysis.grade];
+  const normalizedGrade = normalizePrivacyGrade(analysis.grade);
+  const normalizedScore = normalizePrivacyScore(analysis.score);
+  const warnings = normalizePrivacyList<string>(analysis.warnings);
+  const config = gradeConfig[normalizedGrade];
   const Icon = config.Icon;
 
   // Show top 3 warnings when collapsed, all when expanded
-  const displayedWarnings = isExpanded ? analysis.warnings : analysis.warnings.slice(0, 3);
+  const displayedWarnings = isExpanded ? warnings : warnings.slice(0, 3);
 
   return (
     <div
@@ -83,7 +98,7 @@ const SpendPrivacyCard: React.FC<SpendPrivacyCardProps> = ({
           <div className="flex items-center gap-3">
             <div className="text-right">
               <div className={`text-2xl font-bold ${config.color}`}>
-                {analysis.score}
+                {normalizedScore}
               </div>
               <div className={`text-xs font-medium ${config.color} uppercase`}>
                 {config.label}
@@ -129,7 +144,7 @@ const SpendPrivacyCard: React.FC<SpendPrivacyCardProps> = ({
         )}
 
         {/* Expand/Collapse Button */}
-        {analysis.warnings.length > 3 && (
+        {warnings.length > 3 && (
           <button
             type="button"
             onClick={() => setIsExpanded(!isExpanded)}
@@ -143,7 +158,7 @@ const SpendPrivacyCard: React.FC<SpendPrivacyCardProps> = ({
             ) : (
               <>
                 <ChevronDown className="w-3.5 h-3.5" />
-                Show {analysis.warnings.length - 3} More
+                Show {warnings.length - 3} More
               </>
             )}
           </button>

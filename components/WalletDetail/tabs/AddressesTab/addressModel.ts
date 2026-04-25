@@ -22,7 +22,8 @@ export function isChangeAddress(address: Address): boolean {
     return address.isChange;
   }
 
-  const parts = address.derivationPath.split('/');
+  const derivationPath = typeof address.derivationPath === 'string' ? address.derivationPath : '';
+  const parts = derivationPath.split('/');
   if (parts.length < 2) {
     return false;
   }

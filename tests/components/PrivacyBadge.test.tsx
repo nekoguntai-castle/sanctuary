@@ -42,6 +42,14 @@ describe('PrivacyBadge', () => {
 
       expect(screen.getByTitle(/Score: 85/)).toBeInTheDocument();
     });
+
+    it('normalizes invalid runtime grade and score values', () => {
+      render(<PrivacyBadge score={Number.NaN} grade={'unknown' as any} showScore />);
+
+      expect(screen.getByTitle(/Poor Privacy/)).toBeInTheDocument();
+      expect(screen.getByTitle(/Score: 0/)).toBeInTheDocument();
+      expect(screen.getByText('0')).toBeInTheDocument();
+    });
   });
 
   describe('showScore prop', () => {
@@ -201,6 +209,24 @@ describe('PrivacyScoreCard', () => {
 
       expect(container.firstChild).toHaveClass('text-zen-vermilion');
     });
+
+    it('normalizes invalid runtime grade, score, factors, and warnings', () => {
+      const { container } = render(
+        <PrivacyScoreCard
+          {...defaultProps}
+          score={Number.POSITIVE_INFINITY}
+          grade={'missing' as any}
+          factors={null as any}
+          warnings={undefined as any}
+        />
+      );
+
+      expect(container.firstChild).toHaveClass('text-zen-vermilion');
+      expect(screen.getByText('poor Privacy')).toBeInTheDocument();
+      expect(screen.getByText('0')).toBeInTheDocument();
+      expect(container.querySelectorAll('.space-y-1').length).toBe(0);
+      expect(document.querySelector('.border-t')).not.toBeInTheDocument();
+    });
   });
 
   describe('factors display', () => {
@@ -301,6 +327,12 @@ describe('WalletPrivacySummary', () => {
       render(<WalletPrivacySummary {...defaultProps} averageScore={85} />);
 
       expect(screen.getByText('85')).toBeInTheDocument();
+    });
+
+    it('normalizes invalid runtime recommendation lists', () => {
+      render(<WalletPrivacySummary {...defaultProps} recommendations={null as any} />);
+
+      expect(screen.queryByText('Recommendations')).not.toBeInTheDocument();
     });
   });
 

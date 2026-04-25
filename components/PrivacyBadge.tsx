@@ -7,8 +7,13 @@
 
 import React from 'react';
 import { Shield, ShieldAlert, ShieldCheck, ShieldX, type LucideIcon } from 'lucide-react';
+import {
+  normalizePrivacyGrade,
+  normalizePrivacyList,
+  normalizePrivacyScore,
+  type PrivacyGrade,
+} from './privacyScoreUtils';
 
-type PrivacyGrade = 'excellent' | 'good' | 'fair' | 'poor';
 type PrivacyBadgeSize = 'sm' | 'md' | 'lg';
 
 interface PrivacyBadgeProps {
@@ -109,7 +114,9 @@ export const PrivacyBadge: React.FC<PrivacyBadgeProps> = ({
   className = '',
   onClick,
 }) => {
-  const config = privacyGradeConfig[grade];
+  const normalizedGrade = normalizePrivacyGrade(grade);
+  const normalizedScore = normalizePrivacyScore(score);
+  const config = privacyGradeConfig[normalizedGrade];
   const isClickable = !!onClick;
 
   return (
@@ -119,7 +126,7 @@ export const PrivacyBadge: React.FC<PrivacyBadgeProps> = ({
           ? 'cursor-pointer transition-transform hover:scale-110 active:scale-95'
           : ''
       }`}
-      title={getPrivacyTitle(config, score, isClickable)}
+      title={getPrivacyTitle(config, normalizedScore, isClickable)}
       onClick={onClick}
       role={isClickable ? 'button' : undefined}
       tabIndex={isClickable ? 0 : undefined}
@@ -128,7 +135,7 @@ export const PrivacyBadge: React.FC<PrivacyBadgeProps> = ({
       <PrivacyBadgeIcon config={config} size={size} isClickable={isClickable} />
       {showScore && (
         <span className={`text-xs font-medium ${config.color}`}>
-          {score}
+          {normalizedScore}
         </span>
       )}
     </div>
@@ -189,15 +196,20 @@ export const PrivacyScoreCard: React.FC<PrivacyScoreCardProps> = ({
   factors,
   warnings,
 }) => {
+  const normalizedGrade = normalizePrivacyGrade(grade);
+  const normalizedScore = normalizePrivacyScore(score);
+  const normalizedFactors = normalizePrivacyList<PrivacyFactor>(factors);
+  const normalizedWarnings = normalizePrivacyList<string>(warnings);
+
   return (
-    <div className={`rounded-lg border p-3 ${privacyScoreCardClasses[grade]}`}>
+    <div className={`rounded-lg border p-3 ${privacyScoreCardClasses[normalizedGrade]}`}>
       <div className="flex items-center justify-between mb-2">
-        <span className="text-sm font-medium capitalize">{grade} Privacy</span>
-        <span className="text-lg font-bold">{score}</span>
+        <span className="text-sm font-medium capitalize">{normalizedGrade} Privacy</span>
+        <span className="text-lg font-bold">{normalizedScore}</span>
       </div>
 
-      <PrivacyFactorRows factors={factors} />
-      <PrivacyWarnings warnings={warnings} />
+      <PrivacyFactorRows factors={normalizedFactors} />
+      <PrivacyWarnings warnings={normalizedWarnings} />
     </div>
   );
 };
@@ -263,6 +275,8 @@ export const WalletPrivacySummary: React.FC<WalletPrivacySummaryProps> = ({
   clusterCount,
   recommendations,
 }) => {
+  const normalizedRecommendations = normalizePrivacyList<string>(recommendations);
+
   return (
     <div className="surface-elevated rounded-xl p-4 border border-sanctuary-200 dark:border-sanctuary-800">
       <div className="flex items-center justify-between mb-4">
@@ -277,7 +291,7 @@ export const WalletPrivacySummary: React.FC<WalletPrivacySummaryProps> = ({
         roundAmountCount={roundAmountCount}
         clusterCount={clusterCount}
       />
-      <PrivacyRecommendations recommendations={recommendations} />
+      <PrivacyRecommendations recommendations={normalizedRecommendations} />
     </div>
   );
 };

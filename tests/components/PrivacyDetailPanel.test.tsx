@@ -112,6 +112,25 @@ describe('PrivacyDetailPanel', () => {
       expect(goodElements.length).toBeGreaterThanOrEqual(1);
     });
 
+    it('normalizes malformed runtime privacy score payloads', async () => {
+      const malformedInfo = makePrivacyInfo({
+        score: Number.NaN,
+        grade: 'unknown' as any,
+        factors: null as any,
+        warnings: undefined as any,
+      });
+
+      render(<PrivacyDetailPanel {...defaultProps} privacyInfo={malformedInfo} />);
+
+      await act(async () => {
+        vi.advanceTimersByTime(50);
+      });
+
+      expect(screen.getByText('/ 100')).toBeInTheDocument();
+      expect(screen.getAllByText('Poor').length).toBeGreaterThanOrEqual(1);
+      expect(screen.queryByText('Warnings')).not.toBeInTheDocument();
+    });
+
     it('renders score gauge', async () => {
       render(<PrivacyDetailPanel {...defaultProps} />);
 
