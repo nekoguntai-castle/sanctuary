@@ -24,6 +24,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed npm 10 lockfile compatibility
 - Avoided express type dependency in AI proxy schemas
 
+## [0.8.43] - 2026-04-24
+
+### Fixed
+
+- Restored Ledger xpub fetch flow
+- Hardened 2FA upgrade release gate
+
+### Changed
+
+- Path-aware CI security and test scopes
+- Skipped repo-quality workflow on workflow-only changes
+- Cancelled superseded release-candidate CI runs
+- Cleaned up CI duration reporting output
+
 ## [0.8.34] - 2026-04-15
 
 ### Changed
