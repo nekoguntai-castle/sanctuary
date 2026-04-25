@@ -3,11 +3,16 @@ set -euo pipefail
 
 readonly RENDER_SPEC='e2e/render-regression.spec.ts'
 readonly GROUP_ADMIN_AUTH='admin-auth'
-readonly GROUP_WALLET_FLOWS='wallet-flows'
+readonly GROUP_WALLET_LIFECYCLE='wallet-lifecycle'
+readonly GROUP_WALLET_TRANSACTIONS='wallet-transactions'
 readonly GROUP_WALLET_EXPERIENCE='wallet-experience'
 
 list_groups() {
-  printf '%s\n' "$GROUP_ADMIN_AUTH" "$GROUP_WALLET_FLOWS" "$GROUP_WALLET_EXPERIENCE"
+  printf '%s\n' \
+    "$GROUP_ADMIN_AUTH" \
+    "$GROUP_WALLET_LIFECYCLE" \
+    "$GROUP_WALLET_TRANSACTIONS" \
+    "$GROUP_WALLET_EXPERIENCE"
 }
 
 list_group_specs() {
@@ -19,11 +24,14 @@ list_group_specs() {
         e2e/admin-operations.spec.ts \
         e2e/auth.spec.ts
       ;;
-    "$GROUP_WALLET_FLOWS")
+    "$GROUP_WALLET_LIFECYCLE")
       printf '%s\n' \
         e2e/create-wallet-flow.spec.ts \
+        e2e/import-wallet-flow.spec.ts
+      ;;
+    "$GROUP_WALLET_TRANSACTIONS")
+      printf '%s\n' \
         e2e/error-recovery.spec.ts \
-        e2e/import-wallet-flow.spec.ts \
         e2e/send-transaction-flow.spec.ts
       ;;
     "$GROUP_WALLET_EXPERIENCE")

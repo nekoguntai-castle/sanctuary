@@ -228,7 +228,7 @@ bash scripts/ci/backend-integration-groups.sh --check
 
 This split also trades runner minutes for wall time because each integration group performs its own service setup and migrations. Add more groups only after measuring group balance and duplicated setup cost from workflow durations.
 
-Full browser-flow E2E uses deterministic spec groups in `scripts/ci/browser-e2e-groups.sh`. Run the group check after adding, removing, or renaming a top-level browser spec:
+Full browser-flow E2E uses deterministic spec groups in `scripts/ci/browser-e2e-groups.sh`. The wallet lifecycle and wallet transaction flows are split into separate groups because the repeated setup cost is still smaller than the wall-time cost of keeping the long wallet-flow spec set together. Avoid adding a shared build-artifact dependency ahead of the browser matrix unless measured setup/build duplication becomes larger than the extra artifact job and download overhead. Run the group check after adding, removing, or renaming a top-level browser spec:
 
 ```bash
 bash scripts/ci/browser-e2e-groups.sh --check
