@@ -1,4 +1,14 @@
 import { vi } from 'vitest';
+import type { Express } from 'express';
+import type { PrismaClient } from '../../../src/generated/prisma/client';
+
+export let app: Express;
+export let prisma: PrismaClient;
+
+export function setAuthIntegrationContext(nextApp: Express, nextPrisma: PrismaClient): void {
+  app = nextApp;
+  prisma = nextPrisma;
+}
 
 export function mockElectrumForAuthIntegration(): void {
   vi.doMock('../../../src/services/bitcoin/electrum', () => ({

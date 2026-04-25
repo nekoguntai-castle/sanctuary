@@ -90,7 +90,7 @@ npm run test:debug
 
 ### Integration Tests
 
-Integration tests require a running PostgreSQL database. They will automatically skip if no database is available.
+Integration tests require a running PostgreSQL database. They will automatically skip if no database is available. The repo-root runner starts a disposable PostgreSQL container and applies the defaults from `scripts/integration-test-defaults.sh`.
 
 **Recommended (one command from repo root)**
 
@@ -98,15 +98,18 @@ Integration tests require a running PostgreSQL database. They will automatically
 npm run test:integration
 ```
 
-**Option 1: Use Docker (recommended)**
+**Option 1: Use the disposable Docker database (recommended)**
 
-Expose the PostgreSQL port and run tests:
+Run all integration tests from the repo root:
+
 ```bash
-# Start services with exposed database port
-docker compose -f docker-compose.yml -f docker-compose.test.yml up -d
+npm run test:integration
+```
 
-# Run integration tests
-DATABASE_URL="postgresql://sanctuary:sanctuary@localhost:5432/sanctuary_test" npm run test:integration
+Run focused integration files from the repo root:
+
+```bash
+./scripts/run-integration-tests.sh tests/integration/flows/auth.integration.test.ts
 ```
 
 **Option 2: Run inside Docker**
@@ -118,9 +121,10 @@ docker exec -it sanctuary-backend npm run test:integration
 
 **Option 3: Local PostgreSQL**
 
-If you have PostgreSQL running locally:
+If you have PostgreSQL running locally, export `DATABASE_URL` or `TEST_DATABASE_URL` in your shell before running the server integration script:
+
 ```bash
-DATABASE_URL="postgresql://user:password@localhost:5432/sanctuary_test" npm run test:integration
+npm --prefix server run test:integration
 ```
 
 Integration tests will be skipped in CI unless a test database is configured.

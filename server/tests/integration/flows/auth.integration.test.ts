@@ -20,7 +20,8 @@ import { createIsolatedTestApp, createTestApp, resetTestApp } from '../setup/tes
 import { getTestUser, getTestAdmin, createTestUser, loginTestUser, extractAuthTokens } from '../setup/helpers';
 import { PrismaClient } from '../../../src/generated/prisma/client';
 import { Express } from 'express';
-import { mockElectrumForAuthIntegration } from './authIntegrationTestHarness';
+import { mockElectrumForAuthIntegration, setAuthIntegrationContext } from './authIntegrationTestHarness';
+import { registerAuthTwoFactorContracts } from './auth/twoFactor.contracts';
 
 // Increase timeout for integration tests
 vi.setConfig(30000);
@@ -36,6 +37,7 @@ describeWithDb('Authentication Integration', () => {
     mockElectrumForAuthIntegration();
     prisma = await setupTestDatabase();
     app = createTestApp();
+    setAuthIntegrationContext(app, prisma);
   });
 
   afterAll(async () => {
@@ -704,138 +706,5 @@ describeWithDb('Authentication Integration', () => {
     });
   });
 
-  describe('Two-Factor Authentication', () => {
-    describe('2FA Setup', () => {
-      it('should initiate 2FA setup', async () => {
-        const testUser = getTestUser();
-        await createTestUser(prisma, testUser);
-        const token = await loginTestUser(app, testUser);
-
-        const response = await request(app)
-          .post('/api/v1/auth/2fa/setup')
-          .set('Authorization', `Bearer ${token}`)
-          .expect(200);
-
-        expect(response.body).toHaveProperty('secret');
-        expect(response.body).toHaveProperty('qrCodeDataUrl');
-        expect(response.body.secret).toBeDefined();
-        expect(response.body.qrCodeDataUrl).toContain('data:image/png;base64');
-      });
-
-      it('should require authentication', async () => {
-        await request(app)
-          .post('/api/v1/auth/2fa/setup')
-          .expect(401);
-      });
-    });
-
-    describe('2FA Enable', () => {
-      it('should reject enable without setup', async () => {
-        const testUser = getTestUser();
-        await createTestUser(prisma, testUser);
-        const token = await loginTestUser(app, testUser);
-
-        await request(app)
-          .post('/api/v1/auth/2fa/enable')
-          .set('Authorization', `Bearer ${token}`)
-          .send({ token: '123456' })
-          .expect(400);
-      });
-
-      it('should require token parameter', async () => {
-        const testUser = getTestUser();
-        await createTestUser(prisma, testUser);
-        const token = await loginTestUser(app, testUser);
-
-        await request(app)
-          .post('/api/v1/auth/2fa/enable')
-          .set('Authorization', `Bearer ${token}`)
-          .send({})
-          .expect(400);
-      });
-    });
-
-    describe('2FA Disable', () => {
-      it('should reject disable for user without 2FA', async () => {
-        const testUser = getTestUser();
-        await createTestUser(prisma, testUser);
-        const token = await loginTestUser(app, testUser);
-
-        await request(app)
-          .post('/api/v1/auth/2fa/disable')
-          .set('Authorization', `Bearer ${token}`)
-          .send({ password: testUser.password })
-          .expect(400);
-      });
-
-      it('should require password', async () => {
-        const testUser = getTestUser();
-        await createTestUser(prisma, testUser);
-        const token = await loginTestUser(app, testUser);
-
-        await request(app)
-          .post('/api/v1/auth/2fa/disable')
-          .set('Authorization', `Bearer ${token}`)
-          .send({})
-          .expect(400);
-      });
-    });
-
-    describe('2FA Verify', () => {
-      it('should reject verify without pending 2FA state', async () => {
-        const testUser = getTestUser();
-        await createTestUser(prisma, testUser);
-        const loginResponse = await request(app)
-          .post('/api/v1/auth/login')
-          .send({
-            username: testUser.username,
-            password: testUser.password,
-          })
-          .expect(200);
-
-        // Regular login returns a full access token (via Set-Cookie),
-        // not a pending2FA tempToken. Attempting to verify with that
-        // access token as tempToken must fail because the token has the
-        // wrong audience (ACCESS, not PENDING_2FA).
-        const { token: accessToken } = extractAuthTokens(loginResponse);
-        await request(app)
-          .post('/api/v1/auth/2fa/verify')
-          .send({ tempToken: accessToken, code: '123456' })
-          .expect(401);
-      });
-
-      it('should reject invalid token format', async () => {
-        await request(app)
-          .post('/api/v1/auth/2fa/verify')
-          .send({ tempToken: 'invalid-token', code: '123456' })
-          .expect(401);
-      });
-    });
-
-    describe('2FA Backup Codes', () => {
-      it('should reject backup codes request for user without 2FA', async () => {
-        const testUser = getTestUser();
-        await createTestUser(prisma, testUser);
-        const token = await loginTestUser(app, testUser);
-
-        await request(app)
-          .post('/api/v1/auth/2fa/backup-codes')
-          .set('Authorization', `Bearer ${token}`)
-          .send({ password: testUser.password })
-          .expect(400);
-      });
-
-      it('should reject regenerate for user without 2FA', async () => {
-        const testUser = getTestUser();
-        await createTestUser(prisma, testUser);
-        const token = await loginTestUser(app, testUser);
-
-        await request(app)
-          .post('/api/v1/auth/2fa/backup-codes/regenerate')
-          .set('Authorization', `Bearer ${token}`)
-          .send({ password: testUser.password })
-          .expect(400);
-      });
-    });
-  });
+  registerAuthTwoFactorContracts();
 });

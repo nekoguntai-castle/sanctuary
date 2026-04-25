@@ -6,14 +6,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 COMPOSE_FILE="$PROJECT_ROOT/docker-compose.test.yml"
 TEST_DB_CONTAINER="sanctuary-test-db"
-TEST_POSTGRES_PORT="${TEST_POSTGRES_PORT:-5433}"
-TEST_DATABASE_URL="${TEST_DATABASE_URL:-postgresql://test:test@localhost:${TEST_POSTGRES_PORT}/sanctuary_test?schema=public}"
-TEST_JWT_SECRET="${JWT_SECRET:-integration-test-jwt-secret-32-characters-minimum}"
-TEST_ENCRYPTION_KEY="${ENCRYPTION_KEY:-integration-test-encryption-key-32-chars}"
-TEST_ENCRYPTION_SALT="${ENCRYPTION_SALT:-integration-test-encryption-salt}"
-TEST_GATEWAY_SECRET="${GATEWAY_SECRET:-integration-test-gateway-secret-32-characters}"
-DB_HEALTH_TIMEOUT_SECONDS="${INTEGRATION_DB_TIMEOUT_SECONDS:-60}"
-KEEP_DB="${INTEGRATION_KEEP_DB:-false}"
+
+source "$SCRIPT_DIR/integration-test-defaults.sh"
+apply_integration_test_defaults
 
 cleanup() {
   if [[ "$KEEP_DB" == "true" ]]; then

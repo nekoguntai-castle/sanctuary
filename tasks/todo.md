@@ -1,3 +1,32 @@
+# Active Task: Integration Test File Warning Reduction
+
+Status: complete
+
+Goal: reduce active large-file warnings to zero and verify the refactored integration specs with the repository's disposable database harness.
+
+## Plan
+
+- [x] Verify post-merge state and identify the next actionable non-risky debt target.
+- [x] Inspect integration test organization and choose the existing harness/contracts split pattern.
+- [x] Extract transaction fixture helpers into a transaction integration harness.
+- [x] Move authentication 2FA contracts into a focused auth contract module.
+- [x] Run focused integration tests or confirm skip behavior, large-file classification, lizard, and diff checks.
+- [x] Tighten the large-file reporter so classified proof/generated files stay enforced by metadata without remaining active warnings.
+- [x] Move disposable integration-test DB defaults into a sourced constants file so the plain runner uses the non-conflicting port.
+- [x] Run the focused auth and transaction integration specs through the DB-backed harness.
+- [x] Re-run full quality verification and update task review.
+
+## Review
+
+- Extracted transaction integration fixture setup into `transactions/transactionsIntegrationTestHarness.ts`; `transactions.integration.test.ts` dropped from 801 to 684 lines.
+- Moved authentication 2FA contracts into `auth/twoFactor.contracts.ts`; `auth.integration.test.ts` dropped from 841 to 710 lines.
+- Large-file classification enforcement now reports only unclassified warning files; classified proof/generated fixtures remain validated by required metadata.
+- Added `scripts/integration-test-defaults.sh` and wired `scripts/run-integration-tests.sh` to source it; the default disposable PostgreSQL host port is now `55433`, and `server/package.json` delegates `test:integration:db` to the same harness.
+- Re-ran the focused integration specs against the disposable PostgreSQL harness instead of the no-DB skip path: 74 tests passed across the two files through both `./scripts/run-integration-tests.sh ...` and `npm --prefix server run test:integration:db -- ...`.
+- Verification passed: shell syntax checks for the integration defaults/runner, `npm --prefix server run typecheck:tests`, `git diff --check`, `node scripts/quality/check-large-files.mjs`, and full `npm run quality`.
+
+---
+
 # Active Task: Grade Technical Debt Remediation
 
 Status: complete

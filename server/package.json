@@ -34,7 +34,7 @@
     "test:unit": "vitest run tests/unit",
     "pretest:integration": "node scripts/ensure-shared-module-resolution.mjs",
     "test:integration": "vitest run tests/integration --no-file-parallelism --maxWorkers 1",
-    "test:integration:db": "DATABASE_URL='postgresql://sanctuary:sanctuary@localhost:5432/sanctuary_test?schema=public' npm run test:integration",
+    "test:integration:db": "../scripts/run-integration-tests.sh",
     "pretest:ci": "node scripts/ensure-shared-module-resolution.mjs",
     "test:ci": "vitest run --coverage --reporter=junit",
     "pretest:bitcoin": "node scripts/ensure-shared-module-resolution.mjs",
