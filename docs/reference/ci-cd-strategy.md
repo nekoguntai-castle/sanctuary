@@ -134,7 +134,7 @@ The PR quick gate is optimized for repeated branch updates.
 - Test hygiene for changed tests.
 - Frontend typecheck plus related Vitest tests.
 - Backend test typecheck plus related non-integration Vitest tests.
-- Backend integration smoke for backend changes.
+- Backend integration smoke for backend changes that touch integration-sensitive surfaces, such as API routes, middleware, repositories, Prisma migrations, worker/queue infrastructure, package/config files, or integration tests. Clearly unit-scoped backend helper changes still run backend typecheck and related non-integration tests, but skip the DB-backed smoke lane.
 - Gateway related tests.
 - Chromium browser smoke only for browser-flow-relevant paths such as app routing, auth/API clients, selected shell routes, server API/routing/auth middleware, and non-render E2E specs.
 - Chromium render regression only for visual/rendering paths such as app shell, components, hooks, providers, themes, utilities, and render-regression fixtures/snapshots.
