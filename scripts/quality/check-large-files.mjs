@@ -93,6 +93,8 @@ const oversized = trackedFiles
   .sort((a, b) => b.lines - a.lines);
 
 const oversizedOverLimit = oversized.filter(({ lines }) => lines > lineLimit);
+const unclassifiedWarnings = oversized.filter(({ filePath }) => !classifications[filePath]);
+const unclassifiedWarningsOverLimit = unclassifiedWarnings.filter(({ lines }) => lines > lineLimit);
 const errors = [];
 
 for (const [filePath, entry] of Object.entries(classifications)) {
@@ -135,13 +137,11 @@ for (const { filePath, lines } of oversizedOverLimit) {
   }
 }
 
-if (oversized.length > 0) {
-  console.log(`large-files: ${oversizedOverLimit.length} files over ${lineLimit} lines; ${oversized.length} files over warning limit ${warningLimit}`);
+if (unclassifiedWarnings.length > 0) {
+  console.log(`large-files: ${unclassifiedWarningsOverLimit.length} unclassified files over ${lineLimit} lines; ${unclassifiedWarnings.length} unclassified files over warning limit ${warningLimit}`);
 
-  for (const { filePath, lines } of oversized.slice(0, 12)) {
-    const entry = classifications[filePath];
-    const classification = entry ? `${entry.category}:${entry.owner}` : 'production-or-unclassified';
-    console.log(`large-files: ${lines.toString().padStart(5, ' ')} ${classification} ${filePath}`);
+  for (const { filePath, lines } of unclassifiedWarnings.slice(0, 12)) {
+    console.log(`large-files: ${lines.toString().padStart(5, ' ')} production-or-unclassified ${filePath}`);
   }
 }
 

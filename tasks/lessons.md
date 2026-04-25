@@ -2,6 +2,18 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Put repeatable test env defaults in sourced constants files
+
+**Rule:** Do not rely on one-off `VAR=value command` prefixes for repeatable test workflows. Put durable defaults in a sourced constants/defaults file and make the runner export them.
+
+**Why:** A focused integration-test run needed a non-default PostgreSQL port because `5433` was already occupied. Prefixing the command with `TEST_POSTGRES_PORT=...` made the fix easy to lose and duplicated configuration that belongs with the runner.
+
+**How to apply:**
+- Search for an existing scoped defaults file before adding a new one.
+- Use a `*-defaults.sh` helper with an `apply_*_defaults` function when a shell runner owns the workflow.
+- Keep package scripts and docs pointing at the runner instead of embedding connection strings or inline env prefixes.
+- Preserve shell overrides for CI and local exceptions, but make the plain command work in the common local environment.
+
 ## Never delete a merge-queue PR branch before the queue merge lands
 
 **Rule:** On repos using GitHub merge queue, do not run `gh pr merge ... --delete-branch`. Queue the PR first, verify `mergedAt` and `mergeCommit` after the queue completes, then delete the branch only after `origin/main` contains the PR commit.

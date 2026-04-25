@@ -15,7 +15,7 @@ Phase 2 proof artifacts were last generated 2026-04-12 through 2026-04-15 and ar
 - Alertmanager webhook receiver delivery smoke (2026-04-12)
 - Production-like runtime window from generated-data full-stack Compose benchmark: all scenarios passed, all containers healthy, 0 failed worker queue proof jobs (2026-04-14)
 - Run repeatable local proof with `npm run test:ops:phase2`.
-- If local port `5433` is already allocated, run with an alternate host port, for example `TEST_POSTGRES_PORT=55433 npm run test:ops:phase2`.
+- Disposable integration database defaults live in `scripts/integration-test-defaults.sh`; override those constants there or in the shell before running the proof if a local port conflict requires it.
 - Run repeatable monitoring proof with `npm run ops:monitoring:phase2` after starting the monitoring stack.
 - Run repeatable Alertmanager receiver delivery proof with `npm run ops:alert-receiver:phase2`.
 - Run repeatable full backend/gateway audit proof with `npm run ops:gateway-audit:phase2`.
@@ -314,7 +314,7 @@ npm run test:ops:phase2
 Expected behavior:
 
 - The disposable PostgreSQL backup/restore drill creates, validates, deletes, restores, and rechecks representative rows.
-- The test database uses `docker-compose.test.yml`; set `TEST_POSTGRES_PORT` when the default local port is unavailable.
+- The test database uses `docker-compose.test.yml` and the defaults from `scripts/integration-test-defaults.sh`.
 
 Mitigation:
 
