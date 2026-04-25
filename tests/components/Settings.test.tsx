@@ -221,6 +221,16 @@ describe('Settings Component', () => {
     expect((document.body.textContent ?? '').length).toBeGreaterThan(0);
   });
 
+  it('labels all tab buttons for icon-only mobile layouts', async () => {
+    const { Settings } = await import('../../components/Settings');
+
+    render(<Settings />);
+
+    for (const tabName of ['Appearance', 'Display', 'Services', 'Notifications']) {
+      expect(screen.getByRole('button', { name: tabName })).toHaveAttribute('aria-label', tabName);
+    }
+  });
+
   it('should display theme options', async () => {
     const { Settings } = await import('../../components/Settings');
 
