@@ -134,7 +134,7 @@ The PR quick gate is optimized for repeated branch updates.
 
 - Test hygiene for changed tests.
 - Frontend typecheck plus related Vitest tests.
-- Backend test typecheck plus related non-integration Vitest tests.
+- Backend test typecheck in a DB-free job plus DB-backed related non-integration Vitest tests.
 - Backend integration smoke for backend changes that touch integration-sensitive surfaces, such as API routes, middleware, repositories, Prisma migrations, worker/queue infrastructure, package/config files, or integration tests. Clearly unit-scoped backend helper changes still run backend typecheck and related non-integration tests, but skip the DB-backed smoke lane.
 - Gateway related tests.
 - AI proxy build plus the dedicated `tests/ai-proxy` suite for `ai-proxy/` source/config changes and `tests/ai-proxy/` changes. These paths do not run frontend tests unless a separate frontend path changed.
@@ -156,8 +156,9 @@ The merge/main gate exists to prove the final candidate, not every local-sized c
 
 Markdown and MDX files are docs-only for the test classifiers, including package-local docs under `server/`, `gateway/`, `ai-proxy/`, and `tests/install/`. A docs-only change may still get required aggregate/no-op checks on PRs, but it must not start source tests, DB-backed tests, E2E lanes, install tests, or image builds.
 
-- Full backend source tests for backend changes, test-workflow changes, or exhaustive runs. Typecheck and unit coverage run as parallel matrix targets, and the unit coverage target keeps publishing the stable `backend-coverage` artifact.
-- Full backend integration tests for integration-sensitive backend changes, test-workflow changes, or exhaustive runs. Integration-sensitive paths include API routes, middleware, repositories, Prisma migrations, worker/queue infrastructure, package/config files, and integration tests. Clearly unit-scoped backend helpers skip the DB-backed integration groups on merge/main but still run backend source tests.
+- Full backend typecheck for backend changes, test-workflow changes, or exhaustive runs. This job does not start Postgres or run migrations.
+- Full backend unit coverage for backend changes, test-workflow changes, or exhaustive runs. This remains DB-backed and keeps publishing the stable `backend-coverage` artifact.
+- Full backend integration tests for integration-sensitive backend changes, test-workflow changes, or exhaustive runs. Integration-sensitive paths include API routes, middleware, repositories, Prisma migrations, worker/queue infrastructure, package/config files, and integration tests. Clearly unit-scoped backend helpers skip the DB-backed integration groups on merge/main but still run backend typecheck and unit coverage.
 - `Full Backend Tests` remains the aggregate backend result consumed by `Full Test Summary`, so branch protection does not depend on path-conditional source or integration leaf jobs.
 - Full frontend app typecheck, test typecheck, and threshold-enforced coverage for frontend changes, test-workflow changes, or exhaustive runs. Typechecks run in a small matrix, while frontend coverage runs as two Vitest shard jobs that upload blob reports. A merge job then combines those blobs, generates the normal `coverage/` output, and enforces the existing coverage thresholds once. The `full-frontend-tests` job remains the aggregate result consumed by `Full Test Summary`.
 - Full gateway coverage for gateway changes, test-workflow changes, or exhaustive runs.
