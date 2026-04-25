@@ -164,6 +164,7 @@ TEST_WALLET_ID=""
 TEST_LABEL_NAME="upgrade-fixture-label"
 TEST_SETTING_KEY="upgrade.fixture.marker"
 TEST_NODE_CONFIG_ID=""
+NOTIFICATION_TEST_TXID="upgrade-notification-${TEST_ID}"
 
 # Phase 6 cookie auth: the backend sets HttpOnly sanctuary_access +
 # sanctuary_refresh cookies and a readable sanctuary_csrf cookie. Mutations
@@ -765,6 +766,7 @@ seed_representative_app_state_fixture() {
     seed_output=$(docker compose -f "$PROJECT_ROOT/docker-compose.yml" exec -T \
         -e "UPGRADE_LABEL_NAME=$TEST_LABEL_NAME" \
         -e "UPGRADE_SETTING_KEY=$TEST_SETTING_KEY" \
+        -e "UPGRADE_SEED_NOTIFICATION_STATE=$UPGRADE_SEED_NOTIFICATION_STATE" \
         backend node -e '
 function loadModule(candidates) {
   for (const candidate of candidates) {
@@ -787,7 +789,7 @@ const prisma = prismaModule.default || prismaModule;
 (async () => {
   const admin = await prisma.user.findUnique({
     where: { username: "admin" },
-    select: { id: true },
+    select: { id: true, preferences: true },
   });
   if (!admin) {
     throw new Error("admin user missing");
@@ -866,6 +868,35 @@ const prisma = prismaModule.default || prismaModule;
       value: JSON.stringify({ fixture: "upgrade", preserved: true }),
     },
   });
+
+  if (process.env.UPGRADE_SEED_NOTIFICATION_STATE === "true") {
+    const existingPreferences =
+      admin.preferences && typeof admin.preferences === "object" && !Array.isArray(admin.preferences)
+        ? admin.preferences
+        : {};
+    await prisma.user.update({
+      where: { id: admin.id },
+      data: {
+        preferences: {
+          ...existingPreferences,
+          telegram: {
+            enabled: true,
+            botToken: "upgrade-notification-fixture-invalid-token",
+            chatId: "123456789",
+            wallets: {
+              [wallet.id]: {
+                enabled: true,
+                notifyReceived: true,
+                notifySent: true,
+                notifyConsolidation: true,
+                notifyDraft: true,
+              },
+            },
+          },
+        },
+      },
+    });
+  }
 
   process.stdout.write(`walletId=${wallet.id}\n`);
   process.stdout.write(`nodeConfigId=${nodeConfig.id}\n`);
@@ -1995,6 +2026,114 @@ test_post_upgrade_user_visible_smoke() {
     assert_post_upgrade_user_smoke "$BROWSER_BASE_URL"
 }
 
+enqueue_notification_delivery_probe() {
+    log_info "Queueing post-upgrade notification delivery probe..."
+
+    local output
+    output=$(compose_exec backend env \
+        "UPGRADE_NOTIFICATION_WALLET_ID=$TEST_WALLET_ID" \
+        "UPGRADE_NOTIFICATION_TXID=$NOTIFICATION_TEST_TXID" \
+        node -e '
+const { Queue } = require("bullmq");
+const Redis = require("ioredis");
+
+(async () => {
+  const redisUrl = process.env.REDIS_URL;
+  if (!redisUrl) {
+    throw new Error("REDIS_URL is required to queue the notification probe");
+  }
+  const walletId = process.env.UPGRADE_NOTIFICATION_WALLET_ID;
+  const txid = process.env.UPGRADE_NOTIFICATION_TXID;
+  if (!walletId || !txid) {
+    throw new Error("UPGRADE_NOTIFICATION_WALLET_ID and UPGRADE_NOTIFICATION_TXID are required");
+  }
+
+  const connection = new Redis(redisUrl, { maxRetriesPerRequest: null });
+  const queue = new Queue("notifications", {
+    connection,
+    prefix: "sanctuary:worker",
+  });
+
+  await queue.add("transaction-notify", {
+    walletId,
+    txid,
+    type: "received",
+    amount: "12345",
+    feeSats: null,
+  }, {
+    jobId: `upgrade-notification-${txid}`,
+    attempts: 1,
+    removeOnComplete: false,
+    removeOnFail: false,
+  });
+
+  await queue.close();
+  await connection.quit();
+  process.stdout.write("queued=true\n");
+})().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
+' 2>&1) || {
+        log_error "Failed to queue notification delivery probe"
+        log_error "Probe output: ${output:-<empty>}"
+        return 1
+    }
+
+    if ! echo "$output" | grep -q '^queued=true$'; then
+        log_error "Unexpected notification queue output: $output"
+        return 1
+    fi
+}
+
+read_notification_dlq_entries() {
+    compose_exec redis sh -c '
+set -eu
+for key in $(redis-cli -a "$REDIS_PASSWORD" --no-auth-warning --scan --pattern "sanctuary:dlq:*"); do
+  redis-cli -a "$REDIS_PASSWORD" --no-auth-warning GET "$key"
+  printf "\n"
+done
+' 2>/dev/null || true
+}
+
+wait_for_notification_dlq_entry() {
+    log_info "Waiting for notification probe to reach the DLQ..."
+
+    local attempt output
+    for attempt in $(seq 1 30); do
+        output=$(read_notification_dlq_entries)
+        if echo "$output" | grep -q "$NOTIFICATION_TEST_TXID" && \
+           echo "$output" | grep -q 'category.*notification' && \
+           echo "$output" | grep -q 'operation.*notifications:transaction-notify'; then
+            log_success "Notification probe reached the Redis-backed DLQ"
+            return 0
+        fi
+
+        sleep 2
+    done
+
+    log_error "Notification probe did not reach the Redis-backed DLQ"
+    log_error "DLQ output: ${output:-<empty>}"
+    return 1
+}
+
+test_verify_notification_delivery_diagnostics() {
+    if [ "$UPGRADE_SEED_NOTIFICATION_STATE" != "true" ]; then
+        log_info "Skipping notification delivery diagnostics for fixture: $UPGRADE_FIXTURE"
+        return 0
+    fi
+
+    if [ -z "$TEST_WALLET_ID" ]; then
+        log_error "Notification fixture requires the seeded wallet id"
+        return 1
+    fi
+
+    enqueue_notification_delivery_probe || return 1
+    wait_for_notification_dlq_entry || return 1
+
+    log_success "Notification worker delivery path and DLQ diagnostics survived upgrade"
+}
+
 test_recover_postgres_password_drift() {
     log_info "Testing PostgreSQL password synchronization during setup..."
 
@@ -2278,6 +2417,7 @@ main() {
     run_test "Reset 2FA And Re-Enroll" test_reset_two_factor_and_reenroll
     run_test "Verify Migration on Upgrade" test_verify_migration_on_upgrade
     run_test "Post-Upgrade User-Visible Smoke" test_post_upgrade_user_visible_smoke
+    run_test "Verify Notification Delivery Diagnostics" test_verify_notification_delivery_diagnostics
     run_extended_upgrade_scenarios
 
     if [ $TESTS_FAILED -gt 0 ]; then

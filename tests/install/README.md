@@ -65,6 +65,9 @@ This test suite covers:
 
 # Browser/proxy shape: IP origin through the disposable upgrade-test port set
 ./tests/install/e2e/upgrade-install.test.sh --mode core --source-ref latest-stable --fixture browser-origin-ip
+
+# Notification worker shape: seeded notification config plus post-upgrade DLQ diagnostics
+./tests/install/e2e/upgrade-install.test.sh --mode core --source-ref latest-stable --fixture notification-delivery
 ```
 
 ## Prerequisites
@@ -162,6 +165,7 @@ Tests upgrading an existing installation:
 15. Verifies representative app state survives: group ownership, wallet metadata, labels, node config, and mutable settings
 16. Verifies migrations completed after the upgrade
 17. Verifies user-visible post-upgrade traffic through nginx: login, `/auth/me`, `/auth/refresh`, CSRF-protected support-package generation, and direct worker health
+18. Verifies seeded notification config can be processed by the upgraded notification worker and route exhausted jobs into Redis-backed DLQ diagnostics
 
 Source refs support exact refs/tags and aliases:
 
@@ -174,6 +178,7 @@ Upgrade fixtures can be comma-separated:
 - `baseline`: changed admin password, encrypted 2FA, seeded app state, and browser-path smoke
 - `browser-origin-ip`: baseline plus `127.0.0.1` browser-visible origin
 - `legacy-runtime-env`: baseline using the repo-root `.env` compatibility path across source and target checkouts
+- `notification-delivery`: baseline plus seeded notification preferences and post-upgrade worker/DLQ proof
 - `optional-profiles`: baseline with monitoring and Tor enabled through setup/start paths
 - `seeded-app-state`: explicit representative persisted state fixture, useful when combined with other fixture names
 
@@ -276,7 +281,7 @@ PR runs are scoped by `tests/install/utils/classify-install-scope.sh` instead of
 - Fresh install E2E (~5-10 min)
 - Container health and auth flow on a reusable stack (~2-5 min)
 - Baseline upgrade matrix: `latest-stable/baseline` and `n-2/baseline` (~10-20 min per lane)
-- Extended upgrade fixtures: `latest-stable/browser-origin-ip` and `latest-stable/legacy-runtime-env` (~10-20 min per lane)
+- Extended upgrade fixtures: `latest-stable/browser-origin-ip`, `latest-stable/legacy-runtime-env`, and `latest-stable/notification-delivery` (~10-20 min per lane)
 
 Total release validation time: ~25-60 minutes depending on upgrade matrix concurrency and image build cache.
 
