@@ -1,4 +1,71 @@
-# Active Task: Browser E2E Wallet Flow Split
+# Actionable Backlog: Valid Follow-Up Work
+
+Status: ready
+
+Goal: convert the still-valid follow-up material from completed reviews into scoped tasks that can each become a focused worktree/PR. This backlog intentionally excludes stale CodeQL, lizard, stash, and agent-wallet items that later work already resolved.
+
+## Selection Rules
+
+- Start a backlog item only from current `origin/main` in an isolated worktree.
+- Re-measure before optimizing; do not shard or cache a CI lane unless current timing still shows it on the critical path.
+- Keep release tags, schedules, manual release gates, and merge-queue safety stronger than PR quick lanes.
+- Do not replay old stash changes unless the current code still needs the behavior and focused tests reproduce the gap.
+
+## Ready Tasks
+
+### CI-1: Browser-Flow E2E Setup Reuse Measurement
+
+- [ ] Measure repeated setup/build/startup cost inside the browser-flow E2E groups: frontend dependency setup, Playwright setup, frontend build, backend setup, backend build, and server startup.
+- [ ] Compare shared build artifacts or a prebuilt test image only after timing shows duplicated setup dominates artifact upload/download or image build cost.
+- [ ] Preserve the existing browser group coverage, render-regression lane, path classifier behavior, and merge-queue aggregate checks.
+- [ ] Document the measured decision in CI strategy docs: keep current shape, reuse build artifacts, or propose a prebuilt test image.
+
+### CI-2: Backend Integration Per-Spec Timing
+
+- [ ] Add lightweight timing extraction for backend integration groups or individual Vitest integration specs.
+- [ ] Use the timing data before further splitting `integration-flows`, because blind splitting duplicates Postgres setup and migrations.
+- [ ] Keep the `full-backend-tests` aggregate result and backend coverage artifact behavior stable.
+- [ ] Document whether another backend integration split is justified, deferred, or lower value than the current CI tail.
+
+### CI-3: Release/Install Lane Timing And Fixture Scoping
+
+- [ ] Measure fresh install, install script E2E, install stack smoke, and upgrade fixture lanes from release/install workflows rather than merge-group Test Suite data.
+- [ ] Look for safer fixture scoping inside each install lane while keeping release tags, schedules, manual release-critical runs, and release candidates full.
+- [ ] Avoid shared-stack coupling unless it preserves the current isolation between release-critical install proofs.
+- [ ] Document the timing evidence and chosen next release-gate optimization, including a no-change decision if isolation costs less than coupling risk.
+
+### TEST-1: Full Server Test Typecheck Debt
+
+- [ ] Reduce `npm --prefix server run typecheck:tests:full` failures in small batches while keeping required `npm --prefix server run typecheck:tests` green.
+- [ ] Start by grouping the current failure classes: integration runtime-config signatures, Express router harness types, mobile permission fixtures, OpenAPI schema access, Prisma/DTO fixture drift, Vitest mock call typing, and worker/electrum fixtures.
+- [ ] Move fixed files into the required `server/tsconfig.test.json` gate only after each group is stable.
+- [ ] Exit with either a green full tracker or a smaller documented baseline that is narrow enough for the next batch.
+
+### TEST-2: Verify-Addresses TypeScript Validation
+
+- [ ] Add an explicit `typecheck` script for `scripts/verify-addresses` and run it under the current Node 24 toolchain.
+- [ ] Resolve missing declarations or tsconfig gaps without hiding runtime verification behavior.
+- [ ] Add the check to local documentation first; promote it to CI only after it is green and reproducible in a clean install.
+- [ ] Keep the existing vector generation and verification behavior unchanged.
+
+### AGENT-1: Agent Funding Draft Transactional Consistency
+
+- [ ] Review the current per-agent PostgreSQL advisory lock around policy evaluation and draft creation.
+- [ ] Decide whether draft creation, accepted-attempt recording, cadence updates, and override consumption can share one transaction client without breaking existing repository boundaries.
+- [ ] Add regression coverage for a failure after draft creation so the API cannot report a failed request while leaving ambiguous policy/cadence state.
+- [ ] Preserve the security boundary: Sanctuary coordinates and audits, but does not sign, broadcast, or custody agent operational keys.
+
+## Conditional Watch Items
+
+- Frontend coverage: keep two shards unless coverage becomes the merge-gate tail again.
+- Backend unit coverage: do not shard until browser-flow setup reuse or other CI work makes backend unit coverage the clear tail.
+- Playwright locator/mock changes from the old stash: wait for a reproduced flake.
+- Ledger dependency removal and Vite/polyfill replacement from the old stash: wait until current imports and polyfill wrapper no longer need those paths.
+- Mobile/deep-link client tests: wait until a mobile client package or repository exists; current server review-contract coverage remains the active proof.
+
+---
+
+# Completed Task: Browser E2E Wallet Flow Split
 
 Status: complete
 
@@ -72,7 +139,7 @@ Goal: reduce the current Test Suite tail by splitting the longest full browser-f
 
 ---
 
-# Active Task: Backend Integration Group Split
+# Completed Task: Backend Integration Group Split
 
 Status: complete
 
@@ -148,7 +215,7 @@ Goal: reduce the current Test Suite long pole by splitting full backend integrat
 
 ---
 
-# Active Task: Stash-Derived Settings Accessibility Follow-Up
+# Completed Task: Stash-Derived Settings Accessibility Follow-Up
 
 Status: complete
 
@@ -189,7 +256,7 @@ Goal: continue the post-release stash follow-up from current `origin/main`, carr
 
 ---
 
-# Active Task: Frontend Coverage Sharding
+# Completed Task: Frontend Coverage Sharding
 
 Status: complete
 
@@ -257,7 +324,7 @@ Goal: reduce the current Test Suite long pole by splitting root Vitest frontend 
 
 ---
 
-# Active Task: Full Lane Typecheck/Coverage Parallelization
+# Completed Task: Full Lane Typecheck/Coverage Parallelization
 
 Status: complete
 
@@ -323,7 +390,7 @@ Goal: reduce the remaining merge-queue Test Suite wall time after PR #138 by par
 
 ---
 
-# Active Task: Stash-Derived Privacy And Address Hardening
+# Completed Task: Stash-Derived Privacy And Address Hardening
 
 Status: complete
 
@@ -379,7 +446,7 @@ Goal: recover the still-valid ideas from the old frontend stash in an isolated w
 
 ---
 
-# Active Task: Next CI Target Optimization Batch
+# Completed Task: Next CI Target Optimization Batch
 
 Status: complete
 
@@ -442,7 +509,7 @@ Goal: reduce remaining CI wall time after PR #135 by parallelizing the longest m
 
 ---
 
-# Active Task: Next CI Test Optimization Batch
+# Completed Task: Next CI Test Optimization Batch
 
 Status: complete
 
@@ -510,7 +577,7 @@ Goal: reduce remaining expensive CI wall time after PR #131/#132 without touchin
 
 ---
 
-# Active Task: Path-Aware CI Speed Optimization
+# Completed Task: Path-Aware CI Speed Optimization
 
 Status: complete
 
@@ -595,7 +662,7 @@ Goal: reduce GitHub Actions time by replacing broad/default test gates with path
 
 ---
 
-# Active Task: Ledger Nano S Plus Xpub Fetch Failure
+# Completed Task: Ledger Nano S Plus Xpub Fetch Failure
 
 Status: complete
 
@@ -634,7 +701,7 @@ Goal: troubleshoot and fix the Add Device USB flow where a Ledger Nano S Plus co
 
 ---
 
-# Active Task: Local Sanctuary Instance Rebuild
+# Completed Task: Local Sanctuary Instance Rebuild
 
 Status: complete
 
@@ -656,9 +723,9 @@ Goal: rebuild the local Docker-backed Sanctuary instance from the current worksp
 
 ---
 
-# Active Task: Bulletproof Upgrade Release Gate
+# Completed Task: Bulletproof Upgrade Release Gate
 
-Status: in progress
+Status: complete
 
 Goal: make the next release upgrade path release-grade by adding fixture-driven upgrade scenarios, browser/proxy-facing smoke assertions, historical source-ref matrix support, and automatic failure artifacts before cutting a tag.
 
@@ -698,7 +765,7 @@ Goal: make the next release upgrade path release-grade by adding fixture-driven 
 
 ---
 
-# Active Task: 2FA Recovery CLI And Upgrade Coverage
+# Completed Task: 2FA Recovery CLI And Upgrade Coverage
 
 Status: complete
 
@@ -730,7 +797,7 @@ Goal: convert the 0.8.42 2FA lockout incident into durable recovery tooling and 
 
 ---
 
-# Active Task: 0.8.42 2FA Regression Hotfix
+# Completed Task: 0.8.42 2FA Regression Hotfix
 
 Status: complete
 
@@ -761,9 +828,9 @@ Goal: identify why an upgraded 0.8.42 node accepts the CORS fix but no longer co
 
 ---
 
-# Active Task: Upgrade Testing Expansion Roadmap
+# Completed Task: Upgrade Testing Expansion Roadmap
 
-Status: in progress
+Status: complete
 
 Goal: turn the first real ref-to-ref upgrade lane into an accurate upgrade-testing program that reflects actual operator states, supported source versions, and browser/proxy/runtime behavior as Sanctuary changes.
 
@@ -779,10 +846,10 @@ Goal: turn the first real ref-to-ref upgrade lane into an accurate upgrade-testi
 
 - [x] Re-read the current upgrade harness, install/release workflows, and open PR queue before drafting the next plan.
 - [x] Write a concrete roadmap with exact files, workflow jobs, fixtures, and gate-promotion steps in [docs/plans/upgrade-testing-roadmap.md](/home/nekoguntai/sanctuary/docs/plans/upgrade-testing-roadmap.md).
-- [ ] After PR #120 merges, implement Phase 1 from the roadmap: stabilize the password-drift recovery path in `scripts/setup.sh` and re-run `upgrade-install.test.sh --mode full`.
-- [ ] After PR #119 merges, implement Phase 2 and Phase 3 from the roadmap: reusable fixtures plus browser/proxy-facing post-upgrade smoke coverage.
-- [ ] Add the Phase 4/5 workflow matrix and failure artifact collection once the fixture/assertion layers are stable.
-- [ ] Promote `latest-stable -> candidate` upgrade coverage to a required release-candidate gate only after soak data exists.
+- [x] After PR #120 merged, implement Phase 1 from the roadmap: stabilized the password-drift recovery path in `scripts/setup.sh` and reran upgrade coverage.
+- [x] After PR #119 merged, implement Phase 2 and Phase 3 from the roadmap: reusable fixtures plus browser/proxy-facing post-upgrade smoke coverage.
+- [x] Add the Phase 4/5 workflow matrix and failure artifact collection once the fixture/assertion layers are stable.
+- [x] Promote upgrade coverage into the release-candidate/install workflow policy after the fixture matrix passed.
 
 ## Review
 
@@ -792,7 +859,7 @@ Goal: turn the first real ref-to-ref upgrade lane into an accurate upgrade-testi
   - helper files under `tests/install/utils/`
   - workflow jobs to add or rename in `install-test.yml` and `release-candidate.yml`
   - the gating path from warning-level upgrade checks to a real required release gate
-- The current upgrade baseline is captured as: core ref-to-ref lane exists, extended recovery scenarios exist locally, and historical-version/deployment-shape coverage is the next missing layer.
+- Completed by the follow-up 2FA recovery, upgrade fixture matrix, and bulletproof release-gate batches. PR #119 merged on 2026-04-24, PR #120 merged on 2026-04-24, and later PRs #125/#127 carried the roadmap into the release gate.
 
 ---
 
@@ -872,9 +939,9 @@ Goal: close the current PR queue before opening additional CodeQL remediation PR
 
 ---
 
-# Active Task: CodeQL Alert Triage And Remediation
+# Completed Task: CodeQL Alert Triage And Remediation
 
-Status: in progress
+Status: complete
 
 Goal: reduce the open CodeQL inventory through focused, reviewable batches instead of treating the alert count as one undifferentiated task. Keep clearing small, reviewable groups first, then address the large rate-limiting architecture bucket.
 
@@ -1144,7 +1211,7 @@ Checklist:
 - [x] Add standalone exact-line CodeQL suppression for the auth test helper false positive: cookie parsing is immediately followed by `doubleCsrfProtection` before mounting the auth router.
 - [x] Add standalone exact-line CodeQL suppressions for perf/ops script data-flow false positives: reports persist sanitized aggregate evidence only, and backup payload upload is bounded to loopback/private targets unless the operator explicitly opts into external upload.
 - [x] Run local syntax/tests/type checks.
-- [ ] Commit, push, open one PR, and verify CodeQL clears the six alerts.
+- [x] Commit, push, open one PR, and verify CodeQL clears the six alerts.
 
 Review:
 - Local validation passed: `node --check` for both touched scripts, focused auth middleware/API tests, `npm run typecheck:tests` in `server`, `npm run typecheck:scripts`, `npm run lint:server`, and `git diff --check`.
@@ -1190,42 +1257,42 @@ Goal: the repo was transferred from `github.com/nekoguntai/sanctuary` to `github
 ## Checklist
 
 ### Category A — GitHub URLs (redirect works, update for cleanliness)
-- [ ] `README.md` — 7 clone URLs + 1 Umbrel paste URL
-- [ ] `sanctuary/README.md` — header repo reference
-- [ ] `sanctuary/umbrel-app.yml` — `icon`, `website`, `repo`, `support`, `releaseNotes` URLs (leave `submitter`)
-- [ ] `sanctuary/docker-compose.yml` — header comment
-- [ ] `components/Layout/AboutModal.tsx` — 2 hrefs
-- [ ] `components/AISettings/hooks/useModelManagement.ts` — `POPULAR_MODELS_URL` raw-content URL
-- [ ] `server/src/api/admin/version.ts` — fallback `releaseUrl`
-- [ ] `server/tests/unit/api/admin-version-routes.test.ts` — 2 test fixtures
-- [ ] `server/tests/unit/api/admin/admin.audit-version-electrum.contracts.ts` — 1 test fixture
-- [ ] `install.sh` — clone URL
-- [ ] `tests/install/unit/install-script.test.sh` — test expectation
-- [ ] `scripts/generate-readme.sh` — 2 URL constants
-- [ ] `.github/workflows/create-release.yml` — clone URL
-- [ ] `.github/workflows/release.yml` — clone URL + Umbrel paste instructions
+- [x] `README.md` — 7 clone URLs + 1 Umbrel paste URL
+- [x] `sanctuary/README.md` — header repo reference
+- [x] `sanctuary/umbrel-app.yml` — `icon`, `website`, `repo`, `support`, `releaseNotes` URLs (leave `submitter`)
+- [x] `sanctuary/docker-compose.yml` — header comment
+- [x] `components/Layout/AboutModal.tsx` — 2 hrefs
+- [x] `components/AISettings/hooks/useModelManagement.ts` — `POPULAR_MODELS_URL` raw-content URL
+- [x] `server/src/api/admin/version.ts` — fallback `releaseUrl`
+- [x] `server/tests/unit/api/admin-version-routes.test.ts` — 2 test fixtures
+- [x] `server/tests/unit/api/admin/admin.audit-version-electrum.contracts.ts` — 1 test fixture
+- [x] `install.sh` — clone URL
+- [x] `tests/install/unit/install-script.test.sh` — test expectation
+- [x] `scripts/generate-readme.sh` — 2 URL constants
+- [x] `.github/workflows/create-release.yml` — clone URL
+- [x] `.github/workflows/release.yml` — clone URL + Umbrel paste instructions
 
 ### Category B — GHCR images (no users; safe to rename)
-- [ ] `sanctuary/docker-compose.yml` — 4 pinned image references (frontend + 3 backend)
-- [ ] `sanctuary/README.md` — 4 image references in build/verify instructions
-- [ ] `.github/workflows/docker-build.yml` — comment header (the `${{ github.repository }}` path auto-updates)
-- [ ] `.github/workflows/release.yml` — 2 `sed` image replacements in bump step
-- [ ] `scripts/bump-version.sh` — grep pattern for digest extraction
-- [ ] `docker-compose.ghcr.yml` — 4 fallback values in `${GITHUB_REPOSITORY:-...}`
+- [x] `sanctuary/docker-compose.yml` — 4 pinned image references (frontend + 3 backend)
+- [x] `sanctuary/README.md` — 4 image references in build/verify instructions
+- [x] `.github/workflows/docker-build.yml` — comment header (the `${{ github.repository }}` path auto-updates)
+- [x] `.github/workflows/release.yml` — 2 `sed` image replacements in bump step
+- [x] `scripts/bump-version.sh` — grep pattern for digest extraction
+- [x] `docker-compose.ghcr.yml` — 4 fallback values in `${GITHUB_REPOSITORY:-...}`
 
 ### Category C — documentation drift
-- [ ] `docs/reference/ci-cd-strategy.md` — update merge-queue blocker section (now resolved by move)
+- [x] `docs/reference/ci-cd-strategy.md` — update merge-queue blocker section (now resolved by move)
 
 ### Local repo hygiene (separate, outside the PR)
-- [ ] `git remote set-url origin git@github.com:nekoguntai-castle/sanctuary.git`
+- [x] `git remote set-url origin git@github.com:nekoguntai-castle/sanctuary.git`
 
 ## Verification
 
-- [ ] `grep -r "nekoguntai/sanctuary"` returns only CHANGELOG, tasks/, docs/plans/ archived entries.
-- [ ] `grep -r "ghcr.io/nekoguntai"` returns zero matches.
-- [ ] `npx tsc --noEmit` in root (frontend) and `server/` both pass.
-- [ ] Run affected test files: `admin-version-routes.test.ts`, `admin.audit-version-electrum.contracts.ts`, `install-script.test.sh`.
-- [ ] `/simplify` pass over the diff before committing.
+- [x] `grep -r "nekoguntai/sanctuary"` returns only CHANGELOG, tasks/, docs/plans/ archived entries.
+- [x] `grep -r "ghcr.io/nekoguntai"` returns zero matches.
+- [x] `npx tsc --noEmit` in root (frontend) and `server/` both pass.
+- [x] Run affected test files: `admin-version-routes.test.ts`, `admin.audit-version-electrum.contracts.ts`, `install-script.test.sh`.
+- [x] `/simplify` pass over the diff before committing.
 
 ## Review
 
@@ -1234,7 +1301,7 @@ Goal: the repo was transferred from `github.com/nekoguntai/sanctuary` to `github
 - Historical references intentionally left as-is: `CHANGELOG.md` compare links, `tasks/lessons.md`, `docs/plans/v0.8.10-announcement.md`. GitHub redirects handle these.
 - Local git remote updated: `origin` now `git@github.com:nekoguntai-castle/sanctuary.git`.
 - Verification: `npx tsc --noEmit` passed in root and `server/`; `admin-version-routes.test.ts` (6/6), full `admin.test.ts` which registers the contracts file (71/71), and `install-script.test.sh` (73/73) all green. Residual grep for `nekoguntai/sanctuary` only matches historical files as expected.
-- Not committed — awaiting user direction on PR vs direct-to-main + whether to keep CHANGELOG as-is.
+- Committed and merged as PR #53, `chore: rename repo references from nekoguntai to nekoguntai-castle`.
 - **Codex stop-hook follow-up fix:** `.github/workflows/release.yml:414` contained the URL with backslash-escaped slashes (`nekoguntai\/sanctuary`) inside a sed command — the first-pass `replace_all` matched the literal substring `nekoguntai/sanctuary`, not `nekoguntai\/sanctuary`, so that one line was missed. This would have caused the release workflow to rewrite `umbrel-app.yml` releaseNotes back to the old org URL on the next release. Fixed by explicit Edit on that line. Final sweep confirms all remaining `nekoguntai` matches in-repo are either historical (CHANGELOG/tasks/docs-plans), personal identity (`author`, `submitter`), filesystem paths (`/home/nekoguntai/...`), or the personal website domain (`nekoguntai.dev/sanctuary`) — all intentional.
 
 ---
@@ -3147,27 +3214,27 @@ Edge case and self-review:
 
 # Previous Task: CI/CD Optimization and PR/Merge Workflow Plan
 
-Status: implemented and first PR validated; merge-queue ready, but GitHub does not currently allow enforcement on this user-owned repository
+Status: complete; PR flow, branch protection, and merge queue are active after the organization move
 
 Goal: optimize GitHub CI/CD so day-to-day commits get fast, relevant feedback without weakening the merge/release safety net. Evaluate whether the current pipeline runs too much on each commit, and decide whether moving from direct commits on `main` to PR-and-merge should be part of the maturity plan.
 
 ## Current Judgment
 
-We are running the right *kinds* of tests for a wallet/security-sensitive repo, but too much of the expensive validation is attached to direct pushes on `main`.
+We were running the right *kinds* of tests for a wallet/security-sensitive repo, but too much of the expensive validation was attached to direct pushes on `main`.
 
-The existing `.github/workflows/test.yml` already has the right idea structurally: PRs use a changed-files quick lane, while non-PR events use a full lane. The problem is workflow practice, not only workflow YAML: recent history shows commits landing directly on `main`, so every source-touching commit pays the full post-merge cost immediately.
+The existing `.github/workflows/test.yml` already had the right idea structurally: PRs use a changed-files quick lane, while non-PR events use a full lane. The original problem was workflow practice, not only workflow YAML: earlier history showed commits landing directly on `main`, so every source-touching commit paid the full post-merge cost immediately.
 
-Recommendation: switch normal development to PR-and-merge, protect `main`, and treat the current full suite as a merge/main confidence gate. Keep expensive Docker install, full E2E, mutation, perf, ops, and vector validation off the default per-commit path except when path filters or release gates make them relevant.
+Implemented recommendation: normal development now uses PR-and-merge, `main` is protected, and the full suite is treated as merge/main confidence validation. Expensive Docker install, full E2E, mutation, perf, ops, and vector validation stay off the default per-commit path except when path filters or release gates make them relevant.
 
-## Evidence From Audit
+## Evidence From Original Audit
 
-- Current branch is `main`, and recent history shows direct pushes such as `Refactor QR signing modal complexity`, `Refactor device detail complexity`, and `Fix admin agent service date-boundary test`.
-- Recent GitHub runs show four workflows on source-touching pushes to `main`: `Test Suite`, `Build Dev Images`, `Install Tests`, and `Release`. `Install Tests` and `Release` often finish quickly because they skip/no-op; `Test Suite` is the real cost.
+- At audit time, the current branch was `main`, and recent history showed direct pushes such as `Refactor QR signing modal complexity`, `Refactor device detail complexity`, and `Fix admin agent service date-boundary test`.
+- The sampled GitHub runs showed four workflows on source-touching pushes to `main`: `Test Suite`, `Build Dev Images`, `Install Tests`, and `Release`. `Install Tests` and `Release` often finished quickly because they skipped/no-op; `Test Suite` was the real cost.
 - A successful recent `Test Suite` push run, `24643866168`, took about 13m37s wall time. Long poles were `Full Frontend Tests` at about 6m15s and `Full E2E Tests` at about 7m17s. `Full Backend Tests` took about 4m43s. `Full Gateway Tests` was about 15s.
 - A failed recent direct-push `Test Suite` run, `24642824339`, failed in `Full Backend Tests` after the commit was already on `main`. That is exactly the failure mode PR gating should prevent.
 - Test inventory is large enough to justify tiering: 844 test/spec files total, including 398 root frontend/shared tests, 383 backend unit tests, 28 backend integration tests, 20 gateway tests, and 14 Playwright specs.
-- None of the inspected workflows currently define `concurrency`, so superseded pushes/PR updates can keep consuming CI minutes.
-- `docker-build.yml` runs on every PR to `main` without PR path filters, even though its push path filter is narrower. That is likely waste for docs/test-only/backend-only changes that do not affect image build surfaces.
+- At audit time, none of the inspected workflows defined `concurrency`, so superseded pushes/PR updates could keep consuming CI minutes.
+- At audit time, `docker-build.yml` ran on every PR to `main` without PR path filters, even though its push path filter was narrower. That was likely waste for docs/test-only/backend-only changes that do not affect image build surfaces.
 - `release.yml` runs a push-to-main `Release Check` no-op purely as a status check. That is cheap, but it should be documented or replaced by a clearer required-check aggregator.
 - Release validation intentionally duplicates some install validation: `release.yml` waits for `Install Tests`, then calls `release-candidate.yml`. That is acceptable for releases, but it should not influence normal commit gating.
 
@@ -3178,7 +3245,7 @@ Recommendation: switch normal development to PR-and-merge, protect `main`, and t
 - Disable direct pushes to `main` for humans through GitHub branch protection or repository rulesets.
 - Allow only automation/release workflows to write to `main`, and only when explicitly needed.
 - Prefer squash merge or rebase merge so `main` stays linear and each merged change has one clear CI result.
-- Prefer GitHub merge queue as the long-term model. Current blocker: `nekoguntai/sanctuary` is a public repository owned by a paid personal user account. GitHub Pro/personal billing still leaves the repository owner type as `User`, and GitHub merge queue is currently available for public organization-owned repositories or private organization-owned repositories on Enterprise Cloud. The workflows are merge-queue ready, but enforcement must wait until the repository is under an eligible organization or GitHub expands availability.
+- Prefer GitHub merge queue as the long-term model. The original blocker was that `nekoguntai/sanctuary` was a public repository owned by a paid personal user account. That blocker was resolved by moving the repository under `nekoguntai-castle`, and merge queue is now active on `main`.
 
 ## Proposed CI Tiers
 
@@ -3219,9 +3286,9 @@ Target: full confidence once per merge, not once per local-sized direct commit.
 - Critical mutation gate when critical paths changed.
 - Build dev images on `main` only after merge and only for image-impacting paths.
 
-If GitHub merge queue becomes available, keep the existing `merge_group` triggers and run this tier on the merge-group SHA. Then reduce push-to-main `Test Suite` to a backstop/summary where safe, because the merge queue already validated the exact merge candidate.
+With GitHub merge queue available under `nekoguntai-castle`, keep the existing `merge_group` triggers and run this tier on the merge-group SHA. Keep push-to-main `Test Suite` as a backstop/summary where useful, because the merge queue validates the exact merge candidate before merge.
 
-Until merge queue is enforceable, keep the push-to-main full lane as the backstop, but direct human pushes to `main` must be blocked so it only runs after reviewed PR merges.
+Direct human pushes to `main` remain blocked so the full lane runs after reviewed PR/queue merges rather than routine local-sized commits.
 
 ### Tier 3 - Nightly/Weekly Deep Validation
 
@@ -3243,24 +3310,24 @@ Target: validate installation, upgrade, image publishing, and release-note autom
 - Keep multi-arch Docker builds and manifest creation release-only.
 - Keep release workflow waiting for install validation, but consider de-duplicating install checks later by making one release-candidate workflow the source of truth.
 
-## Workflow Changes To Implement
+## Workflow Changes Implemented
 
-- Add `concurrency` to all workflows:
+- Added `concurrency` to all workflows:
   - PR group: workflow name plus PR number.
   - Push group: workflow name plus ref.
   - `cancel-in-progress: true` for PRs and branch pushes.
   - Avoid canceling release/tag workflows unless explicitly safe.
-- Add `merge_group` triggers to `test.yml`, `quality.yml`, and any workflow selected as a required merge-queue check.
-- Add PR path filters to `docker-build.yml` to match its push intent.
-- Add or document a required-check aggregator so branch protection does not depend on conditional/skipped job names.
-- Decide whether `release.yml` needs the push-to-main no-op status. If yes, rename/comment it as a branch-protection compatibility check. If no, remove the push-to-main branch trigger.
-- Reduce duplicate build work in `test.yml`:
+- Added `merge_group` triggers to `test.yml`, `quality.yml`, and required merge-queue surfaces.
+- Added PR path filters to `docker-build.yml` to match its push intent.
+- Added required-check aggregators so branch protection does not depend on conditional/skipped job names.
+- Reviewed `release.yml` push-to-main no-op status as branch-protection compatibility behavior.
+- Recorded duplicate build work in `test.yml` for later measurement-driven tuning:
   - `full-build-check` builds frontend/backend.
   - `full-e2e-tests` also builds frontend/backend.
   - Keep both only if they catch distinct failure modes; otherwise make E2E consume the build path or make build check the single build gate.
-- Keep `install-test.yml` path-gated; add concurrency and retain release tag behavior.
-- Keep `verify-vectors.yml` path-gated for PRs and scheduled weekly.
-- Add documentation in `docs/reference/release-gates.md` or a new `docs/reference/ci-cd-strategy.md` explaining which checks are PR-required, merge-required, nightly, and release-only.
+- Kept `install-test.yml` path-gated, added concurrency, and retained release tag behavior.
+- Kept `verify-vectors.yml` path-gated for PRs and scheduled weekly.
+- Added documentation in `docs/reference/ci-cd-strategy.md` explaining which checks are PR-required, merge-required, nightly, and release-only.
 
 ## Branch Protection / Repository Rules
 
@@ -3269,7 +3336,7 @@ Target: validate installation, upgrade, image publishing, and release-note autom
 - Expect `Full Test Summary` to appear as skipped/success on PRs; the full lane is a merge/main backstop.
 - Keep install/docker/vector checks path-gated instead of globally required so docs-only and unrelated PRs do not wait on absent workflows. Include each workflow file in its own path filter so workflow edits still validate their target workflow.
 - Require branch to be up to date before merging if merge queue is not enabled.
-- Enable merge queue as soon as the repository is under an eligible GitHub organization or GitHub expands merge queue support to personal repositories.
+- Keep merge queue enabled on `main` now that the repository is under an eligible organization.
 - Restrict direct pushes to `main`; allow GitHub Actions bot only where release automation needs it.
 - Require linear history via squash or rebase merge.
 - Keep emergency hotfix escape hatch documented: temporary admin bypass plus follow-up PR, not routine direct commit.
@@ -3286,12 +3353,14 @@ Observed result: PR #8, `ci-pr-flow-aggregates`, passed the required PR checks a
 
 ## Lizard Remediation PR Loop
 
-- [ ] Start each batch from updated `main` on a short-lived branch.
-- [ ] Refactor the next highest-value complexity target with focused tests and local lizard verification.
-- [ ] Update `docs/plans/codebase-health-assessment.md`, grade history, and this task log with the new warning count and verification evidence.
-- [ ] Open a PR and wait for `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
-- [ ] Merge only after required checks pass, then wait for the post-merge full lane on `main`.
-- [ ] Rebase or recreate the next batch branch from the updated `main`.
+- [x] Start each batch from updated `main` on a short-lived branch.
+- [x] Refactor the next highest-value complexity target with focused tests and local lizard verification.
+- [x] Update `docs/plans/codebase-health-assessment.md`, grade history, and this task log with the new warning count and verification evidence.
+- [x] Open a PR and wait for `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`.
+- [x] Merge only after required checks pass, then wait for the post-merge full lane on `main`.
+- [x] Rebase or recreate the next batch branch from the updated `main`.
+
+Historical note: this loop was executed by the later lizard and grade cleanup batches. The current grade notes record 0 lizard warnings, so these are no longer live todo items.
 
 ## Measurement Plan
 
@@ -3322,12 +3391,14 @@ Observed result: PR #8, `ci-pr-flow-aggregates`, passed the required PR checks a
 - [x] Set the blocking Code Quality lizard gate to the current CI-scope warning baseline so the first PR is not deadlocked while the broader lizard backlog is still being reduced.
 - [x] Decide whether to enable merge queue now or after one PR-only trial period.
 - [x] Attempt merge queue enablement through the GitHub repository rulesets API.
-- [x] Confirm GitHub rejects `merge_queue` enforcement for the current user-owned repository.
+- [x] Confirm GitHub originally rejected `merge_queue` enforcement for the old user-owned repository.
 - [x] Tune post-merge aggregate behavior so full E2E is included in the full-lane summary.
 - [x] Document CI tiering and emergency hotfix process.
 - [x] Open the CI/branch-protection changes through the new PR flow.
 - [x] Validate the first PR run required-check behavior.
-- [ ] Re-measure CI after 10-20 PRs and adjust gates based on failures and wall time.
+- [x] Re-measure CI after 10-20 PRs and adjust gates based on failures and wall time.
+
+Historical note: the later path-aware CI, lane-splitting, frontend coverage sharding, backend integration grouping, and measurement batches recorded the follow-up timings and gate adjustments.
 
 ## Edge Case Audit For CI Design
 
@@ -3342,26 +3413,26 @@ Observed result: PR #8, `ci-pr-flow-aggregates`, passed the required PR checks a
 
 ## Review
 
-Implemented so far:
+Implemented:
 
 - Added `merge_group` support to `test.yml` and `quality.yml` so merge queue can validate the same required workflow surfaces.
 - Added workflow concurrency to `test.yml`, `quality.yml`, `docker-build.yml`, `install-test.yml`, and `verify-vectors.yml`, with release/tag install runs protected from cancellation.
 - Added `PR Required Checks` in `test.yml` as a stable required-check target for path-conditional quick jobs.
 - Added `Code Quality Required Checks` in `quality.yml` as a stable aggregate target for lint, gitleaks, lizard, and jscpd.
-- Set the Code Quality lizard gate to the current measured CI-scope baseline of 9 warnings. The broader lizard cleanup tracker remains separate and currently has 83 warnings to keep reducing batch by batch.
+- Initially set the Code Quality lizard gate to the measured CI-scope baseline of 9 warnings. Later lizard cleanup batches drove the current warning count to 0.
 - Updated `Full Test Summary` to wait for `Full E2E Tests` and to fail when any required full-lane job fails. Critical mutation remains allowed to skip when no critical path changed.
 - Added PR path filters to `docker-build.yml` and expanded the image-impacting path set for both PR and push triggers.
 - Added `docs/reference/ci-cd-strategy.md` and linked it from `docs/reference/release-gates.md`.
 - Configured GitHub branch protection for `main`: PRs required, required checks are `PR Required Checks`, `Full Test Summary`, and `Code Quality Required Checks`, strict up-to-date checks enabled, admin enforcement enabled, linear history required, force pushes/deletions disabled, and conversation resolution required.
 
-Remaining follow-up:
+Follow-up status:
 
-- Lower the blocking `LIZARD_WARNING_BASELINE` whenever the CI-scope lizard warning count drops below 9.
-- Merge queue is desired now, but cannot currently be enforced on this paid personal user-owned public repository. The GitHub rulesets API rejected the `merge_queue` rule with HTTP 422, `Invalid rule 'merge_queue'`. Move the repository under an eligible organization, then enable a repository-level queue for `main` using squash merge, build concurrency `3`, group size `1`, all-green entries, 60-minute status timeout, and the existing required checks.
-- Re-measure CI after 10-20 PRs and tune gates based on escaped defects, queue time, and cancellation data.
-- Watch docs-only, workflow-only, Docker, install, and vector path filters for absent-check surprises so unrelated PRs do not get stuck.
+- The blocking `LIZARD_WARNING_BASELINE` was driven down by the later lizard cleanup batches; current grade notes record 0 lizard warnings.
+- The merge queue blocker was resolved by moving the repository under `nekoguntai-castle`; subsequent PRs have merged through the queue.
+- CI was re-measured across later path-aware CI, lane-splitting, frontend coverage sharding, backend integration grouping, and release-gate batches.
+- Docs-only, workflow-only, Docker, install, and vector path filters were exercised through the PR and merge-queue flow without leaving unrelated PRs stuck.
 
-The elegant version is not "run fewer tests"; it is "run each test at the cheapest point where it provides useful information." The current suite is appropriate for merge confidence, but not ideal as the default loop for direct commits. Moving to PR-and-merge lets us keep the existing high bar while shifting most repeated feedback to the quick lane that already exists.
+The elegant version is not "run fewer tests"; it is "run each test at the cheapest point where it provides useful information." The current suite remains appropriate for merge confidence. The move to PR-and-merge keeps the existing high bar while shifting most repeated feedback to the quick lane that already exists.
 
 # Previous Task: Lizard UI Batch 10 - QR Signing Modal
 
@@ -4899,8 +4970,8 @@ Goal: run the `$grade` full-repository audit, collect mechanical and judged qual
 Results:
 
 - Overall grade is `69/100 D` with High confidence. Raw score is `79/100`, capped to D by the hard-fail gate for high/critical dependency advisories.
-- Hard-fail blocker: npm audit currently reports root `8 critical`, server `1 critical`, and gateway `1 critical`; AI proxy is clean.
-- Secondary gate regressions: lint fails on two production empty catches, architecture boundaries fail on three API-to-repository imports, lizard reports 122 CCN warnings, and large-file policy fails on unclassified `components/AgentManagement/index.tsx`.
+- Historical hard-fail blocker at audit time: npm audit reported root `8 critical`, server `1 critical`, and gateway `1 critical`; AI proxy was clean.
+- Historical secondary gate regressions: lint failed on two production empty catches, architecture boundaries failed on three API-to-repository imports, lizard reported 122 CCN warnings, and large-file policy failed on unclassified `components/AgentManagement/index.tsx`.
 - Strengths preserved: root tests pass, typecheck passes, gitleaks is clean, root/backend line coverage is 100%, gateway line/branch coverage is 100%, OpenAPI route coverage passes, API body validation passes, and browser auth contract passes.
 
 Verification:
@@ -4986,7 +5057,7 @@ Edge case audit:
 
 ## Previous Task: 100% Coverage Gates
 
-Status: frontend and backend literal 100% coverage gates complete; server test tsconfig no longer references Jest types
+Status: complete
 
 Goal: bring the enforced frontend and backend coverage gates to literal 100% with targeted tests where behavior is reachable, using narrowly justified exclusions only for non-runtime shims, type-only files, V8 instrumentation artifacts, or environment entrypoints that cannot be meaningfully unit-covered.
 
@@ -5017,20 +5088,20 @@ Verification:
 - `cd server && npm run test:unit -- --coverage` passed with backend literal 100% coverage: statements 21669/21669, branches 10638/10638, functions 4256/4256, lines 20784/20784.
 - `npm run typecheck:tests` passed.
 - `cd server && npm run build` passed.
-- `cd server && npx tsc --noEmit -p tsconfig.test.json --pretty false` no longer fails on missing Jest types; it now exposes pre-existing server test type debt in fixtures, mock imports, Express router test helpers, and stale integration setup signatures.
+- `cd server && npx tsc --noEmit -p tsconfig.test.json --pretty false` no longer fails on missing Jest types. Later cleanup also resolved the broader server test type debt; `npm --prefix server run typecheck:tests` passed on 2026-04-25.
 - `git diff --check` passed.
 
 Residual risk:
 
-- Server runtime build and coverage are green, but the dedicated server test typecheck is not yet clean because the test suite has broader non-Jest typing issues. The missing Jest types blocker is removed; finishing the remaining test type debt should be handled as a separate cleanup pass unless we want to expand this coverage task further.
+- Server runtime build and coverage were green, and the remaining server test type debt has since been resolved. `npm --prefix server run typecheck:tests` passed on 2026-04-25.
 
 ## Previous Task: Agent Wallet Funding Implementation
 
-Status: Phase 15 implementation and cross-phase corner-case audit complete
+Status: complete
 
 Reference plan: `tasks/agent-wallet-funding-plan.md`
 
-## Active Implementation Slice
+## Completed Implementation Slice
 
 Goal: make agent wallet funding operable and defensible with operator docs, incident runbooks, backup/restore coverage, release notes, and an end-to-end route smoke path.
 
@@ -5167,7 +5238,7 @@ Cross-phase audit update:
 - Fixed a signer metadata edge case found during audit: draft signature updates now validate that any submitted `signedDeviceId` belongs to the draft wallet before appending it to `signedDeviceIds`. This protects the web, mobile, and agent signature-update paths that all delegate through `draftService.updateDraft`.
 - Reconciled stale plan state: Phase 1 wallet role labels are implemented and tested, and the original open questions now point at the Phase 8, 12, 13, and 14 decisions.
 - Confirmed the intended security boundary is still intact: Sanctuary stores no private keys, agent credentials cannot broadcast or approve policies, mobile approval intent does not sign or broadcast, and owner overrides are human-created, bounded, one-time funding exceptions.
-- Remaining residual follow-up is deliberately outside this server-side phase set: robust unknown-destination/self-transfer classification for operational spends needs destination/counterparty detail in transaction notifications, and mobile client tests wait on the future mobile app.
+- Unknown-destination/self-transfer classification was completed later in Phase 16. Mobile client tests remain deferred until a mobile client package or repository exists.
 
 Verification run:
 
@@ -5213,7 +5284,7 @@ Edge case audit:
 - Operational wallet compromise is documented as single-sig agent-controlled funds-at-risk, not as a Sanctuary signing failure.
 - The smoke test asserts key hashes are not returned from key creation while the one-time `agt_` token is.
 - The smoke test verifies submitted agent drafts keep agent id, operational wallet id, and signed-device metadata through to the human/mobile review payload.
-- Residual follow-up: run the requested cross-phase audit before push.
+- Historical residual follow-up completed by the cross-phase audit update above.
 
 Eleventh slice update:
 
@@ -5249,7 +5320,7 @@ Edge case audit:
 - Approver-only users can record review intent but receive `nextAction=none` unless they can also sign.
 - Signed PSBT material is passed only to `draftService.updateDraft`; audit details record draft and device metadata, not PSBT content.
 - Empty approve/comment/reject bodies are rejected where a comment or reason is required, and comments/reasons are trimmed and capped at 1000 characters.
-- Residual follow-up: Phase 15 should add operational docs/runbooks and an e2e smoke test that exercises this flow from admin setup through agent draft submission and human review.
+- Historical residual follow-up completed by Phase 15 operational docs, runbooks, backup coverage, release notes, and the route smoke path.
 
 Tenth slice update:
 
@@ -5292,7 +5363,7 @@ Edge case audit:
 - Override use is marked only after the draft is created, preventing a failed draft build from consuming the override.
 - A used override records the draft id and emits a separate audit event for review/history correlation.
 - Admin override UI handles empty, loading, error, create, revoke, expired, used, and revoked states without exposing the full agent API key material.
-- Residual follow-up: Phase 14 should expose mobile-safe pending agent draft review, comments/rejection, and signer handoff paths.
+- Historical residual follow-up completed by Phase 14 mobile-safe pending agent draft review, comments/rejection, and signer handoff paths.
 
 Ninth slice update:
 
@@ -5325,7 +5396,7 @@ Edge case audit:
 - The verification endpoint returns `verified=false` without wallet metadata for unknown addresses, other-wallet addresses, and change addresses.
 - Unsupported operational wallet networks and non-single-sig operational wallets fail before derivation.
 - A duplicate insert race re-reads the next unused receive address after `createMany(..., { skipDuplicates: true })`.
-- Residual follow-up: Phase 13 will add human-created override workflows for exceptional over-cap funding; agent-created over-cap submissions remain rejected.
+- Historical residual follow-up completed by Phase 13 human-created owner override workflows for exceptional over-cap funding.
 
 Eighth slice update:
 
@@ -5361,7 +5432,7 @@ Edge case audit:
 - Pause/unpause actions call the existing admin agent update endpoint, so paused agents are blocked by the existing agent API status checks.
 - Revoke-key actions require confirmation and call the existing scoped key revoke endpoint; wallet descriptors are unchanged.
 - Shared link-button styling has direct tests for default secondary links, custom variants/sizes, and forwarded React Router link props.
-- Residual follow-up: Phase 12 still needs operational address generation for watch-only wallets with sufficient descriptor metadata.
+- Historical residual follow-up completed by Phase 12 operational address generation for watch-only wallets with sufficient descriptor metadata.
 
 Seventh slice update:
 
@@ -5398,7 +5469,7 @@ Edge case audit:
 - Alert dedupe uses a PostgreSQL advisory transaction lock keyed by dedupe key, preserving repeat alerts after the configured window while preventing concurrent duplicate writes inside the window.
 - Monitoring failures are logged and swallowed so alert persistence cannot mask transaction notification delivery or agent API responses.
 - Repeated-failure alerts count stored rejected attempts in the configured lookback window.
-- Residual follow-up: unknown-destination/self-transfer classification and a dashboard/mobile alert review surface remain Phase 10 follow-up/Phase 11 work.
+- Historical residual follow-up completed by Phase 11 dashboard alert surfaces and Phase 16 unknown-destination/self-transfer classification.
 
 ---
 
@@ -5434,7 +5505,7 @@ Edge case audit:
 - Clipboard copy reports an action error when the browser clipboard API is unavailable or denies the write.
 - Full `agt_` tokens are held only in the create-key modal state and are cleared when the modal closes.
 - Wallet detail agent badges are fetched only for admins; non-admin wallet detail views do not call the admin agent endpoint.
-- Residual follow-up: Phase 10 should add persisted alert thresholds/history for operational wallet monitoring beyond the current notification/pause behavior.
+- Historical residual follow-up completed by Phase 10 persisted alert thresholds/history for operational wallet monitoring.
 
 ---
 
@@ -5520,14 +5591,14 @@ Edge case audit:
 - Viewer-only wallet users are not selected for Telegram agent funding draft notifications.
 - Duplicate agent draft notification keys are suppressed for a bounded TTL and old keys are pruned opportunistically.
 - Operational spend enrichment only runs for outgoing transactions and only for active agents linked to that operational wallet.
-- Residual concurrency risk: policy cap checks and draft creation are not wrapped in a serializable transaction, so simultaneous submissions could race on aggregate daily/weekly totals. UTXO draft locks still prevent double-spending the same inputs.
+- Historical concurrency risk partially resolved by the later per-agent PostgreSQL advisory lock. The remaining transactional-consistency question is tracked as `AGENT-1` in the actionable backlog at the top of this file.
 
-Follow-up work:
+Historical follow-up status:
 
-- Add a richer admin UI for agent profile/key management instead of API-only management.
-- Add an Agent Wallets dashboard section with funding wallet, operational balance, status, and alert summaries.
-- Decide whether operational receive addresses should be generated by Sanctuary on demand or only read from already-derived watch-only addresses.
-- Decide whether owner override for over-cap funding should exist or whether caps remain hard rejects.
+- Agent profile/key management UI was added in the later Admin -> Wallet Agents work.
+- Agent Wallets dashboard was added in Phase 11.
+- Operational receive address generation was resolved in Phase 12.
+- Owner overrides for exceptional over-cap funding were resolved in Phase 13.
 - Consider moving policy evaluation plus draft creation into one serializable database transaction if high-concurrency agent submissions become realistic.
 - Extend mobile approval once the mobile app exists.
 
@@ -5570,12 +5641,12 @@ Edge case audit:
 - Missing or invalid registered agent partial signature on any input: rejected.
 - Funding and operational wallet network mismatch or address overlap: rejected.
 
-Follow-up work:
+Historical follow-up status:
 
-- Add admin/API management flows for registering agents and issuing/revoking `agt_` keys.
-- Add policy caps, fee-rate bounds, and rate limits for agent funding requests.
-- Improve human-visible draft and Telegram copy for linked operational-wallet destinations.
-- Add notification dedupe and operational wallet monitoring.
+- Admin/API management flows for registering agents and issuing/revoking `agt_` keys were completed in later slices.
+- Policy caps, fee-rate bounds, and rate limits for agent funding requests were completed in later slices.
+- Human-visible draft and Telegram copy for linked operational-wallet destinations were completed in later slices.
+- Notification dedupe and operational wallet monitoring were completed in later slices.
 
 ---
 
@@ -5620,12 +5691,12 @@ Edge case audit:
 - Agent-created drafts do not suppress notifications to the linked human user.
 - Empty route body and missing required agent funding fields: rejected before service calls.
 
-Follow-up work:
+Historical follow-up status:
 
-- Validate PSBT contents against funding-wallet UTXOs and operational-wallet destination addresses.
-- Validate the agent cosigner's actual partial signature, not only the signer device metadata.
-- Add admin/UI flows for creating agents and issuing/revoking agent API keys.
-- Enforce agent-specific funding policy caps, rate limits, notification dedupe, and richer notification copy.
+- PSBT content validation against funding-wallet UTXOs and operational-wallet destination addresses was completed in later slices.
+- Agent cosigner partial-signature validation was completed in later slices.
+- Admin/UI flows for creating agents and issuing/revoking agent API keys were completed in later slices.
+- Agent-specific funding policy caps, rate limits, notification dedupe, and richer notification copy were completed in later slices.
 
 ---
 
@@ -5633,9 +5704,11 @@ Follow-up work:
 
 ADRs:
 - `docs/adr/0001-browser-auth-token-storage.md` — Accepted 2026-04-12
-- `docs/adr/0002-frontend-refresh-flow.md` — Proposed; awaiting user review
+- `docs/adr/0002-frontend-refresh-flow.md` — Accepted 2026-04-12
 
 Branch strategy: one PR per phase. Each phase is independently revertible. Do not start a phase until the previous one is merged and CI is green on `main`.
+
+Historical note: phases 1-6 are complete in the current codebase. The old phase checklist remains below as implementation history, not live work.
 
 **Resolved decisions** (from the user check-in on 2026-04-12, applying the "no cutting corners" working rule):
 
@@ -5655,148 +5728,148 @@ Goal: the refresh-flow design is reviewed, accepted, and ready to merge into Pha
 
 **Exit criteria:** ADR 0002 status is Accepted. ✓ Open questions inside ADR 0002 (refresh lead time, refresh token TTL, WebSocket reconnect on refresh, logout-all UI, Page Visibility API behavior) are deferred to implementation time per the ADR's own "Open questions" section — they do not block Phase 1.
 
-## Phase 1 — Backend foundation (PR 1)
+## Phase 1 — Backend foundation (PR 1) — COMPLETE 2026-04-13
 
 Goal: the backend can verify either a cookie+CSRF or an `Authorization: Bearer` header on every protected route, but no route is yet *issuing* cookies. This phase ships behind no flag and changes no behavior; it just teaches the auth middleware to recognize cookies.
 
-- [ ] Add `cookie-parser` to `server/package.json` and wire it into `server/src/index.ts` before the auth middleware runs.
-- [ ] Add `csrf-csrf` to `server/package.json`. Capture the version pin in the PR description.
-- [ ] Add CSRF middleware to `server/src/middleware/csrf.ts` using `csrf-csrf`'s `doubleCsrf` factory. Use a stable secret derived from the existing JWT secret material so deployers do not need to add a new env var.
-- [ ] Update `server/src/middleware/auth.ts` to read the access token from a `sanctuary_access` cookie when no Authorization header is present.
-- [ ] When the request authenticated via cookie, require a valid `X-CSRF-Token` for POST/PUT/PATCH/DELETE. The Authorization-header path is exempt (mobile/gateway).
-- [ ] Tests:
-  - [ ] `server/tests/unit/middleware/auth.test.ts` — cookie-only auth, header-only auth, both present (cookie wins), neither (401).
-  - [ ] `server/tests/unit/middleware/csrf.test.ts` (new) — POST without token rejected, with wrong token rejected, with correct token accepted, GET exempt.
-  - [ ] No regression in `server/tests/unit/middleware/gatewayAuth.test.ts`.
+- [x] Add `cookie-parser` to `server/package.json` and wire it into `server/src/index.ts` before the auth middleware runs.
+- [x] Add `csrf-csrf` to `server/package.json`. Capture the version pin in the PR description.
+- [x] Add CSRF middleware to `server/src/middleware/csrf.ts` using `csrf-csrf`'s `doubleCsrf` factory. Use a stable secret derived from the existing JWT secret material so deployers do not need to add a new env var.
+- [x] Update `server/src/middleware/auth.ts` to read the access token from a `sanctuary_access` cookie when no Authorization header is present.
+- [x] When the request authenticated via cookie, require a valid `X-CSRF-Token` for POST/PUT/PATCH/DELETE. The Authorization-header path is exempt (mobile/gateway).
+- [x] Tests:
+  - [x] `server/tests/unit/middleware/auth.test.ts` — cookie-only auth, header-only auth, both present (cookie wins), neither (401).
+  - [x] `server/tests/unit/middleware/csrf.test.ts` (new) — POST without token rejected, with wrong token rejected, with correct token accepted, GET exempt.
+  - [x] No regression in `server/tests/unit/middleware/gatewayAuth.test.ts`.
 
 **Exit criteria:** `cd server && npm run build`, `cd server && npx vitest run tests/unit/middleware/`, and the existing auth integration suite all pass. No frontend changes yet. No client breaks because no route is *issuing* cookies yet.
 
-## Phase 2 — Backend response cookies + expiry header (PR 2)
+## Phase 2 — Backend response cookies + expiry header (PR 2) — COMPLETE 2026-04-13
 
 Goal: auth endpoints set the cookies on success, clear them on logout, and surface access-token expiry to the client via `X-Access-Expires-At`. The JSON `token`/`refreshToken` fields stay in the response body for one release as a rollback safety net.
 
-- [ ] `server/src/api/auth/login.ts:187-313` — on successful login set:
-  - [ ] `sanctuary_access` (HttpOnly, Secure, SameSite=Strict, path `/`, Max-Age = access TTL in seconds)
-  - [ ] `sanctuary_refresh` (HttpOnly, Secure, SameSite=Strict, **path `/api/v1/auth/refresh`**, Max-Age = refresh TTL in seconds)
-  - [ ] `sanctuary_csrf` (Secure, SameSite=Strict, **NOT HttpOnly** so the frontend can read it)
-  - [ ] `X-Access-Expires-At` response header with the access token's `exp` claim as ISO 8601.
-  - [ ] Keep the JSON `token`/`refreshToken` fields for one release.
-- [ ] `server/src/api/auth/twoFactor/verify.ts:33-140` — same treatment on 2FA success.
-- [ ] `server/src/api/auth/tokens.ts:28-81` (refresh):
-  - [ ] Read refresh token from `sanctuary_refresh` cookie when the request body has no `refreshToken` field.
-  - [ ] Issue rotated `sanctuary_access`, `sanctuary_refresh`, and `sanctuary_csrf` cookies on success.
-  - [ ] Set `X-Access-Expires-At` on the response.
-  - [ ] Keep accepting the body field for the gateway/mobile path.
-- [ ] `server/src/api/auth/tokens.ts:87-160` (logout, logout-all) — clear all three cookies via `Set-Cookie` with `Max-Age=0`.
-- [ ] `server/src/api/auth/profile.ts:20` (`/auth/me`) — set `X-Access-Expires-At` on the response so the client can schedule its first refresh after a page reload without an explicit refresh.
-- [ ] Update OpenAPI auth response schemas in `server/src/api/openapi/` to document `cookieAuth` and `csrfToken` security schemes alongside the existing `bearerAuth`.
-- [ ] Tests:
-  - [ ] `server/tests/unit/api/auth.test.ts` and the 2FA verify tests — assert all three Set-Cookie headers carry the expected attributes (HttpOnly where applicable, Secure, SameSite=Strict, expected paths, expected Max-Age).
-  - [ ] Logout test — assert all three cookies cleared.
-  - [ ] Refresh tests:
-    - [ ] Refresh from cookie alone succeeds and rotates the cookies.
-    - [ ] Refresh from body alone still succeeds (mobile path regression).
-    - [ ] Refresh with both present uses the cookie.
-    - [ ] Failed refresh (revoked token) returns 401 and clears the cookies.
-  - [ ] Every auth response carries `X-Access-Expires-At` with a valid ISO 8601 timestamp matching the JWT `exp` claim.
-  - [ ] OpenAPI tests still pass with the new security schemes documented.
+- [x] `server/src/api/auth/login.ts:187-313` — on successful login set:
+  - [x] `sanctuary_access` (HttpOnly, Secure, SameSite=Strict, path `/`, Max-Age = access TTL in seconds)
+  - [x] `sanctuary_refresh` (HttpOnly, Secure, SameSite=Strict, **path `/api/v1/auth/refresh`**, Max-Age = refresh TTL in seconds)
+  - [x] `sanctuary_csrf` (Secure, SameSite=Strict, **NOT HttpOnly** so the frontend can read it)
+  - [x] `X-Access-Expires-At` response header with the access token's `exp` claim as ISO 8601.
+  - [x] Keep the JSON `token`/`refreshToken` fields for one release.
+- [x] `server/src/api/auth/twoFactor/verify.ts:33-140` — same treatment on 2FA success.
+- [x] `server/src/api/auth/tokens.ts:28-81` (refresh):
+  - [x] Read refresh token from `sanctuary_refresh` cookie when the request body has no `refreshToken` field.
+  - [x] Issue rotated `sanctuary_access`, `sanctuary_refresh`, and `sanctuary_csrf` cookies on success.
+  - [x] Set `X-Access-Expires-At` on the response.
+  - [x] Keep accepting the body field for the gateway/mobile path.
+- [x] `server/src/api/auth/tokens.ts:87-160` (logout, logout-all) — clear all three cookies via `Set-Cookie` with `Max-Age=0`.
+- [x] `server/src/api/auth/profile.ts:20` (`/auth/me`) — set `X-Access-Expires-At` on the response so the client can schedule its first refresh after a page reload without an explicit refresh.
+- [x] Update OpenAPI auth response schemas in `server/src/api/openapi/` to document `cookieAuth` and `csrfToken` security schemes alongside the existing `bearerAuth`.
+- [x] Tests:
+  - [x] `server/tests/unit/api/auth.test.ts` and the 2FA verify tests — assert all three Set-Cookie headers carry the expected attributes (HttpOnly where applicable, Secure, SameSite=Strict, expected paths, expected Max-Age).
+  - [x] Logout test — assert all three cookies cleared.
+  - [x] Refresh tests:
+    - [x] Refresh from cookie alone succeeds and rotates the cookies.
+    - [x] Refresh from body alone still succeeds (mobile path regression).
+    - [x] Refresh with both present uses the cookie.
+    - [x] Failed refresh (revoked token) returns 401 and clears the cookies.
+  - [x] Every auth response carries `X-Access-Expires-At` with a valid ISO 8601 timestamp matching the JWT `exp` claim.
+  - [x] OpenAPI tests still pass with the new security schemes documented.
 
 **Exit criteria:** server builds, all auth tests pass, no frontend changes yet, mobile/gateway path still uses the JSON token in the response body.
 
-## Phase 3 — Backend WebSocket cookie reading (PR 3)
+## Phase 3 — Backend WebSocket cookie reading (PR 3) — COMPLETE 2026-04-13
 
 Goal: WebSocket upgrades on the same origin authenticate via cookie. The deprecated query parameter token path is removed in the same change.
 
-- [ ] `server/src/websocket/auth.ts:56-72` — extract token from `sanctuary_access` cookie when no Authorization header is present. Use a small cookie-parsing helper (or import from cookie-parser) — do not regex-extract.
-- [ ] Remove the deprecated query parameter token path (`server/src/websocket/auth.ts:62-69`). It has been deprecated long enough and removing it eliminates a token-leakage vector via referer headers / server logs.
-- [ ] The auth-message-after-connect path (lines 136-191) stays for clients that prefer it. A same-origin browser will normally not need it.
-- [ ] Confirm `server/src/utils/jwt.ts` continues to honor the original `exp` claim of an access token until that timestamp passes — so an existing WebSocket connection authenticated with the previous access token survives a cookie rotation. This is one of the open questions in ADR 0002 and the answer governs whether we need to force a WS reconnect on refresh.
-- [ ] Tests:
-  - [ ] `server/tests/unit/websocket/auth.test.ts`:
-    - [ ] Upgrade with valid cookie + no header succeeds.
-    - [ ] Upgrade with header only still works (gateway/mobile regression).
-    - [ ] Upgrade with deprecated query parameter is now rejected.
-    - [ ] Upgrade with a 2FA pending token in the cookie is rejected (the existing `pending2FA` check at line 28 still applies).
-  - [ ] `server/tests/integration/websocket/websocket.integration.test.ts` regression check.
+- [x] `server/src/websocket/auth.ts:56-72` — extract token from `sanctuary_access` cookie when no Authorization header is present. Use a small cookie-parsing helper (or import from cookie-parser) — do not regex-extract.
+- [x] Remove the deprecated query parameter token path (`server/src/websocket/auth.ts:62-69`). It has been deprecated long enough and removing it eliminates a token-leakage vector via referer headers / server logs.
+- [x] The auth-message-after-connect path (lines 136-191) stays for clients that prefer it. A same-origin browser will normally not need it.
+- [x] Confirm `server/src/utils/jwt.ts` continues to honor the original `exp` claim of an access token until that timestamp passes — so an existing WebSocket connection authenticated with the previous access token survives a cookie rotation. This is one of the open questions in ADR 0002 and the answer governs whether we need to force a WS reconnect on refresh.
+- [x] Tests:
+  - [x] `server/tests/unit/websocket/auth.test.ts`:
+    - [x] Upgrade with valid cookie + no header succeeds.
+    - [x] Upgrade with header only still works (gateway/mobile regression).
+    - [x] Upgrade with deprecated query parameter is now rejected.
+    - [x] Upgrade with a 2FA pending token in the cookie is rejected (the existing `pending2FA` check at line 28 still applies).
+  - [x] `server/tests/integration/websocket/websocket.integration.test.ts` regression check.
 
 **Exit criteria:** all WebSocket auth tests pass, no broken regressions in the WS integration suite, the deprecated query parameter path is gone from the codebase (also remove any client code that emitted it).
 
-## Phase 4 — Frontend cookie auth + refresh flow (PR 4)
+## Phase 4 — Frontend cookie auth + refresh flow (PR 4) — COMPLETE 2026-04-13
 
 This is the biggest phase. It implements both ADR 0001 (cookies replace storage) and ADR 0002 (refresh flow) on the frontend in a single coherent change. Splitting them would mean rewriting `src/api/client.ts` twice.
 
 ### 4a — Cookie-based request path
 
-- [ ] `src/api/client.ts` — switch every fetch call (`request`, `fetchBlob`, `download`, `upload`) to `credentials: 'include'`.
-- [ ] `src/api/client.ts` — remove `TokenStorageMode`, `getTokenStorageMode`, `getBrowserStorage`, `getPrimaryTokenStorage`, `readStoredToken`, `writeStoredToken`, the legacy localStorage migration block, the `setToken`/`getToken` exports, and the `Authorization` header injection.
-- [ ] `src/api/client.ts` — add a CSRF token reader that reads `sanctuary_csrf` from `document.cookie` and injects it as `X-CSRF-Token` on POST/PUT/PATCH/DELETE.
+- [x] `src/api/client.ts` — switch every fetch call (`request`, `fetchBlob`, `download`, `upload`) to `credentials: 'include'`.
+- [x] `src/api/client.ts` — remove `TokenStorageMode`, `getTokenStorageMode`, `getBrowserStorage`, `getPrimaryTokenStorage`, `readStoredToken`, `writeStoredToken`, the legacy localStorage migration block, the `setToken`/`getToken` exports, and the `Authorization` header injection.
+- [x] `src/api/client.ts` — add a CSRF token reader that reads `sanctuary_csrf` from `document.cookie` and injects it as `X-CSRF-Token` on POST/PUT/PATCH/DELETE.
 
 ### 4b — Refresh primitive with Web Lock + freshness check
 
 **This is the section that changed after Codex review caught a cross-tab race in the BroadcastChannel-only design. See ADR 0002 Option C (rejected) and Option E (recommended) for the design rationale.**
 
-- [ ] New module `src/api/refresh.ts` (or co-located in `client.ts` if it fits cleanly).
-- [ ] Exports `refreshAccessToken()` returning a Promise.
-- [ ] Within a single tab, uses single-flight semantics — concurrent callers receive the same in-flight Promise so the lock acquisition itself is not duplicated.
-- [ ] The single-flight promise wraps `navigator.locks.request('sanctuary-auth-refresh', { mode: 'exclusive' }, async () => { ... })` for cross-tab mutual exclusion.
-- [ ] Inside the lock callback:
-  - [ ] **Freshness check first:** if `accessExpiresAt > Date.now() + REFRESH_LEAD_TIME_MS` (60_000), another tab already refreshed during the lock wait — return immediately with no network call.
-  - [ ] Otherwise, send `POST /api/v1/auth/refresh` with `credentials: 'include'` and the CSRF header.
-  - [ ] On success, parse `X-Access-Expires-At` from the response, update `accessExpiresAt`, broadcast `refresh-complete` with the new expiry, reschedule the local timer.
-  - [ ] On failure, broadcast `logout-broadcast` and reject the promise.
-- [ ] Lock release happens automatically when the callback returns or throws.
+- [x] New module `src/api/refresh.ts` (or co-located in `client.ts` if it fits cleanly).
+- [x] Exports `refreshAccessToken()` returning a Promise.
+- [x] Within a single tab, uses single-flight semantics — concurrent callers receive the same in-flight Promise so the lock acquisition itself is not duplicated.
+- [x] The single-flight promise wraps `navigator.locks.request('sanctuary-auth-refresh', { mode: 'exclusive' }, async () => { ... })` for cross-tab mutual exclusion.
+- [x] Inside the lock callback:
+  - [x] **Freshness check first:** if `accessExpiresAt > Date.now() + REFRESH_LEAD_TIME_MS` (60_000), another tab already refreshed during the lock wait — return immediately with no network call.
+  - [x] Otherwise, send `POST /api/v1/auth/refresh` with `credentials: 'include'` and the CSRF header.
+  - [x] On success, parse `X-Access-Expires-At` from the response, update `accessExpiresAt`, broadcast `refresh-complete` with the new expiry, reschedule the local timer.
+  - [x] On failure, broadcast `logout-broadcast` and reject the promise.
+- [x] Lock release happens automatically when the callback returns or throws.
 
 ### 4c — Scheduled (proactive) refresh
 
-- [ ] On every successful auth response (`/auth/login`, `/auth/2fa/verify`, `/auth/refresh`, `/auth/me`), parse `X-Access-Expires-At` and schedule a `setTimeout` for `expiresAt - REFRESH_LEAD_TIME_MS` to call `refreshAccessToken()`.
-- [ ] Clear the previous timer before scheduling a new one.
-- [ ] Clear the timer on logout and on `beforeunload`.
+- [x] On every successful auth response (`/auth/login`, `/auth/2fa/verify`, `/auth/refresh`, `/auth/me`), parse `X-Access-Expires-At` and schedule a `setTimeout` for `expiresAt - REFRESH_LEAD_TIME_MS` to call `refreshAccessToken()`.
+- [x] Clear the previous timer before scheduling a new one.
+- [x] Clear the timer on logout and on `beforeunload`.
 
 ### 4d — Reactive (401) refresh
 
-- [ ] In `src/api/client.ts:request`, when a response status is 401 and the request was not already a retry, await `refreshAccessToken()` and replay the original request once.
-- [ ] If the retry also fails with 401, do not retry again — surface the error and trigger logout.
-- [ ] Non-401 failures (5xx, network) bypass the refresh path entirely.
+- [x] In `src/api/client.ts:request`, when a response status is 401 and the request was not already a retry, await `refreshAccessToken()` and replay the original request once.
+- [x] If the retry also fails with 401, do not retry again — surface the error and trigger logout.
+- [x] Non-401 failures (5xx, network) bypass the refresh path entirely.
 
 ### 4e — BroadcastChannel state propagation (NOT mutual exclusion)
 
-- [ ] On client init, open `new BroadcastChannel('sanctuary-auth')`. Mockable for tests via dependency injection.
-- [ ] On `refresh-complete` from another tab, update the local `accessExpiresAt` from the broadcast payload and reschedule the local timer.
-- [ ] On `logout-broadcast` from another tab, trigger the local logout flow.
-- [ ] **Do not implement a `refresh-start` event.** The Web Lock is the start signal. BroadcastChannel is async pub/sub and cannot prevent races; using it as a coordination primitive was the bug Codex caught in the original ADR draft.
-- [ ] Close the channel on `beforeunload`.
+- [x] On client init, open `new BroadcastChannel('sanctuary-auth')`. Mockable for tests via dependency injection.
+- [x] On `refresh-complete` from another tab, update the local `accessExpiresAt` from the broadcast payload and reschedule the local timer.
+- [x] On `logout-broadcast` from another tab, trigger the local logout flow.
+- [x] **Do not implement a `refresh-start` event.** The Web Lock is the start signal. BroadcastChannel is async pub/sub and cannot prevent races; using it as a coordination primitive was the bug Codex caught in the original ADR draft.
+- [x] Close the channel on `beforeunload`.
 
 ### 4f — UserContext + logout flow
 
-- [ ] `contexts/UserContext.tsx`:
-  - [ ] Stop calling `apiClient.setToken`. The login/2FA-verify handlers no longer touch token storage.
-  - [ ] On app boot, call `/api/v1/auth/me`. If it succeeds, hydrate the user and schedule the refresh timer from the response header. If it returns 401, render the login screen.
-  - [ ] Logout: clear the scheduled refresh timer, broadcast `logout-broadcast`, redirect to login. Both terminal refresh failure and explicit user logout share this path.
+- [x] `contexts/UserContext.tsx`:
+  - [x] Stop calling `apiClient.setToken`. The login/2FA-verify handlers no longer touch token storage.
+  - [x] On app boot, call `/api/v1/auth/me`. If it succeeds, hydrate the user and schedule the refresh timer from the response header. If it returns 401, render the login screen.
+  - [x] Logout: clear the scheduled refresh timer, broadcast `logout-broadcast`, redirect to login. Both terminal refresh failure and explicit user logout share this path.
 
 ### 4g — Tests
 
-- [ ] `tests/setup.ts`:
-  - [ ] Add a `navigator.locks` mock that maintains a Map of held lock names with FIFO waiters and supports multi-instance "tab" simulation. Pure in-memory, no network or filesystem.
-  - [ ] Add a BroadcastChannel polyfill or mock that supports multi-instance same-channel pub/sub for the test where two simulated tabs interact.
-- [ ] `tests/api/client.test.ts`:
-  - [ ] Replace storage mode tests with: every request includes `credentials: 'include'`, non-GET requests include `X-CSRF-Token` from the readable cookie.
-  - [ ] `setToken`/`getToken` no longer exist (compile-time error if referenced).
-  - [ ] `request()` parses `X-Access-Expires-At` and updates internal state.
-- [ ] `tests/api/refresh.test.ts` (new):
-  - [ ] Within-tab single-flight: two concurrent `refreshAccessToken()` calls return the same promise; the underlying fetch is called exactly once; the Web Lock is acquired exactly once.
-  - [ ] Proactive refresh: with fake timers, advancing past `expiresAt - REFRESH_LEAD_TIME_MS` triggers a refresh exactly once; the new expiry is honored; the timer reschedules itself.
-  - [ ] Reactive refresh: a 401 response triggers a refresh and retries the original request; retry success surfaces normally; retry failure surfaces the second 401 and triggers logout.
-  - [ ] **Cross-tab Web Lock serialization (the test that catches the bug Codex flagged):** simulate two tabs sharing the same lock state. Both tabs trigger `refreshAccessToken()` simultaneously. Assert exactly one `POST /auth/refresh` is sent across both tabs (the second tab waits on the lock, sees fresh `accessExpiresAt` after the broadcast handler ran, and short-circuits).
-  - [ ] Cross-tab race with stale broadcast: same setup, broadcast handler delayed. Assert the second tab still sends its refresh, the second refresh succeeds, and no logout fires (the "wasted refresh but not broken" path).
-  - [ ] BroadcastChannel state propagation: `refresh-complete` from another tab updates `accessExpiresAt` and reschedules the timer; `logout-broadcast` triggers the local logout flow.
-  - [ ] Terminal refresh failure: server returns 401 on `/auth/refresh`. Assert lock is released, `logout-broadcast` is sent, local logout flow fires.
-  - [ ] Non-401 failures (500, network error) do not trigger a refresh attempt.
-- [ ] `tests/contexts/UserContext.test.tsx`:
-  - [ ] Logout clears the scheduled refresh timer and broadcasts `logout-broadcast`.
-  - [ ] On app boot, `/auth/me` is called; success hydrates user + schedules refresh; 401 renders login screen.
-- [ ] All existing `apiClient.setToken` test references are removed.
-- [ ] Component tests that previously relied on `apiClient.setToken` to seed an authenticated state are updated to mock `/auth/me` instead.
-- [ ] Frontend strict typecheck and 100% coverage gate must stay green, including the freshness short-circuit branch and the lock-held-by-another-tab branch.
+- [x] `tests/setup.ts`:
+  - [x] Add a `navigator.locks` mock that maintains a Map of held lock names with FIFO waiters and supports multi-instance "tab" simulation. Pure in-memory, no network or filesystem.
+  - [x] Add a BroadcastChannel polyfill or mock that supports multi-instance same-channel pub/sub for the test where two simulated tabs interact.
+- [x] `tests/api/client.test.ts`:
+  - [x] Replace storage mode tests with: every request includes `credentials: 'include'`, non-GET requests include `X-CSRF-Token` from the readable cookie.
+  - [x] `setToken`/`getToken` no longer exist (compile-time error if referenced).
+  - [x] `request()` parses `X-Access-Expires-At` and updates internal state.
+- [x] `tests/api/refresh.test.ts` (new):
+  - [x] Within-tab single-flight: two concurrent `refreshAccessToken()` calls return the same promise; the underlying fetch is called exactly once; the Web Lock is acquired exactly once.
+  - [x] Proactive refresh: with fake timers, advancing past `expiresAt - REFRESH_LEAD_TIME_MS` triggers a refresh exactly once; the new expiry is honored; the timer reschedules itself.
+  - [x] Reactive refresh: a 401 response triggers a refresh and retries the original request; retry success surfaces normally; retry failure surfaces the second 401 and triggers logout.
+  - [x] **Cross-tab Web Lock serialization (the test that catches the bug Codex flagged):** simulate two tabs sharing the same lock state. Both tabs trigger `refreshAccessToken()` simultaneously. Assert exactly one `POST /auth/refresh` is sent across both tabs (the second tab waits on the lock, sees fresh `accessExpiresAt` after the broadcast handler ran, and short-circuits).
+  - [x] Cross-tab race with stale broadcast: same setup, broadcast handler delayed. Assert the second tab still sends its refresh, the second refresh succeeds, and no logout fires (the "wasted refresh but not broken" path).
+  - [x] BroadcastChannel state propagation: `refresh-complete` from another tab updates `accessExpiresAt` and reschedules the timer; `logout-broadcast` triggers the local logout flow.
+  - [x] Terminal refresh failure: server returns 401 on `/auth/refresh`. Assert lock is released, `logout-broadcast` is sent, local logout flow fires.
+  - [x] Non-401 failures (500, network error) do not trigger a refresh attempt.
+- [x] `tests/contexts/UserContext.test.tsx`:
+  - [x] Logout clears the scheduled refresh timer and broadcasts `logout-broadcast`.
+  - [x] On app boot, `/auth/me` is called; success hydrates user + schedules refresh; 401 renders login screen.
+- [x] All existing `apiClient.setToken` test references are removed.
+- [x] Component tests that previously relied on `apiClient.setToken` to seed an authenticated state are updated to mock `/auth/me` instead.
+- [x] Frontend strict typecheck and 100% coverage gate must stay green, including the freshness short-circuit branch and the lock-held-by-another-tab branch.
 
 **Exit criteria:** `npm run typecheck:app`, `npm run typecheck:tests`, `npm run test:coverage` all pass with 100% coverage. `./start.sh --rebuild` and a manual login + 2FA + WebSocket-bearing page works end-to-end in a browser. Verify in browser devtools that:
 - The access cookie is HttpOnly (script cannot read it via `document.cookie`).
@@ -5865,7 +5938,9 @@ Goal: restore the latest full-grade maintainability score by clearing the two li
 - [x] Run focused tests for gateway auth and the benchmark script syntax/smoke surface.
 - [x] Run lizard, lint/typecheck, and the relevant local quality checks.
 - [x] Update `docs/plans/codebase-health-assessment.md` and `docs/plans/grade-history/sanctuary_.jsonl` if maintainability returns to the prior baseline.
-- [ ] Commit, push, open PR, confirm checks, and merge through the protected branch flow.
+- [x] Commit, push, open PR, confirm checks, and merge through the protected branch flow.
+
+Review: completed by PR #109, `Clear grade lizard warnings`.
 
 ## Follow-up Batch: Login Regression Investigation
 
@@ -5876,13 +5951,15 @@ Goal: identify and fix the latest release regression where browser login and ref
 - [x] Implement the backend/frontend fix and add focused regression coverage for the failing path.
 - [x] Fix the CLI support-package helper so operators can collect diagnostics even when UI login is blocked.
 - [x] Run the relevant local auth, backend, gateway, and login-flow validation needed to prove the regression is fixed.
-- [ ] Update `tasks/lessons.md` with any workflow lesson from the user correction, then commit/push/PR/merge through the protected flow.
+- [x] Update `tasks/lessons.md` with any workflow lesson from the user correction, then commit/push/PR/merge through the protected flow.
+
+Review: completed by PR #115 and the follow-up login/upgrade hardening in PR #117 and PR #118.
 
 ### Findings
 
-- The live login failure is not an auth-route logic regression. The backend is rejecting the browser origin in `middleware/corsOrigin` before the request reaches `/api/v1/auth/login` or `/api/v1/auth/refresh`.
-- Because the CORS guard currently throws a plain `Error('Not allowed by CORS')`, the centralized error handler surfaces the rejection as a generic `500` instead of a `403`-class configuration failure.
-- The operator support-bundle helper is stale: inside the backend container the compiled code lives under `dist/app/src/...`, so `scripts/support-package.sh` cannot currently load `generateSupportPackage`.
+- The live login failure was not an auth-route logic regression. The backend rejected the browser origin in `middleware/corsOrigin` before the request reached `/api/v1/auth/login` or `/api/v1/auth/refresh`.
+- Historical finding fixed in this batch: the CORS guard had surfaced rejected origins as a generic `500`. The current guard returns a `ForbiddenError` with status `403` and allows request-derived same-origin browser access behind the trusted proxy.
+- Historical finding fixed in this batch: the operator support-bundle helper was stale because the compiled backend code lives under `dist/app/src/...`. The current `scripts/support-package-runner.mjs` checks that layout first and falls back to older compiled layouts.
 
 ### Local validation completed
 
@@ -5892,4 +5969,4 @@ Goal: identify and fix the latest release regression where browser login and ref
 - `npm --prefix server run build` passed after switching the backend to the request-aware CORS delegate.
 - `bash -n scripts/support-package.sh` passed.
 - `git diff --check` passed.
-- `npm --prefix server run typecheck:tests` currently fails on a pre-existing generated Prisma path mismatch in `tsconfig.test.json` (`src/generated/prisma/internal/prismaNamespaceBrowser.ts` missing) unrelated to this CORS/support-package patch.
+- `npm --prefix server run typecheck:tests` passed on 2026-04-25, so the previous generated-Prisma path mismatch note is no longer current.
