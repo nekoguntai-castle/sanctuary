@@ -1,3 +1,51 @@
+# Active Task: Next CI Target Optimization Batch
+
+Status: in progress
+
+Goal: reduce remaining CI wall time after PR #135 by parallelizing the longest merge/full lanes and adding measurement hooks before deeper stack or test-suite surgery.
+
+## Current Evidence
+
+- PR #135 merge-group Test Suite still spent 5m29s in `Full Browser E2E Tests`, 4m26s in `Full Backend Tests`, 4m18s in `Full Frontend Tests`, and 2m44s in `Full Render E2E Tests`.
+- PR #135 install workflow still spent 7m16s-7m54s in parallel upgrade lanes, 6m28s in `Install Stack Smoke`, 4m26s in `Install Script E2E Test`, and 3m30s in `Fresh Install E2E Test`.
+- The quick docs-only PR #137 proved path-aware skipping remains effective, so this batch should preserve classifier behavior and focus on relevant expensive lanes only.
+
+## Implementation Checklist
+
+### Phase 1 - Browser E2E Parallel Groups
+
+- [x] Replace the single full browser-flow E2E job with a small matrix of stable browser spec groups.
+- [x] Keep full scans, test workflow edits, and browser-relevant paths requiring every browser group.
+- [x] Keep artifact names unique per group and preserve the aggregate `Full Test Summary` gate.
+- [x] Add a local grouping check so every top-level browser spec is assigned exactly once and render regression stays excluded.
+
+### Phase 2 - Frontend And Backend Timing Visibility
+
+- [x] Add low-noise timing around frontend typecheck, frontend coverage, backend unit coverage, and backend integration steps.
+- [x] Keep the timing helper generic and safe for CI logs without changing test semantics.
+- [x] Document how to use the timings to decide whether to shard coverage or integration tests next.
+
+### Phase 3 - Install Stack Reuse Review
+
+- [x] Re-read install E2E harnesses and workflow stack startup behavior before changing stack execution.
+- [x] Skip install workflow changes because no low-risk reuse avoids duplicate startup without serializing currently parallel checks.
+- [x] Document the blocker and keep release-critical install coverage unchanged.
+
+### Delivery
+
+- [x] Run local validation: shell syntax, browser grouping check, actionlint on touched workflows, `git diff --check`, and focused lizard if touched scripts grow.
+- [ ] Commit, push, open PR, monitor checks, and merge through merge queue without deleting the branch early.
+- [ ] Sync `main`, clean stale local branches/worktrees only after merge verification, and record post-merge timings.
+
+## Review
+
+- Quality review: browser E2E is now a three-group matrix under the existing full browser job id, so `Full Test Summary` still aggregates one required result while the group jobs upload unique artifacts.
+- Edge case audit: `scripts/ci/browser-e2e-groups.sh --check` fails on duplicate, missing, or unknown top-level browser spec assignments and explicitly keeps `e2e/render-regression.spec.ts` in the render lane.
+- Install stack review: Fresh Install, Install Script E2E, and Install Stack Smoke already run in parallel and need isolated runtime state. Reusing a single stack would either serialize currently parallel jobs or weaken the install-script proof, so this batch keeps release-critical install coverage unchanged.
+- Local validation passed: browser group shell syntax/check/test, existing CI classifier tests, actionlint on touched workflows, `git diff --check`, and focused lizard on new CI scripts.
+
+---
+
 # Active Task: Next CI Test Optimization Batch
 
 Status: complete
