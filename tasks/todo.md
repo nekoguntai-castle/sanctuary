@@ -1,6 +1,43 @@
-# Active Task: CI/CD Test Speed Batch 1 - Docs-Only Scope
+# Active Task: CI/CD Test Speed Batch 2 - AI Proxy Scope
 
 Status: in progress
+
+Goal: add explicit ai-proxy CI classification and validation so ai-proxy changes run only the ai-proxy build/tests instead of unrelated frontend/backend lanes.
+
+## Plan
+
+- [x] Work in an isolated worktree from updated `origin/main`.
+- [x] Add `ai_proxy_changed` and `ai_proxy_files` classifier outputs.
+- [x] Keep `tests/ai-proxy` scoped to ai-proxy validation instead of frontend validation.
+- [x] Add PR quick and merge/main full ai-proxy jobs.
+- [x] Wire ai-proxy results into required aggregate checks.
+- [x] Add classifier fixtures and CI strategy docs.
+- [x] Run focused classifier tests, ai-proxy build/tests, workflow lint, diff check, and shell complexity checks.
+- [ ] Deliver through PR, monitor checks, merge safely, and verify the merge.
+
+## Review
+
+- Added explicit `ai_proxy_changed` and `ai_proxy_files` classifier outputs.
+- Scoped `ai-proxy/` and `tests/ai-proxy/` changes to the AI proxy lane, so they no longer trigger frontend tests by path overlap.
+- Added `Quick AI Proxy Tests` and `Full AI Proxy Tests`, each running the ai-proxy build plus the dedicated `tests/ai-proxy` suite.
+- Wired AI proxy results into `PR Required Checks` and `Full Test Summary`.
+- Updated CI/CD strategy docs with the ai-proxy local gate and CI scope policy.
+- Verification passed:
+  - `npm ci`
+  - `npm --prefix ai-proxy ci`
+  - `bash -n scripts/ci/classify-test-changes.sh tests/ci/classify-test-changes.test.sh`
+  - `bash tests/ci/classify-test-changes.test.sh`
+  - `npm --prefix ai-proxy run build`
+  - `npx vitest run tests/ai-proxy --passWithNoTests`
+  - `/tmp/actionlint-1.7.12/actionlint -color -shellcheck= .github/workflows/test.yml`
+  - `/home/nekoguntai/sanctuary/.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -l shell scripts/ci/classify-test-changes.sh tests/ci/classify-test-changes.test.sh`
+  - `git diff --check`
+
+---
+
+# Active Task: CI/CD Test Speed Batch 1 - Docs-Only Scope
+
+Status: complete
 
 Goal: ensure docs-only changes, including package-local docs, do not start source tests, DB-backed tests, install tests, E2E lanes, or image builds.
 
@@ -12,7 +49,7 @@ Goal: ensure docs-only changes, including package-local docs, do not start sourc
 - [x] Add workflow path exclusions for package-local docs on main/push and path-gated workflows.
 - [x] Add classifier fixtures for server, gateway, ai-proxy, and install docs paths.
 - [x] Run focused classifier tests, workflow lint, diff check, and shell complexity checks.
-- [ ] Deliver through PR, monitor checks, merge safely, and verify the merge.
+- [x] Deliver through PR, monitor checks, merge safely, and verify the merge.
 
 ## Review
 
@@ -27,6 +64,7 @@ Goal: ensure docs-only changes, including package-local docs, do not start sourc
   - `/tmp/actionlint-1.7.12/actionlint -color -shellcheck= .github/workflows/test.yml .github/workflows/install-test.yml .github/workflows/docker-build.yml`
   - `/home/nekoguntai/sanctuary/.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 -l shell scripts/ci/classify-test-changes.sh tests/ci/classify-test-changes.test.sh tests/install/utils/classify-install-scope.sh tests/install/unit/install-scope.test.sh`
   - `git diff --check`
+- Delivered in PR #161; merge-group Test Suite and CodeQL passed, and `origin/main` advanced to merge commit `701d64bd`.
 
 ---
 

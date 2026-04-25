@@ -13,6 +13,7 @@ backend_changed=false
 backend_integration_changed=false
 critical_mutation_changed=false
 gateway_changed=false
+ai_proxy_changed=false
 e2e_changed=false
 browser_smoke_changed=false
 render_changed=false
@@ -22,6 +23,7 @@ frontend_files=''
 backend_files=''
 critical_mutation_files=''
 gateway_files=''
+ai_proxy_files=''
 test_files=''
 
 append_file() {
@@ -49,6 +51,8 @@ emit_outputs() {
     echo "critical_mutation_files=$critical_mutation_files"
     echo "gateway_changed=$gateway_changed"
     echo "gateway_files=$gateway_files"
+    echo "ai_proxy_changed=$ai_proxy_changed"
+    echo "ai_proxy_files=$ai_proxy_files"
     echo "e2e_changed=$e2e_changed"
     echo "browser_smoke_changed=$browser_smoke_changed"
     echo "render_changed=$render_changed"
@@ -64,6 +68,7 @@ mark_full_scan() {
   backend_integration_changed=true
   critical_mutation_changed=true
   gateway_changed=true
+  ai_proxy_changed=true
   e2e_changed=true
   browser_smoke_changed=true
   render_changed=true
@@ -177,6 +182,15 @@ is_gateway_file() {
   return 1
 }
 
+is_ai_proxy_file() {
+  case "$1" in
+    ai-proxy/*|tests/ai-proxy/*)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
 is_e2e_file() {
   case "$1" in
     e2e/*|playwright.config.ts)
@@ -244,7 +258,7 @@ is_build_file() {
 
 is_test_file() {
   case "$1" in
-    tests/*.test.ts|tests/*.test.tsx|tests/*.spec.ts|tests/*.spec.tsx|server/tests/*.test.ts|server/tests/*.spec.ts|gateway/tests/*.test.ts|gateway/tests/*.spec.ts|e2e/*.spec.ts)
+    tests/*.test.ts|tests/*.test.tsx|tests/*.spec.ts|tests/*.spec.tsx|tests/ai-proxy/*.test.ts|tests/ai-proxy/*.spec.ts|server/tests/*.test.ts|server/tests/*.spec.ts|gateway/tests/*.test.ts|gateway/tests/*.spec.ts|e2e/*.spec.ts)
       return 0
       ;;
   esac
@@ -273,6 +287,15 @@ while IFS= read -r file; do
   [ -n "$file" ] || continue
 
   if is_docs_only_file "$file"; then
+    continue
+  fi
+
+  if is_ai_proxy_file "$file"; then
+    ai_proxy_changed=true
+    append_file ai_proxy_files "$file"
+    if is_test_file "$file"; then
+      append_file test_files "$file"
+    fi
     continue
   fi
 
