@@ -1,6 +1,6 @@
 # Active Task: Backend Integration Group Split
 
-Status: in progress
+Status: complete
 
 Goal: reduce the current Test Suite long pole by splitting full backend integration tests into deterministic parallel groups while preserving the existing `full-backend-tests` aggregate gate and backend coverage artifact behavior.
 
@@ -37,8 +37,8 @@ Goal: reduce the current Test Suite long pole by splitting full backend integrat
 
 ### Delivery
 
-- [ ] Commit, push, open PR, monitor checks, fix failures, and merge successfully using `pr-delivery`.
-- [ ] Verify merge, record durations, clean up the PR branch/worktree safely, and leave the primary dirty worktree untouched.
+- [x] Commit, push, open PR, monitor checks, fix failures, and merge successfully using `pr-delivery`.
+- [x] Verify merge, record durations, clean up the PR branch/worktree safely, and leave the primary dirty worktree untouched.
 
 ## Review
 
@@ -54,8 +54,23 @@ Goal: reduce the current Test Suite long pole by splitting full backend integrat
   - `/tmp/actionlint-1.7.12/actionlint -color -shellcheck= .github/workflows/test.yml .github/workflows/quality.yml`
   - `git diff --check`
   - `PYTHONPATH=/tmp/sanctuary-lizard-local python3 -m lizard -C 15 -l shell scripts/ci/backend-integration-groups.sh tests/ci/backend-integration-groups.test.sh`
-- Full backend integration execution is intentionally left to merge-queue CI because this worktree does not have local Node dependencies installed and the change is the CI partitioning layer rather than backend test behavior.
-- PR delivery is pending.
+- Full backend integration execution was intentionally left to merge-queue CI because this worktree did not have local Node dependencies installed and the change was the CI partitioning layer rather than backend test behavior.
+- PR #146 merged through merge queue at 2026-04-25 04:33:05 UTC as squash commit `a23462b5`; the merge-group Test Suite run `24922575192` passed.
+- The primary checkout at `/home/nekoguntai/sanctuary` was left untouched because it still has unrelated local task-tracker state.
+
+## Post-Merge Measurement
+
+- PR #146 merge-group Test Suite passed. Longest jobs were Browser E2E wallet-flows 3m19s, Browser E2E wallet-experience 2m55s, Full Render E2E 2m55s, Frontend Coverage shard 1/2 2m53s, Browser E2E admin-auth 2m51s, Frontend Coverage shard 2/2 2m49s, Backend integration-flows 2m31s, and Backend unit coverage 2m27s.
+- The old single backend integration job from PR #143 was 3m23s. After the split, the longest backend integration group was 2m31s, and the other groups were repositories-core 1m10s, repositories-sharing 1m03s, and ops-workers 55s.
+- Backend integration is no longer the Test Suite long pole. The backend tail is now close between integration-flows at 2m31s and unit coverage at 2m27s, so further backend splitting should wait for per-spec timing.
+
+## Additional Optimization Analysis
+
+- Highest next test target: browser-flow E2E setup reuse. The three browser-flow groups now dominate the merge gate at 2m51s-3m19s, and each group repeats frontend dependency setup, Playwright setup, frontend build, backend setup, backend build, and server startup. Measure step-level time first, then consider a shared build artifact or prebuilt test image only if duplicated build/setup time is larger than artifact upload/download overhead.
+- Backend follow-up: add lightweight timing extraction for integration groups or per-spec Vitest durations before splitting `integration-flows`. A blind split would duplicate Postgres setup and migrations again, and the current backend tail is only four seconds slower than unit coverage.
+- Frontend coverage follow-up: keep two shards for now. The shards are balanced at 2m49s and 2m53s, while the merge job costs 38s, so adding a third shard is lower ROI unless coverage becomes the gate tail again.
+- Unit coverage follow-up: backend unit coverage is now a near-tail job at 2m27s. If browser setup improves, evaluate whether Vitest unit coverage can be sharded with one threshold-enforcing merge artifact similar to frontend coverage.
+- Release/install lanes: do not tune them from this merge-group data. They are release-scoped and should be optimized from release workflow durations, especially repeated compose/image setup.
 
 ---
 
