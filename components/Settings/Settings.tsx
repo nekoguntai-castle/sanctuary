@@ -31,6 +31,8 @@ export const Settings: React.FC = () => {
           {SETTINGS_TABS.map(tab => (
             <button
               key={tab.id}
+              type="button"
+              aria-label={tab.name}
               onClick={() => setActiveTab(tab.id)}
               className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2.5 text-sm font-medium rounded-lg transition-all ${
                 activeTab === tab.id

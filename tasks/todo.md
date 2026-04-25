@@ -1,3 +1,44 @@
+# Active Task: Stash-Derived Settings Accessibility Follow-Up
+
+Status: complete
+
+Goal: continue the post-release stash follow-up from current `origin/main`, carrying forward only still-valid small fixes while leaving the dirty primary checkout untouched.
+
+## Worktree Constraint
+
+- This batch runs in `/tmp/sanctuary-stash-followup` on `fix/stash-wip-followup`.
+- The primary checkout at `/home/nekoguntai/sanctuary` has an unrelated local `tasks/todo.md` triage note. Do not stash, reset, pull over, or rewrite it from this batch.
+
+## Revalidation Notes
+
+- Already handled on current `origin/main`: AI Settings unused-prop cleanup, query factory generic cleanup, node globals import, EmptyState unused imports, and the privacy/address hardening from PR #142.
+- Still unsafe to replay: Ledger `@ledgerhq/hw-app-btc` removal and Vite/polyfill dependency replacement. Current code still imports the Ledger fallback path and uses the local `vite.nodePolyfills.ts` wrapper.
+- Not currently justified: Playwright locator/mock changes. Recent merge-group and post-merge full browser/render lanes passed, so those changes should wait for a reproduced flake.
+- Still valid and small: Settings tab buttons render as icon-only controls on small screens, so they should carry explicit accessible labels.
+
+## Checklist
+
+- [x] Create isolated worktree from current `origin/main`.
+- [x] Re-read the remaining stash slices against current files.
+- [x] Add explicit labels to Settings tab buttons.
+- [x] Add focused regression coverage for the tab labels.
+- [x] Run focused tests, typechecks, diff check, and touched-file lizard if available.
+- [x] Review the diff for scope and unintended stash replay.
+
+## Review
+
+- Added explicit `aria-label` values and `type="button"` to the Settings tab controls so their names remain stable when text is visually hidden on small screens.
+- Added focused regression coverage in `tests/components/Settings.test.tsx` for the four Settings tab button labels.
+- Verification passed:
+  - `npx vitest run tests/components/Settings.test.tsx` passed with 1 file / 8 tests.
+  - `npm run typecheck:app` passed.
+  - `npm run typecheck:tests` passed.
+  - `git diff --check` passed.
+- `npx lizard components/Settings/Settings.tsx tests/components/Settings.test.tsx` could not run because npm could not determine an executable for `lizard` in this environment.
+- No Ledger, Vite/polyfill, Playwright, privacy, address, or unrelated stash changes were applied.
+
+---
+
 # Active Task: Frontend Coverage Sharding
 
 Status: complete
