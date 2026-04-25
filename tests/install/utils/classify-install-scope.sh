@@ -17,6 +17,8 @@ run_install_script=false
 run_container_health=false
 run_auth_flow=false
 run_upgrade=false
+run_upgrade_baseline=false
+run_upgrade_extended=false
 run_reuse_stack=false
 scope=none
 reason='No install-relevant files changed'
@@ -32,6 +34,8 @@ emit_outputs() {
     echo "run_container_health=$run_container_health"
     echo "run_auth_flow=$run_auth_flow"
     echo "run_upgrade=$run_upgrade"
+    echo "run_upgrade_baseline=$run_upgrade_baseline"
+    echo "run_upgrade_extended=$run_upgrade_extended"
     echo "run_reuse_stack=$run_reuse_stack"
     echo "scope=$scope"
     echo "reason=$reason"
@@ -63,9 +67,21 @@ enable_auth_flow() {
   run_auth_flow=true
 }
 
-enable_upgrade() {
+enable_upgrade_baseline() {
   should_run=true
   run_upgrade=true
+  run_upgrade_baseline=true
+}
+
+enable_upgrade_extended() {
+  should_run=true
+  run_upgrade=true
+  run_upgrade_extended=true
+}
+
+enable_upgrade() {
+  enable_upgrade_baseline
+  enable_upgrade_extended
 }
 
 enable_standard_stack() {
@@ -269,11 +285,17 @@ while IFS= read -r file; do
       add_scope auth-flow
       reason="Auth flow test changed"
       ;;
-    server/prisma/*|tests/install/e2e/upgrade-install.test.sh|tests/install/e2e/upgrade-*.test.sh|tests/install/utils/upgrade-*|tests/install/fixtures/upgrade/*)
+    server/prisma/*)
+      enable_unit
+      enable_upgrade_baseline
+      add_scope upgrade-baseline
+      reason="Prisma migration scope changed"
+      ;;
+    tests/install/e2e/upgrade-install.test.sh|tests/install/e2e/upgrade-*.test.sh|tests/install/utils/upgrade-*|tests/install/fixtures/upgrade/*)
       enable_unit
       enable_upgrade
       add_scope upgrade
-      reason="Upgrade or migration scope changed"
+      reason="Upgrade harness or fixture scope changed"
       ;;
     tests/install/utils/helpers.sh)
       enable_unit

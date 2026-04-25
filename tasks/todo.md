@@ -1,3 +1,55 @@
+# Active Task: Next CI Test Optimization Batch
+
+Status: in progress
+
+Goal: reduce remaining expensive CI wall time after PR #131/#132 without touching the in-progress release version files or weakening release/tag validation.
+
+## Release-Safety Constraint
+
+- The primary worktree is on `chore/bump-version-0.8.43` with package version edits for a release. This batch runs in `/tmp/sanctuary-ci-next` on `ci/next-test-optimizations` and must not touch package version files or release branch state.
+
+## Current Evidence
+
+- PR #131 merge-group Test Suite took about 13m32s. The main cost was Full E2E (~7m50s), Full Frontend (~5m17s), Full Backend (~4m17s), and Full Build (~1m03s).
+- Release-critical Install Tests on PR #131 took about 8m51s wall time, dominated by four parallel upgrade lanes at ~7m26s-7m43s plus Install Stack Smoke at ~6m24s.
+- PR #132 proved CI/helper-only changes can now skip app test lanes: PR Test Suite ~15s, merge-group Test Suite ~17s, CodeQL ~13s, Code Quality ~59s.
+
+## Implementation Checklist
+
+### Phase 1 - Full E2E Split
+
+- [x] Split full E2E into backend-backed browser-flow E2E and frontend-only render-regression E2E.
+- [x] Keep browser-flow E2E relevant for browser/API/route/E2E paths; keep render E2E relevant for render paths.
+- [x] Keep full scans, schedules, workflow-dispatch, and test workflow edits running both lanes.
+- [x] Update `Full Test Summary` aggregation so skipped split lanes are accepted only when irrelevant.
+
+### Phase 2 - Install Upgrade Lane Scoping
+
+- [x] Split install upgrade validation into baseline upgrade lanes and extended fixture lanes.
+- [x] Run both baseline and extended lanes for release tags, schedules, manual `all`/`upgrade`/`release-critical`, and install workflow changes.
+- [x] Run baseline-only upgrade lanes for Prisma/migration-only changes.
+- [x] Keep release gates blocking on all required upgrade lanes for release-critical scopes.
+
+### Phase 3 - Measurement And Documentation
+
+- [x] Update CI docs with the split full E2E and scoped upgrade lane policy.
+- [x] Add classifier tests for baseline-only upgrade changes and full upgrade workflow/release cases.
+- [ ] Re-run duration helper after merge to confirm the new shape.
+
+### Delivery
+
+- [x] Run local validation: shell syntax, classifier tests, actionlint on touched workflows, `git diff --check`, and focused lizard if useful.
+- [ ] Commit, push, open PR, monitor checks, fix CI errors, merge successfully.
+- [ ] Sync `main`, clean temporary worktree/branches, and leave the release branch edits untouched.
+
+## Review
+
+- Quality review: workflow job IDs, aggregate summary requirements, classifier outputs, and docs were re-read after edits; stale combined E2E references were removed.
+- Edge case audit: render-only E2E fixtures trigger only render E2E; non-render E2E helpers trigger browser E2E; Prisma-only install changes trigger baseline upgrade only; release/manual/workflow install scopes still trigger baseline and extended upgrade lanes.
+- Local validation passed: shell syntax checks, classifier regression tests, actionlint on touched workflows, `git diff --check`, and focused lizard on touched shell scripts.
+
+---
+
 # Active Task: Path-Aware CI Speed Optimization
 
 Status: complete

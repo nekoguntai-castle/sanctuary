@@ -156,8 +156,9 @@ The merge/main gate exists to prove the final candidate, not every local-sized c
 - Full frontend typecheck and threshold-enforced coverage for frontend changes, E2E changes, test-workflow changes, or exhaustive runs.
 - Full gateway coverage for gateway changes, test-workflow changes, or exhaustive runs.
 - Critical mutation gate for critical mutation paths or exhaustive runs.
-- Chromium Playwright E2E for browser-flow/render-relevant changes, E2E changes, test-workflow changes, or exhaustive runs. Frontend helper/service-only changes still get full frontend coverage but do not automatically run full browser E2E.
-- Full frontend/backend build check for package, build config, Docker/image entrypoint, Prisma, test-workflow, or exhaustive runs. Typecheck and coverage remain the primary source-level compile gate for ordinary frontend/backend source changes.
+- Full browser-flow Playwright E2E for browser/API/route/non-render E2E paths, test-workflow changes, or exhaustive runs. This lane starts from path classification instead of waiting behind full coverage lanes, so relevant browser flows prove the merge candidate earlier.
+- Full render-regression Playwright E2E for visual/rendering paths and render fixtures/snapshots, test-workflow changes, or exhaustive runs. This lane is frontend-only and does not start backend services.
+- Full frontend/backend build check for package, build config, Docker/image entrypoint, Prisma, test-workflow, or exhaustive runs. It also starts from path classification instead of waiting behind coverage. Typecheck and coverage remain the primary source-level compile gate for ordinary frontend/backend source changes.
 - `Full Test Summary` aggregate, which fails if any required full-lane child fails.
 
 When merge queue is available, use the merge-queue SHA as the authoritative merge candidate. Push-to-main full-lane runs are a path-aware backstop for the final merged commit; scheduled and manual runs provide the periodic exhaustive proof.
@@ -180,7 +181,7 @@ Promote a scheduled check into the PR quick gate only when escaped defects show 
 Release validation intentionally duplicates some install and image-building evidence:
 
 - `Install Tests` validates fresh install, install script flow, container health, auth flow, and upgrade on release-critical paths.
-- Pull-request install tests are scoped by `tests/install/utils/classify-install-scope.sh`: unit-only, installer, compose/docker, auth-flow, upgrade, or release-critical. Container-health and auth-flow reuse one stack when both are relevant; release tags, schedules, and manual release-critical/all/upgrade runs stay full.
+- Pull-request install tests are scoped by `tests/install/utils/classify-install-scope.sh`: unit-only, installer, compose/docker, auth-flow, upgrade-baseline, upgrade, or release-critical. Container-health and auth-flow reuse one stack when both are relevant. Prisma/migration-only changes run the baseline upgrade matrix, while upgrade harness/fixture changes, release tags, schedules, install workflow edits, and manual release-critical/all/upgrade runs include both baseline and extended upgrade fixtures.
 - `Release Candidate Validation` is the deliberate pre-release install validation pass.
 - `Release` builds and publishes multi-arch images, creates manifests, notifies the separate Umbrel repository for stable releases, and updates release notes.
 

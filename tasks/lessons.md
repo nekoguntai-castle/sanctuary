@@ -2,6 +2,17 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Never delete a merge-queue PR branch before the queue merge lands
+
+**Rule:** On repos using GitHub merge queue, do not run `gh pr merge ... --delete-branch`. Queue the PR first, verify `mergedAt` and `mergeCommit` after the queue completes, then delete the branch only after `origin/main` contains the PR commit.
+
+**Why:** PR #134 was added to the merge queue, then the same `gh pr merge --merge --delete-branch` invocation deleted the head branch while the PR was still queued. GitHub closed the unmerged PR and the merge queue bot removed it from the queue, leaving `origin/main` unchanged.
+
+**How to apply:**
+- Use `gh pr merge <number>` without `--delete-branch` when branch protection says the merge strategy is set by merge queue.
+- Immediately verify with `gh pr view <number> --json state,mergedAt,mergeCommit` and `git branch -r --contains <head-sha>`.
+- Only clean up the remote branch after `mergedAt` is non-null and `origin/main` contains the head commit.
+
 ## Add classifier tests before adding expensive CI triggers
 
 **Rule:** Every new expensive CI path trigger must land with a classifier test that proves both the intended run case and at least one intended skip case.
