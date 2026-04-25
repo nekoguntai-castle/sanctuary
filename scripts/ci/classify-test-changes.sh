@@ -229,7 +229,7 @@ is_test_file() {
 
 is_test_suite_file() {
   case "$1" in
-    .github/workflows/test.yml|scripts/ci/backend-integration-groups.sh)
+    .github/workflows/test.yml|scripts/ci/backend-integration-groups.sh|scripts/ci/browser-e2e-groups.sh)
       return 0
       ;;
   esac

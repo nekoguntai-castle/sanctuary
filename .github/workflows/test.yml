@@ -896,7 +896,8 @@ jobs:
       matrix:
         group:
           - admin-auth
-          - wallet-flows
+          - wallet-lifecycle
+          - wallet-transactions
           - wallet-experience
 
     services:

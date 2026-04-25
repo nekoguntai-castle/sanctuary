@@ -35,7 +35,8 @@ main() {
   "$GROUP_SCRIPT" --groups > "$TEST_TEMP_DIR/groups"
 
   grep -Fxq 'admin-auth' "$TEST_TEMP_DIR/groups" || fail 'missing admin-auth group'
-  grep -Fxq 'wallet-flows' "$TEST_TEMP_DIR/groups" || fail 'missing wallet-flows group'
+  grep -Fxq 'wallet-lifecycle' "$TEST_TEMP_DIR/groups" || fail 'missing wallet-lifecycle group'
+  grep -Fxq 'wallet-transactions' "$TEST_TEMP_DIR/groups" || fail 'missing wallet-transactions group'
   grep -Fxq 'wallet-experience' "$TEST_TEMP_DIR/groups" || fail 'missing wallet-experience group'
 
   groups_file="$TEST_TEMP_DIR/groups"

@@ -1,3 +1,63 @@
+# Active Task: Browser E2E Wallet Flow Split
+
+Status: in progress
+
+Goal: reduce the current Test Suite tail by splitting the longest full browser-flow E2E group while avoiding a shared build-artifact dependency that would likely increase wall time.
+
+## Worktree Constraint
+
+- This batch runs in `/tmp/sanctuary-browser-e2e-reuse` on `ci/browser-e2e-setup-reuse` so the dirty primary checkout at `/home/nekoguntai/sanctuary` remains untouched.
+- The primary checkout has unrelated local `tasks/todo.md` state. Do not stash, reset, pull over, or rewrite it from this batch.
+
+## Current Evidence
+
+- PR #146 merge-group Test Suite made browser-flow E2E the remaining tail: wallet-flows 3m19s, wallet-experience 2m55s, and admin-auth 2m51s.
+- Browser-flow setup in the wallet-flows job took about 2 minutes before specs started: containers 20s, root dependency/cache/browser setup about 49s, backend setup/build/start about 42s, and frontend build about 4s.
+- A shared build-artifact job would save only the repeated build portions while adding a serial dependency before every browser group, so it is not the first change to make.
+- The wallet-flows specs took about 1m15s for 56 tests. Splitting that group should reduce the browser-flow tail without changing browser coverage.
+
+## Implementation Checklist
+
+### Phase 1 - Deterministic Group Split
+
+- [x] Split the existing `wallet-flows` group into two stable browser-flow groups.
+- [x] Keep all top-level non-render browser specs assigned exactly once.
+- [x] Keep `render-regression.spec.ts` excluded from browser-flow groups.
+
+### Phase 2 - Workflow And Docs
+
+- [x] Add the new browser-flow group to the full browser E2E matrix.
+- [x] Update docs to explain why this change splits the long group instead of adding shared build artifacts.
+- [x] Keep existing branch-protection aggregate behavior unchanged.
+
+### Phase 3 - Validation
+
+- [x] Run shell syntax checks and browser group coverage regression tests.
+- [x] Run actionlint on the touched workflow and `git diff --check`.
+- [x] Run focused lizard on the edited shell group script/test if available.
+
+### Delivery
+
+- [ ] Commit, push, open PR, monitor checks, fix failures, and merge successfully.
+- [ ] Verify merge, record durations, clean up the PR branch/worktree safely, and leave the primary dirty checkout untouched.
+
+## Review
+
+- Split the previous `wallet-flows` browser-flow group into `wallet-lifecycle` and `wallet-transactions`, preserving all non-render top-level E2E specs exactly once.
+- Added `scripts/ci/browser-e2e-groups.sh` to the test-suite classifier policy so future browser group changes trigger the broader test-suite path policy even without workflow edits.
+- Local validation passed:
+  - `bash -n scripts/ci/browser-e2e-groups.sh tests/ci/browser-e2e-groups.test.sh scripts/ci/classify-test-changes.sh tests/ci/classify-test-changes.test.sh`
+  - `bash scripts/ci/browser-e2e-groups.sh --check`
+  - `bash tests/ci/browser-e2e-groups.test.sh`
+  - `bash tests/ci/classify-test-changes.test.sh`
+  - `/tmp/actionlint-1.7.12/actionlint -color -shellcheck= .github/workflows/test.yml`
+  - `git diff --check`
+  - `PYTHONPATH=/tmp/sanctuary-lizard-local python3 -m lizard -C 15 -l shell scripts/ci/browser-e2e-groups.sh tests/ci/browser-e2e-groups.test.sh scripts/ci/classify-test-changes.sh tests/ci/classify-test-changes.test.sh`
+- Full browser-flow execution is left to merge-queue CI because this change is CI grouping/policy and the merge-group lane is the authoritative proof for the new matrix shape.
+- PR delivery is pending.
+
+---
+
 # Active Task: Backend Integration Group Split
 
 Status: complete
