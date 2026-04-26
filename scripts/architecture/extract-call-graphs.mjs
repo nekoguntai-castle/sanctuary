@@ -258,8 +258,8 @@ function buildSubsystemGraph(subsystem, files) {
 }
 
 function repoUrl(file, line) {
-  const branch = process.env.GITHUB_REF_NAME ?? 'main';
-  return `https://github.com/nekoguntai-castle/sanctuary/blob/${branch}/${file}#L${line}`;
+  const sourceRef = process.env.SANCTUARY_ARCH_SOURCE_REF || 'main';
+  return `https://github.com/nekoguntai-castle/sanctuary/blob/${sourceRef}/${file}#L${line}`;
 }
 
 function renderMermaid(subsystem, files, graph) {

@@ -193,6 +193,7 @@ services:
 
       # Rate limiting (configurable for testing, defaults to production values)
       RATE_LIMIT_LOGIN: ${RATE_LIMIT_LOGIN:-5}
+      RATE_LIMIT_2FA: ${RATE_LIMIT_2FA:-10}
       RATE_LIMIT_PASSWORD_CHANGE: ${RATE_LIMIT_PASSWORD_CHANGE:-5}
 
       # Encryption (for sensitive data like node passwords)

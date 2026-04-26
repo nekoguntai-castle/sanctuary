@@ -27,6 +27,11 @@ on:
         description: 'Optional older git ref or tag to install before upgrading to the candidate ref'
         required: false
         type: string
+      include_full_upgrade_recovery:
+        description: 'Run one full-mode baseline upgrade recovery lane in addition to the core matrix'
+        required: false
+        default: false
+        type: boolean
   workflow_dispatch:
     inputs:
       ref:
@@ -42,6 +47,11 @@ on:
         description: 'Optional older git ref or tag to install before upgrading to the candidate ref'
         required: false
         type: string
+      include_full_upgrade_recovery:
+        description: 'Run one full-mode baseline upgrade recovery lane in addition to the core matrix'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -70,6 +80,7 @@ jobs:
           echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| Git Ref | \`${{ github.event.inputs.ref || inputs.ref || 'main' }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Version | ${{ github.event.inputs.version || inputs.version || 'N/A' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Full Upgrade Recovery | ${{ github.event.inputs.include_full_upgrade_recovery || inputs.include_full_upgrade_recovery || false }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Triggered By | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Time | $(date -u '+%Y-%m-%d %H:%M:%S UTC') |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -390,13 +401,61 @@ jobs:
         if: always()
         run: docker compose down -v --remove-orphans || true
 
+  upgrade-full-recovery-test:
+    name: Upgrade Full Recovery
+    runs-on: ubuntu-latest
+    needs: fresh-install-test
+    if: ${{ github.event.inputs.include_full_upgrade_recovery == 'true' || inputs.include_full_upgrade_recovery == true }}
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ github.event.inputs.ref || inputs.ref || 'main' }}
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
+
+      - name: Make test scripts executable
+        run: chmod +x tests/install/unit/*.sh tests/install/e2e/*.sh tests/install/utils/*.sh
+
+      - name: Run full recovery upgrade test
+        env:
+          HTTPS_PORT: ${{ env.HTTPS_PORT }}
+          HTTP_PORT: ${{ env.HTTP_PORT }}
+          SANCTUARY_UPGRADE_SOURCE_REF: ${{ github.event.inputs.upgrade_source_ref || inputs.upgrade_source_ref || 'latest-stable' }}
+          SANCTUARY_UPGRADE_FIXTURE: baseline
+          SANCTUARY_UPGRADE_ARTIFACT_DIR: .tmp/upgrade-artifacts/full-recovery
+        run: ./tests/install/e2e/upgrade-install.test.sh --mode full --fixture baseline --verbose
+
+      - name: Show container logs on failure
+        if: failure()
+        run: |
+          docker compose ps || true
+          docker compose logs --tail 50 postgres 2>&1 || true
+          docker compose logs --tail 100 backend 2>&1 || true
+
+      - name: Upload upgrade artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: upgrade-full-recovery
+          path: .tmp/upgrade-artifacts/full-recovery
+          if-no-files-found: ignore
+
+      - name: Cleanup
+        if: always()
+        run: docker compose down -v --remove-orphans || true
+
   # ============================================
   # Validation Summary
   # ============================================
   validation-summary:
     name: Validation Summary
     runs-on: ubuntu-latest
-    needs: [unit-tests, fresh-install-test, container-health-test, auth-flow-test, upgrade-test]
+    needs: [unit-tests, fresh-install-test, container-health-test, auth-flow-test, upgrade-test, upgrade-full-recovery-test]
     if: always()
 
     steps:
@@ -451,6 +510,16 @@ jobs:
             ALL_PASSED=false
           fi
 
+          # Full recovery upgrade lane
+          if [ "${{ needs.upgrade-full-recovery-test.result }}" == "success" ]; then
+            echo "| Upgrade Full Recovery | :white_check_mark: Passed | ~20-35m |" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.upgrade-full-recovery-test.result }}" == "skipped" ]; then
+            echo "| Upgrade Full Recovery | :arrow_right: Skipped | enable include_full_upgrade_recovery to run |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Upgrade Full Recovery | :x: Failed | - |" >> $GITHUB_STEP_SUMMARY
+            ALL_PASSED=false
+          fi
+
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "---" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -461,7 +530,9 @@ jobs:
           CORE_PASSED=true
           if [ "${{ needs.unit-tests.result }}" != "success" ] || \
              [ "${{ needs.fresh-install-test.result }}" != "success" ] || \
-             [ "${{ needs.upgrade-test.result }}" != "success" ]; then
+             [ "${{ needs.upgrade-test.result }}" != "success" ] || \
+             { [ "${{ needs.upgrade-full-recovery-test.result }}" != "success" ] && \
+               [ "${{ needs.upgrade-full-recovery-test.result }}" != "skipped" ]; }; then
             CORE_PASSED=false
           fi
 
@@ -496,7 +567,9 @@ jobs:
           # Core tests that MUST pass for release
           if [ "${{ needs.unit-tests.result }}" != "success" ] || \
              [ "${{ needs.fresh-install-test.result }}" != "success" ] || \
-             [ "${{ needs.upgrade-test.result }}" != "success" ]; then
+             [ "${{ needs.upgrade-test.result }}" != "success" ] || \
+             { [ "${{ needs.upgrade-full-recovery-test.result }}" != "success" ] && \
+               [ "${{ needs.upgrade-full-recovery-test.result }}" != "skipped" ]; }; then
             echo "::error::Release candidate validation FAILED - core tests did not pass."
             exit 1
           fi
