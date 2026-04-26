@@ -2,6 +2,28 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Distinguish sandbox bind denial from occupied ports
+
+**Rule:** When a local port probe fails, inspect the error code before saying the port is in use. `EPERM`/`EACCES` means the environment blocked binding; only `EADDRINUSE` proves an occupied port.
+
+**Why:** The Phase 3 Compose smoke allocator reported no available ports in `18080-18179`, but elevated listener inspection showed no listeners there. The direct Node probe failed with `EPERM`, so the problem was sandbox permission, not stale Compose containers.
+
+**How to apply:**
+- Preserve and report the last bind error from port scanners.
+- Use elevated `ss -H -ltnp` or equivalent listener inspection before blaming old test runs.
+- Keep explicit port env vars as operator overrides, but do not require them for the normal command.
+
+## Keep benchmark defaults in code-owned config
+
+**Rule:** Repeatable benchmark and proof defaults belong in a constants/config module or sourced defaults file, not in one-off shell-prefix variables.
+
+**Why:** The Phase 3 Compose split initially used command-line env prefixes to work around sandbox port probing and to shrink proof sizes. That made the verification command look like the interface and hid durable defaults outside the code.
+
+**How to apply:**
+- Centralize benchmark defaults in a named module such as `scripts/perf/phase3-compose/config.mjs`.
+- Let the plain package script work with defaults; keep env vars only for explicit operator overrides.
+- Add a lightweight config-resolution check so defaults are exercised without requiring Docker.
+
 ## Put repeatable test env defaults in sourced constants files
 
 **Rule:** Do not rely on one-off `VAR=value command` prefixes for repeatable test workflows. Put durable defaults in a sourced constants/defaults file and make the runner export them.

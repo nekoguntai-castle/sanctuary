@@ -1,3 +1,186 @@
+# Active Task: Phase 3 Compose Benchmark Modularization 2026-04-25
+
+Status: complete
+
+Goal: split `scripts/perf/phase3-compose-benchmark-smoke.mjs` into smaller responsibility-focused modules while keeping the existing CLI entrypoint, environment contract, and proof behavior stable.
+
+## Plan
+
+- [x] Map the current benchmark entrypoint responsibilities, helper groups, and top-level side effects.
+- [x] Extract shared formatting/parsing helpers, config defaults, Compose runtime, benchmark harness, report rendering, proof runners, and embedded child proof scripts into `scripts/perf/phase3-compose/`.
+- [x] Keep `scripts/perf/phase3-compose-benchmark-smoke.mjs` as the thin orchestrator for config, Compose lifecycle, proof sequencing, and report writing.
+- [x] Run syntax checks, lizard on touched files, architecture boundaries, gitleaks, full Compose smoke, and lightweight size checks.
+- [x] Update task notes and, if the large-file evidence changes materially, refresh the grade report/history.
+- [x] Self-review the diff for changed behavior, cleanup safety, and edge cases.
+
+## Review
+
+- Split `scripts/perf/phase3-compose-benchmark-smoke.mjs` from 2,686 lines to 370 lines.
+- Added `scripts/perf/phase3-compose/config.mjs` so the plain `npm run perf:phase3:compose-smoke` path uses code-owned defaults; env vars remain explicit overrides, not required command prefixes.
+- Added focused modules for Compose runtime, benchmark evidence, proof API, Postgres JSON execution, capacity snapshots, large-wallet proof, backup restore proof, worker proofs, backend scale-out proof, Markdown report rendering, and embedded child proof scripts.
+- Fixed port probing diagnostics so sandbox bind denials report `EPERM/EACCES` instead of being mistaken for occupied ports.
+- Fixed parent-process proof API calls to trust the generated Compose CA directly, matching the child benchmark harness TLS behavior without shell-prefix setup.
+- Default `npm run perf:phase3:compose-smoke` passed end to end with Docker access: benchmark harness, 1,000-row large-wallet proof, sized restore proof, worker queue/scale-out proofs, backend Redis WebSocket fanout, capacity snapshots, report writing, and Compose cleanup all completed.
+- Verification also passed: module `node --check`, touched-file lizard, full repo lizard, architecture-boundaries, gitleaks, large-file classification, config default resolution, and `git diff --check`.
+- Updated `docs/plans/codebase-health-assessment.md` and appended the Phase 3 Compose split history entry. Score remains 97/100 because the largest scanned files are now verified address vector fixtures at 2,118 lines.
+
+---
+
+# Active Task: Architecture Boundary Complexity Fix 2026-04-25
+
+Status: complete
+
+Goal: refactor `scripts/check-architecture-boundaries.mjs` so the architecture boundary checker no longer trips the `CCN > 15` lizard threshold, then refresh the grade evidence.
+
+## Plan
+
+- [x] Inspect the current high-CCN lizard finding and the architecture boundary check surface.
+- [x] Split import parsing and rule predicates into small named helpers without changing rule behavior.
+- [x] Run syntax, architecture-boundary, and lizard verification.
+- [x] Update the grade report/history and task review with the new score.
+- [x] Review the diff and final verification output.
+
+## Review
+
+- Split import parsing into `scripts/quality/import-parser.mjs` and imported it from `scripts/check-architecture-boundaries.mjs`.
+- Replaced inline architecture rule `from`/`forbidden` predicates with named helpers so lizard measures the real small predicate units instead of misattributing the rule table tail to one function.
+- `npm run check:architecture-boundaries` still passes with 1,860 files, 7,186 imports, 10 rules, and 40 exceptions.
+- Full repo lizard now reports 0 warnings, average CCN 1.3, and no thresholds exceeded.
+- Full working-tree gitleaks still reports 0 findings after adding the helper file.
+- Updated the grade report to 97/100 (A), with Maintainability restored to 12/15.
+- Appended the post-lizard-remediation history entry for `1af2fe0d`.
+- Final `git diff --check` passed.
+
+---
+
+# Active Task: Grade Secret Gate Remediation 2026-04-25
+
+Status: complete
+
+Goal: remove the full working-tree gitleaks hard-fail caused by ignored generated Docusaurus output while preserving tracked-source and latest-commit secret scanning.
+
+## Plan
+
+- [x] Confirm the finding is in ignored generated output and that the canonical source document scans clean.
+- [x] Add the narrowest practical gitleaks ignore for the generated-output false positive.
+- [x] Rerun full, tracked-tree, and latest-commit gitleaks scans.
+- [x] Refresh grade report/history and task notes with the remediated score.
+- [x] Run final diff/quality checks and self-review.
+
+## Review
+
+- Added an exact `.gitleaksignore` fingerprint for the ignored generated Docusaurus HTML false positive: `website/build/docs/reference/hardware-wallet-integration.html:generic-api-key:248`.
+- Verified `docs/reference/hardware-wallet-integration.md` and the Docusaurus intermediate JSON both scan clean, so the ignore only suppresses local built output.
+- Full working-tree, latest-commit, and tracked-tree gitleaks scans now report 0 findings.
+- Updated the grade report to 95/100 (A), with Security restored to 15/15 and no hard-fail blockers.
+- Appended a post-remediation full trend entry for `1af2fe0d`.
+- Final `git diff --check` passed.
+
+---
+
+# Active Task: Repository Grade Audit Rerun 2026-04-25
+
+Status: complete
+
+Goal: rerun the `$grade` full-repository audit after the other PR work was pushed, update `docs/plans/codebase-health-assessment.md`, and compare the result against the previous full run.
+
+## Plan
+
+- [x] Confirm current branch, dirty worktree state, local date, commit, grade standards, and previous trend entry.
+- [x] Collect full-repository mechanical signals with grade tooling and direct supplemental tools where needed.
+- [x] Inspect targeted evidence for judged criteria and compare against the previous run.
+- [x] Score domains, check hard-fail gates, append trend history, and update the report.
+- [x] Review changed files, edge cases, and final verification output.
+
+## Review
+
+- Reran the full grade audit on `main` at `1af2fe0d` after PR #180 landed.
+- Raw domain score remains 91/100, capped to 69/100 (D) by the `secrets=1` hard-fail gate.
+- The hard-fail finding is still a redacted `gitleaks` hit in ignored generated Docusaurus output: `website/build/docs/reference/hardware-wallet-integration.html:248`; tracked-tree and latest-commit scans both report 0 findings.
+- Native tests, lint, typecheck, app/backend/gateway coverage, high/critical package audits, architecture boundaries, browser-auth contract, OpenAPI route coverage, and large-file classification passed.
+- App coverage increased to 407 files / 5,630 tests; backend coverage passed with 398 files / 9,253 tests plus skipped integration cases; gateway coverage passed with 21 files / 528 tests.
+- Maintainability still loses points for `scripts/check-architecture-boundaries.mjs:296` at CCN 25 and the 2,686-line largest classified file.
+- Trend history was appended for commit `1af2fe0d`; final `git diff --check` passed.
+
+---
+
+# Active Task: Repository Grade Audit 2026-04-25
+
+Status: complete
+
+Goal: run the `$grade` full-repository audit, update `docs/plans/codebase-health-assessment.md`, and record evidence-backed scoring without disturbing existing in-flight work.
+
+## Plan
+
+- [x] Read project lessons, grade standards, repository status, and prior trend context.
+- [x] Collect full-repository mechanical signals with the grade skill tooling.
+- [x] Inspect targeted source, tests, config, and operational files for judged criteria.
+- [x] Score domains, check hard-fail gates, append trend history, and write the report.
+- [x] Review the report and task notes for correctness, edge cases, and unintended edits.
+
+## Review
+
+- Raw domain score is 91/100, capped to 69/100 (D) by the `secrets=1` hard-fail gate.
+- The hard-fail finding is a redacted `gitleaks` hit in ignored generated Docusaurus output: `website/build/docs/reference/hardware-wallet-integration.html:248`.
+- Tracked-tree and latest-commit gitleaks scans both report 0 findings, so committed source is clean for the secret signal.
+- Native tests, lint, typecheck, coverage, architecture boundaries, browser-auth contract, OpenAPI route coverage, large-file classification, and high/critical package audits passed.
+- Maintainability lost points for one pinned lizard warning: `scripts/check-architecture-boundaries.mjs:296` has CCN 25.
+- Final `git diff --check` passed.
+
+---
+
+# Active Task: Docusaurus Docs Hardening
+
+Status: complete
+
+Goal: harden the Docusaurus docs architecture after PR #179, scoped to the curated published-docs contract, Docusaurus routing/navigation, generated architecture appendices, Mermaid click/pan behavior, and focused architecture/doc validation.
+
+## Plan
+
+- [x] Start from current `origin/main` on `docs/docusaurus-hardening` instead of mixing changes into the merged notification branch.
+- [x] Merge and verify PR #179, then rebase `docs/docusaurus-hardening` onto post-179 `origin/main`.
+- [x] Clarify the published-docs contract so the site no longer claims or links to unpublished material as if it were local.
+- [x] Add AI Proxy as a first-class service architecture page in Docusaurus.
+- [x] Simplify the sidebar into C4 docs plus generated appendices, avoiding duplicate call-graph navigation.
+- [x] Fix local route consistency so the architecture navbar/root redirect uses the canonical Docusaurus doc path.
+- [x] Add website typecheck, fix Mermaid pan/zoom typing/robustness, and wire typecheck into architecture CI.
+- [x] Keep Mermaid doc drill-downs inside Docusaurus while sending source-code clicks to GitHub.
+- [x] Make broken links and images fail once the curated include set no longer exposes unrelated stale docs.
+- [x] Harden call graph config validation, schema support, stale generated cleanup, and generated appendix navigation.
+- [x] Harden module graph generation so Mermaid output cannot silently become blank.
+- [x] Run focused website and architecture verification.
+- [x] Record review evidence and self-review the diff.
+
+## Review
+
+- PR #179 merged and was verified on `origin/main` at `ed6b7b10 chore: forbid direct notification imports outside the dispatch layer (#179)`.
+- Added an explicit Docusaurus published-docs include contract with AI Proxy architecture included and plans/archive/ideas left as repository-only GitHub links.
+- Reworked the sidebar around the docs index, C4 architecture pages, per-service architecture pages, and generated appendices so call graphs live under generated appendices instead of duplicate top-level navigation.
+- Set broken links and markdown image/link hooks to fail the build, then fixed local published-doc links surfaced by the stricter gate.
+- Added `website` typecheck and wired it before the Docusaurus build in architecture CI.
+- Fixed `svg-pan-zoom` typing by using the package's CommonJS export shape and made binding retry after lazy-load failure instead of permanently marking diagrams as processed.
+- Updated Mermaid click rewriting so curated doc targets resolve to Docusaurus routes under `/sanctuary/`, while source/off-contract repository targets resolve to GitHub blob URLs.
+- Added runtime validation for `docs/architecture/calls.config.json`, plus `docs/architecture/calls.config.schema.json`, unmatched include failures, and stale generated call-page cleanup.
+- Added generated architecture index pages for module graphs and function-level call graphs.
+- Fixed module graph generation to use dependency-cruiser's API with explicit package `baseDir`, validate configured patterns, and fail if Mermaid output is blank.
+- Verification passed:
+  - `gh pr merge 179 --auto`
+  - `gh pr view 179 --json state,mergedAt,mergeCommit,mergeStateStatus,headRefOid,url`
+  - `git -C /tmp/sanctuary-pr179 merge-base --is-ancestor ed6b7b105f6c33e226fb3693a9d7ca15f2ad026e origin/main`
+  - `npm run arch:graphs`
+  - `npm run arch:calls`
+  - `npm run arch:lint`
+  - `npm run check:architecture-boundaries`
+  - `node --check scripts/architecture/extract-call-graphs.mjs`
+  - `node --check scripts/architecture/generate-graphs.mjs`
+  - `npm --prefix website run typecheck`
+  - `npm run docs:build`
+  - `git diff --check`
+  - `.tmp/quality-tools/lizard-1.21.2/bin/lizard -C 15 scripts/architecture/extract-call-graphs.mjs scripts/architecture/generate-graphs.mjs website/src/clientModules/mermaidPanZoom.ts website/src/plugins/remark-mermaid-click-rewrite.mjs`
+- `npm run docs:build` exited successfully with the existing nonfatal `vscode-languageserver-types` webpack warning and Docusaurus update-check permission warning.
+
+---
+
 # Active Task: CI/CD Test Speed Batch 5 - E2E Timing Instrumentation
 
 Status: in progress
