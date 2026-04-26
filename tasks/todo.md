@@ -1,3 +1,29 @@
+# Active Task: Typed AI Provider Profile Foundation 2026-04-26
+
+Status: complete
+
+Goal: introduce the first typed AI provider profile foundation so AI Settings can evolve from loose endpoint/model fields toward explicit provider profiles without breaking the existing Ollama configuration workflow.
+
+## Plan
+
+- [x] Inspect current AI Settings, admin settings, backend AI config, proxy, and related tests.
+- [x] Define the first typed provider profile model and compatibility mapping around the existing endpoint/model settings.
+- [x] Update backend/admin and frontend API types to expose the typed active profile while preserving current UI behavior.
+- [x] Add focused tests for default, saved, invalid, and update paths.
+- [x] Run focused frontend/backend verification plus diff checks.
+- [x] Review edge cases and document results.
+
+## Review
+
+- Added a typed AI provider profile domain model with provider type, endpoint/model, capabilities, duplicate-ID validation, and default Ollama compatibility.
+- Split boundaries so provider profile schema/state logic lives in `server/src/services/ai/providerProfile.ts`, admin settings mapping lives in `server/src/services/ai/providerProfileSettings.ts`, and `adminSettingsService` remains orchestration.
+- Admin settings now derive a default typed profile from existing `aiEndpoint`/`aiModel`, expose active profile response state, mirror endpoint/model updates into the active profile, reject invalid profile lists, and strip derived active profile objects from writes.
+- AI config reads the active typed profile while keeping the current AI proxy sync payload unchanged at `{ enabled, endpoint, model }`.
+- OpenAPI and frontend types now expose typed provider profiles; update contracts omit the derived `aiActiveProviderProfile` object.
+- Verification passed: backend focused Vitest suite (`admin-routes`, `openapi`, `aiService`, `adminSettingsService`, `aiProviderProfileSettings`, `schemas`) 178 tests; `npm run typecheck:app`; `npm run typecheck:tests`; `npm run typecheck:server:tests`; `npm run lint:server`; `npm run lint:app`; lizard `-C 15` on touched AI/settings services; `git diff --check`.
+
+---
+
 # Active Task: AI Settings Rename Foundation 2026-04-26
 
 Status: complete

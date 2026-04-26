@@ -56,6 +56,37 @@ describe('adminSettingsService', () => {
     expect(response['smtp.password']).toBeUndefined();
   });
 
+  it('builds typed AI provider profile settings from stored profile state', async () => {
+    const { buildAdminSettingsResponse } = await loadService();
+
+    const response = buildAdminSettingsResponse([
+      { key: 'aiEndpoint', value: '"http://legacy-ollama:11434"' },
+      { key: 'aiModel', value: '"legacy-model"' },
+      { key: 'aiActiveProviderProfileId', value: '"lan-ollama"' },
+      {
+        key: 'aiProviderProfiles',
+        value: JSON.stringify([
+          {
+            id: 'lan-ollama',
+            name: 'LAN Ollama',
+            providerType: 'ollama',
+            endpoint: 'http://lan-llm:11434',
+            model: 'llama3.2:3b',
+            capabilities: { chat: true, toolCalls: false, strictJson: true },
+          },
+        ]),
+      },
+    ]);
+
+    expect(response.aiActiveProviderProfileId).toBe('lan-ollama');
+    expect(response.aiEndpoint).toBe('http://lan-llm:11434');
+    expect(response.aiModel).toBe('llama3.2:3b');
+    expect(response.aiActiveProviderProfile).toMatchObject({
+      id: 'lan-ollama',
+      providerType: 'ollama',
+    });
+  });
+
   it('encrypts plaintext SMTP passwords, clears email transport cache, and returns sanitized settings', async () => {
     mocks.getAll.mockResolvedValueOnce([
       { key: 'smtp.host', value: '"smtp.example.com"' },
@@ -76,6 +107,22 @@ describe('adminSettingsService', () => {
     expect(mocks.clearTransporterCache).toHaveBeenCalledTimes(1);
     expect(response['smtp.configured']).toBe(true);
     expect(response['smtp.password']).toBeUndefined();
+  });
+
+  it('does not persist derived active AI provider profile objects from update payloads', async () => {
+    mocks.getAll.mockResolvedValueOnce([]);
+    const { updateAdminSettings } = await loadService();
+
+    await updateAdminSettings({
+      registrationEnabled: true,
+      aiActiveProviderProfile: {
+        id: 'derived-profile',
+        name: 'Derived Profile',
+      },
+    });
+
+    expect(mocks.set).toHaveBeenCalledWith('registrationEnabled', JSON.stringify(true));
+    expect(mocks.set).not.toHaveBeenCalledWith('aiActiveProviderProfile', expect.any(String));
   });
 
   it('rejects deep confirmation thresholds lower than confirmation thresholds', async () => {

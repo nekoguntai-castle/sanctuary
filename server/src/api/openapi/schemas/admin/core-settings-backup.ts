@@ -1,4 +1,5 @@
 import {
+  adminSettingsUpdateProperties,
   adminSuccessResponseSchema,
   baseSettingsProperties,
 } from './shared';
@@ -33,7 +34,7 @@ export const adminCoreSettingsBackupSchemas = {
   AdminSettingsUpdateRequest: {
     type: 'object',
     properties: {
-      ...baseSettingsProperties,
+      ...adminSettingsUpdateProperties,
       'smtp.password': { type: 'string' },
     },
     additionalProperties: true,

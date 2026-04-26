@@ -63,6 +63,23 @@ export interface CreateGroupRequest {
 // SYSTEM SETTINGS TYPES
 // ========================================
 
+export type AIProviderType = 'ollama' | 'openai-compatible';
+
+export interface AIProviderCapabilities {
+  chat: boolean;
+  toolCalls: boolean;
+  strictJson: boolean;
+}
+
+export interface AIProviderProfile {
+  id: string;
+  name: string;
+  providerType: AIProviderType;
+  endpoint: string;
+  model: string;
+  capabilities: AIProviderCapabilities;
+}
+
 export interface SystemSettings {
   registrationEnabled: boolean;
   confirmationThreshold?: number;
@@ -72,7 +89,12 @@ export interface SystemSettings {
   aiEnabled?: boolean;
   aiEndpoint?: string;
   aiModel?: string;
+  aiProviderProfiles?: AIProviderProfile[];
+  aiActiveProviderProfileId?: string;
+  aiActiveProviderProfile?: AIProviderProfile;
 }
+
+export type SystemSettingsUpdate = Partial<Omit<SystemSettings, 'aiActiveProviderProfile'>>;
 
 // ========================================
 // BACKUP & RESTORE TYPES

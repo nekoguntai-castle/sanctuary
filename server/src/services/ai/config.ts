@@ -11,9 +11,14 @@
 import { systemSettingRepository } from '../../repositories';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
-import { safeJsonParse, SystemSettingSchemas } from '../../utils/safeJson';
+import { safeJsonParse, safeJsonParseUntyped, SystemSettingSchemas } from '../../utils/safeJson';
 import { createHash } from 'crypto';
 import type { AIConfig, ConfigSyncState } from './types';
+import {
+  AI_ACTIVE_PROVIDER_PROFILE_ID_KEY,
+  AI_PROVIDER_PROFILES_KEY,
+  buildAIProviderProfileState,
+} from './providerProfile';
 
 const log = createLogger('AI:CONFIG');
 
@@ -40,6 +45,8 @@ function hashConfig(config: AIConfig): string {
     enabled: config.enabled,
     endpoint: config.endpoint,
     model: config.model,
+    providerProfileId: config.providerProfileId,
+    providerType: config.providerType,
   });
   return createHash('sha256').update(data).digest('hex');
 }
@@ -49,26 +56,54 @@ function hashConfig(config: AIConfig): string {
  */
 export async function getAIConfig(): Promise<AIConfig> {
   try {
-    const settings = await systemSettingRepository.findByKeys(['aiEnabled', 'aiEndpoint', 'aiModel']);
+    const settings = await systemSettingRepository.findByKeys([
+      'aiEnabled',
+      'aiEndpoint',
+      'aiModel',
+      AI_PROVIDER_PROFILES_KEY,
+      AI_ACTIVE_PROVIDER_PROFILE_ID_KEY,
+    ]);
 
-    const config: AIConfig = {
-      enabled: false,
-      endpoint: '',
-      model: '',
-    };
+    let enabled = false;
+    let endpoint = '';
+    let model = '';
+    let providerProfiles: unknown;
+    let activeProviderProfileId = '';
 
     for (const setting of settings) {
       const key = setting.key;
       if (key === 'aiEnabled') {
-        config.enabled = safeJsonParse(setting.value, SystemSettingSchemas.boolean, false, 'aiEnabled');
+        enabled = safeJsonParse(setting.value, SystemSettingSchemas.boolean, false, 'aiEnabled');
       } else if (key === 'aiEndpoint') {
-        config.endpoint = safeJsonParse(setting.value, SystemSettingSchemas.string, '', 'aiEndpoint');
+        endpoint = safeJsonParse(setting.value, SystemSettingSchemas.string, '', 'aiEndpoint');
       } else if (key === 'aiModel') {
-        config.model = safeJsonParse(setting.value, SystemSettingSchemas.string, '', 'aiModel');
+        model = safeJsonParse(setting.value, SystemSettingSchemas.string, '', 'aiModel');
+      } else if (key === AI_PROVIDER_PROFILES_KEY) {
+        providerProfiles = safeJsonParseUntyped<unknown>(setting.value, undefined, AI_PROVIDER_PROFILES_KEY);
+      } else if (key === AI_ACTIVE_PROVIDER_PROFILE_ID_KEY) {
+        activeProviderProfileId = safeJsonParse(
+          setting.value,
+          SystemSettingSchemas.string,
+          '',
+          AI_ACTIVE_PROVIDER_PROFILE_ID_KEY,
+        );
       }
     }
 
-    return config;
+    const providerState = buildAIProviderProfileState({
+      endpoint,
+      model,
+      providerProfiles,
+      activeProviderProfileId,
+    });
+
+    return {
+      enabled,
+      endpoint: providerState.aiActiveProviderProfile.endpoint,
+      model: providerState.aiActiveProviderProfile.model,
+      providerProfileId: providerState.aiActiveProviderProfile.id,
+      providerType: providerState.aiActiveProviderProfile.providerType,
+    };
   } catch (error) {
     log.error('Failed to get AI config', { error: getErrorMessage(error) });
     return {
