@@ -1,0 +1,20 @@
+# CODEOWNERS — auto-request review for architecture-shaped paths.
+#
+# Lines later in the file override earlier ones. Patterns follow GitHub's
+# CODEOWNERS syntax (gitignore-like). See:
+# https://docs.github.com/en/repositories/managing-your-repositories-settings-and-security/managing-your-repositorys-settings-and-security/managing-pull-request-reviews/about-code-owners
+
+# C4 architecture diagrams + ADRs — conceptual correctness requires human
+# judgement; mechanical checks (lint-diagrams, dependency-cruiser, the
+# function-call extractor) only catch structural drift.
+docs/architecture/**            @nekoguntai
+docs/adr/**                     @nekoguntai
+
+# Per-package architecture documentation.
+**/ARCHITECTURE.md              @nekoguntai
+
+# The tools that enforce diagram drift — changing them changes what CI
+# catches, so warrant the same review.
+scripts/architecture/**         @nekoguntai
+.github/workflows/architecture.yml  @nekoguntai
+website/                        @nekoguntai
