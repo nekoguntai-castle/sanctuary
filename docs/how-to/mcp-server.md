@@ -20,6 +20,20 @@ The Docker service listens inside the container on `0.0.0.0:3003`, but the host 
 MCP_BIND_ADDRESS=127.0.0.1 MCP_PORT=3003 ./start.sh --with-mcp
 ```
 
+Prebuilt GHCR deployments use the same optional profile:
+
+```bash
+docker compose -f docker-compose.ghcr.yml --profile mcp up -d
+```
+
+Keep `MCP_BIND_ADDRESS=127.0.0.1` for local clients. To expose MCP to another machine on the LAN, bind to the LAN interface only behind a trusted TLS/VPN/reverse-proxy boundary:
+
+```bash
+MCP_BIND_ADDRESS=192.168.1.20 MCP_ALLOWED_HOSTS=localhost,127.0.0.1,192.168.1.20 ./start.sh --with-mcp
+```
+
+Do not expose the MCP port directly to the public internet. Use expiring, wallet-scoped API keys for LAN clients.
+
 ## Create An API Key
 
 Create keys from the admin API:
@@ -47,6 +61,16 @@ Authorization: Bearer mcp_<token>
 MCP-Protocol-Version: 2025-11-25
 ```
 
+Some MCP clients omit `MCP-Protocol-Version` on the first `initialize` request. Sanctuary accepts that initial request when compatible, but rejects unsupported explicit protocol versions and non-initialize calls without a protocol header.
+
+Example MCP Inspector settings:
+
+```text
+Transport: Streamable HTTP
+Server URL: http://127.0.0.1:3003/mcp
+Header: Authorization: Bearer mcp_<token>
+```
+
 The server is stateless. `POST /mcp` is supported; `GET /mcp` and `DELETE /mcp` intentionally return `405`.
 
 ## Security Notes
@@ -56,7 +80,7 @@ The server is stateless. `POST /mcp` is supported; `GET /mcp` and `DELETE /mcp` 
 - Fee and price resources are cache-only. MCP reads never fetch external services on cache miss.
 - Every MCP request is audit logged under the `mcp` category.
 - Audit log reads require both an admin user and an API key created with `allowAuditLogs: true`.
-- API keys are included in Sanctuary backups as hashes and metadata, not as reusable bearer tokens.
+- API keys are included in Sanctuary backups as hashes and metadata. During restore, MCP keys are forced revoked so old bearer tokens cannot be reused on the restored node.
 
 ## Key Management
 

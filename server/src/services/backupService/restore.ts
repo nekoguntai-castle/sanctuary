@@ -105,6 +105,12 @@ export async function restoreFromBackup(backup: SanctuaryBackup): Promise<Restor
             processedRecords = processUserRecords(processedRecords, warnings);
           }
 
+          // Restored MCP bearer-token hashes are external-access credentials.
+          // Keep metadata for audit/admin review, but force every restored key closed.
+          if (table === 'mcpApiKey') {
+            processedRecords = processMcpApiKeyRecords(processedRecords, warnings);
+          }
+
           // Use createMany for bulk insert
           // @ts-expect-error - Dynamic Prisma table access; table name validated against TABLE_ORDER constant
           await tx[table].createMany({
@@ -202,6 +208,29 @@ function processUserRecords(records: BackupRecord[], warnings: string[]): Backup
     }
     return record;
   });
+}
+
+/**
+ * Process MCP API key records - restored bearer-token hashes must not become usable.
+ */
+function processMcpApiKeyRecords(records: BackupRecord[], warnings: string[]): BackupRecord[] {
+  if (records.length === 0) {
+    return records;
+  }
+
+  const restoreRevokedAt = new Date();
+  const unrevokedCount = records.filter(record => !record.revokedAt).length;
+  if (unrevokedCount > 0) {
+    const keyLabel = `MCP API key${unrevokedCount === 1 ? '' : 's'}`;
+    warnings.push(
+      `${unrevokedCount} ${keyLabel} restored revoked. Regenerate MCP client credentials after reviewing external access.`
+    );
+  }
+
+  return records.map(record => ({
+    ...record,
+    revokedAt: record.revokedAt ?? restoreRevokedAt,
+  }));
 }
 
 /**

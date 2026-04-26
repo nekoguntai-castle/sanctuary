@@ -77,6 +77,7 @@ describe('restoreFromBackup', () => {
     // Mock getExistingTables to return common tables
     mockPrismaClient.$queryRaw.mockResolvedValue([
       { tablename: 'users' },
+      { tablename: 'mcp_api_keys' },
       { tablename: 'wallets' },
       { tablename: 'wallet_users' },
       { tablename: 'devices' },
@@ -223,6 +224,49 @@ describe('restoreFromBackup', () => {
       expect(result.success).toBe(true);
       expect(mockPrismaClient.priceData.createMany).toHaveBeenCalled();
       expect(mockPrismaClient.feeEstimate.createMany).toHaveBeenCalled();
+    });
+
+    it('should revoke restored MCP API keys so old bearer tokens fail closed', async () => {
+      const backup = createValidBackup();
+      backup.data.mcpApiKey = [
+        {
+          id: 'mcp-key-1',
+          userId: 'user-1',
+          name: 'LAN client',
+          keyHash: 'a'.repeat(64),
+          keyPrefix: 'mcp_aaaaaaaaaaa',
+          scope: { walletIds: ['wallet-1'] },
+          createdAt: new Date().toISOString(),
+          revokedAt: null,
+        },
+      ];
+
+      mockPrismaClient.$transaction.mockImplementation(async (fn: any) => fn(mockPrismaClient));
+
+      let capturedData: any = null;
+      Object.keys(mockPrismaClient).forEach((key) => {
+        const client = mockPrismaClient as any;
+        if (client[key]?.deleteMany) {
+          client[key].deleteMany.mockResolvedValue({ count: 0 });
+        }
+        if (client[key]?.createMany) {
+          client[key].createMany.mockResolvedValue({ count: 0 });
+        }
+      });
+      mockPrismaClient.mcpApiKey.createMany.mockImplementation(async ({ data }) => {
+        capturedData = data;
+        return { count: 1 };
+      });
+
+      const result = await backupService.restoreFromBackup(backup);
+
+      expect(result.success).toBe(true);
+      expect(result.warnings).toContain(
+        '1 MCP API key restored revoked. Regenerate MCP client credentials after reviewing external access.',
+      );
+      expect(capturedData).toHaveLength(1);
+      expect(capturedData[0].keyHash).toBe('a'.repeat(64));
+      expect(capturedData[0].revokedAt).toBeInstanceOf(Date);
     });
   });
 
