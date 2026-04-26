@@ -102,8 +102,9 @@ export function buildAIProviderProfileState(input: AIProviderProfileStateInput):
   const fallbackProfile = createDefaultAIProviderProfile(asString(input.endpoint), asString(input.model));
   const parsedProfiles = parseAIProviderProfiles(input.providerProfiles);
   const profiles = parsedProfiles && parsedProfiles.length > 0 ? parsedProfiles : [fallbackProfile];
-  const requestedActiveId = asString(input.activeProviderProfileId) || profiles[0]?.id || fallbackProfile.id;
-  const activeProfile = findAIProviderProfile(profiles, requestedActiveId) ?? profiles[0] ?? fallbackProfile;
+  const firstProfile = profiles[0]!;
+  const requestedActiveId = asString(input.activeProviderProfileId) || firstProfile.id;
+  const activeProfile = findAIProviderProfile(profiles, requestedActiveId) ?? firstProfile;
 
   return {
     aiProviderProfiles: profiles,
