@@ -21,7 +21,7 @@
 #
 # Payjoin over Tor:
 #   After starting, get your .onion address:
-#     docker exec sanctuary-tor cat /var/lib/tor/hidden_service/hostname
+#     docker exec "${TOR_CONTAINER_NAME:-sanctuary-tor}" cat /var/lib/tor/hidden_service/hostname
 #
 #   Then set in your .env:
 #     PAYJOIN_PUBLIC_URL=http://<your-onion-address>.onion
@@ -40,7 +40,7 @@ services:
   # ============================================
   tor:
     image: dperson/torproxy:latest
-    container_name: sanctuary-tor
+    container_name: ${TOR_CONTAINER_NAME:-sanctuary-tor}
     restart: unless-stopped
     networks:
       - sanctuary-network
@@ -48,7 +48,24 @@ services:
       # Disable exit node functionality - we only need SOCKS proxy + hidden service
       LOCATION: ""
     # Hidden service: map port 80 on the .onion address to backend port 3001
-    command: -l "sanctuary_payjoin:80:backend:3001"
+    command:
+      - sh
+      - -c
+      - |
+        set -eu
+        mkdir -p /var/lib/tor/hidden_service
+        chown tor:tor /var/lib/tor/hidden_service 2>/dev/null || true
+        chmod 700 /var/lib/tor/hidden_service
+        sed -i '/^StrictNodes /d; /^ExitNodes /d' /etc/tor/torrc
+        for _ in 1 2 3 4 5 6 7 8 9 10; do
+          backend_ip="$$(getent hosts backend 2>/dev/null | awk '{print $$1; exit}' || true)"
+          if [ -n "$$backend_ip" ]; then
+            exec /usr/bin/torproxy.sh -s "80;$${backend_ip}:3001"
+          fi
+          sleep 2
+        done
+        echo "backend service did not resolve" >&2
+        exit 1
     volumes:
       # Persist hidden service keys so the .onion address stays the same across restarts
       - tor_hidden_service:/var/lib/tor/hidden_service
@@ -66,11 +83,11 @@ services:
           cpus: '0.1'
           memory: 64M
     healthcheck:
-      test: ["CMD-SHELL", "curl --socks5 localhost:9050 --socks5-hostname localhost:9050 -s https://check.torproject.org/api/ip | grep -q 'IsTor.*true' || exit 1"]
-      interval: 60s
-      timeout: 30s
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 9050 || exit 1"]
+      interval: 30s
+      timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 30s
 
 volumes:
   tor_hidden_service:

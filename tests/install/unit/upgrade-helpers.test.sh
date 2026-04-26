@@ -147,6 +147,17 @@ test_fixture_defaults_are_composable() {
   UPGRADE_USE_LEGACY_RUNTIME_ENV="false"
   UPGRADE_SEED_NOTIFICATION_STATE="false"
   UPGRADE_EXPECT_OPTIONAL_PROFILES="false"
+  COMPOSE_PROJECT_NAME="upgrade-fixture-unit"
+  GRAFANA_PORT=""
+  PROMETHEUS_PORT=""
+  ALERTMANAGER_PORT=""
+  JAEGER_UI_PORT=""
+  LOKI_PORT=""
+  JAEGER_OTLP_GRPC_PORT=""
+  JAEGER_OTLP_HTTP_PORT=""
+  GRAFANA_CONTAINER_NAME=""
+  PROMETHEUS_CONTAINER_NAME=""
+  TOR_CONTAINER_NAME=""
 
   validate_upgrade_fixture "browser-origin-ip,legacy-runtime-env,notification-delivery,optional-profiles"
   apply_upgrade_fixture_defaults "browser-origin-ip,legacy-runtime-env,notification-delivery,optional-profiles"
@@ -160,6 +171,111 @@ test_fixture_defaults_are_composable() {
   assert_equals "true" "$UPGRADE_SEED_NOTIFICATION_STATE" "notification fixture should seed notification state"
   assert_equals "yes" "$UPGRADE_ENABLE_MONITORING" "optional fixture should enable monitoring"
   assert_equals "yes" "$UPGRADE_ENABLE_TOR" "optional fixture should enable Tor"
+  assert_equals "19400" "$GRAFANA_PORT" "optional fixture should isolate Grafana host port"
+  assert_equals "19401" "$PROMETHEUS_PORT" "optional fixture should isolate Prometheus host port"
+  assert_equals "19402" "$ALERTMANAGER_PORT" "optional fixture should isolate Alertmanager host port"
+  assert_equals "19403" "$JAEGER_UI_PORT" "optional fixture should isolate Jaeger UI host port"
+  assert_equals "19404" "$LOKI_PORT" "optional fixture should isolate Loki host port"
+  assert_equals "19405" "$JAEGER_OTLP_GRPC_PORT" "optional fixture should isolate Jaeger gRPC host port"
+  assert_equals "19406" "$JAEGER_OTLP_HTTP_PORT" "optional fixture should isolate Jaeger HTTP host port"
+  assert_equals "upgrade-fixture-unit-grafana" "$GRAFANA_CONTAINER_NAME" "optional fixture should isolate Grafana container name"
+  assert_equals "upgrade-fixture-unit-prometheus" "$PROMETHEUS_CONTAINER_NAME" "optional fixture should isolate Prometheus container name"
+  assert_equals "upgrade-fixture-unit-tor" "$TOR_CONTAINER_NAME" "optional fixture should isolate Tor container name"
+}
+
+test_optional_profiles_is_in_release_matrices() {
+  local install_count
+  local rc_count
+
+  install_count=$(grep -c 'fixture: optional-profiles' "$PROJECT_ROOT/.github/workflows/install-test.yml")
+  rc_count=$(grep -c 'fixture: optional-profiles' "$PROJECT_ROOT/.github/workflows/release-candidate.yml")
+
+  assert_equals "1" "$install_count" "install release matrix should include optional profiles once"
+  assert_equals "1" "$rc_count" "release candidate matrix should include optional profiles once"
+}
+
+test_legacy_optional_profile_compose_is_isolated() {
+  local checkout="$TEST_TMP_DIR/source"
+  local tor_compose="$checkout/docker-compose.tor.yml"
+
+  mkdir -p "$checkout"
+  cat > "$tor_compose" <<'EOF'
+services:
+  tor:
+    container_name: sanctuary-tor
+EOF
+
+  UPGRADE_EXPECT_OPTIONAL_PROFILES="true"
+
+  isolate_legacy_optional_profile_compose "$checkout"
+  UPGRADE_EXPECT_OPTIONAL_PROFILES="false"
+
+  local contents
+  contents="$(cat "$tor_compose")"
+
+  assert_contains "$contents" 'container_name: ${TOR_CONTAINER_NAME:-sanctuary-tor}' \
+    "legacy Tor compose should use the isolated test container name"
+  assert_not_contains "$contents" 'container_name: sanctuary-tor' \
+    "legacy Tor compose should not keep the fixed container name"
+}
+
+test_legacy_optional_profile_compose_can_use_target_tor_overlay() {
+  local source_checkout="$TEST_TMP_DIR/source"
+  local target_checkout="$TEST_TMP_DIR/target"
+  local source_tor_compose="$source_checkout/docker-compose.tor.yml"
+  local target_tor_compose="$target_checkout/docker-compose.tor.yml"
+
+  mkdir -p "$source_checkout" "$target_checkout"
+  cat > "$source_tor_compose" <<'EOF'
+services:
+  tor:
+    container_name: sanctuary-tor
+    command: -l "sanctuary_payjoin:80:backend:3001"
+EOF
+  cat > "$target_tor_compose" <<'EOF'
+services:
+  tor:
+    container_name: ${TOR_CONTAINER_NAME:-sanctuary-tor}
+    command:
+      - sh
+      - -c
+      - /usr/bin/torproxy.sh -s "80;$${backend_ip}:3001"
+EOF
+
+  UPGRADE_EXPECT_OPTIONAL_PROFILES="true"
+
+  isolate_legacy_optional_profile_compose "$source_checkout" "$target_checkout"
+  UPGRADE_EXPECT_OPTIONAL_PROFILES="false"
+
+  local contents
+  contents="$(cat "$source_tor_compose")"
+
+  assert_contains "$contents" '/usr/bin/torproxy.sh -s "80;$${backend_ip}:3001"' \
+    "legacy Tor compose should be replaced with the target fixed overlay"
+  assert_not_contains "$contents" 'command: -l ' \
+    "legacy Tor compose should not keep the invalid hidden service command"
+}
+
+test_tor_compose_uses_supported_hidden_service_config() {
+  local contents
+  contents="$(cat "$PROJECT_ROOT/docker-compose.tor.yml")"
+
+  assert_contains "$contents" "sed -i '/^StrictNodes /d; /^ExitNodes /d'" \
+    "Tor compose should clear stale exit-node options before configuring hidden service"
+  assert_contains "$contents" "mkdir -p /var/lib/tor/hidden_service" \
+    "Tor compose should create the hidden-service directory before startup"
+  assert_contains "$contents" "chmod 700 /var/lib/tor/hidden_service" \
+    "Tor compose should apply Tor-compatible hidden-service directory permissions"
+  assert_contains "$contents" 'getent hosts backend' \
+    "Tor compose should resolve the backend service before configuring the hidden service"
+  assert_contains "$contents" '/usr/bin/torproxy.sh -s "80;$${backend_ip}:3001"' \
+    "Tor compose should use torproxy hidden-service option with a resolved backend IP"
+  assert_contains "$contents" 'nc -z 127.0.0.1 9050' \
+    "Tor healthcheck should validate the local IPv4 SOCKS port"
+  assert_not_contains "$contents" 'command: -l ' \
+    "Tor compose should not use the exit-node country option for hidden services"
+  assert_not_contains "$contents" 'check.torproject.org' \
+    "Tor healthcheck should not depend on public Tor reachability"
 }
 
 test_upgrade_network_defaults_respect_overrides() {
@@ -303,6 +419,10 @@ main() {
 
   run_test "source ref aliases resolve stable tags" test_source_ref_aliases_resolve_stable_tags
   run_test "fixture defaults are composable" test_fixture_defaults_are_composable
+  run_test "optional profiles is in release matrices" test_optional_profiles_is_in_release_matrices
+  run_test "legacy optional profile compose is isolated" test_legacy_optional_profile_compose_is_isolated
+  run_test "legacy optional profile compose can use target tor overlay" test_legacy_optional_profile_compose_can_use_target_tor_overlay
+  run_test "tor compose uses supported hidden service config" test_tor_compose_uses_supported_hidden_service_config
   run_test "upgrade network defaults respect overrides" test_upgrade_network_defaults_respect_overrides
   run_test "invalid fixture is rejected" test_invalid_fixture_is_rejected
   run_test "redacted env hides upgrade secrets" test_redacted_env_hides_upgrade_secrets

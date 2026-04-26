@@ -121,12 +121,13 @@ if ! validate_upgrade_fixture "$UPGRADE_FIXTURE"; then
     exit 1
 fi
 
-apply_upgrade_fixture_defaults "$UPGRADE_FIXTURE"
-apply_upgrade_test_network_defaults
-
 # Test configuration
 TEST_ID=$(generate_test_run_id)
 export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-sanctuary-upgrade-${TEST_ID}}"
+
+apply_upgrade_fixture_defaults "$UPGRADE_FIXTURE"
+apply_upgrade_test_network_defaults
+
 TEST_RUNTIME_DIR="${SANCTUARY_RUNTIME_DIR:-/tmp/sanctuary-upgrade-runtime-${TEST_ID}}"
 TEST_SSL_DIR="${SANCTUARY_SSL_DIR:-$TEST_RUNTIME_DIR/ssl}"
 API_BASE_URL="https://localhost:${HTTPS_PORT}"
@@ -262,6 +263,7 @@ run_install_script() {
     local install_log="$TEST_RUNTIME_DIR/install-${checkout_name}.log"
 
     mkdir -p "$TEST_RUNTIME_DIR"
+    isolate_legacy_optional_profile_compose "$project_dir" "$TARGET_PROJECT_ROOT"
 
     set +e
     (
@@ -1628,10 +1630,10 @@ test_stop_containers_for_upgrade() {
     cd "$PROJECT_ROOT"
     load_runtime_env || return 1
 
-    docker compose stop 2>&1
+    run_project_compose "$PROJECT_ROOT" stop 2>&1
 
     # Verify containers stopped
-    local running=$(docker ps --filter "name=${COMPOSE_PROJECT_NAME}-" --filter "status=running" -q | wc -l)
+    local running=$(docker ps --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}" --filter "status=running" -q | wc -l)
     if [ "$running" -gt 0 ]; then
         log_error "Some containers still running after stop"
         return 1
@@ -1772,6 +1774,40 @@ test_verify_secrets_preserved() {
     return 0
 }
 
+wait_for_optional_profile_container() {
+    local container_name="$1"
+    local display_name="$2"
+    local expected_state="$3"
+
+    if [ -z "$container_name" ]; then
+        log_error "$display_name container name is not configured"
+        return 1
+    fi
+
+    case "$expected_state" in
+        healthy)
+            wait_for_container_healthy "$container_name" 180
+            ;;
+        running)
+            wait_for_container_running "$container_name" 120
+            ;;
+        *)
+            log_error "Unknown optional profile container state: $expected_state"
+            return 1
+            ;;
+    esac
+}
+
+verify_optional_profile_containers_after_upgrade() {
+    wait_for_optional_profile_container "${JAEGER_CONTAINER_NAME:-}" "Jaeger" healthy || return 1
+    wait_for_optional_profile_container "${LOKI_CONTAINER_NAME:-}" "Loki" healthy || return 1
+    wait_for_optional_profile_container "${PROMTAIL_CONTAINER_NAME:-}" "Promtail" healthy || return 1
+    wait_for_optional_profile_container "${PROMETHEUS_CONTAINER_NAME:-}" "Prometheus" healthy || return 1
+    wait_for_optional_profile_container "${ALERTMANAGER_CONTAINER_NAME:-}" "Alertmanager" healthy || return 1
+    wait_for_optional_profile_container "${GRAFANA_CONTAINER_NAME:-}" "Grafana" healthy || return 1
+    wait_for_optional_profile_container "${TOR_CONTAINER_NAME:-}" "Tor" healthy || return 1
+}
+
 test_verify_fixture_runtime_shape() {
     log_info "Verifying fixture runtime shape..."
 
@@ -1792,6 +1828,8 @@ test_verify_fixture_runtime_shape() {
             log_error "ENABLE_TOR=${ENABLE_TOR:-unset}"
             return 1
         fi
+
+        verify_optional_profile_containers_after_upgrade || return 1
     fi
 
     log_success "Fixture runtime shape verified"

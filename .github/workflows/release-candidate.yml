@@ -359,6 +359,8 @@ jobs:
             fixture: legacy-runtime-env
           - source_ref: latest-stable
             fixture: notification-delivery
+          - source_ref: latest-stable
+            fixture: optional-profiles
 
     steps:
       - name: Checkout repository
