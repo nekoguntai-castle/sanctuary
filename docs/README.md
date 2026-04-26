@@ -1,8 +1,8 @@
 # Sanctuary Documentation
 
-Navigation index for the `docs/` tree. The structure follows the [Diátaxis](https://diataxis.fr/) framework (explanation, how-to, reference) with project-specific buckets (adr, plans, ideas, archive) alongside.
+Navigation index for the curated documentation published to the Docusaurus site. The structure follows the [Diátaxis](https://diataxis.fr/) framework (explanation, how-to, reference) with architecture and ADR sections alongside. Planning, idea, archive, package README/API, and release-history docs remain repository documents and are linked to GitHub from here when useful.
 
-If you're new here, start with the root [`README.md`](../README.md) for what Sanctuary is, then [`CONTRIBUTING.md`](../CONTRIBUTING.md) for how to contribute.
+If you're new here, start with the root [`README.md`](https://github.com/nekoguntai-castle/sanctuary/blob/main/README.md) for what Sanctuary is, then [`CONTRIBUTING.md`](../CONTRIBUTING.md) for how to contribute.
 
 ## Product
 
@@ -17,7 +17,7 @@ Conceptual docs: *why* things work the way they do.
 - [Extension points](explanation/extension-points.md) — navigation and service extension surfaces, ownership map
 - [Historical prices](explanation/historical-prices.md) — historical price data fetching
 - [Scalability and performance](explanation/scalability-and-performance.md) — scale limits and performance tuning
-- [State machines](explanation/state-machines.md) — auth, wallet sync, drafts, and notification state machines
+- [State machines](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/explanation/state-machines.md) — auth, wallet sync, drafts, and notification state machines
 - [Transaction broadcasting](explanation/transaction-broadcasting.md) — broadcast flow and logic
 
 ## How-to
@@ -32,6 +32,8 @@ Procedural guides for operators and developers.
 
 Lookup tables, checklists, and specs.
 
+- [CI/CD strategy](reference/ci-cd-strategy.md) — branch protection, merge queue, and path-aware validation
+- [Frontend architecture](reference/frontend-architecture.md) — React/Vite architecture and frontend packaging
 - [Hardware wallet integration](reference/hardware-wallet-integration.md) — hardware wallet feature specification
 - [Release gates](reference/release-gates.md) — release criteria and verification checklist
 - [Upgrade PostgreSQL auth drift findings](reference/upgrade-postgres-auth-drift-findings.md) — incident notes, reliable checks, and manual recovery
@@ -43,44 +45,44 @@ Numbered, dated decisions with cross-links to source. New ADRs use the next avai
 - [ADR 0001: Browser auth token storage](adr/0001-browser-auth-token-storage.md) — HttpOnly cookie migration (Accepted)
 - [ADR 0002: Frontend refresh flow](adr/0002-frontend-refresh-flow.md) — token refresh flow (Accepted)
 
-## Plans
+## Repository-only plans
 
-Active strategic plans. Planning artifacts, not reference material. Plans that fail to execute move to `archive/`.
+Active strategic plans are planning artifacts, not reference material, so the Docusaurus site links to them on GitHub instead of publishing them as local pages. Plans that fail to execute move to `archive/`.
 
-- [Architecture-first quality improvement plan](plans/architecture-first-quality-improvement-plan.md)
-- [Agent wallet funding release notes](plans/agent-wallet-funding-release-notes.md)
-- [Codebase health assessment](plans/codebase-health-assessment.md)
-- [Dependency audit triage](plans/dependency-audit-triage.md)
-- [Extensibility architecture plan](plans/extensibility-architecture-plan.md)
-- [File modularization plan](plans/file-modularization-plan.md)
-- [Reliability hardening plan](plans/reliability-hardening-plan.md)
-- [Technical debt plan](plans/technical-debt-plan.md)
-- [Test gaps plan](plans/test-gaps-plan.md)
-- [Vault policies plan](plans/vault-policies-plan.md)
-- [v0.8.10 announcement](plans/v0.8.10-announcement.md)
-- [v0.8.11 scope](plans/v0.8.11-scope.md)
+- [Architecture-first quality improvement plan](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/plans/architecture-first-quality-improvement-plan.md)
+- [Agent wallet funding release notes](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/plans/agent-wallet-funding-release-notes.md)
+- [Codebase health assessment](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/plans/codebase-health-assessment.md)
+- [Dependency audit triage](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/plans/dependency-audit-triage.md)
+- [Extensibility architecture plan](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/plans/extensibility-architecture-plan.md)
+- [File modularization plan](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/plans/file-modularization-plan.md)
+- [Reliability hardening plan](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/plans/reliability-hardening-plan.md)
+- [Technical debt plan](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/plans/technical-debt-plan.md)
+- [Test gaps plan](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/plans/test-gaps-plan.md)
+- [Vault policies plan](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/plans/vault-policies-plan.md)
+- [v0.8.10 announcement](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/plans/v0.8.10-announcement.md)
+- [v0.8.11 scope](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/plans/v0.8.11-scope.md)
 
-## Ideas
+## Repository-only ideas
 
-Exploratory sketches for features under consideration.
+Exploratory sketches for features under consideration are linked to GitHub.
 
-- [Inheritance protocol](ideas/inheritance-protocol.md)
-- [Treasury intelligence](ideas/treasury-intelligence.md)
+- [Inheritance protocol](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/ideas/inheritance-protocol.md)
+- [Treasury intelligence](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/ideas/treasury-intelligence.md)
 
 ## Archive
 
-Superseded docs kept for historical context. Do not edit; if something here is still relevant, promote it back out of the archive and update it. See [`archive/`](archive/).
+Superseded docs are kept for historical context in [`docs/archive/`](https://github.com/nekoguntai-castle/sanctuary/tree/main/docs/archive). Do not edit archived docs; if something there is still relevant, promote it back out of the archive and update it.
 
 ## Per-package documentation
 
 Package-scoped docs live next to their code — not in `docs/`. Start at each package README:
 
-- [server](../server/README.md) — backend API server ([architecture](../server/ARCHITECTURE.md), [API](../server/API.md))
-- [gateway](../gateway/README.md) — mobile API gateway ([architecture](../gateway/ARCHITECTURE.md))
+- [server](https://github.com/nekoguntai-castle/sanctuary/blob/main/server/README.md) — backend API server ([architecture](../server/ARCHITECTURE.md), [API](https://github.com/nekoguntai-castle/sanctuary/blob/main/server/API.md))
+- [gateway](https://github.com/nekoguntai-castle/sanctuary/blob/main/gateway/README.md) — mobile API gateway ([architecture](../gateway/ARCHITECTURE.md))
 - React/Vite frontend — lives at the monorepo root (no subdirectory). See [`docs/reference/frontend-architecture.md`](reference/frontend-architecture.md).
-- [ai-proxy](../ai-proxy/README.md) — AI proxy service ([architecture](../ai-proxy/ARCHITECTURE.md))
+- [ai-proxy](https://github.com/nekoguntai-castle/sanctuary/blob/main/ai-proxy/README.md) — AI proxy service ([architecture](../ai-proxy/ARCHITECTURE.md))
 - [`nekoguntai-castle/sanctuary-umbrel`](https://github.com/nekoguntai-castle/sanctuary-umbrel) — Umbrel community app store (separate repo; auto-updates from this repo's release pipeline)
-- [themes](../themes/README.md) — theme system reference
+- [themes](https://github.com/nekoguntai-castle/sanctuary/blob/main/themes/README.md) — theme system reference
 
 ## Documentation standards
 

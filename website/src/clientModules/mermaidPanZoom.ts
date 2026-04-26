@@ -12,18 +12,27 @@ import type ExecutionEnvironment from '@docusaurus/ExecutionEnvironment';
 const MERMAID_SELECTOR = '.docusaurus-mermaid-container svg';
 const PROCESSED_ATTR = 'data-pan-zoom-bound';
 
-type SvgPanZoomLib = typeof import('svg-pan-zoom').default;
+type SvgPanZoomLib = typeof import('svg-pan-zoom');
+type SvgPanZoomModule = SvgPanZoomLib | { default: SvgPanZoomLib };
 
 let svgPanZoomPromise: Promise<SvgPanZoomLib> | null = null;
 function loadSvgPanZoom(): Promise<SvgPanZoomLib> {
-  svgPanZoomPromise ??= import('svg-pan-zoom').then((m) => m.default);
+  svgPanZoomPromise ??= import('svg-pan-zoom').then((m: SvgPanZoomModule) =>
+    'default' in m ? m.default : m,
+  );
   return svgPanZoomPromise;
 }
 
 async function bind(svg: SVGSVGElement) {
   if (svg.getAttribute(PROCESSED_ATTR) === 'true') return;
   svg.setAttribute(PROCESSED_ATTR, 'true');
-  const svgPanZoom = await loadSvgPanZoom();
+  let svgPanZoom: SvgPanZoomLib;
+  try {
+    svgPanZoom = await loadSvgPanZoom();
+  } catch {
+    svg.removeAttribute(PROCESSED_ATTR);
+    return;
+  }
   // svg-pan-zoom requires explicit width/height; Mermaid sets these but in
   // some viewport sizes the SVG is auto-sized via CSS. Force a fixed width
   // so pan/zoom has something to work with.
@@ -40,13 +49,18 @@ async function bind(svg: SVGSVGElement) {
 }
 
 function scan() {
-  document.querySelectorAll<SVGSVGElement>(MERMAID_SELECTOR).forEach(bind);
+  document.querySelectorAll<SVGSVGElement>(MERMAID_SELECTOR).forEach((svg) => {
+    void bind(svg);
+  });
 }
+
+let observer: MutationObserver | null = null;
 
 function start() {
   if (typeof window === 'undefined') return;
   scan();
-  const observer = new MutationObserver(() => scan());
+  observer?.disconnect();
+  observer = new MutationObserver(() => scan());
   observer.observe(document.body, { childList: true, subtree: true });
 }
 

@@ -15,7 +15,7 @@ This document describes the state machines and interaction flows in Sanctuary. U
 
 ## Authentication Flow
 
-![Authentication Flow](../assets/state-diagram-Authentication.png)
+![Authentication Flow](../../assets/state-diagram-Authentication.png)
 
 ### States
 
@@ -31,12 +31,12 @@ This document describes the state machines and interaction flows in Sanctuary. U
 
 | From | To | Trigger | Handler |
 |------|-----|---------|---------|
-| UNAUTHENTICATED | CREDENTIALS_RECEIVED | POST /auth/login | `server/src/api/routes/auth.ts` |
-| CREDENTIALS_RECEIVED | 2FA_REQUIRED | 2FA enabled on account | `authController.login()` |
-| CREDENTIALS_RECEIVED | AUTHENTICATED | 2FA disabled | `authController.login()` |
-| 2FA_REQUIRED | AUTHENTICATED | POST /auth/2fa/verify | `authController.verify2FA()` |
-| AUTHENTICATED | AUTHENTICATED | POST /auth/refresh | `authController.refreshToken()` |
-| AUTHENTICATED | LOGOUT | POST /auth/logout | `authController.logout()` |
+| UNAUTHENTICATED | CREDENTIALS_RECEIVED | POST /auth/login | `server/src/api/auth/login.ts` |
+| CREDENTIALS_RECEIVED | 2FA_REQUIRED | 2FA enabled on account | `server/src/api/auth/login.ts` |
+| CREDENTIALS_RECEIVED | AUTHENTICATED | 2FA disabled | `server/src/api/auth/login.ts` |
+| 2FA_REQUIRED | AUTHENTICATED | POST /auth/2fa/verify | `server/src/api/auth/twoFactor/verify.ts` |
+| AUTHENTICATED | AUTHENTICATED | POST /auth/refresh | `server/src/api/auth/tokens.ts` |
+| AUTHENTICATED | LOGOUT | POST /auth/logout | `server/src/api/auth/sessions.ts` |
 | LOGOUT | UNAUTHENTICATED | Token expired/cleared | Frontend clears storage |
 
 ### Verification Checklist
@@ -51,7 +51,7 @@ This document describes the state machines and interaction flows in Sanctuary. U
 
 ## Wallet Sync State Machine
 
-![Wallet Sync State Machine](../assets/state-diagram-Wallet-Sync.png)
+![Wallet Sync State Machine](../../assets/state-diagram-Wallet-Sync.png)
 
 ### States
 
@@ -87,10 +87,10 @@ This document describes the state machines and interaction flows in Sanctuary. U
 
 | Purpose | Location |
 |---------|----------|
-| Sync service | `server/src/services/syncService.ts` |
+| Sync service | `server/src/services/sync/syncService.ts` |
 | Worker sync job | `server/src/worker/jobs/syncJobs.ts` |
 | Distributed lock | `server/src/infrastructure/distributedLock.ts` |
-| Electrum manager | `server/src/worker/electrumManager.ts` |
+| Electrum manager | `server/src/worker/electrumManager/electrumManager.ts` |
 
 ### Verification Checklist
 
@@ -104,7 +104,7 @@ This document describes the state machines and interaction flows in Sanctuary. U
 
 ## Transaction Draft Flow
 
-![Transaction Draft Flow](../assets/state-diagram-Transaction-Draft.png)
+![Transaction Draft Flow](../../assets/state-diagram-Transaction-Draft.png)
 
 ### States (Multi-sig)
 
@@ -138,9 +138,9 @@ This document describes the state machines and interaction flows in Sanctuary. U
 
 | Purpose | Location |
 |---------|----------|
-| Draft routes | `server/src/api/routes/drafts.ts` |
-| PSBT handling | `server/src/services/psbtService.ts` |
-| Broadcast | `server/src/services/bitcoin/broadcastService.ts` |
+| Draft routes | `server/src/api/drafts.ts` |
+| PSBT handling | `server/src/services/bitcoin/psbtBuilder/index.ts` |
+| Broadcast | `server/src/services/bitcoin/transactions/broadcasting.ts` |
 
 ### Verification Checklist
 
@@ -154,7 +154,7 @@ This document describes the state machines and interaction flows in Sanctuary. U
 
 ## Notification Delivery Flow
 
-![Notification Flow](../assets/state-diagram-Notification-Flow.png)
+![Notification Flow](../../assets/state-diagram-Notification-Flow.png)
 
 ### Event Sources
 
@@ -168,9 +168,9 @@ This document describes the state machines and interaction flows in Sanctuary. U
 
 | Channel | Handler | Configuration |
 |---------|---------|---------------|
-| Telegram | `telegramNotificationService.ts` | Chat ID + bot token |
-| Push (FCM/APNs) | `pushNotificationService.ts` | Device token |
-| WebSocket | `websocketBroadcast.ts` | Active connection |
+| Telegram | `server/src/services/notifications/channels/telegram.ts` | Chat ID + bot token |
+| Push (FCM/APNs) | `server/src/services/notifications/channels/push.ts` | Device token |
+| WebSocket | `server/src/websocket/notifications/broadcasts.ts` | Active connection |
 
 ### Queue Processing
 
@@ -185,10 +185,10 @@ This document describes the state machines and interaction flows in Sanctuary. U
 
 | Purpose | Location |
 |---------|----------|
-| Notification service | `server/src/services/notificationService.ts` |
-| Telegram integration | `server/src/services/telegramNotificationService.ts` |
+| Notification dispatcher | `server/src/services/notifications/dispatch.ts` |
+| Channel registry | `server/src/services/notifications/channels/registry.ts` |
 | Notification jobs | `server/src/worker/jobs/notificationJobs.ts` |
-| Job queue | `server/src/worker/jobQueue.ts` |
+| Job queue | `server/src/jobs/jobQueue.ts` |
 
 ### Verification Checklist
 
@@ -202,7 +202,7 @@ This document describes the state machines and interaction flows in Sanctuary. U
 
 ## WebSocket Event Flow
 
-![WebSocket Flow](../assets/state-diagram-WebSocket-Events.png)
+![WebSocket Flow](../../assets/state-diagram-WebSocket-Events.png)
 
 ### Architecture
 
@@ -253,7 +253,7 @@ Client (Browser) ←→ WebSocket Server ←→ Redis Pub/Sub ←→ Worker Proc
 
 ## Ownership Transfer Flow
 
-![Ownership Transfer Flow](../assets/state-diagram-Ownership-Transfer.png)
+![Ownership Transfer Flow](../../assets/state-diagram-Ownership-Transfer.png)
 
 ### States
 
@@ -289,8 +289,8 @@ Client (Browser) ←→ WebSocket Server ←→ Redis Pub/Sub ←→ Worker Proc
 
 | Purpose | Location |
 |---------|----------|
-| Transfer routes | `server/src/api/routes/transfers.ts` |
-| Transfer service | `server/src/services/transferService.ts` |
+| Transfer routes | `server/src/api/transfers.ts` |
+| Transfer service | `server/src/services/transferService/index.ts` |
 
 ### Verification Checklist
 

@@ -88,6 +88,9 @@ jobs:
             exit 1
           fi
 
+      - name: Typecheck Docusaurus site
+        run: npm --prefix website run typecheck
+
       - name: Build Docusaurus site
         run: npm run docs:build
 

@@ -6,6 +6,36 @@ import remarkMermaidClickRewrite from './src/plugins/remark-mermaid-click-rewrit
 const REPO_OWNER = 'nekoguntai-castle';
 const REPO_NAME = 'sanctuary';
 const REPO_URL = `https://github.com/${REPO_OWNER}/${REPO_NAME}`;
+const SITE_BASE_URL = `/${REPO_NAME}/`;
+
+const PUBLISHED_DOCS_INCLUDE = [
+  'docs/architecture/**/*.md',
+  'docs/explanation/address-derivation.md',
+  'docs/explanation/advanced-features.md',
+  'docs/explanation/extension-points.md',
+  'docs/explanation/historical-prices.md',
+  'docs/explanation/scalability-and-performance.md',
+  'docs/explanation/state-machines.md',
+  'docs/explanation/transaction-broadcasting.md',
+  'docs/how-to/**/*.md',
+  'docs/reference/**/*.md',
+  'docs/adr/**/*.md',
+  'docs/PRD.md',
+  'docs/README.md',
+  'server/ARCHITECTURE.md',
+  'gateway/ARCHITECTURE.md',
+  'ai-proxy/ARCHITECTURE.md',
+  'CONTRIBUTING.md',
+] as const;
+
+const INTERNAL_MERMAID_DOC_ROUTES = {
+  'docs/architecture/README.md': 'docs/architecture',
+  'docs/architecture/containers.md': 'docs/architecture/containers',
+  'docs/architecture/notification-pipeline.md': 'docs/architecture/notification-pipeline',
+  'server/ARCHITECTURE.md': 'server/ARCHITECTURE',
+  'gateway/ARCHITECTURE.md': 'gateway/ARCHITECTURE',
+  'ai-proxy/ARCHITECTURE.md': 'ai-proxy/ARCHITECTURE',
+} as const;
 
 const config: Config = {
   title: 'Sanctuary',
@@ -13,12 +43,12 @@ const config: Config = {
   favicon: 'img/favicon.ico',
 
   url: `https://${REPO_OWNER}.github.io`,
-  baseUrl: `/${REPO_NAME}/`,
+  baseUrl: SITE_BASE_URL,
   organizationName: REPO_OWNER,
   projectName: REPO_NAME,
   trailingSlash: false,
 
-  onBrokenLinks: 'warn',
+  onBrokenLinks: 'throw',
 
   markdown: {
     mermaid: true,
@@ -27,11 +57,8 @@ const config: Config = {
     // and reserves MDX for `.mdx`.
     format: 'detect',
     hooks: {
-      // Existing prose docs reference assets via paths relative to the repo
-      // root (e.g. `../assets/foo.png`); they render fine on GitHub but
-      // Docusaurus can't resolve them. Warn instead of failing the build.
-      onBrokenMarkdownLinks: 'warn',
-      onBrokenMarkdownImages: 'warn',
+      onBrokenMarkdownLinks: 'throw',
+      onBrokenMarkdownImages: 'throw',
     },
   },
   themes: ['@docusaurus/theme-mermaid'],
@@ -45,22 +72,19 @@ const config: Config = {
           path: '..',
           routeBasePath: '/',
           sidebarPath: './sidebars.ts',
-          include: [
-            'docs/architecture/**/*.md',
-            'docs/explanation/**/*.md',
-            'docs/how-to/**/*.md',
-            'docs/reference/**/*.md',
-            'docs/adr/**/*.md',
-            'docs/PRD.md',
-            'docs/README.md',
-            'server/ARCHITECTURE.md',
-            'gateway/ARCHITECTURE.md',
-            'CONTRIBUTING.md',
-          ],
+          include: [...PUBLISHED_DOCS_INCLUDE],
           exclude: ['**/node_modules/**', '**/_*.md'],
           editUrl: ({ docPath }) => `${REPO_URL}/edit/main/${docPath}`,
           beforeDefaultRemarkPlugins: [
-            [remarkMermaidClickRewrite, { repoUrl: REPO_URL, branch: 'main' }],
+            [
+              remarkMermaidClickRewrite,
+              {
+                repoUrl: REPO_URL,
+                branch: 'main',
+                siteBaseUrl: SITE_BASE_URL,
+                internalDocRoutes: INTERNAL_MERMAID_DOC_ROUTES,
+              },
+            ],
           ],
         },
         blog: false,
@@ -78,7 +102,7 @@ const config: Config = {
     navbar: {
       title: 'Sanctuary',
       items: [
-        { to: '/docs/architecture/', label: 'Architecture', position: 'left' },
+        { to: '/docs/architecture', label: 'Architecture', position: 'left' },
         { to: '/CONTRIBUTING', label: 'Contributing', position: 'left' },
         { href: REPO_URL, label: 'GitHub', position: 'right' },
       ],
