@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  toAddressDetailDto,
   toAddressDto,
   toDraftStatusDto,
   toPolicyDto,
+  toTransactionDetailDto,
   toTransactionDto,
   toUtxoDto,
+  toWalletDeviceSummaryDto,
   toWalletDto,
 } from '../../../src/assistant/tools/dto';
 
@@ -89,6 +92,44 @@ describe('assistant read-tool DTO redaction helpers', () => {
     expect(toTransactionDto({ transactionLabels: null }).labels).toEqual([]);
   });
 
+  it('maps transaction details with optional wallet, address, input, and output relationships', () => {
+    expect(toTransactionDetailDto({
+      id: 'tx-1',
+      txid: 'abc',
+      walletId: 'wallet-1',
+      type: 'received',
+      amount: 1000n,
+      fee: 0n,
+      balanceAfter: 1000n,
+      confirmations: 1,
+      blockHeight: 840000,
+      blockTime: null,
+      transactionLabels: [],
+      wallet: { id: 'wallet-1', name: 'Treasury', type: 'multi_sig', network: 'mainnet' },
+      address: { id: 'addr-1', address: 'bc1qsource', derivationPath: "m/84'/0'/0'/0/0", index: 0, used: true },
+      inputs: [{ id: 'input-1', inputIndex: 0, txid: 'prev', vout: 1, address: 'bc1qsource', amount: 1500n }],
+      outputs: [{ id: 'output-1', outputIndex: 0, address: 'bc1qdest', amount: 1000n, outputType: 'recipient', isOurs: false }],
+    })).toMatchObject({
+      wallet: { id: 'wallet-1', network: 'mainnet' },
+      address: { id: 'addr-1', index: 0 },
+      inputs: [{ amount: '1500' }],
+      outputs: [{ amount: '1000', outputType: 'recipient' }],
+    });
+
+    expect(toTransactionDetailDto({
+      transactionLabels: null,
+      wallet: null,
+      address: null,
+      inputs: null,
+      outputs: null,
+    })).toMatchObject({
+      wallet: null,
+      address: null,
+      inputs: [],
+      outputs: [],
+    });
+  });
+
   it('maps UTXOs and addresses with labels and draft-lock redaction metadata', () => {
     expect(toUtxoDto({
       id: 'utxo-1',
@@ -126,6 +167,66 @@ describe('assistant read-tool DTO redaction helpers', () => {
       createdAt: '2026-04-26T00:00:00.000Z',
     });
     expect(toAddressDto({ addressLabels: null }).labels).toEqual([]);
+  });
+
+  it('maps address details and wallet devices with relationship defaults', () => {
+    expect(toAddressDetailDto({
+      address: {
+        id: 'addr-1',
+        walletId: 'wallet-1',
+        address: 'bc1qchange',
+        derivationPath: "m/84'/0'/0'/1/7",
+        index: 7,
+        used: true,
+        addressLabels: [{ label: { name: 'change' } }],
+        _count: { transactions: 2 },
+        createdAt: null,
+      },
+      balance: { _count: { id: 1 }, _sum: { amount: 500n } },
+    })).toMatchObject({
+      labels: ['change'],
+      isChange: true,
+      transactionCount: 2,
+      balance: { unspentSats: '500', unspentUtxoCount: 1 },
+    });
+
+    expect(toAddressDetailDto({
+      address: {
+        id: 'addr-2',
+        walletId: 'wallet-1',
+        address: 'bc1qreceive',
+        derivationPath: null,
+        index: 8,
+        used: false,
+        addressLabels: null,
+        _count: {},
+      },
+      balance: { _count: {}, _sum: {} },
+    })).toMatchObject({
+      labels: [],
+      isChange: false,
+      transactionCount: 0,
+      balance: { unspentSats: '0', unspentUtxoCount: 0 },
+    });
+
+    expect(toWalletDeviceSummaryDto({
+      id: 'wallet-device-1',
+      signerIndex: 0,
+      device: { id: 'device-1', type: 'coldcard', model: null },
+      createdAt: '2026-04-26T00:00:00.000Z',
+    })).toEqual({
+      id: 'wallet-device-1',
+      signerIndex: 0,
+      device: { id: 'device-1', type: 'coldcard', modelName: null, manufacturer: null },
+      createdAt: '2026-04-26T00:00:00.000Z',
+    });
+
+    expect(toWalletDeviceSummaryDto({
+      id: 'wallet-device-2',
+      signerIndex: 1,
+      device: null,
+      createdAt: null,
+    })).toMatchObject({ device: null, createdAt: null });
   });
 
   it('maps draft status without PSBT material', () => {

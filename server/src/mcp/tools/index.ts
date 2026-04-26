@@ -27,6 +27,7 @@ function createMcpToolContext(context: McpRequestContext): AssistantToolContext 
       username: context.username,
       isAdmin: context.isAdmin,
     },
+    walletScopeIds: context.scope.walletIds,
     authorizeWalletAccess: walletId => requireMcpWalletAccess(walletId, context),
     authorizeAuditAccess: () => {
       requireMcpAuditAccess(context);

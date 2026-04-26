@@ -72,6 +72,56 @@ export function toTransactionDto(transaction: RecordLike) {
   };
 }
 
+function toTransactionInputDto(input: RecordLike) {
+  return {
+    id: input.id,
+    inputIndex: input.inputIndex,
+    txid: input.txid,
+    vout: input.vout,
+    address: input.address,
+    amount: sats(input.amount),
+    derivationPath: input.derivationPath,
+  };
+}
+
+function toTransactionOutputDto(output: RecordLike) {
+  return {
+    id: output.id,
+    outputIndex: output.outputIndex,
+    address: output.address,
+    amount: sats(output.amount),
+    scriptPubKey: output.scriptPubKey,
+    outputType: output.outputType,
+    isOurs: output.isOurs,
+    label: output.label,
+  };
+}
+
+export function toTransactionDetailDto(transaction: RecordLike) {
+  return {
+    ...toTransactionDto(transaction),
+    wallet: transaction.wallet
+      ? {
+          id: transaction.wallet.id,
+          name: transaction.wallet.name,
+          type: transaction.wallet.type,
+          network: transaction.wallet.network,
+        }
+      : null,
+    address: transaction.address
+      ? {
+          id: transaction.address.id,
+          address: transaction.address.address,
+          derivationPath: transaction.address.derivationPath,
+          index: transaction.address.index,
+          used: transaction.address.used,
+        }
+      : null,
+    inputs: Array.isArray(transaction.inputs) ? transaction.inputs.map(toTransactionInputDto) : [],
+    outputs: Array.isArray(transaction.outputs) ? transaction.outputs.map(toTransactionOutputDto) : [],
+  };
+}
+
 export function toUtxoDto(utxo: RecordLike) {
   return {
     id: utxo.id,
@@ -105,6 +155,42 @@ export function toAddressDto(address: RecordLike) {
     used: address.used,
     labels: labelsFromAddress(address),
     createdAt: iso(address.createdAt),
+  };
+}
+
+function isChangeAddress(address: RecordLike): boolean {
+  // BIP44-style derivation paths end with /change/index, where change branch 1 is internal/change.
+  const path = typeof address.derivationPath === 'string' ? address.derivationPath : '';
+  const parts = path.split('/');
+  return parts.length >= 2 && parts[parts.length - 2] === '1';
+}
+
+export function toAddressDetailDto(input: { address: RecordLike; balance: RecordLike }) {
+  return {
+    ...toAddressDto(input.address),
+    derivationPath: input.address.derivationPath,
+    isChange: isChangeAddress(input.address),
+    transactionCount: input.address._count?.transactions ?? 0,
+    balance: {
+      unspentSats: sats(input.balance._sum?.amount) ?? '0',
+      unspentUtxoCount: input.balance._count?.id ?? 0,
+    },
+  };
+}
+
+export function toWalletDeviceSummaryDto(walletDevice: RecordLike) {
+  return {
+    id: walletDevice.id,
+    signerIndex: walletDevice.signerIndex,
+    device: walletDevice.device
+      ? {
+          id: walletDevice.device.id,
+          type: walletDevice.device.type,
+          modelName: walletDevice.device.model?.name ?? null,
+          manufacturer: walletDevice.device.model?.manufacturer ?? null,
+        }
+      : null,
+    createdAt: iso(walletDevice.createdAt),
   };
 }
 

@@ -2,6 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   assistantReadRepository: {
+    getDashboardSummary: vi.fn(),
+    findWalletDetailSummary: vi.fn(),
+    getTransactionStats: vi.fn(),
+    findPendingTransactions: vi.fn(),
+    findWalletTransactionDetail: vi.fn(),
+    getUtxoSummary: vi.fn(),
+    getAddressSummary: vi.fn(),
+    findAddressDetail: vi.fn(),
     queryTransactions: vi.fn(),
     queryUtxos: vi.fn(),
     searchAddresses: vi.fn(),
@@ -92,10 +100,18 @@ describe('assistant read-tool registry', () => {
     const tools = assistantReadToolRegistry.list();
 
     expect(tools.map(tool => tool.name)).toEqual([
+      'get_dashboard_summary',
       'query_transactions',
       'query_utxos',
       'search_addresses',
       'get_wallet_overview',
+      'get_wallet_detail_summary',
+      'get_transaction_stats',
+      'get_pending_transactions',
+      'get_transaction_detail',
+      'get_utxo_summary',
+      'get_address_summary',
+      'get_address_detail',
       'get_wallet_analytics',
       'get_balance_history',
       'get_draft_statuses',
