@@ -1,6 +1,6 @@
 # Active Task: Console Backend Protocol 2026-04-26
 
-Status: in progress
+Status: complete
 
 Goal: add the backend foundation for a canonical Sanctuary Console that can persist prompt history, replay saved prompts, and execute the same scoped read-only assistant tools used by direct MCP before the UI/drawer work begins.
 
@@ -11,7 +11,7 @@ Goal: add the backend foundation for a canonical Sanctuary Console that can pers
 - [x] Implement backend services/routes that execute shared assistant read tools with console provenance and backend authorization instead of browser-provided trust.
 - [x] Add focused tests for auth, wallet scope, admin-only tools, history replay/delete/expiration, invalid tool input, empty context, and redaction/provenance metadata.
 - [x] Run focused verification, touched-file lizard checks, diff checks, quality review, edge-case audit, and self-review.
-- [ ] Deliver the slice through PR, merge queue, merge verification, and branch cleanup.
+- [x] Deliver the slice through PR, merge queue, merge verification, and branch cleanup.
 
 ## Review
 
@@ -21,6 +21,7 @@ Goal: add the backend foundation for a canonical Sanctuary Console that can pers
 - Added AI proxy Console planning and synthesis routes through a separate `consoleRoutes` module, using service-secret auth, active provider config sync, and no browser JWT forwarding.
 - Added `sanctuaryConsole` as a default-off feature flag, included console tables in backup ordering, and added support-package console counts without prompt/response content.
 - PR delivery follow-up: regenerated the server architecture graph after CI detected stale generated output, and added a router-wide `api:default` user limiter for Console reads while keeping `ai:analyze` limits on model-backed session/turn/replay operations to satisfy CodeQL without over-throttling LAN/private read workflows.
+- Delivery complete: PR #190 merged backend/protocol at `c968e16e`, and PR #191 merged the CodeQL rate-limit follow-up at `48f18b70`; `origin/main` contains both merge commits.
 - Quality review: kept new production files under the 400-line design-warning threshold except the pre-existing AI proxy route monolith; the new proxy route logic was extracted to avoid adding more route code there.
 - Edge-case audit: invalid query booleans fail closed instead of treating `"false"` as truthy; malformed stored prompt scopes/sensitivities replay with safe defaults; missing wallets and non-admin admin scope fail before tool execution; unknown/out-of-scope/over-sensitivity tools persist denied traces; network/proxy failures fail turns and audit failure details.
 - Verification passed: AI proxy Console tests (16 tests), focused server Console/config/support/routes tests (111 tests), targeted Console coverage at 100% statements/branches/functions/lines, full backend coverage gate (`npm run test:backend:coverage`, 9,406 passed, 505 skipped, 100% coverage), `npm run typecheck:server:tests`, `npm run typecheck:tests`, `npm run lint:server`, `npm --prefix ai-proxy run build`, `npm run check:openapi-route-coverage`, `npm --prefix server run check:prisma-imports`, `npm run check:architecture-boundaries`, touched-file lizard `-C 15`, and `git diff --check`.
