@@ -87,6 +87,48 @@ describe('adminSettingsService', () => {
     });
   });
 
+  it('redacts stored AI provider credentials from admin settings responses', async () => {
+    const { buildAdminSettingsResponse } = await loadService();
+
+    const response = buildAdminSettingsResponse([
+      {
+        key: 'aiProviderProfiles',
+        value: JSON.stringify([
+          {
+            id: 'lan-ollama',
+            name: 'LAN Ollama',
+            providerType: 'ollama',
+            endpoint: 'http://lan-llm:11434',
+            model: 'llama3.2:3b',
+            capabilities: { chat: true, toolCalls: false, strictJson: true },
+          },
+        ]),
+      },
+      {
+        key: 'aiProviderCredentials',
+        value: JSON.stringify({
+          'lan-ollama': {
+            type: 'api-key',
+            encryptedApiKey: 'enc:provider-secret',
+            configuredAt: '2026-04-26T00:00:00.000Z',
+          },
+        }),
+      },
+    ]);
+
+    expect(response.aiProviderCredentials).toBeUndefined();
+    expect(response.aiActiveProviderProfile).toMatchObject({
+      id: 'lan-ollama',
+      credentialState: {
+        type: 'api-key',
+        configured: true,
+        needsReview: false,
+      },
+    });
+    expect(JSON.stringify(response)).not.toContain('provider-secret');
+  });
+
+
   it('encrypts plaintext SMTP passwords, clears email transport cache, and returns sanitized settings', async () => {
     mocks.getAll.mockResolvedValueOnce([
       { key: 'smtp.host', value: '"smtp.example.com"' },
@@ -123,6 +165,72 @@ describe('adminSettingsService', () => {
 
     expect(mocks.set).toHaveBeenCalledWith('registrationEnabled', JSON.stringify(true));
     expect(mocks.set).not.toHaveBeenCalledWith('aiActiveProviderProfile', expect.any(String));
+  });
+
+  it('persists encrypted AI provider credentials from write-only update payloads', async () => {
+    mocks.findByKeys.mockResolvedValueOnce([
+      {
+        key: 'aiProviderProfiles',
+        value: JSON.stringify([
+          {
+            id: 'lan-ollama',
+            name: 'LAN Ollama',
+            providerType: 'ollama',
+            endpoint: 'http://lan-llm:11434',
+            model: 'llama3.2:3b',
+            capabilities: { chat: true, toolCalls: false, strictJson: true },
+          },
+        ]),
+      },
+    ]);
+    mocks.getAll.mockResolvedValueOnce([]);
+    const { updateAdminSettings } = await loadService();
+
+    await updateAdminSettings({
+      aiProviderCredentialUpdates: [{ profileId: 'lan-ollama', apiKey: 'provider-secret' }],
+    });
+
+    expect(mocks.encrypt).toHaveBeenCalledWith('provider-secret');
+    expect(mocks.set).toHaveBeenCalledWith(
+      'aiProviderCredentials',
+      expect.stringContaining('enc:provider-secret'),
+    );
+    expect(mocks.set).not.toHaveBeenCalledWith('aiProviderCredentialUpdates', expect.any(String));
+  });
+
+  it('preserves existing stored provider credentials when editing the active endpoint', async () => {
+    mocks.findByKeys.mockResolvedValueOnce([
+      {
+        key: 'aiProviderProfiles',
+        value: JSON.stringify([
+          {
+            id: 'lan-ollama',
+            name: 'LAN Ollama',
+            providerType: 'ollama',
+            endpoint: 'http://lan-llm:11434',
+            model: 'llama3.2:3b',
+            capabilities: { chat: true, toolCalls: false, strictJson: true },
+          },
+        ]),
+      },
+      {
+        key: 'aiProviderCredentials',
+        value: JSON.stringify({
+          'lan-ollama': { type: 'api-key', encryptedApiKey: 'enc:existing-secret' },
+        }),
+      },
+    ]);
+    mocks.getAll.mockResolvedValueOnce([]);
+    const { updateAdminSettings } = await loadService();
+
+    await updateAdminSettings({ aiEndpoint: 'http://new-lan-llm:11434' });
+
+    expect(mocks.set).toHaveBeenCalledWith(
+      'aiProviderCredentials',
+      JSON.stringify({
+        'lan-ollama': { type: 'api-key', encryptedApiKey: 'enc:existing-secret' },
+      }),
+    );
   });
 
   it('rejects deep confirmation thresholds lower than confirmation thresholds', async () => {

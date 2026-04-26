@@ -10,6 +10,11 @@ import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
 import { migrationService } from '../migrationService';
 import { isEncrypted, decrypt } from '../../utils/encryption';
+import { safeJsonParseUntyped } from '../../utils/safeJson';
+import {
+  AI_PROVIDER_CREDENTIALS_KEY,
+  disableAIProviderCredentialsForRestore,
+} from '../ai/providerCredentials';
 import { processRecord, camelToSnakeCase } from './serialization';
 import { migrateBackup } from './migration';
 import { TABLE_ORDER, CACHE_TABLES } from './constants';
@@ -98,6 +103,11 @@ export async function restoreFromBackup(backup: SanctuaryBackup): Promise<Restor
           // Special handling for nodeConfig - check if encrypted passwords can be decrypted
           if (table === 'nodeConfig') {
             processedRecords = processNodeConfigRecords(processedRecords, warnings);
+          }
+
+          // Special handling for system settings - restored external AI provider credentials fail closed.
+          if (table === 'systemSetting') {
+            processedRecords = processSystemSettingRecords(processedRecords, warnings);
           }
 
           // Special handling for user - check if encrypted 2FA secrets can be decrypted
@@ -207,6 +217,32 @@ function processUserRecords(records: BackupRecord[], warnings: string[]): Backup
       }
     }
     return record;
+  });
+}
+
+/**
+ * Process systemSetting records - restored AI provider credentials must be reviewed and re-entered.
+ */
+function processSystemSettingRecords(records: BackupRecord[], warnings: string[]): BackupRecord[] {
+  return records.map((record) => {
+    if (record.key !== AI_PROVIDER_CREDENTIALS_KEY || typeof record.value !== 'string') {
+      return record;
+    }
+
+    const credentialValue = safeJsonParseUntyped(record.value, {}, `setting:${AI_PROVIDER_CREDENTIALS_KEY}`);
+    const result = disableAIProviderCredentialsForRestore(credentialValue);
+
+    if (result.disabledCount > 0) {
+      const credentialLabel = `AI provider credential${result.disabledCount === 1 ? '' : 's'}`;
+      warnings.push(
+        `${result.disabledCount} ${credentialLabel} restored disabled. Re-enter provider credentials in Admin > AI Settings before enabling external model access.`
+      );
+    }
+
+    return {
+      ...record,
+      value: JSON.stringify(result.credentials),
+    };
   });
 }
 

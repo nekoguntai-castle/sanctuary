@@ -1,3 +1,32 @@
+# Active Task: AI Provider Credential Boundary 2026-04-26
+
+Status: complete
+
+Goal: finish the next AI Settings provider-profile foundation slice by adding a typed, encrypted credential boundary that never returns secrets, fails closed after restore, and exposes only safe provider metadata to support packages.
+
+## Plan
+
+- [x] Inspect the current typed AI provider profile, admin settings, backup/restore, support-package, OpenAPI, and frontend API contracts.
+- [x] Add a separate provider credential settings model with encrypted storage, write-only update payloads, redacted credential state, and profile-pruning behavior.
+- [x] Update admin settings normalization so provider secrets are never returned and old endpoint/model compatibility continues to derive the active profile.
+- [x] Disable restored AI provider credentials during backup restore with an admin warning.
+- [x] Add support-package provider metadata that omits endpoints, model names, prompts, responses, and secret material.
+- [x] Update API/OpenAPI/frontend types and focused tests for secret redaction, restore behavior, and support-package output.
+- [x] Run focused verification, lizard, diff checks, quality review, edge-case audit, and self-review.
+
+## Review
+
+- Added `aiProviderCredentials` as a separate stored settings record and `aiProviderCredentialUpdates` as the write-only admin update payload, so encrypted API keys are not embedded in public provider profile lists.
+- Admin settings responses now attach only redacted `credentialState` metadata to profiles and delete stored credential material before returning settings.
+- Provider credential updates always encrypt write-only API keys, preserve existing stored credentials on no-op/profile edits, clear credentials explicitly, reject unknown profile references, and prune credentials for removed profiles.
+- Backup restore now disables restored AI provider credentials, removes encrypted API key material, and warns admins to re-enter provider credentials in Admin > AI Settings.
+- Support packages now include provider profile counts, provider-type counts, and credential configured/review counts without endpoints, model names, prompts, responses, or secrets.
+- OpenAPI and frontend admin types now include redacted provider credential state plus write-only credential update payloads.
+- Verification passed: focused AI provider/admin/backup/support Vitest suite (114 tests), full backend unit coverage (395 files, 9,212 tests, 100% statements/branches/functions/lines), `npm run typecheck:server:tests`, `npm run typecheck:app`, `npm run lint:server`, `npm run lint:app`, touched-file lizard `-C 15`, and `git diff --check`.
+- Edge-case review: malformed credential maps fail closed to no credentials, malformed write-only updates are rejected, no-op credential updates preserve existing credentials, direct `aiProviderCredentials` writes are stripped, restored already-disabled credentials do not add duplicate warnings, and non-AI system settings pass through restore unchanged.
+
+---
+
 # Active Task: MCP Transport Restore Hardening 2026-04-26
 
 Status: complete

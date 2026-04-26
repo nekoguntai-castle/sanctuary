@@ -269,6 +269,137 @@ describe('restoreFromBackup', () => {
       expect(capturedData[0].revokedAt).toBeInstanceOf(Date);
     });
 
+    it('should disable restored AI provider credentials so provider secrets fail closed', async () => {
+      const backup = createValidBackup();
+      backup.data.systemSetting = [
+        {
+          id: 'setting-ai-provider-credentials',
+          key: 'aiProviderCredentials',
+          value: JSON.stringify({
+            'lan-ollama': {
+              type: 'api-key',
+              encryptedApiKey: 'encrypted-provider-secret',
+              configuredAt: '2026-04-26T00:00:00.000Z',
+            },
+          }),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+        {
+          id: 'setting-ai-enabled',
+          key: 'aiEnabled',
+          value: JSON.stringify(true),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ];
+
+      mockPrismaClient.$transaction.mockImplementation(async (fn: any) => fn(mockPrismaClient));
+
+      let capturedData: any = null;
+      Object.keys(mockPrismaClient).forEach((key) => {
+        const client = mockPrismaClient as any;
+        if (client[key]?.deleteMany) {
+          client[key].deleteMany.mockResolvedValue({ count: 0 });
+        }
+        if (client[key]?.createMany) {
+          client[key].createMany.mockResolvedValue({ count: 0 });
+        }
+      });
+      mockPrismaClient.systemSetting.createMany.mockImplementation(async ({ data }) => {
+        capturedData = data;
+        return { count: 1 };
+      });
+
+      const result = await backupService.restoreFromBackup(backup);
+      const credentialRecord = capturedData.find((record: any) => record.key === 'aiProviderCredentials');
+      const enabledRecord = capturedData.find((record: any) => record.key === 'aiEnabled');
+      const restoredCredentials = JSON.parse(credentialRecord.value);
+
+      expect(result.success).toBe(true);
+      expect(result.warnings).toContain(
+        '1 AI provider credential restored disabled. Re-enter provider credentials in Admin > AI Settings before enabling external model access.',
+      );
+      expect(restoredCredentials).toEqual({
+        'lan-ollama': {
+          type: 'api-key',
+          configuredAt: '2026-04-26T00:00:00.000Z',
+          disabledReason: 'restored',
+        },
+      });
+      expect(credentialRecord.value).not.toContain('encrypted-provider-secret');
+      expect(enabledRecord.value).toBe(JSON.stringify(true));
+    });
+
+    it('should use plural warning text for multiple restored AI provider credentials', async () => {
+      const backup = createValidBackup();
+      backup.data.systemSetting = [
+        {
+          id: 'setting-ai-provider-credentials',
+          key: 'aiProviderCredentials',
+          value: JSON.stringify({
+            'lan-ollama': { type: 'api-key', encryptedApiKey: 'encrypted-one' },
+            'lab-openai': { type: 'api-key', encryptedApiKey: 'encrypted-two' },
+          }),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ];
+
+      mockPrismaClient.$transaction.mockImplementation(async (fn: any) => fn(mockPrismaClient));
+      Object.keys(mockPrismaClient).forEach((key) => {
+        const client = mockPrismaClient as any;
+        if (client[key]?.deleteMany) {
+          client[key].deleteMany.mockResolvedValue({ count: 0 });
+        }
+        if (client[key]?.createMany) {
+          client[key].createMany.mockResolvedValue({ count: 0 });
+        }
+      });
+
+      const result = await backupService.restoreFromBackup(backup);
+
+      expect(result.success).toBe(true);
+      expect(result.warnings).toContain(
+        '2 AI provider credentials restored disabled. Re-enter provider credentials in Admin > AI Settings before enabling external model access.',
+      );
+    });
+
+    it('should not warn when restored AI provider credentials were already disabled', async () => {
+      const backup = createValidBackup();
+      backup.data.systemSetting = [
+        {
+          id: 'setting-ai-provider-credentials',
+          key: 'aiProviderCredentials',
+          value: JSON.stringify({
+            'lan-ollama': {
+              type: 'api-key',
+              configuredAt: '2026-04-26T00:00:00.000Z',
+              disabledReason: 'restored',
+            },
+          }),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ];
+
+      mockPrismaClient.$transaction.mockImplementation(async (fn: any) => fn(mockPrismaClient));
+      Object.keys(mockPrismaClient).forEach((key) => {
+        const client = mockPrismaClient as any;
+        if (client[key]?.deleteMany) {
+          client[key].deleteMany.mockResolvedValue({ count: 0 });
+        }
+        if (client[key]?.createMany) {
+          client[key].createMany.mockResolvedValue({ count: 0 });
+        }
+      });
+
+      const result = await backupService.restoreFromBackup(backup);
+
+      expect(result.success).toBe(true);
+      expect(result.warnings).toEqual([]);
+    });
+
     it('should keep already revoked MCP API keys revoked without extra warnings', async () => {
       const backup = createValidBackup();
       const revokedAt = '2026-01-02T03:04:05.000Z';
