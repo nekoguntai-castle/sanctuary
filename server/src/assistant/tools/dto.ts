@@ -236,3 +236,14 @@ export function toDraftStatusDto(draft: RecordLike) {
     recipientCount: countDraftRecipients(draft),
   };
 }
+
+export {
+  toDraftDetailDto,
+  toInsightDetailDto,
+  toInsightSummaryDto,
+  toLabelDetailDto,
+  toLabelSummaryDto,
+  toPolicyAddressDto,
+  toPolicyEventDto,
+  toPolicySummaryDto,
+} from './batch2Dto';

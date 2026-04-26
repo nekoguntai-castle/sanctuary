@@ -1,3 +1,33 @@
+# Active Task: Read-Tool Parity Batch 2 2026-04-26
+
+Status: complete
+
+Goal: expand the shared assistant/MCP read-tool registry to cover the next GUI read surfaces: labels, policies, draft details, cached market status, active insights, and admin operational summaries while preserving read-only behavior, typed results, scope checks, and redaction boundaries.
+
+## Plan
+
+- [x] Inspect existing GUI/API read paths, service/repository contracts, and batch-1 assistant tool patterns.
+- [x] Add focused DTO/repository helpers for label summaries/details, wallet policies/events/addresses, draft details, insight summaries, market cache status, and admin agent dashboard summaries.
+- [x] Register separate typed read-tool modules for labels, policies, drafts, insights, market status, and admin reads instead of growing one shared file.
+- [x] Preserve direct MCP and future Console reuse by keeping authorization in tool executors and output envelopes explicit about provenance, sensitivity, redactions, truncation, and audit metadata.
+- [x] Add focused tests for wallet authorization, admin-only denial, empty data, not-found records, row limits, redactions, stale market metadata, and no PSBT/API-key/raw secret leakage.
+- [x] Run focused verification, touched-file lizard checks, diff checks, quality review, edge-case audit, and self-review.
+- [x] Deliver the slice through PR, merge queue, merge verification, and branch cleanup.
+
+## Review
+
+- Added read-only label, policy, policy event, draft detail, insight list/detail, cached market status, and admin operational summary tools to the shared assistant registry used by both MCP and the future Console.
+- Kept the tools scoped and typed: wallet tools call `authorizeWalletAccess`, admin summaries require `context.actor.isAdmin`, market status reads only existing caches, and all outputs include provenance, sensitivity, redaction, truncation, and audit metadata where relevant.
+- Added assistant repository helpers for label details, policy inheritance/detail/events, draft details with approval and lock metadata, wallet insight reads, and admin agent dashboard summaries while preserving the existing `assistantReadRepository` contract.
+- Split the new batch-2 DTO mappers into `batch2Dto.ts` and re-exported through `dto.ts`, keeping both production DTO files below the 400-line design warning threshold.
+- Bounded admin operational summaries and policy address details at the assistant tool boundary by fetching one extra row for truncation proof, so large agent dashboards or allow/deny lists do not load or serialize unbounded result sets.
+- Redaction boundaries: policy configs expose counts instead of user ID lists; policy events expose detail keys instead of raw details/user IDs; draft details omit PSBTs, signed PSBTs, input paths, raw input/output JSON, approval vote identities, and vote reasons; label details omit address derivation paths; insight summaries omit analysis/data; admin summaries omit API keys, signer fingerprints, user identity details, and raw alert metadata.
+- Edge-case audit: missing wallets/labels/policies/drafts/insights return typed 404s; invalid tool inputs validate before repository calls; row limits fetch one extra record for truncation proof; empty admin/insight/label/policy sets return deterministic envelopes; stale market prices are surfaced from cache metadata without external fetches; restored or absent array/object fields normalize to empty counts rather than leaking raw structures.
+- Verification passed: focused assistant/MCP Vitest suite (55 tests), exact backend unit coverage gate (`npm run test:unit -- --coverage`, 404 files, 9,269 tests, 100% statements/branches/functions/lines), `npm run typecheck:server:tests`, `npm run lint:server`, `npm run arch:graphs`, `npm run arch:calls`, `npm run arch:lint`, touched-production-file lizard `-C 15`, and `git diff --check`.
+- Remaining implementation after this slice: 4 slices (Console backend/protocol; Console UI/drawer; Admin MCP/AI profile UI/API; release proof/docs).
+
+---
+
 # Active Task: Read-Tool Parity Batch 1 2026-04-26
 
 Status: complete

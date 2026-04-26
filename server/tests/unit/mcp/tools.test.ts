@@ -85,6 +85,8 @@ describe('MCP read-tool adapter', () => {
 
     expect(registered.has('query_transactions')).toBe(true);
     expect(registered.has('convert_price')).toBe(true);
+    expect(registered.has('list_labels')).toBe(true);
+    expect(registered.has('get_admin_operational_summary')).toBe(true);
     expect(registered.get('query_transactions')?.config).toMatchObject({
       title: 'Query Transactions',
       annotations: {
