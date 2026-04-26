@@ -14,6 +14,7 @@ export interface AssistantToolContext {
   source: AssistantToolSource;
   actor: AssistantToolActor;
   requestId?: string;
+  walletScopeIds?: string[];
   authorizeWalletAccess(walletId: string): Promise<void>;
   authorizeAuditAccess?(): Promise<void>;
 }

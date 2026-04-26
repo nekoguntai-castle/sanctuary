@@ -1,3 +1,31 @@
+# Active Task: Read-Tool Parity Batch 1 2026-04-26
+
+Status: complete
+
+Goal: expand the shared assistant read-tool registry toward GUI read parity for dashboard, wallet, transaction, UTXO, and address workflows while keeping the new surface read-only, scoped, typed, and reusable by both direct MCP and the future Console.
+
+## Plan
+
+- [x] Inspect the merged read-tool foundation, implementation plan, GUI/API read endpoints, repositories, MCP auth scope behavior, and focused tests.
+- [x] Add scoped repository helpers for dashboard summaries, wallet detail summaries, transaction stats/detail/pending reads, UTXO summaries, and address summary/detail reads.
+- [x] Add small registry modules for dashboard, transaction, UTXO, and address parity tools instead of growing the existing wallet module.
+- [x] Preserve MCP compatibility by registering the new shared tools through the existing MCP adapter and honoring MCP wallet-scope limits for aggregate dashboard reads.
+- [x] Add focused tests for happy paths, empty data, not-found behavior, invalid inputs, scoped wallet filtering, DTO shaping, redactions, and no secret/raw PSBT leakage.
+- [x] Run focused verification, touched-file lizard checks, diff checks, quality review, edge-case audit, and self-review.
+- [x] Deliver the slice through PR, merge queue, merge verification, and branch cleanup.
+
+## Review
+
+- Added read-only dashboard, wallet detail, transaction stats/pending/detail, UTXO summary, address summary, and address detail tools to the shared assistant registry used by both MCP and the future Console.
+- Kept the MCP adapter thin: new shared tools are automatically registered through `assistantReadToolRegistry`, and MCP contexts now pass wallet-scope IDs so aggregate dashboard reads only include permitted wallets.
+- Split the assistant read repository into small domain modules under `server/src/repositories/assistantRead/` while preserving the existing `assistantReadRepository` and `mcpReadRepository` import contracts.
+- Added DTO and summary shaping for transaction details, address details, wallet devices, dashboard rollups, transaction stats, UTXO totals, and address used/unused balances with explicit redactions for raw transaction hex, UTXO outpoint lists, device xpubs/fingerprints, shared usernames, and group names.
+- Edge-case audit: empty scoped wallet sets return no rows without querying wallets; missing aggregate rows normalize to zero; invalid address lookups fail before authorization; not-found wallet/transaction/address reads return typed 404 errors; pending transaction age is clamped at zero; address balance grouping joins by wallet ID and address to avoid cross-wallet grouping.
+- Local verification passed: focused assistant/MCP Vitest suite (41 tests), exact backend unit coverage gate (`npm run test:unit -- --coverage`, 402 files, 9,255 tests, 100% statements/branches/functions/lines), `npm run typecheck:server:tests`, `npm run lint:server`, touched-file lizard `-C 15`, and `git diff --check`.
+- Remaining implementation after this slice: 5 slices (read-parity batch 2; Console backend/protocol; Console UI/drawer; Admin MCP/AI profile UI/API; release proof/docs).
+
+---
+
 # Active Task: Shared Read-Tool Registry Foundation 2026-04-26
 
 Status: complete

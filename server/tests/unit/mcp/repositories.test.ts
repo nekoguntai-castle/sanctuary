@@ -11,9 +11,10 @@ const prisma = vi.hoisted(() => ({
   },
   feeEstimate: { findFirst: vi.fn() },
   priceData: { findFirst: vi.fn() },
-  uTXO: { aggregate: vi.fn(), findMany: vi.fn() },
-  transaction: { findMany: vi.fn(), findFirst: vi.fn(), aggregate: vi.fn() },
-  address: { findMany: vi.fn() },
+  wallet: { findMany: vi.fn(), findFirst: vi.fn() },
+  uTXO: { aggregate: vi.fn(), groupBy: vi.fn(), findMany: vi.fn() },
+  transaction: { findMany: vi.fn(), findFirst: vi.fn(), aggregate: vi.fn(), groupBy: vi.fn() },
+  address: { count: vi.fn(), findMany: vi.fn(), findFirst: vi.fn() },
   draftTransaction: { count: vi.fn() },
   $queryRaw: vi.fn(),
 }));
@@ -161,6 +162,164 @@ describe('MCP repositories', () => {
       _count: { id: true },
       _sum: { fee: true },
       _avg: { fee: true },
+    });
+  });
+
+  it('wraps expanded assistant read queries with scope filters and aggregate boundaries', async () => {
+    await expect(
+      readRepository.getDashboardSummary('user-1', { walletIds: [], limit: 10 })
+    ).resolves.toEqual({ wallets: [], balances: [], transactionCounts: [], pendingCounts: [] });
+    expect(prisma.wallet.findMany).not.toHaveBeenCalled();
+
+    prisma.wallet.findMany.mockResolvedValueOnce([]);
+    await expect(
+      readRepository.getDashboardSummary('user-1', { limit: 5, network: 'signet' })
+    ).resolves.toEqual({ wallets: [], balances: [], transactionCounts: [], pendingCounts: [] });
+    expect(prisma.wallet.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        network: 'signet',
+        OR: [
+          { users: { some: { userId: 'user-1' } } },
+          { group: { members: { some: { userId: 'user-1' } } } },
+        ],
+      }),
+      take: 5,
+    }));
+    expect(prisma.uTXO.groupBy).not.toHaveBeenCalled();
+    expect(prisma.transaction.groupBy).not.toHaveBeenCalled();
+
+    vi.clearAllMocks();
+    prisma.wallet.findMany.mockResolvedValueOnce([{ id: 'wallet-1' }]);
+    prisma.uTXO.groupBy.mockResolvedValueOnce([{ walletId: 'wallet-1', _count: { id: 2 } }]);
+    prisma.transaction.groupBy
+      .mockResolvedValueOnce([{ walletId: 'wallet-1', _count: { id: 3 } }])
+      .mockResolvedValueOnce([{ walletId: 'wallet-1', _count: { id: 1 } }]);
+
+    await expect(
+      readRepository.getDashboardSummary('user-1', { walletIds: ['wallet-1'], limit: 10 })
+    ).resolves.toMatchObject({
+      wallets: [{ id: 'wallet-1' }],
+      balances: [{ walletId: 'wallet-1' }],
+      transactionCounts: [{ walletId: 'wallet-1' }],
+      pendingCounts: [{ walletId: 'wallet-1' }],
+    });
+    expect(prisma.wallet.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        id: { in: ['wallet-1'] },
+        OR: [
+          { users: { some: { userId: 'user-1' } } },
+          { group: { members: { some: { userId: 'user-1' } } } },
+        ],
+      }),
+      take: 10,
+    }));
+    expect(prisma.uTXO.groupBy).toHaveBeenCalledWith({
+      by: ['walletId'],
+      where: { walletId: { in: ['wallet-1'] }, spent: false },
+      _count: { id: true },
+      _sum: { amount: true },
+    });
+    expect(prisma.transaction.groupBy).toHaveBeenNthCalledWith(2, {
+      by: ['walletId'],
+      where: {
+        walletId: { in: ['wallet-1'] },
+        rbfStatus: { not: 'replaced' },
+        OR: [{ blockHeight: 0 }, { blockHeight: null }],
+      },
+      _count: { id: true },
+    });
+
+    await readRepository.findWalletDetailSummary('wallet-1', 'user-1');
+    expect(prisma.wallet.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        id: 'wallet-1',
+        OR: [
+          { users: { some: { userId: 'user-1' } } },
+          { group: { members: { some: { userId: 'user-1' } } } },
+        ],
+      }),
+      include: expect.objectContaining({
+        devices: expect.objectContaining({ orderBy: { signerIndex: 'asc' } }),
+        users: { select: { role: true } },
+      }),
+    }));
+  });
+
+  it('wraps transaction, UTXO, and address parity read queries', async () => {
+    prisma.transaction.groupBy.mockResolvedValueOnce([{ type: 'received', _count: { id: 1 } }]);
+    prisma.transaction.aggregate.mockResolvedValueOnce({ _count: { id: 1 }, _sum: { fee: 10n } });
+    prisma.transaction.findFirst.mockResolvedValueOnce({ balanceAfter: 100n });
+    await expect(readRepository.getTransactionStats('wallet-1')).resolves.toEqual({
+      typeStats: [{ type: 'received', _count: { id: 1 } }],
+      feeStats: { _count: { id: 1 }, _sum: { fee: 10n } },
+      lastTransaction: { balanceAfter: 100n },
+    });
+    expect(prisma.transaction.groupBy).toHaveBeenCalledWith({
+      by: ['type'],
+      where: { walletId: 'wallet-1' },
+      _count: { id: true },
+      _sum: { amount: true },
+    });
+    expect(prisma.transaction.aggregate).toHaveBeenCalledWith({
+      where: { walletId: 'wallet-1', type: { in: ['sent', 'consolidation'] }, fee: { gt: 0 } },
+      _count: { id: true },
+      _sum: { fee: true },
+    });
+
+    await readRepository.findPendingTransactions('wallet-1', 5);
+    expect(prisma.transaction.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        walletId: 'wallet-1',
+        rbfStatus: { not: 'replaced' },
+        OR: [{ blockHeight: 0 }, { blockHeight: null }],
+      },
+      take: 5,
+    }));
+
+    await readRepository.getUtxoSummary('wallet-1');
+    expect(prisma.uTXO.aggregate).toHaveBeenCalledWith({
+      where: { walletId: 'wallet-1', spent: false, frozen: false, confirmations: { gt: 0 }, draftLock: null },
+      _count: { id: true },
+      _sum: { amount: true },
+    });
+    expect(prisma.uTXO.aggregate).toHaveBeenCalledWith({
+      where: { walletId: 'wallet-1', spent: false, draftLock: { isNot: null } },
+      _count: { id: true },
+      _sum: { amount: true },
+    });
+
+    prisma.address.count.mockResolvedValueOnce(8).mockResolvedValueOnce(3).mockResolvedValueOnce(5);
+    prisma.uTXO.aggregate.mockResolvedValueOnce({ _sum: { amount: 1200n } });
+    prisma.$queryRaw.mockResolvedValueOnce([{ used: true, balance: 900n }]);
+    await expect(readRepository.getAddressSummary('wallet-1')).resolves.toEqual({
+      totalCount: 8,
+      usedCount: 3,
+      unusedCount: 5,
+      totalBalance: { _sum: { amount: 1200n } },
+      usedBalances: [{ used: true, balance: 900n }],
+    });
+    expect(prisma.address.count).toHaveBeenCalledWith({ where: { walletId: 'wallet-1' } });
+
+    prisma.address.findFirst.mockResolvedValueOnce(null);
+    await expect(
+      readRepository.findAddressDetail('wallet-1', { address: 'bc1qmissing' })
+    ).resolves.toBeNull();
+
+    prisma.address.findFirst.mockResolvedValueOnce({ id: 'addr-1', address: 'bc1qfound' });
+    prisma.uTXO.aggregate.mockResolvedValueOnce({ _count: { id: 2 }, _sum: { amount: 500n } });
+    await expect(
+      readRepository.findAddressDetail('wallet-1', { addressId: 'addr-1' })
+    ).resolves.toEqual({
+      address: { id: 'addr-1', address: 'bc1qfound' },
+      balance: { _count: { id: 2 }, _sum: { amount: 500n } },
+    });
+    expect(prisma.address.findFirst).toHaveBeenLastCalledWith(expect.objectContaining({
+      where: { walletId: 'wallet-1', id: 'addr-1' },
+    }));
+    expect(prisma.uTXO.aggregate).toHaveBeenLastCalledWith({
+      where: { walletId: 'wallet-1', address: 'bc1qfound', spent: false },
+      _count: { id: true },
+      _sum: { amount: true },
     });
   });
 });

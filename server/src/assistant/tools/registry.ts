@@ -1,5 +1,7 @@
 import * as z from 'zod/v4';
+import { addressReadTools } from './addressReadTools';
 import { analyticsReadTools } from './analyticsReadTools';
+import { dashboardReadTools } from './dashboardReadTools';
 import { networkReadTools } from './networkReadTools';
 import {
   addToolDuration,
@@ -8,6 +10,9 @@ import {
   type AssistantToolContext,
   type AssistantToolEnvelope,
 } from './types';
+import { transactionReadTools } from './transactionReadTools';
+import { utxoReadTools } from './utxoReadTools';
+import { walletDetailReadTools } from './walletDetailReadTools';
 import { walletReadTools } from './walletReadTools';
 
 export class AssistantReadToolRegistry {
@@ -58,7 +63,12 @@ function parseToolInput(definition: AssistantReadToolDefinition, rawInput: unkno
 }
 
 export const assistantReadToolDefinitions = [
+  ...dashboardReadTools,
   ...walletReadTools,
+  ...walletDetailReadTools,
+  ...transactionReadTools,
+  ...utxoReadTools,
+  ...addressReadTools,
   ...analyticsReadTools,
   ...networkReadTools,
 ];
