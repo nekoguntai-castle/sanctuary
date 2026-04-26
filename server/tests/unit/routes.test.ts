@@ -16,10 +16,13 @@ const {
   mockSyncRoutes,
   mockPushRoutes,
   mockDraftRoutes,
+  mockApprovalRoutes,
   mockPayjoinRoutes,
   mockAiRoutes,
   mockAgentRoutes,
   mockAiInternalRoutes,
+  mockIntelligenceRoutes,
+  mockConsoleRoutes,
   mockHealthRoutes,
   mockTransferRoutes,
   mockOpenApiRoutes,
@@ -44,10 +47,13 @@ const {
     mockSyncRoutes: makeHandler(),
     mockPushRoutes: makeHandler(),
     mockDraftRoutes: makeHandler(),
+    mockApprovalRoutes: makeHandler(),
     mockPayjoinRoutes: makeHandler(),
     mockAiRoutes: makeHandler(),
     mockAgentRoutes: makeHandler(),
     mockAiInternalRoutes: makeHandler(),
+    mockIntelligenceRoutes: makeHandler(),
+    mockConsoleRoutes: makeHandler(),
     mockHealthRoutes: makeHandler(),
     mockTransferRoutes: makeHandler(),
     mockOpenApiRoutes: makeHandler(),
@@ -73,10 +79,13 @@ vi.mock('../../src/api/admin', () => ({ __esModule: true, default: mockAdminRout
 vi.mock('../../src/api/sync', () => ({ __esModule: true, default: mockSyncRoutes }));
 vi.mock('../../src/api/push', () => ({ __esModule: true, default: mockPushRoutes }));
 vi.mock('../../src/api/drafts', () => ({ __esModule: true, default: mockDraftRoutes }));
+vi.mock('../../src/api/approvals', () => ({ __esModule: true, default: mockApprovalRoutes }));
 vi.mock('../../src/api/payjoin', () => ({ __esModule: true, default: mockPayjoinRoutes }));
 vi.mock('../../src/api/ai', () => ({ __esModule: true, default: mockAiRoutes }));
 vi.mock('../../src/api/agent', () => ({ __esModule: true, default: mockAgentRoutes }));
 vi.mock('../../src/api/ai-internal', () => ({ __esModule: true, default: mockAiInternalRoutes }));
+vi.mock('../../src/api/intelligence', () => ({ __esModule: true, default: mockIntelligenceRoutes }));
+vi.mock('../../src/api/console', () => ({ __esModule: true, default: mockConsoleRoutes }));
 vi.mock('../../src/api/health', () => ({ __esModule: true, default: mockHealthRoutes }));
 vi.mock('../../src/api/transfers', () => ({ __esModule: true, default: mockTransferRoutes }));
 vi.mock('../../src/api/openapi', () => ({ __esModule: true, default: mockOpenApiRoutes }));
@@ -110,7 +119,7 @@ describe('registerRoutes', () => {
     registerRoutes(app);
 
     expect(app.get).toHaveBeenCalledTimes(2);
-    expect(app.use).toHaveBeenCalledTimes(24);
+    expect(app.use).toHaveBeenCalledTimes(25);
 
     expect(app.get).toHaveBeenCalledWith('/health', expect.any(Function));
     expect(app.get).toHaveBeenCalledWith('/metrics', mockMetricsHandler);
@@ -118,8 +127,11 @@ describe('registerRoutes', () => {
     expect(app.use).toHaveBeenCalledWith('/api/v1/auth', mockAuthRoutes);
     expect(app.use).toHaveBeenCalledWith('/api/v1/wallets', mockWalletRoutes);
     expect(app.use).toHaveBeenCalledWith('/api/v1/agent', mockAgentRoutes);
+    expect(app.use).toHaveBeenCalledWith('/api/v1/intelligence', mockIntelligenceRoutes);
+    expect(app.use).toHaveBeenCalledWith('/api/v1/console', mockConsoleRoutes);
     expect(app.use).toHaveBeenCalledWith('/api/v1/mobile', mockMobileAgentDraftRoutes);
     expect(app.use).toHaveBeenCalledWith('/internal/ai', mockAiInternalRoutes);
+    expect(app.use).toHaveBeenCalledWith('/api/v1', mockApprovalRoutes);
     expect(app.use).toHaveBeenCalledWith('/api/v1/docs', mockOpenApiRoutes);
   });
 

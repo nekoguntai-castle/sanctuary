@@ -36,16 +36,20 @@ export const TABLE_ORDER = [
   'label',           // FK: walletId
   'walletAgent',     // FK: userId, fundingWalletId, operationalWalletId, signerDeviceId
   'draftTransaction', // FK: walletId, userId
+  'consoleSession',  // FK: userId
 
   // Third-level dependencies
   'agentApiKey',          // FK: agentId
   'agentFundingOverride', // FK: agentId
   'agentAlert',           // FK: agentId
   'agentFundingAttempt',  // FK: agentId
+  'consolePromptHistory', // FK: userId, sessionId
+  'consoleTurn',          // FK: sessionId
   'transaction',     // FK: walletId, userId, addressId
   'uTXO',            // FK: walletId
 
   // Fourth-level dependencies
+  'consoleToolTrace', // FK: turnId
   'transactionInput',  // FK: transactionId
   'transactionOutput', // FK: transactionId
   'transactionLabel',  // FK: transactionId, labelId
@@ -64,7 +68,8 @@ export const CACHE_TABLES = ['priceData', 'feeEstimate'] as const;
 export const LARGE_TABLES = new Set([
   'transaction', 'uTXO', 'transactionInput', 'transactionOutput',
   'address', 'auditLog', 'addressLabel', 'transactionLabel',
-  'agentFundingAttempt', 'agentAlert',
+  'agentFundingAttempt', 'agentAlert', 'consolePromptHistory', 'consoleTurn',
+  'consoleToolTrace',
 ]);
 
 // Number of rows to fetch per cursor page during backup export

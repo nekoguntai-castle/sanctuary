@@ -172,6 +172,7 @@ function buildValidConfig() {
       rbfTransactions: true,
       priceAlerts: false,
       aiAssistant: false,
+      sanctuaryConsole: false,
       telegramNotifications: false,
       treasuryAutopilot: false,
       treasuryIntelligence: false,

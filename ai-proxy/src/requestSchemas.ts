@@ -117,6 +117,48 @@ export const ChatBodySchema = z
   })
   .strict();
 
+const ConsoleToolDescriptionSchema = z
+  .object({
+    name: z.string().trim().min(1).max(100),
+    title: z.string().trim().min(1).max(160),
+    description: z.string().trim().min(1).max(1000),
+    sensitivity: z.string().trim().min(1).max(50),
+    requiredScope: z.string().trim().min(1).max(50),
+    inputFields: z.array(z.string().trim().min(1).max(100)).max(50),
+  })
+  .strict();
+
+const ConsoleToolResultSchema = z
+  .object({
+    toolName: z.string().trim().min(1).max(100),
+    status: z.enum(["completed", "denied", "failed"]),
+    sensitivity: z.string().trim().max(50).optional(),
+    facts: z.unknown().optional(),
+    provenance: z.unknown().optional(),
+    redactions: z.unknown().optional(),
+    truncation: z.unknown().optional(),
+    warnings: z.unknown().optional(),
+    error: z.string().trim().max(500).optional(),
+  })
+  .strict();
+
+export const ConsolePlanBodySchema = z
+  .object({
+    prompt: NonEmptyStringSchema.max(12000),
+    scope: z.unknown().optional(),
+    maxToolCalls: z.number().int().min(0).max(8).default(4),
+    tools: z.array(ConsoleToolDescriptionSchema).min(1).max(80),
+  })
+  .strict();
+
+export const ConsoleSynthesisBodySchema = z
+  .object({
+    prompt: NonEmptyStringSchema.max(12000),
+    scope: z.unknown().optional(),
+    toolResults: z.array(ConsoleToolResultSchema).max(8),
+  })
+  .strict();
+
 export function parseRequestBody<TSchema extends z.ZodType>(
   schema: TSchema,
   req: RequestWithBody,

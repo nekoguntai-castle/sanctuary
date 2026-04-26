@@ -46,6 +46,7 @@ export const defaultFeatureFlags: FeatureFlags = {
   // Integration features (disabled by default)
   priceAlerts: false,
   aiAssistant: false,
+  sanctuaryConsole: false,
   telegramNotifications: false,
   treasuryAutopilot: false,
   treasuryIntelligence: false,
@@ -77,6 +78,7 @@ export function loadFeatureFlags(): FeatureFlags {
     // Integration features
     priceAlerts: parseBoolEnv('FEATURE_PRICE_ALERTS', defaultFeatureFlags.priceAlerts),
     aiAssistant: parseBoolEnv('FEATURE_AI_ASSISTANT', defaultFeatureFlags.aiAssistant),
+    sanctuaryConsole: parseBoolEnv('FEATURE_SANCTUARY_CONSOLE', defaultFeatureFlags.sanctuaryConsole),
     telegramNotifications: parseBoolEnv('FEATURE_TELEGRAM', defaultFeatureFlags.telegramNotifications),
     treasuryAutopilot: parseBoolEnv('FEATURE_TREASURY_AUTOPILOT', defaultFeatureFlags.treasuryAutopilot),
     treasuryIntelligence: parseBoolEnv('FEATURE_TREASURY_INTELLIGENCE', defaultFeatureFlags.treasuryIntelligence),

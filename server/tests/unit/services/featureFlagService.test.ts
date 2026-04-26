@@ -55,9 +55,11 @@ const { mockPrisma, mockCache, mockConfig, mockEventBus } = vi.hoisted(() => {
       rbfTransactions: true,
       priceAlerts: false,
       aiAssistant: false,
+      sanctuaryConsole: false,
       telegramNotifications: false,
       websocketV2Events: true,
       treasuryAutopilot: false,
+      treasuryIntelligence: false,
       experimental: {
         taprootAddresses: false,
         silentPayments: false,

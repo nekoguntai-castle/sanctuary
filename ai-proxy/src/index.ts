@@ -45,6 +45,7 @@ import {
   callExternalAIWithMessages,
   parseStructuredResponse,
 } from "./aiClient";
+import { registerConsoleRoutes } from "./consoleRoutes";
 import { streamModelPull } from "./modelPull";
 import { requireAIServiceSecret } from "./auth";
 import { evaluateProviderEndpoint } from "./endpointPolicy";
@@ -776,6 +777,8 @@ Focus on: when to consolidate, how many UTXOs, expected savings, privacy conside
     analysis: parsed.analysis || parsed.summary,
   });
 });
+
+registerConsoleRoutes(app, { getAiConfig: () => aiConfig });
 
 /**
  * Interactive chat for treasury intelligence

@@ -257,6 +257,7 @@ export interface FeatureFlags {
   // Integration features
   priceAlerts: boolean;
   aiAssistant: boolean;
+  sanctuaryConsole: boolean;
   telegramNotifications: boolean;
   treasuryAutopilot: boolean;
   treasuryIntelligence: boolean;

@@ -169,8 +169,8 @@ class FeatureFlagService {
     // Top-level flags
     const topLevel = ['hardwareWalletSigning', 'qrCodeSigning', 'multisigWallets',
       'batchSync', 'payjoinSupport', 'batchTransactions', 'rbfTransactions',
-      'priceAlerts', 'aiAssistant', 'telegramNotifications', 'websocketV2Events',
-      'treasuryAutopilot'] as const;
+      'priceAlerts', 'aiAssistant', 'sanctuaryConsole', 'telegramNotifications',
+      'websocketV2Events', 'treasuryAutopilot', 'treasuryIntelligence'] as const;
 
     for (const key of topLevel) {
       flags[key] = features[key];

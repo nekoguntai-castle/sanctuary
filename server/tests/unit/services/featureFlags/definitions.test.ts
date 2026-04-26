@@ -11,10 +11,12 @@ describe('feature flag definitions', () => {
     expect(FEATURE_FLAG_KEYS).toContain('treasuryAutopilot');
     expect(FEATURE_FLAG_KEYS).toContain('treasuryIntelligence');
     expect(FEATURE_FLAG_KEYS).toContain('aiAssistant');
+    expect(FEATURE_FLAG_KEYS).toContain('sanctuaryConsole');
   });
 
   it('detects known and unknown feature flag keys', () => {
     expect(isKnownFeatureFlagKey('aiAssistant')).toBe(true);
+    expect(isKnownFeatureFlagKey('sanctuaryConsole')).toBe(true);
     expect(isKnownFeatureFlagKey('experimental.taprootAddresses')).toBe(true);
     expect(isKnownFeatureFlagKey('notAFlag')).toBe(false);
   });
