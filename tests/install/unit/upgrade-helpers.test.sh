@@ -278,6 +278,18 @@ test_tor_compose_uses_supported_hidden_service_config() {
     "Tor healthcheck should not depend on public Tor reachability"
 }
 
+test_upgrade_harness_sources_extracted_helpers() {
+  local contents
+  contents="$(cat "$PROJECT_ROOT/tests/install/e2e/upgrade-install.test.sh")"
+
+  assert_contains "$contents" 'source "$SCRIPT_DIR/../utils/upgrade-two-factor-auth-helpers.sh"' \
+    "upgrade harness should source extracted 2FA auth helpers"
+  assert_contains "$contents" 'source "$SCRIPT_DIR/../utils/upgrade-two-factor-verification-helpers.sh"' \
+    "upgrade harness should source extracted 2FA verification helpers"
+  assert_contains "$contents" 'source "$SCRIPT_DIR/../utils/upgrade-notification-helpers.sh"' \
+    "upgrade harness should source extracted notification helpers"
+}
+
 test_upgrade_network_defaults_respect_overrides() {
   HTTPS_PORT="19443"
   HTTP_PORT="19080"
@@ -423,6 +435,7 @@ main() {
   run_test "legacy optional profile compose is isolated" test_legacy_optional_profile_compose_is_isolated
   run_test "legacy optional profile compose can use target tor overlay" test_legacy_optional_profile_compose_can_use_target_tor_overlay
   run_test "tor compose uses supported hidden service config" test_tor_compose_uses_supported_hidden_service_config
+  run_test "upgrade harness sources extracted helpers" test_upgrade_harness_sources_extracted_helpers
   run_test "upgrade network defaults respect overrides" test_upgrade_network_defaults_respect_overrides
   run_test "invalid fixture is rejected" test_invalid_fixture_is_rejected
   run_test "redacted env hides upgrade secrets" test_redacted_env_hides_upgrade_secrets
