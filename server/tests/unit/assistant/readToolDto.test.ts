@@ -2,7 +2,15 @@ import { describe, expect, it } from 'vitest';
 import {
   toAddressDetailDto,
   toAddressDto,
+  toDraftDetailDto,
   toDraftStatusDto,
+  toInsightDetailDto,
+  toInsightSummaryDto,
+  toLabelDetailDto,
+  toLabelSummaryDto,
+  toPolicyAddressDto,
+  toPolicyEventDto,
+  toPolicySummaryDto,
   toPolicyDto,
   toTransactionDetailDto,
   toTransactionDto,
@@ -57,6 +65,52 @@ describe('assistant read-tool DTO redaction helpers', () => {
       createdAt: null,
       updatedAt: '2026-04-26T00:00:00.000Z',
     });
+  });
+
+  it('summarizes policy configs without leaking user id lists', () => {
+    expect(toPolicySummaryDto({
+      type: 'spending_limit',
+      config: { scope: 'wallet', daily: 100, weekly: 500, monthly: 1000, exemptRoles: ['owner'] },
+    }).config).toMatchObject({ daily: 100, weekly: 500, monthly: 1000, exemptRoleCount: 1 });
+
+    expect(toPolicySummaryDto({
+      type: 'spending_limit',
+      config: { perTransaction: 50, exemptRoles: 'owner' },
+    }).config).toMatchObject({ perTransaction: 50, exemptRoleCount: 0 });
+
+    expect(toPolicySummaryDto({
+      type: 'approval_required',
+      config: { requiredApprovals: 1, specificApprovers: null },
+    }).config).toMatchObject({ trigger: null, requiredApprovals: 1, specificApproverCount: 0 });
+
+    expect(toPolicySummaryDto({
+      type: 'time_delay',
+      config: { trigger: { always: true }, delayHours: 2, vetoEligible: 'specific', specificVetoers: ['user-1'] },
+    }).config).toMatchObject({ delayHours: 2, specificVetoerCount: 1 });
+
+    expect(toPolicySummaryDto({
+      type: 'time_delay',
+      config: { delayHours: 4, specificVetoers: null },
+    }).config).toMatchObject({ trigger: null, delayHours: 4, specificVetoerCount: 0 });
+
+    expect(toPolicySummaryDto({
+      type: 'address_control',
+      config: { mode: 'allowlist', allowSelfSend: true, managedBy: 'owner_only' },
+    }).config).toMatchObject({ mode: 'allowlist', allowSelfSend: true });
+
+    expect(toPolicySummaryDto({
+      type: 'velocity',
+      config: { scope: 'per_user', maxPerDay: 3, exemptRoles: ['viewer', 'signer'] },
+    }).config).toMatchObject({ maxPerDay: 3, exemptRoleCount: 2 });
+
+    expect(toPolicySummaryDto({
+      type: 'velocity',
+      config: { maxPerHour: 1, maxPerWeek: 7, exemptRoles: null },
+    }).config).toMatchObject({ maxPerHour: 1, maxPerWeek: 7, exemptRoleCount: 0 });
+
+    expect(toPolicySummaryDto({ type: 'unknown', config: null }).config).toEqual({ redacted: true });
+    expect(toPolicySummaryDto({ type: 'unknown', config: ['raw'] }).config).toEqual({ redacted: true });
+    expect(toPolicySummaryDto({ type: 'unknown', config: 'raw' }).config).toEqual({ redacted: true });
   });
 
   it('maps transaction labels and nullable satoshi/date fields', () => {
@@ -263,5 +317,136 @@ describe('assistant read-tool DTO redaction helpers', () => {
       feeAmount: null,
       recipientCount: 1,
     });
+
+    expect(toDraftStatusDto({ amount: null, fee: 0n, outputs: null, recipient: null })).toMatchObject({
+      totalAmount: null,
+      feeAmount: '0',
+      recipientCount: 0,
+    });
+  });
+
+  it('maps batch two DTO detail helpers with sanitized defaults', () => {
+    expect(toLabelSummaryDto({
+      id: 'label-1',
+      walletId: 'wallet-1',
+      name: 'Ops',
+      color: null,
+      description: null,
+      transactionCount: 3,
+      addressCount: 2,
+      createdAt: null,
+      updatedAt: null,
+    })).toMatchObject({ transactionCount: 3, addressCount: 2 });
+
+    expect(toLabelSummaryDto({ _count: null })).toMatchObject({ transactionCount: 0, addressCount: 0 });
+    expect(toLabelDetailDto({
+      id: 'label-1',
+      walletId: 'wallet-1',
+      name: 'Ops',
+      transactionLabels: null,
+      addressLabels: null,
+      _count: { transactionLabels: 1, addressLabels: 1 },
+    })).toMatchObject({ transactions: [], addresses: [] });
+
+    expect(toLabelDetailDto({
+      id: 'label-1',
+      walletId: 'wallet-1',
+      name: 'Ops',
+      transactionLabels: [{
+        transaction: {
+          id: 'tx-1',
+          txid: 'abc',
+          type: 'sent',
+          amount: 100n,
+          confirmations: 0,
+          blockTime: null,
+          createdAt: new Date('2026-04-26T00:00:00.000Z'),
+        },
+      }],
+      addressLabels: [{
+        address: {
+          id: 'addr-1',
+          address: 'bc1qexample',
+          index: 0,
+          used: true,
+          createdAt: null,
+        },
+      }],
+    })).toMatchObject({
+      transactions: [{ amount: '100', createdAt: '2026-04-26T00:00:00.000Z' }],
+      addresses: [{ address: 'bc1qexample', createdAt: null }],
+    });
+
+    expect(toPolicyAddressDto({
+      id: 'policy-address-1',
+      policyId: 'policy-1',
+      address: 'bc1qallow',
+      label: null,
+      listType: 'allow',
+      addedBy: 'hidden',
+      createdAt: null,
+    })).not.toHaveProperty('addedBy');
+
+    expect(toPolicyEventDto({
+      id: 'event-1',
+      policyId: 'policy-1',
+      walletId: 'wallet-1',
+      draftTransactionId: null,
+      eventType: 'triggered',
+      details: ['raw'],
+      userId: 'hidden',
+      createdAt: null,
+    })).toMatchObject({ detailKeys: [] });
+
+    expect(toDraftDetailDto({
+      id: 'draft-1',
+      walletId: 'wallet-1',
+      amount: null,
+      fee: null,
+      totalInput: undefined,
+      totalOutput: undefined,
+      changeAmount: undefined,
+      effectiveAmount: undefined,
+      recipient: null,
+      approvalRequests: null,
+      utxoLocks: null,
+      signedDeviceIds: null,
+      selectedUtxoIds: null,
+      outputs: null,
+    })).toMatchObject({
+      totalAmount: null,
+      recipientCount: 0,
+      signedDeviceCount: 0,
+      selectedUtxoCount: 0,
+      lockedUtxoCount: 0,
+      approvalRequests: [],
+    });
+
+    expect(toDraftDetailDto({ amount: 3000n, fee: null, outputs: null, recipient: 'bc1qone' })).toMatchObject({
+      totalAmount: '3000',
+      feeAmount: null,
+      recipientCount: 1,
+    });
+
+    expect(toInsightSummaryDto({
+      id: 'insight-1',
+      walletId: 'wallet-1',
+      type: 'fee',
+      severity: 'info',
+      title: 'Fees low',
+      summary: 'Mempool is quiet.',
+      status: 'active',
+      expiresAt: null,
+      notifiedAt: null,
+      createdAt: null,
+      updatedAt: '2026-04-26T00:00:00.000Z',
+    })).toMatchObject({ title: 'Fees low', updatedAt: '2026-04-26T00:00:00.000Z' });
+
+    expect(toInsightDetailDto({
+      id: 'insight-1',
+      walletId: 'wallet-1',
+      analysis: 'Detailed analysis',
+      data: { hidden: true },
+    })).toMatchObject({ analysis: 'Detailed analysis' });
   });
 });

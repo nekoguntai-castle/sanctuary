@@ -115,6 +115,16 @@ describe('assistant read-tool registry', () => {
       'get_wallet_analytics',
       'get_balance_history',
       'get_draft_statuses',
+      'list_labels',
+      'get_label_detail',
+      'list_policies',
+      'get_policy_detail',
+      'get_policy_events',
+      'get_draft_detail',
+      'list_insights',
+      'get_insight_detail',
+      'get_market_status',
+      'get_admin_operational_summary',
       'get_fee_estimates',
       'convert_price',
     ]);
@@ -122,6 +132,10 @@ describe('assistant read-tool registry', () => {
     expect(assistantReadToolRegistry.get('search_addresses')).toMatchObject({
       sensitivity: 'high',
       requiredScope: { kind: 'wallet' },
+    });
+    expect(assistantReadToolRegistry.get('get_admin_operational_summary')).toMatchObject({
+      sensitivity: 'admin',
+      requiredScope: { kind: 'admin' },
     });
   });
 

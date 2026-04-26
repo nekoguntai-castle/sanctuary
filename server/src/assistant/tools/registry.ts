@@ -1,8 +1,14 @@
 import * as z from 'zod/v4';
+import { adminReadTools } from './adminReadTools';
 import { addressReadTools } from './addressReadTools';
 import { analyticsReadTools } from './analyticsReadTools';
 import { dashboardReadTools } from './dashboardReadTools';
+import { draftReadTools } from './draftReadTools';
+import { insightReadTools } from './insightReadTools';
+import { labelReadTools } from './labelReadTools';
+import { marketReadTools } from './marketReadTools';
 import { networkReadTools } from './networkReadTools';
+import { policyReadTools } from './policyReadTools';
 import {
   addToolDuration,
   AssistantToolError,
@@ -70,6 +76,12 @@ export const assistantReadToolDefinitions = [
   ...utxoReadTools,
   ...addressReadTools,
   ...analyticsReadTools,
+  ...labelReadTools,
+  ...policyReadTools,
+  ...draftReadTools,
+  ...insightReadTools,
+  ...marketReadTools,
+  ...adminReadTools,
   ...networkReadTools,
 ];
 
