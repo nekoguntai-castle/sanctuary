@@ -6,7 +6,7 @@
  * those contain user-authored content and wallet-inferred recommendations.
  */
 
-import { intelligenceRepository, systemSettingRepository } from '../../../repositories';
+import { consoleRepository, intelligenceRepository, systemSettingRepository } from '../../../repositories';
 import { checkHealth } from '../../ai/health';
 import { getErrorMessage } from '../../../utils/errors';
 import { safeJsonParseUntyped } from '../../../utils/safeJson';
@@ -19,10 +19,11 @@ import { AI_PROVIDER_CREDENTIALS_KEY } from '../../ai/providerCredentials';
 import { registerCollector } from './registry';
 
 registerCollector('aiIntelligence', async () => {
-  const [healthResult, statsResult, providerProfileResult] =
+  const [healthResult, statsResult, consoleStatsResult, providerProfileResult] =
     await Promise.allSettled([
       checkHealth(),
       intelligenceRepository.getSupportStats(),
+      consoleRepository.getSupportStats(),
       getAIProviderProfileSupportState(),
     ]);
 
@@ -41,6 +42,7 @@ registerCollector('aiIntelligence', async () => {
     return {
       health,
       providerProfiles: settleProviderProfileResult(providerProfileResult),
+      consoleStats: settleConsoleStatsResult(consoleStatsResult),
       statsError: getErrorMessage(statsResult.reason),
     };
   }
@@ -48,6 +50,7 @@ registerCollector('aiIntelligence', async () => {
   return {
     health,
     providerProfiles: settleProviderProfileResult(providerProfileResult),
+    consoleStats: settleConsoleStatsResult(consoleStatsResult),
     ...statsResult.value,
   };
 });
@@ -99,6 +102,16 @@ async function getAIProviderProfileSupportState(): Promise<
 
 function settleProviderProfileResult(
   result: PromiseSettledResult<Record<string, unknown>>,
+): Record<string, unknown> {
+  if (result.status === 'fulfilled') {
+    return result.value;
+  }
+
+  return { error: getErrorMessage(result.reason) };
+}
+
+function settleConsoleStatsResult(
+  result: PromiseSettledResult<Record<string, number>>,
 ): Record<string, unknown> {
   if (result.status === 'fulfilled') {
     return result.value;

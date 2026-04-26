@@ -217,6 +217,7 @@ export const FeatureFlagsSchema = z.object({
   rbfTransactions: z.boolean(),
   priceAlerts: z.boolean(),
   aiAssistant: z.boolean(),
+  sanctuaryConsole: z.boolean(),
   telegramNotifications: z.boolean(),
   treasuryAutopilot: z.boolean(),
   treasuryIntelligence: z.boolean(),

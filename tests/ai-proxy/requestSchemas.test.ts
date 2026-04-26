@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   AnalyzeBodySchema,
   ChatBodySchema,
+  ConsolePlanBodySchema,
+  ConsoleSynthesisBodySchema,
   ConfigBodySchema,
   DetectOllamaBodySchema,
   ModelBodySchema,
@@ -180,6 +182,60 @@ describe("AI proxy request schemas", () => {
     ).toThrow();
     expect(() =>
       ChatBodySchema.parse({ messages: [{ role: "user", content: "" }] }),
+    ).toThrow();
+  });
+
+  it("validates console planning and synthesis bodies", () => {
+    expect(
+      ConsolePlanBodySchema.parse({
+        prompt: " how is this wallet doing? ",
+        maxToolCalls: 2,
+        scope: { kind: "wallet", walletIds: ["wallet-1"] },
+        tools: [
+          {
+            name: "get_wallet_overview",
+            title: "Wallet Overview",
+            description: "Read wallet totals",
+            sensitivity: "wallet",
+            requiredScope: "wallet",
+            inputFields: ["walletId"],
+          },
+        ],
+      }),
+    ).toEqual({
+      prompt: "how is this wallet doing?",
+      maxToolCalls: 2,
+      scope: { kind: "wallet", walletIds: ["wallet-1"] },
+      tools: [
+        {
+          name: "get_wallet_overview",
+          title: "Wallet Overview",
+          description: "Read wallet totals",
+          sensitivity: "wallet",
+          requiredScope: "wallet",
+          inputFields: ["walletId"],
+        },
+      ],
+    });
+
+    expect(
+      ConsoleSynthesisBodySchema.parse({
+        prompt: "summarize",
+        toolResults: [{ toolName: "get_fee_estimates", status: "completed" }],
+      }),
+    ).toEqual({
+      prompt: "summarize",
+      toolResults: [{ toolName: "get_fee_estimates", status: "completed" }],
+    });
+
+    expect(() =>
+      ConsolePlanBodySchema.parse({ prompt: "x", tools: [] }),
+    ).toThrow();
+    expect(() =>
+      ConsoleSynthesisBodySchema.parse({
+        prompt: "x",
+        toolResults: [{ toolName: "x", status: "write" }],
+      }),
     ).toThrow();
   });
 });

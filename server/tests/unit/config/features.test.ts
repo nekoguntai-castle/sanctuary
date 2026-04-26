@@ -15,8 +15,10 @@ const FEATURE_ENV_KEYS = [
   'FEATURE_RBF',
   'FEATURE_PRICE_ALERTS',
   'FEATURE_AI_ASSISTANT',
+  'FEATURE_SANCTUARY_CONSOLE',
   'FEATURE_TELEGRAM',
   'FEATURE_WS_V2',
+  'FEATURE_TREASURY_INTELLIGENCE',
   'FEATURE_EXP_TAPROOT',
   'FEATURE_EXP_SILENT_PAYMENTS',
   'FEATURE_EXP_COINJOIN',
@@ -59,8 +61,10 @@ describe('Feature Flags Config', () => {
     process.env.FEATURE_RBF = '0';
     process.env.FEATURE_PRICE_ALERTS = 'true';
     process.env.FEATURE_AI_ASSISTANT = '1';
+    process.env.FEATURE_SANCTUARY_CONSOLE = 'true';
     process.env.FEATURE_TELEGRAM = 'false';
     process.env.FEATURE_WS_V2 = '1';
+    process.env.FEATURE_TREASURY_INTELLIGENCE = 'true';
     process.env.FEATURE_EXP_TAPROOT = '1';
     process.env.FEATURE_EXP_SILENT_PAYMENTS = 'TRUE';
     process.env.FEATURE_EXP_COINJOIN = 'false';
@@ -76,8 +80,10 @@ describe('Feature Flags Config', () => {
     expect(flags.rbfTransactions).toBe(false);
     expect(flags.priceAlerts).toBe(true);
     expect(flags.aiAssistant).toBe(true);
+    expect(flags.sanctuaryConsole).toBe(true);
     expect(flags.telegramNotifications).toBe(false);
     expect(flags.websocketV2Events).toBe(true);
+    expect(flags.treasuryIntelligence).toBe(true);
     expect(flags.experimental).toEqual({
       taprootAddresses: true,
       silentPayments: true,

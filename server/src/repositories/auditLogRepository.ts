@@ -18,6 +18,7 @@ export type AuditCategory =
   | 'admin'
   | 'backup'
   | 'mcp'
+  | 'console'
   | 'system';
 
 /**

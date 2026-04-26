@@ -20,6 +20,7 @@ import { draftSchemas } from './schemas/drafts';
 import { payjoinSchemas } from './schemas/payjoin';
 import { transferSchemas } from './schemas/transfers';
 import { intelligenceSchemas } from './schemas/intelligence';
+import { consoleSchemas } from './schemas/console';
 import { aiSchemas } from './schemas/ai';
 import { agentSchemas } from './schemas/agent';
 import { adminSchemas } from './schemas/admin';
@@ -46,6 +47,7 @@ import { draftPaths } from './paths/drafts';
 import { payjoinPaths } from './paths/payjoin';
 import { transferPaths } from './paths/transfers';
 import { intelligencePaths } from './paths/intelligence';
+import { consolePaths } from './paths/console';
 import { aiPaths } from './paths/ai';
 import { agentPaths } from './paths/agent';
 import { adminPaths } from './paths/admin';
@@ -88,6 +90,7 @@ export const openApiSpec = {
     { name: 'Payjoin', description: 'BIP78 Payjoin sender and receiver operations' },
     { name: 'Transfers', description: 'Wallet and device ownership transfers' },
     { name: 'Intelligence', description: 'Treasury Intelligence insights and conversations' },
+    { name: 'Console', description: 'Sanctuary Console sessions, tool traces, prompt history, and replay' },
     { name: 'AI', description: 'AI assistant features and model management' },
     { name: 'Agent', description: 'Scoped agent wallet operations' },
     { name: 'Admin', description: 'Administrative operations' },
@@ -117,6 +120,7 @@ export const openApiSpec = {
     ...payjoinPaths,
     ...transferPaths,
     ...intelligencePaths,
+    ...consolePaths,
     ...aiPaths,
     ...agentPaths,
     ...adminPaths,
@@ -179,6 +183,7 @@ export const openApiSpec = {
       ...payjoinSchemas,
       ...transferSchemas,
       ...intelligenceSchemas,
+      ...consoleSchemas,
       ...aiSchemas,
       ...agentSchemas,
       ...adminSchemas,

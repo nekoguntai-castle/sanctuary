@@ -13,6 +13,7 @@
  *   - admin: Admin settings changes, node config
  *   - backup: Backup creation, restore operations
  *   - mcp: Model Context Protocol access and key operations
+ *   - console: Sanctuary Console prompt and tool operations
  *   - wallet: Also includes agent funding draft submissions
  *   - system: System settings changes
  */
@@ -42,6 +43,7 @@ export enum AuditCategory {
   ADMIN = 'admin',
   BACKUP = 'backup',
   MCP = 'mcp',
+  CONSOLE = 'console',
   SYSTEM = 'system',
 }
 
@@ -144,6 +146,12 @@ export enum AuditAction {
   MCP_KEY_REVOKE = 'mcp.key_revoke',
   MCP_OPERATION = 'mcp.operation',
   MCP_OPERATION_FAILED = 'mcp.operation_failed',
+
+  // Console
+  CONSOLE_TURN = 'console.turn',
+  CONSOLE_TURN_FAILED = 'console.turn_failed',
+  CONSOLE_TOOL_CALL = 'console.tool_call',
+  CONSOLE_TOOL_DENIED = 'console.tool_denied',
 }
 
 /**

@@ -1,13 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockGetSupportStats, mockCheckHealth, mockFindSettingsByKeys, collectorMap } = vi.hoisted(() => ({
+const { mockGetSupportStats, mockGetConsoleSupportStats, mockCheckHealth, mockFindSettingsByKeys, collectorMap } = vi.hoisted(() => ({
   mockGetSupportStats: vi.fn(),
+  mockGetConsoleSupportStats: vi.fn(),
   mockCheckHealth: vi.fn(),
   mockFindSettingsByKeys: vi.fn(),
   collectorMap: new Map<string, (ctx: any) => Promise<Record<string, unknown>>>(),
 }));
 
 vi.mock('../../../../src/repositories', () => ({
+  consoleRepository: {
+    getSupportStats: mockGetConsoleSupportStats,
+  },
   intelligenceRepository: {
     getSupportStats: mockGetSupportStats,
   },
@@ -41,9 +45,18 @@ function makeContext(): CollectorContext {
 describe('aiIntelligence collector', () => {
   beforeEach(() => {
     mockGetSupportStats.mockReset();
+    mockGetConsoleSupportStats.mockReset();
     mockCheckHealth.mockReset();
     mockFindSettingsByKeys.mockReset();
     mockFindSettingsByKeys.mockResolvedValue([]);
+    mockGetConsoleSupportStats.mockResolvedValue({
+      consoleSessionCount: 0,
+      consoleTurnCount: 0,
+      consolePromptCount: 0,
+      consoleSavedPromptCount: 0,
+      consoleExpiredPromptCount: 0,
+      consoleToolTraceCount: 0,
+    });
   });
 
   const getCollector = () => {
@@ -79,6 +92,10 @@ describe('aiIntelligence collector', () => {
     expect(health).not.toHaveProperty('model');
     expect(health).not.toHaveProperty('endpoint');
     expect(result.conversationCount).toBe(4);
+    expect(result.consoleStats).toMatchObject({
+      consolePromptCount: 0,
+      consoleToolTraceCount: 0,
+    });
     expect(result.providerProfiles).toMatchObject({
       count: 1,
       activeProviderType: 'ollama',
@@ -164,6 +181,28 @@ describe('aiIntelligence collector', () => {
 
     const result = await getCollector()(makeContext());
     expect(result.statsError).toBe('db down');
+    expect(result.consoleStats).toMatchObject({
+      consolePromptCount: 0,
+      consoleToolTraceCount: 0,
+    });
+  });
+
+  it('reports console stats errors without exposing prompt content', async () => {
+    mockCheckHealth.mockResolvedValue({ available: true });
+    mockGetSupportStats.mockResolvedValue({
+      conversationCount: 0,
+      messageCountLast7d: 0,
+      insightsByTypeStatus: [],
+      insightsBySeverity: {},
+      activeInsightCount: 0,
+    });
+    mockGetConsoleSupportStats.mockRejectedValue(new Error('console stats unavailable'));
+
+    const result = await getCollector()(makeContext());
+    const json = JSON.stringify(result);
+    expect(result.consoleStats).toEqual({ error: 'console stats unavailable' });
+    expect(json).not.toContain('prompt');
+    expect(json).not.toContain('response');
   });
 
   it('reports provider profile metadata errors without failing the collector', async () => {

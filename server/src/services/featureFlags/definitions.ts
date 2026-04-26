@@ -24,6 +24,12 @@ export const FEATURE_DEFINITIONS: Record<FeatureFlagKey, FeatureFlagDefinition> 
   rbfTransactions: { description: 'Enable Replace-By-Fee transaction support', category: 'general' },
   priceAlerts: { description: 'Enable price alert notifications', category: 'general' },
   aiAssistant: { description: 'Enable AI-powered transaction analysis', category: 'general' },
+  sanctuaryConsole: {
+    description: 'Enable the Sanctuary Console backend for scoped AI-assisted investigations',
+    category: 'general',
+    hasSideEffects: true,
+    sideEffectDescription: 'Allows authenticated users to send prompts to the configured AI provider through the backend-mediated console protocol.',
+  },
   telegramNotifications: { description: 'Enable Telegram bot notifications', category: 'general' },
   treasuryAutopilot: {
     description: 'Enable Treasury Autopilot consolidation jobs',

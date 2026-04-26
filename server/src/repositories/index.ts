@@ -41,6 +41,7 @@ export { mcpApiKeyRepository, default as mcpApiKeyRepo } from './mcpApiKeyReposi
 export { assistantReadRepository, default as assistantReadRepo } from './assistantReadRepository';
 export { mcpReadRepository, default as mcpReadRepo } from './mcpReadRepository';
 export { agentRepository, default as agentRepo } from './agentRepository';
+export { consoleRepository, default as consoleRepo } from './consoleRepository';
 
 // Access control helpers
 export { buildWalletAccessWhere, buildDeviceAccessWhere } from './accessControl';
@@ -127,6 +128,15 @@ export type {
   CreateConversationInput,
   CreateMessageInput,
 } from './intelligenceRepository';
+
+export type {
+  ConsoleTurnWithTraces,
+  CreateConsolePromptInput,
+  CreateConsoleSessionInput,
+  CreateConsoleToolTraceInput,
+  CreateConsoleTurnInput,
+  PromptHistoryFilters,
+} from './consoleRepository';
 
 export type {
   MobilePermissionCapability,
