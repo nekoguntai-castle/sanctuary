@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
+import { collectImportStatements } from './quality/import-parser.mjs';
 
 const root = process.env.QUALITY_ROOT ?? process.cwd();
 const codeFilePattern = /\.(?:ts|tsx|js|jsx|mjs|cjs)$/;
@@ -88,70 +89,6 @@ function walk(relativePath, files = []) {
   return files;
 }
 
-function stripComments(source) {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/(^|[^:])\/\/.*$/gm, '$1');
-}
-
-function extractNamedSymbols(statement) {
-  // Pulls out the locally-bound names from import-clause forms:
-  //   import { a, b as c } from '...'         → ['a', 'b']
-  //   import def, { a } from '...'            → ['def', 'a']
-  //   import * as ns from '...'               → ['ns']
-  //   import def from '...'                   → ['def']
-  // Used for symbol-level forbidden-import rules.
-  const symbols = new Set();
-  const named = statement.match(/\{([^}]+)\}/);
-  if (named) {
-    for (const part of named[1].split(',')) {
-      const name = part.trim().split(/\s+as\s+/)[0].replace(/^type\s+/, '').trim();
-      if (name) symbols.add(name);
-    }
-  }
-  const namespace = statement.match(/\*\s+as\s+(\w+)/);
-  if (namespace) symbols.add(namespace[1]);
-  const defaultImport = statement.match(/^import\s+(?:type\s+)?(\w+)\s*(?:,|from)/);
-  if (defaultImport) symbols.add(defaultImport[1]);
-  return symbols;
-}
-
-function collectImportStatements(source) {
-  const executableSource = stripComments(source);
-  const imports = [];
-  const staticPattern = /(^|\n)\s*(import|export)\s+[\s\S]*?;/g;
-  const dynamicPattern = /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
-
-  for (const match of executableSource.matchAll(staticPattern)) {
-    const statement = match[0].trim();
-    const sideEffect = statement.match(/^import\s+['"]([^'"]+)['"]/);
-    const from = statement.match(/\sfrom\s+['"]([^'"]+)['"]/);
-    const specifier = from?.[1] ?? sideEffect?.[1];
-
-    if (!specifier) {
-      continue;
-    }
-
-    imports.push({
-      specifier,
-      typeOnly: /^(?:import|export)\s+type\b/.test(statement),
-      dynamic: false,
-      symbols: extractNamedSymbols(statement),
-    });
-  }
-
-  for (const match of executableSource.matchAll(dynamicPattern)) {
-    imports.push({
-      specifier: match[1],
-      typeOnly: false,
-      dynamic: true,
-      symbols: new Set(),
-    });
-  }
-
-  return imports;
-}
-
 function loadExceptions() {
   const fullPath = path.join(root, exceptionFile);
   if (!existsSync(fullPath)) {
@@ -209,78 +146,168 @@ function resolveRelativeImport(fromFile, specifier) {
   return null;
 }
 
+const notificationDispatchCallerExclusions = [
+  'server/src/services/notifications/',
+  'server/src/infrastructure/',
+  'server/src/worker/',
+];
+
+const notificationDispatchTargets = new Set([
+  'server/src/services/notifications/notificationService.ts',
+  'server/src/infrastructure/notificationDispatcher.ts',
+  'server/src/infrastructure/index.ts',
+]);
+
+const notificationDispatchSymbols = new Set([
+  'notifyNewTransactions',
+  'notifyNewDraft',
+  'queueTransactionNotification',
+  'queueDraftNotification',
+]);
+
+function isNotificationDispatchCaller(file) {
+  return (
+    file.startsWith('server/src/') &&
+    !notificationDispatchCallerExclusions.some((prefix) => file.startsWith(prefix))
+  );
+}
+
+function isNotificationDispatchTarget(target) {
+  return notificationDispatchTargets.has(target);
+}
+
+function isServerRepositoryPath(file) {
+  return file.startsWith('server/src/repositories/');
+}
+
+function isServerRuntimeDependency(target) {
+  return (
+    target.startsWith('server/src/services/') ||
+    target.startsWith('server/src/api/') ||
+    target.startsWith('server/src/worker/') ||
+    target.startsWith('server/src/jobs/') ||
+    target.startsWith('server/src/websocket/')
+  );
+}
+
+function isServerServicePath(file) {
+  return file.startsWith('server/src/services/');
+}
+
+function isServerApiPath(file) {
+  return file.startsWith('server/src/api/');
+}
+
+function isServerWorkerPath(file) {
+  return file.startsWith('server/src/worker/');
+}
+
+function isServerApiTarget(target) {
+  return target.startsWith('server/src/api/');
+}
+
+function isServerWorkerTarget(target) {
+  return target.startsWith('server/src/worker/');
+}
+
+function isServerRepositoryTarget(target) {
+  return target.startsWith('server/src/repositories/');
+}
+
+function isGatewayRuntimePath(file) {
+  return file.startsWith('gateway/src/');
+}
+
+function isGatewayForbiddenRuntimeTarget(target) {
+  return target.startsWith('server/src/') || isBrowserRuntimePath(target);
+}
+
+function isBrowserForbiddenRuntimeTarget(target) {
+  return target.startsWith('server/') || target.startsWith('gateway/');
+}
+
+function isBrowserApiAdapter(file) {
+  return file.startsWith('src/api/');
+}
+
+function isBrowserApiStateTarget(target) {
+  return (
+    target.startsWith('components/') ||
+    target.startsWith('contexts/') ||
+    target.startsWith('hooks/')
+  );
+}
+
+function isSharedModulePath(file) {
+  return file.startsWith('shared/');
+}
+
+function isSharedForbiddenRuntimeTarget(target) {
+  return target.startsWith('server/') || target.startsWith('gateway/') || isBrowserRuntimePath(target);
+}
+
 const rules = [
   {
     id: 'server-repositories-runtime-upward',
     description: 'repositories may not import runtime services, API routes, workers, jobs, or websocket modules',
-    from: (file) => file.startsWith('server/src/repositories/'),
-    forbidden: (target) => (
-      target.startsWith('server/src/services/') ||
-      target.startsWith('server/src/api/') ||
-      target.startsWith('server/src/worker/') ||
-      target.startsWith('server/src/jobs/') ||
-      target.startsWith('server/src/websocket/')
-    ),
+    from: isServerRepositoryPath,
+    forbidden: isServerRuntimeDependency,
     ignoreTypeOnly: true,
   },
   {
     id: 'server-services-runtime-api',
     description: 'services may not import runtime API route modules',
-    from: (file) => file.startsWith('server/src/services/'),
-    forbidden: (target) => target.startsWith('server/src/api/'),
+    from: isServerServicePath,
+    forbidden: isServerApiTarget,
     ignoreTypeOnly: true,
   },
   {
     id: 'server-api-runtime-worker',
     description: 'API routes may not import worker implementation modules',
-    from: (file) => file.startsWith('server/src/api/'),
-    forbidden: (target) => target.startsWith('server/src/worker/'),
+    from: isServerApiPath,
+    forbidden: isServerWorkerTarget,
     ignoreTypeOnly: true,
   },
   {
     id: 'server-api-runtime-repositories',
     description: 'API routes may not import repository modules directly; delegate data access through services',
-    from: (file) => file.startsWith('server/src/api/'),
-    forbidden: (target) => target.startsWith('server/src/repositories/'),
+    from: isServerApiPath,
+    forbidden: isServerRepositoryTarget,
     ignoreTypeOnly: true,
   },
   {
     id: 'server-worker-runtime-api',
     description: 'workers may not import API route modules',
-    from: (file) => file.startsWith('server/src/worker/'),
-    forbidden: (target) => target.startsWith('server/src/api/'),
+    from: isServerWorkerPath,
+    forbidden: isServerApiTarget,
     ignoreTypeOnly: true,
   },
   {
     id: 'gateway-runtime-isolated',
     description: 'gateway runtime may only share through shared modules, not server or browser internals',
-    from: (file) => file.startsWith('gateway/src/'),
-    forbidden: (target) => target.startsWith('server/src/') || isBrowserRuntimePath(target),
+    from: isGatewayRuntimePath,
+    forbidden: isGatewayForbiddenRuntimeTarget,
     ignoreTypeOnly: true,
   },
   {
     id: 'browser-runtime-no-server-gateway',
     description: 'browser runtime may not import server or gateway internals',
-    from: (file) => isBrowserRuntimePath(file),
-    forbidden: (target) => target.startsWith('server/') || target.startsWith('gateway/'),
+    from: isBrowserRuntimePath,
+    forbidden: isBrowserForbiddenRuntimeTarget,
     ignoreTypeOnly: true,
   },
   {
     id: 'browser-api-runtime-no-ui-state',
     description: 'frontend API adapters may not import UI components, contexts, or hooks at runtime',
-    from: (file) => file.startsWith('src/api/'),
-    forbidden: (target) => (
-      target.startsWith('components/') ||
-      target.startsWith('contexts/') ||
-      target.startsWith('hooks/')
-    ),
+    from: isBrowserApiAdapter,
+    forbidden: isBrowserApiStateTarget,
     ignoreTypeOnly: true,
   },
   {
     id: 'shared-runtime-pure',
     description: 'shared modules may not import app-specific runtime layers',
-    from: (file) => file.startsWith('shared/'),
-    forbidden: (target) => target.startsWith('server/') || target.startsWith('gateway/') || isBrowserRuntimePath(target),
+    from: isSharedModulePath,
+    forbidden: isSharedForbiddenRuntimeTarget,
     ignoreTypeOnly: true,
   },
   {
@@ -293,25 +320,13 @@ const rules = [
     id: 'server-notification-dispatch-only',
     description:
       'callers must use dispatchXxxNotification from services/notifications/dispatch — direct imports of notifyNewXxx or queueXxx hide reliability semantics',
-    from: (file) =>
-      file.startsWith('server/src/') &&
-      !file.startsWith('server/src/services/notifications/') &&
-      !file.startsWith('server/src/infrastructure/') &&
-      !file.startsWith('server/src/worker/'),
+    from: isNotificationDispatchCaller,
     // Symbol rule: a violation requires BOTH a forbidden target AND a
     // forbidden symbol — same-named functions in unrelated modules don't
     // count (e.g. services/telegram/notifications.notifyNewTransactions
     // is the channel implementation, not the orchestrator).
-    forbidden: (target) =>
-      target === 'server/src/services/notifications/notificationService.ts' ||
-      target === 'server/src/infrastructure/notificationDispatcher.ts' ||
-      target === 'server/src/infrastructure/index.ts',
-    forbiddenSymbols: new Set([
-      'notifyNewTransactions',
-      'notifyNewDraft',
-      'queueTransactionNotification',
-      'queueDraftNotification',
-    ]),
+    forbidden: isNotificationDispatchTarget,
+    forbiddenSymbols: notificationDispatchSymbols,
     ignoreTypeOnly: true,
   },
 ];
