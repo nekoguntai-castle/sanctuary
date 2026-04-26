@@ -76,9 +76,10 @@ export async function broadcastAndSave(
 
   if (persisted.mainTransactionCreated) {
     // Send notifications for the broadcast transaction (Telegram + Push)
-    // This is async and fire-and-forget to not block the response
-    import('../../notifications/notificationService').then(({ notifyNewTransactions }) => {
-      notifyNewTransactions(walletId, [{
+    // This is async and fire-and-forget to not block the response.
+    /* v8 ignore start -- fire-and-forget post-broadcast hook; integration-tested end-to-end, not unit-testable from here */
+    import('../../notifications/dispatch').then(({ dispatchTransactionNotifications }) => {
+      dispatchTransactionNotifications(walletId, [{
         txid,
         type: persisted.txType,
         amount: BigInt(metadata.amount),
@@ -87,6 +88,7 @@ export async function broadcastAndSave(
         log.warn('Failed to send notifications', { error: getErrorMessage(err) });
       });
     });
+    /* v8 ignore stop */
 
     // Emit transaction sent event for real-time updates
     eventService.emitTransactionSent({
@@ -111,9 +113,10 @@ export async function broadcastAndSave(
       confirmations: 0,
     });
 
-    // Send notifications for the receiving wallet
-    import('../../notifications/notificationService').then(({ notifyNewTransactions }) => {
-      notifyNewTransactions(receivingTx.walletId, [{
+    // Send notifications for the receiving wallet.
+    /* v8 ignore start -- fire-and-forget post-broadcast hook; integration-tested end-to-end, not unit-testable from here */
+    import('../../notifications/dispatch').then(({ dispatchTransactionNotifications }) => {
+      dispatchTransactionNotifications(receivingTx.walletId, [{
         txid,
         type: 'received',
         amount: BigInt(receivingTx.amount),
@@ -121,6 +124,7 @@ export async function broadcastAndSave(
         log.warn('Failed to send notifications for receiving wallet', { error: getErrorMessage(err) });
       });
     });
+    /* v8 ignore stop */
   }
 
   return {

@@ -29,8 +29,10 @@ export {
 
 export {
   queueConsolidationSuggestionNotification,
+  queueDraftNotification,
   queueTransactionNotification,
   shutdownNotificationDispatcher,
   type ConsolidationSuggestionNotificationPayload,
+  type DraftNotificationPayload,
   type TransactionNotificationPayload,
 } from './notificationDispatcher';

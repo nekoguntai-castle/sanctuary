@@ -72,8 +72,19 @@ export interface TransactionNotifyJobData {
 export interface DraftNotifyJobData {
   walletId: string;
   draftId: string;
-  creatorUserId: string;
-  creatorUsername: string;
+  /** Null when the draft was created by an autonomous agent. */
+  creatorUserId: string | null;
+  /** Resolved username; the worker can also resolve from creatorUserId. */
+  creatorUsername?: string;
+  /** Display label used when creatorUserId is null (e.g. agent name). */
+  creatorLabel?: string;
+  /** Agent metadata — only present for agent-created drafts. */
+  agentId?: string | null;
+  agentName?: string | null;
+  agentOperationalWalletId?: string | null;
+  agentSigned?: boolean;
+  /** Stable key to dedupe re-queues of the same logical notification. */
+  dedupeKey?: string;
 }
 
 export interface ConfirmationNotifyJobData {

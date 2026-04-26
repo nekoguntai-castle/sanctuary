@@ -59,6 +59,19 @@ export interface TransactionNotificationPayload {
   feeSats?: string | null;
 }
 
+export interface DraftNotificationPayload {
+  walletId: string;
+  draftId: string;
+  creatorUserId: string | null;
+  creatorUsername?: string;
+  creatorLabel?: string;
+  agentId?: string | null;
+  agentName?: string | null;
+  agentOperationalWalletId?: string | null;
+  agentSigned?: boolean;
+  dedupeKey?: string;
+}
+
 export interface ConsolidationSuggestionNotificationPayload {
   walletId: string;
   walletName: string;
@@ -103,6 +116,40 @@ export async function queueTransactionNotification(
     log.warn('Failed to queue transaction notification, caller should fall back to inline', {
       error: getErrorMessage(error),
       txid: payload.txid,
+    });
+    return false;
+  }
+}
+
+/**
+ * Queue a draft notification for retry-capable delivery.
+ * Returns true if the job was queued, false if Redis was unavailable.
+ *
+ * The worker re-fetches the draft from the database at delivery time
+ * (so updates between queue and delivery are picked up), but the
+ * runtime-context fields below — only known at queue time — are passed
+ * through the job payload.
+ */
+export async function queueDraftNotification(
+  payload: DraftNotificationPayload,
+): Promise<boolean> {
+  const queue = getQueue();
+  if (!queue) return false;
+
+  try {
+    const jobIdSuffix = payload.dedupeKey ?? `${payload.draftId}:${payload.creatorUserId ?? 'system'}`;
+    await queue.add('draft-notify', payload, {
+      jobId: `draftnotify:${payload.walletId}:${jobIdSuffix}`,
+    });
+    log.debug('Draft notification queued', {
+      walletId: payload.walletId,
+      draftId: payload.draftId,
+    });
+    return true;
+  } catch (error) {
+    log.warn('Failed to queue draft notification, caller should fall back to inline', {
+      error: getErrorMessage(error),
+      draftId: payload.draftId,
     });
     return false;
   }

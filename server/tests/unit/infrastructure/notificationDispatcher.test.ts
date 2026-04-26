@@ -30,6 +30,7 @@ vi.mock('../../../src/utils/logger', () => ({
 
 import {
   queueConsolidationSuggestionNotification,
+  queueDraftNotification,
   queueTransactionNotification,
   shutdownNotificationDispatcher,
 } from '../../../src/infrastructure/notificationDispatcher';
@@ -97,6 +98,81 @@ describe('notificationDispatcher', () => {
       }),
       { jobId: 'consolidation-suggestion:w1:2026-04-25T00:00:00.000Z' },
     );
+  });
+
+  it('queues a draft notification with the full agent-context payload', async () => {
+    const result = await queueDraftNotification({
+      walletId: 'w1',
+      draftId: 'draft-1',
+      creatorUserId: 'user-1',
+      creatorUsername: 'alice',
+      creatorLabel: 'Autopilot',
+      agentId: 'agent-7',
+      agentName: 'Autopilot',
+      agentOperationalWalletId: 'op-9',
+      agentSigned: true,
+      dedupeKey: 'agent:agent-7:w1:op-9:bc1q...:1500',
+    });
+
+    expect(result).toBe(true);
+    expect(mockQueueAdd).toHaveBeenCalledWith(
+      'draft-notify',
+      expect.objectContaining({
+        walletId: 'w1',
+        draftId: 'draft-1',
+        agentId: 'agent-7',
+        creatorLabel: 'Autopilot',
+      }),
+      { jobId: 'draftnotify:w1:agent:agent-7:w1:op-9:bc1q...:1500' },
+    );
+  });
+
+  it('falls back to a draft+creator job id when no dedupeKey is provided', async () => {
+    const result = await queueDraftNotification({
+      walletId: 'w1',
+      draftId: 'draft-2',
+      creatorUserId: 'user-1',
+    });
+
+    expect(result).toBe(true);
+    expect(mockQueueAdd).toHaveBeenCalledWith(
+      'draft-notify',
+      expect.objectContaining({ draftId: 'draft-2' }),
+      { jobId: 'draftnotify:w1:draft-2:user-1' },
+    );
+  });
+
+  it('uses "system" suffix when both dedupeKey and creatorUserId are absent', async () => {
+    const result = await queueDraftNotification({
+      walletId: 'w1',
+      draftId: 'draft-3',
+      creatorUserId: null,
+    });
+
+    expect(result).toBe(true);
+    expect(mockQueueAdd).toHaveBeenCalledWith(
+      'draft-notify',
+      expect.anything(),
+      { jobId: 'draftnotify:w1:draft-3:system' },
+    );
+  });
+
+  it('returns false for draft notifications when Redis is not connected', async () => {
+    vi.mocked(isRedisConnected).mockReturnValueOnce(false);
+
+    const result = await queueDraftNotification({ walletId: 'w1', draftId: 'd1', creatorUserId: 'u1' });
+
+    expect(result).toBe(false);
+    expect(mockQueueAdd).not.toHaveBeenCalled();
+  });
+
+  it('returns false when draft queue add fails', async () => {
+    await queueTransactionNotification({ walletId: 'w1', txid: 'tx-ok', type: 'received', amount: '100' });
+    mockQueueAdd.mockRejectedValueOnce(new Error('Redis timeout'));
+
+    const result = await queueDraftNotification({ walletId: 'w1', draftId: 'd1', creatorUserId: 'u1' });
+
+    expect(result).toBe(false);
   });
 
   it('returns false for consolidation suggestions when Redis is not connected', async () => {

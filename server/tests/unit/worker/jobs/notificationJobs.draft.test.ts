@@ -56,7 +56,8 @@ describe('draftNotifyJob', () => {
         recipient: 'bc1q...',
         createdByUsername: 'alice',
       }),
-      'user-456'
+      'user-456',
+      undefined,
     );
   });
 
