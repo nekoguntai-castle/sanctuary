@@ -31,46 +31,48 @@ The proxy never stores state between requests. Configuration (`aiConfig`) is hel
 
 ## Layer Architecture
 
-| Layer | Location | Responsibility |
-|-------|----------|----------------|
-| Entry point & routes | `src/index.ts` | Express app, all route handlers, global error/signal handlers |
-| Request validation | `src/requestSchemas.ts` | Zod schemas; `parseRequestBody()` returns `null` on failure and writes 400 before the handler continues |
-| Rate limiting | `src/rateLimit.ts` | In-memory sliding-window limiter keyed by client IP |
-| AI client | `src/aiClient.ts` | `callExternalAI()`, `callExternalAIWithMessages()`, `parseStructuredResponse()` |
-| Backend data fetch | `src/utils.ts` | `fetchFromBackend()` with typed error discrimination (`auth_failed`, `not_found`, `server_error`, `network_error`) |
-| Model management | `src/modelPull.ts` | Streams Ollama pull progress to backend via `POST /internal/ai/pull-progress` |
-| Constants | `src/constants.ts` | Timeout and rate-limit values, all overridable via env vars |
-| Logger | `src/logger.ts` | Thin structured logger; no `console.log` in production code |
+| Layer                | Location                | Responsibility                                                                                                     |
+| -------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Entry point & routes | `src/index.ts`          | Express app, all route handlers, global error/signal handlers                                                      |
+| Request validation   | `src/requestSchemas.ts` | Zod schemas; `parseRequestBody()` returns `null` on failure and writes 400 before the handler continues            |
+| Rate limiting        | `src/rateLimit.ts`      | In-memory sliding-window limiter keyed by client IP                                                                |
+| AI client            | `src/aiClient.ts`       | `callExternalAI()`, `callExternalAIWithMessages()`, `parseStructuredResponse()`                                    |
+| Backend data fetch   | `src/utils.ts`          | `fetchFromBackend()` with typed error discrimination (`auth_failed`, `not_found`, `server_error`, `network_error`) |
+| Model management     | `src/modelPull.ts`      | Streams Ollama pull progress to backend via `POST /internal/ai/pull-progress`                                      |
+| Constants            | `src/constants.ts`      | Timeout and rate-limit values, all overridable via env vars                                                        |
+| Logger               | `src/logger.ts`         | Thin structured logger; no `console.log` in production code                                                        |
 
 ---
 
 ## Authentication
 
-Two independent auth mechanisms apply in sequence:
+Three independent auth mechanisms apply in sequence:
 
-1. **Config endpoint** — `POST /config` requires the header `x-ai-config-secret` to match `AI_CONFIG_SECRET`. If the env var is absent, a cryptographically random 32-byte secret is generated at startup (making the config endpoint unreachable from outside the container until the secret is shared). Only the backend should call this endpoint.
+1. **Service auth** — every route except `GET /health` requires `x-ai-service-secret` to match `AI_CONFIG_SECRET`. `POST /config` also accepts the configuration-specific `x-ai-config-secret` header, and backend callers send both headers. If the env var is absent, a cryptographically random 32-byte secret is generated at startup, making non-health routes unreachable until the secret is shared.
 
-2. **Per-request bearer token** — All data-fetching endpoints (`/suggest-label`, `/query`, `/analyze`, `/chat`) forward the caller's `Authorization: Bearer <token>` to the backend's `/internal/ai/*` endpoints. If the backend returns 401 or 403, the proxy propagates the auth failure immediately and does not call the AI provider.
+2. **Per-request bearer token** — Data-fetching endpoints that need user/wallet authorization (`/suggest-label`, `/query`) forward the caller's `Authorization: Bearer <token>` to the backend's `/internal/ai/*` endpoints. If the backend returns 401 or 403, the proxy propagates the auth failure immediately and does not call the AI provider.
+
+3. **Provider credential boundary** — provider API keys are synced from backend encrypted settings into proxy memory only. They are never returned by `GET /config`, never stored by the proxy, and are forwarded to OpenAI-compatible providers only as an `Authorization: Bearer ...` header.
 
 ---
 
 ## API Endpoints
 
-| Method | Path | Rate limited | Purpose |
-|--------|------|:---:|---------|
-| `GET` | `/health` | — | Liveness check |
-| `GET` | `/config` | — | Current config status (enabled, model, endpoint presence) |
-| `POST` | `/config` | — | Update enabled/endpoint/model; requires `x-ai-config-secret` |
-| `POST` | `/suggest-label` | yes | Label suggestion for a single transaction |
-| `POST` | `/query` | yes | Natural-language to structured query object |
-| `POST` | `/analyze` | yes | Treasury intelligence (UTXO health, fees, anomaly, tax, consolidation) |
-| `POST` | `/chat` | yes | Multi-turn treasury advisor chat |
-| `POST` | `/test` | yes | Probe AI reachability |
-| `POST` | `/detect-ollama` | yes | Scan common Ollama endpoints, return first reachable |
-| `POST` | `/check-ollama` | yes | Verify configured endpoint is Ollama-compatible |
-| `GET` | `/list-models` | yes | List models available at configured Ollama endpoint |
-| `POST` | `/pull-model` | yes | Start async model download; streams progress to backend |
-| `DELETE` | `/delete-model` | yes | Remove a model from Ollama |
+| Method   | Path             | Rate limited | Purpose                                                                |
+| -------- | ---------------- | :----------: | ---------------------------------------------------------------------- |
+| `GET`    | `/health`        |      —       | Liveness check                                                         |
+| `GET`    | `/config`        |      —       | Current config status (enabled, model, endpoint presence)              |
+| `POST`   | `/config`        |      —       | Update enabled/endpoint/model; requires `x-ai-config-secret`           |
+| `POST`   | `/suggest-label` |     yes      | Label suggestion for a single transaction                              |
+| `POST`   | `/query`         |     yes      | Natural-language to structured query object                            |
+| `POST`   | `/analyze`       |     yes      | Treasury intelligence (UTXO health, fees, anomaly, tax, consolidation) |
+| `POST`   | `/chat`          |     yes      | Multi-turn treasury advisor chat                                       |
+| `POST`   | `/test`          |     yes      | Probe AI reachability                                                  |
+| `POST`   | `/detect-ollama` |     yes      | Scan common Ollama endpoints, return first reachable                   |
+| `POST`   | `/check-ollama`  |     yes      | Verify configured endpoint is Ollama-compatible                        |
+| `GET`    | `/list-models`   |     yes      | List models available at configured Ollama endpoint                    |
+| `POST`   | `/pull-model`    |     yes      | Start async model download; streams progress to backend                |
+| `DELETE` | `/delete-model`  |     yes      | Remove a model from Ollama                                             |
 
 ---
 
@@ -79,7 +81,12 @@ Two independent auth mechanisms apply in sequence:
 `parseRequestBody(schema, req, res, errorMessage)` in `requestSchemas.ts` wraps every route. It calls `schema.safeParse(req.body ?? {})` and returns `null` (writing a 400 with Zod issue details) when validation fails, so route handlers begin with:
 
 ```typescript
-const body = parseRequestBody(SuggestLabelBodySchema, req, res, 'transactionId required');
+const body = parseRequestBody(
+  SuggestLabelBodySchema,
+  req,
+  res,
+  "transactionId required",
+);
 if (!body) return;
 ```
 
@@ -121,16 +128,19 @@ This makes the proxy compatible with Ollama, llama.cpp with an OpenAI adapter, a
 
 ## Configuration
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT` | `3100` | Listening port |
-| `BACKEND_URL` | `http://backend:3001` | Backend base URL for internal data fetches |
-| `AI_CONFIG_SECRET` | *(random at startup)* | Shared secret for `POST /config`; must match what the backend sends |
-| `NODE_ENV` | `production` | Node environment |
-| `AI_RATE_LIMIT_WINDOW_MS` | `60000` | Rate limit window in milliseconds |
-| `AI_RATE_LIMIT_MAX_REQUESTS` | `10` | Max requests per window per IP |
-| `AI_REQUEST_TIMEOUT_MS` | `30000` | AI call timeout for standard requests |
-| `AI_ANALYSIS_TIMEOUT_MS` | `120000` | AI call timeout for treasury analysis requests |
+| Variable                      | Default               | Description                                                                                                         |
+| ----------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `PORT`                        | `3100`                | Listening port                                                                                                      |
+| `BACKEND_URL`                 | `http://backend:3001` | Backend base URL for internal data fetches                                                                          |
+| `AI_CONFIG_SECRET`            | _(random at startup)_ | Shared secret for `POST /config`; must match what the backend sends                                                 |
+| `AI_PROXY_ALLOWED_HOSTS`      | _(empty)_             | Comma-separated host allowlist for public/cloud providers; supports exact hosts and `*.example.com` suffix patterns |
+| `AI_PROXY_ALLOWED_CIDRS`      | _(empty)_             | Comma-separated IPv4 CIDRs for explicit provider endpoint allowlisting                                              |
+| `AI_PROXY_ALLOW_PUBLIC_HTTPS` | `false`               | When `true`, any public HTTPS provider endpoint is allowed; public HTTP remains blocked unless host/CIDR-allowed    |
+| `NODE_ENV`                    | `production`          | Node environment                                                                                                    |
+| `AI_RATE_LIMIT_WINDOW_MS`     | `60000`               | Rate limit window in milliseconds                                                                                   |
+| `AI_RATE_LIMIT_MAX_REQUESTS`  | `10`                  | Max requests per window per IP                                                                                      |
+| `AI_REQUEST_TIMEOUT_MS`       | `30000`               | AI call timeout for standard requests                                                                               |
+| `AI_ANALYSIS_TIMEOUT_MS`      | `120000`              | AI call timeout for treasury analysis requests                                                                      |
 
 ---
 
@@ -141,6 +151,8 @@ This makes the proxy compatible with Ollama, llama.cpp with an OpenAI adapter, a
 **No database access.** The proxy fetches only what each request needs from `BACKEND_URL/internal/ai/*`. There is no persistent storage, no Prisma, no Redis. This is a deliberate security boundary: compromise of the AI container yields sanitized metadata only.
 
 **In-process config.** `aiConfig` (enabled, endpoint, model) is held in memory and reset on container restart. The backend re-pushes config after each restart via `POST /config`. This avoids a shared config store and keeps the container stateless.
+
+**Provider endpoint policy.** The proxy allows local/container/LAN LLM endpoints by default (`ollama`, `localhost`, `host.docker.internal`, `*.local`, loopback, RFC1918 private IPv4 ranges). Public/cloud endpoints require `AI_PROXY_ALLOWED_HOSTS`, `AI_PROXY_ALLOWED_CIDRS`, or `AI_PROXY_ALLOW_PUBLIC_HTTPS=true`. URLs with embedded credentials are rejected.
 
 **Null-return error propagation.** `callExternalAI` and `callExternalAIWithMessages` return `null` on any failure (timeout, non-2xx, malformed response). Routes treat `null` as 503. This keeps error handling uniform and avoids exception bubbling through route logic.
 

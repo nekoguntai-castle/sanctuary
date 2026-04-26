@@ -1,3 +1,32 @@
+# Active Task: AI Proxy Gateway Hardening 2026-04-26
+
+Status: complete
+
+Goal: harden the AI proxy into the model gateway foundation for the Console/MCP work by authenticating backend-to-proxy calls, enforcing provider endpoint egress policy, and syncing active provider credentials without returning or logging secrets.
+
+## Plan
+
+- [x] Inspect current AI proxy routes, backend proxy callers, typed provider profile/credential storage, Compose env, and existing tests.
+- [x] Add service-to-service authentication for every AI proxy route except `/health`, while preserving user bearer forwarding where routes need wallet/user authorization.
+- [x] Add an explicit provider endpoint policy that allows local/container/LAN LLM endpoints by default and requires env allowlisting for public/cloud endpoints.
+- [x] Sync active provider profile metadata and decrypted API-key credentials from backend to proxy memory without exposing secrets in responses or logs.
+- [x] Update backend AI proxy caller helpers, docs/env examples, and focused tests for auth headers, endpoint policy, credential sync, and provider request headers.
+- [x] Run focused AI proxy/backend verification, lizard, diff checks, quality review, edge-case audit, and self-review.
+
+## Review
+
+- Added service-to-service auth for every AI proxy route except `/health` through `x-ai-service-secret`, while config sync also sends `x-ai-config-secret` for compatibility with the existing secret boundary.
+- Backend AI proxy callers now share one header builder so label/query/chat/analyze/model-management requests consistently carry the proxy service secret and preserve user bearer forwarding where the proxy needs backend user authorization.
+- Added a provider endpoint egress policy that allows bundled Ollama, host/container endpoints, `.local`, localhost, private IPv4/IPv6, and explicit hostname/CIDR allowlists while blocking embedded URL credentials, unsupported schemes, and public/cloud endpoints unless `AI_PROXY_ALLOW_PUBLIC_HTTPS=true` or an allowlist is configured.
+- Backend config sync now decrypts only the active, enabled provider credential, includes only non-secret credential state in the sync hash, sends the key only to proxy memory, and clears omitted/disabled/restored credentials by sending an empty key.
+- Provider API keys are forwarded only as outbound provider `Authorization` headers from the proxy; config responses, health responses, and logs expose only configured/not-configured metadata.
+- AI proxy service-secret comparison now uses timing-safe digest comparison, and the auth/egress helpers document their fail-closed security contracts for future Console/MCP reuse.
+- Compose, `.env.example`, and AI proxy docs now document the gateway auth and provider endpoint policy, including the LAN LLM default path and explicit public/cloud opt-in.
+- Verification passed: AI proxy focused Vitest suite (26 tests), backend AI/intelligence focused Vitest suite (106 tests), `npm --prefix ai-proxy run build`, `npm run typecheck:server:tests`, `npm run lint:server`, touched-file lizard `-C 15`, `git diff --check`, pre-commit changed-backend suite (435 tests), and pre-commit frontend suite (5,640 tests).
+- Edge-case review: `/health` remains unauthenticated for health probes; missing `AI_CONFIG_SECRET` fails closed for backend-to-proxy calls; disallowed custom Ollama discovery endpoints are skipped and counted; invalid provider URLs and URLs with embedded credentials are rejected before fetch; disabled/restored or undecryptable credentials are not synced; empty provider API keys remove proxy memory credentials.
+
+---
+
 # Active Task: AI Provider Credential Boundary 2026-04-26
 
 Status: complete
@@ -2006,12 +2035,14 @@ Goal: reduce the open CodeQL inventory through focused, reviewable batches inste
 Goal: address the large `js/missing-rate-limiting` CodeQL bucket without imposing aggressive public-internet throttles on a mostly private/self-hosted app. Treat exposure as a policy input: public-facing deployments can tighten limits, while default private/LAN deployments should keep generous safety-valve ceilings and rely on existing route-specific controls for sensitive operations.
 
 Policy:
+
 - Keep the existing Redis-backed route policies as the canonical fine-grained controls for auth, sync, transaction, AI, MCP, gateway mobile operations, and other sensitive flows.
 - Add coarse `express-rate-limit` guards at exposed Express boundaries because CodeQL models that package directly and does not infer the custom middleware.
 - Use private-network-friendly ceilings by default, mounted before body parsing so abusive request volume is rejected before JSON parsing work.
 - Preserve stricter gateway/auth/mobile operation limits where they already exist; the new guard is a safety valve, not the main UX policy.
 
 Checklist:
+
 - [x] Confirm CodeQL inventory: 273 open `js/missing-rate-limiting` alerts before this batch.
 - [x] Confirm the query's modeled limiter expectation and the repo's existing custom limiter gap.
 - [x] Add direct `express-rate-limit` dependency to the backend package because the backend will import it directly.
@@ -2023,6 +2054,7 @@ Checklist:
 - [x] Finish the exposure/config audit, then dismiss only the remaining false-positive rate-limit alerts with the documented rationale.
 
 Review:
+
 - PR #100 merged on 2026-04-22 as `3ad03584`.
 - Merge-group gates passed: Code Quality 1m02s; Test Suite 12m11s including Full Backend Tests 4m32s, Full Gateway Tests 14s, Full E2E Tests 7m12s, Full Build Check 1m01s, and Full Test Summary 6s.
 - Local `main` fast-forwarded to `3ad03584`.
@@ -2038,6 +2070,7 @@ Review:
 Goal: clear the next low-risk mechanical CodeQL cluster without changing runtime policy: one-line log safety, complete Markdown/path sanitization, and integer bounds checks in verify-addresses.
 
 Checklist:
+
 - [x] Fix Go address verifier integer parsing so user-provided child indexes cannot wrap when converted to `uint32`.
 - [x] Fix incomplete sanitization in Markdown table escaping and derivation/path parsing helpers.
 - [x] Sanitize newline/control characters from structured console logger output in backend and AI proxy logging utilities.
@@ -2048,6 +2081,7 @@ Checklist:
 - [x] Wait for required PR checks to finish, merge through the protected flow, and sync `main`.
 
 Review:
+
 - PR #103 is open as `Harden sanitizer and logger bounds` with auto-merge enabled using squash merge.
 - The branch contains the sanitizer/logging/bounds changes plus a required-check workflow fix so `Full Test Summary` emits an explicit success conclusion on pull requests.
 - Local validation passed for the touched frontend utility test, backend logger/address-derivation tests, AI proxy build, server/app lint and typecheck, script syntax checks, and the server critical mutation gate.
@@ -2056,6 +2090,7 @@ Review:
 - Dependabot still reports two open low-severity `elliptic` alerts in `package-lock.json` and `scripts/verify-addresses/package-lock.json`; those are alerts, not currently backed by an open PR.
 
 Review:
+
 - Local validation passed: root `tests/utils/deviceConnection.test.ts`, server `logger.test.ts` and `addressDerivation.branches.test.ts`, AI proxy `npm run build`, script `node --check` checks, root app lint/typecheck/test typecheck, server lint, server test typecheck, and `git diff --check`.
 - Pre-push PR queue check returned no open Sanctuary PRs and no org-wide open Dependabot PRs.
 - Go toolchain is unavailable in the current Codex environment (`gofmt` not found), so the Go verifier change was manually reviewed and will rely on GitHub's Go-capable checks as the final compile gate.
@@ -2074,6 +2109,7 @@ Review:
 Goal: address the remaining 15 open CodeQL alerts in one consolidated security PR where the fixes are low-risk and mechanically verifiable. Keep behavior compatible for private/LAN deployments, but make unsafe exceptions explicit, bounded, or opt-in where CodeQL is correctly flagging a real boundary.
 
 Current inventory after PR #103:
+
 - 2 `js/clear-text-logging`
 - 3 `js/disabling-certificate-validation`
 - 2 `js/file-access-to-http`
@@ -2083,6 +2119,7 @@ Current inventory after PR #103:
 - 3 `js/user-controlled-bypass`
 
 Checklist:
+
 - [x] Remove benchmark-wide `NODE_TLS_REJECT_UNAUTHORIZED=0`; trust the generated Compose certificate via `NODE_EXTRA_CA_CERTS` and bounded HTTPS request helpers instead.
 - [x] Make `/api/v1/node/test` verify TLS by default, with an explicit `allowSelfSignedCertificate` request flag for private/self-hosted Electrum probes.
 - [x] Redact benchmark passwords from perf script output before logging or persisting process output tails.
@@ -2097,6 +2134,7 @@ Checklist:
 - [x] Wait for required PR checks, merge through the protected flow, and sync `main`.
 
 Review:
+
 - Implemented one consolidated CodeQL security batch covering all 15 remaining alert categories visible on the default branch before this work.
 - API-key compatibility: newly-created MCP and agent keys now use keyed HMAC lookup hashes; existing SHA-256 rows still authenticate through a legacy fallback so current clients are not broken.
 - TLS behavior: benchmark scripts no longer disable Node TLS globally; the Compose wrapper passes the generated certificate through `NODE_EXTRA_CA_CERTS`, and the Electrum test endpoint verifies certificates unless `allowSelfSignedCertificate` is explicitly requested.
@@ -2109,6 +2147,7 @@ Review:
 - Post-merge CodeQL on `main` is the source of truth for which default-branch alerts remain; re-query after that run completes before dismissing or opening more CodeQL work.
 
 Dependabot security queue:
+
 - [x] Triage new medium `uuid < 14.0.0` alerts in `server/package-lock.json` and `gateway/package-lock.json`.
 - [x] Confirm no upstream non-vulnerable dependency graph is currently available from `bullmq`, `firebase-admin`, or the Google Cloud transitive packages.
 - [x] Add package-level npm `overrides` for `uuid@14.0.0` in `server` and `gateway`.
@@ -2123,12 +2162,14 @@ Dependabot security queue:
 Goal: close or document the six remaining CodeQL alerts after PR #104 and PR #105 landed. These are false-positive modeling alerts in already-bounded code paths, so this batch keeps runtime behavior unchanged and adds line-local suppression rationale where the scanner reports the issue.
 
 Current inventory after PR #105:
+
 - 1 `js/file-access-to-http` in the perf benchmark backup-upload path.
 - 2 `js/http-to-file-access` in sanitized perf/ops report writing.
 - 1 `js/missing-token-validation` in the auth route unit-test harness.
 - 2 `js/user-controlled-bypass` in the server auth middleware.
 
 Checklist:
+
 - [x] Re-query open PRs, Dependabot alerts, and CodeQL alerts before starting.
 - [x] Add standalone exact-line CodeQL suppressions for the auth middleware false positives: absent-token denial and optional public-request annotation.
 - [x] Add standalone exact-line CodeQL suppression for the auth test helper false positive: cookie parsing is immediately followed by `doubleCsrfProtection` before mounting the auth router.
@@ -2137,6 +2178,7 @@ Checklist:
 - [x] Commit, push, open one PR, and verify CodeQL clears the six alerts.
 
 Review:
+
 - Local validation passed: `node --check` for both touched scripts, focused auth middleware/API tests, `npm run typecheck:tests` in `server`, `npm run typecheck:scripts`, `npm run lint:server`, and `git diff --check`.
 - PR #106's first CodeQL status check failed because the suppression rationale was placed as trailing inline `lgtm[...]` comments. The comments were converted to standalone `codeql[...]` lines immediately before each alert location, matching GitHub CodeQL's supported suppression form.
 - PR #106 merged through the protected merge queue on 2026-04-23 as `8d764758`. Merge-group and post-merge `main` checks passed, including CodeQL and the full Test Suite.
@@ -2147,6 +2189,7 @@ Review:
 Goal: resolve the final two low Dependabot alerts for `elliptic <= 6.6.1` without removing hardware-wallet or verification functionality.
 
 Checklist:
+
 - [x] Re-query open PRs, CodeQL alerts, and Dependabot alerts.
 - [x] Trace the root `package-lock.json` `elliptic` paths.
 - [x] Trace the `scripts/verify-addresses/package-lock.json` `elliptic` paths.
@@ -2155,6 +2198,7 @@ Checklist:
 - [x] Dismiss the remaining Dependabot alerts with explicit no-patch rationale.
 
 Review:
+
 - `npm view elliptic version` returned `6.6.1`; GitHub also reports `first_patched_version: null` for GHSA-848j-6mx2-7j84 / CVE-2025-14505.
 - Root `package-lock.json` pulls `elliptic` through `browserify-sign`, `create-ecdh`, and old `tiny-secp256k1` paths owned by current Trezor/Ledger hardware-wallet dependencies and browser crypto polyfills.
 - `scripts/verify-addresses/package-lock.json` pulls `elliptic` through `@caravan/bitcoin` and its `bitcoinjs-lib` v5 comparison implementation, which is used for local address-derivation verification.
@@ -2180,6 +2224,7 @@ Goal: the repo was transferred from `github.com/nekoguntai/sanctuary` to `github
 ## Checklist
 
 ### Category A — GitHub URLs (redirect works, update for cleanliness)
+
 - [x] `README.md` — 7 clone URLs + 1 Umbrel paste URL
 - [x] `sanctuary/README.md` — header repo reference
 - [x] `sanctuary/umbrel-app.yml` — `icon`, `website`, `repo`, `support`, `releaseNotes` URLs (leave `submitter`)
@@ -2196,6 +2241,7 @@ Goal: the repo was transferred from `github.com/nekoguntai/sanctuary` to `github
 - [x] `.github/workflows/release.yml` — clone URL + Umbrel paste instructions
 
 ### Category B — GHCR images (no users; safe to rename)
+
 - [x] `sanctuary/docker-compose.yml` — 4 pinned image references (frontend + 3 backend)
 - [x] `sanctuary/README.md` — 4 image references in build/verify instructions
 - [x] `.github/workflows/docker-build.yml` — comment header (the `${{ github.repository }}` path auto-updates)
@@ -2204,9 +2250,11 @@ Goal: the repo was transferred from `github.com/nekoguntai/sanctuary` to `github
 - [x] `docker-compose.ghcr.yml` — 4 fallback values in `${GITHUB_REPOSITORY:-...}`
 
 ### Category C — documentation drift
+
 - [x] `docs/reference/ci-cd-strategy.md` — update merge-queue blocker section (now resolved by move)
 
 ### Local repo hygiene (separate, outside the PR)
+
 - [x] `git remote set-url origin git@github.com:nekoguntai-castle/sanctuary.git`
 
 ## Verification
@@ -4143,7 +4191,7 @@ Goal: optimize GitHub CI/CD so day-to-day commits get fast, relevant feedback wi
 
 ## Current Judgment
 
-We were running the right *kinds* of tests for a wallet/security-sensitive repo, but too much of the expensive validation was attached to direct pushes on `main`.
+We were running the right _kinds_ of tests for a wallet/security-sensitive repo, but too much of the expensive validation was attached to direct pushes on `main`.
 
 The existing `.github/workflows/test.yml` already had the right idea structurally: PRs use a changed-files quick lane, while non-PR events use a full lane. The original problem was workflow practice, not only workflow YAML: earlier history showed commits landing directly on `main`, so every source-touching commit paid the full post-merge cost immediately.
 
@@ -6626,6 +6674,7 @@ Historical follow-up status:
 # HttpOnly cookie auth + refresh flow migration — implementation plan
 
 ADRs:
+
 - `docs/adr/0001-browser-auth-token-storage.md` — Accepted 2026-04-12
 - `docs/adr/0002-frontend-refresh-flow.md` — Accepted 2026-04-12
 
@@ -6653,7 +6702,7 @@ Goal: the refresh-flow design is reviewed, accepted, and ready to merge into Pha
 
 ## Phase 1 — Backend foundation (PR 1) — COMPLETE 2026-04-13
 
-Goal: the backend can verify either a cookie+CSRF or an `Authorization: Bearer` header on every protected route, but no route is yet *issuing* cookies. This phase ships behind no flag and changes no behavior; it just teaches the auth middleware to recognize cookies.
+Goal: the backend can verify either a cookie+CSRF or an `Authorization: Bearer` header on every protected route, but no route is yet _issuing_ cookies. This phase ships behind no flag and changes no behavior; it just teaches the auth middleware to recognize cookies.
 
 - [x] Add `cookie-parser` to `server/package.json` and wire it into `server/src/index.ts` before the auth middleware runs.
 - [x] Add `csrf-csrf` to `server/package.json`. Capture the version pin in the PR description.
@@ -6665,7 +6714,7 @@ Goal: the backend can verify either a cookie+CSRF or an `Authorization: Bearer` 
   - [x] `server/tests/unit/middleware/csrf.test.ts` (new) — POST without token rejected, with wrong token rejected, with correct token accepted, GET exempt.
   - [x] No regression in `server/tests/unit/middleware/gatewayAuth.test.ts`.
 
-**Exit criteria:** `cd server && npm run build`, `cd server && npx vitest run tests/unit/middleware/`, and the existing auth integration suite all pass. No frontend changes yet. No client breaks because no route is *issuing* cookies yet.
+**Exit criteria:** `cd server && npm run build`, `cd server && npx vitest run tests/unit/middleware/`, and the existing auth integration suite all pass. No frontend changes yet. No client breaks because no route is _issuing_ cookies yet.
 
 ## Phase 2 — Backend response cookies + expiry header (PR 2) — COMPLETE 2026-04-13
 
@@ -6795,6 +6844,7 @@ This is the biggest phase. It implements both ADR 0001 (cookies replace storage)
 - [x] Frontend strict typecheck and 100% coverage gate must stay green, including the freshness short-circuit branch and the lock-held-by-another-tab branch.
 
 **Exit criteria:** `npm run typecheck:app`, `npm run typecheck:tests`, `npm run test:coverage` all pass with 100% coverage. `./start.sh --rebuild` and a manual login + 2FA + WebSocket-bearing page works end-to-end in a browser. Verify in browser devtools that:
+
 - The access cookie is HttpOnly (script cannot read it via `document.cookie`).
 - The CSRF cookie is readable and is echoed in the `X-CSRF-Token` header on POSTs.
 - A scheduled refresh fires before the access token expires.
@@ -6817,7 +6867,7 @@ Goal: the new model is captured in operations and release docs so the next opera
   - [x] Ninth Phase 4 slice section records the ADR 0001/0002 implementation and the undocumented refresh-flow gap closure.
 - [x] `docs/adr/0001-browser-auth-token-storage.md` — Resolution section added with full commit history, Codex-caught bug list, and Security grade movement.
 - [x] `docs/adr/0002-frontend-refresh-flow.md` — Resolution section added with implementation summary, test coverage list, Codex-caught bugs specific to the refresh flow, and answers to all 5 "open questions."
-- [x] OpenAPI: `cookieAuth` and `csrfToken` security schemes are now **referenced** from every browser-mounted protected route (not just declared in `components.securitySchemes`). Added `server/src/api/openapi/security.ts` exporting `browserOrBearerAuth = [{ bearerAuth: [] }, { cookieAuth: [], csrfToken: [] }]` and `internalBearerAuth = [{ bearerAuth: [] }]`; every path file (auth, admin, ai, bitcoin, devices, drafts, intelligence, labels, mobilePermissions, payjoin, push, transactions, transfers, walletExport, walletHelpers, walletImport, walletPolicies, walletSettings, walletSharing, wallets) imports the shared constant; `internal.ts` continues to use bearer-only because the `/internal/ai/*` routes are proxied by the AI container, not reachable from browsers. Test assertions in `server/tests/unit/api/openapi.test.ts` updated to `browserOrBearerAuthSecurity` for browser routes and `bearerOnlyAuthSecurity` for internal routes. Caught by Codex stop-time review of Phase 5 — the original carry-over only verified the schemes were *declared*, not *referenced*.
+- [x] OpenAPI: `cookieAuth` and `csrfToken` security schemes are now **referenced** from every browser-mounted protected route (not just declared in `components.securitySchemes`). Added `server/src/api/openapi/security.ts` exporting `browserOrBearerAuth = [{ bearerAuth: [] }, { cookieAuth: [], csrfToken: [] }]` and `internalBearerAuth = [{ bearerAuth: [] }]`; every path file (auth, admin, ai, bitcoin, devices, drafts, intelligence, labels, mobilePermissions, payjoin, push, transactions, transfers, walletExport, walletHelpers, walletImport, walletPolicies, walletSettings, walletSharing, wallets) imports the shared constant; `internal.ts` continues to use bearer-only because the `/internal/ai/*` routes are proxied by the AI container, not reachable from browsers. Test assertions in `server/tests/unit/api/openapi.test.ts` updated to `browserOrBearerAuthSecurity` for browser routes and `bearerOnlyAuthSecurity` for internal routes. Caught by Codex stop-time review of Phase 5 — the original carry-over only verified the schemes were _declared_, not _referenced_.
 
 **Exit criteria:** ✓ docs reviewed, both ADR resolution sections filled in, codebase health assessment grade movement recorded.
 
@@ -6835,6 +6885,7 @@ Goal: remove the rollback safety net once we are confident the cookie + refresh 
 - [x] Refactor integration tests in `server/tests/integration/flows/auth.integration.test.ts`, `admin.integration.test.ts`, and `security.integration.test.ts` to read tokens from the `sanctuary_access` / `sanctuary_refresh` Set-Cookie headers instead of the response body. Added `extractAuthTokens(response)` helper in `server/tests/integration/setup/helpers.ts`.
 
 **Exit criteria achieved:**
+
 - ✓ Backend builds and typechecks cleanly.
 - ✓ Backend unit + integration test suites pass (8749 unit + 503 integration-skip-when-no-db).
 - ✓ Frontend coverage gate stays at 100% (5475 tests).
@@ -6847,7 +6898,7 @@ Goal: remove the rollback safety net once we are confident the cookie + refresh 
 
 - Run the full local test suite + typechecks before pushing each phase. CLAUDE.md is explicit: "Do not rely on CI to catch test failures or type errors."
 - Pre-commit hooks run AI agents whose feedback must be reviewed (CLAUDE.md "Run `git commit` in foreground"). Each phase commits in foreground.
-- Per CLAUDE.md "When fixing CI failures... batch all related fixes together." If a phase touches a pattern (e.g., removing `apiClient.setToken`), grep the full repo for the pattern *before* committing so we do not ship one file at a time.
+- Per CLAUDE.md "When fixing CI failures... batch all related fixes together." If a phase touches a pattern (e.g., removing `apiClient.setToken`), grep the full repo for the pattern _before_ committing so we do not ship one file at a time.
 - The mobile gateway path (`gateway/`, `shared/utils/gatewayAuth.ts`) must remain untouched in functionality. Every phase should run `cd gateway && npm run build` and the gateway request-validation/proxy/HMAC tests as a regression check.
 - The 100% frontend coverage gate is non-negotiable. If a refactor removes coverage, the missing branches must be added back in the same PR.
 - Per the "no cutting corners" working rule: if a step would be easier by deferring a related concern, push back on the deferral first. The right question is "is the long-term solution healthier?" not "is this slice smaller?"

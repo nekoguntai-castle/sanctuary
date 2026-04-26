@@ -4,12 +4,13 @@
  * Health check and availability functions for the AI service.
  */
 
-import { createLogger } from '../../utils/logger';
-import { getAIConfig, syncConfigToContainer, getContainerUrl } from './config';
-import { validateResponse } from './validation';
-import type { AIHealthResponse } from './types';
+import { createLogger } from "../../utils/logger";
+import { getAIConfig, syncConfigToContainer, getContainerUrl } from "./config";
+import { buildAIProxyJsonHeaders } from "./proxyClient";
+import { validateResponse } from "./validation";
+import type { AIHealthResponse } from "./types";
 
-const log = createLogger('AI:SVC_HEALTH');
+const log = createLogger("AI:SVC_HEALTH");
 const AI_CONTAINER_URL = getContainerUrl();
 
 /**
@@ -26,12 +27,12 @@ export async function isEnabled(): Promise<boolean> {
 export async function isContainerAvailable(): Promise<boolean> {
   try {
     const response = await fetch(`${AI_CONTAINER_URL}/health`, {
-      method: 'GET',
+      method: "GET",
       signal: AbortSignal.timeout(5000),
     });
     return response.ok;
   } catch (error) {
-    log.debug('AI container health check failed', { error: String(error) });
+    log.debug("AI container health check failed", { error: String(error) });
     return false;
   }
 }
@@ -51,14 +52,14 @@ export async function checkHealth(): Promise<{
   if (!config.enabled) {
     return {
       available: false,
-      error: 'AI is disabled in settings',
+      error: "AI is disabled in settings",
     };
   }
 
   if (!config.endpoint || !config.model) {
     return {
       available: false,
-      error: 'AI endpoint or model not configured',
+      error: "AI endpoint or model not configured",
     };
   }
 
@@ -70,7 +71,7 @@ export async function checkHealth(): Promise<{
       model: config.model,
       endpoint: config.endpoint,
       containerAvailable: false,
-      error: 'AI container is not available',
+      error: "AI container is not available",
     };
   }
 
@@ -79,8 +80,8 @@ export async function checkHealth(): Promise<{
 
   try {
     const response = await fetch(`${AI_CONTAINER_URL}/test`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: buildAIProxyJsonHeaders(),
       signal: AbortSignal.timeout(15000),
     });
 
@@ -90,12 +91,12 @@ export async function checkHealth(): Promise<{
         model: config.model,
         endpoint: config.endpoint,
         containerAvailable: true,
-        error: 'AI container test failed',
+        error: "AI container test failed",
       };
     }
 
     const json = await response.json();
-    const result = validateResponse<AIHealthResponse>(json, ['available']);
+    const result = validateResponse<AIHealthResponse>(json, ["available"]);
 
     if (!result) {
       return {
@@ -103,7 +104,7 @@ export async function checkHealth(): Promise<{
         model: config.model,
         endpoint: config.endpoint,
         containerAvailable: true,
-        error: 'Invalid response from AI container',
+        error: "Invalid response from AI container",
       };
     }
 
@@ -120,7 +121,7 @@ export async function checkHealth(): Promise<{
       model: config.model,
       endpoint: config.endpoint,
       containerAvailable: true,
-      error: 'Failed to test AI connection',
+      error: "Failed to test AI connection",
     };
   }
 }

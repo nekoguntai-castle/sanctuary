@@ -8,31 +8,38 @@
  * SECURITY: Requires AI_CONFIG_SECRET for authentication
  */
 
-import { systemSettingRepository } from '../../repositories';
-import { createLogger } from '../../utils/logger';
-import { getErrorMessage } from '../../utils/errors';
-import { safeJsonParse, safeJsonParseUntyped, SystemSettingSchemas } from '../../utils/safeJson';
-import { createHash } from 'crypto';
-import type { AIConfig, ConfigSyncState } from './types';
+import { systemSettingRepository } from "../../repositories";
+import { createLogger } from "../../utils/logger";
+import { getErrorMessage } from "../../utils/errors";
+import {
+  safeJsonParse,
+  safeJsonParseUntyped,
+  SystemSettingSchemas,
+} from "../../utils/safeJson";
+import { createHash } from "crypto";
+import { decrypt } from "../../utils/encryption";
+import type { AIConfig, ConfigSyncState } from "./types";
 import {
   AI_ACTIVE_PROVIDER_PROFILE_ID_KEY,
   AI_PROVIDER_PROFILES_KEY,
   buildAIProviderProfileState,
-} from './providerProfile';
+} from "./providerProfile";
+import {
+  AI_PROVIDER_CREDENTIALS_KEY,
+  parseAIProviderCredentials,
+} from "./providerCredentials";
+import { buildAIProxyJsonHeaders } from "./proxyClient";
 
-const log = createLogger('AI:CONFIG');
+const log = createLogger("AI:CONFIG");
 
 // AI container URL
-const AI_CONTAINER_URL = process.env.AI_CONTAINER_URL || 'http://ai:3100';
-
-// AI config secret for authenticating with container
-const AI_CONFIG_SECRET = process.env.AI_CONFIG_SECRET || '';
+const AI_CONTAINER_URL = process.env.AI_CONTAINER_URL || "http://ai:3100";
 
 // Re-sync config periodically to handle container restarts
 const CONFIG_RESYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
 let configSyncState: ConfigSyncState = {
-  lastHash: '',
+  lastHash: "",
   lastSyncTime: 0,
   syncSuccess: false,
 };
@@ -47,8 +54,42 @@ function hashConfig(config: AIConfig): string {
     model: config.model,
     providerProfileId: config.providerProfileId,
     providerType: config.providerType,
+    credentialConfigured: Boolean(config.apiKey),
+    credentialConfiguredAt: config.credentialConfiguredAt ?? "",
   });
-  return createHash('sha256').update(data).digest('hex');
+  return createHash("sha256").update(data).digest("hex");
+}
+
+interface ActiveProviderCredentialSyncState {
+  apiKey?: string;
+  credentialConfiguredAt?: string;
+}
+
+function getActiveProviderCredentialSyncState(
+  credentialsValue: unknown,
+  profileId: string,
+): ActiveProviderCredentialSyncState {
+  const credentials = parseAIProviderCredentials(credentialsValue);
+  const credential = credentials[profileId];
+
+  if (!credential?.encryptedApiKey || credential.disabledReason) {
+    return {};
+  }
+
+  try {
+    return {
+      apiKey: decrypt(credential.encryptedApiKey),
+      credentialConfiguredAt: credential.configuredAt,
+    };
+  } catch (error) {
+    // Fail closed: keep the proxy credential-free when stored encrypted
+    // material cannot be decrypted, and log only metadata.
+    log.warn("Failed to decrypt AI provider credential", {
+      providerProfileId: profileId,
+      error: getErrorMessage(error),
+    });
+    return {};
+  }
 }
 
 /**
@@ -57,35 +98,62 @@ function hashConfig(config: AIConfig): string {
 export async function getAIConfig(): Promise<AIConfig> {
   try {
     const settings = await systemSettingRepository.findByKeys([
-      'aiEnabled',
-      'aiEndpoint',
-      'aiModel',
+      "aiEnabled",
+      "aiEndpoint",
+      "aiModel",
       AI_PROVIDER_PROFILES_KEY,
       AI_ACTIVE_PROVIDER_PROFILE_ID_KEY,
+      AI_PROVIDER_CREDENTIALS_KEY,
     ]);
 
     let enabled = false;
-    let endpoint = '';
-    let model = '';
+    let endpoint = "";
+    let model = "";
     let providerProfiles: unknown;
-    let activeProviderProfileId = '';
+    let activeProviderProfileId = "";
+    let providerCredentials: unknown;
 
     for (const setting of settings) {
       const key = setting.key;
-      if (key === 'aiEnabled') {
-        enabled = safeJsonParse(setting.value, SystemSettingSchemas.boolean, false, 'aiEnabled');
-      } else if (key === 'aiEndpoint') {
-        endpoint = safeJsonParse(setting.value, SystemSettingSchemas.string, '', 'aiEndpoint');
-      } else if (key === 'aiModel') {
-        model = safeJsonParse(setting.value, SystemSettingSchemas.string, '', 'aiModel');
+      if (key === "aiEnabled") {
+        enabled = safeJsonParse(
+          setting.value,
+          SystemSettingSchemas.boolean,
+          false,
+          "aiEnabled",
+        );
+      } else if (key === "aiEndpoint") {
+        endpoint = safeJsonParse(
+          setting.value,
+          SystemSettingSchemas.string,
+          "",
+          "aiEndpoint",
+        );
+      } else if (key === "aiModel") {
+        model = safeJsonParse(
+          setting.value,
+          SystemSettingSchemas.string,
+          "",
+          "aiModel",
+        );
       } else if (key === AI_PROVIDER_PROFILES_KEY) {
-        providerProfiles = safeJsonParseUntyped<unknown>(setting.value, undefined, AI_PROVIDER_PROFILES_KEY);
+        providerProfiles = safeJsonParseUntyped<unknown>(
+          setting.value,
+          undefined,
+          AI_PROVIDER_PROFILES_KEY,
+        );
       } else if (key === AI_ACTIVE_PROVIDER_PROFILE_ID_KEY) {
         activeProviderProfileId = safeJsonParse(
           setting.value,
           SystemSettingSchemas.string,
-          '',
+          "",
           AI_ACTIVE_PROVIDER_PROFILE_ID_KEY,
+        );
+      } else if (key === AI_PROVIDER_CREDENTIALS_KEY) {
+        providerCredentials = safeJsonParseUntyped<unknown>(
+          setting.value,
+          undefined,
+          AI_PROVIDER_CREDENTIALS_KEY,
         );
       }
     }
@@ -97,19 +165,26 @@ export async function getAIConfig(): Promise<AIConfig> {
       activeProviderProfileId,
     });
 
+    const activeCredential = getActiveProviderCredentialSyncState(
+      providerCredentials,
+      providerState.aiActiveProviderProfile.id,
+    );
+
     return {
       enabled,
       endpoint: providerState.aiActiveProviderProfile.endpoint,
       model: providerState.aiActiveProviderProfile.model,
       providerProfileId: providerState.aiActiveProviderProfile.id,
       providerType: providerState.aiActiveProviderProfile.providerType,
+      apiKey: activeCredential.apiKey,
+      credentialConfiguredAt: activeCredential.credentialConfiguredAt,
     };
   } catch (error) {
-    log.error('Failed to get AI config', { error: getErrorMessage(error) });
+    log.error("Failed to get AI config", { error: getErrorMessage(error) });
     return {
       enabled: false,
-      endpoint: '',
-      model: '',
+      endpoint: "",
+      model: "",
     };
   }
 }
@@ -119,32 +194,42 @@ export async function getAIConfig(): Promise<AIConfig> {
  * SECURITY: Only syncs when config actually changes (hash-based detection)
  * SECURITY: Requires AI_CONFIG_SECRET for authentication
  */
-export async function syncConfigToContainer(config: AIConfig, force = false): Promise<boolean> {
+export async function syncConfigToContainer(
+  config: AIConfig,
+  force = false,
+): Promise<boolean> {
   const currentHash = hashConfig(config);
   const timeSinceLastSync = Date.now() - configSyncState.lastSyncTime;
 
   // Skip sync if config hasn't changed, last sync was successful, and within resync interval
   // This ensures we re-sync periodically to handle AI container restarts
-  if (!force && configSyncState.lastHash === currentHash && configSyncState.syncSuccess && timeSinceLastSync < CONFIG_RESYNC_INTERVAL_MS) {
+  if (
+    !force &&
+    configSyncState.lastHash === currentHash &&
+    configSyncState.syncSuccess &&
+    timeSinceLastSync < CONFIG_RESYNC_INTERVAL_MS
+  ) {
     return true;
   }
 
   // Warn if no secret is configured
-  if (!AI_CONFIG_SECRET) {
-    log.warn('AI_CONFIG_SECRET not set - config sync will be rejected by container');
+  if (!process.env.AI_CONFIG_SECRET) {
+    log.warn(
+      "AI_CONFIG_SECRET not set - config sync will be rejected by container",
+    );
   }
 
   try {
     const response = await fetch(`${AI_CONTAINER_URL}/config`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-AI-Config-Secret': AI_CONFIG_SECRET,
-      },
+      method: "POST",
+      headers: buildAIProxyJsonHeaders({ includeConfigSecret: true }),
       body: JSON.stringify({
         enabled: config.enabled,
         endpoint: config.endpoint,
         model: config.model,
+        providerProfileId: config.providerProfileId,
+        providerType: config.providerType,
+        apiKey: config.apiKey ?? "",
       }),
       signal: AbortSignal.timeout(5000),
     });
@@ -159,14 +244,18 @@ export async function syncConfigToContainer(config: AIConfig, force = false): Pr
     };
 
     if (!success) {
-      log.error('Failed to sync config to AI container', { status: response.status });
+      log.error("Failed to sync config to AI container", {
+        status: response.status,
+      });
     } else {
-      log.info('AI config synced to container');
+      log.info("AI config synced to container");
     }
 
     return success;
   } catch (error) {
-    log.error('Failed to sync config to AI container', { error: getErrorMessage(error) });
+    log.error("Failed to sync config to AI container", {
+      error: getErrorMessage(error),
+    });
     configSyncState.syncSuccess = false;
     return false;
   }

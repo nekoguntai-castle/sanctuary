@@ -36,15 +36,21 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full architecture reference.
 
 ## Security Guarantees
 
-| Component | Can Access | Cannot Access |
-|-----------|-----------|---------------|
-| AI Container | Transaction metadata (amount, date, direction) | Private keys, signing, DB, secrets, addresses, txids |
-| Backend Internal Endpoints | Sanitized tx data for AI | Full transaction objects |
-| External AI Calls | Only from AI container | Never from backend directly |
+| Component                  | Can Access                                     | Cannot Access                                        |
+| -------------------------- | ---------------------------------------------- | ---------------------------------------------------- |
+| AI Container               | Transaction metadata (amount, date, direction) | Private keys, signing, DB, secrets, addresses, txids |
+| Backend Internal Endpoints | Sanitized tx data for AI                       | Full transaction objects                             |
+| External AI Calls          | Only from AI container                         | Never from backend directly                          |
+
+All AI proxy routes except `/health` require the backend shared secret in
+`x-ai-service-secret`. Provider API keys are synced into proxy memory only,
+never returned by `/config`, and sent to OpenAI-compatible providers only as
+`Authorization: Bearer ...`.
 
 ## Data Sanitization
 
 The AI container only receives:
+
 - ✓ Transaction amount (in satoshis)
 - ✓ Transaction direction (send/receive)
 - ✓ Transaction date
@@ -52,6 +58,7 @@ The AI container only receives:
 - ✓ Confirmation count
 
 The AI container NEVER receives:
+
 - ✗ Bitcoin addresses
 - ✗ Transaction IDs (txids)
 - ✗ Private keys or xpubs
@@ -66,22 +73,25 @@ The AI container NEVER receives:
 # docker-compose.yml
 ai:
   networks:
-    - sanctuary-network  # Can reach backend
-    - ai-internal        # internal: true = NO internet
+    - sanctuary-network # Can reach backend
+    - ai-internal # internal: true = NO internet
 ```
 
 The `ai-internal` network has no gateway, so the container cannot reach the internet. Use this with local AI (Ollama, llama.cpp).
 
 ### Cloud AI (Less Secure)
 
-To use cloud AI providers (OpenAI, Anthropic, etc.), remove the ai-internal network:
+To use cloud AI providers (OpenAI-compatible gateways, hosted providers, etc.),
+remove the ai-internal network and explicitly allow the provider endpoint:
 
 ```yaml
 # docker-compose.yml
 ai:
   networks:
-    - sanctuary-network  # Has internet access
+    - sanctuary-network # Has internet access
     # - ai-internal      # REMOVED - allows internet
+  environment:
+    AI_PROXY_ALLOWED_HOSTS: api.openai.com
 ```
 
 **Warning**: With cloud AI, sanitized transaction metadata will be sent to external servers.
@@ -98,7 +108,8 @@ In Sanctuary Admin → AI Settings:
 2. Set AI Endpoint URL:
    - Bundled Ollama: `http://ollama:11434` (when started with `./start.sh --with-ai`)
    - Host Ollama: `http://host.docker.internal:11434`
-   - Cloud: `https://api.openai.com` (requires internet access)
+   - LAN LLM: `http://192.168.1.20:11434`
+   - Cloud: `https://api.openai.com` (requires internet access plus endpoint allowlisting)
 3. Set Model Name: e.g., `llama3.2:3b` or `gpt-4`
 
 ### Running Local AI (Ollama)
@@ -118,24 +129,24 @@ ollama pull llama3.2:3b
 
 ## API Endpoints
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Health check |
-| `/config` | POST | Update AI configuration |
-| `/config` | GET | Get current configuration |
-| `/suggest-label` | POST | Get label suggestion for transaction |
-| `/query` | POST | Execute natural language query |
-| `/test` | POST | Test AI connection |
+| Endpoint         | Method | Description                          |
+| ---------------- | ------ | ------------------------------------ |
+| `/health`        | GET    | Health check                         |
+| `/config`        | POST   | Update AI configuration              |
+| `/config`        | GET    | Get current configuration            |
+| `/suggest-label` | POST   | Get label suggestion for transaction |
+| `/query`         | POST   | Execute natural language query       |
+| `/test`          | POST   | Test AI connection                   |
 
 ## Risk Mitigation
 
-| Risk | Mitigation |
-|------|------------|
-| AI container compromised | No DB access, no keys - worst case: reads tx metadata |
-| Malicious AI response | Responses are suggestions only, user must confirm |
-| AI endpoint data leak | Only sends: amounts, dates, labels - NO addresses/txids |
-| DoS via AI | Rate limiting (10 req/min), timeout (35s), backend circuit breaker |
-| AI container down | Main app fully functional, AI features show "unavailable" |
+| Risk                     | Mitigation                                                         |
+| ------------------------ | ------------------------------------------------------------------ |
+| AI container compromised | No DB access, no keys - worst case: reads tx metadata              |
+| Malicious AI response    | Responses are suggestions only, user must confirm                  |
+| AI endpoint data leak    | Only sends: amounts, dates, labels - NO addresses/txids            |
+| DoS via AI               | Rate limiting (10 req/min), timeout (35s), backend circuit breaker |
+| AI container down        | Main app fully functional, AI features show "unavailable"          |
 
 ## Troubleshooting
 
@@ -166,8 +177,12 @@ docker exec sanctuary-ai wget -qO- --timeout=5 https://google.com
 
 ## Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT` | `3100` | AI container port |
-| `BACKEND_URL` | `http://backend:3001` | Backend URL for sanitized data |
-| `NODE_ENV` | `production` | Environment mode |
+| Variable                      | Default               | Description                                                                    |
+| ----------------------------- | --------------------- | ------------------------------------------------------------------------------ |
+| `PORT`                        | `3100`                | AI container port                                                              |
+| `BACKEND_URL`                 | `http://backend:3001` | Backend URL for sanitized data                                                 |
+| `AI_CONFIG_SECRET`            | random at startup     | Backend-to-proxy shared secret for non-health routes                           |
+| `AI_PROXY_ALLOWED_HOSTS`      | empty                 | Comma-separated public/cloud provider host allowlist; supports `*.example.com` |
+| `AI_PROXY_ALLOWED_CIDRS`      | empty                 | Comma-separated IPv4 CIDRs for explicit provider endpoint allowlisting         |
+| `AI_PROXY_ALLOW_PUBLIC_HTTPS` | `false`               | Allow any public HTTPS provider endpoint                                       |
+| `NODE_ENV`                    | `production`          | Environment mode                                                               |

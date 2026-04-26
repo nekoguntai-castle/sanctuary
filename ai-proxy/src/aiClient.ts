@@ -1,16 +1,25 @@
-import { AI_REQUEST_TIMEOUT_MS } from './constants';
-import { createLogger } from './logger';
-import {
-  extractErrorMessage,
-  normalizeOllamaChatUrl,
-} from './utils';
+import { AI_REQUEST_TIMEOUT_MS } from "./constants";
+import { createLogger } from "./logger";
+import { extractErrorMessage, normalizeOllamaChatUrl } from "./utils";
+import { requireAllowedProviderEndpoint } from "./endpointPolicy";
 
-const log = createLogger('AI');
+const log = createLogger("AI");
 
 export interface AiConfig {
   enabled: boolean;
   endpoint: string;
   model: string;
+  providerProfileId?: string;
+  providerType?: string;
+  apiKey?: string;
+}
+
+function buildProviderHeaders(aiConfig: AiConfig): Record<string, string> {
+  // Ollama usually needs no auth; hosted OpenAI-compatible providers use bearer.
+  return {
+    "Content-Type": "application/json",
+    ...(aiConfig.apiKey ? { Authorization: `Bearer ${aiConfig.apiKey}` } : {}),
+  };
 }
 
 /**
@@ -26,19 +35,23 @@ export async function callExternalAI(
   }
 
   try {
+    requireAllowedProviderEndpoint(aiConfig.endpoint);
     const endpoint = normalizeOllamaChatUrl(aiConfig.endpoint);
 
-    log.info('Calling external AI', { endpoint });
+    log.info("Calling external AI", {
+      providerType: aiConfig.providerType ?? "unknown",
+      credentialConfigured: Boolean(aiConfig.apiKey),
+    });
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
     const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: buildProviderHeaders(aiConfig),
       body: JSON.stringify({
         model: aiConfig.model,
-        messages: [{ role: 'user', content: prompt }],
+        messages: [{ role: "user", content: prompt }],
         temperature: 0.7,
         max_tokens: 500,
       }),
@@ -48,22 +61,24 @@ export async function callExternalAI(
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      log.error('External AI error', { status: response.status });
+      log.error("External AI error", { status: response.status });
       return null;
     }
 
-    const data = await response.json() as { choices?: Array<{ message: { content: string } }> };
+    const data = (await response.json()) as {
+      choices?: Array<{ message: { content: string } }>;
+    };
     if (!data.choices || data.choices.length === 0) {
-      log.error('No choices in response');
+      log.error("No choices in response");
       return null;
     }
 
     return data.choices[0].message.content.trim();
   } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      log.error('Request timeout');
+    if (error instanceof Error && error.name === "AbortError") {
+      log.error("Request timeout");
     } else {
-      log.error('Request failed', { error: extractErrorMessage(error) });
+      log.error("Request failed", { error: extractErrorMessage(error) });
     }
     return null;
   }
@@ -82,15 +97,19 @@ export async function callExternalAIWithMessages(
   }
 
   try {
+    requireAllowedProviderEndpoint(aiConfig.endpoint);
     const endpoint = normalizeOllamaChatUrl(aiConfig.endpoint);
-    log.info('Calling external AI (multi-message)', { endpoint });
+    log.info("Calling external AI (multi-message)", {
+      providerType: aiConfig.providerType ?? "unknown",
+      credentialConfigured: Boolean(aiConfig.apiKey),
+    });
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
     const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: buildProviderHeaders(aiConfig),
       body: JSON.stringify({
         model: aiConfig.model,
         messages,
@@ -103,22 +122,24 @@ export async function callExternalAIWithMessages(
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      log.error('External AI error', { status: response.status });
+      log.error("External AI error", { status: response.status });
       return null;
     }
 
-    const data = await response.json() as { choices?: Array<{ message: { content: string } }> };
+    const data = (await response.json()) as {
+      choices?: Array<{ message: { content: string } }>;
+    };
     if (!data.choices || data.choices.length === 0) {
-      log.error('No choices in response');
+      log.error("No choices in response");
       return null;
     }
 
     return data.choices[0].message.content.trim();
   } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      log.error('Request timeout');
+    if (error instanceof Error && error.name === "AbortError") {
+      log.error("Request timeout");
     } else {
-      log.error('Request failed', { error: extractErrorMessage(error) });
+      log.error("Request failed", { error: extractErrorMessage(error) });
     }
     return null;
   }
@@ -127,7 +148,9 @@ export async function callExternalAIWithMessages(
 /**
  * Parse structured JSON from AI response, including markdown code blocks.
  */
-export function parseStructuredResponse(raw: string): Record<string, unknown> | null {
+export function parseStructuredResponse(
+  raw: string,
+): Record<string, unknown> | null {
   try {
     let jsonStr = raw;
     const codeBlockMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -138,10 +161,10 @@ export function parseStructuredResponse(raw: string): Record<string, unknown> | 
     if (!jsonMatch) return null;
 
     const cleanJson = jsonMatch[0]
-      .replace(/\/\/[^\n]*/g, '')
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/,(\s*[}\]])/g, '$1')
-      .replace(/\n\s*\n/g, '\n');
+      .replace(/\/\/[^\n]*/g, "")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/,(\s*[}\]])/g, "$1")
+      .replace(/\n\s*\n/g, "\n");
 
     return JSON.parse(cleanJson);
   } catch {

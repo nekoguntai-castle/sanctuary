@@ -9,7 +9,7 @@
  */
 export interface TransactionContext {
   amount: number;
-  direction: 'send' | 'receive';
+  direction: "send" | "receive";
   address?: string;
   date: Date;
   existingLabels?: string[];
@@ -18,9 +18,19 @@ export interface TransactionContext {
 /**
  * Natural language query result
  */
-export const AI_QUERY_RESULT_TYPES = ['transactions', 'addresses', 'utxos', 'summary'] as const;
-export const AI_QUERY_SORT_ORDERS = ['asc', 'desc'] as const;
-export const AI_QUERY_AGGREGATION_VALUES = ['sum', 'count', 'max', 'min'] as const;
+export const AI_QUERY_RESULT_TYPES = [
+  "transactions",
+  "addresses",
+  "utxos",
+  "summary",
+] as const;
+export const AI_QUERY_SORT_ORDERS = ["asc", "desc"] as const;
+export const AI_QUERY_AGGREGATION_VALUES = [
+  "sum",
+  "count",
+  "max",
+  "min",
+] as const;
 
 export interface QueryResult {
   type: (typeof AI_QUERY_RESULT_TYPES)[number];
@@ -42,6 +52,8 @@ export interface AIConfig {
   model: string;
   providerProfileId?: string;
   providerType?: string;
+  apiKey?: string;
+  credentialConfiguredAt?: string;
 }
 
 /**

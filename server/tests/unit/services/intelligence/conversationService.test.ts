@@ -4,7 +4,7 @@
  * Tests for interactive AI chat conversation management.
  */
 
-import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
 const {
   mockGetAIConfig,
@@ -15,7 +15,7 @@ const {
 } = vi.hoisted(() => ({
   mockGetAIConfig: vi.fn(),
   mockSyncConfigToContainer: vi.fn(),
-  mockGetContainerUrl: vi.fn(() => 'http://ai:3100'),
+  mockGetContainerUrl: vi.fn(() => "http://ai:3100"),
   mockRepo: {
     createConversation: vi.fn(),
     findConversationById: vi.fn(),
@@ -33,21 +33,21 @@ const {
   },
 }));
 
-vi.mock('../../../../src/services/ai/config', () => ({
+vi.mock("../../../../src/services/ai/config", () => ({
   getAIConfig: mockGetAIConfig,
   syncConfigToContainer: mockSyncConfigToContainer,
   getContainerUrl: mockGetContainerUrl,
 }));
 
-vi.mock('../../../../src/repositories/intelligenceRepository', () => ({
+vi.mock("../../../../src/repositories/intelligenceRepository", () => ({
   intelligenceRepository: mockRepo,
 }));
 
-vi.mock('../../../../src/utils/logger', () => ({
+vi.mock("../../../../src/utils/logger", () => ({
   createLogger: () => mockLogger,
 }));
 
-vi.mock('../../../../src/utils/errors', () => ({
+vi.mock("../../../../src/utils/errors", () => ({
   getErrorMessage: (e: unknown) => (e instanceof Error ? e.message : String(e)),
 }));
 
@@ -61,34 +61,34 @@ import {
   getMessages,
   sendMessage,
   deleteConversation,
-} from '../../../../src/services/intelligence/conversationService';
+} from "../../../../src/services/intelligence/conversationService";
 
-describe('Conversation Service', () => {
+describe("Conversation Service", () => {
   const now = new Date();
 
   const mockConversation = {
-    id: 'conv-1',
-    userId: 'user-1',
-    walletId: 'wallet-1',
+    id: "conv-1",
+    userId: "user-1",
+    walletId: "wallet-1",
     title: null,
     createdAt: now,
     updatedAt: now,
   };
 
   const mockUserMessage = {
-    id: 'msg-1',
-    conversationId: 'conv-1',
-    role: 'user',
-    content: 'What is my UTXO health?',
+    id: "msg-1",
+    conversationId: "conv-1",
+    role: "user",
+    content: "What is my UTXO health?",
     metadata: null,
     createdAt: now,
   };
 
   const mockAssistantMessage = {
-    id: 'msg-2',
-    conversationId: 'conv-1',
-    role: 'assistant',
-    content: 'Your UTXO health looks good.',
+    id: "msg-2",
+    conversationId: "conv-1",
+    role: "assistant",
+    content: "Your UTXO health looks good.",
     metadata: null,
     createdAt: now,
   };
@@ -101,28 +101,28 @@ describe('Conversation Service', () => {
   // createConversation
   // ========================================
 
-  describe('createConversation', () => {
-    it('should create a conversation with userId and walletId', async () => {
+  describe("createConversation", () => {
+    it("should create a conversation with userId and walletId", async () => {
       (mockRepo.createConversation as Mock).mockResolvedValue(mockConversation);
 
-      const result = await createConversation('user-1', 'wallet-1');
+      const result = await createConversation("user-1", "wallet-1");
 
       expect(result).toEqual(mockConversation);
       expect(mockRepo.createConversation).toHaveBeenCalledWith({
-        userId: 'user-1',
-        walletId: 'wallet-1',
+        userId: "user-1",
+        walletId: "wallet-1",
       });
     });
 
-    it('should create a conversation without walletId', async () => {
+    it("should create a conversation without walletId", async () => {
       const conv = { ...mockConversation, walletId: null };
       (mockRepo.createConversation as Mock).mockResolvedValue(conv);
 
-      const result = await createConversation('user-1');
+      const result = await createConversation("user-1");
 
       expect(result).toEqual(conv);
       expect(mockRepo.createConversation).toHaveBeenCalledWith({
-        userId: 'user-1',
+        userId: "user-1",
         walletId: null,
       });
     });
@@ -132,22 +132,32 @@ describe('Conversation Service', () => {
   // getConversations
   // ========================================
 
-  describe('getConversations', () => {
-    it('should return conversations for user with defaults', async () => {
-      (mockRepo.findConversationsByUser as Mock).mockResolvedValue([mockConversation]);
+  describe("getConversations", () => {
+    it("should return conversations for user with defaults", async () => {
+      (mockRepo.findConversationsByUser as Mock).mockResolvedValue([
+        mockConversation,
+      ]);
 
-      const result = await getConversations('user-1');
+      const result = await getConversations("user-1");
 
       expect(result).toEqual([mockConversation]);
-      expect(mockRepo.findConversationsByUser).toHaveBeenCalledWith('user-1', 20, 0);
+      expect(mockRepo.findConversationsByUser).toHaveBeenCalledWith(
+        "user-1",
+        20,
+        0,
+      );
     });
 
-    it('should pass custom limit and offset', async () => {
+    it("should pass custom limit and offset", async () => {
       (mockRepo.findConversationsByUser as Mock).mockResolvedValue([]);
 
-      await getConversations('user-1', 5, 10);
+      await getConversations("user-1", 5, 10);
 
-      expect(mockRepo.findConversationsByUser).toHaveBeenCalledWith('user-1', 5, 10);
+      expect(mockRepo.findConversationsByUser).toHaveBeenCalledWith(
+        "user-1",
+        5,
+        10,
+      );
     });
   });
 
@@ -155,27 +165,31 @@ describe('Conversation Service', () => {
   // getConversation
   // ========================================
 
-  describe('getConversation', () => {
-    it('should return conversation when user owns it', async () => {
-      (mockRepo.findConversationById as Mock).mockResolvedValue(mockConversation);
+  describe("getConversation", () => {
+    it("should return conversation when user owns it", async () => {
+      (mockRepo.findConversationById as Mock).mockResolvedValue(
+        mockConversation,
+      );
 
-      const result = await getConversation('conv-1', 'user-1');
+      const result = await getConversation("conv-1", "user-1");
 
       expect(result).toEqual(mockConversation);
     });
 
-    it('should return null when conversation not found', async () => {
+    it("should return null when conversation not found", async () => {
       (mockRepo.findConversationById as Mock).mockResolvedValue(null);
 
-      const result = await getConversation('nonexistent', 'user-1');
+      const result = await getConversation("nonexistent", "user-1");
 
       expect(result).toBeNull();
     });
 
-    it('should return null when user does not own conversation', async () => {
-      (mockRepo.findConversationById as Mock).mockResolvedValue(mockConversation);
+    it("should return null when user does not own conversation", async () => {
+      (mockRepo.findConversationById as Mock).mockResolvedValue(
+        mockConversation,
+      );
 
-      const result = await getConversation('conv-1', 'other-user');
+      const result = await getConversation("conv-1", "other-user");
 
       expect(result).toBeNull();
     });
@@ -185,22 +199,25 @@ describe('Conversation Service', () => {
   // getMessages
   // ========================================
 
-  describe('getMessages', () => {
-    it('should return messages with default limit', async () => {
-      (mockRepo.getMessages as Mock).mockResolvedValue([mockUserMessage, mockAssistantMessage]);
+  describe("getMessages", () => {
+    it("should return messages with default limit", async () => {
+      (mockRepo.getMessages as Mock).mockResolvedValue([
+        mockUserMessage,
+        mockAssistantMessage,
+      ]);
 
-      const result = await getMessages('conv-1');
+      const result = await getMessages("conv-1");
 
       expect(result).toEqual([mockUserMessage, mockAssistantMessage]);
-      expect(mockRepo.getMessages).toHaveBeenCalledWith('conv-1', 100);
+      expect(mockRepo.getMessages).toHaveBeenCalledWith("conv-1", 100);
     });
 
-    it('should accept custom limit', async () => {
+    it("should accept custom limit", async () => {
       (mockRepo.getMessages as Mock).mockResolvedValue([]);
 
-      await getMessages('conv-1', 10);
+      await getMessages("conv-1", 10);
 
-      expect(mockRepo.getMessages).toHaveBeenCalledWith('conv-1', 10);
+      expect(mockRepo.getMessages).toHaveBeenCalledWith("conv-1", 10);
     });
   });
 
@@ -208,10 +225,12 @@ describe('Conversation Service', () => {
   // sendMessage
   // ========================================
 
-  describe('sendMessage', () => {
-    it('should send message and get AI response on happy path', async () => {
+  describe("sendMessage", () => {
+    it("should send message and get AI response on happy path", async () => {
       // Ownership check
-      (mockRepo.findConversationById as Mock).mockResolvedValue(mockConversation);
+      (mockRepo.findConversationById as Mock).mockResolvedValue(
+        mockConversation,
+      );
 
       // Save user message
       (mockRepo.addMessage as Mock)
@@ -224,44 +243,54 @@ describe('Conversation Service', () => {
       // AI config
       (mockGetAIConfig as Mock).mockResolvedValue({
         enabled: true,
-        endpoint: 'http://ollama:11434',
-        model: 'llama3',
+        endpoint: "http://ollama:11434",
+        model: "llama3",
       });
       (mockSyncConfigToContainer as Mock).mockResolvedValue(undefined);
 
       // AI response
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ response: 'Your UTXO health looks good.' }),
+        json: async () => ({ response: "Your UTXO health looks good." }),
       });
 
       // Title update (first message, no title)
       (mockRepo.updateConversationTitle as Mock).mockResolvedValue({
         ...mockConversation,
-        title: 'What is my UTXO health?',
+        title: "What is my UTXO health?",
       });
 
-      const result = await sendMessage('conv-1', 'user-1', 'What is my UTXO health?');
+      const result = await sendMessage(
+        "conv-1",
+        "user-1",
+        "What is my UTXO health?",
+      );
 
       expect(result.userMessage).toEqual(mockUserMessage);
       expect(result.assistantMessage).toEqual(mockAssistantMessage);
       expect(mockRepo.addMessage).toHaveBeenCalledTimes(2);
       expect(mockFetch).toHaveBeenCalledWith(
-        'http://ai:3100/chat',
+        "http://ai:3100/chat",
         expect.objectContaining({
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-        })
+          method: "POST",
+          headers: expect.objectContaining({
+            "Content-Type": "application/json",
+            "X-AI-Service-Secret": "",
+          }),
+        }),
       );
     });
 
-    it('should return error message when AI is not configured', async () => {
-      (mockRepo.findConversationById as Mock).mockResolvedValue(mockConversation);
+    it("should return error message when AI is not configured", async () => {
+      (mockRepo.findConversationById as Mock).mockResolvedValue(
+        mockConversation,
+      );
       (mockRepo.addMessage as Mock)
         .mockResolvedValueOnce(mockUserMessage) // user message
         .mockResolvedValueOnce({
           ...mockAssistantMessage,
-          content: 'AI is not currently configured. Please set up an Ollama endpoint in the AI settings.',
+          content:
+            "AI is not currently configured. Please set up an Ollama endpoint in the AI settings.",
         }); // error message
 
       (mockRepo.getMessages as Mock).mockResolvedValue([mockUserMessage]);
@@ -272,44 +301,50 @@ describe('Conversation Service', () => {
         model: null,
       });
 
-      const result = await sendMessage('conv-1', 'user-1', 'Hello');
+      const result = await sendMessage("conv-1", "user-1", "Hello");
 
       expect(result.userMessage).toEqual(mockUserMessage);
-      expect(result.assistantMessage.content).toContain('AI is not currently configured');
+      expect(result.assistantMessage.content).toContain(
+        "AI is not currently configured",
+      );
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
-    it('should throw when conversation not found', async () => {
+    it("should throw when conversation not found", async () => {
       (mockRepo.findConversationById as Mock).mockResolvedValue(null);
 
-      await expect(sendMessage('nonexistent', 'user-1', 'Hello')).rejects.toThrow(
-        'Conversation not found'
-      );
+      await expect(
+        sendMessage("nonexistent", "user-1", "Hello"),
+      ).rejects.toThrow("Conversation not found");
     });
 
-    it('should throw when user does not own conversation', async () => {
-      (mockRepo.findConversationById as Mock).mockResolvedValue(mockConversation);
-
-      await expect(sendMessage('conv-1', 'other-user', 'Hello')).rejects.toThrow(
-        'Conversation not found'
+    it("should throw when user does not own conversation", async () => {
+      (mockRepo.findConversationById as Mock).mockResolvedValue(
+        mockConversation,
       );
+
+      await expect(
+        sendMessage("conv-1", "other-user", "Hello"),
+      ).rejects.toThrow("Conversation not found");
     });
 
-    it('should return error message when AI chat request fails', async () => {
-      (mockRepo.findConversationById as Mock).mockResolvedValue(mockConversation);
+    it("should return error message when AI chat request fails", async () => {
+      (mockRepo.findConversationById as Mock).mockResolvedValue(
+        mockConversation,
+      );
       (mockRepo.addMessage as Mock)
         .mockResolvedValueOnce(mockUserMessage) // user message
         .mockResolvedValueOnce({
           ...mockAssistantMessage,
-          content: 'I was unable to process your request. Please try again.',
+          content: "I was unable to process your request. Please try again.",
         }); // error message
 
       (mockRepo.getMessages as Mock).mockResolvedValue([mockUserMessage]);
 
       (mockGetAIConfig as Mock).mockResolvedValue({
         enabled: true,
-        endpoint: 'http://ollama:11434',
-        model: 'llama3',
+        endpoint: "http://ollama:11434",
+        model: "llama3",
       });
       (mockSyncConfigToContainer as Mock).mockResolvedValue(undefined);
 
@@ -318,37 +353,40 @@ describe('Conversation Service', () => {
         status: 500,
       });
 
-      const result = await sendMessage('conv-1', 'user-1', 'Hello');
+      const result = await sendMessage("conv-1", "user-1", "Hello");
 
-      expect(result.assistantMessage.content).toContain('unable to process');
+      expect(result.assistantMessage.content).toContain("unable to process");
     });
 
-    it('should return error message when fetch throws', async () => {
-      (mockRepo.findConversationById as Mock).mockResolvedValue(mockConversation);
+    it("should return error message when fetch throws", async () => {
+      (mockRepo.findConversationById as Mock).mockResolvedValue(
+        mockConversation,
+      );
       (mockRepo.addMessage as Mock)
         .mockResolvedValueOnce(mockUserMessage) // user message
         .mockResolvedValueOnce({
           ...mockAssistantMessage,
-          content: 'An error occurred while communicating with the AI. Please try again.',
+          content:
+            "An error occurred while communicating with the AI. Please try again.",
         }); // error message
 
       (mockRepo.getMessages as Mock).mockResolvedValue([mockUserMessage]);
 
       (mockGetAIConfig as Mock).mockResolvedValue({
         enabled: true,
-        endpoint: 'http://ollama:11434',
-        model: 'llama3',
+        endpoint: "http://ollama:11434",
+        model: "llama3",
       });
       (mockSyncConfigToContainer as Mock).mockResolvedValue(undefined);
 
-      mockFetch.mockRejectedValueOnce(new Error('Connection refused'));
+      mockFetch.mockRejectedValueOnce(new Error("Connection refused"));
 
-      const result = await sendMessage('conv-1', 'user-1', 'Hello');
+      const result = await sendMessage("conv-1", "user-1", "Hello");
 
-      expect(result.assistantMessage.content).toContain('error occurred');
+      expect(result.assistantMessage.content).toContain("error occurred");
     });
 
-    it('should auto-generate title from first message content', async () => {
+    it("should auto-generate title from first message content", async () => {
       const convNoTitle = { ...mockConversation, title: null };
       (mockRepo.findConversationById as Mock).mockResolvedValue(convNoTitle);
       (mockRepo.addMessage as Mock)
@@ -360,31 +398,31 @@ describe('Conversation Service', () => {
 
       (mockGetAIConfig as Mock).mockResolvedValue({
         enabled: true,
-        endpoint: 'http://ollama:11434',
-        model: 'llama3',
+        endpoint: "http://ollama:11434",
+        model: "llama3",
       });
       (mockSyncConfigToContainer as Mock).mockResolvedValue(undefined);
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ response: 'Answer' }),
+        json: async () => ({ response: "Answer" }),
       });
 
       (mockRepo.updateConversationTitle as Mock).mockResolvedValue(convNoTitle);
 
-      await sendMessage('conv-1', 'user-1', 'What is my UTXO health?');
+      await sendMessage("conv-1", "user-1", "What is my UTXO health?");
 
       expect(mockRepo.updateConversationTitle).toHaveBeenCalledWith(
-        'conv-1',
-        'What is my UTXO health?'
+        "conv-1",
+        "What is my UTXO health?",
       );
     });
 
-    it('should truncate long titles to 60 characters', async () => {
+    it("should truncate long titles to 60 characters", async () => {
       const convNoTitle = { ...mockConversation, title: null };
       (mockRepo.findConversationById as Mock).mockResolvedValue(convNoTitle);
 
-      const longContent = 'A'.repeat(100);
+      const longContent = "A".repeat(100);
       const userMsg = { ...mockUserMessage, content: longContent };
       (mockRepo.addMessage as Mock)
         .mockResolvedValueOnce(userMsg)
@@ -394,23 +432,23 @@ describe('Conversation Service', () => {
 
       (mockGetAIConfig as Mock).mockResolvedValue({
         enabled: true,
-        endpoint: 'http://ollama:11434',
-        model: 'llama3',
+        endpoint: "http://ollama:11434",
+        model: "llama3",
       });
       (mockSyncConfigToContainer as Mock).mockResolvedValue(undefined);
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ response: 'Answer' }),
+        json: async () => ({ response: "Answer" }),
       });
 
       (mockRepo.updateConversationTitle as Mock).mockResolvedValue(convNoTitle);
 
-      await sendMessage('conv-1', 'user-1', longContent);
+      await sendMessage("conv-1", "user-1", longContent);
 
       expect(mockRepo.updateConversationTitle).toHaveBeenCalledWith(
-        'conv-1',
-        'A'.repeat(57) + '...'
+        "conv-1",
+        "A".repeat(57) + "...",
       );
     });
   });
@@ -419,30 +457,34 @@ describe('Conversation Service', () => {
   // deleteConversation
   // ========================================
 
-  describe('deleteConversation', () => {
-    it('should delete conversation when user owns it', async () => {
-      (mockRepo.findConversationById as Mock).mockResolvedValue(mockConversation);
+  describe("deleteConversation", () => {
+    it("should delete conversation when user owns it", async () => {
+      (mockRepo.findConversationById as Mock).mockResolvedValue(
+        mockConversation,
+      );
       (mockRepo.deleteConversation as Mock).mockResolvedValue(undefined);
 
-      const result = await deleteConversation('conv-1', 'user-1');
+      const result = await deleteConversation("conv-1", "user-1");
 
       expect(result).toBe(true);
-      expect(mockRepo.deleteConversation).toHaveBeenCalledWith('conv-1');
+      expect(mockRepo.deleteConversation).toHaveBeenCalledWith("conv-1");
     });
 
-    it('should return false when conversation not found', async () => {
+    it("should return false when conversation not found", async () => {
       (mockRepo.findConversationById as Mock).mockResolvedValue(null);
 
-      const result = await deleteConversation('nonexistent', 'user-1');
+      const result = await deleteConversation("nonexistent", "user-1");
 
       expect(result).toBe(false);
       expect(mockRepo.deleteConversation).not.toHaveBeenCalled();
     });
 
-    it('should return false when user does not own conversation', async () => {
-      (mockRepo.findConversationById as Mock).mockResolvedValue(mockConversation);
+    it("should return false when user does not own conversation", async () => {
+      (mockRepo.findConversationById as Mock).mockResolvedValue(
+        mockConversation,
+      );
 
-      const result = await deleteConversation('conv-1', 'other-user');
+      const result = await deleteConversation("conv-1", "other-user");
 
       expect(result).toBe(false);
       expect(mockRepo.deleteConversation).not.toHaveBeenCalled();
