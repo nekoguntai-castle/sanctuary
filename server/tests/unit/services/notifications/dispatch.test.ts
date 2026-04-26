@@ -51,17 +51,16 @@ const transactionFixture = {
   feeSats: 250n,
 };
 
+// Deliberately leave agent fields unset on the base fixture so the helper's
+// `?? null` / `?? false` branches fire when the test passes the fixture
+// straight through (covers the "agent fields absent" branch — the agent
+// metadata test below covers the "agent fields present" branch).
 const draftFixture = {
   id: 'draft-1',
   amount: 1500n,
   recipient: 'bc1qexample',
   feeRate: 10,
   label: 'rent',
-  agentId: null,
-  agentName: null,
-  agentOperationalWalletId: null,
-  agentSigned: false,
-  dedupeKey: undefined,
 };
 
 describe('dispatchTransactionNotifications', () => {
@@ -113,6 +112,18 @@ describe('dispatchTransactionNotifications', () => {
       feeSats: null,
     }));
   });
+
+  it('logs and swallows when the inline fallback also throws (best-effort delivery)', async () => {
+    mockDispatcher.queueTransactionNotification.mockResolvedValue(false);
+    mockNotificationService.notifyNewTransactions.mockRejectedValueOnce(new Error('inline broke'));
+
+    await expect(dispatchTransactionNotifications('wallet-1', [transactionFixture])).resolves.toBeUndefined();
+
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'Inline transaction notification failed',
+      expect.objectContaining({ error: 'inline broke', walletId: 'wallet-1' }),
+    );
+  });
 });
 
 describe('dispatchDraftNotification', () => {
@@ -143,6 +154,18 @@ describe('dispatchDraftNotification', () => {
       draftFixture,
       'user-1',
       'fallback-label',
+    );
+  });
+
+  it('logs and swallows when the inline draft fallback also throws', async () => {
+    mockDispatcher.queueDraftNotification.mockResolvedValue(false);
+    mockNotificationService.notifyNewDraft.mockRejectedValueOnce(new Error('inline draft broke'));
+
+    await expect(dispatchDraftNotification('wallet-1', draftFixture, 'user-1')).resolves.toBeUndefined();
+
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'Inline draft notification failed',
+      expect.objectContaining({ error: 'inline draft broke', walletId: 'wallet-1', draftId: 'draft-1' }),
     );
   });
 
