@@ -64,6 +64,17 @@ jobs:
       - name: Lint diagram click hrefs
         run: npm run arch:lint
 
+      - name: Warn on diagram drift (changed files referenced by C4 diagrams)
+        if: github.event_name == 'pull_request'
+        # Non-blocking — surfaces a job-summary warning when a PR touches a
+        # file referenced by a hand-authored diagram without also updating
+        # the diagram. Author confirms the diagram is still accurate or
+        # amends it; not every code change to a diagrammed file requires a
+        # diagram update (refactors, bug fixes, test additions).
+        run: |
+          git fetch --no-tags --depth=1 origin "${{ github.event.pull_request.base.ref }}"
+          node scripts/architecture/detect-drift.mjs "origin/${{ github.event.pull_request.base.ref }}"
+
       - name: Regenerate dependency graphs
         run: npm run arch:graphs
 

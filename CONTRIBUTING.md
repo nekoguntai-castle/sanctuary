@@ -155,7 +155,8 @@ npm run docs:build    # production build to website/build
 |---|---|---|
 | `npm run arch:graphs` | Module dependency graphs per package (`docs/architecture/generated/{frontend,server,gateway}.md`) using `dependency-cruiser`. | Module added/moved/deleted without committing the regenerated graph. |
 | `npm run arch:calls` | Function-level call graphs for opt-in subsystems listed in [`docs/architecture/calls.config.json`](docs/architecture/calls.config.json) (`docs/architecture/generated/calls/<name>.md`). Surfaces new entry points to existing pipelines — the bug class that motivated this whole system. | New function/method added or removed inside a tracked subsystem without committing the regenerated call graph. |
-| `npm run arch:lint` | Validates every `click NodeId href "path"` directive in any Mermaid block points at an existing file. | Source file referenced by a click href is renamed or deleted. |
+| `npm run arch:lint` | Validates every `click NodeId href "path"` (and `path#symbol`) directive in any Mermaid block. Hrefs may use `#symbol` to pin to a specific exported function/class/method/const; the symbol is cross-checked against the source file with the TypeScript compiler API. | Source file referenced by a click href is renamed or deleted; or a pinned symbol is renamed/removed. |
+| `node scripts/architecture/detect-drift.mjs` (CI only, warn-only) | Compares the PR's changed files against the file→diagram reference index. If a diagram references a touched file but the diagram itself wasn't modified, emits a `::warning::` and a job-summary entry. | Never — warn-only; reviewer decides if the diagram needs an update. |
 
 To track a new subsystem at function granularity, add an entry to `docs/architecture/calls.config.json`:
 
