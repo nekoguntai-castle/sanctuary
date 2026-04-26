@@ -1,0 +1,27 @@
+{
+  "$schema": "./calls.config.schema.json",
+  "_comment": "Opt-in function-level call graph subsystems. Each entry produces docs/architecture/generated/calls/<name>.md with a Mermaid graph of function calls within the listed files. Add a new entry to track a new subsystem at function granularity.",
+  "subsystems": [
+    {
+      "name": "notifications",
+      "title": "Notification Dispatch",
+      "description": "All paths through which Sanctuary delivers notifications (Telegram, push, AI insights). The Telegram dual-path bug lived here — this graph makes new entry points to either path visible at PR-review time.",
+      "include": [
+        "server/src/infrastructure/notificationDispatcher.ts",
+        "server/src/services/notifications/channels/registry.ts",
+        "server/src/services/notifications/channels/telegram.ts",
+        "server/src/services/notifications/channels/push.ts",
+        "server/src/services/notifications/channels/aiInsights.ts",
+        "server/src/services/notifications/channels/index.ts",
+        "server/src/services/notifications/notificationService.ts",
+        "server/src/services/telegram/notifications.ts",
+        "server/src/services/telegram/api.ts",
+        "server/src/services/telegram/telegramService.ts",
+        "server/src/services/telegram/formatting.ts",
+        "server/src/worker/jobs/notificationJobs.ts",
+        "server/src/worker/jobs/notificationJobHelpers.ts",
+        "server/src/services/autopilot/evaluator.ts"
+      ]
+    }
+  ]
+}
