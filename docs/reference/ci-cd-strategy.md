@@ -255,6 +255,16 @@ bash scripts/ci/browser-e2e-groups.sh --check
 
 Playwright runs also emit per-spec timing files under the existing `test-results/` artifact directory: `playwright-timing.json` for machine-readable history and `playwright-timing.md` for quick review. The quick and full E2E jobs also wrap dependency install, Playwright browser install, frontend build, backend setup/build, and the Playwright command itself with `scripts/ci/time-command.sh`. Use those notices to separate setup cost from spec runtime before changing group membership, browser count, retries, or shared setup.
 
+### CI Timing Review Checkpoint
+
+After 10-20 successful PR or merge-group runs with the E2E timing notices enabled, review the latest `test.yml` trend sample and the slowest completed runs before making another workflow-shape change.
+
+- If dependency install or frontend build dominates E2E wall time, evaluate shared build artifacts, dependency-cache tuning, or moving repeated setup out of the browser matrix.
+- If Playwright browser install dominates, tune browser cache keys, restore behavior, or install scope before changing test grouping.
+- If backend setup, Prisma generation, migrations, or backend build dominates full browser E2E jobs, optimize backend setup reuse before adding more E2E shards.
+- If Playwright runtime dominates after setup is accounted for, rebalance `scripts/ci/browser-e2e-groups.sh` or split the slowest spec group.
+- Do not add another shard, shared artifact job, or cache layer unless the p90 trend shows the target remains a real tail across multiple runs.
+
 When adding any new expensive CI trigger, add or update a classifier test in the same change so the path policy stays executable instead of living only in workflow comments.
 
 Initial targets:
