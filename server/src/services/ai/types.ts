@@ -40,6 +40,8 @@ export interface AIConfig {
   enabled: boolean;
   endpoint: string;
   model: string;
+  providerProfileId?: string;
+  providerType?: string;
 }
 
 /**

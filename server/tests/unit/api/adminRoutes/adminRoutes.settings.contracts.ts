@@ -43,6 +43,37 @@ export function registerAdminRoutesSettingsContracts(): void {
       expect(response.body['smtp.configured']).toBe(false);
       expect(response.body['smtp.password']).toBeUndefined();
     });
+
+    it('should expose a typed default AI provider profile from existing endpoint settings', async () => {
+      mockPrisma.systemSetting.findMany.mockResolvedValue([
+        { key: 'aiEnabled', value: 'true' },
+        { key: 'aiEndpoint', value: '"http://ollama:11434"' },
+        { key: 'aiModel', value: '"llama3.2:3b"' },
+      ]);
+
+      const response = await adminRoutesRequest().get('/api/v1/admin/settings');
+
+      expect(response.status).toBe(200);
+      expect(response.body.aiActiveProviderProfileId).toBe('default-ollama');
+      expect(response.body.aiActiveProviderProfile).toMatchObject({
+        id: 'default-ollama',
+        name: 'Default Ollama',
+        providerType: 'ollama',
+        endpoint: 'http://ollama:11434',
+        model: 'llama3.2:3b',
+      });
+      expect(response.body.aiProviderProfiles).toHaveLength(1);
+      expect(response.body.aiEndpoint).toBe('http://ollama:11434');
+      expect(response.body.aiModel).toBe('llama3.2:3b');
+    });
+
+    it('should document derived AI provider profile as response-only', async () => {
+      const settingsSchema = openApiSpec.components.schemas.AdminSettings.properties;
+      const updateSchema = openApiSpec.components.schemas.AdminSettingsUpdateRequest.properties;
+
+      expect(settingsSchema).toHaveProperty('aiActiveProviderProfile');
+      expect(updateSchema).not.toHaveProperty('aiActiveProviderProfile');
+    });
   });
 
   describe('PUT /api/v1/admin/settings', () => {
@@ -186,6 +217,79 @@ export function registerAdminRoutesSettingsContracts(): void {
           create: { key: 'smtp.password', value: JSON.stringify('enc:already-secret') },
         })
       );
+    });
+
+    it('should mirror endpoint updates into the active typed AI provider profile', async () => {
+      mockPrisma.systemSetting.findMany
+        .mockResolvedValueOnce([
+          { key: 'aiEndpoint', value: '"http://ollama:11434"' },
+          { key: 'aiModel', value: '"llama3.2:3b"' },
+        ])
+        .mockResolvedValueOnce([
+          { key: 'aiEndpoint', value: '"http://lan-llm:11434"' },
+          { key: 'aiModel', value: '"llama3.2:3b"' },
+        ]);
+      mockPrisma.systemSetting.upsert.mockResolvedValue({
+        key: 'aiEndpoint',
+        value: '"http://lan-llm:11434"',
+      });
+
+      const response = await adminRoutesRequest()
+        .put('/api/v1/admin/settings')
+        .send({ aiEndpoint: 'http://lan-llm:11434' });
+
+      expect(response.status).toBe(200);
+
+      const providerProfilesCall = mockPrisma.systemSetting.upsert.mock.calls.find(
+        ([call]) => call.where.key === 'aiProviderProfiles',
+      );
+      expect(providerProfilesCall).toBeDefined();
+      const storedProfiles = JSON.parse(providerProfilesCall?.[0].update.value ?? '[]');
+      expect(storedProfiles[0]).toMatchObject({
+        id: 'default-ollama',
+        endpoint: 'http://lan-llm:11434',
+        model: 'llama3.2:3b',
+      });
+      expect(mockPrisma.systemSetting.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { key: 'aiActiveProviderProfileId' },
+          update: { value: JSON.stringify('default-ollama') },
+        })
+      );
+    });
+
+    it('should reject invalid typed AI provider profile updates', async () => {
+      mockPrisma.systemSetting.findMany.mockResolvedValue([]);
+
+      const response = await adminRoutesRequest()
+        .put('/api/v1/admin/settings')
+        .send({ aiProviderProfiles: [] });
+
+      expect(response.status).toBe(400);
+      expect(response.body.message).toContain('AI provider profiles');
+      expect(mockPrisma.systemSetting.upsert).not.toHaveBeenCalled();
+    });
+
+    it('should reject duplicate typed AI provider profile IDs', async () => {
+      mockPrisma.systemSetting.findMany.mockResolvedValue([]);
+
+      const duplicatedProfile = {
+        id: 'lan-ollama',
+        name: 'LAN Ollama',
+        providerType: 'ollama',
+        endpoint: 'http://lan-llm:11434',
+        model: 'llama3.2:3b',
+        capabilities: { chat: true, toolCalls: false, strictJson: true },
+      };
+      const response = await adminRoutesRequest()
+        .put('/api/v1/admin/settings')
+        .send({
+          aiProviderProfiles: [duplicatedProfile, { ...duplicatedProfile, name: 'Duplicate LAN Ollama' }],
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.message).toContain('AI provider profiles');
+      expect(mockPrisma.systemSetting.upsert).not.toHaveBeenCalled();
     });
   });
 }

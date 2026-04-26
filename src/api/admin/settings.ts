@@ -6,7 +6,7 @@
 
 import apiClient from '../client';
 import { NodeConfig, ElectrumServer } from '../../../types';
-import type { SystemSettings } from './types';
+import type { SystemSettings, SystemSettingsUpdate } from './types';
 
 // ========================================
 // SYSTEM SETTINGS
@@ -22,7 +22,7 @@ export async function getSystemSettings(): Promise<SystemSettings> {
 /**
  * Update system settings (admin only)
  */
-export async function updateSystemSettings(settings: Partial<SystemSettings>): Promise<SystemSettings> {
+export async function updateSystemSettings(settings: SystemSettingsUpdate): Promise<SystemSettings> {
   return apiClient.put<SystemSettings>('/admin/settings', settings);
 }
 

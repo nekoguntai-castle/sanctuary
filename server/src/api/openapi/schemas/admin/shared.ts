@@ -17,8 +17,44 @@ import {
   DEFAULT_SMTP_FROM_NAME,
   DEFAULT_SMTP_PORT,
 } from '../../../../constants';
+import {
+  AI_PROVIDER_TYPES,
+  DEFAULT_AI_PROVIDER_CAPABILITIES,
+  DEFAULT_AI_PROVIDER_PROFILE_ID,
+} from '../../../../services/ai/providerProfile';
 import { FEATURE_FLAG_KEYS } from '../../../../services/featureFlags/definitions';
 import { ADMIN_GROUP_ROLE_VALUES } from '../../../admin/groupRoles';
+
+const aiProviderCapabilitiesSchema = {
+  type: 'object',
+  properties: {
+    chat: { type: 'boolean', default: DEFAULT_AI_PROVIDER_CAPABILITIES.chat },
+    toolCalls: {
+      type: 'boolean',
+      default: DEFAULT_AI_PROVIDER_CAPABILITIES.toolCalls,
+    },
+    strictJson: {
+      type: 'boolean',
+      default: DEFAULT_AI_PROVIDER_CAPABILITIES.strictJson,
+    },
+  },
+  required: ['chat', 'toolCalls', 'strictJson'],
+  additionalProperties: false,
+} as const;
+
+const aiProviderProfileSchema = {
+  type: 'object',
+  properties: {
+    id: { type: 'string' },
+    name: { type: 'string' },
+    providerType: { type: 'string', enum: [...AI_PROVIDER_TYPES] },
+    endpoint: { type: 'string' },
+    model: { type: 'string' },
+    capabilities: aiProviderCapabilitiesSchema,
+  },
+  required: ['id', 'name', 'providerType', 'endpoint', 'model', 'capabilities'],
+  additionalProperties: false,
+} as const;
 
 export const baseSettingsProperties = {
   registrationEnabled: { type: 'boolean', default: false },
@@ -29,6 +65,16 @@ export const baseSettingsProperties = {
   aiEnabled: { type: 'boolean', default: DEFAULT_AI_ENABLED },
   aiEndpoint: { type: 'string', default: DEFAULT_AI_ENDPOINT },
   aiModel: { type: 'string', default: DEFAULT_AI_MODEL },
+  aiProviderProfiles: {
+    type: 'array',
+    items: aiProviderProfileSchema,
+    default: [],
+  },
+  aiActiveProviderProfileId: {
+    type: 'string',
+    default: DEFAULT_AI_PROVIDER_PROFILE_ID,
+  },
+  aiActiveProviderProfile: aiProviderProfileSchema,
   'email.verificationRequired': { type: 'boolean', default: DEFAULT_EMAIL_VERIFICATION_REQUIRED },
   'email.tokenExpiryHours': { type: 'integer', default: DEFAULT_EMAIL_TOKEN_EXPIRY_HOURS },
   'smtp.host': { type: 'string', default: '' },
@@ -39,6 +85,10 @@ export const baseSettingsProperties = {
   'smtp.fromName': { type: 'string', default: DEFAULT_SMTP_FROM_NAME },
   'smtp.configured': { type: 'boolean', default: false },
 } as const;
+
+export const adminSettingsUpdateProperties = Object.fromEntries(
+  Object.entries(baseSettingsProperties).filter(([key]) => key !== 'aiActiveProviderProfile'),
+) as Omit<typeof baseSettingsProperties, 'aiActiveProviderProfile'>;
 
 export const NODE_CONFIG_TYPE_VALUES = ['electrum'] as const;
 export const NODE_CONNECTION_MODE_VALUES = ['singleton', 'pool'] as const;

@@ -61,6 +61,48 @@ describe('aiService', () => {
     await expect(mod.isEnabled()).resolves.toBe(true);
   });
 
+  it('uses the active typed provider profile when one is configured', async () => {
+    mocks.systemSettingFindMany.mockResolvedValue([
+      setting('aiEnabled', true),
+      setting('aiActiveProviderProfileId', 'lan-ollama'),
+      setting('aiProviderProfiles', [
+        {
+          id: 'lan-ollama',
+          name: 'LAN Ollama',
+          providerType: 'ollama',
+          endpoint: 'http://lan-llm:11434',
+          model: 'llama3.2:3b',
+          capabilities: { chat: true, toolCalls: false, strictJson: true },
+        },
+      ]),
+    ] as any);
+    mocks.fetch
+      .mockResolvedValueOnce(okJson({ status: 'ok' }))
+      .mockResolvedValueOnce(okJson({ success: true }))
+      .mockResolvedValueOnce(okJson({ available: true }));
+
+    const mod = await import('../../../src/services/aiService');
+    const health = await mod.checkHealth();
+
+    expect(health).toMatchObject({
+      available: true,
+      model: 'llama3.2:3b',
+      endpoint: 'http://lan-llm:11434',
+      containerAvailable: true,
+    });
+    expect(mocks.fetch).toHaveBeenNthCalledWith(
+      2,
+      'http://ai:3100/config',
+      expect.objectContaining({
+        body: JSON.stringify({
+          enabled: true,
+          endpoint: 'http://lan-llm:11434',
+          model: 'llama3.2:3b',
+        }),
+      }),
+    );
+  });
+
   it('returns disabled when settings lookup fails', async () => {
     mocks.systemSettingFindMany.mockRejectedValue(new Error('db down'));
 

@@ -16,6 +16,13 @@ import {
   DEFAULT_SMTP_FROM_NAME,
   DEFAULT_SMTP_PORT,
 } from '../constants';
+import {
+  AI_PROVIDER_PROFILE_SETTING_KEYS,
+  applyAIProviderProfileSettings,
+  hasAIProviderProfileSettingUpdate,
+  normalizeAIProviderProfileSettingsUpdate,
+  sanitizeAIProviderProfileSettingsUpdate,
+} from './ai/providerProfileSettings';
 
 type StoredSetting = {
   key: string;
@@ -62,6 +69,8 @@ export function buildAdminSettingsResponse(settings: StoredSetting[]): AdminSett
     ...settingsObj,
   };
 
+  applyAIProviderProfileSettings(response);
+
   response['smtp.configured'] = !!(response['smtp.host'] && response['smtp.fromAddress']);
   delete response['smtp.password'];
 
@@ -75,9 +84,10 @@ export async function getAdminSettings(): Promise<AdminSettings> {
 export async function updateAdminSettings(updates: AdminSettingsUpdate): Promise<AdminSettings> {
   await validateConfirmationThresholds(updates);
 
-  const smtpChanged = Object.keys(updates).some((key) => smtpKeys.includes(key));
+  const normalizedUpdates = await normalizeAdminSettingsUpdates(updates);
+  const smtpChanged = Object.keys(normalizedUpdates).some((key) => smtpKeys.includes(key));
 
-  for (const [key, value] of Object.entries(updates)) {
+  for (const [key, value] of Object.entries(normalizedUpdates)) {
     let valueToStore = value;
 
     if (key === 'smtp.password' && typeof value === 'string' && value.length > 0 && !isEncrypted(value)) {
@@ -92,6 +102,18 @@ export async function updateAdminSettings(updates: AdminSettingsUpdate): Promise
   }
 
   return getAdminSettings();
+}
+
+async function normalizeAdminSettingsUpdates(updates: AdminSettingsUpdate): Promise<AdminSettingsUpdate> {
+  const sanitizedUpdates = sanitizeAIProviderProfileSettingsUpdate(updates);
+
+  if (!hasAIProviderProfileSettingUpdate(sanitizedUpdates)) {
+    return sanitizedUpdates;
+  }
+
+  const currentSettings = await systemSettingRepository.findByKeys([...AI_PROVIDER_PROFILE_SETTING_KEYS]);
+  const currentResponse = buildAdminSettingsResponse(currentSettings);
+  return normalizeAIProviderProfileSettingsUpdate(sanitizedUpdates, currentResponse);
 }
 
 async function validateConfirmationThresholds(updates: AdminSettingsUpdate): Promise<void> {
