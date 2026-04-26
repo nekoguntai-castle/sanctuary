@@ -4,7 +4,7 @@ export const getAILabelSuggestionErrorMessage = (err: unknown): string => {
   const msg = err instanceof Error ? err.message : '';
 
   if (msg.includes('503') || msg.includes('not enabled')) {
-    return 'AI is not enabled. Configure it in Admin \u2192 AI Assistant.';
+    return 'AI is not enabled. Configure it in Admin \u2192 AI Settings.';
   }
 
   if (msg.includes('429') || msg.includes('rate limit')) {

@@ -32,7 +32,7 @@ export function registerAISettingsInitialLoadingContracts() {
       render(<AISettings />);
 
       await waitFor(() => {
-        expect(screen.getByText('AI Assistant')).toBeInTheDocument();
+        expect(screen.getByText('AI Settings')).toBeInTheDocument();
       });
 
       expect(mockGetSystemSettings).toHaveBeenCalledTimes(1);
@@ -43,7 +43,7 @@ export function registerAISettingsInitialLoadingContracts() {
       render(<AISettings />);
 
       await waitFor(() => {
-        expect(screen.getByText('AI Assistant')).toBeInTheDocument();
+        expect(screen.getByText('AI Settings')).toBeInTheDocument();
       });
     });
   });

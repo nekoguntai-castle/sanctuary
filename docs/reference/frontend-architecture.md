@@ -85,7 +85,7 @@ Route sections used by the sidebar:
 | `wallets` | Wallets, Wallet Detail, Create/Import, Send |
 | `hardware` | Devices, Connect Device, Device Detail |
 | `system` | Account, Settings |
-| `admin` | Node Config, System Settings, Variables, Users & Groups, Backup & Restore, Audit Logs, AI Assistant, Monitoring, Feature Flags |
+| `admin` | Node Config, System Settings, Variables, Users & Groups, Backup & Restore, Audit Logs, AI Settings, Monitoring, Feature Flags |
 
 Capability guards (`AppCapability` in `src/app/capabilities.ts`) gate nav items — currently only `intelligence` exists.
 

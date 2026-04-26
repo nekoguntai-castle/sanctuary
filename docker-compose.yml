@@ -587,7 +587,7 @@ services:
   # AI Container (Isolated AI Service)
   # ============================================
   # Security-isolated container for AI operations.
-  # Lightweight - idles until AI is enabled in Admin → AI Assistant.
+  # Lightweight - idles until AI is enabled in Admin → AI Settings.
   #
   # ISOLATION GUARANTEES:
   # - Cannot access database directly

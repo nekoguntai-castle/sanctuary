@@ -2,6 +2,28 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Do Not Preserve Legacy Behavior After Greenfield Clarification
+
+**Rule:** When the user explicitly says a feature should be greenfield, remove compatibility assumptions from plans and architecture instead of continuing to route around old behavior.
+
+**Why:** In the MCP/Console AI plan, I recommended compatibility wrappers for existing AI label/query/insight/chat routes. The user clarified there is no need to support legacy AI and to consider the work greenfield.
+
+**How to apply:**
+- Replace migration/compatibility sections with transition/removal sections.
+- Treat old routes, settings, and tests as replaceable unless the user names a specific workflow to preserve.
+- Keep existing UI locations only when they are useful product surfaces, not because old behavior must remain.
+
+## Reuse Existing Admin Surfaces Before Proposing New Ones
+
+**Rule:** Before planning new admin UI for a capability, search for the existing admin route/component that already owns that domain and frame the plan as an extension of it.
+
+**Why:** For MCP/Console provider profiles, I initially described an "AI provider profiles/settings screen" as if it were separate, but Sanctuary already has an admin AI Assistant section in `components/AISettings` and an AI Assistant route.
+
+**How to apply:**
+- Search route registrations and component entrypoints before naming a new screen.
+- Prefer new tabs/panels in the existing domain surface when the user already has a mental model there.
+- Preserve existing workflows while migrating storage or backend models under them.
+
 ## Distinguish sandbox bind denial from occupied ports
 
 **Rule:** When a local port probe fails, inspect the error code before saying the port is in use. `EPERM`/`EACCES` means the environment blocked binding; only `EADDRINUSE` proves an occupied port.

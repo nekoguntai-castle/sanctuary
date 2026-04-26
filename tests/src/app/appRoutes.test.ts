@@ -51,7 +51,7 @@ describe('app route manifest', () => {
       'Users & Groups',
       'Backup & Restore',
       'Audit Logs',
-      'AI Assistant',
+      'AI Settings',
       'Monitoring',
       'Feature Flags',
       'Agent Wallets',
