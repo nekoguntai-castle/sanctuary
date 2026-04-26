@@ -43,7 +43,7 @@ graph TD
     click Gateway href "../../gateway/ARCHITECTURE.md" "Gateway architecture"
     click Backend href "../../server/ARCHITECTURE.md" "Backend architecture"
     click Worker href "../../server/src/worker.ts" "Worker entry point"
-    click AiProxy href "../../ai-proxy/" "AI proxy package"
+    click AiProxy href "../../ai-proxy/ARCHITECTURE.md" "AI proxy architecture"
     click Telegram href "notification-pipeline.md" "Notification component view"
 ```
 

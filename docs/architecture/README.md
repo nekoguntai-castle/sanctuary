@@ -9,10 +9,10 @@ This is a [C4-model](https://c4model.com/) view of the system, layered from broa
 | **1. Context** | this file | Sanctuary as a black box — who uses it, what external systems it depends on |
 | **2. Container** | [`containers.md`](containers.md) | Top-level processes and stores inside Sanctuary |
 | **3. Component (selected)** | [`notification-pipeline.md`](notification-pipeline.md) | Notification dispatch — paths, channels, dual-path detection |
-| **4. Generated module graphs** | [`generated/`](generated/) | Auto-derived from imports by `npm run arch:graphs` |
-| **5. Function-level call graphs (opt-in)** | [`generated/calls/`](generated/calls/) | Auto-derived from TypeScript ASTs by `npm run arch:calls` for subsystems listed in [`calls.config.json`](calls.config.json) |
+| **4. Generated module graphs** | [`frontend`](generated/frontend.md), [`server`](generated/server.md), [`gateway`](generated/gateway.md) | Auto-derived from imports by `npm run arch:graphs` |
+| **5. Function-level call graphs (opt-in)** | [`notifications`](generated/calls/notifications.md) | Auto-derived from TypeScript ASTs by `npm run arch:calls` for subsystems listed in [`calls.config.json`](calls.config.json) |
 
-Per-package architecture docs ([`server/ARCHITECTURE.md`](../../server/ARCHITECTURE.md), [`gateway/ARCHITECTURE.md`](../../gateway/ARCHITECTURE.md)) act as Component-level views for their service.
+Per-service architecture docs ([`server/ARCHITECTURE.md`](../../server/ARCHITECTURE.md), [`gateway/ARCHITECTURE.md`](../../gateway/ARCHITECTURE.md), [`ai-proxy/ARCHITECTURE.md`](../../ai-proxy/ARCHITECTURE.md)) act as Component-level views for their service.
 
 ---
 
@@ -50,6 +50,6 @@ The Telegram dual-path bug that prompted this documentation lives one level deep
 1. **When adding a new external integration** (a new push provider, a new chat platform, a new chain backend), update the Context diagram in this file.
 2. **When adding a new service / process / store** (a new worker, a new cache, a new queue), update [`containers.md`](containers.md).
 3. **When adding a new entry point to an existing pipeline** (e.g. another caller of the notification dispatcher), update the relevant Component doc.
-4. **Generated module graphs** under [`generated/`](generated/) are produced by `npm run arch:graphs` and committed. CI fails the PR if they are stale, so the author either commits the regenerated files or removes the change that introduced an unintended cross-module dependency.
+4. **Generated module graphs** under [`docs/architecture/generated/`](generated/frontend.md) are produced by `npm run arch:graphs` and committed. CI fails the PR if they are stale, so the author either commits the regenerated files or removes the change that introduced an unintended cross-module dependency.
 
 CODEOWNERS routes changes under `docs/architecture/` and per-service `ARCHITECTURE.md` files to architecture reviewers.

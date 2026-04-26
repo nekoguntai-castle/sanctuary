@@ -11,8 +11,7 @@
  * `.github/workflows/architecture.yml`.
  */
 
-import { spawn } from 'node:child_process';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { glob, mkdir, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '..', '..');
 const generatedDir = path.join(repoRoot, 'docs', 'architecture', 'generated');
+const depcruiseConfigName = '.dependency-cruiser.cjs';
 
 // `--collapse` groups nodes by directory prefix so the rendered Mermaid stays
 // readable; without it every individual `.ts` file becomes its own node.
@@ -62,32 +62,105 @@ const PACKAGES = [
   },
 ];
 
-const depcruiseBin = path.join(repoRoot, 'node_modules', '.bin', 'depcruise');
+const GLOB_PATTERN_CHARS = /[*?[\]{}]/u;
 
-function run(cmd, args, opts) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { ...opts, stdio: ['ignore', 'pipe', 'pipe'] });
-    let stdout = '';
-    let stderr = '';
-    child.stdout.on('data', (d) => { stdout += d.toString(); });
-    child.stderr.on('data', (d) => { stderr += d.toString(); });
-    child.on('error', reject);
-    child.on('close', (code) => {
-      if (code === 0) resolve(stdout);
-      else reject(new Error(`${cmd} ${args.join(' ')} exited ${code}\n${stderr}`));
-    });
-  });
+function isGlobPattern(pattern) {
+  return GLOB_PATTERN_CHARS.test(pattern);
 }
 
-if (!existsSync(depcruiseBin)) {
-  console.error('generate-graphs: dependency-cruiser is not installed.');
-  console.error('generate-graphs: run "npm install" at the repo root, then retry.');
-  process.exit(1);
+function toPosixPath(filePath) {
+  return filePath.split(path.sep).join('/');
 }
 
-await mkdir(generatedDir, { recursive: true });
+async function expandPattern(cwd, pattern) {
+  if (!isGlobPattern(pattern)) {
+    return existsSync(path.join(cwd, pattern)) ? [pattern] : [];
+  }
 
-function wrap(pkg, mermaid) {
+  const matches = [];
+  for await (const filePath of glob(pattern, { cwd })) {
+    matches.push(toPosixPath(filePath));
+  }
+  return matches.sort();
+}
+
+export async function expandPackageGlobs(pkg) {
+  const files = [];
+  const missingPatterns = [];
+  const seen = new Set();
+
+  for (const pattern of pkg.globs) {
+    const matches = await expandPattern(pkg.cwd, pattern);
+    if (matches.length === 0) {
+      missingPatterns.push(pattern);
+    }
+    for (const filePath of matches) {
+      if (!seen.has(filePath)) {
+        seen.add(filePath);
+        files.push(filePath);
+      }
+    }
+  }
+
+  if (missingPatterns.length > 0) {
+    throw new Error(`generate-graphs: ${pkg.name}: no files matched ${missingPatterns.join(', ')}`);
+  }
+  if (files.length === 0) {
+    throw new Error(`generate-graphs: ${pkg.name}: no dependency-cruiser inputs found`);
+  }
+  return files;
+}
+
+export function assertMermaidGraph(pkg, mermaid, inputCount) {
+  if (!mermaid.trim().startsWith('flowchart ')) {
+    throw new Error(
+      `generate-graphs: ${pkg.name}: dependency-cruiser produced no Mermaid graph for ${inputCount} inputs`,
+    );
+  }
+}
+
+async function loadDependencyCruiser() {
+  try {
+    const dependencyCruiser = await import('dependency-cruiser');
+    const extractOptionsModule = await import('dependency-cruiser/config-utl/extract-depcruise-options');
+    return {
+      cruise: dependencyCruiser.cruise,
+      extractOptions: extractOptionsModule.default,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `generate-graphs: dependency-cruiser is not installed. Run "npm install" at the repo root, then retry.\n${message}`,
+    );
+  }
+}
+
+async function getCruiseOptions(pkg, extractOptions) {
+  const configFile = path.join(pkg.cwd, depcruiseConfigName);
+  if (!existsSync(configFile)) {
+    throw new Error(`generate-graphs: ${pkg.name}: missing ${path.relative(repoRoot, configFile)}`);
+  }
+
+  const options = await extractOptions(configFile);
+  return {
+    ...options,
+    baseDir: pkg.cwd,
+    collapse: pkg.collapse,
+    outputType: 'mermaid',
+    progress: { type: 'none' },
+  };
+}
+
+async function cruiseMermaid(pkg, dependencyCruiser) {
+  const files = await expandPackageGlobs(pkg);
+  const options = await getCruiseOptions(pkg, dependencyCruiser.extractOptions);
+  const result = await dependencyCruiser.cruise(pkg.globs, options);
+  const mermaid = String(result.output ?? '');
+  assertMermaidGraph(pkg, mermaid, files.length);
+  return mermaid;
+}
+
+export function wrap(pkg, mermaid) {
   const title = `${pkg.title} module graph`;
   return `---
 title: ${title}
@@ -99,7 +172,13 @@ description: Auto-generated dependency-cruiser module graph for the ${pkg.name} 
 
 Auto-generated by \`npm run arch:graphs\`. Do not edit by hand — the architecture CI workflow regenerates this on every PR and fails the build if the committed file is stale.
 
-Nodes are collapsed by directory (\`--collapse '${pkg.collapse}'\`) so the diagram stays readable.
+## How to read this graph
+
+This is an import-dependency appendix for drift detection. It answers "which source groups import which other source groups?" and does not replace the hand-authored C4 diagrams.
+
+- Nodes are collapsed by directory (\`--collapse '${pkg.collapse}'\`) so the diagram stays readable.
+- Blank nodes inside collapsed groups are files hidden by the collapse rule.
+- Use this page to spot unexpected dependency direction, then jump back to the service architecture and source files for design intent.
 
 \`\`\`mermaid
 ${mermaid.trim()}
@@ -107,27 +186,30 @@ ${mermaid.trim()}
 `;
 }
 
-const results = await Promise.all(
-  PACKAGES.map(async (pkg) => {
+export async function main() {
+  await mkdir(generatedDir, { recursive: true });
+  const dependencyCruiser = await loadDependencyCruiser();
+
+  const results = await Promise.all(PACKAGES.map(async (pkg) => {
     if (!pkg.presenceCheck.some((s) => existsSync(path.join(pkg.cwd, s)))) {
       return { pkg, skipped: true };
     }
-    const mermaid = await run(
-      depcruiseBin,
-      ['--output-type', 'mermaid', '--collapse', pkg.collapse, '--no-progress', ...pkg.globs],
-      { cwd: pkg.cwd, env: { ...process.env, FORCE_COLOR: '0' } },
-    );
+    const mermaid = await cruiseMermaid(pkg, dependencyCruiser);
     const outFile = path.join(generatedDir, `${pkg.name}.md`);
     const wrapped = wrap(pkg, mermaid);
     await writeFile(outFile, wrapped, 'utf8');
     return { pkg, outFile, bytes: wrapped.length };
-  }),
-);
+  }));
 
-for (const r of results) {
-  if (r.skipped) {
-    console.warn(`generate-graphs: ${r.pkg.name}: no source roots present, skipped`);
-  } else {
-    console.log(`generate-graphs: wrote ${path.relative(repoRoot, r.outFile)} (${r.bytes} bytes)`);
+  for (const r of results) {
+    if (r.skipped) {
+      console.warn(`generate-graphs: ${r.pkg.name}: no source roots present, skipped`);
+    } else {
+      console.log(`generate-graphs: wrote ${path.relative(repoRoot, r.outFile)} (${r.bytes} bytes)`);
+    }
   }
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  await main();
 }

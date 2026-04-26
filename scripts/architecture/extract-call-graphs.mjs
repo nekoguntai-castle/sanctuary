@@ -35,8 +35,8 @@
  * Treat this output as a high-recall hint, not as a proof of completeness.
  */
 
-import { readFile, writeFile, mkdir, glob } from 'node:fs/promises';
-import { existsSync, readFileSync } from 'node:fs';
+import { writeFile, mkdir, glob, readdir, unlink } from 'node:fs/promises';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
@@ -56,27 +56,139 @@ try {
   process.exit(1);
 }
 
-if (!existsSync(configPath)) {
-  console.error(`extract-call-graphs: missing config ${path.relative(repoRoot, configPath)}`);
-  process.exit(1);
+function readConfig() {
+  try {
+    return validateConfig(JSON.parse(readFileSync(configPath, 'utf8')));
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    console.error(`extract-call-graphs: invalid config ${path.relative(repoRoot, configPath)}: ${detail}`);
+    process.exit(1);
+  }
 }
 
-const config = JSON.parse(await readFile(configPath, 'utf8'));
+export function validateConfig(rawConfig) {
+  const errors = [];
+  if (!isPlainObject(rawConfig)) {
+    throw new Error('expected root object');
+  }
 
-await mkdir(outDir, { recursive: true });
+  collectUnknownKeys(rawConfig, new Set(['$schema', '_comment', 'subsystems']), '', errors);
+  validateOptionalStringField(rawConfig, '$schema', '', errors);
+  validateOptionalStringField(rawConfig, '_comment', '', errors);
+  if (!Array.isArray(rawConfig.subsystems)) {
+    errors.push('subsystems must be an array');
+  } else if (rawConfig.subsystems.length === 0) {
+    errors.push('subsystems must contain at least one subsystem');
+  } else {
+    validateSubsystems(rawConfig.subsystems, errors);
+  }
+
+  if (errors.length > 0) {
+    throw new Error(errors.join('; '));
+  }
+  return rawConfig;
+}
+
+function validateSubsystems(subsystems, errors) {
+  const names = new Set();
+  subsystems.forEach((subsystem, index) => {
+    const fieldPath = `subsystems[${index}]`;
+    if (!isPlainObject(subsystem)) {
+      errors.push(`${fieldPath} must be an object`);
+      return;
+    }
+    collectUnknownKeys(subsystem, new Set(['name', 'title', 'description', 'include']), fieldPath, errors);
+    validateSubsystemStrings(subsystem, fieldPath, errors);
+    validateIncludeList(subsystem.include, `${fieldPath}.include`, errors);
+    if (typeof subsystem.name === 'string' && subsystem.name.trim() !== '') {
+      if (names.has(subsystem.name)) errors.push(`${fieldPath}.name must be unique`);
+      names.add(subsystem.name);
+    }
+  });
+}
+
+function validateSubsystemStrings(subsystem, fieldPath, errors) {
+  validateStringField(subsystem, 'name', fieldPath, errors);
+  validateStringField(subsystem, 'title', fieldPath, errors);
+  validateStringField(subsystem, 'description', fieldPath, errors);
+  if (typeof subsystem.name === 'string' && !/^[a-z0-9][a-z0-9-]*$/.test(subsystem.name)) {
+    errors.push(`${fieldPath}.name must use lowercase letters, numbers, and hyphens`);
+  }
+}
+
+function validateStringField(object, key, fieldPath, errors) {
+  if (typeof object[key] !== 'string' || object[key].trim() === '') {
+    errors.push(`${fieldPath}.${key} must be a non-empty string`);
+  }
+}
+
+function validateOptionalStringField(object, key, fieldPath, errors) {
+  if (object[key] !== undefined && typeof object[key] !== 'string') {
+    const prefix = fieldPath ? `${fieldPath}.` : '';
+    errors.push(`${prefix}${key} must be a string`);
+  }
+}
+
+function validateIncludeList(include, fieldPath, errors) {
+  if (!Array.isArray(include) || include.length === 0) {
+    errors.push(`${fieldPath} must be a non-empty array`);
+    return;
+  }
+  include.forEach((pattern, index) => {
+    if (typeof pattern !== 'string' || pattern.trim() === '') {
+      errors.push(`${fieldPath}[${index}] must be a non-empty string`);
+    } else if (path.isAbsolute(pattern) || pattern.replaceAll('\\', '/').split('/').includes('..')) {
+      errors.push(`${fieldPath}[${index}] must be a repository-relative path`);
+    }
+  });
+}
+
+function collectUnknownKeys(object, allowedKeys, fieldPath, errors) {
+  for (const key of Object.keys(object)) {
+    if (!allowedKeys.has(key)) {
+      const prefix = fieldPath ? `${fieldPath}.` : '';
+      errors.push(`${prefix}${key} is not supported`);
+    }
+  }
+}
+
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
 
 async function expandIncludes(patterns) {
   const files = new Set();
+  const unmatched = [];
   for (const pattern of patterns) {
-    if (pattern.includes('*')) {
+    if (isGlobPattern(pattern)) {
+      let matched = 0;
       for await (const file of glob(pattern, { cwd: repoRoot })) {
-        files.add(path.posix.normalize(file.split(path.sep).join('/')));
+        const normalized = normalizeRepoPath(file);
+        if (!isRepoFile(normalized)) continue;
+        files.add(normalized);
+        matched += 1;
       }
-    } else if (existsSync(path.join(repoRoot, pattern))) {
-      files.add(pattern);
+      if (matched === 0) unmatched.push(pattern);
+    } else if (isRepoFile(pattern)) {
+      files.add(normalizeRepoPath(pattern));
+    } else {
+      unmatched.push(pattern);
     }
   }
-  return [...files].sort();
+  return { files: [...files].sort(), unmatched };
+}
+
+function isGlobPattern(pattern) {
+  return ['*', '?', '[', ']', '{', '}'].some((char) => pattern.includes(char));
+}
+
+function normalizeRepoPath(file) {
+  return path.posix.normalize(file.split(path.sep).join('/'));
+}
+
+function isRepoFile(file) {
+  const abs = path.join(repoRoot, file);
+  return existsSync(abs) && statSync(abs).isFile();
 }
 
 function nodeId(file, funcName) {
@@ -197,8 +309,13 @@ function collectCallSites(body, sourceFile) {
   return calls;
 }
 
-function buildSubsystemGraph(subsystem, files) {
-  // Per-file: function map { name → { id, file } }, imports map.
+function buildSubsystemGraph(files) {
+  const { functionsByFile, importsByFile, allFunctionsByName } = collectSubsystemMetadata(files);
+  const edges = collectGraphEdges(files, functionsByFile, importsByFile, allFunctionsByName);
+  return { functionsByFile, edges: [...edges].sort() };
+}
+
+function collectSubsystemMetadata(files) {
   const functionsByFile = new Map();
   const importsByFile = new Map();
   const allFunctionsByName = new Map(); // name → array of { file, id }
@@ -212,49 +329,68 @@ function buildSubsystemGraph(subsystem, files) {
     const funcs = collectFunctions(sf, file);
     functionsByFile.set(file, funcs);
     importsByFile.set(file, collectImports(sf, file));
-    for (const f of funcs) {
-      const id = nodeId(file, f.name);
-      if (!allFunctionsByName.has(f.name)) allFunctionsByName.set(f.name, []);
-      allFunctionsByName.get(f.name).push({ file, id, line: f.line });
-      f.id = id;
-    }
+    indexFunctions(file, funcs, allFunctionsByName);
   }
 
-  // Build edges: caller (file::func) → callee (file::func)
+  return { functionsByFile, importsByFile, allFunctionsByName };
+}
+
+function indexFunctions(file, funcs, allFunctionsByName) {
+  for (const f of funcs) {
+    const id = nodeId(file, f.name);
+    if (!allFunctionsByName.has(f.name)) allFunctionsByName.set(f.name, []);
+    allFunctionsByName.get(f.name).push({ file, id, line: f.line });
+    f.id = id;
+  }
+}
+
+function collectGraphEdges(files, functionsByFile, importsByFile, allFunctionsByName) {
   const edges = new Set();
   const includedFiles = new Set(files);
 
   for (const [file, funcs] of functionsByFile) {
     const imports = importsByFile.get(file) ?? new Map();
     for (const fn of funcs) {
-      const calls = collectCallSites(fn.body);
-      for (const call of calls) {
-        let targets = [];
-        if (call.kind === 'identifier') {
-          // Identifier call — use import map if present.
-          const importedFrom = imports.get(call.name);
-          if (importedFrom && includedFiles.has(importedFrom)) {
-            const matches = (functionsByFile.get(importedFrom) ?? []).filter((f) => f.name === call.name);
-            for (const m of matches) targets.push(m);
-          } else if (!importedFrom) {
-            // Could be a local function in the same file.
-            const local = funcs.filter((f) => f.name === call.name && f.id !== fn.id);
-            for (const m of local) targets.push(m);
-          }
-        } else if (call.kind === 'property') {
-          // Property access — match by simple name across the subsystem.
-          const matches = allFunctionsByName.get(call.name) ?? [];
-          for (const m of matches) targets.push(m);
-        }
-        for (const t of targets) {
-          if (t.id === fn.id) continue;
-          edges.add(`${fn.id}-->${t.id}`);
-        }
-      }
+      addCallEdges(edges, fn, collectCallSites(fn.body), {
+        allFunctionsByName,
+        funcs,
+        functionsByFile,
+        imports,
+        includedFiles,
+      });
     }
   }
 
-  return { functionsByFile, edges: [...edges].sort() };
+  return edges;
+}
+
+function addCallEdges(edges, fn, calls, context) {
+  for (const call of calls) {
+    for (const target of resolveCallTargets(call, fn, context)) {
+      if (target.id !== fn.id) edges.add(`${fn.id}-->${target.id}`);
+    }
+  }
+}
+
+function resolveCallTargets(call, fn, context) {
+  if (call.kind === 'identifier') {
+    return resolveIdentifierCall(call, fn, context);
+  }
+  if (call.kind === 'property') {
+    return context.allFunctionsByName.get(call.name) ?? [];
+  }
+  return [];
+}
+
+function resolveIdentifierCall(call, fn, context) {
+  const importedFrom = context.imports.get(call.name);
+  if (importedFrom && context.includedFiles.has(importedFrom)) {
+    return (context.functionsByFile.get(importedFrom) ?? []).filter((f) => f.name === call.name);
+  }
+  if (!importedFrom) {
+    return context.funcs.filter((f) => f.name === call.name && f.id !== fn.id);
+  }
+  return [];
 }
 
 function repoUrl(file, line) {
@@ -316,24 +452,52 @@ ${mermaid}
 `;
 }
 
-let totalSubsystems = 0;
-for (const subsystem of config.subsystems) {
-  const files = await expandIncludes(subsystem.include);
-  if (files.length === 0) {
-    console.warn(`extract-call-graphs: subsystem '${subsystem.name}' resolved to no files; skipping`);
-    continue;
+async function removeStaleOutputs(subsystems) {
+  const expected = new Set(subsystems.map((subsystem) => `${subsystem.name}.md`));
+  const entries = await readdir(outDir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.name === 'README.md') continue;
+    if (!entry.isFile() || path.extname(entry.name) !== '.md' || expected.has(entry.name)) continue;
+    const stalePath = path.join(outDir, entry.name);
+    await unlink(stalePath);
+    console.log(`extract-call-graphs: removed stale ${path.relative(repoRoot, stalePath)}`);
   }
-  const graph = buildSubsystemGraph(subsystem, files);
-  const totalFunctions = [...graph.functionsByFile.values()].reduce((sum, fs) => sum + fs.length, 0);
-  const mermaid = renderMermaid(subsystem, files, graph);
-  const wrapped = wrapMarkdown(subsystem, files, mermaid, { functions: totalFunctions, edges: graph.edges.length });
-  const outFile = path.join(outDir, `${subsystem.name}.md`);
-  await writeFile(outFile, wrapped, 'utf8');
-  console.log(`extract-call-graphs: wrote ${path.relative(repoRoot, outFile)} (${files.length} files, ${totalFunctions} fns, ${graph.edges.length} edges)`);
-  totalSubsystems += 1;
 }
 
-if (totalSubsystems === 0) {
-  console.error('extract-call-graphs: no subsystems produced output');
-  process.exit(1);
+export async function main() {
+  if (!existsSync(configPath)) {
+    console.error(`extract-call-graphs: missing config ${path.relative(repoRoot, configPath)}`);
+    process.exit(1);
+  }
+
+  const config = readConfig();
+  await mkdir(outDir, { recursive: true });
+
+  let totalSubsystems = 0;
+  for (const subsystem of config.subsystems) {
+    const { files, unmatched } = await expandIncludes(subsystem.include);
+    if (unmatched.length > 0) {
+      console.error(`extract-call-graphs: subsystem '${subsystem.name}' includes did not match files: ${unmatched.join(', ')}`);
+      process.exit(1);
+    }
+    const graph = buildSubsystemGraph(files);
+    const totalFunctions = [...graph.functionsByFile.values()].reduce((sum, fs) => sum + fs.length, 0);
+    const mermaid = renderMermaid(subsystem, files, graph);
+    const wrapped = wrapMarkdown(subsystem, files, mermaid, { functions: totalFunctions, edges: graph.edges.length });
+    const outFile = path.join(outDir, `${subsystem.name}.md`);
+    await writeFile(outFile, wrapped, 'utf8');
+    console.log(`extract-call-graphs: wrote ${path.relative(repoRoot, outFile)} (${files.length} files, ${totalFunctions} fns, ${graph.edges.length} edges)`);
+    totalSubsystems += 1;
+  }
+
+  await removeStaleOutputs(config.subsystems);
+
+  if (totalSubsystems === 0) {
+    console.error('extract-call-graphs: no subsystems produced output');
+    process.exit(1);
+  }
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  await main();
 }

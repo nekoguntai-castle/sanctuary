@@ -2,10 +2,11 @@
   "name": "sanctuary-docs-site",
   "private": true,
   "version": "0.0.0",
-  "description": "Docusaurus site that renders Sanctuary's docs/ tree, per-package ARCHITECTURE.md files, and auto-generated dependency-cruiser graphs.",
+  "description": "Docusaurus site that renders Sanctuary's curated docs, service architecture pages, and auto-generated dependency graphs.",
   "scripts": {
     "start": "docusaurus start",
     "build": "docusaurus build",
+    "typecheck": "tsc --noEmit",
     "serve": "docusaurus serve",
     "clear": "docusaurus clear"
   },

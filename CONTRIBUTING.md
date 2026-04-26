@@ -112,7 +112,7 @@ Never bump the version to fix a CI failure. Fix on the current version.
 4. Monitor CI: `gh run list --limit 5`; fix failures, re-tag
 5. Cut release: `git tag vX.Y.Z`, push
 
-See [`.claude/commands/release.md`](.claude/commands/release.md) for the full automated release flow.
+See [`.claude/commands/release.md`](https://github.com/nekoguntai-castle/sanctuary/blob/main/.claude/commands/release.md) for the full automated release flow.
 
 ## Documentation
 
@@ -128,7 +128,7 @@ See [`docs/README.md`](docs/README.md) for the full docs index and per-doc-type 
 ### Lifecycle rules
 
 1. **Write** a doc when a PR introduces a new subsystem, changes a public API, or makes an architectural decision.
-2. **Update** architecture docs alongside the code change that invalidates them. Every release PR updates [`CHANGELOG.md`](CHANGELOG.md).
+2. **Update** architecture docs alongside the code change that invalidates them. Every release PR updates [`CHANGELOG.md`](https://github.com/nekoguntai-castle/sanctuary/blob/main/CHANGELOG.md).
 3. **Archive** (move to `docs/archive/`) when a system is superseded but history has value.
 4. **Delete** CI run proofs and PR-scoped test artifacts when the PR merges. Auto-generated phase2-\*/phase3-\* proof files are PR artifacts, not repository documents. Do not commit them to `docs/plans/`.
 
@@ -138,7 +138,7 @@ For decisions with non-obvious tradeoffs, create an ADR in `docs/adr/` using the
 
 ### Living docs site (Docusaurus)
 
-All markdown under [`docs/`](docs/), the per-package `ARCHITECTURE.md` files, and this `CONTRIBUTING.md` are rendered as a unified [Docusaurus](https://docusaurus.io/) site at <https://nekoguntai-castle.github.io/sanctuary/>. The site is built from source markdown — there is no second source of truth — and deployed to GitHub Pages by [`.github/workflows/architecture.yml`](.github/workflows/architecture.yml) on every merge to `main`.
+The curated docs under [`docs/architecture/`](docs/architecture/README.md), selected [`docs/explanation/`](docs/explanation/address-derivation.md), [`docs/how-to/`](docs/how-to/agent-wallet-funding.md), [`docs/reference/`](docs/reference/ci-cd-strategy.md), [`docs/adr/`](docs/adr/0001-browser-auth-token-storage.md), selected per-service `ARCHITECTURE.md` files, [`docs/PRD.md`](docs/PRD.md), [`docs/README.md`](docs/README.md), and this `CONTRIBUTING.md` render as a unified [Docusaurus](https://docusaurus.io/) site at <https://nekoguntai-castle.github.io/sanctuary/>. Planning, idea, archive, package README/API, and release-history docs remain repository documents linked from the site to GitHub when useful. The site is built from source markdown — no copied documentation tree — and deployed to GitHub Pages by [`.github/workflows/architecture.yml`](.github/workflows/architecture.yml) on every merge to `main`.
 
 Local commands:
 
@@ -173,7 +173,7 @@ Run `npm run arch:calls` and commit the new `docs/architecture/generated/calls/<
 
 ### Architecture diagrams
 
-Diagrams live in [`docs/architecture/`](docs/architecture/) and follow the [C4 model](https://c4model.com/) (Context → Container → Component). All diagrams are Mermaid so GitHub renders them inline *and* Docusaurus renders them in the site with svg-pan-zoom for drill-down. Click handlers (`click NodeId href "..."`) navigate to source — relative hrefs are rewritten to absolute GitHub URLs at Docusaurus build time by [`website/src/plugins/remark-mermaid-click-rewrite.mjs`](website/src/plugins/remark-mermaid-click-rewrite.mjs), so the same source works in both renderings.
+Diagrams live in [`docs/architecture/`](docs/architecture/) and follow the [C4 model](https://c4model.com/) (Context → Container → Component). All diagrams are Mermaid so GitHub renders them inline *and* Docusaurus renders them in the site with svg-pan-zoom for drill-down. Click handlers (`click NodeId href "..."`) navigate to docs or source; the Docusaurus build keeps doc-to-doc clicks inside the site and rewrites source-code clicks to absolute GitHub URLs via [`website/src/plugins/remark-mermaid-click-rewrite.mjs`](website/src/plugins/remark-mermaid-click-rewrite.mjs), so the same source works in both renderings.
 
 When you add or change an entry point that crosses a service boundary (e.g. a new caller of `notificationDispatcher`, a new gateway route, a new external integration):
 
