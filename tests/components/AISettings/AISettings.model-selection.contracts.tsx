@@ -22,7 +22,7 @@ export function registerAISettingsModelSelectionContracts() {
 
     const navigateToSettingsTab = async (user: ReturnType<typeof userEvent.setup>) => {
       await waitFor(() => {
-        expect(screen.getByText('AI Assistant')).toBeInTheDocument();
+        expect(screen.getByText('AI Settings')).toBeInTheDocument();
       });
       const settingsTab = getTabButton('Settings');
       expect(settingsTab).not.toBeNull();

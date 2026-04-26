@@ -130,7 +130,7 @@ function setDefaultMocks() {
 async function renderAndWaitForReady() {
   render(<AISettings />);
   await waitFor(() => {
-    expect(screen.getByText('AI Assistant')).toBeInTheDocument();
+    expect(screen.getByText('AI Settings')).toBeInTheDocument();
   });
 }
 
@@ -153,7 +153,7 @@ describe('AISettings logic branches', () => {
 
     await renderAndWaitForReady();
 
-    expect(screen.getByText('AI Assistant')).toBeInTheDocument();
+    expect(screen.getByText('AI Settings')).toBeInTheDocument();
   });
 
   it('handles model list load errors when endpoint is configured', async () => {

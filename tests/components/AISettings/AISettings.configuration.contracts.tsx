@@ -28,7 +28,7 @@ export function registerAISettingsConfigurationContracts() {
 
       // Wait for component to load
       await waitFor(() => {
-        expect(screen.getByText('AI Assistant')).toBeInTheDocument();
+        expect(screen.getByText('AI Settings')).toBeInTheDocument();
       });
 
       // Click on Settings tab
@@ -62,7 +62,7 @@ export function registerAISettingsConfigurationContracts() {
 
       // Wait for component to load
       await waitFor(() => {
-        expect(screen.getByText('AI Assistant')).toBeInTheDocument();
+        expect(screen.getByText('AI Settings')).toBeInTheDocument();
       });
 
       // Click on Settings tab

@@ -67,7 +67,7 @@ export default function AISettings() {
       <div className="max-w-4xl mx-auto p-6 space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-medium text-sanctuary-900 dark:text-sanctuary-50">AI Assistant</h2>
+            <h2 className="text-2xl font-medium text-sanctuary-900 dark:text-sanctuary-50">AI Settings</h2>
             <p className="text-sanctuary-500">Configure AI-powered transaction labeling and natural language queries</p>
           </div>
           <div className="p-3 surface-secondary rounded-lg">
@@ -80,7 +80,7 @@ export default function AISettings() {
             <div>
               <p className="text-sm font-medium text-sanctuary-700 dark:text-sanctuary-300">Feature not available</p>
               <p className="text-xs text-sanctuary-500 mt-1">
-                The AI Assistant feature flag is not enabled on this server. An admin can enable it from the Feature Flags page.
+                AI features are not enabled on this server. An admin can enable them from the Feature Flags page.
               </p>
             </div>
           </div>
@@ -102,7 +102,7 @@ export default function AISettings() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-medium text-sanctuary-900 dark:text-sanctuary-50">
-            AI Assistant
+            AI Settings
           </h2>
           <p className="text-sanctuary-500">
             Configure AI-powered transaction labeling and natural language queries

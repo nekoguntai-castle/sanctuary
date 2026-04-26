@@ -1,3 +1,114 @@
+# Active Task: AI Settings Rename Foundation 2026-04-26
+
+Status: complete
+
+Goal: rename the admin AI configuration surface from "AI Assistant" to "AI Settings" as the first greenfield foundation slice for the MCP/Console/provider-profile implementation.
+
+## Plan
+
+- [x] Inspect the admin AI route, page copy, modal copy, and focused AI Settings tests.
+- [x] Update user-facing route/page copy to use "AI Settings" and reserve "AI features" for enablement language.
+- [x] Update focused AI Settings contract tests to match the new product language.
+- [x] Run focused AI Settings tests plus diff checks.
+- [x] Review edge cases, self-review the diff, and document results.
+
+## Review
+
+- Renamed the admin AI route/nav/page surface from "AI Assistant" to "AI Settings" while keeping the `/admin/ai` route and existing component/module names stable.
+- Updated enablement language to use "AI features" / "Enable AI Features" instead of naming the settings page as an assistant.
+- Updated AI-disabled error messages and user/admin docs that point to the configuration location: `Admin -> AI Settings`.
+- Updated focused AI Settings, route manifest, and render-regression expectations.
+- Verification passed: `npx vitest run tests/components/AISettings.test.tsx tests/components/AISettings.logic.test.tsx tests/components/AISettingsSubcomponents.test.tsx tests/src/app/appRoutes.test.ts tests/components/AIQueryInput.test.tsx tests/components/AILabelSuggestion.test.tsx` (6 files, 161 tests).
+- Verification passed: `git diff --check`.
+- Edge-case review: no runtime control-flow changes; no null/empty/async boundary behavior changed. Fixed the modal test to query by heading role because the page and modal intentionally share the "Enable AI Features" phrase.
+
+---
+
+# Active Task: MCP Dual-Path Implementation Plan 2026-04-25
+
+Status: complete
+
+Goal: create a phased implementation plan for direct external MCP access plus an in-app Sanctuary Console that uses a LAN LLM and the same backend-controlled read-tool surface.
+
+## Plan
+
+- [x] Reuse the MCP release-readiness audit findings as implementation inputs.
+- [x] Define the target architecture for direct MCP and the in-app console.
+- [x] Specify authentication and authorization requirements for outside LLM/MCP access.
+- [x] Break the work into sequenced milestones with acceptance criteria.
+- [x] Include verification gates, security boundaries, and open decisions.
+- [x] Write the implementation plan to `docs/plans/mcp-dual-path-implementation-plan.md`.
+
+## Review
+
+- Wrote `docs/plans/mcp-dual-path-implementation-plan.md`.
+- Recommended a shared read-tool registry outside `server/src/mcp`, with MCP and Sanctuary Console as adapters over the same scoped, audited, read-only executors.
+- Defined external MCP authentication as client/agent authentication, not model authentication: scoped expiring MCP client profiles, optional CIDR binding, explicit audit/admin/high-sensitivity scopes, and no MCP tokens in prompts or browser-visible state.
+- Sequenced implementation across MCP hardening, shared tool extraction, GUI read-parity expansion, console backend, console UI, admin MCP profile UI, and end-to-end release proof.
+- Preserved current AI security posture by keeping external model calls in `ai-proxy` while backend-owned orchestration validates and executes tool calls.
+- First-release boundary remains read-only: no OS shell, arbitrary SQL, spending, signing, address generation, PSBT handling, or state mutation through the console/MCP surface.
+- Follow-up AI proxy review: keep the isolated proxy boundary, but harden it into a generic model gateway before console work. Required changes include service auth on non-health routes, provider credentials, endpoint egress controls, normalized planning/synthesis calls, native tool-call plus JSON fallback support, typed errors, and no prompt/result logging.
+- Follow-up app-surface review: added Milestone 0 for cross-app boundary prep after scanning access control, wallet sharing, agent auth, AI settings/secrets, internal AI/conversation APIs, audit/support packages, backup/restore, deployment packaging, OpenAPI/frontend API clients, observability, and the Intelligence UI.
+- Noted two console-specific guardrails from the current Intelligence implementation: validate conversation wallet access on creation/message handling and replace browser-supplied `walletContext` with backend-derived context before enabling tool execution.
+- Added remaining gap checks to Milestone 0: formal threat model, data sensitivity matrix, model capability detection, prompt-injection corpus, answer provenance, retention/deletion policy, mid-conversation permission changes, provider egress/SSRF rules, resource controls, future write-path pattern, preview/supported labeling, recovery/rotation workflow, and typed AI provider profile decision.
+- Resolved the provider-settings direction in the plan: use a typed AI provider profile model, with generic settings limited to active provider ID and feature toggles.
+- User correction captured: provider profile UI should extend the existing admin AI Assistant section (`components/AISettings` / AI Assistant route), not create a separate admin area.
+- Added rename guidance: admin navigation/page label should move from "AI Assistant" to "AI Settings" as provider profiles, credentials, model management, proxy health, capabilities, and console configuration become part of the section.
+- Plan refinement pass: added a first-release cutline, user-experience principles, key user journeys, shared tool result envelope, greenfield AI transition strategy, feature flags, richer console UX requirements, MCP profile wizard requirements, and a more explicit PR sequence.
+- Added prompt-history requirements: store prompts separately from responses, support search/save/replay/delete/expiration, retain admin retention controls, and re-run tool authorization/execution on replay instead of reusing stale tool results.
+- Added Console placement decision: one canonical Intelligence Console workspace, contextual "Ask Console" actions from wallets/transactions/etc., and a desktop side drawer backed by the same conversation/history/replay model rather than separate embedded assistants per wallet.
+- Added Theme Settings flyout-surface guidance: user-adjustable opacity for glass-to-solid flyouts, active-theme/light-dark tint tokens, shared `surface-flyout` behavior, and Console drawer tests for glass/solid modes.
+- Added Console trigger model: global Intelligence entry, contextual "Ask Console" header/tool buttons, compact icon buttons with tooltips, row/action-menu items, selected-row bulk actions, suggested prompt chips, and structured scope payloads.
+- Added non-contextual Console guidance: a persistent app-shell icon opens an unscoped/general-scope drawer from anywhere, current route is only a hint, and wallet tools require explicit scope selection before execution.
+- Added keyboard shortcut strategy: central shortcut registry/provider, shortcut help overlay, editable-field exclusions, focus restore, Console shortcut candidates, contextual shortcut scope rules, and tests for conflicts/accessibility.
+- Refined global Console trigger placement: put the subtle AI icon in a compact quick-action row directly under Dashboard in the primary sidebar, leaving the already-crowded footer alone and reserving row space for future app-wide icons.
+- Confirmed flyout presentation direction: right-side drawer remains the default desktop surface, full Console is the expand target, pinned right rail is a later power-user mode, mobile uses bottom sheet/full-screen, and left drawer/modal/floating bubble are intentionally avoided for v1.
+- Added a pre-implementation clarification backlog covering scope defaults, v1 tool cutline, sensitivity defaults, provider/model support floor, prompt/trace retention, saved prompt boundaries, quick-action row states, drawer sizing/pinning, shortcut defaults, streaming/cancellation, chain data sources, LAN MCP stance, greenfield AI transition, and audit vocabulary.
+- Accepted clarification decisions: global Console opens in General Network scope by default, and v1 required tools are minimal network plus wallet basics.
+- Accepted sensitivity decision: v1 sends computed facts/aggregates by default, while the long-term trusted-LLM target can intentionally allow most GUI-readable data with explicit user controls and auditing.
+- Accepted provider/model support floor: native OpenAI-compatible tool calls are preferred, strict JSON planning fallback is required for tool-capable Console support, and weaker models are limited to clearly labeled non-tool chat/explanation.
+- Accepted prompt/trace retention default: store prompt text and low-sensitivity metadata by default, avoid raw high-sensitivity payload persistence, include low-sensitivity prompt metadata in backups, and keep admins from reading other users' prompt text by default.
+- Accepted saved prompt boundary: saved prompts are personal-only in v1, optionally tagged/scoped, with wallet/team shared prompt libraries deferred until explicit permissions and audit/retention rules exist.
+- Accepted sidebar quick-action row: compact icon-only row directly below Dashboard, starting with AI and supporting future global utility icons with tooltips, focus, active/open, disabled/setup-needed, and overflow states.
+- Clarified deletion/disabled states from accepted decisions: conversation deletion removes prompt entries, model responses, and non-audit trace metadata together; non-admins see a disabled/setup-needed AI trigger explanation while admins get an AI Settings path.
+- Accepted drawer sizing/pinning: v1 uses a fixed-width right overlay drawer with expand-to-full-Console; pinned rail and resizing are deferred until drawer behavior, focus handling, traces, and theme opacity are stable.
+- Accepted keyboard shortcut defaults: ship the registry/help overlay first, show enabled shortcuts in tooltips/menus, and add a conservative global Console shortcut only after conflict testing.
+- Accepted streaming/cancellation behavior: v1 uses whole-turn responses with visible progress states and cancel, per-tool timeouts, turn-level cancellation, and token streaming deferred until orchestration/audit/trace contracts are stable.
+- Accepted chain/network data source rule: use configured Sanctuary sources only, including Bitcoin Core/Electrum/cache/indexer/stored state, never arbitrary model-requested URLs, with source/freshness/tip/computed-at/stale metadata shown.
+- Accepted direct MCP stance: loopback MCP is supported after hardening, LAN MCP is advanced/disabled by default with TLS/VPN/reverse-proxy warning and scoped expiring credentials, and Sanctuary Console remains the recommended path.
+- Accepted greenfield AI transition: no legacy AI compatibility requirement; existing chat/label/query/insight/proxy routes can be replaced or removed as provider profiles, model gateway, and Console APIs land.
+- Accepted audit vocabulary: metadata-only operational audit for Console/MCP/AI in v1, recording tool/scope/sensitivity/duration/counts/denials/provider/key IDs while excluding prompt text, model responses, secrets, raw identifiers, labels/memos, and raw high-sensitivity payloads by default.
+- Accepted final implementation decisions: custom scoped bearer auth for MCP v1, explicit high-sensitivity scope for direct MCP raw identifiers, required wallet scope for LAN MCP profiles, loopback/auth-gated MCP metrics, summary/metadata trace storage by default, and guided provider allowlist presets with expert hostname/CIDR controls.
+
+---
+
+# Active Task: MCP Server Release Readiness Audit 2026-04-25
+
+Status: complete
+
+Goal: audit whether Sanctuary's MCP server is ready for the next release as a LAN-accessible, local-LLM interface that can cover GUI-equivalent read workflows and natural-language wallet/transaction questions without unsafe write or secret exposure.
+
+## Plan
+
+- [x] Map the implemented MCP transport, authentication, config, Docker/startup, and admin key-management surface.
+- [x] Compare implemented resources/tools/prompts against GUI/API wallet, transaction, UTXO, address, label, draft, policy, fee, price, insight, and audit-log workflows.
+- [x] Inspect security, privacy, LAN deployment, rate limiting, audit logging, data redaction, and read-only boundaries.
+- [x] Assess the two-path product model: direct external MCP clients and an in-app Sanctuary console that uses a LAN LLM plus the same MCP/read tool surface.
+- [x] Check tests and docs for release-grade behavior, including local LLM client compatibility and failure modes.
+- [x] Write an evidence-backed readiness report with blockers, gaps, release recommendations, and verification results.
+- [x] Run focused validation commands and self-review the audit artifacts.
+
+## Review
+
+- Wrote `docs/plans/mcp-server-release-readiness-audit.md`.
+- Verdict: current MCP is a solid loopback-only read-only preview, but not release-ready as a LAN-accessible external LLM/MCP path.
+- Direct LAN MCP blockers: missing correct LAN docs/config, plain HTTP bearer-token exposure without TLS/VPN guidance, restored backups can resurrect MCP API key hashes, no real MCP client/LLM integration proof, and incomplete GUI read parity.
+- Existing MCP auth supports bearer `mcp_...` keys, revocation, optional expiry, wallet scopes, audit-log scope, rate limiting, and audit logs. For the outside-LLM path, default keys should be expiring, wallet-scoped, and transported only over HTTPS/VPN/reverse proxy.
+- Recommended two paths: keep direct MCP for power users and external clients, and build a safer in-app Sanctuary Console on the existing Treasury Intelligence chat/AI proxy with backend-owned read-only tool execution.
+- Focused MCP validation passed: 9 Vitest files, 85 tests.
+
+---
+
 # Active Task: Phase 3 Compose Benchmark Modularization 2026-04-25
 
 Status: complete

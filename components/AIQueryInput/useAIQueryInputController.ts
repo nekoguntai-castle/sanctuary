@@ -13,7 +13,7 @@ const getAIQueryErrorMessage = (error: unknown): string => {
   const message = error instanceof Error ? error.message : '';
 
   if (message.includes('503') || message.includes('not enabled')) {
-    return 'AI is not enabled. Configure it in Admin → AI Assistant.';
+    return 'AI is not enabled. Configure it in Admin → AI Settings.';
   }
 
   if (message.includes('429')) {

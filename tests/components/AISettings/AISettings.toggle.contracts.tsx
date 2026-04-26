@@ -38,7 +38,7 @@ export function registerAISettingsToggleContracts() {
 
         // Modal should appear
         await waitFor(() => {
-          expect(screen.getByText('Enable AI Assistant')).toBeInTheDocument();
+          expect(screen.getByRole('heading', { name: 'Enable AI Features' })).toBeInTheDocument();
         });
 
         // Wait for resources to load and click Enable button
@@ -93,7 +93,7 @@ export function registerAISettingsToggleContracts() {
 
         // Modal should appear
         await waitFor(() => {
-          expect(screen.getByText('Enable AI Assistant')).toBeInTheDocument();
+          expect(screen.getByRole('heading', { name: 'Enable AI Features' })).toBeInTheDocument();
         });
 
         // Wait for resources to load and click Enable button
@@ -121,7 +121,7 @@ export function registerAISettingsToggleContracts() {
       });
 
       // Verify the component structure that would display errors
-      expect(screen.getByText('AI Assistant')).toBeInTheDocument();
+      expect(screen.getByText('AI Settings')).toBeInTheDocument();
     });
   });
 }

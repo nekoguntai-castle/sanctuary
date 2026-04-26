@@ -272,7 +272,7 @@ case "${1:-}" in
         echo "Sanctuary is running at https://localhost:${HTTPS_PORT}"
         echo ""
         echo "AI Setup:"
-        echo "  1. Go to Admin → AI Assistant"
+        echo "  1. Go to Admin → AI Settings"
         echo "  2. Enable AI Features"
         echo "  3. Click 'Detect' - it will find the bundled Ollama automatically"
         echo "  4. Pull a model (llama3.2:3b recommended for most systems)"

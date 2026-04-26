@@ -23,7 +23,7 @@ export function registerAISettingsModelPullContracts() {
 
     const navigateToModelsTab = async (user: ReturnType<typeof userEvent.setup>) => {
       await waitFor(() => {
-        expect(screen.getByText('AI Assistant')).toBeInTheDocument();
+        expect(screen.getByText('AI Settings')).toBeInTheDocument();
       });
       const modelsTab = getTabButton('Models');
       expect(modelsTab).not.toBeNull();

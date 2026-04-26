@@ -263,7 +263,7 @@ export const appRouteDefinitions: AppRouteDefinition[] = [
     component: AISettings,
     fallback: <SettingsSkeleton />,
     nav: {
-      label: 'AI Assistant',
+      label: 'AI Settings',
       icon: Brain,
       section: 'admin',
     },

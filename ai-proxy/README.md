@@ -92,7 +92,7 @@ The AI container starts automatically with Sanctuary. It idles until AI features
 
 ### Configure AI Endpoint
 
-In Sanctuary Admin → AI Assistant:
+In Sanctuary Admin → AI Settings:
 
 1. Enable AI Features
 2. Set AI Endpoint URL:

@@ -19,7 +19,7 @@ export function registerAISettingsFeatureFlagContracts() {
         expect(screen.getByText('Feature not available')).toBeInTheDocument();
       });
 
-      expect(screen.getByText(/AI Assistant feature flag is not enabled/)).toBeInTheDocument();
+      expect(screen.getByText(/AI features are not enabled/)).toBeInTheDocument();
       expect(mockGetSystemSettings).not.toHaveBeenCalled();
     });
 
@@ -27,7 +27,7 @@ export function registerAISettingsFeatureFlagContracts() {
       render(<AISettings />);
 
       await waitFor(() => {
-        expect(screen.getByText('AI Assistant')).toBeInTheDocument();
+        expect(screen.getByText('AI Settings')).toBeInTheDocument();
         expect(screen.getByText('Enable AI Features')).toBeInTheDocument();
       });
 
@@ -53,7 +53,7 @@ export function registerAISettingsFeatureFlagContracts() {
       render(<AISettings />);
 
       await waitFor(() => {
-        expect(screen.getByText('AI Assistant')).toBeInTheDocument();
+        expect(screen.getByText('AI Settings')).toBeInTheDocument();
         expect(screen.getByText('Enable AI Features')).toBeInTheDocument();
       });
     });

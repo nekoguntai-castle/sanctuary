@@ -25,7 +25,7 @@ export function EnableModal({
               <Brain className="w-5 h-5 text-primary-600 dark:text-primary-400" />
             </div>
             <h2 className="text-lg font-semibold text-sanctuary-900 dark:text-sanctuary-100">
-              Enable AI Assistant
+              Enable AI Features
             </h2>
           </div>
           <button

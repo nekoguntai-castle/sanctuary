@@ -1307,7 +1307,7 @@ Sanctuary includes an optional AI assistant that can help with:
    - Enable `treasuryIntelligence` as well if you want the **Intelligence** page with wallet insights and chat
 
 3. **Configure the provider in Sanctuary**
-   - Go to **Administration → AI Assistant**
+   - Go to **Administration → AI Settings**
    - Toggle **Enable AI Features**
    - Use **Detect** for bundled Ollama or enter an Ollama/OpenAI-compatible endpoint manually
    - Pick a model and save the settings
