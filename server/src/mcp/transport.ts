@@ -38,10 +38,22 @@ const sendJsonRpcError = (res: Response, status: number, code: number, message: 
   });
 };
 
+const isInitializeRequest = (body: unknown): boolean => {
+  return (
+    !Array.isArray(body) &&
+    !!body &&
+    typeof body === 'object' &&
+    (body as { method?: unknown }).method === 'initialize'
+  );
+};
+
 const validateProtocolHeader = (req: Request): void => {
   const version = req.header('mcp-protocol-version');
   if (!version) {
-    throw new McpHttpError(400, 'MCP-Protocol-Version header is required');
+    if (isInitializeRequest(req.body)) {
+      return;
+    }
+    throw new McpHttpError(400, 'MCP-Protocol-Version header is required except on initialize requests');
   }
   if (!SUPPORTED_PROTOCOL_VERSIONS.has(version)) {
     throw new McpHttpError(400, `Unsupported MCP protocol version: ${version}`);
@@ -152,6 +164,9 @@ async function handleMcpPost(req: Request, res: Response): Promise<void> {
       status = error.statusCode;
       if (status === 401) {
         mcpAuthFailuresTotal.inc({ reason: 'unauthorized' });
+        if (!res.headersSent) {
+          res.setHeader('WWW-Authenticate', 'Bearer realm="sanctuary-mcp"');
+        }
       }
       await auditMcpOperation(req, context, operation, false, message);
       /* v8 ignore next -- JSON-RPC error path normally owns the response */

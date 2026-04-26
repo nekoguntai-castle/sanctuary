@@ -1,3 +1,32 @@
+# Active Task: MCP Transport Restore Hardening 2026-04-26
+
+Status: complete
+
+Goal: harden the next Direct MCP release slice without pulling in the future tool-registry work: improve MCP HTTP compatibility/auth behavior, keep server metadata current, make restored MCP bearer tokens fail closed, and document/deploy the MCP profile consistently.
+
+## Plan
+
+- [x] Inspect current MCP transport, auth, server metadata, backup restore, env, GHCR Compose, docs, and focused tests.
+- [x] Update MCP transport boundaries for compatible missing initial protocol headers and standards-aligned bearer auth responses.
+- [x] Replace stale hardcoded MCP server version metadata with package-owned version data.
+- [x] Revoke restored MCP key records during backup restore and warn admins that keys must be regenerated.
+- [x] Add MCP env examples, GHCR Compose profile support, and clearer loopback/LAN/reverse-proxy guidance.
+- [x] Add focused tests for protocol/auth/server metadata/restore behavior.
+- [x] Run focused verification, lizard, diff checks, quality review, edge-case audit, and self-review.
+
+## Review
+
+- MCP HTTP transport now accepts missing `MCP-Protocol-Version` only for initial `initialize` requests, while still rejecting missing headers on normal calls and unsupported explicit versions.
+- MCP 401 responses now include `WWW-Authenticate: Bearer realm="sanctuary-mcp"` for client-compatible bearer auth handling.
+- MCP server metadata now uses the server package version instead of the stale hardcoded `0.8.34`.
+- Backup restore now forces restored MCP API keys to `revokedAt` and returns an admin warning so old bearer tokens cannot become usable on a restored node.
+- GHCR Compose now includes the optional `mcp` profile with loopback host publishing by default, matching the source-build Compose service.
+- `.env.example` and `docs/how-to/mcp-server.md` now document MCP variables, GHCR profile usage, loopback defaults, LAN TLS/VPN/reverse-proxy guidance, protocol-header compatibility, MCP Inspector usage, and restored-key revocation.
+- Verification passed: focused MCP/backup Vitest suite (86 tests), full MCP unit/API/support sweep (44 tests), `npm run typecheck:server:tests`, `npm run lint:server`, server `npm run build`, touched-file lizard `-C 15`, `git diff --check`, and GHCR Compose profile render with placeholder secrets.
+- Edge-case review: missing protocol headers are still rejected for non-initialize methods; unsupported explicit protocol versions are still rejected before auth; existing revoked MCP keys keep their original revocation timestamp; restored unrevoked MCP key metadata is retained but made unusable; GHCR MCP port remains loopback-bound unless the operator explicitly changes `MCP_BIND_ADDRESS`.
+
+---
+
 # Active Task: Typed AI Provider Profile Foundation 2026-04-26
 
 Status: complete

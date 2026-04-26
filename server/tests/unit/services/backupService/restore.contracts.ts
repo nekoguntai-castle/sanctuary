@@ -77,6 +77,7 @@ describe('restoreFromBackup', () => {
     // Mock getExistingTables to return common tables
     mockPrismaClient.$queryRaw.mockResolvedValue([
       { tablename: 'users' },
+      { tablename: 'mcp_api_keys' },
       { tablename: 'wallets' },
       { tablename: 'wallet_users' },
       { tablename: 'devices' },
@@ -223,6 +224,143 @@ describe('restoreFromBackup', () => {
       expect(result.success).toBe(true);
       expect(mockPrismaClient.priceData.createMany).toHaveBeenCalled();
       expect(mockPrismaClient.feeEstimate.createMany).toHaveBeenCalled();
+    });
+
+    it('should revoke restored MCP API keys so old bearer tokens fail closed', async () => {
+      const backup = createValidBackup();
+      backup.data.mcpApiKey = [
+        {
+          id: 'mcp-key-1',
+          userId: 'user-1',
+          name: 'LAN client',
+          keyHash: 'a'.repeat(64),
+          keyPrefix: 'mcp_aaaaaaaaaaa',
+          scope: { walletIds: ['wallet-1'] },
+          createdAt: new Date().toISOString(),
+          revokedAt: null,
+        },
+      ];
+
+      mockPrismaClient.$transaction.mockImplementation(async (fn: any) => fn(mockPrismaClient));
+
+      let capturedData: any = null;
+      Object.keys(mockPrismaClient).forEach((key) => {
+        const client = mockPrismaClient as any;
+        if (client[key]?.deleteMany) {
+          client[key].deleteMany.mockResolvedValue({ count: 0 });
+        }
+        if (client[key]?.createMany) {
+          client[key].createMany.mockResolvedValue({ count: 0 });
+        }
+      });
+      mockPrismaClient.mcpApiKey.createMany.mockImplementation(async ({ data }) => {
+        capturedData = data;
+        return { count: 1 };
+      });
+
+      const result = await backupService.restoreFromBackup(backup);
+
+      expect(result.success).toBe(true);
+      expect(result.warnings).toContain(
+        '1 MCP API key restored revoked. Regenerate MCP client credentials after reviewing external access.',
+      );
+      expect(capturedData).toHaveLength(1);
+      expect(capturedData[0].keyHash).toBe('a'.repeat(64));
+      expect(capturedData[0].revokedAt).toBeInstanceOf(Date);
+    });
+
+    it('should keep already revoked MCP API keys revoked without extra warnings', async () => {
+      const backup = createValidBackup();
+      const revokedAt = '2026-01-02T03:04:05.000Z';
+      backup.data.mcpApiKey = [
+        {
+          id: 'mcp-key-1',
+          userId: 'user-1',
+          name: 'Old LAN client',
+          keyHash: 'b'.repeat(64),
+          keyPrefix: 'mcp_bbbbbbbbbbb',
+          scope: { walletIds: ['wallet-1'] },
+          createdAt: new Date().toISOString(),
+          revokedAt,
+        },
+      ];
+
+      mockPrismaClient.$transaction.mockImplementation(async (fn: any) => fn(mockPrismaClient));
+
+      let capturedData: any = null;
+      Object.keys(mockPrismaClient).forEach((key) => {
+        const client = mockPrismaClient as any;
+        if (client[key]?.deleteMany) {
+          client[key].deleteMany.mockResolvedValue({ count: 0 });
+        }
+        if (client[key]?.createMany) {
+          client[key].createMany.mockResolvedValue({ count: 0 });
+        }
+      });
+      mockPrismaClient.mcpApiKey.createMany.mockImplementation(async ({ data }) => {
+        capturedData = data;
+        return { count: 1 };
+      });
+
+      const result = await backupService.restoreFromBackup(backup);
+
+      expect(result.success).toBe(true);
+      expect(result.warnings).toEqual([]);
+      expect(capturedData).toHaveLength(1);
+      expect(capturedData[0].revokedAt).toEqual(new Date(revokedAt));
+    });
+
+    it('should use plural warning text when multiple restored MCP API keys are revoked', async () => {
+      const backup = createValidBackup();
+      backup.data.mcpApiKey = [
+        {
+          id: 'mcp-key-1',
+          userId: 'user-1',
+          name: 'LAN client',
+          keyHash: 'c'.repeat(64),
+          keyPrefix: 'mcp_ccccccccccc',
+          scope: { walletIds: ['wallet-1'] },
+          createdAt: new Date().toISOString(),
+          revokedAt: null,
+        },
+        {
+          id: 'mcp-key-2',
+          userId: 'user-1',
+          name: 'Lab client',
+          keyHash: 'd'.repeat(64),
+          keyPrefix: 'mcp_ddddddddddd',
+          scope: { walletIds: ['wallet-1'] },
+          createdAt: new Date().toISOString(),
+          revokedAt: null,
+        },
+      ];
+
+      mockPrismaClient.$transaction.mockImplementation(async (fn: any) => fn(mockPrismaClient));
+
+      let capturedData: any = null;
+      Object.keys(mockPrismaClient).forEach((key) => {
+        const client = mockPrismaClient as any;
+        if (client[key]?.deleteMany) {
+          client[key].deleteMany.mockResolvedValue({ count: 0 });
+        }
+        if (client[key]?.createMany) {
+          client[key].createMany.mockResolvedValue({ count: 0 });
+        }
+      });
+      mockPrismaClient.mcpApiKey.createMany.mockImplementation(async ({ data }) => {
+        capturedData = data;
+        return { count: 2 };
+      });
+
+      const result = await backupService.restoreFromBackup(backup);
+
+      expect(result.success).toBe(true);
+      expect(result.warnings).toContain(
+        '2 MCP API keys restored revoked. Regenerate MCP client credentials after reviewing external access.',
+      );
+      expect(capturedData).toHaveLength(2);
+      expect(capturedData[0].revokedAt).toBeInstanceOf(Date);
+      expect(capturedData[1].revokedAt).toBe(capturedData[0].revokedAt);
     });
   });
 

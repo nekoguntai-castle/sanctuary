@@ -165,7 +165,7 @@ describe('MCP HTTP transport', () => {
       .send({ method: 'tools/call', params: { name: 'query_transactions' } })
       .expect(400)
       .expect(response => {
-        expect(response.body.error.message).toContain('MCP-Protocol-Version');
+        expect(response.body.error.message).toBe('MCP-Protocol-Version header is required except on initialize requests');
       });
 
     await request(app)
@@ -182,6 +182,18 @@ describe('MCP HTTP transport', () => {
       username: 'anonymous',
       action: 'mcp.operation_failed',
     }));
+  });
+
+  it('accepts an initialize request without a protocol header for client compatibility', async () => {
+    const app = createMcpHttpApp();
+
+    await request(app)
+      .post('/mcp')
+      .send({ jsonrpc: '2.0', method: 'initialize', id: 1 })
+      .expect(202);
+
+    expect(mocks.authenticateMcpRequest).toHaveBeenCalled();
+    expect(mocks.recordMcpRequest).toHaveBeenCalledWith('initialize', 202, expect.any(Number));
   });
 
   it('classifies unknown and generic MCP operations for auditing and metrics', async () => {
@@ -217,12 +229,42 @@ describe('MCP HTTP transport', () => {
       .set('mcp-protocol-version', '2025-11-25')
       .send({ method: 'prompts/get', params: { name: 'wallet_health' } })
       .expect(401)
+      .expect('WWW-Authenticate', 'Bearer realm="sanctuary-mcp"')
       .expect(response => {
         expect(response.body.error.message).toBe('bad token');
       });
 
     expect(mocks.authFailuresInc).toHaveBeenCalledWith({ reason: 'unauthorized' });
     expect(mocks.recordMcpRequest).toHaveBeenCalledWith('prompt:wallet_health', 401, expect.any(Number));
+  });
+
+  it('does not overwrite an unauthorized transport response after headers are sent', async () => {
+    const app = createMcpHttpApp();
+    mocks.handleRequest.mockImplementationOnce((_req, res) => {
+      res.writeHead(401, {
+        'Content-Type': 'application/json',
+        'WWW-Authenticate': 'Bearer realm="transport"',
+      });
+      res.end(JSON.stringify({
+        jsonrpc: '2.0',
+        error: { code: -32600, message: 'transport rejected' },
+        id: null,
+      }));
+      throw new McpUnauthorizedError('transport rejected');
+    });
+
+    await request(app)
+      .post('/mcp')
+      .set('mcp-protocol-version', '2025-11-25')
+      .send({ method: 'tools/list' })
+      .expect(401)
+      .expect('WWW-Authenticate', 'Bearer realm="transport"')
+      .expect(response => {
+        expect(response.body.error.message).toBe('transport rejected');
+      });
+
+    expect(mocks.authFailuresInc).toHaveBeenCalledWith({ reason: 'unauthorized' });
+    expect(mocks.recordMcpRequest).toHaveBeenCalledWith('tools/list', 401, expect.any(Number));
   });
 
   it('rejects requests that exceed the MCP rate limit', async () => {

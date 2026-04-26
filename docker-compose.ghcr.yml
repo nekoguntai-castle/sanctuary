@@ -110,6 +110,58 @@ services:
       - sanctuary-network
 
   # ============================================
+  # Model Context Protocol Server (Optional)
+  # ============================================
+  # Read-only MCP endpoint for local LLM clients. Starts only with
+  # the `mcp` Compose profile and is published to host loopback by default.
+  # ============================================
+  mcp:
+    image: ghcr.io/${GITHUB_REPOSITORY:-nekoguntai-castle/sanctuary}-backend:${IMAGE_TAG:-latest}
+    container_name: sanctuary-mcp
+    restart: unless-stopped
+    profiles:
+      - mcp
+    depends_on:
+      backend:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+
+      DATABASE_URL: postgresql://${POSTGRES_USER:-sanctuary}:${POSTGRES_PASSWORD:-sanctuary}@postgres:5432/${POSTGRES_DB:-sanctuary}?schema=public&connection_limit=${DB_MCP_POOL_SIZE:-5}&pool_timeout=30&connect_timeout=10&statement_timeout=30000
+      REDIS_URL: redis://redis:6379
+
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY is required (at least 32 chars)}
+      ENCRYPTION_SALT: ${ENCRYPTION_SALT:-sanctuary-node-config}
+      GATEWAY_SECRET: ${GATEWAY_SECRET:?GATEWAY_SECRET is required}
+
+      BITCOIN_NETWORK: ${BITCOIN_NETWORK:-mainnet}
+      MCP_ENABLED: "true"
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 3003
+      MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-localhost,127.0.0.1,[::1]}
+      MCP_RATE_LIMIT_PER_MINUTE: ${MCP_RATE_LIMIT_PER_MINUTE:-120}
+      MCP_DEFAULT_PAGE_SIZE: ${MCP_DEFAULT_PAGE_SIZE:-100}
+      MCP_MAX_PAGE_SIZE: ${MCP_MAX_PAGE_SIZE:-500}
+      MCP_MAX_DATE_RANGE_DAYS: ${MCP_MAX_DATE_RANGE_DAYS:-365}
+    command: ["node", "dist/app/src/mcp-entry.js"]
+    ports:
+      - "${MCP_BIND_ADDRESS:-127.0.0.1}:${MCP_PORT:-3003}:3003"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - sanctuary-network
+
+  # ============================================
   # Background Worker (from GHCR)
   # ============================================
   worker:

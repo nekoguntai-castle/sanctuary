@@ -1,15 +1,16 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { version as serverVersion } from '../../package.json';
 import { registerMcpPrompts } from './prompts';
 import { registerMcpResources } from './resources';
 import { registerMcpTools } from './tools';
 
-const SANCTUARY_SERVER_VERSION = '0.8.34';
+export const SANCTUARY_MCP_SERVER_VERSION = serverVersion;
 
 export function createSanctuaryMcpServer(): McpServer {
   const server = new McpServer(
     {
       name: 'sanctuary',
-      version: SANCTUARY_SERVER_VERSION,
+      version: SANCTUARY_MCP_SERVER_VERSION,
     },
     {
       capabilities: {
