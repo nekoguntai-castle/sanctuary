@@ -77,8 +77,8 @@ export async function broadcastAndSave(
   if (persisted.mainTransactionCreated) {
     // Send notifications for the broadcast transaction (Telegram + Push)
     // This is async and fire-and-forget to not block the response
-    import('../../notifications/notificationService').then(({ notifyNewTransactions }) => {
-      notifyNewTransactions(walletId, [{
+    import('../../notifications/dispatch').then(({ dispatchTransactionNotifications }) => {
+      dispatchTransactionNotifications(walletId, [{
         txid,
         type: persisted.txType,
         amount: BigInt(metadata.amount),
@@ -112,8 +112,8 @@ export async function broadcastAndSave(
     });
 
     // Send notifications for the receiving wallet
-    import('../../notifications/notificationService').then(({ notifyNewTransactions }) => {
-      notifyNewTransactions(receivingTx.walletId, [{
+    import('../../notifications/dispatch').then(({ dispatchTransactionNotifications }) => {
+      dispatchTransactionNotifications(receivingTx.walletId, [{
         txid,
         type: 'received',
         amount: BigInt(receivingTx.amount),

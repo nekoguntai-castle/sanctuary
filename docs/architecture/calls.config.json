@@ -8,6 +8,7 @@
       "description": "All paths through which Sanctuary delivers notifications (Telegram, push, AI insights). The Telegram dual-path bug lived here — this graph makes new entry points to either path visible at PR-review time.",
       "include": [
         "server/src/infrastructure/notificationDispatcher.ts",
+        "server/src/services/notifications/dispatch.ts",
         "server/src/services/notifications/channels/registry.ts",
         "server/src/services/notifications/channels/telegram.ts",
         "server/src/services/notifications/channels/push.ts",

@@ -18,45 +18,18 @@ export async function sendNotifications(
   newTransactions: TransactionCreateData[]
 ): Promise<void> {
   try {
-    // Try to queue push notifications via the worker's notification queue.
-    // Test the first transaction — if it fails, Redis is unavailable and
-    // we fall back to inline delivery for everything.
-    let useQueue = false;
+    // dispatchTransactionNotifications encapsulates the "try queue, fall back
+    // to inline" pattern so every notification path has the same retry
+    // semantics regardless of caller.
     if (newTransactions.length > 0) {
-      const { queueTransactionNotification } = await import('../../../../../infrastructure');
-      const first = newTransactions[0];
-      useQueue = await queueTransactionNotification({
-        walletId,
-        txid: first.txid,
-        type: first.type as 'received' | 'sent' | 'consolidation',
-        amount: first.amount.toString(),
-        feeSats: first.fee?.toString() ?? null,
-      });
-
-      if (useQueue && newTransactions.length > 1) {
-        // Queue the remaining transactions in parallel
-        await Promise.all(newTransactions.slice(1).map(tx =>
-          queueTransactionNotification({
-            walletId,
-            txid: tx.txid,
-            type: tx.type as 'received' | 'sent' | 'consolidation',
-            amount: tx.amount.toString(),
-            feeSats: tx.fee?.toString() ?? null,
-          })
-        ));
-      }
-    }
-
-    // Fallback: inline delivery when queue is unavailable
-    if (!useQueue && newTransactions.length > 0) {
-      const { notifyNewTransactions } = await import('../../../../notifications/notificationService');
-      notifyNewTransactions(walletId, newTransactions.map(tx => ({
+      const { dispatchTransactionNotifications } = await import('../../../../notifications/dispatch');
+      dispatchTransactionNotifications(walletId, newTransactions.map(tx => ({
         txid: tx.txid,
         type: tx.type,
         amount: tx.amount,
         feeSats: tx.fee ?? null,
       }))).catch(err => {
-        log.warn(`[SYNC] Failed to send inline notification: ${err}`);
+        log.warn(`[SYNC] Failed to dispatch notifications: ${err}`);
       });
     }
 

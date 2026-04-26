@@ -164,7 +164,17 @@ export const draftNotifyJob: WorkerJobHandler<DraftNotifyJobData, NotifyJobResul
     backoff: { type: 'exponential', delay: 3000 },
   },
   handler: async (job: Job<DraftNotifyJobData>): Promise<NotifyJobResult> => {
-    const { walletId, draftId, creatorUserId, creatorUsername } = job.data;
+    const {
+      walletId,
+      draftId,
+      creatorUserId,
+      creatorUsername,
+      creatorLabel,
+      agentId,
+      agentName,
+      agentOperationalWalletId,
+      agentSigned,
+    } = job.data;
 
     log.debug(`Sending draft notification: ${draftId}`, {
       walletId,
@@ -190,13 +200,19 @@ export const draftNotifyJob: WorkerJobHandler<DraftNotifyJobData, NotifyJobResul
         feeRate: draft.feeRate,
         label: draft.label,
         createdByUsername: creatorUsername,
+        agentId: agentId ?? null,
+        agentName: agentName ?? null,
+        agentOperationalWalletId: agentOperationalWalletId ?? null,
+        agentSigned: agentSigned ?? false,
       };
 
-      // Send via all channels
+      // Send via all channels — pass creatorLabel so agent-created drafts
+      // surface the agent name when there's no human creator.
       const results = await notificationChannelRegistry.notifyDraft(
         walletId,
         draftNotification,
-        creatorUserId
+        creatorUserId,
+        creatorLabel,
       );
 
       const summary = summarizeNotificationResults(

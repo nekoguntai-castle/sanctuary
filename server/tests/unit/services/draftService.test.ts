@@ -43,8 +43,8 @@ vi.mock('../../../src/services/draftLockService', () => ({
   resolveUtxoIds: vi.fn(),
 }));
 
-vi.mock('../../../src/services/notifications/notificationService', () => ({
-  notifyNewDraft: vi.fn(),
+vi.mock('../../../src/services/notifications/dispatch', () => ({
+  dispatchDraftNotification: vi.fn(),
 }));
 
 // walletService no longer used — access control handled by route middleware
@@ -71,7 +71,7 @@ vi.mock('../../../src/constants', () => ({
 import prisma from '../../../src/models/prisma';
 import { draftRepository, systemSettingRepository, walletRepository } from '../../../src/repositories';
 import { lockUtxosForDraft, resolveUtxoIds } from '../../../src/services/draftLockService';
-import { notifyNewDraft } from '../../../src/services/notifications/notificationService';
+import { dispatchDraftNotification } from '../../../src/services/notifications/dispatch';
 import * as bitcoin from 'bitcoinjs-lib';
 import { NotFoundError, ForbiddenError, InvalidInputError, ConflictError } from '../../../src/errors';
 import {
@@ -106,7 +106,7 @@ describe('DraftService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    (notifyNewDraft as Mock).mockResolvedValue(undefined);
+    (dispatchDraftNotification as Mock).mockResolvedValue(undefined);
   });
 
   describe('getDraftsForWallet', () => {
@@ -287,7 +287,7 @@ describe('DraftService', () => {
     it('should send notification after creating draft', async () => {
       await createDraft(walletId, userId, validInput);
 
-      expect(notifyNewDraft).toHaveBeenCalledWith(
+      expect(dispatchDraftNotification).toHaveBeenCalledWith(
         walletId,
         expect.objectContaining({ id: mockDraft.id }),
         userId,
@@ -311,7 +311,7 @@ describe('DraftService', () => {
         notificationCreatedByLabel: 'Treasury Agent',
       });
 
-      expect(notifyNewDraft).toHaveBeenCalledWith(
+      expect(dispatchDraftNotification).toHaveBeenCalledWith(
         walletId,
         expect.objectContaining({
           id: mockDraft.id,
@@ -327,13 +327,13 @@ describe('DraftService', () => {
     });
 
     it('swallows notification errors and still returns draft', async () => {
-      (notifyNewDraft as Mock).mockRejectedValueOnce(new Error('notify failed'));
+      (dispatchDraftNotification as Mock).mockRejectedValueOnce(new Error('notify failed'));
 
       const result = await createDraft(walletId, userId, validInput);
       await Promise.resolve();
 
       expect(result).toEqual(mockDraft);
-      expect(notifyNewDraft).toHaveBeenCalled();
+      expect(dispatchDraftNotification).toHaveBeenCalled();
     });
 
     it('should use custom expiration days from settings', async () => {

@@ -9,7 +9,7 @@ import type { DraftTransaction, Prisma } from '../generated/prisma/client';
 import * as bitcoin from 'bitcoinjs-lib';
 import { draftRepository, DraftStatus, systemSettingRepository, walletRepository } from '../repositories';
 import { lockUtxosForDraft, resolveUtxoIds } from './draftLockService';
-import { notifyNewDraft } from './notifications/notificationService';
+import { dispatchDraftNotification } from './notifications/dispatch';
 import { NotFoundError, ForbiddenError, InvalidInputError, ConflictError } from '../errors';
 import { createLogger } from '../utils/logger';
 import { getErrorMessage } from '../utils/errors';
@@ -267,8 +267,11 @@ export async function createDraft(
     }
   }
 
-  // Send notifications to other wallet users (async, don't block response)
-  notifyNewDraft(walletId, {
+  // Send notifications to other wallet users (async, don't block response).
+  // dispatchDraftNotification queues for retry-capable delivery and falls back
+  // to inline if Redis is unavailable — every notification path now has the
+  // same retry semantics regardless of caller (formerly the dual-path bug).
+  dispatchDraftNotification(walletId, {
     id: draft.id,
     amount: draft.amount,
     recipient: draft.recipient,
