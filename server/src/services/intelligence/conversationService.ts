@@ -4,13 +4,18 @@
  * Manages interactive AI chat conversations for Treasury Intelligence.
  */
 
-import { createLogger } from '../../utils/logger';
-import { getErrorMessage } from '../../utils/errors';
-import { getAIConfig, syncConfigToContainer, getContainerUrl } from '../ai/config';
-import { intelligenceRepository } from '../../repositories/intelligenceRepository';
-import type { AIConversation, AIMessage } from '../../generated/prisma/client';
+import { createLogger } from "../../utils/logger";
+import { getErrorMessage } from "../../utils/errors";
+import {
+  getAIConfig,
+  syncConfigToContainer,
+  getContainerUrl,
+} from "../ai/config";
+import { buildAIProxyJsonHeaders } from "../ai/proxyClient";
+import { intelligenceRepository } from "../../repositories/intelligenceRepository";
+import type { AIConversation, AIMessage } from "../../generated/prisma/client";
 
-const log = createLogger('INTELLIGENCE:SVC_CHAT');
+const log = createLogger("INTELLIGENCE:SVC_CHAT");
 
 const AI_CONTAINER_URL = getContainerUrl();
 
@@ -19,7 +24,7 @@ const AI_CONTAINER_URL = getContainerUrl();
  */
 export async function createConversation(
   userId: string,
-  walletId?: string
+  walletId?: string,
 ): Promise<AIConversation> {
   return intelligenceRepository.createConversation({
     userId,
@@ -33,7 +38,7 @@ export async function createConversation(
 export async function getConversations(
   userId: string,
   limit = 20,
-  offset = 0
+  offset = 0,
 ): Promise<AIConversation[]> {
   return intelligenceRepository.findConversationsByUser(userId, limit, offset);
 }
@@ -43,9 +48,10 @@ export async function getConversations(
  */
 export async function getConversation(
   conversationId: string,
-  userId: string
+  userId: string,
 ): Promise<AIConversation | null> {
-  const conversation = await intelligenceRepository.findConversationById(conversationId);
+  const conversation =
+    await intelligenceRepository.findConversationById(conversationId);
   if (!conversation || conversation.userId !== userId) return null;
   return conversation;
 }
@@ -55,7 +61,7 @@ export async function getConversation(
  */
 export async function getMessages(
   conversationId: string,
-  limit = 100
+  limit = 100,
 ): Promise<AIMessage[]> {
   return intelligenceRepository.getMessages(conversationId, limit);
 }
@@ -67,18 +73,19 @@ export async function sendMessage(
   conversationId: string,
   userId: string,
   content: string,
-  walletContext?: Record<string, unknown>
+  walletContext?: Record<string, unknown>,
 ): Promise<{ userMessage: AIMessage; assistantMessage: AIMessage }> {
   // Verify ownership
-  const conversation = await intelligenceRepository.findConversationById(conversationId);
+  const conversation =
+    await intelligenceRepository.findConversationById(conversationId);
   if (!conversation || conversation.userId !== userId) {
-    throw new Error('Conversation not found');
+    throw new Error("Conversation not found");
   }
 
   // Save user message
   const userMessage = await intelligenceRepository.addMessage({
     conversationId,
-    role: 'user',
+    role: "user",
     content,
   });
 
@@ -86,7 +93,7 @@ export async function sendMessage(
   const history = await intelligenceRepository.getMessages(conversationId, 20);
 
   // Build messages array for AI
-  const aiMessages = history.map(m => ({
+  const aiMessages = history.map((m) => ({
     role: m.role,
     content: m.content,
   }));
@@ -96,8 +103,9 @@ export async function sendMessage(
   if (!config.enabled || !config.endpoint || !config.model) {
     const errorMsg = await intelligenceRepository.addMessage({
       conversationId,
-      role: 'assistant',
-      content: 'AI is not currently configured. Please set up an Ollama endpoint in the AI settings.',
+      role: "assistant",
+      content:
+        "AI is not currently configured. Please set up an Ollama endpoint in the AI settings.",
     });
     return { userMessage, assistantMessage: errorMsg };
   }
@@ -106,8 +114,8 @@ export async function sendMessage(
 
   try {
     const response = await fetch(`${AI_CONTAINER_URL}/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: buildAIProxyJsonHeaders(),
       body: JSON.stringify({
         messages: aiMessages,
         walletContext,
@@ -116,37 +124,42 @@ export async function sendMessage(
     });
 
     if (!response.ok) {
-      log.error('AI chat request failed', { status: response.status });
+      log.error("AI chat request failed", { status: response.status });
       const errorMsg = await intelligenceRepository.addMessage({
         conversationId,
-        role: 'assistant',
-        content: 'I was unable to process your request. Please try again.',
+        role: "assistant",
+        content: "I was unable to process your request. Please try again.",
       });
       return { userMessage, assistantMessage: errorMsg };
     }
 
-    const result = await response.json() as { response: string };
+    const result = (await response.json()) as { response: string };
 
     const assistantMessage = await intelligenceRepository.addMessage({
       conversationId,
-      role: 'assistant',
+      role: "assistant",
       content: result.response,
     });
 
     // Auto-generate title from first message if conversation has no title
     /* v8 ignore next -- title generation is covered through conversation route behavior */
     if (!conversation.title && history.length <= 1) {
-      const title = content.length > 60 ? content.substring(0, 57) + '...' : content;
-      await intelligenceRepository.updateConversationTitle(conversationId, title);
+      const title =
+        content.length > 60 ? content.substring(0, 57) + "..." : content;
+      await intelligenceRepository.updateConversationTitle(
+        conversationId,
+        title,
+      );
     }
 
     return { userMessage, assistantMessage };
   } catch (error) {
-    log.error('AI chat error', { error: getErrorMessage(error) });
+    log.error("AI chat error", { error: getErrorMessage(error) });
     const errorMsg = await intelligenceRepository.addMessage({
       conversationId,
-      role: 'assistant',
-      content: 'An error occurred while communicating with the AI. Please try again.',
+      role: "assistant",
+      content:
+        "An error occurred while communicating with the AI. Please try again.",
     });
     return { userMessage, assistantMessage: errorMsg };
   }
@@ -157,9 +170,10 @@ export async function sendMessage(
  */
 export async function deleteConversation(
   conversationId: string,
-  userId: string
+  userId: string,
 ): Promise<boolean> {
-  const conversation = await intelligenceRepository.findConversationById(conversationId);
+  const conversation =
+    await intelligenceRepository.findConversationById(conversationId);
   if (!conversation || conversation.userId !== userId) return false;
 
   await intelligenceRepository.deleteConversation(conversationId);

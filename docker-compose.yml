@@ -615,6 +615,11 @@ services:
       BACKEND_URL: http://backend:3001
       # AI config sync secret (must match backend)
       AI_CONFIG_SECRET: "${AI_CONFIG_SECRET:?AI_CONFIG_SECRET is required - generate with openssl rand -hex 32}"
+      # Optional egress policy for public/cloud OpenAI-compatible endpoints.
+      # Local/container/LAN endpoints are allowed by default.
+      AI_PROXY_ALLOWED_HOSTS: ${AI_PROXY_ALLOWED_HOSTS:-}
+      AI_PROXY_ALLOWED_CIDRS: ${AI_PROXY_ALLOWED_CIDRS:-}
+      AI_PROXY_ALLOW_PUBLIC_HTTPS: ${AI_PROXY_ALLOW_PUBLIC_HTTPS:-false}
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3100/health"]
       interval: 30s

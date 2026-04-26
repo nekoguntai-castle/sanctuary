@@ -13,10 +13,14 @@
  * 6. Backend returns to user (suggestions only - user must confirm)
  */
 
-import { createLogger } from '../../utils/logger';
-import { getErrorMessage } from '../../utils/errors';
-import { getAIConfig, syncConfigToContainer, getContainerUrl } from './config';
-import { validateResponse } from './validation';
+import { createLogger } from "../../utils/logger";
+import { getErrorMessage } from "../../utils/errors";
+import { getAIConfig, syncConfigToContainer, getContainerUrl } from "./config";
+import { validateResponse } from "./validation";
+import {
+  buildAIProxyAuthHeaders,
+  buildAIProxyJsonHeaders,
+} from "./proxyClient";
 import type {
   QueryResult,
   AISuggestLabelResponse,
@@ -24,9 +28,9 @@ import type {
   AIDetectOllamaResponse,
   AIListModelsResponse,
   AIPullModelResponse,
-} from './types';
+} from "./types";
 
-const log = createLogger('AI:SVC');
+const log = createLogger("AI:SVC");
 
 const AI_CONTAINER_URL = getContainerUrl();
 
@@ -40,7 +44,7 @@ const AI_CONTAINER_URL = getContainerUrl();
  */
 export async function suggestTransactionLabel(
   transactionId: string,
-  authToken: string
+  authToken: string,
 ): Promise<string | null> {
   const config = await getAIConfig();
 
@@ -53,36 +57,40 @@ export async function suggestTransactionLabel(
 
   try {
     const response = await fetch(`${AI_CONTAINER_URL}/suggest-label`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authToken}`,
-      },
+      method: "POST",
+      headers: buildAIProxyJsonHeaders({
+        authorization: `Bearer ${authToken}`,
+      }),
       body: JSON.stringify({ transactionId }),
       signal: AbortSignal.timeout(35000),
     });
 
     if (!response.ok) {
       const errorJson = await response.json().catch(() => {
-        log.warn('Failed to parse error response JSON for label suggestion');
+        log.warn("Failed to parse error response JSON for label suggestion");
         return {};
       });
       const error = validateResponse<{ error?: string }>(errorJson, []);
-      log.error('AI label suggestion failed', { status: response.status, error: error?.error });
+      log.error("AI label suggestion failed", {
+        status: response.status,
+        error: error?.error,
+      });
       return null;
     }
 
     const json = await response.json();
-    const result = validateResponse<AISuggestLabelResponse>(json, ['suggestion']);
+    const result = validateResponse<AISuggestLabelResponse>(json, [
+      "suggestion",
+    ]);
 
     if (!result) {
-      log.error('Invalid response from AI container for label suggestion');
+      log.error("Invalid response from AI container for label suggestion");
       return null;
     }
 
     return result.suggestion || null;
   } catch (error) {
-    log.error('AI label suggestion error', { error: getErrorMessage(error) });
+    log.error("AI label suggestion error", { error: getErrorMessage(error) });
     return null;
   }
 }
@@ -96,7 +104,7 @@ export async function suggestTransactionLabel(
 export async function executeNaturalQuery(
   query: string,
   walletId: string,
-  authToken: string
+  authToken: string,
 ): Promise<QueryResult | null> {
   const config = await getAIConfig();
 
@@ -109,36 +117,38 @@ export async function executeNaturalQuery(
 
   try {
     const response = await fetch(`${AI_CONTAINER_URL}/query`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authToken}`,
-      },
+      method: "POST",
+      headers: buildAIProxyJsonHeaders({
+        authorization: `Bearer ${authToken}`,
+      }),
       body: JSON.stringify({ query, walletId }),
       signal: AbortSignal.timeout(35000),
     });
 
     if (!response.ok) {
       const errorJson = await response.json().catch(() => {
-        log.warn('Failed to parse error response JSON for query');
+        log.warn("Failed to parse error response JSON for query");
         return {};
       });
       const error = validateResponse<{ error?: string }>(errorJson, []);
-      log.error('AI query failed', { status: response.status, error: error?.error });
+      log.error("AI query failed", {
+        status: response.status,
+        error: error?.error,
+      });
       return null;
     }
 
     const json = await response.json();
-    const result = validateResponse<AIQueryResponse>(json, ['query']);
+    const result = validateResponse<AIQueryResponse>(json, ["query"]);
 
     if (!result) {
-      log.error('Invalid response from AI container for query');
+      log.error("Invalid response from AI container for query");
       return null;
     }
 
     return result.query || null;
   } catch (error) {
-    log.error('AI query error', { error: getErrorMessage(error) });
+    log.error("AI query error", { error: getErrorMessage(error) });
     return null;
   }
 }
@@ -154,27 +164,27 @@ export async function detectOllama(): Promise<{
 }> {
   try {
     const response = await fetch(`${AI_CONTAINER_URL}/detect-ollama`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: buildAIProxyJsonHeaders(),
       signal: AbortSignal.timeout(15000),
     });
 
     if (!response.ok) {
-      return { found: false, message: 'Detection failed' };
+      return { found: false, message: "Detection failed" };
     }
 
     const json = await response.json();
-    const result = validateResponse<AIDetectOllamaResponse>(json, ['found']);
+    const result = validateResponse<AIDetectOllamaResponse>(json, ["found"]);
 
     if (!result) {
-      log.error('Invalid response from AI container for Ollama detection');
-      return { found: false, message: 'Invalid response format' };
+      log.error("Invalid response from AI container for Ollama detection");
+      return { found: false, message: "Invalid response format" };
     }
 
     return result;
   } catch (error) {
-    log.error('Ollama detection error', { error: getErrorMessage(error) });
-    return { found: false, message: 'AI container not available' };
+    log.error("Ollama detection error", { error: getErrorMessage(error) });
+    return { found: false, message: "AI container not available" };
   }
 }
 
@@ -188,7 +198,7 @@ export async function listModels(): Promise<{
   const config = await getAIConfig();
 
   if (!config.endpoint) {
-    return { models: [], error: 'No AI endpoint configured' };
+    return { models: [], error: "No AI endpoint configured" };
   }
 
   // Sync config first so container knows the endpoint
@@ -196,31 +206,32 @@ export async function listModels(): Promise<{
 
   try {
     const response = await fetch(`${AI_CONTAINER_URL}/list-models`, {
-      method: 'GET',
+      method: "GET",
+      headers: buildAIProxyAuthHeaders(),
       signal: AbortSignal.timeout(10000),
     });
 
     if (!response.ok) {
       const errorJson = await response.json().catch(() => {
-        log.warn('Failed to parse error response JSON for list models');
+        log.warn("Failed to parse error response JSON for list models");
         return {};
       });
       const error = validateResponse<{ error?: string }>(errorJson, []);
-      return { models: [], error: error?.error || 'Failed to list models' };
+      return { models: [], error: error?.error || "Failed to list models" };
     }
 
     const json = await response.json();
-    const result = validateResponse<AIListModelsResponse>(json, ['models']);
+    const result = validateResponse<AIListModelsResponse>(json, ["models"]);
 
     if (!result) {
-      log.error('Invalid response from AI container for list models');
-      return { models: [], error: 'Invalid response format' };
+      log.error("Invalid response from AI container for list models");
+      return { models: [], error: "Invalid response format" };
     }
 
     return result;
   } catch (error) {
-    log.error('List models error', { error: getErrorMessage(error) });
-    return { models: [], error: 'Cannot connect to AI container' };
+    log.error("List models error", { error: getErrorMessage(error) });
+    return { models: [], error: "Cannot connect to AI container" };
   }
 }
 
@@ -236,7 +247,7 @@ export async function pullModel(model: string): Promise<{
   const config = await getAIConfig();
 
   if (!config.endpoint) {
-    return { success: false, error: 'No AI endpoint configured' };
+    return { success: false, error: "No AI endpoint configured" };
   }
 
   // Sync config first
@@ -244,33 +255,33 @@ export async function pullModel(model: string): Promise<{
 
   try {
     const response = await fetch(`${AI_CONTAINER_URL}/pull-model`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: buildAIProxyJsonHeaders(),
       body: JSON.stringify({ model }),
       signal: AbortSignal.timeout(600000), // 10 minute timeout for large models
     });
 
     if (!response.ok) {
       const errorJson = await response.json().catch(() => {
-        log.warn('Failed to parse error response JSON for pull model');
+        log.warn("Failed to parse error response JSON for pull model");
         return {};
       });
       const error = validateResponse<{ error?: string }>(errorJson, []);
-      return { success: false, error: error?.error || 'Pull failed' };
+      return { success: false, error: error?.error || "Pull failed" };
     }
 
     const json = await response.json();
-    const result = validateResponse<AIPullModelResponse>(json, ['success']);
+    const result = validateResponse<AIPullModelResponse>(json, ["success"]);
 
     if (!result) {
-      log.error('Invalid response from AI container for pull model');
-      return { success: false, error: 'Invalid response format' };
+      log.error("Invalid response from AI container for pull model");
+      return { success: false, error: "Invalid response format" };
     }
 
     return result;
   } catch (error) {
-    log.error('Pull model error', { error: getErrorMessage(error) });
-    return { success: false, error: 'Pull operation failed' };
+    log.error("Pull model error", { error: getErrorMessage(error) });
+    return { success: false, error: "Pull operation failed" };
   }
 }
 
@@ -285,7 +296,7 @@ export async function deleteModel(model: string): Promise<{
   const config = await getAIConfig();
 
   if (!config.endpoint) {
-    return { success: false, error: 'No AI endpoint configured' };
+    return { success: false, error: "No AI endpoint configured" };
   }
 
   // Sync config first
@@ -293,25 +304,25 @@ export async function deleteModel(model: string): Promise<{
 
   try {
     const response = await fetch(`${AI_CONTAINER_URL}/delete-model`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
+      method: "DELETE",
+      headers: buildAIProxyJsonHeaders(),
       body: JSON.stringify({ model }),
       signal: AbortSignal.timeout(30000),
     });
 
     if (!response.ok) {
       const errorJson = await response.json().catch(() => {
-        log.warn('Failed to parse error response JSON for delete model');
+        log.warn("Failed to parse error response JSON for delete model");
         return {};
       });
       const error = validateResponse<{ error?: string }>(errorJson, []);
-      return { success: false, error: error?.error || 'Delete failed' };
+      return { success: false, error: error?.error || "Delete failed" };
     }
 
-    const json = await response.json() as { model?: string };
+    const json = (await response.json()) as { model?: string };
     return { success: true, model: json.model };
   } catch (error) {
-    log.error('Delete model error', { error: getErrorMessage(error) });
-    return { success: false, error: 'Delete operation failed' };
+    log.error("Delete model error", { error: getErrorMessage(error) });
+    return { success: false, error: "Delete operation failed" };
   }
 }

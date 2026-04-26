@@ -6,23 +6,28 @@
  * persists insights, and dispatches notifications.
  */
 
-import type { Prisma } from '../../generated/prisma/client';
-import { getRedisClient, isRedisConnected } from '../../infrastructure';
-import { createLogger } from '../../utils/logger';
-import { getErrorMessage } from '../../utils/errors';
-import { getAIConfig, syncConfigToContainer, getContainerUrl } from '../ai/config';
-import { intelligenceRepository } from '../../repositories/intelligenceRepository';
-import { getEnabledIntelligenceWallets } from './settings';
-import { notificationChannelRegistry } from '../notifications/channels';
-import type { InsightType, AnalysisResult, AnalysisContext } from './types';
-import type { CreateInsightInput } from '../../repositories/intelligenceRepository';
+import type { Prisma } from "../../generated/prisma/client";
+import { getRedisClient, isRedisConnected } from "../../infrastructure";
+import { createLogger } from "../../utils/logger";
+import { getErrorMessage } from "../../utils/errors";
+import {
+  getAIConfig,
+  syncConfigToContainer,
+  getContainerUrl,
+} from "../ai/config";
+import { buildAIProxyJsonHeaders } from "../ai/proxyClient";
+import { intelligenceRepository } from "../../repositories/intelligenceRepository";
+import { getEnabledIntelligenceWallets } from "./settings";
+import { notificationChannelRegistry } from "../notifications/channels";
+import type { InsightType, AnalysisResult, AnalysisContext } from "./types";
+import type { CreateInsightInput } from "../../repositories/intelligenceRepository";
 
-const log = createLogger('INTELLIGENCE:SVC_ANALYSIS');
+const log = createLogger("INTELLIGENCE:SVC_ANALYSIS");
 
 const AI_CONTAINER_URL = getContainerUrl();
 
 /** Redis key prefix for deduplication (TTL-based) */
-const DEDUP_KEY_PREFIX = 'intelligence:dedup:';
+const DEDUP_KEY_PREFIX = "intelligence:dedup:";
 /** Default cooldown between identical insight types per wallet (6 hours) */
 const DEFAULT_COOLDOWN_SECONDS = 6 * 3600;
 /** Insight default expiry (48 hours) */
@@ -36,7 +41,7 @@ export async function runAnalysisPipelines(): Promise<void> {
   try {
     const config = await getAIConfig();
     if (!config.enabled || !config.endpoint || !config.model) {
-      log.debug('AI not configured, skipping analysis');
+      log.debug("AI not configured, skipping analysis");
       return;
     }
 
@@ -46,17 +51,19 @@ export async function runAnalysisPipelines(): Promise<void> {
     // Check Ollama compatibility
     const ollamaCheck = await checkOllamaCompatible();
     if (!ollamaCheck) {
-      log.debug('Endpoint is not Ollama-compatible, skipping analysis');
+      log.debug("Endpoint is not Ollama-compatible, skipping analysis");
       return;
     }
 
     const enabledWallets = await getEnabledIntelligenceWallets();
     if (enabledWallets.length === 0) {
-      log.debug('No wallets with intelligence enabled');
+      log.debug("No wallets with intelligence enabled");
       return;
     }
 
-    log.info('Running intelligence analysis', { walletCount: enabledWallets.length });
+    log.info("Running intelligence analysis", {
+      walletCount: enabledWallets.length,
+    });
 
     for (const { walletId, walletName, settings } of enabledWallets) {
       try {
@@ -64,11 +71,16 @@ export async function runAnalysisPipelines(): Promise<void> {
           await runPipeline(walletId, walletName, type);
         }
       } catch (error) {
-        log.error('Error analyzing wallet', { walletId, error: getErrorMessage(error) });
+        log.error("Error analyzing wallet", {
+          walletId,
+          error: getErrorMessage(error),
+        });
       }
     }
   } catch (error) {
-    log.error('Error in runAnalysisPipelines', { error: getErrorMessage(error) });
+    log.error("Error in runAnalysisPipelines", {
+      error: getErrorMessage(error),
+    });
   }
 }
 
@@ -78,25 +90,25 @@ export async function runAnalysisPipelines(): Promise<void> {
 async function runPipeline(
   walletId: string,
   walletName: string,
-  type: InsightType
+  type: InsightType,
 ): Promise<void> {
   // Check deduplication
   if (await isDeduplicated(walletId, type)) {
-    log.debug('Skipping deduplicated analysis', { walletId, type });
+    log.debug("Skipping deduplicated analysis", { walletId, type });
     return;
   }
 
   // Gather context based on type
   const context = await gatherContext(walletId, type);
   if (!context) {
-    log.debug('No context available for analysis', { walletId, type });
+    log.debug("No context available for analysis", { walletId, type });
     return;
   }
 
   // Call AI proxy for analysis
   const result = await callAnalysis(type, context);
   if (!result) {
-    log.debug('No analysis result', { walletId, type });
+    log.debug("No analysis result", { walletId, type });
     return;
   }
 
@@ -113,7 +125,12 @@ async function runPipeline(
   };
 
   const insight = await intelligenceRepository.createInsight(input);
-  log.info('Created insight', { id: insight.id, walletId, type, severity: result.severity });
+  log.info("Created insight", {
+    id: insight.id,
+    walletId,
+    type,
+    severity: result.severity,
+  });
 
   // Set dedup key
   await setDedup(walletId, type);
@@ -129,7 +146,10 @@ async function runPipeline(
       walletName,
     });
   } catch (error) {
-    log.error('Failed to dispatch insight notification', { insightId: insight.id, error: getErrorMessage(error) });
+    log.error("Failed to dispatch insight notification", {
+      insightId: insight.id,
+      error: getErrorMessage(error),
+    });
   }
 }
 
@@ -138,14 +158,15 @@ async function runPipeline(
  */
 async function gatherContext(
   walletId: string,
-  type: InsightType
+  type: InsightType,
 ): Promise<AnalysisContext | null> {
   try {
     const context: AnalysisContext = {};
 
     switch (type) {
-      case 'utxo_health': {
-        const { getUtxoHealthProfile } = await import('../autopilot/utxoHealth');
+      case "utxo_health": {
+        const { getUtxoHealthProfile } =
+          await import("../autopilot/utxoHealth");
         const health = await getUtxoHealthProfile(walletId, 10_000);
         if (health.totalUtxos === 0) return null;
         context.utxoHealth = {
@@ -159,8 +180,9 @@ async function gatherContext(
         break;
       }
 
-      case 'fee_timing': {
-        const { getRecentFees, getLatestFeeSnapshot } = await import('../autopilot/feeMonitor');
+      case "fee_timing": {
+        const { getRecentFees, getLatestFeeSnapshot } =
+          await import("../autopilot/feeMonitor");
         const snapshots = await getRecentFees(1440);
         const latest = await getLatestFeeSnapshot();
         if (!latest || snapshots.length < 6) return null;
@@ -169,30 +191,49 @@ async function gatherContext(
           currentEconomy: latest.economy,
           currentFastest: latest.fastest,
           snapshotCount: snapshots.length,
-          avgEconomy24h: Math.round(snapshots.reduce((s, f) => s + f.economy, 0) / snapshots.length),
-          minEconomy24h: Math.min(...snapshots.map(s => s.economy)),
-          maxEconomy24h: Math.max(...snapshots.map(s => s.economy)),
+          avgEconomy24h: Math.round(
+            snapshots.reduce((s, f) => s + f.economy, 0) / snapshots.length,
+          ),
+          minEconomy24h: Math.min(...snapshots.map((s) => s.economy)),
+          maxEconomy24h: Math.max(...snapshots.map((s) => s.economy)),
         };
         break;
       }
 
-      case 'anomaly': {
-        const velocity = await intelligenceRepository.getTransactionVelocity(walletId, 90);
-        const velocity1d = await intelligenceRepository.getTransactionVelocity(walletId, 1);
+      case "anomaly": {
+        const velocity = await intelligenceRepository.getTransactionVelocity(
+          walletId,
+          90,
+        );
+        const velocity1d = await intelligenceRepository.getTransactionVelocity(
+          walletId,
+          1,
+        );
         if (velocity.length === 0) return null;
 
         context.spendingVelocity = {
-          last24h: { count: velocity1d[0]?.count ?? 0, totalSats: Number(velocity1d[0]?.totalSats ?? 0) },
-          last90d: { count: velocity[0]?.count ?? 0, totalSats: Number(velocity[0]?.totalSats ?? 0) },
+          last24h: {
+            count: velocity1d[0]?.count ?? 0,
+            totalSats: Number(velocity1d[0]?.totalSats ?? 0),
+          },
+          last90d: {
+            count: velocity[0]?.count ?? 0,
+            totalSats: Number(velocity[0]?.totalSats ?? 0),
+          },
           avgDailyCount: (velocity[0]?.count ?? 0) / 90,
           avgDailySpend: Number(velocity[0]?.totalSats ?? 0) / 90,
         };
         break;
       }
 
-      case 'tax': {
-        const distribution = await intelligenceRepository.getUtxoAgeDistribution(walletId);
-        if (distribution.shortTerm.count === 0 && distribution.longTerm.count === 0) return null;
+      case "tax": {
+        const distribution =
+          await intelligenceRepository.getUtxoAgeDistribution(walletId);
+        if (
+          distribution.shortTerm.count === 0 &&
+          distribution.longTerm.count === 0
+        )
+          return null;
 
         context.utxoAgeProfile = {
           shortTermCount: distribution.shortTerm.count,
@@ -204,9 +245,11 @@ async function gatherContext(
         break;
       }
 
-      case 'consolidation': {
-        const { getUtxoHealthProfile } = await import('../autopilot/utxoHealth');
-        const { getLatestFeeSnapshot, getRecentFees } = await import('../autopilot/feeMonitor');
+      case "consolidation": {
+        const { getUtxoHealthProfile } =
+          await import("../autopilot/utxoHealth");
+        const { getLatestFeeSnapshot, getRecentFees } =
+          await import("../autopilot/feeMonitor");
 
         const [health, latest, snapshots] = await Promise.all([
           getUtxoHealthProfile(walletId, 10_000),
@@ -224,9 +267,13 @@ async function gatherContext(
         };
         context.feeHistory = {
           currentEconomy: latest?.economy ?? null,
-          avgEconomy24h: snapshots.length > 0
-            ? Math.round(snapshots.reduce((s, f) => s + f.economy, 0) / snapshots.length)
-            : null,
+          avgEconomy24h:
+            snapshots.length > 0
+              ? Math.round(
+                  snapshots.reduce((s, f) => s + f.economy, 0) /
+                    snapshots.length,
+                )
+              : null,
         };
         break;
       }
@@ -234,7 +281,11 @@ async function gatherContext(
 
     return context;
   } catch (error) {
-    log.error('Failed to gather context', { walletId, type, error: getErrorMessage(error) });
+    log.error("Failed to gather context", {
+      walletId,
+      type,
+      error: getErrorMessage(error),
+    });
     return null;
   }
 }
@@ -244,30 +295,30 @@ async function gatherContext(
  */
 async function callAnalysis(
   type: InsightType,
-  context: AnalysisContext
+  context: AnalysisContext,
 ): Promise<AnalysisResult | null> {
   try {
     const response = await fetch(`${AI_CONTAINER_URL}/analyze`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: buildAIProxyJsonHeaders(),
       body: JSON.stringify({ type, context }),
       signal: AbortSignal.timeout(130000),
     });
 
     if (!response.ok) {
-      log.error('AI analysis request failed', { status: response.status });
+      log.error("AI analysis request failed", { status: response.status });
       return null;
     }
 
-    const result = await response.json() as AnalysisResult;
+    const result = (await response.json()) as AnalysisResult;
     if (!result.title || !result.summary) {
-      log.error('Invalid analysis response', { type });
+      log.error("Invalid analysis response", { type });
       return null;
     }
 
     return result;
   } catch (error) {
-    log.error('AI analysis error', { type, error: getErrorMessage(error) });
+    log.error("AI analysis error", { type, error: getErrorMessage(error) });
     return null;
   }
 }
@@ -283,18 +334,26 @@ async function checkOllamaCompatible(): Promise<boolean> {
 /**
  * Shared helper: call the AI container's /check-ollama endpoint.
  */
-async function fetchOllamaCheck(): Promise<{ compatible: boolean; endpointType?: string; reason?: string } | null> {
+async function fetchOllamaCheck(): Promise<{
+  compatible: boolean;
+  endpointType?: string;
+  reason?: string;
+} | null> {
   try {
     const response = await fetch(`${AI_CONTAINER_URL}/check-ollama`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: buildAIProxyJsonHeaders(),
       signal: AbortSignal.timeout(10000),
     });
 
     if (!response.ok) return null;
-    return await response.json() as { compatible: boolean; endpointType?: string; reason?: string };
+    return (await response.json()) as {
+      compatible: boolean;
+      endpointType?: string;
+      reason?: string;
+    };
   } catch (error) {
-    log.debug('Ollama check failed', { error: getErrorMessage(error) });
+    log.debug("Ollama check failed", { error: getErrorMessage(error) });
     return null;
   }
 }
@@ -302,7 +361,10 @@ async function fetchOllamaCheck(): Promise<{ compatible: boolean; endpointType?:
 /**
  * Check if an insight of this type was recently generated for this wallet.
  */
-async function isDeduplicated(walletId: string, type: InsightType): Promise<boolean> {
+async function isDeduplicated(
+  walletId: string,
+  type: InsightType,
+): Promise<boolean> {
   const redis = getRedisClient();
   if (!redis || !isRedisConnected()) return false;
 
@@ -319,7 +381,7 @@ async function setDedup(walletId: string, type: InsightType): Promise<void> {
   if (!redis || !isRedisConnected()) return;
 
   const key = `${DEDUP_KEY_PREFIX}${walletId}:${type}`;
-  await redis.set(key, '1', 'EX', DEFAULT_COOLDOWN_SECONDS);
+  await redis.set(key, "1", "EX", DEFAULT_COOLDOWN_SECONDS);
 }
 
 /**
@@ -329,18 +391,30 @@ export async function getIntelligenceStatus() {
   const config = await getAIConfig();
 
   if (!config.enabled || !config.endpoint || !config.model) {
-    return { available: false, ollamaConfigured: false, reason: 'ai_not_configured' };
+    return {
+      available: false,
+      ollamaConfigured: false,
+      reason: "ai_not_configured",
+    };
   }
 
   await syncConfigToContainer(config);
 
   const result = await fetchOllamaCheck();
   if (!result) {
-    return { available: false, ollamaConfigured: false, reason: 'ai_container_unreachable' };
+    return {
+      available: false,
+      ollamaConfigured: false,
+      reason: "ai_container_unreachable",
+    };
   }
 
   if (!result.compatible) {
-    return { available: false, ollamaConfigured: false, reason: result.reason || 'ollama_required' };
+    return {
+      available: false,
+      ollamaConfigured: false,
+      reason: result.reason || "ollama_required",
+    };
   }
 
   return {
