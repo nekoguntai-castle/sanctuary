@@ -1,0 +1,6 @@
+# Auto-generated dependency-cruiser graphs land here as `<package>.md` files
+# (markdown wrapper + Mermaid block, so they render natively on GitHub and as
+# Docusaurus pages).
+#
+# Do not edit by hand — they are overwritten by `npm run arch:graphs` and
+# CI fails the PR if the committed contents are stale.

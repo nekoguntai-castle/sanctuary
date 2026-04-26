@@ -1,0 +1,40 @@
+/**
+ * Minimal styling overrides. Docusaurus's classic theme already provides a
+ * complete light/dark stylesheet; only override what we need for diagrams.
+ */
+
+:root {
+  --ifm-color-primary: #1e3a8a;
+  --ifm-color-primary-dark: #1b3479;
+  --ifm-color-primary-darker: #19316f;
+  --ifm-color-primary-darkest: #15285c;
+  --ifm-color-primary-light: #21429b;
+  --ifm-color-primary-lighter: #2347a4;
+  --ifm-color-primary-lightest: #2c54bf;
+  --ifm-code-font-size: 95%;
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #93b4ff;
+  --ifm-color-primary-dark: #6f9aff;
+  --ifm-color-primary-darker: #5d8dff;
+  --ifm-color-primary-darkest: #2865ff;
+  --ifm-color-primary-light: #b7cefe;
+  --ifm-color-primary-lighter: #c9daff;
+  --ifm-color-primary-lightest: #ffffff;
+}
+
+/* Give Mermaid diagrams breathing room and a fixed canvas so pan/zoom works. */
+.docusaurus-mermaid-container {
+  background: var(--ifm-background-surface-color);
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 4px;
+  padding: 8px;
+  margin: 16px 0;
+}
+
+.docusaurus-mermaid-container svg {
+  max-width: 100%;
+  display: block;
+  margin: 0 auto;
+}
