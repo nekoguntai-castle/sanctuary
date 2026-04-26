@@ -26,174 +26,180 @@ end
 subgraph 3["api"]
 4[" "]
 end
-subgraph 5["config"]
+subgraph 5["assistant"]
 6[" "]
 end
-7["constants.ts"]
-subgraph 8["errors"]
-9[" "]
+subgraph 7["config"]
+8[" "]
 end
-subgraph A["events"]
+9["constants.ts"]
+subgraph A["errors"]
 B[" "]
 end
-subgraph C["i18n"]
+subgraph C["events"]
 D[" "]
 end
-E["index.ts"]
-subgraph F["infrastructure"]
-G[" "]
+subgraph E["i18n"]
+F[" "]
 end
-subgraph H["jobs"]
+G["index.ts"]
+subgraph H["infrastructure"]
 I[" "]
 end
-J["mcp-entry.ts"]
-subgraph K["mcp"]
-L[" "]
+subgraph J["jobs"]
+K[" "]
 end
-subgraph M["middleware"]
+L["mcp-entry.ts"]
+subgraph M["mcp"]
 N[" "]
 end
-subgraph O["models"]
+subgraph O["middleware"]
 P[" "]
 end
-subgraph Q["observability"]
+subgraph Q["models"]
 R[" "]
 end
-subgraph S["providers"]
+subgraph S["observability"]
 T[" "]
 end
-subgraph U["repositories"]
+subgraph U["providers"]
 V[" "]
 end
-W["routes.ts"]
-subgraph X["services"]
-Y[" "]
+subgraph W["repositories"]
+X[" "]
 end
-subgraph Z["utils"]
+Y["routes.ts"]
+subgraph Z["services"]
 10[" "]
 end
-subgraph 11["validation"]
+subgraph 11["utils"]
 12[" "]
 end
-subgraph 13["websocket"]
+subgraph 13["validation"]
 14[" "]
 end
-15["worker.ts"]
-subgraph 16["worker"]
-17[" "]
+subgraph 15["websocket"]
+16[" "]
+end
+17["worker.ts"]
+subgraph 18["worker"]
+19[" "]
 end
 end
-2-->9
-2-->V
-2-->Y
+2-->B
+2-->X
 2-->10
+2-->12
 4-->2
-4-->9
-4-->N
-4-->Y
-4-->12
+4-->B
+4-->P
 4-->10
 4-->14
-4-->L
-4-->V
-4-->7
-4-->6
-9-->10
-B-->10
-D-->10
-D-->N
-E-->6
-E-->9
-E-->D
-E-->G
-E-->I
-E-->N
-E-->P
-E-->R
-E-->V
-E-->W
-E-->Y
-E-->10
-E-->14
-G-->10
-G-->6
+4-->12
+4-->16
+4-->N
+4-->X
+4-->9
+4-->8
+6-->8
+6-->X
+B-->12
+D-->12
+F-->12
+F-->P
+G-->8
 G-->B
+G-->F
+G-->I
+G-->K
+G-->P
+G-->R
+G-->T
+G-->X
 G-->Y
-I-->P
-I-->V
-I-->Y
+G-->10
+G-->12
+G-->16
+I-->12
+I-->8
+I-->D
 I-->10
-I-->G
-J-->6
-J-->G
-J-->L
-J-->P
-J-->R
-J-->Y
-J-->10
-L-->V
-L-->Y
-L-->10
-L-->6
+K-->R
+K-->X
+K-->10
+K-->12
+K-->I
+L-->8
+L-->I
 L-->N
-L-->G
 L-->R
-N-->9
+L-->T
+L-->10
+L-->12
+N-->X
 N-->10
-N-->2
-N-->Y
+N-->12
+N-->8
+N-->P
+N-->I
 N-->6
-N-->D
-N-->R
-P-->R
+N-->T
+P-->B
+P-->12
+P-->2
 P-->10
-R-->10
-T-->10
-V-->9
-V-->P
-V-->10
-V-->G
-W-->4
-W-->6
-W-->N
-W-->Y
-Y-->7
-Y-->V
-Y-->10
-Y-->R
-Y-->6
-Y-->G
-Y-->T
-Y-->2
-Y-->9
+P-->8
+P-->F
+P-->T
+R-->T
+R-->12
+T-->12
+V-->12
+X-->B
+X-->R
+X-->12
+X-->I
+Y-->4
+Y-->8
 Y-->P
-Y-->14
-Y-->B
-Y-->L
-Y-->I
-Y-->12
-10-->6
-10-->Y
+Y-->10
+10-->9
+10-->X
 10-->12
-14-->10
-14-->Y
-14-->R
-14-->N
-14-->G
-14-->6
-14-->V
-15-->6
-15-->G
-15-->P
-15-->R
-15-->Y
-15-->10
-15-->17
-17-->6
-17-->Y
-17-->10
-17-->V
-17-->G
-17-->R
+10-->T
+10-->8
+10-->I
+10-->V
+10-->2
+10-->B
+10-->R
+10-->16
+10-->D
+10-->N
+10-->K
+10-->14
+12-->8
+12-->10
+12-->14
+16-->12
+16-->10
+16-->T
+16-->P
+16-->I
+16-->8
+16-->X
+17-->8
 17-->I
+17-->R
+17-->T
+17-->10
+17-->12
+17-->19
+19-->8
+19-->10
+19-->12
+19-->X
+19-->I
+19-->T
+19-->K
 ```

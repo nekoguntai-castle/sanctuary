@@ -1,3 +1,33 @@
+# Active Task: Shared Read-Tool Registry Foundation 2026-04-26
+
+Status: complete
+
+Goal: extract the current MCP read-tool execution surface into a shared backend-owned registry foundation so direct MCP and the future in-app Console can use the same scoped, audited, typed read tools.
+
+## Plan
+
+- [x] Inspect current MCP tools, auth context, read repositories, audit behavior, and focused tests.
+- [x] Add a shared assistant read-tool domain with typed metadata, input validation, budgets, result envelopes, and executor context.
+- [x] Extract the existing MCP read tools onto the shared registry without widening permissions or changing write behavior.
+- [x] Adapt MCP tools to call the registry as an adapter while preserving MCP response compatibility where practical.
+- [x] Add focused registry and MCP adapter tests for invalid input, empty data, wallet authorization boundaries, and truncation/budget metadata.
+- [x] Run focused verification, touched-file lizard checks, diff checks, quality review, edge-case audit, and self-review.
+- [x] Prepare the slice for PR delivery with review notes and verification evidence.
+
+## Review
+
+- Added a shared assistant read-tool registry under `server/src/assistant/tools` with stable tool metadata, input schemas, sensitivity classes, required-scope metadata, budgets, result envelopes, provenance, redaction notes, truncation metadata, and adapter-safe audit metadata.
+- Extracted the existing MCP read tools into shared registry executors without adding write capabilities: transaction query, UTXO query, address search, wallet overview, wallet analytics, balance history, fee estimates, price conversion, and draft statuses.
+- Kept MCP as a thin adapter over the shared registry. MCP structured content still exposes the existing top-level data fields while adding `_sanctuary` metadata for facts, provenance, sensitivity, redactions, truncation, warnings, and non-identifying audit details.
+- Added neutral read/cache boundaries (`assistantReadRepository`, assistant cache helpers) while keeping `mcpReadRepository` and `mcp/cache` as compatibility re-exports for existing MCP resources and tests.
+- Added focused tests for registry metadata, invalid UUID validation before auth, empty transaction results, row-limit truncation, wallet authorization denial short-circuiting, wallet-not-found errors, unsafe fiat conversion bounds, and MCP adapter envelope output.
+- Merge-queue follow-up: added assistant executor/DTO/utility coverage for wallet list tools, wallet overview, analytics, balance history, draft statuses, public fee/price tools, registry duplicate/unknown/null-input paths, redaction behavior, and invalid/boundary inputs.
+- Quality review: split the registry into small tool modules to keep MCP registration thin and future Console reuse straightforward; file sizes stay below the 400-line project warning threshold.
+- Edge-case audit: invalid/nullish tool input is validated before authorization; empty results return deterministic envelopes; row limits fetch one extra record for truncation proof; min/max amount bounds reject reversed ranges; reversed or overlong date ranges are rejected; raw actor/user IDs are not returned in envelope audit metadata; unsafe numeric price conversions fail closed.
+- Verification passed: focused registry/MCP/cache/repository Vitest suite (30 tests), exact backend unit coverage gate (`npm run test:unit -- --coverage`, 400 files, 9,240 tests, 100% statements/branches/functions/lines), `npm run typecheck:server:tests`, `npm run lint:server`, touched-file lizard `-C 15`, `git diff --check`, and full backend suite (407 files, 9,328 tests, 505 skipped). The first earlier full backend attempt failed only inside the sandbox due `listen EPERM`; later full backend runs passed locally.
+
+---
+
 # Active Task: AI Proxy Gateway Hardening 2026-04-26
 
 Status: complete
