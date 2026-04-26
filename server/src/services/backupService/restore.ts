@@ -214,10 +214,6 @@ function processUserRecords(records: BackupRecord[], warnings: string[]): Backup
  * Process MCP API key records - restored bearer-token hashes must not become usable.
  */
 function processMcpApiKeyRecords(records: BackupRecord[], warnings: string[]): BackupRecord[] {
-  if (records.length === 0) {
-    return records;
-  }
-
   const restoreRevokedAt = new Date();
   const unrevokedCount = records.filter(record => !record.revokedAt).length;
   if (unrevokedCount > 0) {

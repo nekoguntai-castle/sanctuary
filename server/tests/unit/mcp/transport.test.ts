@@ -238,6 +238,35 @@ describe('MCP HTTP transport', () => {
     expect(mocks.recordMcpRequest).toHaveBeenCalledWith('prompt:wallet_health', 401, expect.any(Number));
   });
 
+  it('does not overwrite an unauthorized transport response after headers are sent', async () => {
+    const app = createMcpHttpApp();
+    mocks.handleRequest.mockImplementationOnce((_req, res) => {
+      res.writeHead(401, {
+        'Content-Type': 'application/json',
+        'WWW-Authenticate': 'Bearer realm="transport"',
+      });
+      res.end(JSON.stringify({
+        jsonrpc: '2.0',
+        error: { code: -32600, message: 'transport rejected' },
+        id: null,
+      }));
+      throw new McpUnauthorizedError('transport rejected');
+    });
+
+    await request(app)
+      .post('/mcp')
+      .set('mcp-protocol-version', '2025-11-25')
+      .send({ method: 'tools/list' })
+      .expect(401)
+      .expect('WWW-Authenticate', 'Bearer realm="transport"')
+      .expect(response => {
+        expect(response.body.error.message).toBe('transport rejected');
+      });
+
+    expect(mocks.authFailuresInc).toHaveBeenCalledWith({ reason: 'unauthorized' });
+    expect(mocks.recordMcpRequest).toHaveBeenCalledWith('tools/list', 401, expect.any(Number));
+  });
+
   it('rejects requests that exceed the MCP rate limit', async () => {
     const app = createMcpHttpApp();
     mocks.consumeRateLimit.mockResolvedValueOnce({
