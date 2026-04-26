@@ -48,13 +48,13 @@ graph TD
 
     TelegramApi --> Telegram
 
-    click Dispatcher href "../../server/src/infrastructure/notificationDispatcher.ts"
-    click Registry href "../../server/src/services/notifications/channels/registry.ts"
-    click ChannelTelegram href "../../server/src/services/notifications/channels/telegram.ts"
+    click Dispatcher href "../../server/src/infrastructure/notificationDispatcher.ts#queueTransactionNotification"
+    click Registry href "../../server/src/services/notifications/channels/registry.ts#notificationChannelRegistry"
+    click ChannelTelegram href "../../server/src/services/notifications/channels/telegram.ts#telegramChannelHandler"
     click ChannelPush href "../../server/src/services/notifications/channels/push.ts"
     click ChannelAi href "../../server/src/services/notifications/channels/aiInsights.ts"
-    click DirectTg href "../../server/src/services/telegram/notifications.ts"
-    click TelegramApi href "../../server/src/services/telegram/api.ts"
+    click DirectTg href "../../server/src/services/telegram/notifications.ts#notifyNewTransactions"
+    click TelegramApi href "../../server/src/services/telegram/api.ts#sendTelegramMessage"
     click Worker href "../../server/src/worker/jobs/notificationJobs.ts"
     click Autopilot href "../../server/src/services/autopilot/evaluator.ts"
 
