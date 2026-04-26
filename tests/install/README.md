@@ -281,7 +281,7 @@ PR runs are scoped by `tests/install/utils/classify-install-scope.sh` instead of
 - Fresh install E2E (~5-10 min)
 - Container health and auth flow on a reusable stack (~2-5 min)
 - Baseline upgrade matrix: `latest-stable/baseline` and `n-2/baseline` (~10-20 min per lane)
-- Extended upgrade fixtures: `latest-stable/browser-origin-ip`, `latest-stable/legacy-runtime-env`, and `latest-stable/notification-delivery` (~10-20 min per lane)
+- Extended upgrade fixtures: `latest-stable/browser-origin-ip`, `latest-stable/legacy-runtime-env`, `latest-stable/notification-delivery`, and `latest-stable/optional-profiles` (~10-20 min per lane)
 - Optional full recovery upgrade lane: `latest-stable/baseline` with `--mode full` (~20-35 min)
 
 Total release validation time: ~25-60 minutes depending on upgrade matrix concurrency and image build cache.
