@@ -38,6 +38,7 @@ export { featureFlagRepository, default as featureFlagRepo } from './featureFlag
 export { draftLockRepository, default as draftLockRepo } from './draftLockRepository';
 export { maintenanceRepository, default as maintenanceRepo } from './maintenanceRepository';
 export { mcpApiKeyRepository, default as mcpApiKeyRepo } from './mcpApiKeyRepository';
+export { assistantReadRepository, default as assistantReadRepo } from './assistantReadRepository';
 export { mcpReadRepository, default as mcpReadRepo } from './mcpReadRepository';
 export { agentRepository, default as agentRepo } from './agentRepository';
 

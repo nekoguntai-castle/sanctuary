@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../src/repositories', () => ({
+  assistantReadRepository: mocks.mcpReadRepository,
   mcpReadRepository: mocks.mcpReadRepository,
 }));
 
