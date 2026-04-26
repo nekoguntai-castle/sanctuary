@@ -276,6 +276,7 @@ run_install_script() {
         export SANCTUARY_SSL_DIR="$TEST_SSL_DIR"
         export SKIP_GIT_CHECKOUT="true"
         export RATE_LIMIT_LOGIN=100
+        export RATE_LIMIT_2FA=100
         export RATE_LIMIT_PASSWORD_CHANGE=100
         bash "$project_dir/install.sh" </dev/null
     ) 2>&1 | tee "$install_log"
@@ -2165,6 +2166,9 @@ test_recover_postgres_password_drift() {
         export GATEWAY_PORT
         export ENABLE_MONITORING="$UPGRADE_ENABLE_MONITORING"
         export ENABLE_TOR="$UPGRADE_ENABLE_TOR"
+        export RATE_LIMIT_LOGIN=100
+        export RATE_LIMIT_2FA=100
+        export RATE_LIMIT_PASSWORD_CHANGE=100
         bash "$PROJECT_ROOT/scripts/setup.sh" --force --non-interactive --skip-ssl 2>&1
     ) || {
         log_error "setup.sh failed while recovering the PostgreSQL password drift"
@@ -2286,6 +2290,7 @@ test_force_rebuild_upgrade() {
         export SANCTUARY_ENV_FILE="$(resolve_env_file)"
         export SANCTUARY_SSL_DIR="$TEST_SSL_DIR"
         export RATE_LIMIT_LOGIN=100
+        export RATE_LIMIT_2FA=100
         export RATE_LIMIT_PASSWORD_CHANGE=100
         bash "$PROJECT_ROOT/start.sh" --rebuild 2>&1
     )

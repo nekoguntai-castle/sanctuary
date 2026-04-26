@@ -282,6 +282,7 @@ PR runs are scoped by `tests/install/utils/classify-install-scope.sh` instead of
 - Container health and auth flow on a reusable stack (~2-5 min)
 - Baseline upgrade matrix: `latest-stable/baseline` and `n-2/baseline` (~10-20 min per lane)
 - Extended upgrade fixtures: `latest-stable/browser-origin-ip`, `latest-stable/legacy-runtime-env`, and `latest-stable/notification-delivery` (~10-20 min per lane)
+- Optional full recovery upgrade lane: `latest-stable/baseline` with `--mode full` (~20-35 min)
 
 Total release validation time: ~25-60 minutes depending on upgrade matrix concurrency and image build cache.
 
@@ -301,7 +302,7 @@ Use this workflow **before cutting a release** to run the full test suite includ
 **Recommended release process:**
 1. Run the Release Candidate workflow on the commit you plan to release
    - Let it auto-upgrade from the matrix source aliases, or provide `upgrade_source_ref` for a specific source version you care about
-   - The workflow uses `upgrade-install.test.sh --mode core`; run `--mode full` locally when you want the extended recovery scenarios too
+   - Enable `include_full_upgrade_recovery` for the final pre-cut pass when you want the extended recovery scenarios in CI
 2. Wait for all tests to pass, including the upgrade matrix
 3. Create the release tag
 4. The Install Tests workflow will run release-critical tests and the blocking upgrade matrix on the tag
@@ -314,6 +315,7 @@ workflow_dispatch:
     ref: 'main'  # Git ref to test (branch, tag, or SHA)
     version: '0.5.0'  # Optional version for logging
     upgrade_source_ref: 'v0.8.39'  # Optional older ref/tag to install before upgrading
+    include_full_upgrade_recovery: true # Optional full-mode recovery lane
 ```
 
 ### Release Blocking

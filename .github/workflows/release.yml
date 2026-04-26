@@ -9,6 +9,11 @@ on:
         description: 'Version to release (e.g., 0.4.2)'
         required: true
         type: string
+      include_full_upgrade_recovery:
+        description: 'Run one full-mode baseline upgrade recovery lane during release-candidate validation'
+        required: false
+        default: false
+        type: boolean
   push:
     tags:
       # Trigger for stable version tags (created by create-release.yml)
@@ -215,6 +220,7 @@ jobs:
     with:
       ref: ${{ needs.wait-for-install-tests.outputs.sha }}
       version: ${{ needs.wait-for-install-tests.outputs.version }}
+      include_full_upgrade_recovery: ${{ github.event.inputs.include_full_upgrade_recovery == 'true' }}
 
   # ============================================
   # Build Docker Images (per-architecture)
