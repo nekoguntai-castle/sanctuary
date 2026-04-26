@@ -67,10 +67,13 @@ jobs:
       - name: Regenerate dependency graphs
         run: npm run arch:graphs
 
+      - name: Regenerate function-level call graphs
+        run: npm run arch:calls
+
       - name: Detect stale generated graphs
         run: |
           if ! git diff --exit-code -- docs/architecture/generated; then
-            echo "::error::Generated architecture graphs are stale. Run 'npm run arch:graphs' locally and commit the result."
+            echo "::error::Generated architecture graphs are stale. Run 'npm run arch:graphs && npm run arch:calls' locally and commit the result."
             exit 1
           fi
 

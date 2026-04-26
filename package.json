@@ -59,8 +59,9 @@
     "test:mutation:backend": "cd server && npx stryker run",
     "test:mutation:critical:backend": "cd server && npm run test:mutation:critical:gate",
     "arch:graphs": "node scripts/architecture/generate-graphs.mjs",
+    "arch:calls": "node scripts/architecture/extract-call-graphs.mjs",
     "arch:lint": "node scripts/architecture/lint-diagrams.mjs",
-    "arch:check": "npm run arch:graphs && git diff --exit-code -- docs/architecture/generated && npm run arch:lint",
+    "arch:check": "npm run arch:graphs && npm run arch:calls && git diff --exit-code -- docs/architecture/generated && npm run arch:lint",
     "docs:start": "cd website && npm start",
     "docs:build": "cd website && npm run build"
   },

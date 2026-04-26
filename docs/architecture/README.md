@@ -10,6 +10,7 @@ This is a [C4-model](https://c4model.com/) view of the system, layered from broa
 | **2. Container** | [`containers.md`](containers.md) | Top-level processes and stores inside Sanctuary |
 | **3. Component (selected)** | [`notification-pipeline.md`](notification-pipeline.md) | Notification dispatch — paths, channels, dual-path detection |
 | **4. Generated module graphs** | [`generated/`](generated/) | Auto-derived from imports by `npm run arch:graphs` |
+| **5. Function-level call graphs (opt-in)** | [`generated/calls/`](generated/calls/) | Auto-derived from TypeScript ASTs by `npm run arch:calls` for subsystems listed in [`calls.config.json`](calls.config.json) |
 
 Per-package architecture docs ([`server/ARCHITECTURE.md`](../../server/ARCHITECTURE.md), [`gateway/ARCHITECTURE.md`](../../gateway/ARCHITECTURE.md)) act as Component-level views for their service.
 

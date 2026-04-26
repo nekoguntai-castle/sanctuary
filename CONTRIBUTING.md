@@ -147,6 +147,29 @@ npm run docs:start    # dev server with hot reload (cd website && npm start)
 npm run docs:build    # production build to website/build
 ```
 
+### Keeping architecture docs in sync
+
+`npm run arch:check` runs three drift checks; CI runs the same chain on every PR.
+
+| Script | What it produces | What stale-fails CI |
+|---|---|---|
+| `npm run arch:graphs` | Module dependency graphs per package (`docs/architecture/generated/{frontend,server,gateway}.md`) using `dependency-cruiser`. | Module added/moved/deleted without committing the regenerated graph. |
+| `npm run arch:calls` | Function-level call graphs for opt-in subsystems listed in [`docs/architecture/calls.config.json`](docs/architecture/calls.config.json) (`docs/architecture/generated/calls/<name>.md`). Surfaces new entry points to existing pipelines — the bug class that motivated this whole system. | New function/method added or removed inside a tracked subsystem without committing the regenerated call graph. |
+| `npm run arch:lint` | Validates every `click NodeId href "path"` directive in any Mermaid block points at an existing file. | Source file referenced by a click href is renamed or deleted. |
+
+To track a new subsystem at function granularity, add an entry to `docs/architecture/calls.config.json`:
+
+```json
+{
+  "name": "wallet-sync",
+  "title": "Wallet Sync",
+  "description": "Wallet synchronization pipeline.",
+  "include": ["server/src/services/bitcoin/sync/**/*.ts"]
+}
+```
+
+Run `npm run arch:calls` and commit the new `docs/architecture/generated/calls/<name>.md`.
+
 ### Architecture diagrams
 
 Diagrams live in [`docs/architecture/`](docs/architecture/) and follow the [C4 model](https://c4model.com/) (Context → Container → Component). All diagrams are Mermaid so GitHub renders them inline *and* Docusaurus renders them in the site with svg-pan-zoom for drill-down. Click handlers (`click NodeId href "..."`) navigate to source — relative hrefs are rewritten to absolute GitHub URLs at Docusaurus build time by [`website/src/plugins/remark-mermaid-click-rewrite.mjs`](website/src/plugins/remark-mermaid-click-rewrite.mjs), so the same source works in both renderings.
