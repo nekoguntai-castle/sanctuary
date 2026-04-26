@@ -94,6 +94,28 @@ function stripComments(source) {
     .replace(/(^|[^:])\/\/.*$/gm, '$1');
 }
 
+function extractNamedSymbols(statement) {
+  // Pulls out the locally-bound names from import-clause forms:
+  //   import { a, b as c } from '...'         → ['a', 'b']
+  //   import def, { a } from '...'            → ['def', 'a']
+  //   import * as ns from '...'               → ['ns']
+  //   import def from '...'                   → ['def']
+  // Used for symbol-level forbidden-import rules.
+  const symbols = new Set();
+  const named = statement.match(/\{([^}]+)\}/);
+  if (named) {
+    for (const part of named[1].split(',')) {
+      const name = part.trim().split(/\s+as\s+/)[0].replace(/^type\s+/, '').trim();
+      if (name) symbols.add(name);
+    }
+  }
+  const namespace = statement.match(/\*\s+as\s+(\w+)/);
+  if (namespace) symbols.add(namespace[1]);
+  const defaultImport = statement.match(/^import\s+(?:type\s+)?(\w+)\s*(?:,|from)/);
+  if (defaultImport) symbols.add(defaultImport[1]);
+  return symbols;
+}
+
 function collectImportStatements(source) {
   const executableSource = stripComments(source);
   const imports = [];
@@ -114,6 +136,7 @@ function collectImportStatements(source) {
       specifier,
       typeOnly: /^(?:import|export)\s+type\b/.test(statement),
       dynamic: false,
+      symbols: extractNamedSymbols(statement),
     });
   }
 
@@ -122,6 +145,7 @@ function collectImportStatements(source) {
       specifier: match[1],
       typeOnly: false,
       dynamic: true,
+      symbols: new Set(),
     });
   }
 
@@ -259,6 +283,37 @@ const rules = [
     forbidden: (target) => target.startsWith('server/') || target.startsWith('gateway/') || isBrowserRuntimePath(target),
     ignoreTypeOnly: true,
   },
+  {
+    // Symbol-level rule: dispatchXxxNotification (services/notifications/dispatch.ts)
+    // is the only public entry point for sending notifications. Direct imports of
+    // notifyNewXxx (sync path) or queueXxx (queued path) hide the reliability
+    // semantics behind the import — that's exactly the dual-path bug we just
+    // fixed. Block the symbols, not the modules, because legitimate imports
+    // (e.g. Redis from infrastructure barrel) share the same files.
+    id: 'server-notification-dispatch-only',
+    description:
+      'callers must use dispatchXxxNotification from services/notifications/dispatch — direct imports of notifyNewXxx or queueXxx hide reliability semantics',
+    from: (file) =>
+      file.startsWith('server/src/') &&
+      !file.startsWith('server/src/services/notifications/') &&
+      !file.startsWith('server/src/infrastructure/') &&
+      !file.startsWith('server/src/worker/'),
+    // Symbol rule: a violation requires BOTH a forbidden target AND a
+    // forbidden symbol — same-named functions in unrelated modules don't
+    // count (e.g. services/telegram/notifications.notifyNewTransactions
+    // is the channel implementation, not the orchestrator).
+    forbidden: (target) =>
+      target === 'server/src/services/notifications/notificationService.ts' ||
+      target === 'server/src/infrastructure/notificationDispatcher.ts' ||
+      target === 'server/src/infrastructure/index.ts',
+    forbiddenSymbols: new Set([
+      'notifyNewTransactions',
+      'notifyNewDraft',
+      'queueTransactionNotification',
+      'queueDraftNotification',
+    ]),
+    ignoreTypeOnly: true,
+  },
 ];
 
 const exceptions = loadExceptions();
@@ -303,6 +358,32 @@ for (const file of files) {
       if (rule.ignoreTypeOnly && imported.typeOnly) {
         continue;
       }
+
+      // Symbol-level rules (forbiddenSymbols) require BOTH a target match
+      // and a forbidden symbol — same-named functions in unrelated modules
+      // don't count. Each forbidden symbol becomes its own violation.
+      if (rule.forbiddenSymbols) {
+        if (!rule.forbidden(target)) continue;
+        for (const symbol of imported.symbols) {
+          if (!rule.forbiddenSymbols.has(symbol)) continue;
+          const violation = {
+            rule,
+            file,
+            target,
+            specifier: `${imported.specifier} :: ${symbol}`,
+            dynamic: imported.dynamic,
+          };
+          const exception = matchingException(violation);
+          if (exception) {
+            usedExceptions.add(exceptionKey(exception));
+            continue;
+          }
+          violations.push(violation);
+        }
+        continue;
+      }
+
+      // File-level rules (forbidden(target)) match on the resolved file path.
       if (rule.forbidden(target)) {
         const violation = {
           rule,
