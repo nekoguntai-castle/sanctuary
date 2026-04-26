@@ -145,10 +145,11 @@ test_fixture_defaults_are_composable() {
   UPGRADE_ENABLE_MONITORING="no"
   UPGRADE_ENABLE_TOR="no"
   UPGRADE_USE_LEGACY_RUNTIME_ENV="false"
+  UPGRADE_SEED_NOTIFICATION_STATE="false"
   UPGRADE_EXPECT_OPTIONAL_PROFILES="false"
 
-  validate_upgrade_fixture "browser-origin-ip,legacy-runtime-env,optional-profiles"
-  apply_upgrade_fixture_defaults "browser-origin-ip,legacy-runtime-env,optional-profiles"
+  validate_upgrade_fixture "browser-origin-ip,legacy-runtime-env,notification-delivery,optional-profiles"
+  apply_upgrade_fixture_defaults "browser-origin-ip,legacy-runtime-env,notification-delivery,optional-profiles"
   apply_upgrade_test_network_defaults
 
   assert_equals "127.0.0.1" "$UPGRADE_BROWSER_HOST" "browser fixture should use IP origin"
@@ -156,6 +157,7 @@ test_fixture_defaults_are_composable() {
   assert_equals "9080" "$HTTP_PORT" "upgrade test defaults should use isolated HTTP port"
   assert_equals "4400" "$GATEWAY_PORT" "upgrade test defaults should use isolated gateway port"
   assert_equals "true" "$UPGRADE_USE_LEGACY_RUNTIME_ENV" "legacy fixture should enable repo-root env path"
+  assert_equals "true" "$UPGRADE_SEED_NOTIFICATION_STATE" "notification fixture should seed notification state"
   assert_equals "yes" "$UPGRADE_ENABLE_MONITORING" "optional fixture should enable monitoring"
   assert_equals "yes" "$UPGRADE_ENABLE_TOR" "optional fixture should enable Tor"
 }

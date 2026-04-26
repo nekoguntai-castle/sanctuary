@@ -6,6 +6,7 @@ UPGRADE_ENABLE_TOR="${UPGRADE_ENABLE_TOR:-no}"
 UPGRADE_USE_LEGACY_RUNTIME_ENV="${UPGRADE_USE_LEGACY_RUNTIME_ENV:-false}"
 UPGRADE_RUN_BROWSER_SMOKE="${UPGRADE_RUN_BROWSER_SMOKE:-true}"
 UPGRADE_SEED_APP_STATE="${UPGRADE_SEED_APP_STATE:-true}"
+UPGRADE_SEED_NOTIFICATION_STATE="${UPGRADE_SEED_NOTIFICATION_STATE:-false}"
 UPGRADE_BROWSER_HOST="${UPGRADE_BROWSER_HOST:-}"
 UPGRADE_EXPECT_OPTIONAL_PROFILES="${UPGRADE_EXPECT_OPTIONAL_PROFILES:-false}"
 
@@ -15,6 +16,7 @@ Upgrade fixtures:
   baseline             Changed admin password, encrypted 2FA, seeded app state, browser-path smoke.
   browser-origin-ip    Baseline plus 127.0.0.1 browser-visible origin.
   legacy-runtime-env   Baseline using repo-root .env compatibility path across source/target checkouts.
+  notification-delivery Baseline plus seeded notification config and post-upgrade worker/DLQ proof.
   optional-profiles    Baseline with monitoring and Tor enabled through setup/start paths.
   seeded-app-state     Explicit app-state fixture; useful when combined with other fixture names.
 
@@ -47,7 +49,7 @@ validate_upgrade_fixture() {
     for fixture in "${fixtures[@]}"; do
         fixture="${fixture//[[:space:]]/}"
         case "$fixture" in
-            baseline|browser-origin-ip|legacy-runtime-env|optional-profiles|seeded-app-state)
+            baseline|browser-origin-ip|legacy-runtime-env|notification-delivery|optional-profiles|seeded-app-state)
                 ;;
             "")
                 echo "Fixture list contains an empty fixture" >&2
@@ -80,6 +82,10 @@ apply_upgrade_fixture_defaults() {
         UPGRADE_EXPECT_OPTIONAL_PROFILES=true
     fi
 
+    if fixture_list_contains "$fixture_list" "notification-delivery"; then
+        UPGRADE_SEED_NOTIFICATION_STATE=true
+    fi
+
     if fixture_list_contains "$fixture_list" "seeded-app-state"; then
         UPGRADE_SEED_APP_STATE=true
     fi
@@ -89,6 +95,7 @@ apply_upgrade_fixture_defaults() {
     export UPGRADE_USE_LEGACY_RUNTIME_ENV
     export UPGRADE_RUN_BROWSER_SMOKE
     export UPGRADE_SEED_APP_STATE
+    export UPGRADE_SEED_NOTIFICATION_STATE
     export UPGRADE_BROWSER_HOST
     export UPGRADE_EXPECT_OPTIONAL_PROFILES
 }
