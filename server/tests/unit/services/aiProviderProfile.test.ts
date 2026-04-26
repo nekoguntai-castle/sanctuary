@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildAIProviderProfileState,
+  collectAIProviderCredentialStates,
   createDefaultAIProviderProfile,
   parseAIProviderProfiles,
   replaceAIProviderProfile,
@@ -43,10 +44,47 @@ describe('AI provider profile domain model', () => {
     const state = buildAIProviderProfileState({
       providerProfiles: [lanOllamaProfile],
       activeProviderProfileId: 'missing-profile',
+      providerCredentials: {
+        'lan-ollama': {
+          type: 'api-key',
+          encryptedApiKey: 'encrypted-secret',
+          configuredAt: '2026-04-26T00:00:00.000Z',
+        },
+      },
     });
 
     expect(state.aiActiveProviderProfileId).toBe('lan-ollama');
-    expect(state.aiActiveProviderProfile).toEqual(lanOllamaProfile);
+    expect(state.aiActiveProviderProfile).toMatchObject(lanOllamaProfile);
+    expect(state.aiActiveProviderProfile.credentialState).toEqual({
+      type: 'api-key',
+      configured: true,
+      needsReview: false,
+      configuredAt: '2026-04-26T00:00:00.000Z',
+    });
+  });
+
+  it('strips response-only credential state when parsing stored profiles', () => {
+    expect(parseAIProviderProfiles([
+      {
+        ...lanOllamaProfile,
+        credentialState: { type: 'api-key', configured: true, needsReview: false },
+      },
+    ])).toEqual([lanOllamaProfile]);
+  });
+
+  it('collects redacted credential states by profile ID', () => {
+    expect(collectAIProviderCredentialStates([lanOllamaProfile], {
+      'lan-ollama': {
+        type: 'api-key',
+        encryptedApiKey: 'encrypted-secret',
+      },
+    })).toEqual({
+      'lan-ollama': {
+        type: 'api-key',
+        configured: true,
+        needsReview: false,
+      },
+    });
   });
 
   it('replaces existing profiles and appends new profiles', () => {

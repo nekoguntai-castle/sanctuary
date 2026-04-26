@@ -22,6 +22,10 @@ import {
   DEFAULT_AI_PROVIDER_CAPABILITIES,
   DEFAULT_AI_PROVIDER_PROFILE_ID,
 } from '../../../../services/ai/providerProfile';
+import {
+  AI_PROVIDER_CREDENTIAL_DISABLED_REASONS,
+  AI_PROVIDER_CREDENTIAL_TYPES,
+} from '../../../../services/ai/providerCredentials';
 import { FEATURE_FLAG_KEYS } from '../../../../services/featureFlags/definitions';
 import { ADMIN_GROUP_ROLE_VALUES } from '../../../admin/groupRoles';
 
@@ -42,6 +46,19 @@ const aiProviderCapabilitiesSchema = {
   additionalProperties: false,
 } as const;
 
+const aiProviderCredentialStateSchema = {
+  type: 'object',
+  properties: {
+    type: { type: 'string', enum: ['none', ...AI_PROVIDER_CREDENTIAL_TYPES] },
+    configured: { type: 'boolean' },
+    needsReview: { type: 'boolean' },
+    configuredAt: { type: 'string', format: 'date-time' },
+    disabledReason: { type: 'string', enum: [...AI_PROVIDER_CREDENTIAL_DISABLED_REASONS] },
+  },
+  required: ['type', 'configured', 'needsReview'],
+  additionalProperties: false,
+} as const;
+
 const aiProviderProfileSchema = {
   type: 'object',
   properties: {
@@ -51,8 +68,21 @@ const aiProviderProfileSchema = {
     endpoint: { type: 'string' },
     model: { type: 'string' },
     capabilities: aiProviderCapabilitiesSchema,
+    credentialState: aiProviderCredentialStateSchema,
   },
   required: ['id', 'name', 'providerType', 'endpoint', 'model', 'capabilities'],
+  additionalProperties: false,
+} as const;
+
+const aiProviderCredentialUpdateSchema = {
+  type: 'object',
+  properties: {
+    profileId: { type: 'string' },
+    type: { type: 'string', enum: [...AI_PROVIDER_CREDENTIAL_TYPES], default: 'api-key' },
+    apiKey: { type: 'string', writeOnly: true },
+    clear: { type: 'boolean', default: false },
+  },
+  required: ['profileId'],
   additionalProperties: false,
 } as const;
 
@@ -86,9 +116,18 @@ export const baseSettingsProperties = {
   'smtp.configured': { type: 'boolean', default: false },
 } as const;
 
-export const adminSettingsUpdateProperties = Object.fromEntries(
+const baseAdminSettingsUpdateProperties = Object.fromEntries(
   Object.entries(baseSettingsProperties).filter(([key]) => key !== 'aiActiveProviderProfile'),
-) as Omit<typeof baseSettingsProperties, 'aiActiveProviderProfile'>;
+) as Record<string, unknown>;
+
+export const adminSettingsUpdateProperties = {
+  ...baseAdminSettingsUpdateProperties,
+  aiProviderCredentialUpdates: {
+    type: 'array',
+    items: aiProviderCredentialUpdateSchema,
+    writeOnly: true,
+  },
+} as const;
 
 export const NODE_CONFIG_TYPE_VALUES = ['electrum'] as const;
 export const NODE_CONNECTION_MODE_VALUES = ['singleton', 'pool'] as const;

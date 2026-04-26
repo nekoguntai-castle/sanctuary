@@ -1,5 +1,12 @@
 import { z } from 'zod';
 
+import {
+  attachAIProviderCredentialState,
+  parseAIProviderCredentials,
+  type AIProviderCredentialMap,
+  type AIProviderCredentialState,
+} from './providerCredentials';
+
 export const AI_PROVIDER_PROFILES_KEY = 'aiProviderProfiles';
 export const AI_ACTIVE_PROVIDER_PROFILE_ID_KEY = 'aiActiveProviderProfileId';
 export const DEFAULT_AI_PROVIDER_PROFILE_ID = 'default-ollama';
@@ -28,8 +35,10 @@ export const AIProviderProfileSchema = z
     endpoint: z.string().trim().max(2048),
     model: z.string().trim().max(200),
     capabilities: AIProviderCapabilitiesSchema.default(DEFAULT_AI_PROVIDER_CAPABILITIES),
+    credentialState: z.unknown().optional(),
   })
-  .strict();
+  .strict()
+  .transform(({ credentialState: _credentialState, ...profile }) => profile);
 
 export const AIProviderProfilesSchema = z
   .array(AIProviderProfileSchema)
@@ -51,7 +60,10 @@ export const AIProviderProfilesSchema = z
   });
 
 export type AIProviderType = (typeof AI_PROVIDER_TYPES)[number];
-export type AIProviderProfile = z.infer<typeof AIProviderProfileSchema>;
+export type StoredAIProviderProfile = z.infer<typeof AIProviderProfileSchema>;
+export type AIProviderProfile = StoredAIProviderProfile & {
+  credentialState: AIProviderCredentialState;
+};
 
 export interface AIProviderProfileState {
   aiProviderProfiles: AIProviderProfile[];
@@ -64,13 +76,14 @@ interface AIProviderProfileStateInput {
   model?: unknown;
   providerProfiles?: unknown;
   activeProviderProfileId?: unknown;
+  providerCredentials?: unknown;
 }
 
 function asString(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
-export function createDefaultAIProviderProfile(endpoint = '', model = ''): AIProviderProfile {
+export function createDefaultAIProviderProfile(endpoint = '', model = ''): StoredAIProviderProfile {
   return {
     id: DEFAULT_AI_PROVIDER_PROFILE_ID,
     name: 'Default Ollama',
@@ -81,12 +94,12 @@ export function createDefaultAIProviderProfile(endpoint = '', model = ''): AIPro
   };
 }
 
-export function parseAIProviderProfiles(value: unknown): AIProviderProfile[] | null {
+export function parseAIProviderProfiles(value: unknown): StoredAIProviderProfile[] | null {
   const result = AIProviderProfilesSchema.safeParse(value);
   return result.success ? result.data : null;
 }
 
-export function requireAIProviderProfiles(value: unknown): AIProviderProfile[] {
+export function requireAIProviderProfiles(value: unknown): StoredAIProviderProfile[] {
   const profiles = parseAIProviderProfiles(value);
   if (!profiles || profiles.length === 0) {
     throw new Error('AI provider profiles must be a non-empty array of valid profiles');
@@ -94,14 +107,16 @@ export function requireAIProviderProfiles(value: unknown): AIProviderProfile[] {
   return profiles;
 }
 
-export function findAIProviderProfile(profiles: AIProviderProfile[], profileId: string): AIProviderProfile | undefined {
+export function findAIProviderProfile<T extends { id: string }>(profiles: T[], profileId: string): T | undefined {
   return profiles.find((profile) => profile.id === profileId);
 }
 
 export function buildAIProviderProfileState(input: AIProviderProfileStateInput): AIProviderProfileState {
   const fallbackProfile = createDefaultAIProviderProfile(asString(input.endpoint), asString(input.model));
   const parsedProfiles = parseAIProviderProfiles(input.providerProfiles);
-  const profiles = parsedProfiles && parsedProfiles.length > 0 ? parsedProfiles : [fallbackProfile];
+  const storedProfiles = parsedProfiles && parsedProfiles.length > 0 ? parsedProfiles : [fallbackProfile];
+  const credentials = parseAIProviderCredentials(input.providerCredentials);
+  const profiles = attachAIProviderCredentialState(storedProfiles, credentials);
   const firstProfile = profiles[0]!;
   const requestedActiveId = asString(input.activeProviderProfileId) || firstProfile.id;
   const activeProfile = findAIProviderProfile(profiles, requestedActiveId) ?? firstProfile;
@@ -114,9 +129,9 @@ export function buildAIProviderProfileState(input: AIProviderProfileStateInput):
 }
 
 export function replaceAIProviderProfile(
-  profiles: AIProviderProfile[],
-  profile: AIProviderProfile,
-): AIProviderProfile[] {
+  profiles: StoredAIProviderProfile[],
+  profile: StoredAIProviderProfile,
+): StoredAIProviderProfile[] {
   let replaced = false;
   const nextProfiles = profiles.map((existingProfile) => {
     if (existingProfile.id !== profile.id) {
@@ -127,4 +142,24 @@ export function replaceAIProviderProfile(
   });
 
   return replaced ? nextProfiles : [...nextProfiles, profile];
+}
+
+export function stripAIProviderCredentialState(profile: StoredAIProviderProfile | AIProviderProfile): StoredAIProviderProfile {
+  const { credentialState: _credentialState, ...storedProfile } = profile as AIProviderProfile;
+  return storedProfile;
+}
+
+export function stripAIProviderCredentialStates(
+  profiles: Array<StoredAIProviderProfile | AIProviderProfile>,
+): StoredAIProviderProfile[] {
+  return profiles.map(stripAIProviderCredentialState);
+}
+
+export function collectAIProviderCredentialStates(
+  profiles: StoredAIProviderProfile[],
+  credentials: AIProviderCredentialMap,
+): Record<string, AIProviderCredentialState> {
+  return Object.fromEntries(
+    attachAIProviderCredentialState(profiles, credentials).map((profile) => [profile.id, profile.credentialState]),
+  );
 }

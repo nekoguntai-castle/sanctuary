@@ -23,6 +23,7 @@ import {
   normalizeAIProviderProfileSettingsUpdate,
   sanitizeAIProviderProfileSettingsUpdate,
 } from './ai/providerProfileSettings';
+import { AI_PROVIDER_CREDENTIALS_KEY } from './ai/providerCredentials';
 
 type StoredSetting = {
   key: string;
@@ -113,6 +114,14 @@ async function normalizeAdminSettingsUpdates(updates: AdminSettingsUpdate): Prom
 
   const currentSettings = await systemSettingRepository.findByKeys([...AI_PROVIDER_PROFILE_SETTING_KEYS]);
   const currentResponse = buildAdminSettingsResponse(currentSettings);
+  const currentCredentials = currentSettings.find((setting) => setting.key === AI_PROVIDER_CREDENTIALS_KEY);
+  if (currentCredentials) {
+    currentResponse[AI_PROVIDER_CREDENTIALS_KEY] = safeJsonParseUntyped(
+      currentCredentials.value,
+      {},
+      `setting:${AI_PROVIDER_CREDENTIALS_KEY}`,
+    );
+  }
   return normalizeAIProviderProfileSettingsUpdate(sanitizedUpdates, currentResponse);
 }
 

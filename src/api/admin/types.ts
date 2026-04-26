@@ -64,11 +64,21 @@ export interface CreateGroupRequest {
 // ========================================
 
 export type AIProviderType = 'ollama' | 'openai-compatible';
+export type AIProviderCredentialType = 'api-key';
+export type AIProviderCredentialDisabledReason = 'restored';
 
 export interface AIProviderCapabilities {
   chat: boolean;
   toolCalls: boolean;
   strictJson: boolean;
+}
+
+export interface AIProviderCredentialState {
+  type: 'none' | AIProviderCredentialType;
+  configured: boolean;
+  needsReview: boolean;
+  configuredAt?: string;
+  disabledReason?: AIProviderCredentialDisabledReason;
 }
 
 export interface AIProviderProfile {
@@ -78,6 +88,14 @@ export interface AIProviderProfile {
   endpoint: string;
   model: string;
   capabilities: AIProviderCapabilities;
+  credentialState?: AIProviderCredentialState;
+}
+
+export interface AIProviderCredentialUpdate {
+  profileId: string;
+  type?: AIProviderCredentialType;
+  apiKey?: string;
+  clear?: boolean;
 }
 
 export interface SystemSettings {
@@ -94,7 +112,9 @@ export interface SystemSettings {
   aiActiveProviderProfile?: AIProviderProfile;
 }
 
-export type SystemSettingsUpdate = Partial<Omit<SystemSettings, 'aiActiveProviderProfile'>>;
+export type SystemSettingsUpdate = Partial<Omit<SystemSettings, 'aiActiveProviderProfile'>> & {
+  aiProviderCredentialUpdates?: AIProviderCredentialUpdate[];
+};
 
 // ========================================
 // BACKUP & RESTORE TYPES
