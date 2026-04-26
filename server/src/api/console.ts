@@ -26,12 +26,15 @@ import {
 import type { AssistantToolActor } from '../assistant/tools';
 
 const router = Router();
+const consoleRouteLimiter = rateLimitByUser('api:default');
+const consoleTurnLimiter = rateLimitByUser('ai:analyze');
 const ConsoleSessionListQuerySchema = z.object({
   limit: z.coerce.number().int().catch(20).transform(value => Math.max(1, Math.min(value, 100))),
   offset: z.coerce.number().int().catch(0).transform(value => Math.max(0, value)),
 });
 
 router.use(authenticate);
+router.use(consoleRouteLimiter);
 router.use(requireFeature('sanctuaryConsole'));
 
 function actorFromRequest(req: Parameters<typeof requireAuthenticatedUser>[0]): AssistantToolActor {
@@ -57,7 +60,7 @@ router.get('/sessions', asyncHandler(async (req, res) => {
   res.json({ sessions });
 }));
 
-router.post('/sessions', rateLimitByUser('ai:analyze'), asyncHandler(async (req, res) => {
+router.post('/sessions', consoleTurnLimiter, asyncHandler(async (req, res) => {
   const body = ConsoleCreateSessionBodySchema.safeParse(req.body);
   if (!body.success) {
     return res.status(400).json({ error: 'Invalid console session request' });
@@ -75,7 +78,7 @@ router.get('/sessions/:id/turns', asyncHandler(async (req, res) => {
   res.json({ turns });
 }));
 
-router.post('/turns', rateLimitByUser('ai:analyze'), asyncHandler(async (req, res) => {
+router.post('/turns', consoleTurnLimiter, asyncHandler(async (req, res) => {
   const body = ConsoleRunTurnBodySchema.safeParse(req.body);
   if (!body.success) {
     return res.status(400).json({ error: 'Invalid console turn request' });
@@ -114,7 +117,7 @@ router.delete('/prompts/:id', asyncHandler(async (req, res) => {
   res.json({ success: true });
 }));
 
-router.post('/prompts/:id/replay', rateLimitByUser('ai:analyze'), asyncHandler(async (req, res) => {
+router.post('/prompts/:id/replay', consoleTurnLimiter, asyncHandler(async (req, res) => {
   const body = ConsolePromptReplayBodySchema.safeParse(req.body);
   if (!body.success) {
     return res.status(400).json({ error: 'Invalid console prompt replay request' });

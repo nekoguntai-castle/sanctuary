@@ -3,17 +3,26 @@ import express, { type Express } from 'express';
 import request from 'supertest';
 import { errorHandler } from '../../../src/errors/errorHandler';
 
-const mocks = vi.hoisted(() => ({
-  listConsoleTools: vi.fn(),
-  createConsoleSession: vi.fn(),
-  listConsoleSessions: vi.fn(),
-  listConsoleTurns: vi.fn(),
-  runConsoleTurn: vi.fn(),
-  listPromptHistory: vi.fn(),
-  updatePromptHistory: vi.fn(),
-  deletePromptHistory: vi.fn(),
-  replayPromptHistory: vi.fn(),
-}));
+const mocks = vi.hoisted(() => {
+  const rateLimitHits: string[] = [];
+
+  return {
+    listConsoleTools: vi.fn(),
+    createConsoleSession: vi.fn(),
+    listConsoleSessions: vi.fn(),
+    listConsoleTurns: vi.fn(),
+    runConsoleTurn: vi.fn(),
+    listPromptHistory: vi.fn(),
+    updatePromptHistory: vi.fn(),
+    deletePromptHistory: vi.fn(),
+    replayPromptHistory: vi.fn(),
+    rateLimitHits,
+    rateLimitByUser: vi.fn((policyName: string) => (_req: any, _res: any, next: () => void) => {
+      rateLimitHits.push(policyName);
+      next();
+    }),
+  };
+});
 
 vi.mock('../../../src/middleware/auth', () => ({
   authenticate: (req: any, _res: any, next: () => void) => {
@@ -28,7 +37,7 @@ vi.mock('../../../src/middleware/featureGate', () => ({
 }));
 
 vi.mock('../../../src/middleware/rateLimit', () => ({
-  rateLimitByUser: () => (_req: any, _res: any, next: () => void) => next(),
+  rateLimitByUser: mocks.rateLimitByUser,
 }));
 
 vi.mock('../../../src/services/auditService', () => ({
@@ -51,6 +60,7 @@ describe('console API routes', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.rateLimitHits.length = 0;
     mocks.listConsoleTools.mockReturnValue([{ name: 'get_fee_estimates' }]);
     mocks.listConsoleSessions.mockResolvedValue([{ id: 'session-1' }]);
     mocks.createConsoleSession.mockResolvedValue({ id: 'session-1' });
@@ -75,6 +85,17 @@ describe('console API routes', () => {
       5,
       2
     );
+  });
+
+  it('applies the coarse console limiter and model-backed turn limiter', async () => {
+    const tools = await request(app).get('/api/v1/console/tools');
+    const turn = await request(app)
+      .post('/api/v1/console/turns')
+      .send({ prompt: 'show recent wallet activity' });
+
+    expect(tools.status).toBe(200);
+    expect(turn.status).toBe(201);
+    expect(mocks.rateLimitHits).toEqual(['api:default', 'api:default', 'ai:analyze']);
   });
 
   it('creates sessions and rejects malformed session requests', async () => {
