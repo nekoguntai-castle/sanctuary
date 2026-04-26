@@ -4,23 +4,21 @@ This document describes the architectural patterns and infrastructure used in th
 
 ## Layer Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      API Routes                              │
-│                   src/api/*.ts                               │
-│         (HTTP handling, validation, response formatting)     │
-├─────────────────────────────────────────────────────────────┤
-│                     Services                                 │
-│                 src/services/*.ts                            │
-│        (Business logic, orchestration, domain errors)        │
-├─────────────────────────────────────────────────────────────┤
-│                   Repositories                               │
-│               src/repositories/*.ts                          │
-│           (Data access, queries, transactions)               │
-├─────────────────────────────────────────────────────────────┤
-│                     Prisma                                   │
-│                  (ORM / DB layer)                            │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    API["API Routes<br/>src/api/*.ts<br/><i>HTTP handling, validation, response formatting</i>"]
+    Services["Services<br/>src/services/*.ts<br/><i>Business logic, orchestration, domain errors</i>"]
+    Repositories["Repositories<br/>src/repositories/*.ts<br/><i>Data access, queries, transactions</i>"]
+    Prisma["Prisma<br/><i>ORM / DB layer</i>"]
+
+    API --> Services
+    Services --> Repositories
+    Repositories --> Prisma
+
+    click API href "src/api/" "API route handlers"
+    click Services href "src/services/" "Service layer"
+    click Repositories href "src/repositories/" "Repository layer"
+    click Prisma href "src/models/prisma.ts" "Prisma client singleton"
 ```
 
 **Key principles:**
@@ -198,16 +196,36 @@ The wallet sync process uses a modular pipeline architecture where each phase is
 
 ### Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                   executeSyncPipeline()                     │
-│              (orchestrates phase execution)                 │
-├─────────────────────────────────────────────────────────────┤
-│    SyncContext (shared state between phases)                │
-│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐           │
-│  │ Phase 1 │→│ Phase 2 │→│ Phase 3 │→│   ...   │           │
-│  └─────────┘ └─────────┘ └─────────┘ └─────────┘           │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+graph LR
+    Pipeline["executeSyncPipeline()<br/><i>orchestrates phase execution</i>"]
+    Context["SyncContext<br/><i>shared state passed between phases</i>"]
+    P1["RBF Cleanup"]
+    P2["Fetch Histories"]
+    P3["Check Existing"]
+    P4["Process Tx"]
+    P5["Fetch UTXOs"]
+    P6["Reconcile UTXOs"]
+    P7["Insert UTXOs"]
+    P8["Update Addresses"]
+    P9["Gap Limit"]
+    P10["Fix Consolidations"]
+
+    Pipeline --> Context
+    Context --> P1 --> P2 --> P3 --> P4 --> P5 --> P6 --> P7 --> P8 --> P9 --> P10
+
+    click Pipeline href "src/services/bitcoin/sync/pipeline.ts"
+    click Context href "src/services/bitcoin/sync/context.ts"
+    click P1 href "src/services/bitcoin/sync/phases/rbfCleanup.ts"
+    click P2 href "src/services/bitcoin/sync/phases/fetchHistories.ts"
+    click P3 href "src/services/bitcoin/sync/phases/checkExisting.ts"
+    click P4 href "src/services/bitcoin/sync/phases/processTransactions.ts"
+    click P5 href "src/services/bitcoin/sync/phases/fetchUtxos.ts"
+    click P6 href "src/services/bitcoin/sync/phases/reconcileUtxos.ts"
+    click P7 href "src/services/bitcoin/sync/phases/insertUtxos.ts"
+    click P8 href "src/services/bitcoin/sync/phases/updateAddresses.ts"
+    click P9 href "src/services/bitcoin/sync/phases/gapLimit.ts"
+    click P10 href "src/services/bitcoin/sync/phases/fixConsolidations.ts"
 ```
 
 ### File Structure

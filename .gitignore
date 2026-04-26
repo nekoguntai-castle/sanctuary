@@ -36,6 +36,10 @@ backups/
 *.dump
 sanctuary-backup-*.json
 
+# AppMap recordings (local-only debugging aid; see CONTRIBUTING.md)
+tmp/appmap/
+**/.appmap/
+
 # Test outputs
 coverage/
 coverage-*/

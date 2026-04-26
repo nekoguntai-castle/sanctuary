@@ -45,6 +45,17 @@ npx vitest run --coverage               # frontend: 100% threshold
 
 Run `git commit` in the foreground; pre-commit hooks run validation whose feedback must be reviewed.
 
+### Investigating runtime call paths (AppMap)
+
+Static diagrams in [`docs/architecture/`](docs/architecture/) and the dependency-cruiser graphs they reference cannot see HTTP/WebSocket calls between services — they only know about imports. When you need to understand what *actually* runs end-to-end (e.g. "which path did this notification take?"), record an AppMap of the failing test:
+
+```bash
+cd server
+npx --yes appmap-node npx vitest run path/to/the.test.ts
+```
+
+The recording lands in `tmp/appmap/` (gitignored). Open the file in the AppMap VS Code extension to see the full call tree, including HTTP exits to Redis, the gateway, and external APIs. Recordings are debugging aids — never commit them.
+
 ### Self-review checklist
 
 Before committing multi-file changes, verify:
@@ -124,6 +135,29 @@ See [`docs/README.md`](docs/README.md) for the full docs index and per-doc-type 
 ### Architecture Decision Records
 
 For decisions with non-obvious tradeoffs, create an ADR in `docs/adr/` using the next available number. Follow the existing template: Title, Date, Status, Context, Decision, Consequences, Supersedes.
+
+### Living docs site (Docusaurus)
+
+All markdown under [`docs/`](docs/), the per-package `ARCHITECTURE.md` files, and this `CONTRIBUTING.md` are rendered as a unified [Docusaurus](https://docusaurus.io/) site at <https://nekoguntai-castle.github.io/sanctuary/>. The site is built from source markdown — there is no second source of truth — and deployed to GitHub Pages by [`.github/workflows/architecture.yml`](.github/workflows/architecture.yml) on every merge to `main`.
+
+Local commands:
+
+```bash
+npm run docs:start    # dev server with hot reload (cd website && npm start)
+npm run docs:build    # production build to website/build
+```
+
+### Architecture diagrams
+
+Diagrams live in [`docs/architecture/`](docs/architecture/) and follow the [C4 model](https://c4model.com/) (Context → Container → Component). All diagrams are Mermaid so GitHub renders them inline *and* Docusaurus renders them in the site with svg-pan-zoom for drill-down. Click handlers (`click NodeId href "..."`) navigate to source — relative hrefs are rewritten to absolute GitHub URLs at Docusaurus build time by [`website/src/plugins/remark-mermaid-click-rewrite.mjs`](website/src/plugins/remark-mermaid-click-rewrite.mjs), so the same source works in both renderings.
+
+When you add or change an entry point that crosses a service boundary (e.g. a new caller of `notificationDispatcher`, a new gateway route, a new external integration):
+
+1. Update the relevant C4 diagram in `docs/architecture/` in the same PR.
+2. Run `npm run arch:graphs` to regenerate the auto-derived dependency-cruiser graphs in `docs/architecture/generated/`. CI fails the PR if the committed `.md` files are stale.
+3. Run `npm run arch:lint` (or `npm run arch:check` to do everything) — verifies every Mermaid `click NodeId href "..."` resolves to an existing file.
+
+`scripts/check-architecture-boundaries.mjs` enforces forbidden imports (e.g. browser code may not import server internals); the diagrams visualize what the linter does not enforce.
 
 ## Project structure
 

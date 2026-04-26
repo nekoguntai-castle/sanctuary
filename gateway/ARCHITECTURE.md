@@ -19,6 +19,11 @@ graph TD
     Gateway -- "WebSocket (HMAC auth)" --> Backend
     Gateway -- "HTTP" --> FCM
     Gateway -- "HTTP/2" --> APNs
+
+    click Gateway href "src/index.ts" "Gateway entry point"
+    click Backend href "../server/src/index.ts" "Backend entry point"
+    click FCM href "src/services/push/fcm.ts" "FCM integration"
+    click APNs href "src/services/push/apns.ts" "APNs integration"
 ```
 
 ---

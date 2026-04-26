@@ -57,7 +57,12 @@
     "check:api-body-validation": "node scripts/check-api-body-validation.mjs",
     "test:mutation": "stryker run",
     "test:mutation:backend": "cd server && npx stryker run",
-    "test:mutation:critical:backend": "cd server && npm run test:mutation:critical:gate"
+    "test:mutation:critical:backend": "cd server && npm run test:mutation:critical:gate",
+    "arch:graphs": "node scripts/architecture/generate-graphs.mjs",
+    "arch:lint": "node scripts/architecture/lint-diagrams.mjs",
+    "arch:check": "npm run arch:graphs && git diff --exit-code -- docs/architecture/generated && npm run arch:lint",
+    "docs:start": "cd website && npm start",
+    "docs:build": "cd website && npm run build"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -100,6 +105,7 @@
     "@types/w3c-web-usb": "^1.0.13",
     "@vitejs/plugin-react": "^6.0.1",
     "@vitest/coverage-v8": "^4.1.4",
+    "dependency-cruiser": "^17.3.10",
     "eslint": "^10.2.1",
     "eslint-plugin-react-hooks": "^7.1.1",
     "jsdom": "^29.0.1",
