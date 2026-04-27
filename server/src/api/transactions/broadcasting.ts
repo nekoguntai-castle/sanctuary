@@ -7,7 +7,7 @@
  * on failed broadcasts before re-throwing to asyncHandler.
  */
 
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { requireWalletAccess } from '../../middleware/walletAccess';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
@@ -17,7 +17,9 @@ import { auditService, AuditCategory, AuditAction } from '../../services/auditSe
 import { policyEvaluationEngine } from '../../services/vaultPolicy';
 import * as txService from '../../services/bitcoin/transactionService';
 import {
+  type MobilePsbtBroadcastRequest,
   MobilePsbtBroadcastRequestSchema,
+  type MobileTransactionBroadcastRequest,
   MobileTransactionBroadcastRequestSchema,
 } from '../../../../shared/schemas/mobileApiRequests';
 import { parseTransactionRequestBody } from './requestValidation';
@@ -26,28 +28,15 @@ import { requireAuthenticatedUser } from '../../middleware/auth';
 const router = Router();
 const log = createLogger('TX_BROADCAST:ROUTE');
 
-/**
- * POST /api/v1/wallets/:walletId/transactions/broadcast
- * Broadcast a signed PSBT or raw transaction hex
- * Supports two signing workflows:
- * - signedPsbtBase64: Signed PSBT from Ledger or file upload
- * - rawTxHex: Raw transaction hex from Trezor (fully signed)
- */
-router.post('/wallets/:walletId/transactions/broadcast', requireWalletAccess('edit'), asyncHandler(async (req, res) => {
-  const walletId = req.walletId!;
-  const {
-    signedPsbtBase64,
-    rawTxHex, // For Trezor: fully signed transaction hex
-    recipient,
-    amount,
-    fee,
-    label,
-    memo,
-    utxos,
-  } = parseTransactionRequestBody(MobileTransactionBroadcastRequestSchema, req.body);
+type WalletRequest = Request & { walletId?: string };
+type TransactionBroadcastBody = MobileTransactionBroadcastRequest;
+type PsbtBroadcastBody = MobilePsbtBroadcastRequest;
 
-  // Re-evaluate policies before broadcast (guard against drift).
-  // Extract from PSBT when available; fall back to client-supplied fields.
+const resolveTransactionPolicyFields = (
+  signedPsbtBase64: string | undefined,
+  recipient: string | undefined,
+  amount: number | undefined
+): { evalRecipient?: string; evalAmount?: number } => {
   let evalRecipient = recipient;
   let evalAmount = amount;
 
@@ -64,77 +53,205 @@ router.post('/wallets/:walletId/transactions/broadcast', requireWalletAccess('ed
     }
   }
 
-  if (evalRecipient && evalAmount) {
-    const policyResult = await policyEvaluationEngine.evaluatePolicies({
+  return { evalRecipient, evalAmount };
+};
+
+const assertPolicyAllowsBroadcast = async (
+  req: Request,
+  walletId: string,
+  recipient: string | undefined,
+  amount: number | undefined,
+  blockedMessage: string
+): Promise<void> => {
+  if (!recipient || !amount) return;
+
+  const policyResult = await policyEvaluationEngine.evaluatePolicies({
+    walletId,
+    userId: requireAuthenticatedUser(req).userId,
+    recipient,
+    amount: BigInt(amount),
+  });
+
+  if (!policyResult.allowed) {
+    log.warn(blockedMessage, {
       walletId,
-      userId: requireAuthenticatedUser(req).userId,
-      recipient: evalRecipient,
-      amount: BigInt(evalAmount),
+      triggered: policyResult.triggered.map(t => t.policyName),
     });
-
-    if (!policyResult.allowed) {
-      log.warn('Broadcast blocked by policy', {
-        walletId,
-        triggered: policyResult.triggered.map(t => t.policyName),
-      });
-      throw new ForbiddenError('Transaction blocked by vault policy');
-    }
+    throw new ForbiddenError('Transaction blocked by vault policy');
   }
+};
 
-  // Broadcast transaction (wrap in try/catch for audit logging on failure)
+const recordPolicyUsage = (
+  walletId: string,
+  req: Request,
+  amount: number | undefined
+): void => {
+  if (!amount) return;
+
+  policyEvaluationEngine.recordUsage(walletId, requireAuthenticatedUser(req).userId, BigInt(amount)).catch(err => {
+    log.warn('Failed to record policy usage', { error: getErrorMessage(err) });
+  });
+};
+
+const auditTransactionBroadcastSuccess = async (
+  req: Request,
+  walletId: string,
+  details: Record<string, unknown>
+): Promise<void> => {
+  await auditService.logFromRequest(req, AuditAction.TRANSACTION_BROADCAST, AuditCategory.WALLET, {
+    success: true,
+    details: {
+      walletId,
+      ...details,
+    },
+  });
+};
+
+const auditTransactionBroadcastFailure = async (
+  req: WalletRequest,
+  error: unknown,
+  details: Record<string, unknown>
+): Promise<void> => {
+  await auditService.logFromRequest(req, AuditAction.TRANSACTION_BROADCAST_FAILED, AuditCategory.WALLET, {
+    success: false,
+    errorMsg: getErrorMessage(error),
+    details: {
+      walletId: req.walletId,
+      ...details,
+    },
+  });
+};
+
+const buildTransactionBroadcastMetadata = (
+  body: TransactionBroadcastBody,
+  evalRecipient: string | undefined,
+  evalAmount: number | undefined
+) => {
+  return {
+    recipient: evalRecipient ?? body.recipient ?? '',
+    amount: evalAmount ?? body.amount ?? 0,
+    fee: body.fee ?? 0,
+    /* v8 ignore start -- optional broadcast metadata defaults are defensive for older clients */
+    ...(body.label !== undefined && { label: body.label }),
+    ...(body.memo !== undefined && { memo: body.memo }),
+    /* v8 ignore stop */
+    utxos: body.utxos ?? [],
+    ...(body.rawTxHex !== undefined && { rawTxHex: body.rawTxHex }),
+  };
+};
+
+const handleTransactionBroadcast = async (
+  req: WalletRequest,
+  walletId: string,
+  body: TransactionBroadcastBody
+) => {
+  const { evalRecipient, evalAmount } = resolveTransactionPolicyFields(
+    body.signedPsbtBase64,
+    body.recipient,
+    body.amount
+  );
+  await assertPolicyAllowsBroadcast(
+    req,
+    walletId,
+    evalRecipient,
+    evalAmount,
+    'Broadcast blocked by policy'
+  );
+
   try {
-    const broadcastMetadata = {
-      recipient: evalRecipient ?? recipient ?? '',
-      amount: evalAmount ?? amount ?? 0,
-      fee: fee ?? 0,
-      /* v8 ignore start -- optional broadcast metadata defaults are defensive for older clients */
-      ...(label !== undefined && { label }),
-      ...(memo !== undefined && { memo }),
-      /* v8 ignore stop */
-      utxos: utxos ?? [],
-      ...(rawTxHex !== undefined && { rawTxHex }),
-    };
+    const result = await txService.broadcastAndSave(
+      walletId,
+      body.signedPsbtBase64,
+      buildTransactionBroadcastMetadata(body, evalRecipient, evalAmount)
+    );
 
-    const result = await txService.broadcastAndSave(walletId, signedPsbtBase64, {
-      ...broadcastMetadata,
+    recordPolicyUsage(walletId, req, evalAmount || body.amount);
+    await auditTransactionBroadcastSuccess(req, walletId, {
+      txid: result.txid,
+      recipient: body.recipient,
+      amount: body.amount,
+      fee: body.fee,
     });
-
-    // Record policy usage after successful broadcast
-    const recordAmount = evalAmount || amount;
-    if (recordAmount) {
-      policyEvaluationEngine.recordUsage(walletId, requireAuthenticatedUser(req).userId, BigInt(recordAmount)).catch(err => {
-        log.warn('Failed to record policy usage', { error: getErrorMessage(err) });
-      });
-    }
-
-    // Audit log successful broadcast
-    await auditService.logFromRequest(req, AuditAction.TRANSACTION_BROADCAST, AuditCategory.WALLET, {
-      success: true,
-      details: {
-        walletId,
-        txid: result.txid,
-        recipient,
-        amount,
-        fee,
-      },
-    });
-
-    res.json(result);
+    return result;
   } catch (error) {
-    // Audit log failed broadcast before re-throwing
-    await auditService.logFromRequest(req, AuditAction.TRANSACTION_BROADCAST_FAILED, AuditCategory.WALLET, {
-      success: false,
-      errorMsg: getErrorMessage(error),
-      details: {
-        walletId: req.walletId,
-        recipient: req.body?.recipient,
-        amount: req.body?.amount,
-      },
+    await auditTransactionBroadcastFailure(req, error, {
+      recipient: body.recipient,
+      amount: body.amount,
     });
-
-    /* v8 ignore next -- rethrow is a defensive route-level propagation path after audit logging */
     throw error;
   }
+};
+
+const getPrimaryPsbtOutput = (signedPsbt: string): {
+  psbtInfo: ReturnType<typeof txService.getPSBTInfo>;
+  amount: number;
+  recipientAddress: string;
+} => {
+  const psbtInfo = txService.getPSBTInfo(signedPsbt);
+  const recipientOutput = psbtInfo.outputs[0];
+  return {
+    psbtInfo,
+    amount: recipientOutput?.value || 0,
+    recipientAddress: recipientOutput?.address || '',
+  };
+};
+
+const handlePsbtBroadcast = async (
+  req: WalletRequest,
+  walletId: string,
+  body: PsbtBroadcastBody
+) => {
+  const { psbtInfo, amount, recipientAddress } = getPrimaryPsbtOutput(body.signedPsbt);
+
+  await assertPolicyAllowsBroadcast(
+    req,
+    walletId,
+    recipientAddress || undefined,
+    amount > 0 ? amount : undefined,
+    'PSBT broadcast blocked by policy'
+  );
+
+  try {
+    const result = await txService.broadcastAndSave(walletId, body.signedPsbt, {
+      recipient: recipientAddress,
+      amount,
+      fee: psbtInfo.fee,
+      label: body.label,
+      memo: body.memo,
+      utxos: psbtInfo.inputs.map(i => ({ txid: i.txid, vout: i.vout })),
+    });
+
+    recordPolicyUsage(walletId, req, amount > 0 ? amount : undefined);
+    await auditTransactionBroadcastSuccess(req, walletId, {
+      txid: result.txid,
+      recipient: recipientAddress,
+      amount,
+      fee: psbtInfo.fee,
+    });
+
+    return {
+      txid: result.txid,
+      broadcasted: result.broadcasted,
+    };
+  } catch (error) {
+    /* v8 ignore start -- broadcast failure audit path is covered at service boundary */
+    await auditTransactionBroadcastFailure(req, error, {});
+    throw error;
+    /* v8 ignore stop */
+  }
+};
+
+/**
+ * POST /api/v1/wallets/:walletId/transactions/broadcast
+ * Broadcast a signed PSBT or raw transaction hex
+ * Supports two signing workflows:
+ * - signedPsbtBase64: Signed PSBT from Ledger or file upload
+ * - rawTxHex: Raw transaction hex from Trezor (fully signed)
+ */
+router.post('/wallets/:walletId/transactions/broadcast', requireWalletAccess('edit'), asyncHandler(async (req, res) => {
+  const walletId = req.walletId!;
+  const body = parseTransactionRequestBody(MobileTransactionBroadcastRequestSchema, req.body);
+  res.json(await handleTransactionBroadcast(req, walletId, body));
 }));
 
 /**
@@ -143,87 +260,8 @@ router.post('/wallets/:walletId/transactions/broadcast', requireWalletAccess('ed
  */
 router.post('/wallets/:walletId/psbt/broadcast', requireWalletAccess('edit'), asyncHandler(async (req, res) => {
   const walletId = req.walletId!;
-  const { signedPsbt, label, memo } = parseTransactionRequestBody(
-    MobilePsbtBroadcastRequestSchema,
-    req.body
-  );
-
-  // Parse PSBT to get transaction details
-  const psbtInfo = txService.getPSBTInfo(signedPsbt);
-
-  // Calculate amount from outputs (exclude change)
-  // For simplicity, assume last output is change if there are 2+ outputs
-  const outputs = psbtInfo.outputs;
-  const recipientOutput = outputs[0];
-  const amount = recipientOutput?.value || 0;
-  const recipientAddress = recipientOutput?.address || '';
-
-  // Evaluate policies using data extracted from the PSBT itself (not client metadata)
-  if (recipientAddress && amount > 0) {
-    const policyResult = await policyEvaluationEngine.evaluatePolicies({
-      walletId,
-      userId: requireAuthenticatedUser(req).userId,
-      recipient: recipientAddress,
-      amount: BigInt(amount),
-    });
-
-    if (!policyResult.allowed) {
-      log.warn('PSBT broadcast blocked by policy', {
-        walletId,
-        triggered: policyResult.triggered.map(t => t.policyName),
-      });
-      throw new ForbiddenError('Transaction blocked by vault policy');
-    }
-  }
-
-  // Broadcast transaction (wrap in try/catch for audit logging on failure)
-  try {
-    const result = await txService.broadcastAndSave(walletId, signedPsbt, {
-      recipient: recipientAddress,
-      amount,
-      fee: psbtInfo.fee,
-      label,
-      memo,
-      utxos: psbtInfo.inputs.map(i => ({ txid: i.txid, vout: i.vout })),
-    });
-
-    // Record policy usage after successful broadcast
-    if (amount > 0) {
-      policyEvaluationEngine.recordUsage(walletId, requireAuthenticatedUser(req).userId, BigInt(amount)).catch(err => {
-        log.warn('Failed to record policy usage', { error: getErrorMessage(err) });
-      });
-    }
-
-    // Audit log successful broadcast
-    await auditService.logFromRequest(req, AuditAction.TRANSACTION_BROADCAST, AuditCategory.WALLET, {
-      success: true,
-      details: {
-        walletId,
-        txid: result.txid,
-        recipient: recipientAddress,
-        amount,
-        fee: psbtInfo.fee,
-      },
-    });
-
-    res.json({
-      txid: result.txid,
-      broadcasted: result.broadcasted,
-    });
-  } catch (error) {
-    // Audit log failed broadcast before re-throwing
-    /* v8 ignore next 9 -- broadcast failure audit path is covered at service boundary */
-    await auditService.logFromRequest(req, AuditAction.TRANSACTION_BROADCAST_FAILED, AuditCategory.WALLET, {
-      success: false,
-      errorMsg: getErrorMessage(error),
-      details: {
-        walletId: req.walletId,
-      },
-    });
-
-    /* v8 ignore next -- rethrow is a defensive route-level propagation path after audit logging */
-    throw error;
-  }
+  const body = parseTransactionRequestBody(MobilePsbtBroadcastRequestSchema, req.body);
+  res.json(await handlePsbtBroadcast(req, walletId, body));
 }));
 
 export default router;

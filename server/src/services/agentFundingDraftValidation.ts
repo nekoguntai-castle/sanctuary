@@ -64,7 +64,23 @@ interface OutputValidation {
   outputs: Prisma.InputJsonValue;
 }
 
-type FundingUtxo = Awaited<ReturnType<typeof utxoRepository.findByOutpointsForWallet>>[number];
+interface FundingUtxo {
+  txid: string;
+  vout: number;
+  amount: bigint;
+  address: string;
+  spent: boolean;
+  frozen: boolean;
+  draftLock: { draftId: string } | null;
+}
+
+interface LinkedWalletOutputsInput {
+  decodedOutputs: DecodedOutput[];
+  fundingAddresses: string[];
+  operationalAddresses: string[];
+  recipient: string;
+  declaredAmount: bigint;
+}
 
 const SATS_PATTERN = /^\d+$/;
 const SIGNATURE_VALIDATOR = (
@@ -168,23 +184,23 @@ export async function validateAgentFundingDraftSubmission(
   };
 }
 
-function parseSupportedNetwork(network: string): SupportedNetwork {
+const parseSupportedNetwork = (network: string): SupportedNetwork => {
   if (network === 'mainnet' || network === 'testnet' || network === 'regtest') {
     return network;
   }
 
   throw new InvalidInputError(`Unsupported wallet network: ${network}`, 'network');
-}
+};
 
-function normalizeFingerprint(fingerprint: string): string {
+const normalizeFingerprint = (fingerprint: string): string => {
   const normalized = fingerprint.trim().toLowerCase().replace(/^0x/, '');
   if (!/^[0-9a-f]{8}$/.test(normalized)) {
     throw new InvalidInputError('Signer device fingerprint must be an 8-character hex string');
   }
   return normalized;
-}
+};
 
-function parseSats(value: number | string, field: string): bigint {
+const parseSats = (value: number | string, field: string): bigint => {
   if (typeof value === 'number') {
     if (!Number.isSafeInteger(value) || value < 0) {
       throw new InvalidInputError(`${field} must be a non-negative integer`, field);
@@ -198,24 +214,24 @@ function parseSats(value: number | string, field: string): bigint {
   }
 
   return BigInt(trimmed);
-}
+};
 
-function parseSubmittedPsbt(
+const parseSubmittedPsbt = (
   psbtBase64: string,
   network: bitcoin.Network,
   field: string
-): bitcoin.Psbt {
+): bitcoin.Psbt => {
   try {
     return parsePsbt(psbtBase64, network);
   } catch (error) {
     throw new InvalidPsbtError(`${field} is not a valid PSBT: ${getErrorMessage(error)}`);
   }
-}
+};
 
-function validateSameUnsignedTransaction(
+const validateSameUnsignedTransaction = (
   unsignedPsbt: bitcoin.Psbt,
   signedPsbt: bitcoin.Psbt
-): void {
+): void => {
   if (unsignedPsbt.version !== signedPsbt.version || unsignedPsbt.locktime !== signedPsbt.locktime) {
     throw new InvalidPsbtError('Signed PSBT transaction does not match the draft PSBT');
   }
@@ -251,9 +267,9 @@ function validateSameUnsignedTransaction(
       throw new InvalidPsbtError('Signed PSBT outputs do not match the draft PSBT');
     }
   }
-}
+};
 
-function validateSignerPartialSignatures(psbt: bitcoin.Psbt, signerFingerprint: string): void {
+const validateSignerPartialSignatures = (psbt: bitcoin.Psbt, signerFingerprint: string): void => {
   if (psbt.inputCount === 0) {
     throw new InvalidPsbtError('Signed PSBT must contain at least one input');
   }
@@ -265,13 +281,13 @@ function validateSignerPartialSignatures(psbt: bitcoin.Psbt, signerFingerprint: 
       );
     }
   }
-}
+};
 
-function inputHasValidSignerSignature(
+const inputHasValidSignerSignature = (
   psbt: bitcoin.Psbt,
   inputIndex: number,
   signerFingerprint: string
-): boolean {
+): boolean => {
   const psbtInput = psbt.data.inputs[inputIndex];
   const signerPubkeys = new Set(
     /* v8 ignore next -- PSBT input metadata is normalized by bitcoinjs before validation */
@@ -306,13 +322,13 @@ function inputHasValidSignerSignature(
   }
 
   return false;
-}
+};
 
-async function validateFundingInputs(
+const validateFundingInputs = async (
   fundingWalletId: string,
   decodedInputs: PsbtInput[],
   allowedDraftLockId?: string
-): Promise<FundingInputValidation> {
+): Promise<FundingInputValidation> => {
   /* v8 ignore next -- decodePsbt rejects PSBTs without inputs before funding-input validation */
   if (decodedInputs.length === 0) {
     throw new InvalidPsbtError('PSBT must contain at least one input');
@@ -364,9 +380,9 @@ async function validateFundingInputs(
       amount: Number(utxo.amount),
     })) as Prisma.InputJsonValue,
   };
-}
+};
 
-function decodeOutputs(psbt: bitcoin.Psbt, network: bitcoin.Network): DecodedOutput[] {
+const decodeOutputs = (psbt: bitcoin.Psbt, network: bitcoin.Network): DecodedOutput[] => {
   if (psbt.txOutputs.length === 0) {
     throw new InvalidPsbtError('PSBT must contain at least one output');
   }
@@ -381,15 +397,9 @@ function decodeOutputs(psbt: bitcoin.Psbt, network: bitcoin.Network): DecodedOut
       throw new InvalidPsbtError(`PSBT output ${index} must pay a standard wallet address`);
     }
   });
-}
+};
 
-function validateLinkedWalletOutputs(input: {
-  decodedOutputs: DecodedOutput[];
-  fundingAddresses: string[];
-  operationalAddresses: string[];
-  recipient: string;
-  declaredAmount: bigint;
-}): OutputValidation {
+const validateLinkedWalletOutputs = (input: LinkedWalletOutputsInput): OutputValidation => {
   const fundingAddressSet = new Set(input.fundingAddresses);
   const operationalAddressSet = new Set(input.operationalAddresses);
 
@@ -439,9 +449,9 @@ function validateLinkedWalletOutputs(input: {
       amount: Number(output.amount),
     })) as Prisma.InputJsonValue,
   };
-}
+};
 
-function getSignerInputPaths(psbt: bitcoin.Psbt, signerFingerprint: string): string[] {
+const getSignerInputPaths = (psbt: bitcoin.Psbt, signerFingerprint: string): string[] => {
   return psbt.data.inputs.flatMap(input =>
     /* v8 ignore start -- PSBT input metadata is normalized by bitcoinjs before validation */
     (input.bip32Derivation ?? [])
@@ -450,8 +460,8 @@ function getSignerInputPaths(psbt: bitcoin.Psbt, signerFingerprint: string): str
       .filter((path): path is string => typeof path === 'string' && path.length > 0)
     /* v8 ignore stop */
   );
-}
+};
 
-function formatOutpoint(outpoint: { txid: string; vout: number }): string {
+const formatOutpoint = (outpoint: { txid: string; vout: number }): string => {
   return `${outpoint.txid}:${outpoint.vout}`;
-}
+};

@@ -8,14 +8,17 @@
  */
 
 import * as bitcoin from 'bitcoinjs-lib';
-import bip32 from '../bip32';
 import { getNetwork, calculateFee } from '../utils';
-import { parseDescriptor } from '../addressDerivation';
 import { getNodeClient } from '../nodeClient';
 import { walletRepository, addressRepository } from '../../../repositories';
 import { getErrorMessage } from '../../../utils/errors';
-import { normalizeDerivationPath } from '../../../../../shared/utils/bitcoin';
 import { log, RBF_SEQUENCE, MIN_RBF_FEE_BUMP, getDustThreshold } from './shared';
+import {
+  addInputsWithBip32,
+  fetchAddressDerivationPaths,
+  parseAccountNode,
+  resolveWalletSigningInfo,
+} from '../transactions/psbtConstruction';
 
 /**
  * Check if a transaction signals RBF
@@ -146,34 +149,6 @@ export async function createRBFTransaction(
     throw new Error('Wallet not found');
   }
 
-  // Get master fingerprint and account xpub for bip32Derivation
-  let masterFingerprint: Buffer | undefined;
-  let accountXpub: string | undefined;
-
-  if (wallet.devices && wallet.devices.length > 0) {
-    const primaryDevice = wallet.devices[0].device;
-    if (primaryDevice.fingerprint) {
-      masterFingerprint = Buffer.from(primaryDevice.fingerprint, 'hex');
-    }
-    if (primaryDevice.xpub) {
-      accountXpub = primaryDevice.xpub;
-    }
-  } else if (wallet.fingerprint) {
-    masterFingerprint = Buffer.from(wallet.fingerprint, 'hex');
-  }
-
-  // Try to get xpub from descriptor if not from device
-  if (!accountXpub && wallet.descriptor) {
-    try {
-      const parsed = parseDescriptor(wallet.descriptor);
-      if (parsed.xpub) {
-        accountXpub = parsed.xpub;
-      }
-    } catch {
-      log.debug('Could not parse xpub from descriptor for RBF');
-    }
-  }
-
   // Check if transaction can be replaced
   const rbfCheck = await canReplaceTransaction(originalTxid);
   if (!rbfCheck.replaceable) {
@@ -193,162 +168,165 @@ export async function createRBFTransaction(
 
   // Create new PSBT with same inputs and outputs
   const psbt = new bitcoin.Psbt({ network: networkObj });
+  const signingInfo = resolveWalletSigningInfo(wallet, '[RBF] ');
 
-  // Get addresses with derivation paths for bip32Derivation
-  const addressRecords = await addressRepository.findByWalletId(walletId);
-  const addressPathMap = new Map(addressRecords.map(a => [a.address, a.derivationPath]));
-
-  // Parse account xpub for deriving public keys
-  let accountNode: ReturnType<typeof bip32.fromBase58> | undefined;
-  if (accountXpub) {
-    try {
-      accountNode = bip32.fromBase58(accountXpub, networkObj);
-    } catch (e) {
-      log.warn('Failed to parse account xpub for RBF', { error: String(e) });
-    }
-  }
-
-  // Add inputs with RBF sequence
-  const inputs: Array<{ txid: string; vout: number; value: number }> = [];
-  const inputPaths: string[] = [];
-  let totalInput = 0;
-
-  for (let i = 0; i < tx.ins.length; i++) {
-    const input = tx.ins[i];
-    const inputTxid = Buffer.from(input.hash).reverse().toString('hex');
-    const inputTx = await client.getTransaction(inputTxid);
-    const prevOut = inputTx.vout[input.index];
-    const value = Math.round(prevOut.value * 100000000);
-
-    // Get address from scriptPubKey to look up derivation path
-    let inputAddress: string | undefined;
-    try {
-      inputAddress = bitcoin.address.fromOutputScript(
-        Buffer.from(prevOut.scriptPubKey.hex, 'hex'),
-        networkObj
-      );
-    } catch (e) {
-      log.warn('Failed to decode input address', { txid: inputTxid, vout: input.index });
-    }
-
-    const derivationPath = inputAddress ? addressPathMap.get(inputAddress) : undefined;
-    inputPaths.push(derivationPath || '');
-
-    psbt.addInput({
-      hash: inputTxid,
-      index: input.index,
-      sequence: RBF_SEQUENCE,
-      witnessUtxo: {
-        script: Buffer.from(prevOut.scriptPubKey.hex, 'hex'),
-        value: BigInt(value),
-      },
-    });
-
-    // Add BIP32 derivation info for hardware wallet signing
-    if (masterFingerprint && derivationPath && accountNode) {
-      try {
-        // Parse the derivation path
-        const pathParts = derivationPath.replace(/^m\/?/, '').split('/').filter(p => p);
-
-        // Find where the account path ends (after 3 hardened levels)
-        let accountPathEnd = 0;
-        for (let j = 0; j < pathParts.length && j < 3; j++) {
-          if (pathParts[j].endsWith("'") || pathParts[j].endsWith('h')) {
-            accountPathEnd = j + 1;
-          }
-        }
-
-        // Derive from account node using the remaining path (change/index)
-        let pubkeyNode = accountNode;
-        for (let j = accountPathEnd; j < pathParts.length; j++) {
-          const part = pathParts[j];
-          const idx = parseInt(part.replace(/['h]/g, ''), 10);
-          pubkeyNode = pubkeyNode.derive(idx);
-        }
-
-        if (pubkeyNode.publicKey) {
-          // Normalize path to apostrophe notation for PSBT compatibility
-          const normalizedPath = normalizeDerivationPath(derivationPath);
-          psbt.updateInput(i, {
-            bip32Derivation: [{
-              masterFingerprint,
-              path: normalizedPath,
-              pubkey: pubkeyNode.publicKey,
-            }],
-          });
-        }
-      } catch (e) {
-        log.warn('Failed to add bip32Derivation for RBF input', { index: i, error: String(e) });
-      }
-    }
-
-    inputs.push({
-      txid: inputTxid,
-      vout: input.index,
-      value,
-    });
-
-    totalInput += value;
-  }
+  const rbfInputs = await collectRbfInputs(tx, client, networkObj);
+  const accountNode = signingInfo.accountXpub
+    ? parseAccountNode(signingInfo.accountXpub, networkObj)
+    : undefined;
+  const addressPathMap = await fetchAddressDerivationPaths(
+    walletId,
+    rbfInputs.psbtUtxos.map(utxo => utxo.address).filter(Boolean)
+  );
+  const inputPaths = addInputsWithBip32(psbt, rbfInputs.psbtUtxos, {
+    sequence: RBF_SEQUENCE,
+    isLegacy: false,
+    rawTxCache: new Map(),
+    addressPathMap,
+    signingInfo,
+    accountNode,
+    networkObj,
+    logPrefix: '[RBF] ',
+  });
 
   // Calculate new fee
   const vsize = tx.virtualSize();
   const newFee = calculateFee(vsize, newFeeRate);
 
-  // Add outputs (adjust change output if present)
-  const outputs: Array<{ address: string; value: number }> = [];
-  let totalOutput = 0;
-
   // Get wallet addresses to identify change output
   const walletAddressStrings = await addressRepository.findAddressStrings(walletId);
   const walletAddressSet = new Set(walletAddressStrings);
-
-  let changeOutputIndex = -1;
-  for (let i = 0; i < tx.outs.length; i++) {
-    const output = tx.outs[i];
-    const address = bitcoin.address.fromOutputScript(output.script, networkObj);
-
-    if (walletAddressSet.has(address)) {
-      changeOutputIndex = i;
-    }
-
-    outputs.push({ address, value: Number(output.value) });
-  }
+  const outputs = collectRbfOutputs(tx, networkObj, walletAddressSet);
+  const changeOutputIndex = outputs.findIndex(output => output.isChange);
 
   // Calculate fee difference
-  const oldFee = totalInput - tx.outs.reduce((sum, out) => sum + Number(out.value), 0);
+  const oldFee = rbfInputs.totalInput - tx.outs.reduce((sum, out) => sum + Number(out.value), 0);
   const feeDelta = newFee - oldFee;
 
   // Adjust change output to account for fee increase
-  if (changeOutputIndex >= 0 && feeDelta > 0) {
-    outputs[changeOutputIndex].value -= feeDelta;
-
-    // Ensure change output is still above dust threshold
-    if (outputs[changeOutputIndex].value < dustThreshold) {
-      throw new Error(
-        `Insufficient funds in change output to increase fee. Need ${feeDelta} sats more, but change would be dust.`
-      );
-    }
-  } else if (feeDelta > 0) {
-    throw new Error('No change output found to deduct additional fee from');
-  }
+  adjustChangeOutputForFeeDelta(outputs, changeOutputIndex, feeDelta, dustThreshold);
 
   // Add adjusted outputs to PSBT
-  for (const output of outputs) {
-    psbt.addOutput({
-      address: output.address,
-      value: BigInt(output.value),
-    });
-    totalOutput += output.value;
-  }
+  addRbfOutputs(psbt, outputs);
 
   return {
     psbt,
     fee: newFee,
     feeRate: newFeeRate,
     feeDelta,
-    inputs,
-    outputs,
+    inputs: rbfInputs.inputs,
+    outputs: outputs.map(({ address, value }) => ({ address, value })),
     inputPaths,
   };
+}
+
+interface RbfPsbtUtxo {
+  txid: string;
+  vout: number;
+  amount: number;
+  address: string;
+  scriptPubKey: string;
+}
+
+interface RbfInputCollection {
+  inputs: Array<{ txid: string; vout: number; value: number }>;
+  psbtUtxos: RbfPsbtUtxo[];
+  totalInput: number;
+}
+
+interface RbfOutput {
+  address: string;
+  value: number;
+  isChange: boolean;
+}
+
+async function collectRbfInputs(
+  tx: bitcoin.Transaction,
+  client: Awaited<ReturnType<typeof getNodeClient>>,
+  networkObj: bitcoin.Network
+): Promise<RbfInputCollection> {
+  const inputs: Array<{ txid: string; vout: number; value: number }> = [];
+  const psbtUtxos: RbfPsbtUtxo[] = [];
+  let totalInput = 0;
+
+  for (const input of tx.ins) {
+    const inputTxid = Buffer.from(input.hash).reverse().toString('hex');
+    const inputTx = await client.getTransaction(inputTxid);
+    const prevOut = inputTx.vout[input.index];
+    const value = Math.round(prevOut.value * 100000000);
+    const scriptPubKey = prevOut.scriptPubKey.hex;
+    const address = decodeInputAddress(scriptPubKey, networkObj, inputTxid, input.index);
+
+    inputs.push({ txid: inputTxid, vout: input.index, value });
+    psbtUtxos.push({
+      txid: inputTxid,
+      vout: input.index,
+      amount: value,
+      address: address ?? '',
+      scriptPubKey,
+    });
+    totalInput += value;
+  }
+
+  return { inputs, psbtUtxos, totalInput };
+}
+
+function decodeInputAddress(
+  scriptPubKey: string,
+  networkObj: bitcoin.Network,
+  txid: string,
+  vout: number
+): string | undefined {
+  try {
+    return bitcoin.address.fromOutputScript(Buffer.from(scriptPubKey, 'hex'), networkObj);
+  } catch (e) {
+    log.warn('Failed to decode input address', { txid, vout });
+    return undefined;
+  }
+}
+
+function collectRbfOutputs(
+  tx: bitcoin.Transaction,
+  networkObj: bitcoin.Network,
+  walletAddressSet: Set<string>
+): RbfOutput[] {
+  return tx.outs.map(output => {
+    const address = bitcoin.address.fromOutputScript(output.script, networkObj);
+    return {
+      address,
+      value: Number(output.value),
+      isChange: walletAddressSet.has(address),
+    };
+  });
+}
+
+function adjustChangeOutputForFeeDelta(
+  outputs: RbfOutput[],
+  changeOutputIndex: number,
+  feeDelta: number,
+  dustThreshold: number
+): void {
+  if (feeDelta <= 0) {
+    return;
+  }
+
+  if (changeOutputIndex < 0) {
+    throw new Error('No change output found to deduct additional fee from');
+  }
+
+  outputs[changeOutputIndex].value -= feeDelta;
+  if (outputs[changeOutputIndex].value < dustThreshold) {
+    throw new Error(
+      `Insufficient funds in change output to increase fee. Need ${feeDelta} sats more, but change would be dust.`
+    );
+  }
+}
+
+function addRbfOutputs(psbt: bitcoin.Psbt, outputs: RbfOutput[]): void {
+  for (const output of outputs) {
+    psbt.addOutput({
+      address: output.address,
+      value: BigInt(output.value),
+    });
+  }
 }

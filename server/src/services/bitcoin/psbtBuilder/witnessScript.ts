@@ -16,6 +16,66 @@ type ParsedMultisigScript = { isMultisig: boolean; m: number; n: number; pubkeys
 type DecompiledScript = NonNullable<ReturnType<typeof bitcoin.script.decompile>>;
 type ScriptChunk = DecompiledScript[number];
 
+const deriveMultisigPubkeys = (
+  derivationPath: string,
+  multisigKeys: MultisigKeyInfo[],
+  network: bitcoin.Network,
+  inputIndex?: number
+): Uint8Array[] | undefined => {
+  const { changeIdx, addressIdx } = extractChangeAndAddressIndex(derivationPath);
+  const pubkeys: Uint8Array[] = [];
+
+  for (const keyInfo of multisigKeys) {
+    try {
+      const standardXpub = convertToStandardXpub(keyInfo.xpub);
+      const keyNode = bip32.fromBase58(standardXpub, network);
+      const derivedNode = keyNode.derive(changeIdx).derive(addressIdx);
+      pubkeys.push(derivedNode.publicKey!);
+    } catch (keyError) {
+      log.warn('Failed to derive key for witnessScript', {
+        inputIndex,
+        fingerprint: keyInfo.fingerprint,
+        error: (keyError as Error).message,
+      });
+    }
+  }
+
+  if (pubkeys.length !== multisigKeys.length) {
+    log.warn('Not all pubkeys derived for witnessScript', {
+      inputIndex,
+      expected: multisigKeys.length,
+      actual: pubkeys.length,
+    });
+    return undefined;
+  }
+
+  return pubkeys.sort((a, b) => Buffer.from(a).compare(Buffer.from(b)));
+};
+
+const buildP2msOutput = (
+  pubkeys: Uint8Array[],
+  quorum: number,
+  network: bitcoin.Network,
+  inputIndex?: number
+): Uint8Array | undefined => {
+  const p2ms = bitcoin.payments.p2ms({
+    m: quorum,
+    pubkeys,
+    network,
+  });
+
+  /* v8 ignore start -- defensive: bitcoinjs p2ms produces output for validated quorum/pubkeys */
+  if (!p2ms.output) {
+    /* v8 ignore next 2 -- defensive: bitcoinjs p2ms produces output for validated quorum/pubkeys */
+    log.warn('Failed to generate p2ms output for witnessScript', { inputIndex });
+    /* v8 ignore next -- defensive: bitcoinjs p2ms produces output for validated quorum/pubkeys */
+    return undefined;
+  }
+  /* v8 ignore stop */
+
+  return p2ms.output;
+};
+
 /**
  * Build the witnessScript (multisig redeem script) for a P2WSH multisig input.
  *
@@ -38,61 +98,21 @@ export function buildMultisigWitnessScript(
   inputIndex?: number
 ): Uint8Array | undefined {
   try {
-    const { changeIdx, addressIdx } = extractChangeAndAddressIndex(derivationPath);
+    const pubkeys = deriveMultisigPubkeys(derivationPath, multisigKeys, network, inputIndex);
+    if (!pubkeys) return undefined;
 
-    // Derive public keys from each xpub at the change/index level
-    const pubkeys: Uint8Array[] = [];
-    for (const keyInfo of multisigKeys) {
-      try {
-        const standardXpub = convertToStandardXpub(keyInfo.xpub);
-        const keyNode = bip32.fromBase58(standardXpub, network);
-        const derivedNode = keyNode.derive(changeIdx).derive(addressIdx);
-        pubkeys.push(derivedNode.publicKey!);
-      } catch (keyError) {
-        log.warn('Failed to derive key for witnessScript', {
-          inputIndex,
-          fingerprint: keyInfo.fingerprint,
-          error: (keyError as Error).message,
-        });
-      }
-    }
-
-    if (pubkeys.length !== multisigKeys.length) {
-      log.warn('Not all pubkeys derived for witnessScript', {
-        inputIndex,
-        expected: multisigKeys.length,
-        actual: pubkeys.length,
-      });
-      return undefined;
-    }
-
-    // Sort public keys lexicographically (required for sortedmulti)
-    pubkeys.sort((a, b) => Buffer.from(a).compare(Buffer.from(b)));
-
-    // Create the multisig redeem script (p2ms)
-    const p2ms = bitcoin.payments.p2ms({
-      m: quorum,
-      pubkeys,
-      network,
-    });
-
-    /* v8 ignore start -- defensive: bitcoinjs p2ms produces output for validated quorum/pubkeys */
-    if (!p2ms.output) {
-      /* v8 ignore next 2 -- defensive: bitcoinjs p2ms produces output for validated quorum/pubkeys */
-      log.warn('Failed to generate p2ms output for witnessScript', { inputIndex });
-      /* v8 ignore next -- defensive: bitcoinjs p2ms produces output for validated quorum/pubkeys */
-      return undefined;
-    }
-    /* v8 ignore stop */
+    const witnessScript = buildP2msOutput(pubkeys, quorum, network, inputIndex);
+    /* v8 ignore next -- defensive: bitcoinjs p2ms output failure is guarded in buildP2msOutput */
+    if (!witnessScript) return undefined;
 
     log.info('Multisig witnessScript built', {
       inputIndex,
       quorum,
       keyCount: pubkeys.length,
-      scriptSize: p2ms.output.length,
+      scriptSize: witnessScript.length,
     });
 
-    return p2ms.output;
+    return witnessScript;
   } catch (e) {
     log.warn('Failed to build multisig witnessScript', {
       inputIndex,

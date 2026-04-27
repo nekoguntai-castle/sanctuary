@@ -12,6 +12,7 @@ import { walletLog } from '../../../../websocket/notifications';
 import { mapWithConcurrency } from '../../../../utils/async';
 
 const log = createLogger('BITCOIN:SVC_CONFIRMATIONS');
+const PREV_TX_BATCH_SIZE = 5;
 
 /**
  * Fetch block heights from address history for transactions missing blockHeight.
@@ -135,38 +136,8 @@ export async function fetchPreviousTransactions(
   txDetailsCache: Map<string, any>,
   client: Awaited<ReturnType<typeof getNodeClient>>
 ): Promise<Map<string, any>> {
-  const TX_BATCH_SIZE = 5;
   const prevTxCache = new Map<string, any>();
-  const requiredPrevTxids = new Set<string>();
-
-  // First pass: collect all previous txids we'll need
-  for (const tx of transactions) {
-    const txDetails = txDetailsCache.get(tx.txid);
-    if (!txDetails) continue;
-
-    const inputs = txDetails.vin || [];
-    const isSentTx = tx.type === 'sent' || tx.type === 'send';
-    const isConsolidationTx = tx.type === 'consolidation';
-    const isReceivedTx = tx.type === 'received' || tx.type === 'receive';
-
-    // Need previous txs for fee calculation (sent/consolidation transactions without prevout data)
-    if (tx.fee === null && (isSentTx || isConsolidationTx) && txDetails.fee == null) {
-      for (const input of inputs) {
-        if (!input.coinbase && !input.prevout && input.txid && input.vout != null) {
-          requiredPrevTxids.add(input.txid);
-        }
-      }
-    }
-
-    // Need previous txs for counterparty address (received transactions without prevout data)
-    if (tx.counterpartyAddress === null && isReceivedTx) {
-      for (const input of inputs) {
-        if (!input.coinbase && !input.prevout && input.txid && input.vout != null) {
-          requiredPrevTxids.add(input.txid);
-        }
-      }
-    }
-  }
+  const requiredPrevTxids = collectRequiredPreviousTxids(transactions, txDetailsCache);
 
   // Batch fetch all required previous transactions
   if (requiredPrevTxids.size > 0) {
@@ -176,35 +147,101 @@ export async function fetchPreviousTransactions(
     let prevFetched = 0;
     let prevFailed = 0;
 
-    for (let i = 0; i < prevTxidsList.length; i += TX_BATCH_SIZE) {
-      const batch = prevTxidsList.slice(i, i + TX_BATCH_SIZE);
-
-      const results = await mapWithConcurrency(
-        batch,
-        async (txid) => {
-          try {
-            const details = await client.getTransaction(txid, true);
-            return { txid, details };
-          } catch (error) {
-            log.warn(`Failed to fetch previous tx ${txid}`, { error: getErrorMessage(error) });
-            return { txid, details: null };
-          }
-        },
-        3
-      );
-
-      for (const result of results) {
-        if (result.details) {
-          prevTxCache.set(result.txid, result.details);
-          prevFetched++;
-        } else {
-          prevFailed++;
-        }
-      }
+    for (let i = 0; i < prevTxidsList.length; i += PREV_TX_BATCH_SIZE) {
+      const batch = prevTxidsList.slice(i, i + PREV_TX_BATCH_SIZE);
+      const results = await fetchPreviousTransactionBatch(batch, client);
+      const counts = storePreviousTransactionResults(results, prevTxCache);
+      prevFetched += counts.fetched;
+      prevFailed += counts.failed;
     }
 
     walletLog(walletId, 'info', 'POPULATE', `Previous transactions fetched: ${prevFetched} success, ${prevFailed} failed`);
   }
 
   return prevTxCache;
+}
+
+function collectRequiredPreviousTxids(
+  transactions: Array<{ txid: string; type: string; fee: bigint | null; counterpartyAddress: string | null }>,
+  txDetailsCache: Map<string, any>
+): Set<string> {
+  const requiredPrevTxids = new Set<string>();
+
+  for (const tx of transactions) {
+    const txDetails = txDetailsCache.get(tx.txid);
+    if (!txDetails) continue;
+
+    if (needsFeePrevTxs(tx, txDetails) || needsCounterpartyPrevTxs(tx)) {
+      addPrevTxidsFromInputs(requiredPrevTxids, txDetails.vin || []);
+    }
+  }
+
+  return requiredPrevTxids;
+}
+
+function needsFeePrevTxs(
+  tx: { type: string; fee: bigint | null },
+  txDetails: { fee?: number | null }
+): boolean {
+  return tx.fee === null && isSentLikeTx(tx.type) && txDetails.fee == null;
+}
+
+function needsCounterpartyPrevTxs(
+  tx: { type: string; counterpartyAddress: string | null }
+): boolean {
+  return tx.counterpartyAddress === null && isReceivedLikeTx(tx.type);
+}
+
+function isSentLikeTx(type: string): boolean {
+  return type === 'sent' || type === 'send' || type === 'consolidation';
+}
+
+function isReceivedLikeTx(type: string): boolean {
+  return type === 'received' || type === 'receive';
+}
+
+function addPrevTxidsFromInputs(requiredPrevTxids: Set<string>, inputs: any[]): void {
+  for (const input of inputs) {
+    if (!input.coinbase && !input.prevout && input.txid && input.vout != null) {
+      requiredPrevTxids.add(input.txid);
+    }
+  }
+}
+
+async function fetchPreviousTransactionBatch(
+  batch: string[],
+  client: Awaited<ReturnType<typeof getNodeClient>>
+): Promise<Array<{ txid: string; details: any | null }>> {
+  return mapWithConcurrency(
+    batch,
+    async (txid) => {
+      try {
+        const details = await client.getTransaction(txid, true);
+        return { txid, details };
+      } catch (error) {
+        log.warn(`Failed to fetch previous tx ${txid}`, { error: getErrorMessage(error) });
+        return { txid, details: null };
+      }
+    },
+    3
+  );
+}
+
+function storePreviousTransactionResults(
+  results: Array<{ txid: string; details: any | null }>,
+  prevTxCache: Map<string, any>
+): { fetched: number; failed: number } {
+  let fetched = 0;
+  let failed = 0;
+
+  for (const result of results) {
+    if (result.details) {
+      prevTxCache.set(result.txid, result.details);
+      fetched++;
+    } else {
+      failed++;
+    }
+  }
+
+  return { fetched, failed };
 }
