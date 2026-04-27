@@ -38,14 +38,8 @@ export function getMaxUtxoAmount(utxos: UTXO[]): number {
   return Math.max(...utxos.map((utxo) => utxo.amount), 1);
 }
 
-export function createUtxoGardenDotModel({
-  utxo,
-  selectedUtxos,
-  currentFeeRate,
-  maxAmount,
-  now,
-  format,
-}: CreateUtxoGardenDotModelArgs): UtxoGardenDotModel {
+export function createUtxoGardenDotModel(args: CreateUtxoGardenDotModelArgs): UtxoGardenDotModel {
+  const { utxo, selectedUtxos, currentFeeRate, maxAmount, now, format } = args;
   const id = `${utxo.txid}:${utxo.vout}`;
   const isLocked = Boolean(utxo.lockedByDraftId);
   const isDisabled = Boolean(utxo.frozen || isLocked);

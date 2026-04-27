@@ -1,5 +1,5 @@
 import React from 'react';
-import { Wallet, isMultisigType, getQuorumM, getQuorumN } from '../../types';
+import { Wallet } from '../../types';
 import { Amount } from '../Amount';
 import { Button } from '../ui/Button';
 import { getWalletIcon } from '../ui/CustomIcons';
@@ -7,15 +7,12 @@ import {
   ArrowUpRight,
   ArrowDownLeft,
   Share2,
-  Users,
-  Check,
-  AlertTriangle,
   RefreshCw,
   RotateCcw,
   AlertCircle,
-  Bot,
 } from 'lucide-react';
 import type { SyncRetryInfo } from './types';
+import { WalletBadges } from './WalletHeaderBadges';
 
 export interface WalletAgentLinkBadge {
   agentId: string;
@@ -57,77 +54,12 @@ export const WalletHeader: React.FC<WalletHeaderProps> = ({
 
       <div className="relative z-10">
         {/* Row 1: Badges */}
-        <div className="flex flex-wrap gap-1.5 mb-2">
-          {/* Wallet Type Badge */}
-          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${isMultisigType(wallet.type) ? 'bg-warning-100 text-warning-800 border-warning-200 dark:bg-warning-500/10 dark:text-warning-300 dark:border-warning-500/20' : 'bg-success-100 text-success-800 border-success-200 dark:bg-success-500/10 dark:text-success-300 dark:border-success-500/20'}`}>
-            {isMultisigType(wallet.type) ? `${getQuorumM(wallet.quorum)}/${getQuorumN(wallet.quorum, wallet.totalSigners)} Multisig` : 'Single Sig'}
-          </span>
-          {/* Network Badge - only show if not mainnet */}
-          {wallet.network && wallet.network !== 'mainnet' && (
-            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border capitalize ${
-              wallet.network === 'testnet'
-                ? 'bg-testnet-100 text-testnet-800 border-testnet-200 dark:bg-testnet-500/10 dark:text-testnet-100 dark:border-testnet-500/30'
-                : wallet.network === 'signet'
-                ? 'bg-signet-100 text-signet-800 border-signet-200 dark:bg-signet-500/10 dark:text-signet-100 dark:border-signet-500/30'
-                : 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-500/10 dark:text-blue-300 dark:border-blue-500/20'
-            }`}>
-              {wallet.network}
-            </span>
-          )}
-          {/* Sync Status Badge */}
-          {wallet.lastSyncStatus === 'retrying' || syncRetryInfo ? (
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 border border-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/20" title={syncRetryInfo?.error || 'Sync failed, retrying...'}>
-              <RefreshCw className="w-3 h-3 mr-1 animate-spin" /> Retrying {syncRetryInfo?.retryCount || 1}/{syncRetryInfo?.maxRetries || 3}
-            </span>
-          ) : syncing || wallet.syncInProgress ? (
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 border border-amber-200 dark:bg-amber-500/20 dark:text-amber-200 dark:border-amber-400/30">
-              <RefreshCw className="w-3 h-3 mr-1 animate-spin" /> Syncing
-            </span>
-          ) : wallet.lastSyncStatus === 'success' ? (
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-success-100 text-success-700 border border-success-200 dark:bg-success-500/10 dark:text-success-300 dark:border-success-500/20" title={wallet.lastSyncedAt ? `Last synced: ${new Date(wallet.lastSyncedAt).toLocaleString()}` : ''}>
-              <Check className="w-3 h-3 mr-1" /> Synced
-            </span>
-          ) : wallet.lastSyncStatus === 'failed' ? (
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-rose-100 text-rose-700 border border-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:border-rose-500/20" title="Last sync failed">
-              <AlertTriangle className="w-3 h-3 mr-1" /> Failed
-            </span>
-          ) : wallet.lastSyncedAt ? (
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-sanctuary-100 text-sanctuary-600 border border-sanctuary-200 dark:bg-sanctuary-800 dark:text-sanctuary-400 dark:border-sanctuary-700" title={`Last synced: ${new Date(wallet.lastSyncedAt).toLocaleString()}`}>
-              <Check className="w-3 h-3 mr-1" /> Cached
-            </span>
-          ) : (
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-warning-100 text-warning-700 border border-warning-200 dark:bg-warning-500/10 dark:text-warning-300 dark:border-warning-500/20" title="Never synced">
-              <AlertTriangle className="w-3 h-3 mr-1" /> Not Synced
-            </span>
-          )}
-          {/* Role Badge - your access level */}
-          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-            wallet.userRole === 'owner'
-              ? 'bg-primary-600 text-white dark:bg-primary-100 dark:text-primary-700'
-              : wallet.userRole === 'signer'
-              ? 'bg-warning-600 text-white dark:bg-warning-100 dark:text-warning-700'
-              : 'bg-sanctuary-500 text-white dark:bg-sanctuary-900 dark:text-sanctuary-200'
-          }`}>
-            {wallet.userRole === 'owner' ? 'Owner' : wallet.userRole === 'signer' ? 'Signer' : 'Viewer'}
-          </span>
-          {/* Shared indicator */}
-          {wallet.isShared && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-shared-600 text-white dark:bg-shared-100 dark:text-shared-700">
-              <Users className="w-3 h-3" />
-              Shared
-            </span>
-          )}
-          {agentLinks.map(link => (
-            <span
-              key={`${link.agentId}-${link.role}`}
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-shared-600 text-white dark:bg-shared-100 dark:text-shared-700"
-              title={`${link.agentName} links this wallet to ${link.linkedWalletName}`}
-            >
-              <Bot className="w-3 h-3" />
-              {link.role === 'funding' ? 'Agent Funding Wallet' : 'Agent Operational Wallet'}
-            </span>
-          ))}
-        </div>
+        <WalletBadges
+          wallet={wallet}
+          agentLinks={agentLinks}
+          syncing={syncing}
+          syncRetryInfo={syncRetryInfo}
+        />
 
         {/* Row 2: Name + Balance */}
         <div className="flex items-center justify-between gap-4 mb-3">

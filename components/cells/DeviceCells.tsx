@@ -6,11 +6,18 @@
  */
 
 import React from 'react';
-import { HardwareDevice, HardwareDeviceModel, Device, WalletType } from '../../types';
+import { HardwareDevice, HardwareDeviceModel, Device } from '../../types';
 import { Edit2, Save, X, Trash2, Users, HardDrive } from 'lucide-react';
 import { getDeviceIcon, getWalletIcon } from '../ui/CustomIcons';
 import type { CellRendererProps } from '../ui/ConfigurableTable';
 import { EXCLUSIVE_BADGE_CLASS } from '../DeviceList/types';
+import {
+  canDeleteDevice,
+  getAccountBadgeClass,
+  getDeviceWalletCount,
+  getWalletBadgeClass,
+  hasExclusiveBadge,
+} from './DeviceCellHelpers';
 
 // Extended device type with wallet count for display
 export interface DeviceWithWallets extends Device {
@@ -176,16 +183,6 @@ export function createDeviceCellRenderers(
   const AccountsCell: React.FC<CellRendererProps<DeviceWithWallets>> = ({ item: device }) => {
     const accounts = device.accounts || [];
 
-    // Extensible badge styling based on account purpose
-    // Uses solid colored backgrounds with light text in dark mode for better visibility
-    const getAccountBadgeClass = (purpose: string) => {
-      const isMultisig = purpose === 'multisig';
-      // Dark mode: bg-*-100 is dark (inverted), text-*-700/800 is light (inverted)
-      return isMultisig
-        ? 'bg-warning-600 text-white dark:bg-warning-100 dark:text-warning-700'
-        : 'bg-success-600 text-white dark:bg-success-100 dark:text-success-700';
-    };
-
     if (accounts.length === 0) {
       // Fallback to legacy derivation path display
       if (device.derivationPath) {
@@ -218,23 +215,12 @@ export function createDeviceCellRenderers(
   // Color coded: warning (amber) for multisig, success (green) for single-sig
   const WalletsCell: React.FC<CellRendererProps<DeviceWithWallets>> = ({ item: device }) => {
     const wallets = device.wallets || [];
-    const count = device.walletCount ?? wallets.length;
-    const isExclusive = filterContext
-      && filterContext.walletFilter !== 'all'
-      && filterContext.walletFilter !== 'unassigned'
-      && filterContext.exclusiveDeviceIds.has(device.id);
+    const count = getDeviceWalletCount(device);
+    const isExclusive = hasExclusiveBadge(filterContext, device.id);
 
     if (count === 0) {
       return <span className="text-xs text-sanctuary-400">Unused</span>;
     }
-
-    // Get badge styling based on wallet type
-    const getBadgeClass = (walletType: string) => {
-      const isMultisig = walletType === 'multi_sig' || walletType === WalletType.MULTI_SIG;
-      return isMultisig
-        ? 'bg-warning-100 text-warning-800 border border-warning-200 dark:bg-warning-500/10 dark:text-warning-300 dark:border-warning-500/20'
-        : 'bg-success-100 text-success-800 border border-success-200 dark:bg-success-500/10 dark:text-success-300 dark:border-success-500/20';
-    };
 
     return (
       <div className="flex flex-wrap gap-1">
@@ -243,7 +229,7 @@ export function createDeviceCellRenderers(
           return (
             <span
               key={wd.wallet.id}
-              className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getBadgeClass(walletType)}`}
+              className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getWalletBadgeClass(walletType)}`}
             >
               {getWalletIcon(walletType, 'w-3 h-3 mr-1 flex-shrink-0')}
               {wd.wallet.name}
@@ -268,10 +254,8 @@ export function createDeviceCellRenderers(
 
   // Actions Cell - Delete button with confirmation
   const ActionsCell: React.FC<CellRendererProps<DeviceWithWallets>> = ({ item: device }) => {
-    const walletCount = device.walletCount ?? device.wallets?.length ?? 0;
-
     // Only show delete for owned devices with no wallets
-    if (!device.isOwner || walletCount > 0) {
+    if (!canDeleteDevice(device)) {
       return null;
     }
 
