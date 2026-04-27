@@ -35,7 +35,7 @@ type UTXOAgeSource = {
 
 type UTXOAgeText = Pick<UTXOAge, 'displayText' | 'shortText'>;
 
-function unknownUTXOAge(): UTXOAge {
+const unknownUTXOAge = (): UTXOAge => {
   return {
     days: 0,
     displayText: 'Unknown',
@@ -43,9 +43,9 @@ function unknownUTXOAge(): UTXOAge {
     category: 'fresh',
     confirmationsApproximate: 0,
   };
-}
+};
 
-function parseUTXODate(date: string | number | Date): Date {
+const parseUTXODate = (date: string | number | Date): Date => {
   if (typeof date === 'number') {
     return new Date(date);
   }
@@ -55,9 +55,9 @@ function parseUTXODate(date: string | number | Date): Date {
   }
 
   return date;
-}
+};
 
-function getUTXOAgeSource(utxo: UTXOAgeInput): UTXOAgeSource | null {
+const getUTXOAgeSource = (utxo: UTXOAgeInput): UTXOAgeSource | null => {
   if (utxo.confirmations !== undefined && utxo.confirmations > 0) {
     return {
       confirmations: utxo.confirmations,
@@ -74,9 +74,9 @@ function getUTXOAgeSource(utxo: UTXOAgeInput): UTXOAgeSource | null {
     ageMs,
     confirmations: Math.floor(ageMs / BLOCK_MS),
   };
-}
+};
 
-function formatSubDayAge(ageMs: number, hours: number): UTXOAgeText {
+const formatSubDayAge = (ageMs: number, hours: number): UTXOAgeText => {
   if (hours === 0) {
     const mins = Math.floor(ageMs / 60000);
     return {
@@ -89,9 +89,9 @@ function formatSubDayAge(ageMs: number, hours: number): UTXOAgeText {
     displayText: `${hours} hour${hours !== 1 ? 's' : ''}`,
     shortText: `${hours}h`,
   };
-}
+};
 
-function formatMonthAge(days: number): UTXOAgeText {
+const formatMonthAge = (days: number): UTXOAgeText => {
   const months = Math.round(days / 30 * 10) / 10;
   if (months < 1.5) {
     return { displayText: '1 month', shortText: '1mo' };
@@ -101,9 +101,9 @@ function formatMonthAge(days: number): UTXOAgeText {
     displayText: `${months.toFixed(1).replace(/\.0$/, '')} months`,
     shortText: `${Math.round(months)}mo`,
   };
-}
+};
 
-function formatYearAge(days: number): UTXOAgeText {
+const formatYearAge = (days: number): UTXOAgeText => {
   const years = Math.round(days / 365 * 10) / 10;
   if (years < 1.5) {
     return { displayText: '1 year', shortText: '1y' };
@@ -113,9 +113,9 @@ function formatYearAge(days: number): UTXOAgeText {
     displayText: `${years.toFixed(1).replace(/\.0$/, '')} years`,
     shortText: `${Math.round(years)}y`,
   };
-}
+};
 
-function formatUTXOAge(days: number, ageMs: number): UTXOAgeText {
+const formatUTXOAge = (days: number, ageMs: number): UTXOAgeText => {
   const hours = Math.floor((ageMs % DAY_MS) / HOUR_MS);
 
   if (days < 1) {
@@ -140,9 +140,9 @@ function formatUTXOAge(days: number, ageMs: number): UTXOAgeText {
   }
 
   return days < 365 ? formatMonthAge(days) : formatYearAge(days);
-}
+};
 
-function getUTXOAgeCategory(days: number): UTXOAge['category'] {
+const getUTXOAgeCategory = (days: number): UTXOAge['category'] => {
   if (days < 1) {
     return 'fresh';
   }
@@ -152,12 +152,12 @@ function getUTXOAgeCategory(days: number): UTXOAge['category'] {
   }
 
   return days < 365 ? 'mature' : 'ancient';
-}
+};
 
 /**
  * Calculate UTXO age from confirmations or timestamp
  */
-export function calculateUTXOAge(utxo: UTXOAgeInput): UTXOAge {
+export const calculateUTXOAge = (utxo: UTXOAgeInput): UTXOAge => {
   const source = getUTXOAgeSource(utxo);
   if (!source) {
     return unknownUTXOAge();
@@ -173,12 +173,12 @@ export function calculateUTXOAge(utxo: UTXOAgeInput): UTXOAge {
     category: getUTXOAgeCategory(days),
     confirmationsApproximate: source.confirmations,
   };
-}
+};
 
 /**
  * Get age-based recommendation for UTXO spending
  */
-export function getAgeRecommendation(age: UTXOAge): string | null {
+export const getAgeRecommendation = (age: UTXOAge): string | null => {
   if (age.category === 'ancient') {
     return 'Older UTXOs are better for privacy';
   }
@@ -186,12 +186,12 @@ export function getAgeRecommendation(age: UTXOAge): string | null {
     return 'Consider waiting for more confirmations';
   }
   return null;
-}
+};
 
 /**
  * Get CSS color class for age category
  */
-export function getAgeCategoryColor(category: UTXOAge['category']): string {
+export const getAgeCategoryColor = (category: UTXOAge['category']): string => {
   switch (category) {
     case 'fresh':
       return 'text-zen-matcha';
@@ -204,4 +204,4 @@ export function getAgeCategoryColor(category: UTXOAge['category']): string {
     default:
       return 'text-sanctuary-500';
   }
-}
+};

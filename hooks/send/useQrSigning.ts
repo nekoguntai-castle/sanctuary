@@ -55,19 +55,19 @@ interface UploadedSignedPsbtParams {
 
 const PSBT_MAGIC_BYTES = [0x70, 0x73, 0x62, 0x74] as const;
 
-function isBinaryPsbt(bytes: Uint8Array): boolean {
+const isBinaryPsbt = (bytes: Uint8Array): boolean => {
   return PSBT_MAGIC_BYTES.every((magicByte, index) => bytes[index] === magicByte);
-}
+};
 
-function base64FromBytes(bytes: Uint8Array): string {
+const base64FromBytes = (bytes: Uint8Array): string => {
   let binaryString = '';
   for (let i = 0; i < bytes.length; i++) {
     binaryString += String.fromCharCode(bytes[i]);
   }
   return btoa(binaryString);
-}
+};
 
-function getUploadedPsbtBase64(bytes: Uint8Array): string {
+const getUploadedPsbtBase64 = (bytes: Uint8Array): string => {
   if (isBinaryPsbt(bytes)) {
     log.debug('Uploaded binary PSBT, converted to base64');
     return base64FromBytes(bytes);
@@ -75,19 +75,19 @@ function getUploadedPsbtBase64(bytes: Uint8Array): string {
 
   log.debug('Uploaded base64 PSBT');
   return new TextDecoder().decode(bytes).trim();
-}
+};
 
-function getEffectiveDeviceId(deviceId?: string): string {
+const getEffectiveDeviceId = (deviceId?: string): string => {
   return deviceId || 'psbt-signed';
-}
+};
 
-function logUploadedSignedPsbt(
+const logUploadedSignedPsbt = (
   base64Psbt: string,
   effectiveDeviceId: string,
   deviceFingerprint: string | undefined,
   unsignedPsbt: string | null,
   walletType: WalletTypeValue
-): void {
+): void => {
   log.debug('Uploaded signed PSBT', {
     preview: base64Psbt.substring(0, 50) + '...',
     deviceId: effectiveDeviceId,
@@ -97,14 +97,14 @@ function logUploadedSignedPsbt(
     walletType,
     isMultisig: isMultisigType(walletType),
   });
-}
+};
 
-function getSignatureFingerprint(input: PsbtInput, pubkey: Uint8Array): string | null {
+const getSignatureFingerprint = (input: PsbtInput, pubkey: Uint8Array): string | null => {
   const derivation = input.bip32Derivation?.find(d => uint8ArrayEquals(d.pubkey, pubkey));
   return derivation ? toHex(derivation.masterFingerprint) : null;
-}
+};
 
-function inputHasSignatureFromDevice(input: PsbtInput, deviceFingerprint: string): boolean {
+const inputHasSignatureFromDevice = (input: PsbtInput, deviceFingerprint: string): boolean => {
   if (!input.partialSig || !input.bip32Derivation) {
     return false;
   }
@@ -125,17 +125,17 @@ function inputHasSignatureFromDevice(input: PsbtInput, deviceFingerprint: string
   }
 
   return false;
-}
+};
 
-function psbtHasSignatureFromDevice(uploadedPsbt: PsbtInstance, deviceFingerprint: string): boolean {
+const psbtHasSignatureFromDevice = (uploadedPsbt: PsbtInstance, deviceFingerprint: string): boolean => {
   return uploadedPsbt.data.inputs.some(input => inputHasSignatureFromDevice(input, deviceFingerprint));
-}
+};
 
-function validateUploadedSignature(
+const validateUploadedSignature = (
   base64Psbt: string,
   walletType: WalletTypeValue,
   deviceFingerprint?: string
-): string | null {
+): string | null => {
   if (!deviceFingerprint || !isMultisigType(walletType)) {
     return null;
   }
@@ -153,27 +153,27 @@ function validateUploadedSignature(
     log.warn('Could not validate signature', { error: validationError });
     return null;
   }
-}
+};
 
-function countSignatures(psbt: PsbtInstance): number {
+const countSignatures = (psbt: PsbtInstance): number => {
   return psbt.data.inputs.reduce((count, input) => count + (input.partialSig?.length || 0), 0);
-}
+};
 
-function getSignaturePubkeyPrefixes(psbt: PsbtInstance): string[] {
+const getSignaturePubkeyPrefixes = (psbt: PsbtInstance): string[] => {
   return psbt.data.inputs.flatMap(input =>
     input.partialSig?.map(ps => toHex(ps.pubkey).substring(0, 16)) ?? []
   );
-}
+};
 
-function shouldCombinePsbts(unsignedPsbt: string | null, walletType: WalletTypeValue): unsignedPsbt is string {
+const shouldCombinePsbts = (unsignedPsbt: string | null, walletType: WalletTypeValue): unsignedPsbt is string => {
   return Boolean(unsignedPsbt && isMultisigType(walletType));
-}
+};
 
-function combineUploadedPsbt(
+const combineUploadedPsbt = (
   unsignedPsbt: string | null,
   walletType: WalletTypeValue,
   base64Psbt: string
-): string {
+): string => {
   if (!shouldCombinePsbts(unsignedPsbt, walletType)) {
     log.debug('Not combining - no existing PSBT or not multisig');
     return base64Psbt;
@@ -201,13 +201,13 @@ function combineUploadedPsbt(
     log.error('PSBT combine failed', { error: combineError });
     return base64Psbt;
   }
-}
+};
 
-function combineQrSignedPsbt(
+const combineQrSignedPsbt = (
   unsignedPsbt: string | null,
   walletType: WalletTypeValue,
   signedPsbt: string
-): string {
+): string => {
   if (!shouldCombinePsbts(unsignedPsbt, walletType)) {
     return signedPsbt;
   }
@@ -230,18 +230,18 @@ function combineQrSignedPsbt(
     });
     return signedPsbt;
   }
-}
+};
 
-function markSignedDevice(setSignedDevices: SetSignedDevices, deviceId: string): void {
+const markSignedDevice = (setSignedDevices: SetSignedDevices, deviceId: string): void => {
   setSignedDevices(prev => new Set([...prev, deviceId]));
-}
+};
 
-async function persistUploadedSignatureToDraft(
+const persistUploadedSignatureToDraft = async (
   walletId: string,
   draftId: string | null,
   combinedPsbt: string,
   effectiveDeviceId: string
-): Promise<void> {
+): Promise<void> => {
   if (!draftId) return;
 
   try {
@@ -253,14 +253,14 @@ async function persistUploadedSignatureToDraft(
   } catch (persistErr) {
     log.warn('Failed to persist uploaded PSBT to draft', { error: persistErr });
   }
-}
+};
 
-async function persistQrSignatureToDraft(
+const persistQrSignatureToDraft = async (
   walletId: string,
   draftId: string | null,
   combinedPsbt: string,
   deviceId: string
-): Promise<void> {
+): Promise<void> => {
   if (!draftId) return;
 
   try {
@@ -272,9 +272,9 @@ async function persistQrSignatureToDraft(
   } catch (persistErr) {
     log.warn('Failed to persist QR signature to draft', { error: persistErr });
   }
-}
+};
 
-async function processUploadedSignedPsbt({
+const processUploadedSignedPsbt = async ({
   bytes,
   deviceId,
   deviceFingerprint,
@@ -284,7 +284,7 @@ async function processUploadedSignedPsbt({
   walletType,
   setUnsignedPsbt,
   setSignedDevices,
-}: UploadedSignedPsbtParams): Promise<void> {
+}: UploadedSignedPsbtParams): Promise<void> => {
   const base64Psbt = getUploadedPsbtBase64(bytes);
   const effectiveDeviceId = getEffectiveDeviceId(deviceId);
   logUploadedSignedPsbt(base64Psbt, effectiveDeviceId, deviceFingerprint, unsignedPsbt, walletType);
@@ -298,16 +298,54 @@ async function processUploadedSignedPsbt({
   setUnsignedPsbt(combinedPsbt);
   markSignedDevice(setSignedDevices, effectiveDeviceId);
   await persistUploadedSignatureToDraft(walletId, draftId, combinedPsbt, effectiveDeviceId);
-}
+};
 
-function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
+const readFileAsArrayBuffer = (file: File): Promise<ArrayBuffer> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = e => resolve((e.target?.result as ArrayBuffer) || new ArrayBuffer(0));
     reader.onerror = () => reject(new Error('Failed to read file'));
     reader.readAsArrayBuffer(file);
   });
-}
+};
+
+const getDownloadPsbt = (unsignedPsbt: string | null, txData: TransactionData | null): string | null => {
+  return unsignedPsbt || txData?.psbtBase64 || null;
+};
+
+const psbtBase64ToBytes = (psbt: string): Uint8Array<ArrayBuffer> => {
+  const binaryString = atob(psbt);
+  const bytes = new Uint8Array(new ArrayBuffer(binaryString.length));
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+};
+
+const logPsbtDownload = (psbt: string): void => {
+  log.debug('Downloading PSBT', {
+    length: psbt.length,
+    prefix: psbt.substring(0, 20),
+    isValidBase64: /^[A-Za-z0-9+/=]+$/.test(psbt),
+  });
+};
+
+const warnIfPsbtMagicMissing = (bytes: Uint8Array): void => {
+  if (isBinaryPsbt(bytes)) {
+    return;
+  }
+
+  log.warn('PSBT does not start with magic bytes', {
+    bytes: Array.from(bytes.slice(0, 8)),
+  });
+};
+
+const downloadUnsignedPsbt = (psbt: string, walletName: string | undefined): void => {
+  logPsbtDownload(psbt);
+  const bytes = psbtBase64ToBytes(psbt);
+  warnIfPsbtMagicMissing(bytes);
+  downloadBinary(bytes, `${walletName || 'transaction'}_unsigned.psbt`);
+};
 
 export function useQrSigning({
   walletId,
@@ -322,34 +360,13 @@ export function useQrSigning({
 
   // Download PSBT file (binary format - required by most hardware wallets)
   const downloadPsbt = useCallback(() => {
-    const psbt = unsignedPsbt || txData?.psbtBase64;
+    const psbt = getDownloadPsbt(unsignedPsbt, txData);
     if (!psbt) {
       setError('No PSBT available to download');
       return;
     }
 
-    // Log PSBT info for debugging
-    log.debug('Downloading PSBT', {
-      length: psbt.length,
-      prefix: psbt.substring(0, 20),
-      isValidBase64: /^[A-Za-z0-9+/=]+$/.test(psbt),
-    });
-
-    // Convert base64 to binary (BIP 174 standard format for .psbt files)
-    const binaryString = atob(psbt);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-
-    // Verify it starts with PSBT magic bytes
-    if (bytes[0] !== 0x70 || bytes[1] !== 0x73 || bytes[2] !== 0x62 || bytes[3] !== 0x74) {
-      log.warn('PSBT does not start with magic bytes', {
-        bytes: Array.from(bytes.slice(0, 8)),
-      });
-    }
-
-    downloadBinary(bytes, `${wallet.name || 'transaction'}_unsigned.psbt`);
+    downloadUnsignedPsbt(psbt, wallet.name);
   }, [unsignedPsbt, txData, wallet.name, setError]);
 
   // Upload signed PSBT (supports both binary and base64 formats)

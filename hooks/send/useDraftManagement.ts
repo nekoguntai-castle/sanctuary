@@ -20,25 +20,25 @@ const log = createLogger('DraftMgmt');
 
 type DraftApiOutput = { address: string; amount: number; sendMax?: boolean };
 
-function toDraftApiOutput(output: OutputEntry): DraftApiOutput {
+const toDraftApiOutput = (output: OutputEntry): DraftApiOutput => {
   return {
     address: output.address,
     amount: output.sendMax ? 0 : parseInt(output.amount, 10),
     sendMax: output.sendMax,
   };
-}
+};
 
-function getEffectiveDraftAmount(currentTxData: TransactionData, state: TransactionState): number {
+const getEffectiveDraftAmount = (currentTxData: TransactionData, state: TransactionState): number => {
   return currentTxData.effectiveAmount ||
     currentTxData.outputs?.reduce((sum, output) => sum + output.amount, 0) ||
     parseInt(state.outputs[0].amount, 10);
-}
+};
 
-function getUsedUtxoIds(currentTxData: TransactionData): string[] {
+const getUsedUtxoIds = (currentTxData: TransactionData): string[] => {
   return currentTxData.utxos?.map(utxo => `${utxo.txid}:${utxo.vout}`) || [];
-}
+};
 
-function getDraftInputs(currentTxData: TransactionData): CreateDraftRequest['inputs'] {
+const getDraftInputs = (currentTxData: TransactionData): CreateDraftRequest['inputs'] => {
   const inputs = currentTxData.utxos?.map(utxo => ({
     txid: utxo.txid,
     vout: utxo.vout,
@@ -47,9 +47,9 @@ function getDraftInputs(currentTxData: TransactionData): CreateDraftRequest['inp
   })) || [];
 
   return inputs.length > 0 ? inputs : undefined;
-}
+};
 
-function getDraftOutputs(currentTxData: TransactionData, apiOutputs: DraftApiOutput[]): DraftApiOutput[] {
+const getDraftOutputs = (currentTxData: TransactionData, apiOutputs: DraftApiOutput[]): DraftApiOutput[] => {
   return currentTxData.outputs
     ? currentTxData.outputs.map((txOutput, index) => ({
         address: txOutput.address,
@@ -57,13 +57,13 @@ function getDraftOutputs(currentTxData: TransactionData, apiOutputs: DraftApiOut
         sendMax: apiOutputs[index]?.sendMax || false,
       }))
     : apiOutputs;
-}
+};
 
-function buildDraftRequest(
+const buildDraftRequest = (
   state: TransactionState,
   currentTxData: TransactionData,
   label?: string
-): CreateDraftRequest {
+): CreateDraftRequest => {
   const apiOutputs = state.outputs.map(toDraftApiOutput);
   const usedUtxoIds = getUsedUtxoIds(currentTxData);
 
@@ -89,64 +89,64 @@ function buildDraftRequest(
     inputPaths: currentTxData.inputPaths || [],
     label,
   };
-}
+};
 
-function getFirstSignedDeviceId(signedDevices: Set<string>): string | undefined {
+const getFirstSignedDeviceId = (signedDevices: Set<string>): string | undefined => {
   const firstDevice = signedDevices.values().next();
   return firstDevice.done ? undefined : firstDevice.value;
-}
+};
 
-function hasSignedPsbtState(
+const hasSignedPsbtState = (
   unsignedPsbt: string | null,
   currentTxData: TransactionData,
   signedDevices: Set<string>
-): boolean {
+): boolean => {
   // Trezor can return a raw transaction without changing the PSBT, so device state is part of signing detection.
   return signedDevices.size > 0 || unsignedPsbt !== currentTxData.psbtBase64;
-}
+};
 
-function buildSignedDraftUpdate(
+const buildSignedDraftUpdate = (
   unsignedPsbt: string | null,
   currentTxData: TransactionData,
   signedDevices: Set<string>
-): { signedPsbtBase64?: string; signedDeviceId?: string } {
+): { signedPsbtBase64?: string; signedDeviceId?: string } => {
   const hasSignatures = hasSignedPsbtState(unsignedPsbt, currentTxData, signedDevices);
   return {
     signedPsbtBase64: hasSignatures && unsignedPsbt ? unsignedPsbt : undefined,
     signedDeviceId: getFirstSignedDeviceId(signedDevices),
   };
-}
+};
 
-async function updateExistingDraft(
+const updateExistingDraft = async (
   walletId: string,
   draftId: string,
   unsignedPsbt: string | null,
   currentTxData: TransactionData,
   signedDevices: Set<string>
-): Promise<string> {
+): Promise<string> => {
   await draftsApi.updateDraft(
     walletId,
     draftId,
     buildSignedDraftUpdate(unsignedPsbt, currentTxData, signedDevices)
   );
   return draftId;
-}
+};
 
-function shouldSaveSignedStateForNewDraft(
+const shouldSaveSignedStateForNewDraft = (
   unsignedPsbt: string | null,
   currentTxData: TransactionData,
   signedDevices: Set<string>
-): boolean {
+): boolean => {
   return Boolean(unsignedPsbt && hasSignedPsbtState(unsignedPsbt, currentTxData, signedDevices));
-}
+};
 
-async function saveSignedStateForNewDraft(
+const saveSignedStateForNewDraft = async (
   walletId: string,
   draftId: string,
   unsignedPsbt: string,
   currentTxData: TransactionData,
   signedDevices: Set<string>
-): Promise<void> {
+): Promise<void> => {
   log.info('Saving signed PSBT to newly created draft', {
     draftId,
     signedDevices: Array.from(signedDevices),
@@ -156,15 +156,15 @@ async function saveSignedStateForNewDraft(
     signedPsbtBase64: unsignedPsbt,
     signedDeviceId: getFirstSignedDeviceId(signedDevices),
   });
-}
+};
 
-async function createNewDraft(
+const createNewDraft = async (
   walletId: string,
   draftRequest: CreateDraftRequest,
   unsignedPsbt: string | null,
   currentTxData: TransactionData,
   signedDevices: Set<string>
-): Promise<string> {
+): Promise<string> => {
   const result = await draftsApi.createDraft(walletId, draftRequest);
 
   if (shouldSaveSignedStateForNewDraft(unsignedPsbt, currentTxData, signedDevices)) {
@@ -172,18 +172,18 @@ async function createNewDraft(
   }
 
   return result.id;
-}
+};
 
-async function resolveCurrentTxData(
+const resolveCurrentTxData = async (
   txData: TransactionData | null,
   createTransaction: () => Promise<TransactionData | null>
-): Promise<TransactionData | null> {
+): Promise<TransactionData | null> => {
   return txData || createTransaction();
-}
+};
 
-function getSaveDraftError(err: unknown): string {
+const getSaveDraftError = (err: unknown): string => {
   return err instanceof ApiError ? err.message : 'Failed to save draft';
-}
+};
 
 export interface UseDraftManagementDeps {
   walletId: string;
