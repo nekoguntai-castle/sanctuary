@@ -20,16 +20,16 @@
     "scripts/verify-addresses/output/verified-vectors.ts": {
       "category": "generated-output",
       "owner": "address-verification",
-      "reason": "Generated verification vectors consumed by address proof tests; regenerate rather than manually refactor.",
+      "reason": "Generated compact verification vectors consumed by address proof tests; regenerate rather than manually refactor.",
       "reviewWhenTouched": false,
-      "lastReviewed": "2026-04-15"
+      "lastReviewed": "2026-04-27"
     },
     "server/tests/fixtures/verified-address-vectors.ts": {
       "category": "test-fixture",
       "owner": "address-verification",
-      "reason": "Checked-in fixture copy of verified address vectors for deterministic server tests.",
+      "reason": "Checked-in compact fixture copy of verified address vectors for deterministic server tests.",
       "reviewWhenTouched": false,
-      "lastReviewed": "2026-04-15"
+      "lastReviewed": "2026-04-27"
     }
   }
 }

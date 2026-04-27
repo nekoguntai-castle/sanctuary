@@ -1,16 +1,19 @@
-import type { VerifiedMultisigVector, VerifiedSingleSigVector } from './types.js';
+import type {
+  VerifiedMultisigVector,
+  VerifiedSingleSigVector,
+} from "./types.js";
 
 function getVerificationHeader(
   singleSigVectors: VerifiedSingleSigVector[],
   multisigVectors: VerifiedMultisigVector[],
   implementations: string[],
-  date: string
+  date: string,
 ): string {
   return `/**
  * VERIFIED ADDRESS VECTORS
  *
  * These vectors have been verified by multiple independent implementations:
- * ${implementations.map(i => ` * - ${i}`).join('\n')}
+ * ${implementations.map((i) => ` * - ${i}`).join("\n")}
  *
  * DO NOT MODIFY MANUALLY - regenerate using:
  *   cd scripts/verify-addresses && npm run generate
@@ -54,11 +57,11 @@ export interface VerifiedMultisigVector {
 
 function getOutputVectors(
   singleSigVectors: VerifiedSingleSigVector[],
-  multisigVectors: VerifiedMultisigVector[]
+  multisigVectors: VerifiedMultisigVector[],
 ): string {
-  return `export const VERIFIED_SINGLESIG_VECTORS: VerifiedSingleSigVector[] = ${JSON.stringify(singleSigVectors, null, 2)};
+  return `export const VERIFIED_SINGLESIG_VECTORS: VerifiedSingleSigVector[] = ${formatVectorArray(singleSigVectors)};
 
-export const VERIFIED_MULTISIG_VECTORS: VerifiedMultisigVector[] = ${JSON.stringify(multisigVectors, null, 2)};`;
+export const VERIFIED_MULTISIG_VECTORS: VerifiedMultisigVector[] = ${formatVectorArray(multisigVectors)};`;
 }
 
 function getOutputMnemonic(testMnemonic: string): string {
@@ -69,6 +72,17 @@ function getOutputMnemonic(testMnemonic: string): string {
 export const TEST_MNEMONIC = '${testMnemonic}';`;
 }
 
+function formatVectorArray(
+  vectors: Array<VerifiedSingleSigVector | VerifiedMultisigVector>,
+): string {
+  if (vectors.length === 0) {
+    return "[]";
+  }
+
+  const lines = vectors.map((vector) => `  ${JSON.stringify(vector)}`);
+  return `[\n${lines.join(",\n")}\n]`;
+}
+
 /**
  * Generate TypeScript output file with verified vectors.
  */
@@ -76,15 +90,20 @@ export function generateOutputFile(
   singleSigVectors: VerifiedSingleSigVector[],
   multisigVectors: VerifiedMultisigVector[],
   implementations: string[],
-  testMnemonic: string
+  testMnemonic: string,
 ): string {
-  const date = new Date().toISOString().split('T')[0];
+  const date = new Date().toISOString().split("T")[0];
   const sections = [
-    getVerificationHeader(singleSigVectors, multisigVectors, implementations, date),
+    getVerificationHeader(
+      singleSigVectors,
+      multisigVectors,
+      implementations,
+      date,
+    ),
     getOutputTypes(),
     getOutputVectors(singleSigVectors, multisigVectors),
     getOutputMnemonic(testMnemonic),
   ];
 
-  return `${sections.join('\n\n')}\n`;
+  return `${sections.join("\n\n")}\n`;
 }
