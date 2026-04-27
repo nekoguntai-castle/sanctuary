@@ -99,5 +99,39 @@ export function registerAISettingsSaveConfigurationContracts() {
 
       expect(screen.getByText('Save Configuration')).toBeDisabled();
     });
+
+    it('should allow saving an endpoint before a model is selected', async () => {
+      mockGetSystemSettings.mockResolvedValue({
+        aiEnabled: true,
+        aiEndpoint: 'http://10.114.123.214:1234',
+        aiModel: '',
+        aiProviderProfiles: [
+          {
+            id: 'lm-studio',
+            name: 'LM Studio',
+            providerType: 'openai-compatible',
+            endpoint: 'http://10.114.123.214:1234',
+            model: '',
+            capabilities: { chat: true, toolCalls: true, strictJson: true },
+          },
+        ],
+        aiActiveProviderProfileId: 'lm-studio',
+      });
+      const user = userEvent.setup();
+      render(<AISettings />);
+
+      await navigateToSettingsTab(user);
+      await user.click(screen.getByText('Save Configuration'));
+
+      await waitFor(() => {
+        expect(mockUpdateSystemSettings).toHaveBeenCalledWith(
+          expect.objectContaining({
+            aiEndpoint: 'http://10.114.123.214:1234',
+            aiModel: '',
+            aiActiveProviderProfileId: 'lm-studio',
+          }),
+        );
+      });
+    });
   });
 }

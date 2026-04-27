@@ -108,11 +108,12 @@ In Sanctuary Admin → AI Settings:
 2. Set AI Endpoint URL:
    - Bundled Ollama: `http://ollama:11434` (when started with `./start.sh --with-ai`)
    - Host Ollama: `http://host.docker.internal:11434`
-   - LAN LLM: `http://192.168.1.20:11434`
+   - LAN Ollama: `http://192.168.1.20:11434`
+   - LM Studio/OpenAI-compatible: `http://192.168.1.20:1234/v1`
    - Cloud: `https://api.openai.com` (requires internet access plus endpoint allowlisting)
 3. Set Model Name: e.g., `llama3.2:3b` or `gpt-4`
 
-### Running Local AI (Ollama)
+### Running Local AI
 
 ```bash
 # Option A: Bundled Ollama container
@@ -125,6 +126,7 @@ ollama pull llama3.2:3b
 # Endpoints:
 # - Bundled: http://ollama:11434
 # - Host: http://host.docker.internal:11434
+# - LM Studio LAN: http://<host-or-ip>:1234/v1
 ```
 
 ## API Endpoints
@@ -159,11 +161,11 @@ docker compose logs ai
 docker compose ps
 ```
 
-### Cannot Reach Local Ollama
+### Cannot Reach Local Provider
 
-- Ensure Ollama is running: `ollama serve`
-- Use `host.docker.internal` not `localhost`
-- Check port: default is 11434
+- For Ollama, ensure it is running: `ollama serve`; default port is 11434.
+- For LM Studio, start the local server and use its OpenAI-compatible `/v1` base URL; default port is commonly 1234.
+- From Docker, use `host.docker.internal` or a LAN IP instead of `localhost` when the provider runs outside the AI proxy container.
 
 ### Network Issues
 

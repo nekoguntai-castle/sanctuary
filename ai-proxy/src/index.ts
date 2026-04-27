@@ -33,6 +33,7 @@ import {
   ChatBodySchema,
   ConfigBodySchema,
   DetectOllamaBodySchema,
+  DetectProviderBodySchema,
   ModelBodySchema,
   QueryBodySchema,
   SuggestLabelBodySchema,
@@ -45,10 +46,13 @@ import {
   callExternalAIWithMessages,
   parseStructuredResponse,
 } from "./aiClient";
+import { listProviderModels } from "./providerModels";
+import { detectProviderModels } from "./providerDetection";
 import { registerConsoleRoutes } from "./consoleRoutes";
 import { streamModelPull } from "./modelPull";
 import { requireAIServiceSecret } from "./auth";
 import { evaluateProviderEndpoint } from "./endpointPolicy";
+import { convertNaturalQuery } from "./naturalQuery";
 
 const log = createLogger("AI");
 
@@ -410,66 +414,23 @@ app.post("/query", rateLimit, async (req: Request, res: Response) => {
 
   const recentLabels = contextResult.data?.labels?.join(", ") || "None";
 
-  const prompt = `Convert this Bitcoin wallet question to a JSON query. Output ONLY the JSON object, nothing else.
+  const conversion = await convertNaturalQuery({
+    aiConfig,
+    query,
+    walletId,
+    recentLabels,
+  });
 
-STRUCTURE (filter and sort are SEPARATE top-level fields):
-{"type":"transactions","filter":{"type":"receive"},"sort":{"field":"amount","order":"desc"},"limit":10,"aggregation":null}
-
-FILTER OPTIONS for transactions:
-- type: "receive" or "send"
-- confirmations: number (0 = unconfirmed)
-- amount: number or {">"/"<": number}
-- label: string
-
-EXAMPLES:
-Q: "show my largest receives" → {"type":"transactions","filter":{"type":"receive"},"sort":{"field":"amount","order":"desc"},"limit":null,"aggregation":null}
-Q: "total received" → {"type":"transactions","filter":{"type":"receive"},"sort":null,"limit":null,"aggregation":"sum"}
-Q: "unconfirmed transactions" → {"type":"transactions","filter":{"confirmations":0},"sort":null,"limit":null,"aggregation":null}
-
-User's question: "${query}"
-JSON:`;
-
-  const result = await callExternalAI(aiConfig, prompt);
-
-  if (!result) {
-    return res.status(503).json({ error: "AI endpoint not available" });
-  }
-
-  try {
-    // Extract JSON from response - handle markdown code blocks
-    let jsonStr = result;
-
-    // Try to extract from markdown code block first
-    const codeBlockMatch = result.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (codeBlockMatch) {
-      jsonStr = codeBlockMatch[1].trim();
-    }
-
-    // Extract JSON object
-    const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      log.error("No JSON found in response", {
-        preview: result.substring(0, 200),
+  if (!conversion.ok) {
+    if (conversion.preview) {
+      log.error("Failed to parse AI natural query response", {
+        preview: conversion.preview,
       });
-      return res.status(500).json({ error: "AI did not return valid JSON" });
     }
-
-    // Clean up the JSON - remove comments and trailing commas
-    let cleanJson = jsonMatch[0]
-      .replace(/\/\/[^\n]*/g, "") // Remove single-line comments
-      .replace(/\/\*[\s\S]*?\*\//g, "") // Remove multi-line comments
-      .replace(/,(\s*[}\]])/g, "$1") // Remove trailing commas
-      .replace(/\n\s*\n/g, "\n"); // Remove empty lines
-
-    const parsed = JSON.parse(cleanJson);
-    res.json({ query: parsed });
-  } catch (err) {
-    log.error("Failed to parse JSON", {
-      error: extractErrorMessage(err),
-      preview: result.substring(0, 200),
-    });
-    res.status(500).json({ error: "Failed to parse AI response" });
+    return res.status(conversion.status).json({ error: conversion.error });
   }
+
+  res.json({ query: conversion.query });
 });
 
 /**
@@ -570,6 +531,36 @@ app.post("/detect-ollama", rateLimit, async (req: Request, res: Response) => {
 });
 
 /**
+ * Detect a model provider at a typed endpoint.
+ *
+ * Unlike `/detect-ollama`, this probes the operator-supplied endpoint without
+ * relying on bundled-container defaults. The proxy keeps the SSRF boundary here
+ * so the backend still never calls model providers directly.
+ */
+app.post("/detect-provider", rateLimit, async (req: Request, res: Response) => {
+  const body = parseRequestBody(
+    DetectProviderBodySchema,
+    req,
+    res,
+    "Invalid provider detection body",
+  );
+  if (!body) return;
+
+  const result = await detectProviderModels(
+    aiConfig,
+    body.endpoint,
+    body.preferredProviderType,
+    body.apiKey,
+  );
+
+  if (result.blockedReason) {
+    return res.status(400).json(result);
+  }
+
+  res.status(result.found ? 200 : 502).json(result);
+});
+
+/**
  * List available models from configured endpoint
  */
 app.get("/list-models", rateLimit, async (_req: Request, res: Response) => {
@@ -577,30 +568,8 @@ app.get("/list-models", rateLimit, async (_req: Request, res: Response) => {
   if (!configuredEndpoint) return;
 
   try {
-    const endpoint = normalizeOllamaBaseUrl(configuredEndpoint);
-
-    const response = await fetch(`${endpoint}/api/tags`, {
-      signal: AbortSignal.timeout(5000),
-    });
-
-    if (!response.ok) {
-      return res
-        .status(502)
-        .json({ error: "Failed to fetch models from AI endpoint" });
-    }
-
-    const data = (await response.json()) as {
-      models?: Array<{ name: string; size: number; modified_at: string }>;
-    };
-
-    res.json({
-      models:
-        data.models?.map((m) => ({
-          name: m.name,
-          size: m.size,
-          modifiedAt: m.modified_at,
-        })) || [],
-    });
+    const models = await listProviderModels(aiConfig, configuredEndpoint);
+    res.json({ models });
   } catch (error) {
     log.error("Failed to list models", { error: extractErrorMessage(error) });
     res.status(502).json({ error: "Cannot connect to AI endpoint" });
@@ -624,6 +593,13 @@ app.post("/pull-model", rateLimit, async (req: Request, res: Response) => {
 
   const configuredEndpoint = requireConfiguredEndpoint(res);
   if (!configuredEndpoint) return;
+
+  if (aiConfig.providerType === "openai-compatible") {
+    return res.status(400).json({
+      error:
+        "Model pull is only supported for Ollama providers. Manage models in your OpenAI-compatible provider.",
+    });
+  }
 
   const endpoint = normalizeOllamaBaseUrl(configuredEndpoint);
 
@@ -654,6 +630,13 @@ app.delete("/delete-model", rateLimit, async (req: Request, res: Response) => {
 
   const configuredEndpoint = requireConfiguredEndpoint(res);
   if (!configuredEndpoint) return;
+
+  if (aiConfig.providerType === "openai-compatible") {
+    return res.status(400).json({
+      error:
+        "Model delete is only supported for Ollama providers. Manage models in your OpenAI-compatible provider.",
+    });
+  }
 
   try {
     const endpoint = normalizeOllamaBaseUrl(configuredEndpoint);
@@ -820,9 +803,21 @@ app.post("/chat", rateLimit, async (req: Request, res: Response) => {
   res.json({ response: result });
 });
 
+function inferEndpointType(endpoint: string): "bundled" | "host" | "remote" {
+  if (endpoint.includes("ollama:")) return "bundled";
+  if (
+    endpoint.includes("host.docker.internal") ||
+    endpoint.includes("172.17.0.1") ||
+    endpoint.includes("localhost")
+  ) {
+    return "host";
+  }
+  return "remote";
+}
+
 /**
- * Check if configured endpoint is Ollama-compatible
- * Used by Treasury Intelligence to verify Ollama is available
+ * Check if configured provider endpoint is reachable.
+ * The route name is kept for compatibility with older backend versions.
  */
 app.post("/check-ollama", rateLimit, async (_req: Request, res: Response) => {
   if (!aiConfig.endpoint) {
@@ -838,28 +833,14 @@ app.post("/check-ollama", rateLimit, async (_req: Request, res: Response) => {
   }
 
   try {
-    const endpoint = normalizeOllamaBaseUrl(aiConfig.endpoint);
-    const response = await fetch(`${endpoint}/api/tags`, {
-      signal: AbortSignal.timeout(5000),
+    await listProviderModels(aiConfig, aiConfig.endpoint);
+    return res.json({
+      compatible: true,
+      endpointType: inferEndpointType(aiConfig.endpoint),
+      providerType: aiConfig.providerType ?? "ollama",
     });
-
-    if (response.ok) {
-      // Determine endpoint type
-      let endpointType: "bundled" | "host" | "remote" = "remote";
-      if (aiConfig.endpoint.includes("ollama:")) endpointType = "bundled";
-      else if (
-        aiConfig.endpoint.includes("host.docker.internal") ||
-        aiConfig.endpoint.includes("172.17.0.1") ||
-        aiConfig.endpoint.includes("localhost")
-      )
-        endpointType = "host";
-
-      return res.json({ compatible: true, endpointType });
-    }
-
-    res.json({ compatible: false, reason: "not_ollama" });
   } catch {
-    res.json({ compatible: false, reason: "unreachable" });
+    res.json({ compatible: false, reason: "provider_unreachable" });
   }
 });
 

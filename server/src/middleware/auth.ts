@@ -55,7 +55,7 @@ export function requireAuthenticatedUser(req: Request): JWTPayload {
  * Extract the access token from the request, preferring the Authorization
  * header and falling back to the sanctuary_access HttpOnly cookie.
  */
-function extractAccessToken(req: Request): string | null {
+export function extractAccessToken(req: Request): string | null {
   const headerToken = extractTokenFromHeader(req.headers.authorization);
   if (headerToken) {
     return headerToken;

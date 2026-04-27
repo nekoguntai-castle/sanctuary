@@ -7,7 +7,7 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
-import { authenticate } from '../../middleware/auth';
+import { authenticate, extractAccessToken } from '../../middleware/auth';
 import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
 import { ErrorCodes } from '../../errors/ApiError';
@@ -22,6 +22,10 @@ const QueryBodySchema = z.object({
   query: z.string().trim().min(1, 'Query and walletId are required'),
   walletId: z.string().trim().min(1, 'Query and walletId are required'),
 });
+
+function authTokenForProxy(req: Parameters<typeof extractAccessToken>[0]): string {
+  return extractAccessToken(req) ?? '';
+}
 
 export function createFeaturesRouter(aiRateLimiter: RequestHandler): Router {
   const router = Router();
@@ -55,10 +59,10 @@ export function createFeaturesRouter(aiRateLimiter: RequestHandler): Router {
         });
       }
 
-      // Get auth token to pass to AI container
-      const authToken = req.headers.authorization?.replace('Bearer ', '') || '';
-
-      const suggestion = await aiService.suggestTransactionLabel(transactionId, authToken);
+      const suggestion = await aiService.suggestTransactionLabel(
+        transactionId,
+        authTokenForProxy(req)
+      );
 
       if (!suggestion) {
         return res.status(503).json({
@@ -102,10 +106,11 @@ export function createFeaturesRouter(aiRateLimiter: RequestHandler): Router {
         });
       }
 
-      // Get auth token to pass to AI container
-      const authToken = req.headers.authorization?.replace('Bearer ', '') || '';
-
-      const result = await aiService.executeNaturalQuery(query, walletId, authToken);
+      const result = await aiService.executeNaturalQuery(
+        query,
+        walletId,
+        authTokenForProxy(req)
+      );
 
       if (!result) {
         return res.status(503).json({

@@ -28,7 +28,7 @@ vi.mock('../../hooks/queries/useDevices', () => ({
 }));
 
 vi.mock('../../hooks/useAppCapabilities', () => ({
-  useAppCapabilities: vi.fn(() => ({ intelligence: false })),
+  useAppCapabilities: vi.fn(() => ({ console: true, intelligence: false })),
 }));
 
 vi.mock('../../src/api/bitcoin', () => ({
@@ -51,12 +51,14 @@ vi.mock('../../components/Layout/SidebarContent', () => ({
   SidebarContent: ({
     onVersionClick,
     onOpenConsole,
+    onOpenShortcuts,
     toggleSection,
     toggleTheme,
     logout,
   }: {
     onVersionClick: () => void;
     onOpenConsole: () => void;
+    onOpenShortcuts: () => void;
     toggleSection: (section: 'wallets' | 'devices' | 'admin') => void;
     toggleTheme: () => void;
     logout: () => void;
@@ -69,6 +71,7 @@ vi.mock('../../components/Layout/SidebarContent', () => ({
       <button onClick={logout}>logout-button</button>
       <button onClick={onVersionClick}>version-click</button>
       <button onClick={onOpenConsole}>open-console</button>
+      <button onClick={onOpenShortcuts}>open-shortcuts</button>
     </div>
   ),
 }));
@@ -98,6 +101,26 @@ vi.mock('../../components/Layout/AboutModal', () => ({
         <button onClick={onClose}>close-modal</button>
         <button onClick={() => onCopyAddress('bc1q-test-address', 'btc')}>copy-btc</button>
         <span data-testid="copied-address">{copiedAddress ?? 'none'}</span>
+      </div>
+    ) : null,
+}));
+
+vi.mock('../../components/Layout/KeyboardShortcutsModal', () => ({
+  KeyboardShortcutsModal: ({
+    show,
+    onClose,
+    consoleAvailable,
+  }: {
+    show: boolean;
+    onClose: () => void;
+    consoleAvailable: boolean;
+  }) =>
+    show ? (
+      <div
+        data-testid="keyboard-shortcuts-modal"
+        data-console={String(consoleAvailable)}
+      >
+        <button onClick={onClose}>close-shortcuts</button>
       </div>
     ) : null,
 }));
@@ -512,6 +535,40 @@ describe('Layout branch coverage', () => {
       });
 
       expect(screen.getByTestId('console-drawer')).toHaveAttribute('data-open', 'true');
+    });
+
+    it('opens and closes the keyboard shortcuts modal from the sidebar trigger', async () => {
+      const user = userEvent.setup();
+      renderLayout();
+
+      await user.click(screen.getByText('open-shortcuts'));
+
+      expect(screen.getByTestId('keyboard-shortcuts-modal')).toHaveAttribute(
+        'data-console',
+        'true'
+      );
+
+      await user.click(screen.getByText('close-shortcuts'));
+      expect(
+        screen.queryByTestId('keyboard-shortcuts-modal')
+      ).not.toBeInTheDocument();
+    });
+
+    it('opens keyboard shortcuts with the global shortcut', () => {
+      renderLayout();
+
+      act(() => {
+        window.dispatchEvent(
+          new KeyboardEvent('keydown', {
+            code: 'Slash',
+            key: '/',
+            ctrlKey: true,
+            bubbles: true,
+          })
+        );
+      });
+
+      expect(screen.getByTestId('keyboard-shortcuts-modal')).toBeInTheDocument();
     });
   }
 

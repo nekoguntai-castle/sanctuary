@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, vi } from 'vitest';
+import { beforeAll, beforeEach, vi, type Mock } from 'vitest';
 import express, { type Express, type NextFunction, type Request, type Response } from 'express';
 
 import { errorHandler } from '../../../../src/errors/errorHandler';
@@ -25,15 +25,23 @@ vi.mock('../../../../src/middleware/rateLimit', () => ({
 
 vi.mock('../../../../src/services/aiService', () => ({
   aiService: {
+    getConfigStatus: vi.fn(),
     isEnabled: vi.fn(),
     isContainerAvailable: vi.fn(),
     checkHealth: vi.fn(),
     suggestTransactionLabel: vi.fn(),
     executeNaturalQuery: vi.fn(),
     detectOllama: vi.fn(),
+    detectProviderEndpoint: vi.fn(),
     listModels: vi.fn(),
     pullModel: vi.fn(),
     deleteModel: vi.fn(),
+  },
+}));
+
+vi.mock('../../../../src/services/featureFlagService', () => ({
+  featureFlagService: {
+    isEnabled: vi.fn().mockResolvedValue(true),
   },
 }));
 
@@ -67,13 +75,28 @@ vi.mock('os', () => ({
 vi.mock('../../../../src/middleware/auth', () => ({
   requireAuthenticatedUser: (req: any) => req.user ?? { userId: 'test-user-id', username: 'testuser', isAdmin: false },
   authenticate: vi.fn((req: Request, res: Response, next: NextFunction) => {
-    if (req.headers.authorization) {
+    if (req.headers.authorization || req.headers.cookie?.includes('sanctuary_access=')) {
       const isAdmin = req.headers['x-test-admin'] === 'true';
       (req as any).user = { userId: 'user-123', username: 'testuser', isAdmin };
       next();
     } else {
       res.status(401).json({ error: 'Unauthorized' });
     }
+  }),
+  extractAccessToken: vi.fn((req: Request) => {
+    const authHeader = req.headers.authorization;
+    if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+      return authHeader.replace('Bearer ', '');
+    }
+
+    const cookieHeader = req.headers.cookie;
+    if (typeof cookieHeader !== 'string') return null;
+
+    const cookie = cookieHeader
+      .split(';')
+      .map((part) => part.trim())
+      .find((part) => part.startsWith('sanctuary_access='));
+    return cookie ? decodeURIComponent(cookie.replace('sanctuary_access=', '')) : null;
   }),
   requireAdmin: vi.fn((req: Request, res: Response, next: NextFunction) => {
     if ((req as any).user?.isAdmin) {
@@ -85,6 +108,7 @@ vi.mock('../../../../src/middleware/auth', () => ({
 }));
 
 import aiRouter from '../../../../src/api/ai';
+import { featureFlagService } from '../../../../src/services/featureFlagService';
 
 export let app: Express;
 
@@ -193,5 +217,6 @@ export function registerAiApiTestHarness() {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    (featureFlagService.isEnabled as Mock).mockResolvedValue(true);
   });
 }

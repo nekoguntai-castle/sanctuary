@@ -1,4 +1,4 @@
-export type AppShortcutId = 'console.open';
+export type AppShortcutId = 'console.open' | 'shortcuts.open';
 
 interface ShortcutModifiers {
   mod?: boolean;
@@ -19,10 +19,17 @@ export interface AppShortcutDefinition {
 export const appShortcuts: AppShortcutDefinition[] = [
   {
     id: 'console.open',
-    label: 'Open Sanctuary Console',
+    label: 'Open AI Console',
     code: 'Period',
     key: '.',
     modifiers: { mod: true, shift: true },
+  },
+  {
+    id: 'shortcuts.open',
+    label: 'Show keyboard shortcuts',
+    code: 'Slash',
+    key: '/',
+    modifiers: { mod: true },
   },
 ];
 

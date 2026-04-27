@@ -11,35 +11,45 @@
  * - useAIConnectionStatus: connection test status
  */
 
-import React, { useState } from 'react';
-import { Brain, Download, KeyRound, Server, Loader2, AlertCircle } from 'lucide-react';
-import { useAIConnectionStatus } from './hooks/useAIConnectionStatus';
-import { useAISettings } from './hooks/useAISettings';
-import { useModelManagement } from './hooks/useModelManagement';
-import { useContainerLifecycle } from './hooks/useContainerLifecycle';
-import { formatBytes, formatModelSize } from './utils';
-import { StatusTab } from './tabs/StatusTab';
-import { SettingsTab } from './tabs/SettingsTab';
-import { ModelsTab } from './tabs/ModelsTab';
-import { McpAccessTab } from './tabs/McpAccessTab';
-import { EnableModal } from './components/EnableModal';
-import type { AISettingsTab } from './types';
-import { toCredentialStatusText } from './providerProfileModel';
-import { useMcpAccess } from './hooks/useMcpAccess';
+import React, { useState } from "react";
+import {
+  Brain,
+  Download,
+  KeyRound,
+  Server,
+  Loader2,
+  AlertCircle,
+} from "lucide-react";
+import { useAIConnectionStatus } from "./hooks/useAIConnectionStatus";
+import { useAISettings } from "./hooks/useAISettings";
+import { useModelManagement } from "./hooks/useModelManagement";
+import { useContainerLifecycle } from "./hooks/useContainerLifecycle";
+import { formatBytes, formatModelSize } from "./utils";
+import { StatusTab } from "./tabs/StatusTab";
+import { SettingsTab } from "./tabs/SettingsTab";
+import { ModelsTab } from "./tabs/ModelsTab";
+import { McpAccessTab } from "./tabs/McpAccessTab";
+import { EnableModal } from "./components/EnableModal";
+import type { AISettingsTab } from "./types";
+import { toCredentialStatusText } from "./providerProfileModel";
+import { useMcpAccess } from "./hooks/useMcpAccess";
 
 export default function AISettings() {
   // Tab state
-  const [activeTab, setActiveTab] = useState<AISettingsTab>('status');
+  const [activeTab, setActiveTab] = useState<AISettingsTab>("status");
 
   // AI connection status
-  const { aiStatus, aiStatusMessage, handleTestConnection } = useAIConnectionStatus();
+  const { aiStatus, aiStatusMessage, handleTestConnection } =
+    useAIConnectionStatus();
 
   // Core settings: enabled, endpoint, model, model list, save/detect
   const settings = useAISettings();
   const activeProviderProfile = settings.providerProfiles.find(
-    (profile) => profile.id === settings.activeProviderProfileId
+    (profile) => profile.id === settings.activeProviderProfileId,
   );
-  const mcpAccess = useMcpAccess(activeTab === 'mcp' && !settings.loading && !settings.featureUnavailable);
+  const mcpAccess = useMcpAccess(
+    activeTab === "mcp" && !settings.loading && !settings.featureUnavailable,
+  );
 
   // Model management: pull, delete, popular models, download progress
   const models = useModelManagement({
@@ -74,8 +84,13 @@ export default function AISettings() {
       <div className="max-w-4xl mx-auto p-6 space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-medium text-sanctuary-900 dark:text-sanctuary-50">AI Settings</h2>
-            <p className="text-sanctuary-500">Configure AI-powered transaction labeling and natural language queries</p>
+            <h2 className="text-2xl font-medium text-sanctuary-900 dark:text-sanctuary-50">
+              AI Settings
+            </h2>
+            <p className="text-sanctuary-500">
+              Configure AI-powered transaction labeling and natural language
+              queries
+            </p>
           </div>
           <div className="p-3 surface-secondary rounded-lg">
             <Brain className="w-8 h-8 text-sanctuary-400" />
@@ -85,9 +100,12 @@ export default function AISettings() {
           <div className="flex items-start space-x-3">
             <AlertCircle className="w-5 h-5 text-sanctuary-400 mt-0.5 flex-shrink-0" />
             <div>
-              <p className="text-sm font-medium text-sanctuary-700 dark:text-sanctuary-300">Feature not available</p>
+              <p className="text-sm font-medium text-sanctuary-700 dark:text-sanctuary-300">
+                Feature not available
+              </p>
               <p className="text-xs text-sanctuary-500 mt-1">
-                AI features are not enabled on this server. An admin can enable them from the Feature Flags page.
+                AI features are not enabled on this server. An admin can enable
+                them from the Feature Flags page.
               </p>
             </div>
           </div>
@@ -97,11 +115,41 @@ export default function AISettings() {
   }
 
   // Tab configuration - progressive unlocking
-  const tabs: { id: AISettingsTab; label: string; icon: React.ReactNode; enabled: boolean; description: string }[] = [
-    { id: 'status', label: 'Status', icon: <Brain className="w-4 h-4" />, enabled: true, description: 'Enable AI' },
-    { id: 'settings', label: 'Settings', icon: <Server className="w-4 h-4" />, enabled: settings.aiEnabled, description: 'Configure endpoint' },
-    { id: 'models', label: 'Models', icon: <Download className="w-4 h-4" />, enabled: settings.aiEnabled && !!settings.aiEndpoint, description: 'Manage models' },
-    { id: 'mcp', label: 'MCP Access', icon: <KeyRound className="w-4 h-4" />, enabled: true, description: 'Manage MCP keys' },
+  const tabs: {
+    id: AISettingsTab;
+    label: string;
+    icon: React.ReactNode;
+    enabled: boolean;
+    description: string;
+  }[] = [
+    {
+      id: "status",
+      label: "Status",
+      icon: <Brain className="w-4 h-4" />,
+      enabled: true,
+      description: "Enable AI",
+    },
+    {
+      id: "settings",
+      label: "Settings",
+      icon: <Server className="w-4 h-4" />,
+      enabled: settings.aiEnabled,
+      description: "Configure endpoint",
+    },
+    {
+      id: "models",
+      label: "Models",
+      icon: <Download className="w-4 h-4" />,
+      enabled: settings.aiEnabled && !!settings.aiEndpoint,
+      description: "Manage models",
+    },
+    {
+      id: "mcp",
+      label: "MCP Access",
+      icon: <KeyRound className="w-4 h-4" />,
+      enabled: true,
+      description: "Manage MCP keys",
+    },
   ];
 
   return (
@@ -113,7 +161,8 @@ export default function AISettings() {
             AI Settings
           </h2>
           <p className="text-sanctuary-500">
-            Configure AI-powered transaction labeling and natural language queries
+            Configure AI-powered transaction labeling and natural language
+            queries
           </p>
         </div>
         <div className="p-3 surface-secondary rounded-lg">
@@ -131,19 +180,21 @@ export default function AISettings() {
               disabled={!tab.enabled}
               className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium transition-colors relative ${
                 activeTab === tab.id
-                  ? 'text-primary-600 dark:text-primary-400 bg-primary-50/50 dark:bg-primary-900/20'
+                  ? "text-primary-600 dark:text-primary-400 bg-primary-50/50 dark:bg-primary-900/20"
                   : tab.enabled
-                    ? 'text-sanctuary-600 dark:text-sanctuary-400 hover:text-sanctuary-900 dark:hover:text-sanctuary-200 hover:bg-sanctuary-100 dark:hover:bg-sanctuary-800'
-                    : 'text-sanctuary-400 dark:text-sanctuary-600 cursor-not-allowed'
+                    ? "text-sanctuary-600 dark:text-sanctuary-400 hover:text-sanctuary-900 dark:hover:text-sanctuary-200 hover:bg-sanctuary-100 dark:hover:bg-sanctuary-800"
+                    : "text-sanctuary-400 dark:text-sanctuary-600 cursor-not-allowed"
               }`}
             >
-              <span className={`flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold ${
-                activeTab === tab.id
-                  ? 'bg-primary-600 dark:bg-sanctuary-500 text-white dark:text-sanctuary-100'
-                  : tab.enabled
-                    ? 'bg-sanctuary-200 dark:bg-sanctuary-700 text-sanctuary-600 dark:text-sanctuary-300'
-                    : 'bg-sanctuary-100 dark:bg-sanctuary-800 text-sanctuary-400 dark:text-sanctuary-600'
-              }`}>
+              <span
+                className={`flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold ${
+                  activeTab === tab.id
+                    ? "bg-primary-600 dark:bg-sanctuary-500 text-white dark:text-sanctuary-100"
+                    : tab.enabled
+                      ? "bg-sanctuary-200 dark:bg-sanctuary-700 text-sanctuary-600 dark:text-sanctuary-300"
+                      : "bg-sanctuary-100 dark:bg-sanctuary-800 text-sanctuary-400 dark:text-sanctuary-600"
+                }`}
+              >
                 {index + 1}
               </span>
               <span className="hidden sm:inline">{tab.label}</span>
@@ -156,8 +207,9 @@ export default function AISettings() {
 
         {/* Tab Content */}
         <div className="p-6">
-          {activeTab === 'status' && (
+          {activeTab === "status" && (
             <StatusTab
+              providerType={settings.providerType}
               aiEnabled={settings.aiEnabled}
               isSaving={container.isSaving}
               isStartingContainer={container.isStartingContainer}
@@ -169,18 +221,22 @@ export default function AISettings() {
               onStartContainer={container.handleStartContainer}
               onStopContainer={container.handleStopContainer}
               onRefreshContainerStatus={container.refreshContainerStatus}
-              onNavigateToSettings={() => setActiveTab('settings')}
+              onNavigateToSettings={() => setActiveTab("settings")}
             />
           )}
 
-          {activeTab === 'settings' && (
+          {activeTab === "settings" && (
             <SettingsTab
               providerProfiles={settings.providerProfiles}
               activeProviderProfileId={settings.activeProviderProfileId}
               providerName={settings.providerName}
               providerType={settings.providerType}
               providerCapabilities={settings.providerCapabilities}
-              credentialStatusText={activeProviderProfile ? toCredentialStatusText(activeProviderProfile) : 'No credential'}
+              credentialStatusText={
+                activeProviderProfile
+                  ? toCredentialStatusText(activeProviderProfile)
+                  : "No credential"
+              }
               credentialApiKey={settings.credentialApiKey}
               clearCredential={settings.clearCredential}
               aiEndpoint={settings.aiEndpoint}
@@ -197,25 +253,32 @@ export default function AISettings() {
               saveError={settings.saveError}
               onSelectProviderProfile={settings.handleSelectProviderProfile}
               onAddProviderProfile={settings.handleAddProviderProfile}
-              onRemoveActiveProviderProfile={settings.handleRemoveActiveProviderProfile}
+              onRemoveActiveProviderProfile={
+                settings.handleRemoveActiveProviderProfile
+              }
               onProviderNameChange={settings.setProviderName}
               onProviderTypeChange={settings.setProviderType}
-              onProviderCapabilityChange={settings.handleProviderCapabilityChange}
+              onProviderCapabilityChange={
+                settings.handleProviderCapabilityChange
+              }
               onCredentialApiKeyChange={settings.setCredentialApiKey}
               onClearCredentialChange={settings.setClearCredential}
               onEndpointChange={settings.setAiEndpoint}
               onDetectOllama={settings.handleDetectOllama}
+              onModelChange={settings.setAiModel}
               onSelectModel={settings.handleSelectModel}
-              onToggleModelDropdown={() => settings.setShowModelDropdown(!settings.showModelDropdown)}
+              onToggleModelDropdown={() =>
+                settings.setShowModelDropdown(!settings.showModelDropdown)
+              }
               onSaveConfig={settings.handleSaveConfig}
               onTestConnection={handleTestConnection}
               onRefreshModels={settings.loadModels}
-              onNavigateToModels={() => setActiveTab('models')}
+              onNavigateToModels={() => setActiveTab("models")}
               formatModelSize={formatModelSize}
             />
           )}
 
-          {activeTab === 'mcp' && (
+          {activeTab === "mcp" && (
             <McpAccessTab
               status={mcpAccess.status}
               keys={mcpAccess.keys}
@@ -234,8 +297,10 @@ export default function AISettings() {
             />
           )}
 
-          {activeTab === 'models' && (
+          {activeTab === "models" && (
             <ModelsTab
+              providerType={settings.providerType}
+              aiModel={settings.aiModel}
               pullProgress={models.pullProgress}
               downloadProgress={models.downloadProgress}
               isPulling={models.isPulling}
@@ -245,8 +310,11 @@ export default function AISettings() {
               popularModelsError={models.popularModelsError}
               popularModels={models.popularModels}
               availableModels={settings.availableModels}
+              isLoadingModels={settings.isLoadingModels}
               isDeleting={models.isDeleting}
               deleteModelName={models.deleteModelName}
+              onSelectModel={settings.handleSelectModel}
+              onRefreshModels={settings.loadModels}
               onPullModel={models.handlePullModel}
               onDeleteModel={models.handleDeleteModel}
               onCustomModelNameChange={models.setCustomModelName}
@@ -260,17 +328,29 @@ export default function AISettings() {
       {/* AI Features Info - Always visible at bottom */}
       <div className="surface-elevated rounded-xl border border-sanctuary-200 dark:border-sanctuary-800 overflow-hidden">
         <div className="p-4 border-b border-sanctuary-100 dark:border-sanctuary-800">
-          <h2 className="text-sm font-medium text-sanctuary-900 dark:text-sanctuary-100">What AI Can Do</h2>
+          <h2 className="text-sm font-medium text-sanctuary-900 dark:text-sanctuary-100">
+            What AI Can Do
+          </h2>
         </div>
         <div className="p-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="p-3 rounded-lg surface-secondary">
-              <h3 className="text-xs font-medium text-sanctuary-900 dark:text-sanctuary-100 mb-1">Transaction Labeling</h3>
-              <p className="text-xs text-sanctuary-500">AI suggests labels based on amount, direction, and your existing patterns.</p>
+              <h3 className="text-xs font-medium text-sanctuary-900 dark:text-sanctuary-100 mb-1">
+                Transaction Labeling
+              </h3>
+              <p className="text-xs text-sanctuary-500">
+                AI suggests labels based on amount, direction, and your existing
+                patterns.
+              </p>
             </div>
             <div className="p-3 rounded-lg surface-secondary">
-              <h3 className="text-xs font-medium text-sanctuary-900 dark:text-sanctuary-100 mb-1">Natural Language Queries</h3>
-              <p className="text-xs text-sanctuary-500">Ask "Show my largest receives this month" and get filtered results.</p>
+              <h3 className="text-xs font-medium text-sanctuary-900 dark:text-sanctuary-100 mb-1">
+                Natural Language Queries
+              </h3>
+              <p className="text-xs text-sanctuary-500">
+                Ask "Show my largest receives this month" and get filtered
+                results.
+              </p>
             </div>
           </div>
         </div>

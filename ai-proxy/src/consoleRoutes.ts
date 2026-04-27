@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
-import { AI_REQUEST_TIMEOUT_MS } from "./constants";
-import type { AiConfig } from "./aiClient";
-import { callExternalAIWithMessages } from "./aiClient";
+import { AI_ANALYSIS_TIMEOUT_MS } from "./constants";
+import type { AiConfig, AiRequestResult } from "./aiClient";
+import { callExternalAIWithMessagesResult } from "./aiClient";
 import {
   ConsolePlanBodySchema,
   ConsoleSynthesisBodySchema,
@@ -24,6 +24,32 @@ function requireEnabledConfig(aiConfig: AiConfig, res: Response): boolean {
   return false;
 }
 
+function failureStatus(result: Extract<AiRequestResult, { ok: false }>): number {
+  switch (result.reason) {
+    case "timeout":
+      return 504;
+    case "endpoint_not_allowed":
+      return 400;
+    case "not_configured":
+      return 503;
+    case "http_error":
+    case "invalid_response":
+    case "request_failed":
+      return 502;
+  }
+}
+
+function sendAiFailure(
+  res: Response,
+  result: Extract<AiRequestResult, { ok: false }>,
+): Response {
+  return res.status(failureStatus(result)).json({
+    error: result.message,
+    reason: result.reason,
+    ...(result.status === undefined ? {} : { upstreamStatus: result.status }),
+  });
+}
+
 export function registerConsoleRoutes(app: Express, deps: ConsoleRoutesDeps): void {
   /**
    * Console tool planning.
@@ -43,17 +69,22 @@ export function registerConsoleRoutes(app: Express, deps: ConsoleRoutesDeps): vo
     const aiConfig = deps.getAiConfig();
     if (!requireEnabledConfig(aiConfig, res)) return;
 
-    const result = await callExternalAIWithMessages(
+    const result = await callExternalAIWithMessagesResult(
       aiConfig,
       buildConsolePlanMessages(body),
-      AI_REQUEST_TIMEOUT_MS,
+      {
+        timeoutMs: AI_ANALYSIS_TIMEOUT_MS,
+        temperature: 0,
+        maxTokens: 512,
+        allowReasoningContent: true,
+      },
     );
 
-    if (!result) {
-      return res.status(503).json({ error: "AI endpoint not available" });
+    if (!result.ok) {
+      return sendAiFailure(res, result);
     }
 
-    res.json(parseConsolePlanResponse(result, body.maxToolCalls));
+    res.json(parseConsolePlanResponse(result.content, body.maxToolCalls, body));
   });
 
   /**
@@ -74,16 +105,20 @@ export function registerConsoleRoutes(app: Express, deps: ConsoleRoutesDeps): vo
     const aiConfig = deps.getAiConfig();
     if (!requireEnabledConfig(aiConfig, res)) return;
 
-    const result = await callExternalAIWithMessages(
+    const result = await callExternalAIWithMessagesResult(
       aiConfig,
       buildConsoleSynthesisMessages(body),
-      AI_REQUEST_TIMEOUT_MS,
+      {
+        timeoutMs: AI_ANALYSIS_TIMEOUT_MS,
+        temperature: 0.3,
+        maxTokens: 1200,
+      },
     );
 
-    if (!result) {
-      return res.status(503).json({ error: "AI endpoint not available" });
+    if (!result.ok) {
+      return sendAiFailure(res, result);
     }
 
-    res.json({ response: result });
+    res.json({ response: result.content });
   });
 }

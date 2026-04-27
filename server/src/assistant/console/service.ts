@@ -1,26 +1,36 @@
-import { assistantReadToolRegistry } from '../tools';
-import { consoleRepository } from '../../repositories';
-import { NotFoundError, ServiceUnavailableError } from '../../errors/ApiError';
-import { auditService, AuditAction, AuditCategory } from '../../services/auditService';
-import type { AssistantToolActor } from '../tools';
+import { assistantReadToolRegistry } from "../tools";
+import { consoleRepository, walletRepository } from "../../repositories";
+import { NotFoundError, ServiceUnavailableError } from "../../errors/ApiError";
+import {
+  auditService,
+  AuditAction,
+  AuditCategory,
+} from "../../services/auditService";
+import type { AssistantToolActor } from "../tools";
 import {
   DEFAULT_CONSOLE_SCOPE,
+  MAX_WALLET_SET_SCOPE_WALLETS,
   describeToolForPlanning,
   normalizePrompt,
   parseOptionalDate,
   parseStoredConsoleSensitivity,
   parseStoredConsoleScope,
+  type ConsoleClientContext,
   type ConsoleScope,
   type ConsoleSensitivity,
   type ConsoleToolCall,
-} from './protocol';
-import { planConsoleTools, synthesizeConsoleAnswer } from './modelGateway';
+} from "./protocol";
+import {
+  planConsoleTools,
+  synthesizeConsoleAnswer,
+  type ConsoleGatewayContext,
+} from "./modelGateway";
 import {
   assertScopeAccess,
   executePlannedTool,
   toJson,
   traceForSynthesis,
-} from './toolExecution';
+} from "./toolExecution";
 
 const MAX_TOOL_CALLS_PER_TURN = 5;
 
@@ -33,6 +43,7 @@ export interface RunConsoleTurnInput {
   sessionId?: string;
   prompt: string;
   scope?: ConsoleScope;
+  clientContext?: ConsoleClientContext;
   maxSensitivity: ConsoleSensitivity;
   expiresAt?: string;
   toolCalls?: ConsoleToolCall[];
@@ -41,15 +52,23 @@ export interface RunConsoleTurnInput {
 export interface ReplayConsolePromptInput {
   sessionId?: string;
   scope?: ConsoleScope;
+  clientContext?: ConsoleClientContext;
   maxSensitivity?: ConsoleSensitivity;
   expiresAt?: string;
+}
+
+interface ResolvedConsoleContext {
+  scope: ConsoleScope;
+  planningContext?: ConsoleGatewayContext;
 }
 
 function actorUsername(actor: AssistantToolActor): string {
   return actor.username || actor.userId;
 }
 
-function summarizeToolTraceForAudit(trace: Awaited<ReturnType<typeof executePlannedTool>>) {
+function summarizeToolTraceForAudit(
+  trace: Awaited<ReturnType<typeof executePlannedTool>>,
+) {
   return {
     toolName: trace.toolName,
     status: trace.status,
@@ -58,6 +77,73 @@ function summarizeToolTraceForAudit(trace: Awaited<ReturnType<typeof executePlan
     walletCount: trace.walletCount,
     errorCode: trace.errorCode,
   };
+}
+
+function selectAutoContextWallets<TWallet extends { id: string }>(
+  wallets: TWallet[],
+  routeWalletId?: string,
+): TWallet[] {
+  const routeWallet = routeWalletId
+    ? wallets.find((wallet) => wallet.id === routeWalletId)
+    : undefined;
+  const selected = routeWallet ? [routeWallet] : [];
+
+  for (const wallet of wallets) {
+    if (wallet.id === routeWallet?.id) continue;
+    selected.push(wallet);
+    if (selected.length >= MAX_WALLET_SET_SCOPE_WALLETS) break;
+  }
+
+  return selected.slice(0, MAX_WALLET_SET_SCOPE_WALLETS);
+}
+
+async function resolveAutoConsoleContext(
+  actor: AssistantToolActor,
+  clientContext: ConsoleClientContext,
+): Promise<ResolvedConsoleContext> {
+  const accessibleWallets = await walletRepository.findAccessibleWithSelect(
+    actor.userId,
+    { id: true, name: true, network: true },
+  );
+  const wallets = selectAutoContextWallets(
+    accessibleWallets,
+    clientContext.routeWalletId,
+  );
+  const currentWallet = clientContext.routeWalletId
+    ? wallets.find((wallet) => wallet.id === clientContext.routeWalletId)
+    : undefined;
+  const scope: ConsoleScope =
+    wallets.length > 0
+      ? { kind: "wallet_set", walletIds: wallets.map((wallet) => wallet.id) }
+      : DEFAULT_CONSOLE_SCOPE;
+
+  return {
+    scope,
+    planningContext: {
+      mode: "auto",
+      ...(currentWallet
+        ? {
+            currentWalletId: currentWallet.id,
+            currentWalletName: currentWallet.name,
+          }
+        : {}),
+      wallets,
+      ...(accessibleWallets.length > wallets.length
+        ? { walletLimitApplied: true }
+        : {}),
+    },
+  };
+}
+
+async function resolveConsoleContext(
+  actor: AssistantToolActor,
+  input: Pick<RunConsoleTurnInput, "scope" | "clientContext">,
+): Promise<ResolvedConsoleContext> {
+  if (input.scope) return { scope: input.scope };
+  if (input.clientContext) {
+    return resolveAutoConsoleContext(actor, input.clientContext);
+  }
+  return { scope: DEFAULT_CONSOLE_SCOPE };
 }
 
 async function resolveSession(input: {
@@ -76,23 +162,34 @@ async function resolveSession(input: {
     });
   }
 
-  const session = await consoleRepository.findSessionForUser(input.sessionId, input.actor.userId);
+  const session = await consoleRepository.findSessionForUser(
+    input.sessionId,
+    input.actor.userId,
+  );
   if (!session) {
-    throw new NotFoundError('Console session not found');
+    throw new NotFoundError("Console session not found");
   }
 
-  return consoleRepository.updateSessionScope(session.id, toJson(input.scope), input.maxSensitivity);
+  return consoleRepository.updateSessionScope(
+    session.id,
+    toJson(input.scope),
+    input.maxSensitivity,
+  );
 }
 
 async function getPlannedToolCalls(input: {
   prompt: string;
   scope: ConsoleScope;
+  planningContext?: ConsoleGatewayContext;
   toolCalls?: ConsoleToolCall[];
 }) {
   if (input.toolCalls) {
     return {
       toolCalls: input.toolCalls.slice(0, MAX_TOOL_CALLS_PER_TURN),
-      warnings: input.toolCalls.length > MAX_TOOL_CALLS_PER_TURN ? ['tool_call_limit_applied'] : [],
+      warnings:
+        input.toolCalls.length > MAX_TOOL_CALLS_PER_TURN
+          ? ["tool_call_limit_applied"]
+          : [],
       providerProfileId: undefined,
       model: undefined,
     };
@@ -101,6 +198,7 @@ async function getPlannedToolCalls(input: {
   return planConsoleTools({
     prompt: input.prompt,
     scope: input.scope,
+    ...(input.planningContext ? { context: input.planningContext } : {}),
     maxToolCalls: MAX_TOOL_CALLS_PER_TURN,
     tools: assistantReadToolRegistry.list().map(describeToolForPlanning),
   });
@@ -111,12 +209,14 @@ async function auditConsoleTurn(
   success: boolean,
   details: Record<string, unknown>,
   audit?: ConsoleAuditContext,
-  errorMsg?: string
+  errorMsg?: string,
 ): Promise<void> {
   await auditService.log({
     userId: actor.userId,
     username: actorUsername(actor),
-    action: success ? AuditAction.CONSOLE_TURN : AuditAction.CONSOLE_TURN_FAILED,
+    action: success
+      ? AuditAction.CONSOLE_TURN
+      : AuditAction.CONSOLE_TURN_FAILED,
     category: AuditCategory.CONSOLE,
     details,
     success,
@@ -127,11 +227,13 @@ async function auditConsoleTurn(
 }
 
 export function listConsoleTools(actor: AssistantToolActor) {
-  return assistantReadToolRegistry.list().map(definition => ({
+  return assistantReadToolRegistry.list().map((definition) => ({
     ...describeToolForPlanning(definition),
-    available: definition.requiredScope.kind !== 'admin' && definition.requiredScope.kind !== 'audit'
-      ? true
-      : actor.isAdmin,
+    available:
+      definition.requiredScope.kind !== "admin" &&
+      definition.requiredScope.kind !== "audit"
+        ? true
+        : actor.isAdmin,
     budgets: definition.budgets,
   }));
 }
@@ -154,30 +256,47 @@ export async function createConsoleSession(input: {
   });
 }
 
-export function listConsoleSessions(actor: AssistantToolActor, limit: number, offset: number) {
+export function listConsoleSessions(
+  actor: AssistantToolActor,
+  limit: number,
+  offset: number,
+) {
   return consoleRepository.listSessions(actor.userId, limit, offset);
 }
 
-export async function listConsoleTurns(actor: AssistantToolActor, sessionId: string, limit = 100) {
-  const session = await consoleRepository.findSessionForUser(sessionId, actor.userId);
-  if (!session) throw new NotFoundError('Console session not found');
+export async function listConsoleTurns(
+  actor: AssistantToolActor,
+  sessionId: string,
+  limit = 100,
+) {
+  const session = await consoleRepository.findSessionForUser(
+    sessionId,
+    actor.userId,
+  );
+  if (!session) throw new NotFoundError("Console session not found");
   return consoleRepository.listTurns(session.id, limit);
 }
 
 export async function runConsoleTurn(
   actor: AssistantToolActor,
   input: RunConsoleTurnInput,
-  audit?: ConsoleAuditContext
+  audit?: ConsoleAuditContext,
 ) {
-  const scope = input.scope ?? DEFAULT_CONSOLE_SCOPE;
+  const { scope, planningContext } = await resolveConsoleContext(actor, input);
   await assertScopeAccess(actor, scope);
-  const session = await resolveSession({ actor, sessionId: input.sessionId, scope, maxSensitivity: input.maxSensitivity, expiresAt: input.expiresAt });
+  const session = await resolveSession({
+    actor,
+    sessionId: input.sessionId,
+    scope,
+    maxSensitivity: input.maxSensitivity,
+    expiresAt: input.expiresAt,
+  });
   const turn = await consoleRepository.createTurn({
     sessionId: session.id,
     prompt: input.prompt,
     scope: toJson(scope),
     maxSensitivity: input.maxSensitivity,
-    state: 'accepted',
+    state: "accepted",
   });
   const promptHistory = await consoleRepository.createPrompt({
     userId: actor.userId,
@@ -193,78 +312,123 @@ export async function runConsoleTurn(
 
   const traces: Awaited<ReturnType<typeof executePlannedTool>>[] = [];
   try {
-    await consoleRepository.updateTurnState(turn.id, 'planning');
-    const plan = await getPlannedToolCalls({ prompt: input.prompt, scope, toolCalls: input.toolCalls });
-    await consoleRepository.updateTurnState(turn.id, 'executing_tools');
+    await consoleRepository.updateTurnState(turn.id, "planning");
+    const plan = await getPlannedToolCalls({
+      prompt: input.prompt,
+      scope,
+      planningContext,
+      toolCalls: input.toolCalls,
+    });
+    await consoleRepository.updateTurnState(turn.id, "executing_tools");
     for (const call of plan.toolCalls) {
-      traces.push(await executePlannedTool({ call, turnId: turn.id, scope, maxSensitivity: input.maxSensitivity, actor }));
+      traces.push(
+        await executePlannedTool({
+          call,
+          turnId: turn.id,
+          scope,
+          maxSensitivity: input.maxSensitivity,
+          actor,
+        }),
+      );
     }
-    await consoleRepository.updateTurnState(turn.id, 'synthesizing');
+    await consoleRepository.updateTurnState(turn.id, "synthesizing");
     const synthesis = await synthesizeConsoleAnswer({
       prompt: input.prompt,
       scope,
+      ...(planningContext ? { context: planningContext } : {}),
       toolResults: traces.map(traceForSynthesis),
     });
-    const providerProfileId = plan.providerProfileId ?? synthesis.providerProfileId;
+    const providerProfileId =
+      plan.providerProfileId ?? synthesis.providerProfileId;
     const model = plan.model ?? synthesis.model;
     const completedTurn = await consoleRepository.completeTurn({
       id: turn.id,
       response: synthesis.response,
       providerProfileId,
       model,
-      plannedTools: toJson({ toolCalls: plan.toolCalls, warnings: plan.warnings }),
+      plannedTools: toJson({
+        toolCalls: plan.toolCalls,
+        warnings: plan.warnings,
+      }),
     });
     await consoleRepository.updatePromptMetadata({
       id: promptHistory.id,
-      tools: toJson(plan.toolCalls.map(call => call.name)),
+      tools: toJson(plan.toolCalls.map((call) => call.name)),
       providerProfileId,
       model,
     });
-    await auditConsoleTurn(actor, true, {
-      sessionId: session.id,
-      turnId: turn.id,
-      toolCount: traces.length,
-      tools: traces.map(summarizeToolTraceForAudit),
-      planningWarnings: plan.warnings,
-      scopeKind: scope.kind,
-    }, audit);
+    await auditConsoleTurn(
+      actor,
+      true,
+      {
+        sessionId: session.id,
+        turnId: turn.id,
+        toolCount: traces.length,
+        tools: traces.map(summarizeToolTraceForAudit),
+        planningWarnings: plan.warnings,
+        scopeKind: scope.kind,
+      },
+      audit,
+    );
     return { session, turn: completedTurn, promptHistory, toolTraces: traces };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Console turn failed';
+    const message =
+      error instanceof Error ? error.message : "Console turn failed";
     await consoleRepository.failTurn(turn.id, toJson({ message }));
-    await auditConsoleTurn(actor, false, {
-      sessionId: session.id,
-      turnId: turn.id,
-      toolCount: traces.length,
-      tools: traces.map(summarizeToolTraceForAudit),
-      scopeKind: scope.kind,
-    }, audit, message);
+    await auditConsoleTurn(
+      actor,
+      false,
+      {
+        sessionId: session.id,
+        turnId: turn.id,
+        toolCount: traces.length,
+        tools: traces.map(summarizeToolTraceForAudit),
+        scopeKind: scope.kind,
+      },
+      audit,
+      message,
+    );
     if (error instanceof ServiceUnavailableError) throw error;
     throw error;
   }
 }
 
-export function listPromptHistory(actor: AssistantToolActor, input: {
-  limit: number;
-  offset: number;
-  search?: string;
-  saved?: boolean;
-  includeExpired?: boolean;
-}) {
-  return consoleRepository.listPrompts(actor.userId, {
-    search: input.search ? normalizePrompt(input.search) : undefined,
-    saved: input.saved,
-    includeExpired: input.includeExpired,
-  }, input.limit, input.offset);
+export function listPromptHistory(
+  actor: AssistantToolActor,
+  input: {
+    limit: number;
+    offset: number;
+    search?: string;
+    saved?: boolean;
+    includeExpired?: boolean;
+  },
+) {
+  return consoleRepository.listPrompts(
+    actor.userId,
+    {
+      search: input.search ? normalizePrompt(input.search) : undefined,
+      saved: input.saved,
+      includeExpired: input.includeExpired,
+    },
+    input.limit,
+    input.offset,
+  );
 }
 
-export async function updatePromptHistory(actor: AssistantToolActor, promptId: string, input: {
-  saved?: boolean;
-  title?: string | null;
-  expiresAt?: string | null;
-}) {
-  const prompt = await consoleRepository.findPromptForUser(promptId, actor.userId);
-  if (!prompt) throw new NotFoundError('Console prompt not found');
+export async function updatePromptHistory(
+  actor: AssistantToolActor,
+  promptId: string,
+  input: {
+    saved?: boolean;
+    title?: string | null;
+    expiresAt?: string | null;
+  },
+) {
+  const prompt = await consoleRepository.findPromptForUser(
+    promptId,
+    actor.userId,
+  );
+  if (!prompt) throw new NotFoundError("Console prompt not found");
   return consoleRepository.updatePrompt({
     id: prompt.id,
     saved: input.saved,
@@ -273,9 +437,15 @@ export async function updatePromptHistory(actor: AssistantToolActor, promptId: s
   });
 }
 
-export async function deletePromptHistory(actor: AssistantToolActor, promptId: string) {
-  const prompt = await consoleRepository.findPromptForUser(promptId, actor.userId);
-  if (!prompt) throw new NotFoundError('Console prompt not found');
+export async function deletePromptHistory(
+  actor: AssistantToolActor,
+  promptId: string,
+) {
+  const prompt = await consoleRepository.findPromptForUser(
+    promptId,
+    actor.userId,
+  );
+  if (!prompt) throw new NotFoundError("Console prompt not found");
   return consoleRepository.softDeletePrompt(prompt.id);
 }
 
@@ -283,19 +453,32 @@ export async function replayPromptHistory(
   actor: AssistantToolActor,
   promptId: string,
   input: ReplayConsolePromptInput,
-  audit?: ConsoleAuditContext
+  audit?: ConsoleAuditContext,
 ) {
-  const prompt = await consoleRepository.findPromptForUser(promptId, actor.userId);
-  if (!prompt) throw new NotFoundError('Console prompt not found');
+  const prompt = await consoleRepository.findPromptForUser(
+    promptId,
+    actor.userId,
+  );
+  if (!prompt) throw new NotFoundError("Console prompt not found");
 
   await consoleRepository.markPromptReplayed(prompt.id);
-  return runConsoleTurn(actor, {
-    sessionId: input.sessionId ?? prompt.sessionId ?? undefined,
-    prompt: prompt.prompt,
-    scope: input.scope ?? parseStoredConsoleScope(prompt.scope),
-    maxSensitivity: input.maxSensitivity ?? parseStoredConsoleSensitivity(prompt.maxSensitivity),
-    expiresAt: input.expiresAt,
-  }, audit);
+  const storedScope = input.clientContext
+    ? undefined
+    : parseStoredConsoleScope(prompt.scope);
+  return runConsoleTurn(
+    actor,
+    {
+      sessionId: input.sessionId ?? prompt.sessionId ?? undefined,
+      prompt: prompt.prompt,
+      scope: input.scope ?? storedScope,
+      clientContext: input.clientContext,
+      maxSensitivity:
+        input.maxSensitivity ??
+        parseStoredConsoleSensitivity(prompt.maxSensitivity),
+      expiresAt: input.expiresAt,
+    },
+    audit,
+  );
 }
 
 export function purgeExpiredPromptHistory(now?: Date) {

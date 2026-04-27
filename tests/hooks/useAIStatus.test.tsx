@@ -96,6 +96,25 @@ describe('useAIStatus', () => {
       });
     });
 
+    it('should keep AI enabled when setup status is enabled but provider is not available', async () => {
+      mockGetAIStatus.mockResolvedValue({
+        enabled: true,
+        configured: false,
+        available: false,
+        endpoint: 'http://10.114.123.214:1234',
+      });
+
+      const { result } = renderHook(() => useAIStatus());
+
+      await waitFor(() => {
+        expect(result.current).toEqual({
+          enabled: true,
+          loading: false,
+          available: false,
+        });
+      });
+    });
+
     it('should return unavailable when AI is available but container is not running', async () => {
       mockGetAIStatus.mockResolvedValue({
         available: true,

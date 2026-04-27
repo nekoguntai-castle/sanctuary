@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   mockGetSystemSettings,
-  mockGetAIStatus,
+  mockTestAIConnection,
   enabledSettings,
 } from './AISettingsTestHarness';
 import AISettings from '../../../components/AISettings';
@@ -50,7 +50,7 @@ export function registerAISettingsTestConnectionContracts() {
       await user.click(screen.getByText('Test Connection'));
 
       await waitFor(() => {
-        expect(mockGetAIStatus).toHaveBeenCalled();
+        expect(mockTestAIConnection).toHaveBeenCalled();
       });
     });
 
@@ -68,7 +68,7 @@ export function registerAISettingsTestConnectionContracts() {
     });
 
     it('should show error message when connection fails', async () => {
-      mockGetAIStatus.mockResolvedValue({ available: false, error: 'Connection refused' });
+      mockTestAIConnection.mockResolvedValue({ available: false, error: 'Connection refused' });
       const user = userEvent.setup();
       render(<AISettings />);
 
@@ -82,7 +82,7 @@ export function registerAISettingsTestConnectionContracts() {
     });
 
     it('should handle connection test error', async () => {
-      mockGetAIStatus.mockRejectedValue(new Error('Network error'));
+      mockTestAIConnection.mockRejectedValue(new Error('Network error'));
       const user = userEvent.setup();
       render(<AISettings />);
 

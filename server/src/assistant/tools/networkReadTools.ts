@@ -2,10 +2,13 @@ import * as z from 'zod/v4';
 import { getCachedBtcPrice, getCachedFeeEstimates } from './cache';
 import { AssistantToolError, createToolEnvelope, type AssistantReadToolDefinition } from './types';
 import { parseSats } from './utils';
+import { getBitcoinNetworkStatus } from '../../services/bitcoin/networkStatusService';
+import { getErrorMessage } from '../../utils/errors';
 
 const genericOutputSchema = z.object({}).passthrough();
 const publicBudget = { maxRows: 1, maxBytes: 32_000 };
 
+const bitcoinNetworkStatusInputSchema = {} as const;
 const feeEstimatesInputSchema = {} as const;
 
 const priceConversionInputSchema = {
@@ -43,6 +46,58 @@ function requireValidPrice(price: number): void {
     throw new AssistantToolError(400, 'Cached BTC price is invalid');
   }
 }
+
+export const bitcoinNetworkStatusTool: AssistantReadToolDefinition<typeof bitcoinNetworkStatusInputSchema> = {
+  name: 'get_bitcoin_network_status',
+  title: 'Get Bitcoin Network Status',
+  description: 'Current Bitcoin node connection details, network, and latest block height',
+  inputSchema: bitcoinNetworkStatusInputSchema,
+  outputSchema: genericOutputSchema,
+  sensitivity: 'public',
+  requiredScope: {
+    kind: 'authenticated',
+    description: 'Requires an authenticated Sanctuary session or MCP client profile.',
+  },
+  budgets: publicBudget,
+  async execute(_input, context) {
+    try {
+      const status = await getBitcoinNetworkStatus();
+      return createToolEnvelope({
+        tool: bitcoinNetworkStatusTool,
+        context,
+        data: { status },
+        summary: status.blockHeight === undefined
+          ? 'Bitcoin network status returned without a block height.'
+          : `Current Bitcoin block height is ${status.blockHeight}.`,
+        facts: [
+          { label: 'connected', value: status.connected },
+          { label: 'network', value: status.network },
+          { label: 'block_height', value: status.blockHeight ?? null },
+          { label: 'server', value: status.server },
+        ],
+        provenanceSources: [{ type: 'computed', label: 'bitcoin_network_status' }],
+      });
+    } catch (error) {
+      return createToolEnvelope({
+        tool: bitcoinNetworkStatusTool,
+        context,
+        data: {
+          status: {
+            connected: false,
+            error: getErrorMessage(error),
+          },
+        },
+        summary: 'Bitcoin network status is unavailable.',
+        facts: [
+          { label: 'connected', value: false },
+          { label: 'block_height', value: null },
+        ],
+        provenanceSources: [{ type: 'computed', label: 'bitcoin_network_status' }],
+        warnings: ['bitcoin_network_status_unavailable'],
+      });
+    }
+  },
+};
 
 // Fiat conversions round to the nearest satoshi; callers needing exact accounting use sats input.
 function satsFromFiat(fiatAmount: number, price: number): string {
@@ -136,4 +191,4 @@ function buildPriceConversion(
   };
 }
 
-export const networkReadTools = [feeEstimatesTool, priceConversionTool];
+export const networkReadTools = [bitcoinNetworkStatusTool, feeEstimatesTool, priceConversionTool];

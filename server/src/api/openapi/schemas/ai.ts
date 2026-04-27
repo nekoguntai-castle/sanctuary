@@ -19,6 +19,8 @@ export const aiSchemas = {
   AIStatusResponse: {
     type: 'object',
     properties: {
+      enabled: { type: 'boolean' },
+      configured: { type: 'boolean' },
       available: { type: 'boolean' },
       message: { type: 'string' },
       model: { type: 'string' },
@@ -76,6 +78,35 @@ export const aiSchemas = {
       models: {
         type: 'array',
         items: { type: 'string' },
+      },
+      message: { type: 'string' },
+    },
+    required: ['found'],
+  },
+  AIDetectProviderRequest: {
+    type: 'object',
+    properties: {
+      endpoint: { type: 'string', format: 'uri' },
+      preferredProviderType: {
+        type: 'string',
+        enum: ['ollama', 'openai-compatible'],
+      },
+      apiKey: { type: 'string', writeOnly: true },
+    },
+    required: ['endpoint'],
+  },
+  AIDetectProviderResponse: {
+    type: 'object',
+    properties: {
+      found: { type: 'boolean' },
+      providerType: {
+        type: 'string',
+        enum: ['ollama', 'openai-compatible'],
+      },
+      endpoint: { type: 'string' },
+      models: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/AIModel' },
       },
       message: { type: 'string' },
     },

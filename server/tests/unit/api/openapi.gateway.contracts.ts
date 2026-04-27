@@ -693,6 +693,7 @@ export function registerOpenApiGatewayTests() {
       ['/ai/suggest-label', 'post'],
       ['/ai/query', 'post'],
       ['/ai/detect-ollama', 'post'],
+      ['/ai/detect-provider', 'post'],
       ['/ai/models', 'get'],
       ['/ai/pull-model', 'post'],
       ['/ai/delete-model', 'delete'],

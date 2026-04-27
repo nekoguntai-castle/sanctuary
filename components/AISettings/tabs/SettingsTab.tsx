@@ -1,13 +1,16 @@
-import type { SettingsTabProps } from '../types';
+import type { SettingsTabProps } from "../types";
 import {
-  ActionButtons,
   CapabilityControls,
   CredentialControls,
-  NextStepHint,
-  StatusMessages,
-} from './SettingsTabAdditionalControls';
-import { EndpointControls, ModelSelectionControls } from './SettingsTabModelControls';
-import { ProviderProfileControls } from './SettingsTabProviderControls';
+} from "./SettingsTabAdditionalControls";
+import { ActionButtons } from "./SettingsTabActionControls";
+import {
+  EndpointControls,
+  ModelSelectionControls,
+} from "./SettingsTabModelControls";
+import { NextStepHint } from "./SettingsTabNextStepHint";
+import { ProviderProfileControls } from "./SettingsTabProviderControls";
+import { StatusMessages } from "./SettingsTabStatusMessages";
 
 export function SettingsTab(props: SettingsTabProps) {
   return (
@@ -23,6 +26,7 @@ export function SettingsTab(props: SettingsTabProps) {
       <ActionButtons {...props} />
       <StatusMessages {...props} />
       <NextStepHint
+        providerType={props.providerType}
         aiEndpoint={props.aiEndpoint}
         aiModel={props.aiModel}
         onNavigateToModels={props.onNavigateToModels}

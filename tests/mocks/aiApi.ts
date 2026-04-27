@@ -12,6 +12,8 @@ import { vi } from 'vitest';
 // ========================================
 
 export interface AIStatus {
+  enabled?: boolean;
+  configured?: boolean;
   available: boolean;
   model?: string;
   endpoint?: string;

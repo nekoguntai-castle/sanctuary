@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useAppNotifications } from '../../contexts/AppNotificationContext';
 import { useUser } from '../../contexts/UserContext';
@@ -7,6 +7,7 @@ import { useWalletLabels } from '../../hooks/queries/useWalletLabels';
 import { useAIStatus } from '../../hooks/useAIStatus';
 import { useErrorHandler } from '../../hooks/useErrorHandler';
 import { useWalletLogs } from '../../hooks/websocket';
+import { parseConsoleTransactionFilterState } from '../../src/app/consoleTransactionNavigation';
 import { useAddressLabels } from './hooks/useAddressLabels';
 import { useAITransactionFilter } from './hooks/useAITransactionFilter';
 import { useTransactionFilters } from './hooks/useTransactionFilters';
@@ -23,6 +24,12 @@ import { useWalletSync } from './hooks/useWalletSync';
 import { useWalletWebSocket } from './hooks/useWalletWebSocket';
 import type { AccessSubTab, AddressSubTab, SettingsSubTab } from './types';
 
+interface WalletDetailLocationState {
+  activeTab?: unknown;
+  highlightTxId?: string;
+  consoleTransactionFilter?: unknown;
+}
+
 export const useWalletDetailController = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -30,7 +37,16 @@ export const useWalletDetailController = () => {
   const { user } = useUser();
   const { handleError } = useErrorHandler();
   const { addNotification: addAppNotification, removeNotificationsByType } = useAppNotifications();
-  const highlightTxId = (location.state as { highlightTxId?: string } | null)?.highlightTxId;
+  const locationState = location.state as WalletDetailLocationState | null;
+  const highlightTxId = locationState?.highlightTxId;
+  const appliedConsoleFilterRef = useRef<string | null>(null);
+  const consoleTransactionFilter = useMemo(
+    () =>
+      parseConsoleTransactionFilterState(
+        locationState?.consoleTransactionFilter
+      ),
+    [locationState?.consoleTransactionFilter]
+  );
   const { data: bitcoinStatus } = useBitcoinStatus();
   const { enabled: aiEnabled } = useAIStatus();
 
@@ -85,6 +101,37 @@ export const useWalletDetailController = () => {
     filteredTransactions,
     aiAggregationResult,
   } = useAITransactionFilter({ transactions: manuallyFiltered });
+
+  useEffect(() => {
+    if (!id || !consoleTransactionFilter) return;
+    if (consoleTransactionFilter.walletId !== id) return;
+
+    const filterKey = JSON.stringify(consoleTransactionFilter);
+    if (appliedConsoleFilterRef.current === filterKey) return;
+    appliedConsoleFilterRef.current = filterKey;
+
+    clearAllFilters();
+    setAiQueryFilter(null);
+    if (consoleTransactionFilter.type) {
+      setTypeFilter(consoleTransactionFilter.type);
+    }
+    if (
+      consoleTransactionFilter.dateFrom !== null ||
+      consoleTransactionFilter.dateTo !== null
+    ) {
+      setCustomDateRange(
+        consoleTransactionFilter.dateFrom,
+        consoleTransactionFilter.dateTo
+      );
+    }
+  }, [
+    clearAllFilters,
+    consoleTransactionFilter,
+    id,
+    setAiQueryFilter,
+    setCustomDateRange,
+    setTypeFilter,
+  ]);
 
   const {
     userSearchQuery, userSearchResults, searchingUsers, handleSearchUsers,
@@ -150,7 +197,7 @@ export const useWalletDetailController = () => {
   });
 
   const { setActiveTab, visibleActiveTab } = useWalletDetailTabs({
-    locationState: location.state,
+    locationState,
     hasWallet: Boolean(wallet),
     walletUserRole,
   });

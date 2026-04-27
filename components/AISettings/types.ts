@@ -1,13 +1,13 @@
-import type { OllamaModel, OllamaContainerStatus } from '../../src/api/ai';
+import type { OllamaModel, OllamaContainerStatus } from "../../src/api/ai";
 import type {
   AdminMcpApiKey,
   AdminMcpServerStatus,
   AdminUser,
   AIProviderCapabilities,
   AIProviderType,
-} from '../../src/api/admin';
-import type { ModelDownloadProgress } from '../../hooks/websocket';
-import type { EditableProviderProfile } from './providerProfileModel';
+} from "../../src/api/admin";
+import type { ModelDownloadProgress } from "../../hooks/websocket";
+import type { EditableProviderProfile } from "./providerProfileModel";
 
 export interface PopularModel {
   name: string;
@@ -15,9 +15,10 @@ export interface PopularModel {
   recommended?: boolean;
 }
 
-export type AISettingsTab = 'status' | 'settings' | 'models' | 'mcp';
+export type AISettingsTab = "status" | "settings" | "models" | "mcp";
 
 export interface StatusTabProps {
+  providerType: AIProviderType;
   aiEnabled: boolean;
   isSaving: boolean;
   isStartingContainer: boolean;
@@ -49,7 +50,7 @@ export interface SettingsTabProps {
   showModelDropdown: boolean;
   availableModels: OllamaModel[];
   isLoadingModels: boolean;
-  aiStatus: 'idle' | 'checking' | 'connected' | 'error';
+  aiStatus: "idle" | "checking" | "connected" | "error";
   aiStatusMessage: string;
   saveSuccess: boolean;
   saveError: string | null;
@@ -58,11 +59,15 @@ export interface SettingsTabProps {
   onRemoveActiveProviderProfile: () => void;
   onProviderNameChange: (value: string) => void;
   onProviderTypeChange: (value: AIProviderType) => void;
-  onProviderCapabilityChange: (capability: keyof AIProviderCapabilities, value: boolean) => void;
+  onProviderCapabilityChange: (
+    capability: keyof AIProviderCapabilities,
+    value: boolean,
+  ) => void;
   onCredentialApiKeyChange: (value: string) => void;
   onClearCredentialChange: (value: boolean) => void;
   onEndpointChange: (value: string) => void;
   onDetectOllama: () => void;
+  onModelChange: (value: string) => void;
   onSelectModel: (modelName: string) => void;
   onToggleModelDropdown: () => void;
   onSaveConfig: () => void;
@@ -90,7 +95,10 @@ export interface McpAccessTabProps {
   revokingKeyId: string | null;
   createdToken: string | null;
   error: string | null;
-  onFormChange: <K extends keyof McpKeyFormState>(key: K, value: McpKeyFormState[K]) => void;
+  onFormChange: <K extends keyof McpKeyFormState>(
+    key: K,
+    value: McpKeyFormState[K],
+  ) => void;
   onCreateKey: () => void;
   onRevokeKey: (keyId: string) => void;
   onDismissCreatedToken: () => void;
@@ -98,6 +106,8 @@ export interface McpAccessTabProps {
 }
 
 export interface ModelsTabProps {
+  providerType: AIProviderType;
+  aiModel: string;
   pullProgress: string;
   downloadProgress: ModelDownloadProgress | null;
   isPulling: boolean;
@@ -107,8 +117,11 @@ export interface ModelsTabProps {
   popularModelsError: string | null;
   popularModels: PopularModel[];
   availableModels: OllamaModel[];
+  isLoadingModels: boolean;
   isDeleting: boolean;
   deleteModelName: string;
+  onSelectModel: (modelName: string) => void;
+  onRefreshModels: () => void;
   onPullModel: (model: string) => void;
   onDeleteModel: (model: string) => void;
   onCustomModelNameChange: (value: string) => void;

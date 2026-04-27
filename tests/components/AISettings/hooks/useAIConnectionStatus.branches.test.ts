@@ -12,6 +12,7 @@ const loggerSpies = vi.hoisted(() => ({
 
 vi.mock('../../../../src/api/ai', () => ({
   getAIStatus: vi.fn(),
+  testAIConnection: vi.fn(),
 }));
 
 vi.mock('../../../../utils/logger', () => ({
@@ -24,7 +25,7 @@ describe('useAIConnectionStatus branch coverage', () => {
   });
 
   it('covers connected and unavailable message fallback branches', async () => {
-    vi.mocked(aiApi.getAIStatus)
+    vi.mocked(aiApi.testAIConnection)
       .mockResolvedValueOnce({ available: true, model: 'llama3.2:1b' } as never)
       .mockResolvedValueOnce({ available: true } as never)
       .mockResolvedValueOnce({ available: false, error: 'service offline' } as never)
@@ -65,7 +66,7 @@ describe('useAIConnectionStatus branch coverage', () => {
   });
 
   it('covers exception path and logging', async () => {
-    vi.mocked(aiApi.getAIStatus).mockRejectedValueOnce(new Error('network failed'));
+    vi.mocked(aiApi.testAIConnection).mockRejectedValueOnce(new Error('network failed'));
 
     const { result } = renderHook(() => useAIConnectionStatus());
 

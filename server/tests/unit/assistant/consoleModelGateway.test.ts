@@ -49,6 +49,7 @@ describe('console model gateway', () => {
   });
 
   it('plans tools through the service-authenticated AI proxy without forwarding user bearer tokens', async () => {
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout');
     mocks.fetch.mockResolvedValue({
       ok: true,
       json: vi.fn().mockResolvedValue({
@@ -89,6 +90,8 @@ describe('console model gateway', () => {
     );
     expect(mocks.buildAIProxyJsonHeaders).toHaveBeenCalledWith();
     expect(mocks.fetch.mock.calls[0][1].headers).not.toHaveProperty('Authorization');
+    expect(timeoutSpy).toHaveBeenCalledWith(125000);
+    timeoutSpy.mockRestore();
   });
 
   it('defaults missing plan arrays to empty arrays', async () => {
@@ -184,7 +187,11 @@ describe('console model gateway', () => {
   });
 
   it('converts failed proxy responses into service unavailable errors', async () => {
-    mocks.fetch.mockResolvedValue({ ok: false, status: 502 });
+    mocks.fetch.mockResolvedValue({
+      ok: false,
+      status: 502,
+      json: vi.fn().mockResolvedValue({ error: 'AI endpoint not available' }),
+    });
 
     await expect(
       synthesizeConsoleAnswer({
@@ -192,7 +199,16 @@ describe('console model gateway', () => {
         scope: { kind: 'general' },
         toolResults: [],
       })
-    ).rejects.toMatchObject({ statusCode: 503 });
+    ).rejects.toMatchObject({
+      message:
+        'AI proxy /console/synthesize request failed: AI endpoint not available',
+      statusCode: 503,
+      details: {
+        path: '/console/synthesize',
+        proxyError: 'AI endpoint not available',
+        status: 502,
+      },
+    });
   });
 
   it('converts network errors into service unavailable errors', async () => {

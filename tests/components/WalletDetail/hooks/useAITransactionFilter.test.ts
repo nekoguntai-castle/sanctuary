@@ -186,6 +186,60 @@ describe('useAITransactionFilter', () => {
     expect(result.current.filteredTransactions.map((tx) => tx.txid)).toEqual(['txid-2']);
   });
 
+  it('accepts Console-style transaction type aliases from query_transactions plans', () => {
+    const { result } = renderHook(() => useAITransactionFilter({ transactions: transactions as any }));
+
+    act(() => {
+      result.current.setAiQueryFilter({
+        type: 'transactions',
+        filter: { type: 'received' },
+      });
+    });
+    expect(result.current.filteredTransactions.map((tx) => tx.txid)).toEqual(['txid-1']);
+
+    act(() => {
+      result.current.setAiQueryFilter({
+        type: 'transactions',
+        filter: { type: 'sent' },
+      });
+    });
+    expect(result.current.filteredTransactions.map((tx) => tx.txid)).toEqual(['txid-2']);
+  });
+
+  it('filters by AI date ranges using the same date parsing as Console route filters', () => {
+    const datedTransactions = [
+      { ...transactions[0], txid: 'jan', timestamp: Date.UTC(2020, 0, 31, 23, 59, 59, 999) },
+      { ...transactions[1], txid: 'feb', timestamp: Date.UTC(2020, 1, 1, 0, 0, 0, 0) },
+      { ...transactions[2], txid: 'jun', timestamp: Date.UTC(2020, 5, 30, 23, 59, 59, 999) },
+      { ...transactions[0], id: 'tx-4', txid: 'jul', timestamp: Date.UTC(2020, 6, 1, 0, 0, 0, 0) },
+    ];
+    const { result } = renderHook(() =>
+      useAITransactionFilter({ transactions: datedTransactions as any })
+    );
+
+    act(() => {
+      result.current.setAiQueryFilter({
+        type: 'transactions',
+        filter: { dateFrom: '2020-02-01', dateTo: '2020-06-30' },
+      });
+    });
+
+    expect(result.current.filteredTransactions.map((tx) => tx.txid)).toEqual(['feb', 'jun']);
+  });
+
+  it('supports console-style min/max amount filters', () => {
+    const { result } = renderHook(() => useAITransactionFilter({ transactions: transactions as any }));
+
+    act(() => {
+      result.current.setAiQueryFilter({
+        type: 'transactions',
+        filter: { minAmount: '13000', maxAmount: 50_000 },
+      });
+    });
+
+    expect(result.current.filteredTransactions.map((tx) => tx.txid)).toEqual(['txid-1']);
+  });
+
   it('applies sort and limit', () => {
     const { result } = renderHook(() => useAITransactionFilter({ transactions: transactions as any }));
 

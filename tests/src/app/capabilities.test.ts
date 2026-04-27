@@ -11,5 +11,8 @@ describe('app capabilities', () => {
     expect(hasRequiredCapabilities(['intelligence'], { intelligence: true })).toBe(true);
     expect(hasRequiredCapabilities(['intelligence'], { intelligence: false })).toBe(false);
     expect(hasRequiredCapabilities(['intelligence'], {})).toBe(false);
+    expect(hasRequiredCapabilities(['console'], { console: true })).toBe(true);
+    expect(hasRequiredCapabilities(['console'], { console: false })).toBe(false);
+    expect(hasRequiredCapabilities(['console', 'intelligence'], { console: true, intelligence: false })).toBe(false);
   });
 });

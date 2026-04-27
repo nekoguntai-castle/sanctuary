@@ -191,6 +191,11 @@ describe("AI proxy request schemas", () => {
         prompt: " how is this wallet doing? ",
         maxToolCalls: 2,
         scope: { kind: "wallet", walletIds: ["wallet-1"] },
+        context: {
+          mode: "auto",
+          currentWalletId: "wallet-1",
+          wallets: [{ id: "wallet-1", name: "Vault" }],
+        },
         tools: [
           {
             name: "get_wallet_overview",
@@ -206,6 +211,11 @@ describe("AI proxy request schemas", () => {
       prompt: "how is this wallet doing?",
       maxToolCalls: 2,
       scope: { kind: "wallet", walletIds: ["wallet-1"] },
+      context: {
+        mode: "auto",
+        currentWalletId: "wallet-1",
+        wallets: [{ id: "wallet-1", name: "Vault" }],
+      },
       tools: [
         {
           name: "get_wallet_overview",
@@ -221,10 +231,12 @@ describe("AI proxy request schemas", () => {
     expect(
       ConsoleSynthesisBodySchema.parse({
         prompt: "summarize",
+        context: { mode: "auto" },
         toolResults: [{ toolName: "get_fee_estimates", status: "completed" }],
       }),
     ).toEqual({
       prompt: "summarize",
+      context: { mode: "auto" },
       toolResults: [{ toolName: "get_fee_estimates", status: "completed" }],
     });
 

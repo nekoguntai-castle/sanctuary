@@ -1,6 +1,7 @@
 import React from 'react';
 import { ConsoleDrawer } from '../ConsoleDrawer';
 import { SidebarContent } from './SidebarContent';
+import { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
 import { LayoutShell } from './LayoutShell';
 import { LayoutProps } from './types';
 import { useLayoutController } from './useLayoutController';
@@ -22,6 +23,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, darkMode, toggleTheme 
       getDeviceCount={controller.getDeviceCount}
       onVersionClick={controller.handleVersionClick}
       onOpenConsole={controller.openConsole}
+      onOpenShortcuts={controller.openKeyboardShortcuts}
       capabilities={controller.capabilities}
     />
   );
@@ -36,6 +38,11 @@ export const Layout: React.FC<LayoutProps> = ({ children, darkMode, toggleTheme 
         onClose={controller.closeConsole}
         wallets={controller.wallets}
         isAdmin={!!controller.user?.isAdmin}
+      />
+      <KeyboardShortcutsModal
+        show={controller.showKeyboardShortcutsModal}
+        consoleAvailable={!!controller.capabilities.console}
+        onClose={controller.closeKeyboardShortcuts}
       />
     </>
   );

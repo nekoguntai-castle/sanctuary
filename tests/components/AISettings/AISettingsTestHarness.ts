@@ -19,18 +19,22 @@ export const mockGetUsers = vi.fn();
 
 vi.mock('../../../src/api/admin', () => ({
   getSystemSettings: () => mockGetSystemSettings(),
-  updateSystemSettings: (settings: Record<string, unknown>) => mockUpdateSystemSettings(settings),
+  updateSystemSettings: (settings: Record<string, unknown>) =>
+    mockUpdateSystemSettings(settings),
   getFeatureFlags: () => mockGetFeatureFlags(),
   getMcpServerStatus: () => mockGetMcpServerStatus(),
   listMcpApiKeys: () => mockListMcpApiKeys(),
-  createMcpApiKey: (input: Record<string, unknown>) => mockCreateMcpApiKey(input),
+  createMcpApiKey: (input: Record<string, unknown>) =>
+    mockCreateMcpApiKey(input),
   revokeMcpApiKey: (keyId: string) => mockRevokeMcpApiKey(keyId),
   getUsers: () => mockGetUsers(),
 }));
 
 // Mock AI API
 export const mockGetAIStatus = vi.fn();
+export const mockTestAIConnection = vi.fn();
 export const mockDetectOllama = vi.fn();
+export const mockDetectProvider = vi.fn();
 export const mockListModels = vi.fn();
 export const mockPullModel = vi.fn();
 export const mockGetOllamaContainerStatus = vi.fn();
@@ -39,7 +43,9 @@ export const mockStopOllamaContainer = vi.fn();
 
 vi.mock('../../../src/api/ai', () => ({
   getAIStatus: () => mockGetAIStatus(),
+  testAIConnection: () => mockTestAIConnection(),
   detectOllama: () => mockDetectOllama(),
+  detectProvider: (request: Record<string, unknown>) => mockDetectProvider(request),
   listModels: () => mockListModels(),
   pullModel: (model: string) => mockPullModel(model),
   getOllamaContainerStatus: () => mockGetOllamaContainerStatus(),
@@ -69,12 +75,23 @@ vi.mock('../../../hooks/useAIStatus', () => ({
 
 // Mock popular models response
 export const mockPopularModels = {
-  version: '1.0.0',
-  lastUpdated: '2026-01-02',
+  version: '1.1.0',
+  lastUpdated: '2026-04-27',
   models: [
-    { name: 'llama3.2:3b', description: 'Meta, fast & lightweight (2GB)', recommended: true },
-    { name: 'deepseek-r1:7b', description: 'DeepSeek, reasoning model (4.7GB)' },
-    { name: 'mistral:7b', description: 'Mistral AI, balanced (4GB)' },
+    {
+      name: 'llama3.2:3b',
+      description: 'Meta, fast default for labels/chat (2.0GB)',
+      recommended: true,
+    },
+    {
+      name: 'qwen3:4b',
+      description: 'Qwen, compact reasoning/tools (2.5GB)',
+      recommended: true,
+    },
+    {
+      name: 'gemma3:4b',
+      description: 'Google, strong compact general model (3.3GB)',
+    },
   ],
 };
 
@@ -114,15 +131,17 @@ export const enabledSettings = {
   aiEnabled: true,
   aiEndpoint: 'http://host.docker.internal:11434',
   aiModel: 'llama3.2:3b',
-  aiProviderProfiles: [{
-    id: 'default-ollama',
-    name: 'Default Ollama',
-    providerType: 'ollama',
-    endpoint: 'http://host.docker.internal:11434',
-    model: 'llama3.2:3b',
-    capabilities: { chat: true, toolCalls: false, strictJson: true },
-    credentialState: { type: 'none', configured: false, needsReview: false },
-  }],
+  aiProviderProfiles: [
+    {
+      id: 'default-ollama',
+      name: 'Default Ollama',
+      providerType: 'ollama',
+      endpoint: 'http://host.docker.internal:11434',
+      model: 'llama3.2:3b',
+      capabilities: { chat: true, toolCalls: false, strictJson: true },
+      credentialState: { type: 'none', configured: false, needsReview: false },
+    },
+  ],
   aiActiveProviderProfileId: 'default-ollama',
 };
 
@@ -137,7 +156,12 @@ export function registerAISettingsTestHarness() {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetFeatureFlags.mockResolvedValue([
-      { key: 'aiAssistant', enabled: true, description: 'Enable AI', category: 'general' },
+      {
+        key: 'aiAssistant',
+        enabled: true,
+        description: 'Enable AI',
+        category: 'general',
+      },
     ]);
     mockGetSystemSettings.mockResolvedValue(defaultSettings);
     mockUpdateSystemSettings.mockResolvedValue({});
@@ -174,15 +198,50 @@ export function registerAISettingsTestHarness() {
       revokedAt: '2026-04-27T00:00:00.000Z',
     });
     mockGetUsers.mockResolvedValue([
-      { id: 'user-1', username: 'alice', email: null, emailVerified: true, isAdmin: false, createdAt: '2026-04-26T00:00:00.000Z' },
+      {
+        id: 'user-1',
+        username: 'alice',
+        email: null,
+        emailVerified: true,
+        isAdmin: false,
+        createdAt: '2026-04-26T00:00:00.000Z',
+      },
     ]);
-    mockGetAIStatus.mockResolvedValue({ available: true, model: 'llama3.2:3b' });
-    mockDetectOllama.mockResolvedValue({ found: true, endpoint: 'http://host.docker.internal:11434', models: ['llama3.2:3b'] });
+    mockGetAIStatus.mockResolvedValue({
+      available: true,
+      model: 'llama3.2:3b',
+    });
+    mockTestAIConnection.mockResolvedValue({
+      available: true,
+      model: 'llama3.2:3b',
+    });
+    mockDetectOllama.mockResolvedValue({
+      found: true,
+      endpoint: 'http://host.docker.internal:11434',
+      models: ['llama3.2:3b'],
+    });
+    mockDetectProvider.mockResolvedValue({
+      found: true,
+      providerType: 'openai-compatible',
+      endpoint: 'http://host.docker.internal:1234/v1',
+      models: [{ name: 'lmstudio-community/model', size: 0, modifiedAt: '' }],
+    });
     mockListModels.mockResolvedValue(mockModels);
     mockPullModel.mockResolvedValue({ success: true, model: 'llama3.2:3b' });
-    mockGetOllamaContainerStatus.mockResolvedValue({ available: false, exists: false, running: false, status: 'not-available' });
-    mockStartOllamaContainer.mockResolvedValue({ success: true, message: 'Container started' });
-    mockStopOllamaContainer.mockResolvedValue({ success: true, message: 'Container stopped' });
+    mockGetOllamaContainerStatus.mockResolvedValue({
+      available: false,
+      exists: false,
+      running: false,
+      status: 'not-available',
+    });
+    mockStartOllamaContainer.mockResolvedValue({
+      success: true,
+      message: 'Container started',
+    });
+    mockStopOllamaContainer.mockResolvedValue({
+      success: true,
+      message: 'Container stopped',
+    });
   });
 
   afterEach(() => {

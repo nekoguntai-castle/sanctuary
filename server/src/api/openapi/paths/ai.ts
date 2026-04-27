@@ -4,13 +4,13 @@
  * OpenAPI path definitions for public AI assistant endpoints.
  */
 
-import { browserOrBearerAuth as bearerAuth } from '../security';
+import { browserOrBearerAuth as bearerAuth } from "../security";
 
 const apiErrorResponse = {
-  description: 'Error response',
+  description: "Error response",
   content: {
-    'application/json': {
-      schema: { $ref: '#/components/schemas/ApiError' },
+    "application/json": {
+      schema: { $ref: "#/components/schemas/ApiError" },
     },
   },
 } as const;
@@ -18,7 +18,7 @@ const apiErrorResponse = {
 const jsonRequestBody = (schemaRef: string) => ({
   required: true,
   content: {
-    'application/json': {
+    "application/json": {
       schema: { $ref: schemaRef },
     },
   },
@@ -27,35 +27,57 @@ const jsonRequestBody = (schemaRef: string) => ({
 const jsonResponse = (description: string, schemaRef: string) => ({
   description,
   content: {
-    'application/json': {
+    "application/json": {
       schema: { $ref: schemaRef },
     },
   },
 });
 
 export const aiPaths = {
-  '/ai/status': {
+  "/ai/status": {
     get: {
-      tags: ['AI'],
-      summary: 'Get AI status',
-      description: 'Check whether AI is enabled and whether the configured model endpoint is reachable.',
+      tags: ["AI"],
+      summary: "Get AI status",
+      description:
+        "Check whether AI is enabled, whether provider setup is complete, and whether the AI proxy is reachable. This status check does not run model inference.",
       security: bearerAuth,
       responses: {
-        200: jsonResponse('AI status', '#/components/schemas/AIStatusResponse'),
+        200: jsonResponse("AI status", "#/components/schemas/AIStatusResponse"),
         401: apiErrorResponse,
         500: apiErrorResponse,
       },
     },
   },
-  '/ai/suggest-label': {
+  "/ai/test-connection": {
     post: {
-      tags: ['AI'],
-      summary: 'Suggest transaction label',
-      description: 'Request an AI-generated label suggestion for a transaction.',
+      tags: ["AI"],
+      summary: "Test configured AI provider connection",
+      description:
+        "Run an explicit admin-triggered connection test against the configured AI provider and model.",
       security: bearerAuth,
-      requestBody: jsonRequestBody('#/components/schemas/AISuggestLabelRequest'),
       responses: {
-        200: jsonResponse('Label suggestion', '#/components/schemas/AISuggestLabelResponse'),
+        200: jsonResponse("AI connection test", "#/components/schemas/AIStatusResponse"),
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+  },
+  "/ai/suggest-label": {
+    post: {
+      tags: ["AI"],
+      summary: "Suggest transaction label",
+      description:
+        "Request an AI-generated label suggestion for a transaction.",
+      security: bearerAuth,
+      requestBody: jsonRequestBody(
+        "#/components/schemas/AISuggestLabelRequest",
+      ),
+      responses: {
+        200: jsonResponse(
+          "Label suggestion",
+          "#/components/schemas/AISuggestLabelResponse",
+        ),
         400: apiErrorResponse,
         401: apiErrorResponse,
         503: apiErrorResponse,
@@ -63,15 +85,19 @@ export const aiPaths = {
       },
     },
   },
-  '/ai/query': {
+  "/ai/query": {
     post: {
-      tags: ['AI'],
-      summary: 'Execute natural language query',
-      description: 'Request a structured query result for a wallet-scoped natural-language prompt.',
+      tags: ["AI"],
+      summary: "Execute natural language query",
+      description:
+        "Request a structured query result for a wallet-scoped natural-language prompt.",
       security: bearerAuth,
-      requestBody: jsonRequestBody('#/components/schemas/AIQueryRequest'),
+      requestBody: jsonRequestBody("#/components/schemas/AIQueryRequest"),
       responses: {
-        200: jsonResponse('Structured query result', '#/components/schemas/AIQueryResult'),
+        200: jsonResponse(
+          "Structured query result",
+          "#/components/schemas/AIQueryResult",
+        ),
         400: apiErrorResponse,
         401: apiErrorResponse,
         503: apiErrorResponse,
@@ -79,42 +105,36 @@ export const aiPaths = {
       },
     },
   },
-  '/ai/detect-ollama': {
+  "/ai/detect-ollama": {
     post: {
-      tags: ['AI'],
-      summary: 'Detect Ollama endpoint',
-      description: 'Ask the isolated AI container to detect a local or configured Ollama endpoint.',
+      tags: ["AI"],
+      summary: "Detect Ollama endpoint",
+      description:
+        "Ask the isolated AI container to detect a local or configured Ollama endpoint. OpenAI-compatible providers such as LM Studio are listed from the configured endpoint instead.",
       security: bearerAuth,
       responses: {
-        200: jsonResponse('Ollama detection result', '#/components/schemas/AIDetectOllamaResponse'),
+        200: jsonResponse(
+          "Ollama detection result",
+          "#/components/schemas/AIDetectOllamaResponse",
+        ),
         401: apiErrorResponse,
         500: apiErrorResponse,
       },
     },
   },
-  '/ai/models': {
-    get: {
-      tags: ['AI'],
-      summary: 'List AI models',
-      description: 'List models available through the configured AI endpoint.',
-      security: bearerAuth,
-      responses: {
-        200: jsonResponse('Available AI models', '#/components/schemas/AIModelsResponse'),
-        401: apiErrorResponse,
-        502: apiErrorResponse,
-        500: apiErrorResponse,
-      },
-    },
-  },
-  '/ai/pull-model': {
+  "/ai/detect-provider": {
     post: {
-      tags: ['AI'],
-      summary: 'Pull AI model',
-      description: 'Admin-only request to pull or download a model through the configured AI endpoint.',
+      tags: ["AI"],
+      summary: "Detect typed AI provider endpoint",
+      description:
+        "Ask the isolated AI container to probe an operator-supplied Ollama or OpenAI-compatible endpoint, including LAN LM Studio endpoints.",
       security: bearerAuth,
-      requestBody: jsonRequestBody('#/components/schemas/AIModelRequest'),
+      requestBody: jsonRequestBody("#/components/schemas/AIDetectProviderRequest"),
       responses: {
-        200: jsonResponse('Model pull result', '#/components/schemas/AIModelOperationResponse'),
+        200: jsonResponse(
+          "Provider detection result",
+          "#/components/schemas/AIDetectProviderResponse",
+        ),
         400: apiErrorResponse,
         401: apiErrorResponse,
         403: apiErrorResponse,
@@ -123,15 +143,57 @@ export const aiPaths = {
       },
     },
   },
-  '/ai/delete-model': {
+  "/ai/models": {
+    get: {
+      tags: ["AI"],
+      summary: "List AI models",
+      description: "List models available through the configured AI endpoint.",
+      security: bearerAuth,
+      responses: {
+        200: jsonResponse(
+          "Available AI models",
+          "#/components/schemas/AIModelsResponse",
+        ),
+        401: apiErrorResponse,
+        502: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+  },
+  "/ai/pull-model": {
+    post: {
+      tags: ["AI"],
+      summary: "Pull AI model",
+      description:
+        "Admin-only request to pull or download an Ollama model. OpenAI-compatible providers manage model downloads in their own app.",
+      security: bearerAuth,
+      requestBody: jsonRequestBody("#/components/schemas/AIModelRequest"),
+      responses: {
+        200: jsonResponse(
+          "Model pull result",
+          "#/components/schemas/AIModelOperationResponse",
+        ),
+        400: apiErrorResponse,
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        502: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+  },
+  "/ai/delete-model": {
     delete: {
-      tags: ['AI'],
-      summary: 'Delete AI model',
-      description: 'Admin-only request to delete a model through the configured AI endpoint.',
+      tags: ["AI"],
+      summary: "Delete AI model",
+      description:
+        "Admin-only request to delete an Ollama model. OpenAI-compatible providers manage model deletion in their own app.",
       security: bearerAuth,
-      requestBody: jsonRequestBody('#/components/schemas/AIModelRequest'),
+      requestBody: jsonRequestBody("#/components/schemas/AIModelRequest"),
       responses: {
-        200: jsonResponse('Model delete result', '#/components/schemas/AIModelOperationResponse'),
+        200: jsonResponse(
+          "Model delete result",
+          "#/components/schemas/AIModelOperationResponse",
+        ),
         400: apiErrorResponse,
         401: apiErrorResponse,
         403: apiErrorResponse,
@@ -140,55 +202,71 @@ export const aiPaths = {
       },
     },
   },
-  '/ai/ollama-container/status': {
+  "/ai/ollama-container/status": {
     get: {
-      tags: ['AI'],
-      summary: 'Get bundled Ollama container status',
-      description: 'Get Docker-proxy-backed status for the bundled Ollama container.',
+      tags: ["AI"],
+      summary: "Get bundled Ollama container status",
+      description:
+        "Get Docker-proxy-backed status for the bundled Ollama container.",
       security: bearerAuth,
       responses: {
-        200: jsonResponse('Ollama container status', '#/components/schemas/AIContainerStatusResponse'),
+        200: jsonResponse(
+          "Ollama container status",
+          "#/components/schemas/AIContainerStatusResponse",
+        ),
         401: apiErrorResponse,
         500: apiErrorResponse,
       },
     },
   },
-  '/ai/ollama-container/start': {
+  "/ai/ollama-container/start": {
     post: {
-      tags: ['AI'],
-      summary: 'Start bundled Ollama container',
-      description: 'Start the bundled Ollama container through the restricted Docker socket proxy.',
+      tags: ["AI"],
+      summary: "Start bundled Ollama container",
+      description:
+        "Start the bundled Ollama container through the restricted Docker socket proxy.",
       security: bearerAuth,
       responses: {
-        200: jsonResponse('Ollama container start result', '#/components/schemas/AIContainerActionResponse'),
+        200: jsonResponse(
+          "Ollama container start result",
+          "#/components/schemas/AIContainerActionResponse",
+        ),
         400: apiErrorResponse,
         401: apiErrorResponse,
         500: apiErrorResponse,
       },
     },
   },
-  '/ai/ollama-container/stop': {
+  "/ai/ollama-container/stop": {
     post: {
-      tags: ['AI'],
-      summary: 'Stop bundled Ollama container',
-      description: 'Stop the bundled Ollama container through the restricted Docker socket proxy.',
+      tags: ["AI"],
+      summary: "Stop bundled Ollama container",
+      description:
+        "Stop the bundled Ollama container through the restricted Docker socket proxy.",
       security: bearerAuth,
       responses: {
-        200: jsonResponse('Ollama container stop result', '#/components/schemas/AIContainerActionResponse'),
+        200: jsonResponse(
+          "Ollama container stop result",
+          "#/components/schemas/AIContainerActionResponse",
+        ),
         400: apiErrorResponse,
         401: apiErrorResponse,
         500: apiErrorResponse,
       },
     },
   },
-  '/ai/system-resources': {
+  "/ai/system-resources": {
     get: {
-      tags: ['AI'],
-      summary: 'Get AI system resources',
-      description: 'Check RAM, disk, and GPU availability before enabling local AI features.',
+      tags: ["AI"],
+      summary: "Get AI system resources",
+      description:
+        "Check RAM, disk, and GPU availability before enabling local AI features.",
       security: bearerAuth,
       responses: {
-        200: jsonResponse('AI system resources', '#/components/schemas/AISystemResourcesResponse'),
+        200: jsonResponse(
+          "AI system resources",
+          "#/components/schemas/AISystemResourcesResponse",
+        ),
         401: apiErrorResponse,
         500: apiErrorResponse,
       },

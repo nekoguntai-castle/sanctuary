@@ -20,6 +20,25 @@ const ModelBodySchema = z.object({
   model: z.string().trim().min(1, 'Model name is required'),
 });
 
+const ProviderTypeSchema = z.enum(['ollama', 'openai-compatible']);
+
+const ProviderDetectionBodySchema = z.object({
+  endpoint: z
+    .string()
+    .trim()
+    .max(2048)
+    .refine((value) => {
+      try {
+        const url = new URL(value);
+        return url.protocol === 'http:' || url.protocol === 'https:';
+      } catch {
+        return false;
+      }
+    }, 'Endpoint must be an HTTP(S) URL'),
+  preferredProviderType: ProviderTypeSchema.optional(),
+  apiKey: z.string().max(8192).optional(),
+});
+
 export function createModelsRouter(aiRateLimiter: RequestHandler): Router {
   const router = Router();
 
@@ -31,6 +50,33 @@ export function createModelsRouter(aiRateLimiter: RequestHandler): Router {
     const result = await aiService.detectOllama();
     res.json(result);
   }));
+
+  /**
+   * POST /api/v1/ai/detect-provider
+   * Detect a provider at a typed endpoint
+   */
+  router.post(
+    '/detect-provider',
+    authenticate,
+    requireAdmin,
+    aiRateLimiter,
+    validate(
+      { body: ProviderDetectionBodySchema },
+      { message: 'Valid provider endpoint is required', code: ErrorCodes.INVALID_INPUT },
+    ),
+    asyncHandler(async (req, res) => {
+      const result = await aiService.detectProviderEndpoint(req.body);
+
+      if (!result.found) {
+        return res.status(result.blockedReason ? 400 : 502).json({
+          error: result.blockedReason ? 'Bad Request' : 'Bad Gateway',
+          message: result.message || 'Provider detection failed',
+        });
+      }
+
+      res.json(result);
+    }),
+  );
 
   /**
    * GET /api/v1/ai/models

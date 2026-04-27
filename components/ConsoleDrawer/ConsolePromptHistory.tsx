@@ -9,7 +9,11 @@ import {
   Trash2,
 } from 'lucide-react';
 import type { ConsolePromptHistory as ConsolePromptHistoryItem } from '../../src/api/console';
-import { formatShortDate, getPromptTitle } from './consoleDrawerUtils';
+import {
+  dedupePromptHistory,
+  formatShortDate,
+  getPromptTitle,
+} from './consoleDrawerUtils';
 
 interface ConsolePromptHistoryProps {
   prompts: ConsolePromptHistoryItem[];
@@ -134,48 +138,52 @@ export const ConsolePromptHistory: React.FC<ConsolePromptHistoryProps> = ({
   onDelete,
   onToggleSaved,
   onSetExpiration,
-}) => (
-  <section className="border-t border-sanctuary-200 dark:border-sanctuary-800">
-    <div className="flex items-center gap-2 px-4 py-3">
-      <div className="relative min-w-0 flex-1">
-        <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-sanctuary-400" />
-        <input
-          type="search"
-          aria-label="Search prompt history"
-          value={search}
-          onChange={(event) => onSearchChange(event.target.value)}
-          className="h-8 w-full rounded-md border border-sanctuary-200 bg-transparent pl-7 pr-2 text-xs text-sanctuary-800 placeholder-sanctuary-400 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:border-sanctuary-700 dark:text-sanctuary-100"
-          placeholder="Search prompts"
-        />
-      </div>
-      <button
-        type="button"
-        title="Refresh prompt history"
-        aria-label="Refresh prompt history"
-        onClick={() => void onRefresh()}
-        className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md text-sanctuary-500 hover:bg-sanctuary-100 hover:text-sanctuary-800 dark:text-sanctuary-400 dark:hover:bg-sanctuary-800 dark:hover:text-sanctuary-100 focus-visible:ring-2 focus-visible:ring-primary-500"
-      >
-        <RefreshCw className="h-4 w-4" />
-      </button>
-    </div>
-    <ul className="max-h-44 overflow-y-auto border-t border-sanctuary-100 dark:border-sanctuary-800">
-      {prompts.length > 0 ? (
-        prompts.map((prompt) => (
-          <PromptHistoryRow
-            key={prompt.id}
-            prompt={prompt}
-            isReplaying={replayingPromptId === prompt.id}
-            onReplay={onReplay}
-            onDelete={onDelete}
-            onToggleSaved={onToggleSaved}
-            onSetExpiration={onSetExpiration}
+}) => {
+  const visiblePrompts = dedupePromptHistory(prompts);
+
+  return (
+    <section className="border-t border-sanctuary-200 dark:border-sanctuary-800">
+      <div className="flex items-center gap-2 px-4 py-3">
+        <div className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-sanctuary-400" />
+          <input
+            type="search"
+            aria-label="Search prompt history"
+            value={search}
+            onChange={(event) => onSearchChange(event.target.value)}
+            className="h-8 w-full rounded-md border border-sanctuary-200 bg-transparent pl-7 pr-2 text-xs text-sanctuary-800 placeholder-sanctuary-400 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:border-sanctuary-700 dark:text-sanctuary-100"
+            placeholder="Search prompts"
           />
-        ))
-      ) : (
-        <li className="px-4 py-4 text-xs text-sanctuary-500 dark:text-sanctuary-400">
-          No prompt history
-        </li>
-      )}
-    </ul>
-  </section>
-);
+        </div>
+        <button
+          type="button"
+          title="Refresh prompt history"
+          aria-label="Refresh prompt history"
+          onClick={() => void onRefresh()}
+          className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md text-sanctuary-500 hover:bg-sanctuary-100 hover:text-sanctuary-800 dark:text-sanctuary-400 dark:hover:bg-sanctuary-800 dark:hover:text-sanctuary-100 focus-visible:ring-2 focus-visible:ring-primary-500"
+        >
+          <RefreshCw className="h-4 w-4" />
+        </button>
+      </div>
+      <ul className="max-h-44 overflow-y-auto border-t border-sanctuary-100 dark:border-sanctuary-800">
+        {visiblePrompts.length > 0 ? (
+          visiblePrompts.map((prompt) => (
+            <PromptHistoryRow
+              key={prompt.id}
+              prompt={prompt}
+              isReplaying={replayingPromptId === prompt.id}
+              onReplay={onReplay}
+              onDelete={onDelete}
+              onToggleSaved={onToggleSaved}
+              onSetExpiration={onSetExpiration}
+            />
+          ))
+        ) : (
+          <li className="px-4 py-4 text-xs text-sanctuary-500 dark:text-sanctuary-400">
+            No prompt history
+          </li>
+        )}
+      </ul>
+    </section>
+  );
+};

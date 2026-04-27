@@ -75,6 +75,14 @@ export const DetectOllamaBodySchema = z
   })
   .strict();
 
+export const DetectProviderBodySchema = z
+  .object({
+    endpoint: HttpUrlSchema,
+    preferredProviderType: z.enum(["ollama", "openai-compatible"]).optional(),
+    apiKey: z.string().max(8192).optional(),
+  })
+  .strict();
+
 export const ModelBodySchema = z
   .object({
     model: NonEmptyStringSchema.max(200),
@@ -146,6 +154,7 @@ export const ConsolePlanBodySchema = z
   .object({
     prompt: NonEmptyStringSchema.max(12000),
     scope: z.unknown().optional(),
+    context: z.unknown().optional(),
     maxToolCalls: z.number().int().min(0).max(8).default(4),
     tools: z.array(ConsoleToolDescriptionSchema).min(1).max(80),
   })
@@ -155,6 +164,7 @@ export const ConsoleSynthesisBodySchema = z
   .object({
     prompt: NonEmptyStringSchema.max(12000),
     scope: z.unknown().optional(),
+    context: z.unknown().optional(),
     toolResults: z.array(ConsoleToolResultSchema).max(8),
   })
   .strict();

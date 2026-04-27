@@ -14,11 +14,30 @@ const log = createLogger("AI:SVC_HEALTH");
 const AI_CONTAINER_URL = getContainerUrl();
 
 /**
+ * Get the persisted AI assistant setup state without probing provider health.
+ */
+export async function getConfigStatus(): Promise<{
+  enabled: boolean;
+  configured: boolean;
+  model?: string;
+  endpoint?: string;
+}> {
+  const config = await getAIConfig();
+
+  return {
+    enabled: config.enabled,
+    configured: Boolean(config.endpoint && config.model),
+    model: config.model || undefined,
+    endpoint: config.endpoint || undefined,
+  };
+}
+
+/**
  * Check if AI is enabled in settings
  */
 export async function isEnabled(): Promise<boolean> {
-  const config = await getAIConfig();
-  return config.enabled && !!config.endpoint && !!config.model;
+  const status = await getConfigStatus();
+  return status.enabled && status.configured;
 }
 
 /**

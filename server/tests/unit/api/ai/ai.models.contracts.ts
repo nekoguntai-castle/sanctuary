@@ -47,6 +47,74 @@ export function registerDetectOllamaContracts() {
     expect(response.body.code).toBe('INTERNAL_ERROR');
     expect(response.body.message).toBe('An unexpected error occurred');
   });
+
+  it('should detect a provider at a typed endpoint', async () => {
+    (aiService.detectProviderEndpoint as Mock).mockResolvedValue({
+      found: true,
+      providerType: 'openai-compatible',
+      endpoint: 'http://10.114.123.214:1234',
+      models: [{ name: 'qwen/qwen3.6-35b-a3b', size: 0, modifiedAt: '' }],
+    });
+
+    const response = await request(app)
+      .post('/api/v1/ai/detect-provider')
+      .set('Authorization', 'Bearer test-token')
+      .set('x-test-admin', 'true')
+      .send({
+        endpoint: 'http://10.114.123.214:1234',
+        preferredProviderType: 'openai-compatible',
+      });
+
+    expect(response.status).toBe(200);
+    expect(aiService.detectProviderEndpoint).toHaveBeenCalledWith({
+      endpoint: 'http://10.114.123.214:1234',
+      preferredProviderType: 'openai-compatible',
+    });
+    expect(response.body.models[0].name).toBe('qwen/qwen3.6-35b-a3b');
+  });
+
+  it('should return 502 when typed provider detection cannot connect', async () => {
+    (aiService.detectProviderEndpoint as Mock).mockResolvedValue({
+      found: false,
+      message: 'No supported model provider responded at this endpoint.',
+    });
+
+    const response = await request(app)
+      .post('/api/v1/ai/detect-provider')
+      .set('Authorization', 'Bearer test-token')
+      .set('x-test-admin', 'true')
+      .send({
+        endpoint: 'http://10.114.123.214:1234',
+        preferredProviderType: 'openai-compatible',
+      });
+
+    expect(response.status).toBe(502);
+    expect(response.body.message).toBe(
+      'No supported model provider responded at this endpoint.',
+    );
+  });
+
+  it('should return 400 when typed provider detection is blocked', async () => {
+    (aiService.detectProviderEndpoint as Mock).mockResolvedValue({
+      found: false,
+      blockedReason: 'host_not_allowed',
+      message: 'AI endpoint is not allowed: host_not_allowed',
+    });
+
+    const response = await request(app)
+      .post('/api/v1/ai/detect-provider')
+      .set('Authorization', 'Bearer test-token')
+      .set('x-test-admin', 'true')
+      .send({
+        endpoint: 'http://203.0.113.10:1234',
+        preferredProviderType: 'openai-compatible',
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe(
+      'AI endpoint is not allowed: host_not_allowed',
+    );
+  });
 }
 
 export function registerListModelsContracts() {

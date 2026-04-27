@@ -46,12 +46,14 @@ describe('Core API Modules', () => {
       mockPost.mockResolvedValue({ success: true });
 
       await aiApi.getAIStatus();
+      await aiApi.testAIConnection();
       await aiApi.suggestLabel({ transactionId: 'tx-1' });
       await aiApi.executeNaturalQuery({ query: 'recent tx', walletId: 'w1' });
 
       expect(mockGet).toHaveBeenCalledWith('/ai/status');
+      expect(mockPost).toHaveBeenCalledWith('/ai/test-connection', {}, { timeoutMs: 20000 });
       expect(mockPost).toHaveBeenCalledWith('/ai/suggest-label', { transactionId: 'tx-1' });
-      expect(mockPost).toHaveBeenCalledWith('/ai/query', { query: 'recent tx', walletId: 'w1' });
+      expect(mockPost).toHaveBeenCalledWith('/ai/query', { query: 'recent tx', walletId: 'w1' }, { timeoutMs: 120000 });
     });
 
     it('calls model and container management endpoints', async () => {
@@ -60,6 +62,10 @@ describe('Core API Modules', () => {
       mockDelete.mockResolvedValue({});
 
       await aiApi.detectOllama();
+      await aiApi.detectProvider({
+        endpoint: 'http://10.114.123.214:1234',
+        preferredProviderType: 'openai-compatible',
+      });
       await aiApi.listModels();
       await aiApi.pullModel('llama3');
       await aiApi.deleteModel('llama3');
@@ -69,6 +75,10 @@ describe('Core API Modules', () => {
       await aiApi.getSystemResources();
 
       expect(mockPost).toHaveBeenCalledWith('/ai/detect-ollama', {});
+      expect(mockPost).toHaveBeenCalledWith('/ai/detect-provider', {
+        endpoint: 'http://10.114.123.214:1234',
+        preferredProviderType: 'openai-compatible',
+      });
       expect(mockGet).toHaveBeenCalledWith('/ai/models');
       expect(mockPost).toHaveBeenCalledWith('/ai/pull-model', { model: 'llama3' });
       expect(mockDelete).toHaveBeenCalledWith('/ai/delete-model', { model: 'llama3' });

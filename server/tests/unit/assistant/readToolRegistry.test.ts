@@ -41,6 +41,7 @@ const mocks = vi.hoisted(() => ({
   draftRepository: {
     findByWalletId: vi.fn(),
   },
+  getBitcoinNetworkStatus: vi.fn(),
 }));
 
 vi.mock('../../../src/repositories', () => ({
@@ -51,6 +52,10 @@ vi.mock('../../../src/repositories', () => ({
   policyRepository: mocks.policyRepository,
   intelligenceRepository: mocks.intelligenceRepository,
   draftRepository: mocks.draftRepository,
+}));
+
+vi.mock('../../../src/services/bitcoin/networkStatusService', () => ({
+  getBitcoinNetworkStatus: mocks.getBitcoinNetworkStatus,
 }));
 
 import {
@@ -125,6 +130,7 @@ describe('assistant read-tool registry', () => {
       'get_insight_detail',
       'get_market_status',
       'get_admin_operational_summary',
+      'get_bitcoin_network_status',
       'get_fee_estimates',
       'convert_price',
     ]);

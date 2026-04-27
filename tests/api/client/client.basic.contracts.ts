@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { ApiError, apiClient, mockFetch } from './clientTestHarness';
 
@@ -120,6 +120,20 @@ export const registerApiClientBasicContracts = () => {
 
       const calledOptions = mockFetch.mock.calls[0][1];
       expect(calledOptions.body).toBeUndefined();
+    });
+
+    it('should allow POST callers to override the request timeout', async () => {
+      const timeoutSpy = vi.spyOn(AbortSignal, 'timeout');
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({}),
+      });
+
+      await apiClient.post('/slow-action', {}, { timeoutMs: 120000 });
+
+      expect(timeoutSpy).toHaveBeenCalledWith(120000);
+      timeoutSpy.mockRestore();
     });
   });
 

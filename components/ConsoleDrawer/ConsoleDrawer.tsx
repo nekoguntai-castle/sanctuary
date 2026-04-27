@@ -1,5 +1,11 @@
-import React, { useCallback, useEffect, useRef } from 'react';
-import { Brain, Plus, Wrench, X } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Brain, Pin, PinOff, Plus, Wrench, X } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import {
+  extractConsoleTransactionFilter,
+  walletIdFromWalletRoute,
+} from '../../src/app/consoleTransactionNavigation';
+import type { ConsoleTurnResult } from '../../src/api/console';
 import { ConsoleComposer } from './ConsoleComposer';
 import { ConsoleMessageList } from './ConsoleMessageList';
 import { ConsolePromptHistory } from './ConsolePromptHistory';
@@ -12,9 +18,11 @@ const NEW_SESSION_VALUE = 'new-session';
 
 const DrawerHeader: React.FC<{
   toolCount: number;
+  isPinned: boolean;
   onNewSession: () => void;
+  onTogglePinned: () => void;
   onClose: () => void;
-}> = ({ toolCount, onNewSession, onClose }) => (
+}> = ({ toolCount, isPinned, onNewSession, onTogglePinned, onClose }) => (
   <header className="flex items-center justify-between border-b border-sanctuary-200 px-4 py-3 dark:border-sanctuary-800">
     <div className="flex min-w-0 items-center gap-3">
       <span className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg surface-secondary text-primary-600 dark:text-primary-400">
@@ -31,6 +39,24 @@ const DrawerHeader: React.FC<{
       </div>
     </div>
     <div className="flex items-center gap-1">
+      <button
+        type="button"
+        title={isPinned ? 'Unpin Console' : 'Pin Console open'}
+        aria-label={isPinned ? 'Unpin Console' : 'Pin Console open'}
+        aria-pressed={isPinned}
+        onClick={onTogglePinned}
+        className={`inline-flex h-8 w-8 items-center justify-center rounded-md focus-visible:ring-2 focus-visible:ring-primary-500 ${
+          isPinned
+            ? 'bg-primary-50 text-primary-700 hover:bg-primary-100 dark:bg-primary-950 dark:text-primary-200 dark:hover:bg-primary-900'
+            : 'text-sanctuary-500 hover:bg-sanctuary-100 hover:text-sanctuary-800 dark:text-sanctuary-400 dark:hover:bg-sanctuary-800 dark:hover:text-sanctuary-100'
+        }`}
+      >
+        {isPinned ? (
+          <PinOff className="h-4 w-4" />
+        ) : (
+          <Pin className="h-4 w-4" />
+        )}
+      </button>
       <button
         type="button"
         title="New Console session"
@@ -60,7 +86,13 @@ export const ConsoleDrawer: React.FC<ConsoleDrawerProps> = ({
   isAdmin = false,
 }) => {
   const restoreFocusRef = useRef<HTMLElement | null>(null);
-  const controller = useConsoleDrawerController({ isOpen, wallets });
+  const [isPinned, setIsPinned] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const walletIds = useMemo(
+    () => new Set(wallets.map((wallet) => wallet.id)),
+    [wallets]
+  );
 
   const closeDrawer = useCallback(() => {
     onClose();
@@ -71,6 +103,37 @@ export const ConsoleDrawer: React.FC<ConsoleDrawerProps> = ({
     schedule(() => restoreFocusRef.current?.focus?.());
   }, [onClose]);
 
+  const defaultWalletId = useMemo(
+    () => walletIdFromWalletRoute(location.pathname, walletIds),
+    [location.pathname, walletIds]
+  );
+
+  const handleTurnComplete = useCallback(
+    (result: ConsoleTurnResult) => {
+      const filter = extractConsoleTransactionFilter(result, walletIds);
+      if (!filter) return;
+
+      navigate(`/wallets/${encodeURIComponent(filter.walletId)}`, {
+        state: {
+          activeTab: 'tx',
+          consoleTransactionFilter: filter,
+        },
+      });
+
+      if (!isPinned) {
+        closeDrawer();
+      }
+    },
+    [closeDrawer, isPinned, navigate, walletIds]
+  );
+
+  const controller = useConsoleDrawerController({
+    isOpen,
+    wallets,
+    defaultWalletId,
+    onTurnComplete: handleTurnComplete,
+  });
+
   useEffect(() => {
     if (!isOpen) return;
 
@@ -80,35 +143,43 @@ export const ConsoleDrawer: React.FC<ConsoleDrawerProps> = ({
         : null;
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        closeDrawer();
-      }
+      if (event.key !== 'Escape' || isPinned) return;
+      event.preventDefault();
+      closeDrawer();
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [closeDrawer, isOpen]);
+  }, [closeDrawer, isOpen, isPinned]);
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end" role="presentation">
-      <button
-        type="button"
-        aria-label="Close Console backdrop"
-        className="absolute inset-0 bg-black/20 backdrop-blur-[2px] dark:bg-black/40"
-        onClick={closeDrawer}
-      />
+    <div
+      className={`fixed inset-0 z-50 flex justify-end ${
+        isPinned ? 'pointer-events-none' : ''
+      }`}
+      role="presentation"
+    >
+      {isPinned ? null : (
+        <button
+          type="button"
+          aria-label="Close Console backdrop"
+          className="absolute inset-0 bg-transparent"
+          onClick={closeDrawer}
+        />
+      )}
       <aside
         role="dialog"
-        aria-modal="true"
+        aria-modal={!isPinned}
         aria-label="Sanctuary Console"
-        className="surface-flyout relative flex h-full w-full flex-col border-l border-sanctuary-200 shadow-2xl dark:border-sanctuary-800 sm:max-w-[500px]"
+        className="surface-flyout pointer-events-auto relative flex h-full w-full flex-col border-l border-sanctuary-200 shadow-2xl dark:border-sanctuary-800 sm:max-w-[500px]"
       >
         <DrawerHeader
           toolCount={controller.tools.length}
+          isPinned={isPinned}
           onNewSession={controller.startNewSession}
+          onTogglePinned={() => setIsPinned((current) => !current)}
           onClose={closeDrawer}
         />
 
@@ -146,7 +217,11 @@ export const ConsoleDrawer: React.FC<ConsoleDrawerProps> = ({
         ) : null}
 
         {controller.setupNeeded ? (
-          <ConsoleSetupState isAdmin={isAdmin} onClose={closeDrawer} />
+          <ConsoleSetupState
+            isAdmin={isAdmin}
+            reason={controller.setupReason}
+            onClose={closeDrawer}
+          />
         ) : (
           <>
             <ConsoleMessageList

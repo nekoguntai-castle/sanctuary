@@ -1,7 +1,7 @@
 /**
- * AI Natural Language Query Input
+ * AI transaction table filter input
  *
- * Allows users to query their wallet data using natural language.
+ * Allows users to filter wallet transactions using natural language.
  * Examples: "Show my largest receives", "How much did I spend last month?"
  */
 
@@ -14,7 +14,7 @@ import { useAIQueryInputController } from './AIQueryInput/useAIQueryInputControl
 
 interface AIQueryInputProps {
   walletId: string;
-  onQueryResult?: (result: NaturalQueryResult) => void;
+  onQueryResult?: (result: NaturalQueryResult | null) => void;
   className?: string;
 }
 
