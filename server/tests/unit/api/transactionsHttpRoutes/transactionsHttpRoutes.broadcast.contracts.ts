@@ -40,10 +40,21 @@ export function registerTransactionHttpBroadcastTests(): void {
         recipient: 'tb1qrecipient',
         amount: 10000,
         fee: 150,
+        label: 'hardware wallet send',
+        memo: 'coldcard raw hex path',
       });
 
     expect(response.status).toBe(200);
     expect(response.body.txid).toHaveLength(64);
+    expect(mockBroadcastAndSave).toHaveBeenCalledWith(walletId, undefined, {
+      recipient: 'tb1qrecipient',
+      amount: 10000,
+      fee: 150,
+      label: 'hardware wallet send',
+      memo: 'coldcard raw hex path',
+      utxos: [],
+      rawTxHex: 'deadbeef',
+    });
     expect(mockAuditLogFromRequest).toHaveBeenCalledWith(
       expect.any(Object),
       'TRANSACTION_BROADCAST',

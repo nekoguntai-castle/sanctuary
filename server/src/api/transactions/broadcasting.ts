@@ -122,6 +122,15 @@ const auditTransactionBroadcastFailure = async (
   });
 };
 
+const pickDefinedBroadcastFields = <K extends keyof TransactionBroadcastBody>(
+  body: TransactionBroadcastBody,
+  fields: readonly K[]
+): Partial<Pick<TransactionBroadcastBody, K>> => {
+  return Object.fromEntries(
+    fields.flatMap(field => body[field] === undefined ? [] : [[field, body[field]]])
+  ) as Partial<Pick<TransactionBroadcastBody, K>>;
+};
+
 const buildTransactionBroadcastMetadata = (
   body: TransactionBroadcastBody,
   evalRecipient: string | undefined,
@@ -131,12 +140,9 @@ const buildTransactionBroadcastMetadata = (
     recipient: evalRecipient ?? body.recipient ?? '',
     amount: evalAmount ?? body.amount ?? 0,
     fee: body.fee ?? 0,
-    /* v8 ignore start -- optional broadcast metadata defaults are defensive for older clients */
-    ...(body.label !== undefined && { label: body.label }),
-    ...(body.memo !== undefined && { memo: body.memo }),
-    /* v8 ignore stop */
+    ...pickDefinedBroadcastFields(body, ['label', 'memo'] as const),
     utxos: body.utxos ?? [],
-    ...(body.rawTxHex !== undefined && { rawTxHex: body.rawTxHex }),
+    ...pickDefinedBroadcastFields(body, ['rawTxHex'] as const),
   };
 };
 
