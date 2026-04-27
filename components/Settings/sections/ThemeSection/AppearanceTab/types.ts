@@ -15,6 +15,7 @@ export interface AppearanceTabController {
   isDark: boolean;
   contrastLevel: number;
   patternOpacity: number;
+  flyoutOpacity: number;
   userSeasonalBgs: SeasonalBackgrounds | undefined;
   favoriteBackgrounds: BackgroundOption[];
   staticBackgrounds: BackgroundInfo[];
@@ -26,4 +27,5 @@ export interface AppearanceTabController {
   toggleDarkMode: () => void;
   updateContrastLevel: (level: number) => void;
   updatePatternOpacity: (opacity: number) => void;
+  updateFlyoutOpacity: (opacity: number) => void;
 }

@@ -1,4 +1,5 @@
 import React from 'react';
+import { ConsoleDrawer } from '../ConsoleDrawer';
 import { SidebarContent } from './SidebarContent';
 import { LayoutShell } from './LayoutShell';
 import { LayoutProps } from './types';
@@ -20,13 +21,22 @@ export const Layout: React.FC<LayoutProps> = ({ children, darkMode, toggleTheme 
       getWalletCount={controller.getWalletCount}
       getDeviceCount={controller.getDeviceCount}
       onVersionClick={controller.handleVersionClick}
+      onOpenConsole={controller.openConsole}
       capabilities={controller.capabilities}
     />
   );
 
   return (
-    <LayoutShell controller={controller} sidebarContent={sidebarContent}>
-      {children}
-    </LayoutShell>
+    <>
+      <LayoutShell controller={controller} sidebarContent={sidebarContent}>
+        {children}
+      </LayoutShell>
+      <ConsoleDrawer
+        isOpen={controller.isConsoleOpen}
+        onClose={controller.closeConsole}
+        wallets={controller.wallets}
+        isAdmin={!!controller.user?.isAdmin}
+      />
+    </>
   );
 };

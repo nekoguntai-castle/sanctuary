@@ -312,6 +312,16 @@ class ThemeRegistry {
   }
 
   /**
+   * Apply flyout surface opacity to the document
+   * @param opacity - Flyout opacity value (50 to 100, default 92)
+   */
+  applyFlyoutOpacity(opacity: number): void {
+    const root = document.documentElement;
+    const clampedOpacity = Math.max(50, Math.min(100, opacity));
+    root.style.setProperty('--flyout-surface-opacity', `${clampedOpacity}%`);
+  }
+
+  /**
    * Apply noise overlay opacity to the document
    * @param opacity - Noise opacity value (0 to 100, default 50)
    */

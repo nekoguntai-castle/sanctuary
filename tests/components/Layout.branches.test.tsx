@@ -50,11 +50,13 @@ vi.mock('../../utils/errorHandler', () => ({
 vi.mock('../../components/Layout/SidebarContent', () => ({
   SidebarContent: ({
     onVersionClick,
+    onOpenConsole,
     toggleSection,
     toggleTheme,
     logout,
   }: {
     onVersionClick: () => void;
+    onOpenConsole: () => void;
     toggleSection: (section: 'wallets' | 'devices' | 'admin') => void;
     toggleTheme: () => void;
     logout: () => void;
@@ -66,6 +68,15 @@ vi.mock('../../components/Layout/SidebarContent', () => ({
       <button onClick={toggleTheme}>theme-toggle</button>
       <button onClick={logout}>logout-button</button>
       <button onClick={onVersionClick}>version-click</button>
+      <button onClick={onOpenConsole}>open-console</button>
+    </div>
+  ),
+}));
+
+vi.mock('../../components/ConsoleDrawer', () => ({
+  ConsoleDrawer: ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => (
+    <div data-testid="console-drawer" data-open={String(isOpen)}>
+      {isOpen ? <button onClick={onClose}>close-console</button> : null}
     </div>
   ),
 }));
@@ -473,9 +484,41 @@ describe('Layout branch coverage', () => {
     });
   }
 
+  function registerConsoleDrawerTests(): void {
+    it('opens the Console from the sidebar trigger and closes it through the drawer', async () => {
+      const user = userEvent.setup();
+      renderLayout();
+
+      expect(screen.getByTestId('console-drawer')).toHaveAttribute('data-open', 'false');
+
+      await user.click(screen.getByText('open-console'));
+      expect(screen.getByTestId('console-drawer')).toHaveAttribute('data-open', 'true');
+
+      await user.click(screen.getByText('close-console'));
+      expect(screen.getByTestId('console-drawer')).toHaveAttribute('data-open', 'false');
+    });
+
+    it('opens the Console with the global shortcut when focus is outside editable fields', async () => {
+      renderLayout();
+
+      act(() => {
+        window.dispatchEvent(new KeyboardEvent('keydown', {
+          code: 'Period',
+          key: '>',
+          ctrlKey: true,
+          shiftKey: true,
+          bubbles: true,
+        }));
+      });
+
+      expect(screen.getByTestId('console-drawer')).toHaveAttribute('data-open', 'true');
+    });
+  }
+
   registerDraftNotificationTests();
   registerConnectionNotificationTests();
   registerVersionModalTests();
   registerClipboardTests();
   registerMobileAndSecurityTests();
+  registerConsoleDrawerTests();
 });

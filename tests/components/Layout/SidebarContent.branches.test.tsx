@@ -69,6 +69,7 @@ const buildProps = (overrides: Partial<React.ComponentProps<typeof SidebarConten
   getWalletCount: vi.fn(() => 0),
   getDeviceCount: vi.fn(() => 0),
   onVersionClick: vi.fn(),
+  onOpenConsole: vi.fn(),
   ...overrides,
 });
 
@@ -141,6 +142,26 @@ describe('SidebarContent branch coverage', () => {
     render(<SidebarContent {...props} />);
 
     expect(screen.getByText('Intelligence')).toBeInTheDocument();
+  });
+
+  it('places the Console quick action directly after Dashboard', () => {
+    const props = buildProps({ capabilities: { intelligence: true } });
+    render(<SidebarContent {...props} />);
+
+    const nav = screen.getByRole('navigation');
+    const dashboard = screen.getByRole('button', { name: 'Dashboard' });
+    const consoleButton = screen.getByRole('button', { name: 'Open Sanctuary Console' });
+    const intelligence = screen.getByRole('button', { name: 'Intelligence' });
+
+    expect(consoleButton.getAttribute('title')).toContain('Open Sanctuary Console');
+    expect(Array.from(nav.querySelectorAll('button')).slice(0, 3)).toEqual([
+      dashboard,
+      consoleButton,
+      intelligence,
+    ]);
+
+    fireEvent.click(consoleButton);
+    expect(props.onOpenConsole).toHaveBeenCalledTimes(1);
   });
 
   it('hides Intelligence nav item when its required capability is unavailable', () => {

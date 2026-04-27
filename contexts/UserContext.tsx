@@ -93,7 +93,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Initialize theme based on user preferences whenever user changes
   useEffect(() => {
     if (user && user.preferences) {
-      const { darkMode, theme, background, contrastLevel, patternOpacity } = user.preferences;
+      const { darkMode, theme, background, contrastLevel, patternOpacity, flyoutOpacity } = user.preferences;
 
       // Toggle Dark Mode
       if (darkMode) {
@@ -112,6 +112,9 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Apply pattern opacity (default to 50 if not set)
       themeRegistry.applyPatternOpacity(patternOpacity ?? 50);
 
+      // Apply flyout opacity (default to near-solid glass if not set)
+      themeRegistry.applyFlyoutOpacity(flyoutOpacity ?? 92);
+
       // Add smooth transition
       document.body.style.transition = 'background-color 0.5s ease, color 0.5s ease';
     } else {
@@ -120,6 +123,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       themeRegistry.applyTheme('sanctuary', 'dark', 0);
       themeRegistry.applyPattern('sanctuary-hero', 'sanctuary');
       themeRegistry.applyPatternOpacity(50); // Default opacity
+      themeRegistry.applyFlyoutOpacity(92); // Default flyout opacity
 
       // Add smooth transition
       document.body.style.transition = 'background-color 0.5s ease, color 0.5s ease';

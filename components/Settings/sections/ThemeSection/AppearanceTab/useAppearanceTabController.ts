@@ -33,6 +33,7 @@ export const useAppearanceTabController = (): AppearanceTabController => {
     isDark,
     contrastLevel: preferences?.contrastLevel ?? 0,
     patternOpacity: preferences?.patternOpacity ?? 50,
+    flyoutOpacity: preferences?.flyoutOpacity ?? 92,
     userSeasonalBgs,
     favoriteBackgrounds,
     staticBackgrounds,
@@ -52,5 +53,6 @@ export const useAppearanceTabController = (): AppearanceTabController => {
     toggleDarkMode: () => updatePreferences({ darkMode: !isDark }),
     updateContrastLevel: (level) => updatePreferences({ contrastLevel: level }),
     updatePatternOpacity: (opacity) => updatePreferences({ patternOpacity: opacity }),
+    updateFlyoutOpacity: (opacity) => updatePreferences({ flyoutOpacity: opacity }),
   };
 };

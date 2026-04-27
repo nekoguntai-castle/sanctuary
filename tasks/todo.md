@@ -1,3 +1,33 @@
+# Active Task: Console UI Drawer 2026-04-26
+
+Status: in progress
+
+Goal: add the in-app Sanctuary Console UI surface as a right-side flyout with typed frontend API calls, prompt history/replay controls, theme-aware opacity, and a subtle global sidebar trigger backed by the merged Console backend.
+
+## Plan
+
+- [x] Inspect the app shell, sidebar, theme preferences, existing Intelligence UI, frontend API patterns, and Console backend contract.
+- [x] Add typed frontend Console API helpers and models for sessions, turns, tools, prompt history, replay, delete, and save/expire updates.
+- [x] Build a theme-aware Console drawer/controller with general and wallet scope selection, prompt submission, response/tool trace display, saved prompt history, replay, delete, setup-disabled states, and focus handling.
+- [x] Wire a compact AI quick-action icon row directly under Dashboard in the sidebar, plus a conservative keyboard shortcut foundation for opening the drawer.
+- [x] Add flyout opacity to Theme settings and apply it to shared flyout surfaces so users can choose translucent glass or solid presentation across light/dark themes.
+- [x] Add focused frontend API/component tests for drawer behavior, history replay/delete/save, setup-disabled states, sidebar trigger placement, shortcut handling, and flyout opacity preferences.
+- [x] Run focused verification, touched-file lizard checks, diff checks, quality review, edge-case audit, and self-review.
+- [ ] Deliver the slice through PR, merge queue, merge verification, and branch cleanup.
+
+## Review
+
+- Remaining implementation after this slice: 2 slices (Admin MCP/AI settings UI/API; release proof/docs).
+- Added a typed frontend Console API module for tools, sessions, turns, prompt history, save/delete/replay, and expiration updates with retries disabled on model-backed mutation paths to avoid duplicate turns/history.
+- Added a right-side Sanctuary Console drawer with general/wallet scope selection, session switching/new session, prompt submission, response/tool trace display, prompt history search/display, replay, save/unsave, delete, 30-day expiration/clear-expiration controls, setup-required state, Escape/backdrop close, and focus restore.
+- Added the subtle Console quick-action row directly beneath Dashboard in the sidebar and a central shortcut registry/hook with editable-target exclusion; the Console opens on the registered global shortcut and through the icon trigger.
+- Added `flyoutOpacity` as a typed user preference, server/gateway validation field, theme registry CSS variable, and Theme > Visual Settings slider; `.surface-flyout` now matches light/dark theme colors with adjustable glass/solid opacity.
+- Verification passed locally: focused Console/Layout/Theme/UserContext/shortcut Vitest suite (76 tests), full frontend suite (`npm run test:run`, 415 files / 5,668 tests), app/test/server typechecks, app/server lint, focused server auth route tests (100 tests), gateway request-validation tests (75 tests), touched-file lizard `-C 15`, and `git diff --check`.
+- Quality review: split the drawer into small UI components plus a controller hook; all new production files remain below the 400-line design warning and lizard complexity gate; formatting churn from the first verification pass was removed before delivery.
+- Edge-case audit: empty wallets fall back to General scope, deleted/missing selected wallets reset scope, empty prompts do not submit, failed turns restore input, setup 403s show the setup state without stale errors, prompt expiration can be cleared, global shortcuts ignore editable/code targets, and flyout opacity is clamped server-side to 50-100.
+
+---
+
 # Active Task: Console Backend Protocol 2026-04-26
 
 Status: complete
