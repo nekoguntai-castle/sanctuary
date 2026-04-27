@@ -9,6 +9,7 @@ import { registerAISettingsInitialLoadingContracts } from './AISettings/AISettin
 import { registerAISettingsModelPullContracts } from './AISettings/AISettings.model-pull.contracts';
 import { registerAISettingsModelSelectionContracts } from './AISettings/AISettings.model-selection.contracts';
 import { registerAISettingsOllamaDetectionContracts } from './AISettings/AISettings.ollama-detection.contracts';
+import { registerAISettingsProviderMcpContracts } from './AISettings/AISettings.provider-mcp.contracts';
 import { registerAISettingsSaveConfigurationContracts } from './AISettings/AISettings.save-configuration.contracts';
 import { registerAISettingsSecurityNoticeContracts } from './AISettings/AISettings.security-notice.contracts';
 import { registerAISettingsTestConnectionContracts } from './AISettings/AISettings.test-connection.contracts';
@@ -28,4 +29,5 @@ describe('AISettings', () => {
   registerAISettingsCustomModelPullContracts();
   registerAISettingsSecurityNoticeContracts();
   registerAISettingsFeaturesSectionContracts();
+  registerAISettingsProviderMcpContracts();
 });

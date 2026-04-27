@@ -29,6 +29,10 @@ vi.mock('../../../src/middleware/auth', () => ({
   requireAdmin: (_req: any, _res: any, next: () => void) => next(),
 }));
 
+vi.mock('../../../src/middleware/rateLimit', () => ({
+  rateLimit: () => (_req: any, _res: any, next: () => void) => next(),
+}));
+
 vi.mock('../../../src/repositories', () => ({
   mcpApiKeyRepository: mocks.mcpApiKeyRepository,
   userRepository: mocks.userRepository,
@@ -46,6 +50,27 @@ vi.mock('../../../src/services/auditService', () => ({
   auditService: {
     logFromRequest: mocks.logFromRequest,
   },
+}));
+
+vi.mock('../../../src/config', () => ({
+  default: {
+    security: {
+      encryptionKey: 'test-encryption-key-for-mcp',
+      jwt: { secret: 'test-jwt-secret-for-mcp' },
+    },
+  },
+  getConfig: () => ({
+    mcp: {
+      enabled: true,
+      host: '0.0.0.0',
+      port: 3003,
+      allowedHosts: ['localhost', 'sanctuary.local'],
+      rateLimitPerMinute: 120,
+      defaultPageSize: 100,
+      maxPageSize: 500,
+      maxDateRangeDays: 365,
+    },
+  }),
 }));
 
 import mcpKeysRouter from '../../../src/api/admin/mcpKeys';
@@ -68,6 +93,24 @@ describe('Admin MCP key routes', () => {
     vi.clearAllMocks();
     mocks.userRepository.findById.mockResolvedValue({ id: userId, username: 'alice', isAdmin: false });
     mocks.walletRepository.hasAccess.mockResolvedValue(true);
+  });
+
+  it('returns non-secret MCP server status for admin setup', async () => {
+    const response = await request(app).get('/api/v1/admin/mcp-keys/status').expect(200);
+
+    expect(response.body).toMatchObject({
+      enabled: true,
+      host: '0.0.0.0',
+      port: 3003,
+      allowedHosts: ['localhost', 'sanctuary.local'],
+      rateLimitPerMinute: 120,
+      defaultPageSize: 100,
+      maxPageSize: 500,
+      maxDateRangeDays: 365,
+      serverName: 'sanctuary',
+    });
+    expect(response.body).not.toHaveProperty('apiKey');
+    expect(response.body).not.toHaveProperty('keyHash');
   });
 
   it('lists MCP API key metadata without secrets', async () => {

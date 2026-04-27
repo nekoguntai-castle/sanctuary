@@ -10,12 +10,31 @@ import * as adminApi from '../../../src/api/admin';
 import * as aiApi from '../../../src/api/ai';
 import { ApiError } from '../../../src/api/client';
 import { createLogger } from '../../../utils/logger';
+import type { AIProviderCapabilities, AIProviderType } from '../../../src/api/admin';
+import {
+  createProviderProfile,
+  normalizeProviderProfiles,
+  replaceProviderProfile,
+  stripProviderCredentialState,
+  type EditableProviderProfile,
+} from '../providerProfileModel';
 
 const log = createLogger('AISettings:useAISettings');
 
 interface UseAISettingsReturn {
   // State
   featureUnavailable: boolean;
+  providerProfiles: EditableProviderProfile[];
+  activeProviderProfileId: string;
+  providerName: string;
+  setProviderName: (value: string) => void;
+  providerType: AIProviderType;
+  setProviderType: (value: AIProviderType) => void;
+  providerCapabilities: AIProviderCapabilities;
+  credentialApiKey: string;
+  setCredentialApiKey: (value: string) => void;
+  clearCredential: boolean;
+  setClearCredential: (value: boolean) => void;
   aiEnabled: boolean;
   setAiEnabled: (value: boolean) => void;
   aiEndpoint: string;
@@ -35,6 +54,10 @@ interface UseAISettingsReturn {
   handleSaveConfig: () => Promise<void>;
   handleDetectOllama: () => Promise<void>;
   loadModels: () => Promise<void>;
+  handleSelectProviderProfile: (profileId: string) => void;
+  handleAddProviderProfile: () => void;
+  handleRemoveActiveProviderProfile: () => void;
+  handleProviderCapabilityChange: (capability: keyof AIProviderCapabilities, value: boolean) => void;
 
   // Model list (loaded alongside settings)
   availableModels: aiApi.OllamaModel[];
@@ -47,6 +70,18 @@ interface UseAISettingsReturn {
 export function useAISettings(): UseAISettingsReturn {
   // Feature flag state
   const [featureUnavailable, setFeatureUnavailable] = useState(false);
+
+  const [providerProfiles, setProviderProfiles] = useState<EditableProviderProfile[]>([]);
+  const [activeProviderProfileId, setActiveProviderProfileId] = useState('default-ollama');
+  const [providerName, setProviderName] = useState('Default Ollama');
+  const [providerType, setProviderType] = useState<AIProviderType>('ollama');
+  const [providerCapabilities, setProviderCapabilities] = useState<AIProviderCapabilities>({
+    chat: true,
+    toolCalls: false,
+    strictJson: true,
+  });
+  const [credentialApiKey, setCredentialApiKey] = useState('');
+  const [clearCredential, setClearCredential] = useState(false);
 
   // AI settings state
   const [aiEnabled, setAiEnabled] = useState(false);
@@ -70,6 +105,24 @@ export function useAISettings(): UseAISettingsReturn {
   const [availableModels, setAvailableModels] = useState<aiApi.OllamaModel[]>([]);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [showModelDropdown, setShowModelDropdown] = useState(false);
+
+  const applyProviderProfile = useCallback((profile: EditableProviderProfile) => {
+    setActiveProviderProfileId(profile.id);
+    setProviderName(profile.name);
+    setProviderType(profile.providerType);
+    setProviderCapabilities(profile.capabilities);
+    setAiEndpoint(profile.endpoint);
+    setAiModel(profile.model);
+    setCredentialApiKey('');
+    setClearCredential(false);
+  }, []);
+
+  const applySettingsResponse = useCallback((settings: adminApi.SystemSettings) => {
+    const providerState = normalizeProviderProfiles(settings);
+    setProviderProfiles(providerState.profiles);
+    applyProviderProfile(providerState.activeProfile);
+    setAiEnabled(settings.aiEnabled || false);
+  }, [applyProviderProfile]);
 
   const loadModels = useCallback(async () => {
     if (!aiEndpoint) return;
@@ -112,9 +165,7 @@ export function useAISettings(): UseAISettingsReturn {
           adminApi.getSystemSettings(),
           aiApi.getOllamaContainerStatus().catch(() => null),
         ]);
-        setAiEnabled(settings.aiEnabled || false);
-        setAiEndpoint(settings.aiEndpoint || '');
-        setAiModel(settings.aiModel || '');
+        applySettingsResponse(settings);
         if (containerResult) {
           setContainerStatus(containerResult);
         }
@@ -125,7 +176,7 @@ export function useAISettings(): UseAISettingsReturn {
       }
     };
     loadSettings();
-  }, []);
+  }, [applySettingsResponse]);
 
   // Load models when endpoint changes
   useEffect(() => {
@@ -140,10 +191,33 @@ export function useAISettings(): UseAISettingsReturn {
     setSaveSuccess(false);
 
     try {
-      await adminApi.updateSystemSettings({
-        aiEndpoint,
-        aiModel,
+      const activeProfile = {
+        id: activeProviderProfileId,
+        name: providerName.trim() || 'Unnamed provider',
+        providerType,
+        endpoint: aiEndpoint.trim(),
+        model: aiModel.trim(),
+        capabilities: providerCapabilities,
+      };
+      const nextProfiles = replaceProviderProfile(providerProfiles, activeProfile)
+        .map(stripProviderCredentialState);
+      const credentialUpdate =
+        credentialApiKey || clearCredential
+          ? [{
+              profileId: activeProfile.id,
+              type: 'api-key' as const,
+              apiKey: credentialApiKey,
+              clear: clearCredential,
+            }]
+          : undefined;
+      const nextSettings = await adminApi.updateSystemSettings({
+        aiEndpoint: activeProfile.endpoint,
+        aiModel: activeProfile.model,
+        aiProviderProfiles: nextProfiles,
+        aiActiveProviderProfileId: activeProfile.id,
+        ...(credentialUpdate ? { aiProviderCredentialUpdates: credentialUpdate } : {}),
       });
+      applySettingsResponse(nextSettings);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
       // Reload models after saving
@@ -198,8 +272,50 @@ export function useAISettings(): UseAISettingsReturn {
     setShowModelDropdown(false);
   };
 
+  const handleSelectProviderProfile = (profileId: string) => {
+    const activeProfile = providerProfiles.find((profile) => profile.id === profileId);
+    if (activeProfile) {
+      applyProviderProfile(activeProfile);
+    }
+  };
+
+  const handleAddProviderProfile = () => {
+    const profile = createProviderProfile(`provider-${Date.now().toString(36)}`);
+    setProviderProfiles((profiles) => [...profiles, profile]);
+    applyProviderProfile(profile);
+  };
+
+  const handleRemoveActiveProviderProfile = () => {
+    if (providerProfiles.length <= 1) return;
+    const nextProfiles = providerProfiles.filter((profile) => profile.id !== activeProviderProfileId);
+    const fallbackProfile = nextProfiles[0]!;
+    setProviderProfiles(nextProfiles);
+    applyProviderProfile(fallbackProfile);
+  };
+
+  const handleProviderCapabilityChange = (
+    capability: keyof AIProviderCapabilities,
+    value: boolean,
+  ) => {
+    setProviderCapabilities((capabilities) => ({
+      ...capabilities,
+      [capability]: value,
+    }));
+  };
+
   return {
     featureUnavailable,
+    providerProfiles,
+    activeProviderProfileId,
+    providerName,
+    setProviderName,
+    providerType,
+    setProviderType,
+    providerCapabilities,
+    credentialApiKey,
+    setCredentialApiKey,
+    clearCredential,
+    setClearCredential,
     aiEnabled,
     setAiEnabled,
     aiEndpoint,
@@ -217,6 +333,10 @@ export function useAISettings(): UseAISettingsReturn {
     handleSaveConfig,
     handleDetectOllama,
     loadModels,
+    handleSelectProviderProfile,
+    handleAddProviderProfile,
+    handleRemoveActiveProviderProfile,
+    handleProviderCapabilityChange,
     availableModels,
     isLoadingModels,
     showModelDropdown,

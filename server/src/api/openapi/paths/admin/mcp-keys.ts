@@ -14,6 +14,19 @@ const adminMcpKeyIdParameter = {
 } as const;
 
 export const adminMcpKeyPaths = {
+  '/admin/mcp-keys/status': {
+    get: {
+      tags: ['Admin'],
+      summary: 'Get MCP server status',
+      description: 'Return non-secret MCP server runtime settings for admin setup.',
+      security: bearerAuth,
+      responses: {
+        200: jsonResponse('MCP server status', '#/components/schemas/AdminMcpServerStatus'),
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+      },
+    },
+  },
   '/admin/mcp-keys': {
     get: {
       tags: ['Admin'],

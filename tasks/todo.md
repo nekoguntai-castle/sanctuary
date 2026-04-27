@@ -1,6 +1,38 @@
+# Active Task: Admin AI/MCP Settings 2026-04-26
+
+Status: complete
+
+Goal: extend Admin > AI Settings into the control surface for typed model provider profiles/credentials and external MCP client access, so admins can configure LAN/local LLM providers and issue/revoke scoped MCP bearer credentials without exposing secrets.
+
+## Plan
+
+- [x] Inspect the existing AI Settings page, typed provider settings backend, MCP key API, admin routes, OpenAPI, and frontend test harness.
+- [x] Add typed frontend API helpers for MCP status, MCP key list/create/revoke, and one-time token responses.
+- [x] Add Admin > AI Settings UI for typed provider profile metadata, credential update/clear state, and provider capability flags.
+- [x] Add Admin > AI Settings UI for MCP server status plus scoped key creation, one-time token display, key inventory, and revoke handling.
+- [x] Add or update backend status/OpenAPI coverage only where the existing API contract is missing data needed by the admin UI.
+- [x] Add focused tests for provider profile saves/credential updates, MCP status rendering, key creation token display, revoke handling, empty/error states, and API client paths.
+- [x] Run focused verification, touched-file lizard checks, diff checks, quality review, edge-case audit, and self-review.
+- [x] Deliver the slice through PR, merge queue, merge verification, and branch cleanup.
+
+## Review
+
+- Remaining implementation after this slice: 1 slice (release proof/docs).
+- Scope decision: keep the surface inside the existing Admin > AI Settings route instead of adding a separate admin page; this matches the product decision to rename and consolidate AI Assistant settings.
+- Added typed Admin AI provider profile editing for profile name/type, endpoint/model, capabilities, active profile selection, add/remove profile behavior, write-only API-key credential updates, clear-on-save state, and credential status labels that never persist or echo secrets.
+- Added typed MCP frontend API helpers and an Admin > AI Settings > MCP Access tab with server status, target-user selection, wallet scope parsing/deduping, optional expiration, audit-log scope toggle, one-time token display/dismissal, active/expired/revoked key inventory, and revoke handling.
+- Added an admin MCP server status endpoint plus OpenAPI schemas/paths so the UI can show non-secret MCP host/rate-limit/page/window metadata without inventing client-side assumptions.
+- Refactored AI Settings UI into smaller provider/model/additional/MCP components and split wallet-agent/MCP contracts out of the oversized shared admin type file; touched production files stay under the 400-line design warning and lizard `CCN <= 15`.
+- Edge-case audit: empty wallet scope maps to all accessible wallets, duplicate wallet IDs dedupe before submit, invalid/blank expiration is omitted, create is blocked without target user/name, refresh/create/revoke errors surface without stale tokens, removing the last provider is ignored, missing active provider metadata falls back to "No credential", and credential state is stripped from persisted profile payloads.
+- Verification passed locally: focused AI Settings/API suite (90 tests), targeted new/refactored AI/MCP coverage at 100%, full frontend coverage (`npm run test:coverage`, 422 files / 5,712 tests, 100% statements/branches/functions/lines), `npm run typecheck:app`, `npm run typecheck:tests`, `npm run typecheck:server:tests`, `npm run lint:app`, `npm run lint:server`, focused backend admin MCP route tests (7 tests), `npm run check:openapi-route-coverage`, touched-file lizard `-C 15`, and `git diff --check`.
+- PR delivery follow-up: replaced MCP-token-shaped UI test fixtures with low-entropy sentinels so secret scanning gates fixtures without broad allowlists, regenerated the server architecture graph, and layered a CodeQL-recognized `express-rate-limit` guard ahead of Sanctuary's Redis-backed API limiter on admin MCP key routes.
+- Quality review: the typed provider model is isolated in a pure helper with focused tests; MCP access state lives in a dedicated hook; the MCP API types are colocated with the MCP client; the existing admin barrel still exports stable public types so callers do not need broad rewrites.
+
+---
+
 # Active Task: Console UI Drawer 2026-04-26
 
-Status: in progress
+Status: complete
 
 Goal: add the in-app Sanctuary Console UI surface as a right-side flyout with typed frontend API calls, prompt history/replay controls, theme-aware opacity, and a subtle global sidebar trigger backed by the merged Console backend.
 
@@ -13,10 +45,11 @@ Goal: add the in-app Sanctuary Console UI surface as a right-side flyout with ty
 - [x] Add flyout opacity to Theme settings and apply it to shared flyout surfaces so users can choose translucent glass or solid presentation across light/dark themes.
 - [x] Add focused frontend API/component tests for drawer behavior, history replay/delete/save, setup-disabled states, sidebar trigger placement, shortcut handling, and flyout opacity preferences.
 - [x] Run focused verification, touched-file lizard checks, diff checks, quality review, edge-case audit, and self-review.
-- [ ] Deliver the slice through PR, merge queue, merge verification, and branch cleanup.
+- [x] Deliver the slice through PR, merge queue, merge verification, and branch cleanup.
 
 ## Review
 
+- Delivery complete: PR #193 merged at `a6b7082e Add Sanctuary Console drawer UI (#193)`, `origin/main` contains the merge commit, and post-merge main checks passed.
 - Remaining implementation after this slice: 2 slices (Admin MCP/AI settings UI/API; release proof/docs).
 - Added a typed frontend Console API module for tools, sessions, turns, prompt history, save/delete/replay, and expiration updates with retries disabled on model-backed mutation paths to avoid duplicate turns/history.
 - Added a right-side Sanctuary Console drawer with general/wallet scope selection, session switching/new session, prompt submission, response/tool trace display, prompt history search/display, replay, save/unsave, delete, 30-day expiration/clear-expiration controls, setup-required state, Escape/backdrop close, and focus restore.
