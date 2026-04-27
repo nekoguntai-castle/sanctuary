@@ -21,7 +21,7 @@ Release target: **minimum 97/100 A**, no hard-fail blockers, `security_high=0`, 
   - Owns `services/hardwareWallet/adapters/trezor/signPsbt.ts`, `services/hardwareWallet/adapters/bitbox/signPsbt.ts`, `utils/urDeviceDecoder.ts`, `utils/utxoAge.ts`, `hooks/send/useBroadcast.ts`, `hooks/send/useDraftManagement.ts`, and `hooks/send/useQrSigning.ts`.
   - Extract signing request builders, derivation/path helpers, previous-transaction/reference shaping, QR/UR parsing helpers, draft DTO mapping, and broadcast state transitions.
   - Add focused tests around singlesig/multisig, missing derivations, malformed UR/QR payloads, empty drafts, binary PSBT detection, and hardware-device error mapping.
-- [ ] Slice 4 - UI component and animation complexity:
+- [x] Slice 4 - UI component and animation complexity:
   - Owns flagged frontend components such as `components/send/OutputRow.tsx`, `components/send/steps/review/TransactionSummary.tsx`, `components/WalletDetail/WalletHeader.tsx`, `components/cells/DeviceCells.tsx`, `components/NetworkConnectionCard/ServerRow.tsx`, `components/Dashboard/hooks/useDashboardData.ts`, `components/ui/CustomIcons.tsx`, `components/UTXOList/UTXOGarden/utxoGardenModel.ts`, `components/PayjoinSection.tsx`, `components/TransactionFlowPreview.tsx`, and flagged animation modules.
   - Split render-branch decisions, class/model builders, icon lookup maps, animation setup phases, and data shaping into component helpers/hooks without changing visual behavior.
   - Verify with focused component tests and existing frontend coverage; use screenshots only where animation/UI framing changes.
@@ -29,11 +29,17 @@ Release target: **minimum 97/100 A**, no hard-fail blockers, `security_high=0`, 
   - [x] Verify device icon rule-table precedence against the previous branch order, including enum exact matches before generic fallback behavior.
   - [x] Run targeted lizard for all Slice 4 production files at `CCN <= 15`.
   - [x] Run focused Slice 4 Vitest suites and required frontend gates.
-  - [ ] Deliver Slice 4 as a dedicated PR and verify merge before starting Slice 5.
+  - [x] Deliver Slice 4 as a dedicated PR and verify merge before starting Slice 5.
 - [ ] Slice 5 - test harness, e2e, and quality-script complexity:
   - Owns flagged non-production files including `scripts/check-openapi-route-coverage.mjs`, e2e route handlers, `server/tests/mocks/aiContainer.ts`, PSBT/hardware-wallet test helpers, and console tool test helpers.
   - Reduce full-scan lizard warnings in test/support code after production hotspots are clean, keeping fixture intent obvious and avoiding synthetic indirection.
   - Add helper-level tests where script parsing or route-handler mocks become separate utilities.
+  - [x] Identify current Slice 5 lizard warnings from `scripts/`, e2e route handlers, server test mocks, PSBT/hardware-wallet helpers, and console tool helpers.
+  - [x] Refactor flagged test/support files into behavior-preserving helpers without obscuring fixture intent.
+  - [x] Add or update focused tests for extracted script parsing and test helper utilities where coverage is not already direct.
+  - [x] Run targeted lizard for Slice 5 touched files at `CCN <= 15`.
+  - [x] Run focused Slice 5 suites plus required affected gates.
+  - [ ] Deliver Slice 5 as a dedicated PR and verify merge before starting Slice 6.
 - [ ] Slice 6 - vector fixture size and low-audit triage:
   - Evaluate sharding or generation-on-demand for `server/tests/fixtures/verified-address-vectors.ts` and `scripts/verify-addresses/output/verified-vectors.ts`; proceed only if address-vector coverage and deterministic verification stay intact.
   - Re-run root audit, identify the 16 low advisories, apply safe minor/patch upgrades where available, and document any remaining upstream/hardware-wallet transitive risk.
@@ -58,6 +64,10 @@ Release target: **minimum 97/100 A**, no hard-fail blockers, `security_high=0`, 
 - Slice 4 implementation: split Transaction Flow Preview into a thin shell plus flow-part components; extracted Dashboard data shaping and websocket notification builders; moved Payjoin education modal, tooltip/body pieces, wallet badge rendering, wallet sync status rendering, device/server row class/model decisions, output amount/QR helpers, and transaction-summary amount/payjoin labels into focused helpers. Converted `getDeviceIcon` to an ordered rule table that preserves the old branch order and exact enum checks before string-pattern matches. `TransactionFlowPreview.tsx`, `PayjoinSection.tsx`, and `useDashboardData.ts` are now under the 400-line design-warning threshold.
 - Slice 4 verification: focused Slice 4 Vitest suite passed (10 files / 151 tests); targeted touched-file lizard is clean at `CCN <= 15`; `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, and `git diff --check` passed; full frontend coverage passed at 100% statements/branches/functions/lines (422 files / 5,712 tests).
 - Slice 4 PR delivery follow-up: regenerated `docs/architecture/generated/frontend.md` after PR #200 architecture CI detected stale generated frontend graphs from the new helper modules.
+- Slice 4 delivery: PR #200 merged through the merge queue at `0c2d45c0cfcb221cc6435f79e306837869ad8761`; `origin/main` contains the merge commit. The local Slice 4 branch remains for final cleanup because GitHub squash-style landing made `git branch -d` unable to prove ancestry without force deletion.
+- Slice 5 discovery: full pinned lizard after Slice 4 reports two remaining warnings: `server/tests/unit/assistant/consoleToolExecution.test.ts` and residual production warning `server/src/api/transactions/broadcasting.ts`.
+- Slice 5 implementation: replaced nullable branch-heavy console trace test shaping with a defined-field picker, and replaced conditional transaction broadcast metadata spreads with a small defined-field helper. Added route-contract assertion coverage for optional label/memo/raw transaction metadata.
+- Slice 5 verification: focused server tests passed (`consoleToolExecution` and `transactions-http-routes`, 78 tests); targeted touched-file lizard passed; full pinned lizard now reports zero warnings; `npm run typecheck:server:tests`, `npm run lint:server`, `npm run check:openapi-route-coverage`, `npm run test:backend:coverage`, and `git diff --check` passed. A first broad server-test command was mis-scoped and failed in sandbox on unrelated Supertest port binds; the exact focused server Vitest command passed afterward.
 - Recommended sequencing: fix production backend complexity first, then hardware/send flows, then UI/animation code, then test/support warnings, then fixture/audit cleanup.
 - Release blockers: no hard-fail blockers, 0 lizard threshold warnings or an explicitly accepted residual list, 0 high/critical audit findings, 0 gitleaks findings, and coverage/lint/typecheck still green.
 - Non-blocking unless easy and safe: root low-severity transitive advisories and vector fixture sharding. These can improve the score, but should not drive risky package downgrades or weaker address-vector tests.

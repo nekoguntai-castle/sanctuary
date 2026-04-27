@@ -68,24 +68,37 @@ function definition(overrides: Record<string, unknown> = {}) {
   };
 }
 
+const traceNullableDefaults = {
+  input: null,
+  facts: null,
+  provenance: null,
+  redactions: null,
+  truncation: null,
+  warnings: null,
+  sensitivity: null,
+  rowCount: null,
+  walletCount: null,
+  durationMs: null,
+  errorCode: null,
+  errorMessage: null,
+};
+
+const traceValueFields = Object.keys(traceNullableDefaults);
+
+function pickDefinedTraceValues(input: Record<string, unknown>) {
+  return Object.fromEntries(
+    traceValueFields.flatMap(field => input[field] === undefined ? [] : [[field, input[field]]])
+  );
+}
+
 function trace(input: Record<string, unknown>) {
   return {
     id: 'trace-1',
     turnId,
     toolName: input.toolName,
     status: input.status,
-    input: input.input ?? null,
-    facts: input.facts ?? null,
-    provenance: input.provenance ?? null,
-    redactions: input.redactions ?? null,
-    truncation: input.truncation ?? null,
-    warnings: input.warnings ?? null,
-    sensitivity: input.sensitivity ?? null,
-    rowCount: input.rowCount ?? null,
-    walletCount: input.walletCount ?? null,
-    durationMs: input.durationMs ?? null,
-    errorCode: input.errorCode ?? null,
-    errorMessage: input.errorMessage ?? null,
+    ...traceNullableDefaults,
+    ...pickDefinedTraceValues(input),
     createdAt: new Date(),
   };
 }
