@@ -16,6 +16,19 @@ import path from 'path';
 import type { CombinedConfig, LogLevel, NetworkType, ElectrumProtocol } from './types';
 import { loadFeatureFlags } from './features';
 import { assertValidConfig } from './schema';
+import {
+  buildElectrumClientConfig,
+  buildMaintenanceConfig,
+  buildMcpConfig,
+  buildMonitoringConfig,
+  buildPushConfig,
+  buildRateLimitConfig,
+  buildSyncConfig,
+  buildWebsocketConfig,
+  buildWorkerHealthConfig,
+  parseIntegerEnv,
+  parseStringEnv,
+} from './envSections';
 
 // Load environment variables
 dotenv.config({ path: path.join(__dirname, '../../.env') });
@@ -41,227 +54,45 @@ export function getConfig(): CombinedConfig {
  * Called once at startup
  */
 function loadConfig(): CombinedConfig {
-  // Build nested config structure
   const jwtSecret = getJwtSecret();
-  const jwtExpiresIn = process.env.JWT_EXPIRES_IN || '1h';
-  const jwtRefreshExpiresIn = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
+  const jwtExpiresIn = parseStringEnv('JWT_EXPIRES_IN', '1h');
+  const jwtRefreshExpiresIn = parseStringEnv('JWT_REFRESH_EXPIRES_IN', '7d');
   const gatewaySecret = getGatewaySecret();
   const corsAllowedOrigins = getCorsAllowedOrigins();
   const nodeEnv = parseNodeEnv();
-  const port = parseInt(process.env.PORT || '3001', 10);
-  const apiUrl = process.env.API_URL || 'http://localhost:3001';
-  const clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
-  const databaseUrl = process.env.DATABASE_URL || '';
-  const workerHealthPort = parseInt(process.env.WORKER_HEALTH_PORT || '3002', 10);
-  const defaultWorkerHost = nodeEnv === 'production' ? 'worker' : 'localhost';
-  const workerHealthUrl = process.env.WORKER_HEALTH_URL || `http://${defaultWorkerHost}:${workerHealthPort}/health`;
-  const workerHealthTimeoutMs = parseInt(process.env.WORKER_HEALTH_TIMEOUT_MS || '3000', 10);
-  const workerHealthCheckIntervalMs = parseInt(process.env.WORKER_HEALTH_CHECK_INTERVAL_MS || '10000', 10);
-
-  const bitcoin = {
-    network: parseBitcoinNetwork(),
-    rpc: {
-      host: process.env.BITCOIN_RPC_HOST || 'localhost',
-      port: parseInt(process.env.BITCOIN_RPC_PORT || '8332', 10),
-      user: process.env.BITCOIN_RPC_USER || '',
-      password: process.env.BITCOIN_RPC_PASSWORD || '',
-    },
-    electrum: {
-      host: process.env.ELECTRUM_HOST || 'electrum.blockstream.info',
-      port: parseInt(process.env.ELECTRUM_PORT || '50002', 10),
-      protocol: parseElectrumProtocol(),
-    },
-  };
-
-  const priceApis = {
-    mempool: process.env.MEMPOOL_API || 'https://mempool.space/api/v1',
-    coingecko: process.env.COINGECKO_API || 'https://api.coingecko.com/api/v3',
-    kraken: process.env.KRAKEN_API || 'https://api.kraken.com/0/public',
-  };
+  const port = parseIntegerEnv('PORT', 3001);
+  const apiUrl = parseStringEnv('API_URL', 'http://localhost:3001');
+  const clientUrl = parseStringEnv('CLIENT_URL', 'http://localhost:3000');
+  const databaseUrl = parseStringEnv('DATABASE_URL');
+  const workerHealthPort = parseIntegerEnv('WORKER_HEALTH_PORT', 3002);
+  const workerHealth = buildWorkerHealthConfig(nodeEnv, workerHealthPort);
+  const bitcoin = buildBitcoinConfig();
 
   const config: CombinedConfig = {
-    // New nested structure
-    server: {
-      nodeEnv,
-      port,
-      apiUrl,
-      clientUrl,
-    },
-
-    database: {
-      url: databaseUrl,
-    },
-
-    redis: {
-      url: process.env.REDIS_URL || '',
-      enabled: !!process.env.REDIS_URL,
-    },
-
-    security: {
-      jwt: {
-        secret: jwtSecret,
-        expiresIn: jwtExpiresIn,
-        refreshExpiresIn: jwtRefreshExpiresIn,
-      },
-      gatewaySecret,
-      corsAllowedOrigins,
-      encryptionKey: getEncryptionKey(),
-      encryptionSalt: process.env.ENCRYPTION_SALT || '',
-    },
-
-    rateLimit: {
-      // Authentication policies
-      loginAttempts: parseInt(process.env.RATE_LIMIT_LOGIN || '5', 10),
-      loginWindowSeconds: parseInt(process.env.RATE_LIMIT_LOGIN_WINDOW || '900', 10), // 15 minutes
-      registerAttempts: parseInt(process.env.RATE_LIMIT_REGISTER || '10', 10),
-      registerWindowSeconds: parseInt(process.env.RATE_LIMIT_REGISTER_WINDOW || '3600', 10), // 1 hour
-      twoFaAttempts: parseInt(process.env.RATE_LIMIT_2FA || '10', 10),
-      twoFaWindowSeconds: parseInt(process.env.RATE_LIMIT_2FA_WINDOW || '900', 10), // 15 minutes
-      passwordChangeAttempts: parseInt(process.env.RATE_LIMIT_PASSWORD_CHANGE || '5', 10),
-      passwordChangeWindowSeconds: parseInt(process.env.RATE_LIMIT_PASSWORD_CHANGE_WINDOW || '900', 10), // 15 minutes
-      emailVerifyAttempts: parseInt(process.env.RATE_LIMIT_EMAIL_VERIFY || '10', 10),
-      emailVerifyWindowSeconds: parseInt(process.env.RATE_LIMIT_EMAIL_VERIFY_WINDOW || '900', 10), // 15 minutes
-      emailResendAttempts: parseInt(process.env.RATE_LIMIT_EMAIL_RESEND || '5', 10),
-      emailResendWindowSeconds: parseInt(process.env.RATE_LIMIT_EMAIL_RESEND_WINDOW || '3600', 10), // 1 hour
-      emailUpdateAttempts: parseInt(process.env.RATE_LIMIT_EMAIL_UPDATE || '3', 10),
-      emailUpdateWindowSeconds: parseInt(process.env.RATE_LIMIT_EMAIL_UPDATE_WINDOW || '3600', 10), // 1 hour
-
-      // API policies (per minute unless specified)
-      apiDefaultLimit: parseInt(process.env.RATE_LIMIT_API_DEFAULT || '1000', 10),
-      apiHeavyLimit: parseInt(process.env.RATE_LIMIT_API_HEAVY || '100', 10),
-      apiPublicLimit: parseInt(process.env.RATE_LIMIT_API_PUBLIC || '60', 10),
-
-      // Sync policies (per minute)
-      syncTriggerLimit: parseInt(process.env.RATE_LIMIT_SYNC_TRIGGER || '10', 10),
-      syncBatchLimit: parseInt(process.env.RATE_LIMIT_SYNC_BATCH || '5', 10),
-
-      // Transaction policies (per minute)
-      txCreateLimit: parseInt(process.env.RATE_LIMIT_TX_CREATE || '30', 10),
-      txBroadcastLimit: parseInt(process.env.RATE_LIMIT_TX_BROADCAST || '20', 10),
-
-      // AI policies (per minute)
-      aiAnalyzeLimit: parseInt(process.env.RATE_LIMIT_AI_ANALYZE || '20', 10),
-      aiSummarizeLimit: parseInt(process.env.RATE_LIMIT_AI_SUMMARIZE || '10', 10),
-      aiWindowSeconds: parseInt(process.env.RATE_LIMIT_AI_WINDOW || '60', 10),
-
-      // Admin policies (per minute)
-      adminDefaultLimit: parseInt(process.env.RATE_LIMIT_ADMIN_DEFAULT || '500', 10),
-
-      // PayJoin policies (per minute)
-      payjoinCreateLimit: parseInt(process.env.RATE_LIMIT_PAYJOIN_CREATE || '10', 10),
-
-      // WebSocket policies (per minute)
-      wsConnectLimit: parseInt(process.env.RATE_LIMIT_WS_CONNECT || '10', 10),
-      wsMessageLimit: parseInt(process.env.RATE_LIMIT_WS_MESSAGE || '100', 10),
-    },
-
+    server: { nodeEnv, port, apiUrl, clientUrl },
+    database: { url: databaseUrl },
+    redis: buildRedisConfig(),
+    security: buildSecurityConfig(jwtSecret, jwtExpiresIn, jwtRefreshExpiresIn, gatewaySecret, corsAllowedOrigins),
+    rateLimit: buildRateLimitConfig(),
     bitcoin,
-    priceApis,
-
-    ai: {
-      containerUrl: process.env.AI_CONTAINER_URL || 'http://ai:3100',
-      configSecret: process.env.AI_CONFIG_SECRET || '',
-    },
-
-    maintenance: {
-      auditLogRetentionDays: parseInt(process.env.AUDIT_LOG_RETENTION_DAYS || '90', 10),
-      priceDataRetentionDays: parseInt(process.env.PRICE_DATA_RETENTION_DAYS || '30', 10),
-      feeEstimateRetentionDays: parseInt(process.env.FEE_ESTIMATE_RETENTION_DAYS || '7', 10),
-      diskWarningThresholdPercent: parseInt(process.env.DISK_WARNING_THRESHOLD_PERCENT || '80', 10),
-      dailyCleanupIntervalMs: parseInt(process.env.MAINTENANCE_DAILY_INTERVAL_MS || String(24 * 60 * 60 * 1000), 10),
-      hourlyCleanupIntervalMs: parseInt(process.env.MAINTENANCE_HOURLY_INTERVAL_MS || String(60 * 60 * 1000), 10),
-      initialDelayMs: parseInt(process.env.MAINTENANCE_INITIAL_DELAY_MS || String(60 * 1000), 10),
-      weeklyMaintenanceIntervalMs: parseInt(process.env.MAINTENANCE_WEEKLY_INTERVAL_MS || String(7 * 24 * 60 * 60 * 1000), 10),
-      monthlyMaintenanceIntervalMs: parseInt(process.env.MAINTENANCE_MONTHLY_INTERVAL_MS || String(30 * 24 * 60 * 60 * 1000), 10),
-    },
-
-    sync: {
-      intervalMs: parseInt(process.env.SYNC_INTERVAL_MS || String(5 * 60 * 1000), 10),
-      confirmationUpdateIntervalMs: parseInt(process.env.SYNC_CONFIRMATION_INTERVAL_MS || String(2 * 60 * 1000), 10),
-      staleThresholdMs: parseInt(process.env.SYNC_STALE_THRESHOLD_MS || String(10 * 60 * 1000), 10),
-      staleBatchSize: parseInt(process.env.SYNC_STALE_BATCH_SIZE || '50', 10),
-      maxConcurrentSyncs: parseInt(process.env.SYNC_MAX_CONCURRENT || '5', 10),
-      syncStaggerDelayMs: parseInt(process.env.SYNC_STAGGER_DELAY_MS || '2000', 10),
-      startupCatchUpBatchSize: parseInt(process.env.SYNC_STARTUP_CATCH_UP_BATCH_SIZE || '250', 10),
-      startupCatchUpDelayMs: parseInt(process.env.SYNC_STARTUP_CATCH_UP_DELAY_MS || '10000', 10),
-      startupCatchUpStaggerDelayMs: parseInt(process.env.SYNC_STARTUP_CATCH_UP_STAGGER_DELAY_MS || '1000', 10),
-      maxRetryAttempts: parseInt(process.env.SYNC_MAX_RETRIES || '3', 10),
-      retryDelaysMs: (process.env.SYNC_RETRY_DELAYS_MS || '5000,15000,45000').split(',').map(s => parseInt(s.trim(), 10)),
-      maxSyncDurationMs: parseInt(process.env.SYNC_MAX_DURATION_MS || String(30 * 60 * 1000), 10), // 30 minutes default
-      transactionBatchSize: parseInt(process.env.SYNC_TRANSACTION_BATCH_SIZE || '100', 10),
-      electrumSubscriptionsEnabled: process.env.SYNC_ELECTRUM_SUBSCRIPTIONS_ENABLED !== 'false',
-      workerHealthPollIntervalMs: parseInt(process.env.SYNC_WORKER_HEALTH_POLL_MS || '30000', 10),
-    },
-
-    electrumClient: {
-      requestTimeoutMs: parseInt(process.env.ELECTRUM_REQUEST_TIMEOUT_MS || '30000', 10),
-      batchRequestTimeoutMs: parseInt(process.env.ELECTRUM_BATCH_TIMEOUT_MS || '60000', 10),
-      connectionTimeoutMs: parseInt(process.env.ELECTRUM_CONNECTION_TIMEOUT_MS || '10000', 10),
-      torTimeoutMultiplier: parseInt(process.env.ELECTRUM_TOR_TIMEOUT_MULTIPLIER || '3', 10),
-    },
-
-    websocket: {
-      maxConnections: parseInt(process.env.MAX_WEBSOCKET_CONNECTIONS || '10000', 10),
-      maxPerUser: parseInt(process.env.MAX_WEBSOCKET_PER_USER || '10', 10),
-    },
-
-    push: {
-      fcm: {
-        serviceAccountPath: process.env.FCM_SERVICE_ACCOUNT || '',
-      },
-      apns: {
-        keyId: process.env.APNS_KEY_ID || '',
-        teamId: process.env.APNS_TEAM_ID || '',
-        keyPath: process.env.APNS_KEY_PATH || '',
-        bundleId: process.env.APNS_BUNDLE_ID || '',
-        isProduction: process.env.APNS_PRODUCTION === 'true',
-      },
-    },
-
-    payjoin: {
-      publicUrl: process.env.PAYJOIN_PUBLIC_URL || '',
-    },
-
-    mcp: {
-      enabled: process.env.MCP_ENABLED === 'true',
-      host: process.env.MCP_HOST || '127.0.0.1',
-      port: parseInt(process.env.MCP_PORT || '3003', 10),
-      allowedHosts: (process.env.MCP_ALLOWED_HOSTS || 'localhost,127.0.0.1,[::1]')
-        .split(',')
-        .map(host => host.trim())
-        .filter(host => host.length > 0),
-      rateLimitPerMinute: parseInt(process.env.MCP_RATE_LIMIT_PER_MINUTE || process.env.MCP_RATE_LIMIT || '120', 10),
-      defaultPageSize: parseInt(process.env.MCP_DEFAULT_PAGE_SIZE || '100', 10),
-      maxPageSize: parseInt(process.env.MCP_MAX_PAGE_SIZE || '500', 10),
-      maxDateRangeDays: parseInt(process.env.MCP_MAX_DATE_RANGE_DAYS || '365', 10),
-    },
-
-    docker: {
-      proxyUrl: process.env.DOCKER_PROXY_URL || 'http://docker-proxy:2375',
-    },
-
+    priceApis: buildPriceApisConfig(),
+    ai: buildAiConfig(),
+    maintenance: buildMaintenanceConfig(),
+    sync: buildSyncConfig(),
+    electrumClient: buildElectrumClientConfig(),
+    websocket: buildWebsocketConfig(),
+    push: buildPushConfig(),
+    payjoin: { publicUrl: parseStringEnv('PAYJOIN_PUBLIC_URL') },
+    mcp: buildMcpConfig(),
+    docker: { proxyUrl: parseStringEnv('DOCKER_PROXY_URL', 'http://docker-proxy:2375') },
     worker: {
       healthPort: workerHealthPort,
-      healthUrl: workerHealthUrl,
-      healthTimeoutMs: workerHealthTimeoutMs,
-      healthCheckIntervalMs: workerHealthCheckIntervalMs,
-      concurrency: parseInt(process.env.WORKER_CONCURRENCY || '5', 10),
+      ...workerHealth,
+      concurrency: parseIntegerEnv('WORKER_CONCURRENCY', 5),
     },
-
-    logging: {
-      level: parseLogLevel(),
-    },
-
-    monitoring: {
-      grafanaPort: parseInt(process.env.GRAFANA_PORT || '3000', 10),
-      prometheusPort: parseInt(process.env.PROMETHEUS_PORT || '9090', 10),
-      jaegerPort: parseInt(process.env.JAEGER_UI_PORT || '16686', 10),
-      tracingEnabled: process.env.OTEL_TRACING_ENABLED === 'true',
-    },
-
+    logging: { level: parseLogLevel() },
+    monitoring: buildMonitoringConfig(),
     features: loadFeatureFlags(),
-
-    // Legacy flat properties for backward compatibility
     nodeEnv,
     port,
     apiUrl,
@@ -278,6 +109,59 @@ function loadConfig(): CombinedConfig {
   validateConfig(config);
 
   return config;
+}
+
+function buildRedisConfig() {
+  const url = parseStringEnv('REDIS_URL');
+  return { url, enabled: Boolean(url) };
+}
+
+function buildSecurityConfig(
+  jwtSecret: string,
+  jwtExpiresIn: string,
+  jwtRefreshExpiresIn: string,
+  gatewaySecret: string,
+  corsAllowedOrigins: string[]
+) {
+  return {
+    jwt: { secret: jwtSecret, expiresIn: jwtExpiresIn, refreshExpiresIn: jwtRefreshExpiresIn },
+    gatewaySecret,
+    corsAllowedOrigins,
+    encryptionKey: getEncryptionKey(),
+    encryptionSalt: parseStringEnv('ENCRYPTION_SALT'),
+  };
+}
+
+function buildBitcoinConfig() {
+  return {
+    network: parseBitcoinNetwork(),
+    rpc: {
+      host: parseStringEnv('BITCOIN_RPC_HOST', 'localhost'),
+      port: parseIntegerEnv('BITCOIN_RPC_PORT', 8332),
+      user: parseStringEnv('BITCOIN_RPC_USER'),
+      password: parseStringEnv('BITCOIN_RPC_PASSWORD'),
+    },
+    electrum: {
+      host: parseStringEnv('ELECTRUM_HOST', 'electrum.blockstream.info'),
+      port: parseIntegerEnv('ELECTRUM_PORT', 50002),
+      protocol: parseElectrumProtocol(),
+    },
+  };
+}
+
+function buildPriceApisConfig() {
+  return {
+    mempool: parseStringEnv('MEMPOOL_API', 'https://mempool.space/api/v1'),
+    coingecko: parseStringEnv('COINGECKO_API', 'https://api.coingecko.com/api/v3'),
+    kraken: parseStringEnv('KRAKEN_API', 'https://api.kraken.com/0/public'),
+  };
+}
+
+function buildAiConfig() {
+  return {
+    containerUrl: parseStringEnv('AI_CONTAINER_URL', 'http://ai:3100'),
+    configSecret: parseStringEnv('AI_CONFIG_SECRET'),
+  };
 }
 
 /**
