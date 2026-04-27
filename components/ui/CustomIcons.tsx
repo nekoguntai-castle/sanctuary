@@ -267,47 +267,112 @@ const KeystoneIcon: React.FC<IconProps> = ({ className }) => (
   </svg>
 );
 
-export const getDeviceIcon = (type: HardwareDevice | string, className?: string) => {
-  // Normalize type to lowercase for matching
-  const normalizedType = typeof type === 'string' ? type.toLowerCase() : '';
+type DeviceIconComponent = React.ComponentType<IconProps>;
 
-  // Match against enum values or string patterns
-  if (type === HardwareDevice.COLDCARD_MK4 || normalizedType.includes('coldcard') && (normalizedType.includes('mk4') || normalizedType.includes('mk3'))) {
-    return <ColdCardMk4Icon className={className} />;
+interface DeviceIconRule {
+  exact?: HardwareDevice;
+  includesAll?: string[];
+  includesAny?: string[];
+  Component: DeviceIconComponent;
+}
+
+const DEVICE_ICON_RULES: DeviceIconRule[] = [
+  {
+    exact: HardwareDevice.COLDCARD_MK4,
+    includesAll: ['coldcard'],
+    includesAny: ['mk4', 'mk3'],
+    Component: ColdCardMk4Icon,
+  },
+  {
+    exact: HardwareDevice.COLDCARD_Q,
+    includesAll: ['coldcard', 'q'],
+    Component: ColdCardQIcon,
+  },
+  {
+    exact: HardwareDevice.TREZOR_SAFE_7,
+    includesAll: ['trezor'],
+    includesAny: ['safe 7', 'safe_7'],
+    Component: TrezorSafe7Icon,
+  },
+  {
+    exact: HardwareDevice.TREZOR,
+    includesAll: ['trezor'],
+    Component: TrezorIcon,
+  },
+  {
+    exact: HardwareDevice.LEDGER_STAX,
+    includesAll: ['ledger', 'stax'],
+    Component: LedgerStaxIcon,
+  },
+  {
+    exact: HardwareDevice.LEDGER_FLEX,
+    includesAll: ['ledger', 'flex'],
+    Component: LedgerFlexIcon,
+  },
+  {
+    exact: HardwareDevice.LEDGER_GEN_5,
+    includesAll: ['ledger'],
+    includesAny: ['gen 5', 'gen_5'],
+    Component: LedgerGen5Icon,
+  },
+  {
+    exact: HardwareDevice.LEDGER,
+    includesAll: ['ledger', 'nano'],
+    Component: LedgerNanoIcon,
+  },
+  {
+    exact: HardwareDevice.BITBOX,
+    includesAll: ['bitbox'],
+    Component: BitBoxIcon,
+  },
+  {
+    exact: HardwareDevice.FOUNDATION_PASSPORT,
+    includesAny: ['passport', 'foundation'],
+    Component: FoundationPassportIcon,
+  },
+  {
+    exact: HardwareDevice.BLOCKSTREAM_JADE,
+    includesAny: ['jade', 'blockstream'],
+    Component: BlockstreamJadeIcon,
+  },
+  {
+    exact: HardwareDevice.KEYSTONE,
+    includesAll: ['keystone'],
+    Component: KeystoneIcon,
+  },
+];
+
+const normalizeDeviceType = (type: HardwareDevice | string): string => (
+  typeof type === 'string' ? type.toLowerCase() : ''
+);
+
+const includesAllTokens = (value: string, tokens: string[] = []): boolean => (
+  tokens.every(token => value.includes(token))
+);
+
+const includesAnyToken = (value: string, tokens: string[] = []): boolean => (
+  tokens.length === 0 || tokens.some(token => value.includes(token))
+);
+
+const matchesDeviceIconRule = (
+  type: HardwareDevice | string,
+  normalizedType: string,
+  rule: DeviceIconRule
+): boolean => {
+  if (rule.exact === type) {
+    return true;
   }
-  if (type === HardwareDevice.COLDCARD_Q || normalizedType.includes('coldcard') && normalizedType.includes('q')) {
-    return <ColdCardQIcon className={className} />;
-  }
-  if (type === HardwareDevice.TREZOR_SAFE_7 || normalizedType.includes('trezor') && (normalizedType.includes('safe 7') || normalizedType.includes('safe_7'))) {
-    return <TrezorSafe7Icon className={className} />;
-  }
-  if (type === HardwareDevice.TREZOR || normalizedType.includes('trezor')) {
-    return <TrezorIcon className={className} />;
-  }
-  if (type === HardwareDevice.LEDGER_STAX || normalizedType.includes('ledger') && normalizedType.includes('stax')) {
-    return <LedgerStaxIcon className={className} />;
-  }
-  if (type === HardwareDevice.LEDGER_FLEX || normalizedType.includes('ledger') && normalizedType.includes('flex')) {
-    return <LedgerFlexIcon className={className} />;
-  }
-  if (type === HardwareDevice.LEDGER_GEN_5 || normalizedType.includes('ledger') && (normalizedType.includes('gen 5') || normalizedType.includes('gen_5'))) {
-    return <LedgerGen5Icon className={className} />;
-  }
-  if (type === HardwareDevice.LEDGER || normalizedType.includes('ledger') && normalizedType.includes('nano')) {
-    return <LedgerNanoIcon className={className} />;
-  }
-  if (type === HardwareDevice.BITBOX || normalizedType.includes('bitbox')) {
-    return <BitBoxIcon className={className} />;
-  }
-  if (type === HardwareDevice.FOUNDATION_PASSPORT || normalizedType.includes('passport') || normalizedType.includes('foundation')) {
-    return <FoundationPassportIcon className={className} />;
-  }
-  if (type === HardwareDevice.BLOCKSTREAM_JADE || normalizedType.includes('jade') || normalizedType.includes('blockstream')) {
-    return <BlockstreamJadeIcon className={className} />;
-  }
-  if (type === HardwareDevice.KEYSTONE || normalizedType.includes('keystone')) {
-    return <KeystoneIcon className={className} />;
-  }
-  // Default for generic or unknown devices
-  return <Key className={className} />;
+
+  return includesAllTokens(normalizedType, rule.includesAll)
+    && includesAnyToken(normalizedType, rule.includesAny);
+};
+
+export const getDeviceIcon = (type: HardwareDevice | string, className?: string) => {
+  const normalizedType = normalizeDeviceType(type);
+  const rule = DEVICE_ICON_RULES.find((item) => (
+    matchesDeviceIconRule(type, normalizedType, item)
+  ));
+  const DeviceIcon = rule?.Component ?? Key;
+
+  return <DeviceIcon className={className} />;
 };

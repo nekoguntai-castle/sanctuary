@@ -619,6 +619,11 @@ describe('useDashboardData', () => {
   });
 
   it('covers websocket/event fallback branches and fee-zero transaction mapping', async () => {
+    mempoolDataData = {
+      mempool: [],
+      blocks: [],
+      mempoolInfo: { count: 0, size: 0, totalFees: 0 },
+    };
     recentTxData = [
       {
         id: 'tx-fee-zero',
@@ -629,6 +634,15 @@ describe('useDashboardData', () => {
         confirmations: 0,
         type: 'sent',
       },
+      {
+        id: 'tx-null-amount',
+        txid: 'null-amount',
+        walletId: 'w-main-low',
+        amount: null,
+        fee: null,
+        confirmations: 0,
+        type: 'received',
+      },
     ];
 
     const { result } = renderHook(() => useDashboardData());
@@ -638,6 +652,9 @@ describe('useDashboardData', () => {
     });
 
     expect(result.current.recentTx[0].fee).toBeUndefined();
+    expect(result.current.recentTx[1].amount).toBe(0);
+    expect(result.current.queuedBlocksSummary).toBeNull();
+    expect(result.current.lastMempoolUpdate).not.toBeNull();
 
     act(() => {
       wsEventHandlers.transaction?.({

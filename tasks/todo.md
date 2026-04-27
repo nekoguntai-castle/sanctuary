@@ -25,6 +25,11 @@ Release target: **minimum 97/100 A**, no hard-fail blockers, `security_high=0`, 
   - Owns flagged frontend components such as `components/send/OutputRow.tsx`, `components/send/steps/review/TransactionSummary.tsx`, `components/WalletDetail/WalletHeader.tsx`, `components/cells/DeviceCells.tsx`, `components/NetworkConnectionCard/ServerRow.tsx`, `components/Dashboard/hooks/useDashboardData.ts`, `components/ui/CustomIcons.tsx`, `components/UTXOList/UTXOGarden/utxoGardenModel.ts`, `components/PayjoinSection.tsx`, `components/TransactionFlowPreview.tsx`, and flagged animation modules.
   - Split render-branch decisions, class/model builders, icon lookup maps, animation setup phases, and data shaping into component helpers/hooks without changing visual behavior.
   - Verify with focused component tests and existing frontend coverage; use screenshots only where animation/UI framing changes.
+  - [x] Extract flow preview, dashboard data, Payjoin education, wallet badges, device/server row class builders, output amount/QR helpers, and transaction-summary amount labels into private helpers/components.
+  - [x] Verify device icon rule-table precedence against the previous branch order, including enum exact matches before generic fallback behavior.
+  - [x] Run targeted lizard for all Slice 4 production files at `CCN <= 15`.
+  - [x] Run focused Slice 4 Vitest suites and required frontend gates.
+  - [ ] Deliver Slice 4 as a dedicated PR and verify merge before starting Slice 5.
 - [ ] Slice 5 - test harness, e2e, and quality-script complexity:
   - Owns flagged non-production files including `scripts/check-openapi-route-coverage.mjs`, e2e route handlers, `server/tests/mocks/aiContainer.ts`, PSBT/hardware-wallet test helpers, and console tool test helpers.
   - Reduce full-scan lizard warnings in test/support code after production hotspots are clean, keeping fixture intent obvious and avoiding synthetic indirection.
@@ -32,6 +37,7 @@ Release target: **minimum 97/100 A**, no hard-fail blockers, `security_high=0`, 
 - [ ] Slice 6 - vector fixture size and low-audit triage:
   - Evaluate sharding or generation-on-demand for `server/tests/fixtures/verified-address-vectors.ts` and `scripts/verify-addresses/output/verified-vectors.ts`; proceed only if address-vector coverage and deterministic verification stay intact.
   - Re-run root audit, identify the 16 low advisories, apply safe minor/patch upgrades where available, and document any remaining upstream/hardware-wallet transitive risk.
+  - Deliver Slice 6 as a dedicated PR and verify merge before the final grade pass.
 - [ ] Release verification gate:
   - Run focused tests per slice plus touched-file lizard before each PR.
   - Before release, run full lizard, `npm run test:coverage`, `npm run test:backend:coverage`, `npm --prefix gateway run test:coverage`, lint/typecheck, gitleaks full/tracked/latest commit scans, root/server/gateway/ai-proxy audits, jscpd, and `$grade`.
@@ -48,6 +54,9 @@ Release target: **minimum 97/100 A**, no hard-fail blockers, `security_high=0`, 
 - Slice 3 branch: `fix/pre-release-grade-slice-3-hardware-send`.
 - Slice 3 implementation: split Trezor PSBT signing into focused network/cosigner, payload-building, validation, signature-extraction, error-mapping, and shared type modules while keeping the exported signer API intact; extracted BitBox account/input/output/signature helpers; split broadcast payload selection, multisig signature logging, cache refresh, draft cleanup, QR download/upload helpers, draft DTO mapping, UR decode helpers, and UTXO age formatting into named helpers. The main Trezor signer is now 110 lines and the largest new Trezor helper file is 297 lines.
 - Slice 3 verification: targeted touched-file lizard is clean at `CCN <= 15`; focused Slice 3 Vitest suite passed (11 files / 208 tests); `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, and `git diff --check` passed; full frontend coverage passed at 100% statements/branches/functions/lines (422 files / 5,712 tests).
+- Slice 4 branch: `fix/pre-release-grade-slice-4-ui-complexity`.
+- Slice 4 implementation: split Transaction Flow Preview into a thin shell plus flow-part components; extracted Dashboard data shaping and websocket notification builders; moved Payjoin education modal, tooltip/body pieces, wallet badge rendering, wallet sync status rendering, device/server row class/model decisions, output amount/QR helpers, and transaction-summary amount/payjoin labels into focused helpers. Converted `getDeviceIcon` to an ordered rule table that preserves the old branch order and exact enum checks before string-pattern matches. `TransactionFlowPreview.tsx`, `PayjoinSection.tsx`, and `useDashboardData.ts` are now under the 400-line design-warning threshold.
+- Slice 4 verification: focused Slice 4 Vitest suite passed (10 files / 151 tests); targeted touched-file lizard is clean at `CCN <= 15`; `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, and `git diff --check` passed; full frontend coverage passed at 100% statements/branches/functions/lines (422 files / 5,712 tests).
 - Recommended sequencing: fix production backend complexity first, then hardware/send flows, then UI/animation code, then test/support warnings, then fixture/audit cleanup.
 - Release blockers: no hard-fail blockers, 0 lizard threshold warnings or an explicitly accepted residual list, 0 high/critical audit findings, 0 gitleaks findings, and coverage/lint/typecheck still green.
 - Non-blocking unless easy and safe: root low-severity transitive advisories and vector fixture sharding. These can improve the score, but should not drive risky package downgrades or weaker address-vector tests.

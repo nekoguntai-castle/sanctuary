@@ -13,6 +13,14 @@ import {
 import { ElectrumServer } from '../../types';
 import * as bitcoinApi from '../../src/api/bitcoin';
 import { HealthHistoryBlocks } from './HealthHistoryBlocks';
+import {
+  getFallbackHealthBlockClass,
+  getFallbackHealthTitle,
+  getHealthIndicatorClass,
+  getProtocolBadgeClass,
+  getServerRowClass,
+  isServerCoolingDown,
+} from './serverRowModel';
 
 interface ServerRowProps {
   server: ElectrumServer;
@@ -42,29 +50,18 @@ export const ServerRow: React.FC<ServerRowProps> = ({
   onDeleteServer,
 }) => (
   <div
-    className={`p-3 rounded-lg border ${
-      server.enabled
-        ? 'surface-muted border-sanctuary-200 dark:border-sanctuary-700'
-        : 'surface-secondary border-sanctuary-100 dark:border-sanctuary-800 opacity-60'
-    }`}
+    className={`p-3 rounded-lg border ${getServerRowClass(server.enabled)}`}
   >
     <div className="flex items-center justify-between">
       <div className="flex items-center space-x-3 min-w-0 flex-1">
         {/* Health Status Indicator */}
-        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
-          serverTestStatus === 'success' ? 'bg-emerald-500' :
-          serverTestStatus === 'error' ? 'bg-rose-500' :
-          server.isHealthy ? 'bg-emerald-500' :
-          server.isHealthy === false ? 'bg-rose-500' : 'bg-sanctuary-400'
-        }`} />
+        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${getHealthIndicatorClass(serverTestStatus, server.isHealthy)}`} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center space-x-2">
             <span className="font-medium text-sm text-sanctuary-900 dark:text-sanctuary-100 truncate">
               {server.label}
             </span>
-            <span className={`px-1.5 py-0.5 text-xs rounded flex-shrink-0 ${
-              server.useSsl ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-sanctuary-100 dark:bg-sanctuary-800 text-sanctuary-500'
-            }`}>
+            <span className={`px-1.5 py-0.5 text-xs rounded flex-shrink-0 ${getProtocolBadgeClass(server.useSsl)}`}>
               {server.useSsl ? 'SSL' : 'TCP'}
             </span>
           </div>
@@ -76,11 +73,7 @@ export const ServerRow: React.FC<ServerRowProps> = ({
               <HealthHistoryBlocks history={serverPoolStats.healthHistory} maxBlocks={10} />
             ) : (
               // Fallback to simple blocks when no history available
-              <div className="flex items-center space-x-0.5" title={
-                server.lastHealthCheck
-                  ? `Last check: ${new Date(server.lastHealthCheck).toLocaleTimeString()}`
-                  : 'No health checks yet'
-              }>
+              <div className="flex items-center space-x-0.5" title={getFallbackHealthTitle(server.lastHealthCheck)}>
                 {Array.from({ length: 10 }).map((_, i) => {
                   const failCount = server.healthCheckFails ?? 0;
                   const isFailedBlock = i < failCount;
@@ -88,11 +81,7 @@ export const ServerRow: React.FC<ServerRowProps> = ({
                   return (
                     <div
                       key={i}
-                      className={`w-1.5 h-3 rounded-sm ${
-                        !hasHealthData ? 'bg-sanctuary-300 dark:bg-sanctuary-600' :
-                        isFailedBlock ? 'bg-rose-400 dark:bg-rose-500' :
-                        'bg-emerald-400 dark:bg-emerald-500'
-                      }`}
+                      className={`w-1.5 h-3 rounded-sm ${getFallbackHealthBlockClass(hasHealthData, isFailedBlock)}`}
                     />
                   );
                 })}
@@ -115,7 +104,7 @@ export const ServerRow: React.FC<ServerRowProps> = ({
                   {Math.round(serverPoolStats.weight * 100)}%
                 </span>
               )}
-              {serverPoolStats?.cooldownUntil && new Date(serverPoolStats.cooldownUntil) > new Date() && (
+              {isServerCoolingDown(serverPoolStats) && (
                 <span className="flex items-center space-x-0.5 text-rose-500">
                   <Clock className="w-2.5 h-2.5" />
                   <span>cooldown</span>

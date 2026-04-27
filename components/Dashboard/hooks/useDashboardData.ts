@@ -1,8 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Wallet, Transaction, WalletType, WalletNetwork, WebSocketTransactionData, WebSocketBalanceData, WebSocketConfirmationData, WebSocketSyncData } from '../../../types';
+import { WebSocketTransactionData, WebSocketBalanceData, WebSocketConfirmationData, WebSocketSyncData } from '../../../types';
 import { TabNetwork } from '../../NetworkTabs';
-import { satsToBTC, formatBTC } from '@shared/utils/bitcoin';
 import * as adminApi from '../../../src/api/admin';
 import { useWebSocket, useWebSocketEvent } from '../../../hooks/websocket';
 import { useNotifications } from '../../../contexts/NotificationContext';
@@ -12,6 +11,23 @@ import { useWallets, useRecentTransactions, useInvalidateAllWallets, useUpdateWa
 import { useFeeEstimates, useBitcoinStatus, useMempoolData } from '../../../hooks/queries/useBitcoin';
 import { useCurrency } from '../../../contexts/CurrencyContext';
 import { useDelayedRender } from '../../../hooks/useDelayedRender';
+import {
+  applyNetworkSearchParam,
+  buildBalanceNotification,
+  buildBlockNotification,
+  buildConfirmationNotification,
+  buildMempoolSnapshot,
+  buildTransactionNotification,
+  countWalletsByNetwork,
+  formatFeeRate,
+  getFilteredWallets,
+  getNodeStatus,
+  getSyncWalletId,
+  mapApiWalletToDashboardWallet,
+  mapRecentTransaction,
+  resolveInitialNetwork,
+  toDashboardFeeEstimate,
+} from './dashboardDataModel';
 
 const log = createLogger('Dashboard');
 
@@ -19,13 +35,6 @@ const log = createLogger('Dashboard');
 const EMPTY_WALLETS: never[] = [];
 const EMPTY_TRANSACTIONS: never[] = [];
 const EMPTY_PENDING: never[] = [];
-
-// Local fee estimate type for dashboard display
-interface DashboardFeeEstimate {
-  fast: number;
-  medium: number;
-  slow: number;
-}
 
 export type Timeframe = '1D' | '1W' | '1M' | '1Y' | 'ALL';
 
@@ -36,20 +45,15 @@ export function useDashboardData() {
   const [timeframe, setTimeframe] = useState<Timeframe>('1W');
 
   // Network tab state - persist in URL
-  const networkFromUrl = searchParams.get('network') as TabNetwork | null;
-  const [selectedNetwork, setSelectedNetwork] = useState<TabNetwork>(
-    networkFromUrl && ['mainnet', 'testnet', 'signet'].includes(networkFromUrl) ? networkFromUrl : 'mainnet'
-  );
+  const networkFromUrl = searchParams.get('network');
+  const [selectedNetwork, setSelectedNetwork] = useState<TabNetwork>(() => (
+    resolveInitialNetwork(networkFromUrl)
+  ));
 
   // Update URL when network changes
   const handleNetworkChange = (network: TabNetwork) => {
     setSelectedNetwork(network);
-    if (network === 'mainnet') {
-      searchParams.delete('network');
-    } else {
-      searchParams.set('network', network);
-    }
-    setSearchParams(searchParams, { replace: true });
+    setSearchParams(applyNetworkSearchParam(searchParams, network), { replace: true });
   };
 
   // Version check state
@@ -89,36 +93,17 @@ export function useDashboardData() {
   const safeApiWallets = apiWallets ?? EMPTY_WALLETS;
 
   // Convert API wallets to component format (with network)
-  const wallets: Wallet[] = useMemo(() => safeApiWallets.map(w => ({
-    id: w.id,
-    name: w.name,
-    type: w.type as WalletType,
-    balance: w.balance,
-    scriptType: w.scriptType,
-    network: (w.network as WalletNetwork) || 'mainnet',
-    derivationPath: w.descriptor || '',
-    fingerprint: w.fingerprint || '',
-    label: w.name,
-    xpub: '',
-    lastSyncedAt: w.lastSyncedAt,
-    lastSyncStatus: w.lastSyncStatus as 'success' | 'failed' | 'partial' | null,
-    syncInProgress: w.syncInProgress,
-  })), [safeApiWallets]);
+  const wallets = useMemo(() => (
+    safeApiWallets.map(mapApiWalletToDashboardWallet)
+  ), [safeApiWallets]);
 
   // Filter wallets by selected network and sort by balance (highest first)
-  const filteredWallets = useMemo(() =>
-    wallets
-      .filter(w => w.network === selectedNetwork)
-      .sort((a, b) => b.balance - a.balance),
-    [wallets, selectedNetwork]
-  );
+  const filteredWallets = useMemo(() => (
+    getFilteredWallets(wallets, selectedNetwork)
+  ), [wallets, selectedNetwork]);
 
   // Count wallets per network for tabs
-  const walletCounts = useMemo(() => ({
-    mainnet: wallets.filter(w => w.network === 'mainnet').length,
-    testnet: wallets.filter(w => w.network === 'testnet').length,
-    signet: wallets.filter(w => w.network === 'signet').length,
-  }), [wallets]);
+  const walletCounts = useMemo(() => countWalletsByNetwork(wallets), [wallets]);
 
   // Filtered wallet IDs for network-specific data
   const filteredWalletIds = useMemo(() => filteredWallets.map(w => w.id), [filteredWallets]);
@@ -134,52 +119,16 @@ export function useDashboardData() {
   const isMainnet = selectedNetwork === 'mainnet';
 
   // Convert API transactions to component format
-  const recentTx: Transaction[] = useMemo(() => recentTxRaw.map(tx => {
-    const rawAmount = typeof tx.amount === 'string' ? parseInt(tx.amount, 10) : tx.amount;
-    const amount = tx.type === 'sent' ? -Math.abs(rawAmount) : Math.abs(rawAmount);
-    return {
-      id: tx.id,
-      txid: tx.txid,
-      walletId: tx.walletId,
-      amount,
-      fee: tx.fee ? (typeof tx.fee === 'string' ? parseInt(tx.fee, 10) : tx.fee) : undefined,
-      confirmations: tx.confirmations,
-      confirmed: tx.confirmations > 0,
-      blockHeight: tx.blockHeight,
-      timestamp: tx.blockTime ? new Date(tx.blockTime).getTime() : Date.now(),
-      label: tx.label || '',
-      type: tx.type,
-      isFrozen: !!tx.isFrozen,
-      isLocked: !!tx.isLocked,
-      lockedByDraftLabel: tx.lockedByDraftLabel || undefined,
-    };
-  }), [recentTxRaw]);
+  const recentTx = useMemo(() => recentTxRaw.map(mapRecentTransaction), [recentTxRaw]);
 
   // Derive fees from React Query data
-  const fees: DashboardFeeEstimate | null = feeEstimates ? {
-    fast: feeEstimates.fastest,
-    medium: feeEstimates.hour,
-    slow: feeEstimates.economy,
-  } : null;
-
-  // Format fee rate: show decimals only when meaningful
-  const formatFeeRate = (rate: number | undefined): string => {
-    if (rate === undefined) return '---';
-    if (rate >= 10) return Math.round(rate).toString();
-    if (Number.isInteger(rate)) return rate.toString();
-    return rate.toFixed(1);
-  };
+  const fees = toDashboardFeeEstimate(feeEstimates);
 
   // Derive node status from Bitcoin status
-  const nodeStatus: 'unknown' | 'checking' | 'connected' | 'error' =
-    statusLoading ? 'checking' :
-    bitcoinStatus === undefined ? 'unknown' :
-    bitcoinStatus?.connected ? 'connected' : 'error';
+  const nodeStatus = getNodeStatus(statusLoading, bitcoinStatus);
 
   // Derive mempool blocks from React Query data
-  const mempoolBlocks = mempoolData ? [...mempoolData.mempool, ...mempoolData.blocks] : [];
-  const queuedBlocksSummary = mempoolData?.queuedBlocksSummary || null;
-  const lastMempoolUpdate = mempoolData ? new Date() : null;
+  const { mempoolBlocks, queuedBlocksSummary, lastMempoolUpdate } = buildMempoolSnapshot(mempoolData);
 
   // Overall loading state
   const loading = walletsLoading && wallets.length === 0;
@@ -248,28 +197,11 @@ export function useDashboardData() {
   // Handle transaction notifications
   useWebSocketEvent('transaction', (event) => {
     const data = event.data as WebSocketTransactionData;
+    const { notification, sound } = buildTransactionNotification(data);
 
-    // Determine title based on transaction type
-    const title = data.type === 'received' ? 'Bitcoin Received'
-      : data.type === 'consolidation' ? 'Consolidation'
-      : 'Bitcoin Sent';
-
-    // Determine amount prefix based on type
-    const prefix = data.type === 'received' ? '+' : '-';
-
-    addNotification({
-      type: 'transaction',
-      title,
-      message: `${prefix}${formatBTC(satsToBTC(Math.abs(data.amount ?? 0)), 8, false)} BTC • ${data.confirmations ?? 0} confirmations`,
-      duration: 10000,
-      data,
-    });
-
-    // Play sound for receive/send events
-    if (data.type === 'received') {
-      playEventSound('receive');
-    } else if (data.type === 'sent' || data.type === 'consolidation') {
-      playEventSound('send');
+    addNotification(notification);
+    if (sound) {
+      playEventSound(sound);
     }
 
     // Invalidate wallet queries to refresh data
@@ -279,16 +211,10 @@ export function useDashboardData() {
   // Handle balance updates
   useWebSocketEvent('balance', (event) => {
     const data = event.data as WebSocketBalanceData;
+    const notification = buildBalanceNotification(data);
 
-    const change = data.change ?? 0;
-    if (Math.abs(change) > 10000) {
-      addNotification({
-        type: 'balance',
-        title: 'Balance Updated',
-        message: `${change > 0 ? '+' : ''}${formatBTC(satsToBTC(change), 8, false)} BTC`,
-        duration: 8000,
-        data,
-      });
+    if (notification) {
+      addNotification(notification);
     }
 
     // Invalidate wallet queries to refresh data
@@ -299,13 +225,7 @@ export function useDashboardData() {
   useWebSocketEvent('block', (event) => {
     const data = event.data as { height: number; transactionCount?: number };
 
-    addNotification({
-      type: 'block',
-      title: 'New Block Mined',
-      message: `Block #${data.height.toLocaleString()} • ${data.transactionCount || 0} transactions`,
-      duration: 6000,
-      data,
-    });
+    addNotification(buildBlockNotification(data));
 
     // Refresh mempool data when a new block is mined
     refreshMempoolData();
@@ -314,23 +234,12 @@ export function useDashboardData() {
   // Handle confirmation updates
   useWebSocketEvent('confirmation', (event) => {
     const data = event.data as WebSocketConfirmationData & { previousConfirmations?: number };
+    const notificationResult = buildConfirmationNotification(data);
 
-    // Check if this is a first confirmation milestone (0→1+)
-    const confirmations = data.confirmations ?? 0;
-    const isFirstConfirmation = data.previousConfirmations === 0 && confirmations >= 1;
-
-    if ([1, 3, 6].includes(confirmations) || isFirstConfirmation) {
-      addNotification({
-        type: 'confirmation',
-        title: 'Transaction Confirmed',
-        message: `${confirmations} confirmation${confirmations > 1 ? 's' : ''} reached`,
-        duration: 5000,
-        data,
-      });
-
-      // Play sound on first confirmation (when previousConfirmations was 0)
-      if (isFirstConfirmation) {
-        playEventSound('confirmation');
+    if (notificationResult) {
+      addNotification(notificationResult.notification);
+      if (notificationResult.sound) {
+        playEventSound(notificationResult.sound);
       }
     }
 
@@ -341,7 +250,7 @@ export function useDashboardData() {
   // Handle sync status changes - update syncInProgress in real-time
   useWebSocketEvent('sync', (event) => {
     const data = event.data as WebSocketSyncData;
-    const walletId = data.walletId;
+    const walletId = getSyncWalletId(data);
 
     // Directly update the cache for immediate UI response
     // This is more reliable than invalidating + refetching

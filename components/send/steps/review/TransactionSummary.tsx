@@ -8,6 +8,15 @@ import { TransactionFlowPreview, FlowInput, FlowOutput } from '../../../Transact
 import { FiatDisplay } from '../../../FiatDisplay';
 import type { WizardStep, TransactionState } from '../../../../contexts/send/types';
 import type { TransactionData } from '../../../../hooks/send/useSendTransactionActions';
+import {
+  getCoinControlLabel,
+  getNetworkFeeSats,
+  getPayjoinSummaryLabel,
+  getRecipientAmountText,
+  getRecipientHeading,
+  getTotalIncludingFeeSats,
+  getTotalSendingSats,
+} from './transactionSummaryModel';
 
 interface TransactionSummaryProps {
   state: TransactionState;
@@ -47,6 +56,19 @@ export function TransactionSummary({
   const handleEdit = (step: WizardStep) => {
     goToStep(step);
   };
+  const networkFee = getNetworkFeeSats(txData, estimatedFee);
+  const totalSendingSats = getTotalSendingSats(
+    state.outputs,
+    selectedTotal,
+    estimatedFee,
+    totalOutputAmount
+  );
+  const totalIncludingFeeSats = getTotalIncludingFeeSats(
+    state.outputs,
+    selectedTotal,
+    totalOutputAmount,
+    networkFee
+  );
 
   return (
     <>
@@ -112,7 +134,7 @@ export function TransactionSummary({
         <div className="p-4 border-b border-sanctuary-200 dark:border-sanctuary-700">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-medium text-sanctuary-500">
-              {state.outputs.length === 1 ? 'Recipient' : `Recipients (${state.outputs.length})`}
+              {getRecipientHeading(state.outputs.length)}
             </h3>
             {!isDraftMode && (
               <button
@@ -137,13 +159,13 @@ export function TransactionSummary({
                   {state.payjoinUrl && index === 0 && (
                     <div className="flex items-center gap-1 mt-1 text-xs text-zen-indigo">
                       <Shield className="w-3 h-3" />
-                      Payjoin {payjoinStatus === 'success' ? 'active' : payjoinStatus === 'failed' ? '(fallback)' : 'enabled'}
+                      {getPayjoinSummaryLabel(payjoinStatus)}
                     </div>
                   )}
                 </div>
                 <div className="text-right flex-shrink-0">
                   <div className="font-semibold text-sanctuary-900 dark:text-sanctuary-100">
-                    {output.sendMax ? 'MAX' : format(parseInt(output.amount, 10) || 0)}
+                    {getRecipientAmountText(output, format)}
                   </div>
                   {!output.sendMax && (
                     <FiatDisplay
@@ -165,13 +187,10 @@ export function TransactionSummary({
             <span className="text-sm text-sanctuary-500">Total Sending</span>
             <div className="text-right">
               <div className="font-semibold text-sanctuary-900 dark:text-sanctuary-100">
-                {state.outputs.some(o => o.sendMax)
-                  ? format(selectedTotal - estimatedFee)
-                  : format(totalOutputAmount)
-                }
+                {format(totalSendingSats)}
               </div>
               <FiatDisplay
-                sats={state.outputs.some(o => o.sendMax) ? selectedTotal - estimatedFee : totalOutputAmount}
+                sats={totalSendingSats}
                 size="xs"
                 showApprox
                 mode="subtle"
@@ -194,11 +213,11 @@ export function TransactionSummary({
             </div>
             <div className="text-right">
               <div className="font-semibold text-sanctuary-900 dark:text-sanctuary-100">
-                {format(txData?.fee || estimatedFee)}
+                {format(networkFee)}
               </div>
               <div className="flex items-center gap-1.5 justify-end text-xs text-sanctuary-500">
                 <span>{state.feeRate} sat/vB</span>
-                <FiatDisplay sats={txData?.fee || estimatedFee} size="xs" mode="subtle" />
+                <FiatDisplay sats={networkFee} size="xs" mode="subtle" />
               </div>
             </div>
           </div>
@@ -224,16 +243,10 @@ export function TransactionSummary({
               </span>
               <div className="text-right">
                 <div className="text-lg font-bold text-sanctuary-900 dark:text-sanctuary-100">
-                  {state.outputs.some(o => o.sendMax)
-                    ? format(selectedTotal)
-                    : format(totalOutputAmount + (txData?.fee || estimatedFee))
-                  }
+                  {format(totalIncludingFeeSats)}
                 </div>
                 <FiatDisplay
-                  sats={state.outputs.some(o => o.sendMax)
-                    ? selectedTotal
-                    : totalOutputAmount + (txData?.fee || estimatedFee)
-                  }
+                  sats={totalIncludingFeeSats}
                   size="sm"
                   showApprox
                 />
@@ -263,7 +276,7 @@ export function TransactionSummary({
           <div className="flex items-center justify-between text-sm">
             <span className="text-sanctuary-500">Coin Control</span>
             <span className="text-sanctuary-900 dark:text-sanctuary-100">
-              {state.selectedUTXOs.size} UTXO{state.selectedUTXOs.size !== 1 ? 's' : ''} selected
+              {getCoinControlLabel(state.selectedUTXOs.size)}
             </span>
           </div>
         )}
