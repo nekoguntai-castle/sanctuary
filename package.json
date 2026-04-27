@@ -52,6 +52,7 @@
     "lint:gateway": "eslint \"gateway/src/**/*.ts\" \"shared/**/*.ts\"",
     "quality": "./scripts/quality.sh",
     "check:browser-auth-contract": "node scripts/check-browser-auth-contract.mjs",
+    "check:github-action-runtimes": "node scripts/ci/check-github-action-runtimes.mjs",
     "check:architecture-boundaries": "node scripts/check-architecture-boundaries.mjs",
     "check:openapi-route-coverage": "node scripts/check-openapi-route-coverage.mjs",
     "check:api-body-validation": "node scripts/check-api-body-validation.mjs",
