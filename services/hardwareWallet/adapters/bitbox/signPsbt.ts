@@ -15,34 +15,204 @@ import type { PSBTSignRequest, PSBTSignResponse } from '../../types';
 
 const log = createLogger('BitBoxAdapter');
 
+type BitBoxPsbt = ReturnType<typeof bitcoin.Psbt.fromBase64>;
+type BitBoxInputData = BitBoxPsbt['data']['inputs'][number];
+type BitBoxOutputData = BitBoxPsbt['data']['outputs'][number];
+type BitBoxTxInput = BitBoxPsbt['txInputs'][number];
+type BitBoxTxOutput = BitBoxPsbt['txOutputs'][number];
+
+type BitBoxSigningInput = {
+  prevOutHash: Uint8Array;
+  prevOutIndex: number;
+  prevOutValue: string;
+  sequence: number;
+  keypath: number[];
+};
+
+type BitBoxSigningOutput = {
+  ours: boolean;
+  type?: number;
+  payload?: Uint8Array;
+  keypath?: number[];
+  value: string;
+};
+
+const DEFAULT_ACCOUNT_PATH = "m/84'/0'/0'";
+
+const getAccountPathFromPsbt = (psbt: BitBoxPsbt): string | undefined => {
+  for (const input of psbt.data.inputs) {
+    const derivation = input.bip32Derivation?.[0];
+    if (derivation) {
+      return extractAccountPath(derivation.path);
+    }
+  }
+
+  return undefined;
+};
+
+const getAccountPath = (request: PSBTSignRequest, psbt: BitBoxPsbt): string => {
+  if (request.accountPath) {
+    return request.accountPath;
+  }
+
+  if (request.inputPaths && request.inputPaths.length > 0) {
+    return extractAccountPath(request.inputPaths[0]);
+  }
+
+  return getAccountPathFromPsbt(psbt) || DEFAULT_ACCOUNT_PATH;
+};
+
+const getInputValue = (input: BitBoxInputData, txInput: BitBoxTxInput): bigint => {
+  if (input.witnessUtxo) {
+    return BigInt(input.witnessUtxo.value);
+  }
+
+  if (input.nonWitnessUtxo) {
+    const prevTx = bitcoin.Transaction.fromBuffer(input.nonWitnessUtxo);
+    return BigInt(prevTx.outs[txInput.index].value);
+  }
+
+  return 0n;
+};
+
+const getInputKeypath = (
+  input: BitBoxInputData,
+  request: PSBTSignRequest,
+  inputIndex: number,
+  keypathAccount: number[]
+): number[] => {
+  const derivationPath = input.bip32Derivation?.[0]?.path || request.inputPaths?.[inputIndex];
+  return derivationPath ? getKeypathFromString(derivationPath) : [...keypathAccount, 0, 0];
+};
+
+const buildBitBoxInput = (
+  input: BitBoxInputData,
+  txInput: BitBoxTxInput,
+  request: PSBTSignRequest,
+  inputIndex: number,
+  keypathAccount: number[]
+): BitBoxSigningInput => {
+  return {
+    prevOutHash: new Uint8Array(txInput.hash),
+    prevOutIndex: txInput.index,
+    prevOutValue: getInputValue(input, txInput).toString(),
+    sequence: txInput.sequence ?? 0xffffffff,
+    keypath: getInputKeypath(input, request, inputIndex, keypathAccount),
+  };
+};
+
+const buildBitBoxInputs = (
+  psbt: BitBoxPsbt,
+  request: PSBTSignRequest,
+  keypathAccount: number[]
+): BitBoxSigningInput[] => {
+  return psbt.data.inputs.map((input, index) =>
+    buildBitBoxInput(input, psbt.txInputs[index], request, index, keypathAccount)
+  );
+};
+
+const isChangeOutput = (outputData: BitBoxOutputData | undefined, accountPath: string): boolean => {
+  const derivationPath = outputData?.bip32Derivation?.[0]?.path;
+  return Boolean(derivationPath?.startsWith(accountPath.replace("m/", "")));
+};
+
+const decodeAddressPayload = (address: string): Uint8Array => {
+  try {
+    if (address.startsWith('bc1') || address.startsWith('tb1')) {
+      const decoded = bitcoin.address.fromBech32(address);
+      return new Uint8Array(decoded.data);
+    }
+
+    const decoded = bitcoin.address.fromBase58Check(address);
+    return new Uint8Array(decoded.hash);
+  } catch (e) {
+    log.warn('Could not decode address', { address, error: e });
+    return new Uint8Array(0);
+  }
+};
+
+const buildChangeOutput = (outputData: BitBoxOutputData, value: string): BitBoxSigningOutput => {
+  return {
+    ours: true,
+    keypath: getKeypathFromString(outputData.bip32Derivation![0].path),
+    value,
+  };
+};
+
+const buildExternalOutput = (
+  output: BitBoxTxOutput,
+  value: string,
+  network: bitcoin.Network
+): BitBoxSigningOutput => {
+  const address = output.address || '';
+
+  return {
+    ours: false,
+    type: getOutputType(address, network),
+    payload: decodeAddressPayload(address),
+    value,
+  };
+};
+
+const buildBitBoxOutput = (
+  output: BitBoxTxOutput,
+  outputData: BitBoxOutputData | undefined,
+  accountPath: string,
+  network: bitcoin.Network
+): BitBoxSigningOutput => {
+  const value = BigInt(output.value).toString();
+  return isChangeOutput(outputData, accountPath) && outputData?.bip32Derivation
+    ? buildChangeOutput(outputData, value)
+    : buildExternalOutput(output, value, network);
+};
+
+const buildBitBoxOutputs = (
+  psbt: BitBoxPsbt,
+  accountPath: string,
+  network: bitcoin.Network
+): BitBoxSigningOutput[] => {
+  return psbt.txOutputs.map((output, index) =>
+    buildBitBoxOutput(output, psbt.data.outputs[index], accountPath, network)
+  );
+};
+
+const applyBitBoxSignatures = (psbt: BitBoxPsbt, signatures: Uint8Array[]): void => {
+  for (let i = 0; i < signatures.length; i++) {
+    const input = psbt.data.inputs[i];
+    const pubkey = input.bip32Derivation?.[0]?.pubkey;
+    if (!pubkey) {
+      continue;
+    }
+
+    // BitBox02 returns 64-byte signatures (r || s), need to add sighash byte.
+    const sighashType = input.sighashType || bitcoin.Transaction.SIGHASH_ALL;
+    const fullSig = Buffer.concat([
+      Buffer.from(signatures[i]),
+      Buffer.from([sighashType]),
+    ]);
+
+    psbt.updateInput(i, {
+      partialSig: [
+        {
+          pubkey,
+          signature: fullSig,
+        },
+      ],
+    });
+  }
+};
+
 /**
  * Sign a PSBT with a BitBox02 device
  */
-export async function signPsbtWithBitBox(
+export const signPsbtWithBitBox = async (
   request: PSBTSignRequest,
   connection: BitBoxConnection
-): Promise<PSBTSignResponse> {
+): Promise<PSBTSignResponse> => {
   // Parse PSBT
   const psbt = bitcoin.Psbt.fromBase64(request.psbt);
 
-  // Determine account path from request or PSBT
-  let accountPath = request.accountPath;
-  if (!accountPath && request.inputPaths && request.inputPaths.length > 0) {
-    accountPath = extractAccountPath(request.inputPaths[0]);
-  }
-  if (!accountPath) {
-    // Try to extract from PSBT bip32Derivation
-    for (const input of psbt.data.inputs) {
-      if (input.bip32Derivation && input.bip32Derivation.length > 0) {
-        accountPath = extractAccountPath(input.bip32Derivation[0].path);
-        break;
-      }
-    }
-  }
-  if (!accountPath) {
-    accountPath = "m/84'/0'/0'";
-  }
-
+  const accountPath = getAccountPath(request, psbt);
   log.info('Using account path', { accountPath });
 
   const coin = getCoin(accountPath);
@@ -53,102 +223,8 @@ export async function signPsbtWithBitBox(
   const isTestnet = isTestnetPath(accountPath);
   const network = isTestnet ? bitcoin.networks.testnet : bitcoin.networks.bitcoin;
 
-  // Build inputs array for BitBox02
-  const inputs: Array<{
-    prevOutHash: Uint8Array;
-    prevOutIndex: number;
-    prevOutValue: string;
-    sequence: number;
-    keypath: number[];
-  }> = [];
-
-  for (let i = 0; i < psbt.data.inputs.length; i++) {
-    const input = psbt.data.inputs[i];
-    const txInput = psbt.txInputs[i];
-
-    // Get value from witnessUtxo or nonWitnessUtxo
-    let value: bigint | number = 0n;
-    if (input.witnessUtxo) {
-      value = BigInt(input.witnessUtxo.value);
-    } else if (input.nonWitnessUtxo && txInput) {
-      const prevTx = bitcoin.Transaction.fromBuffer(input.nonWitnessUtxo);
-      value = BigInt(prevTx.outs[txInput.index].value);
-    }
-
-    // Get keypath from bip32Derivation or inputPaths
-    let keypath: number[] = [];
-    if (input.bip32Derivation && input.bip32Derivation.length > 0) {
-      keypath = getKeypathFromString(input.bip32Derivation[0].path);
-    } else if (request.inputPaths && request.inputPaths[i]) {
-      keypath = getKeypathFromString(request.inputPaths[i]);
-    } else {
-      // Default to first address of account
-      keypath = [...keypathAccount, 0, 0];
-    }
-
-    inputs.push({
-      prevOutHash: new Uint8Array(txInput.hash),
-      prevOutIndex: txInput.index,
-      prevOutValue: value.toString(),
-      sequence: txInput.sequence ?? 0xffffffff,
-      keypath,
-    });
-  }
-
-  // Build outputs array for BitBox02
-  const outputs: Array<{
-    ours: boolean;
-    type?: number;
-    payload?: Uint8Array;
-    keypath?: number[];
-    value: string;
-  }> = [];
-
-  for (let i = 0; i < psbt.txOutputs.length; i++) {
-    const output = psbt.txOutputs[i];
-    const outputData = psbt.data.outputs[i];
-    const value = BigInt(output.value).toString();
-
-    // Check if this is a change output (has bip32Derivation with our account path)
-    const isChange =
-      outputData?.bip32Derivation &&
-      outputData.bip32Derivation.length > 0 &&
-      outputData.bip32Derivation[0].path.startsWith(accountPath.replace("m/", ""));
-
-    if (isChange && outputData?.bip32Derivation) {
-      // Change output
-      outputs.push({
-        ours: true,
-        keypath: getKeypathFromString(outputData.bip32Derivation[0].path),
-        value,
-      });
-    } else {
-      // External output
-      const address = output.address || '';
-      const outputType = getOutputType(address, network);
-
-      // Get payload (hash) from address
-      let payload = new Uint8Array(0);
-      try {
-        if (address.startsWith('bc1') || address.startsWith('tb1')) {
-          const decoded = bitcoin.address.fromBech32(address);
-          payload = new Uint8Array(decoded.data);
-        } else {
-          const decoded = bitcoin.address.fromBase58Check(address);
-          payload = new Uint8Array(decoded.hash);
-        }
-      } catch (e) {
-        log.warn('Could not decode address', { address, error: e });
-      }
-
-      outputs.push({
-        ours: false,
-        type: outputType,
-        payload,
-        value,
-      });
-    }
-  }
+  const inputs = buildBitBoxInputs(psbt, request, keypathAccount);
+  const outputs = buildBitBoxOutputs(psbt, accountPath, network);
 
   log.info('Calling btcSignSimple', {
     coin,
@@ -174,31 +250,7 @@ export async function signPsbtWithBitBox(
 
   log.info('Got signatures from device', { signatureCount: signatures.length });
 
-  // Apply signatures to PSBT
-  for (let i = 0; i < signatures.length; i++) {
-    const sig = signatures[i];
-    const input = psbt.data.inputs[i];
-
-    if (input.bip32Derivation && input.bip32Derivation.length > 0) {
-      const pubkey = input.bip32Derivation[0].pubkey;
-
-      // BitBox02 returns 64-byte signatures (r || s), need to add sighash byte
-      const sighashType = input.sighashType || bitcoin.Transaction.SIGHASH_ALL;
-      const fullSig = Buffer.concat([
-        Buffer.from(sig),
-        Buffer.from([sighashType]),
-      ]);
-
-      psbt.updateInput(i, {
-        partialSig: [
-          {
-            pubkey,
-            signature: fullSig,
-          },
-        ],
-      });
-    }
-  }
+  applyBitBoxSignatures(psbt, signatures);
 
   // Finalize
   psbt.finalizeAllInputs();
@@ -209,4 +261,4 @@ export async function signPsbtWithBitBox(
     psbt: psbt.toBase64(),
     signatures: signatures.length,
   };
-}
+};

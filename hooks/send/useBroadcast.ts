@@ -23,6 +23,16 @@ import type { TransactionData } from './types';
 
 const log = createLogger('Broadcast');
 
+type CurrencyFormatter = (amount: number) => string;
+type ShowSuccess = (message: string, title?: string) => void;
+
+interface BroadcastPayloadSelection {
+  psbtToUse: string | null;
+  rawTxToUse: string | undefined;
+  isMultisig: boolean;
+  rawTxSkipped: boolean;
+}
+
 export interface UseBroadcastDeps {
   walletId: string;
   wallet: Wallet;
@@ -37,6 +47,124 @@ export interface UseBroadcastDeps {
 export interface UseBroadcastResult {
   broadcastTransaction: (signedPsbt?: string, rawTxHex?: string) => Promise<boolean>;
 }
+
+const selectBroadcastPayload = (
+  wallet: Wallet,
+  unsignedPsbt: string | null,
+  signedRawTx: string | null,
+  signedPsbt?: string,
+  rawTxHex?: string
+): BroadcastPayloadSelection => {
+  const psbtToUse = signedPsbt || unsignedPsbt;
+  const isMultisig = isMultisigType(wallet.type);
+  const rawTxCandidate = rawTxHex || signedRawTx;
+
+  return {
+    psbtToUse,
+    rawTxToUse: isMultisig ? undefined : rawTxCandidate ?? undefined,
+    isMultisig,
+    rawTxSkipped: isMultisig && !!rawTxCandidate,
+  };
+};
+
+const hasBroadcastPayload = (payload: BroadcastPayloadSelection): boolean => {
+  return Boolean(payload.psbtToUse || payload.rawTxToUse);
+};
+
+const logBroadcastStart = (payload: BroadcastPayloadSelection): void => {
+  log.info('Broadcasting transaction', {
+    hasPsbt: !!payload.psbtToUse,
+    hasRawTx: !!payload.rawTxToUse,
+    isMultisig: payload.isMultisig,
+    rawTxSkipped: payload.rawTxSkipped,
+  });
+};
+
+const logPartialSignatureDetails = (input: bitcoin.Psbt['data']['inputs'][number], inputIndex: number): void => {
+  if (!input.partialSig) {
+    return;
+  }
+
+  log.info('BROADCAST PSBT SIGNATURES', {
+    inputIndex,
+    signatureCount: input.partialSig.length,
+    signatures: input.partialSig.map(ps => ({
+      pubkeyPrefix: toHex(ps.pubkey.slice(0, 8)),
+      sigLength: ps.signature.length,
+      sigHexStart: toHex(ps.signature.slice(0, 10)),
+      sigHexEnd: toHex(ps.signature.slice(-5)),
+    })),
+  });
+};
+
+const logMultisigPsbtSignatures = (psbtToUse: string | null, isMultisig: boolean): void => {
+  if (!psbtToUse || !isMultisig) {
+    return;
+  }
+
+  try {
+    const debugPsbt = bitcoin.Psbt.fromBase64(psbtToUse);
+    debugPsbt.data.inputs.forEach(logPartialSignatureDetails);
+  } catch (parseError) {
+    log.warn('Failed to parse PSBT for debug', { error: parseError });
+  }
+};
+
+const getEffectiveAmount = (txData: TransactionData): number => {
+  return txData.effectiveAmount || txData.outputs?.reduce((sum, output) => sum + output.amount, 0) || 0;
+};
+
+const getOutputsMessage = (
+  outputCount: number,
+  effectiveAmount: number,
+  format: CurrencyFormatter
+): string => {
+  return outputCount > 1 ? `${outputCount} outputs` : format(effectiveAmount);
+};
+
+const showBroadcastSuccess = (
+  showSuccess: ShowSuccess,
+  format: CurrencyFormatter,
+  txid: string,
+  outputCount: number,
+  effectiveAmount: number,
+  fee: number
+): void => {
+  const outputsMsg = getOutputsMessage(outputCount, effectiveAmount, format);
+  showSuccess(
+    `Transaction broadcast successfully! TXID: ${txid.substring(0, 16)}... Amount: ${outputsMsg}, Fee: ${format(fee)}`,
+    'Transaction Broadcast'
+  );
+};
+
+const refetchBroadcastCaches = async (walletId: string): Promise<void> => {
+  // Refetch React Query caches so Dashboard updates immediately.
+  // invalidateQueries only marks as stale and can race with navigate().
+  await Promise.all([
+    queryClient.refetchQueries({ queryKey: ['pendingTransactions'] }),
+    queryClient.refetchQueries({ queryKey: ['wallets'] }),
+    queryClient.refetchQueries({ queryKey: ['wallet', walletId] }),
+  ]);
+
+  queryClient.invalidateQueries({ queryKey: ['recentTransactions'] });
+  queryClient.invalidateQueries({ queryKey: ['transactions', walletId] });
+};
+
+const deleteDraftAfterBroadcast = async (walletId: string, draftId: string | null): Promise<void> => {
+  if (!draftId) {
+    return;
+  }
+
+  try {
+    await draftsApi.deleteDraft(walletId, draftId);
+  } catch (e) {
+    log.error('Failed to delete draft after broadcast', { error: e });
+  }
+};
+
+const getBroadcastErrorMessage = (err: unknown): string => {
+  return err instanceof Error ? err.message : 'Failed to broadcast transaction';
+};
 
 export function useBroadcast({
   walletId,
@@ -63,104 +191,40 @@ export function useBroadcast({
       return false;
     }
 
-    const psbtToUse = signedPsbt || unsignedPsbt;
-    // Use passed rawTxHex, or fall back to stored signedRawTx from Trezor signing
-    // IMPORTANT: For multisig, do NOT use rawTxHex - it only contains one device's signature
-    // The PSBT path handles combining signatures from multiple devices
-    const isMultisig = isMultisigType(wallet.type);
-    const rawTxToUse = isMultisig ? undefined : (rawTxHex || signedRawTx);
+    const payload = selectBroadcastPayload(wallet, unsignedPsbt, signedRawTx, signedPsbt, rawTxHex);
 
-    if (!psbtToUse && !rawTxToUse) {
+    if (!hasBroadcastPayload(payload)) {
       setError('No signed transaction available');
       return false;
     }
 
-    log.info('Broadcasting transaction', {
-      hasPsbt: !!psbtToUse,
-      hasRawTx: !!rawTxToUse,
-      isMultisig,
-      rawTxSkipped: isMultisig && !!(rawTxHex || signedRawTx),
-    });
-
-    // Log PSBT signature details for debugging
-    if (psbtToUse && isMultisig) {
-      try {
-        const debugPsbt = bitcoin.Psbt.fromBase64(psbtToUse);
-        for (let i = 0; i < debugPsbt.data.inputs.length; i++) {
-          const input = debugPsbt.data.inputs[i];
-          if (input.partialSig) {
-            log.info('BROADCAST PSBT SIGNATURES', {
-              inputIndex: i,
-              signatureCount: input.partialSig.length,
-              signatures: input.partialSig.map(ps => ({
-                pubkeyPrefix: toHex(ps.pubkey.slice(0, 8)),
-                sigLength: ps.signature.length,
-                sigHexStart: toHex(ps.signature.slice(0, 10)),
-                sigHexEnd: toHex(ps.signature.slice(-5)),
-              })),
-            });
-          }
-        }
-      } catch (parseError) {
-        log.warn('Failed to parse PSBT for debug', { error: parseError });
-      }
-    }
+    logBroadcastStart(payload);
+    logMultisigPsbtSignatures(payload.psbtToUse, payload.isMultisig);
 
     setIsBroadcasting(true);
     setError(null);
 
     try {
-      const effectiveAmount = txData.effectiveAmount ||
-        (txData.outputs?.reduce((sum, o) => sum + o.amount, 0) || 0);
+      const effectiveAmount = getEffectiveAmount(txData);
 
       const broadcastResult = await transactionsApi.broadcastTransaction(walletId, {
-        signedPsbtBase64: psbtToUse ?? undefined,
-        rawTxHex: rawTxToUse ?? undefined,
+        signedPsbtBase64: payload.psbtToUse ?? undefined,
+        rawTxHex: payload.rawTxToUse ?? undefined,
         recipient: state.outputs[0].address,
         amount: effectiveAmount,
         fee: txData.fee,
         utxos: txData.utxos,
       });
 
-      const outputsMsg = state.outputs.length > 1
-        ? `${state.outputs.length} outputs`
-        : format(effectiveAmount);
-
-      showSuccess(
-        `Transaction broadcast successfully! TXID: ${broadcastResult.txid.substring(0, 16)}... Amount: ${outputsMsg}, Fee: ${format(txData.fee)}`,
-        'Transaction Broadcast'
-      );
-
+      showBroadcastSuccess(showSuccess, format, broadcastResult.txid, state.outputs.length, effectiveAmount, txData.fee);
       playEventSound('send');
-
-      // Refetch React Query caches so Dashboard updates immediately
-      // IMPORTANT: Use refetchQueries (not invalidateQueries) to ensure data is fetched BEFORE navigation.
-      // invalidateQueries only marks as stale and triggers background refetch, which races with navigate().
-      // Using refetchQueries with await ensures the pending transaction appears in the UI right away.
-      await Promise.all([
-        queryClient.refetchQueries({ queryKey: ['pendingTransactions'] }),
-        queryClient.refetchQueries({ queryKey: ['wallets'] }),
-        queryClient.refetchQueries({ queryKey: ['wallet', walletId] }),
-      ]);
-      // These can be invalidated (background refresh is fine)
-      queryClient.invalidateQueries({ queryKey: ['recentTransactions'] });
-      queryClient.invalidateQueries({ queryKey: ['transactions', walletId] });
-
-      // Delete draft if exists
-      if (state.draftId) {
-        try {
-          await draftsApi.deleteDraft(walletId, state.draftId);
-        } catch (e) {
-          log.error('Failed to delete draft after broadcast', { error: e });
-        }
-      }
-
-      // Navigate back to wallet
+      await refetchBroadcastCaches(walletId);
+      await deleteDraftAfterBroadcast(walletId, state.draftId);
       navigate(`/wallets/${walletId}`);
       return true;
     } catch (err) {
       log.error('Transaction broadcast failed', { error: err });
-      setError(err instanceof Error ? err.message : 'Failed to broadcast transaction');
+      setError(getBroadcastErrorMessage(err));
       return false;
     } finally {
       setIsBroadcasting(false);

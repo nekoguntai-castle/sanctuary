@@ -32,7 +32,7 @@ export interface UrExtractResult {
  * 1. Source fingerprint from origin (master fingerprint)
  * 2. Parent fingerprint (fallback, not ideal but better than nothing)
  */
-export function extractFingerprintFromHdKey(hdKey: CryptoHDKey): string {
+export const extractFingerprintFromHdKey = (hdKey: CryptoHDKey): string => {
   // Try 1: Get from origin's source fingerprint (master fingerprint)
   const origin = hdKey.getOrigin();
   if (origin) {
@@ -56,12 +56,12 @@ export function extractFingerprintFromHdKey(hdKey: CryptoHDKey): string {
   }
 
   return '';
-}
+};
 
 /**
  * Extract derivation path from CryptoHDKey origin
  */
-function extractPathFromOrigin(origin: ReturnType<CryptoHDKey['getOrigin']>): string {
+const extractPathFromOrigin = (origin: ReturnType<CryptoHDKey['getOrigin']>): string => {
   if (!origin) return '';
 
   const pathComponents = origin.getComponents() || [];
@@ -72,9 +72,9 @@ function extractPathFromOrigin(origin: ReturnType<CryptoHDKey['getOrigin']>): st
       `${c.getIndex()}${c.isHardened() ? "'" : ''}`
     )
     .join('/');
-}
+};
 
-function extractFromHdKey(hdKey: CryptoHDKey, source: 'CryptoHDKey' | 'CryptoOutput'): UrExtractResult {
+const extractFromHdKey = (hdKey: CryptoHDKey, source: 'CryptoHDKey' | 'CryptoOutput'): UrExtractResult => {
   const result = {
     xpub: hdKey.getBip32Key(),
     fingerprint: extractFingerprintFromHdKey(hdKey),
@@ -87,17 +87,17 @@ function extractFromHdKey(hdKey: CryptoHDKey, source: 'CryptoHDKey' | 'CryptoOut
     path: result.path,
   });
   return result;
-}
+};
 
-function extractFromCryptoOutput(output: CryptoOutput): UrExtractResult | null {
+const extractFromCryptoOutput = (output: CryptoOutput): UrExtractResult | null => {
   const hdKey = output.getHDKey();
   return hdKey ? extractFromHdKey(hdKey, 'CryptoOutput') : null;
-}
+};
 
-function extractFromAccountOutput(
+const extractFromAccountOutput = (
   output: CryptoOutput,
   fingerprint: string
-): UrExtractResult | null {
+): UrExtractResult | null => {
   const hdKey = output.getHDKey();
   if (!hdKey) return null;
 
@@ -106,9 +106,9 @@ function extractFromAccountOutput(
     fingerprint,
     path: extractPathFromOrigin(hdKey.getOrigin()),
   };
-}
+};
 
-function extractFromCryptoAccount(account: CryptoAccount): UrExtractResult | null {
+const extractFromCryptoAccount = (account: CryptoAccount): UrExtractResult | null => {
   const fingerprint = account.getMasterFingerprint()?.toString('hex') || '';
   const outputs = account.getOutputDescriptors();
 
@@ -120,11 +120,11 @@ function extractFromCryptoAccount(account: CryptoAccount): UrExtractResult | nul
   }
 
   return outputs.length > 0 ? extractFromAccountOutput(outputs[0], fingerprint) : null;
-}
+};
 
-function resultFromParsedDevice(
+const resultFromParsedDevice = (
   result: ReturnType<typeof parseDeviceJson>
-): UrExtractResult | null {
+): UrExtractResult | null => {
   if (!result?.xpub) return null;
 
   return {
@@ -132,9 +132,9 @@ function resultFromParsedDevice(
     fingerprint: result.fingerprint || '',
     path: result.derivationPath || ''
   };
-}
+};
 
-function extractFromUrBytes(registryType: unknown): UrExtractResult | null {
+const extractFromUrBytes = (registryType: unknown): UrExtractResult | null => {
   if (!registryType || typeof registryType !== 'object' || !('bytes' in registryType)) {
     return null;
   }
@@ -164,7 +164,7 @@ function extractFromUrBytes(registryType: unknown): UrExtractResult | null {
     log.error('Failed to decode ur:bytes as text', { error: decodeErr });
     return null;
   }
-}
+};
 
 /**
  * Try to extract xpub data from UR registry result
@@ -175,7 +175,7 @@ function extractFromUrBytes(registryType: unknown): UrExtractResult | null {
  * - CryptoAccount: Multi-account export (returns first BIP84 or first available)
  * - ur:bytes: Raw bytes that may contain JSON/text wallet data
  */
-export function extractFromUrResult(registryType: unknown): UrExtractResult | null {
+export const extractFromUrResult = (registryType: unknown): UrExtractResult | null => {
   try {
     if (registryType instanceof CryptoHDKey) {
       return extractFromHdKey(registryType, 'CryptoHDKey');
@@ -194,7 +194,7 @@ export function extractFromUrResult(registryType: unknown): UrExtractResult | nu
     log.error('Failed to extract from UR result', { error: err });
     return null;
   }
-}
+};
 
 /**
  * Extract xpub data from ur:bytes text content (Foundation Passport format)
@@ -202,7 +202,7 @@ export function extractFromUrResult(registryType: unknown): UrExtractResult | nu
  * The ur:bytes typically contains JSON with wallet descriptor information.
  * Uses the device parser registry to handle various JSON formats.
  */
-export function extractFromUrBytesContent(textContent: string): UrExtractResult | null {
+export const extractFromUrBytesContent = (textContent: string): UrExtractResult | null => {
   // Use the device parser registry to parse the text content
   const parsed = parseDeviceJson(textContent);
   const result = resultFromParsedDevice(parsed);
@@ -216,14 +216,14 @@ export function extractFromUrBytesContent(textContent: string): UrExtractResult 
   }
 
   return result;
-}
+};
 
 /**
  * Check if a string is UR format
  */
-export function isUrFormat(content: string): boolean {
+export const isUrFormat = (content: string): boolean => {
   return content.toLowerCase().startsWith('ur:');
-}
+};
 
 /**
  * Extract UR type from a UR string
@@ -232,7 +232,7 @@ export function isUrFormat(content: string): boolean {
  * getUrType('ur:crypto-hdkey/...') // => 'crypto-hdkey'
  * getUrType('ur:bytes/...') // => 'bytes'
  */
-export function getUrType(urString: string): string | null {
+export const getUrType = (urString: string): string | null => {
   const match = urString.toLowerCase().match(/^ur:([a-z0-9-]+)/);
   return match ? match[1] : null;
-}
+};
