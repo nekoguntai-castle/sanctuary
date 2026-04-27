@@ -7,16 +7,9 @@
  */
 
 import { createLogger } from '../../../utils/logger';
-import { nodeConfigRepository } from '../../../repositories';
-import { getErrorMessage } from '../../../utils/errors';
 import { ElectrumPool } from './electrumPool';
-import type {
-  ElectrumPoolConfig,
-  ServerConfig,
-  ProxyConfig,
-  LoadBalancingStrategy,
-  NetworkType,
-} from './types';
+import { loadPoolConfigFromDatabase } from './poolConfig';
+import type { ElectrumPoolConfig, ServerConfig, NetworkType } from './types';
 
 const log = createLogger('ELECTRUM_POOL:SVC_REGISTRY');
 
@@ -28,86 +21,6 @@ let poolInitPromise: Promise<ElectrumPool> | null = null;
 // Per-network pool registry
 const networkPools = new Map<NetworkType, ElectrumPool>();
 const networkPoolInitPromises = new Map<NetworkType, Promise<ElectrumPool>>();
-
-/**
- * Load pool configuration from database for a specific network
- * @param network Network to load config for (defaults to mainnet)
- */
-async function loadPoolConfigFromDatabase(network: NetworkType = 'mainnet'): Promise<{
-  config: Partial<ElectrumPoolConfig>;
-  servers: ServerConfig[];
-  proxy: ProxyConfig | null;
-}> {
-  try {
-    const nodeConfig = await nodeConfigRepository.findDefaultWithServers();
-
-    if (nodeConfig && nodeConfig.type === 'electrum') {
-      // Filter to enabled servers for the requested network
-      const filteredServers = nodeConfig.servers
-        .filter((s: { enabled: boolean; network: string }) => s.enabled && s.network === network)
-        /* v8 ignore start -- deterministic server priority comparator branch is a V8 coverage artifact */
-        .sort((a: { priority: number }, b: { priority: number }) => a.priority - b.priority);
-        /* v8 ignore stop */
-      const servers: ServerConfig[] = filteredServers.map((s: { id: string; label: string; host: string; port: number; useSsl: boolean; priority: number; enabled: boolean; supportsVerbose: boolean | null }) => ({
-        id: s.id,
-        label: s.label,
-        host: s.host,
-        port: s.port,
-        useSsl: s.useSsl,
-        priority: s.priority,
-        enabled: s.enabled,
-        supportsVerbose: s.supportsVerbose,
-      }));
-
-      // Load proxy config if enabled
-      let proxy: ProxyConfig | null = null;
-      if (nodeConfig.proxyEnabled && nodeConfig.proxyHost && nodeConfig.proxyPort) {
-        proxy = {
-          enabled: true,
-          host: nodeConfig.proxyHost,
-          port: nodeConfig.proxyPort,
-          username: nodeConfig.proxyUsername ?? undefined,
-          password: nodeConfig.proxyPassword ?? undefined,
-        };
-      }
-
-      // Get per-network pool settings
-      let minConnections = nodeConfig.poolMinConnections;
-      let maxConnections = nodeConfig.poolMaxConnections;
-      let loadBalancing = nodeConfig.poolLoadBalancing as LoadBalancingStrategy;
-
-      // Use per-network settings if available (new schema)
-      if (network === 'mainnet') {
-        minConnections = nodeConfig.mainnetPoolMin ?? minConnections;
-        maxConnections = nodeConfig.mainnetPoolMax ?? maxConnections;
-        loadBalancing = (nodeConfig.mainnetPoolLoadBalancing as LoadBalancingStrategy) ?? loadBalancing;
-      } else if (network === 'testnet') {
-        minConnections = nodeConfig.testnetPoolMin ?? minConnections;
-        maxConnections = nodeConfig.testnetPoolMax ?? maxConnections;
-        loadBalancing = (nodeConfig.testnetPoolLoadBalancing as LoadBalancingStrategy) ?? loadBalancing;
-      } else if (network === 'signet') {
-        minConnections = nodeConfig.signetPoolMin ?? minConnections;
-        maxConnections = nodeConfig.signetPoolMax ?? maxConnections;
-        loadBalancing = (nodeConfig.signetPoolLoadBalancing as LoadBalancingStrategy) ?? loadBalancing;
-      }
-
-      return {
-        config: {
-          enabled: nodeConfig.poolEnabled,
-          minConnections,
-          maxConnections,
-          loadBalancing,
-        },
-        servers,
-        proxy,
-      };
-    }
-  } catch (error) {
-    log.warn('Failed to load pool config from database, using defaults', { error: getErrorMessage(error), network });
-  }
-
-  return { config: {}, servers: [], proxy: null };
-}
 
 /**
  * Parse environment variables for pool configuration

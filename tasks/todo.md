@@ -1,6 +1,79 @@
-# Active Task: AI/MCP/Console Release Proof Docs 2026-04-26
+# Active Task: Pre-Release Grade Findings Remediation 2026-04-27
 
 Status: in progress
+
+Goal: fix the current `$grade` findings before cutting the next release, restoring the maintainability margin without weakening test coverage, wallet safety, MCP/Console behavior, or hardware-wallet flows.
+
+Release target: **minimum 97/100 A**, no hard-fail blockers, `security_high=0`, `secrets=0`, app/backend/gateway coverage still 100%, duplication below 3%, and a full lizard scan at `CCN <= 15` with no threshold warnings. If vector fixture sharding lands safely, target **99/100**.
+
+## Plan
+
+- [x] Create a pre-release remediation branch from current `main` after preserving the grade report/trend/task-tracker changes.
+- [ ] Slice 1 - backend configuration and node/electrum complexity:
+  - Owns `server/src/config/index.ts`, `server/src/api/admin/nodeConfigData.ts`, `server/src/services/bitcoin/nodeClient.ts`, `server/src/services/bitcoin/electrum/electrumClient.ts`, and `server/src/services/bitcoin/electrumPool/poolRegistry.ts`.
+  - Extract config parsing/default resolution, admin node-config shaping, default electrum config selection, pool config loading, and electrum connect state handling into small pure helpers.
+  - Add focused tests for env defaults, invalid/boundary values, node config variants, pool database fallbacks, and electrum connection failures.
+- [ ] Slice 2 - transaction, draft, PSBT, and sync service complexity:
+  - Owns `server/src/services/draftService.ts`, `server/src/services/agentFundingDraftValidation.ts`, `server/src/services/bitcoin/transactions/*`, `server/src/services/bitcoin/sync/confirmations/*`, `server/src/services/bitcoin/blockchain/syncAddress.ts`, `server/src/services/bitcoin/advancedTx/rbf.ts`, `server/src/services/bitcoin/addressDerivation/descriptorParser.ts`, `server/src/services/bitcoin/psbtBuilder/*`, and transaction broadcast/pending route modules.
+  - Split validation, DTO shaping, script-type branching, PSBT input enrichment, confirmation field population, previous-transaction fetches, and route response construction into named helpers.
+  - Add or preserve tests for null/empty inputs, invalid network/script types, insufficient data, counterparty/fee fallback behavior, PSBT derivation paths, RBF boundaries, and broadcast failure paths.
+- [ ] Slice 3 - hardware signing and send/import frontend complexity:
+  - Owns `services/hardwareWallet/adapters/trezor/signPsbt.ts`, `services/hardwareWallet/adapters/bitbox/signPsbt.ts`, `utils/urDeviceDecoder.ts`, `utils/utxoAge.ts`, `hooks/send/useBroadcast.ts`, `hooks/send/useDraftManagement.ts`, and `hooks/send/useQrSigning.ts`.
+  - Extract signing request builders, derivation/path helpers, previous-transaction/reference shaping, QR/UR parsing helpers, draft DTO mapping, and broadcast state transitions.
+  - Add focused tests around singlesig/multisig, missing derivations, malformed UR/QR payloads, empty drafts, binary PSBT detection, and hardware-device error mapping.
+- [ ] Slice 4 - UI component and animation complexity:
+  - Owns flagged frontend components such as `components/send/OutputRow.tsx`, `components/send/steps/review/TransactionSummary.tsx`, `components/WalletDetail/WalletHeader.tsx`, `components/cells/DeviceCells.tsx`, `components/NetworkConnectionCard/ServerRow.tsx`, `components/Dashboard/hooks/useDashboardData.ts`, `components/ui/CustomIcons.tsx`, `components/UTXOList/UTXOGarden/utxoGardenModel.ts`, `components/PayjoinSection.tsx`, `components/TransactionFlowPreview.tsx`, and flagged animation modules.
+  - Split render-branch decisions, class/model builders, icon lookup maps, animation setup phases, and data shaping into component helpers/hooks without changing visual behavior.
+  - Verify with focused component tests and existing frontend coverage; use screenshots only where animation/UI framing changes.
+- [ ] Slice 5 - test harness, e2e, and quality-script complexity:
+  - Owns flagged non-production files including `scripts/check-openapi-route-coverage.mjs`, e2e route handlers, `server/tests/mocks/aiContainer.ts`, PSBT/hardware-wallet test helpers, and console tool test helpers.
+  - Reduce full-scan lizard warnings in test/support code after production hotspots are clean, keeping fixture intent obvious and avoiding synthetic indirection.
+  - Add helper-level tests where script parsing or route-handler mocks become separate utilities.
+- [ ] Slice 6 - vector fixture size and low-audit triage:
+  - Evaluate sharding or generation-on-demand for `server/tests/fixtures/verified-address-vectors.ts` and `scripts/verify-addresses/output/verified-vectors.ts`; proceed only if address-vector coverage and deterministic verification stay intact.
+  - Re-run root audit, identify the 16 low advisories, apply safe minor/patch upgrades where available, and document any remaining upstream/hardware-wallet transitive risk.
+- [ ] Release verification gate:
+  - Run focused tests per slice plus touched-file lizard before each PR.
+  - Before release, run full lizard, `npm run test:coverage`, `npm run test:backend:coverage`, `npm --prefix gateway run test:coverage`, lint/typecheck, gitleaks full/tracked/latest commit scans, root/server/gateway/ai-proxy audits, jscpd, and `$grade`.
+  - Update `docs/plans/codebase-health-assessment.md` and grade history with the post-remediation score.
+
+## Review
+
+- Slice 1 branch: `fix/pre-release-grade-slice-1-config-node`.
+- Slice 1 local implementation: extracted env section builders, node mode resolution, Electrum connection config resolution, admin node-config mapping helpers, and pool config/server/proxy mappers into focused modules. Touched-file lizard is clean, full lizard is down from 65 to 60 warnings with no Slice 1 touched-file warnings, focused Slice 1 tests pass, server lint passes, architecture checks pass, and backend coverage remains 100%.
+- Recommended sequencing: fix production backend complexity first, then hardware/send flows, then UI/animation code, then test/support warnings, then fixture/audit cleanup.
+- Release blockers: no hard-fail blockers, 0 lizard threshold warnings or an explicitly accepted residual list, 0 high/critical audit findings, 0 gitleaks findings, and coverage/lint/typecheck still green.
+- Non-blocking unless easy and safe: root low-severity transitive advisories and vector fixture sharding. These can improve the score, but should not drive risky package downgrades or weaker address-vector tests.
+
+---
+
+# Active Task: Codebase Health Grade 2026-04-27
+
+Status: complete
+
+Goal: run the `$grade` health audit after the AI/MCP/Console release slices merged, update the canonical health report and trend history, and surface any follow-up work.
+
+## Plan
+
+- [x] Confirm post-merge cleanup state and local branch cleanup.
+- [x] Run the grade collector and explicit coverage, audit, gitleaks, lizard, and duplication evidence.
+- [x] Inspect representative validation, error handling, MCP auth, Console, rate-limit, logging, and data-access paths for judged scores.
+- [x] Update the codebase health report and grade trend history with the current score.
+- [x] Run final diff/status checks and summarize the result.
+
+## Review
+
+- Branch cleanup complete: all merged local feature/fix/chore/doc branches were deleted; only `main` remains.
+- Evidence collected against `816ced3e` on `main`.
+- Preliminary score pressure is maintainability: the current full lizard scan reports 65 threshold warnings over `CCN > 15`, while tests, lint, typecheck, coverage, audits, and gitleaks remain green.
+- Current grade report: 92/100, A, high confidence; no hard-fail blockers.
+- Final checks: `git diff --check` passed; changed files are the health report, grade trend history, and this task tracker.
+
+---
+
+# Active Task: AI/MCP/Console Release Proof Docs 2026-04-26
+
+Status: complete
 
 Goal: close the final release-proof/docs slice for the AI Settings, Sanctuary Console, and direct MCP rollout so operators have the supported setup path, release gates have explicit proof criteria, and the prior readiness audit no longer leaves stale guidance as the latest release story.
 
@@ -12,7 +85,7 @@ Goal: close the final release-proof/docs slice for the AI Settings, Sanctuary Co
 - [x] Update README, MCP how-to, docs index, and release gates to point at the new guidance and current Admin > AI Settings > MCP Access workflow.
 - [x] Add release proof notes with merged-slice evidence, quality review, edge-case audit, and remaining-slice count.
 - [x] Run focused docs/build verification, diff checks, quality review, edge-case audit, and self-review.
-- [ ] Deliver the slice through PR, merge queue, merge verification, and branch cleanup.
+- [x] Deliver the slice through PR, merge queue, merge verification, and branch cleanup.
 
 ## Review
 
@@ -23,6 +96,7 @@ Goal: close the final release-proof/docs slice for the AI Settings, Sanctuary Co
 - Marked the original MCP readiness audit as historical so its pre-implementation "not release-ready" verdict does not remain the latest guidance.
 - Edge-case audit: docs state that direct MCP is not for public internet exposure, LAN MCP requires TLS/VPN/reverse-proxy protection, prompt history expiration is per-prompt rather than an admin retention policy, restored provider credentials require re-entry, restored MCP keys are revoked, and unsupported write/shell/SQL/signing workflows remain out of scope.
 - Verification passed: `npm run docs:build`, `git diff --check`, and a stale-term scan for outdated AI/MCP feature-flag names across the touched public docs.
+- Delivery complete: PR #195 merged, `origin/main` contains merge commit `816ced3e`, post-merge main checks passed, and the merged local branch was removed during cleanup.
 
 ---
 

@@ -61,65 +61,197 @@ export interface NodeConfigInput {
 const VALID_ESTIMATORS = ['simple', 'mempool_space'];
 const VALID_LOAD_BALANCING = ['round_robin', 'least_connections', 'failover_only'];
 
+interface NetworkDefaults {
+  mode: string;
+  host: string;
+  port: number;
+  useSsl: boolean;
+  poolMin: number;
+  poolMax: number;
+  poolLoadBalancing: string;
+}
+
+interface NetworkInputFields {
+  mode?: string;
+  singletonHost?: string;
+  singletonPort?: string | number;
+  singletonSsl?: boolean;
+  poolMin?: string | number;
+  poolMax?: string | number;
+  poolLoadBalancing?: string;
+}
+
+const MAINNET_DEFAULTS: NetworkDefaults = {
+  mode: 'pool',
+  host: 'electrum.blockstream.info',
+  port: 50002,
+  useSsl: true,
+  poolMin: 1,
+  poolMax: 5,
+  poolLoadBalancing: 'round_robin',
+};
+
+const TESTNET_DEFAULTS: NetworkDefaults = {
+  mode: 'singleton',
+  host: 'electrum.blockstream.info',
+  port: 60002,
+  useSsl: true,
+  poolMin: 1,
+  poolMax: 3,
+  poolLoadBalancing: 'round_robin',
+};
+
+const SIGNET_DEFAULTS: NetworkDefaults = {
+  mode: 'singleton',
+  host: 'electrum.mutinynet.com',
+  port: 50002,
+  useSsl: true,
+  poolMin: 1,
+  poolMax: 3,
+  poolLoadBalancing: 'round_robin',
+};
+
+function parseIntegerValue(value: string | number | undefined, fallback: number): number {
+  return value === undefined || value === ''
+    ? fallback
+    : parseInt(value.toString(), 10);
+}
+
+function parseRequiredInteger(value: string | number): number {
+  return parseInt(value.toString(), 10);
+}
+
+function pickAllowed(value: string | undefined, allowed: string[], fallback: string): string {
+  return value && allowed.includes(value) ? value : fallback;
+}
+
+function encryptedOrNull(value: string | undefined): string | null {
+  return value ? encrypt(value) : null;
+}
+
+function optionalString(value: string | undefined): string | null {
+  return value || null;
+}
+
+function buildProxyData(input: NodeConfigInput): Record<string, unknown> {
+  return {
+    proxyEnabled: input.proxyEnabled ?? false,
+    proxyHost: optionalString(input.proxyHost),
+    proxyPort: parseOptionalInteger(input.proxyPort),
+    proxyUsername: optionalString(input.proxyUsername),
+    proxyPassword: encryptedOrNull(input.proxyPassword),
+  };
+}
+
+function parseOptionalInteger(value: string | number | undefined): number | null {
+  return value ? parseInt(value.toString(), 10) : null;
+}
+
+function buildNetworkData(fields: NetworkInputFields, defaults: NetworkDefaults) {
+  return {
+    mode: fields.mode || defaults.mode,
+    singletonHost: fields.singletonHost || defaults.host,
+    singletonPort: parseIntegerValue(fields.singletonPort, defaults.port),
+    singletonSsl: fields.singletonSsl ?? defaults.useSsl,
+    poolMin: parseIntegerValue(fields.poolMin, defaults.poolMin),
+    poolMax: parseIntegerValue(fields.poolMax, defaults.poolMax),
+    poolLoadBalancing: fields.poolLoadBalancing || defaults.poolLoadBalancing,
+  };
+}
+
+function buildMainnetData(input: NodeConfigInput): Record<string, unknown> {
+  const mainnet = buildNetworkData({
+    mode: input.mainnetMode,
+    singletonHost: input.mainnetSingletonHost,
+    singletonPort: input.mainnetSingletonPort,
+    singletonSsl: input.mainnetSingletonSsl,
+    poolMin: input.mainnetPoolMin,
+    poolMax: input.mainnetPoolMax,
+    poolLoadBalancing: input.mainnetPoolLoadBalancing,
+  }, MAINNET_DEFAULTS);
+
+  return {
+    mainnetMode: mainnet.mode,
+    mainnetSingletonHost: mainnet.singletonHost,
+    mainnetSingletonPort: mainnet.singletonPort,
+    mainnetSingletonSsl: mainnet.singletonSsl,
+    mainnetPoolMin: mainnet.poolMin,
+    mainnetPoolMax: mainnet.poolMax,
+    mainnetPoolLoadBalancing: mainnet.poolLoadBalancing,
+  };
+}
+
+function buildTestnetData(input: NodeConfigInput): Record<string, unknown> {
+  const testnet = buildNetworkData({
+    mode: input.testnetMode,
+    singletonHost: input.testnetSingletonHost,
+    singletonPort: input.testnetSingletonPort,
+    singletonSsl: input.testnetSingletonSsl,
+    poolMin: input.testnetPoolMin,
+    poolMax: input.testnetPoolMax,
+    poolLoadBalancing: input.testnetPoolLoadBalancing,
+  }, TESTNET_DEFAULTS);
+
+  return {
+    testnetEnabled: input.testnetEnabled ?? false,
+    testnetMode: testnet.mode,
+    testnetSingletonHost: testnet.singletonHost,
+    testnetSingletonPort: testnet.singletonPort,
+    testnetSingletonSsl: testnet.singletonSsl,
+    testnetPoolMin: testnet.poolMin,
+    testnetPoolMax: testnet.poolMax,
+    testnetPoolLoadBalancing: testnet.poolLoadBalancing,
+  };
+}
+
+function buildSignetData(input: NodeConfigInput): Record<string, unknown> {
+  const signet = buildNetworkData({
+    mode: input.signetMode,
+    singletonHost: input.signetSingletonHost,
+    singletonPort: input.signetSingletonPort,
+    singletonSsl: input.signetSingletonSsl,
+    poolMin: input.signetPoolMin,
+    poolMax: input.signetPoolMax,
+    poolLoadBalancing: input.signetPoolLoadBalancing,
+  }, SIGNET_DEFAULTS);
+
+  return {
+    signetEnabled: input.signetEnabled ?? false,
+    signetMode: signet.mode,
+    signetSingletonHost: signet.singletonHost,
+    signetSingletonPort: signet.singletonPort,
+    signetSingletonSsl: signet.singletonSsl,
+    signetPoolMin: signet.poolMin,
+    signetPoolMax: signet.poolMax,
+    signetPoolLoadBalancing: signet.poolLoadBalancing,
+  };
+}
+
 /**
  * Build the Prisma data object for creating or updating a NodeConfig record.
  * Centralizes all the field normalization, parsing, and default logic.
  */
 export function buildNodeConfigData(input: NodeConfigInput): Record<string, unknown> {
-  const estimator = input.mempoolEstimator && VALID_ESTIMATORS.includes(input.mempoolEstimator)
-    ? input.mempoolEstimator
-    : 'simple';
-
-  const loadBalancing = input.poolLoadBalancing && VALID_LOAD_BALANCING.includes(input.poolLoadBalancing)
-    ? input.poolLoadBalancing
-    : 'round_robin';
+  const estimator = pickAllowed(input.mempoolEstimator, VALID_ESTIMATORS, 'simple');
+  const loadBalancing = pickAllowed(input.poolLoadBalancing, VALID_LOAD_BALANCING, 'round_robin');
 
   return {
     type: input.type,
     host: input.host,
-    port: parseInt(input.port.toString(), 10),
+    port: parseRequiredInteger(input.port),
     useSsl: input.useSsl === true,
     allowSelfSignedCert: input.allowSelfSignedCert === true,
     explorerUrl: input.explorerUrl || 'https://mempool.space',
     feeEstimatorUrl: input.feeEstimatorUrl || null,
     mempoolEstimator: estimator,
-    // poolEnabled should be true if mainnetMode is 'pool'
     poolEnabled: input.poolEnabled ?? (input.mainnetMode === 'pool' || input.mainnetMode === undefined),
     poolMinConnections: input.poolMinConnections ?? 1,
     poolMaxConnections: input.poolMaxConnections ?? 5,
     poolLoadBalancing: loadBalancing,
-    // Proxy settings
-    proxyEnabled: input.proxyEnabled ?? false,
-    proxyHost: input.proxyHost || null,
-    proxyPort: input.proxyPort ? parseInt(input.proxyPort.toString(), 10) : null,
-    proxyUsername: input.proxyUsername || null,
-    proxyPassword: input.proxyPassword ? encrypt(input.proxyPassword) : null,
-    // Per-network settings - Mainnet
-    mainnetMode: input.mainnetMode || 'pool',
-    mainnetSingletonHost: input.mainnetSingletonHost || 'electrum.blockstream.info',
-    mainnetSingletonPort: input.mainnetSingletonPort ? parseInt(input.mainnetSingletonPort.toString(), 10) : 50002,
-    mainnetSingletonSsl: input.mainnetSingletonSsl ?? true,
-    mainnetPoolMin: input.mainnetPoolMin ? parseInt(input.mainnetPoolMin.toString(), 10) : 1,
-    mainnetPoolMax: input.mainnetPoolMax ? parseInt(input.mainnetPoolMax.toString(), 10) : 5,
-    mainnetPoolLoadBalancing: input.mainnetPoolLoadBalancing || 'round_robin',
-    // Per-network settings - Testnet
-    testnetEnabled: input.testnetEnabled ?? false,
-    testnetMode: input.testnetMode || 'singleton',
-    testnetSingletonHost: input.testnetSingletonHost || 'electrum.blockstream.info',
-    testnetSingletonPort: input.testnetSingletonPort ? parseInt(input.testnetSingletonPort.toString(), 10) : 60002,
-    testnetSingletonSsl: input.testnetSingletonSsl ?? true,
-    testnetPoolMin: input.testnetPoolMin ? parseInt(input.testnetPoolMin.toString(), 10) : 1,
-    testnetPoolMax: input.testnetPoolMax ? parseInt(input.testnetPoolMax.toString(), 10) : 3,
-    testnetPoolLoadBalancing: input.testnetPoolLoadBalancing || 'round_robin',
-    // Per-network settings - Signet
-    signetEnabled: input.signetEnabled ?? false,
-    signetMode: input.signetMode || 'singleton',
-    signetSingletonHost: input.signetSingletonHost || 'electrum.mutinynet.com',
-    signetSingletonPort: input.signetSingletonPort ? parseInt(input.signetSingletonPort.toString(), 10) : 50002,
-    signetSingletonSsl: input.signetSingletonSsl ?? true,
-    signetPoolMin: input.signetPoolMin ? parseInt(input.signetPoolMin.toString(), 10) : 1,
-    signetPoolMax: input.signetPoolMax ? parseInt(input.signetPoolMax.toString(), 10) : 3,
-    signetPoolLoadBalancing: input.signetPoolLoadBalancing || 'round_robin',
+    ...buildProxyData(input),
+    ...buildMainnetData(input),
+    ...buildTestnetData(input),
+    ...buildSignetData(input),
   };
 }
 

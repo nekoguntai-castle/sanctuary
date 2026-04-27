@@ -9,8 +9,6 @@
 import net from 'net';
 import tls from 'tls';
 import { EventEmitter } from 'events';
-import config from '../../../config';
-import { nodeConfigRepository } from '../../../repositories';
 import { createLogger } from '../../../utils/logger';
 import { getErrorMessage } from '../../../utils/errors';
 import { createConnection, wrapSocketInTls, applySocketOptimizations } from './connection';
@@ -21,13 +19,22 @@ import * as publicApi from './publicApi';
 import * as methods from './methods';
 import type {
   ElectrumConfig,
-  ProxyConfig,
   TransactionDetails,
   BitcoinNetwork,
   PendingRequest,
 } from './types';
+import {
+  resolveElectrumConnectionConfig,
+  type ResolvedConnectionConfig,
+} from './connectionConfigResolver';
 
 const log = createLogger('ELECTRUM:SVC_CLIENT');
+
+interface ConnectionState {
+  cleanup: () => void;
+  handleSuccess: () => void;
+  handleError: (error: Error) => void;
+}
 
 class ElectrumClient extends EventEmitter {
   private socket: net.Socket | tls.TLSSocket | null = null;
@@ -87,77 +94,22 @@ class ElectrumClient extends EventEmitter {
    * Connect to Electrum server
    */
   async connect(): Promise<void> {
-    // Get config first (async), then create socket connection
-    let host: string;
-    let port: number;
-    let protocol: 'tcp' | 'ssl';
-    let allowSelfSignedCert = false;
-    let proxy: ProxyConfig | undefined;
-
-    // Use explicit config if provided (for testing connections)
-    if (this.explicitConfig) {
-      host = this.explicitConfig.host;
-      port = this.explicitConfig.port;
-      protocol = this.explicitConfig.protocol;
-      allowSelfSignedCert = this.explicitConfig.allowSelfSignedCert ?? false;
-      proxy = this.explicitConfig.proxy;
-    } else {
-      // Get node config from database
-      const nodeConfig = await nodeConfigRepository.findDefault();
-
-      if (nodeConfig && nodeConfig.type === 'electrum') {
-        // Load per-network singleton config based on this.network
-        switch (this.network) {
-          case 'mainnet':
-            host = nodeConfig.mainnetSingletonHost || nodeConfig.host;
-            port = nodeConfig.mainnetSingletonPort || nodeConfig.port;
-            protocol = (nodeConfig.mainnetSingletonSsl ?? nodeConfig.useSsl) ? 'ssl' : 'tcp';
-            break;
-          case 'testnet':
-            host = nodeConfig.testnetSingletonHost || config.bitcoin.electrum.host;
-            port = nodeConfig.testnetSingletonPort || 51001;
-            protocol = nodeConfig.testnetSingletonSsl ? 'ssl' : 'tcp';
-            break;
-          case 'signet':
-            host = nodeConfig.signetSingletonHost || config.bitcoin.electrum.host;
-            port = nodeConfig.signetSingletonPort || 60001;
-            protocol = nodeConfig.signetSingletonSsl ? 'ssl' : 'tcp';
-            break;
-          case 'regtest':
-          default:
-            // Regtest uses legacy config
-            host = nodeConfig.host;
-            port = nodeConfig.port;
-            protocol = nodeConfig.useSsl ? 'ssl' : 'tcp';
-            break;
-        }
-        // Check if self-signed certificates are allowed (opt-in for security)
-        allowSelfSignedCert = nodeConfig.allowSelfSignedCert ?? false;
-        // Load proxy config from database (global, applies to all networks)
-        if (nodeConfig.proxyEnabled && nodeConfig.proxyHost && nodeConfig.proxyPort) {
-          proxy = {
-            enabled: true,
-            host: nodeConfig.proxyHost,
-            port: nodeConfig.proxyPort,
-            username: nodeConfig.proxyUsername ?? undefined,
-            password: nodeConfig.proxyPassword ?? undefined,
-          };
-        }
-      } else {
-        // Fallback to env config
-        host = config.bitcoin.electrum.host;
-        port = config.bitcoin.electrum.port;
-        protocol = config.bitcoin.electrum.protocol;
-        allowSelfSignedCert = false;
-      }
-    }
-
-    // Get connection timeout from config or use default
+    const connectionConfig = await this.resolveConnectionConfig();
     const defaults = getDefaultTimeouts();
     const connectionTimeoutMs = this.explicitConfig?.connectionTimeoutMs ?? defaults.connectionTimeoutMs;
+    return this.openConnection(connectionConfig, connectionTimeoutMs);
+  }
 
-    // Now create the connection
+  private async resolveConnectionConfig(): Promise<ResolvedConnectionConfig> {
+    return resolveElectrumConnectionConfig(this.explicitConfig, this.network);
+  }
+
+  private openConnection(
+    connectionConfig: ResolvedConnectionConfig,
+    connectionTimeoutMs: number
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
+      const { host, port, protocol, allowSelfSignedCert, proxy } = connectionConfig;
       let connectionTimeout: NodeJS.Timeout | null = null;
       let settled = false;
 
@@ -188,54 +140,17 @@ class ElectrumClient extends EventEmitter {
         reject(error);
       };
 
+      const state = { cleanup, handleSuccess, handleError };
+
       try {
-        // Set connection timeout
         connectionTimeout = setTimeout(() => {
           const timeoutError = new Error(`Connection timeout after ${connectionTimeoutMs}ms to ${host}:${port} (${protocol})${proxy?.enabled ? ' via proxy' : ''}`);
           log.warn(`Connection timeout`, { host, port, protocol, proxy: proxy?.enabled, timeoutMs: connectionTimeoutMs });
           handleError(timeoutError);
         }, connectionTimeoutMs);
 
-        // Create the base socket (either direct or via proxy)
         createConnection(host, port, proxy, connectionTimeoutMs)
-          .then((baseSocket) => {
-            if (protocol === 'ssl') {
-              const { tlsSocket, handshakePromise } = wrapSocketInTls(
-                baseSocket, host, port, allowSelfSignedCert, !!proxy?.enabled
-              );
-              this.socket = tlsSocket;
-
-              handshakePromise
-                .then(() => handleSuccess())
-                .catch((err) => handleError(err));
-            } else {
-              // Plain TCP - socket is already connected
-              this.socket = baseSocket;
-              log.info(`Connected to ${host}:${port} (${protocol})${proxy?.enabled ? ' via proxy' : ''}`);
-              applySocketOptimizations(baseSocket);
-              handleSuccess();
-            }
-
-            // Set up event handlers on the socket
-            this.socket!.on('data', (data) => this.handleData(data));
-
-            this.socket!.on('error', (error) => {
-              log.error('Socket error', { error: getErrorMessage(error) });
-              rejectAllPendingRequests(this.pendingRequests, new Error(`Socket error: ${error.message}`));
-            });
-
-            this.socket!.on('close', () => {
-              log.debug('Connection closed');
-              this.connected = false;
-              rejectAllPendingRequests(this.pendingRequests, new Error('Connection closed unexpectedly'));
-            });
-
-            this.socket!.on('end', () => {
-              log.debug('Connection ended');
-              this.connected = false;
-              rejectAllPendingRequests(this.pendingRequests, new Error('Connection ended'));
-            });
-          })
+          .then((baseSocket) => this.finishSocketConnection(baseSocket, connectionConfig, state))
           .catch((error) => {
             log.error('Connection error', { error: getErrorMessage(error) });
             handleError(error as Error);
@@ -245,6 +160,70 @@ class ElectrumClient extends EventEmitter {
         handleError(error as Error);
       }
     });
+  }
+
+  private finishSocketConnection(
+    baseSocket: net.Socket,
+    connectionConfig: ResolvedConnectionConfig,
+    state: ConnectionState
+  ): void {
+    if (connectionConfig.protocol === 'ssl') {
+      this.finishTlsConnection(baseSocket, connectionConfig, state);
+    } else {
+      this.finishTcpConnection(baseSocket, connectionConfig, state);
+    }
+    this.attachSocketHandlers();
+  }
+
+  private finishTlsConnection(
+    baseSocket: net.Socket,
+    connectionConfig: ResolvedConnectionConfig,
+    state: ConnectionState
+  ): void {
+    const { host, port, allowSelfSignedCert, proxy } = connectionConfig;
+    const { tlsSocket, handshakePromise } = wrapSocketInTls(
+      baseSocket, host, port, allowSelfSignedCert, !!proxy?.enabled
+    );
+    this.socket = tlsSocket;
+    handshakePromise
+      .then(() => state.handleSuccess())
+      .catch((err) => state.handleError(err));
+  }
+
+  private finishTcpConnection(
+    baseSocket: net.Socket,
+    connectionConfig: ResolvedConnectionConfig,
+    state: ConnectionState
+  ): void {
+    const { host, port, protocol, proxy } = connectionConfig;
+    this.socket = baseSocket;
+    log.info(`Connected to ${host}:${port} (${protocol})${proxy?.enabled ? ' via proxy' : ''}`);
+    applySocketOptimizations(baseSocket);
+    state.handleSuccess();
+  }
+
+  private attachSocketHandlers(): void {
+    this.socket!.on('data', (data) => this.handleData(data));
+    this.socket!.on('error', (error) => this.handleSocketError(error));
+    this.socket!.on('close', () => this.handleSocketClose());
+    this.socket!.on('end', () => this.handleSocketEnd());
+  }
+
+  private handleSocketError(error: Error): void {
+    log.error('Socket error', { error: getErrorMessage(error) });
+    rejectAllPendingRequests(this.pendingRequests, new Error(`Socket error: ${error.message}`));
+  }
+
+  private handleSocketClose(): void {
+    log.debug('Connection closed');
+    this.connected = false;
+    rejectAllPendingRequests(this.pendingRequests, new Error('Connection closed unexpectedly'));
+  }
+
+  private handleSocketEnd(): void {
+    log.debug('Connection ended');
+    this.connected = false;
+    rejectAllPendingRequests(this.pendingRequests, new Error('Connection ended'));
   }
 
   /**

@@ -16,6 +16,7 @@ import {
 import { nodeConfigRepository } from '../../repositories';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
+import { getNetworkModeConfig } from './nodeClientConfig';
 
 const log = createLogger('BITCOIN:SVC_NODE_CLIENT');
 
@@ -116,75 +117,6 @@ function getDefaultElectrumConfig(): NodeConfig {
     port: parseInt(process.env.ELECTRUM_PORT || '50002', 10),
     protocol: (process.env.ELECTRUM_PROTOCOL as 'tcp' | 'ssl') || 'ssl',
   };
-}
-
-/**
- * Get per-network mode configuration from database
- */
-async function getNetworkModeConfig(network: NetworkType): Promise<NetworkModeConfig> {
-  try {
-    const nodeConfig = await nodeConfigRepository.findDefault();
-
-    if (!nodeConfig) {
-      // Default to pool mode for mainnet, singleton for others
-      return { mode: network === 'mainnet' ? 'pool' : 'singleton' };
-    }
-
-    // Extract per-network settings based on network
-    switch (network) {
-      case 'mainnet':
-        return {
-          mode: (nodeConfig.mainnetMode as 'singleton' | 'pool') || 'pool',
-          singletonHost: nodeConfig.mainnetSingletonHost ?? undefined,
-          singletonPort: nodeConfig.mainnetSingletonPort ?? undefined,
-          singletonSsl: nodeConfig.mainnetSingletonSsl ?? true,
-          poolMin: nodeConfig.mainnetPoolMin ?? 1,
-          poolMax: nodeConfig.mainnetPoolMax ?? 5,
-          poolLoadBalancing: (nodeConfig.mainnetPoolLoadBalancing as NetworkModeConfig['poolLoadBalancing']) ?? 'round_robin',
-        };
-      case 'testnet':
-        // Check if testnet is enabled
-        if (!nodeConfig.testnetEnabled) {
-          throw new Error('Testnet is not enabled');
-        }
-        return {
-          mode: (nodeConfig.testnetMode as 'singleton' | 'pool') || 'singleton',
-          singletonHost: nodeConfig.testnetSingletonHost ?? undefined,
-          singletonPort: nodeConfig.testnetSingletonPort ?? undefined,
-          singletonSsl: nodeConfig.testnetSingletonSsl ?? true,
-          poolMin: nodeConfig.testnetPoolMin ?? 1,
-          poolMax: nodeConfig.testnetPoolMax ?? 3,
-          poolLoadBalancing: (nodeConfig.testnetPoolLoadBalancing as NetworkModeConfig['poolLoadBalancing']) ?? 'round_robin',
-        };
-      case 'signet':
-        // Check if signet is enabled
-        if (!nodeConfig.signetEnabled) {
-          throw new Error('Signet is not enabled');
-        }
-        return {
-          mode: (nodeConfig.signetMode as 'singleton' | 'pool') || 'singleton',
-          singletonHost: nodeConfig.signetSingletonHost ?? undefined,
-          singletonPort: nodeConfig.signetSingletonPort ?? undefined,
-          singletonSsl: nodeConfig.signetSingletonSsl ?? true,
-          poolMin: nodeConfig.signetPoolMin ?? 1,
-          poolMax: nodeConfig.signetPoolMax ?? 3,
-          poolLoadBalancing: (nodeConfig.signetPoolLoadBalancing as NetworkModeConfig['poolLoadBalancing']) ?? 'round_robin',
-        };
-      case 'regtest':
-        // Regtest uses legacy config (singleton mode)
-        return {
-          mode: 'singleton',
-          singletonHost: nodeConfig.host,
-          singletonPort: nodeConfig.port,
-          singletonSsl: nodeConfig.useSsl,
-        };
-      default:
-        return { mode: 'pool' };
-    }
-  } catch (error) {
-    log.warn(`Failed to load network mode config for ${network}`, { error: getErrorMessage(error) });
-    return { mode: network === 'mainnet' ? 'pool' : 'singleton' };
-  }
 }
 
 /**
