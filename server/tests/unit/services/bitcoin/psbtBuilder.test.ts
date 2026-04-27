@@ -16,6 +16,7 @@ import {
   witnessStackToScriptWitness,
   generateDecoyAmounts,
 } from '../../../../src/services/bitcoin/psbtBuilder';
+import { addInputsWithBip32 } from '../../../../src/services/bitcoin/transactions/psbtInputConstruction';
 import type { MultisigKeyInfo } from '../../../../src/services/bitcoin/addressDerivation';
 import { testMultisigKeys } from './psbtBuilderTestFixtures';
 
@@ -24,8 +25,58 @@ bitcoin.initEccLib(ecc);
 const ECPair = ECPairFactory(ecc);
 
 const network = bitcoin.networks.testnet;
+const testWitnessScriptPubKey = Buffer.from(bitcoin.payments.p2wpkh({
+  hash: Buffer.alloc(20, 1),
+  network,
+}).output!).toString('hex');
 
 describe('PSBT Builder', () => {
+  describe('addInputsWithBip32', () => {
+    const baseUtxo = {
+      txid: '00'.repeat(32),
+      vout: 0,
+      amount: 50_000,
+      address: 'tb1qinputaddress',
+      scriptPubKey: testWitnessScriptPubKey,
+    };
+
+    it('adds the input but skips multisig metadata when cosigner keys are missing', () => {
+      const psbt = new bitcoin.Psbt({ network });
+      const inputPaths = addInputsWithBip32(psbt, [baseUtxo], {
+        sequence: 0xfffffffd,
+        isLegacy: false,
+        rawTxCache: new Map(),
+        addressPathMap: new Map([[baseUtxo.address, "m/48'/1'/0'/2'/0/0"]]),
+        signingInfo: { isMultisig: true },
+        networkObj: network,
+      });
+
+      expect(inputPaths).toEqual(["m/48'/1'/0'/2'/0/0"]);
+      expect(psbt.inputCount).toBe(1);
+      expect(psbt.data.inputs[0].bip32Derivation).toBeUndefined();
+    });
+
+    it('adds multisig BIP32 metadata and witness script when cosigner keys are available', () => {
+      const psbt = new bitcoin.Psbt({ network });
+      addInputsWithBip32(psbt, [baseUtxo], {
+        sequence: 0xfffffffd,
+        isLegacy: false,
+        rawTxCache: new Map(),
+        addressPathMap: new Map([[baseUtxo.address, "m/48'/1'/0'/2'/0/0"]]),
+        signingInfo: {
+          isMultisig: true,
+          multisigKeys: testMultisigKeys,
+          multisigQuorum: 2,
+          multisigScriptType: 'wsh-sortedmulti',
+        },
+        networkObj: network,
+      });
+
+      expect(psbt.data.inputs[0].bip32Derivation).toHaveLength(3);
+      expect(psbt.data.inputs[0].witnessScript).toBeDefined();
+    });
+  });
+
   // ========================================
   // buildMultisigBip32Derivations
   // ========================================

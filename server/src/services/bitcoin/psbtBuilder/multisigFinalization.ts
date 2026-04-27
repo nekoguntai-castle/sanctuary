@@ -12,15 +12,97 @@ import { parseMultisigScript } from './witnessScript';
 
 const log = createLogger('BITCOIN:SVC_PSBT_MULTISIG');
 
-/**
- * Finalize a multisig P2WSH input.
- *
- * For multisig, we need to:
- * 1. Get all partial signatures from the PSBT input
- * 2. Sort them according to the pubkey order in the witnessScript
- * 3. Build the witness: [OP_0] [sig1] [sig2] ... [witnessScript]
- */
-export function finalizeMultisigInput(psbt: bitcoin.Psbt, inputIndex: number): void {
+type PsbtInput = bitcoin.Psbt['data']['inputs'][number];
+type PartialSignature = NonNullable<PsbtInput['partialSig']>[number];
+
+interface MultisigInputState {
+  input: PsbtInput;
+  witnessScript: Uint8Array;
+  partialSig: PartialSignature[];
+  m: number;
+  n: number;
+  scriptPubkeys: Buffer[];
+  partialSigPubkeys: string[];
+  scriptPubkeyHexes: string[];
+}
+
+const compactDerSignature = (signature: Uint8Array): { compactSig: Buffer; sighashType: number } => {
+  const sigBuf = Buffer.from(signature);
+  const sighashType = sigBuf[sigBuf.length - 1];
+  const derSig = sigBuf.slice(0, -1);
+
+  let offset = 2;
+  const rLen = derSig[offset + 1];
+  const r = derSig.slice(offset + 2, offset + 2 + rLen);
+  offset = offset + 2 + rLen;
+  const sLen = derSig[offset + 1];
+  const s = derSig.slice(offset + 2, offset + 2 + sLen);
+
+  const rPadded = r.length > 32 ? r.slice(-32) : Buffer.concat([Buffer.alloc(32 - r.length), r]);
+  const sPadded = s.length > 32 ? s.slice(-32) : Buffer.concat([Buffer.alloc(32 - s.length), s]);
+
+  return { compactSig: Buffer.concat([rPadded, sPadded]), sighashType };
+};
+
+const getUnsignedTransaction = (psbt: bitcoin.Psbt): bitcoin.Transaction => {
+  const tx = psbt.data.globalMap.unsignedTx as unknown as { toBuffer(): Buffer };
+  return bitcoin.Transaction.fromBuffer(tx.toBuffer());
+};
+
+const verifyPartialSignature = (
+  psbt: bitcoin.Psbt,
+  inputIndex: number,
+  input: PsbtInput,
+  witnessScript: Uint8Array,
+  partialSig: PartialSignature
+): void => {
+  const pubkeyHex = Buffer.from(partialSig.pubkey).toString('hex');
+  try {
+    const { compactSig, sighashType } = compactDerSignature(partialSig.signature);
+    const sighash = getUnsignedTransaction(psbt).hashForWitnessV0(
+      inputIndex,
+      witnessScript,
+      input.witnessUtxo!.value,
+      sighashType
+    );
+
+    if (!ecc.verify(sighash, partialSig.pubkey, compactSig)) {
+      log.error('Invalid signature detected during multisig finalization', {
+        inputIndex,
+        pubkey: pubkeyHex,
+        sighashHex: Buffer.from(sighash).toString('hex'),
+        sigHex: Buffer.from(partialSig.signature).toString('hex'),
+      });
+    }
+  } catch (verifyError) {
+    log.warn('Signature verification error', {
+      inputIndex,
+      pubkey: pubkeyHex.substring(0, 16) + '...',
+      error: (verifyError as Error).message,
+    });
+  }
+};
+
+const verifyPartialSignatures = (
+  psbt: bitcoin.Psbt,
+  inputIndex: number,
+  input: PsbtInput,
+  witnessScript: Uint8Array,
+  partialSig: PartialSignature[]
+): void => {
+  if (!input.witnessUtxo) {
+    log.warn('Missing witnessUtxo for input', { inputIndex });
+  }
+
+  for (const ps of partialSig) {
+    verifyPartialSignature(psbt, inputIndex, input, witnessScript, ps);
+  }
+};
+
+const readMultisigInputState = (
+  psbt: bitcoin.Psbt,
+  inputIndex: number
+): MultisigInputState => {
   const input = psbt.data.inputs[inputIndex];
 
   if (!input.witnessScript) {
@@ -31,19 +113,28 @@ export function finalizeMultisigInput(psbt: bitcoin.Psbt, inputIndex: number): v
     throw new Error(`Input #${inputIndex} has no partial signatures`);
   }
 
-  const witnessScript = input.witnessScript;
-
-  // Parse and validate the multisig script
-  const { isMultisig, m, n, pubkeys: scriptPubkeys } = parseMultisigScript(witnessScript);
-
+  const { isMultisig, m, n, pubkeys: scriptPubkeys } = parseMultisigScript(input.witnessScript);
   if (!isMultisig) {
     throw new Error(`Input #${inputIndex} witnessScript is not a valid multisig script`);
   }
 
-  // Verify partialSig pubkeys are in witnessScript - only log mismatches
-  const partialSigPubkeys = input.partialSig.map(ps => Buffer.from(ps.pubkey).toString('hex'));
-  const scriptPubkeyHexes = scriptPubkeys.map(pk => pk.toString('hex'));
+  return {
+    input,
+    witnessScript: input.witnessScript,
+    partialSig: input.partialSig,
+    m,
+    n,
+    scriptPubkeys,
+    partialSigPubkeys: input.partialSig.map(ps => Buffer.from(ps.pubkey).toString('hex')),
+    scriptPubkeyHexes: scriptPubkeys.map(pk => pk.toString('hex')),
+  };
+};
 
+const logSignaturePubkeyMismatches = (
+  inputIndex: number,
+  partialSigPubkeys: string[],
+  scriptPubkeyHexes: string[]
+): void => {
   for (const sigPubkey of partialSigPubkeys) {
     if (!scriptPubkeyHexes.includes(sigPubkey)) {
       log.error('Signature pubkey not found in witnessScript', {
@@ -53,73 +144,24 @@ export function finalizeMultisigInput(psbt: bitcoin.Psbt, inputIndex: number): v
       });
     }
   }
+};
 
-  // Warn if missing witnessUtxo (needed for sighash)
-  if (!input.witnessUtxo) {
-    log.warn('Missing witnessUtxo for input', { inputIndex });
-  }
-
-  // Verify each signature before finalization
-  for (const ps of input.partialSig) {
-    const pubkeyHex = Buffer.from(ps.pubkey).toString('hex');
-    try {
-      // Decode the DER signature to extract r, s values
-      const sigBuf = Buffer.from(ps.signature);
-      const sighashType = sigBuf[sigBuf.length - 1];
-      const derSig = sigBuf.slice(0, -1);
-
-      // Parse DER signature: 0x30 [total-len] 0x02 [r-len] [r] 0x02 [s-len] [s]
-      let offset = 2; // Skip 0x30 and length byte
-      const rLen = derSig[offset + 1];
-      const r = derSig.slice(offset + 2, offset + 2 + rLen);
-      offset = offset + 2 + rLen;
-      const sLen = derSig[offset + 1];
-      const s = derSig.slice(offset + 2, offset + 2 + sLen);
-
-      // Convert to 64-byte compact format (pad r and s to 32 bytes each)
-      const rPadded = r.length > 32 ? r.slice(-32) : Buffer.concat([Buffer.alloc(32 - r.length), r]);
-      const sPadded = s.length > 32 ? s.slice(-32) : Buffer.concat([Buffer.alloc(32 - s.length), s]);
-      const compactSig = Buffer.concat([rPadded, sPadded]);
-
-      // Compute the sighash that should have been signed
-      // For P2WSH, we use the witnessScript as scriptCode
-      // We need to use the transaction from the PSBT
-      const tx = psbt.data.globalMap.unsignedTx as unknown as { toBuffer(): Buffer };
-      const txForSighash = bitcoin.Transaction.fromBuffer(tx.toBuffer());
-      const sighash = txForSighash.hashForWitnessV0(
-        inputIndex,
-        witnessScript,
-        input.witnessUtxo!.value,
-        sighashType
-      );
-
-      // Verify the signature - only log if invalid
-      const isValid = ecc.verify(sighash, ps.pubkey, compactSig);
-      if (!isValid) {
-        log.error('Invalid signature detected during multisig finalization', {
-          inputIndex,
-          pubkey: pubkeyHex,
-          sighashHex: Buffer.from(sighash).toString('hex'),
-          sigHex: Buffer.from(ps.signature).toString('hex'),
-        });
-      }
-    } catch (verifyError) {
-      log.warn('Signature verification error', {
-        inputIndex,
-        pubkey: pubkeyHex.substring(0, 16) + '...',
-        error: (verifyError as Error).message,
-      });
-    }
-  }
-
-  // Create a map of pubkey hex to signature
+const buildSignatureMap = (partialSig: PartialSignature[]): Map<string, Buffer> => {
   const sigMap = new Map<string, Buffer>();
-  for (const ps of input.partialSig) {
+  for (const ps of partialSig) {
     sigMap.set(Buffer.from(ps.pubkey).toString('hex'), Buffer.from(ps.signature));
   }
+  return sigMap;
+};
 
-  // Sort signatures according to pubkey order in the witnessScript
+const orderSignatures = (
+  inputIndex: number,
+  partialSig: PartialSignature[],
+  scriptPubkeys: Buffer[]
+): Buffer[] => {
+  const sigMap = buildSignatureMap(partialSig);
   const orderedSigs: Buffer[] = [];
+
   for (const pubkey of scriptPubkeys) {
     const pubkeyHex = pubkey.toString('hex');
     const sig = sigMap.get(pubkeyHex);
@@ -135,6 +177,17 @@ export function finalizeMultisigInput(psbt: bitcoin.Psbt, inputIndex: number): v
     }
   }
 
+  return orderedSigs;
+};
+
+const assertSignatureCount = (
+  inputIndex: number,
+  orderedSigs: Buffer[],
+  requiredSignatures: number,
+  totalPubkeys: number,
+  partialSigPubkeys: string[],
+  scriptPubkeyHexes: string[]
+): void => {
   if (orderedSigs.length === 0) {
     log.error('No matching signatures found', {
       partialSigPubkeys,
@@ -143,42 +196,72 @@ export function finalizeMultisigInput(psbt: bitcoin.Psbt, inputIndex: number): v
     throw new Error(`Input #${inputIndex} no matching signatures found for witnessScript pubkeys`);
   }
 
-  // Validate we have exactly M signatures
-  if (orderedSigs.length !== m) {
+  if (orderedSigs.length !== requiredSignatures) {
     log.error('Signature count mismatch', {
       found: orderedSigs.length,
-      required: m,
+      required: requiredSignatures,
       partialSigPubkeys,
       scriptPubkeyHexes,
     });
-    throw new Error(`Input #${inputIndex} has ${orderedSigs.length} signatures but needs exactly ${m} for ${m}-of-${n} multisig`);
+    throw new Error(
+      `Input #${inputIndex} has ${orderedSigs.length} signatures but needs exactly ` +
+      `${requiredSignatures} for ${requiredSignatures}-of-${totalPubkeys} multisig`
+    );
   }
+};
 
-  log.debug('Multisig ordered signatures', {
-    inputIndex,
-    requiredSigs: m,
-    orderedSigCount: orderedSigs.length,
-  });
-
-  // Build the witness stack: [OP_0 (empty buffer)] [sig1] [sig2] ... [witnessScript]
-  // The empty buffer at the start is for the CHECKMULTISIG bug
+const applyFinalWitness = (
+  psbt: bitcoin.Psbt,
+  inputIndex: number,
+  witnessScript: Uint8Array,
+  orderedSigs: Buffer[]
+): void => {
   const witnessStack: Buffer[] = [
-    Buffer.alloc(0), // OP_0 (dummy element for CHECKMULTISIG bug)
+    Buffer.alloc(0),
     ...orderedSigs,
     Buffer.from(witnessScript),
   ];
 
-  // Set the final witness and clear partial data
   psbt.updateInput(inputIndex, {
     finalScriptWitness: witnessStackToScriptWitness(witnessStack),
-    // Note: We don't clear partialSig/witnessScript here because updateInput
-    // with finalScriptWitness should be sufficient for extractTransaction
   });
+};
+
+/**
+ * Finalize a multisig P2WSH input.
+ *
+ * For multisig, we need to:
+ * 1. Get all partial signatures from the PSBT input
+ * 2. Sort them according to the pubkey order in the witnessScript
+ * 3. Build the witness: [OP_0] [sig1] [sig2] ... [witnessScript]
+ */
+export function finalizeMultisigInput(psbt: bitcoin.Psbt, inputIndex: number): void {
+  const state = readMultisigInputState(psbt, inputIndex);
+  logSignaturePubkeyMismatches(inputIndex, state.partialSigPubkeys, state.scriptPubkeyHexes);
+  verifyPartialSignatures(psbt, inputIndex, state.input, state.witnessScript, state.partialSig);
+
+  const orderedSigs = orderSignatures(inputIndex, state.partialSig, state.scriptPubkeys);
+  assertSignatureCount(
+    inputIndex,
+    orderedSigs,
+    state.m,
+    state.n,
+    state.partialSigPubkeys,
+    state.scriptPubkeyHexes
+  );
+
+  log.debug('Multisig ordered signatures', {
+    inputIndex,
+    requiredSigs: state.m,
+    orderedSigCount: orderedSigs.length,
+  });
+
+  applyFinalWitness(psbt, inputIndex, state.witnessScript, orderedSigs);
 
   log.info('Multisig input finalized', {
     inputIndex,
     signatureCount: orderedSigs.length,
-    multisigType: `${m}-of-${n}`,
+    multisigType: `${state.m}-of-${state.n}`,
   });
 }
 

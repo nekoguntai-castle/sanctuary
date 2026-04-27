@@ -24,11 +24,19 @@ import {
   fetchRawTransactionsForLegacy,
   fetchAddressDerivationPaths,
   addInputsWithBip32,
+  type AddInputsWithBip32Options,
 } from './psbtConstruction';
 import { findChangeAddress } from './outputBuilder';
 import type { TransactionOutput, CreateBatchTransactionResult } from './types';
 
 const log = createLogger('BITCOIN:SVC_TX_BATCH');
+
+interface BatchTransactionOptions {
+  selectedUtxoIds?: string[];
+  enableRBF?: boolean;
+  label?: string;
+  memo?: string;
+}
 
 /**
  * Create a batch transaction with multiple outputs
@@ -37,12 +45,7 @@ export async function createBatchTransaction(
   walletId: string,
   outputs: TransactionOutput[],
   feeRate: number,
-  options: {
-    selectedUtxoIds?: string[];
-    enableRBF?: boolean;
-    label?: string;
-    memo?: string;
-  } = {}
+  options: BatchTransactionOptions = {}
 ): Promise<CreateBatchTransactionResult> {
   const { selectedUtxoIds, enableRBF = true } = options;
 
@@ -56,24 +59,10 @@ export async function createBatchTransaction(
     throw new Error('Wallet not found');
   }
 
-  if (outputs.length === 0) {
-    throw new Error('At least one output is required');
-  }
-
   const network = wallet.network === 'testnet' ? 'testnet' : 'mainnet';
   const networkObj = getNetwork(network);
-
-  // Resolve wallet signing info (fingerprints, xpubs, multisig keys)
+  assertValidBatchOutputs(outputs, networkObj);
   const signingInfo = resolveWalletSigningInfo(wallet, '[BATCH] ');
-
-  // Validate all output addresses
-  for (const output of outputs) {
-    try {
-      bitcoin.address.toOutputScript(output.address, networkObj);
-    } catch (error) {
-      throw new Error(`Invalid address: ${output.address}`);
-    }
-  }
 
   // Check if any output has sendMax
   const sendMaxOutputIndex = outputs.findIndex(o => o.sendMax);
@@ -90,15 +79,7 @@ export async function createBatchTransaction(
     outputs: outputs.map(o => ({ address: o.address.slice(0, 10) + '...', amount: o.amount, sendMax: o.sendMax })),
   });
 
-  // Validate all UTXOs have required scriptPubKey
-  const invalidUtxos = utxos.filter(u => !u.scriptPubKey || u.scriptPubKey.length === 0);
-  if (invalidUtxos.length > 0) {
-    log.error('[BATCH] UTXOs missing scriptPubKey', {
-      invalidCount: invalidUtxos.length,
-      invalidUtxos: invalidUtxos.map(u => ({ txid: u.txid, vout: u.vout, address: u.address })),
-    });
-    throw new Error(`${invalidUtxos.length} UTXO(s) are missing scriptPubKey data and cannot be spent. Please sync your wallet.`);
-  }
+  assertUtxosHaveScriptPubKeys(utxos);
 
   // Calculate amounts and select UTXOs
   const { finalOutputs, changeAmount, selectedUtxos, estimatedFee } = calculateBatchAmounts(
@@ -125,35 +106,16 @@ export async function createBatchTransaction(
     ? await fetchRawTransactionsForLegacy(utxos.map(u => u.txid))
     : new Map<string, Buffer>();
 
-  // Add inputs with BIP32 derivation info
-  const inputPaths = addInputsWithBip32(
-    psbt,
-    utxos.map(u => ({
-      txid: u.txid,
-      vout: u.vout,
-      amount: Number(u.amount),
-      address: u.address,
-      scriptPubKey: u.scriptPubKey,
-    })),
-    {
-      sequence,
-      isLegacy,
-      rawTxCache,
-      addressPathMap,
-      signingInfo,
-      accountNode,
-      networkObj,
-      logPrefix: '[BATCH] ',
-    }
-  );
-
-  // Add recipient outputs
-  for (const output of finalOutputs) {
-    psbt.addOutput({
-      address: output.address,
-      value: BigInt(output.amount),
-    });
-  }
+  const inputPaths = addBatchInputs(psbt, utxos, {
+    sequence,
+    isLegacy,
+    rawTxCache,
+    addressPathMap,
+    signingInfo,
+    accountNode,
+    networkObj,
+  });
+  addBatchOutputs(psbt, finalOutputs);
 
   // Add change output if needed
   let changeAddress: string | undefined;
@@ -187,7 +149,70 @@ export async function createBatchTransaction(
 /**
  * UTXO record shape from repository query
  */
-type UtxoRecord = Awaited<ReturnType<typeof utxoRepository.findAvailableForSpending>>[number];
+interface UtxoRecord {
+  txid: string;
+  vout: number;
+  amount: bigint;
+  address: string;
+  scriptPubKey: string;
+}
+
+function assertValidBatchOutputs(outputs: TransactionOutput[], networkObj: bitcoin.Network): void {
+  if (outputs.length === 0) {
+    throw new Error('At least one output is required');
+  }
+
+  for (const output of outputs) {
+    try {
+      bitcoin.address.toOutputScript(output.address, networkObj);
+    } catch (error) {
+      throw new Error(`Invalid address: ${output.address}`);
+    }
+  }
+}
+
+function assertUtxosHaveScriptPubKeys(utxos: UtxoRecord[]): void {
+  const invalidUtxos = utxos.filter(u => !u.scriptPubKey || u.scriptPubKey.length === 0);
+  if (invalidUtxos.length === 0) {
+    return;
+  }
+
+  log.error('[BATCH] UTXOs missing scriptPubKey', {
+    invalidCount: invalidUtxos.length,
+    invalidUtxos: invalidUtxos.map(u => ({ txid: u.txid, vout: u.vout, address: u.address })),
+  });
+  throw new Error(`${invalidUtxos.length} UTXO(s) are missing scriptPubKey data and cannot be spent. Please sync your wallet.`);
+}
+
+function addBatchInputs(
+  psbt: bitcoin.Psbt,
+  utxos: UtxoRecord[],
+  options: AddInputsWithBip32Options
+): string[] {
+  return addInputsWithBip32(
+    psbt,
+    utxos.map(u => ({
+      txid: u.txid,
+      vout: u.vout,
+      amount: Number(u.amount),
+      address: u.address,
+      scriptPubKey: u.scriptPubKey,
+    })),
+    { ...options, logPrefix: '[BATCH] ' }
+  );
+}
+
+function addBatchOutputs(
+  psbt: bitcoin.Psbt,
+  outputs: Array<{ address: string; amount: number }>
+): void {
+  for (const output of outputs) {
+    psbt.addOutput({
+      address: output.address,
+      value: BigInt(output.amount),
+    });
+  }
+}
 
 /**
  * Get available UTXOs for batch transaction, respecting confirmation threshold and draft locks.
@@ -309,4 +334,3 @@ function calculateBatchAmounts(
     estimatedFee,
   };
 }
-

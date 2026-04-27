@@ -9,11 +9,11 @@ Release target: **minimum 97/100 A**, no hard-fail blockers, `security_high=0`, 
 ## Plan
 
 - [x] Create a pre-release remediation branch from current `main` after preserving the grade report/trend/task-tracker changes.
-- [ ] Slice 1 - backend configuration and node/electrum complexity:
+- [x] Slice 1 - backend configuration and node/electrum complexity:
   - Owns `server/src/config/index.ts`, `server/src/api/admin/nodeConfigData.ts`, `server/src/services/bitcoin/nodeClient.ts`, `server/src/services/bitcoin/electrum/electrumClient.ts`, and `server/src/services/bitcoin/electrumPool/poolRegistry.ts`.
   - Extract config parsing/default resolution, admin node-config shaping, default electrum config selection, pool config loading, and electrum connect state handling into small pure helpers.
   - Add focused tests for env defaults, invalid/boundary values, node config variants, pool database fallbacks, and electrum connection failures.
-- [ ] Slice 2 - transaction, draft, PSBT, and sync service complexity:
+- [x] Slice 2 - transaction, draft, PSBT, and sync service complexity:
   - Owns `server/src/services/draftService.ts`, `server/src/services/agentFundingDraftValidation.ts`, `server/src/services/bitcoin/transactions/*`, `server/src/services/bitcoin/sync/confirmations/*`, `server/src/services/bitcoin/blockchain/syncAddress.ts`, `server/src/services/bitcoin/advancedTx/rbf.ts`, `server/src/services/bitcoin/addressDerivation/descriptorParser.ts`, `server/src/services/bitcoin/psbtBuilder/*`, and transaction broadcast/pending route modules.
   - Split validation, DTO shaping, script-type branching, PSBT input enrichment, confirmation field population, previous-transaction fetches, and route response construction into named helpers.
   - Add or preserve tests for null/empty inputs, invalid network/script types, insufficient data, counterparty/fee fallback behavior, PSBT derivation paths, RBF boundaries, and broadcast failure paths.
@@ -40,7 +40,11 @@ Release target: **minimum 97/100 A**, no hard-fail blockers, `security_high=0`, 
 ## Review
 
 - Slice 1 branch: `fix/pre-release-grade-slice-1-config-node`.
-- Slice 1 local implementation: extracted env section builders, node mode resolution, Electrum connection config resolution, admin node-config mapping helpers, and pool config/server/proxy mappers into focused modules. Touched-file lizard is clean, full lizard is down from 65 to 60 warnings with no Slice 1 touched-file warnings, focused Slice 1 tests pass, server lint passes, architecture checks pass, and backend coverage remains 100%.
+- Slice 1 PR #196 merged via merge queue at `543cbba505410ef6c233c66e3a5b1c35f8c20407`.
+- Slice 1 implementation: extracted env section builders, node mode resolution, Electrum connection config resolution, admin node-config mapping helpers, and pool config/server/proxy mappers into focused modules. Touched-file lizard is clean, full lizard is down from 65 to 60 warnings with no Slice 1 touched-file warnings, focused Slice 1 tests pass, server lint passes, architecture checks pass, and backend coverage remains 100%.
+- Slice 2 branch: `fix/pre-release-grade-slice-2-transactions-sync`.
+- Slice 2 implementation: split draft create/update into focused modules behind the existing `draftService` facade; extracted PSBT input enrichment, confirmation fee/counterparty population, address-sync history transaction creation and transaction I/O persistence, transaction route response/audit helpers, RBF input/output helpers, descriptor parsing helpers, and PSBT multisig finalization/witness helpers. Added PSBT input-construction coverage for multisig metadata present/missing paths and bounded pending-transaction mempool enrichment concurrency. `syncAddress.ts` is now 261 lines and the extracted `historyTransactions.ts` is 311 lines.
+- Slice 2 verification: targeted touched-file lizard is clean; full server lizard is down to 8 remaining warnings, all outside Slice 2 targets. Focused syncAddress/PSBT tests passed (66 tests), pending transaction route tests passed (98 tests), `npm run test:unit` passed (411 files / 9,324 tests), `npm run test:backend:coverage` passed at 100% statements/branches/functions/lines (418 passed, 22 skipped, 9,414 passed / 505 skipped), `npm run typecheck:server:tests` passed, `npm run lint:server` passed, `npm run check:architecture-boundaries` passed, `npm --prefix server run check:prisma-imports` passed, and `git diff --check` passed.
 - Recommended sequencing: fix production backend complexity first, then hardware/send flows, then UI/animation code, then test/support warnings, then fixture/audit cleanup.
 - Release blockers: no hard-fail blockers, 0 lizard threshold warnings or an explicitly accepted residual list, 0 high/critical audit findings, 0 gitleaks findings, and coverage/lint/typecheck still green.
 - Non-blocking unless easy and safe: root low-severity transitive advisories and vector fixture sharding. These can improve the score, but should not drive risky package downgrades or weaker address-vector tests.

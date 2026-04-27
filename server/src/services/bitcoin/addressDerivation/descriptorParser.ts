@@ -13,16 +13,22 @@
 import type { ParsedDescriptor, MultisigKeyInfo } from './types';
 
 const DEFAULT_DERIVATION_PATH = '0/*';
+const SINGLE_SIG_PREFIX_TYPES: Array<{ prefix: string; type: ParsedDescriptor['type'] }> = [
+  { prefix: 'wpkh(', type: 'wpkh' },
+  { prefix: 'sh(wpkh(', type: 'sh-wpkh' },
+  { prefix: 'tr(', type: 'tr' },
+  { prefix: 'pkh(', type: 'pkh' },
+];
 
-function isDerivationPathCharacter(character: string): boolean {
+const isDerivationPathCharacter = (character: string): boolean => {
   return character === '/' || character === '*' || (character >= '0' && character <= '9');
-}
+};
 
-function extractDerivationPathAfterXpub(
+const extractDerivationPathAfterXpub = (
   descriptor: string,
   xpubStart: number,
   xpub: string
-): string {
+): string => {
   const pathStart = xpubStart + xpub.length;
   if (descriptor[pathStart] !== '/') {
     return DEFAULT_DERIVATION_PATH;
@@ -35,74 +41,20 @@ function extractDerivationPathAfterXpub(
 
   const path = descriptor.slice(pathStart + 1, pathEnd);
   return path.length > 0 ? path : DEFAULT_DERIVATION_PATH;
-}
+};
 
-/**
- * Parse output descriptor to extract xpub and derivation info
- */
-export function parseDescriptor(descriptor: string): ParsedDescriptor {
-  // Remove whitespace
-  descriptor = descriptor.trim();
-
-  // Detect script type
-  let type: ParsedDescriptor['type'];
-
-  // Check for multisig first
-  if (descriptor.startsWith('wsh(sortedmulti(') || descriptor.startsWith('wsh(multi(')) {
-    return parseMultisigDescriptor(descriptor, 'wsh-sortedmulti');
-  } else if (descriptor.startsWith('sh(wsh(sortedmulti(') || descriptor.startsWith('sh(wsh(multi(')) {
-    return parseMultisigDescriptor(descriptor, 'sh-wsh-sortedmulti');
-  } else if (descriptor.startsWith('wpkh(')) {
-    type = 'wpkh';
-  } else if (descriptor.startsWith('sh(wpkh(')) {
-    type = 'sh-wpkh';
-  } else if (descriptor.startsWith('tr(')) {
-    type = 'tr';
-  } else if (descriptor.startsWith('pkh(')) {
-    type = 'pkh';
-  } else {
+const detectSingleSigDescriptorType = (descriptor: string): ParsedDescriptor['type'] => {
+  const matched = SINGLE_SIG_PREFIX_TYPES.find(({ prefix }) => descriptor.startsWith(prefix));
+  if (!matched) {
     throw new Error('Unsupported descriptor format');
   }
+  return matched.type;
+};
 
-  // Extract the key expression [fingerprint/path]xpub
-  const keyExpressionMatch = /\[([a-f0-9]{8})\/([^\]]+)\]([xyztuvYZTUV]pub[a-zA-Z0-9]+)/.exec(descriptor);
-
-  if (!keyExpressionMatch) {
-    // Try without fingerprint
-    const simpleMatch = /([xyztuvYZTUV]pub[a-zA-Z0-9]+)/.exec(descriptor);
-    if (!simpleMatch) {
-      throw new Error('Could not parse xpub from descriptor');
-    }
-
-    return {
-      type,
-      xpub: simpleMatch[1],
-      path: extractDerivationPathAfterXpub(descriptor, simpleMatch.index, simpleMatch[1]),
-    };
-  }
-
-  const [, fingerprint, accountPath, xpub] = keyExpressionMatch;
-
-  // Extract the derivation path after xpub (e.g., /0/*)
-  const xpubStart = keyExpressionMatch.index + keyExpressionMatch[0].lastIndexOf(xpub);
-  const path = extractDerivationPathAfterXpub(descriptor, xpubStart, xpub);
-
-  return {
-    type,
-    xpub,
-    path,
-    fingerprint,
-    accountPath,
-  };
-}
-
-/**
- * Parse multisig descriptor to extract all keys and quorum
- */
-function parseMultisigDescriptor(
+const parseMultisigDescriptor = (
   descriptor: string,
   type: 'wsh-sortedmulti' | 'sh-wsh-sortedmulti'
-): ParsedDescriptor {
+): ParsedDescriptor => {
   // Extract quorum (the M in M-of-N)
   const quorumMatch = descriptor.match(/(?:sorted)?multi\((\d+),/);
   if (!quorumMatch) {
@@ -149,5 +101,46 @@ function parseMultisigDescriptor(
     type,
     quorum,
     keys,
+  };
+};
+
+/**
+ * Parse output descriptor to extract xpub and derivation info
+ */
+export function parseDescriptor(descriptor: string): ParsedDescriptor {
+  const trimmedDescriptor = descriptor.trim();
+
+  if (trimmedDescriptor.startsWith('wsh(sortedmulti(') || trimmedDescriptor.startsWith('wsh(multi(')) {
+    return parseMultisigDescriptor(trimmedDescriptor, 'wsh-sortedmulti');
+  }
+  if (trimmedDescriptor.startsWith('sh(wsh(sortedmulti(') || trimmedDescriptor.startsWith('sh(wsh(multi(')) {
+    return parseMultisigDescriptor(trimmedDescriptor, 'sh-wsh-sortedmulti');
+  }
+
+  const type = detectSingleSigDescriptorType(trimmedDescriptor);
+  const keyExpressionMatch = /\[([a-f0-9]{8})\/([^\]]+)\]([xyztuvYZTUV]pub[a-zA-Z0-9]+)/.exec(trimmedDescriptor);
+
+  if (!keyExpressionMatch) {
+    const simpleMatch = /([xyztuvYZTUV]pub[a-zA-Z0-9]+)/.exec(trimmedDescriptor);
+    if (!simpleMatch) {
+      throw new Error('Could not parse xpub from descriptor');
+    }
+
+    return {
+      type,
+      xpub: simpleMatch[1],
+      path: extractDerivationPathAfterXpub(trimmedDescriptor, simpleMatch.index, simpleMatch[1]),
+    };
+  }
+
+  const [, fingerprint, accountPath, xpub] = keyExpressionMatch;
+  const xpubStart = keyExpressionMatch.index + keyExpressionMatch[0].lastIndexOf(xpub);
+
+  return {
+    type,
+    xpub,
+    path: extractDerivationPathAfterXpub(trimmedDescriptor, xpubStart, xpub),
+    fingerprint,
+    accountPath,
   };
 }
