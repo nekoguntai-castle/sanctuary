@@ -150,6 +150,25 @@ jobs:
       - name: Run actionlint
         run: /tmp/actionlint -color -shellcheck=
 
+  workflow-action-runtime-guard:
+    name: Workflow action runtime guard
+    runs-on: ubuntu-latest
+    needs: [determine-scope]
+    if: needs.determine-scope.outputs.run_workflow_quality == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Check action runtimes
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: npm run check:github-action-runtimes
+
   ci-classifier-tests:
     name: CI classifier tests
     runs-on: ubuntu-latest
@@ -181,6 +200,7 @@ jobs:
           bash -n tests/ci/backend-integration-groups.test.sh
           bash -n tests/ci/frontend-coverage-scripts.test.sh
           bash -n tests/ci/report-workflow-trends.test.sh
+          node tests/ci/check-github-action-runtimes.test.mjs
           bash tests/ci/playwright-timing-reporter.test.sh
           bash tests/ci/classify-test-changes.test.sh
           bash tests/ci/classify-docker-build-images.test.sh
@@ -273,7 +293,7 @@ jobs:
     name: Code Quality Required Checks
     runs-on: ubuntu-latest
     if: always()
-    needs: [determine-scope, lint, gitleaks, workflow-lint, ci-classifier-tests, lizard, jscpd]
+    needs: [determine-scope, lint, gitleaks, workflow-lint, workflow-action-runtime-guard, ci-classifier-tests, lizard, jscpd]
     steps:
       - name: Check quality job results
         env:
@@ -283,6 +303,7 @@ jobs:
           LINT: ${{ needs.lint.result }}
           GITLEAKS: ${{ needs.gitleaks.result }}
           WORKFLOW_LINT: ${{ needs.workflow-lint.result }}
+          WORKFLOW_ACTION_RUNTIME_GUARD: ${{ needs.workflow-action-runtime-guard.result }}
           CI_CLASSIFIER_TESTS: ${{ needs.ci-classifier-tests.result }}
           LIZARD: ${{ needs.lizard.result }}
           JSCPD: ${{ needs.jscpd.result }}
@@ -325,8 +346,10 @@ jobs:
 
           if [ "$RUN_WORKFLOW_QUALITY" = "true" ]; then
             require_success "Workflow lint (actionlint)" "$WORKFLOW_LINT"
+            require_success "Workflow action runtime guard" "$WORKFLOW_ACTION_RUNTIME_GUARD"
           else
             allow_success_or_skipped "Workflow lint (actionlint)" "$WORKFLOW_LINT"
+            allow_success_or_skipped "Workflow action runtime guard" "$WORKFLOW_ACTION_RUNTIME_GUARD"
           fi
 
           if [ "$RUN_CI_CLASSIFIER_TESTS" = "true" ]; then

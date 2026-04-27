@@ -2,6 +2,17 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Enforce CI runtime migrations with a guard
+
+**Rule:** When fixing deprecated GitHub Actions runtime warnings, add or update a CI guard that resolves action manifests and fails on banned runtimes, including composite action dependencies.
+
+**Why:** Updating visible workflow pins removes current warnings, but future manual action updates can reintroduce `runs.using: node20` through either direct actions or nested `uses:` entries in composite actions.
+
+**How to apply:**
+- Keep job `node-version` checks separate from action runtime checks; `setup-node` does not control action `runs.using`.
+- Resolve each unique workflow `uses:` target to its `action.yml`/`action.yaml` and recurse through composite action steps.
+- Run the guard from the workflow-quality lane and include a fixture test that proves direct and transitive deprecated runtimes fail.
+
 ## Do Not Preserve Legacy Behavior After Greenfield Clarification
 
 **Rule:** When the user explicitly says a feature should be greenfield, remove compatibility assumptions from plans and architecture instead of continuing to route around old behavior.
