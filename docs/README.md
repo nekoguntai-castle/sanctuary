@@ -26,6 +26,8 @@ Procedural guides for operators and developers.
 
 - [Operations runbooks](how-to/operations-runbooks.md) — triage, monitoring, alert handling
 - [Agent wallet funding](how-to/agent-wallet-funding.md) — operate agent-funded multisig drafts with human review
+- [AI Settings, Sanctuary Console, and MCP access](how-to/ai-mcp-console.md) — configure trusted model providers, use the Console, and manage external MCP keys
+- [MCP server](how-to/mcp-server.md) — direct read-only MCP endpoint setup for loopback and advanced LAN clients
 - [Runtime secrets](how-to/runtime-secrets.md) — runtime secret management
 
 ## Reference
@@ -55,6 +57,9 @@ Active strategic plans are planning artifacts, not reference material, so the Do
 - [Dependency audit triage](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/plans/dependency-audit-triage.md)
 - [Extensibility architecture plan](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/plans/extensibility-architecture-plan.md)
 - [File modularization plan](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/plans/file-modularization-plan.md)
+- [AI/MCP/Console release proof](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/plans/ai-mcp-console-release-proof.md)
+- [MCP server release readiness audit](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/plans/mcp-server-release-readiness-audit.md)
+- [MCP dual-path implementation plan](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/plans/mcp-dual-path-implementation-plan.md)
 - [Reliability hardening plan](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/plans/reliability-hardening-plan.md)
 - [Technical debt plan](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/plans/technical-debt-plan.md)
 - [Test gaps plan](https://github.com/nekoguntai-castle/sanctuary/blob/main/docs/plans/test-gaps-plan.md)

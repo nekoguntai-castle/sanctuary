@@ -2,6 +2,8 @@
 
 Sanctuary can expose a read-only Model Context Protocol endpoint for local LLM clients. The service is disabled by default and runs as a separate Docker Compose profile.
 
+For the normal in-app assistant path, use [AI Settings, Sanctuary Console, And MCP Access](ai-mcp-console.md). Direct MCP is the advanced external-client path.
+
 ## Start The Service
 
 ```bash
@@ -36,7 +38,9 @@ Do not expose the MCP port directly to the public internet. Use expiring, wallet
 
 ## Create An API Key
 
-Create keys from the admin API:
+The preferred key-management path is **Administration -> AI Settings -> MCP Access**. The admin UI shows server status, creates scoped keys, displays the one-time token, lists key metadata, and revokes keys.
+
+Create keys from the admin API when automation needs it:
 
 ```bash
 curl -X POST https://localhost:8443/api/v1/admin/mcp-keys \
@@ -76,6 +80,7 @@ The server is stateless. `POST /mcp` is supported; `GET /mcp` and `DELETE /mcp` 
 ## Security Notes
 
 - Read-only only: no spending, signing, label edits, draft creation, or policy changes.
+- Sanctuary Console is the recommended path for most users. Direct MCP is intended for loopback clients and trusted LAN clients behind TLS/VPN/reverse-proxy protection.
 - Wallet descriptors, xpubs, PSBTs, derivation paths, key hashes, and bearer tokens are never returned by MCP DTOs.
 - Fee and price resources are cache-only. MCP reads never fetch external services on cache miss.
 - Every MCP request is audit logged under the `mcp` category.
@@ -84,14 +89,14 @@ The server is stateless. `POST /mcp` is supported; `GET /mcp` and `DELETE /mcp` 
 
 ## Key Management
 
-List metadata:
+List metadata from the admin UI at **Administration -> AI Settings -> MCP Access**, or use the API:
 
 ```bash
 curl https://localhost:8443/api/v1/admin/mcp-keys \
   -H "Authorization: Bearer <admin-jwt>"
 ```
 
-Revoke a key:
+Revoke a key from the same UI, or use the API:
 
 ```bash
 curl -X DELETE https://localhost:8443/api/v1/admin/mcp-keys/<key-id> \

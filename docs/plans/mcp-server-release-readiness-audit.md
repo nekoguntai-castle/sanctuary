@@ -4,6 +4,8 @@ Date: 2026-04-25
 Commit audited: `accfd6df chore: restore grade and split compose benchmark (#181)`
 Status: not release-ready for LAN MCP as the default next-release story; viable as a loopback-only read-only preview after the security and docs issues below are fixed.
 
+Update: this is the pre-implementation audit that drove PRs #182 through #194. The current release proof and operator checklist live in `docs/plans/ai-mcp-console-release-proof.md` and `docs/how-to/ai-mcp-console.md`. Keep this file as historical evidence of the original gaps.
+
 ## Scope
 
 This audit covers two possible product paths:
