@@ -30,7 +30,7 @@ Release target: **minimum 97/100 A**, no hard-fail blockers, `security_high=0`, 
   - [x] Run targeted lizard for all Slice 4 production files at `CCN <= 15`.
   - [x] Run focused Slice 4 Vitest suites and required frontend gates.
   - [x] Deliver Slice 4 as a dedicated PR and verify merge before starting Slice 5.
-- [ ] Slice 5 - test harness, e2e, and quality-script complexity:
+- [x] Slice 5 - test harness, e2e, and quality-script complexity:
   - Owns flagged non-production files including `scripts/check-openapi-route-coverage.mjs`, e2e route handlers, `server/tests/mocks/aiContainer.ts`, PSBT/hardware-wallet test helpers, and console tool test helpers.
   - Reduce full-scan lizard warnings in test/support code after production hotspots are clean, keeping fixture intent obvious and avoiding synthetic indirection.
   - Add helper-level tests where script parsing or route-handler mocks become separate utilities.
@@ -39,11 +39,17 @@ Release target: **minimum 97/100 A**, no hard-fail blockers, `security_high=0`, 
   - [x] Add or update focused tests for extracted script parsing and test helper utilities where coverage is not already direct.
   - [x] Run targeted lizard for Slice 5 touched files at `CCN <= 15`.
   - [x] Run focused Slice 5 suites plus required affected gates.
-  - [ ] Deliver Slice 5 as a dedicated PR and verify merge before starting Slice 6.
+  - [x] Deliver Slice 5 as a dedicated PR and verify merge before starting Slice 6.
 - [ ] Slice 6 - vector fixture size and low-audit triage:
   - Evaluate sharding or generation-on-demand for `server/tests/fixtures/verified-address-vectors.ts` and `scripts/verify-addresses/output/verified-vectors.ts`; proceed only if address-vector coverage and deterministic verification stay intact.
   - Re-run root audit, identify the 16 low advisories, apply safe minor/patch upgrades where available, and document any remaining upstream/hardware-wallet transitive risk.
   - Deliver Slice 6 as a dedicated PR and verify merge before the final grade pass.
+  - [x] Measure vector fixture size, consumers, and deterministic verification coverage before choosing whether to shard or leave intact.
+  - [x] Clear current large-file gate failures exposed by vector-fixture review without weakening generated-vector coverage.
+  - [x] Re-run root/server/gateway/ai-proxy audits and classify all remaining advisories by severity, path, and safe-fix availability.
+  - [x] Apply safe package updates or document accepted upstream/transitive residuals without weakening wallet or hardware-wallet coverage.
+  - [x] Run targeted vector/audit tests plus package gates affected by any dependency or fixture changes.
+  - [ ] Deliver Slice 6 as a dedicated PR and verify merge before the final grade pass.
 - [ ] Release verification gate:
   - Run focused tests per slice plus touched-file lizard before each PR.
   - Before release, run full lizard, `npm run test:coverage`, `npm run test:backend:coverage`, `npm --prefix gateway run test:coverage`, lint/typecheck, gitleaks full/tracked/latest commit scans, root/server/gateway/ai-proxy audits, jscpd, and `$grade`.
@@ -68,6 +74,11 @@ Release target: **minimum 97/100 A**, no hard-fail blockers, `security_high=0`, 
 - Slice 5 discovery: full pinned lizard after Slice 4 reports two remaining warnings: `server/tests/unit/assistant/consoleToolExecution.test.ts` and residual production warning `server/src/api/transactions/broadcasting.ts`.
 - Slice 5 implementation: replaced nullable branch-heavy console trace test shaping with a defined-field picker, and replaced conditional transaction broadcast metadata spreads with a small defined-field helper. Added route-contract assertion coverage for optional label/memo/raw transaction metadata.
 - Slice 5 verification: focused server tests passed (`consoleToolExecution` and `transactions-http-routes`, 78 tests); targeted touched-file lizard passed; full pinned lizard now reports zero warnings; `npm run typecheck:server:tests`, `npm run lint:server`, `npm run check:openapi-route-coverage`, `npm run test:backend:coverage`, and `git diff --check` passed. A first broad server-test command was mis-scoped and failed in sandbox on unrelated Supertest port binds; the exact focused server Vitest command passed afterward.
+- Slice 5 delivery: PR #201 merged through the merge queue at `88279a7b10a356b03a19b76da9de6aa5ab8f01c0`; `origin/main` contains the merge commit. The queue-branch CodeQL upload failure was isolated to the ephemeral merge-queue ref disappearing after merge; the post-merge `main` CodeQL run on the same commit passed.
+- Slice 6 branch: `fix/pre-release-grade-slice-6-vector-audit-cleanup`.
+- Slice 6 implementation: changed the address-vector generator to emit one verified vector per line while preserving the existing `VERIFIED_SINGLESIG_VECTORS`, `VERIFIED_MULTISIG_VECTORS`, types, mnemonic export, and fixture/output parity. The generated server fixture and script output each dropped from 2,118 lines to 178 lines. Split the oversized `aiService.test.ts` model-operation cases into `aiService.modelOperations.test.ts` and moved shared AI service mocks/reset hooks into the existing harness; `aiService.test.ts` is now 613 lines and the new model-operation suite is 413 lines.
+- Slice 6 audit triage: root audit still reports 16 low-severity transitive advisories through Ledger/Trezor hardware-wallet and browser polyfill paths (`elliptic`, old transitive `tiny-secp256k1`/`bitcoinjs-lib`, `@trezor/*`, `@ledgerhq/*`, `vite-plugin-node-polyfills`/`node-stdlib-browser`). Server, gateway, and ai-proxy audits report 0 vulnerabilities. No safe dependency update was applied: direct packages are already at current compatible releases, and npm's suggested remaining fixes are downgrades, force fixes, or no-fix hardware-wallet transitives.
+- Slice 6 verification: focused address-vector and hardware-wallet compatibility suites passed (231 tests); focused AI service suites passed (53 tests); generated vector output and server fixture are byte-identical; targeted and full pinned lizard passed at `CCN <= 15` with zero warnings; `node scripts/quality/check-large-files.mjs`, `npm run typecheck:scripts`, `npm run typecheck:server:tests`, `npm run lint:server`, root/server/gateway/ai-proxy high-severity audits, Prettier check for touched hand-edited files, `npm run test:backend:coverage` (419 passed / 22 skipped files, 9,414 passed / 505 skipped tests, 100% coverage), and `git diff --check` passed.
 - Recommended sequencing: fix production backend complexity first, then hardware/send flows, then UI/animation code, then test/support warnings, then fixture/audit cleanup.
 - Release blockers: no hard-fail blockers, 0 lizard threshold warnings or an explicitly accepted residual list, 0 high/critical audit findings, 0 gitleaks findings, and coverage/lint/typecheck still green.
 - Non-blocking unless easy and safe: root low-severity transitive advisories and vector fixture sharding. These can improve the score, but should not drive risky package downgrades or weaker address-vector tests.
