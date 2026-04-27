@@ -27,9 +27,11 @@ export function AppearanceTabView({ controller }: { controller: AppearanceTabCon
         isDark={controller.isDark}
         contrastLevel={controller.contrastLevel}
         patternOpacity={controller.patternOpacity}
+        flyoutOpacity={controller.flyoutOpacity}
         onToggleDarkMode={controller.toggleDarkMode}
         onContrastChange={controller.updateContrastLevel}
         onPatternOpacityChange={controller.updatePatternOpacity}
+        onFlyoutOpacityChange={controller.updateFlyoutOpacity}
       />
     </div>
   );

@@ -89,6 +89,7 @@ export const MobileUserPreferencesRequestSchema = z.object({
   fiatCurrency: z.string().length(3).toUpperCase().optional(),
   showFiat: z.boolean().optional(),
   priceProvider: z.string().optional(),
+  flyoutOpacity: z.number().min(50).max(100).optional(),
   notificationSounds: z.object({
     enabled: z.boolean().optional(),
     volume: z.number().min(0).max(100).optional(),

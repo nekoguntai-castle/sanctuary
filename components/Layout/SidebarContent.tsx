@@ -9,6 +9,7 @@ import { hasRequiredCapabilities } from '../../src/app/capabilities';
 import { SidebarDeviceSection } from './SidebarContent/SidebarDeviceSection';
 import { SidebarFooter } from './SidebarContent/SidebarFooter';
 import { SidebarHeader } from './SidebarContent/SidebarHeader';
+import { SidebarConsoleQuickActions } from './SidebarContent/SidebarConsoleQuickActions';
 import { SidebarPrimaryNav } from './SidebarContent/SidebarPrimaryNav';
 import { SidebarSystemSection } from './SidebarContent/SidebarSystemSection';
 import { SidebarWalletSection } from './SidebarContent/SidebarWalletSection';
@@ -36,6 +37,7 @@ export const SidebarContent: React.FC<SidebarContentProps> = ({
   getWalletCount,
   getDeviceCount,
   onVersionClick,
+  onOpenConsole,
   capabilities,
 }) => {
   const primaryNavItems = getVisibleNavItems(getNavItemsBySection('primary'), capabilities);
@@ -53,7 +55,10 @@ export const SidebarContent: React.FC<SidebarContentProps> = ({
       <SidebarHeader />
 
       <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
-        <SidebarPrimaryNav items={primaryNavItems} />
+        <SidebarPrimaryNav
+          items={primaryNavItems}
+          quickActions={<SidebarConsoleQuickActions onOpenConsole={onOpenConsole} />}
+        />
         <SidebarWalletSection
           show={isNavItemVisible(walletNavItem, capabilities)}
           navItem={walletNavItem}

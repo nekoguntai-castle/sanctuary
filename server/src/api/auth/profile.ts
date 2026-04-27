@@ -28,6 +28,7 @@ const PreferencesBodySchema = z.object({
   seasonalBackgrounds: z.record(z.string(), z.string()).optional(),
   contrastLevel: z.number().optional(),
   patternOpacity: z.number().optional(),
+  flyoutOpacity: z.number().min(50).max(100).optional(),
   notificationSounds: z.unknown().optional(),
   telegram: z.unknown().optional(),
   viewSettings: z.unknown().optional(),

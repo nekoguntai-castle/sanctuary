@@ -65,9 +65,17 @@ vi.mock('../../../../../components/Settings/sections/ThemeSection/panels/Backgro
 }));
 
 vi.mock('../../../../../components/Settings/sections/ThemeSection/panels/VisualSettingsPanel', () => ({
-  VisualSettingsPanel: ({ isDark, onToggleDarkMode, onContrastChange, onPatternOpacityChange }: any) => (
+  VisualSettingsPanel: ({
+    isDark,
+    flyoutOpacity,
+    onToggleDarkMode,
+    onContrastChange,
+    onPatternOpacityChange,
+    onFlyoutOpacityChange,
+  }: any) => (
     <div>
       <span data-testid="is-dark">{String(isDark)}</span>
+      <span data-testid="flyout-opacity">{String(flyoutOpacity)}</span>
       <button type="button" onClick={onToggleDarkMode}>
         toggle-dark
       </button>
@@ -76,6 +84,9 @@ vi.mock('../../../../../components/Settings/sections/ThemeSection/panels/VisualS
       </button>
       <button type="button" onClick={() => onPatternOpacityChange(65)}>
         set-opacity
+      </button>
+      <button type="button" onClick={() => onFlyoutOpacityChange(85)}>
+        set-flyout-opacity
       </button>
     </div>
   ),
@@ -94,6 +105,7 @@ describe('AppearanceTab branch coverage', () => {
     expect(screen.getByTestId('current-bg')).toHaveTextContent('zen');
     expect(screen.getByTestId('bg-counts')).toHaveTextContent('1:1');
     expect(screen.getByTestId('is-dark')).toHaveTextContent('false');
+    expect(screen.getByTestId('flyout-opacity')).toHaveTextContent('92');
 
     fireEvent.click(screen.getByRole('button', { name: 'select-theme' }));
     expect(mockUpdatePreferences).toHaveBeenCalledWith({ theme: 'forest' });
@@ -117,6 +129,9 @@ describe('AppearanceTab branch coverage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'set-opacity' }));
     expect(mockUpdatePreferences).toHaveBeenCalledWith({ patternOpacity: 65 });
+
+    fireEvent.click(screen.getByRole('button', { name: 'set-flyout-opacity' }));
+    expect(mockUpdatePreferences).toHaveBeenCalledWith({ flyoutOpacity: 85 });
   });
 
   it('covers remove-favorite path when background is already favorited', () => {

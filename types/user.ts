@@ -39,6 +39,7 @@ export interface UserPreferences {
   background: BackgroundOption;
   contrastLevel?: number; // -2 to +2, adjusts background contrast (0 = default)
   patternOpacity?: number; // 0 to 100, controls background visibility (default 50)
+  flyoutOpacity?: number; // 50 to 100, controls drawer/flyout surface opacity (default 92)
   priceProvider?: string;
   telegram?: TelegramConfig;
   notificationSounds?: NotificationSounds;

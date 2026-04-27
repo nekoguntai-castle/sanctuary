@@ -15,5 +15,6 @@ export interface SidebarContentProps {
   getWalletCount: (walletId: string) => number;
   getDeviceCount: (deviceId: string) => number;
   onVersionClick: () => void;
+  onOpenConsole: () => void;
   capabilities?: AppCapabilityStatus;
 }

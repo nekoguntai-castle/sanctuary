@@ -63,6 +63,7 @@ vi.mock('../../themes', () => ({
     applyTheme: vi.fn(),
     applyPattern: vi.fn(),
     applyPatternOpacity: vi.fn(),
+    applyFlyoutOpacity: vi.fn(),
   },
 }));
 
@@ -717,6 +718,7 @@ describe('UserContext', () => {
       vi.mocked(themeRegistry.applyTheme).mockClear();
       vi.mocked(themeRegistry.applyPattern).mockClear();
       vi.mocked(themeRegistry.applyPatternOpacity).mockClear();
+      vi.mocked(themeRegistry.applyFlyoutOpacity).mockClear();
       // Also ensure document is in clean state (redundant but ensures isolation)
       document.documentElement.classList.remove('dark');
       // Reset auth mocks to prevent pollution from previous tests
@@ -739,6 +741,7 @@ describe('UserContext', () => {
         expect(themeRegistry.applyPattern).toHaveBeenCalledWith('minimal', 'sanctuary');
       });
       expect(themeRegistry.applyTheme).toHaveBeenCalledWith('sanctuary', 'dark', 0);
+      expect(themeRegistry.applyFlyoutOpacity).toHaveBeenCalledWith(92);
     });
 
     it('applies light mode when darkMode is false', async () => {

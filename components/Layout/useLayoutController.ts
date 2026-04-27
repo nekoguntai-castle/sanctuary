@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useUser } from '../../contexts/UserContext';
 import {
@@ -8,6 +8,7 @@ import {
 } from '../../contexts/AppNotificationContext';
 import { useDevices } from '../../hooks/queries/useDevices';
 import { useWallets } from '../../hooks/queries/useWallets';
+import { useAppShortcuts } from '../../hooks/useAppShortcuts';
 import { useAppCapabilities } from '../../hooks/useAppCapabilities';
 import * as adminApi from '../../src/api/admin';
 import * as bitcoinApi from '../../src/api/bitcoin';
@@ -138,6 +139,7 @@ export const useLayoutController = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [expanded, setExpanded] = useState<ExpandedState>(() => getExpandedState(location.pathname));
   const [showVersionModal, setShowVersionModal] = useState(false);
+  const [isConsoleOpen, setIsConsoleOpen] = useState(false);
   const [versionInfo, setVersionInfo] = useState<adminApi.VersionInfo | null>(null);
   const [versionLoading, setVersionLoading] = useState(false);
   const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
@@ -211,6 +213,23 @@ export const useLayoutController = () => {
     setExpanded((previous) => ({ ...previous, [section]: !previous[section] }));
   }, []);
 
+  const openConsole = useCallback(() => {
+    setIsMobileMenuOpen(false);
+    setIsConsoleOpen(true);
+  }, []);
+
+  const closeConsole = useCallback(() => {
+    setIsConsoleOpen(false);
+  }, []);
+
+  const shortcutBindings = useMemo(() => [{
+    id: 'console.open' as const,
+    enabled: !!user,
+    handler: openConsole,
+  }], [openConsole, user]);
+
+  useAppShortcuts(shortcutBindings);
+
   return {
     user,
     logout,
@@ -219,6 +238,7 @@ export const useLayoutController = () => {
     capabilities,
     expanded,
     isMobileMenuOpen,
+    isConsoleOpen,
     showVersionModal,
     versionInfo,
     versionLoading,
@@ -227,6 +247,8 @@ export const useLayoutController = () => {
     getDeviceCount,
     setIsMobileMenuOpen,
     setShowVersionModal,
+    openConsole,
+    closeConsole,
     toggleSection,
     handleVersionClick,
     copyToClipboard,

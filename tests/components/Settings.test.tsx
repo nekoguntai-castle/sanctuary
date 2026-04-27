@@ -139,6 +139,7 @@ vi.mock('lucide-react', () => ({
   Volume2: () => <span data-testid="volume-icon" />,
   Contrast: () => <span data-testid="contrast-icon" />,
   Layers: () => <span data-testid="layers-icon" />,
+  PanelRight: () => <span data-testid="panel-right-icon" />,
   Sparkles: () => <span data-testid="sparkles-icon" />,
   Shield: () => <span data-testid="shield-icon" />,
   Bitcoin: () => <span data-testid="bitcoin-icon" />,

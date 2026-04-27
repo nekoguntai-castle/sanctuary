@@ -18,6 +18,7 @@ const EXPECTED_FRONTEND_COVERAGE_EXCLUDES = [
   '**/coverage/**',
   '**/dist/**',
   '**/node_modules/**',
+  'ai-proxy/src/**',
   'components/animations/**',
   'src/types/**/*.ts',
   'shared/types/**/*.ts',
@@ -53,10 +54,11 @@ describe('frontend coverage policy', () => {
     expect(readCoverageExcludesFromConfig()).toEqual(EXPECTED_FRONTEND_COVERAGE_EXCLUDES);
   });
 
-  it('only excludes animation internals, non-frontend shared contracts, type-only, and barrel-export files from product code', () => {
+  it('only excludes package-owned internals, animation internals, non-frontend shared contracts, type-only, and barrel-export files from product code', () => {
     const sourcePathExcludes = readCoverageExcludesFromConfig().filter(pattern => !pattern.startsWith('**/'));
 
     expect(sourcePathExcludes).toEqual([
+      'ai-proxy/src/**',
       'components/animations/**',
       'src/types/**/*.ts',
       'shared/types/**/*.ts',
