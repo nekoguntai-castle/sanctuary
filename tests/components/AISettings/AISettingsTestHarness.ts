@@ -11,11 +11,21 @@ import { afterEach, beforeEach, vi } from 'vitest';
 export const mockGetSystemSettings = vi.fn();
 export const mockUpdateSystemSettings = vi.fn();
 export const mockGetFeatureFlags = vi.fn();
+export const mockGetMcpServerStatus = vi.fn();
+export const mockListMcpApiKeys = vi.fn();
+export const mockCreateMcpApiKey = vi.fn();
+export const mockRevokeMcpApiKey = vi.fn();
+export const mockGetUsers = vi.fn();
 
 vi.mock('../../../src/api/admin', () => ({
   getSystemSettings: () => mockGetSystemSettings(),
   updateSystemSettings: (settings: Record<string, unknown>) => mockUpdateSystemSettings(settings),
   getFeatureFlags: () => mockGetFeatureFlags(),
+  getMcpServerStatus: () => mockGetMcpServerStatus(),
+  listMcpApiKeys: () => mockListMcpApiKeys(),
+  createMcpApiKey: (input: Record<string, unknown>) => mockCreateMcpApiKey(input),
+  revokeMcpApiKey: (keyId: string) => mockRevokeMcpApiKey(keyId),
+  getUsers: () => mockGetUsers(),
 }));
 
 // Mock AI API
@@ -104,6 +114,16 @@ export const enabledSettings = {
   aiEnabled: true,
   aiEndpoint: 'http://host.docker.internal:11434',
   aiModel: 'llama3.2:3b',
+  aiProviderProfiles: [{
+    id: 'default-ollama',
+    name: 'Default Ollama',
+    providerType: 'ollama',
+    endpoint: 'http://host.docker.internal:11434',
+    model: 'llama3.2:3b',
+    capabilities: { chat: true, toolCalls: false, strictJson: true },
+    credentialState: { type: 'none', configured: false, needsReview: false },
+  }],
+  aiActiveProviderProfileId: 'default-ollama',
 };
 
 export const mockModels = {
@@ -121,6 +141,41 @@ export function registerAISettingsTestHarness() {
     ]);
     mockGetSystemSettings.mockResolvedValue(defaultSettings);
     mockUpdateSystemSettings.mockResolvedValue({});
+    mockGetMcpServerStatus.mockResolvedValue({
+      enabled: true,
+      host: '0.0.0.0',
+      port: 3003,
+      allowedHosts: ['localhost', 'sanctuary.local'],
+      rateLimitPerMinute: 120,
+      defaultPageSize: 100,
+      maxPageSize: 500,
+      maxDateRangeDays: 365,
+      serverName: 'sanctuary',
+      serverVersion: '0.8.44',
+    });
+    mockListMcpApiKeys.mockResolvedValue([]);
+    mockCreateMcpApiKey.mockResolvedValue({
+      id: 'created-key-1',
+      userId: 'user-1',
+      user: { id: 'user-1', username: 'alice', isAdmin: false },
+      name: 'LAN model',
+      keyPrefix: 'mcp_fixture',
+      scope: { allowAuditLogs: false },
+      createdAt: '2026-04-26T00:00:00.000Z',
+      apiKey: 'mcp_test_token_visible_once',
+    });
+    mockRevokeMcpApiKey.mockResolvedValue({
+      id: 'key-1',
+      userId: 'user-1',
+      name: 'LAN model',
+      keyPrefix: 'mcp_fixture',
+      scope: { allowAuditLogs: false },
+      createdAt: '2026-04-26T00:00:00.000Z',
+      revokedAt: '2026-04-27T00:00:00.000Z',
+    });
+    mockGetUsers.mockResolvedValue([
+      { id: 'user-1', username: 'alice', email: null, emailVerified: true, isAdmin: false, createdAt: '2026-04-26T00:00:00.000Z' },
+    ]);
     mockGetAIStatus.mockResolvedValue({ available: true, model: 'llama3.2:3b' });
     mockDetectOllama.mockResolvedValue({ found: true, endpoint: 'http://host.docker.internal:11434', models: ['llama3.2:3b'] });
     mockListModels.mockResolvedValue(mockModels);

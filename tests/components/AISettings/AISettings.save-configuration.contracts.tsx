@@ -50,10 +50,16 @@ export function registerAISettingsSaveConfigurationContracts() {
       await user.click(screen.getByText('Save Configuration'));
 
       await waitFor(() => {
-        expect(mockUpdateSystemSettings).toHaveBeenCalledWith({
+        expect(mockUpdateSystemSettings).toHaveBeenCalledWith(expect.objectContaining({
           aiEndpoint: 'http://host.docker.internal:11434',
           aiModel: 'llama3.2:3b',
-        });
+          aiActiveProviderProfileId: 'default-ollama',
+          aiProviderProfiles: [expect.objectContaining({
+            id: 'default-ollama',
+            endpoint: 'http://host.docker.internal:11434',
+            model: 'llama3.2:3b',
+          })],
+        }));
       });
     });
 

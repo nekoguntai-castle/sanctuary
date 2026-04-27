@@ -4,7 +4,9 @@ import React from 'react';
 import { describe,expect,it,vi } from 'vitest';
 import { ContainerControls } from '../../components/AISettings/components/ContainerControls';
 import { EnableModal } from '../../components/AISettings/components/EnableModal';
+import { McpAccessTab } from '../../components/AISettings/tabs/McpAccessTab';
 import { ModelsTab } from '../../components/AISettings/tabs/ModelsTab';
+import { ModelSelectionControls } from '../../components/AISettings/tabs/SettingsTabModelControls';
 import { SettingsTab } from '../../components/AISettings/tabs/SettingsTab';
 import { StatusTab } from '../../components/AISettings/tabs/StatusTab';
 
@@ -235,6 +237,21 @@ describe('ModelsTab', () => {
 
 describe('SettingsTab', () => {
   const baseProps = {
+    providerProfiles: [{
+      id: 'default-ollama',
+      name: 'Default Ollama',
+      providerType: 'ollama' as const,
+      endpoint: '',
+      model: '',
+      capabilities: { chat: true, toolCalls: false, strictJson: true },
+    }],
+    activeProviderProfileId: 'default-ollama',
+    providerName: 'Default Ollama',
+    providerType: 'ollama' as const,
+    providerCapabilities: { chat: true, toolCalls: false, strictJson: true },
+    credentialStatusText: 'No credential',
+    credentialApiKey: '',
+    clearCredential: false,
     aiEndpoint: '',
     aiModel: '',
     isSaving: false,
@@ -247,6 +264,14 @@ describe('SettingsTab', () => {
     aiStatusMessage: '',
     saveSuccess: false,
     saveError: null,
+    onSelectProviderProfile: vi.fn(),
+    onAddProviderProfile: vi.fn(),
+    onRemoveActiveProviderProfile: vi.fn(),
+    onProviderNameChange: vi.fn(),
+    onProviderTypeChange: vi.fn(),
+    onProviderCapabilityChange: vi.fn(),
+    onCredentialApiKeyChange: vi.fn(),
+    onClearCredentialChange: vi.fn(),
     onEndpointChange: vi.fn(),
     onDetectOllama: vi.fn(),
     onSelectModel: vi.fn(),
@@ -262,12 +287,22 @@ describe('SettingsTab', () => {
     const user = userEvent.setup();
     const onEndpointChange = vi.fn();
     const onDetectOllama = vi.fn();
+    const onClearCredentialChange = vi.fn();
 
-    render(<SettingsTab {...baseProps} onEndpointChange={onEndpointChange} onDetectOllama={onDetectOllama} />);
+    render(
+      <SettingsTab
+        {...baseProps}
+        onEndpointChange={onEndpointChange}
+        onDetectOllama={onDetectOllama}
+        onClearCredentialChange={onClearCredentialChange}
+      />
+    );
     await user.type(screen.getByPlaceholderText('http://host.docker.internal:11434'), 'http://localhost:11434');
+    await user.click(screen.getByLabelText('Clear stored credential on save'));
     await user.click(screen.getByRole('button', { name: /detect/i }));
 
     expect(onEndpointChange).toHaveBeenCalled();
+    expect(onClearCredentialChange).toHaveBeenCalledWith(true);
     expect(onDetectOllama).toHaveBeenCalled();
   });
 
@@ -323,6 +358,7 @@ describe('SettingsTab', () => {
     const { container } = render(
       <SettingsTab
         {...baseProps}
+        aiEndpoint="http://localhost:11434"
         isLoadingModels={true}
       />
     );
@@ -340,6 +376,172 @@ describe('SettingsTab', () => {
     );
 
     expect(screen.getByText('No models installed. Go to Models tab to download one.')).toBeInTheDocument();
+  });
+
+  it('renders direct model selection loading controls', () => {
+    const { container } = render(
+      <ModelSelectionControls
+        aiEndpoint="http://localhost:11434"
+        aiModel=""
+        showModelDropdown={false}
+        availableModels={[]}
+        isLoadingModels={true}
+        onSelectModel={vi.fn()}
+        onToggleModelDropdown={vi.fn()}
+        onRefreshModels={vi.fn()}
+        formatModelSize={(bytes) => `${bytes}B`}
+      />
+    );
+
+    expect(container.querySelectorAll('.animate-spin')).toHaveLength(2);
+  });
+});
+
+describe('McpAccessTab', () => {
+  const baseProps = {
+    status: null,
+    keys: [],
+    users: [{ id: 'user-1', username: 'alice', email: null, emailVerified: true, isAdmin: false, createdAt: '2026-04-26T00:00:00.000Z' }],
+    form: {
+      userId: '',
+      name: '',
+      walletIds: '',
+      allowAuditLogs: false,
+      expiresAt: '',
+    },
+    loading: false,
+    isCreating: false,
+    revokingKeyId: null,
+    createdToken: null,
+    error: null,
+    onFormChange: vi.fn(),
+    onCreateKey: vi.fn(),
+    onRevokeKey: vi.fn(),
+    onDismissCreatedToken: vi.fn(),
+    onRefresh: vi.fn(),
+  };
+
+  it('renders empty MCP state and disables invalid key creation', async () => {
+    const user = userEvent.setup();
+    const onFormChange = vi.fn();
+    const onRefresh = vi.fn();
+
+    render(
+      <McpAccessTab
+        {...baseProps}
+        onFormChange={onFormChange}
+        onRefresh={onRefresh}
+      />
+    );
+
+    expect(screen.getByText('No MCP keys.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /create mcp key/i })).toBeDisabled();
+
+    await user.selectOptions(screen.getByLabelText('Target User'), 'user-1');
+    await user.type(screen.getByLabelText('Key Name'), 'LAN key');
+    await user.type(screen.getByLabelText('Wallet Scope'), 'wallet-1');
+    await user.click(screen.getByLabelText('Allow audit log reads'));
+    await user.click(screen.getByRole('button', { name: /refresh mcp access/i }));
+
+    expect(onFormChange).toHaveBeenCalledWith('userId', 'user-1');
+    expect(onFormChange).toHaveBeenCalledWith('name', expect.any(String));
+    expect(onFormChange).toHaveBeenCalledWith('walletIds', expect.any(String));
+    expect(onFormChange).toHaveBeenCalledWith('allowAuditLogs', true);
+    expect(onRefresh).toHaveBeenCalled();
+  });
+
+  it('renders MCP status, token, lifecycle, scope, and action states', async () => {
+    const user = userEvent.setup();
+    const onCreateKey = vi.fn();
+    const onRevokeKey = vi.fn();
+    const onDismissCreatedToken = vi.fn();
+    const now = new Date();
+    const expiredAt = new Date(now.getTime() - 60_000).toISOString();
+
+    render(
+      <McpAccessTab
+        {...baseProps}
+        status={{
+          enabled: false,
+          host: '0.0.0.0',
+          port: 7331,
+          allowedHosts: ['192.168.1.0/24'],
+          rateLimitPerMinute: 60,
+          defaultPageSize: 50,
+          maxPageSize: 250,
+          maxDateRangeDays: 90,
+          serverName: 'sanctuary',
+          serverVersion: '1.2.3',
+        }}
+        keys={[
+          {
+            id: 'active-key',
+            userId: 'user-1',
+            user: { id: 'user-1', username: 'alice', isAdmin: false },
+            name: 'Single wallet',
+            keyPrefix: 'mcp_active',
+            scope: { walletIds: ['wallet-1'], allowAuditLogs: false },
+            createdAt: '2026-04-26T00:00:00.000Z',
+            lastUsedAt: '2026-04-26T01:00:00.000Z',
+          },
+          {
+            id: 'expired-key',
+            userId: 'user-2',
+            name: 'Two wallets',
+            keyPrefix: 'mcp_expired',
+            scope: { walletIds: ['wallet-1', 'wallet-2'], allowAuditLogs: true },
+            createdAt: '2026-04-26T00:00:00.000Z',
+            expiresAt: expiredAt,
+          },
+          {
+            id: 'revoked-key',
+            userId: 'user-3',
+            name: 'All wallets',
+            keyPrefix: 'mcp_revoked',
+            scope: {},
+            createdAt: '2026-04-26T00:00:00.000Z',
+            revokedAt: '2026-04-26T02:00:00.000Z',
+          },
+        ]}
+        form={{
+          userId: 'user-1',
+          name: 'LAN key',
+          walletIds: '',
+          allowAuditLogs: false,
+          expiresAt: '',
+        }}
+        loading={true}
+        isCreating={true}
+        revokingKeyId="expired-key"
+        createdToken="mcp_created_token"
+        error="Failed to load MCP access settings"
+        onCreateKey={onCreateKey}
+        onRevokeKey={onRevokeKey}
+        onDismissCreatedToken={onDismissCreatedToken}
+      />
+    );
+
+    expect(screen.getByText('Disabled')).toBeInTheDocument();
+    expect(screen.getByText('0.0.0.0:7331')).toBeInTheDocument();
+    expect(screen.getByText('sanctuary 1.2.3')).toBeInTheDocument();
+    expect(screen.getByText('Rows 50-250')).toBeInTheDocument();
+    expect(screen.getByText('Failed to load MCP access settings')).toBeInTheDocument();
+    expect(screen.getByText('mcp_created_token')).toBeInTheDocument();
+    expect(screen.getByText('1 wallet')).toBeInTheDocument();
+    expect(screen.getByText('2 wallets')).toBeInTheDocument();
+    expect(screen.getByText('All accessible wallets')).toBeInTheDocument();
+    expect(screen.getByText('active')).toBeInTheDocument();
+    expect(screen.getByText('expired')).toBeInTheDocument();
+    expect(screen.getByText('revoked')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /creating/i })).toBeDisabled();
+
+    await user.click(screen.getByRole('button', { name: /dismiss created mcp key/i }));
+    await user.click(screen.getAllByRole('button', { name: /revoke/i })[0]);
+
+    expect(onDismissCreatedToken).toHaveBeenCalled();
+    expect(onRevokeKey).toHaveBeenCalledWith('active-key');
+    expect(screen.getAllByRole('button', { name: /revoke/i })[1]).toBeDisabled();
+    expect(screen.getAllByRole('button', { name: /revoke/i })[2]).toBeDisabled();
   });
 });
 

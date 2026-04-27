@@ -12,7 +12,7 @@
  */
 
 import React, { useState } from 'react';
-import { Brain, Download, Server, Loader2, AlertCircle } from 'lucide-react';
+import { Brain, Download, KeyRound, Server, Loader2, AlertCircle } from 'lucide-react';
 import { useAIConnectionStatus } from './hooks/useAIConnectionStatus';
 import { useAISettings } from './hooks/useAISettings';
 import { useModelManagement } from './hooks/useModelManagement';
@@ -21,8 +21,11 @@ import { formatBytes, formatModelSize } from './utils';
 import { StatusTab } from './tabs/StatusTab';
 import { SettingsTab } from './tabs/SettingsTab';
 import { ModelsTab } from './tabs/ModelsTab';
+import { McpAccessTab } from './tabs/McpAccessTab';
 import { EnableModal } from './components/EnableModal';
 import type { AISettingsTab } from './types';
+import { toCredentialStatusText } from './providerProfileModel';
+import { useMcpAccess } from './hooks/useMcpAccess';
 
 export default function AISettings() {
   // Tab state
@@ -33,6 +36,10 @@ export default function AISettings() {
 
   // Core settings: enabled, endpoint, model, model list, save/detect
   const settings = useAISettings();
+  const activeProviderProfile = settings.providerProfiles.find(
+    (profile) => profile.id === settings.activeProviderProfileId
+  );
+  const mcpAccess = useMcpAccess(activeTab === 'mcp' && !settings.loading && !settings.featureUnavailable);
 
   // Model management: pull, delete, popular models, download progress
   const models = useModelManagement({
@@ -94,6 +101,7 @@ export default function AISettings() {
     { id: 'status', label: 'Status', icon: <Brain className="w-4 h-4" />, enabled: true, description: 'Enable AI' },
     { id: 'settings', label: 'Settings', icon: <Server className="w-4 h-4" />, enabled: settings.aiEnabled, description: 'Configure endpoint' },
     { id: 'models', label: 'Models', icon: <Download className="w-4 h-4" />, enabled: settings.aiEnabled && !!settings.aiEndpoint, description: 'Manage models' },
+    { id: 'mcp', label: 'MCP Access', icon: <KeyRound className="w-4 h-4" />, enabled: true, description: 'Manage MCP keys' },
   ];
 
   return (
@@ -167,6 +175,14 @@ export default function AISettings() {
 
           {activeTab === 'settings' && (
             <SettingsTab
+              providerProfiles={settings.providerProfiles}
+              activeProviderProfileId={settings.activeProviderProfileId}
+              providerName={settings.providerName}
+              providerType={settings.providerType}
+              providerCapabilities={settings.providerCapabilities}
+              credentialStatusText={activeProviderProfile ? toCredentialStatusText(activeProviderProfile) : 'No credential'}
+              credentialApiKey={settings.credentialApiKey}
+              clearCredential={settings.clearCredential}
               aiEndpoint={settings.aiEndpoint}
               aiModel={settings.aiModel}
               isSaving={settings.isSaving}
@@ -179,6 +195,14 @@ export default function AISettings() {
               aiStatusMessage={aiStatusMessage}
               saveSuccess={settings.saveSuccess}
               saveError={settings.saveError}
+              onSelectProviderProfile={settings.handleSelectProviderProfile}
+              onAddProviderProfile={settings.handleAddProviderProfile}
+              onRemoveActiveProviderProfile={settings.handleRemoveActiveProviderProfile}
+              onProviderNameChange={settings.setProviderName}
+              onProviderTypeChange={settings.setProviderType}
+              onProviderCapabilityChange={settings.handleProviderCapabilityChange}
+              onCredentialApiKeyChange={settings.setCredentialApiKey}
+              onClearCredentialChange={settings.setClearCredential}
               onEndpointChange={settings.setAiEndpoint}
               onDetectOllama={settings.handleDetectOllama}
               onSelectModel={settings.handleSelectModel}
@@ -188,6 +212,25 @@ export default function AISettings() {
               onRefreshModels={settings.loadModels}
               onNavigateToModels={() => setActiveTab('models')}
               formatModelSize={formatModelSize}
+            />
+          )}
+
+          {activeTab === 'mcp' && (
+            <McpAccessTab
+              status={mcpAccess.status}
+              keys={mcpAccess.keys}
+              users={mcpAccess.users}
+              form={mcpAccess.form}
+              loading={mcpAccess.loading}
+              isCreating={mcpAccess.isCreating}
+              revokingKeyId={mcpAccess.revokingKeyId}
+              createdToken={mcpAccess.createdToken}
+              error={mcpAccess.error}
+              onFormChange={mcpAccess.updateForm}
+              onCreateKey={mcpAccess.createKey}
+              onRevokeKey={mcpAccess.revokeKey}
+              onDismissCreatedToken={mcpAccess.dismissCreatedToken}
+              onRefresh={mcpAccess.refresh}
             />
           )}
 

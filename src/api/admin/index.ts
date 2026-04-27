@@ -14,6 +14,9 @@ export type {
   AdminGroup,
   CreateGroupRequest,
   AIProviderCapabilities,
+  AIProviderCredentialState,
+  AIProviderCredentialType,
+  AIProviderCredentialUpdate,
   AIProviderProfile,
   AIProviderType,
   SystemSettings,
@@ -39,6 +42,9 @@ export type {
   FeatureFlagInfo,
   FeatureFlagAuditEntry,
   FeatureFlagAuditResult,
+} from './types';
+
+export type {
   AgentApiKeyMetadata,
   AgentAlertMetadata,
   AgentAlertSeverity,
@@ -61,7 +67,16 @@ export type {
   WalletAgentSignerDevice,
   WalletAgentStatus,
   WalletAgentWalletSummary,
-} from './types';
+} from './agentTypes';
+
+export type {
+  AdminMcpApiKey,
+  AdminMcpApiKeyScope,
+  AdminMcpApiKeyUser,
+  AdminMcpServerStatus,
+  CreateMcpApiKeyRequest,
+  CreatedMcpApiKey,
+} from './mcp';
 
 // User management
 export { getUsers, createUser, updateUser, deleteUser } from './users';
@@ -141,6 +156,14 @@ export {
   createAgentApiKey,
   revokeAgentApiKey,
 } from './agents';
+
+// MCP access
+export {
+  getMcpServerStatus,
+  listMcpApiKeys,
+  createMcpApiKey,
+  revokeMcpApiKey,
+} from './mcp';
 
 // Support package
 export { downloadSupportPackage } from './supportPackage';

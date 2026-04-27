@@ -20,7 +20,7 @@ import type {
   CreateWalletAgentRequest,
   UpdateWalletAgentRequest,
   WalletAgentMetadata,
-} from './types';
+} from './agentTypes';
 
 export async function getWalletAgents(params?: { walletId?: string }): Promise<WalletAgentMetadata[]> {
   return params?.walletId

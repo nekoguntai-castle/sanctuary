@@ -1,5 +1,13 @@
 import type { OllamaModel, OllamaContainerStatus } from '../../src/api/ai';
+import type {
+  AdminMcpApiKey,
+  AdminMcpServerStatus,
+  AdminUser,
+  AIProviderCapabilities,
+  AIProviderType,
+} from '../../src/api/admin';
 import type { ModelDownloadProgress } from '../../hooks/websocket';
+import type { EditableProviderProfile } from './providerProfileModel';
 
 export interface PopularModel {
   name: string;
@@ -7,7 +15,7 @@ export interface PopularModel {
   recommended?: boolean;
 }
 
-export type AISettingsTab = 'status' | 'settings' | 'models';
+export type AISettingsTab = 'status' | 'settings' | 'models' | 'mcp';
 
 export interface StatusTabProps {
   aiEnabled: boolean;
@@ -25,6 +33,14 @@ export interface StatusTabProps {
 }
 
 export interface SettingsTabProps {
+  providerProfiles: EditableProviderProfile[];
+  activeProviderProfileId: string;
+  providerName: string;
+  providerType: AIProviderType;
+  providerCapabilities: AIProviderCapabilities;
+  credentialStatusText: string;
+  credentialApiKey: string;
+  clearCredential: boolean;
   aiEndpoint: string;
   aiModel: string;
   isSaving: boolean;
@@ -37,6 +53,14 @@ export interface SettingsTabProps {
   aiStatusMessage: string;
   saveSuccess: boolean;
   saveError: string | null;
+  onSelectProviderProfile: (profileId: string) => void;
+  onAddProviderProfile: () => void;
+  onRemoveActiveProviderProfile: () => void;
+  onProviderNameChange: (value: string) => void;
+  onProviderTypeChange: (value: AIProviderType) => void;
+  onProviderCapabilityChange: (capability: keyof AIProviderCapabilities, value: boolean) => void;
+  onCredentialApiKeyChange: (value: string) => void;
+  onClearCredentialChange: (value: boolean) => void;
   onEndpointChange: (value: string) => void;
   onDetectOllama: () => void;
   onSelectModel: (modelName: string) => void;
@@ -46,6 +70,31 @@ export interface SettingsTabProps {
   onRefreshModels: () => void;
   onNavigateToModels: () => void;
   formatModelSize: (bytes: number) => string;
+}
+
+export interface McpKeyFormState {
+  userId: string;
+  name: string;
+  walletIds: string;
+  allowAuditLogs: boolean;
+  expiresAt: string;
+}
+
+export interface McpAccessTabProps {
+  status: AdminMcpServerStatus | null;
+  keys: AdminMcpApiKey[];
+  users: AdminUser[];
+  form: McpKeyFormState;
+  loading: boolean;
+  isCreating: boolean;
+  revokingKeyId: string | null;
+  createdToken: string | null;
+  error: string | null;
+  onFormChange: <K extends keyof McpKeyFormState>(key: K, value: McpKeyFormState[K]) => void;
+  onCreateKey: () => void;
+  onRevokeKey: (keyId: string) => void;
+  onDismissCreatedToken: () => void;
+  onRefresh: () => void;
 }
 
 export interface ModelsTabProps {
