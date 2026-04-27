@@ -14,7 +14,7 @@
     "bip32": "^5.0.1",
     "bip39": "^3.1.0",
     "bitcoinjs-lib": "^7.0.1",
-    "bs58check": "^3.0.1",
+    "bs58check": "^4.0.0",
     "tiny-secp256k1": "^2.2.3"
   },
   "devDependencies": {
