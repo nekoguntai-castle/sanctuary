@@ -1,3 +1,31 @@
+# Active Task: AI/MCP/Console Release Proof Docs 2026-04-26
+
+Status: in progress
+
+Goal: close the final release-proof/docs slice for the AI Settings, Sanctuary Console, and direct MCP rollout so operators have the supported setup path, release gates have explicit proof criteria, and the prior readiness audit no longer leaves stale guidance as the latest release story.
+
+## Plan
+
+- [x] Sync to the merged Admin AI/MCP settings work and create a fresh release-docs branch from `origin/main`.
+- [x] Audit existing README, MCP how-to, release-gate, planning, and docs index coverage for stale AI Assistant/MCP guidance.
+- [x] Add an operator-facing AI Settings, Sanctuary Console, and MCP access how-to that makes Console the recommended path and direct MCP the advanced path.
+- [x] Update README, MCP how-to, docs index, and release gates to point at the new guidance and current Admin > AI Settings > MCP Access workflow.
+- [x] Add release proof notes with merged-slice evidence, quality review, edge-case audit, and remaining-slice count.
+- [x] Run focused docs/build verification, diff checks, quality review, edge-case audit, and self-review.
+- [ ] Deliver the slice through PR, merge queue, merge verification, and branch cleanup.
+
+## Review
+
+- Remaining implementation after this slice: 0 planned slices for the AI/MCP/Console rollout.
+- Added `docs/how-to/ai-mcp-console.md` as the operator path for configuring trusted providers, opening Sanctuary Console, managing prompt history, and issuing/revoking direct MCP credentials.
+- Updated README, the MCP server how-to, docs index, and release gates so the release story points to AI Settings, Sanctuary Console as the normal path, and direct MCP as the advanced loopback/LAN path.
+- Added `docs/plans/ai-mcp-console-release-proof.md` with merged PR evidence, release posture, release gates, operator evidence, security evidence, and deferred non-blocking follow-ups.
+- Marked the original MCP readiness audit as historical so its pre-implementation "not release-ready" verdict does not remain the latest guidance.
+- Edge-case audit: docs state that direct MCP is not for public internet exposure, LAN MCP requires TLS/VPN/reverse-proxy protection, prompt history expiration is per-prompt rather than an admin retention policy, restored provider credentials require re-entry, restored MCP keys are revoked, and unsupported write/shell/SQL/signing workflows remain out of scope.
+- Verification passed: `npm run docs:build`, `git diff --check`, and a stale-term scan for outdated AI/MCP feature-flag names across the touched public docs.
+
+---
+
 # Active Task: Admin AI/MCP Settings 2026-04-26
 
 Status: complete

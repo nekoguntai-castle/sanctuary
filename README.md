@@ -94,7 +94,7 @@
 - [Security Considerations](#security-considerations)
 - [Troubleshooting](#troubleshooting)
 - [Development](#development)
-- [AI Assistant (Optional)](#ai-assistant-optional)
+- [AI Settings, Console, and MCP (Optional)](#ai-settings-console-and-mcp-optional)
 - [Support the Project](#support-the-project)
 - [License](#license)
 - [Acknowledgments](#acknowledgments)
@@ -254,7 +254,7 @@ Sanctuary is a **watch-only wallet coordinator** that helps you manage Bitcoin w
 - **Audit logging** — Track security-relevant events and user actions (including gateway/mobile API events)
 - **Monitoring & diagnostics** — Optional Grafana/Prometheus/Jaeger dashboards plus downloadable anonymized support packages
 - **Mobile API gateway** — Secure API for iOS/Android apps with push notifications
-- **AI Assistant** — Optional AI-powered transaction labeling and natural language queries (see [AI Assistant](#ai-assistant-optional) below)
+- **AI Settings, Console, and MCP** — Optional trusted model-provider configuration, in-app read-only wallet Q&A, and scoped external MCP access (see [AI Settings, Console, and MCP](#ai-settings-console-and-mcp-optional) below)
 - **Treasury Intelligence** — Optional wallet-specific insights and chat when AI feature flags are enabled
 - **Treasury Autopilot** — Optional UTXO-health and consolidation controls when treasury features are enabled
 - **Backup & restore** — Export/import all data via the web UI
@@ -923,7 +923,7 @@ Administrators can configure system-wide settings under **Administration → Sys
 
 - **Public Registration** — Enable/disable self-service account creation. When disabled (default), only administrators can create new user accounts.
 - **Users & Groups** — Manage shared access for families and teams.
-- **Feature Flags** — Enable optional modules like AI Assistant, Treasury Intelligence, Payjoin, and Autopilot.
+- **Feature Flags** — Enable optional modules like AI Settings, Sanctuary Console, Treasury Intelligence, Payjoin, and Autopilot.
 - **Monitoring** — Open Grafana, Prometheus, and Jaeger when the monitoring stack is enabled.
 - **Support Package** — Download an anonymized diagnostic bundle for troubleshooting.
 
@@ -1272,11 +1272,13 @@ sanctuary/
 └── docker-compose.yml
 ```
 
-## AI Assistant (Optional)
+## AI Settings, Console, and MCP (Optional)
 
-Sanctuary includes an optional AI assistant that can help with:
-- **Transaction labeling** — AI suggests labels based on amount, direction, and your existing patterns
-- **Natural language queries** — Ask questions like "Show my largest receives this month"
+Sanctuary includes optional AI surfaces for:
+
+- **AI Settings** — Configure trusted local, LAN, or explicitly allowlisted OpenAI-compatible model providers.
+- **Sanctuary Console** — Ask read-only questions about wallets, transactions, UTXOs, addresses, fees, prices, drafts, policies, insights, and node/app state from inside the authenticated web app.
+- **Direct MCP** — Let a trusted local or LAN MCP client call the same read-only tool surface with scoped, revocable bearer keys.
 
 ### Setting Up AI
 
@@ -1303,24 +1305,32 @@ Sanctuary includes an optional AI assistant that can help with:
 
 2. **Enable the feature flags you want**
    - Go to **Administration → Feature Flags**
-   - Enable `aiAssistant` for AI label suggestions and admin AI configuration
-   - Enable `treasuryIntelligence` as well if you want the **Intelligence** page with wallet insights and chat
+   - Enable `aiAssistant` for AI Settings and provider configuration
+   - Enable `sanctuaryConsole` if you want the in-app Console drawer
+   - Enable `treasuryIntelligence` as well if you want the **Intelligence** page with wallet insights
 
 3. **Configure the provider in Sanctuary**
    - Go to **Administration → AI Settings**
    - Toggle **Enable AI Features**
-   - Use **Detect** for bundled Ollama or enter an Ollama/OpenAI-compatible endpoint manually
+   - Use **Detect** for bundled Ollama or create a provider profile for an Ollama/OpenAI-compatible endpoint
    - Pick a model and save the settings
+
+4. **Use the Console or direct MCP**
+   - Open Sanctuary Console from the small brain icon below **Dashboard** in the sidebar, or use `Ctrl+Shift+.` / `Cmd+Shift+.`.
+   - Manage external MCP keys from **Administration → AI Settings → MCP Access**.
+   - Start the MCP service with `./start.sh --with-mcp` when you need direct MCP clients.
 
 ### Security
 
-The AI runs in a **security-isolated container**:
-- Cannot access private keys or signing operations
-- Only receives sanitized metadata (amounts, dates — **no addresses or txids**)
-- Runs in a separate network by default (no internet access for local AI)
-- All AI suggestions require user confirmation before applying
+The AI path is designed around backend-owned read tools:
 
-See [ai-proxy/README.md](ai-proxy/README.md) for technical details.
+- No private keys, signing operations, shell access, arbitrary SQL, descriptors, xpubs, PSBTs, provider API keys, browser JWTs, or MCP tokens are sent to the model.
+- Console and MCP tools are read-only in this release.
+- Provider API keys are write-only in AI Settings and stored as encrypted credentials.
+- Direct MCP should stay loopback-only unless protected by TLS, VPN, or a trusted reverse proxy.
+- Restored AI provider credentials must be re-entered, and restored MCP keys are revoked.
+
+See [AI Settings, Sanctuary Console, and MCP access](docs/how-to/ai-mcp-console.md), [MCP Server](docs/how-to/mcp-server.md), and [ai-proxy/README.md](ai-proxy/README.md) for technical details.
 
 ## Support the Project
 

@@ -31,6 +31,7 @@ This document records the checks that should protect the A-grade engineering goa
 | Container/install validation | Fresh install, install script, container health, auth flow | `.github/workflows/install-test.yml` release gate | Required for release candidates/releases |
 | Upgrade preservation | Historical ref-to-ref upgrade matrix with fixture-backed user-visible smoke | `.github/workflows/release-candidate.yml` and release-tag `.github/workflows/install-test.yml` run `tests/install/e2e/upgrade-install.test.sh --mode core` across `latest-stable/baseline`, `n-2/baseline`, `latest-stable/browser-origin-ip`, `latest-stable/legacy-runtime-env`, `latest-stable/notification-delivery`, and `latest-stable/optional-profiles`; release-candidate validation can additionally run `latest-stable/baseline` with `--mode full` when `include_full_upgrade_recovery` is enabled; failed lanes upload redacted upgrade artifacts | Required for release candidates/releases |
 | Operations supportability | Runbook coverage and proof for backup/restore, gateway audit persistence, alert receiver delivery, and monitoring stack behavior | `docs/how-to/operations-runbooks.md` updated when alerts or operational flows change; `npm run test:ops:phase2` when backup/restore or in-process gateway audit paths are touched; `npm run ops:gateway-audit:phase2` when backend/gateway containers or gateway audit delivery paths are touched; `npm run ops:monitoring:phase2` when monitoring Compose, Prometheus/Loki/Grafana/Jaeger/Alertmanager, or Promtail paths are touched; `npm run ops:alert-receiver:phase2` when Alertmanager routing or receiver config is touched | Required when touched |
+| AI, Console, and MCP | Provider profile redaction, Console tool execution, prompt history, MCP transport/auth, and admin key management | Focused frontend Console/AI Settings/MCP tests; focused backend Console/MCP/admin route tests; AI proxy Console tests; `npm run typecheck:app`; `npm run typecheck:tests`; `npm run typecheck:server:tests`; `npm run lint:app`; `npm run lint:server`; `npm run check:openapi-route-coverage`; MCP/Console docs updated when behavior changes | Required when touched |
 | Performance and scale | Phase 3 benchmark harness in strict mode | `npm run perf:phase3:compose-smoke` for disposable local authenticated generated-data capacity proof; `SANCTUARY_BENCHMARK_STRICT=true npm run perf:phase3` with operator-owned testnet/regtest or approved non-production scenario inputs for target-environment calibration | Generated proof complete; target-environment rerun required when topology/hardware differs |
 
 Upgrade-path policy: upgrade regressions can lock operators out of existing nodes, so the ref-to-ref upgrade matrix is now a release-blocking gate. The core lane preserves encrypted admin 2FA, encrypted secondary-user 2FA, legacy plaintext 2FA, backup-code state, representative app data, runtime secrets, legacy `.env` compatibility, browser/proxy login and refresh, CSRF-protected support-package generation, worker health, notification worker DLQ diagnostics, optional monitoring/Tor profile enablement, and migration completion. The script's `--mode full` path is available as a deliberate release-candidate recovery lane that extends the baseline upgrade with password-drift recovery, rebuild, and volume-persistence checks.
@@ -61,6 +62,19 @@ Record benchmark output under `docs/plans/` and link it from `docs/plans/codebas
 ## Phase 4 Typecheck Gate
 
 `npm run typecheck:tests` passed after the Phase 4 unused-symbol fixture cleanup and is now a required frontend correctness gate alongside `npm run typecheck:app`.
+
+## AI, Console, And MCP Release Gate
+
+Releases that claim AI/MCP/Console improvements must prove both supported paths:
+
+- Sanctuary Console remains the recommended user path and runs through authenticated backend services, the AI proxy, and the shared read-tool registry.
+- Direct MCP remains an advanced external-client path, defaults to loopback, and requires scoped bearer keys for every request.
+- Provider credentials are write-only in admin requests and are never returned in settings responses, logs, support packages, OpenAPI examples, or restored backups.
+- Console prompt history supports search, save/unsave, replay, delete, and expiration without storing raw high-sensitivity tool payloads by default.
+- MCP keys can be created, listed, and revoked from **Administration -> AI Settings -> MCP Access**, and restored keys are forced revoked.
+- Direct LAN MCP release notes must repeat the TLS/VPN/reverse-proxy requirement and must not present public internet exposure as supported.
+
+Minimum local proof for touched AI/MCP/Console behavior should include the focused suites for the touched layer plus the matching typecheck/lint gates. Use `docs/how-to/ai-mcp-console.md` as the operator checklist for release-candidate smoke testing.
 
 ## Backend Coverage Policy
 
