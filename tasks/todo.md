@@ -1,6 +1,6 @@
 # Active Task: Pre-Release Grade Findings Remediation 2026-04-27
 
-Status: in progress
+Status: complete
 
 Goal: fix the current `$grade` findings before cutting the next release, restoring the maintainability margin without weakening test coverage, wallet safety, MCP/Console behavior, or hardware-wallet flows.
 
@@ -40,7 +40,7 @@ Release target: **minimum 97/100 A**, no hard-fail blockers, `security_high=0`, 
   - [x] Run targeted lizard for Slice 5 touched files at `CCN <= 15`.
   - [x] Run focused Slice 5 suites plus required affected gates.
   - [x] Deliver Slice 5 as a dedicated PR and verify merge before starting Slice 6.
-- [ ] Slice 6 - vector fixture size and low-audit triage:
+- [x] Slice 6 - vector fixture size and low-audit triage:
   - Evaluate sharding or generation-on-demand for `server/tests/fixtures/verified-address-vectors.ts` and `scripts/verify-addresses/output/verified-vectors.ts`; proceed only if address-vector coverage and deterministic verification stay intact.
   - Re-run root audit, identify the 16 low advisories, apply safe minor/patch upgrades where available, and document any remaining upstream/hardware-wallet transitive risk.
   - Deliver Slice 6 as a dedicated PR and verify merge before the final grade pass.
@@ -49,8 +49,8 @@ Release target: **minimum 97/100 A**, no hard-fail blockers, `security_high=0`, 
   - [x] Re-run root/server/gateway/ai-proxy audits and classify all remaining advisories by severity, path, and safe-fix availability.
   - [x] Apply safe package updates or document accepted upstream/transitive residuals without weakening wallet or hardware-wallet coverage.
   - [x] Run targeted vector/audit tests plus package gates affected by any dependency or fixture changes.
-  - [ ] Deliver Slice 6 as a dedicated PR and verify merge before the final grade pass.
-- [ ] Release verification gate:
+  - [x] Deliver Slice 6 as a dedicated PR and verify merge before the final grade pass.
+- [x] Release verification gate:
   - Run focused tests per slice plus touched-file lizard before each PR.
   - Before release, run full lizard, `npm run test:coverage`, `npm run test:backend:coverage`, `npm --prefix gateway run test:coverage`, lint/typecheck, gitleaks full/tracked/latest commit scans, root/server/gateway/ai-proxy audits, jscpd, and `$grade`.
   - Update `docs/plans/codebase-health-assessment.md` and grade history with the post-remediation score.
@@ -79,9 +79,12 @@ Release target: **minimum 97/100 A**, no hard-fail blockers, `security_high=0`, 
 - Slice 6 implementation: changed the address-vector generator to emit one verified vector per line while preserving the existing `VERIFIED_SINGLESIG_VECTORS`, `VERIFIED_MULTISIG_VECTORS`, types, mnemonic export, and fixture/output parity. The generated server fixture and script output each dropped from 2,118 lines to 178 lines. Split the oversized `aiService.test.ts` model-operation cases into `aiService.modelOperations.test.ts` and moved shared AI service mocks/reset hooks into the existing harness; `aiService.test.ts` is now 613 lines and the new model-operation suite is 413 lines.
 - Slice 6 audit triage: root audit still reports 16 low-severity transitive advisories through Ledger/Trezor hardware-wallet and browser polyfill paths (`elliptic`, old transitive `tiny-secp256k1`/`bitcoinjs-lib`, `@trezor/*`, `@ledgerhq/*`, `vite-plugin-node-polyfills`/`node-stdlib-browser`). Server, gateway, and ai-proxy audits report 0 vulnerabilities. No safe dependency update was applied: direct packages are already at current compatible releases, and npm's suggested remaining fixes are downgrades, force fixes, or no-fix hardware-wallet transitives.
 - Slice 6 verification: focused address-vector and hardware-wallet compatibility suites passed (231 tests); focused AI service suites passed (53 tests); generated vector output and server fixture are byte-identical; targeted and full pinned lizard passed at `CCN <= 15` with zero warnings; `node scripts/quality/check-large-files.mjs`, `npm run typecheck:scripts`, `npm run typecheck:server:tests`, `npm run lint:server`, root/server/gateway/ai-proxy high-severity audits, Prettier check for touched hand-edited files, `npm run test:backend:coverage` (419 passed / 22 skipped files, 9,414 passed / 505 skipped tests, 100% coverage), and `git diff --check` passed.
-- Recommended sequencing: fix production backend complexity first, then hardware/send flows, then UI/animation code, then test/support warnings, then fixture/audit cleanup.
-- Release blockers: no hard-fail blockers, 0 lizard threshold warnings or an explicitly accepted residual list, 0 high/critical audit findings, 0 gitleaks findings, and coverage/lint/typecheck still green.
-- Non-blocking unless easy and safe: root low-severity transitive advisories and vector fixture sharding. These can improve the score, but should not drive risky package downgrades or weaker address-vector tests.
+- Slice 6 delivery: PR #202 merged through the merge queue at `600cd6feb0bbea840ee1c73b9a44d861db6dbb8a`; `origin/main` contains the merge commit. Queue Test Suite and Code Quality passed; queue CodeQL hit the known ephemeral-ref upload race after merge, and the post-merge `main` CodeQL run on the same commit passed.
+- Final release verification: grade collector tests/lint/typecheck passed; `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, `npm run test:coverage`, `npm run test:backend:coverage`, `npm --prefix gateway run test:coverage`, root/server/gateway/ai-proxy high-severity audits, full/latest-commit/tracked-tree gitleaks, full pinned lizard, jscpd, large-file classification, and `git diff --check` passed.
+- Final grade result: `docs/plans/codebase-health-assessment.md` and `docs/plans/grade-history/sanctuary_.jsonl` now record 98/100 A, high confidence, no hard-fail blockers, `security_high=0`, `secrets=0`, app/backend/gateway coverage at 100%, duplication at 2.25%, and full pinned lizard with 0 threshold warnings at `CCN <= 15`.
+- Quality review: the remediation preserved public contracts and coverage while reducing full-scan lizard warnings from 65 to 0 and reducing the verified vector fixtures from 2,118 lines to 178 lines each. The only strict score loss is the classified 1,150-line `scripts/perf/phase3-benchmark.mjs` proof harness.
+- Edge-case audit: null/empty/error boundaries remain covered through the slice-specific suites, vector fixture/output parity is byte-identical, root low audit advisories are documented without risky forced downgrades, and no broad lizard or gitleaks suppressions were added.
+- Remaining planned remediation slices: 0.
 
 ---
 
