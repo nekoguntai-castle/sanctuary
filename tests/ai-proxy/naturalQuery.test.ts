@@ -201,4 +201,34 @@ describe("natural query conversion", () => {
       vi.useRealTimers();
     }
   });
+
+  it("uses explicit transaction limit intent data instead of prompt regexes", async () => {
+    mocks.callExternalAIWithMessagesResult.mockResolvedValue({
+      ok: true,
+      content: JSON.stringify({
+        intents: [
+          {
+            name: "query_transactions",
+            target: { kind: "current_wallet" },
+            limit: { kind: "explicit", value: 7 },
+          },
+        ],
+      }),
+    });
+
+    await expect(
+      convertNaturalQuery({
+        aiConfig,
+        query: "show wallet activity",
+        walletId,
+        recentLabels: "None",
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      query: {
+        type: "transactions",
+        limit: 7,
+      },
+    });
+  });
 });

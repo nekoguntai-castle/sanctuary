@@ -1,3 +1,70 @@
+# Active Task: Brittle Check Remediation Phase 1 Implementation 2026-04-28
+
+Status: complete
+
+Goal: complete the Console typed intent protocol so transaction limits, wallet overviews, and dashboard summaries are represented as schema-backed intents instead of prompt-text checks.
+
+## Plan
+
+- [x] Refresh the current Console planner, natural-query adapter, tests, and remediation plan.
+- [x] Add typed `ConsoleIntent` handling for transactions, wallet overviews, and dashboard summaries.
+- [x] Move transaction limit behavior from prompt regexes into explicit intent data.
+- [x] Preserve legacy `toolCalls` and compatibility fallbacks without adding new phrase rules.
+- [x] Add focused null/empty/invalid/unresolved/limit tests.
+- [x] Run focused verification, lizard, type/build checks, and `git diff --check`.
+- [ ] Commit, push, open the Phase 1 PR, monitor checks, merge, and then start Phase 2.
+
+## Review
+
+- Added schema-backed `ConsoleIntent` handling for `query_transactions`, `get_wallet_overview`, and `get_dashboard_summary`.
+- Replaced prompt-regex limit gating with typed transaction limit semantics: explicit limits become tool input, default/omitted limits use backend tool budgets.
+- Preserved legacy direct `toolCalls` and legacy numeric transaction intent limits while keeping fallback plans isolated behind `fallback_plan_applied`.
+- Verification passed: focused AI-proxy Vitest, `npm --prefix ai-proxy run build`, `npm run typecheck:tests`, `npm run quality:lizard`, Prettier, and `git diff --check`.
+
+---
+
+# Active Task: Brittle Check Remediation Planning 2026-04-28
+
+Status: complete
+
+Goal: turn the brittle-check assessment into a phased implementation plan with clear sequencing, exit criteria, and verification gates.
+
+## Plan
+
+- [x] Re-read the assessment findings and current task context.
+- [x] Group the findings into independently shippable architecture phases.
+- [x] Define scope, exit criteria, verification commands, and rollback strategy for each phase.
+- [x] Document the recommended PR breakdown and update the task log.
+
+## Review
+
+- Added `docs/plans/brittle-checks-remediation-plan.md`.
+- Recommended starting with Console typed intents and wallet reference resolution, then moving to shared derivation-path parsing, address chain metadata, structured error codes, and finally lower-risk operational contracts.
+- Plan keeps legitimate text parsers intact and targets only checks that are substituting for typed contracts.
+
+---
+
+# Active Task: Brittle Check Architecture Audit 2026-04-28
+
+Status: complete
+
+Goal: identify brittle condition checks across the codebase, separate acceptable edge adapters from risky business logic, and propose better long-term architecture where needed.
+
+## Plan
+
+- [x] Define brittleness categories and scan the repo for representative patterns.
+- [x] Inspect high-signal production call sites before drawing conclusions.
+- [x] Classify findings by risk, blast radius, and whether tests already lock behavior down.
+- [x] Write a concise architecture assessment and update this task review.
+
+## Review
+
+- Added `docs/plans/brittle-checks-assessment.md` with a targeted finding list and recommended refactor sequence.
+- Main architecture risks are concentrated in natural-language fallback planning, derivation-path string inference, address chain detection from path substrings, and message-text error classification.
+- Reviewed acceptable regex use separately so descriptor parsing, route contracts, validation, redaction, and sanitization are not treated as false-positive debt.
+
+---
+
 # Active Task: Grade Maintainability Remediation Pass 3 2026-04-28
 
 Status: complete

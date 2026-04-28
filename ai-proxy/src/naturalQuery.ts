@@ -181,14 +181,6 @@ const parseAggregation = (
     : undefined;
 };
 
-const promptRequestsExplicitLimit = (prompt: string): boolean => {
-  return (
-    /\b(?:top|first|last|latest|largest|smallest|limit(?:ed)?\s+to)\s+\d{1,4}\b/i.test(
-      prompt,
-    ) || /\b\d{1,4}\s+(?:transactions?|txs?)\b/i.test(prompt)
-  );
-};
-
 const transactionCall = (
   plan: ConsolePlanResponse,
 ): ConsolePlannedToolCall | null => {
@@ -199,7 +191,6 @@ const transactionCall = (
 
 const naturalQueryFromToolCall = (
   call: ConsolePlannedToolCall,
-  prompt: string,
 ): NaturalQueryObject | null => {
   if (!isRecord(call.input)) return null;
 
@@ -211,8 +202,7 @@ const naturalQueryFromToolCall = (
 
   if (filter) query.filter = filter;
   if (sort) query.sort = sort;
-  if (limit !== null && promptRequestsExplicitLimit(prompt))
-    query.limit = limit;
+  if (limit !== null) query.limit = limit;
   if (aggregation) query.aggregation = aggregation;
 
   return query;
@@ -220,10 +210,9 @@ const naturalQueryFromToolCall = (
 
 const naturalQueryFromPlan = (
   plan: ConsolePlanResponse,
-  prompt: string,
 ): NaturalQueryObject | null => {
   const call = transactionCall(plan);
-  return call ? naturalQueryFromToolCall(call, prompt) : null;
+  return call ? naturalQueryFromToolCall(call) : null;
 };
 
 export function buildNaturalQueryPrompt(input: {
@@ -270,7 +259,7 @@ export async function convertNaturalQuery(input: {
 
   if (!result.ok) {
     const fallbackPlan = parseConsolePlanResponse("", 1, fallbackPlannerInput);
-    const fallbackQuery = naturalQueryFromPlan(fallbackPlan, input.query);
+    const fallbackQuery = naturalQueryFromPlan(fallbackPlan);
     if (fallbackQuery) return { ok: true, query: fallbackQuery };
 
     return { ok: false, status: 503, error: "AI endpoint not available" };
@@ -281,7 +270,7 @@ export async function convertNaturalQuery(input: {
     1,
     fallbackPlannerInput,
   );
-  const query = naturalQueryFromPlan(plan, input.query);
+  const query = naturalQueryFromPlan(plan);
   if (!query) {
     const modelResponseWasJson = !plan.warnings.includes(
       "model_response_not_json",
