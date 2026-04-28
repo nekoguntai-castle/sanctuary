@@ -6,10 +6,10 @@
 
 import { Router } from 'express';
 import { authenticate, requireAdmin } from '../../middleware/auth';
+import { rateLimitByUser } from '../../middleware/rateLimit';
 import { asyncHandler } from '../../errors/errorHandler';
 import { aiService } from '../../services/aiService';
 import { featureFlagService } from '../../services/featureFlagService';
-import type { RequestHandler } from 'express';
 
 function disabledStatus(
   assistantFeatureEnabled: boolean,
@@ -36,10 +36,14 @@ function incompleteProviderStatus(configStatus: { model?: string; endpoint?: str
   };
 }
 
-export function createStatusRouter(aiRateLimiter: RequestHandler): Router {
+export function createStatusRouter(): Router {
   const router = Router();
+  const aiRateLimiter = rateLimitByUser('ai:analyze');
 
-  router.get('/status', authenticate, aiRateLimiter, asyncHandler(async (_req, res) => {
+  router.use(authenticate);
+  router.use(aiRateLimiter);
+
+  router.get('/status', asyncHandler(async (_req, res) => {
     const [assistantFeatureEnabled, configStatus] = await Promise.all([
       featureFlagService.isEnabled('aiAssistant'),
       aiService.getConfigStatus(),
@@ -66,7 +70,7 @@ export function createStatusRouter(aiRateLimiter: RequestHandler): Router {
     });
   }));
 
-  router.post('/test-connection', authenticate, requireAdmin, aiRateLimiter, asyncHandler(async (_req, res) => {
+  router.post('/test-connection', requireAdmin, asyncHandler(async (_req, res) => {
     const [assistantFeatureEnabled, configStatus] = await Promise.all([
       featureFlagService.isEnabled('aiAssistant'),
       aiService.getConfigStatus(),

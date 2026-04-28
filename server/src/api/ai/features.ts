@@ -8,11 +8,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { authenticate, extractAccessToken } from '../../middleware/auth';
+import { rateLimitByUser } from '../../middleware/rateLimit';
 import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
 import { ErrorCodes } from '../../errors/ApiError';
 import { aiService } from '../../services/aiService';
-import type { RequestHandler } from 'express';
 
 const SuggestLabelBodySchema = z.object({
   transactionId: z.string().trim().min(1, 'transactionId is required'),
@@ -27,8 +27,12 @@ function authTokenForProxy(req: Parameters<typeof extractAccessToken>[0]): strin
   return extractAccessToken(req) ?? '';
 }
 
-export function createFeaturesRouter(aiRateLimiter: RequestHandler): Router {
+export function createFeaturesRouter(): Router {
   const router = Router();
+  const aiRateLimiter = rateLimitByUser('ai:analyze');
+
+  router.use(authenticate);
+  router.use(aiRateLimiter);
 
   /**
    * POST /api/v1/ai/suggest-label
@@ -42,8 +46,6 @@ export function createFeaturesRouter(aiRateLimiter: RequestHandler): Router {
    */
   router.post(
     '/suggest-label',
-    authenticate,
-    aiRateLimiter,
     validate(
       { body: SuggestLabelBodySchema },
       { message: 'transactionId is required', code: ErrorCodes.INVALID_INPUT }
@@ -89,8 +91,6 @@ export function createFeaturesRouter(aiRateLimiter: RequestHandler): Router {
    */
   router.post(
     '/query',
-    authenticate,
-    aiRateLimiter,
     validate(
       { body: QueryBodySchema },
       { message: 'Query and walletId are required', code: ErrorCodes.INVALID_INPUT }

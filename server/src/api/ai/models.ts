@@ -10,11 +10,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { authenticate, requireAdmin } from '../../middleware/auth';
+import { rateLimitByUser } from '../../middleware/rateLimit';
 import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
 import { ErrorCodes } from '../../errors/ApiError';
 import { aiService } from '../../services/aiService';
-import type { RequestHandler } from 'express';
 
 const ModelBodySchema = z.object({
   model: z.string().trim().min(1, 'Model name is required'),
@@ -39,14 +39,18 @@ const ProviderDetectionBodySchema = z.object({
   apiKey: z.string().max(8192).optional(),
 });
 
-export function createModelsRouter(aiRateLimiter: RequestHandler): Router {
+export function createModelsRouter(): Router {
   const router = Router();
+  const aiRateLimiter = rateLimitByUser('ai:analyze');
+
+  router.use(authenticate);
+  router.use(aiRateLimiter);
 
   /**
    * POST /api/v1/ai/detect-ollama
    * Auto-detect Ollama at common endpoints
    */
-  router.post('/detect-ollama', authenticate, aiRateLimiter, asyncHandler(async (_req, res) => {
+  router.post('/detect-ollama', asyncHandler(async (_req, res) => {
     const result = await aiService.detectOllama();
     res.json(result);
   }));
@@ -57,9 +61,7 @@ export function createModelsRouter(aiRateLimiter: RequestHandler): Router {
    */
   router.post(
     '/detect-provider',
-    authenticate,
     requireAdmin,
-    aiRateLimiter,
     validate(
       { body: ProviderDetectionBodySchema },
       { message: 'Valid provider endpoint is required', code: ErrorCodes.INVALID_INPUT },
@@ -82,7 +84,7 @@ export function createModelsRouter(aiRateLimiter: RequestHandler): Router {
    * GET /api/v1/ai/models
    * List available models from configured endpoint
    */
-  router.get('/models', authenticate, aiRateLimiter, asyncHandler(async (_req, res) => {
+  router.get('/models', asyncHandler(async (_req, res) => {
     const result = await aiService.listModels();
 
     if (result.error) {
@@ -101,9 +103,7 @@ export function createModelsRouter(aiRateLimiter: RequestHandler): Router {
    */
   router.post(
     '/pull-model',
-    authenticate,
     requireAdmin,
-    aiRateLimiter,
     validate(
       { body: ModelBodySchema },
       { message: 'Model name is required', code: ErrorCodes.INVALID_INPUT }
@@ -130,9 +130,7 @@ export function createModelsRouter(aiRateLimiter: RequestHandler): Router {
    */
   router.delete(
     '/delete-model',
-    authenticate,
     requireAdmin,
-    aiRateLimiter,
     validate(
       { body: ModelBodySchema },
       { message: 'Model name is required', code: ErrorCodes.INVALID_INPUT }
