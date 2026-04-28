@@ -12,18 +12,98 @@
  * - Health monitoring
  */
 
-import { Queue, Worker, Job, QueueEvents, type ConnectionOptions, type JobsOptions } from 'bullmq';
-import { getRedisClient, isRedisConnected } from '../../infrastructure';
-import { createLogger } from '../../utils/logger';
-import { getErrorMessage } from '../../utils/errors';
-import type { WorkerJobHandler } from '../jobs/types';
-import type { WorkerJobQueueConfig, QueueInstance, RegisteredHandler } from './types';
-import { setupWorkerEventHandlers } from './eventHandlers';
-import { processJobWithLock } from './jobProcessor';
+import {
+  Queue,
+  Worker,
+  Job,
+  QueueEvents,
+  type ConnectionOptions,
+  type JobsOptions,
+} from "bullmq";
+import { getRedisClient, isRedisConnected } from "../../infrastructure";
+import { createLogger } from "../../utils/logger";
+import { getErrorMessage } from "../../utils/errors";
+import type { WorkerJobHandler } from "../jobs/types";
+import type {
+  WorkerJobQueueConfig,
+  QueueInstance,
+  RegisteredHandler,
+} from "./types";
+import { setupWorkerEventHandlers } from "./eventHandlers";
+import { processJobWithLock } from "./jobProcessor";
 
-export type { WorkerJobQueueConfig } from './types';
+export type { WorkerJobQueueConfig } from "./types";
 
-const log = createLogger('WORKER:QUEUE');
+const log = createLogger("WORKER:QUEUE");
+
+interface QueueFactoryOptions {
+  queueName: string;
+  connection: ConnectionOptions;
+  prefix: string | undefined;
+  concurrency: number;
+  defaultJobOptions: JobsOptions | undefined;
+  jobCompletionTimes: Map<string, number>;
+  processJob: (queueName: string, job: Job) => Promise<unknown>;
+}
+
+function createBullQueue({
+  queueName,
+  connection,
+  prefix,
+  defaultJobOptions,
+}: Pick<
+  QueueFactoryOptions,
+  "queueName" | "connection" | "prefix" | "defaultJobOptions"
+>): Queue {
+  return new Queue(queueName, {
+    connection,
+    prefix,
+    defaultJobOptions,
+  });
+}
+
+function createBullWorker({
+  queueName,
+  connection,
+  prefix,
+  concurrency,
+  processJob,
+}: Pick<
+  QueueFactoryOptions,
+  "queueName" | "connection" | "prefix" | "concurrency" | "processJob"
+>): Worker {
+  return new Worker(queueName, async (job) => processJob(queueName, job), {
+    connection,
+    prefix,
+    concurrency,
+  });
+}
+
+function createBullQueueEvents({
+  queueName,
+  connection,
+  prefix,
+}: Pick<
+  QueueFactoryOptions,
+  "queueName" | "connection" | "prefix"
+>): QueueEvents {
+  return new QueueEvents(queueName, {
+    connection,
+    prefix,
+  });
+}
+
+function createQueueInstance(options: QueueFactoryOptions): QueueInstance {
+  const queue = createBullQueue(options);
+  const worker = createBullWorker(options);
+  const events = createBullQueueEvents(options);
+  setupWorkerEventHandlers(
+    options.queueName,
+    worker,
+    options.jobCompletionTimes,
+  );
+  return { queue, worker, events };
+}
 
 export class WorkerJobQueue {
   private queues: Map<string, QueueInstance> = new Map();
@@ -36,12 +116,12 @@ export class WorkerJobQueue {
 
   constructor(config: WorkerJobQueueConfig) {
     this.config = {
-      prefix: config.prefix ?? 'sanctuary:worker',
+      prefix: config.prefix ?? "sanctuary:worker",
       concurrency: config.concurrency,
       queues: config.queues,
       defaultJobOptions: config.defaultJobOptions ?? {
         attempts: 3,
-        backoff: { type: 'exponential', delay: 5000 },
+        backoff: { type: "exponential", delay: 5000 },
         removeOnComplete: 500,
         removeOnFail: 250,
       },
@@ -56,7 +136,7 @@ export class WorkerJobQueue {
 
     const redis = getRedisClient();
     if (!redis || !isRedisConnected()) {
-      throw new Error('Redis is required for worker job queue');
+      throw new Error("Redis is required for worker job queue");
     }
 
     // Create BullMQ connection options
@@ -73,7 +153,7 @@ export class WorkerJobQueue {
     }
 
     this.initialized = true;
-    log.info('Worker job queue initialized', {
+    log.info("Worker job queue initialized", {
       queues: this.config.queues,
       concurrency: this.config.concurrency,
       prefix: this.config.prefix,
@@ -85,34 +165,20 @@ export class WorkerJobQueue {
    */
   private async createQueue(queueName: string): Promise<void> {
     if (!this.connection) {
-      throw new Error('Connection not established');
+      throw new Error("Connection not established");
     }
 
-    const queue = new Queue(queueName, {
+    const instance = createQueueInstance({
+      queueName,
       connection: this.connection,
       prefix: this.config.prefix,
       defaultJobOptions: this.config.defaultJobOptions,
+      concurrency: this.config.concurrency,
+      jobCompletionTimes: this.jobCompletionTimes,
+      processJob: (name, job) => this.processJob(name, job),
     });
 
-    const worker = new Worker(
-      queueName,
-      async (job) => this.processJob(queueName, job),
-      {
-        connection: this.connection,
-        prefix: this.config.prefix,
-        concurrency: this.config.concurrency,
-      }
-    );
-
-    const events = new QueueEvents(queueName, {
-      connection: this.connection,
-      prefix: this.config.prefix,
-    });
-
-    // Set up event handlers
-    setupWorkerEventHandlers(queueName, worker, this.jobCompletionTimes);
-
-    this.queues.set(queueName, { queue, worker, events });
+    this.queues.set(queueName, instance);
     log.debug(`Created queue: ${queueName}`);
   }
 
@@ -133,7 +199,10 @@ export class WorkerJobQueue {
   /**
    * Register a job handler
    */
-  registerHandler<T, R>(queueName: string, handler: WorkerJobHandler<T, R>): void {
+  registerHandler<T, R>(
+    queueName: string,
+    handler: WorkerJobHandler<T, R>,
+  ): void {
     const handlerKey = `${queueName}:${handler.name}`;
 
     if (this.handlers.has(handlerKey)) {
@@ -142,7 +211,7 @@ export class WorkerJobQueue {
 
     this.handlers.set(handlerKey, {
       handler: handler.handler as (job: Job) => Promise<unknown>,
-      lockOptions: handler.lockOptions as RegisteredHandler['lockOptions'],
+      lockOptions: handler.lockOptions as RegisteredHandler["lockOptions"],
     });
 
     log.debug(`Registered handler: ${handlerKey}`);
@@ -155,7 +224,7 @@ export class WorkerJobQueue {
     queueName: string,
     jobName: string,
     data: T,
-    options?: JobsOptions
+    options?: JobsOptions,
   ): Promise<Job<T> | null> {
     const queueInstance = this.queues.get(queueName);
     if (!queueInstance) {
@@ -168,7 +237,9 @@ export class WorkerJobQueue {
       log.debug(`Job added: ${queueName}:${jobName}`, { jobId: job.id });
       return job;
     } catch (error) {
-      log.error(`Failed to add job: ${queueName}:${jobName}`, { error: getErrorMessage(error) });
+      log.error(`Failed to add job: ${queueName}:${jobName}`, {
+        error: getErrorMessage(error),
+      });
       return null;
     }
   }
@@ -178,7 +249,7 @@ export class WorkerJobQueue {
    */
   async addBulkJobs<T>(
     queueName: string,
-    jobs: Array<{ name: string; data: T; options?: JobsOptions }>
+    jobs: Array<{ name: string; data: T; options?: JobsOptions }>,
   ): Promise<Job<T>[]> {
     const queueInstance = this.queues.get(queueName);
     if (!queueInstance) {
@@ -191,7 +262,9 @@ export class WorkerJobQueue {
       log.debug(`Bulk jobs added to ${queueName}`, { count: result.length });
       return result;
     } catch (error) {
-      log.error(`Failed to add bulk jobs to ${queueName}`, { error: getErrorMessage(error) });
+      log.error(`Failed to add bulk jobs to ${queueName}`, {
+        error: getErrorMessage(error),
+      });
       return [];
     }
   }
@@ -204,7 +277,7 @@ export class WorkerJobQueue {
     jobName: string,
     data: T,
     cron: string,
-    options?: Omit<JobsOptions, 'repeat'>
+    options?: Omit<JobsOptions, "repeat">,
   ): Promise<Job<T> | null> {
     const queueInstance = this.queues.get(queueName);
     if (!queueInstance) {
@@ -222,7 +295,10 @@ export class WorkerJobQueue {
 
         if (existing.id === jobId) {
           // Exact same schedule already exists — idempotent no-op
-          log.info(`Repeatable job already scheduled: ${queueName}:${jobName}`, { cron });
+          log.info(
+            `Repeatable job already scheduled: ${queueName}:${jobName}`,
+            { cron },
+          );
           return null;
         }
 
@@ -244,7 +320,9 @@ export class WorkerJobQueue {
       log.info(`Scheduled recurring job: ${queueName}:${jobName}`, { cron });
       return job;
     } catch (error) {
-      log.error(`Failed to schedule recurring job: ${queueName}:${jobName}`, { error: getErrorMessage(error) });
+      log.error(`Failed to schedule recurring job: ${queueName}:${jobName}`, {
+        error: getErrorMessage(error),
+      });
       return null;
     }
   }
@@ -255,7 +333,7 @@ export class WorkerJobQueue {
   async removeRecurring(
     queueName: string,
     jobName: string,
-    options?: { purgeQueued?: boolean }
+    options?: { purgeQueued?: boolean },
   ): Promise<void> {
     const queueInstance = this.queues.get(queueName);
     if (!queueInstance) {
@@ -269,22 +347,28 @@ export class WorkerJobQueue {
       for (const existing of repeatableJobs) {
         if (existing.name === jobName) {
           await queueInstance.queue.removeRepeatableByKey(existing.key);
-          log.info(`Removed repeatable job: ${queueName}:${jobName}`, { key: existing.key });
+          log.info(`Removed repeatable job: ${queueName}:${jobName}`, {
+            key: existing.key,
+          });
         }
       }
 
       // Optionally purge waiting/delayed jobs
       if (options?.purgeQueued) {
-        const jobs = await queueInstance.queue.getJobs(['waiting', 'delayed']);
-        const toRemove = jobs.filter(job => job.name === jobName);
-        await Promise.all(toRemove.map(job => job.remove()));
+        const jobs = await queueInstance.queue.getJobs(["waiting", "delayed"]);
+        const toRemove = jobs.filter((job) => job.name === jobName);
+        await Promise.all(toRemove.map((job) => job.remove()));
 
         if (toRemove.length > 0) {
-          log.info(`Purged ${toRemove.length} queued jobs: ${queueName}:${jobName}`);
+          log.info(
+            `Purged ${toRemove.length} queued jobs: ${queueName}:${jobName}`,
+          );
         }
       }
     } catch (error) {
-      log.error(`Failed to remove recurring job: ${queueName}:${jobName}`, { error: getErrorMessage(error) });
+      log.error(`Failed to remove recurring job: ${queueName}:${jobName}`, {
+        error: getErrorMessage(error),
+      });
     }
   }
 
@@ -293,25 +377,31 @@ export class WorkerJobQueue {
    */
   async getHealth(): Promise<{
     healthy: boolean;
-    queues: Record<string, {
-      waiting: number;
-      active: number;
-      completed: number;
-      failed: number;
-      delayed: number;
-      paused: boolean;
-    }>;
-  }> {
-    const result: {
-      healthy: boolean;
-      queues: Record<string, {
+    queues: Record<
+      string,
+      {
         waiting: number;
         active: number;
         completed: number;
         failed: number;
         delayed: number;
         paused: boolean;
-      }>;
+      }
+    >;
+  }> {
+    const result: {
+      healthy: boolean;
+      queues: Record<
+        string,
+        {
+          waiting: number;
+          active: number;
+          completed: number;
+          failed: number;
+          delayed: number;
+          paused: boolean;
+        }
+      >;
     } = {
       healthy: true,
       queues: {},
@@ -319,18 +409,29 @@ export class WorkerJobQueue {
 
     for (const [name, instance] of this.queues) {
       try {
-        const [waiting, active, completed, failed, delayed] = await Promise.all([
-          instance.queue.getWaitingCount(),
-          instance.queue.getActiveCount(),
-          instance.queue.getCompletedCount(),
-          instance.queue.getFailedCount(),
-          instance.queue.getDelayedCount(),
-        ]);
+        const [waiting, active, completed, failed, delayed] = await Promise.all(
+          [
+            instance.queue.getWaitingCount(),
+            instance.queue.getActiveCount(),
+            instance.queue.getCompletedCount(),
+            instance.queue.getFailedCount(),
+            instance.queue.getDelayedCount(),
+          ],
+        );
         const paused = await instance.queue.isPaused();
 
-        result.queues[name] = { waiting, active, completed, failed, delayed, paused };
+        result.queues[name] = {
+          waiting,
+          active,
+          completed,
+          failed,
+          delayed,
+          paused,
+        };
       } catch (error) {
-        log.error(`Failed to get health for queue: ${name}`, { error: getErrorMessage(error) });
+        log.error(`Failed to get health for queue: ${name}`, {
+          error: getErrorMessage(error),
+        });
         result.healthy = false;
         result.queues[name] = {
           waiting: 0,
@@ -366,7 +467,7 @@ export class WorkerJobQueue {
   onJobCompleted(
     queueName: string,
     jobName: string,
-    callback: (returnvalue: unknown) => void | Promise<void>
+    callback: (returnvalue: unknown) => void | Promise<void>,
   ): void {
     const instance = this.queues.get(queueName);
     if (!instance) {
@@ -374,18 +475,23 @@ export class WorkerJobQueue {
       return;
     }
 
-    instance.worker.on('completed', (job, returnvalue) => {
+    instance.worker.on("completed", (job, returnvalue) => {
       if (job.name !== jobName) return;
 
       try {
         const result = callback(returnvalue);
-        if (result && typeof (result as Promise<void>).catch === 'function') {
+        if (result && typeof (result as Promise<void>).catch === "function") {
           (result as Promise<void>).catch((err) => {
-            log.error(`onJobCompleted callback error for ${queueName}:${jobName}`, { error: String(err) });
+            log.error(
+              `onJobCompleted callback error for ${queueName}:${jobName}`,
+              { error: String(err) },
+            );
           });
         }
       } catch (err) {
-        log.error(`onJobCompleted callback error for ${queueName}:${jobName}`, { error: String(err) });
+        log.error(`onJobCompleted callback error for ${queueName}:${jobName}`, {
+          error: String(err),
+        });
       }
     });
   }
@@ -417,23 +523,23 @@ export class WorkerJobQueue {
   }
 
   private async doShutdown(): Promise<void> {
-    log.info('Shutting down worker job queue...');
+    log.info("Shutting down worker job queue...");
 
     // Close all workers first (stop processing new jobs)
     const workerClosePromises = Array.from(this.queues.values()).map(
-      instance => instance.worker.close()
+      (instance) => instance.worker.close(),
     );
     await Promise.all(workerClosePromises);
 
     // Close queue events
     const eventClosePromises = Array.from(this.queues.values()).map(
-      instance => instance.events.close()
+      (instance) => instance.events.close(),
     );
     await Promise.all(eventClosePromises);
 
     // Close queues last
     const queueClosePromises = Array.from(this.queues.values()).map(
-      instance => instance.queue.close()
+      (instance) => instance.queue.close(),
     );
     await Promise.all(queueClosePromises);
 
@@ -442,6 +548,6 @@ export class WorkerJobQueue {
     this.jobCompletionTimes.clear();
     this.initialized = false;
 
-    log.info('Worker job queue shutdown complete');
+    log.info("Worker job queue shutdown complete");
   }
 }

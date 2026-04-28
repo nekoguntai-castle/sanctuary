@@ -1,3 +1,25 @@
+# Completed Task: PR #216 Merge Queue Coverage Fix 2026-04-28
+
+Status: complete
+
+Goal: repair the merge-queue-only full coverage failures for PR #216 and re-queue the grade maintainability pass.
+
+## Plan
+
+- [x] Inspect the failed merge-group Test Suite workflow and identify exact coverage gaps.
+- [x] Add focused coverage for the touched backend/frontend files that dropped below the 100% full-lane threshold.
+- [x] Fix the async context-gathering error boundary so rejected context promises are logged at the intended boundary.
+- [x] Re-run focused tests, full frontend/backend coverage, typechecks, lizard, formatting, and diff checks before amending the PR.
+
+## Review
+
+- Queue logs showed coverage threshold misses in `analysisService.ts`, `walletCreate.ts`, `ModelsTab.tsx`, and `useAddAccountFlow.ts`.
+- Added focused branch coverage for wallet purpose fallback and QR bytes parsing, and removed an unreachable disabled-button guard from custom model pulls.
+- Fixed `gatherContext` to `await` context helpers so async context failures are caught and logged by the local context boundary.
+- Verification passed: focused frontend/backend tests, full frontend coverage, full backend coverage, app/server test typechecks, Prettier, `git diff --check`, direct lizard trend check, and `npm run quality:lizard`.
+
+---
+
 # Completed Task: PR #215 Merge Queue Coverage Fix 2026-04-28
 
 Status: complete
@@ -16,6 +38,32 @@ Goal: repair the merge-queue-only full coverage failures for PR #215 and re-queu
 - Simplified `handleUpdateUser` to use the repo's existing `TypedRequest` param contract, removing the uncovered route-param defensive helper.
 - Added coverage for blank Console trace summaries falling through to the error message and for API JSON parsing when `headers.get` is absent.
 - Verification passed: focused backend/admin and Console service tests, focused API client tests, full backend unit coverage, full frontend coverage, server test typecheck, app test typecheck, `npm run quality:lizard`, and `git diff --check`.
+
+---
+
+# Completed Task: Grade Maintainability Remediation Pass 2 2026-04-28
+
+Status: complete
+
+Goal: reduce the direct `$grade` lizard warning count from 17 to 5 or fewer without changing behavior.
+
+## Plan
+
+- [x] Create an isolated worktree so PR #215 can remain queued and untouched.
+- [x] Re-measure direct lizard warnings on the queued head.
+- [x] Refactor the two `ai-proxy/src/consoleProtocol.ts` planner warnings introduced by typed transaction intents.
+- [x] Refactor the remaining non-animation production/UI warnings: worker queue creation, wallet creation, intelligence context gathering, network server row, send output row, AI models tab, and add-account flow.
+- [x] Refactor lower-risk e2e route/helper warnings in send transaction, wallet sharing privacy, and admin operations.
+- [x] Leave the four animation warnings and `server/tests/mocks/aiContainer.ts` for a later near-perfect pass unless they block the `<=5` target.
+- [x] Run focused tests for touched areas, full direct lizard trend check, `npm run quality:lizard`, formatting, typechecks as needed, and `git diff --check`.
+- [x] Update the grade report/history and this review after verification.
+
+## Review
+
+- Reduced direct grade-style lizard warnings from 17 on the queued PR head to 5. The remaining warnings are the four animation scene files plus `server/tests/mocks/aiContainer.ts`.
+- Tightened `npm run quality:lizard` from a 15-warning budget to 5.
+- Refactored Console JSON recovery, AI settings model UI, send output row, network server row, device add-account flow, wallet creation, intelligence context gathering, worker queue construction, and e2e mock route helpers without intended behavior changes.
+- Verification passed: focused AI proxy, frontend component/hook, backend wallet/intelligence/worker tests; AI proxy build; app and server test typechecks; Prettier; `git diff --check`; direct lizard trend check; and `npm run quality:lizard`.
 
 ---
 

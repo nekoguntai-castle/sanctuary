@@ -5,6 +5,7 @@ import {
   mockGetAIConfig,
   mockGetEnabledIntelligenceWallets,
   mockGetUtxoHealthProfile,
+  mockLogger,
   mockNotificationChannelRegistry,
   mockSyncConfigToContainer,
   redis,
@@ -197,6 +198,15 @@ export function registerRunAnalysisConfigUtxoContracts(): void {
 
     // Should not throw; error is caught internally
     await expect(runAnalysisPipelines()).resolves.toBeUndefined();
+    expect(mockLogger.error).toHaveBeenCalledWith(
+      "Failed to gather context",
+      expect.objectContaining({
+        walletId: "wallet-1",
+        type: "utxo_health",
+        error: "DB timeout",
+      }),
+    );
+    expect(mockCreateInsight).not.toHaveBeenCalled();
   });
 
   it("should skip pipeline when insight is deduplicated", async () => {
