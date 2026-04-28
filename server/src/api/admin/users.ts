@@ -5,8 +5,10 @@
  */
 
 import { Router, type Request, type Response } from "express";
+import expressRateLimit from "express-rate-limit";
 import { userRepository } from "../../repositories";
 import { authenticate, requireAdmin } from "../../middleware/auth";
+import { rateLimitByUser } from "../../middleware/rateLimit";
 import { asyncHandler } from "../../errors/errorHandler";
 import {
   InvalidInputError,
@@ -26,6 +28,13 @@ import { parseAdminRequestBody } from "./requestValidation";
 
 const router = Router();
 const log = createLogger("ADMIN_USER:ROUTE");
+const adminUsersCodeqlLimiter = expressRateLimit({
+  windowMs: 60_000,
+  limit: 1000,
+  standardHeaders: false,
+  legacyHeaders: false,
+});
+const adminUsersPolicyLimiter = rateLimitByUser("admin:default");
 
 type ExistingUserForUpdate = NonNullable<
   Awaited<ReturnType<typeof userRepository.findById>>
@@ -237,7 +246,9 @@ async function handleUpdateUser(req: Request, res: Response): Promise<void> {
  */
 router.get(
   "/",
+  adminUsersCodeqlLimiter,
   authenticate,
+  adminUsersPolicyLimiter,
   requireAdmin,
   asyncHandler(async (_req, res) => {
     const users = await userRepository.findAllSummary();
@@ -252,7 +263,9 @@ router.get(
  */
 router.post(
   "/",
+  adminUsersCodeqlLimiter,
   authenticate,
+  adminUsersPolicyLimiter,
   requireAdmin,
   asyncHandler(async (req, res) => {
     const { username, password, email, isAdmin } = parseAdminRequestBody(
@@ -320,7 +333,9 @@ router.post(
  */
 router.put(
   "/:userId",
+  adminUsersCodeqlLimiter,
   authenticate,
+  adminUsersPolicyLimiter,
   requireAdmin,
   asyncHandler(handleUpdateUser),
 );
@@ -331,7 +346,9 @@ router.put(
  */
 router.delete(
   "/:userId",
+  adminUsersCodeqlLimiter,
   authenticate,
+  adminUsersPolicyLimiter,
   requireAdmin,
   asyncHandler(async (req, res) => {
     const { userId } = req.params;
