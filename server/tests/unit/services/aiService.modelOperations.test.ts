@@ -87,6 +87,9 @@ describe("aiService model operations", () => {
         }),
       }),
     );
+    expect(JSON.parse(mocks.fetch.mock.calls[0][1].body)).not.toHaveProperty(
+      "apiKey",
+    );
   });
 
   it("returns typed provider detection messages from non-ok responses", async () => {

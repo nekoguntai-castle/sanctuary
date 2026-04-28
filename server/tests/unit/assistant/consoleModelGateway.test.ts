@@ -274,6 +274,41 @@ describe('console model gateway', () => {
     });
   });
 
+  it('preserves Console plan timeout diagnostics from failed proxy responses', async () => {
+    mocks.fetch.mockResolvedValue({
+      ok: false,
+      status: 408,
+      json: vi.fn().mockResolvedValue({
+        message: 'The request took too long to process',
+      }),
+    });
+
+    await expect(
+      planConsoleTools({
+        prompt: 'whats the current block?',
+        scope: { kind: 'general' },
+        maxToolCalls: 1,
+        tools: [{
+          name: 'read.block',
+          title: 'Read block',
+          description: 'Read block data',
+          sensitivity: 'public',
+          requiredScope: 'none',
+          inputFields: [],
+        }],
+      })
+    ).rejects.toMatchObject({
+      message:
+        'AI proxy /console/plan request failed: The request took too long to process',
+      statusCode: 503,
+      details: {
+        path: '/console/plan',
+        proxyError: 'The request took too long to process',
+        status: 408,
+      },
+    });
+  });
+
   it('falls back to a generic proxy failure when proxy error JSON is empty or malformed', async () => {
     mocks.fetch.mockResolvedValueOnce({
       ok: false,

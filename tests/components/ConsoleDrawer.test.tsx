@@ -327,6 +327,69 @@ describe("ConsoleDrawer", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("does not navigate when all-visible-wallet planning returns multiple transaction queries", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    const onLocationChange = vi.fn();
+    vi.mocked(consoleApi.runConsoleTurn).mockResolvedValueOnce({
+      session,
+      promptHistory,
+      toolTraces: [],
+      turn: {
+        ...completedTurn,
+        plannedTools: {
+          toolCalls: [
+            {
+              name: "query_transactions",
+              input: {
+                walletId: "wallet-1",
+                dateFrom: "2020-02-01",
+                dateTo: "2020-06-30",
+              },
+            },
+            {
+              name: "query_transactions",
+              input: {
+                walletId: "wallet-2",
+                dateFrom: "2020-02-01",
+                dateTo: "2020-06-30",
+              },
+            },
+          ],
+        },
+      },
+    } as any);
+
+    renderDrawer(
+      { wallets: multiWallets, onClose },
+      { route: "/wallets/wallet-1", onLocationChange },
+    );
+    await screen.findByText("Block age");
+
+    fireEvent.change(screen.getByLabelText("Console context"), {
+      target: { value: "all-wallets" },
+    });
+    await user.type(
+      screen.getByLabelText("Console prompt"),
+      "show me transactions between feb 2020 and june 2020",
+    );
+    await user.click(screen.getByRole("button", { name: "Send prompt" }));
+
+    await waitFor(() => {
+      expect(consoleApi.runConsoleTurn).toHaveBeenCalledWith({
+        prompt: "show me transactions between feb 2020 and june 2020",
+        scope: { kind: "wallet_set", walletIds: ["wallet-1", "wallet-2"] },
+      });
+    });
+    const locations = onLocationChange.mock.calls.map(([location]) => location);
+    expect(
+      locations.some(
+        (location) => location.state?.consoleTransactionFilter !== undefined,
+      ),
+    ).toBe(false);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it("keeps a pinned Console open after transaction navigation", async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
@@ -786,6 +849,36 @@ describe("ConsoleDrawer", () => {
     expect(screen.getByText("Details")).toBeInTheDocument();
     expect(screen.getByText(/HTTP status: 503/)).toBeInTheDocument();
     expect(screen.getByText(/request-1/)).toBeInTheDocument();
+  });
+
+  it("keeps timed-out local provider prompts in the dialogue with diagnostics", async () => {
+    const user = userEvent.setup();
+    vi.mocked(consoleApi.runConsoleTurn).mockRejectedValueOnce(
+      new ApiError("The request took too long to process", 408, {
+        details: { path: "/console/plan", provider: "lm-studio" },
+        requestId: "request-408",
+      }),
+    );
+
+    renderDrawer();
+    await screen.findByText("Block age");
+
+    await user.type(
+      screen.getByLabelText("Console prompt"),
+      "whats the current block?",
+    );
+    await user.click(screen.getByRole("button", { name: "Send prompt" }));
+
+    expect(
+      await screen.findByText("whats the current block?"),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText("The request took too long to process"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Details")).toBeInTheDocument();
+    expect(screen.getByText(/HTTP status: 408/)).toBeInTheDocument();
+    expect(screen.getByText(/request-408/)).toBeInTheDocument();
+    expect(screen.getByText(/lm-studio/)).toBeInTheDocument();
   });
 
   it("ignores empty prompt submissions", async () => {

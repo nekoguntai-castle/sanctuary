@@ -41,6 +41,10 @@ describe("AI proxy provider detection", () => {
         headers: { "Content-Type": "application/json" },
       }),
     );
+    const requestOptions = fetchMock.mock.calls[0]?.[1] as
+      | RequestInit
+      | undefined;
+    expect(requestOptions?.headers).not.toHaveProperty("Authorization");
   });
 
   it("reports blocked public HTTP endpoints instead of probing them", async () => {

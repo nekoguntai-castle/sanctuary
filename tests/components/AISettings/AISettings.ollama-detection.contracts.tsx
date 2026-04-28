@@ -214,5 +214,72 @@ export function registerAISettingsOllamaDetectionContracts() {
         );
       });
     });
+
+    it('detects and saves an LM Studio LAN provider without credential updates', async () => {
+      mockGetSystemSettings.mockResolvedValue({
+        ...enabledSettings,
+        aiEndpoint: 'http://10.114.123.214:1234',
+        aiModel: '',
+        aiProviderProfiles: [
+          {
+            id: 'lm-studio',
+            name: 'LM Studio',
+            providerType: 'openai-compatible',
+            endpoint: 'http://10.114.123.214:1234',
+            model: '',
+            capabilities: { chat: true, toolCalls: true, strictJson: true },
+            credentialState: {
+              type: 'none',
+              configured: false,
+              needsReview: false,
+            },
+          },
+        ],
+        aiActiveProviderProfileId: 'lm-studio',
+      });
+      mockDetectProvider.mockResolvedValue({
+        found: true,
+        providerType: 'openai-compatible',
+        endpoint: 'http://10.114.123.214:1234',
+        models: [
+          { name: 'unsloth/qwen3.6-35b-a3b', size: 0, modifiedAt: '' },
+          { name: 'lmstudio-community/model', size: 0, modifiedAt: '' },
+        ],
+      });
+      const user = userEvent.setup();
+      render(<AISettings />);
+
+      await navigateToSettingsTab(user);
+      await user.click(screen.getByText('Detect'));
+
+      await waitFor(() => {
+        expect(screen.getByLabelText('Model')).toHaveValue(
+          'unsloth/qwen3.6-35b-a3b',
+        );
+      });
+
+      await user.click(screen.getByText('Save Configuration'));
+
+      await waitFor(() => {
+        expect(mockUpdateSystemSettings).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            aiEndpoint: 'http://10.114.123.214:1234',
+            aiModel: 'unsloth/qwen3.6-35b-a3b',
+            aiActiveProviderProfileId: 'lm-studio',
+            aiProviderProfiles: [
+              expect.objectContaining({
+                id: 'lm-studio',
+                providerType: 'openai-compatible',
+                endpoint: 'http://10.114.123.214:1234',
+                model: 'unsloth/qwen3.6-35b-a3b',
+              }),
+            ],
+          }),
+        );
+      });
+      expect(
+        mockUpdateSystemSettings.mock.calls.at(-1)?.[0],
+      ).not.toHaveProperty('aiProviderCredentialUpdates');
+    });
   });
 }
