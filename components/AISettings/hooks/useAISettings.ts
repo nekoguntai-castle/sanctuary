@@ -5,7 +5,7 @@
  * and auto-detection of Ollama instances.
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import * as adminApi from "../../../src/api/admin";
 import * as aiApi from "../../../src/api/ai";
 import { ApiError } from "../../../src/api/client";
@@ -118,6 +118,26 @@ export function useAISettings(): UseAISettingsReturn {
   );
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [showModelDropdown, setShowModelDropdown] = useState(false);
+  const saveSuccessTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const detectMessageTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+
+  const clearSaveSuccessTimeout = useCallback(() => {
+    if (saveSuccessTimeoutRef.current) {
+      clearTimeout(saveSuccessTimeoutRef.current);
+      saveSuccessTimeoutRef.current = null;
+    }
+  }, []);
+
+  const clearDetectMessageTimeout = useCallback(() => {
+    if (detectMessageTimeoutRef.current) {
+      clearTimeout(detectMessageTimeoutRef.current);
+      detectMessageTimeoutRef.current = null;
+    }
+  }, []);
 
   const applyProviderProfile = useCallback(
     (profile: EditableProviderProfile) => {
@@ -253,6 +273,14 @@ export function useAISettings(): UseAISettingsReturn {
     }
   }, [aiEndpoint, aiEnabled, loadModels]);
 
+  useEffect(
+    () => () => {
+      clearSaveSuccessTimeout();
+      clearDetectMessageTimeout();
+    },
+    [clearDetectMessageTimeout, clearSaveSuccessTimeout],
+  );
+
   const handleSaveConfig = async () => {
     setIsSaving(true);
     setSaveError(null);
@@ -268,7 +296,11 @@ export function useAISettings(): UseAISettingsReturn {
       );
       applySettingsResponse(nextSettings);
       setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
+      clearSaveSuccessTimeout();
+      saveSuccessTimeoutRef.current = setTimeout(() => {
+        setSaveSuccess(false);
+        saveSuccessTimeoutRef.current = null;
+      }, 3000);
       // Reload models after saving
       loadModels();
     } catch (error) {
@@ -346,6 +378,7 @@ export function useAISettings(): UseAISettingsReturn {
 
   const handleDetectOllama = async () => {
     setIsDetecting(true);
+    clearDetectMessageTimeout();
     setDetectMessage(
       providerType === "openai-compatible"
         ? "Checking OpenAI-compatible endpoint..."
@@ -392,7 +425,10 @@ export function useAISettings(): UseAISettingsReturn {
       );
     } finally {
       setIsDetecting(false);
-      setTimeout(() => setDetectMessage(""), 5000);
+      detectMessageTimeoutRef.current = setTimeout(() => {
+        setDetectMessage("");
+        detectMessageTimeoutRef.current = null;
+      }, 5000);
     }
   };
 

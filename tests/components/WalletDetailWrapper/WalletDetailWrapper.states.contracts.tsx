@@ -71,6 +71,59 @@ export const registerWalletDetailWrapperStateContracts = () => {
       expect(screen.getByText('Loading wallet...')).toBeInTheDocument();
     });
 
+    it('applies Console transaction route filters once per distinct filter', async () => {
+      const setAiQueryFilter = mocks.aiFilterState.setAiQueryFilter;
+      mocks.locationState = {
+        consoleTransactionFilter: {
+          walletId: 'wallet-other',
+          dateFrom: '2020-02-01',
+        },
+      };
+
+      const { rerender } = render(<WalletDetail />);
+      await waitFor(() => {
+        expect(screen.getByTestId('transactions-tab')).toBeInTheDocument();
+      });
+      expect(setAiQueryFilter).not.toHaveBeenCalled();
+
+      mocks.locationState = {
+        consoleTransactionFilter: {
+          walletId: 'wallet-1',
+          dateFrom: '2020-02-01',
+          dateTo: '2020-06-30',
+          type: 'sent',
+        },
+      };
+      rerender(<WalletDetail />);
+
+      await waitFor(() => {
+        expect(setAiQueryFilter).toHaveBeenCalledWith(null);
+      });
+      const firstApplyCount = setAiQueryFilter.mock.calls.length;
+
+      mocks.locationState = {
+        consoleTransactionFilter: {
+          walletId: 'wallet-1',
+          dateFrom: '2020-02-01',
+          dateTo: '2020-06-30',
+          type: 'sent',
+        },
+      };
+      rerender(<WalletDetail />);
+      expect(setAiQueryFilter).toHaveBeenCalledTimes(firstApplyCount);
+
+      mocks.locationState = {
+        consoleTransactionFilter: {
+          walletId: 'wallet-1',
+        },
+      };
+      rerender(<WalletDetail />);
+
+      await waitFor(() => {
+        expect(setAiQueryFilter).toHaveBeenCalledTimes(firstApplyCount + 1);
+      });
+    });
+
     it('runs hook onDataRefresh callbacks wired into sync and sharing hooks', async () => {
       render(<WalletDetail />);
 

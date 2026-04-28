@@ -95,6 +95,22 @@ export function registerSuggestLabelContracts() {
     expect(response.status).toBe(200);
     expect(aiService.suggestTransactionLabel).toHaveBeenCalledWith('tx-empty-token', '');
   });
+
+  it('should forward empty auth token when authentication is not a bearer token', async () => {
+    (aiService.isEnabled as Mock).mockResolvedValue(true);
+    (aiService.suggestTransactionLabel as Mock).mockResolvedValue('General');
+
+    const response = await request(app)
+      .post('/api/v1/ai/suggest-label')
+      .set('Authorization', 'Token test-token')
+      .send({ transactionId: 'tx-non-bearer-token' });
+
+    expect(response.status).toBe(200);
+    expect(aiService.suggestTransactionLabel).toHaveBeenCalledWith(
+      'tx-non-bearer-token',
+      ''
+    );
+  });
 }
 
 export function registerNaturalQueryContracts() {

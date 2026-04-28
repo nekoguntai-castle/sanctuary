@@ -327,6 +327,57 @@ describe("ConsoleDrawer", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps a pinned Console open after transaction navigation", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    const onLocationChange = vi.fn();
+    vi.mocked(consoleApi.runConsoleTurn).mockResolvedValueOnce({
+      session,
+      promptHistory,
+      toolTraces: [],
+      turn: {
+        ...completedTurn,
+        plannedTools: {
+          toolCalls: [
+            {
+              name: "query_transactions",
+              input: {
+                walletId: "wallet-1",
+                dateFrom: "2020-02-01",
+                type: "sent",
+              },
+            },
+          ],
+        },
+      },
+    } as any);
+
+    renderDrawer({ onClose }, { route: "/wallets/wallet-1", onLocationChange });
+    await screen.findByText("Block age");
+
+    await user.click(screen.getByRole("button", { name: "Pin Console open" }));
+    await user.type(
+      screen.getByLabelText("Console prompt"),
+      "show sent transactions in february",
+    );
+    await user.click(screen.getByRole("button", { name: "Send prompt" }));
+
+    await waitFor(() => {
+      const locations = onLocationChange.mock.calls.map(
+        ([location]) => location,
+      );
+      expect(
+        locations.some(
+          (location) =>
+            location.pathname === "/wallets/wallet-1" &&
+            location.state?.activeTab === "tx" &&
+            location.state?.consoleTransactionFilter?.type === "sent",
+        ),
+      ).toBe(true);
+    });
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it("echoes submitted prompts while a Console turn is still running", async () => {
     const user = userEvent.setup();
     const turnResult =
@@ -614,6 +665,22 @@ describe("ConsoleDrawer", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete prompt" }));
     await waitFor(() => {
       expect(consoleApi.deletePromptHistory).toHaveBeenCalledWith("prompt-1");
+    });
+  });
+
+  it("replays prompt history with an explicit wallet scope", async () => {
+    renderDrawer();
+    await screen.findByText("Block age");
+
+    fireEvent.change(screen.getByLabelText("Console context"), {
+      target: { value: "wallet-1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Replay prompt" }));
+
+    await waitFor(() => {
+      expect(consoleApi.replayPromptHistory).toHaveBeenCalledWith("prompt-1", {
+        scope: { kind: "wallet", walletId: "wallet-1" },
+      });
     });
   });
 

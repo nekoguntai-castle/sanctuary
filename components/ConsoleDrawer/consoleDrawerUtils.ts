@@ -380,7 +380,7 @@ function buildPromptHistoryDedupeKey(prompt: ConsolePromptHistory): string {
   return [
     normalizeMessageContent(prompt.prompt),
     prompt.maxSensitivity,
-    JSON.stringify(prompt.scope ?? null) ?? "null",
+    JSON.stringify(prompt.scope ?? null),
   ].join("\n");
 }
 
@@ -435,9 +435,7 @@ function getTurnId(messageId: string): string | null {
 }
 
 function buildUnitDedupeKey(messages: ConsoleMessage[]): string | null {
-  if (messages.length !== 2) return null;
-  const [prompt, response] = messages;
-  if (!prompt || !response) return null;
+  const [prompt, response] = messages as [ConsoleMessage, ConsoleMessage];
   return [
     normalizeMessageContent(prompt.content),
     normalizeMessageContent(response.content),
@@ -464,8 +462,7 @@ function dedupeMessageUnits(units: ConsoleMessageUnit[]): {
   let duplicateMessageCount = 0;
 
   for (let index = units.length - 1; index >= 0; index -= 1) {
-    const unit = units[index];
-    if (!unit) continue;
+    const unit = units[index]!;
 
     if (unit.dedupeKey && seen.has(unit.dedupeKey)) {
       duplicateUnitCount += 1;

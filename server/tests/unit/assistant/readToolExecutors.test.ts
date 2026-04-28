@@ -474,4 +474,29 @@ describe('assistant read-tool executors', () => {
     ]));
     expect(context.authorizeWalletAccess).not.toHaveBeenCalled();
   });
+
+  it('summarizes network status without block height when the backend omits height data', async () => {
+    const context = createContext();
+    mocks.getBitcoinNetworkStatus.mockResolvedValueOnce({
+      connected: true,
+      server: 'electrum.example',
+      protocol: '1.4',
+      blockHeight: undefined,
+      network: 'mainnet',
+      explorerUrl: 'https://mempool.space',
+      confirmationThreshold: 6,
+      deepConfirmationThreshold: 100,
+      pool: null,
+    });
+
+    const network = await assistantReadToolRegistry.execute('get_bitcoin_network_status', {}, context);
+
+    expect(network.facts.summary).toBe(
+      'Bitcoin network status returned without a block height.'
+    );
+    expect(network.facts.items).toEqual(expect.arrayContaining([
+      { label: 'block_height', value: null },
+    ]));
+    expect(context.authorizeWalletAccess).not.toHaveBeenCalled();
+  });
 });

@@ -147,7 +147,10 @@ describe("ModelsTab", () => {
         providerType="openai-compatible"
         aiModel="lmstudio/model-a"
         popularModels={[{ name: "qwen3:4b", description: "Balanced" }]}
-        availableModels={[{ name: "lmstudio/model-a", size: 0 } as any]}
+        availableModels={[
+          { name: "lmstudio/model-a", size: 0 } as any,
+          { name: "lmstudio/model-b", size: 10 } as any,
+        ]}
         onSelectModel={onSelectModel}
       />,
     );
@@ -164,8 +167,21 @@ describe("ModelsTab", () => {
       screen.queryByRole("button", { name: /delete/i }),
     ).not.toBeInTheDocument();
 
+    await user.click(screen.getByRole("button", { name: "Use" }));
+    expect(onSelectModel).toHaveBeenCalledWith("lmstudio/model-b");
+
     await user.click(screen.getByRole("button", { name: /selected/i }));
-    expect(onSelectModel).not.toHaveBeenCalled();
+    expect(onSelectModel).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders detected-model loading state with a spinning refresh action", () => {
+    const { container } = render(
+      <ModelsTab {...baseProps} isLoadingModels={true} />,
+    );
+
+    expect(screen.getByText(/loading provider models/i)).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /refresh/i })[0]).toBeDisabled();
+    expect(container.querySelector(".animate-spin")).not.toBeNull();
   });
 
   it("handles custom model pull flow and download progress display", async () => {
@@ -372,7 +388,7 @@ describe("SettingsTab", () => {
     const onSaveConfig = vi.fn();
     const onTestConnection = vi.fn();
 
-    render(
+    const { rerender } = render(
       <SettingsTab
         {...baseProps}
         aiEndpoint="http://localhost:11434"
@@ -411,6 +427,15 @@ describe("SettingsTab", () => {
     expect(screen.getByText(/configuration saved/i)).toBeInTheDocument();
     expect(screen.getByText(/could not save/i)).toBeInTheDocument();
     expect(screen.getByText(/connected/i)).toBeInTheDocument();
+
+    rerender(
+      <SettingsTab
+        {...baseProps}
+        aiStatus="idle"
+        aiStatusMessage="Waiting for configuration"
+      />,
+    );
+    expect(screen.getByText(/waiting for configuration/i)).toBeInTheDocument();
   });
 
   it("shows model-loading spinner when models are being fetched", () => {

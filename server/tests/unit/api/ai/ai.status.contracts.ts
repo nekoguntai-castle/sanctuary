@@ -140,6 +140,31 @@ export function registerAiStatusContracts() {
     expect(aiService.checkHealth).toHaveBeenCalledTimes(1);
   });
 
+  it('should skip explicit connection health checks when the AI assistant feature is disabled', async () => {
+    (featureFlagService.isEnabled as Mock).mockResolvedValue(false);
+    (aiService.getConfigStatus as Mock).mockResolvedValue({
+      enabled: true,
+      configured: true,
+      model: 'llama2',
+      endpoint: 'http://localhost:11434',
+    });
+
+    const response = await request(app)
+      .post('/api/v1/ai/test-connection')
+      .set('Authorization', 'Bearer test-token')
+      .set('x-test-admin', 'true')
+      .send({});
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      enabled: false,
+      configured: true,
+      available: false,
+      message: 'AI assistant feature is disabled',
+    });
+    expect(aiService.checkHealth).not.toHaveBeenCalled();
+  });
+
   it('should not run explicit connection tests when provider setup is incomplete', async () => {
     (aiService.getConfigStatus as Mock).mockResolvedValue({
       enabled: true,

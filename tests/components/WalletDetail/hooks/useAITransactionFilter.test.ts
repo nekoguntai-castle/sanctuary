@@ -171,6 +171,15 @@ describe('useAITransactionFilter', () => {
     });
 
     expect(result.current.filteredTransactions.map((tx) => tx.txid)).toEqual(['txid-1', 'txid-2', 'txid-3']);
+
+    act(() => {
+      result.current.setAiQueryFilter({
+        type: 'transactions',
+        filter: { amount: { between: [1_000, 2_000] } as any },
+      });
+    });
+
+    expect(result.current.filteredTransactions.map((tx) => tx.txid)).toEqual(['txid-1', 'txid-2', 'txid-3']);
   });
 
   it('filters by exact confirmations value and excludes non-matching transactions', () => {
@@ -225,6 +234,46 @@ describe('useAITransactionFilter', () => {
     });
 
     expect(result.current.filteredTransactions.map((tx) => tx.txid)).toEqual(['feb', 'jun']);
+  });
+
+  it('falls back to blockTime for date filters and excludes undated transactions', () => {
+    const blockTimeTransactions = [
+      {
+        ...transactions[0],
+        id: 'tx-blocktime',
+        txid: 'blocktime',
+        timestamp: undefined,
+        blockTime: '2020-03-15T12:00:00.000Z',
+      },
+      {
+        ...transactions[1],
+        id: 'tx-invalid-blocktime',
+        txid: 'invalid-blocktime',
+        timestamp: undefined,
+        blockTime: 'not-a-date',
+      },
+      {
+        ...transactions[2],
+        id: 'tx-undated',
+        txid: 'undated',
+        timestamp: undefined,
+        blockTime: undefined,
+      },
+    ];
+    const { result } = renderHook(() =>
+      useAITransactionFilter({ transactions: blockTimeTransactions as any })
+    );
+
+    act(() => {
+      result.current.setAiQueryFilter({
+        type: 'transactions',
+        filter: { dateFrom: '2020-03-01', dateTo: '2020-03-31' },
+      });
+    });
+
+    expect(result.current.filteredTransactions.map((tx) => tx.txid)).toEqual([
+      'blocktime',
+    ]);
   });
 
   it('supports console-style min/max amount filters', () => {

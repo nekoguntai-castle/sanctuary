@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   extractConsoleTransactionFilter,
+  parseTransactionDateMillis,
   parseConsoleTransactionFilterState,
   walletIdFromWalletRoute,
 } from "../../../src/app/consoleTransactionNavigation";
@@ -105,6 +106,17 @@ describe("console transaction navigation", () => {
     });
 
     expect(parseConsoleTransactionFilterState({ walletId: "" })).toBeNull();
+  });
+
+  it("parses numeric and timestamp transaction dates", () => {
+    expect(parseTransactionDateMillis(1_700_000_000, false)).toBe(
+      1_700_000_000,
+    );
+    expect(parseTransactionDateMillis(Number.NaN, false)).toBeNull();
+    expect(
+      parseTransactionDateMillis("2020-02-01T12:34:56.000Z", false),
+    ).toBe(Date.parse("2020-02-01T12:34:56.000Z"));
+    expect(parseTransactionDateMillis("not-a-date", true)).toBeNull();
   });
 
   it("reads known wallet ids from wallet detail routes only", () => {

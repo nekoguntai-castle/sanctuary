@@ -407,6 +407,70 @@ describe("console service", () => {
     );
   });
 
+  it("caps auto context wallet sets and marks planner context when the wallet limit applies", async () => {
+    const wallets = Array.from({ length: 30 }, (_, index) => ({
+      id: `wallet-${index}`,
+      name: `Wallet ${index}`,
+      network: "mainnet",
+    }));
+    mocks.walletRepository.findAccessibleWithSelect.mockResolvedValue(wallets);
+    mocks.planConsoleTools.mockResolvedValue({ toolCalls: [], warnings: [] });
+
+    await runConsoleTurn(actor(), {
+      prompt: "summarize every wallet",
+      clientContext: { mode: "auto" },
+      maxSensitivity: "wallet",
+    });
+
+    expect(mocks.consoleRepository.createTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: {
+          kind: "wallet_set",
+          walletIds: wallets.slice(0, 25).map((wallet) => wallet.id),
+        },
+      }),
+    );
+    expect(mocks.planConsoleTools).toHaveBeenCalledWith(
+      expect.objectContaining({
+        context: expect.objectContaining({
+          mode: "auto",
+          wallets: wallets.slice(0, 25),
+          walletLimitApplied: true,
+        }),
+      }),
+    );
+    expect(mocks.planConsoleTools.mock.calls[0][0].context).not.toHaveProperty(
+      "currentWalletId",
+    );
+  });
+
+  it("falls back to general auto context when the actor has no accessible wallets", async () => {
+    mocks.walletRepository.findAccessibleWithSelect.mockResolvedValue([]);
+    mocks.planConsoleTools.mockResolvedValue({ toolCalls: [], warnings: [] });
+
+    await runConsoleTurn(actor(), {
+      prompt: "what is the current block?",
+      clientContext: { mode: "auto" },
+      maxSensitivity: "public",
+    });
+
+    expect(mocks.consoleRepository.createTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: { kind: "general" },
+        maxSensitivity: "public",
+      }),
+    );
+    expect(mocks.planConsoleTools).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: { kind: "general" },
+        context: {
+          mode: "auto",
+          wallets: [],
+        },
+      }),
+    );
+  });
+
   it("stores a denied trace when a wallet-sensitive tool is requested without explicit wallet scope", async () => {
     mocks.planConsoleTools.mockResolvedValue({
       toolCalls: [{ name: "get_wallet_overview", input: { walletId } }],

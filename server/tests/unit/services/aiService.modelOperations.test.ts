@@ -109,6 +109,70 @@ describe("aiService model operations", () => {
     });
   });
 
+  it("returns typed provider detection invalid-format failures for malformed success payloads", async () => {
+    mocks.fetch.mockResolvedValueOnce(okJson({ models: [] }));
+
+    const mod = await import("../../../src/services/aiService");
+    await expect(
+      mod.detectProviderEndpoint({
+        endpoint: "http://10.114.123.214:1234",
+        preferredProviderType: "openai-compatible",
+      }),
+    ).resolves.toEqual({
+      found: false,
+      message: "Invalid response format",
+    });
+  });
+
+  it("returns typed provider detection fallback failures for malformed error payloads", async () => {
+    mocks.fetch.mockResolvedValueOnce(errJson(502, { models: [] }));
+
+    const mod = await import("../../../src/services/aiService");
+    await expect(
+      mod.detectProviderEndpoint({
+        endpoint: "http://10.114.123.214:1234",
+        preferredProviderType: "openai-compatible",
+      }),
+    ).resolves.toEqual({
+      found: false,
+      message: "Provider detection failed",
+    });
+  });
+
+  it("returns typed provider detection fallback failures for unreadable response bodies", async () => {
+    mocks.fetch.mockResolvedValueOnce({
+      ok: false,
+      status: 502,
+      json: vi.fn().mockRejectedValue(new Error("invalid json")),
+    } as any);
+
+    const mod = await import("../../../src/services/aiService");
+    await expect(
+      mod.detectProviderEndpoint({
+        endpoint: "http://10.114.123.214:1234",
+        preferredProviderType: "openai-compatible",
+      }),
+    ).resolves.toEqual({
+      found: false,
+      message: "Provider detection failed",
+    });
+  });
+
+  it("returns typed provider detection unavailable when the AI proxy request throws", async () => {
+    mocks.fetch.mockRejectedValueOnce(new Error("down"));
+
+    const mod = await import("../../../src/services/aiService");
+    await expect(
+      mod.detectProviderEndpoint({
+        endpoint: "http://10.114.123.214:1234",
+        preferredProviderType: "openai-compatible",
+      }),
+    ).resolves.toEqual({
+      found: false,
+      message: "AI container not available",
+    });
+  });
+
   it("returns list-models error when endpoint is missing", async () => {
     mocks.systemSettingFindMany.mockResolvedValue([
       setting("aiEnabled", true),

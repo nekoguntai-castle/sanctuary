@@ -270,6 +270,277 @@ describe('useAISettings', () => {
     );
   });
 
+  it('saves detected provider endpoints even when no models are reported', async () => {
+    vi.mocked(adminApi.getSystemSettings).mockResolvedValueOnce({
+      aiEnabled: true,
+      aiEndpoint: '',
+      aiModel: '',
+      aiProviderProfiles: [
+        {
+          id: 'lm-studio',
+          name: 'LM Studio',
+          providerType: 'openai-compatible',
+          endpoint: '',
+          model: '',
+          capabilities: { chat: true, toolCalls: true, strictJson: true },
+        },
+      ],
+      aiActiveProviderProfileId: 'lm-studio',
+    } as never);
+
+    const { result } = renderHook(() => useAISettings());
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.handleDetectOllama();
+    });
+
+    expect(result.current.detectMessage).toBe('Enter an AI endpoint URL first.');
+    expect(aiApi.detectProvider).not.toHaveBeenCalled();
+
+    vi.mocked(aiApi.detectProvider).mockResolvedValueOnce({
+      found: true,
+      providerType: 'ollama',
+      endpoint: 'http://ollama.local:11434',
+      models: [],
+    } as never);
+
+    act(() => {
+      result.current.setAiEndpoint(' http://ollama.local:11434 ');
+    });
+
+    await act(async () => {
+      await result.current.handleDetectOllama();
+    });
+
+    expect(result.current.providerType).toBe('ollama');
+    expect(result.current.availableModels).toEqual([]);
+    expect(result.current.detectMessage).toBe(
+      'Connected to provider endpoint, but no models were reported. Enter the model name manually, then save.',
+    );
+    expect(adminApi.updateSystemSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        aiEndpoint: 'http://ollama.local:11434',
+        aiModel: '',
+        aiActiveProviderProfileId: 'lm-studio',
+      }),
+    );
+  });
+
+  it('passes typed-provider credentials and falls back when optional detection fields are omitted', async () => {
+    vi.mocked(adminApi.getSystemSettings).mockResolvedValueOnce({
+      aiEnabled: true,
+      aiEndpoint: 'http://lmstudio.local:1234/v1',
+      aiModel: '',
+      aiProviderProfiles: [
+        {
+          id: 'lm-studio',
+          name: 'LM Studio',
+          providerType: 'openai-compatible',
+          endpoint: 'http://lmstudio.local:1234/v1',
+          model: '',
+          capabilities: { chat: true, toolCalls: true, strictJson: true },
+        },
+      ],
+      aiActiveProviderProfileId: 'lm-studio',
+    } as never);
+    vi.mocked(aiApi.detectProvider)
+      .mockResolvedValueOnce({ found: false } as never)
+      .mockResolvedValueOnce({ found: true } as never);
+
+    const { result } = renderHook(() => useAISettings());
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.handleDetectOllama();
+    });
+
+    expect(result.current.detectMessage).toBe(
+      'Provider endpoint not reachable.',
+    );
+
+    act(() => {
+      result.current.setCredentialApiKey('local-secret');
+    });
+
+    await act(async () => {
+      await result.current.handleDetectOllama();
+    });
+
+    expect(aiApi.detectProvider).toHaveBeenLastCalledWith({
+      endpoint: 'http://lmstudio.local:1234/v1',
+      preferredProviderType: 'openai-compatible',
+      apiKey: 'local-secret',
+    });
+    expect(result.current.detectMessage).toBe(
+      'Connected to provider endpoint, but no models were reported. Enter the model name manually, then save.',
+    );
+    expect(adminApi.updateSystemSettings).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        aiEndpoint: 'http://lmstudio.local:1234/v1',
+        aiProviderCredentialUpdates: [
+          {
+            profileId: 'lm-studio',
+            type: 'api-key',
+            apiKey: 'local-secret',
+            clear: false,
+          },
+        ],
+      }),
+    );
+  });
+
+  it('reports typed Ollama endpoint success and legacy detection failures', async () => {
+    vi.mocked(adminApi.getSystemSettings).mockResolvedValueOnce({
+      aiEnabled: true,
+      aiEndpoint: 'http://ollama.local:11434',
+      aiModel: '',
+      aiProviderProfiles: [
+        {
+          id: 'default-ollama',
+          name: 'Default Ollama',
+          providerType: 'ollama',
+          endpoint: 'http://ollama.local:11434',
+          model: '',
+          capabilities: { chat: true, toolCalls: false, strictJson: true },
+        },
+      ],
+      aiActiveProviderProfileId: 'default-ollama',
+    } as never);
+    vi.mocked(aiApi.detectProvider).mockResolvedValueOnce({
+      found: true,
+      providerType: 'ollama',
+      endpoint: 'http://ollama.local:11434',
+      models: [{ name: 'llama3.2:3b', size: 0, modifiedAt: '' }],
+    } as never);
+
+    const { result, rerender } = renderHook(() => useAISettings());
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.handleDetectOllama();
+    });
+
+    expect(result.current.aiModel).toBe('llama3.2:3b');
+    expect(result.current.detectMessage).toBe(
+      'Connected to Ollama endpoint with 1 model(s) - saved!',
+    );
+
+    vi.mocked(aiApi.detectOllama).mockRejectedValueOnce(new Error('down'));
+    act(() => {
+      result.current.setAiEndpoint('');
+      result.current.setAiModel('');
+    });
+    rerender();
+
+    await act(async () => {
+      await result.current.handleDetectOllama();
+    });
+
+    expect(result.current.detectMessage).toBe(
+      'Detection failed. Check AI container logs.',
+    );
+  });
+
+  it('selects the first model returned by legacy Ollama detection', async () => {
+    vi.mocked(aiApi.detectOllama).mockResolvedValueOnce({
+      found: true,
+      endpoint: 'http://ollama.local:11434',
+      models: ['llama3.2:3b'],
+    } as never);
+
+    const { result } = renderHook(() => useAISettings());
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    act(() => {
+      result.current.setAiEndpoint('');
+      result.current.setAiModel('');
+    });
+
+    await act(async () => {
+      await result.current.handleDetectOllama();
+    });
+
+    expect(result.current.aiModel).toBe('llama3.2:3b');
+    expect(adminApi.updateSystemSettings).toHaveBeenCalledWith({
+      aiModel: 'llama3.2:3b',
+    });
+  });
+
+  it('keeps an existing legacy Ollama model when detection returns models', async () => {
+    vi.mocked(aiApi.detectOllama).mockResolvedValueOnce({
+      found: true,
+      endpoint: 'http://ollama.local:11434',
+      models: ['llama3.2:3b'],
+    } as never);
+
+    const { result } = renderHook(() => useAISettings());
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    act(() => {
+      result.current.setAiEndpoint('');
+      result.current.setAiModel('existing-model');
+    });
+
+    await act(async () => {
+      await result.current.handleDetectOllama();
+    });
+
+    expect(result.current.aiModel).toBe('existing-model');
+    expect(adminApi.updateSystemSettings).not.toHaveBeenCalledWith({
+      aiModel: 'llama3.2:3b',
+    });
+  });
+
+  it('reports provider-specific OpenAI-compatible detection request failures', async () => {
+    vi.mocked(adminApi.getSystemSettings).mockResolvedValueOnce({
+      aiEnabled: true,
+      aiEndpoint: 'http://lmstudio.local:1234/v1',
+      aiModel: '',
+      aiProviderProfiles: [
+        {
+          id: 'lm-studio',
+          name: 'LM Studio',
+          providerType: 'openai-compatible',
+          endpoint: 'http://lmstudio.local:1234/v1',
+          model: '',
+          capabilities: { chat: true, toolCalls: true, strictJson: true },
+        },
+      ],
+      aiActiveProviderProfileId: 'lm-studio',
+    } as never);
+    vi.mocked(aiApi.detectProvider).mockRejectedValueOnce(new Error('down'));
+
+    const { result } = renderHook(() => useAISettings());
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.handleDetectOllama();
+    });
+
+    expect(result.current.detectMessage).toBe(
+      'Connection failed. Check the endpoint URL and AI proxy allowlist.',
+    );
+  });
+
   it('saves manually entered OpenAI-compatible models without credential updates', async () => {
     vi.mocked(adminApi.getSystemSettings).mockResolvedValueOnce({
       aiEnabled: true,

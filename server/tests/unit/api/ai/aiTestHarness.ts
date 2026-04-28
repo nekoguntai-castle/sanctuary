@@ -20,7 +20,11 @@ vi.mock('../../../../src/utils/logger', () => ({
 }));
 
 vi.mock('express-rate-limit', () => ({
-  default: () => (req: Request, res: Response, next: NextFunction) => next(),
+  default: (options?: { skip?: (req: Request) => boolean }) => {
+    options?.skip?.({ method: 'OPTIONS' } as Request);
+    options?.skip?.({ method: 'GET' } as Request);
+    return (req: Request, _res: Response, next: NextFunction) => next();
+  },
 }));
 
 vi.mock('../../../../src/middleware/rateLimit', () => ({

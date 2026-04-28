@@ -1,3 +1,23 @@
+# Active Task: PR 206 Merge Delivery 2026-04-28
+
+Status: in progress
+
+Goal: finish delivery of PR #206 through the merge queue after full coverage failed on the merge-group branch.
+
+## Plan
+
+- [x] Identify and fix the remaining backend coverage miss reproduced by `npm run test:backend:coverage`.
+- [x] Reproduce the merge queue frontend coverage failure and fix the missing coverage or contract drift.
+- [x] Run focused and package-level verification for the touched backend/frontend areas.
+- [ ] Commit only delivery-related fixes, push the branch, and monitor PR-head CI.
+- [ ] Queue the PR without branch deletion, verify it merges into `origin/main`, then document cleanup state.
+
+## Review
+
+- Local verification: focused frontend coverage tests passed; full frontend coverage passed at 100% statements/branches/functions/lines; full backend coverage passed at 100% statements/branches/functions/lines; `npm run typecheck:app`, `npm run typecheck:tests`, `npm run typecheck:server:tests`, `npm run lint:app`, `npm run lint:server`, touched-file lizard, and `git diff --check` passed.
+
+---
+
 # Active Task: Console Auto Context Inference 2026-04-27
 
 Status: complete

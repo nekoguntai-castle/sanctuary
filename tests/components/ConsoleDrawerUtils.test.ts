@@ -122,6 +122,13 @@ describe("console drawer utilities", () => {
         ) as any,
       ),
     ).toHaveLength(MAX_WALLET_SET_SCOPE_WALLETS);
+    expect(
+      buildWalletSetScopeIds([
+        { id: "", name: "Empty" } as any,
+        { id: "wallet-1", name: "Vault" } as any,
+        { id: "wallet-1", name: "Vault duplicate" } as any,
+      ]),
+    ).toEqual(["wallet-1"]);
     expect(getScopeLabel({ kind: "general" }, [])).toBe("General network");
     expect(
       getScopeLabel({ kind: "wallet", walletId: "wallet-1" }, [
@@ -167,6 +174,20 @@ describe("console drawer utilities", () => {
         }),
       ),
     ).toContain("HTTP status: 503");
+    expect(getErrorDetails(undefined)).toBe("Error: undefined");
+    expect(getErrorDetails("raw failure")).toBe("Error: raw failure");
+    expect(
+      getErrorDetails(
+        new ApiError("provider down", 503, { details: "raw details" }),
+      ),
+    ).toContain("raw details");
+    const circularDetails: Record<string, unknown> = {};
+    circularDetails.self = circularDetails;
+    expect(
+      getErrorDetails(
+        new ApiError("provider down", 503, { details: circularDetails }),
+      ),
+    ).toContain("[object Object]");
     expect(
       isConsoleSetupError(
         new ApiError("disabled", 403, { feature: "sanctuaryConsole" }),
@@ -261,6 +282,35 @@ describe("console drawer utilities", () => {
     );
     expect(messages[1]?.traces).toEqual([baseTrace]);
     expect(messages[1]?.details).toContain("wallet.summary");
+    const erroredTurnDetails = getTurnDetails(
+      {
+        ...baseTurn,
+        providerProfileId: "provider-local",
+        error: { message: "planner failed" },
+      },
+      [],
+    );
+    expect(erroredTurnDetails).toContain("Provider profile: provider-local");
+    expect(erroredTurnDetails).toContain("Error:");
+    expect(erroredTurnDetails).toContain("planner failed");
+    const failedTraceDetails = getTurnDetails(
+      { ...baseTurn, state: "failed", model: "local-model" },
+      [
+        {
+          ...baseTrace,
+          status: "failed",
+          sensitivity: null,
+          errorMessage: "tool exploded",
+          facts: null,
+          provenance: null,
+        } as any,
+      ],
+    );
+    expect(failedTraceDetails).toContain("State: failed");
+    expect(failedTraceDetails).toContain("Error: tool exploded");
+    expect(failedTraceDetails).not.toContain("Sensitivity:");
+    expect(failedTraceDetails).not.toContain("Facts:");
+    expect(failedTraceDetails).not.toContain("Provenance:");
   });
 
   it("appends turn results and merges prompt history records", () => {
@@ -399,5 +449,50 @@ describe("console drawer utilities", () => {
       "Wallet count?",
       "Two wallets.",
     ]);
+
+    const mixedItems = compressConsoleMessages(
+      [
+        {
+          id: "loose-assistant",
+          role: "assistant",
+          content: "Loose response",
+          createdAt: "2026-04-26T01:04:00.000Z",
+        },
+        {
+          id: "pending-1",
+          role: "user",
+          content: "Pending prompt?",
+          createdAt: "2026-04-26T01:05:00.000Z",
+        },
+        {
+          id: "pending-1:failed",
+          role: "assistant",
+          content: "Pending failure",
+          createdAt: "2026-04-26T01:05:01.000Z",
+        },
+        {
+          id: "unpaired-user",
+          role: "user",
+          content: "Unpaired prompt",
+          createdAt: "2026-04-26T01:06:00.000Z",
+        },
+        {
+          id: "unrelated-response",
+          role: "assistant",
+          content: "Unrelated response",
+          createdAt: "2026-04-26T01:06:01.000Z",
+        },
+      ],
+      10,
+    );
+
+    expect(mixedItems.map((item) => item.kind)).toEqual([
+      "message",
+      "message",
+      "message",
+      "message",
+      "message",
+    ]);
+    expect(compressConsoleMessages([undefined as any], 1)).toEqual([]);
   });
 });

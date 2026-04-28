@@ -115,6 +115,54 @@ export function registerDetectOllamaContracts() {
       'AI endpoint is not allowed: host_not_allowed',
     );
   });
+
+  it('should return fallback provider detection messages when proxy omits a message', async () => {
+    (aiService.detectProviderEndpoint as Mock).mockResolvedValue({
+      found: false,
+    });
+
+    const response = await request(app)
+      .post('/api/v1/ai/detect-provider')
+      .set('Authorization', 'Bearer test-token')
+      .set('x-test-admin', 'true')
+      .send({
+        endpoint: 'http://10.114.123.214:1234',
+        preferredProviderType: 'openai-compatible',
+      });
+
+    expect(response.status).toBe(502);
+    expect(response.body.message).toBe('Provider detection failed');
+  });
+
+  it('should reject malformed provider detection endpoints before proxy detection', async () => {
+    const response = await request(app)
+      .post('/api/v1/ai/detect-provider')
+      .set('Authorization', 'Bearer test-token')
+      .set('x-test-admin', 'true')
+      .send({
+        endpoint: 'not-a-url',
+        preferredProviderType: 'openai-compatible',
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe('Valid provider endpoint is required');
+    expect(aiService.detectProviderEndpoint).not.toHaveBeenCalled();
+  });
+
+  it('should reject non-HTTP provider detection endpoints before proxy detection', async () => {
+    const response = await request(app)
+      .post('/api/v1/ai/detect-provider')
+      .set('Authorization', 'Bearer test-token')
+      .set('x-test-admin', 'true')
+      .send({
+        endpoint: 'ftp://10.114.123.214:1234',
+        preferredProviderType: 'openai-compatible',
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe('Valid provider endpoint is required');
+    expect(aiService.detectProviderEndpoint).not.toHaveBeenCalled();
+  });
 }
 
 export function registerListModelsContracts() {

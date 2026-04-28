@@ -128,6 +128,6 @@ export function walletIdFromWalletRoute(
   const match = /^\/wallets\/([^/?#]+)/.exec(pathname);
   if (!match) return null;
 
-  const walletId = decodeURIComponent(match[1] ?? "");
+  const walletId = decodeURIComponent(match[1]!);
   return allowedWalletIds.has(walletId) ? walletId : null;
 }

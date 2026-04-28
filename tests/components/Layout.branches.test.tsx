@@ -7,6 +7,7 @@ import * as AppNotificationContext from '../../contexts/AppNotificationContext';
 import * as UserContext from '../../contexts/UserContext';
 import * as useDevicesHooks from '../../hooks/queries/useDevices';
 import * as useWalletsHooks from '../../hooks/queries/useWallets';
+import * as appCapabilitiesHooks from '../../hooks/useAppCapabilities';
 import * as adminApi from '../../src/api/admin';
 import * as bitcoinApi from '../../src/api/bitcoin';
 import * as draftsApi from '../../src/api/drafts';
@@ -174,6 +175,11 @@ describe('Layout branch coverage', () => {
 
     vi.mocked(useDevicesHooks.useDevices).mockReturnValue({
       data: [{ id: 'device-1', label: 'Device', type: 'ledger' }],
+    } as any);
+
+    vi.mocked(appCapabilitiesHooks.useAppCapabilities).mockReturnValue({
+      console: true,
+      intelligence: false,
     } as any);
 
     vi.mocked(bitcoinApi.getStatus).mockResolvedValue({
@@ -552,6 +558,28 @@ describe('Layout branch coverage', () => {
       expect(
         screen.queryByTestId('keyboard-shortcuts-modal')
       ).not.toBeInTheDocument();
+    });
+
+    it('does not open the Console when the capability is unavailable', async () => {
+      const user = userEvent.setup();
+      vi.mocked(appCapabilitiesHooks.useAppCapabilities).mockReturnValue({
+        console: false,
+        intelligence: false,
+      } as any);
+
+      renderLayout();
+
+      await user.click(screen.getByText('open-console'));
+      expect(screen.getByTestId('console-drawer')).toHaveAttribute(
+        'data-open',
+        'false'
+      );
+
+      await user.click(screen.getByText('open-shortcuts'));
+      expect(screen.getByTestId('keyboard-shortcuts-modal')).toHaveAttribute(
+        'data-console',
+        'false'
+      );
     });
 
     it('opens keyboard shortcuts with the global shortcut', () => {
