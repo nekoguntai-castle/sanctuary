@@ -18,7 +18,6 @@ Both paths are read-only in this release. They can answer questions about wallet
    This starts the bundled Ollama path. You can also point Sanctuary at a host-installed Ollama, a LAN Ollama/OpenAI-compatible server, or an explicitly allowlisted cloud endpoint.
 
 2. Enable feature flags in **Administration -> Feature Flags**:
-
    - `aiAssistant` for **Administration -> AI Settings** and provider configuration.
    - `sanctuaryConsole` for the in-app Console backend and drawer.
 
@@ -38,12 +37,12 @@ Open **Administration -> AI Settings**.
 2. In **Settings**, configure the active provider profile:
    - **Bundled Ollama:** `http://ollama:11434`
    - **Host Ollama:** `http://host.docker.internal:11434`
-   - **LAN Ollama/OpenAI-compatible:** for example `http://192.168.1.20:11434`
+   - **LAN Ollama/OpenAI-compatible:** for example `http://192.168.1.20:11434` or an LM Studio `/v1` endpoint such as `http://192.168.1.20:1234/v1`
    - **Cloud OpenAI-compatible:** use HTTPS and explicitly allowlist the provider endpoint in the AI proxy environment.
 3. Set the model name, provider type, and capability flags.
 4. Enter an API key only when the provider requires it. API keys are write-only: Sanctuary stores encrypted credential material and later shows only credential status.
 5. Save the provider profile and run the connection test.
-6. Use **Models** to pull or select local Ollama models when applicable.
+6. Use **Models** to view detected provider models. Sanctuary can pull/delete models for Ollama; LM Studio and other OpenAI-compatible providers manage downloads in their own app.
 
 Provider credentials are not returned in settings responses, support packages, logs, or backups. After a backup restore, restored AI provider credentials are disabled and must be re-entered in **AI Settings**.
 
@@ -87,15 +86,15 @@ For client setup, transport headers, loopback/LAN binding, and MCP Inspector exa
 
 ## Choose The Right Path
 
-| Use case | Recommended path |
-| --- | --- |
-| Normal wallet or transaction Q&A while using Sanctuary | Sanctuary Console |
-| Asking general chain, fee, price, node, or app-status questions | Sanctuary Console with General scope |
-| Long-lived saved prompts and replay inside the app | Sanctuary Console |
-| External MCP client on the same machine | Direct MCP over loopback |
-| Trusted LLM or agent on another LAN machine | Direct MCP only behind TLS/VPN/reverse proxy with scoped, expiring keys |
-| Public internet access | Not supported |
-| Spending, signing, label edits, wallet changes, or policy changes | Not supported in this release |
+| Use case                                                          | Recommended path                                                        |
+| ----------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Normal wallet or transaction Q&A while using Sanctuary            | Sanctuary Console                                                       |
+| Asking general chain, fee, price, node, or app-status questions   | Sanctuary Console with General scope                                    |
+| Long-lived saved prompts and replay inside the app                | Sanctuary Console                                                       |
+| External MCP client on the same machine                           | Direct MCP over loopback                                                |
+| Trusted LLM or agent on another LAN machine                       | Direct MCP only behind TLS/VPN/reverse proxy with scoped, expiring keys |
+| Public internet access                                            | Not supported                                                           |
+| Spending, signing, label edits, wallet changes, or policy changes | Not supported in this release                                           |
 
 ## Security Boundaries
 

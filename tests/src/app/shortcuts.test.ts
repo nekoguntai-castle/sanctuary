@@ -8,6 +8,7 @@ import {
 } from '../../../src/app/shortcuts';
 
 const consoleShortcut = getAppShortcut('console.open');
+const shortcutsShortcut = getAppShortcut('shortcuts.open');
 
 describe('app shortcuts', () => {
   afterEach(() => {
@@ -15,11 +16,16 @@ describe('app shortcuts', () => {
   });
 
   it('formats platform-specific shortcut labels', () => {
+    expect(consoleShortcut.label).toBe('Open AI Console');
+    expect(shortcutsShortcut.label).toBe('Show keyboard shortcuts');
     expect(getShortcutDisplayLabel(consoleShortcut, 'MacIntel')).toBe('⌘⇧.');
     expect(getShortcutDisplayLabel(consoleShortcut, 'Linux x86_64')).toBe(
       'Ctrl+Shift+.'
     );
     expect(getShortcutDisplayLabel(consoleShortcut)).toContain('.');
+    expect(getShortcutDisplayLabel(shortcutsShortcut, 'Linux x86_64')).toBe(
+      'Ctrl+/'
+    );
 
     const expandedShortcut: AppShortcutDefinition = {
       id: 'console.open',

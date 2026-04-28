@@ -23,7 +23,7 @@ export const TransactionsTabHeader: React.FC<TransactionsTabHeaderProps> = ({
       <div className="flex-1 max-w-xl">
         <AIQueryInput
           walletId={walletId}
-          onQueryResult={(result) => onAiQueryChange(result)}
+          onQueryResult={onAiQueryChange}
         />
       </div>
     )}

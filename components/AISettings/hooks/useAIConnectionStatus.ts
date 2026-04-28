@@ -13,7 +13,7 @@ export function useAIConnectionStatus() {
     setAiStatusMessage('Testing connection...');
 
     try {
-      const status = await aiApi.getAIStatus();
+      const status = await aiApi.testAIConnection();
       if (status.available) {
         setAiStatus('connected');
         setAiStatusMessage(`Connected to ${status.model || 'AI model'}`);

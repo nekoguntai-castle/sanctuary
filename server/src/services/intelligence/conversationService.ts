@@ -105,7 +105,7 @@ export async function sendMessage(
       conversationId,
       role: "assistant",
       content:
-        "AI is not currently configured. Please set up an Ollama endpoint in the AI settings.",
+        "AI is not currently configured. Please set up an AI provider endpoint and model in the AI settings.",
     });
     return { userMessage, assistantMessage: errorMsg };
   }

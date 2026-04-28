@@ -1,4 +1,4 @@
-export type AppCapability = 'intelligence';
+export type AppCapability = 'console' | 'intelligence';
 
 export type AppCapabilityStatus = Partial<Record<AppCapability, boolean>>;
 

@@ -1,15 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  callExternalAIWithMessages: vi.fn(),
+  callExternalAIWithMessagesResult: vi.fn(),
 }));
 
 vi.mock("../../ai-proxy/src/aiClient", () => ({
-  callExternalAIWithMessages: mocks.callExternalAIWithMessages,
+  callExternalAIWithMessagesResult: mocks.callExternalAIWithMessagesResult,
   parseStructuredResponse: (raw: string) => JSON.parse(raw),
 }));
 
 import { registerConsoleRoutes } from "../../ai-proxy/src/consoleRoutes";
+import { AI_ANALYSIS_TIMEOUT_MS } from "../../ai-proxy/src/constants";
 
 function makeApp() {
   const routes = new Map<string, Function>();
@@ -66,17 +67,25 @@ describe("AI proxy console routes", () => {
   it("plans console tool calls through the configured model", async () => {
     const { app, routes } = makeApp();
     const res = makeResponse();
-    mocks.callExternalAIWithMessages.mockResolvedValue(JSON.stringify({
-      toolCalls: [{ name: "get_fee_estimates", input: {} }],
-    }));
+    mocks.callExternalAIWithMessagesResult.mockResolvedValue({
+      ok: true,
+      content: JSON.stringify({
+        toolCalls: [{ name: "get_fee_estimates", input: {} }],
+      }),
+    });
     registerConsoleRoutes(app as any, { getAiConfig: () => enabledConfig });
 
     await routes.get("/console/plan")!({ body: planningBody }, res);
 
-    expect(mocks.callExternalAIWithMessages).toHaveBeenCalledWith(
+    expect(mocks.callExternalAIWithMessagesResult).toHaveBeenCalledWith(
       enabledConfig,
       expect.arrayContaining([expect.objectContaining({ role: "system" })]),
-      expect.any(Number),
+      {
+        timeoutMs: AI_ANALYSIS_TIMEOUT_MS,
+        temperature: 0,
+        maxTokens: 512,
+        allowReasoningContent: true,
+      },
     );
     expect(res.json).toHaveBeenCalledWith({
       toolCalls: [{ name: "get_fee_estimates", input: {} }],
@@ -87,7 +96,10 @@ describe("AI proxy console routes", () => {
   it("synthesizes console answers from compact tool results", async () => {
     const { app, routes } = makeApp();
     const res = makeResponse();
-    mocks.callExternalAIWithMessages.mockResolvedValue("Fees are available.");
+    mocks.callExternalAIWithMessagesResult.mockResolvedValue({
+      ok: true,
+      content: "Fees are available.",
+    });
     registerConsoleRoutes(app as any, { getAiConfig: () => enabledConfig });
 
     await routes.get("/console/synthesize")!({
@@ -97,6 +109,15 @@ describe("AI proxy console routes", () => {
       },
     }, res);
 
+    expect(mocks.callExternalAIWithMessagesResult).toHaveBeenCalledWith(
+      enabledConfig,
+      expect.any(Array),
+      {
+        timeoutMs: AI_ANALYSIS_TIMEOUT_MS,
+        temperature: 0.3,
+        maxTokens: 1200,
+      },
+    );
     expect(res.json).toHaveBeenCalledWith({ response: "Fees are available." });
   });
 
@@ -117,7 +138,11 @@ describe("AI proxy console routes", () => {
 
     const unavailable = makeApp();
     const unavailableRes = makeResponse();
-    mocks.callExternalAIWithMessages.mockResolvedValue(null);
+    mocks.callExternalAIWithMessagesResult.mockResolvedValue({
+      ok: false,
+      reason: "timeout",
+      message: "AI endpoint request timed out after 120000ms",
+    });
     registerConsoleRoutes(unavailable.app as any, { getAiConfig: () => enabledConfig });
     await unavailable.routes.get("/console/synthesize")!({
       body: {
@@ -125,7 +150,10 @@ describe("AI proxy console routes", () => {
         toolResults: [],
       },
     }, unavailableRes);
-    expect(unavailableRes.status).toHaveBeenCalledWith(503);
-    expect(unavailableRes.json).toHaveBeenCalledWith({ error: "AI endpoint not available" });
+    expect(unavailableRes.status).toHaveBeenCalledWith(504);
+    expect(unavailableRes.json).toHaveBeenCalledWith({
+      error: "AI endpoint request timed out after 120000ms",
+      reason: "timeout",
+    });
   });
 });

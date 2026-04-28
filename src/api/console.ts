@@ -1,39 +1,76 @@
-import apiClient from './client';
+import apiClient, { ApiError } from "./client";
+
+export type ConsoleSetupReason = "feature-disabled" | "provider-setup";
+
+const CONSOLE_FEATURE_FLAG = "sanctuaryConsole";
+const PROVIDER_SETUP_MESSAGES = [
+  "AI provider is not configured",
+  "AI provider configuration could not be synced",
+];
+
+export function isConsoleFeatureDisabledError(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    error.status === 403 &&
+    error.response?.feature === CONSOLE_FEATURE_FLAG
+  );
+}
+
+export function isConsoleProviderSetupError(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    error.status === 503 &&
+    PROVIDER_SETUP_MESSAGES.some((message) => error.message.includes(message))
+  );
+}
+
+export function getConsoleSetupReason(
+  error: unknown,
+): ConsoleSetupReason | null {
+  if (isConsoleFeatureDisabledError(error)) return "feature-disabled";
+  if (isConsoleProviderSetupError(error)) return "provider-setup";
+  return null;
+}
 
 export type ConsoleScopeKind =
-  | 'general'
-  | 'wallet'
-  | 'wallet_set'
-  | 'object'
-  | 'admin';
-export type ConsoleSensitivity = 'public' | 'wallet' | 'high' | 'admin';
+  | "general"
+  | "wallet"
+  | "wallet_set"
+  | "object"
+  | "admin";
+export type ConsoleSensitivity = "public" | "wallet" | "high" | "admin";
 export type ConsoleTurnState =
-  | 'accepted'
-  | 'planning'
-  | 'executing_tools'
-  | 'synthesizing'
-  | 'completed'
-  | 'failed'
-  | 'canceled';
+  | "accepted"
+  | "planning"
+  | "executing_tools"
+  | "synthesizing"
+  | "completed"
+  | "failed"
+  | "canceled";
 
 export type ConsoleScope =
-  | { kind: 'general' }
-  | { kind: 'wallet'; walletId: string }
-  | { kind: 'wallet_set'; walletIds: string[] }
+  | { kind: "general" }
+  | { kind: "wallet"; walletId: string }
+  | { kind: "wallet_set"; walletIds: string[] }
   | {
-      kind: 'object';
+      kind: "object";
       walletId: string;
       objectType:
-        | 'transaction'
-        | 'utxo'
-        | 'address'
-        | 'label'
-        | 'policy'
-        | 'draft'
-        | 'insight';
+        | "transaction"
+        | "utxo"
+        | "address"
+        | "label"
+        | "policy"
+        | "draft"
+        | "insight";
       objectId: string;
     }
-  | { kind: 'admin' };
+  | { kind: "admin" };
+
+export interface ConsoleClientContext {
+  mode: "auto";
+  routeWalletId?: string;
+}
 
 export interface ConsoleTool {
   name: string;
@@ -61,7 +98,7 @@ export interface ConsoleToolTrace {
   id: string;
   turnId: string;
   toolName: string;
-  status: 'completed' | 'denied' | 'failed';
+  status: "completed" | "denied" | "failed";
   facts?: Record<string, unknown> | null;
   provenance?: Record<string, unknown> | null;
   sensitivity?: ConsoleSensitivity | null;
@@ -79,6 +116,10 @@ export interface ConsoleTurn {
   scope?: ConsoleScope;
   maxSensitivity: ConsoleSensitivity;
   toolTraces?: ConsoleToolTrace[];
+  plannedTools?: Record<string, unknown> | null;
+  error?: Record<string, unknown> | null;
+  providerProfileId?: string | null;
+  model?: string | null;
   createdAt: string;
   completedAt?: string | null;
 }
@@ -103,6 +144,7 @@ export interface ConsoleRunTurnInput {
   sessionId?: string;
   prompt: string;
   scope?: ConsoleScope;
+  clientContext?: ConsoleClientContext;
   maxSensitivity?: ConsoleSensitivity;
   expiresAt?: string;
 }
@@ -129,16 +171,17 @@ export interface ConsolePromptUpdateInput {
 }
 
 const noRetry = { enabled: false };
+const CONSOLE_TURN_TIMEOUT_MS = 300_000;
 
 export async function listConsoleTools(): Promise<{ tools: ConsoleTool[] }> {
-  return apiClient.get<{ tools: ConsoleTool[] }>('/console/tools');
+  return apiClient.get<{ tools: ConsoleTool[] }>("/console/tools");
 }
 
 export async function listConsoleSessions(
   limit = 20,
-  offset = 0
+  offset = 0,
 ): Promise<{ sessions: ConsoleSession[] }> {
-  return apiClient.get<{ sessions: ConsoleSession[] }>('/console/sessions', {
+  return apiClient.get<{ sessions: ConsoleSession[] }>("/console/sessions", {
     limit,
     offset,
   });
@@ -150,40 +193,40 @@ export async function createConsoleSession(
     scope?: ConsoleScope;
     maxSensitivity?: ConsoleSensitivity;
     expiresAt?: string;
-  } = {}
+  } = {},
 ): Promise<{ session: ConsoleSession }> {
   return apiClient.post<{ session: ConsoleSession }>(
-    '/console/sessions',
+    "/console/sessions",
     input,
     {
       retry: noRetry,
-    }
+    },
   );
 }
 
 export async function listConsoleTurns(
-  sessionId: string
+  sessionId: string,
 ): Promise<{ turns: ConsoleTurn[] }> {
   return apiClient.get<{ turns: ConsoleTurn[] }>(
-    `/console/sessions/${encodeURIComponent(sessionId)}/turns`
+    `/console/sessions/${encodeURIComponent(sessionId)}/turns`,
   );
 }
 
 export async function runConsoleTurn(
-  input: ConsoleRunTurnInput
+  input: ConsoleRunTurnInput,
 ): Promise<ConsoleTurnResult> {
   return apiClient.post<ConsoleTurnResult>(
-    '/console/turns',
+    "/console/turns",
     {
-      maxSensitivity: 'wallet',
+      maxSensitivity: "wallet",
       ...input,
     },
-    { retry: noRetry }
+    { retry: noRetry, timeoutMs: CONSOLE_TURN_TIMEOUT_MS },
   );
 }
 
 export async function listPromptHistory(
-  params: ConsolePromptListParams = {}
+  params: ConsolePromptListParams = {},
 ): Promise<{ prompts: ConsolePromptHistory[] }> {
   const query: Record<string, string | number | boolean | undefined> = {
     limit: params.limit,
@@ -194,39 +237,39 @@ export async function listPromptHistory(
   };
 
   return apiClient.get<{ prompts: ConsolePromptHistory[] }>(
-    '/console/prompts',
-    query
+    "/console/prompts",
+    query,
   );
 }
 
 export async function updatePromptHistory(
   promptId: string,
-  input: ConsolePromptUpdateInput
+  input: ConsolePromptUpdateInput,
 ): Promise<{ prompt: ConsolePromptHistory }> {
   return apiClient.patch<{ prompt: ConsolePromptHistory }>(
     `/console/prompts/${encodeURIComponent(promptId)}`,
     input,
-    noRetry
+    noRetry,
   );
 }
 
 export async function deletePromptHistory(
-  promptId: string
+  promptId: string,
 ): Promise<{ success: boolean }> {
   return apiClient.delete<{ success: boolean }>(
     `/console/prompts/${encodeURIComponent(promptId)}`,
     undefined,
-    noRetry
+    noRetry,
   );
 }
 
 export async function replayPromptHistory(
   promptId: string,
-  input: Omit<ConsoleRunTurnInput, 'prompt'> = {}
+  input: Omit<ConsoleRunTurnInput, "prompt"> = {},
 ): Promise<ConsoleTurnResult> {
   return apiClient.post<ConsoleTurnResult>(
     `/console/prompts/${encodeURIComponent(promptId)}/replay`,
     input,
-    { retry: noRetry }
+    { retry: noRetry, timeoutMs: CONSOLE_TURN_TIMEOUT_MS },
   );
 }

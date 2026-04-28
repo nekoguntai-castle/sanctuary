@@ -16,5 +16,6 @@ export interface SidebarContentProps {
   getDeviceCount: (deviceId: string) => number;
   onVersionClick: () => void;
   onOpenConsole: () => void;
+  onOpenShortcuts: () => void;
   capabilities?: AppCapabilityStatus;
 }

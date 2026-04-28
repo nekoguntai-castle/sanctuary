@@ -11,6 +11,20 @@ export function registerAuthenticationContracts() {
     expect(response.body.error).toBe('Unauthorized');
   });
 
+  it('should require admin access for explicit connection tests', async () => {
+    const unauthenticated = await request(app)
+      .post('/api/v1/ai/test-connection')
+      .send({});
+
+    const nonAdmin = await request(app)
+      .post('/api/v1/ai/test-connection')
+      .set('Authorization', 'Bearer test-token')
+      .send({});
+
+    expect(unauthenticated.status).toBe(401);
+    expect(nonAdmin.status).toBe(403);
+  });
+
   it('should require authentication for suggest-label endpoint', async () => {
     const response = await request(app)
   .post('/api/v1/ai/suggest-label')
@@ -42,8 +56,11 @@ export function registerAuthenticationContracts() {
 
 export function registerRateLimitingContracts() {
   it('should apply rate limiter to AI endpoints', async () => {
-    (aiService.isEnabled as Mock).mockResolvedValue(true);
-    (aiService.checkHealth as Mock).mockResolvedValue({ available: true });
+    (aiService.getConfigStatus as Mock).mockResolvedValue({
+      enabled: true,
+      configured: true,
+    });
+    (aiService.isContainerAvailable as Mock).mockResolvedValue(true);
 
     // Make a request - rate limiter is applied but not blocking in tests
     const response = await request(app)

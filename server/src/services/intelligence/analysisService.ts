@@ -48,10 +48,9 @@ export async function runAnalysisPipelines(): Promise<void> {
     // Sync config to AI container
     await syncConfigToContainer(config);
 
-    // Check Ollama compatibility
-    const ollamaCheck = await checkOllamaCompatible();
-    if (!ollamaCheck) {
-      log.debug("Endpoint is not Ollama-compatible, skipping analysis");
+    const providerReady = await checkProviderReachable();
+    if (!providerReady) {
+      log.debug("AI provider endpoint is not reachable, skipping analysis");
       return;
     }
 
@@ -324,19 +323,21 @@ async function callAnalysis(
 }
 
 /**
- * Check if the configured endpoint is Ollama-compatible.
+ * Check if the configured provider endpoint is reachable.
  */
-async function checkOllamaCompatible(): Promise<boolean> {
-  const status = await fetchOllamaCheck();
+async function checkProviderReachable(): Promise<boolean> {
+  const status = await fetchProviderCheck();
   return status?.compatible ?? false;
 }
 
 /**
- * Shared helper: call the AI container's /check-ollama endpoint.
+ * Shared helper: call the AI container's provider-check endpoint.
+ * The route name is legacy; the proxy now checks the active provider type.
  */
-async function fetchOllamaCheck(): Promise<{
+async function fetchProviderCheck(): Promise<{
   compatible: boolean;
   endpointType?: string;
+  providerType?: string;
   reason?: string;
 } | null> {
   try {
@@ -350,10 +351,11 @@ async function fetchOllamaCheck(): Promise<{
     return (await response.json()) as {
       compatible: boolean;
       endpointType?: string;
+      providerType?: string;
       reason?: string;
     };
   } catch (error) {
-    log.debug("Ollama check failed", { error: getErrorMessage(error) });
+    log.debug("AI provider check failed", { error: getErrorMessage(error) });
     return null;
   }
 }
@@ -400,7 +402,7 @@ export async function getIntelligenceStatus() {
 
   await syncConfigToContainer(config);
 
-  const result = await fetchOllamaCheck();
+  const result = await fetchProviderCheck();
   if (!result) {
     return {
       available: false,
@@ -413,7 +415,7 @@ export async function getIntelligenceStatus() {
     return {
       available: false,
       ollamaConfigured: false,
-      reason: result.reason || "ollama_required",
+      reason: result.reason || "provider_required",
     };
   }
 

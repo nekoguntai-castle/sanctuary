@@ -38,6 +38,7 @@ export const SidebarContent: React.FC<SidebarContentProps> = ({
   getDeviceCount,
   onVersionClick,
   onOpenConsole,
+  onOpenShortcuts,
   capabilities,
 }) => {
   const primaryNavItems = getVisibleNavItems(getNavItemsBySection('primary'), capabilities);
@@ -49,6 +50,13 @@ export const SidebarContent: React.FC<SidebarContentProps> = ({
   );
   const settingsNavItem = getRequiredNavItem('settings');
   const adminNavItems = getVisibleNavItems(getNavItemsBySection('admin'), capabilities);
+  const quickActions = (
+    <SidebarConsoleQuickActions
+      consoleAvailable={!!capabilities?.console}
+      onOpenConsole={capabilities?.console ? onOpenConsole : undefined}
+      onOpenShortcuts={onOpenShortcuts}
+    />
+  );
 
   return (
     <>
@@ -57,7 +65,7 @@ export const SidebarContent: React.FC<SidebarContentProps> = ({
       <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
         <SidebarPrimaryNav
           items={primaryNavItems}
-          quickActions={<SidebarConsoleQuickActions onOpenConsole={onOpenConsole} />}
+          quickActions={quickActions}
         />
         <SidebarWalletSection
           show={isNavItemVisible(walletNavItem, capabilities)}

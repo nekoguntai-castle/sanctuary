@@ -21,6 +21,7 @@ export const AIQueryInputError: React.FC<AIQueryInputErrorProps> = ({
         </p>
         <button
           type="button"
+          aria-label="Dismiss AI transaction filter error"
           onClick={onDismiss}
           className="text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/30 p-1 rounded transition-colors"
         >

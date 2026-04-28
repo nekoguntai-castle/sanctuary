@@ -53,7 +53,7 @@ describe('AIQueryInput', () => {
     it('should render the search input', () => {
       render(<AIQueryInput walletId={testWalletId} />);
 
-      expect(screen.getByPlaceholderText('Ask about your transactions...')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText('Filter transactions with AI...')).toBeInTheDocument();
     });
 
     it('should render with custom className', () => {
@@ -74,7 +74,7 @@ describe('AIQueryInput', () => {
     it('should not show results initially', () => {
       render(<AIQueryInput walletId={testWalletId} />);
 
-      expect(screen.queryByText('AI interpreted your query as:')).not.toBeInTheDocument();
+      expect(screen.queryByText('AI transaction filter:')).not.toBeInTheDocument();
     });
 
     it('should not show error initially', () => {
@@ -88,7 +88,7 @@ describe('AIQueryInput', () => {
     it('should show example queries when input is focused and empty', async () => {
       render(<AIQueryInput walletId={testWalletId} />);
 
-      const input = screen.getByPlaceholderText('Ask about your transactions...');
+      const input = screen.getByPlaceholderText('Filter transactions with AI...');
       fireEvent.focus(input);
 
       await waitFor(() => {
@@ -99,7 +99,7 @@ describe('AIQueryInput', () => {
     it('should display predefined example queries', async () => {
       render(<AIQueryInput walletId={testWalletId} />);
 
-      const input = screen.getByPlaceholderText('Ask about your transactions...');
+      const input = screen.getByPlaceholderText('Filter transactions with AI...');
       fireEvent.focus(input);
 
       await waitFor(() => {
@@ -110,7 +110,7 @@ describe('AIQueryInput', () => {
     it('should fill input when example is clicked', async () => {
       render(<AIQueryInput walletId={testWalletId} />);
 
-      const input = screen.getByPlaceholderText('Ask about your transactions...') as HTMLInputElement;
+      const input = screen.getByPlaceholderText('Filter transactions with AI...') as HTMLInputElement;
       fireEvent.focus(input);
 
       await waitFor(() => {
@@ -126,7 +126,7 @@ describe('AIQueryInput', () => {
     it('should hide examples when input has text', async () => {
       render(<AIQueryInput walletId={testWalletId} />);
 
-      const input = screen.getByPlaceholderText('Ask about your transactions...');
+      const input = screen.getByPlaceholderText('Filter transactions with AI...');
       fireEvent.focus(input);
 
       await waitFor(() => {
@@ -156,7 +156,7 @@ describe('AIQueryInput', () => {
 
       render(<AIQueryInput walletId={testWalletId} />);
 
-      const input = screen.getByPlaceholderText('Ask about your transactions...');
+      const input = screen.getByPlaceholderText('Filter transactions with AI...');
       fireEvent.focus(input);
 
       await waitFor(() => {
@@ -181,7 +181,7 @@ describe('AIQueryInput', () => {
     it('should submit query on form submit', async () => {
       render(<AIQueryInput walletId={testWalletId} />);
 
-      const input = screen.getByPlaceholderText('Ask about your transactions...');
+      const input = screen.getByPlaceholderText('Filter transactions with AI...');
       await userEvent.type(input, 'Show my transactions');
 
       const form = input.closest('form');
@@ -198,7 +198,7 @@ describe('AIQueryInput', () => {
     it('should not submit empty query', async () => {
       render(<AIQueryInput walletId={testWalletId} />);
 
-      const form = screen.getByPlaceholderText('Ask about your transactions...').closest('form');
+      const form = screen.getByPlaceholderText('Filter transactions with AI...').closest('form');
       fireEvent.submit(form!);
 
       expect(mockExecuteNaturalQuery).not.toHaveBeenCalled();
@@ -207,7 +207,7 @@ describe('AIQueryInput', () => {
     it('should not submit whitespace-only query', async () => {
       render(<AIQueryInput walletId={testWalletId} />);
 
-      const input = screen.getByPlaceholderText('Ask about your transactions...');
+      const input = screen.getByPlaceholderText('Filter transactions with AI...');
       await userEvent.type(input, '   ');
 
       const form = input.closest('form');
@@ -219,7 +219,7 @@ describe('AIQueryInput', () => {
     it('should trim query before submission', async () => {
       render(<AIQueryInput walletId={testWalletId} />);
 
-      const input = screen.getByPlaceholderText('Ask about your transactions...');
+      const input = screen.getByPlaceholderText('Filter transactions with AI...');
       await userEvent.type(input, '  Show transactions  ');
 
       const form = input.closest('form');
@@ -237,7 +237,7 @@ describe('AIQueryInput', () => {
       const customWalletId = 'custom-wallet-123';
       render(<AIQueryInput walletId={customWalletId} />);
 
-      const input = screen.getByPlaceholderText('Ask about your transactions...');
+      const input = screen.getByPlaceholderText('Filter transactions with AI...');
       await userEvent.type(input, 'Test query');
 
       const form = input.closest('form');
@@ -260,7 +260,7 @@ describe('AIQueryInput', () => {
 
       render(<AIQueryInput walletId={testWalletId} />);
 
-      const input = screen.getByPlaceholderText('Ask about your transactions...');
+      const input = screen.getByPlaceholderText('Filter transactions with AI...');
       await userEvent.type(input, 'Test query');
 
       const form = input.closest('form');
@@ -279,7 +279,7 @@ describe('AIQueryInput', () => {
 
       render(<AIQueryInput walletId={testWalletId} />);
 
-      const input = screen.getByPlaceholderText('Ask about your transactions...') as HTMLInputElement;
+      const input = screen.getByPlaceholderText('Filter transactions with AI...') as HTMLInputElement;
       await userEvent.type(input, 'Test query');
 
       const form = input.closest('form');
@@ -295,21 +295,21 @@ describe('AIQueryInput', () => {
     it('should display result after successful query', async () => {
       render(<AIQueryInput walletId={testWalletId} />);
 
-      const input = screen.getByPlaceholderText('Ask about your transactions...');
+      const input = screen.getByPlaceholderText('Filter transactions with AI...');
       await userEvent.type(input, 'Show largest receives');
 
       const form = input.closest('form');
       fireEvent.submit(form!);
 
       await waitFor(() => {
-        expect(screen.getByText('AI interpreted your query as:')).toBeInTheDocument();
+        expect(screen.getByText('AI transaction filter:')).toBeInTheDocument();
       });
     });
 
     it('should display query type in result', async () => {
       render(<AIQueryInput walletId={testWalletId} />);
 
-      const input = screen.getByPlaceholderText('Ask about your transactions...');
+      const input = screen.getByPlaceholderText('Filter transactions with AI...');
       await userEvent.type(input, 'Show transactions');
 
       const form = input.closest('form');
@@ -328,7 +328,7 @@ describe('AIQueryInput', () => {
 
       render(<AIQueryInput walletId={testWalletId} />);
 
-      const input = screen.getByPlaceholderText('Ask about your transactions...');
+      const input = screen.getByPlaceholderText('Filter transactions with AI...');
       await userEvent.type(input, 'Find exchange transactions');
 
       const form = input.closest('form');
@@ -347,7 +347,7 @@ describe('AIQueryInput', () => {
 
       render(<AIQueryInput walletId={testWalletId} />);
 
-      const input = screen.getByPlaceholderText('Ask about your transactions...');
+      const input = screen.getByPlaceholderText('Filter transactions with AI...');
       await userEvent.type(input, 'Show sorted transactions');
 
       const form = input.closest('form');
@@ -366,7 +366,7 @@ describe('AIQueryInput', () => {
 
       render(<AIQueryInput walletId={testWalletId} />);
 
-      const input = screen.getByPlaceholderText('Ask about your transactions...');
+      const input = screen.getByPlaceholderText('Filter transactions with AI...');
       await userEvent.type(input, 'Show 10 transactions');
 
       const form = input.closest('form');
@@ -385,7 +385,7 @@ describe('AIQueryInput', () => {
 
       render(<AIQueryInput walletId={testWalletId} />);
 
-      const input = screen.getByPlaceholderText('Ask about your transactions...');
+      const input = screen.getByPlaceholderText('Filter transactions with AI...');
       await userEvent.type(input, 'Total amount');
 
       const form = input.closest('form');
@@ -400,7 +400,7 @@ describe('AIQueryInput', () => {
       const onQueryResult = vi.fn();
       render(<AIQueryInput walletId={testWalletId} onQueryResult={onQueryResult} />);
 
-      const input = screen.getByPlaceholderText('Ask about your transactions...');
+      const input = screen.getByPlaceholderText('Filter transactions with AI...');
       await userEvent.type(input, 'Test query');
 
       const form = input.closest('form');
@@ -418,7 +418,7 @@ describe('AIQueryInput', () => {
 
       render(<AIQueryInput walletId={testWalletId} />);
 
-      const input = screen.getByPlaceholderText('Ask about your transactions...');
+      const input = screen.getByPlaceholderText('Filter transactions with AI...');
       await userEvent.type(input, 'Test query');
 
       const form = input.closest('form');
@@ -434,7 +434,7 @@ describe('AIQueryInput', () => {
 
       render(<AIQueryInput walletId={testWalletId} />);
 
-      const input = screen.getByPlaceholderText('Ask about your transactions...');
+      const input = screen.getByPlaceholderText('Filter transactions with AI...');
       await userEvent.type(input, 'Test query');
 
       const form = input.closest('form');
@@ -450,7 +450,7 @@ describe('AIQueryInput', () => {
 
       render(<AIQueryInput walletId={testWalletId} />);
 
-      const input = screen.getByPlaceholderText('Ask about your transactions...');
+      const input = screen.getByPlaceholderText('Filter transactions with AI...');
       await userEvent.type(input, 'Test query');
 
       const form = input.closest('form');
@@ -466,7 +466,7 @@ describe('AIQueryInput', () => {
 
       render(<AIQueryInput walletId={testWalletId} />);
 
-      const input = screen.getByPlaceholderText('Ask about your transactions...');
+      const input = screen.getByPlaceholderText('Filter transactions with AI...');
       await userEvent.type(input, 'Test query');
 
       const form = input.closest('form');
@@ -482,7 +482,7 @@ describe('AIQueryInput', () => {
 
       render(<AIQueryInput walletId={testWalletId} />);
 
-      const input = screen.getByPlaceholderText('Ask about your transactions...');
+      const input = screen.getByPlaceholderText('Filter transactions with AI...');
       await userEvent.type(input, 'Test query');
 
       const form = input.closest('form');
@@ -511,7 +511,7 @@ describe('AIQueryInput', () => {
     it('should show clear button when query has text', async () => {
       render(<AIQueryInput walletId={testWalletId} />);
 
-      const input = screen.getByPlaceholderText('Ask about your transactions...');
+      const input = screen.getByPlaceholderText('Filter transactions with AI...');
       await userEvent.type(input, 'Test query');
 
       // Look for the X button
@@ -522,7 +522,7 @@ describe('AIQueryInput', () => {
     it('should clear input when clear button is clicked', async () => {
       render(<AIQueryInput walletId={testWalletId} />);
 
-      const input = screen.getByPlaceholderText('Ask about your transactions...') as HTMLInputElement;
+      const input = screen.getByPlaceholderText('Filter transactions with AI...') as HTMLInputElement;
       await userEvent.type(input, 'Test query');
 
       expect(input.value).toBe('Test query');
@@ -543,14 +543,14 @@ describe('AIQueryInput', () => {
     it('should clear result when input is cleared', async () => {
       render(<AIQueryInput walletId={testWalletId} />);
 
-      const input = screen.getByPlaceholderText('Ask about your transactions...');
+      const input = screen.getByPlaceholderText('Filter transactions with AI...');
       await userEvent.type(input, 'Test query');
 
       const form = input.closest('form');
       fireEvent.submit(form!);
 
       await waitFor(() => {
-        expect(screen.getByText('AI interpreted your query as:')).toBeInTheDocument();
+        expect(screen.getByText('AI transaction filter:')).toBeInTheDocument();
       });
 
       // Clear the input
@@ -562,7 +562,21 @@ describe('AIQueryInput', () => {
       }
 
       await waitFor(() => {
-        expect(screen.queryByText('AI interpreted your query as:')).not.toBeInTheDocument();
+        expect(screen.queryByText('AI transaction filter:')).not.toBeInTheDocument();
+      });
+    });
+
+    it('should clear the parent transaction filter when input is cleared', async () => {
+      const onQueryResult = vi.fn();
+      render(<AIQueryInput walletId={testWalletId} onQueryResult={onQueryResult} />);
+
+      const input = screen.getByPlaceholderText('Filter transactions with AI...');
+      await userEvent.type(input, 'Show receives');
+
+      fireEvent.click(screen.getByLabelText('Clear AI transaction filter'));
+
+      await waitFor(() => {
+        expect(onQueryResult).toHaveBeenCalledWith(null);
       });
     });
 
@@ -571,7 +585,7 @@ describe('AIQueryInput', () => {
 
       render(<AIQueryInput walletId={testWalletId} />);
 
-      const input = screen.getByPlaceholderText('Ask about your transactions...');
+      const input = screen.getByPlaceholderText('Filter transactions with AI...');
       await userEvent.type(input, 'Test query');
 
       const form = input.closest('form');
@@ -604,7 +618,7 @@ describe('AIQueryInput', () => {
 
       render(<AIQueryInput walletId={testWalletId} />);
 
-      const input = screen.getByPlaceholderText('Ask about your transactions...');
+      const input = screen.getByPlaceholderText('Filter transactions with AI...');
       await userEvent.type(input, 'Show transactions');
 
       const form = input.closest('form');
@@ -623,7 +637,7 @@ describe('AIQueryInput', () => {
 
       render(<AIQueryInput walletId={testWalletId} />);
 
-      const input = screen.getByPlaceholderText('Ask about your transactions...');
+      const input = screen.getByPlaceholderText('Filter transactions with AI...');
       await userEvent.type(input, 'Show unused addresses');
 
       const form = input.closest('form');
@@ -642,7 +656,7 @@ describe('AIQueryInput', () => {
 
       render(<AIQueryInput walletId={testWalletId} />);
 
-      const input = screen.getByPlaceholderText('Ask about your transactions...');
+      const input = screen.getByPlaceholderText('Filter transactions with AI...');
       await userEvent.type(input, 'Show available UTXOs');
 
       const form = input.closest('form');
@@ -661,7 +675,7 @@ describe('AIQueryInput', () => {
 
       render(<AIQueryInput walletId={testWalletId} />);
 
-      const input = screen.getByPlaceholderText('Ask about your transactions...');
+      const input = screen.getByPlaceholderText('Filter transactions with AI...');
       await userEvent.type(input, 'Count all transactions');
 
       const form = input.closest('form');
@@ -677,7 +691,7 @@ describe('AIQueryInput', () => {
     it('should submit on Enter key', async () => {
       render(<AIQueryInput walletId={testWalletId} />);
 
-      const input = screen.getByPlaceholderText('Ask about your transactions...');
+      const input = screen.getByPlaceholderText('Filter transactions with AI...');
       await userEvent.type(input, 'Test query{enter}');
 
       await waitFor(() => {
@@ -696,7 +710,7 @@ describe('AIQueryInput', () => {
     it('should have accessible input', () => {
       render(<AIQueryInput walletId={testWalletId} />);
 
-      const input = screen.getByPlaceholderText('Ask about your transactions...');
+      const input = screen.getByPlaceholderText('Filter transactions with AI...');
       expect(input).toBeInTheDocument();
       expect(input.tagName).toBe('INPUT');
     });

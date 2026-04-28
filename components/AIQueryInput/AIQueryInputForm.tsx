@@ -53,7 +53,7 @@ export const AIQueryInputForm: React.FC<AIQueryInputFormProps> = ({
           onChange={(event) => controller.setQuery(event.target.value)}
           onFocus={() => controller.setShowExamples(true)}
           onBlur={() => setTimeout(() => controller.setShowExamples(false), 200)}
-          placeholder="Ask about your transactions..."
+          placeholder="Filter transactions with AI..."
           className="w-full pl-10 pr-24 py-3 rounded-md border border-sanctuary-300 dark:border-sanctuary-600 bg-white dark:bg-sanctuary-800 text-sanctuary-900 dark:text-sanctuary-100 placeholder:text-sanctuary-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
           disabled={controller.loading}
         />
@@ -61,6 +61,7 @@ export const AIQueryInputForm: React.FC<AIQueryInputFormProps> = ({
           {controller.query && (
             <button
               type="button"
+              aria-label="Clear AI transaction filter"
               onClick={controller.clearQuery}
               className="p-1.5 text-sanctuary-400 hover:text-sanctuary-600 dark:hover:text-sanctuary-300 rounded-lg transition-colors"
             >
@@ -69,6 +70,7 @@ export const AIQueryInputForm: React.FC<AIQueryInputFormProps> = ({
           )}
           <button
             type="submit"
+            aria-label="Apply AI transaction filter"
             disabled={controller.loading || !controller.query.trim()}
             className="px-3 py-1.5 bg-primary-600 hover:bg-primary-700 disabled:bg-primary-400 text-white text-sm font-medium rounded-lg transition-colors disabled:cursor-not-allowed"
           >

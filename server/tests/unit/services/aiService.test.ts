@@ -534,6 +534,36 @@ describe("aiService", () => {
     expect(result).toBeNull();
   });
 
+  it("uses a longer backend-to-AI-proxy timeout for natural queries", async () => {
+    const timeoutSignal = new AbortController().signal;
+    const timeoutSpy = vi
+      .spyOn(AbortSignal, "timeout")
+      .mockReturnValue(timeoutSignal);
+    mocks.systemSettingFindMany.mockResolvedValue([
+      setting("aiEnabled", true),
+      setting("aiEndpoint", "http://ollama:11434"),
+      setting("aiModel", "llama3.2"),
+    ] as any);
+    mocks.fetch
+      .mockResolvedValueOnce(okJson({ success: true }))
+      .mockResolvedValueOnce(okJson({ query: { type: "transactions" } }));
+
+    try {
+      const mod = await import("../../../src/services/aiService");
+      await expect(
+        mod.executeNaturalQuery("show latest", "wallet-1", "token-xyz"),
+      ).resolves.toEqual({ type: "transactions" });
+
+      expect(timeoutSpy).toHaveBeenCalledWith(125_000);
+      expect(mocks.fetch).toHaveBeenLastCalledWith(
+        "http://ai:3100/query",
+        expect.objectContaining({ signal: timeoutSignal }),
+      );
+    } finally {
+      timeoutSpy.mockRestore();
+    }
+  });
+
   it("returns null for natural query when AI is not configured", async () => {
     mocks.systemSettingFindMany.mockResolvedValue([
       setting("aiEnabled", false),

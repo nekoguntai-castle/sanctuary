@@ -1,14 +1,23 @@
 import { renderHook } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { useAppCapabilities } from '../../hooks/useAppCapabilities';
+import { useConsoleAvailability } from '../../hooks/useConsoleAvailability';
 import { useIntelligenceStatus } from '../../hooks/useIntelligenceStatus';
+
+vi.mock('../../hooks/useConsoleAvailability', () => ({
+  useConsoleAvailability: vi.fn(),
+}));
 
 vi.mock('../../hooks/useIntelligenceStatus', () => ({
   useIntelligenceStatus: vi.fn(),
 }));
 
 describe('useAppCapabilities', () => {
-  it('maps Intelligence availability into route capability status', () => {
+  it('maps Console and Intelligence availability into capability status', () => {
+    vi.mocked(useConsoleAvailability).mockReturnValue({
+      available: true,
+      loading: false,
+    });
     vi.mocked(useIntelligenceStatus).mockReturnValue({
       available: true,
       loading: false,
@@ -17,10 +26,14 @@ describe('useAppCapabilities', () => {
 
     const { result } = renderHook(() => useAppCapabilities());
 
-    expect(result.current).toEqual({ intelligence: true });
+    expect(result.current).toEqual({ console: true, intelligence: true });
   });
 
-  it('marks Intelligence capability unavailable while status is unavailable or loading', () => {
+  it('marks capabilities unavailable while status is unavailable or loading', () => {
+    vi.mocked(useConsoleAvailability).mockReturnValue({
+      available: false,
+      loading: true,
+    });
     vi.mocked(useIntelligenceStatus).mockReturnValue({
       available: false,
       loading: true,
@@ -28,6 +41,6 @@ describe('useAppCapabilities', () => {
 
     const { result } = renderHook(() => useAppCapabilities());
 
-    expect(result.current).toEqual({ intelligence: false });
+    expect(result.current).toEqual({ console: false, intelligence: false });
   });
 });

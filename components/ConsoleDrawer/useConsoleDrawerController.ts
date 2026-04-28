@@ -1,22 +1,32 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import * as consoleApi from '../../src/api/console';
-import type { Wallet } from '../../src/api/wallets';
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import * as consoleApi from "../../src/api/console";
+import type { Wallet } from "../../src/api/wallets";
 import {
+  ALL_WALLETS_SCOPE_ID,
+  AUTO_CONTEXT_ID,
+  appendFailedAssistantMessage,
+  appendPendingPrompt,
   appendTurnResult,
+  buildConsoleClientContext,
   buildConsoleScope,
+  buildWalletSetScopeIds,
   GENERAL_SCOPE_ID,
+  getConsoleSetupErrorReason,
+  getErrorDetails,
   getErrorMessage,
-  isConsoleSetupError,
   mergePromptHistory,
   mergeSession,
+  replacePendingPromptWithTurnResult,
   sortSessionsByUpdatedAt,
   turnsToMessages,
-} from './consoleDrawerUtils';
-import type { ConsoleDrawerController, ConsoleMessage } from './types';
+} from "./consoleDrawerUtils";
+import type { ConsoleDrawerController, ConsoleMessage } from "./types";
 
 interface UseConsoleDrawerControllerOptions {
   isOpen: boolean;
   wallets: Wallet[];
+  defaultWalletId?: string | null;
+  onTurnComplete?: (result: consoleApi.ConsoleTurnResult) => void;
 }
 
 const PROMPT_LIMIT = 24;
@@ -30,6 +40,8 @@ function getExpirationDate(days: number): string {
 export function useConsoleDrawerController({
   isOpen,
   wallets,
+  defaultWalletId,
+  onTurnComplete,
 }: UseConsoleDrawerControllerOptions): ConsoleDrawerController {
   const [sessions, setSessions] = useState<consoleApi.ConsoleSession[]>([]);
   const [tools, setTools] = useState<consoleApi.ConsoleTool[]>([]);
@@ -38,23 +50,29 @@ export function useConsoleDrawerController({
   const [selectedSessionId, setSelectedSessionIdState] = useState<
     string | null
   >(null);
-  const [selectedWalletId, setSelectedWalletId] = useState(GENERAL_SCOPE_ID);
-  const [input, setInput] = useState('');
-  const [promptSearch, setPromptSearch] = useState('');
+  const [selectedWalletId, setSelectedWalletId] = useState(AUTO_CONTEXT_ID);
+  const [input, setInput] = useState("");
+  const [promptSearch, setPromptSearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [replayingPromptId, setReplayingPromptId] = useState<string | null>(
-    null
+    null,
   );
   const [error, setError] = useState<string | null>(null);
-  const [setupNeeded, setSetupNeeded] = useState(false);
+  const [setupReason, setSetupReason] =
+    useState<consoleApi.ConsoleSetupReason | null>(null);
   const selectedSessionIdRef = useRef<string | null>(null);
+  const pendingMessageCounterRef = useRef(0);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scope = useMemo(
-    () => buildConsoleScope(selectedWalletId),
-    [selectedWalletId]
+    () => buildConsoleScope(selectedWalletId, wallets),
+    [selectedWalletId, wallets],
+  );
+  const clientContext = useMemo(
+    () => buildConsoleClientContext(selectedWalletId, defaultWalletId),
+    [defaultWalletId, selectedWalletId],
   );
 
   const setSelectedSessionId = useCallback((sessionId: string | null) => {
@@ -64,14 +82,15 @@ export function useConsoleDrawerController({
 
   const handleConsoleError = useCallback(
     (caught: unknown, fallback: string) => {
-      if (isConsoleSetupError(caught)) {
-        setSetupNeeded(true);
+      const reason = getConsoleSetupErrorReason(caught);
+      if (reason) {
+        setSetupReason(reason);
         setError(null);
         return;
       }
       setError(getErrorMessage(caught, fallback));
     },
-    []
+    [],
   );
 
   const refreshPrompts = useCallback(async () => {
@@ -81,9 +100,9 @@ export function useConsoleDrawerController({
         search: promptSearch.trim() || undefined,
       });
       setPrompts(result.prompts);
-      setSetupNeeded(false);
+      setSetupReason(null);
     } catch (caught) {
-      handleConsoleError(caught, 'Failed to load prompt history');
+      handleConsoleError(caught, "Failed to load prompt history");
     }
   }, [handleConsoleError, promptSearch]);
 
@@ -92,12 +111,12 @@ export function useConsoleDrawerController({
       try {
         const result = await consoleApi.listConsoleTurns(sessionId);
         setMessages(turnsToMessages(result.turns));
-        setSetupNeeded(false);
+        setSetupReason(null);
       } catch (caught) {
-        handleConsoleError(caught, 'Failed to load Console session');
+        handleConsoleError(caught, "Failed to load Console session");
       }
     },
-    [handleConsoleError]
+    [handleConsoleError],
   );
 
   const loadConsoleState = useCallback(async () => {
@@ -112,7 +131,7 @@ export function useConsoleDrawerController({
       const orderedSessions = sortSessionsByUpdatedAt(sessionResult.sessions);
       const preferredSessionId = selectedSessionIdRef.current;
       const nextSessionId = orderedSessions.some(
-        (session) => session.id === preferredSessionId
+        (session) => session.id === preferredSessionId,
       )
         ? preferredSessionId
         : (orderedSessions[0]?.id ?? null);
@@ -121,7 +140,7 @@ export function useConsoleDrawerController({
       setPrompts(promptResult.prompts);
       setTools(toolResult.tools);
       setSelectedSessionId(nextSessionId);
-      setSetupNeeded(false);
+      setSetupReason(null);
 
       if (nextSessionId) {
         await loadSessionTurns(nextSessionId);
@@ -129,7 +148,7 @@ export function useConsoleDrawerController({
         setMessages([]);
       }
     } catch (caught) {
-      handleConsoleError(caught, 'Failed to load Sanctuary Console');
+      handleConsoleError(caught, "Failed to load Sanctuary Console");
     } finally {
       setLoading(false);
     }
@@ -148,15 +167,26 @@ export function useConsoleDrawerController({
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView?.({
-      behavior: 'smooth',
-      block: 'end',
+      behavior: "smooth",
+      block: "end",
     });
   }, [messages, sending]);
 
   useEffect(() => {
-    if (selectedWalletId === GENERAL_SCOPE_ID) return;
+    if (
+      selectedWalletId === AUTO_CONTEXT_ID ||
+      selectedWalletId === GENERAL_SCOPE_ID
+    ) {
+      return;
+    }
+    if (
+      selectedWalletId === ALL_WALLETS_SCOPE_ID &&
+      buildWalletSetScopeIds(wallets).length > 0
+    ) {
+      return;
+    }
     if (wallets.some((wallet) => wallet.id === selectedWalletId)) return;
-    setSelectedWalletId(GENERAL_SCOPE_ID);
+    setSelectedWalletId(AUTO_CONTEXT_ID);
   }, [selectedWalletId, wallets]);
 
   const startNewSession = useCallback(() => {
@@ -176,39 +206,66 @@ export function useConsoleDrawerController({
       setSelectedSessionId(sessionId);
       await loadSessionTurns(sessionId);
     },
-    [loadSessionTurns, setSelectedSessionId, startNewSession]
+    [loadSessionTurns, setSelectedSessionId, startNewSession],
   );
 
   const sendPrompt = useCallback(async () => {
     const prompt = input.trim();
     if (!prompt || sending) return;
 
-    setInput('');
+    pendingMessageCounterRef.current += 1;
+    const pendingPromptId = `pending:${pendingMessageCounterRef.current}`;
+
+    setInput("");
     setSending(true);
     setError(null);
+    setMessages((current) =>
+      appendPendingPrompt(current, {
+        id: pendingPromptId,
+        prompt,
+        createdAt: new Date().toISOString(),
+      }),
+    );
 
     try {
       const result = await consoleApi.runConsoleTurn({
         sessionId: selectedSessionId ?? undefined,
         prompt,
-        scope,
+        ...(clientContext ? { clientContext } : { scope }),
       });
       setSelectedSessionId(result.session.id);
       setSessions((current) => mergeSession(current, result.session));
       setPrompts((current) =>
-        mergePromptHistory(current, result.promptHistory)
+        mergePromptHistory(current, result.promptHistory),
       );
-      setMessages((current) => appendTurnResult(current, result));
-      setSetupNeeded(false);
+      setMessages((current) =>
+        replacePendingPromptWithTurnResult(current, pendingPromptId, result),
+      );
+      setSetupReason(null);
+      onTurnComplete?.(result);
     } catch (caught) {
-      setInput(prompt);
-      handleConsoleError(caught, 'Console turn failed');
+      const setupErrorReason = getConsoleSetupErrorReason(caught);
+      if (setupErrorReason) {
+        setInput(prompt);
+        handleConsoleError(caught, "Console turn failed");
+      } else {
+        setMessages((current) =>
+          appendFailedAssistantMessage(current, {
+            id: `${pendingPromptId}:failed`,
+            content: getErrorMessage(caught, "Console turn failed"),
+            createdAt: new Date().toISOString(),
+            details: getErrorDetails(caught),
+          }),
+        );
+      }
     } finally {
       setSending(false);
     }
   }, [
     handleConsoleError,
     input,
+    clientContext,
+    onTurnComplete,
     scope,
     selectedSessionId,
     sending,
@@ -222,22 +279,30 @@ export function useConsoleDrawerController({
       try {
         const result = await consoleApi.replayPromptHistory(promptId, {
           sessionId: selectedSessionId ?? undefined,
-          scope,
+          ...(clientContext ? { clientContext } : { scope }),
         });
         setSelectedSessionId(result.session.id);
         setSessions((current) => mergeSession(current, result.session));
         setPrompts((current) =>
-          mergePromptHistory(current, result.promptHistory)
+          mergePromptHistory(current, result.promptHistory),
         );
         setMessages((current) => appendTurnResult(current, result));
-        setSetupNeeded(false);
+        setSetupReason(null);
+        onTurnComplete?.(result);
       } catch (caught) {
-        handleConsoleError(caught, 'Prompt replay failed');
+        handleConsoleError(caught, "Prompt replay failed");
       } finally {
         setReplayingPromptId(null);
       }
     },
-    [handleConsoleError, scope, selectedSessionId, setSelectedSessionId]
+    [
+      handleConsoleError,
+      clientContext,
+      onTurnComplete,
+      scope,
+      selectedSessionId,
+      setSelectedSessionId,
+    ],
   );
 
   const deletePrompt = useCallback(
@@ -246,14 +311,14 @@ export function useConsoleDrawerController({
       try {
         await consoleApi.deletePromptHistory(promptId);
         setPrompts((current) =>
-          current.filter((prompt) => prompt.id !== promptId)
+          current.filter((prompt) => prompt.id !== promptId),
         );
-        setSetupNeeded(false);
+        setSetupReason(null);
       } catch (caught) {
-        handleConsoleError(caught, 'Prompt delete failed');
+        handleConsoleError(caught, "Prompt delete failed");
       }
     },
-    [handleConsoleError]
+    [handleConsoleError],
   );
 
   const togglePromptSaved = useCallback(
@@ -264,12 +329,12 @@ export function useConsoleDrawerController({
           saved: !prompt.saved,
         });
         setPrompts((current) => mergePromptHistory(current, result.prompt));
-        setSetupNeeded(false);
+        setSetupReason(null);
       } catch (caught) {
-        handleConsoleError(caught, 'Prompt update failed');
+        handleConsoleError(caught, "Prompt update failed");
       }
     },
-    [handleConsoleError]
+    [handleConsoleError],
   );
 
   const setPromptExpiration = useCallback(
@@ -280,12 +345,12 @@ export function useConsoleDrawerController({
           expiresAt: days === null ? null : getExpirationDate(days),
         });
         setPrompts((current) => mergePromptHistory(current, result.prompt));
-        setSetupNeeded(false);
+        setSetupReason(null);
       } catch (caught) {
-        handleConsoleError(caught, 'Prompt expiration update failed');
+        handleConsoleError(caught, "Prompt expiration update failed");
       }
     },
-    [handleConsoleError]
+    [handleConsoleError],
   );
 
   return {
@@ -301,7 +366,8 @@ export function useConsoleDrawerController({
     sending,
     replayingPromptId,
     error,
-    setupNeeded,
+    setupNeeded: setupReason !== null,
+    setupReason,
     inputRef,
     messagesEndRef,
     scope,

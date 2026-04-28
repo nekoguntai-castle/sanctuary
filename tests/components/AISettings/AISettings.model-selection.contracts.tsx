@@ -16,11 +16,13 @@ export function registerAISettingsModelSelectionContracts() {
 
     const getTabButton = (name: string) => {
       const tabs = screen.getAllByText(name);
-      const tabSpan = tabs.find(el => el.classList.contains('hidden'));
+      const tabSpan = tabs.find((el) => el.classList.contains('hidden'));
       return tabSpan?.closest('button');
     };
 
-    const navigateToSettingsTab = async (user: ReturnType<typeof userEvent.setup>) => {
+    const navigateToSettingsTab = async (
+      user: ReturnType<typeof userEvent.setup>,
+    ) => {
       await waitFor(() => {
         expect(screen.getByText('AI Settings')).toBeInTheDocument();
       });
@@ -40,9 +42,9 @@ export function registerAISettingsModelSelectionContracts() {
 
       expect(screen.getByText('Model')).toBeInTheDocument();
 
-      // The selected model appears in the dropdown button
+      // The selected model appears in the editable model field
       await waitFor(() => {
-        expect(screen.getAllByText('llama3.2:3b').length).toBeGreaterThanOrEqual(1);
+        expect(screen.getByLabelText('Model')).toHaveValue('llama3.2:3b');
       });
     });
 
@@ -102,6 +104,19 @@ export function registerAISettingsModelSelectionContracts() {
           expect(screen.getByText('Installed Models')).toBeInTheDocument();
         });
       }
+    });
+
+    it('should allow manual model entry for OpenAI-compatible providers', async () => {
+      const user = userEvent.setup();
+      render(<AISettings />);
+
+      await navigateToSettingsTab(user);
+
+      const modelInput = screen.getByLabelText('Model');
+      await user.clear(modelInput);
+      await user.type(modelInput, 'lmstudio-community/model');
+
+      expect(modelInput).toHaveValue('lmstudio-community/model');
     });
 
     it('should refresh models list', async () => {

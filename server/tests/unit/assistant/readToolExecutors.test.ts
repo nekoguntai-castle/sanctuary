@@ -33,6 +33,7 @@ const mocks = vi.hoisted(() => ({
   draftRepository: {
     findByWalletId: vi.fn(),
   },
+  getBitcoinNetworkStatus: vi.fn(),
 }));
 
 vi.mock('../../../src/repositories', () => ({
@@ -43,6 +44,10 @@ vi.mock('../../../src/repositories', () => ({
   policyRepository: mocks.policyRepository,
   intelligenceRepository: mocks.intelligenceRepository,
   draftRepository: mocks.draftRepository,
+}));
+
+vi.mock('../../../src/services/bitcoin/networkStatusService', () => ({
+  getBitcoinNetworkStatus: mocks.getBitcoinNetworkStatus,
 }));
 
 import { assistantReadToolRegistry, type AssistantToolContext } from '../../../src/assistant/tools';
@@ -344,12 +349,34 @@ describe('assistant read-tool executors', () => {
 
   it('returns public network data and fails closed on unsafe price conversions', async () => {
     const context = createContext();
+    mocks.getBitcoinNetworkStatus.mockResolvedValueOnce({
+      connected: true,
+      server: 'electrum.example',
+      protocol: '1.4',
+      blockHeight: 840123,
+      network: 'mainnet',
+      explorerUrl: 'https://mempool.space',
+      confirmationThreshold: 6,
+      deepConfirmationThreshold: 100,
+      pool: null,
+    });
     mocks.assistantReadRepository.getLatestFeeEstimate.mockResolvedValue({
       fastest: 8,
       halfHour: 4,
       hour: 2,
       createdAt: new Date('2026-04-26T11:55:00.000Z'),
     });
+
+    const network = await assistantReadToolRegistry.execute('get_bitcoin_network_status', {}, context);
+    expect(network.data.status).toMatchObject({
+      connected: true,
+      blockHeight: 840123,
+      network: 'mainnet',
+    });
+    expect(network.facts.items).toEqual(expect.arrayContaining([
+      { label: 'block_height', value: 840123 },
+    ]));
+    expect(context.authorizeWalletAccess).not.toHaveBeenCalled();
 
     const fees = await assistantReadToolRegistry.execute('get_fee_estimates', {}, context);
     expect(fees.data.fees).toMatchObject({ available: true, fastest: 8, stale: false });
@@ -428,5 +455,48 @@ describe('assistant read-tool executors', () => {
         context
       )
     ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it('returns a closed network-status envelope when the Bitcoin status read fails', async () => {
+    const context = createContext();
+    mocks.getBitcoinNetworkStatus.mockRejectedValueOnce(new Error('electrum unavailable'));
+
+    const network = await assistantReadToolRegistry.execute('get_bitcoin_network_status', {}, context);
+
+    expect(network.data.status).toEqual({
+      connected: false,
+      error: 'electrum unavailable',
+    });
+    expect(network.warnings).toContain('bitcoin_network_status_unavailable');
+    expect(network.facts.items).toEqual(expect.arrayContaining([
+      { label: 'connected', value: false },
+      { label: 'block_height', value: null },
+    ]));
+    expect(context.authorizeWalletAccess).not.toHaveBeenCalled();
+  });
+
+  it('summarizes network status without block height when the backend omits height data', async () => {
+    const context = createContext();
+    mocks.getBitcoinNetworkStatus.mockResolvedValueOnce({
+      connected: true,
+      server: 'electrum.example',
+      protocol: '1.4',
+      blockHeight: undefined,
+      network: 'mainnet',
+      explorerUrl: 'https://mempool.space',
+      confirmationThreshold: 6,
+      deepConfirmationThreshold: 100,
+      pool: null,
+    });
+
+    const network = await assistantReadToolRegistry.execute('get_bitcoin_network_status', {}, context);
+
+    expect(network.facts.summary).toBe(
+      'Bitcoin network status returned without a block height.'
+    );
+    expect(network.facts.items).toEqual(expect.arrayContaining([
+      { label: 'block_height', value: null },
+    ]));
+    expect(context.authorizeWalletAccess).not.toHaveBeenCalled();
   });
 });

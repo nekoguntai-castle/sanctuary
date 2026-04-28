@@ -289,6 +289,35 @@ describe('Request Timeout Middleware', () => {
         expect(res.status).toHaveBeenCalledWith(408);
       });
 
+      it('should apply 280s timeout to Console turn routes', () => {
+        req.path = '/api/v1/console/turns';
+
+        requestTimeout(req, res, next);
+
+        vi.advanceTimersByTime(279000);
+        expect(res.status).not.toHaveBeenCalled();
+
+        vi.advanceTimersByTime(2000);
+        expect(res.status).toHaveBeenCalledWith(408);
+        expect(res.json).toHaveBeenCalledWith(
+          expect.objectContaining({
+            timeout: '280000ms',
+          })
+        );
+      });
+
+      it('should apply 280s timeout to Console replay routes', () => {
+        req.path = '/api/v1/console/prompts/prompt-1/replay';
+
+        requestTimeout(req, res, next);
+
+        vi.advanceTimersByTime(279000);
+        expect(res.status).not.toHaveBeenCalled();
+
+        vi.advanceTimersByTime(2000);
+        expect(res.status).toHaveBeenCalledWith(408);
+      });
+
       it('should log reason for extended timeout routes', () => {
         req.path = '/api/v1/admin/backup/create';
 

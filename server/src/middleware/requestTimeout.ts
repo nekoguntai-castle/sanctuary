@@ -18,6 +18,8 @@ const log = createLogger('MW:TIMEOUT');
  * Default request timeout in milliseconds
  */
 const DEFAULT_TIMEOUT_MS = 30000; // 30 seconds
+const AI_REQUEST_TIMEOUT_MS = 125000; // local/LAN models can be slow
+const CONSOLE_REQUEST_TIMEOUT_MS = 280000; // planner + tools + synthesis
 
 /**
  * Routes that need longer timeouts (pattern -> timeout ms)
@@ -37,6 +39,9 @@ const EXTENDED_TIMEOUT_ROUTES: Array<{
   // AI analysis endpoints
   { pattern: /^\/api\/v1\/ai\//, timeout: 60000, reason: 'AI analysis' },
   { pattern: /^\/internal\/ai\//, timeout: 60000, reason: 'AI analysis' },
+  // Console turn/replay routes wait for planning, read-only tool execution, and synthesis
+  { pattern: /^\/api\/v1\/console\/turns$/, timeout: CONSOLE_REQUEST_TIMEOUT_MS, reason: 'Console AI turn' },
+  { pattern: /^\/api\/v1\/console\/prompts\/[^/]+\/replay$/, timeout: CONSOLE_REQUEST_TIMEOUT_MS, reason: 'Console AI replay' },
 ];
 
 /**

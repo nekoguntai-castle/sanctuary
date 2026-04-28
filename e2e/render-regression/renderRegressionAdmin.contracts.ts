@@ -230,7 +230,7 @@ export async function renderAdminAiRouteRendersStatusWorkflowShell({ page }: { p
   await page.goto('/#/admin/ai');
 
   await expect(main.getByRole('heading', { name: 'AI Settings' })).toBeVisible();
-  await expect(main.getByText('Isolated AI Architecture')).toBeVisible();
+  await expect(main.getByText('AI Data Boundary')).toBeVisible();
   await expect(main.getByText('Enable AI Features')).toBeVisible();
   await expect(main.getByText('Bundled Container: Stopped')).toBeVisible();
   await expect(main.getByText('AI Status')).toBeVisible();

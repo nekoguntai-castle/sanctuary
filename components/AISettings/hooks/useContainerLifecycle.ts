@@ -5,14 +5,14 @@
  * (including the confirmation modal flow), and auto-detection after container start.
  */
 
-import { useState } from 'react';
-import * as adminApi from '../../../src/api/admin';
-import * as aiApi from '../../../src/api/ai';
-import { createLogger } from '../../../utils/logger';
-import { extractErrorMessage } from '../../../utils/errorHandler';
-import { invalidateAIStatusCache } from '../../../hooks/useAIStatus';
+import { useState } from "react";
+import * as adminApi from "../../../src/api/admin";
+import * as aiApi from "../../../src/api/ai";
+import { createLogger } from "../../../utils/logger";
+import { extractErrorMessage } from "../../../utils/errorHandler";
+import { invalidateAIStatusCache } from "../../../hooks/useAIStatus";
 
-const log = createLogger('AISettings:useContainerLifecycle');
+const log = createLogger("AISettings:useContainerLifecycle");
 
 interface UseContainerLifecycleParams {
   aiEnabled: boolean;
@@ -45,10 +45,10 @@ interface UseContainerLifecycleReturn {
 }
 
 export function toRunningContainerStatus(
-  containerStatus: aiApi.OllamaContainerStatus | null
+  containerStatus: aiApi.OllamaContainerStatus | null,
 ): aiApi.OllamaContainerStatus | null {
   return containerStatus
-    ? { ...containerStatus, exists: true, running: true, status: 'running' }
+    ? { ...containerStatus, exists: true, running: true, status: "running" }
     : null;
 }
 
@@ -62,7 +62,7 @@ export function useContainerLifecycle({
 }: UseContainerLifecycleParams): UseContainerLifecycleReturn {
   // Container state
   const [isStartingContainer, setIsStartingContainer] = useState(false);
-  const [containerMessage, setContainerMessage] = useState('');
+  const [containerMessage, setContainerMessage] = useState("");
 
   // Toggle save state
   const [isSaving, setIsSaving] = useState(false);
@@ -77,7 +77,7 @@ export function useContainerLifecycle({
       const status = await aiApi.getOllamaContainerStatus();
       setContainerStatus(status);
     } catch (error) {
-      log.error('Failed to refresh container status', { error });
+      log.error("Failed to refresh container status", { error });
     }
   };
 
@@ -109,7 +109,7 @@ export function useContainerLifecycle({
     setIsSaving(true);
     setSaveError(null);
     setSaveSuccess(false);
-    setContainerMessage('');
+    setContainerMessage("");
 
     try {
       // Enable/disable the AI setting — no container management here
@@ -120,11 +120,11 @@ export function useContainerLifecycle({
       setSaveSuccess(true);
       setTimeout(() => {
         setSaveSuccess(false);
-        setContainerMessage('');
+        setContainerMessage("");
       }, 5000);
     } catch (error) {
-      log.error('Failed to toggle AI', { error });
-      setSaveError('Failed to update AI settings');
+      log.error("Failed to toggle AI", { error });
+      setSaveError("Failed to update AI settings");
     } finally {
       setIsSaving(false);
     }
@@ -132,17 +132,19 @@ export function useContainerLifecycle({
 
   const handleStartContainer = async () => {
     setIsStartingContainer(true);
-    setContainerMessage('Starting AI container...');
+    setContainerMessage("Starting AI container...");
 
     try {
       const result = await aiApi.startOllamaContainer();
       if (result.success) {
-        setContainerMessage('Container started! Waiting for Ollama to be ready...');
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        setContainerMessage(
+          "Container started! Waiting for Ollama to be ready...",
+        );
+        await new Promise((resolve) => setTimeout(resolve, 3000));
         await refreshContainerStatus();
 
         // Auto-detect after starting
-        setContainerMessage('Detecting Ollama endpoint...');
+        setContainerMessage("Detecting bundled Ollama endpoint...");
         const detectResult = await aiApi.detectOllama();
         if (detectResult.found && detectResult.endpoint) {
           setAiEndpoint(detectResult.endpoint);
@@ -150,40 +152,46 @@ export function useContainerLifecycle({
             setAiModel(detectResult.models[0]);
             setContainerMessage(`Connected with ${detectResult.models[0]}`);
           } else {
-            setContainerMessage('Connected! Go to the Models tab to pull a model.');
+            setContainerMessage(
+              "Connected! Go to the Models tab to pull a model.",
+            );
           }
           setTimeout(loadModels, 500);
         } else {
-          setContainerMessage('Container running. Click Detect to configure.');
+          setContainerMessage("Container running. Click Detect to configure.");
         }
       } else {
         setContainerMessage(`Failed: ${result.message}`);
       }
     } catch (error) {
-      log.error('Failed to start container', { error });
-      setContainerMessage(`Error: ${extractErrorMessage(error, 'Failed to start')}`);
+      log.error("Failed to start container", { error });
+      setContainerMessage(
+        `Error: ${extractErrorMessage(error, "Failed to start")}`,
+      );
     } finally {
       setIsStartingContainer(false);
-      setTimeout(() => setContainerMessage(''), 8000);
+      setTimeout(() => setContainerMessage(""), 8000);
     }
   };
 
   const handleStopContainer = async () => {
-    setContainerMessage('Stopping AI container...');
+    setContainerMessage("Stopping AI container...");
 
     try {
       const result = await aiApi.stopOllamaContainer();
       if (result.success) {
-        setContainerMessage('Container stopped');
+        setContainerMessage("Container stopped");
         await refreshContainerStatus();
       } else {
         setContainerMessage(`Failed: ${result.message}`);
       }
     } catch (error) {
-      log.error('Failed to stop container', { error });
-      setContainerMessage(`Error: ${extractErrorMessage(error, 'Failed to stop')}`);
+      log.error("Failed to stop container", { error });
+      setContainerMessage(
+        `Error: ${extractErrorMessage(error, "Failed to stop")}`,
+      );
     } finally {
-      setTimeout(() => setContainerMessage(''), 5000);
+      setTimeout(() => setContainerMessage(""), 5000);
     }
   };
 

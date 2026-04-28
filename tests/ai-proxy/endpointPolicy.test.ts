@@ -46,6 +46,10 @@ describe("AI proxy endpoint policy", () => {
         .allowed,
     ).toBe(true);
     expect(
+      evaluateProviderEndpoint("http://10.114.123.214:1234", defaultOptions)
+        .allowed,
+    ).toBe(true);
+    expect(
       evaluateProviderEndpoint("http://172.20.0.2:11434", defaultOptions)
         .allowed,
     ).toBe(true);

@@ -34,7 +34,7 @@ vi.mock('../../hooks/queries/useDevices', () => ({
 }));
 
 vi.mock('../../hooks/useAppCapabilities', () => ({
-  useAppCapabilities: () => ({ intelligence: false }),
+  useAppCapabilities: () => ({ console: true, intelligence: false }),
 }));
 
 // Mock APIs

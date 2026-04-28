@@ -2,6 +2,7 @@ import type React from 'react';
 import type {
   ConsolePromptHistory,
   ConsoleScope,
+  ConsoleSetupReason,
   ConsoleSession,
   ConsoleTool,
   ConsoleToolTrace,
@@ -20,6 +21,7 @@ export interface ConsoleMessage {
   role: 'user' | 'assistant';
   content: string;
   createdAt: string;
+  details?: string;
   state?: string;
   traces?: ConsoleToolTrace[];
   promptHistoryId?: string | null;
@@ -39,6 +41,7 @@ export interface ConsoleDrawerController {
   replayingPromptId: string | null;
   error: string | null;
   setupNeeded: boolean;
+  setupReason: ConsoleSetupReason | null;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
   scope: ConsoleScope;

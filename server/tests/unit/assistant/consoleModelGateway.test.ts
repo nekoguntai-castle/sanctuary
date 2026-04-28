@@ -49,6 +49,7 @@ describe('console model gateway', () => {
   });
 
   it('plans tools through the service-authenticated AI proxy without forwarding user bearer tokens', async () => {
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout');
     mocks.fetch.mockResolvedValue({
       ok: true,
       json: vi.fn().mockResolvedValue({
@@ -89,6 +90,48 @@ describe('console model gateway', () => {
     );
     expect(mocks.buildAIProxyJsonHeaders).toHaveBeenCalledWith();
     expect(mocks.fetch.mock.calls[0][1].headers).not.toHaveProperty('Authorization');
+    expect(timeoutSpy).toHaveBeenCalledWith(125000);
+    timeoutSpy.mockRestore();
+  });
+
+  it('uses a configured positive Console gateway timeout when provided', async () => {
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout');
+    const previousTimeout = process.env.CONSOLE_GATEWAY_TIMEOUT_MS;
+    process.env.CONSOLE_GATEWAY_TIMEOUT_MS = '2500';
+    vi.resetModules();
+    const gatewayWithConfiguredTimeout = await import(
+      '../../../src/assistant/console/modelGateway'
+    );
+    mocks.fetch.mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({ toolCalls: [], warnings: [] }),
+    });
+
+    try {
+      await gatewayWithConfiguredTimeout.planConsoleTools({
+        prompt: 'what are fees?',
+        scope: { kind: 'general' },
+        maxToolCalls: 1,
+        tools: [{
+          name: 'get_fee_estimates',
+          title: 'Fee estimates',
+          description: 'Read fees',
+          sensitivity: 'public',
+          requiredScope: 'none',
+          inputFields: [],
+        }],
+      });
+
+      expect(timeoutSpy).toHaveBeenCalledWith(2500);
+    } finally {
+      if (previousTimeout === undefined) {
+        delete process.env.CONSOLE_GATEWAY_TIMEOUT_MS;
+      } else {
+        process.env.CONSOLE_GATEWAY_TIMEOUT_MS = previousTimeout;
+      }
+      timeoutSpy.mockRestore();
+      vi.resetModules();
+    }
   });
 
   it('defaults missing plan arrays to empty arrays', async () => {
@@ -184,7 +227,11 @@ describe('console model gateway', () => {
   });
 
   it('converts failed proxy responses into service unavailable errors', async () => {
-    mocks.fetch.mockResolvedValue({ ok: false, status: 502 });
+    mocks.fetch.mockResolvedValue({
+      ok: false,
+      status: 502,
+      json: vi.fn().mockResolvedValue({ error: 'AI endpoint not available' }),
+    });
 
     await expect(
       synthesizeConsoleAnswer({
@@ -192,7 +239,75 @@ describe('console model gateway', () => {
         scope: { kind: 'general' },
         toolResults: [],
       })
-    ).rejects.toMatchObject({ statusCode: 503 });
+    ).rejects.toMatchObject({
+      message:
+        'AI proxy /console/synthesize request failed: AI endpoint not available',
+      statusCode: 503,
+      details: {
+        path: '/console/synthesize',
+        proxyError: 'AI endpoint not available',
+        status: 502,
+      },
+    });
+  });
+
+  it('uses proxy message fields when failed proxy responses omit error fields', async () => {
+    mocks.fetch.mockResolvedValue({
+      ok: false,
+      status: 504,
+      json: vi.fn().mockResolvedValue({ message: 'Provider timed out' }),
+    });
+
+    await expect(
+      synthesizeConsoleAnswer({
+        prompt: 'summarize',
+        scope: { kind: 'general' },
+        toolResults: [],
+      })
+    ).rejects.toMatchObject({
+      message:
+        'AI proxy /console/synthesize request failed: Provider timed out',
+      details: {
+        proxyError: 'Provider timed out',
+        status: 504,
+      },
+    });
+  });
+
+  it('falls back to a generic proxy failure when proxy error JSON is empty or malformed', async () => {
+    mocks.fetch.mockResolvedValueOnce({
+      ok: false,
+      status: 502,
+      json: vi.fn().mockResolvedValue({}),
+    });
+
+    await expect(
+      synthesizeConsoleAnswer({
+        prompt: 'summarize',
+        scope: { kind: 'general' },
+        toolResults: [],
+      })
+    ).rejects.toMatchObject({
+      message: 'AI proxy /console/synthesize request failed',
+      details: { status: 502 },
+    });
+
+    mocks.fetch.mockResolvedValueOnce({
+      ok: false,
+      status: 503,
+      json: vi.fn().mockRejectedValue(new Error('invalid json')),
+    });
+
+    await expect(
+      synthesizeConsoleAnswer({
+        prompt: 'summarize',
+        scope: { kind: 'general' },
+        toolResults: [],
+      })
+    ).rejects.toMatchObject({
+      message: 'AI proxy /console/synthesize request failed',
+      details: { status: 503 },
+    });
   });
 
   it('converts network errors into service unavailable errors', async () => {

@@ -69,6 +69,10 @@ interface RetryOptions {
   enabled?: boolean;
 }
 
+interface ApiRequestOptions extends RequestInit {
+  timeoutMs?: number;
+}
+
 /**
  * Sleep for specified milliseconds with jitter
  */
@@ -205,7 +209,7 @@ export class ApiClient {
    */
   private async request<T>(
     endpoint: string,
-    options: RequestInit = {},
+    options: ApiRequestOptions = {},
     retryOptions: RetryOptions = {},
     isRefreshRetry = false,
   ): Promise<T> {
@@ -227,11 +231,14 @@ export class ApiClient {
     attachCsrfHeader(headers, method);
 
     const performRequest = async (): Promise<T> => {
+      const { timeoutMs, ...fetchOptions } = options;
       const response = await fetch(url, {
-        ...options,
+        ...fetchOptions,
         credentials: 'include',
         headers,
-        signal: options.signal ?? AbortSignal.timeout(DEFAULT_REQUEST_TIMEOUT_MS),
+        signal:
+          fetchOptions.signal ??
+          AbortSignal.timeout(timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS),
       });
 
       // Every response may carry X-Access-Expires-At (auth responses do,
@@ -330,7 +337,11 @@ export class ApiClient {
   async post<T>(
     endpoint: string,
     data?: unknown,
-    options?: { headers?: Record<string, string>; retry?: RetryOptions }
+    options?: {
+      headers?: Record<string, string>;
+      retry?: RetryOptions;
+      timeoutMs?: number;
+    }
   ): Promise<T> {
     return this.request<T>(
       endpoint,
@@ -338,6 +349,7 @@ export class ApiClient {
         method: 'POST',
         body: data ? JSON.stringify(data) : undefined,
         headers: options?.headers,
+        timeoutMs: options?.timeoutMs,
       },
       options?.retry
     );
@@ -375,7 +387,7 @@ export class ApiClient {
    * DELETE request
    */
   async delete<T>(endpoint: string, data?: unknown, retryOptions?: RetryOptions): Promise<T> {
-    const requestOptions: RequestInit = {
+    const requestOptions: ApiRequestOptions = {
       method: 'DELETE',
     };
     if (data !== undefined) {

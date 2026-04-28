@@ -70,6 +70,7 @@ const buildProps = (overrides: Partial<React.ComponentProps<typeof SidebarConten
   getDeviceCount: vi.fn(() => 0),
   onVersionClick: vi.fn(),
   onOpenConsole: vi.fn(),
+  onOpenShortcuts: vi.fn(),
   ...overrides,
 });
 
@@ -144,24 +145,50 @@ describe('SidebarContent branch coverage', () => {
     expect(screen.getByText('Intelligence')).toBeInTheDocument();
   });
 
-  it('places the Console quick action directly after Dashboard', () => {
-    const props = buildProps({ capabilities: { intelligence: true } });
+  it('places sidebar actions directly after Dashboard with aligned section text', () => {
+    const props = buildProps({ capabilities: { console: true, intelligence: true } });
     render(<SidebarContent {...props} />);
 
     const nav = screen.getByRole('navigation');
     const dashboard = screen.getByRole('button', { name: 'Dashboard' });
-    const consoleButton = screen.getByRole('button', { name: 'Open Sanctuary Console' });
+    const consoleButton = screen.getByRole('button', { name: 'Open AI Console' });
+    const shortcutsButton = screen.getByRole('button', { name: 'Show keyboard shortcuts' });
     const intelligence = screen.getByRole('button', { name: 'Intelligence' });
 
-    expect(consoleButton.getAttribute('title')).toContain('Open Sanctuary Console');
-    expect(Array.from(nav.querySelectorAll('button')).slice(0, 3)).toEqual([
+    expect(screen.getByText('Actions')).toHaveClass(
+      'px-4',
+      'text-[9px]',
+      'uppercase'
+    );
+    expect(consoleButton.getAttribute('title')).toContain('Open AI Console');
+    expect(shortcutsButton.getAttribute('title')).toContain(
+      'Show keyboard shortcuts'
+    );
+    expect(Array.from(nav.querySelectorAll('button')).slice(0, 4)).toEqual([
       dashboard,
       consoleButton,
+      shortcutsButton,
       intelligence,
     ]);
 
     fireEvent.click(consoleButton);
     expect(props.onOpenConsole).toHaveBeenCalledTimes(1);
+    fireEvent.click(shortcutsButton);
+    expect(props.onOpenShortcuts).toHaveBeenCalledTimes(1);
+  });
+
+  it('hides only the Console quick action when Console is unavailable', () => {
+    const props = buildProps({ capabilities: { console: false, intelligence: true } });
+    render(<SidebarContent {...props} />);
+
+    expect(screen.getByText('Actions')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Open AI Console' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Show keyboard shortcuts' })
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Intelligence' })).toBeInTheDocument();
   });
 
   it('hides Intelligence nav item when its required capability is unavailable', () => {

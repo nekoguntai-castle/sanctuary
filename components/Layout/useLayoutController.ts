@@ -139,6 +139,8 @@ export const useLayoutController = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [expanded, setExpanded] = useState<ExpandedState>(() => getExpandedState(location.pathname));
   const [showVersionModal, setShowVersionModal] = useState(false);
+  const [showKeyboardShortcutsModal, setShowKeyboardShortcutsModal] =
+    useState(false);
   const [isConsoleOpen, setIsConsoleOpen] = useState(false);
   const [versionInfo, setVersionInfo] = useState<adminApi.VersionInfo | null>(null);
   const [versionLoading, setVersionLoading] = useState(false);
@@ -214,19 +216,39 @@ export const useLayoutController = () => {
   }, []);
 
   const openConsole = useCallback(() => {
+    if (!capabilities.console) return;
     setIsMobileMenuOpen(false);
     setIsConsoleOpen(true);
-  }, []);
+  }, [capabilities.console]);
 
   const closeConsole = useCallback(() => {
     setIsConsoleOpen(false);
   }, []);
 
-  const shortcutBindings = useMemo(() => [{
-    id: 'console.open' as const,
-    enabled: !!user,
-    handler: openConsole,
-  }], [openConsole, user]);
+  const openKeyboardShortcuts = useCallback(() => {
+    setIsMobileMenuOpen(false);
+    setShowKeyboardShortcutsModal(true);
+  }, []);
+
+  const closeKeyboardShortcuts = useCallback(() => {
+    setShowKeyboardShortcutsModal(false);
+  }, []);
+
+  const shortcutBindings = useMemo(
+    () => [
+      {
+        id: 'console.open' as const,
+        enabled: !!user && !!capabilities.console,
+        handler: openConsole,
+      },
+      {
+        id: 'shortcuts.open' as const,
+        enabled: !!user,
+        handler: openKeyboardShortcuts,
+      },
+    ],
+    [capabilities.console, openConsole, openKeyboardShortcuts, user]
+  );
 
   useAppShortcuts(shortcutBindings);
 
@@ -240,6 +262,7 @@ export const useLayoutController = () => {
     isMobileMenuOpen,
     isConsoleOpen,
     showVersionModal,
+    showKeyboardShortcutsModal,
     versionInfo,
     versionLoading,
     copiedAddress,
@@ -249,6 +272,8 @@ export const useLayoutController = () => {
     setShowVersionModal,
     openConsole,
     closeConsole,
+    openKeyboardShortcuts,
+    closeKeyboardShortcuts,
     toggleSection,
     handleVersionClick,
     copyToClipboard,

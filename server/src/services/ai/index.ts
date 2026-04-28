@@ -25,13 +25,14 @@ export type { TransactionContext, QueryResult } from './types';
 export { forceSyncConfig } from './config';
 
 // Health
-export { isEnabled, isContainerAvailable, checkHealth } from './health';
+export { getConfigStatus, isEnabled, isContainerAvailable, checkHealth } from './health';
 
 // Features
 export {
   suggestTransactionLabel,
   executeNaturalQuery,
   detectOllama,
+  detectProviderEndpoint,
   listModels,
   pullModel,
   deleteModel,
@@ -39,11 +40,12 @@ export {
 
 // Re-import for the aggregated service object
 import { forceSyncConfig } from './config';
-import { isEnabled, isContainerAvailable, checkHealth } from './health';
+import { getConfigStatus, isEnabled, isContainerAvailable, checkHealth } from './health';
 import {
   suggestTransactionLabel,
   executeNaturalQuery,
   detectOllama,
+  detectProviderEndpoint,
   listModels,
   pullModel,
   deleteModel,
@@ -53,12 +55,14 @@ import {
  * AI Service - exported for use in API routes
  */
 export const aiService = {
+  getConfigStatus,
   isEnabled,
   isContainerAvailable,
   checkHealth,
   suggestTransactionLabel,
   executeNaturalQuery,
   detectOllama,
+  detectProviderEndpoint,
   listModels,
   pullModel,
   deleteModel,

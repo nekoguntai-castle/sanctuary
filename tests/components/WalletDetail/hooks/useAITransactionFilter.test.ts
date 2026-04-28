@@ -171,6 +171,15 @@ describe('useAITransactionFilter', () => {
     });
 
     expect(result.current.filteredTransactions.map((tx) => tx.txid)).toEqual(['txid-1', 'txid-2', 'txid-3']);
+
+    act(() => {
+      result.current.setAiQueryFilter({
+        type: 'transactions',
+        filter: { amount: { between: [1_000, 2_000] } as any },
+      });
+    });
+
+    expect(result.current.filteredTransactions.map((tx) => tx.txid)).toEqual(['txid-1', 'txid-2', 'txid-3']);
   });
 
   it('filters by exact confirmations value and excludes non-matching transactions', () => {
@@ -184,6 +193,100 @@ describe('useAITransactionFilter', () => {
     });
 
     expect(result.current.filteredTransactions.map((tx) => tx.txid)).toEqual(['txid-2']);
+  });
+
+  it('accepts Console-style transaction type aliases from query_transactions plans', () => {
+    const { result } = renderHook(() => useAITransactionFilter({ transactions: transactions as any }));
+
+    act(() => {
+      result.current.setAiQueryFilter({
+        type: 'transactions',
+        filter: { type: 'received' },
+      });
+    });
+    expect(result.current.filteredTransactions.map((tx) => tx.txid)).toEqual(['txid-1']);
+
+    act(() => {
+      result.current.setAiQueryFilter({
+        type: 'transactions',
+        filter: { type: 'sent' },
+      });
+    });
+    expect(result.current.filteredTransactions.map((tx) => tx.txid)).toEqual(['txid-2']);
+  });
+
+  it('filters by AI date ranges using the same date parsing as Console route filters', () => {
+    const datedTransactions = [
+      { ...transactions[0], txid: 'jan', timestamp: Date.UTC(2020, 0, 31, 23, 59, 59, 999) },
+      { ...transactions[1], txid: 'feb', timestamp: Date.UTC(2020, 1, 1, 0, 0, 0, 0) },
+      { ...transactions[2], txid: 'jun', timestamp: Date.UTC(2020, 5, 30, 23, 59, 59, 999) },
+      { ...transactions[0], id: 'tx-4', txid: 'jul', timestamp: Date.UTC(2020, 6, 1, 0, 0, 0, 0) },
+    ];
+    const { result } = renderHook(() =>
+      useAITransactionFilter({ transactions: datedTransactions as any })
+    );
+
+    act(() => {
+      result.current.setAiQueryFilter({
+        type: 'transactions',
+        filter: { dateFrom: '2020-02-01', dateTo: '2020-06-30' },
+      });
+    });
+
+    expect(result.current.filteredTransactions.map((tx) => tx.txid)).toEqual(['feb', 'jun']);
+  });
+
+  it('falls back to blockTime for date filters and excludes undated transactions', () => {
+    const blockTimeTransactions = [
+      {
+        ...transactions[0],
+        id: 'tx-blocktime',
+        txid: 'blocktime',
+        timestamp: undefined,
+        blockTime: '2020-03-15T12:00:00.000Z',
+      },
+      {
+        ...transactions[1],
+        id: 'tx-invalid-blocktime',
+        txid: 'invalid-blocktime',
+        timestamp: undefined,
+        blockTime: 'not-a-date',
+      },
+      {
+        ...transactions[2],
+        id: 'tx-undated',
+        txid: 'undated',
+        timestamp: undefined,
+        blockTime: undefined,
+      },
+    ];
+    const { result } = renderHook(() =>
+      useAITransactionFilter({ transactions: blockTimeTransactions as any })
+    );
+
+    act(() => {
+      result.current.setAiQueryFilter({
+        type: 'transactions',
+        filter: { dateFrom: '2020-03-01', dateTo: '2020-03-31' },
+      });
+    });
+
+    expect(result.current.filteredTransactions.map((tx) => tx.txid)).toEqual([
+      'blocktime',
+    ]);
+  });
+
+  it('supports console-style min/max amount filters', () => {
+    const { result } = renderHook(() => useAITransactionFilter({ transactions: transactions as any }));
+
+    act(() => {
+      result.current.setAiQueryFilter({
+        type: 'transactions',
+        filter: { minAmount: '13000', maxAmount: 50_000 },
+      });
+    });
+
+    expect(result.current.filteredTransactions.map((tx) => tx.txid)).toEqual(['txid-1']);
   });
 
   it('applies sort and limit', () => {

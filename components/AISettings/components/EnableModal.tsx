@@ -1,5 +1,5 @@
-import { Brain, X } from 'lucide-react';
-import type { EnableModalProps } from '../types';
+import { Brain, X } from "lucide-react";
+import type { EnableModalProps } from "../types";
 
 export function EnableModal({
   showEnableModal,
@@ -40,22 +40,36 @@ export function EnableModal({
         <div className="p-4 space-y-4">
           <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
             <p className="text-sm text-blue-800 dark:text-blue-200">
-              AI features use an Ollama-compatible language model. You can run Ollama locally (bundled container or host-installed) or point to a remote instance on your network.
+              AI features use an OpenAI-compatible chat endpoint. You can use
+              bundled Ollama, host-installed Ollama, LM Studio, llama.cpp, or
+              another trusted local or LAN provider.
             </p>
           </div>
 
           <div className="text-xs text-sanctuary-500 space-y-2">
-            <div><strong>Deployment options:</strong></div>
+            <div>
+              <strong>Deployment options:</strong>
+            </div>
             <ul className="list-disc list-inside ml-2 space-y-1">
-              <li><strong>Bundled container</strong> — start the local Ollama container from the Status tab after enabling</li>
-              <li><strong>Host-installed</strong> — use Ollama running directly on your host OS</li>
-              <li><strong>Remote server</strong> — point to Ollama on another machine on your network</li>
+              <li>
+                <strong>Bundled Ollama</strong> — start the local container from
+                the Status tab after enabling
+              </li>
+              <li>
+                <strong>Host Ollama</strong> — use Ollama running directly on
+                your host OS
+              </li>
+              <li>
+                <strong>OpenAI-compatible server</strong> — use LM Studio,
+                llama.cpp, or another LAN endpoint
+              </li>
             </ul>
           </div>
 
           <div className="p-3 rounded-lg surface-secondary">
             <p className="text-xs text-sanctuary-500">
-              After enabling, go to the <strong>Settings</strong> tab to configure your Ollama endpoint and select a model.
+              After enabling, go to the <strong>Settings</strong> tab to choose
+              the provider type, configure the endpoint, and select a model.
             </p>
           </div>
         </div>

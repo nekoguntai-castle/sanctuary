@@ -69,9 +69,9 @@ Three independent auth mechanisms apply in sequence:
 | `POST`   | `/chat`          |     yes      | Multi-turn treasury advisor chat                                       |
 | `POST`   | `/test`          |     yes      | Probe AI reachability                                                  |
 | `POST`   | `/detect-ollama` |     yes      | Scan common Ollama endpoints, return first reachable                   |
-| `POST`   | `/check-ollama`  |     yes      | Verify configured endpoint is Ollama-compatible                        |
-| `GET`    | `/list-models`   |     yes      | List models available at configured Ollama endpoint                    |
-| `POST`   | `/pull-model`    |     yes      | Start async model download; streams progress to backend                |
+| `POST`   | `/check-ollama`  |     yes      | Legacy route name; verifies the configured provider endpoint           |
+| `GET`    | `/list-models`   |     yes      | List models from Ollama `/api/tags` or OpenAI-compatible `/v1/models`  |
+| `POST`   | `/pull-model`    |     yes      | Start async Ollama model download; streams progress to backend         |
 | `DELETE` | `/delete-model`  |     yes      | Remove a model from Ollama                                             |
 
 ---
@@ -114,13 +114,14 @@ Because the proxy runs as a single container, the store is not distributed. This
 
 ## AI Provider Protocol
 
-The proxy speaks the OpenAI chat completions wire format (`POST /v1/chat/completions`). Ollama endpoints are auto-normalized:
+The proxy speaks the OpenAI chat completions wire format (`POST /v1/chat/completions`). Provider endpoints are auto-normalized:
 
 - `http://ollama:11434` → `http://ollama:11434/v1/chat/completions`
 - `http://ollama:11434/v1` → same
 - `http://ollama:11434/v1/chat/completions` → unchanged
+- `http://lmstudio.local:1234/v1` → `http://lmstudio.local:1234/v1/chat/completions`
 
-This makes the proxy compatible with Ollama, llama.cpp with an OpenAI adapter, and any OpenAI-compatible cloud provider without code changes.
+This makes the proxy compatible with Ollama, LM Studio, llama.cpp with an OpenAI adapter, and OpenAI-compatible cloud providers without code changes.
 
 **Timeouts**: standard requests abort at `AI_REQUEST_TIMEOUT_MS` (30 s default); treasury analysis uses `AI_ANALYSIS_TIMEOUT_MS` (120 s default) because complex prompts take longer.
 

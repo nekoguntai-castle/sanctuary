@@ -89,6 +89,15 @@ export interface AIDetectOllamaResponse {
   message?: string;
 }
 
+export interface AIDetectProviderResponse {
+  found: boolean;
+  providerType?: "ollama" | "openai-compatible";
+  endpoint?: string;
+  models?: Array<{ name: string; size: number; modifiedAt: string }>;
+  message?: string;
+  blockedReason?: string;
+}
+
 export interface AIListModelsResponse {
   models: Array<{ name: string; size: number; modifiedAt: string }>;
   error?: string;

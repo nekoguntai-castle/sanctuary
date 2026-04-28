@@ -11,7 +11,6 @@
  */
 
 import { Router } from 'express';
-import { rateLimitByUser } from '../../middleware/rateLimit';
 import { createStatusRouter } from './status';
 import { createFeaturesRouter } from './features';
 import { createModelsRouter } from './models';
@@ -20,13 +19,10 @@ import { createSystemResourcesRouter } from './systemResources';
 
 const router = Router();
 
-// Rate limiting: prevent abuse of AI endpoints
-const aiRateLimiter = rateLimitByUser('ai:analyze');
-
 // Mount sub-routers
-router.use(createStatusRouter(aiRateLimiter));
-router.use(createFeaturesRouter(aiRateLimiter));
-router.use(createModelsRouter(aiRateLimiter));
+router.use(createStatusRouter());
+router.use(createFeaturesRouter());
+router.use(createModelsRouter());
 router.use(createContainerRouter());
 router.use(createSystemResourcesRouter());
 

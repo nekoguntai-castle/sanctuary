@@ -1,3 +1,364 @@
+# Active Task: PR 206 Merge Delivery 2026-04-28
+
+Status: in progress
+
+Goal: finish delivery of PR #206 through the merge queue after full coverage failed on the merge-group branch.
+
+## Plan
+
+- [x] Identify and fix the remaining backend coverage miss reproduced by `npm run test:backend:coverage`.
+- [x] Reproduce the merge queue frontend coverage failure and fix the missing coverage or contract drift.
+- [x] Run focused and package-level verification for the touched backend/frontend areas.
+- [ ] Commit only delivery-related fixes, push the branch, and monitor PR-head CI.
+- [ ] Queue the PR without branch deletion, verify it merges into `origin/main`, then document cleanup state.
+
+## Review
+
+- Local verification: focused frontend coverage tests passed; full frontend coverage passed at 100% statements/branches/functions/lines; full backend coverage passed at 100% statements/branches/functions/lines; `npm run typecheck:app`, `npm run typecheck:tests`, `npm run typecheck:server:tests`, `npm run lint:app`, `npm run lint:server`, touched-file lizard, and `git diff --check` passed.
+
+---
+
+# Active Task: Console Auto Context Inference 2026-04-27
+
+Status: complete
+
+Goal: keep explicit Console context overrides available, but make `Auto` the default so the prompt, current route, and accessible wallet names drive tool selection naturally.
+
+## Plan
+
+- [x] Add a user-facing `Auto` context option and make it the default Console selection.
+- [x] Send current route wallet context from the UI only as an inference hint, not as permission.
+- [x] Resolve Auto server-side into an internal wallet permission envelope from wallets the actor can access.
+- [x] Pass auto context hints to the planner/synthesis path and harden deterministic fallback so ambiguous prompts do not fan out across every wallet by accident.
+- [x] Add focused UI/API/server/proxy tests, run verification, and rebuild the local containers.
+
+## Review
+
+- Implementation: Console now defaults to `Auto` context while keeping explicit overrides for `General network`, `All visible wallets`, and individual wallets. Auto sends `clientContext` from the UI instead of an explicit user scope; the current route wallet is only an inference hint.
+- Permission model: the server resolves Auto into an internal wallet permission envelope from wallets the actor can actually access. The planner receives wallet names/current-wallet context for intent inference, but authorization still comes from the server's accessible wallet set and existing scope/tool checks.
+- Planner behavior: Auto uses the current wallet for route-specific prompts, an accessible named wallet when the prompt matches a wallet name, and all wallets only for prompts that explicitly ask for all/every/across-wallet/portfolio context. Ambiguous Auto wallet prompts now produce no deterministic wallet fallback instead of fanning out accidentally.
+- Verification: focused UI/API/proxy tests passed (47 tests), focused server Console/API tests passed (41 tests), `npx tsc -p ai-proxy/tsconfig.json --noEmit`, `npm run typecheck:app`, `npm run typecheck:tests`, `npm run typecheck:server:tests`, `npm run lint:app`, `npm run lint:server`, touched-file lizard, and `git diff --check` passed.
+- Local rebuild: `./start.sh --rebuild` completed. `https://localhost:8443` returned HTTP 200, and the rebuilt Sanctuary gateway, frontend, AI proxy, backend, worker, Postgres, and Redis containers are healthy by `docker ps -a`.
+
+---
+
+# Active Task: Console All-Wallet Scope 2026-04-27
+
+Status: complete
+
+Goal: let Sanctuary Console run against all wallets visible to the current user, while keeping server-side wallet access checks authoritative.
+
+## Plan
+
+- [x] Confirm existing backend support for `wallet_set` scopes and per-wallet access checks.
+- [x] Add an explicit all-visible-wallets Console scope in the flyout.
+- [x] Teach planner fallback/prompting how to use wallet sets for all-wallet transaction and dashboard-style prompts.
+- [x] Prevent multi-wallet transaction plans from auto-navigating to one arbitrary wallet.
+- [x] Add focused regression coverage, run verification, and rebuild the local containers.
+
+## Review
+
+- Implementation: Console scope selection now offers `All visible wallets` when the current user has wallets. It sends a `wallet_set` scope built from the visible wallet IDs, capped at the backend's current 25-wallet scope limit, and falls back to general when no wallet IDs remain.
+- Permission model: backend `wallet_set` handling was already present. `assertScopeAccess` re-checks every wallet ID with `walletRepository.findByIdWithAccess`, and tool execution still denies wallet tool inputs outside the selected scope.
+- Planner/navigation behavior: the AI proxy planning prompt now describes wallet-set behavior, deterministic fallback can fan out obvious transaction prompts across scoped wallets within the per-turn tool budget, and all-wallet summary prompts can fall back to `get_dashboard_summary`. Console transaction auto-navigation now requires exactly one valid transaction query so all-wallet transaction plans do not open an arbitrary wallet.
+- Verification: focused Console/proxy/navigation tests passed (37 tests), focused server console protocol/tool-execution tests passed (13 tests), `npx tsc -p ai-proxy/tsconfig.json --noEmit`, `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, pinned touched-file lizard, and `git diff --check` passed.
+- Local rebuild: `./start.sh --rebuild` completed. `https://localhost:8443` returns HTTP 200, and the rebuilt Sanctuary frontend, gateway, backend, worker, AI, Postgres, and Redis containers are healthy by `docker ps -a`.
+
+---
+
+# Active Task: Transaction AI Search Cookie Auth Fix 2026-04-27
+
+Status: complete
+
+Goal: fix the rebuilt Transactions tab AI search failure where browser cookie-authenticated requests reach `/api/v1/ai/query` but the backend forwards an empty bearer token to the AI proxy's internal wallet-context fetch.
+
+## Plan
+
+- [x] Inspect live backend and AI proxy logs for the failing transaction AI search request.
+- [x] Forward the authenticated access token from either bearer header or `sanctuary_access` cookie to AI proxy query/label calls.
+- [x] Add focused API regression coverage for cookie-authenticated AI query and label routes.
+- [x] Run focused verification and rebuild the local containers.
+
+## Review
+
+- Root cause: `/api/v1/ai/query` accepted the browser's cookie-authenticated request, but the AI route forwarded only `Authorization` header bearer tokens to the AI proxy. Browser sessions use the `sanctuary_access` HttpOnly cookie, so the proxy called `/internal/ai/wallet/:id/context` with an empty bearer and received 401.
+- Implementation: exported the shared access-token extractor from `middleware/auth` and reused it in AI feature routes for both `/ai/query` and `/ai/suggest-label`. This keeps bearer clients working and forwards cookie-authenticated browser sessions correctly.
+- Verification: focused server AI route/service tests passed (`ai.test`, `aiService`, 99 tests), `npm run typecheck:server:tests`, `npm run lint:server`, `npm run typecheck:app`, `npm run typecheck:tests`, pinned touched-file lizard `CCN <= 15`, and `git diff --check` passed.
+- Local rebuild: `./start.sh --rebuild` completed. Sanctuary is live at `https://localhost:8443`; `curl -k -I https://localhost:8443` returned HTTP 200. The rebuilt frontend, gateway, backend, worker, AI, Postgres, and Redis containers are healthy by `docker ps`.
+
+---
+
+# Active Task: Wallet Transaction AI Search Repair 2026-04-27
+
+Status: complete
+
+Goal: restore the wallet Transactions tab AI search/filter control while keeping Console navigation as the broader assistant path.
+
+## Plan
+
+- [x] Trace the transaction-page AI search submit path and recent Console navigation changes for interference.
+- [x] Fix the broken transaction AI filter behavior without removing the control and align it with the Console planner path.
+- [x] Add or update focused tests for transaction AI search applying and clearing filters.
+- [x] Run focused verification and rebuild the local containers if code changes affect the running UI.
+
+## Review
+
+- Decision: keep the wallet Transactions tab AI search. It is the in-context table-filter control, while Console remains the broader assistant and navigation surface.
+- Implementation: `/ai/query` now uses the same Console planner message path and `query_transactions` tool-call shape, then adapts the planned call back into the transaction table filter model. The adapter keeps table-specific support for labels, sort, aggregation, confirmations, amount ranges, and explicit limits. Date fallback is based only on the user's prompt, not injected label/tool context.
+- UI filter behavior: the transaction AI filter now accepts Console-style `sent`/`received` type values, `dateFrom`/`dateTo`, and `minAmount`/`maxAmount`, sharing the Console route-state date parsing helper.
+- Verification: focused tests passed (`naturalQuery`, `useAITransactionFilter`, `AIQueryInput`, `consoleTransactionNavigation`; 73 tests), `npx tsc -p ai-proxy/tsconfig.json --noEmit`, `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, pinned touched-file lizard `CCN <= 15`, and `git diff --check` passed.
+- Local rebuild and smoke: `./start.sh --rebuild` completed. Sanctuary is live at `https://localhost:8443`; `curl -k -I https://localhost:8443` returned HTTP 200. The rebuilt frontend, gateway, backend, worker, AI, Postgres, and Redis containers are healthy by `docker ps`. A compiled AI-proxy smoke against LM Studio `http://10.114.123.214:1234/v1` with model `unsloth/qwen3.6-35b-a3b` converted `show me transactions between feb 2020 and june 2020` into a transaction date filter.
+
+---
+
+# Active Task: Console Transaction Navigation 2026-04-27
+
+Status: complete
+
+Goal: let a Console prompt such as `show me transactions between feb 2020 and june 2020` open the wallet Transactions tab and apply the matching table filter when the Console planner selects `query_transactions`.
+
+## Plan
+
+- [x] Document the Console-to-transactions navigation plan.
+- [x] Add shared UI helpers to extract transaction navigation from Console results.
+- [x] Wire Console completion to navigate and Wallet Detail to apply route-state filters.
+- [x] Add focused tests and run verification.
+- [x] Rebuild the local containers and smoke-check.
+
+## Review
+
+- Implementation: Console now derives a default wallet scope when opened from a wallet route, so prompts issued from `/wallets/:id` can use the current wallet without manually selecting it. Completed Console turns are inspected for a planned `query_transactions` call; when present, the UI navigates to `/wallets/:walletId` with the Transactions tab active and passes the planner's date/type inputs as route state.
+- Destination behavior: Wallet Detail reads the Console transaction route state, clears stale manual and AI transaction filters, and applies the date/type constraints through the existing transaction filter hook. The drawer closes after navigation unless it is pinned open.
+- Verification: focused tests passed (`ConsoleDrawer`, `consoleTransactionNavigation`, `useTransactionFilters`, `TransactionsTab`; 79 tests), `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, production touched-file lizard `CCN <= 15`, and `git diff --check` passed.
+- Local rebuild and smoke: `./start.sh --rebuild` completed. Sanctuary is live at `https://localhost:8443`; frontend, gateway, backend, worker, AI, Postgres, and Redis containers are healthy. `curl -k -I https://localhost:8443` returned HTTP 200. After syncing the saved AI config, the rebuilt backend planner selected `query_transactions` for `show me transactions between feb 2020 and june 2020` with wallet `da17d9d4-c760-4929-a207-2a45c3cadef9` and dates `2020-02-01` through `2020-06-30`.
+
+---
+
+# Active Task: LM Studio Planner Empty Message Content 2026-04-27
+
+Status: complete
+
+Goal: fix LM Studio/OpenAI-compatible Console planner failures where the provider response does not include `message.content`.
+
+## Plan
+
+- [x] Inspect AI proxy response parsing and live AI logs for the failed planner response.
+- [x] Patch OpenAI-compatible response normalization for local model variants without weakening invalid-response handling.
+- [x] Dedupe repeated prompt-history retry entries in the Console flyout.
+- [x] Add focused proxy regression tests and run verification.
+- [x] Rebuild containers and smoke-check the planner path.
+- [x] Add a Console pin-open option that keeps the flyout open during outside clicks and Escape.
+- [x] Verify the pinned Console behavior with focused UI tests and rebuild the local instance.
+
+## Review
+
+- Root cause: the LM Studio/OpenAI-compatible planner failure came from a reasoning-model response that returned HTTP 200 with empty `message.content`, useful `message.reasoning_content`, and `finish_reason: "length"`. The AI proxy treated that as a hard invalid response before the Console planner parser or deterministic fallback could run.
+- Implementation: the AI proxy now supports non-string OpenAI-compatible content shapes and allows reasoning-content fallback only when a caller opts in. Console planning opts in because it can parse/fallback from planner text, while synthesis keeps strict assistant-content validation. Prompt history now dedupes repeated retry rows by normalized prompt, scope, and sensitivity. The Console flyout also has a pin/unpin control: pinned mode removes the click-away backdrop, ignores Escape, and keeps the explicit close button available.
+- Verification: focused AI proxy and Console tests passed (`aiClient`, `consoleRoutes`, `consoleProtocol`, `ConsoleDrawerUtils`, `ConsoleDrawer`; 38 tests before the pin change, then 22 focused Console drawer tests after it), `npx tsc -p ai-proxy/tsconfig.json --noEmit`, `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, production touched-file lizard `CCN <= 15`, and `git diff --check` passed.
+- Local rebuild and smoke: `./start.sh --rebuild` completed after the pin change. Sanctuary is live at `https://localhost:8443`; frontend, gateway, backend, worker, AI, Postgres, and Redis containers are healthy. `curl -k -I https://localhost:8443` returned HTTP 200. After syncing the saved AI config, the rebuilt backend planner selected `query_transactions` for wallet `da17d9d4-c760-4929-a207-2a45c3cadef9` and the February 1, 2020 through June 30, 2020 date range with no planner warnings.
+
+---
+
+# Active Task: Wallet Scoped Console Planner Fallback 2026-04-27
+
+Status: complete
+
+Goal: fix wallet-scoped Console prompts that receive no answer because local models return non-JSON planner output and no tool calls.
+
+## Plan
+
+- [x] Confirm the no-answer failure is a planner `model_response_not_json` result with zero tool calls.
+- [x] Harden planner parsing and add deterministic wallet-scope fallback planning for obvious transaction prompts.
+- [x] Add focused AI proxy tests for recovered JSON and wallet transaction fallback plans.
+- [x] Run focused verification, rebuild containers, and smoke-check the wallet-scoped prompt path.
+
+## Review
+
+- Root cause: local model planner output for a wallet-scoped transaction/date-range request was not parseable as JSON, so the plan was persisted as `toolCalls: []` with `model_response_not_json`. Synthesis then correctly reported that no tool results were available.
+- Implementation: the Console planner prompt now explicitly forbids prose/reasoning wrappers and tells wallet-scoped tools to copy `scope.walletId`. The parser also recovers valid plan JSON from model output that includes extra reasoning or example objects. If a local model still returns non-JSON, the AI proxy now applies a narrow fallback only for obvious selected-wallet transaction or overview prompts.
+- Verification: focused AI proxy tests passed (`consoleProtocol`, `consoleRoutes`, 8 tests), `npx tsc -p ai-proxy/tsconfig.json --noEmit`, `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, touched-file lizard `CCN <= 15`, and `git diff --check` passed.
+- Local rebuild and smoke: `./start.sh --rebuild` completed; Sanctuary is live at `https://localhost:8443`; all local containers are healthy. The rebuilt wallet-scoped planner returned `query_transactions` for wallet `da17d9d4-c760-4929-a207-2a45c3cadef9` and the February 2020 through June 2020 date range. The rebuilt AI proxy image also returned the deterministic fallback plan for the same prompt when given non-JSON planner output. The database has 17 matching transactions for that wallet/date range.
+
+---
+
+# Active Task: Console Timeout And Flyout History Compression 2026-04-27
+
+Status: complete
+
+Goal: fix the remaining Console 408 timeout after local LM Studio synthesis, keep Console useful outside wallet scope, and make the flyout history easier to scan through compression and duplicate rerun hiding.
+
+## Plan
+
+- [x] Inspect live backend and AI proxy logs for the rerun failure.
+- [x] Align the server request timeout with the Console local-model turn/replay path.
+- [x] Add flyout display compression that folds older messages and hides exact duplicate reruns.
+- [x] Make the AI Console keyboard shortcut explicit in the sidebar and shortcuts modal.
+- [x] Run focused tests, type/lint checks, rebuild containers, and live-smoke the Console replay path.
+
+## Review
+
+- Root cause: the local LM Studio Console replay was not aborting in the model path. Planner and tool execution completed, but synthesis pushed total request time past the global Express 30s request timeout, so the browser received a 408 while the backend finished the turn shortly afterward and then hit `Cannot set headers after they are sent`.
+- Implementation: Console turn and prompt replay routes now get a 280s server request-timeout budget so they can cover planning, read-only tool execution, and synthesis when each provider call may take up to 125s. The flyout compresses older dialogue history and hides exact duplicate reruns, while keeping the newest duplicate visible. The existing `Ctrl+Shift+.` / `Cmd+Shift+.` shortcut is now explicitly labeled "Open AI Console" in the sidebar action and keyboard shortcut modal.
+- Scope behavior: Console remains general by default. General/network questions like "what is the current block?" use the public `get_bitcoin_network_status` tool without selecting a wallet; wallet-sensitive tools still require an explicit wallet scope.
+- Verification: focused UI/API tests passed (`ConsoleDrawer`, `ConsoleDrawerUtils`, Layout sidebar, shortcuts, `useAppShortcuts`, API Console; 45 tests), focused server timeout/API tests passed (`requestTimeout`, Console API; 32 tests), `npm run typecheck:app`, `npm run typecheck:tests`, `npm run typecheck:server:tests`, `npm run lint:app`, `npm run lint:server`, touched-file lizard `CCN <= 15`, and `git diff --check` passed.
+- Local rebuild and smoke: `./start.sh --rebuild` completed. Sanctuary is live at `https://localhost:8443`; frontend, gateway, backend, worker, AI, Postgres, and Redis containers are healthy. `curl -k -I https://localhost:8443` returned HTTP 200. The rebuilt backend container reached LM Studio at `http://10.114.123.214:1234/v1/models` and saw 8 models. After syncing the saved provider profile, Console planning selected `get_bitcoin_network_status` in 10.6s and Console synthesis returned a block-height answer in 32.3s, beyond the old 30s cutoff and under the new timeout budget.
+
+---
+
+# Completed Task: Console Planner Local Model Reliability 2026-04-27
+
+Status: complete
+
+Goal: fix Console `/console/plan` failures against the local LM Studio provider, avoid passive AI status checks competing with real Console requests, and surface precise proxy failure details.
+
+## Plan
+
+- [x] Inspect live backend/AI proxy logs and persisted Console turn errors for the failed replay.
+- [x] Remove passive model-inference health checks from `/ai/status` so app load does not consume local LM Studio capacity.
+- [x] Make Console planning use a small bounded JSON response and return specific timeout/status details from the AI proxy.
+- [x] Add a read-only Bitcoin network status tool so Console can answer current block-height prompts from Sanctuary data.
+- [x] Add focused regression tests for status behavior, Console planner timeout/error details, and local-model planner options.
+- [x] Run focused verification, quality review, edge-case audit, self-review, and rebuild the local containers.
+
+## Review
+
+- Root cause: passive `/api/v1/ai/status` checks still called `checkHealth()`, which sent a real model prompt through LM Studio during app/status refreshes. That could compete with the Console planner on large local models. The planner also used a larger default multi-message request and collapsed upstream failures to generic 503 responses.
+- Implementation: `/ai/status` now reports feature/config/proxy availability without model inference. Admin "Test Connection" uses a new explicit `/api/v1/ai/test-connection` route that still runs `checkHealth()`. Console planning now uses deterministic bounded options (`temperature: 0`, `maxTokens: 512`) and the proxy returns structured timeout/status/policy errors. Console synthesis also returns structured proxy errors. A read-only `get_bitcoin_network_status` tool was added so "what's the current block?" can use Sanctuary's backend Bitcoin status data.
+- Verification: focused AI proxy tests passed (`aiClient`, `consoleRoutes`, 11 tests); focused server AI/tool tests passed (`ai.test`, `readToolRegistry`, `readToolExecutors`, 81 tests); focused UI/API tests passed (`AISettings`, `useAIConnectionStatus`, `coreApiModules`, plus proxy tests, 95 tests total across root runs). `npm run typecheck:app`, `npm run typecheck:tests`, `npm run typecheck:server:tests`, `npm run lint:app`, `npm run lint:server`, `npm run check:openapi-route-coverage`, `npx tsc -p ai-proxy/tsconfig.json --noEmit`, pinned touched-file lizard, and `git diff --check` passed.
+- Local rebuild and smoke: `./start.sh --rebuild` completed; Sanctuary is live at `https://localhost:8443`; frontend, gateway, backend, worker, AI, Postgres, and Redis containers are healthy. `curl -k -I https://localhost:8443` returned HTTP 200. Direct AI-proxy smoke against LM Studio `http://10.114.123.214:1234` with model `unsloth/qwen3.6-35b-a3b` returned a valid `/console/plan` selecting `get_bitcoin_network_status`, and `/console/synthesize` returned a block-height answer. Backend `/api/v1/bitcoin/status` currently reports block height `946918`.
+
+---
+
+# Completed Task: Console Prompt Echo And Abort Details 2026-04-27
+
+Status: complete
+
+Goal: make Sanctuary Console show submitted prompts immediately, keep failed/aborted turns visible in the dialogue with expandable details, avoid premature aborts for slower local LM Studio turns, and keep wallet AI search as the transaction-table filter surface.
+
+## Plan
+
+- [x] Trace the Console submit path and confirm why aborted turns do not echo the prompt.
+- [x] Add optimistic prompt rows and inline failed assistant rows with expandable technical details.
+- [x] Extend only Console turn/replay client timeouts and align Console AI proxy/backend timeouts for slow local models.
+- [x] Align the sidebar `Actions` label with section headers and add a keyboard-shortcuts action/view.
+- [x] Add focused tests for prompt echo, failure details, Console API timeout options, and proxy timeout selection.
+- [x] Verify and polish wallet AI transaction search so it clears table filters correctly and uses LM Studio-friendly timeouts.
+- [x] Run focused verification, quality review, edge-case audit, and self-review.
+- [x] Rebuild the local running containers and confirm the updated instance is live.
+
+## Review
+
+- Console prompts now echo immediately, failed turns remain visible with expandable details, and Console/model-backed requests use longer local-model timeouts.
+- Sidebar quick actions use the same section-header alignment as other sidebar groups, and keyboard shortcuts have a dedicated action/modal.
+- Wallet AI search is intentionally kept as the transaction-table filter surface. Its copy now says "Filter transactions with AI", clearing the input clears the parent table filter, `/ai/query` uses a 120s client timeout, the backend-to-AI-proxy natural-query timeout is 125s, and the AI proxy uses the longer analysis timeout for local model query conversion.
+- Verification: focused Console/Layout/API/proxy/server tests from the previous pass remained green; focused wallet/API/proxy/server follow-up tests passed (`AIQueryInput`, `TransactionsTab`, `coreApiModules`, `naturalQuery`, `consoleRoutes`, and server `aiService`, 102 tests total). `npm run typecheck:app`, `npm run typecheck:tests`, `npm run typecheck:server:tests`, `npm run lint:app`, `npm run lint:server`, `npx tsc -p ai-proxy/tsconfig.json --noEmit`, touched-file pinned lizard, and `git diff --check` passed. The ai-proxy package has no `typecheck` or `lint` npm scripts, so the direct `tsc --noEmit` check was used.
+- Local rebuild: `./start.sh --rebuild` completed. The rebuilt Sanctuary frontend, gateway, backend, worker, and AI containers are healthy, `curl -k -I https://localhost:8443` returned HTTP 200, direct LM Studio model listing from `sanctuary-backend-1` returned 8 models, and the rebuilt AI proxy `/detect-provider` route detected the LAN LM Studio OpenAI-compatible endpoint with those 8 models.
+
+---
+
+# Active Task: AI Flyout Launcher Visibility Correction 2026-04-27
+
+Status: complete
+
+Goal: correct the sidebar AI/Console launcher so it is hidden only when the AI assistant is turned off, while still allowing the flyout to open and explain Console feature-flag or provider setup issues.
+
+## Plan
+
+- [x] Confirm why the local rebuilt instance hides the launcher.
+- [x] Loosen the launcher capability to depend on AI assistant enablement instead of `/console/tools` success.
+- [x] Add a conditional `Actions` label above sidebar action icons.
+- [x] Update focused tests for AI-on/setup-needed visibility, AI-off hiding, and the conditional sidebar action label.
+- [x] Run targeted verification and rebuild the local running instance.
+- [x] Update lessons for the corrected gating rule.
+
+## Review
+
+- Investigation: `useConsoleAvailability` probes `/console/tools` before marking the sidebar launcher available. Because local `sanctuaryConsole` is disabled, that probe returns 403 and hides the icon before the drawer can show the reason-specific setup state.
+- Implementation: the launcher capability now follows AI assistant enablement only, and the sidebar renders a compact `Actions` label when the quick-action icon group exists.
+- Follow-up correction: `/ai/status` now returns `enabled`, `configured`, and `available` separately, and `useAIStatus` uses `enabled` for launcher visibility. This prevents provider health or model setup failures from hiding the flyout.
+- Verification: focused Layout/capability/status hook tests passed (83 tests), focused server AI API tests passed (63 tests), `npm run typecheck:app`, `npm run typecheck:tests`, `npm run typecheck:server:tests`, `npm run lint:app`, `npm run lint:server`, touched-file pinned lizard, and `git diff --check` passed. One broad server test command was mis-scoped and hit unrelated sandbox `EPERM` port-bind failures; the exact focused server AI suite passed afterward.
+- Local rebuild: `./start.sh --rebuild` completed. Sanctuary is running at `https://localhost:8443`, the rebuilt gateway/frontend/ai/backend/worker containers are healthy, and `curl -k -I https://localhost:8443` returned HTTP 200. The local DB has `aiAssistant=true`, `aiEnabled=true`, active LM Studio endpoint `http://10.114.123.214:1234`, model `unsloth/qwen3.6-35b-a3b`, and `sanctuaryConsole=false`.
+
+---
+
+# Active Task: Console Feature Gate Setup State 2026-04-27
+
+Status: complete
+
+Goal: fix the Sanctuary Console flyout so a valid AI provider configuration is not misreported as generic "Console setup required" when the separate `sanctuaryConsole` feature flag is disabled, and verify how session switching is expected to work.
+
+## Plan
+
+- [x] Confirm the backend/UI path that shows the setup state and compare it with live local feature flag state.
+- [x] Replace the generic setup state with reason-specific messaging for disabled Console feature flags versus missing AI provider/model setup.
+- [x] Hide the sidebar Console icon and disable the shortcut unless AI and Console are available.
+- [x] Move the translucent treatment from the Console backdrop to the drawer surface itself.
+- [x] Add focused component/utility tests for the feature-gated state, sidebar availability, session-selection behavior, and drawer translucency.
+- [x] Run focused verification, quality review, edge-case audit, and self-review.
+- [x] Rebuild the local running containers and confirm the updated UI bundle is live.
+
+## Review
+
+- Investigation: the local backend has `aiAssistant` enabled and `sanctuaryConsole` disabled, and the drawer's `/api/v1/console/sessions`, `/prompts`, and `/tools` calls are returning 403 from the feature gate before provider/model checks run.
+- Session behavior: "New session" currently selects a local blank state; the backend creates the actual session on the first prompt sent without an existing `sessionId`. Existing sessions are shown in the session dropdown and selecting one reloads its turns.
+- UI correction: the Console flyout should use the translucent `surface-flyout` panel, while the click-away backdrop remains transparent so the app itself is not dimmed or blurred.
+- Implementation: Console setup errors now distinguish disabled `sanctuaryConsole` from missing AI provider/model setup. The sidebar Console launcher and global shortcut are gated by a Console availability capability that requires AI to be ready and `/console/tools` to pass the feature gate.
+- Verification: focused Console/Layout/capability/API tests passed (41 tests), Layout controller tests passed (47 tests), `npm run typecheck:app`, `npm run typecheck:tests`, `npm run lint:app`, touched-file pinned lizard, and `git diff --check` passed. The npm `lizard` shim was unavailable, so the project-pinned `.tmp/quality-tools/lizard-1.21.2/bin/lizard` command was used.
+- Local rebuild: `./start.sh --rebuild` completed, Sanctuary is running at `https://localhost:8443`, and the rebuilt gateway/frontend/ai/backend/worker containers are healthy. `curl -k -I https://localhost:8443` returned HTTP 200. The LM Studio LAN endpoint `http://10.114.123.214:1234/v1/models` returned 8 OpenAI-compatible models from both the host and `sanctuary-backend-1`, so the running backend can reach the endpoint used by UI detection.
+
+---
+
+# Active Task: LM Studio Save And Detection Follow-Up 2026-04-27
+
+Status: complete
+
+Goal: fix the remaining Admin > AI Settings blockers for local LM Studio providers where saving appears to require an API key, model selection is unavailable, and Detect does not clearly work for LAN endpoints such as `http://10.114.123.214:1234`.
+
+## Plan
+
+- [x] Re-check the settings save disabled state, model picker, provider detection path, backend settings schema, and AI proxy LAN endpoint policy.
+- [x] Allow saving a provider endpoint/profile without a selected model while keeping model-required operations gated.
+- [x] Make provider detection/reporting distinguish real model-list failures from an empty model list.
+- [x] Improve LM Studio/OpenAI-compatible model-picker empty states so users can type a model manually.
+- [x] Add focused tests for no-model/no-key save and LAN LM Studio detection failure messaging.
+- [x] Run focused verification, diff checks, quality review, edge-case audit, and self-review.
+
+## Review
+
+- Investigation: the API key is not required by the backend/profile model. The visible blocker is the Settings tab save button, which still disables Save when `aiModel` is empty. Detection also currently treats `{ models: [], error }` from the backend as a successful OpenAI-compatible connection, which hides the real endpoint/listing failure.
+- Implementation: Save Configuration now only requires an endpoint, so a no-key/no-model LM Studio profile can be saved before model discovery. Detect now calls a typed `/ai/detect-provider` route backed by the AI proxy, which probes the supplied endpoint as OpenAI-compatible or Ollama and reports real failures instead of converting them to empty success.
+- Verification: AI proxy provider/endpoint tests passed (11 tests), focused AI Settings/API tests passed (103 tests), focused server AI model route/service tests passed (89 tests), `npm run typecheck:app`, `npm run typecheck:tests`, `npm run typecheck:server:tests`, `npm run lint:app`, `npm run lint:server`, `npm run check:openapi-route-coverage`, touched-file lizard, and `git diff --check` passed.
+- Local rebuild: `./start.sh --rebuild` completed and the Sanctuary containers are healthy at `https://localhost:8443`. Direct proxy smoke from `sanctuary-ai-1` to `http://10.114.123.214:1234` returned 8 OpenAI-compatible LM Studio models. A browser-authenticated UI smoke could not be completed from this shell because the default admin password is no longer valid, but the rebuilt UI bundle and provider-detect proxy path are live.
+
+---
+
+# Active Task: LM Studio OpenAI-Compatible AI Provider 2026-04-27
+
+Status: complete
+
+Goal: let admins configure a local or LAN LM Studio provider without an API key, detect/list its OpenAI-compatible models, and save a provider profile without relying on Ollama-only model management.
+
+## Plan
+
+- [x] Inspect the AI provider settings save path, model listing, endpoint detection, and proxy client URL normalization.
+- [x] Add OpenAI-compatible model-list URL handling for LM Studio `/v1/models` and fix `/v1` chat-completions URL normalization.
+- [x] Update AI Settings so OpenAI-compatible providers can be tested/listed from a manually entered endpoint and a model can be typed when auto-listing is unavailable.
+- [x] Refresh the Models tab recommended Ollama pull list with current small/local model choices.
+- [x] Replace provider-agnostic UI/backend guidance that still assumes Ollama with provider-neutral copy or LM Studio/OpenAI-compatible alternatives.
+- [x] Add focused AI proxy and AI Settings tests for no-API-key LM Studio/OpenAI-compatible setup.
+- [x] Run targeted verification, quality review, edge-case audit, and self-review.
+
+## Review
+
+- Investigation: the provider profile schema and credential boundary already allow missing API keys. The practical save blocker is the Ollama-shaped model picker: save is disabled while `aiModel` is empty, and model loading/detection only use Ollama `/api/tags`.
+- Implementation: OpenAI-compatible profiles now normalize LM Studio-style `/v1` endpoints correctly, list models through `/v1/models`, and can be detected/saved without an API key. The model field is editable, so a provider profile can be saved even when model listing is unavailable.
+- Models tab: added a detected-provider model list for both Ollama and OpenAI-compatible providers; kept pull/delete actions scoped to Ollama; refreshed recommended Ollama pulls to current compact/local options.
+- Provider copy/backend gates: updated AI Settings, docs, OpenAPI text, feature-flag text, chat setup guidance, and the intelligence provider check so LM Studio/OpenAI-compatible providers are not treated as failed Ollama checks.
+- Verification: AI proxy model/client tests passed (7 tests); focused AI Settings tests passed (87 tests); focused backend AI/intelligence/feature-flag tests passed (86 tests); `npm run typecheck:app`, `npm run typecheck:tests`, `npm run typecheck:server:tests`, pinned touched-file lizard `CCN <= 15`, and `git diff --check` passed.
+- Edge-case audit: no-API-key local providers omit credential updates, typed credentials are included when Detect saves an OpenAI-compatible profile, empty `/v1/models` responses keep manual model entry available, `/v1` URLs do not duplicate path segments, and model pull/delete now fail closed for OpenAI-compatible providers instead of calling Ollama-native APIs.
+
+---
+
 # Active Task: Pre-Release Grade Findings Remediation 2026-04-27
 
 Status: complete

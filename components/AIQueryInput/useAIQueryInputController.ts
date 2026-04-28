@@ -6,7 +6,7 @@ const log = createLogger('AIQueryInput');
 
 interface UseAIQueryInputControllerArgs {
   walletId: string;
-  onQueryResult?: (result: aiApi.NaturalQueryResult) => void;
+  onQueryResult?: (result: aiApi.NaturalQueryResult | null) => void;
 }
 
 const getAIQueryErrorMessage = (error: unknown): string => {
@@ -90,7 +90,8 @@ export const useAIQueryInputController = ({
     setQuery('');
     setResult(null);
     setError(null);
-  }, []);
+    onQueryResult?.(null);
+  }, [onQueryResult]);
 
   const dismissError = useCallback(() => {
     setError(null);

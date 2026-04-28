@@ -26,6 +26,7 @@ import type {
   AISuggestLabelResponse,
   AIQueryResponse,
   AIDetectOllamaResponse,
+  AIDetectProviderResponse,
   AIListModelsResponse,
   AIPullModelResponse,
 } from "./types";
@@ -33,6 +34,9 @@ import type {
 const log = createLogger("AI:SVC");
 
 const AI_CONTAINER_URL = getContainerUrl();
+const AI_NATURAL_QUERY_TIMEOUT_MS = 125_000;
+const OPENAI_COMPATIBLE_MODEL_MANAGEMENT_ERROR =
+  "Model management is only supported for Ollama providers. Manage models in your OpenAI-compatible provider.";
 
 /**
  * Suggest a transaction label
@@ -122,7 +126,7 @@ export async function executeNaturalQuery(
         authorization: `Bearer ${authToken}`,
       }),
       body: JSON.stringify({ query, walletId }),
-      signal: AbortSignal.timeout(35000),
+      signal: AbortSignal.timeout(AI_NATURAL_QUERY_TIMEOUT_MS),
     });
 
     if (!response.ok) {
@@ -189,6 +193,42 @@ export async function detectOllama(): Promise<{
 }
 
 /**
+ * Detect a supported provider at an operator-supplied endpoint.
+ */
+export async function detectProviderEndpoint(input: {
+  endpoint: string;
+  preferredProviderType?: "ollama" | "openai-compatible";
+  apiKey?: string;
+}): Promise<AIDetectProviderResponse> {
+  try {
+    const response = await fetch(`${AI_CONTAINER_URL}/detect-provider`, {
+      method: "POST",
+      headers: buildAIProxyJsonHeaders(),
+      body: JSON.stringify(input),
+      signal: AbortSignal.timeout(15000),
+    });
+
+    const json = await response.json().catch(() => ({}));
+    const result = validateResponse<AIDetectProviderResponse>(json, ["found"]);
+
+    if (result) {
+      return result;
+    }
+
+    return {
+      found: false,
+      message:
+        response.ok ? "Invalid response format" : "Provider detection failed",
+    };
+  } catch (error) {
+    log.error("AI provider endpoint detection error", {
+      error: getErrorMessage(error),
+    });
+    return { found: false, message: "AI container not available" };
+  }
+}
+
+/**
  * List available models from configured endpoint
  */
 export async function listModels(): Promise<{
@@ -249,6 +289,9 @@ export async function pullModel(model: string): Promise<{
   if (!config.endpoint) {
     return { success: false, error: "No AI endpoint configured" };
   }
+  if (config.providerType === "openai-compatible") {
+    return { success: false, error: OPENAI_COMPATIBLE_MODEL_MANAGEMENT_ERROR };
+  }
 
   // Sync config first
   await syncConfigToContainer(config);
@@ -297,6 +340,9 @@ export async function deleteModel(model: string): Promise<{
 
   if (!config.endpoint) {
     return { success: false, error: "No AI endpoint configured" };
+  }
+  if (config.providerType === "openai-compatible") {
+    return { success: false, error: OPENAI_COMPATIBLE_MODEL_MANAGEMENT_ERROR };
   }
 
   // Sync config first
