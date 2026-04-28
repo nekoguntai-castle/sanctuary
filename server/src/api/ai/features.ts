@@ -6,12 +6,14 @@
  */
 
 import { Router } from 'express';
+import expressRateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { authenticate, extractAccessToken } from '../../middleware/auth';
-import { rateLimit, rateLimitByUser } from '../../middleware/rateLimit';
+import { rateLimitByUser } from '../../middleware/rateLimit';
 import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
 import { ErrorCodes } from '../../errors/ApiError';
+import config from '../../config';
 import { aiService } from '../../services/aiService';
 
 const SuggestLabelBodySchema = z.object({
@@ -21,6 +23,18 @@ const SuggestLabelBodySchema = z.object({
 const QueryBodySchema = z.object({
   query: z.string().trim().min(1, 'Query and walletId are required'),
   walletId: z.string().trim().min(1, 'Query and walletId are required'),
+});
+
+const aiAuthLimiter = expressRateLimit({
+  windowMs: 60 * 1000,
+  max: config.rateLimit.apiDefaultLimit,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.method === 'OPTIONS',
+  message: {
+    error: 'Too Many Requests',
+    message: 'API request rate limit exceeded. Please slow down.',
+  },
 });
 
 function authTokenForProxy(req: Parameters<typeof extractAccessToken>[0]): string {
@@ -42,7 +56,7 @@ export function createFeaturesRouter(): Router {
    */
   router.post(
     '/suggest-label',
-    rateLimit('api:default'),
+    aiAuthLimiter,
     authenticate,
     rateLimitByUser('ai:analyze'),
     validate(
@@ -90,7 +104,7 @@ export function createFeaturesRouter(): Router {
    */
   router.post(
     '/query',
-    rateLimit('api:default'),
+    aiAuthLimiter,
     authenticate,
     rateLimitByUser('ai:analyze'),
     validate(

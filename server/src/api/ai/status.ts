@@ -5,11 +5,25 @@
  */
 
 import { Router } from 'express';
+import expressRateLimit from 'express-rate-limit';
 import { authenticate, requireAdmin } from '../../middleware/auth';
-import { rateLimit, rateLimitByUser } from '../../middleware/rateLimit';
+import { rateLimitByUser } from '../../middleware/rateLimit';
 import { asyncHandler } from '../../errors/errorHandler';
+import config from '../../config';
 import { aiService } from '../../services/aiService';
 import { featureFlagService } from '../../services/featureFlagService';
+
+const aiAuthLimiter = expressRateLimit({
+  windowMs: 60 * 1000,
+  max: config.rateLimit.apiDefaultLimit,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.method === 'OPTIONS',
+  message: {
+    error: 'Too Many Requests',
+    message: 'API request rate limit exceeded. Please slow down.',
+  },
+});
 
 function disabledStatus(
   assistantFeatureEnabled: boolean,
@@ -41,7 +55,7 @@ export function createStatusRouter(): Router {
 
   router.get(
     '/status',
-    rateLimit('api:default'),
+    aiAuthLimiter,
     authenticate,
     rateLimitByUser('ai:analyze'),
     asyncHandler(async (_req, res) => {
@@ -74,7 +88,7 @@ export function createStatusRouter(): Router {
 
   router.post(
     '/test-connection',
-    rateLimit('api:default'),
+    aiAuthLimiter,
     authenticate,
     rateLimitByUser('ai:analyze'),
     requireAdmin,

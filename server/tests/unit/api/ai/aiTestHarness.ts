@@ -19,6 +19,10 @@ vi.mock('../../../../src/utils/logger', () => ({
   }),
 }));
 
+vi.mock('express-rate-limit', () => ({
+  default: () => (req: Request, res: Response, next: NextFunction) => next(),
+}));
+
 vi.mock('../../../../src/middleware/rateLimit', () => ({
   rateLimit: () => (req: Request, res: Response, next: NextFunction) => next(),
   rateLimitByUser: () => (req: Request, res: Response, next: NextFunction) => next(),

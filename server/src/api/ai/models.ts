@@ -8,16 +8,30 @@
  */
 
 import { Router } from 'express';
+import expressRateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { authenticate, requireAdmin } from '../../middleware/auth';
-import { rateLimit, rateLimitByUser } from '../../middleware/rateLimit';
+import { rateLimitByUser } from '../../middleware/rateLimit';
 import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
 import { ErrorCodes } from '../../errors/ApiError';
+import config from '../../config';
 import { aiService } from '../../services/aiService';
 
 const ModelBodySchema = z.object({
   model: z.string().trim().min(1, 'Model name is required'),
+});
+
+const aiAuthLimiter = expressRateLimit({
+  windowMs: 60 * 1000,
+  max: config.rateLimit.apiDefaultLimit,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.method === 'OPTIONS',
+  message: {
+    error: 'Too Many Requests',
+    message: 'API request rate limit exceeded. Please slow down.',
+  },
 });
 
 const ProviderTypeSchema = z.enum(['ollama', 'openai-compatible']);
@@ -48,7 +62,7 @@ export function createModelsRouter(): Router {
    */
   router.post(
     '/detect-ollama',
-    rateLimit('api:default'),
+    aiAuthLimiter,
     authenticate,
     rateLimitByUser('ai:analyze'),
     asyncHandler(async (_req, res) => {
@@ -63,7 +77,7 @@ export function createModelsRouter(): Router {
    */
   router.post(
     '/detect-provider',
-    rateLimit('api:default'),
+    aiAuthLimiter,
     authenticate,
     rateLimitByUser('ai:analyze'),
     requireAdmin,
@@ -91,7 +105,7 @@ export function createModelsRouter(): Router {
    */
   router.get(
     '/models',
-    rateLimit('api:default'),
+    aiAuthLimiter,
     authenticate,
     rateLimitByUser('ai:analyze'),
     asyncHandler(async (_req, res) => {
@@ -114,7 +128,7 @@ export function createModelsRouter(): Router {
    */
   router.post(
     '/pull-model',
-    rateLimit('api:default'),
+    aiAuthLimiter,
     authenticate,
     rateLimitByUser('ai:analyze'),
     requireAdmin,
@@ -144,7 +158,7 @@ export function createModelsRouter(): Router {
    */
   router.delete(
     '/delete-model',
-    rateLimit('api:default'),
+    aiAuthLimiter,
     authenticate,
     rateLimitByUser('ai:analyze'),
     requireAdmin,
