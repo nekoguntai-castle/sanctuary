@@ -206,18 +206,24 @@ type ParsedApiResponse =
   | { body: unknown; source: "json"; bodyText?: string }
   | { body: string; source: "text"; bodyText: string };
 
+interface ResponseHeadersReader {
+  get?: (headerName: string) => string | null;
+}
+
 const ERROR_BODY_PREVIEW_LENGTH = 500;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function getResponseHeader(response: Response, name: string): string {
-  const headers = response.headers as unknown as {
-    get?: (headerName: string) => string | null;
-  };
-  return typeof headers?.get === "function" ? (headers.get(name) ?? "") : "";
-}
+const getResponseHeader = (response: Response, name: string): string => {
+  const headers = response.headers as unknown as
+    | ResponseHeadersReader
+    | undefined;
+  if (!headers) return "";
+  if (typeof headers.get !== "function") return "";
+  return headers.get(name) || "";
+};
 
 function isJsonContentType(contentType: string): boolean {
   const normalized = contentType.toLowerCase();

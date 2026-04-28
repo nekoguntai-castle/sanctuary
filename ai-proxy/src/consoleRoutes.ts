@@ -10,6 +10,7 @@ import {
 import {
   buildConsolePlanMessages,
   buildConsoleSynthesisMessages,
+  currentUtcDateString,
   parseConsolePlanResponse,
 } from "./consoleProtocol";
 import { rateLimit } from "./rateLimit";
@@ -24,7 +25,9 @@ function requireEnabledConfig(aiConfig: AiConfig, res: Response): boolean {
   return false;
 }
 
-function failureStatus(result: Extract<AiRequestResult, { ok: false }>): number {
+function failureStatus(
+  result: Extract<AiRequestResult, { ok: false }>,
+): number {
   switch (result.reason) {
     case "timeout":
       return 504;
@@ -50,7 +53,10 @@ function sendAiFailure(
   });
 }
 
-export function registerConsoleRoutes(app: Express, deps: ConsoleRoutesDeps): void {
+export function registerConsoleRoutes(
+  app: Express,
+  deps: ConsoleRoutesDeps,
+): void {
   /**
    * Console tool planning.
    *
@@ -69,9 +75,10 @@ export function registerConsoleRoutes(app: Express, deps: ConsoleRoutesDeps): vo
     const aiConfig = deps.getAiConfig();
     if (!requireEnabledConfig(aiConfig, res)) return;
 
+    const planInput = { ...body, currentDate: currentUtcDateString() };
     const result = await callExternalAIWithMessagesResult(
       aiConfig,
-      buildConsolePlanMessages(body),
+      buildConsolePlanMessages(planInput),
       {
         timeoutMs: AI_ANALYSIS_TIMEOUT_MS,
         temperature: 0,
@@ -84,7 +91,9 @@ export function registerConsoleRoutes(app: Express, deps: ConsoleRoutesDeps): vo
       return sendAiFailure(res, result);
     }
 
-    res.json(parseConsolePlanResponse(result.content, body.maxToolCalls, body));
+    res.json(
+      parseConsolePlanResponse(result.content, body.maxToolCalls, planInput),
+    );
   });
 
   /**
@@ -93,32 +102,36 @@ export function registerConsoleRoutes(app: Express, deps: ConsoleRoutesDeps): vo
    * INPUT: User prompt + sanitized Sanctuary tool facts/provenance
    * OUTPUT: Assistant response text.
    */
-  app.post("/console/synthesize", rateLimit, async (req: Request, res: Response) => {
-    const body = parseRequestBody(
-      ConsoleSynthesisBodySchema,
-      req,
-      res,
-      "console synthesis request required",
-    );
-    if (!body) return;
+  app.post(
+    "/console/synthesize",
+    rateLimit,
+    async (req: Request, res: Response) => {
+      const body = parseRequestBody(
+        ConsoleSynthesisBodySchema,
+        req,
+        res,
+        "console synthesis request required",
+      );
+      if (!body) return;
 
-    const aiConfig = deps.getAiConfig();
-    if (!requireEnabledConfig(aiConfig, res)) return;
+      const aiConfig = deps.getAiConfig();
+      if (!requireEnabledConfig(aiConfig, res)) return;
 
-    const result = await callExternalAIWithMessagesResult(
-      aiConfig,
-      buildConsoleSynthesisMessages(body),
-      {
-        timeoutMs: AI_ANALYSIS_TIMEOUT_MS,
-        temperature: 0.3,
-        maxTokens: 1200,
-      },
-    );
+      const result = await callExternalAIWithMessagesResult(
+        aiConfig,
+        buildConsoleSynthesisMessages(body),
+        {
+          timeoutMs: AI_ANALYSIS_TIMEOUT_MS,
+          temperature: 0.3,
+          maxTokens: 1200,
+        },
+      );
 
-    if (!result.ok) {
-      return sendAiFailure(res, result);
-    }
+      if (!result.ok) {
+        return sendAiFailure(res, result);
+      }
 
-    res.json({ response: result.content });
-  });
+      res.json({ response: result.content });
+    },
+  );
 }

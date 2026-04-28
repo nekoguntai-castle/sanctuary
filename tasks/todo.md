@@ -1,3 +1,152 @@
+# Completed Task: PR #215 Merge Queue Coverage Fix 2026-04-28
+
+Status: complete
+
+Goal: repair the merge-queue-only full coverage failures for PR #215 and re-queue the typed Console transaction intent PR.
+
+## Plan
+
+- [x] Inspect failed merge-group checks and identify local repro commands.
+- [x] Remove the unreachable admin route-param branch instead of adding coverage-only test scaffolding.
+- [x] Add focused coverage assertions for the Console trace summary and API client header-reader edge cases.
+- [x] Re-run focused tests, full backend/frontend coverage, typechecks, lizard, and diff checks before committing.
+
+## Review
+
+- Simplified `handleUpdateUser` to use the repo's existing `TypedRequest` param contract, removing the uncovered route-param defensive helper.
+- Added coverage for blank Console trace summaries falling through to the error message and for API JSON parsing when `headers.get` is absent.
+- Verification passed: focused backend/admin and Console service tests, focused API client tests, full backend unit coverage, full frontend coverage, server test typecheck, app test typecheck, `npm run quality:lizard`, and `git diff --check`.
+
+---
+
+# Active Task: Console OpenAPI Route Coverage 2026-04-28
+
+Status: complete
+
+Goal: clear the remaining OpenAPI route coverage failure after the maintainability remediation pass.
+
+## Plan
+
+- [x] Inspect the Console router and existing OpenAPI path definitions.
+- [x] Add missing DELETE operations for Console prompt clearing and session deletion.
+- [x] Run OpenAPI route coverage, focused OpenAPI/Console route tests if applicable, formatting, lizard, typecheck as needed, and `git diff --check`.
+- [x] Update the grade report and task review with the result.
+
+## Review
+
+- Added OpenAPI operations for `DELETE /api/v1/console/prompts` and `DELETE /api/v1/console/sessions/{id}`.
+- Verification passed: `npm run check:openapi-route-coverage`, `npm run typecheck:server:tests`, `npx vitest run tests/unit/api/console.test.ts`, touched-file lizard, and Prettier check.
+
+---
+
+# Active Task: Typed Console Transaction Intent Planner 2026-04-28
+
+Status: complete
+
+Goal: replace the new "this year" phrase fallback with a schema-backed transaction intent contract so the LLM interprets relative date language and Sanctuary resolves exact, permission-checked tool inputs without adding brittle regexes.
+
+## Plan
+
+- [x] Inspect the current Console planner protocol, shared dirty worktree, and existing tests before editing overlapping files.
+- [x] Add a typed transaction intent schema and resolver that maps semantic dates like `current_year` to exact UTC ranges.
+- [x] Update the planner prompt to prefer semantic transaction intents while preserving legacy `toolCalls` compatibility.
+- [x] Replace "this year" regex fallback tests with intent-resolution coverage for Console and natural transaction queries.
+- [x] Run focused AI proxy verification, type/build checks, lizard, diff checks, and update this review.
+
+## Review
+
+- Added schema-backed `query_transactions` intents with semantic targets and date ranges. `current_year` and `previous_year` resolve in Sanctuary code to exact UTC calendar-year ranges.
+- Removed the new `this year` phrase fallback from deterministic prompt parsing; malformed typed intents now fail closed instead of falling back to regex guessing.
+- Kept legacy `toolCalls` compatibility for existing local-model behavior and non-transaction tools.
+- Edge review follow-up: planning now captures one `currentDate` and reuses it for prompt context and intent resolution, including the transaction-table natural query adapter. Valid intents with ambiguous wallet targets return `model_response_unresolved_intent` instead of silently producing no tool calls.
+- Simplification: adjusted typed return annotations so the touched-file lizard scan no longer reports a spurious high-complexity warning in `consoleProtocol.ts`.
+- Verification passed: focused AI proxy Vitest, `npm --prefix ai-proxy run build`, `npm run typecheck:tests`, touched-file Prettier check, `npm run quality:lizard`, and `git diff --check`.
+
+---
+
+# Active Task: Console This-Year Transaction Prompt 2026-04-28
+
+Status: complete
+
+Goal: fix local-LLM Console failures for prompts like "show me transactions from this year" by ensuring the deterministic transaction fallback understands relative year ranges.
+
+## Plan
+
+- [x] Inspect the current shared worktree diffs before editing overlapping AI proxy files.
+- [x] Add narrow relative-year date parsing to the Console transaction fallback.
+- [x] Add focused AI proxy regression tests for "this year" Console and natural transaction-query prompts.
+- [x] Run focused verification, review overlap/edge cases, and document the result.
+
+## Review
+
+- Added relative-year parsing so `this year` and `current year` resolve to the current UTC calendar year.
+- Verified fallback planning for Console prompts and natural transaction-query conversion.
+- Verification passed: `npx vitest run tests/ai-proxy/consoleProtocol.test.ts tests/ai-proxy/naturalQuery.test.ts`, `npm --prefix ai-proxy run build`, `npm run typecheck:tests`, touched-file Prettier check, `npm run quality:lizard`, and `git diff --check`.
+- Superseded by the typed Console transaction intent planner above; the direct `this year` phrase fallback was removed in favor of schema-backed `current_year` intent resolution.
+
+---
+
+# Active Task: Grade Finding Remediation Plan 2026-04-28
+
+Status: complete
+
+Goal: decide which `$grade` findings are worth addressing, define a low-churn remediation plan, and execute the first score-improving pass.
+
+## Recommendation
+
+Yes, address the maintainability findings. Do not treat the low-severity audit advisories or the gitleaks history false positive as immediate remediation work.
+
+## Plan
+
+- [x] Add or formalize a repo-native lizard check so complexity evidence is repeatable without temp installs.
+- [x] Phase 1: Refactor the smallest high-confidence production warnings around AI/Console/API surfaces: `ai-proxy/src/aiClient.ts`, `ai-proxy/src/consoleProtocol.ts`, `src/api/client.ts`, `server/src/assistant/console/service.ts`, and `components/ConsoleResults/ConsoleResults.tsx`.
+- [ ] Phase 2: Continue backend/infrastructure warnings where branch complexity can be split into named helpers: worker queue creation, wallet creation, and intelligence context gathering remain; intelligence settings, sync subscription reconciliation, admin users, health server, and Telegram support-package parsing were handled in this pass.
+- [ ] Phase 3: Continue frontend UI warnings by separating controller/data-shaping helpers from rendering in send flow, AI settings, network connection, and device account flow components; transaction row, UTXO garden, and shared EmptyState were handled in this pass.
+- [ ] Phase 4: Continue lower-risk test/e2e warnings after production paths are stable: Playwright route handlers and AI container mock remain; OpenAPI route parser, PSBT test harnesses, hardware-wallet path helper, and branch-test helpers were handled in this pass.
+- [ ] Phase 5: Revisit the 1,150-line `scripts/perf/phase3-benchmark.mjs` only when it is next touched, unless a strict 100/100 grade is the goal.
+- [ ] For each phase, run focused tests, typechecks, touched-file lizard, full lizard trend check, and `git diff --check`; update the grade report after each completed phase.
+
+## Exit Criteria
+
+- `lizard_warning_count` drops from 32 to 15 or fewer for the first measurable maintainability point gain.
+- `lizard_warning_count` drops to 5 or fewer for the next maintainability gain.
+- `lizard_warning_count` reaches 0 and `largest_file_lines < 1000` only if pursuing a near-perfect grade.
+- No behavior changes without focused tests covering null/empty/error/boundary cases touched by the refactors.
+
+## Review
+
+- Implemented the first score-improving remediation pass: direct full lizard warnings dropped from 32 to 15, moving Maintainability from 8/15 to 9/15 and the overall grade from 93/100 to 94/100.
+- Added `npm run quality:lizard`, backed by `scripts/quality/lizard-only.sh`, with the current warning budget set to 15 so regressions are reproducible without rerunning the full quality suite.
+- Updated `docs/plans/codebase-health-assessment.md` and appended `docs/plans/grade-history/sanctuary_.jsonl`.
+- Verification passed: app and server typechecks, focused app/server Vitest suites for touched behavior, full lizard trend scan, `npm run quality:lizard`, Prettier check for touched files, and `git diff --check`.
+- Follow-up completed: Console DELETE OpenAPI entries were added and `npm run check:openapi-route-coverage` now passes.
+
+---
+
+# Active Task: Full Codebase Grade Audit 2026-04-28
+
+Status: complete
+
+Goal: run the `$grade` full repository software quality audit against the current working tree and update `docs/plans/codebase-health-assessment.md`.
+
+## Plan
+
+- [x] Load the grade rubric, project lessons, and repository context.
+- [x] Run mechanical signal collection and trend lookup.
+- [x] Inspect targeted evidence for judged ISO 25010 criteria.
+- [x] Score domains, update the report, and append grade history.
+- [x] Run final sanity checks and summarize results.
+
+## Review
+
+- Score: 93/100, Grade A, Confidence High, no hard-fail blockers.
+- Updated `docs/plans/codebase-health-assessment.md` and appended `docs/plans/grade-history/sanctuary_.jsonl`.
+- Main finding: maintainability is now 8/15 because direct lizard found 32 `CCN > 15` functions and the largest source file is 1,150 lines.
+- Security note: current-tree gitleaks is clean; git-history gitleaks reported one false positive on the `secrets_tool` metadata key in grade history.
+- Verification: grade collector passed tests/lint/typecheck; direct app/backend/gateway coverage passed at 100%; root/server/gateway/ai-proxy high audits passed; current-tree gitleaks passed; lizard and jscpd completed.
+
+---
+
 # Active Task: Console June 2020 All-Transactions Prompt 2026-04-28
 
 Status: complete

@@ -51,6 +51,7 @@
     "lint:server": "eslint \"server/src/**/*.ts\" \"shared/**/*.ts\" && npm run check:api-body-validation",
     "lint:gateway": "eslint \"gateway/src/**/*.ts\" \"shared/**/*.ts\"",
     "quality": "./scripts/quality.sh",
+    "quality:lizard": "bash scripts/quality/lizard-only.sh",
     "check:browser-auth-contract": "node scripts/check-browser-auth-contract.mjs",
     "check:github-action-runtimes": "node scripts/ci/check-github-action-runtimes.mjs",
     "check:architecture-boundaries": "node scripts/check-architecture-boundaries.mjs",

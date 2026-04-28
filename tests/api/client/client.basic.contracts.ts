@@ -476,13 +476,26 @@ export const registerApiClientBasicContracts = () => {
     });
 
     it("should parse text JSON when the response has no headers reader", async () => {
-      mockFetch.mockResolvedValue({
+      mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
         text: () => Promise.resolve('{"ok":true}'),
       });
 
       await expect(apiClient.get("/json-without-headers")).resolves.toEqual({
+        ok: true,
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: {},
+        text: () => Promise.resolve('{"ok":true}'),
+      });
+
+      await expect(
+        apiClient.get("/json-without-header-getter"),
+      ).resolves.toEqual({
         ok: true,
       });
     });

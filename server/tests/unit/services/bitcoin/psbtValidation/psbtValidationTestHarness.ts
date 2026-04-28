@@ -1,7 +1,7 @@
-import { vi } from 'vitest';
-import * as bitcoin from 'bitcoinjs-lib';
+import { vi } from "vitest";
+import * as bitcoin from "bitcoinjs-lib";
 
-vi.mock('../../../../../src/utils/logger', () => ({
+vi.mock("../../../../../src/utils/logger", () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -13,10 +13,12 @@ vi.mock('../../../../../src/utils/logger', () => ({
 export const TESTNET = bitcoin.networks.testnet;
 export const MAINNET = bitcoin.networks.bitcoin;
 
-export const TEST_ADDRESS_TESTNET = 'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx';
-export const TEST_ADDRESS_MAINNET = 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4';
+export const TEST_ADDRESS_TESTNET =
+  "tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx";
+export const TEST_ADDRESS_MAINNET =
+  "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4";
 
-export function createTestPsbt(options: {
+interface TestPsbtOptions {
   network?: bitcoin.Network;
   inputCount?: number;
   outputCount?: number;
@@ -24,7 +26,82 @@ export function createTestPsbt(options: {
   outputValues?: number[];
   sequence?: number;
   addWitnessUtxo?: boolean;
-} = {}): bitcoin.Psbt {
+}
+
+function createTxidHash(index: number) {
+  const hex = index.toString(16).padStart(64, "a");
+  return Buffer.from(hex, "hex");
+}
+
+function addTestInput(
+  psbt: bitcoin.Psbt,
+  network: bitcoin.Network,
+  index: number,
+  value: number,
+  sequence: number,
+  addWitnessUtxo: boolean,
+): void {
+  psbt.addInput({
+    hash: createTxidHash(index),
+    index: 0,
+    sequence,
+  });
+
+  if (!addWitnessUtxo) return;
+
+  const outputScript = bitcoin.payments.p2wpkh({
+    hash: Buffer.alloc(20, index + 1),
+    network,
+  }).output!;
+
+  psbt.updateInput(index, {
+    witnessUtxo: {
+      script: outputScript,
+      value: BigInt(value),
+    },
+  });
+}
+
+function addTestInputs(
+  psbt: bitcoin.Psbt,
+  network: bitcoin.Network,
+  inputCount: number,
+  inputValues: number[],
+  sequence: number,
+  addWitnessUtxo: boolean,
+): void {
+  for (let index = 0; index < inputCount; index++) {
+    addTestInput(
+      psbt,
+      network,
+      index,
+      inputValues[index] || 100000,
+      sequence,
+      addWitnessUtxo,
+    );
+  }
+}
+
+function addTestOutputs(
+  psbt: bitcoin.Psbt,
+  network: bitcoin.Network,
+  outputCount: number,
+  outputValues: number[],
+): void {
+  for (let index = 0; index < outputCount; index++) {
+    const outputScript = bitcoin.payments.p2wpkh({
+      hash: Buffer.alloc(20, index + 0x10),
+      network,
+    }).output!;
+
+    psbt.addOutput({
+      script: outputScript,
+      value: BigInt(outputValues[index] || 50000),
+    });
+  }
+}
+
+export function createTestPsbt(options: TestPsbtOptions = {}): bitcoin.Psbt {
   const network = options.network || TESTNET;
   const inputCount = options.inputCount ?? 1;
   const outputCount = options.outputCount ?? 1;
@@ -34,73 +111,47 @@ export function createTestPsbt(options: {
   const addWitnessUtxo = options.addWitnessUtxo ?? true;
 
   const psbt = new bitcoin.Psbt({ network });
-
-  const createTxidHash = (index: number) => {
-    const hex = index.toString(16).padStart(64, 'a');
-    return Buffer.from(hex, 'hex');
-  };
-
-  for (let i = 0; i < inputCount; i++) {
-    const input: bitcoin.PsbtTxInput = {
-      hash: createTxidHash(i),
-      index: 0,
-      sequence,
-    };
-
-    psbt.addInput(input);
-
-    if (addWitnessUtxo) {
-      const outputScript = bitcoin.payments.p2wpkh({
-        hash: Buffer.alloc(20, i + 1),
-        network,
-      }).output!;
-
-      psbt.updateInput(i, {
-        witnessUtxo: {
-          script: outputScript,
-          value: BigInt(inputValues[i] || 100000),
-        },
-      });
-    }
-  }
-
-  for (let i = 0; i < outputCount; i++) {
-    const outputScript = bitcoin.payments.p2wpkh({
-      hash: Buffer.alloc(20, i + 0x10),
-      network,
-    }).output!;
-
-    psbt.addOutput({
-      script: outputScript,
-      value: BigInt(outputValues[i] || 50000),
-    });
-  }
-
+  addTestInputs(
+    psbt,
+    network,
+    inputCount,
+    inputValues,
+    sequence,
+    addWitnessUtxo,
+  );
+  addTestOutputs(psbt, network, outputCount, outputValues);
   return psbt;
 }
 
-export function createNonWitnessPsbt(options: {
-  inputValue?: number;
-  outputValue?: number;
-  seed?: number;
-} = {}): bitcoin.Psbt {
+export function createNonWitnessPsbt(
+  options: {
+    inputValue?: number;
+    outputValue?: number;
+    seed?: number;
+  } = {},
+): bitcoin.Psbt {
   const inputValue = options.inputValue ?? 100000;
   const outputValue = options.outputValue ?? 90000;
   const seed = options.seed ?? 1;
 
   const previousTx = new bitcoin.Transaction();
-  previousTx.addInput(Buffer.alloc(32, seed), 0xffffffff, 0xfffffffd, Buffer.alloc(0));
+  previousTx.addInput(
+    Buffer.alloc(32, seed),
+    0xffffffff,
+    0xfffffffd,
+    Buffer.alloc(0),
+  );
   previousTx.addOutput(
     bitcoin.payments.p2pkh({
       hash: Buffer.alloc(20, seed),
       network: TESTNET,
     }).output!,
-    BigInt(inputValue)
+    BigInt(inputValue),
   );
 
   const psbt = new bitcoin.Psbt({ network: TESTNET });
   psbt.addInput({
-    hash: Buffer.from(previousTx.getId(), 'hex').reverse(),
+    hash: Buffer.from(previousTx.getId(), "hex").reverse(),
     index: 0,
     sequence: 0xfffffffd,
     nonWitnessUtxo: previousTx.toBuffer(),

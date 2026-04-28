@@ -5,32 +5,53 @@
  * Stored in user.preferences.intelligence (same pattern as autopilot/settings.ts).
  */
 
-import type { Prisma } from '../../generated/prisma/client';
-import { userRepository } from '../../repositories';
-import { createLogger } from '../../utils/logger';
-import { getErrorMessage } from '../../utils/errors';
-import type { WalletIntelligenceSettings, IntelligenceConfig } from './types';
-import { DEFAULT_INTELLIGENCE_SETTINGS } from './types';
+import type { Prisma } from "../../generated/prisma/client";
+import { userRepository } from "../../repositories";
+import { createLogger } from "../../utils/logger";
+import { getErrorMessage } from "../../utils/errors";
+import type { WalletIntelligenceSettings, IntelligenceConfig } from "./types";
+import { DEFAULT_INTELLIGENCE_SETTINGS } from "./types";
 
-const log = createLogger('INTELLIGENCE:SVC_SETTINGS');
+const log = createLogger("INTELLIGENCE:SVC_SETTINGS");
 
 type PreferenceRecord = Record<string, unknown>;
+type EnabledIntelligenceWallet = {
+  walletId: string;
+  walletName: string;
+  userId: string;
+  settings: WalletIntelligenceSettings;
+};
+
+interface UserWalletAssociation {
+  wallet: { id: string; name: string };
+}
+
+interface IntelligenceUser {
+  id: string;
+  preferences: unknown;
+  wallets: UserWalletAssociation[];
+}
 
 /**
  * Get intelligence settings for a specific wallet from a user's preferences.
  */
 export async function getWalletIntelligenceSettings(
   userId: string,
-  walletId: string
+  walletId: string,
 ): Promise<WalletIntelligenceSettings> {
   try {
-    const user = await userRepository.findByIdWithSelect(userId, { preferences: true });
+    const user = await userRepository.findByIdWithSelect(userId, {
+      preferences: true,
+    });
 
     if (!user?.preferences) return { ...DEFAULT_INTELLIGENCE_SETTINGS };
 
     const prefs = user.preferences as Record<string, unknown>;
     const intelligence = prefs.intelligence as IntelligenceConfig | undefined;
-    const walletSettings = getOwnWalletSettings(intelligence?.wallets, walletId);
+    const walletSettings = getOwnWalletSettings(
+      intelligence?.wallets,
+      walletId,
+    );
 
     if (!walletSettings) return { ...DEFAULT_INTELLIGENCE_SETTINGS };
 
@@ -38,13 +59,23 @@ export async function getWalletIntelligenceSettings(
       /* v8 ignore start -- persisted settings normally include enabled; default is migration safety */
       enabled: walletSettings.enabled ?? DEFAULT_INTELLIGENCE_SETTINGS.enabled,
       /* v8 ignore stop */
-      notifyTelegram: walletSettings.notifyTelegram ?? DEFAULT_INTELLIGENCE_SETTINGS.notifyTelegram,
-      notifyPush: walletSettings.notifyPush ?? DEFAULT_INTELLIGENCE_SETTINGS.notifyPush,
-      severityFilter: walletSettings.severityFilter ?? DEFAULT_INTELLIGENCE_SETTINGS.severityFilter,
-      typeFilter: walletSettings.typeFilter ?? DEFAULT_INTELLIGENCE_SETTINGS.typeFilter,
+      notifyTelegram:
+        walletSettings.notifyTelegram ??
+        DEFAULT_INTELLIGENCE_SETTINGS.notifyTelegram,
+      notifyPush:
+        walletSettings.notifyPush ?? DEFAULT_INTELLIGENCE_SETTINGS.notifyPush,
+      severityFilter:
+        walletSettings.severityFilter ??
+        DEFAULT_INTELLIGENCE_SETTINGS.severityFilter,
+      typeFilter:
+        walletSettings.typeFilter ?? DEFAULT_INTELLIGENCE_SETTINGS.typeFilter,
     };
   } catch (error) {
-    log.error('Failed to get intelligence settings', { userId, walletId, error: getErrorMessage(error) });
+    log.error("Failed to get intelligence settings", {
+      userId,
+      walletId,
+      error: getErrorMessage(error),
+    });
     return { ...DEFAULT_INTELLIGENCE_SETTINGS };
   }
 }
@@ -55,9 +86,11 @@ export async function getWalletIntelligenceSettings(
 export async function updateWalletIntelligenceSettings(
   userId: string,
   walletId: string,
-  settings: Partial<WalletIntelligenceSettings>
+  settings: Partial<WalletIntelligenceSettings>,
 ): Promise<WalletIntelligenceSettings> {
-  const user = await userRepository.findByIdWithSelect(userId, { preferences: true });
+  const user = await userRepository.findByIdWithSelect(userId, {
+    preferences: true,
+  });
 
   const prefs = getPreferenceRecord(user?.preferences);
   const intelligence = getIntelligenceConfig(prefs);
@@ -66,7 +99,10 @@ export async function updateWalletIntelligenceSettings(
 
   setWalletSettings(prefs, intelligence, walletId, updated);
 
-  await userRepository.updatePreferences(userId, prefs as Prisma.InputJsonValue);
+  await userRepository.updatePreferences(
+    userId,
+    prefs as Prisma.InputJsonValue,
+  );
 
   return updated;
 }
@@ -79,42 +115,104 @@ const getIntelligenceConfig = (prefs: PreferenceRecord): IntelligenceConfig =>
 
 // Wallet IDs can come from route params; only treat persisted own fields as settings.
 const getOwnWalletSettings = (
-  wallets: IntelligenceConfig['wallets'] | undefined,
-  walletId: string
+  wallets: IntelligenceConfig["wallets"] | undefined,
+  walletId: string,
 ): WalletIntelligenceSettings | undefined => {
-  const descriptor = wallets ? Object.getOwnPropertyDescriptor(wallets, walletId) : undefined;
+  const descriptor = wallets
+    ? Object.getOwnPropertyDescriptor(wallets, walletId)
+    : undefined;
   return descriptor?.value as WalletIntelligenceSettings | undefined;
 };
 
 const getExistingWalletSettings = (
   intelligence: IntelligenceConfig,
-  walletId: string
+  walletId: string,
 ): WalletIntelligenceSettings =>
-  getOwnWalletSettings(intelligence.wallets, walletId) ?? { ...DEFAULT_INTELLIGENCE_SETTINGS };
+  getOwnWalletSettings(intelligence.wallets, walletId) ?? {
+    ...DEFAULT_INTELLIGENCE_SETTINGS,
+  };
 
 const mergeWalletSettings = (
   existing: WalletIntelligenceSettings,
-  settings: Partial<WalletIntelligenceSettings>
+  settings: Partial<WalletIntelligenceSettings>,
 ): WalletIntelligenceSettings => ({
-    enabled: settings.enabled ?? existing.enabled,
-    notifyTelegram: settings.notifyTelegram ?? existing.notifyTelegram,
-    notifyPush: settings.notifyPush ?? existing.notifyPush,
-    severityFilter: settings.severityFilter ?? existing.severityFilter,
-    typeFilter: settings.typeFilter ?? existing.typeFilter,
-  });
+  enabled: settings.enabled ?? existing.enabled,
+  notifyTelegram: settings.notifyTelegram ?? existing.notifyTelegram,
+  notifyPush: settings.notifyPush ?? existing.notifyPush,
+  severityFilter: settings.severityFilter ?? existing.severityFilter,
+  typeFilter: settings.typeFilter ?? existing.typeFilter,
+});
 
 const setWalletSettings = (
   prefs: PreferenceRecord,
   intelligence: IntelligenceConfig,
   walletId: string,
-  settings: WalletIntelligenceSettings
+  settings: WalletIntelligenceSettings,
 ): void => {
   // Object.fromEntries keeps prototype-like wallet IDs as own JSON fields.
   intelligence.wallets = Object.fromEntries([
     ...Object.entries(intelligence.wallets ?? {}),
     [walletId, settings],
-  ]) as IntelligenceConfig['wallets'];
+  ]) as IntelligenceConfig["wallets"];
   prefs.intelligence = intelligence;
+};
+
+const normalizeEnabledWalletSettings = (
+  settings: WalletIntelligenceSettings,
+): WalletIntelligenceSettings => ({
+  /* v8 ignore start -- missing enabled is normalized closed for legacy preferences */
+  enabled: settings.enabled ?? false,
+  /* v8 ignore stop */
+  notifyTelegram: settings.notifyTelegram ?? true,
+  notifyPush: settings.notifyPush ?? true,
+  severityFilter: settings.severityFilter ?? "info",
+  typeFilter: settings.typeFilter ?? [
+    "utxo_health",
+    "fee_timing",
+    "anomaly",
+    "tax",
+    "consolidation",
+  ],
+});
+
+const getUserIntelligenceWallets = (
+  user: IntelligenceUser,
+): IntelligenceConfig["wallets"] | undefined => {
+  /* v8 ignore next -- repository filters to users with preferences for this flow */
+  if (!user.preferences) return undefined;
+  const prefs = user.preferences as Record<string, unknown>;
+  const intelligence = prefs.intelligence as IntelligenceConfig | undefined;
+  return intelligence?.wallets;
+};
+
+const toEnabledIntelligenceWallet = (
+  user: IntelligenceUser,
+  walletId: string,
+  settings: WalletIntelligenceSettings,
+): EnabledIntelligenceWallet | null => {
+  if (!settings?.enabled) return null;
+
+  const walletUser = user.wallets.find((wu) => wu.wallet.id === walletId);
+  if (!walletUser) return null;
+
+  return {
+    walletId,
+    walletName: walletUser.wallet.name,
+    userId: user.id,
+    settings: normalizeEnabledWalletSettings(settings),
+  };
+};
+
+const collectEnabledIntelligenceWallets = (
+  user: IntelligenceUser,
+): EnabledIntelligenceWallet[] => {
+  const wallets = getUserIntelligenceWallets(user);
+  if (!wallets) return [];
+
+  return Object.entries(wallets).flatMap(([walletId, settings]) => {
+    const enabledWallet = toEnabledIntelligenceWallet(user, walletId, settings);
+    return enabledWallet ? [enabledWallet] : [];
+  });
 };
 
 /**
@@ -122,52 +220,18 @@ const setWalletSettings = (
  * Returns walletId + userId + settings for each.
  */
 export async function getEnabledIntelligenceWallets(): Promise<
-  Array<{ walletId: string; walletName: string; userId: string; settings: WalletIntelligenceSettings }>
+  EnabledIntelligenceWallet[]
 > {
-  const results: Array<{
-    walletId: string;
-    walletName: string;
-    userId: string;
-    settings: WalletIntelligenceSettings;
-  }> = [];
-
   try {
     // Find all users with their wallet associations
     const users = await userRepository.findAllWithWalletAssociations();
-
-    for (const user of users) {
-      /* v8 ignore next -- repository filters to users with preferences for this flow */
-      if (!user.preferences) continue;
-      const prefs = user.preferences as Record<string, unknown>;
-      const intelligence = prefs?.intelligence as IntelligenceConfig | undefined;
-      if (!intelligence?.wallets) continue;
-
-      for (const [walletId, settings] of Object.entries(intelligence.wallets)) {
-        if (!settings?.enabled) continue;
-
-        // Find wallet name from user's wallets
-        const walletUser = user.wallets.find((wu: { wallet: { id: string; name: string } }) => wu.wallet.id === walletId);
-        if (!walletUser) continue;
-
-        results.push({
-          walletId,
-          walletName: walletUser.wallet.name,
-          userId: user.id,
-          settings: {
-            /* v8 ignore start -- missing enabled is normalized closed for legacy preferences */
-            enabled: settings.enabled ?? false,
-            /* v8 ignore stop */
-            notifyTelegram: settings.notifyTelegram ?? true,
-            notifyPush: settings.notifyPush ?? true,
-            severityFilter: settings.severityFilter ?? 'info',
-            typeFilter: settings.typeFilter ?? ['utxo_health', 'fee_timing', 'anomaly', 'tax', 'consolidation'],
-          },
-        });
-      }
-    }
+    return (users as IntelligenceUser[]).flatMap(
+      collectEnabledIntelligenceWallets,
+    );
   } catch (error) {
-    log.error('Failed to get enabled intelligence wallets', { error: getErrorMessage(error) });
+    log.error("Failed to get enabled intelligence wallets", {
+      error: getErrorMessage(error),
+    });
+    return [];
   }
-
-  return results;
 }

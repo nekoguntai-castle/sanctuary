@@ -62,13 +62,13 @@ interface ResolvedConsoleContext {
   planningContext?: ConsoleGatewayContext;
 }
 
+type ExecutedConsoleToolTrace = Awaited<ReturnType<typeof executePlannedTool>>;
+
 function actorUsername(actor: AssistantToolActor): string {
   return actor.username || actor.userId;
 }
 
-function summarizeToolTraceForAudit(
-  trace: Awaited<ReturnType<typeof executePlannedTool>>,
-) {
+function summarizeToolTraceForAudit(trace: ExecutedConsoleToolTrace) {
   return {
     toolName: trace.toolName,
     status: trace.status,
@@ -79,23 +79,27 @@ function summarizeToolTraceForAudit(
   };
 }
 
-function toolTraceSummary(
-  trace: Awaited<ReturnType<typeof executePlannedTool>>,
-): string {
-  const facts =
-    trace.facts && typeof trace.facts === "object"
-      ? (trace.facts as Record<string, unknown>)
-      : {};
-  const summary =
-    typeof facts.summary === "string" && facts.summary.trim()
-      ? facts.summary.trim()
-      : null;
-  const detail = summary ?? trace.errorMessage ?? trace.status;
+function getTraceFacts(
+  trace: ExecutedConsoleToolTrace,
+): Record<string, unknown> {
+  if (!trace.facts || typeof trace.facts !== "object") return {};
+  return trace.facts as Record<string, unknown>;
+}
+
+function getTraceSummary(trace: ExecutedConsoleToolTrace): string | null {
+  const summary = getTraceFacts(trace).summary;
+  if (typeof summary !== "string") return null;
+  const trimmed = summary.trim();
+  return trimmed ? trimmed : null;
+}
+
+function toolTraceSummary(trace: ExecutedConsoleToolTrace): string {
+  const detail = getTraceSummary(trace) ?? trace.errorMessage ?? trace.status;
   return `${trace.toolName}: ${detail}`;
 }
 
 function buildSynthesisFallbackResponse(
-  traces: Array<Awaited<ReturnType<typeof executePlannedTool>>>,
+  traces: ExecutedConsoleToolTrace[],
 ): string {
   const summaries = traces.slice(0, 8).map(toolTraceSummary);
   return [
@@ -347,7 +351,7 @@ export async function runConsoleTurn(
   });
   await consoleRepository.attachPromptToTurn(turn.id, promptHistory.id);
 
-  const traces: Awaited<ReturnType<typeof executePlannedTool>>[] = [];
+  const traces: ExecutedConsoleToolTrace[] = [];
   try {
     await consoleRepository.updateTurnState(turn.id, "planning");
     const plan = await getPlannedToolCalls({
