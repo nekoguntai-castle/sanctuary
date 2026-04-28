@@ -33,6 +33,10 @@ const DEFAULT_COOLDOWN_SECONDS = 6 * 3600;
 /** Insight default expiry (48 hours) */
 const DEFAULT_EXPIRY_MS = 48 * 3600 * 1000;
 
+type TransactionVelocityRows = Awaited<
+  ReturnType<typeof intelligenceRepository.getTransactionVelocity>
+>;
+
 /**
  * Run all analysis pipelines for all opted-in wallets.
  * Main entry point called by the recurring worker job.
@@ -160,125 +164,18 @@ async function gatherContext(
   type: InsightType,
 ): Promise<AnalysisContext | null> {
   try {
-    const context: AnalysisContext = {};
-
     switch (type) {
-      case "utxo_health": {
-        const { getUtxoHealthProfile } =
-          await import("../autopilot/utxoHealth");
-        const health = await getUtxoHealthProfile(walletId, 10_000);
-        if (health.totalUtxos === 0) return null;
-        context.utxoHealth = {
-          totalUtxos: health.totalUtxos,
-          dustCount: health.dustCount,
-          dustValueSats: Number(health.dustValue),
-          totalValueSats: Number(health.totalValue),
-          avgUtxoSizeSats: Number(health.avgUtxoSize),
-          consolidationCandidates: health.consolidationCandidates,
-        };
-        break;
-      }
-
-      case "fee_timing": {
-        const { getRecentFees, getLatestFeeSnapshot } =
-          await import("../autopilot/feeMonitor");
-        const snapshots = await getRecentFees(1440);
-        const latest = await getLatestFeeSnapshot();
-        if (!latest || snapshots.length < 6) return null;
-
-        context.feeHistory = {
-          currentEconomy: latest.economy,
-          currentFastest: latest.fastest,
-          snapshotCount: snapshots.length,
-          avgEconomy24h: Math.round(
-            snapshots.reduce((s, f) => s + f.economy, 0) / snapshots.length,
-          ),
-          minEconomy24h: Math.min(...snapshots.map((s) => s.economy)),
-          maxEconomy24h: Math.max(...snapshots.map((s) => s.economy)),
-        };
-        break;
-      }
-
-      case "anomaly": {
-        const velocity = await intelligenceRepository.getTransactionVelocity(
-          walletId,
-          90,
-        );
-        const velocity1d = await intelligenceRepository.getTransactionVelocity(
-          walletId,
-          1,
-        );
-        if (velocity.length === 0) return null;
-
-        context.spendingVelocity = {
-          last24h: {
-            count: velocity1d[0]?.count ?? 0,
-            totalSats: Number(velocity1d[0]?.totalSats ?? 0),
-          },
-          last90d: {
-            count: velocity[0]?.count ?? 0,
-            totalSats: Number(velocity[0]?.totalSats ?? 0),
-          },
-          avgDailyCount: (velocity[0]?.count ?? 0) / 90,
-          avgDailySpend: Number(velocity[0]?.totalSats ?? 0) / 90,
-        };
-        break;
-      }
-
-      case "tax": {
-        const distribution =
-          await intelligenceRepository.getUtxoAgeDistribution(walletId);
-        if (
-          distribution.shortTerm.count === 0 &&
-          distribution.longTerm.count === 0
-        )
-          return null;
-
-        context.utxoAgeProfile = {
-          shortTermCount: distribution.shortTerm.count,
-          shortTermSats: Number(distribution.shortTerm.totalSats),
-          longTermCount: distribution.longTerm.count,
-          longTermSats: Number(distribution.longTerm.totalSats),
-          thresholdDays: 365,
-        };
-        break;
-      }
-
-      case "consolidation": {
-        const { getUtxoHealthProfile } =
-          await import("../autopilot/utxoHealth");
-        const { getLatestFeeSnapshot, getRecentFees } =
-          await import("../autopilot/feeMonitor");
-
-        const [health, latest, snapshots] = await Promise.all([
-          getUtxoHealthProfile(walletId, 10_000),
-          getLatestFeeSnapshot(),
-          getRecentFees(1440),
-        ]);
-
-        if (health.totalUtxos < 5) return null;
-
-        context.utxoHealth = {
-          totalUtxos: health.totalUtxos,
-          dustCount: health.dustCount,
-          consolidationCandidates: health.consolidationCandidates,
-          totalValueSats: Number(health.totalValue),
-        };
-        context.feeHistory = {
-          currentEconomy: latest?.economy ?? null,
-          avgEconomy24h:
-            snapshots.length > 0
-              ? Math.round(
-                  snapshots.reduce((s, f) => s + f.economy, 0) /
-                    snapshots.length,
-                )
-              : null,
-        };
-        break;
-      }
+      case "utxo_health":
+        return await gatherUtxoHealthContext(walletId);
+      case "fee_timing":
+        return await gatherFeeTimingContext();
+      case "anomaly":
+        return await gatherAnomalyContext(walletId);
+      case "tax":
+        return await gatherTaxContext(walletId);
+      case "consolidation":
+        return await gatherConsolidationContext(walletId);
     }
-
-    return context;
   } catch (error) {
     log.error("Failed to gather context", {
       walletId,
@@ -287,6 +184,151 @@ async function gatherContext(
     });
     return null;
   }
+}
+
+async function gatherUtxoHealthContext(
+  walletId: string,
+): Promise<AnalysisContext | null> {
+  const { getUtxoHealthProfile } = await import("../autopilot/utxoHealth");
+  const health = await getUtxoHealthProfile(walletId, 10_000);
+  if (health.totalUtxos === 0) {
+    return null;
+  }
+
+  return {
+    utxoHealth: {
+      totalUtxos: health.totalUtxos,
+      dustCount: health.dustCount,
+      dustValueSats: Number(health.dustValue),
+      totalValueSats: Number(health.totalValue),
+      avgUtxoSizeSats: Number(health.avgUtxoSize),
+      consolidationCandidates: health.consolidationCandidates,
+    },
+  };
+}
+
+function averageEconomy(snapshots: Array<{ economy: number }>): number | null {
+  if (snapshots.length === 0) {
+    return null;
+  }
+
+  return Math.round(
+    snapshots.reduce((sum, snapshot) => sum + snapshot.economy, 0) /
+      snapshots.length,
+  );
+}
+
+async function gatherFeeTimingContext(): Promise<AnalysisContext | null> {
+  const { getRecentFees, getLatestFeeSnapshot } =
+    await import("../autopilot/feeMonitor");
+  const snapshots = await getRecentFees(1440);
+  const latest = await getLatestFeeSnapshot();
+  if (!latest || snapshots.length < 6) {
+    return null;
+  }
+
+  return {
+    feeHistory: {
+      currentEconomy: latest.economy,
+      currentFastest: latest.fastest,
+      snapshotCount: snapshots.length,
+      avgEconomy24h: averageEconomy(snapshots),
+      minEconomy24h: Math.min(...snapshots.map((snapshot) => snapshot.economy)),
+      maxEconomy24h: Math.max(...snapshots.map((snapshot) => snapshot.economy)),
+    },
+  };
+}
+
+async function gatherAnomalyContext(
+  walletId: string,
+): Promise<AnalysisContext | null> {
+  const velocity = await intelligenceRepository.getTransactionVelocity(
+    walletId,
+    90,
+  );
+  const velocity1d = await intelligenceRepository.getTransactionVelocity(
+    walletId,
+    1,
+  );
+  if (velocity.length === 0) {
+    return null;
+  }
+
+  return spendingVelocityContext(velocity, velocity1d);
+}
+
+function spendingVelocityContext(
+  velocity: TransactionVelocityRows,
+  velocity1d: TransactionVelocityRows,
+): AnalysisContext {
+  const last24h = velocity1d[0];
+  const last90d = velocity[0];
+
+  return {
+    spendingVelocity: {
+      last24h: {
+        count: last24h?.count ?? 0,
+        totalSats: Number(last24h?.totalSats ?? 0),
+      },
+      last90d: {
+        count: last90d?.count ?? 0,
+        totalSats: Number(last90d?.totalSats ?? 0),
+      },
+      avgDailyCount: (last90d?.count ?? 0) / 90,
+      avgDailySpend: Number(last90d?.totalSats ?? 0) / 90,
+    },
+  };
+}
+
+async function gatherTaxContext(
+  walletId: string,
+): Promise<AnalysisContext | null> {
+  const distribution =
+    await intelligenceRepository.getUtxoAgeDistribution(walletId);
+  if (distribution.shortTerm.count === 0 && distribution.longTerm.count === 0) {
+    return null;
+  }
+
+  return {
+    utxoAgeProfile: {
+      shortTermCount: distribution.shortTerm.count,
+      shortTermSats: Number(distribution.shortTerm.totalSats),
+      longTermCount: distribution.longTerm.count,
+      longTermSats: Number(distribution.longTerm.totalSats),
+      thresholdDays: 365,
+    },
+  };
+}
+
+async function gatherConsolidationContext(
+  walletId: string,
+): Promise<AnalysisContext | null> {
+  const { getUtxoHealthProfile } = await import("../autopilot/utxoHealth");
+  const { getLatestFeeSnapshot, getRecentFees } =
+    await import("../autopilot/feeMonitor");
+
+  const [health, latest, snapshots] = await Promise.all([
+    getUtxoHealthProfile(walletId, 10_000),
+    getLatestFeeSnapshot(),
+    getRecentFees(1440),
+  ]);
+
+  if (health.totalUtxos < 5) {
+    return null;
+  }
+
+  return {
+    utxoHealth: {
+      totalUtxos: health.totalUtxos,
+      dustCount: health.dustCount,
+      consolidationCandidates: health.consolidationCandidates,
+      totalValueSats: Number(health.totalValue),
+    },
+    feeHistory: {
+      currentEconomy: latest?.economy ?? null,
+      avgEconomy24h: averageEconomy(snapshots),
+    },
+  };
 }
 
 /**

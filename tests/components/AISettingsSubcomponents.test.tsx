@@ -1,6 +1,5 @@
-import { act, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import React from "react";
 import { describe, expect, it, vi } from "vitest";
 import { ContainerControls } from "../../components/AISettings/components/ContainerControls";
 import { EnableModal } from "../../components/AISettings/components/EnableModal";
@@ -180,7 +179,9 @@ describe("ModelsTab", () => {
     );
 
     expect(screen.getByText(/loading provider models/i)).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: /refresh/i })[0]).toBeDisabled();
+    expect(
+      screen.getAllByRole("button", { name: /refresh/i })[0],
+    ).toBeDisabled();
     expect(container.querySelector(".animate-spin")).not.toBeNull();
   });
 
@@ -261,41 +262,23 @@ describe("ModelsTab", () => {
     expect(deleteButton.querySelector(".animate-spin")).not.toBeNull();
   });
 
-  it("does not trigger custom pull handlers when custom model name is blank (manual click handler path)", () => {
+  it("does not trigger custom pull handlers when custom model name is blank", async () => {
+    const user = userEvent.setup();
     const onPullModel = vi.fn();
     const onCustomModelNameChange = vi.fn();
 
-    const element = ModelsTab({
-      ...baseProps,
-      customModelName: "   ",
-      onPullModel,
-      onCustomModelNameChange,
-    });
+    render(
+      <ModelsTab
+        {...baseProps}
+        customModelName="   "
+        onPullModel={onPullModel}
+        onCustomModelNameChange={onCustomModelNameChange}
+      />,
+    );
 
-    function findCustomPullButton(node: any): any {
-      if (!node || typeof node !== "object") return null;
-      if (
-        node.type === "button" &&
-        typeof node.props?.className === "string" &&
-        node.props.className.includes("px-4 py-2")
-      ) {
-        return node;
-      }
-      const children = React.Children.toArray(node.props?.children);
-      for (const child of children) {
-        const found = findCustomPullButton(child);
-        if (found) return found;
-      }
-      return null;
-    }
-
-    const customPullButton = findCustomPullButton(element);
-    expect(customPullButton).not.toBeNull();
-    expect(typeof customPullButton.props.onClick).toBe("function");
-
-    act(() => {
-      customPullButton.props.onClick();
-    });
+    const customPullButton = screen.getByRole("button", { name: /^pull$/i });
+    expect(customPullButton).toBeDisabled();
+    await user.click(customPullButton);
 
     expect(onPullModel).not.toHaveBeenCalled();
     expect(onCustomModelNameChange).not.toHaveBeenCalled();

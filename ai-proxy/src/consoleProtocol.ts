@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { parseStructuredResponse } from "./aiClient";
+import { extractJsonObjects } from "./consoleJsonRecovery";
 
 export interface ConsoleToolDescription {
   name: string;
@@ -248,49 +249,6 @@ function parseJsonCandidate(candidate: string): Record<string, unknown> | null {
   } catch {
     return null;
   }
-}
-
-function extractJsonObjects(raw: string): string[] {
-  const objects: string[] = [];
-  let start = -1;
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-
-  for (let index = 0; index < raw.length; index += 1) {
-    const char = raw[index];
-    if (char === undefined) continue;
-
-    if (inString) {
-      if (escaped) {
-        escaped = false;
-      } else if (char === "\\") {
-        escaped = true;
-      } else if (char === '"') {
-        inString = false;
-      }
-      continue;
-    }
-
-    if (char === '"') {
-      inString = true;
-      continue;
-    }
-    if (char === "{") {
-      if (depth === 0) start = index;
-      depth += 1;
-      continue;
-    }
-    if (char !== "}" || depth === 0) continue;
-
-    depth -= 1;
-    if (depth === 0 && start >= 0) {
-      objects.push(raw.slice(start, index + 1));
-      start = -1;
-    }
-  }
-
-  return objects;
 }
 
 function recoverStructuredPlan(raw: string): Record<string, unknown> | null {
@@ -708,59 +666,15 @@ const asksForDashboardFallback = (prompt: string): boolean => {
 const allowsDashboardFallback = (input: ConsolePlanInput): boolean =>
   !isAutoContext(input) || promptRequestsAllWallets(input.prompt);
 
-function buildDashboardFallbackPlan(input: ConsolePlanInput): FallbackToolPlan {
-  if (
-    !isWalletSetScope(input.scope) ||
-    !allowsDashboardFallback(input) ||
-    !asksForDashboardFallback(input.prompt) ||
-    !hasTool(input, "get_dashboard_summary")
-  ) {
-    return emptyFallbackPlan();
-  }
-
-  return {
-    toolCalls: [
-      {
-        name: "get_dashboard_summary",
-        input: { limit: 100 },
-        reason: "Fallback plan for all-wallet dashboard summary.",
-      },
-    ],
-    warnings: [],
-  };
-}
-
-function buildOverviewFallbackPlan(input: ConsolePlanInput): FallbackToolPlan {
-  const walletIds = fallbackWalletIds(input);
-  const walletId = walletIds.length === 1 ? walletIds[0] : null;
-  const prompt = input.prompt.toLowerCase();
-  const asksForOverview =
-    containsAnyTerm(prompt, OVERVIEW_PROMPT_TERMS) ||
-    asksForBroadHealth(prompt);
-
-  if (!walletId || !asksForOverview || !hasTool(input, "get_wallet_overview")) {
-    return emptyFallbackPlan();
-  }
-
-  return {
-    toolCalls: [
-      {
-        name: "get_wallet_overview",
-        input: { walletId },
-        reason: "Fallback plan for wallet overview request.",
-      },
-    ],
-    warnings: [],
-  };
-}
-
 function withFallbackApplied(plan: FallbackToolPlan): FallbackToolPlan {
-  return plan.toolCalls.length > 0
-    ? {
-        toolCalls: plan.toolCalls,
-        warnings: ["fallback_plan_applied", ...plan.warnings],
-      }
-    : plan;
+  if (plan.toolCalls.length === 0) return plan;
+
+  const warnings = ["fallback_plan_applied"];
+  warnings.push(...plan.warnings);
+  return {
+    toolCalls: plan.toolCalls,
+    warnings,
+  };
 }
 
 function buildFallbackToolPlan(
@@ -818,15 +732,29 @@ function buildTransactionIntentToolPlan(
   const selectedWalletIds = walletIds.slice(0, maxToolCalls);
   const currentYear = referenceYear(input);
   return {
-    toolCalls: selectedWalletIds.map((walletId) => ({
-      name: "query_transactions",
-      input: transactionIntentCallInput(intent, walletId, currentYear),
-      reason: intent.reason ?? "Resolved transaction query intent.",
-    })),
-    warnings:
-      walletIds.length > selectedWalletIds.length
-        ? ["tool_call_limit_applied"]
-        : [],
+    toolCalls: selectedWalletIds.map((walletId) =>
+      transactionIntentToolCall(intent, walletId, currentYear),
+    ),
+    warnings: toolCallLimitWarnings(walletIds.length, selectedWalletIds.length),
+  };
+}
+
+function toolCallLimitWarnings(
+  totalCount: number,
+  selectedCount: number,
+): string[] {
+  return totalCount > selectedCount ? ["tool_call_limit_applied"] : [];
+}
+
+function transactionIntentToolCall(
+  intent: TransactionIntent,
+  walletId: string,
+  currentYear: number,
+): ConsolePlannedToolCall {
+  return {
+    name: "query_transactions",
+    input: transactionIntentCallInput(intent, walletId, currentYear),
+    reason: intent.reason ?? "Resolved transaction query intent.",
   };
 }
 
@@ -873,6 +801,84 @@ function resolvePlanIntents(
   };
 }
 
+function asksForOverviewFallback(prompt: string): boolean {
+  const text = prompt.toLowerCase();
+  return (
+    containsAnyTerm(text, OVERVIEW_PROMPT_TERMS) || asksForBroadHealth(text)
+  );
+}
+
+function buildOverviewFallbackPlan(input: ConsolePlanInput): FallbackToolPlan {
+  const walletIds = fallbackWalletIds(input);
+  const walletId = walletIds.length === 1 ? walletIds[0] : null;
+  if (
+    !walletId ||
+    !asksForOverviewFallback(input.prompt) ||
+    !hasTool(input, "get_wallet_overview")
+  ) {
+    return emptyFallbackPlan();
+  }
+
+  return buildWalletOverviewFallbackPlan(walletId);
+}
+
+function rawPlanToolCalls(parsed: Record<string, unknown>): unknown[] {
+  if (Array.isArray(parsed.toolCalls)) return parsed.toolCalls;
+  return Array.isArray(parsed.tools) ? parsed.tools : [];
+}
+
+function parsedPlanToolCalls(
+  parsed: Record<string, unknown>,
+): ConsolePlannedToolCall[] {
+  return rawPlanToolCalls(parsed)
+    .map(parseToolCall)
+    .filter((call): call is ConsolePlannedToolCall => call !== null);
+}
+
+function fallbackForParsedPlan(
+  parsed: Record<string, unknown>,
+  toolCalls: ConsolePlannedToolCall[],
+  intentPlan: FallbackToolPlan,
+  input: ConsolePlanInput | undefined,
+  maxToolCalls: number,
+): FallbackToolPlan {
+  const hasIntentOutput = rawPlanIntents(parsed).length > 0;
+  return toolCalls.length === 0 &&
+    intentPlan.toolCalls.length === 0 &&
+    !hasIntentOutput
+    ? buildFallbackToolPlan(input, maxToolCalls)
+    : emptyFallbackPlan();
+}
+
+function parsedPlanWarnings(
+  knownCalls: ReturnType<typeof keepKnownToolCalls>,
+  maxToolCalls: number,
+  intentPlan: FallbackToolPlan,
+  fallback: FallbackToolPlan,
+): string[] {
+  return [
+    ...(knownCalls.rejectedToolCount > 0
+      ? ["model_response_unknown_tool"]
+      : []),
+    ...(knownCalls.toolCalls.length > maxToolCalls
+      ? ["tool_call_limit_applied"]
+      : []),
+    ...intentPlan.warnings,
+    ...fallback.warnings,
+  ];
+}
+
+function resolvedPlanToolCalls(
+  toolCalls: ConsolePlannedToolCall[],
+  intentPlan: FallbackToolPlan,
+  fallback: FallbackToolPlan,
+): ConsolePlannedToolCall[] {
+  if (toolCalls.length > 0) return toolCalls;
+  return intentPlan.toolCalls.length > 0
+    ? intentPlan.toolCalls
+    : fallback.toolCalls;
+}
+
 export function parseConsolePlanResponse(
   raw: string,
   maxToolCalls: number,
@@ -888,45 +894,62 @@ export function parseConsolePlanResponse(
     };
   }
 
-  const rawCalls = Array.isArray(parsed.toolCalls)
-    ? parsed.toolCalls
-    : Array.isArray(parsed.tools)
-      ? parsed.tools
-      : [];
-  const parsedCalls = rawCalls
-    .map(parseToolCall)
-    .filter((call): call is ConsolePlannedToolCall => call !== null);
-  const knownCalls = keepKnownToolCalls(parsedCalls, input);
+  const knownCalls = keepKnownToolCalls(parsedPlanToolCalls(parsed), input);
   const toolCalls = knownCalls.toolCalls.slice(0, maxToolCalls);
-  const hasIntentOutput = rawPlanIntents(parsed).length > 0;
   const intentPlan =
     toolCalls.length === 0
       ? resolvePlanIntents(parsed, input, maxToolCalls)
       : emptyFallbackPlan();
-  const fallback =
-    toolCalls.length === 0 &&
-    intentPlan.toolCalls.length === 0 &&
-    !hasIntentOutput
-      ? buildFallbackToolPlan(input, maxToolCalls)
-      : emptyFallbackPlan();
-  const warnings = [
-    ...(knownCalls.rejectedToolCount > 0
-      ? ["model_response_unknown_tool"]
-      : []),
-    ...(knownCalls.toolCalls.length > maxToolCalls
-      ? ["tool_call_limit_applied"]
-      : []),
-    ...intentPlan.warnings,
-    ...fallback.warnings,
-  ];
+  const fallback = fallbackForParsedPlan(
+    parsed,
+    toolCalls,
+    intentPlan,
+    input,
+    maxToolCalls,
+  );
 
   return {
-    toolCalls:
-      toolCalls.length > 0
-        ? toolCalls
-        : intentPlan.toolCalls.length > 0
-          ? intentPlan.toolCalls
-          : fallback.toolCalls,
-    warnings,
+    toolCalls: resolvedPlanToolCalls(toolCalls, intentPlan, fallback),
+    warnings: parsedPlanWarnings(
+      knownCalls,
+      maxToolCalls,
+      intentPlan,
+      fallback,
+    ),
+  };
+}
+
+function buildDashboardFallbackPlan(input: ConsolePlanInput): FallbackToolPlan {
+  if (
+    !isWalletSetScope(input.scope) ||
+    !allowsDashboardFallback(input) ||
+    !asksForDashboardFallback(input.prompt) ||
+    !hasTool(input, "get_dashboard_summary")
+  ) {
+    return emptyFallbackPlan();
+  }
+
+  return {
+    toolCalls: [
+      {
+        name: "get_dashboard_summary",
+        input: { limit: 100 },
+        reason: "Fallback plan for all-wallet dashboard summary.",
+      },
+    ],
+    warnings: [],
+  };
+}
+
+function buildWalletOverviewFallbackPlan(walletId: string): FallbackToolPlan {
+  return {
+    toolCalls: [
+      {
+        name: "get_wallet_overview",
+        input: { walletId },
+        reason: "Fallback plan for wallet overview request.",
+      },
+    ],
+    warnings: [],
   };
 }

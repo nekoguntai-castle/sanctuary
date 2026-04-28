@@ -1,10 +1,10 @@
-import { act,renderHook,waitFor } from '@testing-library/react';
-import { beforeEach,describe,expect,it,vi } from 'vitest';
-import * as accountImportUtils from '../../../../../components/DeviceDetail/accounts/accountImportUtils';
+import { act, renderHook, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import * as accountImportUtils from "../../../../../components/DeviceDetail/accounts/accountImportUtils";
 import {
-getDeviceTypeFromDeviceModel,
-useAddAccountFlow,
-} from '../../../../../components/DeviceDetail/accounts/hooks/useAddAccountFlow';
+  getDeviceTypeFromDeviceModel,
+  useAddAccountFlow,
+} from "../../../../../components/DeviceDetail/accounts/hooks/useAddAccountFlow";
 
 const parseDeviceJsonMock = vi.hoisted(() => vi.fn());
 const connectMock = vi.hoisted(() => vi.fn());
@@ -13,7 +13,9 @@ const disconnectMock = vi.hoisted(() => vi.fn());
 const getDeviceMock = vi.hoisted(() => vi.fn());
 const addDeviceAccountMock = vi.hoisted(() => vi.fn());
 const extractFromUrResultMock = vi.hoisted(() => vi.fn());
-const normalizeDerivationPathMock = vi.hoisted(() => vi.fn((path: string) => path));
+const normalizeDerivationPathMock = vi.hoisted(() =>
+  vi.fn((path: string) => path),
+);
 
 const loggerSpies = vi.hoisted(() => ({
   info: vi.fn(),
@@ -38,7 +40,7 @@ const decoderConfig = vi.hoisted(() => ({
   }>,
 }));
 
-vi.mock('@ngraveio/bc-ur', () => {
+vi.mock("@ngraveio/bc-ur", () => {
   class URDecoder {
     private cfg: {
       progress?: number;
@@ -71,7 +73,7 @@ vi.mock('@ngraveio/bc-ur', () => {
 
     resultUR() {
       return {
-        decodeCBOR: () => this.cfg.rawBytes || new TextEncoder().encode('{}'),
+        decodeCBOR: () => this.cfg.rawBytes || new TextEncoder().encode("{}"),
       };
     }
   }
@@ -79,7 +81,7 @@ vi.mock('@ngraveio/bc-ur', () => {
   return { URDecoder };
 });
 
-vi.mock('@keystonehq/bc-ur-registry', () => {
+vi.mock("@keystonehq/bc-ur-registry", () => {
   class URRegistryDecoder {
     private cfg: {
       progress?: number;
@@ -118,11 +120,11 @@ vi.mock('@keystonehq/bc-ur-registry', () => {
   return { URRegistryDecoder };
 });
 
-vi.mock('../../../../../services/deviceParsers', () => ({
+vi.mock("../../../../../services/deviceParsers", () => ({
   parseDeviceJson: parseDeviceJsonMock,
 }));
 
-vi.mock('../../../../../services/hardwareWallet/runtime', () => ({
+vi.mock("../../../../../services/hardwareWallet/runtime", () => ({
   hardwareWalletService: {
     connect: connectMock,
     getAllXpubs: getAllXpubsMock,
@@ -131,25 +133,25 @@ vi.mock('../../../../../services/hardwareWallet/runtime', () => ({
   DeviceType: {},
 }));
 
-vi.mock('../../../../../src/api/devices', () => ({
+vi.mock("../../../../../src/api/devices", () => ({
   getDevice: getDeviceMock,
   addDeviceAccount: addDeviceAccountMock,
 }));
 
-vi.mock('../../../../../components/DeviceDetail/accounts/urHelpers', () => ({
+vi.mock("../../../../../components/DeviceDetail/accounts/urHelpers", () => ({
   extractFromUrResult: extractFromUrResultMock,
   normalizeDerivationPath: normalizeDerivationPathMock,
 }));
 
-vi.mock('../../../../../utils/logger', () => ({
+vi.mock("../../../../../utils/logger", () => ({
   createLogger: () => loggerSpies,
 }));
 
 const defaultDevice = {
-  id: 'device-1',
-  type: 'ledger',
-  label: 'Ledger',
-  fingerprint: 'abcd1234',
+  id: "device-1",
+  type: "ledger",
+  label: "Ledger",
+  fingerprint: "abcd1234",
   accounts: [],
 };
 
@@ -159,15 +161,15 @@ const onDeviceUpdatedMock = vi.fn();
 function renderFlowHook(deviceOverrides: Record<string, unknown> = {}) {
   return renderHook(() =>
     useAddAccountFlow({
-      deviceId: 'device-1',
+      deviceId: "device-1",
       device: { ...defaultDevice, ...deviceOverrides } as any,
       onClose: onCloseMock,
       onDeviceUpdated: onDeviceUpdatedMock,
-    })
+    }),
   );
 }
 
-describe('useAddAccountFlow branch coverage', () => {
+describe("useAddAccountFlow branch coverage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     decoderConfig.bytesQueue = [];
@@ -183,16 +185,24 @@ describe('useAddAccountFlow branch coverage', () => {
     normalizeDerivationPathMock.mockImplementation((path: string) => path);
   });
 
-  it('maps device models to USB-supported types including trezor and jade', () => {
-    expect(getDeviceTypeFromDeviceModel({ type: 'Trezor Model T' } as any)).toBe('trezor');
-    expect(getDeviceTypeFromDeviceModel({ type: 'ledger nano x' } as any)).toBe('ledger');
-    expect(getDeviceTypeFromDeviceModel({ type: 'coldcard mk4' } as any)).toBe('coldcard');
-    expect(getDeviceTypeFromDeviceModel({ type: 'bitbox02' } as any)).toBe('bitbox');
-    expect(getDeviceTypeFromDeviceModel({ type: 'jade' } as any)).toBe('jade');
-    expect(getDeviceTypeFromDeviceModel({ type: 'specter' } as any)).toBeNull();
+  it("maps device models to USB-supported types including trezor and jade", () => {
+    expect(
+      getDeviceTypeFromDeviceModel({ type: "Trezor Model T" } as any),
+    ).toBe("trezor");
+    expect(getDeviceTypeFromDeviceModel({ type: "ledger nano x" } as any)).toBe(
+      "ledger",
+    );
+    expect(getDeviceTypeFromDeviceModel({ type: "coldcard mk4" } as any)).toBe(
+      "coldcard",
+    );
+    expect(getDeviceTypeFromDeviceModel({ type: "bitbox02" } as any)).toBe(
+      "bitbox",
+    );
+    expect(getDeviceTypeFromDeviceModel({ type: "jade" } as any)).toBe("jade");
+    expect(getDeviceTypeFromDeviceModel({ type: "specter" } as any)).toBeNull();
   });
 
-  it('returns early for file upload without files and empty QR payload', () => {
+  it("returns early for file upload without files and empty QR payload", () => {
     const { result } = renderFlowHook();
 
     act(() => {
@@ -203,7 +213,7 @@ describe('useAddAccountFlow branch coverage', () => {
     expect(parseDeviceJsonMock).not.toHaveBeenCalled();
   });
 
-  it('reuses bytes decoder after incomplete part and handles parsed accounts without fingerprint', async () => {
+  it("reuses bytes decoder after incomplete part and handles parsed accounts without fingerprint", async () => {
     decoderConfig.bytesQueue.push({
       progress: 0.5,
       completeQueue: [false, true],
@@ -213,10 +223,10 @@ describe('useAddAccountFlow branch coverage', () => {
     parseDeviceJsonMock.mockReturnValue({
       accounts: [
         {
-          purpose: 'single_sig',
-          scriptType: 'native_segwit',
+          purpose: "single_sig",
+          scriptType: "native_segwit",
           derivationPath: "m/84'/0'/1'",
-          xpub: 'xpub-a',
+          xpub: "xpub-a",
         },
       ],
     });
@@ -224,19 +234,19 @@ describe('useAddAccountFlow branch coverage', () => {
     const { result } = renderFlowHook({ accounts: undefined });
 
     act(() => {
-      result.current.handleQrScan([{ rawValue: 'ur:bytes/1-2' }]);
+      result.current.handleQrScan([{ rawValue: "ur:bytes/1-2" }]);
     });
     expect(result.current.parsedAccounts).toHaveLength(0);
 
     act(() => {
-      result.current.handleQrScan([{ rawValue: 'ur:bytes/2-2' }]);
+      result.current.handleQrScan([{ rawValue: "ur:bytes/2-2" }]);
     });
 
     await waitFor(() => expect(result.current.parsedAccounts).toHaveLength(1));
-    expect(result.current.importFingerprint).toBe('');
+    expect(result.current.importFingerprint).toBe("");
   });
 
-  it('handles bytes UR with xpub-only payload and fallback fingerprint', async () => {
+  it("handles bytes UR with xpub-only payload and fallback fingerprint", async () => {
     decoderConfig.bytesQueue.push({
       progress: 1,
       complete: true,
@@ -244,48 +254,74 @@ describe('useAddAccountFlow branch coverage', () => {
       rawBytes: new TextEncoder().encode('{"xpub":"xpub-b"}'),
     });
     parseDeviceJsonMock.mockReturnValue({
-      xpub: 'xpub-b',
+      xpub: "xpub-b",
       derivationPath: "m/84'/0'/2'",
     });
 
     const { result } = renderFlowHook();
 
     act(() => {
-      result.current.handleQrScan([{ rawValue: 'ur:bytes/single' }]);
+      result.current.handleQrScan([{ rawValue: "ur:bytes/single" }]);
     });
 
     await waitFor(() => expect(result.current.parsedAccounts).toHaveLength(1));
-    expect(result.current.importFingerprint).toBe('');
-    expect(result.current.parsedAccounts[0].xpub).toBe('xpub-b');
+    expect(result.current.importFingerprint).toBe("");
+    expect(result.current.parsedAccounts[0].xpub).toBe("xpub-b");
   });
 
-  it('surfaces bytes UR extraction failure when decoded payload has no accounts or xpub', async () => {
+  it("surfaces bytes UR extraction failure when decoded payload has no accounts or xpub", async () => {
     decoderConfig.bytesQueue.push({
       progress: 1,
       complete: true,
       success: true,
-      rawBytes: new TextEncoder().encode('{}'),
+      rawBytes: new TextEncoder().encode("{}"),
     });
     parseDeviceJsonMock.mockReturnValue({});
 
     const { result } = renderFlowHook();
 
     act(() => {
-      result.current.handleQrScan([{ rawValue: 'ur:bytes/bad' }]);
+      result.current.handleQrScan([{ rawValue: "ur:bytes/bad" }]);
     });
 
-    await waitFor(() => expect(result.current.addAccountError).toBe('Could not extract accounts from ur:bytes'));
+    await waitFor(() =>
+      expect(result.current.addAccountError).toBe(
+        "Could not extract accounts from ur:bytes",
+      ),
+    );
   });
 
-  it('reuses UR registry decoder and falls back to default derivation path when normalization returns empty', async () => {
+  it("surfaces bytes UR extraction failure when the decoded payload is unparseable", async () => {
+    decoderConfig.bytesQueue.push({
+      progress: 1,
+      complete: true,
+      success: true,
+      rawBytes: new TextEncoder().encode("not-json"),
+    });
+    parseDeviceJsonMock.mockReturnValue(null);
+
+    const { result } = renderFlowHook();
+
+    act(() => {
+      result.current.handleQrScan([{ rawValue: "ur:bytes/null" }]);
+    });
+
+    await waitFor(() =>
+      expect(result.current.addAccountError).toBe(
+        "Could not extract accounts from ur:bytes",
+      ),
+    );
+  });
+
+  it("reuses UR registry decoder and falls back to default derivation path when normalization returns empty", async () => {
     decoderConfig.urQueue.push({
       progress: 0.6,
       completeQueue: [false, true],
       success: true,
-      registryType: { kind: 'crypto-hdkey' },
+      registryType: { kind: "crypto-hdkey" },
     });
     extractFromUrResultMock.mockReturnValue({
-      xpub: 'xpub-ur',
+      xpub: "xpub-ur",
       path: "m/48'/0'/0'/2'",
     });
     normalizeDerivationPathMock.mockReturnValueOnce(undefined as any);
@@ -293,80 +329,90 @@ describe('useAddAccountFlow branch coverage', () => {
     const { result } = renderFlowHook();
 
     act(() => {
-      result.current.handleQrScan([{ rawValue: 'ur:crypto-hdkey/1-2' }]);
+      result.current.handleQrScan([{ rawValue: "ur:crypto-hdkey/1-2" }]);
     });
     expect(result.current.parsedAccounts).toHaveLength(0);
 
     act(() => {
-      result.current.handleQrScan([{ rawValue: 'ur:crypto-hdkey/2-2' }]);
+      result.current.handleQrScan([{ rawValue: "ur:crypto-hdkey/2-2" }]);
     });
 
     await waitFor(() => expect(result.current.parsedAccounts).toHaveLength(1));
-    expect(result.current.parsedAccounts[0].purpose).toBe('multisig');
+    expect(result.current.parsedAccounts[0].purpose).toBe("multisig");
     expect(result.current.parsedAccounts[0].derivationPath).toBe("m/84'/0'/0'");
-    expect(result.current.importFingerprint).toBe('');
+    expect(result.current.importFingerprint).toBe("");
   });
 
-  it('handles UR decode failure and non-Error exceptions in decoder processing', async () => {
+  it("handles UR decode failure and non-Error exceptions in decoder processing", async () => {
     decoderConfig.urQueue.push({
       progress: 1,
       complete: true,
       success: false,
-      registryType: { kind: 'crypto-hdkey' },
+      registryType: { kind: "crypto-hdkey" },
     });
     const first = renderFlowHook();
     act(() => {
-      first.result.current.handleQrScan([{ rawValue: 'ur:' }]);
+      first.result.current.handleQrScan([{ rawValue: "ur:" }]);
     });
-    await waitFor(() => expect(first.result.current.addAccountError).toBe('UR decode failed'));
+    await waitFor(() =>
+      expect(first.result.current.addAccountError).toBe("UR decode failed"),
+    );
     first.unmount();
 
     decoderConfig.urQueue.push({
       progress: 1,
       complete: true,
       success: true,
-      registryType: { kind: 'crypto-hdkey' },
+      registryType: { kind: "crypto-hdkey" },
     });
     extractFromUrResultMock.mockImplementationOnce(() => {
-      throw 'decode-string-error';
+      throw "decode-string-error";
     });
     const second = renderFlowHook();
     act(() => {
-      second.result.current.handleQrScan([{ rawValue: 'ur:crypto-hdkey/1-1' }]);
+      second.result.current.handleQrScan([{ rawValue: "ur:crypto-hdkey/1-1" }]);
     });
-    await waitFor(() => expect(second.result.current.addAccountError).toBe('Failed to decode UR QR code'));
+    await waitFor(() =>
+      expect(second.result.current.addAccountError).toBe(
+        "Failed to decode UR QR code",
+      ),
+    );
   });
 
-  it('handles non-UR xpub parsing path and camera not-allowed error branch', async () => {
+  it("handles non-UR xpub parsing path and camera not-allowed error branch", async () => {
     parseDeviceJsonMock.mockReturnValueOnce({
-      xpub: 'xpub-plain',
+      xpub: "xpub-plain",
       derivationPath: "m/84'/0'/3'",
     });
 
     const { result } = renderFlowHook();
 
     act(() => {
-      result.current.handleQrScan([{ rawValue: 'plain-payload' }]);
+      result.current.handleQrScan([{ rawValue: "plain-payload" }]);
     });
     await waitFor(() => expect(result.current.parsedAccounts).toHaveLength(1));
-    expect(result.current.importFingerprint).toBe('');
+    expect(result.current.importFingerprint).toBe("");
 
     act(() => {
-      result.current.handleCameraError(Object.assign(new Error('denied'), { name: 'NotAllowedError' }));
+      result.current.handleCameraError(
+        Object.assign(new Error("denied"), { name: "NotAllowedError" }),
+      );
     });
-    expect(result.current.cameraError).toBe('Camera access denied. Please allow camera permissions.');
+    expect(result.current.cameraError).toBe(
+      "Camera access denied. Please allow camera permissions.",
+    );
   });
 
-  it('uses empty matching account fallback when import processing omits matchingAccounts', async () => {
+  it("uses empty matching account fallback when import processing omits matchingAccounts", async () => {
     const processSpy = vi
-      .spyOn(accountImportUtils, 'processImportedAccounts')
+      .spyOn(accountImportUtils, "processImportedAccounts")
       .mockReturnValueOnce({
         newAccounts: [
           {
-            purpose: 'single_sig',
-            scriptType: 'native_segwit',
+            purpose: "single_sig",
+            scriptType: "native_segwit",
             derivationPath: "m/84'/0'/6'",
-            xpub: 'xpub-6',
+            xpub: "xpub-6",
           },
         ],
       } as any);
@@ -374,19 +420,19 @@ describe('useAddAccountFlow branch coverage', () => {
     parseDeviceJsonMock.mockReturnValueOnce({
       accounts: [
         {
-          purpose: 'single_sig',
-          scriptType: 'native_segwit',
+          purpose: "single_sig",
+          scriptType: "native_segwit",
           derivationPath: "m/84'/0'/6'",
-          xpub: 'xpub-6',
+          xpub: "xpub-6",
         },
       ],
-      fingerprint: 'abcd1234',
+      fingerprint: "abcd1234",
     });
 
     const { result } = renderFlowHook({ accounts: undefined });
 
     act(() => {
-      result.current.handleQrScan([{ rawValue: 'plain-accounts' }]);
+      result.current.handleQrScan([{ rawValue: "plain-accounts" }]);
     });
 
     await waitFor(() => expect(result.current.accountConflict).not.toBeNull());
@@ -394,53 +440,65 @@ describe('useAddAccountFlow branch coverage', () => {
     processSpy.mockRestore();
   });
 
-  it('covers USB unsupported model, accounts fallback path, and non-Error connect failures', async () => {
-    const unsupported = renderFlowHook({ type: 'specter' });
+  it("covers USB unsupported model, accounts fallback path, and non-Error connect failures", async () => {
+    const unsupported = renderFlowHook({ type: "specter" });
     await act(async () => {
       await unsupported.result.current.handleAddAccountsViaUsb();
     });
-    expect(unsupported.result.current.addAccountError).toBe('USB connection not supported for this device type');
+    expect(unsupported.result.current.addAccountError).toBe(
+      "USB connection not supported for this device type",
+    );
     expect(connectMock).not.toHaveBeenCalled();
     unsupported.unmount();
 
     getAllXpubsMock.mockResolvedValueOnce([
-      { purpose: 'single_sig', scriptType: 'native_segwit', path: "m/84'/0'/0'", xpub: 'xpub-new' },
+      {
+        purpose: "single_sig",
+        scriptType: "native_segwit",
+        path: "m/84'/0'/0'",
+        xpub: "xpub-new",
+      },
     ]);
     const success = renderFlowHook({ accounts: undefined });
     await act(async () => {
       await success.result.current.handleAddAccountsViaUsb();
     });
     expect(addDeviceAccountMock).toHaveBeenCalledWith(
-      'device-1',
-      expect.objectContaining({ derivationPath: "m/84'/0'/0'", xpub: 'xpub-new' })
+      "device-1",
+      expect.objectContaining({
+        derivationPath: "m/84'/0'/0'",
+        xpub: "xpub-new",
+      }),
     );
     expect(onDeviceUpdatedMock).toHaveBeenCalled();
     expect(onCloseMock).toHaveBeenCalled();
     expect(disconnectMock).toHaveBeenCalled();
     success.unmount();
 
-    connectMock.mockRejectedValueOnce('usb-string-error');
-    const failed = renderFlowHook({ type: 'ledger' });
+    connectMock.mockRejectedValueOnce("usb-string-error");
+    const failed = renderFlowHook({ type: "ledger" });
     await act(async () => {
       await failed.result.current.handleAddAccountsViaUsb();
     });
-    expect(failed.result.current.addAccountError).toBe('Failed to connect to device');
+    expect(failed.result.current.addAccountError).toBe(
+      "Failed to connect to device",
+    );
   });
 
-  it('skips unselected parsed accounts and handles non-Error refresh failures', async () => {
+  it("skips unselected parsed accounts and handles non-Error refresh failures", async () => {
     parseDeviceJsonMock.mockReturnValueOnce({
       accounts: [
         {
-          purpose: 'single_sig',
-          scriptType: 'native_segwit',
+          purpose: "single_sig",
+          scriptType: "native_segwit",
           derivationPath: "m/84'/0'/4'",
-          xpub: 'xpub-4',
+          xpub: "xpub-4",
         },
         {
-          purpose: 'single_sig',
-          scriptType: 'native_segwit',
+          purpose: "single_sig",
+          scriptType: "native_segwit",
           derivationPath: "m/84'/0'/5'",
-          xpub: 'xpub-5',
+          xpub: "xpub-5",
         },
       ],
     });
@@ -448,7 +506,7 @@ describe('useAddAccountFlow branch coverage', () => {
     const { result } = renderFlowHook();
 
     act(() => {
-      result.current.handleQrScan([{ rawValue: 'plain-two-accounts' }]);
+      result.current.handleQrScan([{ rawValue: "plain-two-accounts" }]);
     });
     await waitFor(() => expect(result.current.parsedAccounts).toHaveLength(2));
 
@@ -456,27 +514,30 @@ describe('useAddAccountFlow branch coverage', () => {
       result.current.setSelectedParsedAccounts(new Set([0]));
     });
 
-    getDeviceMock.mockRejectedValueOnce('refresh-string-error');
+    getDeviceMock.mockRejectedValueOnce("refresh-string-error");
     await act(async () => {
       await result.current.handleAddParsedAccounts();
     });
 
     expect(addDeviceAccountMock).toHaveBeenCalledTimes(1);
     expect(addDeviceAccountMock).toHaveBeenCalledWith(
-      'device-1',
-      expect.objectContaining({ derivationPath: "m/84'/0'/4'", xpub: 'xpub-4' })
+      "device-1",
+      expect.objectContaining({
+        derivationPath: "m/84'/0'/4'",
+        xpub: "xpub-4",
+      }),
     );
-    expect(result.current.addAccountError).toBe('Failed to add accounts');
+    expect(result.current.addAccountError).toBe("Failed to add accounts");
   });
 
-  it('uses Error.message when parsed account refresh throws an Error', async () => {
+  it("uses Error.message when parsed account refresh throws an Error", async () => {
     parseDeviceJsonMock.mockReturnValueOnce({
       accounts: [
         {
-          purpose: 'single_sig',
-          scriptType: 'native_segwit',
+          purpose: "single_sig",
+          scriptType: "native_segwit",
           derivationPath: "m/84'/0'/7'",
-          xpub: 'xpub-7',
+          xpub: "xpub-7",
         },
       ],
     });
@@ -484,15 +545,15 @@ describe('useAddAccountFlow branch coverage', () => {
     const { result } = renderFlowHook();
 
     act(() => {
-      result.current.handleQrScan([{ rawValue: 'plain-one-account' }]);
+      result.current.handleQrScan([{ rawValue: "plain-one-account" }]);
     });
     await waitFor(() => expect(result.current.parsedAccounts).toHaveLength(1));
 
-    getDeviceMock.mockRejectedValueOnce(new Error('refresh-error'));
+    getDeviceMock.mockRejectedValueOnce(new Error("refresh-error"));
     await act(async () => {
       await result.current.handleAddParsedAccounts();
     });
 
-    expect(result.current.addAccountError).toBe('refresh-error');
+    expect(result.current.addAccountError).toBe("refresh-error");
   });
 });
