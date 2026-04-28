@@ -6,7 +6,7 @@
 
 import { Router } from 'express';
 import { authenticate, requireAdmin } from '../../middleware/auth';
-import { rateLimitByUser } from '../../middleware/rateLimit';
+import { rateLimit, rateLimitByUser } from '../../middleware/rateLimit';
 import { asyncHandler } from '../../errors/errorHandler';
 import { aiService } from '../../services/aiService';
 import { featureFlagService } from '../../services/featureFlagService';
@@ -38,10 +38,10 @@ function incompleteProviderStatus(configStatus: { model?: string; endpoint?: str
 
 export function createStatusRouter(): Router {
   const router = Router();
-  const aiRateLimiter = rateLimitByUser('ai:analyze');
 
+  router.use(rateLimit('api:default'));
   router.use(authenticate);
-  router.use(aiRateLimiter);
+  router.use(rateLimitByUser('ai:analyze'));
 
   router.get('/status', asyncHandler(async (_req, res) => {
     const [assistantFeatureEnabled, configStatus] = await Promise.all([

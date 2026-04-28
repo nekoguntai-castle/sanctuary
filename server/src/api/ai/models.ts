@@ -10,7 +10,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { authenticate, requireAdmin } from '../../middleware/auth';
-import { rateLimitByUser } from '../../middleware/rateLimit';
+import { rateLimit, rateLimitByUser } from '../../middleware/rateLimit';
 import { validate } from '../../middleware/validate';
 import { asyncHandler } from '../../errors/errorHandler';
 import { ErrorCodes } from '../../errors/ApiError';
@@ -41,10 +41,10 @@ const ProviderDetectionBodySchema = z.object({
 
 export function createModelsRouter(): Router {
   const router = Router();
-  const aiRateLimiter = rateLimitByUser('ai:analyze');
 
+  router.use(rateLimit('api:default'));
   router.use(authenticate);
-  router.use(aiRateLimiter);
+  router.use(rateLimitByUser('ai:analyze'));
 
   /**
    * POST /api/v1/ai/detect-ollama

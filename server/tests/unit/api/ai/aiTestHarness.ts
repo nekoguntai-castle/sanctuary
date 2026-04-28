@@ -20,6 +20,7 @@ vi.mock('../../../../src/utils/logger', () => ({
 }));
 
 vi.mock('../../../../src/middleware/rateLimit', () => ({
+  rateLimit: () => (req: Request, res: Response, next: NextFunction) => next(),
   rateLimitByUser: () => (req: Request, res: Response, next: NextFunction) => next(),
 }));
 
