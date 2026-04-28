@@ -2,6 +2,18 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Treat Plan-Only Corrections As A Hard Stop
+
+**Rule:** When the user corrects course to "plan only" or "do not edit yet," stop before file changes and return a concrete implementation plan.
+
+**Why:** During Console transaction prompt triage, the user interrupted to clarify that they wanted planning before edits. Even task-tracker writes count as file edits in that mode.
+
+**How to apply:**
+
+- Do not update `tasks/todo.md` until the user re-authorizes implementation.
+- Keep investigation commands read-only unless the user asked for no tooling at all.
+- Resume normal task tracking only after the user explicitly says to continue.
+
 ## Model-Backed Drawers Need Local Clear And Pending Affordances
 
 **Rule:** Interactive assistant drawers need separate controls for clearing local display state, persisted sessions, and prompt history, plus a visible pending indicator while waiting on the model.

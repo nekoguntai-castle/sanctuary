@@ -49,7 +49,7 @@ const PLAN_SYSTEM_PROMPT = [
   "Do not include markdown, prose, chain-of-thought, XML tags, or code fences.",
   "When scope.kind is wallet and a selected tool input needs walletId, copy scope.walletId exactly.",
   "When scope.kind is wallet_set, use only wallet IDs from scope.walletIds. For walletId tools across multiple wallets, emit one tool call per wallet up to maxToolCalls. For walletIds tools, copy scope.walletIds into walletIds.",
-  "When context.mode is auto, infer intent from the prompt, context.currentWalletId/currentWalletName, and context.wallets. Use public tools for network prompts, the current wallet for 'this wallet', a named wallet when the prompt matches an accessible wallet name, and all scoped wallets only when the prompt says all wallets, every wallet, across wallets, or portfolio.",
+  "When context.mode is auto, infer intent from the prompt, context.currentWalletId/currentWalletName, and context.wallets. Use public tools for network prompts, the current wallet for 'this wallet', a named wallet when the prompt matches an accessible wallet name, and all scoped wallets when the prompt says all wallets, every wallet, across wallets, portfolio, everything, or asks for all transactions without naming a specific/current wallet.",
   "When the wallet target is ambiguous in auto context, return an empty toolCalls array instead of guessing.",
   "Use ISO date strings for dateFrom and dateTo when the user asks for a date range.",
   "Do not invent tool names, run code, fetch URLs, ask for secrets, or request write actions.",
@@ -264,6 +264,16 @@ function promptRequestsAllWallets(prompt: string): boolean {
   );
 }
 
+function promptRequestsAllTransactions(prompt: string): boolean {
+  return /\ball\s+(?:wallet\s+)?(?:transactions?|txs?|payments?)\b/i.test(
+    prompt,
+  );
+}
+
+function promptRequestsCurrentWallet(prompt: string): boolean {
+  return /\b(?:this|current|selected)\s+wallet\b/i.test(prompt);
+}
+
 function normalizeMatchText(value: string): string {
   return value
     .toLowerCase()
@@ -310,12 +320,22 @@ function currentWalletId(input: ConsolePlanInput): string | null {
 function fallbackWalletIds(input: ConsolePlanInput): string[] {
   const scopeWalletIds = getScopeWalletIds(input.scope);
   if (!isAutoContext(input)) return scopeWalletIds;
-  if (promptRequestsAllWallets(input.prompt)) return scopeWalletIds;
 
   const namedWalletId = namedWalletIdFromPrompt(input);
   if (namedWalletId) return [namedWalletId];
 
   const current = currentWalletId(input);
+  if (promptRequestsCurrentWallet(input.prompt)) {
+    return current ? [current] : [];
+  }
+
+  if (
+    promptRequestsAllWallets(input.prompt) ||
+    promptRequestsAllTransactions(input.prompt)
+  ) {
+    return scopeWalletIds;
+  }
+
   return current ? [current] : [];
 }
 
@@ -381,6 +401,29 @@ function parseMonthYearRange(prompt: string): {
   };
 }
 
+function parseSingleMonthYearRange(prompt: string): {
+  dateFrom: string;
+  dateTo: string;
+} | null {
+  const monthYear = prompt.match(
+    /\b(january|jan|february|feb|march|mar|april|apr|may|june|jun|july|jul|august|aug|september|sep|sept|october|oct|november|nov|december|dec)\s+(?:of\s+)?(\d{4})\b/i,
+  );
+  if (!monthYear) return null;
+
+  const monthText = monthYear[1]?.toLowerCase() ?? "";
+  const month = monthNumbers[monthText];
+  const year = Number.parseInt(monthYear[2] ?? "", 10);
+
+  if (month === undefined || !Number.isSafeInteger(year)) {
+    return null;
+  }
+
+  return {
+    dateFrom: toIsoDate(year, month),
+    dateTo: toIsoDate(year, month, true),
+  };
+}
+
 function parseIsoDateRange(prompt: string): {
   dateFrom: string;
   dateTo: string;
@@ -397,7 +440,11 @@ function parseIsoDateRange(prompt: string): {
 }
 
 function parsePromptDateRange(prompt: string) {
-  return parseIsoDateRange(prompt) ?? parseMonthYearRange(prompt);
+  return (
+    parseIsoDateRange(prompt) ??
+    parseMonthYearRange(prompt) ??
+    parseSingleMonthYearRange(prompt)
+  );
 }
 
 interface FallbackToolPlan {
