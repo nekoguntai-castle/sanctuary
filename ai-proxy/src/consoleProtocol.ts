@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { parseStructuredResponse } from "./aiClient";
 import { extractJsonObjects } from "./consoleJsonRecovery";
+import {
+  resolveWalletReferenceFromPrompt,
+  type WalletReference,
+  type WalletReferenceResolution,
+} from "./walletReferenceResolver";
 
 export interface ConsoleToolDescription {
   name: string;
@@ -29,11 +34,6 @@ interface ConsolePlanInput {
   context?: unknown;
   maxToolCalls: number;
   tools: ConsoleToolDescription[];
-}
-
-interface ContextWallet {
-  id: string;
-  name: string;
 }
 
 export interface ConsoleToolResultForSynthesis {
@@ -405,15 +405,7 @@ function promptRequestsCurrentWallet(prompt: string): boolean {
   return /\b(?:this|current|selected)\s+wallet\b/i.test(prompt);
 }
 
-function normalizeMatchText(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim()
-    .replace(/\s+/g, " ");
-}
-
-function contextWallets(input: ConsolePlanInput): Array<ContextWallet> {
+function contextWallets(input: ConsolePlanInput): Array<WalletReference> {
   const context = toPlainObject(input.context);
   if (!Array.isArray(context.wallets)) return [];
 
@@ -425,26 +417,14 @@ function contextWallets(input: ConsolePlanInput): Array<ContextWallet> {
   });
 }
 
-function walletNameMatchesPrompt(
-  wallet: ContextWallet,
-  scopedWalletIds: Set<string>,
-  normalizedPrompt: string,
-): boolean {
-  const name = normalizeMatchText(wallet.name);
-  return Boolean(
-    name && scopedWalletIds.has(wallet.id) && normalizedPrompt.includes(name),
-  );
-}
-
-function namedWalletIdFromPrompt(input: ConsolePlanInput): string | null {
-  const prompt = normalizeMatchText(input.prompt);
-  if (!prompt) return null;
-
-  const scopeWalletIds = new Set(getScopeWalletIds(input.scope));
-  const matched = contextWallets(input).find((wallet) =>
-    walletNameMatchesPrompt(wallet, scopeWalletIds, prompt),
-  );
-  return matched?.id ?? null;
+function namedWalletReference(
+  input: ConsolePlanInput,
+): WalletReferenceResolution {
+  return resolveWalletReferenceFromPrompt({
+    prompt: input.prompt,
+    wallets: contextWallets(input),
+    scopedWalletIds: getScopeWalletIds(input.scope),
+  });
 }
 
 function currentWalletId(input: ConsolePlanInput): string | null {
@@ -455,26 +435,41 @@ function currentWalletId(input: ConsolePlanInput): string | null {
     : null;
 }
 
-function fallbackWalletIds(input: ConsolePlanInput): Array<string> {
-  const scopeWalletIds = getScopeWalletIds(input.scope);
-  if (!isAutoContext(input)) return scopeWalletIds;
+interface FallbackWalletSelection {
+  walletIds: string[];
+  warnings: string[];
+}
 
-  const namedWalletId = namedWalletIdFromPrompt(input);
-  if (namedWalletId) return [namedWalletId];
+function selectedFallbackWallets(
+  walletIds: string[],
+  warnings: string[] = [],
+): FallbackWalletSelection {
+  return { walletIds, warnings };
+}
+
+function fallbackWalletSelection(input: ConsolePlanInput) {
+  const scopeWalletIds = getScopeWalletIds(input.scope);
+  if (!isAutoContext(input)) return selectedFallbackWallets(scopeWalletIds);
+
+  const namedWallet = namedWalletReference(input);
+  if (namedWallet.ok) return selectedFallbackWallets([namedWallet.walletId]);
+  if (namedWallet.reason === "ambiguous") {
+    return selectedFallbackWallets([], ["wallet_reference_ambiguous"]);
+  }
 
   const current = currentWalletId(input);
   if (promptRequestsCurrentWallet(input.prompt)) {
-    return current ? [current] : [];
+    return selectedFallbackWallets(current ? [current] : []);
   }
 
   if (
     promptRequestsAllWallets(input.prompt) ||
     promptRequestsAllTransactions(input.prompt)
   ) {
-    return scopeWalletIds;
+    return selectedFallbackWallets(scopeWalletIds);
   }
 
-  return current ? [current] : [];
+  return selectedFallbackWallets(current ? [current] : []);
 }
 
 function scopedWalletId(input: ConsolePlanInput): string | null {
@@ -677,7 +672,8 @@ function buildTransactionFallbackPlan(
   input: ConsolePlanInput,
   maxToolCalls: number,
 ): FallbackToolPlan {
-  const walletIds = fallbackWalletIds(input);
+  const selection = fallbackWalletSelection(input);
+  const walletIds = selection.walletIds;
   const prompt = input.prompt.toLowerCase();
   const mentionsTransactionHistory =
     /\bhistory\b/.test(prompt) && !/\bbalance\s+history\b/.test(prompt);
@@ -690,10 +686,15 @@ function buildTransactionFallbackPlan(
     !mentionsTransactions ||
     !hasTool(input, "query_transactions")
   ) {
-    return emptyFallbackPlan();
+    return { toolCalls: [], warnings: selection.warnings };
   }
 
   const selectedWalletIds = walletIds.slice(0, maxToolCalls);
+  const warnings = toolCallLimitWarnings(
+    walletIds.length,
+    selectedWalletIds.length,
+  );
+  warnings.push(...selection.warnings);
   return {
     toolCalls: selectedWalletIds.map((walletId) => ({
       name: "query_transactions",
@@ -703,10 +704,7 @@ function buildTransactionFallbackPlan(
       },
       reason: "Fallback plan for wallet transaction request.",
     })),
-    warnings:
-      walletIds.length > selectedWalletIds.length
-        ? ["tool_call_limit_applied"]
-        : [],
+    warnings,
   };
 }
 
@@ -757,6 +755,10 @@ function withFallbackApplied(plan: FallbackToolPlan) {
   };
 }
 
+function uniqueWarnings(warnings: string[]): string[] {
+  return Array.from(new Set(warnings));
+}
+
 function buildFallbackToolPlan(
   input: ConsolePlanInput | undefined,
   maxToolCalls: number,
@@ -769,9 +771,13 @@ function buildFallbackToolPlan(
     buildOverviewFallbackPlan(input),
   ];
 
-  return withFallbackApplied(
-    candidates.find((plan) => plan.toolCalls.length > 0) ?? emptyFallbackPlan(),
-  );
+  const selected = candidates.find((plan) => plan.toolCalls.length > 0);
+  if (selected) return withFallbackApplied(selected);
+
+  return {
+    toolCalls: [],
+    warnings: uniqueWarnings(candidates.flatMap((plan) => plan.warnings)),
+  };
 }
 
 function rawPlanIntents(parsed: Record<string, unknown>) {
@@ -974,17 +980,19 @@ function asksForOverviewFallback(prompt: string): boolean {
 }
 
 function buildOverviewFallbackPlan(input: ConsolePlanInput): FallbackToolPlan {
-  const walletIds = fallbackWalletIds(input);
+  const selection = fallbackWalletSelection(input);
+  const walletIds = selection.walletIds;
   const walletId = walletIds.length === 1 ? walletIds[0] : null;
   if (
     !walletId ||
     !asksForOverviewFallback(input.prompt) ||
     !hasTool(input, "get_wallet_overview")
   ) {
-    return emptyFallbackPlan();
+    return { toolCalls: [], warnings: selection.warnings };
   }
 
-  return buildWalletOverviewFallbackPlan(walletId);
+  const plan = buildWalletOverviewFallbackPlan(walletId);
+  return { toolCalls: plan.toolCalls, warnings: selection.warnings };
 }
 
 function rawPlanToolCalls(parsed: Record<string, unknown>): unknown[] {

@@ -587,6 +587,36 @@ describe("console planner protocol", () => {
     ]);
   });
 
+  it("fails closed when auto fallback wallet names are ambiguous", () => {
+    const result = parseConsolePlanResponse(
+      "I should retrieve Main Vault transactions.",
+      4,
+      {
+        ...autoWalletSetPlanInput,
+        prompt: "show Main Vault transactions between feb 2020 and june 2020",
+        context: {
+          mode: "auto",
+          currentWalletId: "22222222-2222-4222-8222-222222222222",
+          wallets: [
+            {
+              id: "11111111-1111-4111-8111-111111111111",
+              name: "Main",
+            },
+            {
+              id: "22222222-2222-4222-8222-222222222222",
+              name: "Main Vault",
+            },
+          ],
+        },
+      },
+    );
+
+    expect(result).toEqual({
+      toolCalls: [],
+      warnings: ["model_response_not_json", "wallet_reference_ambiguous"],
+    });
+  });
+
   it("does not guess a wallet for ambiguous auto transaction fallback", () => {
     const result = parseConsolePlanResponse(
       "I should retrieve transactions.",

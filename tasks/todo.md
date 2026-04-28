@@ -1,3 +1,27 @@
+# Active Task: Brittle Check Remediation Phase 2 Implementation 2026-04-28
+
+Status: complete
+
+Goal: replace Console fallback wallet-name substring matching with an explicit resolver that can distinguish found, ambiguous, and not-found references.
+
+## Plan
+
+- [x] Start from merged Phase 1 on `origin/main`.
+- [x] Add a focused wallet reference resolver for scoped wallet names.
+- [x] Integrate resolver results into Console fallback planning with fail-closed ambiguity warnings.
+- [x] Cover token-boundary, substring, ambiguous, short-name, quoted-name, and unscoped cases.
+- [x] Run focused AI-proxy tests, build/typecheck, lizard, Prettier, and `git diff --check`.
+- [ ] Commit, push, open the Phase 2 PR, monitor checks, merge, and then start Phase 3.
+
+## Review
+
+- Added `ai-proxy/src/walletReferenceResolver.ts` with explicit `ok`, `ambiguous`, and `not_found` results.
+- Console auto fallback now uses the resolver for named wallet references, rejects ambiguous matches with `wallet_reference_ambiguous`, and keeps typed `wallet_id` intents authoritative.
+- Covered token-boundary matching, substring rejection, ambiguous overlaps, duplicate context rows, very short unquoted names, quoted short names, unscoped wallets, and Console fallback warnings.
+- Verification passed: focused AI-proxy Vitest, `npm --prefix ai-proxy run build`, `npm run typecheck:tests`, `npm run quality:lizard`, Prettier, and `git diff --check`.
+
+---
+
 # Active Task: Brittle Check Remediation Phase 1 Implementation 2026-04-28
 
 Status: complete
@@ -12,7 +36,7 @@ Goal: complete the Console typed intent protocol so transaction limits, wallet o
 - [x] Preserve legacy `toolCalls` and compatibility fallbacks without adding new phrase rules.
 - [x] Add focused null/empty/invalid/unresolved/limit tests.
 - [x] Run focused verification, lizard, type/build checks, and `git diff --check`.
-- [ ] Commit, push, open the Phase 1 PR, monitor checks, merge, and then start Phase 2.
+- [x] Commit, push, open the Phase 1 PR, monitor checks, merge, and then start Phase 2.
 
 ## Review
 
@@ -20,6 +44,7 @@ Goal: complete the Console typed intent protocol so transaction limits, wallet o
 - Replaced prompt-regex limit gating with typed transaction limit semantics: explicit limits become tool input, default/omitted limits use backend tool budgets.
 - Preserved legacy direct `toolCalls` and legacy numeric transaction intent limits while keeping fallback plans isolated behind `fallback_plan_applied`.
 - Verification passed: focused AI-proxy Vitest, `npm --prefix ai-proxy run build`, `npm run typecheck:tests`, `npm run quality:lizard`, Prettier, and `git diff --check`.
+- PR #218 merged through the merge queue at `792e34b3`.
 
 ---
 
