@@ -672,7 +672,7 @@ describe("console service", () => {
     mocks.consoleRepository.createToolTrace
       .mockResolvedValueOnce(
         completedTrace({
-          facts: {},
+          facts: { summary: "   " },
           errorMessage: "scope denied",
         }),
       )

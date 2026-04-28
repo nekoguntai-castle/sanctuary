@@ -1,3 +1,24 @@
+# Completed Task: PR #215 Merge Queue Coverage Fix 2026-04-28
+
+Status: complete
+
+Goal: repair the merge-queue-only full coverage failures for PR #215 and re-queue the typed Console transaction intent PR.
+
+## Plan
+
+- [x] Inspect failed merge-group checks and identify local repro commands.
+- [x] Remove the unreachable admin route-param branch instead of adding coverage-only test scaffolding.
+- [x] Add focused coverage assertions for the Console trace summary and API client header-reader edge cases.
+- [x] Re-run focused tests, full backend/frontend coverage, typechecks, lizard, and diff checks before committing.
+
+## Review
+
+- Simplified `handleUpdateUser` to use the repo's existing `TypedRequest` param contract, removing the uncovered route-param defensive helper.
+- Added coverage for blank Console trace summaries falling through to the error message and for API JSON parsing when `headers.get` is absent.
+- Verification passed: focused backend/admin and Console service tests, focused API client tests, full backend unit coverage, full frontend coverage, server test typecheck, app test typecheck, `npm run quality:lizard`, and `git diff --check`.
+
+---
+
 # Active Task: Console OpenAPI Route Coverage 2026-04-28
 
 Status: complete

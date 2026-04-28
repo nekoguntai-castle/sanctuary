@@ -9,7 +9,7 @@ import expressRateLimit from "express-rate-limit";
 import { userRepository } from "../../repositories";
 import { authenticate, requireAdmin } from "../../middleware/auth";
 import { rateLimitByUser } from "../../middleware/rateLimit";
-import { asyncHandler } from "../../errors/errorHandler";
+import { asyncHandler, type TypedRequest } from "../../errors/errorHandler";
 import {
   InvalidInputError,
   NotFoundError,
@@ -94,13 +94,6 @@ function formatUpdateUserValidation(
   /* v8 ignore start -- ZodError from safeParse has at least one issue */
   return issues.map((issue) => issue.message).join(", ");
   /* v8 ignore stop */
-}
-
-function getRequiredParam(req: Request, name: string): string {
-  const value = req.params[name];
-  const param = Array.isArray(value) ? value[0] : value;
-  if (!param) throw new InvalidInputError(`Missing route parameter: ${name}`);
-  return param;
 }
 
 async function applyUsernameUpdate(
@@ -198,8 +191,11 @@ async function auditUserUpdate(
   );
 }
 
-async function handleUpdateUser(req: Request, res: Response): Promise<void> {
-  const userId = getRequiredParam(req, "userId");
+async function handleUpdateUser(
+  req: TypedRequest,
+  res: Response,
+): Promise<void> {
+  const { userId } = req.params;
 
   // Check if user exists
   const existingUser = await userRepository.findById(userId);
