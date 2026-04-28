@@ -1,3 +1,31 @@
+# Active Task: Brittle Check Remediation Phase 3 Implementation 2026-04-28
+
+Status: implementation verified; delivery in progress
+
+Goal: centralize derivation-path interpretation into a shared parser and stop legacy single-account normalization from guessing native segwit for unknown purposes.
+
+## Plan
+
+- [x] Start from merged Phase 2 on `origin/main`.
+- [x] Add a shared structured derivation-path parser in `shared/utils/bitcoin.ts`.
+- [x] Update hardware wallet path wrappers to use parsed purpose, coin type, account path, and script metadata.
+- [x] Update legacy device-account normalization to fail closed on unknown purpose/script inference.
+- [x] Add focused shared, hardware path, and device account normalization tests.
+- [x] Run Phase 3 verification before commit.
+- [ ] Commit, push, open PR, monitor checks, merge, and start Phase 4.
+
+## Review
+
+- Added `parseDerivationPath` with normalized path, purpose, coin type, account index, BIP-48 script path, optional change/address indices, account path, account purpose, script type, and explicit validity.
+- Hardware wallet path helpers now share the parser for testnet detection, script-type inference, and account-path extraction while preserving the existing unknown-purpose signing default.
+- Legacy single-account device registration now rejects malformed or incomplete account paths and unknown purpose/script inference instead of defaulting to native segwit; explicit `accounts[]` input remains authoritative.
+- Preserved PSBT invalid-path behavior by keeping `extractChangeAndAddressIndex` fail-fast for malformed paths while retaining zero fallback for syntactically valid missing suffixes.
+- Covered apostrophe and `h` notation, BIP-48 nested/native script paths, unknown purposes, incomplete account paths, malformed components, empty/null parser inputs, and legacy normalization rejection paths.
+- Merge-queue coverage follow-up covered parser branch edges for unsafe numeric components, standard single-sig purpose mappings, one-component/malformed address suffixes, and empty multisig cosigner lists.
+- Verification passed: focused shared/hardware Vitest, server device API Vitest, focused PSBT/transaction regression tests, Ledger/BitBox/device-connection adapter tests, app/server test typechecks, `npm --prefix server run build`, `npm run quality:lizard`, Prettier, and `git diff --check`.
+
+---
+
 # Active Task: Brittle Check Remediation Phase 2 Implementation 2026-04-28
 
 Status: complete
@@ -11,7 +39,7 @@ Goal: replace Console fallback wallet-name substring matching with an explicit r
 - [x] Integrate resolver results into Console fallback planning with fail-closed ambiguity warnings.
 - [x] Cover token-boundary, substring, ambiguous, short-name, quoted-name, and unscoped cases.
 - [x] Run focused AI-proxy tests, build/typecheck, lizard, Prettier, and `git diff --check`.
-- [ ] Commit, push, open the Phase 2 PR, monitor checks, merge, and then start Phase 3.
+- [x] Commit, push, open the Phase 2 PR, monitor checks, merge, and then start Phase 3.
 
 ## Review
 
@@ -19,6 +47,7 @@ Goal: replace Console fallback wallet-name substring matching with an explicit r
 - Console auto fallback now uses the resolver for named wallet references, rejects ambiguous matches with `wallet_reference_ambiguous`, and keeps typed `wallet_id` intents authoritative.
 - Covered token-boundary matching, substring rejection, ambiguous overlaps, duplicate context rows, very short unquoted names, quoted short names, unscoped wallets, and Console fallback warnings.
 - Verification passed: focused AI-proxy Vitest, `npm --prefix ai-proxy run build`, `npm run typecheck:tests`, `npm run quality:lizard`, Prettier, and `git diff --check`.
+- PR #219 merged through the merge queue at `d4d785f4`.
 
 ---
 
