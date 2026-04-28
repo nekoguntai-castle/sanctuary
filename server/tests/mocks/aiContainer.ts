@@ -93,7 +93,10 @@ export const mockConfigSyncFailure: MockConfigSyncResponse = {
   message: 'Failed to sync configuration',
 };
 
-export const mockSuggestLabelResponses: Record<string, MockSuggestLabelResponse> = {
+export const mockSuggestLabelResponses: Record<
+  string,
+  MockSuggestLabelResponse
+> = {
   'tx-receive-exchange': { suggestion: 'Exchange deposit' },
   'tx-send-exchange': { suggestion: 'Exchange withdrawal' },
   'tx-receive-mining': { suggestion: 'Mining reward' },
@@ -120,7 +123,7 @@ export const mockQueryResponses: Record<string, MockQueryResponse> = {
       limit: 20,
     },
   },
-  'unconfirmed': {
+  unconfirmed: {
     query: {
       type: 'transactions',
       filter: { confirmations: 0 },
@@ -176,10 +179,26 @@ export const mockDetectOllamaNotFound: MockDetectOllamaResponse = {
 
 export const mockListModelsResponse: MockListModelsResponse = {
   models: [
-    { name: 'llama2', size: 3826793472, modifiedAt: '2024-01-15T10:00:00.000Z' },
-    { name: 'llama2:13b', size: 7365960832, modifiedAt: '2024-01-14T15:30:00.000Z' },
-    { name: 'codellama', size: 3826793472, modifiedAt: '2024-01-13T08:00:00.000Z' },
-    { name: 'mistral', size: 4109854720, modifiedAt: '2024-01-12T12:00:00.000Z' },
+    {
+      name: 'llama2',
+      size: 3826793472,
+      modifiedAt: '2024-01-15T10:00:00.000Z',
+    },
+    {
+      name: 'llama2:13b',
+      size: 7365960832,
+      modifiedAt: '2024-01-14T15:30:00.000Z',
+    },
+    {
+      name: 'codellama',
+      size: 3826793472,
+      modifiedAt: '2024-01-13T08:00:00.000Z',
+    },
+    {
+      name: 'mistral',
+      size: 4109854720,
+      modifiedAt: '2024-01-12T12:00:00.000Z',
+    },
   ],
 };
 
@@ -218,6 +237,224 @@ export const mockPullModelError: MockPullModelResponse = {
 // MOCK FETCH IMPLEMENTATION
 // ========================================
 
+interface ParsedMockRequest {
+  method: string;
+  body: Record<string, unknown>;
+}
+
+interface AIContainerMockState {
+  healthy: boolean;
+  aiAvailable: boolean;
+  ollamaFound: boolean;
+}
+
+interface MockJsonOptions {
+  ok?: boolean;
+  status?: number;
+}
+
+type QueryResponseRule = {
+  key: keyof typeof mockQueryResponses;
+  matches: (query: string) => boolean;
+};
+
+const DEFAULT_QUERY_RESPONSE_KEY: keyof typeof mockQueryResponses =
+  'largest-receives';
+
+const QUERY_RESPONSE_RULES: QueryResponseRule[] = [
+  {
+    key: 'largest-receives',
+    matches: (query) => query.includes('largest') && query.includes('receive'),
+  },
+  {
+    key: 'recent-sends',
+    matches: (query) => query.includes('recent') && query.includes('send'),
+  },
+  {
+    key: 'unconfirmed',
+    matches: (query) => query.includes('unconfirmed'),
+  },
+  {
+    key: 'total-received',
+    matches: (query) => query.includes('total') && query.includes('received'),
+  },
+  {
+    key: 'transaction-count',
+    matches: (query) => query.includes('count'),
+  },
+  {
+    key: 'labeled-exchange',
+    matches: (query) => query.includes('exchange'),
+  },
+  {
+    key: 'unused-addresses',
+    matches: (query) => query.includes('unused') && query.includes('address'),
+  },
+  {
+    key: 'available-utxos',
+    matches: (query) => query.includes('utxo'),
+  },
+];
+
+function mockJsonResponse(body: unknown, options: MockJsonOptions = {}) {
+  const { ok = true, status } = options;
+  const response = {
+    ok,
+    ...(status === undefined ? {} : { status }),
+    json: () => Promise.resolve(body),
+  };
+
+  return Promise.resolve(response);
+}
+
+function parseMockRequest(init?: RequestInit): ParsedMockRequest {
+  return {
+    method: init?.method || 'GET',
+    body: init?.body ? JSON.parse(init.body as string) : {},
+  };
+}
+
+function isEndpoint(url: string, path: string): boolean {
+  return url.includes(path);
+}
+
+function isPostEndpoint(url: string, method: string, path: string): boolean {
+  return isEndpoint(url, path) && method === 'POST';
+}
+
+function respondHealth(healthy: boolean) {
+  return mockJsonResponse(
+    healthy ? mockHealthResponse : mockUnhealthyResponse,
+    {
+      ok: healthy,
+    },
+  );
+}
+
+function respondConfigSync() {
+  return mockJsonResponse(mockConfigSyncSuccess);
+}
+
+function respondTest(aiAvailable: boolean) {
+  return mockJsonResponse({ available: aiAvailable });
+}
+
+function respondAIUnavailable() {
+  return mockJsonResponse(
+    { error: 'AI not available' },
+    { ok: false, status: 503 },
+  );
+}
+
+function respondSuggestLabel(
+  aiAvailable: boolean,
+  body: Record<string, unknown>,
+) {
+  if (!aiAvailable) {
+    return respondAIUnavailable();
+  }
+
+  const transactionId = body.transactionId as string;
+  return mockJsonResponse(
+    mockSuggestLabelResponses[transactionId] ||
+      mockSuggestLabelResponses['tx-default'],
+  );
+}
+
+function resolveQueryResponseKey(
+  query: string,
+): keyof typeof mockQueryResponses {
+  return (
+    QUERY_RESPONSE_RULES.find((rule) => rule.matches(query))?.key ||
+    DEFAULT_QUERY_RESPONSE_KEY
+  );
+}
+
+function respondQuery(aiAvailable: boolean, body: Record<string, unknown>) {
+  if (!aiAvailable) {
+    return respondAIUnavailable();
+  }
+
+  const query = (body.query as string)?.toLowerCase() || '';
+  return mockJsonResponse(mockQueryResponses[resolveQueryResponseKey(query)]);
+}
+
+function respondDetectOllama(ollamaFound: boolean) {
+  return mockJsonResponse(
+    ollamaFound ? mockDetectOllamaFound : mockDetectOllamaNotFound,
+  );
+}
+
+function respondListModels(ollamaFound: boolean) {
+  if (!ollamaFound) {
+    return mockJsonResponse(mockListModelsError, { ok: false, status: 502 });
+  }
+
+  return mockJsonResponse(mockListModelsResponse);
+}
+
+function respondPullModel(body: Record<string, unknown>) {
+  const model = body.model as string;
+
+  if (model === 'nonexistent-model') {
+    return mockJsonResponse(mockPullModelNotFound, { ok: false, status: 404 });
+  }
+
+  return mockJsonResponse({
+    ...mockPullModelSuccess,
+    model,
+  });
+}
+
+function respondNotFound() {
+  return mockJsonResponse(
+    { error: 'Endpoint not found' },
+    { ok: false, status: 404 },
+  );
+}
+
+function dispatchAIContainerRequest(
+  url: string,
+  request: ParsedMockRequest,
+  state: AIContainerMockState,
+) {
+  const { method, body } = request;
+
+  if (isEndpoint(url, '/health')) {
+    return respondHealth(state.healthy);
+  }
+
+  if (isPostEndpoint(url, method, '/config')) {
+    return respondConfigSync();
+  }
+
+  if (isPostEndpoint(url, method, '/test')) {
+    return respondTest(state.aiAvailable);
+  }
+
+  if (isPostEndpoint(url, method, '/suggest-label')) {
+    return respondSuggestLabel(state.aiAvailable, body);
+  }
+
+  if (isPostEndpoint(url, method, '/query')) {
+    return respondQuery(state.aiAvailable, body);
+  }
+
+  if (isPostEndpoint(url, method, '/detect-ollama')) {
+    return respondDetectOllama(state.ollamaFound);
+  }
+
+  if (isEndpoint(url, '/list-models')) {
+    return respondListModels(state.ollamaFound);
+  }
+
+  if (isPostEndpoint(url, method, '/pull-model')) {
+    return respondPullModel(body);
+  }
+
+  return respondNotFound();
+}
+
 /**
  * Create a mock fetch function that simulates AI container responses
  */
@@ -233,141 +470,10 @@ export function createAIContainerMock(options?: {
   } = options || {};
 
   return vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-    const method = init?.method || 'GET';
-    const body = init?.body ? JSON.parse(init.body as string) : {};
-
-    // Health check endpoint
-    if (url.includes('/health')) {
-      return Promise.resolve({
-        ok: healthy,
-        json: () => Promise.resolve(healthy ? mockHealthResponse : mockUnhealthyResponse),
-      });
-    }
-
-    // Config sync endpoint
-    if (url.includes('/config') && method === 'POST') {
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve(mockConfigSyncSuccess),
-      });
-    }
-
-    // Test endpoint
-    if (url.includes('/test') && method === 'POST') {
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({ available: aiAvailable }),
-      });
-    }
-
-    // Suggest label endpoint
-    if (url.includes('/suggest-label') && method === 'POST') {
-      if (!aiAvailable) {
-        return Promise.resolve({
-          ok: false,
-          status: 503,
-          json: () => Promise.resolve({ error: 'AI not available' }),
-        });
-      }
-
-      const transactionId = body.transactionId as string;
-      const response = mockSuggestLabelResponses[transactionId] || mockSuggestLabelResponses['tx-default'];
-
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve(response),
-      });
-    }
-
-    // Natural query endpoint
-    if (url.includes('/query') && method === 'POST') {
-      if (!aiAvailable) {
-        return Promise.resolve({
-          ok: false,
-          status: 503,
-          json: () => Promise.resolve({ error: 'AI not available' }),
-        });
-      }
-
-      const query = (body.query as string)?.toLowerCase() || '';
-
-      // Map query patterns to responses
-      let responseKey = 'largest-receives'; // default
-
-      if (query.includes('largest') && query.includes('receive')) {
-        responseKey = 'largest-receives';
-      } else if (query.includes('recent') && query.includes('send')) {
-        responseKey = 'recent-sends';
-      } else if (query.includes('unconfirmed')) {
-        responseKey = 'unconfirmed';
-      } else if (query.includes('total') && query.includes('received')) {
-        responseKey = 'total-received';
-      } else if (query.includes('count')) {
-        responseKey = 'transaction-count';
-      } else if (query.includes('exchange')) {
-        responseKey = 'labeled-exchange';
-      } else if (query.includes('unused') && query.includes('address')) {
-        responseKey = 'unused-addresses';
-      } else if (query.includes('utxo')) {
-        responseKey = 'available-utxos';
-      }
-
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve(mockQueryResponses[responseKey]),
-      });
-    }
-
-    // Detect Ollama endpoint
-    if (url.includes('/detect-ollama') && method === 'POST') {
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve(ollamaFound ? mockDetectOllamaFound : mockDetectOllamaNotFound),
-      });
-    }
-
-    // List models endpoint
-    if (url.includes('/list-models')) {
-      if (!ollamaFound) {
-        return Promise.resolve({
-          ok: false,
-          status: 502,
-          json: () => Promise.resolve(mockListModelsError),
-        });
-      }
-
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve(mockListModelsResponse),
-      });
-    }
-
-    // Pull model endpoint
-    if (url.includes('/pull-model') && method === 'POST') {
-      const model = body.model as string;
-
-      if (model === 'nonexistent-model') {
-        return Promise.resolve({
-          ok: false,
-          status: 404,
-          json: () => Promise.resolve(mockPullModelNotFound),
-        });
-      }
-
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({
-          ...mockPullModelSuccess,
-          model,
-        }),
-      });
-    }
-
-    // Default: not found
-    return Promise.resolve({
-      ok: false,
-      status: 404,
-      json: () => Promise.resolve({ error: 'Endpoint not found' }),
+    return dispatchAIContainerRequest(url, parseMockRequest(init), {
+      healthy,
+      aiAvailable,
+      ollamaFound,
     });
   });
 }
@@ -379,7 +485,9 @@ export function createAIContainerMock(options?: {
 /**
  * Create a mock for specific transaction label suggestions
  */
-export function createLabelSuggestionMock(suggestions: Record<string, string>): Mock {
+export function createLabelSuggestionMock(
+  suggestions: Record<string, string>,
+): Mock {
   return vi.fn().mockImplementation((url: string, init?: RequestInit) => {
     if (url.includes('/suggest-label') && init?.method === 'POST') {
       const body = JSON.parse(init.body as string);
@@ -399,20 +507,27 @@ export function createLabelSuggestionMock(suggestions: Record<string, string>): 
  * Create a mock that simulates network failure
  */
 export function createNetworkFailureMock(): Mock {
-  return vi.fn().mockRejectedValue(new Error('Network error: Connection refused'));
+  return vi
+    .fn()
+    .mockRejectedValue(new Error('Network error: Connection refused'));
 }
 
 /**
  * Create a mock that simulates timeout
  */
 export function createTimeoutMock(): Mock {
-  return vi.fn().mockRejectedValue(new Error('AbortError: The operation was aborted'));
+  return vi
+    .fn()
+    .mockRejectedValue(new Error('AbortError: The operation was aborted'));
 }
 
 /**
  * Create a mock that returns errors for all endpoints
  */
-export function createErrorMock(statusCode: number = 500, errorMessage: string = 'Internal error'): Mock {
+export function createErrorMock(
+  statusCode: number = 500,
+  errorMessage: string = 'Internal error',
+): Mock {
   return vi.fn().mockResolvedValue({
     ok: false,
     status: statusCode,
@@ -428,7 +543,7 @@ export function createErrorMock(statusCode: number = 500, errorMessage: string =
  * Reset all AI container mocks to default state
  */
 export function resetAIContainerMocks(...mocks: Mock[]): void {
-  mocks.forEach(mock => {
+  mocks.forEach((mock) => {
     if (mock && typeof mock.mockReset === 'function') {
       mock.mockReset();
     }

@@ -1,3 +1,27 @@
+# Active Task: Grade Maintainability Remediation Pass 3 2026-04-28
+
+Status: complete
+
+Goal: reduce the direct `$grade` lizard warning count from 5 to 0 without changing AI mock contracts, animation behavior, or coverage gates.
+
+## Plan
+
+- [x] Refactor `server/tests/mocks/aiContainer.ts` into small request parsing, endpoint matching, query-response selection, and response-builder helpers while preserving status codes and payload fallbacks.
+- [x] Refactor `components/animations/trainStation.ts`, `stargazing.ts`, `bunnyMeadow.ts`, and `bambooSway.ts` by extracting scene creation, draw, update, and layer helpers without changing the public animation hooks.
+- [x] Run focused verification for the AI mock consumers and animation modules, plus touched-file lizard checks.
+- [x] Run the full direct lizard trend check; if it reaches zero warnings, tighten `npm run quality:lizard` to a zero-warning budget.
+- [x] Update `docs/plans/codebase-health-assessment.md`, grade history, and this review with the new maintainability evidence.
+- [x] Commit, push, open a PR, monitor checks, and merge through the protected branch flow.
+
+## Review
+
+- Reduced direct grade-style lizard warnings from 5 to 0 by splitting the AI container mock dispatcher and the four remaining animation scene modules into focused helpers.
+- Tightened `npm run quality:lizard` from a 5-warning budget to 0.
+- Updated the health report/history to 98/100 with Maintainability at 13/15; the remaining maintainability score gap is the known >1,000-line file-size gate.
+- Verification passed: focused AnimatedBackground tests, app lint, app/test/server-test typechecks, full frontend coverage at 100%, touched-file lizard, full direct lizard, `npm run quality:lizard`, Prettier, and `git diff --check`.
+
+---
+
 # Completed Task: PR #216 Merge Queue Coverage Fix 2026-04-28
 
 Status: complete
