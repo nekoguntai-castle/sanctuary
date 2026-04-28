@@ -6,19 +6,19 @@
  * to prevent inconsistencies between adapters.
  */
 
-import { normalizeDerivationPath } from '../../shared/utils/bitcoin';
+import {
+  normalizeDerivationPath,
+  parseDerivationPath,
+} from "../../shared/utils/bitcoin";
 
-export type ScriptType = 'p2wpkh' | 'p2sh-p2wpkh' | 'p2pkh' | 'p2tr';
+export type ScriptType = "p2wpkh" | "p2sh-p2wpkh" | "p2pkh" | "p2tr";
 
 /**
  * Detect whether a derivation path targets testnet (coin type 1).
  * Handles both apostrophe (') and 'h' hardened notation.
  */
 export function isTestnetPath(path: string): boolean {
-  const normalized = normalizeDerivationPath(path);
-  const parts = normalized.split('/');
-  // Coin type is the second component: m/purpose'/coin_type'/...
-  return parts.length > 2 && parts[2] === "1'";
+  return parseDerivationPath(path).coinType === 1;
 }
 
 /**
@@ -26,12 +26,18 @@ export function isTestnetPath(path: string): boolean {
  * Checks the purpose field (first path component after 'm/').
  */
 export function inferScriptTypeFromPath(path: string): ScriptType {
-  const normalized = normalizeDerivationPath(path);
-  if (normalized.startsWith("m/84'")) return 'p2wpkh';
-  if (normalized.startsWith("m/49'")) return 'p2sh-p2wpkh';
-  if (normalized.startsWith("m/44'")) return 'p2pkh';
-  if (normalized.startsWith("m/86'")) return 'p2tr';
-  return 'p2wpkh';
+  switch (parseDerivationPath(path).scriptType) {
+    case "native_segwit":
+      return "p2wpkh";
+    case "nested_segwit":
+      return "p2sh-p2wpkh";
+    case "legacy":
+      return "p2pkh";
+    case "taproot":
+      return "p2tr";
+    case "unknown":
+      return "p2wpkh";
+  }
 }
 
 /**
@@ -39,11 +45,6 @@ export function inferScriptTypeFromPath(path: string): ScriptType {
  * from a full derivation path.
  */
 export function extractAccountPath(fullPath: string): string {
-  const normalized = normalizeDerivationPath(fullPath);
-  const parts = normalized.split('/');
-  if (parts.length >= 4) {
-    return parts.slice(0, 4).join('/');
-  }
-  return normalized;
+  const parsed = parseDerivationPath(fullPath);
+  return parsed.accountPath ?? normalizeDerivationPath(fullPath);
 }
-

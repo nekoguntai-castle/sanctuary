@@ -5,8 +5,8 @@
  * for Bitcoin value conversion and formatting.
  */
 
-import { SATS_PER_BTC, ADDRESS_PATTERNS } from '../constants/bitcoin';
-import type { AddressType } from '../constants/bitcoin';
+import { SATS_PER_BTC, ADDRESS_PATTERNS } from "../constants/bitcoin";
+import type { AddressType } from "../constants/bitcoin";
 
 // Re-export types and constants for convenience
 export { SATS_PER_BTC };
@@ -30,7 +30,7 @@ export function btcToSats(btc: number): number {
  * Format satoshis for display with locale-specific formatting
  */
 export function formatSats(sats: number, decimals: number = 0): string {
-  return sats.toLocaleString('en-US', {
+  return sats.toLocaleString("en-US", {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   });
@@ -40,10 +40,14 @@ export function formatSats(sats: number, decimals: number = 0): string {
  * Format BTC for display
  * Trims trailing zeros by default for cleaner display
  */
-export function formatBTC(btc: number, decimals: number = 8, trimZeros: boolean = true): string {
+export function formatBTC(
+  btc: number,
+  decimals: number = 8,
+  trimZeros: boolean = true,
+): string {
   const formatted = btc.toFixed(decimals);
   if (trimZeros) {
-    return formatted.replace(/\.?0+$/, '');
+    return formatted.replace(/\.?0+$/, "");
   }
   return formatted;
 }
@@ -64,7 +68,9 @@ export function formatBTCFromSats(sats: number, decimals: number = 8): string {
 export function isValidAddressFormat(address: string): boolean {
   if (!address || address.length < 26) return false;
   const trimmed = address.trim();
-  return Object.values(ADDRESS_PATTERNS).some((pattern) => pattern.test(trimmed));
+  return Object.values(ADDRESS_PATTERNS).some((pattern) =>
+    pattern.test(trimmed),
+  );
 }
 
 /**
@@ -75,13 +81,13 @@ export function detectAddressType(address: string): AddressType | null {
   if (!address) return null;
   const trimmed = address.trim();
 
-  if (ADDRESS_PATTERNS.legacy.test(trimmed)) return 'legacy';
-  if (ADDRESS_PATTERNS.p2sh.test(trimmed)) return 'p2sh';
-  if (ADDRESS_PATTERNS.nativeSegwit.test(trimmed)) return 'native_segwit';
-  if (ADDRESS_PATTERNS.taproot.test(trimmed)) return 'taproot';
-  if (ADDRESS_PATTERNS.testnetLegacy.test(trimmed)) return 'testnet_legacy';
-  if (ADDRESS_PATTERNS.testnetP2sh.test(trimmed)) return 'testnet_p2sh';
-  if (ADDRESS_PATTERNS.testnetSegwit.test(trimmed)) return 'testnet_segwit';
+  if (ADDRESS_PATTERNS.legacy.test(trimmed)) return "legacy";
+  if (ADDRESS_PATTERNS.p2sh.test(trimmed)) return "p2sh";
+  if (ADDRESS_PATTERNS.nativeSegwit.test(trimmed)) return "native_segwit";
+  if (ADDRESS_PATTERNS.taproot.test(trimmed)) return "taproot";
+  if (ADDRESS_PATTERNS.testnetLegacy.test(trimmed)) return "testnet_legacy";
+  if (ADDRESS_PATTERNS.testnetP2sh.test(trimmed)) return "testnet_p2sh";
+  if (ADDRESS_PATTERNS.testnetSegwit.test(trimmed)) return "testnet_segwit";
 
   return null;
 }
@@ -91,7 +97,7 @@ export function detectAddressType(address: string): AddressType | null {
  */
 export function isMainnetAddress(address: string): boolean {
   const type = detectAddressType(address);
-  return type !== null && !type.startsWith('testnet');
+  return type !== null && !type.startsWith("testnet");
 }
 
 /**
@@ -99,12 +105,56 @@ export function isMainnetAddress(address: string): boolean {
  */
 export function isTestnetAddress(address: string): boolean {
   const type = detectAddressType(address);
-  return type !== null && type.startsWith('testnet');
+  return type !== null && type.startsWith("testnet");
 }
 
 // ============================================================================
 // DERIVATION PATH UTILITIES
 // ============================================================================
+
+/**
+ * Account family inferred from a derivation path purpose.
+ * `unknown` means the purpose is parseable but not a supported wallet account family.
+ */
+export type DerivationAccountPurpose = "single_sig" | "multisig" | "unknown";
+
+/**
+ * Script policy inferred from standard Bitcoin purpose fields.
+ * `unknown` means callers must provide explicit script metadata instead of guessing.
+ */
+export type DerivationScriptType =
+  | "legacy"
+  | "nested_segwit"
+  | "native_segwit"
+  | "taproot"
+  | "unknown";
+
+interface DerivationPathComponent {
+  index: number;
+  hardened: boolean;
+}
+
+/**
+ * Structured derivation-path metadata.
+ * Numeric fields are `null` when the component is missing or malformed.
+ * `valid` describes component syntax; `accountPath` is populated only when
+ * enough account-depth components are present.
+ */
+export interface ParsedDerivationPath {
+  normalizedPath: string;
+  purpose: number | null;
+  coinType: number | null;
+  accountIndex: number | null;
+  scriptPath: number | null;
+  changeIndex: number | null;
+  addressIndex: number | null;
+  accountPath: string | null;
+  accountPurpose: DerivationAccountPurpose;
+  scriptType: DerivationScriptType;
+  valid: boolean;
+}
+
+const HARDENED_MARKER = String.fromCharCode(39);
 
 /**
  * Normalize derivation path to use apostrophe notation (')
@@ -117,11 +167,117 @@ export function isTestnetAddress(address: string): boolean {
  * normalizeDerivationPath("m/84'/0'/0'") // => "m/84'/0'/0'" (unchanged)
  */
 export function normalizeDerivationPath(path: string): string {
+  const input = typeof path === "string" ? path.trim() : "";
+  if (input === "m" || input === "m/") return "m/";
+
   // Add m/ prefix if missing
-  let normalized = path.startsWith('m/') ? path : `m/${path}`;
+  let normalized = input.startsWith("m/") ? input : "m/" + input;
   // Convert h or H to ' (both uppercase and lowercase hardening notation)
-  normalized = normalized.replace(/[hH]/g, "'");
+  normalized = normalized
+    .split("h")
+    .join(HARDENED_MARKER)
+    .split("H")
+    .join(HARDENED_MARKER);
   return normalized;
+}
+
+const parseDerivationPathComponent = (
+  component: string,
+): DerivationPathComponent | null => {
+  const hardened = component.endsWith(HARDENED_MARKER);
+  const value = hardened ? component.slice(0, -1) : component;
+  if (!value || !/^\d+$/.test(value)) return null;
+
+  const index = Number.parseInt(value, 10);
+  return Number.isSafeInteger(index) ? { index, hardened } : null;
+};
+
+const derivationPathComponents = (path: string): string[] => {
+  return path.replace(/^m\/?/, "").split("/").filter(Boolean);
+};
+
+const componentIndex = (
+  components: Array<DerivationPathComponent | null>,
+  index: number,
+): number | null => {
+  return components[index]?.index ?? null;
+};
+
+const accountDepth = (purpose: number | null): number => {
+  return purpose === 48 ? 4 : 3;
+};
+
+const inferAccountPurpose = (
+  purpose: number | null,
+): DerivationAccountPurpose => {
+  if (purpose === 48) return "multisig";
+  if (purpose === 44 || purpose === 49 || purpose === 84 || purpose === 86) {
+    return "single_sig";
+  }
+  return "unknown";
+};
+
+const inferDerivationScriptType = (
+  purpose: number | null,
+  scriptPath: number | null,
+): DerivationScriptType => {
+  if (purpose === 44) return "legacy";
+  if (purpose === 49) return "nested_segwit";
+  if (purpose === 84) return "native_segwit";
+  if (purpose === 86) return "taproot";
+  // BIP48 multisig uses the fourth hardened component as script policy:
+  // 1 = nested segwit, 2 = native segwit.
+  if (purpose === 48 && scriptPath === 1) return "nested_segwit";
+  if (purpose === 48 && scriptPath === 2) return "native_segwit";
+  return "unknown";
+};
+
+const accountPathFromParts = (
+  rawComponents: string[],
+  depth: number,
+  valid: boolean,
+): string | null => {
+  if (!valid || rawComponents.length < depth) return null;
+  return `m/${rawComponents.slice(0, depth).join("/")}`;
+};
+
+/**
+ * Parse a BIP32-style derivation path once into structured components.
+ *
+ * Recognizes common Bitcoin account purposes from BIP44, BIP49, BIP84, BIP86,
+ * and BIP48. BIP48 script path `1` maps to nested segwit, and `2` maps to
+ * native segwit.
+ *
+ * Unknown purposes and malformed components are represented explicitly so
+ * callers can fail closed instead of guessing a script type.
+ */
+export function parseDerivationPath(path: string): ParsedDerivationPath {
+  const normalizedPath = normalizeDerivationPath(path);
+  const rawComponents = derivationPathComponents(normalizedPath);
+  const components = rawComponents.map(parseDerivationPathComponent);
+  const valid = components.every((component) => component !== null);
+  const purpose = componentIndex(components, 0);
+  const depth = accountDepth(purpose);
+  const scriptPath = purpose === 48 ? componentIndex(components, 3) : null;
+  const suffix = components.slice(depth);
+  const changeIndex =
+    suffix.length >= 2 ? (suffix[suffix.length - 2]?.index ?? null) : null;
+  const addressIndex =
+    suffix.length >= 1 ? (suffix[suffix.length - 1]?.index ?? null) : null;
+
+  return {
+    normalizedPath,
+    purpose,
+    coinType: componentIndex(components, 1),
+    accountIndex: componentIndex(components, 2),
+    scriptPath,
+    changeIndex,
+    addressIndex,
+    accountPath: accountPathFromParts(rawComponents, depth, valid),
+    accountPurpose: inferAccountPurpose(purpose),
+    scriptType: inferDerivationScriptType(purpose, scriptPath),
+    valid,
+  };
 }
 
 /**
@@ -134,7 +290,7 @@ export function normalizeDerivationPath(path: string): string {
  */
 export function formatPathForDescriptor(path: string): string {
   // Remove m/ prefix and replace ' with h
-  return path.replace(/^m\//, '').replace(/'/g, 'h');
+  return path.replace(/^m\//, "").replace(/'/g, "h");
 }
 
 /**
@@ -150,18 +306,13 @@ export function extractChangeAndAddressIndex(derivationPath: string): {
   changeIdx: number;
   addressIdx: number;
 } {
-  const pathParts = derivationPath
-    .replace(/^m\/?/, '')
-    .split('/')
-    .filter((p) => p);
-  // The last two parts are change and index (non-hardened)
-  const changeIdx =
-    pathParts.length >= 2
-      ? parseInt(pathParts[pathParts.length - 2].replace(/['h]/g, ''), 10)
-      : 0;
-  const addressIdx =
-    pathParts.length >= 1
-      ? parseInt(pathParts[pathParts.length - 1].replace(/['h]/g, ''), 10)
-      : 0;
-  return { changeIdx, addressIdx };
+  const parsed = parseDerivationPath(derivationPath);
+  if (!parsed.valid) {
+    throw new Error("Invalid derivation path");
+  }
+
+  return {
+    changeIdx: parsed.changeIndex ?? 0,
+    addressIdx: parsed.addressIndex ?? 0,
+  };
 }

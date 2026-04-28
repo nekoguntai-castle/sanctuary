@@ -1,13 +1,13 @@
-import * as bitcoin from 'bitcoinjs-lib';
-import { type Mock, afterEach, beforeAll, beforeEach, vi } from 'vitest';
+import * as bitcoin from "bitcoinjs-lib";
+import { type Mock, afterEach, beforeAll, beforeEach, vi } from "vitest";
 
 const bitBoxMocks = vi.hoisted(() => {
   const mockGetDevicePath = vi.fn();
   const mockGetKeypathFromString = vi.fn((path: string) =>
     path
-      .replace(/^m\//, '')
-      .split('/')
-      .map((part: string) => parseInt(part.replace(/['h]$/, ''), 10) || 0)
+      .replace(/^m\//, "")
+      .split("/")
+      .map((part: string) => parseInt(part.replace(/['h]$/, ""), 10) || 0),
   );
   const mockIsErrorAbort = vi.fn((_err?: unknown) => false);
 
@@ -59,7 +59,8 @@ const bitBoxMocks = vi.hoisted(() => {
       Product: (...args: unknown[]) => mockFirmwareProduct(...args),
     });
     this.btcXPub = (...args: unknown[]) => mockBtcXPub(...args);
-    this.btcDisplayAddressSimple = (...args: unknown[]) => mockDisplayAddressSimple(...args);
+    this.btcDisplayAddressSimple = (...args: unknown[]) =>
+      mockDisplayAddressSimple(...args);
     this.btcSignSimple = vi.fn();
   });
 
@@ -79,7 +80,7 @@ const bitBoxMocks = vi.hoisted(() => {
   };
 });
 
-vi.mock('bitbox02-api', () => ({
+vi.mock("bitbox02-api", () => ({
   BitBox02API: bitBoxMocks.MockBitBox02API,
   getDevicePath: bitBoxMocks.mockGetDevicePath,
   getKeypathFromString: bitBoxMocks.mockGetKeypathFromString,
@@ -88,7 +89,7 @@ vi.mock('bitbox02-api', () => ({
   isErrorAbort: bitBoxMocks.mockIsErrorAbort,
 }));
 
-vi.mock('bitcoinjs-lib', () => ({
+vi.mock("bitcoinjs-lib", () => ({
   networks: {
     bitcoin: { pubKeyHash: 0, scriptHash: 5 },
     testnet: { pubKeyHash: 111, scriptHash: 196 },
@@ -102,11 +103,12 @@ vi.mock('bitcoinjs-lib', () => ({
   },
   Transaction: {
     SIGHASH_ALL: 1,
-    fromBuffer: (...args: unknown[]) => bitBoxMocks.mockTransactionFromBuffer(...args),
+    fromBuffer: (...args: unknown[]) =>
+      bitBoxMocks.mockTransactionFromBuffer(...args),
   },
 }));
 
-vi.mock('../../../utils/logger', () => ({
+vi.mock("../../../utils/logger", () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),
@@ -115,11 +117,17 @@ vi.mock('../../../utils/logger', () => ({
   }),
 }));
 
-vi.mock('../../../shared/utils/bitcoin', () => ({
-  normalizeDerivationPath: (path: string) => path,
-}));
+vi.mock("../../../shared/utils/bitcoin", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../../shared/utils/bitcoin")>();
+  return {
+    ...actual,
+    normalizeDerivationPath: (path: string) => path,
+  };
+});
 
-type BitBoxAdapterConstructor = typeof import('../../../services/hardwareWallet/adapters/bitbox').BitBoxAdapter;
+type BitBoxAdapterConstructor =
+  typeof import("../../../services/hardwareWallet/adapters/bitbox").BitBoxAdapter;
 type BitBoxAdapterInstance = InstanceType<BitBoxAdapterConstructor>;
 
 const originalWindow = globalThis.window;
@@ -143,7 +151,8 @@ export const bitcoinLib = bitcoin;
 
 export function setupBitBoxAdapterTestHarness(): void {
   beforeAll(async () => {
-    const module = await import('../../../services/hardwareWallet/adapters/bitbox');
+    const module =
+      await import("../../../services/hardwareWallet/adapters/bitbox");
     BitBoxAdapter = module.BitBoxAdapter;
   });
 
@@ -163,15 +172,15 @@ export function setupBitBoxAdapterTestHarness(): void {
     setAuthorizedHidDevices([]);
     mockGetKeypathFromString.mockImplementation((path: string) =>
       path
-        .replace(/^m\//, '')
-        .split('/')
-        .map((part: string) => parseInt(part.replace(/['h]$/, ''), 10) || 0)
+        .replace(/^m\//, "")
+        .split("/")
+        .map((part: string) => parseInt(part.replace(/['h]$/, ""), 10) || 0),
     );
-    mockGetDevicePath.mockResolvedValue('WEBHID');
+    mockGetDevicePath.mockResolvedValue("WEBHID");
     mockApiConnect.mockResolvedValue(undefined);
     mockApiClose.mockReturnValue(undefined);
     mockFirmwareProduct.mockReturnValue(constants.Product.BitBox02Multi);
-    mockBtcXPub.mockResolvedValue('xpub-bitbox');
+    mockBtcXPub.mockResolvedValue("xpub-bitbox");
     mockDisplayAddressSimple.mockResolvedValue(undefined);
     mockIsErrorAbort.mockReturnValue(false);
     mockPsbtFromBase64.mockReturnValue({
@@ -182,7 +191,7 @@ export function setupBitBoxAdapterTestHarness(): void {
       locktime: 0,
       updateInput: vi.fn(),
       finalizeAllInputs: vi.fn(),
-      toBase64: vi.fn(() => 'signed-psbt'),
+      toBase64: vi.fn(() => "signed-psbt"),
     });
     mockTransactionFromBuffer.mockReturnValue({
       outs: [{ value: 1234 }],
@@ -190,22 +199,30 @@ export function setupBitBoxAdapterTestHarness(): void {
   });
 
   afterEach(() => {
-    Object.defineProperty(globalThis, 'window', { value: originalWindow, configurable: true });
-    Object.defineProperty(globalThis, 'navigator', { value: originalNavigator, configurable: true });
+    Object.defineProperty(globalThis, "window", {
+      value: originalWindow,
+      configurable: true,
+    });
+    Object.defineProperty(globalThis, "navigator", {
+      value: originalNavigator,
+      configurable: true,
+    });
   });
 }
 
 export function createBitBoxAdapter(): BitBoxAdapterInstance {
   if (!BitBoxAdapter) {
-    throw new Error('BitBoxAdapter was not loaded before the test ran');
+    throw new Error("BitBoxAdapter was not loaded before the test ran");
   }
 
   return new BitBoxAdapter();
 }
 
-export function setWebHidEnv(options: { secure?: boolean; withHid?: boolean } = {}): void {
+export function setWebHidEnv(
+  options: { secure?: boolean; withHid?: boolean } = {},
+): void {
   const { secure = true, withHid = true } = options;
-  Object.defineProperty(globalThis, 'window', {
+  Object.defineProperty(globalThis, "window", {
     value: {
       ...(originalWindow as object),
       isSecureContext: secure,
@@ -215,13 +232,13 @@ export function setWebHidEnv(options: { secure?: boolean; withHid?: boolean } = 
 
   const nav = withHid
     ? {
-      hid: {
-        getDevices: vi.fn(),
-      },
-    }
+        hid: {
+          getDevices: vi.fn(),
+        },
+      }
     : {};
 
-  Object.defineProperty(globalThis, 'navigator', {
+  Object.defineProperty(globalThis, "navigator", {
     value: nav,
     configurable: true,
   });
@@ -231,12 +248,14 @@ export function setAuthorizedHidDevices(devices: unknown[]): void {
   (globalThis.navigator as any).hid.getDevices.mockResolvedValue(devices);
 }
 
-export function makeHidDevice(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+export function makeHidDevice(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
   return {
     vendorId: 0x03eb,
     productId: 0x2403,
     opened: false,
-    productName: 'BitBox02',
+    productName: "BitBox02",
     ...overrides,
   };
 }
@@ -245,16 +264,17 @@ export function seedConnectedAdapter(adapter: BitBoxAdapterInstance): void {
   (adapter as any).connection = {
     api: {
       btcXPub: (...args: unknown[]) => mockBtcXPub(...args),
-      btcDisplayAddressSimple: (...args: unknown[]) => mockDisplayAddressSimple(...args),
+      btcDisplayAddressSimple: (...args: unknown[]) =>
+        mockDisplayAddressSimple(...args),
     },
-    devicePath: 'WEBHID',
+    devicePath: "WEBHID",
     product: constants.Product.BitBox02Multi,
   };
   (adapter as any).connectedDevice = {
-    id: 'bitbox-1',
-    type: 'bitbox',
-    name: 'BitBox',
-    model: 'BitBox02',
+    id: "bitbox-1",
+    type: "bitbox",
+    name: "BitBox",
+    model: "BitBox02",
     connected: true,
     fingerprint: undefined,
   };
@@ -262,11 +282,11 @@ export function seedConnectedAdapter(adapter: BitBoxAdapterInstance): void {
 
 export function seedSigningAdapter(
   adapter: BitBoxAdapterInstance,
-  btcSignSimple: Mock<(...args: unknown[]) => unknown>
+  btcSignSimple: Mock<(...args: unknown[]) => unknown>,
 ): void {
   (adapter as any).connection = {
     api: { btcSignSimple: (...args: unknown[]) => btcSignSimple(...args) },
-    devicePath: 'WEBHID',
+    devicePath: "WEBHID",
     product: constants.Product.BitBox02Multi,
   };
 }
