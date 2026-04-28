@@ -70,6 +70,9 @@ export function registerDetectOllamaContracts() {
       endpoint: 'http://10.114.123.214:1234',
       preferredProviderType: 'openai-compatible',
     });
+    expect(
+      (aiService.detectProviderEndpoint as Mock).mock.calls[0][0],
+    ).not.toHaveProperty('apiKey');
     expect(response.body.models[0].name).toBe('qwen/qwen3.6-35b-a3b');
   });
 

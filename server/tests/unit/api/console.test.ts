@@ -2,6 +2,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import express, { type Express } from "express";
 import request from "supertest";
 import { errorHandler } from "../../../src/errors/errorHandler";
+import { ServiceUnavailableError } from "../../../src/errors/ApiError";
 
 const mocks = vi.hoisted(() => {
   const rateLimitHits: string[] = [];
@@ -161,6 +162,36 @@ describe("console API routes", () => {
       }),
       { ipAddress: "127.0.0.1", userAgent: "test-agent" },
     );
+  });
+
+  it("returns Console proxy timeout details from failed turns", async () => {
+    mocks.runConsoleTurn.mockRejectedValueOnce(
+      new ServiceUnavailableError(
+        "AI proxy /console/plan request failed: The request took too long to process",
+        "SERVICE_UNAVAILABLE",
+        {
+          path: "/console/plan",
+          status: 408,
+          proxyError: "The request took too long to process",
+        },
+      ),
+    );
+
+    const response = await request(app)
+      .post("/api/v1/console/turns")
+      .send({ prompt: "whats the current block?" });
+
+    expect(response.status).toBe(503);
+    expect(response.body).toMatchObject({
+      code: "SERVICE_UNAVAILABLE",
+      message:
+        "AI proxy /console/plan request failed: The request took too long to process",
+      details: {
+        path: "/console/plan",
+        status: 408,
+        proxyError: "The request took too long to process",
+      },
+    });
   });
 
   it("lists prompt history with strict boolean parsing and rejects invalid prompt queries", async () => {

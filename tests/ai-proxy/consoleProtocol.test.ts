@@ -186,6 +186,27 @@ describe("console planner protocol", () => {
     ]);
   });
 
+  it("plans one transaction call per scoped wallet for explicit all-wallet auto prompts", () => {
+    const result = parseConsolePlanResponse(
+      "I should retrieve matching transactions for all scoped wallets.",
+      4,
+      {
+        ...autoWalletSetPlanInput,
+        prompt: "show all wallets transactions between feb 2020 and june 2020",
+      },
+    );
+
+    expect(result.toolCalls.map((call) => call.input.walletId)).toEqual([
+      "11111111-1111-4111-8111-111111111111",
+      "22222222-2222-4222-8222-222222222222",
+    ]);
+    expect(result.toolCalls).toHaveLength(2);
+    expect(result.warnings).toEqual([
+      "model_response_not_json",
+      "fallback_plan_applied",
+    ]);
+  });
+
   it("uses a named accessible wallet for auto transaction fallback", () => {
     const result = parseConsolePlanResponse(
       "I should retrieve Main Vault transactions.",

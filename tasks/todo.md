@@ -1,6 +1,75 @@
+# Active Task: Backend Proxy AI Regression Coverage 2026-04-28
+
+Status: complete
+
+Goal: add backend/proxy-level regressions for LM Studio detection without API keys, Console timeout diagnostics, and multi-wallet transaction planning behavior.
+
+## Plan
+
+- [x] Inspect existing backend/proxy AI tests and identify gaps beyond the UI regressions.
+- [x] Add explicit OpenAI-compatible provider detection coverage that proves no API key or Authorization header is sent when none is configured.
+- [x] Add Console gateway/API coverage proving timeout/proxy failure diagnostics survive into API responses.
+- [x] Add AI-proxy planner coverage proving all-wallet transaction prompts produce multiple wallet-specific calls rather than a single arbitrary target.
+- [x] Run focused backend/proxy verification and document results.
+
+## Review
+
+- Added explicit backend/proxy assertions that OpenAI-compatible LM Studio detection works without an API key and does not send `apiKey` or `Authorization` when none is configured.
+- Added Console gateway and API route assertions that timed-out proxy failures preserve path, upstream status, and proxy message details in the API error response.
+- Added AI-proxy planner coverage that explicit all-wallet auto transaction prompts produce one `query_transactions` call per scoped wallet instead of a single arbitrary wallet target.
+- Verification: `npx vitest run tests/ai-proxy/providerDetection.test.ts tests/ai-proxy/consoleProtocol.test.ts` passed (12 tests), server focused suite passed (`npx vitest run tests/unit/services/aiService.modelOperations.test.ts tests/unit/assistant/consoleModelGateway.test.ts tests/unit/api/console.test.ts tests/unit/api/ai.test.ts`, 124 tests), `npm run typecheck:tests` passed, `npm run typecheck:server:tests` passed, and `git diff --check` passed.
+
+---
+
+# Active Task: AI Console Regression Test Expansion 2026-04-28
+
+Status: complete
+
+Goal: add the missing regression tests for local OpenAI-compatible provider setup, Console launch/error behavior, feature-flag visibility, and transaction navigation/filter behavior.
+
+## Plan
+
+- [x] Map existing AI settings, Console, capability, and transaction navigation tests to avoid duplicate coverage.
+- [x] Add focused tests for LM Studio/OpenAI-compatible provider save/detect/model selection behavior.
+- [x] Confirm existing prompt echo, shortcut launch, and feature-flag launcher visibility coverage; add missing Console failure diagnostics regression.
+- [x] Add focused tests for Console-to-transactions navigation and no arbitrary all-wallet navigation.
+- [x] Run focused verification and document results.
+
+## Review
+
+- Added LM Studio/OpenAI-compatible AI Settings coverage for detecting a LAN endpoint, auto-selecting the first detected model, saving the configuration, and verifying no credential update is required when no API key is configured.
+- Added Console coverage for all-wallet transaction plans that return multiple wallet transaction queries so the UI does not navigate to an arbitrary wallet.
+- Added Console coverage for local provider timeout failures so the failed prompt remains in the dialogue with expandable diagnostics including HTTP 408, request ID, and provider details.
+- Verification: focused regression suite passed (`npx vitest run tests/components/AISettings.test.tsx tests/components/ConsoleDrawer.test.tsx tests/api/console.test.ts tests/src/app/consoleTransactionNavigation.test.ts tests/hooks/useConsoleAvailability.test.ts tests/hooks/useAIStatus.test.tsx`, 120 tests), touched component tests passed after formatting (`npx vitest run tests/components/AISettings.test.tsx tests/components/ConsoleDrawer.test.tsx`, 86 tests), `npm run typecheck:tests` passed, and `git diff --check` passed.
+
+---
+
+# Active Task: Remaining PR Merge And Cleanup 2026-04-28
+
+Status: complete
+
+Goal: merge the remaining open Dependabot PRs through the merge queue and clean up verified merged branches/worktree state.
+
+## Plan
+
+- [x] Inventory open PRs, branch state, and required check status.
+- [x] Queue mergeable PRs without branch deletion and monitor merge-group CI.
+- [x] Verify each merged PR on `origin/main`.
+- [x] Clean up verified merged local/remote branches and document any intentionally retained state.
+
+## Review
+
+- Merged PRs: #205 (`31e29fe1f04ced2d56dbf6d8b8fa5eeb5f015403`), #207 (`ce666aea7ee373d7f277c6b2da943269955e1981`), #208 (`146848d1d0698d7ae1ba7e524244b4d53af2fdaa`), and #209 (`6210a45fc157e427cd4695ca464114054094b273`).
+- Verification: the merge queue emptied, all four PRs report `state: MERGED`, `origin/main` was fetched and fast-forwarded, and `git log origin/main --oneline -8` shows #205, #207, #208, and #209 on top of #206.
+- CI: merge-group Code Quality/Test Suite checks passed for the queued PRs. The #209 merge-group CodeQL run failed after merge because the temporary `gh-readonly-queue` ref had already been deleted; the post-merge `main` CodeQL and Test Suite runs succeeded.
+- Cleanup: remote PR branches were already gone on GitHub, `git fetch origin --prune` removed stale tracking refs, and local branches `ai-console-local-provider-auto-context` and `chore/bump-version-0.8.45` were deleted. Only local `main` remains.
+- Residual: none.
+
+---
+
 # Active Task: PR 206 Merge Delivery 2026-04-28
 
-Status: in progress
+Status: complete
 
 Goal: finish delivery of PR #206 through the merge queue after full coverage failed on the merge-group branch.
 
@@ -9,12 +78,13 @@ Goal: finish delivery of PR #206 through the merge queue after full coverage fai
 - [x] Identify and fix the remaining backend coverage miss reproduced by `npm run test:backend:coverage`.
 - [x] Reproduce the merge queue frontend coverage failure and fix the missing coverage or contract drift.
 - [x] Run focused and package-level verification for the touched backend/frontend areas.
-- [ ] Commit only delivery-related fixes, push the branch, and monitor PR-head CI.
-- [ ] Queue the PR without branch deletion, verify it merges into `origin/main`, then document cleanup state.
+- [x] Commit only delivery-related fixes, push the branch, and monitor PR-head CI.
+- [x] Queue the PR without branch deletion, verify it merges into `origin/main`, then document cleanup state.
 
 ## Review
 
 - Local verification: focused frontend coverage tests passed; full frontend coverage passed at 100% statements/branches/functions/lines; full backend coverage passed at 100% statements/branches/functions/lines; `npm run typecheck:app`, `npm run typecheck:tests`, `npm run typecheck:server:tests`, `npm run lint:app`, `npm run lint:server`, touched-file lizard, and `git diff --check` passed.
+- Delivery: PR #206 merged through the queue as `2a97102fae625affb631a744e32398ebb3c9ac5c`, and `origin/main` was fetched and verified at that merge commit.
 
 ---
 
