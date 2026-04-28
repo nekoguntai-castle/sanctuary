@@ -107,6 +107,7 @@ Tests, typecheck, high/critical dependency audits, and current-tree gitleaks are
 1. **Raw file-size gate remains failed** - `scripts/perf/phase3-benchmark.mjs` is 1,150 lines and the next largest files are still near or above the 800-line warning range.
 2. **Root audit has 16 low-severity advisories** - no high/critical issues, but hardware-wallet/polyfill transitive dependency risk should remain tracked.
 3. **Animation visual drift risk** - the complexity cleanup split canvas scene generation/draw/update helpers without intended behavior changes; focused and full frontend coverage pass, but visual parity remains best validated through render smoke when these backgrounds are touched again.
+4. **Targeted brittle-check follow-up** - `docs/plans/brittle-checks-assessment.md` identifies natural-language fallback parsing, derivation-path string inference, address chain detection from path substrings, and message-text error classification as typed-contract refactor candidates; `docs/plans/brittle-checks-remediation-plan.md` breaks the work into phased PRs.
 
 ## Fastest Improvements
 

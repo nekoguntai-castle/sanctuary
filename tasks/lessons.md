@@ -2,6 +2,19 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Consolidate Instruction Updates Instead Of Stacking Bullets
+
+**Rule:** When the user asks to add or refine agent guidance, search for overlapping guidance and rewrite it into a clearer structure instead of appending duplicate bullets.
+
+**Why:** The AGENTS.md completion guidance already had verification, elegance, and excellence sections with overlap. The user clarified that a better format was preferred.
+
+**How to apply:**
+
+- Read the nearby instruction sections before editing.
+- Merge related rules into named checklists or gates.
+- Keep the user's specific requested behavior explicit in the final wording.
+- When next-step guidance is requested, allow an explicit "None required" instead of inventing unnecessary follow-up work.
+
 ## Treat Plan-Only Corrections As A Hard Stop
 
 **Rule:** When the user corrects course to "plan only" or "do not edit yet," stop before file changes and return a concrete implementation plan.

@@ -1,3 +1,45 @@
+# Active Task: Brittle Check Remediation Planning 2026-04-28
+
+Status: complete
+
+Goal: turn the brittle-check assessment into a phased implementation plan with clear sequencing, exit criteria, and verification gates.
+
+## Plan
+
+- [x] Re-read the assessment findings and current task context.
+- [x] Group the findings into independently shippable architecture phases.
+- [x] Define scope, exit criteria, verification commands, and rollback strategy for each phase.
+- [x] Document the recommended PR breakdown and update the task log.
+
+## Review
+
+- Added `docs/plans/brittle-checks-remediation-plan.md`.
+- Recommended starting with Console typed intents and wallet reference resolution, then moving to shared derivation-path parsing, address chain metadata, structured error codes, and finally lower-risk operational contracts.
+- Plan keeps legitimate text parsers intact and targets only checks that are substituting for typed contracts.
+
+---
+
+# Active Task: Brittle Check Architecture Audit 2026-04-28
+
+Status: complete
+
+Goal: identify brittle condition checks across the codebase, separate acceptable edge adapters from risky business logic, and propose better long-term architecture where needed.
+
+## Plan
+
+- [x] Define brittleness categories and scan the repo for representative patterns.
+- [x] Inspect high-signal production call sites before drawing conclusions.
+- [x] Classify findings by risk, blast radius, and whether tests already lock behavior down.
+- [x] Write a concise architecture assessment and update this task review.
+
+## Review
+
+- Added `docs/plans/brittle-checks-assessment.md` with a targeted finding list and recommended refactor sequence.
+- Main architecture risks are concentrated in natural-language fallback planning, derivation-path string inference, address chain detection from path substrings, and message-text error classification.
+- Reviewed acceptable regex use separately so descriptor parsing, route contracts, validation, redaction, and sanitization are not treated as false-positive debt.
+
+---
+
 # Active Task: Grade Maintainability Remediation Pass 3 2026-04-28
 
 Status: complete
