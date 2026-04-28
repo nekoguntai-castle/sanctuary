@@ -31,6 +31,7 @@ export interface ConsoleGatewayPlan {
 export interface ConsoleGatewayToolResult {
   toolName: string;
   status: "completed" | "denied" | "failed";
+  input?: unknown;
   sensitivity?: string;
   facts?: unknown;
   provenance?: unknown;

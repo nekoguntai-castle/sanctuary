@@ -1,3 +1,195 @@
+# Active Task: AI Console Local Provider PR Delivery 2026-04-28
+
+Status: in progress
+
+Goal: commit the verified AI Console/local provider changes, push a branch, open a PR, monitor checks, merge it, and verify the merge.
+
+## Plan
+
+- [x] Preflight branch, status, and diff scope.
+- [ ] Create a delivery branch and commit the verified change set.
+- [ ] Push the branch and open a PR with verification notes.
+- [ ] Monitor required checks and address failures if any.
+- [ ] Merge safely and verify the target branch contains the PR.
+- [ ] Document delivery results.
+
+## Review
+
+- Pending.
+
+---
+
+# Active Task: Full Codebase Grade Audit 2026-04-28
+
+Status: complete
+
+Goal: run the `$grade` full repository software quality audit against the current working tree and update `docs/plans/codebase-health-assessment.md`.
+
+## Plan
+
+- [x] Load the grade rubric and establish repository context.
+- [x] Run mechanical signal collection and trend lookup.
+- [x] Inspect targeted evidence for judged criteria.
+- [x] Score domains, update the report, and append grade history.
+- [x] Run final sanity checks and summarize results.
+
+## Review
+
+- Score: 98/100, Grade A, Confidence High, no hard-fail blockers.
+- Updated `docs/plans/codebase-health-assessment.md` with the current full-audit evidence and trend notes.
+- Closed the remaining 100% coverage gaps with targeted defensive-branch tests for Console results, API response parsing, Console tool synthesis traces, and wallet transaction filter parsing.
+- Verification: grade collector tests/lint/typecheck passed; app/backend/gateway coverage all passed at 100%; `npm run lint`, app/test/server-test typechecks, touched-file Prettier, `git diff --check`, full pinned lizard, jscpd, and package audits passed their scoring gates.
+
+---
+
+# Active Task: Console Clear Feature Complete Test Coverage 2026-04-28
+
+Status: complete
+
+Goal: add the remaining regression coverage for Console clear controls and the LLM thinking indicator across UI failure paths, persistence, route guards, and browser smoke behavior.
+
+## Plan
+
+- [x] Inspect current Console API/repository/UI/e2e test patterns.
+- [x] Add UI failure-path tests for clear session/history errors.
+- [x] Add repository persistence tests for soft-deleted sessions and prompts.
+- [x] Add route guard tests for auth and feature gating on the new delete endpoints.
+- [x] Add browser-level Console smoke coverage.
+- [x] Run focused verification and document results.
+
+## Review
+
+- Added Console drawer failure-path coverage proving failed selected-session clearing and failed prompt-history clearing leave the current UI state intact and surface the API error.
+- Added console repository coverage for session soft delete, prompt-history bulk soft delete, `saved: false` reset, and active-list filters excluding deleted rows.
+- Added console route coverage proving the new selected-session and prompt-history clear endpoints are blocked by authentication and the `sanctuaryConsole` feature flag before service calls run.
+- Added `e2e/console-drawer-smoke.spec.ts`, a mocked Chromium smoke that opens the real app Console, submits a prompt, observes the LLM thinking status, clears the display, cancels prompt-history clearing, then confirms prompt-history clearing.
+- Verification: `npx vitest run tests/components/ConsoleDrawer.test.tsx` passed with 32 tests, server focused Vitest passed with 14 tests, `npx playwright test --project=chromium e2e/console-drawer-smoke.spec.ts --reporter=line` passed, `npm run typecheck:tests` passed, `npm run typecheck:server:tests` passed, touched-file Prettier check passed, and `git diff --check` passed.
+
+---
+
+# Active Task: Console New Feature Regression Tests 2026-04-28
+
+Status: complete
+
+Goal: add missing regression coverage for the new Console clear controls and LLM thinking indicator now that the feature has been manually validated.
+
+## Plan
+
+- [x] Audit existing Console cleanup and thinking-indicator tests.
+- [x] Add missing cancellation and pending-state regression tests.
+- [x] Run focused verification and update this task review.
+
+## Review
+
+- Added Console drawer regression coverage proving the clear-display and clear-selected-session buttons are disabled while the LLM is still thinking.
+- Added coverage proving the thinking status is removed after the model response completes.
+- Added cancellation coverage for selected-session clearing and prompt-history clearing so destructive APIs are not called unless the user confirms.
+- Verification: `npx vitest run tests/components/ConsoleDrawer.test.tsx` passed with 30 tests, `npm run typecheck:tests` passed, touched-file Prettier check passed, and `git diff --check` passed.
+
+---
+
+# Active Task: Console Clear Controls And Thinking Indicator 2026-04-28
+
+Status: complete
+
+Goal: let users clear the current Console display, remove selected Console sessions, clear prompt history, and see a clear waiting/thinking indicator while the LLM is responding.
+
+## Plan
+
+- [x] Inspect current Console session/history APIs and drawer UI.
+- [x] Add backend and frontend API support for clearing selected sessions and prompt history.
+- [x] Add drawer controls for clear display, clear selected session, clear prompt history, and a visible model-thinking status.
+- [x] Add focused API/server/UI tests.
+- [x] Run verification, rebuild the local containers, and confirm health.
+
+## Review
+
+- Implementation: added a local clear-display action, server-backed soft delete for the selected Console session, and server-backed prompt history clearing. The UI exposes all three as icon controls with confirmations for persisted deletes.
+- Implementation: added an accessible LLM thinking status with an animated loader while Console requests are waiting on the model response.
+- Tests: added client API, server route/service, and Console drawer coverage for clear display, clear selected session, clear prompt history, and the thinking status.
+- Verification: `npx vitest run tests/api/console.test.ts tests/components/ConsoleDrawer.test.tsx`, `npx vitest run tests/unit/api/console.test.ts tests/unit/assistant/consoleService.test.ts` from `server/`, `npm run typecheck:app`, `npm run typecheck:tests`, `npm run typecheck:server:tests`, touched-file Prettier check, and `git diff --check` passed. Touched-file lizard could not run because `npx` could not determine a `lizard` executable.
+- Local rebuild: `./start.sh --rebuild` completed; `https://localhost:8443` returns HTTP 200, the Sanctuary containers are healthy, and frontend nginx still has the 310s API proxy timeouts.
+
+---
+
+# Active Task: Console Proxy Timeout And HTML Error Handling 2026-04-28
+
+Status: complete
+
+Goal: fix slow local LM Studio Console queries that cross the frontend proxy timeout and surface as `Unexpected token '<'` JSON parse errors.
+
+## Plan
+
+- [x] Inspect live frontend/backend logs and identify the failing request path.
+- [x] Extend frontend nginx API proxy timeouts beyond the Console client/backend model-call budget.
+- [x] Harden the browser API client so non-JSON proxy errors become useful `ApiError` failures.
+- [x] Add focused regression coverage for both timeout config and HTML/non-JSON API errors.
+- [x] Run verification, rebuild the local containers, and confirm the running instance is healthy.
+
+## Review
+
+- Root cause: `POST /api/v1/console/prompts/:id/replay` exceeded the frontend nginx 60s `/api/` proxy read timeout while the backend/AI path kept processing, so nginx returned a 504 HTML page and the browser API client surfaced a JSON parse error.
+- Implementation: raised frontend `/api/` proxy send/read timeouts to 310s in both HTTP and HTTPS nginx templates, above the Console client/backend model-call budget.
+- Implementation: centralized API response parsing so JSON backend errors, HTML/plain-text proxy errors, upload errors, blob errors, and download errors all become `ApiError` failures with HTTP status and body previews where available.
+- Tests: added client coverage for HTML 504 proxy responses and nginx-template coverage for the 310s API proxy timeout; updated blob/download non-JSON fallback expectations to preserve status text.
+- Verification: `npx vitest run tests/api/client.test.ts tests/config/nginxProxyHeaders.test.ts`, `npm run typecheck:app`, `npm run typecheck:tests`, touched-file Prettier check, and `git diff --check` passed. Touched-file lizard could not run because `npx` could not determine a `lizard` executable.
+- Local rebuild: `./start.sh --rebuild` completed. `https://localhost:8443` returns HTTP 200, Sanctuary containers are healthy, and the running frontend nginx config now contains `proxy_send_timeout 310s` and `proxy_read_timeout 310s`.
+
+---
+
+# Active Task: Console All-Wallet Transaction Results 2026-04-28
+
+Status: complete
+
+Goal: give all-wallet Console transaction prompts a usable place to display the resulting transaction list instead of dropping multi-wallet transaction plans.
+
+## Plan
+
+- [x] Document the all-wallet transaction output issue and inspect current transaction routes/components.
+- [x] Choose the smallest coherent UI path for multi-wallet Console transaction results.
+- [x] Implement the result surface and Console linkage.
+- [x] Add focused tests for all-wallet transaction output/navigation.
+- [x] Run verification and update task notes/lessons.
+
+## Review
+
+- Decision: add an AI-centric Console results route for aggregate outputs, starting with multi-wallet transaction lists. Preserve single-wallet Console transaction navigation to the wallet detail Transactions tab.
+- Implementation: added `/console/results`, wired multi-wallet Console transaction plans to it, and extended wallet transaction listing with Console-compatible date/type query filters.
+- Tests: added route-state extraction/dedupe coverage, ConsoleDrawer multi-wallet navigation coverage, ConsoleResults aggregate-loading coverage, and backend transaction route filter coverage.
+- Verification: focused UI tests passed (`tests/src/app/consoleTransactionNavigation.test.ts`, `tests/components/ConsoleDrawer.test.tsx`, `tests/components/ConsoleResults.test.tsx`), backend transaction route tests passed (`server/tests/unit/api/transactions-http-routes.test.ts`), `npm run typecheck:app`, `npm run typecheck:tests`, `npm run typecheck:server:tests`, touched-file Prettier check, and `git diff --check` passed. Touched-file lizard could not run because `npx` could not resolve a `lizard` executable.
+- Local rebuild: `./start.sh --rebuild` completed; `https://localhost:8443` returns HTTP 200, and Sanctuary frontend, gateway, backend, worker, AI proxy, Postgres, and Redis containers are healthy by `docker ps -a`.
+
+---
+
+# Active Task: Local LM Studio Live Validation 2026-04-28
+
+Status: complete
+
+Goal: rebuild the local Sanctuary stack and validate the LM Studio/OpenAI-compatible provider path plus Console behavior against the running local instance.
+
+## Plan
+
+- [x] Rebuild the local containers with the merged AI provider/Console regression code.
+- [x] Smoke-check the rebuilt app and container health.
+- [x] Validate LM Studio/OpenAI-compatible model detection and save behavior without an API key.
+- [x] Validate Console prompt execution/timeout diagnostics and wallet transaction planning behavior.
+- [x] Fix live Console planner/synthesis gaps found during validation.
+- [x] Rebuild the local containers again with the live fixes.
+- [x] Document results, blockers, and any follow-up fixes.
+
+## Review
+
+- Rebuilt the local stack with `./start.sh --rebuild`; the app is serving at `https://localhost:8443` and the frontend, gateway, backend, AI proxy, worker, Postgres, and Redis containers are healthy.
+- LM Studio/OpenAI-compatible detection against `http://10.114.123.214:1234` succeeds without an API key and returns 8 models. Saving the active provider profile also succeeds without sending credential updates.
+- Console `whats the current block?` completed through LM Studio with `get_bitcoin_network_status` and returned block height 946967 during validation.
+- Live validation exposed an all-wallet planner edge case where LM Studio returned the placeholder tool name `tool_name`; the AI proxy now rejects unknown tool names and applies the deterministic transaction fallback.
+- Live validation also exposed synthesis-only failures after tool execution; Console now completes the turn with a compact tool-facts fallback instead of failing the request when tool results exist.
+- Tool input is included in synthesis context so single-wallet transaction responses stay tied to the selected wallet instead of mentioning unrelated wallets.
+- Final live checks after the final rebuild: selected wallet transaction prompt returned one `query_transactions` call for `da17d9d4-c760-4929-a207-2a45c3cadef9` with `2020-02-01T00:00:00.000Z` through `2020-06-30T23:59:59.999Z`; all-wallet prompt returned one `query_transactions` call per accessible wallet with the same date range.
+- Verification: focused AI proxy tests passed (`tests/ai-proxy/consoleProtocol.test.ts`, `consoleRoutes.test.ts`, `requestSchemas.test.ts`, `naturalQuery.test.ts`), focused server Console tests passed (`consoleService.test.ts`, `consoleModelGateway.test.ts`), `npm run typecheck:tests` passed, `npm run typecheck:server:tests` passed, `npx prettier --check` passed for touched code/test files, and `git diff --check` passed. Touched-file lizard check could not run because `npx` could not resolve a `lizard` executable in this repo.
+
+---
+
 # Active Task: Backend Proxy AI Regression Coverage 2026-04-28
 
 Status: complete

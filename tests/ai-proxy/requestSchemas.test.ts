@@ -232,12 +232,24 @@ describe("AI proxy request schemas", () => {
       ConsoleSynthesisBodySchema.parse({
         prompt: "summarize",
         context: { mode: "auto" },
-        toolResults: [{ toolName: "get_fee_estimates", status: "completed" }],
+        toolResults: [
+          {
+            toolName: "get_fee_estimates",
+            status: "completed",
+            input: { walletId: "wallet-1" },
+          },
+        ],
       }),
     ).toEqual({
       prompt: "summarize",
       context: { mode: "auto" },
-      toolResults: [{ toolName: "get_fee_estimates", status: "completed" }],
+      toolResults: [
+        {
+          toolName: "get_fee_estimates",
+          status: "completed",
+          input: { walletId: "wallet-1" },
+        },
+      ],
     });
 
     expect(() =>

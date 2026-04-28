@@ -13,8 +13,10 @@ vi.mock("../../src/api/console", () => ({
   listConsoleSessions: vi.fn(),
   createConsoleSession: vi.fn(),
   listConsoleTurns: vi.fn(),
+  deleteConsoleSession: vi.fn(),
   runConsoleTurn: vi.fn(),
   listPromptHistory: vi.fn(),
+  clearPromptHistory: vi.fn(),
   updatePromptHistory: vi.fn(),
   deletePromptHistory: vi.fn(),
   replayPromptHistory: vi.fn(),
@@ -151,8 +153,15 @@ function mockConsoleReadyState() {
   vi.mocked(consoleApi.updatePromptHistory).mockResolvedValue({
     prompt: { ...promptHistory, saved: true },
   } as any);
+  vi.mocked(consoleApi.deleteConsoleSession).mockResolvedValue({
+    success: true,
+  });
   vi.mocked(consoleApi.deletePromptHistory).mockResolvedValue({
     success: true,
+  });
+  vi.mocked(consoleApi.clearPromptHistory).mockResolvedValue({
+    success: true,
+    deleted: 1,
   });
 }
 
@@ -327,7 +336,7 @@ describe("ConsoleDrawer", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("does not navigate when all-visible-wallet planning returns multiple transaction queries", async () => {
+  it("navigates to AI Results when all-visible-wallet planning returns multiple transaction queries", async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
     const onLocationChange = vi.fn();
@@ -381,13 +390,20 @@ describe("ConsoleDrawer", () => {
         scope: { kind: "wallet_set", walletIds: ["wallet-1", "wallet-2"] },
       });
     });
-    const locations = onLocationChange.mock.calls.map(([location]) => location);
-    expect(
-      locations.some(
-        (location) => location.state?.consoleTransactionFilter !== undefined,
-      ),
-    ).toBe(false);
-    expect(onClose).not.toHaveBeenCalled();
+    await waitFor(() => {
+      const locations = onLocationChange.mock.calls.map(
+        ([location]) => location,
+      );
+      expect(
+        locations.some(
+          (location) =>
+            location.pathname === "/console/results" &&
+            location.state?.consoleTransactionQuery?.walletFilters?.length ===
+              2,
+        ),
+      ).toBe(true);
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it("keeps a pinned Console open after transaction navigation", async () => {
@@ -445,6 +461,9 @@ describe("ConsoleDrawer", () => {
     const user = userEvent.setup();
     const turnResult =
       createDeferred<Awaited<ReturnType<typeof consoleApi.runConsoleTurn>>>();
+    vi.mocked(consoleApi.listConsoleSessions).mockResolvedValue({
+      sessions: [session],
+    } as any);
     vi.mocked(consoleApi.runConsoleTurn).mockReturnValueOnce(
       turnResult.promise,
     );
@@ -456,7 +475,18 @@ describe("ConsoleDrawer", () => {
     await user.click(screen.getByRole("button", { name: "Send prompt" }));
 
     expect(await screen.findByText("current block?")).toBeInTheDocument();
+    expect(
+      screen.getByRole("status", { name: "LLM is thinking" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("Working...")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Clear Console display" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", {
+        name: "Clear selected Console session",
+      }),
+    ).toBeDisabled();
 
     turnResult.resolve({
       session,
@@ -476,6 +506,34 @@ describe("ConsoleDrawer", () => {
     await waitFor(() => {
       expect(screen.queryByText("Working...")).not.toBeInTheDocument();
     });
+    expect(
+      screen.queryByRole("status", { name: "LLM is thinking" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Clear Console display" }),
+    ).not.toBeDisabled();
+  });
+
+  it("clears the visible Console display without deleting the session", async () => {
+    const user = userEvent.setup();
+    renderDrawer();
+    await screen.findByText("Block age");
+
+    await user.type(screen.getByLabelText("Console prompt"), "current block?");
+    await user.click(screen.getByRole("button", { name: "Send prompt" }));
+    expect(
+      await screen.findByText("Block 800000 was mined about 2 years ago."),
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: "Clear Console display" }),
+    );
+
+    expect(
+      screen.queryByText("Block 800000 was mined about 2 years ago."),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("Ready")).toBeInTheDocument();
+    expect(consoleApi.deleteConsoleSession).not.toHaveBeenCalled();
   });
 
   it("does not render when closed", () => {
@@ -660,6 +718,113 @@ describe("ConsoleDrawer", () => {
     }
   });
 
+  it("clears a selected Console session after confirmation", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.mocked(consoleApi.listConsoleSessions).mockResolvedValue({
+      sessions: [session],
+    } as any);
+    vi.mocked(consoleApi.listConsoleTurns).mockResolvedValue({
+      turns: [completedTurn],
+    } as any);
+
+    try {
+      renderDrawer();
+      expect(
+        await screen.findByText("Block 800000 was mined about 2 years ago."),
+      ).toBeInTheDocument();
+
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "Clear selected Console session",
+        }),
+      );
+
+      await waitFor(() => {
+        expect(consoleApi.deleteConsoleSession).toHaveBeenCalledWith(
+          session.id,
+        );
+      });
+      expect(screen.getByLabelText("Console session")).toHaveValue(
+        "new-session",
+      );
+      expect(
+        screen.queryByText("Block 800000 was mined about 2 years ago."),
+      ).not.toBeInTheDocument();
+    } finally {
+      confirmSpy.mockRestore();
+    }
+  });
+
+  it("keeps a selected Console session when clear confirmation is canceled", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    vi.mocked(consoleApi.listConsoleSessions).mockResolvedValue({
+      sessions: [session],
+    } as any);
+    vi.mocked(consoleApi.listConsoleTurns).mockResolvedValue({
+      turns: [completedTurn],
+    } as any);
+
+    try {
+      renderDrawer();
+      expect(
+        await screen.findByText("Block 800000 was mined about 2 years ago."),
+      ).toBeInTheDocument();
+
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "Clear selected Console session",
+        }),
+      );
+
+      expect(confirmSpy).toHaveBeenCalledWith(
+        "Clear the selected Console session? Prompt history is not removed.",
+      );
+      expect(consoleApi.deleteConsoleSession).not.toHaveBeenCalled();
+      expect(screen.getByLabelText("Console session")).toHaveValue(session.id);
+      expect(
+        screen.getByText("Block 800000 was mined about 2 years ago."),
+      ).toBeInTheDocument();
+    } finally {
+      confirmSpy.mockRestore();
+    }
+  });
+
+  it("keeps a selected Console session and shows an error when clearing fails", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.mocked(consoleApi.listConsoleSessions).mockResolvedValue({
+      sessions: [session],
+    } as any);
+    vi.mocked(consoleApi.listConsoleTurns).mockResolvedValue({
+      turns: [completedTurn],
+    } as any);
+    vi.mocked(consoleApi.deleteConsoleSession).mockRejectedValueOnce(
+      new ApiError("Session clear failed", 500),
+    );
+
+    try {
+      renderDrawer();
+      expect(
+        await screen.findByText("Block 800000 was mined about 2 years ago."),
+      ).toBeInTheDocument();
+
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "Clear selected Console session",
+        }),
+      );
+
+      expect(
+        await screen.findByText("Session clear failed"),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Console session")).toHaveValue(session.id);
+      expect(
+        screen.getByText("Block 800000 was mined about 2 years ago."),
+      ).toBeInTheDocument();
+    } finally {
+      confirmSpy.mockRestore();
+    }
+  });
+
   it("falls back to auto context when a selected wallet disappears", async () => {
     const view = renderDrawer();
     await screen.findByText("Block age");
@@ -729,6 +894,72 @@ describe("ConsoleDrawer", () => {
     await waitFor(() => {
       expect(consoleApi.deletePromptHistory).toHaveBeenCalledWith("prompt-1");
     });
+  });
+
+  it("clears prompt history after confirmation", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    try {
+      renderDrawer();
+      await screen.findByText("Block age");
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Clear prompt history" }),
+      );
+
+      await waitFor(() => {
+        expect(consoleApi.clearPromptHistory).toHaveBeenCalledTimes(1);
+      });
+      expect(screen.queryByText("Block age")).not.toBeInTheDocument();
+      expect(screen.getByText("No prompt history")).toBeInTheDocument();
+    } finally {
+      confirmSpy.mockRestore();
+    }
+  });
+
+  it("keeps prompt history when clear confirmation is canceled", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+
+    try {
+      renderDrawer();
+      await screen.findByText("Block age");
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Clear prompt history" }),
+      );
+
+      expect(confirmSpy).toHaveBeenCalledWith(
+        "Clear Console prompt history? Saved prompts will also be removed.",
+      );
+      expect(consoleApi.clearPromptHistory).not.toHaveBeenCalled();
+      expect(screen.getByText("Block age")).toBeInTheDocument();
+    } finally {
+      confirmSpy.mockRestore();
+    }
+  });
+
+  it("keeps prompt history and shows an error when clearing history fails", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.mocked(consoleApi.clearPromptHistory).mockRejectedValueOnce(
+      new ApiError("Prompt history clear failed", 500),
+    );
+
+    try {
+      renderDrawer();
+      await screen.findByText("Block age");
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Clear prompt history" }),
+      );
+
+      expect(
+        await screen.findByText("Prompt history clear failed"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Block age")).toBeInTheDocument();
+      expect(screen.queryByText("No prompt history")).not.toBeInTheDocument();
+    } finally {
+      confirmSpy.mockRestore();
+    }
   });
 
   it("replays prompt history with an explicit wallet scope", async () => {

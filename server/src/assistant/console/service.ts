@@ -79,6 +79,31 @@ function summarizeToolTraceForAudit(
   };
 }
 
+function toolTraceSummary(
+  trace: Awaited<ReturnType<typeof executePlannedTool>>,
+): string {
+  const facts =
+    trace.facts && typeof trace.facts === "object"
+      ? (trace.facts as Record<string, unknown>)
+      : {};
+  const summary =
+    typeof facts.summary === "string" && facts.summary.trim()
+      ? facts.summary.trim()
+      : null;
+  const detail = summary ?? trace.errorMessage ?? trace.status;
+  return `${trace.toolName}: ${detail}`;
+}
+
+function buildSynthesisFallbackResponse(
+  traces: Array<Awaited<ReturnType<typeof executePlannedTool>>>,
+): string {
+  const summaries = traces.slice(0, 8).map(toolTraceSummary);
+  return [
+    "The Console tools completed, but the configured AI provider did not return synthesis text.",
+    ...summaries.map((summary) => `- ${summary}`),
+  ].join("\n");
+}
+
 function selectAutoContextWallets<TWallet extends { id: string }>(
   wallets: TWallet[],
   routeWalletId?: string,
@@ -264,6 +289,18 @@ export function listConsoleSessions(
   return consoleRepository.listSessions(actor.userId, limit, offset);
 }
 
+export async function deleteConsoleSession(
+  actor: AssistantToolActor,
+  sessionId: string,
+) {
+  const session = await consoleRepository.findSessionForUser(
+    sessionId,
+    actor.userId,
+  );
+  if (!session) throw new NotFoundError("Console session not found");
+  return consoleRepository.softDeleteSession(session.id);
+}
+
 export async function listConsoleTurns(
   actor: AssistantToolActor,
   sessionId: string,
@@ -332,15 +369,28 @@ export async function runConsoleTurn(
       );
     }
     await consoleRepository.updateTurnState(turn.id, "synthesizing");
+    let synthesisFallbackApplied = false;
     const synthesis = await synthesizeConsoleAnswer({
       prompt: input.prompt,
       scope,
       ...(planningContext ? { context: planningContext } : {}),
       toolResults: traces.map(traceForSynthesis),
+    }).catch((error) => {
+      if (traces.length === 0) throw error;
+      synthesisFallbackApplied = true;
+      return {
+        response: buildSynthesisFallbackResponse(traces),
+        providerProfileId: plan.providerProfileId,
+        model: plan.model,
+      };
     });
     const providerProfileId =
       plan.providerProfileId ?? synthesis.providerProfileId;
     const model = plan.model ?? synthesis.model;
+    const warnings = [
+      ...plan.warnings,
+      ...(synthesisFallbackApplied ? ["synthesis_fallback_applied"] : []),
+    ];
     const completedTurn = await consoleRepository.completeTurn({
       id: turn.id,
       response: synthesis.response,
@@ -348,7 +398,7 @@ export async function runConsoleTurn(
       model,
       plannedTools: toJson({
         toolCalls: plan.toolCalls,
-        warnings: plan.warnings,
+        warnings,
       }),
     });
     await consoleRepository.updatePromptMetadata({
@@ -365,7 +415,7 @@ export async function runConsoleTurn(
         turnId: turn.id,
         toolCount: traces.length,
         tools: traces.map(summarizeToolTraceForAudit),
-        planningWarnings: plan.warnings,
+        planningWarnings: warnings,
         scopeKind: scope.kind,
       },
       audit,
@@ -447,6 +497,10 @@ export async function deletePromptHistory(
   );
   if (!prompt) throw new NotFoundError("Console prompt not found");
   return consoleRepository.softDeletePrompt(prompt.id);
+}
+
+export function clearPromptHistory(actor: AssistantToolActor) {
+  return consoleRepository.softDeletePromptsForUser(actor.userId);
 }
 
 export async function replayPromptHistory(

@@ -196,6 +196,45 @@ export function useConsoleDrawerController({
     inputRef.current?.focus();
   }, [setSelectedSessionId]);
 
+  const clearDisplay = useCallback(() => {
+    setMessages([]);
+    setError(null);
+    inputRef.current?.focus();
+  }, []);
+
+  const clearSelectedSession = useCallback(async () => {
+    const sessionId = selectedSessionIdRef.current;
+    if (!sessionId) {
+      clearDisplay();
+      return;
+    }
+
+    setError(null);
+    try {
+      await consoleApi.deleteConsoleSession(sessionId);
+      setSessions((current) =>
+        current.filter((session) => session.id !== sessionId),
+      );
+      setSelectedSessionId(null);
+      setMessages([]);
+      setSetupReason(null);
+      inputRef.current?.focus();
+    } catch (caught) {
+      handleConsoleError(caught, "Console session clear failed");
+    }
+  }, [clearDisplay, handleConsoleError, setSelectedSessionId]);
+
+  const clearPromptHistory = useCallback(async () => {
+    setError(null);
+    try {
+      await consoleApi.clearPromptHistory();
+      setPrompts([]);
+      setSetupReason(null);
+    } catch (caught) {
+      handleConsoleError(caught, "Prompt history clear failed");
+    }
+  }, [handleConsoleError]);
+
   const selectSession = useCallback(
     async (sessionId: string | null) => {
       if (!sessionId) {
@@ -377,6 +416,9 @@ export function useConsoleDrawerController({
     setSelectedSessionId,
     selectSession,
     startNewSession,
+    clearDisplay,
+    clearSelectedSession,
+    clearPromptHistory,
     sendPrompt,
     replayPrompt,
     deletePrompt,

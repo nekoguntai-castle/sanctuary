@@ -25,7 +25,9 @@ vi.mock("../../src/api/client", () => ({
 }));
 
 import {
+  clearPromptHistory,
   createConsoleSession,
+  deleteConsoleSession,
   deletePromptHistory,
   getConsoleSetupReason,
   isConsoleFeatureDisabledError,
@@ -167,7 +169,9 @@ describe("Console API", () => {
       title: "Good block prompt",
       expiresAt: null,
     });
+    await deleteConsoleSession("session/1");
     await deletePromptHistory("prompt/1");
+    await clearPromptHistory();
     await replayPromptHistory("prompt/1");
     await replayPromptHistory("prompt/1", {
       sessionId: "session-1",
@@ -188,10 +192,18 @@ describe("Console API", () => {
       { enabled: false },
     );
     expect(mockDelete).toHaveBeenCalledWith(
+      "/console/sessions/session%2F1",
+      undefined,
+      { enabled: false },
+    );
+    expect(mockDelete).toHaveBeenCalledWith(
       "/console/prompts/prompt%2F1",
       undefined,
       { enabled: false },
     );
+    expect(mockDelete).toHaveBeenCalledWith("/console/prompts", undefined, {
+      enabled: false,
+    });
     expect(mockPost).toHaveBeenCalledWith(
       "/console/prompts/prompt%2F1/replay",
       {},

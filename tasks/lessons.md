@@ -2,6 +2,45 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Model-Backed Drawers Need Local Clear And Pending Affordances
+
+**Rule:** Interactive assistant drawers need separate controls for clearing local display state, persisted sessions, and prompt history, plus a visible pending indicator while waiting on the model.
+
+**Why:** Console had session switching and prompt history, but no direct way to reset the visible transcript or clean up persisted assistant state. During slow LM Studio calls, the UI also needed a stronger indication that the LLM was still thinking.
+
+**How to apply:**
+
+- Keep "clear display" local and non-destructive.
+- Use confirmed server-backed soft deletes for sessions and prompt history.
+- Make pending model state an accessible status with an icon/animation, not just disabled input state.
+- Cover each operation with UI and API tests so cleanup controls do not regress silently.
+
+## Align Browser, Proxy, and Model Timeouts
+
+**Rule:** Any browser path backed by local model calls must keep frontend proxy timeouts longer than the client/backend model-call budget, and the browser API client must turn non-JSON proxy pages into HTTP errors.
+
+**Why:** A Console replay against LM Studio ran slightly past nginx's 60s `/api/` proxy timeout. Nginx returned a 504 HTML page, and the browser tried to parse it as JSON, surfacing `Unexpected token '<'` instead of a useful timeout error.
+
+**How to apply:**
+
+- Check the deployed reverse proxy timeout whenever increasing model, backend, or client request timeouts.
+- Keep proxy read/send timeouts above the longest expected Console request timeout.
+- Parse API responses defensively so HTML/plain-text proxy failures become `ApiError` objects with HTTP status and a body preview.
+- Add tests for proxy templates and non-JSON error responses, not only JSON backend errors.
+
+## Multi-Wallet Console Results Need A First-Class Surface
+
+**Rule:** When Console can produce multiple scoped tool calls, provide an aggregate result surface instead of suppressing navigation or choosing one wallet.
+
+**Why:** The all-wallet transaction plan correctly queried every visible wallet, but the UI had only a single-wallet Transactions-tab target. Multi-wallet results therefore had no good place to show the list.
+
+**How to apply:**
+
+- Model Console transaction output as a query that can contain one or many wallet filters.
+- Keep single-wallet prompts routed to the wallet detail Transactions tab.
+- Route multi-wallet prompts to an aggregate transaction results view with wallet labels and the same date/type constraints.
+- Add tests for both single-wallet and all-wallet transaction prompts so one path cannot regress the other.
+
 ## Echo Chat Prompts Before Model Calls Finish
 
 **Rule:** Conversational UI must append the submitted user prompt optimistically before awaiting a model-backed request, and failed turns should remain visible inline with diagnostic details.

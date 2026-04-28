@@ -140,6 +140,7 @@ const ConsoleToolResultSchema = z
   .object({
     toolName: z.string().trim().min(1).max(100),
     status: z.enum(["completed", "denied", "failed"]),
+    input: z.record(z.string(), z.unknown()).optional(),
     sensitivity: z.string().trim().max(50).optional(),
     facts: z.unknown().optional(),
     provenance: z.unknown().optional(),

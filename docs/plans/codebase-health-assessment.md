@@ -1,6 +1,6 @@
 # Software Quality Report
 
-Date: 2026-04-27
+Date: 2026-04-28
 Owner: TBD
 Status: Current
 
@@ -8,9 +8,9 @@ Status: Current
 **Grade**: A
 **Confidence**: High
 **Mode**: full
-**Commit**: 600cd6fe
+**Commit**: 6f6fadc9
 
-Post-remediation pre-release grade after Slices 1-6. The repository now has no hard-fail blockers, full app/backend/gateway coverage, no high/critical dependency findings, clean gitleaks scans, jscpd below the duplication gate, and a full pinned lizard scan with zero threshold warnings. The remaining score pressure is the strict raw file-size rubric: the project large-file classifier passes, but `scripts/perf/phase3-benchmark.mjs` is still 1,150 lines.
+Full repository grade against the current working tree, including the AI Console, LM Studio/OpenAI-compatible provider, Console results, clearing controls, timeout handling, and new regression coverage work. No hard-fail gates are active. The score remains limited only by the strict raw largest-file rubric.
 
 ---
 
@@ -18,7 +18,7 @@ Post-remediation pre-release grade after Slices 1-6. The repository now has no h
 
 None.
 
-Tests, lint, typecheck, coverage, gitleaks, and high-severity audits pass. No hard-fail cap applies.
+Tests, lint, typecheck, explicit app/backend/gateway coverage, high-severity audits, gitleaks, lizard, and jscpd all pass the scoring gates.
 
 ---
 
@@ -26,23 +26,23 @@ Tests, lint, typecheck, coverage, gitleaks, and high-severity audits pass. No ha
 
 | Domain | Score | Notes |
 | --- | ---: | --- |
-| Correctness | 20/20 | App tests, backend coverage tests, gateway coverage tests, app/test typechecks, and app lint pass; suppression density remains low for the repo size. |
-| Reliability | 15/15 | Validation, typed error handling, request timeouts, retry/backoff, limiter fail-closed behavior, and async cleanup paths remain covered. |
-| Maintainability | 13/15 | Full pinned lizard is clean at `CCN <= 15`, duplication is 2.25%, architecture/readability are strong after the remediation slices; the raw largest-file signal is still >1,000 lines. |
-| Security | 15/15 | Gitleaks scans are clean; root/server/gateway/ai-proxy audits report 0 high/critical findings; MCP/admin/token paths remain scoped and redacted. |
-| Performance | 10/10 | Sampled hot paths use async I/O, bounded request timeouts, limiter budgets, grouped/windowed database reads, and capped AI/MCP tool execution. |
-| Test Quality | 15/15 | App/backend/gateway coverage all report 100%, with broad null, empty, auth, rate-limit, wallet/device, MCP, Console, vector, and route-contract coverage. |
-| Operational Readiness | 10/10 | Docker/Compose, CI workflows, health endpoints, observability hooks, request IDs, and redacted contextual logging are present. |
+| Correctness | 20/20 | Project tests, lint, and typecheck pass on the current working tree. |
+| Reliability | 15/15 | Console/API paths use typed errors, bounded model requests, retry/timeout handling, clear diagnostics, and fallback synthesis for local model edge cases. |
+| Maintainability | 13/15 | Full lizard scan has zero `CCN > 15` warnings and duplication is 2.2%; raw largest-file size is still over 1,000 lines. |
+| Security | 15/15 | Explicit audits show 0 high/critical findings; gitleaks scans are clean; local provider credential handling avoids sending absent API keys. |
+| Performance | 10/10 | Request-facing paths remain async and bounded; Console result queries are limited/deduped and existing DB/API access patterns stay scoped. |
+| Test Quality | 15/15 | App, backend, and gateway coverage all report 100%, including new Console result, clear-history, timeout, and defensive API parsing cases. |
+| Operational Readiness | 10/10 | Docker/Compose, CI, health endpoints, observability hooks, request IDs, and redacted contextual logging remain present. |
 | **TOTAL** | **98/100** | No hard-fail cap applies. |
 
 ---
 
 ## Trend
 
-- vs previous full report on 2026-04-27 (`816ced3e`): overall `+6` (`92 -> 98`), grade `A -> A`, confidence `High -> High`.
-- Maintainability moved from `7/15` to `13/15`: `lizard_warning_count` moved from `65` to `0`, and the verified vector fixtures dropped from 2,118 lines to 178 lines each.
-- Duplication stayed below the 3% gate (`2.24% -> 2.25%`), and coverage remains 100% across app, backend, and gateway gates.
-- The remaining strict scoring gap is file size: the raw largest measured source is now `scripts/perf/phase3-benchmark.mjs` at 1,150 lines. Project large-file classification passes with 0 unclassified files over 1,000 lines.
+- vs 2026-04-27 (`600cd6fe` report baseline): overall `+/-0` (`98 -> 98`), grade `A -> A`, confidence `High -> High`.
+- Coverage remains 100% across app, backend, and gateway. App test volume moved from 5,712 to 5,827 tests; backend moved from 9,414 to 9,458 passed tests.
+- Duplication improved slightly (`2.25% -> 2.2%`), and lizard remains at zero threshold warnings.
+- The largest raw file is now `tests/components/ConsoleDrawer.test.tsx` at 1,181 lines, so Maintainability 3.3 still scores 0 under the strict rubric.
 
 ---
 
@@ -52,109 +52,95 @@ Tests, lint, typecheck, coverage, gitleaks, and high-severity audits pass. No ha
 
 | Signal | Value | Tool | Scoring criterion |
 | --- | --- | --- | --- |
-| tests | pass; app 422 files / 5,712 tests | `CI=true GRADE_TIMEOUT=300 bash /home/nekoguntai/.codex/skills/grade/grade.sh` and explicit coverage gates | Correctness 1.1 -> +6 |
-| lint | pass | `npm run lint:app`; grade collector lint also passed | Correctness 1.3 -> +3 |
-| typecheck | pass | `npm run typecheck:app`, `npm run typecheck:tests`, `npm run typecheck:server:tests`, grade collector typecheck | Correctness 1.2 -> +4 |
-| coverage | 100%; app 422 files / 5,712 tests, backend 419 passed files / 9,414 passed tests with 22 skipped files / 505 skipped tests, gateway 21 files / 528 tests | `npm run test:coverage`, `npm run test:backend:coverage`, `npm --prefix gateway run test:coverage` | Test Quality 6.1 -> +5 |
-| security_high | 0 | `npm audit --audit-level=high` plus package-specific audits | Security 4.1 -> +5 |
+| tests | pass; app 430 files / 5,827 tests | `CI=true GRADE_TIMEOUT=300 bash /home/nekoguntai/.codex/skills/grade/grade.sh` | Correctness 1.1 -> +6 |
+| lint | pass | `npm run lint` and grade collector | Correctness 1.3 -> +3 |
+| typecheck | pass | `npm run typecheck:app`, `npm run typecheck:tests`, `npm run typecheck:server:tests`, grade collector | Correctness 1.2 -> +4 |
+| coverage | 100%; app 430 / 5,827, backend 419 passed files / 9,458 passed tests with 22 skipped files / 505 skipped tests, gateway 21 / 528 | `npm run test:coverage`, `npm run test:backend:coverage`, `npm --prefix gateway run test:coverage` | Test Quality 6.1 -> +5 |
+| security_high | 0 | `npm audit --audit-level=high`; package audits for server/gateway/ai-proxy | Security 4.1 -> +5 |
 | root_audit_low | 16 | `npm audit --audit-level=high` | Context only; low severity does not affect 4.1 |
-| server_audit_total | 0 | `npm --prefix server audit --audit-level=high` | Security context |
-| gateway_audit_total | 0 | `npm --prefix gateway audit --audit-level=high` | Security context |
-| ai_proxy_audit_total | 0 | `npm --prefix ai-proxy audit --audit-level=high` | Security context |
-| secrets | 0 | `.tmp/quality-tools/gitleaks-8.30.1/gitleaks detect --source . --no-git --redact --config .gitleaks.toml` | Security 4.2 -> +4 |
-| latest_commit_secrets | 0 | `.tmp/quality-tools/gitleaks-8.30.1/gitleaks git . --config .gitleaks.toml --redact --log-opts -1` | Context: committed HEAD clean |
-| tracked_tree_secrets | 0 | `GITLEAKS_BIN=.tmp/quality-tools/gitleaks-8.30.1/gitleaks bash scripts/gitleaks-tracked-tree.sh` | Context: tracked tree clean |
-| lizard_warning_count | 0 | `.tmp/quality-tools/lizard-1.21.2/bin/lizard -w -i 0 -l javascript -l typescript -C 15 -T nloc=200 ... .` | Maintainability 3.1 -> +5 |
-| lizard_avg_ccn | 1.4 | pinned lizard summary, 370,520 NLOC / 33,067 functions | Maintainability context |
-| lizard_threshold_status | no thresholds exceeded | pinned lizard full scan | Maintainability context |
-| duplication_pct | 2.25% | `npx --yes jscpd@4 --silent --reporters json --output /tmp/sanctuary-jscpd-final-grade .` | Maintainability 3.2 -> +3 |
-| duplication_clones | 291 exact clones / 6,505 duplicated lines | jscpd JSON report | Maintainability context |
-| largest_file_lines | 1,150 | `wc -l scripts/perf/phase3-benchmark.mjs` | Maintainability 3.3 -> +0 |
-| largest_file_path | `scripts/perf/phase3-benchmark.mjs` | `wc -l` and grade collector | Maintainability context |
-| large_file_classification | pass | `node scripts/quality/check-large-files.mjs` | Project policy context |
-| vector_fixture_lines | 178 each | `wc -l server/tests/fixtures/verified-address-vectors.ts scripts/verify-addresses/output/verified-vectors.ts` | Slice 6 remediation proof |
+| server_audit_total | 0 | `npm audit --audit-level=high` from `server/` | Security context |
+| gateway_audit_total | 0 | `npm audit --audit-level=high` from `gateway/` | Security context |
+| ai_proxy_audit_total | 0 | `npm audit --audit-level=high` from `ai-proxy/` | Security context |
+| secrets | 0 | `.tmp/quality-tools/gitleaks-8.30.1/gitleaks detect`, `gitleaks git`, and tracked-tree scan | Security 4.2 -> +4 |
+| lizard_warning_count | 0 | pinned lizard full scan with `-C 15 -T nloc=200` | Maintainability 3.1 -> +5 |
+| lizard_avg_ccn | 1.4 | pinned lizard summary: 444,923 NLOC / 33,558 functions | Maintainability context |
+| duplication_pct | 2.2% | `npx --yes jscpd@4 --silent --reporters json --output /tmp/sanctuary-jscpd-grade .` | Maintainability 3.2 -> +3 |
+| duplication_clones | 290 exact clones / 6,463 duplicated lines | jscpd JSON report | Maintainability context |
+| largest_file_lines | 1,181 | grade collector file-size scan | Maintainability 3.3 -> +0 |
+| largest_file_path | `tests/components/ConsoleDrawer.test.tsx` | grade collector file-size scan | Maintainability context |
 | suppression_count | 24 | grade heuristic | Correctness 1.4 judged |
-| validation_lib_present | 1 | grade heuristic plus middleware inspection | Security 4.3 judged |
-| timeout_retry_count | 1,251 | grade heuristic | Reliability/performance context |
+| timeout_retry_count | 1,281 | grade heuristic | Reliability/performance context |
 | blocking_io_count | 48 | grade heuristic | Reliability/performance context |
+| validation_lib_present | 1 | grade heuristic plus route/middleware inspection | Security 4.3 judged |
 | observability_lib_present | 1 | grade heuristic plus logger/tracing inspection | Operational 7.3 -> +2 |
 | logging_call_count | 330 | grade heuristic | Operational 7.4 judged |
 | health_endpoint_count | 181 | grade heuristic | Operational 7.2 -> +2 |
 | deploy_artifact_count | 2 | Docker/Compose plus GitHub CI | Operational 7.1 -> +3 |
-| test_file_count | 1,260 | grade heuristic | Test Quality context |
+| test_file_count | 1,269 | grade heuristic | Test Quality context |
 | test_sleep_count | 10 | grade heuristic | Test Quality 6.4 judged |
 
 ### Judged Findings
 
-- **[1.4] Suppression density - High -> +4**: `suppression_count=24` remains low for the repo size and is concentrated in tests, compatibility checks, or documented guardrails.
-- **[1.5] Functional completeness - High -> +3**: the app, backend, gateway, MCP, Console, OpenAPI, route validation, hardware-wallet, and vector verification surfaces have executable tests and coverage gates.
-- **[2.1] Error handling quality - High -> +6**: `server/src/middleware/validate.ts`, `server/src/errors/errorHandler.ts`, and `src/api/client.ts` use structured validation, domain/API error mapping, request IDs, typed client errors, and JSON error envelopes.
-- **[2.2] Timeouts and retries - High -> +4**: `src/api/client.ts`, `server/src/middleware/requestTimeout.ts`, `server/src/middleware/rateLimit.ts`, and gateway rate-limiters provide bounded request time, retry/backoff, retry-after headers, and fail-closed limiter behavior.
-- **[2.3] Crash-prone paths - High -> +5**: production failures are generally typed/domain errors surfaced through route and service boundaries; direct process exits remain concentrated in scripts and utility wrappers.
-- **[3.4] Architecture clarity - High -> +3**: remediation split high-risk config, transaction, hardware-signing, UI, test-support, AI-service, and vector-generation paths into helper/controller layers while preserving existing public contracts.
-- **[3.5] Readability/naming - High -> +2**: post-slice code favors focused helpers, explicit model builders, and narrow test harnesses; no broad lizard hot spots remain.
-- **[4.3] Input validation quality - High -> +3**: Zod middleware validates body, params, and query; Console and admin MCP routes validate prompt/session/history/key payloads before service execution.
-- **[4.4] Safe system/API usage - High -> +3**: MCP bearer tokens are format-checked, hashed for lookup, compared timing-safely, revocable, expirable, and wallet-scoped in `server/src/mcp/auth.ts`; admin MCP routes return full tokens only once.
-- **[5.1] Hot-path efficiency - High -> +5**: Console tool planning caps tool calls per turn, MCP access updates last-used metadata on a stale throttle, and request-facing paths are asynchronous.
-- **[5.2] Data access patterns - High -> +3**: sampled repository and dashboard paths use grouping, bounded row limits, windowed recent-row queries, and `Promise.all` instead of unbounded fan-out.
-- **[5.3] No blocking in hot paths - High -> +2**: `blocking_io_count=48` is concentrated in scripts, setup, maintenance, support-package, and test paths rather than ordinary request handlers.
-- **[6.2] Test structure - High -> +4**: tests are organized by API, service, repository, integration flow, gateway middleware, UI behavior, assistant/MCP, Console, contract, and branch coverage surfaces.
-- **[6.3] Edge cases covered - High -> +3**: sampled tests cover invalid schemas, empty/default branches, auth expiry, rate-limit boundaries, timeout behavior, wallet/device access, prompt history replay/delete/expiration, MCP auth, vector parity, and backup/restore error paths.
-- **[6.4] No flaky patterns - High -> +3**: direct sleep evidence remains low, and timer-sensitive tests predominantly use fake timers or explicit timer spies.
-- **[7.4] Logging quality - High -> +3**: `server/src/utils/logger.ts` adds request/trace context, sanitizes log text, and calls `server/src/utils/redact.ts` for sensitive field redaction.
+- **[1.4] Suppression density - High -> +4**: `suppression_count=24` remains low for the repository size and is concentrated in tests, compatibility checks, or documented guardrails.
+- **[1.5] Functional completeness - High -> +3**: Console provider setup, route guards, prompt lifecycle, all-wallet transaction navigation, API parsing, backend Console service behavior, and gateway timeout behavior now have executable regressions.
+- **[2.1] Error handling quality - High -> +6**: `src/api/client.ts`, `server/src/api/console.ts`, and `server/src/assistant/console/service.ts` preserve structured errors, response previews, timeout diagnostics, and fallback summaries.
+- **[2.2] Timeouts and retries - High -> +4**: Console/model requests and frontend proxy timeouts are bounded; client retry/timeout handling remains centralized.
+- **[2.3] Crash-prone paths - High -> +5**: production failures are surfaced through typed/domain errors and route boundaries; direct process exits remain concentrated in scripts and utility wrappers.
+- **[3.4] Architecture clarity - High -> +3**: the Console result surface, transaction route filters, and provider/proxy behavior reuse existing route/API/test harness boundaries rather than creating isolated parallel paths.
+- **[3.5] Readability/naming - High -> +2**: new helpers use explicit names for transaction query normalization, Console result summaries, and provider failure details.
+- **[4.3] Input validation quality - High -> +3**: Zod/request schemas and route-level guards validate Console prompt/session/history payloads and reject unknown local-model tool calls.
+- **[4.4] Safe system/API usage - High -> +3**: local OpenAI-compatible profiles can operate without credentials, and absent API keys are not serialized as provider secrets or authorization headers.
+- **[5.1] Hot-path efficiency - High -> +5**: Console result loading caps per-wallet transaction result size and dedupes repeated rows before rendering.
+- **[5.2] Data access patterns - High -> +3**: sampled wallet transaction and Console paths use bounded queries, filters, and scoped wallet access.
+- **[5.3] No blocking in hot paths - High -> +2**: `blocking_io_count=48` remains concentrated in scripts, setup, maintenance, support-package, and test paths.
+- **[6.2] Test structure - High -> +4**: tests remain organized by UI behavior, API client contracts, server route/service contracts, AI proxy protocol, gateway config, and e2e smoke coverage.
+- **[6.3] Edge cases covered - High -> +3**: new tests cover empty prompts, duplicate retries/history, missing credentials, invalid JSON/HTML proxy bodies, blank nested errors, inaccessible wallets, partial result failures, and repeated query params.
+- **[6.4] No flaky patterns - High -> +3**: direct sleep evidence remains low and timer-sensitive tests predominantly use fake timers or explicit timer spies.
+- **[7.4] Logging quality - High -> +3**: structured, contextual, redacted logging remains present across backend, gateway, AI proxy, and support tooling.
 
 ### Missing
 
-None. The grade collector did not auto-detect the repo-specific coverage scripts, but explicit app/backend/gateway coverage commands supersede that collector gap.
+None for scored signals. The grade collector did not auto-detect coverage, lizard, jscpd, or gitleaks from PATH and its fallback secret scan produced false positives; explicit pinned tool runs above supersede those collector gaps.
 
 ---
 
 ## Top Risks
 
-1. **Strict raw file-size score is not perfect.** `scripts/perf/phase3-benchmark.mjs` is a classified 1,150-line proof harness, so Maintainability 3.3 still scores 0 under the strict rubric even though `node scripts/quality/check-large-files.mjs` passes.
-2. **Root audit still has 16 low-severity advisories.** They remain in hardware-wallet/polyfill transitive paths (`elliptic`, old transitive `tiny-secp256k1`/`bitcoinjs-lib`, `@trezor/*`, `@ledgerhq/*`, `vite-plugin-node-polyfills`/`node-stdlib-browser`) with no safe high-confidence fix.
-3. **Duplication is below the gate but still worth watching.** jscpd reports 2.25%, mostly test/e2e fixtures, OpenAPI patterns, config boilerplate, and small script helpers.
+1. **Strict raw file-size score is still not perfect.** `tests/components/ConsoleDrawer.test.tsx` is 1,181 lines, `scripts/perf/phase3-benchmark.mjs` is 1,150 lines, and `server/tests/unit/assistant/consoleService.test.ts` is 1,012 lines.
+2. **Root audit still has 16 low-severity transitive advisories.** They are in hardware-wallet/polyfill dependency paths around `elliptic`, Trezor/Ledger packages, and browser crypto polyfills; no high/critical findings are present.
+3. **Duplication remains below the gate but worth watching.** jscpd reports 2.2%, mostly test/e2e fixtures, OpenAPI patterns, config boilerplate, and script helpers.
 
 ## Fastest Improvements
 
-1. **Split or further classify the phase-3 benchmark proof harness** if a strict 100/100 score is required; this is the only current mechanical score loss.
-2. **Continue monitoring hardware-wallet dependencies** and apply upgrades only when they are direct compatible releases with Ledger/Trezor regression coverage.
-3. **Keep the full pinned lizard command in release gates** so future work does not reintroduce hidden `CCN > 15` drift.
+1. Split the largest Console/UI test files by behavior area if a strict 100/100 score is required.
+2. Continue tracking hardware-wallet dependency updates and apply them only with Ledger/Trezor regression proof.
+3. Keep pinned lizard and jscpd in release checks so Console growth does not reintroduce complexity or duplication drift.
 
 ## Strengths To Preserve
 
 - 100% app/backend/gateway coverage gates with broad edge-case coverage.
 - Full pinned lizard at `CCN <= 15` with zero warnings.
-- Zod validation, CSRF-aware browser client behavior, OpenAPI route coverage, and auth-contract checks at trust boundaries.
-- Shared assistant read-tool registry used by both MCP and Console, with typed envelopes, scoped access, redaction metadata, provenance, and tool budgets.
-- Exposure-aware rate limiting, request timeouts, health endpoints, tracing support, and contextual redacted logging.
+- Provider-agnostic local AI support with LM Studio/OpenAI-compatible behavior tested without requiring API keys.
+- Shared Console transaction routing/result handling instead of separate ad hoc AI search paths.
+- Redacted structured logging, request IDs, health endpoints, Docker/Compose, and CI workflows.
 
 ## Work To Defer Or Avoid
 
-- Do not weaken verified address vector tests or hardware-wallet coverage to chase cosmetic metrics.
-- Do not downgrade wallet, Ledger, Trezor, or polyfill packages just to silence low-severity audit output without hardware-flow regression proof.
-- Do not suppress lizard broadly; keep complexity low through helper extraction and focused tests.
+- Do not weaken coverage thresholds to accommodate local-model variability; keep deterministic fallbacks covered.
+- Do not force-upgrade hardware-wallet crypto dependencies just to silence low-severity advisories without device-flow regression evidence.
+- Do not add broad lizard suppressions; keep splitting complex UI/service behavior into focused helpers and tests.
 
 ## Verification Notes
 
-- `CI=true GRADE_TIMEOUT=300 bash /home/nekoguntai/.codex/skills/grade/grade.sh` - tests/lint/typecheck passed; explicit coverage/audit/gitleaks/lizard/jscpd commands below provide final scoring signals.
-- `npm run typecheck:app` - passed.
-- `npm run typecheck:tests` - passed.
-- `npm run typecheck:server:tests` - passed during Slice 6 verification.
-- `npm run lint:app` - passed.
-- `npm --prefix ai-proxy run build` - passed.
-- `npm run test:coverage` - 422 files, 5,712 tests, 100% statements/branches/functions/lines.
-- `npm run test:backend:coverage` - 419 passed files, 9,414 passed tests, 22 skipped files, 505 skipped tests, 100% statements/branches/functions/lines.
+- `CI=true GRADE_TIMEOUT=300 bash /home/nekoguntai/.codex/skills/grade/grade.sh` - tests, lint, and typecheck passed; explicit coverage/audit/gitleaks/lizard/jscpd commands supply final scoring signals.
+- `npm run test:coverage` - 430 files, 5,827 tests, 100% statements/branches/functions/lines.
+- `npm run test:backend:coverage` - 419 passed files, 9,458 passed tests, 22 skipped files, 505 skipped tests, 100% statements/branches/functions/lines.
 - `npm --prefix gateway run test:coverage` - 21 files, 528 tests, 100% statements/branches/functions/lines.
-- `npm audit --audit-level=high` - 0 high/critical, 16 low advisories.
-- `npm --prefix server audit --audit-level=high` - 0 vulnerabilities.
-- `npm --prefix gateway audit --audit-level=high` - 0 vulnerabilities.
-- `npm --prefix ai-proxy audit --audit-level=high` - 0 vulnerabilities.
-- `.tmp/quality-tools/gitleaks-8.30.1/gitleaks detect --source . --no-git --redact --config .gitleaks.toml --no-banner` - no leaks found.
-- `.tmp/quality-tools/gitleaks-8.30.1/gitleaks git . --config .gitleaks.toml --redact --no-banner --log-opts -1` - no leaks found.
-- `GITLEAKS_BIN=.tmp/quality-tools/gitleaks-8.30.1/gitleaks bash scripts/gitleaks-tracked-tree.sh` - no leaks found.
-- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -w -i 0 -l javascript -l typescript -C 15 -T nloc=200 ... .` - no output, exit 0, zero threshold warnings.
-- `.tmp/quality-tools/lizard-1.21.2/bin/lizard -l javascript -l typescript -C 15 -T nloc=200 ... .` - average CCN 1.4, warning count 0, 370,520 NLOC, 33,067 functions.
-- `npx --yes jscpd@4 --silent --reporters json --output /tmp/sanctuary-jscpd-final-grade .` - 2.25% duplicated lines, 291 exact clones.
-- `node scripts/quality/check-large-files.mjs` - 0 unclassified files over 1,000 lines; classification check passed.
-- `wc -l scripts/perf/phase3-benchmark.mjs server/tests/fixtures/verified-address-vectors.ts scripts/verify-addresses/output/verified-vectors.ts` - 1,150 / 178 / 178 lines.
+- `npm run typecheck:app`, `npm run typecheck:tests`, `npm run typecheck:server:tests`, and `npm run lint` - passed.
+- Focused regressions passed for API client, Console results, Console controller, backend Console service/tool execution, and wallet transaction routes.
+- `npx prettier --check ...` and `git diff --check` - passed after formatting.
+- `npm audit --audit-level=high` - 0 high/critical and 16 low advisories in the root package.
+- `npm audit --audit-level=high` from `server/`, `gateway/`, and `ai-proxy/` - 0 vulnerabilities.
+- Gitleaks detect, latest-commit, and tracked-tree scans - no leaks found.
+- Pinned lizard full scan - no thresholds exceeded; 444,923 NLOC, average CCN 1.4, 33,558 functions, warning count 0.
+- `npx --yes jscpd@4 --silent --reporters json --output /tmp/sanctuary-jscpd-grade .` - 2.2% duplicated lines, 290 exact clones.

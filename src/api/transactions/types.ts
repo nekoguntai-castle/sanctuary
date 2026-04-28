@@ -4,10 +4,17 @@
  * Type definitions for transaction, UTXO, and privacy API calls
  */
 
-import type { Transaction, UTXO, SelectionStrategy } from '../../types';
+import type { Transaction, UTXO, SelectionStrategy } from "../../types";
 
 // Re-export types for backward compatibility
-export type { Label, Transaction, UTXO, Address, PendingTransaction, SelectionStrategy } from '../../types';
+export type {
+  Label,
+  Transaction,
+  UTXO,
+  Address,
+  PendingTransaction,
+  SelectionStrategy,
+} from "../../types";
 
 // ========================================
 // TRANSACTION QUERY TYPES
@@ -16,6 +23,9 @@ export type { Label, Transaction, UTXO, Address, PendingTransaction, SelectionSt
 export interface GetTransactionsParams {
   limit?: number;
   offset?: number;
+  dateFrom?: string;
+  dateTo?: string;
+  type?: "sent" | "received" | "consolidation";
   [key: string]: string | number | boolean | string[] | undefined | null;
 }
 
@@ -125,7 +135,7 @@ export interface TransactionStats {
 }
 
 export interface ExportTransactionsOptions {
-  format: 'csv' | 'json';
+  format: "csv" | "json";
   startDate?: string;
   endDate?: string;
 }
@@ -194,7 +204,7 @@ export interface BalanceHistoryPoint {
   value: number;
 }
 
-export type Timeframe = '1D' | '1W' | '1M' | '1Y' | 'ALL';
+export type Timeframe = "1D" | "1W" | "1M" | "1Y" | "ALL";
 
 // ========================================
 // PRIVACY SCORING TYPES
@@ -208,7 +218,7 @@ export interface PrivacyFactor {
 
 export interface PrivacyScore {
   score: number;
-  grade: 'excellent' | 'good' | 'fair' | 'poor';
+  grade: "excellent" | "good" | "fair" | "poor";
   factors: PrivacyFactor[];
   warnings: string[];
 }
@@ -224,7 +234,7 @@ export interface UtxoPrivacyInfo {
 
 export interface WalletPrivacySummary {
   averageScore: number;
-  grade: 'excellent' | 'good' | 'fair' | 'poor';
+  grade: "excellent" | "good" | "fair" | "poor";
   utxoCount: number;
   addressReuseCount: number;
   roundAmountCount: number;
@@ -239,7 +249,7 @@ export interface WalletPrivacyResponse {
 
 export interface SpendPrivacyAnalysis {
   score: number;
-  grade: 'excellent' | 'good' | 'fair' | 'poor';
+  grade: "excellent" | "good" | "fair" | "poor";
   linkedAddresses: number;
   warnings: string[];
 }

@@ -212,6 +212,16 @@ export async function listConsoleTurns(
   );
 }
 
+export async function deleteConsoleSession(
+  sessionId: string,
+): Promise<{ success: boolean }> {
+  return apiClient.delete<{ success: boolean }>(
+    `/console/sessions/${encodeURIComponent(sessionId)}`,
+    undefined,
+    noRetry,
+  );
+}
+
 export async function runConsoleTurn(
   input: ConsoleRunTurnInput,
 ): Promise<ConsoleTurnResult> {
@@ -258,6 +268,17 @@ export async function deletePromptHistory(
 ): Promise<{ success: boolean }> {
   return apiClient.delete<{ success: boolean }>(
     `/console/prompts/${encodeURIComponent(promptId)}`,
+    undefined,
+    noRetry,
+  );
+}
+
+export async function clearPromptHistory(): Promise<{
+  success: boolean;
+  deleted: number;
+}> {
+  return apiClient.delete<{ success: boolean; deleted: number }>(
+    "/console/prompts",
     undefined,
     noRetry,
   );
