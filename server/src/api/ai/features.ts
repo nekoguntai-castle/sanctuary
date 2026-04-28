@@ -30,10 +30,6 @@ function authTokenForProxy(req: Parameters<typeof extractAccessToken>[0]): strin
 export function createFeaturesRouter(): Router {
   const router = Router();
 
-  router.use(rateLimit('api:default'));
-  router.use(authenticate);
-  router.use(rateLimitByUser('ai:analyze'));
-
   /**
    * POST /api/v1/ai/suggest-label
    * Get label suggestion for a transaction
@@ -46,6 +42,9 @@ export function createFeaturesRouter(): Router {
    */
   router.post(
     '/suggest-label',
+    rateLimit('api:default'),
+    authenticate,
+    rateLimitByUser('ai:analyze'),
     validate(
       { body: SuggestLabelBodySchema },
       { message: 'transactionId is required', code: ErrorCodes.INVALID_INPUT }
@@ -91,6 +90,9 @@ export function createFeaturesRouter(): Router {
    */
   router.post(
     '/query',
+    rateLimit('api:default'),
+    authenticate,
+    rateLimitByUser('ai:analyze'),
     validate(
       { body: QueryBodySchema },
       { message: 'Query and walletId are required', code: ErrorCodes.INVALID_INPUT }

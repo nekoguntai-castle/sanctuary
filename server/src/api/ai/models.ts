@@ -42,18 +42,20 @@ const ProviderDetectionBodySchema = z.object({
 export function createModelsRouter(): Router {
   const router = Router();
 
-  router.use(rateLimit('api:default'));
-  router.use(authenticate);
-  router.use(rateLimitByUser('ai:analyze'));
-
   /**
    * POST /api/v1/ai/detect-ollama
    * Auto-detect Ollama at common endpoints
    */
-  router.post('/detect-ollama', asyncHandler(async (_req, res) => {
-    const result = await aiService.detectOllama();
-    res.json(result);
-  }));
+  router.post(
+    '/detect-ollama',
+    rateLimit('api:default'),
+    authenticate,
+    rateLimitByUser('ai:analyze'),
+    asyncHandler(async (_req, res) => {
+      const result = await aiService.detectOllama();
+      res.json(result);
+    })
+  );
 
   /**
    * POST /api/v1/ai/detect-provider
@@ -61,6 +63,9 @@ export function createModelsRouter(): Router {
    */
   router.post(
     '/detect-provider',
+    rateLimit('api:default'),
+    authenticate,
+    rateLimitByUser('ai:analyze'),
     requireAdmin,
     validate(
       { body: ProviderDetectionBodySchema },
@@ -84,18 +89,24 @@ export function createModelsRouter(): Router {
    * GET /api/v1/ai/models
    * List available models from configured endpoint
    */
-  router.get('/models', asyncHandler(async (_req, res) => {
-    const result = await aiService.listModels();
+  router.get(
+    '/models',
+    rateLimit('api:default'),
+    authenticate,
+    rateLimitByUser('ai:analyze'),
+    asyncHandler(async (_req, res) => {
+      const result = await aiService.listModels();
 
-    if (result.error) {
-      return res.status(502).json({
-        error: 'Bad Gateway',
-        message: result.error,
-      });
-    }
+      if (result.error) {
+        return res.status(502).json({
+          error: 'Bad Gateway',
+          message: result.error,
+        });
+      }
 
-    res.json(result);
-  }));
+      res.json(result);
+    })
+  );
 
   /**
    * POST /api/v1/ai/pull-model
@@ -103,6 +114,9 @@ export function createModelsRouter(): Router {
    */
   router.post(
     '/pull-model',
+    rateLimit('api:default'),
+    authenticate,
+    rateLimitByUser('ai:analyze'),
     requireAdmin,
     validate(
       { body: ModelBodySchema },
@@ -130,6 +144,9 @@ export function createModelsRouter(): Router {
    */
   router.delete(
     '/delete-model',
+    rateLimit('api:default'),
+    authenticate,
+    rateLimitByUser('ai:analyze'),
     requireAdmin,
     validate(
       { body: ModelBodySchema },

@@ -39,63 +39,72 @@ function incompleteProviderStatus(configStatus: { model?: string; endpoint?: str
 export function createStatusRouter(): Router {
   const router = Router();
 
-  router.use(rateLimit('api:default'));
-  router.use(authenticate);
-  router.use(rateLimitByUser('ai:analyze'));
+  router.get(
+    '/status',
+    rateLimit('api:default'),
+    authenticate,
+    rateLimitByUser('ai:analyze'),
+    asyncHandler(async (_req, res) => {
+      const [assistantFeatureEnabled, configStatus] = await Promise.all([
+        featureFlagService.isEnabled('aiAssistant'),
+        aiService.getConfigStatus(),
+      ]);
 
-  router.get('/status', asyncHandler(async (_req, res) => {
-    const [assistantFeatureEnabled, configStatus] = await Promise.all([
-      featureFlagService.isEnabled('aiAssistant'),
-      aiService.getConfigStatus(),
-    ]);
+      if (!assistantFeatureEnabled || !configStatus.enabled) {
+        return res.json(disabledStatus(assistantFeatureEnabled, configStatus));
+      }
 
-    if (!assistantFeatureEnabled || !configStatus.enabled) {
-      return res.json(disabledStatus(assistantFeatureEnabled, configStatus));
-    }
+      if (!configStatus.configured) {
+        return res.json(incompleteProviderStatus(configStatus));
+      }
 
-    if (!configStatus.configured) {
-      return res.json(incompleteProviderStatus(configStatus));
-    }
+      const containerAvailable = await aiService.isContainerAvailable();
 
-    const containerAvailable = await aiService.isContainerAvailable();
+      res.json({
+        enabled: true,
+        configured: true,
+        available: containerAvailable,
+        model: configStatus.model,
+        endpoint: configStatus.endpoint,
+        containerAvailable,
+        error: containerAvailable ? undefined : 'AI proxy container is not available',
+      });
+    })
+  );
 
-    res.json({
-      enabled: true,
-      configured: true,
-      available: containerAvailable,
-      model: configStatus.model,
-      endpoint: configStatus.endpoint,
-      containerAvailable,
-      error: containerAvailable ? undefined : 'AI proxy container is not available',
-    });
-  }));
+  router.post(
+    '/test-connection',
+    rateLimit('api:default'),
+    authenticate,
+    rateLimitByUser('ai:analyze'),
+    requireAdmin,
+    asyncHandler(async (_req, res) => {
+      const [assistantFeatureEnabled, configStatus] = await Promise.all([
+        featureFlagService.isEnabled('aiAssistant'),
+        aiService.getConfigStatus(),
+      ]);
 
-  router.post('/test-connection', requireAdmin, asyncHandler(async (_req, res) => {
-    const [assistantFeatureEnabled, configStatus] = await Promise.all([
-      featureFlagService.isEnabled('aiAssistant'),
-      aiService.getConfigStatus(),
-    ]);
+      if (!assistantFeatureEnabled || !configStatus.enabled) {
+        return res.json(disabledStatus(assistantFeatureEnabled, configStatus));
+      }
 
-    if (!assistantFeatureEnabled || !configStatus.enabled) {
-      return res.json(disabledStatus(assistantFeatureEnabled, configStatus));
-    }
+      if (!configStatus.configured) {
+        return res.json(incompleteProviderStatus(configStatus));
+      }
 
-    if (!configStatus.configured) {
-      return res.json(incompleteProviderStatus(configStatus));
-    }
+      const health = await aiService.checkHealth();
 
-    const health = await aiService.checkHealth();
-
-    res.json({
-      enabled: true,
-      configured: true,
-      available: health.available,
-      model: health.model,
-      endpoint: health.endpoint,
-      containerAvailable: health.containerAvailable,
-      error: health.error,
-    });
-  }));
+      res.json({
+        enabled: true,
+        configured: true,
+        available: health.available,
+        model: health.model,
+        endpoint: health.endpoint,
+        containerAvailable: health.containerAvailable,
+        error: health.error,
+      });
+    })
+  );
 
   return router;
 }
