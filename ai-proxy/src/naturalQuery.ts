@@ -1,10 +1,8 @@
 import { AI_ANALYSIS_TIMEOUT_MS } from "./constants";
-import {
-  callExternalAIWithMessagesResult,
-  type AiConfig,
-} from "./aiClient";
+import { callExternalAIWithMessagesResult, type AiConfig } from "./aiClient";
 import {
   buildConsolePlanMessages,
+  currentUtcDateString,
   parseConsolePlanResponse,
   type ConsolePlanResponse,
   type ConsolePlannedToolCall,
@@ -86,7 +84,11 @@ const finiteNumber = (value: unknown): number | null => {
 
 const positiveInteger = (value: unknown): number | null => {
   const numberValue = finiteNumber(value);
-  if (numberValue === null || !Number.isInteger(numberValue) || numberValue <= 0) {
+  if (
+    numberValue === null ||
+    !Number.isInteger(numberValue) ||
+    numberValue <= 0
+  ) {
     return null;
   }
   return numberValue;
@@ -115,7 +117,9 @@ const amountObject = (value: unknown): Record<string, number> | null => {
   return hasEntries(amount) ? amount : null;
 };
 
-function amountFilter(input: Record<string, unknown>): Record<string, number> | null {
+function amountFilter(
+  input: Record<string, unknown>,
+): Record<string, number> | null {
   const existing = amountObject(input.amount);
   if (existing) return existing;
 
@@ -127,7 +131,9 @@ function amountFilter(input: Record<string, unknown>): Record<string, number> | 
   return hasEntries(amount) ? amount : null;
 }
 
-function transactionFilter(input: Record<string, unknown>): Record<string, unknown> | undefined {
+function transactionFilter(
+  input: Record<string, unknown>,
+): Record<string, unknown> | undefined {
   const filter: Record<string, unknown> = {};
   const type = normalizeTransactionType(input.type);
   const dateFrom = nonEmptyString(input.dateFrom);
@@ -146,7 +152,9 @@ function transactionFilter(input: Record<string, unknown>): Record<string, unkno
   return hasEntries(filter) ? filter : undefined;
 }
 
-const parseSort = (input: Record<string, unknown>): NaturalQueryObject["sort"] => {
+const parseSort = (
+  input: Record<string, unknown>,
+): NaturalQueryObject["sort"] => {
   const directSort = isRecord(input.sort) ? input.sort : {};
   const field =
     nonEmptyString(directSort.field) ??
@@ -164,7 +172,9 @@ const parseSort = (input: Record<string, unknown>): NaturalQueryObject["sort"] =
   };
 };
 
-const parseAggregation = (value: unknown): NaturalQueryAggregation | undefined => {
+const parseAggregation = (
+  value: unknown,
+): NaturalQueryAggregation | undefined => {
   const aggregation = nonEmptyString(value)?.toLowerCase();
   return aggregation && AGGREGATIONS.has(aggregation as NaturalQueryAggregation)
     ? (aggregation as NaturalQueryAggregation)
@@ -173,13 +183,18 @@ const parseAggregation = (value: unknown): NaturalQueryAggregation | undefined =
 
 const promptRequestsExplicitLimit = (prompt: string): boolean => {
   return (
-    /\b(?:top|first|last|latest|largest|smallest|limit(?:ed)?\s+to)\s+\d{1,4}\b/i.test(prompt) ||
-    /\b\d{1,4}\s+(?:transactions?|txs?)\b/i.test(prompt)
+    /\b(?:top|first|last|latest|largest|smallest|limit(?:ed)?\s+to)\s+\d{1,4}\b/i.test(
+      prompt,
+    ) || /\b\d{1,4}\s+(?:transactions?|txs?)\b/i.test(prompt)
   );
 };
 
-const transactionCall = (plan: ConsolePlanResponse): ConsolePlannedToolCall | null => {
-  return plan.toolCalls.find(call => call.name === "query_transactions") ?? null;
+const transactionCall = (
+  plan: ConsolePlanResponse,
+): ConsolePlannedToolCall | null => {
+  return (
+    plan.toolCalls.find((call) => call.name === "query_transactions") ?? null
+  );
 };
 
 const naturalQueryFromToolCall = (
@@ -196,7 +211,8 @@ const naturalQueryFromToolCall = (
 
   if (filter) query.filter = filter;
   if (sort) query.sort = sort;
-  if (limit !== null && promptRequestsExplicitLimit(prompt)) query.limit = limit;
+  if (limit !== null && promptRequestsExplicitLimit(prompt))
+    query.limit = limit;
   if (aggregation) query.aggregation = aggregation;
 
   return query;
@@ -220,10 +236,7 @@ export function buildNaturalQueryPrompt(input: {
       ? `Known wallet labels: ${labels}`
       : "";
 
-  return [
-    input.query,
-    context,
-  ].filter(Boolean).join("\n\n");
+  return [input.query, context].filter(Boolean).join("\n\n");
 }
 
 export async function convertNaturalQuery(input: {
@@ -232,11 +245,13 @@ export async function convertNaturalQuery(input: {
   walletId: string;
   recentLabels: string;
 }): Promise<NaturalQueryConversionResult> {
+  const currentDate = currentUtcDateString();
   const plannerInput = {
     prompt: buildNaturalQueryPrompt({
       query: input.query,
       recentLabels: input.recentLabels,
     }),
+    currentDate,
     scope: { kind: "wallet", walletId: input.walletId },
     maxToolCalls: 1,
     tools: [TRANSACTION_FILTER_TOOL],
@@ -261,10 +276,16 @@ export async function convertNaturalQuery(input: {
     return { ok: false, status: 503, error: "AI endpoint not available" };
   }
 
-  const plan = parseConsolePlanResponse(result.content, 1, fallbackPlannerInput);
+  const plan = parseConsolePlanResponse(
+    result.content,
+    1,
+    fallbackPlannerInput,
+  );
   const query = naturalQueryFromPlan(plan, input.query);
   if (!query) {
-    const modelResponseWasJson = !plan.warnings.includes("model_response_not_json");
+    const modelResponseWasJson = !plan.warnings.includes(
+      "model_response_not_json",
+    );
     return {
       ok: false,
       status: 500,

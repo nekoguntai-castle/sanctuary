@@ -161,14 +161,23 @@ describe("natural query conversion", () => {
     });
   });
 
-  it("applies current-year fallback dates for this-year transaction filters", async () => {
+  it("resolves current-year transaction intents into exact filter dates", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-04-28T12:00:00.000Z"));
     mocks.callExternalAIWithMessagesResult.mockResolvedValue({
       ok: true,
-      content: "I should retrieve the transactions from the selected wallet.",
+      content: JSON.stringify({
+        intents: [
+          {
+            name: "query_transactions",
+            target: { kind: "current_wallet" },
+            filters: {
+              dateRange: { kind: "relative", value: "current_year" },
+            },
+          },
+        ],
+      }),
     });
-    mocks.parseStructuredResponse.mockReturnValue(null);
 
     try {
       await expect(

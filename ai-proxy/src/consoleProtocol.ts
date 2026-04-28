@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { parseStructuredResponse } from "./aiClient";
 
 export interface ConsoleToolDescription {
@@ -22,10 +23,16 @@ export interface ConsolePlanResponse {
 
 interface ConsolePlanInput {
   prompt: string;
+  currentDate?: string;
   scope?: unknown;
   context?: unknown;
   maxToolCalls: number;
   tools: ConsoleToolDescription[];
+}
+
+interface ContextWallet {
+  id: string;
+  name: string;
 }
 
 export interface ConsoleToolResultForSynthesis {
@@ -44,14 +51,18 @@ export interface ConsoleToolResultForSynthesis {
 const PLAN_SYSTEM_PROMPT = [
   "You are Sanctuary Console's planning model.",
   "Choose only the listed read-only Sanctuary tools when they are needed.",
-  'Return JSON only with this shape: {"toolCalls":[{"name":"<one listed tool name>","input":{},"reason":"short reason"}]}',
+  'Prefer semantic intents for transaction requests. Return JSON like {"intents":[{"name":"query_transactions","target":{"kind":"current_wallet"},"filters":{"dateRange":{"kind":"relative","value":"current_year"}},"reason":"short reason"}]}.',
+  'For exact non-transaction tool use, you may return legacy JSON like {"toolCalls":[{"name":"<one listed tool name>","input":{},"reason":"short reason"}]}.',
   "The first character of the response must be { and the last character must be }.",
   "Do not include markdown, prose, chain-of-thought, XML tags, or code fences.",
+  "Use currentDate from the user payload to interpret relative dates.",
+  'Supported transaction targets are {"kind":"current_wallet"}, {"kind":"all_scoped_wallets"}, and {"kind":"wallet_id","walletId":"<scoped wallet id>"}.',
+  'Supported transaction date ranges are {"kind":"relative","value":"current_year"} and {"kind":"relative","value":"previous_year"}, or {"kind":"explicit","dateFrom":"<ISO datetime>","dateTo":"<ISO datetime>"}.',
   "When scope.kind is wallet and a selected tool input needs walletId, copy scope.walletId exactly.",
   "When scope.kind is wallet_set, use only wallet IDs from scope.walletIds. For walletId tools across multiple wallets, emit one tool call per wallet up to maxToolCalls. For walletIds tools, copy scope.walletIds into walletIds.",
   "When context.mode is auto, infer intent from the prompt, context.currentWalletId/currentWalletName, and context.wallets. Use public tools for network prompts, the current wallet for 'this wallet', a named wallet when the prompt matches an accessible wallet name, and all scoped wallets when the prompt says all wallets, every wallet, across wallets, portfolio, everything, or asks for all transactions without naming a specific/current wallet.",
   "When the wallet target is ambiguous in auto context, return an empty toolCalls array instead of guessing.",
-  "Use ISO date strings for dateFrom and dateTo when the user asks for a date range.",
+  "Use semantic date ranges in intents instead of computing relative date strings yourself.",
   "Do not invent tool names, run code, fetch URLs, ask for secrets, or request write actions.",
   'Never return placeholder names such as "tool_name"; every name must exactly match a listed tool.',
   "Use an empty toolCalls array when no tool is needed.",
@@ -69,6 +80,10 @@ function stringifyPayload(payload: unknown): string {
   return JSON.stringify(payload, null, 2);
 }
 
+export function currentUtcDateString(date = new Date()): string {
+  return date.toISOString().slice(0, 10);
+}
+
 export function buildConsolePlanMessages(
   input: ConsolePlanInput,
 ): Array<{ role: "system" | "user"; content: string }> {
@@ -78,6 +93,7 @@ export function buildConsolePlanMessages(
       role: "user",
       content: stringifyPayload({
         prompt: input.prompt,
+        currentDate: input.currentDate ?? currentUtcDateString(),
         scope: input.scope ?? null,
         context: input.context ?? null,
         maxToolCalls: input.maxToolCalls,
@@ -112,6 +128,72 @@ function toPlainObject(value: unknown): Record<string, unknown> {
     ? (value as Record<string, unknown>)
     : {};
 }
+
+const RelativeDateRangeIntentValueSchema = z.enum([
+  "current_year",
+  "previous_year",
+]);
+
+const DateRangeIntentSchema = z.preprocess(
+  (value) => (typeof value === "string" ? { kind: "relative", value } : value),
+  z.discriminatedUnion("kind", [
+    z
+      .object({
+        kind: z.literal("relative"),
+        value: RelativeDateRangeIntentValueSchema,
+      })
+      .strict(),
+    z
+      .object({
+        kind: z.literal("explicit"),
+        dateFrom: z.string().trim().min(1).optional(),
+        dateTo: z.string().trim().min(1).optional(),
+      })
+      .strict()
+      .refine((value) => value.dateFrom || value.dateTo),
+  ]),
+);
+
+const TransactionIntentTargetSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("current_wallet") }).strict(),
+  z.object({ kind: z.literal("all_scoped_wallets") }).strict(),
+  z
+    .object({
+      kind: z.literal("wallet_id"),
+      walletId: z.string().trim().min(1),
+    })
+    .strict(),
+]);
+
+const TransactionIntentSchema = z.preprocess(
+  (value) => {
+    const intent = toPlainObject(value);
+    const name = typeof intent.name === "string" ? intent.name : intent.intent;
+    return { ...intent, name };
+  },
+  z
+    .object({
+      name: z.literal("query_transactions"),
+      target: TransactionIntentTargetSchema,
+      filters: z
+        .object({
+          dateRange: DateRangeIntentSchema.optional(),
+          type: z.enum(["sent", "received", "consolidation"]).optional(),
+          limit: z.number().int().positive().max(500).optional(),
+        })
+        .strict()
+        .optional(),
+      reason: z.string().trim().max(240).optional(),
+    })
+    .strict(),
+);
+
+type TransactionIntent = z.infer<typeof TransactionIntentSchema>;
+type TransactionIntentTarget = z.infer<typeof TransactionIntentTargetSchema>;
+type DateRangeIntent = z.infer<typeof DateRangeIntentSchema>;
+type RelativeDateRangeValue = z.infer<
+  typeof RelativeDateRangeIntentValueSchema
+>;
 
 function parseToolCall(value: unknown): ConsolePlannedToolCall | null {
   const call = toPlainObject(value);
@@ -149,7 +231,12 @@ function keepKnownToolCalls(
 
 function parsePlanObject(value: unknown): Record<string, unknown> | null {
   const candidate = toPlainObject(value);
-  if (Array.isArray(candidate.toolCalls) || Array.isArray(candidate.tools)) {
+  if (
+    Array.isArray(candidate.toolCalls) ||
+    Array.isArray(candidate.tools) ||
+    Array.isArray(candidate.intents) ||
+    candidate.intent !== undefined
+  ) {
     return candidate;
   }
   return null;
@@ -222,27 +309,32 @@ function recoverStructuredPlan(raw: string): Record<string, unknown> | null {
 }
 
 function hasTool(input: ConsolePlanInput, toolName: string): boolean {
-  return input.tools.some((tool) => tool.name === toolName);
+  for (const tool of input.tools) {
+    if (tool.name === toolName) return true;
+  }
+  return false;
 }
 
-function getScopeWalletIds(scope: unknown): string[] {
+function getScopeWalletIds(scope: unknown): Array<string> {
   const record = toPlainObject(scope);
   if (record.kind === "wallet" && typeof record.walletId === "string") {
     return [record.walletId];
   }
   if (record.kind === "wallet_set" && Array.isArray(record.walletIds)) {
     const seen = new Set<string>();
-    return record.walletIds.filter((walletId): walletId is string => {
+    const walletIds: string[] = [];
+    for (const walletId of record.walletIds) {
       if (
         typeof walletId !== "string" ||
         walletId.trim() === "" ||
         seen.has(walletId)
       ) {
-        return false;
+        continue;
       }
       seen.add(walletId);
-      return true;
-    });
+      walletIds.push(walletId);
+    }
+    return walletIds;
   }
   if (record.kind === "object" && typeof record.walletId === "string") {
     return [record.walletId];
@@ -282,10 +374,7 @@ function normalizeMatchText(value: string): string {
     .replace(/\s+/g, " ");
 }
 
-function contextWallets(input: ConsolePlanInput): Array<{
-  id: string;
-  name: string;
-}> {
+function contextWallets(input: ConsolePlanInput): Array<ContextWallet> {
   const context = toPlainObject(input.context);
   if (!Array.isArray(context.wallets)) return [];
 
@@ -297,15 +386,25 @@ function contextWallets(input: ConsolePlanInput): Array<{
   });
 }
 
+function walletNameMatchesPrompt(
+  wallet: ContextWallet,
+  scopedWalletIds: Set<string>,
+  normalizedPrompt: string,
+): boolean {
+  const name = normalizeMatchText(wallet.name);
+  return Boolean(
+    name && scopedWalletIds.has(wallet.id) && normalizedPrompt.includes(name),
+  );
+}
+
 function namedWalletIdFromPrompt(input: ConsolePlanInput): string | null {
   const prompt = normalizeMatchText(input.prompt);
   if (!prompt) return null;
 
   const scopeWalletIds = new Set(getScopeWalletIds(input.scope));
-  const matched = contextWallets(input).find((wallet) => {
-    const name = normalizeMatchText(wallet.name);
-    return name && scopeWalletIds.has(wallet.id) && prompt.includes(name);
-  });
+  const matched = contextWallets(input).find((wallet) =>
+    walletNameMatchesPrompt(wallet, scopeWalletIds, prompt),
+  );
   return matched?.id ?? null;
 }
 
@@ -317,7 +416,7 @@ function currentWalletId(input: ConsolePlanInput): string | null {
     : null;
 }
 
-function fallbackWalletIds(input: ConsolePlanInput): string[] {
+function fallbackWalletIds(input: ConsolePlanInput): Array<string> {
   const scopeWalletIds = getScopeWalletIds(input.scope);
   if (!isAutoContext(input)) return scopeWalletIds;
 
@@ -337,6 +436,28 @@ function fallbackWalletIds(input: ConsolePlanInput): string[] {
   }
 
   return current ? [current] : [];
+}
+
+function scopedWalletId(input: ConsolePlanInput): string | null {
+  const walletIds = getScopeWalletIds(input.scope);
+  return walletIds.length === 1 ? walletIds[0] : null;
+}
+
+function intentTargetWalletIds(
+  target: TransactionIntentTarget,
+  input: ConsolePlanInput,
+): Array<string> {
+  const scopeWalletIds = getScopeWalletIds(input.scope);
+  switch (target.kind) {
+    case "all_scoped_wallets":
+      return scopeWalletIds;
+    case "wallet_id":
+      return scopeWalletIds.includes(target.walletId) ? [target.walletId] : [];
+    case "current_wallet":
+      return [currentWalletId(input) ?? scopedWalletId(input)].filter(
+        (walletId): walletId is string => Boolean(walletId),
+      );
+  }
 }
 
 const monthNumbers: Record<string, number> = {
@@ -460,16 +581,39 @@ function parseIsoDateRange(prompt: string): {
   };
 }
 
-function parseRelativeYearRange(prompt: string): {
+function referenceYear(input: ConsolePlanInput): number {
+  const parsed = input.currentDate
+    ? new Date(`${input.currentDate}T00:00:00.000Z`)
+    : new Date();
+  return Number.isNaN(parsed.getTime())
+    ? new Date().getUTCFullYear()
+    : parsed.getUTCFullYear();
+}
+
+function resolveRelativeDateRange(
+  value: RelativeDateRangeValue,
+  currentYear: number,
+): {
   dateFrom: string;
   dateTo: string;
-} | null {
-  if (!/\b(?:this|current)\s+year\b/i.test(prompt)) return null;
-
-  const year = new Date().getUTCFullYear();
+} {
+  const targetYear = value === "previous_year" ? currentYear - 1 : currentYear;
   return {
-    dateFrom: yearStartIsoDate(year),
-    dateTo: yearEndIsoDate(year),
+    dateFrom: yearStartIsoDate(targetYear),
+    dateTo: yearEndIsoDate(targetYear),
+  };
+}
+
+function resolveDateRangeIntent(
+  dateRange: DateRangeIntent | undefined,
+  currentYear: number,
+): Record<string, string> {
+  if (!dateRange) return {};
+  if (dateRange.kind === "relative")
+    return resolveRelativeDateRange(dateRange.value, currentYear);
+  return {
+    ...(dateRange.dateFrom ? { dateFrom: dateRange.dateFrom } : {}),
+    ...(dateRange.dateTo ? { dateTo: dateRange.dateTo } : {}),
   };
 }
 
@@ -477,8 +621,7 @@ function parsePromptDateRange(prompt: string) {
   return (
     parseIsoDateRange(prompt) ??
     parseMonthYearRange(prompt) ??
-    parseSingleMonthYearRange(prompt) ??
-    parseRelativeYearRange(prompt)
+    parseSingleMonthYearRange(prompt)
   );
 }
 
@@ -637,6 +780,99 @@ function buildFallbackToolPlan(
   );
 }
 
+function rawPlanIntents(parsed: Record<string, unknown>): unknown[] {
+  if (Array.isArray(parsed.intents)) return parsed.intents;
+  if (typeof parsed.intent === "string") return [parsed];
+  return parsed.intent === undefined ? [] : [parsed.intent];
+}
+
+function parseTransactionIntent(value: unknown): TransactionIntent | null {
+  const parsed = TransactionIntentSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+function transactionIntentCallInput(
+  intent: TransactionIntent,
+  walletId: string,
+  currentYear: number,
+): Record<string, unknown> {
+  const filters = intent.filters ?? {};
+  return {
+    walletId,
+    ...resolveDateRangeIntent(filters.dateRange, currentYear),
+    ...(filters.type ? { type: filters.type } : {}),
+    limit: filters.limit ?? 100,
+  };
+}
+
+function buildTransactionIntentToolPlan(
+  intent: TransactionIntent,
+  input: ConsolePlanInput,
+  maxToolCalls: number,
+): FallbackToolPlan {
+  if (!hasTool(input, "query_transactions") || maxToolCalls <= 0) {
+    return emptyFallbackPlan();
+  }
+
+  const walletIds = intentTargetWalletIds(intent.target, input);
+  const selectedWalletIds = walletIds.slice(0, maxToolCalls);
+  const currentYear = referenceYear(input);
+  return {
+    toolCalls: selectedWalletIds.map((walletId) => ({
+      name: "query_transactions",
+      input: transactionIntentCallInput(intent, walletId, currentYear),
+      reason: intent.reason ?? "Resolved transaction query intent.",
+    })),
+    warnings:
+      walletIds.length > selectedWalletIds.length
+        ? ["tool_call_limit_applied"]
+        : [],
+  };
+}
+
+function resolvePlanIntents(
+  parsed: Record<string, unknown>,
+  input: ConsolePlanInput | undefined,
+  maxToolCalls: number,
+): FallbackToolPlan {
+  const rawIntents = rawPlanIntents(parsed);
+  if (!input || rawIntents.length === 0) return emptyFallbackPlan();
+
+  const toolCalls: ConsolePlannedToolCall[] = [];
+  const warnings: string[] = [];
+  let invalidIntentCount = 0;
+  let unresolvedIntentCount = 0;
+
+  for (const rawIntent of rawIntents) {
+    const intent = parseTransactionIntent(rawIntent);
+    if (!intent) {
+      invalidIntentCount += 1;
+      continue;
+    }
+    const plan = buildTransactionIntentToolPlan(
+      intent,
+      input,
+      maxToolCalls - toolCalls.length,
+    );
+    if (plan.toolCalls.length === 0) {
+      unresolvedIntentCount += 1;
+    }
+    toolCalls.push(...plan.toolCalls);
+    warnings.push(...plan.warnings);
+  }
+
+  return {
+    toolCalls,
+    warnings: [
+      ...(invalidIntentCount > 0 ? ["model_response_invalid_intent"] : []),
+      ...(unresolvedIntentCount > 0
+        ? ["model_response_unresolved_intent"]
+        : []),
+      ...warnings,
+    ],
+  };
+}
+
 export function parseConsolePlanResponse(
   raw: string,
   maxToolCalls: number,
@@ -662,8 +898,15 @@ export function parseConsolePlanResponse(
     .filter((call): call is ConsolePlannedToolCall => call !== null);
   const knownCalls = keepKnownToolCalls(parsedCalls, input);
   const toolCalls = knownCalls.toolCalls.slice(0, maxToolCalls);
-  const fallback =
+  const hasIntentOutput = rawPlanIntents(parsed).length > 0;
+  const intentPlan =
     toolCalls.length === 0
+      ? resolvePlanIntents(parsed, input, maxToolCalls)
+      : emptyFallbackPlan();
+  const fallback =
+    toolCalls.length === 0 &&
+    intentPlan.toolCalls.length === 0 &&
+    !hasIntentOutput
       ? buildFallbackToolPlan(input, maxToolCalls)
       : emptyFallbackPlan();
   const warnings = [
@@ -673,11 +916,17 @@ export function parseConsolePlanResponse(
     ...(knownCalls.toolCalls.length > maxToolCalls
       ? ["tool_call_limit_applied"]
       : []),
+    ...intentPlan.warnings,
     ...fallback.warnings,
   ];
 
   return {
-    toolCalls: toolCalls.length > 0 ? toolCalls : fallback.toolCalls,
+    toolCalls:
+      toolCalls.length > 0
+        ? toolCalls
+        : intentPlan.toolCalls.length > 0
+          ? intentPlan.toolCalls
+          : fallback.toolCalls,
     warnings,
   };
 }

@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { parseConsolePlanResponse } from "../../ai-proxy/src/consoleProtocol";
+import {
+  buildConsolePlanMessages,
+  parseConsolePlanResponse,
+} from "../../ai-proxy/src/consoleProtocol";
 
 const queryTransactionsTool = {
   name: "query_transactions",
@@ -115,16 +118,38 @@ describe("console planner protocol", () => {
     ]);
   });
 
-  it("falls back to current-year transaction planning for this-year prompts", () => {
+  it("adds current date context for relative-date intent planning", () => {
+    const messages = buildConsolePlanMessages({
+      ...walletPlanInput,
+      currentDate: "2026-04-28",
+    });
+
+    expect(messages[0]?.content).toContain("semantic intents");
+    expect(messages[1]?.content).toContain('"currentDate": "2026-04-28"');
+  });
+
+  it("resolves current-year transaction intents without phrase parsing", () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-04-28T12:00:00.000Z"));
+    vi.setSystemTime(new Date("2027-01-01T00:00:00.000Z"));
 
     try {
       const result = parseConsolePlanResponse(
-        "I should retrieve transactions from the selected wallet.",
+        JSON.stringify({
+          intents: [
+            {
+              name: "query_transactions",
+              target: { kind: "current_wallet" },
+              filters: {
+                dateRange: { kind: "relative", value: "current_year" },
+              },
+              reason: "read current-year transactions",
+            },
+          ],
+        }),
         4,
         {
           ...walletPlanInput,
+          currentDate: "2026-04-28",
           prompt: "show me transactions from this year",
         },
       );
@@ -138,16 +163,66 @@ describe("console planner protocol", () => {
             dateTo: "2026-12-31T23:59:59.999Z",
             limit: 100,
           },
-          reason: "Fallback plan for wallet transaction request.",
+          reason: "read current-year transactions",
         },
       ]);
-      expect(result.warnings).toEqual([
-        "model_response_not_json",
-        "fallback_plan_applied",
-      ]);
+      expect(result.warnings).toEqual([]);
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("rejects malformed transaction intents without falling back to prompt regexes", () => {
+    const result = parseConsolePlanResponse(
+      JSON.stringify({
+        intents: [
+          {
+            name: "query_transactions",
+            target: { kind: "current_wallet" },
+            filters: { dateRange: "this_year" },
+          },
+        ],
+      }),
+      4,
+      walletPlanInput,
+    );
+
+    expect(result).toEqual({
+      toolCalls: [],
+      warnings: ["model_response_invalid_intent"],
+    });
+  });
+
+  it("fails closed when a valid transaction intent target cannot be resolved", () => {
+    const result = parseConsolePlanResponse(
+      JSON.stringify({
+        intents: [
+          {
+            name: "query_transactions",
+            target: { kind: "current_wallet" },
+            filters: {
+              dateRange: { kind: "relative", value: "current_year" },
+            },
+          },
+        ],
+      }),
+      4,
+      {
+        ...walletPlanInput,
+        scope: {
+          kind: "wallet_set",
+          walletIds: [
+            "11111111-1111-4111-8111-111111111111",
+            "22222222-2222-4222-8222-222222222222",
+          ],
+        },
+      },
+    );
+
+    expect(result).toEqual({
+      toolCalls: [],
+      warnings: ["model_response_unresolved_intent"],
+    });
   });
 
   it("falls back to one transaction tool call per wallet-set member", () => {
