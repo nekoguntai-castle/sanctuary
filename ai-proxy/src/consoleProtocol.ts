@@ -31,6 +31,7 @@ interface ConsolePlanInput {
 export interface ConsoleToolResultForSynthesis {
   toolName: string;
   status: "completed" | "denied" | "failed";
+  input?: unknown;
   sensitivity?: string;
   facts?: unknown;
   provenance?: unknown;
@@ -43,7 +44,7 @@ export interface ConsoleToolResultForSynthesis {
 const PLAN_SYSTEM_PROMPT = [
   "You are Sanctuary Console's planning model.",
   "Choose only the listed read-only Sanctuary tools when they are needed.",
-  'Return JSON only with this shape: {"toolCalls":[{"name":"tool_name","input":{},"reason":"short reason"}]}',
+  'Return JSON only with this shape: {"toolCalls":[{"name":"<one listed tool name>","input":{},"reason":"short reason"}]}',
   "The first character of the response must be { and the last character must be }.",
   "Do not include markdown, prose, chain-of-thought, XML tags, or code fences.",
   "When scope.kind is wallet and a selected tool input needs walletId, copy scope.walletId exactly.",
@@ -52,6 +53,7 @@ const PLAN_SYSTEM_PROMPT = [
   "When the wallet target is ambiguous in auto context, return an empty toolCalls array instead of guessing.",
   "Use ISO date strings for dateFrom and dateTo when the user asks for a date range.",
   "Do not invent tool names, run code, fetch URLs, ask for secrets, or request write actions.",
+  'Never return placeholder names such as "tool_name"; every name must exactly match a listed tool.',
   "Use an empty toolCalls array when no tool is needed.",
 ].join(" ");
 
@@ -122,6 +124,26 @@ function parseToolCall(value: unknown): ConsolePlannedToolCall | null {
     ...(typeof call.reason === "string" && call.reason.trim()
       ? { reason: call.reason.trim().slice(0, 240) }
       : {}),
+  };
+}
+
+function keepKnownToolCalls(
+  toolCalls: ConsolePlannedToolCall[],
+  input?: ConsolePlanInput,
+): {
+  toolCalls: ConsolePlannedToolCall[];
+  rejectedToolCount: number;
+} {
+  if (!input) {
+    return { toolCalls, rejectedToolCount: 0 };
+  }
+
+  const knownToolNames = new Set(input.tools.map((tool) => tool.name));
+  const knownCalls = toolCalls.filter((call) => knownToolNames.has(call.name));
+
+  return {
+    toolCalls: knownCalls,
+    rejectedToolCount: toolCalls.length - knownCalls.length,
   };
 }
 
@@ -449,8 +471,7 @@ const containsAnyTerm = (text: string, terms: PromptTermSet): boolean =>
   Array.from(terms).some((term) => text.includes(term));
 
 const asksForBroadHealth = (text: string): boolean =>
-  text.includes("how ") &&
-  (text.includes(" doing") || text.includes(" look"));
+  text.includes("how ") && (text.includes(" doing") || text.includes(" look"));
 
 const asksForDashboardFallback = (prompt: string): boolean => {
   const text = prompt.toLowerCase();
@@ -554,16 +575,22 @@ export function parseConsolePlanResponse(
     : Array.isArray(parsed.tools)
       ? parsed.tools
       : [];
-  const toolCalls = rawCalls
+  const parsedCalls = rawCalls
     .map(parseToolCall)
-    .filter((call): call is ConsolePlannedToolCall => call !== null)
-    .slice(0, maxToolCalls);
+    .filter((call): call is ConsolePlannedToolCall => call !== null);
+  const knownCalls = keepKnownToolCalls(parsedCalls, input);
+  const toolCalls = knownCalls.toolCalls.slice(0, maxToolCalls);
   const fallback =
     toolCalls.length === 0
       ? buildFallbackToolPlan(input, maxToolCalls)
       : emptyFallbackPlan();
   const warnings = [
-    ...(rawCalls.length > maxToolCalls ? ["tool_call_limit_applied"] : []),
+    ...(knownCalls.rejectedToolCount > 0
+      ? ["model_response_unknown_tool"]
+      : []),
+    ...(knownCalls.toolCalls.length > maxToolCalls
+      ? ["tool_call_limit_applied"]
+      : []),
     ...fallback.warnings,
   ];
 

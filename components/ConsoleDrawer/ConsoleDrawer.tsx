@@ -1,28 +1,54 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Brain, Pin, PinOff, Plus, Wrench, X } from 'lucide-react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  Brain,
+  Eraser,
+  Pin,
+  PinOff,
+  Plus,
+  Trash2,
+  Wrench,
+  X,
+} from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   extractConsoleTransactionFilter,
+  extractConsoleTransactionQuery,
   walletIdFromWalletRoute,
-} from '../../src/app/consoleTransactionNavigation';
-import type { ConsoleTurnResult } from '../../src/api/console';
-import { ConsoleComposer } from './ConsoleComposer';
-import { ConsoleMessageList } from './ConsoleMessageList';
-import { ConsolePromptHistory } from './ConsolePromptHistory';
-import { ConsoleScopeSelector } from './ConsoleScopeSelector';
-import { ConsoleSetupState } from './ConsoleSetupState';
-import { useConsoleDrawerController } from './useConsoleDrawerController';
-import type { ConsoleDrawerProps } from './types';
+} from "../../src/app/consoleTransactionNavigation";
+import type { ConsoleTurnResult } from "../../src/api/console";
+import { ConsoleComposer } from "./ConsoleComposer";
+import { ConsoleMessageList } from "./ConsoleMessageList";
+import { ConsolePromptHistory } from "./ConsolePromptHistory";
+import { ConsoleScopeSelector } from "./ConsoleScopeSelector";
+import { ConsoleSetupState } from "./ConsoleSetupState";
+import { useConsoleDrawerController } from "./useConsoleDrawerController";
+import type { ConsoleDrawerProps } from "./types";
 
-const NEW_SESSION_VALUE = 'new-session';
+const NEW_SESSION_VALUE = "new-session";
 
 const DrawerHeader: React.FC<{
   toolCount: number;
   isPinned: boolean;
+  canClearDisplay: boolean;
+  onClearDisplay: () => void;
   onNewSession: () => void;
   onTogglePinned: () => void;
   onClose: () => void;
-}> = ({ toolCount, isPinned, onNewSession, onTogglePinned, onClose }) => (
+}> = ({
+  toolCount,
+  isPinned,
+  canClearDisplay,
+  onClearDisplay,
+  onNewSession,
+  onTogglePinned,
+  onClose,
+}) => (
   <header className="flex items-center justify-between border-b border-sanctuary-200 px-4 py-3 dark:border-sanctuary-800">
     <div className="flex min-w-0 items-center gap-3">
       <span className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg surface-secondary text-primary-600 dark:text-primary-400">
@@ -41,14 +67,24 @@ const DrawerHeader: React.FC<{
     <div className="flex items-center gap-1">
       <button
         type="button"
-        title={isPinned ? 'Unpin Console' : 'Pin Console open'}
-        aria-label={isPinned ? 'Unpin Console' : 'Pin Console open'}
+        title="Clear Console display"
+        aria-label="Clear Console display"
+        disabled={!canClearDisplay}
+        onClick={onClearDisplay}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-sanctuary-500 hover:bg-sanctuary-100 hover:text-sanctuary-800 dark:text-sanctuary-400 dark:hover:bg-sanctuary-800 dark:hover:text-sanctuary-100 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-primary-500"
+      >
+        <Eraser className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        title={isPinned ? "Unpin Console" : "Pin Console open"}
+        aria-label={isPinned ? "Unpin Console" : "Pin Console open"}
         aria-pressed={isPinned}
         onClick={onTogglePinned}
         className={`inline-flex h-8 w-8 items-center justify-center rounded-md focus-visible:ring-2 focus-visible:ring-primary-500 ${
           isPinned
-            ? 'bg-primary-50 text-primary-700 hover:bg-primary-100 dark:bg-primary-950 dark:text-primary-200 dark:hover:bg-primary-900'
-            : 'text-sanctuary-500 hover:bg-sanctuary-100 hover:text-sanctuary-800 dark:text-sanctuary-400 dark:hover:bg-sanctuary-800 dark:hover:text-sanctuary-100'
+            ? "bg-primary-50 text-primary-700 hover:bg-primary-100 dark:bg-primary-950 dark:text-primary-200 dark:hover:bg-primary-900"
+            : "text-sanctuary-500 hover:bg-sanctuary-100 hover:text-sanctuary-800 dark:text-sanctuary-400 dark:hover:bg-sanctuary-800 dark:hover:text-sanctuary-100"
         }`}
       >
         {isPinned ? (
@@ -91,7 +127,7 @@ export const ConsoleDrawer: React.FC<ConsoleDrawerProps> = ({
   const location = useLocation();
   const walletIds = useMemo(
     () => new Set(wallets.map((wallet) => wallet.id)),
-    [wallets]
+    [wallets],
   );
 
   const closeDrawer = useCallback(() => {
@@ -105,26 +141,35 @@ export const ConsoleDrawer: React.FC<ConsoleDrawerProps> = ({
 
   const defaultWalletId = useMemo(
     () => walletIdFromWalletRoute(location.pathname, walletIds),
-    [location.pathname, walletIds]
+    [location.pathname, walletIds],
   );
 
   const handleTurnComplete = useCallback(
     (result: ConsoleTurnResult) => {
-      const filter = extractConsoleTransactionFilter(result, walletIds);
-      if (!filter) return;
+      const query = extractConsoleTransactionQuery(result, walletIds);
+      if (!query) return;
 
-      navigate(`/wallets/${encodeURIComponent(filter.walletId)}`, {
-        state: {
-          activeTab: 'tx',
-          consoleTransactionFilter: filter,
-        },
-      });
+      const filter = extractConsoleTransactionFilter(result, walletIds);
+      if (filter) {
+        navigate(`/wallets/${encodeURIComponent(filter.walletId)}`, {
+          state: {
+            activeTab: "tx",
+            consoleTransactionFilter: filter,
+          },
+        });
+      } else {
+        navigate("/console/results", {
+          state: {
+            consoleTransactionQuery: query,
+          },
+        });
+      }
 
       if (!isPinned) {
         closeDrawer();
       }
     },
-    [closeDrawer, isPinned, navigate, walletIds]
+    [closeDrawer, isPinned, navigate, walletIds],
   );
 
   const controller = useConsoleDrawerController({
@@ -133,6 +178,16 @@ export const ConsoleDrawer: React.FC<ConsoleDrawerProps> = ({
     defaultWalletId,
     onTurnComplete: handleTurnComplete,
   });
+
+  const clearSelectedSession = useCallback(() => {
+    if (
+      window.confirm(
+        "Clear the selected Console session? Prompt history is not removed.",
+      )
+    ) {
+      void controller.clearSelectedSession();
+    }
+  }, [controller.clearSelectedSession]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -143,13 +198,13 @@ export const ConsoleDrawer: React.FC<ConsoleDrawerProps> = ({
         : null;
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || isPinned) return;
+      if (event.key !== "Escape" || isPinned) return;
       event.preventDefault();
       closeDrawer();
     };
 
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, [closeDrawer, isOpen, isPinned]);
 
   if (!isOpen) return null;
@@ -157,7 +212,7 @@ export const ConsoleDrawer: React.FC<ConsoleDrawerProps> = ({
   return (
     <div
       className={`fixed inset-0 z-50 flex justify-end ${
-        isPinned ? 'pointer-events-none' : ''
+        isPinned ? "pointer-events-none" : ""
       }`}
       role="presentation"
     >
@@ -178,6 +233,10 @@ export const ConsoleDrawer: React.FC<ConsoleDrawerProps> = ({
         <DrawerHeader
           toolCount={controller.tools.length}
           isPinned={isPinned}
+          canClearDisplay={
+            controller.messages.length > 0 && !controller.sending
+          }
+          onClearDisplay={controller.clearDisplay}
           onNewSession={controller.startNewSession}
           onTogglePinned={() => setIsPinned((current) => !current)}
           onClose={closeDrawer}
@@ -208,6 +267,16 @@ export const ConsoleDrawer: React.FC<ConsoleDrawerProps> = ({
               </option>
             ))}
           </select>
+          <button
+            type="button"
+            title="Clear selected Console session"
+            aria-label="Clear selected Console session"
+            disabled={!controller.selectedSessionId || controller.sending}
+            onClick={clearSelectedSession}
+            className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md text-sanctuary-500 hover:bg-red-50 hover:text-red-600 dark:text-sanctuary-400 dark:hover:bg-red-900/20 dark:hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-primary-500"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
         </div>
 
         {controller.error ? (
@@ -236,6 +305,7 @@ export const ConsoleDrawer: React.FC<ConsoleDrawerProps> = ({
               replayingPromptId={controller.replayingPromptId}
               onSearchChange={controller.setPromptSearch}
               onRefresh={controller.refreshPrompts}
+              onClearHistory={controller.clearPromptHistory}
               onReplay={controller.replayPrompt}
               onDelete={controller.deletePrompt}
               onToggleSaved={controller.togglePromptSaved}

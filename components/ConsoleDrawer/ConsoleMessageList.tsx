@@ -1,18 +1,19 @@
-import React from 'react';
+import React from "react";
 import {
   Brain,
   CheckCircle2,
   CircleAlert,
   CircleSlash,
+  LoaderCircle,
   UserRound,
-} from 'lucide-react';
+} from "lucide-react";
 import {
   compressConsoleMessages,
   summarizeTrace,
   type ConsoleCompressedHistoryItem,
   type ConsoleMessageDisplayItem,
-} from './consoleDrawerUtils';
-import type { ConsoleMessage } from './types';
+} from "./consoleDrawerUtils";
+import type { ConsoleMessage } from "./types";
 
 interface ConsoleMessageListProps {
   messages: ConsoleMessage[];
@@ -27,7 +28,7 @@ const traceIcon = {
   failed: CircleAlert,
 };
 
-const ConsoleTraceList: React.FC<{ traces?: ConsoleMessage['traces'] }> = ({
+const ConsoleTraceList: React.FC<{ traces?: ConsoleMessage["traces"] }> = ({
   traces,
 }) => {
   if (!traces || traces.length === 0) return null;
@@ -91,7 +92,7 @@ const LoadingConsoleState = () => (
 );
 
 function pluralize(count: number, singular: string): string {
-  return `${count} ${singular}${count === 1 ? '' : 's'}`;
+  return `${count} ${singular}${count === 1 ? "" : "s"}`;
 }
 
 const ConsoleHistorySummary: React.FC<{
@@ -99,14 +100,14 @@ const ConsoleHistorySummary: React.FC<{
 }> = ({ item }) => {
   const duplicateText =
     item.duplicateTurnCount > 0
-      ? ` · ${pluralize(item.duplicateTurnCount, 'duplicate rerun')} hidden`
-      : '';
+      ? ` · ${pluralize(item.duplicateTurnCount, "duplicate rerun")} hidden`
+      : "";
 
   return (
     <div className="flex justify-center">
       <div className="rounded-md border border-sanctuary-200 px-3 py-1.5 text-[11px] text-sanctuary-500 surface-muted dark:border-sanctuary-800 dark:text-sanctuary-400">
-        Earlier history compressed ·{' '}
-        {pluralize(item.hiddenMessageCount, 'message')} hidden{duplicateText}
+        Earlier history compressed ·{" "}
+        {pluralize(item.hiddenMessageCount, "message")} hidden{duplicateText}
       </div>
     </div>
   );
@@ -115,11 +116,11 @@ const ConsoleHistorySummary: React.FC<{
 const ConsoleMessageBubble: React.FC<{ message: ConsoleMessage }> = ({
   message,
 }) => {
-  const isUser = message.role === 'user';
+  const isUser = message.role === "user";
   const Icon = isUser ? UserRound : Brain;
 
   return (
-    <div className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}>
+    <div className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"}`}>
       {!isUser && (
         <span className="mt-1 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg surface-secondary text-primary-600 dark:text-primary-400">
           <Icon className="h-4 w-4" />
@@ -129,8 +130,8 @@ const ConsoleMessageBubble: React.FC<{ message: ConsoleMessage }> = ({
       <div
         className={`max-w-[86%] rounded-lg px-3 py-2 text-sm leading-6 ${
           isUser
-            ? 'bg-primary-700 text-white dark:bg-primary-300 dark:text-primary-950'
-            : 'surface-muted text-sanctuary-800 dark:text-sanctuary-100 border border-sanctuary-200 dark:border-sanctuary-800'
+            ? "bg-primary-700 text-white dark:bg-primary-300 dark:text-primary-950"
+            : "surface-muted text-sanctuary-800 dark:text-sanctuary-100 border border-sanctuary-200 dark:border-sanctuary-800"
         }`}
       >
         <p className="whitespace-pre-wrap break-words">{message.content}</p>
@@ -148,18 +149,19 @@ const ConsoleMessageBubble: React.FC<{ message: ConsoleMessage }> = ({
 const ConsoleDisplayItem: React.FC<{
   item: ConsoleMessageDisplayItem;
 }> = ({ item }) =>
-  item.kind === 'summary' ? (
+  item.kind === "summary" ? (
     <ConsoleHistorySummary item={item} />
   ) : (
     <ConsoleMessageBubble message={item.message} />
   );
 
 const ConsoleSendingIndicator = () => (
-  <div className="flex gap-3">
+  <div className="flex gap-3" role="status" aria-label="LLM is thinking">
     <span className="mt-1 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg surface-secondary text-primary-600 dark:text-primary-400">
       <Brain className="h-4 w-4" />
     </span>
-    <div className="surface-muted rounded-lg border border-sanctuary-200 dark:border-sanctuary-800 px-3 py-2 text-sm text-sanctuary-500">
+    <div className="surface-muted inline-flex items-center gap-2 rounded-lg border border-sanctuary-200 dark:border-sanctuary-800 px-3 py-2 text-sm text-sanctuary-500">
+      <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
       Working...
     </div>
   </div>
@@ -182,7 +184,7 @@ export const ConsoleMessageList: React.FC<ConsoleMessageListProps> = ({
       <div className="space-y-4">
         {displayItems.map((item) => (
           <ConsoleDisplayItem
-            key={item.kind === 'summary' ? item.id : item.message.id}
+            key={item.kind === "summary" ? item.id : item.message.id}
             item={item}
           />
         ))}

@@ -106,9 +106,11 @@ server {
         proxy_set_header Connection "upgrade";
 
         # Timeouts
+        # Console/local model calls can run up to 300s; keep the reverse proxy
+        # above the browser/backend budget so slow LLM responses return JSON.
         proxy_connect_timeout 60s;
-        proxy_send_timeout 60s;
-        proxy_read_timeout 60s;
+        proxy_send_timeout 310s;
+        proxy_read_timeout 310s;
 
         # Buffering
         proxy_buffering on;

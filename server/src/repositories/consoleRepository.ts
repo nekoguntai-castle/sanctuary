@@ -4,10 +4,12 @@ import type {
   ConsoleToolTrace,
   ConsoleTurn,
   Prisma,
-} from '../generated/prisma/client';
-import prisma from '../models/prisma';
+} from "../generated/prisma/client";
+import prisma from "../models/prisma";
 
-export type ConsoleTurnWithTraces = ConsoleTurn & { toolTraces: ConsoleToolTrace[] };
+export type ConsoleTurnWithTraces = ConsoleTurn & {
+  toolTraces: ConsoleToolTrace[];
+};
 
 export interface CreateConsoleSessionInput {
   userId: string;
@@ -63,19 +65,25 @@ export interface PromptHistoryFilters {
 
 function activePromptWhere(
   userId: string,
-  filters: PromptHistoryFilters = {}
+  filters: PromptHistoryFilters = {},
 ): Prisma.ConsolePromptHistoryWhereInput {
   const now = filters.now ?? new Date();
   return {
     userId,
     deletedAt: null,
     ...(filters.saved === undefined ? {} : { saved: filters.saved }),
-    ...(filters.search ? { normalizedPrompt: { contains: filters.search } } : {}),
-    ...(filters.includeExpired ? {} : { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] }),
+    ...(filters.search
+      ? { normalizedPrompt: { contains: filters.search } }
+      : {}),
+    ...(filters.includeExpired
+      ? {}
+      : { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] }),
   };
 }
 
-async function createSession(input: CreateConsoleSessionInput): Promise<ConsoleSession> {
+async function createSession(
+  input: CreateConsoleSessionInput,
+): Promise<ConsoleSession> {
   return prisma.consoleSession.create({
     data: {
       userId: input.userId,
@@ -87,23 +95,47 @@ async function createSession(input: CreateConsoleSessionInput): Promise<ConsoleS
   });
 }
 
-async function findSessionForUser(id: string, userId: string): Promise<ConsoleSession | null> {
-  return prisma.consoleSession.findFirst({ where: { id, userId, deletedAt: null } });
+async function findSessionForUser(
+  id: string,
+  userId: string,
+): Promise<ConsoleSession | null> {
+  return prisma.consoleSession.findFirst({
+    where: { id, userId, deletedAt: null },
+  });
 }
 
-async function listSessions(userId: string, limit: number, offset: number): Promise<ConsoleSession[]> {
+async function listSessions(
+  userId: string,
+  limit: number,
+  offset: number,
+): Promise<ConsoleSession[]> {
   return prisma.consoleSession.findMany({
     where: { userId, deletedAt: null },
-    orderBy: { updatedAt: 'desc' },
+    orderBy: { updatedAt: "desc" },
     take: limit,
     skip: offset,
   });
 }
 
+async function softDeleteSession(id: string): Promise<ConsoleSession> {
+  return prisma.consoleSession.update({
+    where: { id },
+    data: { deletedAt: new Date() },
+  });
+}
+
+async function softDeletePromptsForUser(userId: string): Promise<number> {
+  const result = await prisma.consolePromptHistory.updateMany({
+    where: { userId, deletedAt: null },
+    data: { deletedAt: new Date(), saved: false },
+  });
+  return result.count;
+}
+
 async function updateSessionScope(
   id: string,
   scope: Prisma.InputJsonValue,
-  maxSensitivity: string
+  maxSensitivity: string,
 ): Promise<ConsoleSession> {
   return prisma.consoleSession.update({
     where: { id },
@@ -123,7 +155,10 @@ async function createTurn(input: CreateConsoleTurnInput): Promise<ConsoleTurn> {
   });
 }
 
-async function updateTurnState(id: string, state: string): Promise<ConsoleTurn> {
+async function updateTurnState(
+  id: string,
+  state: string,
+): Promise<ConsoleTurn> {
   return prisma.consoleTurn.update({ where: { id }, data: { state } });
 }
 
@@ -137,7 +172,7 @@ async function completeTurn(input: {
   return prisma.consoleTurn.update({
     where: { id: input.id },
     data: {
-      state: 'completed',
+      state: "completed",
       response: input.response,
       providerProfileId: input.providerProfileId ?? null,
       model: input.model ?? null,
@@ -147,23 +182,31 @@ async function completeTurn(input: {
   });
 }
 
-async function failTurn(id: string, error: Prisma.InputJsonValue): Promise<ConsoleTurn> {
+async function failTurn(
+  id: string,
+  error: Prisma.InputJsonValue,
+): Promise<ConsoleTurn> {
   return prisma.consoleTurn.update({
     where: { id },
-    data: { state: 'failed', error, completedAt: new Date() },
+    data: { state: "failed", error, completedAt: new Date() },
   });
 }
 
-async function listTurns(sessionId: string, limit: number): Promise<ConsoleTurnWithTraces[]> {
+async function listTurns(
+  sessionId: string,
+  limit: number,
+): Promise<ConsoleTurnWithTraces[]> {
   return prisma.consoleTurn.findMany({
     where: { sessionId },
-    include: { toolTraces: { orderBy: { createdAt: 'asc' } } },
-    orderBy: { createdAt: 'asc' },
+    include: { toolTraces: { orderBy: { createdAt: "asc" } } },
+    orderBy: { createdAt: "asc" },
     take: limit,
   });
 }
 
-async function createPrompt(input: CreateConsolePromptInput): Promise<ConsolePromptHistory> {
+async function createPrompt(
+  input: CreateConsolePromptInput,
+): Promise<ConsolePromptHistory> {
   return prisma.consolePromptHistory.create({
     data: {
       userId: input.userId,
@@ -178,8 +221,14 @@ async function createPrompt(input: CreateConsolePromptInput): Promise<ConsolePro
   });
 }
 
-async function attachPromptToTurn(turnId: string, promptHistoryId: string): Promise<ConsoleTurn> {
-  return prisma.consoleTurn.update({ where: { id: turnId }, data: { promptHistoryId } });
+async function attachPromptToTurn(
+  turnId: string,
+  promptHistoryId: string,
+): Promise<ConsoleTurn> {
+  return prisma.consoleTurn.update({
+    where: { id: turnId },
+    data: { promptHistoryId },
+  });
 }
 
 async function updatePromptMetadata(input: {
@@ -202,11 +251,11 @@ async function listPrompts(
   userId: string,
   filters: PromptHistoryFilters,
   limit: number,
-  offset: number
+  offset: number,
 ): Promise<ConsolePromptHistory[]> {
   return prisma.consolePromptHistory.findMany({
     where: activePromptWhere(userId, filters),
-    orderBy: { createdAt: 'desc' },
+    orderBy: { createdAt: "desc" },
     take: limit,
     skip: offset,
   });
@@ -215,7 +264,7 @@ async function listPrompts(
 async function findPromptForUser(
   id: string,
   userId: string,
-  now = new Date()
+  now = new Date(),
 ): Promise<ConsolePromptHistory | null> {
   return prisma.consolePromptHistory.findFirst({
     where: {
@@ -257,7 +306,9 @@ async function markPromptReplayed(id: string): Promise<ConsolePromptHistory> {
   });
 }
 
-async function createToolTrace(input: CreateConsoleToolTraceInput): Promise<ConsoleToolTrace> {
+async function createToolTrace(
+  input: CreateConsoleToolTraceInput,
+): Promise<ConsoleToolTrace> {
   return prisma.consoleToolTrace.create({ data: input });
 }
 
@@ -270,15 +321,25 @@ async function purgeExpiredPromptHistory(now = new Date()): Promise<number> {
 }
 
 async function getSupportStats(now = new Date()) {
-  const [sessionCount, turnCount, promptCount, savedPromptCount, expiredPromptCount, traceCount] =
-    await Promise.all([
-      prisma.consoleSession.count(),
-      prisma.consoleTurn.count(),
-      prisma.consolePromptHistory.count({ where: { deletedAt: null } }),
-      prisma.consolePromptHistory.count({ where: { deletedAt: null, saved: true } }),
-      prisma.consolePromptHistory.count({ where: { deletedAt: null, expiresAt: { lte: now } } }),
-      prisma.consoleToolTrace.count(),
-    ]);
+  const [
+    sessionCount,
+    turnCount,
+    promptCount,
+    savedPromptCount,
+    expiredPromptCount,
+    traceCount,
+  ] = await Promise.all([
+    prisma.consoleSession.count(),
+    prisma.consoleTurn.count(),
+    prisma.consolePromptHistory.count({ where: { deletedAt: null } }),
+    prisma.consolePromptHistory.count({
+      where: { deletedAt: null, saved: true },
+    }),
+    prisma.consolePromptHistory.count({
+      where: { deletedAt: null, expiresAt: { lte: now } },
+    }),
+    prisma.consoleToolTrace.count(),
+  ]);
 
   return {
     consoleSessionCount: sessionCount,
@@ -294,6 +355,8 @@ export const consoleRepository = {
   createSession,
   findSessionForUser,
   listSessions,
+  softDeleteSession,
+  softDeletePromptsForUser,
   updateSessionScope,
   createTurn,
   updateTurnState,

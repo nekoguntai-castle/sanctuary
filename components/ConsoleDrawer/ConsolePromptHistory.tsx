@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 import {
   Clock3,
   Infinity,
@@ -7,13 +7,13 @@ import {
   Search,
   Star,
   Trash2,
-} from 'lucide-react';
-import type { ConsolePromptHistory as ConsolePromptHistoryItem } from '../../src/api/console';
+} from "lucide-react";
+import type { ConsolePromptHistory as ConsolePromptHistoryItem } from "../../src/api/console";
 import {
   dedupePromptHistory,
   formatShortDate,
   getPromptTitle,
-} from './consoleDrawerUtils';
+} from "./consoleDrawerUtils";
 
 interface ConsolePromptHistoryProps {
   prompts: ConsolePromptHistoryItem[];
@@ -21,12 +21,13 @@ interface ConsolePromptHistoryProps {
   replayingPromptId: string | null;
   onSearchChange: (value: string) => void;
   onRefresh: () => Promise<void>;
+  onClearHistory: () => Promise<void>;
   onReplay: (promptId: string) => Promise<void>;
   onDelete: (promptId: string) => Promise<void>;
   onToggleSaved: (prompt: ConsolePromptHistoryItem) => Promise<void>;
   onSetExpiration: (
     prompt: ConsolePromptHistoryItem,
-    days: number | null
+    days: number | null,
   ) => Promise<void>;
 }
 
@@ -58,7 +59,7 @@ const PromptHistoryRow: React.FC<{
   onToggleSaved: (prompt: ConsolePromptHistoryItem) => Promise<void>;
   onSetExpiration: (
     prompt: ConsolePromptHistoryItem,
-    days: number | null
+    days: number | null,
   ) => Promise<void>;
 }> = ({
   prompt,
@@ -79,8 +80,8 @@ const PromptHistoryRow: React.FC<{
             {getPromptTitle(prompt)}
           </p>
           <p className="mt-0.5 truncate text-[11px] text-sanctuary-500 dark:text-sanctuary-400">
-            {lastUsedAt || 'New prompt'}
-            {expiresAt ? ` · Expires ${expiresAt}` : ''}
+            {lastUsedAt || "New prompt"}
+            {expiresAt ? ` · Expires ${expiresAt}` : ""}
           </p>
         </div>
         <div className="flex flex-shrink-0 items-center gap-1">
@@ -90,23 +91,23 @@ const PromptHistoryRow: React.FC<{
             onClick={() => void onReplay(prompt.id)}
           >
             <RotateCw
-              className={`h-3.5 w-3.5 ${isReplaying ? 'animate-spin' : ''}`}
+              className={`h-3.5 w-3.5 ${isReplaying ? "animate-spin" : ""}`}
             />
           </PromptActionButton>
           <PromptActionButton
-            title={prompt.saved ? 'Unsave prompt' : 'Save prompt'}
+            title={prompt.saved ? "Unsave prompt" : "Save prompt"}
             onClick={() => void onToggleSaved(prompt)}
           >
             <Star
-              className={`h-3.5 w-3.5 ${prompt.saved ? 'fill-current text-warning-500' : ''}`}
+              className={`h-3.5 w-3.5 ${prompt.saved ? "fill-current text-warning-500" : ""}`}
             />
           </PromptActionButton>
           <PromptActionButton
-            title={prompt.expiresAt ? 'Clear expiration' : 'Expire in 30 days'}
+            title={prompt.expiresAt ? "Clear expiration" : "Expire in 30 days"}
             onClick={() =>
               void onSetExpiration(
                 prompt,
-                prompt.expiresAt ? null : EXPIRATION_DAYS
+                prompt.expiresAt ? null : EXPIRATION_DAYS,
               )
             }
           >
@@ -134,12 +135,22 @@ export const ConsolePromptHistory: React.FC<ConsolePromptHistoryProps> = ({
   replayingPromptId,
   onSearchChange,
   onRefresh,
+  onClearHistory,
   onReplay,
   onDelete,
   onToggleSaved,
   onSetExpiration,
 }) => {
   const visiblePrompts = dedupePromptHistory(prompts);
+  const clearHistory = () => {
+    if (
+      window.confirm(
+        "Clear Console prompt history? Saved prompts will also be removed.",
+      )
+    ) {
+      void onClearHistory();
+    }
+  };
 
   return (
     <section className="border-t border-sanctuary-200 dark:border-sanctuary-800">
@@ -163,6 +174,16 @@ export const ConsolePromptHistory: React.FC<ConsolePromptHistoryProps> = ({
           className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md text-sanctuary-500 hover:bg-sanctuary-100 hover:text-sanctuary-800 dark:text-sanctuary-400 dark:hover:bg-sanctuary-800 dark:hover:text-sanctuary-100 focus-visible:ring-2 focus-visible:ring-primary-500"
         >
           <RefreshCw className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          title="Clear prompt history"
+          aria-label="Clear prompt history"
+          disabled={visiblePrompts.length === 0}
+          onClick={clearHistory}
+          className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md text-sanctuary-500 hover:bg-red-50 hover:text-red-600 dark:text-sanctuary-400 dark:hover:bg-red-900/20 dark:hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-primary-500"
+        >
+          <Trash2 className="h-4 w-4" />
         </button>
       </div>
       <ul className="max-h-44 overflow-y-auto border-t border-sanctuary-100 dark:border-sanctuary-800">

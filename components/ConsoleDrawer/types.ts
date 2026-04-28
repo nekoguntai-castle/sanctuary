@@ -1,4 +1,4 @@
-import type React from 'react';
+import type React from "react";
 import type {
   ConsolePromptHistory,
   ConsoleScope,
@@ -6,8 +6,8 @@ import type {
   ConsoleSession,
   ConsoleTool,
   ConsoleToolTrace,
-} from '../../src/api/console';
-import type { Wallet } from '../../src/api/wallets';
+} from "../../src/api/console";
+import type { Wallet } from "../../src/api/wallets";
 
 export interface ConsoleDrawerProps {
   isOpen: boolean;
@@ -18,7 +18,7 @@ export interface ConsoleDrawerProps {
 
 export interface ConsoleMessage {
   id: string;
-  role: 'user' | 'assistant';
+  role: "user" | "assistant";
   content: string;
   createdAt: string;
   details?: string;
@@ -51,13 +51,16 @@ export interface ConsoleDrawerController {
   setSelectedSessionId: (value: string | null) => void;
   selectSession: (sessionId: string | null) => Promise<void>;
   startNewSession: () => void;
+  clearDisplay: () => void;
+  clearSelectedSession: () => Promise<void>;
+  clearPromptHistory: () => Promise<void>;
   sendPrompt: () => Promise<void>;
   replayPrompt: (promptId: string) => Promise<void>;
   deletePrompt: (promptId: string) => Promise<void>;
   togglePromptSaved: (prompt: ConsolePromptHistory) => Promise<void>;
   setPromptExpiration: (
     prompt: ConsolePromptHistory,
-    days: number | null
+    days: number | null,
   ) => Promise<void>;
   refreshPrompts: () => Promise<void>;
 }

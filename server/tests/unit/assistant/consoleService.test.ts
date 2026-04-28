@@ -32,6 +32,8 @@ const mocks = vi.hoisted(() => {
       createSession: vi.fn(),
       findSessionForUser: vi.fn(),
       listSessions: vi.fn(),
+      softDeleteSession: vi.fn(),
+      softDeletePromptsForUser: vi.fn(),
       updateSessionScope: vi.fn(),
       createTurn: vi.fn(),
       updateTurnState: vi.fn(),
@@ -84,7 +86,9 @@ vi.mock("../../../src/services/auditService", () => ({
 }));
 
 import {
+  clearPromptHistory,
   createConsoleSession,
+  deleteConsoleSession,
   deletePromptHistory,
   listConsoleSessions,
   listConsoleTools,
@@ -209,6 +213,10 @@ function resetHappyPath() {
   mocks.consoleRepository.createSession.mockResolvedValue(session());
   mocks.consoleRepository.findSessionForUser.mockResolvedValue(session());
   mocks.consoleRepository.updateSessionScope.mockResolvedValue(session());
+  mocks.consoleRepository.softDeleteSession.mockResolvedValue(
+    session({ kind: "general" }),
+  );
+  mocks.consoleRepository.softDeletePromptsForUser.mockResolvedValue(2);
   mocks.consoleRepository.createTurn.mockResolvedValue(turn());
   mocks.consoleRepository.updateTurnState.mockResolvedValue(turn());
   mocks.consoleRepository.attachPromptToTurn.mockResolvedValue(turn());
@@ -325,6 +333,7 @@ describe("console service", () => {
         toolResults: [
           expect.objectContaining({
             toolName: "get_wallet_overview",
+            input: { walletId },
             facts: { summary: "Wallet has activity." },
           }),
         ],
@@ -653,7 +662,21 @@ describe("console service", () => {
     );
   });
 
-  it("updates, deletes, and purges prompt history through ownership checks", async () => {
+  it("deletes selected sessions through ownership checks", async () => {
+    await expect(
+      deleteConsoleSession(actor(), sessionId),
+    ).resolves.toMatchObject({ id: sessionId });
+
+    expect(mocks.consoleRepository.findSessionForUser).toHaveBeenCalledWith(
+      sessionId,
+      "user-1",
+    );
+    expect(mocks.consoleRepository.softDeleteSession).toHaveBeenCalledWith(
+      sessionId,
+    );
+  });
+
+  it("updates, deletes, clears, and purges prompt history through ownership checks", async () => {
     mocks.consoleRepository.findPromptForUser.mockResolvedValue(
       promptHistory(),
     );
@@ -663,6 +686,7 @@ describe("console service", () => {
     mocks.consoleRepository.softDeletePrompt.mockResolvedValue(
       promptHistory({ deletedAt: new Date() }),
     );
+    mocks.consoleRepository.softDeletePromptsForUser.mockResolvedValue(4);
     mocks.consoleRepository.purgeExpiredPromptHistory.mockResolvedValue(3);
 
     await expect(
@@ -671,9 +695,14 @@ describe("console service", () => {
     await expect(deletePromptHistory(actor(), promptId)).resolves.toMatchObject(
       { id: promptId },
     );
+    await expect(clearPromptHistory(actor())).resolves.toBe(4);
     await expect(
       purgeExpiredPromptHistory(new Date("2026-04-26T00:00:00.000Z")),
     ).resolves.toBe(3);
+
+    expect(
+      mocks.consoleRepository.softDeletePromptsForUser,
+    ).toHaveBeenCalledWith("user-1");
   });
 
   it("lists sessions, turns, and prompt history through repository filters", async () => {
@@ -736,6 +765,11 @@ describe("console service", () => {
     await expect(listConsoleTurns(actor(), sessionId)).rejects.toMatchObject({
       statusCode: 404,
     });
+    await expect(
+      deleteConsoleSession(actor(), sessionId),
+    ).rejects.toMatchObject({
+      statusCode: 404,
+    });
 
     mocks.consoleRepository.findPromptForUser.mockResolvedValue(null);
     await expect(
@@ -793,6 +827,12 @@ describe("console service", () => {
   });
 
   it("rethrows service unavailable failures after recording turn failure", async () => {
+    mocks.planConsoleTools.mockResolvedValue({
+      toolCalls: [],
+      warnings: [],
+      providerProfileId: "profile-1",
+      model: "llama3.2",
+    });
     mocks.synthesizeConsoleAnswer.mockRejectedValue(
       new ServiceUnavailableError("proxy unavailable"),
     );
@@ -808,6 +848,94 @@ describe("console service", () => {
     expect(mocks.consoleRepository.failTurn).toHaveBeenCalledWith(turnId, {
       message: "proxy unavailable",
     });
+  });
+
+  it("completes with tool facts when synthesis fails after tool execution", async () => {
+    mocks.synthesizeConsoleAnswer.mockRejectedValue(
+      new ServiceUnavailableError(
+        "AI endpoint response did not include message content",
+      ),
+    );
+
+    await runConsoleTurn(actor(), {
+      prompt: "show wallet transactions",
+      scope: { kind: "wallet", walletId },
+      maxSensitivity: "wallet",
+    });
+
+    expect(mocks.consoleRepository.failTurn).not.toHaveBeenCalled();
+    expect(mocks.consoleRepository.completeTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        response: expect.stringContaining("Wallet has activity."),
+        providerProfileId: "profile-1",
+        model: "llama3.2",
+        plannedTools: {
+          toolCalls: [
+            {
+              name: "get_wallet_overview",
+              input: { walletId },
+              reason: "Need wallet state",
+            },
+          ],
+          warnings: ["synthesis_fallback_applied"],
+        },
+      }),
+    );
+    expect(mocks.auditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "CONSOLE_TURN",
+        success: true,
+        details: expect.objectContaining({
+          planningWarnings: ["synthesis_fallback_applied"],
+        }),
+      }),
+    );
+  });
+
+  it("builds synthesis fallback summaries from trace errors and statuses", async () => {
+    mocks.planConsoleTools.mockResolvedValue({
+      toolCalls: [
+        { name: "get_wallet_overview", input: { walletId } },
+        { name: "get_wallet_overview", input: { walletId } },
+      ],
+      warnings: [],
+      providerProfileId: "profile-1",
+      model: "llama3.2",
+    });
+    mocks.consoleRepository.createToolTrace
+      .mockResolvedValueOnce(
+        completedTrace({
+          facts: {},
+          errorMessage: "scope denied",
+        }),
+      )
+      .mockResolvedValueOnce(
+        completedTrace({
+          id: "trace-2",
+          facts: null,
+          errorMessage: null,
+        }),
+      );
+    mocks.synthesizeConsoleAnswer.mockRejectedValue(
+      new ServiceUnavailableError("synthesis unavailable"),
+    );
+
+    await runConsoleTurn(actor(), {
+      prompt: "summarize traces",
+      scope: { kind: "wallet", walletId },
+      maxSensitivity: "wallet",
+    });
+
+    expect(mocks.consoleRepository.completeTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        response: expect.stringContaining("get_wallet_overview: scope denied"),
+      }),
+    );
+    expect(mocks.consoleRepository.completeTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        response: expect.stringContaining("get_wallet_overview: completed"),
+      }),
+    );
   });
 
   it("replays stored prompts with explicit replay overrides", async () => {
