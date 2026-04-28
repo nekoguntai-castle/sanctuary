@@ -107,7 +107,6 @@ describe("console planner protocol", () => {
           walletId: "da17d9d4-c760-4929-a207-2a45c3cadef9",
           dateFrom: "2020-02-01T00:00:00.000Z",
           dateTo: "2020-06-30T23:59:59.999Z",
-          limit: 100,
         },
         reason: "Fallback plan for wallet transaction request.",
       },
@@ -161,7 +160,6 @@ describe("console planner protocol", () => {
             walletId: "da17d9d4-c760-4929-a207-2a45c3cadef9",
             dateFrom: "2026-01-01T00:00:00.000Z",
             dateTo: "2026-12-31T23:59:59.999Z",
-            limit: 100,
           },
           reason: "read current-year transactions",
         },
@@ -170,6 +168,93 @@ describe("console planner protocol", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("resolves explicit transaction limit intents", () => {
+    const result = parseConsolePlanResponse(
+      JSON.stringify({
+        intents: [
+          {
+            name: "query_transactions",
+            target: { kind: "current_wallet" },
+            limit: { kind: "explicit", value: 25 },
+            reason: "read exactly twenty five transactions",
+          },
+        ],
+      }),
+      4,
+      walletPlanInput,
+    );
+
+    expect(result.toolCalls).toEqual([
+      {
+        name: "query_transactions",
+        input: {
+          walletId: "da17d9d4-c760-4929-a207-2a45c3cadef9",
+          limit: 25,
+        },
+        reason: "read exactly twenty five transactions",
+      },
+    ]);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it("omits default transaction limits from resolved intent tool input", () => {
+    const result = parseConsolePlanResponse(
+      JSON.stringify({
+        intents: [
+          {
+            name: "query_transactions",
+            target: { kind: "current_wallet" },
+            filters: { type: "sent" },
+            limit: { kind: "default" },
+          },
+        ],
+      }),
+      4,
+      walletPlanInput,
+    );
+
+    expect(result.toolCalls).toEqual([
+      {
+        name: "query_transactions",
+        input: {
+          walletId: "da17d9d4-c760-4929-a207-2a45c3cadef9",
+          type: "sent",
+        },
+        reason: "Resolved transaction query intent.",
+      },
+    ]);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it("accepts legacy numeric transaction intent limits as explicit limits", () => {
+    const result = parseConsolePlanResponse(
+      JSON.stringify({
+        intents: [
+          {
+            name: "query_transactions",
+            target: { kind: "current_wallet" },
+            filters: { type: "received", limit: 12 },
+          },
+        ],
+      }),
+      4,
+      walletPlanInput,
+    );
+
+    expect(result.toolCalls).toEqual([
+      {
+        name: "query_transactions",
+        input: {
+          walletId: "da17d9d4-c760-4929-a207-2a45c3cadef9",
+          type: "received",
+          limit: 12,
+        },
+        reason: "Resolved transaction query intent.",
+      },
+    ]);
+    expect(result.warnings).toEqual([]);
   });
 
   it("rejects malformed transaction intents without falling back to prompt regexes", () => {
@@ -225,6 +310,62 @@ describe("console planner protocol", () => {
     });
   });
 
+  it("resolves wallet overview intents across scoped wallets", () => {
+    const result = parseConsolePlanResponse(
+      JSON.stringify({
+        intents: [
+          {
+            name: "get_wallet_overview",
+            target: { kind: "all_scoped_wallets" },
+            reason: "summarize each scoped wallet",
+          },
+        ],
+      }),
+      1,
+      autoWalletSetPlanInput,
+    );
+
+    expect(result.toolCalls).toEqual([
+      {
+        name: "get_wallet_overview",
+        input: { walletId: "11111111-1111-4111-8111-111111111111" },
+        reason: "summarize each scoped wallet",
+      },
+    ]);
+    expect(result.warnings).toEqual(["tool_call_limit_applied"]);
+  });
+
+  it("resolves dashboard summary intents without prompt fallback matching", () => {
+    const result = parseConsolePlanResponse(
+      JSON.stringify({
+        intents: [{ name: "get_dashboard_summary" }],
+      }),
+      4,
+      {
+        ...walletPlanInput,
+        prompt: "where do things stand?",
+        scope: {
+          kind: "wallet_set",
+          walletIds: ["11111111-1111-4111-8111-111111111111"],
+        },
+        tools: [
+          queryTransactionsTool,
+          walletOverviewTool,
+          dashboardSummaryTool,
+        ],
+      },
+    );
+
+    expect(result.toolCalls).toEqual([
+      {
+        name: "get_dashboard_summary",
+        input: {},
+        reason: "Resolved dashboard summary intent.",
+      },
+    ]);
+    expect(result.warnings).toEqual([]);
+  });
+
   it("falls back to one transaction tool call per wallet-set member", () => {
     const result = parseConsolePlanResponse(
       "I should retrieve transactions for each scoped wallet.",
@@ -249,7 +390,6 @@ describe("console planner protocol", () => {
           walletId: "11111111-1111-4111-8111-111111111111",
           dateFrom: "2020-02-01T00:00:00.000Z",
           dateTo: "2020-06-30T23:59:59.999Z",
-          limit: 100,
         },
         reason: "Fallback plan for wallet transaction request.",
       },
@@ -259,7 +399,6 @@ describe("console planner protocol", () => {
           walletId: "22222222-2222-4222-8222-222222222222",
           dateFrom: "2020-02-01T00:00:00.000Z",
           dateTo: "2020-06-30T23:59:59.999Z",
-          limit: 100,
         },
         reason: "Fallback plan for wallet transaction request.",
       },
@@ -285,7 +424,6 @@ describe("console planner protocol", () => {
           walletId: "22222222-2222-4222-8222-222222222222",
           dateFrom: "2020-02-01T00:00:00.000Z",
           dateTo: "2020-06-30T23:59:59.999Z",
-          limit: 100,
         },
         reason: "Fallback plan for wallet transaction request.",
       },
@@ -334,7 +472,6 @@ describe("console planner protocol", () => {
           walletId: "11111111-1111-4111-8111-111111111111",
           dateFrom: "2020-06-01T00:00:00.000Z",
           dateTo: "2020-06-30T23:59:59.999Z",
-          limit: 100,
         },
         reason: "Fallback plan for wallet transaction request.",
       },
@@ -344,7 +481,6 @@ describe("console planner protocol", () => {
           walletId: "22222222-2222-4222-8222-222222222222",
           dateFrom: "2020-06-01T00:00:00.000Z",
           dateTo: "2020-06-30T23:59:59.999Z",
-          limit: 100,
         },
         reason: "Fallback plan for wallet transaction request.",
       },
@@ -372,7 +508,6 @@ describe("console planner protocol", () => {
           walletId: "22222222-2222-4222-8222-222222222222",
           dateFrom: "2020-06-01T00:00:00.000Z",
           dateTo: "2020-06-30T23:59:59.999Z",
-          limit: 100,
         },
         reason: "Fallback plan for wallet transaction request.",
       },

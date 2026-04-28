@@ -52,13 +52,15 @@ export interface ConsoleToolResultForSynthesis {
 const PLAN_SYSTEM_PROMPT = [
   "You are Sanctuary Console's planning model.",
   "Choose only the listed read-only Sanctuary tools when they are needed.",
-  'Prefer semantic intents for transaction requests. Return JSON like {"intents":[{"name":"query_transactions","target":{"kind":"current_wallet"},"filters":{"dateRange":{"kind":"relative","value":"current_year"}},"reason":"short reason"}]}.',
-  'For exact non-transaction tool use, you may return legacy JSON like {"toolCalls":[{"name":"<one listed tool name>","input":{},"reason":"short reason"}]}.',
+  'Prefer semantic intents for transaction, wallet overview, and dashboard requests. Return JSON like {"intents":[{"name":"query_transactions","target":{"kind":"current_wallet"},"filters":{"dateRange":{"kind":"relative","value":"current_year"}},"limit":{"kind":"explicit","value":25},"reason":"short reason"}]}.',
+  'For exact tool use that is not covered by a supported intent, you may return legacy JSON like {"toolCalls":[{"name":"<one listed tool name>","input":{},"reason":"short reason"}]}.',
   "The first character of the response must be { and the last character must be }.",
   "Do not include markdown, prose, chain-of-thought, XML tags, or code fences.",
   "Use currentDate from the user payload to interpret relative dates.",
-  'Supported transaction targets are {"kind":"current_wallet"}, {"kind":"all_scoped_wallets"}, and {"kind":"wallet_id","walletId":"<scoped wallet id>"}.',
+  'Supported intent names are "query_transactions", "get_wallet_overview", and "get_dashboard_summary".',
+  'Supported wallet targets are {"kind":"current_wallet"}, {"kind":"all_scoped_wallets"}, and {"kind":"wallet_id","walletId":"<scoped wallet id>"}.',
   'Supported transaction date ranges are {"kind":"relative","value":"current_year"} and {"kind":"relative","value":"previous_year"}, or {"kind":"explicit","dateFrom":"<ISO datetime>","dateTo":"<ISO datetime>"}.',
+  'Supported transaction limits are {"kind":"explicit","value":<positive integer up to 500>} and {"kind":"default"}. Use "explicit" only when the user requested a count or limit.',
   "When scope.kind is wallet and a selected tool input needs walletId, copy scope.walletId exactly.",
   "When scope.kind is wallet_set, use only wallet IDs from scope.walletIds. For walletId tools across multiple wallets, emit one tool call per wallet up to maxToolCalls. For walletIds tools, copy scope.walletIds into walletIds.",
   "When context.mode is auto, infer intent from the prompt, context.currentWalletId/currentWalletName, and context.wallets. Use public tools for network prompts, the current wallet for 'this wallet', a named wallet when the prompt matches an accessible wallet name, and all scoped wallets when the prompt says all wallets, every wallet, across wallets, portfolio, everything, or asks for all transactions without naming a specific/current wallet.",
@@ -155,7 +157,7 @@ const DateRangeIntentSchema = z.preprocess(
   ]),
 );
 
-const TransactionIntentTargetSchema = z.discriminatedUnion("kind", [
+const WalletTargetIntentSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("current_wallet") }).strict(),
   z.object({ kind: z.literal("all_scoped_wallets") }).strict(),
   z
@@ -166,31 +168,110 @@ const TransactionIntentTargetSchema = z.discriminatedUnion("kind", [
     .strict(),
 ]);
 
+const TransactionLimitIntentSchema = z.preprocess(
+  (value) => (typeof value === "number" ? { kind: "explicit", value } : value),
+  z.discriminatedUnion("kind", [
+    z
+      .object({
+        kind: z.literal("explicit"),
+        value: z.number().int().positive().max(500),
+      })
+      .strict(),
+    z.object({ kind: z.literal("default") }).strict(),
+  ]),
+);
+
+function normalizedIntentRecord(value: unknown): Record<string, unknown> {
+  const intent = toPlainObject(value);
+  const name = typeof intent.name === "string" ? intent.name : intent.intent;
+  return { ...intent, name };
+}
+
+function normalizedTransactionIntentRecord(
+  value: unknown,
+): Record<string, unknown> {
+  const intent = normalizedIntentRecord(value);
+  const rawFilters = intent.filters;
+  if (
+    !rawFilters ||
+    typeof rawFilters !== "object" ||
+    Array.isArray(rawFilters)
+  ) {
+    return intent;
+  }
+
+  const filters = rawFilters as Record<string, unknown>;
+  const filtersWithoutLimit = { ...filters };
+  const legacyLimit = filtersWithoutLimit.limit;
+  delete filtersWithoutLimit.limit;
+
+  return {
+    ...intent,
+    filters:
+      Object.keys(filtersWithoutLimit).length > 0
+        ? filtersWithoutLimit
+        : undefined,
+    limit: intent.limit ?? legacyLimit,
+  };
+}
+
 const TransactionIntentSchema = z.preprocess(
-  (value) => {
-    const intent = toPlainObject(value);
-    const name = typeof intent.name === "string" ? intent.name : intent.intent;
-    return { ...intent, name };
-  },
+  normalizedTransactionIntentRecord,
   z
     .object({
       name: z.literal("query_transactions"),
-      target: TransactionIntentTargetSchema,
+      target: WalletTargetIntentSchema,
       filters: z
         .object({
           dateRange: DateRangeIntentSchema.optional(),
           type: z.enum(["sent", "received", "consolidation"]).optional(),
-          limit: z.number().int().positive().max(500).optional(),
         })
         .strict()
         .optional(),
+      limit: TransactionLimitIntentSchema.optional(),
+      reason: z.string().trim().max(240).optional(),
+    })
+    .strict(),
+);
+
+const WalletOverviewIntentSchema = z.preprocess(
+  normalizedIntentRecord,
+  z
+    .object({
+      name: z.literal("get_wallet_overview"),
+      target: WalletTargetIntentSchema,
+      reason: z.string().trim().max(240).optional(),
+    })
+    .strict(),
+);
+
+const DashboardSummaryTargetIntentSchema = z
+  .object({
+    kind: z.literal("all_scoped_wallets"),
+  })
+  .strict();
+
+const DashboardSummaryIntentSchema = z.preprocess(
+  normalizedIntentRecord,
+  z
+    .object({
+      name: z.literal("get_dashboard_summary"),
+      target: DashboardSummaryTargetIntentSchema.default({
+        kind: "all_scoped_wallets",
+      }),
       reason: z.string().trim().max(240).optional(),
     })
     .strict(),
 );
 
 type TransactionIntent = z.infer<typeof TransactionIntentSchema>;
-type TransactionIntentTarget = z.infer<typeof TransactionIntentTargetSchema>;
+type WalletOverviewIntent = z.infer<typeof WalletOverviewIntentSchema>;
+type DashboardSummaryIntent = z.infer<typeof DashboardSummaryIntentSchema>;
+type ConsoleIntent =
+  | TransactionIntent
+  | WalletOverviewIntent
+  | DashboardSummaryIntent;
+type WalletTargetIntent = z.infer<typeof WalletTargetIntentSchema>;
 type DateRangeIntent = z.infer<typeof DateRangeIntentSchema>;
 type RelativeDateRangeValue = z.infer<
   typeof RelativeDateRangeIntentValueSchema
@@ -402,7 +483,7 @@ function scopedWalletId(input: ConsolePlanInput): string | null {
 }
 
 function intentTargetWalletIds(
-  target: TransactionIntentTarget,
+  target: WalletTargetIntent,
   input: ConsolePlanInput,
 ): Array<string> {
   const scopeWalletIds = getScopeWalletIds(input.scope);
@@ -619,7 +700,6 @@ function buildTransactionFallbackPlan(
       input: {
         walletId,
         ...parsePromptDateRange(input.prompt),
-        limit: 100,
       },
       reason: "Fallback plan for wallet transaction request.",
     })),
@@ -666,7 +746,7 @@ const asksForDashboardFallback = (prompt: string): boolean => {
 const allowsDashboardFallback = (input: ConsolePlanInput): boolean =>
   !isAutoContext(input) || promptRequestsAllWallets(input.prompt);
 
-function withFallbackApplied(plan: FallbackToolPlan): FallbackToolPlan {
+function withFallbackApplied(plan: FallbackToolPlan) {
   if (plan.toolCalls.length === 0) return plan;
 
   const warnings = ["fallback_plan_applied"];
@@ -694,15 +774,39 @@ function buildFallbackToolPlan(
   );
 }
 
-function rawPlanIntents(parsed: Record<string, unknown>): unknown[] {
+function rawPlanIntents(parsed: Record<string, unknown>) {
   if (Array.isArray(parsed.intents)) return parsed.intents;
   if (typeof parsed.intent === "string") return [parsed];
   return parsed.intent === undefined ? [] : [parsed.intent];
 }
 
-function parseTransactionIntent(value: unknown): TransactionIntent | null {
-  const parsed = TransactionIntentSchema.safeParse(value);
-  return parsed.success ? parsed.data : null;
+function rawIntentName(value: unknown) {
+  const intent = toPlainObject(value);
+  const name = typeof intent.name === "string" ? intent.name : intent.intent;
+  return typeof name === "string" ? name : null;
+}
+
+function parseConsoleIntent(value: unknown) {
+  switch (rawIntentName(value)) {
+    case "query_transactions": {
+      const parsed = TransactionIntentSchema.safeParse(value);
+      return parsed.success ? parsed.data : null;
+    }
+    case "get_wallet_overview": {
+      const parsed = WalletOverviewIntentSchema.safeParse(value);
+      return parsed.success ? parsed.data : null;
+    }
+    case "get_dashboard_summary": {
+      const parsed = DashboardSummaryIntentSchema.safeParse(value);
+      return parsed.success ? parsed.data : null;
+    }
+    default:
+      return null;
+  }
+}
+
+function transactionIntentLimit(intent: TransactionIntent) {
+  return intent.limit?.kind === "explicit" ? { limit: intent.limit.value } : {};
 }
 
 function transactionIntentCallInput(
@@ -715,7 +819,7 @@ function transactionIntentCallInput(
     walletId,
     ...resolveDateRangeIntent(filters.dateRange, currentYear),
     ...(filters.type ? { type: filters.type } : {}),
-    limit: filters.limit ?? 100,
+    ...transactionIntentLimit(intent),
   };
 }
 
@@ -758,11 +862,72 @@ function transactionIntentToolCall(
   };
 }
 
+function buildWalletOverviewIntentToolPlan(
+  intent: WalletOverviewIntent,
+  input: ConsolePlanInput,
+  maxToolCalls: number,
+): FallbackToolPlan {
+  if (!hasTool(input, "get_wallet_overview") || maxToolCalls <= 0) {
+    return emptyFallbackPlan();
+  }
+
+  const walletIds = intentTargetWalletIds(intent.target, input);
+  const selectedWalletIds = walletIds.slice(0, maxToolCalls);
+  return {
+    toolCalls: selectedWalletIds.map((walletId) => ({
+      name: "get_wallet_overview",
+      input: { walletId },
+      reason: intent.reason ?? "Resolved wallet overview intent.",
+    })),
+    warnings: toolCallLimitWarnings(walletIds.length, selectedWalletIds.length),
+  };
+}
+
+function buildDashboardSummaryIntentToolPlan(
+  intent: DashboardSummaryIntent,
+  input: ConsolePlanInput,
+  maxToolCalls: number,
+) {
+  if (
+    !hasTool(input, "get_dashboard_summary") ||
+    maxToolCalls <= 0 ||
+    getScopeWalletIds(input.scope).length === 0
+  ) {
+    return emptyFallbackPlan();
+  }
+
+  return {
+    toolCalls: [
+      {
+        name: "get_dashboard_summary",
+        input: {},
+        reason: intent.reason ?? "Resolved dashboard summary intent.",
+      },
+    ],
+    warnings: [],
+  };
+}
+
+function buildConsoleIntentToolPlan(
+  intent: ConsoleIntent,
+  input: ConsolePlanInput,
+  maxToolCalls: number,
+) {
+  switch (intent.name) {
+    case "query_transactions":
+      return buildTransactionIntentToolPlan(intent, input, maxToolCalls);
+    case "get_wallet_overview":
+      return buildWalletOverviewIntentToolPlan(intent, input, maxToolCalls);
+    case "get_dashboard_summary":
+      return buildDashboardSummaryIntentToolPlan(intent, input, maxToolCalls);
+  }
+}
+
 function resolvePlanIntents(
   parsed: Record<string, unknown>,
   input: ConsolePlanInput | undefined,
   maxToolCalls: number,
-): FallbackToolPlan {
+) {
   const rawIntents = rawPlanIntents(parsed);
   if (!input || rawIntents.length === 0) return emptyFallbackPlan();
 
@@ -772,12 +937,12 @@ function resolvePlanIntents(
   let unresolvedIntentCount = 0;
 
   for (const rawIntent of rawIntents) {
-    const intent = parseTransactionIntent(rawIntent);
+    const intent = parseConsoleIntent(rawIntent);
     if (!intent) {
       invalidIntentCount += 1;
       continue;
     }
-    const plan = buildTransactionIntentToolPlan(
+    const plan = buildConsoleIntentToolPlan(
       intent,
       input,
       maxToolCalls - toolCalls.length,
