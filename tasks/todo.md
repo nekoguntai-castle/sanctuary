@@ -1,21 +1,48 @@
-# Active Task: AI Console Local Provider PR Delivery 2026-04-28
+# Completed Task: AI Console Local Provider PR Delivery 2026-04-28
 
-Status: in progress
+Status: complete
 
 Goal: commit the verified AI Console/local provider changes, push a branch, open a PR, monitor checks, merge it, and verify the merge.
 
 ## Plan
 
 - [x] Preflight branch, status, and diff scope.
-- [ ] Create a delivery branch and commit the verified change set.
-- [ ] Push the branch and open a PR with verification notes.
-- [ ] Monitor required checks and address failures if any.
-- [ ] Merge safely and verify the target branch contains the PR.
-- [ ] Document delivery results.
+- [x] Create a delivery branch and commit the verified change set.
+- [x] Push the branch and open a PR with verification notes.
+- [x] Monitor required checks and address failures if any.
+- [x] Merge safely and verify the target branch contains the PR.
+- [x] Document delivery results.
 
 ## Review
 
-- Pending.
+- PR #211 merged through the merge queue at `5db4949172660744cd3d331421be770135a88c7a`.
+- Fixed the architecture CI failure by regenerating `docs/architecture/generated/frontend.md` and verifying `npm run arch:lint`.
+- Verified the merge on `origin/main`, fast-forwarded local `main`, deleted the local delivery branch, confirmed the remote branch was already gone, and removed the stale remote-tracking ref.
+
+---
+
+# Active Task: Grade Follow-Up Large Console Test Split 2026-04-28
+
+Status: complete
+
+Goal: address the current grade follow-up limiting maintainability by splitting oversized Console tests without changing product behavior.
+
+## Plan
+
+- [x] Re-read the grade report and task backlog to confirm the current follow-up target.
+- [x] Extract shared Console drawer test fixtures/render helpers.
+- [x] Split Console drawer tests into focused behavior/history/error files.
+- [x] Extract the oversized server Console service mock harness into a shared test utility.
+- [x] Run focused Console drawer/server Console tests, typechecks, formatting, and diff checks.
+- [x] Re-measure touched-file line counts and document results.
+
+## Review
+
+- Split the former 1,181-line `tests/components/ConsoleDrawer.test.tsx` into focused Console drawer behavior, history, and error/setup tests plus shared fixtures/API mocks.
+- Extracted the reusable server Console service mock harness from `server/tests/unit/assistant/consoleService.test.ts` into `server/tests/unit/assistant/consoleService.testUtils.ts`.
+- Line-count result: Console drawer files are now 564/313/131 lines plus 179/33-line helpers; server Console service test is now 779 lines plus a 250-line helper.
+- Remaining raw file-size item: `scripts/perf/phase3-benchmark.mjs` is still 1,150 lines, but it is already classified as a cohesive proof harness in `scripts/quality/large-file-classification.json`, so this pass left it intact.
+- Verification: focused Console drawer Vitest passed (32 tests), focused server Console service Vitest passed (25 tests), `npm run typecheck:tests` passed, `npm run typecheck:server:tests` passed, touched-file Prettier check passed, `git diff --check` passed, and pinned touched-file lizard checks passed with zero warnings.
 
 ---
 

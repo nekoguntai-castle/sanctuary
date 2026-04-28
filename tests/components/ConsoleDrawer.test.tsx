@@ -1,1181 +1,564 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useEffect } from "react";
-import type React from "react";
-import { MemoryRouter, useLocation } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
+import { beforeEach, expect, it, vi } from "vitest";
 import { ConsoleDrawer } from "../../components/ConsoleDrawer";
-import { ApiError } from "../../src/api/client";
-import * as consoleApi from "../../src/api/console";
+import {
+  completedTurn,
+  consoleApi,
+  createDeferred,
+  mockConsoleReadyState,
+  multiWallets,
+  olderSession,
+  promptHistory,
+  renderDrawer,
+  session,
+  trace,
+  wallets,
+} from "./ConsoleDrawer.testUtils";
 
-vi.mock("../../src/api/console", () => ({
-  listConsoleTools: vi.fn(),
-  listConsoleSessions: vi.fn(),
-  createConsoleSession: vi.fn(),
-  listConsoleTurns: vi.fn(),
-  deleteConsoleSession: vi.fn(),
-  runConsoleTurn: vi.fn(),
-  listPromptHistory: vi.fn(),
-  clearPromptHistory: vi.fn(),
-  updatePromptHistory: vi.fn(),
-  deletePromptHistory: vi.fn(),
-  replayPromptHistory: vi.fn(),
-  getConsoleSetupReason: vi.fn((error: any) => {
-    if (
-      error?.status === 403 &&
-      error?.response?.feature === "sanctuaryConsole"
-    ) {
-      return "feature-disabled";
-    }
-    if (
-      error?.status === 503 &&
-      typeof error?.message === "string" &&
-      error.message.includes("AI provider is not configured")
-    ) {
-      return "provider-setup";
-    }
-    return null;
-  }),
-}));
+vi.mock("../../src/api/console", async () => {
+  const { createConsoleApiMock } = await import("./ConsoleDrawer.apiMock");
+  return createConsoleApiMock();
+});
 
-const session = {
-  id: "session-12345678",
-  userId: "user-1",
-  title: "Recent session",
-  maxSensitivity: "wallet",
-  createdAt: "2026-04-26T01:00:00.000Z",
-  updatedAt: "2026-04-26T01:05:00.000Z",
-};
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockConsoleReadyState();
+});
 
-const promptHistory = {
-  id: "prompt-1",
-  userId: "user-1",
-  sessionId: session.id,
-  prompt: "How long ago was block 800000?",
-  title: "Block age",
-  maxSensitivity: "wallet",
-  saved: false,
-  expiresAt: null,
-  replayCount: 0,
-  lastReplayedAt: null,
-  createdAt: "2026-04-26T01:00:00.000Z",
-  updatedAt: "2026-04-26T01:00:00.000Z",
-};
+it("loads Console state and submits an auto-context prompt", async () => {
+  const user = userEvent.setup();
+  renderDrawer();
 
-const expiringPromptHistory = {
-  ...promptHistory,
-  id: "prompt-expiring",
-  title: "",
-  saved: true,
-  expiresAt: "2026-05-26T01:00:00.000Z",
-  updatedAt: "not-a-date",
-};
+  await screen.findByText("Block age");
 
-const completedTurn = {
-  id: "turn-1",
-  sessionId: session.id,
-  promptHistoryId: promptHistory.id,
-  state: "completed",
-  prompt: "How long ago was block 800000?",
-  response: "Block 800000 was mined about 2 years ago.",
-  maxSensitivity: "wallet",
-  createdAt: "2026-04-26T01:00:00.000Z",
-  completedAt: "2026-04-26T01:00:02.000Z",
-};
+  await user.type(
+    screen.getByLabelText("Console prompt"),
+    "How long ago was block 800000?",
+  );
+  await user.click(screen.getByRole("button", { name: "Send prompt" }));
 
-const trace = {
-  id: "trace-1",
-  turnId: completedTurn.id,
-  toolName: "read.block",
-  status: "completed",
-  sensitivity: "public",
-  startedAt: "2026-04-26T01:00:00.000Z",
-  completedAt: "2026-04-26T01:00:01.000Z",
-  facts: { height: 800000 },
-  provenance: [],
-  redactions: [],
-  truncation: null,
-  errorMessage: null,
-};
+  await waitFor(() => {
+    expect(consoleApi.runConsoleTurn).toHaveBeenCalledWith({
+      prompt: "How long ago was block 800000?",
+      clientContext: { mode: "auto" },
+    });
+  });
+  expect(
+    await screen.findByText("Block 800000 was mined about 2 years ago."),
+  ).toBeInTheDocument();
+});
 
-const olderSession = {
-  ...session,
-  id: "session-older",
-  title: "",
-  updatedAt: "2026-04-26T00:30:00.000Z",
-};
+it("keeps Auto selected and sends the current wallet route as context", async () => {
+  const user = userEvent.setup();
+  renderDrawer({}, { route: "/wallets/wallet-1" });
 
-const wallets = [
-  { id: "wallet-1", name: "Main Vault", type: "single_sig" },
-] as any;
+  await screen.findByText("Block age");
+  await waitFor(() => {
+    expect(screen.getByLabelText("Console context")).toHaveValue("auto");
+  });
 
-const multiWallets = [
-  { id: "wallet-1", name: "Main Vault", type: "single_sig" },
-  { id: "wallet-2", name: "Spending", type: "single_sig" },
-] as any;
+  await user.type(
+    screen.getByLabelText("Console prompt"),
+    "show me transactions between feb 2020 and june 2020",
+  );
+  await user.click(screen.getByRole("button", { name: "Send prompt" }));
 
-function mockConsoleReadyState() {
-  vi.mocked(consoleApi.listConsoleSessions).mockResolvedValue({
-    sessions: [],
-  } as any);
-  vi.mocked(consoleApi.listPromptHistory).mockResolvedValue({
-    prompts: [promptHistory],
-  } as any);
-  vi.mocked(consoleApi.listConsoleTools).mockResolvedValue({
-    tools: [
-      {
-        name: "read.block",
-        title: "Read block",
-        description: "Read block data",
-        sensitivity: "public",
-        requiredScope: "general",
-        inputFields: ["height"],
-        available: true,
-        budgets: {},
-      },
-    ],
-  } as any);
-  vi.mocked(consoleApi.listConsoleTurns).mockResolvedValue({
-    turns: [],
-  } as any);
-  vi.mocked(consoleApi.runConsoleTurn).mockResolvedValue({
+  await waitFor(() => {
+    expect(consoleApi.runConsoleTurn).toHaveBeenCalledWith({
+      prompt: "show me transactions between feb 2020 and june 2020",
+      clientContext: { mode: "auto", routeWalletId: "wallet-1" },
+    });
+  });
+});
+
+it("submits prompts with an all-visible-wallets scope", async () => {
+  const user = userEvent.setup();
+  renderDrawer({ wallets: multiWallets });
+
+  await screen.findByText("Block age");
+  fireEvent.change(screen.getByLabelText("Console context"), {
+    target: { value: "all-wallets" },
+  });
+
+  await user.type(
+    screen.getByLabelText("Console prompt"),
+    "summarize all wallets",
+  );
+  await user.click(screen.getByRole("button", { name: "Send prompt" }));
+
+  await waitFor(() => {
+    expect(consoleApi.runConsoleTurn).toHaveBeenCalledWith({
+      prompt: "summarize all wallets",
+      scope: { kind: "wallet_set", walletIds: ["wallet-1", "wallet-2"] },
+    });
+  });
+});
+
+it("navigates to the wallet Transactions tab when Console queries transactions", async () => {
+  const user = userEvent.setup();
+  const onClose = vi.fn();
+  const onLocationChange = vi.fn();
+  vi.mocked(consoleApi.runConsoleTurn).mockResolvedValueOnce({
     session,
-    turn: completedTurn,
+    promptHistory,
+    toolTraces: [],
+    turn: {
+      ...completedTurn,
+      plannedTools: {
+        toolCalls: [
+          {
+            name: "query_transactions",
+            input: {
+              walletId: "wallet-1",
+              dateFrom: "2020-02-01T00:00:00.000Z",
+              dateTo: "2020-06-30T23:59:59.999Z",
+            },
+          },
+        ],
+      },
+    },
+  } as any);
+
+  renderDrawer({ onClose }, { route: "/wallets/wallet-1", onLocationChange });
+  await screen.findByText("Block age");
+
+  await user.type(
+    screen.getByLabelText("Console prompt"),
+    "show me transactions between feb 2020 and june 2020",
+  );
+  await user.click(screen.getByRole("button", { name: "Send prompt" }));
+
+  await waitFor(() => {
+    const locations = onLocationChange.mock.calls.map(([location]) => location);
+    const walletLocations = locations.filter(
+      (location) => location.pathname === "/wallets/wallet-1",
+    );
+    const transactionLocation = walletLocations.at(-1);
+    expect(transactionLocation?.state?.activeTab).toBe("tx");
+    expect(transactionLocation?.state?.consoleTransactionFilter).toMatchObject({
+      dateFrom: "2020-02-01T00:00:00.000Z",
+      dateTo: "2020-06-30T23:59:59.999Z",
+    });
+  });
+  expect(onClose).toHaveBeenCalledTimes(1);
+});
+
+it("navigates to AI Results when all-visible-wallet planning returns multiple transaction queries", async () => {
+  const user = userEvent.setup();
+  const onClose = vi.fn();
+  const onLocationChange = vi.fn();
+  vi.mocked(consoleApi.runConsoleTurn).mockResolvedValueOnce({
+    session,
+    promptHistory,
+    toolTraces: [],
+    turn: {
+      ...completedTurn,
+      plannedTools: {
+        toolCalls: [
+          {
+            name: "query_transactions",
+            input: {
+              walletId: "wallet-1",
+              dateFrom: "2020-02-01",
+              dateTo: "2020-06-30",
+            },
+          },
+          {
+            name: "query_transactions",
+            input: {
+              walletId: "wallet-2",
+              dateFrom: "2020-02-01",
+              dateTo: "2020-06-30",
+            },
+          },
+        ],
+      },
+    },
+  } as any);
+
+  renderDrawer(
+    { wallets: multiWallets, onClose },
+    { route: "/wallets/wallet-1", onLocationChange },
+  );
+  await screen.findByText("Block age");
+
+  fireEvent.change(screen.getByLabelText("Console context"), {
+    target: { value: "all-wallets" },
+  });
+  await user.type(
+    screen.getByLabelText("Console prompt"),
+    "show me transactions between feb 2020 and june 2020",
+  );
+  await user.click(screen.getByRole("button", { name: "Send prompt" }));
+
+  await waitFor(() => {
+    expect(consoleApi.runConsoleTurn).toHaveBeenCalledWith({
+      prompt: "show me transactions between feb 2020 and june 2020",
+      scope: { kind: "wallet_set", walletIds: ["wallet-1", "wallet-2"] },
+    });
+  });
+  await waitFor(() => {
+    const locations = onLocationChange.mock.calls.map(([location]) => location);
+    expect(
+      locations.some(
+        (location) =>
+          location.pathname === "/console/results" &&
+          location.state?.consoleTransactionQuery?.walletFilters?.length === 2,
+      ),
+    ).toBe(true);
+  });
+  expect(onClose).toHaveBeenCalledTimes(1);
+});
+
+it("keeps a pinned Console open after transaction navigation", async () => {
+  const user = userEvent.setup();
+  const onClose = vi.fn();
+  const onLocationChange = vi.fn();
+  vi.mocked(consoleApi.runConsoleTurn).mockResolvedValueOnce({
+    session,
+    promptHistory,
+    toolTraces: [],
+    turn: {
+      ...completedTurn,
+      plannedTools: {
+        toolCalls: [
+          {
+            name: "query_transactions",
+            input: {
+              walletId: "wallet-1",
+              dateFrom: "2020-02-01",
+              type: "sent",
+            },
+          },
+        ],
+      },
+    },
+  } as any);
+
+  renderDrawer({ onClose }, { route: "/wallets/wallet-1", onLocationChange });
+  await screen.findByText("Block age");
+
+  await user.click(screen.getByRole("button", { name: "Pin Console open" }));
+  await user.type(
+    screen.getByLabelText("Console prompt"),
+    "show sent transactions in february",
+  );
+  await user.click(screen.getByRole("button", { name: "Send prompt" }));
+
+  await waitFor(() => {
+    const locations = onLocationChange.mock.calls.map(([location]) => location);
+    expect(
+      locations.some(
+        (location) =>
+          location.pathname === "/wallets/wallet-1" &&
+          location.state?.activeTab === "tx" &&
+          location.state?.consoleTransactionFilter?.type === "sent",
+      ),
+    ).toBe(true);
+  });
+  expect(onClose).not.toHaveBeenCalled();
+});
+
+it("echoes submitted prompts while a Console turn is still running", async () => {
+  const user = userEvent.setup();
+  const turnResult =
+    createDeferred<Awaited<ReturnType<typeof consoleApi.runConsoleTurn>>>();
+  vi.mocked(consoleApi.listConsoleSessions).mockResolvedValue({
+    sessions: [session],
+  } as any);
+  vi.mocked(consoleApi.runConsoleTurn).mockReturnValueOnce(turnResult.promise);
+
+  renderDrawer();
+  await screen.findByText("Block age");
+
+  await user.type(screen.getByLabelText("Console prompt"), "current block?");
+  await user.click(screen.getByRole("button", { name: "Send prompt" }));
+
+  expect(await screen.findByText("current block?")).toBeInTheDocument();
+  expect(
+    screen.getByRole("status", { name: "LLM is thinking" }),
+  ).toBeInTheDocument();
+  expect(screen.getByText("Working...")).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Clear Console display" }),
+  ).toBeDisabled();
+  expect(
+    screen.getByRole("button", {
+      name: "Clear selected Console session",
+    }),
+  ).toBeDisabled();
+
+  turnResult.resolve({
+    session,
+    turn: {
+      ...completedTurn,
+      id: "turn-pending",
+      prompt: "current block?",
+      response: "The current block is 840000.",
+    },
     promptHistory,
     toolTraces: [],
   } as any);
-  vi.mocked(consoleApi.replayPromptHistory).mockResolvedValue({
-    session,
-    turn: completedTurn,
-    promptHistory: { ...promptHistory, replayCount: 1 },
-    toolTraces: [],
-  } as any);
-  vi.mocked(consoleApi.updatePromptHistory).mockResolvedValue({
-    prompt: { ...promptHistory, saved: true },
-  } as any);
-  vi.mocked(consoleApi.deleteConsoleSession).mockResolvedValue({
-    success: true,
-  });
-  vi.mocked(consoleApi.deletePromptHistory).mockResolvedValue({
-    success: true,
-  });
-  vi.mocked(consoleApi.clearPromptHistory).mockResolvedValue({
-    success: true,
-    deleted: 1,
-  });
-}
 
-function renderDrawer(
-  overrides: Partial<React.ComponentProps<typeof ConsoleDrawer>> = {},
-  options: {
-    route?: string;
-    onLocationChange?: (location: ReturnType<typeof useLocation>) => void;
-  } = {},
-) {
-  return render(
-    <MemoryRouter initialEntries={[options.route ?? "/"]}>
-      <ConsoleDrawer
-        isOpen
-        onClose={vi.fn()}
-        wallets={wallets}
-        isAdmin
-        {...overrides}
-      />
-      {options.onLocationChange ? (
-        <LocationProbe onChange={options.onLocationChange} />
-      ) : null}
-    </MemoryRouter>,
+  expect(
+    await screen.findByText("The current block is 840000."),
+  ).toBeInTheDocument();
+  await waitFor(() => {
+    expect(screen.queryByText("Working...")).not.toBeInTheDocument();
+  });
+  expect(
+    screen.queryByRole("status", { name: "LLM is thinking" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Clear Console display" }),
+  ).not.toBeDisabled();
+});
+
+it("clears the visible Console display without deleting the session", async () => {
+  const user = userEvent.setup();
+  renderDrawer();
+  await screen.findByText("Block age");
+
+  await user.type(screen.getByLabelText("Console prompt"), "current block?");
+  await user.click(screen.getByRole("button", { name: "Send prompt" }));
+  expect(
+    await screen.findByText("Block 800000 was mined about 2 years ago."),
+  ).toBeInTheDocument();
+
+  await user.click(
+    screen.getByRole("button", { name: "Clear Console display" }),
   );
-}
 
-function LocationProbe({
-  onChange,
-}: {
-  onChange: (location: ReturnType<typeof useLocation>) => void;
-}) {
-  const location = useLocation();
-  useEffect(() => onChange(location), [location, onChange]);
-  return null;
-}
+  expect(
+    screen.queryByText("Block 800000 was mined about 2 years ago."),
+  ).not.toBeInTheDocument();
+  expect(screen.getByText("Ready")).toBeInTheDocument();
+  expect(consoleApi.deleteConsoleSession).not.toHaveBeenCalled();
+});
 
-function createDeferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((innerResolve, innerReject) => {
-    resolve = innerResolve;
-    reject = innerReject;
+it("does not render when closed", () => {
+  renderDrawer({ isOpen: false });
+
+  expect(
+    screen.queryByRole("dialog", { name: "Sanctuary Console" }),
+  ).not.toBeInTheDocument();
+});
+
+it("keeps the page backdrop transparent while the drawer surface is translucent", async () => {
+  renderDrawer();
+  await screen.findByText("Block age");
+
+  expect(
+    screen.getByRole("button", { name: "Close Console backdrop" }),
+  ).toHaveClass("bg-transparent");
+  expect(screen.getByRole("dialog", { name: "Sanctuary Console" })).toHaveClass(
+    "surface-flyout",
+  );
+});
+
+it("keeps the Console open for outside-click and Escape behavior while pinned", async () => {
+  const user = userEvent.setup();
+  const onClose = vi.fn();
+
+  renderDrawer({ onClose });
+  await screen.findByText("Block age");
+
+  const pinButton = screen.getByRole("button", {
+    name: "Pin Console open",
   });
-  return { promise, resolve, reject };
-}
+  expect(pinButton).toHaveAttribute("aria-pressed", "false");
 
-describe("ConsoleDrawer", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockConsoleReadyState();
-  });
+  await user.click(pinButton);
 
-  it("loads Console state and submits an auto-context prompt", async () => {
-    const user = userEvent.setup();
-    renderDrawer();
+  const unpinButton = screen.getByRole("button", { name: "Unpin Console" });
+  expect(unpinButton).toHaveAttribute("aria-pressed", "true");
+  expect(
+    screen.queryByRole("button", { name: "Close Console backdrop" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.getByRole("dialog", { name: "Sanctuary Console" }),
+  ).toHaveAttribute("aria-modal", "false");
 
-    await screen.findByText("Block age");
+  fireEvent.keyDown(document, { key: "Escape" });
+  expect(onClose).not.toHaveBeenCalled();
 
-    await user.type(
-      screen.getByLabelText("Console prompt"),
-      "How long ago was block 800000?",
-    );
-    await user.click(screen.getByRole("button", { name: "Send prompt" }));
+  fireEvent.click(screen.getByRole("button", { name: "Close Console" }));
+  expect(onClose).toHaveBeenCalledTimes(1);
+});
 
-    await waitFor(() => {
-      expect(consoleApi.runConsoleTurn).toHaveBeenCalledWith({
-        prompt: "How long ago was block 800000?",
-        clientContext: { mode: "auto" },
-      });
-    });
-    expect(
-      await screen.findByText("Block 800000 was mined about 2 years ago."),
-    ).toBeInTheDocument();
-  });
-
-  it("keeps Auto selected and sends the current wallet route as context", async () => {
-    const user = userEvent.setup();
-    renderDrawer({}, { route: "/wallets/wallet-1" });
-
-    await screen.findByText("Block age");
-    await waitFor(() => {
-      expect(screen.getByLabelText("Console context")).toHaveValue("auto");
-    });
-
-    await user.type(
-      screen.getByLabelText("Console prompt"),
-      "show me transactions between feb 2020 and june 2020",
-    );
-    await user.click(screen.getByRole("button", { name: "Send prompt" }));
-
-    await waitFor(() => {
-      expect(consoleApi.runConsoleTurn).toHaveBeenCalledWith({
-        prompt: "show me transactions between feb 2020 and june 2020",
-        clientContext: { mode: "auto", routeWalletId: "wallet-1" },
-      });
-    });
+it("restores no focus when no active element is available", async () => {
+  const activeElementDescriptor = Object.getOwnPropertyDescriptor(
+    document,
+    "activeElement",
+  );
+  Object.defineProperty(document, "activeElement", {
+    configurable: true,
+    value: null,
   });
 
-  it("submits prompts with an all-visible-wallets scope", async () => {
-    const user = userEvent.setup();
-    renderDrawer({ wallets: multiWallets });
-
-    await screen.findByText("Block age");
-    fireEvent.change(screen.getByLabelText("Console context"), {
-      target: { value: "all-wallets" },
-    });
-
-    await user.type(
-      screen.getByLabelText("Console prompt"),
-      "summarize all wallets",
-    );
-    await user.click(screen.getByRole("button", { name: "Send prompt" }));
-
-    await waitFor(() => {
-      expect(consoleApi.runConsoleTurn).toHaveBeenCalledWith({
-        prompt: "summarize all wallets",
-        scope: { kind: "wallet_set", walletIds: ["wallet-1", "wallet-2"] },
-      });
-    });
-  });
-
-  it("navigates to the wallet Transactions tab when Console queries transactions", async () => {
-    const user = userEvent.setup();
-    const onClose = vi.fn();
-    const onLocationChange = vi.fn();
-    vi.mocked(consoleApi.runConsoleTurn).mockResolvedValueOnce({
-      session,
-      promptHistory,
-      toolTraces: [],
-      turn: {
-        ...completedTurn,
-        plannedTools: {
-          toolCalls: [
-            {
-              name: "query_transactions",
-              input: {
-                walletId: "wallet-1",
-                dateFrom: "2020-02-01T00:00:00.000Z",
-                dateTo: "2020-06-30T23:59:59.999Z",
-              },
-            },
-          ],
-        },
-      },
-    } as any);
-
-    renderDrawer({ onClose }, { route: "/wallets/wallet-1", onLocationChange });
-    await screen.findByText("Block age");
-
-    await user.type(
-      screen.getByLabelText("Console prompt"),
-      "show me transactions between feb 2020 and june 2020",
-    );
-    await user.click(screen.getByRole("button", { name: "Send prompt" }));
-
-    await waitFor(() => {
-      const locations = onLocationChange.mock.calls.map(
-        ([location]) => location,
-      );
-      expect(
-        locations.some(
-          (location) =>
-            location.pathname === "/wallets/wallet-1" &&
-            location.state?.activeTab === "tx" &&
-            location.state?.consoleTransactionFilter?.dateFrom ===
-              "2020-02-01T00:00:00.000Z" &&
-            location.state?.consoleTransactionFilter?.dateTo ===
-              "2020-06-30T23:59:59.999Z",
-        ),
-      ).toBe(true);
-    });
-    expect(onClose).toHaveBeenCalledTimes(1);
-  });
-
-  it("navigates to AI Results when all-visible-wallet planning returns multiple transaction queries", async () => {
-    const user = userEvent.setup();
-    const onClose = vi.fn();
-    const onLocationChange = vi.fn();
-    vi.mocked(consoleApi.runConsoleTurn).mockResolvedValueOnce({
-      session,
-      promptHistory,
-      toolTraces: [],
-      turn: {
-        ...completedTurn,
-        plannedTools: {
-          toolCalls: [
-            {
-              name: "query_transactions",
-              input: {
-                walletId: "wallet-1",
-                dateFrom: "2020-02-01",
-                dateTo: "2020-06-30",
-              },
-            },
-            {
-              name: "query_transactions",
-              input: {
-                walletId: "wallet-2",
-                dateFrom: "2020-02-01",
-                dateTo: "2020-06-30",
-              },
-            },
-          ],
-        },
-      },
-    } as any);
-
-    renderDrawer(
-      { wallets: multiWallets, onClose },
-      { route: "/wallets/wallet-1", onLocationChange },
-    );
-    await screen.findByText("Block age");
-
-    fireEvent.change(screen.getByLabelText("Console context"), {
-      target: { value: "all-wallets" },
-    });
-    await user.type(
-      screen.getByLabelText("Console prompt"),
-      "show me transactions between feb 2020 and june 2020",
-    );
-    await user.click(screen.getByRole("button", { name: "Send prompt" }));
-
-    await waitFor(() => {
-      expect(consoleApi.runConsoleTurn).toHaveBeenCalledWith({
-        prompt: "show me transactions between feb 2020 and june 2020",
-        scope: { kind: "wallet_set", walletIds: ["wallet-1", "wallet-2"] },
-      });
-    });
-    await waitFor(() => {
-      const locations = onLocationChange.mock.calls.map(
-        ([location]) => location,
-      );
-      expect(
-        locations.some(
-          (location) =>
-            location.pathname === "/console/results" &&
-            location.state?.consoleTransactionQuery?.walletFilters?.length ===
-              2,
-        ),
-      ).toBe(true);
-    });
-    expect(onClose).toHaveBeenCalledTimes(1);
-  });
-
-  it("keeps a pinned Console open after transaction navigation", async () => {
-    const user = userEvent.setup();
-    const onClose = vi.fn();
-    const onLocationChange = vi.fn();
-    vi.mocked(consoleApi.runConsoleTurn).mockResolvedValueOnce({
-      session,
-      promptHistory,
-      toolTraces: [],
-      turn: {
-        ...completedTurn,
-        plannedTools: {
-          toolCalls: [
-            {
-              name: "query_transactions",
-              input: {
-                walletId: "wallet-1",
-                dateFrom: "2020-02-01",
-                type: "sent",
-              },
-            },
-          ],
-        },
-      },
-    } as any);
-
-    renderDrawer({ onClose }, { route: "/wallets/wallet-1", onLocationChange });
-    await screen.findByText("Block age");
-
-    await user.click(screen.getByRole("button", { name: "Pin Console open" }));
-    await user.type(
-      screen.getByLabelText("Console prompt"),
-      "show sent transactions in february",
-    );
-    await user.click(screen.getByRole("button", { name: "Send prompt" }));
-
-    await waitFor(() => {
-      const locations = onLocationChange.mock.calls.map(
-        ([location]) => location,
-      );
-      expect(
-        locations.some(
-          (location) =>
-            location.pathname === "/wallets/wallet-1" &&
-            location.state?.activeTab === "tx" &&
-            location.state?.consoleTransactionFilter?.type === "sent",
-        ),
-      ).toBe(true);
-    });
-    expect(onClose).not.toHaveBeenCalled();
-  });
-
-  it("echoes submitted prompts while a Console turn is still running", async () => {
-    const user = userEvent.setup();
-    const turnResult =
-      createDeferred<Awaited<ReturnType<typeof consoleApi.runConsoleTurn>>>();
-    vi.mocked(consoleApi.listConsoleSessions).mockResolvedValue({
-      sessions: [session],
-    } as any);
-    vi.mocked(consoleApi.runConsoleTurn).mockReturnValueOnce(
-      turnResult.promise,
-    );
-
+  try {
     renderDrawer();
     await screen.findByText("Block age");
-
-    await user.type(screen.getByLabelText("Console prompt"), "current block?");
-    await user.click(screen.getByRole("button", { name: "Send prompt" }));
-
-    expect(await screen.findByText("current block?")).toBeInTheDocument();
-    expect(
-      screen.getByRole("status", { name: "LLM is thinking" }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Working...")).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Clear Console display" }),
-    ).toBeDisabled();
-    expect(
-      screen.getByRole("button", {
-        name: "Clear selected Console session",
-      }),
-    ).toBeDisabled();
-
-    turnResult.resolve({
-      session,
-      turn: {
-        ...completedTurn,
-        id: "turn-pending",
-        prompt: "current block?",
-        response: "The current block is 840000.",
-      },
-      promptHistory,
-      toolTraces: [],
-    } as any);
-
-    expect(
-      await screen.findByText("The current block is 840000."),
-    ).toBeInTheDocument();
-    await waitFor(() => {
-      expect(screen.queryByText("Working...")).not.toBeInTheDocument();
-    });
-    expect(
-      screen.queryByRole("status", { name: "LLM is thinking" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Clear Console display" }),
-    ).not.toBeDisabled();
-  });
-
-  it("clears the visible Console display without deleting the session", async () => {
-    const user = userEvent.setup();
-    renderDrawer();
-    await screen.findByText("Block age");
-
-    await user.type(screen.getByLabelText("Console prompt"), "current block?");
-    await user.click(screen.getByRole("button", { name: "Send prompt" }));
-    expect(
-      await screen.findByText("Block 800000 was mined about 2 years ago."),
-    ).toBeInTheDocument();
-
-    await user.click(
-      screen.getByRole("button", { name: "Clear Console display" }),
-    );
-
-    expect(
-      screen.queryByText("Block 800000 was mined about 2 years ago."),
-    ).not.toBeInTheDocument();
-    expect(screen.getByText("Ready")).toBeInTheDocument();
-    expect(consoleApi.deleteConsoleSession).not.toHaveBeenCalled();
-  });
-
-  it("does not render when closed", () => {
-    renderDrawer({ isOpen: false });
-
-    expect(
-      screen.queryByRole("dialog", { name: "Sanctuary Console" }),
-    ).not.toBeInTheDocument();
-  });
-
-  it("keeps the page backdrop transparent while the drawer surface is translucent", async () => {
-    renderDrawer();
-    await screen.findByText("Block age");
-
-    expect(
-      screen.getByRole("button", { name: "Close Console backdrop" }),
-    ).toHaveClass("bg-transparent");
-    expect(
-      screen.getByRole("dialog", { name: "Sanctuary Console" }),
-    ).toHaveClass("surface-flyout");
-  });
-
-  it("keeps the Console open for outside-click and Escape behavior while pinned", async () => {
-    const user = userEvent.setup();
-    const onClose = vi.fn();
-
-    renderDrawer({ onClose });
-    await screen.findByText("Block age");
-
-    const pinButton = screen.getByRole("button", {
-      name: "Pin Console open",
-    });
-    expect(pinButton).toHaveAttribute("aria-pressed", "false");
-
-    await user.click(pinButton);
-
-    const unpinButton = screen.getByRole("button", { name: "Unpin Console" });
-    expect(unpinButton).toHaveAttribute("aria-pressed", "true");
-    expect(
-      screen.queryByRole("button", { name: "Close Console backdrop" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("dialog", { name: "Sanctuary Console" }),
-    ).toHaveAttribute("aria-modal", "false");
-
-    fireEvent.keyDown(document, { key: "Escape" });
-    expect(onClose).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Close Console" }));
-    expect(onClose).toHaveBeenCalledTimes(1);
-  });
+  } finally {
+    if (activeElementDescriptor) {
+      Object.defineProperty(document, "activeElement", activeElementDescriptor);
+    } else {
+      delete (document as unknown as { activeElement?: Element | null })
+        .activeElement;
+    }
+  }
+});
 
-  it("restores no focus when no active element is available", async () => {
-    const activeElementDescriptor = Object.getOwnPropertyDescriptor(
-      document,
-      "activeElement",
+it("handles session selection, wallet scope, keyboard send, prompt search, and close controls", async () => {
+  const user = userEvent.setup();
+  const onClose = vi.fn();
+  const originalRequestAnimationFrame = window.requestAnimationFrame;
+  Object.defineProperty(window, "requestAnimationFrame", {
+    configurable: true,
+    value: undefined,
+  });
+  vi.mocked(consoleApi.listConsoleSessions).mockResolvedValue({
+    sessions: [olderSession, session],
+  } as any);
+  vi.mocked(consoleApi.listConsoleTurns).mockResolvedValue({
+    turns: [{ ...completedTurn, toolTraces: [trace] }],
+  } as any);
+
+  try {
+    const view = renderDrawer({ onClose });
+
+    await screen.findByText("Recent session");
+    expect(screen.getByTitle("height: 800000")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Console session"), {
+      target: { value: olderSession.id },
+    });
+    await waitFor(() => {
+      expect(consoleApi.listConsoleTurns).toHaveBeenCalledWith(olderSession.id);
+    });
+
+    view.rerender(
+      <MemoryRouter>
+        <ConsoleDrawer
+          isOpen={false}
+          onClose={onClose}
+          wallets={wallets}
+          isAdmin
+        />
+      </MemoryRouter>,
     );
-    Object.defineProperty(document, "activeElement", {
-      configurable: true,
-      value: null,
-    });
-
-    try {
-      renderDrawer();
-      await screen.findByText("Block age");
-
-      fireEvent.click(screen.getByRole("button", { name: "Close Console" }));
-    } finally {
-      if (activeElementDescriptor) {
-        Object.defineProperty(
-          document,
-          "activeElement",
-          activeElementDescriptor,
-        );
-      } else {
-        delete (document as unknown as { activeElement?: Element | null })
-          .activeElement;
-      }
-    }
-  });
-
-  it("handles session selection, wallet scope, keyboard send, prompt search, and close controls", async () => {
-    const user = userEvent.setup();
-    const onClose = vi.fn();
-    const originalRequestAnimationFrame = window.requestAnimationFrame;
-    Object.defineProperty(window, "requestAnimationFrame", {
-      configurable: true,
-      value: undefined,
-    });
-    vi.mocked(consoleApi.listConsoleSessions).mockResolvedValue({
-      sessions: [olderSession, session],
-    } as any);
-    vi.mocked(consoleApi.listConsoleTurns).mockResolvedValue({
-      turns: [{ ...completedTurn, toolTraces: [trace] }],
-    } as any);
-
-    try {
-      const view = renderDrawer({ onClose });
-
-      await screen.findByText("Recent session");
-      expect(screen.getByTitle("height: 800000")).toBeInTheDocument();
-
-      fireEvent.change(screen.getByLabelText("Console session"), {
-        target: { value: olderSession.id },
-      });
-      await waitFor(() => {
-        expect(consoleApi.listConsoleTurns).toHaveBeenCalledWith(
-          olderSession.id,
-        );
-      });
-
-      view.rerender(
-        <MemoryRouter>
-          <ConsoleDrawer
-            isOpen={false}
-            onClose={onClose}
-            wallets={wallets}
-            isAdmin
-          />
-        </MemoryRouter>,
-      );
-      view.rerender(
-        <MemoryRouter>
-          <ConsoleDrawer isOpen onClose={onClose} wallets={wallets} isAdmin />
-        </MemoryRouter>,
-      );
-      await waitFor(() => {
-        expect(screen.getByLabelText("Console session")).toHaveValue(
-          olderSession.id,
-        );
-      });
-
-      fireEvent.change(screen.getByLabelText("Console session"), {
-        target: { value: "new-session" },
-      });
-      expect(screen.getByText("Ready")).toBeInTheDocument();
-
-      fireEvent.change(screen.getByLabelText("Console context"), {
-        target: { value: "wallet-1" },
-      });
-      await user.type(
-        screen.getByLabelText("Console prompt"),
-        "summarize this wallet",
-      );
-      fireEvent.keyDown(screen.getByLabelText("Console prompt"), {
-        key: "Enter",
-      });
-
-      await waitFor(() => {
-        expect(consoleApi.runConsoleTurn).toHaveBeenCalledWith({
-          prompt: "summarize this wallet",
-          scope: { kind: "wallet", walletId: "wallet-1" },
-        });
-      });
-
-      await user.type(screen.getByLabelText("Search prompt history"), "block");
-      expect(screen.getByLabelText("Search prompt history")).toHaveValue(
-        "block",
-      );
-      fireEvent.click(
-        screen.getByRole("button", { name: "Refresh prompt history" }),
-      );
-      await waitFor(() => {
-        expect(consoleApi.listPromptHistory).toHaveBeenCalledWith({
-          limit: 24,
-          search: "block",
-        });
-      });
-
-      fireEvent.keyDown(document, { key: "Escape" });
-      expect(onClose).toHaveBeenCalled();
-
-      fireEvent.click(
-        screen.getByRole("button", { name: "Close Console backdrop" }),
-      );
-      expect(onClose).toHaveBeenCalledTimes(2);
-    } finally {
-      Object.defineProperty(window, "requestAnimationFrame", {
-        configurable: true,
-        value: originalRequestAnimationFrame,
-      });
-    }
-  });
-
-  it("clears a selected Console session after confirmation", async () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
-    vi.mocked(consoleApi.listConsoleSessions).mockResolvedValue({
-      sessions: [session],
-    } as any);
-    vi.mocked(consoleApi.listConsoleTurns).mockResolvedValue({
-      turns: [completedTurn],
-    } as any);
-
-    try {
-      renderDrawer();
-      expect(
-        await screen.findByText("Block 800000 was mined about 2 years ago."),
-      ).toBeInTheDocument();
-
-      fireEvent.click(
-        screen.getByRole("button", {
-          name: "Clear selected Console session",
-        }),
-      );
-
-      await waitFor(() => {
-        expect(consoleApi.deleteConsoleSession).toHaveBeenCalledWith(
-          session.id,
-        );
-      });
+    view.rerender(
+      <MemoryRouter>
+        <ConsoleDrawer isOpen onClose={onClose} wallets={wallets} isAdmin />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
       expect(screen.getByLabelText("Console session")).toHaveValue(
-        "new-session",
+        olderSession.id,
       );
-      expect(
-        screen.queryByText("Block 800000 was mined about 2 years ago."),
-      ).not.toBeInTheDocument();
-    } finally {
-      confirmSpy.mockRestore();
-    }
-  });
+    });
 
-  it("keeps a selected Console session when clear confirmation is canceled", async () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
-    vi.mocked(consoleApi.listConsoleSessions).mockResolvedValue({
-      sessions: [session],
-    } as any);
-    vi.mocked(consoleApi.listConsoleTurns).mockResolvedValue({
-      turns: [completedTurn],
-    } as any);
-
-    try {
-      renderDrawer();
-      expect(
-        await screen.findByText("Block 800000 was mined about 2 years ago."),
-      ).toBeInTheDocument();
-
-      fireEvent.click(
-        screen.getByRole("button", {
-          name: "Clear selected Console session",
-        }),
-      );
-
-      expect(confirmSpy).toHaveBeenCalledWith(
-        "Clear the selected Console session? Prompt history is not removed.",
-      );
-      expect(consoleApi.deleteConsoleSession).not.toHaveBeenCalled();
-      expect(screen.getByLabelText("Console session")).toHaveValue(session.id);
-      expect(
-        screen.getByText("Block 800000 was mined about 2 years ago."),
-      ).toBeInTheDocument();
-    } finally {
-      confirmSpy.mockRestore();
-    }
-  });
-
-  it("keeps a selected Console session and shows an error when clearing fails", async () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
-    vi.mocked(consoleApi.listConsoleSessions).mockResolvedValue({
-      sessions: [session],
-    } as any);
-    vi.mocked(consoleApi.listConsoleTurns).mockResolvedValue({
-      turns: [completedTurn],
-    } as any);
-    vi.mocked(consoleApi.deleteConsoleSession).mockRejectedValueOnce(
-      new ApiError("Session clear failed", 500),
-    );
-
-    try {
-      renderDrawer();
-      expect(
-        await screen.findByText("Block 800000 was mined about 2 years ago."),
-      ).toBeInTheDocument();
-
-      fireEvent.click(
-        screen.getByRole("button", {
-          name: "Clear selected Console session",
-        }),
-      );
-
-      expect(
-        await screen.findByText("Session clear failed"),
-      ).toBeInTheDocument();
-      expect(screen.getByLabelText("Console session")).toHaveValue(session.id);
-      expect(
-        screen.getByText("Block 800000 was mined about 2 years ago."),
-      ).toBeInTheDocument();
-    } finally {
-      confirmSpy.mockRestore();
-    }
-  });
-
-  it("falls back to auto context when a selected wallet disappears", async () => {
-    const view = renderDrawer();
-    await screen.findByText("Block age");
+    fireEvent.change(screen.getByLabelText("Console session"), {
+      target: { value: "new-session" },
+    });
+    expect(screen.getByText("Ready")).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Console context"), {
       target: { value: "wallet-1" },
     });
-    expect(screen.getByLabelText("Console context")).toHaveValue("wallet-1");
-
-    view.rerender(
-      <MemoryRouter>
-        <ConsoleDrawer isOpen onClose={vi.fn()} wallets={[]} isAdmin />
-      </MemoryRouter>,
-    );
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Console context")).toHaveValue("auto");
-    });
-  });
-
-  it("falls back to auto context when all-visible-wallets has no wallets", async () => {
-    const view = renderDrawer({ wallets: multiWallets });
-    await screen.findByText("Block age");
-
-    fireEvent.change(screen.getByLabelText("Console context"), {
-      target: { value: "all-wallets" },
-    });
-    expect(screen.getByLabelText("Console context")).toHaveValue("all-wallets");
-
-    view.rerender(
-      <MemoryRouter>
-        <ConsoleDrawer isOpen onClose={vi.fn()} wallets={[]} isAdmin />
-      </MemoryRouter>,
-    );
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Console context")).toHaveValue("auto");
-    });
-  });
-
-  it("replays, saves, expires, and deletes prompt history rows", async () => {
-    renderDrawer();
-    await screen.findByText("Block age");
-
-    fireEvent.click(screen.getByRole("button", { name: "Replay prompt" }));
-    await waitFor(() => {
-      expect(consoleApi.replayPromptHistory).toHaveBeenCalledWith("prompt-1", {
-        clientContext: { mode: "auto" },
-      });
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Save prompt" }));
-    await waitFor(() => {
-      expect(consoleApi.updatePromptHistory).toHaveBeenCalledWith("prompt-1", {
-        saved: true,
-      });
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Expire in 30 days" }));
-    await waitFor(() => {
-      expect(consoleApi.updatePromptHistory).toHaveBeenCalledWith("prompt-1", {
-        expiresAt: expect.any(String),
-      });
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Delete prompt" }));
-    await waitFor(() => {
-      expect(consoleApi.deletePromptHistory).toHaveBeenCalledWith("prompt-1");
-    });
-  });
-
-  it("clears prompt history after confirmation", async () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
-
-    try {
-      renderDrawer();
-      await screen.findByText("Block age");
-
-      fireEvent.click(
-        screen.getByRole("button", { name: "Clear prompt history" }),
-      );
-
-      await waitFor(() => {
-        expect(consoleApi.clearPromptHistory).toHaveBeenCalledTimes(1);
-      });
-      expect(screen.queryByText("Block age")).not.toBeInTheDocument();
-      expect(screen.getByText("No prompt history")).toBeInTheDocument();
-    } finally {
-      confirmSpy.mockRestore();
-    }
-  });
-
-  it("keeps prompt history when clear confirmation is canceled", async () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
-
-    try {
-      renderDrawer();
-      await screen.findByText("Block age");
-
-      fireEvent.click(
-        screen.getByRole("button", { name: "Clear prompt history" }),
-      );
-
-      expect(confirmSpy).toHaveBeenCalledWith(
-        "Clear Console prompt history? Saved prompts will also be removed.",
-      );
-      expect(consoleApi.clearPromptHistory).not.toHaveBeenCalled();
-      expect(screen.getByText("Block age")).toBeInTheDocument();
-    } finally {
-      confirmSpy.mockRestore();
-    }
-  });
-
-  it("keeps prompt history and shows an error when clearing history fails", async () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
-    vi.mocked(consoleApi.clearPromptHistory).mockRejectedValueOnce(
-      new ApiError("Prompt history clear failed", 500),
-    );
-
-    try {
-      renderDrawer();
-      await screen.findByText("Block age");
-
-      fireEvent.click(
-        screen.getByRole("button", { name: "Clear prompt history" }),
-      );
-
-      expect(
-        await screen.findByText("Prompt history clear failed"),
-      ).toBeInTheDocument();
-      expect(screen.getByText("Block age")).toBeInTheDocument();
-      expect(screen.queryByText("No prompt history")).not.toBeInTheDocument();
-    } finally {
-      confirmSpy.mockRestore();
-    }
-  });
-
-  it("replays prompt history with an explicit wallet scope", async () => {
-    renderDrawer();
-    await screen.findByText("Block age");
-
-    fireEvent.change(screen.getByLabelText("Console context"), {
-      target: { value: "wallet-1" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Replay prompt" }));
-
-    await waitFor(() => {
-      expect(consoleApi.replayPromptHistory).toHaveBeenCalledWith("prompt-1", {
-        scope: { kind: "wallet", walletId: "wallet-1" },
-      });
-    });
-  });
-
-  it("clears expiration and unsaves prompts with existing expiration metadata", async () => {
-    vi.mocked(consoleApi.listPromptHistory).mockResolvedValue({
-      prompts: [expiringPromptHistory],
-    } as any);
-    vi.mocked(consoleApi.updatePromptHistory).mockResolvedValue({
-      prompt: expiringPromptHistory,
-    } as any);
-
-    renderDrawer();
-    await screen.findByText("How long ago was block 800000?");
-
-    fireEvent.click(screen.getByRole("button", { name: "Unsave prompt" }));
-    await waitFor(() => {
-      expect(consoleApi.updatePromptHistory).toHaveBeenCalledWith(
-        "prompt-expiring",
-        { saved: false },
-      );
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Clear expiration" }));
-    await waitFor(() => {
-      expect(consoleApi.updatePromptHistory).toHaveBeenCalledWith(
-        "prompt-expiring",
-        { expiresAt: null },
-      );
-    });
-  });
-
-  it("surfaces operation errors without dropping prompt history rows", async () => {
-    vi.mocked(consoleApi.replayPromptHistory).mockRejectedValueOnce(
-      new Error("replay broke"),
-    );
-    vi.mocked(consoleApi.updatePromptHistory)
-      .mockRejectedValueOnce(new Error("save broke"))
-      .mockRejectedValueOnce(new Error("expire broke"));
-    vi.mocked(consoleApi.deletePromptHistory).mockRejectedValueOnce(
-      new Error("delete broke"),
-    );
-
-    renderDrawer();
-    await screen.findByText("Block age");
-
-    fireEvent.click(screen.getByRole("button", { name: "Replay prompt" }));
-    expect(await screen.findByText("replay broke")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Save prompt" }));
-    expect(await screen.findByText("save broke")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Expire in 30 days" }));
-    expect(await screen.findByText("expire broke")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Delete prompt" }));
-    expect(await screen.findByText("delete broke")).toBeInTheDocument();
-    expect(screen.getByText("Block age")).toBeInTheDocument();
-  });
-
-  it("surfaces prompt refresh and session-turn load errors", async () => {
-    vi.mocked(consoleApi.listConsoleSessions).mockResolvedValue({
-      sessions: [session],
-    } as any);
-    vi.mocked(consoleApi.listConsoleTurns).mockRejectedValueOnce(
-      new Error("turns unavailable"),
-    );
-
-    renderDrawer();
-
-    expect(await screen.findByText("turns unavailable")).toBeInTheDocument();
-
-    vi.mocked(consoleApi.listPromptHistory).mockRejectedValueOnce(
-      "network down",
-    );
-    fireEvent.click(
-      screen.getByRole("button", { name: "Refresh prompt history" }),
-    );
-
-    expect(
-      await screen.findByText("Failed to load prompt history"),
-    ).toBeInTheDocument();
-  });
-
-  it("keeps failed prompts in the dialogue with expandable details", async () => {
-    const user = userEvent.setup();
-    vi.mocked(consoleApi.runConsoleTurn).mockRejectedValueOnce(
-      new ApiError("provider down", 503, {
-        code: "SERVICE_UNAVAILABLE",
-        details: { path: "/console/plan" },
-        requestId: "request-1",
-      }),
-    );
-
-    renderDrawer();
-    await screen.findByText("Block age");
-
-    await user.type(screen.getByLabelText("Console prompt"), "will fail");
-    await user.click(screen.getByRole("button", { name: "Send prompt" }));
-
-    expect(await screen.findByText("will fail")).toBeInTheDocument();
-    expect(await screen.findByText("provider down")).toBeInTheDocument();
-    expect(screen.getByLabelText("Console prompt")).toHaveValue("");
-    expect(screen.getByText("Details")).toBeInTheDocument();
-    expect(screen.getByText(/HTTP status: 503/)).toBeInTheDocument();
-    expect(screen.getByText(/request-1/)).toBeInTheDocument();
-  });
-
-  it("keeps timed-out local provider prompts in the dialogue with diagnostics", async () => {
-    const user = userEvent.setup();
-    vi.mocked(consoleApi.runConsoleTurn).mockRejectedValueOnce(
-      new ApiError("The request took too long to process", 408, {
-        details: { path: "/console/plan", provider: "lm-studio" },
-        requestId: "request-408",
-      }),
-    );
-
-    renderDrawer();
-    await screen.findByText("Block age");
-
     await user.type(
       screen.getByLabelText("Console prompt"),
-      "whats the current block?",
+      "summarize this wallet",
     );
-    await user.click(screen.getByRole("button", { name: "Send prompt" }));
-
-    expect(
-      await screen.findByText("whats the current block?"),
-    ).toBeInTheDocument();
-    expect(
-      await screen.findByText("The request took too long to process"),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Details")).toBeInTheDocument();
-    expect(screen.getByText(/HTTP status: 408/)).toBeInTheDocument();
-    expect(screen.getByText(/request-408/)).toBeInTheDocument();
-    expect(screen.getByText(/lm-studio/)).toBeInTheDocument();
-  });
-
-  it("ignores empty prompt submissions", async () => {
-    renderDrawer();
-    await screen.findByText("Block age");
-
     fireEvent.keyDown(screen.getByLabelText("Console prompt"), {
       key: "Enter",
     });
 
-    expect(consoleApi.runConsoleTurn).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(consoleApi.runConsoleTurn).toHaveBeenCalledWith({
+        prompt: "summarize this wallet",
+        scope: { kind: "wallet", walletId: "wallet-1" },
+      });
+    });
+
+    await user.type(screen.getByLabelText("Search prompt history"), "block");
+    expect(screen.getByLabelText("Search prompt history")).toHaveValue("block");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Refresh prompt history" }),
+    );
+    await waitFor(() => {
+      expect(consoleApi.listPromptHistory).toHaveBeenCalledWith({
+        limit: 24,
+        search: "block",
+      });
+    });
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onClose).toHaveBeenCalled();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Close Console backdrop" }),
+    );
+    expect(onClose).toHaveBeenCalledTimes(2);
+  } finally {
+    Object.defineProperty(window, "requestAnimationFrame", {
+      configurable: true,
+      value: originalRequestAnimationFrame,
+    });
+  }
+});
+
+it("falls back to auto context when a selected wallet disappears", async () => {
+  const view = renderDrawer();
+  await screen.findByText("Block age");
+
+  fireEvent.change(screen.getByLabelText("Console context"), {
+    target: { value: "wallet-1" },
+  });
+  expect(screen.getByLabelText("Console context")).toHaveValue("wallet-1");
+
+  view.rerender(
+    <MemoryRouter>
+      <ConsoleDrawer isOpen onClose={vi.fn()} wallets={[]} isAdmin />
+    </MemoryRouter>,
+  );
+
+  await waitFor(() => {
+    expect(screen.getByLabelText("Console context")).toHaveValue("auto");
+  });
+});
+
+it("falls back to auto context when all-visible-wallets has no wallets", async () => {
+  const view = renderDrawer({ wallets: multiWallets });
+  await screen.findByText("Block age");
+
+  fireEvent.change(screen.getByLabelText("Console context"), {
+    target: { value: "all-wallets" },
+  });
+  expect(screen.getByLabelText("Console context")).toHaveValue("all-wallets");
+
+  view.rerender(
+    <MemoryRouter>
+      <ConsoleDrawer isOpen onClose={vi.fn()} wallets={[]} isAdmin />
+    </MemoryRouter>,
+  );
+
+  await waitFor(() => {
+    expect(screen.getByLabelText("Console context")).toHaveValue("auto");
+  });
+});
+
+it("ignores empty prompt submissions", async () => {
+  renderDrawer();
+  await screen.findByText("Block age");
+
+  fireEvent.keyDown(screen.getByLabelText("Console prompt"), {
+    key: "Enter",
   });
 
-  it("shows the feature flag state when the Console feature is disabled", async () => {
-    vi.mocked(consoleApi.listConsoleSessions).mockRejectedValue(
-      new ApiError("Console is disabled", 403, {
-        feature: "sanctuaryConsole",
-      }),
-    );
-
-    renderDrawer();
-
-    expect(
-      await screen.findByText("Console feature disabled"),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Feature Flags" })).toHaveAttribute(
-      "href",
-      "/admin/feature-flags",
-    );
-  });
-
-  it("hides the setup link for non-admin users", async () => {
-    vi.mocked(consoleApi.listConsoleSessions).mockRejectedValue(
-      new ApiError("Console is disabled", 403, {
-        feature: "sanctuaryConsole",
-      }),
-    );
-
-    renderDrawer({ isAdmin: false });
-
-    expect(
-      await screen.findByText("Console feature disabled"),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("link", { name: "Feature Flags" }),
-    ).not.toBeInTheDocument();
-  });
-
-  it("shows the provider setup state when Console cannot reach AI setup", async () => {
-    vi.mocked(consoleApi.runConsoleTurn).mockRejectedValueOnce(
-      new ApiError("AI provider is not configured for Sanctuary Console", 503),
-    );
-
-    const user = userEvent.setup();
-    renderDrawer();
-    await screen.findByText("Block age");
-
-    await user.type(screen.getByLabelText("Console prompt"), "status");
-    await user.click(screen.getByRole("button", { name: "Send prompt" }));
-
-    expect(
-      await screen.findByText("AI provider setup required"),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "AI Settings" })).toHaveAttribute(
-      "href",
-      "/admin/ai",
-    );
-  });
+  expect(consoleApi.runConsoleTurn).not.toHaveBeenCalled();
 });
