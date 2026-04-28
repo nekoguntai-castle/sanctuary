@@ -1,8 +1,8 @@
-import type { CSSProperties } from 'react';
-import { calculateUTXOAge } from '../../../utils/utxoAge';
-import { getSpendCost, isDustUtxo } from '../dustUtils';
-import type { UTXO } from '../../../types';
-import type { CreateUtxoGardenDotModelArgs, UtxoGardenDotModel } from './types';
+import type { CSSProperties } from "react";
+import { calculateUTXOAge } from "../../../utils/utxoAge";
+import { getSpendCost, isDustUtxo } from "../dustUtils";
+import type { UTXO } from "../../../types";
+import type { CreateUtxoGardenDotModelArgs, UtxoGardenDotModel } from "./types";
 
 const DAY_MS = 86400000;
 const MIN_SIZE = 14;
@@ -38,14 +38,22 @@ export function getMaxUtxoAmount(utxos: UTXO[]): number {
   return Math.max(...utxos.map((utxo) => utxo.amount), 1);
 }
 
-export function createUtxoGardenDotModel(args: CreateUtxoGardenDotModelArgs): UtxoGardenDotModel {
+export const createUtxoGardenDotModel = (
+  args: CreateUtxoGardenDotModelArgs,
+): UtxoGardenDotModel => {
   const { utxo, selectedUtxos, currentFeeRate, maxAmount, now, format } = args;
   const id = `${utxo.txid}:${utxo.vout}`;
   const isLocked = Boolean(utxo.lockedByDraftId);
   const isDisabled = Boolean(utxo.frozen || isLocked);
   const isDust = !utxo.frozen && !isLocked && isDustUtxo(utxo, currentFeeRate);
   const spendCost = isDust ? getSpendCost(utxo, currentFeeRate) : 0;
-  const statusLabel = getStatusLabel({ utxo, isLocked, isDust, spendCost, format });
+  const statusLabel = getStatusLabel({
+    utxo,
+    isLocked,
+    isDust,
+    spendCost,
+    format,
+  });
   const formattedAmount = format(utxo.amount);
 
   return {
@@ -55,10 +63,10 @@ export function createUtxoGardenDotModel(args: CreateUtxoGardenDotModelArgs): Ut
     colorClass: getColorClass({ utxo, isLocked, isDust, now }),
     isDisabled,
     isSelected: selectedUtxos.has(id),
-    title: `${formattedAmount} - ${calculateUTXOAge(utxo).displayText} old - ${utxo.label || 'No Label'} ${statusLabel}`,
+    title: `${formattedAmount} - ${calculateUTXOAge(utxo).displayText} old - ${utxo.label || "No Label"} ${statusLabel}`,
     formattedAmount,
   };
-}
+};
 
 function getColorClass({
   utxo,
@@ -72,7 +80,7 @@ function getColorClass({
   now: number;
 }): string {
   if (utxo.frozen || isLocked || isDust) {
-    return '';
+    return "";
   }
 
   return getAgeColor(getUtxoTimestamp(utxo, now), now);
@@ -82,22 +90,24 @@ function getAgeColor(timestamp: number, now: number): string {
   const age = now - timestamp;
 
   if (age < DAY_MS) {
-    return 'bg-zen-matcha border-zen-matcha';
+    return "bg-zen-matcha border-zen-matcha";
   }
 
   if (age < DAY_MS * 30) {
-    return 'bg-zen-indigo border-zen-indigo';
+    return "bg-zen-indigo border-zen-indigo";
   }
 
   if (age < DAY_MS * 365) {
-    return 'bg-zen-gold border-zen-gold';
+    return "bg-zen-gold border-zen-gold";
   }
 
-  return 'bg-sanctuary-700 border-sanctuary-700';
+  return "bg-sanctuary-700 border-sanctuary-700";
 }
 
 function getUtxoTimestamp(utxo: UTXO, now: number): number {
-  return typeof utxo.date === 'string' ? new Date(utxo.date).getTime() : (utxo.date ?? now);
+  return typeof utxo.date === "string"
+    ? new Date(utxo.date).getTime()
+    : (utxo.date ?? now);
 }
 
 function getSize(amount: number, maxAmount: number): number {
@@ -143,16 +153,16 @@ function getStatusLabel({
   format: (sats: number) => string;
 }): string {
   if (utxo.frozen) {
-    return '(Frozen)';
+    return "(Frozen)";
   }
 
   if (isLocked) {
-    return `(Locked: ${utxo.lockedByDraftLabel || 'Draft'})`;
+    return `(Locked: ${utxo.lockedByDraftLabel || "Draft"})`;
   }
 
   if (isDust) {
     return `(Dust - costs ${format(spendCost)} to spend)`;
   }
 
-  return '';
+  return "";
 }

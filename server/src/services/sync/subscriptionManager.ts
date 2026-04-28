@@ -8,23 +8,33 @@
  * - Address-to-wallet mapping with periodic reconciliation
  */
 
-import { walletRepository, addressRepository } from '../../repositories';
-import { setCachedBlockHeight } from '../bitcoin/blockchain';
-import { getNodeClient, getElectrumClientIfActive } from '../bitcoin/nodeClient';
-import { getNotificationService } from '../../websocket/notifications';
-import { createLogger } from '../../utils/logger';
-import { getErrorMessage } from '../../utils/errors';
-import { getConfig } from '../../config';
-import { eventService } from '../eventService';
-import { acquireLock, extendLock, releaseLock } from '../../infrastructure';
-import type { SyncState } from './types';
+import { walletRepository, addressRepository } from "../../repositories";
+import { setCachedBlockHeight } from "../bitcoin/blockchain";
+import {
+  getNodeClient,
+  getElectrumClientIfActive,
+} from "../bitcoin/nodeClient";
+import { getNotificationService } from "../../websocket/notifications";
+import { createLogger } from "../../utils/logger";
+import { getErrorMessage } from "../../utils/errors";
+import { getConfig } from "../../config";
+import { eventService } from "../eventService";
+import { acquireLock, extendLock, releaseLock } from "../../infrastructure";
+import type { SyncState } from "./types";
 import {
   ELECTRUM_SUBSCRIPTION_LOCK_KEY,
   ELECTRUM_SUBSCRIPTION_LOCK_TTL_MS,
   ELECTRUM_SUBSCRIPTION_LOCK_REFRESH_MS,
-} from './types';
+} from "./types";
 
-const log = createLogger('SYNC:SVC_SUBS');
+const log = createLogger("SYNC:SVC_SUBS");
+
+type ActiveElectrumClient = NonNullable<
+  Awaited<ReturnType<typeof getElectrumClientIfActive>>
+>;
+type AddressRecord = Awaited<
+  ReturnType<typeof addressRepository.findAllWithWalletNetwork>
+>[number];
 
 /**
  * Set up real-time subscriptions for block and address notifications.
@@ -34,7 +44,7 @@ const log = createLogger('SYNC:SVC_SUBS');
  */
 export async function setupRealTimeSubscriptions(
   state: SyncState,
-  queueSync: (walletId: string, priority: 'high' | 'normal' | 'low') => void,
+  queueSync: (walletId: string, priority: "high" | "normal" | "low") => void,
   updateAllConfirmations: () => Promise<void>,
 ): Promise<void> {
   try {
@@ -42,22 +52,27 @@ export async function setupRealTimeSubscriptions(
     state.subscriptionsEnabled = syncConfig.electrumSubscriptionsEnabled;
 
     if (!state.subscriptionsEnabled) {
-      state.subscriptionOwnership = 'disabled';
-      log.info('[SYNC] Server-side Electrum subscriptions disabled by config');
+      state.subscriptionOwnership = "disabled";
+      log.info("[SYNC] Server-side Electrum subscriptions disabled by config");
       return;
     }
 
-    const lock = await acquireLock(ELECTRUM_SUBSCRIPTION_LOCK_KEY, ELECTRUM_SUBSCRIPTION_LOCK_TTL_MS);
+    const lock = await acquireLock(
+      ELECTRUM_SUBSCRIPTION_LOCK_KEY,
+      ELECTRUM_SUBSCRIPTION_LOCK_TTL_MS,
+    );
     if (!lock) {
-      state.subscriptionOwnership = 'external';
-      log.info('[SYNC] Electrum subscriptions owned by another process, skipping setup');
+      state.subscriptionOwnership = "external";
+      log.info(
+        "[SYNC] Electrum subscriptions owned by another process, skipping setup",
+      );
       return;
     }
 
     state.subscriptionLock = lock;
-    state.subscriptionOwnership = 'self';
+    state.subscriptionOwnership = "self";
     startSubscriptionLockRefresh(state, updateAllConfirmations);
-    log.info('[SYNC] Acquired Electrum subscription ownership');
+    log.info("[SYNC] Acquired Electrum subscription ownership");
 
     // Get the node client to ensure it's connected
     await getNodeClient();
@@ -65,49 +80,69 @@ export async function setupRealTimeSubscriptions(
     // Only Electrum supports real-time subscriptions
     const electrumClient = await getElectrumClientIfActive();
     if (!electrumClient) {
-      log.info('[SYNC] Real-time subscriptions only available with Electrum (current node type does not support it)');
+      log.info(
+        "[SYNC] Real-time subscriptions only available with Electrum (current node type does not support it)",
+      );
       await releaseSubscriptionLock(state);
-      state.subscriptionOwnership = 'disabled';
+      state.subscriptionOwnership = "disabled";
       return;
     }
 
     // Negotiate protocol version first (required by some servers like Blockstream)
     try {
       const version = await electrumClient.getServerVersion();
-      log.info(`[SYNC] Connected to Electrum server: ${version.server} (protocol ${version.protocol})`);
+      log.info(
+        `[SYNC] Connected to Electrum server: ${version.server} (protocol ${version.protocol})`,
+      );
     } catch (versionError) {
-      log.warn('[SYNC] Could not get server version, continuing anyway', { error: getErrorMessage(versionError) });
+      log.warn("[SYNC] Could not get server version, continuing anyway", {
+        error: getErrorMessage(versionError),
+      });
     }
 
     // Subscribe to new block headers
     if (!state.subscribedToHeaders) {
       const currentHeader = await electrumClient.subscribeHeaders();
       state.subscribedToHeaders = true;
-      log.info(`[SYNC] Subscribed to block headers, current height: ${currentHeader.height}`);
+      log.info(
+        `[SYNC] Subscribed to block headers, current height: ${currentHeader.height}`,
+      );
 
       // Cache the current block height for the configured network
       setCachedBlockHeight(currentHeader.height, getConfig().bitcoin.network);
 
       // Listen for new blocks
-      electrumClient.on('newBlock', (block: { height: number; hex: string }) => {
-        handleNewBlock(state, block, updateAllConfirmations);
-      });
+      electrumClient.on(
+        "newBlock",
+        (block: { height: number; hex: string }) => {
+          handleNewBlock(state, block, updateAllConfirmations);
+        },
+      );
 
       // Listen for address activity
-      electrumClient.on('addressActivity', (activity: { scriptHash: string; address?: string; status: string }) => {
-        handleAddressActivity(state, activity, queueSync);
-      });
+      electrumClient.on(
+        "addressActivity",
+        (activity: {
+          scriptHash: string;
+          address?: string;
+          status: string;
+        }) => {
+          handleAddressActivity(state, activity, queueSync);
+        },
+      );
     }
 
     // Subscribe to all wallet addresses
     await subscribeAllWalletAddresses(state);
 
-    log.info('[SYNC] Real-time subscriptions active');
+    log.info("[SYNC] Real-time subscriptions active");
   } catch (error) {
-    log.error('[SYNC] Failed to set up real-time subscriptions', { error: getErrorMessage(error) });
+    log.error("[SYNC] Failed to set up real-time subscriptions", {
+      error: getErrorMessage(error),
+    });
     await releaseSubscriptionLock(state);
     if (state.subscriptionsEnabled) {
-      state.subscriptionOwnership = 'external';
+      state.subscriptionOwnership = "external";
     }
   }
 }
@@ -125,11 +160,16 @@ export function startSubscriptionLockRefresh(
   state.subscriptionLockRefresh = setInterval(async () => {
     if (!state.subscriptionLock) return;
 
-    const refreshed = await extendLock(state.subscriptionLock, ELECTRUM_SUBSCRIPTION_LOCK_TTL_MS);
+    const refreshed = await extendLock(
+      state.subscriptionLock,
+      ELECTRUM_SUBSCRIPTION_LOCK_TTL_MS,
+    );
     if (!refreshed) {
-      log.warn('[SYNC] Lost Electrum subscription lock, disabling subscriptions');
+      log.warn(
+        "[SYNC] Lost Electrum subscription lock, disabling subscriptions",
+      );
       state.subscriptionLock = null;
-      state.subscriptionOwnership = 'external';
+      state.subscriptionOwnership = "external";
       stopSubscriptionLockRefresh(state);
       // Use delegate if provided (for testability), otherwise call directly
       if (teardown) {
@@ -171,8 +211,10 @@ export async function releaseSubscriptionLock(state: SyncState): Promise<void> {
  * Subscribe to all addresses from all wallets for real-time notifications.
  * Uses batch subscription for efficiency (single RPC call vs N calls).
  */
-export async function subscribeAllWalletAddresses(state: SyncState): Promise<void> {
-  if (state.subscriptionOwnership !== 'self') {
+export async function subscribeAllWalletAddresses(
+  state: SyncState,
+): Promise<void> {
+  if (state.subscriptionOwnership !== "self") {
     return;
   }
 
@@ -182,7 +224,7 @@ export async function subscribeAllWalletAddresses(state: SyncState): Promise<voi
   const addressRecords = await addressRepository.findAllWithWalletNetwork();
 
   if (addressRecords.length === 0) {
-    log.info('[SYNC] No addresses to subscribe to');
+    log.info("[SYNC] No addresses to subscribe to");
     return;
   }
 
@@ -208,9 +250,14 @@ export async function subscribeAllWalletAddresses(state: SyncState): Promise<voi
       }
     }
 
-    log.info(`[SYNC] Batch subscribed to ${subscribed} addresses for real-time notifications`);
+    log.info(
+      `[SYNC] Batch subscribed to ${subscribed} addresses for real-time notifications`,
+    );
   } catch (error) {
-    log.error('[SYNC] Batch subscription failed, falling back to individual subscriptions', { error: getErrorMessage(error) });
+    log.error(
+      "[SYNC] Batch subscription failed, falling back to individual subscriptions",
+      { error: getErrorMessage(error) },
+    );
 
     // Fallback to individual subscriptions if batch fails
     let subscribed = 0;
@@ -223,10 +270,14 @@ export async function subscribeAllWalletAddresses(state: SyncState): Promise<voi
           subscribed++;
         }
       } catch (err) {
-        log.error(`[SYNC] Failed to subscribe to address ${address}`, { error: getErrorMessage(err) });
+        log.error(`[SYNC] Failed to subscribe to address ${address}`, {
+          error: getErrorMessage(err),
+        });
       }
     }
-    log.info(`[SYNC] Fallback: subscribed to ${subscribed} addresses individually`);
+    log.info(
+      `[SYNC] Fallback: subscribed to ${subscribed} addresses individually`,
+    );
   }
 }
 
@@ -234,8 +285,11 @@ export async function subscribeAllWalletAddresses(state: SyncState): Promise<voi
  * Unsubscribe all addresses for a wallet (call when wallet is deleted).
  * Prevents memory leak by cleaning up the addressToWalletMap.
  */
-export async function unsubscribeWalletAddresses(state: SyncState, walletId: string): Promise<void> {
-  if (state.subscriptionOwnership !== 'self') {
+export async function unsubscribeWalletAddresses(
+  state: SyncState,
+  walletId: string,
+): Promise<void> {
+  if (state.subscriptionOwnership !== "self") {
     return;
   }
 
@@ -250,14 +304,19 @@ export async function unsubscribeWalletAddresses(state: SyncState, walletId: str
           await electrumClient.unsubscribeAddress(address);
           unsubscribed++;
         } catch (error) {
-          log.debug(`[SYNC] Failed to unsubscribe address ${address} (non-critical)`, { error: getErrorMessage(error) });
+          log.debug(
+            `[SYNC] Failed to unsubscribe address ${address} (non-critical)`,
+            { error: getErrorMessage(error) },
+          );
         }
       }
     }
   }
 
   if (unsubscribed > 0) {
-    log.debug(`[SYNC] Unsubscribed ${unsubscribed} addresses for wallet ${walletId}`);
+    log.debug(
+      `[SYNC] Unsubscribed ${unsubscribed} addresses for wallet ${walletId}`,
+    );
   }
 }
 
@@ -266,24 +325,63 @@ export async function unsubscribeWalletAddresses(state: SyncState, walletId: str
  * Removes entries for wallets that no longer exist, preventing memory leaks
  * from wallets that were deleted without proper cleanup.
  */
-export async function reconcileAddressToWalletMap(state: SyncState): Promise<void> {
-  if (state.addressToWalletMap.size === 0 && state.subscriptionOwnership !== 'self') {
+export async function reconcileAddressToWalletMap(
+  state: SyncState,
+): Promise<void> {
+  if (
+    state.addressToWalletMap.size === 0 &&
+    state.subscriptionOwnership !== "self"
+  ) {
     return;
   }
 
   const addressRecords = await addressRepository.findAllWithWalletNetwork();
 
-  if (addressRecords.length === 0) {
-    /* v8 ignore next -- stale map clear is covered by reconciliation contract tests */
-    if (state.addressToWalletMap.size > 0) {
-      state.addressToWalletMap.clear();
-    }
+  if (clearAddressMapWhenNoRecords(state, addressRecords)) {
     return;
   }
 
-  const dbAddressMap = new Map(addressRecords.map(({ address, walletId }) => [address, walletId]));
+  const dbAddressMap = new Map(
+    addressRecords.map(({ address, walletId }) => [address, walletId]),
+  );
+  const removed = removeStaleAddressMappings(state, dbAddressMap);
+  const added = await subscribeMissingReconciledAddresses(
+    state,
+    addressRecords,
+    dbAddressMap,
+  );
 
-  // Remove entries for wallets that no longer exist
+  if (removed > 0 || added > 0) {
+    log.info(
+      `[SYNC] Reconciliation updated address mappings (map size: ${state.addressToWalletMap.size})`,
+      {
+        removed,
+        added,
+      },
+    );
+  } else {
+    log.debug(
+      `[SYNC] Reconciliation complete, no address mapping changes (map size: ${state.addressToWalletMap.size})`,
+    );
+  }
+}
+
+function clearAddressMapWhenNoRecords(
+  state: SyncState,
+  addressRecords: AddressRecord[],
+): boolean {
+  if (addressRecords.length > 0) return false;
+  /* v8 ignore next -- stale map clear is covered by reconciliation contract tests */
+  if (state.addressToWalletMap.size > 0) {
+    state.addressToWalletMap.clear();
+  }
+  return true;
+}
+
+function removeStaleAddressMappings(
+  state: SyncState,
+  dbAddressMap: Map<string, string>,
+): number {
   let removed = 0;
   for (const [address, walletId] of state.addressToWalletMap.entries()) {
     if (dbAddressMap.get(address) !== walletId) {
@@ -291,62 +389,96 @@ export async function reconcileAddressToWalletMap(state: SyncState): Promise<voi
       removed++;
     }
   }
+  return removed;
+}
 
+async function subscribeMissingReconciledAddresses(
+  state: SyncState,
+  addressRecords: AddressRecord[],
+  dbAddressMap: Map<string, string>,
+): Promise<number> {
+  if (state.subscriptionOwnership !== "self") return 0;
+
+  const electrumClient = await getElectrumClientIfActive();
+  /* v8 ignore next -- inactive client fallback is covered through standalone manager tests */
+  if (!electrumClient) return 0;
+
+  const newAddressRecords = addressRecords.filter(
+    ({ address }) => !state.addressToWalletMap.has(address),
+  );
+  /* v8 ignore next -- no-new-address reconciliation is a defensive no-op */
+  if (newAddressRecords.length === 0) return 0;
+
+  try {
+    return await subscribeReconciledAddressBatch(
+      state,
+      electrumClient,
+      newAddressRecords,
+      dbAddressMap,
+    );
+  } catch (error) {
+    log.error(
+      "[SYNC] Batch subscription failed during reconciliation, falling back to individual subscriptions",
+      {
+        error: getErrorMessage(error),
+      },
+    );
+    return subscribeReconciledAddressesIndividually(
+      state,
+      electrumClient,
+      newAddressRecords,
+    );
+  }
+}
+
+async function subscribeReconciledAddressBatch(
+  state: SyncState,
+  electrumClient: ActiveElectrumClient,
+  newAddressRecords: AddressRecord[],
+  dbAddressMap: Map<string, string>,
+): Promise<number> {
   let added = 0;
-  if (state.subscriptionOwnership === 'self') {
-    const electrumClient = await getElectrumClientIfActive();
+  const results = await electrumClient.subscribeAddressBatch(
+    newAddressRecords.map(({ address }) => address),
+  );
+  for (const [address] of results) {
+    const walletId = dbAddressMap.get(address);
+    /* v8 ignore next -- subscribed addresses come from dbAddressMap keys */
+    if (!walletId) continue;
+    state.addressToWalletMap.set(address, walletId);
+    added++;
+  }
+  return added;
+}
 
-    /* v8 ignore next -- inactive client fallback is covered through standalone manager tests */
-    if (electrumClient) {
-      const newAddressRecords = addressRecords.filter(({ address }) => !state.addressToWalletMap.has(address));
-
-      /* v8 ignore next -- no-new-address reconciliation is a defensive no-op */
-      if (newAddressRecords.length > 0) {
-        try {
-          const results = await electrumClient.subscribeAddressBatch(newAddressRecords.map(({ address }) => address));
-          for (const [address] of results) {
-            const walletId = dbAddressMap.get(address);
-            /* v8 ignore next -- subscribed addresses come from dbAddressMap keys */
-            if (!walletId) continue;
-            state.addressToWalletMap.set(address, walletId);
-            added++;
-          }
-        } catch (error) {
-          log.error('[SYNC] Batch subscription failed during reconciliation, falling back to individual subscriptions', {
-            error: getErrorMessage(error),
-          });
-
-          for (const { address, walletId } of newAddressRecords) {
-            try {
-              await electrumClient.subscribeAddress(address);
-              state.addressToWalletMap.set(address, walletId);
-              added++;
-            } catch (subscribeError) {
-              log.error(`[SYNC] Failed to subscribe reconciled address ${address}`, {
-                error: getErrorMessage(subscribeError),
-              });
-            }
-          }
-        }
-      }
+async function subscribeReconciledAddressesIndividually(
+  state: SyncState,
+  electrumClient: ActiveElectrumClient,
+  newAddressRecords: AddressRecord[],
+): Promise<number> {
+  let added = 0;
+  for (const { address, walletId } of newAddressRecords) {
+    try {
+      await electrumClient.subscribeAddress(address);
+      state.addressToWalletMap.set(address, walletId);
+      added++;
+    } catch (subscribeError) {
+      log.error(`[SYNC] Failed to subscribe reconciled address ${address}`, {
+        error: getErrorMessage(subscribeError),
+      });
     }
   }
-
-  if (removed > 0 || added > 0) {
-    log.info(`[SYNC] Reconciliation updated address mappings (map size: ${state.addressToWalletMap.size})`, {
-      removed,
-      added,
-    });
-  } else {
-    log.debug(`[SYNC] Reconciliation complete, no address mapping changes (map size: ${state.addressToWalletMap.size})`);
-  }
+  return added;
 }
 
 /**
  * Subscribe to new addresses for a wallet (called when wallet is created/imported).
  */
-export async function subscribeNewWalletAddresses(state: SyncState, walletId: string): Promise<void> {
-  if (state.subscriptionOwnership !== 'self') {
+export async function subscribeNewWalletAddresses(
+  state: SyncState,
+  walletId: string,
+): Promise<void> {
+  if (state.subscriptionOwnership !== "self") {
     return;
   }
 
@@ -362,17 +494,23 @@ export async function subscribeNewWalletAddresses(state: SyncState, walletId: st
         state.addressToWalletMap.set(address, walletId);
       }
     } catch (error) {
-      log.error(`[SYNC] Failed to subscribe to new address ${address}`, { error: getErrorMessage(error) });
+      log.error(`[SYNC] Failed to subscribe to new address ${address}`, {
+        error: getErrorMessage(error),
+      });
     }
   }
 
-  log.info(`[SYNC] Subscribed to ${addressStrings.length} addresses for new wallet ${walletId}`);
+  log.info(
+    `[SYNC] Subscribed to ${addressStrings.length} addresses for new wallet ${walletId}`,
+  );
 }
 
 /**
  * Tear down all real-time subscriptions.
  */
-export async function teardownRealTimeSubscriptions(state: SyncState): Promise<void> {
+export async function teardownRealTimeSubscriptions(
+  state: SyncState,
+): Promise<void> {
   state.subscribedToHeaders = false;
 
   const electrumClient = await getElectrumClientIfActive();
@@ -381,7 +519,10 @@ export async function teardownRealTimeSubscriptions(state: SyncState): Promise<v
       try {
         await electrumClient.unsubscribeAddress(address);
       } catch (error) {
-        log.debug(`[SYNC] Failed to unsubscribe address ${address} (non-critical)`, { error: getErrorMessage(error) });
+        log.debug(
+          `[SYNC] Failed to unsubscribe address ${address} (non-critical)`,
+          { error: getErrorMessage(error) },
+        );
       }
     }
   }
@@ -389,8 +530,8 @@ export async function teardownRealTimeSubscriptions(state: SyncState): Promise<v
   state.addressToWalletMap.clear();
 
   if (electrumClient) {
-    electrumClient.removeAllListeners('newBlock');
-    electrumClient.removeAllListeners('addressActivity');
+    electrumClient.removeAllListeners("newBlock");
+    electrumClient.removeAllListeners("addressActivity");
   }
 }
 
@@ -398,10 +539,17 @@ export async function teardownRealTimeSubscriptions(state: SyncState): Promise<v
  * Subscribe to Electrum address notifications for a wallet.
  * This enables real-time updates when transactions are received.
  */
-export async function subscribeWalletAddresses(walletId: string): Promise<void> {
+export async function subscribeWalletAddresses(
+  walletId: string,
+): Promise<void> {
   // Get wallet to determine network
-  const network = await walletRepository.findNetwork(walletId) as 'mainnet' | 'testnet' | 'signet' | 'regtest' | null;
-  const resolvedNetwork = network || 'mainnet';
+  const network = (await walletRepository.findNetwork(walletId)) as
+    | "mainnet"
+    | "testnet"
+    | "signet"
+    | "regtest"
+    | null;
+  const resolvedNetwork = network || "mainnet";
 
   const addressStrings = await addressRepository.findAddressStrings(walletId);
 
@@ -412,11 +560,15 @@ export async function subscribeWalletAddresses(walletId: string): Promise<void> 
       // Subscribe to address - Electrum/RPC will notify on changes (if supported)
       await client.subscribeAddress(address);
     } catch (error) {
-      log.error(`[SYNC] Failed to subscribe to address ${address}`, { error: getErrorMessage(error) });
+      log.error(`[SYNC] Failed to subscribe to address ${address}`, {
+        error: getErrorMessage(error),
+      });
     }
   }
 
-  log.info(`[SYNC] Subscribed to ${addressStrings.length} addresses for wallet ${walletId}`);
+  log.info(
+    `[SYNC] Subscribed to ${addressStrings.length} addresses for wallet ${walletId}`,
+  );
 }
 
 /**
@@ -446,7 +598,9 @@ export async function handleNewBlock(
       height: block.height,
     });
   } catch (error) {
-    log.error('[SYNC] Failed to update confirmations after new block', { error: getErrorMessage(error) });
+    log.error("[SYNC] Failed to update confirmations after new block", {
+      error: getErrorMessage(error),
+    });
   }
 }
 
@@ -456,11 +610,11 @@ export async function handleNewBlock(
 export async function handleAddressActivity(
   state: SyncState,
   activity: { scriptHash: string; address?: string; status: string },
-  queueSync: (walletId: string, priority: 'high' | 'normal' | 'low') => void,
+  queueSync: (walletId: string, priority: "high" | "normal" | "low") => void,
 ): Promise<void> {
   const address = activity.address;
   if (!address) {
-    log.warn('[SYNC] Received address activity without resolved address');
+    log.warn("[SYNC] Received address activity without resolved address");
     return;
   }
 
@@ -470,16 +624,20 @@ export async function handleAddressActivity(
   const walletId = state.addressToWalletMap.get(address);
   if (walletId) {
     // Queue high-priority sync for this wallet
-    queueSync(walletId, 'high');
-    log.info(`[SYNC] Queued high-priority sync for wallet ${walletId} due to address activity`);
+    queueSync(walletId, "high");
+    log.info(
+      `[SYNC] Queued high-priority sync for wallet ${walletId} due to address activity`,
+    );
   } else {
     // Try to look up the wallet from the database
     const addressRecord = await addressRepository.findByAddress(address);
 
     if (addressRecord) {
       state.addressToWalletMap.set(address, addressRecord.walletId);
-      queueSync(addressRecord.walletId, 'high');
-      log.info(`[SYNC] Queued high-priority sync for wallet ${addressRecord.walletId} due to address activity`);
+      queueSync(addressRecord.walletId, "high");
+      log.info(
+        `[SYNC] Queued high-priority sync for wallet ${addressRecord.walletId} due to address activity`,
+      );
     }
   }
 }

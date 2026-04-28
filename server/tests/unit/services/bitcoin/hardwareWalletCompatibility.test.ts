@@ -6,18 +6,21 @@
  * fallback when hardware exports have not been checked in yet.
  */
 
-import { describe, it, expect } from 'vitest';
-import { deriveAddress, deriveAddressFromDescriptor } from '@/services/bitcoin/addressDerivation';
+import { describe, it, expect } from "vitest";
+import {
+  deriveAddress,
+  deriveAddressFromDescriptor,
+} from "@/services/bitcoin/addressDerivation";
 import {
   HARDWARE_WALLET_SINGLESIG_VECTORS,
   HARDWARE_WALLET_MULTISIG_VECTORS,
   type HardwareWalletVector,
   type MultisigHardwareWalletVector,
-} from '@fixtures/hardware-wallet-vectors';
+} from "@fixtures/hardware-wallet-vectors";
 import {
   VERIFIED_SINGLESIG_VECTORS,
   VERIFIED_MULTISIG_VECTORS,
-} from '@fixtures/verified-address-vectors';
+} from "@fixtures/verified-address-vectors";
 
 type SingleSigAddressPair = {
   index: number;
@@ -31,21 +34,36 @@ type MultisigAddressPair = {
   change?: string;
 };
 
-function toMultisigDerivationPath(network: 'mainnet' | 'testnet', scriptType: 'p2sh' | 'p2sh_p2wsh' | 'p2wsh'): string {
-  const coinType = network === 'mainnet' ? 0 : 1;
-  const scriptAccount = scriptType === 'p2wsh' ? 2 : scriptType === 'p2sh_p2wsh' ? 1 : 0;
+const MULTISIG_SCRIPT_ACCOUNTS: Record<
+  "p2sh" | "p2sh_p2wsh" | "p2wsh",
+  number
+> = {
+  p2sh: 0,
+  p2sh_p2wsh: 1,
+  p2wsh: 2,
+};
+
+function toMultisigDerivationPath(
+  network: "mainnet" | "testnet",
+  scriptType: "p2sh" | "p2sh_p2wsh" | "p2wsh",
+): string {
+  const coinType = network === "mainnet" ? 0 : 1;
+  const scriptAccount = MULTISIG_SCRIPT_ACCOUNTS[scriptType];
   return `m/48'/${coinType}'/0'/${scriptAccount}'`;
 }
 
 function buildFallbackSingleSigVectors(): HardwareWalletVector[] {
-  const grouped = new Map<string, {
-    network: 'mainnet' | 'testnet';
-    scriptType: 'legacy' | 'nested_segwit' | 'native_segwit' | 'taproot';
-    accountIndex: number;
-    expectedXpub: string;
-    derivationPath: string;
-    pairs: Map<number, SingleSigAddressPair>;
-  }>();
+  const grouped = new Map<
+    string,
+    {
+      network: "mainnet" | "testnet";
+      scriptType: "legacy" | "nested_segwit" | "native_segwit" | "taproot";
+      accountIndex: number;
+      expectedXpub: string;
+      derivationPath: string;
+      pairs: Map<number, SingleSigAddressPair>;
+    }
+  >();
 
   for (const vector of VERIFIED_SINGLESIG_VECTORS) {
     const key = `${vector.network}|${vector.scriptType}|${vector.xpub}`;
@@ -72,18 +90,22 @@ function buildFallbackSingleSigVectors(): HardwareWalletVector[] {
 
   return [...grouped.values()]
     .map((group) => ({
-      device: 'Cross-verified reference',
-      firmware: 'N/A',
-      verifiedDate: '2026-03-02',
-      verifiedBy: 'Cross-implementation vectors',
-      mnemonic: 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about',
+      device: "Cross-verified reference",
+      firmware: "N/A",
+      verifiedDate: "2026-03-02",
+      verifiedBy: "Cross-implementation vectors",
+      mnemonic:
+        "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
       network: group.network,
       scriptType: group.scriptType,
       accountIndex: group.accountIndex,
       expectedXpub: group.expectedXpub,
       derivationPath: group.derivationPath,
       addresses: [...group.pairs.values()]
-        .filter((pair): pair is { index: number; receive: string; change: string } => Boolean(pair.receive && pair.change))
+        .filter(
+          (pair): pair is { index: number; receive: string; change: string } =>
+            Boolean(pair.receive && pair.change),
+        )
         .sort((a, b) => a.index - b.index)
         .slice(0, 4),
     }))
@@ -91,21 +113,24 @@ function buildFallbackSingleSigVectors(): HardwareWalletVector[] {
 }
 
 function buildFallbackMultisigVectors(): MultisigHardwareWalletVector[] {
-  const grouped = new Map<string, {
-    threshold: number;
-    totalSigners: number;
-    network: 'mainnet' | 'testnet';
-    scriptType: 'p2sh' | 'p2sh_p2wsh' | 'p2wsh';
-    xpubs: string[];
-    pairs: Map<number, MultisigAddressPair>;
-  }>();
+  const grouped = new Map<
+    string,
+    {
+      threshold: number;
+      totalSigners: number;
+      network: "mainnet" | "testnet";
+      scriptType: "p2sh" | "p2sh_p2wsh" | "p2wsh";
+      xpubs: string[];
+      pairs: Map<number, MultisigAddressPair>;
+    }
+  >();
 
   for (const vector of VERIFIED_MULTISIG_VECTORS) {
-    if (vector.scriptType !== 'p2wsh' && vector.scriptType !== 'p2sh_p2wsh') {
+    if (vector.scriptType !== "p2wsh" && vector.scriptType !== "p2sh_p2wsh") {
       continue;
     }
 
-    const key = `${vector.network}|${vector.scriptType}|${vector.threshold}|${vector.totalKeys}|${vector.xpubs.join('|')}`;
+    const key = `${vector.network}|${vector.scriptType}|${vector.threshold}|${vector.totalKeys}|${vector.xpubs.join("|")}`;
     if (!grouped.has(key)) {
       grouped.set(key, {
         threshold: vector.threshold,
@@ -131,8 +156,8 @@ function buildFallbackMultisigVectors(): MultisigHardwareWalletVector[] {
     .map((group) => ({
       devices: group.xpubs.map((_, idx) => ({
         device: `Reference signer ${idx + 1}`,
-        firmware: 'N/A',
-        verifiedDate: '2026-03-02',
+        firmware: "N/A",
+        verifiedDate: "2026-03-02",
       })),
       threshold: group.threshold,
       totalSigners: group.totalSigners,
@@ -140,11 +165,17 @@ function buildFallbackMultisigVectors(): MultisigHardwareWalletVector[] {
       scriptType: group.scriptType,
       signers: group.xpubs.map((xpub, idx) => ({
         mnemonic: `reference-vector-signer-${idx + 1}`,
-        derivationPath: toMultisigDerivationPath(group.network, group.scriptType),
+        derivationPath: toMultisigDerivationPath(
+          group.network,
+          group.scriptType,
+        ),
         xpub,
       })),
       addresses: [...group.pairs.values()]
-        .filter((pair): pair is { index: number; receive: string; change: string } => Boolean(pair.receive && pair.change))
+        .filter(
+          (pair): pair is { index: number; receive: string; change: string } =>
+            Boolean(pair.receive && pair.change),
+        )
         .sort((a, b) => a.index - b.index)
         .slice(0, 4),
     }))
@@ -161,15 +192,15 @@ const EFFECTIVE_MULTISIG_VECTORS =
     ? HARDWARE_WALLET_MULTISIG_VECTORS
     : buildFallbackMultisigVectors();
 
-describe('Hardware Wallet Compatibility', () => {
-  describe('Single-Sig Address Verification', () => {
-    it('has single-sig compatibility vectors', () => {
+describe("Hardware Wallet Compatibility", () => {
+  describe("Single-Sig Address Verification", () => {
+    it("has single-sig compatibility vectors", () => {
       expect(EFFECTIVE_SINGLESIG_VECTORS.length).toBeGreaterThan(0);
     });
 
     EFFECTIVE_SINGLESIG_VECTORS.forEach((vector) => {
       describe(`${vector.device} (${vector.firmware}) - ${vector.scriptType} ${vector.network}`, () => {
-        it('should derive matching xpub', () => {
+        it("should derive matching xpub", () => {
           expect(vector.expectedXpub).toBeDefined();
         });
 
@@ -198,22 +229,24 @@ describe('Hardware Wallet Compatibility', () => {
     });
   });
 
-  describe('Multisig Address Verification', () => {
-    it('has multisig compatibility vectors', () => {
+  describe("Multisig Address Verification", () => {
+    it("has multisig compatibility vectors", () => {
       expect(EFFECTIVE_MULTISIG_VECTORS.length).toBeGreaterThan(0);
     });
 
     EFFECTIVE_MULTISIG_VECTORS.forEach((vector) => {
-      describe(`${vector.threshold}-of-${vector.totalSigners} ${vector.scriptType} (${vector.devices.map((d) => d.device).join(', ')})`, () => {
+      describe(`${vector.threshold}-of-${vector.totalSigners} ${vector.scriptType} (${vector.devices.map((d) => d.device).join(", ")})`, () => {
         const buildDescriptor = () => {
-          const keysStr = vector.signers.map((s) => `${s.xpub}/<0;1>/*`).join(',');
+          const keysStr = vector.signers
+            .map((s) => `${s.xpub}/<0;1>/*`)
+            .join(",");
           const scriptMap = {
-            p2sh: 'sh(sortedmulti',
-            p2sh_p2wsh: 'sh(wsh(sortedmulti',
-            p2wsh: 'wsh(sortedmulti',
+            p2sh: "sh(sortedmulti",
+            p2sh_p2wsh: "sh(wsh(sortedmulti",
+            p2wsh: "wsh(sortedmulti",
           };
           const prefix = scriptMap[vector.scriptType];
-          const suffix = vector.scriptType === 'p2sh_p2wsh' ? ')))' : '))';
+          const suffix = vector.scriptType === "p2sh_p2wsh" ? ")))" : "))";
           return `${prefix}(${vector.threshold},${keysStr})${suffix}`;
         };
 
@@ -243,8 +276,8 @@ describe('Hardware Wallet Compatibility', () => {
   });
 });
 
-describe('Hardware Vector Provenance', () => {
-  it('uses hardware exports when available and verified-vector fallbacks otherwise', () => {
+describe("Hardware Vector Provenance", () => {
+  it("uses hardware exports when available and verified-vector fallbacks otherwise", () => {
     expect(EFFECTIVE_SINGLESIG_VECTORS.length).toBeGreaterThan(0);
     expect(EFFECTIVE_MULTISIG_VECTORS.length).toBeGreaterThan(0);
   });

@@ -366,38 +366,59 @@ const monthNumbers: Record<string, number> = {
   dec: 11,
 };
 
+const MONTH_YEAR_RANGE_PATTERN =
+  /\b(?:between|from)\s+([a-z]+)\s+(\d{4})\s+(?:and|to|through|-)\s+([a-z]+)\s+(\d{4})\b/i;
+
+interface ParsedMonthYear {
+  month: number;
+  year: number;
+}
+
+function parseMonthYear(
+  monthText?: string,
+  yearText?: string,
+): ParsedMonthYear | null {
+  const month = monthNumbers[monthText?.toLowerCase() ?? ""];
+  const year = Number.parseInt(yearText ?? "", 10);
+  if (month === undefined || !Number.isSafeInteger(year)) return null;
+  return { month, year };
+}
+
+function monthStartIsoDate(year: number, month: number): string {
+  return new Date(Date.UTC(year, month, 1, 0, 0, 0, 0)).toISOString();
+}
+
+function monthEndIsoDate(year: number, month: number): string {
+  return new Date(Date.UTC(year, month + 1, 0, 23, 59, 59, 999)).toISOString();
+}
+
+function yearStartIsoDate(year: number): string {
+  return monthStartIsoDate(year, 0);
+}
+
+function yearEndIsoDate(year: number): string {
+  return monthEndIsoDate(year, 11);
+}
+
 function toIsoDate(year: number, month: number, endOfMonth = false): string {
-  const date = endOfMonth
-    ? new Date(Date.UTC(year, month + 1, 0, 23, 59, 59, 999))
-    : new Date(Date.UTC(year, month, 1, 0, 0, 0, 0));
-  return date.toISOString();
+  if (endOfMonth) return monthEndIsoDate(year, month);
+  return monthStartIsoDate(year, month);
 }
 
 function parseMonthYearRange(prompt: string): {
   dateFrom: string;
   dateTo: string;
 } | null {
-  const range = prompt.match(
-    /\b(?:between|from)\s+([a-z]+)\s+(\d{4})\s+(?:and|to|through|-)\s+([a-z]+)\s+(\d{4})\b/i,
-  );
+  const range = prompt.match(MONTH_YEAR_RANGE_PATTERN);
   if (!range) return null;
 
-  const fromMonth = monthNumbers[range[1]?.toLowerCase() ?? ""];
-  const toMonth = monthNumbers[range[3]?.toLowerCase() ?? ""];
-  const fromYear = Number.parseInt(range[2] ?? "", 10);
-  const toYear = Number.parseInt(range[4] ?? "", 10);
-  if (
-    fromMonth === undefined ||
-    toMonth === undefined ||
-    !Number.isSafeInteger(fromYear) ||
-    !Number.isSafeInteger(toYear)
-  ) {
-    return null;
-  }
+  const from = parseMonthYear(range[1], range[2]);
+  const to = parseMonthYear(range[3], range[4]);
+  if (!from || !to) return null;
 
   return {
-    dateFrom: toIsoDate(fromYear, fromMonth),
-    dateTo: toIsoDate(toYear, toMonth, true),
+    dateFrom: toIsoDate(from.year, from.month),
+    dateTo: toIsoDate(to.year, to.month, true),
   };
 }
 
@@ -439,11 +460,25 @@ function parseIsoDateRange(prompt: string): {
   };
 }
 
+function parseRelativeYearRange(prompt: string): {
+  dateFrom: string;
+  dateTo: string;
+} | null {
+  if (!/\b(?:this|current)\s+year\b/i.test(prompt)) return null;
+
+  const year = new Date().getUTCFullYear();
+  return {
+    dateFrom: yearStartIsoDate(year),
+    dateTo: yearEndIsoDate(year),
+  };
+}
+
 function parsePromptDateRange(prompt: string) {
   return (
     parseIsoDateRange(prompt) ??
     parseMonthYearRange(prompt) ??
-    parseSingleMonthYearRange(prompt)
+    parseSingleMonthYearRange(prompt) ??
+    parseRelativeYearRange(prompt)
   );
 }
 

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { parseConsolePlanResponse } from "../../ai-proxy/src/consoleProtocol";
 
 const queryTransactionsTool = {
@@ -113,6 +113,41 @@ describe("console planner protocol", () => {
       "model_response_not_json",
       "fallback_plan_applied",
     ]);
+  });
+
+  it("falls back to current-year transaction planning for this-year prompts", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-28T12:00:00.000Z"));
+
+    try {
+      const result = parseConsolePlanResponse(
+        "I should retrieve transactions from the selected wallet.",
+        4,
+        {
+          ...walletPlanInput,
+          prompt: "show me transactions from this year",
+        },
+      );
+
+      expect(result.toolCalls).toEqual([
+        {
+          name: "query_transactions",
+          input: {
+            walletId: "da17d9d4-c760-4929-a207-2a45c3cadef9",
+            dateFrom: "2026-01-01T00:00:00.000Z",
+            dateTo: "2026-12-31T23:59:59.999Z",
+            limit: 100,
+          },
+          reason: "Fallback plan for wallet transaction request.",
+        },
+      ]);
+      expect(result.warnings).toEqual([
+        "model_response_not_json",
+        "fallback_plan_applied",
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("falls back to one transaction tool call per wallet-set member", () => {

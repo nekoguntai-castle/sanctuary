@@ -39,12 +39,27 @@ export type AiRequestResult =
     };
 
 type ChatMessage = { role: string; content: string };
+type AiRequestOptionsInput = number | AiRequestOptions | undefined;
 
 interface NormalizedAiRequestOptions {
   timeoutMs: number;
   temperature: number;
   maxTokens: number;
   allowReasoningContent: boolean;
+}
+
+function numberOrDefault(
+  value: number | undefined,
+  defaultValue: number,
+): number {
+  return value === undefined ? defaultValue : value;
+}
+
+function booleanOrDefault(
+  value: boolean | undefined,
+  defaultValue: boolean,
+): boolean {
+  return value === undefined ? defaultValue : value;
 }
 
 export function buildProviderHeaders(
@@ -57,46 +72,55 @@ export function buildProviderHeaders(
   };
 }
 
-function normalizeRequestOptions(
-  options: number | AiRequestOptions | undefined,
+const normalizeRequestOptions = (
+  options: AiRequestOptionsInput,
   defaults: NormalizedAiRequestOptions,
-): NormalizedAiRequestOptions {
+): NormalizedAiRequestOptions => {
   if (typeof options === "number") {
-    return { ...defaults, timeoutMs: options };
+    return {
+      timeoutMs: options,
+      temperature: defaults.temperature,
+      maxTokens: defaults.maxTokens,
+      allowReasoningContent: defaults.allowReasoningContent,
+    };
   }
 
-  return {
-    timeoutMs: options?.timeoutMs ?? defaults.timeoutMs,
-    temperature: options?.temperature ?? defaults.temperature,
-    maxTokens: options?.maxTokens ?? defaults.maxTokens,
-    allowReasoningContent:
-      options?.allowReasoningContent ?? defaults.allowReasoningContent,
-  };
-}
+  if (!options) return defaults;
 
-function buildFailure(
+  return {
+    timeoutMs: numberOrDefault(options.timeoutMs, defaults.timeoutMs),
+    temperature: numberOrDefault(options.temperature, defaults.temperature),
+    maxTokens: numberOrDefault(options.maxTokens, defaults.maxTokens),
+    allowReasoningContent: booleanOrDefault(
+      options.allowReasoningContent,
+      defaults.allowReasoningContent,
+    ),
+  };
+};
+
+const buildFailure = (
   reason: AiRequestFailureReason,
   message: string,
   status?: number,
-): AiRequestResult {
+): AiRequestResult => {
   return status === undefined
     ? { ok: false, reason, message }
     : { ok: false, reason, message, status };
-}
+};
 
-function truncateErrorBody(body: string): string {
+const truncateErrorBody = (body: string): string => {
   return body.trim().replace(/\s+/g, " ").slice(0, 500);
-}
+};
 
-function getTextValue(value: unknown): string | null {
+const getTextValue = (value: unknown): string | null => {
   return typeof value === "string" && value.trim() ? value.trim() : null;
-}
+};
 
-function extractContentParts(value: unknown): string | null {
+const extractContentParts = (value: unknown): string | null => {
   if (!Array.isArray(value)) return null;
 
   const parts = value
-    .map(part => {
+    .map((part) => {
       if (typeof part === "string") return part;
       if (!part || typeof part !== "object") return "";
       const record = part as Record<string, unknown>;
@@ -105,22 +129,24 @@ function extractContentParts(value: unknown): string | null {
     .filter(Boolean);
 
   return parts.length > 0 ? parts.join("\n").trim() : null;
-}
+};
 
-function extractResponseContent(
+const extractResponseContent = (
   data: unknown,
   allowReasoningContent: boolean,
-): string | null {
-  const choices = (data as {
-    choices?: Array<{
-      text?: unknown;
-      message?: {
-        content?: unknown;
-        reasoning_content?: unknown;
-        reasoning?: unknown;
-      };
-    }>;
-  })?.choices;
+): string | null => {
+  const choices = (
+    data as {
+      choices?: Array<{
+        text?: unknown;
+        message?: {
+          content?: unknown;
+          reasoning_content?: unknown;
+          reasoning?: unknown;
+        };
+      }>;
+    }
+  )?.choices;
   const choice = choices?.[0];
   const message = choice?.message;
   const content =
@@ -136,14 +162,14 @@ function extractResponseContent(
     getTextValue(message?.reasoning) ??
     null
   );
-}
+};
 
-async function callChatCompletions(
+const callChatCompletions = async (
   aiConfig: AiConfig,
   messages: ChatMessage[],
   options: NormalizedAiRequestOptions,
   logMessage: string,
-): Promise<AiRequestResult> {
+): Promise<AiRequestResult> => {
   if (!aiConfig.enabled || !aiConfig.endpoint || !aiConfig.model) {
     return buildFailure(
       "not_configured",
@@ -201,13 +227,19 @@ async function callChatCompletions(
       data = await response.json();
     } catch {
       log.error("Invalid JSON response from external AI");
-      return buildFailure("invalid_response", "Invalid JSON response from AI endpoint");
+      return buildFailure(
+        "invalid_response",
+        "Invalid JSON response from AI endpoint",
+      );
     }
 
     const content = extractResponseContent(data, options.allowReasoningContent);
     if (!content) {
       log.error("No message content in response");
-      return buildFailure("invalid_response", "AI endpoint response did not include message content");
+      return buildFailure(
+        "invalid_response",
+        "AI endpoint response did not include message content",
+      );
     }
 
     return { ok: true, content };
@@ -222,11 +254,14 @@ async function callChatCompletions(
 
     const message = extractErrorMessage(error);
     log.error("Request failed", { error: message });
-    return buildFailure("request_failed", `AI endpoint request failed: ${message}`);
+    return buildFailure(
+      "request_failed",
+      `AI endpoint request failed: ${message}`,
+    );
   } finally {
     clearTimeout(timeoutId);
   }
-}
+};
 
 /**
  * Call external AI endpoint.

@@ -11,12 +11,12 @@
  * - GET /metrics - Basic metrics (JSON)
  */
 
-import http from 'http';
-import { createLogger } from '../utils/logger';
-import { getErrorMessage } from '../utils/errors';
-import { registry } from '../observability/metrics/registry';
+import http from "http";
+import { createLogger } from "../utils/logger";
+import { getErrorMessage } from "../utils/errors";
+import { registry } from "../observability/metrics/registry";
 
-const log = createLogger('WORKER:HEALTH');
+const log = createLogger("WORKER:HEALTH");
 
 // =============================================================================
 // Types
@@ -37,12 +37,15 @@ export interface HealthCheckProvider {
       concurrency: number;
       electrumSubscriptionOwner: boolean;
     };
-    queues: Record<string, {
-      waiting: number;
-      active: number;
-      completed: number;
-      failed: number;
-    }>;
+    queues: Record<
+      string,
+      {
+        waiting: number;
+        active: number;
+        completed: number;
+        failed: number;
+      }
+    >;
     electrum: {
       isRunning?: boolean;
       ownershipRetryActive?: boolean;
@@ -71,103 +74,128 @@ export interface HealthServerHandle {
 // Health Server Implementation
 // =============================================================================
 
+function writeJson(
+  res: http.ServerResponse,
+  statusCode: number,
+  body: unknown,
+): void {
+  res.writeHead(statusCode, { "Content-Type": "application/json" });
+  res.end(JSON.stringify(body));
+}
+
+function writeText(
+  res: http.ServerResponse,
+  statusCode: number,
+  body: string,
+): void {
+  res.writeHead(statusCode, { "Content-Type": "text/plain" });
+  res.end(body);
+}
+
+async function writeHealthResponse(
+  res: http.ServerResponse,
+  healthProvider: HealthCheckProvider,
+): Promise<void> {
+  const health = await healthProvider.getHealth();
+  const isHealthy = health.redis && health.electrum && health.jobQueue;
+
+  writeJson(res, isHealthy ? 200 : 503, {
+    status: isHealthy ? "healthy" : "degraded",
+    components: health,
+    timestamp: new Date().toISOString(),
+  });
+}
+
+async function writeReadyResponse(
+  res: http.ServerResponse,
+  healthProvider: HealthCheckProvider,
+): Promise<void> {
+  const health = await healthProvider.getHealth();
+  const isReady = health.redis && health.jobQueue;
+  writeText(res, isReady ? 200 : 503, isReady ? "ready" : "not ready");
+}
+
+async function writeMetricsResponse(
+  res: http.ServerResponse,
+  healthProvider: HealthCheckProvider,
+): Promise<void> {
+  if (healthProvider.getMetrics) {
+    const metrics = await healthProvider.getMetrics();
+    writeJson(res, 200, {
+      ...metrics,
+      timestamp: new Date().toISOString(),
+    });
+    return;
+  }
+
+  const health = await healthProvider.getHealth();
+  writeJson(res, 200, {
+    health,
+    timestamp: new Date().toISOString(),
+  });
+}
+
+async function routeHealthRequest(
+  url: string,
+  res: http.ServerResponse,
+  healthProvider: HealthCheckProvider,
+): Promise<void> {
+  switch (url) {
+    case "/":
+    case "/health":
+      await writeHealthResponse(res, healthProvider);
+      return;
+    case "/ready":
+      await writeReadyResponse(res, healthProvider);
+      return;
+    case "/live":
+      writeText(res, 200, "alive");
+      return;
+    case "/metrics":
+      await writeMetricsResponse(res, healthProvider);
+      return;
+    case "/metrics/prometheus":
+      res.writeHead(200, { "Content-Type": registry.contentType });
+      res.end(await registry.metrics());
+      return;
+    default:
+      writeText(res, 404, "Not Found");
+  }
+}
+
+async function handleHealthRequest(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  healthProvider: HealthCheckProvider,
+): Promise<void> {
+  try {
+    // Internal-only server, no CORS needed.
+    await routeHealthRequest(req.url || "/", res, healthProvider);
+  } catch (error) {
+    log.error("Health check error", { error: getErrorMessage(error) });
+    // Keep detailed failure information in logs; health responses are probe-visible.
+    writeJson(res, 500, {
+      status: "error",
+      error: "Health check failed",
+    });
+  }
+}
+
 /**
  * Start the health server
  */
-export function startHealthServer(options: HealthServerOptions): HealthServerHandle {
+export function startHealthServer(
+  options: HealthServerOptions,
+): HealthServerHandle {
   const { port, healthProvider } = options;
 
   const server = http.createServer(async (req, res) => {
-    const url = req.url || '/';
-
-    // Internal-only server, no CORS needed
-
-    try {
-      switch (url) {
-        case '/':
-        case '/health': {
-          // Full health check
-          const health = await healthProvider.getHealth();
-          const isHealthy = health.redis && health.electrum && health.jobQueue;
-
-          res.writeHead(isHealthy ? 200 : 503, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            status: isHealthy ? 'healthy' : 'degraded',
-            components: health,
-            timestamp: new Date().toISOString(),
-          }));
-          break;
-        }
-
-        case '/ready': {
-          // Readiness probe - ready to receive traffic
-          const health = await healthProvider.getHealth();
-          const isReady = health.redis && health.jobQueue;
-
-          if (isReady) {
-            res.writeHead(200, { 'Content-Type': 'text/plain' });
-            res.end('ready');
-          } else {
-            res.writeHead(503, { 'Content-Type': 'text/plain' });
-            res.end('not ready');
-          }
-          break;
-        }
-
-        case '/live': {
-          // Liveness probe - process is alive
-          res.writeHead(200, { 'Content-Type': 'text/plain' });
-          res.end('alive');
-          break;
-        }
-
-        case '/metrics': {
-          // Metrics endpoint (JSON format for backward compat)
-          if (healthProvider.getMetrics) {
-            const metrics = await healthProvider.getMetrics();
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({
-              ...metrics,
-              timestamp: new Date().toISOString(),
-            }));
-          } else {
-            const health = await healthProvider.getHealth();
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({
-              health,
-              timestamp: new Date().toISOString(),
-            }));
-          }
-          break;
-        }
-
-        case '/metrics/prometheus': {
-          // Prometheus text format for scraping
-          const metricsText = await registry.metrics();
-          res.writeHead(200, { 'Content-Type': registry.contentType });
-          res.end(metricsText);
-          break;
-        }
-
-        default: {
-          res.writeHead(404, { 'Content-Type': 'text/plain' });
-          res.end('Not Found');
-        }
-      }
-    } catch (error) {
-      log.error('Health check error', { error: getErrorMessage(error) });
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      // Keep detailed failure information in logs; health responses are probe-visible.
-      res.end(JSON.stringify({
-        status: 'error',
-        error: 'Health check failed',
-      }));
-    }
+    await handleHealthRequest(req, res, healthProvider);
   });
 
   // Handle server errors
-  server.on('error', (error) => {
-    log.error('Health server error', { error: error.message });
+  server.on("error", (error) => {
+    log.error("Health server error", { error: error.message });
   });
 
   // Start listening
@@ -176,17 +204,18 @@ export function startHealthServer(options: HealthServerOptions): HealthServerHan
   });
 
   return {
-    close: () => new Promise<void>((resolve, reject) => {
-      server.close((err) => {
-        if (err) {
-          log.error('Health server close error', { error: err.message });
-          reject(err);
-        } else {
-          log.info('Health server closed');
-          resolve();
-        }
-      });
-    }),
+    close: () =>
+      new Promise<void>((resolve, reject) => {
+        server.close((err) => {
+          if (err) {
+            log.error("Health server close error", { error: err.message });
+            reject(err);
+          } else {
+            log.info("Health server closed");
+            resolve();
+          }
+        });
+      }),
     port,
   };
 }

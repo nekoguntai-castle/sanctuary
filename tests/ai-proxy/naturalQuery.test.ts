@@ -65,7 +65,9 @@ describe("natural query conversion", () => {
       expect.arrayContaining([
         expect.objectContaining({
           role: "system",
-          content: expect.stringContaining("Sanctuary Console's planning model"),
+          content: expect.stringContaining(
+            "Sanctuary Console's planning model",
+          ),
         }),
         expect.objectContaining({
           role: "user",
@@ -157,5 +159,37 @@ describe("natural query conversion", () => {
         },
       },
     });
+  });
+
+  it("applies current-year fallback dates for this-year transaction filters", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-28T12:00:00.000Z"));
+    mocks.callExternalAIWithMessagesResult.mockResolvedValue({
+      ok: true,
+      content: "I should retrieve the transactions from the selected wallet.",
+    });
+    mocks.parseStructuredResponse.mockReturnValue(null);
+
+    try {
+      await expect(
+        convertNaturalQuery({
+          aiConfig,
+          query: "show me transactions from this year",
+          walletId,
+          recentLabels: "None",
+        }),
+      ).resolves.toEqual({
+        ok: true,
+        query: {
+          type: "transactions",
+          filter: {
+            dateFrom: "2026-01-01T00:00:00.000Z",
+            dateTo: "2026-12-31T23:59:59.999Z",
+          },
+        },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
