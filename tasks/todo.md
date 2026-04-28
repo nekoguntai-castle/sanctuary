@@ -1,3 +1,26 @@
+# Active Task: Console June 2020 All-Transactions Prompt 2026-04-28
+
+Status: complete
+
+Goal: make the AI Console correctly plan prompts like `show me all transactions in june 2020` without requiring the user to say `all wallets`.
+
+## Plan
+
+- [x] Document the June 2020 all-transactions Console bug in tasks/todo.md.
+- [x] Patch deterministic Console planning for unqualified `all transactions` and single-month dates.
+- [x] Add focused planner regressions for aggregate June 2020 prompts and single-wallet wording.
+- [x] Run focused tests, formatting, lizard, and diff checks.
+- [x] Self-review and update tasks/todo.md review notes.
+
+## Review
+
+- Updated the Console planning prompt and deterministic fallback so an auto-scoped prompt like `show me all transactions in june 2020` targets all scoped wallets without requiring the exact phrase `all wallets`.
+- Added single-month date parsing so `june 2020` maps to `2020-06-01T00:00:00.000Z` through `2020-06-30T23:59:59.999Z`.
+- Preserved current-wallet safety by keeping prompts like `show me all transactions in this wallet in june 2020` scoped to the current wallet.
+- Verification: focused AI proxy Vitest passed, `npm run typecheck:tests` passed, `npm --prefix ai-proxy run build` passed, touched-file Prettier check passed, pinned touched-file lizard passed, and `git diff --check` passed. Direct `npx lizard ...` could not resolve an executable, so the repo-pinned lizard binary was used instead.
+
+---
+
 # Completed Task: AI Console Local Provider PR Delivery 2026-04-28
 
 Status: complete

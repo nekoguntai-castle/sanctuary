@@ -207,6 +207,72 @@ describe("console planner protocol", () => {
     ]);
   });
 
+  it("plans all scoped wallets for unqualified all-transactions auto prompts", () => {
+    const result = parseConsolePlanResponse(
+      "I should retrieve matching transactions.",
+      4,
+      {
+        ...autoWalletSetPlanInput,
+        prompt: "show me all transactions in june 2020",
+      },
+    );
+
+    expect(result.toolCalls).toEqual([
+      {
+        name: "query_transactions",
+        input: {
+          walletId: "11111111-1111-4111-8111-111111111111",
+          dateFrom: "2020-06-01T00:00:00.000Z",
+          dateTo: "2020-06-30T23:59:59.999Z",
+          limit: 100,
+        },
+        reason: "Fallback plan for wallet transaction request.",
+      },
+      {
+        name: "query_transactions",
+        input: {
+          walletId: "22222222-2222-4222-8222-222222222222",
+          dateFrom: "2020-06-01T00:00:00.000Z",
+          dateTo: "2020-06-30T23:59:59.999Z",
+          limit: 100,
+        },
+        reason: "Fallback plan for wallet transaction request.",
+      },
+    ]);
+    expect(result.warnings).toEqual([
+      "model_response_not_json",
+      "fallback_plan_applied",
+    ]);
+  });
+
+  it("keeps current-wallet all-transactions prompts scoped to the current wallet", () => {
+    const result = parseConsolePlanResponse(
+      "I should retrieve matching transactions.",
+      4,
+      {
+        ...autoWalletSetPlanInput,
+        prompt: "show me all transactions in this wallet in june 2020",
+      },
+    );
+
+    expect(result.toolCalls).toEqual([
+      {
+        name: "query_transactions",
+        input: {
+          walletId: "22222222-2222-4222-8222-222222222222",
+          dateFrom: "2020-06-01T00:00:00.000Z",
+          dateTo: "2020-06-30T23:59:59.999Z",
+          limit: 100,
+        },
+        reason: "Fallback plan for wallet transaction request.",
+      },
+    ]);
+    expect(result.warnings).toEqual([
+      "model_response_not_json",
+      "fallback_plan_applied",
+    ]);
+  });
+
   it("falls back when local model returns a placeholder tool name", () => {
     const result = parseConsolePlanResponse(
       JSON.stringify({
