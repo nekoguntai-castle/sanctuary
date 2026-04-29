@@ -6,7 +6,11 @@
  * Uses the same per-wallet notification settings as Telegram.
  */
 
-import { pushDeviceRepository, walletRepository, userRepository } from '../../repositories';
+import {
+  pushDeviceRepository,
+  walletRepository,
+  userRepository,
+} from '../../repositories';
 import { ProviderRegistry } from '../../providers';
 import { createLogger } from '../../utils/logger';
 import { getErrorMessage } from '../../utils/errors';
@@ -29,24 +33,30 @@ export interface TransactionData {
   amount: bigint;
 }
 
-type WalletNotificationUser = Awaited<ReturnType<typeof userRepository.findByWalletAccess>>[number];
-type NotificationWallet = NonNullable<Awaited<ReturnType<typeof walletRepository.findNameById>>>;
+type WalletNotificationUser = Awaited<
+  ReturnType<typeof userRepository.findByWalletAccess>
+>[number];
+type NotificationWallet = NonNullable<
+  Awaited<ReturnType<typeof walletRepository.findNameById>>
+>;
 
 function getWalletPushSettings(
   preferences: unknown,
-  walletId: string
+  walletId: string,
 ): WalletTelegramSettings | undefined {
   const prefs = preferences as Record<string, unknown> | null;
-  const telegram = prefs?.telegram as {
-    wallets?: Record<string, WalletTelegramSettings>;
-  } | undefined;
+  const telegram = prefs?.telegram as
+    | {
+        wallets?: Record<string, WalletTelegramSettings>;
+      }
+    | undefined;
 
   return telegram?.wallets?.[walletId];
 }
 
 function shouldSendTransactionNotification(
   tx: TransactionData,
-  walletSettings: WalletTelegramSettings
+  walletSettings: WalletTelegramSettings,
 ): boolean {
   /* v8 ignore start -- transaction type union is constrained by callers */
   switch (tx.type) {
@@ -63,9 +73,13 @@ function shouldSendTransactionNotification(
   /* v8 ignore stop */
 }
 
-function buildTransactionPushMessage(wallet: NotificationWallet, tx: TransactionData): PushMessage {
+function buildTransactionPushMessage(
+  wallet: NotificationWallet,
+  tx: TransactionData,
+): PushMessage {
   const amountBtc = (Number(tx.amount) / 100_000_000).toFixed(8);
-  const emoji = tx.type === 'received' ? '📥' : tx.type === 'sent' ? '📤' : '🔄';
+  const emoji =
+    tx.type === 'received' ? '📥' : tx.type === 'sent' ? '📤' : '🔄';
   const typeLabel = tx.type.charAt(0).toUpperCase() + tx.type.slice(1);
 
   return {
@@ -132,7 +146,10 @@ class PushService {
 
     for (const device of devices) {
       try {
-        const provider = getProviderForPlatform(this.registry, device.platform as PushPlatform);
+        const provider = getProviderForPlatform(
+          this.registry,
+          device.platform as PushPlatform,
+        );
 
         if (!provider) {
           log.debug(`No provider configured for platform "${device.platform}"`);
@@ -144,10 +161,15 @@ class PushService {
         if (result.success) {
           // Update last used timestamp
           await pushDeviceRepository.updateLastUsed(device.id);
-        } else if (result.error && isInvalidTokenError(new Error(result.error))) {
+        } else if (
+          isInvalidTokenError(result) ||
+          (result.error && isInvalidTokenError(new Error(result.error)))
+        ) {
           // Remove invalid tokens
           await pushDeviceRepository.deleteById(device.id);
-          log.info(`Removed invalid ${device.platform} token for user ${userId}`);
+          log.info(
+            `Removed invalid ${device.platform} token for user ${userId}`,
+          );
         }
       } catch (err) {
         const errorMsg = getErrorMessage(err);
@@ -156,7 +178,9 @@ class PushService {
         // Remove invalid tokens
         if (isInvalidTokenError(err)) {
           await pushDeviceRepository.deleteById(device.id);
-          log.info(`Removed invalid ${device.platform} token for user ${userId}`);
+          log.info(
+            `Removed invalid ${device.platform} token for user ${userId}`,
+          );
         } else {
           // Record non-token-related failures in dead letter queue
           await recordPushFailure(userId, device.token, errorMsg, 1, {
@@ -182,7 +206,7 @@ class PushService {
    */
   async notifyNewTransactions(
     walletId: string,
-    transactions: TransactionData[]
+    transactions: TransactionData[],
   ): Promise<void> {
     if (transactions.length === 0) return;
 
@@ -198,10 +222,17 @@ class PushService {
 
       // Get all users with access to this wallet, including push device counts
       // This avoids N+1 queries by fetching device counts in a single query
-      const users = await userRepository.findByWalletAccess(walletId, { includePushDeviceCount: true });
+      const users = await userRepository.findByWalletAccess(walletId, {
+        includePushDeviceCount: true,
+      });
 
       for (const user of users) {
-        await this.notifyUserNewTransactions(user, wallet, walletId, transactions);
+        await this.notifyUserNewTransactions(
+          user,
+          wallet,
+          walletId,
+          transactions,
+        );
       }
     } catch (err) {
       log.error(`Error sending push notifications: ${err}`);
@@ -212,7 +243,7 @@ class PushService {
     user: WalletNotificationUser,
     wallet: NotificationWallet,
     walletId: string,
-    transactions: TransactionData[]
+    transactions: TransactionData[],
   ): Promise<void> {
     // Skip if user has no push devices registered (count already fetched)
     if (user._count.pushDevices === 0) return;
@@ -238,7 +269,7 @@ class PushService {
     if (!this.initialized) {
       return [];
     }
-    return this.registry.getAll().map(p => p.name);
+    return this.registry.getAll().map((p) => p.name);
   }
 
   /**
@@ -307,7 +338,9 @@ export function isPushConfigured(): boolean {
       fcmConfigured = true;
     } catch (error) {
       /* v8 ignore next -- local file permission failure only disables optional FCM support */
-      log.debug('FCM service account not accessible', { error: getErrorMessage(error) });
+      log.debug('FCM service account not accessible', {
+        error: getErrorMessage(error),
+      });
     }
   }
 
@@ -316,14 +349,14 @@ export function isPushConfigured(): boolean {
 
 export async function sendPushNotification(
   userId: string,
-  message: PushMessage
+  message: PushMessage,
 ): Promise<void> {
   return getPushService().sendToUser(userId, message);
 }
 
 export async function notifyNewTransactions(
   walletId: string,
-  transactions: TransactionData[]
+  transactions: TransactionData[],
 ): Promise<void> {
   return getPushService().notifyNewTransactions(walletId, transactions);
 }

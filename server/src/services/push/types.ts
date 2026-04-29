@@ -22,7 +22,18 @@ export interface PushResult {
   success: boolean;
   messageId?: string;
   error?: string;
+  errorCode?: PushErrorCode;
 }
+
+export type PushErrorCode =
+  | 'provider_not_configured'
+  | 'device_token_invalid'
+  | 'device_token_unregistered'
+  | 'provider_auth_failed'
+  | 'provider_rate_limited'
+  | 'provider_unavailable'
+  | 'provider_rejected'
+  | 'request_failed';
 
 /**
  * Platform types supported by push providers
@@ -53,11 +64,22 @@ export interface IPushProvider extends IProvider {
   send(deviceToken: string, message: PushMessage): Promise<PushResult>;
 }
 
+function getPushErrorCode(err: unknown): PushErrorCode | null {
+  if (!err || typeof err !== 'object') return null;
+  const code = (err as { errorCode?: unknown }).errorCode;
+  return typeof code === 'string' ? (code as PushErrorCode) : null;
+}
+
 /**
  * Check if an error indicates the device token is invalid/expired
  * Used to determine if the token should be removed from the database
  */
 export function isInvalidTokenError(err: unknown): boolean {
+  const code = getPushErrorCode(err);
+  if (code === 'device_token_invalid' || code === 'device_token_unregistered') {
+    return true;
+  }
+
   const msg = String(err);
 
   // APNs error codes for invalid tokens

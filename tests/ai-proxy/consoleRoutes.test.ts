@@ -42,14 +42,16 @@ const enabledConfig = {
 const planningBody = {
   prompt: "How is this wallet doing?",
   maxToolCalls: 2,
-  tools: [{
-    name: "get_fee_estimates",
-    title: "Fee estimates",
-    description: "Read fees",
-    sensitivity: "public",
-    requiredScope: "authenticated",
-    inputFields: [],
-  }],
+  tools: [
+    {
+      name: "get_fee_estimates",
+      title: "Fee estimates",
+      description: "Read fees",
+      sensitivity: "public",
+      requiredScope: "authenticated",
+      inputFields: [],
+    },
+  ],
 };
 
 describe("AI proxy console routes", () => {
@@ -61,7 +63,10 @@ describe("AI proxy console routes", () => {
     const { app, routes } = makeApp();
     registerConsoleRoutes(app as any, { getAiConfig: () => enabledConfig });
 
-    expect([...routes.keys()]).toEqual(["/console/plan", "/console/synthesize"]);
+    expect([...routes.keys()]).toEqual([
+      "/console/plan",
+      "/console/synthesize",
+    ]);
   });
 
   it("plans console tool calls through the configured model", async () => {
@@ -102,12 +107,15 @@ describe("AI proxy console routes", () => {
     });
     registerConsoleRoutes(app as any, { getAiConfig: () => enabledConfig });
 
-    await routes.get("/console/synthesize")!({
-      body: {
-        prompt: "Summarize fees",
-        toolResults: [{ toolName: "get_fee_estimates", status: "completed" }],
+    await routes.get("/console/synthesize")!(
+      {
+        body: {
+          prompt: "Summarize fees",
+          toolResults: [{ toolName: "get_fee_estimates", status: "completed" }],
+        },
       },
-    }, res);
+      res,
+    );
 
     expect(mocks.callExternalAIWithMessagesResult).toHaveBeenCalledWith(
       enabledConfig,
@@ -134,7 +142,10 @@ describe("AI proxy console routes", () => {
     const disabledRes = makeResponse();
     await routes.get("/console/plan")!({ body: planningBody }, disabledRes);
     expect(disabledRes.status).toHaveBeenCalledWith(503);
-    expect(disabledRes.json).toHaveBeenCalledWith({ error: "AI is not enabled" });
+    expect(disabledRes.json).toHaveBeenCalledWith({
+      error: "AI is not enabled",
+      reason: "provider_not_configured",
+    });
 
     const unavailable = makeApp();
     const unavailableRes = makeResponse();
@@ -143,17 +154,41 @@ describe("AI proxy console routes", () => {
       reason: "timeout",
       message: "AI endpoint request timed out after 120000ms",
     });
-    registerConsoleRoutes(unavailable.app as any, { getAiConfig: () => enabledConfig });
-    await unavailable.routes.get("/console/synthesize")!({
-      body: {
-        prompt: "Summarize",
-        toolResults: [],
+    registerConsoleRoutes(unavailable.app as any, {
+      getAiConfig: () => enabledConfig,
+    });
+    await unavailable.routes.get("/console/synthesize")!(
+      {
+        body: {
+          prompt: "Summarize",
+          toolResults: [],
+        },
       },
-    }, unavailableRes);
+      unavailableRes,
+    );
     expect(unavailableRes.status).toHaveBeenCalledWith(504);
     expect(unavailableRes.json).toHaveBeenCalledWith({
       error: "AI endpoint request timed out after 120000ms",
       reason: "timeout",
+    });
+  });
+
+  it("returns Console setup reason codes for unconfigured AI results", async () => {
+    const { app, routes } = makeApp();
+    const res = makeResponse();
+    mocks.callExternalAIWithMessagesResult.mockResolvedValue({
+      ok: false,
+      reason: "not_configured",
+      message: "AI endpoint or model is not configured",
+    });
+
+    registerConsoleRoutes(app as any, { getAiConfig: () => enabledConfig });
+    await routes.get("/console/plan")!({ body: planningBody }, res);
+
+    expect(res.status).toHaveBeenCalledWith(503);
+    expect(res.json).toHaveBeenCalledWith({
+      error: "AI endpoint or model is not configured",
+      reason: "provider_not_configured",
     });
   });
 });

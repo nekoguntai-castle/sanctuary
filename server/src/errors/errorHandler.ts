@@ -9,13 +9,15 @@ import { Request, Response, NextFunction, RequestHandler } from 'express';
 import { Prisma } from '../generated/prisma/client';
 import {
   ApiError,
-  InternalError,
-  ConflictError,
   ForbiddenError,
+  InternalError,
   NotFoundError,
   ValidationError,
-  ErrorCodes,
 } from './ApiError';
+import {
+  isMappedPrismaKnownRequestErrorCode,
+  mapPrismaKnownRequestError,
+} from '../utils/errors';
 import { createLogger } from '../utils/logger';
 import { requestContext } from '../utils/requestContext';
 
@@ -24,58 +26,10 @@ const log = createLogger('MW:ERROR_HANDLER');
 function isCsrfForbiddenError(error: Error): boolean {
   const statusError = error as Error & { status?: number; statusCode?: number };
   return (
-    error.name === 'ForbiddenError'
-    && error.message === 'invalid csrf token'
-    && (statusError.status === 403 || statusError.statusCode === 403)
+    error.name === 'ForbiddenError' &&
+    error.message === 'invalid csrf token' &&
+    (statusError.status === 403 || statusError.statusCode === 403)
   );
-}
-
-/**
- * Map Prisma errors to API errors
- */
-function mapPrismaError(error: Prisma.PrismaClientKnownRequestError): ApiError {
-  switch (error.code) {
-    case 'P2002': {
-      // Unique constraint violation
-      const target = error.meta?.target;
-      let message = 'A record with this value already exists';
-
-      if (Array.isArray(target)) {
-        if (target.includes('fingerprint')) {
-          message = 'A device with this fingerprint already exists';
-        } else if (target.includes('username')) {
-          message = 'This username is already taken';
-        } else if (target.includes('email')) {
-          message = 'This email is already registered';
-        } else if (target.includes('name')) {
-          message = 'A record with this name already exists';
-        }
-      }
-
-      return new ConflictError(message, ErrorCodes.DUPLICATE_ENTRY, { target });
-    }
-
-    case 'P2025':
-      // Record not found
-      return new NotFoundError('The requested record was not found');
-
-    case 'P2003':
-      // Foreign key constraint violation
-      return new ValidationError('Referenced record does not exist', ErrorCodes.INVALID_INPUT);
-
-    case 'P2011':
-      // Required field missing
-      return new ValidationError('A required field is missing', ErrorCodes.MISSING_REQUIRED_FIELD);
-
-    case 'P2006':
-      // Invalid data type
-      return new ValidationError('Invalid data format provided', ErrorCodes.INVALID_INPUT);
-
-    default:
-      // Log unhandled Prisma error codes for investigation
-      log.error(`Unhandled Prisma error code: ${error.code}`, { meta: error.meta });
-      return new InternalError('Database operation failed', ErrorCodes.DATABASE_ERROR);
-  }
 }
 
 /**
@@ -92,14 +46,19 @@ export function errorHandler(
   _req: Request,
   res: Response,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _next: NextFunction
+  _next: NextFunction,
 ): void {
   // Get request ID from context for correlation
   const requestId = requestContext.getRequestId();
 
   // Handle Prisma errors
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
-    const apiError = mapPrismaError(error);
+    if (!isMappedPrismaKnownRequestErrorCode(error.code)) {
+      log.error(`Unhandled Prisma error code: ${error.code}`, {
+        meta: error.meta,
+      });
+    }
+    const apiError = mapPrismaKnownRequestError(error);
     res.status(apiError.statusCode).json(apiError.toResponse(requestId));
     return;
   }
@@ -177,7 +136,7 @@ export interface TypedRequest extends Omit<Request, 'params'> {
 }
 
 export function asyncHandler<T>(
-  fn: (req: TypedRequest, res: Response, next: NextFunction) => Promise<T>
+  fn: (req: TypedRequest, res: Response, next: NextFunction) => Promise<T>,
 ): RequestHandler {
   return (req: Request, res: Response, next: NextFunction) => {
     Promise.resolve(fn(req as TypedRequest, res, next)).catch(next);

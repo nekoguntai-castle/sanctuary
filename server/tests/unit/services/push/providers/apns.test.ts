@@ -32,7 +32,10 @@ vi.mock('jsonwebtoken', () => ({
 const mockFetch = vi.hoisted(() => vi.fn());
 vi.stubGlobal('fetch', mockFetch);
 
-import { APNsPushProvider, isAPNsConfigured } from '../../../../../src/services/push/providers/apns';
+import {
+  APNsPushProvider,
+  isAPNsConfigured,
+} from '../../../../../src/services/push/providers/apns';
 import type { PushMessage } from '../../../../../src/services/push/types';
 
 describe('APNsPushProvider', () => {
@@ -150,18 +153,22 @@ MHQCAQEEIDYHOxgLfR...mock...key
       delete process.env.APNS_KEY_ID;
 
       expect(() => (provider as any).getToken()).toThrow(
-        'APNs not configured: missing APNS_KEY_ID, APNS_TEAM_ID, or APNS_KEY_PATH'
+        'APNs not configured: missing APNS_KEY_ID, APNS_TEAM_ID, or APNS_KEY_PATH',
       );
     });
 
     it('sendNotification returns explicit config error when bundle ID is missing', async () => {
       delete process.env.APNS_BUNDLE_ID;
 
-      const result = await (provider as any).sendNotification('device-token', testMessage);
+      const result = await (provider as any).sendNotification(
+        'device-token',
+        testMessage,
+      );
 
       expect(result).toEqual({
         success: false,
         error: 'APNs not configured (missing APNS_BUNDLE_ID)',
+        errorCode: 'provider_not_configured',
       });
     });
 
@@ -187,7 +194,7 @@ MHQCAQEEIDYHOxgLfR...mock...key
 
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining('api.sandbox.push.apple.com'),
-        expect.any(Object)
+        expect.any(Object),
       );
     });
 
@@ -202,7 +209,7 @@ MHQCAQEEIDYHOxgLfR...mock...key
 
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining('api.push.apple.com'),
-        expect.any(Object)
+        expect.any(Object),
       );
     });
 
@@ -216,7 +223,7 @@ MHQCAQEEIDYHOxgLfR...mock...key
 
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining('/3/device/my-device-token-xyz'),
-        expect.any(Object)
+        expect.any(Object),
       );
     });
 
@@ -278,6 +285,41 @@ MHQCAQEEIDYHOxgLfR...mock...key
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('BadDeviceToken');
+      expect(result.errorCode).toBe('device_token_invalid');
+    });
+
+    it('normalizes APNs unregistered responses to stable error codes', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 410,
+        text: async () => JSON.stringify({ reason: 'Unregistered' }),
+      });
+
+      const result = await provider.send('expired-token', testMessage);
+
+      expect(result.success).toBe(false);
+      expect(result.errorCode).toBe('device_token_unregistered');
+    });
+
+    it('normalizes APNs auth and throttling responses to stable error codes', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        text: async () => JSON.stringify({ reason: 'Forbidden' }),
+      });
+      const authResult = await provider.send('device-token', testMessage);
+      expect(authResult.errorCode).toBe('provider_auth_failed');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        text: async () => JSON.stringify({ reason: 'TooManyRequests' }),
+      });
+      const rateLimitedResult = await provider.send(
+        'device-token',
+        testMessage,
+      );
+      expect(rateLimitedResult.errorCode).toBe('provider_rate_limited');
     });
 
     it('should handle non-JSON error response', async () => {
@@ -291,6 +333,7 @@ MHQCAQEEIDYHOxgLfR...mock...key
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('500');
+      expect(result.errorCode).toBe('provider_unavailable');
     });
 
     it('should handle network errors', async () => {
@@ -332,7 +375,7 @@ MHQCAQEEIDYHOxgLfR...mock...key
           keyid: 'KEYID123',
           issuer: 'TEAMID456',
           expiresIn: '55m',
-        })
+        }),
       );
     });
 
@@ -349,7 +392,10 @@ MHQCAQEEIDYHOxgLfR...mock...key
         headers: new Map([['apns-id', 'msg-id']]),
       });
 
-      const result = await uncachedProvider.send('device-token-uncached', testMessage);
+      const result = await uncachedProvider.send(
+        'device-token-uncached',
+        testMessage,
+      );
       expect(result.success).toBe(true);
       expect(mockReadFileSync).toHaveBeenCalledTimes(2);
     });

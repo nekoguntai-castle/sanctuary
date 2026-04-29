@@ -235,11 +235,21 @@ describe("Console API", () => {
       "AI provider is not configured for Sanctuary Console",
       503,
     );
+    const providerReasonError = new ApiError("unrelated message", 503, {
+      details: { reason: "provider_not_configured" },
+    });
+    const syncReasonError = new ApiError("unrelated message", 503, {
+      reason: "provider_config_sync_failed",
+    });
 
     expect(isConsoleFeatureDisabledError(featureError)).toBe(true);
     expect(isConsoleProviderSetupError(providerError)).toBe(true);
+    expect(isConsoleProviderSetupError(providerReasonError)).toBe(true);
+    expect(isConsoleProviderSetupError(syncReasonError)).toBe(true);
     expect(getConsoleSetupReason(featureError)).toBe("feature-disabled");
     expect(getConsoleSetupReason(providerError)).toBe("provider-setup");
+    expect(getConsoleSetupReason(providerReasonError)).toBe("provider-setup");
+    expect(getConsoleSetupReason(syncReasonError)).toBe("provider-setup");
     expect(getConsoleSetupReason(new ApiError("Denied", 403))).toBeNull();
   });
 });

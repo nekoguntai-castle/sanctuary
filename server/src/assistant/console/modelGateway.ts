@@ -58,6 +58,15 @@ export interface ConsoleGatewayContext {
   walletLimitApplied?: boolean;
 }
 
+type ConsoleProviderSetupReason =
+  | "provider_not_configured"
+  | "provider_config_sync_failed";
+
+interface ConsoleProxyFailure {
+  message: string | null;
+  reason: ConsoleProviderSetupReason | null;
+}
+
 function getConsoleGatewayTimeoutMs(): number {
   const parsed = Number.parseInt(
     process.env.CONSOLE_GATEWAY_TIMEOUT_MS || "",
@@ -68,17 +77,28 @@ function getConsoleGatewayTimeoutMs(): number {
     : CONSOLE_GATEWAY_TIMEOUT_DEFAULT_MS;
 }
 
+function consoleSetupError(
+  message: string,
+  reason: ConsoleProviderSetupReason,
+): ServiceUnavailableError {
+  return new ServiceUnavailableError(message, "SERVICE_UNAVAILABLE", {
+    reason,
+  });
+}
+
 async function ensureConfiguredProvider(): Promise<ConsoleGatewayProviderState> {
   const config = await getAIConfig();
   if (!config.enabled || !config.endpoint || !config.model) {
-    throw new ServiceUnavailableError(
+    throw consoleSetupError(
       "AI provider is not configured for Sanctuary Console",
+      "provider_not_configured",
     );
   }
   const synced = await syncConfigToContainer(config);
   if (!synced) {
-    throw new ServiceUnavailableError(
+    throw consoleSetupError(
       "AI provider configuration could not be synced for Sanctuary Console",
+      "provider_config_sync_failed",
     );
   }
   return {
@@ -100,16 +120,17 @@ async function fetchConsoleGateway<TResponse>(
     });
 
     if (!response.ok) {
-      const proxyError = await readProxyError(response);
+      const proxyFailure = await readProxyFailure(response);
       throw new ServiceUnavailableError(
-        proxyError
-          ? `AI proxy ${path} request failed: ${proxyError}`
+        proxyFailure.message
+          ? `AI proxy ${path} request failed: ${proxyFailure.message}`
           : `AI proxy ${path} request failed`,
         "SERVICE_UNAVAILABLE",
         {
           path,
           status: response.status,
-          ...(proxyError ? { proxyError } : {}),
+          ...(proxyFailure.message ? { proxyError: proxyFailure.message } : {}),
+          ...(proxyFailure.reason ? { reason: proxyFailure.reason } : {}),
         },
       );
     }
@@ -127,18 +148,42 @@ async function fetchConsoleGateway<TResponse>(
   }
 }
 
-async function readProxyError(response: Response): Promise<string | null> {
+function normalizeConsoleProviderSetupReason(
+  reason: unknown,
+): ConsoleProviderSetupReason | null {
+  switch (reason) {
+    case "provider_not_configured":
+    case "not_configured":
+      return "provider_not_configured";
+    case "provider_config_sync_failed":
+      return "provider_config_sync_failed";
+    default:
+      return null;
+  }
+}
+
+async function readProxyFailure(
+  response: Response,
+): Promise<ConsoleProxyFailure> {
   try {
     const body = (await response.json()) as {
       error?: unknown;
       message?: unknown;
+      reason?: unknown;
     };
-    if (typeof body.error === "string") return body.error;
-    if (typeof body.message === "string") return body.message;
+    const message =
+      typeof body.error === "string"
+        ? body.error
+        : typeof body.message === "string"
+          ? body.message
+          : null;
+    return {
+      message,
+      reason: normalizeConsoleProviderSetupReason(body.reason),
+    };
   } catch {
-    return null;
+    return { message: null, reason: null };
   }
-  return null;
 }
 
 export async function planConsoleTools(input: {

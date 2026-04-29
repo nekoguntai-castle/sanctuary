@@ -11,8 +11,11 @@ import { BasePushProvider } from './base';
 import { createLogger } from '../../../utils/logger';
 import { getErrorMessage } from '../../../utils/errors';
 import { safeJsonParseUntyped } from '../../../utils/safeJson';
-import { createCircuitBreaker, type CircuitBreaker } from '../../circuitBreaker';
-import type { PushMessage, PushResult } from '../types';
+import {
+  createCircuitBreaker,
+  type CircuitBreaker,
+} from '../../circuitBreaker';
+import type { PushErrorCode, PushMessage, PushResult } from '../types';
 
 const log = createLogger('PUSH:SVC_FCM');
 
@@ -22,7 +25,24 @@ interface ServiceAccount {
   project_id: string;
 }
 
+interface FcmErrorDetail {
+  errorCode?: unknown;
+}
+
+interface FcmErrorResponse {
+  error?: {
+    code?: unknown;
+    message?: unknown;
+    status?: unknown;
+    details?: FcmErrorDetail[];
+  };
+}
+
 const FCM_PROJECT_ID_PATTERN = /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/;
+
+function pushProviderError(message: string, errorCode: PushErrorCode): Error {
+  return Object.assign(new Error(message), { errorCode });
+}
 
 function buildFcmSendUrl(projectId: string): string {
   const normalizedProjectId = projectId.trim();
@@ -30,7 +50,38 @@ function buildFcmSendUrl(projectId: string): string {
     throw new Error('FCM service account project_id is invalid');
   }
 
-  return new URL(`/v1/projects/${normalizedProjectId}/messages:send`, 'https://fcm.googleapis.com').toString();
+  return new URL(
+    `/v1/projects/${normalizedProjectId}/messages:send`,
+    'https://fcm.googleapis.com',
+  ).toString();
+}
+
+function getFcmProviderErrorCode(errorJson: FcmErrorResponse): string | null {
+  const detail = errorJson.error?.details?.find(
+    (item) => typeof item.errorCode === 'string',
+  );
+  return typeof detail?.errorCode === 'string' ? detail.errorCode : null;
+}
+
+function normalizeFCMErrorCode(
+  status: number,
+  errorJson: FcmErrorResponse,
+  message: string,
+): PushErrorCode {
+  const providerCode = getFcmProviderErrorCode(errorJson);
+  if (providerCode === 'UNREGISTERED') return 'device_token_unregistered';
+  if (
+    message.includes('registration-token-not-registered') ||
+    message.includes('invalid-registration-token') ||
+    message.includes('InvalidRegistration') ||
+    message.toLowerCase().includes('invalid registration token')
+  ) {
+    return 'device_token_invalid';
+  }
+  if (status === 401 || status === 403) return 'provider_auth_failed';
+  if (status === 429) return 'provider_rate_limited';
+  if (status >= 500) return 'provider_unavailable';
+  return 'provider_rejected';
 }
 
 export class FCMPushProvider extends BasePushProvider {
@@ -70,13 +121,19 @@ export class FCMPushProvider extends BasePushProvider {
 
     try {
       const content = fs.readFileSync(serviceAccountPath, 'utf8');
-      this.serviceAccountCache = safeJsonParseUntyped(content, null, 'FCM service account');
+      this.serviceAccountCache = safeJsonParseUntyped(
+        content,
+        null,
+        'FCM service account',
+      );
       this.configuredCache = this.serviceAccountCache !== null;
       if (this.configuredCache) {
         log.debug('FCM service account loaded and cached');
       }
     } catch (error) {
-      log.debug('Failed to load FCM service account', { error: getErrorMessage(error) });
+      log.debug('Failed to load FCM service account', {
+        error: getErrorMessage(error),
+      });
       this.configuredCache = false;
     }
   }
@@ -95,7 +152,9 @@ export class FCMPushProvider extends BasePushProvider {
     if (this.serviceAccountCache) {
       return this.serviceAccountCache;
     }
-    throw new Error('FCM not configured: missing or unreadable FCM_SERVICE_ACCOUNT');
+    throw new Error(
+      'FCM not configured: missing or unreadable FCM_SERVICE_ACCOUNT',
+    );
   }
 
   /**
@@ -121,7 +180,7 @@ export class FCMPushProvider extends BasePushProvider {
         exp: now + 3600,
       },
       serviceAccount.private_key,
-      { algorithm: 'RS256' }
+      { algorithm: 'RS256' },
     );
 
     // Exchange JWT for access token
@@ -137,7 +196,10 @@ export class FCMPushProvider extends BasePushProvider {
       throw new Error(`FCM OAuth failed (${response.status}): ${errorText}`);
     }
 
-    const data = await response.json() as { access_token: string; expires_in: number };
+    const data = (await response.json()) as {
+      access_token: string;
+      expires_in: number;
+    };
     this.accessToken = {
       token: data.access_token,
       // Refresh 60 seconds before expiry
@@ -155,7 +217,7 @@ export class FCMPushProvider extends BasePushProvider {
    */
   protected async sendNotification(
     deviceToken: string,
-    message: PushMessage
+    message: PushMessage,
   ): Promise<PushResult> {
     return this.fcmCircuit.execute(async () => {
       const serviceAccount = this.getServiceAccount();
@@ -185,7 +247,7 @@ export class FCMPushProvider extends BasePushProvider {
       const response = await fetch(url, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${accessToken}`,
+          Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
@@ -194,23 +256,42 @@ export class FCMPushProvider extends BasePushProvider {
 
       if (!response.ok) {
         const errorBody = await response.text();
-        const errorJson = safeJsonParseUntyped<Record<string, unknown>>(errorBody, {}, 'FCM error response');
+        const errorJson = safeJsonParseUntyped<FcmErrorResponse>(
+          errorBody,
+          {},
+          'FCM error response',
+        );
 
-        const errorMsg = (errorJson as { error?: { message?: string } }).error?.message ||
-                         errorBody ||
-                         `HTTP ${response.status}`;
+        const errorMsg =
+          typeof errorJson.error?.message === 'string'
+            ? errorJson.error.message
+            : errorBody || `HTTP ${response.status}`;
+        const errorCode = normalizeFCMErrorCode(
+          response.status,
+          errorJson,
+          errorMsg,
+        );
 
         // 5xx = service outage, throw to trip circuit breaker
         if (response.status >= 500) {
-          throw new Error(`FCM ${response.status}: ${errorMsg}`);
+          throw pushProviderError(
+            `FCM ${response.status}: ${errorMsg}`,
+            errorCode,
+          );
         }
 
         // 4xx = client error (invalid token, etc.), return without tripping circuit
-        return { success: false, error: `FCM ${response.status}: ${errorMsg}` };
+        return {
+          success: false,
+          error: `FCM ${response.status}: ${errorMsg}`,
+          errorCode,
+        };
       }
 
-      const result = await response.json() as { name: string };
-      log.debug(`FCM notification sent to device ${deviceToken.slice(0, 8)}...`);
+      const result = (await response.json()) as { name: string };
+      log.debug(
+        `FCM notification sent to device ${deviceToken.slice(0, 8)}...`,
+      );
       return {
         success: true,
         messageId: result.name,
@@ -237,7 +318,9 @@ export function isFCMConfigured(): boolean {
     _fcmConfiguredCache = true;
     return true;
   } catch (error) {
-    log.debug('FCM service account not accessible', { error: getErrorMessage(error) });
+    log.debug('FCM service account not accessible', {
+      error: getErrorMessage(error),
+    });
     _fcmConfiguredCache = false;
     return false;
   }

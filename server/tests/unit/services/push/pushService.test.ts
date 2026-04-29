@@ -30,7 +30,10 @@ const mockProvider = {
 };
 const mockRegistry = {
   getAll: vi.fn(() => [mockProvider]),
-  getHealth: vi.fn().mockResolvedValue({ healthyProviders: 1, providers: [{ name: 'mock', healthy: true }] }),
+  getHealth: vi.fn().mockResolvedValue({
+    healthyProviders: 1,
+    providers: [{ name: 'mock', healthy: true }],
+  }),
   shutdown: vi.fn(),
 };
 
@@ -40,8 +43,10 @@ const mockGetProviderForPlatform = vi.fn();
 vi.mock('../../../../src/services/push/providers', () => ({
   createPushProviderRegistry: vi.fn(() => mockRegistry),
   initializePushProviders: vi.fn(),
-  getProviderForPlatform: (...args: unknown[]) => mockGetProviderForPlatform(...args),
-  hasConfiguredProviders: (...args: unknown[]) => mockHasConfiguredProviders(...args),
+  getProviderForPlatform: (...args: unknown[]) =>
+    mockGetProviderForPlatform(...args),
+  hasConfiguredProviders: (...args: unknown[]) =>
+    mockHasConfiguredProviders(...args),
 }));
 
 // Mock logger
@@ -132,8 +137,20 @@ describe('Push Service', () => {
 
     it('should send to multiple devices', async () => {
       const devices = [
-        { id: 'device-1', userId, platform: 'ios', token: 'apns-token', lastUsedAt: new Date() },
-        { id: 'device-2', userId, platform: 'android', token: 'fcm-token', lastUsedAt: new Date() },
+        {
+          id: 'device-1',
+          userId,
+          platform: 'ios',
+          token: 'apns-token',
+          lastUsedAt: new Date(),
+        },
+        {
+          id: 'device-2',
+          userId,
+          platform: 'android',
+          token: 'fcm-token',
+          lastUsedAt: new Date(),
+        },
       ];
 
       mockPrismaClient.pushDevice.findMany.mockResolvedValue(devices);
@@ -165,7 +182,10 @@ describe('Push Service', () => {
 
       mockPrismaClient.pushDevice.findMany.mockResolvedValue([device]);
       mockGetProviderForPlatform.mockReturnValue(mockProvider);
-      mockProvider.send.mockResolvedValue({ success: false, error: 'Some error' });
+      mockProvider.send.mockResolvedValue({
+        success: false,
+        error: 'Some error',
+      });
 
       await sendPushNotification(userId, message);
 
@@ -223,7 +243,9 @@ describe('Push Service', () => {
 
       mockPrismaClient.pushDevice.findMany.mockResolvedValue([device]);
       mockGetProviderForPlatform.mockReturnValue(mockProvider);
-      mockProvider.send.mockRejectedValue(new Error('messaging/registration-token-not-registered'));
+      mockProvider.send.mockRejectedValue(
+        new Error('messaging/registration-token-not-registered'),
+      );
 
       await sendPushNotification(userId, message);
 
@@ -289,6 +311,30 @@ describe('Push Service', () => {
         where: { id: 'device-1' },
       });
     });
+
+    it('should prefer structured invalid token error codes from provider results', async () => {
+      const device = {
+        id: 'device-1',
+        userId,
+        platform: 'android',
+        token: 'expired-token',
+        lastUsedAt: new Date(),
+      };
+
+      mockPrismaClient.pushDevice.findMany.mockResolvedValue([device]);
+      mockGetProviderForPlatform.mockReturnValue(mockProvider);
+      mockProvider.send.mockResolvedValue({
+        success: false,
+        error: 'generic provider message',
+        errorCode: 'device_token_unregistered',
+      });
+
+      await sendPushNotification(userId, message);
+
+      expect(mockPrismaClient.pushDevice.delete).toHaveBeenCalledWith({
+        where: { id: 'device-1' },
+      });
+    });
   });
 
   describe('notifyNewTransactions', () => {
@@ -344,7 +390,13 @@ describe('Push Service', () => {
       ]);
 
       mockPrismaClient.pushDevice.findMany.mockResolvedValue([
-        { id: 'd1', userId: 'user-1', platform: 'ios', token: 'token1', lastUsedAt: new Date() },
+        {
+          id: 'd1',
+          userId: 'user-1',
+          platform: 'ios',
+          token: 'token1',
+          lastUsedAt: new Date(),
+        },
       ]);
 
       await notifyNewTransactions(walletId, [
@@ -356,7 +408,7 @@ describe('Push Service', () => {
         expect.objectContaining({
           title: expect.stringContaining('Received'),
           body: expect.stringContaining('My Wallet'),
-        })
+        }),
       );
     });
 
@@ -482,7 +534,13 @@ describe('Push Service', () => {
       ]);
 
       mockPrismaClient.pushDevice.findMany.mockResolvedValue([
-        { id: 'd1', userId: 'user-1', platform: 'android', token: 'fcm-token', lastUsedAt: new Date() },
+        {
+          id: 'd1',
+          userId: 'user-1',
+          platform: 'android',
+          token: 'fcm-token',
+          lastUsedAt: new Date(),
+        },
       ]);
 
       await notifyNewTransactions(walletId, [
@@ -493,7 +551,7 @@ describe('Push Service', () => {
         'fcm-token',
         expect.objectContaining({
           title: expect.stringContaining('Sent'),
-        })
+        }),
       );
     });
 
@@ -524,7 +582,13 @@ describe('Push Service', () => {
       ]);
 
       mockPrismaClient.pushDevice.findMany.mockResolvedValue([
-        { id: 'd1', userId: 'user-1', platform: 'ios', token: 'token', lastUsedAt: new Date() },
+        {
+          id: 'd1',
+          userId: 'user-1',
+          platform: 'ios',
+          token: 'token',
+          lastUsedAt: new Date(),
+        },
       ]);
 
       await notifyNewTransactions(walletId, [
@@ -545,13 +609,15 @@ describe('Push Service', () => {
     });
 
     it('should handle errors gracefully', async () => {
-      mockPrismaClient.wallet.findUnique.mockRejectedValue(new Error('Database error'));
+      mockPrismaClient.wallet.findUnique.mockRejectedValue(
+        new Error('Database error'),
+      );
 
       // Should not throw
       await expect(
         notifyNewTransactions(walletId, [
           { txid: 'tx1', type: 'received', amount: BigInt(100000) },
-        ])
+        ]),
       ).resolves.not.toThrow();
     });
   });
@@ -559,36 +625,67 @@ describe('Push Service', () => {
   describe('Invalid Token Detection', () => {
     const testCases = [
       { error: '410 Gone', shouldRemove: true, description: 'APNs 410 status' },
-      { error: 'BadDeviceToken', shouldRemove: true, description: 'APNs BadDeviceToken' },
-      { error: 'Unregistered', shouldRemove: true, description: 'APNs Unregistered' },
-      { error: 'messaging/registration-token-not-registered', shouldRemove: true, description: 'FCM not registered' },
-      { error: 'messaging/invalid-registration-token', shouldRemove: true, description: 'FCM invalid token' },
-      { error: 'InvalidRegistration', shouldRemove: true, description: 'FCM legacy error' },
-      { error: 'Network timeout', shouldRemove: false, description: 'network error' },
-      { error: 'Server error', shouldRemove: false, description: 'server error' },
+      {
+        error: 'BadDeviceToken',
+        shouldRemove: true,
+        description: 'APNs BadDeviceToken',
+      },
+      {
+        error: 'Unregistered',
+        shouldRemove: true,
+        description: 'APNs Unregistered',
+      },
+      {
+        error: 'messaging/registration-token-not-registered',
+        shouldRemove: true,
+        description: 'FCM not registered',
+      },
+      {
+        error: 'messaging/invalid-registration-token',
+        shouldRemove: true,
+        description: 'FCM invalid token',
+      },
+      {
+        error: 'InvalidRegistration',
+        shouldRemove: true,
+        description: 'FCM legacy error',
+      },
+      {
+        error: 'Network timeout',
+        shouldRemove: false,
+        description: 'network error',
+      },
+      {
+        error: 'Server error',
+        shouldRemove: false,
+        description: 'server error',
+      },
     ];
 
-    it.each(testCases)('should $shouldRemove remove device on $description', async ({ error, shouldRemove }) => {
-      const device = {
-        id: 'device-1',
-        userId: 'user-1',
-        platform: 'ios',
-        token: 'token',
-        lastUsedAt: new Date(),
-      };
+    it.each(testCases)(
+      'should $shouldRemove remove device on $description',
+      async ({ error, shouldRemove }) => {
+        const device = {
+          id: 'device-1',
+          userId: 'user-1',
+          platform: 'ios',
+          token: 'token',
+          lastUsedAt: new Date(),
+        };
 
-      mockPrismaClient.pushDevice.findMany.mockResolvedValue([device]);
-      mockGetProviderForPlatform.mockReturnValue(mockProvider);
-      mockProvider.send.mockRejectedValue(new Error(error));
+        mockPrismaClient.pushDevice.findMany.mockResolvedValue([device]);
+        mockGetProviderForPlatform.mockReturnValue(mockProvider);
+        mockProvider.send.mockRejectedValue(new Error(error));
 
-      await sendPushNotification('user-1', { title: 'Test', body: 'Test' });
+        await sendPushNotification('user-1', { title: 'Test', body: 'Test' });
 
-      if (shouldRemove) {
-        expect(mockPrismaClient.pushDevice.delete).toHaveBeenCalled();
-      } else {
-        expect(mockPrismaClient.pushDevice.delete).not.toHaveBeenCalled();
-      }
-    });
+        if (shouldRemove) {
+          expect(mockPrismaClient.pushDevice.delete).toHaveBeenCalled();
+        } else {
+          expect(mockPrismaClient.pushDevice.delete).not.toHaveBeenCalled();
+        }
+      },
+    );
   });
 
   describe('service helpers', () => {
@@ -637,7 +734,9 @@ describe('Push Service', () => {
   describe('isPushConfigured fcm file path', () => {
     it('returns true when readable FCM service account path is configured', () => {
       const fs = require('fs');
-      const accessSpy = vi.spyOn(fs, 'accessSync').mockImplementation(() => undefined);
+      const accessSpy = vi
+        .spyOn(fs, 'accessSync')
+        .mockImplementation(() => undefined);
 
       const original = process.env;
       process.env = { ...original };

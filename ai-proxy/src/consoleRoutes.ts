@@ -19,9 +19,18 @@ interface ConsoleRoutesDeps {
   getAiConfig(): AiConfig;
 }
 
+type ConsoleAiFailureReason =
+  | "provider_not_configured"
+  | Exclude<
+      Extract<AiRequestResult, { ok: false }>["reason"],
+      "not_configured"
+    >;
+
 function requireEnabledConfig(aiConfig: AiConfig, res: Response): boolean {
   if (aiConfig.enabled) return true;
-  res.status(503).json({ error: "AI is not enabled" });
+  res
+    .status(503)
+    .json({ error: "AI is not enabled", reason: "provider_not_configured" });
   return false;
 }
 
@@ -42,13 +51,21 @@ function failureStatus(
   }
 }
 
+function consoleFailureReason(
+  result: Extract<AiRequestResult, { ok: false }>,
+): ConsoleAiFailureReason {
+  return result.reason === "not_configured"
+    ? "provider_not_configured"
+    : result.reason;
+}
+
 function sendAiFailure(
   res: Response,
   result: Extract<AiRequestResult, { ok: false }>,
 ): Response {
   return res.status(failureStatus(result)).json({
     error: result.message,
-    reason: result.reason,
+    reason: consoleFailureReason(result),
     ...(result.status === undefined ? {} : { upstreamStatus: result.status }),
   });
 }
