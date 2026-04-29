@@ -86,6 +86,83 @@ describe("price provider settings", () => {
     expect(mockSystemSettings.setJson).not.toHaveBeenCalled();
   });
 
+  it("falls back to defaults when stored DB config has no known providers", async () => {
+    mockSystemSettings.value = JSON.stringify({
+      version: 1,
+      enabled: ["unknown"],
+      updatedAt: "2026-04-29T00:00:00.000Z",
+      updatedBy: null,
+    });
+
+    const config = await readPriceProviderConfig({} as NodeJS.ProcessEnv);
+
+    expect(config.enabled).toEqual([
+      "mempool",
+      "coingecko",
+      "kraken",
+      "coinbase",
+    ]);
+    expect(mockSystemSettings.setJson).not.toHaveBeenCalled();
+  });
+
+  it("falls back to bootstrap providers when stored DB config is invalid", async () => {
+    mockSystemSettings.value = JSON.stringify({
+      version: 2,
+      enabled: ["mempool"],
+    });
+
+    const config = await readPriceProviderConfig({
+      PRICE_PROVIDERS_ENABLED: "kraken",
+    } as NodeJS.ProcessEnv);
+
+    expect(config.enabled).toEqual(["kraken"]);
+    expect(mockSystemSettings.setJson).not.toHaveBeenCalled();
+  });
+
+  it("falls back to bootstrap providers when stored DB config is not JSON", async () => {
+    mockSystemSettings.value = "{not-json";
+
+    const config = await readPriceProviderConfig({} as NodeJS.ProcessEnv);
+
+    expect(config.enabled).toEqual([
+      "mempool",
+      "coingecko",
+      "kraken",
+      "coinbase",
+    ]);
+    expect(mockSystemSettings.setJson).not.toHaveBeenCalled();
+  });
+
+  it("falls back to defaults when legacy env resolves no enabled providers", async () => {
+    const config = await readPriceProviderConfig({
+      PRICE_PROVIDERS_ENABLED: "unknown",
+    } as NodeJS.ProcessEnv);
+
+    expect(config.enabled).toEqual([
+      "mempool",
+      "coingecko",
+      "kraken",
+      "coinbase",
+    ]);
+    expect(mockSystemSettings.setJson).toHaveBeenCalledWith(
+      SystemSettingKeys.PRICE_PROVIDER_CONFIG,
+      expect.objectContaining({
+        enabled: ["mempool", "coingecko", "kraken", "coinbase"],
+      }),
+    );
+  });
+
+  it("falls back to bootstrap providers when DB access fails", async () => {
+    mockSystemSettings.getValue.mockRejectedValueOnce(new Error("db down"));
+
+    const config = await readPriceProviderConfig({
+      PRICE_PROVIDERS_ENABLED: "coinbase",
+    } as NodeJS.ProcessEnv);
+
+    expect(config.enabled).toEqual(["coinbase"]);
+    expect(mockSystemSettings.setJson).not.toHaveBeenCalled();
+  });
+
   it("filters unknown and duplicate provider names on write", async () => {
     const config = await writePriceProviderConfig(
       ["binance", "unknown", "binance", "mempool"],
@@ -94,6 +171,27 @@ describe("price provider settings", () => {
 
     expect(config.enabled).toEqual(["mempool", "binance"]);
     expect(config.updatedBy).toBe("admin-1");
+  });
+
+  it("enables a known provider and preserves canonical provider order", async () => {
+    mockSystemSettings.value = JSON.stringify({
+      version: 1,
+      enabled: ["mempool"],
+      updatedAt: "2026-04-29T00:00:00.000Z",
+      updatedBy: null,
+    });
+
+    const config = await setPriceProviderEnabled("BINANCE", true, "admin-1");
+
+    expect(config.enabled).toEqual(["mempool", "binance"]);
+    expect(config.updatedBy).toBe("admin-1");
+    expect(mockSystemSettings.setJson).toHaveBeenCalledWith(
+      SystemSettingKeys.PRICE_PROVIDER_CONFIG,
+      expect.objectContaining({
+        enabled: ["mempool", "binance"],
+        updatedBy: "admin-1",
+      }),
+    );
   });
 
   it("rejects disabling the last enabled provider", async () => {
