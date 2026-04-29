@@ -6,6 +6,7 @@
  */
 
 import { BasePriceProvider } from './base';
+import type { PriceProviderRuntimeOptions } from './base';
 import type { PriceData } from '../types';
 
 interface CoinbasePriceResponse {
@@ -17,11 +18,12 @@ interface CoinbasePriceResponse {
 }
 
 export class CoinbasePriceProvider extends BasePriceProvider {
-  constructor() {
+  constructor(options: PriceProviderRuntimeOptions = {}) {
     super({
       name: 'coinbase',
       priority: 70, // Fourth priority
       supportedCurrencies: ['USD', 'EUR', 'GBP', 'CAD'],
+      registerCircuitBreaker: options.registerCircuitBreaker,
     });
   }
 

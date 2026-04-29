@@ -6,6 +6,7 @@
  */
 
 import { BasePriceProvider } from './base';
+import type { PriceProviderRuntimeOptions } from './base';
 import type { PriceData } from '../types';
 
 interface MempoolPriceResponse {
@@ -13,11 +14,12 @@ interface MempoolPriceResponse {
 }
 
 export class MempoolPriceProvider extends BasePriceProvider {
-  constructor() {
+  constructor(options: PriceProviderRuntimeOptions = {}) {
     super({
       name: 'mempool',
       priority: 100, // Highest priority - most reliable
       supportedCurrencies: ['USD', 'EUR', 'GBP', 'CAD', 'CHF', 'AUD', 'JPY'],
+      registerCircuitBreaker: options.registerCircuitBreaker,
     });
   }
 

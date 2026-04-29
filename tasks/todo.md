@@ -1,3 +1,55 @@
+# Active Task: Runtime Ops Hardening Implementation 2026-04-29
+
+Status: complete
+
+Goal: implement the runtime follow-ups from the ops investigation: Redis queue-safe eviction defaults, price provider configurability with UI diagnostics, and one-shot Electrum block-height retry.
+
+## Plan
+
+- [x] Change the Compose Redis default from cache-style eviction to queue-safe `noeviction`.
+- [x] Add backend price-provider enablement/exclusion so restricted providers such as Binance can be removed from health churn without code edits.
+- [x] Add a backend contract to test each price provider individually and report working/failing state.
+- [x] Add a UI surface in Node Configuration > External Services, and keep Settings > Services aligned, so operators can test individual price providers and see what works from the running deployment.
+- [x] Harden provider diagnostics as an admin-only operator surface before PR delivery.
+- [x] Add one reconnect-and-retry path for transient Electrum block-height/status connection closes.
+- [x] Cover edge cases with focused backend/frontend tests and run type/lizard/formatting checks.
+
+## Review
+
+- Redis now starts with `maxmemory-policy noeviction`; runtime verification inside `sanctuary-redis-1` returned `noeviction`.
+- Price providers are configured from `PRICE_PROVIDERS_ENABLED`/`PRICE_PROVIDERS_DISABLED`. Docker Compose and GHCR Compose default `PRICE_PROVIDERS_DISABLED` to `binance`, while allowing operators to set it empty to include Binance.
+- Added admin-only provider diagnostics API endpoints: provider metadata/status, test-all, and test-one. Diagnostic probes use unregistered provider instances and bypass provider circuit breakers, so operator tests do not pollute service health state; test-all runs probes sequentially to avoid request fan-out.
+- Added the diagnostics UI in Node Configuration > External Services and in Settings > Services for admin users. The existing price provider selector now loads enabled providers from the backend, and non-auto provider selection uses that provider for refreshes.
+- Block height now reconnects and retries once on transient socket-close style errors before falling back to cache or surfacing the failure.
+- Runtime verification after rebuild: Sanctuary containers are healthy, the migration container exited 0, the authenticated provider diagnostics report Binance disabled, the provider test reports mempool/CoinGecko/Kraken/Coinbase working and Binance failing with HTTP 451 as a disabled provider, `/api/v1/health` is degraded only by the pre-existing 86% disk usage warning, and recent backend/worker/Redis/frontend/gateway/AI logs show no new error/warn/failure matches after the final diagnostic-path fix.
+- Verification passed: focused server provider/API/OpenAPI/block-height tests, focused frontend diagnostics/settings/context/API tests, app/test/server typechecks, OpenAPI route coverage, API body validation, lizard quality gate, `git diff --check`, frontend production build via stack rebuild, and two full stack rebuilds.
+
+---
+
+# Active Task: Runtime Ops Follow-Up 2026-04-29
+
+Status: complete
+
+Goal: investigate the remaining runtime findings after PR #227: Binance HTTP 451 provider churn, Redis eviction policy warning, and the one-off block-height connection error.
+
+## Plan
+
+- [x] Inspect running logs and health output for Binance, Redis, and block-height behavior.
+- [x] Inspect local configuration/code paths that control provider selection, Redis policy validation, and block-height fetch/retry behavior.
+- [x] Classify each finding as configuration, external dependency, transient runtime noise, or code issue.
+- [x] Recommend or implement targeted fixes only where the codebase is actually responsible.
+- [x] Document conclusions and verification.
+
+## Review
+
+- Binance: the running host receives HTTP 451 directly from `https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT` with Binance's restricted-location message. Other price providers tested from the same host respond successfully. Code registers Binance unconditionally in `server/src/services/price/providers/index.ts`, so the provider circuit retries every health interval and keeps `/api/v1/health` degraded even though higher-priority providers are healthy.
+- Redis: runtime Redis confirms `maxmemory-policy=allkeys-lru` and `maxmemory=134217728`. This comes directly from `docker-compose.yml` (`--maxmemory 128mb --maxmemory-policy allkeys-lru`). That policy is unsafe for BullMQ because Redis may evict queue/job keys; the durable default should be `noeviction`, or queues and cache should use separate Redis instances if cache eviction is desired.
+- Block height: one `/api/v1/bitcoin/status` request saw `Connection ended` while calling Electrum block height. The route recovered on subsequent requests, `/api/v1/bitcoin/status` returned HTTP 200 with block height `947119`, and health reports Electrum healthy. This is a transient upstream/socket close. The current code reconnects on the next request and can fall back to cached block height, but it does not retry the failed idempotent height request once before logging an error.
+- Recommended code follow-ups: add configurable price provider enablement/exclusion and default away from Binance in restricted deployments; change Compose Redis policy to `noeviction` for queue safety; optionally add one reconnect-and-retry for Electrum block-height/status reads so a single socket close does not surface as an error when recovery is immediate.
+- Verification: backend/Redis logs, `redis-cli CONFIG GET maxmemory-policy/maxmemory` inside the container, direct provider `curl` checks, `/api/v1/health`, and `/api/v1/bitcoin/status`.
+
+---
+
 # Active Task: BullMQ Safe Job IDs Runtime Fix 2026-04-29
 
 Status: complete

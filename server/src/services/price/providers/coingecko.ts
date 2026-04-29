@@ -8,6 +8,7 @@
 
 import { createCircuitBreaker, CircuitBreaker } from '../../circuitBreaker';
 import { BasePriceProvider } from './base';
+import type { PriceProviderRuntimeOptions } from './base';
 import type { IPriceProviderWithHistory, PriceData, PriceHistoryPoint } from '../types';
 
 interface CoinGeckoPriceResponse {
@@ -31,18 +32,23 @@ interface CoinGeckoMarketChartResponse {
 export class CoinGeckoPriceProvider extends BasePriceProvider implements IPriceProviderWithHistory {
   private marketChartCircuit: CircuitBreaker<PriceHistoryPoint[]>;
 
-  constructor() {
+  constructor(options: PriceProviderRuntimeOptions = {}) {
     super({
       name: 'coingecko',
       priority: 90, // Second priority
       supportedCurrencies: ['USD', 'EUR', 'GBP', 'CAD', 'CHF', 'AUD', 'JPY', 'CNY', 'KRW', 'INR'],
+      registerCircuitBreaker: options.registerCircuitBreaker,
     });
 
-    this.marketChartCircuit = createCircuitBreaker<PriceHistoryPoint[]>({
+    const marketChartCircuitConfig = {
       name: 'price-coingecko-chart',
       failureThreshold: 3,
       recoveryTimeout: 60000,
-    });
+    };
+
+    this.marketChartCircuit = options.registerCircuitBreaker === false
+      ? new CircuitBreaker<PriceHistoryPoint[]>(marketChartCircuitConfig)
+      : createCircuitBreaker<PriceHistoryPoint[]>(marketChartCircuitConfig);
   }
 
   protected async fetchPrice(currency: string): Promise<PriceData> {

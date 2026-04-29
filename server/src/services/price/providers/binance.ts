@@ -6,6 +6,7 @@
  */
 
 import { BasePriceProvider } from './base';
+import type { PriceProviderRuntimeOptions } from './base';
 import type { PriceData } from '../types';
 
 interface BinancePriceResponse {
@@ -21,11 +22,12 @@ export class BinancePriceProvider extends BasePriceProvider {
     GBP: 'BTCGBP',
   };
 
-  constructor() {
+  constructor(options: PriceProviderRuntimeOptions = {}) {
     super({
       name: 'binance',
       priority: 60, // Fifth priority
       supportedCurrencies: ['USD', 'EUR', 'GBP'],
+      registerCircuitBreaker: options.registerCircuitBreaker,
     });
   }
 
