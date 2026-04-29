@@ -1,3 +1,26 @@
+# Active Task: Align Local Node Runtime With CI 2026-04-29
+
+Status: complete
+
+Goal: update the local workspace runtime to match the Node 24 runtime used by CI before continuing PR #229 diagnosis and delivery.
+
+## Plan
+
+- [x] Confirm the local shell was running Node 22 while CI runs Node 24.
+- [x] Align repo version hints (`.nvmrc` and `.node-version`) with Node 24.
+- [x] Install/use the matching local Node 24 runtime.
+- [x] Rerun the render regression lane under Node 24 and use that result to finish PR #229 delivery.
+- [x] Document the outcome before resuming PR #229 delivery.
+
+## Review
+
+- Installed Node v24.14.1 through local `nvm` and made it the `nvm` default.
+- Aligned `.nvmrc` and `.node-version` with the CI Node 24 major.
+- Verified the render regression lane under Node v24.14.1 with visible list output: 43 tests passed in 1.9m.
+- Verified the exact CI-shaped render command under Node v24.14.1: `CI=true NODE_ENV=test VITE_API_URL=http://localhost:3001 npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts` exited 0.
+
+---
+
 # Active Task: Gold Primary Button Styling 2026-04-29
 
 Status: complete
