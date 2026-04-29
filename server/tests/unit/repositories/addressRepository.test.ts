@@ -488,6 +488,12 @@ describe("Address Repository", () => {
         derivationPath: "m/84'/0'/0'/0/1",
         addressLabels: [],
       };
+      const unvisitedAddress = {
+        ...mockAddress,
+        id: "addr-after-take",
+        derivationPath: "m/84'/0'/0'/0/2",
+        addressLabels: [],
+      };
       const changeOne = {
         ...mockAddress,
         id: "addr-change-1",
@@ -500,6 +506,7 @@ describe("Address Repository", () => {
           changeOne,
           { ...mockAddress, id: "addr-invalid", derivationPath: "not-a-path" },
           receiveTwo,
+          unvisitedAddress,
         ])
         .mockResolvedValueOnce([receiveTwo]);
 
@@ -586,6 +593,107 @@ describe("Address Repository", () => {
       });
       expect(prisma.address.findMany).toHaveBeenNthCalledWith(3, {
         where: { id: { in: ["addr-receive-target"] } },
+        include: {
+          addressLabels: {
+            include: {
+              label: true,
+            },
+          },
+        },
+      });
+    });
+
+    it("uses default chain pagination values when skip and take are omitted", async () => {
+      const receiveOne = {
+        ...mockAddress,
+        id: "addr-receive-1",
+        derivationPath: "m/84'/0'/0'/0/0",
+        addressLabels: [],
+      };
+      const changeOne = {
+        ...mockAddress,
+        id: "addr-change-1",
+        derivationPath: "m/84'/0'/0'/1/0",
+        addressLabels: [],
+      };
+      (prisma.address.findMany as Mock)
+        .mockResolvedValueOnce([receiveOne, changeOne])
+        .mockResolvedValueOnce([receiveOne]);
+
+      const result = await addressRepository.findByWalletIdWithLabels(
+        "wallet-456",
+        {
+          chain: "receive",
+        },
+      );
+
+      expect(result).toEqual([receiveOne]);
+      expect(prisma.address.findMany).toHaveBeenNthCalledWith(1, {
+        where: { walletId: "wallet-456" },
+        select: { id: true, derivationPath: true },
+        orderBy: { index: "asc" },
+        skip: 0,
+        take: 200,
+      });
+      expect(prisma.address.findMany).toHaveBeenNthCalledWith(2, {
+        where: { id: { in: ["addr-receive-1"] } },
+        include: {
+          addressLabels: {
+            include: {
+              label: true,
+            },
+          },
+        },
+      });
+    });
+
+    it("does not hydrate labels when no addresses match the requested chain", async () => {
+      const changeOne = {
+        ...mockAddress,
+        id: "addr-change-1",
+        derivationPath: "m/84'/0'/0'/1/0",
+        addressLabels: [],
+      };
+      (prisma.address.findMany as Mock).mockResolvedValueOnce([changeOne]);
+
+      const result = await addressRepository.findByWalletIdWithLabels(
+        "wallet-456",
+        {
+          chain: "receive",
+        },
+      );
+
+      expect(result).toEqual([]);
+      expect(prisma.address.findMany).toHaveBeenCalledTimes(1);
+    });
+
+    it("drops collected ids that are missing from the label hydration query", async () => {
+      const receiveOne = {
+        ...mockAddress,
+        id: "addr-receive-1",
+        derivationPath: "m/84'/0'/0'/0/0",
+        addressLabels: [],
+      };
+      const receiveTwo = {
+        ...mockAddress,
+        id: "addr-receive-2",
+        derivationPath: "m/84'/0'/0'/0/1",
+        addressLabels: [],
+      };
+      (prisma.address.findMany as Mock)
+        .mockResolvedValueOnce([receiveOne, receiveTwo])
+        .mockResolvedValueOnce([receiveOne]);
+
+      const result = await addressRepository.findByWalletIdWithLabels(
+        "wallet-456",
+        {
+          chain: "receive",
+        },
+      );
+
+      expect(result).toEqual([receiveOne]);
+      expect(prisma.address.findMany).toHaveBeenNthCalledWith(2, {
+        where: { id: { in: ["addr-receive-1", "addr-receive-2"] } },
         include: {
           addressLabels: {
             include: {
