@@ -129,6 +129,12 @@ export type DerivationScriptType =
   | "taproot"
   | "unknown";
 
+/**
+ * Concrete BIP address branch: `receive` is external branch 0, `change` is
+ * internal branch 1. Other branch numbers are intentionally unsupported.
+ */
+export type DerivationAddressChain = "receive" | "change";
+
 interface DerivationPathComponent {
   index: number;
   hardened: boolean;
@@ -148,10 +154,25 @@ export interface ParsedDerivationPath {
   scriptPath: number | null;
   changeIndex: number | null;
   addressIndex: number | null;
+  changeHardened: boolean | null;
+  addressHardened: boolean | null;
   accountPath: string | null;
   accountPurpose: DerivationAccountPurpose;
   scriptType: DerivationScriptType;
   valid: boolean;
+}
+
+export interface ParsedAddressDerivationPath {
+  /** Absolute normalized path using apostrophe hardening, including `m/`. */
+  normalizedPath: string;
+  /** Account-level path without the concrete receive/change and address suffix. */
+  accountPath: string;
+  /** Parsed concrete address branch derived from change index 0 or 1. */
+  chain: DerivationAddressChain;
+  /** Raw concrete branch number: 0 for receive, 1 for change. */
+  changeIndex: 0 | 1;
+  /** Non-hardened terminal address index within the concrete branch. */
+  addressIndex: number;
 }
 
 const HARDENED_MARKER = String.fromCharCode(39);
@@ -166,7 +187,9 @@ const HARDENED_MARKER = String.fromCharCode(39);
  * normalizeDerivationPath("48H/0H/0H") // => "m/48'/0'/0'"
  * normalizeDerivationPath("m/84'/0'/0'") // => "m/84'/0'/0'" (unchanged)
  */
-export function normalizeDerivationPath(path: string): string {
+export function normalizeDerivationPath(
+  path: string | null | undefined,
+): string {
   const input = typeof path === "string" ? path.trim() : "";
   if (input === "m" || input === "m/") return "m/";
 
@@ -201,6 +224,13 @@ const componentIndex = (
   index: number,
 ): number | null => {
   return components[index]?.index ?? null;
+};
+
+const componentHardened = (
+  components: Array<DerivationPathComponent | null>,
+  index: number,
+): boolean | null => {
+  return components[index]?.hardened ?? null;
 };
 
 const accountDepth = (purpose: number | null): number => {
@@ -251,7 +281,9 @@ const accountPathFromParts = (
  * Unknown purposes and malformed components are represented explicitly so
  * callers can fail closed instead of guessing a script type.
  */
-export function parseDerivationPath(path: string): ParsedDerivationPath {
+export function parseDerivationPath(
+  path: string | null | undefined,
+): ParsedDerivationPath {
   const normalizedPath = normalizeDerivationPath(path);
   const rawComponents = derivationPathComponents(normalizedPath);
   const components = rawComponents.map(parseDerivationPathComponent);
@@ -260,6 +292,8 @@ export function parseDerivationPath(path: string): ParsedDerivationPath {
   const depth = accountDepth(purpose);
   const scriptPath = purpose === 48 ? componentIndex(components, 3) : null;
   const suffix = components.slice(depth);
+  const changeSuffixIndex = suffix.length >= 2 ? components.length - 2 : -1;
+  const addressSuffixIndex = suffix.length >= 1 ? components.length - 1 : -1;
   const changeIndex =
     suffix.length >= 2 ? (suffix[suffix.length - 2]?.index ?? null) : null;
   const addressIndex =
@@ -273,10 +307,59 @@ export function parseDerivationPath(path: string): ParsedDerivationPath {
     scriptPath,
     changeIndex,
     addressIndex,
+    changeHardened:
+      changeSuffixIndex >= 0
+        ? componentHardened(components, changeSuffixIndex)
+        : null,
+    addressHardened:
+      addressSuffixIndex >= 0
+        ? componentHardened(components, addressSuffixIndex)
+        : null,
     accountPath: accountPathFromParts(rawComponents, depth, valid),
     accountPurpose: inferAccountPurpose(purpose),
     scriptType: inferDerivationScriptType(purpose, scriptPath),
     valid,
+  };
+}
+
+const chainFromChangeIndex = (
+  changeIndex: number,
+): DerivationAddressChain | null => {
+  if (changeIndex === 0) return "receive";
+  if (changeIndex === 1) return "change";
+  return null;
+};
+
+/**
+ * Parse a concrete wallet address derivation path into receive/change metadata.
+ *
+ * Returns `null` when the path is malformed, incomplete, hardened at the
+ * address suffix, or uses an unsupported chain branch.
+ */
+export function parseAddressDerivationPath(
+  path: string | null | undefined,
+): ParsedAddressDerivationPath | null {
+  const parsed = parseDerivationPath(path);
+  const changeIndex = parsed.changeIndex;
+  const chain = changeIndex === null ? null : chainFromChangeIndex(changeIndex);
+
+  if (
+    !parsed.valid ||
+    !parsed.accountPath ||
+    chain === null ||
+    parsed.addressIndex === null ||
+    parsed.changeHardened ||
+    parsed.addressHardened
+  ) {
+    return null;
+  }
+
+  return {
+    normalizedPath: parsed.normalizedPath,
+    accountPath: parsed.accountPath,
+    chain,
+    changeIndex: changeIndex as 0 | 1,
+    addressIndex: parsed.addressIndex,
   };
 }
 

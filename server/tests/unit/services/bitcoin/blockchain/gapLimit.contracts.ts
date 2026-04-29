@@ -1,42 +1,50 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { mockPrismaClient, resetPrismaMocks } from '../../../../mocks/prisma';
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { mockPrismaClient, resetPrismaMocks } from "../../../../mocks/prisma";
 import {
   mockElectrumClient,
   createMockTransaction,
   createMockUTXO,
   createMockAddressHistory,
-} from '../../../../mocks/electrum';
-import { sampleUtxos, sampleWallets, testnetAddresses } from '../../../../fixtures/bitcoin';
-import { validateAddress } from '../../../../../src/services/bitcoin/utils';
-import * as addressDerivation from '../../../../../src/services/bitcoin/addressDerivation';
-import * as syncModule from '../../../../../src/services/bitcoin/sync';
-import { getBlockchainService } from './blockchainTestHarness';
+} from "../../../../mocks/electrum";
+import {
+  sampleUtxos,
+  sampleWallets,
+  testnetAddresses,
+} from "../../../../fixtures/bitcoin";
+import { validateAddress } from "../../../../../src/services/bitcoin/utils";
+import * as addressDerivation from "../../../../../src/services/bitcoin/addressDerivation";
+import * as syncModule from "../../../../../src/services/bitcoin/sync";
+import { getBlockchainService } from "./blockchainTestHarness";
+import { parseAddressDerivationPath } from "../../../../../../shared/utils/bitcoin";
 
 export function registerBlockchainGapLimitTests(): void {
-  describe('ensureGapLimit', () => {
-    const walletId = 'test-wallet-id';
-    const mockDescriptor = "wpkh([12345678/84'/0'/0']xpub6CatWdiZiodmUeTDp8LT5or8nmbKNcuyvz7WyksVFkKB4RHwCD3XYuvg9WP3SaFPe5FPnoo1Zv2aq5S5vLLwNVxNP6YnNJvKLzDhPLzfE3e/<0;1>/*)";
+  describe("ensureGapLimit", () => {
+    const walletId = "test-wallet-id";
+    const mockDescriptor =
+      "wpkh([12345678/84'/0'/0']xpub6CatWdiZiodmUeTDp8LT5or8nmbKNcuyvz7WyksVFkKB4RHwCD3XYuvg9WP3SaFPe5FPnoo1Zv2aq5S5vLLwNVxNP6YnNJvKLzDhPLzfE3e/<0;1>/*)";
 
     beforeEach(() => {
       mockPrismaClient.wallet.findUnique.mockReset();
       mockPrismaClient.address.findMany.mockReset();
       mockPrismaClient.address.createMany.mockReset();
       (addressDerivation.deriveAddressFromDescriptor as any).mockReset();
-      (addressDerivation.deriveAddressFromDescriptor as any).mockImplementation((descriptor: string, index: number, options: any) => {
-        const change = options?.change ? 1 : 0;
-        return {
-          address: `tb1q_test_${change}_${index}`,
-          derivationPath: `m/84'/0'/0'/${change}/${index}`,
-          publicKey: Buffer.from('02' + '00'.repeat(32), 'hex'),
-        };
-      });
+      (addressDerivation.deriveAddressFromDescriptor as any).mockImplementation(
+        (descriptor: string, index: number, options: any) => {
+          const change = options?.change ? 1 : 0;
+          return {
+            address: `tb1q_test_${change}_${index}`,
+            derivationPath: `m/84'/0'/0'/${change}/${index}`,
+            publicKey: Buffer.from("02" + "00".repeat(32), "hex"),
+          };
+        },
+      );
     });
 
-    it('should not generate addresses when gap limit is already satisfied', async () => {
+    it("should not generate addresses when gap limit is already satisfied", async () => {
       mockPrismaClient.wallet.findUnique.mockResolvedValue({
         id: walletId,
         descriptor: mockDescriptor,
-        network: 'mainnet',
+        network: "mainnet",
       });
 
       // Create 25 receive addresses with the last 20 unused (gap limit = 20)
@@ -53,7 +61,10 @@ export function registerBlockchainGapLimitTests(): void {
         used: i < 5, // First 5 are used, last 20 are unused
       }));
 
-      mockPrismaClient.address.findMany.mockResolvedValue([...receiveAddresses, ...changeAddresses]);
+      mockPrismaClient.address.findMany.mockResolvedValue([
+        ...receiveAddresses,
+        ...changeAddresses,
+      ]);
 
       const result = await getBlockchainService().ensureGapLimit(walletId);
 
@@ -61,11 +72,11 @@ export function registerBlockchainGapLimitTests(): void {
       expect(mockPrismaClient.address.createMany).not.toHaveBeenCalled();
     });
 
-    it('should generate addresses when gap limit is not satisfied', async () => {
+    it("should generate addresses when gap limit is not satisfied", async () => {
       mockPrismaClient.wallet.findUnique.mockResolvedValue({
         id: walletId,
         descriptor: mockDescriptor,
-        network: 'mainnet',
+        network: "mainnet",
       });
 
       // Create receive addresses with gap of 10 (need 10 more)
@@ -82,7 +93,10 @@ export function registerBlockchainGapLimitTests(): void {
         used: i < 5, // First 5 used, last 20 unused = gap of 20
       }));
 
-      mockPrismaClient.address.findMany.mockResolvedValue([...receiveAddresses, ...changeAddresses]);
+      mockPrismaClient.address.findMany.mockResolvedValue([
+        ...receiveAddresses,
+        ...changeAddresses,
+      ]);
       mockPrismaClient.address.createMany.mockResolvedValue({ count: 10 });
 
       const result = await getBlockchainService().ensureGapLimit(walletId);
@@ -93,11 +107,11 @@ export function registerBlockchainGapLimitTests(): void {
       expect(mockPrismaClient.address.createMany).toHaveBeenCalled();
     });
 
-    it('should handle both receive and change addresses separately', async () => {
+    it("should handle both receive and change addresses separately", async () => {
       mockPrismaClient.wallet.findUnique.mockResolvedValue({
         id: walletId,
         descriptor: mockDescriptor,
-        network: 'mainnet',
+        network: "mainnet",
       });
 
       // Receive addresses with gap of 20 (satisfied)
@@ -114,23 +128,27 @@ export function registerBlockchainGapLimitTests(): void {
         used: i < 5, // 5 used, 5 unused
       }));
 
-      mockPrismaClient.address.findMany.mockResolvedValue([...receiveAddresses, ...changeAddresses]);
+      mockPrismaClient.address.findMany.mockResolvedValue([
+        ...receiveAddresses,
+        ...changeAddresses,
+      ]);
       mockPrismaClient.address.createMany.mockResolvedValue({ count: 15 });
 
       const result = await getBlockchainService().ensureGapLimit(walletId);
 
       // Should only generate change addresses (15 more to reach gap of 20)
       expect(result.length).toBe(15);
-      // All new addresses should be change addresses (/1/)
-      const newChangeAddresses = result.filter(a => a.derivationPath.includes('/1/'));
+      const newChangeAddresses = result.filter(
+        (a) => parseAddressDerivationPath(a.derivationPath)?.chain === "change",
+      );
       expect(newChangeAddresses.length).toBe(15);
     });
 
-    it('should skip wallets without a descriptor', async () => {
+    it("should skip wallets without a descriptor", async () => {
       mockPrismaClient.wallet.findUnique.mockResolvedValue({
         id: walletId,
         descriptor: null,
-        network: 'mainnet',
+        network: "mainnet",
       });
 
       const result = await getBlockchainService().ensureGapLimit(walletId);
@@ -139,11 +157,11 @@ export function registerBlockchainGapLimitTests(): void {
       expect(mockPrismaClient.address.findMany).not.toHaveBeenCalled();
     });
 
-    it('should handle wallet with no addresses', async () => {
+    it("should handle wallet with no addresses", async () => {
       mockPrismaClient.wallet.findUnique.mockResolvedValue({
         id: walletId,
         descriptor: mockDescriptor,
-        network: 'mainnet',
+        network: "mainnet",
       });
 
       mockPrismaClient.address.findMany.mockResolvedValue([]);
@@ -156,11 +174,11 @@ export function registerBlockchainGapLimitTests(): void {
       expect(result).toHaveLength(40);
     });
 
-    it('should handle all addresses being used', async () => {
+    it("should handle all addresses being used", async () => {
       mockPrismaClient.wallet.findUnique.mockResolvedValue({
         id: walletId,
         descriptor: mockDescriptor,
-        network: 'mainnet',
+        network: "mainnet",
       });
 
       // All 10 receive addresses are used
@@ -177,7 +195,10 @@ export function registerBlockchainGapLimitTests(): void {
         used: true,
       }));
 
-      mockPrismaClient.address.findMany.mockResolvedValue([...receiveAddresses, ...changeAddresses]);
+      mockPrismaClient.address.findMany.mockResolvedValue([
+        ...receiveAddresses,
+        ...changeAddresses,
+      ]);
       mockPrismaClient.address.createMany.mockResolvedValue({ count: 40 });
 
       const result = await getBlockchainService().ensureGapLimit(walletId);
@@ -186,11 +207,11 @@ export function registerBlockchainGapLimitTests(): void {
       expect(result.length).toBe(40);
     });
 
-    it('should continue when receive address derivation throws', async () => {
+    it("should continue when receive address derivation throws", async () => {
       mockPrismaClient.wallet.findUnique.mockResolvedValue({
         id: walletId,
         descriptor: mockDescriptor,
-        network: 'mainnet',
+        network: "mainnet",
       });
 
       const receiveAddresses = Array.from({ length: 20 }, (_, i) => ({
@@ -203,10 +224,15 @@ export function registerBlockchainGapLimitTests(): void {
         index: i,
         used: i < 5, // trailing unused gap = 20, already satisfied
       }));
-      mockPrismaClient.address.findMany.mockResolvedValue([...receiveAddresses, ...changeAddresses]);
+      mockPrismaClient.address.findMany.mockResolvedValue([
+        ...receiveAddresses,
+        ...changeAddresses,
+      ]);
 
-      (addressDerivation.deriveAddressFromDescriptor as any).mockImplementationOnce(() => {
-        throw new Error('receive derive failed');
+      (
+        addressDerivation.deriveAddressFromDescriptor as any
+      ).mockImplementationOnce(() => {
+        throw new Error("receive derive failed");
       });
 
       const result = await getBlockchainService().ensureGapLimit(walletId);
@@ -215,11 +241,11 @@ export function registerBlockchainGapLimitTests(): void {
       expect(mockPrismaClient.address.createMany).not.toHaveBeenCalled();
     });
 
-    it('should continue when change address derivation throws', async () => {
+    it("should continue when change address derivation throws", async () => {
       mockPrismaClient.wallet.findUnique.mockResolvedValue({
         id: walletId,
         descriptor: mockDescriptor,
-        network: 'mainnet',
+        network: "mainnet",
       });
 
       const receiveAddresses = Array.from({ length: 25 }, (_, i) => ({
@@ -232,18 +258,23 @@ export function registerBlockchainGapLimitTests(): void {
         index: i,
         used: i === 0, // trailing unused gap = 19, requires 1 new change address
       }));
-      mockPrismaClient.address.findMany.mockResolvedValue([...receiveAddresses, ...changeAddresses]);
+      mockPrismaClient.address.findMany.mockResolvedValue([
+        ...receiveAddresses,
+        ...changeAddresses,
+      ]);
 
-      (addressDerivation.deriveAddressFromDescriptor as any).mockImplementation((_descriptor: string, _index: number, options: any) => {
-        if (options?.change) {
-          throw new Error('change derive failed');
-        }
-        return {
-          address: 'tb1q_test_0_25',
-          derivationPath: "m/84'/0'/0'/0/25",
-          publicKey: Buffer.from('02' + '00'.repeat(32), 'hex'),
-        };
-      });
+      (addressDerivation.deriveAddressFromDescriptor as any).mockImplementation(
+        (_descriptor: string, _index: number, options: any) => {
+          if (options?.change) {
+            throw new Error("change derive failed");
+          }
+          return {
+            address: "tb1q_test_0_25",
+            derivationPath: "m/84'/0'/0'/0/25",
+            publicKey: Buffer.from("02" + "00".repeat(32), "hex"),
+          };
+        },
+      );
 
       const result = await getBlockchainService().ensureGapLimit(walletId);
 
@@ -251,11 +282,11 @@ export function registerBlockchainGapLimitTests(): void {
       expect(mockPrismaClient.address.createMany).not.toHaveBeenCalled();
     });
 
-    it('should default derived address index to 0 when derivation path has no terminal index', async () => {
+    it("should skip derived addresses when derivation path has no terminal index", async () => {
       mockPrismaClient.wallet.findUnique.mockResolvedValue({
         id: walletId,
         descriptor: mockDescriptor,
-        network: 'mainnet',
+        network: "mainnet",
       });
 
       const receiveAddresses = Array.from({ length: 20 }, (_, i) => ({
@@ -268,28 +299,24 @@ export function registerBlockchainGapLimitTests(): void {
         index: i,
         used: i < 5,
       }));
-      mockPrismaClient.address.findMany.mockResolvedValue([...receiveAddresses, ...changeAddresses]);
+      mockPrismaClient.address.findMany.mockResolvedValue([
+        ...receiveAddresses,
+        ...changeAddresses,
+      ]);
       mockPrismaClient.address.createMany.mockResolvedValue({ count: 1 });
 
-      (addressDerivation.deriveAddressFromDescriptor as any).mockImplementationOnce(() => ({
-        address: 'tb1q_no_index',
+      (
+        addressDerivation.deriveAddressFromDescriptor as any
+      ).mockImplementationOnce(() => ({
+        address: "tb1q_no_index",
         derivationPath: "m/84'/0'/0'/0/",
-        publicKey: Buffer.from('02' + '00'.repeat(32), 'hex'),
+        publicKey: Buffer.from("02" + "00".repeat(32), "hex"),
       }));
 
       const result = await getBlockchainService().ensureGapLimit(walletId);
 
-      expect(result).toHaveLength(1);
-      expect(mockPrismaClient.address.createMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.arrayContaining([
-            expect.objectContaining({
-              address: 'tb1q_no_index',
-              index: 0,
-            }),
-          ]),
-        })
-      );
+      expect(result).toHaveLength(0);
+      expect(mockPrismaClient.address.createMany).not.toHaveBeenCalled();
     });
   });
 }

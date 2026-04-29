@@ -6,10 +6,10 @@
  * to individual transactions.
  */
 
-import * as bitcoin from 'bitcoinjs-lib';
-import { getNetwork, estimateTransactionSize, calculateFee } from '../utils';
-import { utxoRepository, addressRepository } from '../../../repositories';
-import { RBF_SEQUENCE, getDustThreshold } from './shared';
+import * as bitcoin from "bitcoinjs-lib";
+import { getNetwork, estimateTransactionSize, calculateFee } from "../utils";
+import { utxoRepository, addressRepository } from "../../../repositories";
+import { RBF_SEQUENCE, getDustThreshold } from "./shared";
 
 /**
  * Create a batch transaction sending to multiple recipients
@@ -19,7 +19,7 @@ export async function createBatchTransaction(
   feeRate: number,
   walletId: string,
   selectedUtxoIds?: string[],
-  network: 'mainnet' | 'testnet' | 'regtest' = 'mainnet'
+  network: "mainnet" | "testnet" | "regtest" = "mainnet",
 ): Promise<{
   psbt: bitcoin.Psbt;
   fee: number;
@@ -29,7 +29,7 @@ export async function createBatchTransaction(
   savedFees: number; // Savings compared to individual transactions
 }> {
   if (recipients.length === 0) {
-    throw new Error('At least one recipient is required');
+    throw new Error("At least one recipient is required");
   }
 
   // Get configurable thresholds
@@ -40,13 +40,13 @@ export async function createBatchTransaction(
 
   // Filter by selected UTXOs if provided
   if (selectedUtxoIds && selectedUtxoIds.length > 0) {
-    utxos = utxos.filter(utxo =>
-      selectedUtxoIds.includes(`${utxo.txid}:${utxo.vout}`)
+    utxos = utxos.filter((utxo) =>
+      selectedUtxoIds.includes(`${utxo.txid}:${utxo.vout}`),
     );
   }
 
   if (utxos.length === 0) {
-    throw new Error('No spendable UTXOs available');
+    throw new Error("No spendable UTXOs available");
   }
 
   // Calculate total output amount
@@ -64,7 +64,7 @@ export async function createBatchTransaction(
     const estimatedSize = estimateTransactionSize(
       selectedUtxos.length,
       recipients.length + 1, // +1 for change output
-      'native_segwit'
+      "native_segwit",
     );
     const estimatedFee = calculateFee(estimatedSize, feeRate);
 
@@ -77,13 +77,13 @@ export async function createBatchTransaction(
   const txSize = estimateTransactionSize(
     selectedUtxos.length,
     recipients.length + 1,
-    'native_segwit'
+    "native_segwit",
   );
   const fee = calculateFee(txSize, feeRate);
 
   if (totalInput < totalOutputAmount + fee) {
     throw new Error(
-      `Insufficient funds. Need ${totalOutputAmount + fee} sats, have ${totalInput} sats`
+      `Insufficient funds. Need ${totalOutputAmount + fee} sats, have ${totalInput} sats`,
     );
   }
 
@@ -91,8 +91,8 @@ export async function createBatchTransaction(
 
   // Calculate savings vs individual transactions
   const individualTxFee = calculateFee(
-    estimateTransactionSize(1, 2, 'native_segwit'), // 1 in, 2 out (recipient + change)
-    feeRate
+    estimateTransactionSize(1, 2, "native_segwit"), // 1 in, 2 out (recipient + change)
+    feeRate,
   );
   const totalIndividualFees = individualTxFee * recipients.length;
   const savedFees = totalIndividualFees - fee;
@@ -108,7 +108,7 @@ export async function createBatchTransaction(
       index: utxo.vout,
       sequence: RBF_SEQUENCE,
       witnessUtxo: {
-        script: Buffer.from(utxo.scriptPubKey, 'hex'),
+        script: Buffer.from(utxo.scriptPubKey, "hex"),
         value: BigInt(utxo.amount),
       },
     });
@@ -124,11 +124,12 @@ export async function createBatchTransaction(
 
   // Add change output
   if (changeAmount >= dustThreshold) {
-    // Get a change address from the wallet
-    const changeAddress = await addressRepository.findNextUnused(walletId);
+    const changeAddress =
+      (await addressRepository.findNextUnusedChange(walletId)) ??
+      (await addressRepository.findNextUnusedReceive(walletId));
 
     if (!changeAddress) {
-      throw new Error('No change address available');
+      throw new Error("No change address available");
     }
 
     psbt.addOutput({

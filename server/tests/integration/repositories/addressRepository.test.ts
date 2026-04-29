@@ -14,17 +14,18 @@ import {
   TestScenarioBuilder,
   generateTestnetAddress,
   assertCount,
-} from './setup';
+} from "./setup";
+import { parseAddressDerivationPath } from "../../../../shared/utils/bitcoin";
 
-describeIfDatabase('AddressRepository Integration Tests', () => {
+describeIfDatabase("AddressRepository Integration Tests", () => {
   setupRepositoryTests();
 
-  describe('create', () => {
-    it('should create an address with all fields', async () => {
+  describe("create", () => {
+    it("should create an address with all fields", async () => {
       await withTestTransaction(async (tx) => {
         const user = await createTestUser(tx);
         const wallet = await createTestWallet(tx, user.id);
-        const addressString = generateTestnetAddress('p2wpkh');
+        const addressString = generateTestnetAddress("p2wpkh");
 
         const address = await createTestAddress(tx, wallet.id, {
           address: addressString,
@@ -41,23 +42,23 @@ describeIfDatabase('AddressRepository Integration Tests', () => {
       });
     });
 
-    it('should enforce unique address', async () => {
+    it("should enforce unique address", async () => {
       await withTestTransaction(async (tx) => {
         const user = await createTestUser(tx);
         const wallet = await createTestWallet(tx, user.id);
-        const addressString = generateTestnetAddress('p2wpkh');
+        const addressString = generateTestnetAddress("p2wpkh");
 
         await createTestAddress(tx, wallet.id, { address: addressString });
 
         await expect(
-          createTestAddress(tx, wallet.id, { address: addressString })
+          createTestAddress(tx, wallet.id, { address: addressString }),
         ).rejects.toThrow();
       });
     });
   });
 
-  describe('findById', () => {
-    it('should find address by ID', async () => {
+  describe("findById", () => {
+    it("should find address by ID", async () => {
       await withTestTransaction(async (tx) => {
         const user = await createTestUser(tx);
         const wallet = await createTestWallet(tx, user.id);
@@ -72,10 +73,10 @@ describeIfDatabase('AddressRepository Integration Tests', () => {
       });
     });
 
-    it('should return null for non-existent ID', async () => {
+    it("should return null for non-existent ID", async () => {
       await withTestTransaction(async (tx) => {
         const found = await tx.address.findUnique({
-          where: { id: 'non-existent-id' },
+          where: { id: "non-existent-id" },
         });
 
         expect(found).toBeNull();
@@ -83,8 +84,8 @@ describeIfDatabase('AddressRepository Integration Tests', () => {
     });
   });
 
-  describe('findByWalletId', () => {
-    it('should find all addresses for a wallet', async () => {
+  describe("findByWalletId", () => {
+    it("should find all addresses for a wallet", async () => {
       await withTestTransaction(async (tx) => {
         const scenario = await new TestScenarioBuilder(tx)
           .withUser()
@@ -100,7 +101,7 @@ describeIfDatabase('AddressRepository Integration Tests', () => {
       });
     });
 
-    it('should return empty array for wallet with no addresses', async () => {
+    it("should return empty array for wallet with no addresses", async () => {
       await withTestTransaction(async (tx) => {
         const user = await createTestUser(tx);
         const wallet = await createTestWallet(tx, user.id);
@@ -114,8 +115,8 @@ describeIfDatabase('AddressRepository Integration Tests', () => {
     });
   });
 
-  describe('markAsUsed', () => {
-    it('should mark address as used', async () => {
+  describe("markAsUsed", () => {
+    it("should mark address as used", async () => {
       await withTestTransaction(async (tx) => {
         const user = await createTestUser(tx);
         const wallet = await createTestWallet(tx, user.id);
@@ -133,8 +134,8 @@ describeIfDatabase('AddressRepository Integration Tests', () => {
     });
   });
 
-  describe('resetUsedFlags', () => {
-    it('should reset all used flags for a wallet', async () => {
+  describe("resetUsedFlags", () => {
+    it("should reset all used flags for a wallet", async () => {
       await withTestTransaction(async (tx) => {
         const scenario = await new TestScenarioBuilder(tx)
           .withUser()
@@ -163,8 +164,8 @@ describeIfDatabase('AddressRepository Integration Tests', () => {
     });
   });
 
-  describe('findUnusedReceive', () => {
-    it('should find unused receive addresses', async () => {
+  describe("findUnusedReceive", () => {
+    it("should find unused receive addresses", async () => {
       await withTestTransaction(async (tx) => {
         const user = await createTestUser(tx);
         const wallet = await createTestWallet(tx, user.id);
@@ -187,14 +188,18 @@ describeIfDatabase('AddressRepository Integration Tests', () => {
         });
 
         // Find unused receive addresses
-        const unused = await tx.address.findMany({
+        const unusedCandidates = await tx.address.findMany({
           where: {
             walletId: wallet.id,
             used: false,
-            derivationPath: { contains: '/0/' },
           },
-          orderBy: { index: 'asc' },
+          orderBy: { index: "asc" },
         });
+        const unused = unusedCandidates.filter(
+          (address) =>
+            parseAddressDerivationPath(address.derivationPath)?.chain ===
+            "receive",
+        );
 
         expect(unused).toHaveLength(2);
         expect(unused[0].index).toBe(1);
@@ -202,8 +207,8 @@ describeIfDatabase('AddressRepository Integration Tests', () => {
     });
   });
 
-  describe('findUnusedChange', () => {
-    it('should find unused change addresses', async () => {
+  describe("findUnusedChange", () => {
+    it("should find unused change addresses", async () => {
       await withTestTransaction(async (tx) => {
         const user = await createTestUser(tx);
         const wallet = await createTestWallet(tx, user.id);
@@ -221,23 +226,29 @@ describeIfDatabase('AddressRepository Integration Tests', () => {
         });
 
         // Find unused change addresses
-        const unused = await tx.address.findMany({
+        const unusedCandidates = await tx.address.findMany({
           where: {
             walletId: wallet.id,
             used: false,
-            derivationPath: { contains: '/1/' },
           },
-          orderBy: { index: 'asc' },
+          orderBy: { index: "asc" },
         });
+        const unused = unusedCandidates.filter(
+          (address) =>
+            parseAddressDerivationPath(address.derivationPath)?.chain ===
+            "change",
+        );
 
         expect(unused).toHaveLength(1);
-        expect(unused[0].derivationPath).toContain('/1/');
+        expect(
+          parseAddressDerivationPath(unused[0].derivationPath)?.chain,
+        ).toBe("change");
       });
     });
   });
 
-  describe('gap limit patterns', () => {
-    it('should find consecutive unused addresses for gap limit check', async () => {
+  describe("gap limit patterns", () => {
+    it("should find consecutive unused addresses for gap limit check", async () => {
       await withTestTransaction(async (tx) => {
         const user = await createTestUser(tx);
         const wallet = await createTestWallet(tx, user.id);
@@ -254,7 +265,7 @@ describeIfDatabase('AddressRepository Integration Tests', () => {
         // Count unused addresses from last used
         const lastUsed = await tx.address.findFirst({
           where: { walletId: wallet.id, used: true },
-          orderBy: { index: 'desc' },
+          orderBy: { index: "desc" },
         });
 
         const unusedCount = await tx.address.count({
@@ -270,8 +281,8 @@ describeIfDatabase('AddressRepository Integration Tests', () => {
     });
   });
 
-  describe('address types by derivation path', () => {
-    it('should distinguish receive vs change by path', async () => {
+  describe("address types by derivation path", () => {
+    it("should distinguish receive vs change by path", async () => {
       await withTestTransaction(async (tx) => {
         const user = await createTestUser(tx);
         const wallet = await createTestWallet(tx, user.id);
@@ -292,19 +303,22 @@ describeIfDatabase('AddressRepository Integration Tests', () => {
           index: 100, // Different index to avoid collision
         });
 
-        const receiveAddresses = await tx.address.findMany({
+        const allAddresses = await tx.address.findMany({
           where: {
             walletId: wallet.id,
-            derivationPath: { contains: "/0'/0/" },
           },
         });
 
-        const changeAddresses = await tx.address.findMany({
-          where: {
-            walletId: wallet.id,
-            derivationPath: { contains: "/0'/1/" },
-          },
-        });
+        const receiveAddresses = allAddresses.filter(
+          (address) =>
+            parseAddressDerivationPath(address.derivationPath)?.chain ===
+            "receive",
+        );
+        const changeAddresses = allAddresses.filter(
+          (address) =>
+            parseAddressDerivationPath(address.derivationPath)?.chain ===
+            "change",
+        );
 
         expect(receiveAddresses).toHaveLength(2);
         expect(changeAddresses).toHaveLength(1);
@@ -312,8 +326,8 @@ describeIfDatabase('AddressRepository Integration Tests', () => {
     });
   });
 
-  describe('batch operations', () => {
-    it('should delete all addresses for a wallet', async () => {
+  describe("batch operations", () => {
+    it("should delete all addresses for a wallet", async () => {
       await withTestTransaction(async (tx) => {
         const scenario = await new TestScenarioBuilder(tx)
           .withUser()
@@ -321,18 +335,18 @@ describeIfDatabase('AddressRepository Integration Tests', () => {
           .withAddresses(10)
           .build();
 
-        await assertCount(tx, 'address', 10, { walletId: scenario.wallet!.id });
+        await assertCount(tx, "address", 10, { walletId: scenario.wallet!.id });
 
         const result = await tx.address.deleteMany({
           where: { walletId: scenario.wallet!.id },
         });
 
         expect(result.count).toBe(10);
-        await assertCount(tx, 'address', 0, { walletId: scenario.wallet!.id });
+        await assertCount(tx, "address", 0, { walletId: scenario.wallet!.id });
       });
     });
 
-    it('should create multiple addresses in batch', async () => {
+    it("should create multiple addresses in batch", async () => {
       await withTestTransaction(async (tx) => {
         const user = await createTestUser(tx);
         const wallet = await createTestWallet(tx, user.id);
@@ -347,13 +361,13 @@ describeIfDatabase('AddressRepository Integration Tests', () => {
 
         await tx.address.createMany({ data: addressData });
 
-        await assertCount(tx, 'address', 20, { walletId: wallet.id });
+        await assertCount(tx, "address", 20, { walletId: wallet.id });
       });
     });
   });
 
-  describe('ordering and sorting', () => {
-    it('should order addresses by index', async () => {
+  describe("ordering and sorting", () => {
+    it("should order addresses by index", async () => {
       await withTestTransaction(async (tx) => {
         const user = await createTestUser(tx);
         const wallet = await createTestWallet(tx, user.id);
@@ -366,7 +380,7 @@ describeIfDatabase('AddressRepository Integration Tests', () => {
 
         const addresses = await tx.address.findMany({
           where: { walletId: wallet.id },
-          orderBy: { index: 'asc' },
+          orderBy: { index: "asc" },
         });
 
         expect(addresses.map((a) => a.index)).toEqual([1, 2, 5, 8]);

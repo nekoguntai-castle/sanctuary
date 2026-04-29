@@ -1,10 +1,15 @@
-import type { Address } from '../generated/prisma/client';
-import { INITIAL_ADDRESS_COUNT } from '../constants';
-import { InvalidInputError, NotFoundError } from '../errors';
-import { addressRepository, agentRepository, walletRepository } from '../repositories';
-import { deriveAddressFromDescriptor } from './bitcoin/addressDerivation';
+import type { Address } from "../generated/prisma/client";
+import { INITIAL_ADDRESS_COUNT } from "../constants";
+import { InvalidInputError, NotFoundError } from "../errors";
+import {
+  addressRepository,
+  agentRepository,
+  walletRepository,
+} from "../repositories";
+import { deriveAddressFromDescriptor } from "./bitcoin/addressDerivation";
+import { parseAddressDerivationPath } from "../../../shared/utils/bitcoin";
 
-type SupportedNetwork = 'mainnet' | 'testnet' | 'regtest';
+type SupportedNetwork = "mainnet" | "testnet" | "regtest";
 
 export interface AgentOperationalReceiveAddress {
   walletId: string;
@@ -28,34 +33,36 @@ interface DerivationPathRecord {
 }
 
 function toSupportedNetwork(network: string): SupportedNetwork {
-  if (network === 'mainnet' || network === 'testnet' || network === 'regtest') {
+  if (network === "mainnet" || network === "testnet" || network === "regtest") {
     return network;
   }
-  throw new InvalidInputError(`Unsupported operational wallet network: ${network}`);
+  throw new InvalidInputError(
+    `Unsupported operational wallet network: ${network}`,
+  );
 }
 
 function isReceivePath(derivationPath: string): boolean {
-  const parts = derivationPath.split('/');
-  return parts.length >= 2 && parts[parts.length - 2] === '0';
+  return parseAddressDerivationPath(derivationPath)?.chain === "receive";
 }
 
 function getNextReceiveIndex(paths: DerivationPathRecord[]): number {
   let maxReceiveIndex = -1;
 
   for (const record of paths) {
-    const parts = record.derivationPath.split('/');
-    const branch = parts.length >= 2 ? parts[parts.length - 2] : null;
-    const index = Number(parts[parts.length - 1]);
+    const parsed = parseAddressDerivationPath(record.derivationPath);
 
-    if (branch === '0' && Number.isInteger(index) && index >= 0) {
-      maxReceiveIndex = Math.max(maxReceiveIndex, index);
+    if (parsed?.chain === "receive") {
+      maxReceiveIndex = Math.max(maxReceiveIndex, parsed.addressIndex);
     }
   }
 
   return maxReceiveIndex + 1;
 }
 
-function toOperationalReceiveAddress(address: Address, generated: boolean): AgentOperationalReceiveAddress {
+function toOperationalReceiveAddress(
+  address: Address,
+  generated: boolean,
+): AgentOperationalReceiveAddress {
   return {
     walletId: address.walletId,
     address: address.address,
@@ -79,38 +86,50 @@ export async function getOrCreateOperationalReceiveAddress(input: {
   operationalWalletId: string;
 }): Promise<AgentOperationalReceiveAddress> {
   return agentRepository.withAgentFundingLock(input.agentId, async () => {
-    const existingAddress = await addressRepository.findNextUnusedReceive(input.operationalWalletId);
+    const existingAddress = await addressRepository.findNextUnusedReceive(
+      input.operationalWalletId,
+    );
     if (existingAddress) {
       return toOperationalReceiveAddress(existingAddress, false);
     }
 
     const wallet = await walletRepository.findById(input.operationalWalletId);
     if (!wallet) {
-      throw new NotFoundError('Operational wallet not found');
+      throw new NotFoundError("Operational wallet not found");
     }
-    if (wallet.type !== 'single_sig') {
-      throw new InvalidInputError('Linked operational wallet must be single-sig');
+    if (wallet.type !== "single_sig") {
+      throw new InvalidInputError(
+        "Linked operational wallet must be single-sig",
+      );
     }
     if (!wallet.descriptor) {
       throw new InvalidInputError(
-        'Linked operational wallet has no unused receive address available and no descriptor to derive one'
+        "Linked operational wallet has no unused receive address available and no descriptor to derive one",
       );
     }
 
     const network = toSupportedNetwork(wallet.network);
-    const existingPaths = await addressRepository.findDerivationPaths(input.operationalWalletId);
+    const existingPaths = await addressRepository.findDerivationPaths(
+      input.operationalWalletId,
+    );
     const startIndex = getNextReceiveIndex(existingPaths);
     const addressesToCreate = [];
 
     for (let offset = 0; offset < INITIAL_ADDRESS_COUNT; offset++) {
       const index = startIndex + offset;
-      const { address, derivationPath } = deriveAddressFromDescriptor(wallet.descriptor, index, {
-        network,
-        change: false,
-      });
+      const { address, derivationPath } = deriveAddressFromDescriptor(
+        wallet.descriptor,
+        index,
+        {
+          network,
+          change: false,
+        },
+      );
 
       if (!isReceivePath(derivationPath)) {
-        throw new InvalidInputError('Derived operational address is not a receive address');
+        throw new InvalidInputError(
+          "Derived operational address is not a receive address",
+        );
       }
 
       addressesToCreate.push({
@@ -122,11 +141,17 @@ export async function getOrCreateOperationalReceiveAddress(input: {
       });
     }
 
-    await addressRepository.createMany(addressesToCreate, { skipDuplicates: true });
+    await addressRepository.createMany(addressesToCreate, {
+      skipDuplicates: true,
+    });
 
-    const generatedAddress = await addressRepository.findNextUnusedReceive(input.operationalWalletId);
+    const generatedAddress = await addressRepository.findNextUnusedReceive(
+      input.operationalWalletId,
+    );
     if (!generatedAddress) {
-      throw new InvalidInputError('Linked operational wallet has no unused receive address available');
+      throw new InvalidInputError(
+        "Linked operational wallet has no unused receive address available",
+      );
     }
 
     return toOperationalReceiveAddress(generatedAddress, true);
@@ -149,7 +174,7 @@ export async function verifyOperationalReceiveAddress(input: {
   const verified = Boolean(
     record &&
     record.walletId === input.operationalWalletId &&
-    isReceivePath(record.derivationPath)
+    isReceivePath(record.derivationPath),
   );
 
   return {

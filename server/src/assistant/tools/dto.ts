@@ -1,3 +1,5 @@
+import { parseAddressDerivationPath } from "../../../../shared/utils/bitcoin";
+
 type RecordLike = Record<string, any>;
 
 function iso(value: Date | string | null | undefined): string | null {
@@ -5,7 +7,9 @@ function iso(value: Date | string | null | undefined): string | null {
   return value instanceof Date ? value.toISOString() : value;
 }
 
-function sats(value: bigint | number | string | null | undefined): string | null {
+function sats(
+  value: bigint | number | string | null | undefined,
+): string | null {
   if (value === null || value === undefined) return null;
   return value.toString();
 }
@@ -14,7 +18,7 @@ function labelsFromTransaction(transaction: RecordLike): string[] {
   return Array.isArray(transaction.transactionLabels)
     ? transaction.transactionLabels
         .map((transactionLabel: RecordLike) => transactionLabel.label?.name)
-        .filter((label: unknown): label is string => typeof label === 'string')
+        .filter((label: unknown): label is string => typeof label === "string")
     : [];
 }
 
@@ -22,7 +26,7 @@ function labelsFromAddress(address: RecordLike): string[] {
   return Array.isArray(address.addressLabels)
     ? address.addressLabels
         .map((addressLabel: RecordLike) => addressLabel.label?.name)
-        .filter((label: unknown): label is string => typeof label === 'string')
+        .filter((label: unknown): label is string => typeof label === "string")
     : [];
 }
 
@@ -117,8 +121,12 @@ export function toTransactionDetailDto(transaction: RecordLike) {
           used: transaction.address.used,
         }
       : null,
-    inputs: Array.isArray(transaction.inputs) ? transaction.inputs.map(toTransactionInputDto) : [],
-    outputs: Array.isArray(transaction.outputs) ? transaction.outputs.map(toTransactionOutputDto) : [],
+    inputs: Array.isArray(transaction.inputs)
+      ? transaction.inputs.map(toTransactionInputDto)
+      : [],
+    outputs: Array.isArray(transaction.outputs)
+      ? transaction.outputs.map(toTransactionOutputDto)
+      : [],
   };
 }
 
@@ -159,20 +167,22 @@ export function toAddressDto(address: RecordLike) {
 }
 
 function isChangeAddress(address: RecordLike): boolean {
-  // BIP44-style derivation paths end with /change/index, where change branch 1 is internal/change.
-  const path = typeof address.derivationPath === 'string' ? address.derivationPath : '';
-  const parts = path.split('/');
-  return parts.length >= 2 && parts[parts.length - 2] === '1';
+  const path =
+    typeof address.derivationPath === "string" ? address.derivationPath : "";
+  return parseAddressDerivationPath(path)?.chain === "change";
 }
 
-export function toAddressDetailDto(input: { address: RecordLike; balance: RecordLike }) {
+export function toAddressDetailDto(input: {
+  address: RecordLike;
+  balance: RecordLike;
+}) {
   return {
     ...toAddressDto(input.address),
     derivationPath: input.address.derivationPath,
     isChange: isChangeAddress(input.address),
     transactionCount: input.address._count?.transactions ?? 0,
     balance: {
-      unspentSats: sats(input.balance._sum?.amount) ?? '0',
+      unspentSats: sats(input.balance._sum?.amount) ?? "0",
       unspentUtxoCount: input.balance._count?.id ?? 0,
     },
   };
@@ -246,4 +256,4 @@ export {
   toPolicyAddressDto,
   toPolicyEventDto,
   toPolicySummaryDto,
-} from './batch2Dto';
+} from "./batch2Dto";

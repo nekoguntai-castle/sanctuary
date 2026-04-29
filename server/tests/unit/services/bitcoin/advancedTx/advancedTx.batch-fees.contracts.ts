@@ -1,28 +1,33 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from "vitest";
 
-import { mockPrismaClient } from '../../../../mocks/prisma';
-import { mockElectrumClient } from '../../../../mocks/electrum';
-import { sampleUtxos, testnetAddresses } from '../../../../fixtures/bitcoin';
-import './advancedTxTestHarness';
+import { mockPrismaClient } from "../../../../mocks/prisma";
+import { mockElectrumClient } from "../../../../mocks/electrum";
+import { sampleUtxos, testnetAddresses } from "../../../../fixtures/bitcoin";
+import "./advancedTxTestHarness";
 import {
   createBatchTransaction,
   estimateOptimalFee,
   getAdvancedFeeEstimates,
   MIN_RBF_FEE_BUMP,
   RBF_SEQUENCE,
-} from '../../../../../src/services/bitcoin/advancedTx';
+} from "../../../../../src/services/bitcoin/advancedTx";
+import {
+  changeAddressRow,
+  mockAddressFindManyByQuery,
+  receiveAddressRow,
+} from "../transactionServiceAddressMocks";
 
 export function registerBatchFeeAndConstantContracts() {
-  describe('Batch transactions', () => {
-    const walletId = 'wallet-batch';
+  describe("Batch transactions", () => {
+    const walletId = "wallet-batch";
 
-    it('requires at least one recipient', async () => {
+    it("requires at least one recipient", async () => {
       await expect(
-        createBatchTransaction([], 5, walletId, undefined, 'testnet')
-      ).rejects.toThrow('At least one recipient is required');
+        createBatchTransaction([], 5, walletId, undefined, "testnet"),
+      ).rejects.toThrow("At least one recipient is required");
     });
 
-    it('throws when no spendable UTXOs remain after filtering', async () => {
+    it("throws when no spendable UTXOs remain after filtering", async () => {
       mockPrismaClient.uTXO.findMany.mockResolvedValueOnce([
         { ...sampleUtxos[0], walletId },
       ]);
@@ -32,19 +37,23 @@ export function registerBatchFeeAndConstantContracts() {
           [{ address: testnetAddresses.nativeSegwit[0], amount: 1000 }],
           5,
           walletId,
-          ['other-tx:1'],
-          'testnet'
-        )
-      ).rejects.toThrow('No spendable UTXOs available');
+          ["other-tx:1"],
+          "testnet",
+        ),
+      ).rejects.toThrow("No spendable UTXOs available");
     });
 
-    it('creates a batch PSBT with recipients and change', async () => {
+    it("creates a batch PSBT with recipients and change", async () => {
       mockPrismaClient.uTXO.findMany.mockResolvedValueOnce([
         { ...sampleUtxos[0], walletId, spent: false },
         { ...sampleUtxos[1], walletId, spent: false },
       ]);
-      mockPrismaClient.address.findFirst.mockResolvedValueOnce({
-        address: testnetAddresses.nativeSegwit[0],
+      mockAddressFindManyByQuery({
+        unusedRows: [
+          changeAddressRow(walletId, 0, {
+            address: testnetAddresses.nativeSegwit[0],
+          }),
+        ],
       });
 
       const result = await createBatchTransaction(
@@ -55,7 +64,7 @@ export function registerBatchFeeAndConstantContracts() {
         5,
         walletId,
         undefined,
-        'testnet'
+        "testnet",
       );
 
       expect(result.psbt).toBeDefined();
@@ -64,11 +73,11 @@ export function registerBatchFeeAndConstantContracts() {
       expect(result.changeAmount).toBeGreaterThan(0);
     });
 
-    it('throws if change output is needed but unavailable', async () => {
+    it("throws if change output is needed but unavailable", async () => {
       mockPrismaClient.uTXO.findMany.mockResolvedValueOnce([
         { ...sampleUtxos[0], walletId, spent: false },
       ]);
-      mockPrismaClient.address.findFirst.mockResolvedValueOnce(null);
+      mockAddressFindManyByQuery({ unusedRows: [] });
 
       await expect(
         createBatchTransaction(
@@ -76,12 +85,39 @@ export function registerBatchFeeAndConstantContracts() {
           5,
           walletId,
           undefined,
-          'testnet'
-        )
-      ).rejects.toThrow('No change address available');
+          "testnet",
+        ),
+      ).rejects.toThrow("No change address available");
     });
 
-    it('throws when selected inputs cannot cover outputs plus fee', async () => {
+    it("uses an unused receive address when no change address is available", async () => {
+      mockPrismaClient.uTXO.findMany.mockResolvedValueOnce([
+        { ...sampleUtxos[0], walletId, spent: false },
+      ]);
+      mockAddressFindManyByQuery({
+        unusedRows: [
+          receiveAddressRow(walletId, 0, {
+            address: testnetAddresses.nativeSegwit[1],
+          }),
+        ],
+      });
+
+      const result = await createBatchTransaction(
+        [{ address: testnetAddresses.nativeSegwit[0], amount: 50_000 }],
+        5,
+        walletId,
+        undefined,
+        "testnet",
+      );
+
+      expect(result.changeAmount).toBeGreaterThan(546);
+      expect(result.psbt.txOutputs).toHaveLength(2);
+      expect(result.psbt.txOutputs[1].address).toBe(
+        testnetAddresses.nativeSegwit[1],
+      );
+    });
+
+    it("throws when selected inputs cannot cover outputs plus fee", async () => {
       mockPrismaClient.uTXO.findMany.mockResolvedValueOnce([
         { ...sampleUtxos[0], walletId, spent: false, amount: BigInt(1000) },
       ]);
@@ -92,19 +128,19 @@ export function registerBatchFeeAndConstantContracts() {
           10,
           walletId,
           undefined,
-          'testnet'
-        )
-      ).rejects.toThrow('Insufficient funds');
+          "testnet",
+        ),
+      ).rejects.toThrow("Insufficient funds");
     });
 
-    it('omits change output when remaining amount is below dust threshold', async () => {
+    it("omits change output when remaining amount is below dust threshold", async () => {
       mockPrismaClient.uTXO.findMany.mockResolvedValueOnce([
         {
           ...sampleUtxos[0],
           walletId,
           spent: false,
           amount: BigInt(30_000),
-          scriptPubKey: '0014' + 'a'.repeat(40),
+          scriptPubKey: "0014" + "a".repeat(40),
         },
       ]);
 
@@ -113,7 +149,7 @@ export function registerBatchFeeAndConstantContracts() {
         1,
         walletId,
         undefined,
-        'testnet'
+        "testnet",
       );
 
       expect(result.changeAmount).toBeLessThan(546);
@@ -122,8 +158,8 @@ export function registerBatchFeeAndConstantContracts() {
     });
   });
 
-  describe('Advanced fee estimation', () => {
-    it('returns rounded fee tiers from node estimates', async () => {
+  describe("Advanced fee estimation", () => {
+    it("returns rounded fee tiers from node estimates", async () => {
       mockElectrumClient.estimateFee
         .mockResolvedValueOnce(2.1)
         .mockResolvedValueOnce(1.5)
@@ -139,22 +175,24 @@ export function registerBatchFeeAndConstantContracts() {
       expect(fees.minimum.feeRate).toBe(1);
     });
 
-    it('falls back to defaults when estimation fails', async () => {
-      mockElectrumClient.estimateFee.mockRejectedValue(new Error('estimate failed'));
+    it("falls back to defaults when estimation fails", async () => {
+      mockElectrumClient.estimateFee.mockRejectedValue(
+        new Error("estimate failed"),
+      );
       const fees = await getAdvancedFeeEstimates();
       expect(fees.fastest.feeRate).toBe(50);
       expect(fees.minimum.feeRate).toBe(1);
     });
 
-    it('formats confirmation time for minutes/hours/days priorities', async () => {
+    it("formats confirmation time for minutes/hours/days priorities", async () => {
       mockElectrumClient.estimateFee
         .mockResolvedValueOnce(10)
         .mockResolvedValueOnce(8)
         .mockResolvedValueOnce(6)
         .mockResolvedValueOnce(4)
         .mockResolvedValueOnce(2);
-      const fast = await estimateOptimalFee(1, 2, 'fast', 'native_segwit');
-      expect(fast.confirmationTime).toContain('minutes');
+      const fast = await estimateOptimalFee(1, 2, "fast", "native_segwit");
+      expect(fast.confirmationTime).toContain("minutes");
 
       mockElectrumClient.estimateFee
         .mockResolvedValueOnce(10)
@@ -162,8 +200,8 @@ export function registerBatchFeeAndConstantContracts() {
         .mockResolvedValueOnce(6)
         .mockResolvedValueOnce(4)
         .mockResolvedValueOnce(2);
-      const slow = await estimateOptimalFee(1, 2, 'slow', 'native_segwit');
-      expect(slow.confirmationTime).toContain('hours');
+      const slow = await estimateOptimalFee(1, 2, "slow", "native_segwit");
+      expect(slow.confirmationTime).toContain("hours");
 
       mockElectrumClient.estimateFee
         .mockResolvedValueOnce(10)
@@ -171,18 +209,23 @@ export function registerBatchFeeAndConstantContracts() {
         .mockResolvedValueOnce(6)
         .mockResolvedValueOnce(4)
         .mockResolvedValueOnce(2);
-      const minimum = await estimateOptimalFee(1, 2, 'minimum', 'native_segwit');
-      expect(minimum.confirmationTime).toContain('days');
+      const minimum = await estimateOptimalFee(
+        1,
+        2,
+        "minimum",
+        "native_segwit",
+      );
+      expect(minimum.confirmationTime).toContain("days");
       expect(minimum.fee).toBeGreaterThan(0);
     });
   });
 
-  describe('RBF Constants', () => {
-    it('should have correct RBF sequence value', () => {
+  describe("RBF Constants", () => {
+    it("should have correct RBF sequence value", () => {
       expect(RBF_SEQUENCE).toBe(0xfffffffd);
     });
 
-    it('should have minimum fee bump defined', () => {
+    it("should have minimum fee bump defined", () => {
       expect(MIN_RBF_FEE_BUMP).toBeGreaterThanOrEqual(1);
     });
   });

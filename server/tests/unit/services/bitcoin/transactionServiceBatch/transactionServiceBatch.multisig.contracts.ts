@@ -1,14 +1,24 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-import * as bitcoin from 'bitcoinjs-lib';
+import { beforeEach, describe, expect, it } from "vitest";
+import * as bitcoin from "bitcoinjs-lib";
 
-import { mockPrismaClient } from '../../../../mocks/prisma';
-import { sampleUtxos, sampleWallets, testnetAddresses, multisigKeyInfo } from '../../../../fixtures/bitcoin';
-import { mockParseDescriptor } from './transactionServiceBatchTestHarness';
-import { createBatchTransaction } from '../../../../../src/services/bitcoin/transactionService';
+import { mockPrismaClient } from "../../../../mocks/prisma";
+import {
+  sampleUtxos,
+  sampleWallets,
+  testnetAddresses,
+  multisigKeyInfo,
+} from "../../../../fixtures/bitcoin";
+import { mockParseDescriptor } from "./transactionServiceBatchTestHarness";
+import { createBatchTransaction } from "../../../../../src/services/bitcoin/transactionService";
+import {
+  changeAddressRow,
+  inputAddressRow,
+  mockAddressFindManyByQuery,
+} from "../transactionServiceAddressMocks";
 
 export function registerCreateBatchTransactionMultisigContracts() {
-  describe('createBatchTransaction - Multisig', () => {
-    const walletId = 'multisig-batch-wallet-id';
+  describe("createBatchTransaction - Multisig", () => {
+    const walletId = "multisig-batch-wallet-id";
 
     beforeEach(() => {
       // Set up multisig wallet mock with 2-of-2 configuration (using 2 valid keys)
@@ -18,8 +28,20 @@ export function registerCreateBatchTransactionMultisigContracts() {
         quorum: 2,
         totalSigners: 2,
         devices: [
-          { device: { id: 'device-1', fingerprint: 'aabbccdd', xpub: multisigKeyInfo[0].xpub } },
-          { device: { id: 'device-2', fingerprint: 'eeff0011', xpub: multisigKeyInfo[1].xpub } },
+          {
+            device: {
+              id: "device-1",
+              fingerprint: "aabbccdd",
+              xpub: multisigKeyInfo[0].xpub,
+            },
+          },
+          {
+            device: {
+              id: "device-2",
+              fingerprint: "eeff0011",
+              xpub: multisigKeyInfo[1].xpub,
+            },
+          },
         ],
       });
 
@@ -29,42 +51,35 @@ export function registerCreateBatchTransactionMultisigContracts() {
           ...sampleUtxos[2], // 200000 sats
           walletId,
           // P2WSH scriptPubKey (32-byte witness program)
-          scriptPubKey: '0020' + 'a'.repeat(64),
+          scriptPubKey: "0020" + "a".repeat(64),
         },
         {
           ...sampleUtxos[0], // 100000 sats
           walletId,
-          scriptPubKey: '0020' + 'b'.repeat(64),
+          scriptPubKey: "0020" + "b".repeat(64),
         },
       ]);
 
-      // Set up address mocks with BIP-48 derivation paths
-      mockPrismaClient.address.findFirst.mockResolvedValue({
-        id: 'addr-1',
-        address: testnetAddresses.nativeSegwit[1],
-        derivationPath: "m/48'/1'/0'/2'/1/0", // BIP-48 change address
-        walletId,
-        used: false,
-        index: 0,
+      mockAddressFindManyByQuery({
+        inputRows: [
+          inputAddressRow(walletId, 0, {
+            address: sampleUtxos[2].address,
+            derivationPath: "m/48'/1'/0'/2'/0/0",
+          }),
+          inputAddressRow(walletId, 1, {
+            address: sampleUtxos[0].address,
+            derivationPath: "m/48'/1'/0'/2'/0/1",
+          }),
+        ],
+        unusedRows: [
+          changeAddressRow(walletId, 0, {
+            derivationPath: "m/48'/1'/0'/2'/1/0",
+          }),
+        ],
       });
-
-      mockPrismaClient.address.findMany.mockResolvedValue([
-        {
-          id: 'addr-1',
-          address: sampleUtxos[2].address,
-          derivationPath: "m/48'/1'/0'/2'/0/0", // BIP-48 receive address
-          walletId,
-        },
-        {
-          id: 'addr-2',
-          address: sampleUtxos[0].address,
-          derivationPath: "m/48'/1'/0'/2'/0/1", // BIP-48 receive address
-          walletId,
-        },
-      ]);
     });
 
-    it('should create batch PSBT with bip32Derivation for ALL cosigners', async () => {
+    it("should create batch PSBT with bip32Derivation for ALL cosigners", async () => {
       const outputs = [
         { address: testnetAddresses.nativeSegwit[0], amount: 30000 },
         { address: testnetAddresses.nativeSegwit[1], amount: 20000 },
@@ -84,15 +99,15 @@ export function registerCreateBatchTransactionMultisigContracts() {
       expect(input.bip32Derivation!.length).toBeGreaterThanOrEqual(2);
 
       // Verify fingerprints are valid hex strings
-      const fingerprints = input.bip32Derivation!.map(d =>
-        Buffer.from(d.masterFingerprint).toString('hex')
+      const fingerprints = input.bip32Derivation!.map((d) =>
+        Buffer.from(d.masterFingerprint).toString("hex"),
       );
       // At least the first two keys should be present
-      expect(fingerprints).toContain('aabbccdd');
-      expect(fingerprints).toContain('eeff0011');
+      expect(fingerprints).toContain("aabbccdd");
+      expect(fingerprints).toContain("eeff0011");
     });
 
-    it('should use BIP-48 paths for multisig batch bip32Derivation', async () => {
+    it("should use BIP-48 paths for multisig batch bip32Derivation", async () => {
       const outputs = [
         { address: testnetAddresses.nativeSegwit[0], amount: 50000 },
       ];
@@ -110,7 +125,7 @@ export function registerCreateBatchTransactionMultisigContracts() {
       }
     });
 
-    it('should include bip32Derivation in all batch inputs', async () => {
+    it("should include bip32Derivation in all batch inputs", async () => {
       // Use sendMax to ensure we use all UTXOs (both inputs)
       const outputs = [
         { address: testnetAddresses.nativeSegwit[0], amount: 0, sendMax: true },
@@ -131,7 +146,7 @@ export function registerCreateBatchTransactionMultisigContracts() {
       }
     });
 
-    it('should derive correct pubkeys for each cosigner in batch', async () => {
+    it("should derive correct pubkeys for each cosigner in batch", async () => {
       const outputs = [
         { address: testnetAddresses.nativeSegwit[0], amount: 50000 },
       ];
@@ -151,7 +166,7 @@ export function registerCreateBatchTransactionMultisigContracts() {
       }
     });
 
-    it('should include inputPaths in response for hardware wallet signing', async () => {
+    it("should include inputPaths in response for hardware wallet signing", async () => {
       const outputs = [
         { address: testnetAddresses.nativeSegwit[0], amount: 50000 },
       ];
@@ -167,7 +182,7 @@ export function registerCreateBatchTransactionMultisigContracts() {
       }
     });
 
-    it('should include witnessScript for P2WSH multisig inputs', async () => {
+    it("should include witnessScript for P2WSH multisig inputs", async () => {
       const outputs = [
         { address: testnetAddresses.nativeSegwit[0], amount: 50000 },
       ];
@@ -189,14 +204,27 @@ export function registerCreateBatchTransactionMultisigContracts() {
       expect(script[script.length - 1]).toBe(0xae); // OP_CHECKMULTISIG
     });
 
-    it('should include redeemScript for sh-wsh-sortedmulti batch descriptors', async () => {
+    it("should include redeemScript for sh-wsh-sortedmulti batch descriptors", async () => {
       mockPrismaClient.wallet.findUnique.mockResolvedValue({
         ...sampleWallets.multiSig2of3,
         id: walletId,
-        descriptor: "sh(wsh(sortedmulti(2,[aabbccdd/48'/1'/0'/1']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*,[eeff0011/48'/1'/0'/1']tpubDC5FSnBiZDMmhiuCmWAYsLwgLYrrT9rAqvTySfuCCrgsWz8wxMXUS9Tb9iVMvcRbvFcAHGkMD5Kx8koh4GquNGNTfohfk7pgjhaPCdXpoba/0/*)))",
+        descriptor:
+          "sh(wsh(sortedmulti(2,[aabbccdd/48'/1'/0'/1']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*,[eeff0011/48'/1'/0'/1']tpubDC5FSnBiZDMmhiuCmWAYsLwgLYrrT9rAqvTySfuCCrgsWz8wxMXUS9Tb9iVMvcRbvFcAHGkMD5Kx8koh4GquNGNTfohfk7pgjhaPCdXpoba/0/*)))",
         devices: [
-          { device: { id: 'device-1', fingerprint: 'aabbccdd', xpub: multisigKeyInfo[0].xpub } },
-          { device: { id: 'device-2', fingerprint: 'eeff0011', xpub: multisigKeyInfo[1].xpub } },
+          {
+            device: {
+              id: "device-1",
+              fingerprint: "aabbccdd",
+              xpub: multisigKeyInfo[0].xpub,
+            },
+          },
+          {
+            device: {
+              id: "device-2",
+              fingerprint: "eeff0011",
+              xpub: multisigKeyInfo[1].xpub,
+            },
+          },
         ],
       });
 
@@ -210,21 +238,24 @@ export function registerCreateBatchTransactionMultisigContracts() {
       expect(psbt.data.inputs[0].redeemScript).toBeDefined();
     });
 
-    it('should skip batch multisig derivation and witness script when derivation path is invalid', async () => {
-      mockPrismaClient.address.findMany.mockResolvedValue([
-        {
-          id: 'addr-1',
-          address: sampleUtxos[2].address,
-          derivationPath: 'invalid-path',
-          walletId,
-        },
-        {
-          id: 'addr-2',
-          address: sampleUtxos[0].address,
-          derivationPath: 'invalid-path',
-          walletId,
-        },
-      ]);
+    it("should skip batch multisig derivation and witness script when derivation path is invalid", async () => {
+      mockAddressFindManyByQuery({
+        inputRows: [
+          inputAddressRow(walletId, 0, {
+            address: sampleUtxos[2].address,
+            derivationPath: "invalid-path",
+          }),
+          inputAddressRow(walletId, 1, {
+            address: sampleUtxos[0].address,
+            derivationPath: "invalid-path",
+          }),
+        ],
+        unusedRows: [
+          changeAddressRow(walletId, 0, {
+            derivationPath: "m/48'/1'/0'/2'/1/0",
+          }),
+        ],
+      });
 
       const outputs = [
         { address: testnetAddresses.nativeSegwit[0], amount: 50_000 },
@@ -236,24 +267,42 @@ export function registerCreateBatchTransactionMultisigContracts() {
       expect(psbt.data.inputs[0].witnessScript).toBeUndefined();
     });
 
-    it('should skip sh-wsh batch script attachments when witness script derivation fails', async () => {
+    it("should skip sh-wsh batch script attachments when witness script derivation fails", async () => {
       mockPrismaClient.wallet.findUnique.mockResolvedValue({
         ...sampleWallets.multiSig2of3,
         id: walletId,
-        descriptor: "sh(wsh(sortedmulti(2,[aabbccdd/48'/1'/0'/1']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*,[eeff0011/48'/1'/0'/1']tpubDC5FSnBiZDMmhiuCmWAYsLwgLYrrT9rAqvTySfuCCrgsWz8wxMXUS9Tb9iVMvcRbvFcAHGkMD5Kx8koh4GquNGNTfohfk7pgjhaPCdXpoba/0/*)))",
+        descriptor:
+          "sh(wsh(sortedmulti(2,[aabbccdd/48'/1'/0'/1']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*,[eeff0011/48'/1'/0'/1']tpubDC5FSnBiZDMmhiuCmWAYsLwgLYrrT9rAqvTySfuCCrgsWz8wxMXUS9Tb9iVMvcRbvFcAHGkMD5Kx8koh4GquNGNTfohfk7pgjhaPCdXpoba/0/*)))",
         devices: [
-          { device: { id: 'device-1', fingerprint: 'aabbccdd', xpub: multisigKeyInfo[0].xpub } },
-          { device: { id: 'device-2', fingerprint: 'eeff0011', xpub: multisigKeyInfo[1].xpub } },
+          {
+            device: {
+              id: "device-1",
+              fingerprint: "aabbccdd",
+              xpub: multisigKeyInfo[0].xpub,
+            },
+          },
+          {
+            device: {
+              id: "device-2",
+              fingerprint: "eeff0011",
+              xpub: multisigKeyInfo[1].xpub,
+            },
+          },
         ],
       });
-      mockPrismaClient.address.findMany.mockResolvedValue([
-        {
-          id: 'addr-1',
-          address: sampleUtxos[2].address,
-          derivationPath: 'invalid-path',
-          walletId,
-        },
-      ]);
+      mockAddressFindManyByQuery({
+        inputRows: [
+          inputAddressRow(walletId, 0, {
+            address: sampleUtxos[2].address,
+            derivationPath: "invalid-path",
+          }),
+        ],
+        unusedRows: [
+          changeAddressRow(walletId, 0, {
+            derivationPath: "m/48'/1'/0'/2'/1/0",
+          }),
+        ],
+      });
 
       const outputs = [
         { address: testnetAddresses.nativeSegwit[0], amount: 50_000 },
@@ -265,9 +314,9 @@ export function registerCreateBatchTransactionMultisigContracts() {
       expect(psbt.data.inputs[0].redeemScript).toBeUndefined();
     });
 
-    it('should continue when batch multisig descriptor parsing fails', async () => {
+    it("should continue when batch multisig descriptor parsing fails", async () => {
       mockParseDescriptor.mockImplementationOnce(() => {
-        throw new Error('descriptor parse failed');
+        throw new Error("descriptor parse failed");
       });
 
       const outputs = [
@@ -278,25 +327,28 @@ export function registerCreateBatchTransactionMultisigContracts() {
       expect(result.psbtBase64).toBeDefined();
     });
 
-    it('should build multisig batch PSBT when descriptor type is not a recognized script wrapper', async () => {
-      mockParseDescriptor.mockImplementationOnce(() => ({
-        type: 'sortedmulti',
-        quorum: 2,
-        keys: [
-          {
-            fingerprint: 'aabbccdd',
-            accountPath: "48'/1'/0'/2'",
-            xpub: multisigKeyInfo[0].xpub,
-            derivationPath: '0/*',
-          },
-          {
-            fingerprint: 'eeff0011',
-            accountPath: "48'/1'/0'/2'",
-            xpub: multisigKeyInfo[1].xpub,
-            derivationPath: '0/*',
-          },
-        ],
-      } as any));
+    it("should build multisig batch PSBT when descriptor type is not a recognized script wrapper", async () => {
+      mockParseDescriptor.mockImplementationOnce(
+        () =>
+          ({
+            type: "sortedmulti",
+            quorum: 2,
+            keys: [
+              {
+                fingerprint: "aabbccdd",
+                accountPath: "48'/1'/0'/2'",
+                xpub: multisigKeyInfo[0].xpub,
+                derivationPath: "0/*",
+              },
+              {
+                fingerprint: "eeff0011",
+                accountPath: "48'/1'/0'/2'",
+                xpub: multisigKeyInfo[1].xpub,
+                derivationPath: "0/*",
+              },
+            ],
+          }) as any,
+      );
 
       const outputs = [
         { address: testnetAddresses.nativeSegwit[0], amount: 50_000 },

@@ -15,6 +15,7 @@ import {
   isTestnetAddress,
   isValidAddressFormat,
   normalizeDerivationPath,
+  parseAddressDerivationPath,
   parseDerivationPath,
   SATS_PER_BTC,
   satsToBTC,
@@ -500,6 +501,37 @@ describe("Shared Bitcoin Utilities", () => {
         scriptType: "unknown",
         valid: true,
       });
+    });
+
+    it("parses address chain metadata for single-sig and BIP-48 paths", () => {
+      expect(parseAddressDerivationPath("m/84'/0'/0'/0/5")).toEqual({
+        normalizedPath: "m/84'/0'/0'/0/5",
+        accountPath: "m/84'/0'/0'",
+        chain: "receive",
+        changeIndex: 0,
+        addressIndex: 5,
+      });
+      expect(parseAddressDerivationPath("m/48'/0'/3'/2'/1/9")).toEqual({
+        normalizedPath: "m/48'/0'/3'/2'/1/9",
+        accountPath: "m/48'/0'/3'/2'",
+        chain: "change",
+        changeIndex: 1,
+        addressIndex: 9,
+      });
+    });
+
+    it("rejects incomplete or unsupported address chain metadata", () => {
+      expect(parseAddressDerivationPath("m/84'/0'/0'")).toBeNull();
+      expect(parseAddressDerivationPath("m/84'/0'/0'/2/5")).toBeNull();
+      expect(parseAddressDerivationPath("m/84'/0'/0'/1")).toBeNull();
+      expect(parseAddressDerivationPath(null)).toBeNull();
+    });
+
+    it("rejects malformed or hardened address suffix paths", () => {
+      expect(parseAddressDerivationPath("m/84'/0'/0'/bad/5")).toBeNull();
+      expect(parseAddressDerivationPath("m/84'/0'/0'/0/bad")).toBeNull();
+      expect(parseAddressDerivationPath("m/84'/0'/0'/0'/5")).toBeNull();
+      expect(parseAddressDerivationPath("m/84'/0'/0'/0/5'")).toBeNull();
     });
   });
 });

@@ -4,9 +4,155 @@
  * Abstracts database operations for addresses.
  */
 
-import prisma from '../models/prisma';
-import type { Address, Prisma } from '../generated/prisma/client';
-import { buildWalletAccessWhere } from './accessControl';
+import prisma from "../models/prisma";
+import type { Address, Prisma } from "../generated/prisma/client";
+import { buildWalletAccessWhere } from "./accessControl";
+import {
+  parseAddressDerivationPath,
+  type DerivationAddressChain,
+} from "../../../shared/utils/bitcoin";
+
+const ADDRESS_CHAIN_SCAN_PAGE_SIZE = 200;
+
+const addressLabelsInclude = {
+  addressLabels: {
+    include: {
+      label: true,
+    },
+  },
+} satisfies Prisma.AddressInclude;
+
+type AddressPathRecord = { derivationPath: string | null };
+type AddressPathIdRecord = AddressPathRecord & { id: string };
+type AddressWithLabels = Prisma.AddressGetPayload<{
+  include: typeof addressLabelsInclude;
+}>;
+
+interface AddressIdPageState {
+  skippedMatches: number;
+  skipTarget: number;
+  take?: number;
+  ids: string[];
+}
+
+function matchesAddressChain(
+  address: AddressPathRecord,
+  chain: DerivationAddressChain,
+): boolean {
+  return parseAddressDerivationPath(address.derivationPath)?.chain === chain;
+}
+
+function appendMatchingAddresses<T extends AddressPathRecord>(
+  addresses: T[],
+  chain: DerivationAddressChain,
+  matches: T[],
+  limit: number,
+): void {
+  for (const address of addresses) {
+    if (matches.length >= limit) return;
+    if (matchesAddressChain(address, chain)) {
+      matches.push(address);
+    }
+  }
+}
+
+function appendMatchingAddressIds(
+  addresses: AddressPathIdRecord[],
+  chain: DerivationAddressChain,
+  state: AddressIdPageState,
+): void {
+  for (const address of addresses) {
+    if (state.take !== undefined && state.ids.length >= state.take) return;
+    if (!matchesAddressChain(address, chain)) continue;
+
+    if (state.skippedMatches < state.skipTarget) {
+      state.skippedMatches++;
+      continue;
+    }
+
+    state.ids.push(address.id);
+  }
+}
+
+function hasCollectedRequestedTake(state: AddressIdPageState): boolean {
+  return state.take !== undefined && state.ids.length >= state.take;
+}
+
+async function findUnusedByAddressChain(
+  walletId: string,
+  chain: DerivationAddressChain,
+  take: number,
+): Promise<Address[]> {
+  const limit = Math.max(0, take);
+  const matches: Address[] = [];
+  let skip = 0;
+
+  while (matches.length < limit) {
+    const addresses = await prisma.address.findMany({
+      where: {
+        walletId,
+        used: false,
+      },
+      orderBy: { index: "asc" },
+      skip,
+      take: ADDRESS_CHAIN_SCAN_PAGE_SIZE,
+    });
+
+    appendMatchingAddresses(addresses, chain, matches, limit);
+    if (addresses.length < ADDRESS_CHAIN_SCAN_PAGE_SIZE) break;
+    skip += addresses.length;
+  }
+
+  return matches;
+}
+
+async function collectAddressIdsByChain(
+  where: Prisma.AddressWhereInput,
+  chain: DerivationAddressChain,
+  skip?: number,
+  take?: number,
+): Promise<string[]> {
+  const state: AddressIdPageState = {
+    skippedMatches: 0,
+    skipTarget: Math.max(0, skip ?? 0),
+    take: take === undefined ? undefined : Math.max(0, take),
+    ids: [],
+  };
+  let dbSkip = 0;
+
+  while (!hasCollectedRequestedTake(state)) {
+    const addresses = await prisma.address.findMany({
+      where,
+      select: { id: true, derivationPath: true },
+      orderBy: { index: "asc" },
+      skip: dbSkip,
+      take: ADDRESS_CHAIN_SCAN_PAGE_SIZE,
+    });
+
+    appendMatchingAddressIds(addresses, chain, state);
+    if (addresses.length < ADDRESS_CHAIN_SCAN_PAGE_SIZE) break;
+    dbSkip += addresses.length;
+  }
+
+  return state.ids;
+}
+
+async function findAddressesByIdsWithLabels(
+  ids: string[],
+): Promise<AddressWithLabels[]> {
+  if (ids.length === 0) return [];
+
+  const addresses = await prisma.address.findMany({
+    where: { id: { in: ids } },
+    include: addressLabelsInclude,
+  });
+  const byId = new Map(addresses.map((address) => [address.id, address]));
+
+  return ids.flatMap((id) => {
+    const address = byId.get(id);
+    return address ? [address] : [];
+  });
+}
 
 /**
  * Reset used flags for all addresses in a wallet
@@ -22,7 +168,9 @@ export async function resetUsedFlags(walletId: string): Promise<number> {
 /**
  * Reset used flags for all addresses in multiple wallets
  */
-export async function resetUsedFlagsForWallets(walletIds: string[]): Promise<number> {
+export async function resetUsedFlagsForWallets(
+  walletIds: string[],
+): Promise<number> {
   const result = await prisma.address.updateMany({
     where: { walletId: { in: walletIds } },
     data: { used: false },
@@ -39,7 +187,7 @@ export async function findByWalletId(
     used?: boolean;
     skip?: number;
     take?: number;
-  }
+  },
 ): Promise<Address[]> {
   const where: Prisma.AddressWhereInput = { walletId };
 
@@ -51,7 +199,7 @@ export async function findByWalletId(
     where,
     skip: options?.skip,
     take: options?.take,
-    orderBy: { index: 'asc' },
+    orderBy: { index: "asc" },
   });
 }
 
@@ -67,53 +215,35 @@ export async function markAsUsed(addressId: string): Promise<Address> {
 
 /**
  * Find next unused address for a wallet
- * Note: Change addresses are distinguished by derivation path (contains /1/ for change)
  */
 export async function findNextUnused(
-  walletId: string
+  walletId: string,
 ): Promise<Address | null> {
   return prisma.address.findFirst({
     where: {
       walletId,
       used: false,
     },
-    orderBy: { index: 'asc' },
+    orderBy: { index: "asc" },
   });
 }
 
 /**
  * Find next unused external/receive address for a wallet.
- * BIP paths end with /<change>/<index>, where change 0 is receive and
- * change 1 is internal/change. Hardened coin-type segments use apostrophes
- * (for example /1'/), so the bare /0/ match is safe for receive filtering.
  */
 export async function findNextUnusedReceive(
-  walletId: string
+  walletId: string,
 ): Promise<Address | null> {
-  return prisma.address.findFirst({
-    where: {
-      walletId,
-      used: false,
-      derivationPath: { contains: '/0/' },
-    },
-    orderBy: { index: 'asc' },
-  });
+  return (await findUnusedByAddressChain(walletId, "receive", 1))[0] ?? null;
 }
 
 /**
- * Find next unused change address (BIP44 derivation path containing /1/)
+ * Find next unused change address.
  */
 export async function findNextUnusedChange(
-  walletId: string
+  walletId: string,
 ): Promise<Address | null> {
-  return prisma.address.findFirst({
-    where: {
-      walletId,
-      used: false,
-      derivationPath: { contains: '/1/' },
-    },
-    orderBy: { index: 'asc' },
-  });
+  return (await findUnusedByAddressChain(walletId, "change", 1))[0] ?? null;
 }
 
 /**
@@ -121,17 +251,9 @@ export async function findNextUnusedChange(
  */
 export async function findUnusedChangeAddresses(
   walletId: string,
-  take: number
+  take: number,
 ): Promise<Address[]> {
-  return prisma.address.findMany({
-    where: {
-      walletId,
-      used: false,
-      derivationPath: { contains: '/1/' },
-    },
-    orderBy: { index: 'asc' },
-    take,
-  });
+  return findUnusedByAddressChain(walletId, "change", take);
 }
 
 /**
@@ -140,7 +262,7 @@ export async function findUnusedChangeAddresses(
 export async function findUnusedExcluding(
   walletId: string,
   excludeAddresses: string[],
-  take: number
+  take: number,
 ): Promise<Address[]> {
   return prisma.address.findMany({
     where: {
@@ -148,7 +270,7 @@ export async function findUnusedExcluding(
       used: false,
       address: { notIn: excludeAddresses },
     },
-    orderBy: { index: 'asc' },
+    orderBy: { index: "asc" },
     take,
   });
 }
@@ -158,7 +280,7 @@ export async function findUnusedExcluding(
  */
 export async function findDerivationPathsByAddresses(
   walletId: string,
-  addresses: string[]
+  addresses: string[],
 ): Promise<Array<{ address: string; derivationPath: string }>> {
   return prisma.address.findMany({
     where: {
@@ -177,7 +299,7 @@ export async function findDerivationPathsByAddresses(
  */
 export async function countByWalletId(
   walletId: string,
-  options?: { used?: boolean }
+  options?: { used?: boolean },
 ): Promise<number> {
   const where: Prisma.AddressWhereInput = { walletId };
 
@@ -197,13 +319,7 @@ export async function findWithLabels(walletId: string) {
       walletId,
       addressLabels: { some: {} },
     },
-    include: {
-      addressLabels: {
-        include: {
-          label: true,
-        },
-      },
-    },
+    include: addressLabelsInclude,
   });
 }
 
@@ -212,7 +328,7 @@ export async function findWithLabels(walletId: string) {
  */
 export async function findByIdWithAccess(
   addressId: string,
-  userId: string
+  userId: string,
 ): Promise<Address | null> {
   return prisma.address.findFirst({
     where: {
@@ -229,34 +345,34 @@ export async function findByWalletIdWithLabels(
   walletId: string,
   options?: {
     used?: boolean;
-    changeFilter?: { derivationPath: { contains: string } };
+    chain?: DerivationAddressChain;
     skip?: number;
     take?: number;
-  }
+  },
 ) {
   const where: Prisma.AddressWhereInput = { walletId };
 
   if (options?.used !== undefined) {
     where.used = options.used;
   }
-  /* v8 ignore next -- changeFilter branch is covered through route-level address filters */
-  if (options?.changeFilter) {
-    where.derivationPath = options.changeFilter.derivationPath;
+
+  if (!options?.chain) {
+    return prisma.address.findMany({
+      where,
+      include: addressLabelsInclude,
+      orderBy: { index: "asc" },
+      take: options?.take,
+      skip: options?.skip,
+    });
   }
 
-  return prisma.address.findMany({
+  const addressIds = await collectAddressIdsByChain(
     where,
-    include: {
-      addressLabels: {
-        include: {
-          label: true,
-        },
-      },
-    },
-    orderBy: { index: 'asc' },
-    take: options?.take,
-    skip: options?.skip,
-  });
+    options.chain,
+    options.skip,
+    options.take,
+  );
+  return findAddressesByIdsWithLabels(addressIds);
 }
 
 /**
@@ -270,7 +386,7 @@ export async function createMany(
     index: number;
     used: boolean;
   }>,
-  options?: { skipDuplicates?: boolean }
+  options?: { skipDuplicates?: boolean },
 ) {
   return prisma.address.createMany({
     data,
@@ -292,30 +408,40 @@ export async function findDerivationPaths(walletId: string) {
  * Get address summary counts and balances for a wallet
  */
 export async function getAddressSummary(walletId: string) {
-  const [totalCount, usedCount, unusedCount, totalBalanceResult, usedBalances] = await Promise.all([
-    prisma.address.count({ where: { walletId } }),
-    prisma.address.count({ where: { walletId, used: true } }),
-    prisma.address.count({ where: { walletId, used: false } }),
-    prisma.uTXO.aggregate({
-      where: { walletId, spent: false },
-      _sum: { amount: true },
-    }),
-    prisma.$queryRaw<Array<{ used: boolean; balance: bigint }>>`
+  const [totalCount, usedCount, unusedCount, totalBalanceResult, usedBalances] =
+    await Promise.all([
+      prisma.address.count({ where: { walletId } }),
+      prisma.address.count({ where: { walletId, used: true } }),
+      prisma.address.count({ where: { walletId, used: false } }),
+      prisma.uTXO.aggregate({
+        where: { walletId, spent: false },
+        _sum: { amount: true },
+      }),
+      prisma.$queryRaw<Array<{ used: boolean; balance: bigint }>>`
       SELECT a."used" as used, COALESCE(SUM(u."amount"), 0) as balance
       FROM "utxos" u
       JOIN "addresses" a ON a."address" = u."address"
       WHERE u."walletId" = ${walletId} AND u."spent" = false
       GROUP BY a."used"
     `,
-  ]);
+    ]);
 
-  return { totalCount, usedCount, unusedCount, totalBalanceResult, usedBalances };
+  return {
+    totalCount,
+    usedCount,
+    unusedCount,
+    totalBalanceResult,
+    usedBalances,
+  };
 }
 
 /**
  * Find UTXO balances grouped by address for a set of addresses
  */
-export async function findUtxoBalancesByAddresses(walletId: string, addresses: string[]) {
+export async function findUtxoBalancesByAddresses(
+  walletId: string,
+  addresses: string[],
+) {
   return prisma.uTXO.findMany({
     where: {
       walletId,
@@ -334,7 +460,7 @@ export async function findUtxoBalancesByAddresses(walletId: string, addresses: s
  */
 export async function findByAddressesForUser(
   addresses: string[],
-  userId: string
+  userId: string,
 ) {
   return prisma.address.findMany({
     where: {
@@ -391,14 +517,14 @@ export async function findAddressStrings(walletId: string): Promise<string[]> {
     where: { walletId },
     select: { address: true },
   });
-  return addresses.map(a => a.address);
+  return addresses.map((a) => a.address);
 }
 
 /**
  * Find address id/string pairs for a wallet (for field population during sync)
  */
 export async function findIdAndAddressByWalletId(
-  walletId: string
+  walletId: string,
 ): Promise<Array<{ id: string; address: string }>> {
   return prisma.address.findMany({
     where: { walletId },
@@ -411,7 +537,7 @@ export async function findIdAndAddressByWalletId(
  */
 export async function markManyAsUsedByAddress(
   walletId: string,
-  addresses: string[]
+  addresses: string[],
 ): Promise<number> {
   /* v8 ignore next -- bulk callers avoid empty address batches */
   if (addresses.length === 0) return 0;
@@ -441,11 +567,11 @@ export async function findByIdWithWallet(addressId: string) {
  */
 export async function findRecentUnused(
   walletId: string,
-  take: number
+  take: number,
 ): Promise<Address[]> {
   return prisma.address.findMany({
     where: { walletId, used: false },
-    orderBy: { createdAt: 'desc' },
+    orderBy: { createdAt: "desc" },
     take,
   });
 }
@@ -453,12 +579,14 @@ export async function findRecentUnused(
 /**
  * Find all addresses with wallet info (for subscription management)
  */
-export async function findAllWithWalletNetwork(): Promise<Array<{
-  id: string;
-  address: string;
-  walletId: string;
-  wallet: { network: string };
-}>> {
+export async function findAllWithWalletNetwork(): Promise<
+  Array<{
+    id: string;
+    address: string;
+    walletId: string;
+    wallet: { network: string };
+  }>
+> {
   return prisma.address.findMany({
     select: {
       id: true,
@@ -466,7 +594,7 @@ export async function findAllWithWalletNetwork(): Promise<Array<{
       walletId: true,
       wallet: { select: { network: true } },
     },
-    orderBy: { id: 'asc' },
+    orderBy: { id: "asc" },
   });
 }
 
@@ -476,12 +604,14 @@ export async function findAllWithWalletNetwork(): Promise<Array<{
 export async function findAllWithWalletNetworkPaginated(options: {
   take: number;
   cursor?: string;
-}): Promise<Array<{
-  id: string;
-  address: string;
-  walletId: string;
-  wallet: { network: string };
-}>> {
+}): Promise<
+  Array<{
+    id: string;
+    address: string;
+    walletId: string;
+    wallet: { network: string };
+  }>
+> {
   return prisma.address.findMany({
     select: {
       id: true,
@@ -492,7 +622,7 @@ export async function findAllWithWalletNetworkPaginated(options: {
     take: options.take,
     skip: options.cursor ? 1 : 0,
     cursor: options.cursor ? { id: options.cursor } : undefined,
-    orderBy: { id: 'asc' },
+    orderBy: { id: "asc" },
   });
 }
 
@@ -501,7 +631,7 @@ export async function findAllWithWalletNetworkPaginated(options: {
  */
 export async function findByAddress(
   address: string,
-  select?: { walletId: true }
+  select?: { walletId: true },
 ): Promise<{ walletId: string } | null> {
   return prisma.address.findFirst({
     where: { address },
