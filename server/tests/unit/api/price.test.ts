@@ -65,6 +65,7 @@ const { mockPriceService, rateLimitHits } = vi.hoisted(() => ({
     getSupportedCurrencies: vi.fn(),
     getProviders: vi.fn(),
     getProviderDiagnostics: vi.fn(),
+    setProviderEnabled: vi.fn(),
     testProvider: vi.fn(),
     testAllProviders: vi.fn(),
     healthCheck: vi.fn(),
@@ -491,6 +492,23 @@ describe("Price API Routes", () => {
             .send({ currency: "USD" }),
       },
       {
+        route: "PATCH /providers/:provider",
+        setup: () =>
+          mockPriceService.setProviderEnabled.mockResolvedValue([
+            {
+              name: "coinbase",
+              priority: 70,
+              supportedCurrencies: ["USD", "EUR", "GBP", "CAD"],
+              enabled: false,
+            },
+          ]),
+        send: () =>
+          request(app)
+            .patch("/api/v1/price/providers/coinbase")
+            .set("Authorization", bearerAdmin)
+            .send({ enabled: false }),
+      },
+      {
         route: "GET /cache/stats",
         setup: () =>
           mockPriceService.getCacheStats.mockReturnValue({
@@ -553,6 +571,57 @@ describe("Price API Routes", () => {
 
       expect(response.status).toBe(403);
       expect(mockPriceService.getProviderDiagnostics).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("PATCH /providers/:provider", () => {
+    it("should update provider enablement for admins", async () => {
+      mockPriceService.setProviderEnabled.mockResolvedValue([
+        {
+          name: "binance",
+          priority: 60,
+          supportedCurrencies: ["USD", "EUR", "GBP"],
+          enabled: true,
+        },
+      ]);
+
+      const response = await request(app)
+        .patch("/api/v1/price/providers/binance")
+        .set("Authorization", "Bearer admin-token")
+        .send({ enabled: true });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        provider: "binance",
+        enabled: true,
+        count: 1,
+      });
+      expect(mockPriceService.setProviderEnabled).toHaveBeenCalledWith(
+        "binance",
+        true,
+        "admin-1",
+      );
+    });
+
+    it("should validate provider enablement payloads", async () => {
+      const response = await request(app)
+        .patch("/api/v1/price/providers/binance")
+        .set("Authorization", "Bearer admin-token")
+        .send({ enabled: "yes" });
+
+      expect(response.status).toBe(400);
+      expect(response.body.message).toContain("enabled must be a boolean");
+      expect(mockPriceService.setProviderEnabled).not.toHaveBeenCalled();
+    });
+
+    it("should require admin access before updating provider enablement", async () => {
+      const response = await request(app)
+        .patch("/api/v1/price/providers/binance")
+        .set("Authorization", "Bearer user-token")
+        .send({ enabled: true });
+
+      expect(response.status).toBe(403);
+      expect(mockPriceService.setProviderEnabled).not.toHaveBeenCalled();
     });
   });
 

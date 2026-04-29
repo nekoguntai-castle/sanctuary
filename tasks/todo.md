@@ -1,6 +1,108 @@
-# Active Task: Quick Render Regression CI Diagnostics 2026-04-29
+# Active Task: Price Provider DB PR Delivery 2026-04-29
 
 Status: in progress
+
+Goal: make the local Node default durable, then commit, push, open, monitor, and merge the DB-backed price provider enablement work through the repository PR flow.
+
+## Plan
+
+- [x] Make plain local `node`, `npm`, and `npx` resolve to Node 24 without inline env prefixes.
+- [x] Preflight branch, status, and diff.
+- [x] Stage only the price-provider implementation, task tracker, and lesson changes.
+- [x] Commit with a concrete implementation message.
+- [ ] Push the branch and open or update the PR. _(in progress)_
+- [ ] Monitor PR and merge-queue CI; fix any failures with follow-up commits.
+- [ ] Merge safely through the repo's protected-branch or merge-queue flow.
+- [ ] Verify `main` contains the merge and document results.
+
+## Review
+
+- Plain `node --version` and `npm exec node -- --version` now resolve to Node v24.14.1 through user-local symlinks in `~/.local/bin`.
+- Preflight confirmed branch `codex/price-provider-db-migration-plan` is based on `origin/main` at `cd4286cc`, with dirty files scoped to the price-provider implementation, tests, task tracker, and lessons.
+- Plain-command verification passed before commit: app/test/server typechecks, focused frontend diagnostics/context/API helper tests, focused backend provider/service/API/OpenAPI tests, lizard quality gate, and `git diff --check`.
+- Cached diff review passed and `git diff --cached --check` reported no whitespace errors.
+- Created the implementation commit (`Move price provider enablement to DB settings`) after pre-commit verification passed.
+- Delivery in progress.
+
+---
+
+# Active Task: Price Provider DB-Backed Enablement Plan 2026-04-29
+
+Status: complete
+
+Goal: move price-provider enable/disable control out of long-term env configuration and into global authenticated admin UI configuration, while preserving user-level provider selection and the current auto-aggregate behavior.
+
+## Current Findings
+
+- Provider enablement is currently env-driven through `PRICE_PROVIDERS_ENABLED`, legacy `PRICE_PROVIDERS`, and `PRICE_PROVIDERS_DISABLED` in `server/src/services/price/providers/config.ts`.
+- The running registry is built from enabled providers only, so current auto aggregate already uses only enabled providers because `getPrice()` asks the registry for providers that support the currency.
+- The UI can view/test known providers in `PriceProviderDiagnostics`, and each user can choose `auto` or a specific enabled provider from `/price/providers`, but there is no global admin UI toggle today.
+- Provider diagnostics/testing is already an admin-only backend contract and should remain an operator surface, preferably in Admin/Node Configuration > External Services. Non-admin users should not get provider health/test controls.
+- The database already has `system_settings`, so this does not require a new Prisma table unless we decide we need separate per-provider audit/history rows.
+- Provider enablement should be global instance configuration, not per-user configuration. It changes the backend provider registry, health checks, cache behavior, and external services the deployment calls.
+- Price request volume is currently split: browser-to-backend calls grow with active users/tabs because `CurrencyContext` refreshes every 60 seconds, while upstream auto-aggregate provider calls are mostly collapsed by the 60-second backend cache per currency. The specific-provider endpoint currently bypasses that cache and should be fixed before provider choice becomes more visible.
+
+## Storage Decision
+
+Use `system_settings` as the first implementation path instead of a new Prisma model:
+
+```json
+{
+  "version": 1,
+  "enabled": ["mempool", "coingecko", "kraken", "coinbase"],
+  "updatedAt": "2026-04-29T00:00:00.000Z",
+  "updatedBy": "admin-user-id"
+}
+```
+
+- Add `SystemSettingKeys.PRICE_PROVIDER_CONFIG = "price.providers.config"`.
+- On first startup when the key is missing, run a runtime data migration: compute the enabled provider list from existing env values, persist it, then use the DB value.
+- If no legacy env is present, default to `mempool`, `coingecko`, `kraken`, and `coinbase`, leaving `binance` disabled by default but toggleable in the UI.
+- After the DB key exists, env values become bootstrap-only compatibility inputs and should log a deprecation warning if they are still set.
+- User preferences continue to store only the selected display/refresh provider (`auto` or one globally enabled provider).
+
+## Implementation Plan
+
+- [x] Add a typed `priceProviderSettings` service/repository around `systemSettingRepository` with Zod validation, known-provider filtering, duplicate removal, and legacy-env backfill.
+- [x] Change price-provider initialization to read enabled names from the DB-backed settings service instead of directly from `process.env`.
+- [x] Add a `PriceService.reloadProviders()` path that shuts down/rebuilds the registry, serializes reloads with a small mutex, restarts health checks, and clears price cache after enablement changes.
+- [x] Add admin API endpoints for enablement: `PATCH /api/v1/price/providers/:provider` with `{ enabled: boolean }`, plus a bulk-safe helper if tests show the UI needs atomic multi-provider saves.
+- [x] Guard API updates so unknown providers are rejected and the last enabled provider cannot be disabled.
+- [x] Cache provider-specific reads with keys like `current:${provider}:${currency}` and add singleflight request coalescing for cache misses so user growth does not create upstream bursts at TTL boundaries.
+- [x] Keep diagnostics able to test disabled known providers for admins only, but keep `/price/providers`, per-user provider choices, health checks, and auto aggregate limited to globally enabled providers.
+- [x] Keep provider testing and enable/disable controls in the admin/operator UI. Regular user Settings should only show provider choice controls backed by the globally enabled provider list.
+- [x] Update `PriceProviderDiagnostics` to render toggles for admin users, show save/test state independently, refresh its provider list after changes, and notify Settings/CurrencyContext so disabled specific providers fall back to `auto`.
+- [x] Remove `PRICE_PROVIDERS_DISABLED=binance` from Compose defaults once the DB bootstrap default covers it; keep env parsing only for first-run migration and documented compatibility.
+- [x] Update OpenAPI schemas/paths, frontend API helpers, route tests, price-service tests, provider-settings tests, `CurrencyContext` tests, diagnostics UI tests, and render/E2E mocks.
+- [x] Verify with focused unit/API/UI tests, app/test/server typechecks, lizard for touched logic, `git diff --check`, and a runtime container smoke that toggling a provider changes `/price/providers`, health checks, and auto aggregate inputs.
+
+## Expected Behavior
+
+- Auto aggregate continues to use only enabled providers, because the registry only contains enabled providers after initialization/reload.
+- Upstream auto-aggregate call volume should scale primarily with enabled providers, currencies, backend instances, and cache TTL, not directly with user count. Browser-to-backend request volume can still scale with active users unless we later add push/SSE/shared polling.
+- A disabled provider remains visible in diagnostics as a known provider and can still be one-off tested by an admin, but it is not used for user-facing price refreshes or health rollups.
+- Non-admin users see only the choice of `auto` or an enabled specific provider; they do not test, enable, or disable providers.
+- Users can still choose a preferred provider, but only from the globally enabled set. If an admin disables that provider later, the UI falls back to `auto`.
+- Existing deployments keep their current env-derived provider set on first boot after the change, then the UI-owned DB setting becomes authoritative.
+- Rollback path: delete `system_settings.price.providers.config` to force another env/default bootstrap on next startup, or re-enable a provider through the admin UI.
+
+## Review
+
+- Added DB-backed global price provider config in `system_settings.price.providers.config`, with first-run bootstrap from legacy env and default enabled providers of mempool, CoinGecko, Kraken, and Coinbase.
+- Price service initialization now reads DB-backed provider config, `PATCH /api/v1/price/providers/:provider` updates global enablement, reloads the registry, restarts health checks, and clears price cache.
+- Provider-specific price reads now use provider/currency cache keys and singleflight request coalescing, so specific-provider user choices no longer bypass backend caching.
+- Admin/provider diagnostics now show enable/disable toggles, while regular Settings only exposes the user preference selector for `auto` or globally enabled providers.
+- `CurrencyContext` reloads the enabled provider list after admin changes and falls back selected disabled providers to `auto`.
+- Removed the Compose default `PRICE_PROVIDERS_DISABLED=binance`; Binance is disabled by the DB bootstrap default and can be toggled in the admin UI.
+- Verification passed: focused frontend tests (`PriceProviderDiagnostics`, `CurrencyContext`, price API helper, Services section), focused backend price service/settings/provider config tests, backend price API route tests, OpenAPI tests, app/test/server typechecks under Node 24, lizard quality gate, `git diff --check`, and `./start.sh --rebuild`.
+- Runtime smoke passed on `https://localhost:8443`: health endpoint returned 200, API health returned 200 with only the pre-existing disk usage warning, containers were healthy, default `/price/providers` returned mempool/CoinGecko/Kraken/Coinbase, enabling Binance added it to `/price/providers` and the DB setting, and disabling Binance restored the default four-provider state.
+- Runtime notes: enabling Binance still produced the expected upstream HTTP 451 warning in this region, and CoinGecko produced an expected transient HTTP 429 during provider health checks.
+
+---
+
+# Active Task: Quick Render Regression CI Diagnostics 2026-04-29
+
+Status: complete
 
 Goal: make the quick render regression lane emit actionable Playwright failure details after PR #229 failed repeatedly with only an opaque exit code.
 
@@ -14,8 +116,8 @@ Goal: make the quick render regression lane emit actionable Playwright failure d
 - [x] Use the next CI signal to identify the concrete failure.
 - [x] Update the affected gold primary-button render snapshots.
 - [x] Rebuild the production frontend bundle under Node 24 and rerun the CI-shaped render lane.
-- [ ] Commit the render snapshot fix, push, and monitor PR #229 again.
-- [ ] Merge PR #229 once required checks pass.
+- [x] Commit the render snapshot fix, push, and monitor PR #229 again.
+- [x] Merge PR #229 once required checks pass.
 
 ## Review
 
@@ -24,6 +126,7 @@ Goal: make the quick render regression lane emit actionable Playwright failure d
 - The next CI run exposed the actual Quick Render cause: the wallet and settings snapshots still expected the old dark primary button, while CI rendered the intended gold primary button.
 - Updated only those two screenshot baselines from the CI-rendered gold state.
 - Verification passed: `git diff --check`, `npm run typecheck:tests`, `npm run check:github-action-runtimes` with network access, `npm run build` under Node v24.14.1, and the CI-shaped render lane under Node v24.14.1 after rebuilding the production bundle.
+- PR #229 merged through the merge queue as `cd4286cc` after PR quick checks, CodeQL, and the merge-queue full Test Suite passed.
 
 ---
 

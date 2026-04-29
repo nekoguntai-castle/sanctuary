@@ -1,7 +1,5 @@
 import React from "react";
 import { useCurrency } from "../../../contexts/CurrencyContext";
-import { useUser } from "../../../contexts/UserContext";
-import { PriceProviderDiagnostics } from "../../PriceProviderDiagnostics";
 import { Button } from "../../ui/Button";
 
 const ServicesTab: React.FC = () => {
@@ -14,9 +12,7 @@ const ServicesTab: React.FC = () => {
     lastPriceUpdate,
     btcPrice,
     currencySymbol,
-    fiatCurrency,
   } = useCurrency();
-  const { user } = useUser();
 
   return (
     <div className="space-y-6">
@@ -82,11 +78,6 @@ const ServicesTab: React.FC = () => {
             </div>
           </div>
 
-          {user?.isAdmin && (
-            <div className="pt-4 border-t border-sanctuary-100 dark:border-sanctuary-800">
-              <PriceProviderDiagnostics currency={fiatCurrency} />
-            </div>
-          )}
         </div>
       </div>
     </div>

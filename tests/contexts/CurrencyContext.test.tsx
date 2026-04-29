@@ -30,6 +30,7 @@ vi.mock("../../utils/logger", () => ({
 
 // Mock the APIs
 vi.mock("../../src/api/price", () => ({
+  PRICE_PROVIDERS_CHANGED_EVENT: "sanctuary:price-providers-changed",
   getPrice: vi.fn(),
   getPriceFromProvider: vi.fn(),
   getProviders: vi.fn(),
@@ -268,8 +269,37 @@ describe("CurrencyContext", () => {
 
       await waitFor(() => {
         expect(screen.getByTestId("providers")).toHaveTextContent(
-          "auto,coingecko,mempool,kraken,coinbase,binance",
+          "auto,mempool,coingecko,kraken,coinbase",
         );
+      });
+    });
+
+    it("falls back to auto when the selected provider is disabled globally", async () => {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      renderWithProviders(<TestConsumer />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("price-provider")).toHaveTextContent("auto");
+      });
+
+      await user.click(screen.getByTestId("set-provider"));
+
+      expect(screen.getByTestId("price-provider")).toHaveTextContent("kraken");
+
+      vi.mocked(priceApi.getProviders).mockResolvedValueOnce({
+        providers: ["mempool", "coingecko"],
+        count: 2,
+      });
+
+      await act(async () => {
+        window.dispatchEvent(
+          new CustomEvent(priceApi.PRICE_PROVIDERS_CHANGED_EVENT),
+        );
+        await Promise.resolve();
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("price-provider")).toHaveTextContent("auto");
       });
     });
 

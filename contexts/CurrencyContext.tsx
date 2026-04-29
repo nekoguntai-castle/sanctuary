@@ -5,6 +5,7 @@ import React, {
   useEffect,
   useCallback,
   useMemo,
+  useRef,
 } from "react";
 import { useUser } from "./UserContext";
 import * as priceApi from "../src/api/price";
@@ -37,6 +38,7 @@ interface CurrencyContextType {
   priceProvider: string;
   setPriceProvider: (provider: string) => void;
   availableProviders: string[];
+  reloadAvailableProviders: () => Promise<void>;
 }
 
 const CurrencyContext = createContext<CurrencyContextType | undefined>(
@@ -52,11 +54,10 @@ const SYMBOLS: Record<FiatCurrency, string> = {
 
 const FALLBACK_PRICE_PROVIDERS = [
   "auto",
-  "coingecko",
   "mempool",
+  "coingecko",
   "kraken",
   "coinbase",
-  "binance",
 ];
 
 export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({
@@ -88,6 +89,11 @@ export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({
   const unit = (user?.preferences?.unit as BitcoinUnit) ?? localUnit;
   const priceProvider =
     (user?.preferences?.priceProvider as string) ?? localPriceProvider;
+  const priceProviderRef = useRef(priceProvider);
+
+  useEffect(() => {
+    priceProviderRef.current = priceProvider;
+  }, [priceProvider]);
 
   const setFiatCurrency = useCallback(
     (code: FiatCurrency) => {
@@ -142,6 +148,35 @@ export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, [fiatCurrency, priceProvider]);
 
+  const applyAvailableProviders = useCallback(
+    (providers: string[]) => {
+      const nextProviders = [
+        "auto",
+        ...providers.filter((provider) => provider !== "auto"),
+      ];
+      setAvailableProviders(nextProviders);
+
+      const currentProvider = priceProviderRef.current;
+      if (
+        currentProvider !== "auto" &&
+        !nextProviders.includes(currentProvider)
+      ) {
+        setPriceProvider("auto");
+      }
+    },
+    [setPriceProvider],
+  );
+
+  const reloadAvailableProviders = useCallback(async () => {
+    try {
+      const { providers } = await priceApi.getProviders();
+      applyAvailableProviders(providers);
+    } catch (error) {
+      log.warn("Failed to load price providers", { error });
+      setAvailableProviders(FALLBACK_PRICE_PROVIDERS);
+    }
+  }, [applyAvailableProviders]);
+
   // Load enabled providers from the backend, keeping a static fallback for offline settings.
   useEffect(() => {
     let mounted = true;
@@ -150,7 +185,7 @@ export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({
       .getProviders()
       .then(({ providers }) => {
         if (!mounted) return;
-        setAvailableProviders(["auto", ...providers]);
+        applyAvailableProviders(providers);
       })
       .catch((error) => {
         log.warn("Failed to load price providers", { error });
@@ -162,7 +197,26 @@ export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [applyAvailableProviders]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const onProvidersChanged = () => {
+      void reloadAvailableProviders();
+    };
+
+    window.addEventListener(
+      priceApi.PRICE_PROVIDERS_CHANGED_EVENT,
+      onProvidersChanged,
+    );
+    return () => {
+      window.removeEventListener(
+        priceApi.PRICE_PROVIDERS_CHANGED_EVENT,
+        onProvidersChanged,
+      );
+    };
+  }, [reloadAvailableProviders]);
 
   // Fetch price on mount and when currency changes
   useEffect(() => {
@@ -239,6 +293,7 @@ export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({
       priceProvider,
       setPriceProvider,
       availableProviders,
+      reloadAvailableProviders,
     }),
     [
       showFiat,
@@ -261,6 +316,7 @@ export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({
       priceProvider,
       setPriceProvider,
       availableProviders,
+      reloadAvailableProviders,
     ],
   );
 
@@ -339,6 +395,7 @@ export const useCurrencySettings = () => {
     priceProvider,
     setPriceProvider,
     availableProviders,
+    reloadAvailableProviders,
   } = useCurrency();
   return {
     showFiat,
@@ -350,5 +407,6 @@ export const useCurrencySettings = () => {
     priceProvider,
     setPriceProvider,
     availableProviders,
+    reloadAvailableProviders,
   };
 };

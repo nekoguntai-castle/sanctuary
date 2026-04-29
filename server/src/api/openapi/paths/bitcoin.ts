@@ -864,6 +864,29 @@ export const pricePaths = {
       },
     },
   },
+  "/price/providers/{provider}": {
+    patch: {
+      tags: ["Price"],
+      summary: "Update price provider enablement",
+      description:
+        "Admin-only update for globally enabling or disabling one known Bitcoin price provider.",
+      security: bearerAuth,
+      parameters: [priceProviderParameter],
+      requestBody: jsonRequestBody(
+        "#/components/schemas/PriceProviderEnablementRequest",
+      ),
+      responses: {
+        200: jsonResponse(
+          "Updated price provider enablement",
+          "#/components/schemas/PriceProviderEnablementResponse",
+        ),
+        400: apiErrorResponse,
+        401: apiErrorResponse,
+        403: apiErrorResponse,
+        500: apiErrorResponse,
+      },
+    },
+  },
   "/price/providers/test": {
     post: {
       tags: ["Price"],

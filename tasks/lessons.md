@@ -2,6 +2,32 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Avoid One-Off Env-Prefixed Tool Commands
+
+**Rule:** Do not rely on inline `env PATH=... command` prefixes for routine Node tooling. Use the repo's normal package scripts, a durable local runtime setup, or a stable non-env wrapper.
+
+**Why:** Repeated env-prefixed commands are noisy, bypass reusable approval prefixes, and make local verification feel different from CI even after the repo declares the right Node version.
+
+**How to apply:**
+
+- Prefer plain `npm run ...` only after confirming `node --version` matches `.nvmrc` and CI.
+- If the shell default is stale, use a stable Node 24 invocation or fix the local runtime once instead of prefixing every command with environment variables.
+- Do not use `npx` for tools that are not installed locally; it may try the network and trigger avoidable approval or DNS failures.
+- Add package scripts or local dev-tool dependencies when a verification command needs to be repeatable.
+
+## Separate Global Ops Settings From User Preferences
+
+**Rule:** Before proposing a DB-backed setting, classify whether it is global deployment state or a per-user preference.
+
+**Why:** The price-provider enable/disable plan initially used "settings" wording that could imply per-user provider availability. The user clarified that provider enablement should not vary by user.
+
+**How to apply:**
+
+- Treat external-service enablement, backend registry membership, health checks, and cache policy as global admin configuration.
+- Keep live external-service diagnostics and test probes in admin/operator surfaces, not regular user preference screens.
+- Keep user preferences limited to presentation or selection among globally allowed options.
+- Spell out fallback behavior when an admin disables a globally enabled option that a user had selected.
+
 ## Match Local Node To CI Before Diagnosing Node-Sensitive Failures
 
 **Rule:** Before treating a CI-only frontend or Playwright failure as an app regression, verify the local shell is running the same Node major as CI and the repo's `engines` field.

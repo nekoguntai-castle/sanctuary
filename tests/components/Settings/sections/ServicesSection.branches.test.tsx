@@ -2,16 +2,9 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ServicesTab } from "../../../../components/Settings/sections/ServicesSection";
 
-vi.mock("../../../../components/PriceProviderDiagnostics", () => ({
-  PriceProviderDiagnostics: ({ currency }: { currency?: string }) => (
-    <div data-testid="price-provider-diagnostics">{currency}</div>
-  ),
-}));
-
 const state = vi.hoisted(() => ({
   priceProvider: "auto",
   btcPrice: null as number | null,
-  isAdmin: true,
 }));
 
 const mockSetPriceProvider = vi.fn();
@@ -27,13 +20,6 @@ vi.mock("../../../../contexts/CurrencyContext", () => ({
     lastPriceUpdate: null,
     btcPrice: state.btcPrice,
     currencySymbol: "$",
-    fiatCurrency: "USD",
-  }),
-}));
-
-vi.mock("../../../../contexts/UserContext", () => ({
-  useUser: () => ({
-    user: { isAdmin: state.isAdmin },
   }),
 }));
 
@@ -42,7 +28,6 @@ describe("ServicesSection branch coverage", () => {
     vi.clearAllMocks();
     state.priceProvider = "auto";
     state.btcPrice = null;
-    state.isAdmin = true;
   });
 
   it("covers provider description and price display branches", () => {
@@ -52,9 +37,6 @@ describe("ServicesSection branch coverage", () => {
       screen.getByText(/aggregated prices from multiple sources/i),
     ).toBeInTheDocument();
     expect(screen.getByText("-----")).toBeInTheDocument();
-    expect(screen.getByTestId("price-provider-diagnostics")).toHaveTextContent(
-      "USD",
-    );
 
     fireEvent.change(screen.getByRole("combobox"), {
       target: { value: "coingecko" },
@@ -71,15 +53,5 @@ describe("ServicesSection branch coverage", () => {
       screen.getByText("Using coingecko as the exclusive price source."),
     ).toBeInTheDocument();
     expect(screen.getByText("$98,765")).toBeInTheDocument();
-  });
-
-  it("hides provider diagnostics for non-admin users", () => {
-    state.isAdmin = false;
-
-    render(<ServicesTab />);
-
-    expect(
-      screen.queryByTestId("price-provider-diagnostics"),
-    ).not.toBeInTheDocument();
   });
 });

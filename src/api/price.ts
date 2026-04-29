@@ -6,6 +6,9 @@
 
 import apiClient from "./client";
 
+export const PRICE_PROVIDERS_CHANGED_EVENT =
+  "sanctuary:price-providers-changed";
+
 export interface PriceSource {
   provider: string;
   price: number;
@@ -68,6 +71,13 @@ export interface PriceProviderTestResult {
   price?: number;
   timestamp?: string;
   error?: string;
+}
+
+export interface PriceProviderEnablementResponse {
+  provider: string;
+  enabled: boolean;
+  providers: PriceProviderInfo[];
+  count: number;
 }
 
 export interface CacheStats {
@@ -160,6 +170,19 @@ export async function getProviderDiagnostics(): Promise<{
 }> {
   return apiClient.get<{ providers: PriceProviderInfo[]; count: number }>(
     "/price/providers/status",
+  );
+}
+
+/**
+ * Enable or disable a known price provider globally.
+ */
+export async function setPriceProviderEnabled(
+  provider: string,
+  enabled: boolean,
+): Promise<PriceProviderEnablementResponse> {
+  return apiClient.patch<PriceProviderEnablementResponse>(
+    `/price/providers/${provider}`,
+    { enabled },
   );
 }
 

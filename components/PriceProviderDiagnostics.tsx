@@ -32,8 +32,8 @@ function getStatusText(result: PriceProviderTestResult | undefined): string {
   return result.error || "Unavailable";
 }
 
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Test request failed";
+function getErrorMessage(error: unknown, fallback = "Request failed"): string {
+  return error instanceof Error ? error.message : fallback;
 }
 
 function ProviderStatusIcon({
@@ -68,6 +68,7 @@ export const PriceProviderDiagnostics: React.FC<
   const [results, setResults] = useState<TestResultsByProvider>({});
   const [loadingProviders, setLoadingProviders] = useState(true);
   const [testingProvider, setTestingProvider] = useState<string | null>(null);
+  const [savingProvider, setSavingProvider] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const sortedProviders = useMemo(
@@ -134,7 +135,7 @@ export const PriceProviderDiagnostics: React.FC<
             ok: false,
             currency: normalizedCurrency,
             latencyMs: Date.now() - startedAt,
-            error: getErrorMessage(error),
+            error: getErrorMessage(error, "Test request failed"),
           },
         }));
       } finally {
@@ -158,11 +159,45 @@ export const PriceProviderDiagnostics: React.FC<
       setResults(nextResults);
       setLoadError(null);
     } catch (error) {
-      setLoadError(getErrorMessage(error));
+      setLoadError(getErrorMessage(error, "Test request failed"));
     } finally {
       setTestingProvider(null);
     }
   }, [normalizedCurrency]);
+
+  const toggleProviderEnabled = useCallback(
+    async (provider: PriceProviderInfo) => {
+      const nextEnabled = !provider.enabled;
+
+      try {
+        setSavingProvider(provider.name);
+        setLoadError(null);
+        const response = await priceApi.setPriceProviderEnabled(
+          provider.name,
+          nextEnabled,
+        );
+        setProviders(response.providers);
+        setResults((current) => {
+          const existing = current[provider.name];
+          if (!existing) return current;
+          return {
+            ...current,
+            [provider.name]: { ...existing, enabled: nextEnabled },
+          };
+        });
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent(priceApi.PRICE_PROVIDERS_CHANGED_EVENT),
+          );
+        }
+      } catch (error) {
+        setLoadError(getErrorMessage(error, "Provider update failed"));
+      } finally {
+        setSavingProvider(null);
+      }
+    },
+    [],
+  );
 
   if (loadingProviders) {
     return (
@@ -214,12 +249,13 @@ export const PriceProviderDiagnostics: React.FC<
           {sortedProviders.map((provider) => {
             const result = results[provider.name];
             const isTesting = testingProvider === provider.name;
+            const isSaving = savingProvider === provider.name;
             const price = result ? formatPrice(result) : "";
 
             return (
               <div
                 key={provider.name}
-                className="grid grid-cols-[1fr_auto] sm:grid-cols-[minmax(8rem,1fr)_7rem_minmax(10rem,1.4fr)_auto] gap-3 items-center py-3"
+                className="grid grid-cols-[1fr_auto] sm:grid-cols-[minmax(8rem,1fr)_8rem_minmax(10rem,1.4fr)_auto] gap-3 items-center py-3"
               >
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
@@ -233,17 +269,34 @@ export const PriceProviderDiagnostics: React.FC<
                   </div>
                 </div>
 
-                <div className="hidden sm:block">
+                <label className="inline-flex items-center gap-2 justify-self-start sm:justify-self-auto">
+                  <input
+                    type="checkbox"
+                    role="switch"
+                    checked={provider.enabled}
+                    disabled={isSaving || testingProvider === "all"}
+                    onChange={() => toggleProviderEnabled(provider)}
+                    aria-label={`${provider.enabled ? "Disable" : "Enable"} ${provider.name} price provider`}
+                    className="peer sr-only"
+                  />
                   <span
-                    className={`inline-flex px-2 py-0.5 rounded-md text-xs font-medium ${
-                      provider.enabled
-                        ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
-                        : "bg-sanctuary-100 text-sanctuary-500 dark:bg-sanctuary-800 dark:text-sanctuary-400"
-                    }`}
+                    aria-hidden="true"
+                    className="relative inline-flex h-5 w-9 flex-shrink-0 rounded-full bg-sanctuary-200 transition-colors peer-checked:bg-primary-600 peer-disabled:opacity-50 dark:bg-sanctuary-700"
                   >
-                    {provider.enabled ? "Enabled" : "Disabled"}
+                    <span
+                      className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+                        provider.enabled ? "translate-x-4" : ""
+                      }`}
+                    />
                   </span>
-                </div>
+                  <span className="text-xs font-medium text-sanctuary-600 dark:text-sanctuary-300">
+                    {isSaving
+                      ? "Saving"
+                      : provider.enabled
+                        ? "Enabled"
+                        : "Disabled"}
+                  </span>
+                </label>
 
                 <div className="col-span-2 sm:col-span-1 min-w-0">
                   <div className="text-sm text-sanctuary-700 dark:text-sanctuary-300 truncate">
@@ -259,7 +312,7 @@ export const PriceProviderDiagnostics: React.FC<
                   variant="secondary"
                   onClick={() => testProvider(provider)}
                   isLoading={isTesting}
-                  disabled={testingProvider === "all"}
+                  disabled={testingProvider === "all" || isSaving}
                   aria-label={`Test ${provider.name} price provider`}
                 >
                   <RefreshCw

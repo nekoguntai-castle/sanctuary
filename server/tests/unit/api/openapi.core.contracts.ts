@@ -140,8 +140,23 @@ export function registerOpenApiCoreTests() {
       openApiSpec.components.schemas.PriceProviderDiagnosticsItem.required,
     ).toEqual(["name", "priority", "supportedCurrencies", "enabled"]);
     expect(
+      openApiSpec.components.schemas.PriceProviderEnablementRequest.required,
+    ).toEqual(["enabled"]);
+    expect(
+      openApiSpec.components.schemas.PriceProviderEnablementResponse.required,
+    ).toEqual(["provider", "enabled", "providers", "count"]);
+    expect(
       openApiSpec.components.schemas.PriceProviderTestResult.required,
     ).toEqual(["provider", "enabled", "ok", "currency", "latencyMs"]);
+    expect(
+      openApiSpec.paths["/price/providers/{provider}"].patch.parameters,
+    ).toContainEqual(
+      expect.objectContaining({
+        name: "provider",
+        in: "path",
+        required: true,
+      }),
+    );
     expect(
       openApiSpec.paths["/price/providers/{provider}/test"].post.parameters,
     ).toContainEqual(
@@ -158,6 +173,9 @@ export function registerOpenApiCoreTests() {
       browserOrBearerAuthSecurity,
     );
     expect(
+      openApiSpec.paths["/price/providers/{provider}"].patch.security,
+    ).toEqual(browserOrBearerAuthSecurity);
+    expect(
       openApiSpec.paths["/price/providers/{provider}/test"].post.security,
     ).toEqual(browserOrBearerAuthSecurity);
     expect(
@@ -165,6 +183,9 @@ export function registerOpenApiCoreTests() {
     ).toHaveProperty("403");
     expect(
       openApiSpec.paths["/price/providers/test"].post.responses,
+    ).toHaveProperty("403");
+    expect(
+      openApiSpec.paths["/price/providers/{provider}"].patch.responses,
     ).toHaveProperty("403");
     expect(
       openApiSpec.paths["/price/providers/{provider}/test"].post.responses,
