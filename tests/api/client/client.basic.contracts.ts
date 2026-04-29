@@ -500,6 +500,19 @@ export const registerApiClientBasicContracts = () => {
       });
     });
 
+    it("should parse text JSON when response headers have no get method", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: {},
+        text: () => Promise.resolve('{"ok":true}'),
+      });
+
+      await expect(apiClient.get("/json-with-header-object")).resolves.toEqual({
+        ok: true,
+      });
+    });
+
     it("should preserve primitive and string error bodies", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,

@@ -1,3 +1,25 @@
+# Active Task: Grade Coverage Gate Follow-Up PR 2026-04-28
+
+Status: complete
+
+Goal: carry forward the remaining API client coverage edge case after rebasing the grade coverage fix onto current `origin/main`.
+
+## Plan
+
+- [x] Resolve the rebase against the newer grade-maintenance work already on `origin/main`.
+- [x] Keep the current mainline grade report/history and admin/Console coverage fixes instead of reintroducing stale duplicates.
+- [x] Preserve the additional API client contract for text-backed JSON responses when `response.headers` exists without a `get` method.
+- [x] Rerun focused and coverage-gate verification before re-queueing the PR.
+- [x] Use `pr-delivery` to push, monitor, merge, and verify the PR.
+
+## Review
+
+- Rebase conflict resolution kept the newer 98/100 grade report and existing admin/Console coverage fixes from `origin/main`.
+- The remaining code change is an API client contract that covers response-header objects without a `get` method while parsing JSON text bodies.
+- Verification passed: `npx vitest run tests/api/client.test.ts`; `npm run test:coverage` at 100% with 433 files / 5,852 tests; `npm run test:backend:coverage` at 100% with 419 passed files / 9,468 passed tests and 22 skipped files / 505 skipped tests; `npx prettier --check tasks/todo.md tests/api/client/client.basic.contracts.ts`; `git diff --check`.
+
+---
+
 # Active Task: Remove Managed Ollama Container Runtime 2026-04-29
 
 Status: complete
