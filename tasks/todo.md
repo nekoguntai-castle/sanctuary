@@ -1,3 +1,26 @@
+# Active Task: Quick Render Regression CI Diagnostics 2026-04-29
+
+Status: in progress
+
+Goal: make the quick render regression lane emit actionable Playwright failure details after PR #229 failed repeatedly with only an opaque exit code.
+
+## Plan
+
+- [x] Confirm local Node 24 runs pass for both visible and exact CI-shaped render commands.
+- [x] Inspect the quick render workflow and Playwright reporter configuration.
+- [x] Add terminal Playwright output and quick-lane artifact uploads for failures.
+- [x] Run focused config/type checks.
+- [ ] Commit, push, and monitor PR #229 again.
+- [ ] Use the next CI signal to either merge if green or fix the concrete failure.
+
+## Review
+
+- Added Playwright `line` reporter output so CI logs show test progress and failure details.
+- Added quick-render Playwright report/results artifact uploads, matching the full render lane's trace/report pattern.
+- Verification passed: `git diff --check`, `npm run typecheck:tests`, `npm run check:github-action-runtimes` with network access, and the exact Node 24 CI-shaped render command with the updated reporter configuration.
+
+---
+
 # Active Task: Align Local Node Runtime With CI 2026-04-29
 
 Status: complete
