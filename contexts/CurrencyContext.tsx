@@ -200,8 +200,6 @@ export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [applyAvailableProviders]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-
     const onProvidersChanged = () => {
       void reloadAvailableProviders();
     };

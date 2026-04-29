@@ -274,6 +274,58 @@ describe("CurrencyContext", () => {
       });
     });
 
+    it("falls back to static providers when provider reload fails", async () => {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      vi.mocked(priceApi.getProviders).mockResolvedValue({
+        providers: ["kraken"],
+        count: 1,
+      });
+
+      const TestSettingsProviders = () => {
+        const { availableProviders, reloadAvailableProviders } =
+          useCurrencySettings();
+        return (
+          <div>
+            <span data-testid="providers">{availableProviders.join(",")}</span>
+            <button
+              data-testid="reload-providers"
+              onClick={() => void reloadAvailableProviders()}
+            >
+              Reload
+            </button>
+          </div>
+        );
+      };
+
+      renderWithProviders(<TestSettingsProviders />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("providers")).toHaveTextContent(
+          "auto,kraken",
+        );
+      });
+
+      const initialProviderLoadCount = vi.mocked(priceApi.getProviders).mock
+        .calls.length;
+      vi.mocked(priceApi.getProviders).mockRejectedValueOnce(
+        new Error("offline"),
+      );
+
+      await user.click(screen.getByTestId("reload-providers"));
+
+      await waitFor(() => {
+        expect(priceApi.getProviders).toHaveBeenCalledTimes(
+          initialProviderLoadCount + 1,
+        );
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("providers")).toHaveTextContent(
+          "auto,mempool,coingecko,kraken,coinbase",
+        );
+      });
+    });
+
     it("falls back to auto when the selected provider is disabled globally", async () => {
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
       renderWithProviders(<TestConsumer />);

@@ -185,11 +185,9 @@ export const PriceProviderDiagnostics: React.FC<
             [provider.name]: { ...existing, enabled: nextEnabled },
           };
         });
-        if (typeof window !== "undefined") {
-          window.dispatchEvent(
-            new CustomEvent(priceApi.PRICE_PROVIDERS_CHANGED_EVENT),
-          );
-        }
+        window.dispatchEvent(
+          new CustomEvent(priceApi.PRICE_PROVIDERS_CHANGED_EVENT),
+        );
       } catch (error) {
         setLoadError(getErrorMessage(error, "Provider update failed"));
       } finally {
