@@ -253,6 +253,63 @@ describe("CurrencyContext", () => {
         expect(screen.getByTestId("price-change")).toHaveTextContent("null");
       });
     });
+
+    it("falls back to static providers when provider loading fails", async () => {
+      vi.mocked(priceApi.getProviders).mockRejectedValue(new Error("offline"));
+
+      const TestSettingsProviders = () => {
+        const { availableProviders } = useCurrencySettings();
+        return (
+          <span data-testid="providers">{availableProviders.join(",")}</span>
+        );
+      };
+
+      renderWithProviders(<TestSettingsProviders />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("providers")).toHaveTextContent(
+          "auto,coingecko,mempool,kraken,coinbase,binance",
+        );
+      });
+    });
+
+    it("ignores successful provider loading after unmount", async () => {
+      let resolveProviders!: (
+        value: Awaited<ReturnType<typeof priceApi.getProviders>>,
+      ) => void;
+      vi.mocked(priceApi.getProviders).mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolveProviders = resolve;
+          }),
+      );
+
+      const view = renderWithProviders(<TestConsumer />);
+      view.unmount();
+
+      await act(async () => {
+        resolveProviders({ providers: ["kraken"], count: 1 });
+        await Promise.resolve();
+      });
+    });
+
+    it("ignores failed provider loading after unmount", async () => {
+      let rejectProviders!: (error: Error) => void;
+      vi.mocked(priceApi.getProviders).mockImplementation(
+        () =>
+          new Promise((_, reject) => {
+            rejectProviders = reject;
+          }),
+      );
+
+      const view = renderWithProviders(<TestConsumer />);
+      view.unmount();
+
+      await act(async () => {
+        rejectProviders(new Error("offline"));
+        await Promise.resolve();
+      });
+    });
   });
 
   describe("Currency formatting", () => {

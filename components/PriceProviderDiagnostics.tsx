@@ -115,23 +115,22 @@ export const PriceProviderDiagnostics: React.FC<
   }, []);
 
   const testProvider = useCallback(
-    async (provider: string) => {
+    async (provider: PriceProviderInfo) => {
       const startedAt = Date.now();
 
       try {
-        setTestingProvider(provider);
+        setTestingProvider(provider.name);
         const result = await priceApi.testPriceProvider(
-          provider,
+          provider.name,
           normalizedCurrency,
         );
         setResults((current) => ({ ...current, [result.provider]: result }));
       } catch (error) {
-        const info = providers.find((candidate) => candidate.name === provider);
         setResults((current) => ({
           ...current,
-          [provider]: {
-            provider,
-            enabled: info?.enabled ?? false,
+          [provider.name]: {
+            provider: provider.name,
+            enabled: provider.enabled,
             ok: false,
             currency: normalizedCurrency,
             latencyMs: Date.now() - startedAt,
@@ -142,7 +141,7 @@ export const PriceProviderDiagnostics: React.FC<
         setTestingProvider(null);
       }
     },
-    [normalizedCurrency, providers],
+    [normalizedCurrency],
   );
 
   const testAllProviders = useCallback(async () => {
@@ -258,7 +257,7 @@ export const PriceProviderDiagnostics: React.FC<
                 <Button
                   size="sm"
                   variant="secondary"
-                  onClick={() => testProvider(provider.name)}
+                  onClick={() => testProvider(provider)}
                   isLoading={isTesting}
                   disabled={testingProvider === "all"}
                   aria-label={`Test ${provider.name} price provider`}

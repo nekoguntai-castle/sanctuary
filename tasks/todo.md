@@ -13,6 +13,7 @@ Goal: finish PR #228 delivery after the Quick Render Regression check exposed mi
 - [x] Re-run the render regression suite locally with the CI-shaped preview command.
 - [x] Add CodeQL-recognized and policy-backed rate limiting to admin-only price routes.
 - [x] Cover the admin price route limiter contract in focused API tests.
+- [x] Cover the merge-queue backend/frontend coverage gaps for price provider diagnostics.
 - [ ] Commit, push, re-monitor required checks, and merge through the merge queue.
 
 ## Review
@@ -21,7 +22,8 @@ Goal: finish PR #228 delivery after the Quick Render Regression check exposed mi
 - Added shared provider responses in `e2e/helpers.ts` so route-level E2E mocks do not each need their own duplicate provider bootstrap mock.
 - Updated the Settings render contract to target the exact `Price Provider` heading, avoiding ambiguity with `Price Provider Diagnostics`.
 - The aggregate CodeQL check then flagged the changed admin-only provider/cache routes for missing modeled rate limiting; added the repo's established `express-rate-limit` plus `rateLimitByUser("admin:default")` pattern on those routes.
-- Verification passed: local render regression without retries, exact CI-shaped `npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts`, focused price route tests, `npm run typecheck:tests`, Prettier check for touched files, `npm run quality:lizard`, and `git diff --check`.
+- The first merge-queue run then exposed full-lane coverage gaps that the PR-side quick checks did not run: backend `BasePriceProvider.testPrice` branches, frontend price-provider diagnostics edge states, and provider-list fallback/unmount handling in `CurrencyContext`.
+- Verification passed: local render regression without retries, exact CI-shaped `npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts`, focused price route tests, focused price diagnostics/context tests, full frontend coverage at 100%, full backend coverage at 100%, app/test/server typechecks, Prettier check for touched files, `npm run quality:lizard`, and `git diff --check`.
 
 ---
 
