@@ -34,22 +34,36 @@
  * ```
  */
 
-import { Queue, Worker, Job, QueueEvents, type ConnectionOptions, type JobsOptions } from 'bullmq';
-import { getRedisClient, isRedisConnected } from '../infrastructure';
-import { createLogger } from '../utils/logger';
-import { getErrorMessage } from '../utils/errors';
-import { withSpan } from '../utils/tracing';
-import type { JobDefinition, JobQueueConfig, QueueHealthStatus, ScheduleOptions, JobResult } from './types';
+import {
+  Queue,
+  Worker,
+  Job,
+  QueueEvents,
+  type ConnectionOptions,
+  type JobsOptions,
+} from "bullmq";
+import { getRedisClient, isRedisConnected } from "../infrastructure";
+import { createLogger } from "../utils/logger";
+import { getErrorMessage } from "../utils/errors";
+import { withSpan } from "../utils/tracing";
+import { toBullMqJobId, withBullMqSafeJobId } from "./bullMqJobIds";
+import type {
+  JobDefinition,
+  JobQueueConfig,
+  QueueHealthStatus,
+  ScheduleOptions,
+  JobResult,
+} from "./types";
 
-const log = createLogger('JOB:QUEUE');
+const log = createLogger("JOB:QUEUE");
 
 // Default configuration
 const DEFAULT_CONFIG: Required<JobQueueConfig> = {
-  prefix: 'sanctuary:jobs',
+  prefix: "sanctuary:jobs",
   defaultJobOptions: {
     attempts: 3,
     backoff: {
-      type: 'exponential',
+      type: "exponential",
       delay: 1000,
     },
     removeOnComplete: 500, // Keep last 500 completed jobs
@@ -60,19 +74,23 @@ const DEFAULT_CONFIG: Required<JobQueueConfig> = {
   removeOnFail: 250,
 };
 
-function buildRepeatableJobId(name: string, scheduleOptions: ScheduleOptions): string {
+function buildRepeatableJobId(
+  name: string,
+  scheduleOptions: ScheduleOptions,
+): string {
   // Called only for cron schedules, so cron is always defined here.
   const parts = [name, scheduleOptions.cron!];
   if (scheduleOptions.timezone) parts.push(scheduleOptions.timezone);
-  if (scheduleOptions.limit !== undefined) parts.push(`limit=${scheduleOptions.limit}`);
-  return `repeat:${parts.join(':')}`;
+  if (scheduleOptions.limit !== undefined)
+    parts.push(`limit=${scheduleOptions.limit}`);
+  return `repeat:${parts.join(":")}`;
 }
 
 class JobQueueService {
   private queue: Queue | null = null;
   private worker: Worker | null = null;
   private queueEvents: QueueEvents | null = null;
-  private handlers: Map<string, JobDefinition['handler']> = new Map();
+  private handlers: Map<string, JobDefinition["handler"]> = new Map();
   private config: Required<JobQueueConfig>;
   private initialized = false;
   private processingJobs = 0;
@@ -89,7 +107,7 @@ class JobQueueService {
 
     const redisClient = getRedisClient();
     if (!redisClient || !isRedisConnected()) {
-      throw new Error('Redis not available, job queue requires Redis');
+      throw new Error("Redis not available, job queue requires Redis");
     }
 
     try {
@@ -102,7 +120,7 @@ class JobQueueService {
       };
 
       // Create queue
-      this.queue = new Queue('main', {
+      this.queue = new Queue("main", {
         connection,
         prefix: this.config.prefix,
         defaultJobOptions: this.config.defaultJobOptions,
@@ -110,7 +128,7 @@ class JobQueueService {
 
       // Create worker
       this.worker = new Worker(
-        'main',
+        "main",
         async (job) => {
           const handler = this.handlers.get(job.name);
           if (!handler) {
@@ -121,9 +139,9 @@ class JobQueueService {
           try {
             // Wrap job execution in a trace span
             return await withSpan(`job.${job.name}`, async (span) => {
-              span.setAttribute('job.id', job.id || 'unknown');
-              span.setAttribute('job.name', job.name);
-              span.setAttribute('job.attemptsMade', job.attemptsMade);
+              span.setAttribute("job.id", job.id || "unknown");
+              span.setAttribute("job.name", job.name);
+              span.setAttribute("job.attemptsMade", job.attemptsMade);
               return await handler(job);
             });
           } finally {
@@ -134,11 +152,11 @@ class JobQueueService {
           connection,
           prefix: this.config.prefix,
           concurrency: this.config.concurrency,
-        }
+        },
       );
 
       // Create queue events for monitoring
-      this.queueEvents = new QueueEvents('main', {
+      this.queueEvents = new QueueEvents("main", {
         connection,
         prefix: this.config.prefix,
       });
@@ -147,12 +165,14 @@ class JobQueueService {
       this.setupEventHandlers();
 
       this.initialized = true;
-      log.info('Job queue initialized', {
+      log.info("Job queue initialized", {
         prefix: this.config.prefix,
         concurrency: this.config.concurrency,
       });
     } catch (error) {
-      log.error('Failed to initialize job queue', { error: getErrorMessage(error) });
+      log.error("Failed to initialize job queue", {
+        error: getErrorMessage(error),
+      });
       throw error;
     }
   }
@@ -163,18 +183,19 @@ class JobQueueService {
   private setupEventHandlers(): void {
     if (!this.worker) return;
 
-    this.worker.on('completed', (job) => {
-      log.debug('Job completed', {
+    this.worker.on("completed", (job) => {
+      log.debug("Job completed", {
         name: job.name,
         id: job.id,
-        duration: job.finishedOn && job.processedOn
-          ? job.finishedOn - job.processedOn
-          : undefined,
+        duration:
+          job.finishedOn && job.processedOn
+            ? job.finishedOn - job.processedOn
+            : undefined,
       });
     });
 
-    this.worker.on('failed', (job, error) => {
-      log.error('Job failed', {
+    this.worker.on("failed", (job, error) => {
+      log.error("Job failed", {
         name: job?.name,
         id: job?.id,
         error: error.message,
@@ -182,12 +203,12 @@ class JobQueueService {
       });
     });
 
-    this.worker.on('error', (error) => {
-      log.error('Worker error', { error: error.message });
+    this.worker.on("error", (error) => {
+      log.error("Worker error", { error: error.message });
     });
 
-    this.worker.on('stalled', (jobId) => {
-      log.warn('Job stalled', { jobId });
+    this.worker.on("stalled", (jobId) => {
+      log.warn("Job stalled", { jobId });
     });
   }
 
@@ -196,11 +217,11 @@ class JobQueueService {
    */
   register(definition: JobDefinition<any, any>): void {
     if (this.handlers.has(definition.name)) {
-      log.warn('Overwriting existing job handler', { name: definition.name });
+      log.warn("Overwriting existing job handler", { name: definition.name });
     }
 
     this.handlers.set(definition.name, definition.handler);
-    log.debug('Registered job handler', { name: definition.name });
+    log.debug("Registered job handler", { name: definition.name });
   }
 
   /**
@@ -209,19 +230,23 @@ class JobQueueService {
   async add<T>(
     name: string,
     data: T,
-    options?: JobsOptions
+    options?: JobsOptions,
   ): Promise<Job<T> | null> {
     if (!this.queue) {
-      log.warn('Queue not available, job not added', { name });
+      log.warn("Queue not available, job not added", { name });
       return null;
     }
 
     try {
-      const job = await this.queue.add(name, data, options);
-      log.debug('Job added', { name, id: job.id });
+      const job = await this.queue.add(
+        name,
+        data,
+        withBullMqSafeJobId(options),
+      );
+      log.debug("Job added", { name, id: job.id });
       return job;
     } catch (error) {
-      log.error('Failed to add job', { name, error: getErrorMessage(error) });
+      log.error("Failed to add job", { name, error: getErrorMessage(error) });
       return null;
     }
   }
@@ -230,19 +255,25 @@ class JobQueueService {
    * Add multiple jobs in bulk
    */
   async addBulk<T>(
-    jobs: Array<{ name: string; data: T; options?: JobsOptions }>
+    jobs: Array<{ name: string; data: T; options?: JobsOptions }>,
   ): Promise<Job<T>[]> {
     if (!this.queue) {
-      log.warn('Queue not available, jobs not added');
+      log.warn("Queue not available, jobs not added");
       return [];
     }
 
     try {
-      const result = await this.queue.addBulk(jobs);
-      log.debug('Bulk jobs added', { count: result.length });
+      const result = await this.queue.addBulk(
+        jobs.map((job) => ({
+          name: job.name,
+          data: job.data,
+          opts: withBullMqSafeJobId(job.options),
+        })),
+      );
+      log.debug("Bulk jobs added", { count: result.length });
       return result;
     } catch (error) {
-      log.error('Failed to add bulk jobs', { error: getErrorMessage(error) });
+      log.error("Failed to add bulk jobs", { error: getErrorMessage(error) });
       return [];
     }
   }
@@ -253,10 +284,10 @@ class JobQueueService {
   async schedule<T>(
     name: string,
     data: T,
-    scheduleOptions: ScheduleOptions
+    scheduleOptions: ScheduleOptions,
   ): Promise<Job<T> | null> {
     if (!this.queue) {
-      log.warn('Queue not available, job not scheduled', { name });
+      log.warn("Queue not available, job not scheduled", { name });
       return null;
     }
 
@@ -268,7 +299,9 @@ class JobQueueService {
         tz: scheduleOptions.timezone,
         limit: scheduleOptions.limit,
       };
-      jobOptions.jobId = scheduleOptions.jobId || buildRepeatableJobId(name, scheduleOptions);
+      jobOptions.jobId = toBullMqJobId(
+        scheduleOptions.jobId || buildRepeatableJobId(name, scheduleOptions),
+      );
     }
 
     if (scheduleOptions.delay) {
@@ -276,15 +309,17 @@ class JobQueueService {
     }
 
     if (!jobOptions.jobId && scheduleOptions.jobId) {
-      jobOptions.jobId = scheduleOptions.jobId;
+      jobOptions.jobId = toBullMqJobId(scheduleOptions.jobId);
     }
 
     try {
       if (scheduleOptions.cron && jobOptions.jobId) {
         const repeatableJobs = await this.queue.getRepeatableJobs();
-        const existing = repeatableJobs.find(job => job.name === name && job.id === jobOptions.jobId);
+        const existing = repeatableJobs.find(
+          (job) => job.name === name && job.id === jobOptions.jobId,
+        );
         if (existing) {
-          log.info('Repeatable job already scheduled', {
+          log.info("Repeatable job already scheduled", {
             name,
             jobId: jobOptions.jobId,
             cron: scheduleOptions.cron,
@@ -294,7 +329,7 @@ class JobQueueService {
       }
 
       const job = await this.queue.add(name, data, jobOptions);
-      log.debug('Job scheduled', {
+      log.debug("Job scheduled", {
         name,
         id: job.id,
         cron: scheduleOptions.cron,
@@ -302,7 +337,10 @@ class JobQueueService {
       });
       return job;
     } catch (error) {
-      log.error('Failed to schedule job', { name, error: getErrorMessage(error) });
+      log.error("Failed to schedule job", {
+        name,
+        error: getErrorMessage(error),
+      });
       return null;
     }
   }
@@ -316,7 +354,7 @@ class JobQueueService {
     try {
       return (await this.queue.getJob(id)) as Job<T> | null;
     } catch (error) {
-      log.error('Failed to get job', { id, error: getErrorMessage(error) });
+      log.error("Failed to get job", { id, error: getErrorMessage(error) });
       return null;
     }
   }
@@ -334,7 +372,7 @@ class JobQueueService {
       id: job.id!,
       name: job.name,
       data: job.data,
-      status: state as JobResult['status'],
+      status: state as JobResult["status"],
       progress: job.progress as number,
       returnvalue: job.returnvalue,
       failedReason: job.failedReason,
@@ -355,7 +393,7 @@ class JobQueueService {
       await job.remove();
       return true;
     } catch (error) {
-      log.error('Failed to remove job', { id, error: getErrorMessage(error) });
+      log.error("Failed to remove job", { id, error: getErrorMessage(error) });
       return false;
     }
   }
@@ -367,7 +405,7 @@ class JobQueueService {
     if (!this.queue) {
       return {
         healthy: false,
-        queueName: 'main',
+        queueName: "main",
         waiting: 0,
         active: 0,
         completed: 0,
@@ -390,7 +428,7 @@ class JobQueueService {
 
       return {
         healthy: true,
-        queueName: 'main',
+        queueName: "main",
         waiting,
         active,
         completed,
@@ -399,10 +437,12 @@ class JobQueueService {
         paused: isPaused,
       };
     } catch (error) {
-      log.error('Failed to get queue health', { error: getErrorMessage(error) });
+      log.error("Failed to get queue health", {
+        error: getErrorMessage(error),
+      });
       return {
         healthy: false,
-        queueName: 'main',
+        queueName: "main",
         waiting: 0,
         active: 0,
         completed: 0,
@@ -419,7 +459,7 @@ class JobQueueService {
   async pause(): Promise<void> {
     if (this.queue) {
       await this.queue.pause();
-      log.info('Queue paused');
+      log.info("Queue paused");
     }
   }
 
@@ -429,22 +469,26 @@ class JobQueueService {
   async resume(): Promise<void> {
     if (this.queue) {
       await this.queue.resume();
-      log.info('Queue resumed');
+      log.info("Queue resumed");
     }
   }
 
   /**
    * Clean old jobs
    */
-  async clean(grace: number = 0, limit: number = 1000, type: 'completed' | 'failed' | 'delayed' | 'wait' = 'completed'): Promise<string[]> {
+  async clean(
+    grace: number = 0,
+    limit: number = 1000,
+    type: "completed" | "failed" | "delayed" | "wait" = "completed",
+  ): Promise<string[]> {
     if (!this.queue) return [];
 
     try {
       const removed = await this.queue.clean(grace, limit, type);
-      log.info('Cleaned old jobs', { type, count: removed.length });
+      log.info("Cleaned old jobs", { type, count: removed.length });
       return removed;
     } catch (error) {
-      log.error('Failed to clean jobs', { error: getErrorMessage(error) });
+      log.error("Failed to clean jobs", { error: getErrorMessage(error) });
       return [];
     }
   }
@@ -474,7 +518,7 @@ class JobQueueService {
    * Shutdown the job queue gracefully
    */
   async shutdown(): Promise<void> {
-    log.info('Shutting down job queue');
+    log.info("Shutting down job queue");
 
     // Close worker first (stop processing new jobs)
     if (this.worker) {
@@ -495,7 +539,7 @@ class JobQueueService {
     }
 
     this.initialized = false;
-    log.info('Job queue shutdown complete');
+    log.info("Job queue shutdown complete");
   }
 }
 

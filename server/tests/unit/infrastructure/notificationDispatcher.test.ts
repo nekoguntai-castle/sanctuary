@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const mockQueueAdd = vi.fn().mockResolvedValue({ id: 'job-1' });
+const mockQueueAdd = vi.fn().mockResolvedValue({ id: "job-1" });
 const mockQueueClose = vi.fn().mockResolvedValue(undefined);
 
-vi.mock('bullmq', () => ({
+vi.mock("bullmq", () => ({
   Queue: vi.fn(function MockQueue() {
     return {
       add: mockQueueAdd,
@@ -12,14 +12,14 @@ vi.mock('bullmq', () => ({
   }),
 }));
 
-vi.mock('../../../src/infrastructure/redis', () => ({
+vi.mock("../../../src/infrastructure/redis", () => ({
   getRedisClient: vi.fn(() => ({
-    options: { host: 'localhost', port: 6379 },
+    options: { host: "localhost", port: 6379 },
   })),
   isRedisConnected: vi.fn(() => true),
 }));
 
-vi.mock('../../../src/utils/logger', () => ({
+vi.mock("../../../src/utils/logger", () => ({
   createLogger: () => ({
     info: vi.fn(),
     warn: vi.fn(),
@@ -33,231 +33,256 @@ import {
   queueDraftNotification,
   queueTransactionNotification,
   shutdownNotificationDispatcher,
-} from '../../../src/infrastructure/notificationDispatcher';
-import { getRedisClient, isRedisConnected } from '../../../src/infrastructure/redis';
+} from "../../../src/infrastructure/notificationDispatcher";
+import { toBullMqJobId } from "../../../src/jobs/bullMqJobIds";
+import {
+  getRedisClient,
+  isRedisConnected,
+} from "../../../src/infrastructure/redis";
 
 function createConsolidationSuggestionPayload() {
   return {
-    walletId: 'w1',
-    walletName: 'Treasury',
+    walletId: "w1",
+    walletName: "Treasury",
     feeRate: 5,
     utxoHealth: {
       totalUtxos: 20,
       dustCount: 3,
-      dustValue: '15000',
-      totalValue: '500000',
-      avgUtxoSize: '25000',
-      smallestUtxo: '500',
-      largestUtxo: '100000',
+      dustValue: "15000",
+      totalValue: "500000",
+      avgUtxoSize: "25000",
+      smallestUtxo: "500",
+      largestUtxo: "100000",
       consolidationCandidates: 20,
     },
-    estimatedSavings: '~20,400 sats',
-    reason: 'Fees are low.',
+    estimatedSavings: "~20,400 sats",
+    reason: "Fees are low.",
     notifyTelegram: true,
     notifyPush: false,
-    queuedAt: '2026-04-25T00:00:00.000Z',
+    queuedAt: "2026-04-25T00:00:00.000Z",
   };
 }
 
-describe('notificationDispatcher', () => {
+describe("notificationDispatcher", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // Reset the module-level queue by shutting down between tests
     return shutdownNotificationDispatcher();
   });
 
-  it('queues a transaction notification and returns true', async () => {
+  it("queues a transaction notification and returns true", async () => {
     const result = await queueTransactionNotification({
-      walletId: 'w1',
-      txid: 'tx1',
-      type: 'received',
-      amount: '100000',
+      walletId: "w1",
+      txid: "tx1",
+      type: "received",
+      amount: "100000",
     });
 
     expect(result).toBe(true);
     expect(mockQueueAdd).toHaveBeenCalledWith(
-      'transaction-notify',
-      { walletId: 'w1', txid: 'tx1', type: 'received', amount: '100000' },
-      { jobId: 'txnotify:w1:tx1' },
+      "transaction-notify",
+      { walletId: "w1", txid: "tx1", type: "received", amount: "100000" },
+      { jobId: toBullMqJobId("txnotify:w1:tx1") },
     );
   });
 
-  it('queues a consolidation suggestion notification and returns true', async () => {
+  it("queues a consolidation suggestion notification and returns true", async () => {
     const result = await queueConsolidationSuggestionNotification(
-      createConsolidationSuggestionPayload()
+      createConsolidationSuggestionPayload(),
     );
 
     expect(result).toBe(true);
     expect(mockQueueAdd).toHaveBeenCalledWith(
-      'consolidation-suggestion-notify',
+      "consolidation-suggestion-notify",
       expect.objectContaining({
-        walletId: 'w1',
-        walletName: 'Treasury',
+        walletId: "w1",
+        walletName: "Treasury",
         notifyTelegram: true,
         notifyPush: false,
       }),
-      { jobId: 'consolidation-suggestion:w1:2026-04-25T00:00:00.000Z' },
+      {
+        jobId: toBullMqJobId(
+          "consolidation-suggestion:w1:2026-04-25T00:00:00.000Z",
+        ),
+      },
     );
   });
 
-  it('queues a draft notification with the full agent-context payload', async () => {
+  it("queues a draft notification with the full agent-context payload", async () => {
     const result = await queueDraftNotification({
-      walletId: 'w1',
-      draftId: 'draft-1',
-      creatorUserId: 'user-1',
-      creatorUsername: 'alice',
-      creatorLabel: 'Autopilot',
-      agentId: 'agent-7',
-      agentName: 'Autopilot',
-      agentOperationalWalletId: 'op-9',
+      walletId: "w1",
+      draftId: "draft-1",
+      creatorUserId: "user-1",
+      creatorUsername: "alice",
+      creatorLabel: "Autopilot",
+      agentId: "agent-7",
+      agentName: "Autopilot",
+      agentOperationalWalletId: "op-9",
       agentSigned: true,
-      dedupeKey: 'agent:agent-7:w1:op-9:bc1q...:1500',
+      dedupeKey: "agent:agent-7:w1:op-9:bc1q...:1500",
     });
 
     expect(result).toBe(true);
     expect(mockQueueAdd).toHaveBeenCalledWith(
-      'draft-notify',
+      "draft-notify",
       expect.objectContaining({
-        walletId: 'w1',
-        draftId: 'draft-1',
-        agentId: 'agent-7',
-        creatorLabel: 'Autopilot',
+        walletId: "w1",
+        draftId: "draft-1",
+        agentId: "agent-7",
+        creatorLabel: "Autopilot",
       }),
-      { jobId: 'draftnotify:w1:agent:agent-7:w1:op-9:bc1q...:1500' },
+      {
+        jobId: toBullMqJobId(
+          "draftnotify:w1:agent:agent-7:w1:op-9:bc1q...:1500",
+        ),
+      },
     );
   });
 
-  it('falls back to a draft+creator job id when no dedupeKey is provided', async () => {
+  it("falls back to a draft+creator job id when no dedupeKey is provided", async () => {
     const result = await queueDraftNotification({
-      walletId: 'w1',
-      draftId: 'draft-2',
-      creatorUserId: 'user-1',
+      walletId: "w1",
+      draftId: "draft-2",
+      creatorUserId: "user-1",
     });
 
     expect(result).toBe(true);
     expect(mockQueueAdd).toHaveBeenCalledWith(
-      'draft-notify',
-      expect.objectContaining({ draftId: 'draft-2' }),
-      { jobId: 'draftnotify:w1:draft-2:user-1' },
+      "draft-notify",
+      expect.objectContaining({ draftId: "draft-2" }),
+      { jobId: toBullMqJobId("draftnotify:w1:draft-2:user-1") },
     );
   });
 
   it('uses "system" suffix when both dedupeKey and creatorUserId are absent', async () => {
     const result = await queueDraftNotification({
-      walletId: 'w1',
-      draftId: 'draft-3',
+      walletId: "w1",
+      draftId: "draft-3",
       creatorUserId: null,
     });
 
     expect(result).toBe(true);
     expect(mockQueueAdd).toHaveBeenCalledWith(
-      'draft-notify',
+      "draft-notify",
       expect.anything(),
-      { jobId: 'draftnotify:w1:draft-3:system' },
+      { jobId: toBullMqJobId("draftnotify:w1:draft-3:system") },
     );
   });
 
-  it('returns false for draft notifications when Redis is not connected', async () => {
+  it("returns false for draft notifications when Redis is not connected", async () => {
     vi.mocked(isRedisConnected).mockReturnValueOnce(false);
 
-    const result = await queueDraftNotification({ walletId: 'w1', draftId: 'd1', creatorUserId: 'u1' });
-
-    expect(result).toBe(false);
-    expect(mockQueueAdd).not.toHaveBeenCalled();
-  });
-
-  it('returns false when draft queue add fails', async () => {
-    await queueTransactionNotification({ walletId: 'w1', txid: 'tx-ok', type: 'received', amount: '100' });
-    mockQueueAdd.mockRejectedValueOnce(new Error('Redis timeout'));
-
-    const result = await queueDraftNotification({ walletId: 'w1', draftId: 'd1', creatorUserId: 'u1' });
-
-    expect(result).toBe(false);
-  });
-
-  it('returns false for consolidation suggestions when Redis is not connected', async () => {
-    vi.mocked(isRedisConnected).mockReturnValueOnce(false);
-
-    const result = await queueConsolidationSuggestionNotification(
-      createConsolidationSuggestionPayload()
-    );
-
-    expect(result).toBe(false);
-    expect(mockQueueAdd).not.toHaveBeenCalled();
-  });
-
-  it('returns false when Redis is not connected', async () => {
-    vi.mocked(isRedisConnected).mockReturnValueOnce(false);
-
-    const result = await queueTransactionNotification({
-      walletId: 'w1',
-      txid: 'tx1',
-      type: 'received',
-      amount: '100000',
+    const result = await queueDraftNotification({
+      walletId: "w1",
+      draftId: "d1",
+      creatorUserId: "u1",
     });
 
     expect(result).toBe(false);
     expect(mockQueueAdd).not.toHaveBeenCalled();
   });
 
-  it('returns false when Redis client is null', async () => {
+  it("returns false when draft queue add fails", async () => {
+    await queueTransactionNotification({
+      walletId: "w1",
+      txid: "tx-ok",
+      type: "received",
+      amount: "100",
+    });
+    mockQueueAdd.mockRejectedValueOnce(new Error("Redis timeout"));
+
+    const result = await queueDraftNotification({
+      walletId: "w1",
+      draftId: "d1",
+      creatorUserId: "u1",
+    });
+
+    expect(result).toBe(false);
+  });
+
+  it("returns false for consolidation suggestions when Redis is not connected", async () => {
+    vi.mocked(isRedisConnected).mockReturnValueOnce(false);
+
+    const result = await queueConsolidationSuggestionNotification(
+      createConsolidationSuggestionPayload(),
+    );
+
+    expect(result).toBe(false);
+    expect(mockQueueAdd).not.toHaveBeenCalled();
+  });
+
+  it("returns false when Redis is not connected", async () => {
+    vi.mocked(isRedisConnected).mockReturnValueOnce(false);
+
+    const result = await queueTransactionNotification({
+      walletId: "w1",
+      txid: "tx1",
+      type: "received",
+      amount: "100000",
+    });
+
+    expect(result).toBe(false);
+    expect(mockQueueAdd).not.toHaveBeenCalled();
+  });
+
+  it("returns false when Redis client is null", async () => {
     vi.mocked(getRedisClient).mockReturnValueOnce(null as any);
 
     const result = await queueTransactionNotification({
-      walletId: 'w1',
-      txid: 'tx1',
-      type: 'received',
-      amount: '100000',
+      walletId: "w1",
+      txid: "tx1",
+      type: "received",
+      amount: "100000",
     });
 
     expect(result).toBe(false);
   });
 
-  it('returns false when consolidation suggestion queue add fails', async () => {
+  it("returns false when consolidation suggestion queue add fails", async () => {
     await queueTransactionNotification({
-      walletId: 'w1',
-      txid: 'tx-ok',
-      type: 'received',
-      amount: '100',
+      walletId: "w1",
+      txid: "tx-ok",
+      type: "received",
+      amount: "100",
     });
-    mockQueueAdd.mockRejectedValueOnce(new Error('Redis timeout'));
+    mockQueueAdd.mockRejectedValueOnce(new Error("Redis timeout"));
 
     const result = await queueConsolidationSuggestionNotification(
-      createConsolidationSuggestionPayload()
+      createConsolidationSuggestionPayload(),
     );
 
     expect(result).toBe(false);
   });
 
-  it('returns false and logs warning when queue add fails', async () => {
+  it("returns false and logs warning when queue add fails", async () => {
     // First call succeeds to create the queue
     await queueTransactionNotification({
-      walletId: 'w1',
-      txid: 'tx-ok',
-      type: 'received',
-      amount: '100',
+      walletId: "w1",
+      txid: "tx-ok",
+      type: "received",
+      amount: "100",
     });
 
     // Now make add fail
-    mockQueueAdd.mockRejectedValueOnce(new Error('Redis timeout'));
+    mockQueueAdd.mockRejectedValueOnce(new Error("Redis timeout"));
 
     const result = await queueTransactionNotification({
-      walletId: 'w1',
-      txid: 'tx-fail',
-      type: 'received',
-      amount: '200',
+      walletId: "w1",
+      txid: "tx-fail",
+      type: "received",
+      amount: "200",
     });
 
     expect(result).toBe(false);
   });
 
-  it('shutdownNotificationDispatcher closes the queue', async () => {
+  it("shutdownNotificationDispatcher closes the queue", async () => {
     // Create the queue by queueing something
     await queueTransactionNotification({
-      walletId: 'w1',
-      txid: 'tx1',
-      type: 'received',
-      amount: '100',
+      walletId: "w1",
+      txid: "tx1",
+      type: "received",
+      amount: "100",
     });
 
     await shutdownNotificationDispatcher();

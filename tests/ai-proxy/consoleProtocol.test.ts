@@ -491,6 +491,47 @@ describe("console planner protocol", () => {
     ]);
   });
 
+  it("uses all scoped wallets for global current-year transaction fallback", () => {
+    const result = parseConsolePlanResponse(
+      "I should retrieve matching transactions.",
+      4,
+      {
+        ...autoWalletSetPlanInput,
+        currentDate: "2026-04-29",
+        prompt: "show me transactions from this year",
+        context: {
+          mode: "auto",
+          wallets: autoWalletSetPlanInput.context.wallets,
+        },
+      },
+    );
+
+    expect(result.toolCalls).toEqual([
+      {
+        name: "query_transactions",
+        input: {
+          walletId: "11111111-1111-4111-8111-111111111111",
+          dateFrom: "2026-01-01T00:00:00.000Z",
+          dateTo: "2026-12-31T23:59:59.999Z",
+        },
+        reason: "Fallback plan for wallet transaction request.",
+      },
+      {
+        name: "query_transactions",
+        input: {
+          walletId: "22222222-2222-4222-8222-222222222222",
+          dateFrom: "2026-01-01T00:00:00.000Z",
+          dateTo: "2026-12-31T23:59:59.999Z",
+        },
+        reason: "Fallback plan for wallet transaction request.",
+      },
+    ]);
+    expect(result.warnings).toEqual([
+      "model_response_not_json",
+      "fallback_plan_applied",
+    ]);
+  });
+
   it("keeps current-wallet all-transactions prompts scoped to the current wallet", () => {
     const result = parseConsolePlanResponse(
       "I should retrieve matching transactions.",
@@ -623,6 +664,7 @@ describe("console planner protocol", () => {
       4,
       {
         ...autoWalletSetPlanInput,
+        prompt: "show transactions for this wallet",
         context: {
           mode: "auto",
           wallets: autoWalletSetPlanInput.context.wallets,

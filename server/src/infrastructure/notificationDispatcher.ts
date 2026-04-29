@@ -7,15 +7,16 @@
  * Falls back to inline delivery when Redis is unavailable.
  */
 
-import { Queue, type ConnectionOptions } from 'bullmq';
-import { getRedisClient, isRedisConnected } from './redis';
-import { createLogger } from '../utils/logger';
-import { getErrorMessage } from '../utils/errors';
+import { Queue, type ConnectionOptions } from "bullmq";
+import { getRedisClient, isRedisConnected } from "./redis";
+import { createLogger } from "../utils/logger";
+import { getErrorMessage } from "../utils/errors";
+import { toBullMqJobId } from "../jobs/bullMqJobIds";
 
-const log = createLogger('INFRA:NOTIFY_DISPATCH');
+const log = createLogger("INFRA:NOTIFY_DISPATCH");
 
-const QUEUE_NAME = 'notifications';
-const QUEUE_PREFIX = 'sanctuary:worker';
+const QUEUE_NAME = "notifications";
+const QUEUE_PREFIX = "sanctuary:worker";
 
 let notificationQueue: Queue | null = null;
 
@@ -41,20 +42,20 @@ function getQueue(): Queue | null {
     prefix: QUEUE_PREFIX,
     defaultJobOptions: {
       attempts: 5,
-      backoff: { type: 'exponential', delay: 3000 },
+      backoff: { type: "exponential", delay: 3000 },
       removeOnComplete: 500,
       removeOnFail: 250,
     },
   });
 
-  log.info('Notification dispatch queue created');
+  log.info("Notification dispatch queue created");
   return notificationQueue;
 }
 
 export interface TransactionNotificationPayload {
   walletId: string;
   txid: string;
-  type: 'received' | 'sent' | 'consolidation';
+  type: "received" | "sent" | "consolidation";
   amount: string;
   feeSats?: string | null;
 }
@@ -104,19 +105,22 @@ export async function queueTransactionNotification(
   if (!queue) return false;
 
   try {
-    await queue.add('transaction-notify', payload, {
-      jobId: `txnotify:${payload.walletId}:${payload.txid}`,
+    await queue.add("transaction-notify", payload, {
+      jobId: toBullMqJobId(`txnotify:${payload.walletId}:${payload.txid}`),
     });
-    log.debug('Transaction notification queued', {
+    log.debug("Transaction notification queued", {
       walletId: payload.walletId,
       txid: payload.txid,
     });
     return true;
   } catch (error) {
-    log.warn('Failed to queue transaction notification, caller should fall back to inline', {
-      error: getErrorMessage(error),
-      txid: payload.txid,
-    });
+    log.warn(
+      "Failed to queue transaction notification, caller should fall back to inline",
+      {
+        error: getErrorMessage(error),
+        txid: payload.txid,
+      },
+    );
     return false;
   }
 }
@@ -137,20 +141,25 @@ export async function queueDraftNotification(
   if (!queue) return false;
 
   try {
-    const jobIdSuffix = payload.dedupeKey ?? `${payload.draftId}:${payload.creatorUserId ?? 'system'}`;
-    await queue.add('draft-notify', payload, {
-      jobId: `draftnotify:${payload.walletId}:${jobIdSuffix}`,
+    const jobIdSuffix =
+      payload.dedupeKey ??
+      `${payload.draftId}:${payload.creatorUserId ?? "system"}`;
+    await queue.add("draft-notify", payload, {
+      jobId: toBullMqJobId(`draftnotify:${payload.walletId}:${jobIdSuffix}`),
     });
-    log.debug('Draft notification queued', {
+    log.debug("Draft notification queued", {
       walletId: payload.walletId,
       draftId: payload.draftId,
     });
     return true;
   } catch (error) {
-    log.warn('Failed to queue draft notification, caller should fall back to inline', {
-      error: getErrorMessage(error),
-      draftId: payload.draftId,
-    });
+    log.warn(
+      "Failed to queue draft notification, caller should fall back to inline",
+      {
+        error: getErrorMessage(error),
+        draftId: payload.draftId,
+      },
+    );
     return false;
   }
 }
@@ -166,19 +175,24 @@ export async function queueConsolidationSuggestionNotification(
   if (!queue) return false;
 
   try {
-    await queue.add('consolidation-suggestion-notify', payload, {
-      jobId: `consolidation-suggestion:${payload.walletId}:${payload.queuedAt}`,
+    await queue.add("consolidation-suggestion-notify", payload, {
+      jobId: toBullMqJobId(
+        `consolidation-suggestion:${payload.walletId}:${payload.queuedAt}`,
+      ),
     });
-    log.debug('Consolidation suggestion notification queued', {
+    log.debug("Consolidation suggestion notification queued", {
       walletId: payload.walletId,
       feeRate: payload.feeRate,
     });
     return true;
   } catch (error) {
-    log.warn('Failed to queue consolidation suggestion notification, caller should fall back to inline', {
-      error: getErrorMessage(error),
-      walletId: payload.walletId,
-    });
+    log.warn(
+      "Failed to queue consolidation suggestion notification, caller should fall back to inline",
+      {
+        error: getErrorMessage(error),
+        walletId: payload.walletId,
+      },
+    );
     return false;
   }
 }

@@ -1,3 +1,33 @@
+# Active Task: BullMQ Safe Job IDs Runtime Fix 2026-04-29
+
+Status: complete
+
+Goal: fix the worker queue runtime failure surfaced by the rebuilt local instance when BullMQ rejects custom job IDs containing `:`.
+
+## Plan
+
+- [x] Rebuild the local stack and inspect runtime health/logs for current-code issues.
+- [x] Identify the queue path causing `Custom Id cannot contain :`.
+- [x] Add a single BullMQ job-ID adapter for logical IDs that need reserved-character encoding.
+- [x] Apply the adapter at WorkerJobQueue, legacy JobQueueService, and direct notification/sync queue boundaries.
+- [x] Add focused tests for one-off, bulk, recurring, and direct queue job IDs.
+- [x] Run focused queue/worker tests, type/lizard checks, and rebuild/reverify the running stack.
+- [x] Fix the runtime Console planner fallback gap for global current-year transaction prompts.
+- [x] Rebuild and rerun authenticated Console smoke with UI-shaped client context.
+- [x] Document runtime findings and PR delivery status.
+
+## Review
+
+- Fixed the worker runtime failure by adding `toBullMqJobId`/`withBullMqSafeJobId` and applying it at every server-side BullMQ custom-ID boundary touched by runtime logs: WorkerJobQueue add/addBulk/recurring scheduling, legacy JobQueueService add/addBulk/schedule, notification dispatch, and worker sync queue.
+- Corrected WorkerJobQueue and JobQueueService bulk submission to pass BullMQ bulk options as `opts`, so delay/jobId settings are actually delivered for bulk jobs.
+- Runtime rebuild verified the previous `Custom Id cannot contain :` worker error is gone; startup recurring jobs were migrated to encoded IDs and startup catch-up sync jobs completed.
+- Authenticated Console smoke verified login, `/console/tools`, and `show me transactions from this year` through the UI-shaped auto context. Before the planner fallback fix it completed with no tool traces; after the fix it completed with two `query_transactions` tool traces and a response reporting no 2026 transactions for the accessible wallets.
+- Fresh post-commit running-instance audit found no additional actionable errors: all long-running Sanctuary containers report Docker `healthy`, the one-shot migration container exited `0`, and recent backend/worker/AI/gateway/frontend/Redis/migration logs contained no error/warning/failure/circuit/custom-ID matches.
+- Residual runtime findings: `/health` is healthy, `/api/v1/health` remains degraded because disk usage is 86% versus the 80% warning threshold and the `price-binance` circuit breaker is open after provider HTTP 451 responses. The prior Redis eviction policy warning (`allkeys-lru` instead of `noeviction`) remains a deployment configuration item, but it did not recur in the fresh post-commit log window.
+- Verification passed: focused AI proxy planner tests, focused worker/job queue/notification/sync tests, `npm --prefix ai-proxy run build`, `npm run typecheck:server:tests`, `npm run quality:lizard`, Prettier check, `git diff --check`, two full stack rebuilds, health checks, worker log review, and authenticated Console smoke.
+
+---
+
 # Active Task: Grade Coverage Gate Follow-Up PR 2026-04-28
 
 Status: complete
