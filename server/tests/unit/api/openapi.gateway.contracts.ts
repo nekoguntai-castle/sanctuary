@@ -495,6 +495,9 @@ export function registerOpenApiGatewayTests() {
       'userId',
     ]);
     expect(openApiSpec.components.schemas.GatewayAuditRequest.required).toEqual(['event']);
+    expect(openApiSpec.components.schemas.GatewayAuditRequest.properties.outcome).toMatchObject({
+      enum: ['success', 'failure'],
+    });
   });
 
   it('documents gateway-exposed mobile permission routes', () => {

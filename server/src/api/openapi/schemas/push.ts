@@ -77,6 +77,11 @@ export const pushSchemas = {
     type: 'object',
     properties: {
       event: { type: 'string', minLength: 1 },
+      outcome: {
+        type: 'string',
+        enum: ['success', 'failure'],
+        description: 'Explicit gateway event outcome. Legacy senders may omit it.',
+      },
       category: { type: 'string' },
       severity: { type: 'string' },
       details: { type: 'object', additionalProperties: true },
