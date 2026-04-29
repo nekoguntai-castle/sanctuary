@@ -1,24 +1,25 @@
-import { Queue, type ConnectionOptions } from 'bullmq';
-import { getRedisClient, isRedisConnected } from '../infrastructure';
-import { createLogger } from '../utils/logger';
-import { getErrorMessage } from '../utils/errors';
-import type { SyncWalletJobData } from '../worker/jobs/types';
+import { Queue, type ConnectionOptions } from "bullmq";
+import { getRedisClient, isRedisConnected } from "../infrastructure";
+import { createLogger } from "../utils/logger";
+import { getErrorMessage } from "../utils/errors";
+import { toBullMqJobId } from "../jobs/bullMqJobIds";
+import type { SyncWalletJobData } from "../worker/jobs/types";
 
-const log = createLogger('WORKER_SYNC_QUEUE');
+const log = createLogger("WORKER_SYNC_QUEUE");
 
-const WORKER_QUEUE_PREFIX = 'sanctuary:worker';
-const SYNC_QUEUE_NAME = 'sync';
+const WORKER_QUEUE_PREFIX = "sanctuary:worker";
+const SYNC_QUEUE_NAME = "sync";
 
 let syncQueue: Queue<SyncWalletJobData> | null = null;
 let syncQueueConnectionKey: string | null = null;
 
-function toBullPriority(priority: 'high' | 'normal' | 'low'): number {
+function toBullPriority(priority: "high" | "normal" | "low"): number {
   switch (priority) {
-    case 'high':
+    case "high":
       return 1;
-    case 'normal':
+    case "normal":
       return 2;
-    case 'low':
+    case "low":
     default:
       return 3;
   }
@@ -28,11 +29,11 @@ function buildConnectionKey(connection: ConnectionOptions): string {
   // ConnectionOptions is a union; extract fields safely via type guard
   const opts = connection as Record<string, unknown>;
   return [
-    (opts.host as string) ?? '',
-    (opts.port as string) ?? '',
-    (opts.db as string) ?? '',
-    opts.password ? 'auth' : 'no-auth',
-  ].join(':');
+    (opts.host as string) ?? "",
+    (opts.port as string) ?? "",
+    (opts.db as string) ?? "",
+    opts.password ? "auth" : "no-auth",
+  ].join(":");
 }
 
 function getOrCreateSyncQueue(): Queue<SyncWalletJobData> | null {
@@ -69,33 +70,37 @@ function getOrCreateSyncQueue(): Queue<SyncWalletJobData> | null {
 export async function enqueueWalletSync(
   walletId: string,
   options: {
-    priority?: 'high' | 'normal' | 'low';
+    priority?: "high" | "normal" | "low";
     reason?: string;
     delayMs?: number;
     jobId?: string;
-  } = {}
+  } = {},
 ): Promise<boolean> {
   const queue = getOrCreateSyncQueue();
   if (!queue) {
-    log.warn('Worker sync queue unavailable, sync job not added', { walletId });
+    log.warn("Worker sync queue unavailable, sync job not added", { walletId });
     return false;
   }
 
-  const priority = options.priority ?? 'normal';
+  const priority = options.priority ?? "normal";
 
   try {
-    await queue.add('sync-wallet', {
-      walletId,
-      priority,
-      reason: options.reason,
-    }, {
-      priority: toBullPriority(priority),
-      delay: options.delayMs,
-      jobId: options.jobId,
-    });
+    await queue.add(
+      "sync-wallet",
+      {
+        walletId,
+        priority,
+        reason: options.reason,
+      },
+      {
+        priority: toBullPriority(priority),
+        delay: options.delayMs,
+        jobId: options.jobId ? toBullMqJobId(options.jobId) : undefined,
+      },
+    );
     return true;
   } catch (error) {
-    log.error('Failed to enqueue wallet sync', {
+    log.error("Failed to enqueue wallet sync", {
       walletId,
       error: getErrorMessage(error),
     });
@@ -106,15 +111,17 @@ export async function enqueueWalletSync(
 export async function enqueueWalletSyncBatch(
   walletIds: string[],
   options: {
-    priority?: 'high' | 'normal' | 'low';
+    priority?: "high" | "normal" | "low";
     reason?: string;
     staggerDelayMs?: number;
     jobIdPrefix?: string;
-  } = {}
+  } = {},
 ): Promise<number> {
   const queue = getOrCreateSyncQueue();
   if (!queue) {
-    log.warn('Worker sync queue unavailable, batch sync jobs not added', { count: walletIds.length });
+    log.warn("Worker sync queue unavailable, batch sync jobs not added", {
+      count: walletIds.length,
+    });
     return 0;
   }
 
@@ -122,28 +129,30 @@ export async function enqueueWalletSyncBatch(
     return 0;
   }
 
-  const priority = options.priority ?? 'normal';
+  const priority = options.priority ?? "normal";
   const staggerDelayMs = options.staggerDelayMs ?? 0;
-  const batchId = `${options.jobIdPrefix ?? 'manual-sync'}:${Date.now()}`;
+  const batchId = `${options.jobIdPrefix ?? "manual-sync"}:${Date.now()}`;
 
   try {
-    const jobs = await queue.addBulk(walletIds.map((walletId, index) => ({
-      name: 'sync-wallet',
-      data: {
-        walletId,
-        priority,
-        reason: options.reason,
-      },
-      opts: {
-        priority: toBullPriority(priority),
-        delay: index * staggerDelayMs,
-        jobId: `${batchId}:${walletId}`,
-      },
-    })));
+    const jobs = await queue.addBulk(
+      walletIds.map((walletId, index) => ({
+        name: "sync-wallet",
+        data: {
+          walletId,
+          priority,
+          reason: options.reason,
+        },
+        opts: {
+          priority: toBullPriority(priority),
+          delay: index * staggerDelayMs,
+          jobId: toBullMqJobId(`${batchId}:${walletId}`),
+        },
+      })),
+    );
 
     return jobs.length;
   } catch (error) {
-    log.error('Failed to enqueue wallet sync batch', {
+    log.error("Failed to enqueue wallet sync batch", {
       count: walletIds.length,
       error: getErrorMessage(error),
     });

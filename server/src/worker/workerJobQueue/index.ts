@@ -23,6 +23,7 @@ import {
 import { getRedisClient, isRedisConnected } from "../../infrastructure";
 import { createLogger } from "../../utils/logger";
 import { getErrorMessage } from "../../utils/errors";
+import { toBullMqJobId, withBullMqSafeJobId } from "../../jobs/bullMqJobIds";
 import type { WorkerJobHandler } from "../jobs/types";
 import type {
   WorkerJobQueueConfig,
@@ -233,7 +234,11 @@ export class WorkerJobQueue {
     }
 
     try {
-      const job = await queueInstance.queue.add(jobName, data, options);
+      const job = await queueInstance.queue.add(
+        jobName,
+        data,
+        withBullMqSafeJobId(options),
+      );
       log.debug(`Job added: ${queueName}:${jobName}`, { jobId: job.id });
       return job;
     } catch (error) {
@@ -258,7 +263,13 @@ export class WorkerJobQueue {
     }
 
     try {
-      const result = await queueInstance.queue.addBulk(jobs);
+      const result = await queueInstance.queue.addBulk(
+        jobs.map((job) => ({
+          name: job.name,
+          data: job.data,
+          opts: withBullMqSafeJobId(job.options),
+        })),
+      );
       log.debug(`Bulk jobs added to ${queueName}`, { count: result.length });
       return result;
     } catch (error) {
@@ -286,7 +297,9 @@ export class WorkerJobQueue {
     }
 
     try {
-      const jobId = options?.jobId ?? `repeat:${queueName}:${jobName}:${cron}`;
+      const logicalJobId =
+        options?.jobId ?? `repeat:${queueName}:${jobName}:${cron}`;
+      const jobId = toBullMqJobId(logicalJobId);
       const repeatableJobs = await queueInstance.queue.getRepeatableJobs();
 
       // Check all existing repeatables for this jobName

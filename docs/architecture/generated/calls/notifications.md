@@ -173,11 +173,11 @@ flowchart LR
     notifications_sendTransactionNotification-->formatting_formatTransactionMessage
     registry_NotificationChannelRegistry_notifyTransactions-->registry_enrichAgentOperationalTransactions
     registry_enrichAgentOperationalTransactions-->registry_getFirstEvaluationByTxid
-    click notificationDispatcher_getQueue href "https://github.com/nekoguntai-castle/sanctuary/blob/main/server/src/infrastructure/notificationDispatcher.ts#L26" "View source"
-    click notificationDispatcher_queueTransactionNotification href "https://github.com/nekoguntai-castle/sanctuary/blob/main/server/src/infrastructure/notificationDispatcher.ts#L100" "View source"
-    click notificationDispatcher_queueDraftNotification href "https://github.com/nekoguntai-castle/sanctuary/blob/main/server/src/infrastructure/notificationDispatcher.ts#L133" "View source"
-    click notificationDispatcher_queueConsolidationSuggestionNotification href "https://github.com/nekoguntai-castle/sanctuary/blob/main/server/src/infrastructure/notificationDispatcher.ts#L162" "View source"
-    click notificationDispatcher_shutdownNotificationDispatcher href "https://github.com/nekoguntai-castle/sanctuary/blob/main/server/src/infrastructure/notificationDispatcher.ts#L189" "View source"
+    click notificationDispatcher_getQueue href "https://github.com/nekoguntai-castle/sanctuary/blob/main/server/src/infrastructure/notificationDispatcher.ts#L27" "View source"
+    click notificationDispatcher_queueTransactionNotification href "https://github.com/nekoguntai-castle/sanctuary/blob/main/server/src/infrastructure/notificationDispatcher.ts#L101" "View source"
+    click notificationDispatcher_queueDraftNotification href "https://github.com/nekoguntai-castle/sanctuary/blob/main/server/src/infrastructure/notificationDispatcher.ts#L137" "View source"
+    click notificationDispatcher_queueConsolidationSuggestionNotification href "https://github.com/nekoguntai-castle/sanctuary/blob/main/server/src/infrastructure/notificationDispatcher.ts#L171" "View source"
+    click notificationDispatcher_shutdownNotificationDispatcher href "https://github.com/nekoguntai-castle/sanctuary/blob/main/server/src/infrastructure/notificationDispatcher.ts#L203" "View source"
     click evaluator_evaluateWallet href "https://github.com/nekoguntai-castle/sanctuary/blob/main/server/src/services/autopilot/evaluator.ts#L38" "View source"
     click evaluator_checkStabilityAndCooldown href "https://github.com/nekoguntai-castle/sanctuary/blob/main/server/src/services/autopilot/evaluator.ts#L99" "View source"
     click evaluator_setCooldown href "https://github.com/nekoguntai-castle/sanctuary/blob/main/server/src/services/autopilot/evaluator.ts#L130" "View source"

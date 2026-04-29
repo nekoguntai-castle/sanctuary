@@ -469,7 +469,7 @@ function fallbackWalletSelection(input: ConsolePlanInput) {
     return selectedFallbackWallets(scopeWalletIds);
   }
 
-  return selectedFallbackWallets(current ? [current] : []);
+  return selectedFallbackWallets(current ? [current] : scopeWalletIds);
 }
 
 function scopedWalletId(input: ConsolePlanInput): string | null {
@@ -653,10 +653,27 @@ function resolveDateRangeIntent(
 
 function parsePromptDateRange(prompt: string) {
   return (
+    parseRelativeYearPromptRange(prompt) ??
     parseIsoDateRange(prompt) ??
     parseMonthYearRange(prompt) ??
     parseSingleMonthYearRange(prompt)
   );
+}
+
+function parseRelativeYearPromptRange(
+  prompt: string,
+): { value: RelativeDateRangeValue } | null {
+  const normalized = prompt.toLowerCase();
+  if (normalized.includes("this year") || normalized.includes("current year")) {
+    return { value: "current_year" };
+  }
+  if (
+    normalized.includes("last year") ||
+    normalized.includes("previous year")
+  ) {
+    return { value: "previous_year" };
+  }
+  return null;
 }
 
 interface FallbackToolPlan {
@@ -700,12 +717,21 @@ function buildTransactionFallbackPlan(
       name: "query_transactions",
       input: {
         walletId,
-        ...parsePromptDateRange(input.prompt),
+        ...fallbackPromptDateRange(input),
       },
       reason: "Fallback plan for wallet transaction request.",
     })),
     warnings,
   };
+}
+
+function fallbackPromptDateRange(input: ConsolePlanInput) {
+  const parsed = parsePromptDateRange(input.prompt);
+  if (!parsed) return {};
+  if ("value" in parsed) {
+    return resolveRelativeDateRange(parsed.value, referenceYear(input));
+  }
+  return parsed;
 }
 
 type PromptTermSet = ReadonlySet<string>;
