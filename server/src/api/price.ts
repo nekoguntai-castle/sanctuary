@@ -40,6 +40,10 @@ const ProviderTestBodySchema = z.object({
   currency: z.string().optional().default("USD"),
 });
 
+const ProviderEnablementBodySchema = z.object({
+  enabled: z.boolean(),
+});
+
 const router = Router();
 const log = createLogger("PRICE:ROUTE");
 const priceService = getPriceService();
@@ -194,6 +198,38 @@ router.get(
       count: providers.length,
     });
   },
+);
+
+/**
+ * PATCH /api/v1/price/providers/:provider
+ * Enable or disable a known price provider
+ */
+router.patch(
+  "/providers/:provider",
+  priceAdminCodeqlLimiter,
+  authenticate,
+  priceAdminPolicyLimiter,
+  requireAdmin,
+  validate(
+    { body: ProviderEnablementBodySchema },
+    { message: "enabled must be a boolean", code: ErrorCodes.INVALID_INPUT },
+  ),
+  asyncHandler(async (req, res) => {
+    const { provider } = req.params;
+    const { enabled } = req.body;
+    const providers = await priceService.setProviderEnabled(
+      provider,
+      enabled,
+      requireAuthenticatedUser(req).userId,
+    );
+
+    res.json({
+      provider: provider.trim().toLowerCase(),
+      enabled,
+      providers,
+      count: providers.length,
+    });
+  }),
 );
 
 /**

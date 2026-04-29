@@ -44,6 +44,7 @@ export const SystemSettingKeys = {
   // Price settings
   PRICE_CACHE_DURATION_MS: 'price.cacheDurationMs',
   PRICE_DEFAULT_CURRENCY: 'price.defaultCurrency',
+  PRICE_PROVIDER_CONFIG: 'price.providers.config',
 
   // Maintenance settings
   MAINTENANCE_MODE: 'maintenance.mode',

@@ -104,7 +104,6 @@ services:
       MEMPOOL_API: ${MEMPOOL_API:-https://mempool.space/api/v1}
       COINGECKO_API: ${COINGECKO_API:-https://api.coingecko.com/api/v3}
       KRAKEN_API: ${KRAKEN_API:-https://api.kraken.com/0/public}
-      PRICE_PROVIDERS_DISABLED: ${PRICE_PROVIDERS_DISABLED-binance}
     healthcheck:
       test:
         [

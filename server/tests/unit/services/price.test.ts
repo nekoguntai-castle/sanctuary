@@ -81,6 +81,41 @@ vi.mock('../../../src/services/cache', () => {
   };
 });
 
+const { mockProviderSettingsState } = vi.hoisted(() => ({
+  mockProviderSettingsState: {
+    enabled: ["mempool", "coingecko", "kraken", "coinbase"] as string[],
+  },
+}));
+
+vi.mock('../../../src/services/price/providerSettings', () => ({
+  readPriceProviderConfig: vi.fn(async () => ({
+    version: 1,
+    enabled: mockProviderSettingsState.enabled,
+    updatedAt: '2026-04-29T00:00:00.000Z',
+    updatedBy: null,
+  })),
+  setPriceProviderEnabled: vi.fn(
+    async (providerName: string, enabled: boolean, updatedBy?: string) => {
+      const providers = new Set(mockProviderSettingsState.enabled);
+      if (enabled) providers.add(providerName);
+      else providers.delete(providerName);
+      mockProviderSettingsState.enabled = [
+        "mempool",
+        "coingecko",
+        "kraken",
+        "coinbase",
+        "binance",
+      ].filter((provider) => providers.has(provider));
+      return {
+        version: 1,
+        enabled: mockProviderSettingsState.enabled,
+        updatedAt: '2026-04-29T00:00:00.000Z',
+        updatedBy: updatedBy ?? null,
+      };
+    },
+  ),
+}));
+
 import PriceService, { getPriceService } from '../../../src/services/price/index';
 import { supportedCurrencies } from '../../../src/services/price/providers';
 import { circuitBreakerRegistry } from '../../../src/services/circuitBreaker';
@@ -97,6 +132,7 @@ describe('Price Service', () => {
     // Reset all circuit breakers to CLOSED state
     circuitBreakerRegistry.resetAll();
     vi.clearAllMocks();
+    mockProviderSettingsState.enabled = ["mempool", "coingecko", "kraken", "coinbase"];
   });
 
   describe('getPrice', () => {
@@ -179,8 +215,8 @@ describe('Price Service', () => {
 
       const result = await priceService.getPrice('USD', false);
 
-      // Median of [50000, 51000, 52000, 53000, 54000] = 52000
-      expect(result.median).toBe(52000);
+      // Median of [50000, 51000, 52000, 53000] = 51500
+      expect(result.median).toBe(51500);
     });
 
     it('should use cache when available and not expired', async () => {
@@ -334,10 +370,23 @@ describe('Price Service', () => {
     });
 
     it('should throw when provider does not support currency', async () => {
-      // Binance only supports USD, EUR, GBP
-      await expect(priceService.getPriceFrom('binance', 'JPY')).rejects.toThrow(
-        'Provider binance does not support currency JPY'
+      await expect(priceService.getPriceFrom('coinbase', 'JPY')).rejects.toThrow(
+        'Provider coinbase does not support currency JPY'
       );
+    });
+
+    it('should cache specific provider prices', async () => {
+      mockedAxios.get.mockResolvedValue({
+        data: { bitcoin: { usd: 50000 } },
+      });
+
+      const result = await priceService.getPriceFrom('coingecko', 'USD');
+      const callCountAfterFirst = mockedAxios.get.mock.calls.length;
+      const cached = await priceService.getPriceFrom('coingecko', 'USD');
+
+      expect(result.provider).toBe('coingecko');
+      expect(cached.provider).toBe('coingecko');
+      expect(mockedAxios.get.mock.calls.length).toBe(callCountAfterFirst);
     });
   });
 
@@ -497,7 +546,21 @@ describe('Price Service', () => {
       expect(providers).toContain('coingecko');
       expect(providers).toContain('kraken');
       expect(providers).toContain('coinbase');
-      expect(providers).toContain('binance');
+      expect(providers).not.toContain('binance');
+    });
+  });
+
+  describe('setProviderEnabled', () => {
+    it('persists enablement and reloads the provider registry', async () => {
+      mockedAxios.get.mockResolvedValue({ data: { USD: 50000 } });
+
+      await priceService.setProviderEnabled('binance', true, 'admin-1');
+
+      expect(priceService.getProviders()).toContain('binance');
+
+      await priceService.setProviderEnabled('binance', false, 'admin-1');
+
+      expect(priceService.getProviders()).not.toContain('binance');
     });
   });
 

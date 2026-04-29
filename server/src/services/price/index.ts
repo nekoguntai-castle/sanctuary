@@ -19,9 +19,14 @@ import {
   getAllSupportedCurrencies,
   getProvidersForCurrency,
   createKnownPriceProvider,
-  getKnownPriceProviderInfos,
-  resolveEnabledPriceProviderNames,
+  DEFAULT_ENABLED_PRICE_PROVIDER_NAMES,
+  getKnownPriceProviderInfosForEnabled,
+  type PriceProviderName,
 } from "./providers";
+import {
+  readPriceProviderConfig,
+  setPriceProviderEnabled as persistPriceProviderEnabled,
+} from "./providerSettings";
 import type {
   IPriceProvider,
   IPriceProviderWithHistory,
@@ -57,6 +62,11 @@ class PriceService {
   private cacheDurationSec: number = CacheTTL.btcPrice; // 60 seconds default
   private registry: ProviderRegistry<IPriceProvider>;
   private initialized = false;
+  private enabledProviderNames: PriceProviderName[] = [
+    ...DEFAULT_ENABLED_PRICE_PROVIDER_NAMES,
+  ];
+  private registryReload: Promise<void> = Promise.resolve();
+  private providerPriceRequests = new Map<string, Promise<PriceData>>();
 
   constructor() {
     this.registry = createPriceProviderRegistry();
@@ -68,7 +78,9 @@ class PriceService {
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
-    await initializePriceProviders(this.registry);
+    const config = await readPriceProviderConfig();
+    this.enabledProviderNames = config.enabled;
+    await initializePriceProviders(this.registry, config.enabled);
     this.initialized = true;
     log.info("Price service initialized with provider registry");
   }
@@ -80,6 +92,55 @@ class PriceService {
     if (!this.initialized) {
       await this.initialize();
     }
+  }
+
+  async reloadProviders(enabledProviderNames?: PriceProviderName[]): Promise<void> {
+    const config = enabledProviderNames
+      ? { enabled: enabledProviderNames }
+      : await readPriceProviderConfig();
+    const reload = this.registryReload.then(
+      () => this.replaceRegistry(config.enabled),
+      () => this.replaceRegistry(config.enabled),
+    );
+
+    this.registryReload = reload.catch(() => undefined);
+    await reload;
+  }
+
+  private async replaceRegistry(
+    enabledProviderNames: readonly PriceProviderName[],
+  ): Promise<void> {
+    const nextRegistry = createPriceProviderRegistry();
+    await initializePriceProviders(nextRegistry, enabledProviderNames);
+
+    const previousRegistry = this.registry;
+    this.registry = nextRegistry;
+    this.enabledProviderNames = [...enabledProviderNames];
+    this.initialized = true;
+    this.providerPriceRequests.clear();
+    try {
+      await this.clearCache();
+    } finally {
+      await previousRegistry.shutdown();
+    }
+
+    log.info("Price providers reloaded", {
+      providers: this.enabledProviderNames,
+    });
+  }
+
+  async setProviderEnabled(
+    providerName: string,
+    enabled: boolean,
+    updatedBy: string | null = null,
+  ): Promise<PriceProviderInfo[]> {
+    const config = await persistPriceProviderEnabled(
+      providerName,
+      enabled,
+      updatedBy,
+    );
+    await this.reloadProviders(config.enabled);
+    return this.getProviderDiagnostics();
   }
 
   /**
@@ -214,6 +275,34 @@ class PriceService {
   ): Promise<PriceData> {
     await this.ensureInitialized();
 
+    const normalizedCurrency = currency.toUpperCase();
+    const normalizedProviderName = providerName.trim().toLowerCase();
+    const cacheKey = `current:${normalizedProviderName}:${normalizedCurrency}`;
+    const cached = await priceCache.get<PriceData>(cacheKey);
+    if (cached) return cached;
+
+    const pendingRequest = this.providerPriceRequests.get(cacheKey);
+    if (pendingRequest) return pendingRequest;
+
+    const request = this.fetchPriceFromProvider(
+      normalizedProviderName,
+      normalizedCurrency,
+      cacheKey,
+    );
+    this.providerPriceRequests.set(cacheKey, request);
+
+    try {
+      return await request;
+    } finally {
+      this.providerPriceRequests.delete(cacheKey);
+    }
+  }
+
+  private async fetchPriceFromProvider(
+    providerName: string,
+    currency: string,
+    cacheKey: string,
+  ): Promise<PriceData> {
     const provider = this.registry.get(providerName);
 
     if (!provider) {
@@ -226,7 +315,9 @@ class PriceService {
       );
     }
 
-    return provider.getPrice(currency);
+    const price = await provider.getPrice(currency);
+    await this.setCacheEntry(cacheKey, price, this.cacheDurationSec);
+    return price;
   }
 
   /**
@@ -474,7 +565,7 @@ class PriceService {
    */
   getProviders(): string[] {
     if (!this.initialized) {
-      return resolveEnabledPriceProviderNames();
+      return [...this.enabledProviderNames];
     }
     return this.registry.getAll().map((p) => p.name);
   }
@@ -483,7 +574,7 @@ class PriceService {
    * List known price providers with current enablement.
    */
   getProviderDiagnostics(): PriceProviderInfo[] {
-    return getKnownPriceProviderInfos();
+    return getKnownPriceProviderInfosForEnabled(this.enabledProviderNames);
   }
 
   /**
@@ -578,6 +669,7 @@ class PriceService {
   async shutdown(): Promise<void> {
     await this.registry.shutdown();
     this.initialized = false;
+    this.providerPriceRequests.clear();
     log.info("Price service shut down");
   }
 

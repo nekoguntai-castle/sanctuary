@@ -731,6 +731,27 @@ export const priceSchemas = {
     },
     required: ["providers", "count"],
   },
+  PriceProviderEnablementRequest: {
+    type: "object",
+    properties: {
+      enabled: { type: "boolean" },
+    },
+    required: ["enabled"],
+    additionalProperties: false,
+  },
+  PriceProviderEnablementResponse: {
+    type: "object",
+    properties: {
+      provider: { type: "string" },
+      enabled: { type: "boolean" },
+      providers: {
+        type: "array",
+        items: { $ref: "#/components/schemas/PriceProviderDiagnosticsItem" },
+      },
+      count: { type: "integer", minimum: 0 },
+    },
+    required: ["provider", "enabled", "providers", "count"],
+  },
   PriceProviderTestRequest: {
     type: "object",
     properties: {

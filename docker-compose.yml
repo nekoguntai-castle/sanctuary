@@ -235,10 +235,6 @@ services:
       MEMPOOL_API: ${MEMPOOL_API:-https://mempool.space/api/v1}
       COINGECKO_API: ${COINGECKO_API:-https://api.coingecko.com/api/v3}
       KRAKEN_API: ${KRAKEN_API:-https://api.kraken.com/0/public}
-      # Binance is disabled in Compose installs by default because many
-      # self-hosted regions receive HTTP 451 from api.binance.com.
-      # Set PRICE_PROVIDERS_DISABLED= to include every known provider.
-      PRICE_PROVIDERS_DISABLED: ${PRICE_PROVIDERS_DISABLED-binance}
 
       # Payjoin public URL (for BIP78 URI generation)
       # Required for Payjoin to work behind NAT/Tor. Example: http://your-onion.onion

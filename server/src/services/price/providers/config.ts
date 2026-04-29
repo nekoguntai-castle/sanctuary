@@ -42,6 +42,13 @@ export const PRICE_PROVIDER_NAMES = [
 
 export type PriceProviderName = (typeof PRICE_PROVIDER_NAMES)[number];
 
+export const DEFAULT_ENABLED_PRICE_PROVIDER_NAMES: PriceProviderName[] = [
+  "mempool",
+  "coingecko",
+  "kraken",
+  "coinbase",
+];
+
 interface PriceProviderSpec {
   name: PriceProviderName;
   priority: number;
@@ -89,8 +96,33 @@ function parseProviderList(value: string | undefined): string[] {
     .filter(Boolean);
 }
 
-function isPriceProviderName(name: string): name is PriceProviderName {
+export function isPriceProviderName(name: string): name is PriceProviderName {
   return (PRICE_PROVIDER_NAMES as readonly string[]).includes(name);
+}
+
+export function normalizePriceProviderNames(
+  names: readonly string[],
+): PriceProviderName[] {
+  const normalized = new Set<PriceProviderName>();
+
+  for (const name of names) {
+    const providerName = name.trim().toLowerCase();
+    if (isPriceProviderName(providerName)) {
+      normalized.add(providerName);
+    }
+  }
+
+  return PRICE_PROVIDER_NAMES.filter((name) => normalized.has(name));
+}
+
+export function hasLegacyPriceProviderEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return (
+    env.PRICE_PROVIDERS_ENABLED !== undefined ||
+    env.PRICE_PROVIDERS !== undefined ||
+    env.PRICE_PROVIDERS_DISABLED !== undefined
+  );
 }
 
 function getRequestedProviderNames(
@@ -124,6 +156,14 @@ export function getKnownPriceProviderInfos(
 ): PriceProviderInfo[] {
   const enabled = new Set(resolveEnabledPriceProviderNames(env));
 
+  return getKnownPriceProviderInfosForEnabled([...enabled]);
+}
+
+export function getKnownPriceProviderInfosForEnabled(
+  enabledProviderNames: readonly string[],
+): PriceProviderInfo[] {
+  const enabled = new Set(normalizePriceProviderNames(enabledProviderNames));
+
   return providerSpecs.map((spec) => ({
     name: spec.name,
     priority: spec.priority,
@@ -143,11 +183,17 @@ export function createKnownPriceProvider(
   return spec?.create(options) ?? null;
 }
 
-export function createConfiguredPriceProviders(
-  env: NodeJS.ProcessEnv = process.env,
+export function createPriceProvidersForNames(
+  enabledProviderNames: readonly string[],
 ): IPriceProvider[] {
-  const enabled = new Set(resolveEnabledPriceProviderNames(env));
+  const enabled = new Set(normalizePriceProviderNames(enabledProviderNames));
   return providerSpecs
     .filter((spec) => enabled.has(spec.name))
     .map((spec) => spec.create());
+}
+
+export function createConfiguredPriceProviders(
+  env: NodeJS.ProcessEnv = process.env,
+): IPriceProvider[] {
+  return createPriceProvidersForNames(resolveEnabledPriceProviderNames(env));
 }

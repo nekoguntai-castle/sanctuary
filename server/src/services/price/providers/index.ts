@@ -7,7 +7,11 @@
 import { ProviderRegistry } from "../../../providers";
 import { createLogger } from "../../../utils/logger";
 import { getErrorMessage } from "../../../utils/errors";
-import { createConfiguredPriceProviders } from "./config";
+import {
+  createConfiguredPriceProviders,
+  createPriceProvidersForNames,
+  type PriceProviderName,
+} from "./config";
 import type { IPriceProvider } from "../types";
 
 // Export provider classes
@@ -20,9 +24,17 @@ export { BinancePriceProvider } from "./binance";
 export {
   createConfiguredPriceProviders,
   createKnownPriceProvider,
+  createPriceProvidersForNames,
+  DEFAULT_ENABLED_PRICE_PROVIDER_NAMES,
   getKnownPriceProviderInfos,
+  getKnownPriceProviderInfosForEnabled,
+  hasLegacyPriceProviderEnv,
+  isPriceProviderName,
+  normalizePriceProviderNames,
+  PRICE_PROVIDER_NAMES,
   resolveEnabledPriceProviderNames,
   supportedCurrencies,
+  type PriceProviderName,
 } from "./config";
 
 const log = createLogger("PRICE:SVC_PROVIDERS");
@@ -47,8 +59,11 @@ export function createPriceProviderRegistry(): ProviderRegistry<IPriceProvider> 
  */
 export async function initializePriceProviders(
   registry: ProviderRegistry<IPriceProvider>,
+  enabledProviderNames?: readonly PriceProviderName[],
 ): Promise<void> {
-  const providers = createConfiguredPriceProviders();
+  const providers = enabledProviderNames
+    ? createPriceProvidersForNames(enabledProviderNames)
+    : createConfiguredPriceProviders();
 
   for (const provider of providers) {
     try {

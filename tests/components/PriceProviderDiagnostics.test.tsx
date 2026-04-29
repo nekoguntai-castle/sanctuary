@@ -10,7 +10,9 @@ import { PriceProviderDiagnostics } from "../../components/PriceProviderDiagnost
 import * as priceApi from "../../src/api/price";
 
 vi.mock("../../src/api/price", () => ({
+  PRICE_PROVIDERS_CHANGED_EVENT: "sanctuary:price-providers-changed",
   getProviderDiagnostics: vi.fn(),
+  setPriceProviderEnabled: vi.fn(),
   testPriceProvider: vi.fn(),
   testAllPriceProviders: vi.fn(),
 }));
@@ -49,6 +51,127 @@ describe("PriceProviderDiagnostics", () => {
 
     expect(screen.getByText("Enabled")).toBeInTheDocument();
     expect(screen.getByText("Disabled")).toBeInTheDocument();
+  });
+
+  it("toggles provider enablement and notifies provider consumers", async () => {
+    const nextProviders = providers.map((provider) =>
+      provider.name === "binance" ? { ...provider, enabled: true } : provider,
+    );
+    vi.mocked(priceApi.setPriceProviderEnabled).mockResolvedValue({
+      provider: "binance",
+      enabled: true,
+      providers: nextProviders,
+      count: nextProviders.length,
+    });
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    render(<PriceProviderDiagnostics />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Binance")).toBeInTheDocument();
+    });
+
+    fireEvent.click(
+      screen.getByRole("switch", {
+        name: "Enable binance price provider",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(priceApi.setPriceProviderEnabled).toHaveBeenCalledWith(
+        "binance",
+        true,
+      );
+      expect(
+        screen.getByRole("switch", {
+          name: "Disable binance price provider",
+        }),
+      ).toBeChecked();
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: priceApi.PRICE_PROVIDERS_CHANGED_EVENT,
+        }),
+      );
+    });
+
+    dispatchSpy.mockRestore();
+  });
+
+  it("keeps existing provider test results in sync after enablement changes", async () => {
+    const nextProviders = providers.map((provider) =>
+      provider.name === "binance" ? { ...provider, enabled: true } : provider,
+    );
+    vi.mocked(priceApi.testPriceProvider).mockResolvedValue({
+      provider: "binance",
+      enabled: false,
+      ok: true,
+      currency: "USD",
+      latencyMs: 15,
+      price: 50000,
+      timestamp: "2026-04-29T00:00:00.000Z",
+    });
+    vi.mocked(priceApi.setPriceProviderEnabled).mockResolvedValue({
+      provider: "binance",
+      enabled: true,
+      providers: nextProviders,
+      count: nextProviders.length,
+    });
+
+    render(<PriceProviderDiagnostics />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Binance")).toBeInTheDocument();
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Test binance price provider" }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Works in 15ms")).toBeInTheDocument();
+    });
+
+    fireEvent.click(
+      screen.getByRole("switch", {
+        name: "Enable binance price provider",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(priceApi.setPriceProviderEnabled).toHaveBeenCalledWith(
+        "binance",
+        true,
+      );
+      expect(
+        screen.getByRole("switch", {
+          name: "Disable binance price provider",
+        }),
+      ).toBeChecked();
+    });
+  });
+
+  it("surfaces provider enablement failures", async () => {
+    vi.mocked(priceApi.setPriceProviderEnabled).mockRejectedValue(
+      new Error("At least one price provider must remain enabled"),
+    );
+
+    render(<PriceProviderDiagnostics />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Mempool")).toBeInTheDocument();
+    });
+
+    fireEvent.click(
+      screen.getByRole("switch", {
+        name: "Disable mempool price provider",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("At least one price provider must remain enabled"),
+      ).toBeInTheDocument();
+    });
   });
 
   it("tests one provider and displays the result", async () => {

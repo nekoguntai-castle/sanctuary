@@ -177,6 +177,7 @@ describe("Remaining API Modules", () => {
       await priceApi.getSupportedCurrencies();
       await priceApi.getProviders();
       await priceApi.getProviderDiagnostics();
+      await priceApi.setPriceProviderEnabled("binance", true);
       await priceApi.testPriceProvider("binance", "EUR");
       await priceApi.testAllPriceProviders("JPY");
       await priceApi.checkProviderHealth();
@@ -209,6 +210,9 @@ describe("Remaining API Modules", () => {
       expect(mockGet).toHaveBeenCalledWith("/price/currencies");
       expect(mockGet).toHaveBeenCalledWith("/price/providers");
       expect(mockGet).toHaveBeenCalledWith("/price/providers/status");
+      expect(mockPatch).toHaveBeenCalledWith("/price/providers/binance", {
+        enabled: true,
+      });
       expect(mockPost).toHaveBeenCalledWith("/price/providers/binance/test", {
         currency: "EUR",
       });

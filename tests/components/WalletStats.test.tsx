@@ -24,6 +24,7 @@ vi.mock('../../contexts/CurrencyContext', () => ({
       const btc = sats / 100_000_000;
       return `${btc.toFixed(8)} BTC`;
     }),
+    reloadAvailableProviders: vi.fn(async () => {}),
   })),
 }));
 
@@ -85,6 +86,7 @@ describe('WalletStats', () => {
     priceProvider: 'auto',
     setPriceProvider: vi.fn(),
     availableProviders: ['auto'],
+    reloadAvailableProviders: vi.fn(async () => {}),
     ...overrides,
   });
 
