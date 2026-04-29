@@ -4,7 +4,12 @@
  */
 
 import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
-import express, { Express } from "express";
+import express, {
+  Express,
+  type NextFunction,
+  type Request,
+  type Response,
+} from "express";
 import request from "supertest";
 
 // Mock JWT verification
@@ -50,7 +55,7 @@ vi.mock("../../../src/models/prisma", () => ({
 }));
 
 // Use vi.hoisted() to define mocks before vi.mock hoisting
-const { mockPriceService } = vi.hoisted(() => ({
+const { mockPriceService, rateLimitHits } = vi.hoisted(() => ({
   mockPriceService: {
     getPrice: vi.fn(),
     getPrices: vi.fn(),
@@ -69,6 +74,24 @@ const { mockPriceService } = vi.hoisted(() => ({
     getHistoricalPrice: vi.fn(),
     getPriceHistory: vi.fn(),
   },
+  rateLimitHits: [] as string[],
+}));
+
+vi.mock("express-rate-limit", () => ({
+  default: vi.fn(() => (_req: Request, _res: Response, next: NextFunction) => {
+    rateLimitHits.push("express-rate-limit");
+    next();
+  }),
+}));
+
+vi.mock("../../../src/middleware/rateLimit", () => ({
+  rateLimitByUser: vi.fn(
+    (policyName: string) =>
+      (_req: Request, _res: Response, next: NextFunction) => {
+        rateLimitHits.push(policyName);
+        next();
+      },
+  ),
 }));
 
 vi.mock("../../../src/services/price", () => ({
@@ -123,6 +146,7 @@ describe("Price API Routes", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    rateLimitHits.length = 0;
     mockPriceService.getSupportedCurrencies.mockReturnValue([
       "USD",
       "EUR",
@@ -424,7 +448,87 @@ describe("Price API Routes", () => {
         "kraken",
       ]);
       expect(response.body.count).toBe(3);
+      expect(rateLimitHits).toEqual([]);
     });
+  });
+
+  describe("admin price rate limiting", () => {
+    const bearerAdmin = "Bearer admin-token";
+
+    it.each([
+      {
+        route: "GET /providers/status",
+        send: () =>
+          request(app)
+            .get("/api/v1/price/providers/status")
+            .set("Authorization", bearerAdmin),
+      },
+      {
+        route: "POST /providers/test",
+        setup: () => mockPriceService.testAllProviders.mockResolvedValue([]),
+        send: () =>
+          request(app)
+            .post("/api/v1/price/providers/test")
+            .set("Authorization", bearerAdmin)
+            .send({}),
+      },
+      {
+        route: "POST /providers/:provider/test",
+        setup: () =>
+          mockPriceService.testProvider.mockResolvedValue({
+            provider: "coinbase",
+            enabled: true,
+            ok: true,
+            currency: "USD",
+            latencyMs: 1,
+            price: 50000,
+            timestamp: new Date().toISOString(),
+          }),
+        send: () =>
+          request(app)
+            .post("/api/v1/price/providers/coinbase/test")
+            .set("Authorization", bearerAdmin)
+            .send({ currency: "USD" }),
+      },
+      {
+        route: "GET /cache/stats",
+        setup: () =>
+          mockPriceService.getCacheStats.mockReturnValue({
+            hits: 1,
+            misses: 0,
+            size: 1,
+          }),
+        send: () =>
+          request(app)
+            .get("/api/v1/price/cache/stats")
+            .set("Authorization", bearerAdmin),
+      },
+      {
+        route: "POST /cache/clear",
+        send: () =>
+          request(app)
+            .post("/api/v1/price/cache/clear")
+            .set("Authorization", bearerAdmin),
+      },
+      {
+        route: "POST /cache/duration",
+        send: () =>
+          request(app)
+            .post("/api/v1/price/cache/duration")
+            .set("Authorization", bearerAdmin)
+            .send({ duration: 60000 }),
+      },
+    ])(
+      "applies modeled and policy limiters to $route",
+      async ({ setup, send }) => {
+        setup?.();
+
+        const response = await send();
+
+        expect(response.status).toBe(200);
+        expect(rateLimitHits).toEqual(["express-rate-limit", "admin:default"]);
+      },
+    );
   });
 
   describe("GET /providers/status", () => {

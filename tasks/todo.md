@@ -11,6 +11,8 @@ Goal: finish PR #228 delivery after the Quick Render Regression check exposed mi
 - [x] Add shared E2E handling for global price-provider boot requests and diagnostics.
 - [x] Tighten the render assertion that became ambiguous after adding diagnostics UI.
 - [x] Re-run the render regression suite locally with the CI-shaped preview command.
+- [x] Add CodeQL-recognized and policy-backed rate limiting to admin-only price routes.
+- [x] Cover the admin price route limiter contract in focused API tests.
 - [ ] Commit, push, re-monitor required checks, and merge through the merge queue.
 
 ## Review
@@ -18,7 +20,8 @@ Goal: finish PR #228 delivery after the Quick Render Regression check exposed mi
 - The failed CI job was caused by E2E route mocks treating the new global `GET /price/providers` CurrencyContext call as unhandled. Admin Node Configuration also needed `GET /price/providers/status` for the diagnostics panel.
 - Added shared provider responses in `e2e/helpers.ts` so route-level E2E mocks do not each need their own duplicate provider bootstrap mock.
 - Updated the Settings render contract to target the exact `Price Provider` heading, avoiding ambiguity with `Price Provider Diagnostics`.
-- Verification passed: local render regression without retries, exact CI-shaped `npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts`, `npm run typecheck:tests`, Prettier check for touched E2E files, `npm run quality:lizard`, and `git diff --check`.
+- The aggregate CodeQL check then flagged the changed admin-only provider/cache routes for missing modeled rate limiting; added the repo's established `express-rate-limit` plus `rateLimitByUser("admin:default")` pattern on those routes.
+- Verification passed: local render regression without retries, exact CI-shaped `npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts`, focused price route tests, `npm run typecheck:tests`, Prettier check for touched files, `npm run quality:lizard`, and `git diff --check`.
 
 ---
 

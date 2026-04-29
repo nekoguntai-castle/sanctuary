@@ -5,6 +5,7 @@
  */
 
 import { Router, Request, Response } from "express";
+import expressRateLimit from "express-rate-limit";
 import { z } from "zod";
 import { getPriceService } from "../services/price";
 import { createLogger } from "../utils/logger";
@@ -13,6 +14,7 @@ import {
   requireAuthenticatedUser,
   requireAdmin,
 } from "../middleware/auth";
+import { rateLimitByUser } from "../middleware/rateLimit";
 import { validate } from "../middleware/validate";
 import { asyncHandler } from "../errors/errorHandler";
 import { ErrorCodes, InvalidInputError } from "../errors/ApiError";
@@ -41,6 +43,13 @@ const ProviderTestBodySchema = z.object({
 const router = Router();
 const log = createLogger("PRICE:ROUTE");
 const priceService = getPriceService();
+const priceAdminCodeqlLimiter = expressRateLimit({
+  windowMs: 60_000,
+  limit: 1000,
+  standardHeaders: false,
+  legacyHeaders: false,
+});
+const priceAdminPolicyLimiter = rateLimitByUser("admin:default");
 
 /**
  * GET /api/v1/price
@@ -174,7 +183,9 @@ router.get("/providers", (_req: Request, res: Response) => {
  */
 router.get(
   "/providers/status",
+  priceAdminCodeqlLimiter,
   authenticate,
+  priceAdminPolicyLimiter,
   requireAdmin,
   (_req: Request, res: Response) => {
     const providers = priceService.getProviderDiagnostics();
@@ -191,7 +202,9 @@ router.get(
  */
 router.post(
   "/providers/test",
+  priceAdminCodeqlLimiter,
   authenticate,
+  priceAdminPolicyLimiter,
   requireAdmin,
   validate(
     { body: ProviderTestBodySchema },
@@ -213,7 +226,9 @@ router.post(
  */
 router.post(
   "/providers/:provider/test",
+  priceAdminCodeqlLimiter,
   authenticate,
+  priceAdminPolicyLimiter,
   requireAdmin,
   validate(
     { body: ProviderTestBodySchema },
@@ -246,7 +261,9 @@ router.get(
  */
 router.get(
   "/cache/stats",
+  priceAdminCodeqlLimiter,
   authenticate,
+  priceAdminPolicyLimiter,
   requireAdmin,
   (_req: Request, res: Response) => {
     const stats = priceService.getCacheStats();
@@ -260,7 +277,9 @@ router.get(
  */
 router.post(
   "/cache/clear",
+  priceAdminCodeqlLimiter,
   authenticate,
+  priceAdminPolicyLimiter,
   requireAdmin,
   asyncHandler(async (req, res) => {
     log.info("Cache cleared by admin", {
@@ -279,7 +298,9 @@ router.post(
  */
 router.post(
   "/cache/duration",
+  priceAdminCodeqlLimiter,
   authenticate,
+  priceAdminPolicyLimiter,
   requireAdmin,
   validate(
     { body: CacheDurationBodySchema },
