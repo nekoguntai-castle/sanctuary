@@ -4,45 +4,35 @@
  * Exports all price providers and creates the provider registry.
  */
 
-import { ProviderRegistry } from '../../../providers';
-import { createLogger } from '../../../utils/logger';
-import { getErrorMessage } from '../../../utils/errors';
-import type { IPriceProvider } from '../types';
+import { ProviderRegistry } from "../../../providers";
+import { createLogger } from "../../../utils/logger";
+import { getErrorMessage } from "../../../utils/errors";
+import { createConfiguredPriceProviders } from "./config";
+import type { IPriceProvider } from "../types";
 
 // Export provider classes
-export { BasePriceProvider } from './base';
-export { MempoolPriceProvider } from './mempool';
-export { CoinGeckoPriceProvider } from './coingecko';
-export { KrakenPriceProvider } from './kraken';
-export { CoinbasePriceProvider } from './coinbase';
-export { BinancePriceProvider } from './binance';
+export { BasePriceProvider } from "./base";
+export { MempoolPriceProvider } from "./mempool";
+export { CoinGeckoPriceProvider } from "./coingecko";
+export { KrakenPriceProvider } from "./kraken";
+export { CoinbasePriceProvider } from "./coinbase";
+export { BinancePriceProvider } from "./binance";
+export {
+  createConfiguredPriceProviders,
+  createKnownPriceProvider,
+  getKnownPriceProviderInfos,
+  resolveEnabledPriceProviderNames,
+  supportedCurrencies,
+} from "./config";
 
-// Import providers for registry
-import { MempoolPriceProvider } from './mempool';
-import { CoinGeckoPriceProvider } from './coingecko';
-import { KrakenPriceProvider } from './kraken';
-import { CoinbasePriceProvider } from './coinbase';
-import { BinancePriceProvider } from './binance';
-
-const log = createLogger('PRICE:SVC_PROVIDERS');
-
-/**
- * Supported currencies by provider (for backward compatibility with tests)
- */
-export const supportedCurrencies: Record<string, string[]> = {
-  mempool: ['USD', 'EUR', 'GBP', 'CAD', 'CHF', 'AUD', 'JPY'],
-  coingecko: ['USD', 'EUR', 'GBP', 'CAD', 'CHF', 'AUD', 'JPY', 'CNY', 'KRW', 'INR'],
-  kraken: ['USD', 'EUR', 'GBP', 'CAD', 'CHF', 'AUD', 'JPY'],
-  coinbase: ['USD', 'EUR', 'GBP', 'CAD'],
-  binance: ['USD', 'EUR', 'GBP'],
-};
+const log = createLogger("PRICE:SVC_PROVIDERS");
 
 /**
  * Create and configure the price provider registry
  */
 export function createPriceProviderRegistry(): ProviderRegistry<IPriceProvider> {
   const registry = new ProviderRegistry<IPriceProvider>({
-    name: 'PriceProviders',
+    name: "PriceProviders",
     healthCheckIntervalMs: 60000, // Check every minute
     healthCacheTtlMs: 30000, // Cache health for 30 seconds
     defaultTimeoutMs: 10000, // 10 second timeout for price fetches
@@ -56,26 +46,27 @@ export function createPriceProviderRegistry(): ProviderRegistry<IPriceProvider> 
  * Initialize and register all price providers
  */
 export async function initializePriceProviders(
-  registry: ProviderRegistry<IPriceProvider>
+  registry: ProviderRegistry<IPriceProvider>,
 ): Promise<void> {
-  const providers: IPriceProvider[] = [
-    new MempoolPriceProvider(),
-    new CoinGeckoPriceProvider(),
-    new KrakenPriceProvider(),
-    new CoinbasePriceProvider(),
-    new BinancePriceProvider(),
-  ];
+  const providers = createConfiguredPriceProviders();
 
   for (const provider of providers) {
     try {
       await registry.register(provider);
-      log.info('Registered price provider', { name: provider.name, priority: provider.priority });
+      log.info("Registered price provider", {
+        name: provider.name,
+        priority: provider.priority,
+      });
     } catch (error) {
-      log.error('Failed to register price provider', {
+      log.error("Failed to register price provider", {
         name: provider.name,
         error: getErrorMessage(error),
       });
     }
+  }
+
+  if (providers.length === 0) {
+    log.warn("No price providers are enabled");
   }
 
   // Start periodic health checks
@@ -86,7 +77,7 @@ export async function initializePriceProviders(
  * Get all supported currencies across all providers
  */
 export function getAllSupportedCurrencies(
-  registry: ProviderRegistry<IPriceProvider>
+  registry: ProviderRegistry<IPriceProvider>,
 ): string[] {
   const allCurrencies = new Set<string>();
 
@@ -104,8 +95,8 @@ export function getAllSupportedCurrencies(
  */
 export async function getProvidersForCurrency(
   registry: ProviderRegistry<IPriceProvider>,
-  currency: string
+  currency: string,
 ): Promise<IPriceProvider[]> {
   const healthyProviders = await registry.getHealthy();
-  return healthyProviders.filter(p => p.supportsCurrency(currency));
+  return healthyProviders.filter((p) => p.supportsCurrency(currency));
 }

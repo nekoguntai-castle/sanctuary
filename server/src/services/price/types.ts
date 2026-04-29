@@ -4,7 +4,7 @@
  * Type definitions for the price provider registry architecture.
  */
 
-import type { IProvider } from '../../providers/types';
+import type { IProvider } from "../../providers/types";
 
 /**
  * Price data returned by providers
@@ -33,6 +33,30 @@ export interface AggregatedPrice {
 }
 
 /**
+ * Metadata for a known price provider.
+ */
+export interface PriceProviderInfo {
+  name: string;
+  priority: number;
+  supportedCurrencies: string[];
+  enabled: boolean;
+}
+
+/**
+ * Result from a one-off provider connectivity/price test.
+ */
+export interface PriceProviderTestResult {
+  provider: string;
+  enabled: boolean;
+  ok: boolean;
+  currency: string;
+  latencyMs: number;
+  price?: number;
+  timestamp?: Date;
+  error?: string;
+}
+
+/**
  * Price history data point
  */
 export interface PriceHistoryPoint {
@@ -54,6 +78,11 @@ export interface IPriceProvider extends IProvider {
    * Fetch current Bitcoin price
    */
   getPrice(currency: string): Promise<PriceData>;
+
+  /**
+   * Fetch current Bitcoin price for diagnostics without affecting health state.
+   */
+  testPrice?(currency: string): Promise<PriceData>;
 
   /**
    * Check if provider supports a specific currency
@@ -80,12 +109,14 @@ export interface IPriceProviderWithHistory extends IPriceProvider {
  * Check if provider supports historical data
  */
 export function hasHistoricalSupport(
-  provider: IPriceProvider
+  provider: IPriceProvider,
 ): provider is IPriceProviderWithHistory {
   return (
-    'getHistoricalPrice' in provider &&
-    'getPriceHistory' in provider &&
-    typeof (provider as IPriceProviderWithHistory).getHistoricalPrice === 'function' &&
-    typeof (provider as IPriceProviderWithHistory).getPriceHistory === 'function'
+    "getHistoricalPrice" in provider &&
+    "getPriceHistory" in provider &&
+    typeof (provider as IPriceProviderWithHistory).getHistoricalPrice ===
+      "function" &&
+    typeof (provider as IPriceProviderWithHistory).getPriceHistory ===
+      "function"
   );
 }

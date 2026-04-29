@@ -4,13 +4,21 @@
  * Handles block height caching and fetching for fast confirmation calculations.
  */
 
-import { getNodeClient } from '../nodeClient';
-import { createLogger } from '../../../utils/logger';
-import { getErrorMessage } from '../../../utils/errors';
+import { getNodeClient, resetNodeClient } from "../nodeClient";
+import { createLogger } from "../../../utils/logger";
+import { getErrorMessage } from "../../../utils/errors";
 
-const log = createLogger('BITCOIN:SVC_BLOCK_HEIGHT');
+const log = createLogger("BITCOIN:SVC_BLOCK_HEIGHT");
 
-export type Network = 'mainnet' | 'testnet' | 'signet' | 'regtest';
+export type Network = "mainnet" | "testnet" | "signet" | "regtest";
+
+const TRANSIENT_BLOCK_HEIGHT_ERROR_PARTS = [
+  "connection ended",
+  "connection closed",
+  "socket closed",
+  "socket hang up",
+  "econnreset",
+];
 
 // Per-network cached block heights for accurate confirmation calculations
 // Each network has its own block height (e.g., mainnet ~880k, testnet ~2.9M)
@@ -22,7 +30,7 @@ const cachedBlockHeights = new Map<Network, { height: number; time: number }>();
  *
  * @param network - Bitcoin network (defaults to mainnet for backwards compatibility)
  */
-export function getCachedBlockHeight(network: Network = 'mainnet'): number {
+export function getCachedBlockHeight(network: Network = "mainnet"): number {
   return cachedBlockHeights.get(network)?.height ?? 0;
 }
 
@@ -33,7 +41,10 @@ export function getCachedBlockHeight(network: Network = 'mainnet'): number {
  * @param height - Current block height
  * @param network - Bitcoin network (defaults to mainnet for backwards compatibility)
  */
-export function setCachedBlockHeight(height: number, network: Network = 'mainnet'): void {
+export function setCachedBlockHeight(
+  height: number,
+  network: Network = "mainnet",
+): void {
   const current = cachedBlockHeights.get(network);
   if (!current || height > current.height) {
     cachedBlockHeights.set(network, { height, time: Date.now() });
@@ -45,21 +56,60 @@ export function setCachedBlockHeight(height: number, network: Network = 'mainnet
  * Get current block height from node
  * Updates the per-network cache on success
  */
-export async function getBlockHeight(network: Network = 'mainnet'): Promise<number> {
+export async function getBlockHeight(
+  network: Network = "mainnet",
+): Promise<number> {
   try {
-    const client = await getNodeClient(network);
-    const height = await client.getBlockHeight();
+    const height = await fetchBlockHeight(network);
     setCachedBlockHeight(height, network);
     return height;
   } catch (error) {
-    log.error('Failed to get block height', { error: getErrorMessage(error), network });
-    // Return cached height if available, otherwise throw
-    const cached = getCachedBlockHeight(network);
-    if (cached > 0) {
-      return cached;
+    if (shouldRetryBlockHeight(error)) {
+      try {
+        log.warn("Retrying block height after transient connection error", {
+          error: getErrorMessage(error),
+          network,
+        });
+        await resetNodeClient(network);
+        const height = await fetchBlockHeight(network);
+        setCachedBlockHeight(height, network);
+        return height;
+      } catch (retryError) {
+        log.error("Failed to get block height after retry", {
+          error: getErrorMessage(retryError),
+          originalError: getErrorMessage(error),
+          network,
+        });
+        return getCachedOrThrow(network, retryError);
+      }
     }
-    throw error;
+
+    log.error("Failed to get block height", {
+      error: getErrorMessage(error),
+      network,
+    });
+    return getCachedOrThrow(network, error);
   }
+}
+
+async function fetchBlockHeight(network: Network): Promise<number> {
+  const client = await getNodeClient(network);
+  return client.getBlockHeight();
+}
+
+function shouldRetryBlockHeight(error: unknown): boolean {
+  const message = getErrorMessage(error).toLowerCase();
+  return TRANSIENT_BLOCK_HEIGHT_ERROR_PARTS.some((part) =>
+    message.includes(part),
+  );
+}
+
+function getCachedOrThrow(network: Network, error: unknown): number {
+  const cached = getCachedBlockHeight(network);
+  if (cached > 0) {
+    return cached;
+  }
+  throw error;
 }
 
 /**
@@ -119,7 +169,10 @@ const blockTimestampCache = new LRUCache<number, Date>(1000);
  * Get block timestamp from block height
  * Block header is 80 bytes hex; timestamp is at bytes 68-72 (little-endian uint32)
  */
-export async function getBlockTimestamp(height: number, network: 'mainnet' | 'testnet' | 'signet' | 'regtest' = 'mainnet'): Promise<Date | null> {
+export async function getBlockTimestamp(
+  height: number,
+  network: "mainnet" | "testnet" | "signet" | "regtest" = "mainnet",
+): Promise<Date | null> {
   if (height <= 0) return null;
 
   // Check cache first
@@ -144,7 +197,7 @@ export async function getBlockTimestamp(height: number, network: 'mainnet' | 'te
     const timestampHex = headerHex.slice(136, 144); // bytes 68-71 = chars 136-143
 
     // Convert from little-endian hex to number
-    const timestampBuffer = Buffer.from(timestampHex, 'hex');
+    const timestampBuffer = Buffer.from(timestampHex, "hex");
     const timestamp = timestampBuffer.readUInt32LE(0);
 
     const date = new Date(timestamp * 1000);
@@ -154,7 +207,9 @@ export async function getBlockTimestamp(height: number, network: 'mainnet' | 'te
 
     return date;
   } catch (error) {
-    log.warn(`Failed to get block timestamp for height ${height}`, { error: getErrorMessage(error) });
+    log.warn(`Failed to get block timestamp for height ${height}`, {
+      error: getErrorMessage(error),
+    });
     return null;
   }
 }

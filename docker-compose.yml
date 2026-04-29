@@ -39,11 +39,17 @@ services:
     restart: unless-stopped
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
-    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD:-}
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy noeviction --requirepass ${REDIS_PASSWORD:-}
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "sh", "-c", "redis-cli -a \"$REDIS_PASSWORD\" --no-auth-warning ping || redis-cli ping"]
+      test:
+        [
+          "CMD",
+          "sh",
+          "-c",
+          'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning ping || redis-cli ping',
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -58,10 +64,10 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
+          cpus: "0.5"
           memory: 192M
         reservations:
-          cpus: '0.1'
+          cpus: "0.1"
           memory: 64M
     mem_swappiness: 0
     memswap_limit: 192M
@@ -123,7 +129,11 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sanctuary} -d ${POSTGRES_DB:-sanctuary}"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-sanctuary} -d ${POSTGRES_DB:-sanctuary}",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -138,14 +148,14 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2'
+          cpus: "2"
           memory: 1G
         reservations:
-          cpus: '0.5'
+          cpus: "0.5"
           memory: 512M
     # Prevent swap thrashing - kill rather than swap excessively
     mem_swappiness: 10
-    memswap_limit: 1280M  # memory + 256M swap
+    memswap_limit: 1280M # memory + 256M swap
 
   # ============================================
   # Backend API Server
@@ -155,7 +165,7 @@ services:
       context: .
       dockerfile: server/Dockerfile
     image: sanctuary-backend:local
-    pull_policy: build  # Always build locally, never pull
+    pull_policy: build # Always build locally, never pull
     restart: unless-stopped
     depends_on:
       postgres:
@@ -225,6 +235,10 @@ services:
       MEMPOOL_API: ${MEMPOOL_API:-https://mempool.space/api/v1}
       COINGECKO_API: ${COINGECKO_API:-https://api.coingecko.com/api/v3}
       KRAKEN_API: ${KRAKEN_API:-https://api.kraken.com/0/public}
+      # Binance is disabled in Compose installs by default because many
+      # self-hosted regions receive HTTP 451 from api.binance.com.
+      # Set PRICE_PROVIDERS_DISABLED= to include every known provider.
+      PRICE_PROVIDERS_DISABLED: ${PRICE_PROVIDERS_DISABLED-binance}
 
       # Payjoin public URL (for BIP78 URI generation)
       # Required for Payjoin to work behind NAT/Tor. Example: http://your-onion.onion
@@ -240,7 +254,15 @@ services:
       # AI config sync secret (must match ai container)
       AI_CONFIG_SECRET: "${AI_CONFIG_SECRET:?AI_CONFIG_SECRET is required - generate with openssl rand -hex 32}"
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/health"]
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:3001/health",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -255,13 +277,13 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2'
+          cpus: "2"
           memory: 2G
         reservations:
-          cpus: '0.5'
+          cpus: "0.5"
           memory: 1G
     mem_swappiness: 10
-    memswap_limit: 2560M  # memory + 512M swap
+    memswap_limit: 2560M # memory + 512M swap
 
   # ============================================
   # Background Worker
@@ -280,7 +302,7 @@ services:
       context: .
       dockerfile: server/Dockerfile
     image: sanctuary-backend:local
-    pull_policy: never  # Reuse image built by backend service
+    pull_policy: never # Reuse image built by backend service
     restart: unless-stopped
     depends_on:
       postgres:
@@ -322,7 +344,15 @@ services:
     volumes:
       - backup_data:/data/backups
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3002/ready"]
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:3002/ready",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -337,13 +367,13 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1'
+          cpus: "1"
           memory: 1G
         reservations:
-          cpus: '0.25'
+          cpus: "0.25"
           memory: 256M
     mem_swappiness: 10
-    memswap_limit: 1280M  # memory + 256M swap
+    memswap_limit: 1280M # memory + 256M swap
 
   # ============================================
   # Model Context Protocol Server (Optional)
@@ -353,7 +383,7 @@ services:
   # ============================================
   mcp:
     image: sanctuary-backend:local
-    pull_policy: never  # Reuse image built by backend service
+    pull_policy: never # Reuse image built by backend service
     restart: unless-stopped
     profiles:
       - mcp
@@ -390,7 +420,15 @@ services:
     ports:
       - "${MCP_BIND_ADDRESS:-127.0.0.1}:${MCP_PORT:-3003}:3003"
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3003/health"]
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:3003/health",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -405,10 +443,10 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
+          cpus: "0.5"
           memory: 512M
         reservations:
-          cpus: '0.1'
+          cpus: "0.1"
           memory: 128M
     mem_swappiness: 10
     memswap_limit: 640M
@@ -422,7 +460,7 @@ services:
       context: .
       dockerfile: server/Dockerfile
     image: sanctuary-backend:local
-    pull_policy: never  # Reuse image built by backend service
+    pull_policy: never # Reuse image built by backend service
     depends_on:
       backend:
         condition: service_started
@@ -472,7 +510,16 @@ services:
     volumes:
       - ${SANCTUARY_SSL_DIR:-./docker/nginx/ssl}:/etc/nginx/ssl:ro
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "--no-check-certificate", "https://localhost:443/health"]
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "--no-check-certificate",
+          "https://localhost:443/health",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -487,13 +534,13 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
+          cpus: "0.5"
           memory: 256M
         reservations:
-          cpus: '0.1'
+          cpus: "0.1"
           memory: 64M
     mem_swappiness: 10
-    memswap_limit: 384M  # memory + 128M swap
+    memswap_limit: 384M # memory + 128M swap
 
   # ============================================
   # Mobile API Gateway
@@ -511,7 +558,7 @@ services:
       context: .
       dockerfile: gateway/Dockerfile
     image: sanctuary-gateway:local
-    pull_policy: build  # Always build locally, never pull
+    pull_policy: build # Always build locally, never pull
     restart: unless-stopped
     depends_on:
       backend:
@@ -562,7 +609,13 @@ services:
       # Automatically uses https when TLS_ENABLED=true, http otherwise
       # --no-check-certificate handles self-signed certs
       # Note: $$ escapes $ for Docker Compose so shell evaluates TLS_ENABLED at runtime
-      test: ["CMD", "sh", "-c", "if [ \"$$TLS_ENABLED\" = \"true\" ]; then wget --no-verbose --tries=1 --spider --no-check-certificate https://localhost:4000/health; else wget --no-verbose --tries=1 --spider http://localhost:4000/health; fi"]
+      test:
+        [
+          "CMD",
+          "sh",
+          "-c",
+          'if [ "$$TLS_ENABLED" = "true" ]; then wget --no-verbose --tries=1 --spider --no-check-certificate https://localhost:4000/health; else wget --no-verbose --tries=1 --spider http://localhost:4000/health; fi',
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -577,13 +630,13 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
+          cpus: "0.5"
           memory: 256M
         reservations:
-          cpus: '0.1'
+          cpus: "0.1"
           memory: 64M
     mem_swappiness: 10
-    memswap_limit: 384M  # memory + 128M swap
+    memswap_limit: 384M # memory + 128M swap
 
   # ============================================
   # AI Container (Isolated AI Service)
@@ -605,7 +658,7 @@ services:
       context: ./ai-proxy
       dockerfile: Dockerfile
     image: sanctuary-ai:local
-    pull_policy: build  # Always build locally, never pull
+    pull_policy: build # Always build locally, never pull
     restart: unless-stopped
     depends_on:
       backend:
@@ -623,7 +676,15 @@ services:
       AI_PROXY_ALLOWED_CIDRS: ${AI_PROXY_ALLOWED_CIDRS:-}
       AI_PROXY_ALLOW_PUBLIC_HTTPS: ${AI_PROXY_ALLOW_PUBLIC_HTTPS:-false}
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3100/health"]
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:3100/health",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -641,13 +702,13 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
+          cpus: "0.5"
           memory: 256M
         reservations:
-          cpus: '0.1'
+          cpus: "0.1"
           memory: 64M
     mem_swappiness: 10
-    memswap_limit: 384M  # memory + 128M swap
+    memswap_limit: 384M # memory + 128M swap
 
   # ============================================
   # Docker Socket Proxy (Security Layer)
@@ -702,13 +763,13 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.25'
+          cpus: "0.25"
           memory: 64M
         reservations:
-          cpus: '0.05'
+          cpus: "0.05"
           memory: 32M
-    mem_swappiness: 0  # Proxy should never swap
-    memswap_limit: 64M  # No swap for proxy
+    mem_swappiness: 0 # Proxy should never swap
+    memswap_limit: 64M # No swap for proxy
 
 # ============================================
 # Networks
