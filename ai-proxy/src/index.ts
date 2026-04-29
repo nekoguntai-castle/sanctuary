@@ -466,9 +466,8 @@ app.post("/detect-ollama", rateLimit, async (req: Request, res: Response) => {
   );
   if (!body) return;
 
-  // Common Ollama endpoints to check (bundled container first)
+  // Common host-installed Ollama endpoints to check.
   const endpoints = [
-    "http://ollama:11434", // Bundled Ollama container (./start.sh --with-ai)
     "http://host.docker.internal:11434", // Docker for Mac/Windows (host Ollama)
     "http://172.17.0.1:11434", // Docker Linux bridge (host Ollama)
     "http://localhost:11434", // Direct localhost (unlikely from container)
@@ -526,7 +525,7 @@ app.post("/detect-ollama", rateLimit, async (req: Request, res: Response) => {
     found: false,
     blockedEndpointCount,
     message:
-      'Ollama not detected. Run "./start.sh --with-ai" to enable bundled AI, or start Ollama on your host.',
+      "Ollama not detected. Start Ollama outside Sanctuary, then configure its host or LAN endpoint.",
   });
 });
 
@@ -534,7 +533,7 @@ app.post("/detect-ollama", rateLimit, async (req: Request, res: Response) => {
  * Detect a model provider at a typed endpoint.
  *
  * Unlike `/detect-ollama`, this probes the operator-supplied endpoint without
- * relying on bundled-container defaults. The proxy keeps the SSRF boundary here
+ * relying on host auto-detection defaults. The proxy keeps the SSRF boundary here
  * so the backend still never calls model providers directly.
  */
 app.post("/detect-provider", rateLimit, async (req: Request, res: Response) => {
@@ -803,8 +802,8 @@ app.post("/chat", rateLimit, async (req: Request, res: Response) => {
   res.json({ response: result });
 });
 
-function inferEndpointType(endpoint: string): "bundled" | "host" | "remote" {
-  if (endpoint.includes("ollama:")) return "bundled";
+function inferEndpointType(endpoint: string): "container" | "host" | "remote" {
+  if (endpoint.includes("ollama:")) return "container";
   if (
     endpoint.includes("host.docker.internal") ||
     endpoint.includes("172.17.0.1") ||

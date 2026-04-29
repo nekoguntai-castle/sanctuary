@@ -98,7 +98,7 @@ ai:
 
 ## Usage
 
-The AI container starts automatically with Sanctuary. It idles until AI features are enabled.
+The AI proxy container starts automatically with Sanctuary. It idles until AI features are enabled and connects only to the provider endpoint configured in AI Settings.
 
 ### Configure AI Endpoint
 
@@ -106,7 +106,6 @@ In Sanctuary Admin → AI Settings:
 
 1. Enable AI Features
 2. Set AI Endpoint URL:
-   - Bundled Ollama: `http://ollama:11434` (when started with `./start.sh --with-ai`)
    - Host Ollama: `http://host.docker.internal:11434`
    - LAN Ollama: `http://192.168.1.20:11434`
    - LM Studio/OpenAI-compatible: `http://192.168.1.20:1234/v1`
@@ -116,15 +115,15 @@ In Sanctuary Admin → AI Settings:
 ### Running Local AI
 
 ```bash
-# Option A: Bundled Ollama container
-./start.sh --with-ai
-
-# Option B: Host-installed Ollama (not in container)
+# Option A: Host-installed Ollama
 ollama serve
+# In another terminal:
 ollama pull llama3.2:3b
 
+# Option B: LM Studio or another OpenAI-compatible runtime
+# Start the provider app/server outside Sanctuary.
+
 # Endpoints:
-# - Bundled: http://ollama:11434
 # - Host: http://host.docker.internal:11434
 # - LM Studio LAN: http://<host-or-ip>:1234/v1
 ```

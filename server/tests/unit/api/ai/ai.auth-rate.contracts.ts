@@ -47,11 +47,6 @@ export function registerAuthenticationContracts() {
     expect(response.status).toBe(401);
   });
 
-  it('should require authentication for container status endpoint', async () => {
-    const response = await request(app).get('/api/v1/ai/ollama-container/status');
-
-    expect(response.status).toBe(401);
-  });
 }
 
 export function registerRateLimitingContracts() {

@@ -31,7 +31,7 @@ export function registerIntelligenceStatusContracts(): void {
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ compatible: true, endpointType: "bundled" }),
+        json: async () => ({ compatible: true, endpointType: "container" }),
       });
 
       const result = await getIntelligenceStatus();
@@ -39,7 +39,7 @@ export function registerIntelligenceStatusContracts(): void {
       expect(result).toEqual({
         available: true,
         ollamaConfigured: true,
-        endpointType: "bundled",
+        endpointType: "container",
       });
     });
 

@@ -202,59 +202,6 @@ export const aiPaths = {
       },
     },
   },
-  "/ai/ollama-container/status": {
-    get: {
-      tags: ["AI"],
-      summary: "Get bundled Ollama container status",
-      description:
-        "Get Docker-proxy-backed status for the bundled Ollama container.",
-      security: bearerAuth,
-      responses: {
-        200: jsonResponse(
-          "Ollama container status",
-          "#/components/schemas/AIContainerStatusResponse",
-        ),
-        401: apiErrorResponse,
-        500: apiErrorResponse,
-      },
-    },
-  },
-  "/ai/ollama-container/start": {
-    post: {
-      tags: ["AI"],
-      summary: "Start bundled Ollama container",
-      description:
-        "Start the bundled Ollama container through the restricted Docker socket proxy.",
-      security: bearerAuth,
-      responses: {
-        200: jsonResponse(
-          "Ollama container start result",
-          "#/components/schemas/AIContainerActionResponse",
-        ),
-        400: apiErrorResponse,
-        401: apiErrorResponse,
-        500: apiErrorResponse,
-      },
-    },
-  },
-  "/ai/ollama-container/stop": {
-    post: {
-      tags: ["AI"],
-      summary: "Stop bundled Ollama container",
-      description:
-        "Stop the bundled Ollama container through the restricted Docker socket proxy.",
-      security: bearerAuth,
-      responses: {
-        200: jsonResponse(
-          "Ollama container stop result",
-          "#/components/schemas/AIContainerActionResponse",
-        ),
-        400: apiErrorResponse,
-        401: apiErrorResponse,
-        500: apiErrorResponse,
-      },
-    },
-  },
   "/ai/system-resources": {
     get: {
       tags: ["AI"],

@@ -36,6 +36,7 @@ list_group_specs() {
       ;;
     "$GROUP_WALLET_EXPERIENCE")
       printf '%s\n' \
+        e2e/console-drawer-smoke.spec.ts \
         e2e/dashboard-price-blocks.spec.ts \
         e2e/settings-persistence.spec.ts \
         e2e/user-journeys.spec.ts \

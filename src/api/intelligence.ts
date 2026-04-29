@@ -25,7 +25,7 @@ export const INSIGHT_TYPE_LABELS: Record<string, string> = {
 export interface IntelligenceStatus {
   available: boolean;
   ollamaConfigured: boolean;
-  endpointType?: 'bundled' | 'host' | 'remote';
+  endpointType?: 'container' | 'host' | 'remote';
   reason?: string;
 }
 

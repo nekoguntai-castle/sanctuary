@@ -7,9 +7,6 @@ const mockDetectOllama = vi.fn();
 const mockListModels = vi.fn();
 const mockPullModel = vi.fn();
 const mockDeleteModel = vi.fn();
-const mockGetOllamaContainerStatus = vi.fn();
-const mockStartOllamaContainer = vi.fn();
-const mockStopOllamaContainer = vi.fn();
 
 let downloadProgressListener: ((progress: any) => void) | null = null;
 
@@ -23,9 +20,6 @@ vi.mock('../../src/api/ai', () => ({
   listModels: () => mockListModels(),
   pullModel: (model: string) => mockPullModel(model),
   deleteModel: (model: string) => mockDeleteModel(model),
-  getOllamaContainerStatus: () => mockGetOllamaContainerStatus(),
-  startOllamaContainer: () => mockStartOllamaContainer(),
-  stopOllamaContainer: () => mockStopOllamaContainer(),
 }));
 
 vi.mock('../../utils/logger', () => ({
@@ -59,13 +53,9 @@ vi.mock('../../components/AISettings/tabs/StatusTab', () => ({
   StatusTab: (props: any) => (
     <div data-testid="mock-status-tab">
       <button onClick={props.onToggleAI}>toggle-ai</button>
-      <button onClick={props.onStartContainer}>start-container</button>
-      <button onClick={props.onStopContainer}>stop-container</button>
-      <button onClick={props.onRefreshContainerStatus}>refresh-container</button>
       <button onClick={props.onNavigateToSettings}>go-settings-callback</button>
       <div data-testid="status-model">{props.aiModel}</div>
       <div data-testid="status-endpoint">{props.aiEndpoint}</div>
-      <div data-testid="status-message">{props.containerMessage}</div>
     </div>
   ),
 }));
@@ -116,9 +106,6 @@ function setDefaultMocks() {
   mockListModels.mockResolvedValue({ models: [] });
   mockPullModel.mockResolvedValue({ success: true });
   mockDeleteModel.mockResolvedValue({ success: true });
-  mockGetOllamaContainerStatus.mockResolvedValue({ available: false, exists: false, running: false, status: 'not-available' });
-  mockStartOllamaContainer.mockResolvedValue({ success: true, message: 'Started' });
-  mockStopOllamaContainer.mockResolvedValue({ success: true, message: 'Stopped' });
   global.fetch = vi.fn(() =>
     Promise.resolve({
       ok: true,
@@ -146,14 +133,6 @@ describe('AISettings logic branches', () => {
     vi.clearAllMocks();
     downloadProgressListener = null;
     setDefaultMocks();
-  });
-
-  it('handles container status load failure on mount', async () => {
-    mockGetOllamaContainerStatus.mockRejectedValue(new Error('container offline'));
-
-    await renderAndWaitForReady();
-
-    expect(screen.getByText('AI Settings')).toBeInTheDocument();
   });
 
   it('handles model list load errors when endpoint is configured', async () => {
@@ -248,9 +227,7 @@ describe('AISettings logic branches', () => {
     });
   });
 
-  it('enables AI without starting containers (decoupled toggle)', async () => {
-    mockGetOllamaContainerStatus.mockResolvedValue({ available: true, exists: false, running: false, status: 'stopped' });
-
+  it('enables AI without starting provider runtimes', async () => {
     await renderAndWaitForReady();
     fireEvent.click(screen.getByText('toggle-ai'));
     fireEvent.click(screen.getByText('confirm-enable'));
@@ -258,12 +235,9 @@ describe('AISettings logic branches', () => {
     await waitFor(() => {
       expect(mockUpdateSystemSettings).toHaveBeenCalledWith({ aiEnabled: true });
     });
-    // Toggle no longer starts containers - that is a separate user action
-    expect(mockStartOllamaContainer).not.toHaveBeenCalled();
   });
 
-  it('enables AI with running container without auto-configuring endpoint', async () => {
-    mockGetOllamaContainerStatus.mockResolvedValue({ available: true, exists: true, running: true, status: 'running' });
+  it('enables AI without auto-configuring endpoint', async () => {
     mockDetectOllama.mockResolvedValue({ found: true, endpoint: 'http://ollama:11434', models: ['phi3:mini'] });
 
     await renderAndWaitForReady();
@@ -274,28 +248,11 @@ describe('AISettings logic branches', () => {
       expect(mockUpdateSystemSettings).toHaveBeenCalledWith({ aiEnabled: true });
     });
 
-    // Toggle no longer auto-detects or auto-configures — user does that separately
     expect(mockDetectOllama).not.toHaveBeenCalled();
     expect(mockUpdateSystemSettings).not.toHaveBeenCalledWith({
       aiEndpoint: 'http://ollama:11434',
       aiModel: 'phi3:mini',
     });
-  });
-
-  it('enables AI without auto-detecting when container is running but has no models', async () => {
-    mockGetOllamaContainerStatus.mockResolvedValue({ available: true, exists: true, running: true, status: 'running' });
-    mockDetectOllama.mockResolvedValue({ found: true, endpoint: 'http://ollama:11434', models: [] });
-
-    await renderAndWaitForReady();
-    fireEvent.click(screen.getByText('toggle-ai'));
-    fireEvent.click(screen.getByText('confirm-enable'));
-
-    await waitFor(() => {
-      expect(mockUpdateSystemSettings).toHaveBeenCalledWith({ aiEnabled: true });
-    });
-
-    // Toggle no longer auto-detects — user configures endpoint separately
-    expect(mockDetectOllama).not.toHaveBeenCalled();
   });
 
   it('handles delete model confirmation, failure response, and thrown error', async () => {
@@ -333,77 +290,6 @@ describe('AISettings logic branches', () => {
     fireEvent.click(screen.getByText('select-model'));
 
     expect(screen.getByTestId('settings-model')).toHaveTextContent('manual-model:1b');
-  });
-
-  it('handles refresh container status failure path', async () => {
-    mockGetSystemSettings.mockResolvedValue({ aiEnabled: true, aiEndpoint: 'http://ollama:11434', aiModel: 'llama3.2:3b' });
-    mockGetOllamaContainerStatus
-      .mockResolvedValueOnce({ available: true, exists: true, running: true, status: 'running' })
-      .mockRejectedValueOnce(new Error('refresh failed'));
-
-    await renderAndWaitForReady();
-
-    fireEvent.click(screen.getByText('refresh-container'));
-    await waitFor(() => {
-      expect(mockGetOllamaContainerStatus).toHaveBeenCalledTimes(2);
-    });
-  });
-
-  it('handles stop container failure and exception paths', async () => {
-    mockGetSystemSettings.mockResolvedValue({ aiEnabled: true, aiEndpoint: 'http://ollama:11434', aiModel: 'llama3.2:3b' });
-    mockStopOllamaContainer
-      .mockResolvedValueOnce({ success: false, message: 'busy' })
-      .mockRejectedValueOnce(new Error('stop crashed'));
-
-    await renderAndWaitForReady();
-
-    fireEvent.click(screen.getByText('stop-container'));
-    await waitFor(() => {
-      expect(screen.getByTestId('status-message')).toHaveTextContent('Failed: busy');
-    });
-
-    fireEvent.click(screen.getByText('stop-container'));
-    await waitFor(() => {
-      expect(screen.getByTestId('status-message')).toHaveTextContent('Error:');
-    });
-  });
-
-  it('handles start container success, failed response, and exception branches', async () => {
-    mockGetSystemSettings.mockResolvedValue({ aiEnabled: true, aiEndpoint: 'http://ollama:11434', aiModel: 'llama3.2:3b' });
-    mockGetOllamaContainerStatus
-      .mockResolvedValueOnce({ available: true, exists: true, running: false, status: 'stopped' })
-      .mockResolvedValueOnce({ available: true, exists: true, running: true, status: 'running' });
-    mockStartOllamaContainer
-      .mockResolvedValueOnce({ success: true, message: 'started' })
-      .mockResolvedValueOnce({ success: false, message: 'engine unavailable' })
-      .mockRejectedValueOnce(new Error('start crashed'));
-    mockDetectOllama.mockResolvedValueOnce({ found: false, message: 'not found' });
-
-    await renderAndWaitForReady();
-    vi.useFakeTimers();
-
-    fireEvent.click(screen.getByText('start-container'));
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-      vi.advanceTimersByTime(3000);
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    expect(mockStartOllamaContainer).toHaveBeenCalled();
-    expect(mockDetectOllama).toHaveBeenCalled();
-
-    fireEvent.click(screen.getByText('start-container'));
-    await act(async () => {
-      await Promise.resolve();
-    });
-    expect(screen.getByTestId('status-message')).toHaveTextContent('Failed: engine unavailable');
-
-    fireEvent.click(screen.getByText('start-container'));
-    await act(async () => {
-      await Promise.resolve();
-    });
-    expect(screen.getByTestId('status-message')).toHaveTextContent('Error:');
   });
 
   it('covers formatBytes callback passed to models tab', async () => {

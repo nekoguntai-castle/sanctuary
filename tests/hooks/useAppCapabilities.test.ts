@@ -21,7 +21,7 @@ describe('useAppCapabilities', () => {
     vi.mocked(useIntelligenceStatus).mockReturnValue({
       available: true,
       loading: false,
-      endpointType: 'bundled',
+      endpointType: 'container',
     });
 
     const { result } = renderHook(() => useAppCapabilities());

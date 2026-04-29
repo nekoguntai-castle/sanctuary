@@ -141,7 +141,7 @@ Open **https://localhost:8443** and accept the certificate warning.
 - **Login credentials:** Username: `admin` / Password: `sanctuary`
 - You'll be required to change the password on first login
 - Start: `./start.sh`
-- Start with AI: `./start.sh --with-ai`
+- Configure AI: start Sanctuary normally, then connect AI Settings to an external provider
 - Start with monitoring: `./start.sh --with-monitoring`
 - Start with Tor: `./start.sh --with-tor`
 - Stop: `./start.sh --stop`
@@ -388,8 +388,7 @@ Sanctuary runs 6 containers by default:
 | `redis` | Job queue & cache | Yes |
 | `postgres` | Database | Yes |
 
-Optional containers:
-- `ollama` — Local AI for transaction labeling (enabled with `--with-ai`)
+Optional containers are enabled by startup flags such as `--with-tor`, `--with-monitoring`, and `--with-mcp`.
 
 ## Installation
 
@@ -1282,22 +1281,20 @@ Sanctuary includes optional AI surfaces for:
 
 ### Setting Up AI
 
-1. **Start or point Sanctuary at an AI runtime**
+1. **Start or point Sanctuary at an AI runtime outside Sanctuary**
 
-   **Option A: Bundled Local AI with Ollama (Recommended - Most Private)**
-   ```bash
-   # Start Sanctuary with bundled Ollama:
-   ./start.sh --with-ai
-   ```
-   - In Sanctuary, click **"Detect"** to auto-configure the endpoint
-   - Download a model like `llama3.2:3b` using the **"Pull"** button in settings
-
-   **Option B: Host-installed Ollama (Advanced)**
+   **Option A: Host-installed Ollama (Most Private)**
    ```bash
    # Install Ollama from https://ollama.ai, then:
    ollama serve
+   # In another terminal:
+   ollama pull llama3.2:3b
    ```
-   - Set the endpoint to `http://host.docker.internal:11434`
+   - Set the endpoint to `http://host.docker.internal:11434` when Sanctuary runs in Docker
+
+   **Option B: LAN or desktop OpenAI-compatible provider**
+   - LM Studio: use a `/v1` endpoint such as `http://192.168.1.20:1234/v1`
+   - llama.cpp, vLLM, or another trusted provider: enter its OpenAI-compatible base URL
 
    **Option C: Cloud AI (Less Private)**
    - Enter an OpenAI-compatible endpoint URL
@@ -1312,7 +1309,7 @@ Sanctuary includes optional AI surfaces for:
 3. **Configure the provider in Sanctuary**
    - Go to **Administration → AI Settings**
    - Toggle **Enable AI Features**
-   - Use **Detect** for bundled Ollama or create a provider profile for an Ollama/OpenAI-compatible endpoint
+   - Use **Detect** after entering a reachable Ollama endpoint, or create a provider profile for an OpenAI-compatible endpoint
    - Pick a model and save the settings
 
 4. **Use the Console or direct MCP**

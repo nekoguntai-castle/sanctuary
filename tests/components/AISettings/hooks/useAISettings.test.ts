@@ -13,7 +13,6 @@ vi.mock('../../../../src/api/ai', () => ({
   listModels: vi.fn(),
   detectOllama: vi.fn(),
   detectProvider: vi.fn(),
-  getOllamaContainerStatus: vi.fn(),
 }));
 
 vi.mock('../../../../utils/logger', () => ({
@@ -34,9 +33,6 @@ describe('useAISettings', () => {
       aiModel: '',
     } as never);
     vi.mocked(adminApi.updateSystemSettings).mockResolvedValue({} as never);
-    vi.mocked(aiApi.getOllamaContainerStatus).mockRejectedValue(
-      new Error('offline'),
-    );
     vi.mocked(aiApi.listModels).mockResolvedValue({} as never); // covers `result.models || []`
   });
 

@@ -421,13 +421,6 @@ export const AUDIT_LOG_STATS = {
   failedEvents: 1,
 };
 
-export const AI_CONTAINER_STATUS = {
-  available: true,
-  exists: true,
-  running: false,
-  status: 'exited',
-};
-
 type MockApiFailure = {
   status?: number;
   body?: unknown;
@@ -662,7 +655,6 @@ const AUTHENTICATED_API_RESPONSES: Record<string, MockApiResponse> = {
   'GET /admin/audit-logs': mockResponse(AUDIT_LOGS_RESPONSE),
   'GET /admin/audit-logs/stats': mockResponse(AUDIT_LOG_STATS),
   'GET /ai/status': mockResponse({ available: false, containerAvailable: false }),
-  'GET /ai/ollama-container/status': mockResponse(AI_CONTAINER_STATUS),
   'GET /intelligence/status': mockResponse({ available: false, ollamaConfigured: false }),
 };
 

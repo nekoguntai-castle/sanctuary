@@ -175,50 +175,6 @@ export async function deleteModel(model: string): Promise<DeleteModelResponse> {
 }
 
 // ========================================
-// OLLAMA CONTAINER MANAGEMENT
-// ========================================
-
-export interface OllamaContainerStatus {
-  available: boolean; // Docker proxy available
-  exists: boolean; // Container exists
-  running: boolean; // Container is running
-  status: string; // Container state (running, exited, etc.)
-  message?: string;
-}
-
-export interface ContainerActionResponse {
-  success: boolean;
-  message: string;
-}
-
-/**
- * Get the status of the bundled Ollama container
- */
-export async function getOllamaContainerStatus(): Promise<OllamaContainerStatus> {
-  return apiClient.get<OllamaContainerStatus>("/ai/ollama-container/status");
-}
-
-/**
- * Start the bundled Ollama container
- */
-export async function startOllamaContainer(): Promise<ContainerActionResponse> {
-  return apiClient.post<ContainerActionResponse>(
-    "/ai/ollama-container/start",
-    {},
-  );
-}
-
-/**
- * Stop the bundled Ollama container
- */
-export async function stopOllamaContainer(): Promise<ContainerActionResponse> {
-  return apiClient.post<ContainerActionResponse>(
-    "/ai/ollama-container/stop",
-    {},
-  );
-}
-
-// ========================================
 // SYSTEM RESOURCES CHECK
 // ========================================
 

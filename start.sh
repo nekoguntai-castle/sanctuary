@@ -6,7 +6,7 @@
 #
 # Usage:
 #   ./start.sh                  # Start with defaults
-#   ./start.sh --with-ai        # Start with bundled AI (Ollama)
+#   ./start.sh --with-ai        # Deprecated: starts Sanctuary and prints external AI setup guidance
 #   ./start.sh --with-monitoring # Start with monitoring (Grafana/Loki)
 #   ./start.sh --with-tor       # Start with Tor proxy
 #   ./start.sh --with-mcp       # Start read-only MCP server for local LLMs
@@ -246,9 +246,9 @@ case "${1:-}" in
         echo "Stopping Sanctuary..."
         # Stop monitoring stack if running
         if docker ps --format '{{.Names}}' | grep -qE '.*-(grafana|loki|promtail)'; then
-            docker compose -f docker-compose.yml -f docker-compose.monitoring.yml --profile ai --profile mcp down
+            docker compose -f docker-compose.yml -f docker-compose.monitoring.yml --profile mcp down
         else
-            docker compose --profile ai --profile mcp down
+            docker compose --profile mcp down
         fi
         echo "Sanctuary stopped."
         ;;
@@ -256,10 +256,11 @@ case "${1:-}" in
         docker compose logs -f
         ;;
     --with-ai)
-        echo "Starting Sanctuary with bundled AI (Ollama)..."
+        echo "Starting Sanctuary..."
         echo ""
-        echo "Note: First-time AI setup will download the Ollama image (~1GB)."
-        echo "      Models are downloaded separately when you pull them in settings."
+        echo "Note: --with-ai no longer starts a bundled model container."
+        echo "      Run Ollama, LM Studio, or another trusted provider outside Sanctuary,"
+        echo "      then configure its endpoint in Admin → AI Settings."
         echo ""
         # Auto-build if images are missing
         BUILD_FLAG=""
@@ -267,15 +268,16 @@ case "${1:-}" in
             echo "Local images not found - building..."
             BUILD_FLAG="--build"
         fi
-        docker compose --profile ai $MCP_PROFILE up -d $BUILD_FLAG
+        docker compose $MCP_PROFILE up -d $BUILD_FLAG
         echo ""
         echo "Sanctuary is running at https://localhost:${HTTPS_PORT}"
         echo ""
         echo "AI Setup:"
-        echo "  1. Go to Admin → AI Settings"
-        echo "  2. Enable AI Features"
-        echo "  3. Click 'Detect' - it will find the bundled Ollama automatically"
-        echo "  4. Pull a model (llama3.2:3b recommended for most systems)"
+        echo "  1. Start a provider outside Sanctuary, for example: ollama serve"
+        echo "  2. Go to Admin → Feature Flags and enable aiAssistant"
+        echo "  3. Go to Admin → AI Settings and enable AI Features"
+        echo "  4. Set the provider endpoint, for example http://host.docker.internal:11434"
+        echo "  5. Detect/select a model and save"
         ;;
     --with-mcp)
         echo "Starting Sanctuary with read-only MCP server..."
@@ -366,7 +368,6 @@ case "${1:-}" in
         fi
 
         # Detect which stacks are running (check containers or env preference)
-        HAS_AI=$(docker ps -a --format '{{.Names}}' | grep -qE '.*-ollama-[0-9]+$' && echo "yes" || echo "no")
         HAS_MONITORING=$(docker ps -a --format '{{.Names}}' | grep -qE '.*-(grafana|loki|promtail)' && echo "yes" || echo "no")
         HAS_TOR=$(docker ps -a --format '{{.Names}}' | grep -qE '.*-tor' && echo "yes" || echo "no")
         HAS_MCP=$(docker ps -a --format '{{.Names}}' | grep -qE '.*-mcp-[0-9]+$' && echo "yes" || echo "no")
@@ -384,7 +385,6 @@ case "${1:-}" in
         docker compose $COMPOSE_FILES build --no-cache
 
         PROFILES=""
-        [ "$HAS_AI" = "yes" ] && PROFILES="$PROFILES --profile ai"
         [ "$HAS_MCP" = "yes" ] && PROFILES="$PROFILES --profile mcp"
 
         if [ -n "$PROFILES" ]; then
@@ -400,7 +400,7 @@ case "${1:-}" in
         echo ""
         echo "Options:"
         echo "  (none)            Start Sanctuary"
-        echo "  --with-ai         Start with bundled AI (Ollama container)"
+        echo "  --with-ai         Deprecated: start Sanctuary and print external AI setup guidance"
         echo "  --with-monitoring Start with monitoring (Grafana/Loki/Promtail)"
         echo "  --with-tor        Start with Tor proxy for privacy"
         echo "  --with-mcp        Start read-only MCP server for local LLM clients"
@@ -417,8 +417,8 @@ case "${1:-}" in
         echo "  MCP_BIND_ADDRESS Host bind address for MCP (default: 127.0.0.1)"
         echo ""
         echo "AI Setup:"
-        echo "  Run './start.sh --with-ai' to enable bundled AI features."
-        echo "  This starts an Ollama container - no external setup needed."
+        echo "  Run Ollama, LM Studio, or another provider outside Sanctuary."
+        echo "  Then configure the endpoint in Admin → AI Settings."
         echo ""
         echo "Monitoring:"
         echo "  Run './start.sh --with-monitoring' to enable monitoring."
@@ -435,7 +435,6 @@ case "${1:-}" in
     *)
         echo "Starting Sanctuary..."
         # Detect which stacks were previously running (check containers or env preference)
-        HAS_AI=$(docker ps -a --format '{{.Names}}' | grep -qE '.*-ollama-[0-9]+$' && echo "yes" || echo "no")
         HAS_MONITORING=$(docker ps -a --format '{{.Names}}' | grep -qE '.*-(grafana|loki|promtail)' && echo "yes" || echo "no")
         HAS_TOR=$(docker ps -a --format '{{.Names}}' | grep -qE '.*-tor' && echo "yes" || echo "no")
         HAS_MCP=$(docker ps -a --format '{{.Names}}' | grep -qE '.*-mcp-[0-9]+$' && echo "yes" || echo "no")
@@ -456,7 +455,6 @@ case "${1:-}" in
         fi
 
         PROFILES=""
-        [ "$HAS_AI" = "yes" ] && PROFILES="$PROFILES --profile ai"
         [ "$HAS_MCP" = "yes" ] && PROFILES="$PROFILES --profile mcp"
 
         if [ -n "$PROFILES" ]; then

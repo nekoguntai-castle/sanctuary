@@ -5,11 +5,6 @@ import {
   registerRateLimitingContracts,
 } from './ai/ai.auth-rate.contracts';
 import {
-  registerOllamaContainerStartContracts,
-  registerOllamaContainerStatusContracts,
-  registerOllamaContainerStopContracts,
-} from './ai/ai.container.contracts';
-import {
   registerDeleteModelContracts,
   registerDetectOllamaContracts,
   registerListModelsContracts,
@@ -52,20 +47,6 @@ describe('AI API Routes', () => {
 
   describe('DELETE /api/v1/ai/delete-model', () => {
     registerDeleteModelContracts();
-  });
-
-  describe('Ollama Container Management', () => {
-    describe('GET /api/v1/ai/ollama-container/status', () => {
-      registerOllamaContainerStatusContracts();
-    });
-
-    describe('POST /api/v1/ai/ollama-container/start', () => {
-      registerOllamaContainerStartContracts();
-    });
-
-    describe('POST /api/v1/ai/ollama-container/stop', () => {
-      registerOllamaContainerStopContracts();
-    });
   });
 
   describe('GET /api/v1/ai/system-resources', () => {

@@ -56,7 +56,7 @@ describe('Core API Modules', () => {
       expect(mockPost).toHaveBeenCalledWith('/ai/query', { query: 'recent tx', walletId: 'w1' }, { timeoutMs: 120000 });
     });
 
-    it('calls model and container management endpoints', async () => {
+    it('calls model management endpoints', async () => {
       mockGet.mockResolvedValue({});
       mockPost.mockResolvedValue({});
       mockDelete.mockResolvedValue({});
@@ -69,9 +69,6 @@ describe('Core API Modules', () => {
       await aiApi.listModels();
       await aiApi.pullModel('llama3');
       await aiApi.deleteModel('llama3');
-      await aiApi.getOllamaContainerStatus();
-      await aiApi.startOllamaContainer();
-      await aiApi.stopOllamaContainer();
       await aiApi.getSystemResources();
 
       expect(mockPost).toHaveBeenCalledWith('/ai/detect-ollama', {});
@@ -82,9 +79,6 @@ describe('Core API Modules', () => {
       expect(mockGet).toHaveBeenCalledWith('/ai/models');
       expect(mockPost).toHaveBeenCalledWith('/ai/pull-model', { model: 'llama3' });
       expect(mockDelete).toHaveBeenCalledWith('/ai/delete-model', { model: 'llama3' });
-      expect(mockGet).toHaveBeenCalledWith('/ai/ollama-container/status');
-      expect(mockPost).toHaveBeenCalledWith('/ai/ollama-container/start', {});
-      expect(mockPost).toHaveBeenCalledWith('/ai/ollama-container/stop', {});
       expect(mockGet).toHaveBeenCalledWith('/ai/system-resources');
     });
   });

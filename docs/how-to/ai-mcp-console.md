@@ -9,13 +9,16 @@ Both paths are read-only in this release. They can answer questions about wallet
 
 ## Prerequisites
 
-1. Start Sanctuary with the AI runtime you trust:
+1. Start Sanctuary and the AI runtime you trust:
 
    ```bash
-   ./start.sh --with-ai
+   ./start.sh
+   ollama serve
+   # In another terminal:
+   ollama pull llama3.2:3b
    ```
 
-   This starts the bundled Ollama path. You can also point Sanctuary at a host-installed Ollama, a LAN Ollama/OpenAI-compatible server, or an explicitly allowlisted cloud endpoint.
+   Sanctuary no longer starts a model runtime container. Use host-installed Ollama, a desktop app such as LM Studio, a LAN OpenAI-compatible server, or an explicitly allowlisted cloud endpoint.
 
 2. Enable feature flags in **Administration -> Feature Flags**:
    - `aiAssistant` for **Administration -> AI Settings** and provider configuration.
@@ -35,7 +38,6 @@ Open **Administration -> AI Settings**.
 
 1. In **Status**, enable AI features.
 2. In **Settings**, configure the active provider profile:
-   - **Bundled Ollama:** `http://ollama:11434`
    - **Host Ollama:** `http://host.docker.internal:11434`
    - **LAN Ollama/OpenAI-compatible:** for example `http://192.168.1.20:11434` or an LM Studio `/v1` endpoint such as `http://192.168.1.20:1234/v1`
    - **Cloud OpenAI-compatible:** use HTTPS and explicitly allowlist the provider endpoint in the AI proxy environment.

@@ -25,7 +25,7 @@ const EXEC_FILE_OPTIONS: ExecFileOptionsWithStringEncoding = {
   timeout: COMMAND_TIMEOUT_MS,
 };
 
-const DOCKER_VOLUME_NAMES = ['sanctuary_postgres_data', 'sanctuary_ollama_data'] as const;
+const DOCKER_VOLUME_NAMES = ['sanctuary_postgres_data'] as const;
 
 interface DiskUsageSnapshot {
   usagePercent: number;

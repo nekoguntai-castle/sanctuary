@@ -148,26 +148,6 @@ export const aiSchemas = {
     },
     required: ['success'],
   },
-  AIContainerStatusResponse: {
-    type: 'object',
-    properties: {
-      available: { type: 'boolean' },
-      exists: { type: 'boolean' },
-      running: { type: 'boolean' },
-      status: { type: 'string' },
-      containerId: { type: 'string' },
-      message: { type: 'string' },
-    },
-    required: ['available'],
-  },
-  AIContainerActionResponse: {
-    type: 'object',
-    properties: {
-      success: { type: 'boolean' },
-      message: { type: 'string' },
-    },
-    required: ['success'],
-  },
   AISystemResource: {
     type: 'object',
     properties: {
