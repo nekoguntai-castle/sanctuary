@@ -10,14 +10,20 @@ Goal: make the quick render regression lane emit actionable Playwright failure d
 - [x] Inspect the quick render workflow and Playwright reporter configuration.
 - [x] Add terminal Playwright output and quick-lane artifact uploads for failures.
 - [x] Run focused config/type checks.
-- [ ] Commit, push, and monitor PR #229 again.
-- [ ] Use the next CI signal to either merge if green or fix the concrete failure.
+- [x] Commit, push, and monitor PR #229 again.
+- [x] Use the next CI signal to identify the concrete failure.
+- [x] Update the affected gold primary-button render snapshots.
+- [x] Rebuild the production frontend bundle under Node 24 and rerun the CI-shaped render lane.
+- [ ] Commit the render snapshot fix, push, and monitor PR #229 again.
+- [ ] Merge PR #229 once required checks pass.
 
 ## Review
 
 - Added Playwright `line` reporter output so CI logs show test progress and failure details.
 - Added quick-render Playwright report/results artifact uploads, matching the full render lane's trace/report pattern.
-- Verification passed: `git diff --check`, `npm run typecheck:tests`, `npm run check:github-action-runtimes` with network access, and the exact Node 24 CI-shaped render command with the updated reporter configuration.
+- The next CI run exposed the actual Quick Render cause: the wallet and settings snapshots still expected the old dark primary button, while CI rendered the intended gold primary button.
+- Updated only those two screenshot baselines from the CI-rendered gold state.
+- Verification passed: `git diff --check`, `npm run typecheck:tests`, `npm run check:github-action-runtimes` with network access, `npm run build` under Node v24.14.1, and the CI-shaped render lane under Node v24.14.1 after rebuilding the production bundle.
 
 ---
 
