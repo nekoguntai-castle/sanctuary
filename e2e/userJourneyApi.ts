@@ -421,12 +421,6 @@ const AUTHENTICATED_STATIC_API_RESPONSES: Record<string, MockApiResponse> = {
   }),
   'GET /ai/status': mockResponse({ available: false, containerAvailable: false }),
   'GET /intelligence/status': mockResponse({ available: false, ollamaConfigured: false }),
-  'GET /ai/ollama-container/status': mockResponse({
-    available: true,
-    exists: true,
-    running: false,
-    status: 'exited',
-  }),
 };
 
 function getStatefulApiResponse(

@@ -14,8 +14,8 @@ export interface EndpointPolicyDecision {
   normalizedEndpoint?: string;
 }
 
-// Trusted defaults point at the bundled model container or Docker host, not
-// arbitrary internet destinations.
+// Trusted defaults point at local/container model providers or Docker host,
+// not arbitrary internet destinations.
 const DEFAULT_ALLOWED_HOSTS = new Set([
   "localhost",
   "ollama",

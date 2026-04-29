@@ -1,7 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { ContainerControls } from "../../components/AISettings/components/ContainerControls";
 import { EnableModal } from "../../components/AISettings/components/EnableModal";
 import { McpAccessTab } from "../../components/AISettings/tabs/McpAccessTab";
 import { ModelsTab } from "../../components/AISettings/tabs/ModelsTab";
@@ -25,11 +24,11 @@ describe("EnableModal", () => {
 
   it("shows deployment options info when modal is open", () => {
     render(<EnableModal {...baseProps} />);
-    expect(screen.getAllByText(/bundled ollama/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/host ollama/i).length).toBeGreaterThan(0);
     expect(
       screen.getAllByText(/openai-compatible server/i).length,
     ).toBeGreaterThan(0);
+    expect(screen.queryByText(/bundled ollama/i)).not.toBeInTheDocument();
   });
 
   it("always enables the Enable AI button (resource check removed)", () => {
@@ -642,85 +641,14 @@ describe("McpAccessTab", () => {
   });
 });
 
-describe("ContainerControls", () => {
-  it("shows start flow when stopped and stop flow when running", async () => {
-    const user = userEvent.setup();
-    const onStartContainer = vi.fn();
-    const onStopContainer = vi.fn();
-    const onRefreshContainerStatus = vi.fn();
-
-    const { rerender } = render(
-      <ContainerControls
-        containerStatus={{ running: false } as any}
-        isStartingContainer={false}
-        onStartContainer={onStartContainer}
-        onStopContainer={onStopContainer}
-        onRefreshContainerStatus={onRefreshContainerStatus}
-      />,
-    );
-
-    await user.click(screen.getByRole("button", { name: /start/i }));
-    await user.click(screen.getByRole("button", { name: "" }));
-    expect(onStartContainer).toHaveBeenCalled();
-    expect(onRefreshContainerStatus).toHaveBeenCalled();
-
-    rerender(
-      <ContainerControls
-        containerStatus={{ running: true } as any}
-        isStartingContainer={false}
-        onStartContainer={onStartContainer}
-        onStopContainer={onStopContainer}
-        onRefreshContainerStatus={onRefreshContainerStatus}
-      />,
-    );
-
-    await user.click(screen.getByRole("button", { name: /stop/i }));
-    expect(onStopContainer).toHaveBeenCalled();
-  });
-
-  it("shows loader icon and disables actions while container start is in progress", async () => {
-    const user = userEvent.setup();
-    const onStartContainer = vi.fn();
-    const onStopContainer = vi.fn();
-    const onRefreshContainerStatus = vi.fn();
-
-    render(
-      <ContainerControls
-        containerStatus={{ running: false } as any}
-        isStartingContainer={true}
-        onStartContainer={onStartContainer}
-        onStopContainer={onStopContainer}
-        onRefreshContainerStatus={onRefreshContainerStatus}
-      />,
-    );
-
-    const startButton = screen.getByRole("button", { name: /start/i });
-    expect(startButton).toBeDisabled();
-    expect(startButton.querySelector(".animate-spin")).not.toBeNull();
-
-    await user.click(startButton);
-    expect(onStartContainer).not.toHaveBeenCalled();
-
-    await user.click(screen.getByRole("button", { name: "" }));
-    expect(onRefreshContainerStatus).toHaveBeenCalled();
-    expect(onStopContainer).not.toHaveBeenCalled();
-  });
-});
-
 describe("StatusTab", () => {
   const baseProps = {
     providerType: "ollama" as const,
     aiEnabled: false,
     isSaving: false,
-    isStartingContainer: false,
-    containerMessage: "",
-    containerStatus: null,
     aiEndpoint: "",
     aiModel: "",
     onToggleAI: vi.fn(),
-    onStartContainer: vi.fn(),
-    onStopContainer: vi.fn(),
-    onRefreshContainerStatus: vi.fn(),
     onNavigateToSettings: vi.fn(),
   };
 
@@ -743,48 +671,23 @@ describe("StatusTab", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows container controls and next-step action when enabled", async () => {
+  it("shows next-step action when enabled", async () => {
     const user = userEvent.setup();
     const onNavigateToSettings = vi.fn();
-    const onStartContainer = vi.fn();
-    const onStopContainer = vi.fn();
-    const onRefreshContainerStatus = vi.fn();
 
     render(
       <StatusTab
         {...baseProps}
         aiEnabled={true}
-        containerMessage="Starting..."
-        containerStatus={
-          { available: true, exists: true, running: false } as any
-        }
         aiEndpoint="http://localhost:11434"
         aiModel="llama3"
         onNavigateToSettings={onNavigateToSettings}
-        onStartContainer={onStartContainer}
-        onStopContainer={onStopContainer}
-        onRefreshContainerStatus={onRefreshContainerStatus}
       />,
     );
 
-    expect(screen.getByText(/starting/i)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /start/i }));
     await user.click(screen.getByRole("button", { name: /settings/i }));
 
-    expect(onStartContainer).toHaveBeenCalled();
     expect(onNavigateToSettings).toHaveBeenCalled();
-  });
-
-  it("renders loading spinner when container startup is in progress", () => {
-    const { container } = render(
-      <StatusTab
-        {...baseProps}
-        isStartingContainer={true}
-        containerMessage="Booting container..."
-      />,
-    );
-
-    expect(container.querySelector(".animate-spin")).not.toBeNull();
-    expect(screen.getByText("Booting container...")).toBeInTheDocument();
+    expect(screen.queryByText(/local ai container/i)).not.toBeInTheDocument();
   });
 });

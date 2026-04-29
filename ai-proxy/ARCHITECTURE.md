@@ -116,9 +116,9 @@ Because the proxy runs as a single container, the store is not distributed. This
 
 The proxy speaks the OpenAI chat completions wire format (`POST /v1/chat/completions`). Provider endpoints are auto-normalized:
 
-- `http://ollama:11434` → `http://ollama:11434/v1/chat/completions`
-- `http://ollama:11434/v1` → same
-- `http://ollama:11434/v1/chat/completions` → unchanged
+- `http://host.docker.internal:11434` → `http://host.docker.internal:11434/v1/chat/completions`
+- `http://host.docker.internal:11434/v1` → same
+- `http://host.docker.internal:11434/v1/chat/completions` → unchanged
 - `http://lmstudio.local:1234/v1` → `http://lmstudio.local:1234/v1/chat/completions`
 
 This makes the proxy compatible with Ollama, LM Studio, llama.cpp with an OpenAI adapter, and OpenAI-compatible cloud providers without code changes.

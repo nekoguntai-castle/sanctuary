@@ -6,7 +6,6 @@ import {
   mockDetectOllama,
   mockListModels,
   mockPullModel,
-  mockGetOllamaContainerStatus,
 } from './AISettingsTestHarness';
 import AISettings from '../../../components/AISettings';
 
@@ -15,7 +14,6 @@ export function registerAISettingsInitialLoadingContracts() {
     it('should show loading spinner initially', () => {
       const pending = new Promise(() => {});
       mockGetSystemSettings.mockReturnValue(pending);
-      mockGetOllamaContainerStatus.mockReturnValue(pending as any);
       mockGetAIStatus.mockReturnValue(pending as any);
       mockDetectOllama.mockReturnValue(pending as any);
       mockListModels.mockReturnValue(pending as any);

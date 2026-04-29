@@ -54,7 +54,7 @@ describe('Intelligence API', () => {
       const mockResponse = {
         available: true,
         ollamaConfigured: true,
-        endpointType: 'bundled',
+        endpointType: 'container',
       };
       mockGet.mockResolvedValue(mockResponse);
 
@@ -62,7 +62,7 @@ describe('Intelligence API', () => {
 
       expect(mockGet).toHaveBeenCalledWith('/intelligence/status');
       expect(result.available).toBe(true);
-      expect(result.endpointType).toBe('bundled');
+      expect(result.endpointType).toBe('container');
     });
   });
 

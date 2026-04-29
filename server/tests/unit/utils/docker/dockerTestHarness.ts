@@ -30,14 +30,10 @@ export function restoreDockerTestEnvironment(): void {
 }
 
 export {
-  createOllamaContainer,
   createTorContainer,
   discoverProjectName,
-  getOllamaStatus,
   getTorStatus,
   isDockerProxyAvailable,
-  startOllama,
   startTor,
-  stopOllama,
   stopTor,
 } from '../../../../src/utils/docker';

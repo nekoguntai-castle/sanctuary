@@ -42,9 +42,8 @@ This guide explains how to deploy Sanctuary using Docker and Docker Compose.
 | Gateway    | 256MB        | 0.5 core  | Mobile API gateway |
 | Redis      | 192MB        | 0.5 core  | Cache and pub/sub |
 | AI         | 256MB        | 0.5 core  | AI proxy (idle until enabled) |
-| Ollama     | 8GB          | 4 cores   | Optional, for local AI |
 
-> **Note**: Add 8GB+ RAM if using local AI with Ollama (`./start.sh --with-ai`)
+> **Note**: Local model RAM/CPU requirements apply to the external provider process, such as host-installed Ollama, LM Studio, llama.cpp, or vLLM.
 
 ### PostgreSQL Performance Tuning
 
@@ -121,8 +120,7 @@ docker compose ps
 # Start services (recommended)
 ./start.sh
 
-# Start with bundled AI (Ollama container)
-./start.sh --with-ai
+# AI providers run outside Sanctuary; configure the endpoint in Admin -> AI Settings
 
 # Stop services
 ./start.sh --stop

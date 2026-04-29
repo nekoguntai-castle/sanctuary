@@ -8,14 +8,6 @@
 // Common utilities
 export { isDockerProxyAvailable, discoverProjectName } from './common';
 
-// Ollama container management
-export {
-  getOllamaStatus,
-  createOllamaContainer,
-  startOllama,
-  stopOllama,
-} from './ollama';
-
 // Tor container management
 export {
   getTorStatus,

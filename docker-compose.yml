@@ -234,7 +234,7 @@ services:
       # Backend forwards all AI requests to this container
       AI_CONTAINER_URL: ${AI_CONTAINER_URL:-http://ai:3100}
 
-      # Docker proxy for secure Ollama container management
+      # Docker proxy for secure Tor container management
       DOCKER_PROXY_URL: http://docker-proxy:2375
 
       # AI config sync secret (must match ai container)
@@ -459,6 +459,8 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       BACKEND_HOST: backend
       BACKEND_PORT: 3001
@@ -651,9 +653,9 @@ services:
   # Docker Socket Proxy (Security Layer)
   # ============================================
   # Secure proxy for Docker socket access.
-  # Only allows specific operations needed for Ollama management:
-  # - List containers (to check if Ollama is running)
-  # - Start/stop containers (to manage Ollama)
+  # Only allows specific operations needed for Tor container management:
+  # - List containers (to check if Tor is running)
+  # - Start/stop containers (to manage Tor)
   # Blocks all other Docker API calls (no creating containers, volumes, etc.)
   # ============================================
   docker-proxy:
@@ -708,66 +710,6 @@ services:
     mem_swappiness: 0  # Proxy should never swap
     memswap_limit: 64M  # No swap for proxy
 
-  # ============================================
-  # Ollama LLM Server (Optional - for bundled AI)
-  # ============================================
-  # Local LLM server bundled with Sanctuary.
-  # Only starts when ENABLE_OLLAMA=true (set via ./start.sh --with-ai)
-  #
-  # This eliminates the need to:
-  # - Install Ollama on your host machine
-  # - Configure network addresses
-  # - Manually connect Sanctuary to Ollama
-  #
-  # GPU Support (optional):
-  #   For NVIDIA GPUs, uncomment the deploy section below.
-  #   Requires: nvidia-container-toolkit installed on host.
-  #
-  # Models are persisted in the ollama_data volume.
-  # ============================================
-  ollama:
-    image: ollama/ollama:latest
-    restart: unless-stopped
-    profiles:
-      - ai
-    environment:
-      # Listen on all interfaces so ai-proxy can connect
-      OLLAMA_HOST: 0.0.0.0
-    volumes:
-      # Persist downloaded models
-      - ollama_data:/root/.ollama
-    healthcheck:
-      test: ["CMD", "ollama", "list"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    networks:
-      - sanctuary-network
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-    # Resource limits for Ollama (LLMs need significant memory)
-    # Uncomment reservations.devices for NVIDIA GPU support
-    deploy:
-      resources:
-        limits:
-          cpus: '4'
-          memory: 8G
-        reservations:
-          cpus: '1'
-          memory: 2G
-          # Uncomment for NVIDIA GPU support:
-          # devices:
-          #   - driver: nvidia
-          #     count: all
-          #     capabilities: [gpu]
-    # LLMs benefit from swap for model loading
-    mem_swappiness: 60
-    memswap_limit: 12G  # memory + 4G swap for model flexibility
-
 # ============================================
 # Networks
 # ============================================
@@ -789,8 +731,6 @@ volumes:
   postgres_data:
     driver: local
   redis_data:
-    driver: local
-  ollama_data:
     driver: local
   backup_data:
     driver: local

@@ -14,7 +14,6 @@ import { Router } from 'express';
 import { createStatusRouter } from './status';
 import { createFeaturesRouter } from './features';
 import { createModelsRouter } from './models';
-import { createContainerRouter } from './container';
 import { createSystemResourcesRouter } from './systemResources';
 
 const router = Router();
@@ -23,7 +22,6 @@ const router = Router();
 router.use(createStatusRouter());
 router.use(createFeaturesRouter());
 router.use(createModelsRouter());
-router.use(createContainerRouter());
 router.use(createSystemResourcesRouter());
 
 export default router;

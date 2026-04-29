@@ -41,7 +41,7 @@ describe('useIntelligenceStatus', () => {
     vi.mocked(intelligenceApi.getIntelligenceStatus).mockResolvedValue({
       available: true,
       ollamaConfigured: true,
-      endpointType: 'bundled',
+      endpointType: 'container',
     });
 
     const { result } = renderHook(() => useIntelligenceStatus());
@@ -51,7 +51,7 @@ describe('useIntelligenceStatus', () => {
     });
 
     expect(result.current.available).toBe(true);
-    expect(result.current.endpointType).toBe('bundled');
+    expect(result.current.endpointType).toBe('container');
   });
 
   it('should return unavailable status when API throws', async () => {
@@ -222,7 +222,7 @@ describe('useIntelligenceStatus', () => {
     vi.mocked(intelligenceApi.getIntelligenceStatus).mockResolvedValue({
       available: true,
       ollamaConfigured: true,
-      endpointType: 'bundled',
+      endpointType: 'container',
     });
 
     const { result: first } = renderHook(() => useIntelligenceStatus());
@@ -237,6 +237,6 @@ describe('useIntelligenceStatus', () => {
     // The initial state should already have the cached value
     expect(second.current.available).toBe(true);
     expect(second.current.loading).toBe(false);
-    expect(second.current.endpointType).toBe('bundled');
+    expect(second.current.endpointType).toBe('container');
   });
 });

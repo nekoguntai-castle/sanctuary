@@ -1,3 +1,48 @@
+# Active Task: Remove Managed Ollama Container Runtime 2026-04-29
+
+Status: complete
+
+Goal: remove Sanctuary-owned Ollama container lifecycle management while preserving explicit local/LAN/cloud AI provider endpoint support through the AI proxy and AI Settings.
+
+## Plan
+
+- [x] Start from current `origin/main` in an isolated worktree to avoid the other local agent's workspace.
+- [x] Remove bundled Ollama service/startup paths while leaving shared Docker proxy support for Tor container management.
+- [x] Remove backend Ollama container lifecycle routes and Docker utility exports/tests that only served UI-managed model runtime startup.
+- [x] Simplify AI Settings so it manages AI enablement, provider profiles, endpoints, model selection, detection, connection testing, and model listing/pull/delete against already-running providers only.
+- [x] Keep local Ollama/OpenAI-compatible endpoint support through `ai-proxy`, but remove bundled-container defaults and operator-facing copy.
+- [x] Update README, Docker, AI how-to, and proxy docs to document externally managed Ollama/LM Studio/provider setup.
+- [x] Update API, frontend, e2e/render mocks, OpenAPI, and focused tests for the removed container lifecycle surface.
+- [x] Run focused AI Settings, AI API/backend, AI proxy, typecheck, lizard, formatting, and diff verification.
+
+## Review
+
+- Removed Sanctuary-managed Ollama runtime ownership: the Compose `ollama` service/volume, `--profile ai` startup paths, backend `/ai/ollama-container/*` routes, Docker Ollama utilities, generated OpenAPI surface, client APIs, and container lifecycle UI/hook/tests are gone.
+- Preserved explicit provider support through the AI proxy and AI Settings: host/LAN/container/cloud endpoints still flow through provider profiles, model list/pull/delete APIs, endpoint policy checks, detection, connection tests, and intelligence status. `host.docker.internal` is now mapped for the AI proxy container via Docker `host-gateway`.
+- Updated README, Docker docs, AI how-to, and AI proxy docs to document externally managed Ollama, LM Studio, llama.cpp, vLLM, LAN, or allowlisted cloud providers instead of a bundled model container.
+- Updated render/e2e mocks and contracts, backend unit contracts, disk monitoring tests, API client tests, and endpoint-type expectations for the removed lifecycle surface.
+- Verification passed:
+  - `npx vitest run tests/components/AISettings.logic.test.tsx tests/components/AISettingsSubcomponents.test.tsx tests/components/AISettings/AISettings.initial-loading.contracts.tsx tests/components/AISettings/hooks/useAISettings.test.ts tests/components/AISettings/hooks/useAIFeatureToggle.test.ts tests/api/coreApiModules.test.ts tests/api/intelligence.test.ts tests/hooks/useAppCapabilities.test.ts tests/hooks/useIntelligenceStatus.test.ts tests/ai-proxy/endpointPolicy.test.ts tests/ai-proxy/aiClient.test.ts tests/ai-proxy/providerModels.test.ts tests/ai-proxy/requestSchemas.test.ts tests/ai-proxy/consoleRoutes.test.ts`
+  - `cd server && npx vitest run tests/unit/api/ai.test.ts tests/unit/api/openapi.gateway.contracts.ts tests/unit/utils/docker.test.ts tests/unit/services/intelligence/analysisService.test.ts tests/unit/services/maintenanceService.test.ts` (first run exposed and fixed the stale disk-monitoring fixture; rerun passed)
+  - `cd server && npx vitest run tests/unit/api/openapi.test.ts`
+  - `npm run typecheck:app`
+  - `npm run typecheck:tests`
+  - `npm run typecheck:server:tests`
+  - `cd ai-proxy && npm run build`
+  - `npm run check:openapi-route-coverage`
+  - `npm run check:architecture-boundaries`
+  - `npm run quality:lizard`
+  - `bash -n start.sh`
+  - `POSTGRES_PASSWORD=<dummy> JWT_SECRET=<dummy> ENCRYPTION_KEY=<dummy-32-chars> AI_CONFIG_SECRET=<dummy-64-hex-chars> docker compose config --quiet`
+  - `npx playwright test --project=chromium e2e/render-regression.spec.ts --reporter=line`
+  - `git diff --check`
+- Notes: local installs emitted Node engine warnings because this shell runs Node 22 while Sanctuary declares Node 24. `docker compose config --quiet` emitted the expected warning for unset optional `REDIS_PASSWORD` when using dummy validation secrets.
+- Merge-queue follow-up: the first merge-group run exposed two full-lane blockers after the PR quick checks passed. Backend coverage dropped to 99.99% because the remaining Docker volume monitor lacked the within-threshold branch test after removing the second Ollama volume, and CodeQL tried to upload SARIF for the synthetic `gh-readonly-queue` ref. Added the missing disk-monitoring branch coverage and configured CodeQL to skip SARIF upload only for `merge_group` analysis while keeping PR/main uploads enabled.
+- Follow-up verification passed: `cd server && npm run test:unit -- --coverage` restored backend coverage to 100% statements/branches/functions/lines; `npm run typecheck:server:tests`; `npm run check:github-action-runtimes`; `npx prettier --check .github/workflows/codeql.yml server/tests/unit/services/maintenanceService.test.ts tasks/todo.md`; `git diff --check`.
+- CI classifier follow-up: after the amended push, the quality classifier caught pre-existing unassigned browser E2E coverage for `e2e/console-drawer-smoke.spec.ts`. Added it to the `wallet-experience` lane so the classifier gate covers every non-render browser spec; `bash tests/ci/browser-e2e-groups.test.sh`, `bash -n scripts/ci/browser-e2e-groups.sh`, and `git diff --check` passed.
+
+---
+
 # Active Task: Brittle Check Remediation Phase 6 Implementation 2026-04-28
 
 Status: complete

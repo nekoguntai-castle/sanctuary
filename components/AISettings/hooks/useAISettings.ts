@@ -50,8 +50,6 @@ interface UseAISettingsReturn {
   saveSuccess: boolean;
   isDetecting: boolean;
   detectMessage: string;
-  containerStatus: aiApi.OllamaContainerStatus | null;
-  setContainerStatus: (status: aiApi.OllamaContainerStatus | null) => void;
 
   // Handlers
   handleSaveConfig: () => Promise<void>;
@@ -107,10 +105,6 @@ export function useAISettings(): UseAISettingsReturn {
   // Detection state
   const [isDetecting, setIsDetecting] = useState(false);
   const [detectMessage, setDetectMessage] = useState("");
-
-  // Container state (loaded with settings)
-  const [containerStatus, setContainerStatus] =
-    useState<aiApi.OllamaContainerStatus | null>(null);
 
   // Models state
   const [availableModels, setAvailableModels] = useState<aiApi.OllamaModel[]>(
@@ -226,7 +220,7 @@ export function useAISettings(): UseAISettingsReturn {
   const providerLabel = (type: AIProviderType) =>
     type === "openai-compatible" ? "OpenAI-compatible" : "Ollama";
 
-  // Load settings and container status on mount
+  // Load settings on mount
   useEffect(() => {
     const loadSettings = async () => {
       try {
@@ -249,14 +243,8 @@ export function useAISettings(): UseAISettingsReturn {
       }
 
       try {
-        const [settings, containerResult] = await Promise.all([
-          adminApi.getSystemSettings(),
-          aiApi.getOllamaContainerStatus().catch(() => null),
-        ]);
+        const settings = await adminApi.getSystemSettings();
         applySettingsResponse(settings);
-        if (containerResult) {
-          setContainerStatus(containerResult);
-        }
       } catch (error) {
         log.error("Failed to load AI settings", { error });
       } finally {
@@ -499,8 +487,6 @@ export function useAISettings(): UseAISettingsReturn {
     saveSuccess,
     isDetecting,
     detectMessage,
-    containerStatus,
-    setContainerStatus,
     handleSaveConfig,
     handleDetectOllama,
     loadModels,

@@ -16,7 +16,7 @@ import * as intelligenceApi from '../src/api/intelligence';
 interface IntelligenceStatusResult {
   available: boolean;
   loading: boolean;
-  endpointType?: 'bundled' | 'host' | 'remote';
+  endpointType?: 'container' | 'host' | 'remote';
 }
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes

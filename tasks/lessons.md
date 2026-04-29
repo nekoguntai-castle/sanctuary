@@ -2,6 +2,18 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Write Non-Trivial Plans To The Task Tracker First
+
+**Rule:** For repo work with multiple steps or architectural choices, add the plan to `tasks/todo.md` before proceeding, even if an in-chat plan already exists.
+
+**Why:** The project workflow expects `tasks/todo.md` to be the shared task ledger. The user had to correct the plan-only response to make sure the removal plan was captured there before implementation.
+
+**How to apply:**
+
+- Start non-trivial implementation by adding an active task section with checkable plan items to `tasks/todo.md`.
+- Mark progress in that file as the work advances.
+- Add a review section with concrete verification results before handing off or opening the PR.
+
 ## Treat Merge-Queue Failures As A Different Signal From PR Checks
 
 **Rule:** When a user reports a Test Suite failure during PR delivery, inspect merge-group and post-merge runs, not only the PR-head checks.

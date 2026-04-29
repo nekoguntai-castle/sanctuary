@@ -1,20 +1,13 @@
-import { Loader2, Shield } from "lucide-react";
+import { Shield } from "lucide-react";
 import type { StatusTabProps } from "../types";
-import { ContainerControls } from "../components/ContainerControls";
 
 export function StatusTab({
   providerType,
   aiEnabled,
   isSaving,
-  isStartingContainer,
-  containerMessage,
-  containerStatus,
   aiEndpoint,
   aiModel,
   onToggleAI,
-  onStartContainer,
-  onStopContainer,
-  onRefreshContainerStatus,
   onNavigateToSettings,
 }: StatusTabProps) {
   const usesExternalProvider = providerType === "openai-compatible";
@@ -46,19 +39,19 @@ export function StatusTab({
               Enable AI Features
             </label>
             <p className="text-sm text-sanctuary-500 max-w-md">
-              Use bundled Ollama, host Ollama, LM Studio, or another trusted
-              OpenAI-compatible endpoint.
+              Use host Ollama, LM Studio, llama.cpp, vLLM, or another trusted
+              OpenAI-compatible endpoint managed outside Sanctuary.
             </p>
           </div>
         </div>
         <button
           onClick={onToggleAI}
-          disabled={isSaving || isStartingContainer}
+          disabled={isSaving}
           className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 ${
             aiEnabled
               ? "bg-primary-600 dark:bg-sanctuary-500"
               : "bg-sanctuary-300 dark:bg-sanctuary-700"
-          } ${isSaving || isStartingContainer ? "opacity-50 cursor-not-allowed" : ""}`}
+          } ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
         >
           <span
             className={`inline-block h-6 w-6 transform rounded-full bg-white dark:bg-sanctuary-200 shadow-md ring-1 ring-black/5 dark:ring-white/10 transition-transform ${
@@ -67,39 +60,6 @@ export function StatusTab({
           />
         </button>
       </div>
-
-      {/* Container status message */}
-      {(containerMessage || isStartingContainer) && (
-        <div className="flex items-center space-x-2 text-sm text-primary-600 dark:text-primary-400">
-          {isStartingContainer && <Loader2 className="w-4 h-4 animate-spin" />}
-          <span>{containerMessage}</span>
-        </div>
-      )}
-
-      {/* Bundled Container (optional — only needed if running Ollama locally) */}
-      {containerStatus?.available && containerStatus?.exists && (
-        <div className="space-y-2">
-          <div className="flex items-center space-x-2">
-            <h3 className="text-sm font-medium text-sanctuary-700 dark:text-sanctuary-300">
-              Local AI Container
-            </h3>
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-sanctuary-100 dark:bg-sanctuary-800 text-sanctuary-500">
-              optional
-            </span>
-          </div>
-          <p className="text-xs text-sanctuary-500">
-            Start the bundled Ollama container to run AI locally. Skip this if
-            you use host Ollama, LM Studio, or another provider.
-          </p>
-          <ContainerControls
-            containerStatus={containerStatus}
-            isStartingContainer={isStartingContainer}
-            onStartContainer={onStartContainer}
-            onStopContainer={onStopContainer}
-            onRefreshContainerStatus={onRefreshContainerStatus}
-          />
-        </div>
-      )}
 
       {/* Quick Status Summary */}
       <div className="grid grid-cols-3 gap-3">
@@ -140,12 +100,7 @@ export function StatusTab({
             >
               Settings
             </button>{" "}
-            tab to configure your AI provider endpoint
-            {containerStatus?.available &&
-            containerStatus?.exists &&
-            !containerStatus?.running
-              ? ", or start the local container above."
-              : "."}
+            tab to configure your AI provider endpoint.
           </p>
         </div>
       )}

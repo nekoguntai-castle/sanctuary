@@ -7,7 +7,7 @@ export const INSIGHT_SEVERITY_VALUES = ['info', 'warning', 'critical'] as const;
 export const INSIGHT_STATUS_VALUES = ['active', 'dismissed', 'acted_on', 'expired'] as const;
 export const INSIGHT_UPDATE_STATUS_VALUES = ['dismissed', 'acted_on'] as const;
 export const INTELLIGENCE_MESSAGE_ROLE_VALUES = ['user', 'assistant'] as const;
-export const INTELLIGENCE_ENDPOINT_TYPE_VALUES = ['bundled', 'host', 'remote'] as const;
+export const INTELLIGENCE_ENDPOINT_TYPE_VALUES = ['container', 'host', 'remote'] as const;
 
 export type InsightType = (typeof INSIGHT_TYPE_VALUES)[number];
 export type InsightSeverity = (typeof INSIGHT_SEVERITY_VALUES)[number];

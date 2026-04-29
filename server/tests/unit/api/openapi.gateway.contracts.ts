@@ -700,9 +700,6 @@ export function registerOpenApiGatewayTests() {
       ['/ai/models', 'get'],
       ['/ai/pull-model', 'post'],
       ['/ai/delete-model', 'delete'],
-      ['/ai/ollama-container/status', 'get'],
-      ['/ai/ollama-container/start', 'post'],
-      ['/ai/ollama-container/stop', 'post'],
       ['/ai/system-resources', 'get'],
     ];
 

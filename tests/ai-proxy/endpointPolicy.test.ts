@@ -23,7 +23,7 @@ describe("AI proxy endpoint policy", () => {
     resetEndpointPolicyEnv();
   });
 
-  it("allows bundled, host, loopback, and private LAN model endpoints by default", () => {
+  it("allows container, host, loopback, and private LAN model endpoints by default", () => {
     expect(
       evaluateProviderEndpoint("http://ollama:11434", defaultOptions).allowed,
     ).toBe(true);

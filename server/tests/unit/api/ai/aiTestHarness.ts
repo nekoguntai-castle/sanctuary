@@ -54,13 +54,6 @@ vi.mock('../../../../src/services/featureFlagService', () => ({
   },
 }));
 
-vi.mock('../../../../src/utils/docker', () => ({
-  isDockerProxyAvailable: vi.fn(),
-  getOllamaStatus: vi.fn(),
-  startOllama: vi.fn(),
-  stopOllama: vi.fn(),
-}));
-
 const { mockExecFilePromisified } = vi.hoisted(() => ({
   mockExecFilePromisified: vi.fn().mockResolvedValue({
     stdout: 'Filesystem     1M-blocks      Used Available Use% Mounted on\n/dev/sda1         100000     50000     40000  56% /',

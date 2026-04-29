@@ -7,7 +7,7 @@
  * Logic is split across focused hooks:
  * - useAISettings: settings state, persistence, detection, model list
  * - useModelManagement: pull/delete models, download progress, popular models
- * - useContainerLifecycle: container start/stop, enable/disable toggle, modal
+ * - useAIFeatureToggle: enable/disable toggle and confirmation modal
  * - useAIConnectionStatus: connection test status
  */
 
@@ -23,7 +23,7 @@ import {
 import { useAIConnectionStatus } from "./hooks/useAIConnectionStatus";
 import { useAISettings } from "./hooks/useAISettings";
 import { useModelManagement } from "./hooks/useModelManagement";
-import { useContainerLifecycle } from "./hooks/useContainerLifecycle";
+import { useAIFeatureToggle } from "./hooks/useAIFeatureToggle";
 import { formatBytes, formatModelSize } from "./utils";
 import { StatusTab } from "./tabs/StatusTab";
 import { SettingsTab } from "./tabs/SettingsTab";
@@ -60,15 +60,10 @@ export default function AISettings() {
     loadModels: settings.loadModels,
   });
 
-  // Container lifecycle: start/stop, toggle AI, enable modal
-  const container = useContainerLifecycle({
+  // AI feature toggle and enable modal
+  const toggle = useAIFeatureToggle({
     aiEnabled: settings.aiEnabled,
     setAiEnabled: settings.setAiEnabled,
-    setAiEndpoint: settings.setAiEndpoint,
-    setAiModel: settings.setAiModel,
-    containerStatus: settings.containerStatus,
-    setContainerStatus: settings.setContainerStatus,
-    loadModels: settings.loadModels,
   });
 
   if (settings.loading) {
@@ -211,16 +206,10 @@ export default function AISettings() {
             <StatusTab
               providerType={settings.providerType}
               aiEnabled={settings.aiEnabled}
-              isSaving={container.isSaving}
-              isStartingContainer={container.isStartingContainer}
-              containerMessage={container.containerMessage}
-              containerStatus={settings.containerStatus}
+              isSaving={toggle.isSaving}
               aiEndpoint={settings.aiEndpoint}
               aiModel={settings.aiModel}
-              onToggleAI={container.handleToggleAI}
-              onStartContainer={container.handleStartContainer}
-              onStopContainer={container.handleStopContainer}
-              onRefreshContainerStatus={container.refreshContainerStatus}
+              onToggleAI={toggle.handleToggleAI}
               onNavigateToSettings={() => setActiveTab("settings")}
             />
           )}
@@ -358,9 +347,9 @@ export default function AISettings() {
 
       {/* Enable AI Confirmation Modal */}
       <EnableModal
-        showEnableModal={container.showEnableModal}
-        onClose={container.handleCloseEnableModal}
-        onEnable={() => container.performToggleAI(true)}
+        showEnableModal={toggle.showEnableModal}
+        onClose={toggle.handleCloseEnableModal}
+        onEnable={() => toggle.performToggleAI(true)}
       />
     </div>
   );

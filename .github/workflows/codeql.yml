@@ -11,7 +11,7 @@ on:
     branches:
       - main
   schedule:
-    - cron: '37 8 * * 1'
+    - cron: "37 8 * * 1"
   workflow_dispatch:
 
 permissions:
@@ -67,7 +67,8 @@ jobs:
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@95e58e9a2cdfd71adc6e0353d5c52f41a045d225
         with:
-          category: '/language:actions'
+          category: "/language:actions"
+          upload: ${{ github.event_name == 'merge_group' && 'never' || 'always' }}
 
   codeql-javascript-typescript:
     name: CodeQL / JavaScript-TypeScript
@@ -88,7 +89,8 @@ jobs:
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@95e58e9a2cdfd71adc6e0353d5c52f41a045d225
         with:
-          category: '/language:javascript-typescript'
+          category: "/language:javascript-typescript"
+          upload: ${{ github.event_name == 'merge_group' && 'never' || 'always' }}
 
   codeql-go:
     name: CodeQL / Go
@@ -112,7 +114,8 @@ jobs:
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@95e58e9a2cdfd71adc6e0353d5c52f41a045d225
         with:
-          category: '/language:go'
+          category: "/language:go"
+          upload: ${{ github.event_name == 'merge_group' && 'never' || 'always' }}
 
   codeql-python:
     name: CodeQL / Python
@@ -133,7 +136,8 @@ jobs:
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@95e58e9a2cdfd71adc6e0353d5c52f41a045d225
         with:
-          category: '/language:python'
+          category: "/language:python"
+          upload: ${{ github.event_name == 'merge_group' && 'never' || 'always' }}
 
   codeql-required-checks:
     name: CodeQL Required Checks

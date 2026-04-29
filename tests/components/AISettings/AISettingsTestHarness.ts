@@ -37,9 +37,6 @@ export const mockDetectOllama = vi.fn();
 export const mockDetectProvider = vi.fn();
 export const mockListModels = vi.fn();
 export const mockPullModel = vi.fn();
-export const mockGetOllamaContainerStatus = vi.fn();
-export const mockStartOllamaContainer = vi.fn();
-export const mockStopOllamaContainer = vi.fn();
 
 vi.mock('../../../src/api/ai', () => ({
   getAIStatus: () => mockGetAIStatus(),
@@ -48,9 +45,6 @@ vi.mock('../../../src/api/ai', () => ({
   detectProvider: (request: Record<string, unknown>) => mockDetectProvider(request),
   listModels: () => mockListModels(),
   pullModel: (model: string) => mockPullModel(model),
-  getOllamaContainerStatus: () => mockGetOllamaContainerStatus(),
-  startOllamaContainer: () => mockStartOllamaContainer(),
-  stopOllamaContainer: () => mockStopOllamaContainer(),
 }));
 
 // Mock logger
@@ -228,20 +222,6 @@ export function registerAISettingsTestHarness() {
     });
     mockListModels.mockResolvedValue(mockModels);
     mockPullModel.mockResolvedValue({ success: true, model: 'llama3.2:3b' });
-    mockGetOllamaContainerStatus.mockResolvedValue({
-      available: false,
-      exists: false,
-      running: false,
-      status: 'not-available',
-    });
-    mockStartOllamaContainer.mockResolvedValue({
-      success: true,
-      message: 'Container started',
-    });
-    mockStopOllamaContainer.mockResolvedValue({
-      success: true,
-      message: 'Container stopped',
-    });
   });
 
   afterEach(() => {

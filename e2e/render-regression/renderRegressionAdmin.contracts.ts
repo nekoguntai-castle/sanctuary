@@ -232,7 +232,7 @@ export async function renderAdminAiRouteRendersStatusWorkflowShell({ page }: { p
   await expect(main.getByRole('heading', { name: 'AI Settings' })).toBeVisible();
   await expect(main.getByText('AI Data Boundary')).toBeVisible();
   await expect(main.getByText('Enable AI Features')).toBeVisible();
-  await expect(main.getByText('Bundled Container: Stopped')).toBeVisible();
+  await expect(main.getByText('OpenAI-compatible endpoint managed outside Sanctuary')).toBeVisible();
   await expect(main.getByText('AI Status')).toBeVisible();
   await expect(main.getByRole('heading', { name: 'What AI Can Do' })).toBeVisible();
   await expect(main.getByRole('heading', { name: 'Transaction Labeling' })).toBeVisible();

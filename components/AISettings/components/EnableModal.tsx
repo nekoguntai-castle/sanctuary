@@ -41,8 +41,8 @@ export function EnableModal({
           <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
             <p className="text-sm text-blue-800 dark:text-blue-200">
               AI features use an OpenAI-compatible chat endpoint. You can use
-              bundled Ollama, host-installed Ollama, LM Studio, llama.cpp, or
-              another trusted local or LAN provider.
+              host-installed Ollama, LM Studio, llama.cpp, vLLM, or another
+              trusted local or LAN provider that runs outside Sanctuary.
             </p>
           </div>
 
@@ -52,16 +52,12 @@ export function EnableModal({
             </div>
             <ul className="list-disc list-inside ml-2 space-y-1">
               <li>
-                <strong>Bundled Ollama</strong> — start the local container from
-                the Status tab after enabling
-              </li>
-              <li>
                 <strong>Host Ollama</strong> — use Ollama running directly on
                 your host OS
               </li>
               <li>
                 <strong>OpenAI-compatible server</strong> — use LM Studio,
-                llama.cpp, or another LAN endpoint
+                llama.cpp, vLLM, or another LAN endpoint
               </li>
             </ul>
           </div>

@@ -1,4 +1,4 @@
-import type { OllamaModel, OllamaContainerStatus } from "../../src/api/ai";
+import type { OllamaModel } from "../../src/api/ai";
 import type {
   AdminMcpApiKey,
   AdminMcpServerStatus,
@@ -21,15 +21,9 @@ export interface StatusTabProps {
   providerType: AIProviderType;
   aiEnabled: boolean;
   isSaving: boolean;
-  isStartingContainer: boolean;
-  containerMessage: string;
-  containerStatus: OllamaContainerStatus | null;
   aiEndpoint: string;
   aiModel: string;
   onToggleAI: () => void;
-  onStartContainer: () => void;
-  onStopContainer: () => void;
-  onRefreshContainerStatus: () => void;
   onNavigateToSettings: () => void;
 }
 
@@ -127,14 +121,6 @@ export interface ModelsTabProps {
   onCustomModelNameChange: (value: string) => void;
   onLoadPopularModels: () => void;
   formatBytes: (bytes: number) => string;
-}
-
-export interface ContainerControlsProps {
-  containerStatus: OllamaContainerStatus;
-  isStartingContainer: boolean;
-  onStartContainer: () => void;
-  onStopContainer: () => void;
-  onRefreshContainerStatus: () => void;
 }
 
 export interface EnableModalProps {
