@@ -33,19 +33,19 @@ export const sanctuaryTheme: ThemeDefinition = {
         950: '#09090b',
       },
 
-      // Primary colors (Warm sand/tan)
+      // Primary colors (Zen gold)
       primary: {
-        50: '#fdfbf7',
-        100: '#f5f2eb',
-        200: '#e6e0d4',
-        300: '#d4cbb8',
-        400: '#a39e93',
-        500: '#7d7870',
-        600: '#5c5852',
-        700: '#45423e',
-        800: '#2e2c2a',
-        900: '#1c1c1e',
-        950: '#0f0f10',
+        50: '#fcf9f4',
+        100: '#f8f1e1',
+        200: '#efe0c0',
+        300: '#e3ca98',
+        400: '#d4b483',
+        500: '#b59056',
+        600: '#96723e',
+        700: '#795932',
+        800: '#644a2d',
+        900: '#533e28',
+        950: '#2d2114',
       },
 
       // Success colors (Matcha green)
@@ -165,19 +165,19 @@ export const sanctuaryTheme: ThemeDefinition = {
         950: '#09090b',
       },
 
-      // Primary colors (inverted for dark mode)
+      // Primary colors (Zen gold, inverted for dark mode)
       primary: {
-        50: '#1a1917',
-        100: '#2b261f',
-        200: '#453d30',
-        300: '#6b5d46',
-        400: '#968362',
-        500: '#bfa57a',
+        50: '#2d2114',
+        100: '#533e28',
+        200: '#644a2d',
+        300: '#795932',
+        400: '#96723e',
+        500: '#b59056',
         600: '#d4b483',
-        700: '#e6dcc8',
-        800: '#f2efe9',
-        900: '#fdfbf7',
-        950: '#ffffff',
+        700: '#e3ca98',
+        800: '#efe0c0',
+        900: '#f8f1e1',
+        950: '#fcf9f4',
       },
 
       // Success colors (inverted)

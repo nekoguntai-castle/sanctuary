@@ -13,9 +13,7 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 const baseButtonStyles = "inline-flex items-center justify-center rounded-md transition-all duration-200 font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed";
 
 const buttonVariants: Record<ButtonVariant, string> = {
-  // Primary uses the 'primary' palette (variable driven) in both modes.
-  // In Dark Mode (inverted scale), primary-200 is a warm dark tone and primary-900 is near-white.
-  primary: "bg-primary-800 text-white hover:bg-primary-700 dark:bg-primary-200 dark:text-primary-900 dark:hover:bg-primary-300 focus:ring-primary-500",
+  primary: "bg-primary-600 text-white hover:bg-primary-700 dark:bg-primary-200 dark:text-white dark:hover:bg-primary-300 focus:ring-primary-500",
 
   // Secondary uses neutral Sanctuary palette — subtle border that stays neutral on hover
   secondary: "bg-white text-sanctuary-700 border border-sanctuary-200 hover:border-sanctuary-300 hover:text-sanctuary-900 dark:bg-sanctuary-800 dark:text-sanctuary-300 dark:border-sanctuary-700/50 dark:hover:border-sanctuary-500 dark:hover:text-sanctuary-100",

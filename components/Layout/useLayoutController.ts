@@ -230,6 +230,11 @@ export const useLayoutController = () => {
     setShowKeyboardShortcutsModal(true);
   }, []);
 
+  const toggleKeyboardShortcuts = useCallback(() => {
+    setIsMobileMenuOpen(false);
+    setShowKeyboardShortcutsModal((isOpen) => !isOpen);
+  }, []);
+
   const closeKeyboardShortcuts = useCallback(() => {
     setShowKeyboardShortcutsModal(false);
   }, []);
@@ -244,10 +249,10 @@ export const useLayoutController = () => {
       {
         id: 'shortcuts.open' as const,
         enabled: !!user,
-        handler: openKeyboardShortcuts,
+        handler: toggleKeyboardShortcuts,
       },
     ],
-    [capabilities.console, openConsole, openKeyboardShortcuts, user]
+    [capabilities.console, openConsole, toggleKeyboardShortcuts, user]
   );
 
   useAppShortcuts(shortcutBindings);

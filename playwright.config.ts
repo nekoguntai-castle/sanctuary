@@ -18,6 +18,7 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
   reporter: [
+    ['line'],
     ['html', { outputFolder: 'playwright-report' }],
     ['junit', { outputFile: 'playwright-results.xml' }],
     ['./scripts/ci/playwright-timing-reporter.cjs'],

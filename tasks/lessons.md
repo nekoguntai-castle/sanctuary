@@ -2,6 +2,18 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Match Local Node To CI Before Diagnosing Node-Sensitive Failures
+
+**Rule:** Before treating a CI-only frontend or Playwright failure as an app regression, verify the local shell is running the same Node major as CI and the repo's `engines` field.
+
+**Why:** During PR #229 delivery, local render regression tests passed under Node 22 while CI runs Node 24. The user had to correct course to align the local runtime before continuing diagnosis.
+
+**How to apply:**
+
+- Check `node --version`, `.nvmrc`, `.node-version`, and `package.json` before reproducing CI-only Node/Playwright failures.
+- Keep repo version files aligned with the CI `NODE_VERSION` and package `engines`.
+- Rerun the failing command after switching runtimes before changing app code or rerunning CI again.
+
 ## Write Non-Trivial Plans To The Task Tracker First
 
 **Rule:** For repo work with multiple steps or architectural choices, add the plan to `tasks/todo.md` before proceeding, even if an in-chat plan already exists.

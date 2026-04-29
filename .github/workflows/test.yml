@@ -503,6 +503,24 @@ jobs:
           NODE_ENV: test
           VITE_API_URL: http://localhost:3001
 
+      - name: Upload quick render Playwright report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: playwright-report-quick-render
+          path: playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload quick render Playwright results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: playwright-results-quick-render
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
   pr-required-checks:
     name: PR Required Checks
     # Runs on pull_request and merge_group. On pull_request it aggregates

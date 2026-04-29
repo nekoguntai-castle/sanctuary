@@ -39,7 +39,9 @@ describe('LinkButton', () => {
     const link = screen.getByTestId('agent-wallet-link');
     expect(link).toHaveAttribute('href', '/wallets/wallet-1?tab=drafts');
     expect(link).toHaveAccessibleName('Open agent funding wallet');
-    expect(link).toHaveClass('bg-primary-800');
+    expect(link).toHaveClass('bg-primary-600');
+    expect(link).toHaveClass('text-white');
+    expect(link).toHaveClass('dark:bg-primary-200');
     expect(link).toHaveClass('px-6');
     expect(link).toHaveClass('text-lg');
     expect(link).toHaveClass('dashboard-action');
