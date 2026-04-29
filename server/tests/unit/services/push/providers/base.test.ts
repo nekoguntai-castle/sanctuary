@@ -18,7 +18,11 @@ vi.mock('../../../../../src/utils/logger', () => ({
 
 import { BasePushProvider } from '../../../../../src/services/push/providers/base';
 import { isInvalidTokenError } from '../../../../../src/services/push/types';
-import type { PushMessage, PushResult, PushPlatform } from '../../../../../src/services/push/types';
+import type {
+  PushMessage,
+  PushResult,
+  PushPlatform,
+} from '../../../../../src/services/push/types';
 
 // Concrete implementation for testing the abstract class
 class TestPushProvider extends BasePushProvider {
@@ -27,7 +31,11 @@ class TestPushProvider extends BasePushProvider {
   public throwError: Error | null = null;
   public mockResult: PushResult = { success: true, messageId: 'test-123' };
 
-  constructor(config?: { name?: string; priority?: number; platform?: PushPlatform }) {
+  constructor(config?: {
+    name?: string;
+    priority?: number;
+    platform?: PushPlatform;
+  }) {
     super({
       name: config?.name || 'test',
       priority: config?.priority || 50,
@@ -41,7 +49,7 @@ class TestPushProvider extends BasePushProvider {
 
   protected async sendNotification(
     _deviceToken: string,
-    _message: PushMessage
+    _message: PushMessage,
   ): Promise<PushResult> {
     if (this.shouldThrow) {
       throw this.throwError || new Error('Test error');
@@ -102,6 +110,7 @@ describe('BasePushProvider', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('not configured');
+      expect(result.errorCode).toBe('provider_not_configured');
     });
 
     it('should call sendNotification when configured', async () => {
@@ -123,6 +132,21 @@ describe('BasePushProvider', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('Network failure');
+      expect(result.errorCode).toBe('request_failed');
+    });
+
+    it('should preserve structured error codes from thrown provider errors', async () => {
+      provider.configured = true;
+      provider.shouldThrow = true;
+      provider.throwError = Object.assign(new Error('Provider unavailable'), {
+        errorCode: 'provider_unavailable',
+      });
+
+      const result = await provider.send('token123', testMessage);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Provider unavailable');
+      expect(result.errorCode).toBe('provider_unavailable');
     });
 
     it('should handle non-Error exceptions', async () => {
@@ -156,22 +180,36 @@ describe('isInvalidTokenError', () => {
 
     it('should return true for BadDeviceToken', () => {
       expect(isInvalidTokenError('BadDeviceToken')).toBe(true);
-      expect(isInvalidTokenError(new Error('APNs error: BadDeviceToken'))).toBe(true);
+      expect(isInvalidTokenError(new Error('APNs error: BadDeviceToken'))).toBe(
+        true,
+      );
+      expect(isInvalidTokenError({ errorCode: 'device_token_invalid' })).toBe(
+        true,
+      );
     });
 
     it('should return true for Unregistered', () => {
       expect(isInvalidTokenError('Unregistered')).toBe(true);
-      expect(isInvalidTokenError(new Error('APNs error: Unregistered'))).toBe(true);
+      expect(isInvalidTokenError(new Error('APNs error: Unregistered'))).toBe(
+        true,
+      );
+      expect(
+        isInvalidTokenError({ errorCode: 'device_token_unregistered' }),
+      ).toBe(true);
     });
   });
 
   describe('FCM errors', () => {
     it('should return true for registration-token-not-registered', () => {
-      expect(isInvalidTokenError('messaging/registration-token-not-registered')).toBe(true);
+      expect(
+        isInvalidTokenError('messaging/registration-token-not-registered'),
+      ).toBe(true);
     });
 
     it('should return true for invalid-registration-token', () => {
-      expect(isInvalidTokenError('messaging/invalid-registration-token')).toBe(true);
+      expect(isInvalidTokenError('messaging/invalid-registration-token')).toBe(
+        true,
+      );
     });
 
     it('should return true for InvalidRegistration', () => {

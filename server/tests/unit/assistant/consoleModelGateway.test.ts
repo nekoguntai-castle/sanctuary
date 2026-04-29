@@ -1,27 +1,27 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getAIConfig: vi.fn(),
-  getContainerUrl: vi.fn(() => 'http://ai-proxy:3100'),
+  getContainerUrl: vi.fn(() => "http://ai-proxy:3100"),
   syncConfigToContainer: vi.fn(),
   buildAIProxyJsonHeaders: vi.fn(() => ({
-    'Content-Type': 'application/json',
-    'X-AI-Service-Secret': 'service-secret',
+    "Content-Type": "application/json",
+    "X-AI-Service-Secret": "service-secret",
   })),
   fetch: vi.fn(),
 }));
 
-vi.mock('../../../src/services/ai/config', () => ({
+vi.mock("../../../src/services/ai/config", () => ({
   getAIConfig: mocks.getAIConfig,
   getContainerUrl: mocks.getContainerUrl,
   syncConfigToContainer: mocks.syncConfigToContainer,
 }));
 
-vi.mock('../../../src/services/ai/proxyClient', () => ({
+vi.mock("../../../src/services/ai/proxyClient", () => ({
   buildAIProxyJsonHeaders: mocks.buildAIProxyJsonHeaders,
 }));
 
-vi.mock('../../../src/utils/logger', () => ({
+vi.mock("../../../src/utils/logger", () => ({
   createLogger: () => ({
     error: vi.fn(),
     warn: vi.fn(),
@@ -33,75 +33,82 @@ vi.mock('../../../src/utils/logger', () => ({
 import {
   planConsoleTools,
   synthesizeConsoleAnswer,
-} from '../../../src/assistant/console/modelGateway';
+} from "../../../src/assistant/console/modelGateway";
 
-describe('console model gateway', () => {
+describe("console model gateway", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     globalThis.fetch = mocks.fetch as unknown as typeof fetch;
     mocks.getAIConfig.mockResolvedValue({
       enabled: true,
-      endpoint: 'http://lan-llm:11434',
-      model: 'llama3.2',
-      providerProfileId: 'lan-profile',
+      endpoint: "http://lan-llm:11434",
+      model: "llama3.2",
+      providerProfileId: "lan-profile",
     });
     mocks.syncConfigToContainer.mockResolvedValue(true);
   });
 
-  it('plans tools through the service-authenticated AI proxy without forwarding user bearer tokens', async () => {
-    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout');
+  it("plans tools through the service-authenticated AI proxy without forwarding user bearer tokens", async () => {
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
     mocks.fetch.mockResolvedValue({
       ok: true,
       json: vi.fn().mockResolvedValue({
-        toolCalls: [{ name: 'get_fee_estimates', input: {}, reason: 'need fees' }],
+        toolCalls: [
+          { name: "get_fee_estimates", input: {}, reason: "need fees" },
+        ],
         warnings: [],
       }),
     });
 
     const result = await planConsoleTools({
-      prompt: 'what are fees?',
-      scope: { kind: 'general' },
+      prompt: "what are fees?",
+      scope: { kind: "general" },
       maxToolCalls: 4,
-      tools: [{
-        name: 'get_fee_estimates',
-        title: 'Fee estimates',
-        description: 'Read fees',
-        sensitivity: 'public',
-        requiredScope: 'none',
-        inputFields: [],
-      }],
+      tools: [
+        {
+          name: "get_fee_estimates",
+          title: "Fee estimates",
+          description: "Read fees",
+          sensitivity: "public",
+          requiredScope: "none",
+          inputFields: [],
+        },
+      ],
     });
 
     expect(result).toMatchObject({
-      providerProfileId: 'lan-profile',
-      model: 'llama3.2',
-      toolCalls: [{ name: 'get_fee_estimates' }],
+      providerProfileId: "lan-profile",
+      model: "llama3.2",
+      toolCalls: [{ name: "get_fee_estimates" }],
     });
-    expect(mocks.syncConfigToContainer).toHaveBeenCalledWith(expect.objectContaining({ model: 'llama3.2' }));
+    expect(mocks.syncConfigToContainer).toHaveBeenCalledWith(
+      expect.objectContaining({ model: "llama3.2" }),
+    );
     expect(mocks.fetch).toHaveBeenCalledWith(
-      'http://ai-proxy:3100/console/plan',
+      "http://ai-proxy:3100/console/plan",
       expect.objectContaining({
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          'X-AI-Service-Secret': 'service-secret',
+          "Content-Type": "application/json",
+          "X-AI-Service-Secret": "service-secret",
         },
-      })
+      }),
     );
     expect(mocks.buildAIProxyJsonHeaders).toHaveBeenCalledWith();
-    expect(mocks.fetch.mock.calls[0][1].headers).not.toHaveProperty('Authorization');
+    expect(mocks.fetch.mock.calls[0][1].headers).not.toHaveProperty(
+      "Authorization",
+    );
     expect(timeoutSpy).toHaveBeenCalledWith(125000);
     timeoutSpy.mockRestore();
   });
 
-  it('uses a configured positive Console gateway timeout when provided', async () => {
-    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout');
+  it("uses a configured positive Console gateway timeout when provided", async () => {
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
     const previousTimeout = process.env.CONSOLE_GATEWAY_TIMEOUT_MS;
-    process.env.CONSOLE_GATEWAY_TIMEOUT_MS = '2500';
+    process.env.CONSOLE_GATEWAY_TIMEOUT_MS = "2500";
     vi.resetModules();
-    const gatewayWithConfiguredTimeout = await import(
-      '../../../src/assistant/console/modelGateway'
-    );
+    const gatewayWithConfiguredTimeout =
+      await import("../../../src/assistant/console/modelGateway");
     mocks.fetch.mockResolvedValue({
       ok: true,
       json: vi.fn().mockResolvedValue({ toolCalls: [], warnings: [] }),
@@ -109,17 +116,19 @@ describe('console model gateway', () => {
 
     try {
       await gatewayWithConfiguredTimeout.planConsoleTools({
-        prompt: 'what are fees?',
-        scope: { kind: 'general' },
+        prompt: "what are fees?",
+        scope: { kind: "general" },
         maxToolCalls: 1,
-        tools: [{
-          name: 'get_fee_estimates',
-          title: 'Fee estimates',
-          description: 'Read fees',
-          sensitivity: 'public',
-          requiredScope: 'none',
-          inputFields: [],
-        }],
+        tools: [
+          {
+            name: "get_fee_estimates",
+            title: "Fee estimates",
+            description: "Read fees",
+            sensitivity: "public",
+            requiredScope: "none",
+            inputFields: [],
+          },
+        ],
       });
 
       expect(timeoutSpy).toHaveBeenCalledWith(2500);
@@ -134,182 +143,259 @@ describe('console model gateway', () => {
     }
   });
 
-  it('defaults missing plan arrays to empty arrays', async () => {
+  it("defaults missing plan arrays to empty arrays", async () => {
     mocks.fetch.mockResolvedValue({
       ok: true,
       json: vi.fn().mockResolvedValue({}),
     });
 
-    await expect(planConsoleTools({
-      prompt: 'answer directly',
-      scope: { kind: 'general' },
-      maxToolCalls: 4,
-      tools: [{
-        name: 'get_fee_estimates',
-        title: 'Fee estimates',
-        description: 'Read fees',
-        sensitivity: 'public',
-        requiredScope: 'authenticated',
-        inputFields: [],
-      }],
-    })).resolves.toMatchObject({ toolCalls: [], warnings: [] });
+    await expect(
+      planConsoleTools({
+        prompt: "answer directly",
+        scope: { kind: "general" },
+        maxToolCalls: 4,
+        tools: [
+          {
+            name: "get_fee_estimates",
+            title: "Fee estimates",
+            description: "Read fees",
+            sensitivity: "public",
+            requiredScope: "authenticated",
+            inputFields: [],
+          },
+        ],
+      }),
+    ).resolves.toMatchObject({ toolCalls: [], warnings: [] });
   });
 
-
-  it('synthesizes answers from compact tool results', async () => {
+  it("synthesizes answers from compact tool results", async () => {
     mocks.fetch.mockResolvedValue({
       ok: true,
-      json: vi.fn().mockResolvedValue({ response: 'Current fee estimate is available.' }),
+      json: vi
+        .fn()
+        .mockResolvedValue({ response: "Current fee estimate is available." }),
     });
 
     const result = await synthesizeConsoleAnswer({
-      prompt: 'summarize',
-      scope: { kind: 'general' },
-      toolResults: [{
-        toolName: 'get_fee_estimates',
-        status: 'completed',
-        sensitivity: 'public',
-        facts: { summary: 'Fee estimates available.' },
-      }],
+      prompt: "summarize",
+      scope: { kind: "general" },
+      toolResults: [
+        {
+          toolName: "get_fee_estimates",
+          status: "completed",
+          sensitivity: "public",
+          facts: { summary: "Fee estimates available." },
+        },
+      ],
     });
 
     expect(result).toEqual({
-      providerProfileId: 'lan-profile',
-      model: 'llama3.2',
-      response: 'Current fee estimate is available.',
+      providerProfileId: "lan-profile",
+      model: "llama3.2",
+      response: "Current fee estimate is available.",
     });
     expect(JSON.parse(mocks.fetch.mock.calls[0][1].body)).toMatchObject({
-      prompt: 'summarize',
-      toolResults: [{ facts: { summary: 'Fee estimates available.' } }],
+      prompt: "summarize",
+      toolResults: [{ facts: { summary: "Fee estimates available." } }],
     });
   });
 
-  it('fails closed before proxy fetch when no provider is configured', async () => {
-    mocks.getAIConfig.mockResolvedValue({ enabled: false, endpoint: '', model: '' });
+  it("fails closed before proxy fetch when no provider is configured", async () => {
+    mocks.getAIConfig.mockResolvedValue({
+      enabled: false,
+      endpoint: "",
+      model: "",
+    });
 
     await expect(
       planConsoleTools({
-        prompt: 'hello',
-        scope: { kind: 'general' },
+        prompt: "hello",
+        scope: { kind: "general" },
         maxToolCalls: 1,
-        tools: [{
-          name: 'get_fee_estimates',
-          title: 'Fee estimates',
-          description: 'Read fees',
-          sensitivity: 'public',
-          requiredScope: 'none',
-          inputFields: [],
-        }],
-      })
-    ).rejects.toMatchObject({ statusCode: 503 });
+        tools: [
+          {
+            name: "get_fee_estimates",
+            title: "Fee estimates",
+            description: "Read fees",
+            sensitivity: "public",
+            requiredScope: "none",
+            inputFields: [],
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      statusCode: 503,
+      details: { reason: "provider_not_configured" },
+    });
     expect(mocks.fetch).not.toHaveBeenCalled();
   });
 
-  it('fails closed when provider config cannot sync to the proxy', async () => {
+  it("fails closed when provider config cannot sync to the proxy", async () => {
     mocks.syncConfigToContainer.mockResolvedValue(false);
 
     await expect(
       planConsoleTools({
-        prompt: 'hello',
-        scope: { kind: 'general' },
+        prompt: "hello",
+        scope: { kind: "general" },
         maxToolCalls: 1,
-        tools: [{
-          name: 'get_fee_estimates',
-          title: 'Fee estimates',
-          description: 'Read fees',
-          sensitivity: 'public',
-          requiredScope: 'authenticated',
-          inputFields: [],
-        }],
-      })
-    ).rejects.toMatchObject({ statusCode: 503 });
+        tools: [
+          {
+            name: "get_fee_estimates",
+            title: "Fee estimates",
+            description: "Read fees",
+            sensitivity: "public",
+            requiredScope: "authenticated",
+            inputFields: [],
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      statusCode: 503,
+      details: { reason: "provider_config_sync_failed" },
+    });
     expect(mocks.fetch).not.toHaveBeenCalled();
   });
 
-  it('converts failed proxy responses into service unavailable errors', async () => {
+  it("converts failed proxy responses into service unavailable errors", async () => {
     mocks.fetch.mockResolvedValue({
       ok: false,
       status: 502,
-      json: vi.fn().mockResolvedValue({ error: 'AI endpoint not available' }),
+      json: vi.fn().mockResolvedValue({ error: "AI endpoint not available" }),
     });
 
     await expect(
       synthesizeConsoleAnswer({
-        prompt: 'summarize',
-        scope: { kind: 'general' },
+        prompt: "summarize",
+        scope: { kind: "general" },
         toolResults: [],
-      })
+      }),
     ).rejects.toMatchObject({
       message:
-        'AI proxy /console/synthesize request failed: AI endpoint not available',
+        "AI proxy /console/synthesize request failed: AI endpoint not available",
       statusCode: 503,
       details: {
-        path: '/console/synthesize',
-        proxyError: 'AI endpoint not available',
+        path: "/console/synthesize",
+        proxyError: "AI endpoint not available",
         status: 502,
       },
     });
   });
 
-  it('uses proxy message fields when failed proxy responses omit error fields', async () => {
+  it("preserves stable provider setup reasons from proxy failures", async () => {
     mocks.fetch.mockResolvedValue({
       ok: false,
-      status: 504,
-      json: vi.fn().mockResolvedValue({ message: 'Provider timed out' }),
+      status: 503,
+      json: vi.fn().mockResolvedValue({
+        error: "AI endpoint or model is not configured",
+        reason: "provider_not_configured",
+      }),
     });
 
     await expect(
       synthesizeConsoleAnswer({
-        prompt: 'summarize',
-        scope: { kind: 'general' },
+        prompt: "summarize",
+        scope: { kind: "general" },
         toolResults: [],
-      })
+      }),
     ).rejects.toMatchObject({
       message:
-        'AI proxy /console/synthesize request failed: Provider timed out',
+        "AI proxy /console/synthesize request failed: AI endpoint or model is not configured",
       details: {
-        proxyError: 'Provider timed out',
+        path: "/console/synthesize",
+        proxyError: "AI endpoint or model is not configured",
+        reason: "provider_not_configured",
+        status: 503,
+      },
+    });
+  });
+
+  it("preserves provider config sync failure reasons from proxy failures", async () => {
+    mocks.fetch.mockResolvedValue({
+      ok: false,
+      status: 503,
+      json: vi.fn().mockResolvedValue({
+        message: "AI provider configuration could not be synced",
+        reason: "provider_config_sync_failed",
+      }),
+    });
+
+    await expect(
+      synthesizeConsoleAnswer({
+        prompt: "summarize",
+        scope: { kind: "general" },
+        toolResults: [],
+      }),
+    ).rejects.toMatchObject({
+      message:
+        "AI proxy /console/synthesize request failed: AI provider configuration could not be synced",
+      details: {
+        reason: "provider_config_sync_failed",
+        status: 503,
+      },
+    });
+  });
+
+  it("uses proxy message fields when failed proxy responses omit error fields", async () => {
+    mocks.fetch.mockResolvedValue({
+      ok: false,
+      status: 504,
+      json: vi.fn().mockResolvedValue({ message: "Provider timed out" }),
+    });
+
+    await expect(
+      synthesizeConsoleAnswer({
+        prompt: "summarize",
+        scope: { kind: "general" },
+        toolResults: [],
+      }),
+    ).rejects.toMatchObject({
+      message:
+        "AI proxy /console/synthesize request failed: Provider timed out",
+      details: {
+        proxyError: "Provider timed out",
         status: 504,
       },
     });
   });
 
-  it('preserves Console plan timeout diagnostics from failed proxy responses', async () => {
+  it("preserves Console plan timeout diagnostics from failed proxy responses", async () => {
     mocks.fetch.mockResolvedValue({
       ok: false,
       status: 408,
       json: vi.fn().mockResolvedValue({
-        message: 'The request took too long to process',
+        message: "The request took too long to process",
       }),
     });
 
     await expect(
       planConsoleTools({
-        prompt: 'whats the current block?',
-        scope: { kind: 'general' },
+        prompt: "whats the current block?",
+        scope: { kind: "general" },
         maxToolCalls: 1,
-        tools: [{
-          name: 'read.block',
-          title: 'Read block',
-          description: 'Read block data',
-          sensitivity: 'public',
-          requiredScope: 'none',
-          inputFields: [],
-        }],
-      })
+        tools: [
+          {
+            name: "read.block",
+            title: "Read block",
+            description: "Read block data",
+            sensitivity: "public",
+            requiredScope: "none",
+            inputFields: [],
+          },
+        ],
+      }),
     ).rejects.toMatchObject({
       message:
-        'AI proxy /console/plan request failed: The request took too long to process',
+        "AI proxy /console/plan request failed: The request took too long to process",
       statusCode: 503,
       details: {
-        path: '/console/plan',
-        proxyError: 'The request took too long to process',
+        path: "/console/plan",
+        proxyError: "The request took too long to process",
         status: 408,
       },
     });
   });
 
-  it('falls back to a generic proxy failure when proxy error JSON is empty or malformed', async () => {
+  it("falls back to a generic proxy failure when proxy error JSON is empty or malformed", async () => {
     mocks.fetch.mockResolvedValueOnce({
       ok: false,
       status: 502,
@@ -318,46 +404,46 @@ describe('console model gateway', () => {
 
     await expect(
       synthesizeConsoleAnswer({
-        prompt: 'summarize',
-        scope: { kind: 'general' },
+        prompt: "summarize",
+        scope: { kind: "general" },
         toolResults: [],
-      })
+      }),
     ).rejects.toMatchObject({
-      message: 'AI proxy /console/synthesize request failed',
+      message: "AI proxy /console/synthesize request failed",
       details: { status: 502 },
     });
 
     mocks.fetch.mockResolvedValueOnce({
       ok: false,
       status: 503,
-      json: vi.fn().mockRejectedValue(new Error('invalid json')),
+      json: vi.fn().mockRejectedValue(new Error("invalid json")),
     });
 
     await expect(
       synthesizeConsoleAnswer({
-        prompt: 'summarize',
-        scope: { kind: 'general' },
+        prompt: "summarize",
+        scope: { kind: "general" },
         toolResults: [],
-      })
+      }),
     ).rejects.toMatchObject({
-      message: 'AI proxy /console/synthesize request failed',
+      message: "AI proxy /console/synthesize request failed",
       details: { status: 503 },
     });
   });
 
-  it('converts network errors into service unavailable errors', async () => {
-    mocks.fetch.mockRejectedValue(new Error('connect ECONNREFUSED'));
+  it("converts network errors into service unavailable errors", async () => {
+    mocks.fetch.mockRejectedValue(new Error("connect ECONNREFUSED"));
 
     await expect(
       synthesizeConsoleAnswer({
-        prompt: 'summarize',
-        scope: { kind: 'general' },
+        prompt: "summarize",
+        scope: { kind: "general" },
         toolResults: [],
-      })
+      }),
     ).rejects.toMatchObject({ statusCode: 503 });
   });
 
-  it('returns an empty string when synthesis response is absent', async () => {
+  it("returns an empty string when synthesis response is absent", async () => {
     mocks.fetch.mockResolvedValue({
       ok: true,
       json: vi.fn().mockResolvedValue({}),
@@ -365,10 +451,10 @@ describe('console model gateway', () => {
 
     await expect(
       synthesizeConsoleAnswer({
-        prompt: 'summarize',
-        scope: { kind: 'general' },
+        prompt: "summarize",
+        scope: { kind: "general" },
         toolResults: [],
-      })
-    ).resolves.toMatchObject({ response: '' });
+      }),
+    ).resolves.toMatchObject({ response: "" });
   });
 });

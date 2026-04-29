@@ -35,11 +35,16 @@ vi.mock('jsonwebtoken', () => ({
 const mockFetch = vi.hoisted(() => vi.fn());
 vi.stubGlobal('fetch', mockFetch);
 
-import { FCMPushProvider, isFCMConfigured, _resetFCMConfiguredCache } from '../../../../../src/services/push/providers/fcm';
+import {
+  FCMPushProvider,
+  isFCMConfigured,
+  _resetFCMConfiguredCache,
+} from '../../../../../src/services/push/providers/fcm';
 import type { PushMessage } from '../../../../../src/services/push/types';
 
 const OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token';
-const FCM_SEND_URL = 'https://fcm.googleapis.com/v1/projects/test-project-123/messages:send';
+const FCM_SEND_URL =
+  'https://fcm.googleapis.com/v1/projects/test-project-123/messages:send';
 
 describe('FCMPushProvider', () => {
   let provider: FCMPushProvider;
@@ -47,7 +52,8 @@ describe('FCMPushProvider', () => {
 
   const mockServiceAccount = {
     client_email: 'firebase@project.iam.gserviceaccount.com',
-    private_key: '-----BEGIN RSA PRIVATE KEY-----\nMockKey\n-----END RSA PRIVATE KEY-----',
+    private_key:
+      '-----BEGIN RSA PRIVATE KEY-----\nMockKey\n-----END RSA PRIVATE KEY-----',
     project_id: 'test-project-123',
   };
 
@@ -110,7 +116,7 @@ describe('FCMPushProvider', () => {
     it('should throw when cached service account is missing', () => {
       (provider as any).serviceAccountCache = null;
       expect(() => (provider as any).getServiceAccount()).toThrow(
-        'FCM not configured: missing or unreadable FCM_SERVICE_ACCOUNT'
+        'FCM not configured: missing or unreadable FCM_SERVICE_ACCOUNT',
       );
     });
   });
@@ -146,7 +152,10 @@ describe('FCMPushProvider', () => {
       delete process.env.FCM_SERVICE_ACCOUNT;
       // Must create new provider after removing env, since config is cached at construction
       const unconfiguredProvider = new FCMPushProvider();
-      const result = await unconfiguredProvider.send('device-token', testMessage);
+      const result = await unconfiguredProvider.send(
+        'device-token',
+        testMessage,
+      );
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('not configured');
@@ -163,33 +172,43 @@ describe('FCMPushProvider', () => {
       await provider.send('device-token', testMessage);
 
       // Find the FCM API call (not OAuth)
-      const fcmCall = mockFetch.mock.calls.find(call =>
-        call[0] === FCM_SEND_URL
+      const fcmCall = mockFetch.mock.calls.find(
+        (call) => call[0] === FCM_SEND_URL,
       );
       expect(fcmCall?.[0]).toBe(FCM_SEND_URL);
     });
 
     it('should reject invalid service account project IDs before sending', async () => {
-      mockReadFileSync.mockReturnValue(JSON.stringify({
-        ...mockServiceAccount,
-        project_id: '../metadata',
-      }));
+      mockReadFileSync.mockReturnValue(
+        JSON.stringify({
+          ...mockServiceAccount,
+          project_id: '../metadata',
+        }),
+      );
       const invalidProjectProvider = new FCMPushProvider();
 
-      const result = await invalidProjectProvider.send('device-token', testMessage);
+      const result = await invalidProjectProvider.send(
+        'device-token',
+        testMessage,
+      );
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('project_id is invalid');
-      expect(mockFetch).not.toHaveBeenCalledWith(expect.stringContaining('fcm.googleapis.com'), expect.anything());
+      expect(mockFetch).not.toHaveBeenCalledWith(
+        expect.stringContaining('fcm.googleapis.com'),
+        expect.anything(),
+      );
     });
 
     it('should include authorization header with access token', async () => {
       await provider.send('device-token', testMessage);
 
-      const fcmCall = mockFetch.mock.calls.find(call =>
-        call[0] === FCM_SEND_URL
+      const fcmCall = mockFetch.mock.calls.find(
+        (call) => call[0] === FCM_SEND_URL,
       );
-      expect(fcmCall?.[1].headers.Authorization).toBe('Bearer mock-access-token');
+      expect(fcmCall?.[1].headers.Authorization).toBe(
+        'Bearer mock-access-token',
+      );
     });
 
     it('should include correct payload structure', async () => {
@@ -199,8 +218,8 @@ describe('FCMPushProvider', () => {
         data: { key: 'value' },
       });
 
-      const fcmCall = mockFetch.mock.calls.find(call =>
-        call[0] === FCM_SEND_URL
+      const fcmCall = mockFetch.mock.calls.find(
+        (call) => call[0] === FCM_SEND_URL,
       );
       const body = JSON.parse(fcmCall?.[1].body);
 
@@ -217,8 +236,8 @@ describe('FCMPushProvider', () => {
         body: 'Body',
       });
 
-      const fcmCall = mockFetch.mock.calls.find(call =>
-        call[0] === FCM_SEND_URL
+      const fcmCall = mockFetch.mock.calls.find(
+        (call) => call[0] === FCM_SEND_URL,
       );
       const body = JSON.parse(fcmCall?.[1].body);
 
@@ -254,9 +273,10 @@ describe('FCMPushProvider', () => {
         return {
           ok: false,
           status: 400,
-          text: async () => JSON.stringify({
-            error: { message: 'Invalid registration token' },
-          }),
+          text: async () =>
+            JSON.stringify({
+              error: { message: 'Invalid registration token' },
+            }),
         };
       });
 
@@ -264,6 +284,109 @@ describe('FCMPushProvider', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Invalid registration token');
+      expect(result.errorCode).toBe('device_token_invalid');
+    });
+
+    it('normalizes FCM unregistered detail errors to stable error codes', async () => {
+      mockFetch.mockImplementation(async (url: string) => {
+        if (url === OAUTH_TOKEN_URL) {
+          return {
+            ok: true,
+            json: async () => ({ access_token: 'token', expires_in: 3600 }),
+          };
+        }
+        return {
+          ok: false,
+          status: 404,
+          text: async () =>
+            JSON.stringify({
+              error: {
+                message: 'Requested entity was not found.',
+                details: [{ errorCode: 'UNREGISTERED' }],
+              },
+            }),
+        };
+      });
+
+      const result = await provider.send('expired-token', testMessage);
+
+      expect(result.success).toBe(false);
+      expect(result.errorCode).toBe('device_token_unregistered');
+    });
+
+    it('does not treat generic FCM invalid argument responses as invalid tokens', async () => {
+      mockFetch.mockImplementation(async (url: string) => {
+        if (url === OAUTH_TOKEN_URL) {
+          return {
+            ok: true,
+            json: async () => ({ access_token: 'token', expires_in: 3600 }),
+          };
+        }
+        return {
+          ok: false,
+          status: 400,
+          text: async () =>
+            JSON.stringify({
+              error: {
+                message: 'Invalid data payload',
+                details: [{ errorCode: 'INVALID_ARGUMENT' }],
+              },
+            }),
+        };
+      });
+
+      const result = await provider.send('device-token', testMessage);
+
+      expect(result.success).toBe(false);
+      expect(result.errorCode).toBe('provider_rejected');
+    });
+
+    it('normalizes FCM auth failures to stable error codes', async () => {
+      mockFetch.mockImplementation(async (url: string) => {
+        if (url === OAUTH_TOKEN_URL) {
+          return {
+            ok: true,
+            json: async () => ({ access_token: 'token', expires_in: 3600 }),
+          };
+        }
+        return {
+          ok: false,
+          status: 403,
+          text: async () =>
+            JSON.stringify({
+              error: { message: 'Sender ID does not match token' },
+            }),
+        };
+      });
+
+      const result = await provider.send('device-token', testMessage);
+
+      expect(result.success).toBe(false);
+      expect(result.errorCode).toBe('provider_auth_failed');
+    });
+
+    it('normalizes FCM rate-limit failures to stable error codes', async () => {
+      mockFetch.mockImplementation(async (url: string) => {
+        if (url === OAUTH_TOKEN_URL) {
+          return {
+            ok: true,
+            json: async () => ({ access_token: 'token', expires_in: 3600 }),
+          };
+        }
+        return {
+          ok: false,
+          status: 429,
+          text: async () =>
+            JSON.stringify({
+              error: { message: 'Quota exceeded' },
+            }),
+        };
+      });
+
+      const result = await provider.send('device-token', testMessage);
+
+      expect(result.success).toBe(false);
+      expect(result.errorCode).toBe('provider_rate_limited');
     });
 
     it('should handle non-JSON FCM error response', async () => {
@@ -285,6 +408,7 @@ describe('FCMPushProvider', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('500');
+      expect(result.errorCode).toBe('provider_unavailable');
     });
 
     it('should fall back to HTTP status message when FCM error body is empty', async () => {
@@ -323,8 +447,8 @@ describe('FCMPushProvider', () => {
       await provider.send('token2', testMessage);
 
       // OAuth should only be called once
-      const oauthCalls = mockFetch.mock.calls.filter(call =>
-        call[0] === OAUTH_TOKEN_URL
+      const oauthCalls = mockFetch.mock.calls.filter(
+        (call) => call[0] === OAUTH_TOKEN_URL,
       );
       expect(oauthCalls).toHaveLength(1);
     });
@@ -347,7 +471,7 @@ describe('FCMPushProvider', () => {
           aud: 'https://oauth2.googleapis.com/token',
         }),
         mockServiceAccount.private_key,
-        { algorithm: 'RS256' }
+        { algorithm: 'RS256' },
       );
     });
   });

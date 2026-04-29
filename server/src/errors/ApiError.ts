@@ -267,8 +267,8 @@ export class ValidationError extends ApiError {
 }
 
 export class InvalidInputError extends ValidationError {
-  constructor(message: string, field?: string) {
-    super(message, ErrorCodes.INVALID_INPUT, field ? { field } : undefined);
+  constructor(message: string, field?: string, details?: Record<string, unknown>) {
+    super(message, ErrorCodes.INVALID_INPUT, field ? { ...details, field } : details);
   }
 }
 

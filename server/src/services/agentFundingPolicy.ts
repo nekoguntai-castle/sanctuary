@@ -16,21 +16,43 @@ export interface AgentFundingPolicyDecision {
   overrideId: string | null;
 }
 
+const fundingPolicyError = (
+  message: string,
+  reasonCode: string,
+): InvalidInputError => {
+  return new InvalidInputError(message, undefined, { reasonCode });
+};
+
+const CAP_VIOLATION_REASONS = {
+  maxFundingAmount: 'policy_max_funding_amount',
+  operationalBalanceCap: 'policy_operational_balance_cap',
+  dailyLimit: 'policy_daily_limit',
+  weeklyLimit: 'policy_weekly_limit',
+} as const;
+
+interface CapViolation {
+  message: string;
+  reasonCode: string;
+}
+
 export async function enforceAgentFundingPolicy(
   agentId: string,
   operationalWalletId: string,
   fundingAmount: bigint,
-  now: Date = new Date()
+  now: Date = new Date(),
 ): Promise<AgentFundingPolicyDecision> {
   const agent = await agentRepository.findAgentById(agentId);
   if (!agent) {
     throw new NotFoundError('Wallet agent not found');
   }
   if (agent.revokedAt || agent.status !== 'active') {
-    throw new InvalidInputError('Agent is not active');
+    throw fundingPolicyError('Agent is not active', 'agent_inactive');
   }
   if (agent.operationalWalletId !== operationalWalletId) {
-    throw new InvalidInputError('Funding draft destination is not the linked operational wallet');
+    throw fundingPolicyError(
+      'Funding draft destination is not the linked operational wallet',
+      'policy_destination_mismatch',
+    );
   }
 
   // Owner overrides can waive funding caps, but never agent status, destination, or cadence guards.
@@ -38,41 +60,75 @@ export async function enforceAgentFundingPolicy(
     const cooldownMs = agent.cooldownMinutes * 60 * 1000;
     const nextAllowedAt = agent.lastFundingDraftAt.getTime() + cooldownMs;
     if (cooldownMs > 0 && now.getTime() < nextAllowedAt) {
-      throw new InvalidInputError('Agent funding cooldown is still active');
+      throw fundingPolicyError(
+        'Agent funding cooldown is still active',
+        'policy_cooldown',
+      );
     }
   }
 
-  let capViolationMessage: string | null = null;
+  let capViolation: CapViolation | null = null;
 
   // Evaluate all cap checks, preserving the first user-facing failure message,
   // then allow a single bounded owner override to cover the cap exception.
-  if (agent.maxFundingAmountSats != null && fundingAmount > agent.maxFundingAmountSats) {
-    capViolationMessage = 'Agent funding amount exceeds the per-request cap';
+  if (
+    agent.maxFundingAmountSats != null &&
+    fundingAmount > agent.maxFundingAmountSats
+  ) {
+    capViolation = {
+      message: 'Agent funding amount exceeds the per-request cap',
+      reasonCode: CAP_VIOLATION_REASONS.maxFundingAmount,
+    };
   }
 
   if (agent.maxOperationalBalanceSats != null) {
-    const currentOperationalBalance = await utxoRepository.getUnspentBalance(operationalWalletId);
-    if (currentOperationalBalance + fundingAmount > agent.maxOperationalBalanceSats) {
-      capViolationMessage ??= 'Agent operational wallet balance cap would be exceeded';
+    const currentOperationalBalance =
+      await utxoRepository.getUnspentBalance(operationalWalletId);
+    if (
+      currentOperationalBalance + fundingAmount >
+      agent.maxOperationalBalanceSats
+    ) {
+      capViolation ??= {
+        message: 'Agent operational wallet balance cap would be exceeded',
+        reasonCode: CAP_VIOLATION_REASONS.operationalBalanceCap,
+      };
     }
   }
 
   if (agent.dailyFundingLimitSats != null) {
-    const dayTotal = await agentRepository.sumAgentDraftAmountsSince(agentId, startOfUtcDay(now));
+    const dayTotal = await agentRepository.sumAgentDraftAmountsSince(
+      agentId,
+      startOfUtcDay(now),
+    );
     if (dayTotal + fundingAmount > agent.dailyFundingLimitSats) {
-      capViolationMessage ??= 'Agent daily funding limit would be exceeded';
+      capViolation ??= {
+        message: 'Agent daily funding limit would be exceeded',
+        reasonCode: CAP_VIOLATION_REASONS.dailyLimit,
+      };
     }
   }
 
   if (agent.weeklyFundingLimitSats != null) {
-    const weekTotal = await agentRepository.sumAgentDraftAmountsSince(agentId, startOfUtcWeek(now));
+    const weekTotal = await agentRepository.sumAgentDraftAmountsSince(
+      agentId,
+      startOfUtcWeek(now),
+    );
     if (weekTotal + fundingAmount > agent.weeklyFundingLimitSats) {
-      capViolationMessage ??= 'Agent weekly funding limit would be exceeded';
+      capViolation ??= {
+        message: 'Agent weekly funding limit would be exceeded',
+        reasonCode: CAP_VIOLATION_REASONS.weeklyLimit,
+      };
     }
   }
 
-  if (capViolationMessage) {
-    return requireOverrideOrThrow(agentId, operationalWalletId, fundingAmount, now, capViolationMessage);
+  if (capViolation) {
+    return requireOverrideOrThrow(
+      agentId,
+      operationalWalletId,
+      fundingAmount,
+      now,
+      capViolation,
+    );
   }
 
   return { overrideId: null };
@@ -83,7 +139,7 @@ async function requireOverrideOrThrow(
   operationalWalletId: string,
   fundingAmount: bigint,
   now: Date,
-  message: string
+  violation: CapViolation,
 ): Promise<AgentFundingPolicyDecision> {
   const override = await agentRepository.findUsableFundingOverride({
     agentId,
@@ -93,14 +149,16 @@ async function requireOverrideOrThrow(
   });
 
   if (!override) {
-    throw new InvalidInputError(message);
+    throw fundingPolicyError(violation.message, violation.reasonCode);
   }
 
   return { overrideId: override.id };
 }
 
 function startOfUtcDay(date: Date): Date {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  return new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
+  );
 }
 
 function startOfUtcWeek(date: Date): Date {

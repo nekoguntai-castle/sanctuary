@@ -1,6 +1,34 @@
-# Active Task: Brittle Check Remediation Phase 4 Implementation 2026-04-28
+# Active Task: Brittle Check Remediation Phase 5 Implementation 2026-04-28
 
 Status: in progress
+
+Goal: replace brittle message-text outcome classification with stable reason/error codes at Console, push-provider, agent-funding, and Prisma error boundaries.
+
+## Plan
+
+- [x] Start from merged Phase 4 on `origin/main`.
+- [x] Add stable Console setup reason values and prefer them in UI setup classification before legacy message fallbacks.
+- [x] Add provider-normalized push error codes and make token cleanup prefer codes before message fallbacks.
+- [x] Centralize Prisma known request error mapping and reuse it from Express/error utility response paths.
+- [x] Pass stable agent funding attempt reason codes for known domain errors before legacy message matching.
+- [x] Cover null/empty/unknown/provider-specific edge cases with focused tests.
+- [x] Run focused Console, push-provider, agent-funding, Prisma error, typecheck, lizard, formatting, and diff verification.
+- [ ] Commit, push, open the Phase 5 PR, monitor checks, merge, and then start Phase 6.
+
+## Review
+
+- Console provider setup failures now carry stable `provider_not_configured` and `provider_config_sync_failed` reasons through the AI proxy and backend gateway; the UI checks response reason fields before legacy message text.
+- Push provider results now carry normalized error codes for invalid/unregistered tokens, provider auth, rate limit, rejection, and configuration failures; token cleanup prefers codes and keeps legacy string matching as fallback.
+- Prisma known request error mapping now lives in the shared server error utility and is reused by both Express middleware and utility response handlers.
+- Agent funding attempts now prefer structured `reasonCode` details from policy, validation, locked-UTXO, and fee-rate domain errors before using legacy message matching.
+- Edge cases covered: nested Console error details, legacy proxy `not_configured`, APNs bad/unregistered/auth/rate-limit responses, FCM unregistered detail and generic invalid-argument responses, unrecognized Prisma codes, structured agent reason codes, invalid fee rates, locked/frozen UTXOs, and legacy reason-message fallback.
+- Verification passed: focused frontend/AI-proxy Console Vitest; focused backend Console gateway, push provider/service, Prisma error, agent API, agent policy, and draft-validation Vitest; `npm run typecheck:tests`; `npm run typecheck:server:tests`; `npm run quality:lizard`; full `npm run test:run`; full `npm run test:backend`; `git diff --check`.
+
+---
+
+# Active Task: Brittle Check Remediation Phase 4 Implementation 2026-04-28
+
+Status: complete
 
 Goal: replace address receive/change and index decisions based on derivation-path substrings with parser-derived chain metadata.
 
@@ -12,7 +40,7 @@ Goal: replace address receive/change and index decisions based on derivation-pat
 - [x] Update sync and operational address services to skip malformed paths instead of misclassifying them.
 - [x] Update assistant address DTOs and brittle address tests to use parser-derived `isChange`.
 - [x] Run focused shared, repository, API, sync, operational address, assistant DTO, typecheck, lizard, formatting, and diff verification.
-- [ ] Commit, push, open the Phase 4 PR, monitor checks, merge, and then start Phase 5.
+- [x] Commit, push, open the Phase 4 PR, monitor checks, merge, and then start Phase 5.
 
 ## Review
 
@@ -23,6 +51,8 @@ Goal: replace address receive/change and index decisions based on derivation-pat
 - Added query-aware transaction-service address mocks so tests model address metadata lookups separately from unused receive/change candidate queries.
 - Edge cases covered: null/empty/malformed/incomplete derivation paths, unsupported change branches, hardened concrete suffixes, BIP-48 paths, missing terminal indexes, malformed generated paths, and fallback receive/change selection.
 - Verification passed: focused parser/frontend/backend Vitest, focused transaction-service Vitest, root test suite, full backend unit suite with elevated local listen permission, app/server test typechecks, `npm run quality:lizard`, Prettier, and `git diff --check`.
+- Merge-queue coverage follow-up covered fallback receive-address change outputs and address repository chain-pagination branch edges.
+- PR #221 merged through the merge queue at `1c5750b9`.
 
 ---
 

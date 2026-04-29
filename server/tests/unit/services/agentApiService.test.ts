@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ConflictError } from '../../../src/errors/ApiError';
+import { ConflictError, InvalidInputError } from '../../../src/errors/ApiError';
 
 const mocks = vi.hoisted(() => ({
   createFundingAttempt: vi.fn(),
@@ -16,7 +16,8 @@ vi.mock('../../../src/repositories', () => ({
 }));
 
 vi.mock('../../../src/services/agentMonitoringService', () => ({
-  evaluateRejectedFundingAttemptAlert: mocks.evaluateRejectedFundingAttemptAlert,
+  evaluateRejectedFundingAttemptAlert:
+    mocks.evaluateRejectedFundingAttemptAlert,
 }));
 
 vi.mock('../../../src/utils/logger', () => ({
@@ -66,6 +67,55 @@ describe('agentApiService', () => {
       ipAddress: null,
       userAgent: null,
     });
-    expect(mocks.evaluateRejectedFundingAttemptAlert).toHaveBeenCalledWith('agent-1', 'utxo_locked');
+    expect(mocks.evaluateRejectedFundingAttemptAlert).toHaveBeenCalledWith(
+      'agent-1',
+      'utxo_locked',
+    );
+  });
+
+  it('prefers structured attempt reason codes before legacy message matching', async () => {
+    await recordAgentFundingAttempt({
+      agentId: 'agent-1',
+      keyId: 'key-1',
+      keyPrefix: 'agt_prefix',
+      fundingWalletId: 'funding-wallet',
+      status: 'rejected',
+      error: new InvalidInputError('generic validation failure', undefined, {
+        reasonCode: 'policy_weekly_limit',
+      }),
+    });
+
+    expect(mocks.createFundingAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reasonCode: 'policy_weekly_limit',
+        reasonMessage: 'generic validation failure',
+      }),
+    );
+    expect(mocks.evaluateRejectedFundingAttemptAlert).toHaveBeenCalledWith(
+      'agent-1',
+      'policy_weekly_limit',
+    );
+  });
+
+  it('keeps legacy lock-message fallback for non-domain errors', async () => {
+    await recordAgentFundingAttempt({
+      agentId: 'agent-1',
+      keyId: 'key-1',
+      keyPrefix: 'agt_prefix',
+      fundingWalletId: 'funding-wallet',
+      status: 'rejected',
+      error: new Error('selected input is locked by another draft'),
+    });
+
+    expect(mocks.createFundingAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reasonCode: 'utxo_locked',
+        reasonMessage: 'selected input is locked by another draft',
+      }),
+    );
+    expect(mocks.evaluateRejectedFundingAttemptAlert).toHaveBeenCalledWith(
+      'agent-1',
+      'utxo_locked',
+    );
   });
 });

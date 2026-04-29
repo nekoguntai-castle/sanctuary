@@ -10,13 +10,39 @@ import * as fs from 'fs';
 import { BasePushProvider } from './base';
 import { createLogger } from '../../../utils/logger';
 import { safeJsonParseUntyped } from '../../../utils/safeJson';
-import { createCircuitBreaker, type CircuitBreaker } from '../../circuitBreaker';
-import type { PushMessage, PushResult } from '../types';
+import {
+  createCircuitBreaker,
+  type CircuitBreaker,
+} from '../../circuitBreaker';
+import type { PushErrorCode, PushMessage, PushResult } from '../types';
 
 const log = createLogger('PUSH:SVC_APNS');
 
 const APNS_HOST_PRODUCTION = 'api.push.apple.com';
 const APNS_HOST_SANDBOX = 'api.sandbox.push.apple.com';
+
+function pushProviderError(message: string, errorCode: PushErrorCode): Error {
+  return Object.assign(new Error(message), { errorCode });
+}
+
+function normalizeAPNsErrorCode(status: number, reason: string): PushErrorCode {
+  if (status === 410 || reason === 'Unregistered') {
+    return 'device_token_unregistered';
+  }
+  if (reason === 'BadDeviceToken' || reason === 'DeviceTokenNotForTopic') {
+    return 'device_token_invalid';
+  }
+  if (status === 401 || status === 403) {
+    return 'provider_auth_failed';
+  }
+  if (status === 429) {
+    return 'provider_rate_limited';
+  }
+  if (status >= 500) {
+    return 'provider_unavailable';
+  }
+  return 'provider_rejected';
+}
 
 export class APNsPushProvider extends BasePushProvider {
   private cachedToken: { token: string; expires: number } | null = null;
@@ -79,7 +105,9 @@ export class APNsPushProvider extends BasePushProvider {
     const keyPath = process.env.APNS_KEY_PATH;
 
     if (!keyId || !teamId || !keyPath) {
-      throw new Error('APNs not configured: missing APNS_KEY_ID, APNS_TEAM_ID, or APNS_KEY_PATH');
+      throw new Error(
+        'APNs not configured: missing APNS_KEY_ID, APNS_TEAM_ID, or APNS_KEY_PATH',
+      );
     }
 
     // Reuse token if not expired (tokens valid for 1 hour)
@@ -111,7 +139,7 @@ export class APNsPushProvider extends BasePushProvider {
    */
   protected async sendNotification(
     deviceToken: string,
-    message: PushMessage
+    message: PushMessage,
   ): Promise<PushResult> {
     const bundleId = process.env.APNS_BUNDLE_ID;
     const isProduction = process.env.APNS_PRODUCTION === 'true';
@@ -120,6 +148,7 @@ export class APNsPushProvider extends BasePushProvider {
       return {
         success: false,
         error: 'APNs not configured (missing APNS_BUNDLE_ID)',
+        errorCode: 'provider_not_configured',
       };
     }
 
@@ -143,7 +172,7 @@ export class APNsPushProvider extends BasePushProvider {
       const response = await fetch(url, {
         method: 'POST',
         headers: {
-          'authorization': `bearer ${this.getToken()}`,
+          authorization: `bearer ${this.getToken()}`,
           'apns-topic': bundleId,
           'apns-push-type': 'alert',
           'apns-priority': '10',
@@ -155,20 +184,37 @@ export class APNsPushProvider extends BasePushProvider {
 
       if (!response.ok) {
         const errorBody = await response.text();
-        const errorJson = safeJsonParseUntyped<Record<string, unknown>>(errorBody, {}, 'APNs error response');
+        const errorJson = safeJsonParseUntyped<Record<string, unknown>>(
+          errorBody,
+          {},
+          'APNs error response',
+        );
 
-        const reason = (errorJson as { reason?: string }).reason || errorBody || `HTTP ${response.status}`;
+        const reason =
+          (errorJson as { reason?: string }).reason ||
+          errorBody ||
+          `HTTP ${response.status}`;
+        const errorCode = normalizeAPNsErrorCode(response.status, reason);
 
         // 5xx = service outage, throw to trip circuit breaker
         if (response.status >= 500) {
-          throw new Error(`APNs ${response.status}: ${reason}`);
+          throw pushProviderError(
+            `APNs ${response.status}: ${reason}`,
+            errorCode,
+          );
         }
 
         // 4xx = client error (invalid token, etc.), return without tripping circuit
-        return { success: false, error: `APNs ${response.status}: ${reason}` };
+        return {
+          success: false,
+          error: `APNs ${response.status}: ${reason}`,
+          errorCode,
+        };
       }
 
-      log.debug(`APNs notification sent to device ${deviceToken.slice(0, 8)}...`);
+      log.debug(
+        `APNs notification sent to device ${deviceToken.slice(0, 8)}...`,
+      );
       return {
         success: true,
         messageId: response.headers.get('apns-id') || undefined,

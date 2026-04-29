@@ -1,12 +1,30 @@
 import apiClient, { ApiError } from "./client";
 
 export type ConsoleSetupReason = "feature-disabled" | "provider-setup";
+export type ConsoleProviderSetupReason =
+  | "provider_not_configured"
+  | "provider_config_sync_failed";
 
 const CONSOLE_FEATURE_FLAG = "sanctuaryConsole";
+const PROVIDER_SETUP_REASON_CODES = new Set<unknown>([
+  "provider_not_configured",
+  "provider_config_sync_failed",
+  "not_configured",
+]);
 const PROVIDER_SETUP_MESSAGES = [
   "AI provider is not configured",
   "AI provider configuration could not be synced",
 ];
+
+const isRecord = (value: unknown): value is Record<string, unknown> => {
+  return typeof value === "object" && value !== null;
+};
+
+function getConsoleErrorReason(error: ApiError): unknown {
+  const response = error.response;
+  const details = isRecord(response?.details) ? response.details : null;
+  return response?.reason ?? details?.reason;
+}
 
 export function isConsoleFeatureDisabledError(error: unknown): boolean {
   return (
@@ -17,10 +35,14 @@ export function isConsoleFeatureDisabledError(error: unknown): boolean {
 }
 
 export function isConsoleProviderSetupError(error: unknown): boolean {
-  return (
-    error instanceof ApiError &&
-    error.status === 503 &&
-    PROVIDER_SETUP_MESSAGES.some((message) => error.message.includes(message))
+  if (!(error instanceof ApiError) || error.status !== 503) return false;
+
+  if (PROVIDER_SETUP_REASON_CODES.has(getConsoleErrorReason(error))) {
+    return true;
+  }
+
+  return PROVIDER_SETUP_MESSAGES.some((message) =>
+    error.message.includes(message),
   );
 }
 

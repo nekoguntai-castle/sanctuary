@@ -6,7 +6,13 @@
 
 import { createLogger } from '../../../utils/logger';
 import { getErrorMessage } from '../../../utils/errors';
-import type { IPushProvider, PushMessage, PushResult, PushPlatform } from '../types';
+import type {
+  IPushProvider,
+  PushErrorCode,
+  PushMessage,
+  PushPlatform,
+  PushResult,
+} from '../types';
 
 export interface BasePushProviderConfig {
   name: string;
@@ -15,6 +21,12 @@ export interface BasePushProviderConfig {
 }
 
 const log = createLogger('PUSH:SVC_PROVIDER');
+
+function getThrownPushErrorCode(error: unknown): PushErrorCode | undefined {
+  if (!error || typeof error !== 'object') return undefined;
+  const code = (error as { errorCode?: unknown }).errorCode;
+  return typeof code === 'string' ? (code as PushErrorCode) : undefined;
+}
 
 export abstract class BasePushProvider implements IPushProvider {
   readonly name: string;
@@ -47,6 +59,7 @@ export abstract class BasePushProvider implements IPushProvider {
       return {
         success: false,
         error: `${this.name} provider not configured`,
+        errorCode: 'provider_not_configured',
       };
     }
 
@@ -58,6 +71,7 @@ export abstract class BasePushProvider implements IPushProvider {
       return {
         success: false,
         error: errorMsg,
+        errorCode: getThrownPushErrorCode(error) ?? 'request_failed',
       };
     }
   }
@@ -67,6 +81,6 @@ export abstract class BasePushProvider implements IPushProvider {
    */
   protected abstract sendNotification(
     deviceToken: string,
-    message: PushMessage
+    message: PushMessage,
   ): Promise<PushResult>;
 }

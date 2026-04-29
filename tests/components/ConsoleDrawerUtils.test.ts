@@ -201,6 +201,13 @@ describe("console drawer utilities", () => {
         ),
       ),
     ).toBe(true);
+    expect(
+      isConsoleSetupError(
+        new ApiError("provider setup failed", 503, {
+          details: { reason: "provider_config_sync_failed" },
+        }),
+      ),
+    ).toBe(true);
     expect(isConsoleSetupError(new ApiError("forbidden", 403))).toBe(false);
     expect(isConsoleSetupError(new ApiError("nope", 500))).toBe(false);
   });

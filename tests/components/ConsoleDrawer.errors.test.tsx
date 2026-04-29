@@ -110,7 +110,9 @@ describe("ConsoleDrawer error and setup states", () => {
 
   it("shows the provider setup state when Console cannot reach AI setup", async () => {
     vi.mocked(consoleApi.runConsoleTurn).mockRejectedValueOnce(
-      new ApiError("AI provider is not configured for Sanctuary Console", 503),
+      new ApiError("provider setup failed", 503, {
+        details: { reason: "provider_not_configured" },
+      }),
     );
 
     const user = userEvent.setup();

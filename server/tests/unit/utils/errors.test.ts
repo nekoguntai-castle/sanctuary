@@ -25,6 +25,7 @@ vi.mock('../../../src/utils/logger', () => ({
 import {
   isPrismaError,
   isPrismaValidationError,
+  mapPrismaKnownRequestError,
   handlePrismaError,
   handleApiError,
   validatePagination,
@@ -76,9 +77,12 @@ describe('Error Handling Utilities', () => {
 
   describe('isPrismaValidationError', () => {
     it('should return true for Prisma validation error', () => {
-      const error = new Prisma.PrismaClientValidationError('Validation failed', {
-        clientVersion: '5.0.0',
-      });
+      const error = new Prisma.PrismaClientValidationError(
+        'Validation failed',
+        {
+          clientVersion: '5.0.0',
+        },
+      );
 
       expect(isPrismaValidationError(error)).toBe(true);
     });
@@ -111,11 +115,14 @@ describe('Error Handling Utilities', () => {
 
     describe('P2002 - Unique constraint violation', () => {
       it('should return 409 with generic message', () => {
-        const error = new Prisma.PrismaClientKnownRequestError('Unique constraint', {
-          code: 'P2002',
-          clientVersion: '5.0.0',
-          meta: { target: ['unknown_field'] },
-        });
+        const error = new Prisma.PrismaClientKnownRequestError(
+          'Unique constraint',
+          {
+            code: 'P2002',
+            clientVersion: '5.0.0',
+            meta: { target: ['unknown_field'] },
+          },
+        );
 
         const result = handlePrismaError(error, res, 'test');
 
@@ -128,11 +135,14 @@ describe('Error Handling Utilities', () => {
       });
 
       it('should return specific message for fingerprint', () => {
-        const error = new Prisma.PrismaClientKnownRequestError('Unique constraint', {
-          code: 'P2002',
-          clientVersion: '5.0.0',
-          meta: { target: ['fingerprint'] },
-        });
+        const error = new Prisma.PrismaClientKnownRequestError(
+          'Unique constraint',
+          {
+            code: 'P2002',
+            clientVersion: '5.0.0',
+            meta: { target: ['fingerprint'] },
+          },
+        );
 
         handlePrismaError(error, res, 'test');
 
@@ -143,11 +153,14 @@ describe('Error Handling Utilities', () => {
       });
 
       it('should return specific message for username', () => {
-        const error = new Prisma.PrismaClientKnownRequestError('Unique constraint', {
-          code: 'P2002',
-          clientVersion: '5.0.0',
-          meta: { target: ['username'] },
-        });
+        const error = new Prisma.PrismaClientKnownRequestError(
+          'Unique constraint',
+          {
+            code: 'P2002',
+            clientVersion: '5.0.0',
+            meta: { target: ['username'] },
+          },
+        );
 
         handlePrismaError(error, res, 'test');
 
@@ -158,11 +171,14 @@ describe('Error Handling Utilities', () => {
       });
 
       it('should return specific message for email', () => {
-        const error = new Prisma.PrismaClientKnownRequestError('Unique constraint', {
-          code: 'P2002',
-          clientVersion: '5.0.0',
-          meta: { target: ['email'] },
-        });
+        const error = new Prisma.PrismaClientKnownRequestError(
+          'Unique constraint',
+          {
+            code: 'P2002',
+            clientVersion: '5.0.0',
+            meta: { target: ['email'] },
+          },
+        );
 
         handlePrismaError(error, res, 'test');
 
@@ -173,11 +189,14 @@ describe('Error Handling Utilities', () => {
       });
 
       it('should return specific message for name', () => {
-        const error = new Prisma.PrismaClientKnownRequestError('Unique constraint', {
-          code: 'P2002',
-          clientVersion: '5.0.0',
-          meta: { target: ['name'] },
-        });
+        const error = new Prisma.PrismaClientKnownRequestError(
+          'Unique constraint',
+          {
+            code: 'P2002',
+            clientVersion: '5.0.0',
+            meta: { target: ['name'] },
+          },
+        );
 
         handlePrismaError(error, res, 'test');
 
@@ -188,11 +207,14 @@ describe('Error Handling Utilities', () => {
       });
 
       it('should keep generic message when P2002 target is not an array', () => {
-        const error = new Prisma.PrismaClientKnownRequestError('Unique constraint', {
-          code: 'P2002',
-          clientVersion: '5.0.0',
-          meta: { target: 'username' as unknown as string[] },
-        });
+        const error = new Prisma.PrismaClientKnownRequestError(
+          'Unique constraint',
+          {
+            code: 'P2002',
+            clientVersion: '5.0.0',
+            meta: { target: 'username' as unknown as string[] },
+          },
+        );
 
         handlePrismaError(error, res, 'test');
 
@@ -268,7 +290,7 @@ describe('Error Handling Utilities', () => {
       });
     });
 
-    it('should return false for unhandled Prisma error codes', () => {
+    it('should handle unrecognized Prisma error codes as database errors', () => {
       const error = new Prisma.PrismaClientKnownRequestError('Unknown error', {
         code: 'P9999',
         clientVersion: '5.0.0',
@@ -276,7 +298,31 @@ describe('Error Handling Utilities', () => {
 
       const result = handlePrismaError(error, res, 'test');
 
-      expect(result).toBe(false);
+      expect(result).toBe(true);
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'Internal Server Error',
+        message: 'Database operation failed',
+      });
+    });
+  });
+
+  describe('mapPrismaKnownRequestError', () => {
+    it('shares P2002 target mapping with middleware callers', () => {
+      const error = new Prisma.PrismaClientKnownRequestError(
+        'Unique constraint',
+        {
+          code: 'P2002',
+          clientVersion: '5.0.0',
+          meta: { target: ['email'] },
+        },
+      );
+
+      expect(mapPrismaKnownRequestError(error)).toMatchObject({
+        statusCode: 409,
+        message: 'This email is already registered',
+        details: { target: ['email'] },
+      });
     });
   });
 
@@ -293,9 +339,12 @@ describe('Error Handling Utilities', () => {
     });
 
     it('should handle Prisma validation errors', () => {
-      const error = new Prisma.PrismaClientValidationError('Validation failed', {
-        clientVersion: '5.0.0',
-      });
+      const error = new Prisma.PrismaClientValidationError(
+        'Validation failed',
+        {
+          clientVersion: '5.0.0',
+        },
+      );
 
       handleApiError(error, res, 'test');
 
