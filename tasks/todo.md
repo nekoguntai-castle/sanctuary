@@ -1,6 +1,6 @@
 # Active Task: Brittle Check Remediation Phase 6 Implementation 2026-04-28
 
-Status: in progress
+Status: complete
 
 Goal: replace lower-risk operational token/name-shape checks with explicit contracts for gateway audit outcomes and Docker Compose project discovery.
 
@@ -11,7 +11,7 @@ Goal: replace lower-risk operational token/name-shape checks with explicit contr
 - [x] Prefer Docker Compose project/service labels for project discovery before falling back to legacy container-name parsing.
 - [x] Cover missing/unknown/legacy-label and name-only edge cases with focused gateway/server tests.
 - [x] Run focused gateway audit, server push API, Docker utility, typecheck, lizard, formatting, and diff verification.
-- [ ] Commit, push, open the Phase 6 PR, monitor checks, merge, and complete the brittle-check remediation loop.
+- [x] Commit, push, open the Phase 6 PR, monitor checks, merge, and complete the brittle-check remediation loop.
 
 ## Review
 
@@ -21,6 +21,7 @@ Goal: replace lower-risk operational token/name-shape checks with explicit contr
 - Docker project discovery now prefers Compose `com.docker.compose.project` and `com.docker.compose.service` labels from backend/frontend containers, then falls back to existing backend/frontend container-name parsing, then to `sanctuary`.
 - Edge cases covered: explicit success overriding `AUTH_FAILED`, explicit failure overriding `AUTH_SUCCESS`, invalid outcomes, omitted legacy outcomes, backend/frontend Compose labels, unknown Compose services, missing/blank labels, name-only fallback, and Docker API failure fallback.
 - Verification passed: focused gateway request-logger Vitest; focused server push, Docker, and OpenAPI Vitest; `npm --prefix gateway run build`; `npm --prefix gateway run test:coverage`; `npm run typecheck:server:tests`; `npm run quality:lizard`; `npm --prefix server run test:coverage` at 100%; `git diff --check`.
+- PR #223 merged through the merge queue at `2854b545`; post-merge `main` Release, Build Dev Images, Architecture, CodeQL, and Test Suite workflows passed.
 
 ---
 
