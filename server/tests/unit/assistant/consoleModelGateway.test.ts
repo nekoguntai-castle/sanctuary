@@ -309,6 +309,32 @@ describe("console model gateway", () => {
     });
   });
 
+  it("preserves provider config sync failure reasons from proxy failures", async () => {
+    mocks.fetch.mockResolvedValue({
+      ok: false,
+      status: 503,
+      json: vi.fn().mockResolvedValue({
+        message: "AI provider configuration could not be synced",
+        reason: "provider_config_sync_failed",
+      }),
+    });
+
+    await expect(
+      synthesizeConsoleAnswer({
+        prompt: "summarize",
+        scope: { kind: "general" },
+        toolResults: [],
+      }),
+    ).rejects.toMatchObject({
+      message:
+        "AI proxy /console/synthesize request failed: AI provider configuration could not be synced",
+      details: {
+        reason: "provider_config_sync_failed",
+        status: 503,
+      },
+    });
+  });
+
   it("uses proxy message fields when failed proxy responses omit error fields", async () => {
     mocks.fetch.mockResolvedValue({
       ok: false,

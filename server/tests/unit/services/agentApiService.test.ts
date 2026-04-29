@@ -96,4 +96,26 @@ describe('agentApiService', () => {
       'policy_weekly_limit',
     );
   });
+
+  it('keeps legacy lock-message fallback for non-domain errors', async () => {
+    await recordAgentFundingAttempt({
+      agentId: 'agent-1',
+      keyId: 'key-1',
+      keyPrefix: 'agt_prefix',
+      fundingWalletId: 'funding-wallet',
+      status: 'rejected',
+      error: new Error('selected input is locked by another draft'),
+    });
+
+    expect(mocks.createFundingAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reasonCode: 'utxo_locked',
+        reasonMessage: 'selected input is locked by another draft',
+      }),
+    );
+    expect(mocks.evaluateRejectedFundingAttemptAlert).toHaveBeenCalledWith(
+      'agent-1',
+      'utxo_locked',
+    );
+  });
 });

@@ -322,6 +322,19 @@ MHQCAQEEIDYHOxgLfR...mock...key
       expect(rateLimitedResult.errorCode).toBe('provider_rate_limited');
     });
 
+    it('normalizes generic APNs rejections to stable error codes', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        text: async () => JSON.stringify({ reason: 'BadPriority' }),
+      });
+
+      const result = await provider.send('device-token', testMessage);
+
+      expect(result.success).toBe(false);
+      expect(result.errorCode).toBe('provider_rejected');
+    });
+
     it('should handle non-JSON error response', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,

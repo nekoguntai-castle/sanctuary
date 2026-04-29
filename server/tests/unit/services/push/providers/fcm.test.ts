@@ -341,6 +341,54 @@ describe('FCMPushProvider', () => {
       expect(result.errorCode).toBe('provider_rejected');
     });
 
+    it('normalizes FCM auth failures to stable error codes', async () => {
+      mockFetch.mockImplementation(async (url: string) => {
+        if (url === OAUTH_TOKEN_URL) {
+          return {
+            ok: true,
+            json: async () => ({ access_token: 'token', expires_in: 3600 }),
+          };
+        }
+        return {
+          ok: false,
+          status: 403,
+          text: async () =>
+            JSON.stringify({
+              error: { message: 'Sender ID does not match token' },
+            }),
+        };
+      });
+
+      const result = await provider.send('device-token', testMessage);
+
+      expect(result.success).toBe(false);
+      expect(result.errorCode).toBe('provider_auth_failed');
+    });
+
+    it('normalizes FCM rate-limit failures to stable error codes', async () => {
+      mockFetch.mockImplementation(async (url: string) => {
+        if (url === OAUTH_TOKEN_URL) {
+          return {
+            ok: true,
+            json: async () => ({ access_token: 'token', expires_in: 3600 }),
+          };
+        }
+        return {
+          ok: false,
+          status: 429,
+          text: async () =>
+            JSON.stringify({
+              error: { message: 'Quota exceeded' },
+            }),
+        };
+      });
+
+      const result = await provider.send('device-token', testMessage);
+
+      expect(result.success).toBe(false);
+      expect(result.errorCode).toBe('provider_rate_limited');
+    });
+
     it('should handle non-JSON FCM error response', async () => {
       mockFetch.mockImplementation(async (url: string) => {
         if (url === OAUTH_TOKEN_URL) {
