@@ -35,12 +35,69 @@ export function registerPushGatewayAuditEventsContracts() {
         method: 'jwt',
         severity: 'info',
         source: 'gateway',
+        outcome: 'success',
       },
       ipAddress: '192.168.1.1',
       userAgent: 'MobileApp/1.0',
       success: true,
       errorMsg: null,
     });
+  });
+
+  it('should let an explicit failure outcome override a success-looking event name', async () => {
+    const body = {
+      event: 'AUTH_SUCCESS',
+      outcome: 'failure',
+      category: 'auth',
+      severity: 'high',
+    };
+
+    const path = '/api/v1/push/gateway-audit';
+    const { signature, timestamp } = generateGatewaySignature('POST', path, body, 'test-gateway-secret');
+
+    const res = await request(app)
+      .post('/api/v1/push/gateway-audit')
+      .set('X-Gateway-Signature', signature)
+      .set('X-Gateway-Timestamp', timestamp)
+      .send(body);
+
+    expect(res.status).toBe(200);
+    expect(mockAuditLogCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'gateway.auth_success',
+        success: false,
+        errorMsg: 'AUTH_SUCCESS',
+        details: expect.objectContaining({ outcome: 'failure' }),
+      })
+    );
+  });
+
+  it('should let an explicit success outcome override legacy failure-token inference', async () => {
+    const body = {
+      event: 'AUTH_FAILED',
+      outcome: 'success',
+      category: 'auth',
+      severity: 'info',
+    };
+
+    const path = '/api/v1/push/gateway-audit';
+    const { signature, timestamp } = generateGatewaySignature('POST', path, body, 'test-gateway-secret');
+
+    const res = await request(app)
+      .post('/api/v1/push/gateway-audit')
+      .set('X-Gateway-Signature', signature)
+      .set('X-Gateway-Timestamp', timestamp)
+      .send(body);
+
+    expect(res.status).toBe(200);
+    expect(mockAuditLogCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'gateway.auth_failed',
+        success: true,
+        errorMsg: null,
+        details: expect.objectContaining({ outcome: 'success' }),
+      })
+    );
   });
 
   it('should log a failed event correctly', async () => {
@@ -174,6 +231,7 @@ export function registerPushGatewayAuditEventsContracts() {
       details: {
         severity: 'info',
         source: 'gateway',
+        outcome: 'success',
       },
       ipAddress: null,
       userAgent: null,

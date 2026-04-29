@@ -396,6 +396,10 @@ describe('logSecurityEvent', () => {
         body: expect.stringContaining('RATE_LIMIT_EXCEEDED'),
       })
     );
+
+    const callArgs = mockFetch.mock.calls[0];
+    const body = JSON.parse(callArgs[1].body);
+    expect(body.outcome).toBe('failure');
   });
 
   it('should handle backend audit failure gracefully', async () => {

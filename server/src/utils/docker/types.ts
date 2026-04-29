@@ -7,6 +7,7 @@
 export interface ContainerInfo {
   Id: string;
   Names: string[];
+  Labels?: Record<string, string>;
   State: string;
   Status: string;
 }

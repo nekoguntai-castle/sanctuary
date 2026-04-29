@@ -2,6 +2,19 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Treat Merge-Queue Failures As A Different Signal From PR Checks
+
+**Rule:** When a user reports a Test Suite failure during PR delivery, inspect merge-group and post-merge runs, not only the PR-head checks.
+
+**Why:** PR #222 had green PR-head Test Suite checks, but the merge queue ran the full backend coverage lane and rejected the PR for a 100% threshold miss. Looking only at PR checks would have missed the real failure.
+
+**How to apply:**
+
+- Check `gh run list` for `gh-readonly-queue/main/pr-...` merge-group runs after queueing a PR.
+- Use `gh run view <run-id> --json jobs` to find the root failing job before reading logs.
+- Reproduce queue-only gates locally when possible, including elevated local socket permission for backend coverage tests.
+- After fixing, re-queue and verify both merge-group checks and post-merge `main` workflows.
+
 ## Consolidate Instruction Updates Instead Of Stacking Bullets
 
 **Rule:** When the user asks to add or refine agent guidance, search for overlapping guidance and rewrite it into a clearer structure instead of appending duplicate bullets.

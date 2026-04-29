@@ -13,6 +13,11 @@ const log = createLogger('UTIL:DOCKER');
 // Docker proxy URL (set via environment variable)
 export const DOCKER_PROXY_URL = process.env.DOCKER_PROXY_URL || 'http://docker-proxy:2375';
 
+const DEFAULT_PROJECT_NAME = 'sanctuary';
+const COMPOSE_PROJECT_LABEL = 'com.docker.compose.project';
+const COMPOSE_SERVICE_LABEL = 'com.docker.compose.service';
+const PROJECT_DISCOVERY_SERVICES = new Set(['backend', 'frontend']);
+
 /**
  * Check if Docker proxy is available
  */
@@ -45,25 +50,58 @@ export async function listAllContainers(): Promise<ContainerInfo[]> {
   return (await response.json()) as ContainerInfo[];
 }
 
+function getContainerLabel(container: ContainerInfo, key: string): string | null {
+  const value = container.Labels?.[key];
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function discoverProjectNameFromLabels(containers: ContainerInfo[]): string | null {
+  for (const container of containers) {
+    const service = getContainerLabel(container, COMPOSE_SERVICE_LABEL);
+    const project = getContainerLabel(container, COMPOSE_PROJECT_LABEL);
+
+    if (project && service && PROJECT_DISCOVERY_SERVICES.has(service)) {
+      return project;
+    }
+  }
+
+  return null;
+}
+
+function normalizeContainerName(name: string): string {
+  return name.replace(/^\//, '');
+}
+
+function isProjectDiscoveryContainerName(name: string): boolean {
+  return name.includes('-backend-') || name.includes('-frontend-');
+}
+
+function discoverProjectNameFromNames(containers: ContainerInfo[]): string | null {
+  const sanctuaryContainerName = containers
+    .flatMap((container) => container.Names)
+    .map(normalizeContainerName)
+    .find(isProjectDiscoveryContainerName);
+
+  if (!sanctuaryContainerName) {
+    return null;
+  }
+
+  const match = sanctuaryContainerName.match(/^(.+?)-(backend|frontend)/);
+  return match?.[1] ?? null;
+}
+
 /**
  * Discover the Docker Compose project name from existing sanctuary containers
  */
 export async function discoverProjectName(): Promise<string> {
-  let projectName = 'sanctuary';
-
   try {
     const containers = await listAllContainers();
-    const sanctuaryContainer = containers.find(c =>
-      c.Names.some(n => n.includes('-backend-') || n.includes('-frontend-'))
-    );
-    if (sanctuaryContainer) {
-      const name = sanctuaryContainer.Names[0].replace(/^\//, '');
-      const match = name.match(/^(.+?)-(backend|frontend)/);
-      if (match) projectName = match[1];
-    }
+    return discoverProjectNameFromLabels(containers)
+      ?? discoverProjectNameFromNames(containers)
+      ?? DEFAULT_PROJECT_NAME;
   } catch (error) {
     log.debug('Could not discover project name, using default', { error });
   }
 
-  return projectName;
+  return DEFAULT_PROJECT_NAME;
 }

@@ -1,6 +1,32 @@
-# Active Task: Brittle Check Remediation Phase 5 Implementation 2026-04-28
+# Active Task: Brittle Check Remediation Phase 6 Implementation 2026-04-28
 
 Status: in progress
+
+Goal: replace lower-risk operational token/name-shape checks with explicit contracts for gateway audit outcomes and Docker Compose project discovery.
+
+## Plan
+
+- [x] Start from merged Phase 5 on `origin/main`.
+- [x] Add an explicit success/failure outcome contract for gateway audit events while preserving legacy event-token inference.
+- [x] Prefer Docker Compose project/service labels for project discovery before falling back to legacy container-name parsing.
+- [x] Cover missing/unknown/legacy-label and name-only edge cases with focused gateway/server tests.
+- [x] Run focused gateway audit, server push API, Docker utility, typecheck, lizard, formatting, and diff verification.
+- [ ] Commit, push, open the Phase 6 PR, monitor checks, merge, and complete the brittle-check remediation loop.
+
+## Review
+
+- Gateway security audit posts now include a signed top-level `outcome: "failure"` field, so new events do not rely on event-name tokens for failure classification.
+- The backend gateway audit endpoint validates optional explicit outcomes, lets explicit outcomes override legacy token inference, records the resolved outcome in audit details, and keeps token inference only for legacy senders.
+- Gateway audit OpenAPI docs now advertise the optional `outcome` contract.
+- Docker project discovery now prefers Compose `com.docker.compose.project` and `com.docker.compose.service` labels from backend/frontend containers, then falls back to existing backend/frontend container-name parsing, then to `sanctuary`.
+- Edge cases covered: explicit success overriding `AUTH_FAILED`, explicit failure overriding `AUTH_SUCCESS`, invalid outcomes, omitted legacy outcomes, backend/frontend Compose labels, unknown Compose services, missing/blank labels, name-only fallback, and Docker API failure fallback.
+- Verification passed: focused gateway request-logger Vitest; focused server push, Docker, and OpenAPI Vitest; `npm --prefix gateway run build`; `npm --prefix gateway run test:coverage`; `npm run typecheck:server:tests`; `npm run quality:lizard`; `npm --prefix server run test:coverage` at 100%; `git diff --check`.
+
+---
+
+# Active Task: Brittle Check Remediation Phase 5 Implementation 2026-04-28
+
+Status: complete
 
 Goal: replace brittle message-text outcome classification with stable reason/error codes at Console, push-provider, agent-funding, and Prisma error boundaries.
 
@@ -13,7 +39,7 @@ Goal: replace brittle message-text outcome classification with stable reason/err
 - [x] Pass stable agent funding attempt reason codes for known domain errors before legacy message matching.
 - [x] Cover null/empty/unknown/provider-specific edge cases with focused tests.
 - [x] Run focused Console, push-provider, agent-funding, Prisma error, typecheck, lizard, formatting, and diff verification.
-- [ ] Commit, push, open the Phase 5 PR, monitor checks, merge, and then start Phase 6.
+- [x] Commit, push, open the Phase 5 PR, monitor checks, merge, and then start Phase 6.
 
 ## Review
 
@@ -23,6 +49,8 @@ Goal: replace brittle message-text outcome classification with stable reason/err
 - Agent funding attempts now prefer structured `reasonCode` details from policy, validation, locked-UTXO, and fee-rate domain errors before using legacy message matching.
 - Edge cases covered: nested Console error details, legacy proxy `not_configured`, APNs bad/unregistered/auth/rate-limit responses, FCM unregistered detail and generic invalid-argument responses, unrecognized Prisma codes, structured agent reason codes, invalid fee rates, locked/frozen UTXOs, and legacy reason-message fallback.
 - Verification passed: focused frontend/AI-proxy Console Vitest; focused backend Console gateway, push provider/service, Prisma error, agent API, agent policy, and draft-validation Vitest; `npm run typecheck:tests`; `npm run typecheck:server:tests`; `npm run quality:lizard`; full `npm run test:run`; full `npm run test:backend`; `git diff --check`.
+- Merge-queue follow-up covered provider/error-code branch gaps surfaced by full backend coverage; `npm --prefix server run test:coverage` reached 100% after focused test additions.
+- PR #222 merged through the merge queue at `94ec8c56`; post-merge `main` Test Suite, CodeQL, Architecture, Build Dev Images, and Release workflows passed.
 
 ---
 

@@ -55,8 +55,11 @@ const PushUnregisterBodySchema = z.object({
   token: z.string().min(1),
 });
 
+const GatewayAuditOutcomeSchema = z.enum(['success', 'failure']);
+
 const GatewayAuditBodySchema = z.object({
   event: z.string().min(1),
+  outcome: GatewayAuditOutcomeSchema.optional(),
 }).passthrough();
 
 const pushRegisterValidationMessage = (issues: Array<{ path: string; message: string }>) => {
@@ -68,6 +71,13 @@ const pushRegisterValidationMessage = (issues: Array<{ path: string; message: st
     return 'deviceName must be a string';
   }
   return 'Platform must be "ios" or "android"';
+};
+
+const gatewayAuditValidationMessage = (issues: Array<{ path: string; message: string }>) => {
+  if (issues.some(issue => issue.path === 'event')) {
+    return 'Event type is required';
+  }
+  return 'Outcome must be "success" or "failure"';
 };
 
 const GATEWAY_AUDIT_FAILURE_EVENT_TOKENS = [
@@ -82,6 +92,21 @@ const GATEWAY_AUDIT_FAILURE_EVENT_TOKENS = [
   'MISUSE',
   'UNAUTHORIZED',
 ] as const;
+
+type GatewayAuditOutcome = z.infer<typeof GatewayAuditOutcomeSchema>;
+
+function inferGatewayAuditOutcome(event: string): GatewayAuditOutcome {
+  return GATEWAY_AUDIT_FAILURE_EVENT_TOKENS.some((token) => event.includes(token))
+    ? 'failure'
+    : 'success';
+}
+
+function resolveGatewayAuditOutcome(
+  event: string,
+  outcome: GatewayAuditOutcome | undefined
+): GatewayAuditOutcome {
+  return outcome ?? inferGatewayAuditOutcome(event);
+}
 
 /**
  * Device token format validation (SEC-008)
@@ -316,6 +341,7 @@ router.delete('/device/:deviceId', verifyGatewayRequest, asyncHandler(async (req
  *
  * Request body:
  *   - event: string - Event type (e.g., AUTH_INVALID_TOKEN, RATE_LIMIT_EXCEEDED)
+ *   - outcome: "success" | "failure" - Explicit event outcome. Legacy senders may omit it.
  *   - category: string - Event category (gateway, auth, security)
  *   - severity: string - Event severity (low, medium, high)
  *   - details: object - Additional event details
@@ -326,10 +352,11 @@ router.delete('/device/:deviceId', verifyGatewayRequest, asyncHandler(async (req
  */
 router.post('/gateway-audit', verifyGatewayRequest, validate(
   { body: GatewayAuditBodySchema },
-  { message: 'Event type is required', code: ErrorCodes.INVALID_INPUT }
+  { message: gatewayAuditValidationMessage, code: ErrorCodes.INVALID_INPUT }
 ), asyncHandler(async (req, res) => {
   const {
     event,
+    outcome: requestedOutcome,
     category,
     severity,
     details,
@@ -339,8 +366,8 @@ router.post('/gateway-audit', verifyGatewayRequest, validate(
     username,
   } = req.body;
 
-  // Determine success based on common gateway security-event names.
-  const isFailure = GATEWAY_AUDIT_FAILURE_EVENT_TOKENS.some((token) => event.includes(token));
+  const outcome = resolveGatewayAuditOutcome(event, requestedOutcome);
+  const success = outcome === 'success';
 
   // Create audit log entry
   await auditLogRepository.create({
@@ -352,11 +379,12 @@ router.post('/gateway-audit', verifyGatewayRequest, validate(
       ...(details || {}),
       severity: severity || 'info',
       source: 'gateway',
+      outcome,
     },
     ipAddress: ip || null,
     userAgent: userAgent || null,
-    success: !isFailure,
-    errorMsg: isFailure ? event : null,
+    success,
+    errorMsg: success ? null : event,
   });
 
   log.debug('Gateway audit event logged', { event, category });

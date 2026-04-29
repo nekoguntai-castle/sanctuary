@@ -21,6 +21,26 @@ export function registerPushGatewayAuditErrorsContracts() {
     expect(res.body.message).toBe('Event type is required');
   });
 
+  it('should return 400 when outcome is not success or failure', async () => {
+    const body = {
+      event: 'AUTH_SUCCESS',
+      outcome: 'unknown',
+    };
+
+    const path = '/api/v1/push/gateway-audit';
+    const { signature, timestamp } = generateGatewaySignature('POST', path, body, 'test-gateway-secret');
+
+    const res = await request(app)
+      .post('/api/v1/push/gateway-audit')
+      .set('X-Gateway-Signature', signature)
+      .set('X-Gateway-Timestamp', timestamp)
+      .send(body);
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe('Outcome must be "success" or "failure"');
+    expect(mockAuditLogCreate).not.toHaveBeenCalled();
+  });
+
   it('should return 403 without gateway signature', async () => {
     const res = await request(app).post('/api/v1/push/gateway-audit').send({
       event: 'AUTH_SUCCESS',

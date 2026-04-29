@@ -46,6 +46,8 @@ import { generateGatewaySignature } from '../../../shared/utils/gatewayAuth';
 
 const log = createLogger('REQUEST');
 
+type GatewayAuditOutcome = 'success' | 'failure';
+
 /**
  * Send audit event to backend (fire-and-forget)
  *
@@ -55,12 +57,14 @@ const log = createLogger('REQUEST');
  */
 async function sendToBackendAudit(
   event: string,
-  details: Record<string, unknown>
+  details: Record<string, unknown>,
+  outcome: GatewayAuditOutcome
 ): Promise<void> {
   try {
     const path = '/api/v1/push/gateway-audit';
     const body = {
       event,
+      outcome,
       category: 'gateway',
       severity: details.severity || 'info',
       details,
@@ -225,7 +229,7 @@ export function logSecurityEvent(
   log.warn(`SECURITY: ${event}`, eventDetails);
 
   // Send to backend (async, fire-and-forget); sendToBackendAudit logs and swallows transport errors.
-  void sendToBackendAudit(event, eventDetails);
+  void sendToBackendAudit(event, eventDetails, 'failure');
 }
 
 /**
