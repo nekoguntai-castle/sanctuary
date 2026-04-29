@@ -16,6 +16,9 @@ describe('Button', () => {
     const btn = screen.getByRole('button', { name: 'Click me' });
     expect(btn).toBeInTheDocument();
     expect(btn).not.toBeDisabled();
+    expect(btn).toHaveClass('bg-primary-600');
+    expect(btn).toHaveClass('text-white');
+    expect(btn).toHaveClass('dark:bg-primary-200');
   });
 
   it('disables the button when isLoading is true even with disabled={false}', () => {

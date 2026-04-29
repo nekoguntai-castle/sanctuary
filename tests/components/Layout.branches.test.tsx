@@ -582,10 +582,10 @@ describe('Layout branch coverage', () => {
       );
     });
 
-    it('opens keyboard shortcuts with the global shortcut', () => {
+    it('toggles keyboard shortcuts with the global shortcut', () => {
       renderLayout();
 
-      act(() => {
+      const dispatchShortcut = () => act(() => {
         window.dispatchEvent(
           new KeyboardEvent('keydown', {
             code: 'Slash',
@@ -596,7 +596,13 @@ describe('Layout branch coverage', () => {
         );
       });
 
+      dispatchShortcut();
       expect(screen.getByTestId('keyboard-shortcuts-modal')).toBeInTheDocument();
+
+      dispatchShortcut();
+      expect(
+        screen.queryByTestId('keyboard-shortcuts-modal')
+      ).not.toBeInTheDocument();
     });
   }
 

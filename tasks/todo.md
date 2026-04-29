@@ -1,6 +1,75 @@
+# Active Task: Gold Primary Button Styling 2026-04-29
+
+Status: complete
+
+Goal: update shared primary UI buttons to use a gold background with white text in the Sanctuary theme.
+
+## Plan
+
+- [x] Inspect shared button styling and focused tests.
+- [x] Change the shared primary button variant and default Sanctuary primary palette to gold/white.
+- [x] Update focused component tests that assert primary button classes.
+- [x] Run focused UI tests and typecheck.
+- [x] Review the diff and document verification.
+
+## Review
+
+- Shared primary `Button` and `LinkButton` styling now uses the semantic primary palette (`bg-primary-600`, `dark:bg-primary-200`) with white text.
+- The default Sanctuary theme primary palette now uses Zen gold tones, so primary buttons render gold while preserving semantic theming.
+- Focused button tests now assert the gold/white primary classes.
+- Verification passed: `npx vitest run tests/components/ui/Button.test.tsx tests/components/ui/LinkButton.test.tsx`, `npm run typecheck:app`, `npm run typecheck:tests`, and `git diff --check`. Current delivery verification also includes `tests/themes/sanctuary.test.ts` and `npm run quality:lizard`.
+
+---
+
+# Active Task: Rebuild Runtime Stack And Shortcut Smoke 2026-04-29
+
+Status: complete
+
+Goal: rebuild the running containers from the current working tree and smoke-test the keyboard shortcuts modal toggle in the live UI.
+
+## Plan
+
+- [x] Inspect the current Docker container state.
+- [x] Rebuild and restart the Sanctuary stack.
+- [x] Check container health and recent logs for runtime errors.
+- [x] Exercise the UI shortcut path after rebuild.
+- [x] Document runtime verification results.
+
+## Review
+
+- Rebuilt the stack with `./start.sh --rebuild`; the rebuilt app is running at `https://localhost:8443`.
+- Final container check shows gateway, frontend, AI proxy, backend, worker, Redis, and Postgres healthy; migration exited 0.
+- Health checks passed: `https://localhost:8443/health` returned HTTP 200 `healthy`, and `https://localhost:8443/api/v1/health` returned HTTP 200 with the known degraded disk warning (`86%` used, warning threshold `80%`).
+- Recent logs showed successful backend, worker, gateway, frontend, AI proxy, and migration startup. Noted expected/non-blocking warnings: CoinGecko HTTP 429 during price provider startup, gateway push services not configured, nginx `listen ... http2` deprecation warnings, and one worker slow-query warning during startup.
+- Live browser smoke against the rebuilt HTTPS frontend passed: Playwright opened the keyboard shortcuts dialog with `Ctrl+/` and closed it with a second `Ctrl+/`.
+
+---
+
+# Active Task: Keyboard Shortcuts Modal Toggle 2026-04-29
+
+Status: complete
+
+Goal: make the global `Ctrl+/` keyboard shortcut close the keyboard shortcuts modal when it is already open, while preserving the existing sidebar trigger behavior.
+
+## Plan
+
+- [x] Inspect the current shortcut binding and modal state ownership.
+- [x] Change the global shortcut handler to toggle the modal.
+- [x] Add regression coverage for pressing `Ctrl+/` twice.
+- [x] Run focused verification for the changed UI path.
+- [x] Review the diff for minimal scope and document results.
+
+## Review
+
+- The global shortcut binding now uses a dedicated toggle handler, so `Ctrl+/` opens the keyboard shortcuts modal when closed and closes it when open. The sidebar trigger still uses the existing open-only handler.
+- Regression coverage now dispatches the `Slash` shortcut twice and verifies the modal is removed after the second press.
+- Verification passed: `npx vitest run tests/components/Layout.branches.test.tsx`, `npm run typecheck:app`, `npm run typecheck:tests`, `npm run quality:lizard`, and `git diff --check`.
+
+---
+
 # Active Task: Runtime Ops PR Delivery Follow-Up 2026-04-29
 
-Status: in progress
+Status: complete
 
 Goal: finish PR #228 delivery after the Quick Render Regression check exposed missing E2E coverage for the new global price-provider requests.
 
@@ -14,7 +83,7 @@ Goal: finish PR #228 delivery after the Quick Render Regression check exposed mi
 - [x] Add CodeQL-recognized and policy-backed rate limiting to admin-only price routes.
 - [x] Cover the admin price route limiter contract in focused API tests.
 - [x] Cover the merge-queue backend/frontend coverage gaps for price provider diagnostics.
-- [ ] Commit, push, re-monitor required checks, and merge through the merge queue.
+- [x] Commit, push, re-monitor required checks, and merge through the merge queue.
 
 ## Review
 
@@ -24,6 +93,7 @@ Goal: finish PR #228 delivery after the Quick Render Regression check exposed mi
 - The aggregate CodeQL check then flagged the changed admin-only provider/cache routes for missing modeled rate limiting; added the repo's established `express-rate-limit` plus `rateLimitByUser("admin:default")` pattern on those routes.
 - The first merge-queue run then exposed full-lane coverage gaps that the PR-side quick checks did not run: backend `BasePriceProvider.testPrice` branches, frontend price-provider diagnostics edge states, and provider-list fallback/unmount handling in `CurrencyContext`.
 - Verification passed: local render regression without retries, exact CI-shaped `npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts`, focused price route tests, focused price diagnostics/context tests, full frontend coverage at 100%, full backend coverage at 100%, app/test/server typechecks, Prettier check for touched files, `npm run quality:lizard`, and `git diff --check`.
+- PR #228 is merged into `main` as `5f2fdd7a`.
 
 ---
 
