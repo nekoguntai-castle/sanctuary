@@ -1,6 +1,34 @@
+# Active Task: Brittle Check Remediation Phase 4 Implementation 2026-04-28
+
+Status: in progress
+
+Goal: replace address receive/change and index decisions based on derivation-path substrings with parser-derived chain metadata.
+
+## Plan
+
+- [x] Start from merged Phase 3 on `origin/main`.
+- [x] Add a shared parser-backed address chain/index helper.
+- [x] Update address repository and address API filtering/generation to use parsed chain/index metadata.
+- [x] Update sync and operational address services to skip malformed paths instead of misclassifying them.
+- [x] Update assistant address DTOs and brittle address tests to use parser-derived `isChange`.
+- [x] Run focused shared, repository, API, sync, operational address, assistant DTO, typecheck, lizard, formatting, and diff verification.
+- [ ] Commit, push, open the Phase 4 PR, monitor checks, merge, and then start Phase 5.
+
+## Review
+
+- Added `parseAddressDerivationPath` for concrete address derivation paths, including normalized path, account path, receive/change chain, change index, and address index.
+- Repository receive/change lookups and address listing now classify records with parser metadata instead of `/0/` or `/1/` substring filters; filtered scans are chunked and labeled rows are loaded only for the requested page.
+- Address generation, sync gap-limit expansion, operational agent receive addresses, assistant address DTOs, and frontend address grouping now use parser-derived chain/index metadata and fail closed for malformed concrete paths.
+- Tightened transaction change-output fallback to prefer parsed change-chain candidates and only fall back to parsed receive-chain candidates, avoiding arbitrary unused-address selection.
+- Added query-aware transaction-service address mocks so tests model address metadata lookups separately from unused receive/change candidate queries.
+- Edge cases covered: null/empty/malformed/incomplete derivation paths, unsupported change branches, hardened concrete suffixes, BIP-48 paths, missing terminal indexes, malformed generated paths, and fallback receive/change selection.
+- Verification passed: focused parser/frontend/backend Vitest, focused transaction-service Vitest, root test suite, full backend unit suite with elevated local listen permission, app/server test typechecks, `npm run quality:lizard`, Prettier, and `git diff --check`.
+
+---
+
 # Active Task: Brittle Check Remediation Phase 3 Implementation 2026-04-28
 
-Status: implementation verified; delivery in progress
+Status: complete
 
 Goal: centralize derivation-path interpretation into a shared parser and stop legacy single-account normalization from guessing native segwit for unknown purposes.
 
@@ -12,7 +40,7 @@ Goal: centralize derivation-path interpretation into a shared parser and stop le
 - [x] Update legacy device-account normalization to fail closed on unknown purpose/script inference.
 - [x] Add focused shared, hardware path, and device account normalization tests.
 - [x] Run Phase 3 verification before commit.
-- [ ] Commit, push, open PR, monitor checks, merge, and start Phase 4.
+- [x] Commit, push, open PR, monitor checks, merge, and start Phase 4.
 
 ## Review
 
@@ -23,6 +51,7 @@ Goal: centralize derivation-path interpretation into a shared parser and stop le
 - Covered apostrophe and `h` notation, BIP-48 nested/native script paths, unknown purposes, incomplete account paths, malformed components, empty/null parser inputs, and legacy normalization rejection paths.
 - Merge-queue coverage follow-up covered parser branch edges for unsafe numeric components, standard single-sig purpose mappings, one-component/malformed address suffixes, and empty multisig cosigner lists.
 - Verification passed: focused shared/hardware Vitest, server device API Vitest, focused PSBT/transaction regression tests, Ledger/BitBox/device-connection adapter tests, app/server test typechecks, `npm --prefix server run build`, `npm run quality:lizard`, Prettier, and `git diff --check`.
+- PR #220 merged through the merge queue at `0057faab`.
 
 ---
 

@@ -5,13 +5,13 @@
  * Handles output shuffling for privacy enhancement.
  */
 
-import * as bitcoin from 'bitcoinjs-lib';
-import { addressRepository } from '../../../repositories';
-import { createLogger } from '../../../utils/logger';
-import { generateDecoyAmounts } from '../psbtBuilder';
-import type { PendingOutput, UtxoSelection } from './types';
+import * as bitcoin from "bitcoinjs-lib";
+import { addressRepository } from "../../../repositories";
+import { createLogger } from "../../../utils/logger";
+import { generateDecoyAmounts } from "../psbtBuilder";
+import type { PendingOutput, UtxoSelection } from "./types";
 
-const log = createLogger('BITCOIN:SVC_TX_OUTPUT');
+const log = createLogger("BITCOIN:SVC_TX_OUTPUT");
 
 /**
  * Build all outputs (recipient, change, decoys) and add them to the PSBT in shuffled order.
@@ -25,7 +25,7 @@ export async function buildAndAddOutputs(
   dustThreshold: number,
   sendMax: boolean,
   feeRate: number,
-  decoyOutputs?: { enabled: boolean; count: number }
+  decoyOutputs?: { enabled: boolean; count: number },
 ): Promise<{
   changeAddress?: string;
   decoyOutputsResult?: Array<{ address: string; amount: number }>;
@@ -38,17 +38,24 @@ export async function buildAndAddOutputs(
   pendingOutputs.push({
     address: recipient,
     value: effectiveAmount,
-    type: 'recipient',
+    type: "recipient",
   });
 
   let changeAddress: string | undefined;
-  let decoyOutputsResult: Array<{ address: string; amount: number }> | undefined;
+  let decoyOutputsResult:
+    | Array<{ address: string; amount: number }>
+    | undefined;
   let actualFee = selection.estimatedFee;
   let actualChangeAmount = selection.changeAmount;
 
   if (!sendMax && selection.changeAmount >= dustThreshold) {
     const changeResult = await buildChangeOutputs(
-      walletId, selection, dustThreshold, feeRate, effectiveAmount, decoyOutputs
+      walletId,
+      selection,
+      dustThreshold,
+      feeRate,
+      effectiveAmount,
+      decoyOutputs,
     );
 
     changeAddress = changeResult.changeAddress;
@@ -64,7 +71,10 @@ export async function buildAndAddOutputs(
   // Shuffle outputs for privacy (Fisher-Yates algorithm)
   for (let i = pendingOutputs.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [pendingOutputs[i], pendingOutputs[j]] = [pendingOutputs[j], pendingOutputs[i]];
+    [pendingOutputs[i], pendingOutputs[j]] = [
+      pendingOutputs[j],
+      pendingOutputs[i],
+    ];
   }
 
   // Add all outputs to PSBT in randomized order
@@ -87,7 +97,7 @@ async function buildChangeOutputs(
   dustThreshold: number,
   feeRate: number,
   effectiveAmount: number,
-  decoyOutputs?: { enabled: boolean; count: number }
+  decoyOutputs?: { enabled: boolean; count: number },
 ): Promise<{
   changeAddress?: string;
   decoyOutputsResult?: Array<{ address: string; amount: number }>;
@@ -100,9 +110,11 @@ async function buildChangeOutputs(
   let actualChangeAmount = selection.changeAmount;
 
   const useDecoys = decoyOutputs?.enabled && decoyOutputs.count >= 2;
-  const numChangeOutputs = useDecoys ? Math.min(Math.max(decoyOutputs.count, 2), 4) : 1;
+  const numChangeOutputs = useDecoys
+    ? Math.min(Math.max(decoyOutputs.count, 2), 4)
+    : 1;
 
-  log.debug('Decoy calculation', {
+  log.debug("Decoy calculation", {
     decoyOutputsParam: decoyOutputs,
     useDecoys,
     numChangeOutputs,
@@ -125,10 +137,17 @@ async function buildChangeOutputs(
     }
   }
 
-  const canUseDecoys = useDecoys && actualChangeAmount >= dustThreshold * numChangeOutputs;
+  const canUseDecoys =
+    useDecoys && actualChangeAmount >= dustThreshold * numChangeOutputs;
 
   if (canUseDecoys) {
-    return buildDecoyChangeOutputs(walletId, numChangeOutputs, actualChangeAmount, dustThreshold, actualFee);
+    return buildDecoyChangeOutputs(
+      walletId,
+      numChangeOutputs,
+      actualChangeAmount,
+      dustThreshold,
+      actualFee,
+    );
   }
 
   // Single change output
@@ -137,7 +156,7 @@ async function buildChangeOutputs(
   pendingOutputs.push({
     address: changeAddress,
     value: actualChangeAmount,
-    type: 'change',
+    type: "change",
   });
 
   return {
@@ -156,7 +175,7 @@ async function buildDecoyChangeOutputs(
   numChangeOutputs: number,
   actualChangeAmount: number,
   dustThreshold: number,
-  actualFee: number
+  actualFee: number,
 ): Promise<{
   changeAddress?: string;
   decoyOutputsResult: Array<{ address: string; amount: number }>;
@@ -167,31 +186,43 @@ async function buildDecoyChangeOutputs(
   const pendingOutputs: PendingOutput[] = [];
 
   // Get multiple unused change addresses
-  const changeAddresses = await addressRepository.findUnusedChangeAddresses(walletId, numChangeOutputs);
+  const changeAddresses = await addressRepository.findUnusedChangeAddresses(
+    walletId,
+    numChangeOutputs,
+  );
 
   // Fallback to receiving addresses if not enough change addresses
   if (changeAddresses.length < numChangeOutputs) {
     const additionalNeeded = numChangeOutputs - changeAddresses.length;
     const receivingAddresses = await addressRepository.findUnusedExcluding(
       walletId,
-      changeAddresses.map(a => a.address),
-      additionalNeeded
+      changeAddresses.map((a) => a.address),
+      additionalNeeded,
     );
     changeAddresses.push(...receivingAddresses);
   }
 
   if (changeAddresses.length < numChangeOutputs) {
-    throw new Error(`Not enough change addresses for ${numChangeOutputs} decoy outputs`);
+    throw new Error(
+      `Not enough change addresses for ${numChangeOutputs} decoy outputs`,
+    );
   }
 
   // Generate decoy amounts
-  const amounts = generateDecoyAmounts(actualChangeAmount, numChangeOutputs, dustThreshold);
+  const amounts = generateDecoyAmounts(
+    actualChangeAmount,
+    numChangeOutputs,
+    dustThreshold,
+  );
 
   // Shuffle addresses for additional obfuscation
   const shuffledAddresses = [...changeAddresses];
   for (let i = shuffledAddresses.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [shuffledAddresses[i], shuffledAddresses[j]] = [shuffledAddresses[j], shuffledAddresses[i]];
+    [shuffledAddresses[i], shuffledAddresses[j]] = [
+      shuffledAddresses[j],
+      shuffledAddresses[i],
+    ];
   }
 
   let changeAddress: string | undefined;
@@ -204,7 +235,7 @@ async function buildDecoyChangeOutputs(
     pendingOutputs.push({
       address: addr,
       value: amt,
-      type: i === 0 ? 'change' : 'decoy',
+      type: i === 0 ? "change" : "decoy",
     });
 
     decoyOutputsResult.push({ address: addr, amount: amt });
@@ -227,20 +258,21 @@ async function buildDecoyChangeOutputs(
 
 /**
  * Find an available change address for a wallet.
- * Prefers BIP44 change addresses (derivation path containing /1/),
- * falls back to any unused receiving address.
+ * Prefers parsed change-chain addresses and falls back to a parsed receive-chain address.
  */
 export async function findChangeAddress(walletId: string): Promise<string> {
-  const existingChangeAddress = await addressRepository.findNextUnusedChange(walletId);
+  const existingChangeAddress =
+    await addressRepository.findNextUnusedChange(walletId);
 
   if (existingChangeAddress) {
     return existingChangeAddress.address;
   }
 
-  const receivingAddress = await addressRepository.findNextUnused(walletId);
+  const receivingAddress =
+    await addressRepository.findNextUnusedReceive(walletId);
 
   if (!receivingAddress) {
-    throw new Error('No change address available');
+    throw new Error("No change address available");
   }
 
   return receivingAddress.address;

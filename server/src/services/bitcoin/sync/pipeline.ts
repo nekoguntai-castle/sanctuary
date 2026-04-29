@@ -4,15 +4,16 @@
  * Orchestrates the execution of sync phases in sequence.
  */
 
-import { walletRepository, addressRepository } from '../../../repositories';
-import { getNodeClient } from '../nodeClient';
-import { getElectrumPool } from '../electrumPool';
-import { createLogger } from '../../../utils/logger';
-import { getErrorMessage } from '../../../utils/errors';
-import { walletLog } from '../../../websocket/notifications';
-import { getBlockHeight } from '../utils/blockHeight';
+import { walletRepository, addressRepository } from "../../../repositories";
+import { getNodeClient } from "../nodeClient";
+import { getElectrumPool } from "../electrumPool";
+import { createLogger } from "../../../utils/logger";
+import { getErrorMessage } from "../../../utils/errors";
+import { walletLog } from "../../../websocket/notifications";
+import { getBlockHeight } from "../utils/blockHeight";
+import { parseAddressDerivationPath } from "../../../../../shared/utils/bitcoin";
 
-import { createSyncContext } from './context';
+import { createSyncContext } from "./context";
 import type {
   SyncContext,
   SyncPhase,
@@ -20,9 +21,32 @@ import type {
   PipelineOptions,
   BitcoinNetwork,
   SyncPipelineError,
-} from './types';
+} from "./types";
 
-const log = createLogger('BITCOIN:SVC_SYNC_PIPELINE');
+const log = createLogger("BITCOIN:SVC_SYNC_PIPELINE");
+
+interface AddressChainSummary {
+  receive: number;
+  change: number;
+  unknown: number;
+}
+
+function summarizeAddressChains(
+  addresses: Array<{ derivationPath?: string | null }>,
+): AddressChainSummary {
+  const summary = { receive: 0, change: 0, unknown: 0 };
+
+  for (const address of addresses) {
+    const parsed = parseAddressDerivationPath(address.derivationPath);
+    if (!parsed) {
+      summary.unknown++;
+      continue;
+    }
+    summary[parsed.chain]++;
+  }
+
+  return summary;
+}
 
 /**
  * Execute a sync pipeline with the given phases
@@ -30,7 +54,7 @@ const log = createLogger('BITCOIN:SVC_SYNC_PIPELINE');
 export async function executeSyncPipeline(
   walletId: string,
   phases: SyncPhase[],
-  options?: PipelineOptions
+  options?: PipelineOptions,
 ): Promise<SyncResult> {
   const startTime = Date.now();
 
@@ -40,13 +64,18 @@ export async function executeSyncPipeline(
     throw new Error(`Wallet ${walletId} not found`);
   }
 
-  const network = (wallet.network as BitcoinNetwork) || 'mainnet';
+  const network = (wallet.network as BitcoinNetwork) || "mainnet";
 
   // Check if Tor proxy is enabled
   const pool = getElectrumPool();
   const viaTor = pool.isProxyEnabled();
 
-  walletLog(walletId, 'info', 'SYNC', viaTor ? 'Starting wallet sync via Tor...' : 'Starting wallet sync...');
+  walletLog(
+    walletId,
+    "info",
+    "SYNC",
+    viaTor ? "Starting wallet sync via Tor..." : "Starting wallet sync...",
+  );
 
   // Get node client and current block height
   const client = await getNodeClient(network);
@@ -56,7 +85,7 @@ export async function executeSyncPipeline(
   const addresses = await addressRepository.findByWalletId(walletId);
 
   if (addresses.length === 0) {
-    walletLog(walletId, 'info', 'BLOCKCHAIN', 'No addresses to scan');
+    walletLog(walletId, "info", "BLOCKCHAIN", "No addresses to scan");
     return {
       addresses: 0,
       transactions: 0,
@@ -77,12 +106,18 @@ export async function executeSyncPipeline(
   }
 
   // Log address breakdown
-  const receiveAddrs = addresses.filter(a => a.derivationPath?.includes('/0/')).length;
-  const changeAddrs = addresses.filter(a => a.derivationPath?.includes('/1/')).length;
-  walletLog(walletId, 'info', 'BLOCKCHAIN', `Scanning ${addresses.length} addresses`, {
-    receive: receiveAddrs,
-    change: changeAddrs,
-  });
+  const chainSummary = summarizeAddressChains(addresses);
+  walletLog(
+    walletId,
+    "info",
+    "BLOCKCHAIN",
+    `Scanning ${addresses.length} addresses`,
+    {
+      receive: chainSummary.receive,
+      change: chainSummary.change,
+      unknown: chainSummary.unknown,
+    },
+  );
 
   // Create the sync context
   let ctx = createSyncContext({
@@ -99,9 +134,13 @@ export async function executeSyncPipeline(
   let phasesToExecute = phases;
 
   if (options?.onlyPhases && options.onlyPhases.length > 0) {
-    phasesToExecute = phases.filter(p => options.onlyPhases!.includes(p.name));
+    phasesToExecute = phases.filter((p) =>
+      options.onlyPhases!.includes(p.name),
+    );
   } else if (options?.skipPhases && options.skipPhases.length > 0) {
-    phasesToExecute = phases.filter(p => !options.skipPhases!.includes(p.name));
+    phasesToExecute = phases.filter(
+      (p) => !options.skipPhases!.includes(p.name),
+    );
   }
 
   // Execute phases in sequence
@@ -122,7 +161,7 @@ export async function executeSyncPipeline(
       }
     } catch (error) {
       const pipelineError: SyncPipelineError = {
-        name: 'SyncPipelineError',
+        name: "SyncPipelineError",
         message: `Sync pipeline failed at phase "${phase.name}": ${getErrorMessage(error)}`,
         cause: error instanceof Error ? error : new Error(String(error)),
         completedPhases: ctx.completedPhases,
@@ -142,12 +181,18 @@ export async function executeSyncPipeline(
     elapsedMs: elapsed,
   };
 
-  walletLog(walletId, 'info', 'SYNC', `Sync completed in ${(elapsed / 1000).toFixed(1)}s`, {
-    addresses: result.addresses,
-    transactions: result.transactions,
-    utxos: result.utxos,
-    viaTor,
-  });
+  walletLog(
+    walletId,
+    "info",
+    "SYNC",
+    `Sync completed in ${(elapsed / 1000).toFixed(1)}s`,
+    {
+      addresses: result.addresses,
+      transactions: result.transactions,
+      utxos: result.utxos,
+      viaTor,
+    },
+  );
 
   return result;
 }
@@ -157,7 +202,7 @@ export async function executeSyncPipeline(
  */
 export function createPhase(
   name: string,
-  execute: (ctx: SyncContext) => Promise<SyncContext>
+  execute: (ctx: SyncContext) => Promise<SyncContext>,
 ): SyncPhase {
   return { name, execute };
 }
