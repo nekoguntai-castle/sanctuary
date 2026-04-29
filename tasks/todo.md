@@ -1,3 +1,27 @@
+# Active Task: Runtime Ops PR Delivery Follow-Up 2026-04-29
+
+Status: in progress
+
+Goal: finish PR #228 delivery after the Quick Render Regression check exposed missing E2E coverage for the new global price-provider requests.
+
+## Plan
+
+- [x] Inspect the failed Quick Render Regression CI job and reproduce locally.
+- [x] Identify the root cause instead of rerunning CI blindly.
+- [x] Add shared E2E handling for global price-provider boot requests and diagnostics.
+- [x] Tighten the render assertion that became ambiguous after adding diagnostics UI.
+- [x] Re-run the render regression suite locally with the CI-shaped preview command.
+- [ ] Commit, push, re-monitor required checks, and merge through the merge queue.
+
+## Review
+
+- The failed CI job was caused by E2E route mocks treating the new global `GET /price/providers` CurrencyContext call as unhandled. Admin Node Configuration also needed `GET /price/providers/status` for the diagnostics panel.
+- Added shared provider responses in `e2e/helpers.ts` so route-level E2E mocks do not each need their own duplicate provider bootstrap mock.
+- Updated the Settings render contract to target the exact `Price Provider` heading, avoiding ambiguity with `Price Provider Diagnostics`.
+- Verification passed: local render regression without retries, exact CI-shaped `npm run test:e2e -- --project=chromium e2e/render-regression.spec.ts`, `npm run typecheck:tests`, Prettier check for touched E2E files, `npm run quality:lizard`, and `git diff --check`.
+
+---
+
 # Active Task: Runtime Ops Hardening Implementation 2026-04-29
 
 Status: complete
