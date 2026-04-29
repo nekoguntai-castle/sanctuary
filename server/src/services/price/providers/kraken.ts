@@ -6,6 +6,7 @@
  */
 
 import { BasePriceProvider } from './base';
+import type { PriceProviderRuntimeOptions } from './base';
 import type { PriceData } from '../types';
 
 interface KrakenTickerResponse {
@@ -19,11 +20,12 @@ interface KrakenTickerResponse {
 }
 
 export class KrakenPriceProvider extends BasePriceProvider {
-  constructor() {
+  constructor(options: PriceProviderRuntimeOptions = {}) {
     super({
       name: 'kraken',
       priority: 80, // Third priority
       supportedCurrencies: ['USD', 'EUR', 'GBP', 'CAD', 'CHF', 'AUD', 'JPY'],
+      registerCircuitBreaker: options.registerCircuitBreaker,
     });
   }
 

@@ -5,41 +5,50 @@
  * background, Telegram integration, and other preferences.
  */
 
-import { render,screen } from '@testing-library/react';
-import React from 'react';
-import { beforeEach,describe,expect,it,vi } from 'vitest';
+import { render, screen } from "@testing-library/react";
+import React from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock CurrencyContext
 const mockSetCurrency = vi.fn();
-vi.mock('../../contexts/CurrencyContext', () => ({
+vi.mock("../../contexts/CurrencyContext", () => ({
   useCurrency: () => ({
-    currency: 'USD',
+    currency: "USD",
     setCurrency: mockSetCurrency,
-    format: (sats: number) => `$${(sats / 100000000 * 50000).toFixed(2)}`,
+    format: (sats: number) => `$${((sats / 100000000) * 50000).toFixed(2)}`,
     btcPrice: 50000,
+    priceProvider: "auto",
+    setPriceProvider: vi.fn(),
+    availableProviders: ["auto", "mempool"],
+    refreshPrice: vi.fn(),
+    priceLoading: false,
+    lastPriceUpdate: null,
+    currencySymbol: "$",
+    fiatCurrency: "USD",
   }),
   FiatCurrency: {
-    USD: 'USD',
-    EUR: 'EUR',
-    GBP: 'GBP',
+    USD: "USD",
+    EUR: "EUR",
+    GBP: "GBP",
   },
 }));
 
 // Mock UserContext
 const mockUpdatePreferences = vi.fn().mockResolvedValue({});
-vi.mock('../../contexts/UserContext', () => ({
+vi.mock("../../contexts/UserContext", () => ({
   useUser: () => ({
     user: {
-      id: 'user-123',
-      username: 'testuser',
+      id: "user-123",
+      username: "testuser",
+      isAdmin: true,
       preferences: {
-        theme: 'sanctuary',
-        background: 'none',
-        season: 'spring',
+        theme: "sanctuary",
+        background: "none",
+        season: "spring",
         telegram: {
           enabled: false,
-          botToken: '',
-          chatId: '',
+          botToken: "",
+          chatId: "",
         },
       },
     },
@@ -48,7 +57,7 @@ vi.mock('../../contexts/UserContext', () => ({
 }));
 
 // Mock notification sound hook
-vi.mock('../../hooks/useNotificationSound', () => ({
+vi.mock("../../hooks/useNotificationSound", () => ({
   useNotificationSound: () => ({
     enabled: true,
     toggle: vi.fn(),
@@ -57,23 +66,25 @@ vi.mock('../../hooks/useNotificationSound', () => ({
 }));
 
 // Mock auth API for Telegram
-vi.mock('../../src/api/auth', () => ({
+vi.mock("../../src/api/auth", () => ({
   testTelegramConfig: vi.fn().mockResolvedValue({ success: true }),
-  fetchTelegramChatId: vi.fn().mockResolvedValue({ success: true, chatId: '123456' }),
+  fetchTelegramChatId: vi
+    .fn()
+    .mockResolvedValue({ success: true, chatId: "123456" }),
 }));
 
 // Mock API client
-vi.mock('../../src/api/client', () => ({
+vi.mock("../../src/api/client", () => ({
   ApiError: class ApiError extends Error {
     constructor(message: string) {
       super(message);
-      this.name = 'ApiError';
+      this.name = "ApiError";
     }
   },
 }));
 
 // Mock logger
-vi.mock('../../utils/logger', () => ({
+vi.mock("../../utils/logger", () => ({
   createLogger: () => ({
     info: vi.fn(),
     debug: vi.fn(),
@@ -83,44 +94,44 @@ vi.mock('../../utils/logger', () => ({
 }));
 
 // Mock error handler
-vi.mock('../../utils/errorHandler', () => ({
-  logError: vi.fn().mockReturnValue('Error message'),
+vi.mock("../../utils/errorHandler", () => ({
+  logError: vi.fn().mockReturnValue("Error message"),
 }));
 
 // Mock theme registry with all methods used by Settings component
-vi.mock('../../themes', () => ({
+vi.mock("../../themes", () => ({
   themeRegistry: {
     getTheme: vi.fn().mockReturnValue({
-      id: 'sanctuary',
-      name: 'Sanctuary',
+      id: "sanctuary",
+      name: "Sanctuary",
       colors: {},
     }),
     getAllThemes: vi.fn().mockReturnValue([
-      { id: 'sanctuary', name: 'Sanctuary' },
-      { id: 'dark', name: 'Dark' },
+      { id: "sanctuary", name: "Sanctuary" },
+      { id: "dark", name: "Dark" },
     ]),
     getAllMetadata: vi.fn().mockReturnValue([
-      { id: 'sanctuary', name: 'Sanctuary' },
-      { id: 'dark', name: 'Dark' },
+      { id: "sanctuary", name: "Sanctuary" },
+      { id: "dark", name: "Dark" },
     ]),
-    getCurrentSeason: vi.fn().mockReturnValue('spring'),
-    getSeasonalBackground: vi.fn().mockReturnValue('none'),
-    getDefaultSeasonalBackground: vi.fn().mockReturnValue('none'),
+    getCurrentSeason: vi.fn().mockReturnValue("spring"),
+    getSeasonalBackground: vi.fn().mockReturnValue("none"),
+    getDefaultSeasonalBackground: vi.fn().mockReturnValue("none"),
     getAllPatterns: vi.fn().mockReturnValue([]),
-    getSeasonName: vi.fn().mockReturnValue('Spring'),
+    getSeasonName: vi.fn().mockReturnValue("Spring"),
   },
-  Season: ['spring', 'summer', 'fall', 'winter'],
+  Season: ["spring", "summer", "fall", "winter"],
 }));
 
 // Mock background categories
-vi.mock('../../themes/backgroundCategories', () => ({
+vi.mock("../../themes/backgroundCategories", () => ({
   CATEGORIES: [],
   BACKGROUND_CATEGORIES: [],
   getCategoriesForBackground: vi.fn().mockReturnValue([]),
 }));
 
 // Mock lucide-react icons using simple JSX pattern that works
-vi.mock('lucide-react', () => ({
+vi.mock("lucide-react", () => ({
   Monitor: () => <span data-testid="monitor-icon" />,
   DollarSign: () => <span data-testid="dollar-icon" />,
   Globe: () => <span data-testid="globe-icon" />,
@@ -187,25 +198,38 @@ vi.mock('lucide-react', () => ({
 }));
 
 // Mock Button component
-vi.mock('../../components/ui/Button', () => ({
-  Button: ({ children, onClick, disabled, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) => (
-    <button onClick={onClick} disabled={disabled} {...props}>{children}</button>
+vi.mock("../../components/ui/Button", () => ({
+  Button: ({
+    children,
+    onClick,
+    disabled,
+    ...props
+  }: React.ButtonHTMLAttributes<HTMLButtonElement>) => (
+    <button onClick={onClick} disabled={disabled} {...props}>
+      {children}
+    </button>
+  ),
+}));
+
+vi.mock("../../components/PriceProviderDiagnostics", () => ({
+  PriceProviderDiagnostics: () => (
+    <div data-testid="price-provider-diagnostics">Diagnostics</div>
   ),
 }));
 
 // Mock custom icons
-vi.mock('../../components/ui/CustomIcons', () => ({
+vi.mock("../../components/ui/CustomIcons", () => ({
   SanctuaryLogo: () => <span data-testid="sanctuary-logo" />,
   SatsIcon: () => <span data-testid="sats-icon" />,
 }));
 
-describe('Settings Component', () => {
+describe("Settings Component", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should render settings component', async () => {
-    const { Settings } = await import('../../components/Settings');
+  it("should render settings component", async () => {
+    const { Settings } = await import("../../components/Settings");
 
     render(<Settings />);
 
@@ -213,70 +237,78 @@ describe('Settings Component', () => {
     expect(document.body).toBeDefined();
   });
 
-  it('should display settings tabs', async () => {
-    const { Settings } = await import('../../components/Settings');
+  it("should display settings tabs", async () => {
+    const { Settings } = await import("../../components/Settings");
 
     render(<Settings />);
 
     // Settings should render with tabs visible
-    expect((document.body.textContent ?? '').length).toBeGreaterThan(0);
+    expect((document.body.textContent ?? "").length).toBeGreaterThan(0);
   });
 
-  it('labels all tab buttons for icon-only mobile layouts', async () => {
-    const { Settings } = await import('../../components/Settings');
+  it("labels all tab buttons for icon-only mobile layouts", async () => {
+    const { Settings } = await import("../../components/Settings");
 
     render(<Settings />);
 
-    for (const tabName of ['Appearance', 'Display', 'Services', 'Notifications']) {
-      expect(screen.getByRole('button', { name: tabName })).toHaveAttribute('aria-label', tabName);
+    for (const tabName of [
+      "Appearance",
+      "Display",
+      "Services",
+      "Notifications",
+    ]) {
+      expect(screen.getByRole("button", { name: tabName })).toHaveAttribute(
+        "aria-label",
+        tabName,
+      );
     }
   });
 
-  it('should display theme options', async () => {
-    const { Settings } = await import('../../components/Settings');
+  it("should display theme options", async () => {
+    const { Settings } = await import("../../components/Settings");
 
     render(<Settings />);
 
-    expect(screen.getByTestId('palette-icon')).toBeInTheDocument();
+    expect(screen.getByTestId("palette-icon")).toBeInTheDocument();
   });
 
-  it('should display notification sound toggle', async () => {
-    const { Settings } = await import('../../components/Settings');
+  it("should display notification sound toggle", async () => {
+    const { Settings } = await import("../../components/Settings");
 
     render(<Settings />);
 
-    expect(screen.getByTestId('volume-icon')).toBeInTheDocument();
+    expect(screen.getByTestId("volume-icon")).toBeInTheDocument();
   });
 
-  it('should display appearance tab content', async () => {
-    const { Settings } = await import('../../components/Settings');
+  it("should display appearance tab content", async () => {
+    const { Settings } = await import("../../components/Settings");
 
     render(<Settings />);
 
     // Appearance tab is default - should show theme-related content
-    expect(screen.getByTestId('palette-icon')).toBeInTheDocument();
+    expect(screen.getByTestId("palette-icon")).toBeInTheDocument();
   });
 
-  it('should display season options', async () => {
-    const { Settings } = await import('../../components/Settings');
+  it("should display season options", async () => {
+    const { Settings } = await import("../../components/Settings");
 
     render(<Settings />);
 
-    expect(screen.getByTestId('calendar-icon')).toBeInTheDocument();
+    expect(screen.getByTestId("calendar-icon")).toBeInTheDocument();
   });
 });
 
-describe('Settings - Tab Navigation', () => {
+describe("Settings - Tab Navigation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should render with default appearance tab', async () => {
-    const { Settings } = await import('../../components/Settings');
+  it("should render with default appearance tab", async () => {
+    const { Settings } = await import("../../components/Settings");
 
     render(<Settings />);
 
     // Default tab should be appearance which shows calendar icon for seasons
-    expect(screen.getByTestId('calendar-icon')).toBeInTheDocument();
+    expect(screen.getByTestId("calendar-icon")).toBeInTheDocument();
   });
 });

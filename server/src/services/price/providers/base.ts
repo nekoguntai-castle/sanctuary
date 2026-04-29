@@ -13,7 +13,11 @@ import type { IPriceProvider, PriceData } from '../types';
 /**
  * Configuration for a price provider
  */
-export interface PriceProviderConfig {
+export interface PriceProviderRuntimeOptions {
+  registerCircuitBreaker?: boolean;
+}
+
+export interface PriceProviderConfig extends PriceProviderRuntimeOptions {
   name: string;
   priority: number;
   supportedCurrencies: string[];
@@ -43,11 +47,15 @@ export abstract class BasePriceProvider implements IPriceProvider {
     this.timeoutMs = config.timeoutMs ?? 2000; // Fast fail for better UX
     this.log = createLogger(`PRICE:SVC_${config.name}`);
 
-    this.circuit = createCircuitBreaker<PriceData>({
+    const circuitConfig = {
       name: `price-${config.name}`,
       failureThreshold: config.circuitBreaker?.failureThreshold ?? 3,
       recoveryTimeout: config.circuitBreaker?.recoveryTimeout ?? 30000, // Faster recovery
-    });
+    };
+
+    this.circuit = config.registerCircuitBreaker === false
+      ? new CircuitBreaker<PriceData>(circuitConfig)
+      : createCircuitBreaker<PriceData>(circuitConfig);
   }
 
   /**
@@ -89,6 +97,20 @@ export abstract class BasePriceProvider implements IPriceProvider {
     return this.circuit.execute(async () => {
       return this.fetchPrice(normalizedCurrency);
     });
+  }
+
+  /**
+   * Fetch price without registering health/circuit-breaker side effects.
+   * Used by operator diagnostics.
+   */
+  async testPrice(currency: string): Promise<PriceData> {
+    const normalizedCurrency = currency.toUpperCase();
+
+    if (!this.supportsCurrency(normalizedCurrency)) {
+      throw new Error(`Currency ${normalizedCurrency} not supported by ${this.name}`);
+    }
+
+    return this.fetchPrice(normalizedCurrency);
   }
 
   /**
