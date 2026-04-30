@@ -5,12 +5,13 @@
  * JWT auth; they require an `agt_` bearer token that is scoped to one agent.
  */
 
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { z } from 'zod';
 import { requireAgentFundingDraftAccess } from '../agent/auth';
 import { ForbiddenError } from '../errors';
 import { asyncHandler } from '../errors/errorHandler';
 import { authenticateAgent, requireAgentContext } from '../middleware/agentAuth';
+import { rateLimitByKey } from '../middleware/rateLimit';
 import { validate } from '../middleware/validate';
 import { validateAgentFundingDraftSubmission } from '../services/agentFundingDraftValidation';
 import { getAgentWalletSummary, submitAgentFundingDraft } from '../services/agentApiService';
@@ -64,6 +65,13 @@ const FundingDraftBodySchema = z.object({
   memo: OptionalDraftTextSchema.optional(),
 });
 
+const agentRateLimitOptions = { message: 'Agent API rate limit exceeded. Please slow down.' };
+
+function getAgentRateLimitKey(req: Request): string {
+  const context = req.agentContext;
+  return context?.keyPrefix ? `agent:${context.keyPrefix}` : `ip:${req.ip ?? 'unknown'}`;
+}
+
 router.use(authenticateAgent);
 
 /**
@@ -72,6 +80,7 @@ router.use(authenticateAgent);
  */
 router.get(
   '/wallets/:fundingWalletId/summary',
+  rateLimitByKey('api:default', getAgentRateLimitKey, agentRateLimitOptions),
   validate({
     params: FundingDraftParamsSchema,
   }),
@@ -89,6 +98,7 @@ router.get(
  */
 router.get(
   '/wallets/:fundingWalletId/operational-address',
+  rateLimitByKey('api:default', getAgentRateLimitKey, agentRateLimitOptions),
   validate({
     params: FundingDraftParamsSchema,
   }),
@@ -119,6 +129,7 @@ router.get(
  */
 router.post(
   '/wallets/:fundingWalletId/operational-address/verify',
+  rateLimitByKey('api:default', getAgentRateLimitKey, agentRateLimitOptions),
   validate({
     body: OperationalAddressVerifyBodySchema,
     params: FundingDraftParamsSchema,
@@ -144,6 +155,7 @@ router.post(
  */
 router.post(
   '/wallets/:fundingWalletId/funding-drafts',
+  rateLimitByKey('api:default', getAgentRateLimitKey, agentRateLimitOptions),
   validate({
     body: FundingDraftBodySchema,
     params: FundingDraftParamsSchema,
@@ -210,6 +222,7 @@ router.post(
  */
 router.patch(
   '/wallets/:fundingWalletId/funding-drafts/:draftId/signature',
+  rateLimitByKey('api:default', getAgentRateLimitKey, agentRateLimitOptions),
   validate({
     body: FundingDraftSignatureBodySchema,
     params: FundingDraftSignatureParamsSchema,
