@@ -16,8 +16,10 @@ const mocks = vi.hoisted(() => ({
   markAgentFundingDraftCreated: vi.fn(),
   markFundingOverrideUsed: vi.fn(),
   requireAgentFundingDraftAccess: vi.fn(),
+  runDraftCreatedSideEffects: vi.fn(),
   verifyOperationalReceiveAddress: vi.fn(),
   withAgentFundingLock: vi.fn(),
+  withAgentFundingTransaction: vi.fn(),
 }));
 
 vi.mock('../../../src/agent/auth', () => ({
@@ -30,6 +32,7 @@ vi.mock('../../../src/repositories', () => ({
     markAgentFundingDraftCreated: mocks.markAgentFundingDraftCreated,
     markFundingOverrideUsed: mocks.markFundingOverrideUsed,
     withAgentFundingLock: mocks.withAgentFundingLock,
+    withAgentFundingTransaction: mocks.withAgentFundingTransaction,
   },
   utxoRepository: {},
   walletRepository: {},
@@ -55,6 +58,7 @@ vi.mock('../../../src/services/bitcoin/transactionService', () => ({
 vi.mock('../../../src/services/draftService', () => ({
   draftService: {
     createDraft: mocks.createDraft,
+    runDraftCreatedSideEffects: mocks.runDraftCreatedSideEffects,
   },
 }));
 
@@ -127,8 +131,10 @@ describe('agentApiService', () => {
     mocks.markAgentFundingDraftCreated.mockResolvedValue(undefined);
     mocks.markFundingOverrideUsed.mockResolvedValue(undefined);
     mocks.requireAgentFundingDraftAccess.mockReturnValue(undefined);
+    mocks.runDraftCreatedSideEffects.mockResolvedValue(undefined);
     mocks.verifyOperationalReceiveAddress.mockResolvedValue({ verified: true });
     mocks.withAgentFundingLock.mockImplementation(async (_agentId, fn) => fn());
+    mocks.withAgentFundingTransaction.mockImplementation(async (_agentId, fn) => fn({ tx: true }));
   });
 
   it('records rejected attempts with null amount for unsupported amount inputs', async () => {
@@ -210,6 +216,41 @@ describe('agentApiService', () => {
       'agent-1',
       'utxo_locked',
     );
+  });
+
+  it('records accepted attempts without rejected-attempt alerting', async () => {
+    await recordAgentFundingAttempt({
+      agentId: 'agent-1',
+      keyId: 'key-1',
+      keyPrefix: 'agt_prefix',
+      fundingWalletId: 'funding-wallet',
+      operationalWalletId: 'operational-wallet',
+      draftId: 'draft-1',
+      status: 'accepted',
+      amount: ' 1234 ',
+      feeRate: 2,
+      recipient: 'tb1q'.padEnd(240, 'a'),
+      ipAddress: '203.0.113.10',
+      userAgent: 'agent-client/1.0',
+    });
+
+    expect(mocks.createFundingAttempt).toHaveBeenCalledWith({
+      agentId: 'agent-1',
+      keyId: 'key-1',
+      keyPrefix: 'agt_prefix',
+      fundingWalletId: 'funding-wallet',
+      operationalWalletId: 'operational-wallet',
+      draftId: 'draft-1',
+      status: 'accepted',
+      reasonCode: null,
+      reasonMessage: null,
+      amount: 1234n,
+      feeRate: 2,
+      recipient: 'tb1q'.padEnd(200, 'a'),
+      ipAddress: '203.0.113.10',
+      userAgent: 'agent-client/1.0',
+    });
+    expect(mocks.evaluateRejectedFundingAttemptAlert).not.toHaveBeenCalled();
   });
 
   it('rejects unsafe numeric draft amounts before creating a transaction', async () => {
@@ -307,7 +348,68 @@ describe('agentApiService', () => {
         ],
         policyEvaluation,
       }),
+      expect.objectContaining({
+        client: expect.any(Object),
+        runSideEffects: false,
+      }),
     );
+    expect(mocks.createFundingAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'accepted', amount: 1000n }),
+      expect.any(Object),
+    );
+    expect(mocks.runDraftCreatedSideEffects).toHaveBeenCalledWith(
+      'funding-wallet',
+      'user-1',
+      { id: 'draft-1' },
+      expect.objectContaining({ policyEvaluation }),
+    );
+  });
+
+  it('rolls back agent draft acceptance when accepted attempt recording fails', async () => {
+    mocks.createFundingAttempt.mockRejectedValueOnce(new Error('attempt store unavailable'));
+
+    await expect(
+      submitAgentFundingDraft({
+        context: agentContext as any,
+        fundingWalletId: 'funding-wallet',
+        body: baseFundingDraftBody,
+      }),
+    ).rejects.toThrow('attempt store unavailable');
+
+    expect(mocks.createDraft).toHaveBeenCalledWith(
+      'funding-wallet',
+      'user-1',
+      expect.any(Object),
+      expect.objectContaining({ runSideEffects: false }),
+    );
+    expect(mocks.runDraftCreatedSideEffects).not.toHaveBeenCalled();
+    expect(mocks.createFundingAttempt).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        status: 'rejected',
+        reasonCode: 'unexpected_error',
+      }),
+    );
+  });
+
+  it('returns transaction results that do not carry deferred draft side effects', async () => {
+    mocks.withAgentFundingTransaction.mockResolvedValueOnce({
+      draft: { id: 'draft-without-side-effects' },
+      usedOverrideId: null,
+      sideEffects: null,
+    });
+
+    await expect(
+      submitAgentFundingDraft({
+        context: agentContext as any,
+        fundingWalletId: 'funding-wallet',
+        body: baseFundingDraftBody,
+      }),
+    ).resolves.toEqual({
+      draft: { id: 'draft-without-side-effects' },
+      usedOverrideId: null,
+    });
+
+    expect(mocks.runDraftCreatedSideEffects).not.toHaveBeenCalled();
   });
 
   it('rejects vault policy blocks before draft creation', async () => {

@@ -191,6 +191,7 @@ jobs:
           bash -n scripts/ci/time-command.sh
           bash -n scripts/ci/report-workflow-durations.sh
           bash -n scripts/ci/report-workflow-trends.sh
+          bash -n scripts/ci/report-timing-notices.sh
           bash -n tests/ci/playwright-timing-reporter.test.sh
           bash -n tests/ci/classify-test-changes.test.sh
           bash -n tests/ci/classify-docker-build-images.test.sh
@@ -200,6 +201,7 @@ jobs:
           bash -n tests/ci/backend-integration-groups.test.sh
           bash -n tests/ci/frontend-coverage-scripts.test.sh
           bash -n tests/ci/report-workflow-trends.test.sh
+          bash -n tests/ci/report-timing-notices.test.sh
           node tests/ci/check-github-action-runtimes.test.mjs
           bash tests/ci/playwright-timing-reporter.test.sh
           bash tests/ci/classify-test-changes.test.sh
@@ -210,6 +212,7 @@ jobs:
           bash tests/ci/backend-integration-groups.test.sh
           bash tests/ci/frontend-coverage-scripts.test.sh
           bash tests/ci/report-workflow-trends.test.sh
+          bash tests/ci/report-timing-notices.test.sh
 
   lizard:
     name: Cyclomatic complexity (lizard)

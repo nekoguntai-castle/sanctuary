@@ -63,6 +63,8 @@ export interface UpdateDraftInput {
   expectedUpdatedAt?: Date;
 }
 
+export type DraftDbClient = Pick<typeof prisma, 'draftTransaction'>;
+
 const mobileAgentDraftInclude = {
   wallet: {
     select: {
@@ -231,8 +233,9 @@ export async function findExpired(): Promise<DraftTransaction[]> {
 /**
  * Create a new draft
  */
-export async function create(data: CreateDraftInput): Promise<DraftTransaction> {
-  return prisma.draftTransaction.create({
+export async function create(data: CreateDraftInput, client?: DraftDbClient): Promise<DraftTransaction> {
+  const db = client ?? prisma;
+  return db.draftTransaction.create({
     data: buildDraftCreateData(data),
   });
 }

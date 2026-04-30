@@ -65,7 +65,7 @@ vi.mock('../../../src/services/auditService', async () => {
   };
 });
 
-vi.setConfig(30000);
+vi.setConfig({ testTimeout: 30000 });
 
 const describeWithDb = canRunIntegrationTests() ? describe : describe.skip;
 

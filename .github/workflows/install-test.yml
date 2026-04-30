@@ -178,12 +178,15 @@ jobs:
         env:
           HTTPS_PORT: ${{ env.HTTPS_PORT }}
           HTTP_PORT: ${{ env.HTTP_PORT }}
+          KEEP_CONTAINERS: ${{ github.event.inputs.keep_containers }}
         run: |
-          if [ "${{ github.event.inputs.keep_containers }}" == "true" ]; then
-            ./tests/install/e2e/fresh-install.test.sh --keep-containers --verbose
-          else
-            ./tests/install/e2e/fresh-install.test.sh --verbose
-          fi
+          scripts/ci/time-command.sh "fresh install e2e" bash -c '
+            if [ "${KEEP_CONTAINERS:-false}" = "true" ]; then
+              ./tests/install/e2e/fresh-install.test.sh --keep-containers --verbose
+            else
+              ./tests/install/e2e/fresh-install.test.sh --verbose
+            fi
+          '
 
       - name: Show container logs on failure
         if: failure()
@@ -249,12 +252,15 @@ jobs:
         env:
           HTTPS_PORT: ${{ env.HTTPS_PORT }}
           HTTP_PORT: ${{ env.HTTP_PORT }}
+          KEEP_CONTAINERS: ${{ github.event.inputs.keep_containers }}
         run: |
-          if [ "${{ github.event.inputs.keep_containers }}" == "true" ]; then
-            ./tests/install/e2e/install-script.test.sh --keep-containers --verbose
-          else
-            ./tests/install/e2e/install-script.test.sh --verbose
-          fi
+          scripts/ci/time-command.sh "install script e2e" bash -c '
+            if [ "${KEEP_CONTAINERS:-false}" = "true" ]; then
+              ./tests/install/e2e/install-script.test.sh --keep-containers --verbose
+            else
+              ./tests/install/e2e/install-script.test.sh --verbose
+            fi
+          '
 
       - name: Show container logs on failure
         if: failure()
@@ -314,36 +320,38 @@ jobs:
           HTTPS_PORT: ${{ env.HTTPS_PORT }}
           HTTP_PORT: ${{ env.HTTP_PORT }}
         run: |
-          JWT_SECRET=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
-          ENCRYPTION_KEY=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
-          GATEWAY_SECRET=$(openssl rand -base64 32 | tr -d '=/+' | head -c 48)
-          POSTGRES_PASSWORD=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
-          AI_CONFIG_SECRET=$(openssl rand -hex 32)
-          REDIS_PASSWORD=$(openssl rand -base64 16 | tr -d '=/+' | head -c 24)
+          scripts/ci/time-command.sh "install stack startup" bash -c '
+            JWT_SECRET=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
+            ENCRYPTION_KEY=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
+            GATEWAY_SECRET=$(openssl rand -base64 32 | tr -d "=/+" | head -c 48)
+            POSTGRES_PASSWORD=$(openssl rand -base64 16 | tr -d "=/+" | head -c 24)
+            AI_CONFIG_SECRET=$(openssl rand -hex 32)
+            REDIS_PASSWORD=$(openssl rand -base64 16 | tr -d "=/+" | head -c 24)
 
-          cd docker/nginx/ssl && ./generate-certs.sh localhost && cd ../../..
+            cd docker/nginx/ssl && ./generate-certs.sh localhost && cd ../../..
 
-          JWT_SECRET="$JWT_SECRET" ENCRYPTION_KEY="$ENCRYPTION_KEY" \
-            GATEWAY_SECRET="$GATEWAY_SECRET" POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
-            AI_CONFIG_SECRET="$AI_CONFIG_SECRET" REDIS_PASSWORD="$REDIS_PASSWORD" \
-            HTTPS_PORT=$HTTPS_PORT HTTP_PORT=$HTTP_PORT \
-            RATE_LIMIT_LOGIN=100 RATE_LIMIT_PASSWORD_CHANGE=100 \
-            docker compose up -d --build
+            JWT_SECRET="$JWT_SECRET" ENCRYPTION_KEY="$ENCRYPTION_KEY" \
+              GATEWAY_SECRET="$GATEWAY_SECRET" POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+              AI_CONFIG_SECRET="$AI_CONFIG_SECRET" REDIS_PASSWORD="$REDIS_PASSWORD" \
+              HTTPS_PORT=$HTTPS_PORT HTTP_PORT=$HTTP_PORT \
+              RATE_LIMIT_LOGIN=100 RATE_LIMIT_PASSWORD_CHANGE=100 \
+              docker compose up -d --build
 
-          timeout 120 bash -c 'until docker compose ps migrate --format "{{.Status}}" 2>/dev/null | grep -q "Exited"; do sleep 5; done' || true
-          sleep 30
+            timeout 120 bash -c "until docker compose ps migrate --format \"{{.Status}}\" 2>/dev/null | grep -q \"Exited\"; do sleep 5; done" || true
+            sleep 30
+          '
 
       - name: Run container health tests
         if: needs.determine-scope.outputs.run_container_health == 'true'
         env:
           HTTPS_PORT: ${{ env.HTTPS_PORT }}
-        run: ./tests/install/e2e/container-health.test.sh --verbose
+        run: scripts/ci/time-command.sh "install stack container health" ./tests/install/e2e/container-health.test.sh --verbose
 
       - name: Run auth flow tests
         if: needs.determine-scope.outputs.run_auth_flow == 'true'
         env:
           HTTPS_PORT: ${{ env.HTTPS_PORT }}
-        run: ./tests/install/e2e/auth-flow.test.sh --verbose
+        run: scripts/ci/time-command.sh "install stack auth flow" ./tests/install/e2e/auth-flow.test.sh --verbose
 
       - name: Show container logs on failure
         if: failure()
@@ -535,7 +543,7 @@ jobs:
           SANCTUARY_UPGRADE_SOURCE_REF: ${{ github.event.inputs.upgrade_source_ref || matrix.source_ref }}
           SANCTUARY_UPGRADE_FIXTURE: ${{ matrix.fixture }}
           SANCTUARY_UPGRADE_ARTIFACT_DIR: .tmp/upgrade-artifacts/${{ matrix.source_ref }}-${{ matrix.fixture }}
-        run: ./tests/install/e2e/upgrade-install.test.sh --mode core --fixture "${{ matrix.fixture }}" --verbose
+        run: scripts/ci/time-command.sh "upgrade baseline ${{ matrix.source_ref }} ${{ matrix.fixture }}" ./tests/install/e2e/upgrade-install.test.sh --mode core --fixture "${{ matrix.fixture }}" --verbose
 
       - name: Show container logs on failure
         if: failure()
@@ -596,7 +604,7 @@ jobs:
           SANCTUARY_UPGRADE_SOURCE_REF: ${{ github.event.inputs.upgrade_source_ref || matrix.source_ref }}
           SANCTUARY_UPGRADE_FIXTURE: ${{ matrix.fixture }}
           SANCTUARY_UPGRADE_ARTIFACT_DIR: .tmp/upgrade-artifacts/${{ matrix.source_ref }}-${{ matrix.fixture }}
-        run: ./tests/install/e2e/upgrade-install.test.sh --mode core --fixture "${{ matrix.fixture }}" --verbose
+        run: scripts/ci/time-command.sh "upgrade extended ${{ matrix.source_ref }} ${{ matrix.fixture }}" ./tests/install/e2e/upgrade-install.test.sh --mode core --fixture "${{ matrix.fixture }}" --verbose
 
       - name: Show container logs on failure
         if: failure()

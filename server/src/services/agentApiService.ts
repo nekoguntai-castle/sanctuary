@@ -52,6 +52,14 @@ export interface AgentFundingAttemptInput {
 }
 
 export type SubmittedAgentFundingDraft = Awaited<ReturnType<typeof draftService.createDraft>>;
+type AgentDraftCreatePayload = Parameters<typeof draftService.createDraft>[2];
+
+interface AgentDraftSideEffects {
+  walletId: string;
+  userId: string;
+  draft: SubmittedAgentFundingDraft;
+  data: AgentDraftCreatePayload;
+}
 
 export interface SubmitAgentFundingDraftResult {
   draft: SubmittedAgentFundingDraft;
@@ -310,6 +318,7 @@ export async function submitAgentFundingDraft(
   } = input.body;
   let draft: SubmittedAgentFundingDraft | null = null;
   let usedOverrideId: string | null = null;
+  let draftSideEffects: AgentDraftSideEffects | null = null;
   let attemptAmount: unknown = amount;
 
   try {
@@ -326,7 +335,7 @@ export async function submitAgentFundingDraft(
     const draftLabel =
       typeof label === 'string' && label.trim() ? label.trim() : `Agent funding request: ${context.agentName}`;
 
-    draft = await agentRepository.withAgentFundingLock(context.agentId, async () => {
+    const transactionResult = await agentRepository.withAgentFundingTransaction(context.agentId, async tx => {
       const txData = await txService.createTransaction(fundingWalletId, recipient, amountNumber, feeRateNumber, {
         selectedUtxoIds,
         enableRBF,
@@ -350,7 +359,7 @@ export async function submitAgentFundingDraft(
         throw new ForbiddenError('Transaction blocked by vault policy');
       }
 
-      const createdDraft = await draftService.createDraft(fundingWalletId, context.userId, {
+      const draftData: AgentDraftCreatePayload = {
         recipient,
         amount: effectiveAmount,
         feeRate: feeRateNumber,
@@ -383,15 +392,19 @@ export async function submitAgentFundingDraft(
         notificationCreatedByUserId: null,
         notificationCreatedByLabel: context.agentName,
         policyEvaluation: vaultPolicyDecision.triggered.length > 0 ? vaultPolicyDecision : undefined,
+      };
+
+      const createdDraft = await draftService.createDraft(fundingWalletId, context.userId, draftData, {
+        client: tx,
+        runSideEffects: false,
       });
 
       if (policyDecision.overrideId) {
-        await agentRepository.markFundingOverrideUsed(policyDecision.overrideId, createdDraft.id);
-        usedOverrideId = policyDecision.overrideId;
+        await agentRepository.markFundingOverrideUsed(policyDecision.overrideId, createdDraft.id, tx);
       }
 
-      await agentRepository.markAgentFundingDraftCreated(context.agentId);
-      await recordAgentFundingAttempt({
+      await agentRepository.markAgentFundingDraftCreated(context.agentId, new Date(), tx);
+      await agentRepository.createFundingAttempt({
         agentId: context.agentId,
         keyId: context.keyId,
         keyPrefix: context.keyPrefix,
@@ -399,15 +412,30 @@ export async function submitAgentFundingDraft(
         operationalWalletId,
         draftId: createdDraft.id,
         status: 'accepted',
-        amount: effectiveAmount,
+        amount: effectiveAmountSats,
         feeRate: feeRateNumber,
         recipient,
         ipAddress,
         userAgent,
-      });
+      }, tx);
 
-      return createdDraft;
+      return {
+        draft: createdDraft,
+        usedOverrideId: policyDecision.overrideId ?? null,
+        sideEffects: {
+          walletId: fundingWalletId,
+          userId: context.userId,
+          draft: createdDraft,
+          data: draftData,
+        },
+      };
     });
+
+    if (transactionResult) {
+      draft = transactionResult.draft;
+      usedOverrideId = transactionResult.usedOverrideId;
+      draftSideEffects = transactionResult.sideEffects;
+    }
   } catch (error) {
     await recordAgentFundingAttempt({
       agentId: context.agentId,
@@ -428,6 +456,15 @@ export async function submitAgentFundingDraft(
 
   if (!draft) {
     throw new InvalidInputError('Agent funding draft was not created');
+  }
+
+  if (draftSideEffects) {
+    await draftService.runDraftCreatedSideEffects(
+      draftSideEffects.walletId,
+      draftSideEffects.userId,
+      draftSideEffects.draft,
+      draftSideEffects.data
+    );
   }
 
   return { draft, usedOverrideId };

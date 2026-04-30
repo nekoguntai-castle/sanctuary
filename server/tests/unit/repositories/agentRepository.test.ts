@@ -486,6 +486,23 @@ describe('agentRepository', () => {
     expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
   });
 
+  it('passes the advisory-locked transaction client to agent funding work', async () => {
+    const result = await agentRepository.withAgentFundingTransaction(
+      'agent-1',
+      async tx => {
+        expect(tx).toBe(prisma);
+        return 'transaction-result';
+      },
+    );
+
+    expect(result).toBe('transaction-result');
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+      maxWait: 5000,
+      timeout: 60000,
+    });
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+  });
+
   it('records agent funding attempts for monitoring', async () => {
     prisma.agentFundingAttempt.create.mockResolvedValue({ id: 'attempt-1' });
 
@@ -554,6 +571,26 @@ describe('agentRepository', () => {
         userAgent: null,
       },
     });
+
+    const client = {
+      agentFundingAttempt: { create: vi.fn().mockResolvedValue({ id: 'attempt-tx' }) },
+    };
+    await agentRepository.createFundingAttempt(
+      {
+        agentId: 'agent-1',
+        fundingWalletId: 'funding-wallet',
+        status: 'accepted',
+      },
+      client as any,
+    );
+    expect(client.agentFundingAttempt.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          agentId: 'agent-1',
+          status: 'accepted',
+        }),
+      }),
+    );
   });
 
   it('creates, lists, consumes, and revokes funding overrides', async () => {
