@@ -712,23 +712,35 @@ describe("PSBT Builder", () => {
     });
 
     it("should clamp an oversized decoy split to half of remaining amount", () => {
-      const randomValues = [
+      const randomFractions = [
         // 3 weight draws
         0.8087661718073307, 0.6637779357253595, 0.028267548351639693,
         // 2 variation draws
         0.12559837799690476, 0.9847832745898579,
-        // 2 shuffle draws
-        0, 0,
       ];
-      const randomSpy = vi
-        .spyOn(Math, "random")
-        .mockImplementation(() => randomValues.shift() ?? 0);
+      const shuffleIndexes = [0, 0];
+      const randomSource = {
+        randomFraction: vi.fn(() => randomFractions.shift() ?? 0),
+        randomInt: vi.fn(() => shuffleIndexes.shift() ?? 0),
+      };
+
+      const result = generateDecoyAmounts(1639, 3, dustThreshold, randomSource);
+
+      // This clamps a would-be 561 sat output to floor(1093 / 2) = 546.
+      expect([...result].sort((a, b) => a - b)).toEqual([546, 546, 547]);
+      expect(result.reduce((sum, value) => sum + value, 0)).toBe(1639);
+      expect(randomSource.randomFraction).toHaveBeenCalledTimes(5);
+      expect(randomSource.randomInt).toHaveBeenNthCalledWith(1, 3);
+      expect(randomSource.randomInt).toHaveBeenNthCalledWith(2, 2);
+    });
+
+    it("does not use Math.random for production decoy amount generation", () => {
+      const randomSpy = vi.spyOn(Math, "random");
 
       try {
-        const result = generateDecoyAmounts(1639, 3, dustThreshold);
-        // Branch at line 538 clamps a would-be 561 sat output to floor(1093 / 2) = 546.
-        expect([...result].sort((a, b) => a - b)).toEqual([546, 546, 547]);
-        expect(result.reduce((sum, value) => sum + value, 0)).toBe(1639);
+        generateDecoyAmounts(1000000, 3, dustThreshold);
+
+        expect(randomSpy).not.toHaveBeenCalled();
       } finally {
         randomSpy.mockRestore();
       }
