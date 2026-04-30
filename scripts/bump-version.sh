@@ -112,20 +112,24 @@ fi
 echo -e "${YELLOW}Bumping version: $CURRENT -> $NEW_VERSION${NC}"
 echo ""
 
-for file in "${PACKAGE_FILES[@]}"; do
-  sed -i "s/\"version\": \"[0-9]*\.[0-9]*\.[0-9]*\"/\"version\": \"$NEW_VERSION\"/" "$file"
-  echo -e "  ${GREEN}✓${NC} $file"
+# Update package.json AND its package-lock.json atomically per package, without re-resolving
+# dependencies. `npm version --no-git-tag-version` only touches the version fields; it does not
+# rewrite peer-dep resolutions the way `npm install --package-lock-only` does (the latter
+# silently dropped @bitcoinerlab/descriptors-core peer-optional resolutions in v0.8.47).
+PKG_DIRS=(. server gateway ai-proxy)
+for dir in "${PKG_DIRS[@]}"; do
+  if [ -f "$dir/package.json" ]; then
+    (cd "$dir" && npm version --no-git-tag-version --allow-same-version "$NEW_VERSION" > /dev/null)
+    echo -e "  ${GREEN}✓${NC} $dir/package.json + package-lock.json"
+  fi
 done
 
 echo ""
 echo -e "${GREEN}Version updated to $NEW_VERSION${NC}"
 echo ""
 echo "Next steps:"
-echo "  1. Update lock files:"
-echo "     npm install --package-lock-only"
-echo "     cd server && npm install --package-lock-only"
-echo "     cd gateway && npm install --package-lock-only"
-echo "     cd ai-proxy && npm install --package-lock-only"
+echo "  1. Verify lockfile peer resolution is still clean:"
+echo "     bash scripts/quality/check-lockfile-peer-resolution.sh"
 echo "  2. Commit: git add -A && git commit -m 'chore: bump version to $NEW_VERSION'"
 echo "  3. Open PR, merge through queue"
 echo "  4. Tag: git tag v$NEW_VERSION-rc1 && git push origin v$NEW_VERSION-rc1  # RC smoke"
