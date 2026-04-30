@@ -23,6 +23,11 @@ Goal: deliver PR #231 for the requester-only agent wallet setup flow, including 
 - The first merge-queue run passed CodeQL and Code Quality but failed the full Test Suite: backend unit coverage dropped below the enforced 100% gate, and frontend coverage shard 2 exposed a brittle `CurrencyContext` provider-reload test.
 - Added targeted backend route coverage for the agent policy limiter key fallback and the no-signer funding draft signature path.
 - Stabilized the `CurrencyContext` unauthenticated test setup so provider reload tests do not get an extra impossible `undefined` user transition under isolated coverage runs.
+- The second merge-queue run still failed full coverage: backend coverage missed `agentApiService` draft-validation/metadata branches and `agentRepository` no-signer creation, while the frontend merge missed the new agent form/import/xpub helper branches.
+- Added focused backend service/repository coverage for unsafe amounts, vault-policy blocks, decoy/input metadata, effective policy amounts, and requester-only agent creation.
+- Added focused frontend coverage for xpub validation API calls, agent form fallback/edit/cancel branches, raw-key import network/script-type branches, and inline operational-wallet import validation/error/default-name branches.
+- Simplified edit-mode agent identity fields so immutable fields render as always disabled instead of carrying an impossible non-edit branch.
+- Local coverage confirmation now shows 100% for `server/src/api/agent.ts`, `server/src/services/agentApiService.ts`, and `server/src/repositories/agentRepository.ts`; frontend coverage merge also reached 100% statements/branches/functions/lines.
 - Unrelated untracked files are present and intentionally not staged: `tasks/feature-timeline-2026-04-29.md` and `tasks/security-assessment-2026-04-29.md`.
 - The security assessment has not been addressed yet. It remains queued behind the PR #231 merge per user direction.
 

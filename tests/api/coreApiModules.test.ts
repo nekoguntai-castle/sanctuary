@@ -299,6 +299,12 @@ describe('Core API Modules', () => {
       await walletsApi.generateAddress('w1');
       await walletsApi.addDeviceToWallet('w1', { deviceId: 'd1' });
       await walletsApi.validateImport({ descriptor: 'wpkh(...)' });
+      await walletsApi.validateXpub({
+        xpub: 'tpub-inline',
+        scriptType: 'native_segwit',
+        network: 'testnet',
+        fingerprint: '00000000',
+      });
       await walletsApi.importWallet({ data: 'wpkh(...)', name: 'Imported' });
       await walletsApi.shareWalletWithGroup('w1', { groupId: 'g1' });
       await walletsApi.shareWalletWithUser('w1', { targetUserId: 'u1' });
@@ -321,6 +327,12 @@ describe('Core API Modules', () => {
       expect(mockPost).toHaveBeenCalledWith('/wallets/w1/addresses');
       expect(mockPost).toHaveBeenCalledWith('/wallets/w1/devices', { deviceId: 'd1' });
       expect(mockPost).toHaveBeenCalledWith('/wallets/import/validate', { descriptor: 'wpkh(...)' });
+      expect(mockPost).toHaveBeenCalledWith('/wallets/validate-xpub', {
+        xpub: 'tpub-inline',
+        scriptType: 'native_segwit',
+        network: 'testnet',
+        fingerprint: '00000000',
+      });
       expect(mockPost).toHaveBeenCalledWith('/wallets/import', { data: 'wpkh(...)', name: 'Imported' });
       expect(mockPost).toHaveBeenCalledWith('/wallets/w1/share/group', { groupId: 'g1' });
       expect(mockPost).toHaveBeenCalledWith('/wallets/w1/share/user', { targetUserId: 'u1' });

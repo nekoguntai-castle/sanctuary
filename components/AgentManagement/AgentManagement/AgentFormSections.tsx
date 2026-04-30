@@ -72,7 +72,6 @@ export function EditAgentFormFields(props: AgentFormFieldsProps) {
       <AgentNameField value={form.name} onChange={value => onFieldChange('name', value)} />
       <AgentIdentityFields
         form={form}
-        isEditing
         userOptions={userOptions}
         fundingOptions={fundingOptions}
         operationalOptions={operationalOptions}
@@ -253,7 +252,6 @@ function AgentPolicyStep({ form, onFieldChange }: { form: AgentFormState; onFiel
 
 function AgentIdentityFields({
   form,
-  isEditing,
   userOptions,
   fundingOptions,
   operationalOptions,
@@ -261,13 +259,13 @@ function AgentIdentityFields({
   onFieldChange,
   onUserChange,
   onFundingWalletChange,
-}: AgentFormFieldsProps & { isEditing: boolean }) {
+}: AgentFormFieldsProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       <SelectField
         label="Target user *"
         value={form.userId}
-        disabled={isEditing}
+        disabled
         onChange={onUserChange}
         options={userOptions}
       />
@@ -280,22 +278,22 @@ function AgentIdentityFields({
       <SelectField
         label="Funding wallet *"
         value={form.fundingWalletId}
-        disabled={isEditing || !form.userId}
+        disabled
         onChange={onFundingWalletChange}
         options={fundingOptions}
       />
       <SelectField
         label="Operational wallet *"
         value={form.operationalWalletId}
-        disabled={isEditing || !form.fundingWalletId}
+        disabled
         onChange={value => onFieldChange('operationalWalletId', value)}
         options={operationalOptions}
       />
-      <FullImportPageLink disabled={isEditing} />
+      <FullImportPageLink disabled />
       <SelectField
         label="Funding signer device (optional)"
         value={form.signerDeviceId}
-        disabled={isEditing || !form.fundingWalletId}
+        disabled
         onChange={value => onFieldChange('signerDeviceId', value)}
         placeholder="Human wallet signers"
         options={signerOptions}

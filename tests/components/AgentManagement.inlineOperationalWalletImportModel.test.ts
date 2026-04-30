@@ -39,6 +39,14 @@ describe('inlineOperationalWalletImportModel', () => {
     expect(getRawKeyDescription(detectRawOperationalKeyInput('ypub123'))).toBe(
       'Nested SegWit extended public key detected.'
     );
+    expect(
+      getRawKeyDescription({
+        kind: 'single_sig',
+        key: 'custom',
+        scriptType: 'custom' as any,
+        requiresScriptTypeSelection: false,
+      })
+    ).toBeNull();
   });
 
   it('ignores descriptors and detects raw multisig extended public keys', () => {
@@ -91,6 +99,54 @@ describe('inlineOperationalWalletImportModel', () => {
       data: 'wpkh([abcd1234/84h/1h/0h]tpub.../0/*)',
     });
     expect(validateXpub).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses inferred raw-key script types across supported validation networks', async () => {
+    const validateXpub = vi.fn().mockResolvedValue({
+      valid: true,
+      descriptor: 'wpkh([00000000/49h/0h/0h]ypub123/0/*)',
+      scriptType: 'nested_segwit',
+      firstAddress: '3...',
+      xpub: 'ypub123',
+      fingerprint: '00000000',
+      accountPath: "49'/0'/0'",
+    });
+
+    await expect(
+      normalizeOperationalImportData({
+        importData: 'ypub123',
+        rawKeyScriptType: 'taproot',
+        selectedFundingWallet: { ...fundingWallet, network: 'mainnet' },
+        validateXpub,
+      })
+    ).resolves.toEqual({
+      ok: true,
+      data: 'wpkh([00000000/49h/0h/0h]ypub123/0/*)',
+    });
+
+    await normalizeOperationalImportData({
+      importData: 'zpub123',
+      rawKeyScriptType: 'legacy',
+      selectedFundingWallet: { ...fundingWallet, network: 'regtest' },
+      validateXpub,
+    });
+
+    expect(validateXpub).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        xpub: 'ypub123',
+        scriptType: 'nested_segwit',
+        network: 'mainnet',
+      })
+    );
+    expect(validateXpub).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        xpub: 'zpub123',
+        scriptType: 'native_segwit',
+        network: 'regtest',
+      })
+    );
   });
 
   it('rejects raw multisig keys and unsupported xpub validation networks', async () => {

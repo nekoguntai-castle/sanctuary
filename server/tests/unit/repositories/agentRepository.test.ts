@@ -66,13 +66,15 @@ describe('agentRepository', () => {
   it('creates and finds wallet agent metadata', async () => {
     prisma.walletAgent.create.mockResolvedValue({ id: 'agent-1' });
 
-    await expect(agentRepository.createAgent({
-      userId: 'user-1',
-      name: 'Treasury Agent',
-      fundingWalletId: 'funding-wallet',
-      operationalWalletId: 'operational-wallet',
-      signerDeviceId: 'agent-device',
-    })).resolves.toEqual({ id: 'agent-1' });
+    await expect(
+      agentRepository.createAgent({
+        userId: 'user-1',
+        name: 'Treasury Agent',
+        fundingWalletId: 'funding-wallet',
+        operationalWalletId: 'operational-wallet',
+        signerDeviceId: 'agent-device',
+      }),
+    ).resolves.toEqual({ id: 'agent-1' });
 
     expect(prisma.walletAgent.create).toHaveBeenCalledWith({
       data: {
@@ -103,21 +105,27 @@ describe('agentRepository', () => {
     prisma.walletAgent.findUnique.mockResolvedValue({ id: 'agent-1' });
     await agentRepository.findAgentById('agent-1');
 
-    expect(prisma.walletAgent.findUnique).toHaveBeenCalledWith({ where: { id: 'agent-1' } });
+    expect(prisma.walletAgent.findUnique).toHaveBeenCalledWith({
+      where: { id: 'agent-1' },
+    });
 
     await agentRepository.findAgentByIdWithDetails('agent-1');
-    expect(prisma.walletAgent.findUnique).toHaveBeenLastCalledWith(expect.objectContaining({
-      where: { id: 'agent-1' },
-      include: expect.objectContaining({
-        user: expect.anything(),
-        fundingWallet: expect.anything(),
-        operationalWallet: expect.anything(),
-        signerDevice: expect.anything(),
-        apiKeys: true,
+    expect(prisma.walletAgent.findUnique).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: { id: 'agent-1' },
+        include: expect.objectContaining({
+          user: expect.anything(),
+          fundingWallet: expect.anything(),
+          operationalWallet: expect.anything(),
+          signerDevice: expect.anything(),
+          apiKeys: true,
+        }),
       }),
-    }));
+    );
 
-    await agentRepository.findActiveAgentsByOperationalWalletId('operational-wallet');
+    await agentRepository.findActiveAgentsByOperationalWalletId(
+      'operational-wallet',
+    );
     expect(prisma.walletAgent.findMany).toHaveBeenCalledWith({
       where: {
         operationalWalletId: 'operational-wallet',
@@ -128,7 +136,10 @@ describe('agentRepository', () => {
   });
 
   it('sets revokedAt when a wallet agent is created revoked', async () => {
-    prisma.walletAgent.create.mockResolvedValue({ id: 'agent-1', status: 'revoked' });
+    prisma.walletAgent.create.mockResolvedValue({
+      id: 'agent-1',
+      status: 'revoked',
+    });
 
     await agentRepository.createAgent({
       userId: 'user-1',
@@ -147,8 +158,28 @@ describe('agentRepository', () => {
     });
   });
 
+  it('creates wallet agents without a signer device', async () => {
+    prisma.walletAgent.create.mockResolvedValue({ id: 'agent-1' });
+
+    await agentRepository.createAgent({
+      userId: 'user-1',
+      name: 'Requester Only Agent',
+      fundingWalletId: 'funding-wallet',
+      operationalWalletId: 'operational-wallet',
+    });
+
+    expect(prisma.walletAgent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        signerDeviceId: null,
+      }),
+    });
+  });
+
   it('creates wallet agents with explicit policy and monitoring fields', async () => {
-    prisma.walletAgent.create.mockResolvedValue({ id: 'agent-2', status: 'paused' });
+    prisma.walletAgent.create.mockResolvedValue({
+      id: 'agent-2',
+      status: 'paused',
+    });
 
     await agentRepository.createAgent({
       userId: 'user-2',
@@ -204,27 +235,34 @@ describe('agentRepository', () => {
     prisma.walletAgent.findMany.mockResolvedValue([{ id: 'agent-1' }]);
     await agentRepository.findAgents();
 
-    expect(prisma.walletAgent.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      include: expect.objectContaining({
-        user: expect.anything(),
-        fundingWallet: expect.anything(),
-        operationalWallet: expect.anything(),
-        signerDevice: expect.anything(),
-        apiKeys: true,
+    expect(prisma.walletAgent.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: expect.objectContaining({
+          user: expect.anything(),
+          fundingWallet: expect.anything(),
+          operationalWallet: expect.anything(),
+          signerDevice: expect.anything(),
+          apiKeys: true,
+        }),
       }),
-    }));
+    );
 
     await agentRepository.findAgents({ walletId: 'wallet-1' });
-    expect(prisma.walletAgent.findMany).toHaveBeenLastCalledWith(expect.objectContaining({
-      where: {
-        OR: [
-          { fundingWalletId: 'wallet-1' },
-          { operationalWalletId: 'wallet-1' },
-        ],
-      },
-    }));
+    expect(prisma.walletAgent.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: {
+          OR: [
+            { fundingWalletId: 'wallet-1' },
+            { operationalWalletId: 'wallet-1' },
+          ],
+        },
+      }),
+    );
 
-    prisma.walletAgent.update.mockResolvedValue({ id: 'agent-1', status: 'paused' });
+    prisma.walletAgent.update.mockResolvedValue({
+      id: 'agent-1',
+      status: 'paused',
+    });
     await agentRepository.updateAgent('agent-1', {
       status: 'paused',
       maxFundingAmountSats: 100000n,
@@ -244,23 +282,34 @@ describe('agentRepository', () => {
       }),
     });
 
-    await agentRepository.markAgentFundingDraftCreated('agent-1', new Date('2026-04-16T00:00:00.000Z'));
+    await agentRepository.markAgentFundingDraftCreated(
+      'agent-1',
+      new Date('2026-04-16T00:00:00.000Z'),
+    );
     expect(prisma.walletAgent.update).toHaveBeenLastCalledWith({
       where: { id: 'agent-1' },
       data: { lastFundingDraftAt: new Date('2026-04-16T00:00:00.000Z') },
     });
 
-    prisma.draftTransaction.aggregate.mockResolvedValue({ _sum: { amount: 50000n } });
-    await expect(agentRepository.sumAgentDraftAmountsSince(
-      'agent-1',
-      new Date('2026-04-16T00:00:00.000Z')
-    )).resolves.toBe(50000n);
+    prisma.draftTransaction.aggregate.mockResolvedValue({
+      _sum: { amount: 50000n },
+    });
+    await expect(
+      agentRepository.sumAgentDraftAmountsSince(
+        'agent-1',
+        new Date('2026-04-16T00:00:00.000Z'),
+      ),
+    ).resolves.toBe(50000n);
 
-    prisma.draftTransaction.aggregate.mockResolvedValueOnce({ _sum: { amount: null } });
-    await expect(agentRepository.sumAgentDraftAmountsSince(
-      'agent-1',
-      new Date('2026-04-16T00:00:00.000Z')
-    )).resolves.toBe(0n);
+    prisma.draftTransaction.aggregate.mockResolvedValueOnce({
+      _sum: { amount: null },
+    });
+    await expect(
+      agentRepository.sumAgentDraftAmountsSince(
+        'agent-1',
+        new Date('2026-04-16T00:00:00.000Z'),
+      ),
+    ).resolves.toBe(0n);
   });
 
   it('updates every wallet agent field when explicit values are provided', async () => {
@@ -314,12 +363,14 @@ describe('agentRepository', () => {
   it('creates, finds, revokes, and updates agent API keys', async () => {
     prisma.agentApiKey.create.mockResolvedValue({ id: 'key-1' });
 
-    await expect(agentRepository.createApiKey({
-      agentId: 'agent-1',
-      name: 'Runtime key',
-      keyHash: 'hash',
-      keyPrefix: 'agt_hash',
-    })).resolves.toEqual({ id: 'key-1' });
+    await expect(
+      agentRepository.createApiKey({
+        agentId: 'agent-1',
+        name: 'Runtime key',
+        keyHash: 'hash',
+        keyPrefix: 'agt_hash',
+      }),
+    ).resolves.toEqual({ id: 'key-1' });
 
     expect(prisma.agentApiKey.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -350,7 +401,9 @@ describe('agentRepository', () => {
     });
 
     await agentRepository.findApiKeyById('key-1');
-    expect(prisma.agentApiKey.findUnique).toHaveBeenLastCalledWith({ where: { id: 'key-1' } });
+    expect(prisma.agentApiKey.findUnique).toHaveBeenLastCalledWith({
+      where: { id: 'key-1' },
+    });
 
     prisma.agentApiKey.findMany.mockResolvedValue([{ id: 'key-1' }]);
     await agentRepository.findApiKeysByAgentId('agent-1');
@@ -359,7 +412,10 @@ describe('agentRepository', () => {
       orderBy: { createdAt: 'desc' },
     });
 
-    prisma.agentApiKey.update.mockResolvedValue({ id: 'key-1', revokedAt: expect.any(Date) });
+    prisma.agentApiKey.update.mockResolvedValue({
+      id: 'key-1',
+      revokedAt: expect.any(Date),
+    });
     await agentRepository.revokeApiKey('key-1');
 
     expect(prisma.agentApiKey.update).toHaveBeenCalledWith({
@@ -368,7 +424,9 @@ describe('agentRepository', () => {
     });
 
     const staleBefore = new Date('2026-04-16T00:00:00.000Z');
-    await agentRepository.updateApiKeyLastUsedIfStale('key-1', staleBefore, { lastUsedIp: '127.0.0.1' });
+    await agentRepository.updateApiKeyLastUsedIfStale('key-1', staleBefore, {
+      lastUsedIp: '127.0.0.1',
+    });
 
     expect(prisma.agentApiKey.updateMany).toHaveBeenCalledWith({
       where: {
@@ -401,17 +459,24 @@ describe('agentRepository', () => {
       }),
     });
 
-    await agentRepository.updateApiKeyLastUsedIfStale('key-2', staleBefore, { lastUsedAgent: 'agent-runtime' });
-    expect(prisma.agentApiKey.updateMany).toHaveBeenLastCalledWith(expect.objectContaining({
-      data: expect.objectContaining({
-        lastUsedIp: null,
-        lastUsedAgent: 'agent-runtime',
+    await agentRepository.updateApiKeyLastUsedIfStale('key-2', staleBefore, {
+      lastUsedAgent: 'agent-runtime',
+    });
+    expect(prisma.agentApiKey.updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          lastUsedIp: null,
+          lastUsedAgent: 'agent-runtime',
+        }),
       }),
-    }));
+    );
   });
 
   it('serializes agent funding work with a database advisory lock', async () => {
-    const result = await agentRepository.withAgentFundingLock('agent-1', async () => 'locked-result');
+    const result = await agentRepository.withAgentFundingLock(
+      'agent-1',
+      async () => 'locked-result',
+    );
 
     expect(result).toBe('locked-result');
     expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
@@ -424,22 +489,24 @@ describe('agentRepository', () => {
   it('records agent funding attempts for monitoring', async () => {
     prisma.agentFundingAttempt.create.mockResolvedValue({ id: 'attempt-1' });
 
-    await expect(agentRepository.createFundingAttempt({
-      agentId: 'agent-1',
-      keyId: 'key-1',
-      keyPrefix: 'agt_prefix',
-      fundingWalletId: 'funding-wallet',
-      operationalWalletId: 'operational-wallet',
-      draftId: 'draft-1',
-      status: 'rejected',
-      reasonCode: 'policy_daily_limit',
-      reasonMessage: 'Agent daily funding limit would be exceeded',
-      amount: 10000n,
-      feeRate: 5,
-      recipient: 'tb1qrecipient',
-      ipAddress: '127.0.0.1',
-      userAgent: 'agent-runtime',
-    })).resolves.toEqual({ id: 'attempt-1' });
+    await expect(
+      agentRepository.createFundingAttempt({
+        agentId: 'agent-1',
+        keyId: 'key-1',
+        keyPrefix: 'agt_prefix',
+        fundingWalletId: 'funding-wallet',
+        operationalWalletId: 'operational-wallet',
+        draftId: 'draft-1',
+        status: 'rejected',
+        reasonCode: 'policy_daily_limit',
+        reasonMessage: 'Agent daily funding limit would be exceeded',
+        amount: 10000n,
+        feeRate: 5,
+        recipient: 'tb1qrecipient',
+        ipAddress: '127.0.0.1',
+        userAgent: 'agent-runtime',
+      }),
+    ).resolves.toEqual({ id: 'attempt-1' });
 
     expect(prisma.agentFundingAttempt.create).toHaveBeenCalledWith({
       data: {
@@ -460,7 +527,9 @@ describe('agentRepository', () => {
       },
     });
 
-    prisma.agentFundingAttempt.create.mockResolvedValueOnce({ id: 'attempt-2' });
+    prisma.agentFundingAttempt.create.mockResolvedValueOnce({
+      id: 'attempt-2',
+    });
     await agentRepository.createFundingAttempt({
       agentId: 'agent-1',
       fundingWalletId: 'funding-wallet',
@@ -508,15 +577,17 @@ describe('agentRepository', () => {
     };
 
     prisma.agentFundingOverride.create.mockResolvedValue(override);
-    await expect(agentRepository.createFundingOverride({
-      agentId: 'agent-1',
-      fundingWalletId: 'funding-wallet',
-      operationalWalletId: 'operational-wallet',
-      createdByUserId: 'admin-1',
-      reason: 'emergency refill',
-      maxAmountSats: 250000n,
-      expiresAt,
-    })).resolves.toEqual(override);
+    await expect(
+      agentRepository.createFundingOverride({
+        agentId: 'agent-1',
+        fundingWalletId: 'funding-wallet',
+        operationalWalletId: 'operational-wallet',
+        createdByUserId: 'admin-1',
+        reason: 'emergency refill',
+        maxAmountSats: 250000n,
+        expiresAt,
+      }),
+    ).resolves.toEqual(override);
 
     expect(prisma.agentFundingOverride.create).toHaveBeenCalledWith({
       data: {
@@ -530,7 +601,11 @@ describe('agentRepository', () => {
       },
     });
 
-    prisma.agentFundingOverride.create.mockResolvedValueOnce({ ...override, id: 'override-2', createdByUserId: null });
+    prisma.agentFundingOverride.create.mockResolvedValueOnce({
+      ...override,
+      id: 'override-2',
+      createdByUserId: null,
+    });
     await agentRepository.createFundingOverride({
       agentId: 'agent-1',
       fundingWalletId: 'funding-wallet',
@@ -548,11 +623,13 @@ describe('agentRepository', () => {
     });
 
     prisma.agentFundingOverride.findMany.mockResolvedValue([override]);
-    await expect(agentRepository.findFundingOverrides({
-      agentId: 'agent-1',
-      status: 'active',
-      limit: 10,
-    })).resolves.toEqual([override]);
+    await expect(
+      agentRepository.findFundingOverrides({
+        agentId: 'agent-1',
+        status: 'active',
+        limit: 10,
+      }),
+    ).resolves.toEqual([override]);
 
     expect(prisma.agentFundingOverride.findMany).toHaveBeenCalledWith({
       where: {
@@ -576,16 +653,22 @@ describe('agentRepository', () => {
     });
 
     prisma.agentFundingOverride.findUnique.mockResolvedValue(override);
-    await expect(agentRepository.findFundingOverrideById('override-1')).resolves.toEqual(override);
-    expect(prisma.agentFundingOverride.findUnique).toHaveBeenCalledWith({ where: { id: 'override-1' } });
+    await expect(
+      agentRepository.findFundingOverrideById('override-1'),
+    ).resolves.toEqual(override);
+    expect(prisma.agentFundingOverride.findUnique).toHaveBeenCalledWith({
+      where: { id: 'override-1' },
+    });
 
     prisma.agentFundingOverride.findFirst.mockResolvedValue(override);
-    await expect(agentRepository.findUsableFundingOverride({
-      agentId: 'agent-1',
-      operationalWalletId: 'operational-wallet',
-      amount: 125000n,
-      now,
-    })).resolves.toEqual(override);
+    await expect(
+      agentRepository.findUsableFundingOverride({
+        agentId: 'agent-1',
+        operationalWalletId: 'operational-wallet',
+        amount: 125000n,
+        now,
+      }),
+    ).resolves.toEqual(override);
 
     expect(prisma.agentFundingOverride.findFirst).toHaveBeenCalledWith({
       where: {
@@ -597,14 +680,15 @@ describe('agentRepository', () => {
         expiresAt: { gt: now },
         maxAmountSats: { gte: 125000n },
       },
-      orderBy: [
-        { expiresAt: 'asc' },
-        { createdAt: 'asc' },
-      ],
+      orderBy: [{ expiresAt: 'asc' }, { createdAt: 'asc' }],
     });
 
     prisma.agentFundingOverride.updateMany.mockResolvedValue({ count: 1 });
-    prisma.agentFundingOverride.findUnique.mockResolvedValue({ ...override, status: 'used', usedDraftId: 'draft-1' });
+    prisma.agentFundingOverride.findUnique.mockResolvedValue({
+      ...override,
+      status: 'used',
+      usedDraftId: 'draft-1',
+    });
     await agentRepository.markFundingOverrideUsed('override-1', 'draft-1');
     expect(prisma.agentFundingOverride.updateMany).toHaveBeenCalledWith({
       where: {
@@ -621,13 +705,21 @@ describe('agentRepository', () => {
     });
 
     prisma.agentFundingOverride.updateMany.mockResolvedValueOnce({ count: 0 });
-    await expect(agentRepository.markFundingOverrideUsed('override-1', 'draft-2')).rejects.toThrow('no longer usable');
+    await expect(
+      agentRepository.markFundingOverrideUsed('override-1', 'draft-2'),
+    ).rejects.toThrow('no longer usable');
 
     prisma.agentFundingOverride.updateMany.mockResolvedValueOnce({ count: 1 });
     prisma.agentFundingOverride.findUnique.mockResolvedValueOnce(null);
-    await expect(agentRepository.markFundingOverrideUsed('override-1', 'draft-3')).rejects.toThrow('not found');
+    await expect(
+      agentRepository.markFundingOverrideUsed('override-1', 'draft-3'),
+    ).rejects.toThrow('not found');
 
-    prisma.agentFundingOverride.update.mockResolvedValue({ ...override, status: 'revoked', revokedAt: now });
+    prisma.agentFundingOverride.update.mockResolvedValue({
+      ...override,
+      status: 'revoked',
+      revokedAt: now,
+    });
     await agentRepository.revokeFundingOverride('override-1');
     expect(prisma.agentFundingOverride.update).toHaveBeenLastCalledWith({
       where: { id: 'override-1' },
@@ -642,7 +734,9 @@ describe('agentRepository', () => {
     const since = new Date('2026-04-16T00:00:00.000Z');
     prisma.agentFundingAttempt.count.mockResolvedValue(3);
 
-    await expect(agentRepository.countRejectedFundingAttemptsSince('agent-1', since)).resolves.toBe(3);
+    await expect(
+      agentRepository.countRejectedFundingAttemptsSince('agent-1', since),
+    ).resolves.toBe(3);
     expect(prisma.agentFundingAttempt.count).toHaveBeenCalledWith({
       where: {
         agentId: 'agent-1',
@@ -652,18 +746,20 @@ describe('agentRepository', () => {
     });
 
     prisma.agentAlert.create.mockResolvedValue({ id: 'alert-1' });
-    await expect(agentRepository.createAlert({
-      agentId: 'agent-1',
-      walletId: 'wallet-1',
-      type: 'large_operational_spend',
-      severity: 'critical',
-      txid: 'a'.repeat(64),
-      amountSats: 100000n,
-      thresholdSats: 75000n,
-      message: 'Large operational spend',
-      dedupeKey: 'agent:agent-1:large_spend:tx',
-      metadata: { thresholdSats: '75000' },
-    })).resolves.toEqual({ id: 'alert-1' });
+    await expect(
+      agentRepository.createAlert({
+        agentId: 'agent-1',
+        walletId: 'wallet-1',
+        type: 'large_operational_spend',
+        severity: 'critical',
+        txid: 'a'.repeat(64),
+        amountSats: 100000n,
+        thresholdSats: 75000n,
+        message: 'Large operational spend',
+        dedupeKey: 'agent:agent-1:large_spend:tx',
+        metadata: { thresholdSats: '75000' },
+      }),
+    ).resolves.toEqual({ id: 'alert-1' });
 
     expect(prisma.agentAlert.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -683,15 +779,20 @@ describe('agentRepository', () => {
     prisma.agentAlert.create.mockClear();
     prisma.agentAlert.findFirst.mockResolvedValueOnce(null);
     prisma.agentAlert.create.mockResolvedValueOnce({ id: 'alert-locked' });
-    await expect(agentRepository.createAlertIfNotDuplicate({
-      agentId: 'agent-1',
-      type: 'operational_balance_low',
-      severity: 'warning',
-      amountSats: 20000n,
-      thresholdSats: 25000n,
-      message: 'Balance below threshold',
-      dedupeKey: 'agent:agent-1:balance_low:wallet-1',
-    }, since)).resolves.toEqual({ id: 'alert-locked' });
+    await expect(
+      agentRepository.createAlertIfNotDuplicate(
+        {
+          agentId: 'agent-1',
+          type: 'operational_balance_low',
+          severity: 'warning',
+          amountSats: 20000n,
+          thresholdSats: 25000n,
+          message: 'Balance below threshold',
+          dedupeKey: 'agent:agent-1:balance_low:wallet-1',
+        },
+        since,
+      ),
+    ).resolves.toEqual({ id: 'alert-locked' });
 
     expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
       maxWait: 5000,
@@ -716,25 +817,37 @@ describe('agentRepository', () => {
     prisma.agentAlert.findFirst.mockClear();
     prisma.agentAlert.create.mockClear();
     prisma.agentAlert.findFirst.mockResolvedValueOnce({ id: 'existing-alert' });
-    await expect(agentRepository.createAlertIfNotDuplicate({
-      agentId: 'agent-1',
-      type: 'operational_balance_low',
-      severity: 'warning',
-      message: 'Balance below threshold',
-      dedupeKey: 'agent:agent-1:balance_low:wallet-1',
-    }, since)).resolves.toBeNull();
+    await expect(
+      agentRepository.createAlertIfNotDuplicate(
+        {
+          agentId: 'agent-1',
+          type: 'operational_balance_low',
+          severity: 'warning',
+          message: 'Balance below threshold',
+          dedupeKey: 'agent:agent-1:balance_low:wallet-1',
+        },
+        since,
+      ),
+    ).resolves.toBeNull();
     expect(prisma.agentAlert.create).not.toHaveBeenCalled();
 
     prisma.$transaction.mockClear();
     prisma.$queryRaw.mockClear();
     prisma.agentAlert.create.mockClear();
-    prisma.agentAlert.create.mockResolvedValueOnce({ id: 'alert-without-dedupe' });
-    await expect(agentRepository.createAlertIfNotDuplicate({
-      agentId: 'agent-1',
-      type: 'manual_review',
-      severity: 'info',
-      message: 'Manual review alert without dedupe',
-    }, since)).resolves.toEqual({ id: 'alert-without-dedupe' });
+    prisma.agentAlert.create.mockResolvedValueOnce({
+      id: 'alert-without-dedupe',
+    });
+    await expect(
+      agentRepository.createAlertIfNotDuplicate(
+        {
+          agentId: 'agent-1',
+          type: 'manual_review',
+          severity: 'info',
+          message: 'Manual review alert without dedupe',
+        },
+        since,
+      ),
+    ).resolves.toEqual({ id: 'alert-without-dedupe' });
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(prisma.$queryRaw).not.toHaveBeenCalled();
     expect(prisma.agentAlert.create).toHaveBeenCalledWith({
@@ -746,12 +859,14 @@ describe('agentRepository', () => {
     });
 
     prisma.agentAlert.findMany.mockResolvedValue([{ id: 'alert-2' }]);
-    await expect(agentRepository.findAlerts({
-      agentId: 'agent-1',
-      status: 'open',
-      type: 'large_operational_fee',
-      limit: 10,
-    })).resolves.toEqual([{ id: 'alert-2' }]);
+    await expect(
+      agentRepository.findAlerts({
+        agentId: 'agent-1',
+        status: 'open',
+        type: 'large_operational_fee',
+        limit: 10,
+      }),
+    ).resolves.toEqual([{ id: 'alert-2' }]);
     expect(prisma.agentAlert.findMany).toHaveBeenCalledWith({
       where: {
         agentId: 'agent-1',

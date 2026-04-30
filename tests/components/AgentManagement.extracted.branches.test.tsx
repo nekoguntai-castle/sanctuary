@@ -1,8 +1,9 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ActiveKeyList } from '../../components/AgentManagement/AgentManagement/ActiveKeyList';
 import { AgentFormModal } from '../../components/AgentManagement/AgentManagement/AgentFormModal';
+import { canAdvanceCreateStep } from '../../components/AgentManagement/AgentManagement/AgentFormSections';
 import { AgentHeader } from '../../components/AgentManagement/AgentManagement/AgentHeader';
 import {
   canSubmitAgentForm,
@@ -251,6 +252,11 @@ describe('AgentManagement extracted branches', () => {
       },
       { label: 'Funding signer', value: 'device-1', helper: undefined },
     ]);
+    expect(getAgentInfoBlocks(makeAgent({ signerDevice: undefined, signerDeviceId: null }))[3]).toEqual({
+      label: 'Funding signer',
+      value: 'Human wallet signers',
+      helper: undefined,
+    });
     expect(getAgentInfoBlocks(richAgent)[1].helper).toBe('Multisig');
     expect(getPolicySummary(fallbackAgent)).toContainEqual({
       label: 'Cooldown',
@@ -279,6 +285,7 @@ describe('AgentManagement extracted branches', () => {
     expect(
       createInitialAgentForm(
         makeAgent({
+          signerDeviceId: null,
           cooldownMinutes: null,
           repeatedFailureThreshold: null,
           repeatedFailureLookbackMinutes: null,
@@ -286,6 +293,7 @@ describe('AgentManagement extracted branches', () => {
         })
       )
     ).toMatchObject({
+      signerDeviceId: '',
       cooldownMinutes: '',
       repeatedFailureThreshold: '',
       repeatedFailureLookbackMinutes: '',
@@ -298,6 +306,7 @@ describe('AgentManagement extracted branches', () => {
     expect(canSubmitAgentForm(filledForm)).toBe(true);
     expect(canSubmitAgentForm(validForm({ signerDeviceId: '' }))).toBe(true);
     expect(canSubmitAgentForm(validForm({ name: ' ' }))).toBe(false);
+    expect(canAdvanceCreateStep(filledForm, 99)).toBe(false);
     expect(setAgentFormUser(filledForm, 'user-2')).toMatchObject({
       userId: 'user-2',
       fundingWalletId: '',
@@ -352,6 +361,66 @@ describe('AgentManagement extracted branches', () => {
       value: 'device-1',
       label: 'Agent Signer · aabbccdd',
     });
+  });
+
+  it('closes a create modal from the first step', async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+
+    render(
+      <AgentFormModal
+        title="Add Agent Wallet"
+        options={options}
+        isSaving={false}
+        onClose={onClose}
+        onSubmit={vi.fn()}
+      />
+    );
+
+    await user.selectOptions(screen.getAllByRole('combobox')[1], 'paused');
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it('exercises edit modal field callbacks', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <AgentFormModal
+        title="Edit Agent"
+        agent={makeAgent()}
+        options={options}
+        isSaving={false}
+        onClose={vi.fn()}
+        onSubmit={onSubmit}
+      />
+    );
+
+    await user.clear(screen.getByDisplayValue('Treasury Agent'));
+    await user.type(screen.getByPlaceholderText('Treasury funding agent'), 'Edited Agent');
+    await user.clear(screen.getByLabelText('Cooldown minutes'));
+    await user.type(screen.getByLabelText('Cooldown minutes'), '20');
+
+    const selects = screen.getAllByRole('combobox');
+    await user.selectOptions(selects[1], 'paused');
+    await user.click(screen.getByRole('button', { name: 'Save Agent' }));
+
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Edited Agent',
+          status: 'paused',
+          cooldownMinutes: '20',
+        })
+      )
+    );
+
+    fireEvent.change(selects[0], { target: { value: 'user-2' } });
+    fireEvent.change(selects[2], { target: { value: 'operational-2' } });
+    fireEvent.change(selects[3], { target: { value: 'operational-2' } });
+    fireEvent.change(selects[4], { target: { value: 'device-1' } });
   });
 
   it('submits toggled form booleans from the extracted modal', async () => {
