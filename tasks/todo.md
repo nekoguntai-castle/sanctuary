@@ -1,3 +1,30 @@
+# Active Task: Agent Wallet Setup UI PR Delivery 2026-04-30
+
+Status: in progress
+
+Goal: deliver PR #231 for the requester-only agent wallet setup flow, including the raw xpub import follow-up and CodeQL rate-limit fix, through the protected merge-queue workflow.
+
+## Plan
+
+- [x] Confirm branch, PR number, merge queue, and current worktree state.
+- [x] Push the committed CodeQL rate-limit fix to `agent-wallet-setup-ui`.
+- [x] Monitor refreshed PR checks and inspect any failing required checks.
+- [ ] Fix any CI, CodeQL, or review blockers with focused commits and verification. _(in progress)_
+- [ ] Enable auto-merge through the repository merge queue once required checks pass.
+- [ ] Verify `origin/main` contains the merged PR result.
+- [ ] Document delivery results and leave unrelated untracked task files untouched.
+- [ ] After this merge, start follow-up work from `tasks/security-assessment-2026-04-29.md`.
+
+## Review
+
+- Branch `agent-wallet-setup-ui` is one PR-delivery branch for PR #231.
+- The pushed follow-up commit adds route-level rate limiting to the agent API routes after CodeQL reported a high-severity missing-rate-limit alert in `server/src/api/agent.ts`.
+- The refreshed CodeQL alert still flagged the authorized route handler, so the local fix now mirrors existing repo precedent by pairing direct `express-rate-limit` middleware with the Redis-backed agent-key policy limiter.
+- Unrelated untracked files are present and intentionally not staged: `tasks/feature-timeline-2026-04-29.md` and `tasks/security-assessment-2026-04-29.md`.
+- The security assessment has not been addressed yet. It remains queued behind the PR #231 merge per user direction.
+
+---
+
 # Active Task: Price Provider DB PR Delivery 2026-04-29
 
 Status: in progress

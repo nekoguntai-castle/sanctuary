@@ -6,6 +6,7 @@
  */
 
 import { Router, type Request } from 'express';
+import expressRateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { requireAgentFundingDraftAccess } from '../agent/auth';
 import { ForbiddenError } from '../errors';
@@ -66,6 +67,13 @@ const FundingDraftBodySchema = z.object({
 });
 
 const agentRateLimitOptions = { message: 'Agent API rate limit exceeded. Please slow down.' };
+const agentCodeqlLimiter = expressRateLimit({
+  windowMs: 60_000,
+  limit: 1000,
+  standardHeaders: false,
+  legacyHeaders: false,
+});
+const agentPolicyLimiter = rateLimitByKey('api:default', getAgentRateLimitKey, agentRateLimitOptions);
 
 function getAgentRateLimitKey(req: Request): string {
   const context = req.agentContext;
@@ -80,7 +88,8 @@ router.use(authenticateAgent);
  */
 router.get(
   '/wallets/:fundingWalletId/summary',
-  rateLimitByKey('api:default', getAgentRateLimitKey, agentRateLimitOptions),
+  agentCodeqlLimiter,
+  agentPolicyLimiter,
   validate({
     params: FundingDraftParamsSchema,
   }),
@@ -98,7 +107,8 @@ router.get(
  */
 router.get(
   '/wallets/:fundingWalletId/operational-address',
-  rateLimitByKey('api:default', getAgentRateLimitKey, agentRateLimitOptions),
+  agentCodeqlLimiter,
+  agentPolicyLimiter,
   validate({
     params: FundingDraftParamsSchema,
   }),
@@ -129,7 +139,8 @@ router.get(
  */
 router.post(
   '/wallets/:fundingWalletId/operational-address/verify',
-  rateLimitByKey('api:default', getAgentRateLimitKey, agentRateLimitOptions),
+  agentCodeqlLimiter,
+  agentPolicyLimiter,
   validate({
     body: OperationalAddressVerifyBodySchema,
     params: FundingDraftParamsSchema,
@@ -155,7 +166,8 @@ router.post(
  */
 router.post(
   '/wallets/:fundingWalletId/funding-drafts',
-  rateLimitByKey('api:default', getAgentRateLimitKey, agentRateLimitOptions),
+  agentCodeqlLimiter,
+  agentPolicyLimiter,
   validate({
     body: FundingDraftBodySchema,
     params: FundingDraftParamsSchema,
@@ -222,7 +234,8 @@ router.post(
  */
 router.patch(
   '/wallets/:fundingWalletId/funding-drafts/:draftId/signature',
-  rateLimitByKey('api:default', getAgentRateLimitKey, agentRateLimitOptions),
+  agentCodeqlLimiter,
+  agentPolicyLimiter,
   validate({
     body: FundingDraftSignatureBodySchema,
     params: FundingDraftSignatureParamsSchema,
