@@ -1,8 +1,9 @@
-import { Bot, Loader2, RotateCcw } from 'lucide-react';
+import { Bot, Loader2, Plus, RotateCcw } from 'lucide-react';
 import type { AgentWalletDashboardRow } from '../../src/api/admin';
 import { Button } from '../ui/Button';
 import { EmptyState } from '../ui/EmptyState';
 import { ErrorAlert } from '../ui/ErrorAlert';
+import { LinkButton } from '../ui/LinkButton';
 import { AgentWalletRow } from './AgentWalletRow';
 import { StatTile } from './DashboardPrimitives';
 import { formatSats } from './agentWalletDashboardModel';
@@ -40,13 +41,7 @@ function AgentWalletLoadingState() {
   );
 }
 
-function AgentWalletLoadErrorState({
-  loadError,
-  loadData,
-}: {
-  loadError: string;
-  loadData: () => Promise<void>;
-}) {
+function AgentWalletLoadErrorState({ loadError, loadData }: { loadError: string; loadData: () => Promise<void> }) {
   return (
     <div className="space-y-4">
       <ErrorAlert message={loadError} />
@@ -87,12 +82,20 @@ function AgentWalletDashboardHeader({ loadData }: { loadData: () => Promise<void
     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
       <div>
         <h2 className="text-2xl font-medium text-sanctuary-900 dark:text-sanctuary-50">Agent Wallets</h2>
-        <p className="text-sanctuary-500 dark:text-sanctuary-400">Operational funds, pending funding, and safety alerts.</p>
+        <p className="text-sanctuary-500 dark:text-sanctuary-400">
+          Operational funds, pending funding, and safety alerts.
+        </p>
       </div>
-      <Button onClick={loadData} variant="secondary">
-        <RotateCcw className="mr-2 h-4 w-4" />
-        Refresh
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        <LinkButton to="/admin/agents" variant="primary" size="md">
+          <Plus className="mr-2 h-4 w-4" />
+          Add Agent Wallet
+        </LinkButton>
+        <Button onClick={loadData} variant="secondary">
+          <RotateCcw className="mr-2 h-4 w-4" />
+          Refresh
+        </Button>
+      </div>
     </div>
   );
 }
@@ -144,7 +147,7 @@ function AgentWalletEmptyState() {
       <EmptyState
         icon={<Bot className="h-8 w-8" />}
         title="No agent wallets registered."
-        description="Register a wallet agent before operational funds appear here."
+        description="Link an agent operational wallet to a human-owned funding wallet before operational funds appear here."
       />
     </div>
   );

@@ -23,7 +23,7 @@ export interface CreateWalletAgentServiceInput {
   name: string;
   fundingWalletId: string;
   operationalWalletId: string;
-  signerDeviceId: string;
+  signerDeviceId?: string | null;
   status?: WalletAgentStatus;
   maxFundingAmountSats?: bigint;
   maxOperationalBalanceSats?: bigint;
@@ -73,17 +73,72 @@ export interface CreateAgentApiKeyServiceInput {
 }
 
 function collectWalletAccessUserIds(wallet: WalletAccessSource): string[] {
-  return [...new Set([
-    ...wallet.users.map(user => user.userId),
-    ...(wallet.group?.members.map(member => member.userId) ?? []),
-  ])];
+  return [
+    ...new Set([
+      ...wallet.users.map(user => user.userId),
+      ...(wallet.group?.members.map(member => member.userId) ?? []),
+    ]),
+  ];
+}
+
+function requireAgentLinkRecord<T>(record: T | null, message: string): T {
+  if (!record) {
+    throw new NotFoundError(message);
+  }
+  return record;
+}
+
+function assertAgentWalletTypes(
+  fundingWallet: { type: string; network: string },
+  operationalWallet: { type: string; network: string }
+): void {
+  if (fundingWallet.type !== 'multi_sig' && fundingWallet.type !== 'single_sig') {
+    throw new InvalidInputError('Funding wallet must be a single-sig or multisig wallet');
+  }
+  if (operationalWallet.type !== 'single_sig') {
+    throw new InvalidInputError('Operational wallet must be a single-sig wallet');
+  }
+  if (fundingWallet.network !== operationalWallet.network) {
+    throw new InvalidInputError('Funding wallet and operational wallet must use the same network');
+  }
+}
+
+async function assertTargetUserWalletAccess(input: {
+  userId: string;
+  fundingWalletId: string;
+  operationalWalletId: string;
+}): Promise<void> {
+  const [hasFundingAccess, hasOperationalAccess] = await Promise.all([
+    walletRepository.hasAccess(input.fundingWalletId, input.userId),
+    walletRepository.hasAccess(input.operationalWalletId, input.userId),
+  ]);
+  if (!hasFundingAccess) {
+    throw new InvalidInputError('User does not have access to the funding wallet');
+  }
+  if (!hasOperationalAccess) {
+    throw new InvalidInputError('User does not have access to the operational wallet');
+  }
+}
+
+function assertOptionalSignerBelongsToFundingWallet(
+  signerDeviceId: string | null | undefined,
+  fundingWalletWithDevices: { devices: Array<{ deviceId: string }> } | null
+): void {
+  if (!signerDeviceId) {
+    return;
+  }
+
+  const signerDeviceIds = new Set((fundingWalletWithDevices?.devices ?? []).map(device => device.deviceId));
+  if (!signerDeviceIds.has(signerDeviceId)) {
+    throw new InvalidInputError('Signer device must belong to the funding wallet');
+  }
 }
 
 async function validateAgentLink(input: {
   userId: string;
   fundingWalletId: string;
   operationalWalletId: string;
-  signerDeviceId: string;
+  signerDeviceId?: string | null;
 }): Promise<void> {
   if (input.fundingWalletId === input.operationalWalletId) {
     throw new InvalidInputError('Funding wallet and operational wallet must be different');
@@ -96,40 +151,13 @@ async function validateAgentLink(input: {
     walletRepository.findByIdWithSigningDevices(input.fundingWalletId),
   ]);
 
-  if (!targetUser) {
-    throw new NotFoundError('User not found');
-  }
-  if (!fundingWallet) {
-    throw new NotFoundError('Funding wallet not found');
-  }
-  if (!operationalWallet) {
-    throw new NotFoundError('Operational wallet not found');
-  }
-  if (fundingWallet.type !== 'multi_sig') {
-    throw new InvalidInputError('Funding wallet must be a multisig wallet');
-  }
-  if (operationalWallet.type !== 'single_sig') {
-    throw new InvalidInputError('Operational wallet must be a single-sig wallet');
-  }
-  if (fundingWallet.network !== operationalWallet.network) {
-    throw new InvalidInputError('Funding wallet and operational wallet must use the same network');
-  }
+  requireAgentLinkRecord(targetUser, 'User not found');
+  const loadedFundingWallet = requireAgentLinkRecord(fundingWallet, 'Funding wallet not found');
+  const loadedOperationalWallet = requireAgentLinkRecord(operationalWallet, 'Operational wallet not found');
 
-  const [hasFundingAccess, hasOperationalAccess] = await Promise.all([
-    walletRepository.hasAccess(input.fundingWalletId, input.userId),
-    walletRepository.hasAccess(input.operationalWalletId, input.userId),
-  ]);
-  if (!hasFundingAccess) {
-    throw new InvalidInputError('User does not have access to the funding wallet');
-  }
-  if (!hasOperationalAccess) {
-    throw new InvalidInputError('User does not have access to the operational wallet');
-  }
-
-  const signerDeviceIds = new Set((fundingWalletWithDevices?.devices ?? []).map(device => device.deviceId));
-  if (!signerDeviceIds.has(input.signerDeviceId)) {
-    throw new InvalidInputError('Signer device must belong to the funding wallet');
-  }
+  assertAgentWalletTypes(loadedFundingWallet, loadedOperationalWallet);
+  await assertTargetUserWalletAccess(input);
+  assertOptionalSignerBelongsToFundingWallet(input.signerDeviceId, fundingWalletWithDevices);
 }
 
 function toAgentUpdateInput(
@@ -139,20 +167,48 @@ function toAgentUpdateInput(
   return {
     ...(input.name !== undefined && { name: input.name.trim() }),
     ...(input.status !== undefined && { status: input.status }),
-    ...(input.maxFundingAmountSats !== undefined && { maxFundingAmountSats: input.maxFundingAmountSats }),
-    ...(input.maxOperationalBalanceSats !== undefined && { maxOperationalBalanceSats: input.maxOperationalBalanceSats }),
-    ...(input.dailyFundingLimitSats !== undefined && { dailyFundingLimitSats: input.dailyFundingLimitSats }),
-    ...(input.weeklyFundingLimitSats !== undefined && { weeklyFundingLimitSats: input.weeklyFundingLimitSats }),
-    ...(input.cooldownMinutes !== undefined && { cooldownMinutes: input.cooldownMinutes }),
-    ...(input.minOperationalBalanceSats !== undefined && { minOperationalBalanceSats: input.minOperationalBalanceSats }),
-    ...(input.largeOperationalSpendSats !== undefined && { largeOperationalSpendSats: input.largeOperationalSpendSats }),
-    ...(input.largeOperationalFeeSats !== undefined && { largeOperationalFeeSats: input.largeOperationalFeeSats }),
-    ...(input.repeatedFailureThreshold !== undefined && { repeatedFailureThreshold: input.repeatedFailureThreshold }),
-    ...(input.repeatedFailureLookbackMinutes !== undefined && { repeatedFailureLookbackMinutes: input.repeatedFailureLookbackMinutes }),
-    ...(input.alertDedupeMinutes !== undefined && { alertDedupeMinutes: input.alertDedupeMinutes }),
-    ...(input.requireHumanApproval !== undefined && { requireHumanApproval: input.requireHumanApproval }),
-    ...(input.notifyOnOperationalSpend !== undefined && { notifyOnOperationalSpend: input.notifyOnOperationalSpend }),
-    ...(input.pauseOnUnexpectedSpend !== undefined && { pauseOnUnexpectedSpend: input.pauseOnUnexpectedSpend }),
+    ...(input.maxFundingAmountSats !== undefined && {
+      maxFundingAmountSats: input.maxFundingAmountSats,
+    }),
+    ...(input.maxOperationalBalanceSats !== undefined && {
+      maxOperationalBalanceSats: input.maxOperationalBalanceSats,
+    }),
+    ...(input.dailyFundingLimitSats !== undefined && {
+      dailyFundingLimitSats: input.dailyFundingLimitSats,
+    }),
+    ...(input.weeklyFundingLimitSats !== undefined && {
+      weeklyFundingLimitSats: input.weeklyFundingLimitSats,
+    }),
+    ...(input.cooldownMinutes !== undefined && {
+      cooldownMinutes: input.cooldownMinutes,
+    }),
+    ...(input.minOperationalBalanceSats !== undefined && {
+      minOperationalBalanceSats: input.minOperationalBalanceSats,
+    }),
+    ...(input.largeOperationalSpendSats !== undefined && {
+      largeOperationalSpendSats: input.largeOperationalSpendSats,
+    }),
+    ...(input.largeOperationalFeeSats !== undefined && {
+      largeOperationalFeeSats: input.largeOperationalFeeSats,
+    }),
+    ...(input.repeatedFailureThreshold !== undefined && {
+      repeatedFailureThreshold: input.repeatedFailureThreshold,
+    }),
+    ...(input.repeatedFailureLookbackMinutes !== undefined && {
+      repeatedFailureLookbackMinutes: input.repeatedFailureLookbackMinutes,
+    }),
+    ...(input.alertDedupeMinutes !== undefined && {
+      alertDedupeMinutes: input.alertDedupeMinutes,
+    }),
+    ...(input.requireHumanApproval !== undefined && {
+      requireHumanApproval: input.requireHumanApproval,
+    }),
+    ...(input.notifyOnOperationalSpend !== undefined && {
+      notifyOnOperationalSpend: input.notifyOnOperationalSpend,
+    }),
+    ...(input.pauseOnUnexpectedSpend !== undefined && {
+      pauseOnUnexpectedSpend: input.pauseOnUnexpectedSpend,
+    }),
     ...(input.status === 'revoked' && !existingRevokedAt && { revokedAt: new Date() }),
     ...(input.status && input.status !== 'revoked' && { revokedAt: null }),
   };
@@ -187,15 +243,13 @@ function toCreateAgentBehaviorInput(input: CreateWalletAgentServiceInput) {
   };
 }
 
-function toCreateAgentInput(
-  input: CreateWalletAgentServiceInput
-): Parameters<typeof agentRepository.createAgent>[0] {
+function toCreateAgentInput(input: CreateWalletAgentServiceInput): Parameters<typeof agentRepository.createAgent>[0] {
   return {
     userId: input.userId,
     name: input.name.trim(),
     fundingWalletId: input.fundingWalletId,
     operationalWalletId: input.operationalWalletId,
-    signerDeviceId: input.signerDeviceId,
+    signerDeviceId: input.signerDeviceId ?? null,
     status: input.status,
     ...toCreateAgentPolicyInput(input),
     ...toCreateAgentAlertInput(input),
@@ -240,14 +294,17 @@ export async function getAgentOptions() {
     }),
   ]);
 
-  const deviceById = new Map<string, {
-    id: string;
-    label: string;
-    fingerprint: string;
-    type: string;
-    userId: string;
-    walletIds: Set<string>;
-  }>();
+  const deviceById = new Map<
+    string,
+    {
+      id: string;
+      label: string;
+      fingerprint: string;
+      type: string;
+      userId: string;
+      walletIds: Set<string>;
+    }
+  >();
 
   const walletOptions = wallets
     .map(wallet => {
@@ -289,7 +346,7 @@ export async function getAgentOptions() {
     }))
     /* v8 ignore start -- deterministic sort comparator branch is a V8 coverage artifact */
     .sort((a, b) => a.label.localeCompare(b.label));
-    /* v8 ignore stop */
+  /* v8 ignore stop */
 
   return {
     users,
@@ -334,7 +391,10 @@ export async function revokeWalletAgent(agentId: string) {
 
   const revoked = existing.revokedAt
     ? existing
-    : await agentRepository.updateAgent(agentId, { status: 'revoked', revokedAt: new Date() });
+    : await agentRepository.updateAgent(agentId, {
+        status: 'revoked',
+        revokedAt: new Date(),
+      });
 
   return {
     agent: revoked,
@@ -392,9 +452,7 @@ export async function revokeAgentFundingOverride(agentId: string, overrideId: st
     throw new NotFoundError('Agent funding override not found');
   }
 
-  const revoked = existing.status === 'active'
-    ? await agentRepository.revokeFundingOverride(overrideId)
-    : existing;
+  const revoked = existing.status === 'active' ? await agentRepository.revokeFundingOverride(overrideId) : existing;
 
   return {
     override: revoked,

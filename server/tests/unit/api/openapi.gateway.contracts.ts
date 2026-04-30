@@ -26,9 +26,7 @@ import {
 } from './openapi.helpers';
 import { registerOpenApiGatewayInternalTests } from './openapi.gateway-internal.contracts';
 
-import type {
-  OpenApiPathKey,
-} from './openapi.helpers';
+import type { OpenApiPathKey } from './openapi.helpers';
 
 export function registerOpenApiGatewayTests() {
   it('documents agent funding draft submission route with agent bearer auth', () => {
@@ -36,23 +34,20 @@ export function registerOpenApiGatewayTests() {
 
     expect(route.post).toBeDefined();
     expect(route.post.security).toEqual(agentBearerAuthSecurity);
-    expect(route.post.parameters).toContainEqual(expect.objectContaining({
-      name: 'fundingWalletId',
-      in: 'path',
-      required: true,
-    }));
+    expect(route.post.parameters).toContainEqual(
+      expect.objectContaining({
+        name: 'fundingWalletId',
+        in: 'path',
+        required: true,
+      })
+    );
     expect(route.post.requestBody.content['application/json'].schema).toEqual({
       $ref: '#/components/schemas/AgentFundingDraftRequest',
     });
     expect(openApiSpec.components.securitySchemes.agentBearerAuth).toBeDefined();
-    expect(openApiSpec.components.schemas.AgentFundingDraftRequest.required).toEqual(expect.arrayContaining([
-      'operationalWalletId',
-      'recipient',
-      'amount',
-      'feeRate',
-      'psbtBase64',
-      'signedPsbtBase64',
-    ]));
+    expect(openApiSpec.components.schemas.AgentFundingDraftRequest.required).toEqual(
+      expect.arrayContaining(['operationalWalletId', 'recipient', 'amount', 'feeRate'])
+    );
   });
 
   it('documents implemented device item routes', () => {
@@ -68,7 +63,7 @@ export function registerOpenApiGatewayTests() {
           name: 'deviceId',
           in: 'path',
           required: true,
-        }),
+        })
       );
     }
   });
@@ -96,33 +91,36 @@ export function registerOpenApiGatewayTests() {
     expect(openApiSpec.paths['/devices/manufacturers'].get).not.toHaveProperty('security');
 
     const modelParameters = openApiSpec.paths['/devices/models'].get.parameters;
-    expect(modelParameters).toContainEqual(expect.objectContaining({
-      name: 'manufacturer',
-      in: 'query',
-    }));
-    expect(modelParameters).toContainEqual(expect.objectContaining({
-      name: 'airGapped',
-      in: 'query',
-      schema: expect.objectContaining({ type: 'boolean' }),
-    }));
-    expect(modelParameters).toContainEqual(expect.objectContaining({
-      name: 'connectivity',
-      in: 'query',
-    }));
-    expect(modelParameters).toContainEqual(expect.objectContaining({
-      name: 'showDiscontinued',
-      in: 'query',
-      schema: expect.objectContaining({ type: 'boolean' }),
-    }));
+    expect(modelParameters).toContainEqual(
+      expect.objectContaining({
+        name: 'manufacturer',
+        in: 'query',
+      })
+    );
+    expect(modelParameters).toContainEqual(
+      expect.objectContaining({
+        name: 'airGapped',
+        in: 'query',
+        schema: expect.objectContaining({ type: 'boolean' }),
+      })
+    );
+    expect(modelParameters).toContainEqual(
+      expect.objectContaining({
+        name: 'connectivity',
+        in: 'query',
+      })
+    );
+    expect(modelParameters).toContainEqual(
+      expect.objectContaining({
+        name: 'showDiscontinued',
+        in: 'query',
+        schema: expect.objectContaining({ type: 'boolean' }),
+      })
+    );
 
-    expect(openApiSpec.components.schemas.DeviceModel.required).toEqual(expect.arrayContaining([
-      'id',
-      'slug',
-      'name',
-      'manufacturer',
-      'connectivity',
-      'scriptTypes',
-    ]));
+    expect(openApiSpec.components.schemas.DeviceModel.required).toEqual(
+      expect.arrayContaining(['id', 'slug', 'name', 'manufacturer', 'connectivity', 'scriptTypes'])
+    );
     expect(openApiSpec.components.schemas.DeviceModel.properties.connectivity.items).toEqual({ type: 'string' });
     expect(openApiSpec.components.schemas.DeviceModel.properties.scriptTypes.items).toEqual({ type: 'string' });
 
@@ -136,8 +134,9 @@ export function registerOpenApiGatewayTests() {
     ).toEqual({
       $ref: '#/components/schemas/DeviceAccount',
     });
-    expect(openApiSpec.paths['/devices/{deviceId}/accounts/{accountId}'].delete.responses[204])
-      .not.toHaveProperty('content');
+    expect(openApiSpec.paths['/devices/{deviceId}/accounts/{accountId}'].delete.responses[204]).not.toHaveProperty(
+      'content'
+    );
 
     expect(
       openApiSpec.paths['/devices/{deviceId}/share/user'].post.requestBody.content['application/json'].schema
@@ -268,14 +267,10 @@ export function registerOpenApiGatewayTests() {
     expect(openApiSpec.components.schemas.LoginResponse.properties).toHaveProperty('tempToken');
     expect(openApiSpec.components.schemas.LoginResponse.properties).toHaveProperty('emailVerificationRequired');
 
-    expect(
-      openApiSpec.paths['/auth/2fa/enable'].post.requestBody.content['application/json'].schema
-    ).toEqual({
+    expect(openApiSpec.paths['/auth/2fa/enable'].post.requestBody.content['application/json'].schema).toEqual({
       $ref: '#/components/schemas/TwoFactorTokenRequest',
     });
-    expect(
-      openApiSpec.paths['/auth/2fa/disable'].post.requestBody.content['application/json'].schema
-    ).toEqual({
+    expect(openApiSpec.paths['/auth/2fa/disable'].post.requestBody.content['application/json'].schema).toEqual({
       $ref: '#/components/schemas/TwoFactorDisableRequest',
     });
     expect(
@@ -287,51 +282,40 @@ export function registerOpenApiGatewayTests() {
     expect(openApiSpec.components.schemas.TwoFactorBackupCodesResponse.required).toEqual(['success', 'backupCodes']);
     expect(openApiSpec.components.schemas.BackupCodesCountResponse.required).toEqual(['remaining']);
 
-    expect(
-      openApiSpec.paths['/auth/me/change-password'].post.requestBody.content['application/json'].schema
-    ).toEqual({
+    expect(openApiSpec.paths['/auth/me/change-password'].post.requestBody.content['application/json'].schema).toEqual({
       $ref: '#/components/schemas/ChangePasswordRequest',
     });
-    expect(openApiSpec.components.schemas.ChangePasswordRequest.required).toEqual([
-      'currentPassword',
-      'newPassword',
-    ]);
-    expect(openApiSpec.paths['/auth/users/search'].get.parameters).toContainEqual(expect.objectContaining({
-      name: 'q',
-      in: 'query',
-      required: true,
-      schema: expect.objectContaining({ minLength: 2 }),
-    }));
-    expect(
-      openApiSpec.paths['/auth/me/groups'].get.responses[200].content['application/json'].schema.items
-    ).toEqual({
+    expect(openApiSpec.components.schemas.ChangePasswordRequest.required).toEqual(['currentPassword', 'newPassword']);
+    expect(openApiSpec.paths['/auth/users/search'].get.parameters).toContainEqual(
+      expect.objectContaining({
+        name: 'q',
+        in: 'query',
+        required: true,
+        schema: expect.objectContaining({ minLength: 2 }),
+      })
+    );
+    expect(openApiSpec.paths['/auth/me/groups'].get.responses[200].content['application/json'].schema.items).toEqual({
       $ref: '#/components/schemas/UserGroupSummary',
     });
-    expect(
-      openApiSpec.paths['/auth/users/search'].get.responses[200].content['application/json'].schema.items
-    ).toEqual({
-      $ref: '#/components/schemas/UserSearchResult',
-    });
+    expect(openApiSpec.paths['/auth/users/search'].get.responses[200].content['application/json'].schema.items).toEqual(
+      {
+        $ref: '#/components/schemas/UserSearchResult',
+      }
+    );
 
     expect(openApiSpec.paths['/auth/email/verify'].post.requestBody.content['application/json'].schema).toEqual({
       $ref: '#/components/schemas/VerifyEmailRequest',
     });
     expect(openApiSpec.components.schemas.UpdateEmailRequest.required).toEqual(['email', 'password']);
-    expect(
-      openApiSpec.paths['/auth/me/email'].put.requestBody.content['application/json'].schema
-    ).toEqual({
+    expect(openApiSpec.paths['/auth/me/email'].put.requestBody.content['application/json'].schema).toEqual({
       $ref: '#/components/schemas/UpdateEmailRequest',
     });
     expect(openApiSpec.components.schemas.EmailResendResponse.required).toEqual(['success', 'message', 'expiresAt']);
 
-    expect(
-      openApiSpec.paths['/auth/telegram/chat-id'].post.requestBody.content['application/json'].schema
-    ).toEqual({
+    expect(openApiSpec.paths['/auth/telegram/chat-id'].post.requestBody.content['application/json'].schema).toEqual({
       $ref: '#/components/schemas/TelegramChatIdRequest',
     });
-    expect(
-      openApiSpec.paths['/auth/telegram/test'].post.requestBody.content['application/json'].schema
-    ).toEqual({
+    expect(openApiSpec.paths['/auth/telegram/test'].post.requestBody.content['application/json'].schema).toEqual({
       $ref: '#/components/schemas/TelegramTestRequest',
     });
     expect(openApiSpec.components.schemas.TelegramTestRequest.required).toEqual(['botToken', 'chatId']);
@@ -421,8 +405,7 @@ export function registerOpenApiGatewayTests() {
     }
 
     expect(
-      openApiSpec.paths['/wallets/{walletId}/labels/{labelId}'].get.responses[200]
-        .content['application/json'].schema
+      openApiSpec.paths['/wallets/{walletId}/labels/{labelId}'].get.responses[200].content['application/json'].schema
     ).toEqual({
       $ref: '#/components/schemas/LabelWithRelations',
     });
@@ -432,12 +415,11 @@ export function registerOpenApiGatewayTests() {
 
     const labelIdsSchema = openApiSpec.components.schemas.LabelIdsRequest;
     expect(labelIdsSchema.required).toEqual(['labelIds']);
-    expect(labelIdsSchema.properties.labelIds.items).toEqual({ type: 'string' });
+    expect(labelIdsSchema.properties.labelIds.items).toEqual({
+      type: 'string',
+    });
 
-    for (const path of [
-      '/transactions/{transactionId}/labels',
-      '/addresses/{addressId}/labels',
-    ] as const) {
+    for (const path of ['/transactions/{transactionId}/labels', '/addresses/{addressId}/labels'] as const) {
       for (const method of ['post', 'put'] as const) {
         expect(openApiSpec.paths[path][method].requestBody.content['application/json'].schema).toEqual({
           $ref: '#/components/schemas/LabelIdsRequest',
@@ -448,10 +430,12 @@ export function registerOpenApiGatewayTests() {
       }
     }
 
-    expect(openApiSpec.paths['/transactions/{transactionId}/labels/{labelId}'].delete.responses[204])
-      .not.toHaveProperty('content');
-    expect(openApiSpec.paths['/addresses/{addressId}/labels/{labelId}'].delete.responses[204])
-      .not.toHaveProperty('content');
+    expect(
+      openApiSpec.paths['/transactions/{transactionId}/labels/{labelId}'].delete.responses[204]
+    ).not.toHaveProperty('content');
+    expect(openApiSpec.paths['/addresses/{addressId}/labels/{labelId}'].delete.responses[204]).not.toHaveProperty(
+      'content'
+    );
   });
 
   it('documents gateway-exposed and gateway-HMAC push routes', () => {
@@ -593,31 +577,41 @@ export function registerOpenApiGatewayTests() {
     const transferSchema = openApiSpec.components.schemas.OwnershipTransfer;
     expect(transferSchema.properties.resourceType.enum).toEqual([...TRANSFER_RESOURCE_TYPES]);
     expect(transferSchema.properties.status.enum).toEqual([...TRANSFER_STATUS_VALUES]);
-    expect(transferSchema.required).toEqual(expect.arrayContaining([
-      'id',
-      'resourceType',
-      'resourceId',
-      'fromUserId',
-      'toUserId',
-      'status',
-      'createdAt',
-      'expiresAt',
-      'keepExistingUsers',
-    ]));
+    expect(transferSchema.required).toEqual(
+      expect.arrayContaining([
+        'id',
+        'resourceType',
+        'resourceId',
+        'fromUserId',
+        'toUserId',
+        'status',
+        'createdAt',
+        'expiresAt',
+        'keepExistingUsers',
+      ])
+    );
 
     const createSchema = openApiSpec.components.schemas.TransferCreateRequest;
     expect(createSchema.required).toEqual(['resourceType', 'resourceId', 'toUserId']);
     expect(createSchema.properties.resourceType.enum).toEqual([...TRANSFER_RESOURCE_TYPES]);
 
     const listParameters = openApiSpec.paths['/transfers'].get.parameters;
-    expect(listParameters).toContainEqual(expect.objectContaining({
-      name: 'role',
-      schema: expect.objectContaining({ enum: [...TRANSFER_ROLE_FILTER_VALUES] }),
-    }));
-    expect(listParameters).toContainEqual(expect.objectContaining({
-      name: 'status',
-      schema: expect.objectContaining({ enum: [...TRANSFER_STATUS_FILTER_VALUES] }),
-    }));
+    expect(listParameters).toContainEqual(
+      expect.objectContaining({
+        name: 'role',
+        schema: expect.objectContaining({
+          enum: [...TRANSFER_ROLE_FILTER_VALUES],
+        }),
+      })
+    );
+    expect(listParameters).toContainEqual(
+      expect.objectContaining({
+        name: 'status',
+        schema: expect.objectContaining({
+          enum: [...TRANSFER_STATUS_FILTER_VALUES],
+        }),
+      })
+    );
 
     expect(openApiSpec.paths['/transfers'].post.responses[201].content['application/json'].schema).toEqual({
       $ref: '#/components/schemas/OwnershipTransfer',
@@ -668,19 +662,25 @@ export function registerOpenApiGatewayTests() {
     ]);
 
     const insightParameters = openApiSpec.paths['/intelligence/insights'].get.parameters;
-    expect(insightParameters).toContainEqual(expect.objectContaining({
-      name: 'walletId',
-      in: 'query',
-      required: true,
-    }));
-    expect(insightParameters).toContainEqual(expect.objectContaining({
-      name: 'limit',
-      schema: expect.objectContaining({ maximum: 100, default: 50 }),
-    }));
-    expect(openApiSpec.paths['/intelligence/conversations'].get.parameters).toContainEqual(expect.objectContaining({
-      name: 'limit',
-      schema: expect.objectContaining({ default: 20 }),
-    }));
+    expect(insightParameters).toContainEqual(
+      expect.objectContaining({
+        name: 'walletId',
+        in: 'query',
+        required: true,
+      })
+    );
+    expect(insightParameters).toContainEqual(
+      expect.objectContaining({
+        name: 'limit',
+        schema: expect.objectContaining({ maximum: 100, default: 50 }),
+      })
+    );
+    expect(openApiSpec.paths['/intelligence/conversations'].get.parameters).toContainEqual(
+      expect.objectContaining({
+        name: 'limit',
+        schema: expect.objectContaining({ default: 20 }),
+      })
+    );
 
     expect(
       openApiSpec.paths['/intelligence/conversations/{id}/messages'].post.requestBody.content['application/json'].schema

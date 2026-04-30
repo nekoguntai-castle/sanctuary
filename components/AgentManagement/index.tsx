@@ -1,11 +1,5 @@
 import { useEffect, useState } from 'react';
-import {
-  Copy,
-  Loader2,
-  Plus,
-  RotateCcw,
-  ShieldCheck,
-} from 'lucide-react';
+import { Copy, Loader2, Plus, RotateCcw, ShieldCheck } from 'lucide-react';
 import * as adminApi from '../../src/api/admin';
 import type {
   AgentManagementOptions,
@@ -70,7 +64,7 @@ function buildCreatePayload(form: AgentFormState): adminApi.CreateWalletAgentReq
     name: form.name.trim(),
     fundingWalletId: form.fundingWalletId,
     operationalWalletId: form.operationalWalletId,
-    signerDeviceId: form.signerDeviceId,
+    ...(form.signerDeviceId && { signerDeviceId: form.signerDeviceId }),
     status: form.status,
     ...(maxFundingAmountSats && { maxFundingAmountSats }),
     ...(maxOperationalBalanceSats && { maxOperationalBalanceSats }),
@@ -81,7 +75,9 @@ function buildCreatePayload(form: AgentFormState): adminApi.CreateWalletAgentReq
     ...(largeOperationalSpendSats && { largeOperationalSpendSats }),
     ...(largeOperationalFeeSats && { largeOperationalFeeSats }),
     ...(repeatedFailureThreshold !== undefined && { repeatedFailureThreshold }),
-    ...(repeatedFailureLookbackMinutes !== undefined && { repeatedFailureLookbackMinutes }),
+    ...(repeatedFailureLookbackMinutes !== undefined && {
+      repeatedFailureLookbackMinutes,
+    }),
     ...(alertDedupeMinutes !== undefined && { alertDedupeMinutes }),
     requireHumanApproval: form.requireHumanApproval,
     notifyOnOperationalSpend: form.notifyOnOperationalSpend,
@@ -110,6 +106,10 @@ function buildUpdatePayload(form: AgentFormState): UpdateWalletAgentRequest {
   };
 }
 
+function navigateToAgentWalletDashboard(): void {
+  window.location.hash = '/admin/agent-wallets';
+}
+
 export function AgentManagement() {
   const [agents, setAgents] = useState<WalletAgentMetadata[]>([]);
   const [options, setOptions] = useState<AgentManagementOptions>(EMPTY_OPTIONS);
@@ -128,10 +128,7 @@ export function AgentManagement() {
     setLoading(true);
     setLoadError(null);
     try {
-      const [agentList, optionList] = await Promise.all([
-        adminApi.getWalletAgents(),
-        adminApi.getWalletAgentOptions(),
-      ]);
+      const [agentList, optionList] = await Promise.all([adminApi.getWalletAgents(), adminApi.getWalletAgentOptions()]);
       setAgents(agentList);
       setOptions(optionList);
     } catch (error) {
@@ -139,6 +136,12 @@ export function AgentManagement() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const refreshAgentOptions = async () => {
+    const optionList = await adminApi.getWalletAgentOptions();
+    setOptions(optionList);
+    return optionList;
   };
 
   useEffect(() => {
@@ -166,6 +169,7 @@ export function AgentManagement() {
       await adminApi.createWalletAgent(buildCreatePayload(form));
       setShowCreate(false);
       await loadData();
+      navigateToAgentWalletDashboard();
     });
   };
 
@@ -260,9 +264,14 @@ export function AgentManagement() {
           <h2 className="text-2xl font-medium text-sanctuary-900 dark:text-sanctuary-50">Wallet Agents</h2>
           <p className="text-sanctuary-500">Register funding agents, issue scoped keys, and manage policy caps.</p>
         </div>
-        <Button onClick={() => { setActionError(null); setShowCreate(true); }}>
+        <Button
+          onClick={() => {
+            setActionError(null);
+            setShowCreate(true);
+          }}
+        >
           <Plus className="w-4 h-4 mr-2" />
-          Create Agent
+          Add Agent Wallet
         </Button>
       </div>
 
@@ -276,9 +285,7 @@ export function AgentManagement() {
 
       <div className="surface-elevated rounded-xl border border-sanctuary-200 dark:border-sanctuary-800 overflow-hidden">
         {agents.length === 0 ? (
-          <div className="p-8 text-center text-sanctuary-500">
-            No wallet agents registered.
-          </div>
+          <div className="p-8 text-center text-sanctuary-500">No wallet agents registered.</div>
         ) : (
           <div className="divide-y divide-sanctuary-100 dark:divide-sanctuary-800">
             {agents.map(agent => (
@@ -288,13 +295,13 @@ export function AgentManagement() {
                 busyAction={busyAction}
                 onEdit={setEditingAgent}
                 onRevoke={handleRevokeAgent}
-                onOpenKeys={(selected) => {
+                onOpenKeys={selected => {
                   setKeyAgent(selected);
                   setCreatedKey(null);
                   setCopiedKey(false);
                   setActionError(null);
                 }}
-                onOpenOverrides={(selected) => {
+                onOpenOverrides={selected => {
                   setOverrideAgent(selected);
                   setActionError(null);
                 }}
@@ -307,11 +314,12 @@ export function AgentManagement() {
 
       {showCreate && (
         <AgentFormModal
-          title="Create Wallet Agent"
+          title="Add Agent Wallet"
           options={options}
           isSaving={busyAction === 'create-agent'}
           onClose={() => setShowCreate(false)}
           onSubmit={handleCreateAgent}
+          onOptionsRefresh={refreshAgentOptions}
         />
       )}
 
@@ -342,12 +350,7 @@ export function AgentManagement() {
         />
       )}
 
-      {overrideAgent && (
-        <AgentOverridesModal
-          agent={overrideAgent}
-          onClose={() => setOverrideAgent(null)}
-        />
-      )}
+      {overrideAgent && <AgentOverridesModal agent={overrideAgent} onClose={() => setOverrideAgent(null)} />}
     </div>
   );
 }
@@ -389,7 +392,9 @@ function AgentKeyModal({
             This token is shown once. Store it in the agent runtime before closing.
           </div>
           <div>
-            <label className="block text-sm font-medium text-sanctuary-700 dark:text-sanctuary-300 mb-1">Agent API key</label>
+            <label className="block text-sm font-medium text-sanctuary-700 dark:text-sanctuary-300 mb-1">
+              Agent API key
+            </label>
             <div className="flex gap-2">
               <Input readOnly value={createdKey.apiKey} className="font-mono text-sm" />
               <Button variant="secondary" onClick={onCopy}>
@@ -403,19 +408,33 @@ function AgentKeyModal({
       ) : (
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-sanctuary-700 dark:text-sanctuary-300 mb-1">Key name *</label>
-            <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Agent runtime key" autoFocus />
+            <label className="block text-sm font-medium text-sanctuary-700 dark:text-sanctuary-300 mb-1">
+              Key name *
+            </label>
+            <Input
+              value={name}
+              onChange={event => setName(event.target.value)}
+              placeholder="Agent runtime key"
+              autoFocus
+            />
           </div>
           <div>
-            <label className="block text-sm font-medium text-sanctuary-700 dark:text-sanctuary-300 mb-1">Expires at</label>
-            <Input type="datetime-local" value={expiresAt} onChange={(event) => setExpiresAt(event.target.value)} />
+            <label className="block text-sm font-medium text-sanctuary-700 dark:text-sanctuary-300 mb-1">
+              Expires at
+            </label>
+            <Input type="datetime-local" value={expiresAt} onChange={event => setExpiresAt(event.target.value)} />
           </div>
           <div className="rounded-lg border border-sanctuary-200 dark:border-sanctuary-700 p-3 text-sm text-sanctuary-600 dark:text-sanctuary-300 flex gap-2">
             <ShieldCheck className="w-4 h-4 mt-0.5 flex-shrink-0 text-shared-600 dark:text-shared-300" />
-            <span>The key can submit funding drafts only for this agent. It cannot broadcast, approve policies, or manage wallets.</span>
+            <span>
+              The key can submit funding drafts only for this agent. It cannot broadcast, approve policies, or manage
+              wallets.
+            </span>
           </div>
           <div className="flex justify-end gap-3">
-            <Button variant="secondary" onClick={onClose}>Cancel</Button>
+            <Button variant="secondary" onClick={onClose}>
+              Cancel
+            </Button>
             <Button onClick={() => onCreate(name, expiresAt)} isLoading={isSaving} disabled={!name.trim()}>
               Create Key
             </Button>

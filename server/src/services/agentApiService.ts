@@ -1,27 +1,15 @@
-import {
-  requireAgentFundingDraftAccess,
-  type AgentRequestContext,
-} from '../agent/auth';
+import { requireAgentFundingDraftAccess, type AgentRequestContext } from '../agent/auth';
 import { MIN_FEE_RATE, MAX_FEE_RATE } from '../constants';
-import {
-  ApiError,
-  ConflictError,
-  ForbiddenError,
-  InvalidInputError,
-  InvalidPsbtError,
-  NotFoundError,
-} from '../errors';
-import {
-  agentRepository,
-  utxoRepository,
-  walletRepository,
-} from '../repositories';
+import { ApiError, ConflictError, ForbiddenError, InvalidInputError, InvalidPsbtError, NotFoundError } from '../errors';
+import { agentRepository, utxoRepository, walletRepository } from '../repositories';
 import { getErrorMessage } from '../utils/errors';
 import { createLogger } from '../utils/logger';
 import { evaluateRejectedFundingAttemptAlert } from './agentMonitoringService';
-import { validateAgentFundingDraftSubmission } from './agentFundingDraftValidation';
+import { verifyOperationalReceiveAddress } from './agentOperationalAddressService';
 import { enforceAgentFundingPolicy } from './agentFundingPolicy';
+import * as txService from './bitcoin/transactionService';
 import { draftService } from './draftService';
+import { policyEvaluationEngine } from './vaultPolicy';
 
 const log = createLogger('AGENT:API_SVC');
 
@@ -30,12 +18,13 @@ export interface AgentFundingDraftRequestBody {
   recipient: string;
   amount: number | string;
   feeRate: number | string;
+  selectedUtxoIds?: string[];
+  enableRBF?: boolean;
   subtractFees?: boolean;
   sendMax?: boolean;
   label?: string | null;
   memo?: string | null;
-  psbtBase64: string;
-  signedPsbtBase64: string;
+  decoyOutputs?: { enabled: boolean; count: number };
 }
 
 export interface SubmitAgentFundingDraftInput {
@@ -62,18 +51,14 @@ export interface AgentFundingAttemptInput {
   userAgent?: string | null;
 }
 
-export type SubmittedAgentFundingDraft = Awaited<
-  ReturnType<typeof draftService.createDraft>
->;
+export type SubmittedAgentFundingDraft = Awaited<ReturnType<typeof draftService.createDraft>>;
 
 export interface SubmitAgentFundingDraftResult {
   draft: SubmittedAgentFundingDraft;
   usedOverrideId: string | null;
 }
 
-const ATTEMPT_REASON_MESSAGE_CODES: ReadonlyArray<
-  readonly [needle: string, code: string]
-> = [
+const ATTEMPT_REASON_MESSAGE_CODES: ReadonlyArray<readonly [needle: string, code: string]> = [
   ['feerate', 'fee_rate_out_of_bounds'],
   ['per-request cap', 'policy_max_funding_amount'],
   ['balance cap', 'policy_operational_balance_cap'],
@@ -103,6 +88,99 @@ const parseOptionalAttemptFeeRate = (value: unknown): number | null => {
   const feeRate = Number(value);
   return Number.isFinite(feeRate) ? feeRate : null;
 };
+
+const parseDraftAmount = (value: number | string): number => {
+  if (typeof value === 'string' && !/^\d+$/.test(value.trim())) {
+    throw new InvalidInputError('amount must be a non-negative safe integer', 'amount', {
+      reasonCode: 'invalid_amount',
+    });
+  }
+
+  const amount = typeof value === 'string' ? Number(value.trim()) : value;
+  if (!Number.isSafeInteger(amount) || amount < 0) {
+    throw new InvalidInputError('amount must be a non-negative safe integer', 'amount', {
+      reasonCode: 'invalid_amount',
+    });
+  }
+  return amount;
+};
+
+const formatUtxoId = (utxo: { txid: string; vout: number }): string => `${utxo.txid}:${utxo.vout}`;
+
+const buildInputMetadata = (
+  utxos: Array<{
+    txid: string;
+    vout: number;
+    address?: string;
+    amount?: number;
+  }>
+) =>
+  utxos.map(utxo => ({
+    txid: utxo.txid,
+    vout: utxo.vout,
+    address: utxo.address ?? '',
+    amount: utxo.amount ?? 0,
+  }));
+
+const buildOutputMetadata = (input: {
+  recipient: string;
+  effectiveAmount: number;
+  changeAddress?: string;
+  changeAmount: number;
+  decoyOutputs?: Array<{ address: string; amount: number }>;
+}) => {
+  const outputs = [
+    {
+      address: input.recipient,
+      amount: input.effectiveAmount,
+      outputType: 'recipient',
+      isOurs: true,
+    },
+  ];
+
+  if (input.changeAddress && input.changeAmount > 0) {
+    outputs.push({
+      address: input.changeAddress,
+      amount: input.changeAmount,
+      outputType: 'change',
+      isOurs: true,
+    });
+  }
+
+  for (const decoy of input.decoyOutputs ?? []) {
+    outputs.push({
+      address: decoy.address,
+      amount: decoy.amount,
+      outputType: 'decoy',
+      isOurs: true,
+    });
+  }
+
+  return outputs;
+};
+
+function toEffectivePolicyAmount(effectiveAmount: number): bigint {
+  if (!Number.isSafeInteger(effectiveAmount) || effectiveAmount < 0) {
+    throw new InvalidInputError('effective transaction amount must be a non-negative safe integer', 'amount', {
+      reasonCode: 'invalid_amount',
+    });
+  }
+
+  return BigInt(effectiveAmount);
+}
+
+async function assertOperationalRecipient(operationalWalletId: string, recipient: string): Promise<void> {
+  const verification = await verifyOperationalReceiveAddress({
+    operationalWalletId,
+    address: recipient,
+  });
+
+  if (!verification.verified) {
+    throw new InvalidInputError('recipient must belong to the linked operational wallet', 'recipient', {
+      reasonCode: 'policy_destination_mismatch',
+    });
+  }
+}
 
 const getAttemptReasonCodeFromMessage = (message: string): string | null => {
   for (const [needle, code] of ATTEMPT_REASON_MESSAGE_CODES) {
@@ -136,9 +214,7 @@ const getAttemptReasonCode = (error: unknown): string => {
   return 'unexpected_error';
 };
 
-export async function recordAgentFundingAttempt(
-  input: AgentFundingAttemptInput,
-): Promise<void> {
+export async function recordAgentFundingAttempt(input: AgentFundingAttemptInput): Promise<void> {
   try {
     const reasonCode = input.error ? getAttemptReasonCode(input.error) : null;
     await agentRepository.createFundingAttempt({
@@ -152,16 +228,11 @@ export async function recordAgentFundingAttempt(
       /* v8 ignore stop */
       status: input.status,
       reasonCode,
-      reasonMessage: input.error
-        ? getErrorMessage(input.error).slice(0, 500)
-        : null,
+      reasonMessage: input.error ? getErrorMessage(input.error).slice(0, 500) : null,
       amount: parseOptionalAttemptAmount(input.amount),
       feeRate: parseOptionalAttemptFeeRate(input.feeRate),
       /* v8 ignore start -- optional HTTP metadata defaults are defensive for non-request callers */
-      recipient:
-        typeof input.recipient === 'string'
-          ? input.recipient.slice(0, 200)
-          : null,
+      recipient: typeof input.recipient === 'string' ? input.recipient.slice(0, 200) : null,
       ipAddress: input.ipAddress ?? null,
       userAgent: input.userAgent ?? null,
       /* v8 ignore stop */
@@ -178,23 +249,15 @@ export async function recordAgentFundingAttempt(
   }
 }
 
-export async function getAgentWalletSummary(
-  context: AgentRequestContext,
-  fundingWalletId: string,
-) {
-  requireAgentFundingDraftAccess(
-    context,
-    fundingWalletId,
-    context.operationalWalletId,
-  );
+export async function getAgentWalletSummary(context: AgentRequestContext, fundingWalletId: string) {
+  requireAgentFundingDraftAccess(context, fundingWalletId, context.operationalWalletId);
 
-  const [fundingWallet, operationalWallet, fundingBalance, operationalBalance] =
-    await Promise.all([
-      walletRepository.findById(fundingWalletId),
-      walletRepository.findById(context.operationalWalletId),
-      utxoRepository.getUnspentBalance(fundingWalletId),
-      utxoRepository.getUnspentBalance(context.operationalWalletId),
-    ]);
+  const [fundingWallet, operationalWallet, fundingBalance, operationalBalance] = await Promise.all([
+    walletRepository.findById(fundingWalletId),
+    walletRepository.findById(context.operationalWalletId),
+    utxoRepository.getUnspentBalance(fundingWalletId),
+    utxoRepository.getUnspentBalance(context.operationalWalletId),
+  ]);
 
   if (!fundingWallet) {
     throw new NotFoundError('Funding wallet not found');
@@ -229,7 +292,7 @@ export async function getAgentWalletSummary(
 }
 
 export async function submitAgentFundingDraft(
-  input: SubmitAgentFundingDraftInput,
+  input: SubmitAgentFundingDraftInput
 ): Promise<SubmitAgentFundingDraftResult> {
   const { context, fundingWalletId, ipAddress, userAgent } = input;
   const {
@@ -241,117 +304,110 @@ export async function submitAgentFundingDraft(
     sendMax,
     label,
     memo,
-    psbtBase64,
-    signedPsbtBase64,
+    selectedUtxoIds,
+    enableRBF,
+    decoyOutputs,
   } = input.body;
   let draft: SubmittedAgentFundingDraft | null = null;
   let usedOverrideId: string | null = null;
+  let attemptAmount: unknown = amount;
 
   try {
-    requireAgentFundingDraftAccess(
-      context,
-      fundingWalletId,
-      operationalWalletId,
-    );
+    requireAgentFundingDraftAccess(context, fundingWalletId, operationalWalletId);
     const feeRateNumber = Number(feeRate);
-    if (
-      !Number.isFinite(feeRateNumber) ||
-      feeRateNumber < MIN_FEE_RATE ||
-      feeRateNumber > MAX_FEE_RATE
-    ) {
-      throw new InvalidInputError(
-        `feeRate must be between ${MIN_FEE_RATE} and ${MAX_FEE_RATE} sat/vB`,
-        'feeRate',
-        { reasonCode: 'fee_rate_out_of_bounds' },
-      );
+    if (!Number.isFinite(feeRateNumber) || feeRateNumber < MIN_FEE_RATE || feeRateNumber > MAX_FEE_RATE) {
+      throw new InvalidInputError(`feeRate must be between ${MIN_FEE_RATE} and ${MAX_FEE_RATE} sat/vB`, 'feeRate', {
+        reasonCode: 'fee_rate_out_of_bounds',
+      });
     }
 
-    const validatedDraft = await validateAgentFundingDraftSubmission({
-      fundingWalletId,
-      operationalWalletId,
-      signerDeviceId: context.signerDeviceId,
-      recipient,
-      amount,
-      psbtBase64,
-      signedPsbtBase64,
-    });
+    const amountNumber = parseDraftAmount(amount);
+    await assertOperationalRecipient(operationalWalletId, recipient);
     const draftLabel =
-      typeof label === 'string' && label.trim()
-        ? label.trim()
-        : `Agent funding request: ${context.agentName}`;
+      typeof label === 'string' && label.trim() ? label.trim() : `Agent funding request: ${context.agentName}`;
 
-    draft = await agentRepository.withAgentFundingLock(
-      context.agentId,
-      async () => {
-        const policyDecision = await enforceAgentFundingPolicy(
-          context.agentId,
-          operationalWalletId,
-          BigInt(validatedDraft.amount),
-        );
-        const effectiveDraftLabel = policyDecision.overrideId
-          ? `${draftLabel} (owner override)`
-          : draftLabel;
+    draft = await agentRepository.withAgentFundingLock(context.agentId, async () => {
+      const txData = await txService.createTransaction(fundingWalletId, recipient, amountNumber, feeRateNumber, {
+        selectedUtxoIds,
+        enableRBF,
+        subtractFees,
+        sendMax,
+        decoyOutputs,
+      });
+      const effectiveAmountSats = toEffectivePolicyAmount(txData.effectiveAmount);
+      const effectiveAmount = effectiveAmountSats.toString();
+      attemptAmount = effectiveAmount;
+      const policyDecision = await enforceAgentFundingPolicy(context.agentId, operationalWalletId, effectiveAmountSats);
+      const effectiveDraftLabel = policyDecision.overrideId ? `${draftLabel} (owner override)` : draftLabel;
+      const vaultPolicyDecision = await policyEvaluationEngine.evaluatePolicies({
+        walletId: fundingWalletId,
+        userId: context.userId,
+        recipient,
+        amount: effectiveAmountSats,
+      });
 
-        const createdDraft = await draftService.createDraft(
-          fundingWalletId,
-          context.userId,
-          {
-            recipient: validatedDraft.recipient,
-            amount: validatedDraft.amount,
-            feeRate: feeRateNumber,
-            selectedUtxoIds: validatedDraft.selectedUtxoIds,
-            enableRBF: validatedDraft.enableRBF,
-            subtractFees,
-            sendMax,
-            outputs: validatedDraft.outputs,
-            inputs: validatedDraft.inputs,
-            isRBF: false,
-            label: effectiveDraftLabel,
-            memo: memo ?? undefined,
-            psbtBase64,
-            signedPsbtBase64,
-            signedDeviceId: context.signerDeviceId,
-            fee: validatedDraft.fee,
-            totalInput: validatedDraft.totalInput,
-            totalOutput: validatedDraft.totalOutput,
-            changeAmount: validatedDraft.changeAmount,
-            changeAddress: validatedDraft.changeAddress,
-            effectiveAmount: validatedDraft.effectiveAmount,
-            inputPaths: validatedDraft.inputPaths,
-            agentId: context.agentId,
-            agentOperationalWalletId: operationalWalletId,
-            notificationCreatedByUserId: null,
-            notificationCreatedByLabel: context.agentName,
-          },
-        );
+      if (!vaultPolicyDecision.allowed) {
+        throw new ForbiddenError('Transaction blocked by vault policy');
+      }
 
-        if (policyDecision.overrideId) {
-          await agentRepository.markFundingOverrideUsed(
-            policyDecision.overrideId,
-            createdDraft.id,
-          );
-          usedOverrideId = policyDecision.overrideId;
-        }
+      const createdDraft = await draftService.createDraft(fundingWalletId, context.userId, {
+        recipient,
+        amount: effectiveAmount,
+        feeRate: feeRateNumber,
+        selectedUtxoIds: txData.utxos.map(formatUtxoId),
+        enableRBF,
+        subtractFees,
+        sendMax,
+        outputs: buildOutputMetadata({
+          recipient,
+          effectiveAmount: txData.effectiveAmount,
+          changeAddress: txData.changeAddress,
+          changeAmount: txData.changeAmount,
+          decoyOutputs: txData.decoyOutputs,
+        }),
+        inputs: buildInputMetadata(txData.utxos),
+        decoyOutputs: txData.decoyOutputs ?? undefined,
+        isRBF: false,
+        label: effectiveDraftLabel,
+        memo: memo ?? undefined,
+        psbtBase64: txData.psbtBase64,
+        fee: txData.fee,
+        totalInput: txData.totalInput,
+        totalOutput: txData.totalOutput,
+        changeAmount: txData.changeAmount,
+        changeAddress: txData.changeAddress,
+        effectiveAmount,
+        inputPaths: txData.inputPaths,
+        agentId: context.agentId,
+        agentOperationalWalletId: operationalWalletId,
+        notificationCreatedByUserId: null,
+        notificationCreatedByLabel: context.agentName,
+        policyEvaluation: vaultPolicyDecision.triggered.length > 0 ? vaultPolicyDecision : undefined,
+      });
 
-        await agentRepository.markAgentFundingDraftCreated(context.agentId);
-        await recordAgentFundingAttempt({
-          agentId: context.agentId,
-          keyId: context.keyId,
-          keyPrefix: context.keyPrefix,
-          fundingWalletId,
-          operationalWalletId,
-          draftId: createdDraft.id,
-          status: 'accepted',
-          amount: validatedDraft.amount,
-          feeRate: feeRateNumber,
-          recipient: validatedDraft.recipient,
-          ipAddress,
-          userAgent,
-        });
+      if (policyDecision.overrideId) {
+        await agentRepository.markFundingOverrideUsed(policyDecision.overrideId, createdDraft.id);
+        usedOverrideId = policyDecision.overrideId;
+      }
 
-        return createdDraft;
-      },
-    );
+      await agentRepository.markAgentFundingDraftCreated(context.agentId);
+      await recordAgentFundingAttempt({
+        agentId: context.agentId,
+        keyId: context.keyId,
+        keyPrefix: context.keyPrefix,
+        fundingWalletId,
+        operationalWalletId,
+        draftId: createdDraft.id,
+        status: 'accepted',
+        amount: effectiveAmount,
+        feeRate: feeRateNumber,
+        recipient,
+        ipAddress,
+        userAgent,
+      });
+
+      return createdDraft;
+    });
   } catch (error) {
     await recordAgentFundingAttempt({
       agentId: context.agentId,
@@ -361,7 +417,7 @@ export async function submitAgentFundingDraft(
       operationalWalletId,
       status: 'rejected',
       error,
-      amount,
+      amount: attemptAmount,
       feeRate,
       recipient,
       ipAddress,

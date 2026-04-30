@@ -34,7 +34,7 @@ export interface CreateWalletAgentInput {
   name: string;
   fundingWalletId: string;
   operationalWalletId: string;
-  signerDeviceId: string;
+  signerDeviceId?: string | null;
   status?: string;
   maxFundingAmountSats?: bigint | null;
   maxOperationalBalanceSats?: bigint | null;
@@ -145,7 +145,7 @@ export type WalletAgentWithDetails = WalletAgent & {
     id: string;
     label: string;
     fingerprint: string;
-  };
+  } | null;
   apiKeys?: AgentApiKey[];
 };
 
@@ -198,7 +198,9 @@ function nullableString(value?: string | null): string | null {
   return value ?? null;
 }
 
-function toCreateAgentPolicyData(input: CreateWalletAgentInput): Pick<
+function toCreateAgentPolicyData(
+  input: CreateWalletAgentInput
+): Pick<
   Prisma.WalletAgentUncheckedCreateInput,
   | 'maxFundingAmountSats'
   | 'maxOperationalBalanceSats'
@@ -217,7 +219,9 @@ function toCreateAgentPolicyData(input: CreateWalletAgentInput): Pick<
   };
 }
 
-function toCreateAgentAlertData(input: CreateWalletAgentInput): Pick<
+function toCreateAgentAlertData(
+  input: CreateWalletAgentInput
+): Pick<
   Prisma.WalletAgentUncheckedCreateInput,
   | 'largeOperationalSpendSats'
   | 'largeOperationalFeeSats'
@@ -234,7 +238,9 @@ function toCreateAgentAlertData(input: CreateWalletAgentInput): Pick<
   };
 }
 
-function toCreateAgentBehaviorData(input: CreateWalletAgentInput): Pick<
+function toCreateAgentBehaviorData(
+  input: CreateWalletAgentInput
+): Pick<
   Prisma.WalletAgentUncheckedCreateInput,
   'requireHumanApproval' | 'notifyOnOperationalSpend' | 'pauseOnUnexpectedSpend' | 'revokedAt'
 > {
@@ -252,7 +258,7 @@ function toCreateAgentData(input: CreateWalletAgentInput): Prisma.WalletAgentUnc
     name: input.name,
     fundingWalletId: input.fundingWalletId,
     operationalWalletId: input.operationalWalletId,
-    signerDeviceId: input.signerDeviceId,
+    signerDeviceId: input.signerDeviceId ?? null,
     status: input.status ?? 'active',
     ...toCreateAgentPolicyData(input),
     ...toCreateAgentAlertData(input),
@@ -269,10 +275,7 @@ export async function createAgent(input: CreateWalletAgentInput): Promise<Wallet
 export async function findAgents(filter: FindWalletAgentsFilter = {}): Promise<WalletAgentWithDetails[]> {
   const where: Prisma.WalletAgentWhereInput | undefined = filter.walletId
     ? {
-        OR: [
-          { fundingWalletId: filter.walletId },
-          { operationalWalletId: filter.walletId },
-        ],
+        OR: [{ fundingWalletId: filter.walletId }, { operationalWalletId: filter.walletId }],
       }
     : undefined;
 
@@ -324,9 +327,7 @@ export async function findAgentByIdWithDetails(agentId: string): Promise<WalletA
   });
 }
 
-export async function findActiveAgentsByOperationalWalletId(
-  operationalWalletId: string
-): Promise<WalletAgent[]> {
+export async function findActiveAgentsByOperationalWalletId(operationalWalletId: string): Promise<WalletAgent[]> {
   return prisma.walletAgent.findMany({
     where: {
       operationalWalletId,
@@ -340,20 +341,48 @@ export async function updateAgent(agentId: string, input: UpdateWalletAgentInput
   const data: Prisma.WalletAgentUpdateInput = {
     ...(input.name !== undefined && { name: input.name }),
     ...(input.status !== undefined && { status: input.status }),
-    ...(input.maxFundingAmountSats !== undefined && { maxFundingAmountSats: input.maxFundingAmountSats }),
-    ...(input.maxOperationalBalanceSats !== undefined && { maxOperationalBalanceSats: input.maxOperationalBalanceSats }),
-    ...(input.dailyFundingLimitSats !== undefined && { dailyFundingLimitSats: input.dailyFundingLimitSats }),
-    ...(input.weeklyFundingLimitSats !== undefined && { weeklyFundingLimitSats: input.weeklyFundingLimitSats }),
-    ...(input.cooldownMinutes !== undefined && { cooldownMinutes: input.cooldownMinutes }),
-    ...(input.minOperationalBalanceSats !== undefined && { minOperationalBalanceSats: input.minOperationalBalanceSats }),
-    ...(input.largeOperationalSpendSats !== undefined && { largeOperationalSpendSats: input.largeOperationalSpendSats }),
-    ...(input.largeOperationalFeeSats !== undefined && { largeOperationalFeeSats: input.largeOperationalFeeSats }),
-    ...(input.repeatedFailureThreshold !== undefined && { repeatedFailureThreshold: input.repeatedFailureThreshold }),
-    ...(input.repeatedFailureLookbackMinutes !== undefined && { repeatedFailureLookbackMinutes: input.repeatedFailureLookbackMinutes }),
-    ...(input.alertDedupeMinutes !== undefined && { alertDedupeMinutes: input.alertDedupeMinutes }),
-    ...(input.requireHumanApproval !== undefined && { requireHumanApproval: input.requireHumanApproval }),
-    ...(input.notifyOnOperationalSpend !== undefined && { notifyOnOperationalSpend: input.notifyOnOperationalSpend }),
-    ...(input.pauseOnUnexpectedSpend !== undefined && { pauseOnUnexpectedSpend: input.pauseOnUnexpectedSpend }),
+    ...(input.maxFundingAmountSats !== undefined && {
+      maxFundingAmountSats: input.maxFundingAmountSats,
+    }),
+    ...(input.maxOperationalBalanceSats !== undefined && {
+      maxOperationalBalanceSats: input.maxOperationalBalanceSats,
+    }),
+    ...(input.dailyFundingLimitSats !== undefined && {
+      dailyFundingLimitSats: input.dailyFundingLimitSats,
+    }),
+    ...(input.weeklyFundingLimitSats !== undefined && {
+      weeklyFundingLimitSats: input.weeklyFundingLimitSats,
+    }),
+    ...(input.cooldownMinutes !== undefined && {
+      cooldownMinutes: input.cooldownMinutes,
+    }),
+    ...(input.minOperationalBalanceSats !== undefined && {
+      minOperationalBalanceSats: input.minOperationalBalanceSats,
+    }),
+    ...(input.largeOperationalSpendSats !== undefined && {
+      largeOperationalSpendSats: input.largeOperationalSpendSats,
+    }),
+    ...(input.largeOperationalFeeSats !== undefined && {
+      largeOperationalFeeSats: input.largeOperationalFeeSats,
+    }),
+    ...(input.repeatedFailureThreshold !== undefined && {
+      repeatedFailureThreshold: input.repeatedFailureThreshold,
+    }),
+    ...(input.repeatedFailureLookbackMinutes !== undefined && {
+      repeatedFailureLookbackMinutes: input.repeatedFailureLookbackMinutes,
+    }),
+    ...(input.alertDedupeMinutes !== undefined && {
+      alertDedupeMinutes: input.alertDedupeMinutes,
+    }),
+    ...(input.requireHumanApproval !== undefined && {
+      requireHumanApproval: input.requireHumanApproval,
+    }),
+    ...(input.notifyOnOperationalSpend !== undefined && {
+      notifyOnOperationalSpend: input.notifyOnOperationalSpend,
+    }),
+    ...(input.pauseOnUnexpectedSpend !== undefined && {
+      pauseOnUnexpectedSpend: input.pauseOnUnexpectedSpend,
+    }),
     ...(input.revokedAt !== undefined && { revokedAt: input.revokedAt }),
   };
 
@@ -393,10 +422,9 @@ export async function countRejectedFundingAttemptsSince(agentId: string, since: 
   });
 }
 
-function toAgentAlertOptionalData(input: CreateAgentAlertInput): Pick<
-  Prisma.AgentAlertUncheckedCreateInput,
-  'walletId' | 'status' | 'reasonCode' | 'dedupeKey' | 'metadata'
-> {
+function toAgentAlertOptionalData(
+  input: CreateAgentAlertInput
+): Pick<Prisma.AgentAlertUncheckedCreateInput, 'walletId' | 'status' | 'reasonCode' | 'dedupeKey' | 'metadata'> {
   return {
     walletId: nullableString(input.walletId),
     status: input.status ?? 'open',
@@ -406,10 +434,9 @@ function toAgentAlertOptionalData(input: CreateAgentAlertInput): Pick<
   };
 }
 
-function toAgentAlertMetricData(input: CreateAgentAlertInput): Pick<
-  Prisma.AgentAlertUncheckedCreateInput,
-  'txid' | 'amountSats' | 'feeSats' | 'thresholdSats' | 'observedCount'
-> {
+function toAgentAlertMetricData(
+  input: CreateAgentAlertInput
+): Pick<Prisma.AgentAlertUncheckedCreateInput, 'txid' | 'amountSats' | 'feeSats' | 'thresholdSats' | 'observedCount'> {
   return {
     txid: nullableString(input.txid),
     amountSats: nullableBigInt(input.amountSats),
@@ -440,35 +467,35 @@ export async function createAlert(input: CreateAgentAlertInput): Promise<AgentAl
  * Create an alert unless the same dedupe key already exists since `since`.
  * Returns `null` when the alert is suppressed as a duplicate.
  */
-export async function createAlertIfNotDuplicate(
-  input: CreateAgentAlertInput,
-  since: Date
-): Promise<AgentAlert | null> {
+export async function createAlertIfNotDuplicate(input: CreateAgentAlertInput, since: Date): Promise<AgentAlert | null> {
   if (!input.dedupeKey) {
     return createAlert(input);
   }
 
   const lockKey = `agent-alert:${input.dedupeKey}`;
-  return prisma.$transaction(async (tx) => {
-    // Serialize same-key dedupe checks so concurrent monitor runs cannot both insert.
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
+  return prisma.$transaction(
+    async tx => {
+      // Serialize same-key dedupe checks so concurrent monitor runs cannot both insert.
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
 
-    const duplicate = await tx.agentAlert.findFirst({
-      where: {
-        dedupeKey: input.dedupeKey,
-        createdAt: { gte: since },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-    if (duplicate) return null;
+      const duplicate = await tx.agentAlert.findFirst({
+        where: {
+          dedupeKey: input.dedupeKey,
+          createdAt: { gte: since },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (duplicate) return null;
 
-    return tx.agentAlert.create({
-      data: buildAgentAlertCreateData(input),
-    });
-  }, {
-    maxWait: 5_000,
-    timeout: 5_000,
-  });
+      return tx.agentAlert.create({
+        data: buildAgentAlertCreateData(input),
+      });
+    },
+    {
+      maxWait: 5_000,
+      timeout: 5_000,
+    }
+  );
 }
 
 export async function findAlerts(filter: FindAgentAlertsFilter): Promise<AgentAlert[]> {
@@ -483,9 +510,7 @@ export async function findAlerts(filter: FindAgentAlertsFilter): Promise<AgentAl
   });
 }
 
-export async function createFundingOverride(
-  input: CreateAgentFundingOverrideInput
-): Promise<AgentFundingOverride> {
+export async function createFundingOverride(input: CreateAgentFundingOverrideInput): Promise<AgentFundingOverride> {
   return prisma.agentFundingOverride.create({
     data: {
       agentId: input.agentId,
@@ -499,9 +524,7 @@ export async function createFundingOverride(
   });
 }
 
-export async function findFundingOverrides(
-  filter: FindAgentFundingOverridesFilter
-): Promise<AgentFundingOverride[]> {
+export async function findFundingOverrides(filter: FindAgentFundingOverridesFilter): Promise<AgentFundingOverride[]> {
   return prisma.agentFundingOverride.findMany({
     where: {
       agentId: filter.agentId,
@@ -529,17 +552,11 @@ export async function findUsableFundingOverride(
       expiresAt: { gt: input.now },
       maxAmountSats: { gte: input.amount },
     },
-    orderBy: [
-      { expiresAt: 'asc' },
-      { createdAt: 'asc' },
-    ],
+    orderBy: [{ expiresAt: 'asc' }, { createdAt: 'asc' }],
   });
 }
 
-export async function markFundingOverrideUsed(
-  id: string,
-  draftId: string
-): Promise<AgentFundingOverride> {
+export async function markFundingOverrideUsed(id: string, draftId: string): Promise<AgentFundingOverride> {
   // Conditional update claims the override atomically so concurrent draft
   // creation or admin revocation cannot consume the same owner override twice.
   const result = await prisma.agentFundingOverride.updateMany({
@@ -559,7 +576,9 @@ export async function markFundingOverrideUsed(
     throw new InvalidInputError('Agent funding override is no longer usable');
   }
 
-  const override = await prisma.agentFundingOverride.findUnique({ where: { id } });
+  const override = await prisma.agentFundingOverride.findUnique({
+    where: { id },
+  });
   if (!override) {
     throw new NotFoundError('Agent funding override not found');
   }
@@ -635,10 +654,7 @@ export async function updateApiKeyLastUsedIfStale(
   await prisma.agentApiKey.updateMany({
     where: {
       id,
-      OR: [
-        { lastUsedAt: null },
-        { lastUsedAt: { lt: staleBefore } },
-      ],
+      OR: [{ lastUsedAt: null }, { lastUsedAt: { lt: staleBefore } }],
     },
     data: {
       lastUsedAt: new Date(),
@@ -648,22 +664,24 @@ export async function updateApiKeyLastUsedIfStale(
   });
 }
 
-export async function withAgentFundingLock<T>(
-  agentId: string,
-  fn: () => Promise<T>
-): Promise<T> {
+export async function withAgentFundingLock<T>(agentId: string, fn: () => Promise<T>): Promise<T> {
   const lockKey = `agent-funding:${agentId}`;
 
-  return prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
-    return fn();
-  }, {
-    maxWait: 5_000,
-    timeout: 60_000,
-  });
+  return prisma.$transaction(
+    async tx => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
+      return fn();
+    },
+    {
+      maxWait: 5_000,
+      timeout: 60_000,
+    }
+  );
 }
 
-function toFundingAttemptIdentityData(input: CreateAgentFundingAttemptInput): Pick<
+function toFundingAttemptIdentityData(
+  input: CreateAgentFundingAttemptInput
+): Pick<
   Prisma.AgentFundingAttemptUncheckedCreateInput,
   'agentId' | 'keyId' | 'keyPrefix' | 'fundingWalletId' | 'operationalWalletId' | 'draftId'
 > {
@@ -677,7 +695,9 @@ function toFundingAttemptIdentityData(input: CreateAgentFundingAttemptInput): Pi
   };
 }
 
-function toFundingAttemptDetailData(input: CreateAgentFundingAttemptInput): Pick<
+function toFundingAttemptDetailData(
+  input: CreateAgentFundingAttemptInput
+): Pick<
   Prisma.AgentFundingAttemptUncheckedCreateInput,
   'status' | 'reasonCode' | 'reasonMessage' | 'amount' | 'feeRate' | 'recipient' | 'ipAddress' | 'userAgent'
 > {
@@ -693,9 +713,7 @@ function toFundingAttemptDetailData(input: CreateAgentFundingAttemptInput): Pick
   };
 }
 
-export async function createFundingAttempt(
-  input: CreateAgentFundingAttemptInput
-): Promise<AgentFundingAttempt> {
+export async function createFundingAttempt(input: CreateAgentFundingAttemptInput): Promise<AgentFundingAttempt> {
   return prisma.agentFundingAttempt.create({
     data: {
       ...toFundingAttemptIdentityData(input),

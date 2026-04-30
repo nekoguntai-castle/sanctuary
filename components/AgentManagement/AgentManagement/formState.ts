@@ -46,10 +46,26 @@ export const POLICY_FIELDS: Array<{
   label: string;
   helper: string;
 }> = [
-  { key: 'maxFundingAmountSats', label: 'Per-request cap', helper: 'Maximum sats in one funding draft.' },
-  { key: 'maxOperationalBalanceSats', label: 'Operational balance cap', helper: 'Reject funding when the operational wallet is already above this balance.' },
-  { key: 'dailyFundingLimitSats', label: 'Daily cap', helper: 'Maximum accepted funding amount per UTC day.' },
-  { key: 'weeklyFundingLimitSats', label: 'Weekly cap', helper: 'Maximum accepted funding amount per UTC week.' },
+  {
+    key: 'maxFundingAmountSats',
+    label: 'Per-request cap',
+    helper: 'Maximum sats in one funding draft.',
+  },
+  {
+    key: 'maxOperationalBalanceSats',
+    label: 'Operational balance cap',
+    helper: 'Reject funding when the operational wallet is already above this balance.',
+  },
+  {
+    key: 'dailyFundingLimitSats',
+    label: 'Daily cap',
+    helper: 'Maximum accepted funding amount per UTC day.',
+  },
+  {
+    key: 'weeklyFundingLimitSats',
+    label: 'Weekly cap',
+    helper: 'Maximum accepted funding amount per UTC week.',
+  },
 ];
 
 export const MONITORING_SATS_FIELDS: Array<{
@@ -57,9 +73,21 @@ export const MONITORING_SATS_FIELDS: Array<{
   label: string;
   helper: string;
 }> = [
-  { key: 'minOperationalBalanceSats', label: 'Refill threshold', helper: 'Alert when the operational wallet drops below this balance.' },
-  { key: 'largeOperationalSpendSats', label: 'Large spend alert', helper: 'Alert when a single operational spend meets or exceeds this amount.' },
-  { key: 'largeOperationalFeeSats', label: 'Large fee alert', helper: 'Alert when an operational transaction fee meets or exceeds this amount.' },
+  {
+    key: 'minOperationalBalanceSats',
+    label: 'Refill threshold',
+    helper: 'Alert when the operational wallet drops below this balance.',
+  },
+  {
+    key: 'largeOperationalSpendSats',
+    label: 'Large spend alert',
+    helper: 'Alert when a single operational spend meets or exceeds this amount.',
+  },
+  {
+    key: 'largeOperationalFeeSats',
+    label: 'Large fee alert',
+    helper: 'Alert when an operational transaction fee meets or exceeds this amount.',
+  },
 ];
 
 export const MONITORING_NUMBER_FIELDS: Array<{
@@ -68,9 +96,24 @@ export const MONITORING_NUMBER_FIELDS: Array<{
   helper: string;
   placeholder: string;
 }> = [
-  { key: 'repeatedFailureThreshold', label: 'Rejected attempt alert count', helper: 'Alert after this many rejected funding attempts in the lookback window.', placeholder: 'No alert' },
-  { key: 'repeatedFailureLookbackMinutes', label: 'Failure lookback minutes', helper: 'Window used for rejected attempt alerts. Defaults to 60 minutes.', placeholder: '60' },
-  { key: 'alertDedupeMinutes', label: 'Alert dedupe minutes', helper: 'Suppress duplicate threshold alerts for this many minutes. Defaults to 60 minutes.', placeholder: '60' },
+  {
+    key: 'repeatedFailureThreshold',
+    label: 'Rejected attempt alert count',
+    helper: 'Alert after this many rejected funding attempts in the lookback window.',
+    placeholder: 'No alert',
+  },
+  {
+    key: 'repeatedFailureLookbackMinutes',
+    label: 'Failure lookback minutes',
+    helper: 'Window used for rejected attempt alerts. Defaults to 60 minutes.',
+    placeholder: '60',
+  },
+  {
+    key: 'alertDedupeMinutes',
+    label: 'Alert dedupe minutes',
+    helper: 'Suppress duplicate threshold alerts for this many minutes. Defaults to 60 minutes.',
+    placeholder: '60',
+  },
 ];
 
 function textValue(value: string | null): string {
@@ -92,7 +135,7 @@ export function createInitialAgentForm(agent?: WalletAgentMetadata): AgentFormSt
     userId: agent.userId,
     fundingWalletId: agent.fundingWalletId,
     operationalWalletId: agent.operationalWalletId,
-    signerDeviceId: agent.signerDeviceId,
+    signerDeviceId: agent.signerDeviceId ?? '',
     status: agent.status,
     maxFundingAmountSats: textValue(agent.maxFundingAmountSats),
     maxOperationalBalanceSats: textValue(agent.maxOperationalBalanceSats),

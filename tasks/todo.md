@@ -1,3 +1,38 @@
+# Active Task: Agent Wallet Setup UI PR Delivery 2026-04-30
+
+Status: in progress
+
+Goal: deliver PR #231 for the requester-only agent wallet setup flow, including the raw xpub import follow-up and CodeQL rate-limit fix, through the protected merge-queue workflow.
+
+## Plan
+
+- [x] Confirm branch, PR number, merge queue, and current worktree state.
+- [x] Push the committed CodeQL rate-limit fix to `agent-wallet-setup-ui`.
+- [x] Monitor refreshed PR checks and inspect any failing required checks.
+- [x] Fix any CI, CodeQL, or review blockers with focused commits and verification.
+- [ ] Enable auto-merge through the repository merge queue once required checks pass.
+- [ ] Verify `origin/main` contains the merged PR result.
+- [ ] Document delivery results and leave unrelated untracked task files untouched.
+- [ ] After this merge, start follow-up work from `tasks/security-assessment-2026-04-29.md`.
+
+## Review
+
+- Branch `agent-wallet-setup-ui` is one PR-delivery branch for PR #231.
+- The pushed follow-up commit adds route-level rate limiting to the agent API routes after CodeQL reported a high-severity missing-rate-limit alert in `server/src/api/agent.ts`.
+- The refreshed CodeQL alert still flagged the authorized route handler, so the local fix now mirrors existing repo precedent by pairing direct `express-rate-limit` middleware with the Redis-backed agent-key policy limiter.
+- The first merge-queue run passed CodeQL and Code Quality but failed the full Test Suite: backend unit coverage dropped below the enforced 100% gate, and frontend coverage shard 2 exposed a brittle `CurrencyContext` provider-reload test.
+- Added targeted backend route coverage for the agent policy limiter key fallback and the no-signer funding draft signature path.
+- Stabilized the `CurrencyContext` unauthenticated test setup so provider reload tests do not get an extra impossible `undefined` user transition under isolated coverage runs.
+- The second merge-queue run still failed full coverage: backend coverage missed `agentApiService` draft-validation/metadata branches and `agentRepository` no-signer creation, while the frontend merge missed the new agent form/import/xpub helper branches.
+- Added focused backend service/repository coverage for unsafe amounts, vault-policy blocks, decoy/input metadata, effective policy amounts, and requester-only agent creation.
+- Added focused frontend coverage for xpub validation API calls, agent form fallback/edit/cancel branches, raw-key import network/script-type branches, and inline operational-wallet import validation/error/default-name branches.
+- Simplified edit-mode agent identity fields so immutable fields render as always disabled instead of carrying an impossible non-edit branch.
+- Local coverage confirmation now shows 100% for `server/src/api/agent.ts`, `server/src/services/agentApiService.ts`, and `server/src/repositories/agentRepository.ts`; frontend coverage merge also reached 100% statements/branches/functions/lines.
+- Unrelated untracked files are present and intentionally not staged: `tasks/feature-timeline-2026-04-29.md` and `tasks/security-assessment-2026-04-29.md`.
+- The security assessment has not been addressed yet. It remains queued behind the PR #231 merge per user direction.
+
+---
+
 # Active Task: Price Provider DB PR Delivery 2026-04-29
 
 Status: in progress
@@ -8776,3 +8811,131 @@ Review: completed by PR #115 and the follow-up login/upgrade hardening in PR #11
 - `bash -n scripts/support-package.sh` passed.
 - `git diff --check` passed.
 - `npm --prefix server run typecheck:tests` passed on 2026-04-25, so the previous generated-Prisma path mismatch note is no longer current.
+
+## Active Task: Agent Wallet Setup UI
+
+Goal: add a guided UI path for the intended agent-wallet model: a human-owned funding wallet refills an agent-controlled single-sig operational wallet, while Sanctuary watches that operational wallet through an xpub/descriptor and never stores agent private keys. The funding wallet can be an ordinary single-sig or multisig wallet; the agent relationship grants scoped draft-request authority, not ownership or signing authority.
+
+### Product Flow
+
+- [x] Add an "Add Agent Wallet" setup entry point from the existing admin agent surfaces, preferably `Admin -> Agent Wallets` and/or `Admin -> Wallet Agents`.
+- [x] Step 1: choose an existing human-owned funding wallet. It may be single-sig or multisig; multisig creation still requires the needed cosigner xpub/ypub/zpub exports up front.
+- [x] Step 2: choose an existing single-sig operational wallet or import a watch-only descriptor/export inline from the setup wizard.
+- [x] Step 3: link the selected funding wallet and operational watch-only wallet. The link gives the agent credential authority to request/build a signable funding draft from that funding wallet; it does not make the agent a funding signer.
+- [x] Step 4: configure policy caps and monitoring thresholds using the existing agent policy fields.
+- [x] Step 5: optionally issue the scoped `create_funding_draft` runtime key and show the one-time secret handling state.
+- [x] Step 6: land on the Agent Wallets dashboard with the new row visible and clear links to funding/operational wallets.
+
+### Technical Plan
+
+- [x] Revise the backend model that currently requires `signerDeviceId` and an agent-signed funding PSBT; the target model is requester-only by default.
+- [x] Allow funding wallets of type `single_sig` or `multi_sig` when the target user has access to the wallet and it is on the same network as the operational wallet.
+- [x] Reuse the existing wallet import descriptor/xpub helpers where possible so the operational wallet remains a normal single-sig watch-only wallet with a descriptor. The wizard now supports inline import and keeps a link to the full `/wallets/import` flow.
+- [x] Add a small wizard/controller layer under `components/AgentManagement` or a sibling `components/AgentWalletSetup` with focused step components.
+- [x] Add route metadata and navigation affordances only where they improve discoverability; keep `Wallet Agents` and `Agent Wallets` as the canonical admin pages.
+- [x] Preserve the security boundary in UI copy: the funding wallet's normal human signing rules control refills, the xpub gives visibility, and the single-sig operational wallet can spend autonomously after funding.
+- [x] Convert the agent draft endpoint from "submit already agent-signed PSBT" to "request/create a draft against the scoped funding wallet"; the normal draft signing flow then handles single-sig or multisig human signatures.
+- [x] Enforce that agent-created drafts can only pay verified addresses from the linked operational wallet, with funding-wallet change as the only other permitted output.
+- [x] Keep policy checks, operational destination verification, audit logging, notification, overrides, and dashboard monitoring attached to the funding relationship.
+
+### Verification Plan
+
+- [x] Add focused component tests for the current existing-wallet setup path: optional signer, single-sig funding wallet, multisig funding wallet, filtered wallet choices, dashboard entry point, key issuance, and create/cancel behavior.
+- [x] Add backend tests proving requester-only agents can create drafts for scoped funding wallets without `signerDeviceId` or agent-signed PSBT, while wrong wallet, wrong destination, invalid amount, malformed decoys, over-cap, and revoked key paths still fail.
+- [x] Extend existing admin E2E coverage with the happy path: select ordinary funding wallet, choose operational wallet, create funding relationship, and see dashboard row with wallet links.
+- [x] Run `npx vitest run tests/components/AgentManagement.test.tsx tests/components/AgentWalletDashboard.test.tsx` plus focused extracted AgentManagement and dashboard model tests.
+- [x] Run targeted Playwright/admin E2E for the setup flow.
+- [x] Run touched-file lizard checks for any non-trivial new controller/helper files and simplify before final review.
+
+### Open Decisions
+
+- [x] Decide whether agents are requester-only or funding-wallet cosigners. Current direction: requester-only by default; the relationship grants draft-request authority, not Bitcoin signing authority.
+- [x] Decide whether the funding wallet must be a designated multisig. Current direction: no; it can be any human-owned single-sig or multisig wallet, and normal wallet signing rules apply.
+- [x] Decide whether the MVP wizard should support inline operational-wallet import or initially link out to `/wallets/import` with return state. Current direction: support inline descriptor/export import for the common single-sig operational wallet path and keep the full import route available for advanced paths.
+- [x] Decide whether issuing the runtime key should be required in the wizard or optional after agent creation. Current direction: optional after agent creation through the existing one-time key modal.
+- [x] Decide whether the setup entry point should live primarily on `Agent Wallets`, `Wallet Agents`, or both. Current direction: both; `Agent Wallets` links to the canonical `Wallet Agents` creation surface.
+
+### Review
+
+- Backend model now supports requester-only agent links by making `WalletAgent.signerDeviceId` nullable, preserving an optional legacy signer path, and creating a migration that makes the funding+operational wallet pair the unique relationship.
+- Admin creation now allows human-owned `single_sig` or `multi_sig` funding wallets, keeps operational wallets `single_sig`, and validates access, network match, and optional funding signer membership.
+- Agent funding drafts now request a server-built unsigned PSBT instead of submitting an agent-signed PSBT. The server verifies the recipient is a persisted receive address from the linked operational wallet before transaction construction, rejects malformed decoy options and non-decimal amount strings, runs funding/vault policies, and stores the normal draft for human signing.
+- UI copy and entry points now say `Add Agent Wallet`, make the funding signer optional with a human-signer default, and add an `Add Agent Wallet` action from the Agent Wallets dashboard to the Wallet Agents admin surface.
+- Docs were updated to describe the requester-only capability model, flexible funding wallets, xpub/ypub/zpub prerequisites for multisig creation, and the server-enforced destination boundary.
+- Verification passed: focused backend agent/admin/OpenAPI tests, focused AgentManagement and Agent Wallet dashboard component tests, app and server test typechecks, server build, Prisma import guard, focused touched-file lizard, and `git diff --check`.
+- Not completed in this slice: inline xpub/descriptor operational-wallet import inside the agent modal and a dedicated multi-step wizard/controller. The MVP uses the existing wallet import route as the xpub/descriptor handoff.
+
+### Next Slice Plan
+
+- [x] Add an operational-wallet import affordance from the Add Agent Wallet modal that links to the existing `/wallets/import` descriptor/xpub flow.
+- [x] Redirect to `Admin -> Agent Wallets` after a wallet agent is created so the new relationship lands on the monitoring surface.
+- [x] Add component coverage for the import handoff and post-create dashboard navigation.
+- [x] Add Playwright admin setup coverage for creating an agent link and seeing the dashboard row with funding/operational wallet links.
+- [x] Rerun focused AgentManagement/dashboard tests, targeted admin Playwright E2E, app typecheck, touched-file lizard, and `git diff --check`.
+
+### Next Slice Review
+
+- The Add Agent Wallet modal now includes an `Import operational wallet` action that links to the existing descriptor/xpub import flow at `/#/wallets/import`.
+- Successful agent creation now redirects to `Admin -> Agent Wallets`, where the dashboard fetch shows the new relationship and existing funding/operational wallet links.
+- Added component coverage for the import handoff and dashboard redirect, plus targeted Playwright admin coverage for creating an agent link and landing on the dashboard row.
+- Verification passed: focused AgentManagement/Agent Wallet dashboard Vitest suites, targeted `admin-operations` Playwright setup test across configured projects, app/test typechecks, touched-file lizard, and `git diff --check`.
+
+### Wizard Slice Plan
+
+- [x] Split the Add Agent Wallet create modal into focused setup steps: basics, wallets, policies, and monitoring.
+- [x] Keep edit mode as the existing full form so operators can update policies without stepping through setup.
+- [x] Gate the next/add action by the minimum required fields for the current step.
+- [x] Update component and Playwright coverage to exercise next/back behavior and final create submission.
+- [x] Run focused UI tests, targeted admin Playwright, app/test typechecks, touched-file lizard, and `git diff --check`.
+
+### Wizard Slice Review
+
+- The Add Agent Wallet create modal is now a four-step wizard: basics, wallet relationship, policies, and monitoring. Required fields gate `Next` on the relevant step, while final submission still sends the same agent create payload.
+- Edit mode remains the existing full form so operators can update an existing relationship without walking through setup steps.
+- The wallet step keeps the existing xpub/descriptor handoff through `Import operational wallet`, supports optional funding signers, and keeps the UI copy aligned with human-owned funding wallet signing.
+- Coverage now exercises the create wizard, including back navigation, optional signer selection, final payload submission, redirect to `Agent Wallets`, and the admin Playwright setup path across configured browsers.
+- Verification passed: focused AgentManagement/Agent Wallet dashboard Vitest suites, app and test typechecks, targeted admin Playwright E2E, touched-file lizard, and `git diff --check`.
+
+### Inline Operational Import Slice Plan
+
+- [x] Add an inline operational wallet import panel to the Add Agent Wallet wallet step using the existing wallet import validation/import endpoints.
+- [x] Require inline imports to validate as `single_sig` and, when a funding wallet is selected, to match the funding wallet network before importing.
+- [x] Refresh admin agent options after import and auto-select the imported operational wallet in the wizard.
+- [x] Extract wizard/form sections out of `AgentFormModal.tsx` so the modal controller returns under the project line-count threshold.
+- [x] Add component and Playwright coverage for inline import, auto-selection, final create payload, and import validation errors.
+- [x] Run focused UI tests, targeted admin Playwright, app/test typechecks, touched-file lizard, and `git diff --check`.
+
+### Inline Operational Import Slice Review
+
+- The wallet step now includes an inline `Import watch-only operational wallet` panel that validates descriptor/export data through the existing wallet import API, imports it through the existing import endpoint, refreshes admin agent options, and selects the new operational wallet.
+- Inline import rejects non-`single_sig` wallets and network mismatches against the selected funding wallet before creating the wallet import.
+- The full wallet import route remains available from the wallet step for hardware, QR, and advanced import workflows.
+- `AgentFormModal.tsx` was reduced to a controller; rendering sections and reusable controls now live in focused files below the project line-count warning threshold.
+- Docs now mention inline operational wallet import in the agent funding setup guide.
+- Verification passed: focused AgentManagement/Agent Wallet dashboard Vitest suites, targeted admin Playwright E2E across configured projects, app/test typechecks, touched-file lizard, and `git diff --check`.
+
+### Commit Gate Fix Review
+
+- Pre-commit architecture review flagged that `sendMax`/fee-subtraction could make the transaction effective amount exceed the requested amount after policy checks.
+- Agent funding draft creation now builds the unsigned PSBT first, then enforces agent funding limits and vault policies against `txData.effectiveAmount` before creating any draft.
+- Rejected attempts after transaction construction now record the effective amount when available.
+- The agent funding smoke harness now mocks the requester-only draft construction path, and route coverage includes an effective-amount policy regression.
+- Verification passed: `npm --prefix server run test:run -- tests/unit/api/agent-wallet-funding-smoke.test.ts tests/unit/api/agent-routes.test.ts` and touched-file lizard for `agentApiService` plus the updated tests.
+
+### Raw Extended Public Key Import Slice Plan
+
+- [x] Let the inline operational-wallet import panel accept raw single-sig extended public keys (`xpub`, `ypub`, `zpub`, and testnet equivalents) in addition to descriptors/exports.
+- [x] Use the existing wallet xpub validation endpoint to turn raw keys into importable single-sig descriptors, with an explicit script-type chooser for ambiguous `xpub`/`tpub` keys.
+- [x] Reject raw multisig SLIP-132 keys (`Ypub`, `Zpub`, `Upub`, `Vpub`) in this operational-wallet path so the agent wallet remains single-sig.
+- [x] Keep the existing server validation/import checks for single-sig type and funding-wallet network match.
+- [x] Add focused helper and component coverage for descriptor normalization, raw-key import, ambiguous-key script selection, and multisig-key rejection.
+- [x] Run focused AgentManagement tests, app/test typechecks, touched-file lizard, and `git diff --check`.
+
+### Raw Extended Public Key Import Slice Review
+
+- The inline operational-wallet import panel now accepts raw single-sig `xpub`, `ypub`, `zpub`, `tpub`, `upub`, and `vpub` input.
+- Ambiguous `xpub`/`tpub` input shows a script-type chooser; SLIP-132 `ypub`/`upub` and `zpub`/`vpub` infer nested or native SegWit automatically.
+- Raw public keys are validated through `/wallets/validate-xpub`, converted to descriptors, then passed through the existing import validation and import endpoints.
+- Raw-key descriptor generation sends a deterministic fallback fingerprint so separate raw-key imports do not collide on the server's default `00000000` marker.
+- Raw multisig SLIP-132 keys are rejected in the operational-wallet import panel, keeping multisig material on the human-owned funding wallet side of the relationship.
+- Verification passed: focused AgentManagement/dashboard Vitest suites, app/test typechecks, full lizard complexity gate, and `git diff --check`.

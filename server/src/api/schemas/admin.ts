@@ -110,19 +110,20 @@ export const GroupIdParamSchema = z.object({
 
 export const AddGroupMemberSchema = z.object({
   userId: z.string({ message: 'User ID is required' }).min(1, 'User ID is required'),
-  role: z.enum(ADMIN_GROUP_ROLE_VALUES, {
-    message: 'Group member role must be member or admin',
-  }).default('member'),
+  role: z
+    .enum(ADMIN_GROUP_ROLE_VALUES, {
+      message: 'Group member role must be member or admin',
+    })
+    .default('member'),
 });
 
 // =============================================================================
 // System Settings
 // =============================================================================
 
-export const SystemSettingsUpdateSchema = z.record(z.string(), z.unknown()).refine(
-  (obj) => Object.keys(obj).length > 0,
-  { message: 'At least one setting is required' }
-);
+export const SystemSettingsUpdateSchema = z.record(z.string(), z.unknown()).refine(obj => Object.keys(obj).length > 0, {
+  message: 'At least one setting is required',
+});
 
 // =============================================================================
 // Backup & Restore
@@ -137,10 +138,12 @@ export const EncryptionKeysRequestSchema = z.object({
   password: z.string().min(1, 'Password confirmation required to view encryption keys'),
 });
 
-const BackupPayloadSchema = z.object({
-  meta: z.record(z.string(), z.unknown()),
-  data: z.record(z.string(), z.unknown()),
-}).passthrough();
+const BackupPayloadSchema = z
+  .object({
+    meta: z.record(z.string(), z.unknown()),
+    data: z.record(z.string(), z.unknown()),
+  })
+  .passthrough();
 
 export const RestoreBackupSchema = z.object({
   backup: BackupPayloadSchema,
@@ -148,10 +151,7 @@ export const RestoreBackupSchema = z.object({
 
 export const ConfirmRestoreSchema = z.object({
   backup: BackupPayloadSchema,
-  confirmationCode: z.string().refine(
-    (code) => code === 'CONFIRM_RESTORE',
-    'Confirmation code must be CONFIRM_RESTORE'
-  ),
+  confirmationCode: z.string().refine(code => code === 'CONFIRM_RESTORE', 'Confirmation code must be CONFIRM_RESTORE'),
 });
 
 // =============================================================================
@@ -190,14 +190,14 @@ export const McpApiKeyIdParamSchema = z.object({
 const AgentStatusSchema = z.enum(['active', 'paused', 'revoked']);
 const AgentSatsLimitSchema = z
   .union([z.string(), z.number(), z.bigint()])
-  .refine((value) => {
+  .refine(value => {
     /* v8 ignore start -- API inputs arrive as strings; number/bigint support is defensive for internal callers */
     if (typeof value === 'bigint') return value >= 0n;
     if (typeof value === 'number') return Number.isSafeInteger(value) && value >= 0;
     /* v8 ignore stop */
     return /^\d+$/.test(value.trim());
   }, 'Satoshi limits must be non-negative whole numbers')
-  .transform((value) => BigInt(value));
+  .transform(value => BigInt(value));
 const NullableAgentSatsLimitSchema = z.union([AgentSatsLimitSchema, z.null()]);
 const NullableAgentIntegerSchema = z.union([z.coerce.number().int().min(1).max(10080), z.null()]);
 const AgentAlertStatusSchema = z.enum(['open', 'acknowledged', 'resolved']);
@@ -208,7 +208,7 @@ export const CreateWalletAgentSchema = z.object({
   name: z.string().min(1, 'Agent name is required').max(100),
   fundingWalletId: UuidSchema,
   operationalWalletId: UuidSchema,
-  signerDeviceId: UuidSchema,
+  signerDeviceId: UuidSchema.nullish(),
   status: AgentStatusSchema.default('active'),
   maxFundingAmountSats: AgentSatsLimitSchema.optional(),
   maxOperationalBalanceSats: AgentSatsLimitSchema.optional(),
@@ -296,17 +296,18 @@ export const UpdateFeatureFlagSchema = z.object({
 });
 
 export const FeatureFlagKeyParamSchema = z.object({
-  key: z
-    .string()
-    .min(1)
-    .refine(isKnownFeatureFlagKey, { message: UNKNOWN_FEATURE_FLAG_KEY_MESSAGE }),
+  key: z.string().min(1).refine(isKnownFeatureFlagKey, {
+    message: UNKNOWN_FEATURE_FLAG_KEY_MESSAGE,
+  }),
 });
 
 export const FeatureFlagAuditQuerySchema = z.object({
   key: z
     .string()
     .min(1)
-    .refine(isKnownFeatureFlagKey, { message: UNKNOWN_FEATURE_FLAG_KEY_MESSAGE })
+    .refine(isKnownFeatureFlagKey, {
+      message: UNKNOWN_FEATURE_FLAG_KEY_MESSAGE,
+    })
     .optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   offset: z.coerce.number().int().min(0).default(0),

@@ -1,8 +1,9 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ActiveKeyList } from '../../components/AgentManagement/AgentManagement/ActiveKeyList';
 import { AgentFormModal } from '../../components/AgentManagement/AgentManagement/AgentFormModal';
+import { canAdvanceCreateStep } from '../../components/AgentManagement/AgentManagement/AgentFormSections';
 import { AgentHeader } from '../../components/AgentManagement/AgentManagement/AgentHeader';
 import {
   canSubmitAgentForm,
@@ -30,11 +31,7 @@ import {
   getTimelineSummary,
   isAgentRevoked,
 } from '../../components/AgentManagement/AgentManagement/agentRowModel';
-import type {
-  AgentApiKeyMetadata,
-  AgentManagementOptions,
-  WalletAgentMetadata,
-} from '../../src/api/admin';
+import type { AgentApiKeyMetadata, AgentManagementOptions, WalletAgentMetadata } from '../../src/api/admin';
 
 const activeApiKey: AgentApiKeyMetadata = {
   id: 'key-1',
@@ -60,18 +57,76 @@ const revokedApiKey: AgentApiKeyMetadata = {
 
 const options: AgentManagementOptions = {
   users: [
-    { id: 'user-1', username: 'alice', email: 'alice@example.com', emailVerified: true, isAdmin: false, createdAt: '2026-04-16T00:00:00.000Z', updatedAt: '2026-04-16T00:00:00.000Z' },
-    { id: 'user-2', username: 'bob', email: null, emailVerified: false, isAdmin: false, createdAt: '2026-04-16T00:00:00.000Z', updatedAt: '2026-04-16T00:00:00.000Z' },
+    {
+      id: 'user-1',
+      username: 'alice',
+      email: 'alice@example.com',
+      emailVerified: true,
+      isAdmin: false,
+      createdAt: '2026-04-16T00:00:00.000Z',
+      updatedAt: '2026-04-16T00:00:00.000Z',
+    },
+    {
+      id: 'user-2',
+      username: 'bob',
+      email: null,
+      emailVerified: false,
+      isAdmin: false,
+      createdAt: '2026-04-16T00:00:00.000Z',
+      updatedAt: '2026-04-16T00:00:00.000Z',
+    },
   ],
   wallets: [
-    { id: 'funding-1', name: 'Funding', type: 'multi_sig', network: 'testnet', accessUserIds: ['user-1'], deviceIds: ['device-1'] },
-    { id: 'funding-2', name: 'Other Funding', type: 'multi_sig', network: 'mainnet', accessUserIds: ['user-2'], deviceIds: ['device-2'] },
-    { id: 'operational-1', name: 'Operational', type: 'single_sig', network: 'testnet', accessUserIds: ['user-1'], deviceIds: [] },
-    { id: 'operational-2', name: 'Wrong Network', type: 'single_sig', network: 'mainnet', accessUserIds: ['user-1'], deviceIds: [] },
+    {
+      id: 'funding-1',
+      name: 'Funding',
+      type: 'multi_sig',
+      network: 'testnet',
+      accessUserIds: ['user-1'],
+      deviceIds: ['device-1'],
+    },
+    {
+      id: 'funding-2',
+      name: 'Other Funding',
+      type: 'multi_sig',
+      network: 'mainnet',
+      accessUserIds: ['user-2'],
+      deviceIds: ['device-2'],
+    },
+    {
+      id: 'operational-1',
+      name: 'Operational',
+      type: 'single_sig',
+      network: 'testnet',
+      accessUserIds: ['user-1'],
+      deviceIds: [],
+    },
+    {
+      id: 'operational-2',
+      name: 'Wrong Network',
+      type: 'single_sig',
+      network: 'mainnet',
+      accessUserIds: ['user-1'],
+      deviceIds: [],
+    },
   ],
   devices: [
-    { id: 'device-1', label: 'Agent Signer', fingerprint: 'aabbccdd', type: 'ledger', userId: 'user-1', walletIds: ['funding-1'] },
-    { id: 'device-2', label: 'Other Signer', fingerprint: 'eeff0011', type: 'ledger', userId: 'user-2', walletIds: ['funding-2'] },
+    {
+      id: 'device-1',
+      label: 'Agent Signer',
+      fingerprint: 'aabbccdd',
+      type: 'ledger',
+      userId: 'user-1',
+      walletIds: ['funding-1'],
+    },
+    {
+      id: 'device-2',
+      label: 'Other Signer',
+      fingerprint: 'eeff0011',
+      type: 'ledger',
+      userId: 'user-2',
+      walletIds: ['funding-2'],
+    },
   ],
 };
 
@@ -103,9 +158,23 @@ function makeAgent(overrides: Partial<WalletAgentMetadata> = {}): WalletAgentMet
     updatedAt: '2026-04-16T00:00:00.000Z',
     revokedAt: null,
     user: { id: 'user-1', username: 'alice', isAdmin: false },
-    fundingWallet: { id: 'funding-1', name: 'Funding', type: 'multi_sig', network: 'testnet' },
-    operationalWallet: { id: 'operational-1', name: 'Operational', type: 'single_sig', network: 'testnet' },
-    signerDevice: { id: 'device-1', label: 'Agent Signer', fingerprint: 'aabbccdd' },
+    fundingWallet: {
+      id: 'funding-1',
+      name: 'Funding',
+      type: 'multi_sig',
+      network: 'testnet',
+    },
+    operationalWallet: {
+      id: 'operational-1',
+      name: 'Operational',
+      type: 'single_sig',
+      network: 'testnet',
+    },
+    signerDevice: {
+      id: 'device-1',
+      label: 'Agent Signer',
+      fingerprint: 'aabbccdd',
+    },
     apiKeys: [activeApiKey],
     ...overrides,
   };
@@ -126,8 +195,14 @@ function validForm(overrides: Partial<AgentFormState> = {}): AgentFormState {
 describe('AgentManagement extracted branches', () => {
   it('renders header status and active-key empty/click branches', async () => {
     const user = userEvent.setup();
-    const pausedAgent = makeAgent({ status: 'paused', pauseOnUnexpectedSpend: true });
-    const revokedAgent = makeAgent({ status: 'active', revokedAt: '2026-04-17T00:00:00.000Z' });
+    const pausedAgent = makeAgent({
+      status: 'paused',
+      pauseOnUnexpectedSpend: true,
+    });
+    const revokedAgent = makeAgent({
+      status: 'active',
+      revokedAt: '2026-04-17T00:00:00.000Z',
+    });
     const onRevokeKey = vi.fn();
 
     const { rerender, container } = render(<AgentHeader agent={pausedAgent} />);
@@ -170,13 +245,31 @@ describe('AgentManagement extracted branches', () => {
     expect(getAgentInfoBlocks(fallbackAgent)).toEqual([
       { label: 'User', value: 'user-1' },
       { label: 'Funding wallet', value: 'funding-1', helper: undefined },
-      { label: 'Operational wallet', value: 'operational-1', helper: undefined },
-      { label: 'Signer', value: 'device-1', helper: undefined },
+      {
+        label: 'Operational wallet',
+        value: 'operational-1',
+        helper: undefined,
+      },
+      { label: 'Funding signer', value: 'device-1', helper: undefined },
     ]);
+    expect(getAgentInfoBlocks(makeAgent({ signerDevice: undefined, signerDeviceId: null }))[3]).toEqual({
+      label: 'Funding signer',
+      value: 'Human wallet signers',
+      helper: undefined,
+    });
     expect(getAgentInfoBlocks(richAgent)[1].helper).toBe('Multisig');
-    expect(getPolicySummary(fallbackAgent)).toContainEqual({ label: 'Cooldown', value: '0 min' });
-    expect(getMonitoringSummary(fallbackAgent)).toContainEqual({ label: 'Dedupe', value: 'Default' });
-    expect(getMonitoringSummary(richAgent)).toContainEqual({ label: 'Dedupe', value: '120 min' });
+    expect(getPolicySummary(fallbackAgent)).toContainEqual({
+      label: 'Cooldown',
+      value: '0 min',
+    });
+    expect(getMonitoringSummary(fallbackAgent)).toContainEqual({
+      label: 'Dedupe',
+      value: 'Default',
+    });
+    expect(getMonitoringSummary(richAgent)).toContainEqual({
+      label: 'Dedupe',
+      value: '120 min',
+    });
     expect(getTimelineSummary(fallbackAgent, 0)[0].label).toBe('0 active keys');
     expect(getTimelineSummary(richAgent, 1)[0].label).toBe('1 active key');
   });
@@ -189,32 +282,145 @@ describe('AgentManagement extracted branches', () => {
     const signerDevices = getSignerDevices(options.devices, 'funding-1');
 
     expect(createInitialAgentForm()).toEqual(DEFAULT_AGENT_FORM);
-    expect(createInitialAgentForm(makeAgent({
-      cooldownMinutes: null,
-      repeatedFailureThreshold: null,
-      repeatedFailureLookbackMinutes: null,
-      alertDedupeMinutes: null,
-    }))).toMatchObject({
+    expect(
+      createInitialAgentForm(
+        makeAgent({
+          signerDeviceId: null,
+          cooldownMinutes: null,
+          repeatedFailureThreshold: null,
+          repeatedFailureLookbackMinutes: null,
+          alertDedupeMinutes: null,
+        })
+      )
+    ).toMatchObject({
+      signerDeviceId: '',
       cooldownMinutes: '',
       repeatedFailureThreshold: '',
       repeatedFailureLookbackMinutes: '',
       alertDedupeMinutes: '',
     });
-    expect(fundingWallets.map(wallet => wallet.id)).toEqual(['funding-1']);
+    expect(fundingWallets.map(wallet => wallet.id)).toEqual(['funding-1', 'operational-1', 'operational-2']);
     expect(operationalWallets.map(wallet => wallet.id)).toEqual(['operational-1']);
     expect(getSignerDevices(options.devices, '').map(device => device.id)).toEqual(['device-1', 'device-2']);
     expect(signerDevices.map(device => device.id)).toEqual(['device-1']);
     expect(canSubmitAgentForm(filledForm)).toBe(true);
+    expect(canSubmitAgentForm(validForm({ signerDeviceId: '' }))).toBe(true);
     expect(canSubmitAgentForm(validForm({ name: ' ' }))).toBe(false);
-    expect(setAgentFormUser(filledForm, 'user-2')).toMatchObject({ userId: 'user-2', fundingWalletId: '', operationalWalletId: '', signerDeviceId: '' });
-    expect(setAgentFormFundingWallet(filledForm, 'funding-2')).toMatchObject({ fundingWalletId: 'funding-2', operationalWalletId: '', signerDeviceId: '' });
-    expect(reconcileAgentFormSelections(validForm({ fundingWalletId: 'missing' }), fundingWallets, operationalWallets, signerDevices)).toMatchObject({ fundingWalletId: '', operationalWalletId: '', signerDeviceId: '' });
-    expect(reconcileAgentFormSelections(validForm({ operationalWalletId: 'missing' }), fundingWallets, operationalWallets, signerDevices)).toMatchObject({ operationalWalletId: '' });
-    expect(reconcileAgentFormSelections(validForm({ signerDeviceId: 'missing' }), fundingWallets, operationalWallets, signerDevices)).toMatchObject({ signerDeviceId: '' });
-    expect(reconcileAgentFormSelections(filledForm, fundingWallets, operationalWallets, signerDevices)).toBe(filledForm);
-    expect(toUserOptions(options.users)).toContainEqual({ value: 'user-1', label: 'alice' });
-    expect(toWalletOptions(fundingWallets)).toContainEqual({ value: 'funding-1', label: 'Funding · testnet' });
-    expect(toDeviceOptions(signerDevices)).toContainEqual({ value: 'device-1', label: 'Agent Signer · aabbccdd' });
+    expect(canAdvanceCreateStep(filledForm, 99)).toBe(false);
+    expect(setAgentFormUser(filledForm, 'user-2')).toMatchObject({
+      userId: 'user-2',
+      fundingWalletId: '',
+      operationalWalletId: '',
+      signerDeviceId: '',
+    });
+    expect(setAgentFormFundingWallet(filledForm, 'funding-2')).toMatchObject({
+      fundingWalletId: 'funding-2',
+      operationalWalletId: '',
+      signerDeviceId: '',
+    });
+    expect(
+      reconcileAgentFormSelections(
+        validForm({ fundingWalletId: 'missing' }),
+        fundingWallets,
+        operationalWallets,
+        signerDevices
+      )
+    ).toMatchObject({
+      fundingWalletId: '',
+      operationalWalletId: '',
+      signerDeviceId: '',
+    });
+    expect(
+      reconcileAgentFormSelections(
+        validForm({ operationalWalletId: 'missing' }),
+        fundingWallets,
+        operationalWallets,
+        signerDevices
+      )
+    ).toMatchObject({ operationalWalletId: '' });
+    expect(
+      reconcileAgentFormSelections(
+        validForm({ signerDeviceId: 'missing' }),
+        fundingWallets,
+        operationalWallets,
+        signerDevices
+      )
+    ).toMatchObject({ signerDeviceId: '' });
+    expect(reconcileAgentFormSelections(filledForm, fundingWallets, operationalWallets, signerDevices)).toBe(
+      filledForm
+    );
+    expect(toUserOptions(options.users)).toContainEqual({
+      value: 'user-1',
+      label: 'alice',
+    });
+    expect(toWalletOptions(fundingWallets)).toContainEqual({
+      value: 'funding-1',
+      label: 'Funding · testnet',
+    });
+    expect(toDeviceOptions(signerDevices)).toContainEqual({
+      value: 'device-1',
+      label: 'Agent Signer · aabbccdd',
+    });
+  });
+
+  it('closes a create modal from the first step', async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+
+    render(
+      <AgentFormModal
+        title="Add Agent Wallet"
+        options={options}
+        isSaving={false}
+        onClose={onClose}
+        onSubmit={vi.fn()}
+      />
+    );
+
+    await user.selectOptions(screen.getAllByRole('combobox')[1], 'paused');
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it('exercises edit modal field callbacks', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <AgentFormModal
+        title="Edit Agent"
+        agent={makeAgent()}
+        options={options}
+        isSaving={false}
+        onClose={vi.fn()}
+        onSubmit={onSubmit}
+      />
+    );
+
+    await user.clear(screen.getByDisplayValue('Treasury Agent'));
+    await user.type(screen.getByPlaceholderText('Treasury funding agent'), 'Edited Agent');
+    await user.clear(screen.getByLabelText('Cooldown minutes'));
+    await user.type(screen.getByLabelText('Cooldown minutes'), '20');
+
+    const selects = screen.getAllByRole('combobox');
+    await user.selectOptions(selects[1], 'paused');
+    await user.click(screen.getByRole('button', { name: 'Save Agent' }));
+
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Edited Agent',
+          status: 'paused',
+          cooldownMinutes: '20',
+        })
+      )
+    );
+
+    fireEvent.change(selects[0], { target: { value: 'user-2' } });
+    fireEvent.change(selects[2], { target: { value: 'operational-2' } });
+    fireEvent.change(selects[3], { target: { value: 'operational-2' } });
+    fireEvent.change(selects[4], { target: { value: 'device-1' } });
   });
 
   it('submits toggled form booleans from the extracted modal', async () => {
@@ -223,7 +429,7 @@ describe('AgentManagement extracted branches', () => {
 
     render(
       <AgentFormModal
-        title="Create Wallet Agent"
+        title="Add Agent Wallet"
         options={options}
         isSaving={false}
         onClose={vi.fn()}
@@ -232,21 +438,34 @@ describe('AgentManagement extracted branches', () => {
     );
 
     await user.type(screen.getByPlaceholderText('Treasury funding agent'), 'Ops Agent');
-    const selects = screen.getAllByRole('combobox');
+    let selects = screen.getAllByRole('combobox');
     await user.selectOptions(selects[0], 'user-1');
-    await user.selectOptions(selects[2], 'funding-1');
-    await user.selectOptions(selects[3], 'operational-1');
-    await user.selectOptions(selects[4], 'device-1');
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+    expect(screen.getByPlaceholderText('Treasury funding agent')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+
+    selects = screen.getAllByRole('combobox');
+    await user.selectOptions(selects[0], 'funding-1');
+    await user.selectOptions(selects[1], 'operational-1');
+    await user.selectOptions(selects[2], 'device-1');
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    await user.click(screen.getByRole('button', { name: 'Next' }));
 
     const switches = screen.getAllByRole('switch');
     await user.click(switches[1]);
     await user.click(switches[2]);
-    await user.click(screen.getByRole('button', { name: 'Create Agent' }));
+    await user.click(screen.getByRole('button', { name: 'Add Agent Wallet' }));
 
-    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
-      notifyOnOperationalSpend: false,
-      pauseOnUnexpectedSpend: true,
-      requireHumanApproval: true,
-    })));
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          notifyOnOperationalSpend: false,
+          pauseOnUnexpectedSpend: true,
+          requireHumanApproval: true,
+        })
+      )
+    );
   });
 });

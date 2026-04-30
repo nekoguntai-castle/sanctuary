@@ -23,7 +23,7 @@ export interface AgentRequestContext {
   agentStatus: string;
   fundingWalletId: string;
   operationalWalletId: string;
-  signerDeviceId: string;
+  signerDeviceId: string | null;
   scope: AgentApiKeyScope;
 }
 
@@ -55,9 +55,11 @@ export function extractBearerToken(authorization: string | undefined): string | 
   return token;
 }
 
-export function buildAgentKeyScope(input: {
-  allowedActions?: string[];
-} = {}): AgentApiKeyScope {
+export function buildAgentKeyScope(
+  input: {
+    allowedActions?: string[];
+  } = {}
+): AgentApiKeyScope {
   return {
     allowedActions: Array.from(new Set(input.allowedActions ?? [AGENT_ACTION_CREATE_FUNDING_DRAFT])),
   };
@@ -72,7 +74,9 @@ export function parseAgentKeyScope(value: unknown): AgentApiKeyScope {
   return {
     /* v8 ignore start -- API key scopes are normalized at creation time */
     ...(Array.isArray(scope.allowedActions)
-      ? { allowedActions: scope.allowedActions.filter((action): action is string => typeof action === 'string') }
+      ? {
+          allowedActions: scope.allowedActions.filter((action): action is string => typeof action === 'string'),
+        }
       : buildAgentKeyScope()),
     /* v8 ignore stop */
   };
@@ -121,11 +125,10 @@ export async function authenticateAgentRequest(req: Request): Promise<AgentReque
   }
 
   const { ipAddress, userAgent } = getClientInfo(req);
-  await agentRepository.updateApiKeyLastUsedIfStale(
-    key.id,
-    new Date(Date.now() - LAST_USED_THROTTLE_MS),
-    { lastUsedIp: ipAddress, lastUsedAgent: userAgent }
-  );
+  await agentRepository.updateApiKeyLastUsedIfStale(key.id, new Date(Date.now() - LAST_USED_THROTTLE_MS), {
+    lastUsedIp: ipAddress,
+    lastUsedAgent: userAgent,
+  });
 
   return {
     keyId: key.id,

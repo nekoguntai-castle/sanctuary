@@ -53,18 +53,24 @@ const operationalWallet = {
 describe('adminAgentService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.agentRepository.createAgent.mockResolvedValue({ id: 'agent-1', status: 'active' });
+    mocks.agentRepository.createAgent.mockResolvedValue({
+      id: 'agent-1',
+      status: 'active',
+    });
     mocks.agentRepository.findAgentById.mockResolvedValue(activeAgent);
-    mocks.agentRepository.findAgentByIdWithDetails.mockResolvedValue({ id: 'agent-1', hydrated: true });
-    mocks.agentRepository.createFundingOverride.mockResolvedValue({ id: 'override-1' });
-    mocks.agentRepository.createApiKey.mockImplementation(async (input) => ({
+    mocks.agentRepository.findAgentByIdWithDetails.mockResolvedValue({
+      id: 'agent-1',
+      hydrated: true,
+    });
+    mocks.agentRepository.createFundingOverride.mockResolvedValue({
+      id: 'override-1',
+    });
+    mocks.agentRepository.createApiKey.mockImplementation(async input => ({
       id: 'key-1',
       ...input,
     }));
     mocks.userRepository.findById.mockResolvedValue({ id: 'user-1' });
-    mocks.walletRepository.findById
-      .mockResolvedValueOnce(fundingWallet)
-      .mockResolvedValueOnce(operationalWallet);
+    mocks.walletRepository.findById.mockResolvedValueOnce(fundingWallet).mockResolvedValueOnce(operationalWallet);
     mocks.walletRepository.findByIdWithSigningDevices.mockResolvedValue({
       id: 'funding-wallet',
       devices: [{ deviceId: 'device-1' }],
@@ -123,13 +129,38 @@ describe('adminAgentService', () => {
   it('falls back to the created agent when detailed metadata is not found', async () => {
     mocks.agentRepository.findAgentByIdWithDetails.mockResolvedValueOnce(null);
 
-    await expect(createWalletAgent({
+    await expect(
+      createWalletAgent({
+        userId: 'user-1',
+        name: 'Ops Agent',
+        fundingWalletId: 'funding-wallet',
+        operationalWalletId: 'operational-wallet',
+        signerDeviceId: 'device-1',
+      })
+    ).resolves.toEqual({ id: 'agent-1', status: 'active' });
+  });
+
+  it('creates requester-only links from single-sig funding wallets without a signer device', async () => {
+    mocks.walletRepository.findById
+      .mockReset()
+      .mockResolvedValueOnce({ ...fundingWallet, type: 'single_sig' })
+      .mockResolvedValueOnce(operationalWallet);
+
+    await createWalletAgent({
       userId: 'user-1',
-      name: 'Ops Agent',
+      name: 'Requester Agent',
       fundingWalletId: 'funding-wallet',
       operationalWalletId: 'operational-wallet',
-      signerDeviceId: 'device-1',
-    })).resolves.toEqual({ id: 'agent-1', status: 'active' });
+    });
+
+    expect(mocks.agentRepository.createAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Requester Agent',
+        fundingWalletId: 'funding-wallet',
+        operationalWalletId: 'operational-wallet',
+        signerDeviceId: null,
+      })
+    );
   });
 
   it('defaults funding override creator to null when no user id is provided', async () => {
@@ -139,14 +170,16 @@ describe('adminAgentService', () => {
       reason: '  temporary refill  ',
     });
 
-    expect(mocks.agentRepository.createFundingOverride).toHaveBeenCalledWith(expect.objectContaining({
-      agentId: 'agent-1',
-      fundingWalletId: 'funding-wallet',
-      operationalWalletId: 'operational-wallet',
-      createdByUserId: null,
-      reason: 'temporary refill',
-      maxAmountSats: 25_000n,
-    }));
+    expect(mocks.agentRepository.createFundingOverride).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId: 'agent-1',
+        fundingWalletId: 'funding-wallet',
+        operationalWalletId: 'operational-wallet',
+        createdByUserId: null,
+        reason: 'temporary refill',
+        maxAmountSats: 25_000n,
+      })
+    );
   });
 
   it('defaults API key creator to null when no user id is provided', async () => {
@@ -156,14 +189,16 @@ describe('adminAgentService', () => {
     });
 
     expect(result.apiKey).toMatch(/^agt_/);
-    expect(mocks.agentRepository.createApiKey).toHaveBeenCalledWith(expect.objectContaining({
-      agentId: 'agent-1',
-      createdByUserId: null,
-      name: 'Runtime',
-      keyPrefix: expect.stringMatching(/^agt_/),
-      keyHash: expect.any(String),
-      scope: { allowedActions: ['create_funding_draft'] },
-      expiresAt: null,
-    }));
+    expect(mocks.agentRepository.createApiKey).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId: 'agent-1',
+        createdByUserId: null,
+        name: 'Runtime',
+        keyPrefix: expect.stringMatching(/^agt_/),
+        keyHash: expect.any(String),
+        scope: { allowedActions: ['create_funding_draft'] },
+        expiresAt: null,
+      })
+    );
   });
 });

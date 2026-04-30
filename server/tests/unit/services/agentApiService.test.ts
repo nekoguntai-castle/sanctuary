@@ -1,23 +1,61 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ConflictError, InvalidInputError } from '../../../src/errors/ApiError';
+import {
+  ConflictError,
+  ForbiddenError,
+  InvalidInputError,
+} from '../../../src/errors/ApiError';
 
 const mocks = vi.hoisted(() => ({
   createFundingAttempt: vi.fn(),
+  createDraft: vi.fn(),
+  createTransaction: vi.fn(),
+  enforceAgentFundingPolicy: vi.fn(),
   evaluateRejectedFundingAttemptAlert: vi.fn(),
+  evaluatePolicies: vi.fn(),
   logWarn: vi.fn(),
+  markAgentFundingDraftCreated: vi.fn(),
+  markFundingOverrideUsed: vi.fn(),
+  requireAgentFundingDraftAccess: vi.fn(),
+  verifyOperationalReceiveAddress: vi.fn(),
+  withAgentFundingLock: vi.fn(),
+}));
+
+vi.mock('../../../src/agent/auth', () => ({
+  requireAgentFundingDraftAccess: mocks.requireAgentFundingDraftAccess,
 }));
 
 vi.mock('../../../src/repositories', () => ({
   agentRepository: {
     createFundingAttempt: mocks.createFundingAttempt,
+    markAgentFundingDraftCreated: mocks.markAgentFundingDraftCreated,
+    markFundingOverrideUsed: mocks.markFundingOverrideUsed,
+    withAgentFundingLock: mocks.withAgentFundingLock,
   },
   utxoRepository: {},
   walletRepository: {},
 }));
 
+vi.mock('../../../src/services/agentFundingPolicy', () => ({
+  enforceAgentFundingPolicy: mocks.enforceAgentFundingPolicy,
+}));
+
 vi.mock('../../../src/services/agentMonitoringService', () => ({
   evaluateRejectedFundingAttemptAlert:
     mocks.evaluateRejectedFundingAttemptAlert,
+}));
+
+vi.mock('../../../src/services/agentOperationalAddressService', () => ({
+  verifyOperationalReceiveAddress: mocks.verifyOperationalReceiveAddress,
+}));
+
+vi.mock('../../../src/services/bitcoin/transactionService', () => ({
+  createTransaction: mocks.createTransaction,
+}));
+
+vi.mock('../../../src/services/draftService', () => ({
+  draftService: {
+    createDraft: mocks.createDraft,
+  },
 }));
 
 vi.mock('../../../src/utils/logger', () => ({
@@ -29,13 +67,68 @@ vi.mock('../../../src/utils/logger', () => ({
   }),
 }));
 
-import { recordAgentFundingAttempt } from '../../../src/services/agentApiService';
+vi.mock('../../../src/services/vaultPolicy', () => ({
+  policyEvaluationEngine: {
+    evaluatePolicies: mocks.evaluatePolicies,
+  },
+}));
+
+import {
+  recordAgentFundingAttempt,
+  submitAgentFundingDraft,
+} from '../../../src/services/agentApiService';
+
+const agentContext = {
+  keyId: 'key-1',
+  keyPrefix: 'agt_prefix',
+  userId: 'user-1',
+  username: 'alice',
+  agentId: 'agent-1',
+  agentName: 'Treasury Agent',
+  agentStatus: 'active',
+  fundingWalletId: 'funding-wallet',
+  operationalWalletId: 'operational-wallet',
+  signerDeviceId: null,
+  scope: { allowedActions: ['create_funding_draft'] },
+};
+
+const baseFundingDraftBody = {
+  operationalWalletId: 'operational-wallet',
+  recipient: 'tb1qrecipient',
+  amount: 1000,
+  feeRate: 5,
+};
+
+const makeTransactionData = (
+  overrides: Partial<Awaited<ReturnType<typeof mocks.createTransaction>>> = {},
+) => ({
+  psbtBase64: 'cHNi',
+  fee: 100,
+  totalInput: 1100,
+  totalOutput: 1000,
+  changeAmount: 0,
+  changeAddress: undefined,
+  effectiveAmount: 1000,
+  inputPaths: ["m/84'/1'/0'/0/0"],
+  utxos: [{ txid: 'txid', vout: 0 }],
+  decoyOutputs: undefined,
+  ...overrides,
+});
 
 describe('agentApiService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.createFundingAttempt.mockResolvedValue({ id: 'attempt-1' });
+    mocks.createDraft.mockResolvedValue({ id: 'draft-1' });
+    mocks.createTransaction.mockResolvedValue(makeTransactionData());
+    mocks.enforceAgentFundingPolicy.mockResolvedValue({ overrideId: null });
     mocks.evaluateRejectedFundingAttemptAlert.mockResolvedValue(undefined);
+    mocks.evaluatePolicies.mockResolvedValue({ allowed: true, triggered: [] });
+    mocks.markAgentFundingDraftCreated.mockResolvedValue(undefined);
+    mocks.markFundingOverrideUsed.mockResolvedValue(undefined);
+    mocks.requireAgentFundingDraftAccess.mockReturnValue(undefined);
+    mocks.verifyOperationalReceiveAddress.mockResolvedValue({ verified: true });
+    mocks.withAgentFundingLock.mockImplementation(async (_agentId, fn) => fn());
   });
 
   it('records rejected attempts with null amount for unsupported amount inputs', async () => {
@@ -116,6 +209,128 @@ describe('agentApiService', () => {
     expect(mocks.evaluateRejectedFundingAttemptAlert).toHaveBeenCalledWith(
       'agent-1',
       'utxo_locked',
+    );
+  });
+
+  it('rejects unsafe numeric draft amounts before creating a transaction', async () => {
+    await expect(
+      submitAgentFundingDraft({
+        context: agentContext as any,
+        fundingWalletId: 'funding-wallet',
+        body: {
+          ...baseFundingDraftBody,
+          amount: Number.MAX_SAFE_INTEGER + 1,
+        },
+      }),
+    ).rejects.toThrow(InvalidInputError);
+
+    expect(mocks.createTransaction).not.toHaveBeenCalled();
+    expect(mocks.createFundingAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'rejected',
+        reasonCode: 'invalid_amount',
+        amount: null,
+      }),
+    );
+  });
+
+  it('rejects unsafe effective transaction amounts before draft creation', async () => {
+    mocks.createTransaction.mockResolvedValueOnce(
+      makeTransactionData({ effectiveAmount: Number.MAX_SAFE_INTEGER + 1 }),
+    );
+
+    await expect(
+      submitAgentFundingDraft({
+        context: agentContext as any,
+        fundingWalletId: 'funding-wallet',
+        body: baseFundingDraftBody,
+      }),
+    ).rejects.toThrow(InvalidInputError);
+
+    expect(mocks.createDraft).not.toHaveBeenCalled();
+    expect(mocks.createFundingAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'rejected',
+        reasonCode: 'invalid_amount',
+        amount: 1000n,
+      }),
+    );
+  });
+
+  it('creates draft metadata for decoys, input defaults, and vault policy hits', async () => {
+    const policyEvaluation = {
+      allowed: true,
+      triggered: [{ policyId: 'policy-1', severity: 'warn' }],
+    };
+    mocks.evaluatePolicies.mockResolvedValueOnce(policyEvaluation);
+    mocks.createTransaction.mockResolvedValueOnce(
+      makeTransactionData({
+        changeAddress: 'tb1qchange',
+        changeAmount: 300,
+        decoyOutputs: [{ address: 'tb1qdecoy', amount: 200 }],
+      }),
+    );
+
+    await expect(
+      submitAgentFundingDraft({
+        context: agentContext as any,
+        fundingWalletId: 'funding-wallet',
+        body: baseFundingDraftBody,
+      }),
+    ).resolves.toEqual({ draft: { id: 'draft-1' }, usedOverrideId: null });
+
+    expect(mocks.createDraft).toHaveBeenCalledWith(
+      'funding-wallet',
+      'user-1',
+      expect.objectContaining({
+        decoyOutputs: [{ address: 'tb1qdecoy', amount: 200 }],
+        inputs: [{ txid: 'txid', vout: 0, address: '', amount: 0 }],
+        outputs: [
+          {
+            address: 'tb1qrecipient',
+            amount: 1000,
+            outputType: 'recipient',
+            isOurs: true,
+          },
+          {
+            address: 'tb1qchange',
+            amount: 300,
+            outputType: 'change',
+            isOurs: true,
+          },
+          {
+            address: 'tb1qdecoy',
+            amount: 200,
+            outputType: 'decoy',
+            isOurs: true,
+          },
+        ],
+        policyEvaluation,
+      }),
+    );
+  });
+
+  it('rejects vault policy blocks before draft creation', async () => {
+    mocks.evaluatePolicies.mockResolvedValueOnce({
+      allowed: false,
+      triggered: [{ policyId: 'policy-1', severity: 'block' }],
+    });
+
+    await expect(
+      submitAgentFundingDraft({
+        context: agentContext as any,
+        fundingWalletId: 'funding-wallet',
+        body: baseFundingDraftBody,
+      }),
+    ).rejects.toThrow(ForbiddenError);
+
+    expect(mocks.createDraft).not.toHaveBeenCalled();
+    expect(mocks.createFundingAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'rejected',
+        reasonCode: 'forbidden_scope',
+        amount: 1000n,
+      }),
     );
   });
 });

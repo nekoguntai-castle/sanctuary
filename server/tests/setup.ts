@@ -51,6 +51,7 @@ vi.mock('../src/utils/requestContext', () => ({
 vi.mock('../src/middleware/rateLimit', () => ({
   rateLimit: () => (_req: unknown, _res: unknown, next: () => void) => next(),
   rateLimitByIpAndKey: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+  rateLimitByKey: () => (_req: unknown, _res: unknown, next: () => void) => next(),
   rateLimitByUser: () => (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 

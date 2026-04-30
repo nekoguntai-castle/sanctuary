@@ -1,25 +1,24 @@
 # Agent Wallet Funding
 
-This guide explains how to operate the agent funding flow where an external agent holds one signer key in a multisig funding wallet and controls a separate single-sig operational wallet. Sanctuary coordinates policy checks, draft review, notifications, and monitoring. Sanctuary does not store the agent private key and does not auto-sign for either party.
+This guide explains how to operate the agent funding flow where an external agent controls a separate single-sig operational wallet and can request refills from a human-owned funding wallet. Sanctuary coordinates policy checks, draft creation, review, notifications, and monitoring. Sanctuary does not store the agent private key and does not auto-sign for either party.
 
 ## Supported Boundary
 
-- Funding wallet: multisig wallet managed in Sanctuary.
-- Agent signer: a registered signing device on the funding wallet. The agent holds the corresponding private key outside Sanctuary.
-- Human signer or approver: a wallet party who reviews and signs in Sanctuary or a future mobile client.
+- Funding wallet: any human-owned single-sig or multisig wallet managed in Sanctuary. It does not need to be dedicated to agents.
+- Agent relationship: a scoped capability link that lets the agent request a signable draft from the funding wallet to its linked operational wallet.
+- Human signer or approver: a wallet party who reviews and signs in Sanctuary or a future mobile client according to the funding wallet's normal signing rules.
 - Operational wallet: usually single-sig and agent-controlled. Sanctuary should hold watch-only metadata for address verification and monitoring.
-- Agent credential: scoped `agt_` API key that can submit funding drafts only for its linked funding and operational wallet pair.
+- Agent credential: scoped `agt_` API key that can create funding drafts only for its linked funding and operational wallet pair.
 
-Agent credentials cannot broadcast, approve vault policies, manage wallet settings, create owner overrides, or submit drafts to arbitrary wallets.
+Agent credentials cannot broadcast, approve vault policies, manage wallet settings, create owner overrides, or create drafts to arbitrary addresses. Agent-created drafts must pay a verified address from the linked operational wallet; funding-wallet change is the only other allowed output.
 
 ## Prerequisites
 
-1. Create or import the funding multisig wallet.
-2. Add the agent signer device to the funding wallet.
-3. Create or import the operational wallet as watch-only when possible.
-4. Verify the funding and operational wallets use the same network.
-5. Decide funding limits, operational balance thresholds, cooldown, and alert thresholds.
-6. Configure Telegram/push notification recipients for human reviewers.
+1. Create or import the human-owned funding wallet. For multisig funding wallets, collect the required cosigner xpub/ypub/zpub exports before creating/importing the wallet.
+2. Create or import the operational wallet as watch-only when possible. The Add Agent Wallet flow can import a descriptor or wallet export inline, or you can use the full wallet import page first.
+3. Verify the funding and operational wallets use the same network.
+4. Decide funding limits, operational balance thresholds, cooldown, and alert thresholds.
+5. Configure Telegram/push notification recipients for human reviewers.
 
 ## Register An Agent
 
@@ -27,8 +26,7 @@ Agent credentials cannot broadcast, approve vault policies, manage wallet settin
 2. Create an agent with:
    - Target human owner.
    - Funding wallet.
-   - Operational wallet.
-   - Agent signer device.
+   - Operational wallet. Select an existing single-sig wallet, or use the inline watch-only import to add one from a descriptor/export and auto-select it.
    - Per-request funding cap.
    - Optional daily and weekly caps.
    - Optional cooldown.
@@ -48,17 +46,16 @@ Agent credentials cannot broadcast, approve vault policies, manage wallet settin
 The agent should:
 
 1. Ask Sanctuary for a linked operational receive address when it needs a destination.
-2. Build a PSBT that spends only funding-wallet UTXOs.
-3. Pay only the linked operational wallet destination and funding-wallet change.
-4. Partially sign every input with the registered agent signer key.
-5. Submit the draft to:
+2. Request a funding draft to that verified operational receive address.
+3. Let Sanctuary build the unsigned PSBT from the scoped funding wallet.
+4. Submit the request to:
 
 ```text
 POST /api/v1/agent/wallets/:fundingWalletId/funding-drafts
 Authorization: Bearer agt_...
 ```
 
-Sanctuary validates the agent scope, linked destination, funding-wallet UTXOs, frozen/spent state, active draft locks, policy limits, cooldown, and agent partial signatures. Accepted submissions become normal draft transactions with agent metadata.
+Sanctuary validates the agent scope, linked destination, funding-wallet UTXOs, frozen/spent state, active draft locks, policy limits, cooldown, and vault policy result. Accepted submissions become normal unsigned draft transactions with agent metadata.
 
 ## Human Review
 
@@ -66,7 +63,7 @@ Human reviewers should review the draft before signing:
 
 1. Open the draft from Telegram/push notification, `Admin -> Agent Wallets`, wallet draft list, or mobile review API.
 2. Confirm the destination is the linked operational wallet.
-3. Confirm amount, fee, inputs, outputs, change, and signer metadata.
+3. Confirm amount, fee, inputs, outputs, change, and agent request metadata.
 4. Reject anything unexpected.
 5. Sign only after the decoded summary matches the intended funding.
 6. Broadcast through the normal Sanctuary transaction flow after enough signatures exist.
@@ -82,7 +79,7 @@ POST /api/v1/mobile/agent-funding-drafts/:draftId/reject
 POST /api/v1/mobile/agent-funding-drafts/:draftId/signature
 ```
 
-Mobile approve/comment records review intent through the API response and audit trail. It does not sign, broadcast, or bypass multisig. Mobile signature submission must provide a signed PSBT and is routed through the same draft update path as web signing.
+Mobile approve/comment records review intent through the API response and audit trail. It does not sign, broadcast, or bypass the funding wallet's normal signing rules. Mobile signature submission must provide a signed PSBT and is routed through the same draft update path as web signing.
 
 ## Owner Overrides
 
@@ -94,7 +91,7 @@ Default behavior is hard rejection for over-cap agent funding. If an exceptional
 4. Verify the resulting draft label includes `(owner override)`.
 5. Revoke unused overrides as soon as they are no longer needed.
 
-Overrides do not bypass inactive-agent checks, wrong-destination checks, cooldown, signature validation, or human signing.
+Overrides do not bypass inactive-agent checks, wrong-destination checks, cooldown, vault policy checks, or human signing.
 
 ## Monitoring
 

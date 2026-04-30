@@ -6,6 +6,8 @@
 
 import apiClient from './client';
 import type { Wallet } from '../types';
+export type { ValidateXpubRequest, ValidateXpubResponse, XpubScriptType, XpubValidationNetwork } from './walletXpub';
+export { validateXpub } from './walletXpub';
 
 // Re-export types for backward compatibility
 export type { Wallet, WalletRole } from '../types';

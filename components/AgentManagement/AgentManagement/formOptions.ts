@@ -20,7 +20,7 @@ function walletMatchesUser(wallet: AgentOptionWallet, userId: string): boolean {
 }
 
 function isFundingWallet(wallet: AgentOptionWallet, userId: string): boolean {
-  return wallet.type === 'multi_sig' && walletMatchesUser(wallet, userId);
+  return (wallet.type === 'multi_sig' || wallet.type === 'single_sig') && walletMatchesUser(wallet, userId);
 }
 
 function isOperationalWallet(
@@ -88,13 +88,7 @@ export function getSignerDevices(devices: AgentOptionDevice[], fundingWalletId: 
 }
 
 export function canSubmitAgentForm(form: AgentFormState): boolean {
-  return Boolean(
-    form.name.trim() &&
-    form.userId &&
-    form.fundingWalletId &&
-    form.operationalWalletId &&
-    form.signerDeviceId
-  );
+  return Boolean(form.name.trim() && form.userId && form.fundingWalletId && form.operationalWalletId);
 }
 
 export function setAgentFormUser(form: AgentFormState, userId: string): AgentFormState {
@@ -143,9 +137,15 @@ export function toUserOptions(users: AgentOptionUser[]): SelectOption[] {
 }
 
 export function toWalletOptions(wallets: AgentOptionWallet[]): SelectOption[] {
-  return wallets.map(wallet => ({ value: wallet.id, label: `${wallet.name} · ${wallet.network}` }));
+  return wallets.map(wallet => ({
+    value: wallet.id,
+    label: `${wallet.name} · ${wallet.network}`,
+  }));
 }
 
 export function toDeviceOptions(devices: AgentManagementOptions['devices']): SelectOption[] {
-  return devices.map(device => ({ value: device.id, label: `${device.label} · ${device.fingerprint}` }));
+  return devices.map(device => ({
+    value: device.id,
+    label: `${device.label} · ${device.fingerprint}`,
+  }));
 }

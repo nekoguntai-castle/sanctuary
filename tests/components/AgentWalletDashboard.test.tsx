@@ -38,23 +38,39 @@ const agent = {
   updatedAt: '2026-04-16T00:00:00.000Z',
   revokedAt: null,
   user: { id: 'user-1', username: 'alice', isAdmin: false },
-  fundingWallet: { id: 'funding-1', name: 'Funding', type: 'multi_sig', network: 'testnet' },
-  operationalWallet: { id: 'operational-1', name: 'Operational', type: 'single_sig', network: 'testnet' },
-  signerDevice: { id: 'device-1', label: 'Agent Signer', fingerprint: 'aabbccdd' },
-  apiKeys: [{
-    id: 'key-1',
-    agentId: 'agent-1',
-    createdByUserId: 'admin-1',
-    name: 'Runtime',
-    keyPrefix: 'agt_prefix',
-    scope: { allowedActions: ['create_funding_draft'] },
-    lastUsedAt: null,
-    lastUsedIp: null,
-    lastUsedAgent: null,
-    expiresAt: null,
-    createdAt: '2026-04-16T00:00:00.000Z',
-    revokedAt: null,
-  }],
+  fundingWallet: {
+    id: 'funding-1',
+    name: 'Funding',
+    type: 'multi_sig',
+    network: 'testnet',
+  },
+  operationalWallet: {
+    id: 'operational-1',
+    name: 'Operational',
+    type: 'single_sig',
+    network: 'testnet',
+  },
+  signerDevice: {
+    id: 'device-1',
+    label: 'Agent Signer',
+    fingerprint: 'aabbccdd',
+  },
+  apiKeys: [
+    {
+      id: 'key-1',
+      agentId: 'agent-1',
+      createdByUserId: 'admin-1',
+      name: 'Runtime',
+      keyPrefix: 'agt_prefix',
+      scope: { allowedActions: ['create_funding_draft'] },
+      lastUsedAt: null,
+      lastUsedIp: null,
+      lastUsedAgent: null,
+      expiresAt: null,
+      createdAt: '2026-04-16T00:00:00.000Z',
+      revokedAt: null,
+    },
+  ],
 } as any;
 
 const dashboardRow = {
@@ -87,50 +103,56 @@ const dashboardRow = {
     counterpartyAddress: 'tb1qrecipient',
     createdAt: '2026-04-16T00:10:00.000Z',
   },
-  recentFundingDrafts: [{
-    id: 'draft-1',
-    walletId: 'funding-1',
-    recipient: 'tb1qops',
-    amountSats: '50000',
-    feeSats: '250',
-    feeRate: 2.5,
-    status: 'partial',
-    approvalStatus: 'not_required',
-    createdAt: '2026-04-16T00:00:00.000Z',
-    updatedAt: '2026-04-16T00:00:00.000Z',
-  }],
-  recentOperationalSpends: [{
-    id: 'tx-1',
-    txid: 'a'.repeat(64),
-    walletId: 'operational-1',
-    type: 'sent',
-    amountSats: '12000',
-    feeSats: '350',
-    confirmations: 0,
-    blockTime: null,
-    counterpartyAddress: 'tb1qrecipient',
-    createdAt: '2026-04-16T00:10:00.000Z',
-  }],
-  recentAlerts: [{
-    id: 'alert-1',
-    agentId: 'agent-1',
-    walletId: 'operational-1',
-    type: 'operational_balance_low',
-    severity: 'warning',
-    status: 'open',
-    txid: null,
-    amountSats: '82000',
-    feeSats: null,
-    thresholdSats: '100000',
-    observedCount: null,
-    reasonCode: null,
-    message: 'Operational balance is below threshold',
-    dedupeKey: 'agent:agent-1:balance_low:operational-1',
-    metadata: {},
-    createdAt: '2026-04-16T00:20:00.000Z',
-    acknowledgedAt: null,
-    resolvedAt: null,
-  }],
+  recentFundingDrafts: [
+    {
+      id: 'draft-1',
+      walletId: 'funding-1',
+      recipient: 'tb1qops',
+      amountSats: '50000',
+      feeSats: '250',
+      feeRate: 2.5,
+      status: 'partial',
+      approvalStatus: 'not_required',
+      createdAt: '2026-04-16T00:00:00.000Z',
+      updatedAt: '2026-04-16T00:00:00.000Z',
+    },
+  ],
+  recentOperationalSpends: [
+    {
+      id: 'tx-1',
+      txid: 'a'.repeat(64),
+      walletId: 'operational-1',
+      type: 'sent',
+      amountSats: '12000',
+      feeSats: '350',
+      confirmations: 0,
+      blockTime: null,
+      counterpartyAddress: 'tb1qrecipient',
+      createdAt: '2026-04-16T00:10:00.000Z',
+    },
+  ],
+  recentAlerts: [
+    {
+      id: 'alert-1',
+      agentId: 'agent-1',
+      walletId: 'operational-1',
+      type: 'operational_balance_low',
+      severity: 'warning',
+      status: 'open',
+      txid: null,
+      amountSats: '82000',
+      feeSats: null,
+      thresholdSats: '100000',
+      observedCount: null,
+      reasonCode: null,
+      message: 'Operational balance is below threshold',
+      dedupeKey: 'agent:agent-1:balance_low:operational-1',
+      metadata: {},
+      createdAt: '2026-04-16T00:20:00.000Z',
+      acknowledgedAt: null,
+      resolvedAt: null,
+    },
+  ],
 } as any;
 
 function renderDashboard() {
@@ -144,10 +166,19 @@ function renderDashboard() {
 describe('AgentWalletDashboard', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.stubGlobal('confirm', vi.fn(() => true));
+    vi.stubGlobal(
+      'confirm',
+      vi.fn(() => true)
+    );
     vi.mocked(adminApi.getAgentWalletDashboard).mockResolvedValue([dashboardRow]);
-    vi.mocked(adminApi.updateWalletAgent).mockResolvedValue({ ...agent, status: 'paused' });
-    vi.mocked(adminApi.revokeAgentApiKey).mockResolvedValue({ ...agent.apiKeys[0], revokedAt: '2026-04-16T01:00:00.000Z' });
+    vi.mocked(adminApi.updateWalletAgent).mockResolvedValue({
+      ...agent,
+      status: 'paused',
+    });
+    vi.mocked(adminApi.revokeAgentApiKey).mockResolvedValue({
+      ...agent.apiKeys[0],
+      revokedAt: '2026-04-16T01:00:00.000Z',
+    });
   });
 
   it('renders operational balances, pending drafts, alerts, wallet links, and details', async () => {
@@ -155,6 +186,7 @@ describe('AgentWalletDashboard', () => {
     renderDashboard();
 
     expect(await screen.findByText('Treasury Agent')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Add Agent Wallet' })).toHaveAttribute('href', '/admin/agents');
     expect(screen.getByText('Spend-ready agents')).toBeInTheDocument();
     expect(screen.getAllByText('82,000 sats')).not.toHaveLength(0);
     expect(screen.getAllByText('Pending drafts')).not.toHaveLength(0);
@@ -213,7 +245,11 @@ describe('AgentWalletDashboard', () => {
     await screen.findByText('Treasury Agent');
     await user.click(screen.getByRole('button', { name: 'Pause' }));
 
-    await waitFor(() => expect(adminApi.updateWalletAgent).toHaveBeenCalledWith('agent-1', { status: 'paused' }));
+    await waitFor(() =>
+      expect(adminApi.updateWalletAgent).toHaveBeenCalledWith('agent-1', {
+        status: 'paused',
+      })
+    );
     expect(adminApi.getAgentWalletDashboard).toHaveBeenCalledTimes(2);
 
     await user.click(screen.getByText('Review details'));
@@ -231,7 +267,11 @@ describe('AgentWalletDashboard', () => {
     const { unmount } = renderDashboard();
     expect(await screen.findByText('Treasury Agent')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Unpause' }));
-    await waitFor(() => expect(adminApi.updateWalletAgent).toHaveBeenCalledWith('agent-1', { status: 'active' }));
+    await waitFor(() =>
+      expect(adminApi.updateWalletAgent).toHaveBeenCalledWith('agent-1', {
+        status: 'active',
+      })
+    );
     unmount();
 
     vi.mocked(adminApi.getAgentWalletDashboard).mockRejectedValueOnce(new Error('dashboard down'));
@@ -256,10 +296,12 @@ describe('AgentWalletDashboard', () => {
           ...agent,
           status: 'revoked',
           revokedAt: '2026-04-16T02:00:00.000Z',
-          apiKeys: [{
-            ...agent.apiKeys[0],
-            expiresAt: '2026-04-15T00:00:00.000Z',
-          }],
+          apiKeys: [
+            {
+              ...agent.apiKeys[0],
+              expiresAt: '2026-04-15T00:00:00.000Z',
+            },
+          ],
         },
       },
     ]);
@@ -337,13 +379,15 @@ describe('AgentWalletDashboard', () => {
     vi.mocked(adminApi.getAgentWalletDashboard).mockResolvedValueOnce([
       {
         ...dashboardRow,
-        recentOperationalSpends: [{
-          ...dashboardRow.lastOperationalSpend,
-          id: 'tx-no-fee',
-          txid: 'shorttx',
-          feeSats: null,
-          counterpartyAddress: null,
-        }],
+        recentOperationalSpends: [
+          {
+            ...dashboardRow.lastOperationalSpend,
+            id: 'tx-no-fee',
+            txid: 'shorttx',
+            feeSats: null,
+            counterpartyAddress: null,
+          },
+        ],
       },
     ]);
 
