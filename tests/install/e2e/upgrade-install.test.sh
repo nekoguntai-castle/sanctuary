@@ -165,6 +165,9 @@ LEGACY_TWO_FACTOR_USERNAME="legacy2fa"
 LEGACY_TWO_FACTOR_PASSWORD="LegacyUpgradePassword123!"
 LEGACY_TWO_FACTOR_SECRET=""
 TEST_WALLET_ID=""
+TEST_OPERATIONAL_WALLET_ID=""
+TEST_DEVICE_ID=""
+TEST_WALLET_AGENT_ID=""
 TEST_LABEL_NAME="upgrade-fixture-label"
 TEST_SETTING_KEY="upgrade.fixture.marker"
 TEST_NODE_CONFIG_ID=""
@@ -708,8 +711,52 @@ const prisma = prismaModule.default || prismaModule;
     });
   }
 
+  // Seed an agent funding link so the v0.8.47 wallet_agents migration
+  // (signerDeviceId nullable + relaxed unique key) is exercised against
+  // pre-existing data instead of an empty table.
+  const operationalWallet = await prisma.wallet.create({
+    data: {
+      name: "Upgrade Fixture Operational Wallet",
+      type: "single_sig",
+      scriptType: "native_segwit",
+      network: "testnet",
+      descriptor: "wpkh([abadc0de/84h/1h/0h]tpubD6NzVbkrYhZ4X5n7operational/0/*)",
+      fingerprint: "abadc0de",
+      groupId: group.id,
+      groupRole: "viewer",
+      users: { create: { userId: admin.id, role: "owner" } },
+    },
+    select: { id: true },
+  });
+
+  const deviceFingerprint = `agf${Date.now().toString(16).slice(-5)}`;
+  const device = await prisma.device.create({
+    data: {
+      userId: admin.id,
+      type: "ledger",
+      label: "Upgrade Fixture Signer",
+      fingerprint: deviceFingerprint,
+      xpub: "tpubD6NzVbkrYhZ4X5n7fixtureSignerDevice",
+    },
+    select: { id: true },
+  });
+
+  const agent = await prisma.walletAgent.create({
+    data: {
+      userId: admin.id,
+      name: "Upgrade Fixture Agent",
+      fundingWalletId: wallet.id,
+      operationalWalletId: operationalWallet.id,
+      signerDeviceId: device.id,
+    },
+    select: { id: true },
+  });
+
   process.stdout.write(`walletId=${wallet.id}\n`);
   process.stdout.write(`nodeConfigId=${nodeConfig.id}\n`);
+  process.stdout.write(`operationalWalletId=${operationalWallet.id}\n`);
+  process.stdout.write(`deviceId=${device.id}\n`);
+  process.stdout.write(`walletAgentId=${agent.id}\n`);
 })()
   .then(() => prisma.$disconnect())
   .catch(async (error) => {
@@ -726,9 +773,18 @@ const prisma = prismaModule.default || prismaModule;
 
     TEST_WALLET_ID=$(echo "$seed_output" | sed -n 's/^walletId=//p' | tail -n 1)
     TEST_NODE_CONFIG_ID=$(echo "$seed_output" | sed -n 's/^nodeConfigId=//p' | tail -n 1)
+    TEST_OPERATIONAL_WALLET_ID=$(echo "$seed_output" | sed -n 's/^operationalWalletId=//p' | tail -n 1)
+    TEST_DEVICE_ID=$(echo "$seed_output" | sed -n 's/^deviceId=//p' | tail -n 1)
+    TEST_WALLET_AGENT_ID=$(echo "$seed_output" | sed -n 's/^walletAgentId=//p' | tail -n 1)
 
     if [ -z "$TEST_WALLET_ID" ] || [ -z "$TEST_NODE_CONFIG_ID" ]; then
         log_error "App-state fixture did not return required IDs"
+        log_error "Output: $seed_output"
+        return 1
+    fi
+
+    if [ -z "$TEST_OPERATIONAL_WALLET_ID" ] || [ -z "$TEST_DEVICE_ID" ] || [ -z "$TEST_WALLET_AGENT_ID" ]; then
+        log_error "App-state fixture did not return wallet_agents IDs"
         log_error "Output: $seed_output"
         return 1
     fi
@@ -751,6 +807,9 @@ verify_representative_app_state_preserved() {
         -e "UPGRADE_LABEL_NAME=$TEST_LABEL_NAME" \
         -e "UPGRADE_SETTING_KEY=$TEST_SETTING_KEY" \
         -e "UPGRADE_NODE_CONFIG_ID=$TEST_NODE_CONFIG_ID" \
+        -e "UPGRADE_OPERATIONAL_WALLET_ID=$TEST_OPERATIONAL_WALLET_ID" \
+        -e "UPGRADE_DEVICE_ID=$TEST_DEVICE_ID" \
+        -e "UPGRADE_WALLET_AGENT_ID=$TEST_WALLET_AGENT_ID" \
         backend node -e '
 function loadModule(candidates) {
   for (const candidate of candidates) {
@@ -816,6 +875,36 @@ const prisma = prismaModule.default || prismaModule;
   }
   if (!nodeConfig.servers.some((server) => server.label === "Upgrade Fixture Electrum" && server.enabled === false && server.priority === 42)) {
     throw new Error("seeded electrum server missing after upgrade");
+  }
+
+  // Verify the wallet_agents row seeded against the v0.8.46 schema
+  // (signerDeviceId NOT NULL, 3-col unique) survives the v0.8.47 migration
+  // that relaxes the column to nullable and replaces the unique key.
+  const agent = await prisma.walletAgent.findUnique({
+    where: { id: process.env.UPGRADE_WALLET_AGENT_ID },
+    select: {
+      name: true,
+      status: true,
+      fundingWalletId: true,
+      operationalWalletId: true,
+      signerDeviceId: true,
+      signerDevice: { select: { id: true, label: true } },
+    },
+  });
+  if (!agent || agent.name !== "Upgrade Fixture Agent") {
+    throw new Error("seeded wallet agent missing after upgrade");
+  }
+  if (agent.fundingWalletId !== process.env.UPGRADE_WALLET_ID) {
+    throw new Error("agent fundingWalletId not preserved after upgrade");
+  }
+  if (agent.operationalWalletId !== process.env.UPGRADE_OPERATIONAL_WALLET_ID) {
+    throw new Error("agent operationalWalletId not preserved after upgrade");
+  }
+  if (agent.signerDeviceId !== process.env.UPGRADE_DEVICE_ID) {
+    throw new Error("agent signerDeviceId not preserved after upgrade");
+  }
+  if (!agent.signerDevice || agent.signerDevice.label !== "Upgrade Fixture Signer") {
+    throw new Error("agent signerDevice relation not preserved after upgrade");
   }
 
   process.stdout.write("appStatePreserved=true\n");
