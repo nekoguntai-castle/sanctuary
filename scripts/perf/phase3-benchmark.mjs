@@ -1,10 +1,22 @@
 #!/usr/bin/env node
 
-import { execFileSync } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { isIP } from 'node:net';
 import { basename, join } from 'node:path';
 import { performance } from 'node:perf_hooks';
+import {
+  deriveWebSocketUrl,
+  getErrorMessage,
+  isLocalUrl,
+  isPrivateNetworkUrl,
+  parseJson,
+  readCommit,
+  readPositiveInt,
+  renderMarkdown,
+  runPool,
+  sanitizeUrl,
+  summarizeDurations,
+  trimTrailingSlash,
+} from './phase3-benchmark-utils.mjs';
 
 const DEFAULT_REQUESTS = 20;
 const DEFAULT_CONCURRENCY = 4;
@@ -12,9 +24,7 @@ const DEFAULT_WS_CLIENTS = 5;
 const DEFAULT_TIMEOUT_MS = 15000;
 
 const apiBaseUrl = trimTrailingSlash(process.env.SANCTUARY_API_URL || 'https://127.0.0.1:8443');
-const gatewayBaseUrl = process.env.SANCTUARY_GATEWAY_URL
-  ? trimTrailingSlash(process.env.SANCTUARY_GATEWAY_URL)
-  : 'https://127.0.0.1:4000';
+const gatewayBaseUrl = process.env.SANCTUARY_GATEWAY_URL ? trimTrailingSlash(process.env.SANCTUARY_GATEWAY_URL) : 'https://127.0.0.1:4000';
 const wsUrl = process.env.SANCTUARY_WS_URL || deriveWebSocketUrl(apiBaseUrl);
 const outputDir = process.env.SANCTUARY_OUTPUT_DIR || 'docs/plans';
 const requestCount = readPositiveInt(process.env.SANCTUARY_REQUESTS, DEFAULT_REQUESTS);
@@ -36,8 +46,9 @@ const benchmarkUsername = process.env.SANCTUARY_BENCHMARK_USERNAME || 'admin';
 const benchmarkPassword = process.env.SANCTUARY_BENCHMARK_PASSWORD || 'sanctuary';
 const benchmarkWalletName = process.env.SANCTUARY_BENCHMARK_WALLET_NAME || 'Phase 3 Benchmark Wallet';
 const benchmarkWalletNetwork = process.env.SANCTUARY_BENCHMARK_WALLET_NETWORK || 'testnet';
-const benchmarkWalletDescriptor = process.env.SANCTUARY_BENCHMARK_WALLET_DESCRIPTOR
-  || "wpkh([aabbccdd/84'/1'/0']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*)";
+const benchmarkWalletDescriptor =
+  process.env.SANCTUARY_BENCHMARK_WALLET_DESCRIPTOR ||
+  "wpkh([aabbccdd/84'/1'/0']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/0/*)";
 
 const timestamp = new Date().toISOString();
 const runId = timestamp.replace(/[:.]/g, '-');
@@ -152,7 +163,7 @@ async function run() {
     if (backupFile) {
       assertBackupUploadTarget();
     }
-    const backup = generatedBackup || await readBackup(backupFile);
+    const backup = generatedBackup || (await readBackup(backupFile));
     await measureHttpScenario({
       name: 'backup validate',
       method: 'POST',
@@ -334,17 +345,21 @@ async function ensureBenchmarkWallet(bearerToken) {
     }
   }
 
-  const wallet = await apiJson(`${apiBaseUrl}/api/v1/wallets`, {
-    method: 'POST',
-    token: bearerToken,
-    body: {
-      name: benchmarkWalletName,
-      type: 'single_sig',
-      scriptType: 'native_segwit',
-      network: benchmarkWalletNetwork,
-      descriptor: benchmarkWalletDescriptor,
+  const wallet = await apiJson(
+    `${apiBaseUrl}/api/v1/wallets`,
+    {
+      method: 'POST',
+      token: bearerToken,
+      body: {
+        name: benchmarkWalletName,
+        type: 'single_sig',
+        scriptType: 'native_segwit',
+        network: benchmarkWalletNetwork,
+        descriptor: benchmarkWalletDescriptor,
+      },
     },
-  }, [201]);
+    [201],
+  );
 
   if (!wallet.id) {
     throw new Error('wallet creation response did not include an id');
@@ -410,9 +425,7 @@ async function apiJson(url, options = {}, expectedStatuses = [200]) {
     // body so existing `const body = await apiJson(...)` callers keep
     // working unchanged and only login-like callers reach for it.
     if (parsed && typeof parsed === 'object') {
-      const setCookie = typeof response.headers.getSetCookie === 'function'
-        ? response.headers.getSetCookie()
-        : response.headers.get('set-cookie');
+      const setCookie = typeof response.headers.getSetCookie === 'function' ? response.headers.getSetCookie() : response.headers.get('set-cookie');
       Object.defineProperty(parsed, '__setCookie', {
         value: setCookie,
         enumerable: false,
@@ -431,17 +444,7 @@ async function apiJson(url, options = {}, expectedStatuses = [200]) {
 }
 
 async function measureHttpScenario(options) {
-  const {
-    name,
-    method,
-    url,
-    body,
-    token: bearerToken,
-    requests,
-    expectedStatuses,
-    optional = false,
-    allowDegradedStatus = false,
-  } = options;
+  const { name, method, url, body, token: bearerToken, requests, expectedStatuses, optional = false, allowDegradedStatus = false } = options;
   const records = [];
 
   await runPool(requests, concurrency, async () => {
@@ -497,9 +500,7 @@ async function measureWebSocketHandshake() {
     return;
   }
 
-  const records = await Promise.all(
-    Array.from({ length: wsClients }, () => measureOneWebSocket(wsUrl))
-  );
+  const records = await Promise.all(Array.from({ length: wsClients }, () => measureOneWebSocket(wsUrl)));
 
   const successful = records.filter((record) => record.ok);
   const summary = {
@@ -530,9 +531,7 @@ async function measureWebSocketSubscriptionFanout() {
 
   const channels = [`wallet:${walletId}`, `wallet:${walletId}:sync`, 'sync:all'];
   const triggerUrl = `${apiBaseUrl}/api/v1/sync/queue/${encodeURIComponent(walletId)}`;
-  const clients = await Promise.all(
-    Array.from({ length: wsFanoutClients }, (_value, index) => connectSubscribedWebSocket(index, channels))
-  );
+  const clients = await Promise.all(Array.from({ length: wsFanoutClients }, (_value, index) => connectSubscribedWebSocket(index, channels)));
   const setupRecords = clients.map((client) => client.setup);
   const setupFailures = setupRecords.filter((record) => !record.ok);
 
@@ -592,10 +591,7 @@ async function measureWebSocketSubscriptionFanout() {
   clients.forEach((client) => client.close());
 
   const successful = triggerError ? [] : fanoutRecords.filter((record) => record.ok);
-  const failures = [
-    triggerError,
-    ...fanoutRecords.filter((record) => !record.ok).map((record) => record.error),
-  ].filter(Boolean);
+  const failures = [triggerError, ...fanoutRecords.filter((record) => !record.ok).map((record) => record.error)].filter(Boolean);
   const summary = {
     name: 'websocket subscription fanout',
     kind: 'websocket',
@@ -786,27 +782,38 @@ function connectSubscribedWebSocket(index, channels) {
       if (!setupSettled) {
         finishSetup({ ok: false, error: 'websocket setup error' });
       } else {
-        resolveFanoutWait({ ok: false, error: 'websocket error before sync event' });
+        resolveFanoutWait({
+          ok: false,
+          error: 'websocket error before sync event',
+        });
       }
     });
 
     socket.addEventListener('close', () => {
       closed = true;
       if (!setupSettled) {
-        finishSetup({ ok: false, error: 'websocket closed during subscription setup' });
+        finishSetup({
+          ok: false,
+          error: 'websocket closed during subscription setup',
+        });
       } else {
-        resolveFanoutWait({ ok: false, error: 'websocket closed before sync event' });
+        resolveFanoutWait({
+          ok: false,
+          error: 'websocket closed before sync event',
+        });
       }
     });
   });
 }
 
 function isSyncFanoutEvent(value) {
-  return value
-    && typeof value === 'object'
-    && value.type === 'event'
-    && value.event === 'sync'
-    && (value.channel === `wallet:${walletId}` || value.channel === `wallet:${walletId}:sync`);
+  return (
+    value &&
+    typeof value === 'object' &&
+    value.type === 'event' &&
+    value.event === 'sync' &&
+    (value.channel === `wallet:${walletId}` || value.channel === `wallet:${walletId}:sync`)
+  );
 }
 
 function measureOneWebSocket(targetUrl) {
@@ -894,144 +901,13 @@ function summarizeHttp(name, method, url, records, expectedStatuses, optional, a
     statusCounts,
     latency: summarizeDurations(records.map((record) => record.durationMs)),
     sampleBodies: [],
-    failures: failed
-      .map((record) => record.error || `status ${record.status}`)
-      .slice(0, 5),
+    failures: failed.map((record) => record.error || `status ${record.status}`).slice(0, 5),
   };
-}
-
-function summarizeDurations(values) {
-  if (values.length === 0) {
-    return { minMs: null, p50Ms: null, p95Ms: null, p99Ms: null, maxMs: null };
-  }
-
-  const sorted = values.slice().sort((a, b) => a - b);
-  return {
-    minMs: round(sorted[0]),
-    p50Ms: round(percentile(sorted, 0.5)),
-    p95Ms: round(percentile(sorted, 0.95)),
-    p99Ms: round(percentile(sorted, 0.99)),
-    maxMs: round(sorted[sorted.length - 1]),
-  };
-}
-
-function percentile(sortedValues, percentileValue) {
-  if (sortedValues.length === 1) return sortedValues[0];
-  const index = (sortedValues.length - 1) * percentileValue;
-  const lower = Math.floor(index);
-  const upper = Math.ceil(index);
-  if (lower === upper) return sortedValues[lower];
-  const weight = index - lower;
-  return sortedValues[lower] * (1 - weight) + sortedValues[upper] * weight;
-}
-
-async function runPool(total, limit, worker) {
-  let next = 0;
-  const workers = Array.from({ length: Math.min(limit, total) }, async () => {
-    while (next < total) {
-      next += 1;
-      await worker();
-    }
-  });
-  await Promise.all(workers);
 }
 
 function skipScenario(name, reason) {
   skipped.push({ name, reason });
   console.log(`SKIP ${name}: ${reason}`);
-}
-
-function renderMarkdown(result) {
-  const lines = [
-    '# Phase 3 Benchmark Run',
-    '',
-    `Date: ${result.timestamp}`,
-    `Commit: ${result.commit}`,
-    `Environment: ${result.environment.apiBaseUrl}`,
-    `Topology: single frontend/backend/gateway/worker stack unless noted externally`,
-    `Dataset: ${result.environment.datasetLabel}`,
-    `Traffic shape: ${result.environment.requestCount} HTTP requests per default scenario at concurrency ${result.environment.concurrency}; ${result.environment.wsClients} WebSocket handshake clients; ${result.environment.wsFanoutClients} WebSocket fanout clients`,
-    '',
-    '## Scenario Results',
-    '',
-    '| Scenario | Kind | Status | Requests | Successes | Errors | p50 ms | p95 ms | p99 ms |',
-    '| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |',
-    ...result.scenarios.map((scenario) => [
-      escapeCell(scenario.name),
-      scenario.kind,
-      scenario.status,
-      scenario.requests,
-      scenario.successes,
-      scenario.errors,
-      scenario.latency.p50Ms ?? '',
-      scenario.latency.p95Ms ?? '',
-      scenario.latency.p99Ms ?? '',
-    ].join(' | ').replace(/^/, '| ').replace(/$/, ' |')),
-    '',
-    '## Skipped Scenarios',
-    '',
-  ];
-
-  if (result.skipped.length === 0) {
-    lines.push('None.');
-  } else {
-    for (const item of result.skipped) {
-      lines.push(`- ${item.name}: ${item.reason}`);
-    }
-  }
-
-  lines.push(
-    '',
-    '## Fixture',
-    '',
-    `Provision requested: ${result.environment.fixture.provisionRequested ? 'yes' : 'no'}`,
-    `Private target allowed: ${result.environment.fixture.privateProvisionAllowed ? 'yes' : 'no'}`,
-    `Token source: ${result.environment.fixture.tokenSource || 'none'}`,
-    `Wallet source: ${result.environment.fixture.walletSource || 'none'}`,
-    `Backup source: ${result.environment.fixture.backupSource || 'none'}`
-  );
-  if (result.environment.fixture.error) {
-    lines.push(`Provision error: ${result.environment.fixture.error}`);
-  }
-  if (result.environment.fixture.backupError) {
-    lines.push(`Backup error: ${result.environment.fixture.backupError}`);
-  }
-
-  lines.push(
-    '',
-    '## Health Snapshot',
-    ''
-  );
-
-  const health = result.notes.find((note) => note.type === 'health');
-  if (health) {
-    lines.push(`Overall status: ${health.status || 'unknown'}`, '');
-    for (const [component, status] of Object.entries(health.components || {})) {
-      lines.push(`- ${component}: ${status}`);
-    }
-  } else {
-    lines.push('No API health snapshot captured.');
-  }
-
-  lines.push(
-    '',
-    '## Decision',
-    '',
-    result.skipped.length > 0
-      ? 'Smoke evidence captured for the configured inputs. A-grade scale claims require privacy-safe calibrated inputs for wallet sync, transaction history, WebSocket fanout, backup/restore, queue processing, and scale-out scenarios.'
-      : 'Benchmark evidence captured for the configured scenarios. Compare p95/p99 and failure rates against the Phase 3 gates before promoting this run.'
-  );
-
-  return `${lines.join('\n')}\n`;
-}
-
-function deriveWebSocketUrl(baseUrl) {
-  const parsed = new URL(baseUrl);
-  parsed.protocol = parsed.protocol === 'https:' ? 'wss:' : 'ws:';
-  parsed.pathname = '/ws';
-  parsed.search = '';
-  parsed.hash = '';
-  return parsed.toString();
 }
 
 function assertLocalProvisionTarget() {
@@ -1042,9 +918,7 @@ function assertLocalProvisionTarget() {
     return;
   }
 
-  const privateHint = isPrivateNetworkUrl(apiBaseUrl)
-    ? '; set SANCTUARY_BENCHMARK_ALLOW_PRIVATE_PROVISION=true only for private non-production targets'
-    : '';
+  const privateHint = isPrivateNetworkUrl(apiBaseUrl) ? '; set SANCTUARY_BENCHMARK_ALLOW_PRIVATE_PROVISION=true only for private non-production targets' : '';
   throw new Error(`SANCTUARY_BENCHMARK_PROVISION=true is only allowed for localhost, 127.0.0.1, or ::1 API targets by default${privateHint}`);
 }
 
@@ -1053,7 +927,9 @@ function assertBackupUploadTarget() {
     return;
   }
 
-  throw new Error('SANCTUARY_BACKUP_FILE uploads are only allowed to loopback/private API targets by default; set SANCTUARY_BENCHMARK_ALLOW_EXTERNAL_BACKUP_UPLOAD=true only for an operator-owned non-production target');
+  throw new Error(
+    'SANCTUARY_BACKUP_FILE uploads are only allowed to loopback/private API targets by default; set SANCTUARY_BENCHMARK_ALLOW_EXTERNAL_BACKUP_UPLOAD=true only for an operator-owned non-production target',
+  );
 }
 
 function getDatasetLabel() {
@@ -1070,81 +946,4 @@ function getDatasetLabel() {
   }
 
   return 'operator-provided privacy-safe authenticated dataset';
-}
-
-function isLocalUrl(value) {
-  const hostname = new URL(value).hostname;
-  return ['127.0.0.1', 'localhost', '::1', '[::1]'].includes(hostname);
-}
-
-function isPrivateNetworkUrl(value) {
-  const hostname = new URL(value).hostname.replace(/^\[|\]$/g, '');
-  const ipVersion = isIP(hostname);
-  if (ipVersion === 4) {
-    const [first, second] = hostname.split('.').map((part) => Number.parseInt(part, 10));
-    return first === 10
-      || (first === 172 && second >= 16 && second <= 31)
-      || (first === 192 && second === 168)
-      || (first === 169 && second === 254);
-  }
-  if (ipVersion === 6) {
-    const normalized = hostname.toLowerCase();
-    return normalized.startsWith('fc') || normalized.startsWith('fd') || normalized.startsWith('fe80:');
-  }
-  return false;
-}
-
-function trimTrailingSlash(value) {
-  return value.replace(/\/+$/, '');
-}
-
-function readPositiveInt(value, fallback) {
-  const parsed = Number.parseInt(value || '', 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
-
-function parseJson(value) {
-  if (!value) return null;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return value.length > 200 ? `${value.slice(0, 200)}...` : value;
-  }
-}
-
-function getErrorMessage(error) {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function readCommit() {
-  if (process.env.SANCTUARY_BENCHMARK_COMMIT) {
-    return process.env.SANCTUARY_BENCHMARK_COMMIT;
-  }
-
-  try {
-    return execFileSync('git', ['rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim();
-  } catch {
-    return 'unknown';
-  }
-}
-
-function sanitizeUrl(value) {
-  const url = new URL(value);
-  for (const key of [...url.searchParams.keys()]) {
-    if (/token|secret|password|key/i.test(key)) {
-      url.searchParams.set(key, '[redacted]');
-    }
-  }
-  return url.toString();
-}
-
-function escapeCell(value) {
-  return String(value)
-    .replace(/\\/g, '\\\\')
-    .replace(/\|/g, '\\|')
-    .replace(/[\r\n]+/g, ' ');
-}
-
-function round(value) {
-  return Math.round(value * 100) / 100;
 }

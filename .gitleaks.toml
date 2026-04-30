@@ -51,6 +51,10 @@ paths = [
   # Prisma client generated output never contains secrets and trips
   # heuristic entropy checks on random-looking identifiers.
   '''server/src/generated/''',
+  # Vitest blob reports are generated coverage/diagnostic artifacts. They can
+  # contain random-looking serialized metadata from local runs, but are not
+  # source-controlled secrets.
+  '''\.vitest-reports/''',
   # Lock files are reproducible from package.json and have no secrets.
   '''package-lock\.json$''',
   '''.*/package-lock\.json$''',
