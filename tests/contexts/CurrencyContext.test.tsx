@@ -164,6 +164,7 @@ describe("CurrencyContext", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
 
     // Default mock responses
+    vi.mocked(authApi.getCurrentUser).mockResolvedValue(null as any);
     vi.mocked(priceApi.getPrice).mockResolvedValue(makeAggregatedPrice());
     vi.mocked(priceApi.getPriceFromProvider).mockResolvedValue(
       makeAggregatedPrice().sources[0],

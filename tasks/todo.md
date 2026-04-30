@@ -9,7 +9,7 @@ Goal: deliver PR #231 for the requester-only agent wallet setup flow, including 
 - [x] Confirm branch, PR number, merge queue, and current worktree state.
 - [x] Push the committed CodeQL rate-limit fix to `agent-wallet-setup-ui`.
 - [x] Monitor refreshed PR checks and inspect any failing required checks.
-- [ ] Fix any CI, CodeQL, or review blockers with focused commits and verification. _(in progress)_
+- [x] Fix any CI, CodeQL, or review blockers with focused commits and verification.
 - [ ] Enable auto-merge through the repository merge queue once required checks pass.
 - [ ] Verify `origin/main` contains the merged PR result.
 - [ ] Document delivery results and leave unrelated untracked task files untouched.
@@ -20,6 +20,9 @@ Goal: deliver PR #231 for the requester-only agent wallet setup flow, including 
 - Branch `agent-wallet-setup-ui` is one PR-delivery branch for PR #231.
 - The pushed follow-up commit adds route-level rate limiting to the agent API routes after CodeQL reported a high-severity missing-rate-limit alert in `server/src/api/agent.ts`.
 - The refreshed CodeQL alert still flagged the authorized route handler, so the local fix now mirrors existing repo precedent by pairing direct `express-rate-limit` middleware with the Redis-backed agent-key policy limiter.
+- The first merge-queue run passed CodeQL and Code Quality but failed the full Test Suite: backend unit coverage dropped below the enforced 100% gate, and frontend coverage shard 2 exposed a brittle `CurrencyContext` provider-reload test.
+- Added targeted backend route coverage for the agent policy limiter key fallback and the no-signer funding draft signature path.
+- Stabilized the `CurrencyContext` unauthenticated test setup so provider reload tests do not get an extra impossible `undefined` user transition under isolated coverage runs.
 - Unrelated untracked files are present and intentionally not staged: `tasks/feature-timeline-2026-04-29.md` and `tasks/security-assessment-2026-04-29.md`.
 - The security assessment has not been addressed yet. It remains queued behind the PR #231 merge per user direction.
 
