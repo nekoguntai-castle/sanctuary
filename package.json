@@ -1,7 +1,7 @@
 {
   "name": "sanctuary",
   "private": true,
-  "version": "0.8.47",
+  "version": "0.8.48",
   "type": "module",
   "engines": {
     "node": ">=24 <25"
@@ -121,6 +121,6 @@
     "vite": "^8.0.8",
     "vite-plugin-node-polyfills": "^0.26.0",
     "vitest": "^4.1.4",
-    "zod": "^4.3.6"
+    "zod": "4.3.6"
   }
 }
