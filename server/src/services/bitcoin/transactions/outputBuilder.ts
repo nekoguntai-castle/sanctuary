@@ -9,6 +9,7 @@ import * as bitcoin from "bitcoinjs-lib";
 import { addressRepository } from "../../../repositories";
 import { createLogger } from "../../../utils/logger";
 import { generateDecoyAmounts } from "../psbtBuilder";
+import { shuffleInPlace } from "../secureRandom";
 import type { PendingOutput, UtxoSelection } from "./types";
 
 const log = createLogger("BITCOIN:SVC_TX_OUTPUT");
@@ -69,13 +70,7 @@ export async function buildAndAddOutputs(
   }
 
   // Shuffle outputs for privacy (Fisher-Yates algorithm)
-  for (let i = pendingOutputs.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [pendingOutputs[i], pendingOutputs[j]] = [
-      pendingOutputs[j],
-      pendingOutputs[i],
-    ];
-  }
+  shuffleInPlace(pendingOutputs);
 
   // Add all outputs to PSBT in randomized order
   for (const output of pendingOutputs) {
@@ -217,13 +212,7 @@ async function buildDecoyChangeOutputs(
 
   // Shuffle addresses for additional obfuscation
   const shuffledAddresses = [...changeAddresses];
-  for (let i = shuffledAddresses.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffledAddresses[i], shuffledAddresses[j]] = [
-      shuffledAddresses[j],
-      shuffledAddresses[i],
-    ];
-  }
+  shuffleInPlace(shuffledAddresses);
 
   let changeAddress: string | undefined;
   const decoyOutputsResult: Array<{ address: string; amount: number }> = [];

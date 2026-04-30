@@ -5,19 +5,30 @@
  * change output splitting.
  */
 
+import {
+  cryptoRandomSource,
+  shuffleInPlace,
+  type CryptoRandomSource,
+} from "../secureRandom";
+
 /**
  * Generate realistic-looking decoy amounts from a total change amount
  * Amounts avoid round numbers and vary in magnitude to look like real payments
  * Exported for testing
  */
-export function generateDecoyAmounts(totalChange: number, count: number, dustThreshold: number): number[] {
+export function generateDecoyAmounts(
+  totalChange: number,
+  count: number,
+  dustThreshold: number,
+  randomSource: CryptoRandomSource = cryptoRandomSource,
+): number[] {
   if (count < 2) {
     return [totalChange];
   }
 
   // Reserve dust threshold for each output
   const minPerOutput = dustThreshold;
-  const usableChange = totalChange - (minPerOutput * count);
+  const usableChange = totalChange - minPerOutput * count;
 
   if (usableChange <= 0) {
     // Not enough change to split into decoys, return single output
@@ -31,7 +42,7 @@ export function generateDecoyAmounts(totalChange: number, count: number, dustThr
   for (let i = 0; i < count; i++) {
     // Use varied weight ranges to create different sized outputs
     // Some outputs will be larger, some smaller
-    const weight = 0.3 + Math.random() * 0.7; // 0.3 to 1.0
+    const weight = 0.3 + randomSource.randomFraction() * 0.7; // 0.3 to 1.0
     weights.push(weight);
     totalWeight += weight;
   }
@@ -42,10 +53,13 @@ export function generateDecoyAmounts(totalChange: number, count: number, dustThr
 
   for (let i = 0; i < count - 1; i++) {
     // Calculate proportional amount
-    let amount = Math.floor((weights[i] / totalWeight) * usableChange) + minPerOutput;
+    let amount =
+      Math.floor((weights[i] / totalWeight) * usableChange) + minPerOutput;
 
     // Add small random variation to avoid patterns (+/- up to 3%)
-    const variation = Math.floor(amount * (Math.random() * 0.06 - 0.03));
+    const variation = Math.floor(
+      amount * (randomSource.randomFraction() * 0.06 - 0.03),
+    );
     amount += variation;
 
     // Ensure minimum threshold
@@ -64,10 +78,7 @@ export function generateDecoyAmounts(totalChange: number, count: number, dustThr
   amounts.push(remaining);
 
   // Shuffle the amounts so the largest isn't predictably in a certain position
-  for (let i = amounts.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [amounts[i], amounts[j]] = [amounts[j], amounts[i]];
-  }
+  shuffleInPlace(amounts, randomSource);
 
   return amounts;
 }

@@ -1,6 +1,33 @@
-# Active Task: Agent Wallet Setup UI PR Delivery 2026-04-30
+# Active Task: Secure Decoy Randomness 2026-04-30
 
 Status: in progress
+
+Goal: address the `Math.random()` privacy weakness from `tasks/security-assessment-2026-04-29.md` for transaction output shuffling and decoy change amount generation.
+
+## Plan
+
+- [x] Verify PR #231 is merged before starting this follow-up branch.
+- [x] Read the security assessment and identify production privacy-sensitive random call sites.
+- [x] Replace decoy amount and output shuffle randomness with crypto-backed random helpers.
+- [x] Add focused unit coverage that deterministic tests use injected random sources and production paths do not depend on `Math.random()`.
+- [x] Run focused backend tests, typecheck, lizard, and diff checks.
+- [x] Review the diff for scope, edge cases, and unrelated `Math.random()` call sites.
+
+## Review
+
+- Added a Bitcoin-domain `cryptoRandomSource` backed by Node `crypto.randomInt`, plus a reusable Fisher-Yates `shuffleInPlace` helper with bound validation.
+- `generateDecoyAmounts` now uses the crypto random source for amount weights, variation, and amount shuffling while keeping an injected random source for deterministic branch tests.
+- Transaction output order shuffling and decoy change-address shuffling now call the shared crypto-backed shuffle helper.
+- Focused tests cover the helper, deterministic decoy branch coverage without `Math.random` stubbing, and a regression check that production decoy amount generation does not call `Math.random`.
+- Verified the assessed production files no longer contain `Math.random()`: `server/src/services/bitcoin/psbtBuilder/decoyAmounts.ts` and `server/src/services/bitcoin/transactions/outputBuilder.ts`.
+- Verification passed: focused server Bitcoin tests, full server Bitcoin unit suite, server test typecheck, lizard quality gate, Prettier, and `git diff --check`.
+- Unrelated untracked files remain intentionally untouched: `tasks/feature-timeline-2026-04-29.md` and `tasks/security-assessment-2026-04-29.md`.
+
+---
+
+# Active Task: Agent Wallet Setup UI PR Delivery 2026-04-30
+
+Status: complete
 
 Goal: deliver PR #231 for the requester-only agent wallet setup flow, including the raw xpub import follow-up and CodeQL rate-limit fix, through the protected merge-queue workflow.
 
@@ -10,10 +37,10 @@ Goal: deliver PR #231 for the requester-only agent wallet setup flow, including 
 - [x] Push the committed CodeQL rate-limit fix to `agent-wallet-setup-ui`.
 - [x] Monitor refreshed PR checks and inspect any failing required checks.
 - [x] Fix any CI, CodeQL, or review blockers with focused commits and verification.
-- [ ] Enable auto-merge through the repository merge queue once required checks pass.
-- [ ] Verify `origin/main` contains the merged PR result.
-- [ ] Document delivery results and leave unrelated untracked task files untouched.
-- [ ] After this merge, start follow-up work from `tasks/security-assessment-2026-04-29.md`.
+- [x] Enable auto-merge through the repository merge queue once required checks pass.
+- [x] Verify `origin/main` contains the merged PR result.
+- [x] Document delivery results and leave unrelated untracked task files untouched.
+- [x] After this merge, start follow-up work from `tasks/security-assessment-2026-04-29.md`.
 
 ## Review
 
@@ -29,7 +56,10 @@ Goal: deliver PR #231 for the requester-only agent wallet setup flow, including 
 - Simplified edit-mode agent identity fields so immutable fields render as always disabled instead of carrying an impossible non-edit branch.
 - Local coverage confirmation now shows 100% for `server/src/api/agent.ts`, `server/src/services/agentApiService.ts`, and `server/src/repositories/agentRepository.ts`; frontend coverage merge also reached 100% statements/branches/functions/lines.
 - Unrelated untracked files are present and intentionally not staged: `tasks/feature-timeline-2026-04-29.md` and `tasks/security-assessment-2026-04-29.md`.
-- The security assessment has not been addressed yet. It remains queued behind the PR #231 merge per user direction.
+- PR #231 merged through the queue as `8c6ff9fc22d541626ed1c3253ba6770b93ca40b1` at `2026-04-30T02:46:43Z`.
+- Merge-group Test Suite, Code Quality, and CodeQL all completed successfully for the final queue commit.
+- `origin/main` was fetched and verified to contain the merge commit.
+- The security assessment follow-up started on branch `fix-secure-decoy-random`.
 
 ---
 
