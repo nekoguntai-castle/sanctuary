@@ -100,6 +100,7 @@ export function NumberField({
 }
 
 export function SelectField({
+  id,
   label,
   value,
   options,
@@ -107,6 +108,7 @@ export function SelectField({
   disabled = false,
   placeholder = 'Select...',
 }: {
+  id?: string;
   label: string;
   value: string;
   options: SelectOption[];
@@ -116,8 +118,14 @@ export function SelectField({
 }) {
   return (
     <div>
-      <label className="block text-sm font-medium text-sanctuary-700 dark:text-sanctuary-300 mb-1">{label}</label>
+      <label
+        htmlFor={id}
+        className="block text-sm font-medium text-sanctuary-700 dark:text-sanctuary-300 mb-1"
+      >
+        {label}
+      </label>
       <select
+        id={id}
         value={value}
         disabled={disabled}
         onChange={event => onChange(event.target.value)}

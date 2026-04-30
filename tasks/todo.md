@@ -8886,3 +8886,21 @@ Goal: add a guided UI path for the intended agent-wallet model: a human-owned fu
 - Rejected attempts after transaction construction now record the effective amount when available.
 - The agent funding smoke harness now mocks the requester-only draft construction path, and route coverage includes an effective-amount policy regression.
 - Verification passed: `npm --prefix server run test:run -- tests/unit/api/agent-wallet-funding-smoke.test.ts tests/unit/api/agent-routes.test.ts` and touched-file lizard for `agentApiService` plus the updated tests.
+
+### Raw Extended Public Key Import Slice Plan
+
+- [x] Let the inline operational-wallet import panel accept raw single-sig extended public keys (`xpub`, `ypub`, `zpub`, and testnet equivalents) in addition to descriptors/exports.
+- [x] Use the existing wallet xpub validation endpoint to turn raw keys into importable single-sig descriptors, with an explicit script-type chooser for ambiguous `xpub`/`tpub` keys.
+- [x] Reject raw multisig SLIP-132 keys (`Ypub`, `Zpub`, `Upub`, `Vpub`) in this operational-wallet path so the agent wallet remains single-sig.
+- [x] Keep the existing server validation/import checks for single-sig type and funding-wallet network match.
+- [x] Add focused helper and component coverage for descriptor normalization, raw-key import, ambiguous-key script selection, and multisig-key rejection.
+- [x] Run focused AgentManagement tests, app/test typechecks, touched-file lizard, and `git diff --check`.
+
+### Raw Extended Public Key Import Slice Review
+
+- The inline operational-wallet import panel now accepts raw single-sig `xpub`, `ypub`, `zpub`, `tpub`, `upub`, and `vpub` input.
+- Ambiguous `xpub`/`tpub` input shows a script-type chooser; SLIP-132 `ypub`/`upub` and `zpub`/`vpub` infer nested or native SegWit automatically.
+- Raw public keys are validated through `/wallets/validate-xpub`, converted to descriptors, then passed through the existing import validation and import endpoints.
+- Raw-key descriptor generation sends a deterministic fallback fingerprint so separate raw-key imports do not collide on the server's default `00000000` marker.
+- Raw multisig SLIP-132 keys are rejected in the operational-wallet import panel, keeping multisig material on the human-owned funding wallet side of the relationship.
+- Verification passed: focused AgentManagement/dashboard Vitest suites, app/test typechecks, full lizard complexity gate, and `git diff --check`.

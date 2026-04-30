@@ -6,6 +6,14 @@ import type { ImportValidationResult } from '../../../src/api/wallets';
 import { extractErrorMessage } from '../../../utils/errorHandler';
 import { Button } from '../../ui/Button';
 import { Input } from '../../ui/Input';
+import { SelectField } from './AgentFormControls';
+import {
+  RAW_KEY_SCRIPT_TYPE_OPTIONS,
+  detectRawOperationalKeyInput,
+  getRawKeyDescription,
+  normalizeOperationalImportData,
+} from './inlineOperationalWalletImportModel';
+import type { XpubScriptType } from '../../../src/api/wallets';
 
 type InlineOperationalWalletImportProps = {
   selectedFundingWallet?: AgentOptionWallet;
@@ -21,10 +29,13 @@ export function InlineOperationalWalletImport({
   const [isOpen, setIsOpen] = useState(false);
   const [walletName, setWalletName] = useState('');
   const [importData, setImportData] = useState('');
+  const [rawKeyScriptType, setRawKeyScriptType] = useState<XpubScriptType>('native_segwit');
   const [importError, setImportError] = useState<string | null>(null);
   const [lastImportedName, setLastImportedName] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const canImport = Boolean(importData.trim()) && !isImporting;
+  const rawKeyInput = detectRawOperationalKeyInput(importData);
+  const rawKeyDescription = getRawKeyDescription(rawKeyInput);
   const openImportPanel = () => {
     setImportError(null);
     setIsOpen(true);
@@ -39,8 +50,18 @@ export function InlineOperationalWalletImport({
     setImportError(null);
 
     try {
-      const trimmedData = importData.trim();
-      const validation = await walletsApi.validateImport({ descriptor: trimmedData });
+      const normalizedImport = await normalizeOperationalImportData({
+        importData,
+        rawKeyScriptType,
+        selectedFundingWallet,
+        validateXpub: walletsApi.validateXpub,
+      });
+      if (!normalizedImport.ok) {
+        setImportError(normalizedImport.error);
+        return;
+      }
+
+      const validation = await walletsApi.validateImport({ descriptor: normalizedImport.data });
       const validationError = getOperationalImportValidationError(validation, selectedFundingWallet);
       if (validationError) {
         setImportError(validationError);
@@ -49,7 +70,7 @@ export function InlineOperationalWalletImport({
 
       const name = walletName.trim() || validation.suggestedName || 'Agent operational wallet';
       const result = await walletsApi.importWallet({
-        data: trimmedData,
+        data: normalizedImport.data,
         name,
         network: validation.network,
       });
@@ -75,7 +96,7 @@ export function InlineOperationalWalletImport({
               Import watch-only operational wallet
             </div>
             <p className="mt-1 text-xs text-sanctuary-500 dark:text-sanctuary-400">
-              Paste a descriptor or wallet export, then Sanctuary will watch it through public key material only.
+              Paste a descriptor, wallet export, or single-sig xpub/ypub/zpub for public-key-only monitoring.
             </p>
             {lastImportedName && (
               <div className="mt-2 flex items-center gap-2 text-xs text-success-700 dark:text-success-300">
@@ -120,16 +141,36 @@ export function InlineOperationalWalletImport({
       </div>
       <div>
         <label className="block text-sm font-medium text-sanctuary-700 dark:text-sanctuary-300 mb-1">
-          Descriptor or wallet export *
+          Descriptor, wallet export, or xpub *
         </label>
         <textarea
           value={importData}
           onChange={event => setImportData(event.target.value)}
-          placeholder="wpkh([a1b2c3d4/84h/1h/0h]tpub.../0/*)"
+          placeholder="xpub... or wpkh([a1b2c3d4/84h/1h/0h]tpub.../0/*)"
           rows={4}
           className="w-full px-3 py-2 surface-muted border border-sanctuary-200 dark:border-sanctuary-700 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 font-mono text-sm"
         />
       </div>
+      {rawKeyInput.kind === 'single_sig' && rawKeyInput.requiresScriptTypeSelection && (
+        <SelectField
+          id="agent-operational-raw-key-script-type"
+          label="Extended public key type"
+          value={rawKeyScriptType}
+          options={RAW_KEY_SCRIPT_TYPE_OPTIONS}
+          onChange={value => setRawKeyScriptType(value as XpubScriptType)}
+        />
+      )}
+      {rawKeyDescription && (
+        <p className="text-xs text-sanctuary-500 dark:text-sanctuary-400">
+          {rawKeyDescription}
+        </p>
+      )}
+      {rawKeyInput.kind === 'multi_sig' && (
+        <div className="flex items-start gap-2 rounded-lg bg-warning-50 dark:bg-warning-900/20 p-3 text-sm text-warning-700 dark:text-warning-300">
+          <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+          <span>Use this multisig key as funding wallet material, not as the single-sig operational wallet.</span>
+        </div>
+      )}
       {importError && (
         <div className="flex items-start gap-2 rounded-lg bg-red-50 dark:bg-red-900/20 p-3 text-sm text-red-700 dark:text-red-300">
           <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />

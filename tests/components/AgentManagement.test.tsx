@@ -21,6 +21,7 @@ vi.mock('../../src/api/admin', () => ({
 vi.mock('../../src/api/wallets', () => ({
   validateImport: vi.fn(),
   importWallet: vi.fn(),
+  validateXpub: vi.fn(),
 }));
 
 const writeTextMock = vi.fn();
@@ -212,6 +213,15 @@ describe('AgentManagement', () => {
       createdDeviceIds: [],
       reusedDeviceIds: [],
     });
+    vi.mocked(walletsApi.validateXpub).mockResolvedValue({
+      valid: true,
+      descriptor: 'wpkh([00000000/84h/1h/0h]tpub-inline/0/*)',
+      scriptType: 'native_segwit',
+      firstAddress: 'tb1qagent',
+      xpub: 'tpub-inline',
+      fingerprint: '00000000',
+      accountPath: "84'/1'/0'",
+    });
     vi.stubGlobal(
       'confirm',
       vi.fn(() => true)
@@ -366,6 +376,92 @@ describe('AgentManagement', () => {
         })
       )
     );
+  });
+
+  it('imports a raw extended public key by validating it into a descriptor first', async () => {
+    const user = userEvent.setup();
+    const descriptor = 'tr([00000000/86h/1h/0h]tpub-inline/0/*)';
+    const initialOptions = {
+      ...options,
+      wallets: [options.wallets[0]],
+    };
+    const optionsWithImported = {
+      ...options,
+      wallets: [options.wallets[0], importedOperationalWallet],
+    };
+    vi.mocked(adminApi.getWalletAgentOptions)
+      .mockResolvedValue(optionsWithImported)
+      .mockResolvedValueOnce(initialOptions)
+      .mockResolvedValueOnce(optionsWithImported);
+    vi.mocked(walletsApi.validateXpub).mockResolvedValueOnce({
+      valid: true,
+      descriptor,
+      scriptType: 'taproot',
+      firstAddress: 'tb1pagent',
+      xpub: 'tpub-inline',
+      fingerprint: '00000000',
+      accountPath: "86'/1'/0'",
+    });
+
+    render(<AgentManagement />);
+
+    await screen.findByText('Treasury Agent');
+    await user.click(screen.getByRole('button', { name: /Add Agent Wallet/i }));
+    await user.type(screen.getByPlaceholderText('Treasury funding agent'), 'Ops Agent');
+    let selects = screen.getAllByRole('combobox');
+    await user.selectOptions(selects[0], 'user-1');
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+
+    selects = screen.getAllByRole('combobox');
+    await user.selectOptions(selects[0], 'funding-1');
+    await user.click(screen.getByRole('button', { name: 'Import' }));
+    await user.type(screen.getByPlaceholderText('Agent operational wallet'), 'Imported Ops');
+    await user.type(screen.getByPlaceholderText(/xpub/), 'tpub-inline');
+    await user.selectOptions(screen.getByLabelText('Extended public key type'), 'taproot');
+    await user.click(screen.getByRole('button', { name: 'Import and select' }));
+
+    await waitFor(() => expect(walletsApi.validateXpub).toHaveBeenCalled());
+    expect(walletsApi.validateXpub).toHaveBeenCalledWith(
+      expect.objectContaining({
+        xpub: 'tpub-inline',
+        scriptType: 'taproot',
+        network: 'testnet',
+        fingerprint: expect.stringMatching(/^[0-9a-f]{8}$/),
+      })
+    );
+    expect(walletsApi.validateImport).toHaveBeenCalledWith({ descriptor });
+    expect(walletsApi.importWallet).toHaveBeenCalledWith({
+      data: descriptor,
+      name: 'Imported Ops',
+      network: 'testnet',
+    });
+  });
+
+  it('rejects raw multisig extended keys in the operational wallet import', async () => {
+    const user = userEvent.setup();
+    render(<AgentManagement />);
+
+    await screen.findByText('Treasury Agent');
+    await user.click(screen.getByRole('button', { name: /Add Agent Wallet/i }));
+    await user.type(screen.getByPlaceholderText('Treasury funding agent'), 'Ops Agent');
+    let selects = screen.getAllByRole('combobox');
+    await user.selectOptions(selects[0], 'user-1');
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+
+    selects = screen.getAllByRole('combobox');
+    await user.selectOptions(selects[0], 'funding-1');
+    await user.click(screen.getByRole('button', { name: 'Import' }));
+    await user.type(screen.getByPlaceholderText(/xpub/), 'Zpub-agent');
+    await user.click(screen.getByRole('button', { name: 'Import and select' }));
+
+    expect(
+      await screen.findByText(
+        'Operational agent wallets must use a single-sig xpub/ypub/zpub. Use the multisig wallet as the funding wallet instead.'
+      )
+    ).toBeInTheDocument();
+    expect(walletsApi.validateXpub).not.toHaveBeenCalled();
+    expect(walletsApi.validateImport).not.toHaveBeenCalled();
+    expect(walletsApi.importWallet).not.toHaveBeenCalled();
   });
 
   it('rejects inline operational imports that are not single-sig', async () => {
