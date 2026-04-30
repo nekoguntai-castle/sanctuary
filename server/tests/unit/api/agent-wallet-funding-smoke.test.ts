@@ -65,6 +65,9 @@ const smoke = vi.hoisted(() => {
     },
     validateAgentFundingDraftSubmission: vi.fn(),
     enforceAgentFundingPolicy: vi.fn(),
+    verifyOperationalReceiveAddress: vi.fn(),
+    createTransaction: vi.fn(),
+    evaluatePolicies: vi.fn(),
     createDraft: vi.fn(),
     getDraft: vi.fn(),
     updateDraft: vi.fn(),
@@ -120,6 +123,20 @@ vi.mock('../../../src/services/agentFundingDraftValidation', () => ({
 
 vi.mock('../../../src/services/agentFundingPolicy', () => ({
   enforceAgentFundingPolicy: smoke.enforceAgentFundingPolicy,
+}));
+
+vi.mock('../../../src/services/agentOperationalAddressService', () => ({
+  verifyOperationalReceiveAddress: smoke.verifyOperationalReceiveAddress,
+}));
+
+vi.mock('../../../src/services/bitcoin/transactionService', () => ({
+  createTransaction: smoke.createTransaction,
+}));
+
+vi.mock('../../../src/services/vaultPolicy', () => ({
+  policyEvaluationEngine: {
+    evaluatePolicies: smoke.evaluatePolicies,
+  },
 }));
 
 vi.mock('../../../src/services/agentMonitoringService', () => ({
@@ -339,6 +356,26 @@ describe('agent wallet funding route smoke', () => {
       inputPaths: ["m/48'/1'/0'/2'/0/0"],
     });
     smoke.enforceAgentFundingPolicy.mockResolvedValue({ overrideId: null });
+    smoke.verifyOperationalReceiveAddress.mockResolvedValue({
+      walletId: smoke.ids.operationalWalletId,
+      address: 'tb1qoperational',
+      verified: true,
+      derivationPath: "m/84'/1'/0'/0/0",
+      index: 0,
+    });
+    smoke.createTransaction.mockResolvedValue({
+      psbtBase64: 'unsigned-psbt',
+      fee: 500,
+      totalInput: 50500,
+      totalOutput: 50000,
+      changeAmount: 0,
+      changeAddress: null,
+      utxos: [{ txid: 'decoded-txid', vout: 0, address: 'tb1qfunding', amount: 50500 }],
+      inputPaths: ["m/48'/1'/0'/2'/0/0"],
+      effectiveAmount: 50000,
+      decoyOutputs: undefined,
+    });
+    smoke.evaluatePolicies.mockResolvedValue({ allowed: true, triggered: [] });
     smoke.createDraft.mockResolvedValue(makeAgentDraftRecord());
     smoke.serializeDraftTransaction.mockReturnValue({
       id: smoke.ids.draftId,
@@ -418,8 +455,6 @@ describe('agent wallet funding route smoke', () => {
         recipient: 'tb1qoperational',
         amount: '50000',
         feeRate: '5',
-        psbtBase64: 'unsigned-psbt',
-        signedPsbtBase64: 'agent-signed-psbt',
       })
       .expect(201);
 
@@ -435,7 +470,8 @@ describe('agent wallet funding route smoke', () => {
       expect.objectContaining({
         agentId: smoke.ids.agentId,
         agentOperationalWalletId: smoke.ids.operationalWalletId,
-        signedDeviceId: smoke.ids.signerDeviceId,
+        notificationCreatedByUserId: null,
+        notificationCreatedByLabel: 'Smoke Agent',
       })
     );
 

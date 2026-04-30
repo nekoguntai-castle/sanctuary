@@ -43,7 +43,7 @@ export interface WalletAgentMetadata {
   status: WalletAgentStatus;
   fundingWalletId: string;
   operationalWalletId: string;
-  signerDeviceId: string;
+  signerDeviceId: string | null;
   maxFundingAmountSats: string | null;
   maxOperationalBalanceSats: string | null;
   dailyFundingLimitSats: string | null;
@@ -65,7 +65,7 @@ export interface WalletAgentMetadata {
   user?: Pick<AdminUser, 'id' | 'username' | 'isAdmin'>;
   fundingWallet?: WalletAgentWalletSummary;
   operationalWallet?: WalletAgentWalletSummary;
-  signerDevice?: WalletAgentSignerDevice;
+  signerDevice?: WalletAgentSignerDevice | null;
   apiKeys?: AgentApiKeyMetadata[];
 }
 
@@ -74,7 +74,7 @@ export interface CreateWalletAgentRequest {
   name: string;
   fundingWalletId: string;
   operationalWalletId: string;
-  signerDeviceId: string;
+  signerDeviceId?: string | null;
   status?: WalletAgentStatus;
   maxFundingAmountSats?: string;
   maxOperationalBalanceSats?: string;
@@ -206,8 +206,10 @@ export interface AgentWalletDashboardRow {
   recentAlerts: AgentAlertMetadata[];
 }
 
-export interface AgentOptionUser
-  extends Pick<AdminUser, 'id' | 'username' | 'email' | 'emailVerified' | 'isAdmin' | 'createdAt' | 'updatedAt'> {}
+export interface AgentOptionUser extends Pick<
+  AdminUser,
+  'id' | 'username' | 'email' | 'emailVerified' | 'isAdmin' | 'createdAt' | 'updatedAt'
+> {}
 
 export interface AgentOptionWallet {
   id: string;

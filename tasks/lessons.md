@@ -2,6 +2,57 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Model Wallet Key-Material Prerequisites Explicitly
+
+**Rule:** Wallet setup plans must distinguish "create the wallet record" from "collect the required public key material first," especially for multisig flows that need cosigner xpub/ypub/zpub exports and may use any M-of-N quorum.
+
+**Why:** The initial agent-wallet UI plan said the wizard could choose or create a multisig funding wallet, but the user clarified that creating the multisig wallet requires the cosigner extended public keys before Sanctuary can build the descriptor. The user also clarified that agent funding wallets are not necessarily 2-of-2; two humans may need to approve after the agent submits its partial signature.
+
+**How to apply:**
+
+- Treat multisig funding wallet creation as a prerequisite workflow unless all cosigner xpub/ypub/zpub data is already present.
+- Describe funding wallets as M-of-N, not 2-of-2, unless the user explicitly asks for a 2-of-2 policy.
+- In guided setup UI, prefer selecting an existing multisig funding wallet and link to the create/import wallet flow with explicit key-material requirements when missing.
+- Keep xpub/descriptor import language focused on watch-only operational wallets unless the flow also collects every multisig cosigner export.
+
+## Separate Agent Request Authority From Funding Signer Authority
+
+**Rule:** Do not assume an agent must be a Bitcoin signer on the funding multisig. First decide whether the agent is a requester, a funding cosigner, or both.
+
+**Why:** The agent-wallet design originally inherited the existing implementation where the agent submits a PSBT signed by a registered funding-wallet signer. The user questioned whether that buys anything for a treasury refill workflow where humans may need to provide all funding approvals.
+
+**How to apply:**
+
+- If the desired control is human approval of refills, prefer "agent as requester" with scoped API credentials and human-only funding signatures.
+- Use "agent as funding cosigner" only when the product explicitly needs the agent to cryptographically approve the exact funding PSBT.
+- Do not let an agent signer accidentally reduce the intended human quorum; for example, a 2-of-3 funding wallet with agent + two humans allows agent + one human to meet quorum.
+
+## Treat Agent Funding Links As Capabilities, Not Wallet Types
+
+**Rule:** An agent funding relationship should grant a scoped ability to request/build signable drafts from a human-owned funding wallet; it should not imply that the funding wallet is exclusively designated for agents.
+
+**Why:** The user clarified that the funding wallet can be any human-owned single-sig or multisig wallet, and the agent-to-funding relationship is an abstract capability relationship that lets the agent wallet create a signable funding transaction.
+
+**How to apply:**
+
+- Do not require funding wallets to be multisig unless the product requirement is specifically human quorum approval.
+- Keep ordinary wallet ownership, sharing, policy, signing, and broadcast rules intact for funding wallets used by agents.
+- Model the link as operational wallet + allowed funding wallet + scoped requester permissions + caps/monitoring, not as a special "agent funding wallet" type.
+- Let the normal wallet type determine how the resulting draft is signed: single-sig by its human owner, multisig by its configured human quorum.
+
+## Verify Agent Draft Destinations Server-Side
+
+**Rule:** Agent-created funding drafts must only pay addresses belonging to the linked agent operational wallet, with funding-wallet change as the only other allowed output.
+
+**Why:** The user clarified that requester-only agents can build signable funding transactions, but they must never be able to create funding-wallet transactions to arbitrary external addresses.
+
+**How to apply:**
+
+- Validate destination ownership on the server before creating the draft or locking UTXOs.
+- Do not trust labels, wallet names, or agent-provided metadata as proof of ownership.
+- For single-recipient refills, require the recipient to be a verified receive address from the linked operational wallet.
+- For future batch outputs, verify every non-change destination belongs to the linked operational wallet.
+
 ## Avoid One-Off Env-Prefixed Tool Commands
 
 **Rule:** Do not rely on inline `env PATH=... command` prefixes for routine Node tooling. Use the repo's normal package scripts, a durable local runtime setup, or a stable non-env wrapper.

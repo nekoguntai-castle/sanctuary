@@ -1,7 +1,14 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import express, { type Express } from 'express';
 import request from 'supertest';
-import { ApiError, ConflictError, ForbiddenError, InvalidInputError, InvalidPsbtError, NotFoundError } from '../../../src/errors/ApiError';
+import {
+  ApiError,
+  ConflictError,
+  ForbiddenError,
+  InvalidInputError,
+  InvalidPsbtError,
+  NotFoundError,
+} from '../../../src/errors/ApiError';
 
 const {
   mockRequireAgentFundingDraftAccess,
@@ -17,6 +24,8 @@ const {
   mockUpdateDraft,
   mockGetOrCreateOperationalReceiveAddress,
   mockVerifyOperationalReceiveAddress,
+  mockCreateTransaction,
+  mockEvaluatePolicies,
   mockAuditLog,
   mockGetClientInfo,
   mockSerializeDraftTransaction,
@@ -35,6 +44,8 @@ const {
   mockUpdateDraft: vi.fn(),
   mockGetOrCreateOperationalReceiveAddress: vi.fn(),
   mockVerifyOperationalReceiveAddress: vi.fn(),
+  mockCreateTransaction: vi.fn(),
+  mockEvaluatePolicies: vi.fn(),
   mockAuditLog: vi.fn(),
   mockGetClientInfo: vi.fn(),
   mockSerializeDraftTransaction: vi.fn(),
@@ -76,6 +87,16 @@ vi.mock('../../../src/services/agentFundingPolicy', () => ({
 vi.mock('../../../src/services/agentOperationalAddressService', () => ({
   getOrCreateOperationalReceiveAddress: mockGetOrCreateOperationalReceiveAddress,
   verifyOperationalReceiveAddress: mockVerifyOperationalReceiveAddress,
+}));
+
+vi.mock('../../../src/services/bitcoin/transactionService', () => ({
+  createTransaction: mockCreateTransaction,
+}));
+
+vi.mock('../../../src/services/vaultPolicy', () => ({
+  policyEvaluationEngine: {
+    evaluatePolicies: mockEvaluatePolicies,
+  },
 }));
 
 vi.mock('../../../src/services/agentMonitoringService', () => ({
@@ -179,20 +200,34 @@ describe('Agent Routes', () => {
     mockWithAgentFundingLock.mockImplementation(async (_agentId, fn) => fn());
     mockCreateFundingAttempt.mockResolvedValue({ id: 'attempt-1' });
     mockAuditLog.mockResolvedValue(undefined);
-    mockGetClientInfo.mockReturnValue({ ipAddress: '127.0.0.1', userAgent: 'agent-runtime' });
-    mockSerializeDraftTransaction.mockReturnValue({ id: 'draft-agent', serialized: true });
+    mockGetClientInfo.mockReturnValue({
+      ipAddress: '127.0.0.1',
+      userAgent: 'agent-runtime',
+    });
+    mockSerializeDraftTransaction.mockReturnValue({
+      id: 'draft-agent',
+      serialized: true,
+    });
     (walletRepository.findById as any).mockImplementation(async (walletId: string) => {
       if (walletId === 'funding-wallet') {
-        return { id: 'funding-wallet', name: 'Funding', type: 'multi_sig', network: 'testnet' };
+        return {
+          id: 'funding-wallet',
+          name: 'Funding',
+          type: 'multi_sig',
+          network: 'testnet',
+        };
       }
       if (walletId === 'operational-wallet') {
-        return { id: 'operational-wallet', name: 'Operational', type: 'single_sig', network: 'testnet' };
+        return {
+          id: 'operational-wallet',
+          name: 'Operational',
+          type: 'single_sig',
+          network: 'testnet',
+        };
       }
       return null;
     });
-    (utxoRepository.getUnspentBalance as any)
-      .mockResolvedValueOnce(20000n)
-      .mockResolvedValueOnce(5000n);
+    (utxoRepository.getUnspentBalance as any).mockResolvedValueOnce(20000n).mockResolvedValueOnce(5000n);
     mockGetOrCreateOperationalReceiveAddress.mockResolvedValue({
       walletId: 'operational-wallet',
       address: 'tb1qoperational',
@@ -207,6 +242,33 @@ describe('Agent Routes', () => {
       derivationPath: "m/84'/1'/0'/0/0",
       index: 0,
     });
+    mockVerifyOperationalReceiveAddress.mockImplementation(async ({ operationalWalletId, address }) => ({
+      walletId: operationalWalletId,
+      address,
+      verified: address === 'tb1qrecipient' || address === 'tb1qoperational',
+      derivationPath: address === 'tb1qrecipient' || address === 'tb1qoperational' ? "m/84'/1'/0'/0/0" : null,
+      index: address === 'tb1qrecipient' || address === 'tb1qoperational' ? 0 : null,
+    }));
+    mockEvaluatePolicies.mockResolvedValue({ allowed: true, triggered: [] });
+    mockCreateTransaction.mockResolvedValue({
+      psbtBase64: 'cHNi',
+      fee: 500,
+      totalInput: 10500,
+      totalOutput: 10000,
+      changeAmount: 0,
+      changeAddress: undefined,
+      utxos: [
+        {
+          txid: 'decoded-txid',
+          vout: 0,
+          address: 'tb1qfunding',
+          amount: 10500,
+        },
+      ],
+      inputPaths: ["m/48'/1'/0'/2'/0/0"],
+      effectiveAmount: 10000,
+      decoyOutputs: undefined,
+    });
     mockValidateAgentFundingDraftSubmission.mockResolvedValue({
       recipient: 'tb1qrecipient',
       amount: '10000',
@@ -217,7 +279,14 @@ describe('Agent Routes', () => {
       changeAmount: '0',
       effectiveAmount: '10000',
       enableRBF: false,
-      inputs: [{ txid: 'decoded-txid', vout: 0, address: 'tb1qfunding', amount: 10500 }],
+      inputs: [
+        {
+          txid: 'decoded-txid',
+          vout: 0,
+          address: 'tb1qfunding',
+          amount: 10500,
+        },
+      ],
       outputs: [{ address: 'tb1qrecipient', amount: 10000 }],
       inputPaths: ["m/48'/1'/0'/2'/0/0"],
     });
@@ -238,9 +307,12 @@ describe('Agent Routes', () => {
   });
 
   it('returns not found when linked wallets disappear before summary generation', async () => {
-    (walletRepository.findById as any)
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({ id: 'operational-wallet', name: 'Operational', type: 'single_sig', network: 'testnet' });
+    (walletRepository.findById as any).mockResolvedValueOnce(null).mockResolvedValueOnce({
+      id: 'operational-wallet',
+      name: 'Operational',
+      type: 'single_sig',
+      network: 'testnet',
+    });
 
     await request(app)
       .get('/api/v1/agent/wallets/funding-wallet/summary')
@@ -248,7 +320,12 @@ describe('Agent Routes', () => {
       .expect(404);
 
     (walletRepository.findById as any)
-      .mockResolvedValueOnce({ id: 'funding-wallet', name: 'Funding', type: 'multi_sig', network: 'testnet' })
+      .mockResolvedValueOnce({
+        id: 'funding-wallet',
+        name: 'Funding',
+        type: 'multi_sig',
+        network: 'testnet',
+      })
       .mockResolvedValueOnce(null);
 
     await request(app)
@@ -348,16 +425,18 @@ describe('Agent Routes', () => {
 
     expect(response.status).toBe(200);
     expect(mockGetDraft).toHaveBeenCalledWith('funding-wallet', 'draft-agent');
-    expect(mockValidateAgentFundingDraftSubmission).toHaveBeenCalledWith(expect.objectContaining({
-      fundingWalletId: 'funding-wallet',
-      operationalWalletId: 'operational-wallet',
-      signerDeviceId: 'agent-device',
-      recipient: 'tb1qrecipient',
-      amount: '10000',
-      psbtBase64: 'cHNi',
-      signedPsbtBase64: 'cHNidP8agentSigned',
-      allowedDraftLockId: 'draft-agent',
-    }));
+    expect(mockValidateAgentFundingDraftSubmission).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fundingWalletId: 'funding-wallet',
+        operationalWalletId: 'operational-wallet',
+        signerDeviceId: 'agent-device',
+        recipient: 'tb1qrecipient',
+        amount: '10000',
+        psbtBase64: 'cHNi',
+        signedPsbtBase64: 'cHNidP8agentSigned',
+        allowedDraftLockId: 'draft-agent',
+      })
+    );
     expect(mockUpdateDraft).toHaveBeenCalledWith('funding-wallet', 'draft-agent', {
       signedPsbtBase64: 'cHNidP8agentSigned',
       signedDeviceId: 'agent-device',
@@ -365,16 +444,13 @@ describe('Agent Routes', () => {
     });
   });
 
-  it('creates an agent funding draft with signer and notification metadata from the credential context', async () => {
+  it('creates a requester-only agent funding draft with notification metadata from the credential context', async () => {
     const payload = {
       operationalWalletId: 'operational-wallet',
       recipient: 'tb1qrecipient',
       amount: 10000,
       feeRate: 5,
-      psbtBase64: 'cHNi',
-      signedPsbtBase64: 'cHNidP8agentSigned',
       selectedUtxoIds: ['utxo-1'],
-      fee: 999,
       label: 'Agent refill',
     };
 
@@ -389,16 +465,27 @@ describe('Agent Routes', () => {
       'funding-wallet',
       'operational-wallet'
     );
-    expect(mockValidateAgentFundingDraftSubmission).toHaveBeenCalledWith({
-      fundingWalletId: 'funding-wallet',
+    expect(mockVerifyOperationalReceiveAddress).toHaveBeenCalledWith({
       operationalWalletId: 'operational-wallet',
-      signerDeviceId: 'agent-device',
-      recipient: 'tb1qrecipient',
-      amount: 10000,
-      psbtBase64: 'cHNi',
-      signedPsbtBase64: 'cHNidP8agentSigned',
+      address: 'tb1qrecipient',
     });
+    expect(mockValidateAgentFundingDraftSubmission).not.toHaveBeenCalled();
     expect(mockEnforceAgentFundingPolicy).toHaveBeenCalledWith('agent-1', 'operational-wallet', BigInt(10000));
+    expect(mockEvaluatePolicies).toHaveBeenCalledWith({
+      walletId: 'funding-wallet',
+      userId: 'user-1',
+      recipient: 'tb1qrecipient',
+      amount: BigInt(10000),
+    });
+    expect(mockCreateTransaction).toHaveBeenCalledWith(
+      'funding-wallet',
+      'tb1qrecipient',
+      10000,
+      5,
+      expect.objectContaining({
+        selectedUtxoIds: ['utxo-1'],
+      })
+    );
     expect(mockWithAgentFundingLock).toHaveBeenCalledWith('agent-1', expect.any(Function));
     expect(mockCreateDraft).toHaveBeenCalledWith(
       'funding-wallet',
@@ -409,11 +496,9 @@ describe('Agent Routes', () => {
         feeRate: 5,
         selectedUtxoIds: ['decoded-txid:0'],
         psbtBase64: 'cHNi',
-        signedPsbtBase64: 'cHNidP8agentSigned',
-        signedDeviceId: 'agent-device',
-        fee: '500',
-        totalInput: '10500',
-        totalOutput: '10000',
+        fee: 500,
+        totalInput: 10500,
+        totalOutput: 10000,
         isRBF: false,
         agentId: 'agent-1',
         agentOperationalWalletId: 'operational-wallet',
@@ -422,36 +507,98 @@ describe('Agent Routes', () => {
       })
     );
     expect(mockMarkAgentFundingDraftCreated).toHaveBeenCalledWith('agent-1');
-    expect(mockCreateFundingAttempt).toHaveBeenCalledWith(expect.objectContaining({
-      agentId: 'agent-1',
-      keyId: 'key-1',
-      keyPrefix: 'agt_prefix',
-      fundingWalletId: 'funding-wallet',
-      operationalWalletId: 'operational-wallet',
-      draftId: 'draft-agent',
-      status: 'accepted',
-      amount: 10000n,
-      feeRate: 5,
-      recipient: 'tb1qrecipient',
-    }));
-    expect(mockAuditLog).toHaveBeenCalledWith(expect.objectContaining({
-      userId: 'user-1',
-      username: 'agent:Treasury Agent',
-      action: 'wallet.agent_funding_draft_submit',
-      category: 'wallet',
-      details: expect.objectContaining({
+    expect(mockCreateFundingAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({
         agentId: 'agent-1',
-        draftId: 'draft-agent',
+        keyId: 'key-1',
+        keyPrefix: 'agt_prefix',
         fundingWalletId: 'funding-wallet',
         operationalWalletId: 'operational-wallet',
-      }),
-    }));
+        draftId: 'draft-agent',
+        status: 'accepted',
+        amount: 10000n,
+        feeRate: 5,
+        recipient: 'tb1qrecipient',
+      })
+    );
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'user-1',
+        username: 'agent:Treasury Agent',
+        action: 'wallet.agent_funding_draft_submit',
+        category: 'wallet',
+        details: expect.objectContaining({
+          agentId: 'agent-1',
+          draftId: 'draft-agent',
+          fundingWalletId: 'funding-wallet',
+          operationalWalletId: 'operational-wallet',
+        }),
+      })
+    );
     expect(response.body).toEqual({ id: 'draft-agent', serialized: true });
+  });
+
+  it('enforces agent and vault policies against transaction effective amount', async () => {
+    mockCreateTransaction.mockResolvedValueOnce({
+      psbtBase64: 'cHNi',
+      fee: 500,
+      totalInput: 20500,
+      totalOutput: 15000,
+      changeAmount: 5000,
+      changeAddress: 'tb1qchange',
+      utxos: [
+        {
+          txid: 'decoded-txid',
+          vout: 0,
+          address: 'tb1qfunding',
+          amount: 20500,
+        },
+      ],
+      inputPaths: ["m/48'/1'/0'/2'/0/0"],
+      effectiveAmount: 15000,
+      decoyOutputs: undefined,
+    });
+
+    const response = await request(app)
+      .post('/api/v1/agent/wallets/funding-wallet/funding-drafts')
+      .set('Authorization', 'Bearer agt_test')
+      .send({
+        operationalWalletId: 'operational-wallet',
+        recipient: 'tb1qrecipient',
+        amount: 10000,
+        feeRate: 5,
+        sendMax: true,
+      });
+
+    expect(response.status).toBe(201);
+    expect(mockEnforceAgentFundingPolicy).toHaveBeenCalledWith('agent-1', 'operational-wallet', 15000n);
+    expect(mockEvaluatePolicies).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 15000n,
+      })
+    );
+    expect(mockCreateDraft).toHaveBeenCalledWith(
+      'funding-wallet',
+      'user-1',
+      expect.objectContaining({
+        amount: '15000',
+        effectiveAmount: '15000',
+        sendMax: true,
+      })
+    );
+    expect(mockCreateFundingAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'accepted',
+        amount: 15000n,
+      })
+    );
   });
 
   it('marks owner overrides as used when policy enforcement returns an override', async () => {
     const events: string[] = [];
-    mockEnforceAgentFundingPolicy.mockResolvedValueOnce({ overrideId: 'override-1' });
+    mockEnforceAgentFundingPolicy.mockResolvedValueOnce({
+      overrideId: 'override-1',
+    });
     mockWithAgentFundingLock.mockImplementationOnce(async (_agentId, fn) => {
       events.push('lock-start');
       const result = await fn();
@@ -470,30 +617,35 @@ describe('Agent Routes', () => {
         recipient: 'tb1qrecipient',
         amount: 10000,
         feeRate: 5,
-        psbtBase64: 'cHNi',
-        signedPsbtBase64: 'cHNidP8agentSigned',
       });
 
     expect(response.status).toBe(201);
-    expect(mockCreateDraft).toHaveBeenCalledWith('funding-wallet', 'user-1', expect.objectContaining({
-      label: 'Agent funding request: Treasury Agent (owner override)',
-    }));
+    expect(mockCreateDraft).toHaveBeenCalledWith(
+      'funding-wallet',
+      'user-1',
+      expect.objectContaining({
+        label: 'Agent funding request: Treasury Agent (owner override)',
+      })
+    );
     expect(mockMarkFundingOverrideUsed).toHaveBeenCalledWith('override-1', 'draft-agent');
     expect(events).toEqual(['lock-start', 'mark-used', 'lock-end']);
-    expect(mockAuditLog).toHaveBeenCalledWith(expect.objectContaining({
-      action: 'wallet.agent_override_use',
-      details: expect.objectContaining({
-        agentId: 'agent-1',
-        overrideId: 'override-1',
-        draftId: 'draft-agent',
-      }),
-    }));
+    expect(mockAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'wallet.agent_override_use',
+        details: expect.objectContaining({
+          agentId: 'agent-1',
+          overrideId: 'override-1',
+          draftId: 'draft-agent',
+        }),
+      })
+    );
   });
 
   it('rejects invalid funding draft payloads before calling the service', async () => {
-    const response = await request(app)
-      .post('/api/v1/agent/wallets/funding-wallet/funding-drafts')
-      .send({ operationalWalletId: 'operational-wallet', recipient: 'tb1qrecipient' });
+    const response = await request(app).post('/api/v1/agent/wallets/funding-wallet/funding-drafts').send({
+      operationalWalletId: 'operational-wallet',
+      recipient: 'tb1qrecipient',
+    });
 
     expect(response.status).toBe(400);
     expect(response.body.code).toBe(ErrorCodes.VALIDATION_ERROR);
@@ -501,7 +653,9 @@ describe('Agent Routes', () => {
   });
 
   it('records rejected funding attempts with reason metadata', async () => {
-    mockEnforceAgentFundingPolicy.mockRejectedValueOnce(new InvalidInputError('Agent daily funding limit would be exceeded'));
+    mockEnforceAgentFundingPolicy.mockRejectedValueOnce(
+      new InvalidInputError('Agent daily funding limit would be exceeded')
+    );
 
     const response = await request(app)
       .post('/api/v1/agent/wallets/funding-wallet/funding-drafts')
@@ -517,20 +671,96 @@ describe('Agent Routes', () => {
 
     expect(response.status).toBe(400);
     expect(mockCreateDraft).not.toHaveBeenCalled();
-    expect(mockCreateFundingAttempt).toHaveBeenCalledWith(expect.objectContaining({
-      agentId: 'agent-1',
-      keyId: 'key-1',
-      keyPrefix: 'agt_prefix',
-      fundingWalletId: 'funding-wallet',
-      operationalWalletId: 'operational-wallet',
-      status: 'rejected',
-      reasonCode: 'policy_daily_limit',
-      reasonMessage: 'Agent daily funding limit would be exceeded',
-      amount: 10000n,
-      feeRate: 5,
-      recipient: 'tb1qrecipient',
-    }));
+    expect(mockCreateFundingAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId: 'agent-1',
+        keyId: 'key-1',
+        keyPrefix: 'agt_prefix',
+        fundingWalletId: 'funding-wallet',
+        operationalWalletId: 'operational-wallet',
+        status: 'rejected',
+        reasonCode: 'policy_daily_limit',
+        reasonMessage: 'Agent daily funding limit would be exceeded',
+        amount: 10000n,
+        feeRate: 5,
+        recipient: 'tb1qrecipient',
+      })
+    );
     expect(mockEvaluateRejectedFundingAttemptAlert).toHaveBeenCalledWith('agent-1', 'policy_daily_limit');
+  });
+
+  it('rejects requester drafts to addresses outside the linked operational wallet', async () => {
+    mockVerifyOperationalReceiveAddress.mockResolvedValueOnce({
+      walletId: 'operational-wallet',
+      address: 'tb1qexternal',
+      verified: false,
+      derivationPath: null,
+      index: null,
+    });
+
+    await request(app)
+      .post('/api/v1/agent/wallets/funding-wallet/funding-drafts')
+      .set('Authorization', 'Bearer agt_test')
+      .send({
+        operationalWalletId: 'operational-wallet',
+        recipient: 'tb1qexternal',
+        amount: 10000,
+        feeRate: 5,
+      })
+      .expect(400);
+
+    expect(mockCreateTransaction).not.toHaveBeenCalled();
+    expect(mockCreateDraft).not.toHaveBeenCalled();
+    expect(mockCreateFundingAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'rejected',
+        reasonCode: 'policy_destination_mismatch',
+        recipient: 'tb1qexternal',
+      })
+    );
+  });
+
+  it('rejects non-decimal amount strings before building the transaction', async () => {
+    await request(app)
+      .post('/api/v1/agent/wallets/funding-wallet/funding-drafts')
+      .set('Authorization', 'Bearer agt_test')
+      .send({
+        operationalWalletId: 'operational-wallet',
+        recipient: 'tb1qrecipient',
+        amount: '1e3',
+        feeRate: 5,
+      })
+      .expect(400);
+
+    expect(mockCreateTransaction).not.toHaveBeenCalled();
+    expect(mockCreateDraft).not.toHaveBeenCalled();
+    expect(mockCreateFundingAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'rejected',
+        reasonCode: 'invalid_amount',
+        amount: null,
+        feeRate: 5,
+        recipient: 'tb1qrecipient',
+      })
+    );
+  });
+
+  it('rejects malformed decoy output requests before draft creation', async () => {
+    const response = await request(app)
+      .post('/api/v1/agent/wallets/funding-wallet/funding-drafts')
+      .set('Authorization', 'Bearer agt_test')
+      .send({
+        operationalWalletId: 'operational-wallet',
+        recipient: 'tb1qrecipient',
+        amount: 10000,
+        feeRate: 5,
+        decoyOutputs: { enabled: true, count: 10, address: 'tb1qexternal' },
+      });
+
+    expect(response.status).toBe(400);
+    expect(mockCreateTransaction).not.toHaveBeenCalled();
+    expect(mockCreateDraft).not.toHaveBeenCalled();
+    expect(mockCreateFundingAttempt).not.toHaveBeenCalled();
   });
 
   it('rejects funding drafts with out-of-range fee rates before validation', async () => {
@@ -548,39 +778,20 @@ describe('Agent Routes', () => {
 
     expect(response.status).toBe(400);
     expect(mockValidateAgentFundingDraftSubmission).not.toHaveBeenCalled();
-    expect(mockCreateFundingAttempt).toHaveBeenCalledWith(expect.objectContaining({
-      status: 'rejected',
-      reasonCode: 'fee_rate_out_of_bounds',
-      amount: null,
-      feeRate: null,
-      recipient: 'tb1qrecipient',
-    }));
+    expect(mockCreateFundingAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'rejected',
+        reasonCode: 'fee_rate_out_of_bounds',
+        amount: null,
+        feeRate: null,
+        recipient: 'tb1qrecipient',
+      })
+    );
   });
 
   it('records validation failures with normalized reason codes and truncated metadata', async () => {
-    mockValidateAgentFundingDraftSubmission.mockRejectedValueOnce(new InvalidPsbtError('bad PSBT bytes'));
+    mockCreateTransaction.mockRejectedValueOnce(new InvalidPsbtError('bad PSBT bytes'));
 
-    await request(app)
-      .post('/api/v1/agent/wallets/funding-wallet/funding-drafts')
-      .set('Authorization', 'Bearer agt_test')
-      .send({
-        operationalWalletId: 'operational-wallet',
-        recipient: 'x'.repeat(250),
-        amount: 'not-sats',
-        feeRate: 5,
-        psbtBase64: 'cHNi',
-        signedPsbtBase64: 'cHNidP8agentSigned',
-      })
-      .expect(400);
-
-    expect(mockCreateFundingAttempt).toHaveBeenCalledWith(expect.objectContaining({
-      reasonCode: 'invalid_psbt',
-      amount: null,
-      feeRate: 5,
-      recipient: 'x'.repeat(200),
-    }));
-
-    mockValidateAgentFundingDraftSubmission.mockRejectedValueOnce(new ConflictError('locked by another draft'));
     await request(app)
       .post('/api/v1/agent/wallets/funding-wallet/funding-drafts')
       .set('Authorization', 'Bearer agt_test')
@@ -589,33 +800,54 @@ describe('Agent Routes', () => {
         recipient: 'tb1qrecipient',
         amount: 10000,
         feeRate: 5,
-        psbtBase64: 'cHNi',
-        signedPsbtBase64: 'cHNidP8agentSigned',
       })
-      .expect(409);
+      .expect(400);
 
-    expect(mockCreateFundingAttempt).toHaveBeenLastCalledWith(expect.objectContaining({
-      reasonCode: 'utxo_locked',
-    }));
+    expect(mockCreateFundingAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reasonCode: 'invalid_psbt',
+        amount: 10000n,
+        feeRate: 5,
+        recipient: 'tb1qrecipient',
+      })
+    );
 
-    mockValidateAgentFundingDraftSubmission.mockRejectedValueOnce(new InvalidInputError('metadata failed validation'));
+    mockCreateTransaction.mockRejectedValueOnce(new ConflictError('locked by another draft'));
     await request(app)
       .post('/api/v1/agent/wallets/funding-wallet/funding-drafts')
       .set('Authorization', 'Bearer agt_test')
       .send({
         operationalWalletId: 'operational-wallet',
         recipient: 'tb1qrecipient',
-        amount: Number.MAX_SAFE_INTEGER + 1,
+        amount: 10000,
         feeRate: 5,
-        psbtBase64: 'cHNi',
-        signedPsbtBase64: 'cHNidP8agentSigned',
+      })
+      .expect(409);
+
+    expect(mockCreateFundingAttempt).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        reasonCode: 'utxo_locked',
+      })
+    );
+
+    mockCreateTransaction.mockRejectedValueOnce(new InvalidInputError('metadata failed validation'));
+    await request(app)
+      .post('/api/v1/agent/wallets/funding-wallet/funding-drafts')
+      .set('Authorization', 'Bearer agt_test')
+      .send({
+        operationalWalletId: 'operational-wallet',
+        recipient: 'tb1qrecipient',
+        amount: 10000,
+        feeRate: 5,
       })
       .expect(400);
 
-    expect(mockCreateFundingAttempt).toHaveBeenLastCalledWith(expect.objectContaining({
-      reasonCode: 'invalid_input',
-      amount: null,
-    }));
+    expect(mockCreateFundingAttempt).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        reasonCode: 'invalid_input',
+        amount: 10000n,
+      })
+    );
   });
 
   it.each([
@@ -642,17 +874,17 @@ describe('Agent Routes', () => {
       })
       .expect(400);
 
-    expect(mockCreateFundingAttempt).toHaveBeenCalledWith(expect.objectContaining({
-      reasonCode,
-    }));
+    expect(mockCreateFundingAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reasonCode,
+      })
+    );
   });
 
   it('classifies generic API and unexpected rejection errors', async () => {
-    mockEnforceAgentFundingPolicy.mockRejectedValueOnce(new ApiError(
-      'Custom API failure',
-      418,
-      'EXTERNAL_SERVICE_ERROR' as any
-    ));
+    mockEnforceAgentFundingPolicy.mockRejectedValueOnce(
+      new ApiError('Custom API failure', 418, 'EXTERNAL_SERVICE_ERROR' as any)
+    );
 
     await request(app)
       .post('/api/v1/agent/wallets/funding-wallet/funding-drafts')
@@ -667,9 +899,11 @@ describe('Agent Routes', () => {
       })
       .expect(418);
 
-    expect(mockCreateFundingAttempt).toHaveBeenCalledWith(expect.objectContaining({
-      reasonCode: 'external_service_error',
-    }));
+    expect(mockCreateFundingAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reasonCode: 'external_service_error',
+      })
+    );
 
     mockEnforceAgentFundingPolicy.mockRejectedValueOnce(new Error('database exploded'));
 
@@ -686,9 +920,11 @@ describe('Agent Routes', () => {
       })
       .expect(500);
 
-    expect(mockCreateFundingAttempt).toHaveBeenLastCalledWith(expect.objectContaining({
-      reasonCode: 'unexpected_error',
-    }));
+    expect(mockCreateFundingAttempt).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        reasonCode: 'unexpected_error',
+      })
+    );
   });
 
   it('surfaces draft creation anomalies and swallows attempt-recording failures', async () => {
@@ -708,7 +944,7 @@ describe('Agent Routes', () => {
       .expect(400);
 
     mockCreateFundingAttempt.mockRejectedValueOnce(new Error('attempt store unavailable'));
-    mockValidateAgentFundingDraftSubmission.mockRejectedValueOnce(new NotFoundError('Funding wallet not found'));
+    mockCreateTransaction.mockRejectedValueOnce(new NotFoundError('Funding wallet not found'));
 
     await request(app)
       .post('/api/v1/agent/wallets/funding-wallet/funding-drafts')
@@ -718,8 +954,6 @@ describe('Agent Routes', () => {
         recipient: 'tb1qrecipient',
         amount: 10000,
         feeRate: 5,
-        psbtBase64: 'cHNi',
-        signedPsbtBase64: 'cHNidP8agentSigned',
       })
       .expect(404);
   });
@@ -748,16 +982,14 @@ describe('Agent Routes', () => {
       throw new ForbiddenError('Agent API key is not scoped for this funding wallet');
     });
 
-    const response = await request(app)
-      .post('/api/v1/agent/wallets/other-wallet/funding-drafts')
-      .send({
-        operationalWalletId: 'operational-wallet',
-        recipient: 'tb1qrecipient',
-        amount: 10000,
-        feeRate: 5,
-        psbtBase64: 'cHNi',
-        signedPsbtBase64: 'cHNidP8agentSigned',
-      });
+    const response = await request(app).post('/api/v1/agent/wallets/other-wallet/funding-drafts').send({
+      operationalWalletId: 'operational-wallet',
+      recipient: 'tb1qrecipient',
+      amount: 10000,
+      feeRate: 5,
+      psbtBase64: 'cHNi',
+      signedPsbtBase64: 'cHNidP8agentSigned',
+    });
 
     expect(response.status).toBe(403);
     expect(response.body.message).toBe('Agent API key is not scoped for this funding wallet');

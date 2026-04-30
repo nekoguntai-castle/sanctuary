@@ -877,7 +877,7 @@ model WalletAgent {
   status              String    @default("active") // active, paused, revoked
   fundingWalletId     String
   operationalWalletId String
-  signerDeviceId      String
+  signerDeviceId      String?
   maxFundingAmountSats     BigInt?
   maxOperationalBalanceSats BigInt?
   dailyFundingLimitSats     BigInt?
@@ -900,13 +900,13 @@ model WalletAgent {
   user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   fundingWallet     Wallet        @relation("AgentFundingWallet", fields: [fundingWalletId], references: [id], onDelete: Cascade)
   operationalWallet Wallet        @relation("AgentOperationalWallet", fields: [operationalWalletId], references: [id], onDelete: Cascade)
-  signerDevice      Device        @relation(fields: [signerDeviceId], references: [id], onDelete: Cascade)
+  signerDevice      Device?       @relation(fields: [signerDeviceId], references: [id], onDelete: SetNull)
   apiKeys           AgentApiKey[]
   fundingAttempts  AgentFundingAttempt[]
   alerts           AgentAlert[]
   fundingOverrides AgentFundingOverride[]
 
-  @@unique([fundingWalletId, operationalWalletId, signerDeviceId])
+  @@unique([fundingWalletId, operationalWalletId])
   @@index([userId])
   @@index([status])
   @@index([fundingWalletId])

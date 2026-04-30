@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AgentManagement } from '../../components/AgentManagement';
 import * as adminApi from '../../src/api/admin';
+import * as walletsApi from '../../src/api/wallets';
 
 vi.mock('../../src/api/admin', () => ({
   getWalletAgents: vi.fn(),
@@ -15,6 +16,11 @@ vi.mock('../../src/api/admin', () => ({
   revokeAgentFundingOverride: vi.fn(),
   createAgentApiKey: vi.fn(),
   revokeAgentApiKey: vi.fn(),
+}));
+
+vi.mock('../../src/api/wallets', () => ({
+  validateImport: vi.fn(),
+  importWallet: vi.fn(),
 }));
 
 const writeTextMock = vi.fn();
@@ -46,36 +52,90 @@ const agent = {
   updatedAt: '2026-04-16T00:00:00.000Z',
   revokedAt: null,
   user: { id: 'user-1', username: 'alice', isAdmin: false },
-  fundingWallet: { id: 'funding-1', name: 'Funding', type: 'multi_sig', network: 'testnet' },
-  operationalWallet: { id: 'operational-1', name: 'Operational', type: 'single_sig', network: 'testnet' },
-  signerDevice: { id: 'device-1', label: 'Agent Signer', fingerprint: 'aabbccdd' },
-  apiKeys: [{
-    id: 'key-1',
-    agentId: 'agent-1',
-    createdByUserId: 'admin-1',
-    name: 'Runtime',
-    keyPrefix: 'agt_prefix',
-    scope: { allowedActions: ['create_funding_draft'] },
-    lastUsedAt: null,
-    lastUsedIp: null,
-    lastUsedAgent: null,
-    expiresAt: null,
-    createdAt: '2026-04-16T00:00:00.000Z',
-    revokedAt: null,
-  }],
+  fundingWallet: {
+    id: 'funding-1',
+    name: 'Funding',
+    type: 'multi_sig',
+    network: 'testnet',
+  },
+  operationalWallet: {
+    id: 'operational-1',
+    name: 'Operational',
+    type: 'single_sig',
+    network: 'testnet',
+  },
+  signerDevice: {
+    id: 'device-1',
+    label: 'Agent Signer',
+    fingerprint: 'aabbccdd',
+  },
+  apiKeys: [
+    {
+      id: 'key-1',
+      agentId: 'agent-1',
+      createdByUserId: 'admin-1',
+      name: 'Runtime',
+      keyPrefix: 'agt_prefix',
+      scope: { allowedActions: ['create_funding_draft'] },
+      lastUsedAt: null,
+      lastUsedIp: null,
+      lastUsedAgent: null,
+      expiresAt: null,
+      createdAt: '2026-04-16T00:00:00.000Z',
+      revokedAt: null,
+    },
+  ],
 } as any;
 
 const options = {
   users: [
-    { id: 'user-1', username: 'alice', email: 'alice@example.com', emailVerified: true, isAdmin: false, createdAt: '2026-04-16T00:00:00.000Z', updatedAt: '2026-04-16T00:00:00.000Z' },
+    {
+      id: 'user-1',
+      username: 'alice',
+      email: 'alice@example.com',
+      emailVerified: true,
+      isAdmin: false,
+      createdAt: '2026-04-16T00:00:00.000Z',
+      updatedAt: '2026-04-16T00:00:00.000Z',
+    },
   ],
   wallets: [
-    { id: 'funding-1', name: 'Funding', type: 'multi_sig', network: 'testnet', accessUserIds: ['user-1'], deviceIds: ['device-1'] },
-    { id: 'operational-1', name: 'Operational', type: 'single_sig', network: 'testnet', accessUserIds: ['user-1'], deviceIds: [] },
+    {
+      id: 'funding-1',
+      name: 'Funding',
+      type: 'multi_sig',
+      network: 'testnet',
+      accessUserIds: ['user-1'],
+      deviceIds: ['device-1'],
+    },
+    {
+      id: 'operational-1',
+      name: 'Operational',
+      type: 'single_sig',
+      network: 'testnet',
+      accessUserIds: ['user-1'],
+      deviceIds: [],
+    },
   ],
   devices: [
-    { id: 'device-1', label: 'Agent Signer', fingerprint: 'aabbccdd', type: 'ledger', userId: 'user-1', walletIds: ['funding-1'] },
+    {
+      id: 'device-1',
+      label: 'Agent Signer',
+      fingerprint: 'aabbccdd',
+      type: 'ledger',
+      userId: 'user-1',
+      walletIds: ['funding-1'],
+    },
   ],
+};
+
+const importedOperationalWallet = {
+  id: 'operational-imported',
+  name: 'Imported Ops',
+  type: 'single_sig',
+  network: 'testnet',
+  accessUserIds: ['user-1'],
+  deviceIds: [],
 };
 
 const fundingOverride = {
@@ -101,24 +161,67 @@ describe('AgentManagement', () => {
     vi.mocked(adminApi.getWalletAgents).mockResolvedValue([agent]);
     vi.mocked(adminApi.getWalletAgentOptions).mockResolvedValue(options);
     vi.mocked(adminApi.createWalletAgent).mockResolvedValue(agent);
-    vi.mocked(adminApi.updateWalletAgent).mockResolvedValue({ ...agent, status: 'paused' });
-    vi.mocked(adminApi.revokeWalletAgent).mockResolvedValue({ ...agent, status: 'revoked', revokedAt: '2026-04-16T01:00:00.000Z' });
+    vi.mocked(adminApi.updateWalletAgent).mockResolvedValue({
+      ...agent,
+      status: 'paused',
+    });
+    vi.mocked(adminApi.revokeWalletAgent).mockResolvedValue({
+      ...agent,
+      status: 'revoked',
+      revokedAt: '2026-04-16T01:00:00.000Z',
+    });
     vi.mocked(adminApi.getAgentFundingOverrides).mockResolvedValue([fundingOverride]);
     vi.mocked(adminApi.createAgentFundingOverride).mockResolvedValue(fundingOverride);
-    vi.mocked(adminApi.revokeAgentFundingOverride).mockResolvedValue({ ...fundingOverride, status: 'revoked', revokedAt: '2026-04-16T01:00:00.000Z' });
+    vi.mocked(adminApi.revokeAgentFundingOverride).mockResolvedValue({
+      ...fundingOverride,
+      status: 'revoked',
+      revokedAt: '2026-04-16T01:00:00.000Z',
+    });
     vi.mocked(adminApi.createAgentApiKey).mockResolvedValue({
       ...agent.apiKeys[0],
       id: 'key-2',
       name: 'New Runtime',
       apiKey: 'agt_'.padEnd(68, 'a'),
     });
-    vi.mocked(adminApi.revokeAgentApiKey).mockResolvedValue({ ...agent.apiKeys[0], revokedAt: '2026-04-16T01:00:00.000Z' });
-    vi.stubGlobal('confirm', vi.fn(() => true));
+    vi.mocked(adminApi.revokeAgentApiKey).mockResolvedValue({
+      ...agent.apiKeys[0],
+      revokedAt: '2026-04-16T01:00:00.000Z',
+    });
+    vi.mocked(walletsApi.validateImport).mockResolvedValue({
+      valid: true,
+      format: 'descriptor',
+      walletType: 'single_sig',
+      scriptType: 'native_segwit',
+      network: 'testnet',
+      devices: [],
+      suggestedName: 'Imported Ops',
+    });
+    vi.mocked(walletsApi.importWallet).mockResolvedValue({
+      wallet: {
+        id: importedOperationalWallet.id,
+        name: importedOperationalWallet.name,
+        type: importedOperationalWallet.type,
+        scriptType: 'native_segwit',
+        network: importedOperationalWallet.network,
+        quorum: null,
+        totalSigners: null,
+        descriptor: 'wpkh([abcd1234/84h/1h/0h]tpub.../0/*)',
+      },
+      devicesCreated: 0,
+      devicesReused: 0,
+      createdDeviceIds: [],
+      reusedDeviceIds: [],
+    });
+    vi.stubGlobal(
+      'confirm',
+      vi.fn(() => true)
+    );
     writeTextMock.mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
       value: { writeText: writeTextMock },
     });
+    window.location.hash = '';
   });
 
   it('loads and renders wallet agent summary, policy, and key metadata', async () => {
@@ -157,15 +260,26 @@ describe('AgentManagement', () => {
     render(<AgentManagement />);
 
     await screen.findByText('Treasury Agent');
-    await user.click(screen.getByRole('button', { name: /Create Agent/i }));
+    await user.click(screen.getByRole('button', { name: /Add Agent Wallet/i }));
     await user.type(screen.getByPlaceholderText('Treasury funding agent'), 'Ops Agent');
 
-    const selects = screen.getAllByRole('combobox');
+    let selects = screen.getAllByRole('combobox');
     await user.selectOptions(selects[0], 'user-1');
-    await user.selectOptions(selects[2], 'funding-1');
-    await user.selectOptions(selects[3], 'operational-1');
-    await user.selectOptions(selects[4], 'device-1');
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+
+    expect(screen.getByRole('link', { name: 'Open full import page' })).toHaveAttribute(
+      'href',
+      '#/wallets/import'
+    );
+    selects = screen.getAllByRole('combobox');
+    await user.selectOptions(selects[0], 'funding-1');
+    await user.selectOptions(selects[1], 'operational-1');
+    await user.selectOptions(selects[2], 'device-1');
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+
     await user.type(screen.getByPlaceholderText('0'), '15');
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+
     await user.type(screen.getByLabelText('Refill threshold'), '20000');
     await user.type(screen.getByLabelText('Large spend alert'), '90000');
     await user.type(screen.getByLabelText('Large fee alert'), '4000');
@@ -173,23 +287,119 @@ describe('AgentManagement', () => {
     await user.type(screen.getByLabelText('Failure lookback minutes'), '45');
     await user.type(screen.getByLabelText('Alert dedupe minutes'), '90');
 
-    await user.click(screen.getAllByRole('button', { name: 'Create Agent' }).at(-1)!);
+    await user.click(screen.getAllByRole('button', { name: 'Add Agent Wallet' }).at(-1)!);
 
-    await waitFor(() => expect(adminApi.createWalletAgent).toHaveBeenCalledWith(expect.objectContaining({
-      name: 'Ops Agent',
-      userId: 'user-1',
-      fundingWalletId: 'funding-1',
-      operationalWalletId: 'operational-1',
-      signerDeviceId: 'device-1',
-      cooldownMinutes: 15,
-      minOperationalBalanceSats: '20000',
-      largeOperationalSpendSats: '90000',
-      largeOperationalFeeSats: '4000',
-      repeatedFailureThreshold: 4,
-      repeatedFailureLookbackMinutes: 45,
-      alertDedupeMinutes: 90,
-      requireHumanApproval: true,
-    })));
+    await waitFor(() =>
+      expect(adminApi.createWalletAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Ops Agent',
+          userId: 'user-1',
+          fundingWalletId: 'funding-1',
+          operationalWalletId: 'operational-1',
+          signerDeviceId: 'device-1',
+          cooldownMinutes: 15,
+          minOperationalBalanceSats: '20000',
+          largeOperationalSpendSats: '90000',
+          largeOperationalFeeSats: '4000',
+          repeatedFailureThreshold: 4,
+          repeatedFailureLookbackMinutes: 45,
+          alertDedupeMinutes: 90,
+          requireHumanApproval: true,
+        })
+      )
+    );
+    expect(window.location.hash).toBe('#/admin/agent-wallets');
+  });
+
+  it('imports a watch-only operational wallet inline and creates with the imported wallet', async () => {
+    const user = userEvent.setup();
+    const initialOptions = {
+      ...options,
+      wallets: [options.wallets[0]],
+    };
+    const optionsWithImported = {
+      ...options,
+      wallets: [options.wallets[0], importedOperationalWallet],
+    };
+    vi.mocked(adminApi.getWalletAgentOptions)
+      .mockResolvedValue(optionsWithImported)
+      .mockResolvedValueOnce(initialOptions)
+      .mockResolvedValueOnce(optionsWithImported);
+
+    render(<AgentManagement />);
+
+    await screen.findByText('Treasury Agent');
+    await user.click(screen.getByRole('button', { name: /Add Agent Wallet/i }));
+    await user.type(screen.getByPlaceholderText('Treasury funding agent'), 'Ops Agent');
+    let selects = screen.getAllByRole('combobox');
+    await user.selectOptions(selects[0], 'user-1');
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+
+    selects = screen.getAllByRole('combobox');
+    await user.selectOptions(selects[0], 'funding-1');
+    await user.click(screen.getByRole('button', { name: 'Import' }));
+    await user.type(screen.getByPlaceholderText('Agent operational wallet'), 'Imported Ops');
+    await user.type(screen.getByPlaceholderText(/wpkh/), 'wpkh(tpub-inline/0/*)');
+    await user.click(screen.getByRole('button', { name: 'Import and select' }));
+
+    await waitFor(() => expect(walletsApi.importWallet).toHaveBeenCalled());
+    expect(walletsApi.validateImport).toHaveBeenCalledWith({
+      descriptor: 'wpkh(tpub-inline/0/*)',
+    });
+    expect(walletsApi.importWallet).toHaveBeenCalledWith({
+      data: 'wpkh(tpub-inline/0/*)',
+      name: 'Imported Ops',
+      network: 'testnet',
+    });
+
+    selects = screen.getAllByRole('combobox');
+    expect((selects[1] as HTMLSelectElement).value).toBe('operational-imported');
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    await user.click(screen.getAllByRole('button', { name: 'Add Agent Wallet' }).at(-1)!);
+
+    await waitFor(() =>
+      expect(adminApi.createWalletAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          fundingWalletId: 'funding-1',
+          operationalWalletId: 'operational-imported',
+        })
+      )
+    );
+  });
+
+  it('rejects inline operational imports that are not single-sig', async () => {
+    const user = userEvent.setup();
+    vi.mocked(walletsApi.validateImport).mockResolvedValueOnce({
+      valid: true,
+      format: 'descriptor',
+      walletType: 'multi_sig',
+      scriptType: 'native_segwit',
+      network: 'testnet',
+      quorum: 2,
+      totalSigners: 3,
+      devices: [],
+    });
+
+    render(<AgentManagement />);
+
+    await screen.findByText('Treasury Agent');
+    await user.click(screen.getByRole('button', { name: /Add Agent Wallet/i }));
+    await user.type(screen.getByPlaceholderText('Treasury funding agent'), 'Ops Agent');
+    let selects = screen.getAllByRole('combobox');
+    await user.selectOptions(selects[0], 'user-1');
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+
+    selects = screen.getAllByRole('combobox');
+    await user.selectOptions(selects[0], 'funding-1');
+    await user.click(screen.getByRole('button', { name: 'Import' }));
+    await user.type(screen.getByPlaceholderText(/wpkh/), 'wsh(sortedmulti(...))');
+    await user.click(screen.getByRole('button', { name: 'Import and select' }));
+
+    expect(
+      await screen.findByText('Operational agent wallets must be single-sig watch-only wallets.')
+    ).toBeInTheDocument();
+    expect(walletsApi.importWallet).not.toHaveBeenCalled();
   });
 
   it('updates agent policy and issues a one-time key', async () => {
@@ -208,25 +418,32 @@ describe('AgentManagement', () => {
     await user.type(refillInput, '30000');
     await user.click(screen.getByRole('button', { name: 'Save Agent' }));
 
-    await waitFor(() => expect(adminApi.updateWalletAgent).toHaveBeenCalledWith('agent-1', expect.objectContaining({
-      status: 'paused',
-      maxFundingAmountSats: '250000',
-      minOperationalBalanceSats: '30000',
-      largeOperationalSpendSats: '75000',
-      largeOperationalFeeSats: '5000',
-      repeatedFailureThreshold: 3,
-      repeatedFailureLookbackMinutes: 60,
-      alertDedupeMinutes: 120,
-    })));
+    await waitFor(() =>
+      expect(adminApi.updateWalletAgent).toHaveBeenCalledWith(
+        'agent-1',
+        expect.objectContaining({
+          status: 'paused',
+          maxFundingAmountSats: '250000',
+          minOperationalBalanceSats: '30000',
+          largeOperationalSpendSats: '75000',
+          largeOperationalFeeSats: '5000',
+          repeatedFailureThreshold: 3,
+          repeatedFailureLookbackMinutes: 60,
+          alertDedupeMinutes: 120,
+        })
+      )
+    );
 
     await user.click(screen.getByRole('button', { name: 'Issue Key' }));
     await user.type(screen.getByPlaceholderText('Agent runtime key'), 'New Runtime');
     await user.click(screen.getByRole('button', { name: 'Create Key' }));
 
-    await waitFor(() => expect(adminApi.createAgentApiKey).toHaveBeenCalledWith('agent-1', {
-      name: 'New Runtime',
-      allowedActions: ['create_funding_draft'],
-    }));
+    await waitFor(() =>
+      expect(adminApi.createAgentApiKey).toHaveBeenCalledWith('agent-1', {
+        name: 'New Runtime',
+        allowedActions: ['create_funding_draft'],
+      })
+    );
     expect(await screen.findByDisplayValue(/^agt_/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Copy' }));
     expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument();
@@ -247,11 +464,13 @@ describe('AgentManagement', () => {
     await user.type(screen.getByPlaceholderText('Emergency refill'), '  Higher refill  ');
     await user.click(screen.getByRole('button', { name: 'Create Override' }));
 
-    await waitFor(() => expect(adminApi.createAgentFundingOverride).toHaveBeenCalledWith('agent-1', {
-      maxAmountSats: '250000',
-      expiresAt: expect.any(String),
-      reason: 'Higher refill',
-    }));
+    await waitFor(() =>
+      expect(adminApi.createAgentFundingOverride).toHaveBeenCalledWith('agent-1', {
+        maxAmountSats: '250000',
+        expiresAt: expect.any(String),
+        reason: 'Higher refill',
+      })
+    );
 
     await user.click(screen.getAllByRole('button', { name: 'Revoke' }).at(-1)!);
     await waitFor(() => expect(adminApi.revokeAgentFundingOverride).toHaveBeenCalledWith('agent-1', 'override-1'));
@@ -320,7 +539,10 @@ describe('AgentManagement', () => {
 
   it('does not revoke owner funding overrides when confirmation is cancelled', async () => {
     const user = userEvent.setup();
-    vi.stubGlobal('confirm', vi.fn(() => false));
+    vi.stubGlobal(
+      'confirm',
+      vi.fn(() => false)
+    );
 
     render(<AgentManagement />);
 

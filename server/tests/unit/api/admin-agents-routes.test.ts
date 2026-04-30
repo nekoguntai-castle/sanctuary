@@ -81,14 +81,7 @@ import agentsRouter from '../../../src/api/admin/agents';
 
 describe('Admin wallet agent routes', () => {
   let app: Express;
-  const {
-    userId,
-    fundingWalletId,
-    operationalWalletId,
-    signerDeviceId,
-    agentId,
-    keyId,
-  } = ADMIN_AGENT_TEST_IDS;
+  const { userId, fundingWalletId, operationalWalletId, signerDeviceId, agentId, keyId } = ADMIN_AGENT_TEST_IDS;
   const now = ADMIN_AGENT_TEST_NOW;
 
   beforeAll(() => {
@@ -106,9 +99,7 @@ describe('Admin wallet agent routes', () => {
   it('lists admin-visible agent form options', async () => {
     const response = await request(app).get('/api/v1/admin/agents/options').expect(200);
 
-    expect(response.body.users).toEqual([
-      expect.objectContaining({ id: userId, username: 'alice' }),
-    ]);
+    expect(response.body.users).toEqual([expect.objectContaining({ id: userId, username: 'alice' })]);
     expect(response.body.wallets).toEqual([
       expect.objectContaining({
         id: fundingWalletId,
@@ -137,9 +128,7 @@ describe('Admin wallet agent routes', () => {
       }),
     ]);
 
-    const response = await request(app)
-      .get(`/api/v1/admin/agents?walletId=${fundingWalletId}`)
-      .expect(200);
+    const response = await request(app).get(`/api/v1/admin/agents?walletId=${fundingWalletId}`).expect(200);
 
     expect(response.body).toHaveLength(1);
     expect(response.body[0]).toMatchObject({
@@ -149,7 +138,9 @@ describe('Admin wallet agent routes', () => {
       apiKeys: [{ id: keyId, keyPrefix: 'agt_prefix' }],
     });
     expect(response.body[0].apiKeys[0].keyHash).toBeUndefined();
-    expect(mocks.agentRepository.findAgents).toHaveBeenCalledWith({ walletId: fundingWalletId });
+    expect(mocks.agentRepository.findAgents).toHaveBeenCalledWith({
+      walletId: fundingWalletId,
+    });
   });
 
   it('lists agent wallet dashboard rows', async () => {
@@ -201,12 +192,14 @@ describe('Admin wallet agent routes', () => {
   });
 
   it('creates a wallet agent after validating wallet and signer relationships', async () => {
-    mocks.agentRepository.createAgent.mockImplementation(async input => agentFixture({
-      ...input,
-      id: agentId,
-      createdAt: now,
-      updatedAt: now,
-    }));
+    mocks.agentRepository.createAgent.mockImplementation(async input =>
+      agentFixture({
+        ...input,
+        id: agentId,
+        createdAt: now,
+        updatedAt: now,
+      })
+    );
     mocks.agentRepository.findAgentByIdWithDetails.mockResolvedValue(agentFixture());
 
     const response = await request(app)
@@ -231,64 +224,109 @@ describe('Admin wallet agent routes', () => {
     expect(response.body.maxFundingAmountSats).toBe('100000');
     expect(response.body.minOperationalBalanceSats).toBeNull();
     expect(mocks.walletRepository.hasAccess).toHaveBeenCalledTimes(2);
-    expect(mocks.agentRepository.createAgent).toHaveBeenCalledWith(expect.objectContaining({
-      userId,
-      name: 'Treasury Agent',
-      fundingWalletId,
-      operationalWalletId,
-      signerDeviceId,
-      maxFundingAmountSats: 100000n,
-      minOperationalBalanceSats: 25000n,
-      largeOperationalSpendSats: 75000n,
-      largeOperationalFeeSats: 5000n,
-      repeatedFailureThreshold: 3,
-      repeatedFailureLookbackMinutes: 60,
-      alertDedupeMinutes: 120,
-      cooldownMinutes: 10,
-      requireHumanApproval: true,
-    }));
+    expect(mocks.agentRepository.createAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId,
+        name: 'Treasury Agent',
+        fundingWalletId,
+        operationalWalletId,
+        signerDeviceId,
+        maxFundingAmountSats: 100000n,
+        minOperationalBalanceSats: 25000n,
+        largeOperationalSpendSats: 75000n,
+        largeOperationalFeeSats: 5000n,
+        repeatedFailureThreshold: 3,
+        repeatedFailureLookbackMinutes: 60,
+        alertDedupeMinutes: 120,
+        cooldownMinutes: 10,
+        requireHumanApproval: true,
+      })
+    );
     expect(mocks.logFromRequest).toHaveBeenCalledWith(expect.anything(), 'wallet.agent_create', 'wallet', {
-      details: expect.objectContaining({ agentId, fundingWalletId, operationalWalletId }),
+      details: expect.objectContaining({
+        agentId,
+        fundingWalletId,
+        operationalWalletId,
+      }),
     });
   });
 
   it('rejects invalid wallet-agent links', async () => {
     await request(app)
       .post('/api/v1/admin/agents')
-      .send({ userId, name: 'same wallet', fundingWalletId, operationalWalletId: fundingWalletId, signerDeviceId })
+      .send({
+        userId,
+        name: 'same wallet',
+        fundingWalletId,
+        operationalWalletId: fundingWalletId,
+        signerDeviceId,
+      })
       .expect(400);
 
     await request(app)
       .post('/api/v1/admin/agents')
-      .send({ userId, name: '', fundingWalletId, operationalWalletId, signerDeviceId })
+      .send({
+        userId,
+        name: '',
+        fundingWalletId,
+        operationalWalletId,
+        signerDeviceId,
+      })
       .expect(400);
 
-    mocks.walletRepository.findById.mockImplementationOnce(async () => ({ id: fundingWalletId, type: 'single_sig', network: 'testnet' }));
+    mocks.walletRepository.findById.mockImplementationOnce(async () => ({
+      id: fundingWalletId,
+      type: 'watch_only',
+      network: 'testnet',
+    }));
     await request(app)
       .post('/api/v1/admin/agents')
-      .send({ userId, name: 'bad funding', fundingWalletId, operationalWalletId, signerDeviceId })
+      .send({
+        userId,
+        name: 'bad funding',
+        fundingWalletId,
+        operationalWalletId,
+        signerDeviceId,
+      })
       .expect(400);
 
-    mocks.walletRepository.findByIdWithSigningDevices.mockResolvedValueOnce({ id: fundingWalletId, devices: [] });
+    mocks.walletRepository.findByIdWithSigningDevices.mockResolvedValueOnce({
+      id: fundingWalletId,
+      devices: [],
+    });
     await request(app)
       .post('/api/v1/admin/agents')
-      .send({ userId, name: 'bad signer', fundingWalletId, operationalWalletId, signerDeviceId })
+      .send({
+        userId,
+        name: 'bad signer',
+        fundingWalletId,
+        operationalWalletId,
+        signerDeviceId,
+      })
       .expect(400);
 
     mocks.walletRepository.findByIdWithSigningDevices.mockResolvedValueOnce(null);
     await request(app)
       .post('/api/v1/admin/agents')
-      .send({ userId, name: 'missing signer wallet devices', fundingWalletId, operationalWalletId, signerDeviceId })
+      .send({
+        userId,
+        name: 'missing signer wallet devices',
+        fundingWalletId,
+        operationalWalletId,
+        signerDeviceId,
+      })
       .expect(400);
   });
 
   it('creates a wallet agent with default nullable policy fields when details are unavailable', async () => {
-    mocks.agentRepository.createAgent.mockImplementation(async input => agentFixture({
-      ...input,
-      id: agentId,
-      createdAt: now,
-      updatedAt: now,
-    }));
+    mocks.agentRepository.createAgent.mockImplementation(async input =>
+      agentFixture({
+        ...input,
+        id: agentId,
+        createdAt: now,
+        updatedAt: now,
+      })
+    );
     mocks.agentRepository.findAgentByIdWithDetails.mockResolvedValue(null);
 
     const response = await request(app)
@@ -311,132 +349,215 @@ describe('Admin wallet agent routes', () => {
       notifyOnOperationalSpend: true,
       pauseOnUnexpectedSpend: false,
     });
-    expect(mocks.agentRepository.createAgent).toHaveBeenCalledWith(expect.objectContaining({
-      maxFundingAmountSats: null,
-      maxOperationalBalanceSats: null,
-      dailyFundingLimitSats: null,
-      weeklyFundingLimitSats: null,
-      cooldownMinutes: null,
-      minOperationalBalanceSats: null,
-      largeOperationalSpendSats: null,
-      largeOperationalFeeSats: null,
-      repeatedFailureThreshold: null,
-      repeatedFailureLookbackMinutes: null,
-      alertDedupeMinutes: null,
-    }));
+    expect(mocks.agentRepository.createAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        maxFundingAmountSats: null,
+        maxOperationalBalanceSats: null,
+        dailyFundingLimitSats: null,
+        weeklyFundingLimitSats: null,
+        cooldownMinutes: null,
+        minOperationalBalanceSats: null,
+        largeOperationalSpendSats: null,
+        largeOperationalFeeSats: null,
+        repeatedFailureThreshold: null,
+        repeatedFailureLookbackMinutes: null,
+        alertDedupeMinutes: null,
+      })
+    );
   });
 
   it('rejects missing or incompatible wallet-agent link resources', async () => {
     mocks.userRepository.findById.mockResolvedValueOnce(null);
     await request(app)
       .post('/api/v1/admin/agents')
-      .send({ userId, name: 'missing user', fundingWalletId, operationalWalletId, signerDeviceId })
+      .send({
+        userId,
+        name: 'missing user',
+        fundingWalletId,
+        operationalWalletId,
+        signerDeviceId,
+      })
       .expect(404);
 
     mocks.walletRepository.findById.mockImplementationOnce(async () => null);
     await request(app)
       .post('/api/v1/admin/agents')
-      .send({ userId, name: 'missing funding', fundingWalletId, operationalWalletId, signerDeviceId })
+      .send({
+        userId,
+        name: 'missing funding',
+        fundingWalletId,
+        operationalWalletId,
+        signerDeviceId,
+      })
       .expect(404);
 
     mocks.walletRepository.findById
-      .mockResolvedValueOnce({ id: fundingWalletId, name: 'Funding', type: 'multi_sig', network: 'testnet' })
+      .mockResolvedValueOnce({
+        id: fundingWalletId,
+        name: 'Funding',
+        type: 'multi_sig',
+        network: 'testnet',
+      })
       .mockResolvedValueOnce(null);
     await request(app)
       .post('/api/v1/admin/agents')
-      .send({ userId, name: 'missing operational', fundingWalletId, operationalWalletId, signerDeviceId })
+      .send({
+        userId,
+        name: 'missing operational',
+        fundingWalletId,
+        operationalWalletId,
+        signerDeviceId,
+      })
       .expect(404);
 
     mocks.walletRepository.findById
-      .mockResolvedValueOnce({ id: fundingWalletId, name: 'Funding', type: 'multi_sig', network: 'testnet' })
-      .mockResolvedValueOnce({ id: operationalWalletId, name: 'Operational', type: 'multi_sig', network: 'testnet' });
+      .mockResolvedValueOnce({
+        id: fundingWalletId,
+        name: 'Funding',
+        type: 'multi_sig',
+        network: 'testnet',
+      })
+      .mockResolvedValueOnce({
+        id: operationalWalletId,
+        name: 'Operational',
+        type: 'multi_sig',
+        network: 'testnet',
+      });
     await request(app)
       .post('/api/v1/admin/agents')
-      .send({ userId, name: 'bad operational type', fundingWalletId, operationalWalletId, signerDeviceId })
+      .send({
+        userId,
+        name: 'bad operational type',
+        fundingWalletId,
+        operationalWalletId,
+        signerDeviceId,
+      })
       .expect(400);
 
     mocks.walletRepository.findById
-      .mockResolvedValueOnce({ id: fundingWalletId, name: 'Funding', type: 'multi_sig', network: 'testnet' })
-      .mockResolvedValueOnce({ id: operationalWalletId, name: 'Operational', type: 'single_sig', network: 'mainnet' });
+      .mockResolvedValueOnce({
+        id: fundingWalletId,
+        name: 'Funding',
+        type: 'multi_sig',
+        network: 'testnet',
+      })
+      .mockResolvedValueOnce({
+        id: operationalWalletId,
+        name: 'Operational',
+        type: 'single_sig',
+        network: 'mainnet',
+      });
     await request(app)
       .post('/api/v1/admin/agents')
-      .send({ userId, name: 'bad network', fundingWalletId, operationalWalletId, signerDeviceId })
+      .send({
+        userId,
+        name: 'bad network',
+        fundingWalletId,
+        operationalWalletId,
+        signerDeviceId,
+      })
       .expect(400);
 
-    mocks.walletRepository.hasAccess
-      .mockResolvedValueOnce(false)
-      .mockResolvedValueOnce(true);
+    mocks.walletRepository.hasAccess.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
     await request(app)
       .post('/api/v1/admin/agents')
-      .send({ userId, name: 'no funding access', fundingWalletId, operationalWalletId, signerDeviceId })
+      .send({
+        userId,
+        name: 'no funding access',
+        fundingWalletId,
+        operationalWalletId,
+        signerDeviceId,
+      })
       .expect(400);
 
-    mocks.walletRepository.hasAccess
-      .mockResolvedValueOnce(true)
-      .mockResolvedValueOnce(false);
+    mocks.walletRepository.hasAccess.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
     await request(app)
       .post('/api/v1/admin/agents')
-      .send({ userId, name: 'no operational access', fundingWalletId, operationalWalletId, signerDeviceId })
+      .send({
+        userId,
+        name: 'no operational access',
+        fundingWalletId,
+        operationalWalletId,
+        signerDeviceId,
+      })
       .expect(400);
   });
 
   it('updates and revokes wallet agents', async () => {
     mocks.agentRepository.findAgentById.mockResolvedValue(agentFixture());
-    mocks.agentRepository.updateAgent.mockResolvedValue(agentFixture({
-      status: 'paused',
-      maxFundingAmountSats: null,
-    }));
-    mocks.agentRepository.findAgentByIdWithDetails.mockResolvedValue(agentFixture({
-      status: 'paused',
-      maxFundingAmountSats: null,
-    }));
+    mocks.agentRepository.updateAgent.mockResolvedValue(
+      agentFixture({
+        status: 'paused',
+        maxFundingAmountSats: null,
+      })
+    );
+    mocks.agentRepository.findAgentByIdWithDetails.mockResolvedValue(
+      agentFixture({
+        status: 'paused',
+        maxFundingAmountSats: null,
+      })
+    );
 
     const response = await request(app)
       .patch(`/api/v1/admin/agents/${agentId}`)
-      .send({ status: 'paused', maxFundingAmountSats: null, minOperationalBalanceSats: null })
+      .send({
+        status: 'paused',
+        maxFundingAmountSats: null,
+        minOperationalBalanceSats: null,
+      })
       .expect(200);
 
     expect(response.body.status).toBe('paused');
     expect(response.body.maxFundingAmountSats).toBeNull();
-    expect(mocks.agentRepository.updateAgent).toHaveBeenCalledWith(agentId, expect.objectContaining({
-      status: 'paused',
-      maxFundingAmountSats: null,
-      minOperationalBalanceSats: null,
-      revokedAt: null,
-    }));
+    expect(mocks.agentRepository.updateAgent).toHaveBeenCalledWith(
+      agentId,
+      expect.objectContaining({
+        status: 'paused',
+        maxFundingAmountSats: null,
+        minOperationalBalanceSats: null,
+        revokedAt: null,
+      })
+    );
 
     mocks.agentRepository.findAgentById.mockResolvedValueOnce(agentFixture());
-    mocks.agentRepository.updateAgent.mockResolvedValueOnce(agentFixture({
-      status: 'revoked',
-      revokedAt: now,
-    }));
+    mocks.agentRepository.updateAgent.mockResolvedValueOnce(
+      agentFixture({
+        status: 'revoked',
+        revokedAt: now,
+      })
+    );
     await request(app).delete(`/api/v1/admin/agents/${agentId}`).expect(200);
-    expect(mocks.agentRepository.updateAgent).toHaveBeenCalledWith(agentId, expect.objectContaining({
-      status: 'revoked',
-      revokedAt: expect.any(Date),
-    }));
+    expect(mocks.agentRepository.updateAgent).toHaveBeenCalledWith(
+      agentId,
+      expect.objectContaining({
+        status: 'revoked',
+        revokedAt: expect.any(Date),
+      })
+    );
   });
 
   it('updates every mutable policy field and rejects invalid agent ids', async () => {
     mocks.agentRepository.findAgentById.mockResolvedValue(agentFixture());
-    mocks.agentRepository.updateAgent.mockResolvedValue(agentFixture({
-      name: 'Updated Agent',
-      status: 'active',
-      maxFundingAmountSats: 200000n,
-      maxOperationalBalanceSats: 500000n,
-      dailyFundingLimitSats: 600000n,
-      weeklyFundingLimitSats: 1000000n,
-      cooldownMinutes: 20,
-      minOperationalBalanceSats: 50000n,
-      largeOperationalSpendSats: 90000n,
-      largeOperationalFeeSats: 7000n,
-      repeatedFailureThreshold: 4,
-      repeatedFailureLookbackMinutes: 90,
-      alertDedupeMinutes: 180,
-      requireHumanApproval: false,
-      notifyOnOperationalSpend: false,
-      pauseOnUnexpectedSpend: true,
-    }));
+    mocks.agentRepository.updateAgent.mockResolvedValue(
+      agentFixture({
+        name: 'Updated Agent',
+        status: 'active',
+        maxFundingAmountSats: 200000n,
+        maxOperationalBalanceSats: 500000n,
+        dailyFundingLimitSats: 600000n,
+        weeklyFundingLimitSats: 1000000n,
+        cooldownMinutes: 20,
+        minOperationalBalanceSats: 50000n,
+        largeOperationalSpendSats: 90000n,
+        largeOperationalFeeSats: 7000n,
+        repeatedFailureThreshold: 4,
+        repeatedFailureLookbackMinutes: 90,
+        alertDedupeMinutes: 180,
+        requireHumanApproval: false,
+        notifyOnOperationalSpend: false,
+        pauseOnUnexpectedSpend: true,
+      })
+    );
     mocks.agentRepository.findAgentByIdWithDetails.mockResolvedValue(null);
 
     await request(app)
@@ -461,32 +582,30 @@ describe('Admin wallet agent routes', () => {
       })
       .expect(200);
 
-    expect(mocks.agentRepository.updateAgent).toHaveBeenCalledWith(agentId, expect.objectContaining({
-      name: 'Updated Agent',
-      maxOperationalBalanceSats: 500000n,
-      dailyFundingLimitSats: 600000n,
-      weeklyFundingLimitSats: 1000000n,
-      cooldownMinutes: 20,
-      largeOperationalFeeSats: 7000n,
-      requireHumanApproval: false,
-      notifyOnOperationalSpend: false,
-      pauseOnUnexpectedSpend: true,
-      revokedAt: null,
-    }));
-    expect(mocks.logFromRequest).toHaveBeenCalledWith(
-      expect.anything(),
-      'wallet.agent_update',
-      'wallet',
-      {
-        details: expect.objectContaining({
-          agentId,
-          status: 'active',
-          notifyOnOperationalSpend: false,
-          pauseOnUnexpectedSpend: true,
-          unknownDestinationHandlingMode: 'pause_agent',
-        }),
-      }
+    expect(mocks.agentRepository.updateAgent).toHaveBeenCalledWith(
+      agentId,
+      expect.objectContaining({
+        name: 'Updated Agent',
+        maxOperationalBalanceSats: 500000n,
+        dailyFundingLimitSats: 600000n,
+        weeklyFundingLimitSats: 1000000n,
+        cooldownMinutes: 20,
+        largeOperationalFeeSats: 7000n,
+        requireHumanApproval: false,
+        notifyOnOperationalSpend: false,
+        pauseOnUnexpectedSpend: true,
+        revokedAt: null,
+      })
     );
+    expect(mocks.logFromRequest).toHaveBeenCalledWith(expect.anything(), 'wallet.agent_update', 'wallet', {
+      details: expect.objectContaining({
+        agentId,
+        status: 'active',
+        notifyOnOperationalSpend: false,
+        pauseOnUnexpectedSpend: true,
+        unknownDestinationHandlingMode: 'pause_agent',
+      }),
+    });
 
     await request(app).patch('/api/v1/admin/agents/not-a-uuid').send({ status: 'paused' }).expect(400);
     await request(app).delete('/api/v1/admin/agents/not-a-uuid').expect(400);
@@ -495,23 +614,30 @@ describe('Admin wallet agent routes', () => {
     await request(app).patch(`/api/v1/admin/agents/${agentId}`).send({ status: 'paused' }).expect(404);
 
     mocks.agentRepository.findAgentById.mockResolvedValueOnce(agentFixture());
-    mocks.agentRepository.updateAgent.mockResolvedValueOnce(agentFixture({
-      status: 'revoked',
-      revokedAt: now,
-    }));
+    mocks.agentRepository.updateAgent.mockResolvedValueOnce(
+      agentFixture({
+        status: 'revoked',
+        revokedAt: now,
+      })
+    );
     await request(app).patch(`/api/v1/admin/agents/${agentId}`).send({ status: 'revoked' }).expect(200);
-    expect(mocks.agentRepository.updateAgent).toHaveBeenLastCalledWith(agentId, expect.objectContaining({
-      status: 'revoked',
-      revokedAt: expect.any(Date),
-    }));
+    expect(mocks.agentRepository.updateAgent).toHaveBeenLastCalledWith(
+      agentId,
+      expect.objectContaining({
+        status: 'revoked',
+        revokedAt: expect.any(Date),
+      })
+    );
 
     mocks.agentRepository.findAgentById.mockResolvedValueOnce(null);
     await request(app).delete(`/api/v1/admin/agents/${agentId}`).expect(404);
 
-    mocks.agentRepository.findAgentById.mockResolvedValueOnce(agentFixture({
-      status: 'revoked',
-      revokedAt: now,
-    }));
+    mocks.agentRepository.findAgentById.mockResolvedValueOnce(
+      agentFixture({
+        status: 'revoked',
+        revokedAt: now,
+      })
+    );
     await request(app).delete(`/api/v1/admin/agents/${agentId}`).expect(200);
   });
 
@@ -559,17 +685,17 @@ describe('Admin wallet agent routes', () => {
 
     mocks.agentRepository.findAgentById.mockResolvedValue(agentFixture());
     mocks.agentRepository.findFundingOverrides.mockResolvedValue([overrideFixture({ id: overrideId })]);
-    mocks.agentRepository.createFundingOverride.mockImplementation(async input => overrideFixture({
-      id: overrideId,
-      ...input,
-      status: 'active',
-      createdAt: now,
-      updatedAt: now,
-    }));
+    mocks.agentRepository.createFundingOverride.mockImplementation(async input =>
+      overrideFixture({
+        id: overrideId,
+        ...input,
+        status: 'active',
+        createdAt: now,
+        updatedAt: now,
+      })
+    );
 
-    const list = await request(app)
-      .get(`/api/v1/admin/agents/${agentId}/overrides?status=active&limit=10`)
-      .expect(200);
+    const list = await request(app).get(`/api/v1/admin/agents/${agentId}/overrides?status=active&limit=10`).expect(200);
 
     expect(list.body).toEqual([
       expect.objectContaining({
@@ -594,78 +720,102 @@ describe('Admin wallet agent routes', () => {
       })
       .expect(201);
 
-    expect(created.body).toEqual(expect.objectContaining({
-      id: overrideId,
-      maxAmountSats: '250000',
-      reason: 'emergency refill',
-      status: 'active',
-    }));
-    expect(mocks.agentRepository.createFundingOverride).toHaveBeenCalledWith(expect.objectContaining({
-      agentId,
-      fundingWalletId,
-      operationalWalletId,
-      createdByUserId: 'admin-1',
-      maxAmountSats: 250000n,
-      reason: 'emergency refill',
-      expiresAt: expect.any(Date),
-    }));
-    expect(mocks.logFromRequest).toHaveBeenCalledWith(expect.anything(), 'wallet.agent_override_create', 'wallet', expect.objectContaining({
-      details: expect.objectContaining({ overrideId }),
-    }));
+    expect(created.body).toEqual(
+      expect.objectContaining({
+        id: overrideId,
+        maxAmountSats: '250000',
+        reason: 'emergency refill',
+        status: 'active',
+      })
+    );
+    expect(mocks.agentRepository.createFundingOverride).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId,
+        fundingWalletId,
+        operationalWalletId,
+        createdByUserId: 'admin-1',
+        maxAmountSats: 250000n,
+        reason: 'emergency refill',
+        expiresAt: expect.any(Date),
+      })
+    );
+    expect(mocks.logFromRequest).toHaveBeenCalledWith(
+      expect.anything(),
+      'wallet.agent_override_create',
+      'wallet',
+      expect.objectContaining({
+        details: expect.objectContaining({ overrideId }),
+      })
+    );
 
     mocks.agentRepository.findFundingOverrideById.mockResolvedValueOnce(overrideFixture({ id: overrideId }));
-    mocks.agentRepository.revokeFundingOverride.mockResolvedValueOnce(overrideFixture({
-      id: overrideId,
-      status: 'revoked',
-      revokedAt: now,
-    }));
+    mocks.agentRepository.revokeFundingOverride.mockResolvedValueOnce(
+      overrideFixture({
+        id: overrideId,
+        status: 'revoked',
+        revokedAt: now,
+      })
+    );
 
-    await request(app)
-      .delete(`/api/v1/admin/agents/${agentId}/overrides/${overrideId}`)
-      .expect(200);
+    await request(app).delete(`/api/v1/admin/agents/${agentId}/overrides/${overrideId}`).expect(200);
 
     expect(mocks.agentRepository.revokeFundingOverride).toHaveBeenCalledWith(overrideId);
-    expect(mocks.logFromRequest).toHaveBeenCalledWith(expect.anything(), 'wallet.agent_override_revoke', 'wallet', expect.objectContaining({
-      details: expect.objectContaining({ overrideId }),
-    }));
+    expect(mocks.logFromRequest).toHaveBeenCalledWith(
+      expect.anything(),
+      'wallet.agent_override_revoke',
+      'wallet',
+      expect.objectContaining({
+        details: expect.objectContaining({ overrideId }),
+      })
+    );
   });
 
   it('rejects invalid owner funding override requests', async () => {
     mocks.agentRepository.findAgentById.mockResolvedValue(agentFixture());
 
+    await request(app).get(`/api/v1/admin/agents/${agentId}/overrides?status=invalid`).expect(400);
+
     await request(app)
-      .get(`/api/v1/admin/agents/${agentId}/overrides?status=invalid`)
+      .post(`/api/v1/admin/agents/${agentId}/overrides`)
+      .send({
+        maxAmountSats: '0',
+        expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+        reason: 'zero',
+      })
       .expect(400);
 
     await request(app)
       .post(`/api/v1/admin/agents/${agentId}/overrides`)
-      .send({ maxAmountSats: '0', expiresAt: new Date(Date.now() + 86_400_000).toISOString(), reason: 'zero' })
-      .expect(400);
-
-    await request(app)
-      .post(`/api/v1/admin/agents/${agentId}/overrides`)
-      .send({ maxAmountSats: '1000', expiresAt: new Date(Date.now() - 1000).toISOString(), reason: 'expired' })
+      .send({
+        maxAmountSats: '1000',
+        expiresAt: new Date(Date.now() - 1000).toISOString(),
+        reason: 'expired',
+      })
       .expect(400);
 
     mocks.agentRepository.findAgentById.mockResolvedValueOnce(null);
-    await request(app)
-      .get(`/api/v1/admin/agents/${agentId}/overrides`)
-      .expect(404);
+    await request(app).get(`/api/v1/admin/agents/${agentId}/overrides`).expect(404);
 
     mocks.agentRepository.findAgentById.mockResolvedValueOnce(null);
     await request(app)
       .post(`/api/v1/admin/agents/${agentId}/overrides`)
-      .send({ maxAmountSats: '1000', expiresAt: new Date(Date.now() + 86_400_000).toISOString(), reason: 'missing agent' })
+      .send({
+        maxAmountSats: '1000',
+        expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+        reason: 'missing agent',
+      })
       .expect(404);
   });
 
   it('rejects owner overrides for revoked agents and protects revoke tenant boundaries', async () => {
     const overrideId = '88888888-8888-4888-8888-888888888888';
 
-    mocks.agentRepository.findAgentById.mockResolvedValueOnce(agentFixture({
-      status: 'revoked',
-      revokedAt: now,
-    }));
+    mocks.agentRepository.findAgentById.mockResolvedValueOnce(
+      agentFixture({
+        status: 'revoked',
+        revokedAt: now,
+      })
+    );
     await request(app)
       .post(`/api/v1/admin/agents/${agentId}/overrides`)
       .send({
@@ -677,55 +827,58 @@ describe('Admin wallet agent routes', () => {
     expect(mocks.agentRepository.createFundingOverride).not.toHaveBeenCalled();
 
     mocks.agentRepository.findFundingOverrideById.mockResolvedValueOnce(null);
-    await request(app)
-      .delete(`/api/v1/admin/agents/${agentId}/overrides/${overrideId}`)
-      .expect(404);
+    await request(app).delete(`/api/v1/admin/agents/${agentId}/overrides/${overrideId}`).expect(404);
 
-    mocks.agentRepository.findFundingOverrideById.mockResolvedValueOnce(overrideFixture({
-      id: overrideId,
-      agentId: '99999999-9999-4999-8999-999999999999',
-    }));
-    await request(app)
-      .delete(`/api/v1/admin/agents/${agentId}/overrides/${overrideId}`)
-      .expect(404);
+    mocks.agentRepository.findFundingOverrideById.mockResolvedValueOnce(
+      overrideFixture({
+        id: overrideId,
+        agentId: '99999999-9999-4999-8999-999999999999',
+      })
+    );
+    await request(app).delete(`/api/v1/admin/agents/${agentId}/overrides/${overrideId}`).expect(404);
   });
 
   it('does not revoke an already inactive owner override a second time', async () => {
     const overrideId = '88888888-8888-4888-8888-888888888888';
-    mocks.agentRepository.findFundingOverrideById.mockResolvedValueOnce(overrideFixture({
-      id: overrideId,
-      status: 'used',
-      usedAt: now,
-      usedDraftId: 'draft-1',
-    }));
+    mocks.agentRepository.findFundingOverrideById.mockResolvedValueOnce(
+      overrideFixture({
+        id: overrideId,
+        status: 'used',
+        usedAt: now,
+        usedDraftId: 'draft-1',
+      })
+    );
 
-    await request(app)
-      .delete(`/api/v1/admin/agents/${agentId}/overrides/${overrideId}`)
-      .expect(200);
+    await request(app).delete(`/api/v1/admin/agents/${agentId}/overrides/${overrideId}`).expect(200);
 
     expect(mocks.agentRepository.revokeFundingOverride).not.toHaveBeenCalled();
-    expect(mocks.logFromRequest).toHaveBeenCalledWith(expect.anything(), 'wallet.agent_override_revoke', 'wallet', expect.objectContaining({
-      details: expect.objectContaining({
-        overrideId,
-        alreadyInactive: true,
-      }),
-    }));
+    expect(mocks.logFromRequest).toHaveBeenCalledWith(
+      expect.anything(),
+      'wallet.agent_override_revoke',
+      'wallet',
+      expect.objectContaining({
+        details: expect.objectContaining({
+          overrideId,
+          alreadyInactive: true,
+        }),
+      })
+    );
   });
 
   it('rejects invalid override path params', async () => {
-    await request(app)
-      .delete(`/api/v1/admin/agents/${agentId}/overrides/not-a-uuid`)
-      .expect(400);
+    await request(app).delete(`/api/v1/admin/agents/${agentId}/overrides/not-a-uuid`).expect(400);
   });
 
   it('creates, lists, and revokes scoped agent API keys', async () => {
     mocks.agentRepository.findAgentById.mockResolvedValue(agentFixture());
     mocks.agentRepository.findApiKeysByAgentId.mockResolvedValue([keyFixture()]);
-    mocks.agentRepository.createApiKey.mockImplementation(async input => keyFixture({
-      ...input,
-      id: keyId,
-      createdAt: now,
-    }));
+    mocks.agentRepository.createApiKey.mockImplementation(async input =>
+      keyFixture({
+        ...input,
+        id: keyId,
+        createdAt: now,
+      })
+    );
 
     const list = await request(app).get(`/api/v1/admin/agents/${agentId}/keys`).expect(200);
     expect(list.body).toEqual([expect.objectContaining({ id: keyId, keyPrefix: 'agt_prefix' })]);
@@ -738,15 +891,17 @@ describe('Admin wallet agent routes', () => {
 
     expect(create.body.apiKey).toMatch(/^agt_[a-f0-9]{64}$/);
     expect(create.body.keyPrefix).toBe(create.body.apiKey.slice(0, 16));
-    expect(mocks.agentRepository.createApiKey).toHaveBeenCalledWith(expect.objectContaining({
-      agentId,
-      createdByUserId: 'admin-1',
-      name: 'Runtime',
-      keyHash: expect.stringMatching(/^[a-f0-9]{64}$/),
-      keyPrefix: create.body.apiKey.slice(0, 16),
-      scope: { allowedActions: ['create_funding_draft'] },
-      expiresAt: expect.any(Date),
-    }));
+    expect(mocks.agentRepository.createApiKey).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId,
+        createdByUserId: 'admin-1',
+        name: 'Runtime',
+        keyHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+        keyPrefix: create.body.apiKey.slice(0, 16),
+        scope: { allowedActions: ['create_funding_draft'] },
+        expiresAt: expect.any(Date),
+      })
+    );
 
     mocks.agentRepository.findApiKeyById.mockResolvedValueOnce(keyFixture());
     mocks.agentRepository.revokeApiKey.mockResolvedValueOnce(keyFixture({ revokedAt: now }));
@@ -758,41 +913,36 @@ describe('Admin wallet agent routes', () => {
     mocks.agentRepository.findAgentById.mockResolvedValueOnce(null);
     await request(app).get(`/api/v1/admin/agents/${agentId}/keys`).expect(404);
 
-    mocks.agentRepository.findAgentById.mockResolvedValueOnce(agentFixture({
-      status: 'revoked',
-      revokedAt: now,
-    }));
-    await request(app)
-      .post(`/api/v1/admin/agents/${agentId}/keys`)
-      .send({ name: 'Runtime' })
-      .expect(400);
+    mocks.agentRepository.findAgentById.mockResolvedValueOnce(
+      agentFixture({
+        status: 'revoked',
+        revokedAt: now,
+      })
+    );
+    await request(app).post(`/api/v1/admin/agents/${agentId}/keys`).send({ name: 'Runtime' }).expect(400);
 
     await request(app)
       .post(`/api/v1/admin/agents/${agentId}/keys`)
-      .send({ name: 'Expired', expiresAt: new Date(Date.now() - 1000).toISOString() })
+      .send({
+        name: 'Expired',
+        expiresAt: new Date(Date.now() - 1000).toISOString(),
+      })
       .expect(400);
 
     mocks.agentRepository.findAgentById.mockResolvedValueOnce(null);
-    await request(app)
-      .post(`/api/v1/admin/agents/${agentId}/keys`)
-      .send({ name: 'Missing agent' })
-      .expect(404);
+    await request(app).post(`/api/v1/admin/agents/${agentId}/keys`).send({ name: 'Missing agent' }).expect(404);
 
-    await request(app)
-      .delete(`/api/v1/admin/agents/${agentId}/keys/not-a-uuid`)
-      .expect(400);
+    await request(app).delete(`/api/v1/admin/agents/${agentId}/keys/not-a-uuid`).expect(400);
 
-    mocks.agentRepository.findApiKeyById.mockResolvedValueOnce(keyFixture({
-      agentId: '99999999-9999-4999-8999-999999999999',
-    }));
-    await request(app)
-      .delete(`/api/v1/admin/agents/${agentId}/keys/${keyId}`)
-      .expect(404);
+    mocks.agentRepository.findApiKeyById.mockResolvedValueOnce(
+      keyFixture({
+        agentId: '99999999-9999-4999-8999-999999999999',
+      })
+    );
+    await request(app).delete(`/api/v1/admin/agents/${agentId}/keys/${keyId}`).expect(404);
 
     mocks.agentRepository.findApiKeyById.mockResolvedValueOnce(keyFixture({ revokedAt: now }));
-    await request(app)
-      .delete(`/api/v1/admin/agents/${agentId}/keys/${keyId}`)
-      .expect(200);
+    await request(app).delete(`/api/v1/admin/agents/${agentId}/keys/${keyId}`).expect(200);
     expect(mocks.agentRepository.revokeApiKey).not.toHaveBeenCalled();
   });
 });
