@@ -1,6 +1,72 @@
+# Active Task: Full Backlog Validation And Remediation 2026-04-30
+
+Status: complete
+
+Goal: re-validate and complete the verified `Actionable Backlog` items: CI-1, CI-2, CI-3, TEST-1, TEST-2, and AGENT-1.
+
+## Validation Plan
+
+- [x] Re-scan the current workflows, docs, package scripts, server test configs, and agent funding code to confirm each backlog item still applies after recent merges.
+- [x] Re-run the smallest current proof for each backlog item before changing code: CI timing/workflow grep, required/full server test typechecks, verify-addresses package scripts, and agent funding route/service/repository tests.
+- [x] Drop or revise any backlog item that current code has already made obsolete, with evidence in this review.
+
+## Implementation Plan
+
+- [x] CI-1: use existing E2E timing hooks to document and implement the least risky browser-flow setup reuse measurement or decision path.
+- [x] CI-2: add backend integration per-spec or per-group timing evidence without weakening the existing aggregate `full-backend-tests` gate.
+- [x] CI-3: add release/install lane timing evidence and document whether fixture scoping is justified.
+- [x] TEST-1: reduce the full server test typecheck debt in small, typed batches while keeping `npm --prefix server run typecheck:tests` green.
+- [x] TEST-2: add and verify a `scripts/verify-addresses` typecheck path without changing vector generation or verification behavior.
+- [x] AGENT-1: make the agent funding draft critical section transactionally coherent or document and test the current boundary if a single transaction would break existing service contracts.
+
+## Verification Plan
+
+- [x] Run changed workflow syntax checks and relevant docs/script validation.
+- [x] Run required and full server test typechecks; if full remains intentionally non-green, record the narrowed baseline and why.
+- [x] Run verify-addresses typecheck and runtime verify smoke when dependencies are available.
+- [x] Run focused agent funding tests covering success, rollback/failure-after-draft, override, cadence, and attempt-recording behavior.
+- [x] Run lizard/touched-file quality checks and `git diff --check`.
+- [x] Update this review with exact commands, results, residual risk, and remaining backlog state.
+
+## Review
+
+- Re-validated all actionable backlog entries after the recent merges. None were obsolete: CI lanes needed better timing extraction, verify-addresses lacked a typecheck script, full server test typecheck still had broad historical fixture drift, and agent funding draft acceptance still needed one transaction boundary for draft creation, override use, cadence, and accepted attempt recording.
+- CI-1/CI-2/CI-3: added `scripts/ci/report-timing-notices.sh` plus a shell fixture test, wired it into the Code Quality shell validation lane, added backend integration setup timing notices, and added fresh install/install-script/stack/upgrade timing notices. The current docs now record the 2026-04-30 decision: browser-flow setup reuse remains worth measuring, but a shared build artifact or prebuilt test image is not justified until notice data proves setup reuse beats upload/download or image-build overhead. Backend integration is not the recent `main` tail; release/install lanes remain isolated while emitting timing evidence.
+- TEST-1: reduced the full server test typecheck debt in safe batches without relaxing the required test typecheck. Fixed generated multisig vector typing for `expectedDescriptor`, changed the full test config to `ESNext`/`ES2022`/`bundler` so top-level-await tests match Vitest, updated six integration timeout calls to `vi.setConfig({ testTimeout: 30000 })`, and typed the worker integration mock-call tuple. `npm --prefix server run typecheck:tests` passes. `npm --prefix server run typecheck:tests:full` remains non-green with a narrowed current baseline of 768 log lines; top remaining groups are `TS2345` 141, `TS7006` 78, `TS2353` 54, `TS2339` 42, `TS2348` 29, `TS2322` 24, and `TS2307` 24 across historical fixture/API drift.
+- TEST-2: added `npm --prefix scripts/verify-addresses run typecheck` and fixed the output generator interface so generated vector files are type-consistent. `npm --prefix scripts/verify-addresses run verify` passed with 122 vectors and 0 disagreements using bitcoinjs-lib 7.0.1 and Caravan 0.4.5; Bitcoin Core, bip_utils, and btcd/btcutil were unavailable in this local environment. A `HEAD` vs current comparison confirmed 122 old/new expected addresses and `address_diffs=0` for both generated vector outputs.
+- AGENT-1: added `agentRepository.withAgentFundingTransaction`, transaction-client support for draft creation, UTXO locking, override use, cadence update, and funding-attempt creation, and moved draft approval/notification side effects to run only after the transaction commits. Accepted attempt recording now participates in the transaction instead of being swallowed by `recordAgentFundingAttempt`; if it fails after draft creation, the transaction rejects, side effects are skipped, and the outer rejected-attempt path records the failure.
+- PR delivery follow-up: GitHub `actionlint` caught a non-matrix `${{ matrix.group }}` timing label in the quick backend job, and the merge queue full backend coverage lane caught missing branch coverage in the new transaction-aware draft paths. Both were fixed before merge requeue.
+- Verification passed: `bash -n scripts/ci/report-timing-notices.sh`, `bash -n tests/ci/report-timing-notices.test.sh`, `bash tests/ci/report-timing-notices.test.sh`, `bash scripts/ci/backend-integration-groups.sh --check`, `npm --prefix scripts/verify-addresses run typecheck`, `npm --prefix scripts/verify-addresses run verify`, `npm --prefix server run typecheck:tests`, focused server agent/draft/repository/worker tests with 130 passing tests, focused transaction-branch tests with 58 passing tests, `npm --prefix server run test:unit -- --coverage` with 100% statements/branches/functions/lines, `npm run quality:lizard`, and `git diff --check`.
+- `actionlint` was not available at `/tmp/actionlint-1.7.12/actionlint` in this workspace; GitHub Code Quality `Workflow lint (actionlint)` passed after the non-matrix timing label fix.
+
+---
+
+# Active Task: Todo Follow-Up True-Up 2026-04-30
+
+Status: complete
+
+Goal: verify the in-progress/open follow-up entries and align `tasks/todo.md` with merged PR and current backlog evidence.
+
+## Plan
+
+- [x] Identify `Status: in progress` sections and unchecked follow-up items that are not active implementation.
+- [x] Verify stale PR-delivery entries against GitHub PR state, required checks, and `origin/main` ancestry.
+- [x] Re-check grade, typecheck, verify-addresses, CI timing, and agent funding backlog evidence.
+- [x] Update stale statuses and review notes without changing implementation code.
+
+## Review
+
+- Verified PR #232 is merged as `50182c747aec7dfcb21cc3db771fc8f4808862da`, PR #230 is merged as `b68f05e4f8167bbe9d35ff4da794095e3b2c34c5`, and CI timing instrumentation PR #166 is merged as `1b849b1e0cb8132936b3870749ac2e44b7bad6df`; each merge commit is contained in `origin/main`.
+- Verified the old CI timing review checkpoint PR #167 is also merged as `6749148408f0d9611a88fffdaa736a402c7cbf59` and contained in `origin/main`.
+- Confirmed later grade maintainability passes superseded the older unchecked grade-remediation phase list: the current health report records 98/100, `lizard_warning_count=0`, and `npm run quality:lizard` passes.
+- Confirmed the actionable backlog is still real: required server test typecheck passes, full server test typecheck still fails with historical fixture/API drift, `scripts/verify-addresses` still has no `typecheck` script, CI timing wrappers exist but reuse decisions remain unmade, and the agent funding draft flow still does not share one transaction client across draft creation, override use, cadence update, and attempt recording.
+- Verification commands included `gh pr view/checks`, `git merge-base --is-ancestor`, `npm --prefix server run typecheck:tests`, `npm --prefix server run typecheck:tests:full`, `npm --prefix scripts/verify-addresses run typecheck`, `npm run quality:lizard`, and targeted `rg` scans.
+
+---
+
 # Active Task: Secure Decoy Randomness 2026-04-30
 
-Status: in progress
+Status: complete
 
 Goal: address the `Math.random()` privacy weakness from `tasks/security-assessment-2026-04-29.md` for transaction output shuffling and decoy change amount generation.
 
@@ -21,6 +87,8 @@ Goal: address the `Math.random()` privacy weakness from `tasks/security-assessme
 - Focused tests cover the helper, deterministic decoy branch coverage without `Math.random` stubbing, and a regression check that production decoy amount generation does not call `Math.random`.
 - Verified the assessed production files no longer contain `Math.random()`: `server/src/services/bitcoin/psbtBuilder/decoyAmounts.ts` and `server/src/services/bitcoin/transactions/outputBuilder.ts`.
 - Verification passed: focused server Bitcoin tests, full server Bitcoin unit suite, server test typecheck, lizard quality gate, Prettier, and `git diff --check`.
+- PR #232 merged through the protected flow as `50182c747aec7dfcb21cc3db771fc8f4808862da` at `2026-04-30T03:19:07Z`.
+- Follow-up true-up verified `origin/main` contains the merge commit and `gh pr checks 232` reports required PR, Code Quality, CodeQL, and relevant quick/backend/build checks passing.
 - Unrelated untracked files remain intentionally untouched: `tasks/feature-timeline-2026-04-29.md` and `tasks/security-assessment-2026-04-29.md`.
 
 ---
@@ -65,7 +133,7 @@ Goal: deliver PR #231 for the requester-only agent wallet setup flow, including 
 
 # Active Task: Price Provider DB PR Delivery 2026-04-29
 
-Status: in progress
+Status: complete
 
 Goal: make the local Node default durable, then commit, push, open, monitor, and merge the DB-backed price provider enablement work through the repository PR flow.
 
@@ -75,10 +143,10 @@ Goal: make the local Node default durable, then commit, push, open, monitor, and
 - [x] Preflight branch, status, and diff.
 - [x] Stage only the price-provider implementation, task tracker, and lesson changes.
 - [x] Commit with a concrete implementation message.
-- [ ] Push the branch and open or update the PR. _(in progress)_
-- [ ] Monitor PR and merge-queue CI; fix any failures with follow-up commits.
-- [ ] Merge safely through the repo's protected-branch or merge-queue flow.
-- [ ] Verify `main` contains the merge and document results.
+- [x] Push the branch and open or update the PR.
+- [x] Monitor PR and merge-queue CI; fix any failures with follow-up commits.
+- [x] Merge safely through the repo's protected-branch or merge-queue flow.
+- [x] Verify `main` contains the merge and document results.
 
 ## Review
 
@@ -87,7 +155,9 @@ Goal: make the local Node default durable, then commit, push, open, monitor, and
 - Plain-command verification passed before commit: app/test/server typechecks, focused frontend diagnostics/context/API helper tests, focused backend provider/service/API/OpenAPI tests, lizard quality gate, and `git diff --check`.
 - Cached diff review passed and `git diff --cached --check` reported no whitespace errors.
 - Created the implementation commit (`Move price provider enablement to DB settings`) after pre-commit verification passed.
-- Delivery in progress.
+- PR #230 merged as `b68f05e4f8167bbe9d35ff4da794095e3b2c34c5` at `2026-04-29T23:16:22Z`.
+- Follow-up true-up verified `origin/main` contains the merge commit and `gh pr checks 230` reports required PR, Code Quality, CodeQL, install summary, quick test, Docker image, and architecture checks passing where relevant.
+- Delivery complete.
 
 ---
 
@@ -849,11 +919,11 @@ Yes, address the maintainability findings. Do not treat the low-severity audit a
 
 - [x] Add or formalize a repo-native lizard check so complexity evidence is repeatable without temp installs.
 - [x] Phase 1: Refactor the smallest high-confidence production warnings around AI/Console/API surfaces: `ai-proxy/src/aiClient.ts`, `ai-proxy/src/consoleProtocol.ts`, `src/api/client.ts`, `server/src/assistant/console/service.ts`, and `components/ConsoleResults/ConsoleResults.tsx`.
-- [ ] Phase 2: Continue backend/infrastructure warnings where branch complexity can be split into named helpers: worker queue creation, wallet creation, and intelligence context gathering remain; intelligence settings, sync subscription reconciliation, admin users, health server, and Telegram support-package parsing were handled in this pass.
-- [ ] Phase 3: Continue frontend UI warnings by separating controller/data-shaping helpers from rendering in send flow, AI settings, network connection, and device account flow components; transaction row, UTXO garden, and shared EmptyState were handled in this pass.
-- [ ] Phase 4: Continue lower-risk test/e2e warnings after production paths are stable: Playwright route handlers and AI container mock remain; OpenAPI route parser, PSBT test harnesses, hardware-wallet path helper, and branch-test helpers were handled in this pass.
-- [ ] Phase 5: Revisit the 1,150-line `scripts/perf/phase3-benchmark.mjs` only when it is next touched, unless a strict 100/100 grade is the goal.
-- [ ] For each phase, run focused tests, typechecks, touched-file lizard, full lizard trend check, and `git diff --check`; update the grade report after each completed phase.
+- [x] Phase 2: Continue backend/infrastructure warnings where branch complexity can be split into named helpers: completed by the later Grade Maintainability Remediation Pass 2.
+- [x] Phase 3: Continue frontend UI warnings by separating controller/data-shaping helpers from rendering: completed by the later Grade Maintainability Remediation Pass 2.
+- [x] Phase 4: Continue lower-risk test/e2e warnings after production paths are stable: completed across the later Grade Maintainability Remediation Pass 2 and Pass 3.
+- [x] Phase 5 decision: keep the 1,150-line `scripts/perf/phase3-benchmark.mjs` file-size gate deferred unless that proof harness is next touched or a strict 100/100 grade is the goal.
+- [x] For each completed phase, run focused tests, typechecks, touched-file lizard, full lizard trend check, and `git diff --check`; update the grade report after each completed phase.
 
 ## Exit Criteria
 
@@ -869,6 +939,8 @@ Yes, address the maintainability findings. Do not treat the low-severity audit a
 - Updated `docs/plans/codebase-health-assessment.md` and appended `docs/plans/grade-history/sanctuary_.jsonl`.
 - Verification passed: app and server typechecks, focused app/server Vitest suites for touched behavior, full lizard trend scan, `npm run quality:lizard`, Prettier check for touched files, and `git diff --check`.
 - Follow-up completed: Console DELETE OpenAPI entries were added and `npm run check:openapi-route-coverage` now passes.
+- Follow-up true-up: later Pass 2 and Pass 3 sections completed the remaining complexity phases, tightened `npm run quality:lizard` to a zero-warning budget, and updated the health report to 98/100 with `lizard_warning_count=0`.
+- Follow-up verification passed: `npm run quality:lizard`.
 
 ---
 
@@ -2304,7 +2376,7 @@ Goal: harden the Docusaurus docs architecture after PR #179, scoped to the curat
 
 # Active Task: CI/CD Test Speed Batch 5 - E2E Timing Instrumentation
 
-Status: in progress
+Status: complete
 
 Goal: measure E2E setup, build, backend preparation, and Playwright runtime separately so the next CI speed change can target the actual long pole.
 
@@ -2317,7 +2389,7 @@ Goal: measure E2E setup, build, backend preparation, and Playwright runtime sepa
 - [x] Wrap full render E2E setup/build/run steps with `scripts/ci/time-command.sh`.
 - [x] Update CI/CD strategy docs and task tracker history.
 - [x] Run workflow lint and diff check.
-- [ ] Deliver through PR, monitor checks, merge safely, and verify the merge.
+- [x] Deliver through PR, monitor checks, merge safely, and verify the merge.
 
 ## Review
 
@@ -2328,6 +2400,9 @@ Goal: measure E2E setup, build, backend preparation, and Playwright runtime sepa
 - Verification passed:
   - `/tmp/actionlint-1.7.12/actionlint -color -shellcheck= .github/workflows/test.yml`
   - `git diff --check`
+- Delivered in PR #166 as `1b849b1e0cb8132936b3870749ac2e44b7bad6df`; `origin/main` contains the merge commit.
+- PR #166 required checks passed, including PR Required Checks, Code Quality Required Checks, CodeQL Required Checks, Workflow lint, CI classifier tests, Quick Browser Smoke, and Quick Render Regression.
+- Follow-up checkpoint PR #167 merged as `6749148408f0d9611a88fffdaa736a402c7cbf59` and recorded the CI timing review point in `docs/reference/ci-cd-strategy.md`.
 
 ---
 
@@ -2859,6 +2934,15 @@ Goal: convert the still-valid follow-up material from completed reviews into sco
 - Re-measure before optimizing; do not shard or cache a CI lane unless current timing still shows it on the critical path.
 - Keep release tags, schedules, manual release gates, and merge-queue safety stronger than PR quick lanes.
 - Do not replay old stash changes unless the current code still needs the behavior and focused tests reproduce the gap.
+
+## Verification - 2026-04-30
+
+- CI-1 remains valid: `.github/workflows/test.yml` now emits `scripts/ci/time-command.sh` notices for browser/render setup and runs, but no shared artifact or prebuilt-image decision has been made from that timing data.
+- CI-2 remains valid: backend integration groups are timed at the job/command level, but no per-spec timing extraction or documented follow-up split decision was found.
+- CI-3 remains valid: install/release workflows still have separate fresh install, stack smoke, and upgrade lanes; no fixture-scoping optimization decision was found.
+- TEST-1 remains valid: `npm --prefix server run typecheck:tests` passes, while `npm --prefix server run typecheck:tests:full` still fails on the historical runtime-config, router harness, mobile permission, OpenAPI schema, DTO fixture, mock typing, and worker/electrum fixture classes.
+- TEST-2 remains valid: `scripts/verify-addresses/package.json` still has no `typecheck` script, and `npm --prefix scripts/verify-addresses run typecheck` fails with "Missing script: typecheck".
+- AGENT-1 remains valid: `withAgentFundingLock` holds a per-agent PostgreSQL advisory lock, but the callback does not receive a shared Prisma transaction client, so draft creation, override use, `lastFundingDraftAt`, and attempt recording still run through separate repository/service calls.
 
 ## Ready Tasks
 

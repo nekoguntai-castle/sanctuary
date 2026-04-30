@@ -228,6 +228,16 @@ bash scripts/ci/report-workflow-durations.sh <run-id>
 
 The helper uses `gh run view --json jobs` and prints the longest jobs first. The full frontend jobs and the backend source/integration jobs also wrap their long typecheck, coverage, and integration steps with `scripts/ci/time-command.sh`, so use the job log timing notices to decide whether the next split should target frontend coverage, backend integration tests, or setup overhead.
 
+Use the timing-notice helper when a job is the tail and the setup/runtime split matters:
+
+```bash
+bash scripts/ci/report-timing-notices.sh --run <run-id> --job-filter "Full Browser E2E Tests"
+bash scripts/ci/report-timing-notices.sh --run <run-id> --job-filter "Full Backend Integration Tests"
+bash scripts/ci/report-timing-notices.sh --run <run-id> --job-filter "Install Stack Smoke"
+```
+
+This parses the notices emitted by `scripts/ci/time-command.sh` from matching job logs. Prefer this evidence over eyeballing logs when deciding whether repeated setup, build, migrations, or test runtime is the actual long pole.
+
 Use the trend helper before changing a workflow shape:
 
 ```bash
@@ -254,6 +264,12 @@ bash scripts/ci/browser-e2e-groups.sh --check
 ```
 
 Playwright runs also emit per-spec timing files under the existing `test-results/` artifact directory: `playwright-timing.json` for machine-readable history and `playwright-timing.md` for quick review. The quick and full E2E jobs also wrap dependency install, Playwright browser install, frontend build, backend setup/build, and the Playwright command itself with `scripts/ci/time-command.sh`. Use those notices to separate setup cost from spec runtime before changing group membership, browser count, retries, or shared setup.
+
+As of the 2026-04-30 review, recent `main` Test Suite push runs show browser-flow jobs as the recurring wall-time tail when full browser E2E runs. A sampled wallet-experience job spent about 79 seconds in timed dependency/build/backend setup notices and 67 seconds in Playwright runtime, with the remaining time in hosted-runner service startup, checkout, cache, server readiness, and artifact overhead. That means setup reuse is worth continuing to measure, but a shared build artifact or prebuilt test image is not yet justified without proving upload/download or image-build overhead is lower than the duplicated setup it replaces.
+
+Backend integration jobs are currently not the merge-gate tail on recent `main` runs. The workflow now times dependency install, shared schema linking, Prisma generation, migrations, and the grouped Vitest command separately so another integration split can be justified from setup/runtime evidence rather than group duration alone.
+
+Install workflow push runs currently tail on `Install Stack Smoke` or baseline upgrade lanes, depending on the path scope. Fresh install, install-script E2E, stack startup, stack subtests, and upgrade lanes now emit timing notices. Keep the release/install lanes isolated unless timing data shows fixture scoping saves more than it costs in lost isolation.
 
 ### CI Timing Review Checkpoint
 

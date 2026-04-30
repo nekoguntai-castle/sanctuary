@@ -1,5 +1,7 @@
 import type { DraftTransaction } from '../generated/prisma/client';
 import { draftRepository, systemSettingRepository } from '../repositories';
+import type { DraftDbClient } from '../repositories/draftRepository';
+import type { DraftLockDbClient } from '../repositories/draftLockRepository';
 import { ConflictError, InvalidInputError } from '../errors';
 import { createLogger } from '../utils/logger';
 import { getErrorMessage } from '../utils/errors';
@@ -12,6 +14,13 @@ import { validateInitialSigningState } from './draftSigning';
 import type { CreateDraftInput, InitialSigningState } from './draftTypes';
 
 const log = createLogger('DRAFT:SVC_CREATE');
+
+type CreateDraftDbClient = DraftDbClient & DraftLockDbClient;
+
+export interface CreateDraftOptions {
+  client?: CreateDraftDbClient;
+  runSideEffects?: boolean;
+}
 
 const assertValidCreateDraftInput = (data: CreateDraftInput): void => {
   if (!data.recipient || data.amount === undefined || !data.feeRate || !data.psbtBase64) {
@@ -73,9 +82,10 @@ const createDraftRecord = async (
   walletId: string,
   userId: string,
   data: CreateDraftInput,
-  initialSigningState: InitialSigningState
+  initialSigningState: InitialSigningState,
+  client?: Pick<CreateDraftDbClient, 'draftTransaction'>
 ): Promise<DraftTransaction> => {
-  return draftRepository.create({
+  const draftData = {
     walletId,
     userId,
     recipient: data.recipient,
@@ -91,19 +101,24 @@ const createDraftRecord = async (
     status: initialSigningState.status,
     inputPaths: data.inputPaths || [],
     expiresAt: await calculateExpirationDate(),
-  });
+  };
+
+  return client ? draftRepository.create(draftData, client) : draftRepository.create(draftData);
 };
 
 const lockSelectedUtxos = async (
   walletId: string,
   draft: DraftTransaction,
-  data: CreateDraftInput
+  data: CreateDraftInput,
+  client?: Pick<CreateDraftDbClient, 'draftUtxoLock' | 'uTXO'>
 ): Promise<void> => {
   if (!data.selectedUtxoIds || data.selectedUtxoIds.length === 0 || data.isRBF) {
     return;
   }
 
-  const { found: utxoIds, notFound } = await resolveUtxoIds(walletId, data.selectedUtxoIds);
+  const { found: utxoIds, notFound } = client
+    ? await resolveUtxoIds(walletId, data.selectedUtxoIds, client)
+    : await resolveUtxoIds(walletId, data.selectedUtxoIds);
   if (notFound.length > 0) {
     log.warn('Some UTXOs not found for locking', { notFound, draftId: draft.id });
   }
@@ -112,9 +127,14 @@ const lockSelectedUtxos = async (
     return;
   }
 
-  const lockResult = await lockUtxosForDraft(draft.id, utxoIds, { isRBF: false });
+  const lockResult = await lockUtxosForDraft(draft.id, utxoIds, {
+    isRBF: false,
+    ...(client && { client }),
+  });
   if (!lockResult.success) {
-    await draftRepository.remove(draft.id);
+    if (!client) {
+      await draftRepository.remove(draft.id);
+    }
     throw new ConflictError('One or more UTXOs are already locked by another draft transaction');
   }
 
@@ -174,24 +194,36 @@ const dispatchCreatedDraftNotification = (
   });
 };
 
+export async function runDraftCreatedSideEffects(
+  walletId: string,
+  userId: string,
+  draft: DraftTransaction,
+  data: CreateDraftInput
+): Promise<void> {
+  await createApprovalRequestsIfNeeded(draft, walletId, userId, data);
+  dispatchCreatedDraftNotification(walletId, userId, draft, data);
+}
+
 /**
  * Create a new draft transaction.
  */
 export async function createDraft(
   walletId: string,
   userId: string,
-  data: CreateDraftInput
+  data: CreateDraftInput,
+  options: CreateDraftOptions = {}
 ): Promise<DraftTransaction> {
   assertValidCreateDraftInput(data);
 
   const initialSigningState = await validateInitialSigningState(walletId, data);
-  const draft = await createDraftRecord(walletId, userId, data, initialSigningState);
-  await lockSelectedUtxos(walletId, draft, data);
+  const draft = await createDraftRecord(walletId, userId, data, initialSigningState, options.client);
+  await lockSelectedUtxos(walletId, draft, data, options.client);
 
   log.info('Created draft', { draftId: draft.id, walletId, userId, isRBF: data.isRBF ?? false });
 
-  await createApprovalRequestsIfNeeded(draft, walletId, userId, data);
-  dispatchCreatedDraftNotification(walletId, userId, draft, data);
+  if (options.runSideEffects !== false) {
+    await runDraftCreatedSideEffects(walletId, userId, draft, data);
+  }
 
   return draft;
 }

@@ -12,6 +12,7 @@
  */
 
 import { draftLockRepository } from '../repositories';
+import type { DraftLockDbClient } from '../repositories/draftLockRepository';
 import { createLogger } from '../utils/logger';
 import { getErrorMessage, isUniqueConstraintError } from '../utils/errors';
 
@@ -33,6 +34,11 @@ export interface UtxoLockInfo {
   lockedAt: Date;
 }
 
+export interface LockUtxosForDraftOptions {
+  isRBF?: boolean;
+  client?: DraftLockDbClient;
+}
+
 /**
  * Lock UTXOs for a draft transaction
  * Returns success only if ALL UTXOs can be locked (atomic operation)
@@ -40,7 +46,7 @@ export interface UtxoLockInfo {
 export async function lockUtxosForDraft(
   draftId: string,
   utxoIds: string[],
-  options: { isRBF?: boolean } = {}
+  options: LockUtxosForDraftOptions = {}
 ): Promise<LockResult> {
   const uniqueUtxoIds = [...new Set(utxoIds)];
 
@@ -66,7 +72,7 @@ export async function lockUtxosForDraft(
 
   try {
     // Delegate to repository's atomic lock method
-    const lockResult = await draftLockRepository.lockUtxos(draftId, uniqueUtxoIds);
+    const lockResult = await draftLockRepository.lockUtxos(draftId, uniqueUtxoIds, options.client);
 
     if (!lockResult.success) {
       log.warn(`Cannot lock UTXOs for draft ${draftId}: UTXOs already locked`, {
@@ -193,7 +199,8 @@ export async function isUtxoLocked(utxoId: string): Promise<{ locked: boolean; d
  */
 export async function resolveUtxoIds(
   walletId: string,
-  selectedUtxoRefs: string[]
+  selectedUtxoRefs: string[],
+  client?: Pick<DraftLockDbClient, 'uTXO'>
 ): Promise<{ found: string[]; notFound: string[] }> {
   if (selectedUtxoRefs.length === 0) {
     return { found: [], notFound: [] };
@@ -206,7 +213,7 @@ export async function resolveUtxoIds(
   });
 
   // Find UTXOs by txid and vout
-  const utxos = await draftLockRepository.resolveUtxoRefs(walletId, refs);
+  const utxos = await draftLockRepository.resolveUtxoRefs(walletId, refs, client);
 
   // Map found UTXOs
   const foundMap = new Map<string, string>();

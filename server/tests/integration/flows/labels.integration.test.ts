@@ -18,7 +18,7 @@ import {
   loginTestUser,
 } from '../setup/helpers';
 
-vi.setConfig(30000);
+vi.setConfig({ testTimeout: 30000 });
 
 const describeWithDb = canRunIntegrationTests() ? describe : describe.skip;
 

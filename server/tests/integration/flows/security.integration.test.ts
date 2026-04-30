@@ -20,7 +20,7 @@ import { Express } from 'express';
 import bcrypt from 'bcryptjs';
 
 // Increase timeout for integration tests
-vi.setConfig(30000);
+vi.setConfig({ testTimeout: 30000 });
 
 // Skip all tests if no database is available
 const describeWithDb = canRunIntegrationTests() ? describe : describe.skip;

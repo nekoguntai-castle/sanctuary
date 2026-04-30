@@ -6,6 +6,7 @@
   "scripts": {
     "generate": "npx tsx generate-vectors.ts",
     "verify": "npx tsx generate-vectors.ts --verify-only",
+    "typecheck": "tsc --noEmit",
     "start-bitcoind": "docker compose up -d",
     "stop-bitcoind": "docker compose down"
   },

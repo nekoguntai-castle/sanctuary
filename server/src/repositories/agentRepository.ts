@@ -113,6 +113,22 @@ export interface CreateAgentAlertInput {
   metadata?: Prisma.InputJsonValue | null;
 }
 
+export type AgentFundingDbClient = Pick<
+  typeof prisma,
+  'agentFundingAttempt' | 'agentFundingOverride' | 'walletAgent'
+>;
+
+export type AgentFundingTransactionClient = Pick<
+  typeof prisma,
+  | '$queryRaw'
+  | 'agentFundingAttempt'
+  | 'agentFundingOverride'
+  | 'draftTransaction'
+  | 'draftUtxoLock'
+  | 'uTXO'
+  | 'walletAgent'
+>;
+
 export type AgentApiKeyWithAgent = AgentApiKey & {
   agent: WalletAgent & {
     user: {
@@ -392,8 +408,13 @@ export async function updateAgent(agentId: string, input: UpdateWalletAgentInput
   });
 }
 
-export async function markAgentFundingDraftCreated(agentId: string, at: Date = new Date()): Promise<void> {
-  await prisma.walletAgent.update({
+export async function markAgentFundingDraftCreated(
+  agentId: string,
+  at: Date = new Date(),
+  client?: Pick<AgentFundingDbClient, 'walletAgent'>
+): Promise<void> {
+  const db = client ?? prisma;
+  await db.walletAgent.update({
     where: { id: agentId },
     data: { lastFundingDraftAt: at },
   });
@@ -556,10 +577,15 @@ export async function findUsableFundingOverride(
   });
 }
 
-export async function markFundingOverrideUsed(id: string, draftId: string): Promise<AgentFundingOverride> {
+export async function markFundingOverrideUsed(
+  id: string,
+  draftId: string,
+  client?: Pick<AgentFundingDbClient, 'agentFundingOverride'>
+): Promise<AgentFundingOverride> {
+  const db = client ?? prisma;
   // Conditional update claims the override atomically so concurrent draft
   // creation or admin revocation cannot consume the same owner override twice.
-  const result = await prisma.agentFundingOverride.updateMany({
+  const result = await db.agentFundingOverride.updateMany({
     where: {
       id,
       status: 'active',
@@ -576,7 +602,7 @@ export async function markFundingOverrideUsed(id: string, draftId: string): Prom
     throw new InvalidInputError('Agent funding override is no longer usable');
   }
 
-  const override = await prisma.agentFundingOverride.findUnique({
+  const override = await db.agentFundingOverride.findUnique({
     where: { id },
   });
   if (!override) {
@@ -664,19 +690,26 @@ export async function updateApiKeyLastUsedIfStale(
   });
 }
 
-export async function withAgentFundingLock<T>(agentId: string, fn: () => Promise<T>): Promise<T> {
+export async function withAgentFundingTransaction<T>(
+  agentId: string,
+  fn: (client: AgentFundingTransactionClient) => Promise<T>
+): Promise<T> {
   const lockKey = `agent-funding:${agentId}`;
 
   return prisma.$transaction(
     async tx => {
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
-      return fn();
+      return fn(tx);
     },
     {
       maxWait: 5_000,
       timeout: 60_000,
     }
   );
+}
+
+export async function withAgentFundingLock<T>(agentId: string, fn: () => Promise<T>): Promise<T> {
+  return withAgentFundingTransaction(agentId, () => fn());
 }
 
 function toFundingAttemptIdentityData(
@@ -713,8 +746,12 @@ function toFundingAttemptDetailData(
   };
 }
 
-export async function createFundingAttempt(input: CreateAgentFundingAttemptInput): Promise<AgentFundingAttempt> {
-  return prisma.agentFundingAttempt.create({
+export async function createFundingAttempt(
+  input: CreateAgentFundingAttemptInput,
+  client?: Pick<AgentFundingDbClient, 'agentFundingAttempt'>
+): Promise<AgentFundingAttempt> {
+  const db = client ?? prisma;
+  return db.agentFundingAttempt.create({
     data: {
       ...toFundingAttemptIdentityData(input),
       ...toFundingAttemptDetailData(input),
@@ -748,6 +785,7 @@ export const agentRepository = {
   findApiKeysByAgentId,
   revokeApiKey,
   updateApiKeyLastUsedIfStale,
+  withAgentFundingTransaction,
   withAgentFundingLock,
   createFundingAttempt,
   getSupportStats,

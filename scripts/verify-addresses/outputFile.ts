@@ -51,6 +51,7 @@ export interface VerifiedMultisigVector {
   index: number;
   change: boolean;
   expectedAddress: string;
+  expectedDescriptor: string;
   verifiedBy: string[];
 }`;
 }

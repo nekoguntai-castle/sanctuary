@@ -42,6 +42,7 @@ const smoke = vi.hoisted(() => {
       findAgentByIdWithDetails: vi.fn(),
       createApiKey: vi.fn(),
       withAgentFundingLock: vi.fn(),
+      withAgentFundingTransaction: vi.fn(),
       markAgentFundingDraftCreated: vi.fn(),
       markFundingOverrideUsed: vi.fn(),
       createFundingAttempt: vi.fn(),
@@ -69,6 +70,7 @@ const smoke = vi.hoisted(() => {
     createTransaction: vi.fn(),
     evaluatePolicies: vi.fn(),
     createDraft: vi.fn(),
+    runDraftCreatedSideEffects: vi.fn(),
     getDraft: vi.fn(),
     updateDraft: vi.fn(),
     auditLog: vi.fn(),
@@ -146,6 +148,7 @@ vi.mock('../../../src/services/agentMonitoringService', () => ({
 vi.mock('../../../src/services/draftService', () => ({
   draftService: {
     createDraft: smoke.createDraft,
+    runDraftCreatedSideEffects: smoke.runDraftCreatedSideEffects,
     getDraft: smoke.getDraft,
     updateDraft: smoke.updateDraft,
   },
@@ -336,9 +339,13 @@ describe('agent wallet funding route smoke', () => {
       revokedAt: null,
     });
     smoke.agentRepository.withAgentFundingLock.mockImplementation(async (_agentId: string, fn: () => Promise<unknown>) => fn());
+    smoke.agentRepository.withAgentFundingTransaction.mockImplementation(
+      async (_agentId: string, fn: (client: unknown) => Promise<unknown>) => fn({ tx: true }),
+    );
     smoke.agentRepository.markAgentFundingDraftCreated.mockResolvedValue(undefined);
     smoke.agentRepository.markFundingOverrideUsed.mockResolvedValue(undefined);
     smoke.agentRepository.createFundingAttempt.mockResolvedValue({ id: 'attempt-1' });
+    smoke.runDraftCreatedSideEffects.mockResolvedValue(undefined);
 
     smoke.validateAgentFundingDraftSubmission.mockResolvedValue({
       recipient: 'tb1qoperational',
@@ -472,7 +479,11 @@ describe('agent wallet funding route smoke', () => {
         agentOperationalWalletId: smoke.ids.operationalWalletId,
         notificationCreatedByUserId: null,
         notificationCreatedByLabel: 'Smoke Agent',
-      })
+      }),
+      expect.objectContaining({
+        client: expect.any(Object),
+        runSideEffects: false,
+      }),
     );
 
     const mobileReview = await request(app)

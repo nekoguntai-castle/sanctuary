@@ -17,9 +17,11 @@ const {
   mockMarkAgentFundingDraftCreated,
   mockMarkFundingOverrideUsed,
   mockWithAgentFundingLock,
+  mockWithAgentFundingTransaction,
   mockCreateFundingAttempt,
   mockEvaluateRejectedFundingAttemptAlert,
   mockCreateDraft,
+  mockRunDraftCreatedSideEffects,
   mockGetDraft,
   mockUpdateDraft,
   mockGetOrCreateOperationalReceiveAddress,
@@ -42,9 +44,11 @@ const {
     mockMarkAgentFundingDraftCreated: vi.fn(),
     mockMarkFundingOverrideUsed: vi.fn(),
     mockWithAgentFundingLock: vi.fn(),
+    mockWithAgentFundingTransaction: vi.fn(),
     mockCreateFundingAttempt: vi.fn(),
     mockEvaluateRejectedFundingAttemptAlert: vi.fn(),
     mockCreateDraft: vi.fn(),
+    mockRunDraftCreatedSideEffects: vi.fn(),
     mockGetDraft: vi.fn(),
     mockUpdateDraft: vi.fn(),
     mockGetOrCreateOperationalReceiveAddress: vi.fn(),
@@ -130,6 +134,7 @@ vi.mock('../../../src/repositories', () => ({
     markAgentFundingDraftCreated: mockMarkAgentFundingDraftCreated,
     markFundingOverrideUsed: mockMarkFundingOverrideUsed,
     withAgentFundingLock: mockWithAgentFundingLock,
+    withAgentFundingTransaction: mockWithAgentFundingTransaction,
     createFundingAttempt: mockCreateFundingAttempt,
   },
   utxoRepository: {
@@ -143,6 +148,7 @@ vi.mock('../../../src/repositories', () => ({
 vi.mock('../../../src/services/draftService', () => ({
   draftService: {
     createDraft: mockCreateDraft,
+    runDraftCreatedSideEffects: mockRunDraftCreatedSideEffects,
     getDraft: mockGetDraft,
     updateDraft: mockUpdateDraft,
   },
@@ -221,7 +227,9 @@ describe('Agent Routes', () => {
     mockEnforceAgentFundingPolicy.mockResolvedValue({ overrideId: null });
     mockMarkAgentFundingDraftCreated.mockResolvedValue(undefined);
     mockWithAgentFundingLock.mockImplementation(async (_agentId, fn) => fn());
+    mockWithAgentFundingTransaction.mockImplementation(async (_agentId, fn) => fn({ tx: true }));
     mockCreateFundingAttempt.mockResolvedValue({ id: 'attempt-1' });
+    mockRunDraftCreatedSideEffects.mockResolvedValue(undefined);
     mockAuditLog.mockResolvedValue(undefined);
     mockGetClientInfo.mockReturnValue({
       ipAddress: '127.0.0.1',
@@ -559,7 +567,7 @@ describe('Agent Routes', () => {
         selectedUtxoIds: ['utxo-1'],
       }),
     );
-    expect(mockWithAgentFundingLock).toHaveBeenCalledWith(
+    expect(mockWithAgentFundingTransaction).toHaveBeenCalledWith(
       'agent-1',
       expect.any(Function),
     );
@@ -581,8 +589,16 @@ describe('Agent Routes', () => {
         notificationCreatedByUserId: null,
         notificationCreatedByLabel: 'Treasury Agent',
       }),
+      expect.objectContaining({
+        client: expect.any(Object),
+        runSideEffects: false,
+      }),
     );
-    expect(mockMarkAgentFundingDraftCreated).toHaveBeenCalledWith('agent-1');
+    expect(mockMarkAgentFundingDraftCreated).toHaveBeenCalledWith(
+      'agent-1',
+      expect.any(Date),
+      expect.any(Object),
+    );
     expect(mockCreateFundingAttempt).toHaveBeenCalledWith(
       expect.objectContaining({
         agentId: 'agent-1',
@@ -596,6 +612,7 @@ describe('Agent Routes', () => {
         feeRate: 5,
         recipient: 'tb1qrecipient',
       }),
+      expect.any(Object),
     );
     expect(mockAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -665,12 +682,17 @@ describe('Agent Routes', () => {
         effectiveAmount: '15000',
         sendMax: true,
       }),
+      expect.objectContaining({
+        client: expect.any(Object),
+        runSideEffects: false,
+      }),
     );
     expect(mockCreateFundingAttempt).toHaveBeenCalledWith(
       expect.objectContaining({
         status: 'accepted',
         amount: 15000n,
       }),
+      expect.any(Object),
     );
   });
 
@@ -679,9 +701,9 @@ describe('Agent Routes', () => {
     mockEnforceAgentFundingPolicy.mockResolvedValueOnce({
       overrideId: 'override-1',
     });
-    mockWithAgentFundingLock.mockImplementationOnce(async (_agentId, fn) => {
+    mockWithAgentFundingTransaction.mockImplementationOnce(async (_agentId, fn) => {
       events.push('lock-start');
-      const result = await fn();
+      const result = await fn({ tx: true });
       events.push('lock-end');
       return result;
     });
@@ -706,10 +728,15 @@ describe('Agent Routes', () => {
       expect.objectContaining({
         label: 'Agent funding request: Treasury Agent (owner override)',
       }),
+      expect.objectContaining({
+        client: expect.any(Object),
+        runSideEffects: false,
+      }),
     );
     expect(mockMarkFundingOverrideUsed).toHaveBeenCalledWith(
       'override-1',
       'draft-agent',
+      expect.any(Object),
     );
     expect(events).toEqual(['lock-start', 'mark-used', 'lock-end']);
     expect(mockAuditLog).toHaveBeenCalledWith(
@@ -1035,7 +1062,7 @@ describe('Agent Routes', () => {
   });
 
   it('surfaces draft creation anomalies and swallows attempt-recording failures', async () => {
-    mockWithAgentFundingLock.mockResolvedValueOnce(null);
+    mockWithAgentFundingTransaction.mockResolvedValueOnce(null);
 
     await request(app)
       .post('/api/v1/agent/wallets/funding-wallet/funding-drafts')

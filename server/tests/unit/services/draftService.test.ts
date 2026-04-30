@@ -229,6 +229,27 @@ describe('DraftService', () => {
       expect(lockUtxosForDraft).toHaveBeenCalled();
     });
 
+    it('passes a transaction client through draft creation and UTXO locking', async () => {
+      const client = {
+        draftTransaction: {},
+        draftUtxoLock: {},
+        uTXO: {},
+      };
+
+      await createDraft(walletId, userId, validInput, {
+        client: client as never,
+        runSideEffects: false,
+      });
+
+      expect(draftRepository.create).toHaveBeenCalledWith(expect.any(Object), client);
+      expect(resolveUtxoIds).toHaveBeenCalledWith(walletId, validInput.selectedUtxoIds, client);
+      expect(lockUtxosForDraft).toHaveBeenCalledWith(mockDraft.id, ['utxo-id-1'], {
+        isRBF: false,
+        client,
+      });
+      expect(dispatchDraftNotification).not.toHaveBeenCalled();
+    });
+
     it('uses empty selectedUtxoIds default when none are provided', async () => {
       await createDraft(walletId, userId, {
         recipient: validInput.recipient,
@@ -262,6 +283,28 @@ describe('DraftService', () => {
 
       await expect(createDraft(walletId, userId, validInput)).rejects.toThrow(ConflictError);
       expect(draftRepository.remove).toHaveBeenCalledWith(mockDraft.id);
+    });
+
+    it('leaves transaction-scoped drafts for rollback when UTXO locking fails', async () => {
+      const client = {
+        draftTransaction: {},
+        draftUtxoLock: {},
+        uTXO: {},
+      };
+      (lockUtxosForDraft as Mock).mockResolvedValue({ success: false });
+
+      await expect(
+        createDraft(walletId, userId, validInput, {
+          client: client as never,
+          runSideEffects: false,
+        })
+      ).rejects.toThrow(ConflictError);
+
+      expect(lockUtxosForDraft).toHaveBeenCalledWith(mockDraft.id, ['utxo-id-1'], {
+        isRBF: false,
+        client,
+      });
+      expect(draftRepository.remove).not.toHaveBeenCalled();
     });
 
     it('continues when some selected UTXOs are not found', async () => {
