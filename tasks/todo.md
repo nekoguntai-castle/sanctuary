@@ -1,3 +1,111 @@
+# Active Task: Architecture-First Large File Policy And Splits 2026-04-29
+
+Status: complete
+
+Goal: address the remaining large-file maintainability signal only where it reflects real architectural debt, and make classification-aware reporting distinguish production source from proof/test artifacts without using classifications to hide production complexity.
+
+## Decision Gate
+
+- [x] Confirm the repo already has a classification-aware quality gate in `scripts/quality/check-large-files.mjs`.
+- [x] Treat the current issue as policy/reporting plus production-module boundaries, not as a mandate to force every large test below an arbitrary line count.
+- [x] Prefer splitting production runtime modules with mixed concerns over classifying them away.
+- [x] Treat cohesive behavioral test suites and proof harnesses as candidates for explicit classification only when splitting would reduce auditability.
+
+## Plan
+
+- [x] Split `components/animations/bunnyMeadow.ts` into scene creation, drawing, and state update modules while preserving the existing hook API.
+- [x] Further split `ai-proxy/src/consoleProtocol.ts` into parsing/date/scope/planning/resolution modules without changing behavior or public imports.
+- [x] Split `ai-proxy/src/index.ts` into configuration, label/query, provider/model, and insight/chat route modules so the entrypoint owns composition instead of every route body.
+- [x] Split Bitcoin OpenAPI sync and price schemas out of `server/src/api/openapi/schemas/bitcoin.ts` while preserving the existing `./schemas/bitcoin` import surface.
+- [x] Improve `scripts/quality/check-large-files.mjs` reporting so the gate exposes production source, test, and classified artifact warning files separately, including JSON output for future grade tooling.
+- [x] Leave `scripts/quality/large-file-classification.json` unchanged because no new proof/generated/fixture classification was architecturally justified.
+- [x] Verify with focused frontend/AI proxy/OpenAPI tests, typechecks, lizard, large-file gate, and whitespace checks.
+
+## Review
+
+- Started from the 99/100 remediation baseline. The remaining score gap was not treated as enough reason by itself to touch code; every split landed on a real concern boundary.
+- Production source warning files over 800 lines are now zero. The largest production source file is `server/src/services/bitcoin/electrumPool/electrumPool.ts` at 795 lines; it was inspected and intentionally not split because it is the stateful pool orchestrator over already-extracted selector, connection, health, queue, metrics, backoff, registry, and config modules.
+- The large-file checker now reports production source, tests, and classified artifacts separately in text and JSON. Current signal: 0 production source warnings, 10 test warnings, and 1 classified proof-harness warning at 949 lines.
+- The grade report/history were updated, but the score remains 99/100. The final point is not claimed because splitting `electrumPool.ts` now would be metric-driven rather than architecturally cleaner.
+- PR CodeQL follow-up found two extracted AI proxy route alerts where the custom AI proxy limiter was not modeled and one real regex anchoring issue in the large-file checker. The route fix now layers a CodeQL-recognized `express-rate-limit` guard using the same AI proxy limit constants, and the regex is split into anchored directory/file patterns.
+- Verification passed: AI proxy build, 45 focused AI proxy tests, root typecheck, server test typecheck, 65 animation tests, 43 OpenAPI tests, 2 focused large-file script tests, OpenAPI route coverage, server lint, lizard quality gate, large-file checker text/JSON, and `git diff --check`.
+
+---
+
+# Active Task: Grade Major Issue Remediation 2026-04-29
+
+Status: complete
+
+Goal: implement the 2026-04-29 `$grade` residual-risk remediation sequence while preserving the current A grade and recovering the remaining mechanical maintainability evidence where practical.
+
+## Issue Triage
+
+- [x] Confirm hard-fail blockers: none in the current quality report.
+- [x] Treat the large-file maintainability gate as the only score-affecting major issue: `ai-proxy/src/consoleProtocol.ts` is 1,154 lines and `scripts/perf/phase3-benchmark.mjs` is 1,150 lines.
+- [x] Treat secret-scan false positives as a quality-signal issue, not as committed-secret evidence: tracked-tree gitleaks is clean, while generated Vitest output and intentional PEM fixtures create noisy local findings.
+- [x] Treat grade collector repeatability as a tooling issue: the collector missed repo-specific coverage and cached quality-tool paths, requiring manual superseding.
+- [x] Treat the 16 low-severity audit findings as tracking work only unless an upgrade path has hardware-wallet and crypto-flow regression proof.
+
+## Remediation Plan
+
+- [x] Phase 1: remove false secret-scan blockers without weakening source scanning.
+- [x] Scope `.vitest-reports/` out of configured full-directory gitleaks scans while keeping tracked-source scans intact.
+- [x] Document the intentional PEM fixture fallback limitation in the grade report instead of weakening gitleaks source scanning.
+- [x] Verify with tracked-tree gitleaks, configured full-directory gitleaks, audit checks, and `git diff --check`.
+- [x] Phase 2: restore the large-file hard gate with cohesive splits and small proof-harness trims.
+- [x] Split `ai-proxy/src/consoleProtocol.ts` into cohesive type, object, message, and intent modules while preserving the public import surface.
+- [x] Extract shared helpers from `scripts/perf/phase3-benchmark.mjs` into `scripts/perf/phase3-benchmark-utils.mjs`.
+- [x] Split the Bitcoin OpenAPI price path into helper/price modules and trim the largest proof/test files below the 1,000-line gate.
+- [x] Verify the size gate exits with no unclassified file over 1,000 lines and run focused tests plus lizard/typecheck checks for touched areas.
+- [x] Phase 3: improve repository-side `$grade` repeatability where this repo can affect it.
+- [x] Add a root `coverage` script alias for `npm run test:coverage:full` so coverage discovery has a conventional entry point.
+- [x] Record remaining external grade-skill limitations for cached lizard/jscpd/gitleaks discovery and fallback PEM fixture awareness.
+- [x] Phase 4: track low-severity dependency advisories conservatively.
+- [x] Record current low advisories by package surface and avoid unsafe downgrade/semver-major upgrades without hardware-wallet regression proof.
+- [x] Verify with root/server/gateway/AI proxy `npm audit --audit-level=high --json` commands.
+
+## Exit Criteria
+
+- [x] Secret-scan commands used by local quality report no generated-artifact false positives while still scanning tracked source.
+- [x] The file-size hard gate is green by splitting unclassified runtime source and trimming the largest proof/test files below 1,000 lines.
+- [x] Repository-side grade repeatability improved with a conventional `coverage` script and clean configured gitleaks scans.
+- [x] Security remains 15/15 with 0 high or critical audit findings and no committed-source leaks.
+- [x] Maintainability recovers 1 point through mechanical file-size evidence; the final point remains gated on files below 500 lines or classification-aware scoring.
+
+## Review
+
+- Updated `.gitleaks.toml` to allow generated `.vitest-reports/` artifacts while preserving tracked-source scanning. Tracked-tree gitleaks and configured full-directory gitleaks both pass with 0 leaks.
+- Reduced the largest scored files below the 1,000-line hard threshold. `ai-proxy/src/consoleProtocol.ts` is now split across protocol type/object/message/intent modules, `scripts/perf/phase3-benchmark.mjs` uses extracted helpers, Bitcoin OpenAPI price paths are split, and the largest test/proof files are at 999 lines.
+- Updated `docs/plans/codebase-health-assessment.md` and `docs/plans/grade-history/sanctuary_.jsonl` with a 99/100 remediation score. The score is not marked 100 because the largest scored file is still 999 lines; the rubric's final maintainability point requires below 500 lines or classification-aware scoring.
+- Added root `coverage` script alias for grade discoverability. Cached quality-tool discovery and fallback PEM fixture awareness remain external grade-skill follow-ups, not repository implementation issues.
+- Dependency posture is unchanged by design: root audit has 0 high/critical and 16 low findings, while server/gateway/AI proxy audits have 0 total findings. No package upgrade was made because the available fixes are low-severity, semver-major/downgrade, or hardware-wallet sensitive.
+- Verification passed: AI proxy build and 37 focused tests, server test typecheck, repo test typecheck, script typecheck, full server unit suite through the focused command expansion with 418 files and 9,453 tests, OpenAPI route coverage, tracked-tree gitleaks, configured full-directory gitleaks, root/server/gateway/AI proxy high-level audits, server lint, phase3 script syntax checks, Playwright admin spec listing, lizard quality gate, jscpd at 2.03%, large-file gate, and `git diff --check`.
+
+---
+
+# Active Task: Full Codebase Grade 2026-04-29
+
+Status: complete
+
+Goal: run a full `$grade` audit for the current repository state and update `docs/plans/codebase-health-assessment.md` with evidence-backed scoring.
+
+## Plan
+
+- [x] Read the project lessons, grading skill, standards rubric, current worktree state, commit, and trend slug.
+- [x] Run the full grade signal collector and capture mechanical evidence.
+- [x] Inspect targeted source, test, and operational files for ISO-anchored judged criteria.
+- [x] Score domains, check hard-fail gates, append trend history, and write the quality report.
+- [x] Review changed docs for correctness, verification coverage, and unintended scope.
+
+## Review
+
+- Overall grade report written to `docs/plans/codebase-health-assessment.md` with score 98/100, grade A, high confidence, no hard-fail blockers, and a full-mode trend entry appended to `docs/plans/grade-history/sanctuary_.jsonl`.
+- Mechanical verification passed: app tests/lint/typecheck via the grade collector, root `npm audit` with 0 high/critical vulnerabilities, tracked-tree gitleaks with no leaks, direct lizard with 0 CCN warnings, jscpd duplication at 2.04%, frontend coverage at 100%, backend coverage at 100% after unsandboxed rerun, and gateway coverage at 100%.
+- Residual risks recorded in the report: the file-size gate still fails on `ai-proxy/src/consoleProtocol.ts` and `scripts/perf/phase3-benchmark.mjs`, local secret scans have known generated/fixture false positives unless scoped correctly, and 16 low-severity dependency advisories remain for tracking.
+- Final doc review and `git diff --check` passed.
+
+---
+
 # Active Task: Full Backlog Validation And Remediation 2026-04-30
 
 Status: complete

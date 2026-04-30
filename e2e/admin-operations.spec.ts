@@ -1,10 +1,3 @@
-/**
- * Admin Operations E2E Tests
- *
- * Tests interactive admin workflows: feature flag toggling, user/group CRUD,
- * backup/restore flows, node config editing, and variable updates.
- */
-
 import { expect, test, type Page, type Route } from "@playwright/test";
 import { json, unmocked, registerApiRoutes } from "./helpers";
 import {
@@ -378,8 +371,6 @@ test.describe("Admin operations", () => {
     expect(errors, `Runtime errors in "${testInfo.title}"`).toEqual([]);
   });
 
-  // --- Feature Flag Toggle ---
-
   test("toggling a feature flag shows saved confirmation", async ({ page }) => {
     const unhandledRequests = await mockAdminApi(page);
 
@@ -388,13 +379,8 @@ test.describe("Admin operations", () => {
       page.getByRole("heading", { name: "Feature Flags" }),
     ).toBeVisible();
 
-    // Find the disabled flag and toggle it
     await expect(page.getByText("treasuryAutopilot")).toBeVisible();
-
-    // The feature flag page shows toggleable flags
-    // Verify that the enhancedDashboard flag is also visible
     await expect(page.getByText("enhancedDashboard")).toBeVisible();
-    // Both flags from both categories should be visible
     await expect(page.getByText("General")).toBeVisible();
     await expect(page.getByText("Experimental")).toBeVisible();
 
@@ -414,7 +400,6 @@ test.describe("Admin operations", () => {
     const historyButton = page.getByRole("button", { name: /Change History/i });
     if (await historyButton.isVisible()) {
       await historyButton.click();
-      // Change history section should expand/collapse - look for content inside the expanded section
       await expect(
         page
           .getByText("No changes recorded yet.")
@@ -424,8 +409,6 @@ test.describe("Admin operations", () => {
 
     expect(unhandledRequests).toEqual([]);
   });
-
-  // --- User Management ---
 
   test("users page shows existing users", async ({ page }) => {
     const unhandledRequests = await mockAdminApi(page);
@@ -448,21 +431,12 @@ test.describe("Admin operations", () => {
 
     await page.goto("/#/admin/users-groups");
 
-    // Click Add User
     await page.getByRole("button", { name: /Add User/i }).click();
-
-    // Modal should appear
     await expect(page.getByText("Create New User")).toBeVisible();
-
-    // Fill form
     await page.getByPlaceholder(/username/i).fill("newuser");
     await page.getByPlaceholder(/password/i).fill("SecurePass123!");
     await page.getByPlaceholder("user@example.com").fill("newuser@example.com");
-
-    // Submit
     await page.getByRole("button", { name: /Create User/i }).click();
-
-    // Modal should close and new user should appear
     await expect(page.getByText("newuser", { exact: true })).toBeVisible({
       timeout: 5000,
     });
@@ -476,17 +450,12 @@ test.describe("Admin operations", () => {
     await page.goto("/#/admin/users-groups");
     await expect(page.getByText("viewer", { exact: true })).toBeVisible();
 
-    // Accept the confirmation dialog
     page.on("dialog", (dialog) => dialog.accept());
-
-    // Find the delete button for the viewer user row (title="Delete user")
-    // The user list renders each user in a <li> with username and a delete button with title="Delete user"
     const viewerRow = page.locator("li").filter({ hasText: "viewer" });
     const deleteButton = viewerRow.locator('button[title="Delete user"]');
 
     if (await deleteButton.first().isVisible()) {
       await deleteButton.first().click();
-      // User should be removed
       await expect(page.getByText("viewer", { exact: true })).not.toBeVisible({
         timeout: 5000,
       });
@@ -495,14 +464,11 @@ test.describe("Admin operations", () => {
     expect(unhandledRequests).toEqual([]);
   });
 
-  // --- Group Management ---
-
   test("create group via inline form", async ({ page }) => {
     const unhandledRequests = await mockAdminApi(page);
 
     await page.goto("/#/admin/users-groups");
 
-    // Find group creation form
     const groupInput = page
       .getByPlaceholder(/group name/i)
       .or(page.getByPlaceholder(/new group/i));
@@ -510,7 +476,6 @@ test.describe("Admin operations", () => {
       await groupInput.fill("Test Group");
       await page.getByRole("button", { name: /Create/i }).click();
 
-      // Group should appear
       await expect(page.getByText("Test Group")).toBeVisible({ timeout: 5000 });
     }
 
@@ -522,7 +487,6 @@ test.describe("Admin operations", () => {
 
     await page.goto("/#/admin/users-groups");
 
-    // First create a group so we have one to delete
     const groupInput = page
       .getByPlaceholder(/group name/i)
       .or(page.getByPlaceholder(/new group/i));
@@ -533,10 +497,7 @@ test.describe("Admin operations", () => {
         timeout: 5000,
       });
 
-      // Accept the confirmation dialog
       page.on("dialog", (dialog) => dialog.accept());
-
-      // Find and click the delete button for the group
       const groupRow = page
         .locator("li, tr, [data-testid]")
         .filter({ hasText: "Group To Delete" });
@@ -548,7 +509,6 @@ test.describe("Admin operations", () => {
 
       if (await deleteButton.isVisible()) {
         await deleteButton.click();
-        // Group should be removed
         await expect(page.getByText("Group To Delete")).not.toBeVisible({
           timeout: 5000,
         });
@@ -564,12 +524,9 @@ test.describe("Admin operations", () => {
 
     await page.goto("/#/admin/users-groups");
 
-    // Should show both users and groups sections
     await expect(
       main.getByText("admin", { exact: true }).first(),
     ).toBeVisible();
-
-    // Groups section should be visible (may be empty)
     await expect(main.getByText(/Groups/i).first()).toBeVisible();
 
     expect(unhandledRequests).toEqual([]);

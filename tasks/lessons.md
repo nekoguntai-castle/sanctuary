@@ -2,6 +2,19 @@
 
 Patterns to remember from CI corrections, surprising debugs, and reviews. Written terse so future-me can scan quickly. Each entry: rule, why, how to apply.
 
+## Do Not Chase Grade Points Without A Design Boundary
+
+**Rule:** In grade remediation, only split or classify a file when the change follows a real ownership, lifecycle, runtime, fixture, or proof-artifact boundary.
+
+**Why:** The user clarified that classification-aware scoring and large-file cleanup were worth doing only if architecturally correct, not just to reach 100/100.
+
+**How to apply:**
+
+- Treat the score as a signal for investigation, not as permission to fragment cohesive modules.
+- Prefer extracting mixed responsibilities into named modules when the boundary already exists in the domain.
+- Leave cohesive orchestrators intact when further splitting would make lifecycle or state ownership harder to reason about.
+- Document intentional non-changes in the grade report so future passes do not re-open the same metric-driven refactor.
+
 ## Model Wallet Key-Material Prerequisites Explicitly
 
 **Rule:** Wallet setup plans must distinguish "create the wallet record" from "collect the required public key material first," especially for multisig flows that need cosigner xpub/ypub/zpub exports and may use any M-of-N quorum.

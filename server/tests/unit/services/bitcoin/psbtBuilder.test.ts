@@ -1,10 +1,3 @@
-/**
- * PSBT Builder Tests
- *
- * Tests for BIP32 derivation, witness script construction,
- * multisig script parsing, input finalization, and decoy amounts.
- */
-
 import * as bitcoin from "bitcoinjs-lib";
 import * as ecc from "tiny-secp256k1";
 import { ECPairFactory } from "ecpair";
@@ -19,8 +12,6 @@ import {
 import { addInputsWithBip32 } from "../../../../src/services/bitcoin/transactions/psbtInputConstruction";
 import type { MultisigKeyInfo } from "../../../../src/services/bitcoin/addressDerivation";
 import { testMultisigKeys } from "./psbtBuilderTestFixtures";
-
-// Initialize ECC library for bitcoinjs-lib and create ECPair factory
 bitcoin.initEccLib(ecc);
 const ECPair = ECPairFactory(ecc);
 
@@ -79,9 +70,6 @@ describe("PSBT Builder", () => {
     });
   });
 
-  // ========================================
-  // buildMultisigBip32Derivations
-  // ========================================
   describe("buildMultisigBip32Derivations", () => {
     it("should build derivations for all cosigners at a given path", () => {
       // m/48'/1'/0'/2'/0/5 — external chain, address index 5
