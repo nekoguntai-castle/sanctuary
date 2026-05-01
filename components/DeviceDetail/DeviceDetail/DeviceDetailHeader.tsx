@@ -1,6 +1,7 @@
 import type React from 'react';
-import { ArrowLeft, ChevronDown, Edit2, Save, Users, X } from 'lucide-react';
+import { ArrowLeft, ChevronDown, Edit2, Save, Trash2, Users, X } from 'lucide-react';
 import type { Device, HardwareDevice, HardwareDeviceModel } from '../../../types';
+import { Button } from '../../ui/Button';
 import { getDeviceIcon } from '../../ui/CustomIcons';
 
 type DeviceDetailHeaderProps = {
@@ -18,6 +19,13 @@ type DeviceDetailHeaderProps = {
   onSave: () => void;
   onCancelEdit: () => void;
   getDeviceDisplayName: (type: string) => string;
+  canDelete: boolean;
+  deleteConfirmOpen: boolean;
+  deletePending: boolean;
+  deleteError: string | null;
+  onRequestDelete: () => void;
+  onConfirmDelete: () => void;
+  onCancelDelete: () => void;
   children?: React.ReactNode;
 };
 
@@ -36,6 +44,13 @@ export function DeviceDetailHeader({
   onSave,
   onCancelEdit,
   getDeviceDisplayName,
+  canDelete,
+  deleteConfirmOpen,
+  deletePending,
+  deleteError,
+  onRequestDelete,
+  onConfirmDelete,
+  onCancelDelete,
   children,
 }: DeviceDetailHeaderProps) {
   return (
@@ -45,7 +60,7 @@ export function DeviceDetailHeader({
         <div className="flex items-start space-x-6">
           <DeviceIconPanel deviceType={device.type} />
           <div className="flex-1">
-            <div className="flex items-center justify-between">
+            <div className="flex items-start justify-between gap-4">
               <DeviceTitleArea
                 device={device}
                 isEditing={isEditing}
@@ -61,7 +76,16 @@ export function DeviceDetailHeader({
                 onCancelEdit={onCancelEdit}
                 getDeviceDisplayName={getDeviceDisplayName}
               />
-              <DeviceFingerprint fingerprint={device.fingerprint} />
+              <DeviceHeaderActions
+                canDelete={canDelete}
+                deleteConfirmOpen={deleteConfirmOpen}
+                deletePending={deletePending}
+                deleteError={deleteError}
+                fingerprint={device.fingerprint}
+                onRequestDelete={onRequestDelete}
+                onConfirmDelete={onConfirmDelete}
+                onCancelDelete={onCancelDelete}
+              />
             </div>
             {children}
           </div>
@@ -91,7 +115,18 @@ function DeviceIconPanel({ deviceType }: { deviceType: Device['type'] }) {
   );
 }
 
-type DeviceTitleAreaProps = Omit<DeviceDetailHeaderProps, 'onBack' | 'children'>;
+type DeviceTitleAreaProps = Omit<
+  DeviceDetailHeaderProps,
+  | 'onBack'
+  | 'children'
+  | 'canDelete'
+  | 'deleteConfirmOpen'
+  | 'deletePending'
+  | 'deleteError'
+  | 'onRequestDelete'
+  | 'onConfirmDelete'
+  | 'onCancelDelete'
+>;
 
 function DeviceTitleArea({
   device,
@@ -238,6 +273,101 @@ function DeviceTypeEditor({
         <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-sanctuary-400 pointer-events-none" />
       </div>
     </div>
+  );
+}
+
+function DeviceHeaderActions({
+  canDelete,
+  deleteConfirmOpen,
+  deletePending,
+  deleteError,
+  fingerprint,
+  onRequestDelete,
+  onConfirmDelete,
+  onCancelDelete,
+}: {
+  canDelete: boolean;
+  deleteConfirmOpen: boolean;
+  deletePending: boolean;
+  deleteError: string | null;
+  fingerprint: string;
+  onRequestDelete: () => void;
+  onConfirmDelete: () => void;
+  onCancelDelete: () => void;
+}) {
+  return (
+    <div className="flex flex-col items-end gap-2 min-w-fit">
+      <div className="flex items-start gap-3">
+        {canDelete && (
+          <DeviceDeleteAction
+            deleteConfirmOpen={deleteConfirmOpen}
+            deletePending={deletePending}
+            onRequestDelete={onRequestDelete}
+            onConfirmDelete={onConfirmDelete}
+            onCancelDelete={onCancelDelete}
+          />
+        )}
+        <DeviceFingerprint fingerprint={fingerprint} />
+      </div>
+      {deleteError && (
+        <p className="max-w-xs text-right text-xs text-rose-600 dark:text-rose-300">{deleteError}</p>
+      )}
+    </div>
+  );
+}
+
+function DeviceDeleteAction({
+  deleteConfirmOpen,
+  deletePending,
+  onRequestDelete,
+  onConfirmDelete,
+  onCancelDelete,
+}: {
+  deleteConfirmOpen: boolean;
+  deletePending: boolean;
+  onRequestDelete: () => void;
+  onConfirmDelete: () => void;
+  onCancelDelete: () => void;
+}) {
+  if (deleteConfirmOpen) {
+    return (
+      <div className="flex items-center gap-2 rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-xs dark:border-rose-500/30 dark:bg-rose-500/10">
+        <span className="text-rose-700 dark:text-rose-200">Delete?</span>
+        <Button
+          onClick={onConfirmDelete}
+          disabled={deletePending}
+          variant="danger"
+          size="sm"
+          className="px-2 py-1"
+          aria-label="Confirm delete device"
+        >
+          {deletePending ? 'Deleting' : 'Delete'}
+        </Button>
+        <Button
+          onClick={onCancelDelete}
+          disabled={deletePending}
+          variant="secondary"
+          size="sm"
+          className="px-2 py-1"
+          aria-label="Cancel delete device"
+        >
+          Cancel
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <Button
+      onClick={onRequestDelete}
+      variant="ghost"
+      size="sm"
+      className="p-2 text-sanctuary-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10 dark:hover:text-rose-300"
+      aria-label="Delete device"
+      title="Delete device"
+    >
+      <Trash2 className="h-4 w-4" />
+    </Button>
   );
 }
 

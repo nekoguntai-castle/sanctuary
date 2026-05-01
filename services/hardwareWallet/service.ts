@@ -23,14 +23,19 @@ import type {
 
 const log = createLogger('HardwareWalletService');
 type AdapterLoader = () => Promise<DeviceAdapter>;
-type StandardXpubResult = XpubResult & {
+export type StandardXpubResult = XpubResult & {
   purpose: 'single_sig' | 'multisig';
   scriptType: 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy';
 };
-type XpubFetchFailure = {
+export type XpubFetchFailure = {
   name: string;
   path: string;
   message: string;
+};
+export type XpubBatchResult = {
+  results: StandardXpubResult[];
+  failures: XpubFetchFailure[];
+  totalPaths: number;
 };
 
 function getXpubFetchErrorMessage(error: unknown): string {
@@ -257,7 +262,8 @@ export class HardwareWalletService {
   }
 
   /**
-   * Standard derivation paths to fetch for multi-account import
+   * Standard derivation paths to fetch for multi-account import.
+   * Coin type 1 is the BIP-44 testnet-family slot used by testnet and signet.
    */
   static readonly STANDARD_PATHS = [
     { path: "m/84'/0'/0'", purpose: 'single_sig' as const, scriptType: 'native_segwit' as const, name: 'Native SegWit (BIP-84)' },
@@ -266,6 +272,12 @@ export class HardwareWalletService {
     { path: "m/44'/0'/0'", purpose: 'single_sig' as const, scriptType: 'legacy' as const, name: 'Legacy (BIP-44)' },
     { path: "m/48'/0'/0'/2'", purpose: 'multisig' as const, scriptType: 'native_segwit' as const, name: 'Multisig Native SegWit (BIP-48)' },
     { path: "m/48'/0'/0'/1'", purpose: 'multisig' as const, scriptType: 'nested_segwit' as const, name: 'Multisig Nested SegWit (BIP-48)' },
+    { path: "m/84'/1'/0'", purpose: 'single_sig' as const, scriptType: 'native_segwit' as const, name: 'Testnet Native SegWit (BIP-84)' },
+    { path: "m/86'/1'/0'", purpose: 'single_sig' as const, scriptType: 'taproot' as const, name: 'Testnet Taproot (BIP-86)' },
+    { path: "m/49'/1'/0'", purpose: 'single_sig' as const, scriptType: 'nested_segwit' as const, name: 'Testnet Nested SegWit (BIP-49)' },
+    { path: "m/44'/1'/0'", purpose: 'single_sig' as const, scriptType: 'legacy' as const, name: 'Testnet Legacy (BIP-44)' },
+    { path: "m/48'/1'/0'/2'", purpose: 'multisig' as const, scriptType: 'native_segwit' as const, name: 'Testnet Multisig Native SegWit (BIP-48)' },
+    { path: "m/48'/1'/0'/1'", purpose: 'multisig' as const, scriptType: 'nested_segwit' as const, name: 'Testnet Multisig Nested SegWit (BIP-48)' },
   ];
 
   /**
@@ -277,6 +289,18 @@ export class HardwareWalletService {
   async getAllXpubs(
     onProgress?: (current: number, total: number, path: string) => void
   ): Promise<StandardXpubResult[]> {
+    const batch = await this.getAllXpubsWithFailures(onProgress);
+    return batch.results;
+  }
+
+  /**
+   * Get all standard xpubs and the paths that were skipped by the device.
+   * This preserves partial success while letting UI flows explain missing
+   * network-family accounts instead of silently treating the import as complete.
+   */
+  async getAllXpubsWithFailures(
+    onProgress?: (current: number, total: number, path: string) => void
+  ): Promise<XpubBatchResult> {
     if (!this.activeAdapter) {
       throw new Error('No device connected');
     }
@@ -321,7 +345,7 @@ export class HardwareWalletService {
       });
     }
 
-    return results;
+    return { results, failures, totalPaths: paths.length };
   }
 
   /**

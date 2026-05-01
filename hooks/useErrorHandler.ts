@@ -6,9 +6,9 @@
  * Built on top of useNotify for unified notification access.
  */
 
-import { useCallback } from 'react';
-import { useNotify } from './useNotify';
-import { ApiError } from '../src/api/client';
+import { useCallback } from "react";
+import { useNotify } from "./useNotify";
+import { ApiError } from "../src/api/client";
 
 interface ErrorHandlerOptions {
   defaultTitle?: string;
@@ -30,7 +30,7 @@ interface ErrorHandlerOptions {
  */
 export const useErrorHandler = (options: ErrorHandlerOptions = {}) => {
   const notify = useNotify();
-  const { defaultTitle = 'Error', defaultDuration = 5000 } = options;
+  const { defaultTitle = "Error", defaultDuration = 5000 } = options;
 
   /**
    * Handle and display an error notification.
@@ -38,40 +38,47 @@ export const useErrorHandler = (options: ErrorHandlerOptions = {}) => {
    */
   const handleError = useCallback(
     (error: unknown, customTitle?: string) => {
-      let message = 'An unexpected error occurred';
+      let message = "An unexpected error occurred";
 
       if (error instanceof ApiError) {
         message = error.message;
       } else if (error instanceof Error) {
         message = error.message;
-      } else if (typeof error === 'string') {
+      } else if (typeof error === "string") {
         message = error;
       }
 
       notify.error(customTitle || defaultTitle, message, defaultDuration);
     },
-    [notify, defaultTitle, defaultDuration]
+    [notify, defaultTitle, defaultDuration],
   );
 
   /**
    * Display a success notification.
    */
   const showSuccess = useCallback(
-    (message: string, title = 'Success') => {
+    (message: string, title = "Success") => {
       notify.success(title, message, 3000);
     },
-    [notify]
+    [notify],
   );
 
   /**
    * Display an info notification.
    */
   const showInfo = useCallback(
-    (message: string, title = 'Info') => {
+    (message: string, title = "Info") => {
       notify.info(title, message, 4000);
     },
-    [notify]
+    [notify],
   );
 
-  return { handleError, showSuccess, showInfo };
+  const showWarning = useCallback(
+    (message: string, title = "Warning") => {
+      notify.warning(title, message, 6000);
+    },
+    [notify],
+  );
+
+  return { handleError, showSuccess, showInfo, showWarning };
 };

@@ -31,7 +31,10 @@ vi.mock('../../../components/NetworkTabs', () => ({
 vi.mock('../../../components/Dashboard/MempoolSection', () => ({
   MempoolSection: (props: any) => (
     <div data-testid="mempool-section">
-      {props.selectedNetwork}:{props.wsState}
+      {props.selectedNetwork}:{props.wsState}:{props.nodeStatus}
+      <button data-testid="open-node-config" onClick={props.onConfigureNode}>
+        Open Node Config
+      </button>
     </div>
   ),
 }));
@@ -245,7 +248,9 @@ describe('Dashboard render branches', () => {
     expect(screen.getByText('Unknown')).toBeInTheDocument();
   });
 
-  it('renders non-mainnet price and node placeholders with null price change', () => {
+  it('renders non-mainnet price and unavailable node status with null price change', async () => {
+    const user = userEvent.setup();
+    const navigate = vi.fn();
     mocks.dashboardData = makeDashboardState({
       isMainnet: false,
       selectedNetwork: 'testnet',
@@ -253,16 +258,20 @@ describe('Dashboard render branches', () => {
       versionInfo: null,
       bitcoinStatus: undefined,
       nodeStatus: 'unknown',
+      navigate,
     });
     render(<Dashboard />);
 
     expect(screen.getByText('tBTC')).toBeInTheDocument();
     expect(screen.getByText('Testnet coins have no market value')).toBeInTheDocument();
-    expect(screen.getByText('Testnet node not configured')).toBeInTheDocument();
-    expect(screen.getByText('Configure in Settings → Node Configuration')).toBeInTheDocument();
+    expect(screen.getByText('Testnet node status is unavailable')).toBeInTheDocument();
+    expect(screen.getByText('Open Admin → Node Config to review Testnet settings.')).toBeInTheDocument();
     expect(screen.queryByText('Update Available: v2.0.0')).not.toBeInTheDocument();
     expect(screen.queryByTestId('trending-up')).not.toBeInTheDocument();
     expect(screen.queryByTestId('trending-down')).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId('open-node-config'));
+    expect(navigate).toHaveBeenCalledWith('/admin/node-config');
   });
 
   it('renders mainnet null price change placeholder and pool initializing state', () => {
@@ -348,18 +357,41 @@ describe('Dashboard render branches', () => {
     expect(screen.getByText('Create Your First Wallet')).toBeInTheDocument();
   });
 
-  it('renders signet placeholder copy and symbol', () => {
+  it('renders signet error copy and symbol', () => {
     mocks.dashboardData = makeDashboardState({
       isMainnet: false,
       selectedNetwork: 'signet',
       versionInfo: null,
-      bitcoinStatus: undefined,
-      nodeStatus: 'unknown',
+      bitcoinStatus: { connected: false, error: 'Signet sync is off' },
+      nodeStatus: 'error',
     });
     render(<Dashboard />);
 
     expect(screen.getByText('sBTC')).toBeInTheDocument();
     expect(screen.getByText('Signet coins have no market value')).toBeInTheDocument();
-    expect(screen.getByText('Signet node not configured')).toBeInTheDocument();
+    expect(screen.getByText('Signet sync is off')).toBeInTheDocument();
+  });
+
+  it('renders configured testnet node details from selected-network status', () => {
+    mocks.dashboardData = makeDashboardState({
+      isMainnet: false,
+      selectedNetwork: 'testnet',
+      versionInfo: null,
+      bitcoinStatus: {
+        connected: true,
+        blockHeight: 4500000,
+        host: 'testnet.example.com',
+        useSsl: true,
+        pool: { enabled: false, minConnections: 1, maxConnections: 1, stats: null },
+      },
+      nodeStatus: 'connected',
+    });
+    render(<Dashboard />);
+
+    expect(screen.getByText('tBTC')).toBeInTheDocument();
+    expect(screen.getByText('Connected')).toBeInTheDocument();
+    expect(screen.getByText('4,500,000')).toBeInTheDocument();
+    expect(screen.getByText('testnet.example.com')).toBeInTheDocument();
+    expect(screen.queryByText(/not configured/i)).not.toBeInTheDocument();
   });
 });

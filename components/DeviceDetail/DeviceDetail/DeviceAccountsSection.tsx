@@ -1,7 +1,9 @@
-import { Plus } from 'lucide-react';
+import { useState } from 'react';
+import { ChevronDown, Plus } from 'lucide-react';
 import type { Device, DeviceAccount } from '../../../types';
 import { AddAccountFlow } from '../accounts/AddAccountFlow';
 import { getAccountTypeInfo } from '../accountTypes';
+import { splitTestnetSignetAccounts } from '../../../utils/derivationPathGroups';
 
 type DeviceAccountsSectionProps = {
   deviceId: string;
@@ -57,11 +59,51 @@ function DeviceAccountsList({ device }: { device: Device }) {
     return <LegacyDeviceAccountCard device={device} />;
   }
 
+  const { primaryAccounts, testnetSignetAccounts } = splitTestnetSignetAccounts(device.accounts);
+
   return (
     <div className="space-y-3">
-      {device.accounts.map(account => (
+      {primaryAccounts.map(account => (
         <DeviceAccountCard key={account.id} account={account} />
       ))}
+      {testnetSignetAccounts.length > 0 && (
+        <TestnetSignetAccountsDisclosure accounts={testnetSignetAccounts} />
+      )}
+    </div>
+  );
+}
+
+function TestnetSignetAccountsDisclosure({ accounts }: { accounts: DeviceAccount[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const accountLabel = accounts.length === 1 ? 'path' : 'paths';
+
+  return (
+    <div className="rounded-lg border border-testnet-200 dark:border-testnet-800 bg-testnet-50/70 dark:bg-testnet-900/20">
+      <button
+        type="button"
+        className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((value) => !value)}
+      >
+        <div>
+          <p className="text-sm font-medium text-testnet-800 dark:text-testnet-200">
+            Testnet / signet derivation paths
+          </p>
+          <p className="text-xs text-testnet-700 dark:text-testnet-300">
+            {accounts.length} {accountLabel} hidden
+          </p>
+        </div>
+        <ChevronDown
+          className={`w-4 h-4 text-testnet-700 dark:text-testnet-300 transition-transform ${expanded ? 'rotate-180' : ''}`}
+        />
+      </button>
+      {expanded && (
+        <div className="space-y-3 px-3 pb-3">
+          {accounts.map(account => (
+            <DeviceAccountCard key={account.id} account={account} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

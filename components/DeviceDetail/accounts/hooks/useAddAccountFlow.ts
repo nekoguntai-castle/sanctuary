@@ -12,6 +12,11 @@ import {
   DeviceAccount as ParsedDeviceAccount,
   parseDeviceJson,
 } from "../../../../services/deviceParsers";
+import {
+  buildNoNewUsbAccountsMessage,
+  buildSkippedXpubWarning,
+} from "../../../../services/hardwareWallet/xpubImportWarnings";
+import { fetchStandardXpubBatch } from "../../../../services/hardwareWallet/xpubBatch";
 import type { DeviceType } from "../../../../services/hardwareWallet/types";
 import { getDevice, addDeviceAccount } from "../../../../src/api/devices";
 import { createLogger } from "../../../../utils/logger";
@@ -491,11 +496,13 @@ export function useAddAccountFlow({
       await hardwareWalletService.connect(deviceType);
 
       // Fetch all xpubs
-      const allXpubs = await hardwareWalletService.getAllXpubs(
+      const xpubBatch = await fetchStandardXpubBatch(
+        hardwareWalletService,
         (current, total, name) => {
           setUsbProgress({ current, total, name });
         },
       );
+      const allXpubs = xpubBatch.results;
 
       // Filter out accounts that already exist on this device
       const existingPaths = new Set(
@@ -504,9 +511,7 @@ export function useAddAccountFlow({
       const newAccounts = allXpubs.filter((x) => !existingPaths.has(x.path));
 
       if (newAccounts.length === 0) {
-        setAddAccountError(
-          "No new accounts to add. All derivation paths already exist on this device.",
-        );
+        setAddAccountError(buildNoNewUsbAccountsMessage(xpubBatch.failures));
         return;
       }
 
@@ -524,6 +529,16 @@ export function useAddAccountFlow({
         } catch (err) {
           log.warn("Failed to add account", { path: account.path, err });
         }
+      }
+
+      if (addedCount === 0) {
+        const warning = buildSkippedXpubWarning(xpubBatch.failures);
+        setAddAccountError(
+          warning
+            ? `No accounts were added. ${warning}`
+            : "No accounts were added. Check for duplicate paths and try again.",
+        );
+        return;
       }
 
       // Refresh device data

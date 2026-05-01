@@ -31,6 +31,8 @@ let feeEstimatesData: any;
 let feesLoading = false;
 let bitcoinStatusData: any;
 let statusLoading = false;
+let bitcoinStatusNetworks: string[] = [];
+let mempoolNetworks: string[] = [];
 let mempoolDataData: any;
 let mempoolLoading = false;
 let mempoolRefreshing = false;
@@ -101,13 +103,19 @@ vi.mock('../../../hooks/queries/useWallets', () => ({
 
 vi.mock('../../../hooks/queries/useBitcoin', () => ({
   useFeeEstimates: () => ({ data: feeEstimatesData, isLoading: feesLoading }),
-  useBitcoinStatus: () => ({ data: bitcoinStatusData, isLoading: statusLoading }),
-  useMempoolData: () => ({
-    data: mempoolDataData,
-    isLoading: mempoolLoading,
-    refetch: mockRefetchMempool,
-    isFetching: mempoolRefreshing,
-  }),
+  useBitcoinStatus: (network: string) => {
+    bitcoinStatusNetworks.push(network);
+    return { data: bitcoinStatusData, isLoading: statusLoading };
+  },
+  useMempoolData: (network: string) => {
+    mempoolNetworks.push(network);
+    return {
+      data: mempoolDataData,
+      isLoading: mempoolLoading,
+      refetch: mockRefetchMempool,
+      isFetching: mempoolRefreshing,
+    };
+  },
 }));
 
 vi.mock('../../../contexts/CurrencyContext', () => ({
@@ -219,6 +227,8 @@ const resetState = () => {
   feesLoading = false;
   bitcoinStatusData = { connected: true, explorerUrl: 'https://mempool.space' };
   statusLoading = false;
+  bitcoinStatusNetworks = [];
+  mempoolNetworks = [];
   mempoolDataData = {
     mempool: [{ id: 'mp1' }],
     blocks: [{ id: 'b1' }, { id: 'b2' }],
@@ -293,6 +303,7 @@ describe('useDashboardData', () => {
     expect(result.current.totalBalance).toBe(7000);
     expect(result.current.loading).toBe(false);
     expect(result.current.isMainnet).toBe(true);
+    expect(mempoolNetworks).toContain('mainnet');
 
     expect(result.current.recentTx).toHaveLength(2);
     expect(result.current.recentTx[0].amount).toBe(1500);
@@ -376,11 +387,15 @@ describe('useDashboardData', () => {
     expect(result.current.selectedNetwork).toBe('testnet');
     expect(result.current.isMainnet).toBe(false);
     expect(result.current.filteredWallets.map(w => w.id)).toEqual(['w-test']);
+    expect(bitcoinStatusNetworks).toContain('testnet');
+    expect(mempoolNetworks).toContain('testnet');
 
     act(() => {
       result.current.handleNetworkChange('signet');
     });
     expect(result.current.selectedNetwork).toBe('signet');
+    expect(bitcoinStatusNetworks).toContain('signet');
+    expect(mempoolNetworks).toContain('signet');
     expect(mockSearchParams.get('network')).toBe('signet');
     expect(mockSetSearchParams).toHaveBeenLastCalledWith(mockSearchParams, { replace: true });
 

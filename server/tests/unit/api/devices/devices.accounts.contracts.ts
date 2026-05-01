@@ -70,6 +70,12 @@ export function registerDeviceAccountTests(): void {
 
       expect(response.status).toBe(201);
       expect(response.body.purpose).toBe('multisig');
+      expect(mockPrismaClient.deviceAccount.findFirst).toHaveBeenCalledWith({
+        where: {
+          deviceId: 'device-1',
+          derivationPath: "m/48'/0'/0'/2'",
+        },
+      });
       expect(mockPrismaClient.deviceAccount.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           deviceId: 'device-1',

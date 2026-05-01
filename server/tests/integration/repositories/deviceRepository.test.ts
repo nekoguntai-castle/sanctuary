@@ -275,7 +275,7 @@ describeIfDatabase('DeviceRepository Integration Tests', () => {
       });
     });
 
-    it('should enforce unique purpose+scriptType per device', async () => {
+    it('should allow same purpose and script type when coin-type paths differ', async () => {
       await withTestTransaction(async (tx) => {
         const user = await createTestUser(tx);
         const device = await createTestDevice(tx, user.id);
@@ -290,17 +290,25 @@ describeIfDatabase('DeviceRepository Integration Tests', () => {
           },
         });
 
-        await expect(
-          tx.deviceAccount.create({
-            data: {
-              deviceId: device.id,
-              purpose: 'single_sig',
-              scriptType: 'native_segwit',
-              derivationPath: "m/84'/0'/1'", // Different path
-              xpub: 'zpub2...',
-            },
-          })
-        ).rejects.toThrow();
+        await tx.deviceAccount.create({
+          data: {
+            deviceId: device.id,
+            purpose: 'single_sig',
+            scriptType: 'native_segwit',
+            derivationPath: "m/84'/1'/0'",
+            xpub: 'tpub2...',
+          },
+        });
+
+        const accounts = await tx.deviceAccount.findMany({
+          where: {
+            deviceId: device.id,
+            purpose: 'single_sig',
+            scriptType: 'native_segwit',
+          },
+        });
+
+        expect(accounts).toHaveLength(2);
       });
     });
 

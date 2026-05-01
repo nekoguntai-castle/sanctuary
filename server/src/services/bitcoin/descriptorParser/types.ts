@@ -11,7 +11,7 @@ export interface ParsedDevice {
 }
 
 export type ScriptType = 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy';
-export type Network = 'mainnet' | 'testnet' | 'regtest';
+export type Network = 'mainnet' | 'testnet' | 'signet' | 'regtest';
 
 export interface ParsedDescriptor {
   type: 'single_sig' | 'multi_sig';

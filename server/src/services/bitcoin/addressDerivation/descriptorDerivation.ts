@@ -10,7 +10,12 @@ import * as ecc from 'tiny-secp256k1';
 import { parseDescriptor } from './descriptorParser';
 import { deriveAddress } from './singleSigDerivation';
 import { deriveMultisigAddress } from './multisigDerivation';
-import type { ParsedDescriptor, DescriptorDerivationDeps, DerivedAddress } from './types';
+import type {
+  AddressDerivationNetwork,
+  ParsedDescriptor,
+  DescriptorDerivationDeps,
+  DerivedAddress,
+} from './types';
 
 // Initialize ECC library for Taproot/Schnorr support
 bitcoin.initEccLib(ecc);
@@ -22,7 +27,7 @@ export function deriveAddressFromDescriptor(
   descriptor: string,
   index: number,
   options: {
-    network?: 'mainnet' | 'testnet' | 'regtest';
+    network?: AddressDerivationNetwork;
     change?: boolean;
   } = {}
 ): DerivedAddress {
@@ -38,7 +43,7 @@ export function deriveAddressFromParsedDescriptor(
   parsed: ParsedDescriptor,
   index: number,
   options: {
-    network?: 'mainnet' | 'testnet' | 'regtest';
+    network?: AddressDerivationNetwork;
     change?: boolean;
   } = {},
   deps: DescriptorDerivationDeps = {}
@@ -79,7 +84,7 @@ export function deriveAddressesFromDescriptor(
   startIndex: number,
   count: number,
   options: {
-    network?: 'mainnet' | 'testnet' | 'regtest';
+    network?: AddressDerivationNetwork;
     change?: boolean;
   } = {}
 ): Array<{

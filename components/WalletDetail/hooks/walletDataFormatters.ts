@@ -6,8 +6,8 @@
  * data.
  */
 
-import type { Wallet, Device } from '../../../types';
-import { WalletType } from '../../../types';
+import type { Wallet, Device } from "../../../types";
+import { WalletType } from "../../../types";
 
 // ---------------------------------------------------------------------------
 // Wallet formatting
@@ -20,7 +20,10 @@ import { WalletType } from '../../../types';
  * @param userId    - The authenticated user's ID (used as ownerId)
  */
 export function formatWalletFromApi(apiWallet: Wallet, userId: string): Wallet {
-  const walletType = apiWallet.type === 'multi_sig' ? WalletType.MULTI_SIG : WalletType.SINGLE_SIG;
+  const walletType =
+    apiWallet.type === "multi_sig"
+      ? WalletType.MULTI_SIG
+      : WalletType.SINGLE_SIG;
 
   return {
     id: apiWallet.id,
@@ -29,21 +32,28 @@ export function formatWalletFromApi(apiWallet: Wallet, userId: string): Wallet {
     network: apiWallet.network,
     balance: apiWallet.balance,
     scriptType: apiWallet.scriptType,
-    derivationPath: apiWallet.descriptor || '',
-    fingerprint: apiWallet.fingerprint || '',
+    derivationPath: apiWallet.descriptor || "",
+    fingerprint: apiWallet.fingerprint || "",
     label: apiWallet.name,
-    xpub: '',
-    unit: 'sats',
+    xpub: "",
+    unit: "sats",
     ownerId: userId,
     groupIds: [],
-    quorum: apiWallet.quorum && apiWallet.totalSigners
-      ? { m: Number(apiWallet.quorum), n: apiWallet.totalSigners }
-      : { m: 1, n: 1 },
+    quorum:
+      apiWallet.quorum && apiWallet.totalSigners
+        ? { m: Number(apiWallet.quorum), n: apiWallet.totalSigners }
+        : { m: 1, n: 1 },
     descriptor: apiWallet.descriptor,
     deviceIds: [],
     // Sync metadata
     lastSyncedAt: apiWallet.lastSyncedAt,
-    lastSyncStatus: apiWallet.lastSyncStatus as 'success' | 'failed' | 'partial' | 'retrying' | null,
+    lastSyncStatus: apiWallet.lastSyncStatus as
+      | "success"
+      | "failed"
+      | "partial"
+      | "retrying"
+      | null,
+    lastSyncError: apiWallet.lastSyncError,
     syncInProgress: apiWallet.syncInProgress,
     // Sharing info
     isShared: apiWallet.isShared,
@@ -73,15 +83,21 @@ export function formatDevicesForWallet(
   walletId: string,
   userId: string,
 ): Device[] {
-  const walletType = apiWallet.type === 'multi_sig' ? WalletType.MULTI_SIG : WalletType.SINGLE_SIG;
-  const expectedPurpose = walletType === WalletType.MULTI_SIG ? 'multisig' : 'single_sig';
+  const walletType =
+    apiWallet.type === "multi_sig"
+      ? WalletType.MULTI_SIG
+      : WalletType.SINGLE_SIG;
+  const expectedPurpose =
+    walletType === WalletType.MULTI_SIG ? "multisig" : "single_sig";
 
   return allDevices
-    .filter(d => d.wallets?.some(w => w.wallet.id === walletId))
-    .map(d => {
+    .filter((d) => d.wallets?.some((w) => w.wallet.id === walletId))
+    .map((d) => {
       const accounts = d.accounts || [];
       const exactMatch = accounts.find(
-        a => a.purpose === expectedPurpose && a.scriptType === apiWallet.scriptType,
+        (a) =>
+          a.purpose === expectedPurpose &&
+          a.scriptType === apiWallet.scriptType,
       );
       const accountMissing = !exactMatch;
 
@@ -90,7 +106,10 @@ export function formatDevicesForWallet(
         type: d.type,
         label: d.label,
         fingerprint: d.fingerprint,
-        derivationPath: exactMatch?.derivationPath || d.derivationPath || 'No matching account',
+        derivationPath:
+          exactMatch?.derivationPath ||
+          d.derivationPath ||
+          "No matching account",
         xpub: exactMatch?.xpub || d.xpub,
         userId,
         accountMissing,

@@ -16,14 +16,14 @@ import { getErrorMessage } from "../../utils/errors";
 import { hookRegistry, Operations } from "../hooks";
 import { InvalidInputError, DeviceNotFoundError } from "../../errors";
 import { generateInitialAddresses } from "./addressGeneration";
-import type { CreateWalletInput, WalletWithBalance } from "./types";
+import type { CreateWalletInput, WalletNetwork, WalletWithBalance } from "./types";
+import { buildDeviceInfo } from "./walletAccountSelection";
 
 const log = createLogger("WALLET:SVC_CREATE");
 
 type WalletDevice = Awaited<
   ReturnType<typeof deviceRepository.findByIdsAndUserWithAccounts>
 >[number];
-type WalletDeviceAccount = WalletDevice["accounts"][number];
 
 function validateWalletInput(input: CreateWalletInput): void {
   if (input.type !== "multi_sig") {
@@ -75,83 +75,6 @@ async function loadWalletDevices(
   return devices;
 }
 
-function walletPurpose(input: CreateWalletInput): "multisig" | "single_sig" {
-  return input.type === "multi_sig" ? "multisig" : "single_sig";
-}
-
-function selectDeviceAccount(
-  device: WalletDevice,
-  input: CreateWalletInput,
-): WalletDeviceAccount | undefined {
-  const purpose = walletPurpose(input);
-  const exactMatch = device.accounts.find(
-    (account) =>
-      account.purpose === purpose && account.scriptType === input.scriptType,
-  );
-
-  if (exactMatch) {
-    return exactMatch;
-  }
-
-  const purposeMatch = device.accounts.find(
-    (account) => account.purpose === purpose,
-  );
-  if (purposeMatch) {
-    return purposeMatch;
-  }
-
-  if (device.accounts.length === 0) {
-    return undefined;
-  }
-
-  log.warn("No matching account found for wallet type, using first account", {
-    deviceId: device.id,
-    fingerprint: device.fingerprint,
-    walletType: input.type,
-    scriptType: input.scriptType,
-    availableAccounts: device.accounts.map((account) => ({
-      purpose: account.purpose,
-      scriptType: account.scriptType,
-    })),
-  });
-
-  return device.accounts[0];
-}
-
-function warnIfUsingSingleSigForMultisig(
-  device: WalletDevice,
-  account: WalletDeviceAccount | undefined,
-  input: CreateWalletInput,
-): void {
-  if (input.type !== "multi_sig" || account?.purpose !== "single_sig") {
-    return;
-  }
-
-  log.warn(
-    "Using single-sig account for multisig wallet - this may cause signing issues",
-    {
-      deviceId: device.id,
-      fingerprint: device.fingerprint,
-      accountPath: account.derivationPath,
-      hint: "Consider adding a multisig account to this device",
-    },
-  );
-}
-
-function buildDeviceInfo(device: WalletDevice, input: CreateWalletInput) {
-  const account = selectDeviceAccount(device, input);
-  const xpub = account?.xpub || device.xpub;
-  const derivationPath = account?.derivationPath || device.derivationPath;
-
-  warnIfUsingSingleSigForMultisig(device, account, input);
-
-  return {
-    fingerprint: device.fingerprint,
-    xpub,
-    derivationPath: derivationPath || undefined,
-  };
-}
-
 function buildDescriptorFromDevices(
   devices: WalletDevice[],
   input: CreateWalletInput,
@@ -189,10 +112,7 @@ async function generateAddressesForWallet(
   }
 
   try {
-    const walletNetwork = (network || "mainnet") as
-      | "mainnet"
-      | "testnet"
-      | "regtest";
+    const walletNetwork: WalletNetwork = network || "mainnet";
     const addressesToCreate = generateInitialAddresses(
       walletId,
       descriptor,

@@ -32,7 +32,7 @@ import {
 
 const log = createLogger('AGENT:FUNDING_VALIDATION');
 
-type SupportedNetwork = 'mainnet' | 'testnet' | 'regtest';
+type SupportedNetwork = 'mainnet' | 'testnet' | 'signet' | 'regtest';
 
 export interface ValidateAgentFundingDraftSubmissionInput {
   fundingWalletId: string;
@@ -215,7 +215,12 @@ export async function validateAgentFundingDraftSubmission(
 }
 
 const parseSupportedNetwork = (network: string): SupportedNetwork => {
-  if (network === 'mainnet' || network === 'testnet' || network === 'regtest') {
+  if (
+    network === 'mainnet' ||
+    network === 'testnet' ||
+    network === 'signet' ||
+    network === 'regtest'
+  ) {
     return network;
   }
 

@@ -5,18 +5,18 @@ import { createQueryKeys } from './factory';
 // Query key factory for bitcoin-related queries
 export const bitcoinKeys = {
   ...createQueryKeys('bitcoin'),
-  status: () => ['bitcoin', 'status'] as const,
+  status: (network: bitcoinApi.BitcoinStatusNetwork = 'mainnet') => ['bitcoin', 'status', network] as const,
   fees: () => ['bitcoin', 'fees'] as const,
-  mempool: () => ['bitcoin', 'mempool'] as const,
+  mempool: (network: bitcoinApi.BitcoinDashboardNetwork = 'mainnet') => ['bitcoin', 'mempool', network] as const,
 };
 
 /**
  * Hook to fetch Bitcoin network status
  */
-export function useBitcoinStatus() {
+export function useBitcoinStatus(network: bitcoinApi.BitcoinStatusNetwork = 'mainnet') {
   return useQuery({
-    queryKey: bitcoinKeys.status(),
-    queryFn: bitcoinApi.getStatus,
+    queryKey: bitcoinKeys.status(network),
+    queryFn: () => bitcoinApi.getStatus(network),
     // Refetch status every 60 seconds
     refetchInterval: 60_000,
     placeholderData: keepPreviousData,
@@ -41,10 +41,10 @@ export function useFeeEstimates() {
 /**
  * Hook to fetch mempool and block data for visualization
  */
-export function useMempoolData() {
+export function useMempoolData(network: bitcoinApi.BitcoinDashboardNetwork = 'mainnet') {
   return useQuery({
-    queryKey: bitcoinKeys.mempool(),
-    queryFn: bitcoinApi.getMempoolData,
+    queryKey: bitcoinKeys.mempool(network),
+    queryFn: () => bitcoinApi.getMempoolData(network),
     // Mempool changes frequently, refetch every 30 seconds
     refetchInterval: 30_000,
     staleTime: 15_000,

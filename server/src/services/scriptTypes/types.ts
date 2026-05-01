@@ -5,7 +5,7 @@
  * New script types can be added by implementing ScriptTypeHandler.
  */
 
-export type Network = 'mainnet' | 'testnet' | 'regtest';
+export type Network = 'mainnet' | 'testnet' | 'signet' | 'regtest';
 
 /**
  * Device key information for descriptor building

@@ -32,14 +32,18 @@ describe('ConfigurationStep branch coverage', () => {
   it('shows testnet warning message and styling branch', () => {
     render(<ConfigurationStep {...baseProps} network="testnet" />);
 
-    expect(screen.getByText(/This wallet will operate on testnet/i)).toBeInTheDocument();
+    const warning = screen.getByText(/This wallet will operate on testnet/i);
+    expect(warning).toBeInTheDocument();
+    expect(warning.closest('div')).toHaveClass('dark:text-testnet-950');
     expect(screen.getByText(/Testnet coins have no real-world value/i)).toBeInTheDocument();
   });
 
   it('shows signet warning message branch', () => {
     render(<ConfigurationStep {...baseProps} network="signet" />);
 
-    expect(screen.getByText(/This wallet will operate on signet/i)).toBeInTheDocument();
+    const warning = screen.getByText(/This wallet will operate on signet/i);
+    expect(warning).toBeInTheDocument();
+    expect(warning.closest('div')).toHaveClass('dark:text-signet-950');
     expect(screen.getByText(/Signet is a controlled testing network/i)).toBeInTheDocument();
   });
 

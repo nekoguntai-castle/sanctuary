@@ -156,6 +156,140 @@ export function registerWalletCreateAccountSelectionTests(): void {
           expect.any(Object),
         );
       });
+
+      it("should select the matching testnet account for a testnet wallet", async () => {
+        const device = createMockDevice("device-1", "abc12345", [
+          {
+            purpose: "single_sig",
+            scriptType: "native_segwit",
+            derivationPath: "m/84'/0'/0'",
+            xpub: "xpub_mainnet_native",
+          },
+          {
+            purpose: "single_sig",
+            scriptType: "native_segwit",
+            derivationPath: "m/84'/1'/0'",
+            xpub: "tpub_testnet_native",
+          },
+        ]);
+
+        mockPrismaClient.device.findMany.mockResolvedValue([device]);
+        mockPrismaClient.wallet.create.mockResolvedValue({
+          id: "wallet-1",
+          name: "Testnet Wallet",
+          type: "single_sig",
+          scriptType: "native_segwit",
+          network: "testnet",
+        });
+        mockPrismaClient.wallet.findUnique.mockResolvedValue({
+          id: "wallet-1",
+          name: "Testnet Wallet",
+          type: "single_sig",
+          scriptType: "native_segwit",
+          network: "testnet",
+          devices: [],
+          addresses: [],
+        });
+
+        await createWallet(userId, {
+          name: "Testnet Wallet",
+          type: "single_sig",
+          scriptType: "native_segwit",
+          network: "testnet",
+          deviceIds: ["device-1"],
+        });
+
+        expect(mockBuildDescriptorFromDevices).toHaveBeenCalledWith(
+          expect.arrayContaining([
+            expect.objectContaining({
+              xpub: "tpub_testnet_native",
+              derivationPath: "m/84'/1'/0'",
+            }),
+          ]),
+          expect.objectContaining({ network: "testnet" }),
+        );
+      });
+
+      it("should select the matching signet account for a signet wallet", async () => {
+        const device = createMockDevice("device-1", "abc12345", [
+          {
+            purpose: "single_sig",
+            scriptType: "native_segwit",
+            derivationPath: "m/84'/0'/0'",
+            xpub: "xpub_mainnet_native",
+          },
+          {
+            purpose: "single_sig",
+            scriptType: "native_segwit",
+            derivationPath: "m/84'/1'/0'",
+            xpub: "tpub_signet_native",
+          },
+        ]);
+
+        mockPrismaClient.device.findMany.mockResolvedValue([device]);
+        mockPrismaClient.wallet.create.mockResolvedValue({
+          id: "wallet-1",
+          name: "Signet Wallet",
+          type: "single_sig",
+          scriptType: "native_segwit",
+          network: "signet",
+        });
+        mockPrismaClient.wallet.findUnique.mockResolvedValue({
+          id: "wallet-1",
+          name: "Signet Wallet",
+          type: "single_sig",
+          scriptType: "native_segwit",
+          network: "signet",
+          devices: [],
+          addresses: [],
+        });
+
+        await createWallet(userId, {
+          name: "Signet Wallet",
+          type: "single_sig",
+          scriptType: "native_segwit",
+          network: "signet",
+          deviceIds: ["device-1"],
+        });
+
+        expect(mockBuildDescriptorFromDevices).toHaveBeenCalledWith(
+          expect.arrayContaining([
+            expect.objectContaining({
+              xpub: "tpub_signet_native",
+              derivationPath: "m/84'/1'/0'",
+            }),
+          ]),
+          expect.objectContaining({ network: "signet" }),
+        );
+      });
+
+      it("should reject a testnet wallet when the device only has mainnet accounts", async () => {
+        const device = createMockDevice("device-1", "abc12345", [
+          {
+            purpose: "single_sig",
+            scriptType: "native_segwit",
+            derivationPath: "m/84'/0'/0'",
+            xpub: "xpub_mainnet_native",
+          },
+        ]);
+
+        mockPrismaClient.device.findMany.mockResolvedValue([device]);
+
+        await expect(
+          createWallet(userId, {
+            name: "Broken Testnet Wallet",
+            type: "single_sig",
+            scriptType: "native_segwit",
+            network: "testnet",
+            deviceIds: ["device-1"],
+          }),
+        ).rejects.toThrow(
+          "Device \"Device device-1\" does not have a testnet single_sig native_segwit account. Add m/84'/1'/0'",
+        );
+
+        expect(mockBuildDescriptorFromDevices).not.toHaveBeenCalled();
+        expect(mockPrismaClient.wallet.create).not.toHaveBeenCalled();
+      });
     });
 
     describe("Multi-sig wallet creation", () => {
@@ -464,6 +598,36 @@ export function registerWalletCreateAccountSelectionTests(): void {
           ]),
           expect.any(Object),
         );
+      });
+
+      it("should reject a testnet wallet for a legacy mainnet-only device", async () => {
+        const legacyDevice = {
+          id: "device-1",
+          userId,
+          fingerprint: "abc12345",
+          type: "ledger",
+          label: "Legacy Ledger",
+          xpub: "legacy_xpub",
+          derivationPath: "m/84'/0'/0'",
+          accounts: [],
+        };
+
+        mockPrismaClient.device.findMany.mockResolvedValue([legacyDevice]);
+
+        await expect(
+          createWallet(userId, {
+            name: "Legacy Testnet Wallet",
+            type: "single_sig",
+            scriptType: "native_segwit",
+            network: "testnet",
+            deviceIds: ["device-1"],
+          }),
+        ).rejects.toThrow(
+          "Device \"Legacy Ledger\" does not have a testnet single_sig native_segwit account. Add m/84'/1'/0'",
+        );
+
+        expect(mockBuildDescriptorFromDevices).not.toHaveBeenCalled();
+        expect(mockPrismaClient.wallet.create).not.toHaveBeenCalled();
       });
 
       it("normalizes empty account derivationPath to undefined for descriptor generation", async () => {

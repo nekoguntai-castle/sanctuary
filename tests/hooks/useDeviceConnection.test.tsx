@@ -17,6 +17,12 @@ vi.mock('../../services/hardwareWallet/runtime', () => ({
   hardwareWalletService: {
     connect: (type: unknown) => mockConnect(type),
     getAllXpubs: (callback: unknown) => mockGetAllXpubs(callback),
+    getAllXpubsWithFailures: async (callback: unknown) => {
+      const value = await mockGetAllXpubs(callback);
+      return Array.isArray(value)
+        ? { results: value, failures: [], totalPaths: value.length }
+        : value;
+    },
   },
 }));
 
@@ -180,6 +186,7 @@ describe('useDeviceConnection', () => {
 
       expect(result.current.connectionResult).toEqual({
         fingerprint: 'ABCD1234',
+        warning: null,
         accounts: [
           {
             purpose: 'single_sig',
@@ -201,6 +208,29 @@ describe('useDeviceConnection', () => {
           },
         ],
       });
+    });
+
+    it('should include a warning when some standard paths were skipped', async () => {
+      mockGetAllXpubs.mockResolvedValueOnce({
+        results: mockXpubResults,
+        failures: [
+          {
+            name: 'Testnet Native SegWit (BIP-84)',
+            path: "m/84'/1'/0'",
+            message: 'Bitcoin Test app not open',
+          },
+        ],
+        totalPaths: 4,
+      });
+
+      const { result } = renderHook(() => useDeviceConnection());
+
+      await act(async () => {
+        await result.current.connectUsb(mockModel);
+      });
+
+      expect(result.current.connectionResult?.warning).toContain('Bitcoin Test app');
+      expect(result.current.connectionResult?.warning).toContain('testnet/signet');
     });
 
     it('should clear previous error on new connection', async () => {
@@ -403,6 +433,7 @@ describe('useDeviceConnection', () => {
 
       expect(result.current.connectionResult).toEqual({
         fingerprint: '',
+        warning: null,
         accounts: [],
       });
     });

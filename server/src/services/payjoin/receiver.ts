@@ -52,7 +52,9 @@ export async function processPayjoinRequest(
       };
     }
 
-    const network = getNetwork(address.wallet.network as 'mainnet' | 'testnet' | 'regtest' || 'mainnet');
+    const network = getNetwork(
+      address.wallet.network as 'mainnet' | 'testnet' | 'signet' | 'regtest' || 'mainnet'
+    );
 
     // Validate original PSBT structure
     const structureValidation = validatePsbtStructure(originalPsbtBase64);

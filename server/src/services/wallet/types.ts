@@ -7,11 +7,21 @@
 /**
  * User's role for a specific wallet
  */
-export const WALLET_ROLE_VALUES = ['owner', 'approver', 'signer', 'viewer'] as const;
-export const WALLET_SHARE_ROLE_VALUES = ['viewer', 'signer', 'approver'] as const;
+export const WALLET_ROLE_VALUES = [
+  "owner",
+  "approver",
+  "signer",
+  "viewer",
+] as const;
+export const WALLET_SHARE_ROLE_VALUES = [
+  "viewer",
+  "signer",
+  "approver",
+] as const;
 
 export type WalletRole = (typeof WALLET_ROLE_VALUES)[number] | null;
 export type WalletShareRole = (typeof WALLET_SHARE_ROLE_VALUES)[number];
+export type WalletNetwork = "mainnet" | "testnet" | "signet" | "regtest";
 
 /**
  * Result of checking wallet access with edit permission
@@ -24,9 +34,9 @@ export interface WalletAccessCheckResult {
 
 export interface CreateWalletInput {
   name: string;
-  type: 'single_sig' | 'multi_sig';
-  scriptType: 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy';
-  network?: 'mainnet' | 'testnet' | 'regtest';
+  type: "single_sig" | "multi_sig";
+  scriptType: "native_segwit" | "nested_segwit" | "taproot" | "legacy";
+  network?: WalletNetwork;
   quorum?: number;
   totalSigners?: number;
   descriptor?: string;
@@ -36,10 +46,10 @@ export interface CreateWalletInput {
 }
 
 /** Roles that can edit wallet data (labels, etc.) */
-export const EDIT_ROLES: string[] = ['owner', 'signer'];
+export const EDIT_ROLES: string[] = ["owner", "signer"];
 
 /** Roles that can approve transactions */
-export const APPROVE_ROLES: string[] = ['owner', 'approver'];
+export const APPROVE_ROLES: string[] = ["owner", "approver"];
 
 export interface WalletWithBalance {
   id: string;
@@ -58,6 +68,7 @@ export interface WalletWithBalance {
   // Sync metadata
   lastSyncedAt?: Date | null;
   lastSyncStatus?: string | null;
+  lastSyncError?: string | null;
   syncInProgress?: boolean;
   // Sharing info
   isShared: boolean;

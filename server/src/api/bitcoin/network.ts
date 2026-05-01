@@ -22,12 +22,19 @@ const RecentBlocksCountSchema = z.coerce.number().int().min(1).catch(10)
 
 /** Block height (must be a non-negative integer) */
 const BlockHeightSchema = z.coerce.number().int().min(0);
+const StatusNetworkSchema = z.enum(['mainnet', 'testnet', 'signet', 'regtest']).catch('mainnet');
+const MempoolNetworkSchema = z.enum(['mainnet', 'testnet', 'signet']).catch('mainnet');
 
 const router = Router();
 const log = createLogger('BITCOIN_NETWORK:ROUTE');
 
 // Simple cache for mempool data to avoid hammering external APIs
-let mempoolCache: { data: Awaited<ReturnType<typeof mempool.getBlocksAndMempool>>; timestamp: number; } | null = null;
+type MempoolCacheEntry = {
+  data: Awaited<ReturnType<typeof mempool.getBlocksAndMempool>>;
+  timestamp: number;
+};
+
+const mempoolCache = new Map<z.infer<typeof MempoolNetworkSchema>, MempoolCacheEntry>();
 const MEMPOOL_CACHE_TTL = 15000; // 15 seconds
 const MEMPOOL_STALE_TTL = 300000; // 5 minutes for stale fallback
 
@@ -38,9 +45,10 @@ const MEMPOOL_STALE_TTL = 300000; // 5 minutes for stale fallback
  * NOTE: Intentionally keeps try/catch for graceful degradation -
  * returns { connected: false } instead of a 500 error.
  */
-router.get('/status', async (_req: Request, res: Response) => {
+router.get('/status', async (req: Request, res: Response) => {
   try {
-    res.json(await getBitcoinNetworkStatus());
+    const network = StatusNetworkSchema.parse(req.query.network);
+    res.json(await getBitcoinNetworkStatus(network));
   } catch (error) {
     res.json({
       connected: false,
@@ -56,25 +64,27 @@ router.get('/status', async (_req: Request, res: Response) => {
  * NOTE: Intentionally keeps try/catch for stale cache fallback -
  * returns stale data instead of a 500 error when fresh fetch fails.
  */
-router.get('/mempool', async (_req: Request, res: Response) => {
+router.get('/mempool', async (req: Request, res: Response) => {
+  const network = MempoolNetworkSchema.parse(req.query.network);
   const now = Date.now();
+  const cached = mempoolCache.get(network);
 
   // Return fresh cache if available
-  if (mempoolCache && (now - mempoolCache.timestamp) < MEMPOOL_CACHE_TTL) {
-    return res.json(mempoolCache.data);
+  if (cached && (now - cached.timestamp) < MEMPOOL_CACHE_TTL) {
+    return res.json(cached.data);
   }
 
   try {
-    const data = await mempool.getBlocksAndMempool();
-    mempoolCache = { data, timestamp: now };
+    const data = await mempool.getBlocksAndMempool(network);
+    mempoolCache.set(network, { data, timestamp: now });
     res.json(data);
   } catch (error) {
-    log.error('Get mempool error', { error: String(error) });
+    log.error('Get mempool error', { error: String(error), network });
 
     // Return stale cache if available (better than 500)
-    if (mempoolCache && (now - mempoolCache.timestamp) < MEMPOOL_STALE_TTL) {
-      log.warn('Returning stale mempool cache due to fetch failure');
-      return res.json({ ...mempoolCache.data, stale: true });
+    if (cached && (now - cached.timestamp) < MEMPOOL_STALE_TTL) {
+      log.warn('Returning stale mempool cache due to fetch failure', { network });
+      return res.json({ ...cached.data, stale: true });
     }
 
     res.status(500).json({

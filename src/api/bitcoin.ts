@@ -86,6 +86,9 @@ export interface AddressInfo {
   type: string;
 }
 
+export type BitcoinDashboardNetwork = 'mainnet' | 'testnet' | 'signet';
+export type BitcoinStatusNetwork = BitcoinDashboardNetwork;
+
 export interface ValidateAddressRequest {
   address: string;
   network?: 'mainnet' | 'testnet' | 'regtest';
@@ -130,8 +133,8 @@ export interface EstimateFeeResponse {
 /**
  * Get Bitcoin network status
  */
-export async function getStatus(): Promise<BitcoinStatus> {
-  return apiClient.get<BitcoinStatus>('/bitcoin/status');
+export async function getStatus(network: BitcoinStatusNetwork = 'mainnet'): Promise<BitcoinStatus> {
+  return apiClient.get<BitcoinStatus>('/bitcoin/status', { network });
 }
 
 /**
@@ -388,8 +391,8 @@ export interface MempoolData {
 /**
  * Get mempool and recent blocks for visualization
  */
-export async function getMempoolData(): Promise<MempoolData> {
-  return apiClient.get<MempoolData>('/bitcoin/mempool');
+export async function getMempoolData(network: BitcoinDashboardNetwork = 'mainnet'): Promise<MempoolData> {
+  return apiClient.get<MempoolData>('/bitcoin/mempool', { network });
 }
 
 /**

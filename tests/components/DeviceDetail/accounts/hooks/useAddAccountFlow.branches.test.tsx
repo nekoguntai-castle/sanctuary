@@ -128,6 +128,12 @@ vi.mock("../../../../../services/hardwareWallet/runtime", () => ({
   hardwareWalletService: {
     connect: connectMock,
     getAllXpubs: getAllXpubsMock,
+    getAllXpubsWithFailures: async (callback: unknown) => {
+      const value = await getAllXpubsMock(callback);
+      return Array.isArray(value)
+        ? { results: value, failures: [], totalPaths: value.length }
+        : value;
+    },
     disconnect: disconnectMock,
   },
   DeviceType: {},
@@ -483,6 +489,40 @@ describe("useAddAccountFlow branch coverage", () => {
     expect(failed.result.current.addAccountError).toBe(
       "Failed to connect to device",
     );
+  });
+
+  it("shows Ledger testnet guidance when USB import finds no new accounts after skipped coin-type 1 paths", async () => {
+    getAllXpubsMock.mockResolvedValueOnce({
+      results: [
+        {
+          purpose: "single_sig",
+          scriptType: "native_segwit",
+          path: "m/84'/0'/0'",
+          xpub: "xpub-existing",
+        },
+      ],
+      failures: [
+        {
+          name: "Testnet Native SegWit (BIP-84)",
+          path: "m/84'/1'/0'",
+          message: "Bitcoin Test app not open",
+        },
+      ],
+      totalPaths: 2,
+    });
+
+    const flow = renderFlowHook({
+      type: "ledger",
+      accounts: [{ derivationPath: "m/84'/0'/0'", xpub: "xpub-existing" }],
+    });
+
+    await act(async () => {
+      await flow.result.current.handleAddAccountsViaUsb();
+    });
+
+    expect(addDeviceAccountMock).not.toHaveBeenCalled();
+    expect(flow.result.current.addAccountError).toContain("Bitcoin Test app");
+    expect(flow.result.current.addAccountError).toContain("testnet/signet");
   });
 
   it("skips unselected parsed accounts and handles non-Error refresh failures", async () => {

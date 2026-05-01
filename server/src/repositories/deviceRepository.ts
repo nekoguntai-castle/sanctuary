@@ -436,21 +436,19 @@ export async function findAccountByIdAndDevice(accountId: string, deviceId: stri
 }
 
 /**
- * Find duplicate account (same derivation path or purpose/scriptType)
+ * Find duplicate account by derivation path. Same purpose/script accounts are
+ * allowed across coin types, e.g. m/84'/0'/0' and m/84'/1'/0'.
  */
 export async function findDuplicateAccount(
   deviceId: string,
   derivationPath: string,
-  purpose: string,
-  scriptType: string
+  _purpose: string,
+  _scriptType: string
 ) {
   return prisma.deviceAccount.findFirst({
     where: {
       deviceId,
-      OR: [
-        { derivationPath },
-        { purpose, scriptType },
-      ],
+      derivationPath,
     },
   });
 }

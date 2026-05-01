@@ -10,6 +10,7 @@ import { createLogger } from '../../utils/logger';
 import { ConflictError, WalletNotFoundError, DeviceNotFoundError } from '../../errors';
 import { getErrorMessage } from '../../utils/errors';
 import { generateInitialAddresses } from './addressGeneration';
+import type { WalletNetwork } from './types';
 
 const log = createLogger('WALLET:SVC_DEVICE');
 
@@ -65,7 +66,7 @@ export async function addDeviceToWallet(
         {
           type: wallet.type as 'single_sig' | 'multi_sig',
           scriptType: wallet.scriptType as 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy',
-          network: wallet.network as 'mainnet' | 'testnet' | 'regtest',
+          network: wallet.network as WalletNetwork,
           quorum: wallet.quorum || undefined,
         }
       );
@@ -155,7 +156,7 @@ export async function repairWalletDescriptor(
       {
         type: ownerWallet.type as 'single_sig' | 'multi_sig',
         scriptType: ownerWallet.scriptType as 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy',
-        network: ownerWallet.network as 'mainnet' | 'testnet' | 'regtest',
+        network: ownerWallet.network as WalletNetwork,
         quorum: ownerWallet.quorum || undefined,
       }
     );
@@ -167,7 +168,7 @@ export async function repairWalletDescriptor(
     });
 
     // Generate initial addresses
-    const network = ownerWallet.network as 'mainnet' | 'testnet' | 'regtest';
+    const network = ownerWallet.network as WalletNetwork;
     const addressesToCreate = generateInitialAddresses(walletId, descriptorResult.descriptor, network);
 
     // skipDuplicates ensures idempotency - if repair is called multiple times

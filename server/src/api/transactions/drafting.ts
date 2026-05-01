@@ -42,7 +42,7 @@ const BatchTransactionRequestSchema = z.object({
   memo: z.string().optional(),
 }).passthrough();
 
-type WalletNetwork = 'mainnet' | 'testnet' | 'regtest';
+type WalletNetwork = 'mainnet' | 'testnet' | 'signet' | 'regtest';
 type BatchTransactionOutputInput = z.infer<typeof BatchTransactionOutputSchema>;
 type ValidatedBatchOutput = { address: string; amount: number; sendMax?: boolean };
 
@@ -128,7 +128,7 @@ router.post('/wallets/:walletId/transactions/create', requireWalletAccess('edit'
   }
 
   // Validate Bitcoin address for the wallet's network
-  const network = wallet.network as 'mainnet' | 'testnet' | 'regtest';
+  const network = wallet.network as WalletNetwork;
   const addressValidation = validateAddress(recipient, network);
   if (!addressValidation.valid) {
     throw new ValidationError(`Invalid Bitcoin address: ${addressValidation.error}`);

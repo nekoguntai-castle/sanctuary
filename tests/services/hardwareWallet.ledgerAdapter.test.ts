@@ -11,6 +11,7 @@ const {
   mockGetWalletXpub,
   mockGetWalletPublicKey,
   mockGetMasterFingerprint,
+  mockGetAppAndVersion,
   mockGetExtendedPubkey,
   MockAppBtc,
   MockAppClient,
@@ -22,6 +23,7 @@ const {
   const mockGetWalletXpub = vi.fn();
   const mockGetWalletPublicKey = vi.fn();
   const mockGetMasterFingerprint = vi.fn();
+  const mockGetAppAndVersion = vi.fn();
   const mockGetExtendedPubkey = vi.fn();
   const mockPsbtFromBase64 = vi.fn();
 
@@ -34,6 +36,8 @@ const {
   const MockAppClient = vi.fn(function MockAppClient(this: any) {
     this.getMasterFingerprint = (...args: unknown[]) =>
       mockGetMasterFingerprint(...args);
+    this.getAppAndVersion = (...args: unknown[]) =>
+      mockGetAppAndVersion(...args);
     this.getExtendedPubkey = (...args: unknown[]) =>
       mockGetExtendedPubkey(...args);
     this.signPsbt = vi.fn();
@@ -46,6 +50,7 @@ const {
     mockGetWalletXpub,
     mockGetWalletPublicKey,
     mockGetMasterFingerprint,
+    mockGetAppAndVersion,
     mockGetExtendedPubkey,
     MockAppBtc,
     MockAppClient,
@@ -137,6 +142,7 @@ describe("LedgerAdapter", () => {
     mockGetWalletXpub.mockReset();
     mockGetWalletPublicKey.mockReset();
     mockGetMasterFingerprint.mockReset();
+    mockGetAppAndVersion.mockReset();
     mockGetExtendedPubkey.mockReset();
     mockPsbtFromBase64.mockReset();
     MockAppBtc.mockClear();
@@ -145,6 +151,11 @@ describe("LedgerAdapter", () => {
     mockUsbGetDevices.mockResolvedValue([]);
     mockTransportClose.mockResolvedValue(undefined);
     mockGetMasterFingerprint.mockResolvedValue("f00dbabe");
+    mockGetAppAndVersion.mockResolvedValue({
+      name: "Bitcoin",
+      version: "2.2.4",
+      flags: 0,
+    });
     mockGetExtendedPubkey.mockResolvedValue("xpub-mock");
     mockGetWalletXpub.mockResolvedValue("xpub-mock");
     mockGetWalletPublicKey.mockResolvedValue({ bitcoinAddress: "bc1qabc" });
@@ -487,6 +498,14 @@ describe("LedgerAdapter", () => {
     mockGetExtendedPubkey.mockRejectedValueOnce(new Error("0x6d00"));
     await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow(
       "Bitcoin app not open on Ledger",
+    );
+
+    (adapter as any).connection.appName = "Bitcoin";
+    mockGetExtendedPubkey.mockRejectedValueOnce(
+      new Error("incorrect data 0x6a80"),
+    );
+    await expect(adapter.getXpub("m/84'/1'/0'")).rejects.toThrow(
+      "Bitcoin Test app is required",
     );
 
     mockGetExtendedPubkey.mockRejectedValueOnce(

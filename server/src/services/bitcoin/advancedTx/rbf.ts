@@ -126,7 +126,7 @@ export async function createRBFTransaction(
   originalTxid: string,
   newFeeRate: number,
   walletId: string,
-  network: 'mainnet' | 'testnet' | 'regtest' = 'mainnet'
+  network: 'mainnet' | 'testnet' | 'signet' | 'regtest' = 'mainnet'
 ): Promise<{
   psbt: bitcoin.Psbt;
   fee: number;

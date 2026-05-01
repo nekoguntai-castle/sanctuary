@@ -1,21 +1,23 @@
-import { fireEvent,render,screen } from '@testing-library/react';
-import { describe,expect,it,vi } from 'vitest';
-import { WalletHeader } from '../../../components/WalletDetail/WalletHeader';
-import { WalletType } from '../../../types';
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { WalletHeader } from "../../../components/WalletDetail/WalletHeader";
+import { WalletType } from "../../../types";
 
-vi.mock('../../../components/Amount', () => ({
-  Amount: ({ sats }: { sats: number }) => <div data-testid="amount">{sats}</div>,
+vi.mock("../../../components/Amount", () => ({
+  Amount: ({ sats }: { sats: number }) => (
+    <div data-testid="amount">{sats}</div>
+  ),
 }));
 
 const baseWallet = {
-  id: 'wallet-1',
-  name: 'Primary Wallet',
+  id: "wallet-1",
+  name: "Primary Wallet",
   type: WalletType.SINGLE_SIG,
-  network: 'mainnet',
+  network: "mainnet",
   balance: 123_456,
   quorum: { m: 1, n: 1 },
   totalSigners: 1,
-  userRole: 'owner',
+  userRole: "owner",
   isShared: false,
   lastSyncStatus: null,
   lastSyncedAt: null,
@@ -24,7 +26,7 @@ const baseWallet = {
 
 const renderHeader = (
   walletOverrides: Record<string, unknown> = {},
-  propOverrides: Record<string, unknown> = {}
+  propOverrides: Record<string, unknown> = {},
 ) => {
   const handlers = {
     onReceive: vi.fn(),
@@ -41,27 +43,31 @@ const renderHeader = (
       syncRetryInfo={null}
       {...handlers}
       {...propOverrides}
-    />
+    />,
   );
 
   return { ...view, handlers };
 };
 
-describe('WalletHeader', () => {
-  it('renders single-sig owner wallet actions and handles button clicks', () => {
+describe("WalletHeader", () => {
+  it("renders single-sig owner wallet actions and handles button clicks", () => {
     const { handlers } = renderHeader();
 
-    expect(screen.getByText('Single Sig')).toBeInTheDocument();
-    expect(screen.queryByText('mainnet')).not.toBeInTheDocument();
-    expect(screen.getByText('Owner')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Receive/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Send/i })).toBeInTheDocument();
+    expect(screen.getByText("Single Sig")).toBeInTheDocument();
+    expect(screen.queryByText("mainnet")).not.toBeInTheDocument();
+    expect(screen.getByText("Owner")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Receive/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Send/i })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /Receive/i }));
-    fireEvent.click(screen.getByRole('button', { name: /Send/i }));
-    fireEvent.click(screen.getByTitle('Sync wallet'));
-    fireEvent.click(screen.getByTitle('Full resync (clears and re-syncs all transactions)'));
-    fireEvent.click(screen.getByTitle('Export wallet'));
+    fireEvent.click(screen.getByRole("button", { name: /Receive/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Send/i }));
+    fireEvent.click(screen.getByTitle("Sync wallet"));
+    fireEvent.click(
+      screen.getByTitle("Full resync (clears and re-syncs all transactions)"),
+    );
+    fireEvent.click(screen.getByTitle("Export wallet"));
 
     expect(handlers.onReceive).toHaveBeenCalledTimes(1);
     expect(handlers.onSend).toHaveBeenCalledTimes(1);
@@ -70,110 +76,118 @@ describe('WalletHeader', () => {
     expect(handlers.onExport).toHaveBeenCalledTimes(1);
   });
 
-  it('renders multisig retrying state with signer/shared badges', () => {
+  it("renders multisig retrying state with signer/shared badges", () => {
     renderHeader(
       {
         type: WalletType.MULTI_SIG,
         quorum: { m: 2, n: 3 },
         totalSigners: 3,
-        network: 'signet',
-        userRole: 'signer',
+        network: "signet",
+        userRole: "signer",
         isShared: true,
-        lastSyncStatus: 'retrying',
+        lastSyncStatus: "retrying",
       },
       {
         syncRetryInfo: {
           retryCount: 2,
           maxRetries: 5,
-          error: 'temporary error',
+          error: "temporary error",
         },
-      }
+      },
     );
 
-    expect(screen.getByText('2/3 Multisig')).toBeInTheDocument();
-    expect(screen.getByText('signet')).toBeInTheDocument();
-    expect(screen.getByText('Retrying 2/5')).toBeInTheDocument();
-    expect(screen.getByText('Signer')).toBeInTheDocument();
-    expect(screen.getByText('Shared')).toBeInTheDocument();
+    expect(screen.getByText("2/3 Multisig")).toBeInTheDocument();
+    expect(screen.getByText("signet")).toHaveClass("dark:text-signet-950");
+    expect(screen.getByText("Retrying 2/5")).toBeInTheDocument();
+    expect(screen.getByText("Signer")).toBeInTheDocument();
+    expect(screen.getByText("Shared")).toBeInTheDocument();
   });
 
-  it('renders linked agent wallet role badges', () => {
-    renderHeader({}, {
-      agentLinks: [
-        {
-          agentId: 'agent-1',
-          agentName: 'Treasury Agent',
-          role: 'funding',
-          linkedWalletName: 'Operational',
-          status: 'active',
-        },
-        {
-          agentId: 'agent-2',
-          agentName: 'Ops Agent',
-          role: 'operational',
-          linkedWalletName: 'Funding',
-          status: 'paused',
-        },
-      ],
-    });
+  it("renders linked agent wallet role badges", () => {
+    renderHeader(
+      {},
+      {
+        agentLinks: [
+          {
+            agentId: "agent-1",
+            agentName: "Treasury Agent",
+            role: "funding",
+            linkedWalletName: "Operational",
+            status: "active",
+          },
+          {
+            agentId: "agent-2",
+            agentName: "Ops Agent",
+            role: "operational",
+            linkedWalletName: "Funding",
+            status: "paused",
+          },
+        ],
+      },
+    );
 
-    expect(screen.getByText('Agent Funding Wallet')).toBeInTheDocument();
-    expect(screen.getByText('Agent Operational Wallet')).toBeInTheDocument();
-    expect(screen.getByText('Agent Funding Wallet').closest('span')).toHaveAttribute(
-      'title',
-      'Treasury Agent links this wallet to Operational'
+    expect(screen.getByText("Agent Funding Wallet")).toBeInTheDocument();
+    expect(screen.getByText("Agent Operational Wallet")).toBeInTheDocument();
+    expect(
+      screen.getByText("Agent Funding Wallet").closest("span"),
+    ).toHaveAttribute(
+      "title",
+      "Treasury Agent links this wallet to Operational",
     );
   });
 
-  it('uses retrying defaults when status is retrying without retry metadata', () => {
+  it("uses retrying defaults when status is retrying without retry metadata", () => {
     renderHeader({
-      lastSyncStatus: 'retrying',
-      network: 'testnet',
+      lastSyncStatus: "retrying",
+      network: "testnet",
     });
 
-    const badge = screen.getByText('Retrying 1/3').closest('span');
-    expect(screen.getByText('testnet')).toBeInTheDocument();
-    expect(badge).toHaveAttribute('title', 'Sync failed, retrying...');
+    const badge = screen.getByText("Retrying 1/3").closest("span");
+    expect(screen.getByText("testnet")).toHaveClass("dark:text-testnet-950");
+    expect(screen.getByText("testnet")).toHaveClass("dark:bg-testnet-50");
+    expect(badge).toHaveAttribute("title", "Sync failed, retrying...");
   });
 
-  it('shows syncing badge and disables sync controls while syncing', () => {
+  it("shows syncing badge and disables sync controls while syncing", () => {
     renderHeader({}, { syncing: true });
 
-    expect(screen.getByText('Syncing')).toBeInTheDocument();
-    expect(screen.getByTitle('Sync wallet')).toBeDisabled();
-    expect(screen.getByTitle('Full resync (clears and re-syncs all transactions)')).toBeDisabled();
+    expect(screen.getByText("Syncing")).toBeInTheDocument();
+    expect(screen.getByTitle("Sync wallet")).toBeDisabled();
+    expect(
+      screen.getByTitle("Full resync (clears and re-syncs all transactions)"),
+    ).toBeDisabled();
   });
 
-  it('renders success status when sync completed', () => {
+  it("renders success status when sync completed", () => {
     renderHeader({
-      lastSyncStatus: 'success',
-      lastSyncedAt: '2026-02-02T00:00:00.000Z',
+      lastSyncStatus: "success",
+      lastSyncedAt: "2026-02-02T00:00:00.000Z",
     });
 
-    expect(screen.getByText('Synced')).toBeInTheDocument();
+    expect(screen.getByText("Synced")).toBeInTheDocument();
   });
 
-  it('renders success status without last-synced timestamp and supports custom network badge', () => {
+  it("renders success status without last-synced timestamp and supports custom network badge", () => {
     renderHeader({
-      lastSyncStatus: 'success',
+      lastSyncStatus: "success",
       lastSyncedAt: null,
-      network: 'regtest',
+      network: "regtest",
     });
 
-    expect(screen.getByText('Synced')).toBeInTheDocument();
-    expect(screen.getByText('regtest')).toBeInTheDocument();
+    expect(screen.getByText("Synced")).toBeInTheDocument();
+    expect(screen.getByText("regtest")).toBeInTheDocument();
   });
 
-  it('renders failed and cached sync statuses', () => {
-    const { rerender } = renderHeader({ lastSyncStatus: 'failed' });
-    expect(screen.getByText('Failed')).toBeInTheDocument();
+  it("renders failed and cached sync statuses", () => {
+    const { rerender } = renderHeader({ lastSyncStatus: "failed" });
+    expect(screen.getByText("Failed")).toBeInTheDocument();
 
     rerender(
       <WalletHeader
         wallet={{
           ...baseWallet,
           lastSyncStatus: null,
-          lastSyncedAt: '2026-02-01T00:00:00.000Z',
+          lastSyncedAt: "2026-02-01T00:00:00.000Z",
         }}
         syncing={false}
         syncRetryInfo={null}
@@ -182,35 +196,52 @@ describe('WalletHeader', () => {
         onSync={vi.fn()}
         onFullResync={vi.fn()}
         onExport={vi.fn()}
-      />
+      />,
     );
 
-    expect(screen.getByText('Cached')).toBeInTheDocument();
+    expect(screen.getByText("Cached")).toBeInTheDocument();
   });
 
-  it('hides send action for viewer role', () => {
-    renderHeader({ userRole: 'viewer' });
+  it("shows a network sync-off warning for disabled testnet sync failures", () => {
+    renderHeader({
+      network: "testnet",
+      lastSyncStatus: "failed",
+      lastSyncError:
+        "Testnet sync is off in Node Configuration. Enable Testnet under Network Connections, save settings, then sync testnet wallets again.",
+    });
 
-    expect(screen.getByText('Viewer')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Send/i })).not.toBeInTheDocument();
+    expect(screen.getByText("Network sync is off")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Enable Testnet under Network Connections/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Wallet not synced")).not.toBeInTheDocument();
   });
 
-  it('shows initial sync banner for first sync attempts', () => {
+  it("hides send action for viewer role", () => {
+    renderHeader({ userRole: "viewer" });
+
+    expect(screen.getByText("Viewer")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Send/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows initial sync banner for first sync attempts", () => {
     renderHeader({ lastSyncedAt: null, syncInProgress: true });
 
-    expect(screen.getByText('Initial sync in progress')).toBeInTheDocument();
-    expect(screen.queryByText('Wallet not synced')).not.toBeInTheDocument();
+    expect(screen.getByText("Initial sync in progress")).toBeInTheDocument();
+    expect(screen.queryByText("Wallet not synced")).not.toBeInTheDocument();
   });
 
-  it('shows never-synced banner and triggers sync now action', () => {
+  it("shows never-synced banner and triggers sync now action", () => {
     const { handlers } = renderHeader({
       lastSyncedAt: null,
       lastSyncStatus: null,
       syncInProgress: false,
     });
 
-    expect(screen.getByText('Wallet not synced')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /Sync Now/i }));
+    expect(screen.getByText("Wallet not synced")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Sync Now/i }));
     expect(handlers.onSync).toHaveBeenCalledTimes(1);
   });
 });

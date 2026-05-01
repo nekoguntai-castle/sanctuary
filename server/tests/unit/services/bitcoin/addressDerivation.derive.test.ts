@@ -148,6 +148,15 @@ describe('Address Derivation Service deriveAddress', () => {
       expect(result.address).toMatch(/^bcrt1q[a-z0-9]{38,42}$/);
     });
 
+    it('should handle signet with testnet address parameters and coin type 1 paths', () => {
+      const result = deriveAddress(testTpub, 0, {
+        network: 'signet',
+      });
+
+      expect(result.address).toMatch(/^tb1q[a-z0-9]{38,42}$/);
+      expect(result.derivationPath).toBe("m/84'/1'/0'/0/0");
+    });
+
     it('should throw error for invalid network type', () => {
       expect(() =>
         deriveAddress(testTpub, 0, {
@@ -268,6 +277,19 @@ describe('Address Derivation Service batch derivation', () => {
       expect(r.address).toMatch(/^tb1q/);
       expect(r.index).toBe(i);
     });
+  });
+
+  it('should derive signet addresses from descriptor using testnet address parameters', () => {
+    const descriptor = `wpkh([aabbccdd/84'/1'/0']${testTpub}/0/*)`;
+
+    const results = deriveAddressesFromDescriptor(descriptor, 0, 2, {
+      network: 'signet',
+    });
+
+    expect(results).toHaveLength(2);
+    expect(results[0].address).toMatch(/^tb1q/);
+    expect(results[0].derivationPath).toBe("m/84'/1'/0'/0/0");
+    expect(results[1].index).toBe(1);
   });
 });
 

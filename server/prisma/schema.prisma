@@ -277,7 +277,7 @@ model DeviceAccount {
   device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 
   @@unique([deviceId, derivationPath]) // One account per path per device
-  @@unique([deviceId, purpose, scriptType]) // One account per purpose+scriptType combo per device
+  @@index([deviceId, purpose, scriptType]) // Fast account lookup while allowing mainnet and testnet/signet variants
   @@index([deviceId])
   @@index([purpose, scriptType]) // For finding accounts by wallet type
   @@map("device_accounts")

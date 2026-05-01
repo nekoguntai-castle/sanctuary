@@ -108,21 +108,20 @@ export const registerBitcoinNetworkRouteTests = () => {
         expect(response.body.connected).toBe(true);
       });
 
-      it('should omit host when node config is not available', async () => {
+      it('should include default host when node config is not available', async () => {
         mockPrismaClient.nodeConfig.findFirst.mockResolvedValue(null);
         mockElectrumClient.isConnected.mockReturnValue(true);
         mockElectrumClient.getServerVersion.mockResolvedValue({ server: 'ElectrumX', protocol: '1.4' });
-        mockBlockchain.getBlockHeight.mockResolvedValue(850000);
+        mockElectrumClient.getBlockHeight.mockResolvedValue(850000);
 
         const response = await request(app).get('/bitcoin/status');
 
         expect(response.status).toBe(200);
-        expect(response.body.host).toBeUndefined();
+        expect(response.body.host).toBe('electrum.blockstream.info');
       });
 
       it('should return disconnected status on error', async () => {
-        mockElectrumClient.isConnected.mockReturnValue(false);
-        mockElectrumClient.connect.mockRejectedValue(new Error('Connection failed'));
+        mockNodeClient.getNodeClient.mockRejectedValue(new Error('Connection failed'));
 
         const response = await request(app).get('/bitcoin/status');
 
@@ -145,6 +144,87 @@ export const registerBitcoinNetworkRouteTests = () => {
         expect(response.body.connected).toBe(true);
         expect(response.body.server).toBe('ElectrumX');
       });
+
+      it('returns selected testnet singleton status with configured host', async () => {
+        mockElectrumClient.isConnected.mockReturnValue(true);
+        mockElectrumClient.getServerVersion.mockResolvedValue({ server: 'Fulcrum', protocol: '1.4' });
+        mockElectrumClient.getBlockHeight.mockResolvedValue(4_500_000);
+
+        const response = await request(app).get('/bitcoin/status?network=testnet');
+
+        expect(response.status).toBe(200);
+        expect(response.body).toMatchObject({
+          connected: true,
+          network: 'testnet',
+          server: 'Fulcrum',
+          blockHeight: 4_500_000,
+          host: 'testnet.example.com',
+          useSsl: true,
+          pool: expect.objectContaining({ enabled: false }),
+        });
+        expect(mockNodeClient.getNodeClient).toHaveBeenCalledWith('testnet');
+      });
+
+      it('includes configured pool servers when live pool stats are not populated', async () => {
+        mockPrismaClient.nodeConfig.findFirst.mockResolvedValue({
+          id: 'default',
+          type: 'electrum',
+          host: 'electrum.example.com',
+          port: 50002,
+          useSsl: true,
+          poolEnabled: true,
+          explorerUrl: 'https://mempool.space',
+          mainnetMode: 'pool',
+          mainnetPoolMin: 1,
+          mainnetPoolMax: 5,
+          testnetEnabled: true,
+          testnetMode: 'pool',
+          testnetPoolMin: 1,
+          testnetPoolMax: 3,
+          signetEnabled: false,
+          servers: [
+            {
+              id: 'testnet-server-1',
+              label: 'Configured Testnet',
+              host: 'testnet.example.com',
+              port: 60002,
+              useSsl: true,
+              priority: 0,
+              enabled: true,
+              network: 'testnet',
+              isHealthy: true,
+              lastHealthCheck: null,
+            },
+          ],
+        });
+        mockElectrumPool.isPoolInitialized.mockReturnValue(true);
+        mockElectrumPool.getPoolStats.mockReturnValue({
+          totalConnections: 0,
+          activeConnections: 0,
+          idleConnections: 0,
+          waitingRequests: 0,
+          totalAcquisitions: 0,
+          averageAcquisitionTimeMs: 0,
+          healthCheckFailures: 0,
+          serverCount: 0,
+          servers: [],
+        });
+        mockElectrumClient.getServerVersion.mockResolvedValue({ server: 'Fulcrum', protocol: '1.4' });
+        mockElectrumClient.getBlockHeight.mockResolvedValue(4_500_000);
+
+        const response = await request(app).get('/bitcoin/status?network=testnet');
+
+        expect(response.status).toBe(200);
+        expect(response.body.pool.enabled).toBe(true);
+        expect(response.body.pool.stats.servers).toEqual([
+          expect.objectContaining({
+            serverId: 'testnet-server-1',
+            label: 'Configured Testnet',
+            host: 'testnet.example.com',
+            port: 60002,
+          }),
+        ]);
+      });
     });
 
     describe('GET /bitcoin/mempool', () => {
@@ -161,6 +241,22 @@ export const registerBitcoinNetworkRouteTests = () => {
         expect(response.status).toBe(200);
         // Response may be cached from previous test runs, just check it's valid
         expect(response.body).toBeDefined();
+        expect(mockMempool.getBlocksAndMempool).toHaveBeenCalledWith('mainnet');
+      });
+
+      it('should request mempool data for the selected network', async () => {
+        const mempoolData = {
+          mempool: [{ height: 'Next', status: 'pending' }],
+          blocks: [{ height: 4_500_000, status: 'confirmed' }],
+          mempoolInfo: { count: 2, size: 0.01, totalFees: 1000 },
+        };
+        mockMempool.getBlocksAndMempool.mockResolvedValue(mempoolData);
+
+        const response = await request(app).get('/bitcoin/mempool?network=testnet');
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual(mempoolData);
+        expect(mockMempool.getBlocksAndMempool).toHaveBeenCalledWith('testnet');
       });
 
       it('should handle mempool.getBlocksAndMempool being called', async () => {

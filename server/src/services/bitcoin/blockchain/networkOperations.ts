@@ -90,7 +90,7 @@ export async function monitorAddress(address: string): Promise<string | null> {
  */
 export async function checkAddress(
   address: string,
-  network: 'mainnet' | 'testnet' | 'regtest' = 'mainnet'
+  network: 'mainnet' | 'testnet' | 'signet' | 'regtest' = 'mainnet'
 ): Promise<CheckAddressResult> {
   // First validate format
   const validation = validateAddress(address, network);

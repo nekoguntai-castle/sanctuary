@@ -10,7 +10,12 @@ import * as bitcoin from 'bitcoinjs-lib';
 import bip32 from '../bip32';
 import { convertToStandardXpub } from './xpubConversion';
 import { getNetwork, getAccountPath } from './utils';
-import type { DerivationNode, DescriptorDerivationDeps, DerivedAddress } from './types';
+import type {
+  AddressDerivationNetwork,
+  DerivationNode,
+  DescriptorDerivationDeps,
+  DerivedAddress,
+} from './types';
 
 /**
  * Derive an address from xpub at a specific index
@@ -20,7 +25,7 @@ export function deriveAddress(
   index: number,
   options: {
     scriptType?: 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy';
-    network?: 'mainnet' | 'testnet' | 'regtest';
+    network?: AddressDerivationNetwork;
     change?: boolean; // false = external (receive), true = internal (change)
   } = {},
   deps: DescriptorDerivationDeps = {}
@@ -124,7 +129,7 @@ export function deriveAddresses(
   count: number,
   options: {
     scriptType?: 'native_segwit' | 'nested_segwit' | 'taproot' | 'legacy';
-    network?: 'mainnet' | 'testnet' | 'regtest';
+    network?: AddressDerivationNetwork;
     change?: boolean;
   } = {}
 ): Array<{

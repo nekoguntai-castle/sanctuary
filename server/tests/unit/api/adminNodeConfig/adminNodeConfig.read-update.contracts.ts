@@ -274,6 +274,80 @@ export function registerAdminNodeConfigReadUpdateTests(): void {
       );
     });
 
+    it('accepts nullable network update fields and applies default connection values', async () => {
+      mockPrismaClient.nodeConfig.findFirst.mockResolvedValue({ id: 'default-existing' });
+      mockPrismaClient.nodeConfig.update.mockResolvedValue(
+        buildNodeConfig({
+          id: 'default-existing',
+          testnetEnabled: true,
+        })
+      );
+
+      const response = await request(getAdminNodeConfigApp())
+        .put('/api/v1/admin/node-config')
+        .send({
+          type: 'electrum',
+          host: 'electrum.blockstream.info',
+          port: 50002,
+          useSsl: true,
+          proxyEnabled: false,
+          proxyHost: null,
+          proxyPort: null,
+          proxyUsername: null,
+          proxyPassword: null,
+          mainnetMode: 'singleton',
+          mainnetSingletonHost: null,
+          mainnetSingletonPort: null,
+          mainnetSingletonSsl: null,
+          mainnetPoolMin: null,
+          mainnetPoolMax: null,
+          testnetEnabled: true,
+          testnetMode: 'singleton',
+          testnetSingletonHost: null,
+          testnetSingletonPort: null,
+          testnetSingletonSsl: null,
+          testnetPoolMin: null,
+          testnetPoolMax: null,
+          signetEnabled: false,
+          signetMode: 'singleton',
+          signetSingletonHost: null,
+          signetSingletonPort: null,
+          signetSingletonSsl: null,
+          signetPoolMin: null,
+          signetPoolMax: null,
+        });
+
+      expect(response.status).toBe(200);
+      expect(mockEncrypt).not.toHaveBeenCalled();
+      expect(mockPrismaClient.nodeConfig.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            proxyHost: null,
+            proxyPort: null,
+            proxyUsername: null,
+            proxyPassword: null,
+            mainnetSingletonHost: 'electrum.blockstream.info',
+            mainnetSingletonPort: 50002,
+            mainnetSingletonSsl: true,
+            mainnetPoolMin: 1,
+            mainnetPoolMax: 5,
+            testnetEnabled: true,
+            testnetSingletonHost: 'electrum.blockstream.info',
+            testnetSingletonPort: 60002,
+            testnetSingletonSsl: true,
+            testnetPoolMin: 1,
+            testnetPoolMax: 3,
+            signetEnabled: false,
+            signetSingletonHost: 'electrum.mutinynet.com',
+            signetSingletonPort: 50002,
+            signetSingletonSsl: true,
+            signetPoolMin: 1,
+            signetPoolMax: 3,
+          }),
+        })
+      );
+    });
+
     it('applies fallback values in update response when persisted values are nullish', async () => {
       mockPrismaClient.nodeConfig.findFirst.mockResolvedValue({ id: 'default-existing' });
       mockPrismaClient.nodeConfig.update.mockResolvedValue(

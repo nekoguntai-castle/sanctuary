@@ -77,8 +77,8 @@ export const ConfigurationStep: React.FC<ConfigurationStepProps> = ({
               {network !== 'mainnet' && (
                   <div className={`mt-2 p-3 rounded-lg border text-xs ${
                       network === 'testnet'
-                          ? 'bg-testnet-50 dark:bg-testnet-900/10 border-testnet-300 dark:border-testnet-600 text-testnet-700 dark:text-testnet-800'
-                          : 'bg-signet-50 dark:bg-signet-900/10 border-signet-300 dark:border-signet-600 text-signet-700 dark:text-signet-800'
+                          ? 'bg-testnet-50 dark:bg-testnet-900/10 border-testnet-300 dark:border-testnet-600 text-testnet-700 dark:text-testnet-950'
+                          : 'bg-signet-50 dark:bg-signet-900/10 border-signet-300 dark:border-signet-600 text-signet-700 dark:text-signet-950'
                   }`}>
                       <strong>Warning:</strong> This wallet will operate on {network}. {network === 'testnet' ? 'Testnet coins have no real-world value.' : 'Signet is a controlled testing network.'}
                   </div>

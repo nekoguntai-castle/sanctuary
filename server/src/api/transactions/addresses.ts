@@ -23,6 +23,7 @@ import {
   parseAddressDerivationPath,
   type DerivationAddressChain,
 } from "../../../../shared/utils/bitcoin";
+import type { WalletNetwork } from "../../services/wallet/types";
 
 const router = Router();
 const log = createLogger("ADDRESS:ROUTE");
@@ -108,7 +109,7 @@ router.get(
               wallet.descriptor,
               i,
               {
-                network: wallet.network as "mainnet" | "testnet" | "regtest",
+                network: wallet.network as WalletNetwork,
                 change: false, // External/receive addresses
               },
             );
@@ -128,7 +129,7 @@ router.get(
               wallet.descriptor,
               i,
               {
-                network: wallet.network as "mainnet" | "testnet" | "regtest",
+                network: wallet.network as WalletNetwork,
                 change: true, // Internal/change addresses
               },
             );
@@ -268,7 +269,7 @@ router.post(
       try {
         const { address, derivationPath } =
           addressDerivation.deriveAddressFromDescriptor(wallet.descriptor, i, {
-            network: wallet.network as "mainnet" | "testnet" | "regtest",
+            network: wallet.network as WalletNetwork,
             change: false,
           });
         addressesToCreate.push({
@@ -294,7 +295,7 @@ router.post(
       try {
         const { address, derivationPath } =
           addressDerivation.deriveAddressFromDescriptor(wallet.descriptor, i, {
-            network: wallet.network as "mainnet" | "testnet" | "regtest",
+            network: wallet.network as WalletNetwork,
             change: true,
           });
         addressesToCreate.push({

@@ -5,14 +5,15 @@
  * Extracted from WalletDetail.tsx to isolate sync-related concerns.
  */
 
-import { useState } from 'react';
-import * as syncApi from '../../../src/api/sync';
-import * as walletsApi from '../../../src/api/wallets';
-import { useErrorHandler } from '../../../hooks/useErrorHandler';
-import { createLogger } from '../../../utils/logger';
-import type { SyncRetryInfo } from '../types';
+import { useState } from "react";
+import * as syncApi from "../../../src/api/sync";
+import * as walletsApi from "../../../src/api/wallets";
+import { useErrorHandler } from "../../../hooks/useErrorHandler";
+import { createLogger } from "../../../utils/logger";
+import type { SyncRetryInfo } from "../types";
 
-const log = createLogger('useWalletSync');
+const log = createLogger("useWalletSync");
+const NETWORK_SYNC_OFF_PATTERN = /sync is off in Node Configuration/i;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -50,11 +51,13 @@ export function useWalletSync({
   walletId,
   onDataRefresh,
 }: UseWalletSyncParams): UseWalletSyncReturn {
-  const { handleError, showSuccess } = useErrorHandler();
+  const { handleError, showSuccess, showWarning } = useErrorHandler();
 
   const [syncing, setSyncing] = useState(false);
   const [repairing, setRepairing] = useState(false);
-  const [syncRetryInfo, setSyncRetryInfo] = useState<SyncRetryInfo | null>(null);
+  const [syncRetryInfo, setSyncRetryInfo] = useState<SyncRetryInfo | null>(
+    null,
+  );
 
   // Immediate sync using sync API
   const handleSync = async () => {
@@ -64,13 +67,16 @@ export function useWalletSync({
       setSyncing(true);
       const result = await syncApi.syncWallet(walletId);
       if (!result.success && result.error) {
-        log.error('Sync error', { error: result.error });
+        log.error("Sync error", { error: result.error });
+        if (NETWORK_SYNC_OFF_PATTERN.test(result.error)) {
+          showWarning(result.error, "Wallet Sync Off");
+        }
       }
       // Reload wallet data after sync
       await onDataRefresh();
     } catch (err) {
-      log.error('Failed to sync wallet', { error: err });
-      handleError(err, 'Sync Failed');
+      log.error("Failed to sync wallet", { error: err });
+      handleError(err, "Sync Failed");
     } finally {
       setSyncing(false);
     }
@@ -80,19 +86,23 @@ export function useWalletSync({
   const handleFullResync = async () => {
     if (!walletId) return;
 
-    if (!confirm('This will clear all transaction history and re-sync from the blockchain. This is useful if transactions are missing. Continue?')) {
+    if (
+      !confirm(
+        "This will clear all transaction history and re-sync from the blockchain. This is useful if transactions are missing. Continue?",
+      )
+    ) {
       return;
     }
 
     try {
       setSyncing(true);
       const result = await syncApi.resyncWallet(walletId);
-      showSuccess(result.message, 'Resync Queued');
+      showSuccess(result.message, "Resync Queued");
       // Reload wallet data after resync is queued
       await onDataRefresh();
     } catch (err) {
-      log.error('Failed to resync wallet', { error: err });
-      handleError(err, 'Resync Failed');
+      log.error("Failed to resync wallet", { error: err });
+      handleError(err, "Resync Failed");
     } finally {
       setSyncing(false);
     }
@@ -106,14 +116,14 @@ export function useWalletSync({
       setRepairing(true);
       const result = await walletsApi.repairWallet(walletId);
       if (result.success) {
-        showSuccess(result.message, 'Repair Complete');
+        showSuccess(result.message, "Repair Complete");
         await onDataRefresh();
       } else {
-        handleError(new Error(result.message), 'Repair Failed');
+        handleError(new Error(result.message), "Repair Failed");
       }
     } catch (err) {
-      log.error('Failed to repair wallet', { error: err });
-      handleError(err, 'Repair Failed');
+      log.error("Failed to repair wallet", { error: err });
+      handleError(err, "Repair Failed");
     } finally {
       setRepairing(false);
     }

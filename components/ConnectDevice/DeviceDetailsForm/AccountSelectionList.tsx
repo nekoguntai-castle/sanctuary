@@ -1,4 +1,7 @@
+import { useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 import type { DeviceAccount } from '../../../services/deviceParsers';
+import { splitTestnetSignetAccounts } from '../../../utils/derivationPathGroups';
 import { getPurposeLabel, getScriptLabel } from '../types';
 
 interface AccountSelectionListProps {
@@ -12,6 +15,13 @@ export function AccountSelectionList({
   selectedAccounts,
   onToggleAccount,
 }: AccountSelectionListProps) {
+  const rows = parsedAccounts.map((account, index) => ({
+    account,
+    index,
+    derivationPath: account.derivationPath,
+  }));
+  const { primaryAccounts, testnetSignetAccounts } = splitTestnetSignetAccounts(rows);
+
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
@@ -21,7 +31,7 @@ export function AccountSelectionList({
         </span>
       </div>
       <div className="space-y-2 max-h-64 overflow-y-auto">
-        {parsedAccounts.map((account, index) => (
+        {primaryAccounts.map(({ account, index }) => (
           <AccountSelectionCard
             key={index}
             account={account}
@@ -30,10 +40,75 @@ export function AccountSelectionList({
             onToggleAccount={onToggleAccount}
           />
         ))}
+        {testnetSignetAccounts.length > 0 && (
+          <TestnetSignetSelectionDisclosure
+            rows={testnetSignetAccounts}
+            selectedAccounts={selectedAccounts}
+            onToggleAccount={onToggleAccount}
+          />
+        )}
       </div>
       <p className="text-[10px] text-sanctuary-400 mt-2">
         All accounts will be registered with this device for use in wallets.
       </p>
+    </div>
+  );
+}
+
+type AccountSelectionRow = {
+  account: DeviceAccount;
+  index: number;
+  derivationPath: string;
+};
+
+interface TestnetSignetSelectionDisclosureProps {
+  rows: AccountSelectionRow[];
+  selectedAccounts: Set<number>;
+  onToggleAccount: (index: number) => void;
+}
+
+function TestnetSignetSelectionDisclosure({
+  rows,
+  selectedAccounts,
+  onToggleAccount,
+}: TestnetSignetSelectionDisclosureProps) {
+  const [expanded, setExpanded] = useState(false);
+  const selectedCount = rows.filter(({ index }) => selectedAccounts.has(index)).length;
+  const pathLabel = rows.length === 1 ? 'path' : 'paths';
+
+  return (
+    <div className="rounded-lg border border-testnet-200 dark:border-testnet-800 bg-testnet-50/70 dark:bg-testnet-900/20">
+      <button
+        type="button"
+        className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((value) => !value)}
+      >
+        <div>
+          <p className="text-xs font-medium text-testnet-800 dark:text-testnet-200">
+            Testnet / signet derivation paths
+          </p>
+          <p className="text-[10px] text-testnet-700 dark:text-testnet-300">
+            {selectedCount} of {rows.length} {pathLabel} selected
+          </p>
+        </div>
+        <ChevronDown
+          className={`w-4 h-4 text-testnet-700 dark:text-testnet-300 transition-transform ${expanded ? 'rotate-180' : ''}`}
+        />
+      </button>
+      {expanded && (
+        <div className="space-y-2 px-2 pb-2">
+          {rows.map(({ account, index }) => (
+            <AccountSelectionCard
+              key={index}
+              account={account}
+              index={index}
+              isSelected={selectedAccounts.has(index)}
+              onToggleAccount={onToggleAccount}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

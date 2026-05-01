@@ -56,11 +56,12 @@ router.post(
     const { id } = req.params;
     const { purpose, scriptType, derivationPath, xpub } = req.body;
 
-    // Check if this account type already exists
+    // Same purpose/script accounts are allowed when the coin-type path differs
+    // (for example mainnet m/84'/0'/0' and testnet/signet m/84'/1'/0').
     const existingAccount = await deviceRepository.findDuplicateAccount(id, derivationPath, purpose, scriptType);
 
     if (existingAccount) {
-      throw new ConflictError('An account with this derivation path or purpose/scriptType combination already exists');
+      throw new ConflictError('An account with this derivation path already exists');
     }
 
     const account = await deviceRepository.createAccount({
