@@ -62,6 +62,32 @@ curl --user test:test --data-binary \
   http://127.0.0.1:18443/
 ```
 
+### Mine Regtest Blocks To A Chosen Address
+
+For local development, mine directly to the address you want funded. The address
+can change each run; pass the new address with `--address`.
+
+```bash
+# Mine one regtest block to the address.
+../../scripts/bitcoin/mine-to-address.sh \
+  --container bitcoind-test \
+  --address bcrt1...
+
+# Mine enough blocks for the requested coinbase output to be spendable.
+../../scripts/bitcoin/mine-to-address.sh \
+  --container bitcoind-test \
+  --address bcrt1... \
+  --blocks 1 \
+  --mature
+```
+
+Coinbase outputs need 100 confirmations before they are spendable, so
+`--mature` mines 100 additional blocks after the requested block count.
+
+Public testnet/testnet4 is different from local regtest: it still requires real
+proof of work. Use a faucet, or mining software/pool configuration with the
+desired payout address, if your node cannot generate blocks directly.
+
 ### Use with Address Verification
 
 ```bash

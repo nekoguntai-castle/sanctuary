@@ -1,3 +1,30 @@
+# Active Task: Bitcoin Mining Address Helper 2026-05-01
+
+Status: complete
+
+Goal: make local Bitcoin Core test mining repeatable for a caller-supplied address that can change run to run, without hardcoding payout destinations.
+
+## Plan
+
+- [x] Start from merged `origin/main` after PR #243.
+- [x] Add a Bitcoin Core helper script that accepts an explicit mining address, block count, network, and local/container RPC settings.
+- [x] Document the regtest-first workflow and the public testnet caveat.
+- [x] Add focused shell tests for argument parsing, dry-run behavior, validation, and generated RPC commands.
+- [x] Run focused shell tests and diff hygiene.
+- [x] Commit the branch-ready changes; push, PR, queue merge, and post-merge verification continue through the `pr-delivery` workflow.
+
+## Review
+
+- PR #243 merged at `2026-05-01T17:10:20Z` with merge commit `0e891326f7214974365083cc560f475be1051a6c`; this branch started from that merged `origin/main`.
+- Added `scripts/bitcoin/mine-to-address.sh` so a caller can mine to a supplied address and change that address every run.
+- The helper defaults to local `regtest`, validates the address with `validateaddress`, mines with `generatetoaddress`, supports `--mature` for coinbase maturity, and accepts local or Docker-based `bitcoin-cli` settings.
+- Documented the workflow in `scripts/bitcoin-core-docker/README.md`, including the public testnet/testnet4 proof-of-work caveat.
+- Added `tests/bitcoin/mine-to-address.test.sh` with a fake `bitcoin-cli` to cover required address validation, numeric argument validation, dry-run output, RPC flags, generated block count, and container command construction.
+- Verification passed: `bash -n scripts/bitcoin/mine-to-address.sh`; `bash -n tests/bitcoin/mine-to-address.test.sh`; `tests/bitcoin/mine-to-address.test.sh`; `scripts/bitcoin/mine-to-address.sh --address bcrt1example --blocks 1 --mature --dry-run`; `node scripts/quality/check-large-files.mjs --json`; `npm run quality:lizard`; `git diff --check`.
+- Branch-ready helper is complete; PR delivery continues through the queue verification workflow.
+
+---
+
 # Active Task: Agent Repository Test Split 2026-05-01
 
 Status: complete
