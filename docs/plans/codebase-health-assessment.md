@@ -9,9 +9,9 @@ Status: Complete
 **Grade**: A
 **Confidence**: High
 **Mode**: software-grade-recovery
-**Commit**: working-tree-after-ebcd6b89
+**Commit**: working-tree-after-30a1e10b
 
-The previous full-repository grade was capped at 69/D by two hard failures: `npm run typecheck:scripts` failed and the docs website lockfile had high-severity Docusaurus/webpack-chain advisories. Those hard caps are now removed. The remaining score loss is not from the deterministic wallet software tests; it is from the still-unfinished physical hardware-in-loop wallet evidence and known large test-file warnings that remain under the enforced limit. Follow-up splits reduced warning-sized test files from 10 to 4 without changing behavior.
+The previous full-repository grade was capped at 69/D by two hard failures: `npm run typecheck:scripts` failed and the docs website lockfile had high-severity Docusaurus/webpack-chain advisories. Those hard caps are now removed. The remaining score loss is not from the deterministic wallet software tests; it is from the still-unfinished physical hardware-in-loop wallet evidence and known large test-file warnings that remain under the enforced limit. Follow-up splits reduced warning-sized test files from 10 to 3 without changing behavior.
 
 Previous local report: 2026-05-01, `full`, 69/D at `e0fa1661`.
 
@@ -31,7 +31,7 @@ Not hard-fail blockers: the docs website still has moderate `uuid` advisories th
 | --------------------- | ---------: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Correctness           |      18/20 | Full root/frontend/backend focused gates are green, script typecheck is fixed, and wallet software vectors are strong. The remaining loss is functional completeness: physical hardware validation is not complete.                                                                    |
 | Reliability           |      15/15 | Request timeouts, async handlers, circuit breakers, retries/backoff, health checks, typed errors, and structured failure handling remain strong.                                                                                                                                       |
-| Maintainability       |      14/15 | Lizard is green, and the previous PSBT, price-route, Trezor, Ledger, address repository, agent route, and admin agent route warning-sized test files were split along clean boundaries. Large-file policy passes, but there are still 4 warning-sized test files below the hard limit. |
+| Maintainability       |      14/15 | Lizard is green, and the previous PSBT, price-route, Trezor, Ledger, address repository, agent route, admin agent route, and agent repository warning-sized test files were split along clean boundaries. Large-file policy passes, but there are still 3 warning-sized test files below the hard limit. |
 | Security              |      15/15 | High/critical npm audit findings are cleared for the docs website, PSBT verifier, and other package scopes checked. Gitleaks was already clean in the previous full audit.                                                                                                             |
 | Performance           |      10/10 | Sampled hot paths retain bounded async I/O, batching, concurrency limits, request timeouts, caching, and DB aggregation patterns.                                                                                                                                                      |
 | Test Quality          |      15/15 | Frontend and backend strict coverage gates now pass at 100%; wallet address/PSBT software proofs are repeatable.                                                                                                                                                                       |
@@ -66,13 +66,13 @@ Not hard-fail blockers: the docs website still has moderate `uuid` advisories th
 | docs website audit                           | pass at high threshold; 21 moderate advisories remain                                                                                                           | `npm --prefix website audit --audit-level=high`                                                                | Security 4.1                             |
 | docs website install/build                   | pass                                                                                                                                                            | `npm --prefix website ci`; `npm --prefix website run typecheck`; `npm --prefix website run build`              | Build readiness context                  |
 | lizard                                       | pass                                                                                                                                                            | `npm run quality:lizard`                                                                                       | Maintainability 3.1                      |
-| large-file policy                            | pass; largest source 795 lines; largest test 984 lines; 4 warning-sized test files; 0 over-limit files                                                          | `node scripts/quality/check-large-files.mjs --json`                                                            | Maintainability 3.3                      |
+| large-file policy                            | pass; largest source 795 lines; largest test 984 lines; 3 warning-sized test files; 0 over-limit files                                                          | `node scripts/quality/check-large-files.mjs --json`                                                            | Maintainability 3.3                      |
 | previous full audit signals still applicable | root tests/lint/builds, gitleaks, architecture boundaries, API validation, OpenAPI route coverage, browser auth contract were green in the baseline full report | prior 2026-05-01 grade evidence                                                                                | Operational/security/correctness context |
 
 ### Judged Findings
 
 - **[1.5] Functional completeness - Medium -> +1**: deterministic wallet software proof is strong, but `server/tests/fixtures/hardware-signed-psbt-vectors.ts` still has no real Ledger/Trezor/BitBox signed artifact rows.
-- **[3.3] Large-file hygiene - High but not perfect**: no file exceeds the 1000-line gate, but 4 test files remain in the warning band and should be split only when a real ownership boundary appears.
+- **[3.3] Large-file hygiene - High but not perfect**: no file exceeds the 1000-line gate, but 3 test files remain in the warning band and should be split only when a real ownership boundary appears.
 - **[4.1] Dependency security - High**: high/critical advisories are cleared. Remaining docs-site moderate advisories are in Docusaurus/Mermaid dev/build transitive dependencies and npm currently reports no non-breaking fix.
 - **[6.3] Edge cases covered - High**: wallet tests cover receive/change, high index, descriptor routing, BIP vectors, PSBT finalization, signature corruption, below-quorum multisig, wrong metadata, tampering, network mismatch, and no-device hardware payload/address verification behavior.
 
@@ -88,13 +88,13 @@ Not hard-fail blockers: the docs website still has moderate `uuid` advisories th
 
 1. Hardware wallet confidence is not yet funds-loss-grade: the repo has the replay contract and runbook, but no real Ledger/Trezor/BitBox signed artifacts.
 2. Docs-site moderate advisories remain in dev/build tooling. They no longer cap the grade, but should be tracked for future Docusaurus/Mermaid releases.
-3. Four test files remain near the large-file warning threshold. They pass policy, but future additions should avoid pushing them over 1000 lines.
+3. Three test files remain near the large-file warning threshold. They pass policy, but future additions should avoid pushing them over 1000 lines.
 
 ## Fastest Improvements
 
 1. Capture hardware-signed fixtures or explicit unsupported decisions for all 15 required Ledger/Trezor/BitBox rows.
 2. Re-run `npm --prefix website audit --audit-level=moderate` after future Docusaurus/Mermaid releases and remove the remaining moderate advisories when a compatible fix exists.
-3. Split the remaining 4 warning-sized test files only when touching them for real behavior changes.
+3. Split the remaining 3 warning-sized test files only when touching them for real behavior changes.
 
 ## Roadmap To A Grade
 
@@ -140,6 +140,7 @@ Not hard-fail blockers: the docs website still has moderate `uuid` advisories th
 - `npm --prefix server run test -- tests/unit/repositories/addressRepository.test.ts tests/unit/repositories/addressRepository.labels.test.ts` - passed, 37 tests after splitting address label-hydration coverage into its own file.
 - `npm --prefix server run test -- tests/unit/api/agent-routes.test.ts tests/unit/api/agent-routes.funding.test.ts` - passed, 31 tests after splitting agent funding-draft route coverage into its own file.
 - `npm --prefix server run test -- tests/unit/api/admin-agents-routes.test.ts tests/unit/api/admin-agents-routes.controls.test.ts` - passed, 18 tests after splitting admin owner override/API key route coverage into its own file.
+- `npm --prefix server run test -- tests/unit/repositories/agentRepository.test.ts tests/unit/repositories/agentRepository.funding.test.ts` - passed, 12 tests after splitting funding lock/attempt/override/alert repository coverage into its own file.
 - `npm --prefix server run test -- tests/unit/api/price.test.ts tests/unit/api/price.admin.test.ts tests/unit/api/price.history.test.ts` - passed, 63 tests after splitting public/admin/history price route coverage.
 - `npm run test:coverage:shard -- 1 2` - passed, 220 files / 2960 tests.
 - `npm run test:coverage:shard -- 2 2` - passed, 219 files / 2940 tests.

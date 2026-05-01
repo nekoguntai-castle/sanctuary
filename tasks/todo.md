@@ -1,3 +1,31 @@
+# Active Task: Agent Repository Test Split 2026-05-01
+
+Status: complete
+
+Goal: reduce the next agent-related warning-sized server repository test by splitting funding lock, attempt, override, and alert coverage from core wallet-agent metadata/API-key coverage without changing repository behavior.
+
+## Plan
+
+- [x] Verify PR #242 merged, local `main` is fast-forwarded, and post-merge `main` workflows are green.
+- [x] Use a clean worktree from `origin/main` so unrelated local task-tracker edits remain untouched.
+- [x] Extract shared agent repository Prisma mocks into a focused harness.
+- [x] Move funding lock, funding attempt, funding override, and alert coverage into a dedicated test file.
+- [x] Run focused agent repository tests, server test typecheck, lizard, large-file policy, and diff hygiene.
+- [x] Commit the branch-ready changes; push, PR, queue merge, and post-merge verification continue through the `pr-delivery` workflow.
+
+## Review
+
+- PR #242 merged at `2026-05-01T16:48:02Z` with merge commit `30a1e10b59f20aa4534c7bcbcff92567349206b9`; local `main` and this worktree were based on that commit.
+- Post-merge `main` workflows for PR #242 passed: Test Suite, CodeQL, Architecture, Release, and Build Dev Images.
+- Selected `server/tests/unit/repositories/agentRepository.test.ts` because it is agent-related, warning-sized at 929 lines, and has a clean repository boundary between core wallet-agent/API-key metadata and funding lock/attempt/override/alert persistence.
+- Extracted shared Prisma repository mocks into `server/tests/unit/repositories/agentRepository.testHarness.ts`.
+- Split core wallet-agent/API-key coverage into `server/tests/unit/repositories/agentRepository.test.ts` at 421 lines and funding/alert coverage into `server/tests/unit/repositories/agentRepository.funding.test.ts` at 467 lines.
+- Large-file policy still passes and warning-sized test files dropped from 4 to 3.
+- Verification passed: `npm --prefix server run test -- tests/unit/repositories/agentRepository.test.ts tests/unit/repositories/agentRepository.funding.test.ts`; `npm --prefix server run typecheck:tests`; `npm run quality:lizard`; `node scripts/quality/check-large-files.mjs --json`; `git diff --check`.
+- Branch-ready split is complete; PR delivery continues through the queue verification workflow.
+
+---
+
 # Active Task: Admin Agent Routes Test Split 2026-05-01
 
 Status: complete
