@@ -1,6 +1,31 @@
+# Active Task: Ledger Warning Test Split 2026-05-01
+
+Status: complete
+
+Goal: reduce the next wallet-relevant warning-sized test file without changing Ledger adapter/signing behavior, then deliver it through the PR queue.
+
+## Plan
+
+- [x] Start a fresh branch from merged `main` and confirm unrelated untracked task files will stay untouched.
+- [x] Identify the cohesive Ledger test boundary to split.
+- [x] Move direct Ledger `signPsbt` helper behavior into a dedicated test file while leaving adapter behavior in the adapter test.
+- [x] Run focused Ledger tests, test typecheck, lizard, large-file policy, and diff hygiene.
+- [x] Commit the branch-ready changes; push, PR, queue merge, and post-merge verification continue through the `pr-delivery` workflow.
+
+## Review
+
+- Selected `tests/services/hardwareWallet.ledgerAdapter.test.ts` because it is wallet safety related and currently warning-sized.
+- The split boundary is direct Ledger signing-helper behavior: wallet policy template/key info construction, account-path fallbacks, fingerprint rewriting, and finalization remain covered in a new helper test file; adapter connection/xpub/address/error-mapping coverage remains in the adapter test.
+- Split `tests/services/hardwareWallet.ledgerAdapter.test.ts` from 944 to 641 lines and added `tests/services/hardwareWallet.ledgerSignPsbt.test.ts` at 295 lines.
+- Large-file policy still passes and warning-sized test files dropped from 8 to 7.
+- Verification passed: `npm run test:run -- tests/services/hardwareWallet.ledgerAdapter.test.ts tests/services/hardwareWallet.ledgerSignPsbt.test.ts`; `npm run typecheck:tests`; `npm run quality:lizard`; `node scripts/quality/check-large-files.mjs --json`; `git diff --check`.
+- Pre-commit verification also passed the full frontend Vitest suite with 441 files and 5900 tests.
+
+---
+
 # Active Task: Grade Output Software Follow-Ups 2026-05-01
 
-Status: in progress
+Status: complete
 
 Goal: complete the remaining software-addressable grade follow-ups after PR #237, while leaving physical hardware evidence as the only unresolved wallet-safety gate.
 
@@ -10,7 +35,7 @@ Goal: complete the remaining software-addressable grade follow-ups after PR #237
 - [x] Re-check the docs-site moderate audit advisories against current upstream package metadata.
 - [x] Split warning-sized test files only where there is a clean API or adapter boundary.
 - [x] Re-run large-file policy, focused split-test suites, docs audit checks, and diff hygiene.
-- [ ] Update the grade report/task review, commit, push, open the follow-up PR, and merge it through the queue.
+- [x] Update the grade report/task review, commit, push, open the follow-up PR, and merge it through the queue.
 
 ## Review
 
@@ -20,6 +45,7 @@ Goal: complete the remaining software-addressable grade follow-ups after PR #237
 - Split Trezor helper-function coverage out of `tests/services/hardwareWallet.trezorAdapter.test.ts`; focused Trezor adapter/helper coverage still passes with 44 tests.
 - Large-file policy still passes and warning-sized test files dropped from 10 to 8. Remaining warning files are cohesive route/repository/e2e suites that should be split with domain-specific follow-up work, not a broad mechanical move.
 - Verification passed: `npm --prefix server run test -- tests/unit/api/price.test.ts tests/unit/api/price.admin.test.ts tests/unit/api/price.history.test.ts`; `npm run test:run -- tests/services/hardwareWallet.trezorAdapter.test.ts tests/services/hardwareWallet.trezorAdapter.helpers.test.ts`; `npm run typecheck:tests`; `npm run quality:lizard`; `node scripts/quality/check-large-files.mjs --json`; `npm --prefix website audit --audit-level=high`; `git diff --check`.
+- PR #238 merged at `2026-05-01T09:01:40Z` with merge commit `9a61484da93a6a771b1aa1a9616e2b74bd6deb89`; local `main` was fast-forwarded to that commit before starting the Ledger split.
 
 ---
 
