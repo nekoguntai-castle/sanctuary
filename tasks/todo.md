@@ -1,3 +1,31 @@
+# Active Task: Admin Agent Routes Test Split 2026-05-01
+
+Status: complete
+
+Goal: reduce the next agent-related warning-sized server route test by splitting owner override/API key admin-control coverage from core admin agent route coverage without changing route behavior.
+
+## Plan
+
+- [x] Verify PR #241 merged, local `main` is fast-forwarded, and post-merge `main` workflows are green.
+- [x] Identify the cohesive admin agent route split boundary.
+- [x] Extract shared admin agent route test setup into a focused harness.
+- [x] Move owner funding override and scoped API key coverage into a dedicated test file.
+- [x] Run focused admin agent route tests, server test typecheck, lizard, large-file policy, and diff hygiene.
+- [x] Commit the branch-ready changes; push, PR, queue merge, and post-merge verification continue through the `pr-delivery` workflow.
+
+## Review
+
+- PR #241 merged at `2026-05-01T16:25:46Z` with merge commit `ebcd6b89d7266889e80f6b00930720d71f8d3e65`; local `main` was fast-forwarded to that commit before this branch.
+- Post-merge `main` workflows for PR #241 passed: Test Suite, CodeQL, Architecture, Release, and Build Dev Images.
+- Selected `server/tests/unit/api/admin-agents-routes.test.ts` because it is the next agent-related warning-sized test file at 948 lines and has a clear boundary around owner funding override and scoped API key admin controls.
+- Extracted shared admin route mocks/defaults into `server/tests/unit/api/adminAgentsRoutes.testHarness.ts`.
+- Split core admin agent route coverage into `server/tests/unit/api/admin-agents-routes.test.ts` at 670 lines and owner override/API key coverage into `server/tests/unit/api/admin-agents-routes.controls.test.ts` at 344 lines.
+- Large-file policy still passes and warning-sized test files dropped from 5 to 4.
+- Verification passed: `npm --prefix server run test -- tests/unit/api/admin-agents-routes.test.ts tests/unit/api/admin-agents-routes.controls.test.ts`; `npm --prefix server run typecheck:tests`; `npm run quality:lizard`; `node scripts/quality/check-large-files.mjs --json`; `git diff --check`.
+- Branch-ready split is complete; PR delivery continues through the queue verification workflow.
+
+---
+
 # Active Task: Agent Routes Test Split 2026-05-01
 
 Status: complete
