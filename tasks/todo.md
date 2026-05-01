@@ -1,3 +1,31 @@
+# Active Task: Hardware Wallet Manual Validation Runbook 2026-04-30
+
+Status: complete
+
+Goal: make the physical-device wallet safety phase repeatable by documenting exact hardware validation cases, required artifacts, pass/fail criteria, and replay commands before any manual signing work begins.
+
+## Plan
+
+- [x] Add no-device coverage for any remaining adapter-level address verification request gaps.
+- [x] Define the device, script-family, address, change-address, and signing matrix that must be run on real hardware.
+- [x] Define required capture artifacts without storing private seeds, mainnet-sensitive data, or screenshots that expose secrets.
+- [x] Define pass/fail criteria for address display, change-output classification, PSBT signing, final transaction replay, and negative controls.
+- [x] Link the manual hardware phase back to the deterministic software vector gates already built.
+- [x] Verify the documentation diff and commit only this runbook work.
+
+## Review
+
+- Added `docs/reference/hardware-wallet-validation.md`, a repeatable manual hardware wallet validation runbook for Ledger, Trezor, and BitBox physical-device release gates.
+- The runbook defines rerun triggers, software preflight gates, device and script-family matrices, address-display procedure, signing procedure, negative signing controls, sanitized artifact manifests, and acceptance criteria.
+- Linked the runbook from `docs/reference/hardware-wallet-integration.md`.
+- Added Trezor `verifyAddress` support through `TrezorConnect.getAddress({ showOnTrezor: true })`, including network/script-type mapping and user-rejection handling.
+- Tightened Ledger, BitBox, and Jade address verification so the adapter returns `true` only when the address returned by the device API exactly matches Sanctuary's expected address.
+- Added no-device tests for Trezor address display requests, returned-address mismatch handling, Ledger/BitBox/Jade returned-address mismatch handling, and existing rejection/error paths.
+- Verification passed: focused hardware wallet adapter suite with 107 passing tests; `npm run typecheck:app`; `npm run typecheck:tests`; `npm --prefix server run typecheck:tests`; `npm run quality:lizard`; `git diff --check`.
+- Remaining queue still requires physical devices: real Ledger/Trezor/BitBox address display, change-output recognition, signing approval, multisig policy registration, vendor-signed artifact capture, and Core replay of those hardware-signed artifacts.
+
+---
+
 # Active Task: Pre-Hardware Wallet Safety Completion 2026-04-30
 
 Status: complete

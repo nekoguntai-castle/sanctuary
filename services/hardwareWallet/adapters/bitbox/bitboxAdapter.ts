@@ -288,7 +288,7 @@ export class BitBoxAdapter implements DeviceAdapter {
   /**
    * Verify address on device
    */
-  async verifyAddress(path: string, _address: string): Promise<boolean> {
+  async verifyAddress(path: string, address: string): Promise<boolean> {
     if (!this.connection) {
       throw new Error('No device connected');
     }
@@ -303,8 +303,13 @@ export class BitBoxAdapter implements DeviceAdapter {
       const keypathArray = getKeypathFromString(path);
       const simpleType = getSimpleType(undefined, path);
 
-      await this.connection.api.btcDisplayAddressSimple(coin, keypathArray, simpleType, true);
-      return true;
+      const displayedAddress = await this.connection.api.btcDisplayAddressSimple(
+        coin,
+        keypathArray,
+        simpleType,
+        true
+      );
+      return displayedAddress === address;
     } catch (error) {
       if (await isAbortError(error)) {
         return false;

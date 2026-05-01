@@ -19,6 +19,7 @@ import {
 const mockInit = vi.fn();
 const mockGetFeatures = vi.fn();
 const mockGetPublicKey = vi.fn();
+const mockGetAddress = vi.fn();
 const mockSignTransaction = vi.fn();
 const mockApiGet = vi.fn();
 
@@ -27,6 +28,7 @@ vi.mock('@trezor/connect-web', () => ({
     init: (...args: unknown[]) => mockInit(...args),
     getFeatures: (...args: unknown[]) => mockGetFeatures(...args),
     getPublicKey: (...args: unknown[]) => mockGetPublicKey(...args),
+    getAddress: (...args: unknown[]) => mockGetAddress(...args),
     signTransaction: (...args: unknown[]) => mockSignTransaction(...args),
   },
 }));
@@ -239,6 +241,14 @@ describe('TrezorAdapter class', () => {
         fingerprint: 0xdeadbeef,
       },
     });
+    mockGetAddress.mockResolvedValue({
+      success: true,
+      payload: {
+        address: 'bc1qabc',
+        path: [],
+        serializedPath: "m/84'/0'/0'/0/0",
+      },
+    });
     mockSignTransaction.mockResolvedValue({
       success: true,
       payload: { serializedTx: '' },
@@ -438,6 +448,7 @@ describe('TrezorAdapter class', () => {
   it('requires connected state for getXpub/signPSBT', async () => {
     const adapter = new TrezorAdapter();
     await expect(adapter.getXpub("m/84'/0'/0'")).rejects.toThrow('Trezor not connected');
+    await expect(adapter.verifyAddress("m/84'/0'/0'/0/0", 'bc1qabc')).rejects.toThrow('Trezor not connected');
     await expect(adapter.signPSBT({ psbt: 'abc', inputPaths: [] })).rejects.toThrow('Trezor not connected');
   });
 
@@ -537,6 +548,64 @@ describe('TrezorAdapter class', () => {
     mockGetPublicKey.mockRejectedValueOnce('bridge-failed');
     await expect(adapterC.getXpub("m/84'/0'/0'")).rejects.toThrow(
       'Failed to get xpub from Trezor: Unknown error'
+    );
+  });
+
+  it('verifies an address on the Trezor display and compares the returned address', async () => {
+    const adapter = new TrezorAdapter();
+    await adapter.connect();
+
+    mockGetAddress.mockResolvedValueOnce({
+      success: true,
+      payload: {
+        address: 'tb1qexpected',
+        path: [],
+        serializedPath: 'm/84h/1h/0h/0/0',
+      },
+    });
+
+    await expect(adapter.verifyAddress('m/84h/1h/0h/0/0', 'tb1qexpected')).resolves.toBe(true);
+    expect(mockGetAddress).toHaveBeenLastCalledWith({
+      path: 'm/84h/1h/0h/0/0',
+      address: 'tb1qexpected',
+      showOnTrezor: true,
+      coin: 'Testnet',
+      scriptType: 'SPENDWITNESS',
+    });
+
+    mockGetAddress.mockResolvedValueOnce({
+      success: true,
+      payload: {
+        address: 'tb1qmismatch',
+        path: [],
+        serializedPath: 'm/84h/1h/0h/0/0',
+      },
+    });
+
+    await expect(adapter.verifyAddress('m/84h/1h/0h/0/0', 'tb1qexpected')).resolves.toBe(false);
+  });
+
+  it('maps Trezor address display rejection and failures', async () => {
+    const adapter = new TrezorAdapter();
+    await adapter.connect();
+
+    mockGetAddress.mockResolvedValueOnce({
+      success: false,
+      payload: { error: 'Cancelled by user' },
+    });
+    await expect(adapter.verifyAddress("m/86'/0'/0'/0/0", 'bc1pabc')).resolves.toBe(false);
+
+    mockGetAddress.mockResolvedValueOnce({
+      success: false,
+      payload: { error: 'Bridge down' },
+    });
+    await expect(adapter.verifyAddress("m/86'/0'/0'/0/0", 'bc1pabc')).rejects.toThrow(
+      'Failed to verify address on Trezor: Bridge down'
+    );
+
+    mockGetAddress.mockRejectedValueOnce('bridge-failed');
+    await expect(adapter.verifyAddress("m/86'/0'/0'/0/0", 'bc1pabc')).rejects.toThrow(
+      'Failed to verify address on Trezor: Unknown error'
     );
   });
 

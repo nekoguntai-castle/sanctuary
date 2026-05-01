@@ -349,31 +349,35 @@ describe('JadeAdapter', () => {
     (adapter as any).connection = makeConnection();
     const sendRpcSpy = vi.spyOn(adapter as any, 'sendRpc');
 
-    sendRpcSpy.mockResolvedValue('bc1qxyz');
+    sendRpcSpy.mockResolvedValueOnce('bc1qxyz');
     await expect(adapter.verifyAddress("m/84'/0'/0'/0/0", 'bc1qxyz')).resolves.toBe(true);
     expect(sendRpcSpy).toHaveBeenLastCalledWith(
       'get_receive_address',
       expect.objectContaining({ variant: 'wpkh(k)' })
     );
 
+    sendRpcSpy.mockResolvedValueOnce('3abc');
     await expect(adapter.verifyAddress("m/49'/0'/0'/0/0", '3abc')).resolves.toBe(true);
     expect(sendRpcSpy).toHaveBeenLastCalledWith(
       'get_receive_address',
       expect.objectContaining({ variant: 'sh(wpkh(k))' })
     );
 
+    sendRpcSpy.mockResolvedValueOnce('bc1pabc');
     await expect(adapter.verifyAddress("m/86'/0'/0'/0/0", 'bc1pabc')).resolves.toBe(true);
     expect(sendRpcSpy).toHaveBeenLastCalledWith(
       'get_receive_address',
       expect.objectContaining({ variant: 'tr(k)' })
     );
 
+    sendRpcSpy.mockResolvedValueOnce('1abc');
     await expect(adapter.verifyAddress("m/44'/0'/0'/0/0", '1abc')).resolves.toBe(true);
     expect(sendRpcSpy).toHaveBeenLastCalledWith(
       'get_receive_address',
       expect.objectContaining({ variant: 'pkh(k)' })
     );
 
+    sendRpcSpy.mockResolvedValueOnce('tb1qxyz');
     await expect(adapter.verifyAddress("m/84h/1h/0h/0/0", 'tb1qxyz')).resolves.toBe(true);
     expect(sendRpcSpy).toHaveBeenLastCalledWith(
       'get_receive_address',
@@ -382,6 +386,9 @@ describe('JadeAdapter', () => {
         variant: 'wpkh(k)',
       })
     );
+
+    sendRpcSpy.mockResolvedValueOnce('bc1qmismatch');
+    await expect(adapter.verifyAddress("m/84'/0'/0'/0/0", 'bc1qxyz')).resolves.toBe(false);
 
     sendRpcSpy.mockRejectedValueOnce(new Error('User cancelled'));
     await expect(adapter.verifyAddress("m/84'/0'/0'/0/0", 'bc1qxyz')).resolves.toBe(false);

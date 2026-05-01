@@ -180,7 +180,7 @@ describe("LedgerAdapter", () => {
     mockGetMasterFingerprint.mockResolvedValue("f00dbabe");
     mockGetExtendedPubkey.mockResolvedValue("xpub-mock");
     mockGetWalletXpub.mockResolvedValue("xpub-mock");
-    mockGetWalletPublicKey.mockResolvedValue({});
+    mockGetWalletPublicKey.mockResolvedValue({ bitcoinAddress: "bc1qabc" });
     mockPsbtFromBase64.mockReturnValue({
       data: { inputs: [] },
       toBase64: () => "psbt",
@@ -538,6 +538,11 @@ describe("LedgerAdapter", () => {
     await expect(
       adapter.verifyAddress("m/84'/0'/0'/0/0", "bc1qabc"),
     ).resolves.toBe(true);
+
+    mockGetWalletPublicKey.mockResolvedValueOnce({ bitcoinAddress: "bc1qmismatch" });
+    await expect(
+      adapter.verifyAddress("m/84'/0'/0'/0/0", "bc1qabc"),
+    ).resolves.toBe(false);
 
     mockGetWalletPublicKey.mockRejectedValueOnce(new Error("denied by user"));
     await expect(
